@@ -5,7 +5,7 @@ unsetopt bg_nice 2>/dev/null || true
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$APP_DIR"
 
-PORT="${GPTPHONE_PORT:-18777}"
+PORT="18777"
 VENV_DIR="$APP_DIR/mac_runtime/.venv"
 
 export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
@@ -117,6 +117,25 @@ fi
 
 export PYTHONPATH="$APP_DIR/mac_overrides:$APP_DIR/business_pyc"
 export EMAIL_AUTH_IMPORTER_GUI_PORT="$PORT"
+
+echo "Using fixed WebUI port: $PORT"
+OLD_PIDS="$(/usr/bin/pgrep -f "plus_launcher.pyc --no-browser --port $PORT" 2>/dev/null || true)"
+PORT_PIDS="$(/usr/sbin/lsof -ti tcp:"$PORT" 2>/dev/null || true)"
+PIDS_TO_STOP="$(printf "%s\n%s\n" "$OLD_PIDS" "$PORT_PIDS" | awk 'NF && !seen[$0]++')"
+if [ -n "$PIDS_TO_STOP" ]; then
+  echo "Stopping previous WebUI on port $PORT..."
+  printf "%s\n" "$PIDS_TO_STOP" | xargs kill 2>/dev/null || true
+  sleep 1
+  STILL_RUNNING=""
+  for pid in $PIDS_TO_STOP; do
+    if kill -0 "$pid" 2>/dev/null; then
+      STILL_RUNNING="$STILL_RUNNING $pid"
+    fi
+  done
+  if [ -n "$STILL_RUNNING" ]; then
+    kill -9 $STILL_RUNNING 2>/dev/null || true
+  fi
+fi
 
 (
   for attempt in {1..30}; do

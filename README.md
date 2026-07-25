@@ -13,13 +13,13 @@ cd /Users/lwh/projects/gptPhone
 第一次运行前建议给启动脚本加执行权限：
 
 ```sh
-chmod +x 启动_gptPhone.command
+chmod +x start.command
 ```
 
 然后直接双击：
 
 ```text
-启动_gptPhone.command
+start.command
 ```
 
 脚本会自动做这些事：
@@ -38,11 +38,7 @@ http://127.0.0.1:18777/
 http://127.0.0.1:18777/mailboxes
 ```
 
-如需换端口：
-
-```sh
-GPTPHONE_PORT=18788 ./启动_gptPhone.command
-```
+端口固定为 `18777`。如果重复双击启动，脚本会先关闭旧的 WebUI 实例，再在同一端口启动新的。
 
 停止运行：关闭启动脚本打开的 Terminal 窗口，或在 Terminal 里按 `Ctrl-C`。
 
@@ -51,10 +47,10 @@ GPTPHONE_PORT=18788 ./启动_gptPhone.command
 如果双击 `.command` 没反应，或提示没有权限，执行：
 
 ```sh
-chmod +x 启动_gptPhone.command
+chmod +x start.command
 ```
 
-如果 macOS Gatekeeper 提示来自未知开发者，可以在 Finder 里右键 `启动_gptPhone.command`，选择“打开”，再确认运行。
+如果 macOS Gatekeeper 提示来自未知开发者，可以在 Finder 里右键 `start.command`，选择“打开”，再确认运行。
 
 ## 邮箱导入格式
 
@@ -131,11 +127,7 @@ GPT账号|登录密码|2FA密钥
 
 ### 端口被占用
 
-换一个端口启动：
-
-```sh
-GPTPHONE_PORT=18788 ./启动_gptPhone.command
-```
+启动脚本固定使用 `18777` 端口，并会在启动前关闭旧的 gptPhone WebUI 实例。若仍提示端口被占用，通常是其他程序占用了 `18777`，先关闭那个程序后再双击 `start.command`。
 
 ### 依赖安装失败
 
@@ -145,7 +137,7 @@ GPTPHONE_PORT=18788 ./启动_gptPhone.command
 brew install python@3.13 node
 ```
 
-然后重新双击 `启动_gptPhone.command`。
+然后重新双击 `start.command`。
 
 ### 邮箱验证码一直收不到
 
@@ -164,7 +156,7 @@ iCloud IMAP 服务器是 `imap.mail.me.com:993`，通常不能用普通 Apple ID
 
 ## 项目目录说明
 
-- `启动_gptPhone.command`: mac 双击启动脚本
+- `start.command`: mac 双击启动脚本，固定使用 `18777` 端口；再次启动会先关闭旧实例
 - `plus_launcher.pyc`: 恢复出的入口字节码
 - `business_pyc/`: 选出的业务 `.pyc` 模块
 - `mac_overrides/`: mac 适配和 UI/逻辑覆盖层
