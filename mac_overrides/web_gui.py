@@ -16,6 +16,7 @@ import urllib.request
 from pathlib import Path
 
 import codex_oauth_chain as _codex_oauth_chain
+import imap_poller as _imap_poller
 import runtime as _runtime
 import sms_selector as _sms_selector
 
@@ -1047,6 +1048,88 @@ def _email_from_row(row):
     return match.group(0).lower() if match else ""
 
 
+def _password_from_row(row):
+    raw = str(row or "").strip()
+    if not raw:
+        return ""
+    if "----" in raw:
+        parts = [part.strip() for part in raw.split("----")]
+        return parts[1] if len(parts) >= 2 else ""
+    if "|" in raw:
+        parts = [part.strip() for part in raw.split("|")]
+        return parts[1] if len(parts) >= 2 else ""
+    return ""
+
+
+def _pool_row_by_line(store, line_no):
+    cfg = store.load()
+    pool_path = _resolve_config_path(store, cfg.get("pool_path"))
+    if not pool_path.exists():
+        return "", ""
+    try:
+        target = int(line_no)
+    except (TypeError, ValueError):
+        return "", ""
+    for index, row in enumerate(pool_path.read_text(encoding="utf-8-sig").splitlines(), start=1):
+        row = row.strip()
+        if row and index == target:
+            return row, _email_from_row(row)
+    return "", ""
+
+
+def _latest_mailbox_code(store, payload):
+    row, email = _pool_row_by_line(store, payload.get("line_no"))
+    if not row:
+        return {"ok": False, "error": "没有找到这一行邮箱"}
+    parsed_totp = _parse_chatgpt_totp_row(row)
+    if parsed_totp:
+        account, _password, secret = parsed_totp
+        code = _totp_code(secret)
+        remaining = 30 - (int(time.time()) % 30)
+        return {
+            "ok": True,
+            "kind": "totp",
+            "email": account,
+            "code": code,
+            "remaining": remaining,
+            "message": f"当前 2FA 验证码，约 {remaining} 秒后刷新",
+        }
+
+    parts = [part.strip() for part in row.split("----")]
+    password = parts[1] if len(parts) >= 2 else ""
+    oauth_client_id = parts[2] if len(parts) >= 3 else ""
+    oauth_refresh_token = parts[3] if len(parts) >= 4 else ""
+    if not email or not password:
+        return {"ok": False, "error": "这一行没有可用于 IMAP 查询的邮箱密码"}
+    try:
+        poller = _imap_poller.ImapPoller(
+            email,
+            password,
+            verbose=False,
+            oauth_client_id=oauth_client_id,
+            oauth_refresh_token=oauth_refresh_token,
+            proxy="",
+        )
+        try:
+            code = poller.poll_code(
+                timeout=5,
+                interval=1,
+                since_ts=time.time() - 1800,
+                recent_scan_limit=40,
+                include_existing=True,
+            )
+        finally:
+            try:
+                poller.close()
+            except Exception:
+                pass
+    except Exception as exc:
+        return {"ok": False, "error": f"IMAP 查询失败: {exc}"}
+    if not code:
+        return {"ok": True, "kind": "email", "email": email, "code": "", "message": "未找到新的 OpenAI 邮箱验证码"}
+    return {"ok": True, "kind": "email", "email": email, "code": str(code), "message": "已找到最新 OpenAI 邮箱验证码"}
+
+
 def _latest_results_by_email(results_dir):
     latest = {}
     if not results_dir.exists():
@@ -1160,6 +1243,7 @@ def _mailbox_rows(store):
             {
                 "line_no": index,
                 "email": email,
+                "password": _password_from_row(row),
                 "status": status_key,
                 "status_label": status_label,
                 "pool_status": state_item.get("status") or "available",
@@ -1313,7 +1397,7 @@ _MAILBOX_MANAGER_HTML = r"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>邮箱管理 - gptPhone</title>
 <style>
-:root{font-family:Arial,"Microsoft YaHei",sans-serif;background:#f5f7fb;color:#172033}*{box-sizing:border-box}html,body{height:100%;overflow:hidden}body{margin:0}.shell{height:100vh;max-width:none;margin:0;padding:10px;display:grid;grid-template-columns:390px minmax(0,1fr);gap:10px;overflow:hidden}.panel{min-height:0;background:#fff;border:1px solid #d7deea;border-radius:8px;padding:12px;box-shadow:0 8px 24px rgba(16,24,40,.08)}.shell>.panel{height:100%;overflow:auto}.shell>.panel:nth-child(2){display:flex;flex-direction:column;overflow:hidden}h2{font-size:15px;margin:0 0 10px}.field label{display:block;color:#465872;font-size:12px;margin-bottom:6px}textarea{width:100%;min-height:260px;resize:vertical;border:1px solid #c6d0df;border-radius:6px;padding:9px;background:#fff;color:#172033;font-family:Consolas,monospace;font-size:13px;line-height:1.45}button{height:32px;padding:0 11px;border:1px solid #b8c5d8;border-radius:6px;background:#eef3fb;color:#172033;font-weight:700;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}button.primary{background:#1f73d8;border-color:#1f73d8;color:#fff}button.danger{background:#fff0f0;border-color:#f2b8b8;color:#b42318}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.hint{font-size:12px;color:#60708a;line-height:1.5;margin-top:9px}.metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:10px}.metric{border:1px solid #d7deea;border-radius:7px;background:#f8fafd;padding:9px}.metric span{display:block;color:#60708a;font-size:11px}.metric b{display:block;font-size:20px;margin-top:4px}.pager{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px;color:#60708a;font-size:12px}.pager-controls{display:flex;align-items:center;gap:8px}.pager select{height:30px;border:1px solid #c6d0df;border-radius:6px;background:#fff;color:#172033}.bulk-actions{display:flex;align-items:center;gap:8px;margin:0 0 8px}.table{flex:1;min-height:0;border:1px solid #d7deea;border-radius:8px;overflow:auto}.row{display:grid;grid-template-columns:34px 54px minmax(220px,1.1fr) 120px minmax(280px,1.5fr) 130px;gap:10px;padding:10px;border-bottom:1px solid #e5eaf3;font-size:12px;align-items:start}.row.head{position:sticky;top:0;background:#f8fafd;font-weight:700;color:#465872;z-index:1}.row input[type=checkbox]{width:16px;height:16px}.email{font-family:Consolas,monospace;word-break:break-all}.reason{color:#465872;word-break:break-word}.status{font-weight:700}.status.available{color:#416f9d}.status.running{color:#a86613}.status.success{color:#178a54}.status.failed{color:#c93545}.toast-host{position:fixed;left:50%;top:18px;z-index:9999;display:flex;flex-direction:column;align-items:center;gap:10px;width:min(520px,calc(100vw - 28px));pointer-events:none;transform:translateX(-50%)}.toast{pointer-events:auto;border:1px solid #dcdfe6;border-radius:4px;background:#f4f4f5;color:#303133;box-shadow:0 6px 18px rgba(31,45,61,.14);padding:10px 14px;font-size:14px}.toast.success{background:#f0f9eb;border-color:#e1f3d8;color:#67c23a}.toast.error{background:#fef0f0;border-color:#fde2e2;color:#f56c6c}.toast.warning{background:#fdf6ec;border-color:#faecd8;color:#e6a23c}@media(max-width:980px){html,body{overflow:auto}.shell{height:auto;min-height:100vh;grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}.table{height:560px;flex:none}.row{grid-template-columns:34px 44px 1fr}.row>div:nth-child(n+4){grid-column:3}} 
+:root{font-family:Arial,"Microsoft YaHei",sans-serif;background:#f5f7fb;color:#172033}*{box-sizing:border-box}html,body{height:100%;overflow:hidden}body{margin:0}.shell{height:100vh;max-width:none;margin:0;padding:10px;display:grid;grid-template-columns:390px minmax(0,1fr);gap:10px;overflow:hidden}.panel{min-height:0;background:#fff;border:1px solid #d7deea;border-radius:8px;padding:12px;box-shadow:0 8px 24px rgba(16,24,40,.08)}.shell>.panel{height:100%;overflow:auto}.shell>.panel:nth-child(2){display:flex;flex-direction:column;overflow:hidden}h2{font-size:15px;margin:0 0 10px}.field label{display:block;color:#465872;font-size:12px;margin-bottom:6px}textarea{width:100%;min-height:260px;resize:vertical;border:1px solid #c6d0df;border-radius:6px;padding:9px;background:#fff;color:#172033;font-family:Consolas,monospace;font-size:13px;line-height:1.45}button{height:32px;padding:0 11px;border:1px solid #b8c5d8;border-radius:6px;background:#eef3fb;color:#172033;font-weight:700;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}button.primary{background:#1f73d8;border-color:#1f73d8;color:#fff}button.danger{background:#fff0f0;border-color:#f2b8b8;color:#b42318}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.hint{font-size:12px;color:#60708a;line-height:1.5;margin-top:9px}.metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:10px}.metric{border:1px solid #d7deea;border-radius:7px;background:#f8fafd;padding:9px}.metric span{display:block;color:#60708a;font-size:11px}.metric b{display:block;font-size:20px;margin-top:4px}.pager{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px;color:#60708a;font-size:12px}.pager-controls{display:flex;align-items:center;gap:8px}.pager select{height:30px;border:1px solid #c6d0df;border-radius:6px;background:#fff;color:#172033}.bulk-actions{display:flex;align-items:center;gap:8px;margin:0 0 8px}.table{flex:1;min-height:0;border:1px solid #d7deea;border-radius:8px;overflow:auto}.row{display:grid;grid-template-columns:34px 54px minmax(220px,1fr) minmax(150px,.58fr) 116px 108px minmax(240px,1.08fr) 116px;gap:10px;padding:10px;border-bottom:1px solid #e5eaf3;font-size:12px;align-items:start}.row.head{position:sticky;top:0;background:#f8fafd;font-weight:700;color:#465872;z-index:1}.row input[type=checkbox]{width:16px;height:16px}.email,.password,.code{font-family:Consolas,monospace;word-break:break-all}.code-box{display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap}.code-box button{height:25px;padding:0 8px;font-size:12px}.copy-cell{cursor:pointer;color:#174ea6;text-decoration:underline;text-decoration-color:rgba(23,78,166,.25);text-underline-offset:2px}.copy-cell:hover{color:#0b57d0;text-decoration-color:#0b57d0}.muted{color:#7a8798}.reason{color:#465872;word-break:break-word}.status{font-weight:700}.status.available{color:#416f9d}.status.running{color:#a86613}.status.success{color:#178a54}.status.failed{color:#c93545}.toast-host{position:fixed;left:50%;top:18px;z-index:9999;display:flex;flex-direction:column;align-items:center;gap:10px;width:min(520px,calc(100vw - 28px));pointer-events:none;transform:translateX(-50%)}.toast{pointer-events:auto;border:1px solid #dcdfe6;border-radius:4px;background:#f4f4f5;color:#303133;box-shadow:0 6px 18px rgba(31,45,61,.14);padding:10px 14px;font-size:14px}.toast.success{background:#f0f9eb;border-color:#e1f3d8;color:#67c23a}.toast.error{background:#fef0f0;border-color:#fde2e2;color:#f56c6c}.toast.warning{background:#fdf6ec;border-color:#faecd8;color:#e6a23c}@media(max-width:980px){html,body{overflow:auto}.shell{height:auto;min-height:100vh;grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}.table{height:560px;flex:none}.row{grid-template-columns:34px 44px 1fr}.row>div:nth-child(n+4){grid-column:3}} 
 </style></head><body>
 <main class="shell"><section class="panel"><h2>批量追加导入</h2><div class="field"><label>第一种格式：邮箱----密码----client_id----refresh_token<br>第二种格式：GPT账号|登录密码|2FA密钥</label><textarea id="pool_content" placeholder="user@hotmail.com----password----client_id----refresh_token&#10;gpt-account@example.com|login-password|TOTPSECRET"></textarea></div><div class="actions"><button class="primary" onclick="appendMailboxes()">追加导入</button><button onclick="refreshMailboxes()">刷新状态</button></div><div class="hint">每行一个账号；导入会追加到现有邮箱池，不会覆盖旧邮箱；完全重复的行会跳过。</div></section>
 <section class="panel"><h2>邮箱状态</h2><div class="metrics"><div class="metric"><span>总数</span><b id="m_total">0</b></div><div class="metric"><span>可领取</span><b id="m_available">0</b></div><div class="metric"><span>运行中</span><b id="m_running">0</b></div><div class="metric"><span>成功</span><b id="m_success">0</b></div><div class="metric"><span>失败</span><b id="m_failed">0</b></div></div><div class="bulk-actions"><button onclick="restoreSelected()">放回可领取</button><button class="danger" onclick="deleteSelected()">删除选中</button></div><div class="pager"><span id="page_info">第 1 / 1 页</span><div class="pager-controls"><span>每页</span><select id="page_size" onchange="setPageSize()"><option>25</option><option selected>50</option><option>100</option><option>200</option></select><button onclick="prevPage()">上一页</button><button onclick="nextPage()">下一页</button></div></div><div class="table" id="mailbox_table"></div></section></main>
@@ -1322,9 +1406,12 @@ const g=id=>document.getElementById(id);
 function toast(message,type="info"){let host=document.querySelector(".toast-host");if(!host){host=document.createElement("div");host.className="toast-host";document.body.appendChild(host)}const item=document.createElement("div");item.className="toast "+type;item.textContent=String(message||"");host.appendChild(item);setTimeout(()=>item.remove(),type==="error"?6500:3000)}
 function esc(x){let d=document.createElement("div");d.textContent=x||"";return d.innerHTML}
 async function api(path,body){const options=body?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}:{};const r=await fetch(path,options);const j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||"操作失败");return j}
-let mailboxRows=[];let page=1;let pageSize=50;let selected=new Set();
+async function copyText(value,label){const text=String(value||"");if(!text||text==="-"){toast(`${label}为空`,"warning");return}try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(text)}else{const t=document.createElement("textarea");t.value=text;t.style.position="fixed";t.style.left="-9999px";document.body.appendChild(t);t.focus();t.select();document.execCommand("copy");t.remove()}toast(`已复制${label}`,"success")}catch(e){toast(`复制失败：${e.message||e}`,"error")}}
+let mailboxRows=[];let page=1;let pageSize=50;let selected=new Set();let latestCodes={};let checkingCodes=new Set();
 function render(data){const c=data.counts||{};["total","available","running","success","failed"].forEach(k=>g("m_"+k).textContent=c[k]||0);mailboxRows=data.rows||[];renderPage()}
-function renderPage(){const total=mailboxRows.length;const totalPages=Math.max(1,Math.ceil(total/pageSize));page=Math.min(Math.max(1,page),totalPages);const start=(page-1)*pageSize;const rows=mailboxRows.slice(start,start+pageSize);g("page_info").textContent=`第 ${page} / ${totalPages} 页，共 ${total} 条，已选 ${selected.size} 条`;g("mailbox_table").innerHTML='<div class="row head"><div><input type="checkbox" onchange="togglePage(this.checked)"></div><div>#</div><div>邮箱</div><div>状态</div><div>失败原因/说明</div><div>任务</div></div>'+rows.map(row=>`<div class="row"><div><input type="checkbox" ${selected.has(row.line_no)?"checked":""} onchange="toggleOne(${row.line_no},this.checked)"></div><div>${row.line_no}</div><div class="email">${esc(row.email||"-")}</div><div class="status ${esc(row.status)}">${esc(row.status_label||"-")}</div><div class="reason">${esc(row.error||row.reason||"-")}</div><div>${esc(row.task_id||"-")}</div></div>`).join("")}
+function codeCell(row){const item=latestCodes[row.line_no]||{};const busy=checkingCodes.has(row.line_no);const code=item.code||"";const text=busy?"查询中...":(code||item.message||"未查询");const copy=code?`<span class="code copy-cell" data-label="验证码" data-copy="${esc(code)}" onclick="copyText(this.dataset.copy,this.dataset.label)">${esc(code)}</span>`:`<span class="muted">${esc(text)}</span>`;return `<div class="code-box">${copy}<button onclick="checkCode(${row.line_no})" ${busy?"disabled":""}>查码</button></div>`}
+function renderPage(){const total=mailboxRows.length;const totalPages=Math.max(1,Math.ceil(total/pageSize));page=Math.min(Math.max(1,page),totalPages);const start=(page-1)*pageSize;const rows=mailboxRows.slice(start,start+pageSize);g("page_info").textContent=`第 ${page} / ${totalPages} 页，共 ${total} 条，已选 ${selected.size} 条`;g("mailbox_table").innerHTML='<div class="row head"><div><input type="checkbox" onchange="togglePage(this.checked)"></div><div>#</div><div>邮箱</div><div>密码</div><div>最新验证码</div><div>状态</div><div>失败原因/说明</div><div>任务</div></div>'+rows.map(row=>`<div class="row"><div><input type="checkbox" ${selected.has(row.line_no)?"checked":""} onchange="toggleOne(${row.line_no},this.checked)"></div><div>${row.line_no}</div><div class="email copy-cell" title="点击复制邮箱" data-label="邮箱" data-copy="${esc(row.email||"")}" onclick="copyText(this.dataset.copy,this.dataset.label)">${esc(row.email||"-")}</div><div class="password copy-cell" title="点击复制密码" data-label="密码" data-copy="${esc(row.password||"")}" onclick="copyText(this.dataset.copy,this.dataset.label)">${esc(row.password||"-")}</div>${codeCell(row)}<div class="status ${esc(row.status)}">${esc(row.status_label||"-")}</div><div class="reason">${esc(row.error||row.reason||"-")}</div><div>${esc(row.task_id||"-")}</div></div>`).join("")}
+async function checkCode(lineNo){try{checkingCodes.add(lineNo);renderPage();const j=await api("/api/mailboxes/latest-code",{line_no:lineNo});latestCodes[lineNo]=j;toast(j.message||"查询完成",j.code?"success":"warning")}catch(e){latestCodes[lineNo]={message:e.message||"查询失败"};toast(e.message,"error")}finally{checkingCodes.delete(lineNo);renderPage()}}
 function toggleOne(lineNo,checked){if(checked)selected.add(lineNo);else selected.delete(lineNo);renderPage()}
 function togglePage(checked){const start=(page-1)*pageSize;mailboxRows.slice(start,start+pageSize).forEach(row=>checked?selected.add(row.line_no):selected.delete(row.line_no));renderPage()}
 function setPageSize(){pageSize=Number(g("page_size").value||50);page=1;renderPage()}
@@ -1332,7 +1419,7 @@ function prevPage(){page-=1;renderPage()}
 function nextPage(){page+=1;renderPage()}
 async function refreshMailboxes(){try{render(await api("/api/mailboxes"))}catch(e){toast(e.message,"error")}}
 async function appendMailboxes(){try{const content=g("pool_content").value.trim();const j=await api("/api/mailboxes/import",{pool_content:content});g("pool_content").value="";toast(`已追加 ${j.imported||0} 条，跳过 ${j.skipped||0} 条`,"success");localStorage.setItem("gptphone_mailboxes_changed",String(Date.now()));render(j.mailboxes)}catch(e){toast(e.message,"error")}}
-async function deleteSelected(){try{if(!selected.size){toast("请先勾选要删除的邮箱","warning");return}const line_nos=[...selected];const j=await api("/api/mailboxes/delete",{line_nos});selected.clear();toast(`已删除 ${j.deleted||0} 条`,"success");localStorage.setItem("gptphone_mailboxes_changed",String(Date.now()));render(j.mailboxes)}catch(e){toast(e.message,"error")}}
+async function deleteSelected(){try{if(!selected.size){toast("请先勾选要删除的邮箱","warning");return}if(!confirm(`确定删除选中的 ${selected.size} 条邮箱吗？删除后不会参与运行。`))return;const line_nos=[...selected];const j=await api("/api/mailboxes/delete",{line_nos});selected.clear();toast(`已删除 ${j.deleted||0} 条`,"success");localStorage.setItem("gptphone_mailboxes_changed",String(Date.now()));render(j.mailboxes)}catch(e){toast(e.message,"error")}}
 async function restoreSelected(){try{if(!selected.size){toast("请先勾选要放回可领取的邮箱","warning");return}const line_nos=[...selected];const j=await api("/api/mailboxes/restore",{line_nos});selected.clear();toast(`已放回可领取 ${j.restored||0} 条`,"success");localStorage.setItem("gptphone_mailboxes_changed",String(Date.now()));render(j.mailboxes)}catch(e){toast(e.message,"error")}}
 refreshMailboxes();setInterval(refreshMailboxes,3000);
 </script></body></html>"""
@@ -1485,6 +1572,18 @@ def _patch_flask_app(app):
             logs.add(f"邮箱管理放回可领取失败: {safe}", "error")
             return _module.jsonify(ok=False, error=f"邮箱管理放回可领取失败: {safe}"), 500
 
+    def api_mailboxes_latest_code():
+        try:
+            data = _module.request.get_json(silent=True) or {}
+            result = _latest_mailbox_code(store, data)
+            if not result.get("ok"):
+                return _module.jsonify(result), 400
+            return _module.jsonify(result)
+        except Exception as exc:
+            safe = _module._safe(exc) if hasattr(_module, "_safe") else str(exc)
+            logs.add(f"邮箱管理查码失败: {safe}", "error")
+            return _module.jsonify(ok=False, error=f"邮箱管理查码失败: {safe}"), 500
+
     if "mailbox_manager" not in app.view_functions:
         app.add_url_rule("/mailboxes", "mailbox_manager", mailbox_manager, methods=["GET"])
     if "api_mailboxes" not in app.view_functions:
@@ -1495,6 +1594,8 @@ def _patch_flask_app(app):
         app.add_url_rule("/api/mailboxes/delete", "api_mailboxes_delete", api_mailboxes_delete, methods=["POST"])
     if "api_mailboxes_restore" not in app.view_functions:
         app.add_url_rule("/api/mailboxes/restore", "api_mailboxes_restore", api_mailboxes_restore, methods=["POST"])
+    if "api_mailboxes_latest_code" not in app.view_functions:
+        app.add_url_rule("/api/mailboxes/latest-code", "api_mailboxes_latest_code", api_mailboxes_latest_code, methods=["POST"])
     app._gptphone_mac_patched = True
     return app
 
