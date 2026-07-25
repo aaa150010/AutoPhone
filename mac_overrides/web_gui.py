@@ -317,7 +317,12 @@ def _patched_outlook_otp_provider(entry, config, log_fn, **kwargs):
 def _patched_account_label(self, entry):
     if getattr(entry, "oauth_client_id", "") == "chatgpt_totp":
         return getattr(entry, "email", "")
-    return _ORIGINAL_ACCOUNT_LABEL(self, entry)
+    try:
+        return _ORIGINAL_ACCOUNT_LABEL(entry)
+    except TypeError as exc:
+        if "positional argument" not in str(exc):
+            raise
+        return _ORIGINAL_ACCOUNT_LABEL(self, entry)
 
 
 def _clamp_sms_max_price(value):
@@ -680,8 +685,8 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
     data.provider_ids = "";
     data.sms_smart = Object.assign({}, data.sms_smart || {}, {
       enabled: true,
-      countries: SMS_PRIORITY_COUNTRIES,
-      preferred_countries: SMS_PRIORITY_COUNTRIES
+      countries: SMS_PRIORITY_COUNTRIES.join(","),
+      preferred_countries: SMS_PRIORITY_COUNTRIES.join(",")
     });
     const nvTokenInput = g("nvtoken_upload");
     data.nvtoken_upload = !nvTokenInput || nvTokenInput.checked;
@@ -707,8 +712,8 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
     patched.provider_ids = "";
     patched.sms_smart = Object.assign({}, patched.sms_smart || {}, {
       enabled: true,
-      countries: SMS_PRIORITY_COUNTRIES,
-      preferred_countries: SMS_PRIORITY_COUNTRIES
+      countries: SMS_PRIORITY_COUNTRIES.join(","),
+      preferred_countries: SMS_PRIORITY_COUNTRIES.join(",")
     });
     patched.nvtoken_upload = patched.nvtoken_upload !== false;
     patched.sub2api = Object.assign({}, patched.sub2api || {}, {
@@ -769,6 +774,9 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
   };
   const baseRenderForFriendlyErrors = render;
   render = function(state){
+    const logBox = g("logs");
+    const keepLogScroll = logBox && (logBox.scrollTop + logBox.clientHeight < logBox.scrollHeight - 24);
+    const previousLogScrollTop = keepLogScroll ? logBox.scrollTop : 0;
     const patched = JSON.parse(JSON.stringify(state || {}));
     const tasks = ((patched.runtime || {}).tasks || []);
     tasks.forEach(task => {
@@ -777,6 +785,9 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
       if (friendly) task.error = friendly;
     });
     baseRenderForFriendlyErrors(patched);
+    if (keepLogScroll && logBox) {
+      logBox.scrollTop = previousLogScrollTop;
+    }
   };
   window.preflight = async function(){
     try {
@@ -882,8 +893,8 @@ def _apply_hardwired_server_defaults(data):
     patched["sms_smart"] = {
         **dict(patched.get("sms_smart") or {}),
         "enabled": True,
-        "countries": list(_SMS_PRIORITY_COUNTRIES),
-        "preferred_countries": list(_SMS_PRIORITY_COUNTRIES),
+        "countries": _SMS_PRIORITY_COUNTRIES_TEXT,
+        "preferred_countries": _SMS_PRIORITY_COUNTRIES_TEXT,
     }
     patched["nvtoken_upload"] = _as_enabled(patched.get("nvtoken_upload"), True)
     return patched
@@ -953,6 +964,20 @@ def _friendly_mailbox_error(error):
     return value
 
 
+def _pool_count_status(state_item, now=None):
+    status = str((state_item or {}).get("status") or "").lower()
+    if status in {"damaged", "consumed"}:
+        return status
+    if status == "leased":
+        try:
+            lease_until = float((state_item or {}).get("lease_until") or 0)
+        except (TypeError, ValueError):
+            lease_until = 0
+        if lease_until > (time.time() if now is None else now):
+            return "running"
+    return "available"
+
+
 def _mailbox_rows(store):
     cfg = store.load()
     pool_path = _resolve_config_path(store, cfg.get("pool_path"))
@@ -975,6 +1000,7 @@ def _mailbox_rows(store):
     latest_results = _latest_results_by_email(results_dir)
     rows = []
     counts = {"total": 0, "available": 0, "running": 0, "success": 0, "failed": 0}
+    now = time.time()
     for index, row in enumerate(lines, start=1):
         email = _email_from_row(row)
         state_item = state_by_line.get(index) or state_by_email.get(email) or {}
@@ -991,7 +1017,7 @@ def _mailbox_rows(store):
             or (result.get("result") or {}).get("local_oauth_exchange_error")
             or (result.get("result") or {}).get("error")
             or result.get("error")
-            or state_item.get("reason")
+            or ("" if manually_restored else state_item.get("reason"))
             or ""
         )
         friendly_error = _friendly_mailbox_error(detail_error)
@@ -1001,7 +1027,10 @@ def _mailbox_rows(store):
             friendly_error,
         )
         counts["total"] += 1
-        counts[status_key] = counts.get(status_key, 0) + 1
+        count_status = _pool_count_status(state_item, now)
+        if count_status == "consumed":
+            count_status = "success"
+        counts[count_status] = counts.get(count_status, 0) + 1
         rows.append(
             {
                 "line_no": index,
