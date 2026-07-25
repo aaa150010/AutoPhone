@@ -571,7 +571,7 @@ _module._HTML = _module._HTML.replace(
     '<div class="field"><label>目标分组</label><input id="sub2_group"></div>'
     '<div class="checks"><label><input id="nvtoken_upload" type="checkbox" checked>上传到 nvtoken 平台</label></div>'
     '<div class="row"><div class="field"><label>nvtoken 地址</label><input id="nvtoken_url" placeholder="https://nvtokens.com/api/inventory/cards/import"></div>'
-    '<div class="field"><label>nvtoken API Key</label><input id="nvtoken_api_key" type="password"></div></div>'
+    '<div class="field"><label>nvtoken API Key</label><input id="nvtoken_api_key" type="password" value="********"></div></div>'
     '</div><div class="section"><h2>网络与运行</h2>',
 )
 
@@ -964,7 +964,7 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
     if (checks && !g("nvtoken_api_key")) {
       const fields = document.createElement("div");
       fields.className = "row";
-      fields.innerHTML = '<div class="field"><label>nvtoken 地址</label><input id="nvtoken_url" placeholder="https://nvtokens.com/api/inventory/cards/import"></div><div class="field"><label>nvtoken API Key</label><input id="nvtoken_api_key" type="password"></div>';
+      fields.innerHTML = '<div class="field"><label>nvtoken 地址</label><input id="nvtoken_url" placeholder="https://nvtokens.com/api/inventory/cards/import"></div><div class="field"><label>nvtoken API Key</label><input id="nvtoken_api_key" type="password" value="********"></div>';
       checks.insertAdjacentElement("afterend", fields);
     }
   };
