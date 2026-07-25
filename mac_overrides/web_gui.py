@@ -80,8 +80,9 @@ _SMS_BLOCKED_ROUTES = (
     ("1", "2920"),
 )
 _SMSBOWER_TOP_CACHE = {"key": None, "expires_at": 0.0, "routes": ()}
-_NVTOKEN_IMPORT_URL = "https://nvtokens.com/api/inventory/cards/import"
-_NVTOKEN_API_KEY = "irk-c83cad4edd3d3feef6d9effb3fff556bace65c1272e7a28d"
+_LOCAL_CONFIG_FILE = APP_DIR / "data" / "local_config.json"
+_NVTOKEN_IMPORT_URL_DEFAULT = "https://nvtokens.com/api/inventory/cards/import"
+_SECRET_MASK = "********"
 
 
 def _parse_chatgpt_totp_row(raw):
@@ -267,22 +268,36 @@ def _patched_entries_unlocked(self):
 
     replacements = {}
     for line_no, raw in enumerate(raw_lines, start=1):
-        parsed = _parse_chatgpt_totp_row(raw)
-        if not parsed:
-            continue
-        email, password, totp_secret = parsed
-        key = _runtime._mailbox_pool._entry_key(email, raw.strip()) if hasattr(_runtime, "_mailbox_pool") else hashlib.sha256(f"{email}\n{raw.strip()}".encode()).hexdigest()
-        replacements[line_no] = _runtime.PoolEntry(
-            email=email,
-            mailbox_url="",
-            line_no=line_no,
-            key=key,
-            mailbox_type="outlook_password",
-            password=password,
-            oauth_client_id="chatgpt_totp",
-            oauth_refresh_token=totp_secret,
-            source_row=f"{email}|***|***",
-        )
+        parsed_totp = _parse_chatgpt_totp_row(raw)
+        parsed_oauth = _parse_oauth_mailbox_row(raw)
+        if parsed_totp:
+            email, password, totp_secret = parsed_totp
+            key = _runtime._mailbox_pool._entry_key(email, raw.strip()) if hasattr(_runtime, "_mailbox_pool") else hashlib.sha256(f"{email}\n{raw.strip()}".encode()).hexdigest()
+            replacements[line_no] = _runtime.PoolEntry(
+                email=email,
+                mailbox_url="",
+                line_no=line_no,
+                key=key,
+                mailbox_type="outlook_password",
+                password=password,
+                oauth_client_id="chatgpt_totp",
+                oauth_refresh_token=totp_secret,
+                source_row=f"{email}|***|***",
+            )
+        elif parsed_oauth:
+            email, password, oauth_client_id, oauth_refresh_token = parsed_oauth
+            key = _runtime._mailbox_pool._entry_key(email, raw.strip()) if hasattr(_runtime, "_mailbox_pool") else hashlib.sha256(f"{email}\n{raw.strip()}".encode()).hexdigest()
+            replacements[line_no] = _runtime.PoolEntry(
+                email=email,
+                mailbox_url="",
+                line_no=line_no,
+                key=key,
+                mailbox_type="outlook_oauth",
+                password=password,
+                oauth_client_id=oauth_client_id,
+                oauth_refresh_token=oauth_refresh_token,
+                source_row=f"{email}----***----{oauth_client_id}----***",
+            )
     if not replacements:
         return entries, errors
 
@@ -475,14 +490,19 @@ def _nvtoken_result_payload(result, entry):
     return {"data": data}
 
 
-def _upload_nvtoken(payload, timeout=30):
+def _upload_nvtoken(payload, settings, timeout=30):
+    nvtoken = dict(((settings or {}).get("nvtoken") or {}))
+    url = str(nvtoken.get("url") or _NVTOKEN_IMPORT_URL_DEFAULT).strip()
+    api_key = str(nvtoken.get("api_key") or "").strip()
+    if not api_key:
+        return False, 0, "nvtoken api_key is empty"
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(
-        _NVTOKEN_IMPORT_URL,
+        url,
         data=body,
         headers={
             "content-type": "application/json",
-            "x-api-key": _NVTOKEN_API_KEY,
+            "x-api-key": api_key,
         },
         method="POST",
     )
@@ -505,7 +525,7 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
             result["nvtoken_upload_error"] = "missing access_token/refresh_token/email"
             self._log(f"{task_id} [NVToken] 跳过上传: 缺少 token 或 email", "warn")
         elif result.get("nvtoken_upload_ok") is not True:
-            ok, http_status, text = _upload_nvtoken(payload)
+            ok, http_status, text = _upload_nvtoken(payload, settings)
             result["nvtoken_upload_ok"] = ok
             result["nvtoken_upload_status"] = http_status
             if ok:
@@ -544,6 +564,16 @@ _ROOT_MAILBOX_MANAGER_HTML = (
 )
 _module._HTML = _module._HTML.replace(_ROOT_HEADER_HTML, "")
 _module._HTML = _module._HTML.replace(_ROOT_MAILBOX_IMPORT_HTML, _ROOT_MAILBOX_MANAGER_HTML)
+_module._HTML = _module._HTML.replace("SMS API Key / 本地号码池文件路径", "SMS API Key")
+_module._HTML = _module._HTML.replace('<option value="localpool">本地号码池</option>', "")
+_module._HTML = _module._HTML.replace(
+    '<div class="field"><label>目标分组</label><input id="sub2_group"></div></div><div class="section"><h2>网络与运行</h2>',
+    '<div class="field"><label>目标分组</label><input id="sub2_group"></div>'
+    '<div class="checks"><label><input id="nvtoken_upload" type="checkbox" checked>上传到 nvtoken 平台</label></div>'
+    '<div class="row"><div class="field"><label>nvtoken 地址</label><input id="nvtoken_url" placeholder="https://nvtokens.com/api/inventory/cards/import"></div>'
+    '<div class="field"><label>nvtoken API Key</label><input id="nvtoken_api_key" type="password"></div></div>'
+    '</div><div class="section"><h2>网络与运行</h2>',
+)
 
 _module._LOGIN_FORM_USABILITY_INJECT += r"""
 <style>
@@ -592,6 +622,17 @@ _module._LOGIN_FORM_USABILITY_INJECT += r"""
 """
 
 _module._MANUAL_EMAIL_INJECT = ""
+if hasattr(_module, "_GPTMAIL_INJECT"):
+    _module._GPTMAIL_INJECT = ""
+for _inject_name in dir(_module):
+    if not _inject_name.endswith("_INJECT"):
+        continue
+    _inject_value = getattr(_module, _inject_name, "")
+    if isinstance(_inject_value, str) and any(
+        marker in _inject_value
+        for marker in ("GPTMail", "gptmail", "邮箱验证码来源", "GPTMail 收码")
+    ):
+        setattr(_module, _inject_name, "")
 _module._LOGIN_FORM_USABILITY_INJECT += r"""
 <style>
 :root{color-scheme:light!important;background:#f5f7fb!important;color:#172033!important}
@@ -625,28 +666,20 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
 @keyframes gptphone-message-in{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
 .mailbox-link-panel{border:1px solid #d7deea;border-radius:7px;background:#f8fafd;padding:12px;margin-bottom:12px}
 .mailbox-link-panel b{display:block;color:#172033;font-size:13px;margin-bottom:5px}.mailbox-link-panel span{display:block;color:#60708a;font-size:12px;line-height:1.45;margin-bottom:10px}
-.gptmail-section:not(.gptmail-enabled)>.field,
-.gptmail-section:not(.gptmail-enabled)>.hint{display:none!important}
-#sub2_url[readonly],
-#sub2_email[readonly],
-#sub2_password[readonly],
-#sub2_group[readonly],
-#sms_api_key[readonly] {
-  opacity: .82;
-  cursor: not-allowed;
-}
+.secret-input-wrap{position:relative;display:block;width:100%}
+.secret-input-wrap>input{padding-right:42px!important}
+.secret-reveal-btn{position:absolute!important;right:6px!important;top:50%!important;transform:translateY(-50%)!important;display:flex!important;align-items:center!important;justify-content:center!important;width:30px!important;height:28px!important;min-width:0!important;padding:0!important;border:0!important;border-radius:5px!important;background:transparent!important;box-shadow:none!important;color:#60708a!important;font-size:15px!important;line-height:1!important;cursor:pointer!important}
+.secret-reveal-btn:hover{background:#eef3fb!important;color:#174ea6!important}
 </style>
 <script>
 (()=>{
-  const SUB2_URL = "http://39.106.173.33:8080/";
-  const SUB2_EMAIL = "admin@sub2api.local";
-  const SUB2_PASSWORD = "7ZdieFkNOe8K5ilM4Tzd4x";
-  const SUB2_GROUP = "自动化接码分组";
-  const SMS_API_KEY = "YSCqaPKnXepkGFk0q4TwCcr4gMO9Y0lm";
   const PROXY_DEFAULT = "http://127.0.0.1:7897";
   const MAX_PRICE_DEFAULT = "0.1";
   const MIN_PRICE_DEFAULT = "0.01";
   const SMS_PRIORITY_COUNTRIES = ["151", "37", "33", "1", "91", "55"];
+  let localConfig = {};
+  const SECRET_INPUT_IDS = ["sms_api_key", "sub2_password", "nvtoken_api_key"];
+  const SECRET_MASK = "********";
   const clampMaxPrice = value => {
     const parsed = Number(String(value || "").trim());
     if (!Number.isFinite(parsed) || parsed <= 0 || parsed > Number(MAX_PRICE_DEFAULT)) return MAX_PRICE_DEFAULT;
@@ -724,21 +757,147 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
     }
     showMessage(text, "error");
   };
-  const setLocked = (id, value, password=false) => {
+  const ensureSecretRevealControl = (input) => {
+    if (!input || input.dataset.revealControl === "1") return;
+    const parent = input.parentElement;
+    if (!parent || !parent.classList.contains("secret-input-wrap")) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "secret-input-wrap";
+      input.insertAdjacentElement("beforebegin", wrapper);
+      wrapper.appendChild(input);
+    }
+    const wrapper = input.parentElement;
+    if (!wrapper.querySelector(".secret-reveal-btn")) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "secret-reveal-btn";
+      button.textContent = "👁";
+      button.title = "显示";
+      button.setAttribute("aria-label", "显示");
+      button.addEventListener("click", async () => {
+        if (input.dataset.revealedSecret === "1") {
+          input.dataset.revealedSecret = "0";
+          input.type = "password";
+          if (input.dataset.savedSecret === "1") input.value = SECRET_MASK;
+          button.textContent = "👁";
+          button.title = "显示";
+          button.setAttribute("aria-label", "显示");
+          input.focus();
+          return;
+        }
+        let value = input.value;
+        if (input.dataset.savedSecret === "1" && input.value === SECRET_MASK) {
+          try {
+            const response = await fetch("/api/local-config/secret", {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({id: input.id})
+            });
+            const payload = await response.json();
+            if (!response.ok || !payload.ok) throw Error(payload.error || "读取失败");
+            value = payload.value || "";
+          } catch (error) {
+            msg(error);
+            return;
+          }
+        }
+        input.dataset.revealedSecret = "1";
+        input.type = "text";
+        if (value) input.value = value;
+        button.textContent = "×";
+        button.title = "隐藏";
+        button.setAttribute("aria-label", "隐藏");
+        input.focus();
+      });
+      wrapper.appendChild(button);
+    }
+    input.dataset.revealControl = "1";
+  };
+  const enforceSecretInputs = () => {
+    SECRET_INPUT_IDS.forEach(id => {
+      const input = g(id);
+      if (!input) return;
+      ensureSecretRevealControl(input);
+      if (input.dataset.revealedSecret !== "1") input.type = "password";
+      input.autocomplete = "new-password";
+      input.spellcheck = false;
+      input.dataset.secretField = "1";
+      if (input.dataset.secretBound !== "1") {
+        input.dataset.secretBound = "1";
+        input.addEventListener("input", () => {
+          if (input.value !== SECRET_MASK) input.dataset.savedSecret = "0";
+        });
+        input.addEventListener("focus", () => {
+          if (input.value === SECRET_MASK) input.select();
+        });
+      }
+    });
+  };
+  const savedSecretFor = (id) => {
+    if (id === "sms_api_key") return String(localConfig.sms_api_key || "");
+    if (id === "sub2_password") return String(((localConfig.sub2api || {}).password) || "");
+    if (id === "nvtoken_api_key") return String(((localConfig.nvtoken || {}).api_key) || "");
+    return "";
+  };
+  const mergeLocalConfigFromSettings = (data) => {
+    if (!data || typeof data !== "object") return;
+    const sub2api = data.sub2api || {};
+    const nvtoken = data.nvtoken || {};
+    localConfig = Object.assign({}, localConfig || {});
+    if (data.sms_api_key) localConfig.sms_api_key = data.sms_api_key;
+    localConfig.sub2api = Object.assign({}, localConfig.sub2api || {});
+    ["url", "email", "group"].forEach(key => {
+      if (sub2api[key]) localConfig.sub2api[key] = sub2api[key];
+    });
+    if (sub2api.password) localConfig.sub2api.password = sub2api.password;
+    localConfig.nvtoken = Object.assign({}, localConfig.nvtoken || {});
+    if (nvtoken.url) localConfig.nvtoken.url = nvtoken.url;
+    if (nvtoken.api_key) localConfig.nvtoken.api_key = nvtoken.api_key;
+  };
+  const secretInputValue = (id) => {
+    const input = g(id);
+    if (!input) return "";
+    const raw = String(input.value || "");
+    if (raw === SECRET_MASK && input.dataset.savedSecret === "1") return savedSecretFor(id);
+    return raw;
+  };
+  const maskSecretInput = (id, value, force=false) => {
     const input = g(id);
     if (!input) return;
-    input.value = value;
-    input.readOnly = true;
-    input.autocomplete = "off";
-    if (password) input.type = "password";
-    input.title = "已写死为默认值";
+    enforceSecretInputs();
+    if (input.dataset.revealedSecret === "1") return;
+    const hasSecret = String(value || "").length > 0;
+    input.dataset.savedSecret = hasSecret ? "1" : "0";
+    if (hasSecret) {
+      if (force || !input.value || input.value === SECRET_MASK || input.dataset.savedSecret === "1") input.value = SECRET_MASK;
+    } else if (force) {
+      input.value = "";
+    }
   };
-  const applyHardwiredDefaults = () => {
-    setLocked("sub2_url", SUB2_URL);
-    setLocked("sub2_email", SUB2_EMAIL);
-    setLocked("sub2_password", SUB2_PASSWORD, true);
-    setLocked("sub2_group", SUB2_GROUP);
-    setLocked("sms_api_key", SMS_API_KEY, true);
+  const setEditableValue = (id, value, password=false, force=false) => {
+    const input = g(id);
+    if (!input) return;
+    input.readOnly = false;
+    input.disabled = false;
+    input.autocomplete = password ? "new-password" : "off";
+    if (password) {
+      maskSecretInput(id, value, force);
+      input.title = "";
+      return;
+    }
+    if (value !== undefined && value !== null && (force || !input.value)) input.value = value;
+    input.title = "";
+  };
+  const applyLocalConfig = (force=false) => {
+    const sub2api = localConfig.sub2api || {};
+    const nvtoken = localConfig.nvtoken || {};
+    setEditableValue("sms_api_key", localConfig.sms_api_key || "", true, force);
+    setEditableValue("sub2_url", sub2api.url || "", false, force);
+    setEditableValue("sub2_email", sub2api.email || "", false, force);
+    setEditableValue("sub2_password", sub2api.password || "", true, force);
+    setEditableValue("sub2_group", sub2api.group || "", false, force);
+    setEditableValue("nvtoken_api_key", nvtoken.api_key || "", true, force);
+    setEditableValue("nvtoken_url", nvtoken.url || "https://nvtokens.com/api/inventory/cards/import", false, force);
     const proxyInput = g("proxy");
     if (proxyInput && !proxyInput.value.trim()) {
       proxyInput.value = PROXY_DEFAULT;
@@ -749,14 +908,96 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
     }
     ensureSmsMinPriceControl();
   };
+  const loadLocalConfig = async () => {
+    try {
+      const response = await fetch("/api/local-config");
+      const payload = await response.json();
+      if (payload && payload.ok && payload.config) {
+        localConfig = payload.config;
+        applyLocalConfig(true);
+      }
+    } catch(e) {}
+  };
+  const restoreSecretPlaceholders = () => {
+    ensureNvTokenUploadControl();
+    ensureLocalConfigControls();
+    enforceSecretInputs();
+    applyLocalConfig(true);
+  };
+  const reloadSecretPlaceholders = async () => {
+    await loadLocalConfig();
+    restoreSecretPlaceholders();
+  };
   const ensureNvTokenUploadControl = () => {
     if (g("nvtoken_upload")) return;
-    const uploadProxy = g("proxy_upload");
-    const host = uploadProxy && uploadProxy.closest(".checks");
-    if (!host) return;
+    const sub2Group = g("sub2_group");
+    const groupField = sub2Group && sub2Group.closest(".field");
+    if (!groupField) return;
+    const host = document.createElement("div");
+    host.className = "checks";
     const label = document.createElement("label");
     label.innerHTML = '<input id="nvtoken_upload" type="checkbox" checked>上传到 nvtoken 平台';
     host.appendChild(label);
+    groupField.insertAdjacentElement("afterend", host);
+  };
+  const ensureLocalConfigControls = () => {
+    enforceSecretInputs();
+    const smsKey = g("sms_api_key");
+    if (smsKey) {
+      smsKey.type = "password";
+      smsKey.autocomplete = "new-password";
+    }
+    const sub2Password = g("sub2_password");
+    if (sub2Password) {
+      sub2Password.type = "password";
+      sub2Password.autocomplete = "new-password";
+    }
+    const smsField = smsKey && smsKey.closest(".field");
+    if (smsField && !g("local_config_export")) {
+      const actions = document.createElement("div");
+      actions.className = "actions";
+      actions.innerHTML = '<button id="local_config_export" type="button" onclick="exportLocalConfig()">导出本地配置</button><button id="local_config_import_btn" type="button" onclick="document.getElementById(\\'local_config_import\\').click()">导入本地配置</button><input id="local_config_import" type="file" accept="application/json,.json" style="display:none" onchange="importLocalConfig(this.files&&this.files[0])">';
+      smsField.insertAdjacentElement("afterend", actions);
+    }
+    const nvTokenInput = g("nvtoken_upload");
+    const checks = nvTokenInput && nvTokenInput.closest(".checks");
+    if (checks && !g("nvtoken_api_key")) {
+      const fields = document.createElement("div");
+      fields.className = "row";
+      fields.innerHTML = '<div class="field"><label>nvtoken 地址</label><input id="nvtoken_url" placeholder="https://nvtokens.com/api/inventory/cards/import"></div><div class="field"><label>nvtoken API Key</label><input id="nvtoken_api_key" type="password"></div>';
+      checks.insertAdjacentElement("afterend", fields);
+    }
+  };
+  window.exportLocalConfig = async function(){
+    try {
+      const data = Object.assign({}, cfg(), {download: true});
+      const response = await fetch("/api/local-config/export", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw Error(payload.error || "导出失败");
+      localConfig = payload.config || {};
+      applyLocalConfig(true);
+      const blob = new Blob([JSON.stringify(payload.config || {}, null, 2)], {type:"application/json"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "gptphone-local-config.json";
+      a.click();
+      URL.revokeObjectURL(url);
+      showMessage("本地配置已导出", "success");
+    } catch(e) { msg(e); }
+  };
+  window.importLocalConfig = async function(file){
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const config = JSON.parse(text);
+      const response = await fetch("/api/local-config/import", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({config})});
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw Error(payload.error || "导入失败");
+      localConfig = payload.config || {};
+      applyLocalConfig(true);
+      showMessage("本地配置已导入", "success");
+    } catch(e) { msg(e); }
   };
   const ensureSmsMinPriceControl = () => {
     if (g("sms_min_price")) return;
@@ -787,7 +1028,7 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
     const data = baseCfg();
     data.concurrency = String(data.concurrency || "5");
     data.node_concurrency = String(data.node_concurrency || "5");
-    data.sms_api_key = SMS_API_KEY;
+    data.sms_api_key = String(secretInputValue("sms_api_key").trim() || data.sms_api_key || "");
     data.max_price = clampMaxPrice(data.max_price);
     const minPriceInput = g("sms_min_price");
     data.sms_min_price = String((minPriceInput && minPriceInput.value.trim()) || data.sms_min_price || MIN_PRICE_DEFAULT);
@@ -801,11 +1042,15 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
     });
     const nvTokenInput = g("nvtoken_upload");
     data.nvtoken_upload = !nvTokenInput || nvTokenInput.checked;
+    data.nvtoken = Object.assign({}, data.nvtoken || {}, {
+      url: String((g("nvtoken_url") && g("nvtoken_url").value.trim()) || "https://nvtokens.com/api/inventory/cards/import"),
+      api_key: String(secretInputValue("nvtoken_api_key").trim() || "")
+    });
     data.sub2api = Object.assign({}, data.sub2api || {}, {
-      url: SUB2_URL,
-      email: SUB2_EMAIL,
-      password: SUB2_PASSWORD,
-      group: SUB2_GROUP
+      url: String((g("sub2_url") && g("sub2_url").value.trim()) || ""),
+      email: String((g("sub2_email") && g("sub2_email").value.trim()) || ""),
+      password: String(secretInputValue("sub2_password") || ""),
+      group: String((g("sub2_group") && g("sub2_group").value.trim()) || "")
     });
     data.email_mode = "auto";
     delete data.manual_pool_content;
@@ -814,10 +1059,12 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
   const baseLoad = load;
   load = function(data){
     const patched = Object.assign({}, data || {});
-    patched.sms_api_key = SMS_API_KEY;
+    mergeLocalConfigFromSettings(patched);
+    patched.sms_api_key = patched.sms_api_key || localConfig.sms_api_key || "";
     patched.email_mode = "auto";
     patched.concurrency = patched.concurrency || "5";
     patched.node_concurrency = patched.node_concurrency || "5";
+    if (patched.sms_provider === "localpool") patched.sms_provider = "smsbower";
     if (!patched.proxy) patched.proxy = PROXY_DEFAULT;
     patched.max_price = clampMaxPrice(patched.max_price);
     patched.sms_min_price = patched.sms_min_price || MIN_PRICE_DEFAULT;
@@ -830,29 +1077,51 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
       preferred_countries: SMS_PRIORITY_COUNTRIES.join(",")
     });
     patched.nvtoken_upload = patched.nvtoken_upload !== false;
+    patched.nvtoken = Object.assign({url: "https://nvtokens.com/api/inventory/cards/import"}, localConfig.nvtoken || {}, patched.nvtoken || {});
     patched.sub2api = Object.assign({}, patched.sub2api || {}, {
-      url: SUB2_URL,
-      email: SUB2_EMAIL,
-      password: SUB2_PASSWORD,
-      group: SUB2_GROUP
+      ...(localConfig.sub2api || {}),
+      ...(patched.sub2api || {})
     });
-    baseLoad(patched);
+    const displayPatched = Object.assign({}, patched, {
+      sms_api_key: patched.sms_api_key ? SECRET_MASK : "",
+      nvtoken: Object.assign({}, patched.nvtoken || {}, {
+        api_key: (patched.nvtoken || {}).api_key ? SECRET_MASK : ""
+      }),
+      sub2api: Object.assign({}, patched.sub2api || {}, {
+        password: (patched.sub2api || {}).password ? SECRET_MASK : ""
+      })
+    });
+    baseLoad(displayPatched);
     ensureNvTokenUploadControl();
+    ensureLocalConfigControls();
+    enforceSecretInputs();
     ensureSmsMinPriceControl();
+    applyLocalConfig();
     const minPriceInput = g("sms_min_price");
     if (minPriceInput) minPriceInput.value = patched.sms_min_price || MIN_PRICE_DEFAULT;
     const nvTokenInput = g("nvtoken_upload");
     if (nvTokenInput) nvTokenInput.checked = patched.nvtoken_upload !== false;
-    applyHardwiredDefaults();
+    applyLocalConfig();
   };
   ensureNvTokenUploadControl();
+  ensureLocalConfigControls();
+  enforceSecretInputs();
   ensureSmsMinPriceControl();
-  applyHardwiredDefaults();
+  loadLocalConfig();
+  applyLocalConfig();
   replaceRootMailboxImport();
-  setTimeout(applyHardwiredDefaults, 0);
-  setTimeout(applyHardwiredDefaults, 500);
+  setTimeout(reloadSecretPlaceholders, 0);
+  setTimeout(reloadSecretPlaceholders, 500);
+  setTimeout(reloadSecretPlaceholders, 1500);
+  setTimeout(reloadSecretPlaceholders, 3000);
+  setTimeout(applyLocalConfig, 0);
+  setTimeout(applyLocalConfig, 500);
   setTimeout(ensureNvTokenUploadControl, 0);
   setTimeout(ensureNvTokenUploadControl, 500);
+  setTimeout(ensureLocalConfigControls, 0);
+  setTimeout(ensureLocalConfigControls, 500);
+  setTimeout(enforceSecretInputs, 0);
+  setTimeout(enforceSecretInputs, 500);
   setTimeout(ensureSmsMinPriceControl, 0);
   setTimeout(ensureSmsMinPriceControl, 500);
   setTimeout(replaceRootMailboxImport, 0);
@@ -862,35 +1131,9 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
       refresh();
     }
   });
-  const updateGptmailVisibility = () => {
-    const checkbox = g("gptmail_enabled");
-    const section = checkbox && checkbox.closest(".gptmail-section");
-    if (!section) return;
-    const enabled = checkbox.checked;
-    section.classList.toggle("gptmail-enabled", enabled);
-    section.querySelectorAll(".field,.hint").forEach(node => {
-      node.style.display = enabled ? "" : "none";
-    });
-  };
-  const bindGptmailVisibility = () => {
-    const checkbox = g("gptmail_enabled");
-    if (!checkbox || checkbox.dataset.visibilityBound === "1") return;
-    checkbox.dataset.visibilityBound = "1";
-    checkbox.addEventListener("change", updateGptmailVisibility);
-    updateGptmailVisibility();
-  };
-  bindGptmailVisibility();
-  setTimeout(bindGptmailVisibility, 0);
-  setTimeout(bindGptmailVisibility, 500);
-  setInterval(() => {
-    bindGptmailVisibility();
-    updateGptmailVisibility();
-  }, 1000);
   const visibilityBaseLoad = load;
   load = function(data){
     visibilityBaseLoad(data);
-    bindGptmailVisibility();
-    updateGptmailVisibility();
   };
   const baseRenderForFriendlyErrors = render;
   render = function(state){
@@ -905,6 +1148,7 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
       if (friendly) task.error = friendly;
     });
     baseRenderForFriendlyErrors(patched);
+    setTimeout(restoreSecretPlaceholders, 0);
     if (keepLogScroll && logBox) {
       logBox.scrollTop = previousLogScrollTop;
     }
@@ -960,7 +1204,11 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
   };
   window.saveConfig = async function(){
     try {
-      await req("/api/config", cfg());
+      const data = cfg();
+      const saved = await req("/api/local-config/export", data);
+      localConfig = saved.config || {};
+      applyLocalConfig(true);
+      await req("/api/config", data);
       showMessage("配置已保存", "success");
     } catch(e) {
       msg(e);
@@ -992,20 +1240,129 @@ def _closure_values(fn):
     return dict(zip(fn.__code__.co_freevars, (cell.cell_contents for cell in cells), strict=False))
 
 
-def _apply_hardwired_server_defaults(data):
+def _read_local_config():
+    if not _LOCAL_CONFIG_FILE.exists():
+        return {}
+    try:
+        value = json.loads(_LOCAL_CONFIG_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _write_local_config(data):
+    value = data if isinstance(data, dict) else {}
+    _LOCAL_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _LOCAL_CONFIG_FILE.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+    return value
+
+
+def _local_secret(value, fallback=""):
+    text = str(value or "")
+    if not _module._clean(text) or text == _SECRET_MASK:
+        return str(fallback or "")
+    return text
+
+
+def _mask_secret(value):
+    return _SECRET_MASK if _module._clean(value) else ""
+
+
+def _masked_local_config(data):
+    value = json.loads(json.dumps(data if isinstance(data, dict) else {}))
+    sub2api = dict(value.get("sub2api") or {})
+    nvtoken = dict(value.get("nvtoken") or {})
+    if "sms_api_key" in value:
+        value["sms_api_key"] = _mask_secret(value.get("sms_api_key"))
+    if "gptmail_api_key" in value:
+        value["gptmail_api_key"] = _mask_secret(value.get("gptmail_api_key"))
+    if sub2api:
+        sub2api["password"] = _mask_secret(sub2api.get("password"))
+        value["sub2api"] = sub2api
+    if nvtoken:
+        nvtoken["api_key"] = _mask_secret(nvtoken.get("api_key"))
+        value["nvtoken"] = nvtoken
+    return value
+
+
+def _masked_state(data):
+    snapshot = json.loads(json.dumps(data if isinstance(data, dict) else {}))
+    settings = snapshot.get("settings")
+    if isinstance(settings, dict):
+        snapshot["settings"] = _masked_local_config(settings)
+    return snapshot
+
+
+def _local_config_secret(secret_id):
+    local = _read_local_config()
+    sub2api = dict(local.get("sub2api") or {})
+    nvtoken = dict(local.get("nvtoken") or {})
+    values = {
+        "sms_api_key": local.get("sms_api_key") or "",
+        "sub2_password": sub2api.get("password") or "",
+        "nvtoken_api_key": nvtoken.get("api_key") or "",
+    }
+    return str(values.get(str(secret_id or ""), ""))
+
+
+def _local_config_from_runtime(data, existing=None):
+    data = dict(data or {})
+    existing = dict(existing or {})
+    sub2api = dict(data.get("sub2api") or {})
+    existing_sub2api = dict(existing.get("sub2api") or {})
+    nvtoken = dict(data.get("nvtoken") or {})
+    existing_nvtoken = dict(existing.get("nvtoken") or {})
+    return {
+        "sms_api_key": _local_secret(data.get("sms_api_key"), existing.get("sms_api_key")).strip(),
+        "sub2api": {
+            "url": str(sub2api.get("url") or "").strip(),
+            "email": str(sub2api.get("email") or "").strip(),
+            "password": _local_secret(sub2api.get("password"), existing_sub2api.get("password")),
+            "group": str(sub2api.get("group") or "").strip(),
+        },
+        "nvtoken": {
+            "url": str(nvtoken.get("url") or _NVTOKEN_IMPORT_URL_DEFAULT).strip(),
+            "api_key": _local_secret(nvtoken.get("api_key"), existing_nvtoken.get("api_key")).strip(),
+        },
+    }
+
+
+def _merge_nonempty(base, override):
+    result = dict(base or {})
+    for key, value in dict(override or {}).items():
+        if _module._clean(value) and value != _SECRET_MASK:
+            result[key] = value
+    return result
+
+
+def _merge_local_config(data):
     patched = dict(data or {})
-    patched["sms_api_key"] = "YSCqaPKnXepkGFk0q4TwCcr4gMO9Y0lm"
+    local = _read_local_config()
+    if _module._clean(local.get("sms_api_key")) and (
+        not _module._clean(patched.get("sms_api_key")) or patched.get("sms_api_key") == _SECRET_MASK
+    ):
+        patched["sms_api_key"] = local.get("sms_api_key")
+    if isinstance(local.get("sub2api"), dict):
+        patched["sub2api"] = _merge_nonempty(local.get("sub2api") or {}, patched.get("sub2api") or {})
+    if isinstance(local.get("nvtoken"), dict):
+        patched["nvtoken"] = _merge_nonempty(local.get("nvtoken") or {}, patched.get("nvtoken") or {})
+    return patched
+
+
+def _apply_server_defaults(data):
+    patched = dict(data or {})
+    patched = _merge_local_config(patched)
+    if patched.get("sms_provider") == "localpool":
+        patched["sms_provider"] = "smsbower"
     patched["email_mode"] = "auto"
     patched["sms_mode"] = "smart"
     patched["country"] = ""
     patched["provider_ids"] = ""
     patched.pop("manual_pool_content", None)
-    patched["sub2api"] = {
-        **dict(patched.get("sub2api") or {}),
-        "url": "http://39.106.173.33:8080/",
-        "email": "admin@sub2api.local",
-        "password": "7ZdieFkNOe8K5ilM4Tzd4x",
-        "group": "自动化接码分组",
+    patched["sub2api"] = dict(patched.get("sub2api") or {})
+    patched["nvtoken"] = {
+        "url": _NVTOKEN_IMPORT_URL_DEFAULT,
+        **dict(patched.get("nvtoken") or {}),
     }
     if not _module._clean(patched.get("proxy")):
         patched["proxy"] = "http://127.0.0.1:7897"
@@ -1023,6 +1380,7 @@ def _apply_hardwired_server_defaults(data):
         "preferred_countries": _SMS_PRIORITY_COUNTRIES_TEXT,
     }
     patched["nvtoken_upload"] = _as_enabled(patched.get("nvtoken_upload"), True)
+    _write_local_config(_local_config_from_runtime(patched, _read_local_config()))
     return patched
 
 
@@ -1046,6 +1404,31 @@ def _email_from_row(row):
         row or "",
     )
     return match.group(0).lower() if match else ""
+
+
+def _parse_oauth_mailbox_row(row):
+    raw = str(row or "").strip()
+    if "----" not in raw:
+        return None
+    parts = [part.strip() for part in raw.split("----")]
+    if len(parts) < 4:
+        return None
+    email = _email_from_row(parts[0])
+    password, oauth_client_id, oauth_refresh_token = parts[1], parts[2], parts[3]
+    if not email or not password or not oauth_client_id or not oauth_refresh_token:
+        return None
+    return email, password, oauth_client_id, oauth_refresh_token
+
+
+def _is_importable_mailbox_row(row):
+    raw = str(row or "").strip()
+    if not raw or raw.startswith("#") or not _email_from_row(raw):
+        return False
+    if "----" in raw:
+        return len([part for part in raw.split("----") if part.strip()]) >= 2
+    if "|" in raw:
+        return len([part for part in raw.split("|") if part.strip()]) >= 3
+    return False
 
 
 def _password_from_row(row):
@@ -1259,7 +1642,11 @@ def _mailbox_rows(store):
 
 
 def _append_mailbox_rows(store, importer, logs, content):
-    new_lines = [line.strip() for line in str(content or "").splitlines() if line.strip()]
+    new_lines = [
+        line.strip()
+        for line in str(content or "").splitlines()
+        if _is_importable_mailbox_row(line)
+    ]
     if not new_lines:
         return {"ok": False, "error": "请粘贴要导入的邮箱"}
     cfg = store.load()
@@ -1397,23 +1784,25 @@ _MAILBOX_MANAGER_HTML = r"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>邮箱管理 - gptPhone</title>
 <style>
-:root{font-family:Arial,"Microsoft YaHei",sans-serif;background:#f5f7fb;color:#172033}*{box-sizing:border-box}html,body{height:100%;overflow:hidden}body{margin:0}.shell{height:100vh;max-width:none;margin:0;padding:10px;display:grid;grid-template-columns:390px minmax(0,1fr);gap:10px;overflow:hidden}.panel{min-height:0;background:#fff;border:1px solid #d7deea;border-radius:8px;padding:12px;box-shadow:0 8px 24px rgba(16,24,40,.08)}.shell>.panel{height:100%;overflow:auto}.shell>.panel:nth-child(2){display:flex;flex-direction:column;overflow:hidden}h2{font-size:15px;margin:0 0 10px}.field label{display:block;color:#465872;font-size:12px;margin-bottom:6px}textarea{width:100%;min-height:260px;resize:vertical;border:1px solid #c6d0df;border-radius:6px;padding:9px;background:#fff;color:#172033;font-family:Consolas,monospace;font-size:13px;line-height:1.45}button{height:32px;padding:0 11px;border:1px solid #b8c5d8;border-radius:6px;background:#eef3fb;color:#172033;font-weight:700;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}button.primary{background:#1f73d8;border-color:#1f73d8;color:#fff}button.danger{background:#fff0f0;border-color:#f2b8b8;color:#b42318}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.hint{font-size:12px;color:#60708a;line-height:1.5;margin-top:9px}.metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:10px}.metric{border:1px solid #d7deea;border-radius:7px;background:#f8fafd;padding:9px}.metric span{display:block;color:#60708a;font-size:11px}.metric b{display:block;font-size:20px;margin-top:4px}.pager{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px;color:#60708a;font-size:12px}.pager-controls{display:flex;align-items:center;gap:8px}.pager select{height:30px;border:1px solid #c6d0df;border-radius:6px;background:#fff;color:#172033}.bulk-actions{display:flex;align-items:center;gap:8px;margin:0 0 8px}.table{flex:1;min-height:0;border:1px solid #d7deea;border-radius:8px;overflow:auto}.row{display:grid;grid-template-columns:34px 54px minmax(220px,1fr) minmax(150px,.58fr) 116px 108px minmax(240px,1.08fr) 116px;gap:10px;padding:10px;border-bottom:1px solid #e5eaf3;font-size:12px;align-items:start}.row.head{position:sticky;top:0;background:#f8fafd;font-weight:700;color:#465872;z-index:1}.row input[type=checkbox]{width:16px;height:16px}.email,.password,.code{font-family:Consolas,monospace;word-break:break-all}.code-box{display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap}.code-box button{height:25px;padding:0 8px;font-size:12px}.copy-cell{cursor:pointer;color:#174ea6;text-decoration:underline;text-decoration-color:rgba(23,78,166,.25);text-underline-offset:2px}.copy-cell:hover{color:#0b57d0;text-decoration-color:#0b57d0}.muted{color:#7a8798}.reason{color:#465872;word-break:break-word}.status{font-weight:700}.status.available{color:#416f9d}.status.running{color:#a86613}.status.success{color:#178a54}.status.failed{color:#c93545}.toast-host{position:fixed;left:50%;top:18px;z-index:9999;display:flex;flex-direction:column;align-items:center;gap:10px;width:min(520px,calc(100vw - 28px));pointer-events:none;transform:translateX(-50%)}.toast{pointer-events:auto;border:1px solid #dcdfe6;border-radius:4px;background:#f4f4f5;color:#303133;box-shadow:0 6px 18px rgba(31,45,61,.14);padding:10px 14px;font-size:14px}.toast.success{background:#f0f9eb;border-color:#e1f3d8;color:#67c23a}.toast.error{background:#fef0f0;border-color:#fde2e2;color:#f56c6c}.toast.warning{background:#fdf6ec;border-color:#faecd8;color:#e6a23c}@media(max-width:980px){html,body{overflow:auto}.shell{height:auto;min-height:100vh;grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}.table{height:560px;flex:none}.row{grid-template-columns:34px 44px 1fr}.row>div:nth-child(n+4){grid-column:3}} 
+:root{font-family:Arial,"Microsoft YaHei",sans-serif;background:#f5f7fb;color:#172033}*{box-sizing:border-box}html,body{height:100%;overflow:hidden}body{margin:0}.shell{height:100vh;max-width:none;margin:0;padding:10px;display:grid;grid-template-columns:390px minmax(0,1fr);gap:10px;overflow:hidden}.panel{min-height:0;background:#fff;border:1px solid #d7deea;border-radius:8px;padding:12px;box-shadow:0 8px 24px rgba(16,24,40,.08)}.shell>.panel{height:100%;overflow:auto}.shell>.panel:nth-child(2){display:flex;flex-direction:column;overflow:hidden}h2{font-size:15px;margin:0 0 10px}.field label{display:block;color:#465872;font-size:12px;margin-bottom:6px}textarea{width:100%;min-height:260px;resize:vertical;border:1px solid #c6d0df;border-radius:6px;padding:9px;background:#fff;color:#172033;font-family:Consolas,monospace;font-size:13px;line-height:1.45}button{height:32px;padding:0 11px;border:1px solid #b8c5d8;border-radius:6px;background:#eef3fb;color:#172033;font-weight:700;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}button.primary{background:#1f73d8;border-color:#1f73d8;color:#fff}button.danger{background:#fff0f0;border-color:#f2b8b8;color:#b42318}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.hint{font-size:12px;color:#60708a;line-height:1.5;margin-top:9px}.metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:10px}.metric{border:1px solid #d7deea;border-radius:7px;background:#f8fafd;padding:9px}.metric span{display:block;color:#60708a;font-size:11px}.metric b{display:block;font-size:20px;margin-top:4px}.pager{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 0;color:#60708a;font-size:12px}.pager-controls{display:flex;align-items:center;gap:8px}.pager select,.bulk-actions select{height:30px;border:1px solid #c6d0df;border-radius:6px;background:#fff;color:#172033}.bulk-actions{display:flex;align-items:center;gap:8px;margin:0 0 8px}.table{flex:1;min-height:0;border:1px solid #d7deea;border-radius:8px;overflow:auto}.row{display:grid;grid-template-columns:34px 54px minmax(220px,1fr) minmax(150px,.58fr) minmax(210px,.9fr) 108px minmax(240px,1.08fr);gap:10px;padding:10px;border-bottom:1px solid #e5eaf3;font-size:12px;align-items:start}.row.head{position:sticky;top:0;background:#f8fafd;font-weight:700;color:#465872;z-index:1}.row input[type=checkbox]{width:16px;height:16px}.email,.password,.code{font-family:Consolas,monospace;word-break:break-all}.code-box{display:flex;gap:6px;align-items:flex-start;flex-wrap:nowrap;min-width:0}.code-box .muted{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.code-box button{height:25px;padding:0 8px;font-size:12px;flex:0 0 auto}.copy-cell{cursor:pointer;color:#174ea6;text-decoration:underline;text-decoration-color:rgba(23,78,166,.25);text-underline-offset:2px}.copy-cell:hover{color:#0b57d0;text-decoration-color:#0b57d0}.muted{color:#7a8798}.reason{color:#465872;word-break:break-word}.status{font-weight:700}.status.available{color:#416f9d}.status.running{color:#a86613}.status.success{color:#178a54}.status.failed{color:#c93545}.toast-host{position:fixed;left:50%;top:18px;z-index:9999;display:flex;flex-direction:column;align-items:center;gap:10px;width:min(520px,calc(100vw - 28px));pointer-events:none;transform:translateX(-50%)}.toast{pointer-events:auto;border:1px solid #dcdfe6;border-radius:4px;background:#f4f4f5;color:#303133;box-shadow:0 6px 18px rgba(31,45,61,.14);padding:10px 14px;font-size:14px}.toast.success{background:#f0f9eb;border-color:#e1f3d8;color:#67c23a}.toast.error{background:#fef0f0;border-color:#fde2e2;color:#f56c6c}.toast.warning{background:#fdf6ec;border-color:#faecd8;color:#e6a23c}@media(max-width:980px){html,body{overflow:auto}.shell{height:auto;min-height:100vh;grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}.table{height:560px;flex:none}.row{grid-template-columns:34px 44px 1fr}.row>div:nth-child(n+4){grid-column:3}} 
 </style></head><body>
 <main class="shell"><section class="panel"><h2>批量追加导入</h2><div class="field"><label>第一种格式：邮箱----取码地址<br>第二种格式：邮箱----密码----client_id----refresh_token<br>第三种格式：GPT账号|登录密码|2FA密钥</label><textarea id="pool_content" placeholder="user@hotmail.com----https://mail.example.test/show/token&#10;user@hotmail.com----password----client_id----refresh_token&#10;gpt-account@example.com|login-password|TOTPSECRET"></textarea></div><div class="actions"><button class="primary" onclick="appendMailboxes()">追加导入</button><button onclick="refreshMailboxes()">刷新状态</button></div><div class="hint">每行一个账号；导入会追加到现有邮箱池，不会覆盖旧邮箱；完全重复的行会跳过。</div></section>
-<section class="panel"><h2>邮箱状态</h2><div class="metrics"><div class="metric"><span>总数</span><b id="m_total">0</b></div><div class="metric"><span>可领取</span><b id="m_available">0</b></div><div class="metric"><span>运行中</span><b id="m_running">0</b></div><div class="metric"><span>成功</span><b id="m_success">0</b></div><div class="metric"><span>失败</span><b id="m_failed">0</b></div></div><div class="bulk-actions"><button onclick="restoreSelected()">放回可领取</button><button class="danger" onclick="deleteSelected()">删除选中</button></div><div class="pager"><span id="page_info">第 1 / 1 页</span><div class="pager-controls"><span>每页</span><select id="page_size" onchange="setPageSize()"><option>25</option><option selected>50</option><option>100</option><option>200</option></select><button onclick="prevPage()">上一页</button><button onclick="nextPage()">下一页</button></div></div><div class="table" id="mailbox_table"></div></section></main>
+<section class="panel"><h2>邮箱状态</h2><div class="metrics"><div class="metric"><span>总数</span><b id="m_total">0</b></div><div class="metric"><span>可领取</span><b id="m_available">0</b></div><div class="metric"><span>运行中</span><b id="m_running">0</b></div><div class="metric"><span>成功</span><b id="m_success">0</b></div><div class="metric"><span>失败</span><b id="m_failed">0</b></div></div><div class="bulk-actions"><select id="status_filter" onchange="setStatusFilter()"><option value="all">全部</option><option value="not_success">未成功</option><option value="available">可领取</option><option value="running">运行中</option><option value="success">成功</option><option value="failed">失败</option></select><button onclick="restoreSelected()">放回可领取</button><button class="danger" onclick="deleteSelected()">删除选中</button></div><div class="table" id="mailbox_table"></div><div class="pager"><span id="page_info">第 1 / 1 页 · 共 0 条 · 已选 0 条</span><div class="pager-controls"><span>每页</span><select id="page_size" onchange="setPageSize()"><option>25</option><option selected>50</option><option>100</option><option>200</option></select><button onclick="prevPage()">上一页</button><button onclick="nextPage()">下一页</button></div></div></section></main>
 <script>
 const g=id=>document.getElementById(id);
 function toast(message,type="info"){let host=document.querySelector(".toast-host");if(!host){host=document.createElement("div");host.className="toast-host";document.body.appendChild(host)}const item=document.createElement("div");item.className="toast "+type;item.textContent=String(message||"");host.appendChild(item);setTimeout(()=>item.remove(),type==="error"?6500:3000)}
 function esc(x){let d=document.createElement("div");d.textContent=x||"";return d.innerHTML}
 async function api(path,body){const options=body?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}:{};const r=await fetch(path,options);const j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||"操作失败");return j}
 async function copyText(value,label){const text=String(value||"");if(!text||text==="-"){toast(`${label}为空`,"warning");return}try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(text)}else{const t=document.createElement("textarea");t.value=text;t.style.position="fixed";t.style.left="-9999px";document.body.appendChild(t);t.focus();t.select();document.execCommand("copy");t.remove()}toast(`已复制${label}`,"success")}catch(e){toast(`复制失败：${e.message||e}`,"error")}}
-let mailboxRows=[];let page=1;let pageSize=50;let selected=new Set();let latestCodes={};let checkingCodes=new Set();
+let mailboxRows=[];let page=1;let pageSize=50;let statusFilter="all";let selected=new Set();let latestCodes={};let checkingCodes=new Set();
 function render(data){const c=data.counts||{};["total","available","running","success","failed"].forEach(k=>g("m_"+k).textContent=c[k]||0);mailboxRows=data.rows||[];renderPage()}
 function codeCell(row){const item=latestCodes[row.line_no]||{};const busy=checkingCodes.has(row.line_no);const code=item.code||"";const text=busy?"查询中...":(code||item.message||"未查询");const copy=code?`<span class="code copy-cell" data-label="验证码" data-copy="${esc(code)}" onclick="copyText(this.dataset.copy,this.dataset.label)">${esc(code)}</span>`:`<span class="muted">${esc(text)}</span>`;return `<div class="code-box">${copy}<button onclick="checkCode(${row.line_no})" ${busy?"disabled":""}>查码</button></div>`}
-function renderPage(){const total=mailboxRows.length;const totalPages=Math.max(1,Math.ceil(total/pageSize));page=Math.min(Math.max(1,page),totalPages);const start=(page-1)*pageSize;const rows=mailboxRows.slice(start,start+pageSize);g("page_info").textContent=`第 ${page} / ${totalPages} 页，共 ${total} 条，已选 ${selected.size} 条`;g("mailbox_table").innerHTML='<div class="row head"><div><input type="checkbox" onchange="togglePage(this.checked)"></div><div>#</div><div>邮箱</div><div>密码</div><div>最新验证码</div><div>状态</div><div>失败原因/说明</div><div>任务</div></div>'+rows.map(row=>`<div class="row"><div><input type="checkbox" ${selected.has(row.line_no)?"checked":""} onchange="toggleOne(${row.line_no},this.checked)"></div><div>${row.line_no}</div><div class="email copy-cell" title="点击复制邮箱" data-label="邮箱" data-copy="${esc(row.email||"")}" onclick="copyText(this.dataset.copy,this.dataset.label)">${esc(row.email||"-")}</div><div class="password copy-cell" title="点击复制密码" data-label="密码" data-copy="${esc(row.password||"")}" onclick="copyText(this.dataset.copy,this.dataset.label)">${esc(row.password||"-")}</div>${codeCell(row)}<div class="status ${esc(row.status)}">${esc(row.status_label||"-")}</div><div class="reason">${esc(row.error||row.reason||"-")}</div><div>${esc(row.task_id||"-")}</div></div>`).join("")}
+function filteredRows(){return mailboxRows.filter(row=>statusFilter==="all"||(statusFilter==="not_success"?row.status!=="success":row.status===statusFilter))}
+function renderPage(){const visible=filteredRows();const total=visible.length;const totalPages=Math.max(1,Math.ceil(total/pageSize));page=Math.min(Math.max(1,page),totalPages);const start=(page-1)*pageSize;const rows=visible.slice(start,start+pageSize);g("page_info").textContent=`第 ${page} / ${totalPages} 页 · 共 ${total} 条 · 已选 ${selected.size} 条`;g("mailbox_table").innerHTML='<div class="row head"><div><input type="checkbox" onchange="togglePage(this.checked)"></div><div>#</div><div>邮箱</div><div>密码</div><div>最新验证码</div><div>状态</div><div>失败原因/说明</div></div>'+rows.map(row=>`<div class="row"><div><input type="checkbox" ${selected.has(row.line_no)?"checked":""} onchange="toggleOne(${row.line_no},this.checked)"></div><div>${row.line_no}</div><div class="email copy-cell" title="点击复制邮箱" data-label="邮箱" data-copy="${esc(row.email||"")}" onclick="copyText(this.dataset.copy,this.dataset.label)">${esc(row.email||"-")}</div><div class="password copy-cell" title="点击复制密码" data-label="密码" data-copy="${esc(row.password||"")}" onclick="copyText(this.dataset.copy,this.dataset.label)">${esc(row.password||"-")}</div>${codeCell(row)}<div class="status ${esc(row.status)}">${esc(row.status_label||"-")}</div><div class="reason">${esc(row.error||row.reason||"-")}</div></div>`).join("")}
 async function checkCode(lineNo){try{checkingCodes.add(lineNo);renderPage();const j=await api("/api/mailboxes/latest-code",{line_no:lineNo});latestCodes[lineNo]=j;toast(j.message||"查询完成",j.code?"success":"warning")}catch(e){latestCodes[lineNo]={message:e.message||"查询失败"};toast(e.message,"error")}finally{checkingCodes.delete(lineNo);renderPage()}}
 function toggleOne(lineNo,checked){if(checked)selected.add(lineNo);else selected.delete(lineNo);renderPage()}
-function togglePage(checked){const start=(page-1)*pageSize;mailboxRows.slice(start,start+pageSize).forEach(row=>checked?selected.add(row.line_no):selected.delete(row.line_no));renderPage()}
+function togglePage(checked){const start=(page-1)*pageSize;filteredRows().slice(start,start+pageSize).forEach(row=>checked?selected.add(row.line_no):selected.delete(row.line_no));renderPage()}
+function setStatusFilter(){statusFilter=g("status_filter").value||"all";page=1;renderPage()}
 function setPageSize(){pageSize=Number(g("page_size").value||50);page=1;renderPage()}
 function prevPage(){page-=1;renderPage()}
 function nextPage(){page+=1;renderPage()}
@@ -1437,6 +1826,42 @@ def _patch_flask_app(app):
     settings = closure["settings"]
     state = closure["state"]
     store = closure["store"]
+    _write_local_config(_local_config_from_runtime(store.load(), _read_local_config()))
+
+    def public_state():
+        return _masked_state(state())
+
+    def api_state():
+        return _module.jsonify(ok=True, state=public_state())
+
+    if "api_state" in app.view_functions:
+        app.view_functions["api_state"] = api_state
+
+    def save_config():
+        if importer.status(settings()).get("running"):
+            return _module.jsonify(
+                ok=False,
+                error="任务运行中，停止后才能修改配置",
+                state=public_state(),
+            ), 409
+        data = _module.request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            return _module.jsonify(ok=False, error="配置必须是 JSON 对象"), 400
+        data = _apply_server_defaults(data)
+        data.pop("pool_content", None)
+        saved = store.save(data)
+        logs.add("独立导入器配置已保存到本工具 data 目录", "success")
+        return _module.jsonify(ok=True, settings=_masked_local_config(saved), state=public_state())
+
+    if "save_config" in app.view_functions:
+        app.view_functions["save_config"] = save_config
+
+    def stop():
+        importer.stop()
+        return _module.jsonify(ok=True, state=public_state())
+
+    if "stop" in app.view_functions:
+        app.view_functions["stop"] = stop
 
     def start():
         try:
@@ -1444,14 +1869,14 @@ def _patch_flask_app(app):
                 return _module.jsonify(
                     ok=False,
                     error="已有任务运行中，请先停止并等待任务结束",
-                    state=state(),
+                    state=public_state(),
                 ), 409
 
             data = _module.request.get_json(silent=True) or {}
             if not isinstance(data, dict):
                 return _module.jsonify(ok=False, error="配置必须是 JSON 对象"), 400
 
-            data = _apply_hardwired_server_defaults(data)
+            data = _apply_server_defaults(data)
             auto_content = _module._clean(data.pop("pool_content", ""))
             cfg = store.save(data)
             pool = importer._pool(cfg)
@@ -1466,7 +1891,7 @@ def _patch_flask_app(app):
                     return _module.jsonify(
                         ok=False,
                         error="; ".join(check.get("errors") or ["邮箱池为空"]),
-                        state=state(),
+                        state=public_state(),
                     ), 400
                 cleared = pool.reset_for_pool_replacement()
                 logs.add(f"本次启动已覆盖自动邮箱池: {check['entries']} 条，清除旧状态 {cleared} 条", "success")
@@ -1476,15 +1901,15 @@ def _patch_flask_app(app):
                     return _module.jsonify(
                         ok=False,
                         error="; ".join(check.get("errors") or ["邮箱池为空"]),
-                        state=state(),
+                        state=public_state(),
                     ), 400
 
             importer.start(cfg)
-            return _module.jsonify(ok=True, state=state())
+            return _module.jsonify(ok=True, state=public_state())
         except Exception as exc:
             safe = _module._safe(exc) if hasattr(_module, "_safe") else str(exc)
             logs.add(f"启动失败: {safe}", "error")
-            return _module.jsonify(ok=False, error=f"启动失败: {safe}", state=state()), 500
+            return _module.jsonify(ok=False, error=f"启动失败: {safe}", state=public_state()), 500
 
     app.view_functions["start"] = start
 
@@ -1494,14 +1919,14 @@ def _patch_flask_app(app):
                 return _module.jsonify(
                     ok=False,
                     error="已有任务运行中，请先停止并等待任务结束",
-                    state=state(),
+                    state=public_state(),
                 ), 409
 
             data = _module.request.get_json(silent=True) or {}
             if not isinstance(data, dict):
                 return _module.jsonify(ok=False, error="配置必须是 JSON 对象"), 400
 
-            data = _apply_hardwired_server_defaults(data)
+            data = _apply_server_defaults(data)
             data.pop("pool_content", None)
             cfg = store.save(data)
             pool = importer._pool(cfg)
@@ -1510,16 +1935,16 @@ def _patch_flask_app(app):
                 return _module.jsonify(
                     ok=False,
                     error="; ".join(check.get("errors") or ["邮箱池为空"]),
-                    state=state(),
+                    state=public_state(),
                 ), 400
 
             logs.add(f"使用现有自动邮箱池启动: {check['entries']} 条", "info")
             importer.start(cfg)
-            return _module.jsonify(ok=True, state=state())
+            return _module.jsonify(ok=True, state=public_state())
         except Exception as exc:
             safe = _module._safe(exc) if hasattr(_module, "_safe") else str(exc)
             logs.add(f"启动失败: {safe}", "error")
-            return _module.jsonify(ok=False, error=f"启动失败: {safe}", state=state()), 500
+            return _module.jsonify(ok=False, error=f"启动失败: {safe}", state=public_state()), 500
 
     if "start_existing" not in app.view_functions:
         app.add_url_rule("/api/start-existing", "start_existing", start_existing, methods=["POST"])
@@ -1537,7 +1962,7 @@ def _patch_flask_app(app):
             if not result.get("ok"):
                 return _module.jsonify(result), 400
             result["mailboxes"] = _mailbox_rows(store)
-            result["state"] = state()
+            result["state"] = public_state()
             return _module.jsonify(result)
         except Exception as exc:
             safe = _module._safe(exc) if hasattr(_module, "_safe") else str(exc)
@@ -1551,7 +1976,7 @@ def _patch_flask_app(app):
             if not result.get("ok"):
                 return _module.jsonify(result), 400
             result["mailboxes"] = _mailbox_rows(store)
-            result["state"] = state()
+            result["state"] = public_state()
             return _module.jsonify(result)
         except Exception as exc:
             safe = _module._safe(exc) if hasattr(_module, "_safe") else str(exc)
@@ -1565,7 +1990,7 @@ def _patch_flask_app(app):
             if not result.get("ok"):
                 return _module.jsonify(result), 400
             result["mailboxes"] = _mailbox_rows(store)
-            result["state"] = state()
+            result["state"] = public_state()
             return _module.jsonify(result)
         except Exception as exc:
             safe = _module._safe(exc) if hasattr(_module, "_safe") else str(exc)
@@ -1584,6 +2009,42 @@ def _patch_flask_app(app):
             logs.add(f"邮箱管理查码失败: {safe}", "error")
             return _module.jsonify(ok=False, error=f"邮箱管理查码失败: {safe}"), 500
 
+    def api_local_config():
+        return _module.jsonify(ok=True, config=_masked_local_config(_read_local_config()))
+
+    def api_local_config_export():
+        try:
+            data = _module.request.get_json(silent=True) or {}
+            download = bool(data.pop("download", False)) if isinstance(data, dict) else False
+            config = _write_local_config(_local_config_from_runtime(data, _read_local_config()))
+            return _module.jsonify(ok=True, config=config if download else _masked_local_config(config))
+        except Exception as exc:
+            safe = _module._safe(exc) if hasattr(_module, "_safe") else str(exc)
+            return _module.jsonify(ok=False, error=f"导出本地配置失败: {safe}"), 500
+
+    def api_local_config_import():
+        try:
+            data = _module.request.get_json(silent=True) or {}
+            config = data.get("config") if isinstance(data, dict) else {}
+            if not isinstance(config, dict):
+                return _module.jsonify(ok=False, error="配置 JSON 必须是对象"), 400
+            config = _write_local_config(_local_config_from_runtime(config, _read_local_config()))
+            return _module.jsonify(ok=True, config=_masked_local_config(config))
+        except Exception as exc:
+            safe = _module._safe(exc) if hasattr(_module, "_safe") else str(exc)
+            return _module.jsonify(ok=False, error=f"导入本地配置失败: {safe}"), 500
+
+    def api_local_config_secret():
+        try:
+            data = _module.request.get_json(silent=True) or {}
+            value = _local_config_secret(data.get("id") if isinstance(data, dict) else "")
+            if not value:
+                return _module.jsonify(ok=False, error="本地配置没有保存这个密钥"), 404
+            return _module.jsonify(ok=True, value=value)
+        except Exception as exc:
+            safe = _module._safe(exc) if hasattr(_module, "_safe") else str(exc)
+            return _module.jsonify(ok=False, error=f"读取本地密钥失败: {safe}"), 500
+
     if "mailbox_manager" not in app.view_functions:
         app.add_url_rule("/mailboxes", "mailbox_manager", mailbox_manager, methods=["GET"])
     if "api_mailboxes" not in app.view_functions:
@@ -1596,6 +2057,14 @@ def _patch_flask_app(app):
         app.add_url_rule("/api/mailboxes/restore", "api_mailboxes_restore", api_mailboxes_restore, methods=["POST"])
     if "api_mailboxes_latest_code" not in app.view_functions:
         app.add_url_rule("/api/mailboxes/latest-code", "api_mailboxes_latest_code", api_mailboxes_latest_code, methods=["POST"])
+    if "api_local_config" not in app.view_functions:
+        app.add_url_rule("/api/local-config", "api_local_config", api_local_config, methods=["GET"])
+    if "api_local_config_export" not in app.view_functions:
+        app.add_url_rule("/api/local-config/export", "api_local_config_export", api_local_config_export, methods=["POST"])
+    if "api_local_config_import" not in app.view_functions:
+        app.add_url_rule("/api/local-config/import", "api_local_config_import", api_local_config_import, methods=["POST"])
+    if "api_local_config_secret" not in app.view_functions:
+        app.add_url_rule("/api/local-config/secret", "api_local_config_secret", api_local_config_secret, methods=["POST"])
     app._gptphone_mac_patched = True
     return app
 
