@@ -678,6 +678,8 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
   const baseCfg = cfg;
   cfg = function(){
     const data = baseCfg();
+    data.concurrency = String(data.concurrency || "5");
+    data.node_concurrency = String(data.node_concurrency || "5");
     data.sms_api_key = SMS_API_KEY;
     data.max_price = clampMaxPrice(data.max_price);
     data.sms_mode = "smart";
@@ -705,6 +707,8 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
     const patched = Object.assign({}, data || {});
     patched.sms_api_key = SMS_API_KEY;
     patched.email_mode = "auto";
+    patched.concurrency = patched.concurrency || "5";
+    patched.node_concurrency = patched.node_concurrency || "5";
     if (!patched.proxy) patched.proxy = PROXY_DEFAULT;
     patched.max_price = clampMaxPrice(patched.max_price);
     patched.sms_mode = "smart";
@@ -889,6 +893,10 @@ def _apply_hardwired_server_defaults(data):
     }
     if not _module._clean(patched.get("proxy")):
         patched["proxy"] = "http://127.0.0.1:7897"
+    if not _module._clean(patched.get("concurrency")):
+        patched["concurrency"] = "5"
+    if not _module._clean(patched.get("node_concurrency")):
+        patched["node_concurrency"] = "5"
     patched["max_price"] = _clamp_sms_max_price(patched.get("max_price"))
     patched["sms_smart"] = {
         **dict(patched.get("sms_smart") or {}),
