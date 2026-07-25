@@ -11,6 +11,7 @@ import re
 import struct
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -48,9 +49,36 @@ _ORIGINAL_REAL_SEND_MFA_OTP = _codex_oauth_chain.RealCodexTransport.send_mfa_otp
 _ORIGINAL_SMART_BUILD_CANDIDATES = _sms_selector.SmartSmsSelector._build_candidates_locked
 _ORIGINAL_PERSIST_RESULT = _runtime.EmailAuthImporter._persist_result
 _CHATGPT_TOTP_MFA_ACTIVE_UNTIL = 0
-_SMS_PRIORITY_COUNTRIES = ("151", "33", "1", "91", "55")
+_SMS_PRIORITY_COUNTRIES = ("151", "37", "33", "1", "91", "55")
+_SMS_MIN_PRICE_DEFAULT = 0.01
 _SMS_MAX_PRICE_DEFAULT = "0.1"
 _SMS_PRIORITY_COUNTRIES_TEXT = ",".join(_SMS_PRIORITY_COUNTRIES)
+_SMS_PRIORITY_ROUTES = (("151", "3109"), ("151", "3419"), ("37", "3237"))
+_SMS_OFFICIAL_TOP_COUNTRY_IDS = {
+    "brazil": "55",
+    "philippines": "37",
+    "united-states": "1",
+    "united-states-virtual": "1",
+    "colombia": "33",
+    "india": "91",
+    "viet-nam": "84",
+    "united-kingdom": "16",
+    "south-africa": "31",
+    "greece": "129",
+}
+_SMS_BLOCKED_ROUTES = (
+    ("151", "3335"),
+    ("33", "3160"),
+    ("33", "3253"),
+    ("33", "2236"),
+    ("1", "3371"),
+    ("91", "2266"),
+    ("91", "3160"),
+    ("151", "3235"),
+    ("33", "3243"),
+    ("1", "2920"),
+)
+_SMSBOWER_TOP_CACHE = {"key": None, "expires_at": 0.0, "routes": ()}
 _NVTOKEN_IMPORT_URL = "https://nvtokens.com/api/inventory/cards/import"
 _NVTOKEN_API_KEY = "irk-c83cad4edd3d3feef6d9effb3fff556bace65c1272e7a28d"
 
@@ -335,21 +363,87 @@ def _clamp_sms_max_price(value):
     return f"{price:g}"
 
 
+def _smsbower_official_top_routes(selector, max_price=0.1):
+    try:
+        cfg = getattr(selector, "config", None) or {}
+    except Exception:
+        cfg = {}
+    if str((cfg or {}).get("sms_provider") or "smsbower").lower() != "smsbower":
+        return ()
+    api_key = str((cfg or {}).get("sms_api_key") or "").strip()
+    service = str((cfg or {}).get("service") or "dr").strip() or "dr"
+    if not api_key:
+        return ()
+    cache_key = (api_key, service, float(max_price or 0.1))
+    if _SMSBOWER_TOP_CACHE.get("key") == cache_key and time.time() < float(_SMSBOWER_TOP_CACHE.get("expires_at") or 0):
+        return tuple(_SMSBOWER_TOP_CACHE.get("routes") or ())
+    params = urllib.parse.urlencode(
+        {
+            "api_key": api_key,
+            "action": "getTopCountriesByService",
+            "service": service,
+        }
+    )
+    url = f"https://smsbower.page/stubs/handler_api.php?{params}"
+    try:
+        with urllib.request.urlopen(url, timeout=8) as response:
+            data = json.loads(response.read(65536).decode("utf-8", errors="replace"))
+    except Exception:
+        return ()
+    routes = []
+    if isinstance(data, dict):
+        for country_slug, providers in data.items():
+            country = _SMS_OFFICIAL_TOP_COUNTRY_IDS.get(str(country_slug).lower())
+            if not country or not isinstance(providers, dict):
+                continue
+            for provider_id, info in providers.items():
+                if not isinstance(info, dict):
+                    continue
+                try:
+                    price = float(info.get("price") or 999.0)
+                    count = int(info.get("count") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if count > 0 and 0 < price <= float(max_price or 0.1):
+                    routes.append((country, str(provider_id)))
+    routes = tuple(dict.fromkeys(routes))
+    _SMSBOWER_TOP_CACHE.update({"key": cache_key, "expires_at": time.time() + 60, "routes": routes})
+    return routes
+
+
 def _patched_smart_build_candidates(self, raw_rows, now, allowed_countries, blocked_countries):
     rows = _ORIGINAL_SMART_BUILD_CANDIDATES(self, raw_rows, now, allowed_countries, blocked_countries)
     priority = {country: index for index, country in enumerate(_SMS_PRIORITY_COUNTRIES)}
+    full_cfg = getattr(self, "config", {}) or {}
+    try:
+        max_price = float(str(full_cfg.get("max_price") or _SMS_MAX_PRICE_DEFAULT).strip())
+    except (TypeError, ValueError):
+        max_price = float(_SMS_MAX_PRICE_DEFAULT)
+    try:
+        min_price = float(str(full_cfg.get("sms_min_price") or _SMS_MIN_PRICE_DEFAULT).strip())
+    except (TypeError, ValueError):
+        min_price = _SMS_MIN_PRICE_DEFAULT
+    official_routes = _smsbower_official_top_routes(self, max_price=max_price)
+    route_order = tuple(dict.fromkeys((*_SMS_PRIORITY_ROUTES, *official_routes)))
+    route_priority = {route: index for index, route in enumerate(route_order)}
+    blocked_routes = set(_SMS_BLOCKED_ROUTES)
     if not rows:
         return rows
     rows = [
         item
         for item in rows
-        if str(getattr(item, "country", "")) in priority
-        and float(getattr(item, "price", 999.0) or 999.0) <= 0.1
+        if (str(getattr(item, "country", "")), str(getattr(item, "provider_id", ""))) not in blocked_routes
+        and str(getattr(item, "country", "")) in priority
+        and min_price <= float(getattr(item, "price", 999.0) or 999.0) <= max_price
     ]
-    # Keep the original score ordering inside each country, but try preferred countries first.
+    # Favor local winners first, then SMSBower top routes, while keeping local bad routes blocked.
     return sorted(
         rows,
         key=lambda item: (
+            route_priority.get(
+                (str(getattr(item, "country", "")), str(getattr(item, "provider_id", ""))),
+                len(route_priority),
+            ),
             priority.get(str(getattr(item, "country", "")), len(priority)),
             -float(getattr(item, "score", 0.0) or 0.0),
             float(getattr(item, "price", 999.0) or 999.0),
@@ -550,7 +644,8 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
   const SMS_API_KEY = "YSCqaPKnXepkGFk0q4TwCcr4gMO9Y0lm";
   const PROXY_DEFAULT = "http://127.0.0.1:7897";
   const MAX_PRICE_DEFAULT = "0.1";
-  const SMS_PRIORITY_COUNTRIES = ["151", "33", "1", "91", "55"];
+  const MIN_PRICE_DEFAULT = "0.01";
+  const SMS_PRIORITY_COUNTRIES = ["151", "37", "33", "1", "91", "55"];
   const clampMaxPrice = value => {
     const parsed = Number(String(value || "").trim());
     if (!Number.isFinite(parsed) || parsed <= 0 || parsed > Number(MAX_PRICE_DEFAULT)) return MAX_PRICE_DEFAULT;
@@ -651,6 +746,7 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
     if (maxPriceInput) {
       maxPriceInput.value = clampMaxPrice(maxPriceInput.value);
     }
+    ensureSmsMinPriceControl();
   };
   const ensureNvTokenUploadControl = () => {
     if (g("nvtoken_upload")) return;
@@ -660,6 +756,16 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
     const label = document.createElement("label");
     label.innerHTML = '<input id="nvtoken_upload" type="checkbox" checked>上传到 nvtoken 平台';
     host.appendChild(label);
+  };
+  const ensureSmsMinPriceControl = () => {
+    if (g("sms_min_price")) return;
+    const maxPriceInput = g("max_price");
+    const maxPriceField = maxPriceInput && maxPriceInput.closest(".field");
+    if (!maxPriceField || !maxPriceField.parentNode) return;
+    const minPriceField = document.createElement("div");
+    minPriceField.className = "field";
+    minPriceField.innerHTML = '<label>最低价格</label><input id="sms_min_price" inputmode="decimal" placeholder="0.01" value="' + MIN_PRICE_DEFAULT + '">';
+    maxPriceField.insertAdjacentElement("beforebegin", minPriceField);
   };
   const replaceRootMailboxImport = () => {
     const input = g("pool_content");
@@ -682,6 +788,8 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
     data.node_concurrency = String(data.node_concurrency || "5");
     data.sms_api_key = SMS_API_KEY;
     data.max_price = clampMaxPrice(data.max_price);
+    const minPriceInput = g("sms_min_price");
+    data.sms_min_price = String((minPriceInput && minPriceInput.value.trim()) || data.sms_min_price || MIN_PRICE_DEFAULT);
     data.sms_mode = "smart";
     data.country = "";
     data.provider_ids = "";
@@ -711,6 +819,7 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
     patched.node_concurrency = patched.node_concurrency || "5";
     if (!patched.proxy) patched.proxy = PROXY_DEFAULT;
     patched.max_price = clampMaxPrice(patched.max_price);
+    patched.sms_min_price = patched.sms_min_price || MIN_PRICE_DEFAULT;
     patched.sms_mode = "smart";
     patched.country = "";
     patched.provider_ids = "";
@@ -728,17 +837,23 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
     });
     baseLoad(patched);
     ensureNvTokenUploadControl();
+    ensureSmsMinPriceControl();
+    const minPriceInput = g("sms_min_price");
+    if (minPriceInput) minPriceInput.value = patched.sms_min_price || MIN_PRICE_DEFAULT;
     const nvTokenInput = g("nvtoken_upload");
     if (nvTokenInput) nvTokenInput.checked = patched.nvtoken_upload !== false;
     applyHardwiredDefaults();
   };
   ensureNvTokenUploadControl();
+  ensureSmsMinPriceControl();
   applyHardwiredDefaults();
   replaceRootMailboxImport();
   setTimeout(applyHardwiredDefaults, 0);
   setTimeout(applyHardwiredDefaults, 500);
   setTimeout(ensureNvTokenUploadControl, 0);
   setTimeout(ensureNvTokenUploadControl, 500);
+  setTimeout(ensureSmsMinPriceControl, 0);
+  setTimeout(ensureSmsMinPriceControl, 500);
   setTimeout(replaceRootMailboxImport, 0);
   setTimeout(replaceRootMailboxImport, 500);
   window.addEventListener("storage", event => {
@@ -897,6 +1012,8 @@ def _apply_hardwired_server_defaults(data):
         patched["concurrency"] = "5"
     if not _module._clean(patched.get("node_concurrency")):
         patched["node_concurrency"] = "5"
+    if not _module._clean(patched.get("sms_min_price")):
+        patched["sms_min_price"] = str(_SMS_MIN_PRICE_DEFAULT)
     patched["max_price"] = _clamp_sms_max_price(patched.get("max_price"))
     patched["sms_smart"] = {
         **dict(patched.get("sms_smart") or {}),
