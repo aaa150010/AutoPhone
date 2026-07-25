@@ -1863,6 +1863,13 @@ def _patch_flask_app(app):
     if "stop" in app.view_functions:
         app.view_functions["stop"] = stop
 
+    @app.after_request
+    def no_cache_response(response):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
+
     def start():
         try:
             if importer.status(settings()).get("running"):

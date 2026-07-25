@@ -140,8 +140,9 @@ fi
 (
   for attempt in {1..30}; do
     if /usr/bin/curl -fsS "http://127.0.0.1:$PORT/api/state" >/dev/null 2>&1; then
-      /usr/bin/open "http://127.0.0.1:$PORT/" >/dev/null 2>&1 || true
-      /usr/bin/open "http://127.0.0.1:$PORT/mailboxes" >/dev/null 2>&1 || true
+      CACHE_BUSTER="$(date +%s)"
+      /usr/bin/open "http://127.0.0.1:$PORT/?v=$CACHE_BUSTER" >/dev/null 2>&1 || true
+      /usr/bin/open "http://127.0.0.1:$PORT/mailboxes?v=$CACHE_BUSTER" >/dev/null 2>&1 || true
       exit 0
     fi
     sleep 0.5
