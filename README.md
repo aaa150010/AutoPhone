@@ -1,6 +1,6 @@
 # gptPhone mac 运行说明
 
-这是从 `PlusBindTool_V1.0.3` 恢复并适配到 macOS 的 WebUI 工具。主要用途是批量导入邮箱账号，自动走 ChatGPT/OpenAI Auth 授权、邮箱取码、必要时手机接码，并把结果上传到 SUB2 分组。
+这是一个 macOS 可双击运行的 gptPhone WebUI 工具。主要用途是批量导入邮箱账号，自动走 ChatGPT/OpenAI Auth 授权、邮箱取码、必要时手机接码，并把成功结果上传到 SUB2 分组和 nvtoken 平台。
 
 ## 快速启动
 
@@ -104,7 +104,16 @@ GPT账号|登录密码|2FA密钥
 
 手机验证码不是每条邮箱链路都强制需要。
 
-运行时会先完成邮箱/账号登录。如果 OpenAI/ChatGPT 页面没有要求手机验证，流程会直接继续 OAuth callback、token exchange 和 SUB2 上传。只有页面进入 `add_phone`、`contact_verification`、`phone_number_collection` 等手机验证状态时，才会调用 SMS 接码平台买号、发短信、等待手机验证码。
+运行时会先完成邮箱/账号登录。如果 OpenAI/ChatGPT 页面没有要求手机验证，流程会直接继续 OAuth callback、token exchange、SUB2 上传和 nvtoken 上传。只有页面进入 `add_phone`、`contact_verification`、`phone_number_collection` 等手机验证状态时，才会调用 SMS 接码平台买号、发短信、等待手机验证码。
+
+## 结果上传
+
+任务成功后会做两类上传：
+
+- **SUB2 上传**：把授权结果上传到配置好的 SUB2 地址和目标分组。
+- **nvtoken 上传**：页面里默认勾选“上传到 nvtoken 平台”。成功结果里如果包含 `access_token`、`refresh_token` 和 `email`，系统会额外上传到 nvtoken 的导入接口。
+
+如果不想上传 nvtoken，可以在运行页面取消勾选“上传到 nvtoken 平台”。
 
 ## 默认配置
 
@@ -168,6 +177,6 @@ iCloud IMAP 服务器是 `imap.mail.me.com:993`，通常不能用普通 Apple ID
 
 ## 已知限制
 
-原 Windows 版本包含 Windows `node.exe` 和加密/自定义格式的 `node_chain.dat`。mac 启动脚本会优先使用本机 `node`，并尝试准备 Node SentinelRunner 目录，但真实 SentinelRunner 是否可用取决于当前恢复出的资源是否完整。
+当前工具依赖本机 Node.js 来运行 SentinelRunner 相关流程。mac 启动脚本会优先使用本机 `node`，并尝试准备 Node SentinelRunner 目录；如果相关资源不完整，真实授权链路可能会卡在 SentinelRunner 阶段。
 
 另外，项目里的 `.pyc` 是 Python 3.13 字节码。当前常见反编译器对 Python 3.13 支持不完整，所以 `pycdc_attempt/` 不是可直接运行源码，最可靠的逻辑参考是 `disassembly/`。
