@@ -1,6 +1,8 @@
 mac_runtime/
 raw_extracted/
 data/
+engine/
+node_chain.dat
 __pycache__/
 *.pyc.__bak__
 .DS_Store
