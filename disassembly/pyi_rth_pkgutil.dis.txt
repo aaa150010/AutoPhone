@@ -1,0 +1,254 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          pyi_rth_pkgutil.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        2
+# Flags:             0x00000000 (0x0)
+# First Line:        1
+# Constants:
+#    0: <Code311 code object _pyi_rthook at 0x105bcbbb0, file pyi_rth_pkgutil.py>, line 16
+#    1: None
+# Names:
+#    0: _pyi_rthook
+  0:           0 RESUME               0
+
+ 16:           2 LOAD_CONST           (<Code311 code object _pyi_rthook at 0x105bcbbb0, file pyi_rth_pkgutil.py>, line 16)
+               4 MAKE_FUNCTION
+               6 STORE_NAME           (_pyi_rthook)
+
+ 63:           8 LOAD_NAME            (_pyi_rthook)
+              10 PUSH_NULL
+              12 CALL                 (0 positional)
+              20 POP_TOP
+
+ 64:          22 DELETE_NAME          (_pyi_rthook)
+              24 RETURN_CONST         (None)
+
+
+# Method Name:       _pyi_rthook
+# Filename:          pyi_rth_pkgutil.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        16
+# Constants:
+#    0: None
+#    1: 0
+#    2: <Code311 code object _iter_pyi_frozen_finder_modules at 0x105bcbeb0, file pyi_rth_pkgutil.py>, line 24
+#    3: ('',)
+# Names:
+#    0: pkgutil
+#    1: pyimod02_importers
+#    2: iter_importer_modules
+#    3: register
+#    4: PyiFrozenFinder
+# Varnames:
+#	_iter_pyi_frozen_finder_modules
+# Local variables:
+#    0: _iter_pyi_frozen_finder_modules
+# Cell variables:
+#    0: pkgutil
+#    1: pyimod02_importers
+               0 MAKE_CELL            (pkgutil)
+               2 MAKE_CELL            (pyimod02_importers)
+
+ 16:           4 RESUME               0
+
+ 17:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (None)
+              10 IMPORT_NAME          (pkgutil)
+              12 STORE_DEREF          (pkgutil)
+
+ 19:          14 LOAD_CONST           (0)
+              16 LOAD_CONST           (None)
+              18 IMPORT_NAME          (pyimod02_importers)
+              20 STORE_DEREF          (pyimod02_importers)
+
+ 24:          22 LOAD_CONST           (('',))
+              24 LOAD_FAST            (pkgutil)
+              26 LOAD_FAST            (pyimod02_importers)
+              28 BUILD_TUPLE          2
+              30 LOAD_CONST           (<Code311 code object _iter_pyi_frozen_finder_modules at 0x105bcbeb0, file pyi_rth_pkgutil.py>, line 24)
+              32 MAKE_FUNCTION
+              34 SET_FUNCTION_ATTRIBUTE 8
+              36 SET_FUNCTION_ATTRIBUTE 1
+              38 STORE_FAST           (_iter_pyi_frozen_finder_modules)
+
+ 57:          40 LOAD_DEREF           (pkgutil)
+              42 LOAD_ATTR            (iter_importer_modules)
+              62 LOAD_ATTR            (NULL|self + register)
+
+ 58:          82 LOAD_DEREF           (pyimod02_importers)
+              84 LOAD_ATTR            (PyiFrozenFinder)
+
+ 59:         104 LOAD_FAST            (_iter_pyi_frozen_finder_modules)
+
+ 57:         106 CALL                 (2 positional)
+             114 POP_TOP
+             116 RETURN_CONST         (None)
+
+
+# Method Name:       _iter_pyi_frozen_finder_modules
+# Filename:          pyi_rth_pkgutil.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  9
+# Stack size:        5
+# Flags:             0x00000033 (GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        24
+# Constants:
+#    0: None
+#    1: '.'
+# Names:
+#    0: get_pyz_toc_tree
+#    1: _pyz_entry_prefix
+#    2: split
+#    3: get
+#    4: isinstance
+#    5: dict
+#    6: items
+#    7: fallback_finder
+#    8: iter_importer_modules
+# Varnames:
+#	finder, prefix, pyz_toc_tree, pkg_name_parts, tree_node, pkg_name_part, entry_name, entry_data, is_pkg
+# Positional arguments:
+#	finder, prefix
+# Local variables:
+#    2: pyz_toc_tree
+#    3: pkg_name_parts
+#    4: tree_node
+#    5: pkg_name_part
+#    6: entry_name
+#    7: entry_data
+#    8: is_pkg
+# Free variables:
+#    0: pkgutil
+#    1: pyimod02_importers
+               0 COPY_FREE_VARS       2
+
+ 24:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+
+ 26:           8 LOAD_DEREF           (pyimod02_importers)
+              10 LOAD_ATTR            (NULL|self + get_pyz_toc_tree)
+              30 CALL                 (0 positional)
+              38 STORE_FAST           (pyz_toc_tree)
+
+ 30:          40 LOAD_FAST            (finder)
+              42 LOAD_ATTR            (_pyz_entry_prefix)
+              62 TO_BOOL
+              70 POP_JUMP_IF_FALSE    (to 130)
+
+ 31:          74 LOAD_FAST            (finder)
+              76 LOAD_ATTR            (_pyz_entry_prefix)
+              96 LOAD_ATTR            (NULL|self + split)
+             116 LOAD_CONST           (".")
+             118 CALL                 (1 positional)
+             126 STORE_FAST           (pkg_name_parts)
+             128 JUMP_FORWARD         (to 134)
+
+ 33:     >>  130 BUILD_LIST           0
+             132 STORE_FAST           (pkg_name_parts)
+
+ 35:     >>  134 LOAD_FAST            (pyz_toc_tree)
+             136 STORE_FAST           (tree_node)
+
+ 36:         138 LOAD_FAST            (pkg_name_parts)
+             140 GET_ITER
+             142 FOR_ITER             (to 236)
+             146 STORE_FAST           (pkg_name_part)
+
+ 37:         148 LOAD_FAST            (tree_node)
+             150 LOAD_ATTR            (NULL|self + get)
+             170 LOAD_FAST            (pkg_name_part)
+             172 CALL                 (1 positional)
+             180 STORE_FAST           (tree_node)
+
+ 38:         182 LOAD_GLOBAL          (NULL + isinstance)
+             192 LOAD_FAST            (tree_node)
+             194 LOAD_GLOBAL          (dict)
+             204 CALL                 (2 positional)
+             212 TO_BOOL
+             220 POP_JUMP_IF_FALSE    (to 228)
+             224 JUMP_BACKWARD        (to 142)
+
+ 42:     >>  228 BUILD_MAP            0
+             230 STORE_FAST           (tree_node)
+
+ 43:         232 POP_TOP
+             234 JUMP_FORWARD         (to 240)
+
+ 36:     >>  236 END_FOR
+             238 POP_TOP
+
+ 46:     >>  240 LOAD_FAST            (tree_node)
+             242 LOAD_ATTR            (NULL|self + items)
+             262 CALL                 (0 positional)
+             270 GET_ITER
+             272 FOR_ITER             (to 334)
+             276 UNPACK_SEQUENCE      2
+             280 STORE_FAST_STORE_FAST (entry_name, entry_data)
+
+ 47:         282 LOAD_GLOBAL          (NULL + isinstance)
+             292 LOAD_FAST            (entry_data)
+             294 LOAD_GLOBAL          (dict)
+             304 CALL                 (2 positional)
+             312 STORE_FAST           (is_pkg)
+
+ 48:     >>  314 LOAD_FAST_LOAD_FAST  (prefix, entry_name)
+             316 BINARY_OP            (+)
+             320 LOAD_FAST            (is_pkg)
+             322 BUILD_TUPLE          2
+             324 YIELD_VALUE          0
+             326 RESUME               5
+             328 POP_TOP
+             330 JUMP_BACKWARD        (to 272)
+
+ 46:     >>  334 END_FOR
+             336 POP_TOP
+
+ 54:         338 LOAD_FAST            (finder)
+             340 LOAD_ATTR            (fallback_finder)
+             360 POP_JUMP_IF_NONE     (to 438)
+
+ 55:         364 LOAD_DEREF           (pkgutil)
+             366 LOAD_ATTR            (NULL|self + iter_importer_modules)
+             386 LOAD_FAST            (finder)
+             388 LOAD_ATTR            (fallback_finder)
+             408 LOAD_FAST            (prefix)
+             410 CALL                 (2 positional)
+             418 GET_YIELD_FROM_ITER
+             420 LOAD_CONST           (None)
+             422 SEND                 (to 430)
+             426 YIELD_VALUE          1
+             428 RESUME               2
+             430 JUMP_BACKWARD_NO_INTERRUPT (to 422)
+         >>  432 END_SEND
+             434 POP_TOP
+             436 RETURN_CONST         (None)
+
+ 54:     >>  438 RETURN_CONST         (None)
+
+ 55:     >>  440 CLEANUP_THROW
+         >>  442 JUMP_BACKWARD_NO_INTERRUPT (to 432)
+         >>  444 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+             446 RERAISE              1
+
+ExceptionTable:
+  6 to 218 -> 444 [0] lasti
+  228 to 424 -> 444 [0] lasti
+  426 to 426 -> 440 [2]
+  428 to 440 -> 444 [0] lasti

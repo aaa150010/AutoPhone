@@ -1,0 +1,176 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          pyi_rth_setuptools.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        2
+# Flags:             0x00000000 (0x0)
+# First Line:        1
+# Constants:
+#    0: <Code311 code object _pyi_rthook at 0x10a03fac0, file pyi_rth_setuptools.py>, line 16
+#    1: None
+# Names:
+#    0: _pyi_rthook
+  0:           0 RESUME               0
+
+ 16:           2 LOAD_CONST           (<Code311 code object _pyi_rthook at 0x10a03fac0, file pyi_rth_setuptools.py>, line 16)
+               4 MAKE_FUNCTION
+               6 STORE_NAME           (_pyi_rthook)
+
+ 36:           8 LOAD_NAME            (_pyi_rthook)
+              10 PUSH_NULL
+              12 CALL                 (0 positional)
+              20 POP_TOP
+
+ 37:          22 DELETE_NAME          (_pyi_rthook)
+              24 RETURN_CONST         (None)
+
+
+# Method Name:       _pyi_rthook
+# Filename:          pyi_rth_setuptools.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        16
+# Constants:
+#    0: None
+#    1: <Code311 code object _install_setuptools_distutils_hack at 0x10a03fee0, file pyi_rth_setuptools.py>, line 17
+# Names:
+#    0: Exception
+# Varnames:
+#	_install_setuptools_distutils_hack
+# Local variables:
+#    0: _install_setuptools_distutils_hack
+ 16:           0 RESUME               0
+
+ 17:           2 LOAD_CONST           (<Code311 code object _install_setuptools_distutils_hack at 0x10a03fee0, file pyi_rth_setuptools.py>, line 17)
+               4 MAKE_FUNCTION
+               6 STORE_FAST           (_install_setuptools_distutils_hack)
+
+ 30:           8 NOP
+
+ 31:          10 LOAD_FAST            (_install_setuptools_distutils_hack)
+              12 PUSH_NULL
+              14 CALL                 (0 positional)
+              22 POP_TOP
+              24 RETURN_CONST         (None)
+         >>   26 PUSH_EXC_INFO
+
+ 32:          28 LOAD_GLOBAL          (Exception)
+              38 CHECK_EXC_MATCH
+              40 POP_JUMP_IF_FALSE    (to 50)
+              44 POP_TOP
+
+ 33:          46 POP_EXCEPT
+              48 RETURN_CONST         (None)
+
+ 32:     >>   50 RERAISE              0
+         >>   52 COPY                 3
+              54 POP_EXCEPT
+              56 RERAISE              1
+
+ExceptionTable:
+  10 to 22 -> 26 [0]
+  26 to 44 -> 52 [1] lasti
+  50 to 50 -> 52 [1] lasti
+
+# Method Name:       _install_setuptools_distutils_hack
+# Filename:          pyi_rth_setuptools.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        5
+# Flags:             0x00000013 (NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        17
+# Constants:
+#    0: None
+#    1: 0
+#    2: '.'
+#    3: 60
+#    4: 'stdlib'
+#    5: 'local'
+#    6: 'SETUPTOOLS_USE_DISTUTILS'
+# Names:
+#    0: os
+#    1: setuptools
+#    2: int
+#    3: __version__
+#    4: split
+#    5: environ
+#    6: get
+#    7: _distutils_hack
+#    8: add_shim
+# Varnames:
+#	os, setuptools, setuptools_major, default_value, _distutils_hack
+# Local variables:
+#    0: os
+#    1: setuptools
+#    2: setuptools_major
+#    3: default_value
+#    4: _distutils_hack
+ 17:           0 RESUME               0
+
+ 18:           2 LOAD_CONST           (0)
+               4 LOAD_CONST           (None)
+               6 IMPORT_NAME          (os)
+               8 STORE_FAST           (os)
+
+ 19:          10 LOAD_CONST           (0)
+              12 LOAD_CONST           (None)
+              14 IMPORT_NAME          (setuptools)
+              16 STORE_FAST           (setuptools)
+
+ 23:          18 LOAD_GLOBAL          (NULL + int)
+              28 LOAD_FAST            (setuptools)
+              30 LOAD_ATTR            (__version__)
+              50 LOAD_ATTR            (NULL|self + split)
+              70 LOAD_CONST           (".")
+              72 CALL                 (1 positional)
+              80 LOAD_CONST           (0)
+              82 BINARY_SUBSCR
+              86 CALL                 (1 positional)
+              94 STORE_FAST           (setuptools_major)
+
+ 24:          96 LOAD_FAST            (setuptools_major)
+              98 LOAD_CONST           (60)
+             100 COMPARE_OP           (<)
+             104 POP_JUMP_IF_FALSE    (to 112)
+             108 LOAD_CONST           ("stdlib")
+             110 JUMP_FORWARD         (to 114)
+         >>  112 LOAD_CONST           ("local")
+         >>  114 STORE_FAST           (default_value)
+
+ 26:         116 LOAD_FAST            (os)
+             118 LOAD_ATTR            (environ)
+             138 LOAD_ATTR            (NULL|self + get)
+             158 LOAD_CONST           ("SETUPTOOLS_USE_DISTUTILS")
+             160 LOAD_FAST            (default_value)
+             162 CALL                 (2 positional)
+             170 LOAD_CONST           ("local")
+             172 COMPARE_OP           (==)
+             176 POP_JUMP_IF_FALSE    (to 222)
+
+ 27:         180 LOAD_CONST           (0)
+             182 LOAD_CONST           (None)
+             184 IMPORT_NAME          (_distutils_hack)
+             186 STORE_FAST           (_distutils_hack)
+
+ 28:         188 LOAD_FAST            (_distutils_hack)
+             190 LOAD_ATTR            (NULL|self + add_shim)
+             210 CALL                 (0 positional)
+             218 POP_TOP
+             220 RETURN_CONST         (None)
+
+ 26:     >>  222 RETURN_CONST         (None)
+

@@ -1,0 +1,2419 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          tools\high_pressure_test.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        9
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1
+# Constants:
+#    0: 'Offline scheduler pressure gate for the independent importer.\n\nThis test deliberately replaces only the external authorization worker.  The\nreal queue, pool leases, result persistence, exports, stop handling, and\nconcurrency gates remain the production implementations, so no mailbox, SMS,\nSUB2, or network credentials are needed for a repeatable 1000-row run.\n'
+#    1: 0
+#    2: ('annotations',)
+#    3: None
+#    4: ('Path',)
+#    5: 1
+#    6: 'engine'
+#    7: 'frozen'
+#    8: False
+#    9: 'CHATGPT_AR_APP_ROOT'
+#   10: 'PlusBindPressureLocks'
+#   11: ('EmailAuthImporter', 'default_settings')
+#   12: ('MailboxPool',)
+#   13: ('ManualMailboxPool',)
+#   14: 180.0
+#   15: <Code311 code object _wait_finished at 0x109446a30, file tools\high_pressure_test.py>, line 41
+#   16: 'auto'
+#   17: ('mode', 'manual_pool_path', 'manual_state_path')
+#   18: <Code311 code object _settings at 0x1094469a0, file tools\high_pressure_test.py>, line 56
+#   19: <Code311 code object _new_importer at 0x109415430, file tools\high_pressure_test.py>, line 77
+#   20: ('mode',)
+#   21: <Code311 code object run_success_failure at 0x1094155b0, file tools\high_pressure_test.py>, line 83
+#   22: <Code311 code object run_stop at 0x1094157c0, file tools\high_pressure_test.py>, line 153
+#   23: <Code311 code object run_release_pressure at 0x1094157f0, file tools\high_pressure_test.py>, line 186
+#   24: <Code311 code object main at 0x109415820, file tools\high_pressure_test.py>, line 199
+#   25: '__main__'
+#   26: ('importer', 'EmailAuthImporter', 'settings', 'dict', 'timeout', 'float', 'return', 'dict')
+#   27: ('root', 'Path', 'pool_path', 'Path', 'state_path', 'Path', 'results_dir', 'Path', 'concurrency', 'int', 'mode', 'str', 'manual_pool_path', 'Path | None', 'manual_state_path', 'Path | None', 'return', 'dict')
+#   28: (None,)
+#   29: ('root', 'Path', 'logs', 'list[str] | None', 'return', 'EmailAuthImporter')
+#   30: ('targets', 'int', 'concurrency', 'int', 'mode', 'str', 'return', 'dict')
+#   31: ('targets', 'int', 'concurrency', 'int', 'return', 'dict')
+#   32: (1000, 50)
+#   33: ('argv', 'list[str] | None', 'return', 'int')
+# Names:
+#    0: __doc__
+#    1: __future__
+#    2: annotations
+#    3: argparse
+#    4: json
+#    5: os
+#    6: sys
+#    7: tempfile
+#    8: threading
+#    9: time
+#   10: pathlib
+#   11: Path
+#   12: __file__
+#   13: resolve
+#   14: parents
+#   15: PROJECT_ROOT
+#   16: ENGINE_DIR
+#   17: import_path
+#   18: str
+#   19: path
+#   20: insert
+#   21: bool
+#   22: getattr
+#   23: environ
+#   24: setdefault
+#   25: gettempdir
+#   26: runtime
+#   27: EmailAuthImporter
+#   28: default_settings
+#   29: tools.self_mailbox_pool.mailbox_pool
+#   30: MailboxPool
+#   31: ManualMailboxPool
+#   32: PRESSURE_BATCH_TIMEOUT_SECONDS
+#   33: _wait_finished
+#   34: _settings
+#   35: _new_importer
+#   36: run_success_failure
+#   37: run_stop
+#   38: run_release_pressure
+#   39: main
+#   40: __name__
+#   41: SystemExit
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ("Offline scheduler pressure gate for the independent importer.\n\nThis test deliberately replaces only the external authorization worker.  The\nreal queue, pool leases, result persistence, exports, stop handling, and\nconcurrency gates remain the production implementations, so no mailbox, SMS,\nSUB2, or network credentials are needed for a repeatable 1000-row run.\n")
+               4 STORE_NAME           (__doc__)
+
+ 10:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (('annotations',))
+              10 IMPORT_NAME          (__future__)
+              12 IMPORT_FROM          (annotations)
+              14 STORE_NAME           (annotations)
+              16 POP_TOP
+
+ 12:          18 LOAD_CONST           (0)
+              20 LOAD_CONST           (None)
+              22 IMPORT_NAME          (argparse)
+              24 STORE_NAME           (argparse)
+
+ 13:          26 LOAD_CONST           (0)
+              28 LOAD_CONST           (None)
+              30 IMPORT_NAME          (json)
+              32 STORE_NAME           (json)
+
+ 14:          34 LOAD_CONST           (0)
+              36 LOAD_CONST           (None)
+              38 IMPORT_NAME          (os)
+              40 STORE_NAME           (os)
+
+ 15:          42 LOAD_CONST           (0)
+              44 LOAD_CONST           (None)
+              46 IMPORT_NAME          (sys)
+              48 STORE_NAME           (sys)
+
+ 16:          50 LOAD_CONST           (0)
+              52 LOAD_CONST           (None)
+              54 IMPORT_NAME          (tempfile)
+              56 STORE_NAME           (tempfile)
+
+ 17:          58 LOAD_CONST           (0)
+              60 LOAD_CONST           (None)
+              62 IMPORT_NAME          (threading)
+              64 STORE_NAME           (threading)
+
+ 18:          66 LOAD_CONST           (0)
+              68 LOAD_CONST           (None)
+              70 IMPORT_NAME          (time)
+              72 STORE_NAME           (time)
+
+ 19:          74 LOAD_CONST           (0)
+              76 LOAD_CONST           (('Path',))
+              78 IMPORT_NAME          (pathlib)
+              80 IMPORT_FROM          (Path)
+              82 STORE_NAME           (Path)
+              84 POP_TOP
+
+ 21:          86 LOAD_NAME            (Path)
+              88 PUSH_NULL
+              90 LOAD_NAME            (__file__)
+              92 CALL                 (1 positional)
+             100 LOAD_ATTR            (NULL|self + resolve)
+             120 CALL                 (0 positional)
+             128 LOAD_ATTR            (parents)
+             148 LOAD_CONST           (1)
+             150 BINARY_SUBSCR
+             154 STORE_NAME           (PROJECT_ROOT)
+
+ 22:         156 LOAD_NAME            (PROJECT_ROOT)
+             158 LOAD_CONST           ("engine")
+             160 BINARY_OP            (/)
+             164 STORE_NAME           (ENGINE_DIR)
+
+ 23:         166 LOAD_NAME            (PROJECT_ROOT)
+             168 LOAD_NAME            (ENGINE_DIR)
+             170 BUILD_TUPLE          2
+             172 GET_ITER
+             174 FOR_ITER             (to 300)
+             178 STORE_NAME           (import_path)
+
+ 24:         180 LOAD_NAME            (str)
+             182 PUSH_NULL
+             184 LOAD_NAME            (import_path)
+             186 CALL                 (1 positional)
+             194 LOAD_NAME            (sys)
+             196 LOAD_ATTR            (path)
+             216 CONTAINS_OP          (not in)
+             220 POP_JUMP_IF_TRUE     (to 228)
+             224 JUMP_BACKWARD        (to 174)
+
+ 25:     >>  228 LOAD_NAME            (sys)
+             230 LOAD_ATTR            (path)
+             250 LOAD_ATTR            (NULL|self + insert)
+             270 LOAD_CONST           (0)
+             272 LOAD_NAME            (str)
+             274 PUSH_NULL
+             276 LOAD_NAME            (import_path)
+             278 CALL                 (1 positional)
+             286 CALL                 (2 positional)
+             294 POP_TOP
+             296 JUMP_BACKWARD        (to 174)
+
+ 23:     >>  300 END_FOR
+             302 POP_TOP
+
+ 30:         304 LOAD_NAME            (bool)
+             306 PUSH_NULL
+             308 LOAD_NAME            (getattr)
+             310 PUSH_NULL
+             312 LOAD_NAME            (sys)
+             314 LOAD_CONST           ("frozen")
+             316 LOAD_CONST           (False)
+             318 CALL                 (3 positional)
+             326 CALL                 (1 positional)
+             334 TO_BOOL
+             342 POP_JUMP_IF_TRUE     (to 462)
+
+ 31:         346 LOAD_NAME            (os)
+             348 LOAD_ATTR            (environ)
+             368 LOAD_ATTR            (NULL|self + setdefault)
+             388 LOAD_CONST           ("CHATGPT_AR_APP_ROOT")
+             390 LOAD_NAME            (str)
+             392 PUSH_NULL
+             394 LOAD_NAME            (Path)
+             396 PUSH_NULL
+             398 LOAD_NAME            (tempfile)
+             400 LOAD_ATTR            (gettempdir)
+             420 PUSH_NULL
+             422 CALL                 (0 positional)
+             430 CALL                 (1 positional)
+             438 LOAD_CONST           ("PlusBindPressureLocks")
+             440 BINARY_OP            (/)
+             444 CALL                 (1 positional)
+             452 CALL                 (2 positional)
+             460 POP_TOP
+
+ 33:     >>  462 LOAD_CONST           (0)
+             464 LOAD_CONST           (('EmailAuthImporter', 'default_settings'))
+             466 IMPORT_NAME          (runtime)
+             468 IMPORT_FROM          (EmailAuthImporter)
+             470 STORE_NAME           (EmailAuthImporter)
+             472 IMPORT_FROM          (default_settings)
+             474 STORE_NAME           (default_settings)
+             476 POP_TOP
+
+ 34:         478 LOAD_CONST           (0)
+             480 LOAD_CONST           (('MailboxPool',))
+             482 IMPORT_NAME          (tools.self_mailbox_pool.mailbox_pool)
+             484 IMPORT_FROM          (MailboxPool)
+             486 STORE_NAME           (MailboxPool)
+             488 POP_TOP
+
+ 35:         490 LOAD_CONST           (0)
+             492 LOAD_CONST           (('ManualMailboxPool',))
+             494 IMPORT_NAME          (runtime)
+             496 IMPORT_FROM          (ManualMailboxPool)
+             498 STORE_NAME           (ManualMailboxPool)
+             500 POP_TOP
+
+ 38:         502 LOAD_CONST           (180.0)
+             504 STORE_NAME           (PRESSURE_BATCH_TIMEOUT_SECONDS)
+
+ 44:         506 LOAD_NAME            (PRESSURE_BATCH_TIMEOUT_SECONDS)
+
+ 41:         508 BUILD_TUPLE          1
+
+ 42:         510 NOP
+
+ 41:         512 NOP
+
+ 43:         514 NOP
+
+ 41:         516 NOP
+
+ 44:         518 NOP
+
+ 41:         520 NOP
+
+ 45:         522 NOP
+
+ 41:         524 LOAD_CONST           (('importer', 'EmailAuthImporter', 'settings', 'dict', 'timeout', 'float', 'return', 'dict'))
+             526 LOAD_CONST           (<Code311 code object _wait_finished at 0x109446a30, file tools\high_pressure_test.py>, line 41)
+             528 MAKE_FUNCTION
+             530 SET_FUNCTION_ATTRIBUTE 4
+             532 SET_FUNCTION_ATTRIBUTE 1
+             534 STORE_NAME           (_wait_finished)
+
+ 56:         536 LOAD_CONST           ("auto")
+             538 LOAD_CONST           (None)
+             540 LOAD_CONST           (None)
+             542 LOAD_CONST           (('mode', 'manual_pool_path', 'manual_state_path'))
+             544 BUILD_CONST_KEY_MAP  3
+             546 LOAD_CONST           (('root', 'Path', 'pool_path', 'Path', 'state_path', 'Path', 'results_dir', 'Path', 'concurrency', 'int', 'mode', 'str', 'manual_pool_path', 'Path | None', 'manual_state_path', 'Path | None', 'return', 'dict'))
+             548 LOAD_CONST           (<Code311 code object _settings at 0x1094469a0, file tools\high_pressure_test.py>, line 56)
+             550 MAKE_FUNCTION
+             552 SET_FUNCTION_ATTRIBUTE 4
+             554 SET_FUNCTION_ATTRIBUTE 2
+             556 STORE_NAME           (_settings)
+
+ 77:         558 LOAD_CONST           ((None,))
+             560 LOAD_CONST           (('root', 'Path', 'logs', 'list[str] | None', 'return', 'EmailAuthImporter'))
+             562 LOAD_CONST           (<Code311 code object _new_importer at 0x109415430, file tools\high_pressure_test.py>, line 77)
+             564 MAKE_FUNCTION
+             566 SET_FUNCTION_ATTRIBUTE 4
+             568 SET_FUNCTION_ATTRIBUTE 1
+             570 STORE_NAME           (_new_importer)
+
+ 83:         572 LOAD_CONST           ("auto")
+             574 LOAD_CONST           (('mode',))
+             576 BUILD_CONST_KEY_MAP  1
+             578 LOAD_CONST           (('targets', 'int', 'concurrency', 'int', 'mode', 'str', 'return', 'dict'))
+             580 LOAD_CONST           (<Code311 code object run_success_failure at 0x1094155b0, file tools\high_pressure_test.py>, line 83)
+             582 MAKE_FUNCTION
+             584 SET_FUNCTION_ATTRIBUTE 4
+             586 SET_FUNCTION_ATTRIBUTE 2
+             588 STORE_NAME           (run_success_failure)
+
+153:         590 LOAD_CONST           (('targets', 'int', 'concurrency', 'int', 'return', 'dict'))
+             592 LOAD_CONST           (<Code311 code object run_stop at 0x1094157c0, file tools\high_pressure_test.py>, line 153)
+             594 MAKE_FUNCTION
+             596 SET_FUNCTION_ATTRIBUTE 4
+             598 STORE_NAME           (run_stop)
+
+186:         600 LOAD_CONST           ((1000, 50))
+             602 LOAD_CONST           (('targets', 'int', 'concurrency', 'int', 'return', 'dict'))
+             604 LOAD_CONST           (<Code311 code object run_release_pressure at 0x1094157f0, file tools\high_pressure_test.py>, line 186)
+             606 MAKE_FUNCTION
+             608 SET_FUNCTION_ATTRIBUTE 4
+             610 SET_FUNCTION_ATTRIBUTE 1
+             612 STORE_NAME           (run_release_pressure)
+
+199:         614 LOAD_CONST           ((None,))
+             616 LOAD_CONST           (('argv', 'list[str] | None', 'return', 'int'))
+             618 LOAD_CONST           (<Code311 code object main at 0x109415820, file tools\high_pressure_test.py>, line 199)
+             620 MAKE_FUNCTION
+             622 SET_FUNCTION_ATTRIBUTE 4
+             624 SET_FUNCTION_ATTRIBUTE 1
+             626 STORE_NAME           (main)
+
+212:         628 LOAD_NAME            (__name__)
+             630 LOAD_CONST           ("__main__")
+             632 COMPARE_OP           (==)
+             636 POP_JUMP_IF_FALSE    (to 666)
+
+213:         640 LOAD_NAME            (SystemExit)
+             642 PUSH_NULL
+             644 LOAD_NAME            (main)
+             646 PUSH_NULL
+             648 CALL                 (0 positional)
+             656 CALL                 (1 positional)
+             664 RAISE_VARARGS        (exception instance)
+
+212:     >>  666 RETURN_CONST         (None)
+
+
+# Method Name:       _wait_finished
+# Filename:          tools\high_pressure_test.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        41
+# Constants:
+#    0: None
+#    1: 'running'
+#    2: 0.02
+#    3: 'pressure batch did not finish before timeout'
+# Names:
+#    0: time
+#    1: monotonic
+#    2: status
+#    3: get
+#    4: sleep
+#    5: stop
+#    6: RuntimeError
+# Varnames:
+#	importer, settings, timeout, deadline, status
+# Positional arguments:
+#	importer, settings, timeout
+# Local variables:
+#    3: deadline
+#    4: status
+ 41:           0 RESUME               0
+
+ 46:           2 LOAD_GLOBAL          (time)
+              12 LOAD_ATTR            (monotonic)
+              32 PUSH_NULL
+              34 CALL                 (0 positional)
+              42 LOAD_FAST            (timeout)
+              44 BINARY_OP            (+)
+              48 STORE_FAST           (deadline)
+
+ 47:          50 LOAD_FAST            (importer)
+              52 LOAD_ATTR            (NULL|self + status)
+              72 LOAD_FAST            (settings)
+              74 CALL                 (1 positional)
+              82 LOAD_ATTR            (NULL|self + get)
+             102 LOAD_CONST           ("running")
+             104 CALL                 (1 positional)
+             112 TO_BOOL
+             120 POP_JUMP_IF_FALSE    (to 346)
+             124 LOAD_GLOBAL          (time)
+             134 LOAD_ATTR            (monotonic)
+             154 PUSH_NULL
+             156 CALL                 (0 positional)
+             164 LOAD_FAST            (deadline)
+             166 COMPARE_OP           (<)
+             170 POP_JUMP_IF_FALSE    (to 346)
+
+ 48:         174 LOAD_GLOBAL          (time)
+             184 LOAD_ATTR            (sleep)
+             204 PUSH_NULL
+             206 LOAD_CONST           (0.02)
+             208 CALL                 (1 positional)
+             216 POP_TOP
+
+ 47:         218 LOAD_FAST            (importer)
+             220 LOAD_ATTR            (NULL|self + status)
+             240 LOAD_FAST            (settings)
+             242 CALL                 (1 positional)
+             250 LOAD_ATTR            (NULL|self + get)
+             270 LOAD_CONST           ("running")
+             272 CALL                 (1 positional)
+             280 TO_BOOL
+             288 POP_JUMP_IF_FALSE    (to 346)
+             292 LOAD_GLOBAL          (time)
+             302 LOAD_ATTR            (monotonic)
+             322 PUSH_NULL
+             324 CALL                 (0 positional)
+             332 LOAD_FAST            (deadline)
+             334 COMPARE_OP           (<)
+             338 POP_JUMP_IF_FALSE    (to 346)
+             342 JUMP_BACKWARD        (to 174)
+
+ 49:     >>  346 LOAD_FAST            (importer)
+             348 LOAD_ATTR            (NULL|self + status)
+             368 LOAD_FAST            (settings)
+             370 CALL                 (1 positional)
+             378 STORE_FAST           (status)
+
+ 50:         380 LOAD_FAST            (status)
+             382 LOAD_ATTR            (NULL|self + get)
+             402 LOAD_CONST           ("running")
+             404 CALL                 (1 positional)
+             412 TO_BOOL
+             420 POP_JUMP_IF_FALSE    (to 478)
+
+ 51:         424 LOAD_FAST            (importer)
+             426 LOAD_ATTR            (NULL|self + stop)
+             446 CALL                 (0 positional)
+             454 POP_TOP
+
+ 52:         456 LOAD_GLOBAL          (NULL + RuntimeError)
+             466 LOAD_CONST           ("pressure batch did not finish before timeout")
+             468 CALL                 (1 positional)
+             476 RAISE_VARARGS        (exception instance)
+
+ 53:     >>  478 LOAD_FAST            (status)
+             480 RETURN_VALUE
+
+
+# Method Name:       _settings
+# Filename:          tools\high_pressure_test.py
+# Argument count:    5
+# Position-only argument count: 0
+# Keyword-only arguments: 3
+# Number of locals:  9
+# Stack size:        16
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        56
+# Constants:
+#    0: None
+#    1: 40
+#    2: 1
+#    3: 'localpool'
+#    4: 'offline-pressure-pool'
+#    5: 'runner.js'
+#    6: 'https://sub2.example.test'
+#    7: 'pressure@example.test'
+#    8: 'offline'
+#    9: 'pressure'
+#   10: ('url', 'email', 'password', 'group')
+#   11: ('pool_path', 'state_path', 'results_dir', 'concurrency', 'node_concurrency', 'auto_email_login_concurrency', 'sms_provider', 'sms_api_key', 'node_runner', 'sub2api')
+#   12: 'manual'
+#   13: ('email_mode', 'manual_pool_path', 'manual_state_path')
+# Names:
+#    0: default_settings
+#    1: update
+#    2: str
+#    3: min
+# Varnames:
+#	root, pool_path, state_path, results_dir, concurrency, mode, manual_pool_path, manual_state_path, values
+# Positional arguments:
+#	root, pool_path, state_path, results_dir, concurrency
+# Local variables:
+#    5: mode
+#    6: manual_pool_path
+#    7: manual_state_path
+#    8: values
+ 56:           0 RESUME               0
+
+ 57:           2 LOAD_GLOBAL          (NULL + default_settings)
+              12 LOAD_FAST            (root)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (values)
+
+ 58:          24 LOAD_FAST            (values)
+              26 LOAD_ATTR            (NULL|self + update)
+
+ 60:          46 LOAD_GLOBAL          (NULL + str)
+              56 LOAD_FAST            (pool_path)
+              58 CALL                 (1 positional)
+
+ 61:          66 LOAD_GLOBAL          (NULL + str)
+              76 LOAD_FAST            (state_path)
+              78 CALL                 (1 positional)
+
+ 62:          86 LOAD_GLOBAL          (NULL + str)
+              96 LOAD_FAST            (results_dir)
+              98 CALL                 (1 positional)
+
+ 63:         106 LOAD_FAST            (concurrency)
+
+ 64:         108 LOAD_GLOBAL          (NULL + min)
+             118 LOAD_CONST           (40)
+             120 LOAD_FAST            (concurrency)
+             122 CALL                 (2 positional)
+
+ 65:         130 LOAD_CONST           (1)
+
+ 66:         132 LOAD_CONST           ("localpool")
+
+ 67:         134 LOAD_CONST           ("offline-pressure-pool")
+
+ 68:         136 LOAD_GLOBAL          (NULL + str)
+             146 LOAD_FAST            (root)
+             148 LOAD_CONST           ("runner.js")
+             150 BINARY_OP            (/)
+             154 CALL                 (1 positional)
+
+ 69:         162 LOAD_CONST           ("https://sub2.example.test")
+             164 LOAD_CONST           ("pressure@example.test")
+             166 LOAD_CONST           ("offline")
+             168 LOAD_CONST           ("pressure")
+             170 LOAD_CONST           (('url', 'email', 'password', 'group'))
+             172 BUILD_CONST_KEY_MAP  4
+
+ 59:         174 LOAD_CONST           (('pool_path', 'state_path', 'results_dir', 'concurrency', 'node_concurrency', 'auto_email_login_concurrency', 'sms_provider', 'sms_api_key', 'node_runner', 'sub2api'))
+             176 BUILD_CONST_KEY_MAP  10
+
+ 58:         178 CALL                 (1 positional)
+             186 POP_TOP
+
+ 72:         188 LOAD_FAST            (mode)
+             190 LOAD_CONST           ("manual")
+             192 COMPARE_OP           (==)
+             196 POP_JUMP_IF_FALSE    (to 278)
+
+ 73:         200 LOAD_FAST            (values)
+             202 LOAD_ATTR            (NULL|self + update)
+             222 LOAD_CONST           ("manual")
+             224 LOAD_GLOBAL          (NULL + str)
+             234 LOAD_FAST            (manual_pool_path)
+             236 CALL                 (1 positional)
+             244 LOAD_GLOBAL          (NULL + str)
+             254 LOAD_FAST            (manual_state_path)
+             256 CALL                 (1 positional)
+             264 LOAD_CONST           (('email_mode', 'manual_pool_path', 'manual_state_path'))
+             266 BUILD_CONST_KEY_MAP  3
+             268 CALL                 (1 positional)
+             276 POP_TOP
+
+ 74:     >>  278 LOAD_FAST            (values)
+             280 RETURN_VALUE
+
+
+# Method Name:       _new_importer
+# Filename:          tools\high_pressure_test.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        77
+# Constants:
+#    0: None
+#    1: <Code311 code object <lambda> at 0x109446940, file tools\high_pressure_test.py>, line 78
+#    2: ('log_fn',)
+#    3: <Code311 code object <lambda> at 0x109415400, file tools\high_pressure_test.py>, line 79
+#    4: ('info',)
+#    5: (False,)
+# Names:
+#    0: EmailAuthImporter
+#    1: settings_validation
+# Varnames:
+#	root, logs, importer
+# Positional arguments:
+#	root, logs
+# Local variables:
+#    2: importer
+# Cell variables:
+#    0: logs
+               0 MAKE_CELL            (logs)
+
+ 77:           2 RESUME               0
+
+ 78:           4 LOAD_GLOBAL          (NULL + EmailAuthImporter)
+              14 LOAD_FAST            (root)
+              16 LOAD_CONST           (('info',))
+              18 LOAD_FAST            (logs)
+              20 BUILD_TUPLE          1
+              22 LOAD_CONST           (<Code311 code object <lambda> at 0x109446940, file tools\high_pressure_test.py>, line 78)
+              24 MAKE_FUNCTION
+              26 SET_FUNCTION_ATTRIBUTE 8
+              28 SET_FUNCTION_ATTRIBUTE 1
+              30 LOAD_CONST           (('log_fn',))
+              32 CALL_KW              2
+              34 STORE_FAST           (importer)
+
+ 79:          36 LOAD_CONST           ((False,))
+              38 LOAD_CONST           (<Code311 code object <lambda> at 0x109415400, file tools\high_pressure_test.py>, line 79)
+              40 MAKE_FUNCTION
+              42 SET_FUNCTION_ATTRIBUTE 1
+              44 LOAD_FAST            (importer)
+              46 STORE_ATTR           (settings_validation)
+
+ 80:          56 LOAD_FAST            (importer)
+              58 RETURN_VALUE
+
+
+# Method Name:       run_success_failure
+# Filename:          tools\high_pressure_test.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  28
+# Stack size:        17
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        83
+# Constants:
+#    0: None
+#    1: 'plus-pressure-'
+#    2: ('prefix',)
+#    3: 'manual'
+#    4: 'manual_pool.txt'
+#    5: 'pool.txt'
+#    6: 'pressure'
+#    7: '04d'
+#    8: '@example.test----password-'
+#    9: '--opaque'
+#   10: '@example.test----https://mailbox.example.test/'
+#   11: '\n'
+#   12: 'utf-8'
+#   13: ('encoding',)
+#   14: 'state.json'
+#   15: 'results'
+#   16: ('mode', 'manual_pool_path', 'manual_state_path')
+#   17: 'runner.js'
+#   18: '// offline pressure placeholder\n'
+#   19: 0
+#   20: <Code311 code object fake_run at 0x1094154f0, file tools\high_pressure_test.py>, line 102
+#   21: 'tasks'
+#   22: 'status'
+#   23: 'success'
+#   24: 'failed'
+#   25: 'missing'
+#   26: 1
+#   27: 'error:'
+#   28: 'queued'
+#   29: 'account'
+#   30: 'task accounting mismatch: len(tasks)='
+#   31: ' len(success)='
+#   32: ' len(failed)='
+#   33: ' counts='
+#   34: ' queued='
+#   35: ' errors='
+#   36: -10
+#   37: 40
+#   38: 'concurrency peak too low: '
+#   39: 'available'
+#   40: 'total'
+#   41: 'pool retention mismatch: '
+#   42: ' failed='
+#   43: 'count'
+#   44: 'export count mismatch'
+#   45: 'records'
+#   46: 'source_row'
+#   47: 'failed export contains duplicate source rows'
+#   48: '_success_failure'
+#   49: ('batch', 'targets', 'configured_concurrency', 'peak_active', 'success', 'failed', 'pool_available_after', 'export_failed', 'export_success')
+#   50: (None, '')
+# Names:
+#    0: tempfile
+#    1: TemporaryDirectory
+#    2: Path
+#    3: range
+#    4: write_text
+#    5: join
+#    6: _settings
+#    7: _new_importer
+#    8: threading
+#    9: Lock
+#   10: _run_one
+#   11: start
+#   12: _wait_finished
+#   13: get
+#   14: ManualMailboxPool
+#   15: MailboxPool
+#   16: summary
+#   17: export_records
+#   18: len
+#   19: str
+#   20: startswith
+#   21: AssertionError
+#   22: min
+# Varnames:
+#	targets, concurrency, mode, raw_root, root, pool_path, index, rows, state_path, results_dir, settings, logs, fake_run, status, tasks, task, success, failed, pool, summary, exported_failed, exported_success, counts, status_name, line, error_logs, queued_accounts, record
+# Positional arguments:
+#	targets, concurrency
+# Local variables:
+#    2: mode
+#    3: raw_root
+#    4: root
+#    5: pool_path
+#    6: index
+#    7: rows
+#    8: state_path
+#    9: results_dir
+#   10: settings
+#   11: logs
+#   12: fake_run
+#   13: status
+#   14: tasks
+#   15: task
+#   16: success
+#   17: failed
+#   18: pool
+#   19: summary
+#   20: exported_failed
+#   21: exported_success
+#   22: counts
+#   23: status_name
+#   24: line
+#   25: error_logs
+#   26: queued_accounts
+#   27: record
+# Cell variables:
+#    0: active
+#    1: active_lock
+#    2: importer
+#    3: peak
+               0 MAKE_CELL            (active)
+               2 MAKE_CELL            (active_lock)
+               4 MAKE_CELL            (importer)
+               6 MAKE_CELL            (peak)
+
+ 83:           8 RESUME               0
+
+ 84:          10 LOAD_GLOBAL          (tempfile)
+              20 LOAD_ATTR            (TemporaryDirectory)
+              40 PUSH_NULL
+              42 LOAD_CONST           ("plus-pressure-")
+              44 LOAD_CONST           (('prefix',))
+              46 CALL_KW              1
+              48 BEFORE_WITH
+              50 STORE_FAST           (raw_root)
+
+ 85:          52 LOAD_GLOBAL          (NULL + Path)
+              62 LOAD_FAST            (raw_root)
+              64 CALL                 (1 positional)
+              72 STORE_FAST           (root)
+
+ 86:          74 LOAD_FAST_LOAD_FAST  (root, mode)
+              76 LOAD_CONST           ("manual")
+              78 COMPARE_OP           (==)
+              82 POP_JUMP_IF_FALSE    (to 90)
+              86 LOAD_CONST           ("manual_pool.txt")
+              88 JUMP_FORWARD         (to 92)
+         >>   90 LOAD_CONST           ("pool.txt")
+         >>   92 BINARY_OP            (/)
+              96 STORE_FAST           (pool_path)
+
+ 89:          98 LOAD_GLOBAL          (NULL + range)
+             108 LOAD_FAST            (targets)
+             110 CALL                 (1 positional)
+             118 GET_ITER
+
+ 87:         120 LOAD_FAST_AND_CLEAR  (index)
+             122 SWAP                 (TOS <-> TOS1)
+             124 BUILD_LIST           0
+             126 SWAP                 (TOS <-> TOS1)
+
+ 89:         128 GET_ITER
+             130 FOR_ITER             (to 194)
+             134 STORE_FAST           (index)
+
+ 88:         136 LOAD_FAST            (mode)
+             138 LOAD_CONST           ("manual")
+             140 COMPARE_OP           (==)
+             144 POP_JUMP_IF_FALSE    (to 170)
+             148 LOAD_CONST           ("pressure")
+             150 LOAD_FAST            (index)
+             152 LOAD_CONST           ("04d")
+             154 FORMAT_WITH_SPEC
+             156 LOAD_CONST           ("@example.test----password-")
+             158 LOAD_FAST            (index)
+             160 LOAD_CONST           ("04d")
+             162 FORMAT_WITH_SPEC
+             164 LOAD_CONST           ("--opaque")
+             166 BUILD_STRING         5
+             168 JUMP_FORWARD         (to 188)
+         >>  170 LOAD_CONST           ("pressure")
+             172 LOAD_FAST            (index)
+             174 LOAD_CONST           ("04d")
+             176 FORMAT_WITH_SPEC
+             178 LOAD_CONST           ("@example.test----https://mailbox.example.test/")
+             180 LOAD_FAST            (index)
+             182 LOAD_CONST           ("04d")
+             184 FORMAT_WITH_SPEC
+             186 BUILD_STRING         4
+         >>  188 LIST_APPEND          2
+             190 JUMP_BACKWARD        (to 130)
+
+ 89:     >>  194 END_FOR
+             196 POP_TOP
+
+ 87:         198 STORE_FAST           (rows)
+             200 STORE_FAST           (index)
+
+ 91:         202 LOAD_FAST            (pool_path)
+             204 LOAD_ATTR            (NULL|self + write_text)
+             224 LOAD_CONST           ("\n")
+             226 LOAD_ATTR            (NULL|self + join)
+             246 LOAD_FAST            (rows)
+             248 CALL                 (1 positional)
+             256 LOAD_CONST           ("\n")
+         >>  258 BINARY_OP            (+)
+             262 LOAD_CONST           ("utf-8")
+             264 LOAD_CONST           (('encoding',))
+             266 CALL_KW              2
+             268 POP_TOP
+
+ 92:         270 LOAD_FAST            (root)
+             272 LOAD_CONST           ("state.json")
+             274 BINARY_OP            (/)
+             278 STORE_FAST           (state_path)
+
+ 93:         280 LOAD_FAST            (root)
+             282 LOAD_CONST           ("results")
+             284 BINARY_OP            (/)
+             288 STORE_FAST           (results_dir)
+
+ 94:         290 LOAD_GLOBAL          (NULL + _settings)
+             300 LOAD_FAST_LOAD_FAST  (root, pool_path)
+             302 LOAD_FAST_LOAD_FAST  (state_path, results_dir)
+             304 LOAD_FAST_LOAD_FAST  (concurrency, mode)
+             306 LOAD_FAST            (mode)
+             308 LOAD_CONST           ("manual")
+             310 COMPARE_OP           (==)
+             314 POP_JUMP_IF_FALSE    (to 322)
+             318 LOAD_FAST            (pool_path)
+             320 JUMP_FORWARD         (to 324)
+         >>  322 LOAD_CONST           (None)
+         >>  324 LOAD_FAST            (mode)
+             326 LOAD_CONST           ("manual")
+             328 COMPARE_OP           (==)
+             332 POP_JUMP_IF_FALSE    (to 340)
+             336 LOAD_FAST            (state_path)
+             338 JUMP_FORWARD         (to 342)
+         >>  340 LOAD_CONST           (None)
+         >>  342 LOAD_CONST           (('mode', 'manual_pool_path', 'manual_state_path'))
+             344 CALL_KW              8
+             346 STORE_FAST           (settings)
+
+ 95:         348 LOAD_FAST            (root)
+             350 LOAD_CONST           ("runner.js")
+             352 BINARY_OP            (/)
+             356 LOAD_ATTR            (NULL|self + write_text)
+             376 LOAD_CONST           ("// offline pressure placeholder\n")
+             378 LOAD_CONST           ("utf-8")
+             380 LOAD_CONST           (('encoding',))
+             382 CALL_KW              2
+             384 POP_TOP
+
+ 96:         386 BUILD_LIST           0
+             388 STORE_FAST           (logs)
+
+ 97:         390 LOAD_GLOBAL          (NULL + _new_importer)
+             400 LOAD_FAST_LOAD_FAST  (root, logs)
+             402 CALL                 (2 positional)
+             410 STORE_DEREF          (importer)
+
+ 98:         412 LOAD_CONST           (0)
+             414 STORE_DEREF          (active)
+
+ 99:         416 LOAD_CONST           (0)
+             418 STORE_DEREF          (peak)
+
+100:         420 LOAD_GLOBAL          (threading)
+             430 LOAD_ATTR            (Lock)
+             450 PUSH_NULL
+             452 CALL                 (0 positional)
+             460 STORE_DEREF          (active_lock)
+
+102:         462 LOAD_CONST           ((None, ''))
+             464 LOAD_FAST            (active)
+             466 LOAD_FAST            (active_lock)
+             468 LOAD_FAST            (importer)
+             470 LOAD_FAST            (peak)
+             472 BUILD_TUPLE          4
+             474 LOAD_CONST           (<Code311 code object fake_run at 0x1094154f0, file tools\high_pressure_test.py>, line 102)
+             476 MAKE_FUNCTION
+             478 SET_FUNCTION_ATTRIBUTE 8
+             480 SET_FUNCTION_ATTRIBUTE 1
+             482 STORE_FAST           (fake_run)
+
+124:         484 LOAD_FAST            (fake_run)
+             486 LOAD_DEREF           (importer)
+             488 STORE_ATTR           (_run_one)
+
+125:         498 LOAD_DEREF           (importer)
+             500 LOAD_ATTR            (NULL|self + start)
+             520 LOAD_FAST            (settings)
+             522 CALL                 (1 positional)
+             530 POP_TOP
+
+126:         532 LOAD_GLOBAL          (NULL + _wait_finished)
+             542 LOAD_DEREF           (importer)
+             544 LOAD_FAST            (settings)
+             546 CALL                 (2 positional)
+             554 STORE_FAST           (status)
+
+127:         556 LOAD_FAST            (status)
+             558 LOAD_CONST           ("tasks")
+             560 BINARY_SUBSCR
+             564 STORE_FAST           (tasks)
+
+128:         566 LOAD_FAST            (tasks)
+             568 GET_ITER
+             570 LOAD_FAST_AND_CLEAR  (task)
+             572 SWAP                 (TOS <-> TOS1)
+             574 BUILD_LIST           0
+             576 SWAP                 (TOS <-> TOS1)
+             578 GET_ITER
+             580 FOR_ITER             (to 638)
+             584 STORE_FAST_LOAD_FAST (task, task)
+             586 LOAD_ATTR            (NULL|self + get)
+             606 LOAD_CONST           ("status")
+             608 CALL                 (1 positional)
+             616 LOAD_CONST           ("success")
+             618 COMPARE_OP           (==)
+             622 POP_JUMP_IF_TRUE     (to 630)
+             626 JUMP_BACKWARD        (to 580)
+         >>  630 LOAD_FAST            (task)
+             632 LIST_APPEND          2
+             634 JUMP_BACKWARD        (to 580)
+         >>  638 END_FOR
+             640 POP_TOP
+             642 STORE_FAST           (success)
+             644 STORE_FAST           (task)
+
+129:         646 LOAD_FAST            (tasks)
+             648 GET_ITER
+             650 LOAD_FAST_AND_CLEAR  (task)
+             652 SWAP                 (TOS <-> TOS1)
+             654 BUILD_LIST           0
+             656 SWAP                 (TOS <-> TOS1)
+             658 GET_ITER
+             660 FOR_ITER             (to 718)
+             664 STORE_FAST_LOAD_FAST (task, task)
+             666 LOAD_ATTR            (NULL|self + get)
+             686 LOAD_CONST           ("status")
+             688 CALL                 (1 positional)
+         >>  696 LOAD_CONST           ("failed")
+             698 COMPARE_OP           (==)
+             702 POP_JUMP_IF_TRUE     (to 710)
+             706 JUMP_BACKWARD        (to 660)
+         >>  710 LOAD_FAST            (task)
+             712 LIST_APPEND          2
+             714 JUMP_BACKWARD        (to 660)
+         >>  718 END_FOR
+             720 POP_TOP
+             722 STORE_FAST           (failed)
+             724 STORE_FAST           (task)
+
+130:         726 LOAD_FAST            (mode)
+             728 LOAD_CONST           ("manual")
+             730 COMPARE_OP           (==)
+             734 POP_JUMP_IF_FALSE    (to 760)
+             738 LOAD_GLOBAL          (NULL + ManualMailboxPool)
+             748 LOAD_FAST_LOAD_FAST  (pool_path, state_path)
+             750 CALL                 (2 positional)
+             758 JUMP_FORWARD         (to 780)
+         >>  760 LOAD_GLOBAL          (NULL + MailboxPool)
+             770 LOAD_FAST_LOAD_FAST  (pool_path, state_path)
+             772 CALL                 (2 positional)
+         >>  780 STORE_FAST           (pool)
+
+131:         782 LOAD_FAST            (pool)
+             784 LOAD_ATTR            (NULL|self + summary)
+             804 CALL                 (0 positional)
+             812 STORE_FAST           (summary)
+
+132:         814 LOAD_DEREF           (importer)
+             816 LOAD_ATTR            (NULL|self + export_records)
+             836 LOAD_FAST            (settings)
+             838 LOAD_CONST           ("failed")
+             840 CALL                 (2 positional)
+             848 STORE_FAST           (exported_failed)
+
+133:         850 LOAD_DEREF           (importer)
+             852 LOAD_ATTR            (NULL|self + export_records)
+             872 LOAD_FAST            (settings)
+             874 LOAD_CONST           ("success")
+             876 CALL                 (2 positional)
+             884 STORE_FAST           (exported_success)
+
+134:         886 LOAD_GLOBAL          (NULL + len)
+             896 LOAD_FAST            (tasks)
+             898 CALL                 (1 positional)
+             906 LOAD_FAST            (targets)
+             908 COMPARE_OP           (!=)
+             912 POP_JUMP_IF_TRUE     (to 970)
+             916 LOAD_GLOBAL          (NULL + len)
+             926 LOAD_FAST            (success)
+             928 CALL                 (1 positional)
+             936 LOAD_GLOBAL          (NULL + len)
+             946 LOAD_FAST            (failed)
+             948 CALL                 (1 positional)
+             956 BINARY_OP            (+)
+             960 LOAD_FAST            (targets)
+             962 COMPARE_OP           (!=)
+             966 POP_JUMP_IF_FALSE    (to 1428)
+
+135:     >>  970 BUILD_MAP            0
+             972 STORE_FAST           (counts)
+
+136:         974 LOAD_FAST            (tasks)
+             976 GET_ITER
+             978 FOR_ITER             (to 1106)
+             982 STORE_FAST           (task)
+
+137:         984 LOAD_GLOBAL          (NULL + str)
+             994 LOAD_FAST            (task)
+             996 LOAD_ATTR            (NULL|self + get)
+            1016 LOAD_CONST           ("status")
+            1018 CALL                 (1 positional)
+            1026 COPY                 1
+            1028 TO_BOOL
+            1036 POP_JUMP_IF_TRUE     (to 1044)
+            1040 POP_TOP
+            1042 LOAD_CONST           ("missing")
+         >> 1044 CALL                 (1 positional)
+            1052 STORE_FAST           (status_name)
+
+138:        1054 LOAD_FAST            (counts)
+            1056 LOAD_ATTR            (NULL|self + get)
+            1076 LOAD_FAST            (status_name)
+            1078 LOAD_CONST           (0)
+            1080 CALL                 (2 positional)
+            1088 LOAD_CONST           (1)
+            1090 BINARY_OP            (+)
+            1094 LOAD_FAST            (counts)
+            1096 LOAD_FAST            (status_name)
+            1098 STORE_SUBSCR
+            1102 JUMP_BACKWARD        (to 978)
+
+136:     >> 1106 END_FOR
+            1108 POP_TOP
+
+139:        1110 LOAD_FAST            (logs)
+            1112 GET_ITER
+            1114 LOAD_FAST_AND_CLEAR  (line)
+            1116 SWAP                 (TOS <-> TOS1)
+            1118 BUILD_LIST           0
+            1120 SWAP                 (TOS <-> TOS1)
+            1122 GET_ITER
+            1124 FOR_ITER             (to 1186)
+            1128 STORE_FAST           (line)
+            1130 LOAD_FAST            (line)
+            1132 LOAD_ATTR            (NULL|self + startswith)
+            1152 LOAD_CONST           ("error:")
+            1154 CALL                 (1 positional)
+            1162 TO_BOOL
+            1170 POP_JUMP_IF_TRUE     (to 1178)
+            1174 JUMP_BACKWARD        (to 1124)
+         >> 1178 LOAD_FAST            (line)
+            1180 LIST_APPEND          2
+            1182 JUMP_BACKWARD        (to 1124)
+         >> 1186 END_FOR
+            1188 POP_TOP
+            1190 STORE_FAST           (error_logs)
+            1192 STORE_FAST           (line)
+
+140:        1194 LOAD_FAST            (tasks)
+            1196 GET_ITER
+            1198 LOAD_FAST_AND_CLEAR  (task)
+            1200 SWAP                 (TOS <-> TOS1)
+            1202 BUILD_LIST           0
+            1204 SWAP                 (TOS <-> TOS1)
+            1206 GET_ITER
+            1208 FOR_ITER             (to 1296)
+            1212 STORE_FAST_LOAD_FAST (task, task)
+            1214 LOAD_ATTR            (NULL|self + get)
+         >> 1234 LOAD_CONST           ("status")
+            1236 CALL                 (1 positional)
+            1244 LOAD_CONST           ("queued")
+            1246 COMPARE_OP           (==)
+            1250 POP_JUMP_IF_TRUE     (to 1258)
+            1254 JUMP_BACKWARD        (to 1208)
+         >> 1258 LOAD_FAST            (task)
+            1260 LOAD_ATTR            (NULL|self + get)
+            1280 LOAD_CONST           ("account")
+            1282 CALL                 (1 positional)
+            1290 LIST_APPEND          2
+            1292 JUMP_BACKWARD        (to 1208)
+         >> 1296 END_FOR
+            1298 POP_TOP
+            1300 STORE_FAST           (queued_accounts)
+            1302 STORE_FAST           (task)
+
+141:        1304 LOAD_GLOBAL          (NULL + AssertionError)
+            1314 LOAD_CONST           ("task accounting mismatch: len(tasks)=")
+            1316 LOAD_GLOBAL          (NULL + len)
+            1326 LOAD_FAST            (tasks)
+            1328 CALL                 (1 positional)
+            1336 CONVERT_VALUE        2
+            1338 FORMAT_SIMPLE
+            1340 LOAD_CONST           (" len(success)=")
+            1342 LOAD_GLOBAL          (NULL + len)
+            1352 LOAD_FAST            (success)
+            1354 CALL                 (1 positional)
+            1362 CONVERT_VALUE        2
+            1364 FORMAT_SIMPLE
+            1366 LOAD_CONST           (" len(failed)=")
+            1368 LOAD_GLOBAL          (NULL + len)
+            1378 LOAD_FAST            (failed)
+            1380 CALL                 (1 positional)
+            1388 CONVERT_VALUE        2
+            1390 FORMAT_SIMPLE
+            1392 LOAD_CONST           (" counts=")
+            1394 LOAD_FAST            (counts)
+            1396 FORMAT_SIMPLE
+            1398 LOAD_CONST           (" queued=")
+            1400 LOAD_FAST            (queued_accounts)
+            1402 FORMAT_SIMPLE
+            1404 LOAD_CONST           (" errors=")
+            1406 LOAD_FAST            (error_logs)
+            1408 LOAD_CONST           (-10)
+            1410 LOAD_CONST           (None)
+            1412 BINARY_SLICE
+            1414 FORMAT_SIMPLE
+            1416 BUILD_STRING         12
+            1418 CALL                 (1 positional)
+            1426 RAISE_VARARGS        (exception instance)
+
+142:     >> 1428 LOAD_DEREF           (peak)
+            1430 LOAD_GLOBAL          (NULL + min)
+            1440 LOAD_CONST           (40)
+            1442 LOAD_FAST            (concurrency)
+            1444 CALL                 (2 positional)
+            1452 COMPARE_OP           (<)
+            1456 POP_JUMP_IF_FALSE    (to 1488)
+
+143:        1460 LOAD_GLOBAL          (NULL + AssertionError)
+            1470 LOAD_CONST           ("concurrency peak too low: ")
+            1472 LOAD_DEREF           (peak)
+            1474 FORMAT_SIMPLE
+            1476 BUILD_STRING         2
+            1478 CALL                 (1 positional)
+            1486 RAISE_VARARGS        (exception instance)
+
+144:     >> 1488 LOAD_FAST            (summary)
+            1490 LOAD_ATTR            (NULL|self + get)
+            1510 LOAD_CONST           ("available")
+            1512 CALL                 (1 positional)
+            1520 LOAD_GLOBAL          (NULL + len)
+            1530 LOAD_FAST            (failed)
+            1532 CALL                 (1 positional)
+            1540 COMPARE_OP           (!=)
+            1544 POP_JUMP_IF_TRUE     (to 1608)
+            1548 LOAD_FAST            (summary)
+            1550 LOAD_ATTR            (NULL|self + get)
+            1570 LOAD_CONST           ("total")
+            1572 CALL                 (1 positional)
+            1580 LOAD_GLOBAL          (NULL + len)
+            1590 LOAD_FAST            (failed)
+            1592 CALL                 (1 positional)
+            1600 COMPARE_OP           (!=)
+            1604 POP_JUMP_IF_FALSE    (to 1660)
+
+145:     >> 1608 LOAD_GLOBAL          (NULL + AssertionError)
+            1618 LOAD_CONST           ("pool retention mismatch: ")
+            1620 LOAD_FAST            (summary)
+            1622 FORMAT_SIMPLE
+            1624 LOAD_CONST           (" failed=")
+            1626 LOAD_GLOBAL          (NULL + len)
+            1636 LOAD_FAST            (failed)
+            1638 CALL                 (1 positional)
+            1646 FORMAT_SIMPLE
+            1648 BUILD_STRING         4
+            1650 CALL                 (1 positional)
+            1658 RAISE_VARARGS        (exception instance)
+
+146:     >> 1660 LOAD_FAST            (exported_failed)
+            1662 LOAD_ATTR            (NULL|self + get)
+            1682 LOAD_CONST           ("count")
+            1684 CALL                 (1 positional)
+            1692 LOAD_GLOBAL          (NULL + len)
+            1702 LOAD_FAST            (failed)
+            1704 CALL                 (1 positional)
+            1712 COMPARE_OP           (!=)
+            1716 POP_JUMP_IF_TRUE     (to 1780)
+            1720 LOAD_FAST            (exported_success)
+            1722 LOAD_ATTR            (NULL|self + get)
+            1742 LOAD_CONST           ("count")
+            1744 CALL                 (1 positional)
+            1752 LOAD_GLOBAL          (NULL + len)
+            1762 LOAD_FAST            (success)
+            1764 CALL                 (1 positional)
+            1772 COMPARE_OP           (!=)
+            1776 POP_JUMP_IF_FALSE    (to 1802)
+
+147:     >> 1780 LOAD_GLOBAL          (NULL + AssertionError)
+            1790 LOAD_CONST           ("export count mismatch")
+            1792 CALL                 (1 positional)
+            1800 RAISE_VARARGS        (exception instance)
+
+148:     >> 1802 LOAD_GLOBAL          (NULL + len)
+            1812 LOAD_FAST            (exported_failed)
+            1814 LOAD_CONST           ("records")
+            1816 BINARY_SUBSCR
+            1820 GET_ITER
+            1822 LOAD_FAST_AND_CLEAR  (record)
+            1824 SWAP                 (TOS <-> TOS1)
+            1826 BUILD_SET            0
+            1828 SWAP                 (TOS <-> TOS1)
+            1830 GET_ITER
+            1832 FOR_ITER             (to 1876)
+            1836 STORE_FAST           (record)
+            1838 LOAD_FAST            (record)
+            1840 LOAD_ATTR            (NULL|self + get)
+            1860 LOAD_CONST           ("source_row")
+            1862 CALL                 (1 positional)
+            1870 SET_ADD              2
+            1872 JUMP_BACKWARD        (to 1832)
+         >> 1876 END_FOR
+            1878 POP_TOP
+            1880 SWAP                 (TOS <-> TOS1)
+            1882 STORE_FAST           (record)
+            1884 CALL                 (1 positional)
+            1892 LOAD_GLOBAL          (NULL + len)
+            1902 LOAD_FAST            (failed)
+            1904 CALL                 (1 positional)
+            1912 COMPARE_OP           (!=)
+            1916 POP_JUMP_IF_FALSE    (to 1942)
+
+149:     >> 1920 LOAD_GLOBAL          (NULL + AssertionError)
+            1930 LOAD_CONST           ("failed export contains duplicate source rows")
+            1932 CALL                 (1 positional)
+            1940 RAISE_VARARGS        (exception instance)
+
+150:     >> 1942 LOAD_FAST            (mode)
+            1944 FORMAT_SIMPLE
+            1946 LOAD_CONST           ("_success_failure")
+            1948 BUILD_STRING         2
+            1950 LOAD_FAST_LOAD_FAST  (targets, concurrency)
+            1952 LOAD_DEREF           (peak)
+            1954 LOAD_GLOBAL          (NULL + len)
+            1964 LOAD_FAST            (success)
+            1966 CALL                 (1 positional)
+            1974 LOAD_GLOBAL          (NULL + len)
+            1984 LOAD_FAST            (failed)
+            1986 CALL                 (1 positional)
+            1994 LOAD_FAST            (summary)
+            1996 LOAD_ATTR            (NULL|self + get)
+            2016 LOAD_CONST           ("available")
+            2018 CALL                 (1 positional)
+            2026 LOAD_FAST            (exported_failed)
+            2028 LOAD_ATTR            (NULL|self + get)
+            2048 LOAD_CONST           ("count")
+            2050 CALL                 (1 positional)
+            2058 LOAD_FAST            (exported_success)
+            2060 LOAD_ATTR            (NULL|self + get)
+            2080 LOAD_CONST           ("count")
+            2082 CALL                 (1 positional)
+            2090 LOAD_CONST           (('batch', 'targets', 'configured_concurrency', 'peak_active', 'success', 'failed', 'pool_available_after', 'export_failed', 'export_success'))
+            2092 BUILD_CONST_KEY_MAP  9
+
+ 84:        2094 SWAP                 (TOS <-> TOS1)
+            2096 LOAD_CONST           (None)
+            2098 LOAD_CONST           (None)
+            2100 LOAD_CONST           (None)
+            2102 CALL                 (2 positional)
+            2110 POP_TOP
+            2112 RETURN_VALUE
+         >> 2114 SWAP                 (TOS <-> TOS1)
+            2116 POP_TOP
+
+ 87:        2118 SWAP                 (TOS <-> TOS1)
+            2120 STORE_FAST           (index)
+            2122 RERAISE              0
+         >> 2124 SWAP                 (TOS <-> TOS1)
+            2126 POP_TOP
+
+128:        2128 SWAP                 (TOS <-> TOS1)
+            2130 STORE_FAST           (task)
+            2132 RERAISE              0
+         >> 2134 SWAP                 (TOS <-> TOS1)
+            2136 POP_TOP
+
+129:        2138 SWAP                 (TOS <-> TOS1)
+            2140 STORE_FAST           (task)
+            2142 RERAISE              0
+         >> 2144 SWAP                 (TOS <-> TOS1)
+            2146 POP_TOP
+
+139:        2148 SWAP                 (TOS <-> TOS1)
+            2150 STORE_FAST           (line)
+            2152 RERAISE              0
+         >> 2154 SWAP                 (TOS <-> TOS1)
+            2156 POP_TOP
+
+140:        2158 SWAP                 (TOS <-> TOS1)
+            2160 STORE_FAST           (task)
+            2162 RERAISE              0
+         >> 2164 SWAP                 (TOS <-> TOS1)
+            2166 POP_TOP
+
+148:        2168 SWAP                 (TOS <-> TOS1)
+            2170 STORE_FAST           (record)
+            2172 RERAISE              0
+
+ 84:     >> 2174 PUSH_EXC_INFO
+            2176 WITH_EXCEPT_START    0
+            2178 TO_BOOL
+            2186 POP_JUMP_IF_TRUE     (to 2192)
+            2190 RERAISE              2
+         >> 2192 POP_TOP
+            2194 POP_EXCEPT
+            2196 POP_TOP
+            2198 POP_TOP
+            2200 RETURN_CONST         (None)
+         >> 2202 COPY                 3
+            2204 POP_EXCEPT
+            2206 RERAISE              1
+
+ExceptionTable:
+  50 to 122 -> 2174 [1] lasti
+  124 to 196 -> 2114 [3]
+  198 to 572 -> 2174 [1] lasti
+  574 to 620 -> 2124 [3]
+  630 to 640 -> 2124 [3]
+  642 to 652 -> 2174 [1] lasti
+  654 to 700 -> 2134 [3]
+  710 to 720 -> 2134 [3]
+  722 to 1116 -> 2174 [1] lasti
+  1118 to 1168 -> 2144 [3]
+  1178 to 1188 -> 2144 [3]
+  1190 to 1200 -> 2174 [1] lasti
+  1202 to 1248 -> 2154 [3]
+  1258 to 1298 -> 2154 [3]
+  1300 to 1824 -> 2174 [1] lasti
+  1826 to 1878 -> 2164 [5]
+  1880 to 2092 -> 2174 [1] lasti
+  2114 to 2172 -> 2174 [1] lasti
+  2174 to 2192 -> 2202 [3] lasti
+
+# Method Name:       run_stop
+# Filename:          tools\high_pressure_test.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  11
+# Stack size:        9
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        153
+# Constants:
+#    0: None
+#    1: 'plus-pressure-stop-'
+#    2: ('prefix',)
+#    3: 'pool.txt'
+#    4: '\n'
+#    5: <Code311 code object <genexpr> at 0x109415640, file tools\high_pressure_test.py>, line 157
+#    6: 'utf-8'
+#    7: ('encoding',)
+#    8: 'state.json'
+#    9: 'results'
+#   10: 'runner.js'
+#   11: '// offline pressure placeholder\n'
+#   12: <Code311 code object fake_run at 0x1094156a0, file tools\high_pressure_test.py>, line 163
+#   13: 0.05
+#   14: 'tasks'
+#   15: 'available'
+#   16: 'stop accounting mismatch: tasks='
+#   17: ' pool='
+#   18: <Code311 code object <genexpr> at 0x109415730, file tools\high_pressure_test.py>, line 181
+#   19: 'stop left a task in a non-stopped state'
+#   20: 'stop'
+#   21: ('batch', 'targets', 'configured_concurrency', 'stopped', 'pool_available_after')
+#   22: (None, '')
+# Names:
+#    0: tempfile
+#    1: TemporaryDirectory
+#    2: Path
+#    3: write_text
+#    4: join
+#    5: range
+#    6: _settings
+#    7: _new_importer
+#    8: _run_one
+#    9: start
+#   10: time
+#   11: sleep
+#   12: stop
+#   13: _wait_finished
+#   14: MailboxPool
+#   15: summary
+#   16: len
+#   17: get
+#   18: AssertionError
+#   19: any
+# Varnames:
+#	targets, concurrency, raw_root, root, pool_path, state_path, settings, fake_run, status, pool, summary
+# Positional arguments:
+#	targets, concurrency
+# Local variables:
+#    2: raw_root
+#    3: root
+#    4: pool_path
+#    5: state_path
+#    6: settings
+#    7: fake_run
+#    8: status
+#    9: pool
+#   10: summary
+# Cell variables:
+#    0: importer
+               0 MAKE_CELL            (importer)
+
+153:           2 RESUME               0
+
+154:           4 LOAD_GLOBAL          (tempfile)
+              14 LOAD_ATTR            (TemporaryDirectory)
+              34 PUSH_NULL
+              36 LOAD_CONST           ("plus-pressure-stop-")
+              38 LOAD_CONST           (('prefix',))
+              40 CALL_KW              1
+              42 BEFORE_WITH
+              44 STORE_FAST           (raw_root)
+
+155:          46 LOAD_GLOBAL          (NULL + Path)
+              56 LOAD_FAST            (raw_root)
+              58 CALL                 (1 positional)
+              66 STORE_FAST           (root)
+
+156:          68 LOAD_FAST            (root)
+              70 LOAD_CONST           ("pool.txt")
+              72 BINARY_OP            (/)
+              76 STORE_FAST           (pool_path)
+
+157:          78 LOAD_FAST            (pool_path)
+              80 LOAD_ATTR            (NULL|self + write_text)
+             100 LOAD_CONST           ("\n")
+             102 LOAD_ATTR            (NULL|self + join)
+             122 LOAD_CONST           (<Code311 code object <genexpr> at 0x109415640, file tools\high_pressure_test.py>, line 157)
+             124 MAKE_FUNCTION
+             126 LOAD_GLOBAL          (NULL + range)
+             136 LOAD_FAST            (targets)
+             138 CALL                 (1 positional)
+             146 GET_ITER
+             148 CALL                 (0 positional)
+             156 CALL                 (1 positional)
+             164 LOAD_CONST           ("\n")
+             166 BINARY_OP            (+)
+             170 LOAD_CONST           ("utf-8")
+             172 LOAD_CONST           (('encoding',))
+             174 CALL_KW              2
+             176 POP_TOP
+
+158:         178 LOAD_FAST            (root)
+             180 LOAD_CONST           ("state.json")
+             182 BINARY_OP            (/)
+             186 STORE_FAST           (state_path)
+
+159:         188 LOAD_GLOBAL          (NULL + _settings)
+             198 LOAD_FAST_LOAD_FAST  (root, pool_path)
+             200 LOAD_FAST_LOAD_FAST  (state_path, root)
+             202 LOAD_CONST           ("results")
+             204 BINARY_OP            (/)
+             208 LOAD_FAST            (concurrency)
+             210 CALL                 (5 positional)
+             218 STORE_FAST           (settings)
+
+160:         220 LOAD_FAST            (root)
+             222 LOAD_CONST           ("runner.js")
+             224 BINARY_OP            (/)
+             228 LOAD_ATTR            (NULL|self + write_text)
+             248 LOAD_CONST           ("// offline pressure placeholder\n")
+             250 LOAD_CONST           ("utf-8")
+             252 LOAD_CONST           (('encoding',))
+             254 CALL_KW              2
+             256 POP_TOP
+
+161:         258 LOAD_GLOBAL          (NULL + _new_importer)
+             268 LOAD_FAST            (root)
+             270 CALL                 (1 positional)
+             278 STORE_DEREF          (importer)
+
+163:         280 LOAD_CONST           ((None, ''))
+             282 LOAD_FAST            (importer)
+             284 BUILD_TUPLE          1
+             286 LOAD_CONST           (<Code311 code object fake_run at 0x1094156a0, file tools\high_pressure_test.py>, line 163)
+             288 MAKE_FUNCTION
+             290 SET_FUNCTION_ATTRIBUTE 8
+             292 SET_FUNCTION_ATTRIBUTE 1
+             294 STORE_FAST           (fake_run)
+
+172:         296 LOAD_FAST            (fake_run)
+             298 LOAD_DEREF           (importer)
+             300 STORE_ATTR           (_run_one)
+
+173:         310 LOAD_DEREF           (importer)
+             312 LOAD_ATTR            (NULL|self + start)
+             332 LOAD_FAST            (settings)
+             334 CALL                 (1 positional)
+             342 POP_TOP
+
+174:         344 LOAD_GLOBAL          (time)
+             354 LOAD_ATTR            (sleep)
+             374 PUSH_NULL
+             376 LOAD_CONST           (0.05)
+             378 CALL                 (1 positional)
+             386 POP_TOP
+
+175:         388 LOAD_DEREF           (importer)
+             390 LOAD_ATTR            (NULL|self + stop)
+             410 CALL                 (0 positional)
+             418 POP_TOP
+
+176:         420 LOAD_GLOBAL          (NULL + _wait_finished)
+             430 LOAD_DEREF           (importer)
+             432 LOAD_FAST            (settings)
+             434 CALL                 (2 positional)
+             442 STORE_FAST           (status)
+
+177:         444 LOAD_GLOBAL          (NULL + MailboxPool)
+             454 LOAD_FAST_LOAD_FAST  (pool_path, state_path)
+             456 CALL                 (2 positional)
+             464 STORE_FAST           (pool)
+
+178:         466 LOAD_FAST            (pool)
+             468 LOAD_ATTR            (NULL|self + summary)
+             488 CALL                 (0 positional)
+             496 STORE_FAST           (summary)
+
+179:         498 LOAD_GLOBAL          (NULL + len)
+             508 LOAD_FAST            (status)
+             510 LOAD_CONST           ("tasks")
+             512 BINARY_SUBSCR
+             516 CALL                 (1 positional)
+             524 LOAD_FAST            (targets)
+             526 COMPARE_OP           (!=)
+             530 POP_JUMP_IF_TRUE     (to 576)
+             534 LOAD_FAST            (summary)
+             536 LOAD_ATTR            (NULL|self + get)
+             556 LOAD_CONST           ("available")
+             558 CALL                 (1 positional)
+             566 LOAD_FAST            (targets)
+             568 COMPARE_OP           (!=)
+             572 POP_JUMP_IF_FALSE    (to 634)
+
+180:     >>  576 LOAD_GLOBAL          (NULL + AssertionError)
+             586 LOAD_CONST           ("stop accounting mismatch: tasks=")
+             588 LOAD_GLOBAL          (NULL + len)
+             598 LOAD_FAST            (status)
+             600 LOAD_CONST           ("tasks")
+             602 BINARY_SUBSCR
+             606 CALL                 (1 positional)
+             614 FORMAT_SIMPLE
+             616 LOAD_CONST           (" pool=")
+             618 LOAD_FAST            (summary)
+             620 FORMAT_SIMPLE
+             622 BUILD_STRING         4
+             624 CALL                 (1 positional)
+             632 RAISE_VARARGS        (exception instance)
+
+181:     >>  634 LOAD_GLOBAL          (NULL + any)
+             644 LOAD_CONST           (<Code311 code object <genexpr> at 0x109415730, file tools\high_pressure_test.py>, line 181)
+             646 MAKE_FUNCTION
+             648 LOAD_FAST            (status)
+             650 LOAD_CONST           ("tasks")
+             652 BINARY_SUBSCR
+             656 GET_ITER
+             658 CALL                 (0 positional)
+             666 CALL                 (1 positional)
+             674 TO_BOOL
+             682 POP_JUMP_IF_FALSE    (to 708)
+
+182:         686 LOAD_GLOBAL          (NULL + AssertionError)
+             696 LOAD_CONST           ("stop left a task in a non-stopped state")
+             698 CALL                 (1 positional)
+             706 RAISE_VARARGS        (exception instance)
+
+183:     >>  708 LOAD_CONST           ("stop")
+             710 LOAD_FAST_LOAD_FAST  (targets, concurrency)
+             712 LOAD_GLOBAL          (NULL + len)
+             722 LOAD_FAST            (status)
+             724 LOAD_CONST           ("tasks")
+             726 BINARY_SUBSCR
+             730 CALL                 (1 positional)
+             738 LOAD_FAST            (summary)
+             740 LOAD_ATTR            (NULL|self + get)
+             760 LOAD_CONST           ("available")
+             762 CALL                 (1 positional)
+             770 LOAD_CONST           (('batch', 'targets', 'configured_concurrency', 'stopped', 'pool_available_after'))
+             772 BUILD_CONST_KEY_MAP  5
+
+154:         774 SWAP                 (TOS <-> TOS1)
+             776 LOAD_CONST           (None)
+             778 LOAD_CONST           (None)
+             780 LOAD_CONST           (None)
+             782 CALL                 (2 positional)
+             790 POP_TOP
+             792 RETURN_VALUE
+         >>  794 PUSH_EXC_INFO
+             796 WITH_EXCEPT_START    0
+             798 TO_BOOL
+             806 POP_JUMP_IF_TRUE     (to 812)
+             810 RERAISE              2
+         >>  812 POP_TOP
+             814 POP_EXCEPT
+             816 POP_TOP
+             818 POP_TOP
+             820 RETURN_CONST         (None)
+         >>  822 COPY                 3
+             824 POP_EXCEPT
+             826 RERAISE              1
+
+ExceptionTable:
+  44 to 772 -> 794 [1] lasti
+  794 to 812 -> 822 [3] lasti
+
+# Method Name:       run_release_pressure
+# Filename:          tools\high_pressure_test.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        186
+# Constants:
+#    0: None
+#    1: 1000
+#    2: 'targets must be at least 1000 for the release pressure gate'
+#    3: 40
+#    4: 'concurrency must be at least 40 for the release pressure gate'
+#    5: 'auto'
+#    6: ('mode',)
+#    7: 'manual'
+#    8: True
+#    9: ('ok', 'targets', 'concurrency', 'reports')
+# Names:
+#    0: ValueError
+#    1: run_success_failure
+#    2: run_stop
+# Varnames:
+#	targets, concurrency, reports
+# Positional arguments:
+#	targets, concurrency
+# Local variables:
+#    2: reports
+186:           0 RESUME               0
+
+187:           2 LOAD_FAST            (targets)
+               4 LOAD_CONST           (1000)
+               6 COMPARE_OP           (<)
+              10 POP_JUMP_IF_FALSE    (to 36)
+
+188:          14 LOAD_GLOBAL          (NULL + ValueError)
+              24 LOAD_CONST           ("targets must be at least 1000 for the release pressure gate")
+              26 CALL                 (1 positional)
+              34 RAISE_VARARGS        (exception instance)
+
+189:     >>   36 LOAD_FAST            (concurrency)
+              38 LOAD_CONST           (40)
+              40 COMPARE_OP           (<)
+              44 POP_JUMP_IF_FALSE    (to 70)
+
+190:          48 LOAD_GLOBAL          (NULL + ValueError)
+              58 LOAD_CONST           ("concurrency must be at least 40 for the release pressure gate")
+              60 CALL                 (1 positional)
+              68 RAISE_VARARGS        (exception instance)
+
+192:     >>   70 LOAD_GLOBAL          (NULL + run_success_failure)
+              80 LOAD_FAST_LOAD_FAST  (targets, concurrency)
+              82 LOAD_CONST           ("auto")
+              84 LOAD_CONST           (('mode',))
+              86 CALL_KW              3
+
+193:          88 LOAD_GLOBAL          (NULL + run_success_failure)
+              98 LOAD_FAST_LOAD_FAST  (targets, concurrency)
+             100 LOAD_CONST           ("manual")
+             102 LOAD_CONST           (('mode',))
+             104 CALL_KW              3
+
+194:         106 LOAD_GLOBAL          (NULL + run_stop)
+             116 LOAD_FAST_LOAD_FAST  (targets, concurrency)
+             118 CALL                 (2 positional)
+
+191:         126 BUILD_LIST           3
+             128 STORE_FAST           (reports)
+
+196:         130 LOAD_CONST           (True)
+             132 LOAD_FAST_LOAD_FAST  (targets, concurrency)
+             134 LOAD_FAST            (reports)
+             136 LOAD_CONST           (('ok', 'targets', 'concurrency', 'reports'))
+             138 BUILD_CONST_KEY_MAP  4
+             140 RETURN_VALUE
+
+
+# Method Name:       main
+# Filename:          tools\high_pressure_test.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        199
+# Constants:
+#    0: None
+#    1: ('description',)
+#    2: '--targets'
+#    3: 1000
+#    4: ('type', 'default')
+#    5: '--concurrency'
+#    6: 50
+#    7: False
+#    8: ('ensure_ascii',)
+#    9: 0
+# Names:
+#    0: argparse
+#    1: ArgumentParser
+#    2: __doc__
+#    3: add_argument
+#    4: int
+#    5: parse_args
+#    6: run_release_pressure
+#    7: targets
+#    8: concurrency
+#    9: ValueError
+#   10: SystemExit
+#   11: str
+#   12: print
+#   13: json
+#   14: dumps
+# Varnames:
+#	argv, parser, args, report, exc
+# Positional arguments:
+#	argv
+# Local variables:
+#    1: parser
+#    2: args
+#    3: report
+#    4: exc
+199:           0 RESUME               0
+
+200:           2 LOAD_GLOBAL          (argparse)
+              12 LOAD_ATTR            (ArgumentParser)
+              32 PUSH_NULL
+              34 LOAD_GLOBAL          (__doc__)
+              44 LOAD_CONST           (('description',))
+              46 CALL_KW              1
+              48 STORE_FAST           (parser)
+
+201:          50 LOAD_FAST            (parser)
+              52 LOAD_ATTR            (NULL|self + add_argument)
+              72 LOAD_CONST           ("--targets")
+              74 LOAD_GLOBAL          (int)
+              84 LOAD_CONST           (1000)
+              86 LOAD_CONST           (('type', 'default'))
+              88 CALL_KW              3
+              90 POP_TOP
+
+202:          92 LOAD_FAST            (parser)
+              94 LOAD_ATTR            (NULL|self + add_argument)
+             114 LOAD_CONST           ("--concurrency")
+             116 LOAD_GLOBAL          (int)
+             126 LOAD_CONST           (50)
+             128 LOAD_CONST           (('type', 'default'))
+             130 CALL_KW              3
+             132 POP_TOP
+
+203:         134 LOAD_FAST            (parser)
+             136 LOAD_ATTR            (NULL|self + parse_args)
+             156 LOAD_FAST            (argv)
+             158 CALL                 (1 positional)
+             166 STORE_FAST           (args)
+
+204:         168 NOP
+
+205:         170 LOAD_GLOBAL          (NULL + run_release_pressure)
+             180 LOAD_FAST            (args)
+             182 LOAD_ATTR            (targets)
+             202 LOAD_FAST            (args)
+             204 LOAD_ATTR            (concurrency)
+             224 CALL                 (2 positional)
+             232 STORE_FAST           (report)
+
+208:         234 LOAD_GLOBAL          (NULL + print)
+             244 LOAD_GLOBAL          (json)
+             254 LOAD_ATTR            (dumps)
+             274 PUSH_NULL
+             276 LOAD_FAST            (report)
+             278 LOAD_CONST           (False)
+             280 LOAD_CONST           (('ensure_ascii',))
+             282 CALL_KW              2
+             284 CALL                 (1 positional)
+             292 POP_TOP
+
+209:         294 RETURN_CONST         (0)
+         >>  296 PUSH_EXC_INFO
+
+206:         298 LOAD_GLOBAL          (ValueError)
+             308 CHECK_EXC_MATCH
+             310 POP_JUMP_IF_FALSE    (to 366)
+             314 STORE_FAST           (exc)
+
+207:         316 LOAD_GLOBAL          (NULL + SystemExit)
+             326 LOAD_GLOBAL          (NULL + str)
+             336 LOAD_FAST            (exc)
+             338 CALL                 (1 positional)
+             346 CALL                 (1 positional)
+             354 LOAD_FAST            (exc)
+             356 RAISE_VARARGS        (exception instance with __cause__)
+         >>  358 LOAD_CONST           (None)
+             360 STORE_FAST           (exc)
+             362 DELETE_FAST          (exc)
+             364 RERAISE              1
+
+206:     >>  366 RERAISE              0
+         >>  368 COPY                 3
+             370 POP_EXCEPT
+             372 RERAISE              1
+
+ExceptionTable:
+  170 to 232 -> 296 [0]
+  296 to 314 -> 368 [1] lasti
+  316 to 356 -> 358 [1] lasti
+  358 to 366 -> 368 [1] lasti
+
+# Method Name:       <lambda>
+# Filename:          tools\high_pressure_test.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        78
+# Constants:
+#    0: None
+#    1: ':'
+# Names:
+#    0: append
+# Varnames:
+#	message, level
+# Positional arguments:
+#	message, level
+# Free variables:
+#    0: logs
+               0 COPY_FREE_VARS       1
+
+ 78:           2 RESUME               0
+               4 LOAD_DEREF           (logs)
+               6 POP_JUMP_IF_NONE     (to 54)
+              10 LOAD_DEREF           (logs)
+              12 LOAD_ATTR            (NULL|self + append)
+              32 LOAD_FAST            (level)
+              34 FORMAT_SIMPLE
+              36 LOAD_CONST           (":")
+              38 LOAD_FAST            (message)
+              40 FORMAT_SIMPLE
+              42 BUILD_STRING         3
+              44 CALL                 (1 positional)
+              52 RETURN_VALUE
+         >>   54 LOAD_CONST           (None)
+              56 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          tools\high_pressure_test.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        79
+# Constants:
+#    0: None
+#    1: 'ok'
+#    2: True
+#    3: ('pool', 'remote')
+# Varnames:
+#	_settings, remote
+# Positional arguments:
+#	_settings, remote
+ 79:           0 RESUME               0
+               2 LOAD_CONST           ("ok")
+               4 LOAD_CONST           (True)
+               6 BUILD_MAP            1
+               8 LOAD_FAST            (remote)
+              10 LOAD_CONST           (('pool', 'remote'))
+              12 BUILD_CONST_KEY_MAP  2
+              14 RETURN_VALUE
+
+
+# Method Name:       fake_run
+# Filename:          tools\high_pressure_test.py
+# Argument count:    4
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        9
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        102
+# Constants:
+#    0: None
+#    1: 'T'
+#    2: '04d'
+#    3: 1
+#    4: 0.01
+#    5: 5
+#    6: 0.001
+#    7: 7
+#    8: 0
+#    9: 'synthetic_failure'
+#   10: ('reason',)
+#   11: 'ok'
+#   12: False
+#   13: 'failed'
+#   14: ('error', 'status')
+#   15: ('status', 'email', 'account', 'source_row', 'error')
+#   16: True
+#   17: 'success'
+#   18: ('status',)
+#   19: 'synthetic_success'
+#   20: ('status', 'email', 'account', 'source_row')
+# Names:
+#    0: _pool
+#    1: max
+#    2: time
+#    3: sleep
+#    4: restore_entry
+#    5: _persist_result
+#    6: _task_state
+#    7: email
+#    8: _account_label
+#    9: _source_row
+#   10: remove_entry
+# Varnames:
+#	task_settings, ordinal, assigned_entry, assigned_task_id, task_id, pool
+# Positional arguments:
+#	task_settings, ordinal, assigned_entry, assigned_task_id
+# Local variables:
+#    4: task_id
+#    5: pool
+# Free variables:
+#    0: active
+#    1: active_lock
+#    2: importer
+#    3: peak
+               0 COPY_FREE_VARS       4
+
+102:           2 RESUME               0
+
+104:           4 LOAD_FAST            (assigned_entry)
+               6 POP_JUMP_IF_NOT_NONE (to 14)
+              10 LOAD_ASSERTION_ERROR
+              12 RAISE_VARARGS        (exception instance)
+
+105:     >>   14 LOAD_FAST            (assigned_task_id)
+              16 COPY                 1
+              18 TO_BOOL
+              26 POP_JUMP_IF_TRUE     (to 42)
+              30 POP_TOP
+              32 LOAD_CONST           ("T")
+              34 LOAD_FAST            (ordinal)
+              36 LOAD_CONST           ("04d")
+              38 FORMAT_WITH_SPEC
+              40 BUILD_STRING         2
+         >>   42 STORE_FAST           (task_id)
+
+106:          44 LOAD_DEREF           (importer)
+              46 LOAD_ATTR            (NULL|self + _pool)
+              66 LOAD_FAST            (task_settings)
+              68 CALL                 (1 positional)
+              76 STORE_FAST           (pool)
+
+107:          78 LOAD_DEREF           (active_lock)
+              80 BEFORE_WITH
+              82 POP_TOP
+
+108:          84 LOAD_DEREF           (active)
+              86 LOAD_CONST           (1)
+              88 BINARY_OP            (+=)
+              92 STORE_DEREF          (active)
+
+109:          94 LOAD_GLOBAL          (NULL + max)
+             104 LOAD_DEREF           (peak)
+             106 LOAD_DEREF           (active)
+             108 CALL                 (2 positional)
+             116 STORE_DEREF          (peak)
+
+107:         118 LOAD_CONST           (None)
+             120 LOAD_CONST           (None)
+             122 LOAD_CONST           (None)
+             124 CALL                 (2 positional)
+             132 POP_TOP
+
+110:         134 NOP
+
+111:         136 LOAD_GLOBAL          (time)
+             146 LOAD_ATTR            (sleep)
+             166 PUSH_NULL
+             168 LOAD_CONST           (0.01)
+             170 LOAD_FAST            (ordinal)
+             172 LOAD_CONST           (5)
+             174 BINARY_OP            (%)
+             178 LOAD_CONST           (0.001)
+             180 BINARY_OP            (*)
+             184 BINARY_OP            (+)
+             188 CALL                 (1 positional)
+             196 POP_TOP
+
+112:         198 LOAD_FAST            (ordinal)
+             200 LOAD_CONST           (7)
+             202 BINARY_OP            (%)
+             206 LOAD_CONST           (0)
+             208 COMPARE_OP           (==)
+             212 POP_JUMP_IF_FALSE    (to 426)
+
+113:         216 LOAD_FAST            (pool)
+             218 LOAD_ATTR            (NULL|self + restore_entry)
+             238 LOAD_FAST            (assigned_entry)
+             240 LOAD_CONST           ("synthetic_failure")
+             242 LOAD_CONST           (('reason',))
+             244 CALL_KW              2
+             246 TO_BOOL
+             254 POP_JUMP_IF_TRUE     (to 262)
+             258 LOAD_ASSERTION_ERROR
+             260 RAISE_VARARGS        (exception instance)
+
+114:     >>  262 LOAD_DEREF           (importer)
+             264 LOAD_ATTR            (NULL|self + _persist_result)
+             284 LOAD_FAST_LOAD_FAST  (task_settings, task_id)
+             286 LOAD_FAST            (assigned_entry)
+             288 LOAD_CONST           ("ok")
+             290 LOAD_CONST           (False)
+             292 BUILD_MAP            1
+             294 LOAD_CONST           ("synthetic_failure")
+             296 LOAD_CONST           ("failed")
+             298 LOAD_CONST           (('error', 'status'))
+             300 CALL_KW              6
+             302 POP_TOP
+
+115:         304 LOAD_DEREF           (importer)
+             306 LOAD_ATTR            (NULL|self + _task_state)
+             326 LOAD_FAST            (task_id)
+             328 LOAD_CONST           ("failed")
+             330 LOAD_FAST            (assigned_entry)
+             332 LOAD_ATTR            (email)
+             352 LOAD_DEREF           (importer)
+             354 LOAD_ATTR            (NULL|self + _account_label)
+             374 LOAD_FAST            (assigned_entry)
+             376 CALL                 (1 positional)
+             384 LOAD_DEREF           (importer)
+             386 LOAD_ATTR            (NULL|self + _source_row)
+             406 LOAD_FAST            (assigned_entry)
+             408 CALL                 (1 positional)
+             416 LOAD_CONST           ("synthetic_failure")
+             418 LOAD_CONST           (('status', 'email', 'account', 'source_row', 'error'))
+             420 CALL_KW              6
+             422 POP_TOP
+             424 JUMP_FORWARD         (to 630)
+
+117:     >>  426 LOAD_DEREF           (importer)
+             428 LOAD_ATTR            (NULL|self + _persist_result)
+             448 LOAD_FAST_LOAD_FAST  (task_settings, task_id)
+             450 LOAD_FAST            (assigned_entry)
+             452 LOAD_CONST           ("ok")
+             454 LOAD_CONST           (True)
+             456 BUILD_MAP            1
+             458 LOAD_CONST           ("success")
+             460 LOAD_CONST           (('status',))
+             462 CALL_KW              5
+             464 POP_TOP
+
+118:         466 LOAD_FAST            (pool)
+             468 LOAD_ATTR            (NULL|self + remove_entry)
+             488 LOAD_FAST            (assigned_entry)
+             490 LOAD_CONST           ("synthetic_success")
+             492 LOAD_CONST           (('reason',))
+             494 CALL_KW              2
+             496 TO_BOOL
+             504 POP_JUMP_IF_TRUE     (to 512)
+             508 LOAD_ASSERTION_ERROR
+             510 RAISE_VARARGS        (exception instance)
+
+119:     >>  512 LOAD_DEREF           (importer)
+             514 LOAD_ATTR            (NULL|self + _task_state)
+             534 LOAD_FAST            (task_id)
+             536 LOAD_CONST           ("success")
+             538 LOAD_FAST            (assigned_entry)
+             540 LOAD_ATTR            (email)
+             560 LOAD_DEREF           (importer)
+             562 LOAD_ATTR            (NULL|self + _account_label)
+             582 LOAD_FAST            (assigned_entry)
+             584 CALL                 (1 positional)
+             592 LOAD_DEREF           (importer)
+             594 LOAD_ATTR            (NULL|self + _source_row)
+             614 LOAD_FAST            (assigned_entry)
+             616 CALL                 (1 positional)
+             624 LOAD_CONST           (('status', 'email', 'account', 'source_row'))
+             626 CALL_KW              5
+             628 POP_TOP
+
+121:     >>  630 LOAD_DEREF           (active_lock)
+             632 BEFORE_WITH
+             634 POP_TOP
+
+122:         636 LOAD_DEREF           (active)
+             638 LOAD_CONST           (1)
+             640 BINARY_OP            (-=)
+             644 STORE_DEREF          (active)
+
+121:         646 LOAD_CONST           (None)
+             648 LOAD_CONST           (None)
+             650 LOAD_CONST           (None)
+             652 CALL                 (2 positional)
+             660 POP_TOP
+             662 RETURN_CONST         (None)
+
+107:     >>  664 PUSH_EXC_INFO
+             666 WITH_EXCEPT_START    0
+             668 TO_BOOL
+             676 POP_JUMP_IF_TRUE     (to 682)
+             680 RERAISE              2
+         >>  682 POP_TOP
+             684 POP_EXCEPT
+             686 POP_TOP
+             688 POP_TOP
+             690 EXTENDED_ARG         (256)
+             692 JUMP_BACKWARD_NO_INTERRUPT (to 134)
+         >>  694 COPY                 3
+             696 POP_EXCEPT
+             698 RERAISE              1
+
+121:     >>  700 PUSH_EXC_INFO
+             702 WITH_EXCEPT_START    0
+             704 TO_BOOL
+             712 POP_JUMP_IF_TRUE     (to 718)
+             716 RERAISE              2
+         >>  718 POP_TOP
+             720 POP_EXCEPT
+             722 POP_TOP
+             724 POP_TOP
+             726 RETURN_CONST         (None)
+         >>  728 COPY                 3
+             730 POP_EXCEPT
+             732 RERAISE              1
+         >>  734 PUSH_EXC_INFO
+
+121:         736 LOAD_DEREF           (active_lock)
+             738 BEFORE_WITH
+             740 POP_TOP
+
+122:         742 LOAD_DEREF           (active)
+             744 LOAD_CONST           (1)
+             746 BINARY_OP            (-=)
+             750 STORE_DEREF          (active)
+
+121:         752 LOAD_CONST           (None)
+             754 LOAD_CONST           (None)
+             756 LOAD_CONST           (None)
+             758 CALL                 (2 positional)
+             766 POP_TOP
+             768 RERAISE              0
+         >>  770 PUSH_EXC_INFO
+             772 WITH_EXCEPT_START    0
+             774 TO_BOOL
+             782 POP_JUMP_IF_TRUE     (to 788)
+             786 RERAISE              2
+         >>  788 POP_TOP
+             790 POP_EXCEPT
+             792 POP_TOP
+             794 POP_TOP
+             796 RERAISE              0
+         >>  798 COPY                 3
+             800 POP_EXCEPT
+             802 RERAISE              1
+         >>  804 COPY                 3
+             806 POP_EXCEPT
+             808 RERAISE              1
+
+ExceptionTable:
+  82 to 116 -> 664 [1] lasti
+  136 to 628 -> 734 [0]
+  634 to 644 -> 700 [1] lasti
+  664 to 682 -> 694 [3] lasti
+  700 to 718 -> 728 [3] lasti
+  734 to 738 -> 804 [1] lasti
+  740 to 750 -> 770 [3] lasti
+  752 to 768 -> 804 [1] lasti
+  770 to 788 -> 798 [5] lasti
+  790 to 802 -> 804 [1] lasti
+
+# Method Name:       <genexpr>
+# Filename:          tools\high_pressure_test.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        6
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        157
+# Constants:
+#    0: 'stop'
+#    1: '04d'
+#    2: '@example.test----https://mailbox.example.test/'
+#    3: None
+# Varnames:
+#	.0, index
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: index
+157:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 44)
+              14 STORE_FAST           (index)
+              16 LOAD_CONST           ("stop")
+              18 LOAD_FAST            (index)
+              20 LOAD_CONST           ("04d")
+              22 FORMAT_WITH_SPEC
+              24 LOAD_CONST           ("@example.test----https://mailbox.example.test/")
+              26 LOAD_FAST            (index)
+              28 LOAD_CONST           ("04d")
+              30 FORMAT_WITH_SPEC
+              32 BUILD_STRING         4
+              34 YIELD_VALUE          0
+              36 RESUME               5
+              38 POP_TOP
+              40 JUMP_BACKWARD        (to 10)
+         >>   44 END_FOR
+              46 POP_TOP
+              48 RETURN_CONST         (None)
+         >>   50 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              52 RERAISE              1
+
+ExceptionTable:
+  4 to 48 -> 50 [0] lasti
+
+# Method Name:       fake_run
+# Filename:          tools\high_pressure_test.py
+# Argument count:    4
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        9
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        163
+# Constants:
+#    0: None
+#    1: 'T'
+#    2: '04d'
+#    3: 0.003
+#    4: 'pressure_stop'
+#    5: ('reason',)
+#    6: 'stopped'
+#    7: '已停止'
+#    8: ('status', 'email', 'account', 'source_row', 'error')
+# Names:
+#    0: _pool
+#    1: stop_event
+#    2: wait
+#    3: restore_entry
+#    4: _task_state
+#    5: email
+#    6: _account_label
+#    7: _source_row
+# Varnames:
+#	task_settings, ordinal, assigned_entry, assigned_task_id, task_id, pool
+# Positional arguments:
+#	task_settings, ordinal, assigned_entry, assigned_task_id
+# Local variables:
+#    4: task_id
+#    5: pool
+# Free variables:
+#    0: importer
+               0 COPY_FREE_VARS       1
+
+163:           2 RESUME               0
+
+164:           4 LOAD_FAST            (assigned_entry)
+               6 POP_JUMP_IF_NOT_NONE (to 14)
+              10 LOAD_ASSERTION_ERROR
+              12 RAISE_VARARGS        (exception instance)
+
+165:     >>   14 LOAD_FAST            (assigned_task_id)
+              16 COPY                 1
+              18 TO_BOOL
+              26 POP_JUMP_IF_TRUE     (to 42)
+              30 POP_TOP
+              32 LOAD_CONST           ("T")
+              34 LOAD_FAST            (ordinal)
+              36 LOAD_CONST           ("04d")
+              38 FORMAT_WITH_SPEC
+              40 BUILD_STRING         2
+         >>   42 STORE_FAST           (task_id)
+
+166:          44 LOAD_DEREF           (importer)
+              46 LOAD_ATTR            (NULL|self + _pool)
+              66 LOAD_FAST            (task_settings)
+              68 CALL                 (1 positional)
+              76 STORE_FAST           (pool)
+
+167:          78 LOAD_DEREF           (importer)
+              80 LOAD_ATTR            (stop_event)
+             100 LOAD_ATTR            (NULL|self + wait)
+             120 LOAD_CONST           (0.003)
+             122 CALL                 (1 positional)
+             130 TO_BOOL
+             138 POP_JUMP_IF_TRUE     (to 212)
+
+168:         142 NOP
+
+167:         144 LOAD_DEREF           (importer)
+             146 LOAD_ATTR            (stop_event)
+             166 LOAD_ATTR            (NULL|self + wait)
+             186 LOAD_CONST           (0.003)
+             188 CALL                 (1 positional)
+             196 TO_BOOL
+             204 POP_JUMP_IF_TRUE     (to 212)
+             208 JUMP_BACKWARD        (to 142)
+
+169:     >>  212 LOAD_FAST            (pool)
+             214 LOAD_ATTR            (NULL|self + restore_entry)
+             234 LOAD_FAST            (assigned_entry)
+             236 LOAD_CONST           ("pressure_stop")
+             238 LOAD_CONST           (('reason',))
+             240 CALL_KW              2
+             242 POP_TOP
+
+170:         244 LOAD_DEREF           (importer)
+             246 LOAD_ATTR            (NULL|self + _task_state)
+             266 LOAD_FAST            (task_id)
+             268 LOAD_CONST           ("stopped")
+             270 LOAD_FAST            (assigned_entry)
+             272 LOAD_ATTR            (email)
+             292 LOAD_DEREF           (importer)
+             294 LOAD_ATTR            (NULL|self + _account_label)
+             314 LOAD_FAST            (assigned_entry)
+             316 CALL                 (1 positional)
+             324 LOAD_DEREF           (importer)
+             326 LOAD_ATTR            (NULL|self + _source_row)
+             346 LOAD_FAST            (assigned_entry)
+             348 CALL                 (1 positional)
+             356 LOAD_CONST           ("已停止")
+             358 LOAD_CONST           (('status', 'email', 'account', 'source_row', 'error'))
+             360 CALL_KW              6
+             362 POP_TOP
+             364 RETURN_CONST         (None)
+
+
+# Method Name:       <genexpr>
+# Filename:          tools\high_pressure_test.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        181
+# Constants:
+#    0: 'status'
+#    1: {'stopped'}
+#    2: None
+# Names:
+#    0: get
+# Varnames:
+#	.0, task
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: task
+181:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 62)
+              14 STORE_FAST_LOAD_FAST (task, task)
+              16 LOAD_ATTR            (NULL|self + get)
+              36 LOAD_CONST           ("status")
+              38 CALL                 (1 positional)
+              46 LOAD_CONST           ({'stopped'})
+              48 CONTAINS_OP          (not in)
+              52 YIELD_VALUE          0
+              54 RESUME               5
+              56 POP_TOP
+              58 JUMP_BACKWARD        (to 10)
+         >>   62 END_FOR
+              64 POP_TOP
+              66 RETURN_CONST         (None)
+         >>   68 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              70 RERAISE              1
+
+ExceptionTable:
+  4 to 66 -> 68 [0] lasti

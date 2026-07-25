@@ -1,0 +1,6 @@
+mac_runtime/
+raw_extracted/
+data/
+__pycache__/
+*.pyc.__bak__
+.DS_Store

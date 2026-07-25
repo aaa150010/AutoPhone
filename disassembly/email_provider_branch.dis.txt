@@ -1,0 +1,271 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          email_provider_branch.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        10
+# Flags:             0x00000000 (0x0)
+# First Line:        1
+# Constants:
+#    0: 'gptmail'
+#    1: ''
+#    2: 'safe'
+#    3: 'code,验证码,verification code,OpenAI,ChatGPT,gpt'
+#    4: False
+#    5: 1800
+#    6: True
+#    7: 5
+#    8: ('api_key', 'base_url', 'category', 'keyword', 'recycle_failed', 'lease_seconds', 'safe_reserve', 'verify_reserved', 'reserve_attempts')
+#    9: 'config'
+#   10: 'return'
+#   11: <Code311 code object is_mailmanage_compatible at 0x105873ac0, file email_provider_branch.py>, line 16
+#   12: <Code311 code object get_mail_api_config at 0x105873bb0, file email_provider_branch.py>, line 20
+#   13: None
+# Names:
+#    0: GPTMAIL_PROVIDER
+#    1: DEFAULT_GPTMAIL_CONFIG
+#    2: dict
+#    3: bool
+#    4: is_mailmanage_compatible
+#    5: tuple
+#    6: str
+#    7: get_mail_api_config
+  0:           0 RESUME               0
+
+  1:           2 LOAD_CONST           ("gptmail")
+               4 STORE_NAME           (GPTMAIL_PROVIDER)
+
+  4:           6 LOAD_CONST           ("")
+
+  5:           8 LOAD_CONST           ("")
+
+  6:          10 LOAD_CONST           ("safe")
+
+  7:          12 LOAD_CONST           ("code,验证码,verification code,OpenAI,ChatGPT,gpt")
+
+  8:          14 LOAD_CONST           (False)
+
+  9:          16 LOAD_CONST           (1800)
+
+ 10:          18 LOAD_CONST           (True)
+
+ 11:          20 LOAD_CONST           (True)
+
+ 12:          22 LOAD_CONST           (5)
+
+  3:          24 LOAD_CONST           (('api_key', 'base_url', 'category', 'keyword', 'recycle_failed', 'lease_seconds', 'safe_reserve', 'verify_reserved', 'reserve_attempts'))
+              26 BUILD_CONST_KEY_MAP  9
+              28 STORE_NAME           (DEFAULT_GPTMAIL_CONFIG)
+
+ 16:          30 LOAD_CONST           ("config")
+              32 LOAD_NAME            (dict)
+              34 LOAD_CONST           ("return")
+              36 LOAD_NAME            (bool)
+              38 BUILD_TUPLE          4
+              40 LOAD_CONST           (<Code311 code object is_mailmanage_compatible at 0x105873ac0, file email_provider_branch.py>, line 16)
+              42 MAKE_FUNCTION
+              44 SET_FUNCTION_ATTRIBUTE 4
+              46 STORE_NAME           (is_mailmanage_compatible)
+
+ 20:          48 LOAD_CONST           ("config")
+              50 LOAD_NAME            (dict)
+              52 LOAD_CONST           ("return")
+              54 LOAD_NAME            (tuple)
+              56 LOAD_NAME            (dict)
+              58 LOAD_NAME            (str)
+              60 BUILD_TUPLE          2
+              62 BINARY_SUBSCR
+              66 BUILD_TUPLE          4
+              68 LOAD_CONST           (<Code311 code object get_mail_api_config at 0x105873bb0, file email_provider_branch.py>, line 20)
+              70 MAKE_FUNCTION
+              72 SET_FUNCTION_ATTRIBUTE 4
+              74 STORE_NAME           (get_mail_api_config)
+              76 RETURN_CONST         (None)
+
+
+# Method Name:       is_mailmanage_compatible
+# Filename:          email_provider_branch.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        16
+# Constants:
+#    0: None
+#    1: 'email_provider'
+#    2: ''
+#    3: 'mailmanage'
+# Names:
+#    0: get
+#    1: GPTMAIL_PROVIDER
+# Varnames:
+#	config
+# Positional arguments:
+#	config
+ 16:           0 RESUME               0
+
+ 17:           2 LOAD_FAST            (config)
+               4 LOAD_ATTR            (NULL|self + get)
+              24 LOAD_CONST           ("email_provider")
+              26 LOAD_CONST           ("")
+              28 CALL                 (2 positional)
+              36 LOAD_CONST           ("mailmanage")
+              38 LOAD_GLOBAL          (GPTMAIL_PROVIDER)
+              48 BUILD_TUPLE          2
+              50 CONTAINS_OP          (in)
+              54 RETURN_VALUE
+
+
+# Method Name:       get_mail_api_config
+# Filename:          email_provider_branch.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        9
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        20
+# Constants:
+#    0: None
+#    1: 'email_provider'
+#    2: ''
+#    3: True
+#    4: 'safe_reserve'
+#    5: 'verify_reserved'
+#    6: 3
+#    7: 'reserve_attempts'
+#    8: 5
+#    9: 'GPTMail'
+#   10: 'mailmanage'
+#   11: 'MailManage'
+# Names:
+#    0: get
+#    1: GPTMAIL_PROVIDER
+#    2: dict
+#    3: DEFAULT_GPTMAIL_CONFIG
+#    4: update
+#    5: max
+#    6: int
+#    7: Exception
+# Varnames:
+#	config, merged
+# Positional arguments:
+#	config
+# Local variables:
+#    1: merged
+ 20:           0 RESUME               0
+
+ 21:           2 LOAD_FAST            (config)
+               4 LOAD_ATTR            (NULL|self + get)
+              24 LOAD_CONST           ("email_provider")
+              26 LOAD_CONST           ("")
+              28 CALL                 (2 positional)
+              36 LOAD_GLOBAL          (GPTMAIL_PROVIDER)
+              46 COMPARE_OP           (==)
+              50 POP_JUMP_IF_FALSE    (to 304)
+
+ 22:          54 LOAD_GLOBAL          (NULL + dict)
+              64 LOAD_GLOBAL          (DEFAULT_GPTMAIL_CONFIG)
+              74 CALL                 (1 positional)
+              82 STORE_FAST           (merged)
+
+ 23:          84 LOAD_FAST            (merged)
+              86 LOAD_ATTR            (NULL|self + update)
+             106 LOAD_FAST            (config)
+             108 LOAD_ATTR            (NULL|self + get)
+             128 LOAD_GLOBAL          (GPTMAIL_PROVIDER)
+             138 BUILD_MAP            0
+             140 CALL                 (2 positional)
+             148 COPY                 1
+             150 TO_BOOL
+             158 POP_JUMP_IF_TRUE     (to 166)
+             162 POP_TOP
+             164 BUILD_MAP            0
+         >>  166 CALL                 (1 positional)
+             174 POP_TOP
+
+ 26:         176 LOAD_CONST           (True)
+             178 LOAD_FAST            (merged)
+             180 LOAD_CONST           ("safe_reserve")
+             182 STORE_SUBSCR
+
+ 27:         186 LOAD_CONST           (True)
+             188 LOAD_FAST            (merged)
+             190 LOAD_CONST           ("verify_reserved")
+             192 STORE_SUBSCR
+
+ 28:         196 NOP
+
+ 29:         198 LOAD_GLOBAL          (NULL + max)
+             208 LOAD_CONST           (3)
+             210 LOAD_GLOBAL          (NULL + int)
+             220 LOAD_FAST            (merged)
+             222 LOAD_ATTR            (NULL|self + get)
+             242 LOAD_CONST           ("reserve_attempts")
+             244 LOAD_CONST           (5)
+             246 CALL                 (2 positional)
+             254 COPY                 1
+             256 TO_BOOL
+             264 POP_JUMP_IF_TRUE     (to 272)
+             268 POP_TOP
+             270 LOAD_CONST           (5)
+         >>  272 CALL                 (1 positional)
+             280 CALL                 (2 positional)
+             288 LOAD_FAST            (merged)
+             290 LOAD_CONST           ("reserve_attempts")
+             292 STORE_SUBSCR
+
+ 32:         296 LOAD_FAST            (merged)
+             298 LOAD_CONST           ("GPTMail")
+             300 BUILD_TUPLE          2
+             302 RETURN_VALUE
+
+ 33:     >>  304 LOAD_FAST            (config)
+             306 LOAD_ATTR            (NULL|self + get)
+             326 LOAD_CONST           ("mailmanage")
+             328 BUILD_MAP            0
+             330 CALL                 (2 positional)
+             338 COPY                 1
+             340 TO_BOOL
+             348 POP_JUMP_IF_TRUE     (to 356)
+             352 POP_TOP
+             354 BUILD_MAP            0
+         >>  356 LOAD_CONST           ("MailManage")
+             358 BUILD_TUPLE          2
+             360 RETURN_VALUE
+         >>  362 PUSH_EXC_INFO
+
+ 30:         364 LOAD_GLOBAL          (Exception)
+             374 CHECK_EXC_MATCH
+             376 POP_JUMP_IF_FALSE    (to 402)
+             380 POP_TOP
+
+ 31:         382 LOAD_CONST           (5)
+             384 LOAD_FAST            (merged)
+             386 LOAD_CONST           ("reserve_attempts")
+             388 STORE_SUBSCR
+             392 POP_EXCEPT
+
+ 32:         394 LOAD_FAST            (merged)
+             396 LOAD_CONST           ("GPTMail")
+             398 BUILD_TUPLE          2
+             400 RETURN_VALUE
+
+ 30:     >>  402 RERAISE              0
+         >>  404 COPY                 3
+             406 POP_EXCEPT
+             408 RERAISE              1
+
+ExceptionTable:
+  198 to 294 -> 362 [0]
+  362 to 390 -> 404 [1] lasti
+  402 to 402 -> 404 [1] lasti

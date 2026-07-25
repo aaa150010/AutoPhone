@@ -1,0 +1,26 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          tools\__init__.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        1
+# Flags:             0x00000000 (0x0)
+# First Line:        1
+# Constants:
+#    0: 'Standalone plus tool support modules.'
+#    1: None
+# Names:
+#    0: __doc__
+  0:           0 RESUME               0
+
+  1:           2 LOAD_CONST           ("Standalone plus tool support modules.")
+               4 STORE_NAME           (__doc__)
+               6 RETURN_CONST         (None)
+

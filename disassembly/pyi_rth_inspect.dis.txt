@@ -1,0 +1,441 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          pyi_rth_inspect.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        2
+# Flags:             0x00000000 (0x0)
+# First Line:        1
+# Constants:
+#    0: <Code311 code object _pyi_rthook at 0x108317a90, file pyi_rth_inspect.py>, line 13
+#    1: None
+# Names:
+#    0: _pyi_rthook
+  0:           0 RESUME               0
+
+ 13:           2 LOAD_CONST           (<Code311 code object _pyi_rthook at 0x108317a90, file pyi_rth_inspect.py>, line 13)
+               4 MAKE_FUNCTION
+               6 STORE_NAME           (_pyi_rthook)
+
+ 98:           8 LOAD_NAME            (_pyi_rthook)
+              10 PUSH_NULL
+              12 CALL                 (0 positional)
+              20 POP_TOP
+
+ 99:          22 DELETE_NAME          (_pyi_rthook)
+              24 RETURN_CONST         (None)
+
+
+# Method Name:       _pyi_rthook
+# Filename:          pyi_rth_inspect.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        7
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        13
+# Constants:
+#    0: None
+#    1: 0
+#    2: 'base_library.zip'
+#    3: <Code311 code object _get_base_library_files at 0x108317ac0, file pyi_rth_inspect.py>, line 25
+#    4: <Code311 code object _pyi_getsourcefile at 0x108317a60, file pyi_rth_inspect.py>, line 63
+# Names:
+#    0: inspect
+#    1: os
+#    2: sys
+#    3: zipfile
+#    4: path
+#    5: normpath
+#    6: _MEIPASS
+#    7: join
+#    8: getsourcefile
+# Varnames:
+#	_get_base_library_files, _pyi_getsourcefile
+# Local variables:
+#    0: _get_base_library_files
+#    1: _pyi_getsourcefile
+# Cell variables:
+#    0: BASE_LIBRARY
+#    1: SYS_PREFIX
+#    2: _orig_inspect_getsourcefile
+#    3: base_library_files
+#    4: inspect
+#    5: os
+#    6: sys
+#    7: zipfile
+               0 MAKE_CELL            (BASE_LIBRARY)
+               2 MAKE_CELL            (SYS_PREFIX)
+               4 MAKE_CELL            (_orig_inspect_getsourcefile)
+               6 MAKE_CELL            (base_library_files)
+               8 MAKE_CELL            (inspect)
+              10 MAKE_CELL            (os)
+              12 MAKE_CELL            (sys)
+              14 MAKE_CELL            (zipfile)
+
+ 13:          16 RESUME               0
+
+ 14:          18 LOAD_CONST           (0)
+              20 LOAD_CONST           (None)
+              22 IMPORT_NAME          (inspect)
+              24 STORE_DEREF          (inspect)
+
+ 15:          26 LOAD_CONST           (0)
+              28 LOAD_CONST           (None)
+              30 IMPORT_NAME          (os)
+              32 STORE_DEREF          (os)
+
+ 16:          34 LOAD_CONST           (0)
+              36 LOAD_CONST           (None)
+              38 IMPORT_NAME          (sys)
+              40 STORE_DEREF          (sys)
+
+ 17:          42 LOAD_CONST           (0)
+              44 LOAD_CONST           (None)
+              46 IMPORT_NAME          (zipfile)
+              48 STORE_DEREF          (zipfile)
+
+ 21:          50 LOAD_DEREF           (os)
+              52 LOAD_ATTR            (path)
+              72 LOAD_ATTR            (NULL|self + normpath)
+              92 LOAD_DEREF           (sys)
+              94 LOAD_ATTR            (_MEIPASS)
+             114 CALL                 (1 positional)
+             122 STORE_DEREF          (SYS_PREFIX)
+
+ 22:         124 LOAD_DEREF           (os)
+             126 LOAD_ATTR            (path)
+             146 LOAD_ATTR            (NULL|self + join)
+             166 LOAD_DEREF           (SYS_PREFIX)
+             168 LOAD_CONST           ("base_library.zip")
+             170 CALL                 (2 positional)
+             178 STORE_DEREF          (BASE_LIBRARY)
+
+ 25:         180 LOAD_FAST            (os)
+             182 LOAD_FAST            (zipfile)
+             184 BUILD_TUPLE          2
+             186 LOAD_CONST           (<Code311 code object _get_base_library_files at 0x108317ac0, file pyi_rth_inspect.py>, line 25)
+             188 MAKE_FUNCTION
+             190 SET_FUNCTION_ATTRIBUTE 8
+             192 STORE_FAST           (_get_base_library_files)
+
+ 35:         194 LOAD_FAST            (_get_base_library_files)
+             196 PUSH_NULL
+             198 LOAD_DEREF           (BASE_LIBRARY)
+             200 CALL                 (1 positional)
+             208 STORE_DEREF          (base_library_files)
+
+ 61:         210 LOAD_DEREF           (inspect)
+             212 LOAD_ATTR            (getsourcefile)
+             232 STORE_DEREF          (_orig_inspect_getsourcefile)
+
+ 63:         234 LOAD_FAST            (BASE_LIBRARY)
+             236 LOAD_FAST            (SYS_PREFIX)
+             238 LOAD_FAST            (_orig_inspect_getsourcefile)
+             240 LOAD_FAST            (base_library_files)
+             242 LOAD_FAST            (inspect)
+             244 LOAD_FAST            (os)
+             246 LOAD_FAST            (sys)
+             248 BUILD_TUPLE          7
+             250 LOAD_CONST           (<Code311 code object _pyi_getsourcefile at 0x108317a60, file pyi_rth_inspect.py>, line 63)
+             252 MAKE_FUNCTION
+             254 SET_FUNCTION_ATTRIBUTE 8
+             256 STORE_FAST           (_pyi_getsourcefile)
+
+ 95:         258 LOAD_FAST            (_pyi_getsourcefile)
+             260 LOAD_DEREF           (inspect)
+             262 STORE_ATTR           (getsourcefile)
+             272 RETURN_CONST         (None)
+
+
+# Method Name:       _get_base_library_files
+# Filename:          pyi_rth_inspect.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        6
+# Flags:             0x00000013 (NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        25
+# Constants:
+#    0: None
+#    1: 'r'
+#    2: <Code311 code object <genexpr> at 0x108317c70, file pyi_rth_inspect.py>, line 33
+# Names:
+#    0: path
+#    1: isfile
+#    2: set
+#    3: ZipFile
+#    4: namelist
+# Varnames:
+#	filename, zf, namelist
+# Positional arguments:
+#	filename
+# Local variables:
+#    1: zf
+#    2: namelist
+# Free variables:
+#    0: os
+#    1: zipfile
+               0 COPY_FREE_VARS       2
+
+ 25:           2 RESUME               0
+
+ 27:           4 LOAD_DEREF           (os)
+               6 LOAD_ATTR            (path)
+              26 LOAD_ATTR            (NULL|self + isfile)
+              46 LOAD_FAST            (filename)
+              48 CALL                 (1 positional)
+              56 TO_BOOL
+              64 POP_JUMP_IF_TRUE     (to 88)
+
+ 28:          68 LOAD_GLOBAL          (NULL + set)
+              78 CALL                 (0 positional)
+              86 RETURN_VALUE
+
+ 30:     >>   88 LOAD_DEREF           (zipfile)
+              90 LOAD_ATTR            (NULL|self + ZipFile)
+             110 LOAD_FAST            (filename)
+             112 LOAD_CONST           ("r")
+             114 CALL                 (2 positional)
+             122 BEFORE_WITH
+             124 STORE_FAST           (zf)
+
+ 31:         126 LOAD_FAST            (zf)
+             128 LOAD_ATTR            (NULL|self + namelist)
+             148 CALL                 (0 positional)
+             156 STORE_FAST           (namelist)
+
+ 30:         158 LOAD_CONST           (None)
+             160 LOAD_CONST           (None)
+             162 LOAD_CONST           (None)
+             164 CALL                 (2 positional)
+             172 POP_TOP
+
+ 33:         174 LOAD_GLOBAL          (NULL + set)
+             184 LOAD_FAST            (os)
+             186 BUILD_TUPLE          1
+             188 LOAD_CONST           (<Code311 code object <genexpr> at 0x108317c70, file pyi_rth_inspect.py>, line 33)
+             190 MAKE_FUNCTION
+             192 SET_FUNCTION_ATTRIBUTE 8
+             194 LOAD_FAST_CHECK      (namelist)
+             196 GET_ITER
+             198 CALL                 (0 positional)
+             206 CALL                 (1 positional)
+             214 RETURN_VALUE
+
+ 30:     >>  216 PUSH_EXC_INFO
+             218 WITH_EXCEPT_START    0
+             220 TO_BOOL
+             228 POP_JUMP_IF_TRUE     (to 234)
+             232 RERAISE              2
+         >>  234 POP_TOP
+             236 POP_EXCEPT
+             238 POP_TOP
+             240 POP_TOP
+             242 JUMP_BACKWARD_NO_INTERRUPT (to 174)
+         >>  244 COPY                 3
+             246 POP_EXCEPT
+             248 RERAISE              1
+
+ExceptionTable:
+  124 to 156 -> 216 [1] lasti
+  216 to 234 -> 244 [3] lasti
+
+# Method Name:       _pyi_getsourcefile
+# Filename:          pyi_rth_inspect.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        6
+# Flags:             0x00000013 (NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        63
+# Constants:
+#    0: None
+#    1: '__main__'
+#    2: '__file__'
+#    3: 'c'
+# Names:
+#    0: getfile
+#    1: path
+#    2: normpath
+#    3: isabs
+#    4: getattr
+#    5: modules
+#    6: basename
+#    7: join
+#    8: startswith
+# Varnames:
+#	object, filename, main_file, pyc_filename
+# Positional arguments:
+#	object
+# Local variables:
+#    1: filename
+#    2: main_file
+#    3: pyc_filename
+# Free variables:
+#    0: BASE_LIBRARY
+#    1: SYS_PREFIX
+#    2: _orig_inspect_getsourcefile
+#    3: base_library_files
+#    4: inspect
+#    5: os
+#    6: sys
+               0 COPY_FREE_VARS       7
+
+ 63:           2 RESUME               0
+
+ 64:           4 LOAD_DEREF           (inspect)
+               6 LOAD_ATTR            (NULL|self + getfile)
+              26 LOAD_FAST            (object)
+              28 CALL                 (1 positional)
+              36 STORE_FAST           (filename)
+
+ 65:          38 LOAD_DEREF           (os)
+              40 LOAD_ATTR            (path)
+              60 LOAD_ATTR            (NULL|self + normpath)
+              80 LOAD_FAST            (filename)
+              82 CALL                 (1 positional)
+              90 STORE_FAST           (filename)
+
+ 66:          92 LOAD_DEREF           (os)
+              94 LOAD_ATTR            (path)
+             114 LOAD_ATTR            (NULL|self + isabs)
+             134 LOAD_FAST            (filename)
+             136 CALL                 (1 positional)
+             144 TO_BOOL
+             152 POP_JUMP_IF_TRUE     (to 522)
+
+ 68:         156 LOAD_GLOBAL          (NULL + getattr)
+             166 LOAD_DEREF           (sys)
+             168 LOAD_ATTR            (modules)
+             188 LOAD_CONST           ("__main__")
+             190 BINARY_SUBSCR
+             194 LOAD_CONST           ("__file__")
+             196 LOAD_CONST           (None)
+             198 CALL                 (3 positional)
+             206 STORE_FAST           (main_file)
+
+ 69:         208 LOAD_FAST            (main_file)
+             210 TO_BOOL
+             218 POP_JUMP_IF_FALSE    (to 288)
+             222 LOAD_FAST            (filename)
+             224 LOAD_DEREF           (os)
+             226 LOAD_ATTR            (path)
+             246 LOAD_ATTR            (NULL|self + basename)
+             266 LOAD_FAST            (main_file)
+             268 CALL                 (1 positional)
+             276 COMPARE_OP           (==)
+             280 POP_JUMP_IF_FALSE    (to 288)
+
+ 70:         284 LOAD_FAST            (main_file)
+             286 RETURN_VALUE
+
+ 84:     >>  288 LOAD_FAST            (filename)
+             290 LOAD_CONST           ("c")
+             292 BINARY_OP            (+)
+             296 STORE_FAST           (pyc_filename)
+
+ 85:         298 LOAD_FAST            (pyc_filename)
+             300 LOAD_DEREF           (base_library_files)
+             302 CONTAINS_OP          (in)
+             306 POP_JUMP_IF_FALSE    (to 416)
+
+ 86:         310 LOAD_DEREF           (os)
+             312 LOAD_ATTR            (path)
+             332 LOAD_ATTR            (NULL|self + normpath)
+             352 LOAD_DEREF           (os)
+             354 LOAD_ATTR            (path)
+             374 LOAD_ATTR            (NULL|self + join)
+             394 LOAD_DEREF           (BASE_LIBRARY)
+             396 LOAD_FAST            (pyc_filename)
+             398 CALL                 (2 positional)
+             406 CALL                 (1 positional)
+             414 RETURN_VALUE
+
+ 87:     >>  416 LOAD_DEREF           (os)
+             418 LOAD_ATTR            (path)
+             438 LOAD_ATTR            (NULL|self + normpath)
+             458 LOAD_DEREF           (os)
+             460 LOAD_ATTR            (path)
+             480 LOAD_ATTR            (NULL|self + join)
+             500 LOAD_DEREF           (SYS_PREFIX)
+             502 LOAD_FAST            (filename)
+             504 CALL                 (2 positional)
+             512 CALL                 (1 positional)
+             520 RETURN_VALUE
+
+ 88:     >>  522 LOAD_FAST            (filename)
+             524 LOAD_ATTR            (NULL|self + startswith)
+             544 LOAD_DEREF           (SYS_PREFIX)
+             546 CALL                 (1 positional)
+             554 TO_BOOL
+             562 POP_JUMP_IF_FALSE    (to 570)
+
+ 91:         566 LOAD_FAST            (filename)
+             568 RETURN_VALUE
+
+ 93:     >>  570 LOAD_DEREF           (_orig_inspect_getsourcefile)
+             572 PUSH_NULL
+             574 LOAD_FAST            (object)
+             576 CALL                 (1 positional)
+             584 RETURN_VALUE
+
+
+# Method Name:       <genexpr>
+# Filename:          pyi_rth_inspect.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x00000033 (GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        33
+# Constants:
+#    0: None
+# Names:
+#    0: path
+#    1: normpath
+# Varnames:
+#	.0, entry
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: entry
+# Free variables:
+#    0: os
+               0 COPY_FREE_VARS       1
+
+ 33:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+              10 GET_ITER
+              12 FOR_ITER             (to 80)
+              16 STORE_FAST           (entry)
+              18 LOAD_DEREF           (os)
+              20 LOAD_ATTR            (path)
+              40 LOAD_ATTR            (NULL|self + normpath)
+              60 LOAD_FAST            (entry)
+              62 CALL                 (1 positional)
+              70 YIELD_VALUE          0
+              72 RESUME               5
+              74 POP_TOP
+              76 JUMP_BACKWARD        (to 12)
+         >>   80 END_FOR
+              82 POP_TOP
+              84 RETURN_CONST         (None)
+         >>   86 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              88 RERAISE              1
+
+ExceptionTable:
+  6 to 84 -> 86 [0] lasti

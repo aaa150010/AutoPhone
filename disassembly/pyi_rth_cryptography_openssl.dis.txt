@@ -1,0 +1,67 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          pyi_rth_cryptography_openssl.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        4
+# Flags:             0x00000000 (0x0)
+# First Line:        1
+# Constants:
+#    0: 0
+#    1: None
+#    2: 'ossl-modules'
+#    3: 'OPENSSL_MODULES'
+# Names:
+#    0: os
+#    1: sys
+#    2: path
+#    3: join
+#    4: _MEIPASS
+#    5: _ossl_modules_dir
+#    6: isdir
+#    7: environ
+  0:           0 RESUME               0
+
+ 12:           2 LOAD_CONST           (0)
+               4 LOAD_CONST           (None)
+               6 IMPORT_NAME          (os)
+               8 STORE_NAME           (os)
+
+ 13:          10 LOAD_CONST           (0)
+              12 LOAD_CONST           (None)
+              14 IMPORT_NAME          (sys)
+              16 STORE_NAME           (sys)
+
+ 17:          18 LOAD_NAME            (os)
+              20 LOAD_ATTR            (path)
+              40 LOAD_ATTR            (NULL|self + join)
+              60 LOAD_NAME            (sys)
+              62 LOAD_ATTR            (_MEIPASS)
+              82 LOAD_CONST           ("ossl-modules")
+              84 CALL                 (2 positional)
+              92 STORE_NAME           (_ossl_modules_dir)
+
+ 18:          94 LOAD_NAME            (os)
+              96 LOAD_ATTR            (path)
+             116 LOAD_ATTR            (NULL|self + isdir)
+             136 LOAD_NAME            (_ossl_modules_dir)
+             138 CALL                 (1 positional)
+             146 TO_BOOL
+             154 POP_JUMP_IF_FALSE    (to 188)
+
+ 19:         158 LOAD_NAME            (_ossl_modules_dir)
+             160 LOAD_NAME            (os)
+             162 LOAD_ATTR            (environ)
+             182 LOAD_CONST           ("OPENSSL_MODULES")
+             184 STORE_SUBSCR
+
+ 20:     >>  188 DELETE_NAME          (_ossl_modules_dir)
+             190 RETURN_CONST         (None)
+

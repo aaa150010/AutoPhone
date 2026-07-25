@@ -1,0 +1,925 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          email_code_poll.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        7
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1
+# Constants:
+#    0: 'Shared email OTP polling for registration and binding flows.'
+#    1: 0
+#    2: ('annotations',)
+#    3: None
+#    4: ('Any', 'Callable', 'Optional')
+#    5: ('get_mail_api_config',)
+#    6: ('email_proxy',)
+#    7: <Code311 code object _clean at 0x10a153b50, file email_code_poll.py>, line 13
+#    8: <Code311 code object _log at 0x10a153eb0, file email_code_poll.py>, line 21
+#    9: 300
+#   10: False
+#   11: True
+#   12: ('timeout', 'verbose', 'log_fn', 'since_ts', 'report_health', 'initial_wait')
+#   13: <Code311 code object poll_email_code at 0x10a153910, file email_code_poll.py>, line 26
+#   14: ('value', 'Any', 'return', 'str')
+#   15: ('log_fn', 'Optional[Callable[..., None]]', 'msg', 'str', 'return', 'None')
+#   16: ('email', 'str', 'config', 'dict', 'timeout', 'int', 'verbose', 'bool', 'log_fn', 'Optional[Callable[..., None]]', 'since_ts', 'float | None', 'report_health', 'bool', 'initial_wait', 'int', 'return', 'Optional[str]')
+# Names:
+#    0: __doc__
+#    1: __future__
+#    2: annotations
+#    3: time
+#    4: typing
+#    5: Any
+#    6: Callable
+#    7: Optional
+#    8: email_provider_branch
+#    9: get_mail_api_config
+#   10: proxy_scope
+#   11: email_proxy
+#   12: _clean
+#   13: _log
+#   14: poll_email_code
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ("Shared email OTP polling for registration and binding flows.")
+               4 STORE_NAME           (__doc__)
+
+  4:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (('annotations',))
+              10 IMPORT_NAME          (__future__)
+              12 IMPORT_FROM          (annotations)
+              14 STORE_NAME           (annotations)
+              16 POP_TOP
+
+  6:          18 LOAD_CONST           (0)
+              20 LOAD_CONST           (None)
+              22 IMPORT_NAME          (time)
+              24 STORE_NAME           (time)
+
+  7:          26 LOAD_CONST           (0)
+              28 LOAD_CONST           (('Any', 'Callable', 'Optional'))
+              30 IMPORT_NAME          (typing)
+              32 IMPORT_FROM          (Any)
+              34 STORE_NAME           (Any)
+              36 IMPORT_FROM          (Callable)
+              38 STORE_NAME           (Callable)
+              40 IMPORT_FROM          (Optional)
+              42 STORE_NAME           (Optional)
+              44 POP_TOP
+
+  9:          46 LOAD_CONST           (0)
+              48 LOAD_CONST           (('get_mail_api_config',))
+              50 IMPORT_NAME          (email_provider_branch)
+              52 IMPORT_FROM          (get_mail_api_config)
+              54 STORE_NAME           (get_mail_api_config)
+              56 POP_TOP
+
+ 10:          58 LOAD_CONST           (0)
+              60 LOAD_CONST           (('email_proxy',))
+              62 IMPORT_NAME          (proxy_scope)
+              64 IMPORT_FROM          (email_proxy)
+              66 STORE_NAME           (email_proxy)
+              68 POP_TOP
+
+ 13:          70 LOAD_CONST           (('value', 'Any', 'return', 'str'))
+              72 LOAD_CONST           (<Code311 code object _clean at 0x10a153b50, file email_code_poll.py>, line 13)
+              74 MAKE_FUNCTION
+              76 SET_FUNCTION_ATTRIBUTE 4
+              78 STORE_NAME           (_clean)
+
+ 21:          80 LOAD_CONST           (('log_fn', 'Optional[Callable[..., None]]', 'msg', 'str', 'return', 'None'))
+              82 LOAD_CONST           (<Code311 code object _log at 0x10a153eb0, file email_code_poll.py>, line 21)
+              84 MAKE_FUNCTION
+              86 SET_FUNCTION_ATTRIBUTE 4
+              88 STORE_NAME           (_log)
+
+ 30:          90 LOAD_CONST           (300)
+
+ 31:          92 LOAD_CONST           (False)
+
+ 32:          94 LOAD_CONST           (None)
+
+ 33:          96 LOAD_CONST           (None)
+
+ 34:          98 LOAD_CONST           (True)
+
+ 35:         100 LOAD_CONST           (0)
+
+ 26:         102 LOAD_CONST           (('timeout', 'verbose', 'log_fn', 'since_ts', 'report_health', 'initial_wait'))
+             104 BUILD_CONST_KEY_MAP  6
+
+ 27:         106 NOP
+
+ 26:         108 NOP
+
+ 28:         110 NOP
+
+ 26:         112 NOP
+
+ 30:         114 NOP
+
+ 26:         116 NOP
+
+ 31:         118 NOP
+
+ 26:         120 NOP
+
+ 32:         122 NOP
+
+ 26:         124 NOP
+
+ 33:         126 NOP
+
+ 26:         128 NOP
+
+ 34:         130 NOP
+
+ 26:         132 NOP
+
+ 35:         134 NOP
+
+ 26:         136 NOP
+
+ 36:         138 NOP
+
+ 26:         140 LOAD_CONST           (('email', 'str', 'config', 'dict', 'timeout', 'int', 'verbose', 'bool', 'log_fn', 'Optional[Callable[..., None]]', 'since_ts', 'float | None', 'report_health', 'bool', 'initial_wait', 'int', 'return', 'Optional[str]'))
+             142 LOAD_CONST           (<Code311 code object poll_email_code at 0x10a153910, file email_code_poll.py>, line 26)
+             144 MAKE_FUNCTION
+             146 SET_FUNCTION_ATTRIBUTE 4
+             148 SET_FUNCTION_ATTRIBUTE 2
+             150 STORE_NAME           (poll_email_code)
+             152 RETURN_CONST         (None)
+
+
+# Method Name:       _clean
+# Filename:          email_code_poll.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        13
+# Constants:
+#    0: None
+#    1: ''
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: list
+#    3: tuple
+#    4: set
+#    5: str
+#    6: strip
+# Varnames:
+#	value
+# Positional arguments:
+#	value
+ 13:           0 RESUME               0
+
+ 14:           2 LOAD_FAST            (value)
+               4 POP_JUMP_IF_NOT_NONE (to 10)
+
+ 15:           8 RETURN_CONST         ("")
+
+ 16:     >>   10 LOAD_GLOBAL          (NULL + isinstance)
+              20 LOAD_FAST            (value)
+              22 LOAD_GLOBAL          (dict)
+              32 LOAD_GLOBAL          (list)
+              42 LOAD_GLOBAL          (tuple)
+              52 LOAD_GLOBAL          (set)
+              62 BUILD_TUPLE          4
+              64 CALL                 (2 positional)
+              72 TO_BOOL
+              80 POP_JUMP_IF_FALSE    (to 86)
+
+ 17:          84 RETURN_CONST         ("")
+
+ 18:     >>   86 LOAD_GLOBAL          (NULL + str)
+              96 LOAD_FAST            (value)
+              98 CALL                 (1 positional)
+             106 LOAD_ATTR            (NULL|self + strip)
+             126 CALL                 (0 positional)
+             134 RETURN_VALUE
+
+
+# Method Name:       _log
+# Filename:          email_code_poll.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        21
+# Constants:
+#    0: None
+# Varnames:
+#	log_fn, msg
+# Positional arguments:
+#	log_fn, msg
+ 21:           0 RESUME               0
+
+ 22:           2 LOAD_FAST            (log_fn)
+               4 TO_BOOL
+              12 POP_JUMP_IF_FALSE    (to 34)
+
+ 23:          16 LOAD_FAST            (log_fn)
+              18 PUSH_NULL
+              20 LOAD_FAST            (msg)
+              22 CALL                 (1 positional)
+              30 POP_TOP
+              32 RETURN_CONST         (None)
+
+ 22:     >>   34 RETURN_CONST         (None)
+
+
+# Method Name:       poll_email_code
+# Filename:          email_code_poll.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 6
+# Number of locals:  29
+# Stack size:        13
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        26
+# Constants:
+#    0: 'Poll the configured mailbox provider for a 6-digit OpenAI code.'
+#    1: 'email_provider'
+#    2: None
+#    3: 'cf_email'
+#    4: 'cfworker'
+#    5: 'url'
+#    6: 'key'
+#    7: '[MailOTP] CF Worker 轮询验证码: '
+#    8: 0
+#    9: ('CFEmailClient',)
+#   10: ''
+#   11: ('verbose', 'proxy')
+#   12: 3
+#   13: ('timeout', 'interval')
+#   14: 'api_key'
+#   15: ('mailmanage', 'gptmail')
+#   16: '[MailOTP] '
+#   17: ' 等待'
+#   18: '秒后轮询验证码: '
+#   19: ' 轮询验证码: '
+#   20: ('MailCodePollError', 'MailManageClient')
+#   21: 'base_url'
+#   22: 'https://mailmanage.lizaliza.top'
+#   23: 'safe_reserve'
+#   24: True
+#   25: False
+#   26: 'verify_reserved'
+#   27: 'reserve_attempts'
+#   28: 5
+#   29: ('api_key', 'base_url', 'safe_reserve', 'consume_on_reserve', 'verify_reserved', 'reserve_attempts', 'label', 'verbose', 'proxy')
+#   30: 'keyword'
+#   31: 'gpt'
+#   32: 'gptmail'
+#   33: ('keyword', 'timeout', 'report_health', 'since_ts', 'old_code_fast_fail')
+#   34: 'MAIL_CODE_ERROR:'
+#   35: ':'
+#   36: 'code'
+#   37: 'email_imap'
+#   38: 'user'
+#   39: 'pass'
+#   40: 'oauth_client_id'
+#   41: 'email_pool_oauth_client_id'
+#   42: 'oauth_refresh_token'
+#   43: 'email_pool_oauth_refresh_token'
+#   44: '[MailOTP] IMAP 轮询验证码: '
+#   45: ('ImapPoller',)
+#   46: 'server'
+#   47: 'port'
+#   48: 993
+#   49: ('email_addr', 'password', 'imap_server', 'imap_port', 'verbose', 'oauth_client_id', 'oauth_refresh_token', 'proxy')
+#   50: ('openai', 'noreply', 'verification', 'no-reply', 'chatgpt')
+#   51: ('sender_keywords', 'timeout', 'interval', 'since_ts')
+#   52: ('', 'icloud')
+#   53: 'icloud_cookies'
+#   54: '[MailOTP] iCloud 轮询验证码: '
+#   55: ('ICloudHME',)
+#   56: ('openai', 'noreply', 'verification', 'no-reply')
+#   57: ('target_email', 'sender_filters', 'timeout', 'imap_user', 'imap_password')
+# Names:
+#    0: get_mail_api_config
+#    1: _clean
+#    2: get
+#    3: lower
+#    4: isinstance
+#    5: dict
+#    6: _log
+#    7: cf_email_client
+#    8: CFEmailClient
+#    9: email_proxy
+#   10: poll_code
+#   11: time
+#   12: sleep
+#   13: mailmanage_client
+#   14: MailCodePollError
+#   15: MailManageClient
+#   16: bool
+#   17: int
+#   18: get_code
+#   19: reason
+#   20: detail
+#   21: str
+#   22: strip
+#   23: imap_poller
+#   24: ImapPoller
+#   25: icloud_hme
+#   26: ICloudHME
+#   27: poll_mail_for_code
+# Varnames:
+#	email, config, timeout, verbose, log_fn, since_ts, report_health, initial_wait, mm_config, mail_api_name, provider, cf_cfg, CFEmailClient, cf, MailCodePollError, MailManageClient, mm, found, exc, imap_cfg, imap_user, imap_password, oauth_client_id, oauth_refresh_token, ImapPoller, poller, cookies, ICloudHME, icloud
+# Positional arguments:
+#	email, config
+# Local variables:
+#    2: timeout
+#    3: verbose
+#    4: log_fn
+#    5: since_ts
+#    6: report_health
+#    7: initial_wait
+#    8: mm_config
+#    9: mail_api_name
+#   10: provider
+#   11: cf_cfg
+#   12: CFEmailClient
+#   13: cf
+#   14: MailCodePollError
+#   15: MailManageClient
+#   16: mm
+#   17: found
+#   18: exc
+#   19: imap_cfg
+#   20: imap_user
+#   21: imap_password
+#   22: oauth_client_id
+#   23: oauth_refresh_token
+#   24: ImapPoller
+#   25: poller
+#   26: cookies
+#   27: ICloudHME
+#   28: icloud
+ 26:           0 RESUME               0
+
+ 38:           2 LOAD_GLOBAL          (NULL + get_mail_api_config)
+              12 LOAD_FAST            (config)
+              14 CALL                 (1 positional)
+              22 UNPACK_SEQUENCE      2
+              26 STORE_FAST_STORE_FAST (mm_config, mail_api_name)
+
+ 39:          28 LOAD_GLOBAL          (NULL + _clean)
+              38 LOAD_FAST            (email)
+              40 CALL                 (1 positional)
+              48 STORE_FAST           (email)
+
+ 40:          50 LOAD_GLOBAL          (NULL + _clean)
+              60 LOAD_FAST            (config)
+              62 LOAD_ATTR            (NULL|self + get)
+              82 LOAD_CONST           ("email_provider")
+              84 CALL                 (1 positional)
+              92 CALL                 (1 positional)
+             100 LOAD_ATTR            (NULL|self + lower)
+             120 CALL                 (0 positional)
+             128 STORE_FAST           (provider)
+
+ 41:         130 LOAD_FAST            (email)
+             132 TO_BOOL
+             140 POP_JUMP_IF_TRUE     (to 146)
+
+ 42:         144 RETURN_CONST         (None)
+
+ 44:     >>  146 LOAD_GLOBAL          (NULL + isinstance)
+             156 LOAD_FAST            (config)
+             158 LOAD_ATTR            (NULL|self + get)
+             178 LOAD_CONST           ("cf_email")
+             180 CALL                 (1 positional)
+             188 LOAD_GLOBAL          (dict)
+             198 CALL                 (2 positional)
+             206 TO_BOOL
+             214 POP_JUMP_IF_FALSE    (to 252)
+             218 LOAD_FAST            (config)
+             220 LOAD_ATTR            (NULL|self + get)
+             240 LOAD_CONST           ("cf_email")
+             242 CALL                 (1 positional)
+             250 JUMP_FORWARD         (to 254)
+         >>  252 BUILD_MAP            0
+         >>  254 STORE_FAST           (cf_cfg)
+
+ 45:         256 LOAD_FAST            (provider)
+             258 LOAD_CONST           ("cfworker")
+             260 COMPARE_OP           (==)
+             264 POP_JUMP_IF_FALSE    (to 530)
+             268 LOAD_FAST            (cf_cfg)
+             270 LOAD_ATTR            (NULL|self + get)
+             290 LOAD_CONST           ("url")
+             292 CALL                 (1 positional)
+             300 TO_BOOL
+             308 POP_JUMP_IF_FALSE    (to 530)
+             312 LOAD_FAST            (cf_cfg)
+             314 LOAD_ATTR            (NULL|self + get)
+             334 LOAD_CONST           ("key")
+             336 CALL                 (1 positional)
+             344 TO_BOOL
+             352 POP_JUMP_IF_FALSE    (to 530)
+
+ 46:         356 LOAD_GLOBAL          (NULL + _log)
+             366 LOAD_FAST            (log_fn)
+             368 LOAD_CONST           ("[MailOTP] CF Worker 轮询验证码: ")
+             370 LOAD_FAST            (email)
+             372 FORMAT_SIMPLE
+             374 BUILD_STRING         2
+             376 CALL                 (2 positional)
+             384 POP_TOP
+
+ 47:         386 LOAD_CONST           (0)
+             388 LOAD_CONST           (('CFEmailClient',))
+             390 IMPORT_NAME          (cf_email_client)
+             392 IMPORT_FROM          (CFEmailClient)
+             394 STORE_FAST           (CFEmailClient)
+             396 POP_TOP
+
+ 49:         398 LOAD_FAST            (CFEmailClient)
+             400 PUSH_NULL
+             402 LOAD_FAST            (cf_cfg)
+             404 LOAD_ATTR            (NULL|self + get)
+             424 LOAD_CONST           ("url")
+             426 LOAD_CONST           ("")
+             428 CALL                 (2 positional)
+             436 LOAD_FAST            (cf_cfg)
+             438 LOAD_ATTR            (NULL|self + get)
+             458 LOAD_CONST           ("key")
+             460 LOAD_CONST           ("")
+             462 CALL                 (2 positional)
+             470 LOAD_FAST            (verbose)
+             472 LOAD_GLOBAL          (NULL + email_proxy)
+             482 LOAD_FAST            (config)
+             484 CALL                 (1 positional)
+             492 LOAD_CONST           (('verbose', 'proxy'))
+             494 CALL_KW              4
+             496 STORE_FAST           (cf)
+
+ 50:         498 LOAD_FAST            (cf)
+             500 LOAD_ATTR            (NULL|self + poll_code)
+             520 LOAD_FAST_LOAD_FAST  (email, timeout)
+             522 LOAD_CONST           (3)
+             524 LOAD_CONST           (('timeout', 'interval'))
+             526 CALL_KW              3
+             528 RETURN_VALUE
+
+ 52:     >>  530 LOAD_FAST            (mm_config)
+             532 LOAD_ATTR            (NULL|self + get)
+             552 LOAD_CONST           ("api_key")
+             554 CALL                 (1 positional)
+             562 TO_BOOL
+             570 EXTENDED_ARG         (256)
+             572 POP_JUMP_IF_FALSE    (to 1272)
+             576 LOAD_FAST            (provider)
+             578 LOAD_CONST           (('mailmanage', 'gptmail'))
+             580 CONTAINS_OP          (in)
+             584 EXTENDED_ARG         (256)
+             586 POP_JUMP_IF_FALSE    (to 1272)
+
+ 53:         590 LOAD_FAST            (initial_wait)
+             592 LOAD_CONST           (0)
+             594 COMPARE_OP           (>)
+             598 POP_JUMP_IF_FALSE    (to 690)
+
+ 54:         602 LOAD_GLOBAL          (NULL + _log)
+             612 LOAD_FAST            (log_fn)
+             614 LOAD_CONST           ("[MailOTP] ")
+             616 LOAD_FAST            (mail_api_name)
+             618 FORMAT_SIMPLE
+             620 LOAD_CONST           (" 等待")
+             622 LOAD_FAST            (initial_wait)
+             624 FORMAT_SIMPLE
+             626 LOAD_CONST           ("秒后轮询验证码: ")
+             628 LOAD_FAST            (email)
+             630 FORMAT_SIMPLE
+             632 BUILD_STRING         6
+             634 CALL                 (2 positional)
+             642 POP_TOP
+
+ 55:         644 LOAD_GLOBAL          (time)
+             654 LOAD_ATTR            (sleep)
+             674 PUSH_NULL
+             676 LOAD_FAST            (initial_wait)
+             678 CALL                 (1 positional)
+             686 POP_TOP
+             688 JUMP_FORWARD         (to 726)
+
+ 57:     >>  690 LOAD_GLOBAL          (NULL + _log)
+             700 LOAD_FAST            (log_fn)
+             702 LOAD_CONST           ("[MailOTP] ")
+             704 LOAD_FAST            (mail_api_name)
+             706 FORMAT_SIMPLE
+             708 LOAD_CONST           (" 轮询验证码: ")
+             710 LOAD_FAST            (email)
+             712 FORMAT_SIMPLE
+             714 BUILD_STRING         4
+             716 CALL                 (2 positional)
+             724 POP_TOP
+
+ 58:     >>  726 LOAD_CONST           (0)
+             728 LOAD_CONST           (('MailCodePollError', 'MailManageClient'))
+             730 IMPORT_NAME          (mailmanage_client)
+             732 IMPORT_FROM          (MailCodePollError)
+             734 STORE_FAST           (MailCodePollError)
+             736 IMPORT_FROM          (MailManageClient)
+             738 STORE_FAST           (MailManageClient)
+             740 POP_TOP
+
+ 60:         742 LOAD_FAST            (MailManageClient)
+             744 PUSH_NULL
+
+ 61:         746 LOAD_FAST            (mm_config)
+             748 LOAD_ATTR            (NULL|self + get)
+             768 LOAD_CONST           ("api_key")
+             770 LOAD_CONST           ("")
+             772 CALL                 (2 positional)
+
+ 62:         780 LOAD_FAST            (mm_config)
+             782 LOAD_ATTR            (NULL|self + get)
+             802 LOAD_CONST           ("base_url")
+             804 LOAD_CONST           ("")
+             806 CALL                 (2 positional)
+             814 COPY                 1
+             816 TO_BOOL
+             824 POP_JUMP_IF_TRUE     (to 832)
+             828 POP_TOP
+             830 LOAD_CONST           ("https://mailmanage.lizaliza.top")
+
+ 63:     >>  832 LOAD_GLOBAL          (NULL + bool)
+             842 LOAD_FAST            (mm_config)
+             844 LOAD_ATTR            (NULL|self + get)
+             864 LOAD_CONST           ("safe_reserve")
+             866 LOAD_CONST           (True)
+             868 CALL                 (2 positional)
+             876 CALL                 (1 positional)
+
+ 64:         884 LOAD_CONST           (False)
+
+ 65:         886 LOAD_GLOBAL          (NULL + bool)
+             896 LOAD_FAST            (mm_config)
+             898 LOAD_ATTR            (NULL|self + get)
+             918 LOAD_CONST           ("verify_reserved")
+             920 LOAD_CONST           (True)
+             922 CALL                 (2 positional)
+             930 CALL                 (1 positional)
+
+ 66:         938 LOAD_GLOBAL          (NULL + int)
+             948 LOAD_FAST            (mm_config)
+             950 LOAD_ATTR            (NULL|self + get)
+             970 LOAD_CONST           ("reserve_attempts")
+             972 LOAD_CONST           (5)
+             974 CALL                 (2 positional)
+             982 COPY                 1
+             984 TO_BOOL
+             992 POP_JUMP_IF_TRUE     (to 1000)
+             996 POP_TOP
+             998 LOAD_CONST           (5)
+         >> 1000 CALL                 (1 positional)
+
+ 67:        1008 LOAD_FAST            (mail_api_name)
+
+ 68:        1010 LOAD_FAST            (verbose)
+
+ 69:        1012 LOAD_GLOBAL          (NULL + email_proxy)
+            1022 LOAD_FAST            (config)
+            1024 CALL                 (1 positional)
+
+ 60:        1032 LOAD_CONST           (('api_key', 'base_url', 'safe_reserve', 'consume_on_reserve', 'verify_reserved', 'reserve_attempts', 'label', 'verbose', 'proxy'))
+            1034 CALL_KW              9
+            1036 STORE_FAST           (mm)
+
+ 71:        1038 NOP
+
+ 72:        1040 LOAD_FAST            (mm)
+            1042 LOAD_ATTR            (NULL|self + get_code)
+
+ 73:        1062 LOAD_FAST            (email)
+
+ 74:        1064 LOAD_FAST            (mm_config)
+            1066 LOAD_ATTR            (NULL|self + get)
+            1086 LOAD_CONST           ("keyword")
+            1088 LOAD_CONST           ("gpt")
+            1090 CALL                 (2 positional)
+
+ 75:        1098 LOAD_FAST            (timeout)
+
+ 76:        1100 LOAD_FAST            (report_health)
+
+ 77:        1102 LOAD_FAST            (since_ts)
+
+ 78:        1104 LOAD_FAST            (provider)
+            1106 LOAD_CONST           ("gptmail")
+            1108 COMPARE_OP           (==)
+            1112 POP_JUMP_IF_FALSE    (to 1120)
+            1116 LOAD_CONST           (3)
+            1118 JUMP_FORWARD         (to 1122)
+         >> 1120 LOAD_CONST           (0)
+
+ 72:     >> 1122 LOAD_CONST           (('keyword', 'timeout', 'report_health', 'since_ts', 'old_code_fast_fail'))
+            1124 CALL_KW              6
+            1126 STORE_FAST           (found)
+
+ 82:        1128 LOAD_FAST            (found)
+            1130 TO_BOOL
+            1138 POP_JUMP_IF_FALSE    (to 1268)
+            1142 LOAD_FAST            (found)
+            1144 LOAD_ATTR            (NULL|self + get)
+            1164 LOAD_CONST           ("code")
+            1166 CALL                 (1 positional)
+            1174 TO_BOOL
+            1182 POP_JUMP_IF_FALSE    (to 1268)
+            1186 LOAD_GLOBAL          (NULL + str)
+            1196 LOAD_FAST            (found)
+            1198 LOAD_ATTR            (NULL|self + get)
+            1218 LOAD_CONST           ("code")
+            1220 LOAD_CONST           ("")
+            1222 CALL                 (2 positional)
+            1230 CALL                 (1 positional)
+            1238 LOAD_ATTR            (NULL|self + strip)
+            1258 CALL                 (0 positional)
+            1266 RETURN_VALUE
+         >> 1268 LOAD_CONST           (None)
+            1270 RETURN_VALUE
+
+ 84:     >> 1272 LOAD_GLOBAL          (NULL + isinstance)
+            1282 LOAD_FAST            (config)
+            1284 LOAD_ATTR            (NULL|self + get)
+            1304 LOAD_CONST           ("email_imap")
+            1306 CALL                 (1 positional)
+            1314 LOAD_GLOBAL          (dict)
+            1324 CALL                 (2 positional)
+            1332 TO_BOOL
+            1340 POP_JUMP_IF_FALSE    (to 1378)
+            1344 LOAD_FAST            (config)
+            1346 LOAD_ATTR            (NULL|self + get)
+            1366 LOAD_CONST           ("email_imap")
+            1368 CALL                 (1 positional)
+            1376 JUMP_FORWARD         (to 1380)
+         >> 1378 BUILD_MAP            0
+         >> 1380 STORE_FAST           (imap_cfg)
+
+ 85:        1382 LOAD_GLOBAL          (NULL + _clean)
+            1392 LOAD_FAST            (imap_cfg)
+            1394 LOAD_ATTR            (NULL|self + get)
+            1414 LOAD_CONST           ("user")
+            1416 CALL                 (1 positional)
+            1424 CALL                 (1 positional)
+            1432 STORE_FAST           (imap_user)
+
+ 86:        1434 LOAD_GLOBAL          (NULL + _clean)
+            1444 LOAD_FAST            (imap_cfg)
+            1446 LOAD_ATTR            (NULL|self + get)
+            1466 LOAD_CONST           ("pass")
+            1468 CALL                 (1 positional)
+            1476 CALL                 (1 positional)
+            1484 STORE_FAST           (imap_password)
+
+ 87:        1486 LOAD_GLOBAL          (NULL + _clean)
+            1496 LOAD_FAST            (imap_cfg)
+            1498 LOAD_ATTR            (NULL|self + get)
+            1518 LOAD_CONST           ("oauth_client_id")
+            1520 CALL                 (1 positional)
+            1528 COPY                 1
+            1530 TO_BOOL
+            1538 POP_JUMP_IF_TRUE     (to 1576)
+            1542 POP_TOP
+            1544 LOAD_FAST            (config)
+            1546 LOAD_ATTR            (NULL|self + get)
+            1566 LOAD_CONST           ("email_pool_oauth_client_id")
+            1568 CALL                 (1 positional)
+         >> 1576 CALL                 (1 positional)
+            1584 STORE_FAST           (oauth_client_id)
+
+ 88:        1586 LOAD_GLOBAL          (NULL + _clean)
+            1596 LOAD_FAST            (imap_cfg)
+            1598 LOAD_ATTR            (NULL|self + get)
+            1618 LOAD_CONST           ("oauth_refresh_token")
+            1620 CALL                 (1 positional)
+            1628 COPY                 1
+            1630 TO_BOOL
+            1638 POP_JUMP_IF_TRUE     (to 1676)
+            1642 POP_TOP
+            1644 LOAD_FAST            (config)
+            1646 LOAD_ATTR            (NULL|self + get)
+            1666 LOAD_CONST           ("email_pool_oauth_refresh_token")
+            1668 CALL                 (1 positional)
+         >> 1676 CALL                 (1 positional)
+            1684 STORE_FAST           (oauth_refresh_token)
+
+ 89:        1686 LOAD_FAST            (imap_user)
+            1688 TO_BOOL
+            1696 POP_JUMP_IF_FALSE    (to 1982)
+            1700 LOAD_FAST            (imap_password)
+            1702 TO_BOOL
+            1710 POP_JUMP_IF_TRUE     (to 1742)
+            1714 LOAD_FAST            (oauth_client_id)
+            1716 TO_BOOL
+            1724 POP_JUMP_IF_FALSE    (to 1982)
+            1728 LOAD_FAST            (oauth_refresh_token)
+            1730 TO_BOOL
+            1738 POP_JUMP_IF_FALSE    (to 1982)
+
+ 90:     >> 1742 LOAD_GLOBAL          (NULL + _log)
+            1752 LOAD_FAST            (log_fn)
+            1754 LOAD_CONST           ("[MailOTP] IMAP 轮询验证码: ")
+            1756 LOAD_FAST            (imap_user)
+            1758 FORMAT_SIMPLE
+            1760 BUILD_STRING         2
+            1762 CALL                 (2 positional)
+            1770 POP_TOP
+
+ 91:        1772 LOAD_CONST           (0)
+            1774 LOAD_CONST           (('ImapPoller',))
+            1776 IMPORT_NAME          (imap_poller)
+            1778 IMPORT_FROM          (ImapPoller)
+            1780 STORE_FAST           (ImapPoller)
+            1782 POP_TOP
+
+ 93:        1784 LOAD_FAST            (ImapPoller)
+            1786 PUSH_NULL
+
+ 94:        1788 LOAD_FAST            (imap_user)
+
+ 95:        1790 LOAD_FAST            (imap_password)
+
+ 96:        1792 LOAD_GLOBAL          (NULL + _clean)
+            1802 LOAD_FAST            (imap_cfg)
+            1804 LOAD_ATTR            (NULL|self + get)
+            1824 LOAD_CONST           ("server")
+            1826 CALL                 (1 positional)
+            1834 CALL                 (1 positional)
+
+ 97:        1842 LOAD_GLOBAL          (NULL + int)
+            1852 LOAD_FAST            (imap_cfg)
+            1854 LOAD_ATTR            (NULL|self + get)
+            1874 LOAD_CONST           ("port")
+            1876 CALL                 (1 positional)
+            1884 COPY                 1
+            1886 TO_BOOL
+            1894 POP_JUMP_IF_TRUE     (to 1902)
+            1898 POP_TOP
+            1900 LOAD_CONST           (993)
+         >> 1902 CALL                 (1 positional)
+
+ 98:        1910 LOAD_FAST            (verbose)
+
+ 99:        1912 LOAD_FAST            (oauth_client_id)
+
+100:        1914 LOAD_FAST            (oauth_refresh_token)
+
+101:        1916 LOAD_GLOBAL          (NULL + email_proxy)
+            1926 LOAD_FAST            (config)
+            1928 CALL                 (1 positional)
+
+ 93:        1936 LOAD_CONST           (('email_addr', 'password', 'imap_server', 'imap_port', 'verbose', 'oauth_client_id', 'oauth_refresh_token', 'proxy'))
+            1938 CALL_KW              8
+            1940 STORE_FAST           (poller)
+
+103:        1942 LOAD_FAST            (poller)
+            1944 LOAD_ATTR            (NULL|self + poll_code)
+
+104:        1964 BUILD_LIST           0
+            1966 LOAD_CONST           (('openai', 'noreply', 'verification', 'no-reply', 'chatgpt'))
+            1968 LIST_EXTEND          1
+
+105:        1970 LOAD_FAST            (timeout)
+
+106:        1972 LOAD_CONST           (5)
+
+107:        1974 LOAD_FAST            (since_ts)
+
+103:        1976 LOAD_CONST           (('sender_keywords', 'timeout', 'interval', 'since_ts'))
+            1978 CALL_KW              4
+            1980 RETURN_VALUE
+
+110:     >> 1982 LOAD_FAST            (provider)
+            1984 LOAD_CONST           (('', 'icloud'))
+            1986 CONTAINS_OP          (in)
+            1990 POP_JUMP_IF_FALSE    (to 2228)
+
+111:        1994 LOAD_FAST            (config)
+            1996 LOAD_ATTR            (NULL|self + get)
+            2016 LOAD_CONST           ("icloud_cookies")
+            2018 CALL                 (1 positional)
+            2026 COPY                 1
+            2028 TO_BOOL
+            2036 POP_JUMP_IF_TRUE     (to 2044)
+            2040 POP_TOP
+            2042 BUILD_MAP            0
+         >> 2044 STORE_FAST           (cookies)
+
+112:        2046 LOAD_GLOBAL          (NULL + isinstance)
+            2056 LOAD_FAST            (cookies)
+            2058 LOAD_GLOBAL          (str)
+            2068 CALL                 (2 positional)
+            2076 TO_BOOL
+            2084 POP_JUMP_IF_FALSE    (to 2092)
+
+113:        2088 BUILD_MAP            0
+            2090 STORE_FAST           (cookies)
+
+114:     >> 2092 LOAD_GLOBAL          (NULL + _log)
+            2102 LOAD_FAST            (log_fn)
+            2104 LOAD_CONST           ("[MailOTP] iCloud 轮询验证码: ")
+            2106 LOAD_FAST            (email)
+            2108 FORMAT_SIMPLE
+            2110 BUILD_STRING         2
+            2112 CALL                 (2 positional)
+            2120 POP_TOP
+
+115:        2122 LOAD_CONST           (0)
+            2124 LOAD_CONST           (('ICloudHME',))
+            2126 IMPORT_NAME          (icloud_hme)
+            2128 IMPORT_FROM          (ICloudHME)
+            2130 STORE_FAST           (ICloudHME)
+            2132 POP_TOP
+
+117:        2134 LOAD_FAST            (ICloudHME)
+            2136 PUSH_NULL
+            2138 LOAD_FAST            (cookies)
+            2140 COPY                 1
+            2142 TO_BOOL
+            2150 POP_JUMP_IF_TRUE     (to 2158)
+            2154 POP_TOP
+            2156 BUILD_MAP            0
+         >> 2158 LOAD_FAST            (verbose)
+            2160 LOAD_GLOBAL          (NULL + email_proxy)
+            2170 LOAD_FAST            (config)
+            2172 CALL                 (1 positional)
+            2180 LOAD_CONST           (('verbose', 'proxy'))
+            2182 CALL_KW              3
+            2184 STORE_FAST           (icloud)
+
+118:        2186 LOAD_FAST            (icloud)
+            2188 LOAD_ATTR            (NULL|self + poll_mail_for_code)
+
+119:        2208 LOAD_FAST            (email)
+
+120:        2210 BUILD_LIST           0
+            2212 LOAD_CONST           (('openai', 'noreply', 'verification', 'no-reply'))
+            2214 LIST_EXTEND          1
+
+121:        2216 LOAD_FAST            (timeout)
+
+122:        2218 LOAD_FAST            (imap_user)
+
+123:        2220 LOAD_FAST            (imap_password)
+
+118:        2222 LOAD_CONST           (('target_email', 'sender_filters', 'timeout', 'imap_user', 'imap_password'))
+            2224 CALL_KW              5
+            2226 RETURN_VALUE
+
+126:     >> 2228 RETURN_CONST         (None)
+         >> 2230 PUSH_EXC_INFO
+
+ 80:        2232 LOAD_FAST            (MailCodePollError)
+            2234 CHECK_EXC_MATCH
+            2236 POP_JUMP_IF_FALSE    (to 2316)
+            2240 STORE_FAST           (exc)
+
+ 81:        2242 LOAD_CONST           ("MAIL_CODE_ERROR:")
+            2244 LOAD_FAST            (exc)
+            2246 LOAD_ATTR            (reason)
+            2266 FORMAT_SIMPLE
+            2268 LOAD_CONST           (":")
+            2270 LOAD_FAST            (exc)
+            2272 LOAD_ATTR            (detail)
+            2292 FORMAT_SIMPLE
+            2294 BUILD_STRING         4
+            2296 SWAP                 (TOS <-> TOS1)
+            2298 POP_EXCEPT
+            2300 LOAD_CONST           (None)
+            2302 STORE_FAST           (exc)
+            2304 DELETE_FAST          (exc)
+            2306 RETURN_VALUE
+         >> 2308 LOAD_CONST           (None)
+            2310 STORE_FAST           (exc)
+            2312 DELETE_FAST          (exc)
+            2314 RERAISE              1
+
+ 80:     >> 2316 RERAISE              0
+         >> 2318 COPY                 3
+            2320 POP_EXCEPT
+            2322 RERAISE              1
+
+ExceptionTable:
+  1040 to 1126 -> 2230 [0]
+  2230 to 2240 -> 2318 [1] lasti
+  2242 to 2294 -> 2308 [1] lasti
+  2296 to 2296 -> 2318 [1] lasti
+  2308 to 2316 -> 2318 [1] lasti

@@ -1,0 +1,3027 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          imap_poller.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        16
+# Flags:             0x00000000 (0x0)
+# First Line:        1
+# Constants:
+#    0: '\n通用 IMAP 邮箱验证码轮询器\n支持 Outlook/Hotmail、iCloud、Gmail、QQ邮箱 等任意 IMAP 邮箱\n\n用法:\n    from imap_poller import ImapPoller\n\n    poller = ImapPoller("user@outlook.com", "app-password", verbose=True)\n    code = poller.poll_code(timeout=60)\n'
+#    1: 0
+#    2: None
+#    3: ('decode_header',)
+#    4: ('parsedate_to_datetime',)
+#    5: ('Optional',)
+#    6: ('HTMLParser',)
+#    7: ('requests_kwargs',)
+#    8: ('outlook.office365.com', 993)
+#    9: ('imap.mail.me.com', 993)
+#   10: ('imap.gmail.com', 993)
+#   11: ('imap.qq.com', 993)
+#   12: ('imap.163.com', 993)
+#   13: ('imap.126.com', 993)
+#   14: ('imap.yeah.net', 993)
+#   15: ('imap.aliyun.com', 993)
+#   16: ('outlook', 'hotmail', 'live', 'msn', 'icloud', 'me', 'mac', 'gmail', 'googlemail', 'qq', 'foxmail', '163', '126', 'yeah', 'aliyun')
+#   17: 'email_addr'
+#   18: 'return'
+#   19: <Code311 code object _detect_imap at 0x105ffbeb0, file imap_poller.py>, line 49
+#   20: <Code311 code object _StripHTML at 0x105ffbb80, file imap_poller.py>, line 71
+#   21: '_StripHTML'
+#   22: <Code311 code object _decode_header_text at 0x105ffb9a0, file imap_poller.py>, line 84
+#   23: <Code311 code object ImapPoller at 0x105fca880, file imap_poller.py>, line 105
+#   24: 'ImapPoller'
+#   25: True
+#   26: 'app_password'
+#   27: 'timeout'
+#   28: 'verbose'
+#   29: <Code311 code object poll_outlook_code at 0x105fca8e0, file imap_poller.py>, line 408
+#   30: '__main__'
+#   31: 'IMAP 邮箱验证码轮询'
+#   32: ('description',)
+#   33: '--email'
+#   34: '邮箱地址'
+#   35: ('required', 'help')
+#   36: '--password'
+#   37: '邮箱密码/专用密码'
+#   38: '--timeout'
+#   39: 120
+#   40: '超时秒数'
+#   41: ('type', 'default', 'help')
+#   42: '--server'
+#   43: ''
+#   44: 'IMAP 服务器 (空=自动检测)'
+#   45: ('default', 'help')
+#   46: '--port'
+#   47: 993
+#   48: 'IMAP 端口'
+#   49: '-v'
+#   50: '--verbose'
+#   51: 'store_true'
+#   52: '详细日志'
+#   53: ('action', 'help')
+#   54: ('email_addr', 'password', 'imap_server', 'imap_port', 'verbose')
+#   55: '邮箱: '
+#   56: '服务器: '
+#   57: ':'
+#   58: '等待验证码 (最长 '
+#   59: 's)...'
+#   60: ('timeout',)
+#   61: '\n验证码: '
+#   62: '\n超时未收到验证码'
+#   63: (60, True)
+# Names:
+#    0: __doc__
+#    1: base64
+#    2: re
+#    3: time
+#    4: imaplib
+#    5: email
+#    6: email.header
+#    7: decode_header
+#    8: email.utils
+#    9: parsedate_to_datetime
+#   10: typing
+#   11: Optional
+#   12: html.parser
+#   13: HTMLParser
+#   14: proxy_scope
+#   15: requests_kwargs
+#   16: IMAP_SERVERS
+#   17: str
+#   18: tuple
+#   19: _detect_imap
+#   20: _StripHTML
+#   21: _decode_header_text
+#   22: ImapPoller
+#   23: int
+#   24: bool
+#   25: poll_outlook_code
+#   26: __name__
+#   27: argparse
+#   28: ArgumentParser
+#   29: p
+#   30: add_argument
+#   31: parse_args
+#   32: args
+#   33: password
+#   34: server
+#   35: port
+#   36: verbose
+#   37: poller
+#   38: print
+#   39: imap_server
+#   40: imap_port
+#   41: timeout
+#   42: poll_code
+#   43: code
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ('\n通用 IMAP 邮箱验证码轮询器\n支持 Outlook/Hotmail、iCloud、Gmail、QQ邮箱 等任意 IMAP 邮箱\n\n用法:\n    from imap_poller import ImapPoller\n\n    poller = ImapPoller("user@outlook.com", "app-password", verbose=True)\n    code = poller.poll_code(timeout=60)\n')
+               4 STORE_NAME           (__doc__)
+
+ 13:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (None)
+              10 IMPORT_NAME          (base64)
+              12 STORE_NAME           (base64)
+
+ 14:          14 LOAD_CONST           (0)
+              16 LOAD_CONST           (None)
+              18 IMPORT_NAME          (re)
+              20 STORE_NAME           (re)
+
+ 15:          22 LOAD_CONST           (0)
+              24 LOAD_CONST           (None)
+              26 IMPORT_NAME          (time)
+              28 STORE_NAME           (time)
+
+ 16:          30 LOAD_CONST           (0)
+              32 LOAD_CONST           (None)
+              34 IMPORT_NAME          (imaplib)
+              36 STORE_NAME           (imaplib)
+
+ 17:          38 LOAD_CONST           (0)
+              40 LOAD_CONST           (None)
+              42 IMPORT_NAME          (email)
+              44 STORE_NAME           (email)
+
+ 18:          46 LOAD_CONST           (0)
+              48 LOAD_CONST           (('decode_header',))
+              50 IMPORT_NAME          (email.header)
+              52 IMPORT_FROM          (decode_header)
+              54 STORE_NAME           (decode_header)
+              56 POP_TOP
+
+ 19:          58 LOAD_CONST           (0)
+              60 LOAD_CONST           (('parsedate_to_datetime',))
+              62 IMPORT_NAME          (email.utils)
+              64 IMPORT_FROM          (parsedate_to_datetime)
+              66 STORE_NAME           (parsedate_to_datetime)
+              68 POP_TOP
+
+ 20:          70 LOAD_CONST           (0)
+              72 LOAD_CONST           (('Optional',))
+              74 IMPORT_NAME          (typing)
+              76 IMPORT_FROM          (Optional)
+              78 STORE_NAME           (Optional)
+              80 POP_TOP
+
+ 21:          82 LOAD_CONST           (0)
+              84 LOAD_CONST           (('HTMLParser',))
+              86 IMPORT_NAME          (html.parser)
+              88 IMPORT_FROM          (HTMLParser)
+              90 STORE_NAME           (HTMLParser)
+              92 POP_TOP
+
+ 23:          94 LOAD_CONST           (0)
+              96 LOAD_CONST           (('requests_kwargs',))
+              98 IMPORT_NAME          (proxy_scope)
+             100 IMPORT_FROM          (requests_kwargs)
+             102 STORE_NAME           (requests_kwargs)
+             104 POP_TOP
+
+ 31:         106 LOAD_CONST           (('outlook.office365.com', 993))
+
+ 32:         108 LOAD_CONST           (('outlook.office365.com', 993))
+
+ 33:         110 LOAD_CONST           (('outlook.office365.com', 993))
+
+ 34:         112 LOAD_CONST           (('outlook.office365.com', 993))
+
+ 35:         114 LOAD_CONST           (('imap.mail.me.com', 993))
+
+ 36:         116 LOAD_CONST           (('imap.mail.me.com', 993))
+
+ 37:         118 LOAD_CONST           (('imap.mail.me.com', 993))
+
+ 38:         120 LOAD_CONST           (('imap.gmail.com', 993))
+
+ 39:         122 LOAD_CONST           (('imap.gmail.com', 993))
+
+ 40:         124 LOAD_CONST           (('imap.qq.com', 993))
+
+ 41:         126 LOAD_CONST           (('imap.qq.com', 993))
+
+ 42:         128 LOAD_CONST           (('imap.163.com', 993))
+
+ 43:         130 LOAD_CONST           (('imap.126.com', 993))
+
+ 44:         132 LOAD_CONST           (('imap.yeah.net', 993))
+
+ 45:         134 LOAD_CONST           (('imap.aliyun.com', 993))
+
+ 30:         136 LOAD_CONST           (('outlook', 'hotmail', 'live', 'msn', 'icloud', 'me', 'mac', 'gmail', 'googlemail', 'qq', 'foxmail', '163', '126', 'yeah', 'aliyun'))
+             138 BUILD_CONST_KEY_MAP  15
+             140 STORE_NAME           (IMAP_SERVERS)
+
+ 49:         142 LOAD_CONST           ("email_addr")
+             144 LOAD_NAME            (str)
+             146 LOAD_CONST           ("return")
+             148 LOAD_NAME            (tuple)
+             150 BUILD_TUPLE          4
+             152 LOAD_CONST           (<Code311 code object _detect_imap at 0x105ffbeb0, file imap_poller.py>, line 49)
+             154 MAKE_FUNCTION
+             156 SET_FUNCTION_ATTRIBUTE 4
+             158 STORE_NAME           (_detect_imap)
+
+ 71:         160 LOAD_BUILD_CLASS
+             162 PUSH_NULL
+             164 LOAD_CONST           (<Code311 code object _StripHTML at 0x105ffbb80, file imap_poller.py>, line 71)
+             166 MAKE_FUNCTION
+             168 LOAD_CONST           ("_StripHTML")
+             170 LOAD_NAME            (HTMLParser)
+             172 CALL                 (3 positional)
+             180 STORE_NAME           (_StripHTML)
+
+ 84:         182 LOAD_CONST           ("return")
+             184 LOAD_NAME            (str)
+             186 BUILD_TUPLE          2
+             188 LOAD_CONST           (<Code311 code object _decode_header_text at 0x105ffb9a0, file imap_poller.py>, line 84)
+             190 MAKE_FUNCTION
+             192 SET_FUNCTION_ATTRIBUTE 4
+             194 STORE_NAME           (_decode_header_text)
+
+105:         196 LOAD_BUILD_CLASS
+             198 PUSH_NULL
+             200 LOAD_CONST           (<Code311 code object ImapPoller at 0x105fca880, file imap_poller.py>, line 105)
+             202 MAKE_FUNCTION
+             204 LOAD_CONST           ("ImapPoller")
+             206 CALL                 (2 positional)
+             214 STORE_NAME           (ImapPoller)
+
+411:         216 NOP
+
+412:         218 NOP
+
+408:         220 LOAD_CONST           ((60, True))
+             222 LOAD_CONST           ("email_addr")
+
+409:         224 LOAD_NAME            (str)
+
+408:         226 LOAD_CONST           ("app_password")
+
+410:         228 LOAD_NAME            (str)
+
+408:         230 LOAD_CONST           ("timeout")
+
+411:         232 LOAD_NAME            (int)
+
+408:         234 LOAD_CONST           ("verbose")
+
+412:         236 LOAD_NAME            (bool)
+
+408:         238 LOAD_CONST           ("return")
+
+413:         240 LOAD_NAME            (Optional)
+             242 LOAD_NAME            (str)
+             244 BINARY_SUBSCR
+
+408:         248 BUILD_TUPLE          10
+             250 LOAD_CONST           (<Code311 code object poll_outlook_code at 0x105fca8e0, file imap_poller.py>, line 408)
+             252 MAKE_FUNCTION
+             254 SET_FUNCTION_ATTRIBUTE 4
+             256 SET_FUNCTION_ATTRIBUTE 1
+             258 STORE_NAME           (poll_outlook_code)
+
+423:         260 LOAD_NAME            (__name__)
+             262 LOAD_CONST           ("__main__")
+             264 COMPARE_OP           (==)
+             268 EXTENDED_ARG         (256)
+             270 POP_JUMP_IF_FALSE    (to 950)
+
+424:         274 LOAD_CONST           (0)
+             276 LOAD_CONST           (None)
+             278 IMPORT_NAME          (argparse)
+             280 STORE_NAME           (argparse)
+
+426:         282 LOAD_NAME            (argparse)
+             284 LOAD_ATTR            (ArgumentParser)
+             304 PUSH_NULL
+             306 LOAD_CONST           ("IMAP 邮箱验证码轮询")
+             308 LOAD_CONST           (('description',))
+             310 CALL_KW              1
+             312 STORE_NAME           (p)
+
+427:         314 LOAD_NAME            (p)
+             316 LOAD_ATTR            (NULL|self + add_argument)
+             336 LOAD_CONST           ("--email")
+             338 LOAD_CONST           (True)
+             340 LOAD_CONST           ("邮箱地址")
+             342 LOAD_CONST           (('required', 'help'))
+             344 CALL_KW              3
+             346 POP_TOP
+
+428:         348 LOAD_NAME            (p)
+             350 LOAD_ATTR            (NULL|self + add_argument)
+             370 LOAD_CONST           ("--password")
+             372 LOAD_CONST           (True)
+             374 LOAD_CONST           ("邮箱密码/专用密码")
+             376 LOAD_CONST           (('required', 'help'))
+             378 CALL_KW              3
+             380 POP_TOP
+
+429:         382 LOAD_NAME            (p)
+             384 LOAD_ATTR            (NULL|self + add_argument)
+             404 LOAD_CONST           ("--timeout")
+             406 LOAD_NAME            (int)
+             408 LOAD_CONST           (120)
+             410 LOAD_CONST           ("超时秒数")
+             412 LOAD_CONST           (('type', 'default', 'help'))
+             414 CALL_KW              4
+             416 POP_TOP
+
+430:         418 LOAD_NAME            (p)
+             420 LOAD_ATTR            (NULL|self + add_argument)
+             440 LOAD_CONST           ("--server")
+             442 LOAD_CONST           ("")
+             444 LOAD_CONST           ("IMAP 服务器 (空=自动检测)")
+             446 LOAD_CONST           (('default', 'help'))
+             448 CALL_KW              3
+             450 POP_TOP
+
+431:         452 LOAD_NAME            (p)
+             454 LOAD_ATTR            (NULL|self + add_argument)
+             474 LOAD_CONST           ("--port")
+             476 LOAD_NAME            (int)
+             478 LOAD_CONST           (993)
+             480 LOAD_CONST           ("IMAP 端口")
+             482 LOAD_CONST           (('type', 'default', 'help'))
+             484 CALL_KW              4
+             486 POP_TOP
+
+432:         488 LOAD_NAME            (p)
+             490 LOAD_ATTR            (NULL|self + add_argument)
+             510 LOAD_CONST           ("-v")
+             512 LOAD_CONST           ("--verbose")
+             514 LOAD_CONST           ("store_true")
+             516 LOAD_CONST           ("详细日志")
+             518 LOAD_CONST           (('action', 'help'))
+             520 CALL_KW              4
+             522 POP_TOP
+
+433:         524 LOAD_NAME            (p)
+             526 LOAD_ATTR            (NULL|self + parse_args)
+             546 CALL                 (0 positional)
+             554 STORE_NAME           (args)
+
+435:         556 LOAD_NAME            (ImapPoller)
+             558 PUSH_NULL
+
+436:         560 LOAD_NAME            (args)
+             562 LOAD_ATTR            (email)
+
+437:         582 LOAD_NAME            (args)
+             584 LOAD_ATTR            (password)
+
+438:         604 LOAD_NAME            (args)
+             606 LOAD_ATTR            (server)
+
+439:         626 LOAD_NAME            (args)
+             628 LOAD_ATTR            (port)
+
+440:         648 LOAD_NAME            (args)
+             650 LOAD_ATTR            (verbose)
+
+435:         670 LOAD_CONST           (('email_addr', 'password', 'imap_server', 'imap_port', 'verbose'))
+             672 CALL_KW              5
+             674 STORE_NAME           (poller)
+
+442:         676 LOAD_NAME            (print)
+             678 PUSH_NULL
+             680 LOAD_CONST           ("邮箱: ")
+             682 LOAD_NAME            (args)
+             684 LOAD_ATTR            (email)
+             704 FORMAT_SIMPLE
+             706 BUILD_STRING         2
+             708 CALL                 (1 positional)
+             716 POP_TOP
+
+443:         718 LOAD_NAME            (print)
+             720 PUSH_NULL
+             722 LOAD_CONST           ("服务器: ")
+             724 LOAD_NAME            (poller)
+             726 LOAD_ATTR            (imap_server)
+             746 FORMAT_SIMPLE
+             748 LOAD_CONST           (":")
+             750 LOAD_NAME            (poller)
+             752 LOAD_ATTR            (imap_port)
+             772 FORMAT_SIMPLE
+             774 BUILD_STRING         4
+             776 CALL                 (1 positional)
+             784 POP_TOP
+
+444:         786 LOAD_NAME            (print)
+             788 PUSH_NULL
+             790 LOAD_CONST           ("等待验证码 (最长 ")
+             792 LOAD_NAME            (args)
+             794 LOAD_ATTR            (timeout)
+             814 FORMAT_SIMPLE
+             816 LOAD_CONST           ("s)...")
+             818 BUILD_STRING         3
+             820 CALL                 (1 positional)
+             828 POP_TOP
+
+445:         830 LOAD_NAME            (print)
+             832 PUSH_NULL
+             834 CALL                 (0 positional)
+             842 POP_TOP
+
+447:         844 LOAD_NAME            (poller)
+             846 LOAD_ATTR            (NULL|self + poll_code)
+             866 LOAD_NAME            (args)
+             868 LOAD_ATTR            (timeout)
+             888 LOAD_CONST           (('timeout',))
+             890 CALL_KW              1
+             892 STORE_NAME           (code)
+
+448:         894 LOAD_NAME            (code)
+             896 TO_BOOL
+             904 POP_JUMP_IF_FALSE    (to 932)
+
+449:         908 LOAD_NAME            (print)
+             910 PUSH_NULL
+             912 LOAD_CONST           ("\n验证码: ")
+             914 LOAD_NAME            (code)
+             916 FORMAT_SIMPLE
+             918 BUILD_STRING         2
+             920 CALL                 (1 positional)
+             928 POP_TOP
+             930 RETURN_CONST         (None)
+
+451:     >>  932 LOAD_NAME            (print)
+             934 PUSH_NULL
+             936 LOAD_CONST           ("\n超时未收到验证码")
+             938 CALL                 (1 positional)
+             946 POP_TOP
+             948 RETURN_CONST         (None)
+
+423:     >>  950 RETURN_CONST         (None)
+
+
+# Method Name:       _detect_imap
+# Filename:          imap_poller.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        5
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        49
+# Constants:
+#    0: '根据邮箱地址自动检测 IMAP 服务器和端口'
+#    1: '@'
+#    2: -1
+#    3: '.'
+#    4: 2
+#    5: -2
+#    6: 0
+#    7: '无法识别邮箱服务商: '
+#    8: '，请手动指定 IMAP 服务器'
+# Names:
+#    0: lower
+#    1: strip
+#    2: split
+#    3: count
+#    4: IMAP_SERVERS
+#    5: ValueError
+# Varnames:
+#	email_addr, domain, provider, key
+# Positional arguments:
+#	email_addr
+# Local variables:
+#    1: domain
+#    2: provider
+#    3: key
+ 49:           0 RESUME               0
+
+ 51:           2 LOAD_FAST            (email_addr)
+               4 LOAD_ATTR            (NULL|self + lower)
+              24 CALL                 (0 positional)
+              32 LOAD_ATTR            (NULL|self + strip)
+              52 CALL                 (0 positional)
+              60 STORE_FAST           (email_addr)
+
+ 52:          62 LOAD_FAST            (email_addr)
+              64 LOAD_ATTR            (NULL|self + split)
+              84 LOAD_CONST           ("@")
+              86 CALL                 (1 positional)
+              94 LOAD_CONST           (-1)
+              96 BINARY_SUBSCR
+             100 STORE_FAST           (domain)
+
+ 53:         102 LOAD_FAST            (domain)
+             104 LOAD_ATTR            (NULL|self + count)
+             124 LOAD_CONST           (".")
+             126 CALL                 (1 positional)
+             134 LOAD_CONST           (2)
+             136 COMPARE_OP           (>=)
+             140 POP_JUMP_IF_FALSE    (to 184)
+             144 LOAD_FAST            (domain)
+             146 LOAD_ATTR            (NULL|self + split)
+             166 LOAD_CONST           (".")
+             168 CALL                 (1 positional)
+             176 LOAD_CONST           (-2)
+             178 BINARY_SUBSCR
+             182 JUMP_FORWARD         (to 222)
+         >>  184 LOAD_FAST            (domain)
+             186 LOAD_ATTR            (NULL|self + split)
+             206 LOAD_CONST           (".")
+             208 CALL                 (1 positional)
+             216 LOAD_CONST           (0)
+             218 BINARY_SUBSCR
+         >>  222 STORE_FAST           (provider)
+
+ 56:         224 LOAD_GLOBAL          (IMAP_SERVERS)
+             234 GET_ITER
+             236 FOR_ITER             (to 278)
+             240 STORE_FAST           (key)
+
+ 57:         242 LOAD_FAST_LOAD_FAST  (key, domain)
+             244 CONTAINS_OP          (in)
+             248 POP_JUMP_IF_TRUE     (to 256)
+             252 JUMP_BACKWARD        (to 236)
+
+ 58:     >>  256 LOAD_GLOBAL          (IMAP_SERVERS)
+             266 LOAD_FAST            (key)
+             268 BINARY_SUBSCR
+             272 SWAP                 (TOS <-> TOS1)
+             274 POP_TOP
+         >>  276 RETURN_VALUE
+
+ 56:     >>  278 END_FOR
+             280 POP_TOP
+
+ 61:         282 LOAD_FAST            (provider)
+             284 LOAD_GLOBAL          (IMAP_SERVERS)
+             294 CONTAINS_OP          (in)
+             298 POP_JUMP_IF_FALSE    (to 320)
+
+ 62:         302 LOAD_GLOBAL          (IMAP_SERVERS)
+             312 LOAD_FAST            (provider)
+             314 BINARY_SUBSCR
+             318 RETURN_VALUE
+
+ 64:     >>  320 LOAD_GLOBAL          (NULL + ValueError)
+             330 LOAD_CONST           ("无法识别邮箱服务商: ")
+             332 LOAD_FAST            (email_addr)
+             334 FORMAT_SIMPLE
+             336 LOAD_CONST           ("，请手动指定 IMAP 服务器")
+             338 BUILD_STRING         3
+             340 CALL                 (1 positional)
+             348 RAISE_VARARGS        (exception instance)
+
+
+# Method Name:       _StripHTML
+# Filename:          imap_poller.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        2
+# Flags:             0x00000000 (0x0)
+# First Line:        71
+# Constants:
+#    0: '_StripHTML'
+#    1: 71
+#    2: <Code311 code object __init__ at 0x105ffbbb0, file imap_poller.py>, line 72
+#    3: <Code311 code object handle_data at 0x105ffba90, file imap_poller.py>, line 76
+#    4: ('text',)
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __init__
+#    5: handle_data
+#    6: __static_attributes__
+#    7: __classcell__
+# Cell variables:
+#    0: __class__
+               0 MAKE_CELL            (__class__)
+
+ 71:           2 RESUME               0
+               4 LOAD_NAME            (__name__)
+               6 STORE_NAME           (__module__)
+               8 LOAD_CONST           ("_StripHTML")
+              10 STORE_NAME           (__qualname__)
+              12 LOAD_CONST           (71)
+              14 STORE_NAME           (__firstlineno__)
+
+ 72:          16 LOAD_FAST            (__class__)
+              18 BUILD_TUPLE          1
+              20 LOAD_CONST           (<Code311 code object __init__ at 0x105ffbbb0, file imap_poller.py>, line 72)
+              22 MAKE_FUNCTION
+              24 SET_FUNCTION_ATTRIBUTE 8
+              26 STORE_NAME           (__init__)
+
+ 76:          28 LOAD_CONST           (<Code311 code object handle_data at 0x105ffba90, file imap_poller.py>, line 76)
+              30 MAKE_FUNCTION
+              32 STORE_NAME           (handle_data)
+              34 LOAD_CONST           (('text',))
+              36 STORE_NAME           (__static_attributes__)
+              38 LOAD_FAST            (__class__)
+              40 COPY                 1
+              42 STORE_NAME           (__classcell__)
+              44 RETURN_VALUE
+
+
+# Method Name:       _decode_header_text
+# Filename:          imap_poller.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        9
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        84
+# Constants:
+#    0: '解码 RFC 2047 编码的邮件头'
+#    1: ''
+#    2: 'utf-8'
+#    3: 'ignore'
+#    4: ('errors',)
+#    5: ' '
+# Names:
+#    0: decode_header
+#    1: isinstance
+#    2: bytes
+#    3: append
+#    4: decode
+#    5: Exception
+#    6: str
+#    7: join
+# Varnames:
+#	header_val, parts, result, text, charset
+# Positional arguments:
+#	header_val
+# Local variables:
+#    1: parts
+#    2: result
+#    3: text
+#    4: charset
+ 84:           0 RESUME               0
+
+ 86:           2 LOAD_FAST            (header_val)
+               4 POP_JUMP_IF_NOT_NONE (to 10)
+
+ 87:           8 RETURN_CONST         ("")
+
+ 88:     >>   10 LOAD_GLOBAL          (NULL + decode_header)
+              20 LOAD_FAST            (header_val)
+              22 CALL                 (1 positional)
+              30 STORE_FAST           (parts)
+
+ 89:          32 BUILD_LIST           0
+              34 STORE_FAST           (result)
+
+ 90:          36 LOAD_FAST            (parts)
+              38 GET_ITER
+              40 FOR_ITER             (to 234)
+              44 UNPACK_SEQUENCE      2
+              48 STORE_FAST_STORE_FAST (text, charset)
+
+ 91:          50 LOAD_GLOBAL          (NULL + isinstance)
+              60 LOAD_FAST            (text)
+              62 LOAD_GLOBAL          (bytes)
+              72 CALL                 (2 positional)
+              80 TO_BOOL
+              88 POP_JUMP_IF_FALSE    (to 178)
+
+ 92:          92 NOP
+
+ 93:          94 LOAD_FAST            (result)
+              96 LOAD_ATTR            (NULL|self + append)
+             116 LOAD_FAST            (text)
+             118 LOAD_ATTR            (NULL|self + decode)
+             138 LOAD_FAST            (charset)
+             140 COPY                 1
+             142 TO_BOOL
+             150 POP_JUMP_IF_TRUE     (to 158)
+             154 POP_TOP
+             156 LOAD_CONST           ("utf-8")
+         >>  158 LOAD_CONST           ("ignore")
+             160 LOAD_CONST           (('errors',))
+             162 CALL_KW              2
+             164 CALL                 (1 positional)
+             172 POP_TOP
+             174 JUMP_BACKWARD        (to 40)
+
+ 97:     >>  178 LOAD_FAST            (result)
+             180 LOAD_ATTR            (NULL|self + append)
+             200 LOAD_GLOBAL          (NULL + str)
+             210 LOAD_FAST            (text)
+             212 CALL                 (1 positional)
+             220 CALL                 (1 positional)
+             228 POP_TOP
+             230 JUMP_BACKWARD        (to 40)
+
+ 90:     >>  234 END_FOR
+             236 POP_TOP
+
+ 98:         238 LOAD_CONST           (" ")
+             240 LOAD_ATTR            (NULL|self + join)
+             260 LOAD_FAST            (result)
+             262 CALL                 (1 positional)
+             270 RETURN_VALUE
+         >>  272 PUSH_EXC_INFO
+
+ 94:         274 LOAD_GLOBAL          (Exception)
+             284 CHECK_EXC_MATCH
+             286 POP_JUMP_IF_FALSE    (to 360)
+             290 POP_TOP
+
+ 95:         292 LOAD_FAST            (result)
+             294 LOAD_ATTR            (NULL|self + append)
+             314 LOAD_FAST            (text)
+         >>  316 LOAD_ATTR            (NULL|self + decode)
+             336 LOAD_CONST           ("utf-8")
+             338 LOAD_CONST           ("ignore")
+             340 LOAD_CONST           (('errors',))
+             342 CALL_KW              2
+             344 CALL                 (1 positional)
+             352 POP_TOP
+             354 POP_EXCEPT
+             356 JUMP_BACKWARD        (to 40)
+
+ 94:     >>  360 RERAISE              0
+         >>  362 COPY                 3
+             364 POP_EXCEPT
+             366 RERAISE              1
+
+ExceptionTable:
+  94 to 172 -> 272 [1]
+  272 to 352 -> 362 [2] lasti
+  360 to 360 -> 362 [2] lasti
+
+# Method Name:       ImapPoller
+# Filename:          imap_poller.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        20
+# Flags:             0x00000000 (0x0)
+# First Line:        105
+# Constants:
+#    0: 'ImapPoller'
+#    1: 105
+#    2: '通用 IMAP 邮箱验证码轮询器'
+#    3: 'email_addr'
+#    4: 'password'
+#    5: 'imap_server'
+#    6: 'imap_port'
+#    7: 'verbose'
+#    8: 'oauth_client_id'
+#    9: 'oauth_refresh_token'
+#   10: 'proxy'
+#   11: <Code311 code object __init__ at 0x105ffb970, file imap_poller.py>, line 108
+#   12: 'error'
+#   13: 'return'
+#   14: <Code311 code object _is_terminal_connection_error at 0x105fca4c0, file imap_poller.py>, line 136
+#   15: 'msg'
+#   16: <Code311 code object _log at 0x105fca4f0, file imap_poller.py>, line 156
+#   17: <Code311 code object _get_microsoft_access_token at 0x105fca580, file imap_poller.py>, line 160
+#   18: <Code311 code object _connect at 0x105fca610, file imap_poller.py>, line 191
+#   19: None
+#   20: 'sender_keywords'
+#   21: 'subject_keywords'
+#   22: 'timeout'
+#   23: 'interval'
+#   24: 'exclude_codes'
+#   25: 'since_ts'
+#   26: 'recent_scan_limit'
+#   27: 'include_existing'
+#   28: <Code311 code object poll_code at 0x105fca670, file imap_poller.py>, line 203
+#   29: 'sender_filters'
+#   30: 'excluded'
+#   31: <Code311 code object _extract_code at 0x105fca790, file imap_poller.py>, line 315
+#   32: <Code311 code object _message_text at 0x105fca7f0, file imap_poller.py>, line 368
+#   33: <Code311 code object reset_baseline at 0x105fca850, file imap_poller.py>, line 399
+#   34: ('_last_count', '_oauth_access_token', 'email', 'imap_port', 'imap_server', 'last_error', 'oauth_client_id', 'oauth_refresh_token', 'password', 'proxy', 'verbose')
+#   35: ('', 993, True, '', '', '')
+#   36: (None, None, 60, 5, None, None, 20, False)
+#   37: (None,)
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: str
+#    6: int
+#    7: bool
+#    8: __init__
+#    9: staticmethod
+#   10: Exception
+#   11: _is_terminal_connection_error
+#   12: _log
+#   13: _get_microsoft_access_token
+#   14: _connect
+#   15: list
+#   16: set
+#   17: float
+#   18: Optional
+#   19: poll_code
+#   20: _extract_code
+#   21: _message_text
+#   22: reset_baseline
+#   23: __static_attributes__
+105:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("ImapPoller")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (105)
+              12 STORE_NAME           (__firstlineno__)
+
+106:          14 LOAD_CONST           ("通用 IMAP 邮箱验证码轮询器")
+              16 STORE_NAME           (__doc__)
+
+112:          18 NOP
+
+113:          20 NOP
+
+114:          22 NOP
+
+115:          24 NOP
+
+116:          26 NOP
+
+117:          28 NOP
+
+108:          30 LOAD_CONST           (('', 993, True, '', '', ''))
+              32 LOAD_CONST           ("email_addr")
+
+110:          34 LOAD_NAME            (str)
+
+108:          36 LOAD_CONST           ("password")
+
+111:          38 LOAD_NAME            (str)
+
+108:          40 LOAD_CONST           ("imap_server")
+
+112:          42 LOAD_NAME            (str)
+
+108:          44 LOAD_CONST           ("imap_port")
+
+113:          46 LOAD_NAME            (int)
+
+108:          48 LOAD_CONST           ("verbose")
+
+114:          50 LOAD_NAME            (bool)
+
+108:          52 LOAD_CONST           ("oauth_client_id")
+
+115:          54 LOAD_NAME            (str)
+
+108:          56 LOAD_CONST           ("oauth_refresh_token")
+
+116:          58 LOAD_NAME            (str)
+
+108:          60 LOAD_CONST           ("proxy")
+
+117:          62 LOAD_NAME            (str)
+
+108:          64 BUILD_TUPLE          16
+              66 LOAD_CONST           (<Code311 code object __init__ at 0x105ffb970, file imap_poller.py>, line 108)
+              68 MAKE_FUNCTION
+              70 SET_FUNCTION_ATTRIBUTE 4
+              72 SET_FUNCTION_ATTRIBUTE 1
+              74 STORE_NAME           (__init__)
+
+136:          76 LOAD_NAME            (staticmethod)
+
+137:          78 LOAD_CONST           ("error")
+              80 LOAD_NAME            (Exception)
+              82 LOAD_NAME            (str)
+              84 BINARY_OP            (|)
+              88 LOAD_CONST           ("return")
+              90 LOAD_NAME            (bool)
+              92 BUILD_TUPLE          4
+              94 LOAD_CONST           (<Code311 code object _is_terminal_connection_error at 0x105fca4c0, file imap_poller.py>, line 136)
+              96 MAKE_FUNCTION
+              98 SET_FUNCTION_ATTRIBUTE 4
+
+136:         100 CALL                 (0 positional)
+
+137:         108 STORE_NAME           (_is_terminal_connection_error)
+
+156:         110 LOAD_CONST           ("msg")
+             112 LOAD_NAME            (str)
+             114 BUILD_TUPLE          2
+             116 LOAD_CONST           (<Code311 code object _log at 0x105fca4f0, file imap_poller.py>, line 156)
+             118 MAKE_FUNCTION
+             120 SET_FUNCTION_ATTRIBUTE 4
+             122 STORE_NAME           (_log)
+
+160:         124 LOAD_CONST           ("return")
+             126 LOAD_NAME            (str)
+             128 BUILD_TUPLE          2
+             130 LOAD_CONST           (<Code311 code object _get_microsoft_access_token at 0x105fca580, file imap_poller.py>, line 160)
+             132 MAKE_FUNCTION
+             134 SET_FUNCTION_ATTRIBUTE 4
+             136 STORE_NAME           (_get_microsoft_access_token)
+
+191:         138 LOAD_CONST           (<Code311 code object _connect at 0x105fca610, file imap_poller.py>, line 191)
+             140 MAKE_FUNCTION
+             142 STORE_NAME           (_connect)
+
+205:         144 NOP
+
+206:         146 NOP
+
+207:         148 NOP
+
+208:         150 NOP
+
+209:         152 NOP
+
+210:         154 NOP
+
+211:         156 NOP
+
+212:         158 NOP
+
+203:         160 LOAD_CONST           ((None, None, 60, 5, None, None, 20, False))
+             162 LOAD_CONST           ("sender_keywords")
+
+205:         164 LOAD_NAME            (list)
+
+203:         166 LOAD_CONST           ("subject_keywords")
+
+206:         168 LOAD_NAME            (list)
+
+203:         170 LOAD_CONST           ("timeout")
+
+207:         172 LOAD_NAME            (int)
+
+203:         174 LOAD_CONST           ("interval")
+
+208:         176 LOAD_NAME            (int)
+
+203:         178 LOAD_CONST           ("exclude_codes")
+
+209:         180 LOAD_NAME            (set)
+
+203:         182 LOAD_CONST           ("since_ts")
+
+210:         184 LOAD_NAME            (float)
+             186 LOAD_CONST           (None)
+             188 BINARY_OP            (|)
+
+203:         192 LOAD_CONST           ("recent_scan_limit")
+
+211:         194 LOAD_NAME            (int)
+
+203:         196 LOAD_CONST           ("include_existing")
+
+212:         198 LOAD_NAME            (bool)
+
+203:         200 LOAD_CONST           ("return")
+
+213:         202 LOAD_NAME            (Optional)
+             204 LOAD_NAME            (str)
+             206 BINARY_SUBSCR
+
+203:         210 BUILD_TUPLE          18
+             212 LOAD_CONST           (<Code311 code object poll_code at 0x105fca670, file imap_poller.py>, line 203)
+             214 MAKE_FUNCTION
+             216 SET_FUNCTION_ATTRIBUTE 4
+             218 SET_FUNCTION_ATTRIBUTE 1
+             220 STORE_NAME           (poll_code)
+
+316:         222 NOP
+
+315:         224 LOAD_CONST           ((None,))
+             226 LOAD_CONST           ("sender_filters")
+
+316:         228 LOAD_NAME            (list)
+
+315:         230 LOAD_CONST           ("excluded")
+
+316:         232 LOAD_NAME            (set)
+
+315:         234 LOAD_CONST           ("since_ts")
+
+316:         236 LOAD_NAME            (float)
+             238 LOAD_CONST           (None)
+             240 BINARY_OP            (|)
+
+315:         244 LOAD_CONST           ("return")
+
+317:         246 LOAD_NAME            (Optional)
+             248 LOAD_NAME            (str)
+             250 BINARY_SUBSCR
+
+315:         254 BUILD_TUPLE          8
+             256 LOAD_CONST           (<Code311 code object _extract_code at 0x105fca790, file imap_poller.py>, line 315)
+             258 MAKE_FUNCTION
+             260 SET_FUNCTION_ATTRIBUTE 4
+             262 SET_FUNCTION_ATTRIBUTE 1
+             264 STORE_NAME           (_extract_code)
+
+368:         266 LOAD_NAME            (staticmethod)
+
+369:         268 LOAD_CONST           ("return")
+             270 LOAD_NAME            (str)
+             272 BUILD_TUPLE          2
+             274 LOAD_CONST           (<Code311 code object _message_text at 0x105fca7f0, file imap_poller.py>, line 368)
+             276 MAKE_FUNCTION
+             278 SET_FUNCTION_ATTRIBUTE 4
+
+368:         280 CALL                 (0 positional)
+
+369:         288 STORE_NAME           (_message_text)
+
+399:         290 LOAD_CONST           (<Code311 code object reset_baseline at 0x105fca850, file imap_poller.py>, line 399)
+             292 MAKE_FUNCTION
+             294 STORE_NAME           (reset_baseline)
+             296 LOAD_CONST           (('_last_count', '_oauth_access_token', 'email', 'imap_port', 'imap_server', 'last_error', 'oauth_client_id', 'oauth_refresh_token', 'password', 'proxy', 'verbose'))
+             298 STORE_NAME           (__static_attributes__)
+             300 RETURN_CONST         (None)
+
+
+# Method Name:       poll_outlook_code
+# Filename:          imap_poller.py
+# Argument count:    4
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        6
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        408
+# Constants:
+#    0: 'Outlook/Hotmail 快捷轮询'
+#    1: ('verbose',)
+#    2: ('timeout',)
+# Names:
+#    0: ImapPoller
+#    1: poll_code
+# Varnames:
+#	email_addr, app_password, timeout, verbose, poller
+# Positional arguments:
+#	email_addr, app_password, timeout, verbose
+# Local variables:
+#    4: poller
+408:           0 RESUME               0
+
+415:           2 LOAD_GLOBAL          (NULL + ImapPoller)
+              12 LOAD_FAST_LOAD_FAST  (email_addr, app_password)
+              14 LOAD_FAST            (verbose)
+              16 LOAD_CONST           (('verbose',))
+              18 CALL_KW              3
+              20 STORE_FAST           (poller)
+
+416:          22 LOAD_FAST            (poller)
+              24 LOAD_ATTR            (NULL|self + poll_code)
+              44 LOAD_FAST            (timeout)
+              46 LOAD_CONST           (('timeout',))
+              48 CALL_KW              1
+              50 RETURN_VALUE
+
+
+# Method Name:       __init__
+# Filename:          imap_poller.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        3
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        72
+# Constants:
+#    0: None
+#    1: ''
+# Names:
+#    0: super
+#    1: __init__
+#    2: text
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+# Free variables:
+#    0: __class__
+               0 COPY_FREE_VARS       1
+
+ 72:           2 RESUME               0
+
+ 73:           4 LOAD_GLOBAL          (super)
+              14 LOAD_DEREF           (__class__)
+              16 LOAD_FAST            (self)
+              18 LOAD_SUPER_ATTR      (NULL|self + __init__)
+              22 CALL                 (0 positional)
+              30 POP_TOP
+
+ 74:          32 LOAD_CONST           ("")
+              34 LOAD_FAST            (self)
+              36 STORE_ATTR           (text)
+              46 RETURN_CONST         (None)
+
+
+# Method Name:       handle_data
+# Filename:          imap_poller.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        76
+# Constants:
+#    0: None
+# Names:
+#    0: text
+# Varnames:
+#	self, data
+# Positional arguments:
+#	self, data
+ 76:           0 RESUME               0
+
+ 77:           2 LOAD_FAST            (self)
+               4 COPY                 1
+               6 LOAD_ATTR            (text)
+              26 LOAD_FAST            (data)
+              28 BINARY_OP            (+=)
+              32 SWAP                 (TOS <-> TOS1)
+              34 STORE_ATTR           (text)
+              44 RETURN_CONST         (None)
+
+
+# Method Name:       __init__
+# Filename:          imap_poller.py
+# Argument count:    9
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  9
+# Stack size:        4
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        108
+# Constants:
+#    0: None
+#    1: ''
+#    2: -1
+# Names:
+#    0: strip
+#    1: email
+#    2: password
+#    3: verbose
+#    4: str
+#    5: oauth_client_id
+#    6: oauth_refresh_token
+#    7: proxy
+#    8: _oauth_access_token
+#    9: last_error
+#   10: imap_server
+#   11: imap_port
+#   12: _detect_imap
+#   13: _last_count
+# Varnames:
+#	self, email_addr, password, imap_server, imap_port, verbose, oauth_client_id, oauth_refresh_token, proxy
+# Positional arguments:
+#	self, email_addr, password, imap_server, imap_port, verbose, oauth_client_id, oauth_refresh_token, proxy
+108:           0 RESUME               0
+
+119:           2 LOAD_FAST            (email_addr)
+               4 LOAD_ATTR            (NULL|self + strip)
+              24 CALL                 (0 positional)
+              32 LOAD_FAST            (self)
+              34 STORE_ATTR           (email)
+
+120:          44 LOAD_FAST_LOAD_FAST  (password, self)
+              46 STORE_ATTR           (password)
+
+121:          56 LOAD_FAST_LOAD_FAST  (verbose, self)
+              58 STORE_ATTR           (verbose)
+
+122:          68 LOAD_GLOBAL          (NULL + str)
+              78 LOAD_FAST            (oauth_client_id)
+              80 COPY                 1
+              82 TO_BOOL
+              90 POP_JUMP_IF_TRUE     (to 98)
+              94 POP_TOP
+              96 LOAD_CONST           ("")
+         >>   98 CALL                 (1 positional)
+             106 LOAD_ATTR            (NULL|self + strip)
+             126 CALL                 (0 positional)
+             134 LOAD_FAST            (self)
+             136 STORE_ATTR           (oauth_client_id)
+
+123:         146 LOAD_GLOBAL          (NULL + str)
+             156 LOAD_FAST            (oauth_refresh_token)
+             158 COPY                 1
+             160 TO_BOOL
+             168 POP_JUMP_IF_TRUE     (to 176)
+             172 POP_TOP
+             174 LOAD_CONST           ("")
+         >>  176 CALL                 (1 positional)
+             184 LOAD_ATTR            (NULL|self + strip)
+             204 CALL                 (0 positional)
+             212 LOAD_FAST            (self)
+             214 STORE_ATTR           (oauth_refresh_token)
+
+124:         224 LOAD_FAST_LOAD_FAST  (proxy, self)
+             226 STORE_ATTR           (proxy)
+
+125:         236 LOAD_CONST           ("")
+             238 LOAD_FAST            (self)
+             240 STORE_ATTR           (_oauth_access_token)
+
+126:         250 LOAD_CONST           ("")
+             252 LOAD_FAST            (self)
+             254 STORE_ATTR           (last_error)
+
+128:         264 LOAD_FAST            (imap_server)
+             266 TO_BOOL
+             274 POP_JUMP_IF_FALSE    (to 304)
+
+129:         278 LOAD_FAST_LOAD_FAST  (imap_server, self)
+             280 STORE_ATTR           (imap_server)
+
+130:         290 LOAD_FAST_LOAD_FAST  (imap_port, self)
+             292 STORE_ATTR           (imap_port)
+             302 JUMP_FORWARD         (to 372)
+
+132:     >>  304 LOAD_GLOBAL          (NULL + _detect_imap)
+             314 LOAD_FAST            (self)
+             316 LOAD_ATTR            (email)
+             336 CALL                 (1 positional)
+             344 UNPACK_SEQUENCE      2
+             348 LOAD_FAST            (self)
+             350 STORE_ATTR           (imap_server)
+             360 LOAD_FAST            (self)
+             362 STORE_ATTR           (imap_port)
+
+134:     >>  372 LOAD_CONST           (-1)
+             374 LOAD_FAST            (self)
+             376 STORE_ATTR           (_last_count)
+             386 RETURN_CONST         (None)
+
+
+# Method Name:       _is_terminal_connection_error
+# Filename:          imap_poller.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        136
+# Constants:
+#    0: 'Return true for mailbox authorization failures that cannot recover by polling.'
+#    1: ''
+#    2: <Code311 code object <genexpr> at 0x105ffb910, file imap_poller.py>, line 140
+#    3: ('authenticated but not connected', 'authentication failed', 'authenticate failed', 'invalid credentials', 'login failed', 'invalid_grant', 'imap access is disabled', 'imap access disabled', 'mailbox is disabled', 'permission denied')
+# Names:
+#    0: str
+#    1: lower
+#    2: any
+# Varnames:
+#	error
+# Positional arguments:
+#	error
+# Cell variables:
+#    0: text
+               0 MAKE_CELL            (text)
+
+136:           2 RESUME               0
+
+139:           4 LOAD_GLOBAL          (NULL + str)
+              14 LOAD_FAST            (error)
+              16 COPY                 1
+              18 TO_BOOL
+              26 POP_JUMP_IF_TRUE     (to 34)
+              30 POP_TOP
+              32 LOAD_CONST           ("")
+         >>   34 CALL                 (1 positional)
+              42 LOAD_ATTR            (NULL|self + lower)
+              62 CALL                 (0 positional)
+              70 STORE_DEREF          (text)
+
+140:          72 LOAD_GLOBAL          (NULL + any)
+              82 LOAD_FAST            (text)
+              84 BUILD_TUPLE          1
+              86 LOAD_CONST           (<Code311 code object <genexpr> at 0x105ffb910, file imap_poller.py>, line 140)
+              88 MAKE_FUNCTION
+              90 SET_FUNCTION_ATTRIBUTE 8
+
+142:          92 LOAD_CONST           (('authenticated but not connected', 'authentication failed', 'authenticate failed', 'invalid credentials', 'login failed', 'invalid_grant', 'imap access is disabled', 'imap access disabled', 'mailbox is disabled', 'permission denied'))
+              94 GET_ITER
+
+140:          96 CALL                 (0 positional)
+             104 CALL                 (1 positional)
+             112 RETURN_VALUE
+
+
+# Method Name:       _log
+# Filename:          imap_poller.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        156
+# Constants:
+#    0: None
+#    1: '  [IMAP] '
+# Names:
+#    0: verbose
+#    1: print
+# Varnames:
+#	self, msg
+# Positional arguments:
+#	self, msg
+156:           0 RESUME               0
+
+157:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (verbose)
+              24 TO_BOOL
+              32 POP_JUMP_IF_FALSE    (to 66)
+
+158:          36 LOAD_GLOBAL          (NULL + print)
+              46 LOAD_CONST           ("  [IMAP] ")
+              48 LOAD_FAST            (msg)
+              50 FORMAT_SIMPLE
+              52 BUILD_STRING         2
+              54 CALL                 (1 positional)
+              62 POP_TOP
+              64 RETURN_CONST         (None)
+
+157:     >>   66 RETURN_CONST         (None)
+
+
+# Method Name:       _get_microsoft_access_token
+# Filename:          imap_poller.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        8
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        160
+# Constants:
+#    0: None
+#    1: ''
+#    2: 0
+#    3: 'refresh_token'
+#    4: 'https://outlook.office.com/IMAP.AccessAsUser.All offline_access'
+#    5: ('client_id', 'grant_type', 'refresh_token', 'scope')
+#    6: 25
+#    7: ('data', 'timeout')
+#    8: 200
+#    9: 'error_description'
+#   10: 'error'
+#   11: 'Microsoft token refresh failed: '
+#   12: ' '
+#   13: 160
+#   14: 'access_token'
+#   15: 'Microsoft token refresh returned empty access_token'
+#   16: ('https://login.microsoftonline.com/consumers/oauth2/v2.0/token',)
+# Names:
+#    0: _oauth_access_token
+#    1: oauth_client_id
+#    2: oauth_refresh_token
+#    3: requests
+#    4: post
+#    5: requests_kwargs
+#    6: proxy
+#    7: status_code
+#    8: json
+#    9: get
+#   10: text
+#   11: Exception
+#   12: RuntimeError
+#   13: str
+# Varnames:
+#	self, requests, response, data, detail, token
+# Positional arguments:
+#	self
+# Local variables:
+#    1: requests
+#    2: response
+#    3: data
+#    4: detail
+#    5: token
+160:           0 RESUME               0
+
+161:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (_oauth_access_token)
+              24 TO_BOOL
+              32 POP_JUMP_IF_FALSE    (to 60)
+
+162:          36 LOAD_FAST            (self)
+              38 LOAD_ATTR            (_oauth_access_token)
+              58 RETURN_VALUE
+
+163:     >>   60 LOAD_FAST            (self)
+              62 LOAD_ATTR            (oauth_client_id)
+              82 TO_BOOL
+              90 POP_JUMP_IF_FALSE    (to 128)
+              94 LOAD_FAST            (self)
+              96 LOAD_ATTR            (oauth_refresh_token)
+             116 TO_BOOL
+             124 POP_JUMP_IF_TRUE     (to 130)
+
+164:     >>  128 RETURN_CONST         ("")
+
+165:     >>  130 LOAD_CONST           (0)
+             132 LOAD_CONST           (None)
+             134 IMPORT_NAME          (requests)
+             136 STORE_FAST           (requests)
+
+167:         138 LOAD_FAST            (requests)
+             140 LOAD_ATTR            (post)
+             160 PUSH_NULL
+
+168:         162 NOP
+
+167:         164 LOAD_CONST           (('https://login.microsoftonline.com/consumers/oauth2/v2.0/token',))
+
+170:         166 LOAD_FAST            (self)
+             168 LOAD_ATTR            (oauth_client_id)
+
+171:         188 LOAD_CONST           ("refresh_token")
+
+172:         190 LOAD_FAST            (self)
+             192 LOAD_ATTR            (oauth_refresh_token)
+
+173:         212 LOAD_CONST           ("https://outlook.office.com/IMAP.AccessAsUser.All offline_access")
+
+169:         214 LOAD_CONST           (('client_id', 'grant_type', 'refresh_token', 'scope'))
+             216 BUILD_CONST_KEY_MAP  4
+
+175:         218 LOAD_CONST           (25)
+
+167:         220 LOAD_CONST           (('data', 'timeout'))
+             222 BUILD_CONST_KEY_MAP  2
+
+176:         224 LOAD_GLOBAL          (NULL + requests_kwargs)
+             234 LOAD_FAST            (self)
+             236 LOAD_ATTR            (proxy)
+             256 CALL                 (1 positional)
+
+167:         264 DICT_MERGE           1
+             266 CALL_FUNCTION_EX     (keyword and positional arguments)
+             268 STORE_FAST           (response)
+
+178:         270 LOAD_FAST            (response)
+             272 LOAD_ATTR            (status_code)
+             292 LOAD_CONST           (200)
+             294 COMPARE_OP           (!=)
+             298 POP_JUMP_IF_FALSE    (to 534)
+
+179:         302 NOP
+
+180:         304 LOAD_FAST            (response)
+             306 LOAD_ATTR            (NULL|self + json)
+             326 CALL                 (0 positional)
+             334 STORE_FAST           (data)
+
+181:         336 LOAD_FAST            (data)
+             338 LOAD_ATTR            (NULL|self + get)
+             358 LOAD_CONST           ("error_description")
+             360 CALL                 (1 positional)
+             368 COPY                 1
+             370 TO_BOOL
+             378 POP_JUMP_IF_TRUE     (to 454)
+             382 POP_TOP
+             384 LOAD_FAST            (data)
+             386 LOAD_ATTR            (NULL|self + get)
+             406 LOAD_CONST           ("error")
+             408 CALL                 (1 positional)
+             416 COPY                 1
+             418 TO_BOOL
+             426 POP_JUMP_IF_TRUE     (to 454)
+             430 POP_TOP
+             432 LOAD_FAST            (response)
+             434 LOAD_ATTR            (text)
+         >>  454 STORE_FAST           (detail)
+
+184:         456 LOAD_GLOBAL          (NULL + RuntimeError)
+             466 LOAD_CONST           ("Microsoft token refresh failed: ")
+             468 LOAD_FAST            (response)
+             470 LOAD_ATTR            (status_code)
+             490 FORMAT_SIMPLE
+             492 LOAD_CONST           (" ")
+             494 LOAD_GLOBAL          (NULL + str)
+             504 LOAD_FAST            (detail)
+             506 CALL                 (1 positional)
+             514 LOAD_CONST           (None)
+             516 LOAD_CONST           (160)
+             518 BINARY_SLICE
+             520 FORMAT_SIMPLE
+             522 BUILD_STRING         4
+             524 CALL                 (1 positional)
+             532 RAISE_VARARGS        (exception instance)
+
+185:     >>  534 LOAD_GLOBAL          (NULL + str)
+             544 LOAD_FAST            (response)
+             546 LOAD_ATTR            (NULL|self + json)
+             566 CALL                 (0 positional)
+             574 LOAD_ATTR            (NULL|self + get)
+             594 LOAD_CONST           ("access_token")
+             596 CALL                 (1 positional)
+             604 COPY                 1
+             606 TO_BOOL
+             614 POP_JUMP_IF_TRUE     (to 622)
+             618 POP_TOP
+             620 LOAD_CONST           ("")
+         >>  622 CALL                 (1 positional)
+             630 STORE_FAST           (token)
+
+186:         632 LOAD_FAST            (token)
+             634 TO_BOOL
+             642 POP_JUMP_IF_TRUE     (to 668)
+
+187:         646 LOAD_GLOBAL          (NULL + RuntimeError)
+             656 LOAD_CONST           ("Microsoft token refresh returned empty access_token")
+             658 CALL                 (1 positional)
+             666 RAISE_VARARGS        (exception instance)
+
+188:     >>  668 LOAD_FAST_LOAD_FAST  (token, self)
+             670 STORE_ATTR           (_oauth_access_token)
+
+189:         680 LOAD_FAST            (token)
+             682 RETURN_VALUE
+         >>  684 PUSH_EXC_INFO
+
+182:         686 LOAD_GLOBAL          (Exception)
+             696 CHECK_EXC_MATCH
+             698 POP_JUMP_IF_FALSE    (to 732)
+             702 POP_TOP
+
+183:         704 LOAD_FAST            (response)
+             706 LOAD_ATTR            (text)
+             726 STORE_FAST           (detail)
+             728 POP_EXCEPT
+             730 JUMP_BACKWARD_NO_INTERRUPT (to 456)
+
+182:     >>  732 RERAISE              0
+         >>  734 COPY                 3
+             736 POP_EXCEPT
+             738 RERAISE              1
+
+ExceptionTable:
+  304 to 454 -> 684 [0]
+  684 to 726 -> 734 [1] lasti
+  732 to 732 -> 734 [1] lasti
+
+# Method Name:       _connect
+# Filename:          imap_poller.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        5
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        191
+# Constants:
+#    0: None
+#    1: 'user='
+#    2: '\x01auth=Bearer '
+#    3: '\x01\x01'
+#    4: 'XOAUTH2'
+#    5: <Code311 code object <lambda> at 0x105fca5e0, file imap_poller.py>, line 196
+# Names:
+#    0: imaplib
+#    1: IMAP4_SSL
+#    2: imap_server
+#    3: imap_port
+#    4: oauth_client_id
+#    5: oauth_refresh_token
+#    6: _get_microsoft_access_token
+#    7: email
+#    8: authenticate
+#    9: login
+#   10: password
+# Varnames:
+#	self, mail, token
+# Positional arguments:
+#	self
+# Local variables:
+#    1: mail
+#    2: token
+# Cell variables:
+#    0: auth_string
+               0 MAKE_CELL            (auth_string)
+
+191:           2 RESUME               0
+
+192:           4 LOAD_GLOBAL          (imaplib)
+              14 LOAD_ATTR            (IMAP4_SSL)
+              34 PUSH_NULL
+              36 LOAD_FAST            (self)
+              38 LOAD_ATTR            (imap_server)
+              58 LOAD_FAST            (self)
+              60 LOAD_ATTR            (imap_port)
+              80 CALL                 (2 positional)
+              88 STORE_FAST           (mail)
+
+193:          90 LOAD_FAST            (self)
+              92 LOAD_ATTR            (oauth_client_id)
+             112 TO_BOOL
+             120 POP_JUMP_IF_FALSE    (to 276)
+             124 LOAD_FAST            (self)
+             126 LOAD_ATTR            (oauth_refresh_token)
+             146 TO_BOOL
+             154 POP_JUMP_IF_FALSE    (to 276)
+
+194:         158 LOAD_FAST            (self)
+             160 LOAD_ATTR            (NULL|self + _get_microsoft_access_token)
+             180 CALL                 (0 positional)
+             188 STORE_FAST           (token)
+
+195:         190 LOAD_CONST           ("user=")
+             192 LOAD_FAST            (self)
+             194 LOAD_ATTR            (email)
+             214 FORMAT_SIMPLE
+             216 LOAD_CONST           ("\x01auth=Bearer ")
+             218 LOAD_FAST            (token)
+             220 FORMAT_SIMPLE
+             222 LOAD_CONST           ("\x01\x01")
+             224 BUILD_STRING         5
+             226 STORE_DEREF          (auth_string)
+
+196:         228 LOAD_FAST            (mail)
+             230 LOAD_ATTR            (NULL|self + authenticate)
+             250 LOAD_CONST           ("XOAUTH2")
+             252 LOAD_FAST            (auth_string)
+             254 BUILD_TUPLE          1
+             256 LOAD_CONST           (<Code311 code object <lambda> at 0x105fca5e0, file imap_poller.py>, line 196)
+             258 MAKE_FUNCTION
+             260 SET_FUNCTION_ATTRIBUTE 8
+             262 CALL                 (2 positional)
+             270 POP_TOP
+
+199:         272 LOAD_FAST            (mail)
+             274 RETURN_VALUE
+
+198:     >>  276 LOAD_FAST            (mail)
+             278 LOAD_ATTR            (NULL|self + login)
+             298 LOAD_FAST            (self)
+             300 LOAD_ATTR            (email)
+             320 LOAD_FAST            (self)
+             322 LOAD_ATTR            (password)
+             342 CALL                 (2 positional)
+             350 POP_TOP
+
+199:         352 LOAD_FAST            (mail)
+             354 RETURN_VALUE
+
+
+# Method Name:       poll_code
+# Filename:          imap_poller.py
+# Argument count:    9
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  27
+# Stack size:        9
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        203
+# Constants:
+#    0: '\n轮询邮箱，找到第一个匹配的 6 位验证码\n\nArgs:\n    sender_keywords: 发件人关键词过滤，默认 ["openai", "noreply", "verification", "no-reply"]\n    subject_keywords: 主题关键词过滤，默认 None (不过滤)\n    timeout: 总超时秒数\n    interval: 轮询间隔秒数\n    exclude_codes: 排除的验证码集合\n    since_ts: 只接受这个时间之后的验证码邮件\n    recent_scan_limit: 首轮/按时间扫描最近多少封邮件\n    include_existing: 未指定 since_ts 时是否允许扫描已有邮件\n\nReturns:\n    验证码字符串，超时返回 None\n'
+#    1: ('openai', 'noreply', 'verification', 'no-reply', 'chatgpt')
+#    2: '开始轮询 '
+#    3: ' ('
+#    4: ':'
+#    5: ')'
+#    6: '超时='
+#    7: 's  间隔='
+#    8: 's  发件人过滤='
+#    9: ''
+#   10: 'INBOX'
+#   11: 'OK'
+#   12: 'IMAP select INBOX failed: '
+#   13: None
+#   14: 'ALL'
+#   15: 'IMAP search failed: '
+#   16: 0
+#   17: -1
+#   18: 1
+#   19: 20
+#   20: '首轮扫描最近 '
+#   21: ' 封邮件'
+#   22: ('since_ts',)
+#   23: '找到验证码: '
+#   24: '基准: '
+#   25: ' 封已有邮件'
+#   26: '发现 '
+#   27: ' 封新邮件 ['
+#   28: ']'
+#   29: ': '
+#   30: '连接异常: '
+#   31: '检测到不可重试的邮箱授权错误，停止轮询'
+#   32: 's 超时'
+# Names:
+#    0: lower
+#    1: set
+#    2: _log
+#    3: email
+#    4: imap_server
+#    5: imap_port
+#    6: time
+#    7: last_error
+#    8: _connect
+#    9: select
+#   10: RuntimeError
+#   11: search
+#   12: logout
+#   13: sleep
+#   14: split
+#   15: len
+#   16: bool
+#   17: _last_count
+#   18: max
+#   19: int
+#   20: reversed
+#   21: _extract_code
+#   22: Exception
+#   23: type
+#   24: __name__
+#   25: _is_terminal_connection_error
+# Varnames:
+#	self, sender_keywords, subject_keywords, timeout, interval, exclude_codes, since_ts, recent_scan_limit, include_existing, f, sender_filters, excluded, start, mail, select_status, _select_data, status, data, msg_ids, current_count, scan_recent, recent_ids, mid, code, new_ids, delta, e
+# Positional arguments:
+#	self, sender_keywords, subject_keywords, timeout, interval, exclude_codes, since_ts, recent_scan_limit, include_existing
+# Local variables:
+#    9: f
+#   10: sender_filters
+#   11: excluded
+#   12: start
+#   13: mail
+#   14: select_status
+#   15: _select_data
+#   16: status
+#   17: data
+#   18: msg_ids
+#   19: current_count
+#   20: scan_recent
+#   21: recent_ids
+#   22: mid
+#   23: code
+#   24: new_ids
+#   25: delta
+#   26: e
+203:           0 RESUME               0
+
+230:           2 LOAD_FAST            (sender_keywords)
+               4 COPY                 1
+               6 TO_BOOL
+              14 POP_JUMP_IF_TRUE     (to 26)
+              18 POP_TOP
+              20 BUILD_LIST           0
+              22 LOAD_CONST           (('openai', 'noreply', 'verification', 'no-reply', 'chatgpt'))
+              24 LIST_EXTEND          1
+         >>   26 GET_ITER
+              28 LOAD_FAST_AND_CLEAR  (f)
+              30 SWAP                 (TOS <-> TOS1)
+              32 BUILD_LIST           0
+              34 SWAP                 (TOS <-> TOS1)
+              36 GET_ITER
+              38 FOR_ITER             (to 78)
+              42 STORE_FAST_LOAD_FAST (f, f)
+              44 LOAD_ATTR            (NULL|self + lower)
+              64 CALL                 (0 positional)
+              72 LIST_APPEND          2
+              74 JUMP_BACKWARD        (to 38)
+         >>   78 END_FOR
+              80 POP_TOP
+              82 STORE_FAST           (sender_filters)
+              84 STORE_FAST           (f)
+
+233:          86 LOAD_FAST            (exclude_codes)
+              88 COPY                 1
+              90 TO_BOOL
+              98 POP_JUMP_IF_TRUE     (to 122)
+             102 POP_TOP
+             104 LOAD_GLOBAL          (NULL + set)
+             114 CALL                 (0 positional)
+         >>  122 STORE_FAST           (excluded)
+
+235:         124 LOAD_FAST            (self)
+             126 LOAD_ATTR            (NULL|self + _log)
+             146 LOAD_CONST           ("开始轮询 ")
+             148 LOAD_FAST            (self)
+             150 LOAD_ATTR            (email)
+             170 FORMAT_SIMPLE
+             172 LOAD_CONST           (" (")
+             174 LOAD_FAST            (self)
+             176 LOAD_ATTR            (imap_server)
+             196 FORMAT_SIMPLE
+             198 LOAD_CONST           (":")
+             200 LOAD_FAST            (self)
+             202 LOAD_ATTR            (imap_port)
+             222 FORMAT_SIMPLE
+             224 LOAD_CONST           (")")
+             226 BUILD_STRING         7
+             228 CALL                 (1 positional)
+             236 POP_TOP
+
+236:         238 LOAD_FAST            (self)
+             240 LOAD_ATTR            (NULL|self + _log)
+             260 LOAD_CONST           ("超时=")
+             262 LOAD_FAST            (timeout)
+             264 FORMAT_SIMPLE
+             266 LOAD_CONST           ("s  间隔=")
+             268 LOAD_FAST            (interval)
+             270 FORMAT_SIMPLE
+             272 LOAD_CONST           ("s  发件人过滤=")
+             274 LOAD_FAST            (sender_filters)
+             276 FORMAT_SIMPLE
+             278 BUILD_STRING         6
+             280 CALL                 (1 positional)
+             288 POP_TOP
+
+237:         290 LOAD_GLOBAL          (time)
+             300 LOAD_ATTR            (time)
+             320 PUSH_NULL
+             322 CALL                 (0 positional)
+             330 STORE_FAST           (start)
+
+238:         332 LOAD_CONST           ("")
+             334 LOAD_FAST            (self)
+             336 STORE_ATTR           (last_error)
+
+240:         346 LOAD_GLOBAL          (time)
+             356 LOAD_ATTR            (time)
+             376 PUSH_NULL
+             378 CALL                 (0 positional)
+             386 LOAD_FAST            (start)
+             388 BINARY_OP            (-)
+             392 LOAD_FAST            (timeout)
+             394 COMPARE_OP           (<)
+             398 EXTENDED_ARG         (768)
+             400 POP_JUMP_IF_FALSE    (to 2018)
+
+241:         404 NOP
+
+242:         406 LOAD_FAST            (self)
+             408 LOAD_ATTR            (NULL|self + _connect)
+             428 CALL                 (0 positional)
+             436 STORE_FAST           (mail)
+
+243:         438 LOAD_FAST            (mail)
+             440 LOAD_ATTR            (NULL|self + select)
+             460 LOAD_CONST           ("INBOX")
+             462 CALL                 (1 positional)
+             470 UNPACK_SEQUENCE      2
+             474 STORE_FAST_STORE_FAST (select_status, _select_data)
+
+244:         476 LOAD_FAST            (select_status)
+             478 LOAD_CONST           ("OK")
+             480 COMPARE_OP           (!=)
+             484 POP_JUMP_IF_FALSE    (to 516)
+
+245:         488 LOAD_GLOBAL          (NULL + RuntimeError)
+             498 LOAD_CONST           ("IMAP select INBOX failed: ")
+             500 LOAD_FAST            (select_status)
+             502 FORMAT_SIMPLE
+             504 BUILD_STRING         2
+             506 CALL                 (1 positional)
+             514 RAISE_VARARGS        (exception instance)
+
+247:     >>  516 LOAD_FAST            (mail)
+             518 LOAD_ATTR            (NULL|self + search)
+             538 LOAD_CONST           (None)
+             540 LOAD_CONST           ("ALL")
+             542 CALL                 (2 positional)
+             550 UNPACK_SEQUENCE      2
+             554 STORE_FAST           (status)
+             556 STORE_FAST           (data)
+
+248:         558 LOAD_FAST            (status)
+             560 LOAD_CONST           ("OK")
+             562 COMPARE_OP           (!=)
+             566 POP_JUMP_IF_FALSE    (to 670)
+
+249:         570 LOAD_CONST           ("IMAP search failed: ")
+             572 LOAD_FAST            (status)
+             574 FORMAT_SIMPLE
+             576 BUILD_STRING         2
+             578 LOAD_FAST            (self)
+             580 STORE_ATTR           (last_error)
+
+250:         590 LOAD_FAST            (mail)
+             592 LOAD_ATTR            (NULL|self + logout)
+             612 CALL                 (0 positional)
+             620 POP_TOP
+
+251:         622 LOAD_GLOBAL          (time)
+             632 LOAD_ATTR            (sleep)
+             652 PUSH_NULL
+             654 LOAD_FAST            (interval)
+             656 CALL                 (1 positional)
+             664 POP_TOP
+
+252:         666 JUMP_BACKWARD        (to 346)
+
+253:     >>  670 LOAD_CONST           ("")
+             672 LOAD_FAST            (self)
+             674 STORE_ATTR           (last_error)
+
+255:         684 LOAD_FAST            (data)
+             686 LOAD_CONST           (0)
+             688 BINARY_SUBSCR
+             692 LOAD_ATTR            (NULL|self + split)
+             712 CALL                 (0 positional)
+             720 STORE_FAST           (msg_ids)
+
+256:         722 LOAD_GLOBAL          (NULL + len)
+             732 LOAD_FAST            (msg_ids)
+             734 CALL                 (1 positional)
+             742 STORE_FAST           (current_count)
+
+258:         744 LOAD_GLOBAL          (NULL + bool)
+             754 LOAD_FAST            (since_ts)
+             756 LOAD_CONST           (None)
+             758 IS_OP                (is not)
+             760 COPY                 1
+             762 TO_BOOL
+             770 POP_JUMP_IF_TRUE     (to 778)
+             774 POP_TOP
+             776 LOAD_FAST            (include_existing)
+         >>  778 CALL                 (1 positional)
+             786 STORE_FAST           (scan_recent)
+
+261:         788 LOAD_FAST            (self)
+             790 LOAD_ATTR            (_last_count)
+             810 LOAD_CONST           (-1)
+             812 COMPARE_OP           (==)
+             816 POP_JUMP_IF_FALSE    (to 1280)
+
+262:         820 LOAD_FAST            (current_count)
+             822 LOAD_FAST            (self)
+             824 STORE_ATTR           (_last_count)
+
+263:         834 LOAD_FAST            (scan_recent)
+             836 TO_BOOL
+             844 POP_JUMP_IF_FALSE    (to 1156)
+             848 LOAD_FAST            (msg_ids)
+             850 TO_BOOL
+             858 POP_JUMP_IF_FALSE    (to 1156)
+
+264:         862 LOAD_FAST            (msg_ids)
+             864 LOAD_GLOBAL          (NULL + max)
+             874 LOAD_CONST           (1)
+             876 LOAD_GLOBAL          (NULL + int)
+             886 LOAD_FAST            (recent_scan_limit)
+             888 COPY                 1
+             890 TO_BOOL
+             898 POP_JUMP_IF_TRUE     (to 906)
+             902 POP_TOP
+             904 LOAD_CONST           (20)
+         >>  906 CALL                 (1 positional)
+             914 CALL                 (2 positional)
+             922 UNARY_NEGATIVE
+             924 LOAD_CONST           (None)
+             926 BINARY_SLICE
+             928 STORE_FAST           (recent_ids)
+
+265:         930 LOAD_FAST            (self)
+             932 LOAD_ATTR            (NULL|self + _log)
+             952 LOAD_CONST           ("首轮扫描最近 ")
+             954 LOAD_GLOBAL          (NULL + len)
+             964 LOAD_FAST            (recent_ids)
+             966 CALL                 (1 positional)
+             974 FORMAT_SIMPLE
+             976 LOAD_CONST           (" 封邮件")
+             978 BUILD_STRING         3
+             980 CALL                 (1 positional)
+             988 POP_TOP
+
+266:         990 LOAD_GLOBAL          (NULL + reversed)
+            1000 LOAD_FAST            (recent_ids)
+            1002 CALL                 (1 positional)
+            1010 GET_ITER
+            1012 FOR_ITER             (to 1152)
+            1016 STORE_FAST           (mid)
+
+267:        1018 LOAD_FAST            (self)
+            1020 LOAD_ATTR            (NULL|self + _extract_code)
+            1040 LOAD_FAST            (mail)
+            1042 LOAD_FAST            (mid)
+            1044 LOAD_FAST_LOAD_FAST  (sender_filters, excluded)
+            1046 LOAD_FAST            (since_ts)
+            1048 LOAD_CONST           (('since_ts',))
+            1050 CALL_KW              5
+            1052 STORE_FAST           (code)
+
+268:        1054 LOAD_FAST            (code)
+            1056 TO_BOOL
+            1064 POP_JUMP_IF_TRUE     (to 1072)
+            1068 JUMP_BACKWARD        (to 1012)
+
+269:     >> 1072 LOAD_FAST            (self)
+            1074 LOAD_ATTR            (NULL|self + _log)
+            1094 LOAD_CONST           ("找到验证码: ")
+            1096 LOAD_FAST            (code)
+            1098 FORMAT_SIMPLE
+            1100 BUILD_STRING         2
+            1102 CALL                 (1 positional)
+            1110 POP_TOP
+
+270:        1112 LOAD_FAST            (mail)
+            1114 LOAD_ATTR            (NULL|self + logout)
+            1134 CALL                 (0 positional)
+            1142 POP_TOP
+
+271:        1144 LOAD_FAST            (code)
+            1146 SWAP                 (TOS <-> TOS1)
+            1148 POP_TOP
+            1150 RETURN_VALUE
+
+266:     >> 1152 END_FOR
+            1154 POP_TOP
+
+272:     >> 1156 LOAD_FAST            (self)
+            1158 LOAD_ATTR            (NULL|self + _log)
+            1178 LOAD_CONST           ("基准: ")
+            1180 LOAD_FAST            (current_count)
+            1182 FORMAT_SIMPLE
+            1184 LOAD_CONST           (" 封已有邮件")
+            1186 BUILD_STRING         3
+            1188 CALL                 (1 positional)
+            1196 POP_TOP
+
+273:        1198 LOAD_FAST            (mail)
+            1200 LOAD_ATTR            (NULL|self + logout)
+            1220 CALL                 (0 positional)
+            1228 POP_TOP
+
+274:        1230 LOAD_GLOBAL          (time)
+            1240 LOAD_ATTR            (sleep)
+            1260 PUSH_NULL
+            1262 LOAD_FAST            (interval)
+            1264 CALL                 (1 positional)
+            1272 POP_TOP
+
+275:        1274 EXTENDED_ARG         (256)
+            1276 JUMP_BACKWARD        (to 346)
+
+278:     >> 1280 LOAD_FAST            (current_count)
+            1282 LOAD_FAST            (self)
+            1284 LOAD_ATTR            (_last_count)
+            1304 COMPARE_OP           (>)
+            1308 POP_JUMP_IF_FALSE    (to 1618)
+
+279:        1312 LOAD_FAST            (msg_ids)
+            1314 LOAD_FAST            (self)
+            1316 LOAD_ATTR            (_last_count)
+            1336 LOAD_CONST           (None)
+            1338 BINARY_SLICE
+            1340 STORE_FAST           (new_ids)
+
+280:        1342 LOAD_FAST            (current_count)
+            1344 LOAD_FAST            (self)
+            1346 LOAD_ATTR            (_last_count)
+            1366 BINARY_OP            (-)
+            1370 STORE_FAST           (delta)
+
+281:        1372 LOAD_FAST            (current_count)
+            1374 LOAD_FAST            (self)
+            1376 STORE_ATTR           (_last_count)
+
+282:        1386 LOAD_FAST            (self)
+            1388 LOAD_ATTR            (NULL|self + _log)
+            1408 LOAD_CONST           ("发现 ")
+            1410 LOAD_FAST            (delta)
+            1412 FORMAT_SIMPLE
+            1414 LOAD_CONST           (" 封新邮件 [")
+            1416 LOAD_GLOBAL          (NULL + len)
+            1426 LOAD_FAST            (new_ids)
+            1428 CALL                 (1 positional)
+            1436 FORMAT_SIMPLE
+            1438 LOAD_CONST           ("]")
+            1440 BUILD_STRING         5
+            1442 CALL                 (1 positional)
+            1450 POP_TOP
+
+284:        1452 LOAD_GLOBAL          (NULL + reversed)
+            1462 LOAD_FAST            (new_ids)
+            1464 CALL                 (1 positional)
+            1472 GET_ITER
+            1474 FOR_ITER             (to 1614)
+            1478 STORE_FAST           (mid)
+
+285:        1480 LOAD_FAST            (self)
+            1482 LOAD_ATTR            (NULL|self + _extract_code)
+            1502 LOAD_FAST            (mail)
+            1504 LOAD_FAST            (mid)
+            1506 LOAD_FAST_LOAD_FAST  (sender_filters, excluded)
+            1508 LOAD_FAST            (since_ts)
+            1510 LOAD_CONST           (('since_ts',))
+            1512 CALL_KW              5
+            1514 STORE_FAST           (code)
+
+286:        1516 LOAD_FAST            (code)
+            1518 TO_BOOL
+            1526 POP_JUMP_IF_TRUE     (to 1534)
+            1530 JUMP_BACKWARD        (to 1474)
+
+287:     >> 1534 LOAD_FAST            (self)
+            1536 LOAD_ATTR            (NULL|self + _log)
+            1556 LOAD_CONST           ("找到验证码: ")
+            1558 LOAD_FAST            (code)
+            1560 FORMAT_SIMPLE
+            1562 BUILD_STRING         2
+            1564 CALL                 (1 positional)
+            1572 POP_TOP
+
+288:        1574 LOAD_FAST            (mail)
+            1576 LOAD_ATTR            (NULL|self + logout)
+            1596 CALL                 (0 positional)
+            1604 POP_TOP
+
+289:        1606 LOAD_FAST            (code)
+            1608 SWAP                 (TOS <-> TOS1)
+            1610 POP_TOP
+            1612 RETURN_VALUE
+
+284:     >> 1614 END_FOR
+            1616 POP_TOP
+
+292:     >> 1618 LOAD_FAST            (scan_recent)
+            1620 TO_BOOL
+            1628 POP_JUMP_IF_FALSE    (to 1880)
+            1632 LOAD_FAST            (msg_ids)
+            1634 TO_BOOL
+            1642 POP_JUMP_IF_FALSE    (to 1880)
+
+293:        1646 LOAD_FAST            (msg_ids)
+            1648 LOAD_GLOBAL          (NULL + max)
+            1658 LOAD_CONST           (1)
+            1660 LOAD_GLOBAL          (NULL + int)
+            1670 LOAD_FAST            (recent_scan_limit)
+            1672 COPY                 1
+            1674 TO_BOOL
+            1682 POP_JUMP_IF_TRUE     (to 1690)
+            1686 POP_TOP
+            1688 LOAD_CONST           (20)
+         >> 1690 CALL                 (1 positional)
+            1698 CALL                 (2 positional)
+            1706 UNARY_NEGATIVE
+            1708 LOAD_CONST           (None)
+            1710 BINARY_SLICE
+            1712 STORE_FAST           (recent_ids)
+
+294:        1714 LOAD_GLOBAL          (NULL + reversed)
+            1724 LOAD_FAST            (recent_ids)
+            1726 CALL                 (1 positional)
+            1734 GET_ITER
+            1736 FOR_ITER             (to 1876)
+            1740 STORE_FAST           (mid)
+
+295:        1742 LOAD_FAST            (self)
+            1744 LOAD_ATTR            (NULL|self + _extract_code)
+            1764 LOAD_FAST            (mail)
+            1766 LOAD_FAST            (mid)
+            1768 LOAD_FAST_LOAD_FAST  (sender_filters, excluded)
+            1770 LOAD_FAST            (since_ts)
+            1772 LOAD_CONST           (('since_ts',))
+            1774 CALL_KW              5
+            1776 STORE_FAST           (code)
+
+296:        1778 LOAD_FAST            (code)
+            1780 TO_BOOL
+            1788 POP_JUMP_IF_TRUE     (to 1796)
+            1792 JUMP_BACKWARD        (to 1736)
+
+297:     >> 1796 LOAD_FAST            (self)
+            1798 LOAD_ATTR            (NULL|self + _log)
+            1818 LOAD_CONST           ("找到验证码: ")
+            1820 LOAD_FAST            (code)
+            1822 FORMAT_SIMPLE
+            1824 BUILD_STRING         2
+            1826 CALL                 (1 positional)
+            1834 POP_TOP
+
+298:        1836 LOAD_FAST            (mail)
+            1838 LOAD_ATTR            (NULL|self + logout)
+            1858 CALL                 (0 positional)
+            1866 POP_TOP
+
+299:        1868 LOAD_FAST            (code)
+            1870 SWAP                 (TOS <-> TOS1)
+            1872 POP_TOP
+            1874 RETURN_VALUE
+
+294:     >> 1876 END_FOR
+            1878 POP_TOP
+
+301:     >> 1880 LOAD_FAST            (mail)
+            1882 LOAD_ATTR            (NULL|self + logout)
+            1902 CALL                 (0 positional)
+            1910 POP_TOP
+
+302:        1912 LOAD_GLOBAL          (time)
+            1922 LOAD_ATTR            (sleep)
+            1942 PUSH_NULL
+            1944 LOAD_FAST            (interval)
+            1946 CALL                 (1 positional)
+            1954 POP_TOP
+
+240:        1956 LOAD_GLOBAL          (time)
+            1966 LOAD_ATTR            (time)
+            1986 PUSH_NULL
+            1988 CALL                 (0 positional)
+            1996 LOAD_FAST            (start)
+            1998 BINARY_OP            (-)
+            2002 LOAD_FAST            (timeout)
+            2004 COMPARE_OP           (<)
+            2008 POP_JUMP_IF_FALSE    (to 2018)
+            2012 EXTENDED_ARG         (768)
+            2014 JUMP_BACKWARD        (to 404)
+
+312:     >> 2018 LOAD_FAST            (self)
+            2020 LOAD_ATTR            (NULL|self + _log)
+            2040 LOAD_FAST            (timeout)
+            2042 FORMAT_SIMPLE
+            2044 LOAD_CONST           ("s 超时")
+            2046 BUILD_STRING         2
+            2048 CALL                 (1 positional)
+            2056 POP_TOP
+
+313:        2058 RETURN_CONST         (None)
+         >> 2060 SWAP                 (TOS <-> TOS1)
+            2062 POP_TOP
+
+230:        2064 SWAP                 (TOS <-> TOS1)
+            2066 STORE_FAST           (f)
+            2068 RERAISE              0
+         >> 2070 PUSH_EXC_INFO
+
+304:        2072 LOAD_GLOBAL          (Exception)
+            2082 CHECK_EXC_MATCH
+            2084 POP_JUMP_IF_FALSE    (to 2342)
+            2088 STORE_FAST           (e)
+
+305:        2090 LOAD_GLOBAL          (NULL + type)
+            2100 LOAD_FAST            (e)
+            2102 CALL                 (1 positional)
+            2110 LOAD_ATTR            (__name__)
+            2130 FORMAT_SIMPLE
+            2132 LOAD_CONST           (": ")
+            2134 LOAD_FAST            (e)
+            2136 FORMAT_SIMPLE
+            2138 BUILD_STRING         3
+            2140 LOAD_FAST            (self)
+            2142 STORE_ATTR           (last_error)
+
+306:        2152 LOAD_FAST            (self)
+            2154 LOAD_ATTR            (NULL|self + _log)
+            2174 LOAD_CONST           ("连接异常: ")
+            2176 LOAD_FAST            (e)
+            2178 FORMAT_SIMPLE
+            2180 BUILD_STRING         2
+            2182 CALL                 (1 positional)
+            2190 POP_TOP
+
+307:        2192 LOAD_FAST            (self)
+            2194 LOAD_ATTR            (NULL|self + _is_terminal_connection_error)
+         >> 2214 LOAD_FAST            (e)
+            2216 CALL                 (1 positional)
+            2224 TO_BOOL
+            2232 POP_JUMP_IF_FALSE    (to 2280)
+
+308:        2236 LOAD_FAST            (self)
+            2238 LOAD_ATTR            (NULL|self + _log)
+            2258 LOAD_CONST           ("检测到不可重试的邮箱授权错误，停止轮询")
+            2260 CALL                 (1 positional)
+            2268 POP_TOP
+
+309:        2270 POP_EXCEPT
+            2272 LOAD_CONST           (None)
+            2274 STORE_FAST           (e)
+            2276 DELETE_FAST          (e)
+            2278 RETURN_CONST         (None)
+
+310:     >> 2280 LOAD_GLOBAL          (time)
+            2290 LOAD_ATTR            (sleep)
+            2310 PUSH_NULL
+            2312 LOAD_FAST            (interval)
+            2314 CALL                 (1 positional)
+            2322 POP_TOP
+            2324 POP_EXCEPT
+            2326 LOAD_CONST           (None)
+            2328 STORE_FAST           (e)
+            2330 DELETE_FAST          (e)
+            2332 JUMP_BACKWARD_NO_INTERRUPT (to 1956)
+         >> 2334 LOAD_CONST           (None)
+            2336 STORE_FAST           (e)
+            2338 DELETE_FAST          (e)
+            2340 RERAISE              1
+
+304:     >> 2342 RERAISE              0
+         >> 2344 COPY                 3
+            2346 POP_EXCEPT
+            2348 RERAISE              1
+
+ExceptionTable:
+  32 to 80 -> 2060 [2]
+  406 to 664 -> 2070 [0]
+  670 to 1062 -> 2070 [0]
+  1072 to 1148 -> 2070 [0]
+  1152 to 1272 -> 2070 [0]
+  1280 to 1524 -> 2070 [0]
+  1534 to 1610 -> 2070 [0]
+  1614 to 1786 -> 2070 [0]
+  1796 to 1872 -> 2070 [0]
+  1876 to 1954 -> 2070 [0]
+  2070 to 2088 -> 2344 [1] lasti
+  2090 to 2268 -> 2334 [1] lasti
+  2280 to 2322 -> 2334 [1] lasti
+  2334 to 2342 -> 2344 [1] lasti
+
+# Method Name:       _extract_code
+# Filename:          imap_poller.py
+# Argument count:    6
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  19
+# Stack size:        6
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        315
+# Constants:
+#    0: '从单封邮件中提取验证码'
+#    1: '(BODY.PEEK[])'
+#    2: 'OK'
+#    3: None
+#    4: b''
+#    5: 1
+#    6: 'Date'
+#    7: ''
+#    8: 15
+#    9: 'From'
+#   10: 'Subject'
+#   11: '\n'
+#   12: <Code311 code object <genexpr> at 0x105fca700, file imap_poller.py>, line 351
+#   13: '(?<!\\d)((?:\\d[\\s-]*){6})(?!\\d)'
+#   14: '\\D'
+# Names:
+#    0: fetch
+#    1: isinstance
+#    2: tuple
+#    3: len
+#    4: bytes
+#    5: email
+#    6: message_from_bytes
+#    7: Exception
+#    8: parsedate_to_datetime
+#    9: get
+#   10: timestamp
+#   11: float
+#   12: _decode_header_text
+#   13: _message_text
+#   14: lower
+#   15: any
+#   16: re
+#   17: findall
+#   18: sub
+# Varnames:
+#	self, mail, msg_id, sender_filters, excluded, since_ts, status, msg_data, raw, item, msg, msg_dt, from_text, subject_text, plain, code_text, candidates, candidate, code
+# Positional arguments:
+#	self, mail, msg_id, sender_filters, excluded, since_ts
+# Local variables:
+#    6: status
+#    7: msg_data
+#    8: raw
+#    9: item
+#   10: msg
+#   11: msg_dt
+#   12: from_text
+#   13: subject_text
+#   14: plain
+#   15: code_text
+#   16: candidates
+#   17: candidate
+#   18: code
+# Cell variables:
+#    0: lower
+               0 MAKE_CELL            (lower)
+
+315:           2 RESUME               0
+
+319:           4 NOP
+
+320:           6 LOAD_FAST            (mail)
+               8 LOAD_ATTR            (NULL|self + fetch)
+              28 LOAD_FAST            (msg_id)
+              30 LOAD_CONST           ("(BODY.PEEK[])")
+              32 CALL                 (2 positional)
+              40 UNPACK_SEQUENCE      2
+              44 STORE_FAST_STORE_FAST (status, msg_data)
+
+321:          46 LOAD_FAST            (status)
+              48 LOAD_CONST           ("OK")
+              50 COMPARE_OP           (!=)
+              54 POP_JUMP_IF_FALSE    (to 60)
+
+322:          58 RETURN_CONST         (None)
+
+324:     >>   60 LOAD_CONST           (b'')
+              62 STORE_FAST           (raw)
+
+325:          64 LOAD_FAST            (msg_data)
+              66 GET_ITER
+              68 FOR_ITER             (to 220)
+              72 STORE_FAST           (item)
+
+326:          74 LOAD_GLOBAL          (NULL + isinstance)
+              84 LOAD_FAST            (item)
+              86 LOAD_GLOBAL          (tuple)
+              96 CALL                 (2 positional)
+             104 TO_BOOL
+             112 POP_JUMP_IF_TRUE     (to 120)
+             116 JUMP_BACKWARD        (to 68)
+         >>  120 LOAD_GLOBAL          (NULL + len)
+             130 LOAD_FAST            (item)
+             132 CALL                 (1 positional)
+             140 LOAD_CONST           (1)
+             142 COMPARE_OP           (>)
+             146 POP_JUMP_IF_TRUE     (to 154)
+             150 JUMP_BACKWARD        (to 68)
+
+327:     >>  154 LOAD_GLOBAL          (NULL + isinstance)
+             164 LOAD_FAST            (item)
+             166 LOAD_CONST           (1)
+             168 BINARY_SUBSCR
+         >>  172 LOAD_GLOBAL          (bytes)
+             182 CALL                 (2 positional)
+             190 TO_BOOL
+             198 POP_JUMP_IF_FALSE    (to 212)
+             202 LOAD_FAST            (item)
+             204 LOAD_CONST           (1)
+             206 BINARY_SUBSCR
+             210 JUMP_FORWARD         (to 214)
+         >>  212 LOAD_FAST            (raw)
+         >>  214 STORE_FAST           (raw)
+
+328:         216 POP_TOP
+             218 JUMP_FORWARD         (to 224)
+
+325:     >>  220 END_FOR
+             222 POP_TOP
+
+330:     >>  224 LOAD_FAST            (raw)
+             226 TO_BOOL
+             234 POP_JUMP_IF_TRUE     (to 240)
+
+331:         238 RETURN_CONST         (None)
+
+333:     >>  240 NOP
+
+334:         242 LOAD_GLOBAL          (email)
+             252 LOAD_ATTR            (message_from_bytes)
+             272 PUSH_NULL
+             274 LOAD_FAST            (raw)
+             276 CALL                 (1 positional)
+             284 STORE_FAST           (msg)
+
+338:         286 LOAD_FAST            (since_ts)
+             288 POP_JUMP_IF_NONE     (to 428)
+
+339:         292 NOP
+
+340:         294 LOAD_GLOBAL          (NULL + parsedate_to_datetime)
+             304 LOAD_FAST            (msg)
+             306 LOAD_ATTR            (NULL|self + get)
+             326 LOAD_CONST           ("Date")
+             328 LOAD_CONST           ("")
+             330 CALL                 (2 positional)
+             338 CALL                 (1 positional)
+             346 STORE_FAST           (msg_dt)
+
+341:         348 LOAD_FAST            (msg_dt)
+             350 TO_BOOL
+             358 POP_JUMP_IF_FALSE    (to 428)
+             362 LOAD_FAST            (msg_dt)
+             364 LOAD_ATTR            (NULL|self + timestamp)
+             384 CALL                 (0 positional)
+             392 LOAD_GLOBAL          (NULL + float)
+             402 LOAD_FAST            (since_ts)
+             404 CALL                 (1 positional)
+             412 LOAD_CONST           (15)
+             414 BINARY_OP            (-)
+             418 COMPARE_OP           (<)
+             422 POP_JUMP_IF_FALSE    (to 428)
+
+342:         426 RETURN_CONST         (None)
+
+346:     >>  428 LOAD_GLOBAL          (NULL + _decode_header_text)
+             438 LOAD_FAST            (msg)
+             440 LOAD_ATTR            (NULL|self + get)
+             460 LOAD_CONST           ("From")
+             462 LOAD_CONST           ("")
+             464 CALL                 (2 positional)
+             472 CALL                 (1 positional)
+             480 STORE_FAST           (from_text)
+
+347:         482 LOAD_GLOBAL          (NULL + _decode_header_text)
+             492 LOAD_FAST            (msg)
+             494 LOAD_ATTR            (NULL|self + get)
+             514 LOAD_CONST           ("Subject")
+             516 LOAD_CONST           ("")
+             518 CALL                 (2 positional)
+             526 CALL                 (1 positional)
+             534 STORE_FAST           (subject_text)
+
+348:         536 LOAD_FAST            (self)
+             538 LOAD_ATTR            (NULL|self + _message_text)
+             558 LOAD_FAST            (msg)
+             560 CALL                 (1 positional)
+             568 STORE_FAST           (plain)
+
+350:         570 LOAD_FAST            (from_text)
+             572 FORMAT_SIMPLE
+             574 LOAD_CONST           ("\n")
+             576 LOAD_FAST            (subject_text)
+             578 FORMAT_SIMPLE
+             580 LOAD_CONST           ("\n")
+             582 LOAD_FAST            (plain)
+             584 FORMAT_SIMPLE
+             586 BUILD_STRING         5
+             588 LOAD_ATTR            (NULL|self + lower)
+             608 CALL                 (0 positional)
+             616 STORE_DEREF          (lower)
+
+351:         618 LOAD_GLOBAL          (NULL + any)
+             628 LOAD_FAST            (lower)
+             630 BUILD_TUPLE          1
+             632 LOAD_CONST           (<Code311 code object <genexpr> at 0x105fca700, file imap_poller.py>, line 351)
+             634 MAKE_FUNCTION
+             636 SET_FUNCTION_ATTRIBUTE 8
+             638 LOAD_FAST            (sender_filters)
+             640 GET_ITER
+             642 CALL                 (0 positional)
+             650 CALL                 (1 positional)
+             658 TO_BOOL
+             666 POP_JUMP_IF_TRUE     (to 672)
+
+352:         670 RETURN_CONST         (None)
+
+356:     >>  672 LOAD_FAST            (subject_text)
+             674 FORMAT_SIMPLE
+             676 LOAD_CONST           ("\n")
+             678 LOAD_FAST            (plain)
+             680 FORMAT_SIMPLE
+             682 BUILD_STRING         3
+             684 STORE_FAST           (code_text)
+
+357:         686 LOAD_GLOBAL          (re)
+             696 LOAD_ATTR            (findall)
+             716 PUSH_NULL
+             718 LOAD_CONST           ("(?<!\\d)((?:\\d[\\s-]*){6})(?!\\d)")
+             720 LOAD_FAST            (code_text)
+             722 CALL                 (2 positional)
+             730 STORE_FAST           (candidates)
+
+358:         732 LOAD_FAST            (candidates)
+             734 GET_ITER
+             736 FOR_ITER             (to 814)
+             740 STORE_FAST           (candidate)
+
+359:         742 LOAD_GLOBAL          (re)
+             752 LOAD_ATTR            (sub)
+             772 PUSH_NULL
+             774 LOAD_CONST           ("\\D")
+             776 LOAD_CONST           ("")
+             778 LOAD_FAST            (candidate)
+             780 CALL                 (3 positional)
+             788 STORE_FAST           (code)
+
+360:         790 LOAD_FAST            (code)
+             792 LOAD_FAST            (excluded)
+             794 CONTAINS_OP          (not in)
+             798 POP_JUMP_IF_TRUE     (to 806)
+             802 JUMP_BACKWARD        (to 736)
+
+361:     >>  806 LOAD_FAST            (code)
+             808 SWAP                 (TOS <-> TOS1)
+             810 POP_TOP
+             812 RETURN_VALUE
+
+358:     >>  814 END_FOR
+             816 POP_TOP
+
+366:         818 RETURN_CONST         (None)
+         >>  820 PUSH_EXC_INFO
+
+335:         822 LOAD_GLOBAL          (Exception)
+             832 CHECK_EXC_MATCH
+             834 POP_JUMP_IF_FALSE    (to 844)
+             838 POP_TOP
+
+336:         840 POP_EXCEPT
+             842 RETURN_CONST         (None)
+
+335:     >>  844 RERAISE              0
+         >>  846 COPY                 3
+             848 POP_EXCEPT
+             850 RERAISE              1
+         >>  852 PUSH_EXC_INFO
+
+343:         854 LOAD_GLOBAL          (Exception)
+             864 CHECK_EXC_MATCH
+             866 POP_JUMP_IF_FALSE    (to 876)
+             870 POP_TOP
+
+344:         872 POP_EXCEPT
+             874 JUMP_BACKWARD_NO_INTERRUPT (to 428)
+
+343:     >>  876 RERAISE              0
+         >>  878 COPY                 3
+             880 POP_EXCEPT
+             882 RERAISE              1
+         >>  884 PUSH_EXC_INFO
+
+363:         886 LOAD_GLOBAL          (Exception)
+             896 CHECK_EXC_MATCH
+             898 POP_JUMP_IF_FALSE    (to 908)
+             902 POP_TOP
+
+364:         904 POP_EXCEPT
+
+366:         906 RETURN_CONST         (None)
+
+363:     >>  908 RERAISE              0
+         >>  910 COPY                 3
+             912 POP_EXCEPT
+             914 RERAISE              1
+
+ExceptionTable:
+  6 to 56 -> 884 [0]
+  60 to 110 -> 884 [0]
+  120 to 144 -> 884 [0]
+  154 to 236 -> 884 [0]
+  242 to 284 -> 820 [0]
+  286 to 290 -> 884 [0]
+  294 to 424 -> 852 [0]
+  428 to 668 -> 884 [0]
+  672 to 796 -> 884 [0]
+  806 to 810 -> 884 [0]
+  814 to 816 -> 884 [0]
+  820 to 838 -> 846 [1] lasti
+  840 to 840 -> 884 [0]
+  844 to 844 -> 846 [1] lasti
+  846 to 850 -> 884 [0]
+  852 to 870 -> 878 [1] lasti
+  872 to 874 -> 884 [0]
+  876 to 876 -> 878 [1] lasti
+  878 to 882 -> 884 [0]
+  884 to 902 -> 910 [1] lasti
+  908 to 908 -> 910 [1] lasti
+
+# Method Name:       _message_text
+# Filename:          imap_poller.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  9
+# Stack size:        6
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        368
+# Constants:
+#    0: None
+#    1: ''
+#    2: ('text/plain', 'text/html')
+#    3: True
+#    4: ('decode',)
+#    5: 'utf-8'
+#    6: 'ignore'
+#    7: ('errors',)
+#    8: 'text/html'
+#    9: '\n'
+# Names:
+#    0: is_multipart
+#    1: walk
+#    2: get_content_type
+#    3: lower
+#    4: get_payload
+#    5: str
+#    6: get_content_charset
+#    7: decode
+#    8: Exception
+#    9: _StripHTML
+#   10: feed
+#   11: text
+#   12: append
+#   13: join
+# Varnames:
+#	msg, parts, payloads, part, ctype, body, text, charset, parser
+# Positional arguments:
+#	msg
+# Local variables:
+#    1: parts
+#    2: payloads
+#    3: part
+#    4: ctype
+#    5: body
+#    6: text
+#    7: charset
+#    8: parser
+368:           0 RESUME               0
+
+370:           2 BUILD_LIST           0
+               4 STORE_FAST           (parts)
+
+371:           6 LOAD_FAST            (msg)
+               8 LOAD_ATTR            (NULL|self + is_multipart)
+              28 CALL                 (0 positional)
+              36 TO_BOOL
+              44 POP_JUMP_IF_FALSE    (to 82)
+
+372:          48 LOAD_FAST            (msg)
+              50 LOAD_ATTR            (NULL|self + walk)
+              70 CALL                 (0 positional)
+              78 STORE_FAST           (payloads)
+              80 JUMP_FORWARD         (to 88)
+
+374:     >>   82 LOAD_FAST            (msg)
+              84 BUILD_LIST           1
+              86 STORE_FAST           (payloads)
+
+375:     >>   88 LOAD_FAST            (payloads)
+              90 GET_ITER
+              92 FOR_ITER             (to 558)
+              96 STORE_FAST           (part)
+
+376:          98 LOAD_FAST            (part)
+             100 LOAD_ATTR            (NULL|self + is_multipart)
+             120 CALL                 (0 positional)
+             128 TO_BOOL
+             136 POP_JUMP_IF_FALSE    (to 144)
+
+377:         140 JUMP_BACKWARD        (to 92)
+
+378:     >>  144 LOAD_FAST            (part)
+             146 LOAD_ATTR            (NULL|self + get_content_type)
+             166 CALL                 (0 positional)
+             174 COPY                 1
+             176 TO_BOOL
+             184 POP_JUMP_IF_TRUE     (to 192)
+             188 POP_TOP
+             190 LOAD_CONST           ("")
+         >>  192 LOAD_ATTR            (NULL|self + lower)
+             212 CALL                 (0 positional)
+             220 STORE_FAST           (ctype)
+
+379:         222 LOAD_FAST            (ctype)
+             224 LOAD_CONST           (('text/plain', 'text/html'))
+             226 CONTAINS_OP          (not in)
+             230 POP_JUMP_IF_FALSE    (to 238)
+
+380:         234 JUMP_BACKWARD        (to 92)
+
+381:     >>  238 NOP
+
+382:         240 LOAD_FAST            (part)
+             242 LOAD_ATTR            (NULL|self + get_payload)
+             262 LOAD_CONST           (True)
+             264 LOAD_CONST           (('decode',))
+             266 CALL_KW              1
+             268 STORE_FAST           (body)
+
+383:         270 LOAD_FAST            (body)
+             272 POP_JUMP_IF_NOT_NONE (to 346)
+
+384:         276 LOAD_GLOBAL          (NULL + str)
+             286 LOAD_FAST            (part)
+             288 LOAD_ATTR            (NULL|self + get_payload)
+             308 CALL                 (0 positional)
+             316 COPY                 1
+             318 TO_BOOL
+             326 POP_JUMP_IF_TRUE     (to 334)
+             330 POP_TOP
+             332 LOAD_CONST           ("")
+         >>  334 CALL                 (1 positional)
+             342 STORE_FAST           (text)
+             344 JUMP_FORWARD         (to 430)
+
+386:     >>  346 LOAD_FAST            (part)
+             348 LOAD_ATTR            (NULL|self + get_content_charset)
+             368 CALL                 (0 positional)
+             376 COPY                 1
+             378 TO_BOOL
+             386 POP_JUMP_IF_TRUE     (to 394)
+             390 POP_TOP
+             392 LOAD_CONST           ("utf-8")
+         >>  394 STORE_FAST           (charset)
+
+387:         396 LOAD_FAST            (body)
+             398 LOAD_ATTR            (NULL|self + decode)
+             418 LOAD_FAST            (charset)
+             420 LOAD_CONST           ("ignore")
+             422 LOAD_CONST           (('errors',))
+             424 CALL_KW              2
+             426 STORE_FAST           (text)
+             428 NOP
+
+390:     >>  430 LOAD_FAST            (ctype)
+             432 LOAD_CONST           ("text/html")
+             434 COMPARE_OP           (==)
+             438 POP_JUMP_IF_FALSE    (to 520)
+
+391:         442 LOAD_GLOBAL          (NULL + _StripHTML)
+             452 CALL                 (0 positional)
+             460 STORE_FAST           (parser)
+
+392:         462 LOAD_FAST            (parser)
+             464 LOAD_ATTR            (NULL|self + feed)
+             484 LOAD_FAST            (text)
+             486 CALL                 (1 positional)
+             494 POP_TOP
+
+393:         496 LOAD_FAST            (parser)
+             498 LOAD_ATTR            (text)
+             518 STORE_FAST           (text)
+
+394:     >>  520 LOAD_FAST            (parts)
+             522 LOAD_ATTR            (NULL|self + append)
+             542 LOAD_FAST            (text)
+             544 CALL                 (1 positional)
+             552 POP_TOP
+             554 JUMP_BACKWARD        (to 92)
+
+375:     >>  558 END_FOR
+             560 POP_TOP
+
+395:         562 LOAD_CONST           ("\n")
+             564 LOAD_ATTR            (NULL|self + join)
+             584 LOAD_FAST            (parts)
+             586 CALL                 (1 positional)
+             594 RETURN_VALUE
+         >>  596 PUSH_EXC_INFO
+
+388:         598 LOAD_GLOBAL          (Exception)
+             608 CHECK_EXC_MATCH
+             610 POP_JUMP_IF_FALSE    (to 624)
+             614 POP_TOP
+
+389:         616 POP_EXCEPT
+             618 EXTENDED_ARG         (256)
+             620 JUMP_BACKWARD        (to 92)
+
+388:     >>  624 RERAISE              0
+         >>  626 COPY                 3
+             628 POP_EXCEPT
+             630 RERAISE              1
+
+ExceptionTable:
+  240 to 342 -> 596 [1]
+  346 to 426 -> 596 [1]
+  596 to 614 -> 626 [2] lasti
+  624 to 624 -> 626 [2] lasti
+
+# Method Name:       reset_baseline
+# Filename:          imap_poller.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        2
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        399
+# Constants:
+#    0: '重置基准邮件数，下次 poll 会重新记录'
+#    1: -1
+#    2: None
+# Names:
+#    0: _last_count
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+399:           0 RESUME               0
+
+401:           2 LOAD_CONST           (-1)
+               4 LOAD_FAST            (self)
+               6 STORE_ATTR           (_last_count)
+              16 RETURN_CONST         (None)
+
+
+# Method Name:       <genexpr>
+# Filename:          imap_poller.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x00000033 (GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        140
+# Constants:
+#    0: None
+# Varnames:
+#	.0, marker
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: marker
+# Free variables:
+#    0: text
+               0 COPY_FREE_VARS       1
+
+140:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+
+142:          10 GET_ITER
+              12 FOR_ITER             (to 36)
+              16 STORE_FAST           (marker)
+
+141:          18 LOAD_FAST            (marker)
+              20 LOAD_DEREF           (text)
+              22 CONTAINS_OP          (in)
+              26 YIELD_VALUE          0
+              28 RESUME               5
+              30 POP_TOP
+              32 JUMP_BACKWARD        (to 12)
+
+142:     >>   36 END_FOR
+              38 POP_TOP
+              40 RETURN_CONST         (None)
+         >>   42 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              44 RERAISE              1
+
+ExceptionTable:
+  6 to 40 -> 42 [0] lasti
+
+# Method Name:       <lambda>
+# Filename:          imap_poller.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        2
+# Flags:             0x00000013 (NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        196
+# Constants:
+#    0: None
+# Names:
+#    0: encode
+# Varnames:
+#	_challenge
+# Positional arguments:
+#	_challenge
+# Free variables:
+#    0: auth_string
+               0 COPY_FREE_VARS       1
+
+196:           2 RESUME               0
+               4 LOAD_DEREF           (auth_string)
+               6 LOAD_ATTR            (NULL|self + encode)
+              26 CALL                 (0 positional)
+              34 RETURN_VALUE
+
+
+# Method Name:       <genexpr>
+# Filename:          imap_poller.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x00000033 (GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        351
+# Constants:
+#    0: None
+# Varnames:
+#	.0, f
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: f
+# Free variables:
+#    0: lower
+               0 COPY_FREE_VARS       1
+
+351:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+              10 GET_ITER
+              12 FOR_ITER             (to 34)
+              16 STORE_FAST_LOAD_FAST (f, f)
+              18 LOAD_DEREF           (lower)
+              20 CONTAINS_OP          (in)
+              24 YIELD_VALUE          0
+              26 RESUME               5
+              28 POP_TOP
+              30 JUMP_BACKWARD        (to 12)
+         >>   34 END_FOR
+              36 POP_TOP
+              38 RETURN_CONST         (None)
+         >>   40 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              42 RERAISE              1
+
+ExceptionTable:
+  6 to 38 -> 40 [0] lasti

@@ -1,0 +1,273 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          pyiboot01_bootstrap.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        6
+# Flags:             0x00000000 (0x0)
+# First Line:        1
+# Constants:
+#    0: 0
+#    1: None
+#    2: 'frozen'
+#    3: True
+#    4: 'VIRTUAL_ENV'
+#    5: ''
+#    6: 'win'
+#    7: '.egg'
+# Names:
+#    0: sys
+#    1: pyimod02_importers
+#    2: install
+#    3: os
+#    4: hasattr
+#    5: frozen
+#    6: _MEIPASS
+#    7: prefix
+#    8: exec_prefix
+#    9: base_prefix
+#   10: base_exec_prefix
+#   11: VIRTENV
+#   12: environ
+#   13: python_path
+#   14: path
+#   15: pth
+#   16: append
+#   17: abspath
+#   18: encodings
+#   19: ImportError
+#   20: warnoptions
+#   21: warnings
+#   22: pyimod03_ctypes
+#   23: platform
+#   24: startswith
+#   25: pyimod04_pywin32
+#   26: listdir
+#   27: entry
+#   28: join
+#   29: isdir
+#   30: endswith
+  0:           0 RESUME               0
+
+ 15:           2 LOAD_CONST           (0)
+               4 LOAD_CONST           (None)
+               6 IMPORT_NAME          (sys)
+               8 STORE_NAME           (sys)
+
+ 17:          10 LOAD_CONST           (0)
+              12 LOAD_CONST           (None)
+              14 IMPORT_NAME          (pyimod02_importers)
+              16 STORE_NAME           (pyimod02_importers)
+
+ 20:          18 LOAD_NAME            (pyimod02_importers)
+              20 LOAD_ATTR            (install)
+              40 PUSH_NULL
+              42 CALL                 (0 positional)
+              50 POP_TOP
+
+ 25:          52 LOAD_CONST           (0)
+              54 LOAD_CONST           (None)
+              56 IMPORT_NAME          (os)
+              58 STORE_NAME           (os)
+
+ 28:          60 LOAD_NAME            (hasattr)
+              62 PUSH_NULL
+              64 LOAD_NAME            (sys)
+              66 LOAD_CONST           ("frozen")
+              68 CALL                 (2 positional)
+              76 TO_BOOL
+              84 POP_JUMP_IF_TRUE     (to 102)
+
+ 29:          88 LOAD_CONST           (True)
+              90 LOAD_NAME            (sys)
+              92 STORE_ATTR           (frozen)
+
+ 35:     >>  102 LOAD_NAME            (sys)
+             104 LOAD_ATTR            (_MEIPASS)
+             124 LOAD_NAME            (sys)
+             126 STORE_ATTR           (prefix)
+
+ 36:         136 LOAD_NAME            (sys)
+             138 LOAD_ATTR            (prefix)
+             158 LOAD_NAME            (sys)
+             160 STORE_ATTR           (exec_prefix)
+
+ 39:         170 LOAD_NAME            (sys)
+             172 LOAD_ATTR            (prefix)
+             192 LOAD_NAME            (sys)
+             194 STORE_ATTR           (base_prefix)
+
+ 40:         204 LOAD_NAME            (sys)
+             206 LOAD_ATTR            (exec_prefix)
+             226 LOAD_NAME            (sys)
+             228 STORE_ATTR           (base_exec_prefix)
+
+ 44:         238 LOAD_CONST           ("VIRTUAL_ENV")
+             240 STORE_NAME           (VIRTENV)
+
+ 45:         242 LOAD_NAME            (VIRTENV)
+             244 LOAD_NAME            (os)
+             246 LOAD_ATTR            (environ)
+             266 CONTAINS_OP          (in)
+             270 POP_JUMP_IF_FALSE    (to 330)
+
+ 48:         274 LOAD_CONST           ("")
+             276 LOAD_NAME            (os)
+             278 LOAD_ATTR            (environ)
+             298 LOAD_NAME            (VIRTENV)
+             300 STORE_SUBSCR
+
+ 49:         304 LOAD_NAME            (os)
+             306 LOAD_ATTR            (environ)
+             326 LOAD_NAME            (VIRTENV)
+             328 DELETE_SUBSCR
+
+ 53:     >>  330 BUILD_LIST           0
+             332 STORE_NAME           (python_path)
+
+ 54:         334 LOAD_NAME            (sys)
+             336 LOAD_ATTR            (path)
+             356 GET_ITER
+             358 FOR_ITER             (to 466)
+             362 STORE_NAME           (pth)
+
+ 55:         364 LOAD_NAME            (python_path)
+             366 LOAD_ATTR            (NULL|self + append)
+             386 LOAD_NAME            (os)
+             388 LOAD_ATTR            (path)
+             408 LOAD_ATTR            (NULL|self + abspath)
+             428 LOAD_NAME            (pth)
+             430 CALL                 (1 positional)
+             438 CALL                 (1 positional)
+             446 POP_TOP
+
+ 56:         448 LOAD_NAME            (python_path)
+             450 LOAD_NAME            (sys)
+             452 STORE_ATTR           (path)
+             462 JUMP_BACKWARD        (to 358)
+
+ 54:     >>  466 END_FOR
+             468 POP_TOP
+
+ 66:         470 NOP
+
+ 67:         472 LOAD_CONST           (0)
+             474 LOAD_CONST           (None)
+             476 IMPORT_NAME          (encodings)
+             478 STORE_NAME           (encodings)
+
+ 72:         480 LOAD_NAME            (sys)
+             482 LOAD_ATTR            (warnoptions)
+             502 TO_BOOL
+             510 POP_JUMP_IF_FALSE    (to 522)
+
+ 73:         514 LOAD_CONST           (0)
+             516 LOAD_CONST           (None)
+             518 IMPORT_NAME          (warnings)
+             520 STORE_NAME           (warnings)
+
+ 76:     >>  522 LOAD_CONST           (0)
+             524 LOAD_CONST           (None)
+             526 IMPORT_NAME          (pyimod03_ctypes)
+             528 STORE_NAME           (pyimod03_ctypes)
+
+ 78:         530 LOAD_NAME            (pyimod03_ctypes)
+             532 LOAD_ATTR            (install)
+             552 PUSH_NULL
+             554 CALL                 (0 positional)
+             562 POP_TOP
+
+ 81:         564 LOAD_NAME            (sys)
+             566 LOAD_ATTR            (platform)
+             586 LOAD_ATTR            (NULL|self + startswith)
+             606 LOAD_CONST           ("win")
+             608 CALL                 (1 positional)
+             616 TO_BOOL
+             624 POP_JUMP_IF_FALSE    (to 670)
+
+ 82:         628 LOAD_CONST           (0)
+             630 LOAD_CONST           (None)
+             632 IMPORT_NAME          (pyimod04_pywin32)
+             634 STORE_NAME           (pyimod04_pywin32)
+
+ 83:         636 LOAD_NAME            (pyimod04_pywin32)
+             638 LOAD_ATTR            (install)
+             658 PUSH_NULL
+             660 CALL                 (0 positional)
+             668 POP_TOP
+
+ 90:     >>  670 LOAD_NAME            (os)
+             672 LOAD_ATTR            (listdir)
+             692 PUSH_NULL
+             694 LOAD_NAME            (sys)
+             696 LOAD_ATTR            (_MEIPASS)
+             716 CALL                 (1 positional)
+             724 GET_ITER
+             726 FOR_ITER             (to 982)
+             730 STORE_NAME           (entry)
+
+ 91:         732 LOAD_NAME            (os)
+             734 LOAD_ATTR            (path)
+             754 LOAD_ATTR            (NULL|self + join)
+             774 LOAD_NAME            (sys)
+             776 LOAD_ATTR            (_MEIPASS)
+             796 LOAD_NAME            (entry)
+             798 CALL                 (2 positional)
+             806 STORE_NAME           (entry)
+
+ 92:         808 LOAD_NAME            (os)
+             810 LOAD_ATTR            (path)
+             830 LOAD_ATTR            (NULL|self + isdir)
+             850 LOAD_NAME            (entry)
+             852 CALL                 (1 positional)
+             860 TO_BOOL
+             868 POP_JUMP_IF_TRUE     (to 876)
+
+ 93:         872 JUMP_BACKWARD        (to 726)
+
+ 94:     >>  876 LOAD_NAME            (entry)
+             878 LOAD_ATTR            (NULL|self + endswith)
+             898 LOAD_CONST           (".egg")
+             900 CALL                 (1 positional)
+             908 TO_BOOL
+             916 POP_JUMP_IF_TRUE     (to 924)
+             920 JUMP_BACKWARD        (to 726)
+
+ 95:     >>  924 LOAD_NAME            (sys)
+             926 LOAD_ATTR            (path)
+             946 LOAD_ATTR            (NULL|self + append)
+             966 LOAD_NAME            (entry)
+             968 CALL                 (1 positional)
+             976 POP_TOP
+             978 JUMP_BACKWARD        (to 726)
+
+ 90:     >>  982 END_FOR
+             984 POP_TOP
+             986 RETURN_CONST         (None)
+         >>  988 PUSH_EXC_INFO
+
+ 68:         990 LOAD_NAME            (ImportError)
+             992 CHECK_EXC_MATCH
+             994 POP_JUMP_IF_FALSE    (to 1006)
+             998 POP_TOP
+
+ 69:        1000 POP_EXCEPT
+            1002 EXTENDED_ARG         (256)
+            1004 JUMP_BACKWARD_NO_INTERRUPT (to 480)
+
+ 68:     >> 1006 RERAISE              0
+         >> 1008 COPY                 3
+            1010 POP_EXCEPT
+            1012 RERAISE              1
+
+ExceptionTable:
+  472 to 478 -> 988 [0]
+  988 to 998 -> 1008 [1] lasti
+  1006 to 1006 -> 1008 [1] lasti

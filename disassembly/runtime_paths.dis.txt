@@ -1,0 +1,980 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          runtime_paths.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1
+# Constants:
+#    0: 'Runtime/resource path helpers for source and one-file exe modes.'
+#    1: 0
+#    2: ('annotations',)
+#    3: None
+#    4: ('Path',)
+#    5: ('results', 'data', 'logs', 'archive', 'configs')
+#    6: <Code311 code object is_frozen at 0x109e13c10, file runtime_paths.py>, line 16
+#    7: <Code311 code object resource_root at 0x109e13ac0, file runtime_paths.py>, line 20
+#    8: <Code311 code object app_root at 0x109e13a60, file runtime_paths.py>, line 31
+#    9: <Code311 code object runtime_path at 0x109e13a90, file runtime_paths.py>, line 47
+#   10: <Code311 code object resource_path at 0x109e13a30, file runtime_paths.py>, line 51
+#   11: <Code311 code object config_path at 0x109e139d0, file runtime_paths.py>, line 55
+#   12: <Code311 code object worker_pid_path at 0x109e13970, file runtime_paths.py>, line 59
+#   13: <Code311 code object resolve_runtime_path at 0x109e138e0, file runtime_paths.py>, line 63
+#   14: <Code311 code object ensure_runtime_dirs at 0x109de2430, file runtime_paths.py>, line 71
+#   15: <Code311 code object clean_source_pycache at 0x109de24c0, file runtime_paths.py>, line 78
+#   16: ('return', 'bool')
+#   17: ('return', 'Path')
+#   18: ('parts', 'str | os.PathLike[str]', 'return', 'Path')
+#   19: ('port', 'int', 'return', 'Path')
+#   20: (None,)
+#   21: ('value', 'str | os.PathLike[str] | None', 'default_name', 'str | None', 'return', 'Path')
+#   22: ('return', 'None')
+# Names:
+#    0: __doc__
+#    1: __future__
+#    2: annotations
+#    3: os
+#    4: shutil
+#    5: sys
+#    6: time
+#    7: pathlib
+#    8: Path
+#    9: RUNTIME_DIR_NAMES
+#   10: is_frozen
+#   11: resource_root
+#   12: app_root
+#   13: runtime_path
+#   14: resource_path
+#   15: config_path
+#   16: worker_pid_path
+#   17: resolve_runtime_path
+#   18: ensure_runtime_dirs
+#   19: clean_source_pycache
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ("Runtime/resource path helpers for source and one-file exe modes.")
+               4 STORE_NAME           (__doc__)
+
+  4:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (('annotations',))
+              10 IMPORT_NAME          (__future__)
+              12 IMPORT_FROM          (annotations)
+              14 STORE_NAME           (annotations)
+              16 POP_TOP
+
+  6:          18 LOAD_CONST           (0)
+              20 LOAD_CONST           (None)
+              22 IMPORT_NAME          (os)
+              24 STORE_NAME           (os)
+
+  7:          26 LOAD_CONST           (0)
+              28 LOAD_CONST           (None)
+              30 IMPORT_NAME          (shutil)
+              32 STORE_NAME           (shutil)
+
+  8:          34 LOAD_CONST           (0)
+              36 LOAD_CONST           (None)
+              38 IMPORT_NAME          (sys)
+              40 STORE_NAME           (sys)
+
+  9:          42 LOAD_CONST           (0)
+              44 LOAD_CONST           (None)
+              46 IMPORT_NAME          (time)
+              48 STORE_NAME           (time)
+
+ 10:          50 LOAD_CONST           (0)
+              52 LOAD_CONST           (('Path',))
+              54 IMPORT_NAME          (pathlib)
+              56 IMPORT_FROM          (Path)
+              58 STORE_NAME           (Path)
+              60 POP_TOP
+
+ 13:          62 LOAD_CONST           (('results', 'data', 'logs', 'archive', 'configs'))
+              64 STORE_NAME           (RUNTIME_DIR_NAMES)
+
+ 16:          66 LOAD_CONST           (('return', 'bool'))
+              68 LOAD_CONST           (<Code311 code object is_frozen at 0x109e13c10, file runtime_paths.py>, line 16)
+              70 MAKE_FUNCTION
+              72 SET_FUNCTION_ATTRIBUTE 4
+              74 STORE_NAME           (is_frozen)
+
+ 20:          76 LOAD_CONST           (('return', 'Path'))
+              78 LOAD_CONST           (<Code311 code object resource_root at 0x109e13ac0, file runtime_paths.py>, line 20)
+              80 MAKE_FUNCTION
+              82 SET_FUNCTION_ATTRIBUTE 4
+              84 STORE_NAME           (resource_root)
+
+ 31:          86 LOAD_CONST           (('return', 'Path'))
+              88 LOAD_CONST           (<Code311 code object app_root at 0x109e13a60, file runtime_paths.py>, line 31)
+              90 MAKE_FUNCTION
+              92 SET_FUNCTION_ATTRIBUTE 4
+              94 STORE_NAME           (app_root)
+
+ 47:          96 LOAD_CONST           (('parts', 'str | os.PathLike[str]', 'return', 'Path'))
+              98 LOAD_CONST           (<Code311 code object runtime_path at 0x109e13a90, file runtime_paths.py>, line 47)
+             100 MAKE_FUNCTION
+             102 SET_FUNCTION_ATTRIBUTE 4
+             104 STORE_NAME           (runtime_path)
+
+ 51:         106 LOAD_CONST           (('parts', 'str | os.PathLike[str]', 'return', 'Path'))
+             108 LOAD_CONST           (<Code311 code object resource_path at 0x109e13a30, file runtime_paths.py>, line 51)
+             110 MAKE_FUNCTION
+             112 SET_FUNCTION_ATTRIBUTE 4
+             114 STORE_NAME           (resource_path)
+
+ 55:         116 LOAD_CONST           (('return', 'Path'))
+             118 LOAD_CONST           (<Code311 code object config_path at 0x109e139d0, file runtime_paths.py>, line 55)
+             120 MAKE_FUNCTION
+             122 SET_FUNCTION_ATTRIBUTE 4
+             124 STORE_NAME           (config_path)
+
+ 59:         126 LOAD_CONST           (('port', 'int', 'return', 'Path'))
+             128 LOAD_CONST           (<Code311 code object worker_pid_path at 0x109e13970, file runtime_paths.py>, line 59)
+             130 MAKE_FUNCTION
+             132 SET_FUNCTION_ATTRIBUTE 4
+             134 STORE_NAME           (worker_pid_path)
+
+ 63:         136 LOAD_CONST           ((None,))
+             138 LOAD_CONST           (('value', 'str | os.PathLike[str] | None', 'default_name', 'str | None', 'return', 'Path'))
+             140 LOAD_CONST           (<Code311 code object resolve_runtime_path at 0x109e138e0, file runtime_paths.py>, line 63)
+             142 MAKE_FUNCTION
+             144 SET_FUNCTION_ATTRIBUTE 4
+             146 SET_FUNCTION_ATTRIBUTE 1
+             148 STORE_NAME           (resolve_runtime_path)
+
+ 71:         150 LOAD_CONST           (('return', 'None'))
+             152 LOAD_CONST           (<Code311 code object ensure_runtime_dirs at 0x109de2430, file runtime_paths.py>, line 71)
+             154 MAKE_FUNCTION
+             156 SET_FUNCTION_ATTRIBUTE 4
+             158 STORE_NAME           (ensure_runtime_dirs)
+
+ 78:         160 LOAD_CONST           (('return', 'None'))
+             162 LOAD_CONST           (<Code311 code object clean_source_pycache at 0x109de24c0, file runtime_paths.py>, line 78)
+             164 MAKE_FUNCTION
+             166 SET_FUNCTION_ATTRIBUTE 4
+             168 STORE_NAME           (clean_source_pycache)
+             170 RETURN_CONST         (None)
+
+
+# Method Name:       is_frozen
+# Filename:          runtime_paths.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        16
+# Constants:
+#    0: None
+#    1: 'frozen'
+#    2: False
+# Names:
+#    0: bool
+#    1: getattr
+#    2: sys
+ 16:           0 RESUME               0
+
+ 17:           2 LOAD_GLOBAL          (NULL + bool)
+              12 LOAD_GLOBAL          (NULL + getattr)
+              22 LOAD_GLOBAL          (sys)
+              32 LOAD_CONST           ("frozen")
+              34 LOAD_CONST           (False)
+              36 CALL                 (3 positional)
+              44 CALL                 (1 positional)
+              52 RETURN_VALUE
+
+
+# Method Name:       resource_root
+# Filename:          runtime_paths.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        20
+# Constants:
+#    0: 'Read-only bundled resource root.\n\nIn a PyInstaller one-file exe this points to the temporary extraction\ndirectory. Runtime data must not be written here.\n'
+#    1: '_MEIPASS'
+# Names:
+#    0: is_frozen
+#    1: hasattr
+#    2: sys
+#    3: Path
+#    4: getattr
+#    5: resolve
+#    6: __file__
+#    7: parent
+ 20:           0 RESUME               0
+
+ 26:           2 LOAD_GLOBAL          (NULL + is_frozen)
+              12 CALL                 (0 positional)
+              20 TO_BOOL
+              28 POP_JUMP_IF_FALSE    (to 152)
+              32 LOAD_GLOBAL          (NULL + hasattr)
+              42 LOAD_GLOBAL          (sys)
+              52 LOAD_CONST           ("_MEIPASS")
+              54 CALL                 (2 positional)
+              62 TO_BOOL
+              70 POP_JUMP_IF_FALSE    (to 152)
+
+ 27:          74 LOAD_GLOBAL          (NULL + Path)
+              84 LOAD_GLOBAL          (NULL + getattr)
+              94 LOAD_GLOBAL          (sys)
+             104 LOAD_CONST           ("_MEIPASS")
+             106 CALL                 (2 positional)
+             114 CALL                 (1 positional)
+             122 LOAD_ATTR            (NULL|self + resolve)
+             142 CALL                 (0 positional)
+             150 RETURN_VALUE
+
+ 28:     >>  152 LOAD_GLOBAL          (NULL + Path)
+             162 LOAD_GLOBAL          (__file__)
+             172 CALL                 (1 positional)
+             180 LOAD_ATTR            (NULL|self + resolve)
+             200 CALL                 (0 positional)
+             208 LOAD_ATTR            (parent)
+             228 RETURN_VALUE
+
+
+# Method Name:       app_root
+# Filename:          runtime_paths.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        31
+# Constants:
+#    0: 'Writable application root.\n\nFor a packaged exe this is the folder containing the exe. For source mode\nit is the project folder. The env override is useful for isolated tests.\n'
+#    1: 'CHATGPT_AR_APP_ROOT'
+#    2: ''
+# Names:
+#    0: os
+#    1: environ
+#    2: get
+#    3: strip
+#    4: Path
+#    5: expanduser
+#    6: resolve
+#    7: is_frozen
+#    8: sys
+#    9: executable
+#   10: parent
+#   11: __file__
+# Varnames:
+#	override
+# Local variables:
+#    0: override
+ 31:           0 RESUME               0
+
+ 37:           2 LOAD_GLOBAL          (os)
+              12 LOAD_ATTR            (environ)
+              32 LOAD_ATTR            (NULL|self + get)
+              52 LOAD_CONST           ("CHATGPT_AR_APP_ROOT")
+              54 LOAD_CONST           ("")
+              56 CALL                 (2 positional)
+              64 LOAD_ATTR            (NULL|self + strip)
+              84 CALL                 (0 positional)
+              92 STORE_FAST           (override)
+
+ 38:          94 LOAD_FAST            (override)
+              96 TO_BOOL
+             104 POP_JUMP_IF_FALSE    (to 186)
+
+ 39:         108 LOAD_GLOBAL          (NULL + Path)
+             118 LOAD_FAST            (override)
+             120 CALL                 (1 positional)
+             128 LOAD_ATTR            (NULL|self + expanduser)
+             148 CALL                 (0 positional)
+             156 LOAD_ATTR            (NULL|self + resolve)
+             176 CALL                 (0 positional)
+             184 RETURN_VALUE
+
+ 40:     >>  186 LOAD_GLOBAL          (NULL + is_frozen)
+             196 CALL                 (0 positional)
+             204 TO_BOOL
+             212 POP_JUMP_IF_FALSE    (to 314)
+
+ 41:         216 LOAD_GLOBAL          (NULL + Path)
+             226 LOAD_GLOBAL          (sys)
+             236 LOAD_ATTR            (executable)
+             256 CALL                 (1 positional)
+             264 LOAD_ATTR            (NULL|self + resolve)
+             284 CALL                 (0 positional)
+             292 LOAD_ATTR            (parent)
+             312 RETURN_VALUE
+
+ 44:     >>  314 LOAD_GLOBAL          (NULL + Path)
+             324 LOAD_GLOBAL          (__file__)
+             334 CALL                 (1 positional)
+             342 LOAD_ATTR            (NULL|self + resolve)
+             362 CALL                 (0 positional)
+             370 LOAD_ATTR            (parent)
+             390 LOAD_ATTR            (parent)
+             410 RETURN_VALUE
+
+
+# Method Name:       runtime_path
+# Filename:          runtime_paths.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        3
+# Flags:             0x01000007 (0x1000000 | VARARGS | NEWLOCALS | OPTIMIZED)
+# First Line:        47
+# Constants:
+#    0: None
+# Names:
+#    0: app_root
+#    1: joinpath
+# Varnames:
+#	parts
+# Local variables:
+#    0: parts
+ 47:           0 RESUME               0
+
+ 48:           2 LOAD_GLOBAL          (NULL + app_root)
+              12 CALL                 (0 positional)
+              20 LOAD_ATTR            (joinpath)
+              40 PUSH_NULL
+              42 LOAD_FAST            (parts)
+              44 CALL_FUNCTION_EX     (positional arguments only)
+              46 RETURN_VALUE
+
+
+# Method Name:       resource_path
+# Filename:          runtime_paths.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        3
+# Flags:             0x01000007 (0x1000000 | VARARGS | NEWLOCALS | OPTIMIZED)
+# First Line:        51
+# Constants:
+#    0: None
+# Names:
+#    0: resource_root
+#    1: joinpath
+# Varnames:
+#	parts
+# Local variables:
+#    0: parts
+ 51:           0 RESUME               0
+
+ 52:           2 LOAD_GLOBAL          (NULL + resource_root)
+              12 CALL                 (0 positional)
+              20 LOAD_ATTR            (joinpath)
+              40 PUSH_NULL
+              42 LOAD_FAST            (parts)
+              44 CALL_FUNCTION_EX     (positional arguments only)
+              46 RETURN_VALUE
+
+
+# Method Name:       config_path
+# Filename:          runtime_paths.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        55
+# Constants:
+#    0: None
+#    1: 'config.json'
+# Names:
+#    0: runtime_path
+ 55:           0 RESUME               0
+
+ 56:           2 LOAD_GLOBAL          (NULL + runtime_path)
+              12 LOAD_CONST           ("config.json")
+              14 CALL                 (1 positional)
+              22 RETURN_VALUE
+
+
+# Method Name:       worker_pid_path
+# Filename:          runtime_paths.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        59
+# Constants:
+#    0: None
+#    1: 'data'
+#    2: 'worker_'
+#    3: '.pid'
+# Names:
+#    0: runtime_path
+# Varnames:
+#	port
+# Positional arguments:
+#	port
+ 59:           0 RESUME               0
+
+ 60:           2 LOAD_GLOBAL          (NULL + runtime_path)
+              12 LOAD_CONST           ("data")
+              14 LOAD_CONST           ("worker_")
+              16 LOAD_FAST            (port)
+              18 FORMAT_SIMPLE
+              20 LOAD_CONST           (".pid")
+              22 BUILD_STRING         3
+              24 CALL                 (2 positional)
+              32 RETURN_VALUE
+
+
+# Method Name:       resolve_runtime_path
+# Filename:          runtime_paths.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        63
+# Constants:
+#    0: None
+#    1: ''
+# Names:
+#    0: str
+#    1: strip
+#    2: Path
+#    3: is_absolute
+#    4: runtime_path
+# Varnames:
+#	value, default_name, text, path
+# Positional arguments:
+#	value, default_name
+# Local variables:
+#    2: text
+#    3: path
+ 63:           0 RESUME               0
+
+ 64:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (value)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + strip)
+              60 CALL                 (0 positional)
+              68 STORE_FAST           (text)
+
+ 65:          70 LOAD_FAST            (text)
+              72 TO_BOOL
+              80 POP_JUMP_IF_FALSE    (to 106)
+              84 LOAD_GLOBAL          (NULL + Path)
+              94 LOAD_FAST            (text)
+              96 CALL                 (1 positional)
+             104 JUMP_FORWARD         (to 144)
+         >>  106 LOAD_GLOBAL          (NULL + Path)
+             116 LOAD_FAST            (default_name)
+             118 COPY                 1
+             120 TO_BOOL
+             128 POP_JUMP_IF_TRUE     (to 136)
+             132 POP_TOP
+             134 LOAD_CONST           ("")
+         >>  136 CALL                 (1 positional)
+         >>  144 STORE_FAST           (path)
+
+ 66:         146 LOAD_FAST            (path)
+             148 LOAD_ATTR            (NULL|self + is_absolute)
+             168 CALL                 (0 positional)
+             176 TO_BOOL
+             184 POP_JUMP_IF_TRUE     (to 210)
+
+ 67:         188 LOAD_GLOBAL          (NULL + runtime_path)
+             198 LOAD_FAST            (path)
+             200 CALL                 (1 positional)
+             208 STORE_FAST           (path)
+
+ 68:     >>  210 LOAD_FAST            (path)
+             212 RETURN_VALUE
+
+
+# Method Name:       ensure_runtime_dirs
+# Filename:          runtime_paths.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        71
+# Constants:
+#    0: None
+#    1: True
+#    2: ('parents', 'exist_ok')
+# Names:
+#    0: app_root
+#    1: mkdir
+#    2: RUNTIME_DIR_NAMES
+# Varnames:
+#	root, name
+# Local variables:
+#    0: root
+#    1: name
+ 71:           0 RESUME               0
+
+ 72:           2 LOAD_GLOBAL          (NULL + app_root)
+              12 CALL                 (0 positional)
+              20 STORE_FAST           (root)
+
+ 73:          22 LOAD_FAST            (root)
+              24 LOAD_ATTR            (NULL|self + mkdir)
+              44 LOAD_CONST           (True)
+              46 LOAD_CONST           (True)
+              48 LOAD_CONST           (('parents', 'exist_ok'))
+              50 CALL_KW              2
+              52 POP_TOP
+
+ 74:          54 LOAD_GLOBAL          (RUNTIME_DIR_NAMES)
+              64 GET_ITER
+              66 FOR_ITER             (to 112)
+              70 STORE_FAST           (name)
+
+ 75:          72 LOAD_FAST_LOAD_FAST  (root, name)
+              74 BINARY_OP            (/)
+              78 LOAD_ATTR            (NULL|self + mkdir)
+              98 LOAD_CONST           (True)
+             100 LOAD_CONST           (True)
+             102 LOAD_CONST           (('parents', 'exist_ok'))
+             104 CALL_KW              2
+             106 POP_TOP
+             108 JUMP_BACKWARD        (to 66)
+
+ 74:     >>  112 END_FOR
+             114 POP_TOP
+             116 RETURN_CONST         (None)
+
+
+# Method Name:       clean_source_pycache
+# Filename:          runtime_paths.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        78
+# Constants:
+#    0: 'Remove stale pycache only in source mode.'
+#    1: None
+#    2: '__pycache__'
+#    3: 'data'
+#    4: 'locks'
+#    5: 'clean_pycache.lock'
+#    6: True
+#    7: ('parents', 'exist_ok')
+#    8: 'a+b'
+#    9: 'nt'
+#   10: 0
+#   11: 1
+#   12: ('ignore_errors',)
+# Names:
+#    0: is_frozen
+#    1: resource_root
+#    2: exists
+#    3: app_root
+#    4: parent
+#    5: mkdir
+#    6: open
+#    7: os
+#    8: name
+#    9: msvcrt
+#   10: seek
+#   11: locking
+#   12: fileno
+#   13: LK_NBLCK
+#   14: OSError
+#   15: shutil
+#   16: rmtree
+#   17: LK_UNLCK
+#   18: fcntl
+#   19: flock
+#   20: LOCK_EX
+#   21: LOCK_NB
+#   22: LOCK_UN
+#   23: Exception
+#   24: time
+#   25: sleep
+# Varnames:
+#	pycache, lock, handle, msvcrt, fcntl
+# Local variables:
+#    0: pycache
+#    1: lock
+#    2: handle
+#    3: msvcrt
+#    4: fcntl
+ 78:           0 RESUME               0
+
+ 80:           2 LOAD_GLOBAL          (NULL + is_frozen)
+              12 CALL                 (0 positional)
+              20 TO_BOOL
+              28 POP_JUMP_IF_FALSE    (to 34)
+
+ 81:          32 RETURN_CONST         (None)
+
+ 82:     >>   34 LOAD_GLOBAL          (NULL + resource_root)
+              44 CALL                 (0 positional)
+              52 LOAD_CONST           ("__pycache__")
+              54 BINARY_OP            (/)
+              58 STORE_FAST           (pycache)
+
+ 83:          60 LOAD_FAST            (pycache)
+              62 LOAD_ATTR            (NULL|self + exists)
+              82 CALL                 (0 positional)
+              90 TO_BOOL
+              98 EXTENDED_ARG         (256)
+             100 POP_JUMP_IF_FALSE    (to 920)
+
+ 87:         104 LOAD_GLOBAL          (NULL + app_root)
+             114 CALL                 (0 positional)
+             122 LOAD_CONST           ("data")
+             124 BINARY_OP            (/)
+             128 LOAD_CONST           ("locks")
+             130 BINARY_OP            (/)
+             134 LOAD_CONST           ("clean_pycache.lock")
+             136 BINARY_OP            (/)
+             140 STORE_FAST           (lock)
+
+ 88:         142 NOP
+
+ 89:         144 LOAD_FAST            (lock)
+             146 LOAD_ATTR            (parent)
+             166 LOAD_ATTR            (NULL|self + mkdir)
+             186 LOAD_CONST           (True)
+             188 LOAD_CONST           (True)
+             190 LOAD_CONST           (('parents', 'exist_ok'))
+             192 CALL_KW              2
+             194 POP_TOP
+
+ 90:         196 LOAD_FAST            (lock)
+             198 LOAD_ATTR            (NULL|self + open)
+             218 LOAD_CONST           ("a+b")
+             220 CALL                 (1 positional)
+             228 BEFORE_WITH
+             230 STORE_FAST           (handle)
+
+ 91:         232 LOAD_GLOBAL          (os)
+             242 LOAD_ATTR            (name)
+             262 LOAD_CONST           ("nt")
+             264 COMPARE_OP           (==)
+             268 POP_JUMP_IF_FALSE    (to 612)
+
+ 92:         272 LOAD_CONST           (0)
+             274 LOAD_CONST           (None)
+             276 IMPORT_NAME          (msvcrt)
+             278 STORE_FAST           (msvcrt)
+
+ 93:         280 LOAD_FAST            (handle)
+             282 LOAD_ATTR            (NULL|self + seek)
+             302 LOAD_CONST           (0)
+             304 CALL                 (1 positional)
+             312 POP_TOP
+
+ 94:         314 NOP
+
+ 95:         316 LOAD_FAST            (msvcrt)
+             318 LOAD_ATTR            (NULL|self + locking)
+             338 LOAD_FAST            (handle)
+             340 LOAD_ATTR            (NULL|self + fileno)
+             360 CALL                 (0 positional)
+             368 LOAD_FAST            (msvcrt)
+             370 LOAD_ATTR            (LK_NBLCK)
+             390 LOAD_CONST           (1)
+             392 CALL                 (3 positional)
+             400 POP_TOP
+
+ 98:         402 NOP
+
+ 99:         404 LOAD_FAST            (pycache)
+             406 LOAD_ATTR            (NULL|self + exists)
+             426 CALL                 (0 positional)
+             434 TO_BOOL
+             442 POP_JUMP_IF_FALSE    (to 488)
+
+100:         446 LOAD_GLOBAL          (shutil)
+             456 LOAD_ATTR            (rmtree)
+             476 PUSH_NULL
+             478 LOAD_FAST            (pycache)
+             480 LOAD_CONST           (True)
+             482 LOAD_CONST           (('ignore_errors',))
+             484 CALL_KW              2
+             486 POP_TOP
+
+102:     >>  488 LOAD_FAST            (handle)
+             490 LOAD_ATTR            (NULL|self + seek)
+             510 LOAD_CONST           (0)
+             512 CALL                 (1 positional)
+             520 POP_TOP
+
+103:         522 NOP
+
+104:         524 LOAD_FAST            (msvcrt)
+             526 LOAD_ATTR            (NULL|self + locking)
+             546 LOAD_FAST            (handle)
+             548 LOAD_ATTR            (NULL|self + fileno)
+             568 CALL                 (0 positional)
+             576 LOAD_FAST            (msvcrt)
+             578 LOAD_ATTR            (LK_UNLCK)
+             598 LOAD_CONST           (1)
+             600 CALL                 (3 positional)
+             608 POP_TOP
+             610 JUMP_FORWARD         (to 902)
+
+108:     >>  612 LOAD_CONST           (0)
+             614 LOAD_CONST           (None)
+             616 IMPORT_NAME          (fcntl)
+             618 STORE_FAST           (fcntl)
+
+109:         620 NOP
+
+110:         622 LOAD_FAST            (fcntl)
+             624 LOAD_ATTR            (NULL|self + flock)
+             644 LOAD_FAST            (handle)
+             646 LOAD_ATTR            (NULL|self + fileno)
+             666 CALL                 (0 positional)
+             674 LOAD_FAST            (fcntl)
+             676 LOAD_ATTR            (LOCK_EX)
+             696 LOAD_FAST            (fcntl)
+             698 LOAD_ATTR            (LOCK_NB)
+             718 BINARY_OP            (|)
+             722 CALL                 (2 positional)
+             730 POP_TOP
+
+113:         732 NOP
+
+114:         734 LOAD_FAST            (pycache)
+             736 LOAD_ATTR            (NULL|self + exists)
+             756 CALL                 (0 positional)
+             764 TO_BOOL
+             772 POP_JUMP_IF_FALSE    (to 818)
+
+115:         776 LOAD_GLOBAL          (shutil)
+             786 LOAD_ATTR            (rmtree)
+             806 PUSH_NULL
+             808 LOAD_FAST            (pycache)
+             810 LOAD_CONST           (True)
+             812 LOAD_CONST           (('ignore_errors',))
+             814 CALL_KW              2
+             816 POP_TOP
+
+117:     >>  818 LOAD_FAST            (fcntl)
+             820 LOAD_ATTR            (NULL|self + flock)
+             840 LOAD_FAST            (handle)
+             842 LOAD_ATTR            (NULL|self + fileno)
+             862 CALL                 (0 positional)
+             870 LOAD_FAST            (fcntl)
+             872 LOAD_ATTR            (LOCK_UN)
+             892 CALL                 (2 positional)
+             900 POP_TOP
+
+ 90:     >>  902 LOAD_CONST           (None)
+             904 LOAD_CONST           (None)
+             906 LOAD_CONST           (None)
+             908 CALL                 (2 positional)
+             916 POP_TOP
+             918 RETURN_CONST         (None)
+
+ 83:     >>  920 RETURN_CONST         (None)
+         >>  922 PUSH_EXC_INFO
+
+ 96:         924 LOAD_GLOBAL          (OSError)
+             934 CHECK_EXC_MATCH
+             936 POP_JUMP_IF_FALSE    (to 962)
+             940 POP_TOP
+
+ 97:         942 POP_EXCEPT
+
+ 90:         944 LOAD_CONST           (None)
+             946 LOAD_CONST           (None)
+             948 LOAD_CONST           (None)
+             950 CALL                 (2 positional)
+             958 POP_TOP
+             960 RETURN_CONST         (None)
+
+ 96:     >>  962 RERAISE              0
+         >>  964 COPY                 3
+             966 POP_EXCEPT
+             968 RERAISE              1
+         >>  970 PUSH_EXC_INFO
+
+105:         972 LOAD_GLOBAL          (OSError)
+             982 CHECK_EXC_MATCH
+             984 POP_JUMP_IF_FALSE    (to 994)
+             988 POP_TOP
+
+106:         990 POP_EXCEPT
+             992 JUMP_BACKWARD_NO_INTERRUPT (to 902)
+
+105:     >>  994 RERAISE              0
+         >>  996 COPY                 3
+             998 POP_EXCEPT
+            1000 RERAISE              1
+         >> 1002 PUSH_EXC_INFO
+
+102:        1004 LOAD_FAST            (handle)
+            1006 LOAD_ATTR            (NULL|self + seek)
+            1026 LOAD_CONST           (0)
+            1028 CALL                 (1 positional)
+            1036 POP_TOP
+
+103:        1038 NOP
+
+104:        1040 LOAD_FAST            (msvcrt)
+            1042 LOAD_ATTR            (NULL|self + locking)
+            1062 LOAD_FAST            (handle)
+            1064 LOAD_ATTR            (NULL|self + fileno)
+            1084 CALL                 (0 positional)
+            1092 LOAD_FAST            (msvcrt)
+            1094 LOAD_ATTR            (LK_UNLCK)
+            1114 LOAD_CONST           (1)
+            1116 CALL                 (3 positional)
+            1124 POP_TOP
+            1126 RERAISE              0
+         >> 1128 PUSH_EXC_INFO
+
+105:        1130 LOAD_GLOBAL          (OSError)
+            1140 CHECK_EXC_MATCH
+            1142 POP_JUMP_IF_FALSE    (to 1152)
+            1146 POP_TOP
+
+106:        1148 POP_EXCEPT
+            1150 RERAISE              0
+
+105:     >> 1152 RERAISE              0
+         >> 1154 COPY                 3
+            1156 POP_EXCEPT
+            1158 RERAISE              1
+         >> 1160 COPY                 3
+            1162 POP_EXCEPT
+            1164 RERAISE              1
+         >> 1166 PUSH_EXC_INFO
+
+111:        1168 LOAD_GLOBAL          (OSError)
+            1178 CHECK_EXC_MATCH
+            1180 POP_JUMP_IF_FALSE    (to 1206)
+            1184 POP_TOP
+
+112:        1186 POP_EXCEPT
+
+ 90:        1188 LOAD_CONST           (None)
+            1190 LOAD_CONST           (None)
+            1192 LOAD_CONST           (None)
+            1194 CALL                 (2 positional)
+            1202 POP_TOP
+            1204 RETURN_CONST         (None)
+
+111:     >> 1206 RERAISE              0
+         >> 1208 COPY                 3
+            1210 POP_EXCEPT
+            1212 RERAISE              1
+         >> 1214 PUSH_EXC_INFO
+
+117:        1216 LOAD_FAST            (fcntl)
+            1218 LOAD_ATTR            (NULL|self + flock)
+            1238 LOAD_FAST            (handle)
+            1240 LOAD_ATTR            (NULL|self + fileno)
+            1260 CALL                 (0 positional)
+            1268 LOAD_FAST            (fcntl)
+            1270 LOAD_ATTR            (LOCK_UN)
+            1290 CALL                 (2 positional)
+            1298 POP_TOP
+            1300 RERAISE              0
+         >> 1302 COPY                 3
+            1304 POP_EXCEPT
+            1306 RERAISE              1
+
+ 90:     >> 1308 PUSH_EXC_INFO
+            1310 WITH_EXCEPT_START    0
+            1312 TO_BOOL
+            1320 POP_JUMP_IF_TRUE     (to 1326)
+            1324 RERAISE              2
+         >> 1326 POP_TOP
+            1328 POP_EXCEPT
+            1330 POP_TOP
+            1332 POP_TOP
+            1334 RETURN_CONST         (None)
+         >> 1336 COPY                 3
+            1338 POP_EXCEPT
+            1340 RERAISE              1
+         >> 1342 PUSH_EXC_INFO
+
+118:        1344 LOAD_GLOBAL          (Exception)
+            1354 CHECK_EXC_MATCH
+            1356 POP_JUMP_IF_FALSE    (to 1410)
+            1360 POP_TOP
+
+120:        1362 LOAD_GLOBAL          (time)
+            1372 LOAD_ATTR            (sleep)
+            1392 PUSH_NULL
+            1394 LOAD_CONST           (0)
+            1396 CALL                 (1 positional)
+            1404 POP_TOP
+            1406 POP_EXCEPT
+            1408 RETURN_CONST         (None)
+
+118:     >> 1410 RERAISE              0
+         >> 1412 COPY                 3
+            1414 POP_EXCEPT
+            1416 RERAISE              1
+
+ExceptionTable:
+  144 to 228 -> 1342 [0]
+  230 to 312 -> 1308 [1] lasti
+  316 to 400 -> 922 [1]
+  404 to 486 -> 1002 [1]
+  488 to 520 -> 1308 [1] lasti
+  524 to 608 -> 970 [1]
+  610 to 618 -> 1308 [1] lasti
+  622 to 730 -> 1166 [1]
+  734 to 816 -> 1214 [1]
+  818 to 900 -> 1308 [1] lasti
+  902 to 916 -> 1342 [0]
+  922 to 940 -> 964 [2] lasti
+  942 to 942 -> 1308 [1] lasti
+  944 to 958 -> 1342 [0]
+  962 to 962 -> 964 [2] lasti
+  964 to 968 -> 1308 [1] lasti
+  970 to 988 -> 996 [2] lasti
+  990 to 992 -> 1308 [1] lasti
+  994 to 994 -> 996 [2] lasti
+  996 to 1000 -> 1308 [1] lasti
+  1002 to 1036 -> 1160 [2] lasti
+  1040 to 1124 -> 1128 [3]
+  1126 to 1126 -> 1160 [2] lasti
+  1128 to 1146 -> 1154 [4] lasti
+  1148 to 1150 -> 1160 [2] lasti
+  1152 to 1152 -> 1154 [4] lasti
+  1154 to 1158 -> 1160 [2] lasti
+  1160 to 1164 -> 1308 [1] lasti
+  1166 to 1184 -> 1208 [2] lasti
+  1186 to 1186 -> 1308 [1] lasti
+  1188 to 1202 -> 1342 [0]
+  1206 to 1206 -> 1208 [2] lasti
+  1208 to 1212 -> 1308 [1] lasti
+  1214 to 1300 -> 1302 [2] lasti
+  1302 to 1306 -> 1308 [1] lasti
+  1308 to 1326 -> 1336 [3] lasti
+  1328 to 1332 -> 1342 [0]
+  1336 to 1340 -> 1342 [0]
+  1342 to 1404 -> 1412 [1] lasti
+  1410 to 1410 -> 1412 [1] lasti

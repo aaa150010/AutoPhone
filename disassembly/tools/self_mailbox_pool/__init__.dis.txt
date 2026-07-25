@@ -1,0 +1,49 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          tools\self_mailbox_pool\__init__.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        2
+# Flags:             0x00000000 (0x0)
+# First Line:        1
+# Constants:
+#    0: 'Independent self-managed mailbox pool utilities.'
+#    1: 1
+#    2: ('MailboxPool', 'MailboxUrlCodeProvider', 'PoolEntry')
+#    3: None
+# Names:
+#    0: __doc__
+#    1: mailbox_pool
+#    2: MailboxPool
+#    3: MailboxUrlCodeProvider
+#    4: PoolEntry
+#    5: __all__
+  0:           0 RESUME               0
+
+  1:           2 LOAD_CONST           ("Independent self-managed mailbox pool utilities.")
+               4 STORE_NAME           (__doc__)
+
+  3:           6 LOAD_CONST           (1)
+               8 LOAD_CONST           (('MailboxPool', 'MailboxUrlCodeProvider', 'PoolEntry'))
+              10 IMPORT_NAME          (mailbox_pool)
+              12 IMPORT_FROM          (MailboxPool)
+              14 STORE_NAME           (MailboxPool)
+              16 IMPORT_FROM          (MailboxUrlCodeProvider)
+              18 STORE_NAME           (MailboxUrlCodeProvider)
+              20 IMPORT_FROM          (PoolEntry)
+              22 STORE_NAME           (PoolEntry)
+              24 POP_TOP
+
+  5:          26 BUILD_LIST           0
+              28 LOAD_CONST           (('MailboxPool', 'MailboxUrlCodeProvider', 'PoolEntry'))
+              30 LIST_EXTEND          1
+              32 STORE_NAME           (__all__)
+              34 RETURN_CONST         (None)
+

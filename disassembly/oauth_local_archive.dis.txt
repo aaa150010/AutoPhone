@@ -1,0 +1,2283 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          oauth_local_archive.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        10
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1
+# Constants:
+#    0: 'Build local, importable archives from Codex OAuth token bundles.'
+#    1: 0
+#    2: ('annotations',)
+#    3: None
+#    4: ('Path',)
+#    5: ('Any', 'Dict')
+#    6: 'runtime/local_archive'
+#    7: 2
+#    8: <Code311 code object _clean at 0x10763fee0, file oauth_local_archive.py>, line 21
+#    9: <Code311 code object _safe_name at 0x10763fac0, file oauth_local_archive.py>, line 29
+#   10: <Code311 code object _unique_path at 0x10763fbb0, file oauth_local_archive.py>, line 36
+#   11: <Code311 code object _save_json at 0x10763fa60, file oauth_local_archive.py>, line 50
+#   12: <Code311 code object _data_dict at 0x10763fa90, file oauth_local_archive.py>, line 55
+#   13: <Code311 code object token_credentials at 0x10763f940, file oauth_local_archive.py>, line 62
+#   14: <Code311 code object _merge_chatgpt_metadata at 0x10760e430, file oauth_local_archive.py>, line 99
+#   15: ''
+#   16: 'manual_oauth'
+#   17: ('name', 'source')
+#   18: <Code311 code object build_account_record at 0x10760e490, file oauth_local_archive.py>, line 112
+#   19: 10
+#   20: 1
+#   21: ('group_id', 'proxy_id', 'concurrency', 'priority', 'rate_multiplier')
+#   22: <Code311 code object build_sub2_import_payload at 0x10760e4f0, file oauth_local_archive.py>, line 194
+#   23: <Code311 code object build_cpa_auth_payload at 0x10760e520, file oauth_local_archive.py>, line 239
+#   24: ('out_dir', 'sub2_import_out', 'name', 'source', 'group_id', 'proxy_id', 'concurrency', 'priority', 'rate_multiplier')
+#   25: <Code311 code object archive_oauth_account at 0x10760e5b0, file oauth_local_archive.py>, line 251
+#   26: ('value', 'Any', 'return', 'str')
+#   27: ('folder', 'Path', 'filename', 'str', 'return', 'Path')
+#   28: ('path', 'Path', 'payload', 'Dict[str, Any]', 'return', 'None')
+#   29: ('payload', 'Dict[str, Any]', 'return', 'Dict[str, Any]')
+#   30: ('record', 'Dict[str, Any]', 'creds', 'Dict[str, Any]', 'token_payload', 'Dict[str, Any]', 'return', 'Dict[str, Any]')
+#   31: ('session', 'Dict[str, Any] | None', 'token_payload', 'Dict[str, Any]', 'name', 'str', 'source', 'str', 'return', 'Dict[str, Any]')
+#   32: ('account_record', 'Dict[str, Any]', 'group_id', 'int', 'proxy_id', 'int', 'concurrency', 'int', 'priority', 'int', 'rate_multiplier', 'int', 'return', 'Dict[str, Any]')
+#   33: ('account_record', 'Dict[str, Any]', 'return', 'Dict[str, Any]')
+#   34: ('session', 'Dict[str, Any] | None', 'token_payload', 'Dict[str, Any]', 'out_dir', 'str | Path', 'sub2_import_out', 'str | Path', 'name', 'str', 'source', 'str', 'group_id', 'int', 'proxy_id', 'int', 'concurrency', 'int', 'priority', 'int', 'rate_multiplier', 'int', 'return', 'Dict[str, Any]')
+# Names:
+#    0: __doc__
+#    1: __future__
+#    2: annotations
+#    3: json
+#    4: re
+#    5: sys
+#    6: time
+#    7: pathlib
+#    8: Path
+#    9: typing
+#   10: Any
+#   11: Dict
+#   12: DEFAULT_LOCAL_ARCHIVE_DIR
+#   13: __file__
+#   14: resolve
+#   15: parents
+#   16: PROJECT_ROOT
+#   17: str
+#   18: path
+#   19: append
+#   20: _clean
+#   21: _safe_name
+#   22: _unique_path
+#   23: _save_json
+#   24: _data_dict
+#   25: token_credentials
+#   26: _merge_chatgpt_metadata
+#   27: build_account_record
+#   28: build_sub2_import_payload
+#   29: build_cpa_auth_payload
+#   30: archive_oauth_account
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ("Build local, importable archives from Codex OAuth token bundles.")
+               4 STORE_NAME           (__doc__)
+
+  4:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (('annotations',))
+              10 IMPORT_NAME          (__future__)
+              12 IMPORT_FROM          (annotations)
+              14 STORE_NAME           (annotations)
+              16 POP_TOP
+
+  6:          18 LOAD_CONST           (0)
+              20 LOAD_CONST           (None)
+              22 IMPORT_NAME          (json)
+              24 STORE_NAME           (json)
+
+  7:          26 LOAD_CONST           (0)
+              28 LOAD_CONST           (None)
+              30 IMPORT_NAME          (re)
+              32 STORE_NAME           (re)
+
+  8:          34 LOAD_CONST           (0)
+              36 LOAD_CONST           (None)
+              38 IMPORT_NAME          (sys)
+              40 STORE_NAME           (sys)
+
+  9:          42 LOAD_CONST           (0)
+              44 LOAD_CONST           (None)
+              46 IMPORT_NAME          (time)
+              48 STORE_NAME           (time)
+
+ 10:          50 LOAD_CONST           (0)
+              52 LOAD_CONST           (('Path',))
+              54 IMPORT_NAME          (pathlib)
+              56 IMPORT_FROM          (Path)
+              58 STORE_NAME           (Path)
+              60 POP_TOP
+
+ 11:          62 LOAD_CONST           (0)
+              64 LOAD_CONST           (('Any', 'Dict'))
+              66 IMPORT_NAME          (typing)
+              68 IMPORT_FROM          (Any)
+              70 STORE_NAME           (Any)
+              72 IMPORT_FROM          (Dict)
+              74 STORE_NAME           (Dict)
+              76 POP_TOP
+
+ 14:          78 LOAD_CONST           ("runtime/local_archive")
+              80 STORE_NAME           (DEFAULT_LOCAL_ARCHIVE_DIR)
+
+ 16:          82 LOAD_NAME            (Path)
+              84 PUSH_NULL
+              86 LOAD_NAME            (__file__)
+              88 CALL                 (1 positional)
+              96 LOAD_ATTR            (NULL|self + resolve)
+             116 CALL                 (0 positional)
+             124 LOAD_ATTR            (parents)
+             144 LOAD_CONST           (2)
+             146 BINARY_SUBSCR
+             150 STORE_NAME           (PROJECT_ROOT)
+
+ 17:         152 LOAD_NAME            (str)
+             154 PUSH_NULL
+             156 LOAD_NAME            (PROJECT_ROOT)
+             158 CALL                 (1 positional)
+             166 LOAD_NAME            (sys)
+             168 LOAD_ATTR            (path)
+             188 CONTAINS_OP          (not in)
+             192 POP_JUMP_IF_FALSE    (to 262)
+
+ 18:         196 LOAD_NAME            (sys)
+             198 LOAD_ATTR            (path)
+             218 LOAD_ATTR            (NULL|self + append)
+             238 LOAD_NAME            (str)
+             240 PUSH_NULL
+             242 LOAD_NAME            (PROJECT_ROOT)
+             244 CALL                 (1 positional)
+             252 CALL                 (1 positional)
+             260 POP_TOP
+
+ 21:     >>  262 LOAD_CONST           (('value', 'Any', 'return', 'str'))
+             264 LOAD_CONST           (<Code311 code object _clean at 0x10763fee0, file oauth_local_archive.py>, line 21)
+             266 MAKE_FUNCTION
+             268 SET_FUNCTION_ATTRIBUTE 4
+             270 STORE_NAME           (_clean)
+
+ 29:         272 LOAD_CONST           (('value', 'Any', 'return', 'str'))
+             274 LOAD_CONST           (<Code311 code object _safe_name at 0x10763fac0, file oauth_local_archive.py>, line 29)
+             276 MAKE_FUNCTION
+             278 SET_FUNCTION_ATTRIBUTE 4
+             280 STORE_NAME           (_safe_name)
+
+ 36:         282 LOAD_CONST           (('folder', 'Path', 'filename', 'str', 'return', 'Path'))
+             284 LOAD_CONST           (<Code311 code object _unique_path at 0x10763fbb0, file oauth_local_archive.py>, line 36)
+             286 MAKE_FUNCTION
+             288 SET_FUNCTION_ATTRIBUTE 4
+             290 STORE_NAME           (_unique_path)
+
+ 50:         292 LOAD_CONST           (('path', 'Path', 'payload', 'Dict[str, Any]', 'return', 'None'))
+             294 LOAD_CONST           (<Code311 code object _save_json at 0x10763fa60, file oauth_local_archive.py>, line 50)
+             296 MAKE_FUNCTION
+             298 SET_FUNCTION_ATTRIBUTE 4
+             300 STORE_NAME           (_save_json)
+
+ 55:         302 LOAD_CONST           (('payload', 'Dict[str, Any]', 'return', 'Dict[str, Any]'))
+             304 LOAD_CONST           (<Code311 code object _data_dict at 0x10763fa90, file oauth_local_archive.py>, line 55)
+             306 MAKE_FUNCTION
+             308 SET_FUNCTION_ATTRIBUTE 4
+             310 STORE_NAME           (_data_dict)
+
+ 62:         312 LOAD_CONST           (('payload', 'Dict[str, Any]', 'return', 'Dict[str, Any]'))
+             314 LOAD_CONST           (<Code311 code object token_credentials at 0x10763f940, file oauth_local_archive.py>, line 62)
+             316 MAKE_FUNCTION
+             318 SET_FUNCTION_ATTRIBUTE 4
+             320 STORE_NAME           (token_credentials)
+
+ 99:         322 LOAD_CONST           (('record', 'Dict[str, Any]', 'creds', 'Dict[str, Any]', 'token_payload', 'Dict[str, Any]', 'return', 'Dict[str, Any]'))
+             324 LOAD_CONST           (<Code311 code object _merge_chatgpt_metadata at 0x10760e430, file oauth_local_archive.py>, line 99)
+             326 MAKE_FUNCTION
+             328 SET_FUNCTION_ATTRIBUTE 4
+             330 STORE_NAME           (_merge_chatgpt_metadata)
+
+116:         332 LOAD_CONST           ("")
+
+117:         334 LOAD_CONST           ("manual_oauth")
+
+112:         336 LOAD_CONST           (('name', 'source'))
+             338 BUILD_CONST_KEY_MAP  2
+
+114:         340 NOP
+
+112:         342 NOP
+
+115:         344 NOP
+
+112:         346 NOP
+
+116:         348 NOP
+
+112:         350 NOP
+
+117:         352 NOP
+
+112:         354 NOP
+
+118:         356 NOP
+
+112:         358 LOAD_CONST           (('session', 'Dict[str, Any] | None', 'token_payload', 'Dict[str, Any]', 'name', 'str', 'source', 'str', 'return', 'Dict[str, Any]'))
+             360 LOAD_CONST           (<Code311 code object build_account_record at 0x10760e490, file oauth_local_archive.py>, line 112)
+             362 MAKE_FUNCTION
+             364 SET_FUNCTION_ATTRIBUTE 4
+             366 SET_FUNCTION_ATTRIBUTE 2
+             368 STORE_NAME           (build_account_record)
+
+197:         370 LOAD_CONST           (0)
+
+198:         372 LOAD_CONST           (0)
+
+199:         374 LOAD_CONST           (10)
+
+200:         376 LOAD_CONST           (1)
+
+201:         378 LOAD_CONST           (1)
+
+194:         380 LOAD_CONST           (('group_id', 'proxy_id', 'concurrency', 'priority', 'rate_multiplier'))
+             382 BUILD_CONST_KEY_MAP  5
+
+195:         384 NOP
+
+194:         386 NOP
+
+197:         388 NOP
+
+194:         390 NOP
+
+198:         392 NOP
+
+194:         394 NOP
+
+199:         396 NOP
+
+194:         398 NOP
+
+200:         400 NOP
+
+194:         402 NOP
+
+201:         404 NOP
+
+194:         406 NOP
+
+202:         408 NOP
+
+194:         410 LOAD_CONST           (('account_record', 'Dict[str, Any]', 'group_id', 'int', 'proxy_id', 'int', 'concurrency', 'int', 'priority', 'int', 'rate_multiplier', 'int', 'return', 'Dict[str, Any]'))
+             412 LOAD_CONST           (<Code311 code object build_sub2_import_payload at 0x10760e4f0, file oauth_local_archive.py>, line 194)
+             414 MAKE_FUNCTION
+             416 SET_FUNCTION_ATTRIBUTE 4
+             418 SET_FUNCTION_ATTRIBUTE 2
+             420 STORE_NAME           (build_sub2_import_payload)
+
+239:         422 LOAD_CONST           (('account_record', 'Dict[str, Any]', 'return', 'Dict[str, Any]'))
+             424 LOAD_CONST           (<Code311 code object build_cpa_auth_payload at 0x10760e520, file oauth_local_archive.py>, line 239)
+             426 MAKE_FUNCTION
+             428 SET_FUNCTION_ATTRIBUTE 4
+             430 STORE_NAME           (build_cpa_auth_payload)
+
+255:         432 LOAD_NAME            (DEFAULT_LOCAL_ARCHIVE_DIR)
+
+256:         434 LOAD_CONST           ("")
+
+257:         436 LOAD_CONST           ("")
+
+258:         438 LOAD_CONST           ("manual_oauth")
+
+259:         440 LOAD_CONST           (0)
+
+260:         442 LOAD_CONST           (0)
+
+261:         444 LOAD_CONST           (10)
+
+262:         446 LOAD_CONST           (1)
+
+263:         448 LOAD_CONST           (1)
+
+251:         450 LOAD_CONST           (('out_dir', 'sub2_import_out', 'name', 'source', 'group_id', 'proxy_id', 'concurrency', 'priority', 'rate_multiplier'))
+             452 BUILD_CONST_KEY_MAP  9
+
+253:         454 NOP
+
+251:         456 NOP
+
+254:         458 NOP
+
+251:         460 NOP
+
+255:         462 NOP
+
+251:         464 NOP
+
+256:         466 NOP
+
+251:         468 NOP
+
+257:         470 NOP
+
+251:         472 NOP
+
+258:         474 NOP
+
+251:         476 NOP
+
+259:         478 NOP
+
+251:         480 NOP
+
+260:         482 NOP
+
+251:         484 NOP
+
+261:         486 NOP
+
+251:         488 NOP
+
+262:         490 NOP
+
+251:         492 NOP
+
+263:         494 NOP
+
+251:         496 NOP
+
+264:         498 NOP
+
+251:         500 LOAD_CONST           (('session', 'Dict[str, Any] | None', 'token_payload', 'Dict[str, Any]', 'out_dir', 'str | Path', 'sub2_import_out', 'str | Path', 'name', 'str', 'source', 'str', 'group_id', 'int', 'proxy_id', 'int', 'concurrency', 'int', 'priority', 'int', 'rate_multiplier', 'int', 'return', 'Dict[str, Any]'))
+             502 LOAD_CONST           (<Code311 code object archive_oauth_account at 0x10760e5b0, file oauth_local_archive.py>, line 251)
+             504 MAKE_FUNCTION
+             506 SET_FUNCTION_ATTRIBUTE 4
+             508 SET_FUNCTION_ATTRIBUTE 2
+             510 STORE_NAME           (archive_oauth_account)
+             512 RETURN_CONST         (None)
+
+
+# Method Name:       _clean
+# Filename:          oauth_local_archive.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        21
+# Constants:
+#    0: None
+#    1: ''
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: list
+#    3: tuple
+#    4: set
+#    5: str
+#    6: strip
+# Varnames:
+#	value
+# Positional arguments:
+#	value
+ 21:           0 RESUME               0
+
+ 22:           2 LOAD_FAST            (value)
+               4 POP_JUMP_IF_NOT_NONE (to 10)
+
+ 23:           8 RETURN_CONST         ("")
+
+ 24:     >>   10 LOAD_GLOBAL          (NULL + isinstance)
+              20 LOAD_FAST            (value)
+              22 LOAD_GLOBAL          (dict)
+              32 LOAD_GLOBAL          (list)
+              42 LOAD_GLOBAL          (tuple)
+              52 LOAD_GLOBAL          (set)
+              62 BUILD_TUPLE          4
+              64 CALL                 (2 positional)
+              72 TO_BOOL
+              80 POP_JUMP_IF_FALSE    (to 86)
+
+ 25:          84 RETURN_CONST         ("")
+
+ 26:     >>   86 LOAD_GLOBAL          (NULL + str)
+              96 LOAD_FAST            (value)
+              98 CALL                 (1 positional)
+             106 LOAD_ATTR            (NULL|self + strip)
+             126 CALL                 (0 positional)
+             134 RETURN_VALUE
+
+
+# Method Name:       _safe_name
+# Filename:          oauth_local_archive.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        29
+# Constants:
+#    0: None
+#    1: '[\\\\/:*?"<>|]+'
+#    2: '_'
+#    3: '\\s+'
+#    4: 120
+#    5: 'unknown'
+# Names:
+#    0: _clean
+#    1: re
+#    2: sub
+# Varnames:
+#	value, text
+# Positional arguments:
+#	value
+# Local variables:
+#    1: text
+ 29:           0 RESUME               0
+
+ 30:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (value)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (text)
+
+ 31:          24 LOAD_GLOBAL          (re)
+              34 LOAD_ATTR            (sub)
+              54 PUSH_NULL
+              56 LOAD_CONST           ('[\\\\/:*?"<>|]+')
+              58 LOAD_CONST           ("_")
+              60 LOAD_FAST            (text)
+              62 CALL                 (3 positional)
+              70 STORE_FAST           (text)
+
+ 32:          72 LOAD_GLOBAL          (re)
+              82 LOAD_ATTR            (sub)
+             102 PUSH_NULL
+             104 LOAD_CONST           ("\\s+")
+             106 LOAD_CONST           ("_")
+             108 LOAD_FAST            (text)
+             110 CALL                 (3 positional)
+             118 STORE_FAST           (text)
+
+ 33:         120 LOAD_FAST            (text)
+             122 LOAD_CONST           (None)
+             124 LOAD_CONST           (120)
+             126 BINARY_SLICE
+             128 COPY                 1
+             130 TO_BOOL
+             138 POP_JUMP_IF_TRUE     (to 146)
+             142 POP_TOP
+             144 LOAD_CONST           ("unknown")
+         >>  146 RETURN_VALUE
+
+
+# Method Name:       _unique_path
+# Filename:          oauth_local_archive.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  7
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        36
+# Constants:
+#    0: None
+#    1: 2
+#    2: '_'
+#    3: 1
+# Names:
+#    0: exists
+#    1: stem
+#    2: suffix
+# Varnames:
+#	folder, filename, path, stem, suffix, idx, candidate
+# Positional arguments:
+#	folder, filename
+# Local variables:
+#    2: path
+#    3: stem
+#    4: suffix
+#    5: idx
+#    6: candidate
+ 36:           0 RESUME               0
+
+ 37:           2 LOAD_FAST_LOAD_FAST  (folder, filename)
+               4 BINARY_OP            (/)
+               8 STORE_FAST           (path)
+
+ 38:          10 LOAD_FAST            (path)
+              12 LOAD_ATTR            (NULL|self + exists)
+              32 CALL                 (0 positional)
+              40 TO_BOOL
+              48 POP_JUMP_IF_TRUE     (to 56)
+
+ 39:          52 LOAD_FAST            (path)
+              54 RETURN_VALUE
+
+ 40:     >>   56 LOAD_FAST            (path)
+              58 LOAD_ATTR            (stem)
+              78 STORE_FAST           (stem)
+
+ 41:          80 LOAD_FAST            (path)
+              82 LOAD_ATTR            (suffix)
+             102 STORE_FAST           (suffix)
+
+ 42:         104 LOAD_CONST           (2)
+             106 STORE_FAST           (idx)
+
+ 43:         108 NOP
+
+ 44:         110 LOAD_FAST_LOAD_FAST  (folder, stem)
+             112 FORMAT_SIMPLE
+             114 LOAD_CONST           ("_")
+             116 LOAD_FAST            (idx)
+             118 FORMAT_SIMPLE
+             120 LOAD_FAST            (suffix)
+             122 FORMAT_SIMPLE
+             124 BUILD_STRING         4
+             126 BINARY_OP            (/)
+             130 STORE_FAST           (candidate)
+
+ 45:         132 LOAD_FAST            (candidate)
+             134 LOAD_ATTR            (NULL|self + exists)
+             154 CALL                 (0 positional)
+             162 TO_BOOL
+             170 POP_JUMP_IF_TRUE     (to 178)
+
+ 46:         174 LOAD_FAST            (candidate)
+             176 RETURN_VALUE
+
+ 47:     >>  178 LOAD_FAST            (idx)
+             180 LOAD_CONST           (1)
+             182 BINARY_OP            (+=)
+             186 STORE_FAST           (idx)
+
+ 43:         188 JUMP_BACKWARD        (to 110)
+
+
+# Method Name:       _save_json
+# Filename:          oauth_local_archive.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        50
+# Constants:
+#    0: None
+#    1: True
+#    2: ('parents', 'exist_ok')
+#    3: False
+#    4: 2
+#    5: ('ensure_ascii', 'indent')
+#    6: '\n'
+#    7: 'utf-8'
+#    8: ('encoding',)
+# Names:
+#    0: parent
+#    1: mkdir
+#    2: write_text
+#    3: json
+#    4: dumps
+# Varnames:
+#	path, payload
+# Positional arguments:
+#	path, payload
+ 50:           0 RESUME               0
+
+ 51:           2 LOAD_FAST            (path)
+               4 LOAD_ATTR            (parent)
+              24 LOAD_ATTR            (NULL|self + mkdir)
+              44 LOAD_CONST           (True)
+              46 LOAD_CONST           (True)
+              48 LOAD_CONST           (('parents', 'exist_ok'))
+              50 CALL_KW              2
+              52 POP_TOP
+
+ 52:          54 LOAD_FAST            (path)
+              56 LOAD_ATTR            (NULL|self + write_text)
+              76 LOAD_GLOBAL          (json)
+              86 LOAD_ATTR            (dumps)
+             106 PUSH_NULL
+             108 LOAD_FAST            (payload)
+             110 LOAD_CONST           (False)
+             112 LOAD_CONST           (2)
+             114 LOAD_CONST           (('ensure_ascii', 'indent'))
+             116 CALL_KW              3
+             118 LOAD_CONST           ("\n")
+             120 BINARY_OP            (+)
+             124 LOAD_CONST           ("utf-8")
+             126 LOAD_CONST           (('encoding',))
+             128 CALL_KW              2
+             130 POP_TOP
+             132 RETURN_CONST         (None)
+
+
+# Method Name:       _data_dict
+# Filename:          oauth_local_archive.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        55
+# Constants:
+#    0: None
+#    1: 'data'
+# Names:
+#    0: get
+#    1: isinstance
+#    2: dict
+# Varnames:
+#	payload, data
+# Positional arguments:
+#	payload
+# Local variables:
+#    1: data
+ 55:           0 RESUME               0
+
+ 56:           2 LOAD_FAST            (payload)
+               4 LOAD_ATTR            (NULL|self + get)
+              24 LOAD_CONST           ("data")
+              26 CALL                 (1 positional)
+              34 STORE_FAST           (data)
+
+ 57:          36 LOAD_GLOBAL          (NULL + isinstance)
+              46 LOAD_FAST            (data)
+              48 LOAD_GLOBAL          (dict)
+              58 CALL                 (2 positional)
+              66 TO_BOOL
+              74 POP_JUMP_IF_FALSE    (to 82)
+
+ 58:          78 LOAD_FAST            (data)
+              80 RETURN_VALUE
+
+ 59:     >>   82 LOAD_FAST            (payload)
+              84 RETURN_VALUE
+
+
+# Method Name:       token_credentials
+# Filename:          oauth_local_archive.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  8
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        62
+# Constants:
+#    0: 'Normalize tokens from SUB2 exchange, local exchange, or runner result.'
+#    1: 'local_oauth'
+#    2: 'tokens'
+#    3: ('id_token', 'access_token', 'refresh_token', 'expires_at', 'expires_in', 'token_type', 'scope', 'email', 'chatgpt_account_id', 'account_id', 'chatgpt_account_user_id', 'chatgpt_user_id', 'chatgpt_auth_user_id', 'chatgpt_plan_type', 'plan_type', 'organization_id', 'privacy_mode', 'client_id')
+#    4: (None, '')
+#    5: 'plan_type'
+#    6: 'chatgpt_plan_type'
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: _data_dict
+#    3: get
+# Varnames:
+#	payload, root, data, local_oauth, nested_tokens, creds, source, key
+# Positional arguments:
+#	payload
+# Local variables:
+#    1: root
+#    2: data
+#    3: local_oauth
+#    4: nested_tokens
+#    5: creds
+#    6: source
+#    7: key
+ 62:           0 RESUME               0
+
+ 64:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (payload)
+              14 LOAD_GLOBAL          (dict)
+              24 CALL                 (2 positional)
+              32 TO_BOOL
+              40 POP_JUMP_IF_FALSE    (to 48)
+              44 LOAD_FAST            (payload)
+              46 JUMP_FORWARD         (to 50)
+         >>   48 BUILD_MAP            0
+         >>   50 STORE_FAST           (root)
+
+ 65:          52 LOAD_GLOBAL          (NULL + _data_dict)
+              62 LOAD_FAST            (root)
+              64 CALL                 (1 positional)
+              72 STORE_FAST           (data)
+
+ 66:          74 LOAD_GLOBAL          (NULL + isinstance)
+              84 LOAD_FAST            (root)
+              86 LOAD_ATTR            (NULL|self + get)
+             106 LOAD_CONST           ("local_oauth")
+             108 CALL                 (1 positional)
+             116 LOAD_GLOBAL          (dict)
+             126 CALL                 (2 positional)
+             134 TO_BOOL
+             142 POP_JUMP_IF_FALSE    (to 180)
+             146 LOAD_FAST            (root)
+             148 LOAD_ATTR            (NULL|self + get)
+             168 LOAD_CONST           ("local_oauth")
+             170 CALL                 (1 positional)
+             178 JUMP_FORWARD         (to 182)
+         >>  180 BUILD_MAP            0
+         >>  182 STORE_FAST           (local_oauth)
+
+ 67:         184 LOAD_GLOBAL          (NULL + isinstance)
+             194 LOAD_FAST            (local_oauth)
+             196 LOAD_ATTR            (NULL|self + get)
+             216 LOAD_CONST           ("tokens")
+             218 CALL                 (1 positional)
+             226 LOAD_GLOBAL          (dict)
+             236 CALL                 (2 positional)
+             244 TO_BOOL
+             252 POP_JUMP_IF_FALSE    (to 290)
+             256 LOAD_FAST            (local_oauth)
+             258 LOAD_ATTR            (NULL|self + get)
+             278 LOAD_CONST           ("tokens")
+             280 CALL                 (1 positional)
+             288 JUMP_FORWARD         (to 292)
+         >>  290 BUILD_MAP            0
+         >>  292 STORE_FAST           (nested_tokens)
+
+ 68:         294 BUILD_MAP            0
+             296 STORE_FAST           (creds)
+
+ 69:         298 LOAD_FAST_LOAD_FAST  (nested_tokens, data)
+             300 LOAD_FAST            (root)
+             302 BUILD_TUPLE          3
+             304 GET_ITER
+             306 FOR_ITER             (to 510)
+             310 STORE_FAST           (source)
+
+ 70:         312 LOAD_GLOBAL          (NULL + isinstance)
+             322 LOAD_FAST            (source)
+             324 LOAD_GLOBAL          (dict)
+             334 CALL                 (2 positional)
+             342 TO_BOOL
+             350 POP_JUMP_IF_TRUE     (to 358)
+
+ 71:         354 JUMP_BACKWARD        (to 306)
+
+ 72:     >>  358 LOAD_CONST           (('id_token', 'access_token', 'refresh_token', 'expires_at', 'expires_in', 'token_type', 'scope', 'email', 'chatgpt_account_id', 'account_id', 'chatgpt_account_user_id', 'chatgpt_user_id', 'chatgpt_auth_user_id', 'chatgpt_plan_type', 'plan_type', 'organization_id', 'privacy_mode', 'client_id'))
+             360 GET_ITER
+             362 FOR_ITER             (to 502)
+             366 STORE_FAST           (key)
+
+ 92:         368 LOAD_FAST            (source)
+             370 LOAD_ATTR            (NULL|self + get)
+             390 LOAD_FAST            (key)
+             392 CALL                 (1 positional)
+             400 LOAD_CONST           ((None, ''))
+             402 CONTAINS_OP          (not in)
+             406 POP_JUMP_IF_TRUE     (to 414)
+         >>  410 JUMP_BACKWARD        (to 362)
+         >>  414 LOAD_FAST            (creds)
+             416 LOAD_ATTR            (NULL|self + get)
+             436 LOAD_FAST            (key)
+             438 CALL                 (1 positional)
+             446 LOAD_CONST           ((None, ''))
+             448 CONTAINS_OP          (in)
+             452 POP_JUMP_IF_TRUE     (to 460)
+             456 JUMP_BACKWARD        (to 362)
+
+ 93:     >>  460 LOAD_FAST            (source)
+             462 LOAD_ATTR            (NULL|self + get)
+             482 LOAD_FAST            (key)
+             484 CALL                 (1 positional)
+             492 LOAD_FAST_LOAD_FAST  (creds, key)
+             494 STORE_SUBSCR
+             498 JUMP_BACKWARD        (to 362)
+
+ 72:     >>  502 END_FOR
+             504 POP_TOP
+             506 JUMP_BACKWARD        (to 306)
+
+ 69:     >>  510 END_FOR
+             512 POP_TOP
+
+ 94:         514 LOAD_FAST            (creds)
+             516 LOAD_ATTR            (NULL|self + get)
+             536 LOAD_CONST           ("plan_type")
+             538 CALL                 (1 positional)
+             546 TO_BOOL
+             554 POP_JUMP_IF_FALSE    (to 642)
+         >>  558 LOAD_FAST            (creds)
+             560 LOAD_ATTR            (NULL|self + get)
+             580 LOAD_CONST           ("chatgpt_plan_type")
+             582 CALL                 (1 positional)
+             590 TO_BOOL
+             598 POP_JUMP_IF_TRUE     (to 642)
+
+ 95:         602 LOAD_FAST            (creds)
+             604 LOAD_ATTR            (NULL|self + get)
+             624 LOAD_CONST           ("plan_type")
+             626 CALL                 (1 positional)
+             634 LOAD_FAST            (creds)
+             636 LOAD_CONST           ("chatgpt_plan_type")
+             638 STORE_SUBSCR
+
+ 96:     >>  642 LOAD_FAST            (creds)
+             644 RETURN_VALUE
+
+
+# Method Name:       _merge_chatgpt_metadata
+# Filename:          oauth_local_archive.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  7
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        99
+# Constants:
+#    0: None
+#    1: 0
+#    2: ('extract_chatgpt_auth_fields', 'merge_chatgpt_fields', 'normalize_chatgpt_fields')
+#    3: 'chatgpt_account_id'
+#    4: 'account_id'
+#    5: ('exchange_data',)
+# Names:
+#    0: chatgpt_fields
+#    1: extract_chatgpt_auth_fields
+#    2: merge_chatgpt_fields
+#    3: normalize_chatgpt_fields
+#    4: Exception
+#    5: get
+# Varnames:
+#	record, creds, token_payload, extract_chatgpt_auth_fields, merge_chatgpt_fields, normalize_chatgpt_fields, fields
+# Positional arguments:
+#	record, creds, token_payload
+# Local variables:
+#    3: extract_chatgpt_auth_fields
+#    4: merge_chatgpt_fields
+#    5: normalize_chatgpt_fields
+#    6: fields
+ 99:           0 RESUME               0
+
+100:           2 NOP
+
+101:           4 LOAD_CONST           (0)
+               6 LOAD_CONST           (('extract_chatgpt_auth_fields', 'merge_chatgpt_fields', 'normalize_chatgpt_fields'))
+               8 IMPORT_NAME          (chatgpt_fields)
+              10 IMPORT_FROM          (extract_chatgpt_auth_fields)
+              12 STORE_FAST           (extract_chatgpt_auth_fields)
+              14 IMPORT_FROM          (merge_chatgpt_fields)
+              16 STORE_FAST           (merge_chatgpt_fields)
+              18 IMPORT_FROM          (normalize_chatgpt_fields)
+              20 STORE_FAST           (normalize_chatgpt_fields)
+              22 POP_TOP
+
+106:          24 LOAD_FAST            (extract_chatgpt_auth_fields)
+              26 PUSH_NULL
+              28 LOAD_FAST_LOAD_FAST  (creds, token_payload)
+              30 LOAD_CONST           (('exchange_data',))
+              32 CALL_KW              2
+              34 STORE_FAST           (fields)
+
+107:          36 LOAD_FAST            (merge_chatgpt_fields)
+              38 PUSH_NULL
+              40 LOAD_FAST_LOAD_FAST  (record, fields)
+              42 CALL                 (2 positional)
+              50 POP_TOP
+
+108:          52 LOAD_FAST            (normalize_chatgpt_fields)
+              54 PUSH_NULL
+              56 LOAD_FAST            (record)
+              58 CALL                 (1 positional)
+              66 POP_TOP
+
+109:          68 LOAD_FAST            (record)
+              70 RETURN_VALUE
+         >>   72 PUSH_EXC_INFO
+
+102:          74 LOAD_GLOBAL          (Exception)
+              84 CHECK_EXC_MATCH
+              86 POP_JUMP_IF_FALSE    (to 204)
+              90 POP_TOP
+
+103:          92 LOAD_FAST            (record)
+              94 LOAD_ATTR            (NULL|self + get)
+             114 LOAD_CONST           ("chatgpt_account_id")
+             116 CALL                 (1 positional)
+             124 TO_BOOL
+             132 POP_JUMP_IF_FALSE    (to 196)
+             136 LOAD_FAST            (record)
+             138 LOAD_ATTR            (NULL|self + get)
+             158 LOAD_CONST           ("account_id")
+             160 CALL                 (1 positional)
+             168 TO_BOOL
+             176 POP_JUMP_IF_TRUE     (to 196)
+
+104:         180 LOAD_FAST            (record)
+             182 LOAD_CONST           ("chatgpt_account_id")
+             184 BINARY_SUBSCR
+             188 LOAD_FAST            (record)
+             190 LOAD_CONST           ("account_id")
+             192 STORE_SUBSCR
+
+105:     >>  196 LOAD_FAST            (record)
+             198 SWAP                 (TOS <-> TOS1)
+             200 POP_EXCEPT
+             202 RETURN_VALUE
+
+102:     >>  204 RERAISE              0
+         >>  206 COPY                 3
+             208 POP_EXCEPT
+             210 RERAISE              1
+
+ExceptionTable:
+  4 to 22 -> 72 [0]
+  72 to 198 -> 206 [1] lasti
+  204 to 204 -> 206 [1] lasti
+
+# Method Name:       build_account_record
+# Filename:          oauth_local_archive.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 4
+# Number of locals:  10
+# Stack size:        20
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        112
+# Constants:
+#    0: None
+#    1: 'email'
+#    2: 'upload_target'
+#    3: 'oauth_provider'
+#    4: 'local'
+#    5: 'ok'
+#    6: True
+#    7: 'type'
+#    8: 'codex'
+#    9: 'provider'
+#   10: 'bind_email'
+#   11: 'login_email'
+#   12: 'id_token'
+#   13: 'access_token'
+#   14: 'refresh_token'
+#   15: 'expires_at'
+#   16: 0
+#   17: 'token_type'
+#   18: 'Bearer'
+#   19: 'scope'
+#   20: 'account_id'
+#   21: 'chatgpt_account_id'
+#   22: 'chatgpt_account_user_id'
+#   23: 'chatgpt_user_id'
+#   24: 'chatgpt_auth_user_id'
+#   25: 'chatgpt_plan_type'
+#   26: 'plan_type'
+#   27: 'local_bind_ok'
+#   28: 'local_save_complete'
+#   29: 'local_saved_at'
+#   30: 'local_oauth_saved'
+#   31: 'local_oauth_exchange_ok'
+#   32: 'local_oauth_exchange_source'
+#   33: 'oauth_code_received'
+#   34: 'upload_status'
+#   35: 'local_saved'
+#   36: 'upload_skipped'
+#   37: 'upload_skip_reason'
+#   38: 'local_archive'
+#   39: 'phase2_ok'
+#   40: 'phase2_status'
+#   41: 'bound_local_saved'
+#   42: 'archived_at'
+#   43: 'local_oauth'
+#   44: 'redirect_uri'
+#   45: 'state'
+#   46: 'session_id'
+#   47: 'code_verifier'
+#   48: ('id_token', 'access_token', 'refresh_token', 'expires_at', 'token_type', 'scope', 'email')
+#   49: ('source', 'oauth_provider', 'redirect_uri', 'state_present', 'session_id_present', 'code_verifier_present', 'exchange_ok', 'tokens')
+#   50: ('organization_id', 'privacy_mode', 'client_id', 'chatgpt_account_id', 'account_id', 'chatgpt_account_user_id', 'chatgpt_user_id', 'chatgpt_auth_user_id', 'chatgpt_plan_type')
+#   51: (None, '')
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: token_credentials
+#    3: _clean
+#    4: get
+#    5: int
+#    6: time
+#    7: lower
+#    8: bool
+#    9: _merge_chatgpt_metadata
+# Varnames:
+#	session, token_payload, name, source, creds, email, now, provider, record, key
+# Local variables:
+#    0: session
+#    1: token_payload
+#    2: name
+#    3: source
+#    4: creds
+#    5: email
+#    6: now
+#    7: provider
+#    8: record
+#    9: key
+112:           0 RESUME               0
+
+119:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (session)
+              14 LOAD_GLOBAL          (dict)
+              24 CALL                 (2 positional)
+              32 TO_BOOL
+              40 POP_JUMP_IF_FALSE    (to 48)
+              44 LOAD_FAST            (session)
+              46 JUMP_FORWARD         (to 50)
+         >>   48 BUILD_MAP            0
+         >>   50 STORE_FAST           (session)
+
+120:          52 LOAD_GLOBAL          (NULL + isinstance)
+              62 LOAD_FAST            (token_payload)
+              64 LOAD_GLOBAL          (dict)
+              74 CALL                 (2 positional)
+              82 TO_BOOL
+              90 POP_JUMP_IF_FALSE    (to 98)
+              94 LOAD_FAST            (token_payload)
+              96 JUMP_FORWARD         (to 100)
+         >>   98 BUILD_MAP            0
+         >>  100 STORE_FAST           (token_payload)
+
+121:         102 LOAD_GLOBAL          (NULL + token_credentials)
+             112 LOAD_FAST            (token_payload)
+             114 CALL                 (1 positional)
+             122 STORE_FAST           (creds)
+
+122:         124 LOAD_GLOBAL          (NULL + _clean)
+             134 LOAD_FAST            (name)
+             136 COPY                 1
+             138 TO_BOOL
+             146 POP_JUMP_IF_TRUE     (to 280)
+             150 POP_TOP
+             152 LOAD_FAST            (creds)
+             154 LOAD_ATTR            (NULL|self + get)
+             174 LOAD_CONST           ("email")
+             176 CALL                 (1 positional)
+             184 COPY                 1
+             186 TO_BOOL
+             194 POP_JUMP_IF_TRUE     (to 280)
+             198 POP_TOP
+             200 LOAD_FAST            (session)
+             202 LOAD_ATTR            (NULL|self + get)
+             222 LOAD_CONST           ("email")
+             224 CALL                 (1 positional)
+             232 COPY                 1
+             234 TO_BOOL
+             242 POP_JUMP_IF_TRUE     (to 280)
+             246 POP_TOP
+             248 LOAD_FAST            (token_payload)
+             250 LOAD_ATTR            (NULL|self + get)
+             270 LOAD_CONST           ("email")
+             272 CALL                 (1 positional)
+         >>  280 CALL                 (1 positional)
+             288 STORE_FAST           (email)
+
+123:         290 LOAD_GLOBAL          (NULL + int)
+             300 LOAD_GLOBAL          (time)
+             310 LOAD_ATTR            (time)
+             330 PUSH_NULL
+             332 CALL                 (0 positional)
+             340 CALL                 (1 positional)
+             348 STORE_FAST           (now)
+
+124:         350 LOAD_GLOBAL          (NULL + _clean)
+             360 LOAD_FAST            (session)
+             362 LOAD_ATTR            (NULL|self + get)
+             382 LOAD_CONST           ("upload_target")
+             384 CALL                 (1 positional)
+             392 COPY                 1
+             394 TO_BOOL
+             402 POP_JUMP_IF_TRUE     (to 506)
+             406 POP_TOP
+             408 LOAD_FAST            (session)
+             410 LOAD_ATTR            (NULL|self + get)
+             430 LOAD_CONST           ("oauth_provider")
+             432 CALL                 (1 positional)
+             440 COPY                 1
+             442 TO_BOOL
+             450 POP_JUMP_IF_TRUE     (to 506)
+             454 POP_TOP
+             456 LOAD_FAST            (token_payload)
+             458 LOAD_ATTR            (NULL|self + get)
+             478 LOAD_CONST           ("oauth_provider")
+             480 CALL                 (1 positional)
+             488 COPY                 1
+             490 TO_BOOL
+             498 POP_JUMP_IF_TRUE     (to 506)
+             502 POP_TOP
+             504 LOAD_CONST           ("local")
+         >>  506 CALL                 (1 positional)
+             514 LOAD_ATTR            (NULL|self + lower)
+             534 CALL                 (0 positional)
+             542 STORE_FAST           (provider)
+
+125:         544 BUILD_MAP            0
+
+126:         546 LOAD_CONST           ("ok")
+             548 LOAD_CONST           (True)
+
+125:         550 MAP_ADD              1
+
+127:         552 LOAD_CONST           ("type")
+             554 LOAD_CONST           ("codex")
+
+125:         556 MAP_ADD              1
+
+128:         558 LOAD_CONST           ("provider")
+             560 LOAD_CONST           ("codex")
+
+125:         562 MAP_ADD              1
+
+129:         564 LOAD_CONST           ("email")
+             566 LOAD_FAST            (email)
+
+125:         568 MAP_ADD              1
+
+130:         570 LOAD_CONST           ("bind_email")
+             572 LOAD_FAST            (email)
+
+125:         574 MAP_ADD              1
+
+131:         576 LOAD_CONST           ("login_email")
+             578 LOAD_FAST            (email)
+
+125:         580 MAP_ADD              1
+
+132:         582 LOAD_CONST           ("id_token")
+             584 LOAD_GLOBAL          (NULL + _clean)
+             594 LOAD_FAST            (creds)
+             596 LOAD_ATTR            (NULL|self + get)
+             616 LOAD_CONST           ("id_token")
+             618 CALL                 (1 positional)
+             626 CALL                 (1 positional)
+
+125:         634 MAP_ADD              1
+
+133:         636 LOAD_CONST           ("access_token")
+             638 LOAD_GLOBAL          (NULL + _clean)
+             648 LOAD_FAST            (creds)
+             650 LOAD_ATTR            (NULL|self + get)
+             670 LOAD_CONST           ("access_token")
+             672 CALL                 (1 positional)
+             680 CALL                 (1 positional)
+
+125:         688 MAP_ADD              1
+
+134:         690 LOAD_CONST           ("refresh_token")
+             692 LOAD_GLOBAL          (NULL + _clean)
+             702 LOAD_FAST            (creds)
+             704 LOAD_ATTR            (NULL|self + get)
+             724 LOAD_CONST           ("refresh_token")
+             726 CALL                 (1 positional)
+             734 CALL                 (1 positional)
+
+125:         742 MAP_ADD              1
+
+135:         744 LOAD_CONST           ("expires_at")
+             746 LOAD_FAST            (creds)
+             748 LOAD_ATTR            (NULL|self + get)
+             768 LOAD_CONST           ("expires_at")
+             770 CALL                 (1 positional)
+             778 COPY                 1
+             780 TO_BOOL
+             788 POP_JUMP_IF_TRUE     (to 796)
+             792 POP_TOP
+             794 LOAD_CONST           (0)
+
+125:     >>  796 MAP_ADD              1
+
+136:         798 LOAD_CONST           ("token_type")
+             800 LOAD_GLOBAL          (NULL + _clean)
+             810 LOAD_FAST            (creds)
+             812 LOAD_ATTR            (NULL|self + get)
+             832 LOAD_CONST           ("token_type")
+             834 CALL                 (1 positional)
+             842 COPY                 1
+             844 TO_BOOL
+             852 POP_JUMP_IF_TRUE     (to 860)
+             856 POP_TOP
+             858 LOAD_CONST           ("Bearer")
+         >>  860 CALL                 (1 positional)
+
+125:         868 MAP_ADD              1
+
+137:         870 LOAD_CONST           ("scope")
+             872 LOAD_GLOBAL          (NULL + _clean)
+             882 LOAD_FAST            (creds)
+             884 LOAD_ATTR            (NULL|self + get)
+             904 LOAD_CONST           ("scope")
+             906 CALL                 (1 positional)
+             914 CALL                 (1 positional)
+
+125:         922 MAP_ADD              1
+
+138:         924 LOAD_CONST           ("account_id")
+             926 LOAD_GLOBAL          (NULL + _clean)
+             936 LOAD_FAST            (creds)
+             938 LOAD_ATTR            (NULL|self + get)
+             958 LOAD_CONST           ("account_id")
+             960 CALL                 (1 positional)
+             968 COPY                 1
+             970 TO_BOOL
+             978 POP_JUMP_IF_TRUE     (to 1016)
+             982 POP_TOP
+             984 LOAD_FAST            (creds)
+             986 LOAD_ATTR            (NULL|self + get)
+            1006 LOAD_CONST           ("chatgpt_account_id")
+            1008 CALL                 (1 positional)
+         >> 1016 CALL                 (1 positional)
+
+125:        1024 MAP_ADD              1
+
+139:        1026 LOAD_CONST           ("chatgpt_account_id")
+            1028 LOAD_GLOBAL          (NULL + _clean)
+            1038 LOAD_FAST            (creds)
+            1040 LOAD_ATTR            (NULL|self + get)
+            1060 LOAD_CONST           ("chatgpt_account_id")
+            1062 CALL                 (1 positional)
+            1070 COPY                 1
+            1072 TO_BOOL
+            1080 POP_JUMP_IF_TRUE     (to 1118)
+            1084 POP_TOP
+            1086 LOAD_FAST            (creds)
+            1088 LOAD_ATTR            (NULL|self + get)
+            1108 LOAD_CONST           ("account_id")
+            1110 CALL                 (1 positional)
+         >> 1118 CALL                 (1 positional)
+
+125:        1126 MAP_ADD              1
+
+140:        1128 LOAD_CONST           ("chatgpt_account_user_id")
+            1130 LOAD_GLOBAL          (NULL + _clean)
+            1140 LOAD_FAST            (creds)
+            1142 LOAD_ATTR            (NULL|self + get)
+            1162 LOAD_CONST           ("chatgpt_account_user_id")
+            1164 CALL                 (1 positional)
+            1172 CALL                 (1 positional)
+
+125:        1180 MAP_ADD              1
+
+141:        1182 LOAD_CONST           ("chatgpt_user_id")
+            1184 LOAD_GLOBAL          (NULL + _clean)
+            1194 LOAD_FAST            (creds)
+            1196 LOAD_ATTR            (NULL|self + get)
+            1216 LOAD_CONST           ("chatgpt_user_id")
+            1218 CALL                 (1 positional)
+            1226 CALL                 (1 positional)
+
+125:        1234 MAP_ADD              1
+
+142:        1236 LOAD_CONST           ("chatgpt_auth_user_id")
+            1238 LOAD_GLOBAL          (NULL + _clean)
+            1248 LOAD_FAST            (creds)
+            1250 LOAD_ATTR            (NULL|self + get)
+            1270 LOAD_CONST           ("chatgpt_auth_user_id")
+            1272 CALL                 (1 positional)
+            1280 CALL                 (1 positional)
+
+125:        1288 MAP_ADD              1
+            1290 BUILD_MAP            0
+
+143:        1292 LOAD_CONST           ("chatgpt_plan_type")
+            1294 LOAD_GLOBAL          (NULL + _clean)
+            1304 LOAD_FAST            (creds)
+            1306 LOAD_ATTR            (NULL|self + get)
+            1326 LOAD_CONST           ("chatgpt_plan_type")
+            1328 CALL                 (1 positional)
+            1336 COPY                 1
+            1338 TO_BOOL
+            1346 POP_JUMP_IF_TRUE     (to 1384)
+            1350 POP_TOP
+            1352 LOAD_FAST            (creds)
+            1354 LOAD_ATTR            (NULL|self + get)
+            1374 LOAD_CONST           ("plan_type")
+            1376 CALL                 (1 positional)
+         >> 1384 CALL                 (1 positional)
+            1392 LOAD_ATTR            (NULL|self + lower)
+            1412 CALL                 (0 positional)
+
+125:        1420 MAP_ADD              1
+
+144:        1422 LOAD_CONST           ("local_bind_ok")
+            1424 LOAD_CONST           (True)
+
+125:        1426 MAP_ADD              1
+
+145:        1428 LOAD_CONST           ("local_save_complete")
+            1430 LOAD_CONST           (True)
+
+125:        1432 MAP_ADD              1
+
+146:        1434 LOAD_CONST           ("local_saved_at")
+            1436 LOAD_FAST            (now)
+
+125:        1438 MAP_ADD              1
+
+147:        1440 LOAD_CONST           ("local_oauth_saved")
+            1442 LOAD_CONST           (True)
+
+125:        1444 MAP_ADD              1
+
+148:        1446 LOAD_CONST           ("local_oauth_exchange_ok")
+            1448 LOAD_CONST           (True)
+
+125:        1450 MAP_ADD              1
+
+149:        1452 LOAD_CONST           ("local_oauth_exchange_source")
+            1454 LOAD_FAST            (source)
+
+125:        1456 MAP_ADD              1
+
+150:        1458 LOAD_CONST           ("oauth_provider")
+            1460 LOAD_FAST            (provider)
+
+125:        1462 MAP_ADD              1
+
+151:        1464 LOAD_CONST           ("oauth_code_received")
+            1466 LOAD_CONST           (True)
+
+125:        1468 MAP_ADD              1
+
+152:        1470 LOAD_CONST           ("upload_target")
+            1472 LOAD_CONST           ("local")
+
+125:        1474 MAP_ADD              1
+
+153:        1476 LOAD_CONST           ("upload_status")
+            1478 LOAD_CONST           ("local_saved")
+
+125:        1480 MAP_ADD              1
+
+154:        1482 LOAD_CONST           ("upload_skipped")
+            1484 LOAD_CONST           (True)
+
+125:        1486 MAP_ADD              1
+
+155:        1488 LOAD_CONST           ("upload_skip_reason")
+            1490 LOAD_CONST           ("local_archive")
+
+125:        1492 MAP_ADD              1
+
+156:        1494 LOAD_CONST           ("phase2_ok")
+            1496 LOAD_CONST           (True)
+
+125:        1498 MAP_ADD              1
+
+157:        1500 LOAD_CONST           ("phase2_status")
+            1502 LOAD_CONST           ("bound_local_saved")
+
+125:        1504 MAP_ADD              1
+
+158:        1506 LOAD_CONST           ("archived_at")
+            1508 LOAD_FAST            (now)
+
+125:        1510 MAP_ADD              1
+
+159:        1512 LOAD_CONST           ("local_oauth")
+
+160:        1514 LOAD_FAST            (source)
+
+161:        1516 LOAD_FAST            (provider)
+
+162:        1518 LOAD_GLOBAL          (NULL + _clean)
+            1528 LOAD_FAST            (session)
+            1530 LOAD_ATTR            (NULL|self + get)
+            1550 LOAD_CONST           ("redirect_uri")
+            1552 CALL                 (1 positional)
+            1560 CALL                 (1 positional)
+
+163:        1568 LOAD_GLOBAL          (NULL + bool)
+            1578 LOAD_GLOBAL          (NULL + _clean)
+            1588 LOAD_FAST            (session)
+            1590 LOAD_ATTR            (NULL|self + get)
+            1610 LOAD_CONST           ("state")
+            1612 CALL                 (1 positional)
+            1620 CALL                 (1 positional)
+            1628 CALL                 (1 positional)
+
+164:        1636 LOAD_GLOBAL          (NULL + bool)
+            1646 LOAD_GLOBAL          (NULL + _clean)
+            1656 LOAD_FAST            (session)
+            1658 LOAD_ATTR            (NULL|self + get)
+            1678 LOAD_CONST           ("session_id")
+            1680 CALL                 (1 positional)
+            1688 CALL                 (1 positional)
+            1696 CALL                 (1 positional)
+
+165:        1704 LOAD_GLOBAL          (NULL + bool)
+            1714 LOAD_GLOBAL          (NULL + _clean)
+            1724 LOAD_FAST            (session)
+            1726 LOAD_ATTR            (NULL|self + get)
+            1746 LOAD_CONST           ("code_verifier")
+            1748 CALL                 (1 positional)
+            1756 CALL                 (1 positional)
+            1764 CALL                 (1 positional)
+
+166:        1772 LOAD_CONST           (True)
+
+168:        1774 LOAD_GLOBAL          (NULL + _clean)
+            1784 LOAD_FAST            (creds)
+            1786 LOAD_ATTR            (NULL|self + get)
+            1806 LOAD_CONST           ("id_token")
+            1808 CALL                 (1 positional)
+            1816 CALL                 (1 positional)
+
+169:        1824 LOAD_GLOBAL          (NULL + _clean)
+            1834 LOAD_FAST            (creds)
+            1836 LOAD_ATTR            (NULL|self + get)
+            1856 LOAD_CONST           ("access_token")
+            1858 CALL                 (1 positional)
+            1866 CALL                 (1 positional)
+
+170:        1874 LOAD_GLOBAL          (NULL + _clean)
+            1884 LOAD_FAST            (creds)
+            1886 LOAD_ATTR            (NULL|self + get)
+            1906 LOAD_CONST           ("refresh_token")
+            1908 CALL                 (1 positional)
+            1916 CALL                 (1 positional)
+
+171:        1924 LOAD_FAST            (creds)
+            1926 LOAD_ATTR            (NULL|self + get)
+            1946 LOAD_CONST           ("expires_at")
+            1948 CALL                 (1 positional)
+            1956 COPY                 1
+            1958 TO_BOOL
+            1966 POP_JUMP_IF_TRUE     (to 1974)
+            1970 POP_TOP
+            1972 LOAD_CONST           (0)
+
+172:     >> 1974 LOAD_GLOBAL          (NULL + _clean)
+            1984 LOAD_FAST            (creds)
+            1986 LOAD_ATTR            (NULL|self + get)
+            2006 LOAD_CONST           ("token_type")
+            2008 CALL                 (1 positional)
+            2016 COPY                 1
+            2018 TO_BOOL
+            2026 POP_JUMP_IF_TRUE     (to 2034)
+            2030 POP_TOP
+            2032 LOAD_CONST           ("Bearer")
+         >> 2034 CALL                 (1 positional)
+
+173:        2042 LOAD_GLOBAL          (NULL + _clean)
+            2052 LOAD_FAST            (creds)
+            2054 LOAD_ATTR            (NULL|self + get)
+            2074 LOAD_CONST           ("scope")
+            2076 CALL                 (1 positional)
+            2084 CALL                 (1 positional)
+
+174:        2092 LOAD_FAST            (email)
+
+167:        2094 LOAD_CONST           (('id_token', 'access_token', 'refresh_token', 'expires_at', 'token_type', 'scope', 'email'))
+            2096 BUILD_CONST_KEY_MAP  7
+
+159:        2098 LOAD_CONST           (('source', 'oauth_provider', 'redirect_uri', 'state_present', 'session_id_present', 'code_verifier_present', 'exchange_ok', 'tokens'))
+            2100 BUILD_CONST_KEY_MAP  8
+
+125:        2102 MAP_ADD              1
+            2104 DICT_UPDATE          1
+            2106 STORE_FAST           (record)
+
+178:        2108 LOAD_CONST           (('organization_id', 'privacy_mode', 'client_id', 'chatgpt_account_id', 'account_id', 'chatgpt_account_user_id', 'chatgpt_user_id', 'chatgpt_auth_user_id', 'chatgpt_plan_type'))
+            2110 GET_ITER
+            2112 FOR_ITER             (to 2252)
+            2116 STORE_FAST           (key)
+
+189:        2118 LOAD_FAST            (creds)
+            2120 LOAD_ATTR            (NULL|self + get)
+            2140 LOAD_FAST            (key)
+            2142 CALL                 (1 positional)
+            2150 LOAD_CONST           ((None, ''))
+            2152 CONTAINS_OP          (not in)
+            2156 POP_JUMP_IF_TRUE     (to 2164)
+            2160 JUMP_BACKWARD        (to 2112)
+         >> 2164 LOAD_FAST            (record)
+            2166 LOAD_ATTR            (NULL|self + get)
+            2186 LOAD_FAST            (key)
+            2188 CALL                 (1 positional)
+            2196 LOAD_CONST           ((None, ''))
+            2198 CONTAINS_OP          (in)
+            2202 POP_JUMP_IF_TRUE     (to 2210)
+            2206 JUMP_BACKWARD        (to 2112)
+
+190:     >> 2210 LOAD_FAST            (creds)
+            2212 LOAD_ATTR            (NULL|self + get)
+            2232 LOAD_FAST            (key)
+            2234 CALL                 (1 positional)
+            2242 LOAD_FAST_LOAD_FAST  (record, key)
+            2244 STORE_SUBSCR
+            2248 JUMP_BACKWARD        (to 2112)
+
+178:     >> 2252 END_FOR
+            2254 POP_TOP
+
+191:        2256 LOAD_GLOBAL          (NULL + _merge_chatgpt_metadata)
+            2266 LOAD_FAST_LOAD_FAST  (record, creds)
+            2268 LOAD_FAST            (token_payload)
+            2270 CALL                 (3 positional)
+            2278 RETURN_VALUE
+
+
+# Method Name:       build_sub2_import_payload
+# Filename:          oauth_local_archive.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 5
+# Number of locals:  11
+# Stack size:        11
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        194
+# Constants:
+#    0: None
+#    1: 'bind_email'
+#    2: 'email'
+#    3: 'login_email'
+#    4: 'id_token'
+#    5: 'access_token'
+#    6: 'refresh_token'
+#    7: 'expires_at'
+#    8: 0
+#    9: ('id_token', 'access_token', 'refresh_token', 'expires_at', 'email')
+#   10: ('sub2_extra_from_item',)
+#   11: 'phone'
+#   12: 'openai'
+#   13: 'oauth'
+#   14: 10
+#   15: 1
+#   16: True
+#   17: ('name', 'platform', 'type', 'credentials', 'extra', 'concurrency', 'priority', 'rate_multiplier', 'auto_pause_on_expired')
+#   18: 'group_ids'
+#   19: 'proxy_id'
+#   20: '%Y-%m-%dT%H:%M:%SZ'
+#   21: ('exported_at', 'proxies', 'accounts')
+# Names:
+#    0: _clean
+#    1: get
+#    2: chatgpt_fields
+#    3: sub2_extra_from_item
+#    4: Exception
+#    5: int
+#    6: time
+#    7: strftime
+#    8: gmtime
+# Varnames:
+#	account_record, group_id, proxy_id, concurrency, priority, rate_multiplier, email, credentials, sub2_extra_from_item, extra, account
+# Positional arguments:
+#	account_record
+# Local variables:
+#    1: group_id
+#    2: proxy_id
+#    3: concurrency
+#    4: priority
+#    5: rate_multiplier
+#    6: email
+#    7: credentials
+#    8: sub2_extra_from_item
+#    9: extra
+#   10: account
+194:           0 RESUME               0
+
+203:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (account_record)
+              14 LOAD_ATTR            (NULL|self + get)
+              34 LOAD_CONST           ("bind_email")
+              36 CALL                 (1 positional)
+              44 COPY                 1
+              46 TO_BOOL
+              54 POP_JUMP_IF_TRUE     (to 140)
+              58 POP_TOP
+              60 LOAD_FAST            (account_record)
+              62 LOAD_ATTR            (NULL|self + get)
+              82 LOAD_CONST           ("email")
+              84 CALL                 (1 positional)
+              92 COPY                 1
+              94 TO_BOOL
+             102 POP_JUMP_IF_TRUE     (to 140)
+             106 POP_TOP
+             108 LOAD_FAST            (account_record)
+             110 LOAD_ATTR            (NULL|self + get)
+             130 LOAD_CONST           ("login_email")
+             132 CALL                 (1 positional)
+         >>  140 CALL                 (1 positional)
+             148 STORE_FAST           (email)
+
+205:         150 LOAD_GLOBAL          (NULL + _clean)
+             160 LOAD_FAST            (account_record)
+             162 LOAD_ATTR            (NULL|self + get)
+             182 LOAD_CONST           ("id_token")
+             184 CALL                 (1 positional)
+             192 CALL                 (1 positional)
+
+206:         200 LOAD_GLOBAL          (NULL + _clean)
+             210 LOAD_FAST            (account_record)
+             212 LOAD_ATTR            (NULL|self + get)
+             232 LOAD_CONST           ("access_token")
+             234 CALL                 (1 positional)
+             242 CALL                 (1 positional)
+
+207:         250 LOAD_GLOBAL          (NULL + _clean)
+             260 LOAD_FAST            (account_record)
+             262 LOAD_ATTR            (NULL|self + get)
+             282 LOAD_CONST           ("refresh_token")
+             284 CALL                 (1 positional)
+             292 CALL                 (1 positional)
+
+208:         300 LOAD_FAST            (account_record)
+             302 LOAD_ATTR            (NULL|self + get)
+             322 LOAD_CONST           ("expires_at")
+             324 CALL                 (1 positional)
+             332 COPY                 1
+             334 TO_BOOL
+             342 POP_JUMP_IF_TRUE     (to 350)
+             346 POP_TOP
+             348 LOAD_CONST           (0)
+
+209:     >>  350 LOAD_FAST            (email)
+
+204:         352 LOAD_CONST           (('id_token', 'access_token', 'refresh_token', 'expires_at', 'email'))
+             354 BUILD_CONST_KEY_MAP  5
+             356 STORE_FAST           (credentials)
+
+211:         358 NOP
+
+212:         360 LOAD_CONST           (0)
+             362 LOAD_CONST           (('sub2_extra_from_item',))
+             364 IMPORT_NAME          (chatgpt_fields)
+             366 IMPORT_FROM          (sub2_extra_from_item)
+             368 STORE_FAST           (sub2_extra_from_item)
+             370 POP_TOP
+
+214:         372 LOAD_FAST            (sub2_extra_from_item)
+             374 PUSH_NULL
+             376 LOAD_FAST            (account_record)
+             378 CALL                 (1 positional)
+             386 STORE_FAST           (extra)
+
+218:         388 LOAD_FAST            (email)
+             390 COPY                 1
+             392 TO_BOOL
+             400 POP_JUMP_IF_TRUE     (to 474)
+             404 POP_TOP
+             406 LOAD_GLOBAL          (NULL + _clean)
+             416 LOAD_FAST            (account_record)
+             418 LOAD_ATTR            (NULL|self + get)
+             438 LOAD_CONST           ("phone")
+             440 CALL                 (1 positional)
+             448 CALL                 (1 positional)
+             456 COPY                 1
+             458 TO_BOOL
+             466 POP_JUMP_IF_TRUE     (to 474)
+             470 POP_TOP
+             472 LOAD_CONST           ("openai")
+
+219:     >>  474 LOAD_CONST           ("openai")
+
+220:         476 LOAD_CONST           ("oauth")
+
+221:         478 LOAD_FAST            (credentials)
+
+222:         480 LOAD_FAST            (extra)
+
+223:         482 LOAD_GLOBAL          (NULL + int)
+             492 LOAD_FAST            (concurrency)
+             494 COPY                 1
+             496 TO_BOOL
+             504 POP_JUMP_IF_TRUE     (to 512)
+             508 POP_TOP
+             510 LOAD_CONST           (10)
+         >>  512 CALL                 (1 positional)
+
+224:         520 LOAD_GLOBAL          (NULL + int)
+             530 LOAD_FAST            (priority)
+             532 COPY                 1
+             534 TO_BOOL
+             542 POP_JUMP_IF_TRUE     (to 550)
+             546 POP_TOP
+             548 LOAD_CONST           (1)
+         >>  550 CALL                 (1 positional)
+
+225:         558 LOAD_GLOBAL          (NULL + int)
+             568 LOAD_FAST            (rate_multiplier)
+             570 COPY                 1
+             572 TO_BOOL
+             580 POP_JUMP_IF_TRUE     (to 588)
+             584 POP_TOP
+             586 LOAD_CONST           (1)
+         >>  588 CALL                 (1 positional)
+
+226:         596 LOAD_CONST           (True)
+
+217:         598 LOAD_CONST           (('name', 'platform', 'type', 'credentials', 'extra', 'concurrency', 'priority', 'rate_multiplier', 'auto_pause_on_expired'))
+             600 BUILD_CONST_KEY_MAP  9
+             602 STORE_FAST           (account)
+
+228:         604 LOAD_FAST            (group_id)
+             606 TO_BOOL
+             614 POP_JUMP_IF_FALSE    (to 648)
+
+229:         618 LOAD_GLOBAL          (NULL + int)
+             628 LOAD_FAST            (group_id)
+             630 CALL                 (1 positional)
+             638 BUILD_LIST           1
+             640 LOAD_FAST            (account)
+             642 LOAD_CONST           ("group_ids")
+             644 STORE_SUBSCR
+
+230:     >>  648 LOAD_FAST            (proxy_id)
+             650 TO_BOOL
+             658 POP_JUMP_IF_FALSE    (to 690)
+
+231:         662 LOAD_GLOBAL          (NULL + int)
+             672 LOAD_FAST            (proxy_id)
+             674 CALL                 (1 positional)
+             682 LOAD_FAST            (account)
+             684 LOAD_CONST           ("proxy_id")
+             686 STORE_SUBSCR
+
+233:     >>  690 LOAD_GLOBAL          (time)
+             700 LOAD_ATTR            (strftime)
+             720 PUSH_NULL
+             722 LOAD_CONST           ("%Y-%m-%dT%H:%M:%SZ")
+             724 LOAD_GLOBAL          (time)
+             734 LOAD_ATTR            (gmtime)
+             754 PUSH_NULL
+             756 CALL                 (0 positional)
+             764 CALL                 (2 positional)
+
+234:         772 BUILD_LIST           0
+
+235:         774 LOAD_FAST            (account)
+             776 BUILD_LIST           1
+
+232:         778 LOAD_CONST           (('exported_at', 'proxies', 'accounts'))
+             780 BUILD_CONST_KEY_MAP  3
+             782 RETURN_VALUE
+         >>  784 PUSH_EXC_INFO
+
+215:         786 LOAD_GLOBAL          (Exception)
+             796 CHECK_EXC_MATCH
+             798 POP_JUMP_IF_FALSE    (to 812)
+             802 POP_TOP
+
+216:         804 BUILD_MAP            0
+             806 STORE_FAST           (extra)
+             808 POP_EXCEPT
+             810 JUMP_BACKWARD_NO_INTERRUPT (to 388)
+
+215:     >>  812 RERAISE              0
+         >>  814 COPY                 3
+             816 POP_EXCEPT
+             818 RERAISE              1
+
+ExceptionTable:
+  360 to 386 -> 784 [0]
+  784 to 806 -> 814 [1] lasti
+  812 to 812 -> 814 [1] lasti
+
+# Method Name:       build_cpa_auth_payload
+# Filename:          oauth_local_archive.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        10
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        239
+# Constants:
+#    0: None
+#    1: 'bind_email'
+#    2: 'email'
+#    3: 'login_email'
+#    4: 'codex'
+#    5: 'account_id'
+#    6: 'chatgpt_account_id'
+#    7: 'id_token'
+#    8: 'access_token'
+#    9: 'refresh_token'
+#   10: ('type', 'email', 'account_id', 'id_token', 'access_token', 'refresh_token')
+# Names:
+#    0: _clean
+#    1: get
+# Varnames:
+#	account_record, email
+# Positional arguments:
+#	account_record
+# Local variables:
+#    1: email
+239:           0 RESUME               0
+
+240:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (account_record)
+              14 LOAD_ATTR            (NULL|self + get)
+              34 LOAD_CONST           ("bind_email")
+              36 CALL                 (1 positional)
+              44 COPY                 1
+              46 TO_BOOL
+              54 POP_JUMP_IF_TRUE     (to 140)
+              58 POP_TOP
+              60 LOAD_FAST            (account_record)
+              62 LOAD_ATTR            (NULL|self + get)
+              82 LOAD_CONST           ("email")
+              84 CALL                 (1 positional)
+              92 COPY                 1
+              94 TO_BOOL
+             102 POP_JUMP_IF_TRUE     (to 140)
+             106 POP_TOP
+             108 LOAD_FAST            (account_record)
+             110 LOAD_ATTR            (NULL|self + get)
+             130 LOAD_CONST           ("login_email")
+             132 CALL                 (1 positional)
+         >>  140 CALL                 (1 positional)
+             148 STORE_FAST           (email)
+
+242:         150 LOAD_CONST           ("codex")
+
+243:         152 LOAD_FAST            (email)
+
+244:         154 LOAD_GLOBAL          (NULL + _clean)
+             164 LOAD_FAST            (account_record)
+             166 LOAD_ATTR            (NULL|self + get)
+             186 LOAD_CONST           ("account_id")
+             188 CALL                 (1 positional)
+             196 COPY                 1
+             198 TO_BOOL
+             206 POP_JUMP_IF_TRUE     (to 244)
+             210 POP_TOP
+             212 LOAD_FAST            (account_record)
+             214 LOAD_ATTR            (NULL|self + get)
+             234 LOAD_CONST           ("chatgpt_account_id")
+             236 CALL                 (1 positional)
+         >>  244 CALL                 (1 positional)
+
+245:         252 LOAD_GLOBAL          (NULL + _clean)
+             262 LOAD_FAST            (account_record)
+             264 LOAD_ATTR            (NULL|self + get)
+             284 LOAD_CONST           ("id_token")
+             286 CALL                 (1 positional)
+             294 CALL                 (1 positional)
+
+246:         302 LOAD_GLOBAL          (NULL + _clean)
+             312 LOAD_FAST            (account_record)
+             314 LOAD_ATTR            (NULL|self + get)
+             334 LOAD_CONST           ("access_token")
+             336 CALL                 (1 positional)
+             344 CALL                 (1 positional)
+
+247:         352 LOAD_GLOBAL          (NULL + _clean)
+             362 LOAD_FAST            (account_record)
+             364 LOAD_ATTR            (NULL|self + get)
+             384 LOAD_CONST           ("refresh_token")
+             386 CALL                 (1 positional)
+             394 CALL                 (1 positional)
+
+241:         402 LOAD_CONST           (('type', 'email', 'account_id', 'id_token', 'access_token', 'refresh_token'))
+             404 BUILD_CONST_KEY_MAP  6
+             406 RETURN_VALUE
+
+
+# Method Name:       archive_oauth_account
+# Filename:          oauth_local_archive.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 11
+# Number of locals:  27
+# Stack size:        15
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        251
+# Constants:
+#    0: None
+#    1: ('session', 'token_payload', 'name', 'source')
+#    2: 'access_token'
+#    3: 'refresh_token'
+#    4: 'token bundle incomplete: access_token/refresh_token missing'
+#    5: True
+#    6: ('parents', 'exist_ok')
+#    7: 'ready_sub2'
+#    8: 'ready_cpa'
+#    9: 'account_records'
+#   10: 'manifests'
+#   11: 'bind_email'
+#   12: 'email'
+#   13: 'openai'
+#   14: '%Y%m%d-%H%M%S'
+#   15: '_'
+#   16: '.account.json'
+#   17: '导入SUB2用_'
+#   18: '.json'
+#   19: '导入CPA用_'
+#   20: '.manifest.json'
+#   21: ('group_id', 'proxy_id', 'concurrency', 'priority', 'rate_multiplier')
+#   22: 'codex_local_archive'
+#   23: 1
+#   24: 'oauth_provider'
+#   25: ''
+#   26: ('sub2', 'cpa', 'account_records')
+#   27: ('ready_sub2 内的文件可直接用于 SUB2 手动导入。', 'ready_cpa 内的文件可直接用于 CPA/CLIProxyAPI auth-file 导入。', 'account_records 内的文件是注册机内部标准账号结果存档。')
+#   28: ('ok', 'format', 'email', 'created_at', 'account_record', 'sub2_import_file', 'cpa_auth_file', 'account_count', 'source', 'oauth_provider', 'ready_dirs', 'import_notes')
+#   29: ('ok', 'email', 'account_record', 'sub2_import_file', 'cpa_auth_file', 'manifest', 'account_count')
+# Names:
+#    0: build_account_record
+#    1: get
+#    2: RuntimeError
+#    3: Path
+#    4: mkdir
+#    5: _clean
+#    6: time
+#    7: strftime
+#    8: _safe_name
+#    9: _unique_path
+#   10: build_sub2_import_payload
+#   11: build_cpa_auth_payload
+#   12: int
+#   13: str
+#   14: _save_json
+# Varnames:
+#	session, token_payload, out_dir, sub2_import_out, name, source, group_id, proxy_id, concurrency, priority, rate_multiplier, record, archive_dir, sub2_dir, cpa_dir, account_dir, manifest_dir, email, stamp, base, account_path, sub2_path, cpa_path, manifest_path, sub2_payload, cpa_payload, manifest
+# Local variables:
+#    0: session
+#    1: token_payload
+#    2: out_dir
+#    3: sub2_import_out
+#    4: name
+#    5: source
+#    6: group_id
+#    7: proxy_id
+#    8: concurrency
+#    9: priority
+#   10: rate_multiplier
+#   11: record
+#   12: archive_dir
+#   13: sub2_dir
+#   14: cpa_dir
+#   15: account_dir
+#   16: manifest_dir
+#   17: email
+#   18: stamp
+#   19: base
+#   20: account_path
+#   21: sub2_path
+#   22: cpa_path
+#   23: manifest_path
+#   24: sub2_payload
+#   25: cpa_payload
+#   26: manifest
+251:           0 RESUME               0
+
+265:           2 LOAD_GLOBAL          (NULL + build_account_record)
+              12 LOAD_FAST_LOAD_FAST  (session, token_payload)
+              14 LOAD_FAST_LOAD_FAST  (name, source)
+              16 LOAD_CONST           (('session', 'token_payload', 'name', 'source'))
+              18 CALL_KW              4
+              20 STORE_FAST           (record)
+
+266:          22 LOAD_FAST            (record)
+              24 LOAD_ATTR            (NULL|self + get)
+              44 LOAD_CONST           ("access_token")
+              46 CALL                 (1 positional)
+              54 TO_BOOL
+              62 POP_JUMP_IF_FALSE    (to 110)
+              66 LOAD_FAST            (record)
+              68 LOAD_ATTR            (NULL|self + get)
+              88 LOAD_CONST           ("refresh_token")
+              90 CALL                 (1 positional)
+              98 TO_BOOL
+             106 POP_JUMP_IF_TRUE     (to 132)
+
+267:     >>  110 LOAD_GLOBAL          (NULL + RuntimeError)
+             120 LOAD_CONST           ("token bundle incomplete: access_token/refresh_token missing")
+             122 CALL                 (1 positional)
+             130 RAISE_VARARGS        (exception instance)
+
+268:     >>  132 LOAD_GLOBAL          (NULL + Path)
+             142 LOAD_FAST            (out_dir)
+             144 CALL                 (1 positional)
+             152 STORE_FAST           (archive_dir)
+
+269:         154 LOAD_FAST            (archive_dir)
+             156 LOAD_ATTR            (NULL|self + mkdir)
+             176 LOAD_CONST           (True)
+             178 LOAD_CONST           (True)
+             180 LOAD_CONST           (('parents', 'exist_ok'))
+             182 CALL_KW              2
+             184 POP_TOP
+
+270:         186 LOAD_FAST            (archive_dir)
+             188 LOAD_CONST           ("ready_sub2")
+             190 BINARY_OP            (/)
+             194 STORE_FAST           (sub2_dir)
+
+271:         196 LOAD_FAST            (archive_dir)
+             198 LOAD_CONST           ("ready_cpa")
+             200 BINARY_OP            (/)
+             204 STORE_FAST           (cpa_dir)
+
+272:         206 LOAD_FAST            (archive_dir)
+             208 LOAD_CONST           ("account_records")
+             210 BINARY_OP            (/)
+             214 STORE_FAST           (account_dir)
+
+273:         216 LOAD_FAST            (archive_dir)
+             218 LOAD_CONST           ("manifests")
+             220 BINARY_OP            (/)
+             224 STORE_FAST           (manifest_dir)
+
+274:         226 LOAD_FAST            (sub2_dir)
+             228 LOAD_ATTR            (NULL|self + mkdir)
+             248 LOAD_CONST           (True)
+             250 LOAD_CONST           (True)
+             252 LOAD_CONST           (('parents', 'exist_ok'))
+             254 CALL_KW              2
+             256 POP_TOP
+
+275:         258 LOAD_FAST            (cpa_dir)
+             260 LOAD_ATTR            (NULL|self + mkdir)
+             280 LOAD_CONST           (True)
+             282 LOAD_CONST           (True)
+             284 LOAD_CONST           (('parents', 'exist_ok'))
+             286 CALL_KW              2
+             288 POP_TOP
+
+276:         290 LOAD_FAST            (account_dir)
+             292 LOAD_ATTR            (NULL|self + mkdir)
+             312 LOAD_CONST           (True)
+             314 LOAD_CONST           (True)
+             316 LOAD_CONST           (('parents', 'exist_ok'))
+             318 CALL_KW              2
+             320 POP_TOP
+
+277:         322 LOAD_FAST            (manifest_dir)
+             324 LOAD_ATTR            (NULL|self + mkdir)
+             344 LOAD_CONST           (True)
+             346 LOAD_CONST           (True)
+             348 LOAD_CONST           (('parents', 'exist_ok'))
+             350 CALL_KW              2
+             352 POP_TOP
+
+278:         354 LOAD_GLOBAL          (NULL + _clean)
+             364 LOAD_FAST            (record)
+             366 LOAD_ATTR            (NULL|self + get)
+             386 LOAD_CONST           ("bind_email")
+             388 CALL                 (1 positional)
+             396 COPY                 1
+             398 TO_BOOL
+             406 POP_JUMP_IF_TRUE     (to 462)
+             410 POP_TOP
+             412 LOAD_FAST            (record)
+             414 LOAD_ATTR            (NULL|self + get)
+             434 LOAD_CONST           ("email")
+             436 CALL                 (1 positional)
+             444 COPY                 1
+             446 TO_BOOL
+             454 POP_JUMP_IF_TRUE     (to 462)
+             458 POP_TOP
+             460 LOAD_CONST           ("openai")
+         >>  462 CALL                 (1 positional)
+             470 STORE_FAST           (email)
+
+279:         472 LOAD_GLOBAL          (time)
+             482 LOAD_ATTR            (strftime)
+             502 PUSH_NULL
+             504 LOAD_CONST           ("%Y%m%d-%H%M%S")
+             506 CALL                 (1 positional)
+             514 STORE_FAST           (stamp)
+
+280:         516 LOAD_GLOBAL          (NULL + _safe_name)
+             526 LOAD_FAST            (email)
+             528 CALL                 (1 positional)
+             536 FORMAT_SIMPLE
+             538 LOAD_CONST           ("_")
+             540 LOAD_FAST            (stamp)
+             542 FORMAT_SIMPLE
+             544 BUILD_STRING         3
+             546 STORE_FAST           (base)
+
+281:         548 LOAD_GLOBAL          (NULL + _unique_path)
+             558 LOAD_FAST            (account_dir)
+             560 LOAD_FAST            (base)
+             562 FORMAT_SIMPLE
+             564 LOAD_CONST           (".account.json")
+             566 BUILD_STRING         2
+             568 CALL                 (2 positional)
+             576 STORE_FAST           (account_path)
+
+282:         578 LOAD_FAST            (sub2_import_out)
+             580 TO_BOOL
+             588 POP_JUMP_IF_FALSE    (to 614)
+             592 LOAD_GLOBAL          (NULL + Path)
+             602 LOAD_FAST            (sub2_import_out)
+             604 CALL                 (1 positional)
+             612 JUMP_FORWARD         (to 644)
+         >>  614 LOAD_GLOBAL          (NULL + _unique_path)
+             624 LOAD_FAST            (sub2_dir)
+             626 LOAD_CONST           ("导入SUB2用_")
+             628 LOAD_FAST            (base)
+             630 FORMAT_SIMPLE
+             632 LOAD_CONST           (".json")
+             634 BUILD_STRING         3
+             636 CALL                 (2 positional)
+         >>  644 STORE_FAST           (sub2_path)
+
+283:         646 LOAD_GLOBAL          (NULL + _unique_path)
+             656 LOAD_FAST            (cpa_dir)
+             658 LOAD_CONST           ("导入CPA用_")
+             660 LOAD_FAST            (base)
+             662 FORMAT_SIMPLE
+             664 LOAD_CONST           (".json")
+             666 BUILD_STRING         3
+             668 CALL                 (2 positional)
+             676 STORE_FAST           (cpa_path)
+
+284:         678 LOAD_GLOBAL          (NULL + _unique_path)
+             688 LOAD_FAST            (manifest_dir)
+             690 LOAD_FAST            (base)
+             692 FORMAT_SIMPLE
+             694 LOAD_CONST           (".manifest.json")
+             696 BUILD_STRING         2
+             698 CALL                 (2 positional)
+             706 STORE_FAST           (manifest_path)
+
+286:         708 LOAD_GLOBAL          (NULL + build_sub2_import_payload)
+
+287:         718 LOAD_FAST            (record)
+
+288:         720 LOAD_FAST            (group_id)
+
+289:         722 LOAD_FAST            (proxy_id)
+
+290:         724 LOAD_FAST            (concurrency)
+
+291:         726 LOAD_FAST            (priority)
+
+292:         728 LOAD_FAST            (rate_multiplier)
+
+286:         730 LOAD_CONST           (('group_id', 'proxy_id', 'concurrency', 'priority', 'rate_multiplier'))
+             732 CALL_KW              6
+             734 STORE_FAST           (sub2_payload)
+
+294:         736 LOAD_GLOBAL          (NULL + build_cpa_auth_payload)
+             746 LOAD_FAST            (record)
+             748 CALL                 (1 positional)
+             756 STORE_FAST           (cpa_payload)
+
+296:         758 LOAD_CONST           (True)
+
+297:         760 LOAD_CONST           ("codex_local_archive")
+
+298:         762 LOAD_FAST            (email)
+
+299:         764 LOAD_GLOBAL          (NULL + int)
+             774 LOAD_GLOBAL          (time)
+             784 LOAD_ATTR            (time)
+             804 PUSH_NULL
+             806 CALL                 (0 positional)
+             814 CALL                 (1 positional)
+
+300:         822 LOAD_GLOBAL          (NULL + str)
+             832 LOAD_FAST            (account_path)
+             834 CALL                 (1 positional)
+
+301:         842 LOAD_GLOBAL          (NULL + str)
+             852 LOAD_FAST            (sub2_path)
+             854 CALL                 (1 positional)
+
+302:         862 LOAD_GLOBAL          (NULL + str)
+             872 LOAD_FAST            (cpa_path)
+             874 CALL                 (1 positional)
+
+303:         882 LOAD_CONST           (1)
+
+304:         884 LOAD_FAST            (source)
+
+305:         886 LOAD_FAST            (record)
+             888 LOAD_ATTR            (NULL|self + get)
+             908 LOAD_CONST           ("oauth_provider")
+             910 LOAD_CONST           ("")
+             912 CALL                 (2 positional)
+
+307:         920 LOAD_GLOBAL          (NULL + str)
+             930 LOAD_FAST            (sub2_dir)
+             932 CALL                 (1 positional)
+
+308:         940 LOAD_GLOBAL          (NULL + str)
+             950 LOAD_FAST            (cpa_dir)
+             952 CALL                 (1 positional)
+
+309:         960 LOAD_GLOBAL          (NULL + str)
+             970 LOAD_FAST            (account_dir)
+             972 CALL                 (1 positional)
+
+306:         980 LOAD_CONST           (('sub2', 'cpa', 'account_records'))
+             982 BUILD_CONST_KEY_MAP  3
+
+311:         984 BUILD_LIST           0
+             986 LOAD_CONST           (('ready_sub2 内的文件可直接用于 SUB2 手动导入。', 'ready_cpa 内的文件可直接用于 CPA/CLIProxyAPI auth-file 导入。', 'account_records 内的文件是注册机内部标准账号结果存档。'))
+             988 LIST_EXTEND          1
+
+295:         990 LOAD_CONST           (('ok', 'format', 'email', 'created_at', 'account_record', 'sub2_import_file', 'cpa_auth_file', 'account_count', 'source', 'oauth_provider', 'ready_dirs', 'import_notes'))
+             992 BUILD_CONST_KEY_MAP  12
+             994 STORE_FAST           (manifest)
+
+317:         996 LOAD_GLOBAL          (NULL + _save_json)
+            1006 LOAD_FAST            (account_path)
+            1008 LOAD_FAST            (record)
+            1010 CALL                 (2 positional)
+            1018 POP_TOP
+
+318:        1020 LOAD_GLOBAL          (NULL + _save_json)
+            1030 LOAD_FAST            (sub2_path)
+            1032 LOAD_FAST            (sub2_payload)
+            1034 CALL                 (2 positional)
+            1042 POP_TOP
+
+319:        1044 LOAD_GLOBAL          (NULL + _save_json)
+            1054 LOAD_FAST            (cpa_path)
+            1056 LOAD_FAST            (cpa_payload)
+            1058 CALL                 (2 positional)
+            1066 POP_TOP
+
+320:        1068 LOAD_GLOBAL          (NULL + _save_json)
+            1078 LOAD_FAST            (manifest_path)
+            1080 LOAD_FAST            (manifest)
+            1082 CALL                 (2 positional)
+            1090 POP_TOP
+
+322:        1092 LOAD_CONST           (True)
+
+323:        1094 LOAD_FAST            (email)
+
+324:        1096 LOAD_GLOBAL          (NULL + str)
+            1106 LOAD_FAST            (account_path)
+            1108 CALL                 (1 positional)
+
+325:        1116 LOAD_GLOBAL          (NULL + str)
+            1126 LOAD_FAST            (sub2_path)
+            1128 CALL                 (1 positional)
+
+326:        1136 LOAD_GLOBAL          (NULL + str)
+            1146 LOAD_FAST            (cpa_path)
+            1148 CALL                 (1 positional)
+
+327:        1156 LOAD_GLOBAL          (NULL + str)
+            1166 LOAD_FAST            (manifest_path)
+            1168 CALL                 (1 positional)
+
+328:        1176 LOAD_CONST           (1)
+
+321:        1178 LOAD_CONST           (('ok', 'email', 'account_record', 'sub2_import_file', 'cpa_auth_file', 'manifest', 'account_count'))
+            1180 BUILD_CONST_KEY_MAP  7
+            1182 RETURN_VALUE
+

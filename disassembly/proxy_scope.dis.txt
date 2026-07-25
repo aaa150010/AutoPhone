@@ -1,0 +1,1058 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          proxy_scope.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1
+# Constants:
+#    0: 'Per-route proxy scope helpers.\n\nOpenAI registration/OAuth keeps using the main ``proxy`` value directly. These\nhelpers only gate non-OpenAI external services: SMS, mailbox APIs, and upload\nmanagement APIs.\n'
+#    1: 0
+#    2: ('annotations',)
+#    3: ('Any', 'Dict')
+#    4: ('quote', 'urlsplit')
+#    5: {'upload', 'email', 'sms'}
+#    6: <Code311 code object as_bool at 0x10a38eac0, file proxy_scope.py>, line 18
+#    7: <Code311 code object ensure_proxy_scope at 0x10a38eb20, file proxy_scope.py>, line 33
+#    8: <Code311 code object route_proxy_enabled at 0x10a38ea90, file proxy_scope.py>, line 43
+#    9: <Code311 code object normalize_proxy_url at 0x10a38e940, file proxy_scope.py>, line 54
+#   10: <Code311 code object scoped_proxy at 0x10a38e910, file proxy_scope.py>, line 104
+#   11: <Code311 code object sms_proxy at 0x10a38e8e0, file proxy_scope.py>, line 110
+#   12: <Code311 code object email_proxy at 0x10a35d430, file proxy_scope.py>, line 114
+#   13: <Code311 code object upload_proxy at 0x10a35d490, file proxy_scope.py>, line 118
+#   14: <Code311 code object requests_proxies at 0x10a35d520, file proxy_scope.py>, line 122
+#   15: <Code311 code object requests_kwargs at 0x10a35d580, file proxy_scope.py>, line 129
+#   16: <Code311 code object scoped_requests_kwargs at 0x10a35d5e0, file proxy_scope.py>, line 134
+#   17: None
+#   18: (False,)
+#   19: ('value', 'Any', 'default', 'bool', 'return', 'bool')
+#   20: ('config', 'Dict[str, Any]', 'return', 'Dict[str, bool]')
+#   21: ('config', 'Dict[str, Any] | None', 'scope', 'str', 'return', 'bool')
+#   22: ('proxy', 'Any', 'return', 'str')
+#   23: ('config', 'Dict[str, Any] | None', 'scope', 'str', 'return', 'str')
+#   24: ('config', 'Dict[str, Any] | None', 'return', 'str')
+#   25: ('proxy', 'Any', 'return', 'Dict[str, str] | None')
+#   26: ('proxy', 'Any', 'return', 'Dict[str, Any]')
+#   27: ('config', 'Dict[str, Any] | None', 'scope', 'str', 'return', 'Dict[str, Any]')
+# Names:
+#    0: __doc__
+#    1: __future__
+#    2: annotations
+#    3: typing
+#    4: Any
+#    5: Dict
+#    6: urllib.parse
+#    7: quote
+#    8: urlsplit
+#    9: VALID_SCOPES
+#   10: as_bool
+#   11: ensure_proxy_scope
+#   12: route_proxy_enabled
+#   13: normalize_proxy_url
+#   14: scoped_proxy
+#   15: sms_proxy
+#   16: email_proxy
+#   17: upload_proxy
+#   18: requests_proxies
+#   19: requests_kwargs
+#   20: scoped_requests_kwargs
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ("Per-route proxy scope helpers.\n\nOpenAI registration/OAuth keeps using the main ``proxy`` value directly. These\nhelpers only gate non-OpenAI external services: SMS, mailbox APIs, and upload\nmanagement APIs.\n")
+               4 STORE_NAME           (__doc__)
+
+  9:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (('annotations',))
+              10 IMPORT_NAME          (__future__)
+              12 IMPORT_FROM          (annotations)
+              14 STORE_NAME           (annotations)
+              16 POP_TOP
+
+ 11:          18 LOAD_CONST           (0)
+              20 LOAD_CONST           (('Any', 'Dict'))
+              22 IMPORT_NAME          (typing)
+              24 IMPORT_FROM          (Any)
+              26 STORE_NAME           (Any)
+              28 IMPORT_FROM          (Dict)
+              30 STORE_NAME           (Dict)
+              32 POP_TOP
+
+ 12:          34 LOAD_CONST           (0)
+              36 LOAD_CONST           (('quote', 'urlsplit'))
+              38 IMPORT_NAME          (urllib.parse)
+              40 IMPORT_FROM          (quote)
+              42 STORE_NAME           (quote)
+              44 IMPORT_FROM          (urlsplit)
+              46 STORE_NAME           (urlsplit)
+              48 POP_TOP
+
+ 15:          50 BUILD_SET            0
+              52 LOAD_CONST           ({'upload', 'email', 'sms'})
+              54 SET_UPDATE           1
+              56 STORE_NAME           (VALID_SCOPES)
+
+ 18:          58 LOAD_CONST           ((False,))
+              60 LOAD_CONST           (('value', 'Any', 'default', 'bool', 'return', 'bool'))
+              62 LOAD_CONST           (<Code311 code object as_bool at 0x10a38eac0, file proxy_scope.py>, line 18)
+              64 MAKE_FUNCTION
+              66 SET_FUNCTION_ATTRIBUTE 4
+              68 SET_FUNCTION_ATTRIBUTE 1
+              70 STORE_NAME           (as_bool)
+
+ 33:          72 LOAD_CONST           (('config', 'Dict[str, Any]', 'return', 'Dict[str, bool]'))
+              74 LOAD_CONST           (<Code311 code object ensure_proxy_scope at 0x10a38eb20, file proxy_scope.py>, line 33)
+              76 MAKE_FUNCTION
+              78 SET_FUNCTION_ATTRIBUTE 4
+              80 STORE_NAME           (ensure_proxy_scope)
+
+ 43:          82 LOAD_CONST           (('config', 'Dict[str, Any] | None', 'scope', 'str', 'return', 'bool'))
+              84 LOAD_CONST           (<Code311 code object route_proxy_enabled at 0x10a38ea90, file proxy_scope.py>, line 43)
+              86 MAKE_FUNCTION
+              88 SET_FUNCTION_ATTRIBUTE 4
+              90 STORE_NAME           (route_proxy_enabled)
+
+ 54:          92 LOAD_CONST           (('proxy', 'Any', 'return', 'str'))
+              94 LOAD_CONST           (<Code311 code object normalize_proxy_url at 0x10a38e940, file proxy_scope.py>, line 54)
+              96 MAKE_FUNCTION
+              98 SET_FUNCTION_ATTRIBUTE 4
+             100 STORE_NAME           (normalize_proxy_url)
+
+104:         102 LOAD_CONST           (('config', 'Dict[str, Any] | None', 'scope', 'str', 'return', 'str'))
+             104 LOAD_CONST           (<Code311 code object scoped_proxy at 0x10a38e910, file proxy_scope.py>, line 104)
+             106 MAKE_FUNCTION
+             108 SET_FUNCTION_ATTRIBUTE 4
+             110 STORE_NAME           (scoped_proxy)
+
+110:         112 LOAD_CONST           (('config', 'Dict[str, Any] | None', 'return', 'str'))
+             114 LOAD_CONST           (<Code311 code object sms_proxy at 0x10a38e8e0, file proxy_scope.py>, line 110)
+             116 MAKE_FUNCTION
+             118 SET_FUNCTION_ATTRIBUTE 4
+             120 STORE_NAME           (sms_proxy)
+
+114:         122 LOAD_CONST           (('config', 'Dict[str, Any] | None', 'return', 'str'))
+             124 LOAD_CONST           (<Code311 code object email_proxy at 0x10a35d430, file proxy_scope.py>, line 114)
+             126 MAKE_FUNCTION
+             128 SET_FUNCTION_ATTRIBUTE 4
+             130 STORE_NAME           (email_proxy)
+
+118:         132 LOAD_CONST           (('config', 'Dict[str, Any] | None', 'return', 'str'))
+             134 LOAD_CONST           (<Code311 code object upload_proxy at 0x10a35d490, file proxy_scope.py>, line 118)
+             136 MAKE_FUNCTION
+             138 SET_FUNCTION_ATTRIBUTE 4
+             140 STORE_NAME           (upload_proxy)
+
+122:         142 LOAD_CONST           (('proxy', 'Any', 'return', 'Dict[str, str] | None'))
+             144 LOAD_CONST           (<Code311 code object requests_proxies at 0x10a35d520, file proxy_scope.py>, line 122)
+             146 MAKE_FUNCTION
+             148 SET_FUNCTION_ATTRIBUTE 4
+             150 STORE_NAME           (requests_proxies)
+
+129:         152 LOAD_CONST           (('proxy', 'Any', 'return', 'Dict[str, Any]'))
+             154 LOAD_CONST           (<Code311 code object requests_kwargs at 0x10a35d580, file proxy_scope.py>, line 129)
+             156 MAKE_FUNCTION
+             158 SET_FUNCTION_ATTRIBUTE 4
+             160 STORE_NAME           (requests_kwargs)
+
+134:         162 LOAD_CONST           (('config', 'Dict[str, Any] | None', 'scope', 'str', 'return', 'Dict[str, Any]'))
+             164 LOAD_CONST           (<Code311 code object scoped_requests_kwargs at 0x10a35d5e0, file proxy_scope.py>, line 134)
+             166 MAKE_FUNCTION
+             168 SET_FUNCTION_ATTRIBUTE 4
+             170 STORE_NAME           (scoped_requests_kwargs)
+             172 RETURN_CONST         (None)
+
+
+# Method Name:       as_bool
+# Filename:          proxy_scope.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        18
+# Constants:
+#    0: None
+#    1: 0
+#    2: {'关闭', 'disabled', 'off', 'disable', 'no', '0', 'false'}
+#    3: False
+#    4: {'on', 'enable', '1', 'true', '开启', 'enabled', 'yes'}
+# Names:
+#    0: isinstance
+#    1: bool
+#    2: int
+#    3: float
+#    4: str
+#    5: strip
+#    6: lower
+# Varnames:
+#	value, default, text
+# Positional arguments:
+#	value, default
+# Local variables:
+#    2: text
+ 18:           0 RESUME               0
+
+ 19:           2 LOAD_FAST            (value)
+               4 POP_JUMP_IF_NOT_NONE (to 12)
+
+ 20:           8 LOAD_FAST            (default)
+              10 RETURN_VALUE
+
+ 21:     >>   12 LOAD_GLOBAL          (NULL + isinstance)
+              22 LOAD_FAST            (value)
+              24 LOAD_GLOBAL          (bool)
+              34 CALL                 (2 positional)
+              42 TO_BOOL
+              50 POP_JUMP_IF_FALSE    (to 58)
+
+ 22:          54 LOAD_FAST            (value)
+              56 RETURN_VALUE
+
+ 23:     >>   58 LOAD_GLOBAL          (NULL + isinstance)
+              68 LOAD_FAST            (value)
+              70 LOAD_GLOBAL          (int)
+              80 LOAD_GLOBAL          (float)
+              90 BUILD_TUPLE          2
+              92 CALL                 (2 positional)
+             100 TO_BOOL
+             108 POP_JUMP_IF_FALSE    (to 122)
+
+ 24:         112 LOAD_FAST            (value)
+             114 LOAD_CONST           (0)
+             116 COMPARE_OP           (!=)
+             120 RETURN_VALUE
+
+ 25:     >>  122 LOAD_GLOBAL          (NULL + str)
+             132 LOAD_FAST            (value)
+             134 CALL                 (1 positional)
+             142 LOAD_ATTR            (NULL|self + strip)
+             162 CALL                 (0 positional)
+             170 LOAD_ATTR            (NULL|self + lower)
+             190 CALL                 (0 positional)
+             198 STORE_FAST           (text)
+
+ 26:         200 LOAD_FAST            (text)
+             202 TO_BOOL
+             210 POP_JUMP_IF_TRUE     (to 218)
+
+ 27:         214 LOAD_FAST            (default)
+             216 RETURN_VALUE
+
+ 28:     >>  218 LOAD_FAST            (text)
+             220 LOAD_CONST           ({'关闭', 'disabled', 'off', 'disable', 'no', '0', 'false'})
+             222 CONTAINS_OP          (in)
+             226 POP_JUMP_IF_FALSE    (to 232)
+
+ 29:         230 RETURN_CONST         (False)
+
+ 30:     >>  232 LOAD_FAST            (text)
+             234 LOAD_CONST           ({'on', 'enable', '1', 'true', '开启', 'enabled', 'yes'})
+             236 CONTAINS_OP          (in)
+             240 RETURN_VALUE
+
+
+# Method Name:       ensure_proxy_scope
+# Filename:          proxy_scope.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        33
+# Constants:
+#    0: None
+#    1: 'proxy_scope'
+#    2: False
+# Names:
+#    0: get
+#    1: isinstance
+#    2: dict
+#    3: VALID_SCOPES
+#    4: as_bool
+# Varnames:
+#	config, scope, key
+# Positional arguments:
+#	config
+# Local variables:
+#    1: scope
+#    2: key
+ 33:           0 RESUME               0
+
+ 34:           2 LOAD_FAST            (config)
+               4 LOAD_ATTR            (NULL|self + get)
+              24 LOAD_CONST           ("proxy_scope")
+              26 CALL                 (1 positional)
+              34 STORE_FAST           (scope)
+
+ 35:          36 LOAD_GLOBAL          (NULL + isinstance)
+              46 LOAD_FAST            (scope)
+              48 LOAD_GLOBAL          (dict)
+              58 CALL                 (2 positional)
+              66 TO_BOOL
+              74 POP_JUMP_IF_TRUE     (to 90)
+
+ 36:          78 BUILD_MAP            0
+              80 STORE_FAST           (scope)
+
+ 37:          82 LOAD_FAST_LOAD_FAST  (scope, config)
+              84 LOAD_CONST           ("proxy_scope")
+              86 STORE_SUBSCR
+
+ 38:     >>   90 LOAD_GLOBAL          (VALID_SCOPES)
+             100 GET_ITER
+             102 FOR_ITER             (to 170)
+             106 STORE_FAST           (key)
+
+ 39:         108 LOAD_GLOBAL          (NULL + as_bool)
+             118 LOAD_FAST            (scope)
+             120 LOAD_ATTR            (NULL|self + get)
+             140 LOAD_FAST            (key)
+             142 CALL                 (1 positional)
+             150 LOAD_CONST           (False)
+             152 CALL                 (2 positional)
+             160 LOAD_FAST_LOAD_FAST  (scope, key)
+             162 STORE_SUBSCR
+             166 JUMP_BACKWARD        (to 102)
+
+ 38:     >>  170 END_FOR
+             172 POP_TOP
+
+ 40:         174 LOAD_FAST            (scope)
+             176 RETURN_VALUE
+
+
+# Method Name:       route_proxy_enabled
+# Filename:          proxy_scope.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        43
+# Constants:
+#    0: None
+#    1: False
+#    2: 'proxy_scope'
+# Names:
+#    0: VALID_SCOPES
+#    1: isinstance
+#    2: dict
+#    3: get
+#    4: as_bool
+# Varnames:
+#	config, scope, scope_cfg
+# Positional arguments:
+#	config, scope
+# Local variables:
+#    2: scope_cfg
+ 43:           0 RESUME               0
+
+ 44:           2 LOAD_FAST            (scope)
+               4 LOAD_GLOBAL          (VALID_SCOPES)
+              14 CONTAINS_OP          (not in)
+              18 POP_JUMP_IF_FALSE    (to 24)
+
+ 45:          22 RETURN_CONST         (False)
+
+ 46:     >>   24 LOAD_GLOBAL          (NULL + isinstance)
+              34 LOAD_FAST            (config)
+              36 LOAD_GLOBAL          (dict)
+              46 CALL                 (2 positional)
+              54 TO_BOOL
+              62 POP_JUMP_IF_TRUE     (to 68)
+
+ 47:          66 RETURN_CONST         (False)
+
+ 48:     >>   68 LOAD_FAST            (config)
+              70 LOAD_ATTR            (NULL|self + get)
+              90 LOAD_CONST           ("proxy_scope")
+              92 CALL                 (1 positional)
+             100 STORE_FAST           (scope_cfg)
+
+ 49:         102 LOAD_GLOBAL          (NULL + isinstance)
+             112 LOAD_FAST            (scope_cfg)
+             114 LOAD_GLOBAL          (dict)
+             124 CALL                 (2 positional)
+             132 TO_BOOL
+             140 POP_JUMP_IF_TRUE     (to 146)
+
+ 50:         144 RETURN_CONST         (False)
+
+ 51:     >>  146 LOAD_GLOBAL          (NULL + as_bool)
+             156 LOAD_FAST            (scope_cfg)
+             158 LOAD_ATTR            (NULL|self + get)
+             178 LOAD_FAST            (scope)
+             180 CALL                 (1 positional)
+             188 LOAD_CONST           (False)
+             190 CALL                 (2 positional)
+             198 RETURN_VALUE
+
+
+# Method Name:       normalize_proxy_url
+# Filename:          proxy_scope.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  11
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        54
+# Constants:
+#    0: None
+#    1: ''
+#    2: ("'", '"')
+#    3: 2
+#    4: 1
+#    5: -1
+#    6: ('\t', ',', '|')
+#    7: ' '
+#    8: '://'
+#    9: 0
+#   10: 3
+#   11: 4
+#   12: ('safe',)
+#   13: ':'
+#   14: '@'
+#   15: 'http://'
+#   16: '['
+#   17: '@['
+#   18: '::'
+#   19: {'https', 'http', 'socks5', 'socks5h', 'socks4'}
+#   20: {'', '/'}
+# Names:
+#    0: str
+#    1: strip
+#    2: startswith
+#    3: endswith
+#    4: len
+#    5: replace
+#    6: join
+#    7: split
+#    8: quote
+#    9: isdigit
+#   10: urlsplit
+#   11: scheme
+#   12: hostname
+#   13: port
+#   14: ValueError
+#   15: path
+#   16: query
+#   17: fragment
+#   18: Exception
+# Varnames:
+#	proxy, value, sep, parts, host, port, user, pwd, auth, colon_parts, parsed
+# Positional arguments:
+#	proxy
+# Local variables:
+#    1: value
+#    2: sep
+#    3: parts
+#    4: host
+#    5: port
+#    6: user
+#    7: pwd
+#    8: auth
+#    9: colon_parts
+#   10: parsed
+ 54:           0 RESUME               0
+
+ 55:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (proxy)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + strip)
+              60 CALL                 (0 positional)
+              68 STORE_FAST           (value)
+
+ 56:          70 LOAD_FAST            (value)
+              72 TO_BOOL
+              80 POP_JUMP_IF_TRUE     (to 86)
+
+ 57:          84 RETURN_CONST         ("")
+
+ 58:     >>   86 LOAD_FAST            (value)
+              88 LOAD_ATTR            (NULL|self + startswith)
+             108 LOAD_CONST           (("'", '"'))
+             110 CALL                 (1 positional)
+             118 TO_BOOL
+             126 POP_JUMP_IF_FALSE    (to 242)
+             130 LOAD_FAST            (value)
+             132 LOAD_ATTR            (NULL|self + endswith)
+             152 LOAD_CONST           (("'", '"'))
+             154 CALL                 (1 positional)
+             162 TO_BOOL
+             170 POP_JUMP_IF_FALSE    (to 242)
+             174 LOAD_GLOBAL          (NULL + len)
+             184 LOAD_FAST            (value)
+             186 CALL                 (1 positional)
+             194 LOAD_CONST           (2)
+             196 COMPARE_OP           (>=)
+             200 POP_JUMP_IF_FALSE    (to 242)
+
+ 59:         204 LOAD_FAST            (value)
+             206 LOAD_CONST           (1)
+             208 LOAD_CONST           (-1)
+             210 BINARY_SLICE
+             212 LOAD_ATTR            (NULL|self + strip)
+             232 CALL                 (0 positional)
+             240 STORE_FAST           (value)
+
+ 60:     >>  242 LOAD_CONST           (('\t', ',', '|'))
+             244 GET_ITER
+             246 FOR_ITER             (to 292)
+             250 STORE_FAST           (sep)
+
+ 61:         252 LOAD_FAST            (value)
+             254 LOAD_ATTR            (NULL|self + replace)
+             274 LOAD_FAST            (sep)
+             276 LOAD_CONST           (" ")
+             278 CALL                 (2 positional)
+             286 STORE_FAST           (value)
+             288 JUMP_BACKWARD        (to 246)
+
+ 60:     >>  292 END_FOR
+             294 POP_TOP
+
+ 62:         296 LOAD_CONST           (" ")
+             298 LOAD_ATTR            (NULL|self + join)
+             318 LOAD_FAST            (value)
+             320 LOAD_ATTR            (NULL|self + split)
+             340 CALL                 (0 positional)
+             348 CALL                 (1 positional)
+             356 STORE_FAST           (value)
+
+ 63:         358 LOAD_FAST            (value)
+             360 TO_BOOL
+             368 POP_JUMP_IF_TRUE     (to 374)
+
+ 64:         372 RETURN_CONST         ("")
+
+ 65:     >>  374 LOAD_CONST           ("://")
+             376 LOAD_FAST            (value)
+             378 CONTAINS_OP          (not in)
+             382 POP_JUMP_IF_FALSE    (to 666)
+             386 LOAD_CONST           (" ")
+             388 LOAD_FAST            (value)
+             390 CONTAINS_OP          (in)
+             394 POP_JUMP_IF_FALSE    (to 666)
+
+ 66:         398 LOAD_FAST            (value)
+             400 LOAD_ATTR            (NULL|self + split)
+             420 CALL                 (0 positional)
+             428 STORE_FAST           (parts)
+
+ 67:         430 LOAD_GLOBAL          (NULL + len)
+             440 LOAD_FAST            (parts)
+             442 CALL                 (1 positional)
+             450 LOAD_CONST           (2)
+             452 COMPARE_OP           (>=)
+             456 POP_JUMP_IF_FALSE    (to 666)
+
+ 68:         460 LOAD_FAST            (parts)
+             462 LOAD_CONST           (0)
+             464 BINARY_SUBSCR
+             468 LOAD_FAST            (parts)
+             470 LOAD_CONST           (1)
+             472 BINARY_SUBSCR
+             476 STORE_FAST_STORE_FAST (port, host)
+
+ 69:         478 LOAD_GLOBAL          (NULL + len)
+             488 LOAD_FAST            (parts)
+             490 CALL                 (1 positional)
+             498 LOAD_CONST           (3)
+             500 COMPARE_OP           (>=)
+             504 POP_JUMP_IF_FALSE    (to 518)
+             508 LOAD_FAST            (parts)
+             510 LOAD_CONST           (2)
+             512 BINARY_SUBSCR
+             516 JUMP_FORWARD         (to 520)
+         >>  518 LOAD_CONST           ("")
+         >>  520 STORE_FAST           (user)
+
+ 70:         522 LOAD_GLOBAL          (NULL + len)
+             532 LOAD_FAST            (parts)
+             534 CALL                 (1 positional)
+             542 LOAD_CONST           (4)
+             544 COMPARE_OP           (>=)
+             548 POP_JUMP_IF_FALSE    (to 562)
+             552 LOAD_FAST            (parts)
+             554 LOAD_CONST           (3)
+             556 BINARY_SUBSCR
+             560 JUMP_FORWARD         (to 564)
+         >>  562 LOAD_CONST           ("")
+         >>  564 STORE_FAST           (pwd)
+
+ 71:         566 LOAD_FAST            (user)
+             568 TO_BOOL
+             576 POP_JUMP_IF_TRUE     (to 594)
+             580 LOAD_FAST            (pwd)
+             582 TO_BOOL
+             590 POP_JUMP_IF_FALSE    (to 642)
+         >>  594 LOAD_GLOBAL          (NULL + quote)
+             604 LOAD_FAST            (user)
+             606 LOAD_CONST           ("")
+             608 LOAD_CONST           (('safe',))
+             610 CALL_KW              2
+             612 FORMAT_SIMPLE
+             614 LOAD_CONST           (":")
+             616 LOAD_GLOBAL          (NULL + quote)
+             626 LOAD_FAST            (pwd)
+             628 LOAD_CONST           ("")
+             630 LOAD_CONST           (('safe',))
+             632 CALL_KW              2
+             634 FORMAT_SIMPLE
+             636 LOAD_CONST           ("@")
+             638 BUILD_STRING         4
+             640 JUMP_FORWARD         (to 644)
+         >>  642 LOAD_CONST           ("")
+         >>  644 STORE_FAST           (auth)
+
+ 72:         646 LOAD_CONST           ("http://")
+             648 LOAD_FAST            (auth)
+             650 FORMAT_SIMPLE
+             652 LOAD_FAST            (host)
+             654 FORMAT_SIMPLE
+             656 LOAD_CONST           (":")
+             658 LOAD_FAST            (port)
+             660 FORMAT_SIMPLE
+             662 BUILD_STRING         5
+             664 STORE_FAST           (value)
+
+ 73:     >>  666 LOAD_CONST           ("://")
+             668 LOAD_FAST            (value)
+             670 CONTAINS_OP          (not in)
+             674 POP_JUMP_IF_FALSE    (to 744)
+             678 LOAD_FAST            (value)
+             680 LOAD_ATTR            (NULL|self + startswith)
+             700 LOAD_CONST           ("[")
+             702 CALL                 (1 positional)
+             710 TO_BOOL
+             718 POP_JUMP_IF_TRUE     (to 734)
+             722 LOAD_CONST           ("@[")
+             724 LOAD_FAST            (value)
+             726 CONTAINS_OP          (in)
+             730 POP_JUMP_IF_FALSE    (to 744)
+
+ 74:     >>  734 LOAD_CONST           ("http://")
+             736 LOAD_FAST            (value)
+             738 BINARY_OP            (+)
+             742 STORE_FAST           (value)
+
+ 75:     >>  744 LOAD_CONST           ("://")
+             746 LOAD_FAST            (value)
+             748 CONTAINS_OP          (not in)
+             752 POP_JUMP_IF_FALSE    (to 988)
+
+ 76:         756 LOAD_FAST            (value)
+             758 LOAD_ATTR            (NULL|self + split)
+             778 LOAD_CONST           (":")
+             780 CALL                 (1 positional)
+             788 STORE_FAST           (colon_parts)
+
+ 77:         790 LOAD_CONST           ("::")
+             792 LOAD_FAST            (value)
+             794 CONTAINS_OP          (in)
+             798 POP_JUMP_IF_FALSE    (to 816)
+             802 LOAD_CONST           ("[")
+             804 LOAD_FAST            (value)
+             806 CONTAINS_OP          (not in)
+             810 POP_JUMP_IF_FALSE    (to 816)
+
+ 78:         814 RETURN_CONST         ("")
+
+ 79:     >>  816 LOAD_GLOBAL          (NULL + len)
+             826 LOAD_FAST            (colon_parts)
+             828 CALL                 (1 positional)
+             836 LOAD_CONST           (4)
+             838 COMPARE_OP           (==)
+             842 POP_JUMP_IF_FALSE    (to 978)
+             846 LOAD_CONST           ("@")
+             848 LOAD_FAST            (value)
+             850 CONTAINS_OP          (not in)
+             854 POP_JUMP_IF_FALSE    (to 978)
+             858 LOAD_FAST            (colon_parts)
+             860 LOAD_CONST           (1)
+             862 BINARY_SUBSCR
+             866 LOAD_ATTR            (NULL|self + isdigit)
+             886 CALL                 (0 positional)
+             894 TO_BOOL
+             902 POP_JUMP_IF_FALSE    (to 978)
+
+ 80:         906 LOAD_FAST            (colon_parts)
+             908 UNPACK_SEQUENCE      4
+             912 STORE_FAST_STORE_FAST (host, port)
+             914 STORE_FAST_STORE_FAST (user, pwd)
+
+ 81:         916 LOAD_CONST           ("http://")
+             918 LOAD_GLOBAL          (NULL + quote)
+             928 LOAD_FAST            (user)
+             930 LOAD_CONST           ("")
+             932 LOAD_CONST           (('safe',))
+             934 CALL_KW              2
+             936 FORMAT_SIMPLE
+             938 LOAD_CONST           (":")
+             940 LOAD_GLOBAL          (NULL + quote)
+             950 LOAD_FAST            (pwd)
+             952 LOAD_CONST           ("")
+             954 LOAD_CONST           (('safe',))
+             956 CALL_KW              2
+             958 FORMAT_SIMPLE
+             960 LOAD_CONST           ("@")
+             962 LOAD_FAST            (host)
+             964 FORMAT_SIMPLE
+             966 LOAD_CONST           (":")
+             968 LOAD_FAST            (port)
+             970 FORMAT_SIMPLE
+             972 BUILD_STRING         8
+             974 STORE_FAST           (value)
+             976 JUMP_FORWARD         (to 988)
+
+ 83:     >>  978 LOAD_CONST           ("http://")
+             980 LOAD_FAST            (value)
+             982 BINARY_OP            (+)
+             986 STORE_FAST           (value)
+
+ 84:     >>  988 NOP
+
+ 85:         990 LOAD_GLOBAL          (NULL + urlsplit)
+            1000 LOAD_FAST            (value)
+            1002 CALL                 (1 positional)
+            1010 STORE_FAST           (parsed)
+
+ 86:        1012 LOAD_FAST            (parsed)
+            1014 LOAD_ATTR            (scheme)
+            1034 LOAD_CONST           ({'https', 'http', 'socks5', 'socks5h', 'socks4'})
+            1036 CONTAINS_OP          (not in)
+            1040 POP_JUMP_IF_FALSE    (to 1046)
+
+ 87:        1044 RETURN_CONST         ("")
+
+ 88:     >> 1046 LOAD_FAST            (parsed)
+            1048 LOAD_ATTR            (hostname)
+            1068 TO_BOOL
+            1076 POP_JUMP_IF_TRUE     (to 1082)
+
+ 89:        1080 RETURN_CONST         ("")
+
+ 90:     >> 1082 NOP
+
+ 91:        1084 LOAD_FAST            (parsed)
+            1086 LOAD_ATTR            (port)
+            1106 STORE_FAST           (port)
+
+ 94:        1108 LOAD_FAST            (port)
+            1110 TO_BOOL
+            1118 POP_JUMP_IF_TRUE     (to 1124)
+
+ 95:        1122 RETURN_CONST         ("")
+
+ 96:     >> 1124 LOAD_FAST            (parsed)
+            1126 LOAD_ATTR            (path)
+            1146 LOAD_CONST           ({'', '/'})
+            1148 CONTAINS_OP          (not in)
+            1152 POP_JUMP_IF_TRUE     (to 1224)
+            1156 LOAD_FAST            (parsed)
+            1158 LOAD_ATTR            (query)
+            1178 TO_BOOL
+            1186 POP_JUMP_IF_TRUE     (to 1224)
+            1190 LOAD_FAST            (parsed)
+            1192 LOAD_ATTR            (fragment)
+            1212 TO_BOOL
+            1220 POP_JUMP_IF_FALSE    (to 1226)
+
+ 97:     >> 1224 RETURN_CONST         ("")
+
+ 98:     >> 1226 LOAD_FAST            (value)
+            1228 RETURN_VALUE
+         >> 1230 PUSH_EXC_INFO
+
+ 92:        1232 LOAD_GLOBAL          (ValueError)
+            1242 CHECK_EXC_MATCH
+            1244 POP_JUMP_IF_FALSE    (to 1254)
+            1248 POP_TOP
+
+ 93:        1250 POP_EXCEPT
+            1252 RETURN_CONST         ("")
+
+ 92:     >> 1254 RERAISE              0
+         >> 1256 COPY                 3
+            1258 POP_EXCEPT
+            1260 RERAISE              1
+         >> 1262 PUSH_EXC_INFO
+
+ 99:        1264 LOAD_GLOBAL          (Exception)
+            1274 CHECK_EXC_MATCH
+            1276 POP_JUMP_IF_FALSE    (to 1286)
+            1280 POP_TOP
+
+100:        1282 POP_EXCEPT
+
+101:        1284 RETURN_CONST         ("")
+
+ 99:     >> 1286 RERAISE              0
+         >> 1288 COPY                 3
+            1290 POP_EXCEPT
+            1292 RERAISE              1
+
+ExceptionTable:
+  990 to 1042 -> 1262 [0]
+  1046 to 1078 -> 1262 [0]
+  1084 to 1106 -> 1230 [0]
+  1108 to 1120 -> 1262 [0]
+  1124 to 1222 -> 1262 [0]
+  1226 to 1226 -> 1262 [0]
+  1230 to 1248 -> 1256 [1] lasti
+  1250 to 1250 -> 1262 [0]
+  1254 to 1254 -> 1256 [1] lasti
+  1256 to 1260 -> 1262 [0]
+  1262 to 1280 -> 1288 [1] lasti
+  1286 to 1286 -> 1288 [1] lasti
+
+# Method Name:       scoped_proxy
+# Filename:          proxy_scope.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        104
+# Constants:
+#    0: None
+#    1: ''
+#    2: 'proxy'
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: route_proxy_enabled
+#    3: normalize_proxy_url
+#    4: get
+# Varnames:
+#	config, scope
+# Positional arguments:
+#	config, scope
+104:           0 RESUME               0
+
+105:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (config)
+              14 LOAD_GLOBAL          (dict)
+              24 CALL                 (2 positional)
+              32 TO_BOOL
+              40 POP_JUMP_IF_FALSE    (to 76)
+              44 LOAD_GLOBAL          (NULL + route_proxy_enabled)
+              54 LOAD_FAST_LOAD_FAST  (config, scope)
+              56 CALL                 (2 positional)
+              64 TO_BOOL
+              72 POP_JUMP_IF_TRUE     (to 78)
+
+106:     >>   76 RETURN_CONST         ("")
+
+107:     >>   78 LOAD_GLOBAL          (NULL + normalize_proxy_url)
+              88 LOAD_FAST            (config)
+              90 LOAD_ATTR            (NULL|self + get)
+             110 LOAD_CONST           ("proxy")
+             112 LOAD_CONST           ("")
+             114 CALL                 (2 positional)
+             122 CALL                 (1 positional)
+             130 RETURN_VALUE
+
+
+# Method Name:       sms_proxy
+# Filename:          proxy_scope.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        110
+# Constants:
+#    0: None
+#    1: 'sms'
+# Names:
+#    0: scoped_proxy
+# Varnames:
+#	config
+# Positional arguments:
+#	config
+110:           0 RESUME               0
+
+111:           2 LOAD_GLOBAL          (NULL + scoped_proxy)
+              12 LOAD_FAST            (config)
+              14 LOAD_CONST           ("sms")
+              16 CALL                 (2 positional)
+              24 RETURN_VALUE
+
+
+# Method Name:       email_proxy
+# Filename:          proxy_scope.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        114
+# Constants:
+#    0: None
+#    1: 'email'
+# Names:
+#    0: scoped_proxy
+# Varnames:
+#	config
+# Positional arguments:
+#	config
+114:           0 RESUME               0
+
+115:           2 LOAD_GLOBAL          (NULL + scoped_proxy)
+              12 LOAD_FAST            (config)
+              14 LOAD_CONST           ("email")
+              16 CALL                 (2 positional)
+              24 RETURN_VALUE
+
+
+# Method Name:       upload_proxy
+# Filename:          proxy_scope.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        118
+# Constants:
+#    0: None
+#    1: 'upload'
+# Names:
+#    0: scoped_proxy
+# Varnames:
+#	config
+# Positional arguments:
+#	config
+118:           0 RESUME               0
+
+119:           2 LOAD_GLOBAL          (NULL + scoped_proxy)
+              12 LOAD_FAST            (config)
+              14 LOAD_CONST           ("upload")
+              16 CALL                 (2 positional)
+              24 RETURN_VALUE
+
+
+# Method Name:       requests_proxies
+# Filename:          proxy_scope.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        122
+# Constants:
+#    0: None
+#    1: ('http', 'https')
+# Names:
+#    0: normalize_proxy_url
+# Varnames:
+#	proxy, value
+# Positional arguments:
+#	proxy
+# Local variables:
+#    1: value
+122:           0 RESUME               0
+
+123:           2 LOAD_GLOBAL          (NULL + normalize_proxy_url)
+              12 LOAD_FAST            (proxy)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (value)
+
+124:          24 LOAD_FAST            (value)
+              26 TO_BOOL
+              34 POP_JUMP_IF_TRUE     (to 40)
+
+125:          38 RETURN_CONST         (None)
+
+126:     >>   40 LOAD_FAST_LOAD_FAST  (value, value)
+              42 LOAD_CONST           (('http', 'https'))
+              44 BUILD_CONST_KEY_MAP  2
+              46 RETURN_VALUE
+
+
+# Method Name:       requests_kwargs
+# Filename:          proxy_scope.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        129
+# Constants:
+#    0: None
+#    1: 'proxies'
+# Names:
+#    0: requests_proxies
+# Varnames:
+#	proxy, proxies
+# Positional arguments:
+#	proxy
+# Local variables:
+#    1: proxies
+129:           0 RESUME               0
+
+130:           2 LOAD_GLOBAL          (NULL + requests_proxies)
+              12 LOAD_FAST            (proxy)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (proxies)
+
+131:          24 LOAD_FAST            (proxies)
+              26 TO_BOOL
+              34 POP_JUMP_IF_FALSE    (to 46)
+              38 LOAD_CONST           ("proxies")
+              40 LOAD_FAST            (proxies)
+              42 BUILD_MAP            1
+              44 RETURN_VALUE
+         >>   46 BUILD_MAP            0
+              48 RETURN_VALUE
+
+
+# Method Name:       scoped_requests_kwargs
+# Filename:          proxy_scope.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        134
+# Constants:
+#    0: None
+# Names:
+#    0: requests_kwargs
+#    1: scoped_proxy
+# Varnames:
+#	config, scope
+# Positional arguments:
+#	config, scope
+134:           0 RESUME               0
+
+135:           2 LOAD_GLOBAL          (NULL + requests_kwargs)
+              12 LOAD_GLOBAL          (NULL + scoped_proxy)
+              22 LOAD_FAST_LOAD_FAST  (config, scope)
+              24 CALL                 (2 positional)
+              32 CALL                 (1 positional)
+              40 RETURN_VALUE
+

@@ -1,0 +1,1024 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          resource_runtime.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        2
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1
+# Constants:
+#    0: 'Resolve the encrypted Node chain for the standalone portable package.'
+#    1: 0
+#    2: ('annotations',)
+#    3: None
+#    4: ('Path',)
+#    5: ('AESGCM',)
+#    6: ('require_license_or_exit',)
+#    7: 'WjgVPFMyM_3YMy8wxb_fYBulpYyBrJolkPcmucCB9ZY'
+#    8: b'NCR1'
+#    9: 'node_chain_manifest.json'
+#   10: 'plus-bind-node-chain-api-v2'
+#   11: <Code311 code object _resource_root at 0x10995eeb0, file resource_runtime.py>, line 27
+#   12: <Code311 code object _app_root at 0x10995eb20, file resource_runtime.py>, line 31
+#   13: <Code311 code object _key at 0x10995ea30, file resource_runtime.py>, line 35
+#   14: <Code311 code object validate_node_chain_manifest at 0x10992d430, file resource_runtime.py>, line 40
+#   15: <Code311 code object resolve_node_chain_dir at 0x10992d5b0, file resource_runtime.py>, line 67
+#   16: ('return', 'Path')
+#   17: ('return', 'bytes')
+#   18: ('directory', 'Path', 'return', 'dict[str, str]')
+# Names:
+#    0: __doc__
+#    1: __future__
+#    2: annotations
+#    3: base64
+#    4: hashlib
+#    5: io
+#    6: json
+#    7: os
+#    8: shutil
+#    9: sys
+#   10: tempfile
+#   11: zipfile
+#   12: pathlib
+#   13: Path
+#   14: cryptography.hazmat.primitives.ciphers.aead
+#   15: AESGCM
+#   16: license_gate
+#   17: require_license_or_exit
+#   18: RESOURCE_KEY_B64
+#   19: MAGIC
+#   20: NODE_CHAIN_MANIFEST
+#   21: NODE_CHAIN_CONTRACT
+#   22: _resource_root
+#   23: _app_root
+#   24: _key
+#   25: validate_node_chain_manifest
+#   26: resolve_node_chain_dir
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ("Resolve the encrypted Node chain for the standalone portable package.")
+               4 STORE_NAME           (__doc__)
+
+  4:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (('annotations',))
+              10 IMPORT_NAME          (__future__)
+              12 IMPORT_FROM          (annotations)
+              14 STORE_NAME           (annotations)
+              16 POP_TOP
+
+  6:          18 LOAD_CONST           (0)
+              20 LOAD_CONST           (None)
+              22 IMPORT_NAME          (base64)
+              24 STORE_NAME           (base64)
+
+  7:          26 LOAD_CONST           (0)
+              28 LOAD_CONST           (None)
+              30 IMPORT_NAME          (hashlib)
+              32 STORE_NAME           (hashlib)
+
+  8:          34 LOAD_CONST           (0)
+              36 LOAD_CONST           (None)
+              38 IMPORT_NAME          (io)
+              40 STORE_NAME           (io)
+
+  9:          42 LOAD_CONST           (0)
+              44 LOAD_CONST           (None)
+              46 IMPORT_NAME          (json)
+              48 STORE_NAME           (json)
+
+ 10:          50 LOAD_CONST           (0)
+              52 LOAD_CONST           (None)
+              54 IMPORT_NAME          (os)
+              56 STORE_NAME           (os)
+
+ 11:          58 LOAD_CONST           (0)
+              60 LOAD_CONST           (None)
+              62 IMPORT_NAME          (shutil)
+              64 STORE_NAME           (shutil)
+
+ 12:          66 LOAD_CONST           (0)
+              68 LOAD_CONST           (None)
+              70 IMPORT_NAME          (sys)
+              72 STORE_NAME           (sys)
+
+ 13:          74 LOAD_CONST           (0)
+              76 LOAD_CONST           (None)
+              78 IMPORT_NAME          (tempfile)
+              80 STORE_NAME           (tempfile)
+
+ 14:          82 LOAD_CONST           (0)
+              84 LOAD_CONST           (None)
+              86 IMPORT_NAME          (zipfile)
+              88 STORE_NAME           (zipfile)
+
+ 15:          90 LOAD_CONST           (0)
+              92 LOAD_CONST           (('Path',))
+              94 IMPORT_NAME          (pathlib)
+              96 IMPORT_FROM          (Path)
+              98 STORE_NAME           (Path)
+             100 POP_TOP
+
+ 17:         102 LOAD_CONST           (0)
+             104 LOAD_CONST           (('AESGCM',))
+             106 IMPORT_NAME          (cryptography.hazmat.primitives.ciphers.aead)
+             108 IMPORT_FROM          (AESGCM)
+             110 STORE_NAME           (AESGCM)
+             112 POP_TOP
+
+ 18:         114 LOAD_CONST           (0)
+             116 LOAD_CONST           (('require_license_or_exit',))
+             118 IMPORT_NAME          (license_gate)
+             120 IMPORT_FROM          (require_license_or_exit)
+             122 STORE_NAME           (require_license_or_exit)
+             124 POP_TOP
+
+ 21:         126 LOAD_CONST           ("WjgVPFMyM_3YMy8wxb_fYBulpYyBrJolkPcmucCB9ZY")
+             128 STORE_NAME           (RESOURCE_KEY_B64)
+
+ 22:         130 LOAD_CONST           (b'NCR1')
+             132 STORE_NAME           (MAGIC)
+
+ 23:         134 LOAD_CONST           ("node_chain_manifest.json")
+             136 STORE_NAME           (NODE_CHAIN_MANIFEST)
+
+ 24:         138 LOAD_CONST           ("plus-bind-node-chain-api-v2")
+             140 STORE_NAME           (NODE_CHAIN_CONTRACT)
+
+ 27:         142 LOAD_CONST           (('return', 'Path'))
+             144 LOAD_CONST           (<Code311 code object _resource_root at 0x10995eeb0, file resource_runtime.py>, line 27)
+             146 MAKE_FUNCTION
+             148 SET_FUNCTION_ATTRIBUTE 4
+             150 STORE_NAME           (_resource_root)
+
+ 31:         152 LOAD_CONST           (('return', 'Path'))
+             154 LOAD_CONST           (<Code311 code object _app_root at 0x10995eb20, file resource_runtime.py>, line 31)
+             156 MAKE_FUNCTION
+             158 SET_FUNCTION_ATTRIBUTE 4
+             160 STORE_NAME           (_app_root)
+
+ 35:         162 LOAD_CONST           (('return', 'bytes'))
+             164 LOAD_CONST           (<Code311 code object _key at 0x10995ea30, file resource_runtime.py>, line 35)
+             166 MAKE_FUNCTION
+             168 SET_FUNCTION_ATTRIBUTE 4
+             170 STORE_NAME           (_key)
+
+ 40:         172 LOAD_CONST           (('directory', 'Path', 'return', 'dict[str, str]'))
+             174 LOAD_CONST           (<Code311 code object validate_node_chain_manifest at 0x10992d430, file resource_runtime.py>, line 40)
+             176 MAKE_FUNCTION
+             178 SET_FUNCTION_ATTRIBUTE 4
+             180 STORE_NAME           (validate_node_chain_manifest)
+
+ 67:         182 LOAD_CONST           (('return', 'Path'))
+             184 LOAD_CONST           (<Code311 code object resolve_node_chain_dir at 0x10992d5b0, file resource_runtime.py>, line 67)
+             186 MAKE_FUNCTION
+             188 SET_FUNCTION_ATTRIBUTE 4
+             190 STORE_NAME           (resolve_node_chain_dir)
+             192 RETURN_CONST         (None)
+
+
+# Method Name:       _resource_root
+# Filename:          resource_runtime.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        9
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        27
+# Constants:
+#    0: None
+#    1: '_MEIPASS'
+# Names:
+#    0: Path
+#    1: getattr
+#    2: sys
+#    3: __file__
+#    4: resolve
+#    5: parent
+ 27:           0 RESUME               0
+
+ 28:           2 LOAD_GLOBAL          (NULL + Path)
+              12 LOAD_GLOBAL          (NULL + getattr)
+              22 LOAD_GLOBAL          (sys)
+              32 LOAD_CONST           ("_MEIPASS")
+              34 LOAD_GLOBAL          (NULL + Path)
+              44 LOAD_GLOBAL          (__file__)
+              54 CALL                 (1 positional)
+              62 LOAD_ATTR            (NULL|self + resolve)
+              82 CALL                 (0 positional)
+              90 LOAD_ATTR            (parent)
+             110 CALL                 (3 positional)
+             118 CALL                 (1 positional)
+             126 LOAD_ATTR            (NULL|self + resolve)
+             146 CALL                 (0 positional)
+             154 RETURN_VALUE
+
+
+# Method Name:       _app_root
+# Filename:          resource_runtime.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        31
+# Constants:
+#    0: None
+#    1: 'frozen'
+#    2: False
+# Names:
+#    0: getattr
+#    1: sys
+#    2: Path
+#    3: executable
+#    4: resolve
+#    5: parent
+#    6: __file__
+ 31:           0 RESUME               0
+
+ 32:           2 LOAD_GLOBAL          (NULL + getattr)
+              12 LOAD_GLOBAL          (sys)
+              22 LOAD_CONST           ("frozen")
+              24 LOAD_CONST           (False)
+              26 CALL                 (3 positional)
+              34 TO_BOOL
+              42 POP_JUMP_IF_FALSE    (to 144)
+              46 LOAD_GLOBAL          (NULL + Path)
+              56 LOAD_GLOBAL          (sys)
+              66 LOAD_ATTR            (executable)
+              86 CALL                 (1 positional)
+              94 LOAD_ATTR            (NULL|self + resolve)
+             114 CALL                 (0 positional)
+             122 LOAD_ATTR            (parent)
+             142 RETURN_VALUE
+         >>  144 LOAD_GLOBAL          (NULL + Path)
+             154 LOAD_GLOBAL          (__file__)
+             164 CALL                 (1 positional)
+             172 LOAD_ATTR            (NULL|self + resolve)
+             192 CALL                 (0 positional)
+             200 LOAD_ATTR            (parent)
+             220 RETURN_VALUE
+
+
+# Method Name:       _key
+# Filename:          resource_runtime.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        35
+# Constants:
+#    0: None
+#    1: '='
+#    2: 4
+# Names:
+#    0: RESOURCE_KEY_B64
+#    1: base64
+#    2: urlsafe_b64decode
+#    3: len
+# Varnames:
+#	text
+# Local variables:
+#    0: text
+ 35:           0 RESUME               0
+
+ 36:           2 LOAD_GLOBAL          (RESOURCE_KEY_B64)
+              12 STORE_FAST           (text)
+
+ 37:          14 LOAD_GLOBAL          (base64)
+              24 LOAD_ATTR            (urlsafe_b64decode)
+              44 PUSH_NULL
+              46 LOAD_FAST            (text)
+              48 LOAD_CONST           ("=")
+              50 LOAD_GLOBAL          (NULL + len)
+              60 LOAD_FAST            (text)
+              62 CALL                 (1 positional)
+              70 UNARY_NEGATIVE
+              72 LOAD_CONST           (4)
+              74 BINARY_OP            (%)
+              78 BINARY_OP            (*)
+              82 BINARY_OP            (+)
+              86 CALL                 (1 positional)
+              94 RETURN_VALUE
+
+
+# Method Name:       validate_node_chain_manifest
+# Filename:          resource_runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        40
+# Constants:
+#    0: 'Reject an EXE/resource mix before any mailbox task can start.'
+#    1: 'real_sentinel_runner.js'
+#    2: 'codex_chain_runner.py'
+#    3: 'utf-8'
+#    4: ('encoding',)
+#    5: 'node_chain_resource_mismatch: 请完整解压同一版本发行包，不要混用 EXE、node_chain.dat 或旧缓存'
+#    6: None
+#    7: 'node_chain_resource_mismatch: 节点资源清单格式无效'
+#    8: 'schema'
+#    9: 'plus-bind-node-chain-manifest.v1'
+#   10: 'contract'
+#   11: 'runner'
+#   12: 'codex_chain_runner'
+#   13: '_generate_sub2_oauth_session.log_fn'
+#   14: 'node_chain_resource_mismatch: EXE 与 node_chain.dat 版本不一致，请重新完整解压发行包'
+#   15: ('schema', 'contract')
+# Names:
+#    0: NODE_CHAIN_MANIFEST
+#    1: json
+#    2: loads
+#    3: read_text
+#    4: Exception
+#    5: RuntimeError
+#    6: isinstance
+#    7: dict
+#    8: get
+#    9: NODE_CHAIN_CONTRACT
+#   10: name
+#   11: is_file
+#   12: str
+# Varnames:
+#	directory, manifest_path, runner_path, chain_path, manifest, exc
+# Positional arguments:
+#	directory
+# Local variables:
+#    1: manifest_path
+#    2: runner_path
+#    3: chain_path
+#    4: manifest
+#    5: exc
+ 40:           0 RESUME               0
+
+ 42:           2 LOAD_FAST            (directory)
+               4 LOAD_GLOBAL          (NODE_CHAIN_MANIFEST)
+              14 BINARY_OP            (/)
+              18 STORE_FAST           (manifest_path)
+
+ 43:          20 LOAD_FAST            (directory)
+              22 LOAD_CONST           ("real_sentinel_runner.js")
+              24 BINARY_OP            (/)
+              28 STORE_FAST           (runner_path)
+
+ 44:          30 LOAD_FAST            (directory)
+              32 LOAD_CONST           ("codex_chain_runner.py")
+              34 BINARY_OP            (/)
+              38 STORE_FAST           (chain_path)
+
+ 45:          40 NOP
+
+ 46:          42 LOAD_GLOBAL          (json)
+              52 LOAD_ATTR            (loads)
+              72 PUSH_NULL
+              74 LOAD_FAST            (manifest_path)
+              76 LOAD_ATTR            (NULL|self + read_text)
+              96 LOAD_CONST           ("utf-8")
+              98 LOAD_CONST           (('encoding',))
+             100 CALL_KW              1
+             102 CALL                 (1 positional)
+             110 STORE_FAST           (manifest)
+
+ 51:         112 LOAD_GLOBAL          (NULL + isinstance)
+             122 LOAD_FAST            (manifest)
+             124 LOAD_GLOBAL          (dict)
+             134 CALL                 (2 positional)
+             142 TO_BOOL
+             150 POP_JUMP_IF_TRUE     (to 176)
+
+ 52:         154 LOAD_GLOBAL          (NULL + RuntimeError)
+             164 LOAD_CONST           ("node_chain_resource_mismatch: 节点资源清单格式无效")
+             166 CALL                 (1 positional)
+             174 RAISE_VARARGS        (exception instance)
+
+ 54:     >>  176 LOAD_FAST            (manifest)
+             178 LOAD_ATTR            (NULL|self + get)
+             198 LOAD_CONST           ("schema")
+             200 CALL                 (1 positional)
+             208 LOAD_CONST           ("plus-bind-node-chain-manifest.v1")
+             210 COMPARE_OP           (!=)
+             214 POP_JUMP_IF_TRUE     (to 456)
+
+ 55:         218 LOAD_FAST            (manifest)
+             220 LOAD_ATTR            (NULL|self + get)
+             240 LOAD_CONST           ("contract")
+             242 CALL                 (1 positional)
+             250 LOAD_GLOBAL          (NODE_CHAIN_CONTRACT)
+             260 COMPARE_OP           (!=)
+             264 POP_JUMP_IF_TRUE     (to 456)
+
+ 56:         268 LOAD_FAST            (manifest)
+             270 LOAD_ATTR            (NULL|self + get)
+             290 LOAD_CONST           ("runner")
+             292 CALL                 (1 positional)
+             300 LOAD_FAST            (runner_path)
+             302 LOAD_ATTR            (name)
+             322 COMPARE_OP           (!=)
+             326 POP_JUMP_IF_TRUE     (to 456)
+
+ 57:         330 LOAD_FAST            (manifest)
+             332 LOAD_ATTR            (NULL|self + get)
+             352 LOAD_CONST           ("codex_chain_runner")
+             354 CALL                 (1 positional)
+             362 LOAD_CONST           ("_generate_sub2_oauth_session.log_fn")
+             364 COMPARE_OP           (!=)
+             368 POP_JUMP_IF_TRUE     (to 456)
+
+ 58:         372 LOAD_FAST            (runner_path)
+             374 LOAD_ATTR            (NULL|self + is_file)
+             394 CALL                 (0 positional)
+             402 TO_BOOL
+             410 POP_JUMP_IF_FALSE    (to 456)
+
+ 59:         414 LOAD_FAST            (chain_path)
+             416 LOAD_ATTR            (NULL|self + is_file)
+             436 CALL                 (0 positional)
+             444 TO_BOOL
+             452 POP_JUMP_IF_TRUE     (to 478)
+
+ 61:     >>  456 LOAD_GLOBAL          (NULL + RuntimeError)
+
+ 62:         466 LOAD_CONST           ("node_chain_resource_mismatch: EXE 与 node_chain.dat 版本不一致，请重新完整解压发行包")
+
+ 61:         468 CALL                 (1 positional)
+             476 RAISE_VARARGS        (exception instance)
+
+ 64:     >>  478 LOAD_GLOBAL          (NULL + str)
+             488 LOAD_FAST            (manifest)
+             490 LOAD_CONST           ("schema")
+             492 BINARY_SUBSCR
+             496 CALL                 (1 positional)
+             504 LOAD_GLOBAL          (NULL + str)
+             514 LOAD_FAST            (manifest)
+             516 LOAD_CONST           ("contract")
+             518 BINARY_SUBSCR
+             522 CALL                 (1 positional)
+             530 LOAD_CONST           (('schema', 'contract'))
+             532 BUILD_CONST_KEY_MAP  2
+             534 RETURN_VALUE
+         >>  536 PUSH_EXC_INFO
+
+ 47:         538 LOAD_GLOBAL          (Exception)
+             548 CHECK_EXC_MATCH
+             550 POP_JUMP_IF_FALSE    (to 588)
+             554 STORE_FAST           (exc)
+
+ 48:         556 LOAD_GLOBAL          (NULL + RuntimeError)
+
+ 49:         566 LOAD_CONST           ("node_chain_resource_mismatch: 请完整解压同一版本发行包，不要混用 EXE、node_chain.dat 或旧缓存")
+
+ 48:         568 CALL                 (1 positional)
+
+ 50:         576 LOAD_FAST            (exc)
+
+ 48:         578 RAISE_VARARGS        (exception instance with __cause__)
+         >>  580 LOAD_CONST           (None)
+             582 STORE_FAST           (exc)
+             584 DELETE_FAST          (exc)
+             586 RERAISE              1
+
+ 47:     >>  588 RERAISE              0
+         >>  590 COPY                 3
+             592 POP_EXCEPT
+             594 RERAISE              1
+
+ExceptionTable:
+  42 to 110 -> 536 [0]
+  536 to 554 -> 590 [1] lasti
+  556 to 578 -> 580 [1] lasti
+  580 to 588 -> 590 [1] lasti
+
+# Method Name:       resolve_node_chain_dir
+# Filename:          resource_runtime.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  12
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        67
+# Constants:
+#    0: None
+#    1: 'node_chain.dat'
+#    2: <Code311 code object <genexpr> at 0x10992d490, file resource_runtime.py>, line 69
+#    3: 'node_chain.dat missing: '
+#    4: 0
+#    5: 13
+#    6: 'node_chain.dat format invalid'
+#    7: 20
+#    8: 'nt'
+#    9: 'LOCALAPPDATA'
+#   10: 'XDG_CACHE_HOME'
+#   11: '.cache'
+#   12: 'PlusBindTool'
+#   13: 'node_chain'
+#   14: 'real_sentinel_runner.js'
+#   15: 12
+#   16: b'node_chain'
+#   17: True
+#   18: ('parents', 'exist_ok')
+#   19: '.'
+#   20: ('prefix', 'dir')
+#   21: 'r'
+#   22: '\\'
+#   23: '/'
+#   24: '..'
+#   25: ('ignore_errors',)
+#   26: 'node_chain extraction raced with an incomplete cache'
+#   27: 'node_chain.dat missing Sentinel runner'
+# Names:
+#    0: _app_root
+#    1: _resource_root
+#    2: next
+#    3: RuntimeError
+#    4: require_license_or_exit
+#    5: read_bytes
+#    6: startswith
+#    7: MAGIC
+#    8: len
+#    9: hashlib
+#   10: sha256
+#   11: hexdigest
+#   12: os
+#   13: name
+#   14: Path
+#   15: environ
+#   16: get
+#   17: tempfile
+#   18: gettempdir
+#   19: home
+#   20: is_file
+#   21: validate_node_chain_manifest
+#   22: AESGCM
+#   23: _key
+#   24: decrypt
+#   25: parent
+#   26: mkdir
+#   27: mkdtemp
+#   28: str
+#   29: zipfile
+#   30: ZipFile
+#   31: io
+#   32: BytesIO
+#   33: infolist
+#   34: filename
+#   35: replace
+#   36: parts
+#   37: extract
+#   38: exists
+#   39: shutil
+#   40: rmtree
+#   41: rename
+#   42: FileExistsError
+# Varnames:
+#	sources, source, raw, digest, base, target, runner, plaintext, temporary, archive, info, name
+# Local variables:
+#    0: sources
+#    1: source
+#    2: raw
+#    3: digest
+#    4: base
+#    5: target
+#    6: runner
+#    7: plaintext
+#    8: temporary
+#    9: archive
+#   10: info
+#   11: name
+ 67:           0 RESUME               0
+
+ 68:           2 LOAD_GLOBAL          (NULL + _app_root)
+              12 CALL                 (0 positional)
+              20 LOAD_CONST           ("node_chain.dat")
+              22 BINARY_OP            (/)
+              26 LOAD_GLOBAL          (NULL + _resource_root)
+              36 CALL                 (0 positional)
+              44 LOAD_CONST           ("node_chain.dat")
+              46 BINARY_OP            (/)
+              50 BUILD_TUPLE          2
+              52 STORE_FAST           (sources)
+
+ 69:          54 LOAD_GLOBAL          (NULL + next)
+              64 LOAD_CONST           (<Code311 code object <genexpr> at 0x10992d490, file resource_runtime.py>, line 69)
+              66 MAKE_FUNCTION
+              68 LOAD_FAST            (sources)
+              70 GET_ITER
+              72 CALL                 (0 positional)
+              80 LOAD_CONST           (None)
+              82 CALL                 (2 positional)
+              90 STORE_FAST           (source)
+
+ 70:          92 LOAD_FAST            (source)
+              94 POP_JUMP_IF_NOT_NONE (to 132)
+
+ 71:          98 LOAD_GLOBAL          (NULL + RuntimeError)
+             108 LOAD_CONST           ("node_chain.dat missing: ")
+             110 LOAD_FAST            (sources)
+             112 LOAD_CONST           (0)
+             114 BINARY_SUBSCR
+             118 FORMAT_SIMPLE
+             120 BUILD_STRING         2
+             122 CALL                 (1 positional)
+             130 RAISE_VARARGS        (exception instance)
+
+ 72:     >>  132 LOAD_GLOBAL          (NULL + require_license_or_exit)
+             142 CALL                 (0 positional)
+             150 POP_TOP
+
+ 73:         152 LOAD_FAST            (source)
+             154 LOAD_ATTR            (NULL|self + read_bytes)
+             174 CALL                 (0 positional)
+             182 STORE_FAST           (raw)
+
+ 74:         184 LOAD_FAST            (raw)
+             186 LOAD_ATTR            (NULL|self + startswith)
+             206 LOAD_GLOBAL          (MAGIC)
+             216 CALL                 (1 positional)
+             224 TO_BOOL
+             232 POP_JUMP_IF_FALSE    (to 298)
+             236 LOAD_GLOBAL          (NULL + len)
+             246 LOAD_FAST            (raw)
+             248 CALL                 (1 positional)
+             256 LOAD_GLOBAL          (NULL + len)
+             266 LOAD_GLOBAL          (MAGIC)
+             276 CALL                 (1 positional)
+             284 LOAD_CONST           (13)
+             286 BINARY_OP            (+)
+             290 COMPARE_OP           (<)
+             294 POP_JUMP_IF_FALSE    (to 320)
+
+ 75:     >>  298 LOAD_GLOBAL          (NULL + RuntimeError)
+             308 LOAD_CONST           ("node_chain.dat format invalid")
+             310 CALL                 (1 positional)
+             318 RAISE_VARARGS        (exception instance)
+
+ 76:     >>  320 LOAD_GLOBAL          (hashlib)
+             330 LOAD_ATTR            (sha256)
+             350 PUSH_NULL
+             352 LOAD_FAST            (raw)
+             354 CALL                 (1 positional)
+             362 LOAD_ATTR            (NULL|self + hexdigest)
+             382 CALL                 (0 positional)
+             390 LOAD_CONST           (None)
+             392 LOAD_CONST           (20)
+             394 BINARY_SLICE
+             396 STORE_FAST           (digest)
+
+ 79:         398 LOAD_GLOBAL          (os)
+             408 LOAD_ATTR            (name)
+             428 LOAD_CONST           ("nt")
+             430 COMPARE_OP           (==)
+             434 POP_JUMP_IF_FALSE    (to 574)
+             438 LOAD_GLOBAL          (NULL + Path)
+             448 LOAD_GLOBAL          (os)
+             458 LOAD_ATTR            (environ)
+             478 LOAD_ATTR            (NULL|self + get)
+             498 LOAD_CONST           ("LOCALAPPDATA")
+             500 CALL                 (1 positional)
+             508 COPY                 1
+             510 TO_BOOL
+             518 POP_JUMP_IF_TRUE     (to 564)
+             522 POP_TOP
+             524 LOAD_GLOBAL          (tempfile)
+             534 LOAD_ATTR            (gettempdir)
+             554 PUSH_NULL
+             556 CALL                 (0 positional)
+         >>  564 CALL                 (1 positional)
+             572 JUMP_FORWARD         (to 714)
+         >>  574 LOAD_GLOBAL          (NULL + Path)
+             584 LOAD_GLOBAL          (os)
+             594 LOAD_ATTR            (environ)
+             614 LOAD_ATTR            (NULL|self + get)
+             634 LOAD_CONST           ("XDG_CACHE_HOME")
+             636 CALL                 (1 positional)
+             644 COPY                 1
+             646 TO_BOOL
+             654 POP_JUMP_IF_TRUE     (to 706)
+             658 POP_TOP
+             660 LOAD_GLOBAL          (Path)
+             670 LOAD_ATTR            (home)
+             690 PUSH_NULL
+             692 CALL                 (0 positional)
+             700 LOAD_CONST           (".cache")
+             702 BINARY_OP            (/)
+         >>  706 CALL                 (1 positional)
+         >>  714 STORE_FAST           (base)
+
+ 80:         716 LOAD_FAST            (base)
+             718 LOAD_CONST           ("PlusBindTool")
+             720 BINARY_OP            (/)
+             724 LOAD_CONST           ("node_chain")
+             726 BINARY_OP            (/)
+             730 LOAD_FAST            (digest)
+             732 BINARY_OP            (/)
+             736 STORE_FAST           (target)
+
+ 81:         738 LOAD_FAST            (target)
+             740 LOAD_CONST           ("real_sentinel_runner.js")
+             742 BINARY_OP            (/)
+             746 STORE_FAST           (runner)
+
+ 82:         748 LOAD_FAST            (runner)
+             750 LOAD_ATTR            (NULL|self + is_file)
+             770 CALL                 (0 positional)
+             778 TO_BOOL
+             786 POP_JUMP_IF_FALSE    (to 816)
+
+ 83:         790 LOAD_GLOBAL          (NULL + validate_node_chain_manifest)
+             800 LOAD_FAST            (target)
+             802 CALL                 (1 positional)
+             810 POP_TOP
+
+ 84:         812 LOAD_FAST            (target)
+             814 RETURN_VALUE
+
+ 85:     >>  816 LOAD_GLOBAL          (NULL + AESGCM)
+             826 LOAD_GLOBAL          (NULL + _key)
+             836 CALL                 (0 positional)
+             844 CALL                 (1 positional)
+             852 LOAD_ATTR            (NULL|self + decrypt)
+             872 LOAD_FAST            (raw)
+             874 LOAD_GLOBAL          (NULL + len)
+             884 LOAD_GLOBAL          (MAGIC)
+             894 CALL                 (1 positional)
+             902 LOAD_GLOBAL          (NULL + len)
+             912 LOAD_GLOBAL          (MAGIC)
+             922 CALL                 (1 positional)
+             930 LOAD_CONST           (12)
+             932 BINARY_OP            (+)
+             936 BINARY_SLICE
+             938 LOAD_FAST            (raw)
+             940 LOAD_GLOBAL          (NULL + len)
+             950 LOAD_GLOBAL          (MAGIC)
+             960 CALL                 (1 positional)
+             968 LOAD_CONST           (12)
+             970 BINARY_OP            (+)
+             974 LOAD_CONST           (None)
+             976 BINARY_SLICE
+             978 LOAD_CONST           (b'node_chain')
+             980 CALL                 (3 positional)
+             988 STORE_FAST           (plaintext)
+
+ 86:         990 LOAD_FAST            (target)
+             992 LOAD_ATTR            (parent)
+            1012 LOAD_ATTR            (NULL|self + mkdir)
+            1032 LOAD_CONST           (True)
+            1034 LOAD_CONST           (True)
+            1036 LOAD_CONST           (('parents', 'exist_ok'))
+            1038 CALL_KW              2
+            1040 POP_TOP
+
+ 90:        1042 LOAD_GLOBAL          (NULL + Path)
+            1052 LOAD_GLOBAL          (tempfile)
+            1062 LOAD_ATTR            (mkdtemp)
+            1082 PUSH_NULL
+            1084 LOAD_CONST           (".")
+            1086 LOAD_FAST            (digest)
+            1088 FORMAT_SIMPLE
+            1090 LOAD_CONST           (".")
+            1092 BUILD_STRING         3
+            1094 LOAD_GLOBAL          (NULL + str)
+            1104 LOAD_FAST            (target)
+            1106 LOAD_ATTR            (parent)
+            1126 CALL                 (1 positional)
+            1134 LOAD_CONST           (('prefix', 'dir'))
+            1136 CALL_KW              2
+            1138 CALL                 (1 positional)
+            1146 STORE_FAST           (temporary)
+
+ 91:        1148 LOAD_GLOBAL          (zipfile)
+            1158 LOAD_ATTR            (ZipFile)
+            1178 PUSH_NULL
+            1180 LOAD_GLOBAL          (io)
+            1190 LOAD_ATTR            (BytesIO)
+            1210 PUSH_NULL
+            1212 LOAD_FAST            (plaintext)
+            1214 CALL                 (1 positional)
+            1222 LOAD_CONST           ("r")
+            1224 CALL                 (2 positional)
+            1232 BEFORE_WITH
+            1234 STORE_FAST           (archive)
+
+ 92:        1236 LOAD_FAST            (archive)
+            1238 LOAD_ATTR            (NULL|self + infolist)
+            1258 CALL                 (0 positional)
+            1266 GET_ITER
+            1268 FOR_ITER             (to 1480)
+            1272 STORE_FAST           (info)
+
+ 93:        1274 LOAD_FAST            (info)
+            1276 LOAD_ATTR            (filename)
+            1296 LOAD_ATTR            (NULL|self + replace)
+            1316 LOAD_CONST           ("\\")
+            1318 LOAD_CONST           ("/")
+            1320 CALL                 (2 positional)
+            1328 STORE_FAST           (name)
+
+ 94:        1330 LOAD_FAST            (name)
+            1332 TO_BOOL
+            1340 POP_JUMP_IF_FALSE    (to 1438)
+            1344 LOAD_FAST            (name)
+            1346 LOAD_ATTR            (NULL|self + startswith)
+            1366 LOAD_CONST           ("/")
+            1368 CALL                 (1 positional)
+            1376 TO_BOOL
+            1384 POP_JUMP_IF_TRUE     (to 1438)
+            1388 LOAD_CONST           ("..")
+            1390 LOAD_GLOBAL          (NULL + Path)
+            1400 LOAD_FAST            (name)
+            1402 CALL                 (1 positional)
+            1410 LOAD_ATTR            (parts)
+            1430 CONTAINS_OP          (in)
+            1434 POP_JUMP_IF_FALSE    (to 1442)
+
+ 95:     >> 1438 JUMP_BACKWARD        (to 1268)
+
+ 96:     >> 1442 LOAD_FAST            (archive)
+            1444 LOAD_ATTR            (NULL|self + extract)
+            1464 LOAD_FAST_LOAD_FAST  (info, temporary)
+            1466 CALL                 (2 positional)
+            1474 POP_TOP
+            1476 JUMP_BACKWARD        (to 1268)
+
+ 92:     >> 1480 END_FOR
+            1482 POP_TOP
+
+ 91:        1484 LOAD_CONST           (None)
+            1486 LOAD_CONST           (None)
+            1488 LOAD_CONST           (None)
+            1490 CALL                 (2 positional)
+            1498 POP_TOP
+
+ 97:        1500 LOAD_FAST            (target)
+            1502 LOAD_ATTR            (NULL|self + exists)
+            1522 CALL                 (0 positional)
+            1530 TO_BOOL
+            1538 POP_JUMP_IF_FALSE    (to 1672)
+
+ 98:        1542 LOAD_FAST            (runner)
+            1544 LOAD_ATTR            (NULL|self + is_file)
+            1564 CALL                 (0 positional)
+            1572 TO_BOOL
+            1580 POP_JUMP_IF_FALSE    (to 1630)
+
+ 99:        1584 LOAD_GLOBAL          (shutil)
+            1594 LOAD_ATTR            (rmtree)
+            1614 PUSH_NULL
+         >> 1616 LOAD_FAST            (temporary)
+            1618 LOAD_CONST           (True)
+            1620 LOAD_CONST           (('ignore_errors',))
+            1622 CALL_KW              2
+            1624 POP_TOP
+
+100:        1626 LOAD_FAST            (target)
+            1628 RETURN_VALUE
+
+101:     >> 1630 LOAD_GLOBAL          (shutil)
+            1640 LOAD_ATTR            (rmtree)
+            1660 PUSH_NULL
+            1662 LOAD_FAST            (target)
+            1664 LOAD_CONST           (True)
+            1666 LOAD_CONST           (('ignore_errors',))
+            1668 CALL_KW              2
+            1670 POP_TOP
+
+102:     >> 1672 NOP
+
+103:        1674 LOAD_FAST            (temporary)
+            1676 LOAD_ATTR            (NULL|self + rename)
+            1696 LOAD_FAST            (target)
+            1698 CALL                 (1 positional)
+            1706 POP_TOP
+
+108:        1708 LOAD_FAST            (runner)
+            1710 LOAD_ATTR            (NULL|self + is_file)
+            1730 CALL                 (0 positional)
+            1738 TO_BOOL
+            1746 POP_JUMP_IF_TRUE     (to 1772)
+
+109:        1750 LOAD_GLOBAL          (NULL + RuntimeError)
+            1760 LOAD_CONST           ("node_chain.dat missing Sentinel runner")
+            1762 CALL                 (1 positional)
+            1770 RAISE_VARARGS        (exception instance)
+
+110:     >> 1772 LOAD_GLOBAL          (NULL + validate_node_chain_manifest)
+            1782 LOAD_FAST            (target)
+            1784 CALL                 (1 positional)
+            1792 POP_TOP
+
+111:        1794 LOAD_FAST            (target)
+            1796 RETURN_VALUE
+
+ 91:     >> 1798 PUSH_EXC_INFO
+            1800 WITH_EXCEPT_START    0
+            1802 TO_BOOL
+            1810 POP_JUMP_IF_TRUE     (to 1816)
+            1814 RERAISE              2
+         >> 1816 POP_TOP
+            1818 POP_EXCEPT
+            1820 POP_TOP
+            1822 POP_TOP
+            1824 JUMP_BACKWARD_NO_INTERRUPT (to 1500)
+         >> 1826 COPY                 3
+            1828 POP_EXCEPT
+            1830 RERAISE              1
+         >> 1832 PUSH_EXC_INFO
+
+104:        1834 LOAD_GLOBAL          (FileExistsError)
+            1844 CHECK_EXC_MATCH
+            1846 POP_JUMP_IF_FALSE    (to 1962)
+            1850 POP_TOP
+
+105:        1852 LOAD_GLOBAL          (shutil)
+            1862 LOAD_ATTR            (rmtree)
+            1882 PUSH_NULL
+            1884 LOAD_FAST            (temporary)
+            1886 LOAD_CONST           (True)
+            1888 LOAD_CONST           (('ignore_errors',))
+            1890 CALL_KW              2
+            1892 POP_TOP
+
+106:        1894 LOAD_FAST            (runner)
+            1896 LOAD_ATTR            (NULL|self + is_file)
+            1916 CALL                 (0 positional)
+            1924 TO_BOOL
+            1932 POP_JUMP_IF_TRUE     (to 1958)
+
+107:        1936 LOAD_GLOBAL          (NULL + RuntimeError)
+            1946 LOAD_CONST           ("node_chain extraction raced with an incomplete cache")
+            1948 CALL                 (1 positional)
+            1956 RAISE_VARARGS        (exception instance)
+
+106:     >> 1958 POP_EXCEPT
+            1960 JUMP_BACKWARD_NO_INTERRUPT (to 1708)
+
+104:     >> 1962 RERAISE              0
+         >> 1964 COPY                 3
+            1966 POP_EXCEPT
+            1968 RERAISE              1
+
+ExceptionTable:
+  1234 to 1482 -> 1798 [1] lasti
+  1674 to 1706 -> 1832 [0]
+  1798 to 1816 -> 1826 [3] lasti
+  1832 to 1956 -> 1964 [1] lasti
+  1962 to 1962 -> 1964 [1] lasti
+
+# Method Name:       <genexpr>
+# Filename:          resource_runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        69
+# Constants:
+#    0: None
+# Names:
+#    0: is_file
+# Varnames:
+#	.0, candidate
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: candidate
+ 69:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 72)
+              14 STORE_FAST_LOAD_FAST (candidate, candidate)
+              16 LOAD_ATTR            (NULL|self + is_file)
+              36 CALL                 (0 positional)
+              44 TO_BOOL
+              52 POP_JUMP_IF_TRUE     (to 60)
+              56 JUMP_BACKWARD        (to 10)
+         >>   60 LOAD_FAST            (candidate)
+              62 YIELD_VALUE          0
+              64 RESUME               5
+              66 POP_TOP
+              68 JUMP_BACKWARD        (to 10)
+         >>   72 END_FOR
+              74 POP_TOP
+              76 RETURN_CONST         (None)
+         >>   78 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              80 RERAISE              1
+
+ExceptionTable:
+  4 to 50 -> 78 [0] lasti
+  60 to 76 -> 78 [0] lasti
