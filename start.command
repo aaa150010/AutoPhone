@@ -138,15 +138,23 @@ if [ -n "$PIDS_TO_STOP" ]; then
 fi
 
 (
-  for attempt in {1..30}; do
+  ready=""
+  for attempt in {1..120}; do
     if /usr/bin/curl -fsS "http://127.0.0.1:$PORT/api/state" >/dev/null 2>&1; then
+      ready="1"
       CACHE_BUSTER="$(date +%s)"
-      /usr/bin/open "http://127.0.0.1:$PORT/?v=$CACHE_BUSTER" >/dev/null 2>&1 || true
-      /usr/bin/open "http://127.0.0.1:$PORT/mailboxes?v=$CACHE_BUSTER" >/dev/null 2>&1 || true
+      if ! /usr/bin/open "http://127.0.0.1:$PORT/?v=$CACHE_BUSTER" >/dev/null 2>&1; then
+        echo "WebUI is ready, but macOS could not open the browser automatically."
+        echo "Open http://127.0.0.1:$PORT/ manually."
+      fi
       exit 0
     fi
     sleep 0.5
   done
+  if [ -z "$ready" ]; then
+    echo "WebUI did not become ready within 60 seconds."
+    echo "Try opening http://127.0.0.1:$PORT/ manually and check the terminal output above."
+  fi
 ) &
 
 echo "Starting WebUI: http://127.0.0.1:$PORT"
