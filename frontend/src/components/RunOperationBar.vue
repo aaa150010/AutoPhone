@@ -111,8 +111,14 @@ async function importConfig(event: Event) {
 </template>
 
 <style scoped>
-.operation-scroll { width: 100%; margin-top: 8px; overflow-x: auto; overflow-y: hidden; }
-.operation-bar { display: flex; flex-wrap: nowrap; gap: 4px; width: max-content; min-width: 100%; }
-.operation-bar :deep(.el-button) { flex: 0 0 auto; min-width: 0; margin-left: 0; padding: 5px 6px; }
+.operation-scroll { width: 100%; margin-top: 8px; overflow: hidden; }
+.operation-bar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; width: 100%; }
+.operation-bar :deep(.el-button) {
+  width: 100%;
+  min-width: 0;
+  margin-left: 0;
+  padding: 5px 2px;
+  font-size: 11px;
+}
 .file-input { display: none; }
 </style>

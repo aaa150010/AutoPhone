@@ -225,7 +225,6 @@ onUnmounted(() => {
 
       <el-card shadow="never" class="runtime-card">
         <RuntimeMetrics :runtime="state.runtime" />
-        <el-divider content-position="center">任务结果</el-divider>
         <div class="task-section"><TaskResultsPanel :tasks="state.runtime?.tasks || []" /></div>
         <el-divider content-position="center">运行日志</el-divider>
         <div class="log-section"><LogPanel :logs="state.logs || state.runtime?.logs || []" /></div>
