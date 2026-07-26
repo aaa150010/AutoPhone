@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import TaskProgressCell from './TaskProgressCell.vue'
+import { useTaskProgressClock } from '../composables/useTaskProgressClock'
 import type { MailboxRow } from '../types/api'
 
 const props = defineProps<{
@@ -15,6 +17,7 @@ const emit = defineEmits<{
 }>()
 
 const tableRef = ref<any>()
+const nowSeconds = useTaskProgressClock(() => props.rows)
 
 function rowKey(row: MailboxRow) {
   return row.source_row
@@ -102,6 +105,11 @@ function costDetail(row: MailboxRow) {
         <el-tag :type="row.status === 'consumed' ? 'success' : row.status === 'failed' ? 'danger' : 'info'">
           {{ row.status_label || row.status }}
         </el-tag>
+      </template>
+    </el-table-column>
+    <el-table-column label="运行状态" width="190">
+      <template #default="{ row }">
+        <TaskProgressCell :progress="row.progress" :now-seconds="nowSeconds" />
       </template>
     </el-table-column>
     <el-table-column label="失败原因/说明" min-width="240" show-overflow-tooltip>

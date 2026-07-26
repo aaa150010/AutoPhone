@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { CircleCheckFilled, CircleCloseFilled, Message, Monitor } from '@element-plus/icons-vue'
 import DashboardMetricCard from './DashboardMetricCard.vue'
+import TaskStageMetrics from './TaskStageMetrics.vue'
 
 const props = defineProps<{ runtime: any }>()
 
@@ -18,20 +19,26 @@ const failed = computed(() => Number(
 </script>
 
 <template>
-  <div class="metrics">
-    <DashboardMetricCard
-      title="状态"
-      :value="runtime?.running ? '运行中' : '未运行'"
-      :icon="Monitor"
-      :tone="runtime?.running ? 'success' : 'warning'"
-    />
-    <DashboardMetricCard title="邮箱可用总数" :value="runtime?.pool?.available || 0" :icon="Message" />
-    <DashboardMetricCard title="成功数量" :value="successful" :icon="CircleCheckFilled" tone="success" />
-    <DashboardMetricCard title="失败数量" :value="failed" :icon="CircleCloseFilled" tone="danger" />
+  <div class="runtime-metrics">
+    <div class="primary-metrics">
+      <DashboardMetricCard
+        title="状态"
+        :value="runtime?.running ? '运行中' : '未运行'"
+        :icon="Monitor"
+        :tone="runtime?.running ? 'success' : 'warning'"
+      />
+      <DashboardMetricCard title="邮箱可用总数" :value="runtime?.pool?.available || 0" :icon="Message" />
+      <DashboardMetricCard title="成功数量" :value="successful" :icon="CircleCheckFilled" tone="success" />
+      <DashboardMetricCard title="失败数量" :value="failed" :icon="CircleCloseFilled" tone="danger" />
+    </div>
+    <TaskStageMetrics :counts="runtime?.stage_counts" />
   </div>
 </template>
 
 <style scoped>
-.metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
-@media (max-width: 700px) { .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.runtime-metrics { flex: 0 0 auto; margin-bottom: 10px; }
+.primary-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 6px; }
+@media (max-width: 700px) {
+  .primary-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 </style>

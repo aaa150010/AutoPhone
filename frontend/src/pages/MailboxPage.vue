@@ -29,6 +29,7 @@ const metricIcons: any = {
   failed: CircleCloseFilled,
 }
 let timer = 0
+let pollingStopped = false
 let dataVersion = 0
 let latestRefresh = 0
 
@@ -36,7 +37,16 @@ const rows = computed(() => data.value.rows.filter((row) => {
   const matchesFilter = filter.value === 'all'
     || (filter.value === 'not_success' ? row.status !== 'consumed' : row.status === filter.value)
   const query = searchText.value.trim().toLowerCase()
-  const haystack = [row.email, row.password, row.status, row.status_label, row.error, row.reason]
+  const haystack = [
+    row.email,
+    row.password,
+    row.status,
+    row.status_label,
+    row.task_status,
+    row.progress?.label,
+    row.error,
+    row.reason,
+  ]
     .join(' ')
     .toLowerCase()
   return matchesFilter && (!query || haystack.includes(query))
@@ -143,11 +153,24 @@ async function code(line: number) {
   }
 }
 
-onMounted(async () => {
+async function poll() {
   await refresh()
-  timer = window.setInterval(refresh, 3000)
+  if (pollingStopped) return
+  const hasRunningTask = data.value.rows.some(row => row.progress && row.progress.finished_at == null)
+  timer = window.setTimeout(poll, hasRunningTask ? 1000 : 3000)
+}
+
+onMounted(async () => {
+  pollingStopped = false
+  await refresh()
+  if (pollingStopped) return
+  const hasRunningTask = data.value.rows.some(row => row.progress && row.progress.finished_at == null)
+  timer = window.setTimeout(poll, hasRunningTask ? 1000 : 3000)
 })
-onUnmounted(() => window.clearInterval(timer))
+onUnmounted(() => {
+  pollingStopped = true
+  window.clearTimeout(timer)
+})
 </script>
 
 <template>
