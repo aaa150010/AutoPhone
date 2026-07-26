@@ -1,6 +1,6 @@
-# gptPhone mac 运行说明
+# 自动接码机（gptPhone）macOS 使用说明
 
-这是一个 macOS 可双击运行的 gptPhone WebUI 工具。主要用途是批量导入邮箱账号，自动走 ChatGPT/OpenAI Auth 授权、邮箱取码、必要时手机接码，并把成功结果上传到 SUB2 分组和 nvtoken 平台。
+这是一个 macOS 可双击运行的 Element Plus WebUI 工具。主要用途是批量导入邮箱账号，自动走 ChatGPT/OpenAI Auth 授权、邮箱取码、必要时手机接码，并把成功结果上传到 SUB2 分组和 nvtoken 平台。
 
 ## 快速启动
 
@@ -29,7 +29,7 @@ start.command
 - 安装 Flask、curl_cffi、cryptography、requests 等依赖
 - 准备 `data/`、`engine/` 等运行目录
 - 检查 Node.js；如果本机有 Homebrew 但没有 Node.js，会尝试自动安装 `node`
-- 启动 WebUI，并自动打开主页面和邮箱管理页
+- 启动 WebUI，并自动打开“自动接码机”主页面
 
 默认地址：
 
@@ -39,6 +39,8 @@ http://127.0.0.1:18777/mailboxes
 ```
 
 端口固定为 `18777`。如果重复双击启动，脚本会先关闭旧的 WebUI 实例，再在同一端口启动新的。
+
+主页面左侧提供“运行控制”和“邮箱管理”两个入口，不需要同时打开两个浏览器标签页。
 
 停止运行：关闭启动脚本打开的 Terminal 窗口，或在 Terminal 里按 `Ctrl-C`。
 
@@ -51,6 +53,51 @@ chmod +x start.command
 ```
 
 如果 macOS Gatekeeper 提示来自未知开发者，可以在 Finder 里右键 `start.command`，选择“打开”，再确认运行。
+
+## 页面使用流程
+
+### 1. 导入邮箱
+
+打开左侧“邮箱管理”，在“批量追加导入”文本框中每行粘贴一个账号，然后点击标题右侧的“追加导入”。导入会追加到现有邮箱池，完全重复的行会自动跳过。
+
+邮箱表格支持：
+
+- 搜索邮箱、密码和状态
+- 按状态筛选和分页
+- 点击邮箱或密码复制
+- 单行“查码”，验证码显示在对应行
+- 勾选后放回可领取状态或删除
+
+### 2. 填写运行配置
+
+打开左侧“运行控制”，按需填写：
+
+- 代理地址及 SMS、邮箱取码、SUB2 的代理开关
+- 目标数量、并发数、Node 并发数和 Node 超时
+- SMSBower 最低/最高价格、短信超时、每号最大尝试和 API Key
+- SUB2 地址、账号、管理密码和分组
+- 是否上传 nvtoken，以及 nvtoken 导入地址和 API Key
+
+“每号最大尝试”为 `0` 时表示不限次数。希望限制异常重试和余额消耗时，可设为 `3` 等有限值。
+
+管理密码、SMS API Key 和 nvtoken API Key 使用密码输入框，点击输入框右侧眼睛可以显示或隐藏当前内容。
+
+### 3. 保存、预检和运行
+
+运行配置下方的四个操作按钮依次为：
+
+1. **保存配置**：保存当前页面设置。
+2. **真实链路预检**：检查 SUB2、Node 链路等运行前条件，不启动批量任务。
+3. **开始运行**：使用当前邮箱池启动任务。
+4. **停止**：向正在运行的任务发送安全停止请求。
+
+建议第一次配置或修改 SUB2/代理后，先保存配置，再执行一次真实链路预检，预检通过后开始运行。
+
+右侧“任务结果”和“运行日志”分别独立滚动。任务运行期间可以持续查看状态，不会带动整个页面滚动。
+
+### 4. 导入和导出配置
+
+“导入配置”和“导出配置”用于迁移本机保存的 SMS、SUB2 和 nvtoken 配置。导出的 JSON 包含敏感信息，应仅保存在可信设备上，不要提交到 Git 或发送给他人。
 
 ## 邮箱导入格式
 
@@ -116,9 +163,25 @@ GPT账号|登录密码|2FA密钥
 SMS API Key、SUB2、nvtoken 等敏感配置保存在本机 `data/local_config.json`，不会提交到 Git。运行页面可导入/导出这份 JSON，方便迁移到其他 Mac。
 
 - OpenAI 主代理默认: `http://127.0.0.1:7897`
+- SMS 最低价格默认: `0.01`
 - SMS 最高价格默认: `0.1`
+- Node 超时默认: `45` 秒
 
 主代理仍可在页面里修改。SMS、SUB2 是否走代理由页面上的勾选项控制；邮箱取码按导入行自身的取码方式执行。
+
+## 前端开发与构建
+
+仓库已经包含可直接运行的 `frontend/dist/`，正常双击 `start.command` 不需要安装前端依赖。
+
+修改 `frontend/src/` 后，需要重新生成生产资源：
+
+```sh
+cd frontend
+npm install
+npm run build
+```
+
+构建结果写入 `frontend/dist/`，Flask 会从 `/assets/` 提供带哈希的 JS/CSS 文件。构建完成后刷新 `http://127.0.0.1:18777/` 即可查看新版页面。
 
 ## 常见问题
 
@@ -135,6 +198,18 @@ brew install python@3.13 node
 ```
 
 然后重新双击 `start.command`。
+
+### 页面空白或 assets 返回 404
+
+如果浏览器控制台出现 `/assets/index-*.js` 或 `/assets/index-*.css` 404，先在项目里执行：
+
+```sh
+cd frontend
+npm install
+npm run build
+```
+
+然后重新双击 `start.command`，或强制刷新浏览器页面。不要直接双击 `frontend/dist/index.html`，页面需要通过 `http://127.0.0.1:18777/` 访问后端 API。
 
 ### 邮箱验证码一直收不到
 
@@ -157,6 +232,7 @@ iCloud IMAP 服务器是 `imap.mail.me.com:993`，通常不能用普通 Apple ID
 - `plus_launcher.pyc`: 恢复出的入口字节码
 - `business_pyc/`: 选出的业务 `.pyc` 模块
 - `mac_overrides/`: mac 适配和 UI/逻辑覆盖层
+- `frontend/`: Vue 3 + Element Plus 管理台源码和生产构建
 - `data/`: 运行数据、配置、邮箱池状态
 - `engine/`: 运行时准备出的引擎目录
 - `external_assets/node_chain.dat`: 原包里的外部数据
