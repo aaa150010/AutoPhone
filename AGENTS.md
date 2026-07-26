@@ -31,6 +31,7 @@ gptPhone is a macOS-local Flask application with a Vue 3 and Element Plus dashbo
 - Keep the sidebar compact, `el-main` padding at `5px`, and page height constrained to the viewport. Configuration, task results, logs, and tables should scroll inside their own allocated regions.
 - Keep action groups on one line when requested; permit horizontal scrolling only on the action group when the viewport is too narrow.
 - Reuse `DashboardMetricCard` for dashboard summary cards. The icon belongs on the left, with title over value on the right.
+- Keep numeric card transitions centralized in `RollingMetricValue`. Animate only actual numeric changes and honor `prefers-reduced-motion`.
 - Keep Element Plus locale Chinese and verify pagination labels remain Chinese.
 - Keep global scrollbars thin and blue, including native overflow containers and Element Plus scrollbars.
 - Mailbox table selection must use a stable row key. Clear selection before and after destructive mutations so line renumbering cannot select another row.
