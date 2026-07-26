@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import base64
+import copy
 import hashlib
 import hmac
 import json
@@ -20,6 +21,8 @@ from flask import send_from_directory as _send_from_directory
 import codex_oauth_chain as _codex_oauth_chain
 import imap_poller as _imap_poller
 import runtime as _runtime
+import sms_providers as _sms_providers
+import sms_runtime as _sms_runtime_ext
 import sms_selector as _sms_selector
 
 
@@ -51,6 +54,17 @@ _ORIGINAL_REAL_VERIFY_MFA_OTP = _codex_oauth_chain.RealCodexTransport.verify_mfa
 _ORIGINAL_REAL_SEND_MFA_OTP = _codex_oauth_chain.RealCodexTransport.send_mfa_otp
 _ORIGINAL_SMART_BUILD_CANDIDATES = _sms_selector.SmartSmsSelector._build_candidates_locked
 _ORIGINAL_PERSIST_RESULT = _runtime.EmailAuthImporter._persist_result
+_ORIGINAL_CONFIG_SAVE = _runtime.ImporterConfigStore.save
+_ORIGINAL_TASK_CONFIG = _runtime.EmailAuthImporter._task_config
+_ORIGINAL_IMPORTER_START = _runtime.EmailAuthImporter.start
+_ORIGINAL_CREATE_PROVIDER = _sms_providers.create_provider
+_ORIGINAL_SMS_ADAPTER_GET_NUMBER = _codex_oauth_chain.SmsProviderAdapter.get_number
+_ORIGINAL_SMS_ADAPTER_WAIT_CODE = _codex_oauth_chain.SmsProviderAdapter.wait_code
+_ORIGINAL_SMS_ADAPTER_COMPLETE = _codex_oauth_chain.SmsProviderAdapter.complete
+_ORIGINAL_SMS_ADAPTER_CANCEL = _codex_oauth_chain.SmsProviderAdapter.cancel
+_ORIGINAL_REAL_SEND_PHONE_NUMBER_OTP = _codex_oauth_chain.RealCodexTransport.send_phone_number_otp
+_ORIGINAL_SMART_CLASSIFY_ERROR = _sms_selector.SmartSmsSelector.classify_error
+_ORIGINAL_SMART_RECORD_RESULT = _sms_selector.SmartSmsSelector.record_result
 _CHATGPT_TOTP_MFA_ACTIVE_UNTIL = 0
 _SMS_PRIORITY_COUNTRIES = ("151", "37", "33", "1", "91", "55")
 _SMS_MIN_PRICE_DEFAULT = 0.01
@@ -85,6 +99,19 @@ _SMSBOWER_TOP_CACHE = {"key": None, "expires_at": 0.0, "routes": ()}
 _LOCAL_CONFIG_FILE = APP_DIR / "data" / "local_config.json"
 _NVTOKEN_IMPORT_URL_DEFAULT = "https://nvtokens.com/api/inventory/cards/import"
 _SECRET_MASK = "********"
+_SMS_KEY_POOL = _sms_runtime_ext.SmsKeyPool(
+    lambda key, proxy="": _ORIGINAL_CREATE_PROVIDER("smsbower", key, proxy=proxy)
+)
+_SMS_COST_LEDGER = _sms_runtime_ext.SmsCostLedger()
+_SMS_EXCHANGE_RATE = _sms_runtime_ext.ExchangeRateCache(APP_DIR / "data" / "usd_cny_rate.json")
+_SMS_PHONE_GATE = _sms_runtime_ext.PhoneSubmissionGate(concurrency=2, interval_seconds=0.75)
+_SMS_ROUTE_POLICY = _sms_runtime_ext.SmsRoutePolicy()
+_SMS_ALERTS = _sms_runtime_ext.RuntimeAlertBuffer()
+
+
+def _safe_runtime_error(error):
+    value = _module._safe(error) if hasattr(_module, "_safe") else str(error)
+    return _SMS_KEY_POOL.safe_error(value)
 
 
 def _parse_chatgpt_totp_row(raw):
@@ -470,6 +497,322 @@ def _patched_smart_build_candidates(self, raw_rows, now, allowed_countries, bloc
     )
 
 
+def _int_value(value, default=0, minimum=None, maximum=None):
+    try:
+        result = int(value)
+    except (TypeError, ValueError):
+        result = int(default)
+    if minimum is not None:
+        result = max(int(minimum), result)
+    if maximum is not None:
+        result = min(int(maximum), result)
+    return result
+
+
+def _read_store_config(store):
+    try:
+        value = json.loads(Path(store.path).read_text(encoding="utf-8-sig"))
+    except Exception:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _write_store_config(store, value):
+    path = Path(store.path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(path)
+
+
+def _patched_config_load(self):
+    raw = _read_store_config(self)
+    defaults = _runtime.default_settings(self.data_dir)
+    if "sms_mode" not in raw:
+        smart = raw.get("sms_smart") if isinstance(raw.get("sms_smart"), dict) else {}
+        defaults["sms_mode"] = "smart" if _runtime._as_bool(smart.get("enabled"), True) else "fixed"
+
+    loaded = _runtime._merge(defaults, raw)
+    changed = self._enforce_private_paths(loaded, defaults)
+
+    try:
+        auth_strategy_version = int(raw.get("email_auth_strategy_version") or 0)
+    except (TypeError, ValueError):
+        auth_strategy_version = 0
+    if auth_strategy_version < 2:
+        loaded["email_auth_preference"] = "auto"
+        loaded["email_auth_strategy_version"] = 2
+        changed = True
+
+    try:
+        node_timeout_strategy_version = int(raw.get("node_timeout_strategy_version") or 0)
+    except (TypeError, ValueError):
+        node_timeout_strategy_version = 0
+    if node_timeout_strategy_version < 1:
+        loaded["node_timeout"] = 45
+        loaded["node_timeout_strategy_version"] = 1
+        changed = True
+
+    normalized, migrated = _sms_runtime_ext.migrate_performance_config(loaded)
+    policy_keys = (
+        "performance_policy_version",
+        "phone_max_attempts",
+        "phone_session_cycle_seconds",
+        "auth_session_retries",
+        "sms_api_keys",
+        "sms_api_key",
+    )
+    if migrated or any(raw.get(key) != normalized.get(key) for key in policy_keys):
+        changed = True
+    if changed:
+        _write_store_config(self, normalized)
+    return normalized
+
+
+def _patched_config_save(self, values):
+    normalized, _migrated = _sms_runtime_ext.migrate_performance_config(values)
+    saved = dict(_ORIGINAL_CONFIG_SAVE(self, normalized) or {})
+    for key in (
+        "performance_policy_version",
+        "phone_max_attempts",
+        "phone_session_cycle_seconds",
+        "auth_session_retries",
+        "sms_api_keys",
+        "sms_api_key",
+    ):
+        saved[key] = normalized[key]
+    _write_store_config(self, saved)
+    return saved
+
+
+def _patched_task_config(self, settings, email, task_id, *, password=""):
+    config = _ORIGINAL_TASK_CONFIG(self, settings, email, task_id, password=password)
+    keys = _sms_runtime_ext.normalize_sms_keys(
+        (settings or {}).get("sms_api_keys"),
+        (settings or {}).get("sms_api_key"),
+    )
+    attempts = _int_value((settings or {}).get("phone_max_attempts"), 10, minimum=1, maximum=10)
+    phone_seconds = _int_value(
+        (settings or {}).get("phone_session_cycle_seconds"),
+        480,
+        minimum=30,
+        maximum=480,
+    )
+    config.update(
+        {
+            "sms_api_keys": keys,
+            "sms_api_key": keys[0] if keys else "",
+            "sms_task_id": str(task_id),
+            "phone_max_attempts": attempts,
+            "phone_session_cycle_seconds": phone_seconds,
+            "phone_session_max_seconds": phone_seconds,
+            "phone_retry_sleep_seconds": 2,
+        }
+    )
+    config["smsbower"] = {
+        **dict(config.get("smsbower") or {}),
+        "api_key": keys[0] if keys else "",
+    }
+    config["sms_smart"] = {
+        **dict(config.get("sms_smart") or {}),
+        "enabled": True,
+        "route_hard_max_inflight": 2,
+        "route_max_inflight": 2,
+        "route_semi_max_inflight": 2,
+        "route_hot_max_inflight": 2,
+        "timeout_cooldown": 0,
+        "phone_rejected_cooldown": 600,
+        "register_rejected_cooldown": 60,
+        "register_rejected_min_cooldown": 180,
+    }
+    return config
+
+
+def _patched_importer_start(self, settings):
+    internal = copy.deepcopy(dict(settings or {}))
+    additional_retries = _int_value(internal.get("auth_session_retries"), 1, minimum=0, maximum=10)
+    internal["auth_session_retries"] = additional_retries + 1
+    return _ORIGINAL_IMPORTER_START(self, internal)
+
+
+def _patched_create_provider(name, api_key, proxy=""):
+    if str(name or "").strip().lower() == "smsbower" and _SMS_KEY_POOL.has_keys():
+        return _sms_runtime_ext.PooledSmsBowerProvider(_SMS_KEY_POOL, proxy=proxy)
+    return _ORIGINAL_CREATE_PROVIDER(name, api_key, proxy=proxy)
+
+
+def _adapter_task_id(adapter):
+    config = getattr(adapter, "config", None) or {}
+    return str(config.get("sms_task_id") or config.get("run_id") or "")
+
+
+def _patched_sms_adapter_get_number(self, **kwargs):
+    lease = _ORIGINAL_SMS_ADAPTER_GET_NUMBER(self, **kwargs)
+    meta = dict(getattr(lease, "meta", None) or {})
+    provider_meta = dict(getattr(getattr(self, "provider", None), "current_order_meta", None) or {})
+    for key, value in provider_meta.items():
+        if value is not None:
+            meta[key] = value
+    candidate = meta.get("candidate")
+    if meta.get("price_usd") is None and candidate is not None:
+        meta["price_usd"] = getattr(candidate, "price", None)
+    lease.meta = meta
+    task_id = _adapter_task_id(self)
+    if task_id:
+        _SMS_COST_LEDGER.record_lease(task_id, lease)
+    return lease
+
+
+def _patched_sms_adapter_mark_ready(self, lease):
+    provider = getattr(self, "provider", None)
+    if provider is not None and hasattr(provider, "set_ready"):
+        provider.set_ready()
+    meta = dict(getattr(lease, "meta", None) or {})
+    meta["ready_sent"] = True
+    lease.meta = meta
+
+
+def _patched_sms_adapter_wait_code(self, lease, timeout=180):
+    code = _ORIGINAL_SMS_ADAPTER_WAIT_CODE(self, lease, timeout=timeout)
+    task_id = _adapter_task_id(self)
+    if code and task_id:
+        _SMS_COST_LEDGER.mark_code_received(task_id, getattr(lease, "activation_id", ""))
+    return code
+
+
+def _patched_sms_adapter_complete(self, lease):
+    task_id = _adapter_task_id(self)
+    try:
+        result = _ORIGINAL_SMS_ADAPTER_COMPLETE(self, lease)
+    except Exception as exc:
+        if task_id:
+            _SMS_COST_LEDGER.mark_finished(
+                task_id,
+                getattr(lease, "activation_id", ""),
+                "complete_error",
+                _safe_runtime_error(exc),
+            )
+        raise
+    if task_id:
+        _SMS_COST_LEDGER.mark_finished(task_id, getattr(lease, "activation_id", ""), "completed")
+    return result
+
+
+def _patched_sms_adapter_cancel(self, lease, reason=""):
+    task_id = _adapter_task_id(self)
+    try:
+        return _ORIGINAL_SMS_ADAPTER_CANCEL(self, lease, reason=reason)
+    finally:
+        if task_id:
+            _SMS_COST_LEDGER.mark_finished(
+                task_id,
+                getattr(lease, "activation_id", ""),
+                "cancelled",
+                _safe_runtime_error(reason or ""),
+            )
+
+
+def _patched_smart_classify_error(error):
+    if _sms_runtime_ext.is_transient_openai_error(error):
+        return "transient_server"
+    text = str(error or "").lower()
+    if any(marker in text for marker in ("phone_otp_empty", "no sms code", "no verification code", "未收到验证码")):
+        return "timeout"
+    return _ORIGINAL_SMART_CLASSIFY_ERROR(error)
+
+
+def _update_route_stat(selector, candidate, update_fn):
+    if candidate is None:
+        return
+    key = (str(getattr(candidate, "country", "")), str(getattr(candidate, "provider_id", "")))
+    if not all(key):
+        return
+    with selector.lock:
+        try:
+            route_row, country_row = selector._update_shared_route_and_country(
+                key,
+                update_fn,
+                lambda stat: dict(stat or {}),
+            )
+            selector.stats[key] = route_row
+            selector.country_stats[str(getattr(candidate, "country", ""))] = country_row
+        except Exception:
+            stat = dict(selector.stats.get(key) or {})
+            selector.stats[key] = update_fn(stat)
+
+
+def _release_route_without_score(selector, candidate):
+    now = time.time()
+
+    def update(stat):
+        row = dict(stat or {})
+        inflight = selector._route_inflight(row, now)
+        if inflight > 1:
+            row["inflight"] = inflight - 1
+        else:
+            row.pop("inflight", None)
+            row.pop("lease_until", None)
+        return row
+
+    _update_route_stat(selector, candidate, update)
+
+
+def _set_route_cooldown(selector, candidate, seconds):
+    until = time.time() + max(0, int(seconds))
+
+    def update(stat):
+        row = dict(stat or {})
+        row["cooldown_until"] = max(float(row.get("cooldown_until") or 0), until)
+        return row
+
+    _update_route_stat(selector, candidate, update)
+
+
+def _patched_smart_record_result(self, candidate, ok, error=""):
+    kind = _patched_smart_classify_error(error)
+    if not ok and kind == "transient_server":
+        _release_route_without_score(self, candidate)
+        return None
+    result = _ORIGINAL_SMART_RECORD_RESULT(self, candidate, ok, error)
+    cooldown = _SMS_ROUTE_POLICY.cooldown_for(candidate, ok=bool(ok), kind=kind, error=error)
+    if cooldown > 0:
+        _set_route_cooldown(self, candidate, cooldown)
+        log_fn = getattr(self, "log_fn", None)
+        if callable(log_fn):
+            log_fn(
+                f"  [SMS智能] 线路 {getattr(candidate, 'country', '-')}/{getattr(candidate, 'provider_id', '-')} 冷却 {cooldown} 秒",
+                "warn",
+            )
+    return result
+
+
+def _patched_route_limit(self, candidate, stat, now):
+    return _SMS_ROUTE_POLICY.route_limit(stat)
+
+
+def _patched_real_send_phone_number_otp(self, phone, channel="sms"):
+    last_error = None
+    for attempt, delay in enumerate((0, 2, 4, 8)):
+        if delay:
+            time.sleep(delay)
+        try:
+            response = _SMS_PHONE_GATE.call(_ORIGINAL_REAL_SEND_PHONE_NUMBER_OTP, self, phone, channel)
+        except Exception as exc:
+            last_error = exc
+            if attempt >= 3 or not _sms_runtime_ext.is_transient_openai_error(exc):
+                raise
+        else:
+            if attempt >= 3 or not _sms_runtime_ext.is_transient_openai_error(response):
+                return response
+            last_error = response
+        log_fn = getattr(self, "log_fn", None)
+        if callable(log_fn):
+            log_fn(f"  [Codex] 手机提交遇到临时服务错误，{(2, 4, 8)[attempt]} 秒后复用同一号码", "warn")
+    if isinstance(last_error, Exception):
+        raise last_error
+    return last_error
+
+
 def _as_enabled(value, default=True):
     if value is None:
         return default
@@ -520,6 +863,10 @@ def _upload_nvtoken(payload, settings, timeout=30):
 
 
 def _patched_persist_result(self, settings, task_id, entry, result, *, error="", status="failed"):
+    if isinstance(result, dict):
+        cost_summary = _SMS_COST_LEDGER.summary(str(task_id), _SMS_EXCHANGE_RATE)
+        if cost_summary.get("sms_order_outcomes") or "sms_cost_usd" not in result:
+            result.update(cost_summary)
     if status == "success" and _as_enabled((settings or {}).get("nvtoken_upload"), True):
         payload = _nvtoken_result_payload(result, entry)
         if payload is None:
@@ -543,10 +890,25 @@ _runtime.MailboxPool._entries_unlocked = _patched_entries_unlocked
 _runtime.OutlookMailboxOtpProvider = _patched_outlook_otp_provider
 _runtime.EmailAuthImporter._account_label = _patched_account_label
 _runtime.EmailAuthImporter._persist_result = _patched_persist_result
+_runtime.EmailAuthImporter._task_config = _patched_task_config
+_runtime.EmailAuthImporter.start = _patched_importer_start
+_runtime.ImporterConfigStore.load = _patched_config_load
+_runtime.ImporterConfigStore.save = _patched_config_save
+_runtime.create_provider = _patched_create_provider
+_sms_providers.create_provider = _patched_create_provider
+_codex_oauth_chain.SmsProviderAdapter.get_number = _patched_sms_adapter_get_number
+_codex_oauth_chain.SmsProviderAdapter.mark_ready = _patched_sms_adapter_mark_ready
+_codex_oauth_chain.SmsProviderAdapter.wait_code = _patched_sms_adapter_wait_code
+_codex_oauth_chain.SmsProviderAdapter.complete = _patched_sms_adapter_complete
+_codex_oauth_chain.SmsProviderAdapter.cancel = _patched_sms_adapter_cancel
 _codex_oauth_chain.RealCodexTransport.verify_password = _patched_real_verify_password
 _codex_oauth_chain.RealCodexTransport.send_mfa_otp = _patched_real_send_mfa_otp
 _codex_oauth_chain.RealCodexTransport.verify_mfa_otp = _patched_real_verify_mfa_otp
+_codex_oauth_chain.RealCodexTransport.send_phone_number_otp = _patched_real_send_phone_number_otp
 _sms_selector.SmartSmsSelector._build_candidates_locked = _patched_smart_build_candidates
+_sms_selector.SmartSmsSelector.classify_error = staticmethod(_patched_smart_classify_error)
+_sms_selector.SmartSmsSelector.record_result = _patched_smart_record_result
+_sms_selector.SmartSmsSelector._route_limit = _patched_route_limit
 
 _ROOT_HEADER_HTML = (
     '<header class="top"><h1>plus绑号码脚本</h1>'
@@ -1280,12 +1642,39 @@ def _mask_secret(value):
     return _SECRET_MASK if _module._clean(value) else ""
 
 
+def _sms_keys_from_config(data):
+    value = data if isinstance(data, dict) else {}
+    return _sms_runtime_ext.normalize_sms_keys(value.get("sms_api_keys"), value.get("sms_api_key"))
+
+
+def _resolve_sms_keys(data, existing=None):
+    value = data if isinstance(data, dict) else {}
+    previous = _sms_keys_from_config(existing or {})
+    if "sms_api_keys" in value:
+        raw = value.get("sms_api_keys")
+        rows = raw if isinstance(raw, (list, tuple)) else [raw]
+        resolved = []
+        for index, row in enumerate(rows):
+            text = str(row or "").strip()
+            if text == _SECRET_MASK:
+                text = previous[index] if index < len(previous) else ""
+            resolved.append(text)
+        return _sms_runtime_ext.normalize_sms_keys(resolved)
+    if "sms_api_key" in value:
+        text = str(value.get("sms_api_key") or "").strip()
+        if text == _SECRET_MASK:
+            return previous[:1]
+        return _sms_runtime_ext.normalize_sms_keys(text)
+    return previous
+
+
 def _masked_local_config(data):
     value = json.loads(json.dumps(data if isinstance(data, dict) else {}))
     sub2api = dict(value.get("sub2api") or {})
     nvtoken = dict(value.get("nvtoken") or {})
-    if "sms_api_key" in value:
-        value["sms_api_key"] = _mask_secret(value.get("sms_api_key"))
+    sms_keys = _sms_keys_from_config(value)
+    value["sms_api_keys"] = [_SECRET_MASK for _key in sms_keys]
+    value.pop("sms_api_key", None)
     if "gptmail_api_key" in value:
         value["gptmail_api_key"] = _mask_secret(value.get("gptmail_api_key"))
     if sub2api:
@@ -1301,7 +1690,16 @@ def _masked_state(data):
     snapshot = json.loads(json.dumps(data if isinstance(data, dict) else {}))
     settings = snapshot.get("settings")
     if isinstance(settings, dict):
-        snapshot["settings"] = _masked_local_config(settings)
+        snapshot["settings"] = _masked_local_config({**settings, **_read_local_config()})
+    statuses = _SMS_KEY_POOL.public_statuses()
+    alerts = _SMS_ALERTS.snapshot()
+    snapshot["sms_key_statuses"] = statuses
+    snapshot["sms_alerts"] = alerts
+    runtime = snapshot.get("runtime")
+    if isinstance(runtime, dict):
+        runtime["sms_key_statuses"] = statuses
+        runtime["sms_alerts"] = alerts
+        runtime["sms_safe_stop"] = _SMS_KEY_POOL.is_exhausted()
     return snapshot
 
 
@@ -1309,23 +1707,27 @@ def _local_config_secret(secret_id):
     local = _read_local_config()
     sub2api = dict(local.get("sub2api") or {})
     nvtoken = dict(local.get("nvtoken") or {})
+    sms_keys = _sms_keys_from_config(local)
     values = {
-        "sms_api_key": local.get("sms_api_key") or "",
+        "sms_api_keys": sms_keys,
+        "sms_api_key": sms_keys[0] if sms_keys else "",
         "sub2_password": sub2api.get("password") or "",
         "nvtoken_api_key": nvtoken.get("api_key") or "",
     }
-    return str(values.get(str(secret_id or ""), ""))
+    return values.get(str(secret_id or ""), "")
 
 
 def _local_config_from_runtime(data, existing=None):
-    data = dict(data or {})
+    data, _migrated = _sms_runtime_ext.migrate_performance_config(data)
     existing = dict(existing or {})
     sub2api = dict(data.get("sub2api") or {})
     existing_sub2api = dict(existing.get("sub2api") or {})
     nvtoken = dict(data.get("nvtoken") or {})
     existing_nvtoken = dict(existing.get("nvtoken") or {})
-    return {
-        "sms_api_key": _local_secret(data.get("sms_api_key"), existing.get("sms_api_key")).strip(),
+    sms_keys = _resolve_sms_keys(data, existing)
+    result = {
+        "performance_policy_version": _sms_runtime_ext.PERFORMANCE_POLICY_VERSION,
+        "sms_api_keys": sms_keys,
         "sub2api": {
             "url": str(sub2api.get("url") or "").strip(),
             "email": str(sub2api.get("email") or "").strip(),
@@ -1337,6 +1739,26 @@ def _local_config_from_runtime(data, existing=None):
             "api_key": _local_secret(nvtoken.get("api_key"), existing_nvtoken.get("api_key")).strip(),
         },
     }
+    for key in (
+        "proxy",
+        "proxy_scope",
+        "target_count",
+        "concurrency",
+        "node_concurrency",
+        "node_timeout",
+        "auth_session_retries",
+        "sms_min_price",
+        "max_price",
+        "sms_timeout",
+        "phone_max_attempts",
+        "phone_session_cycle_seconds",
+        "nvtoken_upload",
+    ):
+        if key in data:
+            result[key] = copy.deepcopy(data[key])
+        elif key in existing:
+            result[key] = copy.deepcopy(existing[key])
+    return result
 
 
 def _merge_nonempty(base, override):
@@ -1350,10 +1772,9 @@ def _merge_nonempty(base, override):
 def _merge_local_config(data):
     patched = dict(data or {})
     local = _read_local_config()
-    if _module._clean(local.get("sms_api_key")) and (
-        not _module._clean(patched.get("sms_api_key")) or patched.get("sms_api_key") == _SECRET_MASK
-    ):
-        patched["sms_api_key"] = local.get("sms_api_key")
+    sms_keys = _resolve_sms_keys(patched, local)
+    patched["sms_api_keys"] = sms_keys
+    patched["sms_api_key"] = sms_keys[0] if sms_keys else ""
     if isinstance(local.get("sub2api"), dict):
         patched["sub2api"] = _merge_nonempty(local.get("sub2api") or {}, patched.get("sub2api") or {})
     if isinstance(local.get("nvtoken"), dict):
@@ -1364,6 +1785,7 @@ def _merge_local_config(data):
 def _apply_server_defaults(data):
     patched = dict(data or {})
     patched = _merge_local_config(patched)
+    patched, _migrated = _sms_runtime_ext.migrate_performance_config(patched)
     if patched.get("sms_provider") == "localpool":
         patched["sms_provider"] = "smsbower"
     patched["email_mode"] = "auto"
@@ -1390,10 +1812,108 @@ def _apply_server_defaults(data):
         "enabled": True,
         "countries": _SMS_PRIORITY_COUNTRIES_TEXT,
         "preferred_countries": _SMS_PRIORITY_COUNTRIES_TEXT,
+        "route_hard_max_inflight": 2,
+        "route_max_inflight": 2,
+        "route_semi_max_inflight": 2,
+        "route_hot_max_inflight": 2,
+        "timeout_cooldown": 0,
+        "phone_rejected_cooldown": 600,
+        "register_rejected_cooldown": 60,
+        "register_rejected_min_cooldown": 180,
     }
     patched["nvtoken_upload"] = _as_enabled(patched.get("nvtoken_upload"), True)
     _write_local_config(_local_config_from_runtime(patched, _read_local_config()))
     return patched
+
+
+def _sms_runtime_alert(payload):
+    value = dict(payload or {})
+    _SMS_ALERTS.add(
+        str(value.get("kind") or "sms_warning"),
+        str(value.get("message") or "SMS Key 状态异常"),
+        level="warning",
+        dedupe_key=f"runtime:{value.get('fingerprint')}:{value.get('kind')}",
+        persistent=True,
+        key_index=value.get("index"),
+        fingerprint=value.get("fingerprint") or "",
+    )
+
+
+def _configure_sms_pool(config, *, logs=None, importer=None):
+    value = dict(config or {})
+    keys = _sms_keys_from_config(value)
+    proxy_scope = dict(value.get("proxy_scope") or {})
+    sms_proxy = str(value.get("proxy") or "") if _as_enabled(proxy_scope.get("sms"), False) else ""
+
+    def exhausted():
+        message = "所有 SMS Key 均已耗尽，停止创建新短信订单，已领取号码处理完成后安全停止"
+        _SMS_ALERTS.add(
+            "sms_pool_exhausted",
+            message,
+            level="error",
+            dedupe_key="runtime:all_sms_keys_exhausted",
+            persistent=True,
+        )
+        if logs is not None:
+            logs.add(message, "error")
+
+    logger = logs.add if logs is not None else None
+    try:
+        min_price = float(value.get("sms_min_price") or _SMS_MIN_PRICE_DEFAULT)
+    except (TypeError, ValueError):
+        min_price = _SMS_MIN_PRICE_DEFAULT
+    _SMS_KEY_POOL.configure(
+        keys,
+        service=str(value.get("service") or "dr"),
+        min_price=min_price,
+        max_price=float(_clamp_sms_max_price(value.get("max_price"))),
+        logger=logger,
+        alert_fn=_sms_runtime_alert,
+        exhausted_fn=exhausted,
+    )
+    return sms_proxy
+
+
+def _preflight_sms_pool(config, *, logs=None, importer=None):
+    proxy = _configure_sms_pool(config, logs=logs, importer=importer)
+    if not _SMS_KEY_POOL.has_keys():
+        raise ValueError("请至少填写一个 SMS API Key")
+    statuses = _SMS_KEY_POOL.preflight(proxy=proxy)
+    insufficient = [item for item in statuses if item.get("status") == "insufficient_balance"]
+    usable = [item for item in statuses if item.get("status") == "usable"]
+    if statuses and len(insufficient) == len(statuses):
+        raise ValueError("所有 SMS Key 余额不足")
+    if not usable:
+        details = "；".join(
+            f"Key {item.get('index')}: {item.get('message') or item.get('status')}" for item in statuses
+        )
+        raise ValueError(f"所有 SMS Key 均不可用{f'：{details}' if details else ''}")
+    if insufficient:
+        indexes = "、".join(str(item.get("index")) for item in insufficient)
+        message = f"{len(insufficient)} 个 SMS Key 余额不足（Key {indexes}），其余 Key 仍可运行"
+        _SMS_ALERTS.add(
+            "sms_balance_insufficient",
+            message,
+            level="warning",
+            dedupe_key=f"preflight:balance:{indexes}",
+            persistent=False,
+        )
+        if logs is not None:
+            logs.add(message, "warn")
+    unavailable = [item for item in statuses if item.get("status") not in {"usable", "insufficient_balance"}]
+    if unavailable:
+        indexes = "、".join(str(item.get("index")) for item in unavailable)
+        message = f"{len(unavailable)} 个 SMS Key 不可用（Key {indexes}），本次运行已停用"
+        _SMS_ALERTS.add(
+            "sms_key_unavailable",
+            message,
+            level="warning",
+            dedupe_key=f"preflight:unavailable:{indexes}",
+            persistent=False,
+        )
+        if logs is not None:
+            logs.add(message, "warn")
+    return statuses
 
 
 def _resolve_config_path(store, value):
@@ -1542,24 +2062,26 @@ def _latest_results_by_email(results_dir):
     return latest
 
 
-def _human_mailbox_status(pool_status, result_status, error):
-    if result_status in {"success", "ok", "uploaded"}:
-        return "success", "成功"
-    if error or (result_status and result_status not in {"", "available"}):
-        if result_status == "retryable_email":
-            return "failed", "失败（可重试）"
-        return "failed", "失败"
-    if pool_status == "leased":
+def _human_mailbox_status(state_item, now=None):
+    status = _pool_count_status(state_item, now)
+    if status == "running":
         return "running", "运行中"
-    if pool_status == "consumed":
-        return "success", "已消耗"
-    if pool_status == "damaged":
-        return "failed", "损坏"
-    return "available", "可领取"
+    if status == "consumed":
+        return "consumed", "已使用"
+    if status == "damaged":
+        return "failed", "失败"
+    return "available", "可用"
 
 
 def _friendly_mailbox_error(error):
     value = str(error or "")
+    status_messages = {
+        "stopped": "任务已停止",
+        "stopped_before_start": "任务开始前已停止",
+        "manual_restore": "",
+    }
+    if value in status_messages:
+        return status_messages[value]
     if "deleted or deactivated" in value or "You do not have an account" in value:
         return "邮箱对应的 OpenAI 账号不可用（已删除或停用）"
     if "email_otp_failed" in value:
@@ -1624,11 +2146,13 @@ def _mailbox_rows(store):
             or ""
         )
         friendly_error = _friendly_mailbox_error(detail_error)
-        status_key, status_label = _human_mailbox_status(
-            str(state_item.get("status") or "available").lower(),
-            result_status,
-            friendly_error,
-        )
+        result_payload = result.get("result") if isinstance(result.get("result"), dict) else {}
+        succeeded = result_status in {"success", "ok", "uploaded"}
+        sms_cost_usd = result_payload.get("sms_cost_usd", result.get("sms_cost_usd")) if succeeded else None
+        sms_cost_cny = result_payload.get("sms_cost_cny", result.get("sms_cost_cny")) if succeeded else None
+        sms_exchange_rate = result_payload.get("sms_exchange_rate", result.get("sms_exchange_rate")) if succeeded else None
+        sms_exchange_date = result_payload.get("sms_exchange_date", result.get("sms_exchange_date")) if succeeded else ""
+        status_key, status_label = _human_mailbox_status(state_item, now)
         counts["total"] += 1
         count_status = _pool_count_status(state_item, now)
         if count_status == "consumed":
@@ -1646,6 +2170,10 @@ def _mailbox_rows(store):
                 "error": friendly_error,
                 "technical_error": detail_error,
                 "task_id": result.get("task_id") or "",
+                "sms_cost_usd": sms_cost_usd,
+                "sms_cost_cny": sms_cost_cny,
+                "sms_exchange_rate": sms_exchange_rate,
+                "sms_exchange_date": sms_exchange_date or "",
                 "updated_at": result.get("created_at") or state_item.get("updated_at") or 0,
                 "source_row": row,
             }
@@ -1830,6 +2358,7 @@ def _patch_flask_app(app):
     if getattr(app, "_gptphone_mac_patched", False):
         return app
     original_start = app.view_functions.get("start")
+    original_preflight = app.view_functions.get("preflight")
     if original_start is None:
         return app
     closure = _closure_values(original_start)
@@ -1838,7 +2367,9 @@ def _patch_flask_app(app):
     settings = closure["settings"]
     state = closure["state"]
     store = closure["store"]
-    _write_local_config(_local_config_from_runtime(store.load(), _read_local_config()))
+    initial_config = store.load()
+    _write_local_config(_local_config_from_runtime(initial_config, _read_local_config()))
+    _configure_sms_pool(initial_config, logs=logs, importer=importer)
 
     frontend_dist = APP_DIR / "frontend" / "dist"
 
@@ -1878,6 +2409,7 @@ def _patch_flask_app(app):
         data = _apply_server_defaults(data)
         data.pop("pool_content", None)
         saved = store.save(data)
+        _configure_sms_pool(saved, logs=logs, importer=importer)
         logs.add("独立导入器配置已保存到本工具 data 目录", "success")
         return _module.jsonify(ok=True, settings=_masked_local_config(saved), state=public_state())
 
@@ -1890,6 +2422,41 @@ def _patch_flask_app(app):
 
     if "stop" in app.view_functions:
         app.view_functions["stop"] = stop
+
+    def preflight():
+        if importer.status(settings()).get("running"):
+            return _module.jsonify(ok=False, error="任务运行中，停止后才能执行预检", state=public_state()), 409
+        data = _module.request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            return _module.jsonify(ok=False, error="配置必须是 JSON 对象"), 400
+        try:
+            _SMS_ALERTS.begin_run()
+            config = store.save(_apply_server_defaults(data))
+            statuses = _preflight_sms_pool(config, logs=logs, importer=importer)
+            result = importer.settings_validation(config, remote=True)
+        except Exception as exc:
+            safe = _safe_runtime_error(exc)
+            logs.add(f"SMS 预检失败: {safe}", "error")
+            return _module.jsonify(
+                ok=False,
+                error=safe,
+                sms_key_statuses=_SMS_KEY_POOL.public_statuses(),
+                state=public_state(),
+            ), 400
+        logs.add(
+            f"预检通过: 邮箱池 {result['pool']['entries']} 条，"
+            f"SUB2 分组 {result['sub2_group']}#{result['sub2_group_id']}",
+            "success",
+        )
+        return _module.jsonify(
+            ok=True,
+            result=result,
+            sms_key_statuses=statuses,
+            state=public_state(),
+        )
+
+    if "preflight" in app.view_functions:
+        app.view_functions["preflight"] = preflight
 
     @app.after_request
     def no_cache_response(response):
@@ -1939,10 +2506,18 @@ def _patch_flask_app(app):
                         state=public_state(),
                     ), 400
 
+            _SMS_ALERTS.begin_run()
+            _SMS_COST_LEDGER.clear()
+            _SMS_ROUTE_POLICY.reset()
+            _SMS_KEY_POOL.begin_run()
+            try:
+                _preflight_sms_pool(cfg, logs=logs, importer=importer)
+            except ValueError as exc:
+                return _module.jsonify(ok=False, error=_safe_runtime_error(exc), state=public_state()), 400
             importer.start(cfg)
             return _module.jsonify(ok=True, state=public_state())
         except Exception as exc:
-            safe = _module._safe(exc) if hasattr(_module, "_safe") else str(exc)
+            safe = _safe_runtime_error(exc)
             logs.add(f"启动失败: {safe}", "error")
             return _module.jsonify(ok=False, error=f"启动失败: {safe}", state=public_state()), 500
 
@@ -1974,10 +2549,18 @@ def _patch_flask_app(app):
                 ), 400
 
             logs.add(f"使用现有自动邮箱池启动: {check['entries']} 条", "info")
+            _SMS_ALERTS.begin_run()
+            _SMS_COST_LEDGER.clear()
+            _SMS_ROUTE_POLICY.reset()
+            _SMS_KEY_POOL.begin_run()
+            try:
+                _preflight_sms_pool(cfg, logs=logs, importer=importer)
+            except ValueError as exc:
+                return _module.jsonify(ok=False, error=_safe_runtime_error(exc), state=public_state()), 400
             importer.start(cfg)
             return _module.jsonify(ok=True, state=public_state())
         except Exception as exc:
-            safe = _module._safe(exc) if hasattr(_module, "_safe") else str(exc)
+            safe = _safe_runtime_error(exc)
             logs.add(f"启动失败: {safe}", "error")
             return _module.jsonify(ok=False, error=f"启动失败: {safe}", state=public_state()), 500
 
