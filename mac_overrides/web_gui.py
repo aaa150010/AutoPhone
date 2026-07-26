@@ -15,6 +15,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from flask import send_from_directory as _send_from_directory
+
 import codex_oauth_chain as _codex_oauth_chain
 import imap_poller as _imap_poller
 import runtime as _runtime
@@ -566,6 +568,12 @@ _module._HTML = _module._HTML.replace(_ROOT_HEADER_HTML, "")
 _module._HTML = _module._HTML.replace(_ROOT_MAILBOX_IMPORT_HTML, _ROOT_MAILBOX_MANAGER_HTML)
 _module._HTML = _module._HTML.replace("SMS API Key / 本地号码池文件路径", "SMS API Key")
 _module._HTML = _module._HTML.replace('<option value="localpool">本地号码池</option>', "")
+_module._HTML = _module._HTML.replace('<label>管理密码</label><input id="sub2_password">', '<label>管理密码</label><input id="sub2_password" type="password">')
+if isinstance(getattr(_module, "_LOGIN_FORM_USABILITY_INJECT", None), str):
+    _module._LOGIN_FORM_USABILITY_INJECT = _module._LOGIN_FORM_USABILITY_INJECT.replace(
+        "if(input){input.type='text';input.autocomplete='off'}",
+        "if(input){input.type='password';input.autocomplete='new-password'}",
+    )
 _module._HTML = _module._HTML.replace(
     '<div class="field"><label>目标分组</label><input id="sub2_group"></div></div><div class="section"><h2>网络与运行</h2>',
     '<div class="field"><label>目标分组</label><input id="sub2_group"></div>'
@@ -668,8 +676,9 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
 .mailbox-link-panel b{display:block;color:#172033;font-size:13px;margin-bottom:5px}.mailbox-link-panel span{display:block;color:#60708a;font-size:12px;line-height:1.45;margin-bottom:10px}
 .secret-input-wrap{position:relative;display:block;width:100%}
 .secret-input-wrap>input{padding-right:42px!important}
-.secret-reveal-btn{position:absolute!important;right:6px!important;top:50%!important;transform:translateY(-50%)!important;display:flex!important;align-items:center!important;justify-content:center!important;width:30px!important;height:28px!important;min-width:0!important;padding:0!important;border:0!important;border-radius:5px!important;background:transparent!important;box-shadow:none!important;color:#60708a!important;font-size:15px!important;line-height:1!important;cursor:pointer!important}
-.secret-reveal-btn:hover{background:#eef3fb!important;color:#174ea6!important}
+.secret-reveal-btn{position:absolute!important;right:5px!important;top:50%!important;transform:translateY(-50%)!important;display:flex!important;align-items:center!important;justify-content:center!important;width:32px!important;height:27px!important;min-width:0!important;padding:0!important;border:1px solid #c6d0df!important;border-radius:5px!important;background:#f8fafd!important;box-shadow:0 1px 2px rgba(16,24,40,.08)!important;color:#465872!important;font-size:15px!important;line-height:1!important;cursor:pointer!important;z-index:2!important}
+.secret-reveal-btn:hover{background:#eef3fb!important;border-color:#8eacd2!important;color:#174ea6!important}
+.secret-reveal-btn svg{width:17px!important;height:17px!important;display:block!important;stroke:currentColor!important;fill:none!important;stroke-width:2!important;stroke-linecap:round!important;stroke-linejoin:round!important;pointer-events:none!important}
 </style>
 <script>
 (()=>{
@@ -732,6 +741,8 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
     window.ElMessage[type] = (message) => showMessage(message, type);
   });
   window.alert = (message) => showMessage(message, "info");
+  const eyeIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+  const eyeOffIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18"></path><path d="M10.6 10.6A3 3 0 0 0 13.4 13.4"></path><path d="M9.9 5.2A10.7 10.7 0 0 1 12 5c6.5 0 10 7 10 7a18.6 18.6 0 0 1-3.1 4.2"></path><path d="M6.1 6.7C3.4 8.5 2 12 2 12s3.5 7 10 7a10.8 10.8 0 0 0 4.1-.8"></path></svg>';
   const friendlyError = (text) => {
     const value = String(text || "");
     if (value.includes("deleted or deactivated") || value.includes("You do not have an account")) {
@@ -771,7 +782,7 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
       const button = document.createElement("button");
       button.type = "button";
       button.className = "secret-reveal-btn";
-      button.textContent = "👁";
+      button.innerHTML = eyeIcon;
       button.title = "显示";
       button.setAttribute("aria-label", "显示");
       button.addEventListener("click", async () => {
@@ -779,7 +790,7 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
           input.dataset.revealedSecret = "0";
           input.type = "password";
           if (input.dataset.savedSecret === "1") input.value = SECRET_MASK;
-          button.textContent = "👁";
+          button.innerHTML = eyeIcon;
           button.title = "显示";
           button.setAttribute("aria-label", "显示");
           input.focus();
@@ -804,7 +815,7 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
         input.dataset.revealedSecret = "1";
         input.type = "text";
         if (value) input.value = value;
-        button.textContent = "×";
+        button.innerHTML = eyeOffIcon;
         button.title = "隐藏";
         button.setAttribute("aria-label", "隐藏");
         input.focus();
@@ -1149,6 +1160,7 @@ button.warn{background:#fff3e8!important;border-color:#f0b780!important;color:#7
     });
     baseRenderForFriendlyErrors(patched);
     setTimeout(restoreSecretPlaceholders, 0);
+    setTimeout(enforceSecretInputs, 50);
     if (keepLogScroll && logBox) {
       logBox.scrollTop = previousLogScrollTop;
     }
@@ -1828,6 +1840,22 @@ def _patch_flask_app(app):
     store = closure["store"]
     _write_local_config(_local_config_from_runtime(store.load(), _read_local_config()))
 
+    frontend_dist = APP_DIR / "frontend" / "dist"
+
+    def spa_index():
+        return _send_from_directory(str(frontend_dist), "index.html")
+
+    def spa_asset(filename):
+        return _send_from_directory(str(frontend_dist / "assets"), filename)
+
+    if frontend_dist.exists():
+        if "index" in app.view_functions:
+            app.view_functions["index"] = spa_index
+        else:
+            app.add_url_rule("/", "index", spa_index, methods=["GET"])
+        if "spa_asset" not in app.view_functions:
+            app.add_url_rule("/assets/<path:filename>", "spa_asset", spa_asset, methods=["GET"])
+
     def public_state():
         return _masked_state(state())
 
@@ -1957,6 +1985,8 @@ def _patch_flask_app(app):
         app.add_url_rule("/api/start-existing", "start_existing", start_existing, methods=["POST"])
 
     def mailbox_manager():
+        if frontend_dist.exists():
+            return spa_index()
         return _module.Response(_MAILBOX_MANAGER_HTML, mimetype="text/html")
 
     def api_mailboxes():
