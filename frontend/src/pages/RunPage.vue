@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, reactive, ref } from 'vue'
+import { onMounted, onUnmounted, reactive, ref, shallowRef } from 'vue'
 import { ElMessage, ElNotification } from 'element-plus'
 import { getLocalConfig, getSecret, getState, preflightRun, saveConfig, startRun, stopRun } from '../api/client'
 import SettingsForm from '../components/SettingsForm.vue'
@@ -9,7 +9,7 @@ import TaskResultsPanel from '../components/TaskResultsPanel.vue'
 import LogPanel from '../components/LogPanel.vue'
 import type { SmsRuntimeAlert } from '../types/api'
 
-const state = ref<any>({ runtime: {}, settings: {} })
+const state = shallowRef<any>({ runtime: {}, settings: {} })
 const form = reactive<any>({
   proxy: 'http://127.0.0.1:7897',
   proxy_scope: { sms: false, email: false, upload: false },
@@ -36,6 +36,8 @@ const starting = ref(false)
 const smsKeysDirty = ref(false)
 const seenAlerts = new Set<string>()
 let timer = 0
+let stateSignature = ''
+let pollingStopped = false
 
 const running = () => Boolean(state.value.runtime?.running)
 const hasPool = () => Number(state.value.runtime?.pool?.available || 0) > 0
@@ -69,8 +71,13 @@ function showRuntimeAlerts(alerts: SmsRuntimeAlert[]) {
 }
 
 function sync(payload: any) {
-  state.value = payload.state || payload
-  showRuntimeAlerts(state.value.sms_alerts || state.value.runtime?.sms_alerts || [])
+  const nextState = payload.state || payload
+  const nextSignature = JSON.stringify(nextState)
+  if (nextSignature !== stateSignature) {
+    stateSignature = nextSignature
+    state.value = nextState
+  }
+  showRuntimeAlerts(nextState.sms_alerts || nextState.runtime?.sms_alerts || [])
 }
 
 function payload() {
@@ -174,11 +181,22 @@ async function stop() {
   }
 }
 
+async function poll() {
+  await refresh()
+  if (pollingStopped) return
+  timer = window.setTimeout(poll, running() ? 700 : 1500)
+}
+
 onMounted(async () => {
+  pollingStopped = false
   await load()
-  timer = window.setInterval(refresh, 1200)
+  if (pollingStopped) return
+  timer = window.setTimeout(poll, running() ? 700 : 1500)
 })
-onUnmounted(() => window.clearInterval(timer))
+onUnmounted(() => {
+  pollingStopped = true
+  window.clearTimeout(timer)
+})
 </script>
 
 <template>
