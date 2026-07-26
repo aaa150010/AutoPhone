@@ -68,8 +68,9 @@ chmod +x start.command
 - 单行“查码”，验证码显示在对应行
 - 勾选后恢复为可用状态或删除
 - 查看成功任务的接码成本；悬浮金额可查看美元报价、USD/CNY 汇率和汇率日期
+- 实时查看每个运行中邮箱所在的业务节点和已停留秒数
 
-表格“状态”列只表示邮箱池当前状态：`可用`、`运行中`、`已使用`或`失败`。历史任务是否成功不会覆盖当前邮箱池状态，历史结果在运行页“任务结果”中查看。
+表格“状态”列表示邮箱池当前状态：`可用`、`运行中`、`已使用`或`失败`。邮箱关联任务运行时会实时切换为“运行中”；旁边的“运行状态”列显示“OAuth 创建节点”“正在获取手机号”“等待短信验证码”等具体节点。任务结束后，“状态”回到最终池状态，“运行状态”保留并冻结在最后一个有效节点。
 
 ### 2. 填写运行配置
 
@@ -100,6 +101,10 @@ chmod +x start.command
 建议第一次配置或修改 SUB2/代理后，先保存配置，再执行一次真实链路预检，预检通过后开始运行。
 
 右侧“任务结果”和“运行日志”分别独立滚动。任务运行期间可以持续查看状态，不会带动整个页面滚动。
+
+运行统计第一行保留状态、邮箱可用总数、成功数量和失败数量；第二行按排队等待、OAuth 节点、邮箱验证、获取手机号、短信接码、收尾上传六组汇总当前未结束任务。任务结果表的“运行状态”按秒更新，失败或停止后保留最后业务节点并冻结计时。
+
+`/api/state` 的任务项会返回 `progress.code`、`progress.label`、`progress.group`、`progress.entered_at` 和 `progress.finished_at`，`runtime.stage_counts` 固定返回上述六组计数。这些字段只包含节点名称和时间，不包含邮箱密码、手机号、SMS Key、Token 或底层链路事件详情。
 
 ### 4. 导入和导出配置
 
@@ -234,7 +239,9 @@ mac_runtime/.venv/bin/python -m unittest discover -s tests -v
 mac_runtime/.venv/bin/python -m py_compile \
   mac_overrides/web_gui.py \
   mac_overrides/sms_runtime.py \
-  tests/test_sms_runtime.py
+  mac_overrides/task_progress.py \
+  tests/test_sms_runtime.py \
+  tests/test_task_progress.py
 cd frontend
 npx vue-tsc --noEmit
 npm run build
@@ -290,6 +297,7 @@ iCloud IMAP 服务器是 `imap.mail.me.com:993`，通常不能用普通 Apple ID
 - `business_pyc/`: 选出的业务 `.pyc` 模块
 - `mac_overrides/`: mac 适配和 UI/逻辑覆盖层
 - `mac_overrides/sms_runtime.py`: 多 SMS Key、余额隔离、并发门控、线路冷却、汇率和成本统计
+- `mac_overrides/task_progress.py`: 线程安全的任务阶段追踪、阶段映射和六组实时计数
 - `frontend/`: Vue 3 + Element Plus 管理台源码和生产构建
 - `tests/`: 不产生真实短信费用的假 Provider 单元测试
 - `data/`: 运行数据、配置、邮箱池状态
