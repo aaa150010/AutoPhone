@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 import importlib.util
 import base64
 import copy
@@ -24,6 +25,7 @@ import runtime as _runtime
 import sms_providers as _sms_providers
 import sms_runtime as _sms_runtime_ext
 import sms_selector as _sms_selector
+import task_progress as _task_progress_ext
 
 
 APP_DIR = Path(__file__).resolve().parent.parent
@@ -56,6 +58,7 @@ _ORIGINAL_SMART_BUILD_CANDIDATES = _sms_selector.SmartSmsSelector._build_candida
 _ORIGINAL_PERSIST_RESULT = _runtime.EmailAuthImporter._persist_result
 _ORIGINAL_CONFIG_SAVE = _runtime.ImporterConfigStore.save
 _ORIGINAL_TASK_CONFIG = _runtime.EmailAuthImporter._task_config
+_ORIGINAL_TASK_STATE = _runtime.EmailAuthImporter._task_state
 _ORIGINAL_IMPORTER_START = _runtime.EmailAuthImporter.start
 _ORIGINAL_CREATE_PROVIDER = _sms_providers.create_provider
 _ORIGINAL_SMS_ADAPTER_GET_NUMBER = _codex_oauth_chain.SmsProviderAdapter.get_number
@@ -65,6 +68,7 @@ _ORIGINAL_SMS_ADAPTER_CANCEL = _codex_oauth_chain.SmsProviderAdapter.cancel
 _ORIGINAL_REAL_SEND_PHONE_NUMBER_OTP = _codex_oauth_chain.RealCodexTransport.send_phone_number_otp
 _ORIGINAL_SMART_CLASSIFY_ERROR = _sms_selector.SmartSmsSelector.classify_error
 _ORIGINAL_SMART_RECORD_RESULT = _sms_selector.SmartSmsSelector.record_result
+_ORIGINAL_CHAIN_EVENT = _codex_oauth_chain._event
 _CHATGPT_TOTP_MFA_ACTIVE_UNTIL = 0
 _SMS_PRIORITY_COUNTRIES = ("151", "37", "33", "1", "91", "55")
 _SMS_MIN_PRICE_DEFAULT = 0.01
@@ -107,6 +111,8 @@ _SMS_EXCHANGE_RATE = _sms_runtime_ext.ExchangeRateCache(APP_DIR / "data" / "usd_
 _SMS_PHONE_GATE = _sms_runtime_ext.PhoneSubmissionGate(concurrency=2, interval_seconds=0.75)
 _SMS_ROUTE_POLICY = _sms_runtime_ext.SmsRoutePolicy()
 _SMS_ALERTS = _sms_runtime_ext.RuntimeAlertBuffer()
+_TASK_PROGRESS = _task_progress_ext.TaskProgressTracker()
+_TASK_CONTEXT: ContextVar[str] = ContextVar("gptphone_task_id", default="")
 
 
 def _safe_runtime_error(error):
@@ -628,11 +634,52 @@ def _patched_task_config(self, settings, email, task_id, *, password=""):
     return config
 
 
+def _patched_task_state(self, task_id: str, **values):
+    result = _ORIGINAL_TASK_STATE(self, task_id, **values)
+    status = str(values.get("status") or "").strip().lower()
+    if status == "authorizing":
+        _TASK_CONTEXT.set(str(task_id or ""))
+    _TASK_PROGRESS.observe_task_state(task_id, status)
+    if status in _task_progress_ext.TERMINAL_TASK_STATUSES and _TASK_CONTEXT.get() == str(task_id or ""):
+        _TASK_CONTEXT.set("")
+    return result
+
+
+def _patched_chain_event(
+    events,
+    state,
+    *,
+    detail="",
+    extra=None,
+    log_fn=None,
+    tag="info",
+):
+    task_id = _TASK_CONTEXT.get()
+    if task_id:
+        _TASK_PROGRESS.observe_chain_state(task_id, state)
+    return _ORIGINAL_CHAIN_EVENT(
+        events,
+        state,
+        detail=detail,
+        extra=extra,
+        log_fn=log_fn,
+        tag=tag,
+    )
+
+
 def _patched_importer_start(self, settings):
     internal = copy.deepcopy(dict(settings or {}))
     additional_retries = _int_value(internal.get("auth_session_retries"), 1, minimum=0, maximum=10)
     internal["auth_session_retries"] = additional_retries + 1
-    return _ORIGINAL_IMPORTER_START(self, internal)
+    already_running = bool(self.status(internal).get("running"))
+    if not already_running:
+        _TASK_PROGRESS.reset()
+    try:
+        return _ORIGINAL_IMPORTER_START(self, internal)
+    except Exception:
+        if not already_running:
+            _TASK_PROGRESS.reset()
+        raise
 
 
 def _patched_create_provider(name, api_key, proxy=""):
@@ -647,6 +694,9 @@ def _adapter_task_id(adapter):
 
 
 def _patched_sms_adapter_get_number(self, **kwargs):
+    task_id = _adapter_task_id(self)
+    if task_id:
+        _TASK_PROGRESS.set_stage(task_id, "phone_acquiring")
     lease = _ORIGINAL_SMS_ADAPTER_GET_NUMBER(self, **kwargs)
     meta = dict(getattr(lease, "meta", None) or {})
     provider_meta = dict(getattr(getattr(self, "provider", None), "current_order_meta", None) or {})
@@ -657,13 +707,16 @@ def _patched_sms_adapter_get_number(self, **kwargs):
     if meta.get("price_usd") is None and candidate is not None:
         meta["price_usd"] = getattr(candidate, "price", None)
     lease.meta = meta
-    task_id = _adapter_task_id(self)
     if task_id:
         _SMS_COST_LEDGER.record_lease(task_id, lease)
+        _TASK_PROGRESS.set_stage(task_id, "phone_submitting")
     return lease
 
 
 def _patched_sms_adapter_mark_ready(self, lease):
+    task_id = _adapter_task_id(self)
+    if task_id:
+        _TASK_PROGRESS.set_stage(task_id, "sms_waiting")
     provider = getattr(self, "provider", None)
     if provider is not None and hasattr(provider, "set_ready"):
         provider.set_ready()
@@ -673,10 +726,13 @@ def _patched_sms_adapter_mark_ready(self, lease):
 
 
 def _patched_sms_adapter_wait_code(self, lease, timeout=180):
-    code = _ORIGINAL_SMS_ADAPTER_WAIT_CODE(self, lease, timeout=timeout)
     task_id = _adapter_task_id(self)
+    if task_id:
+        _TASK_PROGRESS.set_stage(task_id, "sms_waiting")
+    code = _ORIGINAL_SMS_ADAPTER_WAIT_CODE(self, lease, timeout=timeout)
     if code and task_id:
         _SMS_COST_LEDGER.mark_code_received(task_id, getattr(lease, "activation_id", ""))
+        _TASK_PROGRESS.set_stage(task_id, "sms_verifying")
     return code
 
 
@@ -863,11 +919,14 @@ def _upload_nvtoken(payload, settings, timeout=30):
 
 
 def _patched_persist_result(self, settings, task_id, entry, result, *, error="", status="failed"):
+    if status == "success":
+        _TASK_PROGRESS.set_stage(task_id, "finalizing_save")
     if isinstance(result, dict):
         cost_summary = _SMS_COST_LEDGER.summary(str(task_id), _SMS_EXCHANGE_RATE)
         if cost_summary.get("sms_order_outcomes") or "sms_cost_usd" not in result:
             result.update(cost_summary)
     if status == "success" and _as_enabled((settings or {}).get("nvtoken_upload"), True):
+        _TASK_PROGRESS.set_stage(task_id, "finalizing_nvtoken")
         payload = _nvtoken_result_payload(result, entry)
         if payload is None:
             result["nvtoken_upload_ok"] = False
@@ -891,6 +950,7 @@ _runtime.OutlookMailboxOtpProvider = _patched_outlook_otp_provider
 _runtime.EmailAuthImporter._account_label = _patched_account_label
 _runtime.EmailAuthImporter._persist_result = _patched_persist_result
 _runtime.EmailAuthImporter._task_config = _patched_task_config
+_runtime.EmailAuthImporter._task_state = _patched_task_state
 _runtime.EmailAuthImporter.start = _patched_importer_start
 _runtime.ImporterConfigStore.load = _patched_config_load
 _runtime.ImporterConfigStore.save = _patched_config_save
@@ -901,6 +961,7 @@ _codex_oauth_chain.SmsProviderAdapter.mark_ready = _patched_sms_adapter_mark_rea
 _codex_oauth_chain.SmsProviderAdapter.wait_code = _patched_sms_adapter_wait_code
 _codex_oauth_chain.SmsProviderAdapter.complete = _patched_sms_adapter_complete
 _codex_oauth_chain.SmsProviderAdapter.cancel = _patched_sms_adapter_cancel
+_codex_oauth_chain._event = _patched_chain_event
 _codex_oauth_chain.RealCodexTransport.verify_password = _patched_real_verify_password
 _codex_oauth_chain.RealCodexTransport.send_mfa_otp = _patched_real_send_mfa_otp
 _codex_oauth_chain.RealCodexTransport.verify_mfa_otp = _patched_real_verify_mfa_otp
@@ -1700,6 +1761,7 @@ def _masked_state(data):
         runtime["sms_key_statuses"] = statuses
         runtime["sms_alerts"] = alerts
         runtime["sms_safe_stop"] = _SMS_KEY_POOL.is_exhausted()
+        _TASK_PROGRESS.decorate_runtime(runtime)
     return snapshot
 
 
@@ -2103,7 +2165,35 @@ def _pool_count_status(state_item, now=None):
     return "available"
 
 
-def _mailbox_rows(store):
+def _live_progress_by_email(importer, cfg):
+    if importer is None:
+        return {}
+    try:
+        runtime = importer.status(cfg)
+    except Exception:
+        return {}
+    latest = {}
+    for task in runtime.get("tasks") or []:
+        if not isinstance(task, dict):
+            continue
+        email = _email_from_row(task.get("email") or task.get("account") or "")
+        task_id = str(task.get("task_id") or "").strip()
+        progress = _TASK_PROGRESS.progress(task_id)
+        if not email or not task_id or progress is None:
+            continue
+        updated_at = int(task.get("updated_at") or task.get("created_at") or 0)
+        previous = latest.get(email)
+        if previous is None or updated_at >= previous["updated_at"]:
+            latest[email] = {
+                "task_id": task_id,
+                "task_status": str(task.get("status") or ""),
+                "progress": progress,
+                "updated_at": updated_at,
+            }
+    return latest
+
+
+def _mailbox_rows(store, importer=None):
     cfg = store.load()
     pool_path = _resolve_config_path(store, cfg.get("pool_path"))
     state_path = _resolve_config_path(store, cfg.get("state_path"))
@@ -2123,6 +2213,7 @@ def _mailbox_rows(store):
             state_by_email[email] = item
 
     latest_results = _latest_results_by_email(results_dir)
+    live_progress = _live_progress_by_email(importer, cfg)
     rows = []
     counts = {"total": 0, "available": 0, "running": 0, "success": 0, "failed": 0}
     now = time.time()
@@ -2130,6 +2221,7 @@ def _mailbox_rows(store):
         email = _email_from_row(row)
         state_item = state_by_line.get(index) or state_by_email.get(email) or {}
         result = latest_results.get(email) or {}
+        live_task = live_progress.get(email) or {}
         manually_restored = (
             str(state_item.get("status") or "").lower() == "available"
             and str(state_item.get("reason") or "") == "manual_restore"
@@ -2169,7 +2261,9 @@ def _mailbox_rows(store):
                 "reason": state_item.get("reason") or "",
                 "error": friendly_error,
                 "technical_error": detail_error,
-                "task_id": result.get("task_id") or "",
+                "task_id": live_task.get("task_id") or result.get("task_id") or "",
+                "task_status": live_task.get("task_status") or result_status,
+                "progress": live_task.get("progress"),
                 "sms_cost_usd": sms_cost_usd,
                 "sms_cost_cny": sms_cost_cny,
                 "sms_exchange_rate": sms_exchange_rate,
@@ -2573,7 +2667,7 @@ def _patch_flask_app(app):
         return _module.Response(_MAILBOX_MANAGER_HTML, mimetype="text/html")
 
     def api_mailboxes():
-        return _module.jsonify(_mailbox_rows(store))
+        return _module.jsonify(_mailbox_rows(store, importer))
 
     def api_mailboxes_import():
         try:
@@ -2581,7 +2675,7 @@ def _patch_flask_app(app):
             result = _append_mailbox_rows(store, importer, logs, data.get("pool_content", ""))
             if not result.get("ok"):
                 return _module.jsonify(result), 400
-            result["mailboxes"] = _mailbox_rows(store)
+            result["mailboxes"] = _mailbox_rows(store, importer)
             result["state"] = public_state()
             return _module.jsonify(result)
         except Exception as exc:
@@ -2595,7 +2689,7 @@ def _patch_flask_app(app):
             result = _delete_mailboxes(store, importer, logs, data)
             if not result.get("ok"):
                 return _module.jsonify(result), 400
-            result["mailboxes"] = _mailbox_rows(store)
+            result["mailboxes"] = _mailbox_rows(store, importer)
             result["state"] = public_state()
             return _module.jsonify(result)
         except Exception as exc:
@@ -2609,7 +2703,7 @@ def _patch_flask_app(app):
             result = _restore_mailboxes(store, importer, logs, data)
             if not result.get("ok"):
                 return _module.jsonify(result), 400
-            result["mailboxes"] = _mailbox_rows(store)
+            result["mailboxes"] = _mailbox_rows(store, importer)
             result["state"] = public_state()
             return _module.jsonify(result)
         except Exception as exc:
