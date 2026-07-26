@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Bottom, VideoPause } from '@element-plus/icons-vue'
 import type { ScrollbarInstance } from 'element-plus'
+import ContentEmptyState from './ContentEmptyState.vue'
 
 const props = defineProps<{ logs: any[] }>()
 
@@ -112,7 +113,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="log-panel">
-    <div class="log-toolbar">
+    <div v-if="renderedLogs.length" class="log-toolbar">
       <el-button size="small" plain @click="toggleAutoScroll">
         <el-icon><VideoPause v-if="autoScroll" /><Bottom v-else /></el-icon>
         {{ autoScroll ? '暂停滚动' : '继续滚动' }}
@@ -126,10 +127,13 @@ onBeforeUnmount(() => {
       @wheel.passive="pauseAutoScroll"
       @touchstart.passive="pauseAutoScroll"
     >
-      <div v-for="log in renderedLogs" :key="log.key" v-memo="[log.key]" class="log-line">
-        <span>{{ log.time }}</span>
-        <b :class="log.level">{{ log.message }}</b>
-      </div>
+      <ContentEmptyState v-if="!renderedLogs.length" />
+      <template v-else>
+        <div v-for="log in renderedLogs" :key="log.key" v-memo="[log.key]" class="log-line">
+          <span>{{ log.time }}</span>
+          <b :class="log.level">{{ log.message }}</b>
+        </div>
+      </template>
     </el-scrollbar>
   </div>
 </template>
@@ -139,6 +143,7 @@ onBeforeUnmount(() => {
 .log-toolbar { flex: 0 0 auto; display: flex; justify-content: flex-end; margin-bottom: 4px; }
 .log-toolbar :deep(.el-button) { padding: 4px 7px; }
 .log-scroll { min-height: 0; flex: 1; }
+.log-scroll :deep(.el-scrollbar__view) { min-height: 100%; }
 .log-line { display: flex; gap: 12px; padding: 6px 2px; border-bottom: 1px solid var(--el-border-color-lighter); font-size: 12px; }
 .log-line span { color: var(--el-text-color-secondary); white-space: nowrap; }
 .log-line b { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import ContentEmptyState from './ContentEmptyState.vue'
 import TaskProgressCell from './TaskProgressCell.vue'
 import { useTaskProgressClock } from '../composables/useTaskProgressClock'
 import type { MailboxRow } from '../types/api'
@@ -128,6 +129,7 @@ function costDetail(row: MailboxRow) {
     <el-table-column label="验证码" width="100">
       <template #default="{ row }">{{ props.latestCodes[row.line_no] || '暂无' }}</template>
     </el-table-column>
+    <template #empty><ContentEmptyState /></template>
   </el-table>
 </template>
 

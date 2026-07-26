@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentEmptyState from './ContentEmptyState.vue'
 import TaskProgressCell from './TaskProgressCell.vue'
 import { useTaskProgressClock } from '../composables/useTaskProgressClock'
 import type { RuntimeTask } from '../types/api'
@@ -43,6 +44,7 @@ function statusType(status?: string) {
     <el-table-column label="说明" min-width="220" show-overflow-tooltip>
       <template #default="{ row }">{{ row.error || row.reason || '-' }}</template>
     </el-table-column>
+    <template #empty><ContentEmptyState /></template>
   </el-table>
 </template>
 
