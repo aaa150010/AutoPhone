@@ -111,6 +111,13 @@ def stage_for_chain_state(state: Any) -> str | None:
     return CHAIN_STATE_STAGES.get(str(state or "").strip().upper())
 
 
+def is_active_progress(progress: Any, status: Any = "") -> bool:
+    if not isinstance(progress, dict):
+        return False
+    normalized_status = str(status or "").strip().lower()
+    return progress.get("finished_at") is None and normalized_status not in TERMINAL_TASK_STATUSES
+
+
 class TaskProgressTracker:
     def __init__(self, clock: Callable[[], float] = time.time) -> None:
         self._clock = clock

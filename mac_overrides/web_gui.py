@@ -2245,8 +2245,14 @@ def _mailbox_rows(store, importer=None):
         sms_exchange_rate = result_payload.get("sms_exchange_rate", result.get("sms_exchange_rate")) if succeeded else None
         sms_exchange_date = result_payload.get("sms_exchange_date", result.get("sms_exchange_date")) if succeeded else ""
         status_key, status_label = _human_mailbox_status(state_item, now)
+        live_active = _task_progress_ext.is_active_progress(
+            live_task.get("progress"),
+            live_task.get("task_status"),
+        )
+        if live_active:
+            status_key, status_label = "running", "运行中"
         counts["total"] += 1
-        count_status = _pool_count_status(state_item, now)
+        count_status = "running" if live_active else _pool_count_status(state_item, now)
         if count_status == "consumed":
             count_status = "success"
         counts[count_status] = counts.get(count_status, 0) + 1

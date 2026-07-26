@@ -5,6 +5,7 @@ import unittest
 from mac_overrides.task_progress import (
     STAGE_GROUPS,
     TaskProgressTracker,
+    is_active_progress,
     stage_for_chain_state,
     stage_for_task_status,
 )
@@ -54,6 +55,16 @@ class TaskProgressTests(unittest.TestCase):
 
         self.assertFalse(changed)
         self.assertEqual(self.tracker.progress("T001")["entered_at"], 100)
+
+    def test_active_progress_can_drive_mailbox_running_state(self):
+        self.tracker.set_stage("T001", "phone_acquiring")
+        progress = self.tracker.progress("T001")
+
+        self.assertTrue(is_active_progress(progress, "authorizing"))
+        self.assertFalse(is_active_progress(progress, "failed"))
+
+        self.tracker.observe_task_state("T001", "success")
+        self.assertFalse(is_active_progress(self.tracker.progress("T001"), "success"))
 
     def test_phone_retry_reenters_acquisition_and_terminal_state_freezes(self):
         self.tracker.set_stage("T001", "phone_acquiring")
