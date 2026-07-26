@@ -9,6 +9,7 @@ const props = defineProps<{
   hasPool: boolean
   saving: boolean
   preflighting: boolean
+  starting: boolean
 }>()
 
 const emit = defineEmits<{
@@ -99,7 +100,7 @@ async function importConfig(event: Event) {
       <el-button :loading="preflighting" :disabled="running" @click="emit('preflight')">
         <el-icon><CircleCheck /></el-icon>真实链路预检
       </el-button>
-      <el-button type="primary" :disabled="running || !hasPool" @click="emit('start')">
+      <el-button type="primary" :loading="starting" :disabled="running || !hasPool" @click="emit('start')">
         <el-icon><VideoPlay /></el-icon>开始运行
       </el-button>
       <el-button type="danger" plain :disabled="!running" @click="emit('stop')">

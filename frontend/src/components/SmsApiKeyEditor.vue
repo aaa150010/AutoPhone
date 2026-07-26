@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { Delete, Plus } from '@element-plus/icons-vue'
+import { ElMessageBox } from 'element-plus'
 import type { SmsKeyStatus } from '../types/api'
 
 const props = defineProps<{
@@ -39,8 +40,23 @@ function addRow() {
   emit('update:modelValue', [...rows.value, ''])
 }
 
-function removeRow(index: number) {
+async function removeRow(index: number) {
   if (rows.value.length === 1) {
+    if (rows.value[index]) {
+      try {
+        await ElMessageBox.confirm(
+          '确定清空 SMS API Key？清空后需要保存配置才会生效。',
+          '清空 SMS API Key',
+          {
+            type: 'warning',
+            confirmButtonText: '清空',
+            cancelButtonText: '取消',
+          },
+        )
+      } catch {
+        return
+      }
+    }
     emit('update:modelValue', [''])
     return
   }

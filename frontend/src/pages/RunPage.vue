@@ -32,6 +32,7 @@ const form = reactive<any>({
 
 const saving = ref(false)
 const preflighting = ref(false)
+const starting = ref(false)
 const smsKeysDirty = ref(false)
 const seenAlerts = new Set<string>()
 let timer = 0
@@ -150,6 +151,7 @@ async function preflight() {
 }
 
 async function start() {
+  starting.value = true
   try {
     await startRun(payload())
     ElMessage.success('任务已启动')
@@ -157,6 +159,8 @@ async function start() {
   } catch (error: any) {
     ElMessage.error(error.message)
     await refresh()
+  } finally {
+    starting.value = false
   }
 }
 
@@ -192,6 +196,7 @@ onUnmounted(() => window.clearInterval(timer))
           :has-pool="hasPool()"
           :saving="saving"
           :preflighting="preflighting"
+          :starting="starting"
           @update:model-value="updateForm"
           @save="save"
           @preflight="preflight"
