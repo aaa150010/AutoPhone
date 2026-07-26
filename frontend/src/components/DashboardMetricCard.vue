@@ -1,11 +1,18 @@
 <script setup lang="ts">
-defineProps<{
+import { computed } from 'vue'
+import RollingMetricValue from './RollingMetricValue.vue'
+
+const props = defineProps<{
   title: string
   value: string | number
   icon: any
   tone?: 'primary' | 'success' | 'danger' | 'warning'
   compact?: boolean
 }>()
+
+const numericValue = computed(() => (
+  typeof props.value === 'number' && Number.isFinite(props.value) ? props.value : null
+))
 </script>
 
 <template>
@@ -17,7 +24,10 @@ defineProps<{
     <el-icon class="metric-icon"><component :is="icon" /></el-icon>
     <div class="metric-copy">
       <span>{{ title }}</span>
-      <strong>{{ value }}</strong>
+      <strong>
+        <RollingMetricValue v-if="numericValue !== null" :value="numericValue" />
+        <template v-else>{{ value }}</template>
+      </strong>
     </div>
   </el-card>
 </template>
