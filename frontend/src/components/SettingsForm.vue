@@ -2,24 +2,24 @@
 import RuntimeSettingsSection from './RuntimeSettingsSection.vue'
 import SmsSettingsSection from './SmsSettingsSection.vue'
 import IntegrationSettingsSection from './IntegrationSettingsSection.vue'
+import type { SmsKeyStatus } from '../types/api'
 
-defineProps<{ modelValue: any }>()
+defineProps<{ modelValue: any; smsKeyStatuses?: SmsKeyStatus[] }>()
 const emit = defineEmits<{ 'update:modelValue': [any] }>()
 </script>
 
 <template>
   <el-form label-position="top" size="small" class="settings-form">
-    <el-divider content-position="center">基础设置</el-divider>
     <RuntimeSettingsSection
       :model-value="modelValue"
       @update:model-value="emit('update:modelValue', $event)"
     />
     <SmsSettingsSection
       :model-value="modelValue"
+      :statuses="smsKeyStatuses"
       @update:model-value="emit('update:modelValue', $event)"
     />
 
-    <el-divider content-position="center">SUB2 与 nvtoken</el-divider>
     <IntegrationSettingsSection
       :model-value="modelValue"
       @update:model-value="emit('update:modelValue', $event)"
@@ -29,4 +29,5 @@ const emit = defineEmits<{ 'update:modelValue': [any] }>()
 
 <style scoped>
 .settings-form { max-width: 760px; }
+.settings-form > :deep(.settings-section + .settings-section) { margin-top: 8px; }
 </style>

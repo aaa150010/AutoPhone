@@ -50,6 +50,18 @@ async function copy(value: string | undefined, label: string) {
     ElMessage.error(`复制${label}失败`)
   }
 }
+
+function costLabel(row: MailboxRow) {
+  return row.sms_cost_cny == null ? '暂无' : `¥${Number(row.sms_cost_cny).toFixed(2)}`
+}
+
+function costDetail(row: MailboxRow) {
+  if (row.sms_cost_cny == null) return ''
+  const usd = row.sms_cost_usd == null ? '暂无' : `$${Number(row.sms_cost_usd).toFixed(4)}`
+  const rate = row.sms_exchange_rate == null ? '暂无' : Number(row.sms_exchange_rate).toFixed(4)
+  const date = row.sms_exchange_date || '未知日期'
+  return `美元报价 ${usd} · USD/CNY ${rate} · ${date}`
+}
 </script>
 
 <template>
@@ -63,23 +75,31 @@ async function copy(value: string | undefined, label: string) {
   >
     <el-table-column type="selection" width="46" reserve-selection />
     <el-table-column prop="line_no" label="#" width="65" />
-    <el-table-column label="邮箱" min-width="190" show-overflow-tooltip>
+    <el-table-column label="邮箱" min-width="165" show-overflow-tooltip>
       <template #default="{ row }">
         <el-button class="copy-value" link @click="copy(row.email, '邮箱')">
           {{ row.email || '-' }}
         </el-button>
       </template>
     </el-table-column>
-    <el-table-column label="密码" min-width="140" show-overflow-tooltip>
+    <el-table-column label="密码" min-width="120" show-overflow-tooltip>
       <template #default="{ row }">
         <el-button class="copy-value" link @click="copy(row.password, '密码')">
           {{ row.password || '-' }}
         </el-button>
       </template>
     </el-table-column>
+    <el-table-column label="接码成本" width="105" align="right">
+      <template #default="{ row }">
+        <el-tooltip v-if="row.sms_cost_cny != null" :content="costDetail(row)" placement="top">
+          <span class="sms-cost">{{ costLabel(row) }}</span>
+        </el-tooltip>
+        <span v-else class="muted">暂无</span>
+      </template>
+    </el-table-column>
     <el-table-column label="状态" width="110">
       <template #default="{ row }">
-        <el-tag :type="row.status === 'success' ? 'success' : row.status === 'failed' ? 'danger' : 'info'">
+        <el-tag :type="row.status === 'consumed' ? 'success' : row.status === 'failed' ? 'danger' : 'info'">
           {{ row.status_label || row.status }}
         </el-tag>
       </template>
@@ -112,4 +132,6 @@ async function copy(value: string | undefined, label: string) {
   white-space: nowrap;
   vertical-align: middle;
 }
+.sms-cost { color: var(--el-color-success); font-variant-numeric: tabular-nums; cursor: help; }
+.muted { color: var(--el-text-color-secondary); }
 </style>

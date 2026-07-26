@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import SecretInput from './SecretInput.vue'
+import SmsApiKeyEditor from './SmsApiKeyEditor.vue'
+import type { SmsKeyStatus } from '../types/api'
 
-const props = defineProps<{ modelValue: any }>()
+const props = defineProps<{ modelValue: any; statuses?: SmsKeyStatus[] }>()
 const emit = defineEmits<{ 'update:modelValue': [any] }>()
 
 function update(key: string, value: any) {
@@ -43,23 +44,32 @@ function update(key: string, value: any) {
         </el-form-item>
       </el-col>
       <el-col :span="12">
-        <el-form-item label="每号最大尝试（0=不限）">
+        <el-form-item label="每号最大尝试">
           <el-input-number
-            :model-value="Number(modelValue.phone_max_attempts ?? 0)"
-            :min="0"
-            :max="1000"
+            :model-value="Number(modelValue.phone_max_attempts ?? 10)"
+            :min="1"
+            :max="10"
             controls-position="right"
-            @update:model-value="update('phone_max_attempts', Number($event ?? 0))"
+            @update:model-value="update('phone_max_attempts', Number($event ?? 10))"
           />
         </el-form-item>
       </el-col>
     </el-row>
 
-    <SecretInput
-      :model-value="modelValue.sms_api_key || ''"
-      secret-id="sms_api_key"
-      label="SMS API Key"
-      @update:model-value="update('sms_api_key', $event)"
+    <el-form-item label="手机阶段超时（秒）">
+      <el-input-number
+        :model-value="Number(modelValue.phone_session_cycle_seconds ?? 480)"
+        :min="30"
+        :max="480"
+        controls-position="right"
+        @update:model-value="update('phone_session_cycle_seconds', Number($event ?? 480))"
+      />
+    </el-form-item>
+
+    <SmsApiKeyEditor
+      :model-value="Array.isArray(modelValue.sms_api_keys) ? modelValue.sms_api_keys : [modelValue.sms_api_key || '']"
+      :statuses="statuses"
+      @update:model-value="update('sms_api_keys', $event)"
     />
   </div>
 </template>

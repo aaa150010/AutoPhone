@@ -7,7 +7,7 @@ export async function api<T = any>(path: string, body?: unknown): Promise<T> {
 
 export const getState = () => api<{ state: any }>('/api/state')
 export const getLocalConfig = () => api<{ config: any }>('/api/local-config')
-export const getSecret = (id: string) => api<{ value: string }>('/api/local-config/secret', { id })
+export const getSecret = (id: string) => api<{ value: string | string[] }>('/api/local-config/secret', { id })
 export const saveConfig = (data: any) => api('/api/config', data)
 export const preflightRun = (data: any) => api('/api/preflight', data)
 export const startRun = (data: any) => api('/api/start', data)

@@ -92,6 +92,20 @@ function updateProxyScope(key: string, value: boolean | string | number) {
       </el-col>
     </el-row>
 
+    <el-row :gutter="10">
+      <el-col :span="12">
+        <el-form-item label="鉴权额外重试次数">
+          <el-input-number
+            :model-value="Number(modelValue.auth_session_retries ?? 1)"
+            :min="0"
+            :max="10"
+            controls-position="right"
+            @update:model-value="update('auth_session_retries', Number($event ?? 1))"
+          />
+        </el-form-item>
+      </el-col>
+    </el-row>
+
   </div>
 </template>
 
