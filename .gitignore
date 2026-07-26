@@ -6,3 +6,6 @@ node_chain.dat
 __pycache__/
 *.pyc.__bak__
 .DS_Store
+frontend/node_modules/
+frontend/.vite/
+frontend/*.tsbuildinfo

@@ -1,0 +1,3 @@
+<script setup lang="ts">defineProps<{ logs: any[] }>();</script>
+<template><el-scrollbar class="log-scroll"><div v-for="(log, index) in logs" :key="index" class="log-line"><span>{{ log.time || '' }}</span><b :class="log.type">{{ log.message || log.text || log }}</b></div></el-scrollbar></template>
+<style scoped>.log-scroll{height:100%;min-height:0}.log-line{display:flex;gap:12px;padding:6px 2px;border-bottom:1px solid var(--el-border-color-lighter);font-size:12px}.log-line span{color:var(--el-text-color-secondary);white-space:nowrap}.success{color:var(--el-color-success)}.error{color:var(--el-color-danger)}.warning{color:var(--el-color-warning)}</style>
