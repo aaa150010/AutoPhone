@@ -236,7 +236,7 @@ onUnmounted(() => {
 
 <style scoped>
 .page { width: 100%; height: 100%; padding: 2px; overflow: hidden; }
-.content { display: grid; grid-template-columns: minmax(410px, 38%) minmax(0, 1fr); gap: 8px; width: 100%; height: 100%; min-height: 0; margin-top: 0; }
+.content { display: grid; grid-template-columns: minmax(280px, 25%) minmax(0, 1fr); gap: 8px; width: 100%; height: 100%; min-height: 0; margin-top: 0; }
 .config-card,
 .runtime-card { min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction: column; }
 .config-card > :deep(.el-card__body) { min-height: 0; flex: 1; padding: 10px; overflow: auto; }
