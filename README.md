@@ -162,7 +162,7 @@ GPT账号|登录密码|2FA密钥
 
 ### 多 SMS Key 与余额
 
-预检会逐个查询 SMSBower Key 的美元余额，并在当前最低/最高价格范围内查找最低可用报价。每行 Key 会显示“可用 $1.25”“余额不足 $0.00”“Key 无效”或网络/限流状态。
+预检会并行查询各 SMSBower Key 的美元余额，再通过健康 Key 查询并短缓存最低可用报价；报价失败时最多再切换一个 Key，避免 Key 越多请求量越大。余额并行度会随 Key 数量增加，最多同时检查 `8` 个 Key，不写死为双 Key。每行 Key 会显示“可用 $1.25”“余额不足 $0.00”“Key 无效”或网络/限流状态。
 
 - 部分 Key 余额不足或不可用时，页面会列出 Key 序号，其余 Key 仍可运行。
 - 所有 Key 都余额不足时，预检失败并阻止启动。
@@ -170,18 +170,23 @@ GPT账号|登录密码|2FA密钥
 - 所有 Key 都耗尽时，不再创建新短信订单；已经领取的号码仍会处理完成，后续需要号码的任务会得到 `sms_balance_insufficient`。
 - 号码从哪个 Key 领取，后续查码、完成和取消就固定使用同一个 Key。日志和状态只记录 SHA-256 短指纹，不记录原始 Key。
 
-多 Key 池按“最少占用 + 轮询”分配。相同 Key 的相同余额告警每次运行只显示一次，避免状态轮询重复弹窗。
+多 Key 池会使用全部健康 Key，并按“最少占用 + 轮询”分配。两把 Key 时自然均衡到两边，增加 Key 后会自动摊开，不需要修改调度逻辑。相同 Key 的相同余额告警每次运行只显示一次，避免状态轮询重复弹窗。
 
 ### 并发与重试策略
 
 - 批量任务并发和 Node 并发默认都是 `5`。
+- `target_count` 会限制本次实际任务总数；调度器只预留本批目标邮箱，执行线程不超过 `min(target_count, concurrency)`，同一批次不会反复领取刚归还的邮箱。
 - 手机号提交全局最多并发 `2`，相邻提交至少间隔 `750ms`。
-- 未验证线路同时使用 `1` 个号码；已有成功记录的线路最多并发 `2`。
-- OpenAI 临时服务错误复用同一个号码，并按 `2/4/8` 秒退避重试。
+- 未验证线路同时使用 `1` 个号码；已有 OTP 发出或成功记录的线路最多并发 `2`。
+- 线路排序优先使用本机历史有效号码成功率；静态优先线路只负责没有历史样本时的冷启动，不额外发送线路预热请求。
+- OpenAI 临时服务错误复用同一个号码，并在所有任务之间共享 `2/4/8` 秒退避，避免并发任务同时重试形成尖峰。
 - 已使用号码线路冷却 `10` 分钟，可疑相似号码线路冷却 `30` 分钟，连续两次没有验证码的线路冷却 `5` 分钟。
 - 每个任务最多尝试 `10` 个号码，手机阶段最多运行 `480` 秒。
+- 手机已验证后如果 SUB2 授权会话恰好过期，会按“鉴权额外重试次数”建立全新会话继续；设置为 `0` 时不会额外重试。
 
 这些限制只约束手机号阶段，不会把整个任务并发强制降到 `2`。
+
+按当前运行日志，双 Key 的建议起点是任务并发 `6`、Node 并发 `5`。增加 SMS Key 会提升余额隔离和 SMS API 请求的可用吞吐，但 OpenAI 手机提交门仍是独立瓶颈，因此任务并发不应按 Key 数量线性放大；应从 `6/5` 起跑，再按成功吞吐和临时服务错误率调整。
 
 ### 接码成本
 
@@ -238,10 +243,24 @@ npm run build
 mac_runtime/.venv/bin/python -m unittest discover -s tests -v
 mac_runtime/.venv/bin/python -m py_compile \
   mac_overrides/web_gui.py \
+  mac_overrides/chatgpt_totp.py \
+  mac_overrides/importer_scheduler.py \
+  mac_overrides/legacy_ui.py \
+  mac_overrides/mailbox_admin.py \
+  mac_overrides/runtime_policy.py \
   mac_overrides/sms_runtime.py \
+  mac_overrides/sms_web.py \
   mac_overrides/task_progress.py \
+  mac_overrides/web_routes.py \
+  tests/test_chatgpt_totp.py \
+  tests/test_importer_scheduler.py \
+  tests/test_legacy_ui.py \
+  tests/test_mailbox_admin.py \
+  tests/test_runtime_policy.py \
   tests/test_sms_runtime.py \
-  tests/test_task_progress.py
+  tests/test_sms_web.py \
+  tests/test_task_progress.py \
+  tests/test_web_routes.py
 cd frontend
 npx vue-tsc --noEmit
 npm run build
@@ -296,7 +315,15 @@ iCloud IMAP 服务器是 `imap.mail.me.com:993`，通常不能用普通 Apple ID
 - `plus_launcher.pyc`: 恢复出的入口字节码
 - `business_pyc/`: 选出的业务 `.pyc` 模块
 - `mac_overrides/`: mac 适配和 UI/逻辑覆盖层
+- `mac_overrides/web_gui.py`: recovered 模块加载、窄 monkeypatch 注册和各独立覆盖模块装配
+- `mac_overrides/chatgpt_totp.py`: TOTP 邮箱格式、验证码生成和认证传输补丁
+- `mac_overrides/legacy_ui.py`: recovered 旧版页面的兼容 HTML/JS 注入
+- `mac_overrides/mailbox_admin.py`: 邮箱状态、查码、导入、删除和恢复服务
+- `mac_overrides/web_routes.py`: Flask 路由装配和配置/预检/启停生命周期协调
 - `mac_overrides/sms_runtime.py`: 多 SMS Key、余额隔离、并发门控、线路冷却、汇率和成本统计
+- `mac_overrides/sms_web.py`: SMS Provider、智能线路和 Web 运行时接线
+- `mac_overrides/importer_scheduler.py`: 目标数量控制、批次池条目预留和有界执行线程
+- `mac_overrides/runtime_policy.py`: 授权运行时的窄范围恢复策略
 - `mac_overrides/task_progress.py`: 线程安全的任务阶段追踪、阶段映射和六组实时计数
 - `frontend/`: Vue 3 + Element Plus 管理台源码和生产构建
 - `tests/`: 不产生真实短信费用的假 Provider 单元测试

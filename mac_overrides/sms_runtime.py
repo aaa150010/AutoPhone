@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 import hashlib
 import json
@@ -10,12 +11,14 @@ import re
 import threading
 import time
 from typing import Any, Callable
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
 
 SECRET_MASK = "********"
 ECB_DAILY_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
+SMS_PREFLIGHT_MAX_WORKERS = 8
 PERFORMANCE_POLICY_VERSION = 5
 PERFORMANCE_DEFAULTS = {
     "phone_max_attempts": 10,
@@ -81,7 +84,13 @@ def key_fingerprint(key: str) -> str:
 def redact_sms_secrets(value: Any, secrets: list[str]) -> str:
     text = str(value or "")
     for secret in sorted(normalize_sms_keys(secrets), key=len, reverse=True):
-        text = text.replace(secret, SECRET_MASK)
+        variants = {
+            secret,
+            urllib.parse.quote(secret, safe=""),
+            urllib.parse.quote_plus(secret, safe=""),
+        }
+        for variant in sorted(variants, key=len, reverse=True):
+            text = text.replace(variant, SECRET_MASK)
     return text
 
 
@@ -90,6 +99,134 @@ def _as_float(value: Any, default: float = 0.0) -> float:
         return float(str(value).strip())
     except (TypeError, ValueError):
         return default
+
+
+class SingleFlightTtlCache:
+    """Deduplicate concurrent loads and briefly cache empty results."""
+
+    def __init__(self, *, now_fn: Callable[[], float] = time.monotonic) -> None:
+        self.now_fn = now_fn
+        self.condition = threading.Condition()
+        self.values: dict[Any, tuple[float, Any]] = {}
+        self.loading: set[Any] = set()
+
+    def clear(self) -> None:
+        with self.condition:
+            self.values.clear()
+
+    def get_or_load(
+        self,
+        key: Any,
+        loader: Callable[[], Any],
+        *,
+        ttl_seconds: float,
+        empty_ttl_seconds: float,
+    ) -> Any:
+        while True:
+            with self.condition:
+                now = self.now_fn()
+                cached = self.values.get(key)
+                if cached is not None and cached[0] > now:
+                    return cached[1]
+                if key not in self.loading:
+                    self.loading.add(key)
+                    break
+                self.condition.wait()
+
+        try:
+            value = loader()
+        except BaseException:
+            with self.condition:
+                self.loading.discard(key)
+                self.condition.notify_all()
+            raise
+
+        ttl = ttl_seconds if value else empty_ttl_seconds
+        with self.condition:
+            now = self.now_fn()
+            self.values[key] = (now + max(0.0, float(ttl)), value)
+            self.loading.discard(key)
+            self.condition.notify_all()
+        return value
+
+
+class _StaleSmsPreflight(RuntimeError):
+    """Stop obsolete preflight work before it uses superseded credentials."""
+
+
+def _candidate_value(candidate: Any, name: str, default: Any = None) -> Any:
+    if isinstance(candidate, dict):
+        return candidate.get(name, default)
+    return getattr(candidate, name, default)
+
+
+def _route_stat(route_stats: Any, route: tuple[str, str]) -> dict[str, Any]:
+    if not isinstance(route_stats, dict):
+        return {}
+    value = route_stats.get(route)
+    if not isinstance(value, dict):
+        value = route_stats.get(f"{route[0]}::{route[1]}")
+    return value if isinstance(value, dict) else {}
+
+
+def rank_sms_candidates(
+    candidates: list[Any],
+    route_stats: Any,
+    *,
+    priority_routes: tuple[tuple[str, str], ...] = (),
+    priority_countries: tuple[str, ...] = (),
+    minimum_proven_rate: float = 0.10,
+) -> list[Any]:
+    """Rank proven routes by accepted-number yield without losing cold starts."""
+    route_priority = {route: index for index, route in enumerate(priority_routes)}
+    country_priority = {country: index for index, country in enumerate(priority_countries)}
+    default_route_priority = len(route_priority)
+    default_country_priority = len(country_priority)
+
+    def key(candidate: Any) -> tuple[Any, ...]:
+        route = (
+            str(_candidate_value(candidate, "country", "") or ""),
+            str(_candidate_value(candidate, "provider_id", "") or ""),
+        )
+        stat = _route_stat(route_stats, route)
+        success = max(
+            int(_as_float(stat.get("success"), 0)),
+            int(_as_float(stat.get("otp_received"), 0)),
+        )
+        failures = max(0, int(_as_float(stat.get("fail"), 0)))
+        no_numbers = max(0, int(_as_float(stat.get("no_numbers"), 0)))
+        classified_failures = sum(
+            max(0, int(_as_float(stat.get(name), 0)))
+            for name in ("phone_rejected", "register_rejected", "invalid_auth_step", "timeout")
+        )
+        rejected = max(0, failures - no_numbers, classified_failures)
+        attempts = success + rejected
+        acceptance_rate = success / attempts if attempts else 0.0
+        preferred = route in route_priority
+
+        if success > 0 and acceptance_rate >= minimum_proven_rate:
+            tier = 0
+        elif attempts == 0 and preferred:
+            tier = 1
+        elif success > 0:
+            tier = 2
+        elif attempts == 0:
+            tier = 3
+        else:
+            tier = 4
+
+        return (
+            tier,
+            -acceptance_rate,
+            -success,
+            route_priority.get(route, default_route_priority),
+            country_priority.get(route[0], default_country_priority),
+            -_as_float(_candidate_value(candidate, "score", 0.0), 0.0),
+            _as_float(_candidate_value(candidate, "price", 999.0), 999.0),
+            -int(_as_float(_candidate_value(candidate, "count", 0), 0)),
+        )
+
+    return sorted(candidates, key=key)
 
 
 def parse_sms_balance(value: Any) -> float:
@@ -146,6 +283,7 @@ class SmsKeyHealth:
     in_flight: int = 0
     cooldown_until: float = 0.0
     last_checked_at: float = 0.0
+    health_revision: int = 0
 
     def public(self, now: float | None = None) -> dict[str, Any]:
         current = time.time() if now is None else now
@@ -161,6 +299,12 @@ class SmsKeyHealth:
         }
 
 
+@dataclass(frozen=True)
+class _SmsKeyReservation:
+    state: SmsKeyHealth
+    health_revision: int
+
+
 class SmsKeyPool:
     """Selects a healthy SMSBower account and binds each activation to it."""
 
@@ -173,8 +317,10 @@ class SmsKeyPool:
         self.provider_factory = provider_factory
         self.now_fn = now_fn
         self.lock = threading.RLock()
+        self.price_floor_cache = SingleFlightTtlCache(now_fn=now_fn)
         self.states: list[SmsKeyHealth] = []
         self.cursor = 0
+        self.preflight_generation = 0
         self.service = "dr"
         self.min_price = 0.01
         self.max_price = 0.1
@@ -198,6 +344,7 @@ class SmsKeyPool:
         normalized = normalize_sms_keys(keys)
         fingerprints = [key_fingerprint(key) for key in normalized]
         with self.lock:
+            self.preflight_generation += 1
             existing = {state.fingerprint: state for state in self.states}
             if fingerprints != [state.fingerprint for state in self.states]:
                 self.states = [
@@ -210,6 +357,7 @@ class SmsKeyPool:
                         message=existing.get(fingerprint, SmsKeyHealth(key)).message,
                         cooldown_until=existing.get(fingerprint, SmsKeyHealth(key)).cooldown_until,
                         last_checked_at=existing.get(fingerprint, SmsKeyHealth(key)).last_checked_at,
+                        health_revision=existing.get(fingerprint, SmsKeyHealth(key)).health_revision,
                     )
                     for index, (key, fingerprint) in enumerate(zip(normalized, fingerprints), start=1)
                 ]
@@ -228,6 +376,7 @@ class SmsKeyPool:
 
     def begin_run(self) -> None:
         with self.lock:
+            self.preflight_generation += 1
             for state in self.states:
                 state.in_flight = 0
             self.alerted.clear()
@@ -242,9 +391,10 @@ class SmsKeyPool:
             now = self.now_fn()
             return [state.public(now) for state in self.states]
 
-    def safe_error(self, error: Any) -> str:
+    def safe_error(self, error: Any, extra_secrets: Any = None) -> str:
         with self.lock:
             secrets = [state.key for state in self.states]
+        secrets.extend(normalize_sms_keys(extra_secrets))
         return redact_sms_secrets(error, secrets)
 
     def usable_count(self) -> int:
@@ -268,7 +418,10 @@ class SmsKeyPool:
 
     def _log(self, message: str, level: str = "info") -> None:
         if callable(self.logger):
-            self.logger(message, level)
+            try:
+                self.logger(message, level)
+            except Exception:
+                pass
 
     def _emit_alert_locked(self, state: SmsKeyHealth, kind: str, message: str) -> None:
         alert_key = (state.fingerprint, kind)
@@ -282,13 +435,29 @@ class SmsKeyPool:
             "message": message,
         }
         if callable(self.alert_fn):
-            self.alert_fn(payload)
+            try:
+                self.alert_fn(payload)
+            except Exception:
+                pass
 
-    def _mark_error(self, state: SmsKeyHealth, error: Any, *, runtime: bool) -> str:
+    def _mark_error(
+        self,
+        state: SmsKeyHealth,
+        error: Any,
+        *,
+        runtime: bool,
+        expected_revision: int | None = None,
+        expected_generation: int | None = None,
+    ) -> str:
         kind = classify_key_error(error)
         now = self.now_fn()
-        text = self.safe_error(error)
+        text = self.safe_error(error, [state.key])
         with self.lock:
+            if expected_generation is not None and self.preflight_generation != expected_generation:
+                return kind
+            if expected_revision is not None and state.health_revision != expected_revision:
+                return kind
+            state.health_revision += 1
             state.last_checked_at = now
             if kind == "insufficient_balance":
                 state.status = kind
@@ -332,44 +501,122 @@ class SmsKeyPool:
             return classify_key_error(error)
         return self._mark_error(state, error, runtime=runtime)
 
-    def _query_price_floor(self, proxy: str) -> float:
+    def _query_price_floor(
+        self,
+        proxy: str,
+        states: list[SmsKeyHealth],
+        *,
+        expected_generation: int,
+    ) -> float:
         with self.lock:
-            states = list(self.states)
             service = self.service
             min_price = self.min_price
             max_price = self.max_price
-        for state in states:
-            try:
-                provider = self.provider_factory(state.key, proxy=proxy)
-                rows = provider.get_price_candidates(service=service)
-            except Exception:
-                continue
-            prices = []
-            for row in rows or []:
-                price = _as_float((row or {}).get("price"), -1)
-                count = int(_as_float((row or {}).get("count"), 0))
-                if count > 0 and min_price <= price <= max_price:
-                    prices.append(price)
-            if prices:
-                return min(prices)
-        return min_price
+        preferred = sorted(
+            states,
+            key=lambda state: (state.status != "usable", state.index),
+        )[:2]
+        cache_key = (
+            tuple(state.fingerprint for state in preferred),
+            service,
+            min_price,
+            max_price,
+            key_fingerprint(proxy) if proxy else "direct",
+        )
+
+        def ensure_current() -> None:
+            with self.lock:
+                if self.preflight_generation != expected_generation:
+                    raise _StaleSmsPreflight
+
+        def load_price_floor() -> float | None:
+            for state in preferred:
+                ensure_current()
+                try:
+                    provider = self.provider_factory(state.key, proxy=proxy)
+                    rows = provider.get_price_candidates(service=service)
+                except Exception:
+                    continue
+                prices = []
+                for row in rows or []:
+                    if not isinstance(row, dict):
+                        continue
+                    price = _as_float(row.get("price"), -1)
+                    count = int(_as_float(row.get("count"), 0))
+                    if count > 0 and min_price <= price <= max_price:
+                        prices.append(price)
+                if prices:
+                    return min(prices)
+            return None
+
+        if not preferred:
+            return min_price
+        ensure_current()
+        value = self.price_floor_cache.get_or_load(
+            cache_key,
+            load_price_floor,
+            ttl_seconds=60,
+            empty_ttl_seconds=5,
+        )
+        return min_price if value is None else float(value)
 
     def preflight(self, *, proxy: str = "") -> list[dict[str, Any]]:
         with self.lock:
             states = list(self.states)
+            self.preflight_generation += 1
+            generation = self.preflight_generation
+            revisions = {
+                id(state): state.health_revision
+                for state in states
+            }
         if not states:
             return []
 
-        price_floor = self._query_price_floor(proxy)
-        for state in states:
+        def check_balance(
+            state: SmsKeyHealth,
+        ) -> tuple[SmsKeyHealth, int, float, float | None, Exception | None]:
+            revision = revisions[id(state)]
             now = self.now_fn()
             try:
                 provider = self.provider_factory(state.key, proxy=proxy)
                 balance = parse_sms_balance(provider.balance())
             except Exception as exc:
-                self._mark_error(state, exc, runtime=False)
+                return state, revision, now, None, exc
+            return state, revision, now, balance, None
+
+        workers = min(SMS_PREFLIGHT_MAX_WORKERS, len(states))
+        if workers == 1:
+            results = [check_balance(states[0])]
+        else:
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="sms-preflight") as executor:
+                results = list(executor.map(check_balance, states))
+
+        try:
+            price_floor = self._query_price_floor(
+                proxy,
+                [state for state, _revision, _now, balance, error in results if error is None and balance is not None],
+                expected_generation=generation,
+            )
+        except _StaleSmsPreflight:
+            return self.public_statuses()
+
+        for state, revision, now, balance, error in results:
+            if error is not None:
+                self._mark_error(
+                    state,
+                    error,
+                    runtime=False,
+                    expected_revision=revision,
+                    expected_generation=generation,
+                )
                 continue
             with self.lock:
+                if self.preflight_generation != generation:
+                    continue
+                if state.health_revision != revision:
+                    continue
+                assert balance is not None
+                state.health_revision += 1
                 state.balance_usd = balance
                 state.last_checked_at = now
                 state.cooldown_until = 0.0
@@ -388,7 +635,7 @@ class SmsKeyPool:
             return True
         return False
 
-    def _reserve_state(self, excluded: set[str]) -> SmsKeyHealth | None:
+    def _reserve_state(self, excluded: set[str]) -> _SmsKeyReservation | None:
         with self.lock:
             now = self.now_fn()
             selectable = [
@@ -405,7 +652,18 @@ class SmsKeyPool:
             )
             state.in_flight += 1
             self.cursor = state.index % count
-            return state
+            return _SmsKeyReservation(state, state.health_revision)
+
+    def _mark_success(self, reservation: _SmsKeyReservation) -> bool:
+        with self.lock:
+            state = reservation.state
+            if state.health_revision != reservation.health_revision:
+                return False
+            state.health_revision += 1
+            state.status = "usable"
+            state.message = "可用"
+            state.cooldown_until = 0.0
+            return True
 
     def _release_state(self, state: SmsKeyHealth | None) -> None:
         callback = None
@@ -416,14 +674,18 @@ class SmsKeyPool:
                 self.exhaustion_reported = True
                 callback = self.exhausted_fn
         if callable(callback):
-            callback()
+            try:
+                callback()
+            except Exception:
+                pass
 
     def query(self, method: str, *, proxy: str = "", **kwargs: Any) -> Any:
         excluded: set[str] = set()
         while True:
-            state = self._reserve_state(excluded)
-            if state is None:
+            reservation = self._reserve_state(excluded)
+            if reservation is None:
                 raise RuntimeError(self.unavailable_error())
+            state = reservation.state
             try:
                 provider = self.provider_factory(state.key, proxy=proxy)
                 result = getattr(provider, method)(**kwargs)
@@ -433,11 +695,9 @@ class SmsKeyPool:
                 if kind in {"insufficient_balance", "invalid", "rate_limited", "network_error"}:
                     excluded.add(state.fingerprint)
                     continue
-                raise RuntimeError(self.safe_error(exc)) from exc
+                raise RuntimeError(self.safe_error(exc, [state.key])) from exc
             self._release_state(state)
-            with self.lock:
-                state.status = "usable"
-                state.message = "可用"
+            self._mark_success(reservation)
             return result
 
     def activate(
@@ -450,9 +710,10 @@ class SmsKeyPool:
     ) -> tuple[Any, SmsKeyHealth, tuple[str, str]]:
         excluded: set[str] = set()
         while True:
-            state = self._reserve_state(excluded)
-            if state is None:
+            reservation = self._reserve_state(excluded)
+            if reservation is None:
                 raise RuntimeError(self.unavailable_error())
+            state = reservation.state
             try:
                 provider = self.provider_factory(state.key, proxy=proxy)
                 activation = getattr(provider, method)(**kwargs)
@@ -462,10 +723,8 @@ class SmsKeyPool:
                 if kind in {"insufficient_balance", "invalid", "rate_limited", "network_error"}:
                     excluded.add(state.fingerprint)
                     continue
-                raise RuntimeError(self.safe_error(exc)) from exc
-            with self.lock:
-                state.status = "usable"
-                state.message = "可用"
+                raise RuntimeError(self.safe_error(exc, [state.key])) from exc
+            self._mark_success(reservation)
             return provider, state, activation
 
     def release(self, state: SmsKeyHealth | None) -> None:
@@ -525,18 +784,34 @@ class PooledSmsBowerProvider:
             price_usd=price_usd,
             **kwargs,
         )
-        activation_id, phone = activation
+        try:
+            activation_id, phone = activation
+            activation_text = str(activation_id).strip()
+            phone_text = str(phone).strip()
+            if not activation_text or not phone_text:
+                raise ValueError("empty activation")
+            order_meta = {
+                "key_index": state.index,
+                "key_fingerprint": state.fingerprint,
+                "balance_usd": state.balance_usd,
+                "price_usd": None if price_usd is None else float(price_usd),
+            }
+        except Exception:
+            try:
+                if hasattr(provider, "cancel"):
+                    provider.cancel()
+            except Exception as cleanup_error:
+                self.pool.report_error(state, cleanup_error, runtime=True)
+            finally:
+                self.pool.release(state)
+            raise RuntimeError("sms_activation_invalid_response") from None
+
         self._provider = provider
         self._state = state
         self._released = False
-        self.activation_id = str(activation_id)
-        self.phone = str(phone)
-        self.current_order_meta = {
-            "key_index": state.index,
-            "key_fingerprint": state.fingerprint,
-            "balance_usd": state.balance_usd,
-            "price_usd": None if price_usd is None else float(price_usd),
-        }
+        self.activation_id = activation_text
+        self.phone = phone_text
+        self.current_order_meta = order_meta
         return self.activation_id, self.phone
 
     def get_number(
@@ -582,11 +857,19 @@ class PooledSmsBowerProvider:
                 return self._provider.wait_code(timeout=timeout)
         except Exception as exc:
             self.pool.report_error(self._state, exc, runtime=True)
-            raise RuntimeError(self.pool.safe_error(exc)) from exc
+            self._release()
+            key = self._state.key if self._state is not None else ""
+            raise RuntimeError(self.pool.safe_error(exc, [key])) from exc
 
     def set_ready(self) -> None:
         if self._provider is not None and hasattr(self._provider, "set_ready"):
-            self._provider.set_ready()
+            try:
+                self._provider.set_ready()
+            except Exception as exc:
+                self.pool.report_error(self._state, exc, runtime=True)
+                self._release()
+                key = self._state.key if self._state is not None else ""
+                raise RuntimeError(self.pool.safe_error(exc, [key])) from exc
 
     def _finish(self, method: str) -> None:
         if self._provider is not None and hasattr(self._provider, method):
@@ -594,7 +877,8 @@ class PooledSmsBowerProvider:
                 getattr(self._provider, method)()
             except Exception as exc:
                 self.pool.report_error(self._state, exc, runtime=True)
-                raise RuntimeError(self.pool.safe_error(exc)) from exc
+                key = self._state.key if self._state is not None else ""
+                raise RuntimeError(self.pool.safe_error(exc, [key])) from exc
             finally:
                 self._release()
         else:
@@ -628,15 +912,77 @@ class PhoneSubmissionGate:
         self.sleep_fn = sleep_fn
         self.spacing_lock = threading.Lock()
         self.last_started_at = 0.0
+        self.not_before = 0.0
+        self.transient_streak = 0
+
+    def begin_run(self) -> None:
+        with self.spacing_lock:
+            self.last_started_at = 0.0
+            self.not_before = 0.0
+            self.transient_streak = 0
+
+    def report_transient(self) -> float:
+        with self.spacing_lock:
+            self.transient_streak += 1
+            delay = min(8.0, 2.0 ** self.transient_streak)
+            self.not_before = max(self.not_before, self.now_fn() + delay)
+            return delay
+
+    def report_success(self) -> None:
+        with self.spacing_lock:
+            self.transient_streak = 0
 
     def call(self, function: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         with self.semaphore:
-            with self.spacing_lock:
-                wait_for = self.interval_seconds - (self.now_fn() - self.last_started_at)
+            while True:
+                with self.spacing_lock:
+                    now = self.now_fn()
+                    wait_for = max(
+                        self.interval_seconds - (now - self.last_started_at),
+                        self.not_before - now,
+                    )
+                    if wait_for <= 0:
+                        self.last_started_at = now
+                        break
                 if wait_for > 0:
                     self.sleep_fn(wait_for)
-                self.last_started_at = self.now_fn()
             return function(*args, **kwargs)
+
+    def call_with_retries(
+        self,
+        function: Callable[..., Any],
+        *args: Any,
+        is_transient: Callable[[Any], bool],
+        max_attempts: int = 4,
+        on_retry: Callable[[float, int], None] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        attempts = max(1, int(max_attempts))
+        last_error: Any = None
+        for attempt in range(1, attempts + 1):
+            try:
+                result = self.call(function, *args, **kwargs)
+            except Exception as exc:
+                if not is_transient(exc):
+                    self.report_success()
+                    raise
+                last_error = exc
+            else:
+                if not is_transient(result):
+                    self.report_success()
+                    return result
+                last_error = result
+
+            delay = self.report_transient()
+            if attempt < attempts and callable(on_retry):
+                try:
+                    on_retry(delay, attempt)
+                except Exception:
+                    pass
+
+        if isinstance(last_error, Exception):
+            raise last_error
+        return last_error
 
 
 def is_transient_openai_error(value: Any) -> bool:
@@ -679,7 +1025,10 @@ class SmsRoutePolicy:
     @staticmethod
     def route_limit(stat: Any) -> int:
         row = stat if isinstance(stat, dict) else {}
-        proven = int(_as_float(row.get("success"), 0)) > 0 or int(_as_float(row.get("otp_received"), 0)) > 0
+        proven = any(
+            int(_as_float(row.get(name), 0)) > 0
+            for name in ("otp_sent", "otp_received", "success")
+        )
         return 2 if proven else 1
 
     def reset(self) -> None:
