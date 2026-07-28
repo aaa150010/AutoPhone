@@ -1,19 +1,21 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { api } from '../api/client'
 
-const props = defineProps<{
-  modelValue: any
+defineProps<{
   running: boolean
   hasPool: boolean
   saving: boolean
   preflighting: boolean
   starting: boolean
+  stopping?: boolean
+  importing?: boolean
+  exporting?: boolean
 }>()
 
 const emit = defineEmits<{
-  'update:modelValue': [any]
+  importConfig: [any]
+  exportConfig: []
   save: []
   preflight: []
   start: []
@@ -21,104 +23,47 @@ const emit = defineEmits<{
 }>()
 
 const fileInput = ref<HTMLInputElement>()
-const importing = ref(false)
-const exporting = ref(false)
-const performancePolicyVersion = 5
 
-async function exportConfig() {
-  exporting.value = true
-  try {
-    const result: any = await api('/api/local-config/export', { ...props.modelValue, download: true })
-    const blob = new Blob([JSON.stringify(result.config || {}, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = 'gptphone-config.json'
-    link.click()
-    URL.revokeObjectURL(url)
-    ElMessage.success('配置已导出')
-  } catch (error: any) {
-    ElMessage.error(error.message || '导出配置失败')
-  } finally {
-    exporting.value = false
-  }
-}
-
-async function importConfig(event: Event) {
+async function importFile(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
-  importing.value = true
   try {
-    const config = JSON.parse(await file.text())
-    if (!Array.isArray(config.sms_api_keys) && config.sms_api_key) {
-      config.sms_api_keys = [config.sms_api_key]
-    }
-    config.sms_api_keys = [...new Set(
-      (Array.isArray(config.sms_api_keys) ? config.sms_api_keys : [''])
-        .map((key: unknown) => String(key || '').trim())
-        .filter(Boolean),
-    )]
-    if (!config.sms_api_keys.length) config.sms_api_keys = ['']
-    if (Number(config.performance_policy_version || 0) < performancePolicyVersion) {
-      if (Number(config.phone_max_attempts || 0) <= 0) config.phone_max_attempts = 10
-      if (Number(config.phone_session_cycle_seconds || 0) <= 0) config.phone_session_cycle_seconds = 480
-      if (Number(config.auth_session_retries || 0) <= 0) config.auth_session_retries = 1
-      config.performance_policy_version = performancePolicyVersion
-    }
-    delete config.sms_api_key
-    await api('/api/local-config/import', { config })
-    emit('update:modelValue', {
-      ...props.modelValue,
-      ...config,
-      sub2api: { ...(props.modelValue.sub2api || {}), ...(config.sub2api || {}) },
-      nvtoken: { ...(props.modelValue.nvtoken || {}), ...(config.nvtoken || {}) },
-    })
-    ElMessage.success('配置已导入')
+    emit('importConfig', JSON.parse(await file.text()))
   } catch (error: any) {
-    ElMessage.error(error.message || '导入配置失败')
+    ElMessage.error(error?.message || '配置文件不是有效 JSON')
   } finally {
-    importing.value = false
     input.value = ''
   }
 }
 </script>
 
 <template>
-  <div class="operation-scroll">
-    <div class="operation-bar">
-      <input ref="fileInput" class="file-input" type="file" accept="application/json,.json" @change="importConfig" />
-      <el-button :loading="importing" :disabled="running" @click="fileInput?.click()">
-        <el-icon><Upload /></el-icon>导入配置
-      </el-button>
-      <el-button :loading="exporting" @click="exportConfig">
-        <el-icon><Download /></el-icon>导出配置
-      </el-button>
-      <el-button :loading="saving" :disabled="running" @click="emit('save')">
-        <el-icon><Check /></el-icon>保存配置
-      </el-button>
-      <el-button :loading="preflighting" :disabled="running" @click="emit('preflight')">
-        <el-icon><CircleCheck /></el-icon>真实链路预检
-      </el-button>
-      <el-button type="primary" :loading="starting" :disabled="running || !hasPool" @click="emit('start')">
-        <el-icon><VideoPlay /></el-icon>开始运行
-      </el-button>
-      <el-button type="danger" plain :disabled="!running" @click="emit('stop')">
-        <el-icon><VideoPause /></el-icon>停止
-      </el-button>
-    </div>
+  <div class="operation-bar">
+    <input ref="fileInput" class="file-input" type="file" accept="application/json,.json" @change="importFile" />
+    <el-button :loading="importing" :disabled="running" @click="fileInput?.click()">
+      <el-icon><Upload /></el-icon>导入配置
+    </el-button>
+    <el-button :loading="exporting" @click="emit('exportConfig')">
+      <el-icon><Download /></el-icon>导出配置
+    </el-button>
+    <el-button :loading="saving" :disabled="running" @click="emit('save')">
+      <el-icon><Check /></el-icon>保存配置
+    </el-button>
+    <el-button :loading="preflighting" :disabled="running" @click="emit('preflight')">
+      <el-icon><CircleCheck /></el-icon>真实链路预检
+    </el-button>
+    <el-button type="primary" :loading="starting" :disabled="running || !hasPool" @click="emit('start')">
+      <el-icon><VideoPlay /></el-icon>开始运行
+    </el-button>
+    <el-button type="danger" plain :loading="stopping" :disabled="!running" @click="emit('stop')">
+      <el-icon><VideoPause /></el-icon>停止
+    </el-button>
   </div>
 </template>
 
 <style scoped>
-.operation-scroll { width: 100%; margin-top: 8px; overflow: hidden; }
-.operation-bar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; width: 100%; }
-.operation-bar :deep(.el-button) {
-  width: 100%;
-  min-width: 0;
-  margin-left: 0;
-  padding: 5px 2px;
-  font-size: 11px;
-}
+.operation-bar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; width: 100%; }
+.operation-bar :deep(.el-button) { width: 100%; min-width: 0; margin-left: 0; padding: 5px 3px; font-size: 11px; }
 .file-input { display: none; }
 </style>

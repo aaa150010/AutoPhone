@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 from pathlib import Path
 import re
@@ -68,6 +70,36 @@ def password_from_row(row: Any) -> str:
         return ""
     parts = [part.strip() for part in raw.split(delimiter)]
     return parts[1] if len(parts) >= 2 else ""
+
+
+def row_id_from_source(row: Any) -> str:
+    return hashlib.sha256(str(row or "").encode("utf-8")).hexdigest()
+
+
+def public_task_account(task: Any, source_row: Any = "") -> str:
+    """Reduce any recovered account label to its public email address."""
+    value = task if isinstance(task, Mapping) else {}
+    for candidate in (value.get("email"), value.get("account"), source_row):
+        email = email_from_row(candidate)
+        if email:
+            return email
+    return ""
+
+
+def url_credential_secrets(value: Any) -> tuple[str, ...]:
+    """Return full and component forms that must be redacted from public text."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ()
+    candidates = [raw]
+    try:
+        parsed = urllib.parse.urlsplit(raw)
+        for component in (parsed.username, parsed.password):
+            if component:
+                candidates.extend((component, urllib.parse.unquote(component)))
+    except (TypeError, ValueError):
+        pass
+    return tuple(dict.fromkeys(candidate for candidate in candidates if candidate))
 
 
 def masked_source_row(row: Any) -> str:
@@ -264,6 +296,37 @@ class MailboxAdminService:
                 return "", ""
             row = lines[target - 1]
         return row, email_from_row(row)
+
+    def reveal_password(self, row_id: Any, line_no: Any) -> dict[str, Any]:
+        expected_row_id = str(row_id or "").strip()
+        try:
+            target = int(line_no)
+        except (TypeError, ValueError):
+            target = 0
+
+        with self._lock:
+            lines = self._read_pool_lines()
+            if target <= 0 or target > len(lines):
+                return {
+                    "ok": False,
+                    "code": "mailbox_row_stale",
+                    "error": "邮箱列表已变化，请刷新后重试",
+                }
+            row = lines[target - 1]
+            if not hmac.compare_digest(expected_row_id, row_id_from_source(row)):
+                return {
+                    "ok": False,
+                    "code": "mailbox_row_stale",
+                    "error": "邮箱列表已变化，请刷新后重试",
+                }
+            password = password_from_row(row)
+            if not password:
+                return {
+                    "ok": False,
+                    "code": "mailbox_password_missing",
+                    "error": "这一行没有可复制的密码",
+                }
+            return {"ok": True, "password": password}
 
     def latest_code(self, payload: Any) -> dict[str, Any]:
         value = payload if isinstance(payload, Mapping) else {}
@@ -484,6 +547,7 @@ class MailboxAdminService:
             rows.append(
                 {
                     "line_no": index,
+                    "row_id": row_id_from_source(row),
                     "email": email,
                     "password": _SECRET_MASK if password_from_row(row) else "",
                     "status": status_key,
@@ -656,7 +720,10 @@ __all__ = [
     "parse_oauth_mailbox_row",
     "password_from_row",
     "pool_count_status",
+    "public_task_account",
     "redact_mailbox_credentials",
     "resolve_config_path",
+    "row_id_from_source",
     "selected_line_numbers",
+    "url_credential_secrets",
 ]

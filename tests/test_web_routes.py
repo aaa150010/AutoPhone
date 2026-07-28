@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 import tempfile
@@ -92,6 +93,9 @@ class FakeMailboxAdmin:
     def latest_code(self, _payload):
         return {"ok": False, "error": "没有验证码"}
 
+    def reveal_password(self, _row_id, _line_no):
+        return {"ok": False, "code": "mailbox_row_stale", "error": "邮箱列表已变化"}
+
 
 class FakeRunComponent:
     def begin_run(self):
@@ -150,6 +154,12 @@ class WebRouteTests(unittest.TestCase):
             configure_sms_pool=self._configure_sms_pool,
             preflight_sms_pool=self._preflight_sms_pool,
             safe_runtime_error=str,
+            test_email_notification=lambda _data: {
+                "event": "test",
+                "status": "sent",
+                "timestamp": 123,
+                "recipient_count": 1,
+            },
             sms_alerts=component,
             sms_cost_ledger=component,
             sms_route_policy=component,
@@ -180,7 +190,7 @@ class WebRouteTests(unittest.TestCase):
         self.release_preflight.wait(2)
         return []
 
-    def _app(self):
+    def _app(self, context=None):
         app = Flask(__name__)
 
         app.add_url_rule("/", "index", lambda: "legacy")
@@ -189,7 +199,7 @@ class WebRouteTests(unittest.TestCase):
         app.add_url_rule("/api/preflight", "preflight", lambda: {}, methods=["POST"])
         app.add_url_rule("/api/start", "start", lambda: {}, methods=["POST"])
         app.add_url_rule("/api/stop", "stop", lambda: {}, methods=["POST"])
-        return patch_flask_app(app, self.context)
+        return patch_flask_app(app, context or self.context)
 
     def test_start_preflight_blocks_save_and_second_preflight(self):
         app = self._app()
@@ -269,6 +279,51 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["config"]["sms_api_keys"], ["draft-key"])
         self.assertEqual(self.local_config, before)
+
+    def test_settings_route_and_notification_test_are_available(self):
+        app = self._app()
+
+        with app.test_client() as client:
+            settings_response = client.get("/settings")
+            notification_response = client.post(
+                "/api/notifications/email/test",
+                json={"email_notification": {"enabled": False}},
+            )
+
+        self.assertEqual(settings_response.status_code, 200)
+        self.assertEqual(settings_response.get_data(as_text=True), "fallback")
+        self.assertEqual(notification_response.status_code, 200)
+        payload = notification_response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["notification"]["event"], "test")
+        self.assertEqual(payload["notification"]["recipient_count"], 1)
+
+    def test_stale_mailbox_password_request_returns_conflict(self):
+        app = self._app()
+
+        with app.test_client() as client:
+            response = client.post(
+                "/api/mailboxes/password",
+                json={"row_id": "stale", "line_no": 1},
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.get_json()["code"], "mailbox_row_stale")
+
+    def test_start_existing_returns_bad_request_for_invalid_notification_config(self):
+        def invalid_config(_data):
+            raise ValueError("enabled email_notification has invalid fields: password")
+
+        app = self._app(replace(self.context, apply_server_defaults=invalid_config))
+
+        with app.test_client() as client:
+            response = client.post("/api/start-existing", json={})
+
+        self.assertEqual(response.status_code, 400)
+        payload = response.get_json()
+        self.assertFalse(payload["ok"])
+        self.assertIn("password", payload["error"])
+        self.assertIn("state", payload)
 
 
 if __name__ == "__main__":

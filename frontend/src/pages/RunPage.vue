@@ -1,249 +1,221 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, reactive, ref, shallowRef } from 'vue'
-import { ElMessage, ElNotification } from 'element-plus'
-import { getLocalConfig, getSecret, getState, preflightRun, saveConfig, startRun, stopRun } from '../api/client'
-import SettingsForm from '../components/SettingsForm.vue'
-import RunOperationBar from '../components/RunOperationBar.vue'
-import RuntimeMetrics from '../components/RuntimeMetrics.vue'
-import TaskResultsPanel from '../components/TaskResultsPanel.vue'
+import { computed, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import {
+  CircleCheckFilled,
+  CircleCloseFilled,
+  Close,
+  Coin,
+  Document,
+  FullScreen,
+  List,
+  Message,
+  Monitor,
+  Search,
+} from '@element-plus/icons-vue'
+import { api } from '../api/client'
+import DashboardMetricCard from '../components/DashboardMetricCard.vue'
 import LogPanel from '../components/LogPanel.vue'
-import type { SmsRuntimeAlert } from '../types/api'
+import PageToolbar from '../components/PageToolbar.vue'
+import RunDiagnostics from '../components/RunDiagnostics.vue'
+import TaskResultsPanel from '../components/TaskResultsPanel.vue'
+import WorkspacePanel from '../components/WorkspacePanel.vue'
+import { useAppController } from '../composables/useAppController'
+import type { RuntimeTask } from '../types/api'
 
-const state = shallowRef<any>({ runtime: {}, settings: {} })
-const form = reactive<any>({
-  proxy: 'http://127.0.0.1:7897',
-  proxy_scope: { sms: false, email: false, upload: false },
-  target_count: '1',
-  concurrency: '5',
-  node_concurrency: '5',
-  node_timeout: 45,
-  auth_session_retries: 1,
-  sms_provider: 'smsbower',
-  sms_min_price: '0.01',
-  max_price: '0.1',
-  sms_timeout: '30',
-  phone_max_attempts: 10,
-  phone_session_cycle_seconds: 480,
-  sms_api_keys: [''],
-  nvtoken_upload: true,
-  nvtoken: {},
-  sub2api: {},
+const emit = defineEmits<{ navigate: [string] }>()
+const controller = useAppController()
+const taskSearch = ref('')
+const taskFilter = ref('all')
+const logSearch = ref('')
+const logFilter = ref('all')
+const focus = ref<'tasks' | 'logs' | null>(null)
+
+const terminalStatuses = new Set([
+  'success', 'failed', 'stopped', 'stopped_before_start', 'retryable_infra',
+  'retryable_email', 'repair_pending', 'email_damaged',
+])
+
+const tasks = computed(() => controller.runtime.value.tasks || [])
+const summary = computed(() => {
+  const current = controller.runtime.value.summary || {}
+  const success = current.success ?? tasks.value.filter(task => task.status === 'success').length
+  const stopped = current.stopped ?? tasks.value.filter(task => String(task.status).startsWith('stopped')).length
+  const active = current.active ?? tasks.value.filter(task => !terminalStatuses.has(String(task.status || ''))).length
+  const failed = current.failed ?? Math.max(0, tasks.value.length - success - stopped - active)
+  const smsCostCny = current.sms_cost_cny ?? tasks.value.reduce(
+    (total, task) => total + Number(task.result?.sms_cost_cny || 0),
+    0,
+  )
+  return { ...current, success, stopped, active, failed, sms_cost_cny: smsCostCny }
 })
 
-const saving = ref(false)
-const preflighting = ref(false)
-const starting = ref(false)
-const smsKeysDirty = ref(false)
-const seenAlerts = new Set<string>()
-let timer = 0
-let stateSignature = ''
-let pollingStopped = false
+const metrics = computed(() => [
+  { title: '可用邮箱', value: Number(controller.runtime.value.pool?.available || 0), icon: Message, tone: 'primary' },
+  { title: '运行中', value: Number(summary.value.active || 0), icon: Monitor, tone: 'warning' },
+  { title: '成功', value: Number(summary.value.success || 0), icon: CircleCheckFilled, tone: 'success' },
+  { title: '未成功', value: Number(summary.value.failed || 0) + Number(summary.value.stopped || 0), icon: CircleCloseFilled, tone: 'danger' },
+  { title: '运行成本', value: `¥${Number(summary.value.sms_cost_cny || 0).toFixed(2)}`, icon: Coin, tone: 'primary' },
+] as const)
 
-const running = () => Boolean(state.value.runtime?.running)
-const hasPool = () => Number(state.value.runtime?.pool?.available || 0) > 0
-const smsKeyStatuses = () => smsKeysDirty.value
-  ? []
-  : state.value.sms_key_statuses || state.value.runtime?.sms_key_statuses || []
+const statusLabel = computed(() => {
+  if (controller.runtime.value.stop_requested) return controller.running.value ? '正在停止' : '已停止'
+  return controller.running.value ? '运行中' : '空闲'
+})
+const statusTone = computed(() => controller.runtime.value.stop_requested ? 'warning' : controller.running.value ? 'success' : 'info')
 
-function normalizedKeys(value: any) {
-  const source = Array.isArray(value?.sms_api_keys) ? value.sms_api_keys : [value?.sms_api_key || '']
-  return source.map((key: unknown) => String(key || '').trim())
-}
+const filteredTasks = computed(() => tasks.value.filter((task) => {
+  const status = String(task.status || '')
+  const matchesStatus = taskFilter.value === 'all'
+    || (taskFilter.value === 'active' && !terminalStatuses.has(status))
+    || (taskFilter.value === 'unsuccessful' && terminalStatuses.has(status) && status !== 'success')
+    || status === taskFilter.value
+  const query = taskSearch.value.trim().toLowerCase()
+  const text = [task.task_id, task.account, task.email, task.status, task.error, task.reason, task.progress?.label]
+    .join(' ')
+    .toLowerCase()
+  return matchesStatus && (!query || text.includes(query))
+}))
 
-function updateForm(value: any) {
-  if (JSON.stringify(normalizedKeys(form)) !== JSON.stringify(normalizedKeys(value))) {
-    smsKeysDirty.value = true
-  }
-  Object.assign(form, value)
-}
-
-function showRuntimeAlerts(alerts: SmsRuntimeAlert[]) {
-  for (const alert of alerts || []) {
-    if (!alert?.id || seenAlerts.has(alert.id)) continue
-    seenAlerts.add(alert.id)
-    ElNotification({
-      title: alert.level === 'error' ? 'SMS 服务异常' : 'SMS 服务提醒',
-      message: alert.message,
-      type: alert.level || 'warning',
-      duration: alert.persistent ? 0 : 5000,
-    })
-  }
-}
-
-function sync(payload: any) {
-  const nextState = payload.state || payload
-  const nextSignature = JSON.stringify(nextState)
-  if (nextSignature !== stateSignature) {
-    stateSignature = nextSignature
-    state.value = nextState
-  }
-  showRuntimeAlerts(nextState.sms_alerts || nextState.runtime?.sms_alerts || [])
-}
-
-function payload() {
-  const keys = Array.isArray(form.sms_api_keys) ? [...form.sms_api_keys] : [form.sms_api_key || '']
-  return { ...form, sms_api_keys: keys, sms_api_key: keys[0] || '' }
-}
-
-async function refresh() {
-  try {
-    sync(await getState())
-  } catch {}
-}
-
-async function load() {
-  try {
-    const [stateResult, localResult] = await Promise.all([getState(), getLocalConfig()])
-    sync(stateResult)
-    Object.assign(form, state.value.settings || {}, localResult.config || {})
-    form.proxy_scope = { sms: false, email: false, upload: false, ...(form.proxy_scope || {}) }
-    form.sub2api = { ...(form.sub2api || {}) }
-    form.nvtoken = { ...(form.nvtoken || {}) }
-    if (!Array.isArray(form.sms_api_keys)) form.sms_api_keys = [form.sms_api_key || '']
-
-    const secretLoads: Promise<void>[] = []
-    if (form.sms_api_keys.some((key: string) => key === '********')) {
-      secretLoads.push((async () => {
-        try {
-          const value = (await getSecret('sms_api_keys')).value
-          form.sms_api_keys = Array.isArray(value) ? value : [String(value || '')]
-        } catch {}
-      })())
-    }
-    if (form.sub2api.password === '********') {
-      secretLoads.push((async () => {
-        try { form.sub2api.password = String((await getSecret('sub2_password')).value || '') } catch {}
-      })())
-    }
-    if (form.nvtoken.api_key === '********') {
-      secretLoads.push((async () => {
-        try { form.nvtoken.api_key = String((await getSecret('nvtoken_api_key')).value || '') } catch {}
-      })())
-    }
-    await Promise.all(secretLoads)
-    if (!form.sms_api_keys.length) form.sms_api_keys = ['']
-    smsKeysDirty.value = false
-  } catch (error: any) {
-    ElMessage.error(error.message)
-  }
-}
-
-async function save() {
-  saving.value = true
-  try {
-    await saveConfig(payload())
-    smsKeysDirty.value = false
-    ElMessage.success('配置已保存')
-    await refresh()
-  } catch (error: any) {
-    ElMessage.error(error.message)
-  } finally {
-    saving.value = false
-  }
-}
-
-async function preflight() {
-  preflighting.value = true
-  try {
-    await preflightRun(payload())
-    smsKeysDirty.value = false
-    ElMessage.success('真实链路预检通过')
-    await refresh()
-  } catch (error: any) {
-    ElMessage.error(error.message)
-    await refresh()
-  } finally {
-    preflighting.value = false
-  }
-}
+const filteredLogs = computed(() => (controller.state.value.logs || []).filter((log: any) => {
+  const level = String(log?.level || log?.type || '').toLowerCase()
+  const matchesLevel = logFilter.value === 'all' || level === logFilter.value
+  const query = logSearch.value.trim().toLowerCase()
+  const text = [log?.time, log?.message, log?.text, level].join(' ').toLowerCase()
+  return matchesLevel && (!query || text.includes(query))
+}))
 
 async function start() {
-  starting.value = true
+  if (controller.dirty.value) {
+    emit('navigate', '/settings')
+    ElMessage.warning('请先保存运行配置')
+    return
+  }
   try {
-    await startRun(payload())
+    await controller.start()
     ElMessage.success('任务已启动')
-    await refresh()
   } catch (error: any) {
-    ElMessage.error(error.message)
-    await refresh()
-  } finally {
-    starting.value = false
+    ElMessage.error(error?.message || '启动失败')
   }
 }
 
 async function stop() {
   try {
-    await stopRun()
+    await controller.stop()
     ElMessage.success('已发送停止请求')
-    await refresh()
   } catch (error: any) {
-    ElMessage.error(error.message)
+    ElMessage.error(error?.message || '停止失败')
   }
 }
 
-async function poll() {
-  await refresh()
-  if (pollingStopped) return
-  timer = window.setTimeout(poll, running() ? 700 : 1500)
+async function exportTasks(kind: 'success' | 'failed' | 'all') {
+  try {
+    const result: any = await api(`/api/export/${kind}`)
+    const records = Array.isArray(result.records) ? result.records : []
+    const blob = new Blob([records.map((item: any) => JSON.stringify(item)).join('\n')], { type: 'application/x-ndjson' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `gptphone-${kind}-${new Date().toISOString().slice(0, 10)}.jsonl`
+    link.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success(`已导出 ${records.length} 条记录`)
+  } catch (error: any) {
+    ElMessage.error(error?.message || '导出失败')
+  }
 }
 
-onMounted(async () => {
-  pollingStopped = false
-  await load()
-  if (pollingStopped) return
-  timer = window.setTimeout(poll, running() ? 700 : 1500)
-})
-onUnmounted(() => {
-  pollingStopped = true
-  window.clearTimeout(timer)
-})
+function toggleFocus(value: 'tasks' | 'logs') {
+  focus.value = focus.value === value ? null : value
+}
 </script>
 
 <template>
-  <div class="page">
-    <div class="content">
-      <el-card shadow="never" class="config-card">
-        <SettingsForm
-          :model-value="form"
-          :sms-key-statuses="smsKeyStatuses()"
-          @update:model-value="updateForm"
-        />
-        <RunOperationBar
-          :model-value="form"
-          :running="running()"
-          :has-pool="hasPool()"
-          :saving="saving"
-          :preflighting="preflighting"
-          :starting="starting"
-          @update:model-value="updateForm"
-          @save="save"
-          @preflight="preflight"
-          @start="start"
-          @stop="stop"
-        />
-      </el-card>
+  <div class="run-page">
+    <PageToolbar title="运行中心" :status="statusLabel" :tone="statusTone">
+      <el-button @click="emit('navigate', '/settings')"><el-icon><Setting /></el-icon>运行配置</el-button>
+      <el-tooltip v-if="controller.dirty.value" content="存在未保存配置，请先进入运行配置保存" placement="bottom">
+        <span><el-button type="primary" disabled><el-icon><VideoPlay /></el-icon>开始运行</el-button></span>
+      </el-tooltip>
+      <el-button v-else type="primary" :loading="controller.actions.starting" :disabled="controller.running.value || !controller.hasPool.value" @click="start">
+        <el-icon><VideoPlay /></el-icon>开始运行
+      </el-button>
+      <el-button type="danger" plain :loading="controller.actions.stopping" :disabled="!controller.running.value" @click="stop">
+        <el-icon><VideoPause /></el-icon>停止
+      </el-button>
+    </PageToolbar>
 
-      <el-card shadow="never" class="runtime-card">
-        <RuntimeMetrics :runtime="state.runtime" />
-        <div class="task-section"><TaskResultsPanel :tasks="state.runtime?.tasks || []" /></div>
-        <el-divider content-position="center">运行日志</el-divider>
-        <div class="log-section"><LogPanel :logs="state.logs || state.runtime?.logs || []" /></div>
-      </el-card>
+    <div class="metric-grid">
+      <DashboardMetricCard
+        v-for="metric in metrics"
+        :key="metric.title"
+        :title="metric.title"
+        :value="metric.value"
+        :icon="metric.icon"
+        :tone="metric.tone"
+      />
+    </div>
+
+    <RunDiagnostics
+      :runtime="controller.runtime.value"
+      :alerts="controller.state.value.sms_alerts || controller.runtime.value.sms_alerts"
+    />
+
+    <div class="work-grid" :class="focus ? `focus-${focus}` : ''">
+      <WorkspacePanel v-show="focus !== 'logs'" title="任务结果" :icon="List" fill body-padding="none">
+        <template #actions>
+          <el-input v-model="taskSearch" class="task-search" clearable placeholder="搜索任务" :prefix-icon="Search" />
+          <el-select v-model="taskFilter" class="task-filter">
+            <el-option label="全部状态" value="all" />
+            <el-option label="运行中" value="active" />
+            <el-option label="成功" value="success" />
+            <el-option label="未成功" value="unsuccessful" />
+          </el-select>
+          <el-dropdown @command="exportTasks">
+            <el-button><el-icon><Download /></el-icon>导出</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="success">成功记录</el-dropdown-item>
+                <el-dropdown-item command="failed">未成功记录</el-dropdown-item>
+                <el-dropdown-item command="all">全部记录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <el-tooltip :content="focus === 'tasks' ? '退出聚焦' : '聚焦任务'">
+            <el-button circle :icon="focus === 'tasks' ? Close : FullScreen" @click="toggleFocus('tasks')" />
+          </el-tooltip>
+        </template>
+        <TaskResultsPanel :tasks="filteredTasks as RuntimeTask[]" />
+      </WorkspacePanel>
+
+      <WorkspacePanel v-show="focus !== 'tasks'" title="运行日志" :icon="Document" fill body-padding="compact">
+        <template #actions>
+          <el-input v-model="logSearch" class="log-search" clearable placeholder="搜索日志" :prefix-icon="Search" />
+          <el-select v-model="logFilter" class="log-filter">
+            <el-option label="全部级别" value="all" />
+            <el-option label="信息" value="info" />
+            <el-option label="成功" value="success" />
+            <el-option label="警告" value="warning" />
+            <el-option label="错误" value="error" />
+          </el-select>
+          <el-tooltip :content="focus === 'logs' ? '退出聚焦' : '聚焦日志'">
+            <el-button circle :icon="focus === 'logs' ? Close : FullScreen" @click="toggleFocus('logs')" />
+          </el-tooltip>
+        </template>
+        <LogPanel :logs="filteredLogs" />
+      </WorkspacePanel>
     </div>
   </div>
 </template>
 
 <style scoped>
-.page { width: 100%; height: 100%; padding: 2px; overflow: hidden; }
-.content { display: grid; grid-template-columns: minmax(280px, 25%) minmax(0, 1fr); gap: 8px; width: 100%; height: 100%; min-height: 0; margin-top: 0; }
-.config-card,
-.runtime-card { min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction: column; }
-.config-card > :deep(.el-card__body) { min-height: 0; flex: 1; padding: 10px; overflow: auto; }
-.runtime-card > :deep(.el-card__body) { min-height: 0; flex: 1; display: flex; flex-direction: column; padding: 8px; overflow: hidden; }
-.runtime-card :deep(.el-divider) { flex: 0 0 auto; margin: 20px 0; }
-.task-section { min-height: 0; flex: 1.1; overflow: hidden; }
-.log-section { min-height: 0; flex: 1; overflow: hidden; }
-@media (max-width: 1040px) {
-  .content { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
-}
+.run-page { display: grid; grid-template-rows: 38px 68px 128px minmax(0, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.metric-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; min-width: 0; min-height: 0; }
+.work-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(390px, 2fr); gap: 8px; min-width: 0; min-height: 0; }
+.work-grid.focus-tasks,
+.work-grid.focus-logs { grid-template-columns: minmax(0, 1fr); }
+.task-search { width: 150px; }
+.task-filter { width: 104px; }
+.log-search { width: 145px; }
+.log-filter { width: 100px; }
 </style>

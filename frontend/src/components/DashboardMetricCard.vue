@@ -33,14 +33,14 @@ const numericValue = computed(() => (
 </template>
 
 <style scoped>
-.metric-card { height: 100%; padding: 0; }
-.metric-card :deep(.el-card__body) { width: 100%; height: 100%; display: flex; flex-direction: row; align-items: center; gap: 10px; padding: 10px 12px; }
+.metric-card { height: 100%; padding: 0; border-color: var(--workspace-border); border-radius: var(--workspace-radius); background: var(--workspace-surface); box-shadow: var(--workspace-shadow); }
+.metric-card :deep(.el-card__body) { width: 100%; height: 100%; display: flex; flex-direction: row; align-items: center; gap: 10px; padding: 9px 11px; }
 .metric-icon { flex: 0 0 32px; width: 32px; height: 32px; border-radius: 6px; font-size: 18px; }
 .metric-copy { min-width: 0; display: flex; flex-direction: column; }
 .metric-copy span,
 .metric-copy strong { display: block; }
 .metric-copy span { color: var(--el-text-color-secondary); font-size: 12px; line-height: 16px; }
-.metric-copy strong { margin-top: 3px; color: var(--el-text-color-primary); font-size: 20px; line-height: 23px; font-variant-numeric: tabular-nums; }
+.metric-copy strong { margin-top: 2px; color: #18212f; font-size: 19px; line-height: 22px; font-variant-numeric: tabular-nums; }
 .metric-card.compact { min-height: 54px; }
 .metric-card.compact :deep(.el-card__body) { gap: 7px; padding: 7px 8px; }
 .metric-card.compact .metric-icon { flex-basis: 28px; width: 28px; height: 28px; font-size: 16px; }

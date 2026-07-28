@@ -24,6 +24,7 @@ class WebRouteContext:
     configure_sms_pool: Callable[..., str]
     preflight_sms_pool: Callable[..., list[dict[str, Any]]]
     safe_runtime_error: Callable[[Any], str]
+    test_email_notification: Callable[[dict[str, Any]], dict[str, Any]]
     sms_alerts: Any
     sms_cost_ledger: Any
     sms_route_policy: Any
@@ -271,6 +272,9 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 ), 400
             importer.start(cfg)
             return module.jsonify(ok=True, state=public_state())
+        except ValueError as exc:
+            safe = context.safe_runtime_error(exc)
+            return module.jsonify(ok=False, error=safe, state=public_state()), 400
         except Exception as exc:
             safe = context.safe_runtime_error(exc)
             logs.add(f"启动失败: {safe}", "error")
@@ -335,6 +339,19 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             logs.add(f"邮箱管理查码失败: {safe}", "error")
             return module.jsonify(ok=False, error=f"邮箱管理查码失败: {safe}"), 500
 
+    def api_mailboxes_password():
+        try:
+            data = module.request.get_json(silent=True) or {}
+            if not isinstance(data, dict):
+                return module.jsonify(ok=False, error="请求必须是 JSON 对象"), 400
+            result = mailbox_admin.reveal_password(data.get("row_id"), data.get("line_no"))
+            if result.get("ok"):
+                return module.jsonify(result)
+            status = 409 if result.get("code") == "mailbox_row_stale" else 400
+            return module.jsonify(result), status
+        except Exception:
+            return module.jsonify(ok=False, error="读取邮箱密码失败"), 500
+
     def api_local_config():
         return module.jsonify(
             ok=True,
@@ -389,17 +406,38 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             safe = module._safe(exc) if hasattr(module, "_safe") else str(exc)
             return module.jsonify(ok=False, error=f"读取本地密钥失败: {safe}"), 500
 
+    def api_notification_email_test():
+        try:
+            data = module.request.get_json(silent=True) or {}
+            if not isinstance(data, dict):
+                return module.jsonify(ok=False, error="配置必须是 JSON 对象"), 400
+            result = context.test_email_notification(data)
+            return module.jsonify(ok=True, notification=result, state=public_state())
+        except ValueError as exc:
+            safe = context.safe_runtime_error(exc)
+            return module.jsonify(ok=False, error=safe, state=public_state()), 400
+        except Exception:
+            logs.add("测试邮件通知发送失败，请检查 SMTP 配置和网络", "error")
+            return module.jsonify(
+                ok=False,
+                error="测试通知发送失败，请检查发件账号、授权码、收件地址和网络",
+                state=public_state(),
+            ), 502
+
     routes = (
         ("/mailboxes", "mailbox_manager", mailbox_manager, ["GET"]),
+        ("/settings", "settings_page", mailbox_manager, ["GET"]),
         ("/api/mailboxes", "api_mailboxes", api_mailboxes, ["GET"]),
         ("/api/mailboxes/import", "api_mailboxes_import", api_mailboxes_import, ["POST"]),
         ("/api/mailboxes/delete", "api_mailboxes_delete", api_mailboxes_delete, ["POST"]),
         ("/api/mailboxes/restore", "api_mailboxes_restore", api_mailboxes_restore, ["POST"]),
         ("/api/mailboxes/latest-code", "api_mailboxes_latest_code", api_mailboxes_latest_code, ["POST"]),
+        ("/api/mailboxes/password", "api_mailboxes_password", api_mailboxes_password, ["POST"]),
         ("/api/local-config", "api_local_config", api_local_config, ["GET"]),
         ("/api/local-config/export", "api_local_config_export", api_local_config_export, ["POST"]),
         ("/api/local-config/import", "api_local_config_import", api_local_config_import, ["POST"]),
         ("/api/local-config/secret", "api_local_config_secret", api_local_config_secret, ["POST"]),
+        ("/api/notifications/email/test", "api_notification_email_test", api_notification_email_test, ["POST"]),
     )
     for rule, endpoint, view_func, methods in routes:
         if endpoint not in app.view_functions:

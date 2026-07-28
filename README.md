@@ -36,11 +36,12 @@ start.command
 ```text
 http://127.0.0.1:18777/
 http://127.0.0.1:18777/mailboxes
+http://127.0.0.1:18777/settings
 ```
 
 端口固定为 `18777`。如果重复双击启动，脚本会先关闭旧的 WebUI 实例，再在同一端口启动新的。
 
-主页面左侧提供“运行控制”和“邮箱管理”两个入口，不需要同时打开两个浏览器标签页。
+左侧栏固定显示“自动接码机”品牌，以及“运行中心”“邮箱管理”“运行配置”三个入口。侧栏底部会持续显示全局运行状态、本轮完成进度和最近一次通知状态，不需要同时打开多个浏览器标签页。
 
 停止运行：关闭启动脚本打开的 Terminal 窗口，或在 Terminal 里按 `Ctrl-C`。
 
@@ -58,13 +59,13 @@ chmod +x start.command
 
 ### 1. 导入邮箱
 
-打开左侧“邮箱管理”，在“批量追加导入”文本框中每行粘贴一个账号，然后点击标题右侧的“追加导入”。导入会追加到现有邮箱池，完全重复的行会自动跳过。
+打开左侧“邮箱管理”，点击右上角“导入邮箱”，在弹出的批量导入 Dialog 中每行粘贴一个账号，再点击“追加导入”。导入会追加到现有邮箱池，完全重复的行会自动跳过。
 
 邮箱表格支持：
 
-- 搜索邮箱、密码和状态
+- 搜索邮箱、状态和说明
 - 按状态筛选和分页
-- 点击邮箱或密码复制
+- 邮箱账号正常显示；密码列始终显示 `*****`，点击后才向后端请求本行明文并直接写入系统剪贴板
 - 单行“查码”，验证码显示在对应行
 - 勾选后恢复为可用状态或删除
 - 查看成功任务的接码成本；悬浮金额可查看美元报价、USD/CNY 汇率和汇率日期
@@ -72,9 +73,11 @@ chmod +x start.command
 
 表格“状态”列表示邮箱池当前状态：`可用`、`运行中`、`已使用`或`失败`。邮箱关联任务运行时会实时切换为“运行中”；旁边的“运行状态”列显示“OAuth 创建节点”“正在获取手机号”“等待短信验证码”等具体节点。任务结束后，“状态”回到最终池状态，“运行状态”保留并冻结在最后一个有效节点。
 
+复制密码时，明文不会插入页面、提示消息或前端响应式状态；浏览器不支持安全 Clipboard API 时会拒绝复制。若邮箱池在点击前已经变化，后端会拒绝过期行并刷新列表，避免复制到另一条记录的密码。
+
 ### 2. 填写运行配置
 
-打开左侧“运行控制”，按需填写：
+打开左侧独立的“运行配置”页面，按需填写：
 
 - 代理地址及 SMS、邮箱取码、SUB2 的代理开关
 - 目标数量、并发数、Node 并发数和 Node 超时
@@ -82,17 +85,38 @@ chmod +x start.command
 - 鉴权额外重试次数；`0` 表示失败后不额外重试，默认 `1`
 - SUB2 地址、账号、管理密码和分组
 - 是否上传 nvtoken，以及 nvtoken 导入地址和 API Key
+- QQ 邮箱通知账号、SMTP 授权码、收件人、停滞阈值和通知事件
 
 “每号最大尝试”默认和上限都是 `10`，手机阶段超时默认和上限都是 `480` 秒。旧配置第一次加载时会迁移到这组受限默认值，避免异常线路无限消耗号码。
 
 管理密码、SMS API Key 和 nvtoken API Key 都使用 Element Plus 原生密码输入框，点击输入框右侧眼睛可以显示或隐藏当前内容。SMS Key 编辑器右侧的加号可新增一行，每行独立显示和删除，至少保留一个可填写行。保存时会去除空行、首尾空格和重复 Key，并保留原顺序。nvtoken 地址和 API Key 默认折叠，展开“上传 nvtoken 卡片”后即可编辑。
 
-### 3. 保存、预检和运行
+配置有改动后，页面会显示“有未保存修改”。切换入口、浏览器前进后退或关闭/刷新页面时都会提醒；运行中心也会禁止用未保存草稿启动，并引导回运行配置页。保存成功后草稿成为当前活动配置；从配置页启动成功后会自动进入运行中心。
+
+### 3. 配置邮件通知
+
+邮件通知位于运行配置的最后一个分区，仅支持 QQ 邮箱，程序固定使用官方 `smtp.qq.com:465` 和 SSL，不提供其他服务商或自定义服务器选项。
+
+启用通知时必须填写 QQ 发件账号、SMTP 授权码和至少一个收件邮箱；收件人可添加多个，重复地址会自动去除。发件人地址留空时使用发件账号。SMTP 授权码需要在 QQ 邮箱后台生成，不是邮箱登录密码。
+
+可选择以下通知事件：
+
+- **批次完成**：默认开启。无论全部成功、部分失败还是全部失败，每轮只发送一封最终汇总，包含处理总数、成功、失败、停止、耗时和可用时的运行成本。
+- **异常结束**：默认开启。运行 watcher 退出后仍存在未进入终态的任务时发送。
+- **运行停滞**：默认开启。运行中连续一段时间没有任务进展时发送，默认阈值为 `10` 分钟。
+- **SMS Key 耗尽**：默认开启。全部 SMS Key 耗尽并触发安全停止时立即发送。
+- **手动停止**：默认关闭，需要时可单独开启。
+
+同一轮运行的同类事件最多发送一次；停滞或 SMS Key 耗尽的即时提醒不会替代之后的最终汇总。邮件正文只包含批次汇总，不包含邮箱账号、任务 ID、密码、Token、手机号、代理或底层原始错误。
+
+“发送测试通知”会直接使用当前表单草稿测试 SMTP，不会先保存配置，也不会启动任务。测试和正式通知发送失败都不会改变任务状态。
+
+### 4. 保存、预检和运行
 
 运行配置下方的操作栏按两行三列均匀排列，顺序为：
 
-1. **导入配置**：读取本机 JSON，兼容新版 Key 数组和旧版单 Key。
-2. **导出配置**：下载包含完整敏感信息的 JSON。
+1. **导入配置**：读取本机 JSON，兼容新版 Key 数组和旧版单 Key；导入成功后立即应用并清除未保存状态。
+2. **导出配置**：二次确认后下载包含完整敏感信息的 JSON。
 3. **保存配置**：保存当前页面设置。
 4. **真实链路预检**：检查所有 SMS Key 余额、SMS 报价、SUB2、Node 链路等条件，不启动批量任务。
 5. **开始运行**：使用当前邮箱池启动任务。
@@ -100,15 +124,19 @@ chmod +x start.command
 
 建议第一次配置或修改 SUB2/代理后，先保存配置，再执行一次真实链路预检，预检通过后开始运行。
 
-右侧“任务结果”和“运行日志”分别独立滚动。任务运行期间可以持续查看状态，不会带动整个页面滚动。
+### 5. 查看运行状态和结果
 
-运行统计第一行保留状态、邮箱可用总数、成功数量和失败数量；第二行按排队等待、OAuth 节点、邮箱验证、获取手机号、短信接码、收尾上传六组汇总当前未结束任务。所有统计卡片的数字变化都会按增减方向纵向滚动；任务结果表的“运行状态”按秒更新，失败或停止后保留最后业务节点并冻结计时。
+“运行中心”顶部显示可用邮箱、运行中、成功、未成功和运行成本五项统计。诊断区按排队等待、OAuth 节点、邮箱验证、获取手机号、短信接码、收尾上传六组汇总当前未结束任务，同时展示并发占用、SMS Key 健康/余额和异常汇总。
+
+下方“任务结果”和“运行日志”并排独立滚动，均支持搜索、筛选和聚焦展开；日志可控制自动滚动。任务结果可分别导出成功、未成功或全部记录。任务表的“运行状态”按秒更新，失败或停止后保留最后业务节点并冻结计时。
 
 `/api/state` 的任务项会返回 `progress.code`、`progress.label`、`progress.group`、`progress.entered_at` 和 `progress.finished_at`，`runtime.stage_counts` 固定返回上述六组计数。这些字段只包含节点名称和时间，不包含邮箱密码、手机号、SMS Key、Token 或底层链路事件详情。
 
-### 4. 导入和导出配置
+### 6. 导入和导出配置
 
-“导入配置”和“导出配置”用于迁移本机保存的 SMS、SUB2 和 nvtoken 配置。新版 JSON 使用 `sms_api_keys: string[]`；旧文件里的 `sms_api_key` 会自动变成一行，不会按 `-` 拆分。导出的 JSON 包含完整敏感信息，应仅保存在可信设备上，不要提交到 Git 或发送给他人。
+“导入配置”和“导出配置”用于迁移本机保存的 SMS、SUB2、nvtoken 和邮件通知配置。新版 JSON 使用 `sms_api_keys: string[]`；旧文件里的 `sms_api_key` 会自动变成一行，不会按 `-` 拆分。
+
+SMTP 授权码在公共状态和普通配置响应中保持 `********` 遮罩，并通过固定密钥标识单独读取。完整下载导出会在二次确认后写入 SMS Key、SMTP 授权码及其他密钥，文件应仅保存在可信设备上，不要提交到 Git 或发送给他人。
 
 ## 邮箱导入格式
 
@@ -206,11 +234,11 @@ USD/CNY 每 24 小时从 ECB 日汇率推导一次。网络失败时先使用上
 - **SUB2 上传**：把授权结果上传到配置好的 SUB2 地址和目标分组。
 - **nvtoken 上传**：页面里默认勾选“上传到 nvtoken 平台”。成功结果里如果包含 `access_token`、`refresh_token` 和 `email`，系统会额外上传到 nvtoken 的导入接口。
 
-如果不想上传 nvtoken，可以在运行页面取消勾选“上传到 nvtoken 平台”。
+如果不想上传 nvtoken，可以在运行配置页取消勾选“上传到 nvtoken 平台”。
 
 ## 本地配置
 
-SMS API Key、SUB2、nvtoken 等敏感配置保存在本机 `data/local_config.json`，不会提交到 Git。公共状态接口逐项脱敏 SMS Key，只有密钥接口和显式导出返回完整值。运行页面可导入/导出这份 JSON，方便迁移到其他 Mac。
+SMS API Key、SUB2、nvtoken、SMTP 授权码和通知收件人等配置保存在本机 `data/local_config.json`，不会提交到 Git。公共状态接口不会返回原始凭据；SMS Key、代理密码和 SMTP 授权码按密钥处理，只有专用密钥接口和二次确认后的完整下载导出返回明文。运行配置页可导入/导出这份 JSON，方便迁移到其他 Mac。
 
 - OpenAI 主代理默认: `http://127.0.0.1:7897`
 - SMS 最低价格默认: `0.01`
@@ -247,6 +275,7 @@ mac_runtime/.venv/bin/python -m py_compile \
   mac_overrides/importer_scheduler.py \
   mac_overrides/legacy_ui.py \
   mac_overrides/mailbox_admin.py \
+  mac_overrides/run_notifications.py \
   mac_overrides/runtime_policy.py \
   mac_overrides/sms_runtime.py \
   mac_overrides/sms_web.py \
@@ -256,10 +285,12 @@ mac_runtime/.venv/bin/python -m py_compile \
   tests/test_importer_scheduler.py \
   tests/test_legacy_ui.py \
   tests/test_mailbox_admin.py \
+  tests/test_run_notifications.py \
   tests/test_runtime_policy.py \
   tests/test_sms_runtime.py \
   tests/test_sms_web.py \
   tests/test_task_progress.py \
+  tests/test_web_gui_security.py \
   tests/test_web_routes.py
 cd frontend
 npx vue-tsc --noEmit
@@ -319,6 +350,7 @@ iCloud IMAP 服务器是 `imap.mail.me.com:993`，通常不能用普通 Apple ID
 - `mac_overrides/chatgpt_totp.py`: TOTP 邮箱格式、验证码生成和认证传输补丁
 - `mac_overrides/legacy_ui.py`: recovered 旧版页面的兼容 HTML/JS 注入
 - `mac_overrides/mailbox_admin.py`: 邮箱状态、查码、导入、删除和恢复服务
+- `mac_overrides/run_notifications.py`: 邮件通知配置、SMTP 发送、事件去重和运行停滞判断
 - `mac_overrides/web_routes.py`: Flask 路由装配和配置/预检/启停生命周期协调
 - `mac_overrides/sms_runtime.py`: 多 SMS Key、余额隔离、并发门控、线路冷却、汇率和成本统计
 - `mac_overrides/sms_web.py`: SMS Provider、智能线路和 Web 运行时接线
@@ -337,5 +369,7 @@ iCloud IMAP 服务器是 `imap.mail.me.com:993`，通常不能用普通 Apple ID
 ## 已知限制
 
 当前工具依赖本机 Node.js 来运行 SentinelRunner 相关流程。mac 启动脚本会优先使用本机 `node`，并尝试准备 Node SentinelRunner 目录；如果相关资源不完整，真实授权链路可能会卡在 SentinelRunner 阶段。
+
+邮件通知由 WebUI Python 进程内的后台 worker 发送，因此无法覆盖 Mac 关机、整机断网或 Python 进程直接退出等场景。这些场景需要独立的外部监控；进程仍在但 SMTP 暂时不可用时，本次发送会标记失败且不会自动重试，也不会影响批次任务状态。
 
 另外，项目里的 `.pyc` 是 Python 3.13 字节码。当前常见反编译器对 Python 3.13 支持不完整，所以 `pycdc_attempt/` 不是可直接运行源码，最可靠的逻辑参考是 `disassembly/`。需要修改恢复业务逻辑时，应在 `mac_overrides/` 通过小范围运行时覆盖完成，并用测试验证原方法签名。

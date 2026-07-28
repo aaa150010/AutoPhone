@@ -8,8 +8,10 @@ import copy
 import json
 import os
 import threading
+import time
 import urllib.error
 import urllib.request
+import uuid
 from pathlib import Path
 
 from flask import send_from_directory as _send_from_directory
@@ -20,6 +22,7 @@ import imap_poller as _imap_poller
 import importer_scheduler as _importer_scheduler_ext
 import legacy_ui as _legacy_ui_ext
 import mailbox_admin as _mailbox_admin_ext
+import run_notifications as _run_notifications_ext
 import runtime as _runtime
 import runtime_policy as _runtime_policy_ext
 import sms_providers as _sms_providers
@@ -33,6 +36,11 @@ import web_routes as _web_routes_ext
 APP_DIR = Path(__file__).resolve().parent.parent
 BUSINESS_DIR = APP_DIR / "business_pyc"
 ORIGINAL_WEB_GUI = BUSINESS_DIR / "web_gui.pyc"
+_RUNTIME_DATA_DIR = Path(
+    os.environ.get("GPTPHONE_DATA_DIR") or APP_DIR / "data"
+).expanduser().resolve()
+if os.environ.get("GPTPHONE_DATA_DIR"):
+    _runtime.DEFAULT_DATA_DIR = _RUNTIME_DATA_DIR
 
 
 def _manual_disabled(*args, **kwargs):
@@ -63,6 +71,7 @@ _ORIGINAL_TASK_CONFIG = _runtime.EmailAuthImporter._task_config
 _ORIGINAL_TASK_STATE = _runtime.EmailAuthImporter._task_state
 _ORIGINAL_IMPORTER_START = _runtime.EmailAuthImporter.start
 _ORIGINAL_IMPORTER_STOP = _runtime.EmailAuthImporter.stop
+_ORIGINAL_IMPORTER_WATCH = _runtime.EmailAuthImporter._watch
 _ORIGINAL_PRE_AUTH_SESSION_RETRYABLE = _runtime.EmailAuthImporter._pre_auth_session_retryable
 _ORIGINAL_CREATE_PROVIDER = _sms_providers.create_provider
 _ORIGINAL_SMS_ADAPTER_GET_NUMBER = _codex_oauth_chain.SmsProviderAdapter.get_number
@@ -91,7 +100,7 @@ _SMS_BLOCKED_ROUTES = (
     ("1", "2920"),
 )
 _LOCAL_CONFIG_FILE = Path(
-    os.environ.get("GPTPHONE_LOCAL_CONFIG_FILE") or APP_DIR / "data" / "local_config.json"
+    os.environ.get("GPTPHONE_LOCAL_CONFIG_FILE") or _RUNTIME_DATA_DIR / "local_config.json"
 )
 _NVTOKEN_IMPORT_URL_DEFAULT = "https://nvtokens.com/api/inventory/cards/import"
 _SECRET_MASK = "********"
@@ -99,13 +108,15 @@ _SMS_KEY_POOL = _sms_runtime_ext.SmsKeyPool(
     lambda key, proxy="": _ORIGINAL_CREATE_PROVIDER("smsbower", key, proxy=proxy)
 )
 _SMS_COST_LEDGER = _sms_runtime_ext.SmsCostLedger()
-_SMS_EXCHANGE_RATE = _sms_runtime_ext.ExchangeRateCache(APP_DIR / "data" / "usd_cny_rate.json")
+_SMS_EXCHANGE_RATE = _sms_runtime_ext.ExchangeRateCache(_RUNTIME_DATA_DIR / "usd_cny_rate.json")
 _SMS_PHONE_GATE = _sms_runtime_ext.PhoneSubmissionGate(concurrency=2, interval_seconds=0.75)
 _SMS_ROUTE_POLICY = _sms_runtime_ext.SmsRoutePolicy()
 _SMS_ALERTS = _sms_runtime_ext.RuntimeAlertBuffer()
 _TASK_PROGRESS = _task_progress_ext.TaskProgressTracker()
 _TASK_CONTEXT: ContextVar[str] = ContextVar("gptphone_task_id", default="")
 _RUN_LIFECYCLE_LOCK = threading.Lock()
+_RUN_NOTIFICATION_LOCK = threading.RLock()
+_RUN_NOTIFICATION_CONTEXT = None
 
 
 def _safe_runtime_error(error):
@@ -280,6 +291,139 @@ def _patched_chain_event(
     )
 
 
+def _notification_task_snapshot(importer):
+    try:
+        with importer.lock:
+            return [copy.deepcopy(dict(task)) for task in importer.tasks.values()]
+    except Exception:
+        return []
+
+
+def _notification_aggregate(importer, context=None, *, finished=False):
+    tasks = _notification_task_snapshot(importer)
+    terminal = set(_task_progress_ext.TERMINAL_TASK_STATUSES)
+    succeeded = 0
+    failed = 0
+    stopped = 0
+    active = 0
+    pending = 0
+    cost_cny = 0.0
+    last_activity_at = 0
+    for task in tasks:
+        status = str(task.get("status") or "").strip().lower()
+        if status == "success":
+            succeeded += 1
+        elif status in {"stopped", "stopped_before_start"}:
+            stopped += 1
+        elif status in terminal:
+            failed += 1
+        elif status == "queued":
+            pending += 1
+        else:
+            active += 1
+        result = task.get("result") if isinstance(task.get("result"), dict) else {}
+        try:
+            cost_cny += float(result.get("sms_cost_cny") or task.get("sms_cost_cny") or 0)
+        except (TypeError, ValueError):
+            pass
+        tracked_progress = _TASK_PROGRESS.progress(str(task.get("task_id") or "")) or {}
+        for candidate in (
+            task.get("updated_at"),
+            task.get("created_at"),
+            (task.get("progress") or {}).get("entered_at") if isinstance(task.get("progress"), dict) else 0,
+            tracked_progress.get("entered_at") if isinstance(tracked_progress, dict) else 0,
+        ):
+            try:
+                last_activity_at = max(last_activity_at, int(candidate or 0))
+            except (TypeError, ValueError):
+                pass
+
+    value = context if isinstance(context, dict) else {}
+    started_at = int(value.get("started_at") or 0)
+    finished_at = int(value.get("finished_at") or (time.time() if finished else 0))
+    duration_end = finished_at or int(time.time())
+    duration_seconds = max(0, duration_end - started_at) if started_at else 0
+    aggregate = _run_notifications_ext.RunAggregate(
+        total=len(tasks),
+        succeeded=succeeded,
+        failed=failed,
+        stopped=stopped,
+        active=active,
+        pending=pending,
+        duration_seconds=duration_seconds,
+        cost_cny=cost_cny,
+        started_at=started_at,
+        finished_at=finished_at,
+        last_activity_at=last_activity_at,
+    )
+    return aggregate, last_activity_at
+
+
+def _notification_context_for(importer=None):
+    if importer is not None:
+        value = getattr(importer, "_gptphone_notification_context", None)
+        if isinstance(value, dict):
+            return value
+    with _RUN_NOTIFICATION_LOCK:
+        return _RUN_NOTIFICATION_CONTEXT
+
+
+def _notification_watchdog(importer, context):
+    stop_event = context["stop_event"]
+    while not stop_event.wait(10):
+        try:
+            aggregate, last_activity_at = _notification_aggregate(importer, context)
+            context["last_activity_at"] = last_activity_at or context.get("last_activity_at", 0)
+            context["service"].observe_run(
+                context["run_id"],
+                aggregate,
+                sms_exhausted=_SMS_KEY_POOL.is_exhausted(),
+            )
+        except Exception:
+            continue
+
+
+def _begin_notification_run(importer, settings):
+    global _RUN_NOTIFICATION_CONTEXT
+    config = _run_notifications_ext.validate_email_notification(
+        (settings or {}).get("email_notification") or {}
+    )
+    previous = _notification_context_for()
+    if isinstance(previous, dict):
+        try:
+            previous["service"].close(wait=False)
+        except Exception:
+            pass
+    context = {
+        "run_id": uuid.uuid4().hex,
+        "service": _run_notifications_ext.RunNotificationService(config),
+        "started_at": int(time.time()),
+        "finished_at": 0,
+        "last_activity_at": int(time.time()),
+        "target": _int_value((settings or {}).get("target_count"), 1, minimum=1),
+        "stop_event": threading.Event(),
+    }
+    context["service"].start_run(context["run_id"], {"total": 0, "pending": context["target"]})
+    importer._gptphone_notification_context = context
+    with _RUN_NOTIFICATION_LOCK:
+        _RUN_NOTIFICATION_CONTEXT = context
+    return context
+
+
+def _cancel_notification_run(importer, context):
+    global _RUN_NOTIFICATION_CONTEXT
+    context["stop_event"].set()
+    try:
+        context["service"].close(wait=False)
+    except Exception:
+        pass
+    if getattr(importer, "_gptphone_notification_context", None) is context:
+        importer._gptphone_notification_context = None
+    with _RUN_NOTIFICATION_LOCK:
+        if _RUN_NOTIFICATION_CONTEXT is context:
+            _RUN_NOTIFICATION_CONTEXT = None
+
+
 def _patched_importer_start(self, settings):
     internal = copy.deepcopy(dict(settings or {}))
     additional_retries = _int_value(internal.get("auth_session_retries"), 1, minimum=0, maximum=10)
@@ -287,22 +431,77 @@ def _patched_importer_start(self, settings):
     already_running = bool(self.status(internal).get("running"))
     if not already_running:
         _TASK_PROGRESS.reset()
+    notification_context = None
     try:
-        return _importer_scheduler_ext.start_bounded_importer(
+        if not already_running:
+            notification_context = _begin_notification_run(self, internal)
+        result = _importer_scheduler_ext.start_bounded_importer(
             self,
             internal,
             mailbox_error_type=_runtime.MailboxPoolError,
             manual_code_factory=_runtime.ManualCodeCoordinator,
             phase_gate_factory=_runtime.AutoEmailPhaseGate,
         )
+        if notification_context is not None:
+            aggregate, last_activity_at = _notification_aggregate(self, notification_context)
+            notification_context["last_activity_at"] = last_activity_at or notification_context["started_at"]
+            notification_context["service"].observe_run(notification_context["run_id"], aggregate)
+            monitor = threading.Thread(
+                target=_notification_watchdog,
+                args=(self, notification_context),
+                name="run-notification-watchdog",
+                daemon=True,
+            )
+            notification_context["monitor"] = monitor
+            monitor.start()
+        return result
     except Exception:
+        if notification_context is not None:
+            _cancel_notification_run(self, notification_context)
         if not already_running:
             _TASK_PROGRESS.reset()
         raise
 
 
 def _patched_importer_stop(self):
+    context = _notification_context_for(self)
+    if isinstance(context, dict):
+        try:
+            aggregate, _last_activity_at = _notification_aggregate(self, context)
+            context["service"].mark_manual_stop(context["run_id"], aggregate)
+        except Exception:
+            pass
     return _importer_scheduler_ext.stop_bounded_importer(self)
+
+
+def _patched_importer_watch(self):
+    context = _notification_context_for(self)
+    watch_failed = False
+    try:
+        return _ORIGINAL_IMPORTER_WATCH(self)
+    except BaseException:
+        watch_failed = True
+        raise
+    finally:
+        if isinstance(context, dict):
+            context["finished_at"] = int(time.time())
+            context["stop_event"].set()
+            try:
+                aggregate, last_activity_at = _notification_aggregate(self, context, finished=True)
+                context["last_activity_at"] = last_activity_at or context.get("last_activity_at", 0)
+                completed = not watch_failed and not aggregate.has_unfinished_work
+                context["service"].observe_run(
+                    context["run_id"],
+                    aggregate,
+                    sms_exhausted=_SMS_KEY_POOL.is_exhausted(),
+                )
+                context["service"].finalize_run(
+                    context["run_id"],
+                    aggregate,
+                    completed=completed,
+                )
+            except Exception:
+                pass
 
 
 def _patched_pre_auth_session_retryable(result):
@@ -475,6 +674,7 @@ _runtime.EmailAuthImporter._task_config = _patched_task_config
 _runtime.EmailAuthImporter._task_state = _patched_task_state
 _runtime.EmailAuthImporter.start = _patched_importer_start
 _runtime.EmailAuthImporter.stop = _patched_importer_stop
+_runtime.EmailAuthImporter._watch = _patched_importer_watch
 _runtime.EmailAuthImporter._pre_auth_session_retryable = staticmethod(_patched_pre_auth_session_retryable)
 _runtime.ImporterConfigStore.load = _patched_config_load
 _runtime.ImporterConfigStore.save = _patched_config_save
@@ -578,18 +778,171 @@ def _masked_local_config(data):
     value = json.loads(json.dumps(data if isinstance(data, dict) else {}))
     sub2api = dict(value.get("sub2api") or {})
     nvtoken = dict(value.get("nvtoken") or {})
+    email_notification = dict(value.get("email_notification") or {})
     sms_keys = _sms_keys_from_config(value)
     value["sms_api_keys"] = [_SECRET_MASK for _key in sms_keys]
     value.pop("sms_api_key", None)
     if "gptmail_api_key" in value:
         value["gptmail_api_key"] = _mask_secret(value.get("gptmail_api_key"))
+    if "proxy" in value:
+        value["proxy"] = _mask_secret(value.get("proxy"))
+    if "password" in value:
+        value["password"] = _mask_secret(value.get("password"))
     if sub2api:
         sub2api["password"] = _mask_secret(sub2api.get("password"))
         value["sub2api"] = sub2api
     if nvtoken:
         nvtoken["api_key"] = _mask_secret(nvtoken.get("api_key"))
         value["nvtoken"] = nvtoken
+    if email_notification:
+        email_notification["password"] = _mask_secret(email_notification.get("password"))
+        value["email_notification"] = email_notification
     return value
+
+
+def _public_task(task):
+    if not isinstance(task, dict):
+        return {}
+    source_row = str(task.get("source_row") or "")
+    try:
+        secrets = _mailbox_admin_ext.MailboxAdminService._row_secrets(source_row)
+    except Exception:
+        secrets = (source_row,) if source_row else ()
+
+    def safe_text(value):
+        redacted = _mailbox_admin_ext.redact_mailbox_credentials(value, secrets)
+        return _safe_runtime_error(redacted)
+
+    result = task.get("result") if isinstance(task.get("result"), dict) else {}
+    safe_result = {
+        key: copy.deepcopy(result[key])
+        for key in ("sms_cost_usd", "sms_cost_cny", "sms_exchange_rate", "sms_exchange_date")
+        if key in result
+    }
+    progress = task.get("progress") if isinstance(task.get("progress"), dict) else None
+    safe_progress = None
+    if progress is not None:
+        safe_progress = {
+            key: copy.deepcopy(progress[key])
+            for key in ("code", "label", "group", "entered_at", "finished_at")
+            if key in progress
+        }
+    public = {
+        key: copy.deepcopy(task[key])
+        for key in ("task_id", "ordinal", "status", "created_at", "updated_at")
+        if key in task
+    }
+    public_email = _mailbox_admin_ext.public_task_account(task, source_row)
+    if public_email:
+        public["email"] = public_email
+        public["account"] = public_email
+    if task.get("error"):
+        public["error"] = safe_text(task.get("error"))
+    if task.get("reason"):
+        public["reason"] = safe_text(task.get("reason"))
+    if safe_result:
+        public["result"] = safe_result
+    if safe_progress is not None:
+        public["progress"] = safe_progress
+    return public
+
+
+def _runtime_summary(tasks):
+    rows = [task for task in tasks if isinstance(task, dict)]
+    terminal = set(_task_progress_ext.TERMINAL_TASK_STATUSES)
+    success = sum(1 for task in rows if str(task.get("status") or "").lower() == "success")
+    stopped = sum(
+        1 for task in rows
+        if str(task.get("status") or "").lower() in {"stopped", "stopped_before_start"}
+    )
+    active = sum(
+        1 for task in rows
+        if str(task.get("status") or "").lower() not in terminal
+    )
+    failed = max(0, len(rows) - success - stopped - active)
+    cost_usd = 0.0
+    cost_cny = 0.0
+    last_activity_at = 0
+    for task in rows:
+        result = task.get("result") if isinstance(task.get("result"), dict) else {}
+        try:
+            cost_usd += float(result.get("sms_cost_usd") or 0)
+            cost_cny += float(result.get("sms_cost_cny") or 0)
+        except (TypeError, ValueError):
+            pass
+        for candidate in (task.get("updated_at"), task.get("created_at")):
+            try:
+                last_activity_at = max(last_activity_at, int(candidate or 0))
+            except (TypeError, ValueError):
+                pass
+    context = _notification_context_for()
+    value = context if isinstance(context, dict) else {}
+    return {
+        "run_id": value.get("run_id") or "",
+        "target": int(value.get("target") or len(rows)),
+        "total": len(rows),
+        "active": active,
+        "success": success,
+        "failed": failed,
+        "stopped": stopped,
+        "started_at": int(value.get("started_at") or 0) or None,
+        "last_activity_at": last_activity_at or int(value.get("last_activity_at") or 0) or None,
+        "finished_at": int(value.get("finished_at") or 0) or None,
+        "sms_cost_usd": round(cost_usd, 6),
+        "sms_cost_cny": round(cost_cny, 4),
+    }
+
+
+def _notification_public_status():
+    context = _notification_context_for()
+    if not isinstance(context, dict):
+        return {}
+    try:
+        status = context["service"].public_status()
+    except Exception:
+        return {}
+    result = {
+        "event": str(status.get("event") or ""),
+        "status": str(status.get("status") or ""),
+        "timestamp": int(status.get("timestamp") or 0),
+        "recipient_count": int(status.get("recipient_count") or 0),
+    }
+    if result["status"] == "failed":
+        result["error"] = "SMTP 发送失败或通知队列已满"
+    return result
+
+
+def _public_logs(logs, tasks):
+    if not isinstance(logs, list):
+        return logs
+    local = _read_local_config()
+    sub2api = dict(local.get("sub2api") or {})
+    nvtoken = dict(local.get("nvtoken") or {})
+    notification = dict(local.get("email_notification") or {})
+    secrets = [
+        *_sms_keys_from_config(local),
+        sub2api.get("password"),
+        nvtoken.get("api_key"),
+        notification.get("password"),
+        *_mailbox_admin_ext.url_credential_secrets(local.get("proxy")),
+    ]
+    for task in tasks:
+        source_row = str(task.get("source_row") or "") if isinstance(task, dict) else ""
+        if source_row:
+            try:
+                secrets.extend(_mailbox_admin_ext.MailboxAdminService._row_secrets(source_row))
+            except Exception:
+                secrets.append(source_row)
+    public = []
+    for log in logs:
+        row = dict(log) if isinstance(log, dict) else {"message": str(log or "")}
+        for key in ("message", "text"):
+            if key in row:
+                row[key] = _safe_runtime_error(
+                    _mailbox_admin_ext.redact_mailbox_credentials(row.get(key), secrets)
+                )
+        public.append(row)
+    return public
 
 
 def _masked_state(data):
@@ -607,6 +960,14 @@ def _masked_state(data):
         runtime["sms_alerts"] = alerts
         runtime["sms_safe_stop"] = _SMS_KEY_POOL.is_exhausted()
         _TASK_PROGRESS.decorate_runtime(runtime)
+        raw_tasks = runtime.get("tasks") if isinstance(runtime.get("tasks"), list) else []
+        runtime["tasks"] = [_public_task(task) for task in raw_tasks]
+        runtime["summary"] = _runtime_summary(runtime["tasks"])
+        runtime["notification"] = _notification_public_status()
+        if isinstance(runtime.get("logs"), list):
+            runtime["logs"] = _public_logs(runtime.get("logs"), raw_tasks)
+        if isinstance(snapshot.get("logs"), list):
+            snapshot["logs"] = _public_logs(snapshot.get("logs"), raw_tasks)
     return snapshot
 
 
@@ -614,24 +975,39 @@ def _local_config_secret(secret_id):
     local = _read_local_config()
     sub2api = dict(local.get("sub2api") or {})
     nvtoken = dict(local.get("nvtoken") or {})
+    email_notification = dict(local.get("email_notification") or {})
     sms_keys = _sms_keys_from_config(local)
     values = {
         "sms_api_keys": sms_keys,
         "sms_api_key": sms_keys[0] if sms_keys else "",
         "sub2_password": sub2api.get("password") or "",
         "nvtoken_api_key": nvtoken.get("api_key") or "",
+        "notification_email_password": email_notification.get("password") or "",
+        "proxy": local.get("proxy") or "",
     }
     return values.get(str(secret_id or ""), "")
 
 
 def _local_config_from_runtime(data, existing=None):
-    data, _migrated = _sms_runtime_ext.migrate_performance_config(data)
+    raw_data = dict(data or {}) if isinstance(data, dict) else {}
     existing = dict(existing or {})
+    sms_keys = _resolve_sms_keys(raw_data, existing)
+    raw_data["sms_api_keys"] = sms_keys
+    raw_data["sms_api_key"] = sms_keys[0] if sms_keys else ""
+    data, _migrated = _sms_runtime_ext.migrate_performance_config(raw_data)
     sub2api = dict(data.get("sub2api") or {})
     existing_sub2api = dict(existing.get("sub2api") or {})
     nvtoken = dict(data.get("nvtoken") or {})
     existing_nvtoken = dict(existing.get("nvtoken") or {})
-    sms_keys = _resolve_sms_keys(data, existing)
+    email_notification = dict(data.get("email_notification") or {})
+    existing_email_notification = dict(existing.get("email_notification") or {})
+    resolved_email_notification = _run_notifications_ext.normalize_email_notification(
+        _merge_email_notification(existing_email_notification, email_notification)
+    )
+    resolved_email_notification["password"] = _local_secret(
+        email_notification.get("password"),
+        existing_email_notification.get("password"),
+    ).strip()
     result = {
         "performance_policy_version": _sms_runtime_ext.PERFORMANCE_POLICY_VERSION,
         "sms_api_keys": sms_keys,
@@ -645,9 +1021,11 @@ def _local_config_from_runtime(data, existing=None):
             "url": str(nvtoken.get("url") or _NVTOKEN_IMPORT_URL_DEFAULT).strip(),
             "api_key": _local_secret(nvtoken.get("api_key"), existing_nvtoken.get("api_key")).strip(),
         },
+        "email_notification": resolved_email_notification,
     }
+    if "proxy" in data or "proxy" in existing:
+        result["proxy"] = _local_secret(data.get("proxy"), existing.get("proxy")).strip()
     for key in (
-        "proxy",
         "proxy_scope",
         "target_count",
         "concurrency",
@@ -676,16 +1054,35 @@ def _merge_nonempty(base, override):
     return result
 
 
+def _merge_email_notification(base, override):
+    previous = copy.deepcopy(dict(base or {}))
+    incoming = copy.deepcopy(dict(override or {}))
+    events = {
+        **dict(previous.get("events") or {}),
+        **dict(incoming.get("events") or {}),
+    }
+    result = {**previous, **incoming}
+    result["events"] = events
+    result["password"] = _local_secret(incoming.get("password"), previous.get("password"))
+    return result
+
+
 def _merge_local_config(data):
     patched = dict(data or {})
     local = _read_local_config()
     sms_keys = _resolve_sms_keys(patched, local)
     patched["sms_api_keys"] = sms_keys
     patched["sms_api_key"] = sms_keys[0] if sms_keys else ""
+    patched["proxy"] = _local_secret(patched.get("proxy"), local.get("proxy"))
     if isinstance(local.get("sub2api"), dict):
         patched["sub2api"] = _merge_nonempty(local.get("sub2api") or {}, patched.get("sub2api") or {})
     if isinstance(local.get("nvtoken"), dict):
         patched["nvtoken"] = _merge_nonempty(local.get("nvtoken") or {}, patched.get("nvtoken") or {})
+    if isinstance(local.get("email_notification"), dict):
+        patched["email_notification"] = _merge_email_notification(
+            local.get("email_notification") or {},
+            patched.get("email_notification") or {},
+        )
     return patched
 
 
@@ -705,6 +1102,9 @@ def _apply_server_defaults(data):
         "url": _NVTOKEN_IMPORT_URL_DEFAULT,
         **dict(patched.get("nvtoken") or {}),
     }
+    patched["email_notification"] = _run_notifications_ext.validate_email_notification(
+        patched.get("email_notification") or {}
+    )
     if not _module._clean(patched.get("proxy")):
         patched["proxy"] = "http://127.0.0.1:7897"
     if not _module._clean(patched.get("concurrency")):
@@ -733,6 +1133,13 @@ def _apply_server_defaults(data):
     }
     patched["nvtoken_upload"] = _as_enabled(patched.get("nvtoken_upload"), True)
     return patched
+
+
+def _test_email_notification(data):
+    local = _local_config_from_runtime(data, _read_local_config())
+    config = dict(local.get("email_notification") or {})
+    config["enabled"] = True
+    return _run_notifications_ext.send_test_notification(config)
 
 
 def _mailbox_admin_factory(store, importer, logs):
@@ -764,6 +1171,7 @@ _WEB_ROUTE_CONTEXT = _web_routes_ext.WebRouteContext(
     configure_sms_pool=_configure_sms_pool,
     preflight_sms_pool=_preflight_sms_pool,
     safe_runtime_error=_safe_runtime_error,
+    test_email_notification=_test_email_notification,
     sms_alerts=_SMS_ALERTS,
     sms_cost_ledger=_SMS_COST_LEDGER,
     sms_route_policy=_SMS_ROUTE_POLICY,

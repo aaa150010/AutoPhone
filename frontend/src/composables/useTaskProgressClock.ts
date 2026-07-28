@@ -5,9 +5,13 @@ interface ProgressRow {
   progress?: TaskProgress | null
 }
 
-export function useTaskProgressClock(rows: () => ProgressRow[]) {
+export function useTaskProgressClock(rows: () => ProgressRow[], additionallyActive: () => boolean = () => false) {
   const nowSeconds = ref(Math.floor(Date.now() / 1000))
   let timer = 0
+
+  function isActive() {
+    return additionallyActive() || rows().some(row => row.progress && row.progress.finished_at == null)
+  }
 
   function stop() {
     if (!timer) return
@@ -16,8 +20,7 @@ export function useTaskProgressClock(rows: () => ProgressRow[]) {
   }
 
   function sync() {
-    const active = rows().some(row => row.progress && row.progress.finished_at == null)
-    if (!active) {
+    if (!isActive()) {
       stop()
       return
     }
@@ -25,11 +28,12 @@ export function useTaskProgressClock(rows: () => ProgressRow[]) {
     if (!timer) {
       timer = window.setInterval(() => {
         nowSeconds.value = Math.floor(Date.now() / 1000)
+        if (!isActive()) stop()
       }, 1000)
     }
   }
 
-  watch(rows, sync, { immediate: true })
+  watch([rows, additionallyActive], sync, { immediate: true })
   onBeforeUnmount(stop)
 
   return nowSeconds

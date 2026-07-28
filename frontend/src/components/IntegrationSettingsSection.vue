@@ -23,6 +23,7 @@ function updateNested(group: string, key: string, value: any) {
 
 <template>
   <div class="settings-section">
+    <h2 class="section-title">平台集成</h2>
     <el-row :gutter="10">
       <el-col :span="12">
         <el-form-item label="SUB2 地址">
@@ -93,6 +94,7 @@ function updateNested(group: string, key: string, value: any) {
 </template>
 
 <style scoped>
+.section-title { margin: 0 0 9px; font-size: 14px; line-height: 20px; font-weight: 680; letter-spacing: 0; }
 .nvtoken-collapse {
   --el-collapse-header-height: 32px;
   border-top: 0;

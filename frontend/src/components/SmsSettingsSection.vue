@@ -12,6 +12,7 @@ function update(key: string, value: any) {
 
 <template>
   <div class="settings-section">
+    <h2 class="section-title">SMS 接码</h2>
     <el-row :gutter="10">
       <el-col :span="12">
         <el-form-item label="SMS 最低价格">
@@ -75,5 +76,6 @@ function update(key: string, value: any) {
 </template>
 
 <style scoped>
+.section-title { margin: 0 0 9px; font-size: 14px; line-height: 20px; font-weight: 680; letter-spacing: 0; }
 .settings-section :deep(.el-input-number) { width: 100%; }
 </style>

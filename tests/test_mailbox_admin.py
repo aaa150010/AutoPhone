@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -13,7 +14,10 @@ from mac_overrides.mailbox_admin import (
     parse_chatgpt_totp_row,
     parse_oauth_mailbox_row,
     password_from_row,
+    public_task_account,
+    row_id_from_source,
     selected_line_numbers,
+    url_credential_secrets,
 )
 
 
@@ -230,6 +234,94 @@ class MailboxAdminTests(unittest.TestCase):
         public_payload = json.dumps(result, ensure_ascii=False)
         for secret in ("run-pass", "done-pass", "login-pass", "refresh-a", "JBSWY3DPEHPK3PXP"):
             self.assertNotIn(secret, public_payload)
+
+    def test_public_rows_use_stable_full_source_row_sha256_ids(self):
+        rows = [
+            "one@example.com----pass-one",
+            "one@example.com----pass-two",
+        ]
+        self._write_pool("\n".join(rows) + "\n")
+
+        first = self.service.list_mailboxes()["rows"]
+        second = self.service.list_mailboxes()["rows"]
+
+        expected = [hashlib.sha256(row.encode("utf-8")).hexdigest() for row in rows]
+        self.assertEqual([row["row_id"] for row in first], expected)
+        self.assertEqual([row["row_id"] for row in second], expected)
+        self.assertNotEqual(first[0]["row_id"], first[1]["row_id"])
+        self.assertTrue(all(len(row["row_id"]) == 64 for row in first))
+        self.assertEqual(row_id_from_source(rows[0]), expected[0])
+
+    def test_public_task_account_drops_recovered_composite_credentials(self):
+        source_row = "user@example.test----mail-pass----client-id----refresh-token"
+        account = public_task_account(
+            {
+                "email": "",
+                "account": "user@example.test---mail-pass---client-id---refresh-token",
+            },
+            source_row,
+        )
+
+        self.assertEqual(account, "user@example.test")
+        self.assertNotIn("mail-pass", account)
+        self.assertNotIn("client-id", account)
+        self.assertNotIn("refresh-token", account)
+
+    def test_proxy_credential_fragments_cover_encoded_and_decoded_forms(self):
+        proxy = "http://user%40example.test:p%40ss-word@127.0.0.1:7890"
+        secrets = url_credential_secrets(proxy)
+
+        self.assertIn(proxy, secrets)
+        self.assertIn("user%40example.test", secrets)
+        self.assertIn("user@example.test", secrets)
+        self.assertIn("p%40ss-word", secrets)
+        self.assertIn("p@ss-word", secrets)
+
+    def test_reveal_password_returns_only_current_row_password(self):
+        row = "mail@example.com----mail-pass----client-id----refresh-token"
+        self._write_pool(row + "\n")
+        public_row = self.service.list_mailboxes()["rows"][0]
+
+        result = self.service.reveal_password(public_row["row_id"], public_row["line_no"])
+
+        self.assertEqual(result, {"ok": True, "password": "mail-pass"})
+
+    def test_reveal_password_reports_missing_password_without_leak(self):
+        row = "mail@example.com----"
+        self._write_pool(row + "\n")
+
+        result = self.service.reveal_password(row_id_from_source(row), 1)
+
+        self.assertEqual(
+            result,
+            {
+                "ok": False,
+                "code": "mailbox_password_missing",
+                "error": "这一行没有可复制的密码",
+            },
+        )
+        self.assertNotIn("password", result)
+
+    def test_reveal_password_rejects_stale_line_binding_without_leak(self):
+        original = "one@example.com----pass-one"
+        replacement = "two@example.com----pass-two"
+        self._write_pool(original + "\n")
+        captured = self.service.list_mailboxes()["rows"][0]
+        self._write_pool(replacement + "\n" + original + "\n")
+
+        result = self.service.reveal_password(captured["row_id"], captured["line_no"])
+
+        self.assertEqual(
+            result,
+            {
+                "ok": False,
+                "code": "mailbox_row_stale",
+                "error": "邮箱列表已变化，请刷新后重试",
+            },
+        )
+        self.assertNotIn("password", result)
+        self.assertNotIn("pass-one", json.dumps(result, ensure_ascii=False))
+        self.assertNotIn("pass-two", json.dumps(result, ensure_ascii=False))
 
     def test_list_mailboxes_redacts_credentials_from_errors(self):
         row = "secret@example.com----mail-pass----client-id----refresh-token"
