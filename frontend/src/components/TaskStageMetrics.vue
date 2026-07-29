@@ -35,7 +35,7 @@ const stages: Array<{
 </template>
 
 <style scoped>
-.stage-metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.stage-metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
 @media (max-width: 700px) {
   .stage-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }

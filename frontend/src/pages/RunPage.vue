@@ -209,13 +209,13 @@ function toggleFocus(value: 'tasks' | 'logs') {
 </template>
 
 <style scoped>
-.run-page { display: grid; grid-template-rows: 38px 68px 128px minmax(0, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.run-page { display: grid; grid-template-rows: 44px 78px 202px minmax(0, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
 .metric-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; min-width: 0; min-height: 0; }
 .work-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(390px, 2fr); gap: 8px; min-width: 0; min-height: 0; }
 .work-grid.focus-tasks,
 .work-grid.focus-logs { grid-template-columns: minmax(0, 1fr); }
-.task-search { width: 150px; }
-.task-filter { width: 104px; }
-.log-search { width: 145px; }
-.log-filter { width: 100px; }
+.task-search { width: 165px; }
+.task-filter { width: 110px; }
+.log-search { width: 150px; }
+.log-filter { width: 105px; }
 </style>

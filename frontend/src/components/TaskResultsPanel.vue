@@ -26,7 +26,7 @@ function statusType(status?: string) {
 </script>
 
 <template>
-  <el-table class="task-table" :data="tasks" row-key="task_id" size="small" stripe height="100%">
+  <el-table class="task-table" :data="tasks" row-key="task_id" stripe height="100%">
     <el-table-column prop="task_id" label="任务" width="135" show-overflow-tooltip />
     <el-table-column label="账号" min-width="205" show-overflow-tooltip>
       <template #default="{ row }">{{ row.account || row.email || '-' }}</template>
@@ -38,7 +38,7 @@ function statusType(status?: string) {
     </el-table-column>
     <el-table-column label="状态" width="95">
       <template #default="{ row }">
-        <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
+        <el-tag :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag>
       </template>
     </el-table-column>
     <el-table-column label="说明" min-width="220" show-overflow-tooltip>

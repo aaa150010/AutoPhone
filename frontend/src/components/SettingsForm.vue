@@ -16,7 +16,7 @@ const emit = defineEmits<{ 'update:modelValue': [any]; testNotification: [] }>()
 </script>
 
 <template>
-  <el-form label-position="top" size="small" class="settings-form">
+  <el-form label-position="top" class="settings-form">
     <RuntimeSettingsSection
       :model-value="modelValue"
       @update:model-value="emit('update:modelValue', $event)"
@@ -43,7 +43,7 @@ const emit = defineEmits<{ 'update:modelValue': [any]; testNotification: [] }>()
 </template>
 
 <style scoped>
-.settings-form { box-sizing: border-box; width: 100%; padding-inline: 5px; }
-.settings-form > :deep(.settings-section + .settings-section) { margin-top: 12px; }
-.settings-form > :deep(.el-divider) { margin: 16px 0 12px; }
+.settings-form { box-sizing: border-box; width: 100%; padding-inline: 6px; }
+.settings-form > :deep(.settings-section + .settings-section) { margin-top: 16px; }
+.settings-form > :deep(.el-divider) { margin: 18px 0 14px; }
 </style>

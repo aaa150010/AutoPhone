@@ -64,6 +64,7 @@ async function importFile(event: Event) {
 
 <style scoped>
 .operation-bar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; width: 100%; }
-.operation-bar :deep(.el-button) { width: 100%; min-width: 0; margin-left: 0; padding: 5px 3px; font-size: 11px; }
+.operation-bar :deep(.el-button) { width: 100%; min-width: 0; height: 34px; margin-left: 0; padding: 0 8px; font-size: 13px; white-space: nowrap; }
+.operation-bar :deep(.el-button .el-icon) { flex: 0 0 auto; font-size: 15px; }
 .file-input { display: none; }
 </style>

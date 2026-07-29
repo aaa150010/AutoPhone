@@ -39,7 +39,7 @@ const tooltip = computed(() => {
 <template>
   <el-tooltip v-if="progress" :content="tooltip" placement="top">
     <div class="progress-cell">
-      <el-tag :type="tagType" size="small" effect="light">{{ progress.label }}</el-tag>
+      <el-tag :type="tagType" effect="light">{{ progress.label }}</el-tag>
       <span>{{ elapsedSeconds }} 秒</span>
     </div>
   </el-tooltip>
@@ -47,7 +47,7 @@ const tooltip = computed(() => {
 </template>
 
 <style scoped>
-.progress-cell { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
-.progress-cell span { color: var(--el-text-color-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
+.progress-cell { display: flex; align-items: center; gap: 8px; min-width: 0; white-space: nowrap; }
+.progress-cell span { color: var(--el-text-color-secondary); font-size: 13px; font-variant-numeric: tabular-nums; }
 .muted { color: var(--el-text-color-secondary); }
 </style>

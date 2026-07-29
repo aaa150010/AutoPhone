@@ -288,11 +288,11 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.mailbox-page { display: grid; grid-template-rows: 38px 68px minmax(0, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.mailbox-page { display: grid; grid-template-rows: 44px 78px minmax(0, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
 .metric-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; min-width: 0; }
-.selected-count { color: var(--el-color-primary); font-size: 11px; white-space: nowrap; }
-.search-input { width: 190px; }
-.filter-select { width: 105px; }
-.table-region { display: grid; grid-template-rows: minmax(0, 1fr) 39px; width: 100%; height: 100%; min-height: 0; padding: 7px 8px 0; }
+.selected-count { color: var(--el-color-primary); font-size: 13px; white-space: nowrap; }
+.search-input { width: 210px; }
+.filter-select { width: 110px; }
+.table-region { display: grid; grid-template-rows: minmax(0, 1fr) 46px; width: 100%; height: 100%; min-height: 0; padding: 8px 10px 0; }
 .pager { justify-content: flex-end; border-top: 1px solid var(--workspace-border); }
 </style>

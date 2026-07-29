@@ -91,7 +91,7 @@ function statusType(status?: SmsKeyStatus) {
     <div class="editor-title">
       <span>SMS API Key</span>
       <el-tooltip content="新增 SMS API Key" placement="top">
-        <el-button text circle size="small" aria-label="新增 SMS API Key" @click="addRow">
+        <el-button text circle aria-label="新增 SMS API Key" @click="addRow">
           <el-icon><Plus /></el-icon>
         </el-button>
       </el-tooltip>
@@ -106,11 +106,11 @@ function statusType(status?: SmsKeyStatus) {
           :placeholder="`SMS API Key ${index + 1}`"
           @update:model-value="updateRow(index, $event)"
         />
-        <el-tag class="key-status" size="small" :type="statusType(statusAt(index))">
+        <el-tag class="key-status" :type="statusType(statusAt(index))">
           {{ statusLabel(statusAt(index)) }}
         </el-tag>
         <el-tooltip :content="rows.length === 1 ? '清空 SMS API Key' : '删除 SMS API Key'" placement="top">
-          <el-button text circle size="small" :aria-label="rows.length === 1 ? '清空 SMS API Key' : '删除 SMS API Key'" @click="removeRow(index)">
+          <el-button text circle :aria-label="rows.length === 1 ? '清空 SMS API Key' : '删除 SMS API Key'" @click="removeRow(index)">
             <el-icon><Delete /></el-icon>
           </el-button>
         </el-tooltip>
@@ -120,16 +120,16 @@ function statusType(status?: SmsKeyStatus) {
 </template>
 
 <style scoped>
-.sms-key-editor { margin-bottom: 10px; }
-.editor-title { display: flex; align-items: center; gap: 2px; height: 24px; margin-bottom: 4px; color: var(--el-text-color-regular); font-size: 12px; }
-.editor-title :deep(.el-button) { width: 24px; height: 24px; padding: 0; }
-.key-rows { display: grid; gap: 6px; }
-.key-row { display: grid; grid-template-columns: minmax(0, 1fr) 104px 26px; align-items: center; gap: 5px; min-height: 32px; }
-.key-status { width: 104px; justify-content: center; overflow: hidden; }
+.sms-key-editor { margin-bottom: 12px; }
+.editor-title { display: flex; align-items: center; gap: 4px; min-height: 32px; margin-bottom: 6px; color: var(--el-text-color-regular); font-size: 12px; }
+.editor-title :deep(.el-button) { width: 32px; height: 32px; padding: 0; }
+.key-rows { display: grid; gap: 8px; }
+.key-row { display: grid; grid-template-columns: minmax(0, 1fr) 116px 32px; align-items: center; gap: 8px; min-height: 32px; }
+.key-status { width: 116px; justify-content: center; overflow: hidden; }
 .key-status :deep(.el-tag__content) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.key-row > :deep(.el-button) { width: 26px; height: 26px; padding: 0; }
+.key-row > :deep(.el-button) { width: 32px; height: 32px; padding: 0; }
 @media (max-width: 520px) {
-  .key-row { grid-template-columns: minmax(0, 1fr) 26px; }
+  .key-row { grid-template-columns: minmax(0, 1fr) 32px; }
   .key-status { grid-column: 1 / -1; grid-row: 2; width: max-content; max-width: 100%; }
 }
 </style>

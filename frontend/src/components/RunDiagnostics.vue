@@ -55,8 +55,10 @@ function keyType(status?: string) {
       <div class="pipeline">
         <div v-for="stage in stages" :key="stage.key" class="stage-row">
           <el-icon><component :is="stage.icon" /></el-icon>
-          <span>{{ stage.label }}</span>
-          <strong>{{ runtime.stage_counts?.[stage.key] || 0 }}</strong>
+          <div class="stage-copy">
+            <span>{{ stage.label }}</span>
+            <strong>{{ runtime.stage_counts?.[stage.key] || 0 }}</strong>
+          </div>
         </div>
       </div>
       <div class="concurrency-row">
@@ -73,7 +75,7 @@ function keyType(status?: string) {
         <div class="key-list">
           <div v-if="!smsKeys.length" class="empty-line">暂无 SMS Key 状态</div>
           <div v-for="key in smsKeys" :key="key.fingerprint" class="key-row">
-            <el-tag size="small" effect="light" :type="keyType(key.status)">Key {{ key.index }}</el-tag>
+            <el-tag effect="light" :type="keyType(key.status)">Key {{ key.index }}</el-tag>
             <span>{{ key.fingerprint }}</span>
             <strong>{{ key.balance_usd == null ? '余额未知' : `$${Number(key.balance_usd).toFixed(2)}` }}</strong>
           </div>
@@ -91,26 +93,27 @@ function keyType(status?: string) {
 
 <style scoped>
 .diagnostics-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(360px, 2fr); gap: 8px; min-width: 0; min-height: 0; }
-.pipeline { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; }
-.stage-row { display: grid; grid-template-columns: 17px minmax(0, 1fr) auto; align-items: center; gap: 3px; min-width: 0; min-height: 42px; padding: 0 4px; border: 1px solid var(--workspace-border); border-radius: 5px; background: #f8fafc; }
-.stage-row .el-icon { color: var(--el-color-primary); font-size: 14px; }
-.stage-row span { overflow: hidden; color: var(--el-text-color-regular); font-size: 10px; white-space: nowrap; }
-.stage-row strong { font-size: 16px; font-variant-numeric: tabular-nums; }
-.concurrency-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 9px; padding: 0 3px; }
-.concurrency-row > div { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
-.concurrency-row span { color: var(--el-text-color-secondary); font-size: 11px; }
-.concurrency-row strong { font-size: 13px; font-variant-numeric: tabular-nums; }
-.concurrency-row small { color: var(--el-color-warning); font-size: 10px; }
+.pipeline { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.stage-row { display: flex; align-items: center; justify-content: flex-start; gap: 8px; min-width: 0; min-height: 52px; padding: 5px 8px; border: 1px solid var(--workspace-border); border-radius: 5px; background: #f8fafc; }
+.stage-row .el-icon { flex: 0 0 auto; color: var(--el-color-primary); font-size: 16px; }
+.stage-copy { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-width: 0; }
+.stage-row span { min-width: 0; overflow: hidden; color: var(--el-text-color-regular); font-size: 12px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.stage-row strong { font-size: 18px; line-height: 20px; font-variant-numeric: tabular-nums; }
+.concurrency-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 10px; padding: 0 4px; }
+.concurrency-row > div { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.concurrency-row span { color: var(--el-text-color-secondary); font-size: 12px; }
+.concurrency-row strong { font-size: 14px; font-variant-numeric: tabular-nums; }
+.concurrency-row small { color: var(--el-color-warning); font-size: 11px; }
 .health-content { display: grid; grid-template-columns: minmax(190px, 1fr) minmax(190px, 1fr); gap: 8px; height: 100%; min-height: 0; }
 .key-list,
 .anomaly-list { min-height: 0; overflow: auto; }
-.key-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; min-height: 29px; border-bottom: 1px solid var(--el-border-color-lighter); }
-.key-row span { overflow: hidden; color: var(--el-text-color-secondary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.key-row strong { font-size: 11px; font-weight: 600; }
+.key-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 7px; min-height: 32px; border-bottom: 1px solid var(--el-border-color-lighter); }
+.key-row span { overflow: hidden; color: var(--el-text-color-secondary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.key-row strong { font-size: 12px; font-weight: 600; }
 .healthy-line,
-.empty-line { display: flex; align-items: center; gap: 5px; min-height: 29px; color: var(--el-text-color-secondary); font-size: 11px; }
+.empty-line { display: flex; align-items: center; gap: 6px; min-height: 32px; color: var(--el-text-color-secondary); font-size: 12px; }
 .healthy-line { color: var(--el-color-success); }
-.anomaly-row { display: flex; align-items: flex-start; gap: 5px; padding: 5px 0; border-bottom: 1px solid var(--el-border-color-lighter); color: var(--el-color-warning); font-size: 11px; line-height: 16px; }
+.anomaly-row { display: flex; align-items: flex-start; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--el-border-color-lighter); color: var(--el-color-warning); font-size: 12px; line-height: 17px; }
 .anomaly-row.error { color: var(--el-color-danger); }
 .anomaly-row .el-icon { flex: 0 0 auto; margin-top: 1px; }
 </style>

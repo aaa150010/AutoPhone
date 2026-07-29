@@ -85,7 +85,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <el-config-provider size="small" :locale="zhCn">
+  <el-config-provider :locale="zhCn">
     <el-container class="app-shell">
       <el-aside width="156px" class="app-sidebar">
         <div class="brand-block">
@@ -122,28 +122,28 @@ onUnmounted(() => {
 <style scoped>
 .app-shell { width: 100%; min-width: 1280px; height: 100vh; overflow: hidden; background: var(--workspace-page); }
 .app-sidebar { display: flex; flex-direction: column; height: 100%; overflow: hidden; border-right: 1px solid var(--workspace-border); background: #fff; }
-.brand-block { display: flex; align-items: center; gap: 9px; height: 62px; padding: 0 14px; border-bottom: 1px solid var(--workspace-border); }
-.brand-mark { display: grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; border-radius: 6px; background: #2563eb; color: #fff; font-size: 17px; }
+.brand-block { display: flex; align-items: center; gap: 9px; height: 64px; padding: 0 14px; border-bottom: 1px solid var(--workspace-border); }
+.brand-mark { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; border-radius: 6px; background: #2563eb; color: #fff; font-size: 18px; }
 .brand-copy { display: flex; flex-direction: column; min-width: 0; }
-.brand-copy strong { color: #172033; font-size: 14px; line-height: 19px; font-weight: 720; white-space: nowrap; }
-.brand-copy span { color: #8792a4; font-size: 9px; line-height: 13px; text-transform: uppercase; }
-.el-menu { flex: 1; padding: 7px 6px; border-right: 0; }
-.el-menu-item { height: 38px; margin-bottom: 3px; padding: 0 10px !important; border-radius: 5px; color: #596579; }
-.el-menu-item .el-icon { font-size: 16px; }
+.brand-copy strong { color: #172033; font-size: 14px; line-height: 20px; font-weight: 720; white-space: nowrap; }
+.brand-copy span { color: #8792a4; font-size: 10px; line-height: 14px; text-transform: uppercase; }
+.el-menu { flex: 1; padding: 8px 6px; border-right: 0; }
+.el-menu-item { height: 42px; margin-bottom: 4px; padding: 0 10px !important; border-radius: 5px; color: #596579; font-size: 13px; }
+.el-menu-item .el-icon { font-size: 18px; }
 .el-menu-item.is-active { background: #eef5ff; color: #2563eb; font-weight: 650; }
-.global-status { margin: 8px; padding: 9px; border-top: 1px solid var(--workspace-border); }
+.global-status { margin: 8px; padding: 10px 9px; border-top: 1px solid var(--workspace-border); }
 .status-heading,
 .status-progress,
 .notification-state { display: flex; align-items: center; }
 .status-heading { gap: 7px; }
-.status-heading strong { font-size: 12px; }
+.status-heading strong { font-size: 13px; }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #94a3b8; }
 .status-dot.success { background: #16a34a; box-shadow: 0 0 0 3px #dcfce7; }
 .status-dot.warning { background: #d97706; box-shadow: 0 0 0 3px #fef3c7; }
 .status-dot.danger { background: #dc2626; box-shadow: 0 0 0 3px #fee2e2; }
-.status-progress { justify-content: space-between; margin-top: 7px; color: #7b8798; font-size: 10px; }
+.status-progress { justify-content: flex-start; gap: 12px; margin-top: 8px; color: #7b8798; font-size: 11px; }
 .status-progress b { color: #334155; font-variant-numeric: tabular-nums; }
-.notification-state { gap: 4px; margin-top: 6px; color: #7b8798; font-size: 9px; }
+.notification-state { gap: 5px; margin-top: 7px; color: #7b8798; font-size: 10px; }
 .el-main { height: 100%; min-width: 0; padding: 5px; overflow: hidden; }
 .shell-loading { display: grid; place-items: center; width: 100%; height: 100%; color: var(--el-color-primary); font-size: 22px; }
 </style>

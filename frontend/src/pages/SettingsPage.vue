@@ -155,11 +155,11 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.settings-page { display: grid; grid-template-rows: 38px minmax(0, 1fr); gap: 5px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
-.settings-grid { display: grid; grid-template-columns: minmax(720px, 1fr) 360px; gap: 8px; min-width: 0; min-height: 0; }
-.run-snapshot { display: grid; gap: 1px; margin-bottom: 8px; border: 1px solid var(--workspace-border); border-radius: var(--workspace-radius); overflow: hidden; }
-.run-snapshot > div { display: flex; align-items: center; justify-content: space-between; min-height: 31px; padding: 0 9px; background: #f8fafc; }
-.run-snapshot span { color: var(--el-text-color-secondary); font-size: 12px; }
-.run-snapshot strong { font-size: 12px; font-variant-numeric: tabular-nums; }
+.settings-page { display: grid; grid-template-rows: 44px minmax(0, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.settings-grid { display: grid; grid-template-columns: minmax(720px, 1fr) 380px; gap: 8px; min-width: 0; min-height: 0; }
+.run-snapshot { display: grid; gap: 1px; margin-bottom: 10px; border: 1px solid var(--workspace-border); border-radius: var(--workspace-radius); overflow: hidden; }
+.run-snapshot > div { display: grid; grid-template-columns: 80px minmax(0, 1fr); align-items: center; column-gap: 16px; min-height: 36px; padding: 0 12px; background: #f8fafc; }
+.run-snapshot span { color: var(--el-text-color-secondary); font-size: 13px; }
+.run-snapshot strong { justify-self: start; font-size: 13px; font-variant-numeric: tabular-nums; }
 .run-snapshot strong.dirty { color: var(--el-color-warning); }
 </style>

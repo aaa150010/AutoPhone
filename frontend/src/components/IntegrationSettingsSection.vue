@@ -96,15 +96,15 @@ function updateNested(group: string, key: string, value: any) {
 <style scoped>
 .section-title { margin: 0 0 9px; font-size: 14px; line-height: 20px; font-weight: 680; letter-spacing: 0; }
 .nvtoken-collapse {
-  --el-collapse-header-height: 32px;
+  --el-collapse-header-height: 40px;
   border-top: 0;
   border-bottom: 0;
 }
 .nvtoken-collapse :deep(.el-collapse-item__header) {
   border-bottom-color: var(--el-border-color-lighter);
-  font-size: 12px;
+  font-size: 13px;
 }
 .nvtoken-collapse :deep(.el-collapse-item__wrap) { border-bottom: 0; }
-.nvtoken-collapse :deep(.el-collapse-item__content) { padding: 8px 0 0; }
+.nvtoken-collapse :deep(.el-collapse-item__content) { padding: 10px 0 0; }
 .nvtoken-collapse :deep(.el-checkbox) { margin-right: 0; }
 </style>

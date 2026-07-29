@@ -130,13 +130,13 @@ function statusText() {
 <style scoped>
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; padding-top: 3px; }
 .section-heading h2 { margin: 0; font-size: 14px; line-height: 20px; font-weight: 680; letter-spacing: 0; }
-.section-heading span { display: block; margin-top: 2px; color: var(--el-text-color-secondary); font-size: 11px; }
+.section-heading span { display: block; margin-top: 3px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 18px; }
 .section-heading span.sent { color: var(--el-color-success); }
 .section-heading span.failed { color: var(--el-color-danger); }
 .notification-section :deep(.el-input-number),
 .notification-section :deep(.el-select) { width: 100%; }
 .event-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
 .event-grid :deep(.el-checkbox) { margin-right: 0; }
-.notification-actions { display: flex; align-items: center; gap: 10px; min-height: 28px; }
+.notification-actions { display: flex; align-items: center; gap: 10px; min-height: 32px; }
 .notification-actions .el-text { min-width: 0; flex: 1; }
 </style>

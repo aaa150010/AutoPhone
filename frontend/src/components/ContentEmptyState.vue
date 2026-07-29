@@ -24,7 +24,7 @@ withDefaults(defineProps<{
 .content-empty :deep(.el-empty__description) { margin-top: 6px; }
 .content-empty :deep(.el-empty__description p) {
   color: var(--el-text-color-placeholder);
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 13px;
+  line-height: 20px;
 }
 </style>

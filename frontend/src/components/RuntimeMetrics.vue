@@ -36,8 +36,8 @@ const failed = computed(() => Number(
 </template>
 
 <style scoped>
-.runtime-metrics { flex: 0 0 auto; margin-bottom: 10px; }
-.primary-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 6px; }
+.runtime-metrics { flex: 0 0 auto; margin-bottom: 12px; }
+.primary-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 8px; }
 @media (max-width: 700px) {
   .primary-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

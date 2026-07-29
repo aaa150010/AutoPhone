@@ -117,9 +117,9 @@ defineExpose({ clearSelection })
 
 <style scoped>
 .mailbox-table { width: 100%; height: 100%; min-height: 0; }
-.mailbox-address { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.mailbox-address { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
 .password-copy { min-width: 48px; padding: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0; }
 .sms-cost { color: var(--el-color-success); font-variant-numeric: tabular-nums; cursor: help; }
-.code-value { color: var(--el-color-primary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-variant-numeric: tabular-nums; }
+.code-value { color: var(--el-color-primary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; font-variant-numeric: tabular-nums; }
 .muted { color: var(--el-text-color-secondary); }
 </style>
