@@ -6,7 +6,11 @@ import {
   CircleCloseFilled,
   Close,
   Coin,
+  Connection,
+  DataAnalysis,
   Document,
+  Download,
+  FirstAidKit,
   FullScreen,
   List,
   Message,
@@ -14,10 +18,11 @@ import {
   Search,
 } from '@element-plus/icons-vue'
 import { api } from '../api/client'
-import DashboardMetricCard from '../components/DashboardMetricCard.vue'
 import LogPanel from '../components/LogPanel.vue'
 import PageToolbar from '../components/PageToolbar.vue'
-import RunDiagnostics from '../components/RunDiagnostics.vue'
+import RunOverview from '../components/RunOverview.vue'
+import RunPipelineMonitor from '../components/RunPipelineMonitor.vue'
+import RunServiceHealth from '../components/RunServiceHealth.vue'
 import TaskResultsPanel from '../components/TaskResultsPanel.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useAppController } from '../composables/useAppController'
@@ -57,6 +62,17 @@ const metrics = computed(() => [
   { title: '未成功', value: Number(summary.value.failed || 0) + Number(summary.value.stopped || 0), icon: CircleCloseFilled, tone: 'danger' },
   { title: '运行成本', value: `¥${Number(summary.value.sms_cost_cny || 0).toFixed(2)}`, icon: Coin, tone: 'primary' },
 ] as const)
+
+const completed = computed(() => (
+  Number(summary.value.success || 0)
+  + Number(summary.value.failed || 0)
+  + Number(summary.value.stopped || 0)
+))
+const target = computed(() => Number(
+  summary.value.target
+  || controller.state.value.settings?.target_count
+  || 0,
+))
 
 const statusLabel = computed(() => {
   if (controller.runtime.value.stop_requested) return controller.running.value ? '正在停止' : '已停止'
@@ -145,24 +161,18 @@ function toggleFocus(value: 'tasks' | 'logs') {
       </el-button>
     </PageToolbar>
 
-    <div class="metric-grid">
-      <DashboardMetricCard
-        v-for="metric in metrics"
-        :key="metric.title"
-        :title="metric.title"
-        :value="metric.value"
-        :icon="metric.icon"
-        :tone="metric.tone"
-      />
-    </div>
+    <div class="console-grid" :class="focus ? `focus-${focus}` : ''">
+      <div v-show="!focus" class="overview-column">
+        <WorkspacePanel title="实时概览" :icon="DataAnalysis" fill body-padding="none">
+          <RunOverview :metrics="metrics" :completed="completed" :target="target" />
+        </WorkspacePanel>
 
-    <RunDiagnostics
-      :runtime="controller.runtime.value"
-      :alerts="controller.state.value.sms_alerts || controller.runtime.value.sms_alerts"
-    />
+        <WorkspacePanel title="运行管线" :icon="Connection" fill body-padding="none">
+          <RunPipelineMonitor :runtime="controller.runtime.value" />
+        </WorkspacePanel>
+      </div>
 
-    <div class="work-grid" :class="focus ? `focus-${focus}` : ''">
-      <WorkspacePanel v-show="focus !== 'logs'" title="任务结果" :icon="List" fill body-padding="none">
+      <WorkspacePanel v-show="focus !== 'logs'" class="task-workspace" title="任务结果" :icon="List" fill body-padding="none">
         <template #actions>
           <el-input v-model="taskSearch" class="task-search" clearable placeholder="搜索任务" :prefix-icon="Search" />
           <el-select v-model="taskFilter" class="task-filter">
@@ -171,51 +181,81 @@ function toggleFocus(value: 'tasks' | 'logs') {
             <el-option label="成功" value="success" />
             <el-option label="未成功" value="unsuccessful" />
           </el-select>
-          <el-dropdown @command="exportTasks">
-            <el-button><el-icon><Download /></el-icon>导出</el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="success">成功记录</el-dropdown-item>
-                <el-dropdown-item command="failed">未成功记录</el-dropdown-item>
-                <el-dropdown-item command="all">全部记录</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+          <el-tooltip content="导出任务">
+            <el-dropdown @command="exportTasks">
+              <el-button circle :icon="Download" aria-label="导出任务" />
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="success">成功记录</el-dropdown-item>
+                  <el-dropdown-item command="failed">未成功记录</el-dropdown-item>
+                  <el-dropdown-item command="all">全部记录</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </el-tooltip>
           <el-tooltip :content="focus === 'tasks' ? '退出聚焦' : '聚焦任务'">
-            <el-button circle :icon="focus === 'tasks' ? Close : FullScreen" @click="toggleFocus('tasks')" />
+            <el-button
+              circle
+              :icon="focus === 'tasks' ? Close : FullScreen"
+              :aria-label="focus === 'tasks' ? '退出任务聚焦' : '聚焦任务'"
+              @click="toggleFocus('tasks')"
+            />
           </el-tooltip>
         </template>
         <TaskResultsPanel :tasks="filteredTasks as RuntimeTask[]" />
       </WorkspacePanel>
 
-      <WorkspacePanel v-show="focus !== 'tasks'" title="运行日志" :icon="Document" fill body-padding="compact">
-        <template #actions>
-          <el-input v-model="logSearch" class="log-search" clearable placeholder="搜索日志" :prefix-icon="Search" />
-          <el-select v-model="logFilter" class="log-filter">
-            <el-option label="全部级别" value="all" />
-            <el-option label="信息" value="info" />
-            <el-option label="成功" value="success" />
-            <el-option label="警告" value="warning" />
-            <el-option label="错误" value="error" />
-          </el-select>
-          <el-tooltip :content="focus === 'logs' ? '退出聚焦' : '聚焦日志'">
-            <el-button circle :icon="focus === 'logs' ? Close : FullScreen" @click="toggleFocus('logs')" />
-          </el-tooltip>
-        </template>
-        <LogPanel :logs="filteredLogs" />
-      </WorkspacePanel>
+      <div v-show="focus !== 'tasks'" class="service-column" :class="focus === 'logs' ? 'focus-logs' : ''">
+        <WorkspacePanel v-show="!focus" title="服务健康" :icon="FirstAidKit" fill body-padding="none">
+          <RunServiceHealth
+            :runtime="controller.runtime.value"
+            :alerts="controller.state.value.sms_alerts || controller.runtime.value.sms_alerts"
+          />
+        </WorkspacePanel>
+
+        <WorkspacePanel class="log-workspace" title="运行日志" :icon="Document" fill body-padding="compact">
+          <template #actions>
+            <el-tooltip :content="focus === 'logs' ? '退出聚焦' : '聚焦日志'">
+              <el-button
+                circle
+                :icon="focus === 'logs' ? Close : FullScreen"
+                :aria-label="focus === 'logs' ? '退出日志聚焦' : '聚焦日志'"
+                @click="toggleFocus('logs')"
+              />
+            </el-tooltip>
+          </template>
+          <div class="log-content">
+            <div class="log-filterbar">
+              <el-input v-model="logSearch" clearable placeholder="搜索日志" :prefix-icon="Search" />
+              <el-select v-model="logFilter">
+                <el-option label="全部级别" value="all" />
+                <el-option label="信息" value="info" />
+                <el-option label="成功" value="success" />
+                <el-option label="警告" value="warning" />
+                <el-option label="错误" value="error" />
+              </el-select>
+            </div>
+            <div class="log-view"><LogPanel :logs="filteredLogs" /></div>
+          </div>
+        </WorkspacePanel>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.run-page { display: grid; grid-template-rows: 44px 78px 202px minmax(0, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
-.metric-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; min-width: 0; min-height: 0; }
-.work-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(390px, 2fr); gap: 8px; min-width: 0; min-height: 0; }
-.work-grid.focus-tasks,
-.work-grid.focus-logs { grid-template-columns: minmax(0, 1fr); }
-.task-search { width: 165px; }
-.task-filter { width: 110px; }
-.log-search { width: 150px; }
-.log-filter { width: 105px; }
+.run-page { display: grid; grid-template-rows: 44px minmax(0, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.console-grid { display: grid; grid-template-columns: 220px minmax(520px, 1fr) 340px; gap: 6px; min-width: 0; min-height: 0; }
+.console-grid.focus-tasks,
+.console-grid.focus-logs { grid-template-columns: minmax(0, 1fr); }
+.overview-column { display: grid; grid-template-rows: minmax(350px, 3fr) minmax(250px, 2fr); gap: 6px; min-width: 0; min-height: 0; }
+.service-column { display: grid; grid-template-rows: minmax(210px, 34%) minmax(0, 1fr); gap: 6px; min-width: 0; min-height: 0; }
+.service-column.focus-logs { grid-template-rows: minmax(0, 1fr); }
+.task-workspace,
+.log-workspace { min-width: 0; min-height: 0; }
+.task-search { width: 145px; }
+.task-filter { width: 102px; }
+.log-content { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
+.log-filterbar { display: grid; grid-template-columns: minmax(0, 1fr) 104px; gap: 6px; flex: 0 0 auto; margin-bottom: 8px; }
+.log-view { min-height: 0; flex: 1; }
 </style>
