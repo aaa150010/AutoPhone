@@ -47,11 +47,11 @@ function update(key: string, value: any) {
       <el-col :span="12">
         <el-form-item label="每号最大尝试">
           <el-input-number
-            :model-value="Number(modelValue.phone_max_attempts ?? 10)"
+            :model-value="Number(modelValue.phone_max_attempts ?? 15)"
             :min="1"
-            :max="10"
+            :max="15"
             controls-position="right"
-            @update:model-value="update('phone_max_attempts', Number($event ?? 10))"
+            @update:model-value="update('phone_max_attempts', Number($event ?? 15))"
           />
         </el-form-item>
       </el-col>

@@ -46,11 +46,10 @@ const defaultForm = () => ({
   sms_min_price: '0.01',
   max_price: '0.1',
   sms_timeout: '30',
-  phone_max_attempts: 10,
+  phone_max_attempts: 15,
   phone_session_cycle_seconds: 480,
   sms_api_keys: [''],
-  nvtoken_upload: true,
-  nvtoken: {},
+  pixel_upload_enabled: true,
   sub2api: {},
   email_notification: defaultEmailNotification(),
 })
@@ -103,6 +102,9 @@ function normalizeImportedConfig(value: any) {
   config.sms_api_keys = [...new Set(keys.map((key: unknown) => String(key || '').trim()).filter(Boolean))]
   if (!config.sms_api_keys.length) config.sms_api_keys = ['']
   delete config.sms_api_key
+  delete config.nvtoken
+  delete config.nvtoken_upload
+  if (config.pixel_upload_enabled == null) config.pixel_upload_enabled = true
   config.email_notification = normalizeEmailNotificationDraft(config.email_notification)
   return config
 }
@@ -177,6 +179,8 @@ export function createAppController() {
     value.sms_api_keys = keys
     value.sms_api_key = keys[0] || ''
     value.email_notification = normalizeEmailNotificationDraft(value.email_notification)
+    delete value.nvtoken
+    delete value.nvtoken_upload
     return value
   }
 
@@ -193,6 +197,9 @@ export function createAppController() {
     const [stateResult, localResult] = await Promise.all([getState(), getLocalConfig()])
     syncState(stateResult)
     const merged = mergeConfig(defaultForm(), state.value.settings || {}, localResult.config || {})
+    delete merged.nvtoken
+    delete merged.nvtoken_upload
+    if (merged.pixel_upload_enabled == null) merged.pixel_upload_enabled = true
     Object.assign(form, merged)
     if (!Array.isArray(form.sms_api_keys)) form.sms_api_keys = [form.sms_api_key || '']
     if (!form.sms_api_keys.length) form.sms_api_keys = ['']
@@ -221,7 +228,6 @@ export function createAppController() {
           }).catch(() => undefined)
         : Promise.resolve(),
       loadSecret(() => form.sub2api?.password, value => { form.sub2api.password = String(value || '') }, 'sub2_password'),
-      loadSecret(() => form.nvtoken?.api_key, value => { form.nvtoken.api_key = String(value || '') }, 'nvtoken_api_key'),
       loadSecret(() => form.email_notification?.password, value => {
         form.email_notification.password = String(value || '')
       }, 'notification_email_password'),

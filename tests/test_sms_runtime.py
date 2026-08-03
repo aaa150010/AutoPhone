@@ -105,7 +105,7 @@ class SmsRuntimeTests(unittest.TestCase):
         migrated, changed = migrate_performance_config({"sms_api_key": "legacy", "phone_max_attempts": 0})
         self.assertTrue(changed)
         self.assertEqual(migrated["sms_api_keys"], ["legacy"])
-        self.assertEqual(migrated["phone_max_attempts"], 10)
+        self.assertEqual(migrated["phone_max_attempts"], 15)
         self.assertEqual(migrated["phone_session_cycle_seconds"], 480)
         self.assertEqual(migrated["auth_session_retries"], 1)
 
@@ -115,7 +115,7 @@ class SmsRuntimeTests(unittest.TestCase):
             "auth_session_retries": 0,
         })
         self.assertTrue(changed)
-        self.assertEqual(upgraded["phone_max_attempts"], 10)
+        self.assertEqual(upgraded["phone_max_attempts"], 15)
         self.assertEqual(upgraded["auth_session_retries"], 1)
         self.assertEqual(upgraded["performance_policy_version"], 5)
 
@@ -128,6 +128,13 @@ class SmsRuntimeTests(unittest.TestCase):
         self.assertEqual(saved["phone_max_attempts"], 0)
         self.assertEqual(saved["auth_session_retries"], 0)
         self.assertEqual(saved["phone_session_cycle_seconds"], 480)
+
+        over_limit, changed = migrate_performance_config({
+            "performance_policy_version": 5,
+            "phone_max_attempts": 17,
+        })
+        self.assertFalse(changed)
+        self.assertEqual(over_limit["phone_max_attempts"], 15)
 
     def test_preflight_reports_mixed_balances(self):
         factory = FakeFactory({

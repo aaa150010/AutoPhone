@@ -20,8 +20,9 @@ SECRET_MASK = "********"
 ECB_DAILY_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
 SMS_PREFLIGHT_MAX_WORKERS = 8
 PERFORMANCE_POLICY_VERSION = 5
+PHONE_MAX_ATTEMPTS_LIMIT = 15
 PERFORMANCE_DEFAULTS = {
-    "phone_max_attempts": 10,
+    "phone_max_attempts": PHONE_MAX_ATTEMPTS_LIMIT,
     "phone_session_cycle_seconds": 480,
     "auth_session_retries": 1,
 }
@@ -70,6 +71,13 @@ def migrate_performance_config(value: Any) -> tuple[dict[str, Any], bool]:
         for key, default in PERFORMANCE_DEFAULTS.items():
             if key not in config:
                 config[key] = default
+
+    try:
+        phone_max_attempts = int(config.get("phone_max_attempts") or 0)
+    except (TypeError, ValueError):
+        phone_max_attempts = 0
+    if phone_max_attempts > PHONE_MAX_ATTEMPTS_LIMIT:
+        config["phone_max_attempts"] = PHONE_MAX_ATTEMPTS_LIMIT
 
     keys = normalize_sms_keys(config.get("sms_api_keys"), config.get("sms_api_key"))
     config["sms_api_keys"] = keys

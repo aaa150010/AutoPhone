@@ -11,7 +11,6 @@ import os
 import re
 import threading
 import time
-import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -26,6 +25,7 @@ import importer_scheduler as _importer_scheduler_ext
 import legacy_ui as _legacy_ui_ext
 import mailbox_admin as _mailbox_admin_ext
 import mailbox_retention as _mailbox_retention_ext
+import pixel_runtime as _pixel_runtime_ext
 import run_notifications as _run_notifications_ext
 import runtime as _runtime
 import runtime_policy as _runtime_policy_ext
@@ -33,6 +33,7 @@ import sms_providers as _sms_providers
 import sms_runtime as _sms_runtime_ext
 import sms_selector as _sms_selector
 import sms_web as _sms_web_ext
+import sub2_runtime as _sub2_runtime_ext
 import task_progress as _task_progress_ext
 import web_routes as _web_routes_ext
 
@@ -74,6 +75,7 @@ _ORIGINAL_REAL_SEND_MFA_OTP = _codex_oauth_chain.RealCodexTransport.send_mfa_otp
 _ORIGINAL_REAL_VERIFY_PHONE_OTP = _codex_oauth_chain.RealCodexTransport.verify_phone_otp
 _ORIGINAL_SMART_BUILD_CANDIDATES = _sms_selector.SmartSmsSelector._build_candidates_locked
 _ORIGINAL_PERSIST_RESULT = _runtime.EmailAuthImporter._persist_result
+_ORIGINAL_RETIRE_AFTER_FAILURE = _runtime.EmailAuthImporter._retire_after_failure
 _ORIGINAL_CONFIG_SAVE = _runtime.ImporterConfigStore.save
 _ORIGINAL_TASK_CONFIG = _runtime.EmailAuthImporter._task_config
 _ORIGINAL_TASK_STATE = _runtime.EmailAuthImporter._task_state
@@ -110,7 +112,6 @@ _SMS_BLOCKED_ROUTES = (
 _LOCAL_CONFIG_FILE = Path(
     os.environ.get("GPTPHONE_LOCAL_CONFIG_FILE") or _RUNTIME_DATA_DIR / "local_config.json"
 )
-_NVTOKEN_IMPORT_URL_DEFAULT = "https://nvtokens.com/api/inventory/cards/import"
 _SECRET_MASK = "********"
 _SMS_KEY_POOL = _sms_runtime_ext.SmsKeyPool(
     lambda key, proxy="": _ORIGINAL_CREATE_PROVIDER("smsbower", key, proxy=proxy)
@@ -123,6 +124,10 @@ _SMS_ALERTS = _sms_runtime_ext.RuntimeAlertBuffer()
 _TASK_PROGRESS = _task_progress_ext.TaskProgressTracker()
 _TASK_CONTEXT: ContextVar[str] = ContextVar("gptphone_task_id", default="")
 _MAILBOX_TOTP_SECRET_CONTEXT: ContextVar[str] = ContextVar("gptphone_mailbox_totp_secret", default="")
+_ACCOUNT_BANNED_DETAIL_CONTEXT: ContextVar[str] = ContextVar(
+    "gptphone_account_banned_detail",
+    default="",
+)
 _RUN_LIFECYCLE_LOCK = threading.Lock()
 _RUN_NOTIFICATION_LOCK = threading.RLock()
 _RUN_NOTIFICATION_CONTEXT = None
@@ -163,6 +168,11 @@ def _write_store_config(store, value):
 
 def _patched_config_load(self):
     raw = _read_store_config(self)
+    removed_legacy_fields = False
+    for key in ("nvtoken", "nvtoken_upload"):
+        if key in raw:
+            raw.pop(key, None)
+            removed_legacy_fields = True
     defaults = _runtime.default_settings(self.data_dir)
     if "sms_mode" not in raw:
         smart = raw.get("sms_smart") if isinstance(raw.get("sms_smart"), dict) else {}
@@ -190,6 +200,10 @@ def _patched_config_load(self):
         changed = True
 
     normalized, migrated = _sms_runtime_ext.migrate_performance_config(loaded)
+    pixel_upload_enabled = _as_enabled(raw.get("pixel_upload_enabled"), True)
+    if normalized.get("pixel_upload_enabled") != pixel_upload_enabled:
+        changed = True
+    normalized["pixel_upload_enabled"] = pixel_upload_enabled
     policy_keys = (
         "performance_policy_version",
         "phone_max_attempts",
@@ -200,13 +214,16 @@ def _patched_config_load(self):
     )
     if migrated or any(raw.get(key) != normalized.get(key) for key in policy_keys):
         changed = True
-    if changed:
+    if changed or removed_legacy_fields:
         _write_store_config(self, normalized)
     return normalized
 
 
 def _patched_config_save(self, values):
-    normalized, _migrated = _sms_runtime_ext.migrate_performance_config(values)
+    cleaned = dict(values or {})
+    cleaned.pop("nvtoken", None)
+    cleaned.pop("nvtoken_upload", None)
+    normalized, _migrated = _sms_runtime_ext.migrate_performance_config(cleaned)
     saved = dict(_ORIGINAL_CONFIG_SAVE(self, normalized) or {})
     for key in (
         "performance_policy_version",
@@ -227,7 +244,7 @@ def _patched_task_config(self, settings, email, task_id, *, password=""):
         (settings or {}).get("sms_api_keys"),
         (settings or {}).get("sms_api_key"),
     )
-    attempts = _int_value((settings or {}).get("phone_max_attempts"), 10, minimum=1, maximum=10)
+    attempts = _int_value((settings or {}).get("phone_max_attempts"), 15, minimum=1, maximum=15)
     phone_seconds = _int_value(
         (settings or {}).get("phone_session_cycle_seconds"),
         480,
@@ -527,47 +544,6 @@ def _as_enabled(value, default=True):
     return str(value).strip().lower() not in {"0", "false", "no", "off", "unchecked", "disabled"}
 
 
-def _nvtoken_result_payload(result, entry):
-    if not isinstance(result, dict):
-        return None
-    data = {
-        "access_token": str(result.get("access_token") or "").strip(),
-        "refresh_token": str(result.get("refresh_token") or "").strip(),
-        "email": str(result.get("email") or getattr(entry, "email", "") or "").strip(),
-        "type": "codex",
-    }
-    if not data["access_token"] or not data["refresh_token"] or not data["email"]:
-        return None
-    return {"data": data}
-
-
-def _upload_nvtoken(payload, settings, timeout=30):
-    nvtoken = dict(((settings or {}).get("nvtoken") or {}))
-    url = str(nvtoken.get("url") or _NVTOKEN_IMPORT_URL_DEFAULT).strip()
-    api_key = str(nvtoken.get("api_key") or "").strip()
-    if not api_key:
-        return False, 0, "nvtoken api_key is empty"
-    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    request = urllib.request.Request(
-        url,
-        data=body,
-        headers={
-            "content-type": "application/json",
-            "x-api-key": api_key,
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            text = response.read(4096).decode("utf-8", errors="replace")
-            return True, int(response.status), text
-    except urllib.error.HTTPError as exc:
-        text = exc.read(4096).decode("utf-8", errors="replace")
-        return False, int(exc.code), text
-    except Exception as exc:
-        return False, 0, str(exc)
-
-
 def _patched_persist_result(self, settings, task_id, entry, result, *, error="", status="failed"):
     if status == "success":
         _TASK_PROGRESS.set_stage(task_id, "finalizing_save")
@@ -575,24 +551,106 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
         cost_summary = _SMS_COST_LEDGER.summary(str(task_id), _SMS_EXCHANGE_RATE)
         if cost_summary.get("sms_order_outcomes") or "sms_cost_usd" not in result:
             result.update(cost_summary)
-    if status == "success" and _as_enabled((settings or {}).get("nvtoken_upload"), True):
-        _TASK_PROGRESS.set_stage(task_id, "finalizing_nvtoken")
-        payload = _nvtoken_result_payload(result, entry)
-        if payload is None:
-            result["nvtoken_upload_ok"] = False
-            result["nvtoken_upload_error"] = "missing access_token/refresh_token/email"
-            self._log(f"{task_id} [NVToken] 跳过上传: 缺少 token 或 email", "warn")
-        elif result.get("nvtoken_upload_ok") is not True:
-            ok, http_status, text = _upload_nvtoken(payload, settings)
-            result["nvtoken_upload_ok"] = ok
-            result["nvtoken_upload_status"] = http_status
-            if ok:
-                result["nvtoken_upload_response"] = text[:1000]
-                self._log(f"{task_id} [NVToken] 已上传 nvtoken 平台: {payload['data']['email']}", "success")
-            else:
-                result["nvtoken_upload_error"] = text[:1000]
-                self._log(f"{task_id} [NVToken] 上传失败 status={http_status}: {text[:240]}", "warn")
-    return _ORIGINAL_PERSIST_RESULT(self, settings, task_id, entry, result, error=error, status=status)
+    persisted = _ORIGINAL_PERSIST_RESULT(
+        self,
+        settings,
+        task_id,
+        entry,
+        result,
+        error=error,
+        status=status,
+    )
+    if status == "account_banned":
+        detail = _ACCOUNT_BANNED_DETAIL_CONTEXT.get("")
+        if detail:
+            try:
+                root = Path(
+                    str((settings or {}).get("results_dir") or "").strip()
+                    or Path(self.data_dir) / "results"
+                )
+                target = root / f"{task_id}_{str(getattr(entry, 'email', '') or '').replace('@', '_at_')}.json"
+                payload = json.loads(target.read_text(encoding="utf-8"))
+                if isinstance(payload, dict):
+                    payload["error"] = _runtime_policy_ext.ACCOUNT_BANNED_MESSAGE
+                    payload["technical_error"] = str(detail)[:1000]
+                    _runtime.atomic_write_json(target, payload)
+            except Exception:
+                pass
+    if status == "success" and _as_enabled((settings or {}).get("pixel_upload_enabled"), True):
+        try:
+            root = Path(
+                str((settings or {}).get("results_dir") or "").strip()
+                or Path(self.data_dir) / "results"
+            )
+            email = str(getattr(entry, "email", "") or "")
+            result_file = root / f"{task_id}_{email.replace('@', '_at_')}.json"
+            _PIXEL_UPLOAD_QUEUE.enqueue(task_id, result_file)
+        except Exception:
+            try:
+                self._log("Pixel 自动上传记录创建失败，可稍后从账号管理重试", "error")
+            except Exception:
+                pass
+    return persisted
+
+
+def _patched_retire_after_failure(self, settings, pool, entry, task_id, result, error):
+    if not _runtime_policy_ext.is_account_banned_failure(result, error):
+        return _ORIGINAL_RETIRE_AFTER_FAILURE(
+            self,
+            settings,
+            pool,
+            entry,
+            task_id,
+            result,
+            error,
+        )
+
+    message = _runtime_policy_ext.ACCOUNT_BANNED_MESSAGE
+    technical_detail = _SMS_WEB.pop_account_banned_detail(task_id)
+    if not technical_detail:
+        value = result if isinstance(result, dict) else {}
+        technical_source = next(
+            (
+                value.get(key)
+                for key in ("technical_error", "phase2_error", "error")
+                if value.get(key)
+            ),
+            error,
+        )
+        technical_detail = _safe_runtime_error(technical_source)
+    token = _ACCOUNT_BANNED_DETAIL_CONTEXT.set(str(technical_detail or message)[:1000])
+    try:
+        pool.mark_damaged_entry(entry, reason=message)
+        self._persist_result(
+            settings,
+            task_id,
+            entry,
+            result if isinstance(result, dict) else {},
+            error=message,
+            status="account_banned",
+        )
+    finally:
+        _ACCOUNT_BANNED_DETAIL_CONTEXT.reset(token)
+
+    public_result = _runtime._public_result(result if isinstance(result, dict) else {})
+    if isinstance(public_result, dict):
+        public_result = dict(public_result)
+        for key in ("technical_error", "phase2_error", "local_oauth_exchange_error"):
+            public_result.pop(key, None)
+        if "error" in public_result:
+            public_result["error"] = message
+    self._task_state(
+        task_id,
+        status="account_banned",
+        error=message,
+        technical_error=message,
+        result=public_result,
+    )
+    try:
+        self._log(message, "error")
+    except Exception:
+        pass
+    return None
 
 
 _SMS_WEB = _sms_web_ext.SmsWebIntegration(
@@ -866,6 +924,7 @@ _runtime.MailboxUrlCodeProvider.fetch_raw = _mailbox_url_fetch_raw
 _runtime.UrlMailboxOtpProvider.wait_code = _url_mailbox_wait_code
 _runtime.EmailAuthImporter._account_label = _TOTP_PATCHES.account_label
 _runtime.EmailAuthImporter._persist_result = _patched_persist_result
+_runtime.EmailAuthImporter._retire_after_failure = _patched_retire_after_failure
 _runtime.EmailAuthImporter._task_config = _patched_task_config
 _runtime.EmailAuthImporter._task_state = _patched_task_state
 _runtime.EmailAuthImporter.start = _patched_importer_start
@@ -898,7 +957,6 @@ _legacy_ui_ext.apply_legacy_ui_overrides(
     min_price_default=_SMS_MIN_PRICE_DEFAULT,
     max_price_default=_SMS_MAX_PRICE_DEFAULT,
     priority_countries_text=_SMS_PRIORITY_COUNTRIES_TEXT,
-    nvtoken_import_url_default=_NVTOKEN_IMPORT_URL_DEFAULT,
 )
 
 
@@ -923,16 +981,43 @@ def _read_local_config():
         value = json.loads(_LOCAL_CONFIG_FILE.read_text(encoding="utf-8"))
     except Exception:
         return {}
-    return value if isinstance(value, dict) else {}
+    if not isinstance(value, dict):
+        return {}
+    if "nvtoken" in value or "nvtoken_upload" in value:
+        value.pop("nvtoken", None)
+        value.pop("nvtoken_upload", None)
+        _write_local_config(value)
+    return value
 
 
 def _write_local_config(data):
-    value = data if isinstance(data, dict) else {}
+    value = dict(data) if isinstance(data, dict) else {}
+    value.pop("nvtoken", None)
+    value.pop("nvtoken_upload", None)
     _LOCAL_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     temporary = _LOCAL_CONFIG_FILE.with_suffix(_LOCAL_CONFIG_FILE.suffix + ".tmp")
     temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
     temporary.replace(_LOCAL_CONFIG_FILE)
     return value
+
+
+_PIXEL_CLIENT = _pixel_runtime_ext.PixelProxyClient(
+    os.environ.get("GPTPHONE_PIXEL_PROXY_URL")
+    or _pixel_runtime_ext.DEFAULT_PIXEL_PROXY_BASE_URL
+)
+_PIXEL_UPLOAD_QUEUE = _pixel_runtime_ext.PixelUploadQueue(
+    _RUNTIME_DATA_DIR,
+    client=_PIXEL_CLIENT,
+    auto_start=True,
+    resume_pending=_as_enabled(
+        _read_local_config().get("pixel_upload_enabled"),
+        True,
+    ),
+)
+_SUB2_RUNTIME = _sub2_runtime_ext.Sub2Runtime(
+    _read_local_config,
+    _RUNTIME_DATA_DIR / "sub2_test_snapshots.json",
+)
 
 
 def _local_secret(value, fallback=""):
@@ -974,8 +1059,9 @@ def _resolve_sms_keys(data, existing=None):
 
 def _masked_local_config(data):
     value = json.loads(json.dumps(data if isinstance(data, dict) else {}))
+    value.pop("nvtoken", None)
+    value.pop("nvtoken_upload", None)
     sub2api = dict(value.get("sub2api") or {})
-    nvtoken = dict(value.get("nvtoken") or {})
     email_notification = dict(value.get("email_notification") or {})
     sms_keys = _sms_keys_from_config(value)
     value["sms_api_keys"] = [_SECRET_MASK for _key in sms_keys]
@@ -989,9 +1075,6 @@ def _masked_local_config(data):
     if sub2api:
         sub2api["password"] = _mask_secret(sub2api.get("password"))
         value["sub2api"] = sub2api
-    if nvtoken:
-        nvtoken["api_key"] = _mask_secret(nvtoken.get("api_key"))
-        value["nvtoken"] = nvtoken
     if email_notification:
         email_notification["password"] = _mask_secret(email_notification.get("password"))
         value["email_notification"] = email_notification
@@ -1115,12 +1198,10 @@ def _public_logs(logs, tasks):
         return logs
     local = _read_local_config()
     sub2api = dict(local.get("sub2api") or {})
-    nvtoken = dict(local.get("nvtoken") or {})
     notification = dict(local.get("email_notification") or {})
     secrets = [
         *_sms_keys_from_config(local),
         sub2api.get("password"),
-        nvtoken.get("api_key"),
         notification.get("password"),
         *_mailbox_admin_ext.url_credential_secrets(local.get("proxy")),
     ]
@@ -1172,14 +1253,12 @@ def _masked_state(data):
 def _local_config_secret(secret_id):
     local = _read_local_config()
     sub2api = dict(local.get("sub2api") or {})
-    nvtoken = dict(local.get("nvtoken") or {})
     email_notification = dict(local.get("email_notification") or {})
     sms_keys = _sms_keys_from_config(local)
     values = {
         "sms_api_keys": sms_keys,
         "sms_api_key": sms_keys[0] if sms_keys else "",
         "sub2_password": sub2api.get("password") or "",
-        "nvtoken_api_key": nvtoken.get("api_key") or "",
         "notification_email_password": email_notification.get("password") or "",
         "proxy": local.get("proxy") or "",
     }
@@ -1195,8 +1274,6 @@ def _local_config_from_runtime(data, existing=None):
     data, _migrated = _sms_runtime_ext.migrate_performance_config(raw_data)
     sub2api = dict(data.get("sub2api") or {})
     existing_sub2api = dict(existing.get("sub2api") or {})
-    nvtoken = dict(data.get("nvtoken") or {})
-    existing_nvtoken = dict(existing.get("nvtoken") or {})
     email_notification = dict(data.get("email_notification") or {})
     existing_email_notification = dict(existing.get("email_notification") or {})
     resolved_email_notification = _run_notifications_ext.normalize_email_notification(
@@ -1215,10 +1292,6 @@ def _local_config_from_runtime(data, existing=None):
             "password": _local_secret(sub2api.get("password"), existing_sub2api.get("password")),
             "group": str(sub2api.get("group") or "").strip(),
         },
-        "nvtoken": {
-            "url": str(nvtoken.get("url") or _NVTOKEN_IMPORT_URL_DEFAULT).strip(),
-            "api_key": _local_secret(nvtoken.get("api_key"), existing_nvtoken.get("api_key")).strip(),
-        },
         "email_notification": resolved_email_notification,
     }
     if "proxy" in data or "proxy" in existing:
@@ -1235,7 +1308,7 @@ def _local_config_from_runtime(data, existing=None):
         "sms_timeout",
         "phone_max_attempts",
         "phone_session_cycle_seconds",
-        "nvtoken_upload",
+        "pixel_upload_enabled",
     ):
         if key in data:
             result[key] = copy.deepcopy(data[key])
@@ -1274,8 +1347,6 @@ def _merge_local_config(data):
     patched["proxy"] = _local_secret(patched.get("proxy"), local.get("proxy"))
     if isinstance(local.get("sub2api"), dict):
         patched["sub2api"] = _merge_nonempty(local.get("sub2api") or {}, patched.get("sub2api") or {})
-    if isinstance(local.get("nvtoken"), dict):
-        patched["nvtoken"] = _merge_nonempty(local.get("nvtoken") or {}, patched.get("nvtoken") or {})
     if isinstance(local.get("email_notification"), dict):
         patched["email_notification"] = _merge_email_notification(
             local.get("email_notification") or {},
@@ -1295,11 +1366,9 @@ def _apply_server_defaults(data):
     patched["country"] = ""
     patched["provider_ids"] = ""
     patched.pop("manual_pool_content", None)
+    patched.pop("nvtoken", None)
+    patched.pop("nvtoken_upload", None)
     patched["sub2api"] = dict(patched.get("sub2api") or {})
-    patched["nvtoken"] = {
-        "url": _NVTOKEN_IMPORT_URL_DEFAULT,
-        **dict(patched.get("nvtoken") or {}),
-    }
     patched["email_notification"] = _run_notifications_ext.validate_email_notification(
         patched.get("email_notification") or {}
     )
@@ -1329,7 +1398,7 @@ def _apply_server_defaults(data):
         "register_rejected_cooldown": 60,
         "register_rejected_min_cooldown": 180,
     }
-    patched["nvtoken_upload"] = _as_enabled(patched.get("nvtoken_upload"), True)
+    patched["pixel_upload_enabled"] = _as_enabled(patched.get("pixel_upload_enabled"), True)
     return patched
 
 
@@ -1350,6 +1419,8 @@ def _mailbox_admin_factory(store, importer, logs):
         is_active_progress=_task_progress_ext.is_active_progress,
         log_fn=logs.add,
         error_formatter=_module._safe if hasattr(_module, "_safe") else str,
+        sub2_status_lookup=_SUB2_RUNTIME.status_for,
+        sub2_batch_tester=_SUB2_RUNTIME.test_rows,
     )
 
 
@@ -1377,6 +1448,8 @@ _WEB_ROUTE_CONTEXT = _web_routes_ext.WebRouteContext(
     sms_phone_gate=_SMS_PHONE_GATE,
     mailbox_admin_factory=_mailbox_admin_factory,
     mailbox_manager_html=_legacy_ui_ext.MAILBOX_MANAGER_HTML,
+    pixel_client=_PIXEL_CLIENT,
+    pixel_upload_queue=_PIXEL_UPLOAD_QUEUE,
 )
 
 
