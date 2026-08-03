@@ -71,6 +71,7 @@ _ORIGINAL_REAL_VERIFY_PASSWORD = _codex_oauth_chain.RealCodexTransport.verify_pa
 _ORIGINAL_REAL_VERIFY_EMAIL_OTP = _codex_oauth_chain.RealCodexTransport.verify_email_otp
 _ORIGINAL_REAL_VERIFY_MFA_OTP = _codex_oauth_chain.RealCodexTransport.verify_mfa_otp
 _ORIGINAL_REAL_SEND_MFA_OTP = _codex_oauth_chain.RealCodexTransport.send_mfa_otp
+_ORIGINAL_REAL_VERIFY_PHONE_OTP = _codex_oauth_chain.RealCodexTransport.verify_phone_otp
 _ORIGINAL_SMART_BUILD_CANDIDATES = _sms_selector.SmartSmsSelector._build_candidates_locked
 _ORIGINAL_PERSIST_RESULT = _runtime.EmailAuthImporter._persist_result
 _ORIGINAL_CONFIG_SAVE = _runtime.ImporterConfigStore.save
@@ -604,7 +605,13 @@ _SMS_WEB = _sms_web_ext.SmsWebIntegration(
     original_adapter_cancel=_ORIGINAL_SMS_ADAPTER_CANCEL,
     original_classify_error=_ORIGINAL_SMART_CLASSIFY_ERROR,
     original_record_result=_ORIGINAL_SMART_RECORD_RESULT,
-    original_send_phone_otp=_ORIGINAL_REAL_SEND_PHONE_NUMBER_OTP,
+    original_send_phone_otp=lambda transport, phone, _channel="sms": transport._post_auth_json(
+        "/api/accounts/add-phone/send",
+        {"phone_number": _codex_oauth_chain._phone_for_openai(phone)},
+        flow="authorize_continue",
+        referer=f"{_codex_oauth_chain.AUTH}/add-phone",
+        timeout=30,
+    ),
     key_pool=_SMS_KEY_POOL,
     cost_ledger=_SMS_COST_LEDGER,
     phone_gate=_SMS_PHONE_GATE,
@@ -667,6 +674,16 @@ def _sms_route_limit(self, candidate, stat, now):
 
 def _sms_send_phone_number_otp(self, phone, channel="sms"):
     return _SMS_WEB.send_phone_number_otp(self, phone, channel)
+
+
+def _real_verify_phone_otp(self, code):
+    return self._post_auth_json(
+        "/api/accounts/phone-otp/validate",
+        {"code": code},
+        flow="authorize_continue",
+        referer=f"{_codex_oauth_chain.AUTH}/phone-verification",
+        timeout=30,
+    )
 
 
 def _call_log(log_fn, message, level="info"):
@@ -870,6 +887,7 @@ _codex_oauth_chain.RealCodexTransport.verify_email_otp = _real_verify_email_otp
 _codex_oauth_chain.RealCodexTransport.send_mfa_otp = _TOTP_PATCHES.send_mfa_otp
 _codex_oauth_chain.RealCodexTransport.verify_mfa_otp = _TOTP_PATCHES.verify_mfa_otp
 _codex_oauth_chain.RealCodexTransport.send_phone_number_otp = _sms_send_phone_number_otp
+_codex_oauth_chain.RealCodexTransport.verify_phone_otp = _real_verify_phone_otp
 _sms_selector.SmartSmsSelector._build_candidates_locked = _sms_build_candidates
 _sms_selector.SmartSmsSelector.classify_error = staticmethod(_SMS_WEB.classify_error)
 _sms_selector.SmartSmsSelector.record_result = _sms_record_result
