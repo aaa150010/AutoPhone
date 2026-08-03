@@ -162,13 +162,20 @@ function toggleFocus(value: 'tasks' | 'logs') {
     </PageToolbar>
 
     <div class="console-grid" :class="focus ? `focus-${focus}` : ''">
-      <div v-show="!focus" class="overview-column">
+      <div v-show="!focus" class="dashboard-row">
         <WorkspacePanel title="实时概览" :icon="DataAnalysis" fill body-padding="none">
           <RunOverview :metrics="metrics" :completed="completed" :target="target" />
         </WorkspacePanel>
 
         <WorkspacePanel title="运行管线" :icon="Connection" fill body-padding="none">
           <RunPipelineMonitor :runtime="controller.runtime.value" />
+        </WorkspacePanel>
+
+        <WorkspacePanel title="服务健康" :icon="FirstAidKit" fill body-padding="none">
+          <RunServiceHealth
+            :runtime="controller.runtime.value"
+            :alerts="controller.state.value.sms_alerts || controller.runtime.value.sms_alerts"
+          />
         </WorkspacePanel>
       </div>
 
@@ -205,57 +212,49 @@ function toggleFocus(value: 'tasks' | 'logs') {
         <TaskResultsPanel :tasks="filteredTasks as RuntimeTask[]" />
       </WorkspacePanel>
 
-      <div v-show="focus !== 'tasks'" class="service-column" :class="focus === 'logs' ? 'focus-logs' : ''">
-        <WorkspacePanel v-show="!focus" title="服务健康" :icon="FirstAidKit" fill body-padding="none">
-          <RunServiceHealth
-            :runtime="controller.runtime.value"
-            :alerts="controller.state.value.sms_alerts || controller.runtime.value.sms_alerts"
-          />
-        </WorkspacePanel>
-
-        <WorkspacePanel class="log-workspace" title="运行日志" :icon="Document" fill body-padding="compact">
-          <template #actions>
-            <el-tooltip :content="focus === 'logs' ? '退出聚焦' : '聚焦日志'">
-              <el-button
-                circle
-                :icon="focus === 'logs' ? Close : FullScreen"
-                :aria-label="focus === 'logs' ? '退出日志聚焦' : '聚焦日志'"
-                @click="toggleFocus('logs')"
-              />
-            </el-tooltip>
-          </template>
-          <div class="log-content">
-            <div class="log-filterbar">
-              <el-input v-model="logSearch" clearable placeholder="搜索日志" :prefix-icon="Search" />
-              <el-select v-model="logFilter">
-                <el-option label="全部级别" value="all" />
-                <el-option label="信息" value="info" />
-                <el-option label="成功" value="success" />
-                <el-option label="警告" value="warning" />
-                <el-option label="错误" value="error" />
-              </el-select>
-            </div>
-            <div class="log-view"><LogPanel :logs="filteredLogs" /></div>
-          </div>
-        </WorkspacePanel>
-      </div>
+      <WorkspacePanel v-show="focus !== 'tasks'" class="log-workspace" title="运行日志" :icon="Document" fill body-padding="none">
+        <template #actions>
+          <el-input v-model="logSearch" class="log-search" clearable placeholder="搜索日志" :prefix-icon="Search" />
+          <el-select v-model="logFilter" class="log-filter">
+            <el-option label="全部级别" value="all" />
+            <el-option label="信息" value="info" />
+            <el-option label="成功" value="success" />
+            <el-option label="警告" value="warning" />
+            <el-option label="错误" value="error" />
+          </el-select>
+          <el-tooltip :content="focus === 'logs' ? '退出聚焦' : '聚焦日志'">
+            <el-button
+              circle
+              :icon="focus === 'logs' ? Close : FullScreen"
+              :aria-label="focus === 'logs' ? '退出日志聚焦' : '聚焦日志'"
+              @click="toggleFocus('logs')"
+            />
+          </el-tooltip>
+        </template>
+        <LogPanel :logs="filteredLogs" />
+      </WorkspacePanel>
     </div>
   </div>
 </template>
 
 <style scoped>
 .run-page { display: grid; grid-template-rows: 44px minmax(0, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
-.console-grid { display: grid; grid-template-columns: 220px minmax(520px, 1fr) 340px; gap: 6px; min-width: 0; min-height: 0; }
+.console-grid { display: grid; grid-template-rows: 244px repeat(2, minmax(0, 1fr)); gap: 6px; min-width: 0; min-height: 0; }
 .console-grid.focus-tasks,
-.console-grid.focus-logs { grid-template-columns: minmax(0, 1fr); }
-.overview-column { display: grid; grid-template-rows: minmax(350px, 3fr) minmax(250px, 2fr); gap: 6px; min-width: 0; min-height: 0; }
-.service-column { display: grid; grid-template-rows: minmax(210px, 34%) minmax(0, 1fr); gap: 6px; min-width: 0; min-height: 0; }
-.service-column.focus-logs { grid-template-rows: minmax(0, 1fr); }
+.console-grid.focus-logs { grid-template-rows: minmax(0, 1fr); }
+.dashboard-row { display: grid; grid-template-columns: minmax(300px, .9fr) minmax(390px, 1.25fr) minmax(300px, .9fr); gap: 6px; min-width: 0; min-height: 0; }
 .task-workspace,
 .log-workspace { min-width: 0; min-height: 0; }
 .task-search { width: 145px; }
 .task-filter { width: 102px; }
-.log-content { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
-.log-filterbar { display: grid; grid-template-columns: minmax(0, 1fr) 104px; gap: 6px; flex: 0 0 auto; margin-bottom: 8px; }
-.log-view { min-height: 0; flex: 1; }
+.log-search { width: 190px; }
+.log-filter { width: 104px; }
+
+@media (max-height: 820px) {
+  .console-grid { grid-template-rows: 220px repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1450px) {
+  .dashboard-row { grid-template-columns: minmax(285px, .9fr) minmax(360px, 1.15fr) minmax(285px, .9fr); }
+}
 </style>

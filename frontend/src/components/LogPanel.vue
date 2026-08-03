@@ -112,7 +112,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="log-panel">
+  <div class="log-panel" :class="{ 'has-logs': renderedLogs.length }">
     <div v-if="renderedLogs.length" class="log-toolbar">
       <el-button plain @click="toggleAutoScroll">
         <el-icon><VideoPause v-if="autoScroll" /><Bottom v-else /></el-icon>
@@ -122,6 +122,7 @@ onBeforeUnmount(() => {
     <el-scrollbar
       ref="scrollbar"
       class="log-scroll"
+      :class="{ 'is-empty': !renderedLogs.length }"
       tabindex="0"
       @scroll="handleScroll"
       @wheel.passive="pauseAutoScroll"
@@ -140,10 +141,12 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .log-panel { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
+.log-panel.has-logs { padding: 8px 10px 10px; }
 .log-toolbar { flex: 0 0 auto; display: flex; justify-content: flex-end; margin-bottom: 6px; }
 .log-toolbar :deep(.el-button) { min-height: 32px; padding: 6px 11px; font-size: 13px; }
 .log-scroll { min-height: 0; flex: 1; }
 .log-scroll :deep(.el-scrollbar__view) { min-height: 100%; }
+.log-scroll.is-empty :deep(.el-scrollbar__view) { height: 100%; }
 .log-line { display: flex; gap: 12px; padding: 7px 4px; border-bottom: 1px solid var(--el-border-color-lighter); font-size: 13px; line-height: 20px; }
 .log-line span { color: var(--el-text-color-secondary); white-space: nowrap; }
 .log-line b { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }

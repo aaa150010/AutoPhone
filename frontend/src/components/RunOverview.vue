@@ -49,12 +49,17 @@ const progress = computed(() => {
 </template>
 
 <style scoped>
-.run-overview { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; overflow: hidden; }
-.metric-list { display: grid; grid-template-rows: repeat(5, minmax(52px, 1fr)); min-height: 0; flex: 1; padding: 3px 11px; }
-.metric-list :deep(.metric-card + .metric-card) { border-top: 1px solid var(--el-border-color-lighter); }
+.run-overview { display: grid; grid-template-rows: minmax(0, 1fr) auto; width: 100%; height: 100%; min-height: 0; overflow: hidden; }
+.metric-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); min-height: 0; padding: 6px 9px 2px; }
+.metric-list :deep(.metric-card) { border-bottom: 1px solid var(--el-border-color-lighter); }
+.metric-list :deep(.metric-card:nth-child(even)) { padding-left: 10px; border-left: 1px solid var(--el-border-color-lighter); }
+.metric-list :deep(.metric-card:nth-last-child(-n + 2)) { border-bottom: 0; }
+.metric-list :deep(.metric-card:last-child:nth-child(odd)) { grid-column: 1 / -1; }
+.metric-list :deep(.metric-card.compact) { min-height: 42px; padding-top: 4px; padding-bottom: 4px; }
+.metric-list :deep(.metric-card.compact .metric-icon) { flex-basis: 28px; width: 28px; height: 28px; }
 .section-label { color: #718096; font-size: 12px; line-height: 18px; font-weight: 650; }
-.progress-section { flex: 0 0 auto; margin: 0 12px; padding: 12px 0 14px; border-top: 1px solid var(--workspace-border); }
-.progress-copy { display: flex; align-items: baseline; gap: 8px; margin: 5px 0 9px; }
-.progress-copy strong { color: #172033; font-size: 24px; line-height: 28px; font-variant-numeric: tabular-nums; }
+.progress-section { margin: 0 10px; padding: 7px 0 9px; border-top: 1px solid var(--workspace-border); }
+.progress-copy { display: flex; align-items: baseline; gap: 8px; margin: 1px 0 5px; }
+.progress-copy strong { color: #172033; font-size: 20px; line-height: 24px; font-variant-numeric: tabular-nums; }
 .progress-copy span { color: var(--el-text-color-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
 </style>

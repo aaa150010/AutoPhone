@@ -45,10 +45,10 @@ const concurrencyRows = computed(() => [
 
 <style scoped>
 .pipeline-monitor { display: grid; grid-template-rows: minmax(0, 1fr) 56px; width: 100%; height: 100%; min-height: 0; overflow: hidden; }
-.pipeline-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); min-height: 0; padding: 4px 10px; }
+.pipeline-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); min-height: 0; padding: 5px 10px; }
 .stage-row { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 5px 4px; border-bottom: 1px solid var(--el-border-color-lighter); }
-.stage-row:nth-child(even) { padding-left: 10px; border-left: 1px solid var(--el-border-color-lighter); }
-.stage-row:nth-last-child(-n + 2) { border-bottom: 0; }
+.stage-row:not(:nth-child(3n + 1)) { padding-left: 10px; border-left: 1px solid var(--el-border-color-lighter); }
+.stage-row:nth-last-child(-n + 3) { border-bottom: 0; }
 .stage-row > .el-icon { flex: 0 0 auto; color: var(--el-color-primary); font-size: 15px; }
 .stage-copy { display: flex; flex-direction: column; min-width: 0; }
 .stage-copy span { overflow: hidden; color: var(--el-text-color-regular); font-size: 11px; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; }
