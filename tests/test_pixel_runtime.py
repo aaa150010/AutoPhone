@@ -98,10 +98,17 @@ class FakeTransport:
                 "targets": [
                     {
                         "id": "pixel-1",
-                        "email": "manager@example.test",
+                        "email": "excluded@example.test",
                         "access_token": "remote-secret",
                         "refreshToken": "remote-camel-secret",
-                    }
+                    },
+                    *(
+                        {
+                            "id": f"pixel-{index}",
+                            "email": f"manager-{index}@example.test",
+                        }
+                        for index in range(2, 8)
+                    ),
                 ]
             }
         if "/accounts/bulk-test" in url:
@@ -273,6 +280,36 @@ class PixelProxyClientTests(unittest.TestCase):
         self.assertIn(ACCESS_TOKEN.encode(), import_call["body"])
         share_call = next(call for call in transport.calls if call["url"].endswith("/share"))
         self.assertEqual(share_call["json_body"], {"accountIds": [7]})
+
+    def test_client_management_methods_reject_excluded_and_empty_targets(self):
+        transport = FakeTransport()
+        client = PixelProxyClient(transport=transport)
+
+        for operation in (
+            lambda: client.accounts("pixel-1"),
+            lambda: client.find_accounts_by_identity("pixel-1", ["identity"]),
+            lambda: client.bulk_test("pixel-1", [1]),
+            lambda: client.bulk_update("pixel-1", [1], share_mode="public"),
+            lambda: client.relogin("pixel-1"),
+            lambda: client.share_accounts("pixel-1", [1]),
+            lambda: client.share_all(["pixel-1"]),
+        ):
+            with self.assertRaises(PixelStateError):
+                operation()
+
+        with self.assertRaises(PixelStateError):
+            client.share_all([])
+        self.assertEqual(transport.calls, [])
+
+    def test_client_target_listing_filters_excluded_remote_rows(self):
+        client = PixelProxyClient(transport=FakeTransport())
+
+        payload = client.targets()
+
+        self.assertEqual(
+            [item["id"] for item in payload["targets"]],
+            ["pixel-2", "pixel-3", "pixel-4", "pixel-5", "pixel-6", "pixel-7"],
+        )
 
     def test_automatic_import_rejects_excluded_target(self):
         client = PixelProxyClient(transport=FakeTransport())

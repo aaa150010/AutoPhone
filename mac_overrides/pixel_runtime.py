@@ -547,7 +547,18 @@ class PixelProxyClient:
         target_id = _clean(value)
         if not _TARGET_ID_RE.fullmatch(target_id):
             raise PixelStateError("Pixel 目标 ID 无效", 400)
+        if target_id not in PIXEL_AUTO_TARGET_IDS:
+            raise PixelStateError("Pixel 目标未开放，仅支持 pixel-2 至 pixel-7", 404)
         return target_id
+
+    @classmethod
+    def _target_ids(cls, values: Iterable[Any]) -> list[str]:
+        if isinstance(values, (str, bytes)):
+            values = [values]
+        targets = list(dict.fromkeys(cls._target_id(value) for value in values))
+        if not targets:
+            raise PixelStateError("一键共享没有可执行的 Pixel 目标", 400)
+        return targets
 
     @staticmethod
     def _account_ids(values: Iterable[Any]) -> list[int]:
@@ -596,7 +607,31 @@ class PixelProxyClient:
         return dict(_public_proxy_value(payload))
 
     def targets(self) -> dict[str, Any]:
-        return self._request("GET", "/pixel-manager/targets")
+        payload = self._request("GET", "/pixel-manager/targets")
+
+        def filter_targets(value: Any) -> list[Any] | None:
+            if not isinstance(value, list):
+                return None
+            result: list[Any] = []
+            for item in value:
+                if not isinstance(item, Mapping):
+                    continue
+                target_id = _clean(item.get("id") or item.get("target_id") or item.get("targetId"))
+                if target_id in PIXEL_AUTO_TARGET_IDS:
+                    result.append(item)
+            return result
+
+        filtered = filter_targets(payload.get("targets"))
+        if filtered is not None:
+            payload["targets"] = filtered
+        data = payload.get("data")
+        if isinstance(data, Mapping):
+            nested = filter_targets(data.get("targets"))
+            if nested is not None:
+                nested_data = dict(data)
+                nested_data["targets"] = nested
+                payload["data"] = nested_data
+        return payload
 
     def accounts(
         self,
@@ -717,7 +752,7 @@ class PixelProxyClient:
         )
 
     def share_all(self, target_ids: Iterable[Any] = PIXEL_AUTO_TARGET_IDS) -> dict[str, Any]:
-        targets = list(dict.fromkeys(self._target_id(value) for value in target_ids))
+        targets = self._target_ids(target_ids)
         return self._request(
             "POST",
             "/pixel-manager/share-all",
