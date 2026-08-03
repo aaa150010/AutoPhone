@@ -50,11 +50,14 @@ const progress = computed(() => {
 
 <style scoped>
 .run-overview { display: grid; grid-template-rows: minmax(0, 1fr) auto; width: 100%; height: 100%; min-height: 0; overflow: hidden; }
-.metric-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); min-height: 0; padding: 6px 9px 2px; }
+.metric-list { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); min-height: 0; padding: 6px 9px 2px; }
+.metric-list :deep(.metric-card) { grid-column: span 3; }
+.metric-list :deep(.metric-card:nth-child(n + 3)) { grid-column: span 2; }
 .metric-list :deep(.metric-card) { border-bottom: 1px solid var(--el-border-color-lighter); }
-.metric-list :deep(.metric-card:nth-child(even)) { padding-left: 10px; border-left: 1px solid var(--el-border-color-lighter); }
-.metric-list :deep(.metric-card:nth-last-child(-n + 2)) { border-bottom: 0; }
-.metric-list :deep(.metric-card:last-child:nth-child(odd)) { grid-column: 1 / -1; }
+.metric-list :deep(.metric-card:nth-child(2)),
+.metric-list :deep(.metric-card:nth-child(4)),
+.metric-list :deep(.metric-card:nth-child(5)) { padding-left: 10px; border-left: 1px solid var(--el-border-color-lighter); }
+.metric-list :deep(.metric-card:nth-child(n + 3)) { border-bottom: 0; }
 .metric-list :deep(.metric-card.compact) { min-height: 42px; padding-top: 4px; padding-bottom: 4px; }
 .metric-list :deep(.metric-card.compact .metric-icon) { flex-basis: 28px; width: 28px; height: 28px; }
 .section-label { color: #718096; font-size: 12px; line-height: 18px; font-weight: 650; }

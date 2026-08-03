@@ -277,7 +277,7 @@ onUnmounted(() => {
         type="textarea"
         :rows="12"
         resize="none"
-        placeholder="邮箱----取码地址&#10;邮箱----密码----client_id----refresh_token&#10;GPT账号|登录密码|2FA密钥"
+        placeholder="邮箱----取码地址&#10;邮箱----密码----client_id----refresh_token&#10;GPT账号--登录密码--2FA密钥（支持连续横线、|、Tab、逗号、分号、冒号）"
       />
       <template #footer>
         <el-button @click="importVisible = false">取消</el-button>

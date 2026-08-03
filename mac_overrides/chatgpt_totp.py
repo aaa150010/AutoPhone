@@ -13,23 +13,102 @@ import time
 from typing import Any, Callable
 
 
+_EMAIL_PATTERN = re.compile(
+    r"(?i)[a-z0-9][a-z0-9._%+-]*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}"
+)
+_TOTP_SEPARATOR_PATTERNS = tuple(
+    re.compile(pattern)
+    for pattern in (
+        r"-{2,}",
+        r"\|+",
+        r"\t+",
+        r",+",
+        r";+",
+        r":+",
+        r"｜+",
+        r"，+",
+        r"；+",
+        r"：+",
+    )
+)
+
+
+def _normalize_totp_secret(secret: Any) -> str:
+    value = str(secret or "").strip()
+    if not value:
+        return ""
+    label = re.match(r"(?i)^(?:2fa|totp|secret|密钥)\s*[=:：]\s*(.+)$", value)
+    if label:
+        value = label.group(1).strip()
+    normalized = re.sub(r"[\s-]+", "", value).upper()
+    if not re.fullmatch(r"[A-Z2-7]+=*", normalized):
+        return ""
+    unpadded = normalized.rstrip("=")
+    if len(unpadded) < 8:
+        return ""
+    padded = unpadded + "=" * ((8 - len(unpadded) % 8) % 8)
+    try:
+        base64.b32decode(padded, casefold=True)
+    except (ValueError, TypeError):
+        return ""
+    return unpadded
+
+
+def _parse_chatgpt_totp_row(raw: Any) -> tuple[str, str, str, str] | None:
+    value = str(raw or "").strip()
+    for pattern in _TOTP_SEPARATOR_PATTERNS:
+        matches = list(pattern.finditer(value))
+        if len(matches) != 2:
+            continue
+        first, second = matches
+        email = value[: first.start()].strip()
+        password = value[first.end() : second.start()].strip()
+        totp_secret = _normalize_totp_secret(value[second.end() :])
+        if _EMAIL_PATTERN.fullmatch(email) and password and totp_secret:
+            return email.lower(), password, totp_secret, first.group(0)
+    return None
+
+
 def parse_chatgpt_totp_row(raw: Any) -> tuple[str, str, str] | None:
-    parts = [part.strip() for part in str(raw or "").strip().split("|")]
-    if len(parts) != 3 or not all(parts):
+    parsed = _parse_chatgpt_totp_row(raw)
+    return parsed[:3] if parsed is not None else None
+
+
+def parse_mailbox_url_totp_row(raw: Any) -> tuple[str, str, str] | None:
+    parts = [part.strip() for part in str(raw or "").strip().split("----")]
+    if len(parts) < 3:
         return None
-    email, password, totp_secret = parts
-    if not re.fullmatch(
-        r"(?i)[a-z0-9][a-z0-9._%+-]*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}",
-        email,
-    ):
+    email, mailbox_url = parts[0].lower(), parts[1]
+    totp_secret = _normalize_totp_secret(parts[2])
+    if not _EMAIL_PATTERN.fullmatch(email):
         return None
-    return email.lower(), password, totp_secret.replace(" ", "")
+    if not mailbox_url.lower().startswith(("http://", "https://")):
+        return None
+    if not totp_secret:
+        return None
+    return email, mailbox_url, totp_secret
+
+
+def masked_chatgpt_totp_row(raw: Any, mask: str = "***") -> str:
+    parsed = _parse_chatgpt_totp_row(raw)
+    if parsed is None:
+        return ""
+    email, _password, _totp_secret, delimiter = parsed
+    return delimiter.join((email, mask, mask))
+
+
+def masked_mailbox_url_totp_row(raw: Any, mask: str = "***") -> str:
+    parsed = parse_mailbox_url_totp_row(raw)
+    if parsed is None:
+        return ""
+    email, _mailbox_url, _totp_secret = parsed
+    return "----".join((email, mask, mask))
 
 
 def totp_code(secret: Any, *, now: float | None = None, digits: int = 6, period: int = 30) -> str:
-    normalized = re.sub(r"[^A-Za-z2-7=]", "", str(secret or "")).upper()
+    normalized = _normalize_totp_secret(secret)
     if not normalized:
-        raise ValueError("2FA 密钥为空")
+        raise ValueError("2FA 密钥为空或格式无效")
     normalized += "=" * ((8 - len(normalized) % 8) % 8)
     key = base64.b32decode(normalized, casefold=True)
     counter = int((time.time() if now is None else now) // period)
@@ -37,6 +116,17 @@ def totp_code(secret: Any, *, now: float | None = None, digits: int = 6, period:
     offset = digest[-1] & 0x0F
     value = struct.unpack(">I", digest[offset : offset + 4])[0] & 0x7FFFFFFF
     return str(value % (10**digits)).zfill(digits)
+
+
+def _call_log(log_fn: Any, message: str, level: str = "info") -> None:
+    if not callable(log_fn):
+        return
+    try:
+        log_fn(message, level)
+    except TypeError as exc:
+        if "positional argument" not in str(exc) and "arguments" not in str(exc):
+            raise
+        log_fn(message)
 
 
 @dataclass(frozen=True)
@@ -129,7 +219,7 @@ def build_chatgpt_totp_patches(
             f"error={response_error(response) or '-'}",
         ]
         parts.extend(f"{key}={value if value else '-'}" for key, value in extra.items())
-        transport.log_fn(f"  [CodexTOTP] {step} " + " ".join(parts), "info")
+        _call_log(transport.log_fn, f"  [CodexTOTP] {step} " + " ".join(parts), "info")
 
     def patched_verify_password(transport: Any, password: str) -> Any:
         response = original_verify_password(transport, password)
@@ -212,9 +302,24 @@ def build_chatgpt_totp_patches(
 
         replacements = {}
         for line_no, raw in enumerate(raw_lines, start=1):
+            parsed_url_totp = parse_mailbox_url_totp_row(raw)
             parsed_totp = parse_chatgpt_totp_row(raw)
             parsed_oauth = parse_oauth_mailbox_row(raw)
-            if parsed_totp:
+            if parsed_url_totp:
+                email, mailbox_url, totp_secret = parsed_url_totp
+                entry_key = _entry_key(runtime_module, email, raw)
+                replacements[line_no] = runtime_module.PoolEntry(
+                    email=email,
+                    mailbox_url=mailbox_url,
+                    line_no=line_no,
+                    key=entry_key,
+                    mailbox_type="url",
+                    password="",
+                    oauth_client_id="chatgpt_totp",
+                    oauth_refresh_token=totp_secret,
+                    source_row=masked_mailbox_url_totp_row(raw),
+                )
+            elif parsed_totp:
                 email, password, totp_secret = parsed_totp
                 entry_key = _entry_key(runtime_module, email, raw)
                 replacements[line_no] = runtime_module.PoolEntry(
@@ -226,7 +331,7 @@ def build_chatgpt_totp_patches(
                     password=password,
                     oauth_client_id="chatgpt_totp",
                     oauth_refresh_token=totp_secret,
-                    source_row=f"{email}|***|***",
+                    source_row=masked_chatgpt_totp_row(raw),
                 )
             elif parsed_oauth:
                 email, password, oauth_client_id, oauth_refresh_token = parsed_oauth
@@ -293,8 +398,7 @@ def build_chatgpt_totp_patches(
                 return ""
             code = totp_code(getattr(self.entry, "oauth_refresh_token", ""))
             activate(120)
-            if callable(self.log_fn):
-                self.log_fn("  [Codex] 已根据 2FA 密钥生成临时验证码", "info")
+            _call_log(self.log_fn, "  [Codex] 已根据 2FA 密钥生成临时验证码", "info")
             return code
 
         def close(self):

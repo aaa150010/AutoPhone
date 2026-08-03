@@ -6,6 +6,17 @@ import time
 from typing import Any, Callable
 
 
+def _call_log(log_fn: Any, message: str, level: str = "info") -> None:
+    if not callable(log_fn):
+        return
+    try:
+        log_fn(message, level)
+    except TypeError as exc:
+        if "positional argument" not in str(exc) and "arguments" not in str(exc):
+            raise
+        log_fn(message)
+
+
 class SmsWebIntegration:
     def __init__(
         self,
@@ -68,7 +79,7 @@ class SmsWebIntegration:
             price = float(str(value or "").strip())
         except (TypeError, ValueError):
             return self.max_price_default
-        if price <= 0 or price > 0.1:
+        if price <= 0 or price > 0.5:
             return self.max_price_default
         return f"{price:g}"
 
@@ -89,7 +100,6 @@ class SmsWebIntegration:
             allowed_countries,
             blocked_countries,
         )
-        priority = {country: index for index, country in enumerate(self.priority_countries)}
         full_config = getattr(selector, "config", {}) or {}
         try:
             max_price = float(str(full_config.get("max_price") or self.max_price_default).strip())
@@ -111,7 +121,6 @@ class SmsWebIntegration:
                 str(getattr(item, "provider_id", "")),
             )
             not in blocked_routes
-            and str(getattr(item, "country", "")) in priority
             and min_price <= float(getattr(item, "price", 999.0) or 999.0) <= max_price
         ]
         return self.sms_runtime.rank_sms_candidates(
@@ -276,12 +285,12 @@ class SmsWebIntegration:
         if cooldown > 0:
             self._set_route_cooldown(selector, candidate, cooldown)
             log_fn = getattr(selector, "log_fn", None)
-            if callable(log_fn):
-                log_fn(
-                    f"  [SMS智能] 线路 {getattr(candidate, 'country', '-')}/"
-                    f"{getattr(candidate, 'provider_id', '-')} 冷却 {cooldown} 秒",
-                    "warn",
-                )
+            _call_log(
+                log_fn,
+                f"  [SMS智能] 线路 {getattr(candidate, 'country', '-')}/"
+                f"{getattr(candidate, 'provider_id', '-')} 冷却 {cooldown} 秒",
+                "warn",
+            )
         return result
 
     def route_limit(self, _selector: Any, _candidate: Any, stat: Any, _now: float) -> int:
@@ -290,11 +299,11 @@ class SmsWebIntegration:
     def send_phone_number_otp(self, transport: Any, phone: str, channel: str = "sms") -> Any:
         def on_retry(delay: float, _attempt: int) -> None:
             log_fn = getattr(transport, "log_fn", None)
-            if callable(log_fn):
-                log_fn(
-                    f"  [Codex] 手机提交遇到临时服务错误，{delay:g} 秒后复用同一号码",
-                    "warn",
-                )
+            _call_log(
+                log_fn,
+                f"  [Codex] 手机提交遇到临时服务错误，{delay:g} 秒后复用同一号码",
+                "warn",
+            )
 
         return self.phone_gate.call_with_retries(
             self.original_send_phone_otp,

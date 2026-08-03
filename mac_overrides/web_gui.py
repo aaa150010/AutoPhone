@@ -5,11 +5,14 @@ from __future__ import annotations
 from contextvars import ContextVar
 import importlib.util
 import copy
+import html
 import json
 import os
+import re
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
@@ -22,6 +25,7 @@ import imap_poller as _imap_poller
 import importer_scheduler as _importer_scheduler_ext
 import legacy_ui as _legacy_ui_ext
 import mailbox_admin as _mailbox_admin_ext
+import mailbox_retention as _mailbox_retention_ext
 import run_notifications as _run_notifications_ext
 import runtime as _runtime
 import runtime_policy as _runtime_policy_ext
@@ -60,8 +64,11 @@ _spec.loader.exec_module(_module)
 
 _ORIGINAL_POOL_ENTRIES_UNLOCKED = _runtime.MailboxPool._entries_unlocked
 _ORIGINAL_OUTLOOK_OTP_PROVIDER = _runtime.OutlookMailboxOtpProvider
+_ORIGINAL_MAILBOX_URL_FETCH_RAW = _runtime.MailboxUrlCodeProvider.fetch_raw
+_ORIGINAL_URL_MAILBOX_WAIT_CODE = _runtime.UrlMailboxOtpProvider.wait_code
 _ORIGINAL_ACCOUNT_LABEL = _runtime.EmailAuthImporter._account_label
 _ORIGINAL_REAL_VERIFY_PASSWORD = _codex_oauth_chain.RealCodexTransport.verify_password
+_ORIGINAL_REAL_VERIFY_EMAIL_OTP = _codex_oauth_chain.RealCodexTransport.verify_email_otp
 _ORIGINAL_REAL_VERIFY_MFA_OTP = _codex_oauth_chain.RealCodexTransport.verify_mfa_otp
 _ORIGINAL_REAL_SEND_MFA_OTP = _codex_oauth_chain.RealCodexTransport.send_mfa_otp
 _ORIGINAL_SMART_BUILD_CANDIDATES = _sms_selector.SmartSmsSelector._build_candidates_locked
@@ -82,11 +89,11 @@ _ORIGINAL_REAL_SEND_PHONE_NUMBER_OTP = _codex_oauth_chain.RealCodexTransport.sen
 _ORIGINAL_SMART_CLASSIFY_ERROR = _sms_selector.SmartSmsSelector.classify_error
 _ORIGINAL_SMART_RECORD_RESULT = _sms_selector.SmartSmsSelector.record_result
 _ORIGINAL_CHAIN_EVENT = _codex_oauth_chain._event
-_SMS_PRIORITY_COUNTRIES = ("151", "37", "33", "1", "91", "55")
+_SMS_PRIORITY_COUNTRIES = ()
 _SMS_MIN_PRICE_DEFAULT = 0.01
 _SMS_MAX_PRICE_DEFAULT = "0.1"
 _SMS_PRIORITY_COUNTRIES_TEXT = ",".join(_SMS_PRIORITY_COUNTRIES)
-_SMS_PRIORITY_ROUTES = (("151", "3109"), ("151", "3419"), ("37", "3237"))
+_SMS_PRIORITY_ROUTES = ()
 _SMS_BLOCKED_ROUTES = (
     ("151", "3335"),
     ("33", "3160"),
@@ -114,6 +121,7 @@ _SMS_ROUTE_POLICY = _sms_runtime_ext.SmsRoutePolicy()
 _SMS_ALERTS = _sms_runtime_ext.RuntimeAlertBuffer()
 _TASK_PROGRESS = _task_progress_ext.TaskProgressTracker()
 _TASK_CONTEXT: ContextVar[str] = ContextVar("gptphone_task_id", default="")
+_MAILBOX_TOTP_SECRET_CONTEXT: ContextVar[str] = ContextVar("gptphone_mailbox_totp_secret", default="")
 _RUN_LIFECYCLE_LOCK = threading.Lock()
 _RUN_NOTIFICATION_LOCK = threading.RLock()
 _RUN_NOTIFICATION_CONTEXT = None
@@ -661,13 +669,184 @@ def _sms_send_phone_number_otp(self, phone, channel="sms"):
     return _SMS_WEB.send_phone_number_otp(self, phone, channel)
 
 
+def _call_log(log_fn, message, level="info"):
+    if not callable(log_fn):
+        return
+    try:
+        log_fn(message, level)
+    except TypeError as exc:
+        if "positional argument" not in str(exc) and "arguments" not in str(exc):
+            raise
+        log_fn(message)
+
+
+def _fetch_dispose_lol_inbox_payload(provider, original_raw):
+    parsed = urllib.parse.urlsplit(str(getattr(provider, "mailbox_url", "") or ""))
+    if parsed.netloc.lower() != "dispose.lol":
+        return original_raw
+    path_parts = [part for part in parsed.path.split("/") if part]
+    if len(path_parts) != 2 or path_parts[0] != "ib" or not path_parts[1]:
+        return original_raw
+
+    key = urllib.parse.quote(path_parts[1], safe="")
+    base = f"{parsed.scheme or 'https'}://{parsed.netloc}"
+    messages_url = f"{base}/api/inbox-link/{key}/messages"
+
+    def load_json(url):
+        request = urllib.request.Request(
+            url,
+            headers={
+                "Accept": "application/json,text/plain,*/*",
+                "User-Agent": "self-mailbox-pool/1.0",
+                "Cache-Control": "no-cache, no-store, max-age=0",
+                "Pragma": "no-cache",
+            },
+            method="GET",
+        )
+        with provider._opener().open(request, timeout=getattr(provider, "timeout_seconds", 15)) as response:
+            raw = response.read(2 * 1024 * 1024).decode("utf-8", errors="replace")
+        try:
+            return json.loads(raw), raw
+        except Exception:
+            return None, raw
+
+    data, raw_messages = load_json(messages_url)
+    if not isinstance(data, dict):
+        return f"{original_raw}\n{raw_messages}"
+
+    def code_from_detail(value):
+        payload = value if isinstance(value, dict) else {}
+        message = payload.get("message") if isinstance(payload.get("message"), dict) else payload
+        text = "\n".join(str(message.get(field) or "") for field in ("textBody", "htmlBody"))
+        text = html.unescape(text)
+        text = re.sub(r"<script\b[^>]*>[\s\S]*?</script>", " ", text, flags=re.I)
+        text = re.sub(r"<style\b[^>]*>[\s\S]*?</style>", " ", text, flags=re.I)
+        text = re.sub(r"<[^>]+>", " ", text)
+        text = re.sub(r"\s+", " ", text)
+        for pattern in (
+            r"(?i)(?:verification|security|login|sign[-\s]?in|code|验证码|登录代码).{0,300}?(\d[\s-]*\d[\s-]*\d[\s-]*\d[\s-]*\d[\s-]*\d)",
+            r"(\d[\s-]*\d[\s-]*\d[\s-]*\d[\s-]*\d[\s-]*\d).{0,180}?(?i:verification|security|login|sign[-\s]?in|code|验证码|登录代码)",
+        ):
+            match = re.search(pattern, text)
+            if match:
+                digits = re.sub(r"\D", "", match.group(1))
+                if len(digits) == 6:
+                    return digits
+        return ""
+
+    fragments = []
+    messages = data.get("messages") if isinstance(data.get("messages"), list) else []
+    for message in messages[:8]:
+        if not isinstance(message, dict):
+            continue
+        message_id = str(message.get("id") or "").strip()
+        if not message_id:
+            continue
+        haystack = " ".join(str(message.get(key) or "") for key in ("sender", "subject"))
+        if "openai" not in haystack.lower() and "chatgpt" not in haystack.lower():
+            continue
+        detail_url = (
+            f"{base}/api/inbox-link/{key}/message?"
+            f"{urllib.parse.urlencode({'id': message_id})}"
+        )
+        detail, raw_detail = load_json(detail_url)
+        code = code_from_detail(detail)
+        if code:
+            fragments.append(f"verification code {code}")
+        fragments.append(raw_detail)
+    return "\n".join(fragment for fragment in fragments if fragment) or original_raw
+
+
+def _mailbox_url_fetch_raw(self):
+    raw = _ORIGINAL_MAILBOX_URL_FETCH_RAW(self)
+    try:
+        return _fetch_dispose_lol_inbox_payload(self, raw)
+    except Exception:
+        return raw
+
+
+def _url_mailbox_wait_code(self, email):
+    entry = getattr(self, "entry", None)
+    if (
+        getattr(entry, "oauth_client_id", "") == "chatgpt_totp"
+        and getattr(entry, "oauth_refresh_token", "")
+        and getattr(self, "_chatgpt_email_otp_verified", False)
+    ):
+        code = _chatgpt_totp_ext.totp_code(getattr(entry, "oauth_refresh_token", ""))
+        _call_log(getattr(self, "log_fn", None), "  [Codex] 已根据 2FA 密钥生成临时验证码", "info")
+        return code
+    code = _ORIGINAL_URL_MAILBOX_WAIT_CODE(self, email)
+    if code:
+        setattr(self, "_chatgpt_email_otp_verified", True)
+        if (
+            getattr(entry, "oauth_client_id", "") == "chatgpt_totp"
+            and getattr(entry, "oauth_refresh_token", "")
+        ):
+            _MAILBOX_TOTP_SECRET_CONTEXT.set(str(getattr(entry, "oauth_refresh_token", "") or ""))
+    return code
+
+
+def _mfa_factor_id_from_response(response):
+    value = response if isinstance(response, dict) else {}
+    page = value.get("page") if isinstance(value.get("page"), dict) else {}
+    payload = page.get("payload") if isinstance(page.get("payload"), dict) else {}
+    factor_id = str(payload.get("factor_id") or "").strip()
+    if factor_id:
+        return factor_id
+    for key in ("mfa_challenge_factors", "mfa_factors"):
+        factors = value.get(key)
+        if not isinstance(factors, list):
+            auth = value.get("oai-client-auth-session")
+            factors = auth.get(key) if isinstance(auth, dict) else None
+        if not isinstance(factors, list):
+            continue
+        for factor in factors:
+            if isinstance(factor, dict) and factor.get("factor_type") == "totp":
+                factor_id = str(factor.get("id") or "").strip()
+                if factor_id:
+                    return factor_id
+    match = re.search(r"/mfa-challenge/([^/?#]+)", _codex_oauth_chain._continue_url(value))
+    return match.group(1) if match else ""
+
+
+def _real_verify_email_otp(self, code):
+    response = _ORIGINAL_REAL_VERIFY_EMAIL_OTP(self, code)
+    secret = _MAILBOX_TOTP_SECRET_CONTEXT.get("")
+    try:
+        page_type = _codex_oauth_chain._page_type(response)
+    except Exception:
+        page_type = ""
+    if page_type not in {"mfa_otp", "mfa_challenge", "mfa_otp_verification"} or not secret:
+        return response
+    factor_id = _mfa_factor_id_from_response(response)
+    if not factor_id:
+        return response
+    mfa_code = _chatgpt_totp_ext.totp_code(secret)
+    _call_log(
+        getattr(self, "log_fn", None),
+        "  [Codex] 邮箱验证码后遇到 MFA，已根据 2FA 密钥生成临时验证码",
+        "info",
+    )
+    return self._post_auth_json(
+        "/api/accounts/mfa/verify",
+        {"id": factor_id, "type": "totp", "code": mfa_code},
+        flow="mfa_otp_verify",
+        referer=f"{_codex_oauth_chain.AUTH}/mfa-challenge/{factor_id}",
+        timeout=30,
+    )
+
+
 _clamp_sms_max_price = _SMS_WEB.clamp_max_price
 _configure_sms_pool = _SMS_WEB.configure_pool
 _preflight_sms_pool = _SMS_WEB.preflight_pool
 
 
 _runtime.MailboxPool._entries_unlocked = _TOTP_PATCHES.entries_unlocked
+_runtime.MailboxPool.remove_entry = _mailbox_retention_ext.preserve_consumed_entry
+_runtime.ManualMailboxPool.remove_entry = _mailbox_retention_ext.preserve_consumed_entry
 _runtime.OutlookMailboxOtpProvider = _TOTP_PATCHES.outlook_otp_provider
+_runtime.MailboxUrlCodeProvider.fetch_raw = _mailbox_url_fetch_raw
+_runtime.UrlMailboxOtpProvider.wait_code = _url_mailbox_wait_code
 _runtime.EmailAuthImporter._account_label = _TOTP_PATCHES.account_label
 _runtime.EmailAuthImporter._persist_result = _patched_persist_result
 _runtime.EmailAuthImporter._task_config = _patched_task_config
@@ -687,6 +866,7 @@ _codex_oauth_chain.SmsProviderAdapter.complete = _sms_adapter_complete
 _codex_oauth_chain.SmsProviderAdapter.cancel = _sms_adapter_cancel
 _codex_oauth_chain._event = _patched_chain_event
 _codex_oauth_chain.RealCodexTransport.verify_password = _TOTP_PATCHES.verify_password
+_codex_oauth_chain.RealCodexTransport.verify_email_otp = _real_verify_email_otp
 _codex_oauth_chain.RealCodexTransport.send_mfa_otp = _TOTP_PATCHES.send_mfa_otp
 _codex_oauth_chain.RealCodexTransport.verify_mfa_otp = _TOTP_PATCHES.verify_mfa_otp
 _codex_oauth_chain.RealCodexTransport.send_phone_number_otp = _sms_send_phone_number_otp
@@ -1118,8 +1298,8 @@ def _apply_server_defaults(data):
     patched["sms_smart"] = {
         **dict(patched.get("sms_smart") or {}),
         "enabled": True,
-        "countries": _SMS_PRIORITY_COUNTRIES_TEXT,
-        "preferred_countries": _SMS_PRIORITY_COUNTRIES_TEXT,
+        "countries": "",
+        "preferred_countries": "",
         "throughput_priority": False,
         "route_hard_max_inflight": 2,
         "route_max_inflight": 2,

@@ -13,9 +13,17 @@ from typing import Any, Callable, Mapping, Protocol, Sequence
 import urllib.parse
 
 try:
-    from .chatgpt_totp import parse_chatgpt_totp_row, totp_code as generate_totp_code
+    from .chatgpt_totp import (
+        masked_chatgpt_totp_row,
+        parse_chatgpt_totp_row,
+        totp_code as generate_totp_code,
+    )
 except ImportError:  # Loaded as a top-level override module by the Mac launcher.
-    from chatgpt_totp import parse_chatgpt_totp_row, totp_code as generate_totp_code
+    from chatgpt_totp import (
+        masked_chatgpt_totp_row,
+        parse_chatgpt_totp_row,
+        totp_code as generate_totp_code,
+    )
 
 
 _EMAIL_RE = re.compile(
@@ -54,6 +62,8 @@ def is_importable_mailbox_row(row: Any) -> bool:
     raw = str(row or "").strip()
     if not raw or raw.startswith("#") or not email_from_row(raw):
         return False
+    if parse_chatgpt_totp_row(raw) is not None:
+        return True
     if "----" in raw:
         return len([part for part in raw.split("----") if part.strip()]) >= 2
     if "|" in raw:
@@ -65,6 +75,9 @@ def password_from_row(row: Any) -> str:
     raw = str(row or "").strip()
     if not raw:
         return ""
+    parsed_totp = parse_chatgpt_totp_row(raw)
+    if parsed_totp is not None:
+        return parsed_totp[1]
     delimiter = "----" if "----" in raw else "|" if "|" in raw else ""
     if not delimiter:
         return ""
@@ -108,7 +121,7 @@ def masked_source_row(row: Any) -> str:
     if not email:
         return ""
     if parse_chatgpt_totp_row(raw) is not None:
-        return f"{email}|{_SECRET_MASK}|{_SECRET_MASK}"
+        return masked_chatgpt_totp_row(raw, _SECRET_MASK)
     if "----" in raw:
         field_count = max(2, len(raw.split("----")))
         return "----".join((email, *([_SECRET_MASK] * (field_count - 1))))

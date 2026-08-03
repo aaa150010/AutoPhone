@@ -80,9 +80,26 @@ class SmsWebTests(unittest.TestCase):
 
     def test_clamps_sms_price_to_supported_range(self):
         self.assertEqual(self.integration.clamp_max_price("0.075"), "0.075")
+        self.assertEqual(self.integration.clamp_max_price("0.11"), "0.11")
         self.assertEqual(self.integration.clamp_max_price("0"), "0.1")
-        self.assertEqual(self.integration.clamp_max_price("0.11"), "0.1")
+        self.assertEqual(self.integration.clamp_max_price("0.51"), "0.1")
         self.assertEqual(self.integration.clamp_max_price("bad"), "0.1")
+
+    def test_smart_candidates_are_not_limited_to_priority_countries(self):
+        selector = SimpleNamespace(config={"max_price": "0.1", "sms_min_price": "0.01"}, stats={})
+        old_priority = SimpleNamespace(country="151", provider_id="3109", price=0.04, count=10, score=1.0)
+        unrestricted = SimpleNamespace(country="999", provider_id="1001", price=0.05, count=8, score=1.0)
+
+        ranked = self.integration.smart_build_candidates(
+            selector,
+            [unrestricted, old_priority],
+            1000.0,
+            None,
+            None,
+        )
+
+        self.assertIn(unrestricted, ranked)
+        self.assertIn(old_priority, ranked)
 
     def test_configure_and_preflight_use_all_keys_without_key_count_special_cases(self):
         logs = FakeLogs()

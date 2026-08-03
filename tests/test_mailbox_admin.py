@@ -11,6 +11,7 @@ from mac_overrides.mailbox_admin import (
     email_from_row,
     generate_totp_code,
     is_importable_mailbox_row,
+    masked_source_row,
     parse_chatgpt_totp_row,
     parse_oauth_mailbox_row,
     password_from_row,
@@ -111,6 +112,7 @@ class MailboxAdminTests(unittest.TestCase):
     def test_row_parsers_preserve_supported_formats(self):
         oauth = "User@Example.COM----mail-pass----client-id----refresh-token"
         totp = "Mfa@Example.com|login-pass|JBSW Y3DP EHPK3PXP"
+        dashed_totp = "Mfa2@Example.com--login-pass-2--JBSW Y3DP EHPK3PXP"
 
         self.assertEqual(email_from_row(oauth), "user@example.com")
         self.assertEqual(
@@ -121,9 +123,19 @@ class MailboxAdminTests(unittest.TestCase):
             parse_chatgpt_totp_row(totp),
             ("mfa@example.com", "login-pass", "JBSWY3DPEHPK3PXP"),
         )
+        self.assertEqual(
+            parse_chatgpt_totp_row(dashed_totp),
+            ("mfa2@example.com", "login-pass-2", "JBSWY3DPEHPK3PXP"),
+        )
         self.assertEqual(password_from_row(totp), "login-pass")
+        self.assertEqual(password_from_row(dashed_totp), "login-pass-2")
         self.assertTrue(is_importable_mailbox_row(oauth))
         self.assertTrue(is_importable_mailbox_row(totp))
+        self.assertTrue(is_importable_mailbox_row(dashed_totp))
+        self.assertEqual(
+            masked_source_row(dashed_totp),
+            "mfa2@example.com--********--********",
+        )
         self.assertFalse(is_importable_mailbox_row("# user@example.com----secret"))
         self.assertEqual(selected_line_numbers({"line_nos": ["3", 1, 3, 0, "bad"]}), [1, 3])
 
