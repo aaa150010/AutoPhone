@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, provide, ref } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import AccountManagementPage from '../pages/AccountManagementPage.vue'
 import MailboxPage from '../pages/MailboxPage.vue'
 import RunPage from '../pages/RunPage.vue'
 import SettingsPage from '../pages/SettingsPage.vue'
@@ -10,7 +11,7 @@ import { appControllerKey, createAppController } from '../composables/useAppCont
 const controller = createAppController()
 provide(appControllerKey, controller)
 
-const routes = new Set(['/', '/mailboxes', '/settings'])
+const routes = new Set(['/', '/mailboxes', '/accounts', '/settings'])
 const pathFromLocation = () => routes.has(window.location.pathname) ? window.location.pathname : '/'
 const activePath = ref(pathFromLocation())
 
@@ -25,13 +26,6 @@ const statusClass = computed(() => controller.runtime.value.sms_safe_stop
   : controller.runtime.value.stop_requested
     ? 'warning'
     : controller.running.value ? 'success' : 'idle')
-const progressLabel = computed(() => {
-  const summary = controller.runtime.value.summary || {}
-  const completed = Number(summary.success || 0) + Number(summary.failed || 0) + Number(summary.stopped || 0)
-  const target = Number(summary.target || controller.state.value.settings?.target_count || 0)
-  return target > 0 ? `${completed}/${target}` : `${completed}`
-})
-
 async function confirmNavigation() {
   if (!controller.dirty.value) return true
   try {
@@ -96,12 +90,12 @@ onUnmounted(() => {
         <el-menu :default-active="activePath" :collapse-transition="false" @select="selectPage">
           <el-menu-item index="/"><el-icon><Monitor /></el-icon><span>运行中心</span></el-menu-item>
           <el-menu-item index="/mailboxes"><el-icon><MessageBox /></el-icon><span>邮箱管理</span></el-menu-item>
+          <el-menu-item index="/accounts"><el-icon><UserFilled /></el-icon><span>账号管理</span></el-menu-item>
           <el-menu-item index="/settings"><el-icon><Setting /></el-icon><span>运行配置</span></el-menu-item>
         </el-menu>
 
         <div class="global-status">
           <div class="status-heading"><span class="status-dot" :class="statusClass" /><strong>{{ runStatus }}</strong></div>
-          <div class="status-progress"><span>本轮进度</span><b>{{ progressLabel }}</b></div>
           <div v-if="controller.runtime.value.notification?.status" class="notification-state">
             <el-icon><Bell /></el-icon>
             <span>{{ controller.runtime.value.notification.status === 'sent' ? '通知已发送' : controller.runtime.value.notification.status === 'failed' ? '通知发送失败' : '通知等待发送' }}</span>
@@ -113,6 +107,7 @@ onUnmounted(() => {
         <div v-if="!controller.initialized.value" class="shell-loading"><el-icon class="is-loading"><Loading /></el-icon></div>
         <RunPage v-else-if="activePath === '/'" @navigate="navigate" />
         <MailboxPage v-else-if="activePath === '/mailboxes'" />
+        <AccountManagementPage v-else-if="activePath === '/accounts'" />
         <SettingsPage v-else @navigate="navigate" />
       </el-main>
     </el-container>
@@ -133,7 +128,6 @@ onUnmounted(() => {
 .el-menu-item.is-active { background: #eef5ff; color: #2563eb; font-weight: 650; }
 .global-status { margin: 8px; padding: 10px 9px; border-top: 1px solid var(--workspace-border); }
 .status-heading,
-.status-progress,
 .notification-state { display: flex; align-items: center; }
 .status-heading { gap: 7px; }
 .status-heading strong { font-size: 13px; }
@@ -141,8 +135,6 @@ onUnmounted(() => {
 .status-dot.success { background: #16a34a; box-shadow: 0 0 0 3px #dcfce7; }
 .status-dot.warning { background: #d97706; box-shadow: 0 0 0 3px #fef3c7; }
 .status-dot.danger { background: #dc2626; box-shadow: 0 0 0 3px #fee2e2; }
-.status-progress { justify-content: flex-start; gap: 12px; margin-top: 8px; color: #7b8798; font-size: 11px; }
-.status-progress b { color: #334155; font-variant-numeric: tabular-nums; }
 .notification-state { gap: 5px; margin-top: 7px; color: #7b8798; font-size: 10px; }
 .el-main { height: 100%; min-width: 0; padding: 5px; overflow: hidden; }
 .shell-loading { display: grid; place-items: center; width: 100%; height: 100%; color: var(--el-color-primary); font-size: 22px; }

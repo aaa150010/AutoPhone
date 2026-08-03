@@ -36,7 +36,6 @@ class LegacyUiTests(unittest.TestCase):
             min_price_default="0.02",
             max_price_default="0.07",
             priority_countries_text="9,8",
-            nvtoken_import_url_default="https://example.test/import",
         )
 
         self.assertNotIn("plus绑号码脚本", module._HTML)
@@ -47,7 +46,9 @@ class LegacyUiTests(unittest.TestCase):
         self.assertIn('const MAX_PRICE_DEFAULT = "0.07";', module._LOGIN_FORM_USABILITY_INJECT)
         self.assertIn('const MIN_PRICE_DEFAULT = "0.02";', module._LOGIN_FORM_USABILITY_INJECT)
         self.assertIn('const SMS_PRIORITY_COUNTRIES = ["9", "8"]', module._LOGIN_FORM_USABILITY_INJECT)
-        self.assertIn("https://example.test/import", module._LOGIN_FORM_USABILITY_INJECT)
+        self.assertNotIn("nvtoken", module._LOGIN_FORM_USABILITY_INJECT.lower())
+        self.assertNotIn("拖选任意日志行会自动暂停", module._LOGIN_FORM_USABILITY_INJECT)
+        self.assertNotIn('toggle.textContent.includes("暂停")', module._LOGIN_FORM_USABILITY_INJECT)
 
 
 if __name__ == "__main__":

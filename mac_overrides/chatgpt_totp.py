@@ -19,7 +19,7 @@ _EMAIL_PATTERN = re.compile(
 _TOTP_SEPARATOR_PATTERNS = tuple(
     re.compile(pattern)
     for pattern in (
-        r"-{2,}",
+        r"[\-\u2010\u2011\u2012\u2013\u2014\u2015\u2212\ufe58\ufe63\uff0d]{2,}",
         r"\|+",
         r"\t+",
         r",+",
@@ -56,11 +56,17 @@ def _normalize_totp_secret(secret: Any) -> str:
 
 def _parse_chatgpt_totp_row(raw: Any) -> tuple[str, str, str, str] | None:
     value = str(raw or "").strip()
+    oauth_parts = [part.strip() for part in value.split("----")]
+    if (
+        len(oauth_parts) == 4
+        and _EMAIL_PATTERN.fullmatch(oauth_parts[0])
+    ):
+        return None
     for pattern in _TOTP_SEPARATOR_PATTERNS:
         matches = list(pattern.finditer(value))
-        if len(matches) != 2:
+        if len(matches) < 2:
             continue
-        first, second = matches
+        first, second = matches[0], matches[-1]
         email = value[: first.start()].strip()
         password = value[first.end() : second.start()].strip()
         totp_secret = _normalize_totp_secret(value[second.end() :])
@@ -302,10 +308,24 @@ def build_chatgpt_totp_patches(
 
         replacements = {}
         for line_no, raw in enumerate(raw_lines, start=1):
+            parsed_oauth = parse_oauth_mailbox_row(raw)
             parsed_url_totp = parse_mailbox_url_totp_row(raw)
             parsed_totp = parse_chatgpt_totp_row(raw)
-            parsed_oauth = parse_oauth_mailbox_row(raw)
-            if parsed_url_totp:
+            if parsed_oauth:
+                email, password, oauth_client_id, oauth_refresh_token = parsed_oauth
+                entry_key = _entry_key(runtime_module, email, raw)
+                replacements[line_no] = runtime_module.PoolEntry(
+                    email=email,
+                    mailbox_url="",
+                    line_no=line_no,
+                    key=entry_key,
+                    mailbox_type="outlook_oauth",
+                    password=password,
+                    oauth_client_id=oauth_client_id,
+                    oauth_refresh_token=oauth_refresh_token,
+                    source_row=f"{email}----***----***----***",
+                )
+            elif parsed_url_totp:
                 email, mailbox_url, totp_secret = parsed_url_totp
                 entry_key = _entry_key(runtime_module, email, raw)
                 replacements[line_no] = runtime_module.PoolEntry(
@@ -332,20 +352,6 @@ def build_chatgpt_totp_patches(
                     oauth_client_id="chatgpt_totp",
                     oauth_refresh_token=totp_secret,
                     source_row=masked_chatgpt_totp_row(raw),
-                )
-            elif parsed_oauth:
-                email, password, oauth_client_id, oauth_refresh_token = parsed_oauth
-                entry_key = _entry_key(runtime_module, email, raw)
-                replacements[line_no] = runtime_module.PoolEntry(
-                    email=email,
-                    mailbox_url="",
-                    line_no=line_no,
-                    key=entry_key,
-                    mailbox_type="outlook_oauth",
-                    password=password,
-                    oauth_client_id=oauth_client_id,
-                    oauth_refresh_token=oauth_refresh_token,
-                    source_row=f"{email}----***----{oauth_client_id}----***",
                 )
         if not replacements:
             return entries, errors

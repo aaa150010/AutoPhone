@@ -25,12 +25,36 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
         totp_code as generate_totp_code,
     )
 
+try:
+    from .error_observability import public_failure
+except ImportError:  # Loaded as a top-level override module by the Mac launcher.
+    from error_observability import public_failure
+
 
 _EMAIL_RE = re.compile(
     r"(?i)\b[a-z0-9][a-z0-9._%+-]*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}\b"
 )
 _PROGRESS_FIELDS = ("code", "label", "group", "entered_at", "finished_at")
 _SECRET_MASK = "********"
+_SUB2_BATCH_LIMIT = 20
+_INTERNAL_MAILBOX_REASONS = frozenset(
+    {
+        "manual_reimport_retry",
+        "manual_restore",
+        "sub2_uploaded",
+    }
+)
+_SUB2_STATUS_FIELDS = (
+    "kind",
+    "status_code",
+    "label",
+    "summary",
+    "tested_at",
+    "is_error",
+    "is_abnormal",
+    "is_test_failure",
+    "needs_rerun",
+)
 
 
 class ConfigStore(Protocol):
@@ -49,9 +73,9 @@ def parse_oauth_mailbox_row(row: Any) -> tuple[str, str, str, str] | None:
     if "----" not in raw:
         return None
     parts = [part.strip() for part in raw.split("----")]
-    if len(parts) < 4:
+    if len(parts) != 4:
         return None
-    email = email_from_row(parts[0])
+    email = parts[0].lower() if _EMAIL_RE.fullmatch(parts[0]) else ""
     password, oauth_client_id, oauth_refresh_token = parts[1], parts[2], parts[3]
     if not email or not password or not oauth_client_id or not oauth_refresh_token:
         return None
@@ -62,19 +86,16 @@ def is_importable_mailbox_row(row: Any) -> bool:
     raw = str(row or "").strip()
     if not raw or raw.startswith("#") or not email_from_row(raw):
         return False
-    if parse_chatgpt_totp_row(raw) is not None:
-        return True
-    if "----" in raw:
-        return len([part for part in raw.split("----") if part.strip()]) >= 2
-    if "|" in raw:
-        return len([part for part in raw.split("|") if part.strip()]) >= 3
-    return False
+    return parse_oauth_mailbox_row(raw) is not None or parse_chatgpt_totp_row(raw) is not None
 
 
 def password_from_row(row: Any) -> str:
     raw = str(row or "").strip()
     if not raw:
         return ""
+    parsed_oauth = parse_oauth_mailbox_row(raw)
+    if parsed_oauth is not None:
+        return parsed_oauth[1]
     parsed_totp = parse_chatgpt_totp_row(raw)
     if parsed_totp is not None:
         return parsed_totp[1]
@@ -120,11 +141,10 @@ def masked_source_row(row: Any) -> str:
     email = email_from_row(raw)
     if not email:
         return ""
+    if parse_oauth_mailbox_row(raw) is not None:
+        return "----".join((email, _SECRET_MASK, _SECRET_MASK, _SECRET_MASK))
     if parse_chatgpt_totp_row(raw) is not None:
         return masked_chatgpt_totp_row(raw, _SECRET_MASK)
-    if "----" in raw:
-        field_count = max(2, len(raw.split("----")))
-        return "----".join((email, *([_SECRET_MASK] * (field_count - 1))))
     return email
 
 
@@ -167,12 +187,16 @@ def human_mailbox_status(state_item: Any, now: float | int | None = None) -> tup
     return "available", "可用"
 
 
+def public_mailbox_reason(reason: Any) -> str:
+    value = str(reason or "")
+    return "" if value.strip().lower() in _INTERNAL_MAILBOX_REASONS else value
+
+
 def friendly_mailbox_error(error: Any) -> str:
-    value = str(error or "")
+    value = public_mailbox_reason(error)
     status_messages = {
         "stopped": "任务已停止",
         "stopped_before_start": "任务开始前已停止",
-        "manual_restore": "",
     }
     if value in status_messages:
         return status_messages[value]
@@ -203,6 +227,78 @@ def resolve_config_path(store: ConfigStore, value: Any) -> Path:
     return target
 
 
+def sub2_account_id_from_result(result: Any) -> str:
+    value = result if isinstance(result, Mapping) else {}
+    payload = value.get("result") if isinstance(value.get("result"), Mapping) else {}
+    return str(payload.get("sub2api_account_id") or value.get("sub2api_account_id") or "").strip()
+
+
+def _sub2_status_flags(kind: Any, status_code: int | None) -> tuple[bool, bool, bool]:
+    normalized_kind = str(kind or "").strip().lower()
+    is_abnormal = status_code == 401 or normalized_kind == "unauthorized"
+    is_rate_limited = status_code == 429 or normalized_kind == "rate_limited"
+    is_test_failure = (
+        not is_abnormal
+        and not is_rate_limited
+        and normalized_kind not in {"healthy", "unlinked", "not_linked", "untested"}
+    )
+    return is_abnormal or is_test_failure, is_abnormal, is_test_failure
+
+
+def _sub2_needs_rerun(kind: Any, status_code: int | None) -> bool:
+    normalized_kind = str(kind or "").strip().lower()
+    return status_code in {401, 404} or normalized_kind in {"unauthorized", "not_found"}
+
+
+def public_sub2_status(value: Any, *, linked: bool) -> dict[str, Any]:
+    if not linked:
+        return {
+            "kind": "unlinked",
+            "status_code": None,
+            "label": "未关联",
+            "summary": "",
+            "tested_at": None,
+            "is_error": False,
+            "is_abnormal": False,
+            "is_test_failure": False,
+            "needs_rerun": False,
+        }
+    item = value if isinstance(value, Mapping) else {}
+    if not item:
+        return {
+            "kind": "untested",
+            "status_code": None,
+            "label": "未测试",
+            "summary": "",
+            "tested_at": None,
+            "is_error": False,
+            "is_abnormal": False,
+            "is_test_failure": False,
+            "needs_rerun": False,
+        }
+    result = {field: item.get(field) for field in _SUB2_STATUS_FIELDS}
+    result["kind"] = str(result.get("kind") or "untested")[:40]
+    result["label"] = str(result.get("label") or "未测试")[:80]
+    result["summary"] = str(result.get("summary") or "")[:240]
+    try:
+        result["status_code"] = int(result["status_code"]) if result.get("status_code") is not None else None
+    except (TypeError, ValueError):
+        result["status_code"] = None
+    try:
+        result["tested_at"] = int(result["tested_at"]) if result.get("tested_at") is not None else None
+    except (TypeError, ValueError):
+        result["tested_at"] = None
+    is_error, is_abnormal, is_test_failure = _sub2_status_flags(
+        result["kind"],
+        result["status_code"],
+    )
+    result["is_error"] = is_error
+    result["is_abnormal"] = is_abnormal
+    result["is_test_failure"] = is_test_failure
+    result["needs_rerun"] = _sub2_needs_rerun(result["kind"], result["status_code"])
+    return result
+
+
 class MailboxAdminService:
     """Mailbox operations with recovered-runtime dependencies supplied as callables."""
 
@@ -218,6 +314,8 @@ class MailboxAdminService:
         log_fn: Callable[[str, str], None] | None = None,
         error_formatter: Callable[[Any], str] = str,
         now_fn: Callable[[], float] = time.time,
+        sub2_status_lookup: Callable[[str], Mapping[str, Any] | None] | None = None,
+        sub2_batch_tester: Callable[[Sequence[Mapping[str, Any]]], Mapping[str, Any]] | None = None,
     ) -> None:
         self.store = store
         self.validate_pool = validate_pool
@@ -228,6 +326,8 @@ class MailboxAdminService:
         self.log_fn = log_fn
         self.error_formatter = error_formatter
         self.now_fn = now_fn
+        self.sub2_status_lookup = sub2_status_lookup
+        self.sub2_batch_tester = sub2_batch_tester
         self._lock = RLock()
 
     def _config(self) -> dict[str, Any]:
@@ -436,6 +536,42 @@ class MailboxAdminService:
                 latest[email] = data
         return latest
 
+    def _latest_sub2_accounts_by_email(self, results_dir: Path) -> dict[str, dict[str, Any]]:
+        latest: dict[str, dict[str, Any]] = {}
+        if not results_dir.exists():
+            return latest
+        for path in sorted(results_dir.glob("*.json")):
+            data = self._read_json_file(path)
+            if str(data.get("status") or "").lower() not in {"success", "ok", "uploaded"}:
+                continue
+            account_id = sub2_account_id_from_result(data)
+            email = email_from_row(data.get("email") or data.get("source_row") or "")
+            if not email or not account_id:
+                continue
+            try:
+                fallback_created = path.stat().st_mtime
+            except OSError:
+                fallback_created = 0
+            try:
+                created = int(data.get("created_at") or data.get("updated_at") or fallback_created)
+            except (TypeError, ValueError):
+                created = int(fallback_created)
+            previous = latest.get(email)
+            if previous is None or created >= int(previous.get("created_at") or 0):
+                latest[email] = {"account_id": account_id, "created_at": created}
+        return latest
+
+    def _sub2_status_for(self, account_id: str) -> dict[str, Any]:
+        if not account_id:
+            return public_sub2_status(None, linked=False)
+        if self.sub2_status_lookup is None:
+            return public_sub2_status(None, linked=True)
+        try:
+            status = self.sub2_status_lookup(account_id)
+        except Exception:
+            status = None
+        return public_sub2_status(status, linked=True)
+
     def _live_progress_by_email(self, config: dict[str, Any]) -> dict[str, dict[str, Any]]:
         if self.runtime_status is None or self.progress_lookup is None:
             return {}
@@ -505,6 +641,7 @@ class MailboxAdminService:
                 state_by_email[email] = item
 
         latest_results = self._latest_results_by_email(results_dir)
+        latest_sub2_accounts = self._latest_sub2_accounts_by_email(results_dir)
         live_progress = self._live_progress_by_email(config)
         rows = []
         counts = {"total": 0, "available": 0, "running": 0, "success": 0, "failed": 0}
@@ -514,8 +651,11 @@ class MailboxAdminService:
             state_item = state_by_line.get(index) or state_by_email.get(email) or {}
             row_secrets = self._row_secrets(row)
             result = latest_results.get(email) or {}
+            sub2_account = latest_sub2_accounts.get(email) or {}
+            sub2_account_id = str(sub2_account.get("account_id") or "")
             live_task = live_progress.get(email) or {}
-            state_reason = self._format_error(state_item.get("reason") or "", row_secrets)
+            raw_state_reason = self._format_error(state_item.get("reason") or "", row_secrets)
+            state_reason = public_mailbox_reason(raw_state_reason)
             manually_restored = (
                 str(state_item.get("status") or "").lower() == "available"
                 and str(state_item.get("reason") or "") == "manual_restore"
@@ -524,8 +664,14 @@ class MailboxAdminService:
                 result = {}
             result_status = str(result.get("status") or "").lower()
             result_payload = result.get("result") if isinstance(result.get("result"), Mapping) else {}
+            failure = public_failure(
+                result.get("failure")
+                if isinstance(result.get("failure"), Mapping)
+                else result_payload.get("failure")
+            )
             detail_error = (
-                result.get("technical_error")
+                (failure or {}).get("technical_summary")
+                or result.get("technical_error")
                 or result_payload.get("local_oauth_exchange_error")
                 or result_payload.get("error")
                 or result.get("error")
@@ -533,7 +679,13 @@ class MailboxAdminService:
                 or ""
             )
             detail_error = self._format_error(detail_error, row_secrets)
-            friendly_error = friendly_mailbox_error(detail_error)
+            detail_error = public_mailbox_reason(detail_error)
+            failure_message = self._format_error((failure or {}).get("public_message") or "", row_secrets)
+            friendly_error = failure_message or friendly_mailbox_error(detail_error)
+            if failure is not None:
+                failure = dict(failure)
+                failure["public_message"] = failure_message
+                failure["technical_summary"] = detail_error
             succeeded = result_status in {"success", "ok", "uploaded"}
             sms_cost_usd = result_payload.get("sms_cost_usd", result.get("sms_cost_usd")) if succeeded else None
             sms_cost_cny = result_payload.get("sms_cost_cny", result.get("sms_cost_cny")) if succeeded else None
@@ -557,6 +709,8 @@ class MailboxAdminService:
             if count_status == "consumed":
                 count_status = "success"
             counts[count_status] = counts.get(count_status, 0) + 1
+            sub2_status = self._sub2_status_for(sub2_account_id)
+            sub2_status["summary"] = self._format_error(sub2_status.get("summary") or "", row_secrets)
             rows.append(
                 {
                     "line_no": index,
@@ -569,6 +723,7 @@ class MailboxAdminService:
                     "reason": state_reason,
                     "error": friendly_error,
                     "technical_error": detail_error,
+                    "failure": failure,
                     "task_id": live_task.get("task_id") or result.get("task_id") or "",
                     "task_status": task_status or result_status,
                     "progress": progress,
@@ -578,6 +733,7 @@ class MailboxAdminService:
                     "sms_exchange_date": sms_exchange_date or "",
                     "updated_at": result.get("created_at") or state_item.get("updated_at") or 0,
                     "source_row": masked_source_row(row),
+                    "sub2_status": sub2_status,
                 }
             )
         return {"ok": True, "counts": counts, "rows": rows, "pool_path": str(pool_path)}
@@ -707,6 +863,70 @@ class MailboxAdminService:
         self._log(f"邮箱管理放回可领取: {restored} 条", "success")
         return {"ok": True, "restored": restored}
 
+    def sub2_test(self, payload: Any) -> dict[str, Any]:
+        value = payload if isinstance(payload, Mapping) else {}
+        requested = value.get("rows")
+        if not isinstance(requested, Sequence) or isinstance(requested, (str, bytes)) or not requested:
+            return {"ok": False, "code": "sub2_rows_required", "error": "请先勾选要测试的邮箱"}
+        bindings: list[tuple[int, str]] = []
+        seen: set[tuple[int, str]] = set()
+        for item in requested:
+            if not isinstance(item, Mapping):
+                return {"ok": False, "code": "sub2_rows_invalid", "error": "批量测试参数无效"}
+            try:
+                line_no = int(item.get("line_no") or 0)
+            except (TypeError, ValueError):
+                line_no = 0
+            row_id = str(item.get("row_id") or "").strip()
+            binding = (line_no, row_id)
+            if line_no <= 0 or not row_id or binding in seen:
+                return {"ok": False, "code": "sub2_rows_invalid", "error": "批量测试参数无效"}
+            seen.add(binding)
+            bindings.append(binding)
+
+        with self._lock:
+            config = self._config()
+            lines = self._read_pool_lines(config)
+            results_dir = self._path(config, "results_dir")
+            resolved: list[dict[str, Any]] = []
+            for line_no, expected_row_id in bindings:
+                if line_no > len(lines):
+                    return {
+                        "ok": False,
+                        "code": "mailbox_rows_stale",
+                        "error": "邮箱列表已变化，请刷新后重试",
+                    }
+                row = lines[line_no - 1]
+                if not hmac.compare_digest(expected_row_id, row_id_from_source(row)):
+                    return {
+                        "ok": False,
+                        "code": "mailbox_rows_stale",
+                        "error": "邮箱列表已变化，请刷新后重试",
+                    }
+                resolved.append(
+                    {
+                        "row_id": expected_row_id,
+                        "line_no": line_no,
+                        "email": email_from_row(row),
+                    }
+                )
+            accounts_by_email = self._latest_sub2_accounts_by_email(results_dir)
+            for item in resolved:
+                account = accounts_by_email.get(item["email"]) or {}
+                item["sub2api_account_id"] = str(account.get("account_id") or "")
+
+        if self.sub2_batch_tester is None:
+            return {"ok": False, "code": "sub2_not_configured", "error": "SUB2 连接测试尚未配置"}
+        try:
+            result = self.sub2_batch_tester(resolved)
+        except Exception:
+            return {"ok": False, "code": "sub2_batch_failed", "error": "SUB2 批量连接测试失败"}
+        return dict(result) if isinstance(result, Mapping) else {
+            "ok": False,
+            "code": "sub2_batch_failed",
+            "error": "SUB2 批量连接测试失败",
+        }
+
     def rows(self) -> dict[str, Any]:
         return self.list_mailboxes()
 
@@ -738,5 +958,7 @@ __all__ = [
     "resolve_config_path",
     "row_id_from_source",
     "selected_line_numbers",
+    "sub2_account_id_from_result",
+    "public_sub2_status",
     "url_credential_secrets",
 ]

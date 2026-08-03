@@ -27,6 +27,10 @@ class TaskProgressTests(unittest.TestCase):
     def test_task_and_oauth_events_map_to_granular_stages(self):
         self.assertEqual(stage_for_task_status("queued"), "queue_waiting")
         self.assertEqual(stage_for_chain_state("START"), "oauth_create_node")
+        self.assertEqual(stage_for_chain_state("CHAT_REQUIREMENTS_READY"), "oauth_authorize_node")
+        self.assertEqual(stage_for_chain_state("CONSENT_REQUIRED"), "finalizing_callback")
+        self.assertEqual(stage_for_chain_state("CALLBACK_RECEIVED"), "finalizing_token")
+        self.assertEqual(stage_for_chain_state("TOKEN_EXCHANGED"), "finalizing_upload")
         self.assertEqual(stage_for_chain_state("FAILED"), None)
 
         self.tracker.observe_task_state("T001", "queued")
@@ -66,6 +70,16 @@ class TaskProgressTests(unittest.TestCase):
         self.tracker.observe_task_state("T001", "success")
         self.assertFalse(is_active_progress(self.tracker.progress("T001"), "success"))
 
+    def test_account_banned_is_terminal_and_freezes_phone_stage(self):
+        self.tracker.set_stage("T004", "phone_submitting")
+        self.clock.value = 120
+        self.tracker.observe_task_state("T004", "account_banned")
+        self.clock.value = 140
+
+        self.assertFalse(self.tracker.set_stage("T004", "phone_acquiring"))
+        self.assertFalse(is_active_progress(self.tracker.progress("T004"), "account_banned"))
+        self.assertEqual(self.tracker.progress("T004")["finished_at"], 120)
+
     def test_phone_retry_reenters_acquisition_and_terminal_state_freezes(self):
         self.tracker.set_stage("T001", "phone_acquiring")
         self.clock.value = 105
@@ -95,10 +109,10 @@ class TaskProgressTests(unittest.TestCase):
         self.tracker.set_stage("T001", "sms_verifying")
         self.tracker.observe_chain_state("T001", "CALLBACK_RECEIVED")
         self.tracker.observe_chain_state("T001", "TOKEN_EXCHANGED")
-        self.tracker.set_stage("T001", "finalizing_nvtoken")
+        self.tracker.set_stage("T001", "finalizing_save")
 
         progress = self.tracker.progress("T001")
-        self.assertEqual(progress["code"], "finalizing_nvtoken")
+        self.assertEqual(progress["code"], "finalizing_save")
         self.assertEqual(progress["group"], "finalizing")
 
     def test_runtime_counts_only_active_tasks_and_keeps_failed_progress(self):

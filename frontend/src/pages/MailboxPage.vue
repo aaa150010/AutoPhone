@@ -5,6 +5,7 @@ import {
   CircleCheckFilled,
   CircleCloseFilled,
   Collection,
+  Connection,
   Message,
   MessageBox,
   Search,
@@ -23,6 +24,7 @@ const data = ref<MailboxPayload>({ counts: {}, rows: [] })
 const importContent = ref('')
 const importVisible = ref(false)
 const filter = ref('all')
+const sub2Filter = ref('all')
 const searchText = ref('')
 const selectedRows = ref<MailboxRow[]>([])
 const mailboxTable = ref<{ clearSelection: () => void } | null>(null)
@@ -32,6 +34,7 @@ const loadingPasswords = ref<string[]>([])
 const currentPage = ref(1)
 const pageSize = ref(50)
 const mutating = ref(false)
+const testingSub2 = ref(false)
 let timer = 0
 let pollingStopped = false
 let dataVersion = 0
@@ -45,9 +48,35 @@ const metricDefinitions = [
   { key: 'failed', title: '失败', icon: CircleCloseFilled, tone: 'danger' },
 ] as const
 
+function sub2StatusCode(status: any) {
+  const code = Number(status?.status_code ?? status?.code)
+  return Number.isFinite(code) && code > 0 ? code : null
+}
+
+function isSub2TestFailure(status: any) {
+  if (!status || status.linked === false) return false
+  const code = sub2StatusCode(status)
+  if (code === 200 || code === 401 || code === 429) return false
+  if (status.is_test_failure != null) return Boolean(status.is_test_failure)
+  if (code === 404) return true
+  const kind = String(status.kind || status.status || '').toLowerCase()
+  if (['untested', 'unlinked', 'not_linked', 'rate_limited', 'healthy', 'unauthorized'].includes(kind)) return false
+  return Boolean(status.is_error || code)
+}
+
+function needsSub2Rerun(status: any) {
+  const code = sub2StatusCode(status)
+  if (code === 429) return false
+  return Boolean(status?.needs_rerun) || code === 401 || code === 404
+}
+
 const rows = computed(() => data.value.rows.filter((row) => {
   const matchesFilter = filter.value === 'all'
     || (filter.value === 'not_consumed' ? row.status !== 'consumed' : row.status === filter.value)
+  const sub2Status = row.sub2_status || (row as any).sub2
+  const matchesSub2 = sub2Filter.value === 'all'
+    || (sub2Filter.value === 'test_failure' && isSub2TestFailure(sub2Status))
+    || (sub2Filter.value === 'needs_rerun' && needsSub2Rerun(sub2Status))
   const query = searchText.value.trim().toLowerCase()
   const haystack = [
     row.email,
@@ -57,8 +86,10 @@ const rows = computed(() => data.value.rows.filter((row) => {
     row.progress?.label,
     row.error,
     row.reason,
+    sub2Status?.label,
+    sub2Status?.summary,
   ].join(' ').toLowerCase()
-  return matchesFilter && (!query || haystack.includes(query))
+  return matchesFilter && matchesSub2 && (!query || haystack.includes(query))
 }))
 
 const pageRows = computed(() => rows.value.slice(
@@ -66,7 +97,7 @@ const pageRows = computed(() => rows.value.slice(
   currentPage.value * pageSize.value,
 ))
 
-watch([filter, searchText, pageSize], () => { currentPage.value = 1 })
+watch([filter, sub2Filter, searchText, pageSize], () => { currentPage.value = 1 })
 watch(() => rows.value.length, (total) => {
   currentPage.value = Math.min(currentPage.value, Math.max(1, Math.ceil(total / pageSize.value)))
 })
@@ -126,11 +157,12 @@ async function mutate(path: string, message: string) {
   mutating.value = true
   dataVersion += 1
   latestRefresh += 1
-  const lineNumbers = selectedRows.value.map(row => row.line_no)
+  const selected = selectedRows.value.map(row => ({ row_id: row.row_id, line_no: row.line_no }))
+  const lineNumbers = selected.map(row => row.line_no)
   try {
     mailboxTable.value?.clearSelection()
     selectedRows.value = []
-    const result: any = await api(path, { line_nos: lineNumbers })
+    const result: any = await api(path, { line_nos: lineNumbers, rows: selected })
     applyMailboxPayload(result)
     if (path.endsWith('/delete')) latestCodes.value = {}
     await nextTick()
@@ -139,6 +171,73 @@ async function mutate(path: string, message: string) {
   } catch (error: any) {
     ElMessage.error(error?.message || '操作失败')
   } finally {
+    mutating.value = false
+  }
+}
+
+async function testSub2() {
+  if (!selectedRows.value.length) {
+    ElMessage.warning('请先选择邮箱')
+    return
+  }
+  testingSub2.value = true
+  mutating.value = true
+  dataVersion += 1
+  latestRefresh += 1
+  const selected = selectedRows.value.map(row => ({ row_id: row.row_id, line_no: row.line_no }))
+  try {
+    mailboxTable.value?.clearSelection()
+    selectedRows.value = []
+    const result: any = await api('/api/mailboxes/sub2-test', { rows: selected })
+    applyMailboxPayload(result)
+    if (Array.isArray(result?.results)) {
+      const statuses = new Map<string, MailboxRow['sub2_status']>(
+        result.results.map((item: any) => [String(item.row_id), item.sub2_status]),
+      )
+      data.value = {
+        ...data.value,
+        rows: data.value.rows.map(row => statuses.has(row.row_id)
+          ? { ...row, sub2_status: statuses.get(row.row_id) }
+          : row),
+      }
+    }
+    if (!result?.rows && !result?.mailboxes?.rows) applyMailboxPayload(await getMailboxes())
+    await nextTick()
+    mailboxTable.value?.clearSelection()
+    const tested = Number(result?.tested ?? result?.completed ?? selected.length)
+    const unlinked = Number(result?.unlinked ?? 0)
+    const batchCount = Number(result?.batch_count ?? 1)
+    const queuedBatches = Number(result?.queued_batches ?? Math.max(0, batchCount - 1))
+    const resultStatuses = (result?.results || []).map((item: any) => item?.sub2_status).filter(Boolean)
+    const failed = Number(resultStatuses.length
+      ? resultStatuses.filter(isSub2TestFailure).length
+      : result?.test_failures ?? result?.test_failed ?? result?.failed ?? 0)
+    const rateLimited = Number(resultStatuses.length
+      ? resultStatuses.filter((status: any) => sub2StatusCode(status) === 429).length
+      : result?.rate_limited ?? 0)
+    const details = [
+      batchCount > 1 ? `已分 ${batchCount} 批排队测试` : '',
+      failed ? `测试失败 ${failed} 条` : '',
+      rateLimited ? `额度受限 ${rateLimited} 条` : '',
+      unlinked ? `未关联 ${unlinked} 条` : '',
+    ].filter(Boolean).join('，')
+    const progressText = queuedBatches > 0 && Number(result?.completed_batches) < batchCount
+      ? `，已完成 ${Number(result?.completed_batches ?? 0)}/${batchCount} 批`
+      : ''
+    const message = `已测试 ${tested} 条${progressText}${details ? `，${details}` : ''}`
+    if (failed || rateLimited) ElMessage.warning(message)
+    else ElMessage.success(message)
+  } catch (error: any) {
+    if (error instanceof ApiError && error.status === 409) {
+      try {
+        applyMailboxPayload(await getMailboxes())
+      } catch {
+        // Keep the stale selection cleared; normal polling will retry the refresh.
+      }
+    }
+    ElMessage.error(error?.message || 'SUB2 连接测试失败')
+  } finally {
+    testingSub2.value = false
     mutating.value = false
   }
 }
@@ -192,6 +291,21 @@ async function copyPassword(row: MailboxRow) {
   }
 }
 
+async function copyEmail(row: MailboxRow) {
+  const value = String(row.email || '').trim()
+  if (!value) return
+  if (!navigator.clipboard?.writeText) {
+    ElMessage.error('当前浏览器不支持安全剪贴板写入')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(value)
+    ElMessage.success('已复制邮箱')
+  } catch {
+    ElMessage.error('复制邮箱失败')
+  }
+}
+
 async function poll() {
   await refresh()
   if (pollingStopped) return
@@ -214,7 +328,7 @@ onUnmounted(() => {
 <template>
   <div class="mailbox-page">
     <PageToolbar title="邮箱管理" status="邮箱池" tone="info">
-      <el-button type="primary" @click="importVisible = true"><el-icon><Upload /></el-icon>导入邮箱</el-button>
+      <el-button type="primary" :disabled="mutating" @click="importVisible = true"><el-icon><Upload /></el-icon>导入邮箱</el-button>
     </PageToolbar>
 
     <div class="metric-grid">
@@ -225,6 +339,7 @@ onUnmounted(() => {
         :value="data.counts[metric.key] || 0"
         :icon="metric.icon"
         :tone="metric.tone"
+        framed
       />
     </div>
 
@@ -240,6 +355,14 @@ onUnmounted(() => {
           <el-option label="已使用" value="consumed" />
           <el-option label="失败" value="failed" />
         </el-select>
+        <el-select v-model="sub2Filter" class="sub2-filter-select">
+          <el-option label="全部 SUB2" value="all" />
+          <el-option label="SUB2 测试失败" value="test_failure" />
+          <el-option label="SUB2 401/404（需重跑）" value="needs_rerun" />
+        </el-select>
+        <el-button :loading="testingSub2" :disabled="mutating || !selectedRows.length" @click="testSub2">
+          <el-icon><Connection /></el-icon>批量测试连接
+        </el-button>
         <el-button :disabled="mutating || !selectedRows.length" @click="mutate('/api/mailboxes/restore', '将选中邮箱恢复为可用状态？')">
           <el-icon><RefreshLeft /></el-icon>恢复可用
         </el-button>
@@ -256,6 +379,7 @@ onUnmounted(() => {
           :loading-codes="loadingCodes"
           :loading-passwords="loadingPasswords"
           @select="selectedRows = $event"
+          @email="copyEmail"
           @code="code"
           @password="copyPassword"
         />
@@ -277,7 +401,7 @@ onUnmounted(() => {
         type="textarea"
         :rows="12"
         resize="none"
-        placeholder="邮箱----取码地址&#10;邮箱----密码----client_id----refresh_token&#10;GPT账号--登录密码--2FA密钥（支持连续横线、|、Tab、逗号、分号、冒号）"
+        placeholder="TOTP：GPT账号---登录密码---Base32 2FA密钥&#10;TOTP：GPT账号|登录密码|Base32 2FA密钥&#10;OAuth：邮箱----密码----client_id----refresh_token&#10;&#10;TOTP 还支持 -- / ----、Tab、逗号、分号、冒号及全角符号"
       />
       <template #footer>
         <el-button @click="importVisible = false">取消</el-button>
@@ -293,6 +417,15 @@ onUnmounted(() => {
 .selected-count { color: var(--el-color-primary); font-size: 13px; white-space: nowrap; }
 .search-input { width: 210px; }
 .filter-select { width: 110px; }
+.sub2-filter-select { width: 168px; }
 .table-region { display: grid; grid-template-rows: minmax(0, 1fr) 46px; width: 100%; height: 100%; min-height: 0; padding: 8px 10px 0; }
 .pager { justify-content: flex-end; border-top: 1px solid var(--workspace-border); }
+
+@media (max-width: 760px) {
+  .metric-grid { gap: 4px; }
+  .metric-grid :deep(.metric-card.framed) { gap: 3px; overflow: hidden; padding: 4px; }
+  .metric-grid :deep(.metric-card.framed .metric-icon) { flex-basis: 20px; width: 20px; height: 20px; font-size: 12px; }
+  .metric-grid :deep(.metric-card.framed .metric-copy span) { font-size: 10px; line-height: 14px; }
+  .metric-grid :deep(.metric-card.framed .metric-value) { font-size: 16px; line-height: 20px; }
+}
 </style>

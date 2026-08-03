@@ -20,6 +20,7 @@ from flask import send_from_directory as _send_from_directory
 
 import codex_oauth_chain as _codex_oauth_chain
 import chatgpt_totp as _chatgpt_totp_ext
+import error_observability as _error_observability_ext
 import imap_poller as _imap_poller
 import importer_scheduler as _importer_scheduler_ext
 import legacy_ui as _legacy_ui_ext
@@ -72,7 +73,16 @@ _ORIGINAL_REAL_VERIFY_PASSWORD = _codex_oauth_chain.RealCodexTransport.verify_pa
 _ORIGINAL_REAL_VERIFY_EMAIL_OTP = _codex_oauth_chain.RealCodexTransport.verify_email_otp
 _ORIGINAL_REAL_VERIFY_MFA_OTP = _codex_oauth_chain.RealCodexTransport.verify_mfa_otp
 _ORIGINAL_REAL_SEND_MFA_OTP = _codex_oauth_chain.RealCodexTransport.send_mfa_otp
+_ORIGINAL_REAL_INITIATE_OAUTH = _codex_oauth_chain.RealCodexTransport.initiate_oauth
 _ORIGINAL_REAL_VERIFY_PHONE_OTP = _codex_oauth_chain.RealCodexTransport.verify_phone_otp
+_ORIGINAL_REAL_CREATE_ACCOUNT_PROFILE = _codex_oauth_chain.RealCodexTransport.create_account_profile
+_ORIGINAL_REAL_ACCEPT_CONSENT = _codex_oauth_chain.RealCodexTransport.accept_consent
+_ORIGINAL_REAL_FOLLOW_CONTINUE_UNTIL_CODE = _codex_oauth_chain.RealCodexTransport.follow_continue_until_code
+_ORIGINAL_REAL_EXCHANGE_CODE = _codex_oauth_chain.RealCodexTransport.exchange_code
+_ORIGINAL_SUB2_SESSION_EXCHANGE = _codex_oauth_chain.Sub2SessionExchanger.exchange
+_ORIGINAL_REAL_SUB2_UPLOAD = _codex_oauth_chain.RealSub2Uploader.upload
+_ORIGINAL_GENERATE_SUB2_OAUTH_SESSION = _runtime._generate_sub2_oauth_session
+_ORIGINAL_FRIENDLY_LOG_MESSAGE = _runtime._friendly_log_message
 _ORIGINAL_SMART_BUILD_CANDIDATES = _sms_selector.SmartSmsSelector._build_candidates_locked
 _ORIGINAL_PERSIST_RESULT = _runtime.EmailAuthImporter._persist_result
 _ORIGINAL_RETIRE_AFTER_FAILURE = _runtime.EmailAuthImporter._retire_after_failure
@@ -128,6 +138,10 @@ _ACCOUNT_BANNED_DETAIL_CONTEXT: ContextVar[str] = ContextVar(
     "gptphone_account_banned_detail",
     default="",
 )
+_PASSWORD_DAMAGED_MESSAGE = "OpenAI 登录密码验证失败，请检查账号密码；手动恢复后才会重跑"
+_HISTORICAL_SUCCESS_REASONS = frozenset({"sub2_uploaded"})
+_TASK_FAILURES: dict[str, dict] = {}
+_TASK_FAILURES_LOCK = threading.RLock()
 _RUN_LIFECYCLE_LOCK = threading.Lock()
 _RUN_NOTIFICATION_LOCK = threading.RLock()
 _RUN_NOTIFICATION_CONTEXT = None
@@ -136,6 +150,111 @@ _RUN_NOTIFICATION_CONTEXT = None
 def _safe_runtime_error(error):
     value = _module._safe(error) if hasattr(_module, "_safe") else str(error)
     return _SMS_KEY_POOL.safe_error(value)
+
+
+def _failure_secrets(importer=None, entry=None, settings=None):
+    values = []
+    if importer is not None and entry is not None:
+        try:
+            source_row = str(importer._source_row(entry) or "")
+            values.extend(_mailbox_admin_ext.MailboxAdminService._row_secrets(source_row))
+        except Exception:
+            pass
+    for name in ("password", "totp_secret", "client_id", "refresh_token"):
+        value = str(getattr(entry, name, "") or "") if entry is not None else ""
+        if value:
+            values.append(value)
+    config = settings if isinstance(settings, dict) else {}
+    sub2api = config.get("sub2api") if isinstance(config.get("sub2api"), dict) else {}
+    notification = (
+        config.get("email_notification")
+        if isinstance(config.get("email_notification"), dict)
+        else {}
+    )
+    values.extend(_sms_keys_from_config(config))
+    values.extend(
+        (
+            config.get("gptmail_api_key"),
+            sub2api.get("password"),
+            notification.get("password"),
+            *_mailbox_admin_ext.url_credential_secrets(config.get("proxy")),
+        )
+    )
+    return tuple(dict.fromkeys(str(item) for item in values if str(item or "")))
+
+
+def _remember_task_failure(task_id, failure):
+    public = _error_observability_ext.public_failure(failure)
+    if not public:
+        return None
+    key = str(task_id or "").strip()
+    if key:
+        with _TASK_FAILURES_LOCK:
+            _TASK_FAILURES[key] = public
+    return public
+
+
+def _known_task_failure(task_id):
+    with _TASK_FAILURES_LOCK:
+        value = _TASK_FAILURES.get(str(task_id or "").strip())
+        return copy.deepcopy(value) if isinstance(value, dict) else None
+
+
+def _classify_task_failure(task_id, result=None, error="", *, status="failed", secrets=()):
+    existing = result.get("failure") if isinstance(result, dict) else None
+    public = _error_observability_ext.public_failure(existing)
+    if public is None:
+        public = _error_observability_ext.classify_failure(
+            result,
+            error,
+            _TASK_PROGRESS.progress(task_id),
+            status=status,
+            secrets=secrets,
+        )
+    return _remember_task_failure(task_id, public) or public
+
+
+_TASK_ID_LOG_RE = re.compile(r"\b(T\d{3}(?:-[A-Za-z0-9]+)?)\b")
+_FAILURE_LOG_MARKERS = (
+    "失败",
+    "failed",
+    "error",
+    "exception",
+    "rejected",
+    "timeout",
+    "no_numbers",
+    "missing",
+    "invalid",
+    "denied",
+    "拒绝",
+    "失效",
+    "异常",
+)
+
+
+def _diagnostic_friendly_log_message(value):
+    redacted = _runtime._redact_text(value) if hasattr(_runtime, "_redact_text") else str(value)
+    safe = _error_observability_ext.sanitize_failure_detail(
+        _SMS_KEY_POOL.safe_error(redacted),
+        limit=800,
+    )
+    if re.search(r"\[[^\]]+/[a-z0-9_]+\]", safe, re.IGNORECASE) or safe.startswith("Pixel "):
+        return safe
+    lower = safe.lower()
+    if not any(marker in lower for marker in _FAILURE_LOG_MARKERS):
+        return _ORIGINAL_FRIENDLY_LOG_MESSAGE(safe)
+    match = _TASK_ID_LOG_RE.search(safe)
+    task_id = match.group(1) if match else _TASK_CONTEXT.get()
+    failure = _known_task_failure(task_id)
+    if failure is None:
+        detail = safe[match.end():].strip(" :-") if match else safe
+        detail = re.sub(r"^(?:失败|failed)\s*[:：-]?\s*", "", detail, flags=re.IGNORECASE)
+        failure = _error_observability_ext.classify_failure(
+            error=detail,
+            progress=_TASK_PROGRESS.progress(task_id),
+        )
+    formatted = _error_observability_ext.format_failure_log(task_id, failure)
+    return formatted or safe
 
 
 def _int_value(value, default=0, minimum=None, maximum=None):
@@ -284,9 +403,147 @@ def _patched_task_config(self, settings, email, task_id, *, password=""):
     return config
 
 
+def _set_current_task_stage(code):
+    task_id = _TASK_CONTEXT.get()
+    if task_id:
+        _TASK_PROGRESS.set_stage(task_id, code)
+
+
+def _generate_sub2_oauth_session(config, *, upload_proxy="", log_fn=None):
+    _set_current_task_stage("oauth_session")
+    labels = {
+        "remote_disconnected": "远端提前断开连接",
+        "invalid_json_response": "服务端返回空或无效 JSON",
+        "empty_response": "服务端未返回响应正文",
+        "tls_connection_failed": "TLS 连接异常",
+    }
+
+    def on_retry(error_code, next_attempt, attempts, delay):
+        cause = labels.get(error_code, "瞬时网络故障")
+        _call_log(
+            log_fn,
+            f"  [建立 SUB2 OAuth 会话/oauth_session] {cause}（{error_code}），"
+            f"{delay:.2f} 秒后重试 {next_attempt}/{attempts}",
+            "warn",
+        )
+
+    stop_requested = config.get("_stop_requested") if isinstance(config, dict) else None
+    return _runtime_policy_ext.call_with_transient_pre_auth_retry(
+        lambda: _ORIGINAL_GENERATE_SUB2_OAUTH_SESSION(
+            config,
+            upload_proxy=upload_proxy,
+            log_fn=log_fn,
+        ),
+        attempts=2,
+        delay_seconds=0.25,
+        stop_requested=stop_requested if callable(stop_requested) else None,
+        on_retry=on_retry,
+        retry_codes=frozenset(
+            {
+                "remote_disconnected",
+                "invalid_json_response",
+                "empty_response",
+                "tls_connection_failed",
+            }
+        ),
+    )
+
+
+def _real_initiate_oauth(self, oauth_url):
+    _set_current_task_stage("oauth_authorize_node")
+    labels = {
+        "remote_disconnected": "远端提前断开连接",
+        "invalid_json_response": "OpenAI 返回空或无效 JSON",
+        "empty_response": "OpenAI 未返回响应正文",
+        "tls_connection_failed": "TLS 连接异常",
+        "connection_timeout": "连接超时",
+    }
+
+    def on_retry(error_code, next_attempt, attempts, delay):
+        cause = labels.get(error_code, "瞬时网络故障")
+        _call_log(
+            getattr(self, "log_fn", None),
+            f"  [OpenAI OAuth 授权/oauth_authorize_node] {cause}（{error_code}），"
+            f"保留 Node/SUB2 前置状态，{delay:.2f} 秒后重试 {next_attempt}/{attempts}",
+            "warn",
+        )
+
+    config = getattr(self, "config", None)
+    stop_requested = config.get("_stop_requested") if isinstance(config, dict) else None
+    return _runtime_policy_ext.call_with_transient_pre_auth_retry(
+        lambda: _ORIGINAL_REAL_INITIATE_OAUTH(self, oauth_url),
+        attempts=2,
+        delay_seconds=0.25,
+        stop_requested=stop_requested if callable(stop_requested) else None,
+        on_retry=on_retry,
+        retry_result=True,
+    )
+
+
+def _real_create_account_profile(self, name, birthdate):
+    _set_current_task_stage("finalizing_profile")
+    return _ORIGINAL_REAL_CREATE_ACCOUNT_PROFILE(self, name, birthdate)
+
+
+def _real_accept_consent(self, continue_url=""):
+    _set_current_task_stage("finalizing_callback")
+    return _ORIGINAL_REAL_ACCEPT_CONSENT(self, continue_url)
+
+
+def _real_follow_continue_until_code(self, continue_url, oauth_params, *, _reauth=False):
+    _set_current_task_stage("finalizing_callback")
+    return _ORIGINAL_REAL_FOLLOW_CONTINUE_UNTIL_CODE(
+        self,
+        continue_url,
+        oauth_params,
+        _reauth=_reauth,
+    )
+
+
+def _real_exchange_code(self, code, code_verifier, client_id, redirect_uri, account_email):
+    _set_current_task_stage("finalizing_token")
+    return _ORIGINAL_REAL_EXCHANGE_CODE(
+        self,
+        code,
+        code_verifier,
+        client_id,
+        redirect_uri,
+        account_email,
+    )
+
+
+def _sub2_session_exchange(self, *, code, account_email):
+    _set_current_task_stage("finalizing_token")
+    return _ORIGINAL_SUB2_SESSION_EXCHANGE(self, code=code, account_email=account_email)
+
+
+def _real_sub2_upload(self, *, credentials, email):
+    _set_current_task_stage("finalizing_upload")
+    return _ORIGINAL_REAL_SUB2_UPLOAD(self, credentials=credentials, email=email)
+
+
 def _patched_task_state(self, task_id: str, **values):
-    result = _ORIGINAL_TASK_STATE(self, task_id, **values)
+    values = dict(values)
     status = str(values.get("status") or "").strip().lower()
+    failure_statuses = set(_task_progress_ext.TERMINAL_TASK_STATUSES).difference(
+        {"success", "stopped", "stopped_before_start"}
+    )
+    if status in failure_statuses:
+        task_result = values.get("result") if isinstance(values.get("result"), dict) else {}
+        failure = _classify_task_failure(
+            task_id,
+            task_result,
+            values.get("technical_error") or values.get("error") or values.get("reason") or "",
+            status=status,
+        )
+        values["failure"] = failure
+        values["error"] = failure["public_message"]
+        values["technical_error"] = failure["technical_summary"]
+        if task_result:
+            task_result = dict(task_result)
+            task_result["failure"] = failure
+            values["result"] = task_result
+    result = _ORIGINAL_TASK_STATE(self, task_id, **values)
     if status == "authorizing":
         _TASK_CONTEXT.set(str(task_id or ""))
     _TASK_PROGRESS.observe_task_state(task_id, status)
@@ -457,6 +714,8 @@ def _patched_importer_start(self, settings):
     already_running = bool(self.status(internal).get("running"))
     if not already_running:
         _TASK_PROGRESS.reset()
+        with _TASK_FAILURES_LOCK:
+            _TASK_FAILURES.clear()
     notification_context = None
     try:
         if not already_running:
@@ -486,6 +745,8 @@ def _patched_importer_start(self, settings):
             _cancel_notification_run(self, notification_context)
         if not already_running:
             _TASK_PROGRESS.reset()
+            with _TASK_FAILURES_LOCK:
+                _TASK_FAILURES.clear()
         raise
 
 
@@ -547,19 +808,70 @@ def _as_enabled(value, default=True):
 def _patched_persist_result(self, settings, task_id, entry, result, *, error="", status="failed"):
     if status == "success":
         _TASK_PROGRESS.set_stage(task_id, "finalizing_save")
+    failure = None
+    failure_statuses = set(_task_progress_ext.TERMINAL_TASK_STATUSES).difference(
+        {"success", "stopped", "stopped_before_start"}
+    )
+    secrets = _failure_secrets(self, entry, settings)
     if isinstance(result, dict):
         cost_summary = _SMS_COST_LEDGER.summary(str(task_id), _SMS_EXCHANGE_RATE)
         if cost_summary.get("sms_order_outcomes") or "sms_cost_usd" not in result:
             result.update(cost_summary)
-    persisted = _ORIGINAL_PERSIST_RESULT(
-        self,
-        settings,
-        task_id,
-        entry,
-        result,
-        error=error,
-        status=status,
-    )
+        if str(status or "").strip().lower() in failure_statuses:
+            failure = _classify_task_failure(
+                task_id,
+                result,
+                error,
+                status=status,
+                secrets=secrets,
+            )
+            result["failure"] = failure
+            error = failure["public_message"]
+    try:
+        persisted = _ORIGINAL_PERSIST_RESULT(
+            self,
+            settings,
+            task_id,
+            entry,
+            result,
+            error=error,
+            status=status,
+        )
+    except Exception as exc:
+        _TASK_PROGRESS.set_stage(task_id, "finalizing_save")
+        persistence_failure = _error_observability_ext.classify_failure(
+            error=f"result_persistence_failed: {exc}",
+            progress=_TASK_PROGRESS.progress(task_id),
+            status="failed",
+            secrets=secrets,
+        )
+        _remember_task_failure(task_id, persistence_failure)
+        raise RuntimeError(persistence_failure["public_message"]) from exc
+    if failure is not None:
+        try:
+            root = Path(
+                str((settings or {}).get("results_dir") or "").strip()
+                or Path(self.data_dir) / "results"
+            )
+            target = root / f"{task_id}_{str(getattr(entry, 'email', '') or '').replace('@', '_at_')}.json"
+            payload = json.loads(target.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                payload["failure"] = failure
+                payload["error"] = failure["public_message"]
+                payload["technical_error"] = failure["technical_summary"]
+                payload_result = payload.get("result")
+                if isinstance(payload_result, dict):
+                    payload_result["failure"] = failure
+                _runtime.atomic_write_json(target, payload)
+        except Exception as exc:
+            try:
+                detail = _error_observability_ext.sanitize_failure_detail(exc, secrets=secrets)
+                self._log(
+                    f"{task_id} [保存任务结果/finalizing_save] 结构化诊断写入失败：{detail or '未返回错误详情'}",
+                    "error",
+                )
+            except Exception:
+                pass
     if status == "account_banned":
         detail = _ACCOUNT_BANNED_DETAIL_CONTEXT.get("")
         if detail:
@@ -572,7 +884,15 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
                 payload = json.loads(target.read_text(encoding="utf-8"))
                 if isinstance(payload, dict):
                     payload["error"] = _runtime_policy_ext.ACCOUNT_BANNED_MESSAGE
-                    payload["technical_error"] = str(detail)[:1000]
+                    payload["technical_error"] = _runtime_policy_ext.ACCOUNT_BANNED_MESSAGE
+                    payload["account_banned_local_diagnostic"] = (
+                        _error_observability_ext.sanitize_failure_detail(
+                            detail,
+                            secrets=secrets,
+                            limit=1000,
+                        )
+                        or _runtime_policy_ext.ACCOUNT_BANNED_MESSAGE
+                    )
                     _runtime.atomic_write_json(target, payload)
             except Exception:
                 pass
@@ -585,15 +905,53 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
             email = str(getattr(entry, "email", "") or "")
             result_file = root / f"{task_id}_{email.replace('@', '_at_')}.json"
             _PIXEL_UPLOAD_QUEUE.enqueue(task_id, result_file)
-        except Exception:
+        except Exception as exc:
             try:
-                self._log("Pixel 自动上传记录创建失败，可稍后从账号管理重试", "error")
+                detail = _error_observability_ext.sanitize_failure_detail(exc, secrets=secrets)
+                self._log(
+                    "Pixel 自动上传记录创建失败 [自动上传队列/pixel_enqueue]："
+                    f"{detail or '未返回错误详情'}；注册结果已保留，可稍后从账号管理重试",
+                    "error",
+                )
             except Exception:
                 pass
     return persisted
 
 
 def _patched_retire_after_failure(self, settings, pool, entry, task_id, result, error):
+    password_rejected = False
+    if isinstance(result, dict):
+        try:
+            password_rejected = bool(self._password_credentials_rejected(result))
+        except Exception:
+            password_rejected = False
+    if password_rejected:
+        pool.mark_damaged_entry(entry, reason=_PASSWORD_DAMAGED_MESSAGE)
+        self._persist_result(
+            settings,
+            task_id,
+            entry,
+            result,
+            error=error,
+            status="email_damaged",
+        )
+        public_result = _runtime._public_result(result)
+        self._task_state(
+            task_id,
+            status="email_damaged",
+            error=_PASSWORD_DAMAGED_MESSAGE,
+            technical_error=_PASSWORD_DAMAGED_MESSAGE,
+            result=public_result,
+        )
+        try:
+            self._log(
+                f"{task_id} [验证邮箱密码/email_password] {_PASSWORD_DAMAGED_MESSAGE}",
+                "error",
+            )
+        except Exception:
+            pass
+        return None
+
     if not _runtime_policy_ext.is_account_banned_failure(result, error):
         return _ORIGINAL_RETIRE_AFTER_FAILURE(
             self,
@@ -735,13 +1093,18 @@ def _sms_send_phone_number_otp(self, phone, channel="sms"):
 
 
 def _real_verify_phone_otp(self, code):
-    return self._post_auth_json(
-        "/api/accounts/phone-otp/validate",
-        {"code": code},
-        flow="authorize_continue",
-        referer=f"{_codex_oauth_chain.AUTH}/phone-verification",
-        timeout=30,
-    )
+    try:
+        response = self._post_auth_json(
+            "/api/accounts/phone-otp/validate",
+            {"code": code},
+            flow="authorize_continue",
+            referer=f"{_codex_oauth_chain.AUTH}/phone-verification",
+            timeout=30,
+        )
+    except Exception as exc:
+        _SMS_WEB.ensure_account_active(self, exc)
+        raise
+    return _SMS_WEB.ensure_account_active(self, response)
 
 
 def _call_log(log_fn, message, level="info"):
@@ -931,6 +1294,8 @@ _runtime.EmailAuthImporter.start = _patched_importer_start
 _runtime.EmailAuthImporter.stop = _patched_importer_stop
 _runtime.EmailAuthImporter._watch = _patched_importer_watch
 _runtime.EmailAuthImporter._pre_auth_session_retryable = staticmethod(_patched_pre_auth_session_retryable)
+_runtime._generate_sub2_oauth_session = _generate_sub2_oauth_session
+_runtime._friendly_log_message = _diagnostic_friendly_log_message
 _runtime.ImporterConfigStore.load = _patched_config_load
 _runtime.ImporterConfigStore.save = _patched_config_save
 _runtime.create_provider = _SMS_WEB.create_provider
@@ -945,8 +1310,15 @@ _codex_oauth_chain.RealCodexTransport.verify_password = _TOTP_PATCHES.verify_pas
 _codex_oauth_chain.RealCodexTransport.verify_email_otp = _real_verify_email_otp
 _codex_oauth_chain.RealCodexTransport.send_mfa_otp = _TOTP_PATCHES.send_mfa_otp
 _codex_oauth_chain.RealCodexTransport.verify_mfa_otp = _TOTP_PATCHES.verify_mfa_otp
+_codex_oauth_chain.RealCodexTransport.initiate_oauth = _real_initiate_oauth
 _codex_oauth_chain.RealCodexTransport.send_phone_number_otp = _sms_send_phone_number_otp
 _codex_oauth_chain.RealCodexTransport.verify_phone_otp = _real_verify_phone_otp
+_codex_oauth_chain.RealCodexTransport.create_account_profile = _real_create_account_profile
+_codex_oauth_chain.RealCodexTransport.accept_consent = _real_accept_consent
+_codex_oauth_chain.RealCodexTransport.follow_continue_until_code = _real_follow_continue_until_code
+_codex_oauth_chain.RealCodexTransport.exchange_code = _real_exchange_code
+_codex_oauth_chain.Sub2SessionExchanger.exchange = _sub2_session_exchange
+_codex_oauth_chain.RealSub2Uploader.upload = _real_sub2_upload
 _sms_selector.SmartSmsSelector._build_candidates_locked = _sms_build_candidates
 _sms_selector.SmartSmsSelector.classify_error = staticmethod(_SMS_WEB.classify_error)
 _sms_selector.SmartSmsSelector.record_result = _sms_record_result
@@ -1092,9 +1464,31 @@ def _public_task(task):
 
     def safe_text(value):
         redacted = _mailbox_admin_ext.redact_mailbox_credentials(value, secrets)
-        return _safe_runtime_error(redacted)
+        return _error_observability_ext.sanitize_failure_detail(
+            _SMS_KEY_POOL.safe_error(redacted),
+            secrets=secrets,
+        )
 
     result = task.get("result") if isinstance(task.get("result"), dict) else {}
+    raw_failure = task.get("failure")
+    if not isinstance(raw_failure, dict):
+        raw_failure = result.get("failure")
+    failure = _error_observability_ext.public_failure(raw_failure)
+    task_status = str(task.get("status") or "").strip().lower()
+    failure_statuses = set(_task_progress_ext.TERMINAL_TASK_STATUSES).difference(
+        {"success", "stopped", "stopped_before_start"}
+    )
+    if failure is None and task_status in failure_statuses:
+        failure = _error_observability_ext.classify_failure(
+            result,
+            safe_text(task.get("technical_error") or task.get("error") or task.get("reason") or ""),
+            task.get("progress"),
+            status=task_status,
+            secrets=secrets,
+        )
+    if failure is not None:
+        failure["public_message"] = safe_text(failure.get("public_message"))
+        failure["technical_summary"] = safe_text(failure.get("technical_summary"))
     safe_result = {
         key: copy.deepcopy(result[key])
         for key in ("sms_cost_usd", "sms_cost_cny", "sms_exchange_rate", "sms_exchange_date")
@@ -1117,10 +1511,17 @@ def _public_task(task):
     if public_email:
         public["email"] = public_email
         public["account"] = public_email
-    if task.get("error"):
-        public["error"] = safe_text(task.get("error"))
+    if failure is not None:
+        public["failure"] = failure
+        public["error"] = failure["public_message"]
+    elif task.get("error"):
+        value = str(task.get("error") or "").strip().lower()
+        if value not in _HISTORICAL_SUCCESS_REASONS:
+            public["error"] = safe_text(task.get("error"))
     if task.get("reason"):
-        public["reason"] = safe_text(task.get("reason"))
+        value = str(task.get("reason") or "").strip().lower()
+        if value not in _HISTORICAL_SUCCESS_REASONS:
+            public["reason"] = safe_text(task.get("reason"))
     if safe_result:
         public["result"] = safe_result
     if safe_progress is not None:
@@ -1205,6 +1606,7 @@ def _public_logs(logs, tasks):
         notification.get("password"),
         *_mailbox_admin_ext.url_credential_secrets(local.get("proxy")),
     ]
+    task_failures = {}
     for task in tasks:
         source_row = str(task.get("source_row") or "") if isinstance(task, dict) else ""
         if source_row:
@@ -1212,14 +1614,37 @@ def _public_logs(logs, tasks):
                 secrets.extend(_mailbox_admin_ext.MailboxAdminService._row_secrets(source_row))
             except Exception:
                 secrets.append(source_row)
+        if not isinstance(task, dict):
+            continue
+        task_id = str(task.get("task_id") or "").strip()
+        result = task.get("result") if isinstance(task.get("result"), dict) else {}
+        failure = _error_observability_ext.public_failure(
+            task.get("failure") if isinstance(task.get("failure"), dict) else result.get("failure")
+        )
+        if failure is None:
+            failure = _known_task_failure(task_id)
+        if task_id and failure is not None:
+            task_failures[task_id] = failure
     public = []
     for log in logs:
         row = dict(log) if isinstance(log, dict) else {"message": str(log or "")}
         for key in ("message", "text"):
             if key in row:
-                row[key] = _safe_runtime_error(
-                    _mailbox_admin_ext.redact_mailbox_credentials(row.get(key), secrets)
+                row[key] = _error_observability_ext.sanitize_failure_detail(
+                    _SMS_KEY_POOL.safe_error(
+                        _mailbox_admin_ext.redact_mailbox_credentials(row.get(key), secrets)
+                    ),
+                    secrets=secrets,
+                    limit=800,
                 )
+                message = str(row[key] or "")
+                explicit_node = bool(re.search(r"\[[^\]]+/[a-z0-9_]+\]", message, re.IGNORECASE))
+                level = str(row.get("level") or row.get("type") or "").strip().lower()
+                if not explicit_node and (level in {"error", "danger"} or "失败" in message):
+                    for task_id, failure in task_failures.items():
+                        if task_id in message:
+                            row[key] = _error_observability_ext.format_failure_log(task_id, failure)
+                            break
         public.append(row)
     return public
 

@@ -43,7 +43,6 @@ STAGES = {
         _stage("finalizing_callback", "获取 OAuth 回调", "finalizing"),
         _stage("finalizing_token", "交换 OAuth Token", "finalizing"),
         _stage("finalizing_upload", "上传账号凭据", "finalizing"),
-        _stage("finalizing_nvtoken", "上传 nvtoken", "finalizing"),
         _stage("finalizing_save", "保存任务结果", "finalizing"),
     )
 }
@@ -67,7 +66,7 @@ TASK_STATUS_STAGES = {
 
 CHAIN_STATE_STAGES = {
     "START": "oauth_create_node",
-    "CHAT_REQUIREMENTS_READY": "oauth_session",
+    "CHAT_REQUIREMENTS_READY": "oauth_authorize_node",
     "OAUTH_STARTED": "oauth_authorize_node",
     "SENTINEL_READY": "email_login",
     "PASSWORD_REQUIRED": "email_password",
@@ -80,10 +79,10 @@ CHAIN_STATE_STAGES = {
     "PHONE_SEND_REJECTED": "phone_acquiring",
     "PHONE_OTP_SENT": "sms_waiting",
     "PHONE_OTP_VERIFIED": "finalizing_profile",
-    "CONSENT_REQUIRED": "finalizing_profile",
-    "CALLBACK_RECEIVED": "finalizing_callback",
-    "TOKEN_EXCHANGED": "finalizing_token",
-    "UPLOADED": "finalizing_upload",
+    "CONSENT_REQUIRED": "finalizing_callback",
+    "CALLBACK_RECEIVED": "finalizing_token",
+    "TOKEN_EXCHANGED": "finalizing_upload",
+    "UPLOADED": "finalizing_save",
     "UPLOAD_SKIPPED": "finalizing_save",
     "DONE": "finalizing_save",
 }
@@ -99,6 +98,7 @@ TERMINAL_TASK_STATUSES = frozenset(
         "retryable_email",
         "repair_pending",
         "email_damaged",
+        "account_banned",
     }
 )
 

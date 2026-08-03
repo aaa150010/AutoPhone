@@ -1,4 +1,11 @@
-import type { ApiErrorPayload, AppState, MailboxPayload } from '../types/api'
+import type {
+  ApiErrorPayload,
+  AppState,
+  MailboxPayload,
+  PixelAccountPage,
+  PixelBulkOperationResponse,
+  PixelUploadRecord,
+} from '../types/api'
 
 export class ApiError extends Error {
   status: number
@@ -38,3 +45,51 @@ export const startExistingRun = (data: Record<string, any>) => api('/api/start-e
 export const stopRun = () => api('/api/stop', {})
 export const getMailboxes = () => api<MailboxPayload>('/api/mailboxes')
 export const testEmailNotification = (data: Record<string, any>) => api('/api/notifications/email/test', data)
+
+export const getPixelTargets = () => api<Record<string, any>>('/api/pixel/targets')
+export const getPixelAccounts = (
+  targetId: string,
+  page: number,
+  pageSize: number,
+  search = '',
+  status = '',
+) => {
+  const params = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+    pageSize: String(pageSize),
+  })
+  if (search) params.set('search', search)
+  if (status) params.set('status', status)
+  return api<PixelAccountPage>(`/api/pixel/targets/${encodeURIComponent(targetId)}/accounts?${params}`)
+}
+export const testPixelAccounts = (targetId: string, accountIds: number[]) => (
+  api<PixelBulkOperationResponse>(`/api/pixel/targets/${encodeURIComponent(targetId)}/accounts/bulk-test`, {
+    account_ids: accountIds,
+    accountIds,
+  })
+)
+export const sharePixelAccounts = (targetId: string, accountIds: number[]) => (
+  api<PixelBulkOperationResponse>(`/api/pixel/targets/${encodeURIComponent(targetId)}/accounts/bulk-update`, {
+    account_ids: accountIds,
+    accountIds,
+    share_mode: 'public',
+    shareMode: 'public',
+    makePublic: true,
+  })
+)
+export const reloginPixelTarget = (targetId: string) => (
+  api(`/api/pixel/targets/${encodeURIComponent(targetId)}/relogin`, {})
+)
+export const shareAllPixelAccounts = (targetIds: string[]) => api<Record<string, any>>('/api/pixel/share-all', {
+  target_ids: targetIds,
+  targetIds,
+})
+export const getPixelUploadRecords = () => (
+  api<{ records?: PixelUploadRecord[]; items?: PixelUploadRecord[] }>('/api/pixel/upload-records')
+)
+export const retryPixelUpload = (recordId: string, targetId?: string) => (
+  api(`/api/pixel/upload-records/${encodeURIComponent(recordId)}/retry`, targetId
+    ? { target_id: targetId, targetId, target_ids: [targetId], targetIds: [targetId] }
+    : {})
+)

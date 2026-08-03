@@ -1,16 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Bottom, VideoPause } from '@element-plus/icons-vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import type { ScrollbarInstance } from 'element-plus'
 import ContentEmptyState from './ContentEmptyState.vue'
 
-const props = defineProps<{ logs: any[] }>()
+const props = defineProps<{
+  logs: any[]
+  autoScroll?: boolean
+}>()
 
 const scrollbar = ref<ScrollbarInstance>()
-const autoScroll = ref(true)
-const programmaticScroll = ref(false)
-const bottomTolerance = 24
-let scrollToken = 0
 
 const renderedLogs = computed(() => {
   const occurrences = new Map<string, number>()
@@ -34,99 +32,32 @@ const logTail = computed(() => {
   return `${logs.length}:${String(last || '')}`
 })
 
-function finishProgrammaticScroll(token: number, startedAt: number) {
-  window.requestAnimationFrame(() => {
-    if (token !== scrollToken) return
-    const wrap = scrollbar.value?.wrapRef
-    if (!wrap) {
-      programmaticScroll.value = false
-      return
-    }
-    const distance = wrap.scrollHeight - wrap.clientHeight - wrap.scrollTop
-    if (distance <= 1 || Date.now() - startedAt > 500) {
-      programmaticScroll.value = false
-      return
-    }
-    finishProgrammaticScroll(token, startedAt)
-  })
-}
-
-async function scrollToBottom(smooth = true) {
+async function scrollToBottom() {
   await nextTick()
   const instance = scrollbar.value
   const wrap = instance?.wrapRef
   if (!instance || !wrap) return
-
-  const target = wrap.scrollHeight - wrap.clientHeight
-  const distance = target - wrap.scrollTop
-  if (distance <= 1) return
-
-  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  const shouldSmooth = smooth && !reducedMotion && distance <= Math.max(600, wrap.clientHeight * 2)
-  const token = ++scrollToken
-  programmaticScroll.value = true
-  instance.scrollTo({ top: target, behavior: shouldSmooth ? 'smooth' : 'auto' })
-  if (shouldSmooth) {
-    finishProgrammaticScroll(token, Date.now())
-  } else {
-    window.requestAnimationFrame(() => {
-      if (token !== scrollToken) return
-      programmaticScroll.value = false
-    })
-  }
-}
-
-function pauseAutoScroll() {
-  if (!autoScroll.value) return
-  scrollToken += 1
-  programmaticScroll.value = false
-  autoScroll.value = false
-}
-
-function handleScroll({ scrollTop }: { scrollTop: number; scrollLeft: number }) {
-  if (!autoScroll.value || programmaticScroll.value) return
-  const wrap = scrollbar.value?.wrapRef
-  if (!wrap) return
-
-  const distanceToBottom = wrap.scrollHeight - wrap.clientHeight - scrollTop
-  if (distanceToBottom > bottomTolerance) {
-    scrollToken += 1
-    programmaticScroll.value = false
-    autoScroll.value = false
-  }
-}
-
-function toggleAutoScroll() {
-  autoScroll.value = !autoScroll.value
-  if (autoScroll.value) scrollToBottom()
+  instance.scrollTo({ top: wrap.scrollHeight, behavior: 'auto' })
 }
 
 watch(logTail, () => {
-  if (autoScroll.value) scrollToBottom()
+  if (props.autoScroll !== false) scrollToBottom()
 }, { flush: 'post' })
 
-onMounted(() => scrollToBottom(false))
-onBeforeUnmount(() => {
-  scrollToken += 1
-})
+watch(() => props.autoScroll, (enabled) => {
+  if (enabled !== false) scrollToBottom()
+}, { flush: 'post' })
+
+onMounted(scrollToBottom)
 </script>
 
 <template>
-  <div class="log-panel" :class="{ 'has-logs': renderedLogs.length }">
-    <div v-if="renderedLogs.length" class="log-toolbar">
-      <el-button plain @click="toggleAutoScroll">
-        <el-icon><VideoPause v-if="autoScroll" /><Bottom v-else /></el-icon>
-        {{ autoScroll ? '暂停滚动' : '继续滚动' }}
-      </el-button>
-    </div>
+  <div class="log-panel">
     <el-scrollbar
       ref="scrollbar"
       class="log-scroll"
       :class="{ 'is-empty': !renderedLogs.length }"
       tabindex="0"
-      @scroll="handleScroll"
-      @wheel.passive="pauseAutoScroll"
-      @touchstart.passive="pauseAutoScroll"
     >
       <ContentEmptyState v-if="!renderedLogs.length" />
       <template v-else>
@@ -141,13 +72,10 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .log-panel { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
-.log-panel.has-logs { padding: 8px 10px 10px; }
-.log-toolbar { flex: 0 0 auto; display: flex; justify-content: flex-end; margin-bottom: 6px; }
-.log-toolbar :deep(.el-button) { min-height: 32px; padding: 6px 11px; font-size: 13px; }
 .log-scroll { min-height: 0; flex: 1; }
 .log-scroll :deep(.el-scrollbar__view) { min-height: 100%; }
 .log-scroll.is-empty :deep(.el-scrollbar__view) { height: 100%; }
-.log-line { display: flex; gap: 12px; padding: 7px 4px; border-bottom: 1px solid var(--el-border-color-lighter); font-size: 13px; line-height: 20px; }
+.log-line { display: flex; gap: 12px; padding: 7px 14px; border-bottom: 1px solid var(--el-border-color-lighter); font-size: 13px; line-height: 20px; }
 .log-line span { color: var(--el-text-color-secondary); white-space: nowrap; }
 .log-line b { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
 .success { color: var(--el-color-success); }

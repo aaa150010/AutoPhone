@@ -14,7 +14,7 @@ MAILBOX_MANAGER_HTML = r"""<!doctype html>
 <style>
 :root{font-family:Arial,"Microsoft YaHei",sans-serif;background:#f5f7fb;color:#172033}*{box-sizing:border-box}html,body{height:100%;overflow:hidden}body{margin:0}.shell{height:100vh;max-width:none;margin:0;padding:10px;display:grid;grid-template-columns:390px minmax(0,1fr);gap:10px;overflow:hidden}.panel{min-height:0;background:#fff;border:1px solid #d7deea;border-radius:8px;padding:12px;box-shadow:0 8px 24px rgba(16,24,40,.08)}.shell>.panel{height:100%;overflow:auto}.shell>.panel:nth-child(2){display:flex;flex-direction:column;overflow:hidden}h2{font-size:15px;margin:0 0 10px}.field label{display:block;color:#465872;font-size:12px;margin-bottom:6px}textarea{width:100%;min-height:260px;resize:vertical;border:1px solid #c6d0df;border-radius:6px;padding:9px;background:#fff;color:#172033;font-family:Consolas,monospace;font-size:13px;line-height:1.45}button{height:32px;padding:0 11px;border:1px solid #b8c5d8;border-radius:6px;background:#eef3fb;color:#172033;font-weight:700;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}button.primary{background:#1f73d8;border-color:#1f73d8;color:#fff}button.danger{background:#fff0f0;border-color:#f2b8b8;color:#b42318}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.hint{font-size:12px;color:#60708a;line-height:1.5;margin-top:9px}.metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:10px}.metric{border:1px solid #d7deea;border-radius:7px;background:#f8fafd;padding:9px}.metric span{display:block;color:#60708a;font-size:11px}.metric b{display:block;font-size:20px;margin-top:4px}.pager{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 0;color:#60708a;font-size:12px}.pager-controls{display:flex;align-items:center;gap:8px}.pager select,.bulk-actions select{height:30px;border:1px solid #c6d0df;border-radius:6px;background:#fff;color:#172033}.bulk-actions{display:flex;align-items:center;gap:8px;margin:0 0 8px}.table{flex:1;min-height:0;border:1px solid #d7deea;border-radius:8px;overflow:auto}.row{display:grid;grid-template-columns:34px 54px minmax(220px,1fr) minmax(150px,.58fr) minmax(210px,.9fr) 108px minmax(240px,1.08fr);gap:10px;padding:10px;border-bottom:1px solid #e5eaf3;font-size:12px;align-items:start}.row.head{position:sticky;top:0;background:#f8fafd;font-weight:700;color:#465872;z-index:1}.row input[type=checkbox]{width:16px;height:16px}.email,.password,.code{font-family:Consolas,monospace;word-break:break-all}.code-box{display:flex;gap:6px;align-items:flex-start;flex-wrap:nowrap;min-width:0}.code-box .muted{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.code-box button{height:25px;padding:0 8px;font-size:12px;flex:0 0 auto}.copy-cell{cursor:pointer;color:#174ea6;text-decoration:underline;text-decoration-color:rgba(23,78,166,.25);text-underline-offset:2px}.copy-cell:hover{color:#0b57d0;text-decoration-color:#0b57d0}.muted{color:#7a8798}.reason{color:#465872;word-break:break-word}.status{font-weight:700}.status.available{color:#416f9d}.status.running{color:#a86613}.status.success{color:#178a54}.status.failed{color:#c93545}.toast-host{position:fixed;left:50%;top:18px;z-index:9999;display:flex;flex-direction:column;align-items:center;gap:10px;width:min(520px,calc(100vw - 28px));pointer-events:none;transform:translateX(-50%)}.toast{pointer-events:auto;border:1px solid #dcdfe6;border-radius:4px;background:#f4f4f5;color:#303133;box-shadow:0 6px 18px rgba(31,45,61,.14);padding:10px 14px;font-size:14px}.toast.success{background:#f0f9eb;border-color:#e1f3d8;color:#67c23a}.toast.error{background:#fef0f0;border-color:#fde2e2;color:#f56c6c}.toast.warning{background:#fdf6ec;border-color:#faecd8;color:#e6a23c}@media(max-width:980px){html,body{overflow:auto}.shell{height:auto;min-height:100vh;grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}.table{height:560px;flex:none}.row{grid-template-columns:34px 44px 1fr}.row>div:nth-child(n+4){grid-column:3}}
 </style></head><body>
-<main class="shell"><section class="panel"><h2>批量追加导入</h2><div class="field"><label>第一种格式：邮箱----取码地址<br>第二种格式：邮箱----密码----client_id----refresh_token<br>第三种格式：GPT账号--登录密码--2FA密钥（支持连续横线、|、Tab、逗号、分号、冒号）</label><textarea id="pool_content" placeholder="user@hotmail.com----https://mail.example.test/show/token&#10;user@hotmail.com----password----client_id----refresh_token&#10;gpt-account@example.com--login-password--TOTPSECRET"></textarea></div><div class="actions"><button class="primary" onclick="appendMailboxes()">追加导入</button><button onclick="refreshMailboxes()">刷新状态</button></div><div class="hint">每行一个账号；导入会追加到现有邮箱池，不会覆盖旧邮箱；完全重复的行会跳过。</div></section>
+<main class="shell"><section class="panel"><h2>批量追加导入</h2><div class="field"><label>支持 TOTP 与 Outlook OAuth 格式，每行一个账号</label><textarea id="pool_content" placeholder="TOTP：GPT账号---登录密码---Base32 2FA密钥&#10;TOTP：GPT账号|登录密码|Base32 2FA密钥&#10;OAuth：邮箱----密码----client_id----refresh_token&#10;&#10;TOTP 还支持 -- / ----、Tab、逗号、分号、冒号及全角符号"></textarea></div><div class="actions"><button class="primary" onclick="appendMailboxes()">追加导入</button><button onclick="refreshMailboxes()">刷新状态</button></div><div class="hint">每行一个账号；导入会追加到现有邮箱池，不会覆盖旧邮箱；完全重复的行会跳过。</div></section>
 <section class="panel"><h2>邮箱状态</h2><div class="metrics"><div class="metric"><span>总数</span><b id="m_total">0</b></div><div class="metric"><span>可领取</span><b id="m_available">0</b></div><div class="metric"><span>运行中</span><b id="m_running">0</b></div><div class="metric"><span>成功</span><b id="m_success">0</b></div><div class="metric"><span>失败</span><b id="m_failed">0</b></div></div><div class="bulk-actions"><select id="status_filter" onchange="setStatusFilter()"><option value="all">全部</option><option value="not_success">未成功</option><option value="available">可领取</option><option value="running">运行中</option><option value="success">成功</option><option value="failed">失败</option></select><button onclick="restoreSelected()">放回可领取</button><button class="danger" onclick="deleteSelected()">删除选中</button></div><div class="table" id="mailbox_table"></div><div class="pager"><span id="page_info">第 1 / 1 页 · 共 0 条 · 已选 0 条</span><div class="pager-controls"><span>每页</span><select id="page_size" onchange="setPageSize()"><option>25</option><option selected>50</option><option>100</option><option>200</option></select><button onclick="prevPage()">上一页</button><button onclick="nextPage()">下一页</button></div></div></section></main>
 <script>
 const g=id=>document.getElementById(id);
@@ -48,7 +48,6 @@ def apply_legacy_ui_overrides(
     min_price_default: Any,
     max_price_default: Any,
     priority_countries_text: str,
-    nvtoken_import_url_default: str,
 ) -> None:
     """Apply the recovered dashboard's legacy HTML, CSS, and JavaScript patches."""
 
@@ -60,9 +59,6 @@ def apply_legacy_ui_overrides(
         for country in str(priority_countries_text).split(",")
         if country.strip()
     ]
-    _nvtoken_import_url_default = str(nvtoken_import_url_default)
-    _nvtoken_import_url_html = html.escape(_nvtoken_import_url_default, quote=True)
-    _nvtoken_import_url_html_js = _nvtoken_import_url_html.replace("\\", "\\\\")
     _min_price_html_js = html.escape(_min_price_default, quote=True).replace("\\", "\\\\")
     _ROOT_HEADER_HTML = (
         '<header class="top"><h1>plus绑号码脚本</h1>'
@@ -90,22 +86,10 @@ def apply_legacy_ui_overrides(
             "if(input){input.type='text';input.autocomplete='off'}",
             "if(input){input.type='password';input.autocomplete='new-password'}",
         )
-    _module._HTML = _module._HTML.replace(
-        '<div class="field"><label>目标分组</label><input id="sub2_group"></div></div><div class="section"><h2>网络与运行</h2>',
-        '<div class="field"><label>目标分组</label><input id="sub2_group"></div>'
-        '<div class="checks"><label><input id="nvtoken_upload" type="checkbox" checked>上传到 nvtoken 平台</label></div>'
-        '<div class="row"><div class="field"><label>nvtoken 地址</label><input id="nvtoken_url" placeholder="'
-        + _nvtoken_import_url_html
-        + '"></div>'
-        '<div class="field"><label>nvtoken API Key</label><input id="nvtoken_api_key" type="password" value="********"></div></div>'
-        '</div><div class="section"><h2>网络与运行</h2>',
-    )
-
     _module._LOGIN_FORM_USABILITY_INJECT += textwrap.dedent(r"""
     <style>
     .log,.log *,.line,.line *{user-select:text!important;-webkit-user-select:text!important}
     .line{cursor:text!important;white-space:pre-wrap!important}
-    .log-selection-hint{font-size:11px;color:#60708a;margin-left:4px}
     </style>
     <script>
     (function(){
@@ -116,18 +100,6 @@ def apply_legacy_ui_overrides(
         logBox.setAttribute("tabindex", "0");
         logBox.style.userSelect = "text";
         logBox.style.webkitUserSelect = "text";
-        const pauseButton = document.getElementById("toggle_log_pause");
-        if (pauseButton && !document.querySelector(".log-selection-hint")) {
-          const hint = document.createElement("span");
-          hint.className = "log-selection-hint";
-          hint.textContent = "拖选任意日志行会自动暂停刷新，方便复制";
-          pauseButton.insertAdjacentElement("afterend", hint);
-        }
-        logBox.addEventListener("mousedown", event => {
-          if (event.button !== 0) return;
-          const toggle = document.getElementById("toggle_log_pause");
-          if (toggle && toggle.textContent.includes("暂停")) toggle.click();
-        });
         logBox.addEventListener("dblclick", event => {
           const line = event.target && event.target.closest ? event.target.closest(".line") : null;
           if (!line) return;
@@ -205,7 +177,7 @@ def apply_legacy_ui_overrides(
       const MIN_PRICE_DEFAULT = "0.01";
       const SMS_PRIORITY_COUNTRIES = ["151", "37", "33", "1", "91", "55"];
       let localConfig = {};
-      const SECRET_INPUT_IDS = ["sms_api_key", "sub2_password", "nvtoken_api_key"];
+      const SECRET_INPUT_IDS = ["sms_api_key", "sub2_password"];
       const SECRET_MASK = "********";
       const clampMaxPrice = value => {
         const parsed = Number(String(value || "").trim());
@@ -365,13 +337,11 @@ def apply_legacy_ui_overrides(
       const savedSecretFor = (id) => {
         if (id === "sms_api_key") return String(localConfig.sms_api_key || "");
         if (id === "sub2_password") return String(((localConfig.sub2api || {}).password) || "");
-        if (id === "nvtoken_api_key") return String(((localConfig.nvtoken || {}).api_key) || "");
         return "";
       };
       const mergeLocalConfigFromSettings = (data) => {
         if (!data || typeof data !== "object") return;
         const sub2api = data.sub2api || {};
-        const nvtoken = data.nvtoken || {};
         localConfig = Object.assign({}, localConfig || {});
         if (data.sms_api_key) localConfig.sms_api_key = data.sms_api_key;
         localConfig.sub2api = Object.assign({}, localConfig.sub2api || {});
@@ -379,9 +349,6 @@ def apply_legacy_ui_overrides(
           if (sub2api[key]) localConfig.sub2api[key] = sub2api[key];
         });
         if (sub2api.password) localConfig.sub2api.password = sub2api.password;
-        localConfig.nvtoken = Object.assign({}, localConfig.nvtoken || {});
-        if (nvtoken.url) localConfig.nvtoken.url = nvtoken.url;
-        if (nvtoken.api_key) localConfig.nvtoken.api_key = nvtoken.api_key;
       };
       const secretInputValue = (id) => {
         const input = g(id);
@@ -419,14 +386,11 @@ def apply_legacy_ui_overrides(
       };
       const applyLocalConfig = (force=false) => {
         const sub2api = localConfig.sub2api || {};
-        const nvtoken = localConfig.nvtoken || {};
         setEditableValue("sms_api_key", localConfig.sms_api_key || "", true, force);
         setEditableValue("sub2_url", sub2api.url || "", false, force);
         setEditableValue("sub2_email", sub2api.email || "", false, force);
         setEditableValue("sub2_password", sub2api.password || "", true, force);
         setEditableValue("sub2_group", sub2api.group || "", false, force);
-        setEditableValue("nvtoken_api_key", nvtoken.api_key || "", true, force);
-        setEditableValue("nvtoken_url", nvtoken.url || "https://nvtokens.com/api/inventory/cards/import", false, force);
         const proxyInput = g("proxy");
         if (proxyInput && !proxyInput.value.trim()) {
           proxyInput.value = PROXY_DEFAULT;
@@ -448,7 +412,6 @@ def apply_legacy_ui_overrides(
         } catch(e) {}
       };
       const restoreSecretPlaceholders = () => {
-        ensureNvTokenUploadControl();
         ensureLocalConfigControls();
         enforceSecretInputs();
         applyLocalConfig(true);
@@ -456,18 +419,6 @@ def apply_legacy_ui_overrides(
       const reloadSecretPlaceholders = async () => {
         await loadLocalConfig();
         restoreSecretPlaceholders();
-      };
-      const ensureNvTokenUploadControl = () => {
-        if (g("nvtoken_upload")) return;
-        const sub2Group = g("sub2_group");
-        const groupField = sub2Group && sub2Group.closest(".field");
-        if (!groupField) return;
-        const host = document.createElement("div");
-        host.className = "checks";
-        const label = document.createElement("label");
-        label.innerHTML = '<input id="nvtoken_upload" type="checkbox" checked>上传到 nvtoken 平台';
-        host.appendChild(label);
-        groupField.insertAdjacentElement("afterend", host);
       };
       const ensureLocalConfigControls = () => {
         enforceSecretInputs();
@@ -487,14 +438,6 @@ def apply_legacy_ui_overrides(
           actions.className = "actions";
           actions.innerHTML = '<button id="local_config_export" type="button" onclick="exportLocalConfig()">导出本地配置</button><button id="local_config_import_btn" type="button" onclick="document.getElementById(\\'local_config_import\\').click()">导入本地配置</button><input id="local_config_import" type="file" accept="application/json,.json" style="display:none" onchange="importLocalConfig(this.files&&this.files[0])">';
           smsField.insertAdjacentElement("afterend", actions);
-        }
-        const nvTokenInput = g("nvtoken_upload");
-        const checks = nvTokenInput && nvTokenInput.closest(".checks");
-        if (checks && !g("nvtoken_api_key")) {
-          const fields = document.createElement("div");
-          fields.className = "row";
-          fields.innerHTML = '<div class="field"><label>nvtoken 地址</label><input id="nvtoken_url" placeholder="https://nvtokens.com/api/inventory/cards/import"></div><div class="field"><label>nvtoken API Key</label><input id="nvtoken_api_key" type="password" value="********"></div>';
-          checks.insertAdjacentElement("afterend", fields);
         }
       };
       window.exportLocalConfig = async function(){
@@ -569,12 +512,6 @@ def apply_legacy_ui_overrides(
           countries: SMS_PRIORITY_COUNTRIES.join(","),
           preferred_countries: SMS_PRIORITY_COUNTRIES.join(",")
         });
-        const nvTokenInput = g("nvtoken_upload");
-        data.nvtoken_upload = !nvTokenInput || nvTokenInput.checked;
-        data.nvtoken = Object.assign({}, data.nvtoken || {}, {
-          url: String((g("nvtoken_url") && g("nvtoken_url").value.trim()) || "https://nvtokens.com/api/inventory/cards/import"),
-          api_key: String(secretInputValue("nvtoken_api_key").trim() || "")
-        });
         data.sub2api = Object.assign({}, data.sub2api || {}, {
           url: String((g("sub2_url") && g("sub2_url").value.trim()) || ""),
           email: String((g("sub2_email") && g("sub2_email").value.trim()) || ""),
@@ -605,34 +542,25 @@ def apply_legacy_ui_overrides(
           countries: SMS_PRIORITY_COUNTRIES.join(","),
           preferred_countries: SMS_PRIORITY_COUNTRIES.join(",")
         });
-        patched.nvtoken_upload = patched.nvtoken_upload !== false;
-        patched.nvtoken = Object.assign({url: "https://nvtokens.com/api/inventory/cards/import"}, localConfig.nvtoken || {}, patched.nvtoken || {});
         patched.sub2api = Object.assign({}, patched.sub2api || {}, {
           ...(localConfig.sub2api || {}),
           ...(patched.sub2api || {})
         });
         const displayPatched = Object.assign({}, patched, {
           sms_api_key: patched.sms_api_key ? SECRET_MASK : "",
-          nvtoken: Object.assign({}, patched.nvtoken || {}, {
-            api_key: (patched.nvtoken || {}).api_key ? SECRET_MASK : ""
-          }),
           sub2api: Object.assign({}, patched.sub2api || {}, {
             password: (patched.sub2api || {}).password ? SECRET_MASK : ""
           })
         });
         baseLoad(displayPatched);
-        ensureNvTokenUploadControl();
         ensureLocalConfigControls();
         enforceSecretInputs();
         ensureSmsMinPriceControl();
         applyLocalConfig();
         const minPriceInput = g("sms_min_price");
         if (minPriceInput) minPriceInput.value = patched.sms_min_price || MIN_PRICE_DEFAULT;
-        const nvTokenInput = g("nvtoken_upload");
-        if (nvTokenInput) nvTokenInput.checked = patched.nvtoken_upload !== false;
         applyLocalConfig();
       };
-      ensureNvTokenUploadControl();
       ensureLocalConfigControls();
       enforceSecretInputs();
       ensureSmsMinPriceControl();
@@ -645,8 +573,6 @@ def apply_legacy_ui_overrides(
       setTimeout(reloadSecretPlaceholders, 3000);
       setTimeout(applyLocalConfig, 0);
       setTimeout(applyLocalConfig, 500);
-      setTimeout(ensureNvTokenUploadControl, 0);
-      setTimeout(ensureNvTokenUploadControl, 500);
       setTimeout(ensureLocalConfigControls, 0);
       setTimeout(ensureLocalConfigControls, 500);
       setTimeout(enforceSecretInputs, 0);
@@ -768,14 +694,6 @@ def apply_legacy_ui_overrides(
         "const SMS_PRIORITY_COUNTRIES = "
         + json.dumps(_priority_countries, ensure_ascii=False)
         + ";",
-    )
-    _legacy_dashboard_inject = _legacy_dashboard_inject.replace(
-        'placeholder="https://nvtokens.com/api/inventory/cards/import"',
-        f'placeholder="{_nvtoken_import_url_html_js}"',
-    )
-    _legacy_dashboard_inject = _legacy_dashboard_inject.replace(
-        '"https://nvtokens.com/api/inventory/cards/import"',
-        json.dumps(_nvtoken_import_url_default, ensure_ascii=False),
     )
     _legacy_dashboard_inject = _legacy_dashboard_inject.replace(
         'placeholder="0.01"',

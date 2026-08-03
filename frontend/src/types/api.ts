@@ -30,6 +30,17 @@ export interface TaskProgress {
 
 export type TaskStageCounts = Record<TaskStageGroup, number>
 
+export interface TaskFailure {
+  node_code: string
+  node_label: string
+  error_code: string
+  provider_code?: string
+  public_message: string
+  technical_summary?: string
+  retryable: boolean
+  http_status?: number | null
+}
+
 export interface RuntimeTask {
   task_id: string
   account?: string
@@ -38,6 +49,7 @@ export interface RuntimeTask {
   status?: string
   error?: string
   reason?: string
+  failure?: TaskFailure | null
   created_at?: number
   updated_at?: number
   progress?: TaskProgress | null
@@ -103,6 +115,8 @@ export interface MailboxRow {
   pool_status?: string
   error?: string
   reason?: string
+  technical_error?: string
+  failure?: TaskFailure | null
   task_id?: string
   task_status?: string
   progress?: TaskProgress | null
@@ -110,7 +124,25 @@ export interface MailboxRow {
   sms_cost_cny?: number | null
   sms_exchange_rate?: number | null
   sms_exchange_date?: string
+  sub2api_account_id?: string
+  sub2_status?: Sub2MailboxStatus | null
   updated_at?: number
+}
+
+export interface Sub2MailboxStatus {
+  kind?: string
+  status?: string
+  code?: number | string | null
+  status_code?: number | string | null
+  label?: string
+  summary?: string
+  tested_at?: number | string | null
+  is_test_failure?: boolean
+  is_error?: boolean
+  is_abnormal?: boolean
+  needs_rerun?: boolean
+  linked?: boolean
+  remote_account_id?: number | string | null
 }
 
 export interface MailboxPayload {
@@ -133,4 +165,88 @@ export interface ApiErrorPayload {
   code?: string
   state?: AppState
   [key: string]: any
+}
+
+export interface PixelTarget {
+  id: string
+  email: string
+  connected: boolean
+  accountCount: number | null
+  lastCheckedAt: string | null
+  error: string | null
+  autoUpload: boolean
+}
+
+export interface PixelAccount {
+  id: number
+  name: string
+  platform: string
+  accountLevel: string
+  type: string
+  shareMode: string
+  shareStatus: string
+  concurrency: number
+  currentConcurrency: number
+  status: string
+  schedulable: boolean
+  credentialsStatus: string
+  errorMessage: string
+  expiresAt: string | null
+  updatedAt: string | null
+}
+
+export interface PixelAccountPage {
+  items: PixelAccount[]
+  total: number
+  page: number
+  pageSize: number
+  pages: number
+  target?: PixelTarget
+}
+
+export interface PixelBulkOperationResponse {
+  ok?: boolean
+  success?: number
+  failed?: number
+  successIds?: number[]
+  failedIds?: number[]
+  message?: string
+  results?: Array<Record<string, any>>
+}
+
+export type PixelUploadTargetState =
+  | 'pending'
+  | 'uploading'
+  | 'success'
+  | 'partial'
+  | 'failed'
+  | 'retry_pending'
+  | 'needs_confirmation'
+  | 'source_unavailable'
+
+export interface PixelUploadTargetRecord {
+  targetId: string
+  status: PixelUploadTargetState | string
+  stage: string
+  generatedName: string
+  remoteAccountId: number | string | null
+  failedIds: Array<number | string>
+  concurrency: number | null
+  error: string
+  attempts: number
+  updatedAt: string | number | null
+  retryable: boolean
+}
+
+export interface PixelUploadRecord {
+  recordId: string
+  taskId: string
+  jobId: string
+  status: PixelUploadTargetState | string
+  error: string
+  sourceAvailable: boolean
+  canRetry: boolean
+  createdAt: string | number | null
+  updatedAt: string | number | null
+  targets: PixelUploadTargetRecord[]
 }

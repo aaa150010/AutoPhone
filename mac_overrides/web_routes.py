@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
+
+
+_PIXEL_AUTO_TARGET_IDS = tuple(f"pixel-{index}" for index in range(2, 8))
 
 
 @dataclass(frozen=True)
@@ -32,6 +36,8 @@ class WebRouteContext:
     sms_phone_gate: Any
     mailbox_admin_factory: Callable[[Any, Any, Any], Any]
     mailbox_manager_html: str
+    pixel_client: Any | None = None
+    pixel_upload_queue: Any | None = None
 
 
 def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
@@ -50,6 +56,8 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     state = closure["state"]
     store = closure["store"]
     mailbox_admin = context.mailbox_admin_factory(store, importer, logs)
+    if context.pixel_upload_queue is not None:
+        context.pixel_upload_queue.log_fn = logs.add
     initial_config = store.load()
     context.write_local_config(
         context.local_config_from_runtime(initial_config, context.read_local_config())
@@ -352,6 +360,239 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         except Exception:
             return module.jsonify(ok=False, error="读取邮箱密码失败"), 500
 
+    def api_mailboxes_sub2_test():
+        try:
+            data = module.request.get_json(silent=True) or {}
+            if not isinstance(data, dict):
+                return module.jsonify(ok=False, error="请求必须是 JSON 对象"), 400
+            result = mailbox_admin.sub2_test(data)
+            if not isinstance(result, Mapping):
+                return module.jsonify(ok=False, error="SUB2 批量连接测试失败"), 502
+            response = dict(result)
+            if response.get("ok"):
+                response["mailboxes"] = mailbox_admin.list_mailboxes()
+                response["state"] = public_state()
+                return module.jsonify(response)
+            code = str(response.get("code") or "")
+            if code == "mailbox_rows_stale":
+                status = 409
+            elif code.startswith("sub2_admin_") or code == "sub2_batch_failed":
+                status = 502
+            elif code == "sub2_not_configured":
+                status = 503
+            else:
+                status = 400
+            return module.jsonify(response), status
+        except Exception:
+            logs.add("SUB2 批量连接测试失败", "error")
+            return module.jsonify(ok=False, error="SUB2 批量连接测试失败"), 502
+
+    def pixel_error_response(exc: Exception):
+        public_message = getattr(exc, "public_message", "")
+        if public_message:
+            try:
+                status = int(getattr(exc, "status_code", 500) or 500)
+            except (TypeError, ValueError):
+                status = 500
+            if status < 400 or status > 599:
+                status = 500
+            return module.jsonify(ok=False, error=str(public_message)), status
+        logs.add("Pixel 管理操作失败", "error")
+        return module.jsonify(ok=False, error="Pixel 管理操作失败"), 500
+
+    def pixel_unavailable(*, queue: bool = False):
+        name = "Pixel 上传队列" if queue else "Pixel 管理服务"
+        return module.jsonify(ok=False, error=f"{name}尚未配置"), 503
+
+    def pixel_json_result(value: Any, **extra: Any):
+        payload = dict(value) if isinstance(value, Mapping) else {}
+        payload.update(extra)
+        payload.setdefault("ok", True)
+        return module.jsonify(payload)
+
+    def request_json_object() -> dict[str, Any]:
+        value = module.request.get_json(silent=True) or {}
+        return dict(value) if isinstance(value, Mapping) else {}
+
+    def account_ids_from(data: Mapping[str, Any]) -> list[Any]:
+        values = data.get("account_ids")
+        if values is None:
+            values = data.get("accountIds")
+        if not isinstance(values, Sequence) or isinstance(values, (str, bytes)):
+            return []
+        return list(values)
+
+    def target_ids_from(data: Mapping[str, Any]) -> list[str] | None:
+        values: Any = None
+        for key in ("target_ids", "targetIds"):
+            if key in data:
+                values = data.get(key)
+                break
+        if values is None:
+            for key in ("target_id", "targetId"):
+                if key in data:
+                    values = [data.get(key)]
+                    break
+        if values is None:
+            return None
+        if isinstance(values, (str, bytes)):
+            values = [values]
+        if not isinstance(values, Sequence):
+            return []
+        result: list[str] = []
+        for value in values:
+            target_id = str(value or "").strip()
+            if target_id and target_id not in result:
+                result.append(target_id)
+        return result
+
+    def pixel_target_rejected(target_id: Any):
+        normalized = str(target_id or "").strip()
+        if normalized in _PIXEL_AUTO_TARGET_IDS:
+            return None
+        return module.jsonify(
+            ok=False,
+            error="Pixel 账号管理：该目标未开放（仅支持 pixel-2 至 pixel-7）",
+        ), 404
+
+    def api_pixel_targets():
+        if context.pixel_client is None:
+            return pixel_unavailable()
+        try:
+            result = context.pixel_client.targets()
+            payload = dict(result) if isinstance(result, Mapping) else {}
+            targets = payload.get("targets")
+            if isinstance(targets, list):
+                public_targets = []
+                for value in targets:
+                    if not isinstance(value, Mapping):
+                        continue
+                    item = dict(value)
+                    target_id = str(
+                        item.get("id") or item.get("target_id") or item.get("targetId") or ""
+                    ).strip()
+                    if target_id not in _PIXEL_AUTO_TARGET_IDS:
+                        continue
+                    item["autoUpload"] = target_id in _PIXEL_AUTO_TARGET_IDS
+                    item["excluded"] = False
+                    public_targets.append(item)
+                payload["targets"] = public_targets
+            return pixel_json_result(payload)
+        except Exception as exc:
+            return pixel_error_response(exc)
+
+    def api_pixel_accounts(target_id: str):
+        rejected = pixel_target_rejected(target_id)
+        if rejected is not None:
+            return rejected
+        if context.pixel_client is None:
+            return pixel_unavailable()
+        try:
+            page_size = module.request.args.get("page_size")
+            if page_size is None:
+                page_size = module.request.args.get("pageSize", 50)
+            result = context.pixel_client.accounts(
+                target_id,
+                page=module.request.args.get("page", 1),
+                page_size=page_size,
+                search=module.request.args.get("search", ""),
+                status=module.request.args.get("status", ""),
+            )
+            return pixel_json_result(result)
+        except Exception as exc:
+            return pixel_error_response(exc)
+
+    def api_pixel_accounts_bulk_test(target_id: str):
+        rejected = pixel_target_rejected(target_id)
+        if rejected is not None:
+            return rejected
+        if context.pixel_client is None:
+            return pixel_unavailable()
+        try:
+            data = request_json_object()
+            result = context.pixel_client.bulk_test(target_id, account_ids_from(data))
+            return pixel_json_result(result)
+        except Exception as exc:
+            return pixel_error_response(exc)
+
+    def api_pixel_accounts_bulk_update(target_id: str):
+        rejected = pixel_target_rejected(target_id)
+        if rejected is not None:
+            return rejected
+        if context.pixel_client is None:
+            return pixel_unavailable()
+        try:
+            data = request_json_object()
+            result = context.pixel_client.share_accounts(target_id, account_ids_from(data))
+            return pixel_json_result(result)
+        except Exception as exc:
+            return pixel_error_response(exc)
+
+    def api_pixel_relogin(target_id: str):
+        rejected = pixel_target_rejected(target_id)
+        if rejected is not None:
+            return rejected
+        if context.pixel_client is None:
+            return pixel_unavailable()
+        try:
+            return pixel_json_result(context.pixel_client.relogin(target_id))
+        except Exception as exc:
+            return pixel_error_response(exc)
+
+    def api_pixel_share_all():
+        if context.pixel_client is None:
+            return pixel_unavailable()
+        try:
+            requested = target_ids_from(request_json_object())
+            requested = list(_PIXEL_AUTO_TARGET_IDS) if requested is None else requested
+            invalid = [
+                target_id
+                for target_id in requested
+                if target_id not in _PIXEL_AUTO_TARGET_IDS
+            ]
+            if invalid:
+                return module.jsonify(
+                    ok=False,
+                    error="一键共享只能选择 pixel-2 至 pixel-7",
+                ), 400
+            targets = list(requested)
+            if not targets:
+                return module.jsonify(
+                    ok=False,
+                    error="一键共享没有可执行的自动上传目标",
+                ), 400
+            return pixel_json_result(context.pixel_client.share_all(targets))
+        except Exception as exc:
+            return pixel_error_response(exc)
+
+    def api_pixel_upload_records():
+        if context.pixel_upload_queue is None:
+            return pixel_unavailable(queue=True)
+        try:
+            return module.jsonify(
+                ok=True,
+                records=context.pixel_upload_queue.records(),
+            )
+        except Exception as exc:
+            return pixel_error_response(exc)
+
+    def api_pixel_upload_retry(record_id: str):
+        if context.pixel_upload_queue is None:
+            return pixel_unavailable(queue=True)
+        try:
+            target_ids = target_ids_from(request_json_object())
+            if target_ids is not None and any(
+                target_id not in _PIXEL_AUTO_TARGET_IDS for target_id in target_ids
+            ):
+                return module.jsonify(
+                    ok=False,
+                    error="Pixel 重传只能选择 pixel-2 至 pixel-7",
+                ), 400
+            record = context.pixel_upload_queue.retry(record_id, target_ids)
+            return module.jsonify(ok=True, record=record)
+        except Exception as exc:
+            return pixel_error_response(exc)
+
     def api_local_config():
         return module.jsonify(
             ok=True,
@@ -426,6 +667,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
 
     routes = (
         ("/mailboxes", "mailbox_manager", mailbox_manager, ["GET"]),
+        ("/accounts", "account_manager", mailbox_manager, ["GET"]),
         ("/settings", "settings_page", mailbox_manager, ["GET"]),
         ("/api/mailboxes", "api_mailboxes", api_mailboxes, ["GET"]),
         ("/api/mailboxes/import", "api_mailboxes_import", api_mailboxes_import, ["POST"]),
@@ -433,6 +675,40 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/mailboxes/restore", "api_mailboxes_restore", api_mailboxes_restore, ["POST"]),
         ("/api/mailboxes/latest-code", "api_mailboxes_latest_code", api_mailboxes_latest_code, ["POST"]),
         ("/api/mailboxes/password", "api_mailboxes_password", api_mailboxes_password, ["POST"]),
+        ("/api/mailboxes/sub2-test", "api_mailboxes_sub2_test", api_mailboxes_sub2_test, ["POST"]),
+        ("/api/pixel/targets", "api_pixel_targets", api_pixel_targets, ["GET"]),
+        (
+            "/api/pixel/targets/<target_id>/accounts",
+            "api_pixel_accounts",
+            api_pixel_accounts,
+            ["GET"],
+        ),
+        (
+            "/api/pixel/targets/<target_id>/accounts/bulk-test",
+            "api_pixel_accounts_bulk_test",
+            api_pixel_accounts_bulk_test,
+            ["POST"],
+        ),
+        (
+            "/api/pixel/targets/<target_id>/accounts/bulk-update",
+            "api_pixel_accounts_bulk_update",
+            api_pixel_accounts_bulk_update,
+            ["POST"],
+        ),
+        (
+            "/api/pixel/targets/<target_id>/relogin",
+            "api_pixel_relogin",
+            api_pixel_relogin,
+            ["POST"],
+        ),
+        ("/api/pixel/share-all", "api_pixel_share_all", api_pixel_share_all, ["POST"]),
+        ("/api/pixel/upload-records", "api_pixel_upload_records", api_pixel_upload_records, ["GET"]),
+        (
+            "/api/pixel/upload-records/<record_id>/retry",
+            "api_pixel_upload_retry",
+            api_pixel_upload_retry,
+            ["POST"],
+        ),
         ("/api/local-config", "api_local_config", api_local_config, ["GET"]),
         ("/api/local-config/export", "api_local_config_export", api_local_config_export, ["POST"]),
         ("/api/local-config/import", "api_local_config_import", api_local_config_import, ["POST"]),

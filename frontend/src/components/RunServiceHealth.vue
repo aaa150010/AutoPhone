@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { CircleCheckFilled, Clock, WarningFilled } from '@element-plus/icons-vue'
 import type { RuntimeState, SmsRuntimeAlert } from '../types/api'
 
 const props = defineProps<{
@@ -25,66 +26,138 @@ const anomalies = computed(() => {
 })
 
 function keyType(status?: string) {
-  if (status === 'ready' || status === 'available' || status === 'healthy') return 'success'
-  if (status === 'cooldown' || status === 'busy') return 'warning'
-  if (status === 'disabled' || status === 'exhausted' || status === 'failed') return 'danger'
+  if (['usable', 'ready', 'available', 'healthy'].includes(String(status || ''))) return 'success'
+  if (['cooldown', 'busy', 'rate_limited', 'network_error'].includes(String(status || ''))) return 'warning'
+  if (['disabled', 'exhausted', 'failed', 'invalid', 'insufficient_balance', 'error'].includes(String(status || ''))) return 'danger'
   return 'info'
 }
+
+function keyStatusLabel(status?: string) {
+  const labels: Record<string, string> = {
+    usable: '可用',
+    ready: '正常',
+    available: '正常',
+    healthy: '正常',
+    cooldown: '冷却中',
+    busy: '使用中',
+    rate_limited: '请求限流',
+    network_error: '网络异常',
+    disabled: '已停用',
+    exhausted: '已耗尽',
+    failed: '不可用',
+    invalid: 'Key 无效',
+    insufficient_balance: '余额不足',
+    error: '检查失败',
+    unchecked: '未预检',
+  }
+  return labels[String(status || '')] || '状态未知'
+}
+
+const onlineKeyCount = computed(() => smsKeys.value.filter(key => keyType(key.status) === 'success').length)
+const hasDanger = computed(() => (
+  props.runtime.sms_safe_stop
+  || anomalies.value.some(item => item.level === 'error')
+  || smsKeys.value.some(key => keyType(key.status) === 'danger')
+))
+const hasWarning = computed(() => (
+  anomalies.value.length > 0
+  || smsKeys.value.some(key => keyType(key.status) === 'warning')
+))
+const healthTone = computed(() => {
+  if (hasDanger.value) return 'danger'
+  if (hasWarning.value) return 'warning'
+  if (!smsKeys.value.length || onlineKeyCount.value < smsKeys.value.length) return 'info'
+  return 'success'
+})
+const healthLabel = computed(() => {
+  if (healthTone.value === 'danger') return '运行异常'
+  if (healthTone.value === 'warning') return '需要关注'
+  if (healthTone.value === 'info') return '等待预检'
+  return '全部正常'
+})
+const healthDetail = computed(() => (
+  smsKeys.value.length
+    ? `${onlineKeyCount.value} / ${smsKeys.value.length} 个 SMS Key 可用`
+    : 'SMS Key 尚未预检'
+))
+const summaryIcon = computed(() => healthTone.value === 'success' ? CircleCheckFilled : healthTone.value === 'info' ? Clock : WarningFilled)
 </script>
 
 <template>
   <div class="service-health">
-    <section class="key-section">
-      <div class="section-heading">
-        <span>SMS Key</span>
-        <small>{{ smsKeys.length ? `${smsKeys.length} 个` : '未预检' }}</small>
+    <div class="health-summary" :class="healthTone">
+      <span class="summary-icon"><el-icon><component :is="summaryIcon" /></el-icon></span>
+      <div>
+        <strong>{{ healthLabel }}</strong>
+        <small>{{ healthDetail }}</small>
       </div>
-      <div class="key-list">
-        <div v-if="!smsKeys.length" class="empty-line">暂无可展示的 Key 状态</div>
-        <div v-for="key in smsKeys" :key="key.fingerprint" class="key-row">
-          <i class="key-dot" :class="keyType(key.status)" />
-          <div class="key-copy">
-            <div><strong>Key {{ key.index }}</strong><span>{{ key.fingerprint }}</span></div>
-            <small>{{ key.balance_usd == null ? '余额未知' : `$${Number(key.balance_usd).toFixed(2)}` }}</small>
-          </div>
-        </div>
-      </div>
-    </section>
+    </div>
 
-    <section class="anomaly-section">
-      <div class="section-heading"><span>异常提醒</span></div>
-      <div class="anomaly-list">
-        <div v-if="!anomalies.length" class="healthy-line"><el-icon><CircleCheck /></el-icon>未发现运行异常</div>
-        <div v-for="item in anomalies" :key="item.id" class="anomaly-row" :class="item.level">
-          <el-icon><Warning /></el-icon><span>{{ item.message }}</span>
+    <div class="health-list">
+      <div v-if="!smsKeys.length" class="empty-line">
+        <el-icon><Clock /></el-icon><span>暂无 Key 状态</span>
+      </div>
+      <div v-for="key in smsKeys" :key="key.fingerprint" class="key-row" :title="key.message || keyStatusLabel(key.status)">
+        <i class="key-dot" :class="keyType(key.status)" />
+        <div class="key-copy">
+          <strong>Key {{ key.index }}</strong>
+          <span>{{ key.fingerprint }}</span>
+        </div>
+        <div class="key-value">
+          <strong>{{ key.balance_usd == null ? '-' : `$${Number(key.balance_usd).toFixed(2)}` }}</strong>
+          <small>{{ keyStatusLabel(key.status) }}<template v-if="Number(key.in_flight || 0)"> · {{ key.in_flight }} 使用中</template></small>
         </div>
       </div>
-    </section>
+      <div v-for="item in anomalies" :key="item.id" class="anomaly-row" :class="item.level">
+        <el-icon><WarningFilled /></el-icon><span>{{ item.message }}</span>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.service-health { display: grid; grid-template-rows: minmax(84px, 1fr) auto; width: 100%; height: 100%; min-height: 0; overflow: hidden; }
-.key-section { display: flex; flex-direction: column; min-height: 0; padding: 8px 11px 6px; }
-.section-heading { display: flex; align-items: baseline; gap: 7px; flex: 0 0 auto; min-height: 24px; color: #526074; font-size: 12px; line-height: 18px; font-weight: 650; }
-.section-heading small { color: var(--el-text-color-secondary); font-size: 11px; font-weight: 400; }
-.key-list { min-height: 0; overflow-x: hidden; overflow-y: auto; }
-.key-row { display: flex; align-items: flex-start; gap: 7px; min-height: 42px; padding: 6px 1px; border-bottom: 1px solid var(--el-border-color-lighter); }
-.key-dot { flex: 0 0 7px; width: 7px; height: 7px; margin-top: 5px; border-radius: 50%; background: var(--el-color-info); }
+.service-health {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 9px;
+  overflow: hidden;
+}
+.health-summary { display: flex; align-items: center; gap: 9px; min-height: 58px; padding: 8px 9px; border-radius: 5px; }
+.summary-icon { display: grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; border-radius: 5px; }
+.summary-icon .el-icon { font-size: 17px; }
+.health-summary > div { min-width: 0; }
+.health-summary strong,
+.health-summary small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.health-summary strong { font-size: 12px; line-height: 17px; font-weight: 650; }
+.health-summary small { margin-top: 1px; font-size: 10px; line-height: 14px; }
+.health-summary.success { background: #eaf8f0; color: #286c49; }
+.health-summary.success .summary-icon { background: #d7f2e2; color: #277c50; }
+.health-summary.warning { background: #fff5e8; color: #a65f00; }
+.health-summary.warning .summary-icon { background: #ffe8c2; color: #cf7a00; }
+.health-summary.danger { background: #fff0f0; color: #aa3838; }
+.health-summary.danger .summary-icon { background: #ffdede; color: #d94a4a; }
+.health-summary.info { background: #eff6ff; color: #426889; }
+.health-summary.info .summary-icon { background: #dcecff; color: #287fd8; }
+.health-list { min-height: 0; margin-top: 5px; overflow-x: hidden; overflow-y: auto; }
+.key-row { display: flex; align-items: center; gap: 7px; min-height: 35px; padding: 5px 1px; border-bottom: 1px solid #e7ecf2; }
+.key-dot { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--el-color-info); }
 .key-dot.success { background: var(--el-color-success); }
 .key-dot.warning { background: var(--el-color-warning); }
 .key-dot.danger { background: var(--el-color-danger); }
-.key-copy { min-width: 0; }
-.key-copy > div { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
-.key-copy strong { flex: 0 0 auto; font-size: 12px; line-height: 16px; }
-.key-copy span { overflow: hidden; color: var(--el-text-color-secondary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; line-height: 14px; text-overflow: ellipsis; white-space: nowrap; }
-.key-copy > small { display: block; color: #526074; font-size: 11px; line-height: 15px; }
-.anomaly-section { min-height: 70px; max-height: 112px; padding: 8px 11px; overflow: hidden; border-top: 1px solid var(--workspace-border); }
-.anomaly-list { max-height: 72px; overflow-x: hidden; overflow-y: auto; }
-.healthy-line,
-.empty-line { display: flex; align-items: center; gap: 5px; min-height: 30px; color: var(--el-text-color-secondary); font-size: 12px; }
-.healthy-line { color: var(--el-color-success); }
-.anomaly-row { display: flex; align-items: flex-start; gap: 5px; padding: 3px 0; color: var(--el-color-warning); font-size: 11px; line-height: 15px; }
+.key-copy { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
+.key-copy strong { flex: 0 0 auto; font-size: 11px; line-height: 15px; }
+.key-copy span { overflow: hidden; color: #7d899a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; line-height: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.key-value { min-width: 70px; margin-left: auto; text-align: right; }
+.key-value strong,
+.key-value small { display: block; white-space: nowrap; }
+.key-value strong { color: #344055; font-size: 10px; line-height: 14px; font-weight: 650; }
+.key-value small { color: #7d899a; font-size: 9px; line-height: 12px; }
+.empty-line { display: flex; align-items: center; gap: 5px; min-height: 34px; color: #7d899a; font-size: 11px; }
+.anomaly-row { display: flex; align-items: flex-start; gap: 5px; padding: 5px 1px; border-bottom: 1px solid #f3e6d1; color: #b66b00; font-size: 10px; line-height: 14px; }
 .anomaly-row.error { color: var(--el-color-danger); }
 .anomaly-row .el-icon { flex: 0 0 auto; margin-top: 1px; }
+.anomaly-row span { min-width: 0; overflow-wrap: anywhere; }
 </style>

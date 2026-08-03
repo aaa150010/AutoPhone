@@ -78,8 +78,11 @@ class FakeLogs:
 
 
 class FakeMailboxAdmin:
+    def __init__(self):
+        self.sub2_result = {"ok": True, "tested": 0, "results": []}
+
     def list_mailboxes(self):
-        return []
+        return {"ok": True, "counts": {}, "rows": []}
 
     def import_mailboxes(self, _content):
         return {"ok": True, "imported": 0, "skipped": 0}
@@ -95,6 +98,79 @@ class FakeMailboxAdmin:
 
     def reveal_password(self, _row_id, _line_no):
         return {"ok": False, "code": "mailbox_row_stale", "error": "邮箱列表已变化"}
+
+    def sub2_test(self, _payload):
+        return dict(self.sub2_result)
+
+
+class FakePixelError(RuntimeError):
+    def __init__(self, public_message="公开错误", status_code=502):
+        self.public_message = public_message
+        self.status_code = status_code
+        super().__init__("private-token-must-not-leak")
+
+
+class FakePixelClient:
+    def __init__(self):
+        self.calls = []
+        self.error = None
+
+    def _result(self, name, *values):
+        self.calls.append((name, *values))
+        if self.error is not None:
+            raise self.error
+        return {"operation": name}
+
+    def targets(self):
+        self.calls.append(("targets",))
+        if self.error is not None:
+            raise self.error
+        return {
+            "targets": [
+                {"id": "pixel-1", "email": "excluded@example.com"},
+                {"id": "pixel-2", "email": "automatic@example.com"},
+                {"id": "pixel-3", "email": "automatic-3@example.com"},
+                {"id": "pixel-4", "email": "automatic-4@example.com"},
+                {"id": "pixel-5", "email": "automatic-5@example.com"},
+                {"id": "pixel-6", "email": "automatic-6@example.com"},
+                {"targetId": "pixel-7", "email": "automatic-7@example.com"},
+            ]
+        }
+
+    def accounts(self, target_id, **query):
+        self.calls.append(("accounts", target_id, query))
+        if self.error is not None:
+            raise self.error
+        return {"items": [], "page": int(query["page"]), "pageSize": int(query["page_size"])}
+
+    def bulk_test(self, target_id, account_ids):
+        return self._result("bulk_test", target_id, list(account_ids))
+
+    def share_accounts(self, target_id, account_ids):
+        return self._result("share_accounts", target_id, list(account_ids))
+
+    def relogin(self, target_id):
+        return self._result("relogin", target_id)
+
+    def share_all(self, target_ids):
+        return self._result("share_all", list(target_ids))
+
+
+class FakePixelQueue:
+    def __init__(self):
+        self.calls = []
+        self.error = None
+
+    def records(self):
+        if self.error is not None:
+            raise self.error
+        return [{"record_id": "record-a", "targets": []}]
+
+    def retry(self, record_id, target_ids):
+        self.calls.append((record_id, target_ids))
+        if self.error is not None:
+            raise self.error
+        return {"record_id": record_id}
 
 
 class FakeRunComponent:
@@ -117,6 +193,7 @@ class WebRouteTests(unittest.TestCase):
         self.store = FakeStore()
         self.importer = FakeImporter()
         self.logs = FakeLogs()
+        self.mailbox_admin = FakeMailboxAdmin()
         self.preflight_started = threading.Event()
         self.release_preflight = threading.Event()
         self.preflight_configs: list[dict] = []
@@ -165,7 +242,7 @@ class WebRouteTests(unittest.TestCase):
             sms_route_policy=component,
             sms_key_pool=component,
             sms_phone_gate=component,
-            mailbox_admin_factory=lambda _store, _importer, _logs: FakeMailboxAdmin(),
+            mailbox_admin_factory=lambda _store, _importer, _logs: self.mailbox_admin,
             mailbox_manager_html="fallback",
         )
 
@@ -285,6 +362,7 @@ class WebRouteTests(unittest.TestCase):
 
         with app.test_client() as client:
             settings_response = client.get("/settings")
+            accounts_response = client.get("/accounts")
             notification_response = client.post(
                 "/api/notifications/email/test",
                 json={"email_notification": {"enabled": False}},
@@ -292,6 +370,8 @@ class WebRouteTests(unittest.TestCase):
 
         self.assertEqual(settings_response.status_code, 200)
         self.assertEqual(settings_response.get_data(as_text=True), "fallback")
+        self.assertEqual(accounts_response.status_code, 200)
+        self.assertEqual(accounts_response.get_data(as_text=True), "fallback")
         self.assertEqual(notification_response.status_code, 200)
         payload = notification_response.get_json()
         self.assertTrue(payload["ok"])
@@ -324,6 +404,149 @@ class WebRouteTests(unittest.TestCase):
         self.assertFalse(payload["ok"])
         self.assertIn("password", payload["error"])
         self.assertIn("state", payload)
+
+    def test_sub2_test_maps_stale_and_admin_failures_and_refreshes_success(self):
+        app = self._app()
+        with app.test_client() as client:
+            self.mailbox_admin.sub2_result = {
+                "ok": False,
+                "code": "mailbox_rows_stale",
+                "error": "邮箱列表已变化，请刷新后重试",
+            }
+            stale = client.post("/api/mailboxes/sub2-test", json={"rows": []})
+            self.mailbox_admin.sub2_result = {
+                "ok": False,
+                "code": "sub2_admin_auth_failed",
+                "error": "SUB2 管理员鉴权失败",
+            }
+            admin = client.post("/api/mailboxes/sub2-test", json={"rows": []})
+            self.mailbox_admin.sub2_result = {
+                "ok": True,
+                "tested": 1,
+                "results": [{"row_id": "row-a", "sub2_status": {"status_code": 200}}],
+            }
+            success = client.post("/api/mailboxes/sub2-test", json={"rows": []})
+
+        self.assertEqual(stale.status_code, 409)
+        self.assertEqual(admin.status_code, 502)
+        self.assertEqual(success.status_code, 200)
+        self.assertIn("mailboxes", success.get_json())
+        self.assertIn("state", success.get_json())
+
+    def test_pixel_targets_accounts_and_random_share_routes(self):
+        pixel = FakePixelClient()
+        app = self._app(replace(self.context, pixel_client=pixel))
+
+        with app.test_client() as client:
+            targets = client.get("/api/pixel/targets")
+            accounts = client.get(
+                "/api/pixel/targets/pixel-2/accounts?page=3&page_size=20&search=name&status=active"
+            )
+            tested = client.post(
+                "/api/pixel/targets/pixel-2/accounts/bulk-test",
+                json={"account_ids": [11, 12]},
+            )
+            shared = client.post(
+                "/api/pixel/targets/pixel-2/accounts/bulk-update",
+                json={"accountIds": [11, 12], "shareMode": "public"},
+            )
+            relogin = client.post("/api/pixel/targets/pixel-2/relogin", json={})
+            hidden_requests = (
+                client.get("/api/pixel/targets/pixel-1/accounts"),
+                client.post(
+                    "/api/pixel/targets/pixel-1/accounts/bulk-test",
+                    json={"account_ids": [11]},
+                ),
+                client.post(
+                    "/api/pixel/targets/pixel-1/accounts/bulk-update",
+                    json={"account_ids": [11]},
+                ),
+                client.post("/api/pixel/targets/pixel-1/relogin", json={}),
+            )
+
+        values = {item.get("id") or item.get("targetId"): item for item in targets.get_json()["targets"]}
+        self.assertNotIn("pixel-1", values)
+        self.assertEqual(set(values), {f"pixel-{index}" for index in range(2, 8)})
+        self.assertTrue(values["pixel-2"]["autoUpload"])
+        self.assertTrue(values["pixel-7"]["autoUpload"])
+        self.assertEqual(accounts.get_json()["page"], 3)
+        self.assertEqual(accounts.get_json()["pageSize"], 20)
+        self.assertEqual(tested.status_code, 200)
+        self.assertEqual(shared.status_code, 200)
+        self.assertEqual(relogin.status_code, 200)
+        self.assertTrue(all(response.status_code == 404 for response in hidden_requests))
+        self.assertIn(("bulk_test", "pixel-2", [11, 12]), pixel.calls)
+        self.assertIn(("share_accounts", "pixel-2", [11, 12]), pixel.calls)
+        self.assertIn(("relogin", "pixel-2"), pixel.calls)
+        self.assertFalse(any("pixel-1" in call for call in pixel.calls))
+        self.assertNotIn("bulk_update", [call[0] for call in pixel.calls])
+
+    def test_pixel_share_all_rejects_excluded_and_unknown_targets(self):
+        pixel = FakePixelClient()
+        app = self._app(replace(self.context, pixel_client=pixel))
+
+        with app.test_client() as client:
+            shared = client.post(
+                "/api/pixel/share-all",
+                json={"targetIds": ["pixel-2", "pixel-7"]},
+            )
+            hidden_mixed = client.post(
+                "/api/pixel/share-all",
+                json={"targetIds": ["pixel-1", "pixel-2", "pixel-7"]},
+            )
+            excluded_only = client.post(
+                "/api/pixel/share-all",
+                json={"target_id": "pixel-1"},
+            )
+            invalid = client.post(
+                "/api/pixel/share-all",
+                json={"target_ids": ["pixel-2", "pixel-8"]},
+            )
+
+        self.assertEqual(shared.status_code, 200)
+        self.assertIn(("share_all", ["pixel-2", "pixel-7"]), pixel.calls)
+        self.assertEqual(hidden_mixed.status_code, 400)
+        self.assertEqual(excluded_only.status_code, 400)
+        self.assertEqual(invalid.status_code, 400)
+
+    def test_pixel_upload_records_retry_selectors_and_public_errors(self):
+        pixel = FakePixelClient()
+        queue = FakePixelQueue()
+        app = self._app(
+            replace(self.context, pixel_client=pixel, pixel_upload_queue=queue)
+        )
+
+        with app.test_client() as client:
+            records = client.get("/api/pixel/upload-records")
+            camel = client.post(
+                "/api/pixel/upload-records/record-a/retry",
+                json={"targetIds": ["pixel-2", "pixel-3"]},
+            )
+            snake = client.post(
+                "/api/pixel/upload-records/record-a/retry",
+                json={"target_id": "pixel-4"},
+            )
+            hidden = client.post(
+                "/api/pixel/upload-records/record-a/retry",
+                json={"target_id": "pixel-1"},
+            )
+            queue.error = FakePixelError("可以公开", 409)
+            failed = client.post(
+                "/api/pixel/upload-records/record-a/retry",
+                json={},
+            )
+
+        self.assertEqual(records.get_json()["records"][0]["record_id"], "record-a")
+        self.assertEqual(camel.status_code, 200)
+        self.assertEqual(snake.status_code, 200)
+        self.assertEqual(hidden.status_code, 400)
+        self.assertEqual(queue.calls[:2], [
+            ("record-a", ["pixel-2", "pixel-3"]),
+            ("record-a", ["pixel-4"]),
+        ])
+        self.assertEqual(failed.status_code, 409)
+        self.assertEqual(failed.get_json()["error"], "可以公开")
+        self.assertNotIn("private-token", failed.get_data(as_text=True))
 
 
 if __name__ == "__main__":

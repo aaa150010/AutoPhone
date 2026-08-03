@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
+  Bottom,
   CircleCheckFilled,
   CircleCloseFilled,
   Close,
@@ -16,6 +17,7 @@ import {
   Message,
   Monitor,
   Search,
+  VideoPause,
 } from '@element-plus/icons-vue'
 import { api } from '../api/client'
 import LogPanel from '../components/LogPanel.vue'
@@ -34,11 +36,12 @@ const taskSearch = ref('')
 const taskFilter = ref('all')
 const logSearch = ref('')
 const logFilter = ref('all')
+const logAutoScroll = ref(true)
 const focus = ref<'tasks' | 'logs' | null>(null)
 
 const terminalStatuses = new Set([
   'success', 'failed', 'stopped', 'stopped_before_start', 'retryable_infra',
-  'retryable_email', 'repair_pending', 'email_damaged',
+  'retryable_email', 'repair_pending', 'email_damaged', 'account_banned',
 ])
 
 const tasks = computed(() => controller.runtime.value.tasks || [])
@@ -63,16 +66,14 @@ const metrics = computed(() => [
   { title: '运行成本', value: `¥${Number(summary.value.sms_cost_cny || 0).toFixed(2)}`, icon: Coin, tone: 'primary' },
 ] as const)
 
-const completed = computed(() => (
-  Number(summary.value.success || 0)
-  + Number(summary.value.failed || 0)
-  + Number(summary.value.stopped || 0)
-))
-const target = computed(() => Number(
-  summary.value.target
-  || controller.state.value.settings?.target_count
-  || 0,
-))
+const pipelineActiveCount = computed(() => {
+  const summarized = Number(summary.value.active)
+  if (Number.isFinite(summarized) && summarized > 0) return summarized
+  return Object.values(controller.runtime.value.stage_counts || {}).reduce(
+    (total, value) => total + Math.max(0, Number(value || 0)),
+    0,
+  )
+})
 
 const statusLabel = computed(() => {
   if (controller.runtime.value.stop_requested) return controller.running.value ? '正在停止' : '已停止'
@@ -144,10 +145,31 @@ async function exportTasks(kind: 'success' | 'failed' | 'all') {
 function toggleFocus(value: 'tasks' | 'logs') {
   focus.value = focus.value === value ? null : value
 }
+
+async function copyTaskAccount(task: RuntimeTask) {
+  const value = String(task.account || task.email || '').trim()
+  if (!value) return
+  if (!navigator.clipboard?.writeText) {
+    ElMessage.error('当前浏览器不支持安全剪贴板写入')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(value)
+    ElMessage.success('已复制账号或邮箱')
+  } catch {
+    ElMessage.error('复制账号或邮箱失败')
+  }
+}
 </script>
 
 <template>
-  <div class="run-page">
+  <div
+    class="run-page"
+    :class="{
+      'is-running': controller.running.value && !controller.runtime.value.stop_requested,
+      'is-stopping': controller.runtime.value.stop_requested,
+    }"
+  >
     <PageToolbar title="运行中心" :status="statusLabel" :tone="statusTone">
       <el-button @click="emit('navigate', '/settings')"><el-icon><Setting /></el-icon>运行配置</el-button>
       <el-tooltip v-if="controller.dirty.value" content="存在未保存配置，请先进入运行配置保存" placement="bottom">
@@ -163,15 +185,20 @@ function toggleFocus(value: 'tasks' | 'logs') {
 
     <div class="console-grid" :class="focus ? `focus-${focus}` : ''">
       <div v-show="!focus" class="dashboard-row">
-        <WorkspacePanel title="实时概览" :icon="DataAnalysis" fill body-padding="none">
-          <RunOverview :metrics="metrics" :completed="completed" :target="target" />
+        <WorkspacePanel class="overview-workspace" title="实时概览" :icon="DataAnalysis" fill body-padding="none">
+          <RunOverview :metrics="metrics" />
         </WorkspacePanel>
 
-        <WorkspacePanel title="运行管线" :icon="Connection" fill body-padding="none">
+        <WorkspacePanel class="pipeline-workspace" title="运行管线" :icon="Connection" fill body-padding="none">
+          <template #actions>
+            <span class="pipeline-live" :class="{ idle: !pipelineActiveCount }">
+              <i />{{ pipelineActiveCount ? `${pipelineActiveCount} 个任务处理中` : '当前无处理中任务' }}
+            </span>
+          </template>
           <RunPipelineMonitor :runtime="controller.runtime.value" />
         </WorkspacePanel>
 
-        <WorkspacePanel title="服务健康" :icon="FirstAidKit" fill body-padding="none">
+        <WorkspacePanel class="health-workspace" title="服务健康" :icon="FirstAidKit" fill body-padding="none">
           <RunServiceHealth
             :runtime="controller.runtime.value"
             :alerts="controller.state.value.sms_alerts || controller.runtime.value.sms_alerts"
@@ -209,7 +236,7 @@ function toggleFocus(value: 'tasks' | 'logs') {
             />
           </el-tooltip>
         </template>
-        <TaskResultsPanel :tasks="filteredTasks as RuntimeTask[]" />
+        <TaskResultsPanel :tasks="filteredTasks as RuntimeTask[]" @copy-account="copyTaskAccount" />
       </WorkspacePanel>
 
       <WorkspacePanel v-show="focus !== 'tasks'" class="log-workspace" title="运行日志" :icon="Document" fill body-padding="none">
@@ -222,6 +249,17 @@ function toggleFocus(value: 'tasks' | 'logs') {
             <el-option label="警告" value="warning" />
             <el-option label="错误" value="error" />
           </el-select>
+          <el-tooltip
+            v-if="filteredLogs.length"
+            :content="logAutoScroll ? '暂停自动跟随' : '继续自动跟随'"
+          >
+            <el-button
+              circle
+              :icon="logAutoScroll ? VideoPause : Bottom"
+              :aria-label="logAutoScroll ? '暂停日志自动跟随' : '继续日志自动跟随'"
+              @click="logAutoScroll = !logAutoScroll"
+            />
+          </el-tooltip>
           <el-tooltip :content="focus === 'logs' ? '退出聚焦' : '聚焦日志'">
             <el-button
               circle
@@ -231,30 +269,96 @@ function toggleFocus(value: 'tasks' | 'logs') {
             />
           </el-tooltip>
         </template>
-        <LogPanel :logs="filteredLogs" />
+        <LogPanel :logs="filteredLogs" :auto-scroll="logAutoScroll" />
       </WorkspacePanel>
     </div>
   </div>
 </template>
 
 <style scoped>
-.run-page { display: grid; grid-template-rows: 44px minmax(0, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
-.console-grid { display: grid; grid-template-rows: 244px repeat(2, minmax(0, 1fr)); gap: 6px; min-width: 0; min-height: 0; }
+.run-page {
+  --run-blue: #287fd8;
+  --run-blue-soft: #eaf4ff;
+  --run-green: #247d50;
+  --run-green-soft: #edf9f2;
+  --run-orange: #b66b00;
+  --run-orange-soft: #fff5e8;
+  --run-red: #be4545;
+  --run-red-soft: #fff0f0;
+  display: grid;
+  grid-template-rows: 44px minmax(0, 1fr);
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+.console-grid { display: grid; grid-template-rows: 220px repeat(2, minmax(0, 1fr)); gap: 6px; min-width: 0; min-height: 0; }
 .console-grid.focus-tasks,
 .console-grid.focus-logs { grid-template-rows: minmax(0, 1fr); }
-.dashboard-row { display: grid; grid-template-columns: minmax(300px, .9fr) minmax(390px, 1.25fr) minmax(300px, .9fr); gap: 6px; min-width: 0; min-height: 0; }
+.dashboard-row { display: grid; grid-template-columns: minmax(270px, .9fr) minmax(520px, 1.8fr) minmax(270px, .9fr); gap: 6px; min-width: 0; min-height: 0; }
 .task-workspace,
 .log-workspace { min-width: 0; min-height: 0; }
 .task-search { width: 145px; }
 .task-filter { width: 102px; }
 .log-search { width: 190px; }
 .log-filter { width: 104px; }
+.pipeline-live { display: flex; align-items: center; gap: 5px; color: var(--run-blue); font-size: 10px; white-space: nowrap; }
+.pipeline-live i { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--run-blue); box-shadow: 0 0 0 3px rgba(40, 127, 216, .1); }
+.pipeline-live.idle { color: var(--el-text-color-secondary); }
+.pipeline-live.idle i { background: #a5afbd; box-shadow: none; }
+
+.run-page :deep(.page-toolbar) {
+  padding: 0 10px;
+  border: 1px solid #dbe5f0;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(22, 34, 51, .05);
+}
+.run-page.is-running :deep(.page-toolbar .el-tag--success) {
+  --el-tag-bg-color: var(--run-blue-soft);
+  --el-tag-border-color: #b7d7f6;
+  --el-tag-text-color: var(--run-blue);
+}
+.run-page :deep(.workspace-panel) { border-color: #dbe5f0; box-shadow: 0 1px 4px rgba(31, 56, 88, .05); }
+.run-page :deep(.workspace-panel > .el-card__header) { border-bottom-color: #e2eaf3; background: #f8fbff; }
+.run-page :deep(.workspace-panel .panel-title .el-icon) { color: var(--run-blue); }
+.task-workspace :deep(.el-table__header-wrapper th.el-table__cell) { background: #f4f8fc; color: #526074; }
+.task-workspace :deep(.el-table__inner-wrapper::before) { background-color: #dbe5f0; }
+.task-workspace :deep(.el-tag--primary) {
+  --el-tag-bg-color: var(--run-blue-soft);
+  --el-tag-border-color: #b7d7f6;
+  --el-tag-text-color: var(--run-blue);
+}
+.task-workspace :deep(.el-tag--success) {
+  --el-tag-bg-color: var(--run-green-soft);
+  --el-tag-border-color: #b9e5cc;
+  --el-tag-text-color: var(--run-green);
+}
+.task-workspace :deep(.el-tag--warning) {
+  --el-tag-bg-color: var(--run-orange-soft);
+  --el-tag-border-color: #f0cf99;
+  --el-tag-text-color: var(--run-orange);
+}
+.task-workspace :deep(.el-tag--danger) {
+  --el-tag-bg-color: var(--run-red-soft);
+  --el-tag-border-color: #efb9b9;
+  --el-tag-text-color: var(--run-red);
+}
+.task-workspace :deep(.content-empty),
+.log-workspace :deep(.content-empty) { background: #fbfdff; }
+.log-workspace :deep(.log-line) { border-bottom-color: #e7edf4; }
+.log-workspace :deep(.log-line b) { color: #3d6f9f; }
+.log-workspace :deep(.log-line b.success) { color: var(--run-green); }
+.log-workspace :deep(.log-line b.warning),
+.log-workspace :deep(.log-line b.warn) { color: var(--run-orange); }
+.log-workspace :deep(.log-line b.error) { color: var(--run-red); }
 
 @media (max-height: 820px) {
-  .console-grid { grid-template-rows: 220px repeat(2, minmax(0, 1fr)); }
+  .console-grid { grid-template-rows: 204px repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 1450px) {
-  .dashboard-row { grid-template-columns: minmax(285px, .9fr) minmax(360px, 1.15fr) minmax(285px, .9fr); }
+  .dashboard-row { grid-template-columns: minmax(250px, .9fr) minmax(470px, 1.8fr) minmax(250px, .9fr); }
 }
 </style>

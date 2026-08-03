@@ -15,6 +15,7 @@ from mac_overrides.mailbox_admin import (
     parse_chatgpt_totp_row,
     parse_oauth_mailbox_row,
     password_from_row,
+    public_sub2_status,
     public_task_account,
     row_id_from_source,
     selected_line_numbers,
@@ -137,7 +138,238 @@ class MailboxAdminTests(unittest.TestCase):
             "mfa2@example.com--********--********",
         )
         self.assertFalse(is_importable_mailbox_row("# user@example.com----secret"))
+        self.assertFalse(is_importable_mailbox_row("user@example.com----password"))
+        self.assertFalse(is_importable_mailbox_row("user@example.com|password|INVALID018"))
+        self.assertIsNone(
+            parse_oauth_mailbox_row(
+                "prefix user@example.com----password----client-id----refresh-token"
+            )
+        )
+        self.assertIsNone(
+            parse_oauth_mailbox_row(
+                "user@example.com----password----client-id----refresh-token----extra"
+            )
+        )
         self.assertEqual(selected_line_numbers({"line_nos": ["3", 1, 3, 0, "bad"]}), [1, 3])
+
+    def test_public_sub2_status_recomputes_legacy_classification_flags(self):
+        fixtures = (
+            (
+                {"kind": "unauthorized", "status_code": 401, "is_error": False},
+                {"is_error": True, "is_abnormal": True, "is_test_failure": False, "needs_rerun": True},
+            ),
+            (
+                {"kind": "rate_limited", "status_code": 429, "is_error": True, "needs_rerun": True},
+                {"is_error": False, "is_abnormal": False, "is_test_failure": False, "needs_rerun": False},
+            ),
+            (
+                {"kind": "not_found", "status_code": 404, "is_error": False},
+                {"is_error": True, "is_abnormal": False, "is_test_failure": True, "needs_rerun": True},
+            ),
+        )
+        for value, expected in fixtures:
+            with self.subTest(value=value):
+                status = public_sub2_status(value, linked=True)
+                self.assertEqual(
+                    {key: status[key] for key in expected},
+                    expected,
+                )
+
+    def test_list_mailboxes_enriches_latest_successful_sub2_account_snapshot(self):
+        row = "linked@example.com----mail-pass----client-id----refresh-token"
+        self._write_pool(row + "\n")
+        self._write_state({})
+        results = self.root / "results"
+        results.mkdir()
+        fixtures = (
+            ("old-success.json", "success", 100, "101"),
+            ("new-success.json", "success", 200, "202"),
+            ("newer-failure.json", "failed", 300, "303"),
+        )
+        for name, status, created_at, account_id in fixtures:
+            (results / name).write_text(
+                json.dumps(
+                    {
+                        "email": "linked@example.com",
+                        "status": status,
+                        "created_at": created_at,
+                        "result": {"sub2api_account_id": account_id},
+                    }
+                ),
+                encoding="utf-8",
+            )
+        looked_up = []
+        self.service.sub2_status_lookup = lambda account_id: looked_up.append(account_id) or {
+            "kind": "unauthorized",
+            "status_code": 401,
+            "label": "401 Token失效",
+            "summary": "expired",
+            "tested_at": 999,
+            "is_error": True,
+            "needs_rerun": True,
+            "private": "must-not-leak",
+        }
+
+        public = self.service.list_mailboxes()["rows"][0]
+
+        self.assertEqual(looked_up, ["202"])
+        self.assertEqual(
+            public["sub2_status"],
+            {
+                "kind": "unauthorized",
+                "status_code": 401,
+                "label": "401 Token失效",
+                "summary": "expired",
+                "tested_at": 999,
+                "is_error": True,
+                "is_abnormal": True,
+                "is_test_failure": False,
+                "needs_rerun": True,
+            },
+        )
+        self.assertNotIn("private", json.dumps(public, ensure_ascii=False))
+
+    def test_consumed_internal_reason_is_hidden_but_history_is_preserved(self):
+        row = "done@example.com|login-pass|JBSWY3DPEHPK3PXP"
+        self._write_pool(row + "\n")
+        self._write_state(
+            {
+                "done": {
+                    "email": "done@example.com",
+                    "line_no": 1,
+                    "status": "consumed",
+                    "reason": "sub2_uploaded",
+                    "history": [
+                        {"event": "consumed", "reason": "sub2_uploaded", "at": 900},
+                    ],
+                }
+            }
+        )
+
+        public = self.service.list_mailboxes()["rows"][0]
+
+        self.assertEqual(public["status"], "consumed")
+        self.assertEqual(public["reason"], "")
+        self.assertEqual(public["error"], "")
+        self.assertEqual(public["technical_error"], "")
+        saved = json.loads((self.root / "state.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved["items"]["done"]["reason"], "sub2_uploaded")
+        self.assertEqual(saved["items"]["done"]["history"][0]["reason"], "sub2_uploaded")
+
+    def test_internal_reason_from_legacy_result_is_not_returned(self):
+        row = "done@example.com|login-pass|JBSWY3DPEHPK3PXP"
+        self._write_pool(row + "\n")
+        self._write_state({})
+        results = self.root / "results"
+        results.mkdir()
+        (results / "done.json").write_text(
+            json.dumps(
+                {
+                    "email": "done@example.com",
+                    "status": "success",
+                    "technical_error": "sub2_uploaded",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        public = self.service.list_mailboxes()["rows"][0]
+
+        self.assertEqual(public["error"], "")
+        self.assertEqual(public["technical_error"], "")
+
+    def test_sub2_batch_validates_all_stable_bindings_before_calling_tester(self):
+        rows = [
+            "one@example.com----pass-one----client-one----refresh-one",
+            "two@example.com|pass|JBSWY3DPEHPK3PXP",
+        ]
+        self._write_pool("\n".join(rows) + "\n")
+        self._write_state({})
+        results = self.root / "results"
+        results.mkdir()
+        (results / "one.json").write_text(
+            json.dumps(
+                {
+                    "email": "one@example.com",
+                    "status": "success",
+                    "created_at": 100,
+                    "result": {"sub2api_account_id": "501"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        captured = []
+        self.service.sub2_batch_tester = lambda selected: captured.extend(selected) or {
+            "ok": True,
+            "tested": 1,
+            "unlinked": 1,
+            "results": [],
+        }
+        payload = {
+            "rows": [
+                {"row_id": row_id_from_source(rows[0]), "line_no": 1},
+                {"row_id": row_id_from_source(rows[1]), "line_no": 2},
+            ]
+        }
+
+        result = self.service.sub2_test(payload)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(
+            captured,
+            [
+                {
+                    "row_id": row_id_from_source(rows[0]),
+                    "line_no": 1,
+                    "email": "one@example.com",
+                    "sub2api_account_id": "501",
+                },
+                {
+                    "row_id": row_id_from_source(rows[1]),
+                    "line_no": 2,
+                    "email": "two@example.com",
+                    "sub2api_account_id": "",
+                },
+            ],
+        )
+        stale = self.service.sub2_test(
+            {
+                "rows": [
+                    {"row_id": row_id_from_source(rows[0]), "line_no": 1},
+                    {"row_id": "0" * 64, "line_no": 2},
+                ]
+            }
+        )
+        self.assertEqual(stale["code"], "mailbox_rows_stale")
+        self.assertEqual(len(captured), 2)
+
+    def test_sub2_batch_accepts_more_than_twenty_rows_for_queued_chunk_processing(self):
+        rows = [f"user{index}@example.com|pass-{index}|JBSWY3DPEHPK3PXP" for index in range(1, 22)]
+        self._write_pool("\n".join(rows) + "\n")
+        self._write_state({})
+        called = []
+
+        def tester(selected):
+            called.append(list(selected))
+            return {
+                "ok": True,
+                "tested": len(selected),
+                "results": [],
+            }
+
+        self.service.sub2_batch_tester = tester
+        result = self.service.sub2_test(
+            {
+                "rows": [
+                    {"row_id": row_id_from_source(row), "line_no": index}
+                    for index, row in enumerate(rows, start=1)
+                ]
+            }
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(len(called), 1)
+        self.assertEqual(len(called[0]), 21)
 
     def test_list_mailboxes_combines_state_results_and_latest_live_progress(self):
         rows = [
@@ -367,6 +599,40 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertNotIn("mail-pass", item["error"])
         self.assertNotIn("refresh-token", item["error"])
         self.assertEqual(item["reason"], "******** rejected")
+
+    def test_mailbox_row_uses_the_persisted_structured_failure_message(self):
+        row = "oauth@example.com----mail-pass----client-id----refresh-token"
+        self._write_pool(row + "\n")
+        self._write_state({})
+        results = self.root / "results"
+        results.mkdir()
+        failure = {
+            "node_code": "finalizing_token",
+            "node_label": "交换 OAuth Token",
+            "error_code": "sub2_exchange_failed",
+            "provider_code": "invalid_grant",
+            "public_message": "交换 OAuth Token失败：SUB2 OAuth 会话已过期",
+            "technical_summary": "HTTP 401 refresh_token=refresh-token",
+            "retryable": True,
+            "http_status": 401,
+        }
+        (results / "failed.json").write_text(
+            json.dumps({
+                "email": "oauth@example.com",
+                "status": "repair_pending",
+                "error": "legacy generic error",
+                "failure": failure,
+            }),
+            encoding="utf-8",
+        )
+
+        item = self.service.list_mailboxes()["rows"][0]
+
+        self.assertEqual(item["error"], failure["public_message"])
+        self.assertEqual(item["failure"]["node_code"], "finalizing_token")
+        self.assertEqual(item["failure"]["provider_code"], "invalid_grant")
+        self.assertNotIn("refresh-token", item["technical_error"])
+        self.assertNotIn("mail-pass", json.dumps(item["failure"], ensure_ascii=False))
 
     def test_totp_error_redaction_covers_spaced_secret(self):
         row = "mfa@example.com|login-pass|JBSW Y3DP EHPK 3PXP"

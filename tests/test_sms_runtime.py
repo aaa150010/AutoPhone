@@ -666,15 +666,100 @@ class SmsRuntimeTests(unittest.TestCase):
             provider_id: str = "3109"
 
         candidate = Candidate()
-        policy = SmsRoutePolicy()
+        clock = [1000.0]
+        policy = SmsRoutePolicy(now_fn=lambda: clock[0])
         self.assertEqual(policy.route_limit({}), 1)
-        self.assertEqual(policy.route_limit({"otp_sent": 1}), 2)
+        self.assertEqual(policy.route_limit({"otp_sent": 1}), 1)
+        self.assertEqual(policy.route_limit({"otp_received": 1}), 2)
         self.assertEqual(policy.route_limit({"success": 1}), 2)
-        self.assertEqual(policy.cooldown_for(candidate, ok=False, kind="timeout"), 0)
-        self.assertEqual(policy.cooldown_for(candidate, ok=False, kind="timeout"), 300)
+        self.assertEqual(
+            policy.cooldown_for(
+                candidate,
+                ok=False,
+                kind="timeout",
+                stat={"success": 0, "fail": 1, "timeout": 1},
+            ),
+            600,
+        )
+        policy.cooldown_for(candidate, ok=True, kind="success")
+        self.assertEqual(
+            policy.cooldown_for(
+                candidate,
+                ok=False,
+                kind="timeout",
+                stat={"success": 8, "fail": 3, "timeout": 3},
+            ),
+            90,
+        )
+        policy.cooldown_for(candidate, ok=True, kind="success")
+        self.assertEqual(
+            policy.cooldown_for(candidate, ok=False, kind="no_numbers"),
+            300,
+        )
+        policy.cooldown_for(candidate, ok=True, kind="success")
+        self.assertEqual(
+            policy.cooldown_for(
+                candidate,
+                ok=False,
+                kind="no_numbers",
+                stat={"fail": 6, "no_numbers": 6, "no_numbers_streak": 3},
+            ),
+            900,
+        )
         self.assertEqual(policy.cooldown_for(candidate, ok=False, kind="phone_rejected", error="already been used"), 600)
         self.assertEqual(policy.cooldown_for(candidate, ok=False, kind="fail", error="suspicious similar number"), 1800)
         self.assertEqual(policy.cooldown_for(candidate, ok=False, kind="transient_server"), 0)
+
+    def test_no_number_streak_is_time_bounded_and_success_clears_it(self):
+        @dataclass
+        class Candidate:
+            country: str = "151"
+            provider_id: str = "3109"
+
+        clock = [1000.0]
+        policy = SmsRoutePolicy(now_fn=lambda: clock[0])
+        candidate = Candidate()
+        stat = {}
+
+        stat = policy.update_stat_for_outcome(stat, ok=False, kind="no_numbers")
+        self.assertEqual(stat["no_numbers_streak"], 1)
+        self.assertEqual(policy.cooldown_for(candidate, ok=False, kind="no_numbers", stat=stat), 300)
+
+        clock[0] = 1100.0
+        stat = policy.update_stat_for_outcome(stat, ok=False, kind="no_numbers")
+        self.assertEqual(stat["no_numbers_streak"], 2)
+        self.assertEqual(policy.cooldown_for(candidate, ok=False, kind="no_numbers", stat=stat), 600)
+
+        clock[0] = 3001.0
+        stat = policy.update_stat_for_outcome(stat, ok=False, kind="no_numbers")
+        self.assertEqual(stat["no_numbers_streak"], 1)
+        self.assertEqual(policy.cooldown_for(candidate, ok=False, kind="no_numbers", stat=stat), 300)
+
+        stat = policy.update_stat_for_outcome(stat, ok=True, kind="success")
+        self.assertNotIn("no_numbers_streak", stat)
+        self.assertNotIn("last_no_numbers_at", stat)
+
+    def test_no_number_streak_accepts_epoch_zero_as_a_valid_timestamp(self):
+        policy = SmsRoutePolicy(now_fn=lambda: 100.0)
+        stat = policy.update_stat_for_outcome({}, ok=False, kind="no_numbers", now=0.0)
+        stat = policy.update_stat_for_outcome(stat, ok=False, kind="no_numbers", now=100.0)
+        self.assertEqual(stat["no_numbers_streak"], 2)
+
+    def test_record_delivery_clears_failure_state_and_records_timestamp(self):
+        clock = [1000.0]
+        policy = SmsRoutePolicy(now_fn=lambda: clock[0])
+        stat = {
+            "otp_received": 2,
+            "no_numbers_streak": 3,
+            "no_code_streak": 2,
+            "cooldown_until": 2000,
+        }
+        first = policy.record_delivery(stat)
+        self.assertEqual(first["otp_received"], 3)
+        self.assertEqual(first["last_delivery_at"], 1000.0)
+        self.assertNotIn("no_numbers_streak", first)
+        self.assertNotIn("no_code_streak", first)
+        self.assertNotIn("cooldown_until", first)
 
     def test_candidate_ranking_prefers_proven_acceptance_over_static_priority(self):
         @dataclass
@@ -716,6 +801,39 @@ class SmsRuntimeTests(unittest.TestCase):
             priority_routes=(("151", "3109"),),
         )
         self.assertEqual(ranked, [proven, cold])
+
+    def test_candidate_ranking_does_not_treat_repeated_no_number_route_as_cold(self):
+        @dataclass
+        class Candidate:
+            country: str
+            provider_id: str
+
+        unavailable = Candidate("37", "3309")
+        cold = Candidate("151", "3109")
+        ranked = rank_sms_candidates(
+            [unavailable, cold],
+            {("37", "3309"): {"fail": 24, "no_numbers": 24}},
+        )
+        self.assertEqual(ranked, [cold, unavailable])
+
+    def test_candidate_ranking_prefers_recent_success_within_proven_tier(self):
+        @dataclass
+        class Candidate:
+            country: str
+            provider_id: str
+
+        historical = Candidate("37", "3237")
+        recent = Candidate("172", "3237")
+        ranked = rank_sms_candidates(
+            [historical, recent],
+            {
+                ("37", "3237"): {"success": 10, "fail": 5, "last_success_at": 100},
+                ("172", "3237"): {"success": 4, "fail": 3, "last_success_at": 990},
+            },
+            now=1000,
+            recent_success_window_seconds=300,
+        )
+        self.assertEqual(ranked, [recent, historical])
 
     def test_phone_submission_gate_spaces_requests(self):
         clock = [10.0]

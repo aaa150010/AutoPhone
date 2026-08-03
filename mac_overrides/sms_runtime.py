@@ -184,12 +184,16 @@ def rank_sms_candidates(
     priority_routes: tuple[tuple[str, str], ...] = (),
     priority_countries: tuple[str, ...] = (),
     minimum_proven_rate: float = 0.10,
+    now: float | None = None,
+    recent_success_window_seconds: float = 1800.0,
 ) -> list[Any]:
-    """Rank proven routes by accepted-number yield without losing cold starts."""
+    """Rank proven routes by delivery yield and recent completed orders."""
     route_priority = {route: index for index, route in enumerate(priority_routes)}
     country_priority = {country: index for index, country in enumerate(priority_countries)}
     default_route_priority = len(route_priority)
     default_country_priority = len(country_priority)
+    current = time.time() if now is None else float(now)
+    recent_window = max(0.0, float(recent_success_window_seconds))
 
     def key(candidate: Any) -> tuple[Any, ...]:
         route = (
@@ -208,23 +212,33 @@ def rank_sms_candidates(
             for name in ("phone_rejected", "register_rejected", "invalid_auth_step", "timeout")
         )
         rejected = max(0, failures - no_numbers, classified_failures)
-        attempts = success + rejected
-        acceptance_rate = success / attempts if attempts else 0.0
+        observations = success + rejected + no_numbers
+        acceptance_rate = success / observations if observations else 0.0
+        last_success_at = max(
+            _as_float(stat.get("last_success_at"), 0.0),
+            _as_float(stat.get("last_delivery_at"), 0.0),
+        )
+        recently_successful = bool(
+            last_success_at > 0
+            and recent_window > 0
+            and 0 <= current - last_success_at <= recent_window
+        )
         preferred = route in route_priority
 
         if success > 0 and acceptance_rate >= minimum_proven_rate:
             tier = 0
-        elif attempts == 0 and preferred:
+        elif observations == 0 and preferred:
             tier = 1
         elif success > 0:
             tier = 2
-        elif attempts == 0:
+        elif observations == 0:
             tier = 3
         else:
             tier = 4
 
         return (
             tier,
+            not recently_successful,
             -acceptance_rate,
             -success,
             route_priority.get(route, default_route_priority),
@@ -1017,10 +1031,19 @@ def is_transient_openai_error(value: Any) -> bool:
 
 
 class SmsRoutePolicy:
-    """Tracks short-lived route limits and consecutive no-code outcomes."""
+    """Keeps unavailable and non-delivering routes away from concurrent workers."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        now_fn: Callable[[], float] = time.time,
+        streak_window_seconds: float = 1800.0,
+    ) -> None:
         self.lock = threading.Lock()
+        self.now_fn = now_fn
+        self.streak_window_seconds = max(0.0, float(streak_window_seconds))
+        # Kept for callers that introspect the pre-override policy.  Actual
+        # streak state now lives in the persisted route row with timestamps.
         self.no_code_streaks: dict[tuple[str, str], int] = {}
 
     @staticmethod
@@ -1035,7 +1058,7 @@ class SmsRoutePolicy:
         row = stat if isinstance(stat, dict) else {}
         proven = any(
             int(_as_float(row.get(name), 0)) > 0
-            for name in ("otp_sent", "otp_received", "success")
+            for name in ("otp_received", "success")
         )
         return 2 if proven else 1
 
@@ -1043,25 +1066,101 @@ class SmsRoutePolicy:
         with self.lock:
             self.no_code_streaks.clear()
 
-    def cooldown_for(self, candidate: Any, *, ok: bool, kind: str, error: Any = "") -> int:
+    def update_stat_for_outcome(
+        self,
+        stat: Any,
+        *,
+        ok: bool,
+        kind: str,
+        now: float | None = None,
+    ) -> dict[str, Any]:
+        """Persist bounded consecutive-failure state alongside recovered route stats."""
+        row = dict(stat or {}) if isinstance(stat, dict) else {}
+        current = self.now_fn() if now is None else float(now)
+        if ok:
+            for name in (
+                "no_numbers_streak",
+                "last_no_numbers_at",
+                "no_code_streak",
+                "last_no_code_at",
+            ):
+                row.pop(name, None)
+            return row
+
+        if kind == "no_numbers":
+            previous_at = _as_float(row.get("last_no_numbers_at"), 0.0)
+            previous = max(0, int(_as_float(row.get("no_numbers_streak"), 0)))
+            within_window = bool(
+                "last_no_numbers_at" in row
+                and self.streak_window_seconds > 0
+                and 0 <= current - previous_at <= self.streak_window_seconds
+            )
+            row["no_numbers_streak"] = previous + 1 if within_window else 1
+            row["last_no_numbers_at"] = current
+        elif kind in {"timeout", "no_code"}:
+            previous_at = _as_float(row.get("last_no_code_at"), 0.0)
+            previous = max(0, int(_as_float(row.get("no_code_streak"), 0)))
+            within_window = bool(
+                "last_no_code_at" in row
+                and self.streak_window_seconds > 0
+                and 0 <= current - previous_at <= self.streak_window_seconds
+            )
+            row["no_code_streak"] = previous + 1 if within_window else 1
+            row["last_no_code_at"] = current
+        return row
+
+    def record_delivery(self, stat: Any, *, now: float | None = None) -> dict[str, Any]:
+        """Record one real SMS delivery and make that route immediately reusable."""
+        row = self.update_stat_for_outcome(stat, ok=True, kind="success", now=now)
+        current = self.now_fn() if now is None else float(now)
+        row["otp_received"] = max(0, int(_as_float(row.get("otp_received"), 0))) + 1
+        row["last_delivery_at"] = current
+        row["last_kind"] = "otp_received"
+        row.pop("cooldown_until", None)
+        return row
+
+    def cooldown_for(
+        self,
+        candidate: Any,
+        *,
+        ok: bool,
+        kind: str,
+        error: Any = "",
+        stat: Any = None,
+    ) -> int:
         route = self.key(candidate)
         text = str(error or "").lower()
         if not all(route):
             return 0
         with self.lock:
             if ok:
-                self.no_code_streaks.pop(route, None)
                 return 0
             if kind == "transient_server":
                 return 0
+            if kind == "no_numbers":
+                row = stat if isinstance(stat, dict) else {}
+                streak = max(1, int(_as_float(row.get("no_numbers_streak"), 1)))
+                return min(1800, 300 * streak)
             if kind in {"timeout", "no_code"}:
-                streak = self.no_code_streaks.get(route, 0) + 1
-                if streak >= 2:
-                    self.no_code_streaks.pop(route, None)
-                    return 300
-                self.no_code_streaks[route] = streak
-                return 0
-            self.no_code_streaks.pop(route, None)
+                row = stat if isinstance(stat, dict) else {}
+                success = max(
+                    int(_as_float(row.get("success"), 0)),
+                    int(_as_float(row.get("otp_received"), 0)),
+                )
+                failures = max(0, int(_as_float(row.get("fail"), 0)))
+                no_numbers = max(0, int(_as_float(row.get("no_numbers"), 0)))
+                relevant_failures = max(1, failures - no_numbers)
+                success_rate = success / (success + relevant_failures)
+                streak = max(1, int(_as_float(row.get("no_code_streak"), 1)))
+                if success <= 0:
+                    base = 600
+                elif success_rate >= 0.50:
+                    base = 90
+                elif success_rate >= 0.25:
+                    base = 180
+                else:
+                    base = 300
+                return min(1800, base * streak)
             if any(marker in text for marker in ("similar", "suspicious", "try another number", "too many accounts")):
                 return 1800
             if kind == "phone_rejected" or any(

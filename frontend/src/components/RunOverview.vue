@@ -11,22 +11,17 @@ const props = defineProps<{
     icon: any
     tone?: MetricTone
   }>
-  completed: number
-  target: number
 }>()
 
-const progress = computed(() => {
-  if (!props.target) return 0
-  return Math.min(100, Math.round((props.completed / props.target) * 100))
-})
-
+const primaryMetrics = computed(() => props.metrics.slice(0, 2))
+const resultMetrics = computed(() => props.metrics.slice(2, 5))
 </script>
 
 <template>
   <div class="run-overview">
-    <div class="metric-list">
+    <div class="primary-metrics">
       <DashboardMetricCard
-        v-for="metric in metrics"
+        v-for="metric in primaryMetrics"
         :key="metric.title"
         :title="metric.title"
         :value="metric.value"
@@ -36,33 +31,58 @@ const progress = computed(() => {
       />
     </div>
 
-    <section class="progress-section">
-      <div class="section-label">本轮进度</div>
-      <div class="progress-copy">
-        <strong>{{ progress }}%</strong>
-        <span>{{ completed }} / {{ target || '-' }}</span>
-      </div>
-      <el-progress :percentage="progress" :stroke-width="6" :show-text="false" />
-    </section>
-
+    <div class="result-strip">
+      <DashboardMetricCard
+        v-for="metric in resultMetrics"
+        :key="metric.title"
+        :title="metric.title"
+        :value="metric.value"
+        :icon="metric.icon"
+        :tone="metric.tone"
+        compact
+      />
+    </div>
   </div>
 </template>
 
 <style scoped>
-.run-overview { display: grid; grid-template-rows: minmax(0, 1fr) auto; width: 100%; height: 100%; min-height: 0; overflow: hidden; }
-.metric-list { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); min-height: 0; padding: 6px 9px 2px; }
-.metric-list :deep(.metric-card) { grid-column: span 3; }
-.metric-list :deep(.metric-card:nth-child(n + 3)) { grid-column: span 2; }
-.metric-list :deep(.metric-card) { border-bottom: 1px solid var(--el-border-color-lighter); }
-.metric-list :deep(.metric-card:nth-child(2)),
-.metric-list :deep(.metric-card:nth-child(4)),
-.metric-list :deep(.metric-card:nth-child(5)) { padding-left: 10px; border-left: 1px solid var(--el-border-color-lighter); }
-.metric-list :deep(.metric-card:nth-child(n + 3)) { border-bottom: 0; }
-.metric-list :deep(.metric-card.compact) { min-height: 42px; padding-top: 4px; padding-bottom: 4px; }
-.metric-list :deep(.metric-card.compact .metric-icon) { flex-basis: 28px; width: 28px; height: 28px; }
-.section-label { color: #718096; font-size: 12px; line-height: 18px; font-weight: 650; }
-.progress-section { margin: 0 10px; padding: 7px 0 9px; border-top: 1px solid var(--workspace-border); }
-.progress-copy { display: flex; align-items: baseline; gap: 8px; margin: 1px 0 5px; }
-.progress-copy strong { color: #172033; font-size: 20px; line-height: 24px; font-variant-numeric: tabular-nums; }
-.progress-copy span { color: var(--el-text-color-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
+.run-overview {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 58px;
+  gap: 7px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 9px;
+  overflow: hidden;
+}
+.primary-metrics,
+.result-strip { display: grid; min-width: 0; min-height: 0; }
+.primary-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.result-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.primary-metrics :deep(.metric-card),
+.result-strip :deep(.metric-card) {
+  height: 100%;
+  min-height: 0;
+  border-radius: 5px;
+}
+.primary-metrics :deep(.metric-card) { padding: 9px; }
+.primary-metrics :deep(.metric-card.tone-primary) { background: #eff6ff; }
+.primary-metrics :deep(.metric-card.tone-warning) { background: #fff5e8; }
+.primary-metrics :deep(.metric-icon) { flex-basis: 30px; width: 30px; height: 30px; }
+.primary-metrics :deep(.metric-value) { font-size: 20px; line-height: 23px; }
+.result-strip :deep(.metric-card) { justify-content: center; padding: 6px 4px; text-align: center; }
+.result-strip :deep(.metric-icon) { display: none; }
+.result-strip :deep(.metric-copy) { align-items: center; }
+.result-strip :deep(.metric-copy span) { font-size: 10px; line-height: 13px; }
+.result-strip :deep(.metric-value) { margin-top: 2px; font-size: 14px; line-height: 18px; }
+.result-strip :deep(.tone-success) { background: #edf9f2; }
+.result-strip :deep(.tone-danger) { background: #fff0f0; }
+.result-strip :deep(.tone-primary) { background: #eaf8fb; }
+.result-strip :deep(.tone-success .metric-copy span),
+.result-strip :deep(.tone-success .metric-value) { color: #247d50; }
+.result-strip :deep(.tone-danger .metric-copy span),
+.result-strip :deep(.tone-danger .metric-value) { color: #be4545; }
+.result-strip :deep(.tone-primary .metric-copy span),
+.result-strip :deep(.tone-primary .metric-value) { color: #237d98; }
 </style>

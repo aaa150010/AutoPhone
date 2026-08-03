@@ -17,11 +17,21 @@ gptPhone is a macOS-local Flask application with a Vue 3 and Element Plus dashbo
 - Capture original methods before patching and keep patches narrowly scoped.
 - Match the original callable signature, including keyword-only arguments. Verify uncertain signatures with `inspect.signature` in the Python 3.13 virtual environment.
 - Avoid changing unrelated recovered behavior while adding an override.
-- Never log or expose raw SMS, SUB2, nvtoken, OAuth, mailbox, or proxy credentials. Public state uses masks or SHA-256 short fingerprints.
+- Never log or expose raw SMS, SUB2, Pixel, OAuth, mailbox, or proxy credentials. Public state uses masks or SHA-256 short fingerprints.
 - Keep network and paid-service tests behind fake providers. Do not call real SMS preflight or start a real run during automated verification.
 - Preserve existing configuration fields and their established page order unless the user explicitly requests a removal or reorder.
 - `auth_session_retries` is a UI count of additional retries: `0` means no retry after the first attempt.
 - Keep task progress events free of credentials and user data. Repeated events in the same stage must not reset elapsed time, and terminal tasks must freeze their last valid stage.
+
+## Diagnostic Error Contract
+
+- Every pipeline failure shown in task results, mailbox rows, upload records, or logs must include a stable node code, a Chinese node label, and a credential-redacted actionable cause. The persisted result and public API should carry the same structured failure identity.
+- Cover OAuth session creation, Node/Sentinel initialization, OpenAI authorization, mailbox login and verification, phone acquisition and submission, SMS wait and verification, profile completion, OAuth callback, token exchange, SUB2 upload and test, Pixel enqueue/import/share/verification, persistence, and notification nodes explicitly.
+- Preserve safe HTTP status and provider error codes when available. Never publish raw response bodies, OAuth URLs with query parameters, cookies, phone numbers, SMS or email codes, passwords, TOTP secrets, SMS keys, access/refresh/ID/admin tokens, authorization headers, proxy credentials, or mailbox credentials.
+- Do not replace a known node failure with generic text such as `操作失败`, `failed`, or `授权或上传未完成`. If no provider detail exists, retain the exact node and state that no detail was returned, for example `OAuth Token 交换失败：服务端未返回错误详情`.
+- Terminal classifiers such as `account_banned` must retain their stable public message while storing only a redacted technical detail locally. Cleanup, cancellation, upload, or notification failures must not overwrite the original terminal cause.
+- Async Pixel failures must not change registration success. Persist the target, exact stage, attempt count, retryability, and sanitized cause in the outbox so retries and post-restart diagnosis keep their context.
+- Add fake-provider tests for every new failure branch and assert node attribution, diagnostic specificity, persistence across retry/restart where relevant, and credential redaction.
 
 ## Frontend Conventions
 
@@ -33,7 +43,6 @@ gptPhone is a macOS-local Flask application with a Vue 3 and Element Plus dashbo
 - Reuse `DashboardMetricCard` for dashboard summary cards. The icon belongs on the left, with title over value on the right.
 - Keep numeric card transitions centralized in `RollingMetricValue`. Animate only actual numeric changes and honor `prefers-reduced-motion`.
 - Reuse `ContentEmptyState` for empty tables and logs. Hide controls that have no useful action while their content area is empty.
-- Keep nvtoken address and API Key inside the default-collapsed nvtoken section; collapsing must not clear saved values.
 - Keep Element Plus locale Chinese and verify pagination labels remain Chinese.
 - Keep global scrollbars thin and blue, including native overflow containers and Element Plus scrollbars.
 - Mailbox table selection must use a stable row key. Clear selection before and after destructive mutations so line renumbering cannot select another row.
@@ -53,9 +62,11 @@ Run backend tests and syntax checks from the repository root:
 ```sh
 mac_runtime/.venv/bin/python -m unittest discover -s tests -v
 mac_runtime/.venv/bin/python -m py_compile \
+  mac_overrides/error_observability.py \
   mac_overrides/web_gui.py \
   mac_overrides/sms_runtime.py \
   mac_overrides/task_progress.py \
+  tests/test_error_observability.py \
   tests/test_sms_runtime.py \
   tests/test_task_progress.py
 ```
@@ -68,4 +79,4 @@ npx vue-tsc --noEmit
 npm run build
 ```
 
-Then run `git diff --check`. For UI work, start the Flask app on `127.0.0.1:18777` and verify both `/` and `/mailboxes` at desktop and narrow widths. Do not click real preflight or start controls during visual QA.
+Then run `git diff --check`. Do not start or restart the local Flask service for verification unless the user explicitly asks. Browser-based visual QA and narrow-screen adaptation are user-reviewed and are not required for routine changes in this repository. Never click real preflight, registration, SMS, SUB2, or Pixel actions during verification.

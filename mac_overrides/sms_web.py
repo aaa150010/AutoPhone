@@ -2,8 +2,22 @@
 
 from __future__ import annotations
 
+from threading import RLock
 import time
 from typing import Any, Callable
+
+try:
+    from .runtime_policy import (
+        ACCOUNT_BANNED_MESSAGE,
+        AccountBannedError,
+        is_explicit_account_banned,
+    )
+except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
+    from runtime_policy import (  # type: ignore[no-redef]
+        ACCOUNT_BANNED_MESSAGE,
+        AccountBannedError,
+        is_explicit_account_banned,
+    )
 
 
 def _call_log(log_fn: Any, message: str, level: str = "info") -> None:
@@ -70,9 +84,19 @@ class SmsWebIntegration:
         self.sms_keys_from_config = sms_keys_from_config
         self.as_enabled = as_enabled
         self.safe_error_fn = safe_error
+        self._active_lease_lock = RLock()
+        self._active_leases: dict[str, tuple[Any, Any]] = {}
+        self._account_banned_details: dict[str, str] = {}
 
     def safe_error(self, error: Any) -> str:
         return self.safe_error_fn(error)
+
+    def _route_now(self) -> float:
+        clock = getattr(self.route_policy, "now_fn", None)
+        try:
+            return float(clock()) if callable(clock) else time.time()
+        except Exception:
+            return time.time()
 
     def clamp_max_price(self, value: Any) -> str:
         try:
@@ -100,6 +124,33 @@ class SmsWebIntegration:
             allowed_countries,
             blocked_countries,
         )
+        # The recovered selector intentionally exposes a short no-number
+        # fallback window.  That fallback is unsafe for concurrent runs: it
+        # can immediately hand the same known-empty route back to another
+        # worker.  Keep only routes whose cooldown has actually elapsed.
+        route_stats = getattr(selector, "stats", {}) or {}
+        filtered_rows = []
+        for item in rows or []:
+            key = (
+                str(getattr(item, "country", "") or ""),
+                str(getattr(item, "provider_id", "") or ""),
+            )
+            stat = route_stats.get(key) if isinstance(route_stats, dict) else None
+            if not isinstance(stat, dict) and isinstance(route_stats, dict):
+                stat = route_stats.get(f"{key[0]}::{key[1]}")
+            stat = stat if isinstance(stat, dict) else {}
+            cooldown_until = self.sms_runtime._as_float(
+                stat.get("cooldown_until"),
+            )
+            last_kind = str(stat.get("last_kind") or "").strip().lower()
+            if cooldown_until > float(now) and last_kind in {
+                "no_numbers",
+                "timeout",
+                "no_code",
+            }:
+                continue
+            filtered_rows.append(item)
+        rows = filtered_rows
         full_config = getattr(selector, "config", {}) or {}
         try:
             max_price = float(str(full_config.get("max_price") or self.max_price_default).strip())
@@ -128,7 +179,66 @@ class SmsWebIntegration:
             getattr(selector, "stats", {}),
             priority_routes=route_order,
             priority_countries=self.priority_countries,
+            now=now,
         )
+
+    @staticmethod
+    def _invalidate_candidate_cache(selector: Any, candidate: Any = None) -> None:
+        """Force the next worker to rediscover inventory after an empty route."""
+        if selector is None:
+            return
+        lock = getattr(selector, "lock", None)
+        try:
+            if lock is not None:
+                with lock:
+                    selector.candidates = []
+                    selector.raw_rows = []
+                    selector.last_refresh = 0.0
+            else:
+                selector.candidates = []
+                selector.raw_rows = []
+                selector.last_refresh = 0.0
+        except Exception:
+            # Cache invalidation must never mask the provider outcome.
+            pass
+
+        # The recovered module keeps a process-global discovery cache.  It is
+        # deliberately cleared only after a route outcome that proves the
+        # advertised inventory stale (no number or SMS timeout).
+        try:
+            refresh = getattr(type(selector), "refresh", None)
+            module_globals = getattr(refresh, "__globals__", {})
+            cache = module_globals.get("_DISCOVERY_CACHE")
+            cache_lock = module_globals.get("_DISCOVERY_CACHE_LOCK")
+            if isinstance(cache, dict):
+                route = (
+                    str(getattr(candidate, "country", "") or ""),
+                    str(getattr(candidate, "provider_id", "") or ""),
+                )
+                def discard_stale() -> None:
+                    if not all(route):
+                        cache.clear()
+                        return
+                    for cache_key, cached in list(cache.items()):
+                        rows = cached[1] if isinstance(cached, tuple) and len(cached) > 1 else ()
+                        if any(
+                            isinstance(row, dict)
+                            and (
+                                str(row.get("country") or ""),
+                                str(row.get("provider_id") or ""),
+                            )
+                            == route
+                            for row in rows or ()
+                        ):
+                            cache.pop(cache_key, None)
+
+                if cache_lock is not None:
+                    with cache_lock:
+                        discard_stale()
+                else:
+                    discard_stale()
+        except Exception:
+            pass
 
     def create_provider(self, name: str, api_key: str, proxy: str = "") -> Any:
         if str(name or "").strip().lower() == "smsbower" and self.key_pool.has_keys():
@@ -139,6 +249,76 @@ class SmsWebIntegration:
     def adapter_task_id(adapter: Any) -> str:
         config = getattr(adapter, "config", None) or {}
         return str(config.get("sms_task_id") or config.get("run_id") or "")
+
+    @staticmethod
+    def transport_task_id(transport: Any) -> str:
+        config = getattr(transport, "config", None) or {}
+        return str(config.get("sms_task_id") or config.get("run_id") or "")
+
+    def _remember_active_lease(self, task_id: str, adapter: Any, lease: Any) -> None:
+        if not task_id:
+            return
+        with self._active_lease_lock:
+            self._active_leases[task_id] = (adapter, lease)
+
+    def _forget_active_lease(self, task_id: str, lease: Any) -> None:
+        if not task_id:
+            return
+        with self._active_lease_lock:
+            active = self._active_leases.get(task_id)
+            if active is not None and active[1] is lease:
+                self._active_leases.pop(task_id, None)
+
+    def _cancel_account_banned_lease(self, task_id: str) -> None:
+        if not task_id:
+            return
+        with self._active_lease_lock:
+            active = self._active_leases.pop(task_id, None)
+        if active is None:
+            return
+        adapter, lease = active
+        meta = dict(getattr(lease, "meta", None) or {})
+        if meta.get("gptphone_account_banned_cancelled"):
+            return
+        meta["gptphone_account_banned_cancelled"] = True
+        meta["ready_recorded"] = True
+        lease.meta = meta
+        try:
+            self.original_adapter_cancel(adapter, lease, reason=ACCOUNT_BANNED_MESSAGE)
+        except Exception:
+            pass
+        try:
+            self.cost_ledger.mark_finished(
+                task_id,
+                getattr(lease, "activation_id", ""),
+                "cancelled",
+                ACCOUNT_BANNED_MESSAGE,
+            )
+        except Exception:
+            pass
+
+    def _raise_account_banned(self, transport: Any, technical_value: Any) -> None:
+        task_id = self.transport_task_id(transport)
+        technical_detail = self.safe_error(technical_value)
+        if task_id:
+            with self._active_lease_lock:
+                self._account_banned_details[task_id] = technical_detail[:1000]
+            self._cancel_account_banned_lease(task_id)
+            self.task_progress.observe_task_state(task_id, "account_banned")
+        _call_log(getattr(transport, "log_fn", None), ACCOUNT_BANNED_MESSAGE, "error")
+        raise AccountBannedError(technical_detail)
+
+    def pop_account_banned_detail(self, task_id: Any) -> str:
+        key = str(task_id or "").strip()
+        if not key:
+            return ""
+        with self._active_lease_lock:
+            return self._account_banned_details.pop(key, "")
+
+    def ensure_account_active(self, transport: Any, response: Any) -> Any:
+        if is_explicit_account_banned(response):
+            self._raise_account_banned(transport, response)
+        return response
 
     def adapter_get_number(self, adapter: Any, **kwargs: Any) -> Any:
         task_id = self.adapter_task_id(adapter)
@@ -157,6 +337,7 @@ class SmsWebIntegration:
             meta["price_usd"] = getattr(candidate, "price", None)
         lease.meta = meta
         if task_id:
+            self._remember_active_lease(task_id, adapter, lease)
             self.cost_ledger.record_lease(task_id, lease)
             self.task_progress.set_stage(task_id, "phone_submitting")
         return lease
@@ -176,10 +357,41 @@ class SmsWebIntegration:
         task_id = self.adapter_task_id(adapter)
         if task_id:
             self.task_progress.set_stage(task_id, "sms_waiting")
-        code = self.original_adapter_wait_code(adapter, lease, timeout=timeout)
-        if code and task_id:
-            self.cost_ledger.mark_code_received(task_id, getattr(lease, "activation_id", ""))
-            self.task_progress.set_stage(task_id, "sms_verifying")
+        try:
+            code = self.original_adapter_wait_code(adapter, lease, timeout=timeout)
+        except Exception as exc:
+            candidate = dict(getattr(lease, "meta", None) or {}).get("candidate")
+            if self.classify_error(exc) in {"no_numbers", "timeout", "no_code"}:
+                self._invalidate_candidate_cache(
+                    getattr(adapter, "selector", None),
+                    candidate,
+                )
+            raise
+        meta = dict(getattr(lease, "meta", None) or {})
+        candidate = meta.get("candidate")
+        if code:
+            if not meta.get("otp_received_recorded") and candidate is not None:
+                selector = getattr(adapter, "selector", None)
+                now = self._route_now()
+                if selector is not None:
+                    self._update_route_stat(
+                        selector,
+                        candidate,
+                        lambda stat: self.route_policy.record_delivery(stat, now=now),
+                    )
+                meta["otp_received_recorded"] = True
+                lease.meta = meta
+            if task_id:
+                self.cost_ledger.mark_code_received(task_id, getattr(lease, "activation_id", ""))
+                self.task_progress.set_stage(task_id, "sms_verifying")
+        else:
+            # A clean no-code response is still evidence that the cached
+            # inventory is stale; scoring remains the adapter cancel path's
+            # responsibility so this cannot double-count a timeout.
+            self._invalidate_candidate_cache(
+                getattr(adapter, "selector", None),
+                candidate,
+            )
         return code
 
     def adapter_complete(self, adapter: Any, lease: Any) -> Any:
@@ -196,6 +408,7 @@ class SmsWebIntegration:
                 )
             raise
         if task_id:
+            self._forget_active_lease(task_id, lease)
             self.cost_ledger.mark_finished(
                 task_id,
                 getattr(lease, "activation_id", ""),
@@ -205,10 +418,15 @@ class SmsWebIntegration:
 
     def adapter_cancel(self, adapter: Any, lease: Any, reason: str = "") -> Any:
         task_id = self.adapter_task_id(adapter)
+        meta = dict(getattr(lease, "meta", None) or {})
+        if meta.get("gptphone_account_banned_cancelled"):
+            self._forget_active_lease(task_id, lease)
+            return None
         try:
             return self.original_adapter_cancel(adapter, lease, reason=reason)
         finally:
             if task_id:
+                self._forget_active_lease(task_id, lease)
                 self.cost_ledger.mark_finished(
                     task_id,
                     getattr(lease, "activation_id", ""),
@@ -229,7 +447,7 @@ class SmsWebIntegration:
 
     @staticmethod
     def _update_route_stat(selector: Any, candidate: Any, update_fn: Callable[..., Any]) -> None:
-        if candidate is None:
+        if selector is None or candidate is None:
             return
         key = (
             str(getattr(candidate, "country", "")),
@@ -251,7 +469,7 @@ class SmsWebIntegration:
                 selector.stats[key] = update_fn(stat)
 
     def _release_route_without_score(self, selector: Any, candidate: Any) -> None:
-        now = time.time()
+        now = self._route_now()
 
         def update(stat: Any) -> dict[str, Any]:
             row = dict(stat or {})
@@ -266,7 +484,7 @@ class SmsWebIntegration:
         self._update_route_stat(selector, candidate, update)
 
     def _set_route_cooldown(self, selector: Any, candidate: Any, seconds: int) -> None:
-        until = time.time() + max(0, int(seconds))
+        until = self._route_now() + max(0, int(seconds))
 
         def update(stat: Any) -> dict[str, Any]:
             row = dict(stat or {})
@@ -275,20 +493,68 @@ class SmsWebIntegration:
 
         self._update_route_stat(selector, candidate, update)
 
+    @staticmethod
+    def _route_stat_snapshot(selector: Any, candidate: Any) -> dict[str, Any]:
+        key = (
+            str(getattr(candidate, "country", "")),
+            str(getattr(candidate, "provider_id", "")),
+        )
+        if not all(key):
+            return {}
+        with selector.lock:
+            return dict(selector.stats.get(key) or {})
+
     def smart_record_result(self, selector: Any, candidate: Any, ok: bool, error: Any = "") -> Any:
         kind = self.classify_error(error)
         if not ok and kind == "transient_server":
             self._release_route_without_score(selector, candidate)
             return None
         result = self.original_record_result(selector, candidate, ok, error)
-        cooldown = self.route_policy.cooldown_for(candidate, ok=bool(ok), kind=kind, error=error)
+        outcome_now = self._route_now()
+        if ok:
+            def remember_success(stat: Any) -> dict[str, Any]:
+                row = self.route_policy.update_stat_for_outcome(
+                    stat,
+                    ok=True,
+                    kind="success",
+                    now=outcome_now,
+                )
+                row["last_success_at"] = outcome_now
+                return row
+
+            self._update_route_stat(selector, candidate, remember_success)
+        elif kind in {"no_numbers", "timeout", "no_code"}:
+            self._update_route_stat(
+                selector,
+                candidate,
+                lambda stat: self.route_policy.update_stat_for_outcome(
+                    stat,
+                    ok=False,
+                    kind=kind,
+                    now=outcome_now,
+                ),
+            )
+            self._invalidate_candidate_cache(selector, candidate)
+        stat = self._route_stat_snapshot(selector, candidate)
+        cooldown = self.route_policy.cooldown_for(
+            candidate,
+            ok=bool(ok),
+            kind=kind,
+            error=error,
+            stat=stat,
+        )
         if cooldown > 0:
             self._set_route_cooldown(selector, candidate, cooldown)
             log_fn = getattr(selector, "log_fn", None)
+            reason = {
+                "no_numbers": "当前无可用号码",
+                "timeout": "短信验证码未送达",
+                "no_code": "短信验证码未送达",
+            }.get(kind, "线路失败")
             _call_log(
                 log_fn,
                 f"  [SMS智能] 线路 {getattr(candidate, 'country', '-')}/"
-                f"{getattr(candidate, 'provider_id', '-')} 冷却 {cooldown} 秒",
+                f"{getattr(candidate, 'provider_id', '-')} 因{reason}冷却 {cooldown} 秒",
                 "warn",
             )
         return result
@@ -305,15 +571,21 @@ class SmsWebIntegration:
                 "warn",
             )
 
-        return self.phone_gate.call_with_retries(
-            self.original_send_phone_otp,
-            transport,
-            phone,
-            channel,
-            is_transient=self.sms_runtime.is_transient_openai_error,
-            max_attempts=4,
-            on_retry=on_retry,
-        )
+        try:
+            result = self.phone_gate.call_with_retries(
+                self.original_send_phone_otp,
+                transport,
+                phone,
+                channel,
+                is_transient=self.sms_runtime.is_transient_openai_error,
+                max_attempts=4,
+                on_retry=on_retry,
+            )
+        except Exception as exc:
+            if is_explicit_account_banned(exc):
+                self._raise_account_banned(transport, exc)
+            raise
+        return self.ensure_account_active(transport, result)
 
     def runtime_alert(self, payload: Any) -> None:
         value = dict(payload or {})
