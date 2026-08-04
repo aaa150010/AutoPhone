@@ -357,6 +357,87 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertIn("正在自动重试", logs[0][0])
         self.assertEqual(logs[0][1], "warn")
 
+    def test_sentinel_emit_formats_internal_failure_as_non_terminal_retry(self):
+        module = self.module
+        original_emit = module._ORIGINAL_CHAIN_EMIT
+        captured = []
+        try:
+            module._ORIGINAL_CHAIN_EMIT = lambda *args: captured.append(args)
+            module._patched_chain_emit(
+                lambda *_args: None,
+                "  [SentinelRunner] token 生成失败，重试 flow=chat-requirements: timeout",
+                "info",
+            )
+        finally:
+            module._ORIGINAL_CHAIN_EMIT = original_emit
+
+        self.assertEqual(len(captured), 1)
+        self.assertIn("[Node/Sentinel 重试/oauth_create_node]", captured[0][1])
+        self.assertIn("正在自动重试", captured[0][1])
+        self.assertEqual(captured[0][2], "warn")
+
+    def test_sentinel_success_clears_only_stale_node_failure(self):
+        module = self.module
+        original_emit = module._ORIGINAL_CHAIN_EMIT
+        token = module._TASK_CONTEXT.set("T-node-success")
+        try:
+            module._remember_task_failure(
+                "T-node-success",
+                module._error_observability_ext.classify_failure(
+                    error="node_sentinel_failed: node bridge timeout"
+                ),
+            )
+            module._ORIGINAL_CHAIN_EMIT = lambda *_args: None
+            module._patched_chain_emit(
+                lambda *_args: None,
+                "  [SentinelRunner] token 生成成功, flow=chat-requirements, 包含 so=True",
+                "info",
+            )
+            self.assertIsNone(module._known_task_failure("T-node-success"))
+        finally:
+            module._ORIGINAL_CHAIN_EMIT = original_emit
+            module._TASK_CONTEXT.reset(token)
+
+    def test_expected_pkce_runtime_context_is_persisted_without_public_warning(self):
+        module = self.module
+        original_event = module._ORIGINAL_CHAIN_EVENT
+        captured = []
+        logs = []
+        try:
+            module._ORIGINAL_CHAIN_EVENT = lambda *args, **kwargs: captured.append((args, kwargs))
+            module._patched_chain_event(
+                [],
+                "RUNTIME_CONTEXT_ISSUE",
+                detail="warn:code_verifier_present",
+                log_fn=lambda *args: logs.append(args),
+                tag="warn",
+            )
+        finally:
+            module._ORIGINAL_CHAIN_EVENT = original_event
+
+        self.assertEqual(len(captured), 1)
+        self.assertIsNone(captured[0][1]["log_fn"])
+        self.assertEqual(logs, [])
+
+    def test_public_logs_do_not_rewrite_node_retry_as_terminal_failure(self):
+        module = self.module
+        retry = (
+            "T001-safe [Node/Sentinel 重试/oauth_create_node] "
+            "本次尝试未完成，正在自动重试：Node/Sentinel 请求超时"
+        )
+        terminal = module._error_observability_ext.classify_failure(
+            error="node_sentinel_failed: node bridge timeout"
+        )
+
+        public = module._public_logs(
+            [{"level": "error", "message": retry}],
+            [{"task_id": "T001-safe", "failure": terminal}],
+        )
+
+        self.assertEqual(public[0]["message"], retry)
+        self.assertEqual(public[0]["level"], "warn")
+        self.assertNotIn("初始化 Node/Sentinel失败", public[0]["message"])
+
     def test_recovered_web_safe_log_uses_the_diagnostic_mapper(self):
         message = self.module._module._safe(
             "T001-safe [SentinelRunner] token 生成失败，重试 flow=chat-requirements"
@@ -632,6 +713,43 @@ class WebGuiSecurityTests(unittest.TestCase):
             self.assertNotIn("nvtoken", value)
             self.assertNotIn("nvtoken_upload", value)
             self.assertFalse(value["pixel_upload_enabled"])
+
+    def test_email_timeout_migration_updates_legacy_default_and_preserves_custom_value(self):
+        module = self.module
+        legacy, legacy_changed = module._migrate_email_timeout_config(
+            {"email_code_timeout": 150}
+        )
+        custom, custom_changed = module._migrate_email_timeout_config(
+            {"email_code_timeout": 90}
+        )
+
+        self.assertTrue(legacy_changed)
+        self.assertEqual(legacy["email_code_timeout"], 60)
+        self.assertEqual(legacy["email_timeout_strategy_version"], 1)
+        self.assertTrue(custom_changed)
+        self.assertEqual(custom["email_code_timeout"], 90)
+        self.assertEqual(custom["email_timeout_strategy_version"], 1)
+
+    def test_config_store_persists_migrated_and_explicit_email_timeout(self):
+        module = self.module
+        config_dir = Path(self.tempdir.name) / "email-timeout-config"
+        store = module._runtime.ImporterConfigStore(config_dir)
+        Path(store.path).parent.mkdir(parents=True, exist_ok=True)
+        Path(store.path).write_text(
+            json.dumps({"email_code_timeout": 150}),
+            encoding="utf-8",
+        )
+
+        loaded = store.load()
+        persisted = json.loads(Path(store.path).read_text(encoding="utf-8"))
+
+        self.assertEqual(loaded["email_code_timeout"], 60)
+        self.assertEqual(persisted["email_timeout_strategy_version"], 1)
+
+        saved = store.save({**loaded, "email_code_timeout": 90})
+
+        self.assertEqual(saved["email_code_timeout"], 90)
+        self.assertEqual(saved["email_timeout_strategy_version"], 1)
 
     def test_result_file_persists_batch_identity(self):
         module = self.module

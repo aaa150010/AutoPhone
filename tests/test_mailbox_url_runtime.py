@@ -10,6 +10,7 @@ from mac_overrides.mailbox_url_runtime import (
     MailboxResponse,
     MailboxUrlClient,
     MailboxUrlError,
+    extract_openai_code,
     masked_mailbox_url_row,
     parse_mailbox_payload,
     parse_mailbox_url_row,
@@ -98,6 +99,168 @@ class MailboxUrlRuntimeTests(unittest.TestCase):
 
         self.assertEqual(selection.code, "314159")
         self.assertEqual(selection.received_at, "2026-08-04 08:37:12")
+
+    def test_contiguous_code_wins_over_date_after_chinese_otp_label(self):
+        html = """
+        <article class="message-item" data-message-id="latest">
+          <summary>ChatGPT 临时验证码 <span>2026-08-04 21:42:17</span></summary>
+          <pre>输入此临时验证码以继续：
+
+639204
+
+ChatGPT 团队</pre>
+        </article>
+        """
+
+        messages, _detail_urls = parse_mailbox_payload(html, BASE_URL)
+
+        self.assertEqual(extract_openai_code(html), "639204")
+        self.assertTrue(any(message.code == "639204" for message in messages))
+        self.assertFalse(any(message.code == "202608" for message in messages))
+
+    def test_spaced_code_skips_date_and_time_fragments(self):
+        text = (
+            "ChatGPT 临时验证码 2026-08-04 21:42:17，"
+            "输入此验证码继续：6-3-9-2-0-4"
+        )
+
+        self.assertEqual(extract_openai_code(text), "639204")
+
+    def test_rotates_cached_details_so_ninth_updated_message_is_refreshed(self):
+        detail_urls = [f"https://mail.example.test/message/{index}" for index in range(9)]
+        listing = {
+            "messages": [
+                {
+                    "id": str(index),
+                    "subject": "OpenAI verification code",
+                    "detailUrl": detail_url,
+                }
+                for index, detail_url in enumerate(detail_urls)
+            ]
+        }
+        updated = False
+        calls: list[str] = []
+
+        def fetch(url: str) -> MailboxResponse:
+            calls.append(url)
+            if url == BASE_URL:
+                return json_response(url, listing)
+            index = detail_urls.index(url)
+            code = "684219" if updated and index == 8 else "111111"
+            received_at = "2026-08-04 21:29:40" if updated and index == 8 else "2026-08-04 21:20:00"
+            return json_response(
+                url,
+                {
+                    "id": str(index),
+                    "subject": "OpenAI verification code",
+                    "receivedAt": received_at,
+                    "body": f"OpenAI verification code {code}",
+                },
+            )
+
+        client = MailboxUrlClient(BASE_URL, fetcher=fetch)
+        baseline = client.scan()
+        self.assertFalse(any(message.code == "684219" for message in baseline.messages))
+
+        updated = True
+        calls.clear()
+        refreshed = client.scan()
+
+        self.assertIn(detail_urls[8], calls)
+        self.assertTrue(any(message.code == "684219" for message in refreshed.messages))
+        self.assertEqual(refreshed.diagnostics.detail_refreshed, 8)
+
+    def test_rotates_all_capped_details_when_listing_exceeds_forty_links(self):
+        detail_urls = [f"https://mail.example.test/message/{index}" for index in range(45)]
+        listing = {
+            "messages": [
+                {
+                    "id": str(index),
+                    "subject": "OpenAI verification code",
+                    "detailUrl": detail_url,
+                }
+                for index, detail_url in enumerate(detail_urls)
+            ]
+        }
+        updated = False
+
+        def fetch(url: str) -> MailboxResponse:
+            if url == BASE_URL:
+                return json_response(url, listing)
+            index = detail_urls.index(url)
+            code = "654321" if updated and index == MAX_MESSAGES - 1 else "111111"
+            return json_response(
+                url,
+                {
+                    "id": str(index),
+                    "subject": "OpenAI verification code",
+                    "receivedAt": "2026-08-04 21:20:00",
+                    "body": f"OpenAI verification code {code}",
+                },
+            )
+
+        client = MailboxUrlClient(BASE_URL, fetcher=fetch)
+        first_scan = client.scan()
+        self.assertEqual(first_scan.diagnostics.detail_links, MAX_MESSAGES)
+        self.assertEqual(len(client._detail_cache), MAX_MESSAGES)
+
+        updated = True
+        scans = [client.scan() for _ in range(4)]
+
+        self.assertTrue(
+            any(
+                message.code == "654321"
+                for scan in scans
+                for message in scan.messages
+            )
+        )
+        self.assertNotIn(detail_urls[MAX_MESSAGES], client._detail_cache)
+
+    def test_message_identity_changes_when_detail_body_changes(self):
+        first_payload = {
+            "id": "stable-id",
+            "subject": "OpenAI verification code",
+            "receivedAt": "2026-08-04 21:20:00",
+            "body": "OpenAI verification code 111111 first delivery",
+        }
+        second_payload = {
+            **first_payload,
+            "body": "OpenAI verification code 111111 resent delivery",
+        }
+
+        first_messages, _first_links = parse_mailbox_payload(
+            json.dumps(first_payload),
+            BASE_URL,
+        )
+        second_messages, _second_links = parse_mailbox_payload(
+            json.dumps(second_payload),
+            BASE_URL,
+        )
+
+        self.assertNotEqual(first_messages[0].identity, second_messages[0].identity)
+
+    def test_removes_detail_cache_entries_missing_from_latest_listing(self):
+        active_details = [
+            "https://mail.example.test/message/one",
+            "https://mail.example.test/message/two",
+        ]
+
+        def fetch(url: str) -> MailboxResponse:
+            if url == BASE_URL:
+                return json_response(
+                    url,
+                    {"messages": [{"id": item.rsplit("/", 1)[-1], "detailUrl": item} for item in active_details]},
+                )
+            return json_response(url, {"id": url.rsplit("/", 1)[-1], "subject": "OpenAI notice"})
+
+        client = MailboxUrlClient(BASE_URL, fetcher=fetch)
+        client.scan()
+        self.assertEqual(set(client._detail_cache), set(active_details))
+
+        removed = active_details.pop()
+        client.scan()
+
+        self.assertNotIn(removed, client._detail_cache)
 
     def test_request_round_rejects_baseline_and_accepts_same_digits_from_new_message(self):
         clock = [2_000_000_000.0]

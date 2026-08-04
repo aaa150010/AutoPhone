@@ -34,6 +34,10 @@ _OTP_CONTEXT = (
     r"verification|verify|security\s+code|login\s+code|sign[\s-]?in\s+code|"
     r"one[\s-]?time|otp|验证码|校验码|登录代码|临时代码|認証コード|ログインコード"
 )
+_OTP_COMPACT_PATTERNS = (
+    re.compile(rf"(?is)(?:{_OTP_CONTEXT}).{{0,260}}?(?<!\d)(\d{{6}})(?!\d)"),
+    re.compile(rf"(?is)(?<!\d)(\d{{6}})(?!\d).{{0,180}}?(?:{_OTP_CONTEXT})"),
+)
 _OTP_PATTERNS = (
     re.compile(
         rf"(?is)(?:{_OTP_CONTEXT}).{{0,260}}?(\d[\s-]*\d[\s-]*\d[\s-]*\d[\s-]*\d[\s-]*\d)"
@@ -41,6 +45,9 @@ _OTP_PATTERNS = (
     re.compile(
         rf"(?is)(\d[\s-]*\d[\s-]*\d[\s-]*\d[\s-]*\d[\s-]*\d).{{0,180}}?(?:{_OTP_CONTEXT})"
     ),
+)
+_DATE_TIME_FRAGMENT_RE = re.compile(
+    r"^(?:\d{4}[-/]\d{2}|\d{2}[-/:]\d{2}[-/:]\d{2})$"
 )
 _OPENAI_PATTERN = re.compile(r"(?i)open\s*ai|chat\s*gpt")
 _ACTION_PATTERN = re.compile(
@@ -123,6 +130,7 @@ class MailboxScan:
     messages: tuple[MailboxMessage, ...]
     page_fingerprint: str
     fetched_at: float
+    diagnostics: "MailboxScanDiagnostics" = field(default_factory=lambda: MailboxScanDiagnostics())
 
     @property
     def identities(self) -> frozenset[str]:
@@ -136,6 +144,18 @@ class MailboxSelection:
     received_at: str
     fingerprint: str
     scan: MailboxScan
+    reason: str = ""
+
+
+@dataclass(frozen=True)
+class MailboxScanDiagnostics:
+    listing_messages: int = 0
+    detail_links: int = 0
+    detail_refreshed: int = 0
+    detail_cache_hits: int = 0
+    detail_errors: int = 0
+    openai_messages: int = 0
+    code_messages: int = 0
 
 
 def parse_mailbox_url_row(value: Any) -> MailboxUrlRow | None:
@@ -273,10 +293,12 @@ def extract_openai_code(*values: Any) -> str:
     text = "\n".join(decode_mail_body(value) for value in values if value not in (None, ""))
     if not text or not _OPENAI_PATTERN.search(text):
         return ""
-    for pattern in _OTP_PATTERNS:
-        match = pattern.search(text)
-        if match:
-            digits = re.sub(r"\D", "", match.group(1))
+    for pattern in (*_OTP_COMPACT_PATTERNS, *_OTP_PATTERNS):
+        for match in pattern.finditer(text):
+            candidate = match.group(1).strip()
+            if _DATE_TIME_FRAGMENT_RE.fullmatch(candidate):
+                continue
+            digits = re.sub(r"\D", "", candidate)
             if len(digits) == 6:
                 return digits
     return ""
@@ -358,10 +380,18 @@ def _message_from_mapping(value: Mapping[str, Any], source_url: str, order: int)
     body_values = [value[key] for key in _BODY_KEYS if key in value and value[key] not in (None, "")]
     body = " ".join(part for part in (decode_mail_body(item) for item in body_values) if part)
     detail_url = _safe_detail_url(source_url, _first(value, _DETAIL_KEYS))
+    code = extract_openai_code(sender, subject, body)
     if not any((message_id, sender, subject, received_at, body, detail_url)):
         return None
     if message_id or detail_url:
-        identity = _safe_identity(message_id or detail_url, received_at)
+        identity = _safe_identity(
+            message_id or detail_url,
+            received_at,
+            sender,
+            subject,
+            body,
+            code,
+        )
     elif received_at:
         identity = _safe_identity(source_url, received_at, sender, subject)
     else:
@@ -374,7 +404,7 @@ def _message_from_mapping(value: Mapping[str, Any], source_url: str, order: int)
         received_timestamp=parse_received_timestamp(received_value),
         body=body,
         detail_url=detail_url,
-        code=extract_openai_code(sender, subject, body),
+        code=code,
         order=order,
     )
 
@@ -536,7 +566,10 @@ def _merge_messages(messages: Iterable[MailboxMessage]) -> tuple[MailboxMessage,
         previous = merged.get(message.identity)
         if previous is None or (message.code and not previous.code) or len(message.body) > len(previous.body):
             merged[message.identity] = message
-    return tuple(sorted(merged.values(), key=lambda message: message.order)[:MAX_MESSAGES])
+    ordered = sorted(merged.values(), key=lambda message: message.order)
+    with_code = [message for message in ordered if message.code]
+    without_code = [message for message in ordered if not message.code]
+    return tuple((with_code + without_code)[:MAX_MESSAGES])
 
 
 def parse_mailbox_payload(raw: str, source_url: str) -> tuple[tuple[MailboxMessage, ...], tuple[str, ...]]:
@@ -570,12 +603,16 @@ def select_latest_code(
     baseline = frozenset(baseline_identities)
     cutoff = None if requested_at is None else requested_at - REQUEST_CLOCK_SKEW_SECONDS
     candidates = []
+    baseline_rejected = 0
+    stale_rejected = 0
     for message in scan.messages:
         if not message.code:
             continue
         if not include_existing and message.identity in baseline:
+            baseline_rejected += 1
             continue
         if cutoff is not None and message.received_timestamp is not None and message.received_timestamp < cutoff:
+            stale_rejected += 1
             continue
         candidates.append(message)
     if candidates:
@@ -588,9 +625,30 @@ def select_latest_code(
             ),
         )
         fingerprint = _safe_identity(selected.identity, selected.received_at, selected.code)
-        return MailboxSelection(selected.code, selected.identity, selected.received_at, fingerprint, scan)
+        return MailboxSelection(
+            selected.code,
+            selected.identity,
+            selected.received_at,
+            fingerprint,
+            scan,
+            "code_found",
+        )
     fingerprint = _safe_identity("empty", *sorted(scan.identities), scan.page_fingerprint)
-    return MailboxSelection("", "", "", fingerprint, scan)
+    if baseline_rejected:
+        reason = "mailbox_only_baseline_code"
+    elif stale_rejected:
+        reason = "mailbox_candidate_too_old"
+    elif scan.diagnostics.detail_errors:
+        reason = "mailbox_detail_request_failed"
+    elif scan.diagnostics.detail_refreshed < scan.diagnostics.detail_links:
+        reason = "mailbox_detail_refresh_pending"
+    elif not scan.messages:
+        reason = "mailbox_empty"
+    elif scan.diagnostics.openai_messages:
+        reason = "mailbox_openai_message_without_otp"
+    else:
+        reason = "mailbox_messages_without_openai_otp"
+    return MailboxSelection("", "", "", fingerprint, scan, reason)
 
 
 class _SameOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -630,6 +688,7 @@ class MailboxUrlClient:
         self.fetcher = fetcher
         self.now_fn = now_fn
         self._detail_cache: dict[str, tuple[MailboxMessage, ...]] = {}
+        self._detail_refresh_cursor = 0
 
     def _opener(self):
         handlers: list[Any] = [_SameOriginRedirectHandler(self.mailbox_url)]
@@ -693,18 +752,58 @@ class MailboxUrlClient:
         raw = _decode_bytes(response.body, response.content_type)
         messages, detail_urls = parse_mailbox_payload(raw, response.url)
         combined = list(messages)
-        for index, detail_url in enumerate(detail_urls[:MAX_MESSAGES]):
-            if index >= REFRESH_DETAIL_LIMIT and detail_url in self._detail_cache:
-                combined.extend(self._detail_cache[detail_url])
+        active_detail_urls = list(dict.fromkeys(detail_urls[:MAX_MESSAGES]))
+        active_set = set(active_detail_urls)
+        for stale_url in tuple(self._detail_cache):
+            if stale_url not in active_set:
+                self._detail_cache.pop(stale_url, None)
+
+        uncached_urls = [url for url in active_detail_urls if url not in self._detail_cache]
+        cached_urls = [url for url in active_detail_urls if url in self._detail_cache]
+        refresh_urls: list[str] = []
+        if cached_urls:
+            start = self._detail_refresh_cursor % len(cached_urls)
+            refresh_count = min(REFRESH_DETAIL_LIMIT, len(cached_urls))
+            refresh_urls = [cached_urls[(start + offset) % len(cached_urls)] for offset in range(refresh_count)]
+            self._detail_refresh_cursor = (start + refresh_count) % len(cached_urls)
+        else:
+            self._detail_refresh_cursor = (
+                min(REFRESH_DETAIL_LIMIT, len(active_detail_urls)) % len(active_detail_urls)
+                if active_detail_urls
+                else 0
+            )
+
+        detail_errors = 0
+        refreshed = 0
+        for detail_url in [*uncached_urls, *refresh_urls]:
+            try:
+                detail_response = self._fetch(detail_url)
+                detail_raw = _decode_bytes(detail_response.body, detail_response.content_type)
+                detail_messages, _unused_links = parse_mailbox_payload(detail_raw, detail_response.url)
+            except MailboxUrlError:
+                detail_errors += 1
                 continue
-            detail_response = self._fetch(detail_url)
-            detail_raw = _decode_bytes(detail_response.body, detail_response.content_type)
-            detail_messages, _unused_links = parse_mailbox_payload(detail_raw, detail_response.url)
             self._detail_cache[detail_url] = detail_messages
-            combined.extend(detail_messages)
+            refreshed += 1
+        for detail_url in active_detail_urls:
+            combined.extend(self._detail_cache.get(detail_url, ()))
         merged = _merge_messages(combined)
         page_fingerprint = hashlib.sha256(response.body).hexdigest()
-        return MailboxScan(merged, page_fingerprint, self.now_fn())
+        openai_messages = sum(
+            1
+            for message in merged
+            if _OPENAI_PATTERN.search(" ".join((message.sender, message.subject, message.body)))
+        )
+        diagnostics = MailboxScanDiagnostics(
+            listing_messages=len(messages),
+            detail_links=len(active_detail_urls),
+            detail_refreshed=refreshed,
+            detail_cache_hits=sum(1 for url in active_detail_urls if url in self._detail_cache),
+            detail_errors=detail_errors,
+            openai_messages=openai_messages,
+            code_messages=sum(1 for message in merged if message.code),
+        )
+        return MailboxScan(merged, page_fingerprint, self.now_fn(), diagnostics)
 
     def latest_code(self, *, include_existing: bool = True) -> MailboxSelection:
         return select_latest_code(self.scan(), include_existing=include_existing)
@@ -715,6 +814,7 @@ class MailboxRequestState:
         self.client = client
         self.now_fn = now_fn
         self.last_scan: MailboxScan | None = None
+        self.last_selection: MailboxSelection | None = None
         self.baseline_identities: frozenset[str] = frozenset()
         self.requested_at: float | None = None
         self.active = False
@@ -729,12 +829,13 @@ class MailboxRequestState:
     def snapshot(self) -> MailboxSelection:
         scan = self.client.scan()
         self.last_scan = scan
-        return select_latest_code(
+        self.last_selection = select_latest_code(
             scan,
             baseline_identities=self.baseline_identities,
             requested_at=self.requested_at,
             include_existing=not self.active,
         )
+        return self.last_selection
 
     def finish_request(self) -> None:
         if self.last_scan is not None:
@@ -771,6 +872,26 @@ def finish_runtime_request(provider: Any) -> None:
         state.finish_request()
 
 
+def runtime_diagnostic(provider: Any) -> dict[str, Any]:
+    state = getattr(provider, "_generic_mailbox_state", None)
+    if not isinstance(state, MailboxRequestState) or state.last_selection is None:
+        return {}
+    diagnostics = state.last_selection.scan.diagnostics
+    return {
+        "reason": state.last_selection.reason,
+        "listing_messages": diagnostics.listing_messages,
+        "detail_links": diagnostics.detail_links,
+        "detail_refreshed": diagnostics.detail_refreshed,
+        "detail_refresh_pending": max(
+            diagnostics.detail_links - diagnostics.detail_refreshed,
+            0,
+        ),
+        "detail_errors": diagnostics.detail_errors,
+        "openai_messages": diagnostics.openai_messages,
+        "code_messages": diagnostics.code_messages,
+    }
+
+
 __all__ = [
     "MAX_MESSAGES",
     "MAX_RESPONSE_BYTES",
@@ -779,6 +900,7 @@ __all__ = [
     "MailboxRequestState",
     "MailboxResponse",
     "MailboxScan",
+    "MailboxScanDiagnostics",
     "MailboxSelection",
     "MailboxUrlClient",
     "MailboxUrlError",
@@ -792,5 +914,6 @@ __all__ = [
     "parse_mailbox_url_row",
     "parse_received_timestamp",
     "runtime_snapshot",
+    "runtime_diagnostic",
     "select_latest_code",
 ]

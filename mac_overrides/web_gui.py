@@ -119,10 +119,13 @@ _ORIGINAL_SMS_ADAPTER_CANCEL = _codex_oauth_chain.SmsProviderAdapter.cancel
 _ORIGINAL_REAL_SEND_PHONE_NUMBER_OTP = _codex_oauth_chain.RealCodexTransport.send_phone_number_otp
 _ORIGINAL_SMART_CLASSIFY_ERROR = _sms_selector.SmartSmsSelector.classify_error
 _ORIGINAL_SMART_RECORD_RESULT = _sms_selector.SmartSmsSelector.record_result
+_ORIGINAL_CHAIN_EMIT = _codex_oauth_chain._emit
 _ORIGINAL_CHAIN_EVENT = _codex_oauth_chain._event
 _SMS_PRIORITY_COUNTRIES = ()
 _SMS_MIN_PRICE_DEFAULT = 0.01
 _SMS_MAX_PRICE_DEFAULT = "0.1"
+_EMAIL_CODE_TIMEOUT_DEFAULT = 60
+_EMAIL_TIMEOUT_STRATEGY_VERSION = 1
 _SMS_PRIORITY_COUNTRIES_TEXT = ",".join(_SMS_PRIORITY_COUNTRIES)
 _SMS_PRIORITY_ROUTES = ()
 _SMS_BLOCKED_ROUTES = (
@@ -223,6 +226,16 @@ def _known_task_failure(task_id):
         return copy.deepcopy(value) if isinstance(value, dict) else None
 
 
+def _clear_known_node_failure(task_id):
+    key = str(task_id or "").strip()
+    if not key:
+        return
+    with _TASK_FAILURES_LOCK:
+        failure = _TASK_FAILURES.get(key)
+        if isinstance(failure, dict) and failure.get("node_code") == "oauth_create_node":
+            _TASK_FAILURES.pop(key, None)
+
+
 def _classify_task_failure(task_id, result=None, error="", *, status="failed", secrets=()):
     existing = result.get("failure") if isinstance(result, dict) else None
     public = _error_observability_ext.public_failure(existing)
@@ -294,6 +307,35 @@ def _int_value(value, default=0, minimum=None, maximum=None):
     return result
 
 
+def _migrate_email_timeout_config(value):
+    config = dict(value or {})
+    try:
+        version = int(config.get("email_timeout_strategy_version") or 0)
+    except (TypeError, ValueError):
+        version = 0
+    raw_timeout = config.get("email_code_timeout")
+    migrated = version < _EMAIL_TIMEOUT_STRATEGY_VERSION
+    if migrated and (
+        raw_timeout in (None, "")
+        or _int_value(raw_timeout, 150, minimum=30, maximum=600) == 150
+    ):
+        timeout = _EMAIL_CODE_TIMEOUT_DEFAULT
+    else:
+        timeout = _int_value(
+            raw_timeout,
+            _EMAIL_CODE_TIMEOUT_DEFAULT,
+            minimum=30,
+            maximum=600,
+        )
+    if config.get("email_code_timeout") != timeout:
+        migrated = True
+    if config.get("email_timeout_strategy_version") != _EMAIL_TIMEOUT_STRATEGY_VERSION:
+        migrated = True
+    config["email_code_timeout"] = timeout
+    config["email_timeout_strategy_version"] = _EMAIL_TIMEOUT_STRATEGY_VERSION
+    return config, migrated
+
+
 def _read_store_config(store):
     try:
         value = json.loads(Path(store.path).read_text(encoding="utf-8-sig"))
@@ -317,13 +359,16 @@ def _patched_config_load(self):
         if key in raw:
             raw.pop(key, None)
             removed_legacy_fields = True
+    raw, email_timeout_migrated = _migrate_email_timeout_config(raw)
     defaults = _runtime.default_settings(self.data_dir)
+    defaults["email_code_timeout"] = _EMAIL_CODE_TIMEOUT_DEFAULT
+    defaults["email_timeout_strategy_version"] = _EMAIL_TIMEOUT_STRATEGY_VERSION
     if "sms_mode" not in raw:
         smart = raw.get("sms_smart") if isinstance(raw.get("sms_smart"), dict) else {}
         defaults["sms_mode"] = "smart" if _runtime._as_bool(smart.get("enabled"), True) else "fixed"
 
     loaded = _runtime._merge(defaults, raw)
-    changed = self._enforce_private_paths(loaded, defaults)
+    changed = self._enforce_private_paths(loaded, defaults) or email_timeout_migrated
 
     try:
         auth_strategy_version = int(raw.get("email_auth_strategy_version") or 0)
@@ -354,6 +399,8 @@ def _patched_config_load(self):
         "phone_attempts_per_provider",
         "phone_session_cycle_seconds",
         "auth_session_retries",
+        "email_code_timeout",
+        "email_timeout_strategy_version",
         "sms_provider_pools",
         "sms_provider",
         "sms_api_keys",
@@ -370,6 +417,7 @@ def _patched_config_save(self, values):
     cleaned = dict(values or {})
     cleaned.pop("nvtoken", None)
     cleaned.pop("nvtoken_upload", None)
+    cleaned, _email_timeout_migrated = _migrate_email_timeout_config(cleaned)
     normalized, _migrated = _sms_runtime_ext.migrate_performance_config(cleaned)
     saved = dict(_ORIGINAL_CONFIG_SAVE(self, normalized) or {})
     for key in (
@@ -378,6 +426,8 @@ def _patched_config_save(self, values):
         "phone_attempts_per_provider",
         "phone_session_cycle_seconds",
         "auth_session_retries",
+        "email_code_timeout",
+        "email_timeout_strategy_version",
         "sms_provider_pools",
         "sms_provider",
         "sms_api_keys",
@@ -682,6 +732,18 @@ def _patched_chain_event(
     task_id = _TASK_CONTEXT.get()
     if task_id:
         _TASK_PROGRESS.observe_chain_state(task_id, state)
+    if (
+        str(state or "").strip().upper() == "RUNTIME_CONTEXT_ISSUE"
+        and str(detail or "").strip().lower() == "warn:code_verifier_present"
+    ):
+        return _ORIGINAL_CHAIN_EVENT(
+            events,
+            state,
+            detail=detail,
+            extra=extra,
+            log_fn=None,
+            tag=tag,
+        )
     retrying_node = (
         str(state or "").strip().upper() == "FAILED"
         and _error_observability_ext.is_retryable_node_failure(detail)
@@ -707,12 +769,22 @@ def _patched_chain_event(
         log_fn=None,
         tag=tag,
     )
-    retry_message = _error_observability_ext.format_node_retry_log(task_id, detail)
+    retry_message = _error_observability_ext.format_node_retry_log("", detail)
     if log_fn and retry_message:
         try:
             log_fn(retry_message, "warn")
         except TypeError:
             log_fn(retry_message)
+
+
+def _patched_chain_emit(log_fn, message, tag="info"):
+    raw = str(message or "")
+    if _error_observability_ext.is_node_retry_log(raw):
+        retry_message = _error_observability_ext.format_node_retry_log("", raw)
+        return _ORIGINAL_CHAIN_EMIT(log_fn, retry_message, "warn")
+    if "[SentinelRunner]" in raw and "token 生成成功" in raw:
+        _clear_known_node_failure(_TASK_CONTEXT.get())
+    return _ORIGINAL_CHAIN_EMIT(log_fn, message, tag)
 
 
 def _notification_task_snapshot(importer):
@@ -1328,6 +1400,37 @@ def _url_mailbox_mark_sent(self):
     return result
 
 
+_MAILBOX_DIAGNOSTIC_LABELS = {
+    "mailbox_empty": "邮箱入口当前没有邮件",
+    "mailbox_messages_without_openai_otp": "邮箱已有邮件，但没有识别到 OpenAI 验证邮件",
+    "mailbox_openai_message_without_otp": "已识别 OpenAI 邮件，但没有匹配到有效六位验证码",
+    "mailbox_only_baseline_code": "邮箱当前只有本次请求前的旧验证码",
+    "mailbox_candidate_too_old": "识别到的验证码邮件早于本次请求",
+    "mailbox_detail_request_failed": "部分邮件详情读取失败，未识别到新验证码",
+    "mailbox_detail_refresh_pending": "仍有缓存邮件详情等待下一轮刷新",
+}
+
+
+def _log_mailbox_diagnostic(provider, log_fn):
+    diagnostic = _mailbox_url_runtime_ext.runtime_diagnostic(provider)
+    reason = str(diagnostic.get("reason") or "")
+    if not reason or reason == "code_found":
+        return
+    label = _MAILBOX_DIAGNOSTIC_LABELS.get(reason, "未识别到新的邮箱验证码")
+    counts = (
+        f"列表消息 {int(diagnostic.get('listing_messages') or 0)}，"
+        f"详情链接 {int(diagnostic.get('detail_links') or 0)}，"
+        f"本轮刷新 {int(diagnostic.get('detail_refreshed') or 0)}，"
+        f"待轮转 {int(diagnostic.get('detail_refresh_pending') or 0)}，"
+        f"详情错误 {int(diagnostic.get('detail_errors') or 0)}"
+    )
+    _call_log(
+        log_fn,
+        f"  [邮箱取码诊断/email_code_waiting] {label}（{reason}；{counts}）",
+        "warn",
+    )
+
+
 def _url_mailbox_wait_code(self, email):
     entry = getattr(self, "entry", None)
     if (
@@ -1341,6 +1444,9 @@ def _url_mailbox_wait_code(self, email):
         return code
     try:
         code = _ORIGINAL_URL_MAILBOX_WAIT_CODE(self, email)
+    except Exception:
+        _log_mailbox_diagnostic(getattr(self, "provider", None), getattr(self, "log_fn", None))
+        raise
     finally:
         _mailbox_url_runtime_ext.finish_runtime_request(getattr(self, "provider", None))
     if code:
@@ -1435,6 +1541,7 @@ _module.GuiLog.add = _retained_gui_log_add
 _module.GuiLog.snapshot = _retained_gui_log_snapshot
 _runtime.create_provider = _SMS_WEB.create_provider
 _sms_providers.create_provider = _SMS_WEB.create_provider
+_codex_oauth_chain._emit = _patched_chain_emit
 _codex_oauth_chain.SmsProviderAdapter.get_number = _sms_adapter_get_number
 _codex_oauth_chain.SmsProviderAdapter.mark_ready = _sms_adapter_mark_ready
 _codex_oauth_chain.SmsProviderAdapter.wait_code = _sms_adapter_wait_code
@@ -1490,9 +1597,13 @@ def _read_local_config():
         return {}
     if not isinstance(value, dict):
         return {}
+    changed = False
     if "nvtoken" in value or "nvtoken_upload" in value:
         value.pop("nvtoken", None)
         value.pop("nvtoken_upload", None)
+        changed = True
+    value, timeout_migrated = _migrate_email_timeout_config(value)
+    if changed or timeout_migrated:
         _write_local_config(value)
     return value
 
@@ -1501,6 +1612,7 @@ def _write_local_config(data):
     value = dict(data) if isinstance(data, dict) else {}
     value.pop("nvtoken", None)
     value.pop("nvtoken_upload", None)
+    value, _timeout_migrated = _migrate_email_timeout_config(value)
     _LOCAL_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     temporary = _LOCAL_CONFIG_FILE.with_suffix(_LOCAL_CONFIG_FILE.suffix + ".tmp")
     temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -1853,9 +1965,14 @@ def _public_logs(logs, tasks):
                     limit=800,
                 )
                 message = str(row[key] or "")
+                node_retry = _error_observability_ext.is_node_retry_log(message)
+                if node_retry:
+                    row["level"] = "warn"
                 explicit_node = bool(re.search(r"\[[^\]]+/[a-z0-9_]+\]", message, re.IGNORECASE))
                 level = str(row.get("level") or row.get("type") or "").strip().lower()
-                if not explicit_node and (level in {"error", "danger"} or "失败" in message):
+                if not node_retry and not explicit_node and (
+                    level in {"error", "danger"} or "失败" in message
+                ):
                     for task_id, failure in task_failures.items():
                         if task_id in message:
                             row[key] = _error_observability_ext.format_failure_log(task_id, failure)
@@ -1916,6 +2033,7 @@ def _local_config_from_runtime(data, existing=None):
     raw_data["sms_api_keys"] = sms_keys
     raw_data["sms_api_key"] = sms_keys[0] if sms_keys else ""
     data, _migrated = _sms_runtime_ext.migrate_performance_config(raw_data)
+    data, _timeout_migrated = _migrate_email_timeout_config(data)
     sub2api = dict(data.get("sub2api") or {})
     existing_sub2api = dict(existing.get("sub2api") or {})
     email_notification = dict(data.get("email_notification") or {})
@@ -1929,6 +2047,7 @@ def _local_config_from_runtime(data, existing=None):
     ).strip()
     result = {
         "performance_policy_version": _sms_runtime_ext.PERFORMANCE_POLICY_VERSION,
+        "email_timeout_strategy_version": _EMAIL_TIMEOUT_STRATEGY_VERSION,
         "sms_provider_pools": sms_pools,
         "sms_provider": str(sms_pools[0].get("provider") or "smsbower") if sms_pools else "smsbower",
         "sms_api_keys": sms_keys,
@@ -1949,6 +2068,7 @@ def _local_config_from_runtime(data, existing=None):
         "node_concurrency",
         "node_timeout",
         "auth_session_retries",
+        "email_code_timeout",
         "sms_min_price",
         "max_price",
         "sms_timeout",
@@ -2009,6 +2129,7 @@ def _apply_server_defaults(data):
     patched = dict(data or {})
     patched = _merge_local_config(patched)
     patched, _migrated = _sms_runtime_ext.migrate_performance_config(patched)
+    patched, _timeout_migrated = _migrate_email_timeout_config(patched)
     if patched.get("sms_provider") == "localpool":
         patched["sms_provider"] = "smsbower"
     patched["email_mode"] = "auto"
