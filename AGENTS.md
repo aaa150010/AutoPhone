@@ -35,6 +35,7 @@ gptPhone is a macOS-local Flask application with a Vue 3 and Element Plus dashbo
 
 ## Frontend Conventions
 
+- This application is desktop-only. Design and verify for desktop viewports; do not add mobile, narrow-screen, or responsive adaptations unless the user explicitly requests them.
 - Use Vue 3 single-file components and Element Plus controls. Prefer `size="small"` through the global provider.
 - Use Element Plus native `show-password`; do not build custom password-eye overlays.
 - Use icons from `@element-plus/icons-vue` for familiar actions and add tooltips to icon-only buttons.
@@ -79,4 +80,4 @@ npx vue-tsc --noEmit
 npm run build
 ```
 
-Then run `git diff --check`. Do not start or restart the local Flask service for verification unless the user explicitly asks. Browser-based visual QA and narrow-screen adaptation are user-reviewed and are not required for routine changes in this repository. Never click real preflight, registration, SMS, SUB2, or Pixel actions during verification.
+Then run `git diff --check`. Do not start or restart the local Flask service for verification unless the user explicitly asks. Routine frontend verification targets desktop viewports only; do not perform mobile or narrow-screen adaptation unless the user explicitly requests it. Never click real preflight, registration, SMS, SUB2, or Pixel actions during verification.
