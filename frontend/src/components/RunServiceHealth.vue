@@ -12,7 +12,7 @@ const smsKeys = computed(() => props.runtime.sms_key_statuses || [])
 const anomalies = computed(() => {
   const rows: Array<{ id: string; level: string; message: string }> = []
   if (props.runtime.sms_safe_stop) {
-    rows.push({ id: 'sms-safe-stop', level: 'error', message: 'SMS Key 已全部耗尽，运行已进入安全停止' })
+    rows.push({ id: 'sms-safe-stop', level: 'error', message: '所有 SMS 平台均不可用，运行已进入安全停止' })
   }
   for (const alert of props.alerts || props.runtime.sms_alerts || []) {
     if (alert.level === 'warning' || alert.level === 'error') {
@@ -51,6 +51,16 @@ function keyStatusLabel(status?: string) {
     unchecked: '未预检',
   }
   return labels[String(status || '')] || '状态未知'
+}
+
+function providerLabel(provider?: string) {
+  const labels: Record<string, string> = {
+    smsbower: 'SMSBower',
+    herosms: 'HeroSMS',
+    '5sim': '5SIM',
+  }
+  const value = String(provider || 'smsbower').toLowerCase()
+  return labels[value] || value
 }
 
 const onlineKeyCount = computed(() => smsKeys.value.filter(key => keyType(key.status) === 'success').length)
@@ -97,10 +107,10 @@ const summaryIcon = computed(() => healthTone.value === 'success' ? CircleCheckF
       <div v-if="!smsKeys.length" class="empty-line">
         <el-icon><Clock /></el-icon><span>暂无 Key 状态</span>
       </div>
-      <div v-for="key in smsKeys" :key="key.fingerprint" class="key-row" :title="key.message || keyStatusLabel(key.status)">
+      <div v-for="key in smsKeys" :key="`${key.provider || key.platform}-${key.fingerprint}`" class="key-row" :title="key.message || keyStatusLabel(key.status)">
         <i class="key-dot" :class="keyType(key.status)" />
         <div class="key-copy">
-          <strong>Key {{ key.index }}</strong>
+          <strong>{{ providerLabel(key.provider || key.platform) }} #{{ key.index }}</strong>
           <span>{{ key.fingerprint }}</span>
         </div>
         <div class="key-value">

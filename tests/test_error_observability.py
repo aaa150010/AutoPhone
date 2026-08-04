@@ -82,6 +82,9 @@ class ErrorObservabilityTests(unittest.TestCase):
 
     def test_sms_route_and_key_pool_exhaustion_remain_distinguishable(self):
         routes = classify_failure(error="sms_smart_no_candidate")
+        platforms = classify_failure(
+            error="sms_provider_pool_unavailable: herosms: NO_NUMBERS"
+        )
         keys = classify_failure(
             error="sms_key_pool_temporarily_unavailable: SMS Key 暂时不可用"
         )
@@ -89,6 +92,10 @@ class ErrorObservabilityTests(unittest.TestCase):
         self.assertEqual(routes["node_code"], "phone_acquiring")
         self.assertEqual(routes["error_code"], "sms_route_pool_exhausted")
         self.assertIn("候选线路", routes["public_message"])
+        self.assertEqual(platforms["node_code"], "phone_acquiring")
+        self.assertEqual(platforms["error_code"], "sms_provider_pool_unavailable")
+        self.assertIn("接码平台", platforms["public_message"])
+        self.assertIn("herosms", platforms["technical_summary"])
         self.assertEqual(keys["node_code"], "phone_acquiring")
         self.assertEqual(keys["error_code"], "sms_key_pool_temporarily_unavailable")
         self.assertIn("SMS Key", keys["public_message"])

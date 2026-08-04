@@ -4,11 +4,21 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
+import time
 from typing import Any, Callable
+import uuid
 
 
 _PIXEL_AUTO_TARGET_IDS = tuple(f"pixel-{index}" for index in range(2, 8))
+
+
+def _safe_int(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 @dataclass(frozen=True)
@@ -38,6 +48,7 @@ class WebRouteContext:
     mailbox_manager_html: str
     pixel_client: Any | None = None
     pixel_upload_queue: Any | None = None
+    pixel_payload_builder: Callable[[Mapping[str, Any]], dict[str, Any]] | None = None
 
 
 def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
@@ -278,7 +289,14 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                     error=context.safe_runtime_error(exc),
                     state=public_state(),
                 ), 400
-            importer.start(cfg)
+            run_config = dict(cfg)
+            batch_started_at = int(time.time())
+            run_config["batch_started_at"] = batch_started_at
+            run_config["batch_id"] = (
+                f"{time.strftime('%Y%m%d-%H%M%S', time.localtime(batch_started_at))}-"
+                f"{uuid.uuid4().hex[:6]}"
+            )
+            importer.start(run_config)
             return module.jsonify(ok=True, state=public_state())
         except ValueError as exc:
             safe = context.safe_runtime_error(exc)
@@ -386,6 +404,101 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         except Exception:
             logs.add("SUB2 批量连接测试失败", "error")
             return module.jsonify(ok=False, error="SUB2 批量连接测试失败"), 502
+
+    def mailbox_selection_error(result: Mapping[str, Any]):
+        code = str(result.get("code") or "")
+        status = 409 if code == "mailbox_rows_stale" else 400
+        return module.jsonify(dict(result)), status
+
+    def api_mailboxes_pixel_retry():
+        if context.pixel_upload_queue is None:
+            return pixel_unavailable(queue=True)
+        try:
+            selected = mailbox_admin.selected_success_results(request_json_object())
+            if not selected.get("ok"):
+                return mailbox_selection_error(selected)
+            records = []
+            for item in selected.get("items") or []:
+                records.append(
+                    context.pixel_upload_queue.requeue(item["task_id"], item["result_file"])
+                )
+            logs.add(f"邮箱管理已将 {len(records)} 个账号重新加入 Pixel 上传队列", "success")
+            return module.jsonify(
+                ok=True,
+                queued=len(records),
+                skipped=int(selected.get("skipped") or 0),
+                records=records,
+                mailboxes=mailbox_admin.list_mailboxes(),
+                state=public_state(),
+            )
+        except Exception as exc:
+            return pixel_error_response(exc)
+
+    def api_mailboxes_sub2_export():
+        if context.pixel_payload_builder is None:
+            return module.jsonify(ok=False, error="SUB2API 导出尚未配置"), 503
+        try:
+            selected = mailbox_admin.selected_success_results(request_json_object())
+            if not selected.get("ok"):
+                return mailbox_selection_error(selected)
+            accounts = []
+            now = int(time.time())
+            for item in selected.get("items") or []:
+                payload = context.pixel_payload_builder(item["document"])
+                source_account = payload["accounts"][0]
+                source_credentials = dict(source_account.get("credentials") or {})
+                account_id = str(
+                    source_credentials.get("chatgpt_account_id")
+                    or source_credentials.get("account_id")
+                    or ""
+                ).strip()
+                credentials = {
+                    "access_token": source_credentials.get("access_token") or "",
+                    "chatgpt_account_id": account_id,
+                    "client_id": source_credentials.get("client_id") or "",
+                    "expires_at": _safe_int(source_credentials.get("expires_at"), now + 864_000),
+                    "expires_in": _safe_int(source_credentials.get("expires_in"), 863_999),
+                    "model_mapping": {
+                        "gpt-5.4": "gpt-5.4",
+                        "gpt-5.4-mini": "gpt-5.4-mini",
+                        "gpt-5.5": "gpt-5.5",
+                        "gpt-5.6-luna": "gpt-5.6-luna",
+                        "gpt-5.6-terra": "gpt-5.6-terra",
+                    },
+                    "organization_id": source_credentials.get("workspace_id") or "",
+                    "refresh_token": source_credentials.get("refresh_token") or "",
+                }
+                accounts.append(
+                    {
+                        "name": str(source_credentials.get("email") or item["email"])[:64],
+                        "platform": "openai",
+                        "type": "oauth",
+                        "credentials": credentials,
+                        "extra": {
+                            "load_factor": 10,
+                            "openai_oauth_responses_websockets_v2_enabled": True,
+                            "openai_oauth_responses_websockets_v2_mode": "passthrough",
+                        },
+                        "concurrency": 10,
+                        "priority": 1,
+                        "rate_multiplier": 1.0,
+                        "auto_pause_on_expired": True,
+                    }
+                )
+            exported_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            return module.jsonify(
+                ok=True,
+                count=len(accounts),
+                skipped=int(selected.get("skipped") or 0),
+                filename=f"sub2api-{time.strftime('%Y%m%d-%H%M%S')}.json",
+                export={"exported_at": exported_at, "proxies": [], "accounts": accounts},
+            )
+        except Exception as exc:
+            public_message = getattr(exc, "public_message", "")
+            if public_message:
+                return module.jsonify(ok=False, error=str(public_message)), 400
+            logs.add("邮箱管理 SUB2API 导出失败", "error")
+            return module.jsonify(ok=False, error="SUB2API 导出失败，请确认所选账号结果完整"), 400
 
     def pixel_error_response(exc: Exception):
         public_message = getattr(exc, "public_message", "")
@@ -676,6 +789,8 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/mailboxes/latest-code", "api_mailboxes_latest_code", api_mailboxes_latest_code, ["POST"]),
         ("/api/mailboxes/password", "api_mailboxes_password", api_mailboxes_password, ["POST"]),
         ("/api/mailboxes/sub2-test", "api_mailboxes_sub2_test", api_mailboxes_sub2_test, ["POST"]),
+        ("/api/mailboxes/pixel-retry", "api_mailboxes_pixel_retry", api_mailboxes_pixel_retry, ["POST"]),
+        ("/api/mailboxes/sub2-export", "api_mailboxes_sub2_export", api_mailboxes_sub2_export, ["POST"]),
         ("/api/pixel/targets", "api_pixel_targets", api_pixel_targets, ["GET"]),
         (
             "/api/pixel/targets/<target_id>/accounts",

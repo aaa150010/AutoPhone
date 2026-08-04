@@ -80,6 +80,11 @@ class FakeLogs:
 class FakeMailboxAdmin:
     def __init__(self):
         self.sub2_result = {"ok": True, "tested": 0, "results": []}
+        self.selected_result = {
+            "ok": True,
+            "items": [],
+            "skipped": 0,
+        }
 
     def list_mailboxes(self):
         return {"ok": True, "counts": {}, "rows": []}
@@ -101,6 +106,9 @@ class FakeMailboxAdmin:
 
     def sub2_test(self, _payload):
         return dict(self.sub2_result)
+
+    def selected_success_results(self, _payload):
+        return dict(self.selected_result)
 
 
 class FakePixelError(RuntimeError):
@@ -171,6 +179,12 @@ class FakePixelQueue:
         if self.error is not None:
             raise self.error
         return {"record_id": record_id}
+
+    def requeue(self, task_id, result_file):
+        self.calls.append(("requeue", task_id, Path(result_file)))
+        if self.error is not None:
+            raise self.error
+        return {"record_id": f"record-{task_id}", "targets": []}
 
 
 class FakeRunComponent:
@@ -315,7 +329,9 @@ class WebRouteTests(unittest.TestCase):
         worker.join(1)
         self.assertFalse(worker.is_alive())
         self.assertEqual(start_result[0].status_code, 200)
-        self.assertEqual(self.importer.started_with, {"sms_api_keys": ["key-a"]})
+        self.assertEqual(self.importer.started_with["sms_api_keys"], ["key-a"])
+        self.assertRegex(self.importer.started_with["batch_id"], r"^\d{8}-\d{6}-[0-9a-f]{6}$")
+        self.assertGreater(self.importer.started_with["batch_started_at"], 0)
 
     def test_failed_pool_validation_keeps_saved_config_and_key_pool_consistent(self):
         app = self._app()
@@ -432,6 +448,59 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(success.status_code, 200)
         self.assertIn("mailboxes", success.get_json())
         self.assertIn("state", success.get_json())
+
+    def test_mailbox_pixel_requeue_and_sub2_export_use_server_side_success_result(self):
+        queue = FakePixelQueue()
+        result_file = Path(self.tempdir.name) / "result.json"
+        document = {"status": "success", "result": {"private": "server-only"}}
+        self.mailbox_admin.selected_result = {
+            "ok": True,
+            "skipped": 1,
+            "items": [{
+                "task_id": "task-a",
+                "result_file": result_file,
+                "document": document,
+                "email": "account@example.test",
+            }],
+        }
+
+        def payload_builder(received):
+            self.assertIs(received, document)
+            return {
+                "accounts": [{
+                    "credentials": {
+                        "email": "account@example.test",
+                        "access_token": "access-secret",
+                        "refresh_token": "refresh-secret",
+                        "chatgpt_account_id": "account-id",
+                        "client_id": "client-id",
+                        "expires_at": "not-a-number",
+                        "expires_in": "also-not-a-number",
+                    },
+                }],
+            }
+
+        app = self._app(replace(
+            self.context,
+            pixel_upload_queue=queue,
+            pixel_payload_builder=payload_builder,
+        ))
+        with app.test_client() as client:
+            pixel = client.post("/api/mailboxes/pixel-retry", json={"rows": [{"row_id": "a", "line_no": 1}]})
+            exported = client.post("/api/mailboxes/sub2-export", json={"rows": [{"row_id": "a", "line_no": 1}]})
+
+        self.assertEqual(pixel.status_code, 200)
+        self.assertEqual(pixel.get_json()["queued"], 1)
+        self.assertEqual(queue.calls, [("requeue", "task-a", result_file)])
+        self.assertEqual(exported.status_code, 200)
+        bundle = exported.get_json()["export"]
+        self.assertEqual(bundle["proxies"], [])
+        self.assertEqual(bundle["accounts"][0]["credentials"]["access_token"], "access-secret")
+        self.assertEqual(bundle["accounts"][0]["credentials"]["refresh_token"], "refresh-secret")
+        self.assertIsInstance(bundle["accounts"][0]["credentials"]["expires_at"], int)
+        self.assertIsInstance(bundle["accounts"][0]["credentials"]["expires_in"], int)
+        self.assertTrue(bundle["exported_at"].endswith("Z"))
+        self.assertNotIn("access-secret", str(self.logs.rows))
 
     def test_pixel_targets_accounts_and_random_share_routes(self):
         pixel = FakePixelClient()

@@ -1,4 +1,7 @@
 export interface SmsKeyStatus {
+  provider?: string
+  platform?: string
+  service?: string
   index: number
   fingerprint: string
   status: string
@@ -7,6 +10,15 @@ export interface SmsKeyStatus {
   in_flight?: number
   retry_after_seconds?: number
   last_checked_at?: number
+  inventory_count?: number
+  minimum_price?: number | null
+}
+
+export interface SmsProviderPool {
+  provider: string
+  enabled: boolean
+  api_keys: string[]
+  service: string
 }
 
 export interface SmsRuntimeAlert {
@@ -16,6 +28,7 @@ export interface SmsRuntimeAlert {
   message: string
   persistent?: boolean
   created_at?: number
+  provider?: string
 }
 
 export type TaskStageGroup = 'queue' | 'oauth' | 'email' | 'phone' | 'sms' | 'finalizing'
@@ -119,6 +132,8 @@ export interface MailboxRow {
   failure?: TaskFailure | null
   task_id?: string
   task_status?: string
+  batch_id?: string
+  batch_started_at?: number
   progress?: TaskProgress | null
   sms_cost_usd?: number | null
   sms_cost_cny?: number | null

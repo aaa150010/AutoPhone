@@ -7,6 +7,7 @@ import type { SmsKeyStatus } from '../types/api'
 const props = defineProps<{
   modelValue: string[]
   statuses?: SmsKeyStatus[]
+  title?: string
 }>()
 
 const emit = defineEmits<{ 'update:modelValue': [string[]] }>()
@@ -89,7 +90,7 @@ function statusType(status?: SmsKeyStatus) {
 <template>
   <div class="sms-key-editor">
     <div class="editor-title">
-      <span>SMS API Key</span>
+      <span>{{ title || 'API Key' }}</span>
       <el-tooltip content="新增 SMS API Key" placement="top">
         <el-button text circle aria-label="新增 SMS API Key" @click="addRow">
           <el-icon><Plus /></el-icon>
@@ -128,8 +129,4 @@ function statusType(status?: SmsKeyStatus) {
 .key-status { width: 116px; justify-content: center; overflow: hidden; }
 .key-status :deep(.el-tag__content) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .key-row > :deep(.el-button) { width: 32px; height: 32px; padding: 0; }
-@media (max-width: 520px) {
-  .key-row { grid-template-columns: minmax(0, 1fr) 32px; }
-  .key-status { grid-column: 1 / -1; grid-row: 2; width: max-content; max-width: 100%; }
-}
 </style>

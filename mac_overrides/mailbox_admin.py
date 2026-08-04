@@ -594,6 +594,7 @@ class MailboxAdminService:
             previous = latest.get(email)
             if previous is None or created >= int(previous.get("_created") or 0):
                 data["_created"] = created
+                data["_result_file"] = str(path.resolve())
                 latest[email] = data
         return latest
 
@@ -673,6 +674,8 @@ class MailboxAdminService:
                     "task_status": str(task.get("status") or ""),
                     "progress": progress,
                     "updated_at": updated_at,
+                    "batch_id": str(task.get("batch_id") or ""),
+                    "batch_started_at": task.get("batch_started_at") or 0,
                 }
         return latest
 
@@ -772,6 +775,29 @@ class MailboxAdminService:
             counts[count_status] = counts.get(count_status, 0) + 1
             sub2_status = self._sub2_status_for(sub2_account_id)
             sub2_status["summary"] = self._format_error(sub2_status.get("summary") or "", row_secrets)
+            batch_id = str(
+                live_task.get("batch_id")
+                or result.get("batch_id")
+                or result_payload.get("batch_id")
+                or ""
+            )
+            try:
+                batch_started_at = int(
+                    live_task.get("batch_started_at")
+                    or result.get("batch_started_at")
+                    or result_payload.get("batch_started_at")
+                    or 0
+                )
+            except (TypeError, ValueError):
+                batch_started_at = 0
+            try:
+                updated_at = max(
+                    int(live_task.get("updated_at") or 0),
+                    int(result.get("created_at") or result.get("updated_at") or 0),
+                    int(state_item.get("updated_at") or 0),
+                )
+            except (TypeError, ValueError):
+                updated_at = 0
             rows.append(
                 {
                     "line_no": index,
@@ -792,11 +818,21 @@ class MailboxAdminService:
                     "sms_cost_cny": sms_cost_cny,
                     "sms_exchange_rate": sms_exchange_rate,
                     "sms_exchange_date": sms_exchange_date or "",
-                    "updated_at": result.get("created_at") or state_item.get("updated_at") or 0,
+                    "batch_id": batch_id,
+                    "batch_started_at": batch_started_at,
+                    "updated_at": updated_at,
                     "source_row": masked_source_row(row),
                     "sub2_status": sub2_status,
                 }
             )
+        rows.sort(
+            key=lambda item: (
+                int(item.get("batch_started_at") or item.get("updated_at") or 0),
+                int(item.get("updated_at") or 0),
+                -int(item.get("line_no") or 0),
+            ),
+            reverse=True,
+        )
         return {"ok": True, "counts": counts, "rows": rows, "pool_path": str(pool_path)}
 
     def import_mailboxes(self, content: Any) -> dict[str, Any]:
@@ -987,6 +1023,78 @@ class MailboxAdminService:
             "code": "sub2_batch_failed",
             "error": "SUB2 批量连接测试失败",
         }
+
+    def selected_success_results(self, payload: Any) -> dict[str, Any]:
+        """Resolve stable mailbox selections to local successful result documents."""
+        value = payload if isinstance(payload, Mapping) else {}
+        requested = value.get("rows")
+        if not isinstance(requested, Sequence) or isinstance(requested, (str, bytes)) or not requested:
+            return {
+                "ok": False,
+                "code": "mailbox_rows_required",
+                "error": "请先勾选要处理的邮箱",
+            }
+        bindings: list[tuple[int, str]] = []
+        seen: set[tuple[int, str]] = set()
+        for item in requested:
+            if not isinstance(item, Mapping):
+                return {"ok": False, "code": "mailbox_rows_invalid", "error": "批量操作参数无效"}
+            try:
+                line_no = int(item.get("line_no") or 0)
+            except (TypeError, ValueError):
+                line_no = 0
+            row_id = str(item.get("row_id") or "").strip()
+            binding = (line_no, row_id)
+            if line_no <= 0 or not row_id or binding in seen:
+                return {"ok": False, "code": "mailbox_rows_invalid", "error": "批量操作参数无效"}
+            seen.add(binding)
+            bindings.append(binding)
+
+        with self._lock:
+            config = self._config()
+            lines = self._read_pool_lines(config)
+            latest = self._latest_results_by_email(self._path(config, "results_dir"))
+            items: list[dict[str, Any]] = []
+            skipped = 0
+            for line_no, expected_row_id in bindings:
+                if line_no > len(lines):
+                    return {
+                        "ok": False,
+                        "code": "mailbox_rows_stale",
+                        "error": "邮箱列表已变化，请刷新后重试",
+                    }
+                source_row = lines[line_no - 1]
+                if not hmac.compare_digest(expected_row_id, row_id_from_source(source_row)):
+                    return {
+                        "ok": False,
+                        "code": "mailbox_rows_stale",
+                        "error": "邮箱列表已变化，请刷新后重试",
+                    }
+                email = email_from_row(source_row)
+                document = latest.get(email) or {}
+                status = str(document.get("status") or "").strip().lower()
+                result_file = Path(str(document.get("_result_file") or ""))
+                task_id = str(document.get("task_id") or "").strip()
+                if status not in {"success", "ok", "uploaded"} or not task_id or not result_file.is_file():
+                    skipped += 1
+                    continue
+                items.append(
+                    {
+                        "row_id": expected_row_id,
+                        "line_no": line_no,
+                        "email": email,
+                        "task_id": task_id,
+                        "result_file": result_file,
+                        "document": document,
+                    }
+                )
+        if not items:
+            return {
+                "ok": False,
+                "code": "mailbox_success_results_required",
+                "error": "所选邮箱没有可处理的成功结果",
+            }
+        return {"ok": True, "items": items, "skipped": skipped}
 
     def rows(self) -> dict[str, Any]:
         return self.list_mailboxes()

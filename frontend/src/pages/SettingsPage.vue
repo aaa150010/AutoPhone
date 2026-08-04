@@ -40,7 +40,8 @@ async function preflight() {
 
 async function start() {
   try {
-    await controller.start(true)
+    const result = await controller.start(true)
+    if (!result) return
     ElMessage.success('任务已启动')
     emit('navigate', '/')
   } catch (error) {

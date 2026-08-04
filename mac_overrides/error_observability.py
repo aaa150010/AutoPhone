@@ -282,6 +282,7 @@ _RULES = (
     (("microsoft token refresh failed", "authenticated but not connected", "mailbox_imap_error", "authenticate failed", "authenticationfailed", "imap"), "email_login", "mailbox_login_failed", "邮箱登录或 IMAP 授权失败", False),
     (("mailbox_code_timeout", "gptmail_code_timeout", "email_otp_timeout", "manual_code_timeout", "mailbox still returns baseline code"), "email_code_waiting", "email_code_timeout", "邮箱验证码等待超时，未获取到新验证码", True),
     (("email_otp_failed", "email_otp_send_failed", "mfa_otp_failed", "verify_email_otp", "verify_mfa_otp"), "email_code_verifying", "email_code_verification_failed", "邮箱验证码或 MFA 验证失败", True),
+    (("sms_provider_pool_unavailable",), "phone_acquiring", "sms_provider_pool_unavailable", "所有启用接码平台均无可用线路或号码", True),
     (("sms_smart_no_candidate",), "phone_acquiring", "sms_route_pool_exhausted", "当前候选线路均已失败、无号或处于冷却中", True),
     (("sms_key_pool_temporarily_unavailable",), "phone_acquiring", "sms_key_pool_temporarily_unavailable", "所有 SMS Key 正在临时冷却，当前没有可用 Key", True),
     (("no_numbers", "getnumber failed", "get_number", "no numbers"), "phone_acquiring", "phone_acquisition_failed", "接码平台当前没有可用号码", True),

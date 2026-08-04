@@ -21,6 +21,7 @@ import error_observability as _error_observability_ext
 import imap_poller as _imap_poller
 import importer_scheduler as _importer_scheduler_ext
 import legacy_ui as _legacy_ui_ext
+import log_retention as _log_retention_ext
 import mailbox_admin as _mailbox_admin_ext
 import mailbox_url_runtime as _mailbox_url_runtime_ext
 import mailbox_retention as _mailbox_retention_ext
@@ -92,6 +93,8 @@ _ORIGINAL_IMPORTER_START = _runtime.EmailAuthImporter.start
 _ORIGINAL_IMPORTER_STOP = _runtime.EmailAuthImporter.stop
 _ORIGINAL_IMPORTER_WATCH = _runtime.EmailAuthImporter._watch
 _ORIGINAL_PRE_AUTH_SESSION_RETRYABLE = _runtime.EmailAuthImporter._pre_auth_session_retryable
+_ORIGINAL_GUI_LOG_ADD = _module.GuiLog.add
+_ORIGINAL_GUI_LOG_SNAPSHOT = _module.GuiLog.snapshot
 _ORIGINAL_CREATE_PROVIDER = _sms_providers.create_provider
 _ORIGINAL_SMS_ADAPTER_GET_NUMBER = _codex_oauth_chain.SmsProviderAdapter.get_number
 _ORIGINAL_SMS_ADAPTER_WAIT_CODE = _codex_oauth_chain.SmsProviderAdapter.wait_code
@@ -125,11 +128,16 @@ _SECRET_MASK = "********"
 _SMS_KEY_POOL = _sms_runtime_ext.SmsKeyPool(
     lambda key, proxy="": _ORIGINAL_CREATE_PROVIDER("smsbower", key, proxy=proxy)
 )
+_SMS_PROVIDER_REGISTRY = _sms_runtime_ext.SmsProviderRegistry(
+    _ORIGINAL_CREATE_PROVIDER,
+    legacy_pool=_SMS_KEY_POOL,
+)
 _SMS_COST_LEDGER = _sms_runtime_ext.SmsCostLedger()
 _SMS_EXCHANGE_RATE = _sms_runtime_ext.ExchangeRateCache(_RUNTIME_DATA_DIR / "usd_cny_rate.json")
 _SMS_PHONE_GATE = _sms_runtime_ext.PhoneSubmissionGate(concurrency=2, interval_seconds=0.75)
 _SMS_ROUTE_POLICY = _sms_runtime_ext.SmsRoutePolicy()
 _SMS_ALERTS = _sms_runtime_ext.RuntimeAlertBuffer()
+_GUI_LOG_RETENTION = _log_retention_ext.GuiLogRetention()
 _TASK_PROGRESS = _task_progress_ext.TaskProgressTracker()
 _TASK_CONTEXT: ContextVar[str] = ContextVar("gptphone_task_id", default="")
 _MAILBOX_TOTP_SECRET_CONTEXT: ContextVar[str] = ContextVar("gptphone_mailbox_totp_secret", default="")
@@ -148,7 +156,7 @@ _RUN_NOTIFICATION_CONTEXT = None
 
 def _safe_runtime_error(error):
     value = _module._safe(error) if hasattr(_module, "_safe") else str(error)
-    return _SMS_KEY_POOL.safe_error(value)
+    return _SMS_PROVIDER_REGISTRY.safe_error(value)
 
 
 def _failure_secrets(importer=None, entry=None, settings=None):
@@ -234,7 +242,7 @@ _FAILURE_LOG_MARKERS = (
 def _diagnostic_friendly_log_message(value):
     redacted = _runtime._redact_text(value) if hasattr(_runtime, "_redact_text") else str(value)
     safe = _error_observability_ext.sanitize_failure_detail(
-        _SMS_KEY_POOL.safe_error(redacted),
+        _SMS_PROVIDER_REGISTRY.safe_error(redacted),
         limit=800,
     )
     if re.search(r"\[[^\]]+/[a-z0-9_]+\]", safe, re.IGNORECASE) or safe.startswith("Pixel "):
@@ -325,8 +333,11 @@ def _patched_config_load(self):
     policy_keys = (
         "performance_policy_version",
         "phone_max_attempts",
+        "phone_attempts_per_provider",
         "phone_session_cycle_seconds",
         "auth_session_retries",
+        "sms_provider_pools",
+        "sms_provider",
         "sms_api_keys",
         "sms_api_key",
     )
@@ -346,8 +357,11 @@ def _patched_config_save(self, values):
     for key in (
         "performance_policy_version",
         "phone_max_attempts",
+        "phone_attempts_per_provider",
         "phone_session_cycle_seconds",
         "auth_session_retries",
+        "sms_provider_pools",
+        "sms_provider",
         "sms_api_keys",
         "sms_api_key",
     ):
@@ -358,33 +372,47 @@ def _patched_config_save(self, values):
 
 def _patched_task_config(self, settings, email, task_id, *, password=""):
     config = _ORIGINAL_TASK_CONFIG(self, settings, email, task_id, password=password)
-    keys = _sms_runtime_ext.normalize_sms_keys(
-        (settings or {}).get("sms_api_keys"),
-        (settings or {}).get("sms_api_key"),
+    pools = _sms_provider_pools_from_config(settings or {})
+    enabled_pools = [pool for pool in pools if _as_enabled(pool.get("enabled"), True) and pool.get("api_keys")]
+    primary = enabled_pools[0] if enabled_pools else (pools[0] if pools else {})
+    keys = _sms_runtime_ext.flatten_sms_provider_keys(pools)
+    attempts_per_provider = _int_value(
+        (settings or {}).get("phone_attempts_per_provider"),
+        15,
+        minimum=1,
+        maximum=15,
     )
-    attempts = _int_value((settings or {}).get("phone_max_attempts"), 15, minimum=1, maximum=15)
+    attempts = min(45, attempts_per_provider * max(1, len(enabled_pools)))
     phone_seconds = _int_value(
         (settings or {}).get("phone_session_cycle_seconds"),
-        480,
+        1800,
         minimum=30,
-        maximum=480,
+        maximum=1800,
     )
     route_lease_seconds = _int_value(config.get("code_timeout"), 30, minimum=5, maximum=300) + 20
     config.update(
         {
+            "sms_provider_pools": pools,
+            "sms_provider": str(primary.get("provider") or "smsbower"),
             "sms_api_keys": keys,
             "sms_api_key": keys[0] if keys else "",
             "sms_task_id": str(task_id),
             "phone_max_attempts": attempts,
+            "phone_attempts_per_provider": attempts_per_provider,
             "phone_session_cycle_seconds": phone_seconds,
             "phone_session_max_seconds": phone_seconds,
             "phone_retry_sleep_seconds": 2,
         }
     )
-    config["smsbower"] = {
-        **dict(config.get("smsbower") or {}),
-        "api_key": keys[0] if keys else "",
-    }
+    for pool in pools:
+        provider = str(pool.get("provider") or "")
+        if not provider:
+            continue
+        provider_keys = list(pool.get("api_keys") or [])
+        config[provider] = {
+            **dict(config.get(provider) or {}),
+            "api_key": provider_keys[0] if provider_keys else "",
+        }
     config["sms_smart"] = {
         **dict(config.get("sms_smart") or {}),
         "enabled": True,
@@ -659,7 +687,7 @@ def _notification_watchdog(importer, context):
             context["service"].observe_run(
                 context["run_id"],
                 aggregate,
-                sms_exhausted=_SMS_KEY_POOL.is_exhausted(),
+                sms_exhausted=_SMS_PROVIDER_REGISTRY.is_exhausted(),
             )
         except Exception:
             continue
@@ -677,7 +705,9 @@ def _begin_notification_run(importer, settings):
         except Exception:
             pass
     context = {
-        "run_id": uuid.uuid4().hex,
+        "run_id": str((settings or {}).get("batch_id") or uuid.uuid4().hex),
+        "batch_id": str((settings or {}).get("batch_id") or ""),
+        "batch_started_at": _int_value((settings or {}).get("batch_started_at"), int(time.time()), minimum=0),
         "service": _run_notifications_ext.RunNotificationService(config),
         "started_at": int(time.time()),
         "finished_at": 0,
@@ -779,7 +809,7 @@ def _patched_importer_watch(self):
                 context["service"].observe_run(
                     context["run_id"],
                     aggregate,
-                    sms_exhausted=_SMS_KEY_POOL.is_exhausted(),
+                    sms_exhausted=_SMS_PROVIDER_REGISTRY.is_exhausted(),
                 )
                 context["service"].finalize_run(
                     context["run_id"],
@@ -812,7 +842,12 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
         {"success", "stopped", "stopped_before_start"}
     )
     secrets = _failure_secrets(self, entry, settings)
+    batch_id = str((settings or {}).get("batch_id") or "").strip()[:80]
+    batch_started_at = _int_value((settings or {}).get("batch_started_at"), 0, minimum=0)
     if isinstance(result, dict):
+        if batch_id:
+            result["batch_id"] = batch_id
+            result["batch_started_at"] = batch_started_at
         cost_summary = _SMS_COST_LEDGER.summary(str(task_id), _SMS_EXCHANGE_RATE)
         if cost_summary.get("sms_order_outcomes") or "sms_cost_usd" not in result:
             result.update(cost_summary)
@@ -846,6 +881,24 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
         )
         _remember_task_failure(task_id, persistence_failure)
         raise RuntimeError(persistence_failure["public_message"]) from exc
+    if batch_id:
+        try:
+            root = Path(
+                str((settings or {}).get("results_dir") or "").strip()
+                or Path(self.data_dir) / "results"
+            )
+            target = root / f"{task_id}_{str(getattr(entry, 'email', '') or '').replace('@', '_at_')}.json"
+            payload = json.loads(target.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                payload["batch_id"] = batch_id
+                payload["batch_started_at"] = batch_started_at
+                payload_result = payload.get("result")
+                if isinstance(payload_result, dict):
+                    payload_result["batch_id"] = batch_id
+                    payload_result["batch_started_at"] = batch_started_at
+                _runtime.atomic_write_json(target, payload)
+        except Exception:
+            pass
     if failure is not None:
         try:
             root = Path(
@@ -1041,6 +1094,7 @@ _SMS_WEB = _sms_web_ext.SmsWebIntegration(
     sms_keys_from_config=lambda value: _sms_keys_from_config(value),
     as_enabled=_as_enabled,
     safe_error=_safe_runtime_error,
+    provider_registry=_SMS_PROVIDER_REGISTRY,
 )
 _TOTP_PATCHES = _chatgpt_totp_ext.build_chatgpt_totp_patches(
     runtime_module=_runtime,
@@ -1115,6 +1169,20 @@ def _call_log(log_fn, message, level="info"):
         if "positional argument" not in str(exc) and "arguments" not in str(exc):
             raise
         log_fn(message)
+
+
+def _retained_gui_log_add(self, message, level="info"):
+    return _GUI_LOG_RETENTION.add(
+        self,
+        message,
+        level,
+        safe_fn=_module._safe,
+        max_items=_module.MAX_LOGS,
+    )
+
+
+def _retained_gui_log_snapshot(self):
+    return _GUI_LOG_RETENTION.snapshot(self)
 
 
 def _mailbox_url_snapshot(self):
@@ -1237,6 +1305,8 @@ _runtime._generate_sub2_oauth_session = _generate_sub2_oauth_session
 _runtime._friendly_log_message = _diagnostic_friendly_log_message
 _runtime.ImporterConfigStore.load = _patched_config_load
 _runtime.ImporterConfigStore.save = _patched_config_save
+_module.GuiLog.add = _retained_gui_log_add
+_module.GuiLog.snapshot = _retained_gui_log_snapshot
 _runtime.create_provider = _SMS_WEB.create_provider
 _sms_providers.create_provider = _SMS_WEB.create_provider
 _codex_oauth_chain.SmsProviderAdapter.get_number = _sms_adapter_get_number
@@ -1342,13 +1412,77 @@ def _mask_secret(value):
     return _SECRET_MASK if _module._clean(value) else ""
 
 
+def _sms_provider_pools_from_config(data):
+    value = data if isinstance(data, dict) else {}
+    return _sms_runtime_ext.normalize_sms_provider_pools(
+        value.get("sms_provider_pools"),
+        legacy_provider=value.get("sms_provider") or "smsbower",
+        legacy_keys=value.get("sms_api_keys"),
+        legacy_key=value.get("sms_api_key"),
+    )
+
+
 def _sms_keys_from_config(data):
-    value = data if isinstance(data, dict) else {}
-    return _sms_runtime_ext.normalize_sms_keys(value.get("sms_api_keys"), value.get("sms_api_key"))
+    return _sms_runtime_ext.flatten_sms_provider_keys(_sms_provider_pools_from_config(data))
 
 
-def _resolve_sms_keys(data, existing=None):
+def _resolve_sms_provider_pools(data, existing=None):
     value = data if isinstance(data, dict) else {}
+    previous = _sms_provider_pools_from_config(existing or {})
+    previous_by_provider = {
+        str(pool.get("provider") or ""): pool
+        for pool in previous
+    }
+    if "sms_provider_pools" not in value:
+        if "sms_api_keys" not in value and "sms_api_key" not in value:
+            return previous
+        keys = _resolve_sms_keys(value, existing, _skip_pools=True)
+        return _sms_runtime_ext.normalize_sms_provider_pools(
+            None,
+            legacy_provider=value.get("sms_provider") or (existing or {}).get("sms_provider") or "smsbower",
+            legacy_keys=keys,
+        )
+
+    raw_pools = value.get("sms_provider_pools")
+    rows = raw_pools if isinstance(raw_pools, (list, tuple)) else []
+    resolved = []
+    for raw in rows:
+        if not isinstance(raw, dict):
+            continue
+        provider = _sms_runtime_ext.normalize_sms_provider_name(raw.get("provider"))
+        if not provider:
+            continue
+        prior = previous_by_provider.get(provider, {})
+        prior_keys = _sms_runtime_ext.normalize_sms_keys(prior.get("api_keys"))
+        incoming_keys = raw.get("api_keys") if "api_keys" in raw else prior_keys
+        key_rows = incoming_keys if isinstance(incoming_keys, (list, tuple)) else [incoming_keys]
+        keys = []
+        for index, row in enumerate(key_rows):
+            text = str(row or "").strip()
+            if text == _SECRET_MASK:
+                text = prior_keys[index] if index < len(prior_keys) else ""
+            keys.append(text)
+        resolved.append(
+            {
+                "provider": provider,
+                "enabled": _as_enabled(raw.get("enabled"), _as_enabled(prior.get("enabled"), True)),
+                "api_keys": _sms_runtime_ext.normalize_sms_keys(keys),
+                "service": str(
+                    raw.get("service")
+                    or prior.get("service")
+                    or _sms_runtime_ext.SMS_PROVIDER_DEFAULT_SERVICES.get(provider, "dr")
+                ).strip(),
+            }
+        )
+    return _sms_runtime_ext.normalize_sms_provider_pools(resolved)
+
+
+def _resolve_sms_keys(data, existing=None, _skip_pools=False):
+    value = data if isinstance(data, dict) else {}
+    if not _skip_pools and "sms_provider_pools" in value:
+        return _sms_runtime_ext.flatten_sms_provider_keys(
+            _resolve_sms_provider_pools(value, existing)
+        )
     previous = _sms_keys_from_config(existing or {})
     if "sms_api_keys" in value:
         raw = value.get("sms_api_keys")
@@ -1374,7 +1508,15 @@ def _masked_local_config(data):
     value.pop("nvtoken_upload", None)
     sub2api = dict(value.get("sub2api") or {})
     email_notification = dict(value.get("email_notification") or {})
+    sms_pools = _sms_provider_pools_from_config(value)
     sms_keys = _sms_keys_from_config(value)
+    value["sms_provider_pools"] = [
+        {
+            **pool,
+            "api_keys": [_SECRET_MASK for _key in pool.get("api_keys") or []],
+        }
+        for pool in sms_pools
+    ]
     value["sms_api_keys"] = [_SECRET_MASK for _key in sms_keys]
     value.pop("sms_api_key", None)
     if "gptmail_api_key" in value:
@@ -1404,7 +1546,7 @@ def _public_task(task):
     def safe_text(value):
         redacted = _mailbox_admin_ext.redact_mailbox_credentials(value, secrets)
         return _error_observability_ext.sanitize_failure_detail(
-            _SMS_KEY_POOL.safe_error(redacted),
+            _SMS_PROVIDER_REGISTRY.safe_error(redacted),
             secrets=secrets,
         )
 
@@ -1443,7 +1585,10 @@ def _public_task(task):
         }
     public = {
         key: copy.deepcopy(task[key])
-        for key in ("task_id", "ordinal", "status", "created_at", "updated_at")
+        for key in (
+            "task_id", "ordinal", "status", "created_at", "updated_at",
+            "batch_id", "batch_started_at",
+        )
         if key in task
     }
     public_email = _mailbox_admin_ext.public_task_account(task, source_row)
@@ -1470,6 +1615,11 @@ def _public_task(task):
 
 def _runtime_summary(tasks):
     rows = [task for task in tasks if isinstance(task, dict)]
+    context = _notification_context_for()
+    value = context if isinstance(context, dict) else {}
+    batch_id = str(value.get("batch_id") or "")
+    if batch_id:
+        rows = [task for task in rows if str(task.get("batch_id") or "") == batch_id]
     terminal = set(_task_progress_ext.TERMINAL_TASK_STATUSES)
     success = sum(1 for task in rows if str(task.get("status") or "").lower() == "success")
     stopped = sum(
@@ -1496,10 +1646,10 @@ def _runtime_summary(tasks):
                 last_activity_at = max(last_activity_at, int(candidate or 0))
             except (TypeError, ValueError):
                 pass
-    context = _notification_context_for()
-    value = context if isinstance(context, dict) else {}
     return {
         "run_id": value.get("run_id") or "",
+        "batch_id": batch_id,
+        "batch_started_at": int(value.get("batch_started_at") or 0) or None,
         "target": int(value.get("target") or len(rows)),
         "total": len(rows),
         "active": active,
@@ -1570,7 +1720,7 @@ def _public_logs(logs, tasks):
         for key in ("message", "text"):
             if key in row:
                 row[key] = _error_observability_ext.sanitize_failure_detail(
-                    _SMS_KEY_POOL.safe_error(
+                    _SMS_PROVIDER_REGISTRY.safe_error(
                         _mailbox_admin_ext.redact_mailbox_credentials(row.get(key), secrets)
                     ),
                     secrets=secrets,
@@ -1593,7 +1743,7 @@ def _masked_state(data):
     settings = snapshot.get("settings")
     if isinstance(settings, dict):
         snapshot["settings"] = _masked_local_config({**settings, **_read_local_config()})
-    statuses = _SMS_KEY_POOL.public_statuses()
+    statuses = _SMS_PROVIDER_REGISTRY.public_statuses()
     alerts = _SMS_ALERTS.snapshot()
     snapshot["sms_key_statuses"] = statuses
     snapshot["sms_alerts"] = alerts
@@ -1601,7 +1751,7 @@ def _masked_state(data):
     if isinstance(runtime, dict):
         runtime["sms_key_statuses"] = statuses
         runtime["sms_alerts"] = alerts
-        runtime["sms_safe_stop"] = _SMS_KEY_POOL.is_exhausted()
+        runtime["sms_safe_stop"] = _SMS_PROVIDER_REGISTRY.is_exhausted()
         _TASK_PROGRESS.decorate_runtime(runtime)
         raw_tasks = runtime.get("tasks") if isinstance(runtime.get("tasks"), list) else []
         runtime["tasks"] = [_public_task(task) for task in raw_tasks]
@@ -1619,7 +1769,9 @@ def _local_config_secret(secret_id):
     sub2api = dict(local.get("sub2api") or {})
     email_notification = dict(local.get("email_notification") or {})
     sms_keys = _sms_keys_from_config(local)
+    sms_pools = _sms_provider_pools_from_config(local)
     values = {
+        "sms_provider_pools": sms_pools,
         "sms_api_keys": sms_keys,
         "sms_api_key": sms_keys[0] if sms_keys else "",
         "sub2_password": sub2api.get("password") or "",
@@ -1632,7 +1784,9 @@ def _local_config_secret(secret_id):
 def _local_config_from_runtime(data, existing=None):
     raw_data = dict(data or {}) if isinstance(data, dict) else {}
     existing = dict(existing or {})
-    sms_keys = _resolve_sms_keys(raw_data, existing)
+    sms_pools = _resolve_sms_provider_pools(raw_data, existing)
+    sms_keys = _sms_runtime_ext.flatten_sms_provider_keys(sms_pools)
+    raw_data["sms_provider_pools"] = sms_pools
     raw_data["sms_api_keys"] = sms_keys
     raw_data["sms_api_key"] = sms_keys[0] if sms_keys else ""
     data, _migrated = _sms_runtime_ext.migrate_performance_config(raw_data)
@@ -1649,6 +1803,8 @@ def _local_config_from_runtime(data, existing=None):
     ).strip()
     result = {
         "performance_policy_version": _sms_runtime_ext.PERFORMANCE_POLICY_VERSION,
+        "sms_provider_pools": sms_pools,
+        "sms_provider": str(sms_pools[0].get("provider") or "smsbower") if sms_pools else "smsbower",
         "sms_api_keys": sms_keys,
         "sub2api": {
             "url": str(sub2api.get("url") or "").strip(),
@@ -1671,6 +1827,7 @@ def _local_config_from_runtime(data, existing=None):
         "max_price",
         "sms_timeout",
         "phone_max_attempts",
+        "phone_attempts_per_provider",
         "phone_session_cycle_seconds",
         "pixel_upload_enabled",
     ):
@@ -1705,7 +1862,10 @@ def _merge_email_notification(base, override):
 def _merge_local_config(data):
     patched = dict(data or {})
     local = _read_local_config()
-    sms_keys = _resolve_sms_keys(patched, local)
+    sms_pools = _resolve_sms_provider_pools(patched, local)
+    sms_keys = _sms_runtime_ext.flatten_sms_provider_keys(sms_pools)
+    patched["sms_provider_pools"] = sms_pools
+    patched["sms_provider"] = str(sms_pools[0].get("provider") or "smsbower") if sms_pools else "smsbower"
     patched["sms_api_keys"] = sms_keys
     patched["sms_api_key"] = sms_keys[0] if sms_keys else ""
     patched["proxy"] = _local_secret(patched.get("proxy"), local.get("proxy"))
@@ -1809,12 +1969,13 @@ _WEB_ROUTE_CONTEXT = _web_routes_ext.WebRouteContext(
     sms_alerts=_SMS_ALERTS,
     sms_cost_ledger=_SMS_COST_LEDGER,
     sms_route_policy=_SMS_ROUTE_POLICY,
-    sms_key_pool=_SMS_KEY_POOL,
+    sms_key_pool=_SMS_PROVIDER_REGISTRY,
     sms_phone_gate=_SMS_PHONE_GATE,
     mailbox_admin_factory=_mailbox_admin_factory,
     mailbox_manager_html=_legacy_ui_ext.MAILBOX_MANAGER_HTML,
     pixel_client=_PIXEL_CLIENT,
     pixel_upload_queue=_PIXEL_UPLOAD_QUEUE,
+    pixel_payload_builder=_pixel_runtime_ext.build_pixel_import_payload,
 )
 
 

@@ -19,11 +19,23 @@ import xml.etree.ElementTree as ET
 SECRET_MASK = "********"
 ECB_DAILY_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
 SMS_PREFLIGHT_MAX_WORKERS = 8
-PERFORMANCE_POLICY_VERSION = 5
-PHONE_MAX_ATTEMPTS_LIMIT = 15
+SMS_PROVIDER_DEFAULT_SERVICES = {
+    "smsbower": "dr",
+    "herosms": "dr",
+    "5sim": "openai",
+}
+SMS_PROVIDER_ALIASES = {
+    "hero-sms": "herosms",
+    "hero_sms": "herosms",
+    "fivesim": "5sim",
+    "five_sim": "5sim",
+}
+PERFORMANCE_POLICY_VERSION = 9
+PHONE_MAX_ATTEMPTS_LIMIT = 45
 PERFORMANCE_DEFAULTS = {
     "phone_max_attempts": PHONE_MAX_ATTEMPTS_LIMIT,
-    "phone_session_cycle_seconds": 480,
+    "phone_attempts_per_provider": 15,
+    "phone_session_cycle_seconds": 1800,
     "auth_session_retries": 1,
 }
 
@@ -50,6 +62,68 @@ def normalize_sms_keys(value: Any = None, legacy: Any = "") -> list[str]:
     return result
 
 
+def normalize_sms_provider_name(value: Any) -> str:
+    name = str(value or "").strip().lower()
+    return SMS_PROVIDER_ALIASES.get(name, name)
+
+
+def normalize_sms_provider_pools(
+    value: Any = None,
+    *,
+    legacy_provider: Any = "smsbower",
+    legacy_keys: Any = None,
+    legacy_key: Any = "",
+) -> list[dict[str, Any]]:
+    """Normalize platform pools while accepting the pre-pool SMS settings."""
+    rows = value if isinstance(value, (list, tuple)) else []
+    pools: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in rows:
+        if not isinstance(raw, dict):
+            continue
+        provider = normalize_sms_provider_name(raw.get("provider"))
+        if not provider or provider in seen:
+            continue
+        seen.add(provider)
+        service = str(
+            raw.get("service") or SMS_PROVIDER_DEFAULT_SERVICES.get(provider, "dr")
+        ).strip() or SMS_PROVIDER_DEFAULT_SERVICES.get(provider, "dr")
+        pools.append(
+            {
+                "provider": provider,
+                "enabled": bool(raw.get("enabled", True)),
+                "api_keys": normalize_sms_keys(raw.get("api_keys")),
+                "service": service,
+            }
+        )
+    if pools:
+        return pools
+
+    provider = normalize_sms_provider_name(legacy_provider) or "smsbower"
+    service = SMS_PROVIDER_DEFAULT_SERVICES.get(provider, "dr")
+    return [
+        {
+            "provider": provider,
+            "enabled": True,
+            "api_keys": normalize_sms_keys(legacy_keys, legacy_key),
+            "service": service,
+        }
+    ]
+
+
+def flatten_sms_provider_keys(pools: Any) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for pool in pools if isinstance(pools, (list, tuple)) else []:
+        if not isinstance(pool, dict):
+            continue
+        for key in normalize_sms_keys(pool.get("api_keys")):
+            if key not in seen:
+                seen.add(key)
+                result.append(key)
+    return result
+
+
 def migrate_performance_config(value: Any) -> tuple[dict[str, Any], bool]:
     """Apply the one-time performance defaults while preserving later user choices."""
     config = dict(value or {}) if isinstance(value, dict) else {}
@@ -64,7 +138,13 @@ def migrate_performance_config(value: Any) -> tuple[dict[str, Any], bool]:
                 current = int(config.get(key) or 0)
             except (TypeError, ValueError):
                 current = 0
-            if current <= 0:
+            if current <= 0 or (
+                version < PERFORMANCE_POLICY_VERSION
+                and (
+                    (key == "phone_max_attempts" and current in {9, 15})
+                    or (key == "phone_session_cycle_seconds" and current == 480)
+                )
+            ):
                 config[key] = default
         config["performance_policy_version"] = PERFORMANCE_POLICY_VERSION
     else:
@@ -79,7 +159,15 @@ def migrate_performance_config(value: Any) -> tuple[dict[str, Any], bool]:
     if phone_max_attempts > PHONE_MAX_ATTEMPTS_LIMIT:
         config["phone_max_attempts"] = PHONE_MAX_ATTEMPTS_LIMIT
 
-    keys = normalize_sms_keys(config.get("sms_api_keys"), config.get("sms_api_key"))
+    pools = normalize_sms_provider_pools(
+        config.get("sms_provider_pools"),
+        legacy_provider=config.get("sms_provider") or "smsbower",
+        legacy_keys=config.get("sms_api_keys"),
+        legacy_key=config.get("sms_api_key"),
+    )
+    config["sms_provider_pools"] = pools
+    config["sms_provider"] = str(pools[0].get("provider") or "smsbower")
+    keys = flatten_sms_provider_keys(pools)
     config["sms_api_keys"] = keys
     config["sms_api_key"] = keys[0] if keys else ""
     return config, migrated
@@ -168,12 +256,27 @@ def _candidate_value(candidate: Any, name: str, default: Any = None) -> Any:
     return getattr(candidate, name, default)
 
 
-def _route_stat(route_stats: Any, route: tuple[str, str]) -> dict[str, Any]:
+def _candidate_route(candidate: Any) -> tuple[str, ...]:
+    platform = str(
+        _candidate_value(candidate, "platform", "")
+        or _candidate_value(candidate, "pool", "")
+        or ""
+    ).strip()
+    country = str(_candidate_value(candidate, "country", "") or "")
+    provider_id = str(_candidate_value(candidate, "provider_id", "") or "")
+    return (platform, country, provider_id) if platform else (country, provider_id)
+
+
+def _route_stat(route_stats: Any, route: tuple[str, ...]) -> dict[str, Any]:
     if not isinstance(route_stats, dict):
         return {}
     value = route_stats.get(route)
     if not isinstance(value, dict):
-        value = route_stats.get(f"{route[0]}::{route[1]}")
+        value = route_stats.get("::".join(route))
+    if not isinstance(value, dict) and len(route) == 3:
+        value = route_stats.get((route[1], route[2]))
+        if not isinstance(value, dict):
+            value = route_stats.get(f"{route[1]}::{route[2]}")
     return value if isinstance(value, dict) else {}
 
 
@@ -181,7 +284,7 @@ def rank_sms_candidates(
     candidates: list[Any],
     route_stats: Any,
     *,
-    priority_routes: tuple[tuple[str, str], ...] = (),
+    priority_routes: tuple[tuple[str, ...], ...] = (),
     priority_countries: tuple[str, ...] = (),
     minimum_proven_rate: float = 0.10,
     now: float | None = None,
@@ -196,11 +299,11 @@ def rank_sms_candidates(
     recent_window = max(0.0, float(recent_success_window_seconds))
 
     def key(candidate: Any) -> tuple[Any, ...]:
-        route = (
-            str(_candidate_value(candidate, "country", "") or ""),
-            str(_candidate_value(candidate, "provider_id", "") or ""),
-        )
+        route = _candidate_route(candidate)
+        legacy_route = route[-2:]
         stat = _route_stat(route_stats, route)
+        if not stat and route != legacy_route:
+            stat = _route_stat(route_stats, legacy_route)
         success = max(
             int(_as_float(stat.get("success"), 0)),
             int(_as_float(stat.get("otp_received"), 0)),
@@ -223,7 +326,7 @@ def rank_sms_candidates(
             and recent_window > 0
             and 0 <= current - last_success_at <= recent_window
         )
-        preferred = route in route_priority
+        preferred = route in route_priority or legacy_route in route_priority
 
         if success > 0 and acceptance_rate >= minimum_proven_rate:
             tier = 0
@@ -241,8 +344,8 @@ def rank_sms_candidates(
             not recently_successful,
             -acceptance_rate,
             -success,
-            route_priority.get(route, default_route_priority),
-            country_priority.get(route[0], default_country_priority),
+            route_priority.get(route, route_priority.get(legacy_route, default_route_priority)),
+            country_priority.get(route[-2], default_country_priority),
             -_as_float(_candidate_value(candidate, "score", 0.0), 0.0),
             _as_float(_candidate_value(candidate, "price", 999.0), 999.0),
             -int(_as_float(_candidate_value(candidate, "count", 0), 0)),
@@ -919,6 +1022,670 @@ class PooledSmsBowerProvider:
         self._finish("cancel")
 
 
+def _sms_timeout_error(value: Any) -> bool:
+    text = str(value or "").lower()
+    return any(
+        marker in text
+        for marker in (
+            "timeout",
+            "timed out",
+            "no code",
+            "no sms",
+            "verification code",
+            "未收到验证码",
+        )
+    )
+
+
+class SmsProviderRegistry:
+    """Own one key pool per SMS platform and expose one aggregate provider."""
+
+    def __init__(
+        self,
+        provider_factory: Callable[..., Any],
+        *,
+        legacy_pool: SmsKeyPool | None = None,
+        now_fn: Callable[[], float] = time.time,
+    ) -> None:
+        self.provider_factory = provider_factory
+        self.legacy_pool = legacy_pool
+        self.now_fn = now_fn
+        self.lock = threading.RLock()
+        self.pools: dict[str, SmsKeyPool] = {}
+        self.specs: list[dict[str, Any]] = []
+        self.candidates: list[dict[str, Any]] = []
+        self.inventory: dict[str, list[dict[str, Any]]] = {}
+        self.cursor = 0
+        self.logger: Callable[[str, str], None] | None = None
+        self.alert_fn: Callable[[dict[str, Any]], None] | None = None
+        self.exhausted_fn: Callable[[], None] | None = None
+
+    def _pool_for(self, provider: str) -> SmsKeyPool:
+        current = self.pools.get(provider)
+        if current is not None:
+            return current
+        if provider == "smsbower" and self.legacy_pool is not None:
+            current = self.legacy_pool
+        else:
+            current = SmsKeyPool(
+                lambda key, proxy="", _provider=provider: self.provider_factory(
+                    _provider,
+                    key,
+                    proxy=proxy,
+                ),
+                now_fn=self.now_fn,
+            )
+        self.pools[provider] = current
+        return current
+
+    def configure(
+        self,
+        config: Any,
+        *,
+        min_price: float = 0.01,
+        max_price: float = 0.1,
+        logger: Callable[[str, str], None] | None = None,
+        alert_fn: Callable[[dict[str, Any]], None] | None = None,
+        exhausted_fn: Callable[[], None] | None = None,
+    ) -> None:
+        value = dict(config or {}) if isinstance(config, dict) else {}
+        specs = normalize_sms_provider_pools(
+            value.get("sms_provider_pools"),
+            legacy_provider=value.get("sms_provider") or "smsbower",
+            legacy_keys=value.get("sms_api_keys"),
+            legacy_key=value.get("sms_api_key"),
+        )
+        with self.lock:
+            self.specs = specs
+            self.logger = logger
+            self.alert_fn = alert_fn
+            self.exhausted_fn = exhausted_fn
+            self.candidates = []
+            self.inventory = {}
+            for spec in specs:
+                provider = str(spec["provider"])
+                pool = self._pool_for(provider)
+                pool.configure(
+                    list(spec.get("api_keys") or []),
+                    service=str(spec.get("service") or SMS_PROVIDER_DEFAULT_SERVICES.get(provider, "dr")),
+                    min_price=min_price,
+                    max_price=max_price,
+                    logger=logger,
+                    alert_fn=lambda payload, _provider=provider: self._platform_alert(
+                        _provider,
+                        payload,
+                    ),
+                    exhausted_fn=lambda _provider=provider: self._platform_exhausted(_provider),
+                )
+
+    def _platform_alert(self, provider: str, payload: Any) -> None:
+        value = dict(payload or {})
+        value["provider"] = provider
+        if callable(self.alert_fn):
+            try:
+                self.alert_fn(value)
+            except Exception:
+                pass
+
+    def _platform_exhausted(self, _provider: str) -> None:
+        if self.is_exhausted() and callable(self.exhausted_fn):
+            try:
+                self.exhausted_fn()
+            except Exception:
+                pass
+
+    def begin_run(self) -> None:
+        with self.lock:
+            pools = list(self.pools.values())
+            self.candidates = []
+            self.inventory = {}
+        for pool in pools:
+            pool.begin_run()
+
+    def has_keys(self) -> bool:
+        with self.lock:
+            return any(
+                bool(spec.get("enabled", True))
+                and self.pools.get(str(spec.get("provider"))) is not None
+                and self.pools[str(spec.get("provider"))].has_keys()
+                for spec in self.specs
+            )
+
+    def public_statuses(self) -> list[dict[str, Any]]:
+        with self.lock:
+            specs = [dict(spec) for spec in self.specs]
+            pools = dict(self.pools)
+            inventory = {name: list(rows) for name, rows in self.inventory.items()}
+        result: list[dict[str, Any]] = []
+        for spec in specs:
+            provider = str(spec.get("provider") or "")
+            pool = pools.get(provider)
+            if pool is None:
+                continue
+            inventory_rows = inventory.get(provider, [])
+            inventory_count = sum(
+                max(0, int(row.get("count") or 0)) for row in inventory_rows
+            )
+            prices = [
+                float(row.get("price") or 0)
+                for row in inventory_rows
+                if float(row.get("price") or 0) > 0
+            ]
+            for row in pool.public_statuses():
+                result.append(
+                    {
+                        **row,
+                        "provider": provider,
+                        "platform": provider,
+                        "service": str(spec.get("service") or "dr"),
+                        "enabled": bool(spec.get("enabled", True)),
+                        "inventory_count": inventory_count,
+                        "minimum_price": min(prices) if prices else None,
+                    }
+                )
+        return result
+
+    def safe_error(self, error: Any, extra_secrets: Any = None) -> str:
+        with self.lock:
+            pools = list(self.pools.values())
+        text = str(error or "")
+        for pool in pools:
+            text = pool.safe_error(text, extra_secrets)
+        return redact_sms_secrets(text, normalize_sms_keys(extra_secrets))
+
+    def is_exhausted(self) -> bool:
+        with self.lock:
+            active = [
+                self.pools.get(str(spec.get("provider")))
+                for spec in self.specs
+                if bool(spec.get("enabled", True))
+            ]
+        pools = [pool for pool in active if pool is not None and pool.has_keys()]
+        return bool(pools) and all(pool.is_exhausted() for pool in pools)
+
+    def all_balance_insufficient(self) -> bool:
+        with self.lock:
+            active = [
+                self.pools.get(str(spec.get("provider")))
+                for spec in self.specs
+                if bool(spec.get("enabled", True))
+            ]
+        pools = [pool for pool in active if pool is not None and pool.has_keys()]
+        return bool(pools) and all(pool.all_balance_insufficient() for pool in pools)
+
+    def _active_specs(self) -> list[dict[str, Any]]:
+        with self.lock:
+            return [
+                dict(spec)
+                for spec in self.specs
+                if bool(spec.get("enabled", True))
+                and self.pools.get(str(spec.get("provider"))) is not None
+                and self.pools[str(spec.get("provider"))].has_keys()
+            ]
+
+    @staticmethod
+    def _row_match(
+        row: Any,
+        *,
+        country: str,
+        provider_ids: str,
+        price: float,
+    ) -> bool:
+        row_country = str(row.get("country") or "")
+        row_provider = str(row.get("provider_id") or row.get("operator") or "")
+        if country and row_country and row_country != country:
+            return False
+        if provider_ids and row_provider and row_provider != provider_ids:
+            return False
+        row_price = _as_float(row.get("price"), -1)
+        return row_price < 0 or abs(row_price - price) <= 0.000001
+
+    def preflight(self, *, proxy: str = "") -> list[dict[str, Any]]:
+        specs = self._active_specs()
+        if not specs:
+            return []
+
+        def check(spec: dict[str, Any]) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
+            provider = str(spec.get("provider") or "")
+            pool = self.pools[provider]
+            statuses = pool.preflight(proxy=proxy)
+            inventory = self._price_rows_for(spec, None, proxy=proxy)
+            return provider, statuses, inventory
+
+        workers = min(SMS_PREFLIGHT_MAX_WORKERS, len(specs))
+        if workers == 1:
+            results = [check(specs[0])]
+        else:
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="sms-platform-preflight") as executor:
+                results = list(executor.map(check, specs))
+
+        rows: list[dict[str, Any]] = []
+        inventory_by_provider: dict[str, list[dict[str, Any]]] = {}
+        for provider, statuses, inventory in results:
+            inventory_by_provider[provider] = inventory
+            total_inventory = sum(max(0, int(row.get("count") or 0)) for row in inventory)
+            prices = [float(row.get("price") or 0) for row in inventory if float(row.get("price") or 0) > 0]
+            for status in statuses:
+                rows.append(
+                    {
+                        **status,
+                        "provider": provider,
+                        "platform": provider,
+                        "inventory_count": total_inventory,
+                        "minimum_price": min(prices) if prices else None,
+                    }
+                )
+        with self.lock:
+            self.inventory = inventory_by_provider
+            self.candidates = [row for inventory in inventory_by_provider.values() for row in inventory]
+        return rows
+
+    def _price_rows_for(
+        self,
+        spec: dict[str, Any],
+        countries: list[str] | None,
+        *,
+        proxy: str = "",
+    ) -> list[dict[str, Any]]:
+        provider_name = str(spec.get("provider") or "")
+        pool = self.pools.get(provider_name)
+        if pool is None:
+            return []
+        service = str(spec.get("service") or SMS_PROVIDER_DEFAULT_SERVICES.get(provider_name, "dr"))
+        try:
+            rows = pool.query(
+                "get_price_candidates",
+                proxy=proxy,
+                service=service,
+                countries=countries,
+            )
+        except Exception as exc:
+            if callable(self.logger):
+                try:
+                    self.logger(
+                        f"SMS 平台 {provider_name} 库存查询失败：{pool.safe_error(exc)}",
+                        "warn",
+                    )
+                except Exception:
+                    pass
+            return []
+        normalized: list[dict[str, Any]] = []
+        for raw in rows or []:
+            if not isinstance(raw, dict):
+                continue
+            row = dict(raw)
+            row["platform"] = provider_name
+            row["pool"] = provider_name
+            row.setdefault("service", service)
+            row["country"] = str(row.get("country") or "")
+            row["provider_id"] = str(row.get("provider_id") or row.get("operator") or "")
+            row["price"] = _as_float(row.get("price"), 0.0)
+            row["count"] = max(0, int(_as_float(row.get("count"), 0)))
+            if row["country"] and row["price"] >= 0:
+                normalized.append(row)
+        return normalized
+
+    def get_price_candidates(
+        self,
+        service: str = "dr",
+        countries: list[str] | None = None,
+        *,
+        proxy: str = "",
+    ) -> list[dict[str, Any]]:
+        del service
+        specs = self._active_specs()
+        rows: list[dict[str, Any]] = []
+        for spec in specs:
+            rows.extend(self._price_rows_for(spec, countries, proxy=proxy))
+        with self.lock:
+            self.candidates = list(rows)
+        return rows
+
+    def get_available_countries(self, service: str = "dr", *, proxy: str = "") -> list[str]:
+        values: set[str] = set()
+        for row in self.get_price_candidates(service=service, proxy=proxy):
+            country = str(row.get("country") or "")
+            if country:
+                values.add(country)
+        return sorted(values)
+
+    def _candidate_specs(
+        self,
+        *,
+        country: str,
+        provider_ids: str,
+        price: float,
+        platform: str = "",
+    ) -> list[dict[str, Any]]:
+        specs = self._active_specs()
+        with self.lock:
+            candidates = list(self.candidates)
+        matched: list[str] = []
+        for row in candidates:
+            row_platform = str(row.get("platform") or row.get("pool") or "")
+            if platform and row_platform != platform:
+                continue
+            if self._row_match(row, country=country, provider_ids=provider_ids, price=price):
+                if row_platform and row_platform not in matched:
+                    matched.append(row_platform)
+        if not platform:
+            names = matched or [str(spec.get("provider") or "") for spec in specs]
+            if names:
+                with self.lock:
+                    offset = self.cursor % len(names)
+                    self.cursor += 1
+                names = names[offset:] + names[:offset]
+                matched = names
+        ordered = [spec for name in matched for spec in specs if spec.get("provider") == name]
+        ordered.extend(spec for spec in specs if spec not in ordered)
+        return ordered
+
+    def activate(
+        self,
+        method: str,
+        *,
+        proxy: str = "",
+        price_usd: float | None = None,
+        platform: str = "",
+        attempt_counts: dict[str, int] | None = None,
+        max_attempts_per_platform: int = 0,
+        **kwargs: Any,
+    ) -> tuple[Any, SmsKeyPool, SmsKeyHealth, Any, dict[str, Any]]:
+        country = str(kwargs.get("country") or "")
+        provider_ids = str(kwargs.get("provider_ids") or "")
+        candidate_price = _as_float(price_usd, -1)
+        specs = self._candidate_specs(
+            country=country,
+            provider_ids=provider_ids,
+            price=candidate_price,
+            platform=platform,
+        )
+        if not specs:
+            raise RuntimeError("sms_provider_pool_unavailable: 所有启用 SMS 平台均不可用")
+        errors: list[str] = []
+        for spec in specs:
+            provider_name = str(spec.get("provider") or "")
+            if (
+                attempt_counts is not None
+                and max_attempts_per_platform > 0
+                and int(attempt_counts.get(provider_name) or 0) >= max_attempts_per_platform
+            ):
+                continue
+            pool = self.pools.get(provider_name)
+            if pool is None:
+                continue
+            if attempt_counts is not None:
+                attempt_counts[provider_name] = int(attempt_counts.get(provider_name) or 0) + 1
+            service = str(spec.get("service") or SMS_PROVIDER_DEFAULT_SERVICES.get(provider_name, "dr"))
+            call_kwargs = dict(kwargs)
+            call_kwargs["service"] = service
+            try:
+                provider, state, activation = pool.activate(
+                    method,
+                    proxy=proxy,
+                    price_usd=price_usd,
+                    **call_kwargs,
+                )
+                meta = {
+                    "platform": provider_name,
+                    "provider": provider_name,
+                    "service": service,
+                    "key_index": state.index,
+                    "key_fingerprint": state.fingerprint,
+                    "balance_usd": state.balance_usd,
+                    "country": country,
+                    "provider_id": provider_ids,
+                    "price_usd": None if price_usd is None else float(price_usd),
+                }
+                return provider, pool, state, activation, meta
+            except Exception as exc:
+                errors.append(self.safe_error(f"{provider_name}: {exc}"))
+                continue
+        detail = "; ".join(errors) or "所有启用 SMS 平台均已达到单平台尝试上限"
+        raise RuntimeError(f"sms_provider_pool_unavailable: {detail}")
+
+
+class PooledSmsProvider:
+    """Provider-compatible facade for an order selected from any platform."""
+
+    SMART_ANY_PROVIDER_FALLBACK = True
+    SMART_COUNTRY_SCOPE_FILTER = True
+    SMART_FIXED_COUNTRY_FALLBACK = False
+
+    def __init__(self, registry: SmsProviderRegistry, *, proxy: str = "") -> None:
+        self.registry = registry
+        self.proxy = proxy
+        self.api_key = ""
+        self.activation_id: str | None = None
+        self.phone: str | None = None
+        self._provider: Any = None
+        self._pool: SmsKeyPool | None = None
+        self._state: SmsKeyHealth | None = None
+        self._released = True
+        self._resend_attempted = False
+        self._reject_requested = False
+        self.max_attempts_per_platform = 15
+        self._platform_attempts: dict[str, int] = {}
+        self.current_order_meta: dict[str, Any] = {}
+
+    def balance(self) -> str:
+        total = sum(
+            float(row.get("balance_usd") or 0)
+            for row in self.registry.public_statuses()
+            if row.get("status") == "usable"
+        )
+        return f"ACCESS_BALANCE:{total:.4f}"
+
+    def get_price_candidates(self, service: str = "dr", countries: list[str] | None = None) -> list[dict[str, Any]]:
+        return self.registry.get_price_candidates(
+            service=service,
+            countries=countries,
+            proxy=self.proxy,
+        )
+
+    def get_available_countries(self, service: str = "dr") -> list[str]:
+        return self.registry.get_available_countries(service=service, proxy=self.proxy)
+
+    def _activate(self, method: str, price_usd: float | None = None, **kwargs: Any) -> tuple[str, str]:
+        if not self._released:
+            raise RuntimeError("SMS provider already has an active activation")
+        provider, pool, state, activation, meta = self.registry.activate(
+            method,
+            proxy=self.proxy,
+            price_usd=price_usd,
+            attempt_counts=self._platform_attempts,
+            max_attempts_per_platform=self.max_attempts_per_platform,
+            **kwargs,
+        )
+        try:
+            activation_id, phone = activation
+            activation_text = str(activation_id).strip()
+            phone_text = str(phone).strip()
+            if not activation_text or not phone_text:
+                raise ValueError("empty activation")
+        except Exception:
+            try:
+                if hasattr(provider, "cancel"):
+                    provider.cancel()
+            except Exception as cleanup_error:
+                pool.report_error(state, cleanup_error, runtime=True)
+            finally:
+                pool.release(state)
+            raise RuntimeError("sms_activation_invalid_response") from None
+        self._provider = provider
+        self._pool = pool
+        self._state = state
+        self._released = False
+        self.activation_id = activation_text
+        self.phone = phone_text
+        self.current_order_meta = meta
+        return activation_text, phone_text
+
+    def get_number(self, service: str = "dr", country: str = "151", provider_ids: str = "", max_price: str = "") -> tuple[str, str]:
+        return self._activate(
+            "get_number",
+            service=service,
+            country=country,
+            provider_ids=provider_ids,
+            max_price=max_price,
+        )
+
+    def get_number_from_candidate(
+        self,
+        service: str,
+        country: str,
+        provider_ids: str,
+        max_price: str,
+        candidate_price: float,
+        platform: str = "",
+    ) -> tuple[str, str]:
+        return self._activate(
+            "get_number_from_candidate",
+            price_usd=candidate_price,
+            service=service,
+            country=country,
+            provider_ids=provider_ids,
+            max_price=max_price,
+            candidate_price=candidate_price,
+            platform=platform,
+        )
+
+    def _wait_once(self, timeout: int, interval: int) -> str | None:
+        try:
+            return self._provider.wait_code(timeout=timeout, interval=interval)
+        except TypeError:
+            return self._provider.wait_code(timeout=timeout)
+
+    def _resend(self) -> None:
+        for name in ("resend", "resend_code", "request_code"):
+            method = getattr(self._provider, name, None)
+            if callable(method):
+                method()
+                return
+
+    def wait_code(self, timeout: int = 300, interval: int = 3) -> str | None:
+        if self._provider is None:
+            raise RuntimeError("No active activation")
+        try:
+            code = self._wait_once(timeout, interval)
+            if code or self._resend_attempted:
+                return code
+            self._resend_attempted = True
+            self._resend()
+            return self._wait_once(timeout, interval)
+        except Exception as exc:
+            if not self._resend_attempted and _sms_timeout_error(exc):
+                self._resend_attempted = True
+                try:
+                    self._resend()
+                    return self._wait_once(timeout, interval)
+                except Exception as retry_exc:
+                    exc = retry_exc
+            if self._pool is not None:
+                self._pool.report_error(self._state, exc, runtime=True)
+                self._release()
+                raise RuntimeError(self.registry.safe_error(exc)) from exc
+            raise
+
+    def set_ready(self) -> None:
+        method = getattr(self._provider, "set_ready", None)
+        if not callable(method):
+            return
+        try:
+            method()
+        except Exception as exc:
+            if self._pool is not None:
+                self._pool.report_error(self._state, exc, runtime=True)
+                self._release()
+                raise RuntimeError(self.registry.safe_error(exc)) from exc
+            raise
+
+    def _release(self) -> None:
+        if self._released:
+            return
+        self._released = True
+        if self._pool is not None:
+            self._pool.release(self._state)
+
+    def _reject_provider(self) -> None:
+        provider = self._provider
+        platform = normalize_sms_provider_name(
+            self.current_order_meta.get("platform")
+            or self.current_order_meta.get("provider")
+        )
+        if platform != "5sim":
+            callback = getattr(provider, "cancel", None)
+            if callable(callback):
+                callback()
+            return
+
+        reject_error: Exception | None = None
+        for name in ("ban", "reject"):
+            callback = getattr(provider, name, None)
+            if not callable(callback):
+                continue
+            try:
+                callback()
+                return
+            except Exception as exc:
+                reject_error = exc
+                break
+
+        if reject_error is None:
+            rest_get = getattr(provider, "_rest_get", None)
+            activation_id = str(self.activation_id or "").strip()
+            if callable(rest_get) and activation_id:
+                try:
+                    safe_id = urllib.parse.quote(activation_id, safe="")
+                    rest_get(f"/user/ban/{safe_id}")
+                    return
+                except Exception as exc:
+                    reject_error = exc
+
+        cancel = getattr(provider, "cancel", None)
+        if callable(cancel):
+            try:
+                cancel()
+                return
+            except Exception as cancel_error:
+                if reject_error is None:
+                    reject_error = cancel_error
+        if reject_error is not None:
+            raise reject_error
+
+    def _finish(self, method: str) -> None:
+        try:
+            if method == "reject":
+                self._reject_provider()
+            else:
+                callback = getattr(self._provider, method, None)
+                if callable(callback):
+                    callback()
+        except Exception as exc:
+            if self._pool is not None:
+                self._pool.report_error(self._state, exc, runtime=True)
+                raise RuntimeError(self.registry.safe_error(exc)) from exc
+            raise
+        finally:
+            self._release()
+
+    def complete(self) -> None:
+        self._finish("complete")
+
+    def mark_rejected(self) -> None:
+        self._reject_requested = True
+
+    def reject(self) -> None:
+        self._reject_requested = False
+        self._finish("reject")
+
+    def cancel(self) -> None:
+        if self._reject_requested:
+            self.reject()
+            return
+        self._finish("cancel")
+
+
 class PhoneSubmissionGate:
     def __init__(
         self,
@@ -1044,14 +1811,11 @@ class SmsRoutePolicy:
         self.streak_window_seconds = max(0.0, float(streak_window_seconds))
         # Kept for callers that introspect the pre-override policy.  Actual
         # streak state now lives in the persisted route row with timestamps.
-        self.no_code_streaks: dict[tuple[str, str], int] = {}
+        self.no_code_streaks: dict[tuple[str, ...], int] = {}
 
     @staticmethod
-    def key(candidate: Any) -> tuple[str, str]:
-        return (
-            str(getattr(candidate, "country", "") or ""),
-            str(getattr(candidate, "provider_id", "") or ""),
-        )
+    def key(candidate: Any) -> tuple[str, ...]:
+        return _candidate_route(candidate)
 
     @staticmethod
     def route_limit(stat: Any) -> int:
@@ -1327,6 +2091,7 @@ class SmsCostLedger:
         activation_key = self._activation_key(getattr(lease, "activation_id", ""))
         order = {
             "activation": activation_key,
+            "platform": meta.get("platform") or meta.get("provider") or self._candidate_value(candidate, "pool", ""),
             "key_index": meta.get("key_index"),
             "key_fingerprint": meta.get("key_fingerprint") or "",
             "country": self._candidate_value(candidate, "country", ""),

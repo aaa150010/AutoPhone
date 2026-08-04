@@ -1,5 +1,5 @@
 import { computed, inject, reactive, readonly, ref, shallowRef, type InjectionKey } from 'vue'
-import { ElNotification } from 'element-plus'
+import { ElMessageBox, ElNotification } from 'element-plus'
 import {
   ApiError,
   api,
@@ -12,7 +12,57 @@ import {
   stopRun,
   testEmailNotification,
 } from '../api/client'
-import type { AppState, SmsRuntimeAlert } from '../types/api'
+import type { AppState, SmsProviderPool, SmsRuntimeAlert } from '../types/api'
+
+const smsProviderDefaults: Record<string, string> = {
+  smsbower: 'dr',
+  herosms: 'dr',
+  '5sim': 'openai',
+}
+
+function normalizeSmsProviderPools(value: any, legacy: any = {}): SmsProviderPool[] {
+  const rows = Array.isArray(value) ? value : []
+  const normalized = rows.flatMap((row: any) => {
+    if (!row || typeof row !== 'object') return []
+    const provider = String(row.provider || '').trim().toLowerCase()
+    if (!provider) return []
+    const rawKeys = Array.isArray(row.api_keys) ? row.api_keys : [row.api_key || '']
+    const keys = [...new Set<string>(rawKeys.map((key: unknown) => String(key || '').trim()).filter(Boolean))]
+    return [{
+      provider,
+      enabled: row.enabled !== false,
+      api_keys: keys.length ? keys : [''],
+      service: String(row.service || smsProviderDefaults[provider] || 'dr').trim(),
+    }]
+  })
+  if (normalized.length) return normalized
+
+  const provider = String(legacy.sms_provider || 'smsbower').trim().toLowerCase() || 'smsbower'
+  const rawKeys = Array.isArray(legacy.sms_api_keys)
+    ? legacy.sms_api_keys
+    : [legacy.sms_api_key || '']
+  const keys = [...new Set<string>(rawKeys.map((key: unknown) => String(key || '').trim()).filter(Boolean))]
+  return [{
+    provider,
+    enabled: true,
+    api_keys: keys.length ? keys : [''],
+    service: smsProviderDefaults[provider] || 'dr',
+  }]
+}
+
+function syncLegacySmsFields(config: Record<string, any>) {
+  const pools = normalizeSmsProviderPools(config.sms_provider_pools, config)
+  const keys = [...new Set(pools.flatMap(pool => pool.api_keys)
+    .map(key => String(key || '').trim())
+    .filter(Boolean))]
+  config.sms_provider_pools = pools
+  config.sms_provider = pools.find(pool => pool.enabled && pool.api_keys.some(Boolean))?.provider
+    || pools[0]?.provider
+    || 'smsbower'
+  config.sms_api_keys = keys.length ? keys : ['']
+  config.sms_api_key = keys[0] || ''
+  return config
+}
 
 const defaultEmailNotification = () => ({
   enabled: false,
@@ -46,9 +96,11 @@ const defaultForm = () => ({
   sms_min_price: '0.01',
   max_price: '0.1',
   sms_timeout: '30',
-  phone_max_attempts: 15,
-  phone_session_cycle_seconds: 480,
+  phone_max_attempts: 45,
+  phone_attempts_per_provider: 15,
+  phone_session_cycle_seconds: 1800,
   sms_api_keys: [''],
+  sms_provider_pools: normalizeSmsProviderPools(null),
   pixel_upload_enabled: true,
   sub2api: {},
   email_notification: defaultEmailNotification(),
@@ -94,14 +146,7 @@ function normalizeImportedConfig(value: any) {
     throw new Error('配置 JSON 必须是对象')
   }
   const config = mergeConfig(value)
-  const keys = Array.isArray(config.sms_api_keys)
-    ? config.sms_api_keys
-    : config.sms_api_key
-      ? [config.sms_api_key]
-      : []
-  config.sms_api_keys = [...new Set(keys.map((key: unknown) => String(key || '').trim()).filter(Boolean))]
-  if (!config.sms_api_keys.length) config.sms_api_keys = ['']
-  delete config.sms_api_key
+  syncLegacySmsFields(config)
   delete config.nvtoken
   delete config.nvtoken_upload
   if (config.pixel_upload_enabled == null) config.pixel_upload_enabled = true
@@ -174,14 +219,54 @@ export function createAppController() {
   }
 
   function requestPayload() {
-    const value = mergeConfig(form)
-    const keys = Array.isArray(value.sms_api_keys) ? [...value.sms_api_keys] : [value.sms_api_key || '']
-    value.sms_api_keys = keys
-    value.sms_api_key = keys[0] || ''
+    const value = syncLegacySmsFields(mergeConfig(form))
     value.email_notification = normalizeEmailNotificationDraft(value.email_notification)
     delete value.nvtoken
     delete value.nvtoken_upload
     return value
+  }
+
+  function resetRunSnapshot() {
+    const current = state.value
+    state.value = {
+      ...current,
+      runtime: {
+        ...(current.runtime || {}),
+        running: false,
+        stop_requested: false,
+        tasks: [],
+        stage_counts: {},
+        summary: {
+          total: 0,
+          active: 0,
+          success: 0,
+          failed: 0,
+          stopped: 0,
+          sms_cost_usd: 0,
+          sms_cost_cny: 0,
+        },
+      },
+    }
+    stateSignature = JSON.stringify(state.value)
+  }
+
+  async function pixelUploadChoice() {
+    try {
+      await ElMessageBox.confirm(
+        '本次运行成功的账号是否自动上传到 Pixel？',
+        '开始运行',
+        {
+          type: 'info',
+          distinguishCancelAndClose: true,
+          confirmButtonText: '上传到 Pixel',
+          cancelButtonText: '本次不上传',
+        },
+      )
+      return true
+    } catch (action) {
+      if (action === 'cancel') return false
+      return null
+    }
   }
 
   async function refresh() {
@@ -201,8 +286,7 @@ export function createAppController() {
     delete merged.nvtoken_upload
     if (merged.pixel_upload_enabled == null) merged.pixel_upload_enabled = true
     Object.assign(form, merged)
-    if (!Array.isArray(form.sms_api_keys)) form.sms_api_keys = [form.sms_api_key || '']
-    if (!form.sms_api_keys.length) form.sms_api_keys = ['']
+    syncLegacySmsFields(form)
     form.email_notification = normalizeEmailNotificationDraft(form.email_notification)
     markClean()
     initialized.value = true
@@ -222,9 +306,10 @@ export function createAppController() {
     await initialize()
     const wasDirty = dirty.value
     await Promise.all([
-      form.sms_api_keys?.some((key: string) => key === '********')
-        ? getSecret('sms_api_keys').then(result => {
-            form.sms_api_keys = Array.isArray(result.value) ? result.value : [String(result.value || '')]
+      form.sms_provider_pools?.some((pool: SmsProviderPool) => pool.api_keys.some(key => key === '********'))
+        ? getSecret('sms_provider_pools').then(result => {
+            form.sms_provider_pools = normalizeSmsProviderPools(result.value, form)
+            syncLegacySmsFields(form)
           }).catch(() => undefined)
         : Promise.resolve(),
       loadSecret(() => form.sub2api?.password, value => { form.sub2api.password = String(value || '') }, 'sub2_password'),
@@ -269,9 +354,14 @@ export function createAppController() {
 
   async function start(allowDirty = false) {
     if (dirty.value && !allowDirty) throw new Error('运行配置有未保存修改')
+    const uploadToPixel = await pixelUploadChoice()
+    if (uploadToPixel == null) return null
     actions.starting = true
+    resetRunSnapshot()
     try {
-      const result = await startExistingRun(requestPayload())
+      const payload = requestPayload()
+      payload.pixel_upload_enabled = uploadToPixel
+      const result = await startExistingRun(payload)
       syncState(result)
       markClean()
       return result

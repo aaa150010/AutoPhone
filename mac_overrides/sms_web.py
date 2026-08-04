@@ -59,6 +59,7 @@ class SmsWebIntegration:
         sms_keys_from_config: Callable[[dict[str, Any]], list[str]],
         as_enabled: Callable[[Any, bool], bool],
         safe_error: Callable[[Any], str],
+        provider_registry: Any = None,
     ) -> None:
         self.sms_runtime = sms_runtime
         self.original_create_provider = original_create_provider
@@ -84,6 +85,7 @@ class SmsWebIntegration:
         self.sms_keys_from_config = sms_keys_from_config
         self.as_enabled = as_enabled
         self.safe_error_fn = safe_error
+        self.provider_registry = provider_registry
         self._active_lease_lock = RLock()
         self._active_leases: dict[str, tuple[Any, Any]] = {}
         self._account_banned_details: dict[str, str] = {}
@@ -131,13 +133,12 @@ class SmsWebIntegration:
         route_stats = getattr(selector, "stats", {}) or {}
         filtered_rows = []
         for item in rows or []:
-            key = (
-                str(getattr(item, "country", "") or ""),
-                str(getattr(item, "provider_id", "") or ""),
-            )
+            key = self.sms_runtime._candidate_route(item)
             stat = route_stats.get(key) if isinstance(route_stats, dict) else None
             if not isinstance(stat, dict) and isinstance(route_stats, dict):
-                stat = route_stats.get(f"{key[0]}::{key[1]}")
+                stat = route_stats.get("::".join(key))
+            if not isinstance(stat, dict) and len(key) == 3 and isinstance(route_stats, dict):
+                stat = route_stats.get(key[-2:]) or route_stats.get("::".join(key[-2:]))
             stat = stat if isinstance(stat, dict) else {}
             cooldown_until = self.sms_runtime._as_float(
                 stat.get("cooldown_until"),
@@ -182,8 +183,7 @@ class SmsWebIntegration:
             now=now,
         )
 
-    @staticmethod
-    def _invalidate_candidate_cache(selector: Any, candidate: Any = None) -> None:
+    def _invalidate_candidate_cache(self, selector: Any, candidate: Any = None) -> None:
         """Force the next worker to rediscover inventory after an empty route."""
         if selector is None:
             return
@@ -211,10 +211,7 @@ class SmsWebIntegration:
             cache = module_globals.get("_DISCOVERY_CACHE")
             cache_lock = module_globals.get("_DISCOVERY_CACHE_LOCK")
             if isinstance(cache, dict):
-                route = (
-                    str(getattr(candidate, "country", "") or ""),
-                    str(getattr(candidate, "provider_id", "") or ""),
-                )
+                route = self.sms_runtime._candidate_route(candidate)
                 def discard_stale() -> None:
                     if not all(route):
                         cache.clear()
@@ -223,11 +220,7 @@ class SmsWebIntegration:
                         rows = cached[1] if isinstance(cached, tuple) and len(cached) > 1 else ()
                         if any(
                             isinstance(row, dict)
-                            and (
-                                str(row.get("country") or ""),
-                                str(row.get("provider_id") or ""),
-                            )
-                            == route
+                            and self.sms_runtime._candidate_route(row) == route
                             for row in rows or ()
                         ):
                             cache.pop(cache_key, None)
@@ -241,6 +234,8 @@ class SmsWebIntegration:
             pass
 
     def create_provider(self, name: str, api_key: str, proxy: str = "") -> Any:
+        if self.provider_registry is not None and self.provider_registry.has_keys():
+            return self.sms_runtime.PooledSmsProvider(self.provider_registry, proxy=proxy)
         if str(name or "").strip().lower() == "smsbower" and self.key_pool.has_keys():
             return self.sms_runtime.PooledSmsBowerProvider(self.key_pool, proxy=proxy)
         return self.original_create_provider(name, api_key, proxy=proxy)
@@ -322,6 +317,16 @@ class SmsWebIntegration:
 
     def adapter_get_number(self, adapter: Any, **kwargs: Any) -> Any:
         task_id = self.adapter_task_id(adapter)
+        provider = getattr(adapter, "provider", None)
+        config = getattr(adapter, "config", None) or {}
+        if provider is not None and hasattr(provider, "max_attempts_per_platform"):
+            try:
+                provider.max_attempts_per_platform = max(
+                    1,
+                    min(15, int(config.get("phone_attempts_per_provider") or 15)),
+                )
+            except (TypeError, ValueError):
+                provider.max_attempts_per_platform = 15
         if task_id:
             self.task_progress.set_stage(task_id, "phone_acquiring")
         lease = self.original_adapter_get_number(adapter, **kwargs)
@@ -422,6 +427,10 @@ class SmsWebIntegration:
         if meta.get("gptphone_account_banned_cancelled"):
             self._forget_active_lease(task_id, lease)
             return None
+        provider = getattr(adapter, "provider", None)
+        mark_rejected = getattr(provider, "mark_rejected", None)
+        if self.classify_error(reason) == "phone_rejected" and callable(mark_rejected):
+            mark_rejected()
         try:
             return self.original_adapter_cancel(adapter, lease, reason=reason)
         finally:
@@ -449,13 +458,23 @@ class SmsWebIntegration:
     def _update_route_stat(selector: Any, candidate: Any, update_fn: Callable[..., Any]) -> None:
         if selector is None or candidate is None:
             return
-        key = (
-            str(getattr(candidate, "country", "")),
-            str(getattr(candidate, "provider_id", "")),
+        platform = str(
+            getattr(candidate, "platform", "")
+            or getattr(candidate, "pool", "")
+            or ""
         )
-        if not all(key):
+        country = str(getattr(candidate, "country", "") or "")
+        provider_id = str(getattr(candidate, "provider_id", "") or "")
+        key = (platform, country, provider_id) if platform else (country, provider_id)
+        if not country or not provider_id:
             return
         with selector.lock:
+            if len(key) == 3:
+                stat = selector.stats.get(key)
+                if not isinstance(stat, dict):
+                    stat = selector.stats.get(key[-2:]) or selector.stats.get("::".join(key[-2:]))
+                selector.stats[key] = update_fn(dict(stat or {}))
+                return
             try:
                 route_row, country_row = selector._update_shared_route_and_country(
                     key,
@@ -495,14 +514,21 @@ class SmsWebIntegration:
 
     @staticmethod
     def _route_stat_snapshot(selector: Any, candidate: Any) -> dict[str, Any]:
-        key = (
-            str(getattr(candidate, "country", "")),
-            str(getattr(candidate, "provider_id", "")),
+        platform = str(
+            getattr(candidate, "platform", "")
+            or getattr(candidate, "pool", "")
+            or ""
         )
-        if not all(key):
+        country = str(getattr(candidate, "country", "") or "")
+        provider_id = str(getattr(candidate, "provider_id", "") or "")
+        key = (platform, country, provider_id) if platform else (country, provider_id)
+        if not country or not provider_id:
             return {}
         with selector.lock:
-            return dict(selector.stats.get(key) or {})
+            value = selector.stats.get(key)
+            if not isinstance(value, dict) and len(key) == 3:
+                value = selector.stats.get(key[-2:]) or selector.stats.get("::".join(key[-2:]))
+            return dict(value or {})
 
     def smart_record_result(self, selector: Any, candidate: Any, ok: bool, error: Any = "") -> Any:
         kind = self.classify_error(error)
@@ -553,7 +579,8 @@ class SmsWebIntegration:
             }.get(kind, "线路失败")
             _call_log(
                 log_fn,
-                f"  [SMS智能] 线路 {getattr(candidate, 'country', '-')}/"
+                f"  [SMS智能] 线路 {getattr(candidate, 'pool', '') or getattr(candidate, 'platform', '') or 'SMS'}/"
+                f"{getattr(candidate, 'country', '-')}/"
                 f"{getattr(candidate, 'provider_id', '-')} 因{reason}冷却 {cooldown} 秒",
                 "warn",
             )
@@ -589,12 +616,15 @@ class SmsWebIntegration:
 
     def runtime_alert(self, payload: Any) -> None:
         value = dict(payload or {})
+        provider = str(value.get("provider") or "")
+        prefix = f"{provider} " if provider else ""
         self.alerts.add(
             str(value.get("kind") or "sms_warning"),
-            str(value.get("message") or "SMS Key 状态异常"),
+            f"{prefix}{str(value.get('message') or 'SMS Key 状态异常')}",
             level="warning",
-            dedupe_key=f"runtime:{value.get('fingerprint')}:{value.get('kind')}",
+            dedupe_key=f"runtime:{provider}:{value.get('fingerprint')}:{value.get('kind')}",
             persistent=True,
+            provider=provider,
             key_index=value.get("index"),
             fingerprint=value.get("fingerprint") or "",
         )
@@ -611,7 +641,7 @@ class SmsWebIntegration:
         )
 
         def exhausted() -> None:
-            message = "所有 SMS Key 均已耗尽，停止创建新短信订单，已领取号码处理完成后安全停止"
+            message = "所有 SMS 平台和 Key 均已耗尽，停止创建新短信订单，已领取号码处理完成后安全停止"
             self.alerts.add(
                 "sms_pool_exhausted",
                 message,
@@ -627,35 +657,54 @@ class SmsWebIntegration:
             min_price = float(value.get("sms_min_price") or self.min_price_default)
         except (TypeError, ValueError):
             min_price = self.min_price_default
-        self.key_pool.configure(
-            keys,
-            service=str(value.get("service") or "dr"),
-            min_price=min_price,
-            max_price=float(self.clamp_max_price(value.get("max_price"))),
-            logger=logger,
-            alert_fn=self.runtime_alert,
-            exhausted_fn=exhausted,
-        )
+        options = {
+            "min_price": min_price,
+            "max_price": float(self.clamp_max_price(value.get("max_price"))),
+            "logger": logger,
+            "alert_fn": self.runtime_alert,
+            "exhausted_fn": exhausted,
+        }
+        if self.provider_registry is not None:
+            self.provider_registry.configure(value, **options)
+        else:
+            self.key_pool.configure(
+                keys,
+                service=str(value.get("service") or "dr"),
+                **options,
+            )
         return sms_proxy
 
     def preflight_pool(self, config: Any, *, logs: Any = None, importer: Any = None):
         proxy = self.configure_pool(config, logs=logs, importer=importer)
-        if not self.key_pool.has_keys():
+        pool = self.provider_registry or self.key_pool
+        if not pool.has_keys():
             raise ValueError("请至少填写一个 SMS API Key")
-        statuses = self.key_pool.preflight(proxy=proxy)
+        statuses = pool.preflight(proxy=proxy)
         insufficient = [row for row in statuses if row.get("status") == "insufficient_balance"]
         usable = [row for row in statuses if row.get("status") == "usable"]
         if statuses and len(insufficient) == len(statuses):
             raise ValueError("所有 SMS Key 余额不足")
         if not usable:
             details = "；".join(
-                f"Key {row.get('index')}: {row.get('message') or row.get('status')}"
+                f"{row.get('provider') or 'SMS'} Key {row.get('index')}: "
+                f"{row.get('message') or row.get('status')}"
                 for row in statuses
             )
-            raise ValueError(f"所有 SMS Key 均不可用{f'：{details}' if details else ''}")
+            raise ValueError(f"所有 SMS 平台和 Key 均不可用{f'：{details}' if details else ''}")
+        inventory_known = any("inventory_count" in row for row in statuses)
+        providers_with_inventory = {
+            str(row.get("provider") or "")
+            for row in usable
+            if int(row.get("inventory_count") or 0) > 0
+        }
+        if inventory_known and not providers_with_inventory:
+            raise ValueError("所有启用 SMS 平台当前均无可用库存")
         if insufficient:
-            indexes = "、".join(str(row.get("index")) for row in insufficient)
-            message = f"{len(insufficient)} 个 SMS Key 余额不足（Key {indexes}），其余 Key 仍可运行"
+            indexes = "、".join(
+                f"{row.get('provider') + ' ' if row.get('provider') else ''}Key {row.get('index')}"
+                for row in insufficient
+            )
+            message = f"{len(insufficient)} 个 SMS Key 余额不足（{indexes}），其余平台或 Key 仍可运行"
             self.alerts.add(
                 "sms_balance_insufficient",
                 message,
@@ -671,8 +720,11 @@ class SmsWebIntegration:
             if row.get("status") not in {"usable", "insufficient_balance"}
         ]
         if unavailable:
-            indexes = "、".join(str(row.get("index")) for row in unavailable)
-            message = f"{len(unavailable)} 个 SMS Key 不可用（Key {indexes}），本次运行已停用"
+            indexes = "、".join(
+                f"{row.get('provider') + ' ' if row.get('provider') else ''}Key {row.get('index')}"
+                for row in unavailable
+            )
+            message = f"{len(unavailable)} 个 SMS Key 不可用（{indexes}），本次运行已停用"
             self.alerts.add(
                 "sms_key_unavailable",
                 message,

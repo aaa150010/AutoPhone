@@ -6,12 +6,20 @@ import {
   CircleCloseFilled,
   Collection,
   Connection,
+  Download,
   Message,
   MessageBox,
   Search,
   VideoPlay,
+  UploadFilled,
 } from '@element-plus/icons-vue'
-import { api, ApiError, getMailboxes } from '../api/client'
+import {
+  api,
+  ApiError,
+  exportMailboxSub2,
+  getMailboxes,
+  retryMailboxPixel,
+} from '../api/client'
 import DashboardMetricCard from '../components/DashboardMetricCard.vue'
 import MailboxTable from '../components/MailboxTable.vue'
 import PageToolbar from '../components/PageToolbar.vue'
@@ -33,6 +41,8 @@ const currentPage = ref(1)
 const pageSize = ref(50)
 const mutating = ref(false)
 const testingSub2 = ref(false)
+const retryingPixel = ref(false)
+const exportingSub2 = ref(false)
 let timer = 0
 let pollingStopped = false
 let dataVersion = 0
@@ -86,6 +96,7 @@ const rows = computed(() => data.value.rows.filter((row) => {
     row.reason,
     sub2Status?.label,
     sub2Status?.summary,
+    row.batch_id,
   ].join(' ').toLowerCase()
   return matchesFilter && matchesSub2 && (!query || haystack.includes(query))
 }))
@@ -239,6 +250,81 @@ async function testSub2() {
   }
 }
 
+function selectedBindings() {
+  return selectedRows.value.map(row => ({ row_id: row.row_id, line_no: row.line_no }))
+}
+
+async function retryPixel() {
+  if (!selectedRows.value.length) {
+    ElMessage.warning('请先选择邮箱')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `将选中的 ${selectedRows.value.length} 个邮箱重新加入 Pixel 上传队列？`,
+      '重新上传 Pixel',
+      { type: 'warning', confirmButtonText: '确认重传', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  retryingPixel.value = true
+  mutating.value = true
+  dataVersion += 1
+  latestRefresh += 1
+  const selected = selectedBindings()
+  try {
+    mailboxTable.value?.clearSelection()
+    selectedRows.value = []
+    const result: any = await retryMailboxPixel(selected)
+    applyMailboxPayload(result)
+    await nextTick()
+    mailboxTable.value?.clearSelection()
+    const skipped = Number(result?.skipped || 0)
+    ElMessage.success(`已加入 Pixel 队列 ${Number(result?.queued || 0)} 条${skipped ? `，跳过 ${skipped} 条` : ''}`)
+  } catch (error: any) {
+    if (error instanceof ApiError && error.status === 409) await refresh()
+    ElMessage.error(error?.message || 'Pixel 批量重传失败')
+  } finally {
+    retryingPixel.value = false
+    mutating.value = false
+  }
+}
+
+async function exportSub2() {
+  if (!selectedRows.value.length) {
+    ElMessage.warning('请先选择邮箱')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      '导出文件包含完整 OAuth Token，仅应保存在可信设备。',
+      '导出 SUB2API',
+      { type: 'warning', confirmButtonText: '确认导出', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  exportingSub2.value = true
+  try {
+    const result = await exportMailboxSub2(selectedBindings())
+    const blob = new Blob([JSON.stringify(result.export, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = result.filename || 'sub2api-export.json'
+    link.click()
+    URL.revokeObjectURL(url)
+    const skipped = Number(result.skipped || 0)
+    ElMessage.success(`已导出 ${Number(result.count || 0)} 条${skipped ? `，跳过 ${skipped} 条` : ''}`)
+  } catch (error: any) {
+    if (error instanceof ApiError && error.status === 409) await refresh()
+    ElMessage.error(error?.message || 'SUB2API 导出失败')
+  } finally {
+    exportingSub2.value = false
+  }
+}
+
 async function copyPassword(row: MailboxRow) {
   if (loadingPasswords.value.includes(row.row_id)) return
   if (!navigator.clipboard?.writeText) {
@@ -332,6 +418,12 @@ onUnmounted(() => {
         </el-select>
         <el-button :loading="testingSub2" :disabled="mutating || !selectedRows.length" @click="testSub2">
           <el-icon><Connection /></el-icon>批量测试连接
+        </el-button>
+        <el-button :loading="retryingPixel" :disabled="mutating || !selectedRows.length" @click="retryPixel">
+          <el-icon><UploadFilled /></el-icon>重传 Pixel
+        </el-button>
+        <el-button :loading="exportingSub2" :disabled="mutating || !selectedRows.length" @click="exportSub2">
+          <el-icon><Download /></el-icon>导出 SUB2API
         </el-button>
         <el-button :disabled="mutating || !selectedRows.length" @click="mutate('/api/mailboxes/restore', '将选中邮箱恢复为可用状态？')">
           <el-icon><RefreshLeft /></el-icon>恢复可用

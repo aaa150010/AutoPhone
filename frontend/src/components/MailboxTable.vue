@@ -91,6 +91,25 @@ function sub2Detail(row: MailboxRow) {
   return parts.join(' · ')
 }
 
+function batchLabel(row: MailboxRow) {
+  const value = Number(row.batch_started_at || 0)
+  if (!value) return '-'
+  const date = new Date(value < 10_000_000_000 ? value * 1000 : value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}
+
+function batchDetail(row: MailboxRow) {
+  const label = batchLabel(row)
+  return row.batch_id ? `${label} · ${row.batch_id}` : label
+}
+
 defineExpose({ clearSelection })
 </script>
 
@@ -106,6 +125,13 @@ defineExpose({ clearSelection })
   >
     <el-table-column type="selection" width="45" reserve-selection />
     <el-table-column prop="line_no" label="#" width="58" />
+    <el-table-column label="批次" width="132">
+      <template #default="{ row }">
+        <el-tooltip :content="batchDetail(row)" placement="top">
+          <span class="batch-label">{{ batchLabel(row) }}</span>
+        </el-tooltip>
+      </template>
+    </el-table-column>
     <el-table-column label="邮箱" min-width="230">
       <template #default="{ row }">
         <el-tooltip v-if="row.email" content="点击复制邮箱" placement="top">
@@ -183,5 +209,6 @@ defineExpose({ clearSelection })
 .mailbox-address:focus-visible { outline: 2px solid var(--el-color-primary-light-5); outline-offset: 2px; border-radius: 2px; }
 .password-copy { min-width: 48px; padding: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0; }
 .sms-cost { color: var(--el-color-success); font-variant-numeric: tabular-nums; cursor: help; }
+.batch-label { color: var(--el-text-color-regular); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .muted { color: var(--el-text-color-secondary); }
 </style>

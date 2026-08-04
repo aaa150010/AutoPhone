@@ -66,17 +66,18 @@ const resultMetrics = computed(() => props.metrics.slice(2, 5))
   min-height: 0;
   border-radius: 5px;
 }
-.primary-metrics :deep(.metric-card) { padding: 9px; }
+.primary-metrics :deep(.metric-card) { justify-content: center; padding: 9px; }
 .primary-metrics :deep(.metric-card.tone-primary) { background: #eff6ff; }
 .primary-metrics :deep(.metric-card.tone-warning) { background: #fff5e8; }
 .primary-metrics :deep(.metric-icon) { flex-basis: 30px; width: 30px; height: 30px; }
-.primary-metrics :deep(.metric-value) { font-size: 30px; line-height: 33px; }
+.primary-metrics :deep(.metric-copy) { align-items: center; text-align: center; }
+.primary-metrics :deep(.metric-value) { font-size: 26px; line-height: 30px; }
 .result-strip :deep(.metric-card) { justify-content: center; padding: 6px 4px; text-align: center; }
 .result-strip :deep(.metric-icon) { display: none; }
 .result-strip :deep(.metric-copy) { align-items: center; }
 .result-strip :deep(.metric-copy > span) { font-size: 10px; line-height: 13px; }
-.result-strip :deep(.metric-value) { margin-top: 1px; font-size: 18px; line-height: 22px; }
-.result-strip :deep(.metric-card.is-numeric .metric-value) { font-size: 26px; line-height: 29px; }
+.result-strip :deep(.metric-value) { margin-top: 1px; font-size: 16px; line-height: 20px; }
+.result-strip :deep(.metric-card.is-numeric .metric-value) { font-size: 22px; line-height: 26px; }
 .result-strip :deep(.tone-success) { background: #edf9f2; }
 .result-strip :deep(.tone-danger) { background: #fff0f0; }
 .result-strip :deep(.tone-primary) { background: #eaf8fb; }

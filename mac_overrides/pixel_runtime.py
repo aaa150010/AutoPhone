@@ -1071,6 +1071,25 @@ class PixelUploadQueue:
             self._schedule(record_id)
         return public
 
+    def requeue(self, task_id: Any, result_file: str | Path) -> dict[str, Any]:
+        """Explicitly enqueue all targets again for a selected successful result."""
+        public = self.enqueue(task_id, result_file)
+        identifier = _clean(public.get("record_id"))
+        with self._lock:
+            record = self._record_locked(identifier)
+            now = self._timestamp()
+            record["targets"] = {
+                target_id: self._initial_target(target_id, now)
+                for target_id in self.target_ids
+            }
+            record["status"] = "queued"
+            record["error"] = ""
+            record["updated_at"] = now
+            self._save_locked()
+            public = self._public_record(record)
+        self._schedule(identifier)
+        return public
+
     def retry(self, record_id: str, target_ids: Iterable[Any] | None = None) -> dict[str, Any]:
         identifier = _clean(record_id)
         with self._lock:

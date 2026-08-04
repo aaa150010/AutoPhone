@@ -74,6 +74,48 @@ class WebGuiSecurityTests(unittest.TestCase):
             self.assertNotIn(secret, serialized)
         self.assertEqual(masked["email_notification"]["password"], "********")
 
+    def test_task_config_allows_fifteen_attempts_per_enabled_sms_platform(self):
+        module = self.module
+        original_task_config = module._ORIGINAL_TASK_CONFIG
+        fake_self = SimpleNamespace()
+
+        def build(pools):
+            return module._patched_task_config(
+                fake_self,
+                {
+                    "phone_attempts_per_provider": 15,
+                    "sms_provider_pools": pools,
+                },
+                "user@example.test",
+                "task-attempts",
+            )
+
+        try:
+            module._ORIGINAL_TASK_CONFIG = lambda *_args, **_kwargs: {"code_timeout": 30}
+            three_platforms = build([
+                {"provider": "smsbower", "enabled": True, "api_keys": ["bower-key"]},
+                {"provider": "herosms", "enabled": True, "api_keys": ["hero-key"]},
+                {"provider": "5sim", "enabled": True, "api_keys": ["five-key"]},
+            ])
+            two_platforms = build([
+                {"provider": "smsbower", "enabled": True, "api_keys": ["bower-key"]},
+                {"provider": "herosms", "enabled": True, "api_keys": ["hero-key"]},
+                {"provider": "5sim", "enabled": False, "api_keys": ["five-key"]},
+            ])
+            one_platform = build([
+                {"provider": "smsbower", "enabled": True, "api_keys": ["bower-key-a", "bower-key-b"]},
+                {"provider": "herosms", "enabled": True, "api_keys": []},
+                {"provider": "5sim", "enabled": False, "api_keys": ["five-key"]},
+            ])
+        finally:
+            module._ORIGINAL_TASK_CONFIG = original_task_config
+
+        self.assertEqual(three_platforms["phone_max_attempts"], 45)
+        self.assertEqual(two_platforms["phone_max_attempts"], 30)
+        self.assertEqual(one_platform["phone_max_attempts"], 15)
+        self.assertEqual(three_platforms["phone_attempts_per_provider"], 15)
+        self.assertEqual(three_platforms["phone_session_max_seconds"], 1800)
+
     def test_public_task_drops_composite_account_tokens_and_source_row(self):
         task = {
             "task_id": "task-1",
@@ -432,6 +474,88 @@ class WebGuiSecurityTests(unittest.TestCase):
             self.assertNotIn("nvtoken", value)
             self.assertNotIn("nvtoken_upload", value)
             self.assertFalse(value["pixel_upload_enabled"])
+
+    def test_result_file_persists_batch_identity(self):
+        module = self.module
+        original_persist = module._ORIGINAL_PERSIST_RESULT
+        result_dir = Path(self.tempdir.name) / "batch-results"
+        entry = SimpleNamespace(email="batch@example.test")
+
+        def persist(fake_self, settings, task_id, value, result, *, error="", status="failed"):
+            target = Path(settings["results_dir"]) / f"{task_id}_{value.email.replace('@', '_at_')}.json"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(
+                json.dumps({"task_id": task_id, "status": status, "result": result}),
+                encoding="utf-8",
+            )
+
+        fake_self = SimpleNamespace(
+            data_dir=self.tempdir.name,
+            _log=lambda *_args, **_kwargs: None,
+        )
+        settings = {
+            "results_dir": str(result_dir),
+            "pixel_upload_enabled": False,
+            "batch_id": "20260804-140000-abc123",
+            "batch_started_at": 1785823200,
+        }
+        result = {}
+        try:
+            module._ORIGINAL_PERSIST_RESULT = persist
+            module._patched_persist_result(
+                fake_self,
+                settings,
+                "task-batch",
+                entry,
+                result,
+                status="success",
+            )
+        finally:
+            module._ORIGINAL_PERSIST_RESULT = original_persist
+            module._TASK_PROGRESS.reset()
+
+        payload = json.loads(
+            (result_dir / "task-batch_batch_at_example.test.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(payload["batch_id"], settings["batch_id"])
+        self.assertEqual(payload["batch_started_at"], settings["batch_started_at"])
+        self.assertEqual(payload["result"]["batch_id"], settings["batch_id"])
+        self.assertEqual(payload["result"]["batch_started_at"], settings["batch_started_at"])
+
+    def test_runtime_summary_only_counts_current_batch(self):
+        module = self.module
+        previous_context = module._RUN_NOTIFICATION_CONTEXT
+        try:
+            with module._RUN_NOTIFICATION_LOCK:
+                module._RUN_NOTIFICATION_CONTEXT = {
+                    "run_id": "batch-current",
+                    "batch_id": "batch-current",
+                    "batch_started_at": 200,
+                    "started_at": 200,
+                    "target": 2,
+                }
+            summary = module._runtime_summary([
+                {
+                    "task_id": "old-success",
+                    "batch_id": "batch-old",
+                    "status": "success",
+                    "result": {"sms_cost_cny": 8.8},
+                },
+                {
+                    "task_id": "current-pending",
+                    "batch_id": "batch-current",
+                    "status": "running",
+                    "updated_at": 210,
+                },
+            ])
+        finally:
+            with module._RUN_NOTIFICATION_LOCK:
+                module._RUN_NOTIFICATION_CONTEXT = previous_context
+
+        self.assertEqual(summary["total"], 1)
+        self.assertEqual(summary["success"], 0)
+        self.assertEqual(summary["active"], 1)
+        self.assertEqual(summary["sms_cost_cny"], 0)
 
     def test_success_result_is_persisted_before_pixel_enqueue_and_enqueue_failure_is_isolated(self):
         module = self.module

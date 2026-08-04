@@ -56,6 +56,8 @@ def start_bounded_importer(
     futures: list[Any] = []
     startup_gate = threading.Event()
     startup_ready = threading.Event()
+    batch_id = str(settings.get("batch_id") or "").strip()
+    batch_started_at = _bounded_int(settings.get("batch_started_at"), 0, 0, 4_102_444_800)
 
     def run_after_start(*args: Any) -> None:
         startup_gate.wait()
@@ -90,6 +92,8 @@ def start_bounded_importer(
                     account=importer._account_label(entry),
                     source_row=importer._source_row(entry),
                     ordinal=ordinal,
+                    batch_id=batch_id,
+                    batch_started_at=batch_started_at,
                 )
 
             executor = executor_factory(

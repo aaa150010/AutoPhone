@@ -38,12 +38,21 @@ export async function api<T = any>(path: string, body?: unknown): Promise<T> {
 
 export const getState = () => api<{ state: AppState }>('/api/state')
 export const getLocalConfig = () => api<{ config: Record<string, any> }>('/api/local-config')
-export const getSecret = (id: string) => api<{ value: string | string[] }>('/api/local-config/secret', { id })
+export const getSecret = (id: string) => api<{ value: any }>('/api/local-config/secret', { id })
 export const saveConfig = (data: Record<string, any>) => api('/api/config', data)
 export const preflightRun = (data: Record<string, any>) => api('/api/preflight', data)
 export const startExistingRun = (data: Record<string, any>) => api('/api/start-existing', data)
 export const stopRun = () => api('/api/stop', {})
 export const getMailboxes = () => api<MailboxPayload>('/api/mailboxes')
+export const retryMailboxPixel = (rows: Array<{ row_id: string; line_no: number }>) => (
+  api('/api/mailboxes/pixel-retry', { rows })
+)
+export const exportMailboxSub2 = (rows: Array<{ row_id: string; line_no: number }>) => (
+  api<{ count: number; skipped?: number; filename: string; export: Record<string, any> }>(
+    '/api/mailboxes/sub2-export',
+    { rows },
+  )
+)
 export const testEmailNotification = (data: Record<string, any>) => api('/api/notifications/email/test', data)
 
 export const getPixelTargets = () => api<Record<string, any>>('/api/pixel/targets')

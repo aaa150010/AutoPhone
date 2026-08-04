@@ -10,15 +10,19 @@ import urllib.parse
 from mac_overrides.sms_runtime import (
     ExchangeRateCache,
     PhoneSubmissionGate,
+    PERFORMANCE_POLICY_VERSION,
+    PooledSmsProvider,
     PooledSmsBowerProvider,
     RuntimeAlertBuffer,
     SingleFlightTtlCache,
     SmsCostLedger,
     SmsKeyPool,
+    SmsProviderRegistry,
     SmsRoutePolicy,
     is_transient_openai_error,
     migrate_performance_config,
     normalize_sms_keys,
+    normalize_sms_provider_pools,
     rank_sms_candidates,
     redact_sms_secrets,
 )
@@ -85,6 +89,87 @@ class FakeFactory:
         return FakeSmsProvider(key, scenario, self.calls)
 
 
+class FakeMultiPlatformProvider:
+    def __init__(self, platform: str, key: str, scenario: dict, calls: list[tuple]) -> None:
+        self.platform = platform
+        self.key = key
+        self.scenario = scenario
+        self.calls = calls
+        self.activation_id = ""
+
+    def balance(self):
+        value = self.scenario.get("balance", 1.0)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    def get_price_candidates(self, service="dr", countries=None):
+        self.calls.append(("prices", self.platform, self.key, service))
+        value = self.scenario.get(
+            "prices",
+            [{"country": "151", "provider_id": "any", "price": 0.04, "count": 10}],
+        )
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    def get_number_from_candidate(self, **kwargs):
+        self.calls.append(("activate", self.platform, self.key, kwargs.get("service")))
+        outcomes = self.scenario.setdefault("activations", [])
+        value = outcomes.pop(0) if outcomes else (
+            f"{self.platform}-{self.key}-order",
+            "+15550001111",
+        )
+        if isinstance(value, Exception):
+            raise value
+        self.activation_id = str(value[0])
+        return value
+
+    def get_number(self, **kwargs):
+        return self.get_number_from_candidate(**kwargs)
+
+    def set_ready(self):
+        self.calls.append(("ready", self.platform, self.key, self.activation_id))
+
+    def wait_code(self, timeout=300, interval=3):
+        self.calls.append(("wait", self.platform, self.key, self.activation_id))
+        values = self.scenario.setdefault("codes", ["123456"])
+        value = values.pop(0) if values else None
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    def complete(self):
+        self.calls.append(("complete", self.platform, self.key, self.activation_id))
+
+    def cancel(self):
+        self.calls.append(("cancel", self.platform, self.key, self.activation_id))
+        value = self.scenario.get("cancel")
+        if isinstance(value, Exception):
+            raise value
+
+    def _rest_get(self, path, timeout=15):
+        self.calls.append(("rest_get", self.platform, self.key, path))
+        value = self.scenario.get("rest_get")
+        if isinstance(value, Exception):
+            raise value
+        return value if value is not None else {"status": "BANNED"}
+
+
+class FakeMultiPlatformFactory:
+    def __init__(self, scenarios: dict[tuple[str, str], dict]) -> None:
+        self.scenarios = scenarios
+        self.calls: list[tuple] = []
+
+    def __call__(self, platform: str, key: str, proxy: str = "") -> FakeMultiPlatformProvider:
+        return FakeMultiPlatformProvider(
+            platform,
+            key,
+            self.scenarios[(platform, key)],
+            self.calls,
+        )
+
+
 @dataclass
 class FakeLease:
     activation_id: str
@@ -105,8 +190,9 @@ class SmsRuntimeTests(unittest.TestCase):
         migrated, changed = migrate_performance_config({"sms_api_key": "legacy", "phone_max_attempts": 0})
         self.assertTrue(changed)
         self.assertEqual(migrated["sms_api_keys"], ["legacy"])
-        self.assertEqual(migrated["phone_max_attempts"], 15)
-        self.assertEqual(migrated["phone_session_cycle_seconds"], 480)
+        self.assertEqual(migrated["phone_max_attempts"], 45)
+        self.assertEqual(migrated["phone_attempts_per_provider"], 15)
+        self.assertEqual(migrated["phone_session_cycle_seconds"], 1800)
         self.assertEqual(migrated["auth_session_retries"], 1)
 
         upgraded, changed = migrate_performance_config({
@@ -115,26 +201,271 @@ class SmsRuntimeTests(unittest.TestCase):
             "auth_session_retries": 0,
         })
         self.assertTrue(changed)
-        self.assertEqual(upgraded["phone_max_attempts"], 15)
+        self.assertEqual(upgraded["phone_max_attempts"], 45)
         self.assertEqual(upgraded["auth_session_retries"], 1)
-        self.assertEqual(upgraded["performance_policy_version"], 5)
+        self.assertEqual(upgraded["performance_policy_version"], PERFORMANCE_POLICY_VERSION)
 
         saved, changed = migrate_performance_config({
-            "performance_policy_version": 5,
+            "performance_policy_version": PERFORMANCE_POLICY_VERSION,
             "phone_max_attempts": 0,
             "auth_session_retries": 0,
         })
         self.assertFalse(changed)
         self.assertEqual(saved["phone_max_attempts"], 0)
         self.assertEqual(saved["auth_session_retries"], 0)
-        self.assertEqual(saved["phone_session_cycle_seconds"], 480)
+        self.assertEqual(saved["phone_session_cycle_seconds"], 1800)
 
         over_limit, changed = migrate_performance_config({
-            "performance_policy_version": 5,
-            "phone_max_attempts": 17,
+            "performance_policy_version": PERFORMANCE_POLICY_VERSION,
+            "phone_max_attempts": 47,
         })
         self.assertFalse(changed)
-        self.assertEqual(over_limit["phone_max_attempts"], 15)
+        self.assertEqual(over_limit["phone_max_attempts"], 45)
+
+    def test_provider_pool_config_migrates_legacy_and_preserves_platform_defaults(self):
+        legacy, _changed = migrate_performance_config({
+            "sms_provider": "herosms",
+            "sms_api_keys": ["hero-a", "hero-b"],
+        })
+        self.assertEqual(legacy["sms_provider_pools"], [{
+            "provider": "herosms",
+            "enabled": True,
+            "api_keys": ["hero-a", "hero-b"],
+            "service": "dr",
+        }])
+
+        pools = normalize_sms_provider_pools([
+            {"provider": "smsbower", "api_keys": ["bower-a"], "enabled": True},
+            {"provider": "hero-sms", "api_keys": ["hero-a"], "enabled": False},
+            {"provider": "fivesim", "api_keys": ["five-a"], "enabled": True},
+        ])
+        self.assertEqual([pool["provider"] for pool in pools], ["smsbower", "herosms", "5sim"])
+        self.assertEqual(pools[2]["service"], "openai")
+
+    def test_multi_platform_registry_preflight_isolated_status_and_secret_redaction(self):
+        secret = "hero-secret/key"
+        factory = FakeMultiPlatformFactory({
+            ("smsbower", "bower-a"): {"balance": RuntimeError("NO_BALANCE")},
+            ("herosms", secret): {"balance": 2.5},
+        })
+        registry = SmsProviderRegistry(factory)
+        registry.configure({
+            "sms_provider_pools": [
+                {"provider": "smsbower", "enabled": True, "api_keys": ["bower-a"], "service": "dr"},
+                {"provider": "herosms", "enabled": True, "api_keys": [secret], "service": "dr"},
+            ]
+        })
+
+        statuses = registry.preflight()
+
+        self.assertEqual(
+            [(row["provider"], row["status"]) for row in statuses],
+            [("smsbower", "insufficient_balance"), ("herosms", "usable")],
+        )
+        self.assertFalse(registry.is_exhausted())
+        self.assertNotIn(secret, str(statuses))
+        self.assertNotIn(secret, registry.safe_error(f"provider rejected api_key={secret}"))
+
+    def test_multi_platform_activation_failover_binds_order_to_platform_and_key(self):
+        factory = FakeMultiPlatformFactory({
+            ("smsbower", "bower-a"): {
+                "balance": 1.0,
+                "activations": [RuntimeError("NO_NUMBERS")],
+            },
+            ("herosms", "hero-a"): {
+                "balance": 1.0,
+                "activations": [("hero-order", "+15550002222")],
+            },
+        })
+        registry = SmsProviderRegistry(factory)
+        registry.configure({
+            "sms_provider_pools": [
+                {"provider": "smsbower", "enabled": True, "api_keys": ["bower-a"]},
+                {"provider": "herosms", "enabled": True, "api_keys": ["hero-a"]},
+            ]
+        })
+        provider = PooledSmsProvider(registry)
+        provider.get_price_candidates()
+
+        activation_id, _phone = provider.get_number_from_candidate(
+            "dr", "151", "any", "0.1", 0.04
+        )
+
+        self.assertEqual(activation_id, "hero-order")
+        self.assertEqual(provider.current_order_meta["platform"], "herosms")
+        self.assertEqual(provider.current_order_meta["key_index"], 1)
+        self.assertTrue(provider.current_order_meta["key_fingerprint"])
+        provider.cancel()
+        self.assertEqual(
+            [row["in_flight"] for row in registry.public_statuses()],
+            [0, 0],
+        )
+
+    def test_multi_platform_balancing_and_same_order_resend(self):
+        factory = FakeMultiPlatformFactory({
+            ("smsbower", "bower-a"): {"balance": 1.0, "codes": [None, "654321"]},
+            ("herosms", "hero-a"): {"balance": 1.0},
+        })
+        registry = SmsProviderRegistry(factory)
+        registry.configure({
+            "sms_provider_pools": [
+                {"provider": "smsbower", "enabled": True, "api_keys": ["bower-a"]},
+                {"provider": "herosms", "enabled": True, "api_keys": ["hero-a"]},
+            ]
+        })
+        first = PooledSmsProvider(registry)
+        first.get_price_candidates()
+        first.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+        self.assertEqual(first.wait_code(timeout=1, interval=0), "654321")
+        self.assertEqual(first.current_order_meta["platform"], "smsbower")
+        self.assertEqual(
+            len([call for call in factory.calls if call[0] == "wait"]),
+            2,
+        )
+        first.complete()
+
+        second = PooledSmsProvider(registry)
+        second.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+        self.assertEqual(second.current_order_meta["platform"], "herosms")
+        second.cancel()
+
+    def test_multi_platform_attempt_limit_allows_fifteen_per_platform(self):
+        platforms = ("smsbower", "herosms", "5sim")
+        factory = FakeMultiPlatformFactory({
+            (platform, f"{platform}-key"): {"balance": 1.0}
+            for platform in platforms
+        })
+        registry = SmsProviderRegistry(factory)
+        registry.configure({
+            "sms_provider_pools": [
+                {
+                    "provider": platform,
+                    "enabled": True,
+                    "api_keys": [f"{platform}-key"],
+                }
+                for platform in platforms
+            ]
+        })
+        provider = PooledSmsProvider(registry)
+        provider.max_attempts_per_platform = 15
+
+        for _index in range(45):
+            provider.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+            provider.cancel()
+
+        with self.assertRaisesRegex(RuntimeError, "单平台尝试上限"):
+            provider.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+
+        activation_calls = [call for call in factory.calls if call[0] == "activate"]
+        self.assertEqual(len(activation_calls), 45)
+        self.assertEqual(
+            {platform: sum(call[1] == platform for call in activation_calls) for platform in platforms},
+            {platform: 15 for platform in platforms},
+        )
+
+    def test_single_platform_multiple_keys_share_one_fifteen_attempt_budget(self):
+        factory = FakeMultiPlatformFactory({
+            ("herosms", "hero-a"): {"balance": 1.0},
+            ("herosms", "hero-b"): {"balance": 1.0},
+            ("5sim", "disabled-key"): {"balance": 1.0},
+        })
+        registry = SmsProviderRegistry(factory)
+        registry.configure({
+            "sms_provider_pools": [
+                {
+                    "provider": "herosms",
+                    "enabled": True,
+                    "api_keys": ["hero-a", "hero-b"],
+                },
+                {
+                    "provider": "5sim",
+                    "enabled": False,
+                    "api_keys": ["disabled-key"],
+                },
+            ]
+        })
+        provider = PooledSmsProvider(registry)
+        provider.max_attempts_per_platform = 15
+
+        for _index in range(15):
+            provider.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+            provider.cancel()
+
+        with self.assertRaisesRegex(RuntimeError, "单平台尝试上限"):
+            provider.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+
+        activation_calls = [call for call in factory.calls if call[0] == "activate"]
+        self.assertEqual(len(activation_calls), 15)
+        self.assertEqual(
+            {key: sum(call[2] == key for call in activation_calls) for key in ("hero-a", "hero-b")},
+            {"hero-a": 8, "hero-b": 7},
+        )
+        self.assertFalse(any(call[1] == "5sim" for call in activation_calls))
+        self.assertEqual([row["in_flight"] for row in registry.public_statuses()], [0, 0, 0])
+
+    def test_fivesim_reject_uses_official_ban_endpoint_and_releases_lease(self):
+        factory = FakeMultiPlatformFactory({
+            ("5sim", "five-key"): {"balance": 1.0},
+        })
+        registry = SmsProviderRegistry(factory)
+        registry.configure({
+            "sms_provider_pools": [
+                {"provider": "5sim", "enabled": True, "api_keys": ["five-key"]},
+            ]
+        })
+        provider = PooledSmsProvider(registry)
+        provider.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+
+        provider.reject()
+
+        self.assertIn(
+            ("rest_get", "5sim", "five-key", "/user/ban/5sim-five-key-order"),
+            factory.calls,
+        )
+        self.assertFalse(any(call[0] == "cancel" for call in factory.calls))
+        self.assertEqual(registry.public_statuses()[0]["in_flight"], 0)
+
+    def test_fivesim_ban_failure_falls_back_to_cancel_without_leaking_lease(self):
+        factory = FakeMultiPlatformFactory({
+            ("5sim", "five-key"): {
+                "balance": 1.0,
+                "rest_get": RuntimeError("network timeout"),
+            },
+        })
+        registry = SmsProviderRegistry(factory)
+        registry.configure({
+            "sms_provider_pools": [
+                {"provider": "5sim", "enabled": True, "api_keys": ["five-key"]},
+            ]
+        })
+        provider = PooledSmsProvider(registry)
+        provider.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+
+        provider.reject()
+
+        self.assertEqual(
+            [call[0] for call in factory.calls if call[0] in {"rest_get", "cancel"}],
+            ["rest_get", "cancel"],
+        )
+        self.assertEqual(registry.public_statuses()[0]["in_flight"], 0)
+
+    def test_platform_route_ranking_uses_platform_specific_history(self):
+        @dataclass
+        class Candidate:
+            pool: str
+            country: str = "151"
+            provider_id: str = "any"
+
+        bower = Candidate("smsbower")
+        hero = Candidate("herosms")
+        ranked = rank_sms_candidates(
+            [bower, hero],
+            {
+                ("smsbower", "151", "any"): {"success": 1, "fail": 8},
+                ("herosms", "151", "any"): {"success": 8, "fail": 1},
+            },
+        )
+        self.assertEqual(ranked, [hero, bower])
 
     def test_preflight_reports_mixed_balances(self):
         factory = FakeFactory({

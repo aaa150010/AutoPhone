@@ -74,7 +74,8 @@ async function start() {
     return
   }
   try {
-    await controller.start()
+    const result = await controller.start()
+    if (!result) return
     ElMessage.success('任务已启动')
   } catch (error: any) {
     ElMessage.error(error?.message || '启动失败')

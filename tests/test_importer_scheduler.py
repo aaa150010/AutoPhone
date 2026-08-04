@@ -138,6 +138,27 @@ def start(importer: FakeImporter, settings: dict, **kwargs):
 
 
 class ImporterSchedulerTests(unittest.TestCase):
+    def test_batch_identity_is_attached_to_every_reserved_task(self):
+        importer = FakeImporter(2)
+
+        start(importer, {
+            "target_count": 2,
+            "concurrency": 2,
+            "batch_id": "20260804-140000-abc123",
+            "batch_started_at": 1_785_824_800,
+        })
+        self.assertTrue(importer.finished.wait(2))
+
+        self.assertEqual(len(importer.tasks), 2)
+        self.assertEqual(
+            {task["batch_id"] for task in importer.tasks.values()},
+            {"20260804-140000-abc123"},
+        )
+        self.assertEqual(
+            {task["batch_started_at"] for task in importer.tasks.values()},
+            {1_785_824_800},
+        )
+
     def test_target_count_reserves_unique_pool_entries_and_bounds_active_workers(self):
         importer = FakeImporter(available=20, blocked=True)
         start(importer, {"target_count": 6, "concurrency": 2, "node_concurrency": 5})

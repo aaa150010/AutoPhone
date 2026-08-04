@@ -373,6 +373,24 @@ class PixelUploadQueueTests(unittest.TestCase):
         self.assertEqual(stored["result_file"], "results/result.json")
         self.assertEqual(os.stat(service.outbox_path).st_mode & 0o777, 0o600)
 
+    def test_manual_requeue_resets_all_targets_without_persisting_credentials(self):
+        client = FakePixelClient()
+        service = PixelUploadQueue(self.root, client=client, auto_start=False)
+        path = self.write_result()
+        queued = service.enqueue("T0001", path)
+        self.assertTrue(service.process_next())
+        self.assertEqual(service.get(queued["record_id"])["status"], "success")
+
+        requeued = service.requeue("T0001", path)
+
+        self.assertEqual(requeued["record_id"], queued["record_id"])
+        self.assertEqual(requeued["status"], "queued")
+        self.assertEqual(set(self.states(requeued).values()), {"pending"})
+        self.assertTrue(all(item["attempts"] == 0 for item in requeued["targets"]))
+        persisted = service.outbox_path.read_text(encoding="utf-8")
+        for secret in (ACCESS_TOKEN, REFRESH_TOKEN, ID_TOKEN, SOURCE_EMAIL):
+            self.assertNotIn(secret, persisted)
+
     def test_success_requires_proxy_random_names_to_match_domain_and_be_unique(self):
         invalid = target_result("pixel-2")
         invalid["generatedNames"] = [SOURCE_EMAIL]

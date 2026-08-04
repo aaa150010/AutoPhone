@@ -489,6 +489,68 @@ class MailboxAdminTests(unittest.TestCase):
         for secret in ("run-pass", "done-pass", "login-pass", "refresh-a", "JBSWY3DPEHPK3PXP"):
             self.assertNotIn(secret, public_payload)
 
+    def test_mailboxes_sort_newest_batch_first_and_resolve_only_success_results(self):
+        older = "older@example.com----pass-a----client-a----refresh-a"
+        newer = "newer@example.com----pass-b----client-b----refresh-b"
+        failed = "failed@example.com----pass-c----client-c----refresh-c"
+        rows = [older, newer, failed]
+        self._write_pool("\n".join(rows) + "\n")
+        self._write_state({})
+        results = self.root / "results"
+        results.mkdir()
+        fixtures = (
+            ("older.json", "older@example.com", "success", "task-old", 100, "batch-old"),
+            ("newer.json", "newer@example.com", "success", "task-new", 300, "batch-new"),
+            ("failed.json", "failed@example.com", "failed", "task-failed", 400, "batch-failed"),
+        )
+        for name, email, status, task_id, batch_started_at, batch_id in fixtures:
+            (results / name).write_text(
+                json.dumps({
+                    "email": email,
+                    "status": status,
+                    "task_id": task_id,
+                    "created_at": batch_started_at + 10,
+                    "batch_id": batch_id,
+                    "batch_started_at": batch_started_at,
+                    "result": {
+                        "email": email,
+                        "access_token": f"access-{task_id}",
+                        "refresh_token": f"refresh-{task_id}",
+                        "id_token": f"id-{task_id}",
+                    },
+                }),
+                encoding="utf-8",
+            )
+
+        listed = self.service.list_mailboxes()["rows"]
+
+        self.assertEqual([row["email"] for row in listed], [
+            "failed@example.com",
+            "newer@example.com",
+            "older@example.com",
+        ])
+        self.assertEqual(listed[1]["batch_id"], "batch-new")
+        self.assertEqual(listed[1]["batch_started_at"], 300)
+        self.assertNotIn("_result_file", json.dumps(listed))
+
+        selected = self.service.selected_success_results({
+            "rows": [
+                {"row_id": row_id_from_source(newer), "line_no": 2},
+                {"row_id": row_id_from_source(failed), "line_no": 3},
+            ],
+        })
+
+        self.assertTrue(selected["ok"])
+        self.assertEqual(selected["skipped"], 1)
+        self.assertEqual(selected["items"][0]["task_id"], "task-new")
+        self.assertEqual(selected["items"][0]["result_file"], (results / "newer.json").resolve())
+
+        stale = self.service.selected_success_results({
+            "rows": [{"row_id": row_id_from_source(older), "line_no": 2}],
+        })
+        self.assertFalse(stale["ok"])
+        self.assertEqual(stale["code"], "mailbox_rows_stale")
+
     def test_public_rows_use_stable_full_source_row_sha256_ids(self):
         rows = [
             "one@example.com----pass-one",

@@ -429,6 +429,33 @@ class SmsWebTests(unittest.TestCase):
         self.assertEqual(result["error"]["code"], "phone_rejected")
         self.assertEqual(cancelled, [])
 
+    def test_phone_rejection_marks_pooled_provider_before_adapter_cancel(self):
+        calls = []
+
+        class Provider:
+            def mark_rejected(self):
+                calls.append("mark_rejected")
+
+            def cancel(self):
+                calls.append("cancel")
+
+        provider = Provider()
+        adapter = SimpleNamespace(config={}, provider=provider, selector=None)
+        lease = SimpleNamespace(activation_id="order-1", meta={})
+
+        def cancel(active_adapter, _lease, reason=""):
+            calls.append(("reason", reason))
+            active_adapter.provider.cancel()
+
+        self.integration.original_adapter_cancel = cancel
+        self.integration.original_classify_error = (
+            lambda error: "phone_rejected" if "rejected" in str(error) else "other"
+        )
+
+        self.integration.adapter_cancel(adapter, lease, reason="phone rejected")
+
+        self.assertEqual(calls, ["mark_rejected", ("reason", "phone rejected"), "cancel"])
+
 
 if __name__ == "__main__":
     unittest.main()
