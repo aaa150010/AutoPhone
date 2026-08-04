@@ -16,6 +16,12 @@ from urllib.parse import urlsplit
 
 from flask import send_from_directory as _send_from_directory
 
+import node_runtime as _node_runtime_ext
+
+# Resolve this before importing recovered modules so their first subprocess
+# lookup sees the same verified Node binary as later runtime calls.
+_node_runtime_ext.configure_node_runtime()
+
 import codex_oauth_chain as _codex_oauth_chain
 import chatgpt_totp as _chatgpt_totp_ext
 import error_observability as _error_observability_ext
@@ -37,6 +43,7 @@ import sms_runtime as _sms_runtime_ext
 import sms_selector as _sms_selector
 import sms_web as _sms_web_ext
 import sub2_runtime as _sub2_runtime_ext
+import sub2_update_runtime as _sub2_update_runtime_ext
 import task_progress as _task_progress_ext
 import web_routes as _web_routes_ext
 
@@ -261,6 +268,8 @@ def _diagnostic_friendly_log_message(value):
         return _ORIGINAL_FRIENDLY_LOG_MESSAGE(safe)
     match = _TASK_ID_LOG_RE.search(safe)
     task_id = match.group(1) if match else _TASK_CONTEXT.get()
+    if _error_observability_ext.is_node_retry_log(safe):
+        return _error_observability_ext.format_node_retry_log(task_id, safe)
     failure = _known_task_failure(task_id)
     if failure is None:
         detail = safe[match.end():].strip(" :-") if match else safe
@@ -413,6 +422,32 @@ def _patched_task_config(self, settings, email, task_id, *, password=""):
             "phone_retry_sleep_seconds": 2,
         }
     )
+    results_value = str((settings or {}).get("results_dir") or "results").strip() or "results"
+    results_dir = Path(results_value)
+    if not results_dir.is_absolute():
+        results_dir = Path(getattr(self, "data_dir", _RUNTIME_DATA_DIR)) / results_dir
+    historical = _mailbox_admin_ext.latest_sub2_accounts_by_email(results_dir).get(
+        str(email or "").strip().lower()
+    )
+    if historical:
+        account_id = str(historical.get("account_id") or "").strip()
+        status_lookup = globals().get("_SUB2_RUNTIME")
+        try:
+            sub2_status = status_lookup.status_for(account_id) if status_lookup is not None else {}
+        except Exception:
+            sub2_status = {}
+        try:
+            status_code = int(sub2_status.get("status_code")) if sub2_status.get("status_code") is not None else None
+        except (TypeError, ValueError):
+            status_code = None
+        status_kind = str(sub2_status.get("kind") or "").strip().lower()
+        if status_code in {401, 404} or status_kind in {"unauthorized", "not_found"}:
+            config["_sub2_update_existing"] = {
+                "account_id": account_id,
+                "email": str(email or "").strip().lower(),
+                "status_code": status_code,
+                "status_kind": status_kind,
+            }
     for pool in pools:
         provider = str(pool.get("provider") or "")
         if not provider:
@@ -555,6 +590,53 @@ def _sub2_session_exchange(self, *, code, account_email):
 
 def _real_sub2_upload(self, *, credentials, email):
     _set_current_task_stage("finalizing_upload")
+    config = getattr(self, "config", None)
+    binding = config.get("_sub2_update_existing") if isinstance(config, dict) else None
+    if isinstance(binding, dict) and str(binding.get("account_id") or "").strip():
+        expected_email = str(binding.get("email") or "").strip().lower()
+        if expected_email != str(email or "").strip().lower():
+            return {
+                "ok": False,
+                "error": "sub2_update_binding_mismatch: SUB2 原账号与当前邮箱不匹配",
+                "error_code": "sub2_update_binding_mismatch",
+                "sub2api_account_id": str(binding.get("account_id") or "").strip(),
+                "sub2_update_existing": True,
+                "sub2_upload_created": False,
+            }
+        import chatgpt_fields
+        import proxy_scope
+        import requests
+        import sub2_groups
+        import sub2_session
+
+        dependencies = _sub2_update_runtime_ext.Sub2UpdateDependencies(
+            get_admin_token=sub2_session.get_admin_token,
+            resolve_group=sub2_groups.resolve_sub2_group_id,
+            fetch_detail=chatgpt_fields.fetch_sub2_account_detail,
+            assert_group=sub2_groups.assert_sub2_account_group,
+            extract_fields=chatgpt_fields.extract_chatgpt_auth_fields,
+            extra_from_item=chatgpt_fields.sub2_extra_from_item,
+            identity_locations=_codex_oauth_chain._sub2_identity_locations,
+            put=requests.put,
+            requests_kwargs=proxy_scope.requests_kwargs,
+        )
+        result = _sub2_update_runtime_ext.update_existing_sub2_account(
+            config=config,
+            credentials=credentials,
+            email=email,
+            account_id=binding["account_id"],
+            upload_proxy=str(getattr(self, "upload_proxy", "") or ""),
+            log_fn=getattr(self, "log_fn", None),
+            dependencies=dependencies,
+        )
+        if result.get("ok"):
+            status_lookup = globals().get("_SUB2_RUNTIME")
+            if status_lookup is not None:
+                try:
+                    status_lookup.clear_status(binding["account_id"])
+                except Exception:
+                    pass
+        return result
     return _ORIGINAL_REAL_SUB2_UPLOAD(self, credentials=credentials, email=email)
 
 
@@ -600,14 +682,37 @@ def _patched_chain_event(
     task_id = _TASK_CONTEXT.get()
     if task_id:
         _TASK_PROGRESS.observe_chain_state(task_id, state)
-    return _ORIGINAL_CHAIN_EVENT(
+    retrying_node = (
+        str(state or "").strip().upper() == "FAILED"
+        and _error_observability_ext.is_retryable_node_failure(detail)
+    )
+    if not retrying_node:
+        return _ORIGINAL_CHAIN_EVENT(
+            events,
+            state,
+            detail=detail,
+            extra=extra,
+            log_fn=log_fn,
+            tag=tag,
+        )
+
+    # Keep the FAILED event in the persisted chain for diagnosis. The chain
+    # may immediately create a fresh bridge and continue, so emit a retry
+    # notice instead of a terminal-looking red failure line.
+    _ORIGINAL_CHAIN_EVENT(
         events,
         state,
         detail=detail,
         extra=extra,
-        log_fn=log_fn,
+        log_fn=None,
         tag=tag,
     )
+    retry_message = _error_observability_ext.format_node_retry_log(task_id, detail)
+    if log_fn and retry_message:
+        try:
+            log_fn(retry_message, "warn")
+        except TypeError:
+            log_fn(retry_message)
 
 
 def _notification_task_snapshot(importer):
@@ -1194,7 +1299,7 @@ def _retained_gui_log_add(self, message, level="info"):
         self,
         message,
         level,
-        safe_fn=_module._safe,
+        safe_fn=_diagnostic_friendly_log_message,
         max_items=_module.MAX_LOGS,
     )
 
@@ -1321,6 +1426,9 @@ _runtime.EmailAuthImporter._watch = _patched_importer_watch
 _runtime.EmailAuthImporter._pre_auth_session_retryable = staticmethod(_patched_pre_auth_session_retryable)
 _runtime._generate_sub2_oauth_session = _generate_sub2_oauth_session
 _runtime._friendly_log_message = _diagnostic_friendly_log_message
+# The recovered web_gui._safe function resolves this module-global by name;
+# update that reference as well so its log panel cannot retain the old mapper.
+_module._friendly_log_message = _diagnostic_friendly_log_message
 _runtime.ImporterConfigStore.load = _patched_config_load
 _runtime.ImporterConfigStore.save = _patched_config_save
 _module.GuiLog.add = _retained_gui_log_add

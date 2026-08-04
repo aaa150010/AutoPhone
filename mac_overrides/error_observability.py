@@ -105,6 +105,102 @@ _PROVIDER_CODE_RE = re.compile(
     r"(?i)\b(?:error[_-]?code|provider[_-]?code|type)\s*[:=]\s*[\"']?([A-Za-z][A-Za-z0-9_.-]{1,79})"
 )
 
+_NODE_FAILURE_MARKERS = (
+    "node_sentinel_failed",
+    "sentinelrunner",
+    "sentinel launcher",
+    "node_bridge",
+    "node bridge",
+    "node/sentinel",
+)
+
+_NODE_CAUSE_RULES = (
+    (
+        ("node executable not found",),
+        "node_runtime_missing",
+        "未找到可用的 Node.js 可执行文件，请检查 CODEX_NODE_BINARY 或 PATH",
+    ),
+    (
+        (
+            "sentinelrunner missing",
+            "sentinelrunner not configured",
+            "sentinelrunner not found",
+            "real node sentinelrunner not configured",
+            "real node sentinelrunner not found",
+        ),
+        "node_runner_missing",
+        "SentinelRunner 文件缺失或路径无效",
+    ),
+    (
+        (
+            "proxy_connect_failed",
+            "proxy_connect_timeout",
+            "unsupported_node_proxy_protocol",
+            "unable to connect to proxy",
+            "proxyerror",
+        ),
+        "node_proxy_failed",
+        "Node/Sentinel 无法连接当前显式代理",
+    ),
+    (
+        ("tls_connect_error", "tls_connect_timeout", "tls connection", "tls connect"),
+        "node_tls_failed",
+        "Node/Sentinel TLS 连接异常",
+    ),
+    (
+        (
+            "node_bridge_timeout",
+            "node bridge timeout",
+            "request_timeout",
+            "operation timed out",
+            "timeoutexpired",
+        ),
+        "node_sentinel_timeout",
+        "Node/Sentinel 请求超时",
+    ),
+    (
+        (
+            "sentinel_sdk_unavailable",
+            "sentinel sdk cache invalid",
+            "sentinel sdk patch failed",
+        ),
+        "node_sentinel_sdk_failed",
+        "Sentinel SDK 缓存不可用或与当前版本不兼容",
+    ),
+    (
+        (
+            "sentinel_empty_token",
+            "empty_requirements_token",
+            "empty_enforcement_token",
+            "empty_so_token",
+            "returned no token",
+            "no token",
+        ),
+        "node_sentinel_token_missing",
+        "Sentinel 服务未返回有效 token",
+    ),
+    (
+        ("invalid node json", "empty node stdout", "does not contain a json object"),
+        "node_bridge_invalid_response",
+        "Node/Sentinel 子进程未返回有效 JSON",
+    ),
+    (
+        (
+            "node_json_post_failed",
+            "python_json_post_failed",
+            "connection reset",
+            "remote_disconnected",
+        ),
+        "node_sentinel_request_failed",
+        "Node/Sentinel 网络请求中断",
+    ),
+    (
+        ("token generation failed", "token 生成失败", "token 生成未成功"),
+        "node_sentinel_token_failed",
+        "Sentinel token 生成未成功",
+    ),
+)
+
 
 def _strip_url_secrets(match: re.Match[str]) -> str:
     value = match.group(0).rstrip(".,;:)")
@@ -277,6 +373,7 @@ _RULES = (
     (("sub2api登录失败", "generate-auth-url", "generate_auth_url", "missing auth_url", "missing session_id", "missing oauth session"), "oauth_session", "sub2_oauth_session_failed", "SUB2 管理员登录或 OAuth 会话创建失败", True),
     (("node_sentinel_failed", "sentinel launcher", "node_bridge", "node bridge", "sentinel"), "oauth_create_node", "node_sentinel_failed", "Node/Sentinel 授权桥接初始化失败", True),
     (("create_account_profile_failed", "create_account_profile", "profile completion"), "finalizing_profile", "profile_completion_failed", "OpenAI 账号资料提交失败", True),
+    (("sub2_update_existing_failed", "sub2_update_verification_failed", "sub2_update_group_verification_failed", "sub2_update_identity_verification_failed", "sub2_update_binding_mismatch", "sub2_update_target_missing"), "finalizing_upload", "sub2_update_existing_failed", "SUB2 原账号更新或远端校验未完成", True),
     (("sub2_upload", "sub2 uploaded but chatgpt_account_id verification failed", "cpa_upload_failed", "cpa_token_upload_failed", "upload_failed", "remote_verified", "group_verified", "chatgpt_account_id_verified", "sub2_upload_failed"), "finalizing_upload", "sub2_upload_failed", "SUB2 账号上传或远端校验未完成", True),
     (("password_verify_failed", "incorrect password", "invalid password", "wrong password"), "email_password", "email_password_failed", "OpenAI 登录密码验证失败", False),
     (("microsoft token refresh failed", "authenticated but not connected", "mailbox_imap_error", "authenticate failed", "authenticationfailed", "imap"), "email_login", "mailbox_login_failed", "邮箱登录或 IMAP 授权失败", False),
@@ -302,10 +399,34 @@ def _is_oauth_session_invalid(text: str) -> bool:
 
 
 def _rule_for(text: str) -> tuple[str, str, str, bool] | None:
+    if any(marker in text for marker in _NODE_FAILURE_MARKERS):
+        for markers, error_code, cause in _NODE_CAUSE_RULES:
+            if any(marker in text for marker in markers):
+                return "oauth_create_node", error_code, cause, True
+        return (
+            "oauth_create_node",
+            "node_sentinel_failed",
+            "Node/Sentinel 授权桥接初始化失败",
+            True,
+        )
     for markers, node_code, error_code, cause, retryable in _RULES:
         if any(marker in text for marker in markers):
             return node_code, error_code, cause, retryable
     return None
+
+
+def is_retryable_node_failure(value: Any) -> bool:
+    text = _diagnostic_text(value).lower()
+    return any(marker in text for marker in _NODE_FAILURE_MARKERS)
+
+
+def is_node_retry_log(value: Any) -> bool:
+    """Return true only for a Node/Sentinel failure explicitly being retried."""
+
+    text = _diagnostic_text(value).lower()
+    if not is_retryable_node_failure(text):
+        return False
+    return "重试" in text or bool(re.search(r"\bretr(?:y|ied|ying)\b", text))
 
 
 def _best_technical_summary(values: Sequence[Any], *, secrets: Sequence[Any]) -> str:
@@ -427,4 +548,20 @@ def format_failure_log(task_id: Any, failure: Any) -> str:
     return (
         f"{prefix}[{public['node_label']}/{public['node_code']}] "
         f"{public['public_message']}"
+    )
+
+
+def format_node_retry_log(task_id: Any, detail: Any) -> str:
+    """Format a non-terminal Node retry without presenting it as task failure."""
+
+    failure = classify_failure(error=detail)
+    message = str(failure.get("public_message") or "")
+    cause = message.split("失败：", 1)[-1] if "失败：" in message else message
+    cause = sanitize_failure_detail(cause, limit=300) or "本次授权桥接未返回错误详情"
+    if cause == "Node/Sentinel 授权桥接初始化失败":
+        cause = "Sentinel token 生成未成功"
+    prefix = f"{str(task_id or '').strip()} " if str(task_id or "").strip() else ""
+    return (
+        f"{prefix}[Node/Sentinel 重试/oauth_create_node] "
+        f"本次尝试未完成，正在自动重试：{cause}"
     )

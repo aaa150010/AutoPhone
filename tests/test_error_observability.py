@@ -6,6 +6,8 @@ from mac_overrides.error_observability import (
     ACCOUNT_BANNED_MESSAGE,
     classify_failure,
     format_failure_log,
+    format_node_retry_log,
+    is_node_retry_log,
     public_failure,
     sanitize_failure_detail,
 )
@@ -100,6 +102,16 @@ class ErrorObservabilityTests(unittest.TestCase):
         self.assertEqual(keys["error_code"], "sms_key_pool_temporarily_unavailable")
         self.assertIn("SMS Key", keys["public_message"])
 
+    def test_sub2_existing_account_update_failure_keeps_upload_node(self):
+        failure = classify_failure(
+            error="sub2_update_existing_failed: SUB2 原账号更新失败（HTTP 500）"
+        )
+
+        self.assertEqual(failure["node_code"], "finalizing_upload")
+        self.assertEqual(failure["error_code"], "sub2_update_existing_failed")
+        self.assertEqual(failure["http_status"], 500)
+        self.assertIn("原账号更新", failure["public_message"])
+
     def test_account_banned_message_remains_exact(self):
         failure = classify_failure(
             {"error": {"code": "account_banned", "message": "account has been banned"}},
@@ -174,6 +186,30 @@ class ErrorObservabilityTests(unittest.TestCase):
             format_failure_log("T001-abcd", public),
             "T001-abcd [交换 OAuth Token/finalizing_token] 交换 OAuth Token失败：服务端拒绝请求",
         )
+
+    def test_node_retry_is_not_formatted_as_terminal_failure(self):
+        detail = "[SentinelRunner] token 生成失败，重试 flow=chat-requirements"
+
+        self.assertTrue(is_node_retry_log(detail))
+        message = format_node_retry_log("T001-abcd", detail)
+        self.assertIn("正在自动重试", message)
+        self.assertIn("Sentinel token 生成未成功", message)
+        self.assertNotIn("失败：Node/Sentinel 授权桥接初始化失败", message)
+
+    def test_node_terminal_causes_remain_specific_and_redacted(self):
+        cases = (
+            ("node_sentinel_failed: node bridge timeout", "node_sentinel_timeout", "超时"),
+            ("node_sentinel_failed: Unable to connect to proxy", "node_proxy_failed", "显式代理"),
+            ("node_sentinel_failed: TLS connect error", "node_tls_failed", "TLS"),
+            ("node_sentinel_failed: node executable not found", "node_runtime_missing", "Node.js"),
+            ("node_sentinel_failed: token generation failed", "node_sentinel_token_failed", "token"),
+        )
+        for detail, code, phrase in cases:
+            with self.subTest(detail=detail):
+                failure = classify_failure(error=detail)
+                self.assertEqual(failure["error_code"], code)
+                self.assertIn(phrase, failure["public_message"])
+                self.assertNotIn("access_token", failure["public_message"])
 
 
 if __name__ == "__main__":

@@ -106,6 +106,10 @@ PY
 fi
 
 NODE_BIN="$(command -v node || true)"
+CONFIGURED_NODE_BIN="${CODEX_NODE_BINARY:-}"
+if [ -n "$CONFIGURED_NODE_BIN" ] && [ -x "$CONFIGURED_NODE_BIN" ]; then
+  NODE_BIN="$CONFIGURED_NODE_BIN"
+fi
 if [ -z "$NODE_BIN" ] && command -v brew >/dev/null 2>&1; then
   echo "Installing Node.js with Homebrew..."
   brew install node
@@ -113,7 +117,9 @@ if [ -z "$NODE_BIN" ] && command -v brew >/dev/null 2>&1; then
   NODE_BIN="$(command -v node || true)"
 fi
 if [ -n "$NODE_BIN" ]; then
-  export CODEX_NODE_BINARY="${CODEX_NODE_BINARY:-$NODE_BIN}"
+  export CODEX_NODE_BINARY="$NODE_BIN"
+else
+  unset CODEX_NODE_BINARY
 fi
 
 NPM_BIN="$(command -v npm || true)"

@@ -519,6 +519,38 @@ class Sub2RuntimeTests(unittest.TestCase):
         self.assertEqual(runtime.status_for("9")["kind"], "untested")
         self.assertEqual(runtime.status_for("")["kind"], "unlinked")
 
+    def test_runtime_clears_stale_status_after_existing_account_update(self):
+        config = {
+            "sub2api": {
+                "url": "https://one.example.test",
+                "email": "admin@example.test",
+                "password": "secret",
+            }
+        }
+        runtime = Sub2Runtime(lambda: config, self.root / "snapshots.json", now_fn=lambda: self.clock)
+        fingerprint = service_fingerprint(config["sub2api"]["url"])
+        from mac_overrides.sub2_runtime import Sub2TestStatus
+
+        runtime.snapshot_store.put_many(
+            fingerprint,
+            {
+                "9": Sub2TestStatus(
+                    "unauthorized",
+                    401,
+                    "401 Token失效",
+                    "token expired",
+                    int(self.clock),
+                    True,
+                    True,
+                )
+            },
+        )
+        self.assertTrue(runtime.status_for("9")["needs_rerun"])
+
+        runtime.clear_status("9")
+
+        self.assertEqual(runtime.status_for("9")["kind"], "untested")
+
 
 if __name__ == "__main__":
     unittest.main()

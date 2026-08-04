@@ -116,6 +116,116 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(three_platforms["phone_attempts_per_provider"], 15)
         self.assertEqual(three_platforms["phone_session_max_seconds"], 1800)
 
+    def test_task_config_binds_401_rerun_to_historical_sub2_account(self):
+        module = self.module
+        original_task_config = module._ORIGINAL_TASK_CONFIG
+        original_sub2_runtime = module._SUB2_RUNTIME
+        result_dir = Path(self.tempdir.name) / "sub2-update-results"
+        result_dir.mkdir(parents=True, exist_ok=True)
+        (result_dir / "old-success.json").write_text(
+            json.dumps({
+                "status": "success",
+                "source_row": "rerun@example.test----mail-password",
+                "created_at": 100,
+                "result": {"sub2api_account_id": "501"},
+            }),
+            encoding="utf-8",
+        )
+        fake_runtime = SimpleNamespace(
+            status_for=lambda account_id: {
+                "kind": "unauthorized",
+                "status_code": 401,
+                "needs_rerun": True,
+            }
+        )
+        try:
+            module._ORIGINAL_TASK_CONFIG = lambda *_args, **_kwargs: {"code_timeout": 30}
+            module._SUB2_RUNTIME = fake_runtime
+            config = module._patched_task_config(
+                SimpleNamespace(data_dir=self.tempdir.name),
+                {"results_dir": str(result_dir)},
+                "rerun@example.test",
+                "task-rerun",
+            )
+        finally:
+            module._ORIGINAL_TASK_CONFIG = original_task_config
+            module._SUB2_RUNTIME = original_sub2_runtime
+
+        self.assertEqual(config["_sub2_update_existing"]["account_id"], "501")
+        self.assertEqual(config["_sub2_update_existing"]["status_code"], 401)
+        self.assertEqual(config["_sub2_update_existing"]["email"], "rerun@example.test")
+
+    def test_sub2_upload_wrapper_uses_update_branch_and_clears_old_status(self):
+        module = self.module
+        original_upload = module._ORIGINAL_REAL_SUB2_UPLOAD
+        original_update = module._sub2_update_runtime_ext.update_existing_sub2_account
+        original_sub2_runtime = module._SUB2_RUNTIME
+        calls = []
+        cleared = []
+
+        def update_existing(**kwargs):
+            calls.append(kwargs)
+            return {
+                "ok": True,
+                "sub2api_account_id": kwargs["account_id"],
+                "sub2_update_existing": True,
+                "sub2_upload_created": False,
+            }
+
+        uploader = SimpleNamespace(
+            config={
+                "_sub2_update_existing": {
+                    "account_id": "501",
+                    "email": "rerun@example.test",
+                    "status_code": 401,
+                }
+            },
+            upload_proxy="",
+            log_fn=None,
+        )
+        try:
+            module._ORIGINAL_REAL_SUB2_UPLOAD = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("create path must not run")
+            )
+            module._sub2_update_runtime_ext.update_existing_sub2_account = update_existing
+            module._SUB2_RUNTIME = SimpleNamespace(clear_status=lambda account_id: cleared.append(account_id))
+            result = module._real_sub2_upload(
+                uploader,
+                credentials={"access_token": "token"},
+                email="rerun@example.test",
+            )
+        finally:
+            module._ORIGINAL_REAL_SUB2_UPLOAD = original_upload
+            module._sub2_update_runtime_ext.update_existing_sub2_account = original_update
+            module._SUB2_RUNTIME = original_sub2_runtime
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["account_id"], "501")
+        self.assertEqual(cleared, ["501"])
+
+    def test_sub2_upload_wrapper_keeps_create_path_for_first_run(self):
+        module = self.module
+        original_upload = module._ORIGINAL_REAL_SUB2_UPLOAD
+        calls = []
+        try:
+            module._ORIGINAL_REAL_SUB2_UPLOAD = lambda _self, **kwargs: calls.append(kwargs) or {
+                "ok": True,
+                "sub2api_account_id": "new-account",
+                "sub2_upload_created": True,
+            }
+            result = module._real_sub2_upload(
+                SimpleNamespace(config={}, upload_proxy="", log_fn=None),
+                credentials={"access_token": "token"},
+                email="first@example.test",
+            )
+        finally:
+            module._ORIGINAL_REAL_SUB2_UPLOAD = original_upload
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["sub2_upload_created"])
+        self.assertEqual(len(calls), 1)
+
     def test_phone_send_payload_keeps_browser_channel_parameter(self):
         calls = []
 
@@ -221,6 +331,40 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertIn("获取 OAuth 回调失败", values["error"])
         self.assertNotIn("授权或上传未完成", values["error"])
         self.assertEqual(values["technical_error"], "服务端未返回错误详情")
+
+    def test_node_bridge_retry_event_is_persisted_without_terminal_log(self):
+        module = self.module
+        original_event = module._ORIGINAL_CHAIN_EVENT
+        original_context = module._TASK_CONTEXT.set("T-node-retry")
+        captured = []
+        logs = []
+        try:
+            module._ORIGINAL_CHAIN_EVENT = lambda *args, **kwargs: captured.append((args, kwargs))
+            module._patched_chain_event(
+                [],
+                "FAILED",
+                detail="node_sentinel_failed: node_bridge_timeout",
+                log_fn=lambda *args: logs.append(args),
+            )
+        finally:
+            module._ORIGINAL_CHAIN_EVENT = original_event
+            module._TASK_CONTEXT.reset(original_context)
+
+        self.assertEqual(len(captured), 1)
+        self.assertIsNone(captured[0][1]["log_fn"])
+        self.assertEqual(len(logs), 1)
+        self.assertIn("Node/Sentinel 重试", logs[0][0])
+        self.assertIn("正在自动重试", logs[0][0])
+        self.assertEqual(logs[0][1], "warn")
+
+    def test_recovered_web_safe_log_uses_the_diagnostic_mapper(self):
+        message = self.module._module._safe(
+            "T001-safe [SentinelRunner] token 生成失败，重试 flow=chat-requirements"
+        )
+
+        self.assertIn("Node/Sentinel 重试", message)
+        self.assertIn("正在自动重试", message)
+        self.assertNotIn("初始化 Node/Sentinel/oauth_create_node", message)
 
     def test_oauth_and_sub2_wrappers_enter_the_failing_stage_before_network_call(self):
         module = self.module

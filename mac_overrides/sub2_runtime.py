@@ -527,6 +527,18 @@ class Sub2SnapshotStore:
             payload["updated_at"] = int(self.now_fn())
             self._write_unlocked(payload)
 
+    def discard(self, fingerprint: str, account_id: Any) -> None:
+        key = self._key(fingerprint, account_id)
+        with self._lock:
+            payload = self._read_unlocked()
+            items = payload.setdefault("items", {})
+            if key not in items:
+                return
+            items.pop(key, None)
+            payload["version"] = 1
+            payload["updated_at"] = int(self.now_fn())
+            self._write_unlocked(payload)
+
 
 def _response_json(response: Any) -> Mapping[str, Any]:
     try:
@@ -896,6 +908,17 @@ class Sub2Runtime:
             return untested_status().public()
         status = self.snapshot_store.get(fingerprint, remote_id) or untested_status()
         return status.public()
+
+    def clear_status(self, account_id: Any) -> None:
+        remote_id = str(account_id or "").strip()
+        if not remote_id:
+            return
+        try:
+            settings, _proxy = self._settings()
+            fingerprint = service_fingerprint(settings.get("url"))
+        except Sub2ConfigurationError:
+            return
+        self.snapshot_store.discard(fingerprint, remote_id)
 
     def test_rows(self, rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         try:

@@ -270,6 +270,43 @@ def sub2_account_id_from_result(result: Any) -> str:
     return str(payload.get("sub2api_account_id") or value.get("sub2api_account_id") or "").strip()
 
 
+def latest_sub2_accounts_by_email(results_dir: str | Path) -> dict[str, dict[str, Any]]:
+    """Index the latest successful SUB2 account binding for each mailbox."""
+
+    root = Path(results_dir)
+    latest: dict[str, dict[str, Any]] = {}
+    if not root.exists():
+        return latest
+    for path in sorted(root.glob("*.json")):
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        data = value if isinstance(value, dict) else {}
+        if str(data.get("status") or "").lower() not in {"success", "ok", "uploaded"}:
+            continue
+        account_id = sub2_account_id_from_result(data)
+        email = email_from_row(data.get("email") or data.get("source_row") or "")
+        if not email or not account_id:
+            continue
+        try:
+            fallback_created = path.stat().st_mtime
+        except OSError:
+            fallback_created = 0
+        try:
+            created = int(data.get("created_at") or data.get("updated_at") or fallback_created)
+        except (TypeError, ValueError):
+            created = int(fallback_created)
+        previous = latest.get(email)
+        if previous is None or created >= int(previous.get("created_at") or 0):
+            latest[email] = {
+                "account_id": account_id,
+                "created_at": created,
+                "result_file": str(path.resolve()),
+            }
+    return latest
+
+
 def _sub2_status_flags(kind: Any, status_code: int | None) -> tuple[bool, bool, bool]:
     normalized_kind = str(kind or "").strip().lower()
     is_abnormal = status_code == 401 or normalized_kind == "unauthorized"
@@ -641,29 +678,7 @@ class MailboxAdminService:
         return latest
 
     def _latest_sub2_accounts_by_email(self, results_dir: Path) -> dict[str, dict[str, Any]]:
-        latest: dict[str, dict[str, Any]] = {}
-        if not results_dir.exists():
-            return latest
-        for path in sorted(results_dir.glob("*.json")):
-            data = self._read_json_file(path)
-            if str(data.get("status") or "").lower() not in {"success", "ok", "uploaded"}:
-                continue
-            account_id = sub2_account_id_from_result(data)
-            email = email_from_row(data.get("email") or data.get("source_row") or "")
-            if not email or not account_id:
-                continue
-            try:
-                fallback_created = path.stat().st_mtime
-            except OSError:
-                fallback_created = 0
-            try:
-                created = int(data.get("created_at") or data.get("updated_at") or fallback_created)
-            except (TypeError, ValueError):
-                created = int(fallback_created)
-            previous = latest.get(email)
-            if previous is None or created >= int(previous.get("created_at") or 0):
-                latest[email] = {"account_id": account_id, "created_at": created}
-        return latest
+        return latest_sub2_accounts_by_email(results_dir)
 
     def _sub2_status_for(self, account_id: str) -> dict[str, Any]:
         if not account_id:
@@ -1160,6 +1175,7 @@ __all__ = [
     "generate_totp_code",
     "human_mailbox_status",
     "is_importable_mailbox_row",
+    "latest_sub2_accounts_by_email",
     "masked_source_row",
     "parse_chatgpt_totp_row",
     "parse_mailbox_url_row",
