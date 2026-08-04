@@ -1063,6 +1063,19 @@ def _patched_retire_after_failure(self, settings, pool, entry, task_id, result, 
     return None
 
 
+def _real_send_phone_number_otp(self, phone, channel="sms"):
+    payload = {"phone_number": _codex_oauth_chain._phone_for_openai(phone)}
+    if channel:
+        payload["channel"] = channel
+    return self._post_auth_json(
+        "/api/accounts/add-phone/send",
+        payload,
+        flow="authorize_continue",
+        referer=f"{_codex_oauth_chain.AUTH}/add-phone",
+        timeout=30,
+    )
+
+
 _SMS_WEB = _sms_web_ext.SmsWebIntegration(
     sms_runtime=_sms_runtime_ext,
     original_create_provider=_ORIGINAL_CREATE_PROVIDER,
@@ -1073,13 +1086,7 @@ _SMS_WEB = _sms_web_ext.SmsWebIntegration(
     original_adapter_cancel=_ORIGINAL_SMS_ADAPTER_CANCEL,
     original_classify_error=_ORIGINAL_SMART_CLASSIFY_ERROR,
     original_record_result=_ORIGINAL_SMART_RECORD_RESULT,
-    original_send_phone_otp=lambda transport, phone, _channel="sms": transport._post_auth_json(
-        "/api/accounts/add-phone/send",
-        {"phone_number": _codex_oauth_chain._phone_for_openai(phone)},
-        flow="authorize_continue",
-        referer=f"{_codex_oauth_chain.AUTH}/add-phone",
-        timeout=30,
-    ),
+    original_send_phone_otp=_real_send_phone_number_otp,
     key_pool=_SMS_KEY_POOL,
     cost_ledger=_SMS_COST_LEDGER,
     phone_gate=_SMS_PHONE_GATE,

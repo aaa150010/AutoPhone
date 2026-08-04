@@ -258,17 +258,38 @@ def build_chatgpt_totp_patches(
             match = re.search(r"/mfa-challenge/([^/?#]+)", str(next_url))
             if match and not getattr(transport, "_chatgpt_totp_factor_id", ""):
                 setattr(transport, "_chatgpt_totp_factor_id", match.group(1))
-        response = {
-            "_status": 200,
-            "page": {"type": "mfa_challenge"},
-            "continue_url": next_url or getattr(transport, "_chatgpt_totp_mfa_continue_url", ""),
-        }
+        factor_id = str(getattr(transport, "_chatgpt_totp_factor_id", "") or "").strip()
+        if not factor_id:
+            response = {
+                "_status": 400,
+                "page": {"type": "mfa_challenge"},
+                "error": {"code": "mfa_factor_id_missing", "message": "TOTP factor id missing"},
+            }
+            trace(transport, "mfa_issue_challenge", "/api/accounts/mfa/issue_challenge", response)
+            return response
+
+        response = transport._post_auth_json(
+            "/api/accounts/mfa/issue_challenge",
+            {"id": factor_id, "type": "totp", "force_fresh_challenge": False},
+            flow="mfa_otp_issue",
+            referer=f"{codex_oauth_chain.AUTH}/log-in/password",
+            timeout=30,
+        )
+        if not isinstance(response, dict):
+            response = {"_status": 200}
+        response = dict(response)
+        response.setdefault("_status", 200)
+        response.setdefault("page", {"type": "mfa_challenge"})
+        response.setdefault(
+            "continue_url",
+            next_url or getattr(transport, "_chatgpt_totp_mfa_continue_url", ""),
+        )
         trace(
             transport,
-            "send_mfa_otp_noop",
-            "/api/accounts/mfa-otp/send",
+            "mfa_issue_challenge",
+            "/api/accounts/mfa/issue_challenge",
             response,
-            skipped="totp_local_code",
+            force_fresh_challenge="0",
         )
         return response
 

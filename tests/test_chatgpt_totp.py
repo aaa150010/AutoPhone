@@ -212,6 +212,58 @@ class ChatGptTotpTests(unittest.TestCase):
             self.assertNotIn(parsed.mailbox_url, entry.source_row)
             self.assertIn("***", entry.source_row)
 
+    def test_totp_mfa_issue_challenge_matches_browser_request(self):
+        calls = []
+
+        class FakeTransport:
+            def __init__(self):
+                self.log_fn = None
+
+            def _post_auth_json(self, path, payload, **kwargs):
+                calls.append((path, dict(payload), dict(kwargs)))
+                return {"_status": 200}
+
+        chain = SimpleNamespace(
+            AUTH="https://auth.openai.com",
+            _page_type=lambda response: (response.get("page") or {}).get("type", ""),
+            _continue_url=lambda response: response.get("continue_url", ""),
+        )
+        patches = build_chatgpt_totp_patches(
+            runtime_module=SimpleNamespace(),
+            codex_oauth_chain=chain,
+            original_entries_unlocked=lambda _pool: ([], []),
+            original_outlook_otp_provider=lambda *args, **kwargs: None,
+            original_account_label=lambda entry: entry.email,
+            original_verify_password=lambda *_args: {
+                "_status": 200,
+                "page": {"payload": {"factor_id": "factor-id"}},
+                "continue_url": "https://auth.openai.com/mfa-challenge/factor-id",
+            },
+            original_send_mfa_otp=lambda *args: {},
+            original_verify_mfa_otp=lambda *args: {},
+            parse_oauth_mailbox_row=parse_oauth_mailbox_row,
+        )
+        patches.outlook_otp_provider(
+            SimpleNamespace(oauth_client_id="chatgpt_totp", oauth_refresh_token="JBSWY3DPEHPK3PXP"),
+            {},
+            None,
+        )
+
+        transport = FakeTransport()
+        patches.verify_password(transport, "password")
+        response = patches.send_mfa_otp(
+            transport,
+            "https://auth.openai.com/mfa-challenge/factor-id",
+        )
+
+        self.assertEqual(response["_status"], 200)
+        self.assertEqual(calls[0][0], "/api/accounts/mfa/issue_challenge")
+        self.assertEqual(
+            calls[0][1],
+            {"id": "factor-id", "type": "totp", "force_fresh_challenge": False},
+        )
+        self.assertEqual(calls[0][2]["referer"], "https://auth.openai.com/log-in/password")
+
 
 if __name__ == "__main__":
     unittest.main()

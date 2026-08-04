@@ -116,6 +116,20 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(three_platforms["phone_attempts_per_provider"], 15)
         self.assertEqual(three_platforms["phone_session_max_seconds"], 1800)
 
+    def test_phone_send_payload_keeps_browser_channel_parameter(self):
+        calls = []
+
+        class FakeTransport:
+            def _post_auth_json(self, path, payload, **kwargs):
+                calls.append((path, dict(payload), dict(kwargs)))
+                return {"_status": 200}
+
+        self.module._real_send_phone_number_otp(FakeTransport(), "+1 (555) 000-1234", "sms")
+
+        self.assertEqual(calls[0][0], "/api/accounts/add-phone/send")
+        self.assertEqual(calls[0][1]["channel"], "sms")
+        self.assertEqual(calls[0][2]["referer"], "https://auth.openai.com/add-phone")
+
     def test_public_task_drops_composite_account_tokens_and_source_row(self):
         task = {
             "task_id": "task-1",
