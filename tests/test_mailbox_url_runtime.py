@@ -1,0 +1,262 @@
+from __future__ import annotations
+
+import base64
+import json
+import unittest
+
+from mac_overrides.mailbox_url_runtime import (
+    MAX_MESSAGES,
+    MailboxRequestState,
+    MailboxResponse,
+    MailboxUrlClient,
+    MailboxUrlError,
+    masked_mailbox_url_row,
+    parse_mailbox_payload,
+    parse_mailbox_url_row,
+    select_latest_code,
+)
+
+
+BASE_URL = "https://mail.example.test/messages/operator-token/user@example.test"
+
+
+def json_response(url: str, value, status: int = 200) -> MailboxResponse:
+    return MailboxResponse(
+        url=url,
+        body=json.dumps(value).encode("utf-8"),
+        content_type="application/json; charset=utf-8",
+        status=status,
+    )
+
+
+def verification_body(code: str) -> str:
+    html = f"<html><body><h1>OpenAI</h1><p>Your verification code is <b>{code}</b></p></body></html>"
+    payload = base64.b64encode(html.encode("utf-8")).decode("ascii")
+    return f"data:text/html;charset=utf-8;base64,{payload}"
+
+
+class MailboxUrlRuntimeTests(unittest.TestCase):
+    def test_parses_and_masks_all_supported_url_row_separators(self):
+        for separator in ("---", "----", "|", "｜"):
+            row = f"User@Example.test{separator}https://mail.example.test/inbox/a-b_c"
+            with self.subTest(separator=separator):
+                parsed = parse_mailbox_url_row(row)
+                self.assertIsNotNone(parsed)
+                self.assertEqual(parsed.email, "user@example.test")
+                self.assertEqual(parsed.mailbox_url, "https://mail.example.test/inbox/a-b_c")
+                self.assertEqual(
+                    masked_mailbox_url_row(row),
+                    separator.join(("user@example.test", "********")),
+                )
+        self.assertIsNone(parse_mailbox_url_row("user@example.test--https://mail.example.test/inbox"))
+        self.assertIsNone(parse_mailbox_url_row("user@example.test---ftp://mail.example.test/inbox"))
+
+    def test_decodes_har_shaped_data_url_and_skips_newer_notification(self):
+        code_url = "https://mail.example.test/message/code"
+        notice_url = "https://mail.example.test/message/notice"
+        listing = {
+            "messages": [
+                {
+                    "id": "notice",
+                    "subject": "New sign-in to your OpenAI account",
+                    "receivedAt": "2026-08-04 08:39:00",
+                    "href": notice_url,
+                },
+                {
+                    "id": "code",
+                    "subject": "Your temporary ChatGPT login code",
+                    "receivedAt": "2026-08-04 08:37:12",
+                    "href": code_url,
+                },
+            ]
+        }
+        responses = {
+            BASE_URL: json_response(BASE_URL, listing),
+            notice_url: json_response(
+                notice_url,
+                {
+                    "fromAddress": "noreply@openai.example",
+                    "subject": "New sign-in to your OpenAI account",
+                    "receivedAt": "2026-08-04 08:39:00",
+                    "html": "<p>A new sign-in was detected.</p>",
+                },
+            ),
+            code_url: json_response(
+                code_url,
+                {
+                    "fromAddress": "noreply@openai.example",
+                    "subject": "Your temporary ChatGPT login code",
+                    "receivedAt": "2026-08-04 08:37:12",
+                    "body": verification_body("314159"),
+                    "html": "<p>OpenAI verification code: <b>314159</b></p>",
+                },
+            ),
+        }
+        client = MailboxUrlClient(BASE_URL, fetcher=responses.__getitem__)
+
+        selection = client.latest_code()
+
+        self.assertEqual(selection.code, "314159")
+        self.assertEqual(selection.received_at, "2026-08-04 08:37:12")
+
+    def test_request_round_rejects_baseline_and_accepts_same_digits_from_new_message(self):
+        clock = [2_000_000_000.0]
+        payload = {
+            "messages": [
+                {
+                    "id": "old-code",
+                    "subject": "OpenAI verification code",
+                    "receivedAt": clock[0] - 60,
+                    "body": "OpenAI verification code 111111",
+                }
+            ]
+        }
+
+        def fetch(_url: str) -> MailboxResponse:
+            return json_response(BASE_URL, payload)
+
+        state = MailboxRequestState(
+            MailboxUrlClient(BASE_URL, fetcher=fetch, now_fn=lambda: clock[0]),
+            now_fn=lambda: clock[0],
+        )
+        baseline = state.snapshot()
+        self.assertEqual(baseline.code, "111111")
+
+        state.begin_request()
+        state.begin_request()
+        payload["messages"] = [
+            {
+                "id": "notice",
+                "subject": "New sign-in to your OpenAI account",
+                "receivedAt": clock[0] + 20,
+                "body": "OpenAI sign-in notification",
+            },
+            {
+                "id": "first-request",
+                "subject": "OpenAI verification code",
+                "receivedAt": clock[0] + 10,
+                "body": "OpenAI verification code 222222",
+            },
+            payload["messages"][-1],
+        ]
+        first = state.snapshot()
+        self.assertEqual(first.code, "222222")
+
+        state.finish_request()
+        clock[0] += 30
+        state.begin_request()
+        payload["messages"].insert(
+            0,
+            {
+                "id": "retry-request",
+                "subject": "OpenAI verification code",
+                "receivedAt": clock[0] + 5,
+                "body": "OpenAI verification code 222222",
+            },
+        )
+        retry = state.snapshot()
+        self.assertEqual(retry.code, "222222")
+        self.assertNotEqual(retry.identity, first.identity)
+
+    def test_request_cutoff_rejects_unseen_but_stale_message(self):
+        now = 2_000_000_000.0
+        payload = {
+            "messages": [
+                {
+                    "id": "stale-unseen",
+                    "subject": "OpenAI verification code",
+                    "receivedAt": now - 121,
+                    "body": "OpenAI verification code 271828",
+                }
+            ]
+        }
+        client = MailboxUrlClient(BASE_URL, fetcher=lambda _url: json_response(BASE_URL, payload), now_fn=lambda: now)
+        scan = client.scan()
+
+        selection = select_latest_code(scan, requested_at=now)
+
+        self.assertEqual(selection.code, "")
+
+    def test_missing_id_and_time_uses_content_change_as_new_identity(self):
+        payload = {
+            "subject": "OpenAI verification code",
+            "body": "OpenAI verification code 123456",
+        }
+
+        def fetch(_url: str) -> MailboxResponse:
+            return json_response(BASE_URL, payload)
+
+        state = MailboxRequestState(MailboxUrlClient(BASE_URL, fetcher=fetch))
+        baseline = state.snapshot()
+        self.assertEqual(baseline.code, "123456")
+
+        state.begin_request()
+        self.assertEqual(state.snapshot().code, "")
+
+        payload["body"] = "OpenAI verification code 654321"
+        changed = state.snapshot()
+        self.assertEqual(changed.code, "654321")
+        self.assertNotEqual(changed.identity, baseline.identity)
+
+    def test_embedded_json_and_rest_detail_inference_are_provider_neutral(self):
+        html = """
+        <main>
+          <article class="message-item" data-message-id="42">
+            <span>OpenAI verification message</span>
+          </article>
+          <script>const detailPath = `/message/${messageId}/${token}/${mailbox}`;</script>
+          <script type="application/json">
+            {"messages":[{"id":"43","subject":"OpenAI verification code","body":"OpenAI verification code 161803"}]}
+          </script>
+        </main>
+        """
+
+        messages, detail_urls = parse_mailbox_payload(html, BASE_URL)
+
+        self.assertTrue(any(message.code == "161803" for message in messages))
+        self.assertIn(
+            "https://mail.example.test/message/42/operator-token/user@example.test",
+            detail_urls,
+        )
+
+    def test_cross_origin_and_action_links_are_not_followed(self):
+        listing = {
+            "messages": [
+                {"id": "one", "subject": "OpenAI verification code", "href": "https://other.test/message/one"},
+                {"id": "two", "subject": "OpenAI verification code", "href": "/message/two/delete"},
+            ]
+        }
+        calls = []
+
+        def fetch(url: str) -> MailboxResponse:
+            calls.append(url)
+            return json_response(url, listing)
+
+        client = MailboxUrlClient(BASE_URL, fetcher=fetch)
+        client.scan()
+
+        self.assertEqual(calls, [BASE_URL])
+
+    def test_limits_messages_and_sanitizes_network_errors(self):
+        payload = {
+            "messages": [
+                {"id": str(index), "subject": "OpenAI verification code", "body": f"OpenAI code {index:06d}"}
+                for index in range(MAX_MESSAGES + 10)
+            ]
+        }
+        client = MailboxUrlClient(BASE_URL, fetcher=lambda _url: json_response(BASE_URL, payload))
+        self.assertLessEqual(len(client.scan().messages), MAX_MESSAGES)
+
+        failing = MailboxUrlClient(
+            BASE_URL,
+            fetcher=lambda _url: json_response(BASE_URL, {}, status=503),
+        )
+        with self.assertRaises(MailboxUrlError) as raised:
+            failing.scan()
+        self.assertIn("HTTP 503", str(raised.exception))
+        self.assertNotIn("operator-token", str(raised.exception))
+        self.assertNotIn("user@example.test", str(raised.exception))
+
+
+if __name__ == "__main__":
+    unittest.main()

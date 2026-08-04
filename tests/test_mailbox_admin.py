@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 
 from mac_overrides.mailbox_admin import (
@@ -13,6 +14,7 @@ from mac_overrides.mailbox_admin import (
     is_importable_mailbox_row,
     masked_source_row,
     parse_chatgpt_totp_row,
+    parse_mailbox_url_row,
     parse_oauth_mailbox_row,
     password_from_row,
     public_sub2_status,
@@ -114,6 +116,7 @@ class MailboxAdminTests(unittest.TestCase):
         oauth = "User@Example.COM----mail-pass----client-id----refresh-token"
         totp = "Mfa@Example.com|login-pass|JBSW Y3DP EHPK3PXP"
         dashed_totp = "Mfa2@Example.com--login-pass-2--JBSW Y3DP EHPK3PXP"
+        url_row = "Url@Example.com｜https://mail.example.test/messages/private-token"
 
         self.assertEqual(email_from_row(oauth), "user@example.com")
         self.assertEqual(
@@ -133,6 +136,13 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertTrue(is_importable_mailbox_row(oauth))
         self.assertTrue(is_importable_mailbox_row(totp))
         self.assertTrue(is_importable_mailbox_row(dashed_totp))
+        self.assertEqual(
+            parse_mailbox_url_row(url_row).mailbox_url,
+            "https://mail.example.test/messages/private-token",
+        )
+        self.assertTrue(is_importable_mailbox_row(url_row))
+        self.assertEqual(password_from_row(url_row), "")
+        self.assertEqual(masked_source_row(url_row), "url@example.com｜********")
         self.assertEqual(
             masked_source_row(dashed_totp),
             "mfa2@example.com--********--********",
@@ -759,6 +769,60 @@ class MailboxAdminTests(unittest.TestCase):
         )
         self.assertTrue(self.pollers[0].closed)
         self.assertEqual(self.service.pool_row_by_line(2)[1], "second@example.com")
+
+    def test_url_latest_code_uses_generic_reader_and_skips_imap(self):
+        row = "url@example.com---https://mail.example.test/messages/private-token"
+        self._write_pool(row + "\n")
+        reader_calls = []
+
+        class FakeReader:
+            def latest_code(self, *, include_existing):
+                self.include_existing = include_existing
+                return SimpleNamespace(code="654321")
+
+        reader = FakeReader()
+
+        def reader_factory(*args, **kwargs):
+            reader_calls.append((args, kwargs))
+            return reader
+
+        service = MailboxAdminService(
+            self.store,
+            validate_pool=lambda _config: {"ok": True},
+            imap_poller_factory=self.create_poller,
+            mailbox_url_reader_factory=reader_factory,
+        )
+
+        result = service.latest_code({"line_no": 1})
+
+        self.assertEqual(result["code"], "654321")
+        self.assertEqual(result["kind"], "email")
+        self.assertEqual(self.pollers, [])
+        self.assertEqual(reader_calls[0][0], ("https://mail.example.test/messages/private-token",))
+        self.assertEqual(reader_calls[0][1], {"timeout_seconds": 5, "proxy": ""})
+        self.assertTrue(reader.include_existing)
+
+    def test_url_latest_code_failure_redacts_url_and_email(self):
+        row = "url@example.com|https://mail.example.test/messages/private-token"
+        self._write_pool(row + "\n")
+
+        def failing_reader(*_args, **_kwargs):
+            raise RuntimeError(f"failed {row}")
+
+        service = MailboxAdminService(
+            self.store,
+            validate_pool=lambda _config: {"ok": True},
+            imap_poller_factory=self.create_poller,
+            mailbox_url_reader_factory=failing_reader,
+        )
+
+        result = service.latest_code({"line_no": 1})
+
+        self.assertFalse(result["ok"])
+        self.assertNotIn("url@example.com", result["error"])
+        self.assertNotIn("private-token", result["error"])
+        self.assertNotIn("mail.example.test", result["error"])
+        self.assertIn("********", result["error"])
 
     def test_imap_failure_closes_poller_and_redacts_all_row_credentials(self):
         row = "mail@example.com----mail-pass----client-id----refresh-token"

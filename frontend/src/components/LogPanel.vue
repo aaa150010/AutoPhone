@@ -4,7 +4,7 @@ import type { ScrollbarInstance } from 'element-plus'
 import ContentEmptyState from './ContentEmptyState.vue'
 
 const props = defineProps<{
-  logs: any[]
+  logs: readonly any[]
   autoScroll?: boolean
 }>()
 

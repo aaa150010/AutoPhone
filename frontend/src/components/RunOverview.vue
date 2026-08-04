@@ -70,12 +70,12 @@ const resultMetrics = computed(() => props.metrics.slice(2, 5))
 .primary-metrics :deep(.metric-card.tone-primary) { background: #eff6ff; }
 .primary-metrics :deep(.metric-card.tone-warning) { background: #fff5e8; }
 .primary-metrics :deep(.metric-icon) { flex-basis: 30px; width: 30px; height: 30px; }
-.primary-metrics :deep(.metric-value) { font-size: 20px; line-height: 23px; }
+.primary-metrics :deep(.metric-value) { font-size: 24px; line-height: 27px; }
 .result-strip :deep(.metric-card) { justify-content: center; padding: 6px 4px; text-align: center; }
 .result-strip :deep(.metric-icon) { display: none; }
 .result-strip :deep(.metric-copy) { align-items: center; }
 .result-strip :deep(.metric-copy span) { font-size: 10px; line-height: 13px; }
-.result-strip :deep(.metric-value) { margin-top: 2px; font-size: 14px; line-height: 18px; }
+.result-strip :deep(.metric-value) { margin-top: 1px; font-size: 20px; line-height: 22px; }
 .result-strip :deep(.tone-success) { background: #edf9f2; }
 .result-strip :deep(.tone-danger) { background: #fff0f0; }
 .result-strip :deep(.tone-primary) { background: #eaf8fb; }

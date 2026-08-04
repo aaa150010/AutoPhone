@@ -17,7 +17,7 @@ import MailboxTable from '../components/MailboxTable.vue'
 import PageToolbar from '../components/PageToolbar.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useAppController } from '../composables/useAppController'
-import type { LatestCodeValue, MailboxPayload, MailboxRow } from '../types/api'
+import type { MailboxPayload, MailboxRow } from '../types/api'
 
 const controller = useAppController()
 const data = ref<MailboxPayload>({ counts: {}, rows: [] })
@@ -28,8 +28,6 @@ const sub2Filter = ref('all')
 const searchText = ref('')
 const selectedRows = ref<MailboxRow[]>([])
 const mailboxTable = ref<{ clearSelection: () => void } | null>(null)
-const latestCodes = ref<Record<string, LatestCodeValue>>({})
-const loadingCodes = ref<string[]>([])
 const loadingPasswords = ref<string[]>([])
 const currentPage = ref(1)
 const pageSize = ref(50)
@@ -164,7 +162,6 @@ async function mutate(path: string, message: string) {
     selectedRows.value = []
     const result: any = await api(path, { line_nos: lineNumbers, rows: selected })
     applyMailboxPayload(result)
-    if (path.endsWith('/delete')) latestCodes.value = {}
     await nextTick()
     mailboxTable.value?.clearSelection()
     ElMessage.success('操作完成')
@@ -239,33 +236,6 @@ async function testSub2() {
   } finally {
     testingSub2.value = false
     mutating.value = false
-  }
-}
-
-async function code(row: MailboxRow) {
-  if (loadingCodes.value.includes(row.row_id)) return
-  loadingCodes.value = [...loadingCodes.value, row.row_id]
-  try {
-    const result: any = await api('/api/mailboxes/latest-code', { line_no: row.line_no })
-    latestCodes.value = {
-      ...latestCodes.value,
-      [row.row_id]: {
-        code: String(result.code || ''),
-        kind: result.kind,
-        message: result.message,
-        remaining: result.remaining == null ? undefined : Number(result.remaining),
-        receivedAt: Math.floor(Date.now() / 1000),
-      },
-    }
-    ElMessage.success(result.code ? '验证码已获取' : result.message || '未查到验证码')
-  } catch (error: any) {
-    latestCodes.value = {
-      ...latestCodes.value,
-      [row.row_id]: { code: '', message: error?.message || '暂无验证码', receivedAt: Math.floor(Date.now() / 1000) },
-    }
-    ElMessage.error(error?.message || '查码失败')
-  } finally {
-    loadingCodes.value = loadingCodes.value.filter(id => id !== row.row_id)
   }
 }
 
@@ -375,12 +345,9 @@ onUnmounted(() => {
         <MailboxTable
           ref="mailboxTable"
           :rows="pageRows"
-          :latest-codes="latestCodes"
-          :loading-codes="loadingCodes"
           :loading-passwords="loadingPasswords"
           @select="selectedRows = $event"
           @email="copyEmail"
-          @code="code"
           @password="copyPassword"
         />
         <el-pagination
@@ -401,7 +368,7 @@ onUnmounted(() => {
         type="textarea"
         :rows="12"
         resize="none"
-        placeholder="TOTP：GPT账号---登录密码---Base32 2FA密钥&#10;TOTP：GPT账号|登录密码|Base32 2FA密钥&#10;OAuth：邮箱----密码----client_id----refresh_token&#10;&#10;TOTP 还支持 -- / ----、Tab、逗号、分号、冒号及全角符号"
+        placeholder="URL 邮箱：邮箱---https://接码地址&#10;URL 邮箱：邮箱|https://接码地址&#10;TOTP：GPT账号---登录密码---Base32 2FA密钥&#10;TOTP：GPT账号|登录密码|Base32 2FA密钥&#10;OAuth：邮箱----密码----client_id----refresh_token&#10;&#10;URL 邮箱支持 --- / ---- / | / ｜"
       />
       <template #footer>
         <el-button @click="importVisible = false">取消</el-button>
@@ -426,6 +393,6 @@ onUnmounted(() => {
   .metric-grid :deep(.metric-card.framed) { gap: 3px; overflow: hidden; padding: 4px; }
   .metric-grid :deep(.metric-card.framed .metric-icon) { flex-basis: 20px; width: 20px; height: 20px; font-size: 12px; }
   .metric-grid :deep(.metric-card.framed .metric-copy span) { font-size: 10px; line-height: 14px; }
-  .metric-grid :deep(.metric-card.framed .metric-value) { font-size: 16px; line-height: 20px; }
+  .metric-grid :deep(.metric-card.framed .metric-value) { font-size: 20px; line-height: 24px; }
 }
 </style>

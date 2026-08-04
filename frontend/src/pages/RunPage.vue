@@ -1,25 +1,17 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  Bottom,
   CircleCheckFilled,
   CircleCloseFilled,
-  Close,
   Coin,
   Connection,
   DataAnalysis,
-  Document,
-  Download,
   FirstAidKit,
-  FullScreen,
-  List,
   Message,
   Monitor,
-  Search,
   VideoPause,
 } from '@element-plus/icons-vue'
-import { api } from '../api/client'
 import LogPanel from '../components/LogPanel.vue'
 import PageToolbar from '../components/PageToolbar.vue'
 import RunOverview from '../components/RunOverview.vue'
@@ -32,12 +24,6 @@ import type { RuntimeTask } from '../types/api'
 
 const emit = defineEmits<{ navigate: [string] }>()
 const controller = useAppController()
-const taskSearch = ref('')
-const taskFilter = ref('all')
-const logSearch = ref('')
-const logFilter = ref('all')
-const logAutoScroll = ref(true)
-const focus = ref<'tasks' | 'logs' | null>(null)
 
 const terminalStatuses = new Set([
   'success', 'failed', 'stopped', 'stopped_before_start', 'retryable_infra',
@@ -81,27 +67,6 @@ const statusLabel = computed(() => {
 })
 const statusTone = computed(() => controller.runtime.value.stop_requested ? 'warning' : controller.running.value ? 'success' : 'info')
 
-const filteredTasks = computed(() => tasks.value.filter((task) => {
-  const status = String(task.status || '')
-  const matchesStatus = taskFilter.value === 'all'
-    || (taskFilter.value === 'active' && !terminalStatuses.has(status))
-    || (taskFilter.value === 'unsuccessful' && terminalStatuses.has(status) && status !== 'success')
-    || status === taskFilter.value
-  const query = taskSearch.value.trim().toLowerCase()
-  const text = [task.task_id, task.account, task.email, task.status, task.error, task.reason, task.progress?.label]
-    .join(' ')
-    .toLowerCase()
-  return matchesStatus && (!query || text.includes(query))
-}))
-
-const filteredLogs = computed(() => (controller.state.value.logs || []).filter((log: any) => {
-  const level = String(log?.level || log?.type || '').toLowerCase()
-  const matchesLevel = logFilter.value === 'all' || level === logFilter.value
-  const query = logSearch.value.trim().toLowerCase()
-  const text = [log?.time, log?.message, log?.text, level].join(' ').toLowerCase()
-  return matchesLevel && (!query || text.includes(query))
-}))
-
 async function start() {
   if (controller.dirty.value) {
     emit('navigate', '/settings')
@@ -123,27 +88,6 @@ async function stop() {
   } catch (error: any) {
     ElMessage.error(error?.message || '停止失败')
   }
-}
-
-async function exportTasks(kind: 'success' | 'failed' | 'all') {
-  try {
-    const result: any = await api(`/api/export/${kind}`)
-    const records = Array.isArray(result.records) ? result.records : []
-    const blob = new Blob([records.map((item: any) => JSON.stringify(item)).join('\n')], { type: 'application/x-ndjson' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `gptphone-${kind}-${new Date().toISOString().slice(0, 10)}.jsonl`
-    link.click()
-    URL.revokeObjectURL(url)
-    ElMessage.success(`已导出 ${records.length} 条记录`)
-  } catch (error: any) {
-    ElMessage.error(error?.message || '导出失败')
-  }
-}
-
-function toggleFocus(value: 'tasks' | 'logs') {
-  focus.value = focus.value === value ? null : value
 }
 
 async function copyTaskAccount(task: RuntimeTask) {
@@ -183,8 +127,8 @@ async function copyTaskAccount(task: RuntimeTask) {
       </el-button>
     </PageToolbar>
 
-    <div class="console-grid" :class="focus ? `focus-${focus}` : ''">
-      <div v-show="!focus" class="dashboard-row">
+    <div class="console-grid">
+      <div class="dashboard-row">
         <WorkspacePanel class="overview-workspace" title="实时概览" :icon="DataAnalysis" fill body-padding="none">
           <RunOverview :metrics="metrics" />
         </WorkspacePanel>
@@ -206,70 +150,12 @@ async function copyTaskAccount(task: RuntimeTask) {
         </WorkspacePanel>
       </div>
 
-      <WorkspacePanel v-show="focus !== 'logs'" class="task-workspace" title="任务结果" :icon="List" fill body-padding="none">
-        <template #actions>
-          <el-input v-model="taskSearch" class="task-search" clearable placeholder="搜索任务" :prefix-icon="Search" />
-          <el-select v-model="taskFilter" class="task-filter">
-            <el-option label="全部状态" value="all" />
-            <el-option label="运行中" value="active" />
-            <el-option label="成功" value="success" />
-            <el-option label="未成功" value="unsuccessful" />
-          </el-select>
-          <el-tooltip content="导出任务">
-            <el-dropdown @command="exportTasks">
-              <el-button circle :icon="Download" aria-label="导出任务" />
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="success">成功记录</el-dropdown-item>
-                  <el-dropdown-item command="failed">未成功记录</el-dropdown-item>
-                  <el-dropdown-item command="all">全部记录</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-          </el-tooltip>
-          <el-tooltip :content="focus === 'tasks' ? '退出聚焦' : '聚焦任务'">
-            <el-button
-              circle
-              :icon="focus === 'tasks' ? Close : FullScreen"
-              :aria-label="focus === 'tasks' ? '退出任务聚焦' : '聚焦任务'"
-              @click="toggleFocus('tasks')"
-            />
-          </el-tooltip>
-        </template>
-        <TaskResultsPanel :tasks="filteredTasks as RuntimeTask[]" @copy-account="copyTaskAccount" />
+      <WorkspacePanel class="task-workspace" fill body-padding="none">
+        <TaskResultsPanel :tasks="tasks as RuntimeTask[]" @copy-account="copyTaskAccount" />
       </WorkspacePanel>
 
-      <WorkspacePanel v-show="focus !== 'tasks'" class="log-workspace" title="运行日志" :icon="Document" fill body-padding="none">
-        <template #actions>
-          <el-input v-model="logSearch" class="log-search" clearable placeholder="搜索日志" :prefix-icon="Search" />
-          <el-select v-model="logFilter" class="log-filter">
-            <el-option label="全部级别" value="all" />
-            <el-option label="信息" value="info" />
-            <el-option label="成功" value="success" />
-            <el-option label="警告" value="warning" />
-            <el-option label="错误" value="error" />
-          </el-select>
-          <el-tooltip
-            v-if="filteredLogs.length"
-            :content="logAutoScroll ? '暂停自动跟随' : '继续自动跟随'"
-          >
-            <el-button
-              circle
-              :icon="logAutoScroll ? VideoPause : Bottom"
-              :aria-label="logAutoScroll ? '暂停日志自动跟随' : '继续日志自动跟随'"
-              @click="logAutoScroll = !logAutoScroll"
-            />
-          </el-tooltip>
-          <el-tooltip :content="focus === 'logs' ? '退出聚焦' : '聚焦日志'">
-            <el-button
-              circle
-              :icon="focus === 'logs' ? Close : FullScreen"
-              :aria-label="focus === 'logs' ? '退出日志聚焦' : '聚焦日志'"
-              @click="toggleFocus('logs')"
-            />
-          </el-tooltip>
-        </template>
-        <LogPanel :logs="filteredLogs" :auto-scroll="logAutoScroll" />
+      <WorkspacePanel class="log-workspace" fill body-padding="none">
+        <LogPanel :logs="controller.state.value.logs || []" :auto-scroll="true" />
       </WorkspacePanel>
     </div>
   </div>
@@ -294,15 +180,9 @@ async function copyTaskAccount(task: RuntimeTask) {
   min-height: 0;
 }
 .console-grid { display: grid; grid-template-rows: 220px repeat(2, minmax(0, 1fr)); gap: 6px; min-width: 0; min-height: 0; }
-.console-grid.focus-tasks,
-.console-grid.focus-logs { grid-template-rows: minmax(0, 1fr); }
 .dashboard-row { display: grid; grid-template-columns: minmax(270px, .9fr) minmax(520px, 1.8fr) minmax(270px, .9fr); gap: 6px; min-width: 0; min-height: 0; }
 .task-workspace,
 .log-workspace { min-width: 0; min-height: 0; }
-.task-search { width: 145px; }
-.task-filter { width: 102px; }
-.log-search { width: 190px; }
-.log-filter { width: 104px; }
 .pipeline-live { display: flex; align-items: center; gap: 5px; color: var(--run-blue); font-size: 10px; white-space: nowrap; }
 .pipeline-live i { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--run-blue); box-shadow: 0 0 0 3px rgba(40, 127, 216, .1); }
 .pipeline-live.idle { color: var(--el-text-color-secondary); }
@@ -325,6 +205,7 @@ async function copyTaskAccount(task: RuntimeTask) {
 .run-page :deep(.workspace-panel .panel-title .el-icon) { color: var(--run-blue); }
 .task-workspace :deep(.el-table__header-wrapper th.el-table__cell) { background: #f4f8fc; color: #526074; }
 .task-workspace :deep(.el-table__inner-wrapper::before) { background-color: #dbe5f0; }
+.task-workspace :deep(.el-table__empty-block) { background: #fbfdff; }
 .task-workspace :deep(.el-tag--primary) {
   --el-tag-bg-color: var(--run-blue-soft);
   --el-tag-border-color: #b7d7f6;

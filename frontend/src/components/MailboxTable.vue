@@ -3,43 +3,24 @@ import { ref } from 'vue'
 import ContentEmptyState from './ContentEmptyState.vue'
 import TaskProgressCell from './TaskProgressCell.vue'
 import { useTaskProgressClock } from '../composables/useTaskProgressClock'
-import type { LatestCodeValue, MailboxRow } from '../types/api'
+import type { MailboxRow } from '../types/api'
 
 const props = defineProps<{
   rows: MailboxRow[]
-  latestCodes: Record<string, LatestCodeValue>
-  loadingCodes: string[]
   loadingPasswords: string[]
 }>()
 
 const emit = defineEmits<{
   select: [MailboxRow[]]
   email: [MailboxRow]
-  code: [MailboxRow]
   password: [MailboxRow]
 }>()
 
 const tableRef = ref<any>()
-const hasLiveTotp = () => Object.values(props.latestCodes).some((value) => (
-  value.kind === 'totp' && (remaining(value) ?? 0) > 0
-))
-const nowSeconds = useTaskProgressClock(() => props.rows, hasLiveTotp)
+const nowSeconds = useTaskProgressClock(() => props.rows)
 
 function clearSelection() {
   tableRef.value?.clearSelection()
-}
-
-function remaining(value?: LatestCodeValue) {
-  if (!value || value.kind !== 'totp' || value.remaining == null) return null
-  return Math.max(0, Number(value.remaining) - Math.max(0, Math.floor(Date.now() / 1000 - value.receivedAt)))
-}
-
-function codeLabel(row: MailboxRow) {
-  const value = props.latestCodes[row.row_id]
-  if (!value) return '暂无'
-  const seconds = remaining(value)
-  if (seconds === 0) return '已过期'
-  return seconds == null ? value.code || value.message || '暂无' : `${value.code} · ${seconds}s`
 }
 
 function costLabel(row: MailboxRow) {
@@ -125,7 +106,7 @@ defineExpose({ clearSelection })
   >
     <el-table-column type="selection" width="45" reserve-selection />
     <el-table-column prop="line_no" label="#" width="58" />
-    <el-table-column label="邮箱" min-width="180">
+    <el-table-column label="邮箱" min-width="230">
       <template #default="{ row }">
         <el-tooltip v-if="row.email" content="点击复制邮箱" placement="top">
           <button
@@ -150,24 +131,24 @@ defineExpose({ clearSelection })
         </el-tooltip>
       </template>
     </el-table-column>
-    <el-table-column label="状态" width="96">
+    <el-table-column label="状态" width="105">
       <template #default="{ row }">
         <el-tag :type="row.status === 'consumed' ? 'success' : row.status === 'failed' ? 'danger' : row.status === 'running' ? 'warning' : 'info'">
           {{ row.status_label || row.status }}
         </el-tag>
       </template>
     </el-table-column>
-    <el-table-column label="SUB2 状态" width="152">
+    <el-table-column label="SUB2 状态" width="168">
       <template #default="{ row }">
         <el-tooltip :content="sub2Detail(row)" placement="top">
           <el-tag :type="sub2Tone(row)" effect="light">{{ sub2Label(row) }}</el-tag>
         </el-tooltip>
       </template>
     </el-table-column>
-    <el-table-column label="当前阶段" width="190">
+    <el-table-column label="当前阶段" width="220">
       <template #default="{ row }"><TaskProgressCell :progress="row.progress" :now-seconds="nowSeconds" /></template>
     </el-table-column>
-    <el-table-column label="接码成本" width="98" align="right">
+    <el-table-column label="接码成本" width="110" align="right">
       <template #default="{ row }">
         <el-tooltip v-if="row.sms_cost_cny != null" :content="costDetail(row)" placement="top">
           <span class="sms-cost">{{ costLabel(row) }}</span>
@@ -175,16 +156,8 @@ defineExpose({ clearSelection })
         <span v-else class="muted">暂无</span>
       </template>
     </el-table-column>
-    <el-table-column label="失败原因/说明" min-width="220" show-overflow-tooltip>
+    <el-table-column label="失败原因/说明" min-width="300" show-overflow-tooltip>
       <template #default="{ row }">{{ explanation(row) }}</template>
-    </el-table-column>
-    <el-table-column label="验证码" width="126">
-      <template #default="{ row }"><span class="code-value">{{ codeLabel(row) }}</span></template>
-    </el-table-column>
-    <el-table-column label="操作" width="72" fixed="right">
-      <template #default="{ row }">
-        <el-button link type="primary" :loading="loadingCodes.includes(row.row_id)" @click="emit('code', row)">查码</el-button>
-      </template>
     </el-table-column>
     <template #empty><ContentEmptyState /></template>
   </el-table>
@@ -210,6 +183,5 @@ defineExpose({ clearSelection })
 .mailbox-address:focus-visible { outline: 2px solid var(--el-color-primary-light-5); outline-offset: 2px; border-radius: 2px; }
 .password-copy { min-width: 48px; padding: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0; }
 .sms-cost { color: var(--el-color-success); font-variant-numeric: tabular-nums; cursor: help; }
-.code-value { color: var(--el-color-primary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; font-variant-numeric: tabular-nums; }
 .muted { color: var(--el-text-color-secondary); }
 </style>

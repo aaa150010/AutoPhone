@@ -12,6 +12,7 @@ from mac_overrides.chatgpt_totp import (
     totp_code,
 )
 from mac_overrides.mailbox_admin import parse_oauth_mailbox_row
+from mac_overrides.mailbox_url_runtime import parse_mailbox_url_row
 
 
 class ChatGptTotpTests(unittest.TestCase):
@@ -171,6 +172,45 @@ class ChatGptTotpTests(unittest.TestCase):
         self.assertNotIn("oauth-pass", entries[2].source_row)
         self.assertNotIn("client-id", entries[2].source_row)
         self.assertNotIn("refresh-token", entries[2].source_row)
+
+    def test_url_rows_with_dash_and_pipe_separators_build_masked_runtime_entries(self):
+        class PoolEntry:
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+
+        rows = (
+            "dash@example.com---https://mail.example.test/messages/private-dash-token",
+            "pipe@example.com|http://mail.example.test/messages/private-pipe-token",
+            "wide@example.com｜https://mail.example.test/messages/private-wide-token",
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            pool_path = Path(temp_dir) / "pool.txt"
+            pool_path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+            patches = build_chatgpt_totp_patches(
+                runtime_module=SimpleNamespace(PoolEntry=PoolEntry),
+                codex_oauth_chain=SimpleNamespace(),
+                original_entries_unlocked=lambda _pool: (
+                    [],
+                    [f"line {index}: bad" for index in range(1, 4)],
+                ),
+                original_outlook_otp_provider=lambda *args, **kwargs: None,
+                original_account_label=lambda entry: entry.email,
+                original_verify_password=lambda *args: {},
+                original_send_mfa_otp=lambda *args: {},
+                original_verify_mfa_otp=lambda *args: {},
+                parse_oauth_mailbox_row=parse_oauth_mailbox_row,
+            )
+
+            entries, errors = patches.entries_unlocked(SimpleNamespace(pool_path=pool_path))
+
+        self.assertEqual(errors, [])
+        self.assertEqual([entry.mailbox_type for entry in entries], ["url", "url", "url"])
+        for row, entry in zip(rows, entries):
+            parsed = parse_mailbox_url_row(row)
+            self.assertIsNotNone(parsed)
+            self.assertEqual(entry.mailbox_url, parsed.mailbox_url)
+            self.assertNotIn(parsed.mailbox_url, entry.source_row)
+            self.assertIn("***", entry.source_row)
 
 
 if __name__ == "__main__":

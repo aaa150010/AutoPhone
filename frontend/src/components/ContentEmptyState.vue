@@ -19,11 +19,13 @@ withDefaults(defineProps<{
   height: 100%;
   min-height: 108px;
   padding: 12px 0;
+  background: #fbfdff;
+  color: #8a96a8;
   line-height: normal;
 }
 .content-empty :deep(.el-empty__description) { margin-top: 6px; }
 .content-empty :deep(.el-empty__description p) {
-  color: var(--el-text-color-placeholder);
+  color: #8a96a8;
   font-size: 13px;
   line-height: 20px;
 }

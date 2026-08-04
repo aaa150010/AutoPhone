@@ -16,13 +16,28 @@ try:
     from .chatgpt_totp import (
         masked_chatgpt_totp_row,
         parse_chatgpt_totp_row,
+        parse_mailbox_url_totp_row,
         totp_code as generate_totp_code,
     )
 except ImportError:  # Loaded as a top-level override module by the Mac launcher.
     from chatgpt_totp import (
         masked_chatgpt_totp_row,
         parse_chatgpt_totp_row,
+        parse_mailbox_url_totp_row,
         totp_code as generate_totp_code,
+    )
+
+try:
+    from .mailbox_url_runtime import (
+        MailboxUrlClient,
+        masked_mailbox_url_row,
+        parse_mailbox_url_row,
+    )
+except ImportError:  # Loaded as a top-level override module by the Mac launcher.
+    from mailbox_url_runtime import (
+        MailboxUrlClient,
+        masked_mailbox_url_row,
+        parse_mailbox_url_row,
     )
 
 try:
@@ -86,7 +101,12 @@ def is_importable_mailbox_row(row: Any) -> bool:
     raw = str(row or "").strip()
     if not raw or raw.startswith("#") or not email_from_row(raw):
         return False
-    return parse_oauth_mailbox_row(raw) is not None or parse_chatgpt_totp_row(raw) is not None
+    return (
+        parse_oauth_mailbox_row(raw) is not None
+        or parse_mailbox_url_totp_row(raw) is not None
+        or parse_chatgpt_totp_row(raw) is not None
+        or parse_mailbox_url_row(raw) is not None
+    )
 
 
 def password_from_row(row: Any) -> str:
@@ -96,6 +116,8 @@ def password_from_row(row: Any) -> str:
     parsed_oauth = parse_oauth_mailbox_row(raw)
     if parsed_oauth is not None:
         return parsed_oauth[1]
+    if parse_mailbox_url_totp_row(raw) is not None or parse_mailbox_url_row(raw) is not None:
+        return ""
     parsed_totp = parse_chatgpt_totp_row(raw)
     if parsed_totp is not None:
         return parsed_totp[1]
@@ -143,8 +165,12 @@ def masked_source_row(row: Any) -> str:
         return ""
     if parse_oauth_mailbox_row(raw) is not None:
         return "----".join((email, _SECRET_MASK, _SECRET_MASK, _SECRET_MASK))
+    if parse_mailbox_url_totp_row(raw) is not None:
+        return "----".join((email, _SECRET_MASK, _SECRET_MASK))
     if parse_chatgpt_totp_row(raw) is not None:
         return masked_chatgpt_totp_row(raw, _SECRET_MASK)
+    if parse_mailbox_url_row(raw) is not None:
+        return masked_mailbox_url_row(raw, _SECRET_MASK)
     return email
 
 
@@ -316,6 +342,7 @@ class MailboxAdminService:
         now_fn: Callable[[], float] = time.time,
         sub2_status_lookup: Callable[[str], Mapping[str, Any] | None] | None = None,
         sub2_batch_tester: Callable[[Sequence[Mapping[str, Any]]], Mapping[str, Any]] | None = None,
+        mailbox_url_reader_factory: Callable[..., Any] | None = None,
     ) -> None:
         self.store = store
         self.validate_pool = validate_pool
@@ -328,6 +355,7 @@ class MailboxAdminService:
         self.now_fn = now_fn
         self.sub2_status_lookup = sub2_status_lookup
         self.sub2_batch_tester = sub2_batch_tester
+        self.mailbox_url_reader_factory = mailbox_url_reader_factory or MailboxUrlClient
         self._lock = RLock()
 
     def _config(self) -> dict[str, Any]:
@@ -394,6 +422,14 @@ class MailboxAdminService:
         totp = parse_chatgpt_totp_row(row)
         if totp is not None:
             values.extend(totp)
+        url_totp = parse_mailbox_url_totp_row(row)
+        if url_totp is not None:
+            values.extend(url_totp)
+            values.extend(url_credential_secrets(url_totp[1]))
+        url_row = parse_mailbox_url_row(row)
+        if url_row is not None:
+            values.extend((url_row.email, url_row.mailbox_url))
+            values.extend(url_credential_secrets(url_row.mailbox_url))
         return tuple(dict.fromkeys(value for value in values if value))
 
     def pool_row_by_line(self, line_no: Any) -> tuple[str, str]:
@@ -446,6 +482,31 @@ class MailboxAdminService:
         row, email = self.pool_row_by_line(value.get("line_no"))
         if not row:
             return {"ok": False, "error": "没有找到这一行邮箱"}
+
+        parsed_url_totp = parse_mailbox_url_totp_row(row)
+        parsed_url = parse_mailbox_url_row(row)
+        mailbox_url = parsed_url_totp[1] if parsed_url_totp is not None else (
+            parsed_url.mailbox_url if parsed_url is not None else ""
+        )
+        if mailbox_url:
+            try:
+                reader = self.mailbox_url_reader_factory(
+                    mailbox_url,
+                    timeout_seconds=5,
+                    proxy="",
+                )
+                selection = reader.latest_code(include_existing=True)
+            except Exception as exc:
+                error = self._format_error(exc, self._row_secrets(row))
+                return {"ok": False, "error": f"邮箱 URL 查询失败: {error}"}
+            code = str(getattr(selection, "code", "") or "")
+            return {
+                "ok": True,
+                "kind": "email",
+                "email": email,
+                "code": code,
+                "message": "已找到最新 OpenAI 邮箱验证码" if code else "未找到新的 OpenAI 邮箱验证码",
+            }
 
         parsed_totp = parse_chatgpt_totp_row(row)
         if parsed_totp is not None:
@@ -950,6 +1011,7 @@ __all__ = [
     "is_importable_mailbox_row",
     "masked_source_row",
     "parse_chatgpt_totp_row",
+    "parse_mailbox_url_row",
     "parse_oauth_mailbox_row",
     "password_from_row",
     "pool_count_status",

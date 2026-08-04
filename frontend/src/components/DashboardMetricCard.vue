@@ -38,11 +38,11 @@ const numericValue = computed(() => (
 .metric-icon { display: grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px; border-radius: 6px; font-size: 19px; }
 .metric-copy { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
 .metric-copy span { overflow: hidden; color: var(--el-text-color-secondary); font-size: 13px; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
-.metric-value { display: block; max-width: 100%; overflow: hidden; margin-top: 1px; color: #18212f; font-size: 22px; line-height: 25px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.metric-value { display: block; max-width: 100%; overflow: hidden; margin-top: 1px; color: #18212f; font-size: 26px; line-height: 30px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
 .metric-card.compact { min-height: 52px; padding: 7px 5px; }
 .metric-card.compact .metric-icon { flex-basis: 30px; width: 30px; height: 30px; font-size: 16px; }
 .metric-card.compact .metric-copy span { font-size: 12px; line-height: 15px; }
-.metric-card.compact .metric-value { margin-top: 0; font-size: 18px; line-height: 21px; }
+.metric-card.compact .metric-value { margin-top: 0; font-size: 22px; line-height: 25px; }
 .tone-primary .metric-icon { background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
 .tone-success .metric-icon { background: var(--el-color-success-light-9); color: var(--el-color-success); }
 .tone-danger .metric-icon { background: var(--el-color-danger-light-9); color: var(--el-color-danger); }

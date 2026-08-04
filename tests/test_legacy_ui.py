@@ -3,10 +3,16 @@ from __future__ import annotations
 from types import SimpleNamespace
 import unittest
 
-from mac_overrides.legacy_ui import apply_legacy_ui_overrides
+from mac_overrides.legacy_ui import MAILBOX_MANAGER_HTML, apply_legacy_ui_overrides
 
 
 class LegacyUiTests(unittest.TestCase):
+    def test_mailbox_manager_has_no_manual_code_column_or_action(self):
+        self.assertNotIn("最新验证码", MAILBOX_MANAGER_HTML)
+        self.assertNotIn("查码", MAILBOX_MANAGER_HTML)
+        self.assertNotIn("latestCodes", MAILBOX_MANAGER_HTML)
+        self.assertIn("URL 邮箱：邮箱---https://接码地址", MAILBOX_MANAGER_HTML)
+
     def test_applies_legacy_dashboard_overrides_with_injected_defaults(self):
         header = (
             '<header class="top"><h1>plus绑号码脚本</h1>'

@@ -5,14 +5,11 @@ from __future__ import annotations
 from contextvars import ContextVar
 import importlib.util
 import copy
-import html
 import json
 import os
 import re
 import threading
 import time
-import urllib.parse
-import urllib.request
 import uuid
 from pathlib import Path
 
@@ -25,6 +22,7 @@ import imap_poller as _imap_poller
 import importer_scheduler as _importer_scheduler_ext
 import legacy_ui as _legacy_ui_ext
 import mailbox_admin as _mailbox_admin_ext
+import mailbox_url_runtime as _mailbox_url_runtime_ext
 import mailbox_retention as _mailbox_retention_ext
 import pixel_runtime as _pixel_runtime_ext
 import run_notifications as _run_notifications_ext
@@ -66,7 +64,8 @@ _spec.loader.exec_module(_module)
 
 _ORIGINAL_POOL_ENTRIES_UNLOCKED = _runtime.MailboxPool._entries_unlocked
 _ORIGINAL_OUTLOOK_OTP_PROVIDER = _runtime.OutlookMailboxOtpProvider
-_ORIGINAL_MAILBOX_URL_FETCH_RAW = _runtime.MailboxUrlCodeProvider.fetch_raw
+_ORIGINAL_MAILBOX_URL_SNAPSHOT = _runtime.MailboxUrlCodeProvider.snapshot
+_ORIGINAL_URL_MAILBOX_MARK_SENT = _runtime.UrlMailboxOtpProvider.mark_sent
 _ORIGINAL_URL_MAILBOX_WAIT_CODE = _runtime.UrlMailboxOtpProvider.wait_code
 _ORIGINAL_ACCOUNT_LABEL = _runtime.EmailAuthImporter._account_label
 _ORIGINAL_REAL_VERIFY_PASSWORD = _codex_oauth_chain.RealCodexTransport.verify_password
@@ -1118,89 +1117,24 @@ def _call_log(log_fn, message, level="info"):
         log_fn(message)
 
 
-def _fetch_dispose_lol_inbox_payload(provider, original_raw):
-    parsed = urllib.parse.urlsplit(str(getattr(provider, "mailbox_url", "") or ""))
-    if parsed.netloc.lower() != "dispose.lol":
-        return original_raw
-    path_parts = [part for part in parsed.path.split("/") if part]
-    if len(path_parts) != 2 or path_parts[0] != "ib" or not path_parts[1]:
-        return original_raw
-
-    key = urllib.parse.quote(path_parts[1], safe="")
-    base = f"{parsed.scheme or 'https'}://{parsed.netloc}"
-    messages_url = f"{base}/api/inbox-link/{key}/messages"
-
-    def load_json(url):
-        request = urllib.request.Request(
-            url,
-            headers={
-                "Accept": "application/json,text/plain,*/*",
-                "User-Agent": "self-mailbox-pool/1.0",
-                "Cache-Control": "no-cache, no-store, max-age=0",
-                "Pragma": "no-cache",
-            },
-            method="GET",
-        )
-        with provider._opener().open(request, timeout=getattr(provider, "timeout_seconds", 15)) as response:
-            raw = response.read(2 * 1024 * 1024).decode("utf-8", errors="replace")
-        try:
-            return json.loads(raw), raw
-        except Exception:
-            return None, raw
-
-    data, raw_messages = load_json(messages_url)
-    if not isinstance(data, dict):
-        return f"{original_raw}\n{raw_messages}"
-
-    def code_from_detail(value):
-        payload = value if isinstance(value, dict) else {}
-        message = payload.get("message") if isinstance(payload.get("message"), dict) else payload
-        text = "\n".join(str(message.get(field) or "") for field in ("textBody", "htmlBody"))
-        text = html.unescape(text)
-        text = re.sub(r"<script\b[^>]*>[\s\S]*?</script>", " ", text, flags=re.I)
-        text = re.sub(r"<style\b[^>]*>[\s\S]*?</style>", " ", text, flags=re.I)
-        text = re.sub(r"<[^>]+>", " ", text)
-        text = re.sub(r"\s+", " ", text)
-        for pattern in (
-            r"(?i)(?:verification|security|login|sign[-\s]?in|code|验证码|登录代码).{0,300}?(\d[\s-]*\d[\s-]*\d[\s-]*\d[\s-]*\d[\s-]*\d)",
-            r"(\d[\s-]*\d[\s-]*\d[\s-]*\d[\s-]*\d[\s-]*\d).{0,180}?(?i:verification|security|login|sign[-\s]?in|code|验证码|登录代码)",
-        ):
-            match = re.search(pattern, text)
-            if match:
-                digits = re.sub(r"\D", "", match.group(1))
-                if len(digits) == 6:
-                    return digits
-        return ""
-
-    fragments = []
-    messages = data.get("messages") if isinstance(data.get("messages"), list) else []
-    for message in messages[:8]:
-        if not isinstance(message, dict):
-            continue
-        message_id = str(message.get("id") or "").strip()
-        if not message_id:
-            continue
-        haystack = " ".join(str(message.get(key) or "") for key in ("sender", "subject"))
-        if "openai" not in haystack.lower() and "chatgpt" not in haystack.lower():
-            continue
-        detail_url = (
-            f"{base}/api/inbox-link/{key}/message?"
-            f"{urllib.parse.urlencode({'id': message_id})}"
-        )
-        detail, raw_detail = load_json(detail_url)
-        code = code_from_detail(detail)
-        if code:
-            fragments.append(f"verification code {code}")
-        fragments.append(raw_detail)
-    return "\n".join(fragment for fragment in fragments if fragment) or original_raw
-
-
-def _mailbox_url_fetch_raw(self):
-    raw = _ORIGINAL_MAILBOX_URL_FETCH_RAW(self)
+def _mailbox_url_snapshot(self):
     try:
-        return _fetch_dispose_lol_inbox_payload(self, raw)
-    except Exception:
-        return raw
+        selection = _mailbox_url_runtime_ext.runtime_snapshot(self)
+    except _mailbox_url_runtime_ext.MailboxUrlError as exc:
+        raise _runtime.MailboxPoolError(str(exc)) from exc
+    snapshot = _runtime.MailboxSnapshot(
+        hash=selection.fingerprint,
+        code=selection.code,
+        received_at=selection.received_at,
+    )
+    self.last_snapshot = snapshot
+    return snapshot
+
+
+def _url_mailbox_mark_sent(self):
+    result = _ORIGINAL_URL_MAILBOX_MARK_SENT(self)
+    _mailbox_url_runtime_ext.begin_runtime_request(self.provider)
+    return result
 
 
 def _url_mailbox_wait_code(self, email):
@@ -1211,9 +1145,13 @@ def _url_mailbox_wait_code(self, email):
         and getattr(self, "_chatgpt_email_otp_verified", False)
     ):
         code = _chatgpt_totp_ext.totp_code(getattr(entry, "oauth_refresh_token", ""))
+        _mailbox_url_runtime_ext.finish_runtime_request(getattr(self, "provider", None))
         _call_log(getattr(self, "log_fn", None), "  [Codex] 已根据 2FA 密钥生成临时验证码", "info")
         return code
-    code = _ORIGINAL_URL_MAILBOX_WAIT_CODE(self, email)
+    try:
+        code = _ORIGINAL_URL_MAILBOX_WAIT_CODE(self, email)
+    finally:
+        _mailbox_url_runtime_ext.finish_runtime_request(getattr(self, "provider", None))
     if code:
         setattr(self, "_chatgpt_email_otp_verified", True)
         if (
@@ -1283,7 +1221,8 @@ _runtime.MailboxPool._entries_unlocked = _TOTP_PATCHES.entries_unlocked
 _runtime.MailboxPool.remove_entry = _mailbox_retention_ext.preserve_consumed_entry
 _runtime.ManualMailboxPool.remove_entry = _mailbox_retention_ext.preserve_consumed_entry
 _runtime.OutlookMailboxOtpProvider = _TOTP_PATCHES.outlook_otp_provider
-_runtime.MailboxUrlCodeProvider.fetch_raw = _mailbox_url_fetch_raw
+_runtime.MailboxUrlCodeProvider.snapshot = _mailbox_url_snapshot
+_runtime.UrlMailboxOtpProvider.mark_sent = _url_mailbox_mark_sent
 _runtime.UrlMailboxOtpProvider.wait_code = _url_mailbox_wait_code
 _runtime.EmailAuthImporter._account_label = _TOTP_PATCHES.account_label
 _runtime.EmailAuthImporter._persist_result = _patched_persist_result
@@ -1846,6 +1785,7 @@ def _mailbox_admin_factory(store, importer, logs):
         error_formatter=_module._safe if hasattr(_module, "_safe") else str,
         sub2_status_lookup=_SUB2_RUNTIME.status_for,
         sub2_batch_tester=_SUB2_RUNTIME.test_rows,
+        mailbox_url_reader_factory=_mailbox_url_runtime_ext.MailboxUrlClient,
     )
 
 
