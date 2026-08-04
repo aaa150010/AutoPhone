@@ -378,6 +378,19 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         except Exception:
             return module.jsonify(ok=False, error="读取邮箱密码失败"), 500
 
+    def api_mailboxes_totp():
+        try:
+            data = module.request.get_json(silent=True) or {}
+            if not isinstance(data, dict):
+                return module.jsonify(ok=False, error="请求必须是 JSON 对象"), 400
+            result = mailbox_admin.reveal_totp(data.get("row_id"), data.get("line_no"))
+            if result.get("ok"):
+                return module.jsonify(result)
+            status = 409 if result.get("code") == "mailbox_row_stale" else 400
+            return module.jsonify(result), status
+        except Exception:
+            return module.jsonify(ok=False, error="读取 2FA 密钥失败"), 500
+
     def api_mailboxes_sub2_test():
         try:
             data = module.request.get_json(silent=True) or {}
@@ -788,6 +801,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/mailboxes/restore", "api_mailboxes_restore", api_mailboxes_restore, ["POST"]),
         ("/api/mailboxes/latest-code", "api_mailboxes_latest_code", api_mailboxes_latest_code, ["POST"]),
         ("/api/mailboxes/password", "api_mailboxes_password", api_mailboxes_password, ["POST"]),
+        ("/api/mailboxes/totp", "api_mailboxes_totp", api_mailboxes_totp, ["POST"]),
         ("/api/mailboxes/sub2-test", "api_mailboxes_sub2_test", api_mailboxes_sub2_test, ["POST"]),
         ("/api/mailboxes/pixel-retry", "api_mailboxes_pixel_retry", api_mailboxes_pixel_retry, ["POST"]),
         ("/api/mailboxes/sub2-export", "api_mailboxes_sub2_export", api_mailboxes_sub2_export, ["POST"]),

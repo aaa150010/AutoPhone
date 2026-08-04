@@ -128,6 +128,17 @@ def password_from_row(row: Any) -> str:
     return parts[1] if len(parts) >= 2 else ""
 
 
+def totp_secret_from_row(row: Any) -> str:
+    """Return the private TOTP seed only for supported TOTP mailbox formats."""
+    parsed_url_totp = parse_mailbox_url_totp_row(row)
+    if parsed_url_totp is not None:
+        return str(parsed_url_totp[2] or "").strip()
+    parsed_totp = parse_chatgpt_totp_row(row)
+    if parsed_totp is not None:
+        return str(parsed_totp[2] or "").strip()
+    return ""
+
+
 def row_id_from_source(row: Any) -> str:
     return hashlib.sha256(str(row or "").encode("utf-8")).hexdigest()
 
@@ -477,6 +488,37 @@ class MailboxAdminService:
                 }
             return {"ok": True, "password": password}
 
+    def reveal_totp(self, row_id: Any, line_no: Any) -> dict[str, Any]:
+        expected_row_id = str(row_id or "").strip()
+        try:
+            target = int(line_no)
+        except (TypeError, ValueError):
+            target = 0
+
+        with self._lock:
+            lines = self._read_pool_lines()
+            if target <= 0 or target > len(lines):
+                return {
+                    "ok": False,
+                    "code": "mailbox_row_stale",
+                    "error": "邮箱列表已变化，请刷新后重试",
+                }
+            row = lines[target - 1]
+            if not hmac.compare_digest(expected_row_id, row_id_from_source(row)):
+                return {
+                    "ok": False,
+                    "code": "mailbox_row_stale",
+                    "error": "邮箱列表已变化，请刷新后重试",
+                }
+            secret = totp_secret_from_row(row)
+            if not secret:
+                return {
+                    "ok": False,
+                    "code": "mailbox_totp_missing",
+                    "error": "这一行没有可复制的 2FA 密钥",
+                }
+            return {"ok": True, "totp_secret": secret}
+
     def latest_code(self, payload: Any) -> dict[str, Any]:
         value = payload if isinstance(payload, Mapping) else {}
         row, email = self.pool_row_by_line(value.get("line_no"))
@@ -804,6 +846,7 @@ class MailboxAdminService:
                     "row_id": row_id_from_source(row),
                     "email": email,
                     "password": _SECRET_MASK if password_from_row(row) else "",
+                    "has_totp": bool(totp_secret_from_row(row)),
                     "status": status_key,
                     "status_label": status_label,
                     "pool_status": state_item.get("status") or "available",

@@ -109,10 +109,44 @@ NODE_BIN="$(command -v node || true)"
 if [ -z "$NODE_BIN" ] && command -v brew >/dev/null 2>&1; then
   echo "Installing Node.js with Homebrew..."
   brew install node
+  hash -r 2>/dev/null || true
   NODE_BIN="$(command -v node || true)"
 fi
 if [ -n "$NODE_BIN" ]; then
   export CODEX_NODE_BINARY="${CODEX_NODE_BINARY:-$NODE_BIN}"
+fi
+
+NPM_BIN="$(command -v npm || true)"
+if [ -z "$NPM_BIN" ] && command -v brew >/dev/null 2>&1; then
+  echo "Node.js was found without npm; refreshing the command path..."
+  hash -r 2>/dev/null || true
+  NPM_BIN="$(command -v npm || true)"
+fi
+if [ -z "$NPM_BIN" ]; then
+  echo "Missing npm. Node.js is required to rebuild the Vue dashboard before Flask starts."
+  echo "Install Node.js, then run this command again."
+  read "?Press Enter to close..."
+  exit 1
+fi
+
+FRONTEND_DIR="$APP_DIR/frontend"
+if [ -f "$FRONTEND_DIR/package.json" ]; then
+  if [ ! -x "$FRONTEND_DIR/node_modules/.bin/vite" ]; then
+    echo "Installing Vue dashboard dependencies..."
+    (
+      cd "$FRONTEND_DIR"
+      "$NPM_BIN" ci --no-audit --no-fund
+    )
+  fi
+  echo "Rebuilding Vue dashboard..."
+  (
+    cd "$FRONTEND_DIR"
+    "$NPM_BIN" run build
+  )
+else
+  echo "Missing frontend/package.json; cannot rebuild the Vue dashboard."
+  read "?Press Enter to close..."
+  exit 1
 fi
 
 export PYTHONPATH="$APP_DIR/mac_overrides:$APP_DIR/business_pyc"

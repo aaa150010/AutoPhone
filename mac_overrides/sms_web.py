@@ -19,6 +19,11 @@ except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
         is_explicit_account_banned,
     )
 
+try:
+    from .auth_session_runtime import is_session_invalid
+except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
+    from auth_session_runtime import is_session_invalid  # type: ignore[no-redef]
+
 
 def _call_log(log_fn: Any, message: str, level: str = "info") -> None:
     if not callable(log_fn):
@@ -264,7 +269,7 @@ class SmsWebIntegration:
             if active is not None and active[1] is lease:
                 self._active_leases.pop(task_id, None)
 
-    def _cancel_account_banned_lease(self, task_id: str) -> None:
+    def cancel_active_lease(self, task_id: str, reason: str) -> None:
         if not task_id:
             return
         with self._active_lease_lock:
@@ -273,13 +278,14 @@ class SmsWebIntegration:
             return
         adapter, lease = active
         meta = dict(getattr(lease, "meta", None) or {})
-        if meta.get("gptphone_account_banned_cancelled"):
+        if meta.get("gptphone_terminal_cancelled"):
             return
-        meta["gptphone_account_banned_cancelled"] = True
+        meta["gptphone_terminal_cancelled"] = True
+        meta["gptphone_session_invalid_cancelled"] = is_session_invalid(reason)
         meta["ready_recorded"] = True
         lease.meta = meta
         try:
-            self.original_adapter_cancel(adapter, lease, reason=ACCOUNT_BANNED_MESSAGE)
+            self.original_adapter_cancel(adapter, lease, reason=reason)
         except Exception:
             pass
         try:
@@ -287,10 +293,13 @@ class SmsWebIntegration:
                 task_id,
                 getattr(lease, "activation_id", ""),
                 "cancelled",
-                ACCOUNT_BANNED_MESSAGE,
+                self.safe_error(reason),
             )
         except Exception:
             pass
+
+    def _cancel_account_banned_lease(self, task_id: str) -> None:
+        self.cancel_active_lease(task_id, ACCOUNT_BANNED_MESSAGE)
 
     def _raise_account_banned(self, transport: Any, technical_value: Any) -> None:
         task_id = self.transport_task_id(transport)
@@ -424,7 +433,7 @@ class SmsWebIntegration:
     def adapter_cancel(self, adapter: Any, lease: Any, reason: str = "") -> Any:
         task_id = self.adapter_task_id(adapter)
         meta = dict(getattr(lease, "meta", None) or {})
-        if meta.get("gptphone_account_banned_cancelled"):
+        if meta.get("gptphone_terminal_cancelled"):
             self._forget_active_lease(task_id, lease)
             return None
         provider = getattr(adapter, "provider", None)
@@ -444,6 +453,8 @@ class SmsWebIntegration:
                 )
 
     def classify_error(self, error: Any) -> str:
+        if is_session_invalid(error):
+            return "auth_session"
         if self.sms_runtime.is_transient_openai_error(error):
             return "transient_server"
         text = str(error or "").lower()
@@ -532,7 +543,7 @@ class SmsWebIntegration:
 
     def smart_record_result(self, selector: Any, candidate: Any, ok: bool, error: Any = "") -> Any:
         kind = self.classify_error(error)
-        if not ok and kind == "transient_server":
+        if not ok and kind in {"transient_server", "auth_session"}:
             self._release_route_without_score(selector, candidate)
             return None
         result = self.original_record_result(selector, candidate, ok, error)
@@ -594,7 +605,7 @@ class SmsWebIntegration:
             log_fn = getattr(transport, "log_fn", None)
             _call_log(
                 log_fn,
-                f"  [Codex] 手机提交遇到临时服务错误，{delay:g} 秒后复用同一号码",
+                f"  [Codex] 手机提交遇到临时服务错误，{delay:g} 秒后使用新的请求上下文重试当前号码",
                 "warn",
             )
 
@@ -611,7 +622,11 @@ class SmsWebIntegration:
         except Exception as exc:
             if is_explicit_account_banned(exc):
                 self._raise_account_banned(transport, exc)
+            if is_session_invalid(exc):
+                self.cancel_active_lease(self.transport_task_id(transport), "oauth_session_invalid")
             raise
+        if is_session_invalid(result):
+            self.cancel_active_lease(self.transport_task_id(transport), "oauth_session_invalid")
         return self.ensure_account_active(transport, result)
 
     def runtime_alert(self, payload: Any) -> None:

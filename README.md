@@ -280,7 +280,7 @@ Pixel 上传 outbox 保存在本机 `data/pixel_upload_records.json`，以原子
 
 ## 前端开发与构建
 
-仓库已经包含可直接运行的 `frontend/dist/`，正常双击 `start.command` 不需要安装前端依赖。
+仓库已经包含可直接运行的 `frontend/dist/`。每次启动 `start.command` 时，脚本会自动检查 Vue 依赖并重新执行生产构建，然后再启动 Flask；因此修改 `frontend/src/` 后重启服务即可加载新页面。
 
 修改 `frontend/src/` 后，需要重新生成生产资源：
 

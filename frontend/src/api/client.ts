@@ -53,6 +53,9 @@ export const exportMailboxSub2 = (rows: Array<{ row_id: string; line_no: number 
     { rows },
   )
 )
+export const getMailboxTotp = (row: { row_id: string; line_no: number }) => (
+  api<{ ok: true; totp_secret: string }>('/api/mailboxes/totp', row)
+)
 export const testEmailNotification = (data: Record<string, any>) => api('/api/notifications/email/test', data)
 
 export const getPixelTargets = () => api<Record<string, any>>('/api/pixel/targets')

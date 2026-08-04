@@ -123,6 +123,7 @@ export interface MailboxRow {
   source_row: string
   email: string
   password?: string
+  has_totp?: boolean
   status: string
   status_label?: string
   pool_status?: string

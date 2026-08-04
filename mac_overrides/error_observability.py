@@ -297,6 +297,10 @@ _RULES = (
 )
 
 
+def _is_oauth_session_invalid(text: str) -> bool:
+    return "oauth_session_invalid" in text or "sign-in session is no longer valid" in text
+
+
 def _rule_for(text: str) -> tuple[str, str, str, bool] | None:
     for markers, node_code, error_code, cause, retryable in _RULES:
         if any(marker in text for marker in markers):
@@ -328,6 +332,17 @@ def classify_failure(
     search_text = _combined_search_text(values)
     current_node = _current_node(result, progress)
     rule = _rule_for(search_text)
+    # A session error can contain the phone endpoint name. Preserve the
+    # operation that actually failed instead of letting a broad OAuth marker
+    # or phone-rejection rule rewrite it as a generic authorization failure.
+    if _is_oauth_session_invalid(search_text):
+        session_node = current_node if current_node in {"phone_submitting", "sms_verifying"} else "oauth_authorize_node"
+        rule = (
+            session_node,
+            "oauth_session_invalid",
+            "OpenAI 登录会话已失效",
+            True,
+        )
     if str(status or "").strip().lower() == "account_banned":
         rule = ("account_banned", "account_banned", "", False)
 

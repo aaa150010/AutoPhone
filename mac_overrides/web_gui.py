@@ -12,12 +12,14 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from flask import send_from_directory as _send_from_directory
 
 import codex_oauth_chain as _codex_oauth_chain
 import chatgpt_totp as _chatgpt_totp_ext
 import error_observability as _error_observability_ext
+import auth_session_runtime as _auth_session_runtime_ext
 import imap_poller as _imap_poller
 import importer_scheduler as _importer_scheduler_ext
 import legacy_ui as _legacy_ui_ext
@@ -29,6 +31,7 @@ import pixel_runtime as _pixel_runtime_ext
 import run_notifications as _run_notifications_ext
 import runtime as _runtime
 import runtime_policy as _runtime_policy_ext
+import network_runtime as _network_runtime_ext
 import sms_providers as _sms_providers
 import sms_runtime as _sms_runtime_ext
 import sms_selector as _sms_selector
@@ -36,6 +39,12 @@ import sms_web as _sms_web_ext
 import sub2_runtime as _sub2_runtime_ext
 import task_progress as _task_progress_ext
 import web_routes as _web_routes_ext
+
+
+# Do not allow the host shell's proxy settings to silently affect OpenAI,
+# mailbox, SMS, SUB2, or Pixel requests. Each caller below supplies its own
+# explicit proxy when that scope is enabled.
+_network_runtime_ext.clear_inherited_proxy_environment()
 
 
 APP_DIR = Path(__file__).resolve().parent.parent
@@ -1103,6 +1112,8 @@ _SMS_WEB = _sms_web_ext.SmsWebIntegration(
     safe_error=_safe_runtime_error,
     provider_registry=_SMS_PROVIDER_REGISTRY,
 )
+_AUTH_SESSIONS = _auth_session_runtime_ext.AuthSessionRegistry()
+_AUTH_SESSIONS.set_cancel_sms(_SMS_WEB.cancel_active_lease)
 _TOTP_PATCHES = _chatgpt_totp_ext.build_chatgpt_totp_patches(
     runtime_module=_runtime,
     codex_oauth_chain=_codex_oauth_chain,

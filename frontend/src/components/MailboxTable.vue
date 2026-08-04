@@ -8,12 +8,14 @@ import type { MailboxRow } from '../types/api'
 const props = defineProps<{
   rows: MailboxRow[]
   loadingPasswords: string[]
+  loadingTotp: string[]
 }>()
 
 const emit = defineEmits<{
   select: [MailboxRow[]]
   email: [MailboxRow]
   password: [MailboxRow]
+  totp: [MailboxRow]
 }>()
 
 const tableRef = ref<any>()
@@ -155,6 +157,19 @@ defineExpose({ clearSelection })
             @click="emit('password', row)"
           >*****</el-button>
         </el-tooltip>
+      </template>
+    </el-table-column>
+    <el-table-column label="2FA" width="86" align="center">
+      <template #default="{ row }">
+        <el-tooltip v-if="row.has_totp" content="复制 2FA 密钥" placement="top">
+          <el-button
+            link
+            class="password-copy"
+            :loading="loadingTotp.includes(row.row_id)"
+            @click="emit('totp', row)"
+          >*****</el-button>
+        </el-tooltip>
+        <span v-else class="muted">-</span>
       </template>
     </el-table-column>
     <el-table-column label="状态" width="105">

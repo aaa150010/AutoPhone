@@ -17,6 +17,7 @@ import {
   api,
   ApiError,
   exportMailboxSub2,
+  getMailboxTotp,
   getMailboxes,
   retryMailboxPixel,
 } from '../api/client'
@@ -37,6 +38,7 @@ const searchText = ref('')
 const selectedRows = ref<MailboxRow[]>([])
 const mailboxTable = ref<{ clearSelection: () => void } | null>(null)
 const loadingPasswords = ref<string[]>([])
+const loadingTotp = ref<string[]>([])
 const currentPage = ref(1)
 const pageSize = ref(50)
 const mutating = ref(false)
@@ -362,6 +364,25 @@ async function copyEmail(row: MailboxRow) {
   }
 }
 
+async function copyTotp(row: MailboxRow) {
+  if (!row.has_totp || loadingTotp.value.includes(row.row_id)) return
+  if (!navigator.clipboard?.writeText) {
+    ElMessage.error('当前浏览器不支持安全剪贴板写入')
+    return
+  }
+  loadingTotp.value = [...loadingTotp.value, row.row_id]
+  try {
+    const result = await getMailboxTotp({ row_id: row.row_id, line_no: row.line_no })
+    await navigator.clipboard.writeText(String(result.totp_secret || ''))
+    ElMessage.success('已复制 2FA 密钥')
+  } catch (error: any) {
+    if (error instanceof ApiError && error.payload?.code === 'mailbox_row_stale') await refresh()
+    ElMessage.error(error?.message || '复制 2FA 密钥失败')
+  } finally {
+    loadingTotp.value = loadingTotp.value.filter(id => id !== row.row_id)
+  }
+}
+
 async function poll() {
   await refresh()
   if (pollingStopped) return
@@ -438,9 +459,11 @@ onUnmounted(() => {
           ref="mailboxTable"
           :rows="pageRows"
           :loading-passwords="loadingPasswords"
+          :loading-totp="loadingTotp"
           @select="selectedRows = $event"
           @email="copyEmail"
           @password="copyPassword"
+          @totp="copyTotp"
         />
         <el-pagination
           v-model:current-page="currentPage"

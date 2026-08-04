@@ -11,6 +11,7 @@ import struct
 import threading
 import time
 from typing import Any, Callable
+from urllib.parse import urlsplit
 
 try:
     from .mailbox_url_runtime import masked_mailbox_url_row, parse_mailbox_url_row
@@ -163,17 +164,16 @@ def build_chatgpt_totp_patches(
     parse_oauth_mailbox_row: Callable[[Any], tuple[str, str, str, str] | None],
 ) -> ChatGptTotpPatchSet:
     """Build plain callables that preserve the recovered method signatures."""
-    active_lock = threading.Lock()
-    active_until = 0.0
+    active_state = threading.local()
 
     def is_active() -> bool:
-        with active_lock:
-            return time.time() < active_until
+        return time.time() < float(getattr(active_state, "until", 0.0) or 0.0)
 
     def activate(seconds: int = 600) -> None:
-        nonlocal active_until
-        with active_lock:
-            active_until = max(active_until, time.time() + seconds)
+        active_state.until = max(
+            float(getattr(active_state, "until", 0.0) or 0.0),
+            time.time() + seconds,
+        )
 
     def page_type(response: Any) -> str:
         try:
@@ -195,6 +195,13 @@ def build_chatgpt_totp_patches(
         if isinstance(error, dict):
             return str(error.get("code") or error.get("message") or "")
         return str(error)
+
+    def remember_post_auth_continue(transport: Any, response: Any) -> None:
+        next_url = continue_url(response)
+        if not next_url:
+            return
+        setattr(transport, "_gptphone_auth_continue_url", next_url)
+        setattr(transport, "_chatgpt_totp_mfa_continue_url", "")
 
     def factor_id_from(response: Any) -> str:
         if not isinstance(response, dict):
@@ -222,11 +229,15 @@ def build_chatgpt_totp_patches(
     def trace(transport: Any, step: str, endpoint: str, response: Any, **extra: Any) -> None:
         if not callable(getattr(transport, "log_fn", None)):
             return
+        try:
+            continue_path = urlsplit(continue_url(response) or "").path or "-"
+        except (TypeError, ValueError):
+            continue_path = "-"
         parts = [
             f"endpoint={endpoint}",
             f"_status={int(response.get('_status') or 0) if isinstance(response, dict) else 0}",
             f"page_type={page_type(response) or '-'}",
-            f"continue_url={continue_url(response) or '-'}",
+            f"continue_path={continue_path}",
             f"error={response_error(response) or '-'}",
         ]
         parts.extend(f"{key}={value if value else '-'}" for key, value in extra.items())
@@ -240,7 +251,13 @@ def build_chatgpt_totp_patches(
         next_url = continue_url(response)
         if next_url:
             setattr(transport, "_chatgpt_totp_mfa_continue_url", next_url)
-        if is_active():
+        totp_flow = is_active()
+        # The provider is created on a reusable worker thread. Consume the
+        # thread-local activation at the password boundary so another task
+        # cannot inherit a previous mailbox's TOTP flow.
+        active_state.until = 0.0
+        setattr(transport, "_gptphone_totp_flow", totp_flow)
+        if totp_flow:
             trace(
                 transport,
                 "password_verify",
@@ -251,7 +268,7 @@ def build_chatgpt_totp_patches(
         return response
 
     def patched_send_mfa_otp(transport: Any, next_url: str) -> Any:
-        if not is_active():
+        if not getattr(transport, "_gptphone_totp_flow", False):
             return original_send_mfa_otp(transport, next_url)
         if next_url:
             setattr(transport, "_chatgpt_totp_mfa_continue_url", next_url)
@@ -294,8 +311,10 @@ def build_chatgpt_totp_patches(
         return response
 
     def patched_verify_mfa_otp(transport: Any, code: str) -> Any:
-        if not is_active():
-            return original_verify_mfa_otp(transport, code)
+        if not getattr(transport, "_gptphone_totp_flow", False):
+            response = original_verify_mfa_otp(transport, code)
+            remember_post_auth_continue(transport, response)
+            return response
         factor_id = str(getattr(transport, "_chatgpt_totp_factor_id", "") or "").strip()
         if not factor_id:
             next_url = str(getattr(transport, "_chatgpt_totp_mfa_continue_url", "") or "")
@@ -323,6 +342,9 @@ def build_chatgpt_totp_patches(
             response,
             factor_id_present="1",
         )
+        remember_post_auth_continue(transport, response)
+        setattr(transport, "_gptphone_totp_flow", False)
+        active_state.until = 0.0
         return response
 
     def patched_entries_unlocked(pool_self: Any) -> Any:
