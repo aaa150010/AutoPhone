@@ -255,6 +255,64 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertFalse(public["sub2_status"]["is_error"])
         self.assertEqual(looked_up, [])
 
+    def test_list_mailboxes_restores_persisted_openai_quota_snapshot(self):
+        row = "quota@example.com----mail-pass----client-id----refresh-token"
+        self._write_pool(row + "\n")
+        self._write_state({})
+        results = self.root / "results"
+        results.mkdir()
+        (results / "success.json").write_text(
+            json.dumps(
+                {
+                    "email": "quota@example.com",
+                    "status": "success",
+                    "task_id": "task-quota",
+                    "created_at": 100,
+                    "result": {
+                        "sub2api_account_id": "legacy-sub2-id",
+                        "local_oauth": {
+                            "tokens": {
+                                "access_token": "private-access-token",
+                                "chatgpt_account_id": "private-account-id",
+                            }
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        looked_up = []
+        openai_lookups = []
+        self.service.openai_status_lookup = lambda account_id: openai_lookups.append(account_id) or (
+            {
+                "kind": "healthy",
+                "status_code": 200,
+                "label": "200 健康",
+                "tested_at": 100,
+            }
+            if account_id == "legacy-sub2-id"
+            else {"kind": "untested", "label": "未测试"}
+        )
+        self.service.openai_quota_status_lookup = lambda account_id: looked_up.append(account_id) or {
+            "status": "error",
+            "error": "查询 OpenAI 额度失败：网络不可用",
+            "queried_at": 200,
+            "quota_5h": {"remaining_percent": 80, "queried_at": 100},
+            "quota_7d": {"remaining_percent": 40, "queried_at": 100},
+        }
+
+        public = self.service.list_mailboxes()["rows"][0]
+
+        self.assertEqual(looked_up, ["private-account-id"])
+        self.assertEqual(openai_lookups, ["private-account-id", "legacy-sub2-id"])
+        self.assertEqual(public["sub2_status"]["kind"], "healthy")
+        self.assertEqual(public["quota_status"], "error")
+        self.assertEqual(public["quota_5h"]["remaining_percent"], 80)
+        self.assertEqual(public["quota_7d"]["remaining_percent"], 40)
+        serialized = json.dumps(public, ensure_ascii=False)
+        self.assertNotIn("private-access-token", serialized)
+        self.assertNotIn("private-account-id", serialized)
+
     def test_consumed_internal_reason_is_hidden_but_history_is_preserved(self):
         row = "done@example.com|login-pass|JBSWY3DPEHPK3PXP"
         self._write_pool(row + "\n")
@@ -406,6 +464,13 @@ class MailboxAdminTests(unittest.TestCase):
             }
 
         self.service.openai_quota_query = query
+        stored = []
+
+        def store_quota(account_id, value):
+            stored.append((account_id, dict(value)))
+            return value
+
+        self.service.openai_quota_status_store = store_quota
         payload = {
             "rows": [
                 {"row_id": row_id_from_source(row), "line_no": index}
@@ -418,14 +483,23 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["queried"], 2)
         self.assertEqual(sorted(captured), [("task-1", ""), ("task-2", "")])
+        self.assertEqual(sorted(item[0] for item in stored), ["private-account-1", "private-account-2"])
         serialized = json.dumps(result, ensure_ascii=False)
         self.assertNotIn("private-access", serialized)
         self.assertNotIn("private-account", serialized)
         self.assertEqual(
-            [{key: item[key] for key in ("line_no", "status", "quota_5h", "quota_7d")} for item in result["results"]],
             [
-                {"line_no": 1, "status": "ok", "quota_5h": {"remaining_percent": 80}, "quota_7d": {"remaining_percent": 40}},
-                {"line_no": 2, "status": "ok", "quota_5h": {"remaining_percent": 80}, "quota_7d": {"remaining_percent": 40}},
+                (
+                    item["line_no"],
+                    item["status"],
+                    item["quota_5h"]["remaining_percent"],
+                    item["quota_7d"]["remaining_percent"],
+                )
+                for item in result["results"]
+            ],
+            [
+                (1, "ok", 80, 40),
+                (2, "ok", 80, 40),
             ],
         )
 
@@ -475,7 +549,10 @@ class MailboxAdminTests(unittest.TestCase):
                     "result": {
                         "sub2api_account_id": "remote-1",
                         "local_oauth": {
-                            "tokens": {"access_token": "private-access"}
+                            "tokens": {
+                                "access_token": "private-access",
+                                "chatgpt_account_id": "chatgpt-account-1",
+                            }
                         },
                     },
                 }
@@ -508,8 +585,10 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(len(captured), 2)
         self.assertEqual(captured[0]["sub2api_account_id"], "remote-1")
+        self.assertEqual(captured[0]["openai_status_id"], "chatgpt-account-1")
         self.assertIn("private-access", json.dumps(captured[0]))
         self.assertEqual(captured[1]["sub2api_account_id"], "")
+        self.assertEqual(captured[1]["openai_status_id"], "")
         self.assertEqual(captured[1]["document"], {})
 
 

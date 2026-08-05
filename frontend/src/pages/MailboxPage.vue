@@ -51,6 +51,8 @@ const retryingPixel = ref(false)
 const exportingSub2 = ref(false)
 const queryingQuota = ref(false)
 const quotaProgress = ref('')
+const openaiTestProgress = ref('')
+const retryingQuotaRows = ref<string[]>([])
 let timer = 0
 let pollingStopped = false
 let dataVersion = 0
@@ -135,7 +137,10 @@ function applyMailboxPayload(payload: any) {
       counts: next.counts || {},
       rows: next.rows.map((row: MailboxRow) => {
         const old = previous.get(row.row_id)
-        return old
+        const hasPersistedQuota = row.quota_status != null
+          || row.quota_5h != null
+          || row.quota_7d != null
+        return old && !hasPersistedQuota
           ? { ...row, quota_status: old.quota_status, quota_error: old.quota_error, quota_queried_at: old.quota_queried_at, quota_5h: old.quota_5h, quota_7d: old.quota_7d }
           : row
       }),
@@ -163,8 +168,12 @@ function applyQuotaResults(results: any[]) {
   }
 }
 
+function queryableRows() {
+  return data.value.rows.filter(row => row.status === 'consumed' && row.task_id)
+}
+
 async function queryQuotas() {
-  const candidates = data.value.rows.filter(row => row.status === 'consumed' && row.task_id)
+  const candidates = queryableRows()
   if (!candidates.length) {
     ElMessage.warning('当前没有可查询 OpenAI 额度的成功账号')
     return
@@ -176,13 +185,14 @@ async function queryQuotas() {
   let completed = 0
   let failed = 0
   try {
+    quotaProgress.value = `0/${candidates.length}`
     for (let index = 0; index < candidates.length; index += 5) {
       const chunk = candidates.slice(index, index + 5)
-      quotaProgress.value = `${Math.min(index + chunk.length, candidates.length)}/${candidates.length}`
       const result = await queryMailboxQuotas(chunk.map(row => ({ row_id: row.row_id, line_no: row.line_no })))
       applyQuotaResults(result.results || [])
       completed += Number(result.queried || 0)
       failed += Number(result.failed || 0)
+      quotaProgress.value = `${Math.min(index + chunk.length, candidates.length)}/${candidates.length}`
     }
     const details = failed ? `，失败 ${failed} 条` : ''
     ElMessage.success(`已查询 OpenAI 额度 ${completed} 条${details}`)
@@ -191,6 +201,33 @@ async function queryQuotas() {
   } finally {
     queryingQuota.value = false
     quotaProgress.value = ''
+    mutating.value = false
+  }
+}
+
+async function retryQuota(row: MailboxRow) {
+  if (row.quota_status !== 'error' || mutating.value || retryingQuotaRows.value.includes(row.row_id)) return
+  retryingQuotaRows.value = [...retryingQuotaRows.value, row.row_id]
+  mutating.value = true
+  dataVersion += 1
+  latestRefresh += 1
+  try {
+    const result = await queryMailboxQuotas([{ row_id: row.row_id, line_no: row.line_no }])
+    applyQuotaResults(result.results || [])
+    const status = result.results?.[0]
+    if (status?.status === 'ok') ElMessage.success('OpenAI 额度已更新')
+    else ElMessage.error(status?.error || '查询 OpenAI 额度失败')
+  } catch (error: any) {
+    if (error instanceof ApiError && error.status === 409) {
+      try {
+        applyMailboxPayload(await getMailboxes())
+      } catch {
+        // Normal polling will retry after this mutation finishes.
+      }
+    }
+    ElMessage.error(error?.message || '查询 OpenAI 额度失败')
+  } finally {
+    retryingQuotaRows.value = retryingQuotaRows.value.filter(id => id !== row.row_id)
     mutating.value = false
   }
 }
@@ -260,56 +297,59 @@ async function mutate(path: string, message: string) {
 }
 
 async function testSub2() {
-  if (!selectedRows.value.length) {
-    ElMessage.warning('请先选择邮箱')
+  const candidates = queryableRows()
+  if (!candidates.length) {
+    ElMessage.warning('当前没有可测试的 OpenAI 成功账号')
     return
   }
   testingSub2.value = true
   mutating.value = true
   dataVersion += 1
   latestRefresh += 1
-  const selected = selectedRows.value.map(row => ({ row_id: row.row_id, line_no: row.line_no }))
+  let tested = 0
+  let failed = 0
+  let rateLimited = 0
+  let notReady = 0
   try {
     mailboxTable.value?.clearSelection()
     selectedRows.value = []
-    const result: any = await api('/api/mailboxes/openai-test', { rows: selected })
-    applyMailboxPayload(result)
-    if (Array.isArray(result?.results)) {
-      const statuses = new Map<string, MailboxRow['sub2_status']>(
-        result.results.map((item: any) => [String(item.row_id), item.sub2_status]),
-      )
-      data.value = {
-        ...data.value,
-        rows: data.value.rows.map(row => statuses.has(row.row_id)
-          ? { ...row, sub2_status: statuses.get(row.row_id) }
-          : row),
+    openaiTestProgress.value = `0/${candidates.length}`
+    for (let index = 0; index < candidates.length; index += 5) {
+      const chunk = candidates.slice(index, index + 5)
+      const result: any = await api('/api/mailboxes/openai-test', {
+        rows: chunk.map(row => ({ row_id: row.row_id, line_no: row.line_no })),
+      })
+      applyMailboxPayload(result)
+      const resultStatuses = (result?.results || []).map((item: any) => item?.sub2_status).filter(Boolean)
+      if (resultStatuses.length) {
+        const statuses = new Map<string, MailboxRow['sub2_status']>(
+          result.results.map((item: any) => [String(item.row_id), item.sub2_status]),
+        )
+        data.value = {
+          ...data.value,
+          rows: data.value.rows.map(row => statuses.has(row.row_id)
+            ? { ...row, sub2_status: statuses.get(row.row_id) }
+            : row),
+        }
       }
+      tested += Number(result?.tested ?? resultStatuses.length)
+      failed += Number(resultStatuses.length
+        ? resultStatuses.filter(isSub2TestFailure).length
+        : result?.test_failures ?? result?.test_failed ?? result?.failed ?? 0)
+      rateLimited += Number(resultStatuses.length
+        ? resultStatuses.filter((status: any) => sub2StatusCode(status) === 429).length
+        : result?.rate_limited ?? 0)
+      notReady += Number(result?.not_ready ?? 0)
+      openaiTestProgress.value = `${Math.min(index + chunk.length, candidates.length)}/${candidates.length}`
     }
-    if (!result?.rows && !result?.mailboxes?.rows) applyMailboxPayload(await getMailboxes())
     await nextTick()
     mailboxTable.value?.clearSelection()
-    const tested = Number(result?.tested ?? result?.completed ?? selected.length)
-    const unlinked = Number(result?.unlinked ?? 0)
-    const notReady = Number(result?.not_ready ?? 0)
-    const batchCount = Number(result?.batch_count ?? 1)
-    const queuedBatches = Number(result?.queued_batches ?? Math.max(0, batchCount - 1))
-    const resultStatuses = (result?.results || []).map((item: any) => item?.sub2_status).filter(Boolean)
-    const failed = Number(resultStatuses.length
-      ? resultStatuses.filter(isSub2TestFailure).length
-      : result?.test_failures ?? result?.test_failed ?? result?.failed ?? 0)
-    const rateLimited = Number(resultStatuses.length
-      ? resultStatuses.filter((status: any) => sub2StatusCode(status) === 429).length
-      : result?.rate_limited ?? 0)
     const details = [
-      batchCount > 1 ? `已分 ${batchCount} 批排队测试` : '',
       failed ? `测试失败 ${failed} 条` : '',
       rateLimited ? `额度受限 ${rateLimited} 条` : '',
-      notReady ? `未上传 ${notReady} 条` : (unlinked ? `未关联 ${unlinked} 条` : ''),
+      notReady ? `未上传 ${notReady} 条` : '',
     ].filter(Boolean).join('，')
-    const progressText = queuedBatches > 0 && Number(result?.completed_batches) < batchCount
-      ? `，已完成 ${Number(result?.completed_batches ?? 0)}/${batchCount} 批`
-      : ''
-    const message = `已测试 ${tested} 条${progressText}${details ? `，${details}` : ''}`
+    const message = `已测试 ${tested} 条${details ? `，${details}` : ''}`
     if (failed || rateLimited || notReady) ElMessage.warning(message)
     else ElMessage.success(message)
   } catch (error: any) {
@@ -323,6 +363,7 @@ async function testSub2() {
     ElMessage.error(error?.message || '本机 OpenAI 连接测试失败')
   } finally {
     testingSub2.value = false
+    openaiTestProgress.value = ''
     mutating.value = false
   }
 }
@@ -538,8 +579,8 @@ onUnmounted(() => {
         <el-button :loading="queryingQuota" :disabled="mutating" @click="queryQuotas">
           <el-icon><DataAnalysis /></el-icon>{{ queryingQuota && quotaProgress ? `查询额度 ${quotaProgress}` : '批量查询额度' }}
         </el-button>
-        <el-button :loading="testingSub2" :disabled="mutating || !selectedRows.length" @click="testSub2">
-          <el-icon><Connection /></el-icon>批量测试 OpenAI
+        <el-button :loading="testingSub2" :disabled="mutating" @click="testSub2">
+          <el-icon><Connection /></el-icon>{{ testingSub2 && openaiTestProgress ? `测试 OpenAI ${openaiTestProgress}` : '批量测试 OpenAI' }}
         </el-button>
         <el-button :loading="retryingPixel" :disabled="mutating || !selectedRows.length" @click="retryPixel">
           <el-icon><UploadFilled /></el-icon>重传 Pixel
@@ -561,11 +602,14 @@ onUnmounted(() => {
           :rows="pageRows"
           :loading-passwords="loadingPasswords"
           :loading-totp="loadingTotp"
+          :loading-quotas="retryingQuotaRows"
+          :quota-retry-disabled="mutating"
           @select="selectedRows = $event"
           @email="copyEmail"
           @password="copyPassword"
           @totp="copyTotp"
           @url="openMailboxUrl"
+          @quota="retryQuota"
         />
         <el-pagination
           v-model:current-page="currentPage"

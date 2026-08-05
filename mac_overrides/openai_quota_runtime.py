@@ -3,6 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+from threading import RLock
+import tempfile
 import time
 from typing import Any, Mapping, Protocol
 
@@ -18,6 +25,7 @@ OPENAI_CODEX_PROBE_USER_AGENT = (
     f"codex_cli_rs/{OPENAI_CODEX_PROBE_VERSION} "
     "(Ubuntu 22.4.0; x86_64) xterm-256color"
 )
+_QUOTA_SUMMARY_LIMIT = 240
 
 
 class QuotaResponse(Protocol):
@@ -185,6 +193,150 @@ def _number(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return result
+
+
+def _clean_public_text(value: Any) -> str:
+    text = str(value or "")
+    text = re.sub(r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]+", r"\1********", text)
+    text = re.sub(
+        r'(?i)(["\']?(?:access_token|refresh_token|password|authorization)["\']?\s*[:=]\s*["\']?)[^\s,"\'}]+',
+        r"\1********",
+        text,
+    )
+    text = re.sub(r"\beyJ[A-Za-z0-9_-]{12,}(?:\.[A-Za-z0-9_-]+){1,2}\b", "********", text)
+    text = re.sub(r"[\x00-\x1f\x7f]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()[:_QUOTA_SUMMARY_LIMIT]
+
+
+def _public_quota_window(value: Any) -> dict[str, Any] | None:
+    row = _mapping(value)
+    remaining = _number(row.get("remaining_percent"))
+    if remaining is None:
+        return None
+    result: dict[str, Any] = {
+        "remaining_percent": round(max(0.0, min(100.0, remaining)), 2),
+    }
+    for field in ("limit_window_seconds", "reset_at", "reset_after_seconds", "queried_at"):
+        numeric = _number(row.get(field))
+        result[field] = int(numeric) if numeric is not None else None
+    result["status"] = "available" if result["remaining_percent"] > 0 else "exhausted"
+    return result
+
+
+def public_quota_snapshot(
+    value: Any,
+    *,
+    previous: Any = None,
+    queried_at: int | None = None,
+) -> dict[str, Any]:
+    """Return the credential-free latest query state with last-known quota windows."""
+    row = _mapping(value)
+    old = _mapping(previous)
+    if not row and not old:
+        return {}
+    status = str(row.get("status") or old.get("status") or "").strip().lower()
+    if status not in {"ok", "error"}:
+        status = "ok" if row.get("quota_5h") is not None or row.get("quota_7d") is not None else "error"
+    result: dict[str, Any] = {
+        "status": status,
+        "node_code": OPENAI_QUOTA_NODE_CODE,
+        "node_label": OPENAI_QUOTA_NODE_LABEL,
+    }
+    for field in ("quota_5h", "quota_7d"):
+        window = _public_quota_window(row.get(field)) or _public_quota_window(old.get(field))
+        result[field] = window
+    raw_queried_at = row.get("queried_at")
+    if raw_queried_at is None:
+        raw_queried_at = queried_at if queried_at is not None else old.get("queried_at")
+    try:
+        result["queried_at"] = int(raw_queried_at) if raw_queried_at is not None else None
+    except (TypeError, ValueError):
+        result["queried_at"] = None
+    if status == "error":
+        code = str(row.get("code") or old.get("code") or "openai_quota_failed").strip()
+        result["code"] = code if code.startswith("openai_quota_") else "openai_quota_failed"
+        result["error"] = _clean_public_text(
+            row.get("error") or old.get("error") or "查询 OpenAI 额度失败：未返回可用诊断"
+        )
+        try:
+            http_status = row.get("http_status") if row.get("http_status") is not None else old.get("http_status")
+            result["http_status"] = int(http_status) if http_status is not None else None
+        except (TypeError, ValueError):
+            result["http_status"] = None
+    else:
+        result["error"] = ""
+    return result
+
+
+class OpenAIQuotaSnapshotStore:
+    """Atomic quota snapshots keyed by a non-reversible account fingerprint."""
+
+    def __init__(self, path: str | Path, *, now_fn=time.time) -> None:
+        self.path = Path(path)
+        self.now_fn = now_fn
+        self._lock = RLock()
+
+    @staticmethod
+    def _key(account_id: Any) -> str:
+        value = str(account_id or "").strip()
+        return hashlib.sha256(value.encode("utf-8")).hexdigest() if value else ""
+
+    def _read_unlocked(self) -> dict[str, Any]:
+        try:
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
+        except Exception:
+            payload = {"version": 1, "items": {}}
+        if not isinstance(payload, dict) or not isinstance(payload.get("items"), dict):
+            return {"version": 1, "items": {}}
+        return payload
+
+    def _write_unlocked(self, payload: Mapping[str, Any]) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = ""
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                dir=self.path.parent,
+                prefix=f".{self.path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as handle:
+                temporary = handle.name
+                json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.chmod(temporary, 0o600)
+            os.replace(temporary, self.path)
+        finally:
+            if temporary and os.path.exists(temporary):
+                os.unlink(temporary)
+
+    def status_for(self, account_id: Any) -> dict[str, Any]:
+        key = self._key(account_id)
+        if not key:
+            return {}
+        with self._lock:
+            item = self._read_unlocked().get("items", {}).get(key)
+        return public_quota_snapshot(item)
+
+    def put(self, account_id: Any, value: Any) -> dict[str, Any]:
+        key = self._key(account_id)
+        if not key:
+            return public_quota_snapshot(value, queried_at=int(self.now_fn()))
+        with self._lock:
+            payload = self._read_unlocked()
+            items = payload.setdefault("items", {})
+            snapshot = public_quota_snapshot(
+                value,
+                previous=items.get(key),
+                queried_at=int(self.now_fn()),
+            )
+            items[key] = snapshot
+            payload["version"] = 1
+            payload["updated_at"] = int(self.now_fn())
+            self._write_unlocked(payload)
+        return snapshot
 
 
 def _window(value: Any, queried_at: int) -> dict[str, Any] | None:
@@ -432,7 +584,9 @@ __all__ = [
     "OpenAIQuotaClient",
     "OpenAIQuotaCredentials",
     "OpenAIQuotaError",
+    "OpenAIQuotaSnapshotStore",
     "credentials_from_result",
     "normalize_quota_headers",
     "normalize_quota_payload",
+    "public_quota_snapshot",
 ]

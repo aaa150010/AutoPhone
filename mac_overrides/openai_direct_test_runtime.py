@@ -10,6 +10,7 @@ from __future__ import annotations
 import codecs
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -370,6 +371,11 @@ class OpenAIDirectTestRuntime:
     def _client(self, proxy: str) -> OpenAIDirectTestClient:
         return self.client_factory(proxy=proxy, now_fn=self.now_fn)
 
+    @staticmethod
+    def _snapshot_key(account_id: Any) -> str:
+        value = str(account_id or "").strip()
+        return hashlib.sha256(value.encode("utf-8")).hexdigest() if value else ""
+
     def status_for(self, account_id: Any) -> dict[str, Any]:
         key = str(account_id or "").strip()
         if not key:
@@ -382,7 +388,12 @@ class OpenAIDirectTestRuntime:
                 "is_error": False,
                 "needs_rerun": False,
             }
-        return self.snapshot_store.get(DIRECT_TEST_FINGERPRINT, key) or {
+        status = self.snapshot_store.get(DIRECT_TEST_FINGERPRINT, self._snapshot_key(key))
+        if status is None:
+            status = self.snapshot_store.get(DIRECT_TEST_FINGERPRINT, key)
+        if status is not None:
+            return status.public()
+        return {
             "kind": "untested",
             "status_code": None,
             "label": "未测试",
@@ -395,6 +406,7 @@ class OpenAIDirectTestRuntime:
     def clear_status(self, account_id: Any) -> None:
         key = str(account_id or "").strip()
         if key:
+            self.snapshot_store.discard(DIRECT_TEST_FINGERPRINT, self._snapshot_key(key))
             self.snapshot_store.discard(DIRECT_TEST_FINGERPRINT, key)
 
     def test_rows(
@@ -455,11 +467,14 @@ class OpenAIDirectTestRuntime:
                                 int(self.now_fn()),
                             )
                         statuses[index] = status
-                        account_id = str(row.get("sub2api_account_id") or "").strip()
+                        account_id = str(
+                            row.get("openai_status_id")
+                            or row.get("sub2api_account_id")
+                            or ""
+                        ).strip()
                         if account_id:
-                            persistable[account_id] = status
+                            persistable[self._snapshot_key(account_id)] = status
             for index, row in enumerate(chunk):
-                account_id = str(row.get("sub2api_account_id") or "").strip()
                 if index not in statuses:
                     status = _status(
                         "not_ready",

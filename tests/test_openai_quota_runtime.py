@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+import tempfile
 from types import SimpleNamespace
 import unittest
 
@@ -8,6 +11,7 @@ from mac_overrides.openai_quota_runtime import (
     OPENAI_USAGE_URL,
     OpenAIQuotaClient,
     OpenAIQuotaError,
+    OpenAIQuotaSnapshotStore,
     credentials_from_result,
     normalize_quota_headers,
     normalize_quota_payload,
@@ -52,6 +56,43 @@ def success_document():
 
 
 class OpenAIQuotaRuntimeTests(unittest.TestCase):
+    def test_snapshot_preserves_last_percentages_after_failure_without_account_secrets(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "quota-snapshots.json"
+            clock = [100]
+            store = OpenAIQuotaSnapshotStore(path, now_fn=lambda: clock[0])
+            store.put(
+                "private-account-id",
+                {
+                    "status": "ok",
+                    "quota_5h": {"remaining_percent": 80, "queried_at": 100},
+                    "quota_7d": {"remaining_percent": 40, "queried_at": 100},
+                    "queried_at": 100,
+                    "access_token": "private-access-token",
+                },
+            )
+            clock[0] = 200
+            failed = store.put(
+                "private-account-id",
+                {
+                    "status": "error",
+                    "code": "openai_quota_network_error",
+                    "error": "查询 OpenAI 额度失败：网络不可用",
+                    "queried_at": 200,
+                },
+            )
+
+            reloaded = OpenAIQuotaSnapshotStore(path).status_for("private-account-id")
+            serialized = path.read_text(encoding="utf-8")
+
+        self.assertEqual(failed["status"], "error")
+        self.assertEqual(failed["quota_5h"]["remaining_percent"], 80)
+        self.assertEqual(failed["quota_7d"]["remaining_percent"], 40)
+        self.assertEqual(reloaded, failed)
+        self.assertNotIn("private-account-id", serialized)
+        self.assertNotIn("private-access-token", serialized)
+        self.assertEqual(len(json.loads(serialized)["items"]), 1)
+
     def test_query_matches_codex_headers_and_returns_remaining_percent(self):
         transport = FakeTransport({
             "rate_limit": {

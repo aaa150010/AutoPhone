@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { View } from '@element-plus/icons-vue'
+import { Refresh, View } from '@element-plus/icons-vue'
 import ContentEmptyState from './ContentEmptyState.vue'
 import TaskProgressCell from './TaskProgressCell.vue'
 import { useTaskProgressClock } from '../composables/useTaskProgressClock'
@@ -10,6 +10,8 @@ const props = defineProps<{
   rows: MailboxRow[]
   loadingPasswords: string[]
   loadingTotp: string[]
+  loadingQuotas: string[]
+  quotaRetryDisabled: boolean
 }>()
 
 const emit = defineEmits<{
@@ -18,6 +20,7 @@ const emit = defineEmits<{
   password: [MailboxRow]
   totp: [MailboxRow]
   url: [MailboxRow]
+  quota: [MailboxRow]
 }>()
 
 const tableRef = ref<any>()
@@ -120,7 +123,16 @@ function quotaLabel(value: MailboxRow['quota_5h'], status?: MailboxRow['quota_st
   return `${Number(value.remaining_percent).toFixed(1)}%`
 }
 
-function quotaDetail(value: MailboxRow['quota_5h'], status?: MailboxRow['quota_status']) {
+function quotaDetail(
+  value: MailboxRow['quota_5h'],
+  status?: MailboxRow['quota_status'],
+  error?: string,
+) {
+  if (status === 'error') {
+    const parts = [error || 'OpenAI 额度查询失败']
+    if (value?.remaining_percent != null) parts.push(`当前显示最近一次成功结果 ${quotaLabel(value, status)}`)
+    return parts.join(' · ')
+  }
   if (!value) {
     if (status === 'ok') return 'OpenAI 本次未返回该额度窗口'
     if (status === 'error') return 'OpenAI 额度查询失败'
@@ -131,6 +143,10 @@ function quotaDetail(value: MailboxRow['quota_5h'], status?: MailboxRow['quota_s
     if (!Number.isNaN(date.getTime())) return `${quotaLabel(value, status)} · 重置 ${date.toLocaleString('zh-CN', { hour12: false })}`
   }
   return quotaLabel(value, status)
+}
+
+function quotaRetrying(row: MailboxRow) {
+  return props.loadingQuotas.includes(row.row_id)
 }
 
 defineExpose({ clearSelection })
@@ -203,15 +219,37 @@ defineExpose({ clearSelection })
     </el-table-column>
     <el-table-column label="5h剩余" width="92" align="center">
       <template #default="{ row }">
-        <el-tooltip :content="quotaDetail(row.quota_5h, row.quota_status)" placement="top">
-          <span :class="['quota-value', row.quota_5h?.remaining_percent > 0 ? 'quota-available' : '']">{{ quotaLabel(row.quota_5h, row.quota_status) }}</span>
+        <el-tooltip :content="quotaDetail(row.quota_5h, row.quota_status, row.quota_error)" placement="top">
+          <button
+            v-if="row.quota_status === 'error'"
+            type="button"
+            class="quota-retry"
+            :disabled="quotaRetryDisabled || quotaRetrying(row)"
+            aria-label="重新查询 OpenAI 额度"
+            @click="emit('quota', row)"
+          >
+            <el-icon :class="{ 'is-loading': quotaRetrying(row) }"><Refresh /></el-icon>
+            <span>{{ quotaLabel(row.quota_5h, row.quota_status) }}</span>
+          </button>
+          <span v-else :class="['quota-value', row.quota_5h?.remaining_percent > 0 ? 'quota-available' : '']">{{ quotaLabel(row.quota_5h, row.quota_status) }}</span>
         </el-tooltip>
       </template>
     </el-table-column>
     <el-table-column label="7d剩余" width="92" align="center">
       <template #default="{ row }">
-        <el-tooltip :content="quotaDetail(row.quota_7d, row.quota_status)" placement="top">
-          <span :class="['quota-value', row.quota_7d?.remaining_percent > 0 ? 'quota-available' : '']">{{ quotaLabel(row.quota_7d, row.quota_status) }}</span>
+        <el-tooltip :content="quotaDetail(row.quota_7d, row.quota_status, row.quota_error)" placement="top">
+          <button
+            v-if="row.quota_status === 'error'"
+            type="button"
+            class="quota-retry"
+            :disabled="quotaRetryDisabled || quotaRetrying(row)"
+            aria-label="重新查询 OpenAI 额度"
+            @click="emit('quota', row)"
+          >
+            <el-icon :class="{ 'is-loading': quotaRetrying(row) }"><Refresh /></el-icon>
+            <span>{{ quotaLabel(row.quota_7d, row.quota_status) }}</span>
+          </button>
+          <span v-else :class="['quota-value', row.quota_7d?.remaining_percent > 0 ? 'quota-available' : '']">{{ quotaLabel(row.quota_7d, row.quota_status) }}</span>
         </el-tooltip>
       </template>
     </el-table-column>
@@ -271,4 +309,19 @@ defineExpose({ clearSelection })
 .muted { color: var(--el-text-color-secondary); }
 .quota-value { color: var(--el-text-color-secondary); font-variant-numeric: tabular-nums; }
 .quota-available { color: var(--el-color-success); }
+.quota-retry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--el-color-danger);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  gap: 4px;
+  cursor: pointer;
+}
+.quota-retry:disabled { opacity: 0.6; cursor: not-allowed; }
 </style>

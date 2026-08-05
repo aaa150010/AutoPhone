@@ -150,6 +150,44 @@ class OpenAIDirectTestRuntimeTests(unittest.TestCase):
         self.assertEqual(result["results"][0]["sub2_status"]["label"], "未上传，无法直连 OpenAI")
         self.assertEqual(len(factory_calls), 0)
 
+    def test_runtime_status_for_returns_persisted_public_status(self):
+        with tempfile.TemporaryDirectory() as temp:
+            snapshot_path = Path(temp) / "snapshots.json"
+            transport = FakeTransport([
+                FakeResponse(chunks=response_events({"type": "response.completed"}))
+            ])
+
+            def factory(**kwargs):
+                return OpenAIDirectTestClient(transport=transport, **kwargs)
+
+            runtime = OpenAIDirectTestRuntime(
+                lambda: {},
+                snapshot_path,
+                client_factory=factory,
+            )
+            runtime.test_rows(
+                [
+                    {
+                        "row_id": "row-linked",
+                        "line_no": 1,
+                        "sub2api_account_id": "",
+                        "openai_status_id": "openai-account-1",
+                        "document": success_document(),
+                    }
+                ]
+            )
+
+            reloaded = OpenAIDirectTestRuntime(lambda: {}, snapshot_path)
+            status = reloaded.status_for("openai-account-1")
+            serialized = snapshot_path.read_text(encoding="utf-8")
+
+        self.assertIsInstance(status, dict)
+        self.assertEqual(status["kind"], "healthy")
+        self.assertEqual(status["status_code"], 200)
+        self.assertNotIn("openai-account-1", serialized)
+        self.assertNotIn("private-access-token", json.dumps(status))
+        self.assertNotIn("private-account-id", json.dumps(status))
+
 
 if __name__ == "__main__":
     unittest.main()

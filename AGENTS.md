@@ -79,4 +79,4 @@ npx vue-tsc --noEmit
 npm run build
 ```
 
-Then run `git diff --check`. Do not start or restart the local Flask service for verification unless the user explicitly asks. Routine frontend verification targets desktop viewports only; do not perform mobile or narrow-screen adaptation unless the user explicitly requests it. Never click real preflight, registration, SMS, SUB2, or Pixel actions during verification.
+Then run `git diff --check`. Do not start or restart the local Flask service for verification unless the user explicitly asks. Do not use the in-app browser, browser skills, Chrome, Playwright, or computer-use for frontend verification; the user performs manual visual verification. Automated frontend verification is limited to type checks, builds, and tests. Routine frontend verification targets desktop viewports only; do not perform mobile or narrow-screen adaptation unless the user explicitly requests it. Never click real preflight, registration, SMS, SUB2, or Pixel actions during verification.

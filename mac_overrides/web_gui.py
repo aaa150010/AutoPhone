@@ -2468,6 +2468,9 @@ _OPENAI_DIRECT_RUNTIME = _openai_direct_test_runtime_ext.OpenAIDirectTestRuntime
     _read_local_config,
     _RUNTIME_DATA_DIR / "openai_direct_test_snapshots.json",
 )
+_OPENAI_QUOTA_SNAPSHOTS = _openai_quota_runtime_ext.OpenAIQuotaSnapshotStore(
+    _RUNTIME_DATA_DIR / "openai_quota_snapshots.json",
+)
 
 
 def _local_secret(value, fallback=""):
@@ -3107,6 +3110,8 @@ def _mailbox_admin_factory(store, importer, logs):
         openai_direct_batch_tester=_OPENAI_DIRECT_RUNTIME.test_rows,
         mailbox_url_reader_factory=_mailbox_url_runtime_ext.MailboxUrlClient,
         openai_quota_query=query_openai_quota,
+        openai_quota_status_lookup=_OPENAI_QUOTA_SNAPSHOTS.status_for,
+        openai_quota_status_store=_OPENAI_QUOTA_SNAPSHOTS.put,
     )
 
 

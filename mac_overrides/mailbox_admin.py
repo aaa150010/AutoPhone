@@ -47,9 +47,17 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
     from error_observability import public_failure
 
 try:
-    from .openai_quota_runtime import OpenAIQuotaError
+    from .openai_quota_runtime import (
+        OpenAIQuotaError,
+        credentials_from_result,
+        public_quota_snapshot,
+    )
 except ImportError:  # Loaded as a top-level override module by the Mac launcher.
-    from openai_quota_runtime import OpenAIQuotaError
+    from openai_quota_runtime import (
+        OpenAIQuotaError,
+        credentials_from_result,
+        public_quota_snapshot,
+    )
 
 
 _EMAIL_RE = re.compile(
@@ -436,6 +444,8 @@ class MailboxAdminService:
         openai_direct_batch_tester: Callable[[Sequence[Mapping[str, Any]], str], Mapping[str, Any]] | None = None,
         mailbox_url_reader_factory: Callable[..., Any] | None = None,
         openai_quota_query: Callable[[Mapping[str, Any], str], Mapping[str, Any]] | None = None,
+        openai_quota_status_lookup: Callable[[str], Mapping[str, Any] | None] | None = None,
+        openai_quota_status_store: Callable[[str, Mapping[str, Any]], Mapping[str, Any] | None] | None = None,
     ) -> None:
         self.store = store
         self.validate_pool = validate_pool
@@ -452,6 +462,8 @@ class MailboxAdminService:
         self.openai_direct_batch_tester = openai_direct_batch_tester
         self.mailbox_url_reader_factory = mailbox_url_reader_factory or MailboxUrlClient
         self.openai_quota_query = openai_quota_query
+        self.openai_quota_status_lookup = openai_quota_status_lookup
+        self.openai_quota_status_store = openai_quota_status_store
         self._lock = RLock()
 
     def _config(self) -> dict[str, Any]:
@@ -887,6 +899,12 @@ class MailboxAdminService:
                 failure["public_message"] = failure_message
                 failure["technical_summary"] = detail_error
             succeeded = result_status in {"success", "ok", "uploaded"}
+            openai_account_id = ""
+            if succeeded:
+                try:
+                    openai_account_id = credentials_from_result(result).account_id
+                except OpenAIQuotaError:
+                    openai_account_id = ""
             sms_cost_usd = result_payload.get("sms_cost_usd", result.get("sms_cost_usd")) if succeeded else None
             sms_cost_cny = result_payload.get("sms_cost_cny", result.get("sms_cost_cny")) if succeeded else None
             sms_exchange_rate = (
@@ -910,19 +928,36 @@ class MailboxAdminService:
                 count_status = "success"
             counts[count_status] = counts.get(count_status, 0) + 1
             if self.openai_status_lookup is not None:
-                if not sub2_account_id:
+                status_lookup_id = openai_account_id or sub2_account_id
+                if not status_lookup_id:
                     sub2_status = public_sub2_status(None, linked=False, unuploaded=True)
                 else:
                     try:
-                        sub2_status = public_sub2_status(
-                            self.openai_status_lookup(sub2_account_id),
-                            linked=True,
-                        )
+                        raw_openai_status = self.openai_status_lookup(status_lookup_id)
+                        if (
+                            openai_account_id
+                            and sub2_account_id
+                            and openai_account_id != sub2_account_id
+                            and str((raw_openai_status or {}).get("kind") or "untested") == "untested"
+                        ):
+                            legacy_status = self.openai_status_lookup(sub2_account_id)
+                            if str((legacy_status or {}).get("kind") or "untested") != "untested":
+                                raw_openai_status = legacy_status
+                        sub2_status = public_sub2_status(raw_openai_status, linked=True)
                     except Exception:
                         sub2_status = public_sub2_status(None, linked=True)
             else:
                 sub2_status = self._sub2_status_for(sub2_account_id)
             sub2_status["summary"] = self._format_error(sub2_status.get("summary") or "", row_secrets)
+            quota_status: dict[str, Any] = {}
+            if openai_account_id and self.openai_quota_status_lookup is not None:
+                try:
+                    quota_status = public_quota_snapshot(
+                        self.openai_quota_status_lookup(openai_account_id)
+                    )
+                except Exception:
+                    quota_status = {}
+            quota_error = self._format_error(quota_status.get("error") or "", row_secrets)
             batch_id = str(
                 live_task.get("batch_id")
                 or result.get("batch_id")
@@ -973,6 +1008,11 @@ class MailboxAdminService:
                     "updated_at": updated_at,
                     "source_row": masked_source_row(row),
                     "sub2_status": sub2_status,
+                    "quota_status": quota_status.get("status") or "",
+                    "quota_error": quota_error,
+                    "quota_queried_at": quota_status.get("queried_at"),
+                    "quota_5h": quota_status.get("quota_5h"),
+                    "quota_7d": quota_status.get("quota_7d"),
                 }
             )
         rows.sort(
@@ -1233,12 +1273,17 @@ class MailboxAdminService:
                 if result_status not in {"success", "ok", "uploaded"}:
                     document = {}
                 account = accounts_by_email.get(email) or {}
+                try:
+                    openai_status_id = credentials_from_result(document).account_id if document else ""
+                except OpenAIQuotaError:
+                    openai_status_id = ""
                 resolved.append(
                     {
                         "row_id": expected_row_id,
                         "line_no": line_no,
                         "email": email,
                         "sub2api_account_id": str(account.get("account_id") or ""),
+                        "openai_status_id": openai_status_id,
                         "document": document,
                     }
                 )
@@ -1371,24 +1416,49 @@ class MailboxAdminService:
                 "line_no": int(item.get("line_no") or 0),
             }
             try:
-                quota = self.openai_quota_query(item["document"], proxy)
-                if not isinstance(quota, Mapping):
-                    raise OpenAIQuotaError(
-                        "openai_quota_invalid_result",
-                        "额度查询未返回有效结果",
-                    )
-                return {**public_item, **dict(quota)}
+                quota_account_id = credentials_from_result(item["document"]).account_id
             except OpenAIQuotaError as exc:
-                return {**public_item, **exc.public()}
-            except Exception:
-                return {
-                    **public_item,
+                quota_account_id = ""
+                quota: Mapping[str, Any] = exc.public()
+            else:
+                try:
+                    queried = self.openai_quota_query(item["document"], proxy)
+                    if not isinstance(queried, Mapping):
+                        raise OpenAIQuotaError(
+                            "openai_quota_invalid_result",
+                            "额度查询未返回有效结果",
+                        )
+                    quota = queried
+                except OpenAIQuotaError as exc:
+                    quota = exc.public()
+                except Exception:
+                    quota = {
+                        "status": "error",
+                        "node_code": "openai_quota",
+                        "node_label": "查询 OpenAI 额度",
+                        "code": "openai_quota_failed",
+                        "error": "查询 OpenAI 额度失败：未返回可用诊断",
+                    }
+            public_quota = public_quota_snapshot(
+                quota,
+                queried_at=int(self.now_fn()),
+            )
+            if quota_account_id and self.openai_quota_status_store is not None:
+                try:
+                    stored = self.openai_quota_status_store(quota_account_id, public_quota)
+                    if isinstance(stored, Mapping):
+                        public_quota = public_quota_snapshot(stored)
+                except Exception:
+                    pass
+            if not public_quota:
+                public_quota = {
                     "status": "error",
                     "node_code": "openai_quota",
                     "node_label": "查询 OpenAI 额度",
                     "code": "openai_quota_failed",
                     "error": "查询 OpenAI 额度失败：未返回可用诊断",
                 }
+            return {**public_item, **public_quota}
 
         results: list[dict[str, Any] | None] = [None] * len(selected["items"])
         workers = min(3, len(selected["items"]))
