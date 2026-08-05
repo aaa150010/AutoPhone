@@ -806,7 +806,7 @@ class SmsKeyPool:
         self.preflight_generation = 0
         self.service = "dr"
         self.min_price = 0.01
-        self.max_price = 0.1
+        self.max_price = 0.15
         self.logger: Callable[[str, str], None] | None = None
         self.alert_fn: Callable[[dict[str, Any]], None] | None = None
         self.exhausted_fn: Callable[[], None] | None = None
@@ -819,7 +819,7 @@ class SmsKeyPool:
         *,
         service: str = "dr",
         min_price: float = 0.01,
-        max_price: float = 0.1,
+        max_price: float = 0.15,
         logger: Callable[[str, str], None] | None = None,
         alert_fn: Callable[[dict[str, Any]], None] | None = None,
         exhausted_fn: Callable[[], None] | None = None,
@@ -849,7 +849,7 @@ class SmsKeyPool:
                 self.exhaustion_reported = False
             self.service = str(service or "dr").strip() or "dr"
             self.min_price = max(0.0, _as_float(min_price, 0.01))
-            self.max_price = max(self.min_price, _as_float(max_price, 0.1))
+            self.max_price = max(self.min_price, _as_float(max_price, 0.15))
             if logger is not None:
                 self.logger = logger
             if alert_fn is not None:
@@ -1466,7 +1466,7 @@ class SmsProviderRegistry:
         config: Any,
         *,
         min_price: float = 0.01,
-        max_price: float = 0.1,
+        max_price: float = 0.15,
         logger: Callable[[str, str], None] | None = None,
         alert_fn: Callable[[dict[str, Any]], None] | None = None,
         exhausted_fn: Callable[[], None] | None = None,

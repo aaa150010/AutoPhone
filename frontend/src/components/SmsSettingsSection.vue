@@ -109,7 +109,7 @@ function statusesFor(provider: string) {
       <el-col :span="12">
         <el-form-item label="SMS 最高价格">
           <el-input
-            :model-value="modelValue.max_price || '0.1'"
+            :model-value="modelValue.max_price || '0.15'"
             @update:model-value="update('max_price', $event)"
           />
         </el-form-item>

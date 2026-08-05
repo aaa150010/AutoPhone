@@ -454,6 +454,14 @@ class _MailboxHtmlParser(HTMLParser):
         has_message_attr = any(values.get(key) for key in _MESSAGE_ID_ATTRS + _DETAIL_URL_ATTRS)
         if tag.lower() in {"a", "article", "li", "tr", "button"} or has_message_attr or _MESSAGE_PATH_PATTERN.search(lowered):
             self.frames.append(_HtmlFrame(tag.lower(), values))
+        srcdoc = values.get("srcdoc", "").strip()
+        if srcdoc:
+            # Mailbox pages commonly render message bodies inside an iframe srcdoc.
+            embedded = unescape(srcdoc)
+            if self.frames:
+                self.frames[-1].parts.append(embedded)
+            else:
+                self.all_text.append(embedded)
         if tag.lower() == "script":
             self._script_parts = []
             script_type = values.get("type", "").lower()

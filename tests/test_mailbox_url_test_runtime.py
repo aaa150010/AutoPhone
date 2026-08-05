@@ -53,6 +53,40 @@ class MailboxUrlTestRuntimeTests(unittest.TestCase):
         self.assertEqual(captured[0][0], url)
         self.assertEqual(captured[0][1]["timeout_seconds"], 15)
 
+    def test_timeout_exits_after_bounded_fake_clock_without_looping_forever(self):
+        clock = [0.0]
+        scans = [0]
+
+        class FakeClient:
+            def __init__(self, _mailbox_url, **_kwargs):
+                pass
+
+            def scan(self):
+                scans[0] += 1
+                return MailboxScan(
+                    messages=(),
+                    page_fingerprint="empty-page",
+                    fetched_at=clock[0],
+                    diagnostics=MailboxScanDiagnostics(),
+                )
+
+        result = MailboxUrlTester(
+            client_factory=FakeClient,
+            now_fn=lambda: clock[0],
+            sleep_fn=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+        ).test(
+            "https://mail.example.test/messages/sample-access-token/user%40example.test",
+            timeout_seconds=3,
+            interval_seconds=1,
+            resend_after_seconds=2,
+        )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "mailbox_code_timeout")
+        self.assertEqual(result["attempts"], 4)
+        self.assertEqual(scans[0], 4)
+        self.assertEqual(result["elapsed_seconds"], 3.0)
+
     def test_supported_email_url_separators_are_sent_to_the_same_mailbox_client(self):
         for separator in ("---", "----", "|", "｜"):
             email, url = parse_test_input(

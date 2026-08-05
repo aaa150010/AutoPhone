@@ -110,7 +110,7 @@ class SmsWebTests(unittest.TestCase):
             priority_routes=(("151", "3109"),),
             blocked_routes=(),
             min_price_default=0.01,
-            max_price_default="0.1",
+            max_price_default="0.15",
             sms_keys_from_config=lambda value: list(value.get("sms_api_keys") or []),
             as_enabled=lambda value, default=True: default if value is None else bool(value),
             safe_error=str,
@@ -119,9 +119,9 @@ class SmsWebTests(unittest.TestCase):
     def test_clamps_sms_price_to_supported_range(self):
         self.assertEqual(self.integration.clamp_max_price("0.075"), "0.075")
         self.assertEqual(self.integration.clamp_max_price("0.11"), "0.11")
-        self.assertEqual(self.integration.clamp_max_price("0"), "0.1")
-        self.assertEqual(self.integration.clamp_max_price("0.51"), "0.1")
-        self.assertEqual(self.integration.clamp_max_price("bad"), "0.1")
+        self.assertEqual(self.integration.clamp_max_price("0"), "0.15")
+        self.assertEqual(self.integration.clamp_max_price("0.51"), "0.15")
+        self.assertEqual(self.integration.clamp_max_price("bad"), "0.15")
 
     def test_smart_candidates_are_not_limited_to_priority_countries(self):
         selector = SimpleNamespace(config={"max_price": "0.1", "sms_min_price": "0.01"}, stats={})

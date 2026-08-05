@@ -171,7 +171,7 @@ def apply_legacy_ui_overrides(
     <script>
     (()=>{
       const PROXY_DEFAULT = "http://127.0.0.1:7897";
-      const MAX_PRICE_DEFAULT = "0.1";
+      const MAX_PRICE_DEFAULT = "0.15";
       const MIN_PRICE_DEFAULT = "0.01";
       const SMS_PRIORITY_COUNTRIES = ["151", "37", "33", "1", "91", "55"];
       let localConfig = {};
@@ -680,7 +680,7 @@ def apply_legacy_ui_overrides(
     </script>
     """)
     _legacy_dashboard_inject = _legacy_dashboard_inject.replace(
-        'const MAX_PRICE_DEFAULT = "0.1";',
+        'const MAX_PRICE_DEFAULT = "0.15";',
         f"const MAX_PRICE_DEFAULT = {json.dumps(_max_price_default, ensure_ascii=False)};",
     )
     _legacy_dashboard_inject = _legacy_dashboard_inject.replace(

@@ -20,12 +20,21 @@ const smsProviderDefaults: Record<string, string> = {
   '5sim': 'openai',
 }
 
+const smsProviderAliases: Record<string, string> = {
+  'hero-sms': 'herosms',
+  hero_sms: 'herosms',
+  fivesim: '5sim',
+  'five-sim': '5sim',
+  five_sim: '5sim',
+}
+
 function normalizeSmsProviderPools(value: any, legacy: any = {}): SmsProviderPool[] {
   const rows = Array.isArray(value) ? value : []
   const byProvider = new Map<string, SmsProviderPool>()
   rows.forEach((row: any) => {
     if (!row || typeof row !== 'object') return
-    const provider = String(row.provider || '').trim().toLowerCase()
+    const providerName = String(row.provider || '').trim().toLowerCase()
+    const provider = smsProviderAliases[providerName] || providerName
     if (!provider) return
     const rawKeys = Array.isArray(row.api_keys) ? row.api_keys : [row.api_key || '']
     const keys = [...new Set<string>(rawKeys.map((key: unknown) => String(key || '').trim()).filter(Boolean))]
@@ -49,7 +58,8 @@ function normalizeSmsProviderPools(value: any, legacy: any = {}): SmsProviderPoo
   const normalized = [...byProvider.values()]
   if (normalized.length) return normalized
 
-  const provider = String(legacy.sms_provider || 'smsbower').trim().toLowerCase() || 'smsbower'
+  const legacyProviderName = String(legacy.sms_provider || 'smsbower').trim().toLowerCase()
+  const provider = smsProviderAliases[legacyProviderName] || legacyProviderName || 'smsbower'
   const rawKeys = Array.isArray(legacy.sms_api_keys)
     ? legacy.sms_api_keys
     : [legacy.sms_api_key || '']
@@ -77,7 +87,8 @@ function mergeRevealedSmsPools(current: any, revealed: any): SmsProviderPool[] {
   const rows = Array.isArray(current) ? current : []
   if (!rows.length) return secretPools
   return rows.map((raw: any) => {
-    const provider = String(raw?.provider || '').trim().toLowerCase()
+    const providerName = String(raw?.provider || '').trim().toLowerCase()
+    const provider = smsProviderAliases[providerName] || providerName
     const secret = secretByProvider.get(provider)
     const rawKeys = Array.isArray(raw?.api_keys) ? raw.api_keys : [raw?.api_key || '']
     const keys = rawKeys.map((key: unknown, index: number) => (
@@ -144,7 +155,7 @@ const defaultForm = () => ({
   auth_session_retries: 1,
   sms_provider: 'smsbower',
   sms_min_price: '0.01',
-  max_price: '0.1',
+  max_price: '0.15',
   sms_timeout: '30',
   phone_max_attempts: 45,
   phone_attempts_per_provider: 15,
@@ -389,11 +400,16 @@ export function createAppController() {
       const expectedCounts = smsProviderKeyCounts(payload.sms_provider_pools)
       const result = await saveConfig(payload)
       syncState(result)
-      const savedCounts = smsProviderKeyCounts(result.settings?.sms_provider_pools)
-      for (const [provider, expected] of Object.entries(expectedCounts)) {
-        const actual = Number(savedCounts[provider] || 0)
-        if (actual !== Number(expected)) {
-          throw new Error(`${provider} API Key 保存校验失败：期望 ${expected} 个，实际 ${actual} 个`)
+      const savedSettings = Array.isArray(result.settings?.sms_provider_pools)
+        ? result.settings
+        : result.state?.settings
+      if (savedSettings && Array.isArray(savedSettings.sms_provider_pools)) {
+        const savedCounts = smsProviderKeyCounts(savedSettings.sms_provider_pools)
+        for (const [provider, expected] of Object.entries(expectedCounts)) {
+          const actual = Number(savedCounts[provider] || 0)
+          if (actual !== Number(expected)) {
+            throw new Error(`${provider} API Key 保存校验失败：期望 ${expected} 个，实际 ${actual} 个`)
+          }
         }
       }
       markClean()

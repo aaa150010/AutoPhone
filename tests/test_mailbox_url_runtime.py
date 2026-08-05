@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+from html import escape
 import unittest
 
 from mac_overrides.mailbox_url_runtime import (
@@ -130,6 +131,24 @@ ChatGPT 团队</pre>
         self.assertEqual(extract_openai_code(html), "639204")
         self.assertTrue(any(message.code == "639204" for message in messages))
         self.assertFalse(any(message.code == "202608" for message in messages))
+
+    def test_extracts_code_from_iframe_srcdoc_embedded_in_message_item(self):
+        body = """
+        <html><body>
+          <h1>OpenAI</h1>
+          <p>输入此临时验证码以继续：</p>
+          <strong>102131</strong>
+        </body></html>
+        """
+        html = f'''<article class="message-item" data-message-id="srcdoc-code"
+            data-received-at="2026-08-05T00:00:00Z">
+          <iframe class="body-frame" sandbox="allow-same-origin"
+              srcdoc="{escape(body, quote=True)}"></iframe>
+        </article>'''
+
+        messages, _detail_urls = parse_mailbox_payload(html, BASE_URL)
+
+        self.assertTrue(any(message.code == "102131" for message in messages))
 
     def test_spaced_code_skips_date_and_time_fragments(self):
         text = (

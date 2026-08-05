@@ -268,7 +268,7 @@ Pixel 上传 outbox 保存在本机 `data/pixel_upload_records.json`，以原子
 
 - OpenAI 主代理默认: `http://127.0.0.1:7897`
 - SMS 最低价格默认: `0.01`
-- SMS 最高价格默认: `0.1`
+- SMS 最高价格默认: `0.15`
 - Node 超时默认: `45` 秒
 - 任务并发 / Node 并发默认: `5 / 5`
 - 每号最大尝试默认: `15`

@@ -93,6 +93,36 @@ class WebGuiSecurityTests(unittest.TestCase):
             self.assertEqual(config["sms_api_keys"], ["bower-a", "bower-b"])
             self.assertNotIn("hero-a", config["sms_api_keys"])
 
+    def test_sms_provider_aliases_preserve_new_key_when_masked_config_is_saved(self):
+        existing = {
+            "sms_provider": "herosms",
+            "sms_provider_pools": [
+                {
+                    "provider": "herosms",
+                    "enabled": True,
+                    "api_keys": ["hero-a"],
+                    "service": "dr",
+                },
+            ],
+        }
+        draft = {
+            "sms_provider": "hero-sms",
+            "sms_provider_pools": [
+                {
+                    "provider": "hero-sms",
+                    "enabled": True,
+                    "api_keys": ["********", "hero-b"],
+                    "service": "dr",
+                },
+            ],
+        }
+
+        resolved = self.module._local_config_from_runtime(draft, existing)
+
+        self.assertEqual(resolved["sms_provider"], "herosms")
+        pools = {row["provider"]: row["api_keys"] for row in resolved["sms_provider_pools"]}
+        self.assertEqual(pools["herosms"], ["hero-a", "hero-b"])
+
     def test_public_config_masks_all_supported_secrets(self):
         config = {
             "sms_api_keys": ["sms-secret"],
