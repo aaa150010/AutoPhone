@@ -305,6 +305,28 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(explicit_config["email_otp_verify_attempts"], 3)
         self.assertFalse(explicit_config["email_otp_resend_on_retry"])
 
+    def test_register_start_counts_the_same_auth_cooled_pool_used_by_lease(self):
+        module = self.module
+        original_start = module._importer_scheduler_ext.start_bounded_importer
+        original_notifications = module._begin_notification_run
+        observed = []
+        importer = SimpleNamespace(status=lambda _settings: {"running": False})
+        try:
+            module._begin_notification_run = lambda *_args: None
+            module._importer_scheduler_ext.start_bounded_importer = (
+                lambda *_args, **_kwargs: observed.append(
+                    module._MAILBOX_LEASE_FILTER_ACTIVE.get()
+                )
+            )
+            module._patched_importer_start(importer, {"concurrency": 2})
+            module._patched_importer_start(importer, {"concurrency": 2, "run_mode": "relogin"})
+        finally:
+            module._importer_scheduler_ext.start_bounded_importer = original_start
+            module._begin_notification_run = original_notifications
+
+        self.assertEqual(observed, [True, False])
+        self.assertFalse(module._MAILBOX_LEASE_FILTER_ACTIVE.get())
+
     def test_baseline_fallback_snapshot_bypasses_only_original_baseline_guard(self):
         module = self.module
         baseline = SimpleNamespace(

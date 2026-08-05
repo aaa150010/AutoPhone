@@ -1187,6 +1187,9 @@ def _patched_importer_start(self, settings):
         if row_id and line_no > 0:
             selection.add((row_id, line_no))
     selection_token = _MAILBOX_RUN_SELECTION.set(frozenset(selection))
+    lease_filter_token = None
+    if str(internal.get("run_mode") or "").strip().lower() != "relogin":
+        lease_filter_token = _MAILBOX_LEASE_FILTER_ACTIVE.set(True)
     notification_context = None
     try:
         if not already_running:
@@ -1220,6 +1223,8 @@ def _patched_importer_start(self, settings):
                 _TASK_FAILURES.clear()
         raise
     finally:
+        if lease_filter_token is not None:
+            _MAILBOX_LEASE_FILTER_ACTIVE.reset(lease_filter_token)
         _MAILBOX_RUN_SELECTION.reset(selection_token)
 
 

@@ -28,6 +28,23 @@ const smsProviderAliases: Record<string, string> = {
   five_sim: '5sim',
 }
 
+function normalizeSmsKeyRows(value: unknown[]): string[] {
+  const keys: string[] = []
+  const seen = new Set<string>()
+  value.forEach((rawKey) => {
+    const key = String(rawKey || '').trim()
+    if (!key) return
+    if (key === '********') {
+      keys.push(key)
+      return
+    }
+    if (seen.has(key)) return
+    seen.add(key)
+    keys.push(key)
+  })
+  return keys
+}
+
 function normalizeSmsProviderPools(value: any, legacy: any = {}): SmsProviderPool[] {
   const rows = Array.isArray(value) ? value : []
   const byProvider = new Map<string, SmsProviderPool>()
@@ -37,13 +54,11 @@ function normalizeSmsProviderPools(value: any, legacy: any = {}): SmsProviderPoo
     const provider = smsProviderAliases[providerName] || providerName
     if (!provider) return
     const rawKeys = Array.isArray(row.api_keys) ? row.api_keys : [row.api_key || '']
-    const keys = [...new Set<string>(rawKeys.map((key: unknown) => String(key || '').trim()).filter(Boolean))]
+    const keys = normalizeSmsKeyRows(rawKeys)
     const previous = byProvider.get(provider)
     if (previous) {
       previous.enabled = previous.enabled || row.enabled !== false
-      const mergedKeys = [...new Set<string>([...previous.api_keys, ...keys]
-        .map(key => String(key || '').trim())
-        .filter(Boolean))]
+      const mergedKeys = normalizeSmsKeyRows([...previous.api_keys, ...keys])
       previous.api_keys = mergedKeys.length ? mergedKeys : ['']
       if (!previous.service) previous.service = String(row.service || smsProviderDefaults[provider] || 'dr').trim()
       return
@@ -63,7 +78,7 @@ function normalizeSmsProviderPools(value: any, legacy: any = {}): SmsProviderPoo
   const rawKeys = Array.isArray(legacy.sms_api_keys)
     ? legacy.sms_api_keys
     : [legacy.sms_api_key || '']
-  const keys = [...new Set<string>(rawKeys.map((key: unknown) => String(key || '').trim()).filter(Boolean))]
+  const keys = normalizeSmsKeyRows(rawKeys)
   return [{
     provider,
     enabled: true,
@@ -76,9 +91,7 @@ function legacySmsKeys(pools: SmsProviderPool[]) {
   const primary = pools.find(pool => pool.provider === 'smsbower')
     || pools.find(pool => pool.enabled && pool.api_keys.some(Boolean))
     || pools[0]
-  return [...new Set((primary?.api_keys || [])
-    .map(key => String(key || '').trim())
-    .filter(Boolean))]
+  return normalizeSmsKeyRows(primary?.api_keys || [])
 }
 
 function mergeRevealedSmsPools(current: any, revealed: any): SmsProviderPool[] {
