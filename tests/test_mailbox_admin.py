@@ -241,6 +241,20 @@ class MailboxAdminTests(unittest.TestCase):
         )
         self.assertNotIn("private", json.dumps(public, ensure_ascii=False))
 
+    def test_list_mailboxes_marks_imported_without_remote_upload_as_not_ready(self):
+        row = "imported@example.com----mail-pass----client-id----refresh-token"
+        self._write_pool(row + "\n")
+        self._write_state({})
+        looked_up = []
+        self.service.openai_status_lookup = lambda account_id: looked_up.append(account_id)
+
+        public = self.service.list_mailboxes()["rows"][0]
+
+        self.assertEqual(public["sub2_status"]["kind"], "not_ready")
+        self.assertEqual(public["sub2_status"]["label"], "未上传")
+        self.assertFalse(public["sub2_status"]["is_error"])
+        self.assertEqual(looked_up, [])
+
     def test_consumed_internal_reason_is_hidden_but_history_is_preserved(self):
         row = "done@example.com|login-pass|JBSWY3DPEHPK3PXP"
         self._write_pool(row + "\n")
@@ -442,6 +456,62 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(len(called), 1)
         self.assertEqual(len(called[0]), 21)
+
+    def test_openai_test_uses_only_success_result_and_marks_unuploaded_row(self):
+        rows = [
+            "ready@example.com----mail-pass----client-id----refresh-token",
+            "new@example.com----mail-pass-2----client-id-2----refresh-token-2",
+        ]
+        self._write_pool("\n".join(rows) + "\n")
+        self._write_state({})
+        results = self.root / "results"
+        results.mkdir()
+        (results / "ready.json").write_text(
+            json.dumps(
+                {
+                    "email": "ready@example.com",
+                    "status": "success",
+                    "created_at": 100,
+                    "result": {
+                        "sub2api_account_id": "remote-1",
+                        "local_oauth": {
+                            "tokens": {"access_token": "private-access"}
+                        },
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        captured = []
+
+        def tester(selected, proxy):
+            captured.extend(selected)
+            self.assertEqual(proxy, "")
+            return {
+                "ok": True,
+                "tested": 1,
+                "unlinked": 1,
+                "not_ready": 1,
+                "results": [],
+            }
+
+        self.service.openai_direct_batch_tester = tester
+        result = self.service.openai_test(
+            {
+                "rows": [
+                    {"row_id": row_id_from_source(row), "line_no": index}
+                    for index, row in enumerate(rows, start=1)
+                ]
+            }
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(len(captured), 2)
+        self.assertEqual(captured[0]["sub2api_account_id"], "remote-1")
+        self.assertIn("private-access", json.dumps(captured[0]))
+        self.assertEqual(captured[1]["sub2api_account_id"], "")
+        self.assertEqual(captured[1]["document"], {})
+
 
     def test_list_mailboxes_combines_state_results_and_latest_live_progress(self):
         rows = [

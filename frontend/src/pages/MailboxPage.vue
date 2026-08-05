@@ -76,7 +76,7 @@ function isSub2TestFailure(status: any) {
   if (status.is_test_failure != null) return Boolean(status.is_test_failure)
   if (code === 404) return true
   const kind = String(status.kind || status.status || '').toLowerCase()
-  if (['untested', 'unlinked', 'not_linked', 'rate_limited', 'healthy', 'unauthorized'].includes(kind)) return false
+  if (['untested', 'unlinked', 'not_linked', 'not_ready', 'rate_limited', 'healthy', 'unauthorized'].includes(kind)) return false
   return Boolean(status.is_error || code)
 }
 
@@ -272,7 +272,7 @@ async function testSub2() {
   try {
     mailboxTable.value?.clearSelection()
     selectedRows.value = []
-    const result: any = await api('/api/mailboxes/sub2-test', { rows: selected })
+    const result: any = await api('/api/mailboxes/openai-test', { rows: selected })
     applyMailboxPayload(result)
     if (Array.isArray(result?.results)) {
       const statuses = new Map<string, MailboxRow['sub2_status']>(
@@ -290,6 +290,7 @@ async function testSub2() {
     mailboxTable.value?.clearSelection()
     const tested = Number(result?.tested ?? result?.completed ?? selected.length)
     const unlinked = Number(result?.unlinked ?? 0)
+    const notReady = Number(result?.not_ready ?? 0)
     const batchCount = Number(result?.batch_count ?? 1)
     const queuedBatches = Number(result?.queued_batches ?? Math.max(0, batchCount - 1))
     const resultStatuses = (result?.results || []).map((item: any) => item?.sub2_status).filter(Boolean)
@@ -303,13 +304,13 @@ async function testSub2() {
       batchCount > 1 ? `已分 ${batchCount} 批排队测试` : '',
       failed ? `测试失败 ${failed} 条` : '',
       rateLimited ? `额度受限 ${rateLimited} 条` : '',
-      unlinked ? `未关联 ${unlinked} 条` : '',
+      notReady ? `未上传 ${notReady} 条` : (unlinked ? `未关联 ${unlinked} 条` : ''),
     ].filter(Boolean).join('，')
     const progressText = queuedBatches > 0 && Number(result?.completed_batches) < batchCount
       ? `，已完成 ${Number(result?.completed_batches ?? 0)}/${batchCount} 批`
       : ''
     const message = `已测试 ${tested} 条${progressText}${details ? `，${details}` : ''}`
-    if (failed || rateLimited) ElMessage.warning(message)
+    if (failed || rateLimited || notReady) ElMessage.warning(message)
     else ElMessage.success(message)
   } catch (error: any) {
     if (error instanceof ApiError && error.status === 409) {
@@ -319,7 +320,7 @@ async function testSub2() {
         // Keep the stale selection cleared; normal polling will retry the refresh.
       }
     }
-    ElMessage.error(error?.message || 'SUB2 连接测试失败')
+    ElMessage.error(error?.message || '本机 OpenAI 连接测试失败')
   } finally {
     testingSub2.value = false
     mutating.value = false
@@ -525,9 +526,9 @@ onUnmounted(() => {
           <el-option label="失败" value="failed" />
         </el-select>
         <el-select v-model="sub2Filter" class="sub2-filter-select">
-          <el-option label="全部 SUB2" value="all" />
-          <el-option label="SUB2 测试失败" value="test_failure" />
-          <el-option label="SUB2 401/404（需重跑）" value="needs_rerun" />
+          <el-option label="全部 OpenAI" value="all" />
+          <el-option label="OpenAI 测试失败" value="test_failure" />
+          <el-option label="OpenAI 401/404（需重试）" value="needs_rerun" />
         </el-select>
         <el-select v-model="quotaFilter" class="quota-filter-select">
           <el-option label="全部额度" value="all" />
@@ -538,7 +539,7 @@ onUnmounted(() => {
           <el-icon><DataAnalysis /></el-icon>{{ queryingQuota && quotaProgress ? `查询额度 ${quotaProgress}` : '批量查询额度' }}
         </el-button>
         <el-button :loading="testingSub2" :disabled="mutating || !selectedRows.length" @click="testSub2">
-          <el-icon><Connection /></el-icon>批量测试连接
+          <el-icon><Connection /></el-icon>批量测试 OpenAI
         </el-button>
         <el-button :loading="retryingPixel" :disabled="mutating || !selectedRows.length" @click="retryPixel">
           <el-icon><UploadFilled /></el-icon>重传 Pixel

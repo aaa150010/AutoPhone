@@ -351,7 +351,7 @@ def _sub2_status_flags(kind: Any, status_code: int | None) -> tuple[bool, bool, 
     is_test_failure = (
         not is_abnormal
         and not is_rate_limited
-        and normalized_kind not in {"healthy", "unlinked", "not_linked", "untested"}
+        and normalized_kind not in {"healthy", "unlinked", "not_linked", "not_ready", "untested"}
     )
     return is_abnormal or is_test_failure, is_abnormal, is_test_failure
 
@@ -361,13 +361,18 @@ def _sub2_needs_rerun(kind: Any, status_code: int | None) -> bool:
     return status_code in {401, 404} or normalized_kind in {"unauthorized", "not_found"}
 
 
-def public_sub2_status(value: Any, *, linked: bool) -> dict[str, Any]:
+def public_sub2_status(
+    value: Any,
+    *,
+    linked: bool,
+    unuploaded: bool = False,
+) -> dict[str, Any]:
     if not linked:
         return {
-            "kind": "unlinked",
+            "kind": "not_ready" if unuploaded else "unlinked",
             "status_code": None,
-            "label": "未关联",
-            "summary": "",
+            "label": "未上传" if unuploaded else "未关联",
+            "summary": "该邮箱尚未上传到远端账号服务" if unuploaded else "",
             "tested_at": None,
             "is_error": False,
             "is_abnormal": False,
@@ -427,6 +432,8 @@ class MailboxAdminService:
         now_fn: Callable[[], float] = time.time,
         sub2_status_lookup: Callable[[str], Mapping[str, Any] | None] | None = None,
         sub2_batch_tester: Callable[[Sequence[Mapping[str, Any]]], Mapping[str, Any]] | None = None,
+        openai_status_lookup: Callable[[str], Mapping[str, Any] | None] | None = None,
+        openai_direct_batch_tester: Callable[[Sequence[Mapping[str, Any]], str], Mapping[str, Any]] | None = None,
         mailbox_url_reader_factory: Callable[..., Any] | None = None,
         openai_quota_query: Callable[[Mapping[str, Any], str], Mapping[str, Any]] | None = None,
     ) -> None:
@@ -441,6 +448,8 @@ class MailboxAdminService:
         self.now_fn = now_fn
         self.sub2_status_lookup = sub2_status_lookup
         self.sub2_batch_tester = sub2_batch_tester
+        self.openai_status_lookup = openai_status_lookup
+        self.openai_direct_batch_tester = openai_direct_batch_tester
         self.mailbox_url_reader_factory = mailbox_url_reader_factory or MailboxUrlClient
         self.openai_quota_query = openai_quota_query
         self._lock = RLock()
@@ -900,7 +909,19 @@ class MailboxAdminService:
             if count_status == "consumed":
                 count_status = "success"
             counts[count_status] = counts.get(count_status, 0) + 1
-            sub2_status = self._sub2_status_for(sub2_account_id)
+            if self.openai_status_lookup is not None:
+                if not sub2_account_id:
+                    sub2_status = public_sub2_status(None, linked=False, unuploaded=True)
+                else:
+                    try:
+                        sub2_status = public_sub2_status(
+                            self.openai_status_lookup(sub2_account_id),
+                            linked=True,
+                        )
+                    except Exception:
+                        sub2_status = public_sub2_status(None, linked=True)
+            else:
+                sub2_status = self._sub2_status_for(sub2_account_id)
             sub2_status["summary"] = self._format_error(sub2_status.get("summary") or "", row_secrets)
             batch_id = str(
                 live_task.get("batch_id")
@@ -1151,6 +1172,98 @@ class MailboxAdminService:
             "ok": False,
             "code": "sub2_batch_failed",
             "error": "SUB2 批量连接测试失败",
+        }
+
+    def openai_test(self, payload: Any) -> dict[str, Any]:
+        """Test successful local OAuth results directly against OpenAI."""
+        value = payload if isinstance(payload, Mapping) else {}
+        requested = value.get("rows")
+        if not isinstance(requested, Sequence) or isinstance(requested, (str, bytes)) or not requested:
+            return {"ok": False, "code": "openai_test_rows_required", "error": "请先勾选要测试的邮箱"}
+        bindings: list[tuple[int, str]] = []
+        seen: set[tuple[int, str]] = set()
+        for item in requested:
+            if not isinstance(item, Mapping):
+                return {"ok": False, "code": "openai_test_rows_invalid", "error": "批量测试参数无效"}
+            try:
+                line_no = int(item.get("line_no") or 0)
+            except (TypeError, ValueError):
+                line_no = 0
+            row_id = str(item.get("row_id") or "").strip()
+            binding = (line_no, row_id)
+            if line_no <= 0 or not row_id or binding in seen:
+                return {"ok": False, "code": "openai_test_rows_invalid", "error": "批量测试参数无效"}
+            seen.add(binding)
+            bindings.append(binding)
+
+        with self._lock:
+            config = self._config()
+            lines = self._read_pool_lines(config)
+            results_dir = self._path(config, "results_dir")
+            latest = self._latest_results_by_email(results_dir)
+            state = self._read_json_file(self._path(config, "state_path"))
+            state_items = state.get("items") if isinstance(state.get("items"), Mapping) else {}
+            accounts_by_email = self._latest_sub2_accounts_by_email(results_dir)
+            resolved: list[dict[str, Any]] = []
+            for line_no, expected_row_id in bindings:
+                if line_no > len(lines):
+                    return {
+                        "ok": False,
+                        "code": "mailbox_rows_stale",
+                        "error": "邮箱列表已变化，请刷新后重试",
+                    }
+                row = lines[line_no - 1]
+                if not hmac.compare_digest(expected_row_id, row_id_from_source(row)):
+                    return {
+                        "ok": False,
+                        "code": "mailbox_rows_stale",
+                        "error": "邮箱列表已变化，请刷新后重试",
+                    }
+                email = email_from_row(row)
+                document = latest.get(email) or {}
+                result_status = str(document.get("status") or "").strip().lower()
+                state_item = state_items.get(str(line_no)) or {}
+                if not isinstance(state_item, Mapping):
+                    state_item = {}
+                if str(state_item.get("status") or "").lower() == "available" and str(
+                    state_item.get("reason") or ""
+                ) == "manual_restore":
+                    document = {}
+                    result_status = ""
+                if result_status not in {"success", "ok", "uploaded"}:
+                    document = {}
+                account = accounts_by_email.get(email) or {}
+                resolved.append(
+                    {
+                        "row_id": expected_row_id,
+                        "line_no": line_no,
+                        "email": email,
+                        "sub2api_account_id": str(account.get("account_id") or ""),
+                        "document": document,
+                    }
+                )
+
+        if self.openai_direct_batch_tester is None:
+            return {
+                "ok": False,
+                "code": "openai_test_not_configured",
+                "error": "本机 OpenAI 连接测试尚未配置",
+            }
+        try:
+            result = self.openai_direct_batch_tester(
+                resolved,
+                str(config.get("proxy") or "").strip(),
+            )
+        except Exception:
+            return {
+                "ok": False,
+                "code": "openai_test_batch_failed",
+                "error": "本机 OpenAI 批量连接测试失败",
+            }
+        return dict(result) if isinstance(result, Mapping) else {
+            "ok": False,
+            "code": "openai_test_batch_failed",
+            "error": "本机 OpenAI 批量连接测试失败",
         }
 
     def selected_success_results(self, payload: Any) -> dict[str, Any]:

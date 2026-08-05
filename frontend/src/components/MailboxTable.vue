@@ -53,6 +53,7 @@ function sub2Label(row: MailboxRow) {
   if (!value) return '未测试'
   if (value.label) return value.label
   if (value.linked === false || ['unlinked', 'not_linked'].includes(String(value.kind || value.status))) return '未关联'
+  if (String(value.kind || value.status) === 'not_ready') return value.label || '未上传'
   const code = sub2Code(row)
   if (code === 200) return '200 健康'
   if (code === 401) return '401 Token失效'
@@ -221,7 +222,7 @@ defineExpose({ clearSelection })
         </el-tag>
       </template>
     </el-table-column>
-    <el-table-column label="SUB2 状态" width="168">
+    <el-table-column label="OpenAI 状态" width="190">
       <template #default="{ row }">
         <el-tooltip :content="sub2Detail(row)" placement="top">
           <el-tag :type="sub2Tone(row)" effect="light">{{ sub2Label(row) }}</el-tag>

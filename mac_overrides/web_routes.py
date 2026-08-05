@@ -471,14 +471,15 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         except Exception:
             return module.jsonify(ok=False, error="读取取件 URL 失败"), 500
 
-    def api_mailboxes_sub2_test():
+    def api_mailboxes_openai_test():
         try:
             data = module.request.get_json(silent=True) or {}
             if not isinstance(data, dict):
                 return module.jsonify(ok=False, error="请求必须是 JSON 对象"), 400
-            result = mailbox_admin.sub2_test(data)
+            tester = getattr(mailbox_admin, "openai_test", None)
+            result = tester(data) if callable(tester) else mailbox_admin.sub2_test(data)
             if not isinstance(result, Mapping):
-                return module.jsonify(ok=False, error="SUB2 批量连接测试失败"), 502
+                return module.jsonify(ok=False, error="本机 OpenAI 批量连接测试失败"), 502
             response = dict(result)
             if response.get("ok"):
                 response["mailboxes"] = mailbox_admin.list_mailboxes()
@@ -487,16 +488,23 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             code = str(response.get("code") or "")
             if code == "mailbox_rows_stale":
                 status = 409
-            elif code.startswith("sub2_admin_") or code == "sub2_batch_failed":
+            elif code.startswith("sub2_admin_") or code in {
+                "sub2_batch_failed",
+                "openai_test_batch_failed",
+            }:
                 status = 502
-            elif code == "sub2_not_configured":
+            elif code in {"sub2_not_configured", "openai_test_not_configured"}:
                 status = 503
             else:
                 status = 400
             return module.jsonify(response), status
         except Exception:
-            logs.add("SUB2 批量连接测试失败", "error")
-            return module.jsonify(ok=False, error="SUB2 批量连接测试失败"), 502
+            logs.add("本机 OpenAI 批量连接测试失败", "error")
+            return module.jsonify(ok=False, error="本机 OpenAI 批量连接测试失败"), 502
+
+    def api_mailboxes_sub2_test():
+        # Keep the original URL as a compatibility alias for existing clients.
+        return api_mailboxes_openai_test()
 
     def api_mailboxes_quota():
         try:
@@ -909,6 +917,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/mailboxes/url", "api_mailboxes_url", api_mailboxes_url, ["POST"]),
         ("/api/mailbox-url-test", "api_mailbox_url_test", api_mailbox_url_test, ["POST"]),
         ("/api/mailboxes/sub2-test", "api_mailboxes_sub2_test", api_mailboxes_sub2_test, ["POST"]),
+        ("/api/mailboxes/openai-test", "api_mailboxes_openai_test", api_mailboxes_openai_test, ["POST"]),
         ("/api/mailboxes/quota", "api_mailboxes_quota", api_mailboxes_quota, ["POST"]),
         ("/api/mailboxes/pixel-retry", "api_mailboxes_pixel_retry", api_mailboxes_pixel_retry, ["POST"]),
         ("/api/mailboxes/sub2-export", "api_mailboxes_sub2_export", api_mailboxes_sub2_export, ["POST"]),

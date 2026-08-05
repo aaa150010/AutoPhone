@@ -193,7 +193,7 @@ def _status_flags(kind: Any, status_code: int | None) -> tuple[bool, bool, bool]
     is_test_failure = (
         not is_abnormal
         and not is_rate_limited
-        and normalized_kind not in {"healthy", "unlinked", "not_linked", "untested"}
+        and normalized_kind not in {"healthy", "unlinked", "not_linked", "not_ready", "untested"}
     )
     return is_abnormal or is_test_failure, is_abnormal, is_test_failure
 
