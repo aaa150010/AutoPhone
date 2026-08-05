@@ -824,6 +824,7 @@ class MailboxAdminService:
                     "updated_at": updated_at,
                     "batch_id": str(task.get("batch_id") or ""),
                     "batch_started_at": task.get("batch_started_at") or 0,
+                    "run_mode": str(task.get("run_mode") or ""),
                 }
         return latest
 
@@ -1018,6 +1019,12 @@ class MailboxAdminService:
                     "sms_exchange_date": sms_exchange_date or "",
                     "batch_id": batch_id,
                     "batch_started_at": batch_started_at,
+                    "run_mode": str(
+                        live_task.get("run_mode")
+                        or result.get("run_mode")
+                        or result_payload.get("run_mode")
+                        or ""
+                    ),
                     "updated_at": updated_at,
                     "source_row": masked_source_row(row),
                     "sub2_status": sub2_status,
@@ -1162,6 +1169,106 @@ class MailboxAdminService:
 
         self._log(f"邮箱管理放回可领取: {restored} 条", "success")
         return {"ok": True, "restored": restored}
+
+    def resolve_relogin_rows(self, payload: Any) -> dict[str, Any]:
+        """Resolve stable 401/404 rows without exposing mailbox credentials."""
+        value = payload if isinstance(payload, Mapping) else {}
+        requested = value.get("rows")
+        if not isinstance(requested, Sequence) or isinstance(requested, (str, bytes)) or not requested:
+            return {
+                "ok": False,
+                "code": "relogin_rows_required",
+                "error": "请先勾选需要重登的 401/404 邮箱",
+            }
+        if len(requested) > 100:
+            return {
+                "ok": False,
+                "code": "relogin_batch_too_large",
+                "error": "单批最多重登 100 个邮箱",
+            }
+
+        bindings: list[tuple[int, str]] = []
+        seen: set[tuple[int, str]] = set()
+        for item in requested:
+            if not isinstance(item, Mapping):
+                return {"ok": False, "code": "relogin_rows_invalid", "error": "重登参数无效"}
+            try:
+                line_no = int(item.get("line_no") or 0)
+            except (TypeError, ValueError):
+                line_no = 0
+            row_id = str(item.get("row_id") or "").strip().lower()
+            binding = (line_no, row_id)
+            if line_no <= 0 or not row_id or binding in seen:
+                return {"ok": False, "code": "relogin_rows_invalid", "error": "重登参数无效"}
+            seen.add(binding)
+            bindings.append(binding)
+
+        with self._lock:
+            config = self._config()
+            lines = self._read_pool_lines(config)
+            accounts_by_email = self._latest_sub2_accounts_by_email(
+                self._path(config, "results_dir")
+            )
+            resolved: list[dict[str, Any]] = []
+            for line_no, expected_row_id in bindings:
+                if line_no > len(lines):
+                    return {
+                        "ok": False,
+                        "code": "mailbox_rows_stale",
+                        "error": "邮箱列表已变化，请刷新后重试",
+                    }
+                source_row = lines[line_no - 1]
+                if not hmac.compare_digest(expected_row_id, row_id_from_source(source_row)):
+                    return {
+                        "ok": False,
+                        "code": "mailbox_rows_stale",
+                        "error": "邮箱列表已变化，请刷新后重试",
+                    }
+                email = email_from_row(source_row)
+                account = accounts_by_email.get(email) or {}
+                account_id = str(account.get("account_id") or "").strip()
+                if not account_id:
+                    return {
+                        "ok": False,
+                        "code": "relogin_sub2_binding_missing",
+                        "error": "所选邮箱没有可原位更新的 SUB2 账号",
+                    }
+
+                raw_status: Mapping[str, Any] | None = None
+                for lookup in (self.openai_status_lookup, self.sub2_status_lookup):
+                    if not callable(lookup):
+                        continue
+                    try:
+                        candidate = lookup(account_id)
+                    except Exception:
+                        candidate = None
+                    if isinstance(candidate, Mapping) and candidate:
+                        raw_status = candidate
+                        kind = str(candidate.get("kind") or "").strip().lower()
+                        try:
+                            code = int(candidate.get("status_code"))
+                        except (TypeError, ValueError):
+                            code = None
+                        if code in {401, 404} or kind in {"unauthorized", "not_found"}:
+                            break
+                status = public_sub2_status(raw_status, linked=True)
+                if not status.get("needs_rerun"):
+                    return {
+                        "ok": False,
+                        "code": "relogin_not_required",
+                        "error": "所选邮箱当前不再是 401/404 状态，请刷新后重试",
+                    }
+                resolved.append(
+                    {
+                        "row_id": expected_row_id,
+                        "line_no": line_no,
+                        "email": email,
+                        "sub2api_account_id": account_id,
+                        "status_code": status.get("status_code"),
+                        "status_kind": str(status.get("kind") or "")[:40],
+                    }
+                )
+        return {"ok": True, "items": resolved, "count": len(resolved)}
 
     def sub2_test(self, payload: Any) -> dict[str, Any]:
         value = payload if isinstance(payload, Mapping) else {}

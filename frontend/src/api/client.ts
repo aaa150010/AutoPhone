@@ -77,6 +77,12 @@ export const getMailboxTotp = (row: { row_id: string; line_no: number }) => (
 export const getMailboxUrl = (row: { row_id: string; line_no: number }) => (
   api<{ ok: true; mailbox_url: string }>('/api/mailboxes/url', row)
 )
+export const reloginMailboxRows = (rows: Array<{ row_id: string; line_no: number }>) => (
+  api<{ ok: true; run_mode: 'relogin'; started: number; mailboxes?: MailboxPayload; state?: any }>(
+    '/api/mailboxes/relogin',
+    { rows },
+  )
+)
 export const testMailboxUrl = (value: string) => (
   api<MailboxUrlTestResult>('/api/mailbox-url-test', { value })
 )

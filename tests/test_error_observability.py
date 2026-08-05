@@ -108,6 +108,21 @@ class ErrorObservabilityTests(unittest.TestCase):
         self.assertIn("页面上下文无效", failure["public_message"])
         self.assertNotIn("OpenAI 拒绝当前号码", failure["public_message"])
 
+    def test_relogin_phone_requirement_is_stable_and_not_retryable(self):
+        failure = classify_failure(
+            error=(
+                "relogin_phone_required: 重登进入手机号验证页面，"
+                "已停止且未调用接码平台"
+            ),
+            progress={"code": "phone_acquiring"},
+        )
+
+        self.assertEqual(failure["node_code"], "phone_acquiring")
+        self.assertEqual(failure["error_code"], "relogin_phone_required")
+        self.assertFalse(failure["retryable"])
+        self.assertIn("重登进入手机号验证页面", failure["public_message"])
+        self.assertIn("未调用接码平台", failure["public_message"])
+
     def test_forced_whatsapp_is_attributed_to_phone_submission(self):
         failure = classify_failure(
             error="phone_channel_mismatch: requested=sms actual=whatsapp",

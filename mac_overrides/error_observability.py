@@ -389,6 +389,7 @@ def _extract_provider_code(values: Sequence[Any]) -> str:
 
 _RULES = (
     (("account_banned", "account_deactivated", "account_suspended", ACCOUNT_BANNED_MESSAGE.lower()), "account_banned", "account_banned", "", False),
+    (("relogin_phone_required",), "phone_acquiring", "relogin_phone_required", "重登进入手机号验证页面，已停止且未调用接码平台", False),
     (("sub2_exchange_failed", "sub2_session_expired", "openai_oauth_session_not_found", "openai_oauth_token_exchange_failed", "sub2 exchange-code failed", "sub2 exchange-code request failed"), "finalizing_token", "sub2_exchange_failed", "SUB2 OAuth 会话已过期或 Token 兑换被拒绝", True),
     (("oauth_callback_missing_code", "oauth_callback_state_mismatch", "callback missing code", "state mismatch", "oauth_state_mismatch", "invalid_state", "follow_continue_until_code"), "finalizing_callback", "oauth_callback_failed", "OAuth 回调未返回有效 code 或 state 校验失败", True),
     (("exchange_code", "token_exchange_failed", "token exchange", "token endpoint", "invalid_grant"), "finalizing_token", "oauth_token_exchange_failed", "OAuth Token 交换被服务端拒绝", True),

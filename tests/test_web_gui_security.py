@@ -496,6 +496,51 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(config["_sub2_update_existing"]["status_code"], 401)
         self.assertEqual(config["_sub2_update_existing"]["email"], "rerun@example.test")
 
+    def test_relogin_task_config_uses_only_server_validated_sub2_binding(self):
+        module = self.module
+        original_task_config = module._ORIGINAL_TASK_CONFIG
+        settings = {
+            "run_mode": "relogin",
+            "_gptphone_relogin_rows": [
+                {
+                    "email": "Relogin@Example.Test",
+                    "sub2api_account_id": "sub2-account-501",
+                    "status_code": 404,
+                    "status_kind": "not_found",
+                }
+            ],
+        }
+        try:
+            module._ORIGINAL_TASK_CONFIG = lambda *_args, **_kwargs: {"code_timeout": 30}
+            config = module._patched_task_config(
+                SimpleNamespace(data_dir=self.tempdir.name),
+                settings,
+                "relogin@example.test",
+                "task-relogin-binding",
+            )
+        finally:
+            module._ORIGINAL_TASK_CONFIG = original_task_config
+
+        self.assertEqual(config["run_mode"], "relogin")
+        self.assertEqual(config["_sub2_update_existing"]["account_id"], "sub2-account-501")
+        self.assertEqual(config["_sub2_update_existing"]["status_code"], 404)
+        self.assertEqual(config["sms_api_key"], "relogin-disabled")
+
+    def test_relogin_task_config_rejects_missing_server_binding(self):
+        module = self.module
+        original_task_config = module._ORIGINAL_TASK_CONFIG
+        try:
+            module._ORIGINAL_TASK_CONFIG = lambda *_args, **_kwargs: {"code_timeout": 30}
+            with self.assertRaisesRegex(RuntimeError, "relogin_sub2_binding_missing"):
+                module._patched_task_config(
+                    SimpleNamespace(data_dir=self.tempdir.name),
+                    {"run_mode": "relogin", "_gptphone_relogin_rows": []},
+                    "relogin@example.test",
+                    "task-relogin-missing",
+                )
+        finally:
+            module._ORIGINAL_TASK_CONFIG = original_task_config
+
     def test_sub2_upload_wrapper_uses_update_branch_and_clears_old_status(self):
         module = self.module
         original_upload = module._ORIGINAL_REAL_SUB2_UPLOAD
@@ -566,6 +611,152 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertTrue(result["sub2_upload_created"])
         self.assertEqual(len(calls), 1)
+
+    def test_relogin_sub2_upload_missing_binding_never_calls_create_path(self):
+        module = self.module
+        original_upload = module._ORIGINAL_REAL_SUB2_UPLOAD
+        calls = []
+        try:
+            module._ORIGINAL_REAL_SUB2_UPLOAD = lambda *_args, **_kwargs: calls.append(kwargs)
+            result = module._real_sub2_upload(
+                SimpleNamespace(config={"run_mode": "relogin"}),
+                credentials={"access_token": "must-not-be-sent"},
+                email="relogin@example.test",
+            )
+        finally:
+            module._ORIGINAL_REAL_SUB2_UPLOAD = original_upload
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "relogin_sub2_binding_missing")
+        self.assertFalse(result["sub2_upload_created"])
+        self.assertEqual(calls, [])
+
+    def test_relogin_phone_page_stops_before_original_sms_provider_call(self):
+        module = self.module
+        original_run = module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION
+
+        class SmsProvider:
+            def __init__(self):
+                self.get_number_calls = 0
+
+            def get_number(self, **_kwargs):
+                self.get_number_calls += 1
+                raise AssertionError("real SMS provider must not run")
+
+        provider = SmsProvider()
+
+        def enter_phone_page(**kwargs):
+            return kwargs["phone_otp_provider"].get_number()
+
+        try:
+            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = enter_phone_page
+            with self.assertRaisesRegex(Exception, "relogin_phone_required"):
+                module._run_codex_after_registration(
+                    oauth_url="https://auth.example.test/authorize",
+                    account_email="relogin@example.test",
+                    sms_provider=provider,
+                    phone_otp_provider=provider,
+                    config={
+                        "run_mode": "relogin",
+                        "sms_task_id": "task-relogin-phone",
+                    },
+                )
+        finally:
+            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = original_run
+
+        self.assertEqual(provider.get_number_calls, 0)
+
+    def test_relogin_supported_email_providers_pass_through_existing_auth_chain(self):
+        module = self.module
+        original_run = module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION
+
+        class EmailProvider:
+            def __init__(self, kind):
+                self.kind = kind
+
+            def wait_code(self, _email):
+                return "123456"
+
+        def succeed(**kwargs):
+            provider = kwargs["email_otp_provider"]
+            return {
+                "ok": provider.wait_code(kwargs["account_email"]) == "123456",
+                "provider_kind": provider.kind,
+                "phone_guarded": isinstance(
+                    kwargs["phone_otp_provider"], module._ReloginPhoneOtpProvider
+                ),
+            }
+
+        try:
+            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = succeed
+            for provider_kind in ("totp", "mailbox_url", "outlook_oauth"):
+                with self.subTest(provider_kind=provider_kind):
+                    result = module._run_codex_after_registration(
+                        oauth_url="https://auth.example.test/authorize",
+                        account_email=f"{provider_kind}@example.test",
+                        email_otp_provider=EmailProvider(provider_kind),
+                        config={
+                            "run_mode": "relogin",
+                            "sms_task_id": f"task-relogin-{provider_kind}",
+                        },
+                    )
+                    self.assertTrue(result["ok"])
+                    self.assertEqual(result["provider_kind"], provider_kind)
+                    self.assertTrue(result["phone_guarded"])
+        finally:
+            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = original_run
+
+    def test_relogin_whole_chain_retry_policy_rejects_credential_and_state_failures(self):
+        module = self.module
+        token = module._RUN_MODE_CONTEXT.set("relogin")
+        try:
+            self.assertTrue(
+                module._patched_pre_auth_session_retryable(
+                    {"_status": 429, "error": "too many requests"}
+                )
+            )
+            self.assertTrue(
+                module._patched_pre_auth_session_retryable(
+                    {"error": "curl: (35) TLS connect error"}
+                )
+            )
+            for error in (
+                "password_verify_failed: invalid password",
+                "mfa_otp_failed: invalid code",
+                "oauth_callback_state_mismatch: invalid_state",
+                "account_deactivated",
+                "relogin_phone_required",
+            ):
+                with self.subTest(error=error):
+                    self.assertFalse(
+                        module._patched_pre_auth_session_retryable({"error": error})
+                    )
+        finally:
+            module._RUN_MODE_CONTEXT.reset(token)
+
+    def test_relogin_password_error_does_not_trigger_password_to_otp_fallback(self):
+        module = self.module
+        original = module._ORIGINAL_PASSWORD_CREDENTIALS_REJECTED
+        calls = []
+        try:
+            module._ORIGINAL_PASSWORD_CREDENTIALS_REJECTED = (
+                lambda result: calls.append(result) or True
+            )
+            token = module._RUN_MODE_CONTEXT.set("relogin")
+            try:
+                self.assertFalse(
+                    module._patched_password_credentials_rejected(
+                        {"error": "password_verify_failed: invalid password"}
+                    )
+                )
+            finally:
+                module._RUN_MODE_CONTEXT.reset(token)
+
+            self.assertTrue(module._patched_password_credentials_rejected({"error": "normal"}))
+        finally:
+            module._ORIGINAL_PASSWORD_CREDENTIALS_REJECTED = original
+
+        self.assertEqual(calls, [{"error": "normal"}])
 
     def test_real_phone_send_matches_browser_contract_and_refreshes_sentinel(self):
         calls = []

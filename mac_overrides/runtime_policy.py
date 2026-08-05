@@ -90,6 +90,32 @@ _TRANSIENT_PRE_AUTH_RULES = (
     ),
 )
 
+_RELOGIN_NON_RETRYABLE_MARKERS = (
+    "relogin_phone_required",
+    "password_verify_failed",
+    "incorrect password",
+    "invalid password",
+    "wrong password",
+    "mfa_otp_failed",
+    "verify_mfa_otp",
+    "oauth_callback_state_mismatch",
+    "oauth_state_mismatch",
+    "state mismatch",
+    "invalid_state",
+    "account_banned",
+    "account_deactivated",
+    "account_suspended",
+    "account_deleted",
+)
+_RELOGIN_RATE_LIMIT_MARKERS = (
+    "http 429",
+    "status=429",
+    "status_code=429",
+    "too many requests",
+    "rate limit",
+    "rate_limited",
+)
+
 ACCOUNT_BANNED_MESSAGE = "OpenAI 账号已被封禁，无法继续接码"
 
 _ACCOUNT_BANNED_CODES = frozenset(
@@ -223,6 +249,17 @@ def transient_pre_auth_error_code(value: Any) -> str:
         if any(marker in text for marker in markers):
             return code
     return ""
+
+
+def is_relogin_transient_failure(value: Any) -> bool:
+    """Allow whole-chain relogin retries only for narrow transient failures."""
+    text = _searchable_failure_text(value)
+    if not text or any(marker in text for marker in _RELOGIN_NON_RETRYABLE_MARKERS):
+        return False
+    statuses = _failure_http_statuses(value)
+    if 429 in statuses or any(marker in text for marker in _RELOGIN_RATE_LIMIT_MARKERS):
+        return True
+    return bool(transient_pre_auth_error_code(value))
 
 
 def call_with_transient_pre_auth_retry(

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import copy
 from concurrent.futures import ThreadPoolExecutor
+import hashlib
+import hmac
 import threading
 from typing import Any, Callable
 import uuid
@@ -17,6 +19,51 @@ def _bounded_int(value: Any, default: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(maximum, parsed))
 
 
+def _is_relogin(settings: dict[str, Any]) -> bool:
+    return str(settings.get("run_mode") or "").strip().lower() == "relogin"
+
+
+def _relogin_entries(
+    pool: Any,
+    settings: dict[str, Any],
+    mailbox_error_type: type[Exception],
+) -> list[Any]:
+    bindings = settings.get("_gptphone_relogin_rows")
+    if not isinstance(bindings, list) or not bindings:
+        raise mailbox_error_type("重登邮箱绑定为空，请刷新邮箱列表后重试")
+    try:
+        entries, _errors = pool._entries_unlocked()
+    except Exception as exc:
+        raise mailbox_error_type("重登邮箱解析失败，请检查邮箱池格式") from exc
+
+    by_row_id = {
+        hashlib.sha256(str(getattr(entry, "source_row", "") or "").encode("utf-8")).hexdigest(): entry
+        for entry in entries
+        if str(getattr(entry, "source_row", "") or "")
+    }
+    selected: list[Any] = []
+    seen_keys: set[str] = set()
+    for binding in bindings:
+        if not isinstance(binding, dict):
+            raise mailbox_error_type("重登邮箱绑定无效，请刷新邮箱列表后重试")
+        row_id = str(binding.get("row_id") or "").strip().lower()
+        expected_email = str(binding.get("email") or "").strip().lower()
+        entry = by_row_id.get(row_id)
+        actual_email = str(getattr(entry, "email", "") or "").strip().lower()
+        entry_key = str(getattr(entry, "key", "") or "").strip()
+        if (
+            entry is None
+            or not expected_email
+            or not hmac.compare_digest(actual_email, expected_email)
+            or not entry_key
+            or entry_key in seen_keys
+        ):
+            raise mailbox_error_type("邮箱列表已变化，请刷新后重试")
+        seen_keys.add(entry_key)
+        selected.append(entry)
+    return selected
+
+
 def start_bounded_importer(
     importer: Any,
     settings: dict[str, Any],
@@ -28,10 +75,20 @@ def start_bounded_importer(
     thread_factory: Callable[..., Any] = threading.Thread,
 ) -> None:
     """Start only the requested number of reserved pool entries."""
-    importer.settings_validation(settings, remote=True)
+    relogin = _is_relogin(settings)
+    if relogin:
+        validation_settings = dict(settings)
+        validation_settings.update(
+            sms_provider="localpool",
+            sms_api_key="relogin-disabled",
+        )
+        importer.settings_validation(validation_settings, remote=False)
+    else:
+        importer.settings_validation(settings, remote=True)
     pool = importer._pool(settings)
+    relogin_entries = _relogin_entries(pool, settings, mailbox_error_type) if relogin else []
     pool_summary = pool.summary()
-    available = int(pool_summary.get("available") or 0)
+    available = len(relogin_entries) if relogin else int(pool_summary.get("available") or 0)
     if available <= 0:
         raise mailbox_error_type("没有可运行的邮箱")
 
@@ -51,7 +108,7 @@ def start_bounded_importer(
         1,
         worker_count,
     )
-    reserved: list[tuple[str, int, Any]] = []
+    reserved: list[tuple[str, int, Any, bool]] = []
     executor = None
     futures: list[Any] = []
     startup_gate = threading.Event()
@@ -78,13 +135,16 @@ def start_bounded_importer(
         importer.futures = []
         importer.future_assignments = {}
         importer.active_task_ids = set()
+        importer._gptphone_preselected_task_ids = set()
 
         try:
             for index in range(target):
-                entry = pool.lease(lease_seconds=3600)
+                entry = relogin_entries[index] if relogin else pool.lease(lease_seconds=3600)
                 ordinal = index + 1
                 task_id = f"T{ordinal:03d}-{uuid.uuid4().hex[:6]}"
-                reserved.append((task_id, ordinal, entry))
+                reserved.append((task_id, ordinal, entry, not relogin))
+                if relogin:
+                    importer._gptphone_preselected_task_ids.add(task_id)
                 importer._task_state(
                     task_id,
                     status="queued",
@@ -94,6 +154,7 @@ def start_bounded_importer(
                     ordinal=ordinal,
                     batch_id=batch_id,
                     batch_started_at=batch_started_at,
+                    run_mode="relogin" if relogin else "register",
                 )
 
             executor = executor_factory(
@@ -101,7 +162,7 @@ def start_bounded_importer(
                 thread_name_prefix="email-auth-import",
             )
             importer.executor = executor
-            for task_id, ordinal, entry in reserved:
+            for task_id, ordinal, entry, _restore_on_cancel in reserved:
                 future = executor.submit(
                     run_after_start,
                     copy.deepcopy(settings),
@@ -134,7 +195,9 @@ def start_bounded_importer(
                     executor.shutdown(wait=True, cancel_futures=True)
                 except Exception:
                     cleanup_failures += 1
-            for _task_id, _ordinal, entry in reserved:
+            for _task_id, _ordinal, entry, restore_on_cancel in reserved:
+                if not restore_on_cancel:
+                    continue
                 try:
                     pool.restore_entry(entry, reason="batch_start_failed")
                 except Exception:
@@ -148,17 +211,25 @@ def start_bounded_importer(
                 importer.executor = None
                 importer.futures = []
                 importer.future_assignments = {}
+                importer._gptphone_preselected_task_ids = set()
                 importer.tasks = {}
                 importer.running = False
             raise
 
     try:
-        importer._log(
-            f"导入任务启动: 目标邮箱 {target}/{available}，实际任务并发 {worker_count}，"
-            f"Node 并发 {node_concurrency}，邮箱验证码槽 {email_login_concurrency}；"
-            "仅预留本批目标邮箱，验证码通过后立即释放，号码/SUB2 保持并发",
-            "success",
-        )
+        if relogin:
+            message = (
+                f"无手机号重登启动: 目标邮箱 {target}/{available}，实际任务并发 {worker_count}，"
+                f"Node 并发 {node_concurrency}，邮箱验证码槽 {email_login_concurrency}；"
+                "仅更新原 SUB2 账号，跳过 SMS 预检和号码申请"
+            )
+        else:
+            message = (
+                f"导入任务启动: 目标邮箱 {target}/{available}，实际任务并发 {worker_count}，"
+                f"Node 并发 {node_concurrency}，邮箱验证码槽 {email_login_concurrency}；"
+                "仅预留本批目标邮箱，验证码通过后立即释放，号码/SUB2 保持并发"
+            )
+        importer._log(message, "success")
     except Exception:
         pass
 
@@ -174,6 +245,7 @@ def stop_bounded_importer(importer: Any) -> None:
     with importer.lock:
         futures = list(importer.futures)
         executor = importer.executor
+        preselected_task_ids = set(getattr(importer, "_gptphone_preselected_task_ids", set()))
         assignments = {
             future: importer.future_assignments.pop(future, None)
             for future in futures
@@ -192,10 +264,11 @@ def stop_bounded_importer(importer: Any) -> None:
         if assignment is None:
             continue
         pool, entry, task_id = assignment
-        try:
-            pool.restore_entry(entry, reason="stopped_before_start")
-        except Exception:
-            cleanup_failures += 1
+        if task_id not in preselected_task_ids:
+            try:
+                pool.restore_entry(entry, reason="stopped_before_start")
+            except Exception:
+                cleanup_failures += 1
         try:
             importer._task_state(task_id, status="stopped", error="未启动，已停止")
         except Exception:

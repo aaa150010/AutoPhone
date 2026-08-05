@@ -85,6 +85,7 @@ _spec.loader.exec_module(_module)
 
 _ORIGINAL_POOL_ENTRIES_UNLOCKED = _runtime.MailboxPool._entries_unlocked
 _ORIGINAL_POOL_LEASE = _runtime.MailboxPool.lease
+_ORIGINAL_POOL_RESTORE_ENTRY = _runtime.MailboxPool.restore_entry
 _ORIGINAL_POOL_REMOVE_ENTRY = _runtime.MailboxPool.remove_entry
 _ORIGINAL_OUTLOOK_OTP_PROVIDER = _runtime.OutlookMailboxOtpProvider
 _ORIGINAL_MAILBOX_URL_SNAPSHOT = _runtime.MailboxUrlCodeProvider.snapshot
@@ -119,7 +120,9 @@ _ORIGINAL_TASK_STATE = _runtime.EmailAuthImporter._task_state
 _ORIGINAL_IMPORTER_START = _runtime.EmailAuthImporter.start
 _ORIGINAL_IMPORTER_STOP = _runtime.EmailAuthImporter.stop
 _ORIGINAL_IMPORTER_WATCH = _runtime.EmailAuthImporter._watch
+_ORIGINAL_IMPORTER_RUN_ONE = _runtime.EmailAuthImporter._run_one
 _ORIGINAL_PRE_AUTH_SESSION_RETRYABLE = _runtime.EmailAuthImporter._pre_auth_session_retryable
+_ORIGINAL_PASSWORD_CREDENTIALS_REJECTED = _runtime.EmailAuthImporter._password_credentials_rejected
 _ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = _runtime.run_codex_after_registration
 _ORIGINAL_GUI_LOG_ADD = _module.GuiLog.add
 _ORIGINAL_GUI_LOG_SNAPSHOT = _module.GuiLog.snapshot
@@ -178,6 +181,7 @@ _SMS_ALERTS = _sms_runtime_ext.RuntimeAlertBuffer()
 _GUI_LOG_RETENTION = _log_retention_ext.GuiLogRetention()
 _TASK_PROGRESS = _task_progress_ext.TaskProgressTracker()
 _TASK_CONTEXT: ContextVar[str] = ContextVar("gptphone_task_id", default="")
+_RUN_MODE_CONTEXT: ContextVar[str] = ContextVar("gptphone_run_mode", default="register")
 _ACTIVE_SMS_TRANSPORT: ContextVar[object | None] = ContextVar(
     "gptphone_active_sms_transport",
     default=None,
@@ -601,6 +605,8 @@ def _patched_config_save(self, values):
 
 def _patched_task_config(self, settings, email, task_id, *, password=""):
     config = _ORIGINAL_TASK_CONFIG(self, settings, email, task_id, password=password)
+    run_mode = str((settings or {}).get("run_mode") or "register").strip().lower()
+    relogin = run_mode == "relogin"
     pools = _sms_provider_pools_from_config(settings or {})
     enabled_pools = [pool for pool in pools if _as_enabled(pool.get("enabled"), True) and pool.get("api_keys")]
     primary = enabled_pools[0] if enabled_pools else (pools[0] if pools else {})
@@ -649,6 +655,32 @@ def _patched_task_config(self, settings, email, task_id, *, password=""):
             "email_otp_resend_on_retry": email_resend,
         }
     )
+    if relogin:
+        normalized_email = str(email or "").strip().lower()
+        binding = next(
+            (
+                item
+                for item in (settings or {}).get("_gptphone_relogin_rows") or ()
+                if isinstance(item, dict)
+                and str(item.get("email") or "").strip().lower() == normalized_email
+                and str(item.get("sub2api_account_id") or "").strip()
+            ),
+            None,
+        )
+        if binding is None:
+            raise RuntimeError(
+                "relogin_sub2_binding_missing: 重登邮箱缺少经过校验的 SUB2 原账号绑定"
+            )
+        config["run_mode"] = "relogin"
+        config["sms_provider"] = "smsbower"
+        config["sms_api_key"] = "relogin-disabled"
+        config["sms_api_keys"] = ["relogin-disabled"]
+        config["_sub2_update_existing"] = {
+            "account_id": str(binding.get("sub2api_account_id") or "").strip(),
+            "email": normalized_email,
+            "status_code": binding.get("status_code"),
+            "status_kind": str(binding.get("status_kind") or "").strip().lower(),
+        }
     results_value = str((settings or {}).get("results_dir") or "results").strip() or "results"
     results_dir = Path(results_value)
     if not results_dir.is_absolute():
@@ -656,7 +688,7 @@ def _patched_task_config(self, settings, email, task_id, *, password=""):
     historical = _mailbox_admin_ext.latest_sub2_accounts_by_email(results_dir).get(
         str(email or "").strip().lower()
     )
-    if historical:
+    if historical and not relogin:
         account_id = str(historical.get("account_id") or "").strip()
         status_lookup = globals().get("_SUB2_RUNTIME")
         try:
@@ -821,6 +853,18 @@ def _real_sub2_upload(self, *, credentials, email):
     _set_current_task_stage("finalizing_upload")
     config = getattr(self, "config", None)
     binding = config.get("_sub2_update_existing") if isinstance(config, dict) else None
+    if (
+        isinstance(config, dict)
+        and str(config.get("run_mode") or "").strip().lower() == "relogin"
+        and not (isinstance(binding, dict) and str(binding.get("account_id") or "").strip())
+    ):
+        return {
+            "ok": False,
+            "error": "relogin_sub2_binding_missing: 重登缺少 SUB2 原账号绑定，已停止且未创建新账号",
+            "error_code": "relogin_sub2_binding_missing",
+            "sub2_update_existing": True,
+            "sub2_upload_created": False,
+        }
     if isinstance(binding, dict) and str(binding.get("account_id") or "").strip():
         expected_email = str(binding.get("email") or "").strip().lower()
         if expected_email != str(email or "").strip().lower():
@@ -1178,6 +1222,27 @@ def _patched_importer_start(self, settings):
         _MAILBOX_RUN_SELECTION.reset(selection_token)
 
 
+def _patched_importer_run_one(
+    self,
+    settings,
+    ordinal,
+    assigned_entry=None,
+    assigned_task_id="",
+):
+    run_mode = str((settings or {}).get("run_mode") or "register").strip().lower()
+    token = _RUN_MODE_CONTEXT.set(run_mode)
+    try:
+        return _ORIGINAL_IMPORTER_RUN_ONE(
+            self,
+            settings,
+            ordinal,
+            assigned_entry,
+            assigned_task_id,
+        )
+    finally:
+        _RUN_MODE_CONTEXT.reset(token)
+
+
 def _patched_importer_stop(self):
     context = _notification_context_for(self)
     if isinstance(context, dict):
@@ -1220,6 +1285,10 @@ def _patched_importer_watch(self):
 
 
 def _patched_pre_auth_session_retryable(result):
+    if "relogin_phone_required" in str(result or "").lower():
+        return False
+    if _RUN_MODE_CONTEXT.get() == "relogin":
+        return _runtime_policy_ext.is_relogin_transient_failure(result)
     if _auth_session_runtime_ext.is_session_invalid(result):
         task_id = _TASK_CONTEXT.get()
         context = _AUTH_SESSIONS.get(task_id) if task_id else None
@@ -1233,6 +1302,12 @@ def _patched_pre_auth_session_retryable(result):
     if _runtime_policy_ext.should_retry_expired_sub2_session(result):
         return True
     return _ORIGINAL_PRE_AUTH_SESSION_RETRYABLE(result)
+
+
+def _patched_password_credentials_rejected(result):
+    if _RUN_MODE_CONTEXT.get() == "relogin":
+        return False
+    return _ORIGINAL_PASSWORD_CREDENTIALS_REJECTED(result)
 
 
 def _as_enabled(value, default=True):
@@ -1406,6 +1481,36 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
 
 
 def _patched_retire_after_failure(self, settings, pool, entry, task_id, result, error):
+    if str((settings or {}).get("run_mode") or "").strip().lower() == "relogin":
+        safe_error = _error_observability_ext.sanitize_failure_detail(
+            error,
+            secrets=_failure_secrets(self, entry, settings),
+        ) or "重登未返回错误详情"
+        self._persist_result(
+            settings,
+            task_id,
+            entry,
+            result if isinstance(result, dict) else {},
+            error=safe_error,
+            status="failed",
+        )
+        try:
+            pool.remove_entry(entry, reason="relogin_failed")
+        except Exception:
+            pass
+        public_result = _runtime._public_result(result if isinstance(result, dict) else {})
+        self._task_state(
+            task_id,
+            status="failed",
+            error=safe_error,
+            technical_error=safe_error,
+            result=public_result,
+        )
+        try:
+            self._log(f"{task_id} 无手机号重登失败: {safe_error}", "error")
+        except Exception:
+            pass
+        return None
     if _is_auth_session_reset_failure(result, error):
         if isinstance(result, dict):
             result["resume_stage"] = "fresh_oauth"
@@ -1921,6 +2026,37 @@ def _real_verify_mfa_otp(self, code):
     return response
 
 
+class _ReloginPhoneOtpProvider:
+    """Hard stop for relogin tasks before any SMS provider can be called."""
+
+    @staticmethod
+    def get_number(**_kwargs):
+        _set_current_task_stage("phone_acquiring")
+        raise _codex_oauth_chain.CodexChainError(
+            "relogin_phone_required: 重登进入手机号验证页面，已停止且未调用接码平台"
+        )
+
+    @staticmethod
+    def mark_ready(_lease):
+        return None
+
+    @staticmethod
+    def wait_code(_lease, timeout=180):
+        del timeout
+        raise _codex_oauth_chain.CodexChainError(
+            "relogin_phone_required: 重登禁止等待短信验证码"
+        )
+
+    @staticmethod
+    def complete(_lease):
+        return None
+
+    @staticmethod
+    def cancel(_lease, reason=""):
+        del reason
+        return None
+
+
 def _run_codex_after_registration(
     *,
     oauth_url,
@@ -1952,6 +2088,8 @@ def _run_codex_after_registration(
     phone_otp_provider=None,
 ):
     runtime_config = config if isinstance(config, dict) else {}
+    if str(runtime_config.get("run_mode") or "").strip().lower() == "relogin":
+        phone_otp_provider = _ReloginPhoneOtpProvider()
     runtime_config["_auth_account_email"] = str(account_email or "").strip().lower()
     if transport is not None:
         transport.config = runtime_config
@@ -2081,6 +2219,12 @@ def _mailbox_lease_with_auth_cooldown(self, *, lease_seconds=1800):
         return _ORIGINAL_POOL_LEASE(self, lease_seconds=lease_seconds)
     finally:
         _MAILBOX_LEASE_FILTER_ACTIVE.reset(token)
+
+
+def _mailbox_restore_preserving_relogin(self, entry, *, reason="manual_restore"):
+    if _RUN_MODE_CONTEXT.get() == "relogin":
+        return True
+    return _ORIGINAL_POOL_RESTORE_ENTRY(self, entry, reason=reason)
 
 
 def _sms_build_candidates(self, raw_rows, now, allowed_countries, blocked_countries):
@@ -2376,6 +2520,7 @@ _preflight_sms_pool = _SMS_WEB.preflight_pool
 
 _runtime.MailboxPool._entries_unlocked = _mailbox_entries_with_auth_cooldown
 _runtime.MailboxPool.lease = _mailbox_lease_with_auth_cooldown
+_runtime.MailboxPool.restore_entry = _mailbox_restore_preserving_relogin
 _runtime.MailboxPool.remove_entry = _mailbox_retention_ext.preserve_consumed_entry
 _runtime.ManualMailboxPool.remove_entry = _mailbox_retention_ext.preserve_consumed_entry
 _runtime.OutlookMailboxOtpProvider = _TOTP_PATCHES.outlook_otp_provider
@@ -2389,9 +2534,13 @@ _runtime.EmailAuthImporter._retire_after_failure = _patched_retire_after_failure
 _runtime.EmailAuthImporter._task_config = _patched_task_config
 _runtime.EmailAuthImporter._task_state = _patched_task_state
 _runtime.EmailAuthImporter.start = _patched_importer_start
+_runtime.EmailAuthImporter._run_one = _patched_importer_run_one
 _runtime.EmailAuthImporter.stop = _patched_importer_stop
 _runtime.EmailAuthImporter._watch = _patched_importer_watch
 _runtime.EmailAuthImporter._pre_auth_session_retryable = staticmethod(_patched_pre_auth_session_retryable)
+_runtime.EmailAuthImporter._password_credentials_rejected = staticmethod(
+    _patched_password_credentials_rejected
+)
 _runtime._generate_sub2_oauth_session = _generate_sub2_oauth_session
 _runtime.run_codex_after_registration = _run_codex_after_registration
 _runtime._friendly_log_message = _diagnostic_friendly_log_message

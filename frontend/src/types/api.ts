@@ -72,6 +72,7 @@ export interface TaskFailure {
 
 export interface RuntimeTask {
   task_id: string
+  run_mode?: 'register' | 'relogin' | string
   account?: string
   email?: string
   ordinal?: number
@@ -86,6 +87,8 @@ export interface RuntimeTask {
   result?: {
     sms_cost_usd?: number | null
     sms_cost_cny?: number | null
+    timing?: TaskTiming
+    run_mode?: 'relogin' | string
   }
 }
 
@@ -156,6 +159,7 @@ export interface MailboxRow {
   failure?: TaskFailure | null
   task_id?: string
   task_status?: string
+  run_mode?: 'register' | 'relogin' | string
   batch_id?: string
   batch_started_at?: number
   progress?: TaskProgress | null

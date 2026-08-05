@@ -85,6 +85,21 @@ class FakeMailboxAdmin:
             "items": [],
             "skipped": 0,
         }
+        self.relogin_result = {
+            "ok": True,
+            "count": 1,
+            "items": [
+                {
+                    "row_id": "a" * 64,
+                    "line_no": 7,
+                    "email": "relogin@example.test",
+                    "sub2api_account_id": "sub2-account-501",
+                    "status_code": 401,
+                    "status_kind": "unauthorized",
+                }
+            ],
+        }
+        self.relogin_payloads: list[dict] = []
 
     def list_mailboxes(self):
         return {"ok": True, "counts": {}, "rows": []}
@@ -115,6 +130,10 @@ class FakeMailboxAdmin:
 
     def query_openai_quotas(self, _payload):
         return {"ok": True, "results": [], "queried": 0, "failed": 0, "skipped": 0}
+
+    def resolve_relogin_rows(self, payload):
+        self.relogin_payloads.append(dict(payload))
+        return dict(self.relogin_result)
 
 
 class FakePixelError(RuntimeError):
@@ -375,6 +394,52 @@ class WebRouteTests(unittest.TestCase):
         )
         self.assertNotIn("run_mailbox_rows", self.importer.started_with)
         self.assertNotIn("run_mailbox_rows", self.store.current)
+
+    def test_relogin_starts_from_server_bound_rows_without_sms_preflight_or_config_save(self):
+        app = self._app()
+        payload = {"rows": [{"row_id": "a" * 64, "line_no": 7}]}
+
+        with app.test_client() as client:
+            response = client.post("/api/mailboxes/relogin", json=payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["run_mode"], "relogin")
+        self.assertEqual(response.get_json()["started"], 1)
+        self.assertEqual(self.mailbox_admin.relogin_payloads, [payload])
+        self.assertEqual(self.preflight_configs, [])
+        self.assertEqual(self.store.saved, [])
+        self.assertEqual(self.importer.started_with["run_mode"], "relogin")
+        self.assertFalse(self.importer.started_with["pixel_upload_enabled"])
+        self.assertEqual(self.importer.started_with["target_count"], 1)
+        self.assertEqual(
+            self.importer.started_with["_gptphone_relogin_rows"][0]["sub2api_account_id"],
+            "sub2-account-501",
+        )
+        self.assertEqual(
+            self.importer.started_with["_gptphone_run_mailbox_rows"],
+            [{"row_id": "a" * 64, "line_no": 7}],
+        )
+
+    def test_relogin_rejects_stale_or_no_longer_failed_rows_before_start(self):
+        app = self._app()
+        with app.test_client() as client:
+            for code in ("mailbox_rows_stale", "relogin_not_required"):
+                with self.subTest(code=code):
+                    self.mailbox_admin.relogin_result = {
+                        "ok": False,
+                        "code": code,
+                        "error": "邮箱状态已变化",
+                    }
+                    response = client.post(
+                        "/api/mailboxes/relogin",
+                        json={"rows": [{"row_id": "a" * 64, "line_no": 7}]},
+                    )
+                    self.assertEqual(response.status_code, 409)
+                    self.assertEqual(response.get_json()["code"], code)
+
+        self.assertIsNone(self.importer.started_with)
+        self.assertEqual(self.preflight_configs, [])
+        self.assertEqual(self.store.saved, [])
 
     def test_save_config_failure_rolls_back_store_pool_and_local_config(self):
         app = self._app()

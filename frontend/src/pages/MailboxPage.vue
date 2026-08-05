@@ -10,6 +10,7 @@ import {
   Download,
   Message,
   MessageBox,
+  RefreshRight,
   Search,
   VideoPlay,
   UploadFilled,
@@ -22,6 +23,7 @@ import {
   getMailboxTotp,
   getMailboxes,
   queryMailboxQuotas,
+  reloginMailboxRows,
   retryMailboxPixel,
 } from '../api/client'
 import DashboardMetricCard from '../components/DashboardMetricCard.vue'
@@ -47,6 +49,7 @@ const currentPage = ref(1)
 const pageSize = ref(50)
 const mutating = ref(false)
 const testingSub2 = ref(false)
+const reloginStarting = ref(false)
 const retryingPixel = ref(false)
 const exportingSub2 = ref(false)
 const queryingQuota = ref(false)
@@ -372,6 +375,47 @@ function selectedBindings() {
   return selectedRows.value.map(row => ({ row_id: row.row_id, line_no: row.line_no }))
 }
 
+async function startRelogin() {
+  if (!selectedRows.value.length) {
+    ElMessage.warning('请先选择需要重登的邮箱')
+    return
+  }
+  if (selectedRows.value.some(row => !needsSub2Rerun(row.sub2_status))) {
+    ElMessage.warning('只能选择当前为 401/404 的邮箱执行重登')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `将 ${selectedRows.value.length} 个邮箱执行无手机号重登并原位更新 SUB2？`,
+      '重登并更新 SUB2',
+      { type: 'warning', confirmButtonText: '开始重登', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+
+  reloginStarting.value = true
+  mutating.value = true
+  dataVersion += 1
+  latestRefresh += 1
+  const selected = selectedBindings()
+  try {
+    mailboxTable.value?.clearSelection()
+    selectedRows.value = []
+    const result = await reloginMailboxRows(selected)
+    applyMailboxPayload(result)
+    await nextTick()
+    mailboxTable.value?.clearSelection()
+    ElMessage.success(`已启动 ${Number(result.started || selected.length)} 个重登任务`)
+  } catch (error: any) {
+    if (error instanceof ApiError && error.status === 409) await refresh()
+    ElMessage.error(error?.message || '重登任务启动失败')
+  } finally {
+    reloginStarting.value = false
+    mutating.value = false
+  }
+}
+
 async function retryPixel() {
   if (!selectedRows.value.length) {
     ElMessage.warning('请先选择邮箱')
@@ -581,6 +625,15 @@ onUnmounted(() => {
         </el-button>
         <el-button :loading="testingSub2" :disabled="mutating" @click="testSub2">
           <el-icon><Connection /></el-icon>{{ testingSub2 && openaiTestProgress ? `测试 OpenAI ${openaiTestProgress}` : '批量测试 OpenAI' }}
+        </el-button>
+        <el-button
+          type="warning"
+          plain
+          :loading="reloginStarting"
+          :disabled="mutating || controller.runtime.value.running || !selectedRows.length || selectedRows.some(row => !needsSub2Rerun(row.sub2_status))"
+          @click="startRelogin"
+        >
+          <el-icon><RefreshRight /></el-icon>重登并更新 SUB2
         </el-button>
         <el-button :loading="retryingPixel" :disabled="mutating || !selectedRows.length" @click="retryPixel">
           <el-icon><UploadFilled /></el-icon>重传 Pixel

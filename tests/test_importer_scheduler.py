@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+import hashlib
 
 from mac_overrides.importer_scheduler import start_bounded_importer, stop_bounded_importer
 
@@ -22,6 +23,9 @@ class FakePool:
             self.lease_calls += 1
             return FakeEntry(self.lease_calls)
 
+    def _entries_unlocked(self):
+        return [FakeEntry(index) for index in range(1, self.available + 1)], []
+
     def restore_entry(self, entry, *, reason=""):
         with self.lock:
             self.restored.append(entry.number)
@@ -32,6 +36,8 @@ class FakeEntry:
     def __init__(self, number: int) -> None:
         self.number = number
         self.email = f"mailbox-{number}@example.test"
+        self.source_row = f"{self.email}----password-{number}"
+        self.key = f"entry-{number}"
 
 
 class FakeManualCodes:
@@ -65,6 +71,7 @@ class FakeImporter:
         if not blocked:
             self.release_tasks.set()
         self.two_started = threading.Event()
+        self.one_started = threading.Event()
         self.finished = threading.Event()
         self.ordinals: list[int] = []
         self.entry_numbers: list[int] = []
@@ -84,6 +91,7 @@ class FakeImporter:
             return
         with self.lock:
             self.ordinals.append(ordinal)
+            self.one_started.set()
             self.entry_numbers.append(entry.number)
             self.active += 1
             self.max_active = max(self.max_active, self.active)
@@ -138,6 +146,74 @@ def start(importer: FakeImporter, settings: dict, **kwargs):
 
 
 class ImporterSchedulerTests(unittest.TestCase):
+    def test_relogin_uses_consumed_preselected_rows_without_pool_lease(self):
+        importer = FakeImporter(available=3)
+        rows = [
+            {
+                "row_id": hashlib.sha256(FakeEntry(index).source_row.encode()).hexdigest(),
+                "line_no": index,
+                "email": FakeEntry(index).email,
+                "sub2api_account_id": str(100 + index),
+            }
+            for index in range(1, 4)
+        ]
+
+        start(importer, {
+            "run_mode": "relogin",
+            "target_count": 3,
+            "concurrency": 2,
+            "_gptphone_relogin_rows": rows,
+        })
+        self.assertTrue(importer.finished.wait(2))
+
+        self.assertEqual(importer.pool.lease_calls, 0)
+        self.assertEqual(sorted(importer.entry_numbers), [1, 2, 3])
+        self.assertEqual({task["run_mode"] for task in importer.tasks.values()}, {"relogin"})
+        self.assertIn("跳过 SMS 预检和号码申请", importer.logs[-1][0])
+
+    def test_stopping_relogin_does_not_restore_consumed_preselected_rows(self):
+        importer = FakeImporter(available=3, blocked=True)
+        rows = [
+            {
+                "row_id": hashlib.sha256(FakeEntry(index).source_row.encode()).hexdigest(),
+                "line_no": index,
+                "email": FakeEntry(index).email,
+                "sub2api_account_id": str(100 + index),
+            }
+            for index in range(1, 4)
+        ]
+        start(importer, {
+            "run_mode": "relogin",
+            "target_count": 3,
+            "concurrency": 1,
+            "_gptphone_relogin_rows": rows,
+        })
+        self.assertTrue(importer.one_started.wait(1))
+
+        importer.stop()
+        importer.release_tasks.set()
+        self.assertTrue(importer.finished.wait(2))
+
+        self.assertEqual(importer.pool.lease_calls, 0)
+        self.assertEqual(importer.pool.restored, [])
+        self.assertEqual(importer.cancelled_waiting, 2)
+
+    def test_relogin_rejects_a_stale_row_hash_before_starting_workers(self):
+        importer = FakeImporter(available=1)
+        with self.assertRaisesRegex(ValueError, "邮箱列表已变化"):
+            start(importer, {
+                "run_mode": "relogin",
+                "target_count": 1,
+                "_gptphone_relogin_rows": [{
+                    "row_id": "0" * 64,
+                    "line_no": 1,
+                    "email": "mailbox-1@example.test",
+                    "sub2api_account_id": "101",
+                }],
+            })
+        self.assertFalse(importer.running)
+        self.assertEqual(importer.pool.lease_calls, 0)
+
     def test_batch_identity_is_attached_to_every_reserved_task(self):
         importer = FakeImporter(2)
 

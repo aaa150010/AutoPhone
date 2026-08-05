@@ -241,6 +241,79 @@ class MailboxAdminTests(unittest.TestCase):
         )
         self.assertNotIn("private", json.dumps(public, ensure_ascii=False))
 
+    def test_relogin_resolver_accepts_totp_url_and_outlook_oauth_rows(self):
+        rows = [
+            "totp@example.com|login-pass|JBSWY3DPEHPK3PXP",
+            "url@example.com|https://mail.example.test/messages/private-token",
+            "oauth@example.com----mail-pass----12345678-1234-1234-1234-123456789abc----refresh-token",
+        ]
+        self._write_pool("\n".join(rows) + "\n")
+        self._write_state({})
+        results = self.root / "results"
+        results.mkdir()
+        for index, row in enumerate(rows, start=1):
+            email = email_from_row(row)
+            (results / f"success-{index}.json").write_text(
+                json.dumps({
+                    "email": email,
+                    "status": "success",
+                    "created_at": 100 + index,
+                    "result": {"sub2api_account_id": str(500 + index)},
+                }),
+                encoding="utf-8",
+            )
+        self.service.openai_status_lookup = lambda account_id: {
+            "kind": "unauthorized" if account_id != "502" else "not_found",
+            "status_code": 401 if account_id != "502" else 404,
+        }
+
+        result = self.service.resolve_relogin_rows({
+            "rows": [
+                {"row_id": row_id_from_source(row), "line_no": index}
+                for index, row in enumerate(rows, start=1)
+            ]
+        })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 3)
+        self.assertEqual(
+            [item["sub2api_account_id"] for item in result["items"]],
+            ["501", "502", "503"],
+        )
+        serialized = json.dumps(result, ensure_ascii=False)
+        for secret in ("login-pass", "JBSWY3DPEHPK3PXP", "private-token", "mail-pass", "refresh-token"):
+            self.assertNotIn(secret, serialized)
+
+    def test_relogin_resolver_rejects_stale_or_no_longer_failed_binding(self):
+        row = "rerun@example.com|login-pass|JBSWY3DPEHPK3PXP"
+        self._write_pool(row + "\n")
+        self._write_state({})
+        results = self.root / "results"
+        results.mkdir()
+        (results / "success.json").write_text(
+            json.dumps({
+                "email": "rerun@example.com",
+                "status": "success",
+                "created_at": 100,
+                "result": {"sub2api_account_id": "501"},
+            }),
+            encoding="utf-8",
+        )
+
+        stale = self.service.resolve_relogin_rows({
+            "rows": [{"row_id": "0" * 64, "line_no": 1}],
+        })
+        self.service.openai_status_lookup = lambda _account_id: {
+            "kind": "healthy",
+            "status_code": 200,
+        }
+        healthy = self.service.resolve_relogin_rows({
+            "rows": [{"row_id": row_id_from_source(row), "line_no": 1}],
+        })
+
+        self.assertEqual(stale["code"], "mailbox_rows_stale")
+        self.assertEqual(healthy["code"], "relogin_not_required")
+
     def test_list_mailboxes_marks_imported_without_remote_upload_as_not_ready(self):
         row = "imported@example.com----mail-pass----client-id----refresh-token"
         self._write_pool(row + "\n")

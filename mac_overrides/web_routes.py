@@ -471,6 +471,91 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         except Exception:
             return module.jsonify(ok=False, error="读取取件 URL 失败"), 500
 
+    def api_mailboxes_relogin():
+        if not context.lifecycle_lock.acquire(blocking=False):
+            return busy_response("另一个启动请求正在处理中")
+        try:
+            if importer.status(settings()).get("running"):
+                return module.jsonify(
+                    ok=False,
+                    code="run_already_active",
+                    error="已有任务运行中，请先停止并等待任务结束",
+                    state=public_state(),
+                ), 409
+            data = module.request.get_json(silent=True) or {}
+            if not isinstance(data, dict):
+                return module.jsonify(ok=False, code="relogin_rows_invalid", error="请求必须是 JSON 对象"), 400
+            resolver = getattr(mailbox_admin, "resolve_relogin_rows", None)
+            if not callable(resolver):
+                return module.jsonify(
+                    ok=False,
+                    code="relogin_not_configured",
+                    error="无手机号重登尚未配置",
+                ), 503
+            selected = resolver(data)
+            if not isinstance(selected, Mapping):
+                return module.jsonify(
+                    ok=False,
+                    code="relogin_resolution_failed",
+                    error="重登邮箱校验失败：未返回可用诊断",
+                ), 502
+            if not selected.get("ok"):
+                code = str(selected.get("code") or "")
+                status = 409 if code in {"mailbox_rows_stale", "relogin_not_required"} else 400
+                return module.jsonify(dict(selected)), status
+
+            rows = [dict(item) for item in selected.get("items") or [] if isinstance(item, Mapping)]
+            if not rows:
+                return module.jsonify(
+                    ok=False,
+                    code="relogin_rows_required",
+                    error="请先勾选需要重登的 401/404 邮箱",
+                ), 400
+            run_config = dict(store.load() or {})
+            batch_started_at = int(time.time())
+            run_config.update(
+                run_mode="relogin",
+                target_count=len(rows),
+                batch_started_at=batch_started_at,
+                batch_id=(
+                    f"relogin-{time.strftime('%Y%m%d-%H%M%S', time.localtime(batch_started_at))}-"
+                    f"{uuid.uuid4().hex[:6]}"
+                ),
+                pixel_upload_enabled=False,
+                _gptphone_relogin_rows=rows,
+                _gptphone_run_mailbox_rows=[
+                    {"row_id": row["row_id"], "line_no": row["line_no"]}
+                    for row in rows
+                ],
+            )
+            context.sms_cost_ledger.clear()
+            importer.start(run_config)
+            logs.add(
+                f"无手机号重登任务已启动: {len(rows)} 个邮箱，仅原位更新 SUB2",
+                "success",
+            )
+            return module.jsonify(
+                ok=True,
+                run_mode="relogin",
+                started=len(rows),
+                mailboxes=mailbox_admin.list_mailboxes(),
+                state=public_state(),
+            )
+        except ValueError as exc:
+            safe = context.safe_runtime_error(exc)
+            return module.jsonify(ok=False, code="relogin_start_failed", error=safe, state=public_state()), 400
+        except Exception as exc:
+            safe = context.safe_runtime_error(exc)
+            logs.add(f"无手机号重登启动失败: {safe}", "error")
+            return module.jsonify(
+                ok=False,
+                code="relogin_start_failed",
+                error=f"重登任务启动失败: {safe}",
+                state=public_state(),
+            ), 500
+        finally:
+            context.lifecycle_lock.release()
+
     def api_mailboxes_openai_test():
         try:
             data = module.request.get_json(silent=True) or {}
@@ -915,6 +1000,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/mailboxes/password", "api_mailboxes_password", api_mailboxes_password, ["POST"]),
         ("/api/mailboxes/totp", "api_mailboxes_totp", api_mailboxes_totp, ["POST"]),
         ("/api/mailboxes/url", "api_mailboxes_url", api_mailboxes_url, ["POST"]),
+        ("/api/mailboxes/relogin", "api_mailboxes_relogin", api_mailboxes_relogin, ["POST"]),
         ("/api/mailbox-url-test", "api_mailbox_url_test", api_mailbox_url_test, ["POST"]),
         ("/api/mailboxes/sub2-test", "api_mailboxes_sub2_test", api_mailboxes_sub2_test, ["POST"]),
         ("/api/mailboxes/openai-test", "api_mailboxes_openai_test", api_mailboxes_openai_test, ["POST"]),

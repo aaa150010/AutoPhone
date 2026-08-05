@@ -10,6 +10,7 @@ from mac_overrides.runtime_policy import (
     call_with_transient_pre_auth_retry,
     is_account_banned_failure,
     is_explicit_account_banned,
+    is_relogin_transient_failure,
     should_retry_expired_sub2_session,
     transient_pre_auth_error_code,
 )
@@ -155,6 +156,29 @@ class RuntimePolicyTests(unittest.TestCase):
             ),
             "remote_disconnected",
         )
+
+    def test_relogin_whole_chain_retry_allows_only_network_tls_timeout_or_429(self):
+        retryable = (
+            {"error": "curl: (35) TLS connect error"},
+            {"error": "remote end closed connection without response"},
+            {"error": "connection timed out after 30001 milliseconds"},
+            {"_status": 429, "error": "too many requests"},
+        )
+        terminal = (
+            {"error": "password_verify_failed: invalid password"},
+            {"error": "mfa_otp_failed: invalid code"},
+            {"error": "oauth_callback_state_mismatch: invalid_state"},
+            {"error": "account_deactivated"},
+            {"error": "relogin_phone_required"},
+            {"_status": 401, "error": "connection reset"},
+        )
+
+        for value in retryable:
+            with self.subTest(value=value):
+                self.assertTrue(is_relogin_transient_failure(value))
+        for value in terminal:
+            with self.subTest(value=value):
+                self.assertFalse(is_relogin_transient_failure(value))
 
     def test_retry_runner_does_not_retry_mapping_http_403(self):
         calls = []
