@@ -577,7 +577,10 @@ class WebGuiSecurityTests(unittest.TestCase):
 
         self.assertEqual(result["_status"], 200)
         self.assertEqual(calls[0][0], "https://auth.openai.com/api/accounts/add-phone/send")
-        self.assertEqual(calls[0][1]["json"], {"phone_number": "+15550001234"})
+        self.assertEqual(
+            calls[0][1]["json"],
+            {"phone_number": "+15550001234", "channel": "sms"},
+        )
         headers = {key.lower(): value for key, value in calls[0][1]["headers"].items()}
         self.assertNotIn("openai-sentinel-token", headers)
         self.assertNotIn("openai-sentinel-so-token", headers)
@@ -585,6 +588,70 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertTrue(headers["x-access-flow-invocation-id"])
         self.assertEqual(sentinel_calls[0][0], "reset")
         self.assertEqual(sentinel_calls[1][0], "token_for")
+
+    def test_real_phone_send_rejects_forced_whatsapp_channel(self):
+        calls = []
+
+        class FakeResponse:
+            status_code = 200
+            headers = {"content-type": "application/json"}
+            url = "https://auth.openai.com/api/accounts/add-phone/send"
+            payload = {
+                "page": {"type": "phone_otp_verification"},
+                "channel": "whatsapp",
+            }
+            text = json.dumps(payload)
+
+            def json(self):
+                return dict(self.payload)
+
+        class FakeSession:
+            cookies = {"session": "present"}
+
+            def post(self, url, **kwargs):
+                calls.append((url, kwargs))
+                return FakeResponse()
+
+        class FakeSentinel:
+            def reset(self, flow=""):
+                del flow
+
+            def token_for(self, flow, context):
+                del flow, context
+                return {"token": "sentinel-value"}
+
+        transport = SimpleNamespace(
+            config={"sms_task_id": "task-forced-whatsapp"},
+            session=FakeSession(),
+            sentinel_provider=FakeSentinel(),
+            device_id="device-1",
+            proxy="",
+            _gptphone_page_type="add_phone",
+        )
+        self.module._AUTH_SESSIONS.clear("task-forced-whatsapp")
+        try:
+            result = self.module._real_send_phone_number_otp(
+                transport,
+                "+15550001234",
+                "sms",
+            )
+        finally:
+            self.module._AUTH_SESSIONS.clear("task-forced-whatsapp")
+
+        self.assertEqual(
+            calls[0][1]["json"],
+            {"phone_number": "+15550001234", "channel": "sms"},
+        )
+        self.assertEqual(result["_status"], 409)
+        self.assertEqual(result["_upstream_status"], 200)
+        self.assertEqual(result["error"]["code"], "phone_channel_mismatch")
+        self.assertIn("phone_channel_mismatch", result["error"]["message"])
+        self.assertIn("channel", result["_body_summary"])
+        self.assertEqual(result["requested_channel"], "sms")
+        self.assertEqual(result["actual_channel"], "whatsapp")
+        error_text = self.module._codex_oauth_chain._error_text(result)
+        self.assertIn("phone_channel_mismatch", error_text)
+        self.assertEqual(self.module._SMS_WEB.classify_error(error_text), "phone_rejected")
 
     def test_real_phone_send_requires_entry_page_recovery_before_replacement(self):
         calls = []
@@ -640,8 +707,14 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(first["_status"], 200)
         self.assertEqual(second["_status"], 200)
         self.assertEqual(len(calls), 2)
-        self.assertEqual(calls[0][1]["json"], {"phone_number": "+15550001234"})
-        self.assertEqual(calls[1][1]["json"], {"phone_number": "+15550005678"})
+        self.assertEqual(
+            calls[0][1]["json"],
+            {"phone_number": "+15550001234", "channel": "sms"},
+        )
+        self.assertEqual(
+            calls[1][1]["json"],
+            {"phone_number": "+15550005678", "channel": "sms"},
+        )
         headers = [
             {key.lower(): value for key, value in call[1]["headers"].items()}
             for call in calls

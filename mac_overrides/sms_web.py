@@ -504,12 +504,32 @@ class SmsWebIntegration:
         try:
             code = self.original_adapter_wait_code(adapter, lease, timeout=timeout)
         except Exception as exc:
-            candidate = dict(getattr(lease, "meta", None) or {}).get("candidate")
-            if self.classify_error(exc) in {"no_numbers", "timeout", "no_code"}:
+            meta = dict(getattr(lease, "meta", None) or {})
+            candidate = meta.get("candidate")
+            error_text = str(exc or "").lower()
+            error_kind = self.classify_error(exc)
+            if error_kind in {"no_numbers", "timeout", "no_code"}:
                 self._invalidate_candidate_cache(
                     getattr(adapter, "selector", None),
                     candidate,
                 )
+            # The recovered signup loop changes numbers only when wait_code
+            # returns an empty value. Pooled providers raise sms_timeout after
+            # their two polling rounds, so normalize that one terminal wait
+            # outcome into the adapter's existing no-code contract.
+            if error_kind == "timeout" and "sms_timeout" in error_text:
+                meta["sms_wait_failure"] = "sms_timeout"
+                meta["sms_order_state"] = "timeout"
+                lease.meta = meta
+                log_fn = getattr(adapter, "log_fn", None)
+                if not callable(log_fn):
+                    log_fn = getattr(getattr(adapter, "selector", None), "log_fn", None)
+                _call_log(
+                    log_fn,
+                    "  [SMS] 短信验证码在两轮等待后仍未送达，释放当前号码并切换新号码",
+                    "warn",
+                )
+                return None
             raise
         meta = dict(getattr(lease, "meta", None) or {})
         candidate = meta.get("candidate")
@@ -568,6 +588,9 @@ class SmsWebIntegration:
     def adapter_cancel(self, adapter: Any, lease: Any, reason: str = "") -> Any:
         task_id = self.adapter_task_id(adapter)
         meta = dict(getattr(lease, "meta", None) or {})
+        cancel_reason = reason
+        if str(reason or "").strip() == "phone_otp_empty" and meta.get("sms_wait_failure"):
+            cancel_reason = str(meta["sms_wait_failure"])
         if meta.get("gptphone_terminal_cancelled"):
             self._forget_active_lease(task_id, lease)
             return None
@@ -576,10 +599,10 @@ class SmsWebIntegration:
         self._ledger_state(task_id, lease, "cancel_pending")
         provider = getattr(adapter, "provider", None)
         mark_rejected = getattr(provider, "mark_rejected", None)
-        if self.classify_error(reason) == "phone_rejected" and callable(mark_rejected):
+        if self.classify_error(cancel_reason) == "phone_rejected" and callable(mark_rejected):
             mark_rejected()
         try:
-            result = self.original_adapter_cancel(adapter, lease, reason=reason)
+            result = self.original_adapter_cancel(adapter, lease, reason=cancel_reason)
         except Exception as exc:
             self._queue_cancel_cleanup(adapter, lease, exc)
             meta = dict(getattr(lease, "meta", None) or {})
@@ -589,14 +612,14 @@ class SmsWebIntegration:
             if task_id:
                 self._forget_active_lease(task_id, lease)
                 try:
-                    self._mark_cancel_finished(task_id, lease, adapter, reason, exc)
+                    self._mark_cancel_finished(task_id, lease, adapter, cancel_reason, exc)
                 except Exception:
                     pass
                 return None
             raise
         if task_id:
             self._forget_active_lease(task_id, lease)
-            self._mark_cancel_finished(task_id, lease, adapter, reason)
+            self._mark_cancel_finished(task_id, lease, adapter, cancel_reason)
         meta = dict(getattr(lease, "meta", None) or {})
         receipt = self.sms_runtime.safe_cancel_receipt(
             getattr(getattr(adapter, "provider", None), "last_finish_receipt", None)
@@ -626,6 +649,8 @@ class SmsWebIntegration:
             )
         ):
             return "auth_context"
+        if "phone_channel_mismatch" in text:
+            return "phone_rejected"
         if any(
             marker in text
             for marker in (
@@ -640,6 +665,8 @@ class SmsWebIntegration:
             marker in text
             for marker in ("phone_otp_empty", "no sms code", "no verification code", "未收到验证码")
         ):
+            return "timeout"
+        if "sms_timeout" in text:
             return "timeout"
         return self.original_classify_error(error)
 

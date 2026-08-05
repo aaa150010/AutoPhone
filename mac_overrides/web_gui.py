@@ -1487,13 +1487,75 @@ def _patched_retire_after_failure(self, settings, pool, entry, task_id, result, 
     return None
 
 
+def _phone_channel(value):
+    return re.sub(r"[^a-z0-9_-]+", "", str(value or "").strip().lower())[:32]
+
+
+def _response_phone_channel(response):
+    if not isinstance(response, dict):
+        return ""
+    containers = [response]
+    for key in ("page", "data", "error"):
+        value = response.get(key)
+        if isinstance(value, dict):
+            containers.append(value)
+    for value in containers:
+        for key in (
+            "channel",
+            "verification_channel",
+            "selected_channel",
+            "delivery_channel",
+        ):
+            channel = _phone_channel(value.get(key))
+            if channel:
+                return channel
+    text = json.dumps(response, ensure_ascii=True, default=str).lower()
+    if any(
+        marker in text
+        for marker in (
+            "whatsapp_required",
+            "sms_not_available",
+            "sms_unavailable",
+            "switch_to_whatsapp",
+            "switched_to_whatsapp",
+        )
+    ):
+        return "whatsapp"
+    return ""
+
+
+def _reject_phone_channel_mismatch(response, requested_channel):
+    requested = _phone_channel(requested_channel)
+    actual = _response_phone_channel(response)
+    if not requested or not actual or requested == actual:
+        return response
+    try:
+        upstream_status = int(response.get("_status") or 0)
+    except (TypeError, ValueError):
+        upstream_status = 0
+    return {
+        **response,
+        "_status": 409,
+        "_upstream_status": upstream_status,
+        "error": {
+            "code": "phone_channel_mismatch",
+            "message": (
+                f"phone_channel_mismatch: requested={requested} actual={actual}"
+            ),
+        },
+        "requested_channel": requested,
+        "actual_channel": actual,
+    }
+
+
 def _real_send_phone_number_otp(self, phone, channel="sms"):
+    requested_channel = _phone_channel(channel)
     # Lightweight fakes used by older tests do not own an HTTP session. Keep
     # their compatibility path isolated from the real browser-contract path.
     if not hasattr(self, "session"):
         payload = {"phone_number": _codex_oauth_chain._phone_for_openai(phone)}
-        if channel:
-            payload["channel"] = channel
+        if requested_channel:
+            payload["channel"] = requested_channel
         return self._post_auth_json(
             "/api/accounts/add-phone/send",
             payload,
@@ -1502,7 +1564,6 @@ def _real_send_phone_number_otp(self, phone, channel="sms"):
             timeout=30,
         )
 
-    del channel
     _set_current_task_stage("phone_submitting")
     endpoint = "/api/accounts/add-phone/send"
     referer = f"{_codex_oauth_chain.AUTH}/add-phone"
@@ -1524,6 +1585,8 @@ def _real_send_phone_number_otp(self, phone, channel="sms"):
         stage="phone_submitting",
     )
     payload = {"phone_number": _codex_oauth_chain._phone_for_openai(phone)}
+    if requested_channel:
+        payload["channel"] = requested_channel
     headers = {
         **dict(_codex_oauth_chain.JSON_HEADERS),
         "referer": referer,
@@ -1557,6 +1620,7 @@ def _real_send_phone_number_otp(self, phone, channel="sms"):
             "error": _error_observability_ext.sanitize_failure_detail(exc, limit=220)
             or "phone_send_request_failed",
         }
+    response = _reject_phone_channel_mismatch(response, requested_channel)
     self.last_response = response
     finished = _auth_request_runtime_ext.finish_request(
         self,
@@ -1575,6 +1639,13 @@ def _real_send_phone_number_otp(self, phone, channel="sms"):
         return response
     status = int(response.get("_status") or 0)
     if not 200 <= status < 300:
+        structured_error = response.get("error")
+        if (
+            isinstance(structured_error, dict)
+            and str(structured_error.get("code") or "").strip().lower()
+            == "phone_channel_mismatch"
+        ):
+            return response
         response = {
             **response,
             "error": response.get("_body_summary")

@@ -18,7 +18,6 @@ gptPhone is a macOS-local Flask application with a Vue 3 and Element Plus dashbo
 - Match the original callable signature, including keyword-only arguments. Verify uncertain signatures with `inspect.signature` in the Python 3.13 virtual environment.
 - Avoid changing unrelated recovered behavior while adding an override.
 - Never log or expose raw SMS, SUB2, Pixel, OAuth, mailbox, or proxy credentials. Public state uses masks or SHA-256 short fingerprints.
-- Keep network and paid-service tests behind fake providers. Do not call real SMS preflight or start a real run during automated verification.
 - Preserve existing configuration fields and their established page order unless the user explicitly requests a removal or reorder.
 - `auth_session_retries` is a UI count of additional retries: `0` means no retry after the first attempt.
 - Keep task progress events free of credentials and user data. Repeated events in the same stage must not reset elapsed time, and terminal tasks must freeze their last valid stage.

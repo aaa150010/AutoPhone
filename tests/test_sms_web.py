@@ -200,6 +200,13 @@ class SmsWebTests(unittest.TestCase):
             self.integration.classify_error("auth_context_page_mismatch: stale page"),
             "auth_context",
         )
+        self.assertEqual(
+            self.integration.classify_error(
+                "phone_channel_mismatch: requested=sms actual=whatsapp"
+            ),
+            "phone_rejected",
+        )
+        self.assertEqual(self.integration.classify_error("sms_timeout: no code"), "timeout")
         self.assertEqual(self.integration.classify_error("permanent failure"), "other")
 
     def test_auth_context_failure_releases_route_without_scoring_it(self):
@@ -407,6 +414,44 @@ class SmsWebTests(unittest.TestCase):
         self.assertEqual(records, [(False, "phone_otp_empty")])
         self.assertGreater(selector.stats[("37", "3237")]["cooldown_until"], 0)
         self.assertIn("短信验证码未送达冷却 180 秒", logs.rows[-1][0])
+
+    def test_sms_timeout_returns_no_code_so_next_loop_can_allocate_new_phone(self):
+        allocations = []
+        cancellations = []
+
+        def allocate(_adapter, **_kwargs):
+            phone = f"phone-{len(allocations) + 1}"
+            allocations.append(phone)
+            return SimpleNamespace(
+                activation_id=f"order-{len(allocations)}",
+                phone=phone,
+                meta={},
+            )
+
+        self.integration.original_adapter_get_number = allocate
+        self.integration.original_adapter_wait_code = (
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                RuntimeError("sms_timeout: 两轮短信等待结束后仍未收到验证码")
+            )
+        )
+        self.integration.original_adapter_cancel = (
+            lambda _adapter, _lease, reason="": cancellations.append(reason)
+        )
+        adapter = SimpleNamespace(
+            config={},
+            provider=SimpleNamespace(current_order_meta={}),
+            selector=None,
+        )
+
+        first = self.integration.adapter_get_number(adapter)
+        self.assertIsNone(self.integration.adapter_wait_code(adapter, first, timeout=30))
+        self.integration.adapter_cancel(adapter, first, reason="phone_otp_empty")
+        second = self.integration.adapter_get_number(adapter)
+
+        self.assertEqual(allocations, ["phone-1", "phone-2"])
+        self.assertEqual(cancellations, ["sms_timeout"])
+        self.assertNotEqual(first.phone, second.phone)
+        self.assertEqual(first.meta["sms_wait_failure"], "sms_timeout")
 
     def test_received_code_updates_route_once_and_clears_failure_streak(self):
         candidate = SimpleNamespace(country="37", provider_id="3237")

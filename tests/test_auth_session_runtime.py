@@ -79,6 +79,101 @@ class AuthSessionRuntimeTests(unittest.TestCase):
         self.assertEqual(visits, ["https://auth.openai.com/add-phone?state=private-oauth-state"])
         self.assertNotIn("private-oauth-state", repr(registry.public_snapshot("task-recover")))
 
+    def test_phone_otp_page_is_restored_from_real_add_phone_html(self):
+        registry = AuthSessionRegistry()
+        transport = SimpleNamespace(
+            config={"sms_task_id": "task-html-recover"},
+            session=SimpleNamespace(cookies={"session": "present"}),
+            _gptphone_page_type="add_phone",
+        )
+        mark_phone_ready(
+            transport,
+            registry,
+            {"_status": 200, "page": {"type": "add_phone"}},
+            continue_url="https://auth.openai.com/add-phone",
+        )
+        transport._gptphone_page_type = "phone_otp_verification"
+        transport._gptphone_request_context.page_type = "phone_otp_verification"
+
+        context = recover_phone_entry_context(
+            transport,
+            registry,
+            expected_task_id="task-html-recover",
+            visit_fn=lambda _url, **_kwargs: {
+                "_status": 200,
+                "_content_type": "text/html; charset=utf-8",
+                "_url": "https://auth.openai.com/add-phone",
+                "_html_title": "Phone number required - OpenAI",
+            },
+        )
+
+        self.assertEqual(context.page_type, "add_phone")
+        self.assertEqual(transport._gptphone_page_type, "add_phone")
+
+    def test_phone_otp_html_recovery_rejects_unrelated_final_url(self):
+        registry = AuthSessionRegistry()
+        transport = SimpleNamespace(
+            config={"sms_task_id": "task-html-login"},
+            session=SimpleNamespace(cookies={"session": "present"}),
+            _gptphone_page_type="add_phone",
+        )
+        mark_phone_ready(
+            transport,
+            registry,
+            {"_status": 200, "page": {"type": "add_phone"}},
+            continue_url="https://auth.openai.com/add-phone",
+        )
+        transport._gptphone_page_type = "phone_otp_verification"
+        transport._gptphone_request_context.page_type = "phone_otp_verification"
+
+        with self.assertRaisesRegex(AuthRequestContextError, "page_type=unknown"):
+            recover_phone_entry_context(
+                transport,
+                registry,
+                expected_task_id="task-html-login",
+                visit_fn=lambda _url, **_kwargs: {
+                    "_status": 200,
+                    "_content_type": "text/html; charset=utf-8",
+                    "_url": "https://auth.openai.com/log-in",
+                    "_html_title": "Log in - OpenAI",
+                },
+            )
+
+    def test_phone_otp_html_recovery_rejects_non_phone_html_on_entry_url(self):
+        for title, body in (
+            ("Log in - OpenAI", "<main><h1>Welcome back</h1></main>"),
+            ("Just a moment...", "<main>Checking your browser</main>"),
+        ):
+            with self.subTest(title=title):
+                registry = AuthSessionRegistry()
+                transport = SimpleNamespace(
+                    config={"sms_task_id": f"task-html-{title}"},
+                    session=SimpleNamespace(cookies={"session": "present"}),
+                    _gptphone_page_type="add_phone",
+                )
+                mark_phone_ready(
+                    transport,
+                    registry,
+                    {"_status": 200, "page": {"type": "add_phone"}},
+                    continue_url="https://auth.openai.com/add-phone",
+                )
+                transport._gptphone_page_type = "phone_otp_verification"
+                transport._gptphone_request_context.page_type = "phone_otp_verification"
+
+                with self.assertRaisesRegex(AuthRequestContextError, "page_type=unknown"):
+                    recover_phone_entry_context(
+                        transport,
+                        registry,
+                        expected_task_id=f"task-html-{title}",
+                        visit_fn=lambda _url, **_kwargs: {
+                            "_status": 200,
+                            "_content_type": "text/html; charset=utf-8",
+                            "_url": "https://auth.openai.com/add-phone",
+                            "_html_title": title,
+                            "_body": body,
+                        },
+                    )
+
     def test_phone_otp_recovery_without_saved_entry_fails(self):
         transport = SimpleNamespace(
             config={"sms_task_id": "task-no-entry"},

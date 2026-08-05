@@ -50,6 +50,7 @@ class ErrorObservabilityTests(unittest.TestCase):
             ("getNumber failed: no_numbers", "phone_acquiring"),
             ("phone_send_rejected: unsupported_country_region_territory", "phone_submitting"),
             ("sms_timeout while wait_code", "sms_waiting"),
+            ("phone_otp_empty", "sms_waiting"),
             ("verify_phone_otp failed", "sms_verifying"),
             ("create_account_profile_failed", "finalizing_profile"),
             ("sub2_upload_failed: remote_verified=false", "finalizing_upload"),
@@ -106,6 +107,16 @@ class ErrorObservabilityTests(unittest.TestCase):
         self.assertEqual(failure["error_code"], "auth_context_page_mismatch")
         self.assertIn("页面上下文无效", failure["public_message"])
         self.assertNotIn("OpenAI 拒绝当前号码", failure["public_message"])
+
+    def test_forced_whatsapp_is_attributed_to_phone_submission(self):
+        failure = classify_failure(
+            error="phone_channel_mismatch: requested=sms actual=whatsapp",
+            progress={"code": "phone_submitting"},
+        )
+
+        self.assertEqual(failure["node_code"], "phone_submitting")
+        self.assertEqual(failure["error_code"], "phone_channel_mismatch")
+        self.assertIn("非短信渠道", failure["public_message"])
 
     def test_sms_route_and_key_pool_exhaustion_remain_distinguishable(self):
         routes = classify_failure(error="sms_smart_no_candidate")
@@ -284,6 +295,14 @@ class ErrorObservabilityTests(unittest.TestCase):
                 failure = classify_failure(error=error)
                 self.assertEqual(failure["node_code"], "sms_waiting")
                 self.assertEqual(failure["error_code"], expected_code)
+
+    def test_empty_phone_otp_is_distinct_from_two_round_provider_timeout(self):
+        failure = classify_failure(error="phone_otp_empty")
+
+        self.assertEqual(failure["node_code"], "sms_waiting")
+        self.assertEqual(failure["error_code"], "sms_no_code")
+        self.assertIn("本次等待未返回", failure["public_message"])
+        self.assertNotIn("两轮", failure["public_message"])
 
 
 if __name__ == "__main__":

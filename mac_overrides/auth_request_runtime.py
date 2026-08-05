@@ -42,6 +42,25 @@ PHONE_OTP_PAGE_TYPES = frozenset(
     }
 )
 PHONE_PAGE_TYPES = PHONE_ENTRY_PAGE_TYPES | PHONE_OTP_PAGE_TYPES
+_HTML_PHONE_ENTRY_PATHS = {
+    "/add-phone": "add_phone",
+    "/contact-verification": "contact_verification",
+    "/phone-number-collection": "phone_number_collection",
+}
+_HTML_PHONE_ENTRY_MARKERS = (
+    "phone number required",
+    "enter your phone number",
+    "verify your phone number",
+    "phone number verification",
+    'name="phone_number"',
+    "name='phone_number'",
+    'type="tel"',
+    "type='tel'",
+    'autocomplete="tel"',
+    "autocomplete='tel'",
+    "手机号",
+    "电话号码",
+)
 
 
 def normalize_page_type(value: Any) -> str:
@@ -142,6 +161,37 @@ def _page_type(response: Any) -> str:
     if isinstance(page, Mapping):
         return str(page.get("type") or "")[:80]
     return str(response.get("page_type") or "")[:80]
+
+
+def _html_phone_entry_page_type(response: Any) -> str:
+    """Recognize a successful auth HTML page without trusting arbitrary HTML."""
+
+    if not isinstance(response, Mapping):
+        return ""
+    try:
+        status = int(response.get("_status") or 0)
+    except (TypeError, ValueError):
+        return ""
+    content_type = str(response.get("_content_type") or "").lower()
+    if not 200 <= status < 300 or "html" not in content_type:
+        return ""
+    try:
+        final_url = urlsplit(str(response.get("_url") or ""))
+    except ValueError:
+        return ""
+    if final_url.scheme != "https" or final_url.hostname != "auth.openai.com":
+        return ""
+    path = final_url.path.rstrip("/") or "/"
+    page_type = _HTML_PHONE_ENTRY_PATHS.get(path, "")
+    if not page_type:
+        return ""
+    html_evidence = "\n".join(
+        str(response.get(key) or "")
+        for key in ("_html_title", "_body", "_body_summary")
+    ).lower()
+    if not any(marker in html_evidence for marker in _HTML_PHONE_ENTRY_MARKERS):
+        return ""
+    return page_type
 
 
 def _cookies_present(transport: Any) -> bool:
@@ -390,7 +440,9 @@ def recover_phone_entry_context(
             "auth_context_page_mismatch",
             f"手机号录入页面恢复请求失败 ({type(exc).__name__})",
         ) from exc
-    restored_page = normalize_page_type(_page_type(response))
+    restored_page = normalize_page_type(
+        _page_type(response) or _html_phone_entry_page_type(response)
+    )
     context.observe(response, page_type=restored_page)
     setattr(transport, "_gptphone_page_type", restored_page)
     if restored_page not in PHONE_ENTRY_PAGE_TYPES:
