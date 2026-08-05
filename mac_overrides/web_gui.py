@@ -123,6 +123,8 @@ _ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = _runtime.run_codex_after_registration
 _ORIGINAL_GUI_LOG_ADD = _module.GuiLog.add
 _ORIGINAL_GUI_LOG_SNAPSHOT = _module.GuiLog.snapshot
 _ORIGINAL_CREATE_PROVIDER = _sms_providers.create_provider
+_ORIGINAL_SMS_BASE_TRY_GET = _sms_providers.BaseSmsProvider._try_get
+_ORIGINAL_FIVESIM_REST_GET = _sms_providers.FiveSimProvider._rest_get
 _ORIGINAL_SMS_ADAPTER_GET_NUMBER = _codex_oauth_chain.SmsProviderAdapter.get_number
 _ORIGINAL_SMS_ADAPTER_WAIT_CODE = _codex_oauth_chain.SmsProviderAdapter.wait_code
 _ORIGINAL_SMS_ADAPTER_COMPLETE = _codex_oauth_chain.SmsProviderAdapter.complete
@@ -165,6 +167,9 @@ _SMS_PROVIDER_REGISTRY = _sms_runtime_ext.SmsProviderRegistry(
     legacy_pool=_SMS_KEY_POOL,
 )
 _SMS_COST_LEDGER = _sms_runtime_ext.SmsCostLedger()
+_SMS_CLEANUP_QUEUE = _sms_runtime_ext.SmsCleanupQueue(
+    _RUNTIME_DATA_DIR / "sms_cleanup_queue.json"
+)
 _SMS_EXCHANGE_RATE = _sms_runtime_ext.ExchangeRateCache(_RUNTIME_DATA_DIR / "usd_cny_rate.json")
 _SMS_PHONE_GATE = _sms_runtime_ext.PhoneSubmissionGate(concurrency=2, interval_seconds=0.75)
 _SMS_ROUTE_POLICY = _sms_runtime_ext.SmsRoutePolicy()
@@ -172,6 +177,12 @@ _SMS_ALERTS = _sms_runtime_ext.RuntimeAlertBuffer()
 _GUI_LOG_RETENTION = _log_retention_ext.GuiLogRetention()
 _TASK_PROGRESS = _task_progress_ext.TaskProgressTracker()
 _TASK_CONTEXT: ContextVar[str] = ContextVar("gptphone_task_id", default="")
+_ACTIVE_SMS_TRANSPORT: ContextVar[object | None] = ContextVar(
+    "gptphone_active_sms_transport",
+    default=None,
+)
+_SMS_TRANSPORTS_BY_TASK: dict[str, object] = {}
+_SMS_TRANSPORTS_LOCK = threading.RLock()
 _MAILBOX_LEASE_FILTER_ACTIVE: ContextVar[bool] = ContextVar(
     "gptphone_mailbox_lease_filter_active",
     default=False,
@@ -194,11 +205,77 @@ _AUTH_EMAIL_COOLDOWNS_LOCK = threading.RLock()
 _RUN_LIFECYCLE_LOCK = threading.Lock()
 _RUN_NOTIFICATION_LOCK = threading.RLock()
 _RUN_NOTIFICATION_CONTEXT = None
+_PROTOCOL_GATE = _sms_runtime_ext.ProxyProtocolGate(default_limit=3)
+
+
+def _transport_task_id(transport) -> str:
+    config = getattr(transport, "config", None)
+    if not isinstance(config, dict):
+        return ""
+    return str(config.get("sms_task_id") or config.get("run_id") or "").strip()
+
+
+def _register_sms_transport(task_id, transport) -> None:
+    key = str(task_id or "").strip()
+    if not key or transport is None:
+        return
+    with _SMS_TRANSPORTS_LOCK:
+        for old_key, old_transport in tuple(_SMS_TRANSPORTS_BY_TASK.items()):
+            if old_transport is transport and old_key != key:
+                _SMS_TRANSPORTS_BY_TASK.pop(old_key, None)
+        _SMS_TRANSPORTS_BY_TASK[key] = transport
+    setattr(transport, "_gptphone_registered_task_id", key)
+
+
+def _transport_for_task(task_id):
+    key = str(task_id or "").strip()
+    if not key:
+        return None
+    with _SMS_TRANSPORTS_LOCK:
+        transport = _SMS_TRANSPORTS_BY_TASK.get(key)
+        if transport is not None and _transport_task_id(transport) != key:
+            _SMS_TRANSPORTS_BY_TASK.pop(key, None)
+            return None
+        return transport
+
+
+def _unregister_sms_transport(task_id, transport=None) -> None:
+    key = str(task_id or "").strip()
+    if not key:
+        return
+    with _SMS_TRANSPORTS_LOCK:
+        current = _SMS_TRANSPORTS_BY_TASK.get(key)
+        if transport is None or current is transport:
+            _SMS_TRANSPORTS_BY_TASK.pop(key, None)
+    if transport is not None and getattr(transport, "_gptphone_registered_task_id", "") == key:
+        try:
+            delattr(transport, "_gptphone_registered_task_id")
+        except AttributeError:
+            pass
 
 
 def _safe_runtime_error(error):
     value = _module._safe(error) if hasattr(_module, "_safe") else str(error)
     return _SMS_PROVIDER_REGISTRY.safe_error(value)
+
+
+def _isolated_sms_try_get(url, params, proxy, timeout=30):
+    return _sms_runtime_ext.isolated_sms_get(
+        url,
+        params=params,
+        proxy=proxy,
+        timeout=timeout,
+    )
+
+
+def _isolated_fivesim_rest_get(self, path, timeout=15):
+    return _sms_runtime_ext.isolated_sms_get(
+        f"{self.BASE_URL}{path}",
+        headers=self._headers(),
+        proxy=str(getattr(self, "proxy", "") or ""),
+        timeout=timeout,
+        as_json=True,
+    )
 
 
 def _is_oauth_session_invalid_failure(result=None, error=""):
@@ -521,7 +598,10 @@ def _patched_task_config(self, settings, email, task_id, *, password=""):
     pools = _sms_provider_pools_from_config(settings or {})
     enabled_pools = [pool for pool in pools if _as_enabled(pool.get("enabled"), True) and pool.get("api_keys")]
     primary = enabled_pools[0] if enabled_pools else (pools[0] if pools else {})
-    keys = _sms_runtime_ext.flatten_sms_provider_keys(pools)
+    keys = _sms_runtime_ext.legacy_sms_provider_keys(
+        pools,
+        primary.get("provider") or "smsbower",
+    )
     attempts_per_provider = _int_value(
         (settings or {}).get("phone_attempts_per_provider"),
         15,
@@ -556,7 +636,7 @@ def _patched_task_config(self, settings, email, task_id, *, password=""):
             "phone_attempts_per_provider": attempts_per_provider,
             "phone_session_cycle_seconds": phone_seconds,
             "phone_session_max_seconds": phone_seconds,
-            "phone_retry_sleep_seconds": 2,
+            "phone_retry_sleep_seconds": 1,
             "email_otp_verify_attempts": email_attempts,
             "email_otp_resend_on_retry": email_resend,
         }
@@ -605,8 +685,8 @@ def _patched_task_config(self, settings, email, task_id, *, password=""):
         "route_semi_max_inflight": 2,
         "route_hot_max_inflight": 2,
         "route_lease_seconds": route_lease_seconds,
-        "timeout_cooldown": 0,
-        "phone_rejected_cooldown": 600,
+        "timeout_cooldown": 180,
+        "phone_rejected_cooldown": 180,
         "register_rejected_cooldown": 60,
         "register_rejected_min_cooldown": 180,
     }
@@ -1498,6 +1578,11 @@ def _real_send_phone_number_otp(self, phone, channel="sms"):
             or response.get("error", ""),
         }
         return response
+    _auth_request_runtime_ext.mark_phone_otp_sent(
+        self,
+        _AUTH_SESSIONS,
+        response,
+    )
     try:
         _auth_request_runtime_ext.refresh_sentinel(
             self,
@@ -1508,6 +1593,37 @@ def _real_send_phone_number_otp(self, phone, channel="sms"):
     except _auth_request_runtime_ext.AuthRequestContextError as exc:
         raise _codex_oauth_chain.CodexChainError(f"{exc.code}: {exc}") from exc
     return response
+
+
+def _preflight_sms_phone_context(_adapter, task_id):
+    expected_task_id = str(task_id or "").strip()
+    active_transport = _ACTIVE_SMS_TRANSPORT.get()
+    transport = active_transport
+    if transport is not None and expected_task_id:
+        if _transport_task_id(transport) != expected_task_id:
+            transport = None
+    if transport is None:
+        transport = _transport_for_task(expected_task_id)
+    if transport is None:
+        _set_current_task_stage("phone_submitting")
+        raise _codex_oauth_chain.CodexChainError(
+            "auth_context_transport_missing: 当前任务没有可用的登录 Transport，已阻止申请手机号"
+        )
+    _set_current_task_stage("phone_submitting")
+    try:
+        return _auth_request_runtime_ext.recover_phone_entry_context(
+            transport,
+            _AUTH_SESSIONS,
+            expected_task_id=expected_task_id,
+        )
+    except _auth_request_runtime_ext.AuthRequestContextError as exc:
+        _auth_request_runtime_ext.invalidate_auth_session(
+            transport,
+            _AUTH_SESSIONS,
+            f"{exc.code}: {exc}",
+            stage="phone_submitting",
+        )
+        raise _codex_oauth_chain.CodexChainError(f"{exc.code}: {exc}") from exc
 
 
 _SMS_WEB = _sms_web_ext.SmsWebIntegration(
@@ -1536,6 +1652,8 @@ _SMS_WEB = _sms_web_ext.SmsWebIntegration(
     as_enabled=_as_enabled,
     safe_error=_safe_runtime_error,
     provider_registry=_SMS_PROVIDER_REGISTRY,
+    phone_context_preflight=_preflight_sms_phone_context,
+    cleanup_queue=_SMS_CLEANUP_QUEUE,
 )
 _AUTH_SESSIONS = _auth_session_runtime_ext.AuthSessionRegistry()
 _AUTH_SESSIONS.set_cancel_sms(_SMS_WEB.cancel_active_lease)
@@ -1574,6 +1692,8 @@ def _real_transport_init(
     runtime_config = config if isinstance(config, dict) else {}
     self.account_email = str(runtime_config.get("_auth_account_email") or "").strip().lower()
     _auth_request_runtime_ext.ensure_transport_context(self, _AUTH_SESSIONS, force_new=True)
+    _register_sms_transport(_transport_task_id(self), self)
+    _ACTIVE_SMS_TRANSPORT.set(self)
 
 
 def _real_headers(self, flow, referer):
@@ -1722,40 +1842,73 @@ def _run_codex_after_registration(
     if transport is not None:
         transport.config = runtime_config
         transport.account_email = runtime_config["_auth_account_email"]
-        _auth_request_runtime_ext.ensure_transport_context(
+        existing_context = getattr(transport, "_gptphone_request_context", None)
+        expected_task_id = str(runtime_config.get("sms_task_id") or runtime_config.get("run_id") or "")
+        request_context = _auth_request_runtime_ext.ensure_transport_context(
             transport,
             _AUTH_SESSIONS,
-            force_new=True,
+            force_new=bool(
+                existing_context is None
+                or getattr(existing_context, "task_id", "") != expected_task_id
+            ),
         )
-    result = _ORIGINAL_RUN_CODEX_AFTER_REGISTRATION(
-        oauth_url=oauth_url,
-        code_verifier=code_verifier,
-        account_email=account_email,
-        password=password,
-        phase1_register=phase1_register,
-        phase1_response=phase1_response,
-        phase1_continue_url=phase1_continue_url,
-        sms_provider=sms_provider,
-        config=runtime_config,
-        proxy=proxy,
-        email_proxy=email_proxy,
-        upload_proxy=upload_proxy,
-        log_fn=log_fn,
-        mode=mode,
-        local_oauth_client_id=local_oauth_client_id,
-        local_oauth_redirect_uri=local_oauth_redirect_uri,
-        oauth_provider=oauth_provider,
-        oauth_session_id=oauth_session_id,
-        oauth_state=oauth_state,
-        upload_target_name=upload_target_name,
-        node_result=node_result,
-        runtime_context_expected=runtime_context_expected,
-        runtime_context_strict=runtime_context_strict,
-        transport=transport,
-        sentinel_provider=sentinel_provider,
-        email_otp_provider=email_otp_provider,
-        phone_otp_provider=phone_otp_provider,
-    )
+        del request_context
+        _register_sms_transport(expected_task_id, transport)
+    transport_token = _ACTIVE_SMS_TRANSPORT.set(transport)
+    try:
+        with _PROTOCOL_GATE.acquire(proxy):
+            try:
+                result = _ORIGINAL_RUN_CODEX_AFTER_REGISTRATION(
+                    oauth_url=oauth_url,
+                    code_verifier=code_verifier,
+                    account_email=account_email,
+                    password=password,
+                    phase1_register=phase1_register,
+                    phase1_response=phase1_response,
+                    phase1_continue_url=phase1_continue_url,
+                    sms_provider=sms_provider,
+                    config=runtime_config,
+                    proxy=proxy,
+                    email_proxy=email_proxy,
+                    upload_proxy=upload_proxy,
+                    log_fn=log_fn,
+                    mode=mode,
+                    local_oauth_client_id=local_oauth_client_id,
+                    local_oauth_redirect_uri=local_oauth_redirect_uri,
+                    oauth_provider=oauth_provider,
+                    oauth_session_id=oauth_session_id,
+                    oauth_state=oauth_state,
+                    upload_target_name=upload_target_name,
+                    node_result=node_result,
+                    runtime_context_expected=runtime_context_expected,
+                    runtime_context_strict=runtime_context_strict,
+                    transport=transport,
+                    sentinel_provider=sentinel_provider,
+                    email_otp_provider=email_otp_provider,
+                    phone_otp_provider=phone_otp_provider,
+                )
+            except Exception as exc:
+                _PROTOCOL_GATE.report(proxy, exc)
+                raise
+            else:
+                failure_value = result
+                if isinstance(result, dict):
+                    failure_value = " ".join(
+                        str(result.get(key) or "")
+                        for key in ("error", "technical_error", "phase2_error")
+                    )
+                _PROTOCOL_GATE.report(
+                    proxy,
+                    failure_value,
+                    success=bool(isinstance(result, dict) and result.get("ok")),
+                )
+    finally:
+        _ACTIVE_SMS_TRANSPORT.reset(transport_token)
+        if transport is not None:
+            _unregister_sms_transport(
+                _transport_task_id(transport),
+                transport,
+            )
     if isinstance(result, dict) and _is_auth_session_reset_failure(result):
         result = dict(result)
         result["resume_stage"] = "fresh_oauth"
@@ -1764,7 +1917,17 @@ def _run_codex_after_registration(
         if task_id:
             context = _AUTH_SESSIONS.get(task_id, email=account_email)
             result["auth_session_invalid_count"] = int(context.invalidations)
-    elif isinstance(result, dict) and result.get("ok"):
+            result["sms_platform_attempts"] = _SMS_PROVIDER_REGISTRY.snapshot_task_attempt_counts(
+                task_id
+            )
+    elif isinstance(result, dict):
+        task_id = str(runtime_config.get("sms_task_id") or runtime_config.get("run_id") or "")
+        if task_id:
+            result = dict(result)
+            result["sms_platform_attempts"] = _SMS_PROVIDER_REGISTRY.snapshot_task_attempt_counts(
+                task_id
+            )
+    if isinstance(result, dict) and result.get("ok"):
         _clear_known_node_failure(str(runtime_config.get("sms_task_id") or ""))
     return result
 
@@ -2124,6 +2287,8 @@ _module.GuiLog.add = _retained_gui_log_add
 _module.GuiLog.snapshot = _retained_gui_log_snapshot
 _runtime.create_provider = _SMS_WEB.create_provider
 _sms_providers.create_provider = _SMS_WEB.create_provider
+_sms_providers.BaseSmsProvider._try_get = staticmethod(_isolated_sms_try_get)
+_sms_providers.FiveSimProvider._rest_get = _isolated_fivesim_rest_get
 _codex_oauth_chain._emit = _patched_chain_emit
 _codex_oauth_chain.SmsProviderAdapter.get_number = _sms_adapter_get_number
 _codex_oauth_chain.SmsProviderAdapter.mark_ready = _sms_adapter_mark_ready
@@ -2308,7 +2473,11 @@ def _resolve_sms_keys(data, existing=None, _skip_pools=False):
         return _sms_runtime_ext.flatten_sms_provider_keys(
             _resolve_sms_provider_pools(value, existing)
         )
-    previous = _sms_keys_from_config(existing or {})
+    previous_pools = _sms_provider_pools_from_config(existing or {})
+    previous = _sms_runtime_ext.legacy_sms_provider_keys(
+        previous_pools,
+        (existing or {}).get("sms_provider") or "smsbower",
+    )
     if "sms_api_keys" in value:
         raw = value.get("sms_api_keys")
         rows = raw if isinstance(raw, (list, tuple)) else [raw]
@@ -2334,7 +2503,10 @@ def _masked_local_config(data):
     sub2api = dict(value.get("sub2api") or {})
     email_notification = dict(value.get("email_notification") or {})
     sms_pools = _sms_provider_pools_from_config(value)
-    sms_keys = _sms_keys_from_config(value)
+    sms_keys = _sms_runtime_ext.legacy_sms_provider_keys(
+        sms_pools,
+        value.get("sms_provider") or "smsbower",
+    )
     value["sms_provider_pools"] = [
         {
             **pool,
@@ -2677,7 +2849,10 @@ def _local_config_from_runtime(data, existing=None):
     raw_data = dict(data or {}) if isinstance(data, dict) else {}
     existing = dict(existing or {})
     sms_pools = _resolve_sms_provider_pools(raw_data, existing)
-    sms_keys = _sms_runtime_ext.flatten_sms_provider_keys(sms_pools)
+    sms_keys = _sms_runtime_ext.legacy_sms_provider_keys(
+        sms_pools,
+        raw_data.get("sms_provider") or "smsbower",
+    )
     raw_data["sms_provider_pools"] = sms_pools
     raw_data["sms_api_keys"] = sms_keys
     raw_data["sms_api_key"] = sms_keys[0] if sms_keys else ""
@@ -2760,7 +2935,10 @@ def _merge_local_config(data):
     patched = dict(data or {})
     local = _read_local_config()
     sms_pools = _resolve_sms_provider_pools(patched, local)
-    sms_keys = _sms_runtime_ext.flatten_sms_provider_keys(sms_pools)
+    sms_keys = _sms_runtime_ext.legacy_sms_provider_keys(
+        sms_pools,
+        patched.get("sms_provider") or "smsbower",
+    )
     patched["sms_provider_pools"] = sms_pools
     patched["sms_provider"] = str(sms_pools[0].get("provider") or "smsbower") if sms_pools else "smsbower"
     patched["sms_api_keys"] = sms_keys
@@ -2815,8 +2993,8 @@ def _apply_server_defaults(data):
         "route_semi_max_inflight": 2,
         "route_hot_max_inflight": 2,
         "route_lease_seconds": route_lease_seconds,
-        "timeout_cooldown": 0,
-        "phone_rejected_cooldown": 600,
+        "timeout_cooldown": 180,
+        "phone_rejected_cooldown": 180,
         "register_rejected_cooldown": 60,
         "register_rejected_min_cooldown": 180,
     }

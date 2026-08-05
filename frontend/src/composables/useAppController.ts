@@ -62,11 +62,48 @@ function normalizeSmsProviderPools(value: any, legacy: any = {}): SmsProviderPoo
   }]
 }
 
-function syncLegacySmsFields(config: Record<string, any>) {
-  const pools = normalizeSmsProviderPools(config.sms_provider_pools, config)
-  const keys = [...new Set(pools.flatMap(pool => pool.api_keys)
+function legacySmsKeys(pools: SmsProviderPool[]) {
+  const primary = pools.find(pool => pool.provider === 'smsbower')
+    || pools.find(pool => pool.enabled && pool.api_keys.some(Boolean))
+    || pools[0]
+  return [...new Set((primary?.api_keys || [])
     .map(key => String(key || '').trim())
     .filter(Boolean))]
+}
+
+function mergeRevealedSmsPools(current: any, revealed: any): SmsProviderPool[] {
+  const secretPools = normalizeSmsProviderPools(revealed)
+  const secretByProvider = new Map(secretPools.map(pool => [pool.provider, pool]))
+  const rows = Array.isArray(current) ? current : []
+  if (!rows.length) return secretPools
+  return rows.map((raw: any) => {
+    const provider = String(raw?.provider || '').trim().toLowerCase()
+    const secret = secretByProvider.get(provider)
+    const rawKeys = Array.isArray(raw?.api_keys) ? raw.api_keys : [raw?.api_key || '']
+    const keys = rawKeys.map((key: unknown, index: number) => (
+      String(key || '').trim() === '********'
+        ? String(secret?.api_keys[index] || '')
+        : String(key || '')
+    ))
+    return {
+      provider,
+      enabled: raw?.enabled !== false,
+      api_keys: keys,
+      service: String(raw?.service || secret?.service || smsProviderDefaults[provider] || 'dr'),
+    }
+  }).filter(pool => pool.provider)
+}
+
+function smsProviderKeyCounts(value: any) {
+  return Object.fromEntries(normalizeSmsProviderPools(value).map(pool => [
+    pool.provider,
+    pool.api_keys.filter(key => String(key || '').trim()).length,
+  ]))
+}
+
+function syncLegacySmsFields(config: Record<string, any>) {
+  const pools = normalizeSmsProviderPools(config.sms_provider_pools, config)
+  const keys = legacySmsKeys(pools)
   config.sms_provider_pools = pools
   config.sms_provider = pools.find(pool => pool.enabled && pool.api_keys.some(Boolean))?.provider
     || pools[0]?.provider
@@ -187,6 +224,7 @@ export function createAppController() {
   let pollTimer = 0
   let pollingStopped = true
   let stateSignature = ''
+  let secretLoadPromise: Promise<void> | null = null
 
   const runtime = computed(() => state.value.runtime || {})
   const running = computed(() => Boolean(runtime.value.running))
@@ -316,30 +354,48 @@ export function createAppController() {
 
   async function ensureSecretsLoaded() {
     if (secretsLoaded.value) return
-    await initialize()
-    const wasDirty = dirty.value
-    await Promise.all([
-      form.sms_provider_pools?.some((pool: SmsProviderPool) => pool.api_keys.some(key => key === '********'))
-        ? getSecret('sms_provider_pools').then(result => {
-            form.sms_provider_pools = normalizeSmsProviderPools(result.value, form)
-            syncLegacySmsFields(form)
-          }).catch(() => undefined)
-        : Promise.resolve(),
-      loadSecret(() => form.sub2api?.password, value => { form.sub2api.password = String(value || '') }, 'sub2_password'),
-      loadSecret(() => form.email_notification?.password, value => {
-        form.email_notification.password = String(value || '')
-      }, 'notification_email_password'),
-      loadSecret(() => form.proxy, value => { form.proxy = String(value || '') }, 'proxy'),
-    ])
-    secretsLoaded.value = true
-    if (!wasDirty) markClean()
+    if (secretLoadPromise) return secretLoadPromise
+    secretLoadPromise = (async () => {
+      await initialize()
+      const wasDirty = dirty.value
+      await Promise.all([
+        form.sms_provider_pools?.some((pool: SmsProviderPool) => pool.api_keys.some(key => key === '********'))
+          ? getSecret('sms_provider_pools').then(result => {
+              form.sms_provider_pools = mergeRevealedSmsPools(form.sms_provider_pools, result.value)
+              syncLegacySmsFields(form)
+            }).catch(() => undefined)
+          : Promise.resolve(),
+        loadSecret(() => form.sub2api?.password, value => { form.sub2api.password = String(value || '') }, 'sub2_password'),
+        loadSecret(() => form.email_notification?.password, value => {
+          form.email_notification.password = String(value || '')
+        }, 'notification_email_password'),
+        loadSecret(() => form.proxy, value => { form.proxy = String(value || '') }, 'proxy'),
+      ])
+      secretsLoaded.value = true
+      if (!wasDirty && !dirty.value) markClean()
+    })()
+    try {
+      await secretLoadPromise
+    } finally {
+      secretLoadPromise = null
+    }
   }
 
   async function save() {
     actions.saving = true
     try {
-      const result = await saveConfig(requestPayload())
+      await ensureSecretsLoaded()
+      const payload = requestPayload()
+      const expectedCounts = smsProviderKeyCounts(payload.sms_provider_pools)
+      const result = await saveConfig(payload)
       syncState(result)
+      const savedCounts = smsProviderKeyCounts(result.settings?.sms_provider_pools)
+      for (const [provider, expected] of Object.entries(expectedCounts)) {
+        const actual = Number(savedCounts[provider] || 0)
+        if (actual !== Number(expected)) {
+          throw new Error(`${provider} API Key 保存校验失败：期望 ${expected} 个，实际 ${actual} 个`)
+        }
+      }
       markClean()
       return result
     } catch (error) {
@@ -353,6 +409,7 @@ export function createAppController() {
   async function preflight() {
     actions.preflighting = true
     try {
+      await ensureSecretsLoaded()
       const result = await preflightRun(requestPayload())
       syncState(result)
       markClean()
@@ -366,6 +423,7 @@ export function createAppController() {
   }
 
   async function start(allowDirty = false) {
+    await ensureSecretsLoaded()
     if (dirty.value && !allowDirty) throw new Error('运行配置有未保存修改')
     const uploadToPixel = await pixelUploadChoice()
     if (uploadToPixel == null) return null

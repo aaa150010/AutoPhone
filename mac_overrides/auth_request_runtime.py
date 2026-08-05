@@ -13,7 +13,7 @@ import re
 import time
 import uuid
 from typing import Any, Mapping
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 try:
     from .auth_session_runtime import AuthSessionRegistry, _short_fingerprint, _safe_path
@@ -24,11 +24,15 @@ except ImportError:  # Loaded as a top-level runtime override.
 # OpenAI keeps the same authenticated transport while moving from the number
 # entry page to the SMS code page. A timed-out SMS order may therefore leave
 # the transport on an OTP page when the next number is submitted.
-PHONE_PAGE_TYPES = frozenset(
+PHONE_ENTRY_PAGE_TYPES = frozenset(
     {
         "add_phone",
         "contact_verification",
         "phone_number_collection",
+    }
+)
+PHONE_OTP_PAGE_TYPES = frozenset(
+    {
         "phone_otp",
         "phone_otp_verification",
         "phone_verification",
@@ -37,6 +41,7 @@ PHONE_PAGE_TYPES = frozenset(
         "sms_otp_verification",
     }
 )
+PHONE_PAGE_TYPES = PHONE_ENTRY_PAGE_TYPES | PHONE_OTP_PAGE_TYPES
 
 
 def normalize_page_type(value: Any) -> str:
@@ -48,6 +53,14 @@ def normalize_page_type(value: Any) -> str:
 
 def is_phone_page_type(value: Any) -> bool:
     return normalize_page_type(value) in PHONE_PAGE_TYPES
+
+
+def is_phone_entry_page_type(value: Any) -> bool:
+    return normalize_page_type(value) in PHONE_ENTRY_PAGE_TYPES
+
+
+def is_phone_otp_page_type(value: Any) -> bool:
+    return normalize_page_type(value) in PHONE_OTP_PAGE_TYPES
 
 
 class AuthRequestContextError(RuntimeError):
@@ -66,6 +79,7 @@ class TransportRequestContext:
     generation: int = 0
     page_type: str = ""
     continue_path: str = ""
+    phone_entry_url: str = field(default="", repr=False)
     request_count: int = 0
     last_request_id: str = ""
     last_sentinel: dict[str, bool] = field(default_factory=dict)
@@ -93,6 +107,7 @@ class TransportRequestContext:
         self.invocation_id = str(uuid.uuid4())
         self.page_type = ""
         self.continue_path = ""
+        self.phone_entry_url = ""
         self.last_sentinel = {}
         return self.generation
 
@@ -148,6 +163,20 @@ def _csrf_present(transport: Any) -> bool:
     except Exception:
         return False
     return any("csrf" in name or "xsrf" in name for name in names)
+
+
+def _private_phone_entry_url(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "https://auth.openai.com/add-phone"
+    try:
+        absolute = urljoin("https://auth.openai.com/add-phone", text)
+        parsed = urlsplit(absolute)
+    except (TypeError, ValueError):
+        return ""
+    if parsed.scheme != "https" or parsed.hostname != "auth.openai.com":
+        return ""
+    return absolute
 
 
 def ensure_transport_context(
@@ -246,6 +275,10 @@ def mark_phone_ready(
     context = ensure_transport_context(transport, registry)
     page_type = _page_type(response) or "add_phone"
     context.observe(response, page_type=page_type, continue_url=continue_url)
+    if is_phone_entry_page_type(page_type):
+        entry_url = _private_phone_entry_url(continue_url)
+        if entry_url:
+            context.phone_entry_url = entry_url
     setattr(transport, "_gptphone_page_type", page_type)
     if registry is not None and context.task_id:
         registry.observe(
@@ -257,19 +290,119 @@ def mark_phone_ready(
         )
 
 
-def validate_phone_context(transport: Any, registry: AuthSessionRegistry | None) -> TransportRequestContext:
+def mark_phone_otp_sent(
+    transport: Any,
+    registry: AuthSessionRegistry | None,
+    response: Any = None,
+) -> None:
+    """Keep the local page state accurate when the send response omits page data."""
+
     context = ensure_transport_context(transport, registry)
+    page_type = _page_type(response) or "phone_otp_verification"
+    if normalize_page_type(page_type) not in PHONE_OTP_PAGE_TYPES:
+        page_type = "phone_otp_verification"
+    context.observe(response, page_type=page_type)
+    setattr(transport, "_gptphone_page_type", page_type)
+
+
+def validate_phone_context(
+    transport: Any,
+    registry: AuthSessionRegistry | None,
+    *,
+    expected_task_id: Any = "",
+) -> TransportRequestContext:
+    context = ensure_transport_context(transport, registry)
+    wanted_task = str(expected_task_id or "").strip()
+    if wanted_task and context.task_id != wanted_task:
+        raise AuthRequestContextError(
+            "auth_context_task_mismatch",
+            "当前登录会话不属于正在领取手机号的任务",
+        )
+    if registry is not None and context.task_id:
+        item = registry.get(context.task_id, email=_account_email(transport))
+        expected_fingerprint = _short_fingerprint(context.transport_fingerprint)
+        if item.generation != context.generation or (
+            item.transport_instance_id
+            and item.transport_instance_id != expected_fingerprint
+        ):
+            raise AuthRequestContextError(
+                "auth_context_generation_mismatch",
+                "当前登录会话代次与任务认证上下文不一致",
+            )
     page_type = normalize_page_type(
         getattr(transport, "_gptphone_page_type", "") or context.page_type
     )
-    if page_type not in PHONE_PAGE_TYPES:
+    if page_type not in PHONE_ENTRY_PAGE_TYPES:
         raise AuthRequestContextError(
             "auth_context_page_mismatch",
-            f"当前登录页面不是手机号验证页面 (page_type={page_type or 'unknown'})",
+            f"当前登录页面不是手机号录入页面 (page_type={page_type or 'unknown'})",
         )
     if not _cookies_present(transport):
         raise AuthRequestContextError("auth_context_cookies_missing", "当前登录会话缺少有效 cookies")
     return context
+
+
+def recover_phone_entry_context(
+    transport: Any,
+    registry: AuthSessionRegistry | None,
+    *,
+    expected_task_id: Any = "",
+    visit_fn: Any = None,
+) -> TransportRequestContext:
+    """Restore an OTP-page transport to its task-local number entry page."""
+
+    context = ensure_transport_context(transport, registry)
+    current_page = normalize_page_type(
+        getattr(transport, "_gptphone_page_type", "") or context.page_type
+    )
+    if current_page in PHONE_ENTRY_PAGE_TYPES:
+        return validate_phone_context(
+            transport,
+            registry,
+            expected_task_id=expected_task_id,
+        )
+    if current_page not in PHONE_OTP_PAGE_TYPES:
+        return validate_phone_context(
+            transport,
+            registry,
+            expected_task_id=expected_task_id,
+        )
+    if not context.phone_entry_url:
+        raise AuthRequestContextError(
+            "auth_context_page_mismatch",
+            "短信验证码页面缺少可恢复的手机号录入入口",
+        )
+    visitor = visit_fn or getattr(transport, "visit_continue", None)
+    if not callable(visitor):
+        raise AuthRequestContextError(
+            "auth_context_page_mismatch",
+            "当前协议 Transport 不支持恢复手机号录入页面",
+        )
+    try:
+        response = visitor(
+            context.phone_entry_url,
+            referer="https://auth.openai.com/phone-verification",
+        )
+    except TypeError:
+        response = visitor(context.phone_entry_url)
+    except Exception as exc:
+        raise AuthRequestContextError(
+            "auth_context_page_mismatch",
+            f"手机号录入页面恢复请求失败 ({type(exc).__name__})",
+        ) from exc
+    restored_page = normalize_page_type(_page_type(response))
+    context.observe(response, page_type=restored_page)
+    setattr(transport, "_gptphone_page_type", restored_page)
+    if restored_page not in PHONE_ENTRY_PAGE_TYPES:
+        raise AuthRequestContextError(
+            "auth_context_page_mismatch",
+            f"手机号录入页面恢复失败 (page_type={restored_page or 'unknown'})",
+        )
+    return validate_phone_context(
+        transport,
+        registry,
+        expected_task_id=expected_task_id,
+    )
 
 
 def observe_auth_response(
@@ -381,14 +514,20 @@ def safe_context_snapshot(transport: Any) -> dict[str, Any]:
 
 __all__ = [
     "AuthRequestContextError",
+    "PHONE_ENTRY_PAGE_TYPES",
+    "PHONE_OTP_PAGE_TYPES",
     "PHONE_PAGE_TYPES",
     "TransportRequestContext",
     "begin_request",
     "ensure_transport_context",
     "finish_request",
     "invalidate_auth_session",
+    "is_phone_entry_page_type",
+    "is_phone_otp_page_type",
     "mark_phone_ready",
+    "mark_phone_otp_sent",
     "observe_auth_response",
+    "recover_phone_entry_context",
     "refresh_sentinel",
     "request_headers",
     "safe_context_snapshot",

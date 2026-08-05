@@ -7,6 +7,8 @@ from mac_overrides.auth_request_runtime import (
     AuthRequestContextError,
     begin_request,
     finish_request,
+    mark_phone_ready,
+    recover_phone_entry_context,
     validate_phone_context,
 )
 from mac_overrides.auth_session_runtime import AuthSessionRegistry, is_session_invalid
@@ -18,18 +20,11 @@ class AuthSessionRuntimeTests(unittest.TestCase):
         self.assertTrue(is_session_invalid({"code": "oauth_session_invalid", "status": 401}))
         self.assertFalse(is_session_invalid({"code": "phone_send_rejected"}))
 
-    def test_phone_context_accepts_number_entry_and_otp_pages(self):
+    def test_phone_context_accepts_only_number_entry_pages(self):
         for page_type in (
             "add_phone",
             "contact_verification",
             "phone_number_collection",
-            "phone_otp",
-            "phone_otp_verification",
-            "phone-verification",
-            "PHONE-OTP-VERIFICATION",
-            "phone_number_verification",
-            "sms_otp",
-            "sms_otp_verification",
         ):
             with self.subTest(page_type=page_type):
                 transport = SimpleNamespace(
@@ -47,11 +42,55 @@ class AuthSessionRuntimeTests(unittest.TestCase):
             _gptphone_page_type="consent",
         )
 
-        with self.assertRaisesRegex(AuthRequestContextError, "不是手机号验证页面") as raised:
+        with self.assertRaisesRegex(AuthRequestContextError, "不是手机号录入页面") as raised:
             validate_phone_context(transport, AuthSessionRegistry())
 
         self.assertEqual(raised.exception.code, "auth_context_page_mismatch")
         self.assertIn("page_type=consent", str(raised.exception))
+
+    def test_phone_otp_page_is_restored_with_private_task_entry_url(self):
+        visits = []
+        registry = AuthSessionRegistry()
+        transport = SimpleNamespace(
+            config={"sms_task_id": "task-recover"},
+            session=SimpleNamespace(cookies={"session": "present"}),
+            _gptphone_page_type="add_phone",
+        )
+        mark_phone_ready(
+            transport,
+            registry,
+            {"_status": 200, "page": {"type": "add_phone"}},
+            continue_url="https://auth.openai.com/add-phone?state=private-oauth-state",
+        )
+        transport._gptphone_page_type = "phone_otp_verification"
+        transport._gptphone_request_context.page_type = "phone_otp_verification"
+
+        context = recover_phone_entry_context(
+            transport,
+            registry,
+            expected_task_id="task-recover",
+            visit_fn=lambda url, **_kwargs: visits.append(url) or {
+                "_status": 200,
+                "page": {"type": "add_phone"},
+            },
+        )
+
+        self.assertEqual(context.page_type, "add_phone")
+        self.assertEqual(visits, ["https://auth.openai.com/add-phone?state=private-oauth-state"])
+        self.assertNotIn("private-oauth-state", repr(registry.public_snapshot("task-recover")))
+
+    def test_phone_otp_recovery_without_saved_entry_fails(self):
+        transport = SimpleNamespace(
+            config={"sms_task_id": "task-no-entry"},
+            session=SimpleNamespace(cookies={"session": "present"}),
+            _gptphone_page_type="phone_otp",
+        )
+        with self.assertRaisesRegex(AuthRequestContextError, "缺少可恢复"):
+            recover_phone_entry_context(
+                transport,
+                AuthSessionRegistry(),
+                expected_task_id="task-no-entry",
+            )
 
     def test_invalidation_keeps_count_across_fresh_generation_and_cancels_sms(self):
         cancellations = []

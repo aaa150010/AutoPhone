@@ -229,6 +229,80 @@ class SmsWebTests(unittest.TestCase):
         self.assertNotIn("inflight", selector.stats[key])
         self.assertEqual(selector.stats[key]["fail"], 0)
 
+    def test_phone_context_preflight_runs_before_paid_number_allocation(self):
+        calls = []
+        self.integration.phone_context_preflight = (
+            lambda _adapter, task_id: calls.append(("preflight", task_id))
+        )
+        self.integration.original_adapter_get_number = (
+            lambda *_args, **_kwargs: calls.append(("allocate", "task-phone"))
+            or SimpleNamespace(activation_id="order-1", meta={})
+        )
+        self.integration.cost_ledger = FakeCostLedger()
+        self.integration.task_progress = FakeTaskProgress()
+        adapter = SimpleNamespace(
+            config={"sms_task_id": "task-phone"},
+            provider=SimpleNamespace(current_order_meta={}),
+            selector=None,
+        )
+
+        self.integration.adapter_get_number(adapter)
+
+        self.assertEqual(
+            calls,
+            [("preflight", "task-phone"), ("allocate", "task-phone")],
+        )
+
+    def test_phone_context_recovery_failure_never_allocates_number(self):
+        allocations = []
+
+        def fail_preflight(_adapter, _task_id):
+            raise RuntimeError("auth_context_page_mismatch")
+
+        self.integration.phone_context_preflight = fail_preflight
+        self.integration.original_adapter_get_number = (
+            lambda *_args, **_kwargs: allocations.append(True)
+        )
+        adapter = SimpleNamespace(
+            config={"sms_task_id": "task-phone"},
+            provider=SimpleNamespace(),
+            selector=None,
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "auth_context_page_mismatch"):
+            self.integration.adapter_get_number(adapter)
+
+        self.assertEqual(allocations, [])
+
+    def test_provider_poll_failure_releases_route_without_delivery_penalty(self):
+        candidate = SimpleNamespace(country="37", provider_id="3237")
+        key = ("37", "3237")
+        selector = SimpleNamespace(
+            lock=threading.RLock(),
+            stats={key: {"inflight": 1}},
+            country_stats={},
+            _route_inflight=lambda row, _now: int(row.get("inflight") or 0),
+        )
+        selector._update_shared_route_and_country = lambda route, route_update, country_update: (
+            route_update(dict(selector.stats.get(route) or {})),
+            country_update({}),
+        )
+        scored = []
+        self.integration.original_record_result = (
+            lambda *_args, **_kwargs: scored.append(True)
+        )
+
+        self.integration.smart_record_result(
+            selector,
+            candidate,
+            False,
+            "sms_provider_poll_failed: TLS connection reset",
+        )
+
+        self.assertEqual(scored, [])
+        self.assertNotIn("inflight", selector.stats[key])
+        self.assertNotIn("cooldown_until", selector.stats[key])
+
     def test_route_results_cool_unavailable_route_and_remember_success(self):
         logs = FakeLogs()
         candidate = SimpleNamespace(country="37", provider_id="3237")
@@ -270,7 +344,7 @@ class SmsWebTests(unittest.TestCase):
         failed = selector.stats[("37", "3237")]
         self.assertEqual(failed["no_numbers"], 1)
         self.assertGreater(failed["cooldown_until"], 0)
-        self.assertIn("当前无可用号码冷却 300 秒", logs.rows[-1][0])
+        self.assertIn("当前无可用号码冷却 60 秒", logs.rows[-1][0])
 
         self.integration.smart_record_result(selector, candidate, True)
 
@@ -332,7 +406,7 @@ class SmsWebTests(unittest.TestCase):
         self.integration.adapter_cancel(adapter, lease, reason="phone_otp_empty")
         self.assertEqual(records, [(False, "phone_otp_empty")])
         self.assertGreater(selector.stats[("37", "3237")]["cooldown_until"], 0)
-        self.assertIn("短信验证码未送达冷却 600 秒", logs.rows[-1][0])
+        self.assertIn("短信验证码未送达冷却 180 秒", logs.rows[-1][0])
 
     def test_received_code_updates_route_once_and_clears_failure_streak(self):
         candidate = SimpleNamespace(country="37", provider_id="3237")
@@ -507,7 +581,7 @@ class SmsWebTests(unittest.TestCase):
 
         self.integration.adapter_cancel(adapter, lease, reason="phone_otp_empty")
 
-        self.assertEqual(ledger.finished[0][2], "cancel_confirmed")
+        self.assertEqual(ledger.finished[0][2], "cancelled")
         self.assertEqual(ledger.finished[0][4]["provider_status"], "STATUS_CANCEL")
 
     def test_cancel_error_is_not_recorded_as_cancelled(self):
@@ -532,7 +606,7 @@ class SmsWebTests(unittest.TestCase):
         result = self.integration.adapter_cancel(adapter, lease, reason="phone_otp_empty")
 
         self.assertIsNone(result)
-        self.assertEqual(ledger.finished[0][2], "cancel_error")
+        self.assertEqual(ledger.finished[0][2], "cancel_failed")
         self.assertIn("herosms_cancel_rejected:BAD_STATUS", ledger.finished[0][3])
         self.assertNotEqual(ledger.finished[0][2], "cancelled")
 

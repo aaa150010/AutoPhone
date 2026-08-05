@@ -263,6 +263,18 @@ class ErrorObservabilityTests(unittest.TestCase):
         self.assertIn("Node/Sentinel 请求超时", failure["public_message"])
         self.assertNotIn("初始化 Node/Sentinel失败", failure["public_message"])
 
+    def test_sms_provider_network_failures_never_become_oauth_failures(self):
+        for error, expected_code in (
+            ("sms_provider_ready_failed: ProxyError", "sms_provider_ready_failed"),
+            ("sms_provider_poll_failed: TLS connection reset", "sms_provider_poll_failed"),
+            ("sms_activation_replaced: stale poll", "sms_activation_replaced"),
+            ("sms_timeout: no code", "sms_timeout"),
+        ):
+            with self.subTest(error=error):
+                failure = classify_failure(error=error)
+                self.assertEqual(failure["node_code"], "sms_waiting")
+                self.assertEqual(failure["error_code"], expected_code)
+
 
 if __name__ == "__main__":
     unittest.main()

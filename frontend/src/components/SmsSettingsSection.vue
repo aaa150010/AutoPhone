@@ -56,7 +56,12 @@ function updateProvider(provider: string, patch: Partial<SmsProviderPool>) {
   const pools = providerPools.value.map(pool => (
     pool.provider === provider ? { ...pool, ...patch, label: undefined } : { ...pool, label: undefined }
   )).map(({ label: _label, ...pool }) => pool)
-  const keys = pools.flatMap(pool => pool.api_keys.map((key: string) => String(key || '').trim()).filter(Boolean))
+  const primaryPool = pools.find(pool => pool.provider === 'smsbower')
+    || pools.find(pool => pool.enabled && pool.api_keys.some(Boolean))
+    || pools[0]
+  const keys = (primaryPool?.api_keys || [])
+    .map((key: string) => String(key || '').trim())
+    .filter(Boolean)
   const enabledPlatforms = pools.filter(pool => (
     pool.enabled && pool.api_keys.some((key: string) => String(key || '').trim())
   )).length
@@ -64,7 +69,7 @@ function updateProvider(provider: string, patch: Partial<SmsProviderPool>) {
   emit('update:modelValue', {
     ...props.modelValue,
     sms_provider_pools: pools,
-    sms_provider: pools.find(pool => pool.enabled && pool.api_keys.some(Boolean))?.provider || 'smsbower',
+    sms_provider: primaryPool?.provider || 'smsbower',
     sms_api_keys: keys.length ? keys : [''],
     phone_max_attempts: attemptsPerProvider * Math.max(1, enabledPlatforms),
   })

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import tempfile
 import threading
+import time
 from pathlib import Path
 import unittest
 import urllib.parse
@@ -14,12 +15,15 @@ from mac_overrides.sms_runtime import (
     PooledSmsProvider,
     PooledSmsBowerProvider,
     RuntimeAlertBuffer,
+    ProxyProtocolGate,
     SingleFlightTtlCache,
     SmsCostLedger,
+    SmsCleanupQueue,
     SmsKeyPool,
     SmsProviderRegistry,
     SmsRoutePolicy,
     confirm_herosms_cancellation,
+    isolated_sms_get,
     is_transient_openai_error,
     migrate_performance_config,
     normalize_sms_keys,
@@ -339,10 +343,15 @@ class SmsRuntimeTests(unittest.TestCase):
         first = PooledSmsProvider(registry)
         first.get_price_candidates()
         first.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+        first.set_ready()
         self.assertEqual(first.wait_code(timeout=1, interval=0), "654321")
         self.assertEqual(first.current_order_meta["platform"], "smsbower")
         self.assertEqual(
             len([call for call in factory.calls if call[0] == "wait"]),
+            2,
+        )
+        self.assertEqual(
+            len([call for call in factory.calls if call[0] == "ready" and call[1] == "smsbower"]),
             2,
         )
         first.complete()
@@ -598,6 +607,48 @@ class SmsRuntimeTests(unittest.TestCase):
         )
         self.assertFalse(any(call[1] == "5sim" for call in activation_calls))
         self.assertEqual([row["in_flight"] for row in registry.public_statuses()], [0, 0, 0])
+
+    def test_candidate_starting_platform_rotates_when_other_inventory_is_empty(self):
+        factory = FakeMultiPlatformFactory({
+            ("smsbower", "bower-a"): {"balance": 1.0},
+            ("herosms", "hero-a"): {"balance": 1.0},
+        })
+        registry = SmsProviderRegistry(factory)
+        registry.configure({
+            "sms_provider_pools": [
+                {"provider": "smsbower", "enabled": True, "api_keys": ["bower-a"]},
+                {"provider": "herosms", "enabled": True, "api_keys": ["hero-a"]},
+            ]
+        })
+        registry.candidates = [
+            {
+                "platform": "smsbower",
+                "country": "151",
+                "provider_id": "any",
+                "price": 0.04,
+                "count": 10,
+            }
+        ]
+
+        orders = [
+            [row["provider"] for row in registry._candidate_specs(
+                country="151",
+                provider_ids="any",
+                price=0.04,
+                platform="smsbower",
+            )]
+            for _attempt in range(4)
+        ]
+
+        self.assertEqual(
+            orders,
+            [
+                ["smsbower", "herosms"],
+                ["herosms", "smsbower"],
+                ["smsbower", "herosms"],
+                ["herosms", "smsbower"],
+            ],
+        )
 
     def test_task_attempt_budget_survives_provider_recreation(self):
         factory = FakeMultiPlatformFactory({
@@ -1261,7 +1312,7 @@ class SmsRuntimeTests(unittest.TestCase):
                 kind="timeout",
                 stat={"success": 0, "fail": 1, "timeout": 1},
             ),
-            600,
+            180,
         )
         policy.cooldown_for(candidate, ok=True, kind="success")
         self.assertEqual(
@@ -1271,12 +1322,12 @@ class SmsRuntimeTests(unittest.TestCase):
                 kind="timeout",
                 stat={"success": 8, "fail": 3, "timeout": 3},
             ),
-            90,
+            180,
         )
         policy.cooldown_for(candidate, ok=True, kind="success")
         self.assertEqual(
             policy.cooldown_for(candidate, ok=False, kind="no_numbers"),
-            300,
+            60,
         )
         policy.cooldown_for(candidate, ok=True, kind="success")
         self.assertEqual(
@@ -1286,10 +1337,10 @@ class SmsRuntimeTests(unittest.TestCase):
                 kind="no_numbers",
                 stat={"fail": 6, "no_numbers": 6, "no_numbers_streak": 3},
             ),
-            900,
+            180,
         )
-        self.assertEqual(policy.cooldown_for(candidate, ok=False, kind="phone_rejected", error="already been used"), 600)
-        self.assertEqual(policy.cooldown_for(candidate, ok=False, kind="fail", error="suspicious similar number"), 1800)
+        self.assertEqual(policy.cooldown_for(candidate, ok=False, kind="phone_rejected", error="already been used"), 180)
+        self.assertEqual(policy.cooldown_for(candidate, ok=False, kind="fail", error="suspicious similar number"), 180)
         self.assertEqual(policy.cooldown_for(candidate, ok=False, kind="transient_server"), 0)
 
     def test_no_number_streak_is_time_bounded_and_success_clears_it(self):
@@ -1305,17 +1356,17 @@ class SmsRuntimeTests(unittest.TestCase):
 
         stat = policy.update_stat_for_outcome(stat, ok=False, kind="no_numbers")
         self.assertEqual(stat["no_numbers_streak"], 1)
-        self.assertEqual(policy.cooldown_for(candidate, ok=False, kind="no_numbers", stat=stat), 300)
+        self.assertEqual(policy.cooldown_for(candidate, ok=False, kind="no_numbers", stat=stat), 60)
 
         clock[0] = 1100.0
         stat = policy.update_stat_for_outcome(stat, ok=False, kind="no_numbers")
         self.assertEqual(stat["no_numbers_streak"], 2)
-        self.assertEqual(policy.cooldown_for(candidate, ok=False, kind="no_numbers", stat=stat), 600)
+        self.assertEqual(policy.cooldown_for(candidate, ok=False, kind="no_numbers", stat=stat), 60)
 
         clock[0] = 3001.0
         stat = policy.update_stat_for_outcome(stat, ok=False, kind="no_numbers")
         self.assertEqual(stat["no_numbers_streak"], 1)
-        self.assertEqual(policy.cooldown_for(candidate, ok=False, kind="no_numbers", stat=stat), 300)
+        self.assertEqual(policy.cooldown_for(candidate, ok=False, kind="no_numbers", stat=stat), 60)
 
         stat = policy.update_stat_for_outcome(stat, ok=True, kind="success")
         self.assertNotIn("no_numbers_streak", stat)
@@ -1562,6 +1613,160 @@ class SmsRuntimeTests(unittest.TestCase):
         self.assertTrue(is_transient_openai_error({"status": 503, "error": "busy"}))
         self.assertTrue(is_transient_openai_error(RuntimeError("service temporarily unavailable")))
         self.assertFalse(is_transient_openai_error({"status": 400, "error": "invalid phone"}))
+
+    def test_provider_capabilities_resend_only_handler_api_platforms(self):
+        for platform, expected_ready_calls in (
+            ("smsbower", 2),
+            ("herosms", 2),
+            ("5sim", 1),
+        ):
+            with self.subTest(platform=platform):
+                factory = FakeMultiPlatformFactory({
+                    (platform, "key-a"): {
+                        "balance": 1.0,
+                        "codes": [None, "654321"],
+                    }
+                })
+                registry = SmsProviderRegistry(factory)
+                registry.configure({
+                    "sms_provider_pools": [
+                        {"provider": platform, "enabled": True, "api_keys": ["key-a"]}
+                    ]
+                })
+                provider = PooledSmsProvider(registry)
+                provider.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+                provider.set_ready()
+
+                self.assertEqual(provider.wait_code(timeout=1), "654321")
+                self.assertEqual(
+                    len([call for call in factory.calls if call[0] == "ready"]),
+                    expected_ready_calls,
+                )
+                self.assertEqual(
+                    len({call[3] for call in factory.calls if call[0] == "wait"}),
+                    1,
+                )
+                provider.complete()
+
+    def test_transient_poll_network_error_retries_same_activation(self):
+        factory = FakeMultiPlatformFactory({
+            ("smsbower", "key-a"): {
+                "balance": 1.0,
+                "codes": [RuntimeError("TLS connection reset"), "123456"],
+            }
+        })
+        registry = SmsProviderRegistry(factory)
+        registry.configure({
+            "sms_provider_pools": [
+                {"provider": "smsbower", "enabled": True, "api_keys": ["key-a"]}
+            ]
+        })
+        provider = PooledSmsProvider(registry)
+        activation, _phone = provider.get_number_from_candidate(
+            "dr", "151", "any", "0.1", 0.04
+        )
+        provider.set_ready()
+
+        self.assertEqual(provider.wait_code(timeout=2), "123456")
+        self.assertEqual(
+            {call[3] for call in factory.calls if call[0] == "wait"},
+            {activation},
+        )
+        self.assertEqual(registry.public_statuses()[0]["in_flight"], 1)
+        provider.complete()
+
+    def test_isolated_sms_get_never_inherits_environment_proxy(self):
+        sessions = []
+
+        class Session:
+            def __init__(self):
+                self.trust_env = True
+                self.calls = []
+                sessions.append(self)
+
+            def get(self, url, **kwargs):
+                self.calls.append((url, kwargs))
+                return type("Response", (), {"text": " ACCESS_BALANCE:1 "})()
+
+        self.assertEqual(
+            isolated_sms_get(
+                "https://sms.example.test",
+                session_factory=Session,
+            ),
+            "ACCESS_BALANCE:1",
+        )
+        self.assertFalse(sessions[0].trust_env)
+        self.assertNotIn("proxy", sessions[0].calls[0][1])
+
+        isolated_sms_get(
+            "https://sms.example.test",
+            proxy="http://127.0.0.1:7897",
+            session_factory=Session,
+        )
+        self.assertFalse(sessions[1].trust_env)
+        self.assertEqual(
+            sessions[1].calls[0][1]["proxy"],
+            "http://127.0.0.1:7897",
+        )
+
+    def test_proxy_protocol_gate_limits_each_proxy_and_adapts(self):
+        gate = ProxyProtocolGate(default_limit=3, restore_successes=2)
+        active = 0
+        maximum = 0
+        lock = threading.Lock()
+
+        def worker():
+            nonlocal active, maximum
+            with gate.acquire("http://proxy-a:7897"):
+                with lock:
+                    active += 1
+                    maximum = max(maximum, active)
+                time.sleep(0.01)
+                with lock:
+                    active -= 1
+
+        threads = [threading.Thread(target=worker) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(maximum, 3)
+
+        gate.report("http://proxy-a:7897", "TLS connection reset")
+        gate.report("http://proxy-a:7897", "HTTP 429")
+        self.assertEqual(gate.snapshot("http://proxy-a:7897")["limit"], 2)
+        self.assertEqual(gate.snapshot("http://proxy-b:7897")["limit"], 3)
+        gate.report("http://proxy-a:7897", success=True)
+        gate.report("http://proxy-a:7897", success=True)
+        self.assertEqual(gate.snapshot("http://proxy-a:7897")["limit"], 3)
+
+    def test_cleanup_queue_resumes_after_recreation(self):
+        clock = [1000.0]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "cleanup.json"
+            queue = SmsCleanupQueue(path, now_fn=lambda: clock[0])
+            first_id = queue.enqueue(
+                platform="smsbower",
+                key_fingerprint="fingerprint-a",
+                activation_id="private-order-a",
+                delay_seconds=0,
+            )
+            queue.enqueue(
+                platform="smsbower",
+                key_fingerprint="fingerprint-a",
+                activation_id="private-order-a",
+                delay_seconds=0,
+            )
+            first = queue.process(lambda _entry: False)
+            self.assertEqual(first["processed"], 1)
+            self.assertEqual(first["remaining"], 1)
+
+            clock[0] += 61
+            resumed = SmsCleanupQueue(path, now_fn=lambda: clock[0])
+            seen = []
+            second = resumed.process(lambda entry: seen.append(entry["id"]) or True)
+            self.assertEqual(seen, [first_id])
+            self.assertEqual(second["remaining"], 0)
 
     def test_sms_errors_never_expose_raw_keys(self):
         key = "secret/key+with-hyphen"

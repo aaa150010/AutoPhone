@@ -60,6 +60,39 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(resolved["proxy"], existing["proxy"])
         self.assertEqual(resolved["email_notification"]["password"], "smtp-secret")
 
+    def test_multi_platform_key_counts_survive_masked_save_and_reload(self):
+        existing = {
+            "sms_provider": "smsbower",
+            "sms_provider_pools": [
+                {
+                    "provider": "smsbower",
+                    "enabled": True,
+                    "api_keys": ["bower-a", "bower-b"],
+                    "service": "dr",
+                },
+                {
+                    "provider": "herosms",
+                    "enabled": True,
+                    "api_keys": ["hero-a"],
+                    "service": "dr",
+                },
+            ],
+        }
+        masked = self.module._masked_local_config(existing)
+
+        resolved = self.module._local_config_from_runtime(masked, existing)
+        reloaded = self.module._local_config_from_runtime(
+            self.module._masked_local_config(resolved),
+            resolved,
+        )
+
+        for config in (resolved, reloaded):
+            pools = {row["provider"]: row["api_keys"] for row in config["sms_provider_pools"]}
+            self.assertEqual(pools["smsbower"], ["bower-a", "bower-b"])
+            self.assertEqual(pools["herosms"], ["hero-a"])
+            self.assertEqual(config["sms_api_keys"], ["bower-a", "bower-b"])
+            self.assertNotIn("hero-a", config["sms_api_keys"])
+
     def test_public_config_masks_all_supported_secrets(self):
         config = {
             "sms_api_keys": ["sms-secret"],
@@ -74,6 +107,101 @@ class WebGuiSecurityTests(unittest.TestCase):
         for secret in ("sms-secret", "proxy-pass", "sub2-secret", "smtp-secret"):
             self.assertNotIn(secret, serialized)
         self.assertEqual(masked["email_notification"]["password"], "********")
+
+    def test_sms_transport_registry_recovers_when_contextvar_is_empty(self):
+        transport = SimpleNamespace(config={"sms_task_id": "task-transport"})
+        self.module._register_sms_transport("task-transport", transport)
+        try:
+            self.assertIs(
+                self.module._transport_for_task("task-transport"),
+                transport,
+            )
+        finally:
+            self.module._unregister_sms_transport("task-transport", transport)
+
+    def test_sms_transport_registry_does_not_cross_task_boundaries(self):
+        transport = SimpleNamespace(config={"sms_task_id": "task-a"})
+        self.module._register_sms_transport("task-a", transport)
+        try:
+            self.assertIsNone(self.module._transport_for_task("task-b"))
+        finally:
+            self.module._unregister_sms_transport("task-a", transport)
+
+    def test_sms_transport_registry_cleanup_is_identity_safe(self):
+        first = SimpleNamespace(config={"sms_task_id": "task-identity"})
+        second = SimpleNamespace(config={"sms_task_id": "task-identity"})
+        self.module._register_sms_transport("task-identity", first)
+        self.module._register_sms_transport("task-identity", second)
+        self.module._unregister_sms_transport("task-identity", first)
+        try:
+            self.assertIs(self.module._transport_for_task("task-identity"), second)
+        finally:
+            self.module._unregister_sms_transport("task-identity", second)
+
+    def test_sms_transport_registry_drops_reused_transport_from_old_task(self):
+        transport = SimpleNamespace(config={"sms_task_id": "task-old"})
+        self.module._register_sms_transport("task-old", transport)
+        transport.config = {"sms_task_id": "task-new"}
+        self.module._register_sms_transport("task-new", transport)
+        try:
+            self.assertIsNone(self.module._transport_for_task("task-old"))
+            self.assertIs(self.module._transport_for_task("task-new"), transport)
+        finally:
+            self.module._unregister_sms_transport("task-new", transport)
+
+    def test_sms_preflight_missing_transport_blocks_paid_allocation(self):
+        module = self.module
+        original_preflight = module._SMS_WEB.phone_context_preflight
+        original_allocate = module._SMS_WEB.original_adapter_get_number
+        calls = []
+        token = module._ACTIVE_SMS_TRANSPORT.set(None)
+        try:
+            module._SMS_WEB.phone_context_preflight = module._preflight_sms_phone_context
+            module._SMS_WEB.original_adapter_get_number = (
+                lambda *_args, **_kwargs: calls.append(True)
+            )
+            adapter = SimpleNamespace(
+                config={"sms_task_id": "task-no-transport"},
+                provider=SimpleNamespace(),
+                selector=None,
+            )
+            with self.assertRaisesRegex(Exception, "auth_context_transport_missing"):
+                module._SMS_WEB.adapter_get_number(adapter)
+        finally:
+            module._SMS_WEB.phone_context_preflight = original_preflight
+            module._SMS_WEB.original_adapter_get_number = original_allocate
+            module._ACTIVE_SMS_TRANSPORT.reset(token)
+        self.assertEqual(calls, [])
+
+    def test_sms_preflight_unknown_page_blocks_paid_allocation(self):
+        module = self.module
+        original_preflight = module._SMS_WEB.phone_context_preflight
+        original_allocate = module._SMS_WEB.original_adapter_get_number
+        calls = []
+        transport = SimpleNamespace(
+            config={"sms_task_id": "task-unknown-page"},
+            _gptphone_page_type="unknown",
+        )
+        module._register_sms_transport("task-unknown-page", transport)
+        token = module._ACTIVE_SMS_TRANSPORT.set(None)
+        try:
+            module._SMS_WEB.phone_context_preflight = module._preflight_sms_phone_context
+            module._SMS_WEB.original_adapter_get_number = (
+                lambda *_args, **_kwargs: calls.append(True)
+            )
+            adapter = SimpleNamespace(
+                config={"sms_task_id": "task-unknown-page"},
+                provider=SimpleNamespace(),
+                selector=None,
+            )
+            with self.assertRaisesRegex(Exception, "auth_context_page_mismatch"):
+                module._SMS_WEB.adapter_get_number(adapter)
+        finally:
+            module._SMS_WEB.phone_context_preflight = original_preflight
+            module._SMS_WEB.original_adapter_get_number = original_allocate
+            module._ACTIVE_SMS_TRANSPORT.reset(token)
+            module._unregister_sms_transport("task-unknown-page", transport)
+        self.assertEqual(calls, [])
 
     def test_task_config_allows_fifteen_attempts_per_enabled_sms_platform(self):
         module = self.module
@@ -458,7 +586,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(sentinel_calls[0][0], "reset")
         self.assertEqual(sentinel_calls[1][0], "token_for")
 
-    def test_real_phone_send_can_replace_timed_out_number_from_phone_otp_page(self):
+    def test_real_phone_send_requires_entry_page_recovery_before_replacement(self):
         calls = []
         sentinel_calls = []
 
@@ -488,8 +616,23 @@ class WebGuiSecurityTests(unittest.TestCase):
         )
         self.module._AUTH_SESSIONS.clear("task-phone-retry")
         try:
+            self.module._auth_request_runtime_ext.mark_phone_ready(
+                transport,
+                self.module._AUTH_SESSIONS,
+                {"_status": 200, "page": {"type": "add_phone"}},
+                continue_url="https://auth.openai.com/add-phone?state=private",
+            )
             first = self.module._real_send_phone_number_otp(transport, "+15550001234", "sms")
             self.assertEqual(transport._gptphone_page_type, "phone_otp_verification")
+            self.module._auth_request_runtime_ext.recover_phone_entry_context(
+                transport,
+                self.module._AUTH_SESSIONS,
+                expected_task_id="task-phone-retry",
+                visit_fn=lambda _url, **_kwargs: {
+                    "_status": 200,
+                    "page": {"type": "add_phone"},
+                },
+            )
             second = self.module._real_send_phone_number_otp(transport, "+15550005678", "sms")
         finally:
             self.module._AUTH_SESSIONS.clear("task-phone-retry")

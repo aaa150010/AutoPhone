@@ -65,6 +65,8 @@ class SmsWebIntegration:
         as_enabled: Callable[[Any, bool], bool],
         safe_error: Callable[[Any], str],
         provider_registry: Any = None,
+        phone_context_preflight: Callable[[Any, str], Any] | None = None,
+        cleanup_queue: Any = None,
     ) -> None:
         self.sms_runtime = sms_runtime
         self.original_create_provider = original_create_provider
@@ -91,6 +93,9 @@ class SmsWebIntegration:
         self.as_enabled = as_enabled
         self.safe_error_fn = safe_error
         self.provider_registry = provider_registry
+        self.phone_context_preflight = phone_context_preflight
+        self.cleanup_queue = cleanup_queue
+        self._sms_proxy = ""
         self._active_lease_lock = RLock()
         self._active_leases: dict[str, tuple[Any, Any]] = {}
         self._account_banned_details: dict[str, str] = {}
@@ -269,6 +274,11 @@ class SmsWebIntegration:
             if active is not None and active[1] is lease:
                 self._active_leases.pop(task_id, None)
 
+    def _ledger_state(self, task_id: str, lease: Any, state: str) -> None:
+        callback = getattr(self.cost_ledger, "mark_state", None)
+        if task_id and callable(callback):
+            callback(task_id, getattr(lease, "activation_id", ""), state)
+
     def _cancel_outcome(
         self,
         adapter: Any,
@@ -285,10 +295,10 @@ class SmsWebIntegration:
             detail = "; ".join(
                 item for item in (safe_reason, f"cancel_error={safe_cancel_error}") if item
             )
-            return "cancel_error", detail, receipt
+            return "cancel_failed", detail, receipt
         if receipt.get("cancel_state") == "confirmed":
-            return "cancel_confirmed", safe_reason, receipt
-        return "cancel_unconfirmed", safe_reason, receipt
+            return "cancelled", safe_reason, receipt
+        return "cancel_failed", safe_reason, receipt
 
     def _mark_cancel_finished(
         self,
@@ -307,6 +317,53 @@ class SmsWebIntegration:
             details=receipt,
         )
 
+    def _queue_cancel_cleanup(self, adapter: Any, lease: Any, error: Any) -> None:
+        if self.cleanup_queue is None:
+            return
+        provider = getattr(adapter, "provider", None)
+        meta = dict(getattr(provider, "current_order_meta", None) or {})
+        platform = str(meta.get("platform") or meta.get("provider") or "")
+        delay = 121 if platform == "herosms" else 15
+        try:
+            self.cleanup_queue.enqueue(
+                platform=platform,
+                key_fingerprint=meta.get("key_fingerprint"),
+                activation_id=getattr(lease, "activation_id", ""),
+                delay_seconds=delay,
+                error_code=type(error).__name__ if isinstance(error, Exception) else error,
+            )
+        except Exception:
+            pass
+
+    def _retry_cleanup_entry(self, entry: dict[str, Any]) -> bool:
+        if self.provider_registry is None:
+            return False
+        platform = self.sms_runtime.normalize_sms_provider_name(entry.get("platform"))
+        pool = self.provider_registry.pools.get(platform)
+        if pool is None:
+            return False
+        fingerprint = str(entry.get("key_fingerprint") or "")
+        with pool.lock:
+            state = next(
+                (row for row in pool.states if row.fingerprint == fingerprint),
+                None,
+            )
+        if state is None:
+            return False
+        provider = self.original_create_provider(platform, state.key, proxy=self._sms_proxy)
+        provider.activation_id = str(entry.get("activation_id") or "")
+        if platform == "herosms":
+            receipt = self.sms_runtime.confirm_herosms_cancellation(
+                provider,
+                provider.activation_id,
+            )
+            return receipt.get("cancel_state") == "confirmed"
+        callback = getattr(provider, "cancel", None)
+        if not callable(callback):
+            return False
+        callback()
+        return True
+
     def cancel_active_lease(self, task_id: str, reason: str) -> None:
         if not task_id:
             return
@@ -321,12 +378,31 @@ class SmsWebIntegration:
         meta["gptphone_terminal_cancelled"] = True
         meta["gptphone_session_invalid_cancelled"] = is_session_invalid(reason)
         meta["ready_recorded"] = True
+        meta["sms_order_state"] = "cancel_pending"
         lease.meta = meta
+        self._ledger_state(task_id, lease, "cancel_pending")
         cancel_error = None
         try:
             self.original_adapter_cancel(adapter, lease, reason=reason)
         except Exception as exc:
             cancel_error = exc
+            self._queue_cancel_cleanup(adapter, lease, exc)
+            meta = dict(getattr(lease, "meta", None) or {})
+            meta["sms_order_state"] = "cancel_failed"
+            lease.meta = meta
+            self._ledger_state(task_id, lease, "cancel_failed")
+        else:
+            meta = dict(getattr(lease, "meta", None) or {})
+            receipt = self.sms_runtime.safe_cancel_receipt(
+                getattr(getattr(adapter, "provider", None), "last_finish_receipt", None)
+            )
+            meta["sms_order_state"] = (
+                "cancelled" if receipt.get("cancel_state") == "confirmed" else "cancel_failed"
+            )
+            lease.meta = meta
+            self._ledger_state(task_id, lease, meta["sms_order_state"])
+            if receipt.get("cancel_state") != "confirmed":
+                self._queue_cancel_cleanup(adapter, lease, "provider_cancel_unconfirmed")
         try:
             self._mark_cancel_finished(
                 task_id,
@@ -379,6 +455,8 @@ class SmsWebIntegration:
                 )
             except (TypeError, ValueError):
                 provider.max_attempts_per_platform = 15
+        if callable(self.phone_context_preflight):
+            self.phone_context_preflight(adapter, task_id)
         if task_id:
             self.task_progress.set_stage(task_id, "phone_acquiring")
         lease = self.original_adapter_get_number(adapter, **kwargs)
@@ -393,9 +471,12 @@ class SmsWebIntegration:
         if meta.get("price_usd") is None and candidate is not None:
             meta["price_usd"] = getattr(candidate, "price", None)
         lease.meta = meta
+        meta["sms_order_state"] = "leased"
+        lease.meta = meta
         if task_id:
             self._remember_active_lease(task_id, adapter, lease)
             self.cost_ledger.record_lease(task_id, lease)
+            self._ledger_state(task_id, lease, "leased")
             self.task_progress.set_stage(task_id, "phone_submitting")
         return lease
 
@@ -408,12 +489,18 @@ class SmsWebIntegration:
             provider.set_ready()
         meta = dict(getattr(lease, "meta", None) or {})
         meta["ready_sent"] = True
+        meta["sms_order_state"] = "ready"
         lease.meta = meta
+        self._ledger_state(task_id, lease, "ready")
 
     def adapter_wait_code(self, adapter: Any, lease: Any, timeout: int = 180) -> Any:
         task_id = self.adapter_task_id(adapter)
         if task_id:
             self.task_progress.set_stage(task_id, "sms_waiting")
+        meta = dict(getattr(lease, "meta", None) or {})
+        meta["sms_order_state"] = "waiting"
+        lease.meta = meta
+        self._ledger_state(task_id, lease, "waiting")
         try:
             code = self.original_adapter_wait_code(adapter, lease, timeout=timeout)
         except Exception as exc:
@@ -437,6 +524,7 @@ class SmsWebIntegration:
                         lambda stat: self.route_policy.record_delivery(stat, now=now),
                     )
                 meta["otp_received_recorded"] = True
+                meta["sms_order_state"] = "code_received"
                 lease.meta = meta
             if task_id:
                 self.cost_ledger.mark_code_received(task_id, getattr(lease, "activation_id", ""))
@@ -471,6 +559,10 @@ class SmsWebIntegration:
                 getattr(lease, "activation_id", ""),
                 "completed",
             )
+        meta = dict(getattr(lease, "meta", None) or {})
+        meta["sms_order_state"] = "completed"
+        lease.meta = meta
+        self._ledger_state(task_id, lease, "completed")
         return result
 
     def adapter_cancel(self, adapter: Any, lease: Any, reason: str = "") -> Any:
@@ -479,6 +571,9 @@ class SmsWebIntegration:
         if meta.get("gptphone_terminal_cancelled"):
             self._forget_active_lease(task_id, lease)
             return None
+        meta["sms_order_state"] = "cancel_pending"
+        lease.meta = meta
+        self._ledger_state(task_id, lease, "cancel_pending")
         provider = getattr(adapter, "provider", None)
         mark_rejected = getattr(provider, "mark_rejected", None)
         if self.classify_error(reason) == "phone_rejected" and callable(mark_rejected):
@@ -486,6 +581,11 @@ class SmsWebIntegration:
         try:
             result = self.original_adapter_cancel(adapter, lease, reason=reason)
         except Exception as exc:
+            self._queue_cancel_cleanup(adapter, lease, exc)
+            meta = dict(getattr(lease, "meta", None) or {})
+            meta["sms_order_state"] = "cancel_failed"
+            lease.meta = meta
+            self._ledger_state(task_id, lease, "cancel_failed")
             if task_id:
                 self._forget_active_lease(task_id, lease)
                 try:
@@ -497,6 +597,17 @@ class SmsWebIntegration:
         if task_id:
             self._forget_active_lease(task_id, lease)
             self._mark_cancel_finished(task_id, lease, adapter, reason)
+        meta = dict(getattr(lease, "meta", None) or {})
+        receipt = self.sms_runtime.safe_cancel_receipt(
+            getattr(getattr(adapter, "provider", None), "last_finish_receipt", None)
+        )
+        meta["sms_order_state"] = (
+            "cancelled" if receipt.get("cancel_state") == "confirmed" else "cancel_failed"
+        )
+        lease.meta = meta
+        self._ledger_state(task_id, lease, meta["sms_order_state"])
+        if receipt.get("cancel_state") != "confirmed":
+            self._queue_cancel_cleanup(adapter, lease, "provider_cancel_unconfirmed")
         return result
 
     def classify_error(self, error: Any) -> str:
@@ -507,9 +618,24 @@ class SmsWebIntegration:
         text = str(error or "").lower()
         if any(
             marker in text
-            for marker in ("auth_context_page_mismatch", "auth_context_cookies_missing")
+            for marker in (
+                "auth_context_page_mismatch",
+                "auth_context_cookies_missing",
+                "auth_context_task_mismatch",
+                "auth_context_generation_mismatch",
+            )
         ):
             return "auth_context"
+        if any(
+            marker in text
+            for marker in (
+                "sms_provider_ready_failed",
+                "sms_provider_poll_failed",
+                "sms_activation_replaced",
+                "sms_poll_already_active",
+            )
+        ):
+            return "provider_network"
         if any(
             marker in text
             for marker in ("phone_otp_empty", "no sms code", "no verification code", "未收到验证码")
@@ -595,7 +721,12 @@ class SmsWebIntegration:
 
     def smart_record_result(self, selector: Any, candidate: Any, ok: bool, error: Any = "") -> Any:
         kind = self.classify_error(error)
-        if not ok and kind in {"transient_server", "auth_session", "auth_context"}:
+        if not ok and kind in {
+            "transient_server",
+            "auth_session",
+            "auth_context",
+            "provider_network",
+        }:
             self._release_route_without_score(selector, candidate)
             return None
         result = self.original_record_result(selector, candidate, ok, error)
@@ -679,7 +810,22 @@ class SmsWebIntegration:
             raise
         if is_session_invalid(result):
             self.cancel_active_lease(self.transport_task_id(transport), "oauth_session_invalid")
-        return self.ensure_account_active(transport, result)
+        result = self.ensure_account_active(transport, result)
+        try:
+            status = int(result.get("_status") or 0) if isinstance(result, dict) else 0
+        except (TypeError, ValueError):
+            status = 0
+        if 200 <= status < 300:
+            task_id = self.transport_task_id(transport)
+            with self._active_lease_lock:
+                active = self._active_leases.get(task_id)
+            if active is not None:
+                lease = active[1]
+                meta = dict(getattr(lease, "meta", None) or {})
+                meta["sms_order_state"] = "submitted"
+                lease.meta = meta
+                self._ledger_state(task_id, lease, "submitted")
+        return result
 
     def runtime_alert(self, payload: Any) -> None:
         value = dict(payload or {})
@@ -706,6 +852,7 @@ class SmsWebIntegration:
             if self.as_enabled(proxy_scope.get("sms"), False)
             else ""
         )
+        self._sms_proxy = sms_proxy
 
         def exhausted() -> None:
             message = "所有 SMS 平台和 Key 均已耗尽，停止创建新短信订单，已领取号码处理完成后安全停止"
@@ -746,6 +893,11 @@ class SmsWebIntegration:
         pool = self.provider_registry or self.key_pool
         if not pool.has_keys():
             raise ValueError("请至少填写一个 SMS API Key")
+        if self.cleanup_queue is not None:
+            try:
+                self.cleanup_queue.process(self._retry_cleanup_entry)
+            except Exception:
+                pass
         statuses = pool.preflight(proxy=proxy)
         insufficient = [row for row in statuses if row.get("status") == "insufficient_balance"]
         usable = [row for row in statuses if row.get("status") == "usable"]

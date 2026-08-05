@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 import hashlib
 import json
@@ -10,7 +11,7 @@ from pathlib import Path
 import re
 import threading
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -38,6 +39,10 @@ PERFORMANCE_DEFAULTS = {
     "phone_session_cycle_seconds": 1800,
     "auth_session_retries": 1,
 }
+SMS_NETWORK_ATTEMPTS = 3
+SMS_FIRST_WAIT_SECONDS = 30
+SMS_SECOND_WAIT_SECONDS = 30
+SMS_POLL_INTERVAL_SECONDS = 5
 _CANCEL_RECEIPT_KEYS = frozenset(
     {"cancel_state", "provider_response", "provider_status", "refund_status"}
 )
@@ -262,6 +267,22 @@ def flatten_sms_provider_keys(pools: Any) -> list[str]:
     return result
 
 
+def legacy_sms_provider_keys(pools: Any, provider: Any = "") -> list[str]:
+    """Return one platform's keys for recovered single-provider call sites."""
+
+    rows = normalize_sms_provider_pools(pools)
+    wanted = normalize_sms_provider_name(provider)
+    if wanted:
+        for row in rows:
+            if str(row.get("provider") or "") == wanted:
+                return normalize_sms_keys(row.get("api_keys"))
+    for row in rows:
+        keys = normalize_sms_keys(row.get("api_keys"))
+        if bool(row.get("enabled", True)) and keys:
+            return keys
+    return normalize_sms_keys(rows[0].get("api_keys")) if rows else []
+
+
 def migrate_performance_config(value: Any) -> tuple[dict[str, Any], bool]:
     """Apply the one-time performance defaults while preserving later user choices."""
     config = dict(value or {}) if isinstance(value, dict) else {}
@@ -305,7 +326,7 @@ def migrate_performance_config(value: Any) -> tuple[dict[str, Any], bool]:
     )
     config["sms_provider_pools"] = pools
     config["sms_provider"] = str(pools[0].get("provider") or "smsbower")
-    keys = flatten_sms_provider_keys(pools)
+    keys = legacy_sms_provider_keys(pools, config["sms_provider"])
     config["sms_api_keys"] = keys
     config["sms_api_key"] = keys[0] if keys else ""
     return config, migrated
@@ -431,7 +452,7 @@ def rank_sms_candidates(
     priority_countries: tuple[str, ...] = (),
     minimum_proven_rate: float = 0.10,
     now: float | None = None,
-    recent_success_window_seconds: float = 1800.0,
+    recent_success_window_seconds: float = 600.0,
 ) -> list[Any]:
     """Rank proven routes by delivery yield and recent completed orders."""
     route_priority = {route: index for index, route in enumerate(priority_routes)}
@@ -538,6 +559,200 @@ def classify_key_error(error: Any) -> str:
     ):
         return "network_error"
     return "other"
+
+
+def is_transient_sms_network_error(value: Any) -> bool:
+    text = str(value or "").lower()
+    return any(
+        marker in text
+        for marker in (
+            "timed out",
+            "timeout",
+            "connection reset",
+            "connection aborted",
+            "connection refused",
+            "remote disconnected",
+            "proxyerror",
+            "proxy error",
+            "ssleoferror",
+            "sslerror",
+            "tls",
+            "unexpected_eof",
+            "temporary failure",
+            "network is unreachable",
+            "name resolution",
+        )
+    )
+
+
+def call_sms_with_retries(
+    function: Callable[[], Any],
+    *,
+    attempts: int = SMS_NETWORK_ATTEMPTS,
+    sleep_fn: Callable[[float], None] = time.sleep,
+    deadline: float | None = None,
+    now_fn: Callable[[], float] = time.monotonic,
+) -> Any:
+    last_error: Exception | None = None
+    for attempt in range(max(1, int(attempts))):
+        try:
+            return function()
+        except Exception as exc:
+            if not is_transient_sms_network_error(exc):
+                raise
+            last_error = exc
+        if attempt + 1 >= max(1, int(attempts)):
+            break
+        delay = min(1.5, 0.25 * (2 ** attempt))
+        if deadline is not None:
+            remaining = float(deadline) - float(now_fn())
+            if remaining <= 0:
+                break
+            delay = min(delay, remaining)
+        if delay > 0:
+            sleep_fn(delay)
+    assert last_error is not None
+    raise last_error
+
+
+def isolated_sms_get(
+    url: str,
+    *,
+    params: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+    proxy: str = "",
+    timeout: int = 30,
+    as_json: bool = False,
+    session_factory: Callable[[], Any] | None = None,
+) -> Any:
+    """Perform one SMS API GET without inheriting host proxy variables."""
+
+    if session_factory is None:
+        from curl_cffi import requests as curl_requests
+
+        session_factory = lambda: curl_requests.Session(impersonate="chrome")
+    session = session_factory()
+    if hasattr(session, "trust_env"):
+        session.trust_env = False
+    request_kwargs: dict[str, Any] = {
+        "params": dict(params or {}),
+        "headers": dict(headers or {}),
+        "timeout": max(1, int(timeout)),
+    }
+    if proxy:
+        request_kwargs["proxy"] = str(proxy)
+        request_kwargs["verify"] = False
+    response = session.get(str(url), **request_kwargs)
+    if as_json:
+        return response.json()
+    return str(getattr(response, "text", "") or "").strip()
+
+
+def is_protocol_pressure_error(value: Any) -> bool:
+    text = str(value or "").lower()
+    return any(
+        marker in text
+        for marker in (
+            "ssleoferror",
+            "unexpected_eof",
+            "tls connect",
+            "connection reset",
+            "remote disconnected",
+            "status=429",
+            "http 429",
+            "too many requests",
+            "rate limit",
+        )
+    )
+
+
+@dataclass
+class _ProxyProtocolState:
+    active: int = 0
+    limit: int = 3
+    pressure_events: list[float] = field(default_factory=list)
+    success_streak: int = 0
+
+
+class ProxyProtocolGate:
+    """Limit full protocol sessions independently for each configured proxy."""
+
+    def __init__(
+        self,
+        default_limit: int = 3,
+        *,
+        now_fn: Callable[[], float] = time.monotonic,
+        pressure_window_seconds: float = 60.0,
+        restore_successes: int = 6,
+    ) -> None:
+        self.default_limit = max(1, int(default_limit))
+        self.now_fn = now_fn
+        self.pressure_window_seconds = max(1.0, float(pressure_window_seconds))
+        self.restore_successes = max(1, int(restore_successes))
+        self.condition = threading.Condition()
+        self.states: dict[str, _ProxyProtocolState] = {}
+
+    @staticmethod
+    def key(proxy: Any) -> str:
+        text = str(proxy or "").strip()
+        if not text:
+            return "direct"
+        return f"proxy:{hashlib.sha256(text.encode('utf-8', 'replace')).hexdigest()[:16]}"
+
+    @contextmanager
+    def acquire(self, proxy: Any) -> Iterator[str]:
+        key = self.key(proxy)
+        with self.condition:
+            state = self.states.setdefault(
+                key,
+                _ProxyProtocolState(limit=self.default_limit),
+            )
+            while state.active >= state.limit:
+                self.condition.wait()
+            state.active += 1
+        try:
+            yield key
+        finally:
+            with self.condition:
+                state.active = max(0, state.active - 1)
+                self.condition.notify_all()
+
+    def report(self, proxy: Any, value: Any = None, *, success: bool = False) -> int:
+        key = self.key(proxy)
+        with self.condition:
+            state = self.states.setdefault(
+                key,
+                _ProxyProtocolState(limit=self.default_limit),
+            )
+            now = float(self.now_fn())
+            if success:
+                state.pressure_events.clear()
+                state.success_streak += 1
+                if state.limit < self.default_limit and state.success_streak >= self.restore_successes:
+                    state.limit += 1
+                    state.success_streak = 0
+                    self.condition.notify_all()
+                return state.limit
+            if not is_protocol_pressure_error(value):
+                state.success_streak = 0
+                return state.limit
+            state.success_streak = 0
+            state.pressure_events = [
+                observed
+                for observed in state.pressure_events
+                if 0 <= now - observed <= self.pressure_window_seconds
+            ]
+            state.pressure_events.append(now)
+            if len(state.pressure_events) >= 2 and state.limit > 1:
+                state.limit -= 1
+                state.pressure_events.clear()
+            return state.limit
+
+    def snapshot(self, proxy: Any) -> dict[str, int]:
+        key = self.key(proxy)
+        with self.condition:
+            state = self.states.get(key) or _ProxyProtocolState(limit=self.default_limit)
+            return {"active": state.active, "limit": state.limit}
 
 
 @dataclass
@@ -1218,6 +1433,16 @@ class SmsProviderRegistry:
         with self.lock:
             self._task_attempt_counts.pop(key, None)
 
+    def snapshot_task_attempt_counts(self, task_id: Any) -> dict[str, int]:
+        key = str(task_id or "").strip()
+        if not key:
+            return {}
+        with self.lock:
+            return {
+                str(platform): max(0, int(count))
+                for platform, count in self._task_attempt_counts.get(key, {}).items()
+            }
+
     def _pool_for(self, provider: str) -> SmsKeyPool:
         current = self.pools.get(provider)
         if current is not None:
@@ -1527,15 +1752,20 @@ class SmsProviderRegistry:
             if self._row_match(row, country=country, provider_ids=provider_ids, price=price):
                 if row_platform and row_platform not in matched:
                     matched.append(row_platform)
-        if not platform:
-            names = matched or [str(spec.get("provider") or "") for spec in specs]
-            if names:
-                with self.lock:
-                    offset = self.cursor % len(names)
-                    self.cursor += 1
-                names = names[offset:] + names[:offset]
-                matched = names
-        ordered = [spec for name in matched for spec in specs if spec.get("provider") == name]
+        active_names = [str(spec.get("provider") or "") for spec in specs]
+        preferred = list(matched)
+        if platform and platform in active_names and platform not in preferred:
+            preferred.append(platform)
+        names = preferred + [name for name in active_names if name not in preferred]
+        # Inventory-capable platforms still supply the route, but the starting
+        # platform rotates so a valid provider with an empty inventory response
+        # is not permanently starved.
+        if len(names) > 1:
+            with self.lock:
+                offset = self.cursor % len(names)
+                self.cursor += 1
+            names = names[offset:] + names[:offset]
+        ordered = [spec for name in names for spec in specs if spec.get("provider") == name]
         ordered.extend(spec for spec in specs if spec not in ordered)
         return ordered
 
@@ -1623,6 +1853,9 @@ class PooledSmsProvider:
         self._released = True
         self._resend_attempted = False
         self._reject_requested = False
+        self._poll_lock = threading.Lock()
+        self._poll_generation = 0
+        self._cancel_attempted = False
         self.max_attempts_per_platform = 15
         self._platform_attempts: dict[str, int] = {}
         self._task_id = ""
@@ -1684,9 +1917,13 @@ class PooledSmsProvider:
         self._pool = pool
         self._state = state
         self._released = False
+        self._resend_attempted = False
+        self._reject_requested = False
+        self._cancel_attempted = False
+        self.last_finish_receipt = {}
         self.activation_id = activation_text
         self.phone = phone_text
-        self.current_order_meta = meta
+        self.current_order_meta = {**meta, "order_state": "leased"}
         return activation_text, phone_text
 
     def get_number(self, service: str = "dr", country: str = "151", provider_ids: str = "", max_price: str = "") -> tuple[str, str]:
@@ -1725,48 +1962,123 @@ class PooledSmsProvider:
             return self._provider.wait_code(timeout=timeout)
 
     def _resend(self) -> None:
-        for name in ("resend", "resend_code", "request_code"):
-            method = getattr(self._provider, name, None)
-            if callable(method):
-                method()
-                return
+        platform = normalize_sms_provider_name(
+            self.current_order_meta.get("platform")
+            or self.current_order_meta.get("provider")
+        )
+        if platform == "5sim":
+            return
+        method = getattr(self._provider, "set_ready", None)
+        if callable(method):
+            method()
+
+    def _ensure_activation(self, activation_id: str, generation: int) -> None:
+        if (
+            generation != self._poll_generation
+            or str(self.activation_id or "") != activation_id
+            or self._released
+        ):
+            raise RuntimeError(
+                "sms_activation_replaced: 短信轮询结果所属订单已被替换"
+            )
+
+    def _wait_round(
+        self,
+        activation_id: str,
+        generation: int,
+        *,
+        timeout: int,
+        interval: int,
+    ) -> str | None:
+        deadline = time.monotonic() + max(1, int(timeout))
+
+        def poll() -> str | None:
+            self._ensure_activation(activation_id, generation)
+            remaining = max(1, int(deadline - time.monotonic()))
+            code = self._wait_once(remaining, interval)
+            self._ensure_activation(activation_id, generation)
+            return code
+
+        try:
+            return call_sms_with_retries(poll, deadline=deadline)
+        except Exception as exc:
+            if "sms_activation_replaced" in str(exc):
+                raise
+            if self._pool is not None:
+                self._pool.report_error(self._state, exc, runtime=True)
+            detail = self.registry.safe_error(exc)
+            raise RuntimeError(
+                f"sms_provider_poll_failed: {detail or type(exc).__name__}"
+            ) from exc
 
     def wait_code(self, timeout: int = 300, interval: int = 3) -> str | None:
         if self._provider is None:
             raise RuntimeError("No active activation")
+        if not self._poll_lock.acquire(blocking=False):
+            raise RuntimeError(
+                "sms_poll_already_active: 当前短信订单已有轮询线程"
+            )
+        self._poll_generation += 1
+        generation = self._poll_generation
+        activation_id = str(self.activation_id or "")
+        round_timeout = min(SMS_FIRST_WAIT_SECONDS, max(1, int(timeout)))
+        del interval
+        poll_interval = SMS_POLL_INTERVAL_SECONDS
+        self.current_order_meta["order_state"] = "waiting"
         try:
-            code = self._wait_once(timeout, interval)
-            if code or self._resend_attempted:
+            code = self._wait_round(
+                activation_id,
+                generation,
+                timeout=round_timeout,
+                interval=poll_interval,
+            )
+            if code:
+                self.current_order_meta["order_state"] = "code_received"
                 return code
             self._resend_attempted = True
-            self._resend()
-            return self._wait_once(timeout, interval)
-        except Exception as exc:
-            if not self._resend_attempted and _sms_timeout_error(exc):
-                self._resend_attempted = True
+            platform = normalize_sms_provider_name(
+                self.current_order_meta.get("platform")
+                or self.current_order_meta.get("provider")
+            )
+            if platform != "5sim":
                 try:
-                    self._resend()
-                    return self._wait_once(timeout, interval)
-                except Exception as retry_exc:
-                    exc = retry_exc
-            if self._pool is not None:
-                self._pool.report_error(self._state, exc, runtime=True)
-                self._release()
-                raise RuntimeError(self.registry.safe_error(exc)) from exc
-            raise
+                    call_sms_with_retries(self._resend)
+                except Exception as exc:
+                    if self._pool is not None:
+                        self._pool.report_error(self._state, exc, runtime=True)
+                    detail = self.registry.safe_error(exc)
+                    raise RuntimeError(
+                        f"sms_provider_ready_failed: {detail or type(exc).__name__}"
+                    ) from exc
+            code = self._wait_round(
+                activation_id,
+                generation,
+                timeout=min(SMS_SECOND_WAIT_SECONDS, max(1, int(timeout))),
+                interval=poll_interval,
+            )
+            if code:
+                self.current_order_meta["order_state"] = "code_received"
+                return code
+            raise RuntimeError(
+                "sms_timeout: 两轮短信等待结束后仍未收到验证码"
+            )
+        finally:
+            self._poll_lock.release()
 
     def set_ready(self) -> None:
         method = getattr(self._provider, "set_ready", None)
         if not callable(method):
             return
         try:
-            method()
+            call_sms_with_retries(method)
+            self.current_order_meta["order_state"] = "ready"
         except Exception as exc:
             if self._pool is not None:
                 self._pool.report_error(self._state, exc, runtime=True)
-                self._release()
-                raise RuntimeError(self.registry.safe_error(exc)) from exc
-            raise
+            detail = self.registry.safe_error(exc)
+            raise RuntimeError(
+                f"sms_provider_ready_failed: {detail or type(exc).__name__}"
+            ) from exc
 
     def _release(self) -> None:
         if self._released:
@@ -1790,8 +2102,8 @@ class PooledSmsProvider:
         result = callback() if callable(callback) else None
         receipt = safe_cancel_receipt(result)
         return receipt or {
-            "cancel_state": "unconfirmed",
-            "refund_status": "provider_cancel_unverified",
+            "cancel_state": "confirmed",
+            "refund_status": "provider_cancel_accepted",
         }
 
     def _reject_provider(self) -> dict[str, str]:
@@ -1851,6 +2163,10 @@ class PooledSmsProvider:
         }
 
     def _finish(self, method: str) -> dict[str, str]:
+        if method in {"cancel", "reject"} and self._cancel_attempted:
+            return dict(self.last_finish_receipt)
+        if method in {"cancel", "reject"}:
+            self._cancel_attempted = True
         receipt: dict[str, str] = {}
         try:
             if method == "reject":
@@ -1867,6 +2183,9 @@ class PooledSmsProvider:
                     result = callback()
                     receipt = safe_cancel_receipt(result)
             self.last_finish_receipt = safe_cancel_receipt(receipt)
+            self.current_order_meta["order_state"] = (
+                "cancelled" if method in {"cancel", "reject"} else "completed"
+            )
             return dict(self.last_finish_receipt)
         except Exception as exc:
             if method in {"cancel", "reject"}:
@@ -1874,6 +2193,7 @@ class PooledSmsProvider:
                     "cancel_state": "error",
                     "refund_status": "provider_cancel_not_confirmed",
                 }
+                self.current_order_meta["order_state"] = "cancel_failed"
                 platform = normalize_sms_provider_name(
                     self.current_order_meta.get("platform")
                     or self.current_order_meta.get("provider")
@@ -2064,6 +2384,8 @@ class SmsRoutePolicy:
                 "last_no_numbers_at",
                 "no_code_streak",
                 "last_no_code_at",
+                "generic_failure_streak",
+                "last_generic_failure_at",
             ):
                 row.pop(name, None)
             return row
@@ -2088,6 +2410,16 @@ class SmsRoutePolicy:
             )
             row["no_code_streak"] = previous + 1 if within_window else 1
             row["last_no_code_at"] = current
+        else:
+            previous_at = _as_float(row.get("last_generic_failure_at"), 0.0)
+            previous = max(0, int(_as_float(row.get("generic_failure_streak"), 0)))
+            within_window = bool(
+                "last_generic_failure_at" in row
+                and self.streak_window_seconds > 0
+                and 0 <= current - previous_at <= self.streak_window_seconds
+            )
+            row["generic_failure_streak"] = previous + 1 if within_window else 1
+            row["last_generic_failure_at"] = current
         return row
 
     def record_delivery(self, stat: Any, *, now: float | None = None) -> dict[str, Any]:
@@ -2121,33 +2453,24 @@ class SmsRoutePolicy:
             if kind == "no_numbers":
                 row = stat if isinstance(stat, dict) else {}
                 streak = max(1, int(_as_float(row.get("no_numbers_streak"), 1)))
-                return min(1800, 300 * streak)
+                return 180 if streak >= 3 else 60
             if kind in {"timeout", "no_code"}:
-                row = stat if isinstance(stat, dict) else {}
-                success = max(
-                    int(_as_float(row.get("success"), 0)),
-                    int(_as_float(row.get("otp_received"), 0)),
-                )
-                failures = max(0, int(_as_float(row.get("fail"), 0)))
-                no_numbers = max(0, int(_as_float(row.get("no_numbers"), 0)))
-                relevant_failures = max(1, failures - no_numbers)
-                success_rate = success / (success + relevant_failures)
-                streak = max(1, int(_as_float(row.get("no_code_streak"), 1)))
-                if success <= 0:
-                    base = 600
-                elif success_rate >= 0.50:
-                    base = 90
-                elif success_rate >= 0.25:
-                    base = 180
-                else:
-                    base = 300
-                return min(1800, base * streak)
+                return 180
+            if kind in {"invalid_auth_step", "auth_session", "auth_context"}:
+                return 600
+            if kind in {"unsupported", "unsupported_route"} or any(
+                marker in text for marker in ("unsupported", "not supported")
+            ):
+                return 900
             if any(marker in text for marker in ("similar", "suspicious", "try another number", "too many accounts")):
-                return 1800
+                return 180
             if kind == "phone_rejected" or any(
                 marker in text for marker in ("already been used", "number is already used", "used too many times")
             ):
-                return 600
+                return 180
+            row = stat if isinstance(stat, dict) else {}
+            if int(_as_float(row.get("generic_failure_streak"), 0)) >= 3:
+                return 180
             return 0
 
 
@@ -2196,6 +2519,132 @@ class RuntimeAlertBuffer:
     def snapshot(self) -> list[dict[str, Any]]:
         with self.lock:
             return [dict(item) for item in self.items]
+
+
+class SmsCleanupQueue:
+    """Persist failed activation cancellations without exposing them publicly."""
+
+    def __init__(
+        self,
+        path: Path,
+        *,
+        now_fn: Callable[[], float] = time.time,
+    ) -> None:
+        self.path = Path(path)
+        self.now_fn = now_fn
+        self.lock = threading.RLock()
+
+    @staticmethod
+    def _entry_id(platform: Any, activation_id: Any) -> str:
+        value = f"{normalize_sms_provider_name(platform)}:{activation_id}"
+        return hashlib.sha256(value.encode("utf-8", "replace")).hexdigest()[:20]
+
+    def _read_locked(self) -> list[dict[str, Any]]:
+        try:
+            value = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError):
+            return []
+        rows = value.get("items") if isinstance(value, dict) else value
+        return [dict(row) for row in rows or [] if isinstance(row, dict)]
+
+    def _write_locked(self, rows: list[dict[str, Any]]) -> None:
+        if not rows and not self.path.exists():
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_suffix(self.path.suffix + ".tmp")
+        temporary.write_text(
+            json.dumps({"version": 1, "items": rows}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        temporary.replace(self.path)
+
+    def enqueue(
+        self,
+        *,
+        platform: Any,
+        key_fingerprint: Any,
+        activation_id: Any,
+        delay_seconds: float = 15.0,
+        error_code: Any = "provider_cancel_failed",
+    ) -> str:
+        platform_name = normalize_sms_provider_name(platform)
+        activation = str(activation_id or "").strip()
+        fingerprint = str(key_fingerprint or "").strip()[:20]
+        if not platform_name or not activation or not fingerprint:
+            return ""
+        entry_id = self._entry_id(platform_name, activation)
+        now = float(self.now_fn())
+        with self.lock:
+            rows = self._read_locked()
+            existing = next((row for row in rows if row.get("id") == entry_id), None)
+            if existing is None:
+                rows.append(
+                    {
+                        "id": entry_id,
+                        "platform": platform_name,
+                        "key_fingerprint": fingerprint,
+                        "activation_id": activation,
+                        "due_at": now + max(0.0, float(delay_seconds)),
+                        "attempts": 0,
+                        "error_code": _safe_provider_token(error_code).lower(),
+                    }
+                )
+            else:
+                existing["due_at"] = min(
+                    float(existing.get("due_at") or now),
+                    now + max(0.0, float(delay_seconds)),
+                )
+            self._write_locked(rows)
+        return entry_id
+
+    def process(
+        self,
+        handler: Callable[[dict[str, Any]], bool],
+        *,
+        limit: int = 20,
+    ) -> dict[str, int]:
+        current = float(self.now_fn())
+        with self.lock:
+            rows = self._read_locked()
+            due = [row for row in rows if float(row.get("due_at") or 0) <= current][
+                : max(1, int(limit))
+            ]
+        completed: set[str] = set()
+        updates: dict[str, dict[str, Any]] = {}
+        for row in due:
+            entry_id = str(row.get("id") or "")
+            try:
+                confirmed = bool(handler(dict(row)))
+            except Exception as exc:
+                confirmed = False
+                error_code = type(exc).__name__.lower()
+            else:
+                error_code = "provider_cancel_unconfirmed"
+            if confirmed:
+                completed.add(entry_id)
+                continue
+            attempt = max(0, int(row.get("attempts") or 0)) + 1
+            updates[entry_id] = {
+                "attempts": attempt,
+                "due_at": current + min(1800, 30 * (2 ** min(attempt, 5))),
+                "error_code": _safe_provider_token(error_code).lower(),
+            }
+        with self.lock:
+            rows = self._read_locked()
+            kept: list[dict[str, Any]] = []
+            for row in rows:
+                entry_id = str(row.get("id") or "")
+                if entry_id in completed:
+                    continue
+                if entry_id in updates:
+                    row.update(updates[entry_id])
+                kept.append(row)
+            self._write_locked(kept)
+        return {
+            "processed": len(due),
+            "completed": len(completed),
+            "remaining": len(kept),
+        }
 
 
 class ExchangeRateCache:
@@ -2329,6 +2778,28 @@ class SmsCostLedger:
                 order["code_received"] = True
                 order["status"] = "code_received"
                 order["code_received_at"] = int(time.time())
+
+    def mark_state(self, task_id: str, activation_id: Any, state: str) -> None:
+        allowed = {
+            "leased",
+            "submitted",
+            "ready",
+            "waiting",
+            "code_received",
+            "completed",
+            "cancel_pending",
+            "cancelled",
+            "cancel_failed",
+        }
+        value = str(state or "").strip()
+        if value not in allowed:
+            return
+        activation_key = self._activation_key(activation_id)
+        with self.lock:
+            order = self.orders.get(task_id, {}).get(activation_key)
+            if order is not None:
+                order["status"] = value
+                order[f"{value}_at"] = int(time.time())
 
     def mark_finished(
         self,
