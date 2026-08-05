@@ -1637,7 +1637,7 @@ def _observe_auth_step(transport, response, stage):
         stage=stage,
     )
     page_type = _codex_oauth_chain._page_type(response)
-    if page_type in _auth_request_runtime_ext.PHONE_PAGE_TYPES:
+    if _auth_request_runtime_ext.is_phone_page_type(page_type):
         provider = getattr(transport, "sentinel_provider", None)
         reset = getattr(provider, "reset", None)
         if callable(reset):

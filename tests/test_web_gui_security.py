@@ -467,7 +467,7 @@ class WebGuiSecurityTests(unittest.TestCase):
 
             def post(self, url, **kwargs):
                 calls.append((url, kwargs))
-                return {"_status": 200, "page": {"type": "phone_otp"}}
+                return {"_status": 200, "page": {"type": "phone_otp_verification"}}
 
         class FakeSentinel:
             def reset(self, flow=""):
@@ -489,7 +489,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.module._AUTH_SESSIONS.clear("task-phone-retry")
         try:
             first = self.module._real_send_phone_number_otp(transport, "+15550001234", "sms")
-            self.assertEqual(transport._gptphone_page_type, "phone_otp")
+            self.assertEqual(transport._gptphone_page_type, "phone_otp_verification")
             second = self.module._real_send_phone_number_otp(transport, "+15550005678", "sms")
         finally:
             self.module._AUTH_SESSIONS.clear("task-phone-retry")
@@ -532,7 +532,7 @@ class WebGuiSecurityTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 self.module._codex_oauth_chain.CodexChainError,
                 "auth_context_page_mismatch",
-            ):
+            ) as raised:
                 self.module._real_send_phone_number_otp(transport, "+15550001234", "sms")
             snapshot = self.module._AUTH_SESSIONS.public_snapshot("task-phone-invalid")
         finally:
@@ -542,6 +542,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertTrue(snapshot["invalid"])
         self.assertTrue(snapshot["fresh_oauth_required"])
         self.assertEqual(snapshot["current_stage"], "phone_submitting")
+        self.assertIn("page_type=consent", str(raised.exception))
         self.assertTrue(
             self.module._is_auth_session_reset_failure(
                 error="auth_context_page_mismatch: stale page"

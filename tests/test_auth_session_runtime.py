@@ -24,9 +24,12 @@ class AuthSessionRuntimeTests(unittest.TestCase):
             "contact_verification",
             "phone_number_collection",
             "phone_otp",
+            "phone_otp_verification",
             "phone-verification",
+            "PHONE-OTP-VERIFICATION",
             "phone_number_verification",
             "sms_otp",
+            "sms_otp_verification",
         ):
             with self.subTest(page_type=page_type):
                 transport = SimpleNamespace(
@@ -48,6 +51,7 @@ class AuthSessionRuntimeTests(unittest.TestCase):
             validate_phone_context(transport, AuthSessionRegistry())
 
         self.assertEqual(raised.exception.code, "auth_context_page_mismatch")
+        self.assertIn("page_type=consent", str(raised.exception))
 
     def test_invalidation_keeps_count_across_fresh_generation_and_cancels_sms(self):
         cancellations = []

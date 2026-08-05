@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import hashlib
+import re
 import time
 import uuid
 from typing import Any, Mapping
@@ -29,11 +30,24 @@ PHONE_PAGE_TYPES = frozenset(
         "contact_verification",
         "phone_number_collection",
         "phone_otp",
-        "phone-verification",
+        "phone_otp_verification",
+        "phone_verification",
         "phone_number_verification",
         "sms_otp",
+        "sms_otp_verification",
     }
 )
+
+
+def normalize_page_type(value: Any) -> str:
+    """Normalize OpenAI page aliases without retaining arbitrary response text."""
+
+    text = str(value or "").strip().lower().replace("-", "_")
+    return re.sub(r"[^a-z0-9_]+", "_", text)[:80].strip("_")
+
+
+def is_phone_page_type(value: Any) -> bool:
+    return normalize_page_type(value) in PHONE_PAGE_TYPES
 
 
 class AuthRequestContextError(RuntimeError):
@@ -245,9 +259,14 @@ def mark_phone_ready(
 
 def validate_phone_context(transport: Any, registry: AuthSessionRegistry | None) -> TransportRequestContext:
     context = ensure_transport_context(transport, registry)
-    page_type = str(getattr(transport, "_gptphone_page_type", "") or context.page_type)
+    page_type = normalize_page_type(
+        getattr(transport, "_gptphone_page_type", "") or context.page_type
+    )
     if page_type not in PHONE_PAGE_TYPES:
-        raise AuthRequestContextError("auth_context_page_mismatch", "当前登录页面不是手机号验证页面")
+        raise AuthRequestContextError(
+            "auth_context_page_mismatch",
+            f"当前登录页面不是手机号验证页面 (page_type={page_type or 'unknown'})",
+        )
     if not _cookies_present(transport):
         raise AuthRequestContextError("auth_context_cookies_missing", "当前登录会话缺少有效 cookies")
     return context
