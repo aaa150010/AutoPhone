@@ -22,8 +22,9 @@ MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 MAX_MESSAGES = 40
 REFRESH_DETAIL_LIMIT = 8
 REQUEST_CLOCK_SKEW_SECONDS = 120
-RECENT_BASELINE_CODE_WINDOW_SECONDS = 180
-BASELINE_FALLBACK_MAX_ATTEMPTS = 2
+RECENT_BASELINE_CODE_WINDOW_SECONDS = 600
+BASELINE_FALLBACK_MAX_ATTEMPTS = 3
+BASELINE_FALLBACK_POLL_MILESTONES = (10, 20, 30)
 _EMAIL_PATTERN = re.compile(
     r"(?i)[a-z0-9][a-z0-9._%+-]*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}"
 )
@@ -665,11 +666,12 @@ def select_latest_code(
                 continue
             if not _OPENAI_PATTERN.search(" ".join((message.sender, message.subject, message.body))):
                 continue
-            if allow_recent_baseline and not allow_baseline_fallback:
-                if requested_at is None or message.received_timestamp is None:
-                    continue
-                age = float(requested_at) - float(message.received_timestamp)
-                if age < 0 or age > recent_window:
+            if allow_recent_baseline or allow_baseline_fallback:
+                if requested_at is not None and message.received_timestamp is not None:
+                    age = float(requested_at) - float(message.received_timestamp)
+                    if age < -REQUEST_CLOCK_SKEW_SECONDS or age > recent_window:
+                        continue
+                elif not allow_baseline_fallback:
                     continue
             baseline_candidates.append(message)
         if baseline_candidates:
@@ -880,6 +882,8 @@ class MailboxRequestState:
         self.baseline_fallback_attempts = 0
         self.baseline_fallback_age_seconds: int | None = None
         self.baseline_fallback_poll: int | None = None
+        self.baseline_fallback_identities: set[str] = set()
+        self.baseline_fallback_codes: set[str] = set()
 
     def configure_request(self, *, max_poll_attempts: int) -> None:
         self.max_poll_attempts = max(1, int(max_poll_attempts))
@@ -902,16 +906,30 @@ class MailboxRequestState:
     ) -> MailboxSelection | None:
         if self.baseline_fallback_attempts >= BASELINE_FALLBACK_MAX_ATTEMPTS:
             return None
+        fallback_scan = MailboxScan(
+            tuple(
+                message
+                for message in scan.messages
+                if message.identity not in self.baseline_fallback_identities
+                and message.code not in self.baseline_fallback_codes
+            ),
+            scan.page_fingerprint,
+            scan.fetched_at,
+            scan.diagnostics,
+        )
         fallback = select_latest_code(
-            scan,
+            fallback_scan,
             baseline_identities=self.baseline_identities,
             requested_at=self.requested_at,
             allow_baseline_fallback=True,
+            recent_baseline_seconds=RECENT_BASELINE_CODE_WINDOW_SECONDS,
             baseline_fallback_reason=reason,
         )
         if not fallback.code:
             return None
         self.baseline_fallback_attempts += 1
+        self.baseline_fallback_identities.add(fallback.identity)
+        self.baseline_fallback_codes.add(fallback.code)
         self.baseline_fallback_poll = self.poll_attempt
         matched = next(
             (message for message in scan.messages if message.identity == fallback.identity),
@@ -942,9 +960,9 @@ class MailboxRequestState:
         )
         if (
             self.active
-            and self.baseline_fallback_attempts == 0
             and not self.last_selection.code
-            and self.poll_attempt >= max(1, (self.max_poll_attempts * 2 + 2) // 3)
+            and self.poll_attempt in BASELINE_FALLBACK_POLL_MILESTONES
+            and self.poll_attempt <= self.max_poll_attempts
         ):
             self._baseline_fallback(scan, reason="mailbox_baseline_code_fallback")
         return self.last_selection

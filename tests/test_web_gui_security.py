@@ -327,6 +327,26 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(observed, [True, False])
         self.assertFalse(module._MAILBOX_LEASE_FILTER_ACTIVE.get())
 
+    def test_register_start_caps_total_auth_sessions_at_five(self):
+        module = self.module
+        original_start = module._importer_scheduler_ext.start_bounded_importer
+        original_notifications = module._begin_notification_run
+        observed = []
+        importer = SimpleNamespace(status=lambda _settings: {"running": False})
+        try:
+            module._begin_notification_run = lambda *_args: None
+            module._importer_scheduler_ext.start_bounded_importer = (
+                lambda _importer, settings, **_kwargs: observed.append(
+                    settings["auth_session_retries"]
+                )
+            )
+            module._patched_importer_start(importer, {"auth_session_retries": 99})
+        finally:
+            module._importer_scheduler_ext.start_bounded_importer = original_start
+            module._begin_notification_run = original_notifications
+
+        self.assertEqual(observed, [5])
+
     def test_baseline_fallback_snapshot_bypasses_only_original_baseline_guard(self):
         module = self.module
         baseline = SimpleNamespace(
@@ -1047,7 +1067,7 @@ class WebGuiSecurityTests(unittest.TestCase):
             {key.lower(): value for key, value in call[1]["headers"].items()}
             for call in calls
         ]
-        self.assertEqual(
+        self.assertNotEqual(
             headers[0]["x-access-flow-invocation-id"],
             headers[1]["x-access-flow-invocation-id"],
         )

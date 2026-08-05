@@ -110,7 +110,7 @@ function updateProxyScope(key: string, value: boolean | string | number) {
           <el-input-number
             :model-value="Number(modelValue.auth_session_retries ?? 1)"
             :min="0"
-            :max="10"
+            :max="4"
             controls-position="right"
             @update:model-value="update('auth_session_retries', Number($event ?? 1))"
           />

@@ -353,16 +353,28 @@ ChatGPT 团队</pre>
         self.assertEqual(retry.code, "222222")
         self.assertNotEqual(retry.identity, first.identity)
 
-    def test_baseline_code_is_used_at_twentieth_of_thirty_polls_and_again_at_timeout(self):
+    def test_recent_baseline_codes_are_tried_at_poll_milestones_without_reuse(self):
         clock = [2_000_000_000.0]
         payload = {
             "messages": [
                 {
-                    "id": "baseline-without-time",
+                    "id": "baseline-newest-without-time",
                     "fromAddress": "noreply@openai.example",
                     "subject": "Your temporary ChatGPT login code",
                     "body": "OpenAI verification code 673931",
-                }
+                },
+                {
+                    "id": "baseline-second-without-time",
+                    "fromAddress": "noreply@openai.example",
+                    "subject": "Your temporary ChatGPT login code",
+                    "body": "OpenAI verification code 111111",
+                },
+                {
+                    "id": "baseline-third-without-time",
+                    "fromAddress": "noreply@openai.example",
+                    "subject": "Your temporary ChatGPT login code",
+                    "body": "OpenAI verification code 222222",
+                },
             ]
         }
         client = MailboxUrlClient(
@@ -376,27 +388,86 @@ ChatGPT 团队</pre>
 
         state.configure_request(max_poll_attempts=30)
         state.begin_request()
-        for attempt in range(1, 20):
+        for attempt in range(1, 10):
             with self.subTest(attempt=attempt):
                 self.assertEqual(state.snapshot().code, "")
 
         fallback = state.snapshot()
         self.assertEqual(fallback.code, "673931")
         self.assertEqual(fallback.reason, "mailbox_baseline_code_fallback")
-        self.assertEqual(state.baseline_fallback_poll, 20)
+        self.assertEqual(state.baseline_fallback_poll, 10)
         self.assertIsNone(state.baseline_fallback_age_seconds)
 
-        self.assertEqual(state.snapshot().code, "")
-        state.finish_request()
+        expected = ("111111", "222222")
+        for expected_code in expected:
+            state.finish_request()
+            state.begin_request()
+            for _attempt in range(9):
+                self.assertEqual(state.snapshot().code, "")
+            self.assertEqual(state.snapshot().code, expected_code)
+
+        self.assertEqual(state.baseline_fallback_attempts, 3)
+        self.assertEqual(state.final_baseline_fallback().code, "")
+
+    def test_baseline_fallback_rejects_reliably_old_code_but_accepts_missing_time(self):
+        clock = [2_000_000_000.0]
+        payload = {
+            "messages": [
+                {
+                    "id": "older-than-ten-minutes",
+                    "fromAddress": "noreply@openai.example",
+                    "subject": "OpenAI verification code",
+                    "receivedAt": clock[0] - 601,
+                    "body": "OpenAI verification code 111111",
+                },
+                {
+                    "id": "latest-without-time",
+                    "fromAddress": "noreply@openai.example",
+                    "subject": "OpenAI verification code",
+                    "body": "OpenAI verification code 222222",
+                },
+            ]
+        }
+        client = MailboxUrlClient(
+            BASE_URL,
+            fetcher=lambda _url: json_response(BASE_URL, payload),
+            now_fn=lambda: clock[0],
+        )
+        state = MailboxRequestState(client, now_fn=lambda: clock[0])
+        state.snapshot()
+        state.configure_request(max_poll_attempts=30)
         state.begin_request()
+
+        for _attempt in range(9):
+            self.assertEqual(state.snapshot().code, "")
+
+        fallback = state.snapshot()
+        self.assertEqual(fallback.code, "222222")
+        self.assertIsNone(state.baseline_fallback_age_seconds)
+
+    def test_baseline_fallback_checks_only_tenth_twentieth_and_thirtieth_polls(self):
+        calls = []
+
+        class RecordingState(MailboxRequestState):
+            def _baseline_fallback(self, scan, *, reason):
+                del scan, reason
+                calls.append(self.poll_attempt)
+                return None
+
+        state = RecordingState(
+            MailboxUrlClient(
+                BASE_URL,
+                fetcher=lambda _url: json_response(BASE_URL, {"messages": []}),
+            )
+        )
+        state.snapshot()
+        state.configure_request(max_poll_attempts=30)
+        state.begin_request()
+
         for _attempt in range(30):
             self.assertEqual(state.snapshot().code, "")
 
-        final_fallback = state.final_baseline_fallback()
-        self.assertEqual(final_fallback.code, "673931")
-        self.assertEqual(final_fallback.reason, "mailbox_final_baseline_code_fallback")
-        self.assertEqual(state.baseline_fallback_attempts, 2)
-        self.assertEqual(state.final_baseline_fallback().code, "")
+        self.assertEqual(calls, [10, 20, 30])
 
     def test_baseline_fallback_rejects_non_openai_messages(self):
         clock = [2_000_000_000.0]

@@ -108,6 +108,12 @@ class TransportRequestContext:
         self.last_request_id = f"{self.task_id or self.transport_fingerprint}:{self.generation}:{self.request_count}"
         return self.last_request_id
 
+    def next_invocation_id(self) -> str:
+        # The login-web client creates a new flow invocation id for every
+        # continuation request, even while the authenticated session stays put.
+        self.invocation_id = str(uuid.uuid4())
+        return self.invocation_id
+
     def observe(self, response: Any = None, *, page_type: Any = "", continue_url: Any = "") -> None:
         if isinstance(response, Mapping):
             page = response.get("page")
@@ -506,7 +512,7 @@ def request_headers(
 
     context = ensure_transport_context(transport)
     result = {str(key): str(value) for key, value in dict(headers or {}).items()}
-    result["x-access-flow-invocation-id"] = context.invocation_id
+    result["x-access-flow-invocation-id"] = context.next_invocation_id()
     if not include_sentinel:
         for key in tuple(result):
             if key.lower() in {"openai-sentinel-token", "openai-sentinel-so-token"}:

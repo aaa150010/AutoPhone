@@ -1160,7 +1160,7 @@ def _cancel_notification_run(importer, context):
 
 def _patched_importer_start(self, settings):
     internal = copy.deepcopy(dict(settings or {}))
-    additional_retries = _int_value(internal.get("auth_session_retries"), 1, minimum=0, maximum=10)
+    additional_retries = _int_value(internal.get("auth_session_retries"), 1, minimum=0, maximum=4)
     internal["auth_session_retries"] = additional_retries + 1
     already_running = bool(self.status(internal).get("running"))
     if not already_running:
@@ -2352,7 +2352,7 @@ _MAILBOX_DIAGNOSTIC_LABELS = {
     "mailbox_messages_without_openai_otp": "邮箱已有邮件，但没有识别到 OpenAI 验证邮件",
     "mailbox_openai_message_without_otp": "已识别 OpenAI 邮件，但没有匹配到有效六位验证码",
     "mailbox_only_baseline_code": "邮箱当前只有本次请求前的旧验证码",
-    "mailbox_baseline_code_fallback": "轮询达到三分之二后，已尝试最新的 OpenAI 基线验证码",
+    "mailbox_baseline_code_fallback": "轮询达到兜底节点后，已尝试最近的 OpenAI 基线验证码",
     "mailbox_final_baseline_code_fallback": "邮箱等待超时后，已最后尝试一次最新的 OpenAI 基线验证码",
     "mailbox_candidate_too_old": "识别到的验证码邮件早于本次请求",
     "mailbox_detail_request_failed": "部分邮件详情读取失败，未识别到新验证码",
@@ -2448,7 +2448,7 @@ def _url_mailbox_wait_code(self, email):
         phase = "最终超时回退" if fallback_reason == "mailbox_final_baseline_code_fallback" else f"轮询 {poll}/{maximum}"
         _call_log(
             getattr(self, "log_fn", None),
-            f"  [邮箱取码诊断/email_code_waiting] {phase}：尝试最新的 OpenAI 基线验证码（本任务最多两次）",
+            f"  [邮箱取码诊断/email_code_waiting] {phase}：尝试最近的 OpenAI 基线验证码（本任务最多三次）",
             "info",
         )
     if code:
