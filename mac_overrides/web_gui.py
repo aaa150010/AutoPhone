@@ -206,7 +206,10 @@ _AUTH_EMAIL_COOLDOWNS_LOCK = threading.RLock()
 _RUN_LIFECYCLE_LOCK = threading.Lock()
 _RUN_NOTIFICATION_LOCK = threading.RLock()
 _RUN_NOTIFICATION_CONTEXT = None
-_PROTOCOL_GATE = _sms_runtime_ext.ProxyProtocolGate(default_limit=3)
+_PROTOCOL_GATE = _sms_runtime_ext.ProxyProtocolGate(
+    default_limit=5,
+    launch_interval_seconds=1.0,
+)
 
 
 def _transport_task_id(transport) -> str:
@@ -543,6 +546,7 @@ def _patched_config_load(self):
     normalized["pixel_upload_enabled"] = pixel_upload_enabled
     policy_keys = (
         "performance_policy_version",
+        "auto_email_login_concurrency",
         "phone_max_attempts",
         "phone_attempts_per_provider",
         "phone_session_cycle_seconds",
@@ -576,6 +580,7 @@ def _patched_config_save(self, values):
     saved = dict(_ORIGINAL_CONFIG_SAVE(self, normalized) or {})
     for key in (
         "performance_policy_version",
+        "auto_email_login_concurrency",
         "phone_max_attempts",
         "phone_attempts_per_provider",
         "phone_session_cycle_seconds",
@@ -616,7 +621,9 @@ def _patched_task_config(self, settings, email, task_id, *, password=""):
         minimum=30,
         maximum=1800,
     )
-    route_lease_seconds = _int_value(config.get("code_timeout"), 30, minimum=5, maximum=300) + 20
+    route_lease_seconds = (
+        2 * _int_value(config.get("code_timeout"), 30, minimum=5, maximum=300)
+    ) + 20
     raw_email_attempts = (settings or {}).get("email_otp_verify_attempts")
     email_attempts = _int_value(
         raw_email_attempts,
@@ -1112,6 +1119,14 @@ def _patched_importer_start(self, settings):
     internal["auth_session_retries"] = additional_retries + 1
     already_running = bool(self.status(internal).get("running"))
     if not already_running:
+        task_limit = _int_value(internal.get("concurrency"), 5, minimum=1, maximum=100)
+        node_limit = _int_value(
+            internal.get("node_concurrency"),
+            task_limit,
+            minimum=1,
+            maximum=task_limit,
+        )
+        _PROTOCOL_GATE.begin_run(min(task_limit, node_limit))
         _TASK_PROGRESS.reset()
         with _TASK_FAILURES_LOCK:
             _TASK_FAILURES.clear()
@@ -1239,6 +1254,12 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
     batch_id = str((settings or {}).get("batch_id") or "").strip()[:80]
     batch_started_at = _int_value((settings or {}).get("batch_started_at"), 0, minimum=0)
     if isinstance(result, dict):
+        progress_snapshot = _TASK_PROGRESS.progress(task_id) or {}
+        if isinstance(progress_snapshot.get("timing"), dict):
+            result["timing"] = copy.deepcopy(progress_snapshot["timing"])
+        run_mode = str((settings or {}).get("run_mode") or "").strip().lower()
+        if run_mode == "relogin":
+            result["run_mode"] = "relogin"
         if _is_auth_session_reset_failure(result, error):
             result["resume_stage"] = "fresh_oauth"
         if batch_id:
@@ -1277,6 +1298,24 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
         )
         _remember_task_failure(task_id, persistence_failure)
         raise RuntimeError(persistence_failure["public_message"]) from exc
+    _TASK_PROGRESS.finish(task_id)
+    timing_snapshot = (_TASK_PROGRESS.progress(task_id) or {}).get("timing")
+    if isinstance(timing_snapshot, dict):
+        try:
+            root = Path(
+                str((settings or {}).get("results_dir") or "").strip()
+                or Path(self.data_dir) / "results"
+            )
+            target = root / f"{task_id}_{str(getattr(entry, 'email', '') or '').replace('@', '_at_')}.json"
+            payload = json.loads(target.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                payload["timing"] = copy.deepcopy(timing_snapshot)
+                payload_result = payload.get("result")
+                if isinstance(payload_result, dict):
+                    payload_result["timing"] = copy.deepcopy(timing_snapshot)
+                _runtime.atomic_write_json(target, payload)
+        except Exception:
+            pass
     if batch_id:
         try:
             root = Path(
@@ -1931,7 +1970,10 @@ def _run_codex_after_registration(
         _register_sms_transport(expected_task_id, transport)
     transport_token = _ACTIVE_SMS_TRANSPORT.set(transport)
     try:
-        with _PROTOCOL_GATE.acquire(proxy):
+        with _PROTOCOL_GATE.acquire(
+            proxy,
+            stop_event=runtime_config.get("_stop_requested"),
+        ):
             try:
                 result = _ORIGINAL_RUN_CODEX_AFTER_REGISTRATION(
                     oauth_url=oauth_url,
@@ -2665,7 +2707,14 @@ def _public_task(task):
         failure["technical_summary"] = safe_text(failure.get("technical_summary"))
     safe_result = {
         key: copy.deepcopy(result[key])
-        for key in ("sms_cost_usd", "sms_cost_cny", "sms_exchange_rate", "sms_exchange_date")
+        for key in (
+            "sms_cost_usd",
+            "sms_cost_cny",
+            "sms_exchange_rate",
+            "sms_exchange_date",
+            "timing",
+            "run_mode",
+        )
         if key in result
     }
     progress = task.get("progress") if isinstance(task.get("progress"), dict) else None
@@ -2673,14 +2722,14 @@ def _public_task(task):
     if progress is not None:
         safe_progress = {
             key: copy.deepcopy(progress[key])
-            for key in ("code", "label", "group", "entered_at", "finished_at")
+            for key in ("code", "label", "group", "entered_at", "finished_at", "timing")
             if key in progress
         }
     public = {
         key: copy.deepcopy(task[key])
         for key in (
             "task_id", "ordinal", "status", "created_at", "updated_at",
-            "batch_id", "batch_started_at",
+            "batch_id", "batch_started_at", "run_mode",
         )
         if key in task
     }
@@ -2899,6 +2948,21 @@ def _masked_state(data):
         runtime["sms_alerts"] = alerts
         runtime["sms_safe_stop"] = _SMS_PROVIDER_REGISTRY.is_exhausted()
         _TASK_PROGRESS.decorate_runtime(runtime)
+        concurrency = runtime.get("concurrency")
+        if not isinstance(concurrency, dict):
+            concurrency = {}
+            runtime["concurrency"] = concurrency
+        task_capacity = concurrency.get("task")
+        if isinstance(task_capacity, dict):
+            task_capacity["waiting"] = sum(
+                1
+                for task in runtime.get("tasks") or []
+                if isinstance(task, dict)
+                and str(task.get("status") or "").strip().lower() == "queued"
+            )
+        local_config = _read_local_config()
+        concurrency["protocol"] = _PROTOCOL_GATE.snapshot(local_config.get("proxy"))
+        concurrency["phone"] = _SMS_PHONE_GATE.status()
         raw_tasks = runtime.get("tasks") if isinstance(runtime.get("tasks"), list) else []
         runtime["tasks"] = [_public_task(task) for task in raw_tasks]
         runtime["summary"] = _runtime_summary(runtime["tasks"])
@@ -2972,6 +3036,7 @@ def _local_config_from_runtime(data, existing=None):
         "target_count",
         "concurrency",
         "node_concurrency",
+        "auto_email_login_concurrency",
         "node_timeout",
         "auth_session_retries",
         "email_code_timeout",
@@ -3063,7 +3128,9 @@ def _apply_server_defaults(data):
     if not _module._clean(patched.get("sms_min_price")):
         patched["sms_min_price"] = str(_SMS_MIN_PRICE_DEFAULT)
     patched["max_price"] = _clamp_sms_max_price(patched.get("max_price"))
-    route_lease_seconds = _int_value(patched.get("sms_timeout"), 30, minimum=5, maximum=300) + 20
+    route_lease_seconds = (
+        2 * _int_value(patched.get("sms_timeout"), 30, minimum=5, maximum=300)
+    ) + 20
     patched["sms_smart"] = {
         **dict(patched.get("sms_smart") or {}),
         "enabled": True,

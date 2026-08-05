@@ -41,7 +41,7 @@ def start_bounded_importer(
     worker_count = min(target, concurrency)
     email_login_concurrency = _bounded_int(
         settings.get("auto_email_login_concurrency"),
-        1,
+        min(5, worker_count),
         1,
         worker_count,
     )

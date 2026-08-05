@@ -53,6 +53,7 @@ class FakePhoneGate:
         kwargs.pop("is_transient", None)
         kwargs.pop("max_attempts", None)
         kwargs.pop("on_retry", None)
+        kwargs.pop("stop_event", None)
         return function(*args, **kwargs)
 
 
@@ -654,6 +655,50 @@ class SmsWebTests(unittest.TestCase):
         self.assertEqual(ledger.finished[0][2], "cancel_failed")
         self.assertIn("herosms_cancel_rejected:BAD_STATUS", ledger.finished[0][3])
         self.assertNotEqual(ledger.finished[0][2], "cancelled")
+
+    def test_herosms_deferred_cancel_is_queued_without_blocking_or_false_refund(self):
+        captured = []
+
+        class CleanupQueue:
+            def enqueue(self, **kwargs):
+                captured.append(kwargs)
+                return "cleanup-entry"
+
+        ledger = FakeCostLedger()
+        provider = SimpleNamespace(
+            current_order_meta={
+                "platform": "herosms",
+                "key_fingerprint": "fingerprint-a",
+                "leased_at": 1000.0,
+            },
+            last_finish_receipt={
+                "cancel_state": "error",
+                "refund_status": "provider_cancel_not_confirmed",
+            },
+        )
+        adapter = SimpleNamespace(
+            config={"sms_task_id": "task-hero-pending"},
+            provider=provider,
+            selector=None,
+        )
+        lease = SimpleNamespace(
+            activation_id="hero-order-pending",
+            meta=dict(provider.current_order_meta),
+        )
+        self.integration.cleanup_queue = CleanupQueue()
+        self.integration.cost_ledger = ledger
+        self.integration.original_adapter_cancel = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            sms_runtime.HeroSmsCancellationDeferred(61, 120)
+        )
+
+        result = self.integration.adapter_cancel(adapter, lease, reason="sms_timeout")
+
+        self.assertIsNone(result)
+        self.assertEqual(lease.meta["sms_order_state"], "cancel_pending")
+        self.assertEqual(captured[0]["delay_seconds"], 61.0)
+        self.assertEqual(captured[0]["leased_at"], 1000.0)
+        self.assertEqual(captured[0]["task_id"], "task-hero-pending")
+        self.assertEqual(ledger.finished, [])
 
 
 if __name__ == "__main__":

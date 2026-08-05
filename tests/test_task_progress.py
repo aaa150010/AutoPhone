@@ -42,8 +42,9 @@ class TaskProgressTests(unittest.TestCase):
         self.clock.value = 130
         self.tracker.observe_chain_state("T001", "EMAIL_OTP_REQUIRED")
 
+        progress = self.tracker.progress("T001")
         self.assertEqual(
-            self.tracker.progress("T001"),
+            {key: progress[key] for key in ("code", "label", "group", "entered_at", "finished_at")},
             {
                 "code": "email_code_waiting",
                 "label": "等待邮箱验证码",
@@ -52,6 +53,7 @@ class TaskProgressTests(unittest.TestCase):
                 "finished_at": None,
             },
         )
+        self.assertEqual(progress["timing"]["elapsed_seconds"], 30)
 
     def test_repeated_stage_does_not_reset_elapsed_time(self):
         self.tracker.set_stage("T001", "sms_waiting")
@@ -98,6 +100,10 @@ class TaskProgressTests(unittest.TestCase):
         self.assertEqual(progress["code"], "phone_acquiring")
         self.assertEqual(progress["entered_at"], 140)
         self.assertEqual(progress["finished_at"], 155)
+        stages = {row["code"]: row for row in progress["timing"]["stages"]}
+        self.assertEqual(stages["phone_acquiring"]["visits"], 2)
+        self.assertEqual(stages["phone_acquiring"]["elapsed_seconds"], 20)
+        self.assertEqual(progress["timing"]["elapsed_seconds"], 55)
 
     def test_fake_chain_and_sms_flow_reaches_final_upload(self):
         self.tracker.observe_task_state("T001", "authorizing")

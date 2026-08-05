@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 import threading
@@ -31,9 +32,10 @@ SMS_PROVIDER_ALIASES = {
     "fivesim": "5sim",
     "five_sim": "5sim",
 }
-PERFORMANCE_POLICY_VERSION = 9
+PERFORMANCE_POLICY_VERSION = 10
 PHONE_MAX_ATTEMPTS_LIMIT = 45
 PERFORMANCE_DEFAULTS = {
+    "auto_email_login_concurrency": 5,
     "phone_max_attempts": PHONE_MAX_ATTEMPTS_LIMIT,
     "phone_attempts_per_provider": 15,
     "phone_session_cycle_seconds": 1800,
@@ -42,7 +44,7 @@ PERFORMANCE_DEFAULTS = {
 SMS_NETWORK_ATTEMPTS = 3
 SMS_FIRST_WAIT_SECONDS = 30
 SMS_SECOND_WAIT_SECONDS = 30
-SMS_POLL_INTERVAL_SECONDS = 5
+SMS_POLL_INTERVAL_SECONDS = 3
 _CANCEL_RECEIPT_KEYS = frozenset(
     {"cancel_state", "provider_response", "provider_status", "refund_status"}
 )
@@ -127,6 +129,32 @@ def _herosms_min_cancel_seconds(value: Any, default: int = 120) -> int:
         return int(default)
 
 
+class HeroSmsCancellationDeferred(RuntimeError):
+    """Signal that provider cancellation must resume after its protection window."""
+
+    def __init__(self, retry_after_seconds: float, minimum_seconds: int) -> None:
+        self.retry_after_seconds = max(1.0, float(retry_after_seconds))
+        self.minimum_seconds = max(1, int(minimum_seconds))
+        super().__init__(
+            f"herosms_cancel_deferred:retry_after={int(self.retry_after_seconds)}"
+        )
+
+
+def herosms_cancel_delay_seconds(
+    leased_at: Any,
+    minimum_seconds: Any = 120,
+    *,
+    now_fn: Callable[[], float] = time.time,
+) -> float:
+    try:
+        started = float(leased_at)
+    except (TypeError, ValueError):
+        started = float(now_fn())
+    minimum = _herosms_min_cancel_seconds(minimum_seconds)
+    elapsed = max(0.0, float(now_fn()) - started)
+    return max(1.0, float(minimum) - elapsed + 1.0)
+
+
 def safe_cancel_receipt(value: Any) -> dict[str, str]:
     if not isinstance(value, dict):
         return {}
@@ -142,16 +170,18 @@ def confirm_herosms_cancellation(
     provider: Any,
     activation_id: Any,
     *,
-    now_fn: Callable[[], float] = time.monotonic,
+    now_fn: Callable[[], float] = time.time,
     sleep_fn: Callable[[float], None] = time.sleep,
     on_wait: Callable[[float], None] | None = None,
+    leased_at: float | None = None,
+    defer_early: bool = False,
 ) -> dict[str, str]:
     """Cancel one HeroSMS activation using its documented refund contract."""
     api = getattr(provider, "_api", None)
     activation = str(activation_id or "").strip()
     if not callable(api) or not activation:
         raise RuntimeError("herosms_cancel_confirmation_unavailable")
-    started = float(now_fn())
+    started = float(leased_at) if leased_at is not None else float(now_fn())
     response = ""
     minimum_seconds = 120
     for attempt in range(3):
@@ -173,13 +203,18 @@ def confirm_herosms_cancellation(
             raise RuntimeError(f"herosms_cancel_rejected:{response or 'EMPTY_RESPONSE'}")
         if attempt >= 2:
             raise RuntimeError("herosms_cancel_early_denied_after_retry")
-        elapsed = max(0.0, float(now_fn()) - started)
-        wait_seconds = max(1.0, float(minimum_seconds) - elapsed + 1.0)
+        wait_seconds = herosms_cancel_delay_seconds(
+            started,
+            minimum_seconds,
+            now_fn=now_fn,
+        )
         if callable(on_wait):
             try:
                 on_wait(wait_seconds)
             except Exception:
                 pass
+        if defer_early:
+            raise HeroSmsCancellationDeferred(wait_seconds, minimum_seconds)
         sleep_fn(wait_seconds)
 
     # HeroSMS documents ACCESS_CANCEL from setStatus=8 as the successful
@@ -300,6 +335,8 @@ def migrate_performance_config(value: Any) -> tuple[dict[str, Any], bool]:
             if current <= 0 or (
                 version < PERFORMANCE_POLICY_VERSION
                 and (
+                    (key == "auto_email_login_concurrency" and current == 1)
+                    or
                     (key == "phone_max_attempts" and current in {9, 15})
                     or (key == "phone_session_cycle_seconds" and current == 480)
                 )
@@ -669,7 +706,10 @@ def is_protocol_pressure_error(value: Any) -> bool:
 @dataclass
 class _ProxyProtocolState:
     active: int = 0
+    waiting: int = 0
     limit: int = 3
+    ceiling: int = 3
+    last_started_at: float = 0.0
     pressure_events: list[float] = field(default_factory=list)
     success_streak: int = 0
 
@@ -684,11 +724,13 @@ class ProxyProtocolGate:
         now_fn: Callable[[], float] = time.monotonic,
         pressure_window_seconds: float = 60.0,
         restore_successes: int = 6,
+        launch_interval_seconds: float = 1.0,
     ) -> None:
         self.default_limit = max(1, int(default_limit))
         self.now_fn = now_fn
         self.pressure_window_seconds = max(1.0, float(pressure_window_seconds))
         self.restore_successes = max(1, int(restore_successes))
+        self.launch_interval_seconds = max(0.0, float(launch_interval_seconds))
         self.condition = threading.Condition()
         self.states: dict[str, _ProxyProtocolState] = {}
 
@@ -699,36 +741,82 @@ class ProxyProtocolGate:
             return "direct"
         return f"proxy:{hashlib.sha256(text.encode('utf-8', 'replace')).hexdigest()[:16]}"
 
-    @contextmanager
-    def acquire(self, proxy: Any) -> Iterator[str]:
-        key = self.key(proxy)
+    def _state(self, key: str) -> _ProxyProtocolState:
+        return self.states.setdefault(
+            key,
+            _ProxyProtocolState(
+                limit=self.default_limit,
+                ceiling=self.default_limit,
+            ),
+        )
+
+    def begin_run(self, limit: Any) -> int:
+        ceiling = max(1, int(limit))
         with self.condition:
-            state = self.states.setdefault(
-                key,
-                _ProxyProtocolState(limit=self.default_limit),
-            )
-            while state.active >= state.limit:
-                self.condition.wait()
-            state.active += 1
+            self.default_limit = ceiling
+            for state in self.states.values():
+                state.ceiling = ceiling
+                state.limit = min(ceiling, max(1, state.limit)) if state.active else ceiling
+                state.pressure_events.clear()
+                state.success_streak = 0
+                state.last_started_at = 0.0
+            self.condition.notify_all()
+        return ceiling
+
+    @staticmethod
+    def _stopped(stop_event: Any) -> bool:
+        if stop_event is None:
+            return False
+        checker = getattr(stop_event, "is_set", None)
+        if callable(checker):
+            return bool(checker())
+        return bool(stop_event()) if callable(stop_event) else bool(stop_event)
+
+    @contextmanager
+    def acquire(self, proxy: Any, *, stop_event: Any = None) -> Iterator[str]:
+        key = self.key(proxy)
+        acquired = False
+        with self.condition:
+            state = self._state(key)
+            state.waiting += 1
+            try:
+                while True:
+                    if self._stopped(stop_event):
+                        raise RuntimeError("task_stopped")
+                    now = float(self.now_fn())
+                    launch_wait = (
+                        max(
+                            0.0,
+                            state.last_started_at + self.launch_interval_seconds - now,
+                        )
+                        if state.last_started_at > 0
+                        else 0.0
+                    )
+                    if state.active < state.limit and launch_wait <= 0:
+                        state.active += 1
+                        state.last_started_at = now
+                        acquired = True
+                        break
+                    self.condition.wait(timeout=min(0.25, launch_wait) if launch_wait else 0.25)
+            finally:
+                state.waiting = max(0, state.waiting - 1)
         try:
             yield key
         finally:
-            with self.condition:
-                state.active = max(0, state.active - 1)
-                self.condition.notify_all()
+            if acquired:
+                with self.condition:
+                    state.active = max(0, state.active - 1)
+                    self.condition.notify_all()
 
     def report(self, proxy: Any, value: Any = None, *, success: bool = False) -> int:
         key = self.key(proxy)
         with self.condition:
-            state = self.states.setdefault(
-                key,
-                _ProxyProtocolState(limit=self.default_limit),
-            )
+            state = self._state(key)
             now = float(self.now_fn())
             if success:
                 state.pressure_events.clear()
                 state.success_streak += 1
-                if state.limit < self.default_limit and state.success_streak >= self.restore_successes:
+                if state.limit < state.ceiling and state.success_streak >= self.restore_successes:
                     state.limit += 1
                     state.success_streak = 0
                     self.condition.notify_all()
@@ -751,8 +839,16 @@ class ProxyProtocolGate:
     def snapshot(self, proxy: Any) -> dict[str, int]:
         key = self.key(proxy)
         with self.condition:
-            state = self.states.get(key) or _ProxyProtocolState(limit=self.default_limit)
-            return {"active": state.active, "limit": state.limit}
+            state = self.states.get(key) or _ProxyProtocolState(
+                limit=self.default_limit,
+                ceiling=self.default_limit,
+            )
+            return {
+                "active": state.active,
+                "limit": state.limit,
+                "ceiling": state.ceiling,
+                "waiting": state.waiting,
+            }
 
 
 @dataclass
@@ -1278,6 +1374,7 @@ class PooledSmsBowerProvider:
                 "key_fingerprint": state.fingerprint,
                 "balance_usd": state.balance_usd,
                 "price_usd": None if price_usd is None else float(price_usd),
+                "leased_at": time.time(),
             }
         except Exception:
             try:
@@ -1923,7 +2020,11 @@ class PooledSmsProvider:
         self.last_finish_receipt = {}
         self.activation_id = activation_text
         self.phone = phone_text
-        self.current_order_meta = {**meta, "order_state": "leased"}
+        self.current_order_meta = {
+            **meta,
+            "leased_at": time.time(),
+            "order_state": "leased",
+        }
         return activation_text, phone_text
 
     def get_number(self, service: str = "dr", country: str = "151", provider_ids: str = "", max_price: str = "") -> tuple[str, str]:
@@ -1994,7 +2095,7 @@ class PooledSmsProvider:
 
         def poll() -> str | None:
             self._ensure_activation(activation_id, generation)
-            remaining = max(1, int(deadline - time.monotonic()))
+            remaining = max(1, math.ceil(deadline - time.monotonic()))
             code = self._wait_once(remaining, interval)
             self._ensure_activation(activation_id, generation)
             return code
@@ -2093,8 +2194,10 @@ class PooledSmsProvider:
             return confirm_herosms_cancellation(
                 provider,
                 self.activation_id,
+                leased_at=self.current_order_meta.get("leased_at"),
+                defer_early=True,
                 on_wait=lambda seconds: self.registry._log(
-                    f"HeroSMS 订单处于前置取消保护期，{int(seconds)} 秒后自动重试取消并核对返款",
+                    f"HeroSMS 订单处于前置取消保护期，已安排约 {int(seconds)} 秒后后台取消并核对返款",
                     "warn",
                 ),
             )
@@ -2232,11 +2335,15 @@ class PhoneSubmissionGate:
         now_fn: Callable[[], float] = time.monotonic,
         sleep_fn: Callable[[float], None] = time.sleep,
     ) -> None:
-        self.semaphore = threading.BoundedSemaphore(max(1, int(concurrency)))
+        self.limit = max(1, int(concurrency))
+        self.semaphore = threading.BoundedSemaphore(self.limit)
         self.interval_seconds = max(0.0, float(interval_seconds))
         self.now_fn = now_fn
         self.sleep_fn = sleep_fn
         self.spacing_lock = threading.Lock()
+        self.status_lock = threading.Lock()
+        self.active = 0
+        self.waiting = 0
         self.last_started_at = 0.0
         self.not_before = 0.0
         self.transient_streak = 0
@@ -2258,8 +2365,59 @@ class PhoneSubmissionGate:
         with self.spacing_lock:
             self.transient_streak = 0
 
-    def call(self, function: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-        with self.semaphore:
+    def status(self) -> dict[str, int]:
+        with self.status_lock:
+            return {
+                "active": self.active,
+                "limit": self.limit,
+                "waiting": self.waiting,
+            }
+
+    @staticmethod
+    def _stopped(stop_event: Any) -> bool:
+        return ProxyProtocolGate._stopped(stop_event)
+
+    def _acquire(self, stop_event: Any) -> None:
+        with self.status_lock:
+            self.waiting += 1
+        try:
+            while True:
+                if self._stopped(stop_event):
+                    raise RuntimeError("task_stopped")
+                if self.semaphore.acquire(timeout=0.25):
+                    with self.status_lock:
+                        self.active += 1
+                    return
+        finally:
+            with self.status_lock:
+                self.waiting = max(0, self.waiting - 1)
+
+    def _release(self) -> None:
+        with self.status_lock:
+            self.active = max(0, self.active - 1)
+        self.semaphore.release()
+
+    def _wait(self, seconds: float, stop_event: Any) -> None:
+        remaining = max(0.0, float(seconds))
+        if stop_event is None:
+            self.sleep_fn(remaining)
+            return
+        while remaining > 0:
+            if self._stopped(stop_event):
+                raise RuntimeError("task_stopped")
+            chunk = min(0.25, remaining)
+            self.sleep_fn(chunk)
+            remaining -= chunk
+
+    def call(
+        self,
+        function: Callable[..., Any],
+        *args: Any,
+        stop_event: Any = None,
+        **kwargs: Any,
+    ) -> Any:
+        self._acquire(stop_event)
+        try:
             while True:
                 with self.spacing_lock:
                     now = self.now_fn()
@@ -2271,8 +2429,10 @@ class PhoneSubmissionGate:
                         self.last_started_at = now
                         break
                 if wait_for > 0:
-                    self.sleep_fn(wait_for)
+                    self._wait(wait_for, stop_event)
             return function(*args, **kwargs)
+        finally:
+            self._release()
 
     def call_with_retries(
         self,
@@ -2281,13 +2441,19 @@ class PhoneSubmissionGate:
         is_transient: Callable[[Any], bool],
         max_attempts: int = 4,
         on_retry: Callable[[float, int], None] | None = None,
+        stop_event: Any = None,
         **kwargs: Any,
     ) -> Any:
         attempts = max(1, int(max_attempts))
         last_error: Any = None
         for attempt in range(1, attempts + 1):
             try:
-                result = self.call(function, *args, **kwargs)
+                result = self.call(
+                    function,
+                    *args,
+                    stop_event=stop_event,
+                    **kwargs,
+                )
             except Exception as exc:
                 if not is_transient(exc):
                     self.report_success()
@@ -2533,6 +2699,11 @@ class SmsCleanupQueue:
         self.path = Path(path)
         self.now_fn = now_fn
         self.lock = threading.RLock()
+        self.condition = threading.Condition(self.lock)
+        self.process_lock = threading.Lock()
+        self.worker: threading.Thread | None = None
+        self.worker_stop = threading.Event()
+        self.worker_handler: Callable[[dict[str, Any]], bool] | None = None
 
     @staticmethod
     def _entry_id(platform: Any, activation_id: Any) -> str:
@@ -2553,7 +2724,7 @@ class SmsCleanupQueue:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
         temporary.write_text(
-            json.dumps({"version": 1, "items": rows}, ensure_ascii=False, indent=2),
+            json.dumps({"version": 2, "items": rows}, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
         temporary.replace(self.path)
@@ -2566,6 +2737,8 @@ class SmsCleanupQueue:
         activation_id: Any,
         delay_seconds: float = 15.0,
         error_code: Any = "provider_cancel_failed",
+        leased_at: Any = None,
+        task_id: Any = "",
     ) -> str:
         platform_name = normalize_sms_provider_name(platform)
         activation = str(activation_id or "").strip()
@@ -2585,6 +2758,8 @@ class SmsCleanupQueue:
                         "key_fingerprint": fingerprint,
                         "activation_id": activation,
                         "due_at": now + max(0.0, float(delay_seconds)),
+                        "leased_at": float(leased_at or now),
+                        "task_id": str(task_id or "").strip()[:80],
                         "attempts": 0,
                         "error_code": _safe_provider_token(error_code).lower(),
                     }
@@ -2594,7 +2769,12 @@ class SmsCleanupQueue:
                     float(existing.get("due_at") or now),
                     now + max(0.0, float(delay_seconds)),
                 )
+                if not existing.get("task_id") and task_id:
+                    existing["task_id"] = str(task_id).strip()[:80]
+                if not existing.get("leased_at") and leased_at:
+                    existing["leased_at"] = float(leased_at)
             self._write_locked(rows)
+            self.condition.notify_all()
         return entry_id
 
     def process(
@@ -2603,48 +2783,92 @@ class SmsCleanupQueue:
         *,
         limit: int = 20,
     ) -> dict[str, int]:
-        current = float(self.now_fn())
-        with self.lock:
-            rows = self._read_locked()
-            due = [row for row in rows if float(row.get("due_at") or 0) <= current][
-                : max(1, int(limit))
-            ]
-        completed: set[str] = set()
-        updates: dict[str, dict[str, Any]] = {}
-        for row in due:
-            entry_id = str(row.get("id") or "")
-            try:
-                confirmed = bool(handler(dict(row)))
-            except Exception as exc:
-                confirmed = False
-                error_code = type(exc).__name__.lower()
-            else:
-                error_code = "provider_cancel_unconfirmed"
-            if confirmed:
-                completed.add(entry_id)
-                continue
-            attempt = max(0, int(row.get("attempts") or 0)) + 1
-            updates[entry_id] = {
-                "attempts": attempt,
-                "due_at": current + min(1800, 30 * (2 ** min(attempt, 5))),
-                "error_code": _safe_provider_token(error_code).lower(),
-            }
-        with self.lock:
-            rows = self._read_locked()
-            kept: list[dict[str, Any]] = []
-            for row in rows:
+        with self.process_lock:
+            current = float(self.now_fn())
+            with self.lock:
+                rows = self._read_locked()
+                due = [row for row in rows if float(row.get("due_at") or 0) <= current][
+                    : max(1, int(limit))
+                ]
+            completed: set[str] = set()
+            updates: dict[str, dict[str, Any]] = {}
+            for row in due:
                 entry_id = str(row.get("id") or "")
-                if entry_id in completed:
+                try:
+                    confirmed = bool(handler(dict(row)))
+                except Exception as exc:
+                    confirmed = False
+                    error_code = type(exc).__name__.lower()
+                    raw_retry_after = float(
+                        getattr(exc, "retry_after_seconds", 0) or 0
+                    )
+                    retry_after = max(1.0, raw_retry_after) if raw_retry_after else 0.0
+                else:
+                    error_code = "provider_cancel_unconfirmed"
+                    retry_after = 0.0
+                if confirmed:
+                    completed.add(entry_id)
                     continue
-                if entry_id in updates:
-                    row.update(updates[entry_id])
-                kept.append(row)
-            self._write_locked(kept)
+                attempt = max(0, int(row.get("attempts") or 0)) + 1
+                retry_delay = retry_after or min(1800, 30 * (2 ** min(attempt, 5)))
+                updates[entry_id] = {
+                    "attempts": attempt,
+                    "due_at": current + retry_delay,
+                    "error_code": _safe_provider_token(error_code).lower(),
+                }
+            with self.lock:
+                rows = self._read_locked()
+                kept: list[dict[str, Any]] = []
+                for row in rows:
+                    entry_id = str(row.get("id") or "")
+                    if entry_id in completed:
+                        continue
+                    if entry_id in updates:
+                        row.update(updates[entry_id])
+                    kept.append(row)
+                self._write_locked(kept)
+                self.condition.notify_all()
         return {
             "processed": len(due),
             "completed": len(completed),
             "remaining": len(kept),
         }
+
+    def start_worker(self, handler: Callable[[dict[str, Any]], bool]) -> None:
+        with self.condition:
+            self.worker_handler = handler
+            if self.worker is not None and self.worker.is_alive():
+                self.condition.notify_all()
+                return
+            self.worker_stop.clear()
+            self.worker = threading.Thread(
+                target=self._worker_loop,
+                name="sms-cancel-cleanup",
+                daemon=True,
+            )
+            self.worker.start()
+
+    def _worker_loop(self) -> None:
+        while not self.worker_stop.is_set():
+            handler = self.worker_handler
+            if callable(handler):
+                try:
+                    self.process(handler)
+                except Exception:
+                    pass
+            with self.condition:
+                if self.worker_stop.is_set():
+                    return
+                rows = self._read_locked()
+                now = float(self.now_fn())
+                due_times = [float(row.get("due_at") or now) for row in rows]
+                wait_seconds = max(0.1, min(60.0, min(due_times) - now)) if due_times else 60.0
+                self.condition.wait(timeout=wait_seconds)
+
+    def stop_worker(self) -> None:
+        self.worker_stop.set()
+        with self.condition:
+            self.condition.notify_all()
 
 
 class ExchangeRateCache:

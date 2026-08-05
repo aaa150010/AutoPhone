@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from threading import RLock
 import time
@@ -143,14 +144,89 @@ class TaskProgressTracker:
                 return False
             if current and current.get("code") == stage.code:
                 return False
-            self._tasks[key] = {
-                "code": stage.code,
-                "label": stage.label,
-                "group": stage.group,
-                "entered_at": timestamp,
-                "finished_at": None,
-            }
+            if current is None:
+                current = {
+                    "code": stage.code,
+                    "label": stage.label,
+                    "group": stage.group,
+                    "entered_at": timestamp,
+                    "finished_at": None,
+                    "timing": {
+                        "started_at": timestamp,
+                        "finished_at": None,
+                        "elapsed_seconds": 0,
+                        "stages": [],
+                    },
+                }
+                self._tasks[key] = current
+            else:
+                self._close_current_stage(current, timestamp)
+                current.update(
+                    {
+                        "code": stage.code,
+                        "label": stage.label,
+                        "group": stage.group,
+                        "entered_at": timestamp,
+                    }
+                )
+            self._record_stage_visit(current, stage)
             return True
+
+    @staticmethod
+    def _stage_rows(current: dict[str, Any]) -> list[dict[str, Any]]:
+        timing = current.setdefault("timing", {})
+        rows = timing.setdefault("stages", [])
+        return rows if isinstance(rows, list) else []
+
+    def _record_stage_visit(
+        self,
+        current: dict[str, Any],
+        stage: StageDefinition,
+    ) -> None:
+        rows = self._stage_rows(current)
+        row = next((item for item in rows if item.get("code") == stage.code), None)
+        if row is None:
+            rows.append(
+                {
+                    "code": stage.code,
+                    "label": stage.label,
+                    "group": stage.group,
+                    "elapsed_seconds": 0,
+                    "visits": 1,
+                }
+            )
+        else:
+            row["visits"] = max(0, int(row.get("visits") or 0)) + 1
+
+    def _close_current_stage(self, current: dict[str, Any], timestamp: int) -> None:
+        entered_at = int(current.get("entered_at") or timestamp)
+        elapsed = max(0, timestamp - entered_at)
+        for row in self._stage_rows(current):
+            if row.get("code") == current.get("code"):
+                row["elapsed_seconds"] = max(
+                    0,
+                    int(row.get("elapsed_seconds") or 0),
+                ) + elapsed
+                break
+
+    def _public_progress(self, current: dict[str, Any], timestamp: int) -> dict[str, Any]:
+        value = copy.deepcopy(current)
+        timing = value.get("timing") if isinstance(value.get("timing"), dict) else {}
+        started_at = int(timing.get("started_at") or value.get("entered_at") or timestamp)
+        finished_at = timing.get("finished_at")
+        end = int(finished_at) if finished_at is not None else timestamp
+        timing["elapsed_seconds"] = max(0, end - started_at)
+        if finished_at is None:
+            current_elapsed = max(0, timestamp - int(value.get("entered_at") or timestamp))
+            for row in timing.get("stages") or []:
+                if row.get("code") == value.get("code"):
+                    row["elapsed_seconds"] = max(
+                        0,
+                        int(row.get("elapsed_seconds") or 0),
+                    ) + current_elapsed
+                    break
+        value["timing"] = timing
+        return value
 
     def finish(self, task_id: Any, *, now: float | int | None = None) -> bool:
         key = str(task_id or "").strip()
@@ -161,7 +237,15 @@ class TaskProgressTracker:
             current = self._tasks.get(key)
             if current is None or current.get("finished_at") is not None:
                 return False
+            self._close_current_stage(current, timestamp)
             current["finished_at"] = timestamp
+            timing = current.get("timing") if isinstance(current.get("timing"), dict) else {}
+            timing["finished_at"] = timestamp
+            timing["elapsed_seconds"] = max(
+                0,
+                timestamp - int(timing.get("started_at") or timestamp),
+            )
+            current["timing"] = timing
             return True
 
     def observe_task_state(self, task_id: Any, status: Any, *, now: float | int | None = None) -> bool:
@@ -179,7 +263,7 @@ class TaskProgressTracker:
         key = str(task_id or "").strip()
         with self._lock:
             value = self._tasks.get(key)
-            return dict(value) if value is not None else None
+            return self._public_progress(value, self._timestamp()) if value is not None else None
 
     def decorate_runtime(self, runtime: dict[str, Any]) -> None:
         tasks = runtime.get("tasks")
@@ -189,7 +273,10 @@ class TaskProgressTracker:
         now = self._timestamp()
 
         with self._lock:
-            tracked = {task_id: dict(value) for task_id, value in self._tasks.items()}
+            tracked = {
+                task_id: self._public_progress(value, now)
+                for task_id, value in self._tasks.items()
+            }
 
         for task in task_rows:
             if not isinstance(task, dict):
@@ -207,6 +294,26 @@ class TaskProgressTracker:
                         "group": fallback.group,
                         "entered_at": int(task.get("updated_at") or task.get("created_at") or now),
                         "finished_at": None,
+                        "timing": {
+                            "started_at": int(task.get("created_at") or task.get("updated_at") or now),
+                            "finished_at": None,
+                            "elapsed_seconds": max(
+                                0,
+                                now - int(task.get("created_at") or task.get("updated_at") or now),
+                            ),
+                            "stages": [
+                                {
+                                    "code": fallback.code,
+                                    "label": fallback.label,
+                                    "group": fallback.group,
+                                    "elapsed_seconds": max(
+                                        0,
+                                        now - int(task.get("updated_at") or task.get("created_at") or now),
+                                    ),
+                                    "visits": 1,
+                                }
+                            ],
+                        },
                     }
             if progress is not None:
                 task["progress"] = progress

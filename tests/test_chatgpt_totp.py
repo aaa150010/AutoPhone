@@ -264,6 +264,42 @@ class ChatGptTotpTests(unittest.TestCase):
         )
         self.assertEqual(calls[0][2]["referer"], "https://auth.openai.com/log-in/password")
 
+    def test_totp_provider_does_not_acquire_shared_mailbox_slot(self):
+        class PhaseGate:
+            def __init__(self):
+                self.calls = 0
+
+            def acquire(self, *_args, **_kwargs):
+                self.calls += 1
+                raise AssertionError("TOTP must not acquire the mailbox polling slot")
+
+        gate = PhaseGate()
+        patches = build_chatgpt_totp_patches(
+            runtime_module=SimpleNamespace(),
+            codex_oauth_chain=SimpleNamespace(),
+            original_entries_unlocked=lambda _pool: ([], []),
+            original_outlook_otp_provider=lambda *args, **kwargs: None,
+            original_account_label=lambda entry: entry.email,
+            original_verify_password=lambda *args: {},
+            original_send_mfa_otp=lambda *args: {},
+            original_verify_mfa_otp=lambda *args: {},
+            parse_oauth_mailbox_row=parse_oauth_mailbox_row,
+        )
+        provider = patches.outlook_otp_provider(
+            SimpleNamespace(
+                source_row="totp@example.com|password|JBSWY3DPEHPK3PXP",
+                oauth_client_id="chatgpt_totp",
+                oauth_refresh_token="JBSWY3DPEHPK3PXP",
+            ),
+            {},
+            None,
+            phase_gate=gate,
+        )
+
+        self.assertIsNone(provider.acquire_login_slot())
+        self.assertEqual(len(provider.wait_code("totp@example.com")), 6)
+        self.assertEqual(gate.calls, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

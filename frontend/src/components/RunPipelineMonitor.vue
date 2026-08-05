@@ -45,7 +45,9 @@ function connectorState(index: number) {
 const concurrencyRows = computed(() => [
   { label: '任务容量', value: props.runtime.concurrency?.task || {} },
   { label: 'Node 容量', value: props.runtime.concurrency?.node || {} },
+  { label: '协议容量', value: props.runtime.concurrency?.protocol || {} },
   { label: '邮箱码容量', value: props.runtime.concurrency?.email || {} },
+  { label: '手机提交', value: props.runtime.concurrency?.phone || {} },
 ].map((item) => {
   const active = numeric(item.value.active)
   const limit = numeric(item.value.limit)
@@ -125,7 +127,7 @@ const concurrencyRows = computed(() => [
 .flow-line { flex: 1 1 auto; min-width: 5px; height: 2px; margin-top: 13px; background: #dfe5ed; }
 .flow-line.is-done { background: #65be8c; }
 .flow-line.is-active { background: #4a9ee8; }
-.capacity-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; padding: 3px 12px 10px; }
+.capacity-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; padding: 3px 12px 10px; }
 .capacity-item { min-width: 0; }
 .capacity-copy { display: flex; align-items: baseline; gap: 4px; min-width: 0; margin-bottom: 5px; }
 .capacity-copy span { overflow: hidden; color: #788496; font-size: 9px; line-height: 13px; text-overflow: ellipsis; white-space: nowrap; }

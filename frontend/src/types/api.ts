@@ -33,12 +33,28 @@ export interface SmsRuntimeAlert {
 
 export type TaskStageGroup = 'queue' | 'oauth' | 'email' | 'phone' | 'sms' | 'finalizing'
 
+export interface TaskStageTiming {
+  code: string
+  label: string
+  group: TaskStageGroup
+  elapsed_seconds: number
+  visits: number
+}
+
+export interface TaskTiming {
+  started_at: number
+  finished_at: number | null
+  elapsed_seconds: number
+  stages: TaskStageTiming[]
+}
+
 export interface TaskProgress {
   code: string
   label: string
   group: TaskStageGroup
   entered_at: number
   finished_at: number | null
+  timing?: TaskTiming
 }
 
 export type TaskStageCounts = Record<TaskStageGroup, number>
@@ -66,6 +82,7 @@ export interface RuntimeTask {
   created_at?: number
   updated_at?: number
   progress?: TaskProgress | null
+  timing?: TaskTiming | null
   result?: {
     sms_cost_usd?: number | null
     sms_cost_cny?: number | null
@@ -142,6 +159,7 @@ export interface MailboxRow {
   batch_id?: string
   batch_started_at?: number
   progress?: TaskProgress | null
+  timing?: TaskTiming | null
   sms_cost_usd?: number | null
   sms_cost_cny?: number | null
   sms_exchange_rate?: number | null

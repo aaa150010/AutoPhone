@@ -95,6 +95,17 @@ function updateProxyScope(key: string, value: boolean | string | number) {
 
     <el-row :gutter="10">
       <el-col :span="12">
+        <el-form-item label="邮箱登录并发数">
+          <el-input-number
+            :model-value="Number(modelValue.auto_email_login_concurrency ?? 5)"
+            :min="1"
+            :max="Math.max(1, Number(modelValue.concurrency || 5))"
+            controls-position="right"
+            @update:model-value="update('auto_email_login_concurrency', Number($event ?? 5))"
+          />
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
         <el-form-item label="鉴权额外重试次数">
           <el-input-number
             :model-value="Number(modelValue.auth_session_retries ?? 1)"
@@ -105,6 +116,9 @@ function updateProxyScope(key: string, value: boolean | string | number) {
           />
         </el-form-item>
       </el-col>
+    </el-row>
+
+    <el-row :gutter="10">
       <el-col :span="12">
         <el-form-item label="邮箱验证码等待超时（秒）">
           <el-input-number

@@ -10,6 +10,7 @@ import urllib.parse
 
 from mac_overrides.sms_runtime import (
     ExchangeRateCache,
+    HeroSmsCancellationDeferred,
     PhoneSubmissionGate,
     PERFORMANCE_POLICY_VERSION,
     PooledSmsProvider,
@@ -137,7 +138,9 @@ class FakeMultiPlatformProvider:
         self.calls.append(("ready", self.platform, self.key, self.activation_id))
 
     def wait_code(self, timeout=300, interval=3):
-        self.calls.append(("wait", self.platform, self.key, self.activation_id))
+        self.calls.append(
+            ("wait", self.platform, self.key, self.activation_id, timeout, interval)
+        )
         values = self.scenario.setdefault("codes", ["123456"])
         value = values.pop(0) if values else None
         if isinstance(value, Exception):
@@ -210,6 +213,7 @@ class SmsRuntimeTests(unittest.TestCase):
         self.assertEqual(migrated["phone_attempts_per_provider"], 15)
         self.assertEqual(migrated["phone_session_cycle_seconds"], 1800)
         self.assertEqual(migrated["auth_session_retries"], 1)
+        self.assertEqual(migrated["auto_email_login_concurrency"], 5)
 
         upgraded, changed = migrate_performance_config({
             "performance_policy_version": 4,
@@ -229,7 +233,15 @@ class SmsRuntimeTests(unittest.TestCase):
         self.assertFalse(changed)
         self.assertEqual(saved["phone_max_attempts"], 0)
         self.assertEqual(saved["auth_session_retries"], 0)
+        self.assertEqual(saved["auto_email_login_concurrency"], 5)
         self.assertEqual(saved["phone_session_cycle_seconds"], 1800)
+
+        saved_one, changed = migrate_performance_config({
+            "performance_policy_version": PERFORMANCE_POLICY_VERSION,
+            "auto_email_login_concurrency": 1,
+        })
+        self.assertFalse(changed)
+        self.assertEqual(saved_one["auto_email_login_concurrency"], 1)
 
         over_limit, changed = migrate_performance_config({
             "performance_policy_version": PERFORMANCE_POLICY_VERSION,
@@ -361,6 +373,26 @@ class SmsRuntimeTests(unittest.TestCase):
         self.assertEqual(second.current_order_meta["platform"], "herosms")
         second.cancel()
 
+    def test_sms_wait_uses_two_fixed_thirty_second_rounds_at_three_second_intervals(self):
+        factory = FakeMultiPlatformFactory({
+            ("smsbower", "bower-a"): {"balance": 1.0, "codes": [None, None]},
+        })
+        registry = SmsProviderRegistry(factory)
+        registry.configure({
+            "sms_provider_pools": [
+                {"provider": "smsbower", "enabled": True, "api_keys": ["bower-a"]},
+            ]
+        })
+        provider = PooledSmsProvider(registry)
+        provider.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+
+        with self.assertRaisesRegex(RuntimeError, "sms_timeout"):
+            provider.wait_code(timeout=30, interval=99)
+
+        waits = [call for call in factory.calls if call[0] == "wait"]
+        self.assertEqual([call[4:] for call in waits], [(30, 3), (30, 3)])
+        self.assertEqual(len({call[3] for call in waits}), 1)
+
     def test_herosms_cancel_uses_documented_access_cancel_refund_ack(self):
         factory = FakeMultiPlatformFactory({
             ("herosms", "hero-a"): {
@@ -443,6 +475,31 @@ class SmsRuntimeTests(unittest.TestCase):
 
         self.assertEqual(receipt["cancel_state"], "confirmed")
         self.assertEqual(receipt["refund_status"], "provider_refund_accepted")
+
+    def test_herosms_early_cancel_defers_only_remaining_order_age(self):
+        clock = [1060.0]
+
+        with self.assertRaises(HeroSmsCancellationDeferred) as raised:
+            confirm_herosms_cancellation(
+                type(
+                    "Provider",
+                    (),
+                    {
+                        "_api": staticmethod(
+                            lambda _params: {
+                                "title": "EARLY_CANCEL_DENIED",
+                                "info": {"minActivationTime": 120},
+                            }
+                        )
+                    },
+                )(),
+                "hero-order-deferred",
+                leased_at=1000.0,
+                now_fn=lambda: clock[0],
+                defer_early=True,
+            )
+
+        self.assertEqual(raised.exception.retry_after_seconds, 61.0)
 
     def test_herosms_cancel_remains_confirmed_when_status_reconciliation_races_cleanup(self):
         for cancel_status in ("NO_ACTIVATION", "STATUS_WAIT_CODE", RuntimeError("timeout")):
@@ -1710,7 +1767,11 @@ class SmsRuntimeTests(unittest.TestCase):
         )
 
     def test_proxy_protocol_gate_limits_each_proxy_and_adapts(self):
-        gate = ProxyProtocolGate(default_limit=3, restore_successes=2)
+        gate = ProxyProtocolGate(
+            default_limit=3,
+            restore_successes=2,
+            launch_interval_seconds=0,
+        )
         active = 0
         maximum = 0
         lock = threading.Lock()
@@ -1739,6 +1800,87 @@ class SmsRuntimeTests(unittest.TestCase):
         gate.report("http://proxy-a:7897", success=True)
         gate.report("http://proxy-a:7897", success=True)
         self.assertEqual(gate.snapshot("http://proxy-a:7897")["limit"], 3)
+
+    def test_proxy_protocol_gate_fake_clock_launches_at_one_second_offsets(self):
+        clock = [100.0]
+        gate = ProxyProtocolGate(
+            default_limit=5,
+            now_fn=lambda: clock[0],
+            launch_interval_seconds=1,
+        )
+        starts = []
+
+        for offset in range(5):
+            clock[0] = 100.0 + offset
+            with gate.acquire("proxy-a"):
+                starts.append(gate.states[gate.key("proxy-a")].last_started_at - 100.0)
+
+        self.assertEqual(starts, [0.0, 1.0, 2.0, 3.0, 4.0])
+
+    def test_proxy_protocol_gate_default_restores_only_after_six_successes(self):
+        clock = [100.0]
+        gate = ProxyProtocolGate(
+            default_limit=5,
+            now_fn=lambda: clock[0],
+            launch_interval_seconds=0,
+        )
+        gate.report("proxy-a", "TLS connection reset")
+        clock[0] += 30
+        gate.report("proxy-a", "HTTP 429")
+        self.assertEqual(gate.snapshot("proxy-a")["limit"], 4)
+
+        for _ in range(5):
+            gate.report("proxy-a", success=True)
+        self.assertEqual(gate.snapshot("proxy-a")["limit"], 4)
+        gate.report("proxy-a", success=True)
+        self.assertEqual(gate.snapshot("proxy-a")["limit"], 5)
+
+    def test_proxy_protocol_gate_staggers_launches_and_supports_stop(self):
+        gate = ProxyProtocolGate(default_limit=5, launch_interval_seconds=0.03)
+        starts: list[float] = []
+        starts_lock = threading.Lock()
+
+        def worker():
+            with gate.acquire("proxy-a"):
+                with starts_lock:
+                    starts.append(time.monotonic())
+                time.sleep(0.12)
+
+        threads = [threading.Thread(target=worker) for _ in range(5)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        ordered = sorted(starts)
+        self.assertEqual(len(ordered), 5)
+        self.assertTrue(all(b - a >= 0.02 for a, b in zip(ordered, ordered[1:])))
+
+        blocker = ProxyProtocolGate(default_limit=1, launch_interval_seconds=0)
+        stopped = threading.Event()
+        waiter_done = threading.Event()
+        errors: list[str] = []
+
+        def waiter():
+            try:
+                with blocker.acquire("proxy-a", stop_event=stopped):
+                    pass
+            except RuntimeError as exc:
+                errors.append(str(exc))
+            finally:
+                waiter_done.set()
+
+        with blocker.acquire("proxy-a"):
+            waiting_thread = threading.Thread(target=waiter)
+            waiting_thread.start()
+            deadline = time.monotonic() + 1
+            while blocker.snapshot("proxy-a")["waiting"] < 1 and time.monotonic() < deadline:
+                time.sleep(0.01)
+            stopped.set()
+            self.assertTrue(waiter_done.wait(1))
+        waiting_thread.join()
+        self.assertEqual(errors, ["task_stopped"])
+        self.assertEqual(blocker.snapshot("proxy-a")["waiting"], 0)
 
     def test_cleanup_queue_resumes_after_recreation(self):
         clock = [1000.0]

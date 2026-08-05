@@ -63,7 +63,7 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
 _EMAIL_RE = re.compile(
     r"(?i)\b[a-z0-9][a-z0-9._%+-]*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}\b"
 )
-_PROGRESS_FIELDS = ("code", "label", "group", "entered_at", "finished_at")
+_PROGRESS_FIELDS = ("code", "label", "group", "entered_at", "finished_at", "timing")
 _SECRET_MASK = "********"
 _SUB2_BATCH_LIMIT = 20
 _REDACTION_INPUT_LIMIT = 4096
@@ -915,6 +915,18 @@ class MailboxAdminService:
             )
             status_key, status_label = human_mailbox_status(state_item, now)
             progress = live_task.get("progress")
+            timing = (
+                (progress or {}).get("timing")
+                if isinstance(progress, Mapping)
+                else None
+            )
+            if not isinstance(timing, Mapping):
+                timing = (
+                    result.get("timing")
+                    if isinstance(result.get("timing"), Mapping)
+                    else result_payload.get("timing")
+                )
+            timing = dict(timing) if isinstance(timing, Mapping) else None
             task_status = live_task.get("task_status")
             try:
                 live_active = self.is_active_progress(progress, task_status)
@@ -999,6 +1011,7 @@ class MailboxAdminService:
                     "task_id": live_task.get("task_id") or result.get("task_id") or "",
                     "task_status": task_status or result_status,
                     "progress": progress,
+                    "timing": timing,
                     "sms_cost_usd": sms_cost_usd,
                     "sms_cost_cny": sms_cost_cny,
                     "sms_exchange_rate": sms_exchange_rate,

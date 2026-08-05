@@ -317,23 +317,35 @@ class SmsWebIntegration:
             details=receipt,
         )
 
-    def _queue_cancel_cleanup(self, adapter: Any, lease: Any, error: Any) -> None:
+    def _queue_cancel_cleanup(self, adapter: Any, lease: Any, error: Any) -> bool:
         if self.cleanup_queue is None:
-            return
+            return False
         provider = getattr(adapter, "provider", None)
-        meta = dict(getattr(provider, "current_order_meta", None) or {})
+        meta = {
+            **dict(getattr(provider, "current_order_meta", None) or {}),
+            **dict(getattr(lease, "meta", None) or {}),
+        }
         platform = str(meta.get("platform") or meta.get("provider") or "")
-        delay = 121 if platform == "herosms" else 15
+        delay = float(getattr(error, "retry_after_seconds", 0) or 0)
+        if delay <= 0:
+            delay = (
+                self.sms_runtime.herosms_cancel_delay_seconds(meta.get("leased_at"))
+                if platform == "herosms"
+                else 15
+            )
         try:
-            self.cleanup_queue.enqueue(
+            entry_id = self.cleanup_queue.enqueue(
                 platform=platform,
                 key_fingerprint=meta.get("key_fingerprint"),
                 activation_id=getattr(lease, "activation_id", ""),
                 delay_seconds=delay,
                 error_code=type(error).__name__ if isinstance(error, Exception) else error,
+                leased_at=meta.get("leased_at"),
+                task_id=self.adapter_task_id(adapter),
             )
         except Exception:
-            pass
+            return False
+        return bool(entry_id)
 
     def _retry_cleanup_entry(self, entry: dict[str, Any]) -> bool:
         if self.provider_registry is None:
@@ -356,8 +368,18 @@ class SmsWebIntegration:
             receipt = self.sms_runtime.confirm_herosms_cancellation(
                 provider,
                 provider.activation_id,
+                leased_at=float(entry.get("leased_at") or time.time()),
+                defer_early=True,
             )
-            return receipt.get("cancel_state") == "confirmed"
+            confirmed = receipt.get("cancel_state") == "confirmed"
+            if confirmed:
+                self.cost_ledger.mark_finished(
+                    str(entry.get("task_id") or ""),
+                    provider.activation_id,
+                    "cancelled",
+                    details=receipt,
+                )
+            return confirmed
         callback = getattr(provider, "cancel", None)
         if not callable(callback):
             return False
@@ -386,31 +408,38 @@ class SmsWebIntegration:
             self.original_adapter_cancel(adapter, lease, reason=reason)
         except Exception as exc:
             cancel_error = exc
-            self._queue_cancel_cleanup(adapter, lease, exc)
+            queued = self._queue_cancel_cleanup(adapter, lease, exc)
             meta = dict(getattr(lease, "meta", None) or {})
-            meta["sms_order_state"] = "cancel_failed"
+            meta["sms_order_state"] = "cancel_pending" if queued else "cancel_failed"
             lease.meta = meta
-            self._ledger_state(task_id, lease, "cancel_failed")
+            self._ledger_state(task_id, lease, meta["sms_order_state"])
         else:
             meta = dict(getattr(lease, "meta", None) or {})
             receipt = self.sms_runtime.safe_cancel_receipt(
                 getattr(getattr(adapter, "provider", None), "last_finish_receipt", None)
             )
-            meta["sms_order_state"] = (
-                "cancelled" if receipt.get("cancel_state") == "confirmed" else "cancel_failed"
+            confirmed = receipt.get("cancel_state") == "confirmed"
+            queued = False if confirmed else self._queue_cancel_cleanup(
+                adapter,
+                lease,
+                "provider_cancel_unconfirmed",
+            )
+            meta["sms_order_state"] = "cancelled" if confirmed else (
+                "cancel_pending" if queued else "cancel_failed"
             )
             lease.meta = meta
             self._ledger_state(task_id, lease, meta["sms_order_state"])
-            if receipt.get("cancel_state") != "confirmed":
-                self._queue_cancel_cleanup(adapter, lease, "provider_cancel_unconfirmed")
         try:
-            self._mark_cancel_finished(
-                task_id,
-                lease,
-                adapter,
-                reason,
-                cancel_error,
-            )
+            if meta.get("sms_order_state") == "cancel_pending":
+                self._ledger_state(task_id, lease, "cancel_pending")
+            else:
+                self._mark_cancel_finished(
+                    task_id,
+                    lease,
+                    adapter,
+                    reason,
+                    cancel_error,
+                )
         except Exception:
             pass
 
@@ -604,33 +633,39 @@ class SmsWebIntegration:
         try:
             result = self.original_adapter_cancel(adapter, lease, reason=cancel_reason)
         except Exception as exc:
-            self._queue_cancel_cleanup(adapter, lease, exc)
+            queued = self._queue_cancel_cleanup(adapter, lease, exc)
             meta = dict(getattr(lease, "meta", None) or {})
-            meta["sms_order_state"] = "cancel_failed"
+            meta["sms_order_state"] = "cancel_pending" if queued else "cancel_failed"
             lease.meta = meta
-            self._ledger_state(task_id, lease, "cancel_failed")
+            self._ledger_state(task_id, lease, meta["sms_order_state"])
             if task_id:
                 self._forget_active_lease(task_id, lease)
-                try:
-                    self._mark_cancel_finished(task_id, lease, adapter, cancel_reason, exc)
-                except Exception:
-                    pass
+                if not queued:
+                    try:
+                        self._mark_cancel_finished(task_id, lease, adapter, cancel_reason, exc)
+                    except Exception:
+                        pass
                 return None
             raise
-        if task_id:
-            self._forget_active_lease(task_id, lease)
-            self._mark_cancel_finished(task_id, lease, adapter, cancel_reason)
         meta = dict(getattr(lease, "meta", None) or {})
         receipt = self.sms_runtime.safe_cancel_receipt(
             getattr(getattr(adapter, "provider", None), "last_finish_receipt", None)
         )
-        meta["sms_order_state"] = (
-            "cancelled" if receipt.get("cancel_state") == "confirmed" else "cancel_failed"
+        confirmed = receipt.get("cancel_state") == "confirmed"
+        queued = False if confirmed else self._queue_cancel_cleanup(
+            adapter,
+            lease,
+            "provider_cancel_unconfirmed",
+        )
+        meta["sms_order_state"] = "cancelled" if confirmed else (
+            "cancel_pending" if queued else "cancel_failed"
         )
         lease.meta = meta
         self._ledger_state(task_id, lease, meta["sms_order_state"])
-        if receipt.get("cancel_state") != "confirmed":
-            self._queue_cancel_cleanup(adapter, lease, "provider_cancel_unconfirmed")
+        if task_id:
+            self._forget_active_lease(task_id, lease)
+            if confirmed or not queued:
+                self._mark_cancel_finished(task_id, lease, adapter, cancel_reason)
         return result
 
     def classify_error(self, error: Any) -> str:
@@ -828,6 +863,7 @@ class SmsWebIntegration:
                 is_transient=self.sms_runtime.is_transient_openai_error,
                 max_attempts=4,
                 on_retry=on_retry,
+                stop_event=(getattr(transport, "config", None) or {}).get("_stop_requested"),
             )
         except Exception as exc:
             if is_explicit_account_banned(exc):
@@ -913,6 +949,11 @@ class SmsWebIntegration:
                 service=str(value.get("service") or "dr"),
                 **options,
             )
+        if self.cleanup_queue is not None:
+            try:
+                self.cleanup_queue.start_worker(self._retry_cleanup_entry)
+            except Exception:
+                pass
         return sms_proxy
 
     def preflight_pool(self, config: Any, *, logs: Any = None, importer: Any = None):

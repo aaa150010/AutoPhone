@@ -268,7 +268,7 @@ defineExpose({ clearSelection })
       </template>
     </el-table-column>
     <el-table-column label="当前阶段" width="220">
-      <template #default="{ row }"><TaskProgressCell :progress="row.progress" :now-seconds="nowSeconds" /></template>
+      <template #default="{ row }"><TaskProgressCell :progress="row.progress" :timing="row.timing" :now-seconds="nowSeconds" /></template>
     </el-table-column>
     <el-table-column label="接码成本" width="110" align="right">
       <template #default="{ row }">

@@ -64,7 +64,7 @@ function failureTooltip(row: RuntimeTask) {
     </el-table-column>
     <el-table-column label="运行状态" width="190">
       <template #default="{ row }">
-        <TaskProgressCell :progress="row.progress" :now-seconds="nowSeconds" />
+        <TaskProgressCell :progress="row.progress" :timing="row.timing" :now-seconds="nowSeconds" />
       </template>
     </el-table-column>
     <el-table-column label="状态" width="95">
