@@ -10,7 +10,6 @@ import time
 from typing import Any, Callable
 import uuid
 
-
 _PIXEL_AUTO_TARGET_IDS = tuple(f"pixel-{index}" for index in range(2, 8))
 
 
@@ -459,6 +458,19 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         except Exception:
             return module.jsonify(ok=False, error="读取 2FA 密钥失败"), 500
 
+    def api_mailboxes_url():
+        try:
+            data = module.request.get_json(silent=True) or {}
+            if not isinstance(data, dict):
+                return module.jsonify(ok=False, error="请求必须是 JSON 对象"), 400
+            result = mailbox_admin.reveal_mailbox_url(data.get("row_id"), data.get("line_no"))
+            if result.get("ok"):
+                return module.jsonify(result)
+            status = 409 if result.get("code") == "mailbox_row_stale" else 400
+            return module.jsonify(result), status
+        except Exception:
+            return module.jsonify(ok=False, error="读取取件 URL 失败"), 500
+
     def api_mailboxes_sub2_test():
         try:
             data = module.request.get_json(silent=True) or {}
@@ -894,6 +906,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/mailboxes/latest-code", "api_mailboxes_latest_code", api_mailboxes_latest_code, ["POST"]),
         ("/api/mailboxes/password", "api_mailboxes_password", api_mailboxes_password, ["POST"]),
         ("/api/mailboxes/totp", "api_mailboxes_totp", api_mailboxes_totp, ["POST"]),
+        ("/api/mailboxes/url", "api_mailboxes_url", api_mailboxes_url, ["POST"]),
         ("/api/mailbox-url-test", "api_mailbox_url_test", api_mailbox_url_test, ["POST"]),
         ("/api/mailboxes/sub2-test", "api_mailboxes_sub2_test", api_mailboxes_sub2_test, ["POST"]),
         ("/api/mailboxes/quota", "api_mailboxes_quota", api_mailboxes_quota, ["POST"]),

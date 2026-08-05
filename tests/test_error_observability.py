@@ -147,6 +147,16 @@ class ErrorObservabilityTests(unittest.TestCase):
         self.assertEqual(failure["public_message"], ACCOUNT_BANNED_MESSAGE)
         self.assertFalse(failure["retryable"])
 
+    def test_curl_56_is_a_retryable_remote_disconnect(self):
+        failure = classify_failure(
+            error="Failed to perform, curl: (56) Connection closed abruptly"
+        )
+
+        self.assertEqual(failure["node_code"], "oauth_authorize_node")
+        self.assertEqual(failure["error_code"], "remote_disconnected")
+        self.assertTrue(failure["retryable"])
+        self.assertIn("远端或代理", failure["public_message"])
+
     def test_sanitizer_removes_all_credential_classes_but_keeps_safe_status(self):
         secrets = ("mail-pass", "TOTPSECRET", "client-visible-secret")
         raw = (

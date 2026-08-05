@@ -146,6 +146,16 @@ def totp_secret_from_row(row: Any) -> str:
     return ""
 
 
+def mailbox_url_from_row(row: Any) -> str:
+    """Return the transient mailbox page URL for a supported source row."""
+
+    parsed_url_totp = parse_mailbox_url_totp_row(row)
+    if parsed_url_totp is not None:
+        return str(parsed_url_totp[1] or "").strip()
+    parsed_url = parse_mailbox_url_row(row)
+    return str(parsed_url.mailbox_url or "").strip() if parsed_url is not None else ""
+
+
 def row_id_from_source(row: Any) -> str:
     return hashlib.sha256(str(row or "").encode("utf-8")).hexdigest()
 
@@ -585,6 +595,37 @@ class MailboxAdminService:
                 }
             return {"ok": True, "totp_secret": secret}
 
+    def reveal_mailbox_url(self, row_id: Any, line_no: Any) -> dict[str, Any]:
+        expected_row_id = str(row_id or "").strip()
+        try:
+            target = int(line_no)
+        except (TypeError, ValueError):
+            target = 0
+
+        with self._lock:
+            lines = self._read_pool_lines()
+            if target <= 0 or target > len(lines):
+                return {
+                    "ok": False,
+                    "code": "mailbox_row_stale",
+                    "error": "邮箱列表已变化，请刷新后重试",
+                }
+            row = lines[target - 1]
+            if not hmac.compare_digest(expected_row_id, row_id_from_source(row)):
+                return {
+                    "ok": False,
+                    "code": "mailbox_row_stale",
+                    "error": "邮箱列表已变化，请刷新后重试",
+                }
+            mailbox_url = mailbox_url_from_row(row)
+            if not mailbox_url:
+                return {
+                    "ok": False,
+                    "code": "mailbox_url_missing",
+                    "error": "这一行没有取件 URL",
+                }
+            return {"ok": True, "mailbox_url": mailbox_url}
+
     def latest_code(self, payload: Any) -> dict[str, Any]:
         value = payload if isinstance(payload, Mapping) else {}
         row, email = self.pool_row_by_line(value.get("line_no"))
@@ -891,6 +932,7 @@ class MailboxAdminService:
                     "email": email,
                     "password": _SECRET_MASK if password_from_row(row) else "",
                     "has_totp": bool(totp_secret_from_row(row)),
+                    "has_mailbox_url": bool(mailbox_url_from_row(row)),
                     "status": status_key,
                     "status_label": status_label,
                     "pool_status": state_item.get("status") or "available",
@@ -1280,6 +1322,7 @@ __all__ = [
     "parse_mailbox_url_row",
     "parse_oauth_mailbox_row",
     "password_from_row",
+    "mailbox_url_from_row",
     "pool_count_status",
     "public_task_account",
     "redact_mailbox_credentials",

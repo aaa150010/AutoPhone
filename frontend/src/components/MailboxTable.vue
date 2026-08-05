@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { View } from '@element-plus/icons-vue'
 import ContentEmptyState from './ContentEmptyState.vue'
 import TaskProgressCell from './TaskProgressCell.vue'
 import { useTaskProgressClock } from '../composables/useTaskProgressClock'
@@ -16,6 +17,7 @@ const emit = defineEmits<{
   email: [MailboxRow]
   password: [MailboxRow]
   totp: [MailboxRow]
+  url: [MailboxRow]
 }>()
 
 const tableRef = ref<any>()
@@ -163,6 +165,14 @@ defineExpose({ clearSelection })
           >{{ row.email }}</button>
         </el-tooltip>
         <span v-else>-</span>
+      </template>
+    </el-table-column>
+    <el-table-column label="取件 URL" width="92" align="center">
+      <template #default="{ row }">
+        <el-tooltip v-if="row.has_mailbox_url" content="打开取件网页" placement="top">
+          <el-button link size="small" :icon="View" @click="emit('url', row)">查看</el-button>
+        </el-tooltip>
+        <span v-else class="muted">-</span>
       </template>
     </el-table-column>
     <el-table-column label="密码" width="94" align="center">

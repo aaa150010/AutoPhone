@@ -124,6 +124,7 @@ export interface MailboxRow {
   email: string
   password?: string
   has_totp?: boolean
+  has_mailbox_url?: boolean
   quota_status?: 'ok' | 'error' | string
   quota_error?: string
   quota_queried_at?: number | null

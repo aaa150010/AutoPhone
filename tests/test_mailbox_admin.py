@@ -687,6 +687,30 @@ class MailboxAdminTests(unittest.TestCase):
 
         self.assertEqual(result, {"ok": True, "password": "mail-pass"})
 
+    def test_mailbox_url_is_publicly_flagged_and_revealed_by_current_row_binding(self):
+        row = "url@example.com----https://mail.example.test/messages/private-token"
+        self._write_pool(row + "\n")
+
+        public_row = self.service.list_mailboxes()["rows"][0]
+        self.assertTrue(public_row["has_mailbox_url"])
+        result = self.service.reveal_mailbox_url(public_row["row_id"], public_row["line_no"])
+
+        self.assertEqual(
+            result,
+            {"ok": True, "mailbox_url": "https://mail.example.test/messages/private-token"},
+        )
+
+    def test_mailbox_url_reveal_rejects_stale_binding_and_missing_url(self):
+        row = "mail@example.com----mail-pass"
+        self._write_pool(row + "\n")
+        public_row = self.service.list_mailboxes()["rows"][0]
+        stale = self.service.reveal_mailbox_url(public_row["row_id"], 2)
+        missing = self.service.reveal_mailbox_url(public_row["row_id"], 1)
+
+        self.assertEqual(stale["code"], "mailbox_row_stale")
+        self.assertEqual(missing["code"], "mailbox_url_missing")
+        self.assertNotIn("mail-pass", json.dumps(stale, ensure_ascii=False))
+
     def test_reveal_password_reports_missing_password_without_leak(self):
         row = "mail@example.com----"
         self._write_pool(row + "\n")

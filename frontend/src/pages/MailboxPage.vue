@@ -18,6 +18,7 @@ import {
   api,
   ApiError,
   exportMailboxSub2,
+  getMailboxUrl,
   getMailboxTotp,
   getMailboxes,
   queryMailboxQuotas,
@@ -456,6 +457,24 @@ async function copyTotp(row: MailboxRow) {
   }
 }
 
+async function openMailboxUrl(row: MailboxRow) {
+  if (!row.has_mailbox_url) return
+  const target = window.open('', '_blank')
+  if (!target) {
+    ElMessage.error('浏览器阻止了新窗口，请允许弹出窗口后重试')
+    return
+  }
+  try {
+    target.opener = null
+    const result = await getMailboxUrl({ row_id: row.row_id, line_no: row.line_no })
+    target.location.href = String(result.mailbox_url || '')
+  } catch (error: any) {
+    target.close()
+    if (error instanceof ApiError && error.payload?.code === 'mailbox_row_stale') await refresh()
+    ElMessage.error(error?.message || '打开取件 URL 失败')
+  }
+}
+
 async function poll() {
   await refresh()
   if (pollingStopped) return
@@ -545,6 +564,7 @@ onUnmounted(() => {
           @email="copyEmail"
           @password="copyPassword"
           @totp="copyTotp"
+          @url="openMailboxUrl"
         />
         <el-pagination
           v-model:current-page="currentPage"

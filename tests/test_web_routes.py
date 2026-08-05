@@ -104,6 +104,9 @@ class FakeMailboxAdmin:
     def reveal_password(self, _row_id, _line_no):
         return {"ok": False, "code": "mailbox_row_stale", "error": "邮箱列表已变化"}
 
+    def reveal_mailbox_url(self, _row_id, _line_no):
+        return {"ok": True, "mailbox_url": "https://mail.example.test/messages/token"}
+
     def sub2_test(self, _payload):
         return dict(self.sub2_result)
 
@@ -479,6 +482,21 @@ class WebRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.get_json()["code"], "mailbox_row_stale")
+
+    def test_mailbox_url_request_returns_bound_url_without_listing_it(self):
+        app = self._app()
+
+        with app.test_client() as client:
+            response = client.post(
+                "/api/mailboxes/url",
+                json={"row_id": "row-1", "line_no": 1},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.get_json()["mailbox_url"],
+            "https://mail.example.test/messages/token",
+        )
 
     def test_start_existing_returns_bad_request_for_invalid_notification_config(self):
         def invalid_config(_data):

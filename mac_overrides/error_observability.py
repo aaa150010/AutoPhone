@@ -420,6 +420,7 @@ _RULES = (
     (("oauth_session_invalid", "sign-in session is no longer valid"), "oauth_authorize_node", "oauth_session_invalid", "OpenAI 登录会话已失效", True),
     (("proxyerror", "unable to connect to proxy", "proxy_connect_failed", "connection refused"), "oauth_authorize_node", "proxy_connection_failed", "代理连接失败", True),
     (("ssleoferror", "sslerror", "unexpected_eof_while_reading"), "oauth_authorize_node", "tls_connection_failed", "TLS 连接异常", True),
+    (("curl: (56)", "connection closed abruptly"), "oauth_authorize_node", "remote_disconnected", "OpenAI OAuth 请求被远端或代理中途断开，可重试", True),
     (("mailbox_dead",), "email_login", "mailbox_unavailable", "邮箱已确认不可用", False),
     (("persist", "atomic_write", "permission denied", "no space left"), "finalizing_save", "result_persistence_failed", "任务结果写入本地文件失败", True),
 )
