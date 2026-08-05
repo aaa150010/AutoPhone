@@ -822,6 +822,25 @@ class WebGuiSecurityTests(unittest.TestCase):
         finally:
             module._RUN_MODE_CONTEXT.reset(token)
 
+    def test_register_session_invalid_retry_respects_importer_configured_limit(self):
+        module = self.module
+        task_token = module._TASK_CONTEXT.set("task-phone-session-retry")
+        mode_token = module._RUN_MODE_CONTEXT.set("register")
+        try:
+            context = module._AUTH_SESSIONS.get("task-phone-session-retry")
+            context.current_stage = "phone_submitting"
+            context.invalidations = 7
+
+            self.assertTrue(
+                module._patched_pre_auth_session_retryable(
+                    {"error": "oauth_session_invalid: sign-in session is no longer valid"}
+                )
+            )
+        finally:
+            module._AUTH_SESSIONS.clear("task-phone-session-retry")
+            module._RUN_MODE_CONTEXT.reset(mode_token)
+            module._TASK_CONTEXT.reset(task_token)
+
     def test_relogin_password_error_does_not_trigger_password_to_otp_fallback(self):
         module = self.module
         original = module._ORIGINAL_PASSWORD_CREDENTIALS_REJECTED

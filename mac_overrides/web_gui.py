@@ -1296,14 +1296,8 @@ def _patched_pre_auth_session_retryable(result):
     if _RUN_MODE_CONTEXT.get() == "relogin":
         return _runtime_policy_ext.is_relogin_transient_failure(result)
     if _auth_session_runtime_ext.is_session_invalid(result):
-        task_id = _TASK_CONTEXT.get()
-        context = _AUTH_SESSIONS.get(task_id) if task_id else None
-        if (
-            context is not None
-            and context.current_stage in {"phone_submitting", "sms_verifying"}
-            and context.invalidations >= 2
-        ):
-            return False
+        # The recovered importer owns the configured whole-session retry
+        # limit. Do not impose a second, hidden two-session cap here.
         return True
     if _runtime_policy_ext.should_retry_expired_sub2_session(result):
         return True
