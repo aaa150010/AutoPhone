@@ -397,6 +397,70 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(otp_provider.timeout, 90)
         self.assertEqual(otp_provider.interval, 5)
 
+    def test_imap_email_otp_resend_excludes_the_previously_submitted_code(self):
+        module = self.module
+        calls = []
+        logs = []
+
+        class FakePoller:
+            last_error = ""
+
+            def poll_code(self, **kwargs):
+                excluded = set(kwargs.get("exclude_codes") or ())
+                calls.append(excluded)
+                for candidate in ("111111", "222222"):
+                    if candidate not in excluded:
+                        return candidate
+                return None
+
+        otp_provider = SimpleNamespace(
+            entry=SimpleNamespace(email="user@example.test"),
+            poller=FakePoller(),
+            timeout=90,
+            interval=5,
+            sent_at=time.time() - 5,
+            log_fn=lambda message, level="info": logs.append((message, level)),
+        )
+
+        first = module._outlook_mailbox_wait_code(otp_provider, "user@example.test")
+        otp_provider.sent_at = time.time() - 5
+        second = module._outlook_mailbox_wait_code(otp_provider, "user@example.test")
+
+        self.assertEqual(first, "111111")
+        self.assertEqual(second, "222222")
+        self.assertEqual(calls, [set(), {"111111"}])
+        self.assertNotIn("poll_code", otp_provider.poller.__dict__)
+        serialized_logs = json.dumps(logs, ensure_ascii=False)
+        self.assertIn("上一轮验证码", serialized_logs)
+        self.assertNotIn("111111", serialized_logs)
+        self.assertNotIn("222222", serialized_logs)
+
+    def test_imap_email_otp_first_attempt_preserves_original_polling(self):
+        module = self.module
+        calls = []
+
+        class FakePoller:
+            last_error = ""
+
+            def poll_code(self, **kwargs):
+                calls.append(dict(kwargs))
+                return "333333"
+
+        otp_provider = SimpleNamespace(
+            entry=SimpleNamespace(email="user@example.test"),
+            poller=FakePoller(),
+            timeout=90,
+            interval=5,
+            sent_at=time.time() - 5,
+            log_fn=lambda *_args: None,
+        )
+
+        code = module._outlook_mailbox_wait_code(otp_provider, "user@example.test")
+
+        self.assertEqual(code, "333333")
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn("exclude_codes", calls[0])
+
     def test_email_otp_page_explicitly_sends_before_waiting(self):
         module = self.module
         original_submit = module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER

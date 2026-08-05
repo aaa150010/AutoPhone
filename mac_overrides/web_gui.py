@@ -88,6 +88,7 @@ _ORIGINAL_POOL_LEASE = _runtime.MailboxPool.lease
 _ORIGINAL_POOL_RESTORE_ENTRY = _runtime.MailboxPool.restore_entry
 _ORIGINAL_POOL_REMOVE_ENTRY = _runtime.MailboxPool.remove_entry
 _ORIGINAL_OUTLOOK_OTP_PROVIDER = _runtime.OutlookMailboxOtpProvider
+_ORIGINAL_OUTLOOK_OTP_WAIT_CODE = _runtime.OutlookMailboxOtpProvider.wait_code
 _ORIGINAL_MAILBOX_URL_SNAPSHOT = _runtime.MailboxUrlCodeProvider.snapshot
 _ORIGINAL_MAILBOX_URL_SAME_AS_BASELINE = _runtime.MailboxUrlCodeProvider._same_as_baseline
 _ORIGINAL_URL_MAILBOX_MARK_SENT = _runtime.UrlMailboxOtpProvider.mark_sent
@@ -2461,6 +2462,47 @@ def _url_mailbox_wait_code(self, email):
     return code
 
 
+def _outlook_mailbox_wait_code(self, email):
+    used_codes = set(getattr(self, "_gptphone_used_email_otp_codes", ()) or ())
+    poller = getattr(self, "poller", None)
+    original_poll_code = getattr(poller, "poll_code", None)
+    restore_instance_override = False
+    previous_instance_override = None
+
+    if used_codes and callable(original_poll_code):
+        poller_vars = getattr(poller, "__dict__", {})
+        restore_instance_override = "poll_code" in poller_vars
+        previous_instance_override = poller_vars.get("poll_code")
+
+        def poll_distinct_code(*args, **kwargs):
+            excluded = set(kwargs.get("exclude_codes") or ())
+            excluded.update(used_codes)
+            kwargs["exclude_codes"] = excluded
+            return original_poll_code(*args, **kwargs)
+
+        poller.poll_code = poll_distinct_code
+        _call_log(
+            getattr(self, "log_fn", None),
+            "  [邮箱取码诊断/email_code_waiting] 重发后已排除本任务上一轮验证码，等待新邮件",
+            "info",
+        )
+
+    try:
+        code = _ORIGINAL_OUTLOOK_OTP_WAIT_CODE(self, email)
+    finally:
+        if used_codes and callable(original_poll_code):
+            if restore_instance_override:
+                poller.poll_code = previous_instance_override
+            else:
+                del poller.poll_code
+
+    normalized = str(code or "").strip()
+    if normalized:
+        used_codes.add(normalized)
+        self._gptphone_used_email_otp_codes = used_codes
+    return code
+
+
 def _mfa_factor_id_from_response(response):
     value = response if isinstance(response, dict) else {}
     page = value.get("page") if isinstance(value.get("page"), dict) else {}
@@ -2525,6 +2567,7 @@ _runtime.MailboxPool.lease = _mailbox_lease_with_auth_cooldown
 _runtime.MailboxPool.restore_entry = _mailbox_restore_preserving_relogin
 _runtime.MailboxPool.remove_entry = _mailbox_retention_ext.preserve_consumed_entry
 _runtime.ManualMailboxPool.remove_entry = _mailbox_retention_ext.preserve_consumed_entry
+_ORIGINAL_OUTLOOK_OTP_PROVIDER.wait_code = _outlook_mailbox_wait_code
 _runtime.OutlookMailboxOtpProvider = _TOTP_PATCHES.outlook_otp_provider
 _runtime.MailboxUrlCodeProvider.snapshot = _mailbox_url_snapshot
 _runtime.MailboxUrlCodeProvider._same_as_baseline = staticmethod(_mailbox_url_same_as_baseline)
