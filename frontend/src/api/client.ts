@@ -2,6 +2,7 @@ import type {
   ApiErrorPayload,
   AppState,
   MailboxPayload,
+  MailboxUrlTestResult,
   PixelAccountPage,
   PixelBulkOperationResponse,
   PixelUploadRecord,
@@ -44,6 +45,23 @@ export const preflightRun = (data: Record<string, any>) => api('/api/preflight',
 export const startExistingRun = (data: Record<string, any>) => api('/api/start-existing', data)
 export const stopRun = () => api('/api/stop', {})
 export const getMailboxes = () => api<MailboxPayload>('/api/mailboxes')
+export const queryMailboxQuotas = (rows: Array<{ row_id: string; line_no: number }>) => (
+  api<{
+    ok: true
+    results: Array<{
+      row_id: string
+      line_no: number
+      status: 'ok' | 'error' | string
+      quota_5h?: import('../types/api').OpenAIQuotaWindow | null
+      quota_7d?: import('../types/api').OpenAIQuotaWindow | null
+      queried_at?: number | null
+      error?: string
+    }>
+    queried?: number
+    failed?: number
+    skipped?: number
+  }>('/api/mailboxes/quota', { rows })
+)
 export const retryMailboxPixel = (rows: Array<{ row_id: string; line_no: number }>) => (
   api('/api/mailboxes/pixel-retry', { rows })
 )
@@ -55,6 +73,9 @@ export const exportMailboxSub2 = (rows: Array<{ row_id: string; line_no: number 
 )
 export const getMailboxTotp = (row: { row_id: string; line_no: number }) => (
   api<{ ok: true; totp_secret: string }>('/api/mailboxes/totp', row)
+)
+export const testMailboxUrl = (value: string) => (
+  api<MailboxUrlTestResult>('/api/mailbox-url-test', { value })
 )
 export const testEmailNotification = (data: Record<string, any>) => api('/api/notifications/email/test', data)
 

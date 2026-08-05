@@ -19,6 +19,7 @@ from mac_overrides.sms_runtime import (
     SmsKeyPool,
     SmsProviderRegistry,
     SmsRoutePolicy,
+    confirm_herosms_cancellation,
     is_transient_openai_error,
     migrate_performance_config,
     normalize_sms_keys,
@@ -147,6 +148,17 @@ class FakeMultiPlatformProvider:
         value = self.scenario.get("cancel")
         if isinstance(value, Exception):
             raise value
+
+    def _api(self, params):
+        action = str(params.get("action") or "")
+        self.calls.append(("api", self.platform, self.key, action))
+        if action == "setStatus":
+            value = self.scenario.get("cancel_response", "ACCESS_CANCEL")
+        else:
+            value = self.scenario.get("cancel_status", "STATUS_CANCEL")
+        if isinstance(value, Exception):
+            raise value
+        return value
 
     def _rest_get(self, path, timeout=15):
         self.calls.append(("rest_get", self.platform, self.key, path))
@@ -329,6 +341,179 @@ class SmsRuntimeTests(unittest.TestCase):
         self.assertEqual(second.current_order_meta["platform"], "herosms")
         second.cancel()
 
+    def test_herosms_cancel_uses_documented_access_cancel_refund_ack(self):
+        factory = FakeMultiPlatformFactory({
+            ("herosms", "hero-a"): {
+                "balance": 1.0,
+                "cancel_response": "ACCESS_CANCEL",
+                "cancel_status": "STATUS_CANCEL",
+            },
+        })
+        registry = SmsProviderRegistry(factory)
+        registry.configure({
+            "sms_provider_pools": [
+                {"provider": "herosms", "enabled": True, "api_keys": ["hero-a"]},
+            ]
+        })
+        provider = PooledSmsProvider(registry)
+        provider.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+
+        receipt = provider.cancel()
+
+        self.assertEqual(receipt["cancel_state"], "confirmed")
+        self.assertEqual(receipt["provider_response"], "ACCESS_CANCEL")
+        self.assertEqual(receipt["provider_status"], "STATUS_CANCEL")
+        self.assertEqual(receipt["refund_status"], "provider_refund_accepted")
+        self.assertEqual(
+            [call[3] for call in factory.calls if call[0] == "api"],
+            ["setStatus", "getStatus"],
+        )
+        self.assertEqual(registry.public_statuses()[0]["in_flight"], 0)
+
+    def test_herosms_early_cancel_is_retried_after_documented_minimum(self):
+        responses = [
+            {"title": "EARLY_CANCEL_DENIED", "info": {"minActivationTime": 120}},
+            "ACCESS_CANCEL",
+            "STATUS_CANCEL",
+        ]
+        calls = []
+        clock = [0.0]
+        sleeps = []
+
+        def api(params):
+            calls.append(dict(params))
+            return responses.pop(0)
+
+        def sleep(seconds):
+            sleeps.append(seconds)
+            clock[0] += seconds
+
+        receipt = confirm_herosms_cancellation(
+            type("Provider", (), {"_api": staticmethod(api)})(),
+            "hero-order-early",
+            now_fn=lambda: clock[0],
+            sleep_fn=sleep,
+        )
+
+        self.assertEqual(receipt["cancel_state"], "confirmed")
+        self.assertEqual(receipt["refund_status"], "provider_refund_accepted")
+        self.assertEqual(sleeps, [121.0])
+        self.assertEqual(
+            [call["action"] for call in calls],
+            ["setStatus", "setStatus", "getStatus"],
+        )
+
+    def test_herosms_early_cancel_json_error_body_is_detected(self):
+        responses = [
+            '{"title":"EARLY_CANCEL_DENIED","info":{"minActivationTime":120}}',
+            "ACCESS_CANCEL",
+            "STATUS_CANCEL",
+        ]
+        clock = [0.0]
+
+        def api(_params):
+            return responses.pop(0)
+
+        receipt = confirm_herosms_cancellation(
+            type("Provider", (), {"_api": staticmethod(api)})(),
+            "hero-order-json-error",
+            now_fn=lambda: clock[0],
+            sleep_fn=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+        )
+
+        self.assertEqual(receipt["cancel_state"], "confirmed")
+        self.assertEqual(receipt["refund_status"], "provider_refund_accepted")
+
+    def test_herosms_cancel_remains_confirmed_when_status_reconciliation_races_cleanup(self):
+        for cancel_status in ("NO_ACTIVATION", "STATUS_WAIT_CODE", RuntimeError("timeout")):
+            with self.subTest(cancel_status=cancel_status):
+                factory = FakeMultiPlatformFactory({
+                    ("herosms", "hero-a"): {
+                        "balance": 1.0,
+                        "cancel_response": "ACCESS_CANCEL",
+                        "cancel_status": cancel_status,
+                    },
+                })
+                registry = SmsProviderRegistry(factory)
+                registry.configure({
+                    "sms_provider_pools": [
+                        {"provider": "herosms", "enabled": True, "api_keys": ["hero-a"]},
+                    ]
+                })
+                provider = PooledSmsProvider(registry)
+                provider.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+
+                receipt = provider.cancel()
+
+                self.assertEqual(receipt["cancel_state"], "confirmed")
+                self.assertEqual(receipt["provider_response"], "ACCESS_CANCEL")
+                self.assertEqual(receipt["refund_status"], "provider_refund_accepted")
+                self.assertEqual(registry.public_statuses()[0]["in_flight"], 0)
+
+    def test_herosms_cancel_rejection_is_not_reported_as_confirmed(self):
+        factory = FakeMultiPlatformFactory({
+            ("herosms", "hero-a"): {
+                "balance": 1.0,
+                "cancel_response": "BAD_STATUS",
+            },
+        })
+        registry = SmsProviderRegistry(factory)
+        registry.configure({
+            "sms_provider_pools": [
+                {"provider": "herosms", "enabled": True, "api_keys": ["hero-a"]},
+            ]
+        })
+        provider = PooledSmsProvider(registry)
+        provider.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+
+        with self.assertRaisesRegex(RuntimeError, "herosms_cancel_rejected:BAD_STATUS"):
+            provider.cancel()
+
+        self.assertEqual(provider.last_finish_receipt["cancel_state"], "error")
+        self.assertEqual(registry.public_statuses()[0]["in_flight"], 0)
+        with self.assertRaisesRegex(RuntimeError, "单平台尝试上限"):
+            provider.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+        self.assertEqual(
+            len([call for call in factory.calls if call[0] == "activate"]),
+            1,
+        )
+
+    def test_herosms_cancel_error_disables_only_hero_for_the_current_task(self):
+        factory = FakeMultiPlatformFactory({
+            ("herosms", "hero-a"): {
+                "balance": 1.0,
+                "cancel_response": "BAD_STATUS",
+            },
+            ("smsbower", "bower-a"): {"balance": 1.0},
+        })
+        registry = SmsProviderRegistry(factory)
+        registry.configure({
+            "sms_provider_pools": [
+                {"provider": "herosms", "enabled": True, "api_keys": ["hero-a"]},
+                {"provider": "smsbower", "enabled": True, "api_keys": ["bower-a"]},
+            ]
+        })
+        provider = PooledSmsProvider(registry)
+        provider.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+        self.assertEqual(provider.current_order_meta["platform"], "herosms")
+        with self.assertRaisesRegex(RuntimeError, "BAD_STATUS"):
+            provider.cancel()
+
+        provider.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+
+        self.assertEqual(provider.current_order_meta["platform"], "smsbower")
+        provider.cancel()
+        provider.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+        self.assertEqual(provider.current_order_meta["platform"], "smsbower")
+        provider.cancel()
+        self.assertEqual(
+            sum(
+                call[0] == "activate" and call[1] == "herosms"
+                for call in factory.calls
+            ),
+            1,
+        )
+
     def test_multi_platform_attempt_limit_allows_fifteen_per_platform(self):
         platforms = ("smsbower", "herosms", "5sim")
         factory = FakeMultiPlatformFactory({
@@ -402,6 +587,37 @@ class SmsRuntimeTests(unittest.TestCase):
         )
         self.assertFalse(any(call[1] == "5sim" for call in activation_calls))
         self.assertEqual([row["in_flight"] for row in registry.public_statuses()], [0, 0, 0])
+
+    def test_task_attempt_budget_survives_provider_recreation(self):
+        factory = FakeMultiPlatformFactory({
+            ("herosms", "hero-a"): {"balance": 1.0},
+        })
+        registry = SmsProviderRegistry(factory)
+        registry.configure({
+            "sms_provider_pools": [
+                {"provider": "herosms", "enabled": True, "api_keys": ["hero-a"]},
+            ]
+        })
+
+        for _session in range(3):
+            provider = PooledSmsProvider(registry)
+            provider.bind_task("T001-shared-budget")
+            for _attempt in range(5):
+                provider.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+                provider.cancel()
+
+        recreated = PooledSmsProvider(registry)
+        recreated.bind_task("T001-shared-budget")
+        with self.assertRaisesRegex(RuntimeError, "单平台尝试上限"):
+            recreated.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+
+        other_task = PooledSmsProvider(registry)
+        other_task.bind_task("T002-independent-budget")
+        other_task.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+        other_task.cancel()
+
+        activation_calls = [call for call in factory.calls if call[0] == "activate"]
+        self.assertEqual(len(activation_calls), 16)
 
     def test_fivesim_reject_uses_official_ban_endpoint_and_releases_lease(self):
         factory = FakeMultiPlatformFactory({
@@ -973,6 +1189,30 @@ class SmsRuntimeTests(unittest.TestCase):
         self.assertEqual(len(summary["sms_order_outcomes"]), 2)
         self.assertNotIn("paid", str(summary["sms_order_outcomes"]))
 
+    def test_cost_ledger_persists_only_safe_cancel_receipt_fields(self):
+        ledger = SmsCostLedger()
+        ledger.record_lease("T001", FakeLease("hero-order", {"price_usd": 0.04}))
+        ledger.mark_finished(
+            "T001",
+            "hero-order",
+            "cancel_confirmed",
+            "phone rejected",
+            details={
+                "cancel_state": "confirmed",
+                "provider_response": "ACCESS_CANCEL",
+                "provider_status": "STATUS_CANCEL",
+                "refund_status": "provider_cancel_confirmed",
+                "raw_response": "must-not-persist",
+            },
+        )
+
+        outcome = ledger.summary("T001", FakeExchange())["sms_order_outcomes"][0]
+
+        self.assertEqual(outcome["status"], "cancel_confirmed")
+        self.assertEqual(outcome["cancel_receipt"]["provider_status"], "STATUS_CANCEL")
+        self.assertNotIn("raw_response", str(outcome))
+        self.assertNotIn("hero-order", str(outcome))
+
     def test_exchange_rate_uses_ecb_then_cache_and_fallback(self):
         xml = b"""<?xml version='1.0'?><Envelope><Cube><Cube time='2026-07-26'><Cube currency='USD' rate='1.2'/><Cube currency='CNY' rate='8.4'/></Cube></Cube></Envelope>"""
         with tempfile.TemporaryDirectory() as directory:
@@ -1327,6 +1567,15 @@ class SmsRuntimeTests(unittest.TestCase):
         status = pool.preflight()[0]
         self.assertNotIn(key, str(status))
         self.assertNotIn(encoded_key, str(status))
+
+    def test_sms_redaction_does_not_expand_mask_placeholders(self):
+        self.assertEqual(
+            redact_sms_secrets(
+                "masked=*** existing=******** key=real-secret",
+                ["***", "********", "real-secret"],
+            ),
+            "masked=*** existing=******** key=********",
+        )
 
     def test_reconfigured_pool_redacts_key_bound_to_an_old_active_order(self):
         old_key = "old/secret+key"

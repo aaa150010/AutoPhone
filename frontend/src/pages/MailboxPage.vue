@@ -6,6 +6,7 @@ import {
   CircleCloseFilled,
   Collection,
   Connection,
+  DataAnalysis,
   Download,
   Message,
   MessageBox,
@@ -19,6 +20,7 @@ import {
   exportMailboxSub2,
   getMailboxTotp,
   getMailboxes,
+  queryMailboxQuotas,
   retryMailboxPixel,
 } from '../api/client'
 import DashboardMetricCard from '../components/DashboardMetricCard.vue'
@@ -34,6 +36,7 @@ const importContent = ref('')
 const importVisible = ref(false)
 const filter = ref('all')
 const sub2Filter = ref('all')
+const quotaFilter = ref('all')
 const searchText = ref('')
 const selectedRows = ref<MailboxRow[]>([])
 const mailboxTable = ref<{ clearSelection: () => void } | null>(null)
@@ -45,6 +48,8 @@ const mutating = ref(false)
 const testingSub2 = ref(false)
 const retryingPixel = ref(false)
 const exportingSub2 = ref(false)
+const queryingQuota = ref(false)
+const quotaProgress = ref('')
 let timer = 0
 let pollingStopped = false
 let dataVersion = 0
@@ -87,6 +92,13 @@ const rows = computed(() => data.value.rows.filter((row) => {
   const matchesSub2 = sub2Filter.value === 'all'
     || (sub2Filter.value === 'test_failure' && isSub2TestFailure(sub2Status))
     || (sub2Filter.value === 'needs_rerun' && needsSub2Rerun(sub2Status))
+  const hasRemainingQuota = [row.quota_5h, row.quota_7d].some((window) => (
+    window?.remaining_percent != null && Number(window.remaining_percent) > 0
+  ))
+  const hasQuotaResult = row.quota_status === 'ok' || row.quota_status === 'error'
+  const matchesQuota = quotaFilter.value === 'all'
+    || (quotaFilter.value === 'remaining' && hasRemainingQuota)
+    || (quotaFilter.value === 'queried' && hasQuotaResult)
   const query = searchText.value.trim().toLowerCase()
   const haystack = [
     row.email,
@@ -100,7 +112,7 @@ const rows = computed(() => data.value.rows.filter((row) => {
     sub2Status?.summary,
     row.batch_id,
   ].join(' ').toLowerCase()
-  return matchesFilter && matchesSub2 && (!query || haystack.includes(query))
+  return matchesFilter && matchesSub2 && matchesQuota && (!query || haystack.includes(query))
 }))
 
 const pageRows = computed(() => rows.value.slice(
@@ -108,7 +120,7 @@ const pageRows = computed(() => rows.value.slice(
   currentPage.value * pageSize.value,
 ))
 
-watch([filter, sub2Filter, searchText, pageSize], () => { currentPage.value = 1 })
+watch([filter, sub2Filter, quotaFilter, searchText, pageSize], () => { currentPage.value = 1 })
 watch(() => rows.value.length, (total) => {
   currentPage.value = Math.min(currentPage.value, Math.max(1, Math.ceil(total / pageSize.value)))
 })
@@ -116,9 +128,70 @@ watch(() => rows.value.length, (total) => {
 function applyMailboxPayload(payload: any) {
   const next = payload?.mailboxes || payload
   if (next && Array.isArray(next.rows)) {
-    data.value = { ok: next.ok, counts: next.counts || {}, rows: next.rows }
+    const previous = new Map(data.value.rows.map(row => [row.row_id, row]))
+    data.value = {
+      ok: next.ok,
+      counts: next.counts || {},
+      rows: next.rows.map((row: MailboxRow) => {
+        const old = previous.get(row.row_id)
+        return old
+          ? { ...row, quota_status: old.quota_status, quota_error: old.quota_error, quota_queried_at: old.quota_queried_at, quota_5h: old.quota_5h, quota_7d: old.quota_7d }
+          : row
+      }),
+    }
   }
   if (payload?.state) controller.syncState(payload.state)
+}
+
+function applyQuotaResults(results: any[]) {
+  const byRow = new Map(results.map(item => [String(item.row_id), item]))
+  data.value = {
+    ...data.value,
+    rows: data.value.rows.map(row => {
+      const result = byRow.get(row.row_id)
+      if (!result) return row
+      return {
+        ...row,
+        quota_status: result.status,
+        quota_error: result.error || '',
+        quota_queried_at: result.queried_at || Math.floor(Date.now() / 1000),
+        quota_5h: result.quota_5h ?? null,
+        quota_7d: result.quota_7d ?? null,
+      }
+    }),
+  }
+}
+
+async function queryQuotas() {
+  const candidates = data.value.rows.filter(row => row.status === 'consumed' && row.task_id)
+  if (!candidates.length) {
+    ElMessage.warning('当前没有可查询 OpenAI 额度的成功账号')
+    return
+  }
+  queryingQuota.value = true
+  mutating.value = true
+  dataVersion += 1
+  latestRefresh += 1
+  let completed = 0
+  let failed = 0
+  try {
+    for (let index = 0; index < candidates.length; index += 5) {
+      const chunk = candidates.slice(index, index + 5)
+      quotaProgress.value = `${Math.min(index + chunk.length, candidates.length)}/${candidates.length}`
+      const result = await queryMailboxQuotas(chunk.map(row => ({ row_id: row.row_id, line_no: row.line_no })))
+      applyQuotaResults(result.results || [])
+      completed += Number(result.queried || 0)
+      failed += Number(result.failed || 0)
+    }
+    const details = failed ? `，失败 ${failed} 条` : ''
+    ElMessage.success(`已查询 OpenAI 额度 ${completed} 条${details}`)
+  } catch (error: any) {
+    ElMessage.error(error?.message || '批量查询 OpenAI 额度失败')
+  } finally {
+    queryingQuota.value = false
+    quotaProgress.value = ''
+    mutating.value = false
+  }
 }
 
 async function refresh() {
@@ -437,6 +510,14 @@ onUnmounted(() => {
           <el-option label="SUB2 测试失败" value="test_failure" />
           <el-option label="SUB2 401/404（需重跑）" value="needs_rerun" />
         </el-select>
+        <el-select v-model="quotaFilter" class="quota-filter-select">
+          <el-option label="全部额度" value="all" />
+          <el-option label="有剩余额度" value="remaining" />
+          <el-option label="已查询额度" value="queried" />
+        </el-select>
+        <el-button :loading="queryingQuota" :disabled="mutating" @click="queryQuotas">
+          <el-icon><DataAnalysis /></el-icon>{{ queryingQuota && quotaProgress ? `查询额度 ${quotaProgress}` : '批量查询额度' }}
+        </el-button>
         <el-button :loading="testingSub2" :disabled="mutating || !selectedRows.length" @click="testSub2">
           <el-icon><Connection /></el-icon>批量测试连接
         </el-button>
@@ -500,6 +581,7 @@ onUnmounted(() => {
 .search-input { width: 210px; }
 .filter-select { width: 110px; }
 .sub2-filter-select { width: 168px; }
+.quota-filter-select { width: 128px; }
 .table-region { display: grid; grid-template-rows: minmax(0, 1fr) 46px; width: 100%; height: 100%; min-height: 0; padding: 8px 10px 0; }
 .pager { justify-content: flex-end; border-top: 1px solid var(--workspace-border); }
 

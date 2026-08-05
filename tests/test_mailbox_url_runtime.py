@@ -14,6 +14,7 @@ from mac_overrides.mailbox_url_runtime import (
     masked_mailbox_url_row,
     parse_mailbox_payload,
     parse_mailbox_url_row,
+    parse_received_timestamp,
     select_latest_code,
 )
 
@@ -51,6 +52,18 @@ class MailboxUrlRuntimeTests(unittest.TestCase):
                 )
         self.assertIsNone(parse_mailbox_url_row("user@example.test--https://mail.example.test/inbox"))
         self.assertIsNone(parse_mailbox_url_row("user@example.test---ftp://mail.example.test/inbox"))
+
+    def test_preserves_encoded_email_and_query_parameters_in_url_input(self):
+        value = (
+            "https://mail.example.test/messages/sample-access-token/"
+            "user%40example.test?all=1"
+        )
+        self.assertIsNone(parse_mailbox_url_row(value))
+        from mac_overrides.mailbox_url_test_runtime import parse_test_input
+
+        email, parsed_url = parse_test_input(value)
+        self.assertEqual(email, "")
+        self.assertEqual(parsed_url, value)
 
     def test_decodes_har_shaped_data_url_and_skips_newer_notification(self):
         code_url = "https://mail.example.test/message/code"
@@ -320,6 +333,142 @@ ChatGPT 团队</pre>
         retry = state.snapshot()
         self.assertEqual(retry.code, "222222")
         self.assertNotEqual(retry.identity, first.identity)
+
+    def test_baseline_code_is_used_at_twentieth_of_thirty_polls_and_again_at_timeout(self):
+        clock = [2_000_000_000.0]
+        payload = {
+            "messages": [
+                {
+                    "id": "baseline-without-time",
+                    "fromAddress": "noreply@openai.example",
+                    "subject": "Your temporary ChatGPT login code",
+                    "body": "OpenAI verification code 673931",
+                }
+            ]
+        }
+        client = MailboxUrlClient(
+            BASE_URL,
+            fetcher=lambda _url: json_response(BASE_URL, payload),
+            now_fn=lambda: clock[0],
+        )
+        state = MailboxRequestState(client, now_fn=lambda: clock[0])
+        baseline = state.snapshot()
+        self.assertEqual(baseline.code, "673931")
+
+        state.configure_request(max_poll_attempts=30)
+        state.begin_request()
+        for attempt in range(1, 20):
+            with self.subTest(attempt=attempt):
+                self.assertEqual(state.snapshot().code, "")
+
+        fallback = state.snapshot()
+        self.assertEqual(fallback.code, "673931")
+        self.assertEqual(fallback.reason, "mailbox_baseline_code_fallback")
+        self.assertEqual(state.baseline_fallback_poll, 20)
+        self.assertIsNone(state.baseline_fallback_age_seconds)
+
+        self.assertEqual(state.snapshot().code, "")
+        state.finish_request()
+        state.begin_request()
+        for _attempt in range(30):
+            self.assertEqual(state.snapshot().code, "")
+
+        final_fallback = state.final_baseline_fallback()
+        self.assertEqual(final_fallback.code, "673931")
+        self.assertEqual(final_fallback.reason, "mailbox_final_baseline_code_fallback")
+        self.assertEqual(state.baseline_fallback_attempts, 2)
+        self.assertEqual(state.final_baseline_fallback().code, "")
+
+    def test_baseline_fallback_rejects_non_openai_messages(self):
+        clock = [2_000_000_000.0]
+        payload = {
+            "messages": [
+                {
+                    "id": "not-openai",
+                    "fromAddress": "noreply@example.test",
+                    "subject": "Your security verification code",
+                    "receivedAt": clock[0] - 30,
+                    "body": "Your verification code is 222222",
+                },
+            ]
+        }
+        client = MailboxUrlClient(
+            BASE_URL,
+            fetcher=lambda _url: json_response(BASE_URL, payload),
+            now_fn=lambda: clock[0],
+        )
+        state = MailboxRequestState(client, now_fn=lambda: clock[0])
+        state.snapshot()
+        state.configure_request(max_poll_attempts=3)
+        state.begin_request()
+        state.snapshot()
+
+        selection = state.snapshot()
+
+        self.assertEqual(selection.code, "")
+        self.assertEqual(selection.reason, "mailbox_messages_without_openai_otp")
+        self.assertEqual(state.baseline_fallback_attempts, 0)
+
+    def test_new_code_is_preferred_to_baseline_fallback(self):
+        clock = [2_000_000_000.0]
+        old_message = {
+            "id": "recent-baseline",
+            "fromAddress": "noreply@openai.example",
+            "subject": "OpenAI verification code",
+            "receivedAt": clock[0] - 50,
+            "body": "OpenAI verification code 111111",
+        }
+        payload = {"messages": [old_message]}
+        client = MailboxUrlClient(
+            BASE_URL,
+            fetcher=lambda _url: json_response(BASE_URL, payload),
+            now_fn=lambda: clock[0],
+        )
+        state = MailboxRequestState(client, now_fn=lambda: clock[0])
+        state.snapshot()
+        state.configure_request(max_poll_attempts=3)
+        state.begin_request()
+        state.snapshot()
+        payload["messages"].insert(
+            0,
+            {
+                "id": "new-delivery",
+                "fromAddress": "noreply@openai.example",
+                "subject": "OpenAI verification code",
+                "receivedAt": clock[0],
+                "body": "OpenAI verification code 333333",
+            },
+        )
+
+        selection = state.snapshot()
+
+        self.assertEqual(selection.code, "333333")
+        self.assertEqual(selection.reason, "code_found")
+        self.assertEqual(state.baseline_fallback_attempts, 0)
+
+    def test_embedded_title_timestamp_selects_the_latest_code(self):
+        payload = {
+            "messages": [
+                {
+                    "id": "older",
+                    "fromAddress": "noreply@openai.example",
+                    "subject": "OpenAI code received 2026-08-05 00:01:00",
+                    "body": "OpenAI verification code 483921",
+                },
+                {
+                    "id": "newer",
+                    "fromAddress": "noreply@openai.example",
+                    "subject": "OpenAI code received 2026-08-05 00:03:00",
+                    "body": "OpenAI verification code 682672",
+                },
+            ]
+        }
+        client = MailboxUrlClient(BASE_URL, fetcher=lambda _url: json_response(BASE_URL, payload))
+
+        selection = client.latest_code()
+
+        self.assertEqual(selection.code, "682672")
+        self.assertIsNotNone(parse_received_timestamp("received 2026-08-05 00:03:00 CST"))
 
     def test_request_cutoff_rejects_unseen_but_stale_message(self):
         now = 2_000_000_000.0

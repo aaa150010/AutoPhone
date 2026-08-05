@@ -22,6 +22,8 @@ MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 MAX_MESSAGES = 40
 REFRESH_DETAIL_LIMIT = 8
 REQUEST_CLOCK_SKEW_SECONDS = 120
+RECENT_BASELINE_CODE_WINDOW_SECONDS = 180
+BASELINE_FALLBACK_MAX_ATTEMPTS = 2
 _EMAIL_PATTERN = re.compile(
     r"(?i)[a-z0-9][a-z0-9._%+-]*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}"
 )
@@ -48,6 +50,9 @@ _OTP_PATTERNS = (
 )
 _DATE_TIME_FRAGMENT_RE = re.compile(
     r"^(?:\d{4}[-/]\d{2}|\d{2}[-/:]\d{2}[-/:]\d{2})$"
+)
+_EMBEDDED_DATETIME_RE = re.compile(
+    r"(?<!\d)(\d{4}[-/]\d{2}[-/]\d{2}[ T]\d{2}:\d{2}(?::\d{2})?)(?!\d)"
 )
 _OPENAI_PATTERN = re.compile(r"(?i)open\s*ai|chat\s*gpt")
 _ACTION_PATTERN = re.compile(
@@ -329,6 +334,10 @@ def parse_received_timestamp(value: Any) -> float | None:
                 except ValueError:
                     continue
     if parsed is None:
+        embedded = _EMBEDDED_DATETIME_RE.search(text)
+        if embedded is not None and embedded.group(1) != text:
+            return parse_received_timestamp(embedded.group(1))
+    if parsed is None:
         return None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=datetime.now().astimezone().tzinfo)
@@ -401,7 +410,10 @@ def _message_from_mapping(value: Mapping[str, Any], source_url: str, order: int)
         sender=sender,
         subject=subject,
         received_at=received_at,
-        received_timestamp=parse_received_timestamp(received_value),
+        received_timestamp=(
+            parse_received_timestamp(received_value)
+            or parse_received_timestamp(" ".join((subject, body)))
+        ),
         body=body,
         detail_url=detail_url,
         code=code,
@@ -599,6 +611,10 @@ def select_latest_code(
     baseline_identities: Iterable[str] = (),
     requested_at: float | None = None,
     include_existing: bool = False,
+    allow_recent_baseline: bool = False,
+    recent_baseline_seconds: int = RECENT_BASELINE_CODE_WINDOW_SECONDS,
+    allow_baseline_fallback: bool = False,
+    baseline_fallback_reason: str = "mailbox_baseline_code_fallback",
 ) -> MailboxSelection:
     baseline = frozenset(baseline_identities)
     cutoff = None if requested_at is None else requested_at - REQUEST_CLOCK_SKEW_SECONDS
@@ -633,6 +649,39 @@ def select_latest_code(
             scan,
             "code_found",
         )
+    if allow_recent_baseline or allow_baseline_fallback:
+        recent_window = max(1, int(recent_baseline_seconds))
+        baseline_candidates = []
+        for message in scan.messages:
+            if not message.code or message.identity not in baseline:
+                continue
+            if not _OPENAI_PATTERN.search(" ".join((message.sender, message.subject, message.body))):
+                continue
+            if allow_recent_baseline and not allow_baseline_fallback:
+                if requested_at is None or message.received_timestamp is None:
+                    continue
+                age = float(requested_at) - float(message.received_timestamp)
+                if age < 0 or age > recent_window:
+                    continue
+            baseline_candidates.append(message)
+        if baseline_candidates:
+            selected = max(
+                baseline_candidates,
+                key=lambda message: (
+                    message.received_timestamp if message.received_timestamp is not None else float("-inf"),
+                    -message.order,
+                    message.identity,
+                ),
+            )
+            fingerprint = _safe_identity(selected.identity, selected.received_at, selected.code)
+            return MailboxSelection(
+                selected.code,
+                selected.identity,
+                selected.received_at,
+                fingerprint,
+                scan,
+                baseline_fallback_reason if allow_baseline_fallback else "mailbox_recent_baseline_code",
+            )
     fingerprint = _safe_identity("empty", *sorted(scan.identities), scan.page_fingerprint)
     if baseline_rejected:
         reason = "mailbox_only_baseline_code"
@@ -818,6 +867,14 @@ class MailboxRequestState:
         self.baseline_identities: frozenset[str] = frozenset()
         self.requested_at: float | None = None
         self.active = False
+        self.max_poll_attempts = 30
+        self.poll_attempt = 0
+        self.baseline_fallback_attempts = 0
+        self.baseline_fallback_age_seconds: int | None = None
+        self.baseline_fallback_poll: int | None = None
+
+    def configure_request(self, *, max_poll_attempts: int) -> None:
+        self.max_poll_attempts = max(1, int(max_poll_attempts))
 
     def begin_request(self) -> None:
         if self.active:
@@ -825,8 +882,66 @@ class MailboxRequestState:
         self.baseline_identities = self.last_scan.identities if self.last_scan is not None else frozenset()
         self.requested_at = self.now_fn()
         self.active = True
+        self.poll_attempt = 0
+        self.baseline_fallback_age_seconds = None
+        self.baseline_fallback_poll = None
+
+    def _baseline_fallback(
+        self,
+        scan: MailboxScan,
+        *,
+        reason: str,
+    ) -> MailboxSelection | None:
+        if self.baseline_fallback_attempts >= BASELINE_FALLBACK_MAX_ATTEMPTS:
+            return None
+        fallback = select_latest_code(
+            scan,
+            baseline_identities=self.baseline_identities,
+            requested_at=self.requested_at,
+            allow_baseline_fallback=True,
+            baseline_fallback_reason=reason,
+        )
+        if not fallback.code:
+            return None
+        self.baseline_fallback_attempts += 1
+        self.baseline_fallback_poll = self.poll_attempt
+        matched = next(
+            (message for message in scan.messages if message.identity == fallback.identity),
+            None,
+        )
+        if (
+            matched is not None
+            and matched.received_timestamp is not None
+            and self.requested_at is not None
+        ):
+            self.baseline_fallback_age_seconds = max(
+                0,
+                int(self.requested_at - matched.received_timestamp),
+            )
+        self.last_selection = fallback
+        return fallback
 
     def snapshot(self) -> MailboxSelection:
+        scan = self.client.scan()
+        if self.active:
+            self.poll_attempt += 1
+        self.last_scan = scan
+        self.last_selection = select_latest_code(
+            scan,
+            baseline_identities=self.baseline_identities,
+            requested_at=self.requested_at,
+            include_existing=not self.active,
+        )
+        if (
+            self.active
+            and self.baseline_fallback_attempts == 0
+            and not self.last_selection.code
+            and self.poll_attempt >= max(1, (self.max_poll_attempts * 2 + 2) // 3)
+        ):
+            self._baseline_fallback(scan, reason="mailbox_baseline_code_fallback")
+        return self.last_selection
+
+    def final_baseline_fallback(self) -> MailboxSelection:
         scan = self.client.scan()
         self.last_scan = scan
         self.last_selection = select_latest_code(
@@ -835,7 +950,13 @@ class MailboxRequestState:
             requested_at=self.requested_at,
             include_existing=not self.active,
         )
-        return self.last_selection
+        if self.last_selection.code:
+            return self.last_selection
+        fallback = self._baseline_fallback(
+            scan,
+            reason="mailbox_final_baseline_code_fallback",
+        )
+        return fallback or self.last_selection
 
     def finish_request(self) -> None:
         if self.last_scan is not None:
@@ -866,6 +987,14 @@ def begin_runtime_request(provider: Any) -> None:
     _runtime_state(provider).begin_request()
 
 
+def configure_runtime_request(provider: Any, *, max_poll_attempts: int) -> None:
+    _runtime_state(provider).configure_request(max_poll_attempts=max_poll_attempts)
+
+
+def final_runtime_baseline_fallback(provider: Any) -> MailboxSelection:
+    return _runtime_state(provider).final_baseline_fallback()
+
+
 def finish_runtime_request(provider: Any) -> None:
     state = getattr(provider, "_generic_mailbox_state", None)
     if isinstance(state, MailboxRequestState):
@@ -879,6 +1008,10 @@ def runtime_diagnostic(provider: Any) -> dict[str, Any]:
     diagnostics = state.last_selection.scan.diagnostics
     return {
         "reason": state.last_selection.reason,
+        "baseline_fallback_attempts": int(state.baseline_fallback_attempts),
+        "baseline_fallback_age_seconds": state.baseline_fallback_age_seconds,
+        "baseline_fallback_poll": state.baseline_fallback_poll,
+        "max_poll_attempts": int(state.max_poll_attempts),
         "listing_messages": diagnostics.listing_messages,
         "detail_links": diagnostics.detail_links,
         "detail_refreshed": diagnostics.detail_refreshed,
@@ -896,6 +1029,8 @@ __all__ = [
     "MAX_MESSAGES",
     "MAX_RESPONSE_BYTES",
     "REFRESH_DETAIL_LIMIT",
+    "BASELINE_FALLBACK_MAX_ATTEMPTS",
+    "RECENT_BASELINE_CODE_WINDOW_SECONDS",
     "MailboxMessage",
     "MailboxRequestState",
     "MailboxResponse",
@@ -906,9 +1041,11 @@ __all__ = [
     "MailboxUrlError",
     "MailboxUrlRow",
     "begin_runtime_request",
+    "configure_runtime_request",
     "decode_mail_body",
     "extract_openai_code",
     "finish_runtime_request",
+    "final_runtime_baseline_fallback",
     "masked_mailbox_url_row",
     "parse_mailbox_payload",
     "parse_mailbox_url_row",

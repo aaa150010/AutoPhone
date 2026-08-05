@@ -29,6 +29,7 @@ PIXEL_AUTO_TARGET_IDS = tuple(f"pixel-{index}" for index in range(2, 8))
 PIXEL_EXCLUDED_TARGET_IDS = ("pixel-1",)
 OUTBOX_VERSION = 1
 SECRET_MASK = "********"
+_SANITIZE_INPUT_LIMIT = 8192
 
 _TARGET_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _EMAIL_RE = re.compile(
@@ -224,7 +225,10 @@ def sanitize_error(value: Any, secrets: Iterable[Any] = (), *, maximum: int = 50
     """Return a bounded error summary without credentials or bearer tokens."""
     if isinstance(value, Mapping):
         value = value.get("detail") or value.get("message") or value.get("error") or "请求失败"
-    text = str(value or "").replace("\r", " ").replace("\n", " ")
+    # Pixel import and job endpoints may echo a large provider payload. Keep
+    # regex-based redaction bounded before scanning it, otherwise one response
+    # can starve the Flask thread and the durable upload worker indefinitely.
+    text = str(value or "")[:_SANITIZE_INPUT_LIMIT].replace("\r", " ").replace("\n", " ")
     candidates = {str(secret) for secret in secrets if str(secret or "")}
     for secret in sorted(candidates, key=len, reverse=True):
         text = text.replace(secret, SECRET_MASK)

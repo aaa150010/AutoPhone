@@ -64,8 +64,8 @@ class FakeCostLedger:
     def record_lease(self, task_id, lease):
         self.leases.append((task_id, lease.activation_id))
 
-    def mark_finished(self, task_id, activation_id, outcome, detail=""):
-        self.finished.append((task_id, activation_id, outcome, detail))
+    def mark_finished(self, task_id, activation_id, outcome, detail="", *, details=None):
+        self.finished.append((task_id, activation_id, outcome, detail, details or {}))
 
     def mark_code_received(self, task_id, activation_id):
         self.received = getattr(self, "received", [])
@@ -455,6 +455,55 @@ class SmsWebTests(unittest.TestCase):
         self.integration.adapter_cancel(adapter, lease, reason="phone rejected")
 
         self.assertEqual(calls, ["mark_rejected", ("reason", "phone rejected"), "cancel"])
+
+    def test_cancel_ledger_uses_confirmed_provider_receipt(self):
+        ledger = FakeCostLedger()
+        provider = SimpleNamespace(
+            last_finish_receipt={
+                "cancel_state": "confirmed",
+                "provider_response": "ACCESS_CANCEL",
+                "provider_status": "STATUS_CANCEL",
+                "refund_status": "provider_refund_accepted",
+            }
+        )
+        adapter = SimpleNamespace(
+            config={"sms_task_id": "task-hero"},
+            provider=provider,
+            selector=None,
+        )
+        lease = SimpleNamespace(activation_id="hero-order", meta={})
+        self.integration.cost_ledger = ledger
+
+        self.integration.adapter_cancel(adapter, lease, reason="phone_otp_empty")
+
+        self.assertEqual(ledger.finished[0][2], "cancel_confirmed")
+        self.assertEqual(ledger.finished[0][4]["provider_status"], "STATUS_CANCEL")
+
+    def test_cancel_error_is_not_recorded_as_cancelled(self):
+        ledger = FakeCostLedger()
+        provider = SimpleNamespace(
+            last_finish_receipt={
+                "cancel_state": "error",
+                "refund_status": "provider_cancel_not_confirmed",
+            }
+        )
+        adapter = SimpleNamespace(
+            config={"sms_task_id": "task-hero-error"},
+            provider=provider,
+            selector=None,
+        )
+        lease = SimpleNamespace(activation_id="hero-order-error", meta={})
+        self.integration.cost_ledger = ledger
+        self.integration.original_adapter_cancel = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("herosms_cancel_rejected:BAD_STATUS")
+        )
+
+        result = self.integration.adapter_cancel(adapter, lease, reason="phone_otp_empty")
+
+        self.assertIsNone(result)
+        self.assertEqual(ledger.finished[0][2], "cancel_error")
+        self.assertIn("herosms_cancel_rejected:BAD_STATUS", ledger.finished[0][3])
+        self.assertNotEqual(ledger.finished[0][2], "cancelled")
 
 
 if __name__ == "__main__":

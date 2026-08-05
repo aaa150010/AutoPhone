@@ -110,6 +110,9 @@ class FakeMailboxAdmin:
     def selected_success_results(self, _payload):
         return dict(self.selected_result)
 
+    def query_openai_quotas(self, _payload):
+        return {"ok": True, "results": [], "queried": 0, "failed": 0, "skipped": 0}
+
 
 class FakePixelError(RuntimeError):
     def __init__(self, public_message="公开错误", status_code=502):
@@ -346,6 +349,30 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(self.local_config["sms_api_keys"], ["key-new"])
         self.assertIsNone(self.importer.started_with)
 
+    def test_start_existing_keeps_one_run_mailbox_selection_out_of_saved_config(self):
+        app = self._app()
+        response = app.test_client().post(
+            "/api/start-existing",
+            json={
+                "target_count": 2,
+                "run_mailbox_rows": [
+                    {"row_id": "A" * 64, "line_no": 25},
+                    {"row_id": "B" * 64, "line_no": 83},
+                ],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            self.importer.started_with["_gptphone_run_mailbox_rows"],
+            [
+                {"row_id": "a" * 64, "line_no": 25},
+                {"row_id": "b" * 64, "line_no": 83},
+            ],
+        )
+        self.assertNotIn("run_mailbox_rows", self.importer.started_with)
+        self.assertNotIn("run_mailbox_rows", self.store.current)
+
     def test_save_config_failure_rolls_back_store_pool_and_local_config(self):
         app = self._app()
         self.fail_configure_keys = ["key-bad"]
@@ -393,6 +420,53 @@ class WebRouteTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["notification"]["event"], "test")
         self.assertEqual(payload["notification"]["recipient_count"], 1)
+
+    def test_mailbox_url_test_route_returns_safe_diagnostics_and_preserves_input(self):
+        calls = []
+
+        class FakeUrlTester:
+            def test(self, value, **kwargs):
+                calls.append((value, kwargs))
+                return {
+                    "ok": True,
+                    "code_found": True,
+                    "reason": "code_found",
+                    "attempts": 1,
+                    "elapsed_seconds": 0.1,
+                    "resend_attempted": False,
+                    "resend_succeeded": False,
+                    "diagnostics": {
+                        "listing_messages": 1,
+                        "detail_links": 1,
+                        "detail_refreshed": 1,
+                        "detail_cache_hits": 0,
+                        "detail_refresh_pending": 0,
+                        "detail_errors": 0,
+                        "openai_messages": 1,
+                        "code_messages": 1,
+                    },
+                }
+
+        context = replace(
+            self.context,
+            mailbox_url_test_factory=FakeUrlTester,
+            read_local_config=lambda: {
+                "proxy": "http://127.0.0.1:7897",
+                "proxy_scope": {"email": True},
+            },
+        )
+        app = self._app(context)
+        url = "https://mail.example.test/messages/sample-token/user%40example.test?all=1"
+        with app.test_client() as client:
+            response = client.post("/api/mailbox-url-test", json={"value": url})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()["ok"])
+        self.assertEqual(calls[0][0], url)
+        self.assertEqual(calls[0][1]["timeout_seconds"], 60)
+        self.assertEqual(calls[0][1]["interval_seconds"], 5)
+        self.assertEqual(calls[0][1]["resend_after_seconds"], 15)
+        self.assertEqual(calls[0][1]["proxy"], "http://127.0.0.1:7897")
 
     def test_stale_mailbox_password_request_returns_conflict(self):
         app = self._app()
@@ -448,6 +522,18 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(success.status_code, 200)
         self.assertIn("mailboxes", success.get_json())
         self.assertIn("state", success.get_json())
+
+    def test_mailbox_quota_route_returns_public_batch_results(self):
+        app = self._app()
+        with app.test_client() as client:
+            response = client.post(
+                "/api/mailboxes/quota",
+                json={"rows": [{"row_id": "row-a", "line_no": 1}]},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["ok"], True)
+        self.assertIn("results", response.get_json())
 
     def test_mailbox_pixel_requeue_and_sub2_export_use_server_side_success_result(self):
         queue = FakePixelQueue()

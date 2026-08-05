@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from mac_overrides.mailbox_admin import (
     MailboxAdminService,
@@ -19,6 +20,7 @@ from mac_overrides.mailbox_admin import (
     password_from_row,
     public_sub2_status,
     public_task_account,
+    redact_mailbox_credentials,
     row_id_from_source,
     selected_line_numbers,
     url_credential_secrets,
@@ -353,6 +355,66 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertEqual(stale["code"], "mailbox_rows_stale")
         self.assertEqual(len(captured), 2)
 
+    def test_query_openai_quotas_uses_stable_bindings_and_returns_only_public_fields(self):
+        rows = [
+            "one@example.com----pass-one----client-one----refresh-one",
+            "two@example.com----pass-two----client-two----refresh-two",
+        ]
+        self._write_pool("\n".join(rows) + "\n")
+        results = self.root / "results"
+        results.mkdir()
+        for index, row in enumerate(rows, start=1):
+            email = email_from_row(row)
+            (results / f"{index}.json").write_text(
+                json.dumps({
+                    "email": email,
+                    "status": "success",
+                    "task_id": f"task-{index}",
+                    "created_at": index,
+                    "result": {
+                        "access_token": f"private-access-{index}",
+                        "chatgpt_account_id": f"private-account-{index}",
+                    },
+                }),
+                encoding="utf-8",
+            )
+        captured = []
+
+        def query(document, proxy):
+            captured.append((document["task_id"], proxy))
+            return {
+                "status": "ok",
+                "node_code": "openai_quota",
+                "node_label": "查询 OpenAI 额度",
+                "quota_5h": {"remaining_percent": 80},
+                "quota_7d": {"remaining_percent": 40},
+                "queried_at": 1000,
+            }
+
+        self.service.openai_quota_query = query
+        payload = {
+            "rows": [
+                {"row_id": row_id_from_source(row), "line_no": index}
+                for index, row in enumerate(rows, start=1)
+            ]
+        }
+
+        result = self.service.query_openai_quotas(payload)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["queried"], 2)
+        self.assertEqual(sorted(captured), [("task-1", ""), ("task-2", "")])
+        serialized = json.dumps(result, ensure_ascii=False)
+        self.assertNotIn("private-access", serialized)
+        self.assertNotIn("private-account", serialized)
+        self.assertEqual(
+            [{key: item[key] for key in ("line_no", "status", "quota_5h", "quota_7d")} for item in result["results"]],
+            [
+                {"line_no": 1, "status": "ok", "quota_5h": {"remaining_percent": 80}, "quota_7d": {"remaining_percent": 40}},
+                {"line_no": 2, "status": "ok", "quota_5h": {"remaining_percent": 80}, "quota_7d": {"remaining_percent": 40}},
+            ],
+        )
+
     def test_sub2_batch_accepts_more_than_twenty_rows_for_queued_chunk_processing(self):
         rows = [f"user{index}@example.com|pass-{index}|JBSWY3DPEHPK3PXP" for index in range(1, 22)]
         self._write_pool("\n".join(rows) + "\n")
@@ -592,6 +654,29 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertIn("user@example.test", secrets)
         self.assertIn("p%40ss-word", secrets)
         self.assertIn("p@ss-word", secrets)
+
+    def test_credential_redaction_uses_bounded_literal_matching(self):
+        raw = "prefix SeCrEt-ToKeN suffix " + ("x" * 5000)
+        with patch(
+            "mac_overrides.mailbox_admin.re.sub",
+            side_effect=AssertionError("regex redaction is forbidden"),
+        ):
+            redacted = redact_mailbox_credentials(raw, ["secret-token"])
+
+        self.assertNotIn("SeCrEt-ToKeN", redacted)
+        self.assertIn("********", redacted)
+        self.assertLessEqual(len(redacted), 4096)
+
+    def test_credential_redaction_does_not_rescan_or_expand_mask_placeholders(self):
+        redacted = redact_mailbox_credentials(
+            "masked=*** existing=******** first=SeCrEt-ToKeN second=secret-token",
+            ["***", "********", "secret-token"],
+        )
+
+        self.assertEqual(
+            redacted,
+            "masked=*** existing=******** first=******** second=********",
+        )
 
     def test_reveal_password_returns_only_current_row_password(self):
         row = "mail@example.com----mail-pass----client-id----refresh-token"

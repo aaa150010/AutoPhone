@@ -108,11 +108,11 @@ function updateProxyScope(key: string, value: boolean | string | number) {
       <el-col :span="12">
         <el-form-item label="邮箱验证码等待超时（秒）">
           <el-input-number
-            :model-value="Number(modelValue.email_code_timeout ?? 60)"
+            :model-value="Number(modelValue.email_code_timeout ?? 90)"
             :min="30"
             :max="600"
             controls-position="right"
-            @update:model-value="update('email_code_timeout', Number($event ?? 60))"
+            @update:model-value="update('email_code_timeout', Number($event ?? 90))"
           />
         </el-form-item>
       </el-col>

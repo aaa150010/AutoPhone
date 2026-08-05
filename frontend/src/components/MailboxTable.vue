@@ -112,6 +112,24 @@ function batchDetail(row: MailboxRow) {
   return row.batch_id ? `${label} · ${row.batch_id}` : label
 }
 
+function quotaLabel(value: MailboxRow['quota_5h'], status?: MailboxRow['quota_status']) {
+  if (value?.remaining_percent == null) return status === 'ok' ? '-' : status === 'error' ? '失败' : '未查询'
+  return `${Number(value.remaining_percent).toFixed(1)}%`
+}
+
+function quotaDetail(value: MailboxRow['quota_5h'], status?: MailboxRow['quota_status']) {
+  if (!value) {
+    if (status === 'ok') return 'OpenAI 本次未返回该额度窗口'
+    if (status === 'error') return 'OpenAI 额度查询失败'
+    return '尚未查询 OpenAI 额度'
+  }
+  if (value.reset_at) {
+    const date = new Date(Number(value.reset_at) * 1000)
+    if (!Number.isNaN(date.getTime())) return `${quotaLabel(value, status)} · 重置 ${date.toLocaleString('zh-CN', { hour12: false })}`
+  }
+  return quotaLabel(value, status)
+}
+
 defineExpose({ clearSelection })
 </script>
 
@@ -172,6 +190,20 @@ defineExpose({ clearSelection })
         <span v-else class="muted">-</span>
       </template>
     </el-table-column>
+    <el-table-column label="5h剩余" width="92" align="center">
+      <template #default="{ row }">
+        <el-tooltip :content="quotaDetail(row.quota_5h, row.quota_status)" placement="top">
+          <span :class="['quota-value', row.quota_5h?.remaining_percent > 0 ? 'quota-available' : '']">{{ quotaLabel(row.quota_5h, row.quota_status) }}</span>
+        </el-tooltip>
+      </template>
+    </el-table-column>
+    <el-table-column label="7d剩余" width="92" align="center">
+      <template #default="{ row }">
+        <el-tooltip :content="quotaDetail(row.quota_7d, row.quota_status)" placement="top">
+          <span :class="['quota-value', row.quota_7d?.remaining_percent > 0 ? 'quota-available' : '']">{{ quotaLabel(row.quota_7d, row.quota_status) }}</span>
+        </el-tooltip>
+      </template>
+    </el-table-column>
     <el-table-column label="状态" width="105">
       <template #default="{ row }">
         <el-tag :type="row.status === 'consumed' ? 'success' : row.status === 'failed' ? 'danger' : row.status === 'running' ? 'warning' : 'info'">
@@ -226,4 +258,6 @@ defineExpose({ clearSelection })
 .sms-cost { color: var(--el-color-success); font-variant-numeric: tabular-nums; cursor: help; }
 .batch-label { color: var(--el-text-color-regular); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .muted { color: var(--el-text-color-secondary); }
+.quota-value { color: var(--el-text-color-secondary); font-variant-numeric: tabular-nums; }
+.quota-available { color: var(--el-color-success); }
 </style>

@@ -25,6 +25,7 @@ _node_runtime_ext.configure_node_runtime()
 import codex_oauth_chain as _codex_oauth_chain
 import chatgpt_totp as _chatgpt_totp_ext
 import error_observability as _error_observability_ext
+import auth_request_runtime as _auth_request_runtime_ext
 import auth_session_runtime as _auth_session_runtime_ext
 import imap_poller as _imap_poller
 import importer_scheduler as _importer_scheduler_ext
@@ -32,8 +33,10 @@ import legacy_ui as _legacy_ui_ext
 import log_retention as _log_retention_ext
 import mailbox_admin as _mailbox_admin_ext
 import mailbox_url_runtime as _mailbox_url_runtime_ext
+import mailbox_url_test_runtime as _mailbox_url_test_runtime_ext
 import mailbox_retention as _mailbox_retention_ext
 import pixel_runtime as _pixel_runtime_ext
+import openai_quota_runtime as _openai_quota_runtime_ext
 import run_notifications as _run_notifications_ext
 import runtime as _runtime
 import runtime_policy as _runtime_policy_ext
@@ -80,11 +83,17 @@ _spec.loader.exec_module(_module)
 
 
 _ORIGINAL_POOL_ENTRIES_UNLOCKED = _runtime.MailboxPool._entries_unlocked
+_ORIGINAL_POOL_LEASE = _runtime.MailboxPool.lease
 _ORIGINAL_OUTLOOK_OTP_PROVIDER = _runtime.OutlookMailboxOtpProvider
 _ORIGINAL_MAILBOX_URL_SNAPSHOT = _runtime.MailboxUrlCodeProvider.snapshot
+_ORIGINAL_MAILBOX_URL_SAME_AS_BASELINE = _runtime.MailboxUrlCodeProvider._same_as_baseline
 _ORIGINAL_URL_MAILBOX_MARK_SENT = _runtime.UrlMailboxOtpProvider.mark_sent
 _ORIGINAL_URL_MAILBOX_WAIT_CODE = _runtime.UrlMailboxOtpProvider.wait_code
 _ORIGINAL_ACCOUNT_LABEL = _runtime.EmailAuthImporter._account_label
+_ORIGINAL_REAL_TRANSPORT_INIT = _codex_oauth_chain.RealCodexTransport.__init__
+_ORIGINAL_REAL_HEADERS = _codex_oauth_chain.RealCodexTransport._headers
+_ORIGINAL_REAL_POST_AUTH_JSON = _codex_oauth_chain.RealCodexTransport._post_auth_json
+_ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = _codex_oauth_chain.RealCodexTransport.submit_email_identifier
 _ORIGINAL_REAL_VERIFY_PASSWORD = _codex_oauth_chain.RealCodexTransport.verify_password
 _ORIGINAL_REAL_VERIFY_EMAIL_OTP = _codex_oauth_chain.RealCodexTransport.verify_email_otp
 _ORIGINAL_REAL_VERIFY_MFA_OTP = _codex_oauth_chain.RealCodexTransport.verify_mfa_otp
@@ -109,6 +118,7 @@ _ORIGINAL_IMPORTER_START = _runtime.EmailAuthImporter.start
 _ORIGINAL_IMPORTER_STOP = _runtime.EmailAuthImporter.stop
 _ORIGINAL_IMPORTER_WATCH = _runtime.EmailAuthImporter._watch
 _ORIGINAL_PRE_AUTH_SESSION_RETRYABLE = _runtime.EmailAuthImporter._pre_auth_session_retryable
+_ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = _runtime.run_codex_after_registration
 _ORIGINAL_GUI_LOG_ADD = _module.GuiLog.add
 _ORIGINAL_GUI_LOG_SNAPSHOT = _module.GuiLog.snapshot
 _ORIGINAL_CREATE_PROVIDER = _sms_providers.create_provider
@@ -124,8 +134,10 @@ _ORIGINAL_CHAIN_EVENT = _codex_oauth_chain._event
 _SMS_PRIORITY_COUNTRIES = ()
 _SMS_MIN_PRICE_DEFAULT = 0.01
 _SMS_MAX_PRICE_DEFAULT = "0.1"
-_EMAIL_CODE_TIMEOUT_DEFAULT = 60
-_EMAIL_TIMEOUT_STRATEGY_VERSION = 1
+_EMAIL_CODE_TIMEOUT_DEFAULT = 90
+_EMAIL_TIMEOUT_STRATEGY_VERSION = 2
+_EMAIL_OTP_VERIFY_ATTEMPTS_DEFAULT = 2
+_EMAIL_OTP_RESEND_ON_RETRY_DEFAULT = True
 _SMS_PRIORITY_COUNTRIES_TEXT = ",".join(_SMS_PRIORITY_COUNTRIES)
 _SMS_PRIORITY_ROUTES = ()
 _SMS_BLOCKED_ROUTES = (
@@ -159,6 +171,14 @@ _SMS_ALERTS = _sms_runtime_ext.RuntimeAlertBuffer()
 _GUI_LOG_RETENTION = _log_retention_ext.GuiLogRetention()
 _TASK_PROGRESS = _task_progress_ext.TaskProgressTracker()
 _TASK_CONTEXT: ContextVar[str] = ContextVar("gptphone_task_id", default="")
+_MAILBOX_LEASE_FILTER_ACTIVE: ContextVar[bool] = ContextVar(
+    "gptphone_mailbox_lease_filter_active",
+    default=False,
+)
+_MAILBOX_RUN_SELECTION: ContextVar[frozenset[tuple[str, int]]] = ContextVar(
+    "gptphone_mailbox_run_selection",
+    default=frozenset(),
+)
 _MAILBOX_TOTP_SECRET_CONTEXT: ContextVar[str] = ContextVar("gptphone_mailbox_totp_secret", default="")
 _ACCOUNT_BANNED_DETAIL_CONTEXT: ContextVar[str] = ContextVar(
     "gptphone_account_banned_detail",
@@ -168,6 +188,8 @@ _PASSWORD_DAMAGED_MESSAGE = "OpenAI 登录密码验证失败，请检查账号�
 _HISTORICAL_SUCCESS_REASONS = frozenset({"sub2_uploaded"})
 _TASK_FAILURES: dict[str, dict] = {}
 _TASK_FAILURES_LOCK = threading.RLock()
+_AUTH_EMAIL_COOLDOWNS: dict[str, float] = {}
+_AUTH_EMAIL_COOLDOWNS_LOCK = threading.RLock()
 _RUN_LIFECYCLE_LOCK = threading.Lock()
 _RUN_NOTIFICATION_LOCK = threading.RLock()
 _RUN_NOTIFICATION_CONTEXT = None
@@ -176,6 +198,16 @@ _RUN_NOTIFICATION_CONTEXT = None
 def _safe_runtime_error(error):
     value = _module._safe(error) if hasattr(_module, "_safe") else str(error)
     return _SMS_PROVIDER_REGISTRY.safe_error(value)
+
+
+def _is_oauth_session_invalid_failure(result=None, error=""):
+    if _auth_session_runtime_ext.is_session_invalid(error):
+        return True
+    value = result if isinstance(result, dict) else {}
+    return any(
+        _auth_session_runtime_ext.is_session_invalid(value.get(key))
+        for key in ("error", "phase2_error", "technical_error")
+    )
 
 
 def _failure_secrets(importer=None, entry=None, settings=None):
@@ -251,6 +283,7 @@ def _classify_task_failure(task_id, result=None, error="", *, status="failed", s
 
 
 _TASK_ID_LOG_RE = re.compile(r"\b(T\d{3}(?:-[A-Za-z0-9]+)?)\b")
+_PUBLIC_LOG_INPUT_LIMIT = 4096
 _FAILURE_LOG_MARKERS = (
     "失败",
     "failed",
@@ -317,7 +350,7 @@ def _migrate_email_timeout_config(value):
     migrated = version < _EMAIL_TIMEOUT_STRATEGY_VERSION
     if migrated and (
         raw_timeout in (None, "")
-        or _int_value(raw_timeout, 150, minimum=30, maximum=600) == 150
+        or _int_value(raw_timeout, 150, minimum=30, maximum=600) in {60, 150}
     ):
         timeout = _EMAIL_CODE_TIMEOUT_DEFAULT
     else:
@@ -369,6 +402,29 @@ def _patched_config_load(self):
 
     loaded = _runtime._merge(defaults, raw)
     changed = self._enforce_private_paths(loaded, defaults) or email_timeout_migrated
+    if "email_otp_verify_attempts" not in raw or raw.get("email_otp_verify_attempts") in (None, ""):
+        if loaded.get("email_otp_verify_attempts") != _EMAIL_OTP_VERIFY_ATTEMPTS_DEFAULT:
+            loaded["email_otp_verify_attempts"] = _EMAIL_OTP_VERIFY_ATTEMPTS_DEFAULT
+            changed = True
+    else:
+        normalized_attempts = _int_value(
+            raw.get("email_otp_verify_attempts"),
+            _EMAIL_OTP_VERIFY_ATTEMPTS_DEFAULT,
+            minimum=1,
+            maximum=5,
+        )
+        if loaded.get("email_otp_verify_attempts") != normalized_attempts:
+            loaded["email_otp_verify_attempts"] = normalized_attempts
+            changed = True
+    if "email_otp_resend_on_retry" not in raw or raw.get("email_otp_resend_on_retry") in (None, ""):
+        if loaded.get("email_otp_resend_on_retry") != _EMAIL_OTP_RESEND_ON_RETRY_DEFAULT:
+            loaded["email_otp_resend_on_retry"] = _EMAIL_OTP_RESEND_ON_RETRY_DEFAULT
+            changed = True
+    else:
+        normalized_resend = _as_enabled(raw.get("email_otp_resend_on_retry"), False)
+        if loaded.get("email_otp_resend_on_retry") != normalized_resend:
+            loaded["email_otp_resend_on_retry"] = normalized_resend
+            changed = True
 
     try:
         auth_strategy_version = int(raw.get("email_auth_strategy_version") or 0)
@@ -401,6 +457,8 @@ def _patched_config_load(self):
         "auth_session_retries",
         "email_code_timeout",
         "email_timeout_strategy_version",
+        "email_otp_verify_attempts",
+        "email_otp_resend_on_retry",
         "sms_provider_pools",
         "sms_provider",
         "sms_api_keys",
@@ -417,6 +475,10 @@ def _patched_config_save(self, values):
     cleaned = dict(values or {})
     cleaned.pop("nvtoken", None)
     cleaned.pop("nvtoken_upload", None)
+    if cleaned.get("email_otp_verify_attempts") in (None, ""):
+        cleaned["email_otp_verify_attempts"] = _EMAIL_OTP_VERIFY_ATTEMPTS_DEFAULT
+    if cleaned.get("email_otp_resend_on_retry") in (None, ""):
+        cleaned["email_otp_resend_on_retry"] = _EMAIL_OTP_RESEND_ON_RETRY_DEFAULT
     cleaned, _email_timeout_migrated = _migrate_email_timeout_config(cleaned)
     normalized, _migrated = _sms_runtime_ext.migrate_performance_config(cleaned)
     saved = dict(_ORIGINAL_CONFIG_SAVE(self, normalized) or {})
@@ -428,6 +490,8 @@ def _patched_config_save(self, values):
         "auth_session_retries",
         "email_code_timeout",
         "email_timeout_strategy_version",
+        "email_otp_verify_attempts",
+        "email_otp_resend_on_retry",
         "sms_provider_pools",
         "sms_provider",
         "sms_api_keys",
@@ -458,6 +522,15 @@ def _patched_task_config(self, settings, email, task_id, *, password=""):
         maximum=1800,
     )
     route_lease_seconds = _int_value(config.get("code_timeout"), 30, minimum=5, maximum=300) + 20
+    raw_email_attempts = (settings or {}).get("email_otp_verify_attempts")
+    email_attempts = _int_value(
+        raw_email_attempts,
+        _EMAIL_OTP_VERIFY_ATTEMPTS_DEFAULT,
+        minimum=1,
+        maximum=5,
+    )
+    raw_email_resend = (settings or {}).get("email_otp_resend_on_retry")
+    email_resend = _as_enabled(raw_email_resend, _EMAIL_OTP_RESEND_ON_RETRY_DEFAULT)
     config.update(
         {
             "sms_provider_pools": pools,
@@ -470,6 +543,8 @@ def _patched_task_config(self, settings, email, task_id, *, password=""):
             "phone_session_cycle_seconds": phone_seconds,
             "phone_session_max_seconds": phone_seconds,
             "phone_retry_sleep_seconds": 2,
+            "email_otp_verify_attempts": email_attempts,
+            "email_otp_resend_on_retry": email_resend,
         }
     )
     results_value = str((settings or {}).get("results_dir") or "results").strip() or "results"
@@ -591,7 +666,7 @@ def _real_initiate_oauth(self, oauth_url):
 
     config = getattr(self, "config", None)
     stop_requested = config.get("_stop_requested") if isinstance(config, dict) else None
-    return _runtime_policy_ext.call_with_transient_pre_auth_retry(
+    response = _runtime_policy_ext.call_with_transient_pre_auth_retry(
         lambda: _ORIGINAL_REAL_INITIATE_OAUTH(self, oauth_url),
         attempts=2,
         delay_seconds=0.25,
@@ -599,6 +674,8 @@ def _real_initiate_oauth(self, oauth_url):
         on_retry=on_retry,
         retry_result=True,
     )
+    _observe_auth_step(self, response, "oauth_authorize_node")
+    return response
 
 
 def _real_create_account_profile(self, name, birthdate):
@@ -711,10 +788,17 @@ def _patched_task_state(self, task_id: str, **values):
             task_result = dict(task_result)
             task_result["failure"] = failure
             values["result"] = task_result
+    if status == "success":
+        _clear_known_node_failure(task_id)
+        auth_sessions = globals().get("_AUTH_SESSIONS")
+        if auth_sessions is not None:
+            auth_sessions.clear(task_id)
     result = _ORIGINAL_TASK_STATE(self, task_id, **values)
     if status == "authorizing":
         _TASK_CONTEXT.set(str(task_id or ""))
     _TASK_PROGRESS.observe_task_state(task_id, status)
+    if status in _task_progress_ext.TERMINAL_TASK_STATUSES:
+        _SMS_PROVIDER_REGISTRY.clear_task_attempt_counts(task_id)
     if status in _task_progress_ext.TERMINAL_TASK_STATUSES and _TASK_CONTEXT.get() == str(task_id or ""):
         _TASK_CONTEXT.set("")
     return result
@@ -732,6 +816,8 @@ def _patched_chain_event(
     task_id = _TASK_CONTEXT.get()
     if task_id:
         _TASK_PROGRESS.observe_chain_state(task_id, state)
+    if str(state or "").strip().upper() in {"SENTINEL_READY", "TOKEN_EXCHANGED", "DONE"}:
+        _clear_known_node_failure(task_id)
     if (
         str(state or "").strip().upper() == "RUNTIME_CONTEXT_ISSUE"
         and str(detail or "").strip().lower() == "warn:code_verifier_present"
@@ -931,6 +1017,18 @@ def _patched_importer_start(self, settings):
         _TASK_PROGRESS.reset()
         with _TASK_FAILURES_LOCK:
             _TASK_FAILURES.clear()
+    selection = set()
+    for item in internal.get("_gptphone_run_mailbox_rows") or ():
+        if not isinstance(item, dict):
+            continue
+        try:
+            line_no = int(item.get("line_no") or 0)
+        except (TypeError, ValueError):
+            line_no = 0
+        row_id = str(item.get("row_id") or "").strip().lower()
+        if row_id and line_no > 0:
+            selection.add((row_id, line_no))
+    selection_token = _MAILBOX_RUN_SELECTION.set(frozenset(selection))
     notification_context = None
     try:
         if not already_running:
@@ -963,6 +1061,8 @@ def _patched_importer_start(self, settings):
             with _TASK_FAILURES_LOCK:
                 _TASK_FAILURES.clear()
         raise
+    finally:
+        _MAILBOX_RUN_SELECTION.reset(selection_token)
 
 
 def _patched_importer_stop(self):
@@ -1007,6 +1107,16 @@ def _patched_importer_watch(self):
 
 
 def _patched_pre_auth_session_retryable(result):
+    if _auth_session_runtime_ext.is_session_invalid(result):
+        task_id = _TASK_CONTEXT.get()
+        context = _AUTH_SESSIONS.get(task_id) if task_id else None
+        if (
+            context is not None
+            and context.current_stage in {"phone_submitting", "sms_verifying"}
+            and context.invalidations >= 2
+        ):
+            return False
+        return True
     if _runtime_policy_ext.should_retry_expired_sub2_session(result):
         return True
     return _ORIGINAL_PRE_AUTH_SESSION_RETRYABLE(result)
@@ -1031,6 +1141,8 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
     batch_id = str((settings or {}).get("batch_id") or "").strip()[:80]
     batch_started_at = _int_value((settings or {}).get("batch_started_at"), 0, minimum=0)
     if isinstance(result, dict):
+        if _is_oauth_session_invalid_failure(result, error):
+            result["resume_stage"] = "fresh_oauth"
         if batch_id:
             result["batch_id"] = batch_id
             result["batch_started_at"] = batch_started_at
@@ -1157,6 +1269,13 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
 
 
 def _patched_retire_after_failure(self, settings, pool, entry, task_id, result, error):
+    if _is_oauth_session_invalid_failure(result, error):
+        if isinstance(result, dict):
+            result["resume_stage"] = "fresh_oauth"
+        key = str(getattr(entry, "key", "") or getattr(entry, "email", "") or "").strip()
+        if key:
+            with _AUTH_EMAIL_COOLDOWNS_LOCK:
+                _AUTH_EMAIL_COOLDOWNS[key] = time.time() + 1800
     password_rejected = False
     if isinstance(result, dict):
         try:
@@ -1250,16 +1369,104 @@ def _patched_retire_after_failure(self, settings, pool, entry, task_id, result, 
 
 
 def _real_send_phone_number_otp(self, phone, channel="sms"):
-    payload = {"phone_number": _codex_oauth_chain._phone_for_openai(phone)}
-    if channel:
-        payload["channel"] = channel
-    return self._post_auth_json(
-        "/api/accounts/add-phone/send",
-        payload,
-        flow="authorize_continue",
-        referer=f"{_codex_oauth_chain.AUTH}/add-phone",
-        timeout=30,
+    # Lightweight fakes used by older tests do not own an HTTP session. Keep
+    # their compatibility path isolated from the real browser-contract path.
+    if not hasattr(self, "session"):
+        payload = {"phone_number": _codex_oauth_chain._phone_for_openai(phone)}
+        if channel:
+            payload["channel"] = channel
+        return self._post_auth_json(
+            "/api/accounts/add-phone/send",
+            payload,
+            flow="authorize_continue",
+            referer=f"{_codex_oauth_chain.AUTH}/add-phone",
+            timeout=30,
+        )
+
+    del channel
+    _set_current_task_stage("phone_submitting")
+    endpoint = "/api/accounts/add-phone/send"
+    referer = f"{_codex_oauth_chain.AUTH}/add-phone"
+    try:
+        _auth_request_runtime_ext.validate_phone_context(self, _AUTH_SESSIONS)
+    except _auth_request_runtime_ext.AuthRequestContextError as exc:
+        return {"_status": 0, "error": f"{exc.code}: {exc}"}
+
+    request_context = _auth_request_runtime_ext.begin_request(
+        self,
+        _AUTH_SESSIONS,
+        endpoint=endpoint,
+        stage="phone_submitting",
     )
+    payload = {"phone_number": _codex_oauth_chain._phone_for_openai(phone)}
+    headers = {
+        **dict(_codex_oauth_chain.JSON_HEADERS),
+        "referer": referer,
+        "oai-device-id": str(getattr(self, "device_id", "") or ""),
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+        "x-datadog-origin": "rum",
+    }
+    headers = _auth_request_runtime_ext.request_headers(
+        self,
+        headers,
+        include_sentinel=False,
+    )
+    try:
+        raw_response = self.session.post(
+            f"{_codex_oauth_chain.AUTH}{endpoint}",
+            json=payload,
+            headers=headers,
+            allow_redirects=False,
+            timeout=30,
+        )
+        if isinstance(raw_response, dict):
+            response = dict(raw_response)
+        else:
+            response = dict(_codex_oauth_chain._json_response(raw_response) or {})
+            response.setdefault("_status", int(getattr(raw_response, "status_code", 0) or 0))
+    except Exception as exc:
+        response = {
+            "_status": 0,
+            "error": _error_observability_ext.sanitize_failure_detail(exc, limit=220)
+            or "phone_send_request_failed",
+        }
+    self.last_response = response
+    finished = _auth_request_runtime_ext.finish_request(
+        self,
+        _AUTH_SESSIONS,
+        request_context,
+        response,
+    )
+    self._gptphone_last_request_context = finished
+    if _auth_session_runtime_ext.is_session_invalid(response):
+        _auth_request_runtime_ext.invalidate_auth_session(
+            self,
+            _AUTH_SESSIONS,
+            response,
+            stage="phone_submitting",
+        )
+        return response
+    status = int(response.get("_status") or 0)
+    if not 200 <= status < 300:
+        response = {
+            **response,
+            "error": response.get("_body_summary")
+            or response.get("_body")
+            or response.get("error", ""),
+        }
+        return response
+    try:
+        _auth_request_runtime_ext.refresh_sentinel(
+            self,
+            _AUTH_SESSIONS,
+            flow="authorize_continue",
+            referer=f"{_codex_oauth_chain.AUTH}/phone-verification",
+        )
+    except _auth_request_runtime_ext.AuthRequestContextError as exc:
+        raise _codex_oauth_chain.CodexChainError(f"{exc.code}: {exc}") from exc
+    return response
 
 
 _SMS_WEB = _sms_web_ext.SmsWebIntegration(
@@ -1302,6 +1509,257 @@ _TOTP_PATCHES = _chatgpt_totp_ext.build_chatgpt_totp_patches(
     original_verify_mfa_otp=_ORIGINAL_REAL_VERIFY_MFA_OTP,
     parse_oauth_mailbox_row=_mailbox_admin_ext.parse_oauth_mailbox_row,
 )
+
+
+def _real_transport_init(
+    self,
+    config,
+    *,
+    oauth_params,
+    proxy="",
+    sentinel_provider,
+    device_id="",
+    log_fn=None,
+):
+    _ORIGINAL_REAL_TRANSPORT_INIT(
+        self,
+        config,
+        oauth_params=oauth_params,
+        proxy=proxy,
+        sentinel_provider=sentinel_provider,
+        device_id=device_id,
+        log_fn=log_fn,
+    )
+    runtime_config = config if isinstance(config, dict) else {}
+    self.account_email = str(runtime_config.get("_auth_account_email") or "").strip().lower()
+    _auth_request_runtime_ext.ensure_transport_context(self, _AUTH_SESSIONS, force_new=True)
+
+
+def _real_headers(self, flow, referer):
+    headers = _ORIGINAL_REAL_HEADERS(self, flow, referer)
+    return _auth_request_runtime_ext.request_headers(self, headers)
+
+
+def _real_post_auth_json(self, path, payload, *, flow, referer, timeout=30):
+    stage = {
+        "/api/accounts/email-otp/validate": "email_code_verifying",
+        "/api/accounts/mfa/verify": "email_code_verifying",
+        "/api/accounts/phone-otp/validate": "sms_verifying",
+    }.get(str(path), "oauth_authorize_node")
+    _set_current_task_stage(stage)
+    request_context = _auth_request_runtime_ext.begin_request(
+        self,
+        _AUTH_SESSIONS,
+        endpoint=path,
+        stage=stage,
+    )
+    try:
+        response = _ORIGINAL_REAL_POST_AUTH_JSON(
+            self,
+            path,
+            payload,
+            flow=flow,
+            referer=referer,
+            timeout=timeout,
+        )
+    except Exception as exc:
+        if _auth_session_runtime_ext.is_session_invalid(exc):
+            _auth_request_runtime_ext.invalidate_auth_session(
+                self,
+                _AUTH_SESSIONS,
+                exc,
+                stage=str(request_context.get("stage") or "oauth_authorize_node"),
+            )
+        raise
+    finished = _auth_request_runtime_ext.finish_request(
+        self,
+        _AUTH_SESSIONS,
+        request_context,
+        response,
+    )
+    self._gptphone_last_request_context = finished
+    if _auth_session_runtime_ext.is_session_invalid(response):
+        _auth_request_runtime_ext.invalidate_auth_session(
+            self,
+            _AUTH_SESSIONS,
+            response,
+            stage=str(request_context.get("stage") or "oauth_authorize_node"),
+        )
+    return response
+
+
+def _observe_auth_step(transport, response, stage):
+    _auth_request_runtime_ext.observe_auth_response(
+        transport,
+        _AUTH_SESSIONS,
+        response,
+        stage=stage,
+    )
+    page_type = _codex_oauth_chain._page_type(response)
+    if page_type in _auth_request_runtime_ext.PHONE_PAGE_TYPES:
+        provider = getattr(transport, "sentinel_provider", None)
+        reset = getattr(provider, "reset", None)
+        if callable(reset):
+            reset()
+        _auth_request_runtime_ext.mark_phone_ready(
+            transport,
+            _AUTH_SESSIONS,
+            response,
+            continue_url=_codex_oauth_chain._continue_url(response),
+        )
+
+
+def _real_submit_email_identifier(self, email):
+    response = _ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER(self, email)
+    if (
+        not _codex_oauth_chain._is_success_response(response)
+        or _codex_oauth_chain._page_type(response) != "email_otp_verification"
+    ):
+        return response
+
+    # The successful browser trace explicitly resends after reaching the OTP
+    # page. Merely receiving that page does not prove that an email was sent.
+    _set_current_task_stage("email_code_waiting")
+    continue_url = _codex_oauth_chain._continue_url(response)
+    send_response = self.send_email_otp(continue_url)
+    if not _codex_oauth_chain._is_success_response(send_response):
+        cause = _codex_oauth_chain._error_text(send_response) or "发送接口未返回错误详情"
+        raise _codex_oauth_chain.CodexChainError(f"email_otp_send_failed: {cause}")
+    self._gptphone_initial_email_otp_send_confirmed = True
+    _call_log(
+        getattr(self, "log_fn", None),
+        "  [邮箱验证码发送/email_code_waiting] 首次邮箱验证码发送接口已确认",
+        "info",
+    )
+    return response
+
+
+def _real_verify_password(self, password):
+    response = _TOTP_PATCHES.verify_password(self, password)
+    _observe_auth_step(self, response, "email_password")
+    return response
+
+
+def _real_verify_mfa_otp(self, code):
+    response = _TOTP_PATCHES.verify_mfa_otp(self, code)
+    _observe_auth_step(self, response, "email_code_verifying")
+    return response
+
+
+def _run_codex_after_registration(
+    *,
+    oauth_url,
+    code_verifier="",
+    account_email="",
+    password="",
+    phase1_register=None,
+    phase1_response=None,
+    phase1_continue_url="",
+    sms_provider=None,
+    config=None,
+    proxy="",
+    email_proxy="",
+    upload_proxy="",
+    log_fn=None,
+    mode="",
+    local_oauth_client_id="app_EMoamEEZ73f0CkXaXp7hrann",
+    local_oauth_redirect_uri="http://localhost:1455/auth/callback",
+    oauth_provider="",
+    oauth_session_id="",
+    oauth_state="",
+    upload_target_name="local",
+    node_result=None,
+    runtime_context_expected=None,
+    runtime_context_strict=False,
+    transport=None,
+    sentinel_provider=None,
+    email_otp_provider=None,
+    phone_otp_provider=None,
+):
+    runtime_config = config if isinstance(config, dict) else {}
+    runtime_config["_auth_account_email"] = str(account_email or "").strip().lower()
+    if transport is not None:
+        transport.config = runtime_config
+        transport.account_email = runtime_config["_auth_account_email"]
+        _auth_request_runtime_ext.ensure_transport_context(
+            transport,
+            _AUTH_SESSIONS,
+            force_new=True,
+        )
+    result = _ORIGINAL_RUN_CODEX_AFTER_REGISTRATION(
+        oauth_url=oauth_url,
+        code_verifier=code_verifier,
+        account_email=account_email,
+        password=password,
+        phase1_register=phase1_register,
+        phase1_response=phase1_response,
+        phase1_continue_url=phase1_continue_url,
+        sms_provider=sms_provider,
+        config=runtime_config,
+        proxy=proxy,
+        email_proxy=email_proxy,
+        upload_proxy=upload_proxy,
+        log_fn=log_fn,
+        mode=mode,
+        local_oauth_client_id=local_oauth_client_id,
+        local_oauth_redirect_uri=local_oauth_redirect_uri,
+        oauth_provider=oauth_provider,
+        oauth_session_id=oauth_session_id,
+        oauth_state=oauth_state,
+        upload_target_name=upload_target_name,
+        node_result=node_result,
+        runtime_context_expected=runtime_context_expected,
+        runtime_context_strict=runtime_context_strict,
+        transport=transport,
+        sentinel_provider=sentinel_provider,
+        email_otp_provider=email_otp_provider,
+        phone_otp_provider=phone_otp_provider,
+    )
+    if isinstance(result, dict) and _auth_session_runtime_ext.is_session_invalid(result):
+        result = dict(result)
+        result["resume_stage"] = "fresh_oauth"
+        runtime_config.pop("phase1_active_session", None)
+        task_id = str(runtime_config.get("sms_task_id") or runtime_config.get("run_id") or "")
+        if task_id:
+            context = _AUTH_SESSIONS.get(task_id, email=account_email)
+            result["auth_session_invalid_count"] = int(context.invalidations)
+    elif isinstance(result, dict) and result.get("ok"):
+        _clear_known_node_failure(str(runtime_config.get("sms_task_id") or ""))
+    return result
+
+
+def _mailbox_entries_with_auth_cooldown(pool_self):
+    entries, errors = _TOTP_PATCHES.entries_unlocked(pool_self)
+    if not _MAILBOX_LEASE_FILTER_ACTIVE.get():
+        return entries, errors
+    selected = _MAILBOX_RUN_SELECTION.get()
+    if selected:
+        selected_lines = {line_no for _row_id, line_no in selected}
+        entries = [
+            entry
+            for entry in entries
+            if int(getattr(entry, "line_no", 0) or 0) in selected_lines
+        ]
+    now = time.time()
+    with _AUTH_EMAIL_COOLDOWNS_LOCK:
+        for key, until in tuple(_AUTH_EMAIL_COOLDOWNS.items()):
+            if float(until or 0) <= now:
+                _AUTH_EMAIL_COOLDOWNS.pop(key, None)
+        cooled = dict(_AUTH_EMAIL_COOLDOWNS)
+    available = []
+    for entry in entries:
+        key = str(getattr(entry, "key", "") or getattr(entry, "email", "") or "").strip()
+        if float(cooled.get(key) or 0) <= now:
+            available.append(entry)
+    return available, errors
+
+
+def _mailbox_lease_with_auth_cooldown(self, *, lease_seconds=1800):
+    token = _MAILBOX_LEASE_FILTER_ACTIVE.set(True)
+    try:
+        return _ORIGINAL_POOL_LEASE(self, lease_seconds=lease_seconds)
+    finally:
+        _MAILBOX_LEASE_FILTER_ACTIVE.reset(token)
 
 
 def _sms_build_candidates(self, raw_rows, now, allowed_countries, blocked_countries):
@@ -1352,7 +1810,9 @@ def _real_verify_phone_otp(self, code):
     except Exception as exc:
         _SMS_WEB.ensure_account_active(self, exc)
         raise
-    return _SMS_WEB.ensure_account_active(self, response)
+    response = _SMS_WEB.ensure_account_active(self, response)
+    _observe_auth_step(self, response, "sms_verifying")
+    return response
 
 
 def _call_log(log_fn, message, level="info"):
@@ -1385,8 +1845,14 @@ def _mailbox_url_snapshot(self):
         selection = _mailbox_url_runtime_ext.runtime_snapshot(self)
     except _mailbox_url_runtime_ext.MailboxUrlError as exc:
         raise _runtime.MailboxPoolError(str(exc)) from exc
+    fingerprint = selection.fingerprint
+    if selection.reason in {
+        "mailbox_baseline_code_fallback",
+        "mailbox_final_baseline_code_fallback",
+    }:
+        fingerprint = f"baseline-fallback:{fingerprint}"
     snapshot = _runtime.MailboxSnapshot(
-        hash=selection.fingerprint,
+        hash=fingerprint,
         code=selection.code,
         received_at=selection.received_at,
     )
@@ -1394,9 +1860,23 @@ def _mailbox_url_snapshot(self):
     return snapshot
 
 
+def _mailbox_url_same_as_baseline(current, baseline):
+    if str(getattr(current, "hash", "") or "").startswith("baseline-fallback:"):
+        return False
+    return _ORIGINAL_MAILBOX_URL_SAME_AS_BASELINE(current, baseline)
+
+
 def _url_mailbox_mark_sent(self):
     result = _ORIGINAL_URL_MAILBOX_MARK_SENT(self)
-    _mailbox_url_runtime_ext.begin_runtime_request(self.provider)
+    if getattr(self, "_gptphone_email_code_deadline", None) is None:
+        timeout = _int_value(getattr(self, "timeout", 90), 90, minimum=1, maximum=600)
+        self._gptphone_email_code_deadline = time.monotonic() + timeout
+    provider = self.provider
+    _mailbox_url_runtime_ext.configure_runtime_request(
+        provider,
+        max_poll_attempts=_int_value(getattr(self, "max_attempts", 30), 30, minimum=1, maximum=1000),
+    )
+    _mailbox_url_runtime_ext.begin_runtime_request(provider)
     return result
 
 
@@ -1405,6 +1885,8 @@ _MAILBOX_DIAGNOSTIC_LABELS = {
     "mailbox_messages_without_openai_otp": "邮箱已有邮件，但没有识别到 OpenAI 验证邮件",
     "mailbox_openai_message_without_otp": "已识别 OpenAI 邮件，但没有匹配到有效六位验证码",
     "mailbox_only_baseline_code": "邮箱当前只有本次请求前的旧验证码",
+    "mailbox_baseline_code_fallback": "轮询达到三分之二后，已尝试最新的 OpenAI 基线验证码",
+    "mailbox_final_baseline_code_fallback": "邮箱等待超时后，已最后尝试一次最新的 OpenAI 基线验证码",
     "mailbox_candidate_too_old": "识别到的验证码邮件早于本次请求",
     "mailbox_detail_request_failed": "部分邮件详情读取失败，未识别到新验证码",
     "mailbox_detail_refresh_pending": "仍有缓存邮件详情等待下一轮刷新",
@@ -1442,13 +1924,66 @@ def _url_mailbox_wait_code(self, email):
         _mailbox_url_runtime_ext.finish_runtime_request(getattr(self, "provider", None))
         _call_log(getattr(self, "log_fn", None), "  [Codex] 已根据 2FA 密钥生成临时验证码", "info")
         return code
+    original_timeout = getattr(self, "timeout", None)
+    original_interval = getattr(self, "interval", None)
+    provider = getattr(self, "provider", None)
+    max_poll_attempts = _int_value(
+        getattr(self, "max_attempts", 30),
+        30,
+        minimum=1,
+        maximum=1000,
+    )
+    _mailbox_url_runtime_ext.configure_runtime_request(
+        provider,
+        max_poll_attempts=max_poll_attempts,
+    )
+    deadline = getattr(self, "_gptphone_email_code_deadline", None)
+    if deadline is not None and original_timeout is not None:
+        remaining = max(1, int(float(deadline) - time.monotonic()))
+        self.timeout = min(_int_value(original_timeout, 90, minimum=1, maximum=600), remaining)
+    if original_interval is not None:
+        timeout_budget = _int_value(getattr(self, "timeout", 90), 90, minimum=1, maximum=600)
+        interval_for_budget = max(1, (timeout_budget + max_poll_attempts - 1) // max_poll_attempts)
+        self.interval = min(
+            _int_value(original_interval, 5, minimum=1, maximum=60),
+            interval_for_budget,
+        )
     try:
         code = _ORIGINAL_URL_MAILBOX_WAIT_CODE(self, email)
-    except Exception:
-        _log_mailbox_diagnostic(getattr(self, "provider", None), getattr(self, "log_fn", None))
-        raise
+    except Exception as exc:
+        if "mailbox_code_timeout" in str(exc).lower():
+            try:
+                fallback = _mailbox_url_runtime_ext.final_runtime_baseline_fallback(provider)
+            except _mailbox_url_runtime_ext.MailboxUrlError:
+                fallback = None
+            if fallback is not None and fallback.code:
+                code = fallback.code
+            else:
+                _log_mailbox_diagnostic(provider, getattr(self, "log_fn", None))
+                raise
+        else:
+            _log_mailbox_diagnostic(provider, getattr(self, "log_fn", None))
+            raise
     finally:
-        _mailbox_url_runtime_ext.finish_runtime_request(getattr(self, "provider", None))
+        if original_timeout is not None:
+            self.timeout = original_timeout
+        if original_interval is not None:
+            self.interval = original_interval
+        _mailbox_url_runtime_ext.finish_runtime_request(provider)
+    diagnostic = _mailbox_url_runtime_ext.runtime_diagnostic(provider)
+    fallback_reason = str(diagnostic.get("reason") or "")
+    if code and fallback_reason in {
+        "mailbox_baseline_code_fallback",
+        "mailbox_final_baseline_code_fallback",
+    }:
+        poll = int(diagnostic.get("baseline_fallback_poll") or 0)
+        maximum = int(diagnostic.get("max_poll_attempts") or 0)
+        phase = "最终超时回退" if fallback_reason == "mailbox_final_baseline_code_fallback" else f"轮询 {poll}/{maximum}"
+        _call_log(
+            getattr(self, "log_fn", None),
+            f"  [邮箱取码诊断/email_code_waiting] {phase}：尝试最新的 OpenAI 基线验证码（本任务最多两次）",
+            "info",
+        )
     if code:
         setattr(self, "_chatgpt_email_otp_verified", True)
         if (
@@ -1490,9 +2025,11 @@ def _real_verify_email_otp(self, code):
     except Exception:
         page_type = ""
     if page_type not in {"mfa_otp", "mfa_challenge", "mfa_otp_verification"} or not secret:
+        _observe_auth_step(self, response, "email_code_verifying")
         return response
     factor_id = _mfa_factor_id_from_response(response)
     if not factor_id:
+        _observe_auth_step(self, response, "email_code_verifying")
         return response
     mfa_code = _chatgpt_totp_ext.totp_code(secret)
     _call_log(
@@ -1500,13 +2037,15 @@ def _real_verify_email_otp(self, code):
         "  [Codex] 邮箱验证码后遇到 MFA，已根据 2FA 密钥生成临时验证码",
         "info",
     )
-    return self._post_auth_json(
+    response = self._post_auth_json(
         "/api/accounts/mfa/verify",
         {"id": factor_id, "type": "totp", "code": mfa_code},
         flow="mfa_otp_verify",
         referer=f"{_codex_oauth_chain.AUTH}/mfa-challenge/{factor_id}",
         timeout=30,
     )
+    _observe_auth_step(self, response, "email_code_verifying")
+    return response
 
 
 _clamp_sms_max_price = _SMS_WEB.clamp_max_price
@@ -1514,11 +2053,13 @@ _configure_sms_pool = _SMS_WEB.configure_pool
 _preflight_sms_pool = _SMS_WEB.preflight_pool
 
 
-_runtime.MailboxPool._entries_unlocked = _TOTP_PATCHES.entries_unlocked
+_runtime.MailboxPool._entries_unlocked = _mailbox_entries_with_auth_cooldown
+_runtime.MailboxPool.lease = _mailbox_lease_with_auth_cooldown
 _runtime.MailboxPool.remove_entry = _mailbox_retention_ext.preserve_consumed_entry
 _runtime.ManualMailboxPool.remove_entry = _mailbox_retention_ext.preserve_consumed_entry
 _runtime.OutlookMailboxOtpProvider = _TOTP_PATCHES.outlook_otp_provider
 _runtime.MailboxUrlCodeProvider.snapshot = _mailbox_url_snapshot
+_runtime.MailboxUrlCodeProvider._same_as_baseline = staticmethod(_mailbox_url_same_as_baseline)
 _runtime.UrlMailboxOtpProvider.mark_sent = _url_mailbox_mark_sent
 _runtime.UrlMailboxOtpProvider.wait_code = _url_mailbox_wait_code
 _runtime.EmailAuthImporter._account_label = _TOTP_PATCHES.account_label
@@ -1531,6 +2072,7 @@ _runtime.EmailAuthImporter.stop = _patched_importer_stop
 _runtime.EmailAuthImporter._watch = _patched_importer_watch
 _runtime.EmailAuthImporter._pre_auth_session_retryable = staticmethod(_patched_pre_auth_session_retryable)
 _runtime._generate_sub2_oauth_session = _generate_sub2_oauth_session
+_runtime.run_codex_after_registration = _run_codex_after_registration
 _runtime._friendly_log_message = _diagnostic_friendly_log_message
 # The recovered web_gui._safe function resolves this module-global by name;
 # update that reference as well so its log panel cannot retain the old mapper.
@@ -1548,10 +2090,14 @@ _codex_oauth_chain.SmsProviderAdapter.wait_code = _sms_adapter_wait_code
 _codex_oauth_chain.SmsProviderAdapter.complete = _sms_adapter_complete
 _codex_oauth_chain.SmsProviderAdapter.cancel = _sms_adapter_cancel
 _codex_oauth_chain._event = _patched_chain_event
-_codex_oauth_chain.RealCodexTransport.verify_password = _TOTP_PATCHES.verify_password
+_codex_oauth_chain.RealCodexTransport.__init__ = _real_transport_init
+_codex_oauth_chain.RealCodexTransport._headers = _real_headers
+_codex_oauth_chain.RealCodexTransport._post_auth_json = _real_post_auth_json
+_codex_oauth_chain.RealCodexTransport.submit_email_identifier = _real_submit_email_identifier
+_codex_oauth_chain.RealCodexTransport.verify_password = _real_verify_password
 _codex_oauth_chain.RealCodexTransport.verify_email_otp = _real_verify_email_otp
 _codex_oauth_chain.RealCodexTransport.send_mfa_otp = _TOTP_PATCHES.send_mfa_otp
-_codex_oauth_chain.RealCodexTransport.verify_mfa_otp = _TOTP_PATCHES.verify_mfa_otp
+_codex_oauth_chain.RealCodexTransport.verify_mfa_otp = _real_verify_mfa_otp
 _codex_oauth_chain.RealCodexTransport.initiate_oauth = _real_initiate_oauth
 _codex_oauth_chain.RealCodexTransport.send_phone_number_otp = _sms_send_phone_number_otp
 _codex_oauth_chain.RealCodexTransport.verify_phone_otp = _real_verify_phone_otp
@@ -1794,6 +2340,20 @@ def _public_task(task):
         raw_failure = result.get("failure")
     failure = _error_observability_ext.public_failure(raw_failure)
     task_status = str(task.get("status") or "").strip().lower()
+    if isinstance(failure, dict) and failure.get("node_code") == "oauth_create_node":
+        reclassified = _error_observability_ext.classify_failure(
+            result,
+            task.get("technical_error")
+            or task.get("error")
+            or task.get("reason")
+            or failure.get("technical_summary")
+            or "",
+            task.get("progress"),
+            status=task_status,
+            secrets=secrets,
+        )
+        if reclassified.get("node_code") != "oauth_create_node":
+            failure = reclassified
     failure_statuses = set(_task_progress_ext.TERMINAL_TASK_STATUSES).difference(
         {"success", "stopped", "stopped_before_start"}
     )
@@ -1934,6 +2494,10 @@ def _public_logs(logs, tasks):
         *_mailbox_admin_ext.url_credential_secrets(local.get("proxy")),
     ]
     task_failures = {}
+    terminal_node_failures = set()
+    terminal_statuses = set(_task_progress_ext.TERMINAL_TASK_STATUSES).difference(
+        {"success", "stopped", "stopped_before_start"}
+    )
     for task in tasks:
         source_row = str(task.get("source_row") or "") if isinstance(task, dict) else ""
         if source_row:
@@ -1945,9 +2509,31 @@ def _public_logs(logs, tasks):
             continue
         task_id = str(task.get("task_id") or "").strip()
         result = task.get("result") if isinstance(task.get("result"), dict) else {}
-        failure = _error_observability_ext.public_failure(
+        structured_failure = _error_observability_ext.public_failure(
             task.get("failure") if isinstance(task.get("failure"), dict) else result.get("failure")
         )
+        status = str(task.get("status") or "").strip().lower()
+        if isinstance(structured_failure, dict) and structured_failure.get("node_code") == "oauth_create_node":
+            reclassified = _error_observability_ext.classify_failure(
+                result,
+                task.get("technical_error")
+                or task.get("error")
+                or task.get("reason")
+                or structured_failure.get("technical_summary")
+                or "",
+                task.get("progress"),
+                status=status,
+            )
+            if reclassified.get("node_code") != "oauth_create_node":
+                structured_failure = reclassified
+        if (
+            task_id
+            and status in terminal_statuses
+            and isinstance(structured_failure, dict)
+            and structured_failure.get("node_code") == "oauth_create_node"
+        ):
+            terminal_node_failures.add(task_id)
+        failure = structured_failure
         if failure is None:
             failure = _known_task_failure(task_id)
         if task_id and failure is not None:
@@ -1957,15 +2543,37 @@ def _public_logs(logs, tasks):
         row = dict(log) if isinstance(log, dict) else {"message": str(log or "")}
         for key in ("message", "text"):
             if key in row:
+                raw_message = str(row.get(key) or "")[:_PUBLIC_LOG_INPUT_LIMIT]
                 row[key] = _error_observability_ext.sanitize_failure_detail(
                     _SMS_PROVIDER_REGISTRY.safe_error(
-                        _mailbox_admin_ext.redact_mailbox_credentials(row.get(key), secrets)
+                        _mailbox_admin_ext.redact_mailbox_credentials(raw_message, secrets)
                     ),
                     secrets=secrets,
                     limit=800,
                 )
                 message = str(row[key] or "")
                 node_retry = _error_observability_ext.is_node_retry_log(message)
+                task_match = _TASK_ID_LOG_RE.search(message)
+                message_task_id = task_match.group(1) if task_match else ""
+                known_failure = _known_task_failure(message_task_id)
+                known_terminal_node = bool(
+                    isinstance(known_failure, dict)
+                    and known_failure.get("node_code") == "oauth_create_node"
+                )
+                if (
+                    not node_retry
+                    and bool(message_task_id)
+                    and message_task_id not in terminal_node_failures
+                    and not known_terminal_node
+                    and _error_observability_ext.is_retryable_node_failure(message)
+                ):
+                    row[key] = _error_observability_ext.format_node_retry_log(
+                        message_task_id,
+                        message,
+                    )
+                    row["level"] = "warn"
+                    message = str(row[key] or "")
+                    node_retry = True
                 if node_retry:
                     row["level"] = "warn"
                 explicit_node = bool(re.search(r"\[[^\]]+/[a-z0-9_]+\]", message, re.IGNORECASE))
@@ -2069,6 +2677,8 @@ def _local_config_from_runtime(data, existing=None):
         "node_timeout",
         "auth_session_retries",
         "email_code_timeout",
+        "email_otp_verify_attempts",
+        "email_otp_resend_on_retry",
         "sms_min_price",
         "max_price",
         "sms_timeout",
@@ -2181,6 +2791,9 @@ def _test_email_notification(data):
 
 
 def _mailbox_admin_factory(store, importer, logs):
+    def query_openai_quota(document, proxy):
+        return _openai_quota_runtime_ext.OpenAIQuotaClient(proxy=proxy).query(document)
+
     return _mailbox_admin_ext.MailboxAdminService(
         store,
         validate_pool=lambda config: importer._pool(config).validate(),
@@ -2193,6 +2806,7 @@ def _mailbox_admin_factory(store, importer, logs):
         sub2_status_lookup=_SUB2_RUNTIME.status_for,
         sub2_batch_tester=_SUB2_RUNTIME.test_rows,
         mailbox_url_reader_factory=_mailbox_url_runtime_ext.MailboxUrlClient,
+        openai_quota_query=query_openai_quota,
     )
 
 
@@ -2220,6 +2834,7 @@ _WEB_ROUTE_CONTEXT = _web_routes_ext.WebRouteContext(
     sms_phone_gate=_SMS_PHONE_GATE,
     mailbox_admin_factory=_mailbox_admin_factory,
     mailbox_manager_html=_legacy_ui_ext.MAILBOX_MANAGER_HTML,
+    mailbox_url_test_factory=_mailbox_url_test_runtime_ext.MailboxUrlTester,
     pixel_client=_PIXEL_CLIENT,
     pixel_upload_queue=_PIXEL_UPLOAD_QUEUE,
     pixel_payload_builder=_pixel_runtime_ext.build_pixel_import_payload,

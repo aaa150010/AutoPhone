@@ -38,6 +38,9 @@ PERFORMANCE_DEFAULTS = {
     "phone_session_cycle_seconds": 1800,
     "auth_session_retries": 1,
 }
+_CANCEL_RECEIPT_KEYS = frozenset(
+    {"cancel_state", "provider_response", "provider_status", "refund_status"}
+)
 
 
 def normalize_sms_keys(value: Any = None, legacy: Any = "") -> list[str]:
@@ -65,6 +68,132 @@ def normalize_sms_keys(value: Any = None, legacy: Any = "") -> list[str]:
 def normalize_sms_provider_name(value: Any) -> str:
     name = str(value or "").strip().lower()
     return SMS_PROVIDER_ALIASES.get(name, name)
+
+
+def _safe_provider_token(value: Any) -> str:
+    if isinstance(value, dict):
+        value = next(
+            (
+                value.get(key)
+                for key in ("status", "response", "result", "message", "error", "title", "code")
+                if value.get(key) not in (None, "")
+            ),
+            "",
+        )
+    if isinstance(value, (bytes, bytearray)):
+        value = value.decode("utf-8", "replace")
+    text = str(value or "").strip()
+    if text.startswith("{") or "{" in text:
+        candidate = text[text.find("{") :]
+        try:
+            parsed = json.loads(candidate)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            parsed = None
+        if isinstance(parsed, dict):
+            return _safe_provider_token(parsed)
+    text = text.upper()
+    return re.sub(r"[^A-Z0-9_.:-]+", "_", text)[:80]
+
+
+def _provider_exception_text(error: BaseException) -> str:
+    parts = [str(error or "")]
+    reader = getattr(error, "read", None)
+    if callable(reader):
+        try:
+            body = reader()
+            if isinstance(body, bytes):
+                body = body.decode("utf-8", "replace")
+            parts.append(str(body or ""))
+        except Exception:
+            pass
+    return " ".join(part for part in parts if part)
+
+
+def _herosms_min_cancel_seconds(value: Any, default: int = 120) -> int:
+    if isinstance(value, dict):
+        info = value.get("info")
+        if isinstance(info, dict):
+            value = info.get("minActivationTime") or info.get("min_activation_time")
+        else:
+            value = value.get("minActivationTime") or value.get("min_activation_time")
+    try:
+        return max(1, min(600, int(value)))
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def safe_cancel_receipt(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    result: dict[str, str] = {}
+    for key in _CANCEL_RECEIPT_KEYS:
+        token = _safe_provider_token(value.get(key))
+        if token:
+            result[key] = token.lower() if key in {"cancel_state", "refund_status"} else token
+    return result
+
+
+def confirm_herosms_cancellation(
+    provider: Any,
+    activation_id: Any,
+    *,
+    now_fn: Callable[[], float] = time.monotonic,
+    sleep_fn: Callable[[float], None] = time.sleep,
+    on_wait: Callable[[float], None] | None = None,
+) -> dict[str, str]:
+    """Cancel one HeroSMS activation using its documented refund contract."""
+    api = getattr(provider, "_api", None)
+    activation = str(activation_id or "").strip()
+    if not callable(api) or not activation:
+        raise RuntimeError("herosms_cancel_confirmation_unavailable")
+    started = float(now_fn())
+    response = ""
+    minimum_seconds = 120
+    for attempt in range(3):
+        try:
+            raw_response = api({"action": "setStatus", "status": "8", "id": activation})
+            response = _safe_provider_token(raw_response)
+            minimum_seconds = _herosms_min_cancel_seconds(raw_response, minimum_seconds)
+        except Exception as exc:
+            raw_response = _provider_exception_text(exc)
+            response = _safe_provider_token(raw_response)
+            if response != "EARLY_CANCEL_DENIED":
+                raise RuntimeError(
+                    f"herosms_cancel_request_failed:{type(exc).__name__}"
+                ) from exc
+
+        if response == "ACCESS_CANCEL":
+            break
+        if response != "EARLY_CANCEL_DENIED":
+            raise RuntimeError(f"herosms_cancel_rejected:{response or 'EMPTY_RESPONSE'}")
+        if attempt >= 2:
+            raise RuntimeError("herosms_cancel_early_denied_after_retry")
+        elapsed = max(0.0, float(now_fn()) - started)
+        wait_seconds = max(1.0, float(minimum_seconds) - elapsed + 1.0)
+        if callable(on_wait):
+            try:
+                on_wait(wait_seconds)
+            except Exception:
+                pass
+        sleep_fn(wait_seconds)
+
+    # HeroSMS documents ACCESS_CANCEL from setStatus=8 as the successful
+    # "cancel activation (return funds)" response. A follow-up getStatus is
+    # useful for diagnosis, but it can race activation cleanup or fail after
+    # the cancellation has already been accepted; it must not negate that
+    # authoritative acknowledgement.
+    try:
+        provider_status = _safe_provider_token(
+            api({"action": "getStatus", "id": activation})
+        )
+    except Exception:
+        provider_status = "STATUS_CHECK_UNAVAILABLE"
+    return {
+        "cancel_state": "confirmed",
+        "provider_response": response,
+        "provider_status": provider_status or "STATUS_CHECK_EMPTY",
+        "refund_status": "provider_refund_accepted",
+    }
 
 
 def normalize_sms_provider_pools(
@@ -179,7 +308,12 @@ def key_fingerprint(key: str) -> str:
 
 def redact_sms_secrets(value: Any, secrets: list[str]) -> str:
     text = str(value or "")
-    for secret in sorted(normalize_sms_keys(secrets), key=len, reverse=True):
+    candidates = [
+        secret
+        for secret in normalize_sms_keys(secrets)
+        if not set(secret).issubset({"*"})
+    ]
+    for secret in sorted(candidates, key=len, reverse=True):
         variants = {
             secret,
             urllib.parse.quote(secret, safe=""),
@@ -1054,11 +1188,26 @@ class SmsProviderRegistry:
         self.pools: dict[str, SmsKeyPool] = {}
         self.specs: list[dict[str, Any]] = []
         self.candidates: list[dict[str, Any]] = []
+        self._task_attempt_counts: dict[str, dict[str, int]] = {}
         self.inventory: dict[str, list[dict[str, Any]]] = {}
         self.cursor = 0
         self.logger: Callable[[str, str], None] | None = None
         self.alert_fn: Callable[[dict[str, Any]], None] | None = None
         self.exhausted_fn: Callable[[], None] | None = None
+
+    def task_attempt_counts(self, task_id: Any) -> dict[str, int]:
+        key = str(task_id or "").strip()
+        if not key:
+            return {}
+        with self.lock:
+            return self._task_attempt_counts.setdefault(key, {})
+
+    def clear_task_attempt_counts(self, task_id: Any) -> None:
+        key = str(task_id or "").strip()
+        if not key:
+            return
+        with self.lock:
+            self._task_attempt_counts.pop(key, None)
 
     def _pool_for(self, provider: str) -> SmsKeyPool:
         current = self.pools.get(provider)
@@ -1139,6 +1288,7 @@ class SmsProviderRegistry:
             pools = list(self.pools.values())
             self.candidates = []
             self.inventory = {}
+            self._task_attempt_counts.clear()
         for pool in pools:
             pool.begin_run()
 
@@ -1466,7 +1616,16 @@ class PooledSmsProvider:
         self._reject_requested = False
         self.max_attempts_per_platform = 15
         self._platform_attempts: dict[str, int] = {}
+        self._task_id = ""
         self.current_order_meta: dict[str, Any] = {}
+        self.last_finish_receipt: dict[str, str] = {}
+
+    def bind_task(self, task_id: Any) -> None:
+        key = str(task_id or "").strip()
+        if not key or key == self._task_id:
+            return
+        self._task_id = key
+        self._platform_attempts = self.registry.task_attempt_counts(key)
 
     def balance(self) -> str:
         total = sum(
@@ -1607,17 +1766,33 @@ class PooledSmsProvider:
         if self._pool is not None:
             self._pool.release(self._state)
 
-    def _reject_provider(self) -> None:
+    def _cancel_provider(self, platform: str) -> dict[str, str]:
+        provider = self._provider
+        if platform == "herosms" and callable(getattr(provider, "_api", None)):
+            return confirm_herosms_cancellation(
+                provider,
+                self.activation_id,
+                on_wait=lambda seconds: self.registry._log(
+                    f"HeroSMS 订单处于前置取消保护期，{int(seconds)} 秒后自动重试取消并核对返款",
+                    "warn",
+                ),
+            )
+        callback = getattr(provider, "cancel", None)
+        result = callback() if callable(callback) else None
+        receipt = safe_cancel_receipt(result)
+        return receipt or {
+            "cancel_state": "unconfirmed",
+            "refund_status": "provider_cancel_unverified",
+        }
+
+    def _reject_provider(self) -> dict[str, str]:
         provider = self._provider
         platform = normalize_sms_provider_name(
             self.current_order_meta.get("platform")
             or self.current_order_meta.get("provider")
         )
         if platform != "5sim":
-            callback = getattr(provider, "cancel", None)
-            if callable(callback):
-                callback()
-            return
+            return self._cancel_provider(platform)
 
         reject_error: Exception | None = None
         for name in ("ban", "reject"):
@@ -1626,7 +1801,10 @@ class PooledSmsProvider:
                 continue
             try:
                 callback()
-                return
+                return {
+                    "cancel_state": "confirmed",
+                    "refund_status": "provider_rejection_confirmed",
+                }
             except Exception as exc:
                 reject_error = exc
                 break
@@ -1638,7 +1816,10 @@ class PooledSmsProvider:
                 try:
                     safe_id = urllib.parse.quote(activation_id, safe="")
                     rest_get(f"/user/ban/{safe_id}")
-                    return
+                    return {
+                        "cancel_state": "confirmed",
+                        "refund_status": "provider_rejection_confirmed",
+                    }
                 except Exception as exc:
                     reject_error = exc
 
@@ -1646,22 +1827,50 @@ class PooledSmsProvider:
         if callable(cancel):
             try:
                 cancel()
-                return
+                return {
+                    "cancel_state": "unconfirmed",
+                    "refund_status": "provider_cancel_unverified",
+                }
             except Exception as cancel_error:
                 if reject_error is None:
                     reject_error = cancel_error
         if reject_error is not None:
             raise reject_error
+        return {
+            "cancel_state": "unconfirmed",
+            "refund_status": "provider_cancel_unverified",
+        }
 
-    def _finish(self, method: str) -> None:
+    def _finish(self, method: str) -> dict[str, str]:
+        receipt: dict[str, str] = {}
         try:
             if method == "reject":
-                self._reject_provider()
+                receipt = self._reject_provider()
+            elif method == "cancel":
+                platform = normalize_sms_provider_name(
+                    self.current_order_meta.get("platform")
+                    or self.current_order_meta.get("provider")
+                )
+                receipt = self._cancel_provider(platform)
             else:
                 callback = getattr(self._provider, method, None)
                 if callable(callback):
-                    callback()
+                    result = callback()
+                    receipt = safe_cancel_receipt(result)
+            self.last_finish_receipt = safe_cancel_receipt(receipt)
+            return dict(self.last_finish_receipt)
         except Exception as exc:
+            if method in {"cancel", "reject"}:
+                self.last_finish_receipt = {
+                    "cancel_state": "error",
+                    "refund_status": "provider_cancel_not_confirmed",
+                }
+                platform = normalize_sms_provider_name(
+                    self.current_order_meta.get("platform")
+                    or self.current_order_meta.get("provider")
+                )
+                if platform == "herosms":
+                    self._platform_attempts[platform] = self.max_attempts_per_platform
             if self._pool is not None:
                 self._pool.report_error(self._state, exc, runtime=True)
                 raise RuntimeError(self.registry.safe_error(exc)) from exc
@@ -1669,21 +1878,20 @@ class PooledSmsProvider:
         finally:
             self._release()
 
-    def complete(self) -> None:
-        self._finish("complete")
+    def complete(self) -> dict[str, str]:
+        return self._finish("complete")
 
     def mark_rejected(self) -> None:
         self._reject_requested = True
 
-    def reject(self) -> None:
+    def reject(self) -> dict[str, str]:
         self._reject_requested = False
-        self._finish("reject")
+        return self._finish("reject")
 
-    def cancel(self) -> None:
+    def cancel(self) -> dict[str, str]:
         if self._reject_requested:
-            self.reject()
-            return
-        self._finish("cancel")
+            return self.reject()
+        return self._finish("cancel")
 
 
 class PhoneSubmissionGate:
@@ -2113,7 +2321,15 @@ class SmsCostLedger:
                 order["status"] = "code_received"
                 order["code_received_at"] = int(time.time())
 
-    def mark_finished(self, task_id: str, activation_id: Any, status: str, reason: str = "") -> None:
+    def mark_finished(
+        self,
+        task_id: str,
+        activation_id: Any,
+        status: str,
+        reason: str = "",
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
         activation_key = self._activation_key(activation_id)
         with self.lock:
             order = self.orders.get(task_id, {}).get(activation_key)
@@ -2121,6 +2337,9 @@ class SmsCostLedger:
                 order["status"] = status
                 if reason:
                     order["reason"] = reason
+                safe_details = safe_cancel_receipt(details)
+                if safe_details:
+                    order["cancel_receipt"] = safe_details
                 order["finished_at"] = int(time.time())
 
     def summary(self, task_id: str, exchange: ExchangeRateCache, *, pop: bool = True) -> dict[str, Any]:

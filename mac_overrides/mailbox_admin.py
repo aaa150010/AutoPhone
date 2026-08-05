@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import re
 from threading import RLock
@@ -45,6 +46,11 @@ try:
 except ImportError:  # Loaded as a top-level override module by the Mac launcher.
     from error_observability import public_failure
 
+try:
+    from .openai_quota_runtime import OpenAIQuotaError
+except ImportError:  # Loaded as a top-level override module by the Mac launcher.
+    from openai_quota_runtime import OpenAIQuotaError
+
 
 _EMAIL_RE = re.compile(
     r"(?i)\b[a-z0-9][a-z0-9._%+-]*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}\b"
@@ -52,6 +58,7 @@ _EMAIL_RE = re.compile(
 _PROGRESS_FIELDS = ("code", "label", "group", "entered_at", "finished_at")
 _SECRET_MASK = "********"
 _SUB2_BATCH_LIMIT = 20
+_REDACTION_INPUT_LIMIT = 4096
 _INTERNAL_MAILBOX_REASONS = frozenset(
     {
         "manual_reimport_retry",
@@ -245,15 +252,35 @@ def friendly_mailbox_error(error: Any) -> str:
 
 
 def redact_mailbox_credentials(error: Any, secrets: Sequence[Any]) -> str:
-    text = str(error or "")
-    candidates = {str(secret) for secret in secrets if str(secret or "")}
+    text = str(error or "")[:_REDACTION_INPUT_LIMIT]
+    candidates = {
+        str(secret)
+        for secret in secrets
+        if str(secret or "") and not set(str(secret)).issubset({"*"})
+    }
     encoded = {
         urllib.parse.quote(secret, safe="")
         for secret in candidates
         if urllib.parse.quote(secret, safe="") != secret
     }
     for secret in sorted(candidates | encoded, key=len, reverse=True):
-        text = re.sub(re.escape(secret), _SECRET_MASK, text, flags=re.IGNORECASE)
+        if secret.isascii() and text.isascii():
+            needle = secret.lower()
+            source = text
+            lowered = source.lower()
+            pieces: list[str] = []
+            cursor = 0
+            while True:
+                start = lowered.find(needle, cursor)
+                if start < 0:
+                    break
+                pieces.extend((source[cursor:start], _SECRET_MASK))
+                cursor = start + len(secret)
+            if pieces:
+                pieces.append(source[cursor:])
+                text = "".join(pieces)
+        else:
+            text = text.replace(secret, _SECRET_MASK)
     return text
 
 
@@ -391,6 +418,7 @@ class MailboxAdminService:
         sub2_status_lookup: Callable[[str], Mapping[str, Any] | None] | None = None,
         sub2_batch_tester: Callable[[Sequence[Mapping[str, Any]]], Mapping[str, Any]] | None = None,
         mailbox_url_reader_factory: Callable[..., Any] | None = None,
+        openai_quota_query: Callable[[Mapping[str, Any], str], Mapping[str, Any]] | None = None,
     ) -> None:
         self.store = store
         self.validate_pool = validate_pool
@@ -404,6 +432,7 @@ class MailboxAdminService:
         self.sub2_status_lookup = sub2_status_lookup
         self.sub2_batch_tester = sub2_batch_tester
         self.mailbox_url_reader_factory = mailbox_url_reader_factory or MailboxUrlClient
+        self.openai_quota_query = openai_quota_query
         self._lock = RLock()
 
     def _config(self) -> dict[str, Any]:
@@ -1153,6 +1182,76 @@ class MailboxAdminService:
                 "error": "所选邮箱没有可处理的成功结果",
             }
         return {"ok": True, "items": items, "skipped": skipped}
+
+    def query_openai_quotas(self, payload: Any) -> dict[str, Any]:
+        """Query a bounded batch without changing mailbox or task state."""
+        value = payload if isinstance(payload, Mapping) else {}
+        requested = value.get("rows")
+        if not isinstance(requested, Sequence) or isinstance(requested, (str, bytes)) or not requested:
+            return {
+                "ok": False,
+                "code": "mailbox_rows_required",
+                "error": "请先勾选要查询额度的邮箱",
+            }
+        if len(requested) > 20:
+            return {
+                "ok": False,
+                "code": "mailbox_quota_batch_too_large",
+                "error": "单批最多查询 20 个邮箱额度",
+            }
+        selected = self.selected_success_results({"rows": requested})
+        if not selected.get("ok"):
+            return selected
+        if not callable(self.openai_quota_query):
+            return {
+                "ok": False,
+                "code": "openai_quota_not_configured",
+                "error": "OpenAI 额度查询尚未配置",
+            }
+        proxy = str(self._config().get("proxy") or "")
+
+        def query_one(item: Mapping[str, Any]) -> dict[str, Any]:
+            public_item = {
+                "row_id": str(item.get("row_id") or ""),
+                "line_no": int(item.get("line_no") or 0),
+            }
+            try:
+                quota = self.openai_quota_query(item["document"], proxy)
+                if not isinstance(quota, Mapping):
+                    raise OpenAIQuotaError(
+                        "openai_quota_invalid_result",
+                        "额度查询未返回有效结果",
+                    )
+                return {**public_item, **dict(quota)}
+            except OpenAIQuotaError as exc:
+                return {**public_item, **exc.public()}
+            except Exception:
+                return {
+                    **public_item,
+                    "status": "error",
+                    "node_code": "openai_quota",
+                    "node_label": "查询 OpenAI 额度",
+                    "code": "openai_quota_failed",
+                    "error": "查询 OpenAI 额度失败：未返回可用诊断",
+                }
+
+        results: list[dict[str, Any] | None] = [None] * len(selected["items"])
+        workers = min(3, len(selected["items"]))
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="openai-quota") as executor:
+            futures = {
+                executor.submit(query_one, item): index
+                for index, item in enumerate(selected["items"])
+            }
+            for future in as_completed(futures):
+                results[futures[future]] = future.result()
+        finished = [item for item in results if isinstance(item, dict)]
+        return {
+            "ok": True,
+            "results": finished,
+            "queried": sum(item.get("status") == "ok" for item in finished),
+            "failed": sum(item.get("status") == "error" for item in finished),
+            "skipped": int(selected.get("skipped") or 0),
+        }
 
     def rows(self) -> dict[str, Any]:
         return self.list_mailboxes()

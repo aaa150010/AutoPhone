@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import time
 from types import SimpleNamespace
 import unittest
 
@@ -115,6 +116,188 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(one_platform["phone_max_attempts"], 15)
         self.assertEqual(three_platforms["phone_attempts_per_provider"], 15)
         self.assertEqual(three_platforms["phone_session_max_seconds"], 1800)
+
+    def test_task_config_enables_one_email_otp_resend_by_default(self):
+        module = self.module
+        original_task_config = module._ORIGINAL_TASK_CONFIG
+        try:
+            module._ORIGINAL_TASK_CONFIG = lambda *_args, **_kwargs: {"code_timeout": 30}
+            default_config = module._patched_task_config(
+                SimpleNamespace(data_dir=self.tempdir.name),
+                {},
+                "user@example.test",
+                "email-retry-default",
+            )
+            explicit_config = module._patched_task_config(
+                SimpleNamespace(data_dir=self.tempdir.name),
+                {
+                    "email_otp_verify_attempts": 3,
+                    "email_otp_resend_on_retry": False,
+                },
+                "user@example.test",
+                "email-retry-explicit",
+            )
+        finally:
+            module._ORIGINAL_TASK_CONFIG = original_task_config
+
+        self.assertEqual(default_config["email_otp_verify_attempts"], 2)
+        self.assertTrue(default_config["email_otp_resend_on_retry"])
+        self.assertEqual(explicit_config["email_otp_verify_attempts"], 3)
+        self.assertFalse(explicit_config["email_otp_resend_on_retry"])
+
+    def test_baseline_fallback_snapshot_bypasses_only_original_baseline_guard(self):
+        module = self.module
+        baseline = SimpleNamespace(
+            hash="baseline-fingerprint",
+            code="673931",
+            received_at="2026-08-05 00:09:13",
+        )
+        fallback = SimpleNamespace(
+            hash="baseline-fallback:baseline-fingerprint",
+            code="673931",
+            received_at="2026-08-05 00:09:13",
+        )
+        normal = SimpleNamespace(
+            hash="baseline-fingerprint",
+            code="673931",
+            received_at="2026-08-05 00:09:13",
+        )
+
+        self.assertFalse(module._mailbox_url_same_as_baseline(fallback, baseline))
+        self.assertTrue(module._mailbox_url_same_as_baseline(normal, baseline))
+
+    def test_email_timeout_uses_final_baseline_fallback(self):
+        module = self.module
+        original_wait_code = module._ORIGINAL_URL_MAILBOX_WAIT_CODE
+        original_final_fallback = module._mailbox_url_runtime_ext.final_runtime_baseline_fallback
+        provider = SimpleNamespace(mailbox_url="https://mail.example.test/messages/test")
+        otp_provider = SimpleNamespace(
+            timeout=90,
+            max_attempts=30,
+            provider=provider,
+            entry=SimpleNamespace(oauth_client_id="", oauth_refresh_token=""),
+            log_fn=lambda *_args: None,
+        )
+        try:
+            module._ORIGINAL_URL_MAILBOX_WAIT_CODE = lambda *_args: (_ for _ in ()).throw(
+                module._runtime.MailboxPoolError(
+                    "mailbox_code_timeout: attempts=18/30: mailbox still returns baseline code"
+                )
+            )
+            module._mailbox_url_runtime_ext.final_runtime_baseline_fallback = (
+                lambda _provider: SimpleNamespace(code="682672")
+            )
+
+            code = module._url_mailbox_wait_code(otp_provider, "user@example.test")
+        finally:
+            module._ORIGINAL_URL_MAILBOX_WAIT_CODE = original_wait_code
+            module._mailbox_url_runtime_ext.final_runtime_baseline_fallback = original_final_fallback
+
+        self.assertEqual(code, "682672")
+        self.assertTrue(otp_provider._chatgpt_email_otp_verified)
+
+    def test_email_otp_resend_uses_remaining_total_timeout_budget(self):
+        module = self.module
+        original_mark_sent = module._ORIGINAL_URL_MAILBOX_MARK_SENT
+        original_wait_code = module._ORIGINAL_URL_MAILBOX_WAIT_CODE
+        observed_timeouts = []
+        observed_intervals = []
+        provider = SimpleNamespace(mailbox_url="https://mail.example.test/messages/test")
+        otp_provider = SimpleNamespace(
+            timeout=90,
+            interval=5,
+            max_attempts=30,
+            provider=provider,
+        )
+        try:
+            module._ORIGINAL_URL_MAILBOX_MARK_SENT = lambda _self: None
+            module._ORIGINAL_URL_MAILBOX_WAIT_CODE = (
+                lambda value, _email: (
+                    observed_timeouts.append(value.timeout),
+                    observed_intervals.append(value.interval),
+                    "123456",
+                )[-1]
+            )
+            module._url_mailbox_mark_sent(otp_provider)
+            first_deadline = otp_provider._gptphone_email_code_deadline
+            module._url_mailbox_mark_sent(otp_provider)
+            self.assertEqual(otp_provider._gptphone_email_code_deadline, first_deadline)
+
+            otp_provider._gptphone_email_code_deadline = time.monotonic() + 74
+            code = module._url_mailbox_wait_code(otp_provider, "user@example.test")
+        finally:
+            module._ORIGINAL_URL_MAILBOX_MARK_SENT = original_mark_sent
+            module._ORIGINAL_URL_MAILBOX_WAIT_CODE = original_wait_code
+
+        self.assertEqual(code, "123456")
+        self.assertEqual(len(observed_timeouts), 1)
+        self.assertGreaterEqual(observed_timeouts[0], 72)
+        self.assertLessEqual(observed_timeouts[0], 74)
+        self.assertEqual(observed_intervals, [3])
+        self.assertEqual(otp_provider.timeout, 90)
+        self.assertEqual(otp_provider.interval, 5)
+
+    def test_email_otp_page_explicitly_sends_before_waiting(self):
+        module = self.module
+        original_submit = module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER
+        sent = []
+        logs = []
+        response = {
+            "_status": 200,
+            "page": {"type": "email_otp_verification"},
+            "continue_url": "https://auth.openai.com/email-verification?state=secret",
+        }
+        transport = SimpleNamespace(
+            send_email_otp=lambda continue_url: sent.append(continue_url) or {"_status": 200},
+            log_fn=lambda message, level="info": logs.append((message, level)),
+        )
+        try:
+            module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = lambda _self, _email: response
+            result = module._real_submit_email_identifier(transport, "user@example.test")
+        finally:
+            module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = original_submit
+
+        self.assertIs(result, response)
+        self.assertEqual(sent, [response["continue_url"]])
+        self.assertTrue(transport._gptphone_initial_email_otp_send_confirmed)
+        self.assertTrue(any("首次邮箱验证码发送接口已确认" in message for message, _level in logs))
+
+    def test_non_email_otp_page_does_not_send_email_code(self):
+        module = self.module
+        original_submit = module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER
+        sent = []
+        response = {"_status": 200, "page": {"type": "password_verification"}}
+        transport = SimpleNamespace(send_email_otp=lambda value: sent.append(value))
+        try:
+            module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = lambda _self, _email: response
+            result = module._real_submit_email_identifier(transport, "user@example.test")
+        finally:
+            module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = original_submit
+
+        self.assertIs(result, response)
+        self.assertEqual(sent, [])
+
+    def test_initial_email_code_send_failure_stops_before_polling(self):
+        module = self.module
+        original_submit = module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER
+        response = {
+            "_status": 200,
+            "page": {"type": "email_otp_verification"},
+            "continue_url": "/email-verification",
+        }
+        transport = SimpleNamespace(
+            send_email_otp=lambda _continue_url: {
+                "_status": 429,
+                "error": {"code": "rate_limited", "message": "try later"},
+            },
+            log_fn=None,
+        )
+        try:
+            module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = lambda _self, _email: response
+            with self.assertRaisesRegex(Exception, "email_otp_send_failed"):
+                module._real_submit_email_identifier(transport, "user@example.test")
+        finally:
+            module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = original_submit
 
     def test_task_config_binds_401_rerun_to_historical_sub2_account(self):
         module = self.module
@@ -226,19 +409,54 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertTrue(result["sub2_upload_created"])
         self.assertEqual(len(calls), 1)
 
-    def test_phone_send_payload_keeps_browser_channel_parameter(self):
+    def test_real_phone_send_matches_browser_contract_and_refreshes_sentinel(self):
         calls = []
+        sentinel_calls = []
 
-        class FakeTransport:
-            def _post_auth_json(self, path, payload, **kwargs):
-                calls.append((path, dict(payload), dict(kwargs)))
-                return {"_status": 200}
+        class FakeSession:
+            cookies = {"session": "present"}
 
-        self.module._real_send_phone_number_otp(FakeTransport(), "+1 (555) 000-1234", "sms")
+            def post(self, url, **kwargs):
+                calls.append((url, kwargs))
+                return {"_status": 200, "page": {"type": "add_phone"}}
 
-        self.assertEqual(calls[0][0], "/api/accounts/add-phone/send")
-        self.assertEqual(calls[0][1]["channel"], "sms")
-        self.assertEqual(calls[0][2]["referer"], "https://auth.openai.com/add-phone")
+        class FakeSentinel:
+            def reset(self, flow=""):
+                sentinel_calls.append(("reset", flow))
+
+            def token_for(self, flow, context):
+                sentinel_calls.append(("token_for", flow, dict(context)))
+                return {"token": "sentinel-value"}
+
+        transport = SimpleNamespace(
+            config={"sms_task_id": "task-phone", "_auth_account_email": "user@example.test"},
+            account_email="user@example.test",
+            session=FakeSession(),
+            sentinel_provider=FakeSentinel(),
+            device_id="device-1",
+            proxy="http://127.0.0.1:7897",
+            _gptphone_page_type="add_phone",
+        )
+        self.module._AUTH_SESSIONS.clear("task-phone")
+        try:
+            result = self.module._real_send_phone_number_otp(
+                transport,
+                "+1 (555) 000-1234",
+                "sms",
+            )
+        finally:
+            self.module._AUTH_SESSIONS.clear("task-phone")
+
+        self.assertEqual(result["_status"], 200)
+        self.assertEqual(calls[0][0], "https://auth.openai.com/api/accounts/add-phone/send")
+        self.assertEqual(calls[0][1]["json"], {"phone_number": "+15550001234"})
+        headers = {key.lower(): value for key, value in calls[0][1]["headers"].items()}
+        self.assertNotIn("openai-sentinel-token", headers)
+        self.assertNotIn("openai-sentinel-so-token", headers)
+        self.assertEqual(headers["referer"], "https://auth.openai.com/add-phone")
+        self.assertTrue(headers["x-access-flow-invocation-id"])
+        self.assertEqual(sentinel_calls[0][0], "reset")
+        self.assertEqual(sentinel_calls[1][0], "token_for")
 
     def test_public_task_drops_composite_account_tokens_and_source_row(self):
         task = {
@@ -357,6 +575,41 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertIn("正在自动重试", logs[0][0])
         self.assertEqual(logs[0][1], "warn")
 
+    def test_mfa_request_enters_verification_stage_before_transport_failure(self):
+        module = self.module
+        original_post = module._ORIGINAL_REAL_POST_AUTH_JSON
+        original_begin = module._auth_request_runtime_ext.begin_request
+        token = module._TASK_CONTEXT.set("T-mfa-stage")
+        module._TASK_PROGRESS.reset()
+        try:
+            module._auth_request_runtime_ext.begin_request = (
+                lambda *_args, **kwargs: {"stage": kwargs["stage"]}
+            )
+            module._ORIGINAL_REAL_POST_AUTH_JSON = (
+                lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                    RuntimeError("node_sentinel_failed:mfa_otp_verify: node_bridge_timeout")
+                )
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "node_bridge_timeout"):
+                module._real_post_auth_json(
+                    SimpleNamespace(),
+                    "/api/accounts/mfa/verify",
+                    {"code": "redacted"},
+                    flow="mfa_otp_verify",
+                    referer="https://auth.openai.com/mfa-challenge/redacted",
+                )
+
+            self.assertEqual(
+                module._TASK_PROGRESS.progress("T-mfa-stage")["code"],
+                "email_code_verifying",
+            )
+        finally:
+            module._ORIGINAL_REAL_POST_AUTH_JSON = original_post
+            module._auth_request_runtime_ext.begin_request = original_begin
+            module._TASK_PROGRESS.reset()
+            module._TASK_CONTEXT.reset(token)
+
     def test_sentinel_emit_formats_internal_failure_as_non_terminal_retry(self):
         module = self.module
         original_emit = module._ORIGINAL_CHAIN_EMIT
@@ -437,6 +690,124 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(public[0]["message"], retry)
         self.assertEqual(public[0]["level"], "warn")
         self.assertNotIn("初始化 Node/Sentinel失败", public[0]["message"])
+
+    def test_public_logs_rewrite_historical_node_failure_after_task_success(self):
+        module = self.module
+        public = module._public_logs(
+            [{
+                "level": "error",
+                "message": (
+                    "T001-success [初始化 Node/Sentinel/oauth_create_node] "
+                    "初始化 Node/Sentinel失败：Node bridge timeout"
+                ),
+            }],
+            [{"task_id": "T001-success", "status": "success"}],
+        )
+
+        self.assertEqual(public[0]["level"], "warn")
+        self.assertIn("Node/Sentinel 重试/oauth_create_node", public[0]["message"])
+        self.assertIn("正在自动重试", public[0]["message"])
+        self.assertNotIn("初始化 Node/Sentinel失败", public[0]["message"])
+
+    def test_public_logs_rewrite_node_failure_for_active_or_later_email_failure(self):
+        module = self.module
+        raw_log = {
+            "level": "error",
+            "message": (
+                "T003-d36c48 [初始化 Node/Sentinel/oauth_create_node] "
+                "初始化 Node/Sentinel失败：Node bridge timeout"
+            ),
+        }
+        email_failure = module._error_observability_ext.classify_failure(
+            error="mailbox_code_timeout: attempts=30/30"
+        )
+        tasks = (
+            {"task_id": "T003-d36c48", "status": "running"},
+            {
+                "task_id": "T003-d36c48",
+                "status": "retryable_email",
+                "failure": email_failure,
+            },
+        )
+
+        for task in tasks:
+            with self.subTest(status=task["status"]):
+                public = module._public_logs([raw_log], [task])
+                self.assertEqual(public[0]["level"], "warn")
+                self.assertIn("Node/Sentinel 重试/oauth_create_node", public[0]["message"])
+                self.assertNotIn("初始化 Node/Sentinel失败", public[0]["message"])
+
+    def test_public_logs_keep_true_terminal_node_failure_red(self):
+        module = self.module
+        terminal = module._error_observability_ext.classify_failure(
+            error="node_sentinel_failed: node bridge timeout"
+        )
+
+        public = module._public_logs(
+            [{
+                "level": "error",
+                "message": (
+                    "T001-terminal [初始化 Node/Sentinel/oauth_create_node] "
+                    "初始化 Node/Sentinel失败：Node bridge timeout"
+                ),
+            }],
+            [{"task_id": "T001-terminal", "status": "failed", "failure": terminal}],
+        )
+
+        self.assertEqual(public[0]["level"], "error")
+        self.assertIn("初始化 Node/Sentinel/oauth_create_node", public[0]["message"])
+
+    def test_public_logs_rewrite_orphaned_node_line_without_terminal_evidence(self):
+        module = self.module
+        module._TASK_FAILURES.pop("T003-d36c48", None)
+
+        public = module._public_logs(
+            [{
+                "level": "error",
+                "message": (
+                    "T003-d36c48 [初始化 Node/Sentinel/oauth_create_node] "
+                    "初始化 Node/Sentinel失败：Node/Sentinel 授权桥接初始化失败"
+                ),
+            }],
+            [],
+        )
+
+        self.assertEqual(public[0]["level"], "warn")
+        self.assertIn("Node/Sentinel 重试/oauth_create_node", public[0]["message"])
+        self.assertNotIn("初始化 Node/Sentinel失败", public[0]["message"])
+
+    def test_public_task_repairs_stale_node_failure_after_mfa_started(self):
+        module = self.module
+        stale_failure = module._error_observability_ext.classify_failure(
+            error="node_sentinel_failed: node_bridge_timeout"
+        )
+        task = {
+            "task_id": "T010-stale",
+            "status": "failed",
+            "technical_error": (
+                "mfa_otp_failed: node_sentinel_failed:mfa_otp_verify: "
+                "node_bridge_timeout"
+            ),
+            "failure": stale_failure,
+            "result": {
+                "technical_error": (
+                    "mfa_otp_failed: node_sentinel_failed:mfa_otp_verify: "
+                    "node_bridge_timeout"
+                ),
+                "failure": stale_failure,
+                "codex_chain_events": [
+                    {"state": "SENTINEL_READY"},
+                    {"state": "PASSWORD_VERIFIED"},
+                    {"state": "MFA_OTP_REQUIRED"},
+                ],
+            },
+        }
+
+        public = module._public_task(task)
+
+        self.assertEqual(public["failure"]["node_code"], "email_code_verifying")
+        self.assertEqual(public["failure"]["error_code"], "node_sentinel_timeout")
+        self.assertNotIn("初始化 Node/Sentinel失败", public["error"])
 
     def test_recovered_web_safe_log_uses_the_diagnostic_mapper(self):
         message = self.module._module._safe(
@@ -694,6 +1065,20 @@ class WebGuiSecurityTests(unittest.TestCase):
             self.assertNotIn(secret, serialized)
         self.assertIn("********", serialized)
 
+    def test_public_logs_do_not_treat_masked_task_source_as_a_secret(self):
+        task = {
+            "task_id": "T001-masked",
+            "source_row": "user@example.test----***----***----***",
+            "status": "success",
+        }
+
+        public = self.module._public_logs(
+            [{"level": "info", "message": "credential=********"}],
+            [task],
+        )
+
+        self.assertEqual(public[0]["message"], "credential=********")
+
     def test_local_config_migration_removes_nvtoken_fields_atomically(self):
         path = self.module._LOCAL_CONFIG_FILE
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -724,11 +1109,11 @@ class WebGuiSecurityTests(unittest.TestCase):
         )
 
         self.assertTrue(legacy_changed)
-        self.assertEqual(legacy["email_code_timeout"], 60)
-        self.assertEqual(legacy["email_timeout_strategy_version"], 1)
+        self.assertEqual(legacy["email_code_timeout"], 90)
+        self.assertEqual(legacy["email_timeout_strategy_version"], 2)
         self.assertTrue(custom_changed)
         self.assertEqual(custom["email_code_timeout"], 90)
-        self.assertEqual(custom["email_timeout_strategy_version"], 1)
+        self.assertEqual(custom["email_timeout_strategy_version"], 2)
 
     def test_config_store_persists_migrated_and_explicit_email_timeout(self):
         module = self.module
@@ -743,13 +1128,22 @@ class WebGuiSecurityTests(unittest.TestCase):
         loaded = store.load()
         persisted = json.loads(Path(store.path).read_text(encoding="utf-8"))
 
-        self.assertEqual(loaded["email_code_timeout"], 60)
-        self.assertEqual(persisted["email_timeout_strategy_version"], 1)
+        self.assertEqual(loaded["email_code_timeout"], 90)
+        self.assertEqual(loaded["email_otp_verify_attempts"], 2)
+        self.assertTrue(loaded["email_otp_resend_on_retry"])
+        self.assertEqual(persisted["email_timeout_strategy_version"], 2)
 
-        saved = store.save({**loaded, "email_code_timeout": 90})
+        saved = store.save({
+            **loaded,
+            "email_code_timeout": 90,
+            "email_otp_verify_attempts": 3,
+            "email_otp_resend_on_retry": False,
+        })
 
         self.assertEqual(saved["email_code_timeout"], 90)
-        self.assertEqual(saved["email_timeout_strategy_version"], 1)
+        self.assertEqual(saved["email_timeout_strategy_version"], 2)
+        self.assertEqual(saved["email_otp_verify_attempts"], 3)
+        self.assertFalse(saved["email_otp_resend_on_retry"])
 
     def test_result_file_persists_batch_identity(self):
         module = self.module

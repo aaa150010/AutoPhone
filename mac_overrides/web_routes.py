@@ -21,6 +21,29 @@ def _safe_int(value: Any, default: int) -> int:
         return default
 
 
+def _normalize_run_mailbox_rows(value: Any) -> list[dict[str, Any]] | None:
+    """Validate a one-run mailbox selection without accepting mailbox content."""
+    if value is None:
+        return []
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return None
+    normalized: list[dict[str, Any]] = []
+    seen: set[tuple[str, int]] = set()
+    for item in value:
+        if not isinstance(item, Mapping):
+            return None
+        row_id = str(item.get("row_id") or "").strip().lower()
+        line_no = _safe_int(item.get("line_no"), 0)
+        if not row_id or line_no <= 0 or len(row_id) > 128:
+            return None
+        binding = (row_id, line_no)
+        if binding in seen:
+            continue
+        seen.add(binding)
+        normalized.append({"row_id": row_id, "line_no": line_no})
+    return normalized
+
+
 @dataclass(frozen=True)
 class WebRouteContext:
     module: Any
@@ -49,6 +72,7 @@ class WebRouteContext:
     pixel_client: Any | None = None
     pixel_upload_queue: Any | None = None
     pixel_payload_builder: Callable[[Mapping[str, Any]], dict[str, Any]] | None = None
+    mailbox_url_test_factory: Callable[[], Any] | None = None
 
 
 def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
@@ -144,6 +168,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             data = module.request.get_json(silent=True) or {}
             if not isinstance(data, dict):
                 return module.jsonify(ok=False, error="配置必须是 JSON 对象"), 400
+
             data.pop("pool_content", None)
             saved = save_active_config(data)
             logs.add("独立导入器配置已保存到本工具 data 目录", "success")
@@ -243,6 +268,13 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             if not isinstance(data, dict):
                 return module.jsonify(ok=False, error="配置必须是 JSON 对象"), 400
 
+            run_mailbox_rows = _normalize_run_mailbox_rows(data.pop("run_mailbox_rows", None))
+            if run_mailbox_rows is None:
+                return module.jsonify(
+                    ok=False,
+                    error="本次运行的邮箱行绑定参数无效",
+                ), 400
+
             pool_content = data.pop("pool_content", "")
             auto_content = module._clean(pool_content) if replace_pool else ""
 
@@ -296,6 +328,8 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 f"{time.strftime('%Y%m%d-%H%M%S', time.localtime(batch_started_at))}-"
                 f"{uuid.uuid4().hex[:6]}"
             )
+            if run_mailbox_rows:
+                run_config["_gptphone_run_mailbox_rows"] = run_mailbox_rows
             importer.start(run_config)
             return module.jsonify(ok=True, state=public_state())
         except ValueError as exc:
@@ -323,6 +357,40 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         if frontend_dist.exists():
             return spa_index()
         return module.Response(context.mailbox_manager_html, mimetype="text/html")
+
+    def mailbox_url_test_page():
+        if frontend_dist.exists():
+            return spa_index()
+        return module.Response(context.mailbox_manager_html, mimetype="text/html")
+
+    def api_mailbox_url_test():
+        factory = context.mailbox_url_test_factory
+        if factory is None:
+            return module.jsonify(ok=False, error="URL 取件测试尚未启用"), 503
+        try:
+            data = module.request.get_json(silent=True) or {}
+            if not isinstance(data, dict):
+                return module.jsonify(ok=False, error="请求必须是 JSON 对象"), 400
+            value = data.get("value") or data.get("url") or ""
+            local = context.read_local_config()
+            proxy_scope = local.get("proxy_scope") if isinstance(local.get("proxy_scope"), Mapping) else {}
+            proxy = str(local.get("proxy") or "") if bool(proxy_scope.get("email")) else ""
+            result = factory().test(
+                value,
+                timeout_seconds=60,
+                interval_seconds=5,
+                resend_after_seconds=15,
+                proxy=proxy,
+            )
+            status = 400 if result.get("code") == "mailbox_url_invalid" else 200
+            return module.jsonify(result), status
+        except Exception:
+            logs.add("URL 取件测试失败 [测试取件地址/mailbox_url_test]：未返回可用诊断", "error")
+            return module.jsonify(
+                ok=False,
+                code="mailbox_url_test_failed",
+                error="URL 取件测试失败：未返回可用诊断",
+            ), 500
 
     def api_mailboxes():
         return module.jsonify(mailbox_admin.list_mailboxes())
@@ -417,6 +485,29 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         except Exception:
             logs.add("SUB2 批量连接测试失败", "error")
             return module.jsonify(ok=False, error="SUB2 批量连接测试失败"), 502
+
+    def api_mailboxes_quota():
+        try:
+            data = module.request.get_json(silent=True) or {}
+            if not isinstance(data, dict):
+                return module.jsonify(ok=False, error="请求必须是 JSON 对象"), 400
+            result = mailbox_admin.query_openai_quotas(data)
+            if not isinstance(result, Mapping):
+                return module.jsonify(ok=False, error="OpenAI 额度查询失败"), 502
+            if result.get("ok"):
+                return module.jsonify(result)
+            code = str(result.get("code") or "")
+            status = 409 if code == "mailbox_rows_stale" else 400
+            if code.startswith("openai_quota_"):
+                status = 503
+            return module.jsonify(dict(result)), status
+        except Exception:
+            logs.add("邮箱管理 OpenAI 额度查询失败", "error")
+            return module.jsonify(
+                ok=False,
+                code="openai_quota_failed",
+                error="查询 OpenAI 额度失败：未返回可用诊断",
+            ), 502
 
     def mailbox_selection_error(result: Mapping[str, Any]):
         code = str(result.get("code") or "")
@@ -793,6 +884,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
 
     routes = (
         ("/mailboxes", "mailbox_manager", mailbox_manager, ["GET"]),
+        ("/url-test", "mailbox_url_test_page", mailbox_url_test_page, ["GET"]),
         ("/accounts", "account_manager", mailbox_manager, ["GET"]),
         ("/settings", "settings_page", mailbox_manager, ["GET"]),
         ("/api/mailboxes", "api_mailboxes", api_mailboxes, ["GET"]),
@@ -802,7 +894,9 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/mailboxes/latest-code", "api_mailboxes_latest_code", api_mailboxes_latest_code, ["POST"]),
         ("/api/mailboxes/password", "api_mailboxes_password", api_mailboxes_password, ["POST"]),
         ("/api/mailboxes/totp", "api_mailboxes_totp", api_mailboxes_totp, ["POST"]),
+        ("/api/mailbox-url-test", "api_mailbox_url_test", api_mailbox_url_test, ["POST"]),
         ("/api/mailboxes/sub2-test", "api_mailboxes_sub2_test", api_mailboxes_sub2_test, ["POST"]),
+        ("/api/mailboxes/quota", "api_mailboxes_quota", api_mailboxes_quota, ["POST"]),
         ("/api/mailboxes/pixel-retry", "api_mailboxes_pixel_retry", api_mailboxes_pixel_retry, ["POST"]),
         ("/api/mailboxes/sub2-export", "api_mailboxes_sub2_export", api_mailboxes_sub2_export, ["POST"]),
         ("/api/pixel/targets", "api_pixel_targets", api_pixel_targets, ["GET"]),

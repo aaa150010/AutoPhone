@@ -91,7 +91,7 @@ const defaultForm = () => ({
   concurrency: '5',
   node_concurrency: '5',
   node_timeout: 45,
-  email_code_timeout: 60,
+  email_code_timeout: 90,
   auth_session_retries: 1,
   sms_provider: 'smsbower',
   sms_min_price: '0.01',

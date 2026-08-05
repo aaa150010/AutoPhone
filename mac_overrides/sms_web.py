@@ -269,6 +269,44 @@ class SmsWebIntegration:
             if active is not None and active[1] is lease:
                 self._active_leases.pop(task_id, None)
 
+    def _cancel_outcome(
+        self,
+        adapter: Any,
+        reason: str,
+        error: Exception | None = None,
+    ) -> tuple[str, str, dict[str, str]]:
+        provider = getattr(adapter, "provider", None)
+        receipt = self.sms_runtime.safe_cancel_receipt(
+            getattr(provider, "last_finish_receipt", None)
+        )
+        safe_reason = self.safe_error(reason or "")
+        if error is not None:
+            safe_cancel_error = self.safe_error(error)
+            detail = "; ".join(
+                item for item in (safe_reason, f"cancel_error={safe_cancel_error}") if item
+            )
+            return "cancel_error", detail, receipt
+        if receipt.get("cancel_state") == "confirmed":
+            return "cancel_confirmed", safe_reason, receipt
+        return "cancel_unconfirmed", safe_reason, receipt
+
+    def _mark_cancel_finished(
+        self,
+        task_id: str,
+        lease: Any,
+        adapter: Any,
+        reason: str,
+        error: Exception | None = None,
+    ) -> None:
+        status, detail, receipt = self._cancel_outcome(adapter, reason, error)
+        self.cost_ledger.mark_finished(
+            task_id,
+            getattr(lease, "activation_id", ""),
+            status,
+            detail,
+            details=receipt,
+        )
+
     def cancel_active_lease(self, task_id: str, reason: str) -> None:
         if not task_id:
             return
@@ -284,16 +322,18 @@ class SmsWebIntegration:
         meta["gptphone_session_invalid_cancelled"] = is_session_invalid(reason)
         meta["ready_recorded"] = True
         lease.meta = meta
+        cancel_error = None
         try:
             self.original_adapter_cancel(adapter, lease, reason=reason)
-        except Exception:
-            pass
+        except Exception as exc:
+            cancel_error = exc
         try:
-            self.cost_ledger.mark_finished(
+            self._mark_cancel_finished(
                 task_id,
-                getattr(lease, "activation_id", ""),
-                "cancelled",
-                self.safe_error(reason),
+                lease,
+                adapter,
+                reason,
+                cancel_error,
             )
         except Exception:
             pass
@@ -328,6 +368,9 @@ class SmsWebIntegration:
         task_id = self.adapter_task_id(adapter)
         provider = getattr(adapter, "provider", None)
         config = getattr(adapter, "config", None) or {}
+        bind_task = getattr(provider, "bind_task", None)
+        if task_id and callable(bind_task):
+            bind_task(task_id)
         if provider is not None and hasattr(provider, "max_attempts_per_platform"):
             try:
                 provider.max_attempts_per_platform = max(
@@ -441,16 +484,20 @@ class SmsWebIntegration:
         if self.classify_error(reason) == "phone_rejected" and callable(mark_rejected):
             mark_rejected()
         try:
-            return self.original_adapter_cancel(adapter, lease, reason=reason)
-        finally:
+            result = self.original_adapter_cancel(adapter, lease, reason=reason)
+        except Exception as exc:
             if task_id:
                 self._forget_active_lease(task_id, lease)
-                self.cost_ledger.mark_finished(
-                    task_id,
-                    getattr(lease, "activation_id", ""),
-                    "cancelled",
-                    self.safe_error(reason or ""),
-                )
+                try:
+                    self._mark_cancel_finished(task_id, lease, adapter, reason, exc)
+                except Exception:
+                    pass
+                return None
+            raise
+        if task_id:
+            self._forget_active_lease(task_id, lease)
+            self._mark_cancel_finished(task_id, lease, adapter, reason)
+        return result
 
     def classify_error(self, error: Any) -> str:
         if is_session_invalid(error):

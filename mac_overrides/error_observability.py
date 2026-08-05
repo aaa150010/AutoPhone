@@ -42,6 +42,7 @@ NODE_LABELS = {
     "finalizing_save": "保存任务结果",
     "unexpected": "运行任务",
     "account_banned": "检查 OpenAI 账号状态",
+    "openai_quota": "查询 OpenAI 额度",
 }
 
 ACCOUNT_BANNED_MESSAGE = "OpenAI 账号已被封禁，无法继续接码"
@@ -112,6 +113,17 @@ _NODE_FAILURE_MARKERS = (
     "node_bridge",
     "node bridge",
     "node/sentinel",
+)
+
+_NODE_OPERATION_NODES = (
+    (("mfa_otp_verify", "mfa_otp_failed", "verify_mfa_otp"), "email_code_verifying"),
+    (("email_otp_verify", "email_otp_failed", "verify_email_otp"), "email_code_verifying"),
+    (("mfa_otp_issue", "email_otp_send_failed"), "email_code_waiting"),
+    (("password_verify", "password_verify_failed"), "email_password"),
+    (("phone_otp_verify", "phone_otp_failed", "verify_phone_otp"), "sms_verifying"),
+    (("phone_number_send", "phone_send_rejected", "send_phone_number_otp"), "phone_submitting"),
+    (("create_account_profile", "profile completion"), "finalizing_profile"),
+    (("authorize_continue", "initiate_oauth"), "oauth_authorize_node"),
 )
 
 _NODE_CAUSE_RULES = (
@@ -266,12 +278,12 @@ def _diagnostic_text(value: Any, *, depth: int = 0) -> str:
 def sanitize_failure_detail(value: Any, *, secrets: Sequence[Any] = (), limit: int = 500) -> str:
     """Return a short diagnostic summary with credential-shaped values removed."""
 
-    text = _diagnostic_text(value)
+    text = _diagnostic_text(value)[:8192]
     if not text:
         return ""
     for secret in secrets:
         item = str(secret or "")
-        if len(item) >= 3:
+        if len(item) >= 3 and not set(item).issubset({"*"}):
             text = text.replace(item, "********")
     text = _URL_RE.sub(_strip_url_secrets, text)
     text = _BEARER_RE.sub("Bearer ********", text)
@@ -323,6 +335,16 @@ def _last_chain_state(result: Any) -> str:
             if state:
                 return state
     return ""
+
+
+def _chain_states(result: Any) -> set[str]:
+    if not isinstance(result, Mapping) or not isinstance(result.get("codex_chain_events"), list):
+        return set()
+    return {
+        str(item.get("state") or "").strip().upper()
+        for item in result["codex_chain_events"]
+        if isinstance(item, Mapping) and item.get("state")
+    }
 
 
 def _current_node(result: Any, progress: Any) -> str:
@@ -377,8 +399,9 @@ _RULES = (
     (("sub2_upload", "sub2 uploaded but chatgpt_account_id verification failed", "cpa_upload_failed", "cpa_token_upload_failed", "upload_failed", "remote_verified", "group_verified", "chatgpt_account_id_verified", "sub2_upload_failed"), "finalizing_upload", "sub2_upload_failed", "SUB2 账号上传或远端校验未完成", True),
     (("password_verify_failed", "incorrect password", "invalid password", "wrong password"), "email_password", "email_password_failed", "OpenAI 登录密码验证失败", False),
     (("microsoft token refresh failed", "authenticated but not connected", "mailbox_imap_error", "authenticate failed", "authenticationfailed", "imap"), "email_login", "mailbox_login_failed", "邮箱登录或 IMAP 授权失败", False),
+    (("email_otp_send_failed",), "email_code_waiting", "email_otp_send_failed", "OpenAI 邮箱验证码发送接口失败", True),
     (("mailbox_code_timeout", "gptmail_code_timeout", "email_otp_timeout", "manual_code_timeout", "mailbox still returns baseline code"), "email_code_waiting", "email_code_timeout", "邮箱验证码等待超时，未获取到新验证码", True),
-    (("email_otp_failed", "email_otp_send_failed", "mfa_otp_failed", "verify_email_otp", "verify_mfa_otp"), "email_code_verifying", "email_code_verification_failed", "邮箱验证码或 MFA 验证失败", True),
+    (("email_otp_failed", "mfa_otp_failed", "verify_email_otp", "verify_mfa_otp"), "email_code_verifying", "email_code_verification_failed", "邮箱验证码或 MFA 验证失败", True),
     (("sms_provider_pool_unavailable",), "phone_acquiring", "sms_provider_pool_unavailable", "所有启用接码平台均无可用线路或号码", True),
     (("sms_smart_no_candidate",), "phone_acquiring", "sms_route_pool_exhausted", "当前候选线路均已失败、无号或处于冷却中", True),
     (("sms_key_pool_temporarily_unavailable",), "phone_acquiring", "sms_key_pool_temporarily_unavailable", "所有 SMS Key 正在临时冷却，当前没有可用 Key", True),
@@ -400,11 +423,19 @@ def _is_oauth_session_invalid(text: str) -> bool:
 
 def _rule_for(text: str) -> tuple[str, str, str, bool] | None:
     if any(marker in text for marker in _NODE_FAILURE_MARKERS):
+        operation_node = next(
+            (
+                node_code
+                for markers, node_code in _NODE_OPERATION_NODES
+                if any(marker in text for marker in markers)
+            ),
+            "oauth_create_node",
+        )
         for markers, error_code, cause in _NODE_CAUSE_RULES:
             if any(marker in text for marker in markers):
-                return "oauth_create_node", error_code, cause, True
+                return operation_node, error_code, cause, True
         return (
-            "oauth_create_node",
+            operation_node,
             "node_sentinel_failed",
             "Node/Sentinel 授权桥接初始化失败",
             True,
@@ -457,7 +488,15 @@ def classify_failure(
     # operation that actually failed instead of letting a broad OAuth marker
     # or phone-rejection rule rewrite it as a generic authorization failure.
     if _is_oauth_session_invalid(search_text):
-        session_node = current_node if current_node in {"phone_submitting", "sms_verifying"} else "oauth_authorize_node"
+        states = _chain_states(result)
+        if current_node in {"phone_submitting", "sms_verifying"}:
+            session_node = current_node
+        elif "PHONE_OTP_SENT" in states:
+            session_node = "sms_verifying"
+        elif states.intersection({"PHONE_REQUIRED", "PHONE_SEND_REJECTED"}):
+            session_node = "phone_submitting"
+        else:
+            session_node = "oauth_authorize_node"
         rule = (
             session_node,
             "oauth_session_invalid",

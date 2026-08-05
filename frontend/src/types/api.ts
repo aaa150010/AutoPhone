@@ -124,6 +124,11 @@ export interface MailboxRow {
   email: string
   password?: string
   has_totp?: boolean
+  quota_status?: 'ok' | 'error' | string
+  quota_error?: string
+  quota_queried_at?: number | null
+  quota_5h?: OpenAIQuotaWindow | null
+  quota_7d?: OpenAIQuotaWindow | null
   status: string
   status_label?: string
   pool_status?: string
@@ -143,6 +148,14 @@ export interface MailboxRow {
   sub2api_account_id?: string
   sub2_status?: Sub2MailboxStatus | null
   updated_at?: number
+}
+
+export interface OpenAIQuotaWindow {
+  remaining_percent: number | null
+  reset_at?: number | null
+  reset_after_seconds?: number | null
+  queried_at?: number | null
+  status?: string
 }
 
 export interface Sub2MailboxStatus {
@@ -165,6 +178,31 @@ export interface MailboxPayload {
   ok?: boolean
   counts: Record<string, number>
   rows: MailboxRow[]
+}
+
+export interface MailboxUrlTestDiagnostics {
+  listing_messages: number
+  detail_links: number
+  detail_refreshed: number
+  detail_cache_hits: number
+  detail_refresh_pending: number
+  detail_errors: number
+  openai_messages: number
+  code_messages: number
+}
+
+export interface MailboxUrlTestResult {
+  ok: boolean
+  code?: string
+  email?: string
+  code_found: boolean
+  reason: string
+  error?: string
+  attempts: number
+  elapsed_seconds: number
+  resend_attempted: boolean
+  resend_succeeded: boolean
+  diagnostics: MailboxUrlTestDiagnostics
 }
 
 export interface LatestCodeValue {

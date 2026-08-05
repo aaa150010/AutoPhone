@@ -77,6 +77,7 @@ class AuthSessionContext:
     invalid: bool = False
     invalid_code: str = ""
     fresh_oauth_required: bool = False
+    invalidations: int = 0
     request_count: int = 0
     events: list[dict[str, Any]] = field(default_factory=list)
 
@@ -156,6 +157,7 @@ class AuthSessionContext:
         return None
 
     def invalidate(self, value: Any = "") -> None:
+        self.invalidations += 1
         self.invalid = True
         self.fresh_oauth_required = True
         self.invalid_code = "oauth_session_invalid" if is_session_invalid(value) else "auth_session_invalid"
@@ -173,6 +175,7 @@ class AuthSessionContext:
             "invalid": self.invalid,
             "fresh_oauth_required": self.fresh_oauth_required,
             "invalid_code": self.invalid_code,
+            "invalidations": self.invalidations,
             "events": [dict(item) for item in self.events[-10:]],
         }
 

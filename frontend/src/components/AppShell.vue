@@ -4,6 +4,7 @@ import { ElMessageBox } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import AccountManagementPage from '../pages/AccountManagementPage.vue'
 import MailboxPage from '../pages/MailboxPage.vue'
+import UrlMailboxTestPage from '../pages/UrlMailboxTestPage.vue'
 import RunPage from '../pages/RunPage.vue'
 import SettingsPage from '../pages/SettingsPage.vue'
 import { appControllerKey, createAppController } from '../composables/useAppController'
@@ -11,7 +12,7 @@ import { appControllerKey, createAppController } from '../composables/useAppCont
 const controller = createAppController()
 provide(appControllerKey, controller)
 
-const routes = new Set(['/', '/mailboxes', '/accounts', '/settings'])
+const routes = new Set(['/', '/mailboxes', '/url-test', '/accounts', '/settings'])
 const pathFromLocation = () => routes.has(window.location.pathname) ? window.location.pathname : '/'
 const activePath = ref(pathFromLocation())
 
@@ -90,6 +91,7 @@ onUnmounted(() => {
         <el-menu :default-active="activePath" :collapse-transition="false" @select="selectPage">
           <el-menu-item index="/"><el-icon><Monitor /></el-icon><span>运行中心</span></el-menu-item>
           <el-menu-item index="/mailboxes"><el-icon><MessageBox /></el-icon><span>邮箱管理</span></el-menu-item>
+          <el-menu-item index="/url-test"><el-icon><Link /></el-icon><span>URL 取件测试</span></el-menu-item>
           <el-menu-item index="/accounts"><el-icon><UserFilled /></el-icon><span>账号管理</span></el-menu-item>
           <el-menu-item index="/settings"><el-icon><Setting /></el-icon><span>运行配置</span></el-menu-item>
         </el-menu>
@@ -107,6 +109,7 @@ onUnmounted(() => {
         <div v-if="!controller.initialized.value" class="shell-loading"><el-icon class="is-loading"><Loading /></el-icon></div>
         <RunPage v-else-if="activePath === '/'" @navigate="navigate" />
         <MailboxPage v-else-if="activePath === '/mailboxes'" />
+        <UrlMailboxTestPage v-else-if="activePath === '/url-test'" />
         <AccountManagementPage v-else-if="activePath === '/accounts'" />
         <SettingsPage v-else @navigate="navigate" />
       </el-main>

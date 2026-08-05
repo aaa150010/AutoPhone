@@ -14,6 +14,15 @@ from mac_overrides.error_observability import (
 
 
 class ErrorObservabilityTests(unittest.TestCase):
+    def test_sanitizer_does_not_expand_existing_mask_placeholders(self):
+        self.assertEqual(
+            sanitize_failure_detail(
+                "masked=*** existing=******** secret=real-secret",
+                secrets=("***", "********", "real-secret"),
+            ),
+            "masked=*** existing=******** secret=********",
+        )
+
     def test_callback_and_token_failures_have_distinct_nodes(self):
         callback = classify_failure(error="oauth_callback_missing_code: callback missing code")
         token = classify_failure(
@@ -35,6 +44,7 @@ class ErrorObservabilityTests(unittest.TestCase):
             ("node_sentinel_failed: node bridge timeout", "oauth_create_node"),
             ("mailbox_imap_error: AUTHENTICATE failed", "email_login"),
             ("password_verify_failed: incorrect password", "email_password"),
+            ("email_otp_send_failed: HTTP 429", "email_code_waiting"),
             ("email_otp_timeout", "email_code_waiting"),
             ("email_otp_failed: invalid authorization step", "email_code_verifying"),
             ("getNumber failed: no_numbers", "phone_acquiring"),
@@ -50,6 +60,10 @@ class ErrorObservabilityTests(unittest.TestCase):
                 failure = classify_failure(error=error)
                 self.assertEqual(failure["node_code"], expected)
                 self.assertTrue(failure["public_message"].startswith(failure["node_label"]))
+
+        send_failure = classify_failure(error="email_otp_send_failed: HTTP 429")
+        self.assertEqual(send_failure["error_code"], "email_otp_send_failed")
+        self.assertIn("发送接口失败", send_failure["public_message"])
 
     def test_last_success_event_points_at_the_operation_that_can_fail_next(self):
         after_chat_requirements = classify_failure(
@@ -210,6 +224,33 @@ class ErrorObservabilityTests(unittest.TestCase):
                 self.assertEqual(failure["error_code"], code)
                 self.assertIn(phrase, failure["public_message"])
                 self.assertNotIn("access_token", failure["public_message"])
+
+    def test_node_failure_during_mfa_is_attributed_to_email_verification(self):
+        failure = classify_failure(
+            {
+                "technical_error": (
+                    "mfa_otp_failed: node_sentinel_failed:mfa_otp_verify: "
+                    "node_bridge_timeout"
+                ),
+                "codex_chain_events": [
+                    {"state": "SENTINEL_READY"},
+                    {"state": "PASSWORD_VERIFIED"},
+                    {"state": "MFA_OTP_REQUIRED"},
+                    {
+                        "state": "FAILED",
+                        "detail": (
+                            "mfa_otp_failed: node_sentinel_failed:mfa_otp_verify: "
+                            "node_bridge_timeout"
+                        ),
+                    },
+                ],
+            }
+        )
+
+        self.assertEqual(failure["node_code"], "email_code_verifying")
+        self.assertEqual(failure["error_code"], "node_sentinel_timeout")
+        self.assertIn("Node/Sentinel 请求超时", failure["public_message"])
+        self.assertNotIn("初始化 Node/Sentinel失败", failure["public_message"])
 
 
 if __name__ == "__main__":

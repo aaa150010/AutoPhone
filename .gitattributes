@@ -1,0 +1,3 @@
+# Generated reverse-engineering artifacts; keep them out of normal source views.
+disassembly/** linguist-generated=true
+pycdc_attempt/** linguist-generated=true

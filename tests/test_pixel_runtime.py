@@ -245,6 +245,12 @@ class PixelPayloadTests(unittest.TestCase):
         self.assertNotIn(REFRESH_TOKEN, text)
         self.assertNotIn(jwt, text)
 
+    def test_error_sanitizer_bounds_large_provider_response_before_regex(self):
+        text = sanitize_error(f"access_token={ACCESS_TOKEN}" + ("x" * 100_000), [ACCESS_TOKEN])
+
+        self.assertNotIn(ACCESS_TOKEN, text)
+        self.assertLessEqual(len(text), 500)
+
 
 class PixelProxyClientTests(unittest.TestCase):
     def test_management_and_import_calls_use_proxy_contract_and_sanitize_responses(self):
