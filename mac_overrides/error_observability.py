@@ -126,6 +126,24 @@ _NODE_OPERATION_NODES = (
     (("authorize_continue", "initiate_oauth"), "oauth_authorize_node"),
 )
 
+_RELOGIN_NON_RETRYABLE_MARKERS = (
+    "relogin_phone_required",
+    "password_verify_failed",
+    "incorrect password",
+    "invalid password",
+    "wrong password",
+    "mfa_otp_failed",
+    "verify_mfa_otp",
+    "oauth_callback_state_mismatch",
+    "oauth_state_mismatch",
+    "state mismatch",
+    "invalid_state",
+    "account_banned",
+    "account_deactivated",
+    "account_suspended",
+    "account_deleted",
+)
+
 _NODE_CAUSE_RULES = (
     (
         ("node executable not found",),
@@ -390,13 +408,23 @@ def _extract_provider_code(values: Sequence[Any]) -> str:
 _RULES = (
     (("account_banned", "account_deactivated", "account_suspended", ACCOUNT_BANNED_MESSAGE.lower()), "account_banned", "account_banned", "", False),
     (("relogin_phone_required",), "phone_acquiring", "relogin_phone_required", "重登进入手机号验证页面，已停止且未调用接码平台", False),
+    (("relogin_sub2_binding_missing",), "finalizing_upload", "relogin_sub2_binding_missing", "重登缺少经过服务端校验的 SUB2 原账号绑定", False),
+    (("sub2_update_binding_missing",), "finalizing_upload", "sub2_update_binding_missing", "SUB2 原账号绑定信息缺失", False),
+    (("sub2_update_config_missing",), "finalizing_upload", "sub2_update_config_missing", "SUB2 管理员配置不完整", False),
+    (("sub2_update_token_incomplete",), "finalizing_upload", "sub2_update_token_incomplete", "用于更新的 OAuth Token 不完整", False),
+    (("sub2_update_prepare_failed",), "finalizing_upload", "sub2_update_prepare_failed", "SUB2 原账号更新准备失败", True),
+    (("sub2_update_target_missing",), "finalizing_upload", "sub2_update_target_missing", "SUB2 原账号不存在，已停止且未创建新账号", False),
+    (("sub2_update_binding_mismatch",), "finalizing_upload", "sub2_update_binding_mismatch", "SUB2 原账号与当前邮箱不匹配，已停止且未创建新账号", False),
+    (("sub2_update_existing_failed",), "finalizing_upload", "sub2_update_existing_failed", "SUB2 原账号更新请求失败", True),
+    (("sub2_update_verification_failed",), "finalizing_upload", "sub2_update_verification_failed", "SUB2 原账号更新后回查失败", True),
+    (("sub2_update_group_verification_failed",), "finalizing_upload", "sub2_update_group_verification_failed", "SUB2 原账号更新后分组校验失败", False),
+    (("sub2_update_identity_verification_failed",), "finalizing_upload", "sub2_update_identity_verification_failed", "SUB2 原账号更新后 OpenAI 身份校验失败", False),
     (("sub2_exchange_failed", "sub2_session_expired", "openai_oauth_session_not_found", "openai_oauth_token_exchange_failed", "sub2 exchange-code failed", "sub2 exchange-code request failed"), "finalizing_token", "sub2_exchange_failed", "SUB2 OAuth 会话已过期或 Token 兑换被拒绝", True),
     (("oauth_callback_missing_code", "oauth_callback_state_mismatch", "callback missing code", "state mismatch", "oauth_state_mismatch", "invalid_state", "follow_continue_until_code"), "finalizing_callback", "oauth_callback_failed", "OAuth 回调未返回有效 code 或 state 校验失败", True),
     (("exchange_code", "token_exchange_failed", "token exchange", "token endpoint", "invalid_grant"), "finalizing_token", "oauth_token_exchange_failed", "OAuth Token 交换被服务端拒绝", True),
     (("sub2api登录失败", "generate-auth-url", "generate_auth_url", "missing auth_url", "missing session_id", "missing oauth session"), "oauth_session", "sub2_oauth_session_failed", "SUB2 管理员登录或 OAuth 会话创建失败", True),
     (("node_sentinel_failed", "sentinel launcher", "node_bridge", "node bridge", "sentinel"), "oauth_create_node", "node_sentinel_failed", "Node/Sentinel 授权桥接初始化失败", True),
     (("create_account_profile_failed", "create_account_profile", "profile completion"), "finalizing_profile", "profile_completion_failed", "OpenAI 账号资料提交失败", True),
-    (("sub2_update_existing_failed", "sub2_update_verification_failed", "sub2_update_group_verification_failed", "sub2_update_identity_verification_failed", "sub2_update_binding_mismatch", "sub2_update_target_missing"), "finalizing_upload", "sub2_update_existing_failed", "SUB2 原账号更新或远端校验未完成", True),
     (("sub2_upload", "sub2 uploaded but chatgpt_account_id verification failed", "cpa_upload_failed", "cpa_token_upload_failed", "upload_failed", "remote_verified", "group_verified", "chatgpt_account_id_verified", "sub2_upload_failed"), "finalizing_upload", "sub2_upload_failed", "SUB2 账号上传或远端校验未完成", True),
     (("password_verify_failed", "incorrect password", "invalid password", "wrong password"), "email_password", "email_password_failed", "OpenAI 登录密码验证失败", False),
     (("microsoft token refresh failed", "authenticated but not connected", "mailbox_imap_error", "authenticate failed", "authenticationfailed", "imap"), "email_login", "mailbox_login_failed", "邮箱登录或 IMAP 授权失败", False),
@@ -531,6 +559,47 @@ def classify_failure(
     node_label = NODE_LABELS[node_code]
     http_status = _extract_http_status(values)
     provider_code = _extract_provider_code(values)
+    if (
+        isinstance(result, Mapping)
+        and str(result.get("run_mode") or "").strip().lower() == "relogin"
+    ):
+        if any(marker in search_text for marker in _RELOGIN_NON_RETRYABLE_MARKERS):
+            retryable = False
+        else:
+            retryable = bool(
+                http_status == 429
+                or any(
+                    marker in search_text
+                    for marker in (
+                        "tls connect",
+                        "tls_connection",
+                        "ssleoferror",
+                        "sslerror",
+                        "unexpected_eof",
+                        "connection reset",
+                        "connection aborted",
+                        "connection refused",
+                        "remote disconnected",
+                        "remote end closed connection",
+                        "server disconnected",
+                        "connection timeout",
+                        "connection timed out",
+                        "operation timed out",
+                        "timed out after",
+                        "curl: (28)",
+                        "curl: (35)",
+                        "curl: (56)",
+                        "http 429",
+                        "status=429",
+                        "status_code=429",
+                        "too many requests",
+                        "rate limit",
+                        "rate_limited",
+                    )
+                )
+            )
+        if http_status is not None and 400 <= http_status < 500 and http_status != 429:
+            retryable = False
 
     technical_summary = _best_technical_summary(values, secrets=secrets)
     if node_code == "account_banned":

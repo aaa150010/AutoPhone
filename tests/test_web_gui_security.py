@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import importlib
 import json
 import os
@@ -274,6 +275,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(one_platform["phone_max_attempts"], 15)
         self.assertEqual(three_platforms["phone_attempts_per_provider"], 15)
         self.assertEqual(three_platforms["phone_session_max_seconds"], 1800)
+        self.assertEqual(three_platforms["sms_smart"]["route_lease_seconds"], 80)
 
     def test_task_config_enables_one_email_otp_resend_by_default(self):
         module = self.module
@@ -1510,6 +1512,13 @@ class WebGuiSecurityTests(unittest.TestCase):
                 error="授权或上传未完成",
                 status="repair_pending",
             )
+            frozen_timing = copy.deepcopy(result["timing"])
+            self.assertIsNotNone(frozen_timing["finished_at"])
+            self.assertFalse(module._TASK_PROGRESS.finish("T003-safe"))
+            self.assertEqual(
+                (module._TASK_PROGRESS.progress("T003-safe") or {})["timing"],
+                frozen_timing,
+            )
         finally:
             module._ORIGINAL_PERSIST_RESULT = original_persist
             module._TASK_PROGRESS.reset()
@@ -1519,6 +1528,8 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(payload["error"], payload["failure"]["public_message"])
         self.assertEqual(payload["technical_error"], payload["failure"]["technical_summary"])
         self.assertEqual(payload["result"]["failure"], payload["failure"])
+        self.assertEqual(payload["timing"], frozen_timing)
+        self.assertEqual(payload["result"]["timing"], frozen_timing)
 
     def test_persistence_exception_reports_save_node_with_sanitized_cause(self):
         module = self.module

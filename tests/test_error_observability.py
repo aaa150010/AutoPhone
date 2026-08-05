@@ -163,6 +163,57 @@ class ErrorObservabilityTests(unittest.TestCase):
         self.assertEqual(failure["http_status"], 500)
         self.assertIn("原账号更新", failure["public_message"])
 
+    def test_relogin_failure_retryability_matches_whole_chain_policy(self):
+        terminal = (
+            "mfa_otp_failed: invalid code",
+            "mfa_otp_failed: invalid code after connection reset",
+            "oauth_callback_state_mismatch: invalid_state",
+            "sub2_update_existing_failed: HTTP 500",
+            "sub2_update_identity_verification_failed",
+        )
+        transient = (
+            "curl: (35) TLS connect error",
+            "remote end closed connection without response",
+            "connection timed out after 30001 milliseconds",
+            "HTTP 429 too many requests",
+        )
+
+        for error in terminal:
+            with self.subTest(error=error):
+                failure = classify_failure(
+                    {"run_mode": "relogin", "error": error},
+                    error,
+                )
+                self.assertFalse(failure["retryable"])
+        for error in transient:
+            with self.subTest(error=error):
+                failure = classify_failure(
+                    {"run_mode": "relogin", "error": error},
+                    error,
+                )
+                self.assertTrue(failure["retryable"])
+
+    def test_sub2_update_failures_keep_their_exact_stable_codes(self):
+        cases = (
+            "relogin_sub2_binding_missing",
+            "sub2_update_binding_missing",
+            "sub2_update_config_missing",
+            "sub2_update_token_incomplete",
+            "sub2_update_prepare_failed",
+            "sub2_update_target_missing",
+            "sub2_update_binding_mismatch",
+            "sub2_update_existing_failed",
+            "sub2_update_verification_failed",
+            "sub2_update_group_verification_failed",
+            "sub2_update_identity_verification_failed",
+        )
+
+        for code in cases:
+            with self.subTest(code=code):
+                failure = classify_failure(error=f"{code}: provider detail")
+                self.assertEqual(failure["node_code"], "finalizing_upload")
+                self.assertEqual(failure["error_code"], code)
+
     def test_account_banned_message_remains_exact(self):
         failure = classify_failure(
             {"error": {"code": "account_banned", "message": "account has been banned"}},

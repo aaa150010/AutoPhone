@@ -344,8 +344,13 @@ def latest_sub2_accounts_by_email(results_dir: str | Path) -> dict[str, dict[str
             created = int(fallback_created)
         previous = latest.get(email)
         if previous is None or created >= int(previous.get("created_at") or 0):
+            try:
+                openai_account_id = credentials_from_result(data).account_id
+            except OpenAIQuotaError:
+                openai_account_id = ""
             latest[email] = {
                 "account_id": account_id,
+                "openai_account_id": openai_account_id,
                 "created_at": created,
                 "result_file": str(path.resolve()),
             }
@@ -1227,6 +1232,7 @@ class MailboxAdminService:
                 email = email_from_row(source_row)
                 account = accounts_by_email.get(email) or {}
                 account_id = str(account.get("account_id") or "").strip()
+                openai_account_id = str(account.get("openai_account_id") or "").strip()
                 if not account_id:
                     return {
                         "ok": False,
@@ -1235,11 +1241,14 @@ class MailboxAdminService:
                     }
 
                 raw_status: Mapping[str, Any] | None = None
-                for lookup in (self.openai_status_lookup, self.sub2_status_lookup):
+                for lookup, lookup_id in (
+                    (self.openai_status_lookup, openai_account_id or account_id),
+                    (self.sub2_status_lookup, account_id),
+                ):
                     if not callable(lookup):
                         continue
                     try:
-                        candidate = lookup(account_id)
+                        candidate = lookup(lookup_id)
                     except Exception:
                         candidate = None
                     if isinstance(candidate, Mapping) and candidate:

@@ -1376,6 +1376,8 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
     _TASK_PROGRESS.finish(task_id)
     timing_snapshot = (_TASK_PROGRESS.progress(task_id) or {}).get("timing")
     if isinstance(timing_snapshot, dict):
+        if isinstance(result, dict):
+            result["timing"] = copy.deepcopy(timing_snapshot)
         try:
             root = Path(
                 str((settings or {}).get("results_dir") or "").strip()

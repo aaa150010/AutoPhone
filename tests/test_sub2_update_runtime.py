@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 import unittest
 
@@ -186,6 +187,137 @@ class Sub2ExistingAccountUpdateTests(unittest.TestCase):
         self.assertEqual(result["error_code"], "sub2_update_binding_mismatch")
         self.assertEqual(calls.puts, [])
         self.assertEqual(calls.posts, [])
+
+    def test_pre_update_failures_preserve_exact_branch_and_skip_put(self):
+        base_dependencies, calls = self.dependencies()
+        cases = (
+            (
+                "sub2_update_binding_missing",
+                self.config(),
+                self.credentials(),
+                "",
+                base_dependencies,
+            ),
+            (
+                "sub2_update_config_missing",
+                {},
+                self.credentials(),
+                ACCOUNT_ID,
+                base_dependencies,
+            ),
+            (
+                "sub2_update_token_incomplete",
+                self.config(),
+                {"access_token": "new-access"},
+                ACCOUNT_ID,
+                base_dependencies,
+            ),
+            (
+                "sub2_update_prepare_failed",
+                self.config(),
+                self.credentials(),
+                ACCOUNT_ID,
+                replace(
+                    base_dependencies,
+                    get_admin_token=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                        RuntimeError("network failure")
+                    ),
+                ),
+            ),
+            (
+                "sub2_update_target_missing",
+                self.config(),
+                self.credentials(),
+                ACCOUNT_ID,
+                replace(base_dependencies, fetch_detail=lambda *_args, **_kwargs: {}),
+            ),
+        )
+
+        for code, config, credentials, account_id, dependencies in cases:
+            with self.subTest(code=code):
+                result = update_existing_sub2_account(
+                    config=config,
+                    credentials=credentials,
+                    email=EMAIL,
+                    account_id=account_id,
+                    upload_proxy="",
+                    log_fn=None,
+                    dependencies=dependencies,
+                )
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error_code"], code)
+
+        self.assertEqual(calls.puts, [])
+        self.assertEqual(calls.posts, [])
+
+    def test_post_update_verification_failures_never_create_an_account(self):
+        before = {
+            "data": {
+                "id": ACCOUNT_ID,
+                "name": EMAIL,
+                "credentials": {
+                    "email": EMAIL,
+                    "chatgpt_account_id": CHATGPT_ACCOUNT_ID,
+                },
+                "extra": {
+                    "email": EMAIL,
+                    "chatgpt_account_id": CHATGPT_ACCOUNT_ID,
+                },
+            }
+        }
+
+        dependencies, calls = self.dependencies()
+        details = [before, {}]
+        verification_dependencies = replace(
+            dependencies,
+            fetch_detail=lambda *_args, **_kwargs: details.pop(0),
+        )
+        verification = update_existing_sub2_account(
+            config=self.config(),
+            credentials=self.credentials(),
+            email=EMAIL,
+            account_id=ACCOUNT_ID,
+            upload_proxy="",
+            log_fn=None,
+            dependencies=verification_dependencies,
+        )
+
+        group_dependencies, group_calls = self.dependencies()
+        group = update_existing_sub2_account(
+            config=self.config(),
+            credentials=self.credentials(),
+            email=EMAIL,
+            account_id=ACCOUNT_ID,
+            upload_proxy="",
+            log_fn=None,
+            dependencies=replace(
+                group_dependencies,
+                assert_group=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                    RuntimeError("group mismatch")
+                ),
+            ),
+        )
+
+        identity_dependencies, identity_calls = self.dependencies()
+        identity = update_existing_sub2_account(
+            config=self.config(),
+            credentials=self.credentials(),
+            email=EMAIL,
+            account_id=ACCOUNT_ID,
+            upload_proxy="",
+            log_fn=None,
+            dependencies=replace(
+                identity_dependencies,
+                identity_locations=lambda _detail: ("wrong", "wrong"),
+            ),
+        )
+
+        self.assertEqual(verification["error_code"], "sub2_update_verification_failed")
+        self.assertEqual(group["error_code"], "sub2_update_group_verification_failed")
+        self.assertEqual(identity["error_code"], "sub2_update_identity_verification_failed")
+        for branch_calls in (calls, group_calls, identity_calls):
+            self.assertEqual(len(branch_calls.puts), 1)
+            self.assertEqual(branch_calls.posts, [])
 
 
 if __name__ == "__main__":

@@ -397,7 +397,13 @@ class WebRouteTests(unittest.TestCase):
 
     def test_relogin_starts_from_server_bound_rows_without_sms_preflight_or_config_save(self):
         app = self._app()
-        payload = {"rows": [{"row_id": "a" * 64, "line_no": 7}]}
+        payload = {
+            "rows": [{
+                "row_id": "a" * 64,
+                "line_no": 7,
+                "sub2api_account_id": "untrusted-client-account",
+            }]
+        }
 
         with app.test_client() as client:
             response = client.post("/api/mailboxes/relogin", json=payload)
@@ -414,6 +420,10 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(
             self.importer.started_with["_gptphone_relogin_rows"][0]["sub2api_account_id"],
             "sub2-account-501",
+        )
+        self.assertNotIn(
+            "untrusted-client-account",
+            str(self.importer.started_with["_gptphone_relogin_rows"]),
         )
         self.assertEqual(
             self.importer.started_with["_gptphone_run_mailbox_rows"],

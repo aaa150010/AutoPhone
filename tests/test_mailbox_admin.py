@@ -314,6 +314,46 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertEqual(stale["code"], "mailbox_rows_stale")
         self.assertEqual(healthy["code"], "relogin_not_required")
 
+    def test_relogin_resolver_uses_openai_account_id_for_direct_status(self):
+        row = "rerun@example.com|login-pass|JBSWY3DPEHPK3PXP"
+        self._write_pool(row + "\n")
+        self._write_state({})
+        results = self.root / "results"
+        results.mkdir()
+        (results / "success.json").write_text(
+            json.dumps({
+                "email": "rerun@example.com",
+                "status": "success",
+                "created_at": 100,
+                "result": {
+                    "sub2api_account_id": "sub2-row-501",
+                    "local_oauth": {
+                        "tokens": {
+                            "access_token": "private-access-token",
+                            "chatgpt_account_id": "openai-account-501",
+                        }
+                    },
+                },
+            }),
+            encoding="utf-8",
+        )
+        lookups = []
+        self.service.openai_status_lookup = lambda account_id: lookups.append(account_id) or {
+            "kind": "unauthorized" if account_id == "openai-account-501" else "untested",
+            "status_code": 401 if account_id == "openai-account-501" else None,
+        }
+
+        result = self.service.resolve_relogin_rows({
+            "rows": [{"row_id": row_id_from_source(row), "line_no": 1}],
+        })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(lookups, ["openai-account-501"])
+        self.assertEqual(result["items"][0]["sub2api_account_id"], "sub2-row-501")
+        serialized = json.dumps(result, ensure_ascii=False)
+        self.assertNotIn("private-access-token", serialized)
+        self.assertNotIn("openai-account-501", serialized)
+
     def test_list_mailboxes_marks_imported_without_remote_upload_as_not_ready(self):
         row = "imported@example.com----mail-pass----client-id----refresh-token"
         self._write_pool(row + "\n")
@@ -704,7 +744,16 @@ class MailboxAdminTests(unittest.TestCase):
                     "status": "success",
                     "task_id": "T-done",
                     "created_at": 950,
-                    "result": {"sms_cost_usd": 0.05, "sms_cost_cny": 0.36},
+                    "result": {
+                        "sms_cost_usd": 0.05,
+                        "sms_cost_cny": 0.36,
+                        "timing": {
+                            "started_at": 900,
+                            "finished_at": 950,
+                            "elapsed_seconds": 50,
+                            "stages": [],
+                        },
+                    },
                 }
             ),
             encoding="utf-8",
@@ -750,6 +799,12 @@ class MailboxAdminTests(unittest.TestCase):
             "group": "sms",
             "entered_at": 955,
             "finished_at": None,
+            "timing": {
+                "started_at": 940,
+                "finished_at": None,
+                "elapsed_seconds": 20,
+                "stages": [],
+            },
             "mailbox_password": "must-not-leak",
         }
 
@@ -763,8 +818,10 @@ class MailboxAdminTests(unittest.TestCase):
         running, done, restored = result["rows"]
         self.assertEqual((running["status"], running["task_id"]), ("running", "T-current"))
         self.assertEqual(running["progress"]["code"], "sms_waiting")
+        self.assertEqual(running["timing"], running["progress"]["timing"])
         self.assertNotIn("mailbox_password", running["progress"])
         self.assertEqual((done["status"], done["sms_cost_usd"], done["sms_cost_cny"]), ("consumed", 0.05, 0.36))
+        self.assertEqual(done["timing"]["elapsed_seconds"], 50)
         self.assertEqual(restored["task_id"], "")
         self.assertEqual(restored["error"], "")
         self.assertEqual(restored["password"], "********")

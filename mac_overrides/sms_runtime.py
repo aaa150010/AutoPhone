@@ -355,6 +355,22 @@ def migrate_performance_config(value: Any) -> tuple[dict[str, Any], bool]:
     if phone_max_attempts > PHONE_MAX_ATTEMPTS_LIMIT:
         config["phone_max_attempts"] = PHONE_MAX_ATTEMPTS_LIMIT
 
+    try:
+        task_concurrency = max(1, min(100, int(config.get("concurrency") or 5)))
+    except (TypeError, ValueError):
+        task_concurrency = 5
+    try:
+        email_concurrency = int(
+            config.get("auto_email_login_concurrency")
+            or PERFORMANCE_DEFAULTS["auto_email_login_concurrency"]
+        )
+    except (TypeError, ValueError):
+        email_concurrency = PERFORMANCE_DEFAULTS["auto_email_login_concurrency"]
+    config["auto_email_login_concurrency"] = max(
+        1,
+        min(task_concurrency, email_concurrency),
+    )
+
     pools = normalize_sms_provider_pools(
         config.get("sms_provider_pools"),
         legacy_provider=config.get("sms_provider") or "smsbower",
@@ -691,10 +707,16 @@ def is_protocol_pressure_error(value: Any) -> bool:
         marker in text
         for marker in (
             "ssleoferror",
+            "sslerror",
             "unexpected_eof",
             "tls connect",
             "connection reset",
+            "connection aborted",
+            "connection closed",
+            "remote end closed connection",
             "remote disconnected",
+            "server disconnected",
+            "curl: (56)",
             "status=429",
             "http 429",
             "too many requests",
@@ -814,7 +836,11 @@ class ProxyProtocolGate:
             state = self._state(key)
             now = float(self.now_fn())
             if success:
-                state.pressure_events.clear()
+                state.pressure_events = [
+                    observed
+                    for observed in state.pressure_events
+                    if 0 <= now - observed <= self.pressure_window_seconds
+                ]
                 state.success_streak += 1
                 if state.limit < state.ceiling and state.success_streak >= self.restore_successes:
                     state.limit += 1
@@ -2710,21 +2736,51 @@ class SmsCleanupQueue:
         value = f"{normalize_sms_provider_name(platform)}:{activation_id}"
         return hashlib.sha256(value.encode("utf-8", "replace")).hexdigest()[:20]
 
-    def _read_locked(self) -> list[dict[str, Any]]:
+    def _read_payload_locked(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         try:
             value = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, ValueError, json.JSONDecodeError):
-            return []
-        rows = value.get("items") if isinstance(value, dict) else value
-        return [dict(row) for row in rows or [] if isinstance(row, dict)]
+            return [], []
+        if isinstance(value, dict):
+            rows = value.get("pending")
+            if not isinstance(rows, list):
+                rows = value.get("items")
+            confirmed = value.get("confirmed")
+        else:
+            rows = value
+            confirmed = []
+        return (
+            [dict(row) for row in rows or [] if isinstance(row, dict)],
+            [dict(row) for row in confirmed or [] if isinstance(row, dict)],
+        )
 
-    def _write_locked(self, rows: list[dict[str, Any]]) -> None:
-        if not rows and not self.path.exists():
+    def _read_locked(self) -> list[dict[str, Any]]:
+        rows, _confirmed = self._read_payload_locked()
+        return rows
+
+    def _write_locked(
+        self,
+        rows: list[dict[str, Any]],
+        confirmed: list[dict[str, Any]] | None = None,
+    ) -> None:
+        if confirmed is None:
+            _pending, confirmed = self._read_payload_locked()
+        confirmed = list(confirmed or [])[-500:]
+        if not rows and not confirmed and not self.path.exists():
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
         temporary.write_text(
-            json.dumps({"version": 2, "items": rows}, ensure_ascii=False, indent=2),
+            json.dumps(
+                {
+                    "version": 3,
+                    "items": rows,
+                    "pending": rows,
+                    "confirmed": confirmed,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
             encoding="utf-8",
         )
         temporary.replace(self.path)
@@ -2748,7 +2804,9 @@ class SmsCleanupQueue:
         entry_id = self._entry_id(platform_name, activation)
         now = float(self.now_fn())
         with self.lock:
-            rows = self._read_locked()
+            rows, confirmed = self._read_payload_locked()
+            if any(row.get("id") == entry_id for row in confirmed):
+                return entry_id
             existing = next((row for row in rows if row.get("id") == entry_id), None)
             if existing is None:
                 rows.append(
@@ -2773,7 +2831,7 @@ class SmsCleanupQueue:
                     existing["task_id"] = str(task_id).strip()[:80]
                 if not existing.get("leased_at") and leased_at:
                     existing["leased_at"] = float(leased_at)
-            self._write_locked(rows)
+            self._write_locked(rows, confirmed)
             self.condition.notify_all()
         return entry_id
 
@@ -2817,21 +2875,38 @@ class SmsCleanupQueue:
                     "error_code": _safe_provider_token(error_code).lower(),
                 }
             with self.lock:
-                rows = self._read_locked()
+                rows, confirmed_rows = self._read_payload_locked()
+                confirmed_by_id = {
+                    str(row.get("id") or ""): dict(row)
+                    for row in confirmed_rows
+                    if str(row.get("id") or "")
+                }
                 kept: list[dict[str, Any]] = []
                 for row in rows:
                     entry_id = str(row.get("id") or "")
                     if entry_id in completed:
+                        confirmed_by_id[entry_id] = {
+                            "id": entry_id,
+                            "platform": normalize_sms_provider_name(row.get("platform")),
+                            "key_fingerprint": str(row.get("key_fingerprint") or "")[:20],
+                            "task_id": str(row.get("task_id") or "")[:80],
+                            "attempts": max(0, int(row.get("attempts") or 0)) + 1,
+                            "confirmed_at": int(current),
+                            "cancel_state": "confirmed",
+                            "refund_status": "provider_refund_accepted",
+                        }
                         continue
                     if entry_id in updates:
                         row.update(updates[entry_id])
                     kept.append(row)
-                self._write_locked(kept)
+                confirmed_rows = list(confirmed_by_id.values())[-500:]
+                self._write_locked(kept, confirmed_rows)
                 self.condition.notify_all()
         return {
             "processed": len(due),
             "completed": len(completed),
             "remaining": len(kept),
+            "confirmed": len(confirmed_rows),
         }
 
     def start_worker(self, handler: Callable[[dict[str, Any]], bool]) -> None:

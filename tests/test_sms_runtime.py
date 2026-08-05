@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import tempfile
 import threading
 import time
@@ -25,6 +26,7 @@ from mac_overrides.sms_runtime import (
     SmsRoutePolicy,
     confirm_herosms_cancellation,
     isolated_sms_get,
+    is_protocol_pressure_error,
     is_transient_openai_error,
     migrate_performance_config,
     normalize_sms_keys,
@@ -242,6 +244,14 @@ class SmsRuntimeTests(unittest.TestCase):
         })
         self.assertFalse(changed)
         self.assertEqual(saved_one["auto_email_login_concurrency"], 1)
+
+        clamped_email, changed = migrate_performance_config({
+            "performance_policy_version": PERFORMANCE_POLICY_VERSION,
+            "concurrency": 3,
+            "auto_email_login_concurrency": 5,
+        })
+        self.assertFalse(changed)
+        self.assertEqual(clamped_email["auto_email_login_concurrency"], 3)
 
         over_limit, changed = migrate_performance_config({
             "performance_policy_version": PERFORMANCE_POLICY_VERSION,
@@ -1801,6 +1811,32 @@ class SmsRuntimeTests(unittest.TestCase):
         gate.report("http://proxy-a:7897", success=True)
         self.assertEqual(gate.snapshot("http://proxy-a:7897")["limit"], 3)
 
+    def test_proxy_protocol_gate_keeps_pressure_events_across_success(self):
+        clock = [100.0]
+        gate = ProxyProtocolGate(
+            default_limit=5,
+            now_fn=lambda: clock[0],
+            launch_interval_seconds=0,
+        )
+
+        gate.report("proxy-a", "TLS connection reset")
+        clock[0] += 20
+        gate.report("proxy-a", success=True)
+        clock[0] += 20
+        gate.report("proxy-a", "HTTP 429")
+
+        self.assertEqual(gate.snapshot("proxy-a")["limit"], 4)
+
+    def test_protocol_pressure_classifier_covers_common_disconnect_shapes(self):
+        for error in (
+            "curl: (56) recv failure",
+            "remote end closed connection without response",
+            "server disconnected",
+            "SSLERROR during handshake",
+        ):
+            with self.subTest(error=error):
+                self.assertTrue(is_protocol_pressure_error(error))
+
     def test_proxy_protocol_gate_fake_clock_launches_at_one_second_offsets(self):
         clock = [100.0]
         gate = ProxyProtocolGate(
@@ -1902,6 +1938,9 @@ class SmsRuntimeTests(unittest.TestCase):
             first = queue.process(lambda _entry: False)
             self.assertEqual(first["processed"], 1)
             self.assertEqual(first["remaining"], 1)
+            pending_payload = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(len(pending_payload["pending"]), 1)
+            self.assertEqual(pending_payload["confirmed"], [])
 
             clock[0] += 61
             resumed = SmsCleanupQueue(path, now_fn=lambda: clock[0])
@@ -1909,6 +1948,14 @@ class SmsRuntimeTests(unittest.TestCase):
             second = resumed.process(lambda entry: seen.append(entry["id"]) or True)
             self.assertEqual(seen, [first_id])
             self.assertEqual(second["remaining"], 0)
+            confirmed_payload = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(confirmed_payload["pending"], [])
+            self.assertEqual(len(confirmed_payload["confirmed"]), 1)
+            self.assertEqual(
+                confirmed_payload["confirmed"][0]["refund_status"],
+                "provider_refund_accepted",
+            )
+            self.assertNotIn("private-order-a", str(confirmed_payload["confirmed"]))
 
     def test_sms_errors_never_expose_raw_keys(self):
         key = "secret/key+with-hyphen"
