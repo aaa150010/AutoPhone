@@ -458,6 +458,96 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(sentinel_calls[0][0], "reset")
         self.assertEqual(sentinel_calls[1][0], "token_for")
 
+    def test_real_phone_send_can_replace_timed_out_number_from_phone_otp_page(self):
+        calls = []
+        sentinel_calls = []
+
+        class FakeSession:
+            cookies = {"session": "present"}
+
+            def post(self, url, **kwargs):
+                calls.append((url, kwargs))
+                return {"_status": 200, "page": {"type": "phone_otp"}}
+
+        class FakeSentinel:
+            def reset(self, flow=""):
+                sentinel_calls.append(("reset", flow))
+
+            def token_for(self, flow, context):
+                sentinel_calls.append(("token_for", flow, dict(context)))
+                return {"token": "sentinel-value"}
+
+        transport = SimpleNamespace(
+            config={"sms_task_id": "task-phone-retry", "_auth_account_email": "user@example.test"},
+            account_email="user@example.test",
+            session=FakeSession(),
+            sentinel_provider=FakeSentinel(),
+            device_id="device-1",
+            proxy="http://127.0.0.1:7897",
+            _gptphone_page_type="add_phone",
+        )
+        self.module._AUTH_SESSIONS.clear("task-phone-retry")
+        try:
+            first = self.module._real_send_phone_number_otp(transport, "+15550001234", "sms")
+            self.assertEqual(transport._gptphone_page_type, "phone_otp")
+            second = self.module._real_send_phone_number_otp(transport, "+15550005678", "sms")
+        finally:
+            self.module._AUTH_SESSIONS.clear("task-phone-retry")
+
+        self.assertEqual(first["_status"], 200)
+        self.assertEqual(second["_status"], 200)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0][1]["json"], {"phone_number": "+15550001234"})
+        self.assertEqual(calls[1][1]["json"], {"phone_number": "+15550005678"})
+        headers = [
+            {key.lower(): value for key, value in call[1]["headers"].items()}
+            for call in calls
+        ]
+        self.assertEqual(
+            headers[0]["x-access-flow-invocation-id"],
+            headers[1]["x-access-flow-invocation-id"],
+        )
+        self.assertTrue(all("openai-sentinel-token" not in row for row in headers))
+        self.assertEqual([item[0] for item in sentinel_calls], ["reset", "token_for"] * 2)
+
+    def test_real_phone_send_invalid_context_stops_before_http_and_requires_fresh_oauth(self):
+        calls = []
+
+        class FakeSession:
+            cookies = {"session": "present"}
+
+            def post(self, url, **kwargs):
+                calls.append((url, kwargs))
+                return {"_status": 200}
+
+        transport = SimpleNamespace(
+            config={"sms_task_id": "task-phone-invalid", "_auth_account_email": "user@example.test"},
+            account_email="user@example.test",
+            session=FakeSession(),
+            proxy="",
+            _gptphone_page_type="consent",
+        )
+        self.module._AUTH_SESSIONS.clear("task-phone-invalid")
+        try:
+            with self.assertRaisesRegex(
+                self.module._codex_oauth_chain.CodexChainError,
+                "auth_context_page_mismatch",
+            ):
+                self.module._real_send_phone_number_otp(transport, "+15550001234", "sms")
+            snapshot = self.module._AUTH_SESSIONS.public_snapshot("task-phone-invalid")
+        finally:
+            self.module._AUTH_SESSIONS.clear("task-phone-invalid")
+
+        self.assertEqual(calls, [])
+        self.assertTrue(snapshot["invalid"])
+        self.assertTrue(snapshot["fresh_oauth_required"])
+        self.assertEqual(snapshot["current_stage"], "phone_submitting")
+        self.assertTrue(
+            self.module._is_auth_session_reset_failure(
+                error="auth_context_page_mismatch: stale page"
+            )
+        )
+
     def test_public_task_drops_composite_account_tokens_and_source_row(self):
         task = {
             "task_id": "task-1",
@@ -1347,10 +1437,11 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(task_states[0][1]["error"], message)
         self.assertEqual(logs, [(f"task-password [验证邮箱密码/email_password] {message}", "error")])
 
-    def test_account_banned_failure_is_terminal_damages_pool_and_never_enqueues_pixel(self):
+    def test_account_banned_failure_is_terminal_removes_pool_row_and_never_enqueues_pixel(self):
         module = self.module
         original_persist = module._ORIGINAL_PERSIST_RESULT
         original_retire = module._ORIGINAL_RETIRE_AFTER_FAILURE
+        original_remove = module._ORIGINAL_POOL_REMOVE_ENTRY
         original_queue = module._PIXEL_UPLOAD_QUEUE
         original_sms_web = module._SMS_WEB
         result_dir = Path(self.tempdir.name) / "banned-results"
@@ -1371,9 +1462,13 @@ class WebGuiSecurityTests(unittest.TestCase):
         class Pool:
             def __init__(self):
                 self.damaged = []
+                self.removed = []
 
             def mark_damaged_entry(self, entry, *, reason=""):
                 self.damaged.append((entry.email, reason))
+
+            def _update(self, callback):
+                return callback({"items": {}}, [])
 
         class Queue:
             def enqueue(self, *args):
@@ -1394,13 +1489,16 @@ class WebGuiSecurityTests(unittest.TestCase):
                 **kwargs,
             )
         )
-        entry = SimpleNamespace(email="banned@example.test")
+        entry = SimpleNamespace(key="banned-row", email="banned@example.test")
         pool = Pool()
         message = module._runtime_policy_ext.ACCOUNT_BANNED_MESSAGE
         try:
             module._ORIGINAL_PERSIST_RESULT = persist
             module._ORIGINAL_RETIRE_AFTER_FAILURE = lambda *_args, **_kwargs: self.fail(
                 "explicit account ban must not use generic retirement"
+            )
+            module._ORIGINAL_POOL_REMOVE_ENTRY = lambda target, removed, **_kwargs: (
+                target.removed.append(removed.key) or True
             )
             module._PIXEL_UPLOAD_QUEUE = Queue()
             module._SMS_WEB = SimpleNamespace(
@@ -1419,12 +1517,14 @@ class WebGuiSecurityTests(unittest.TestCase):
         finally:
             module._ORIGINAL_PERSIST_RESULT = original_persist
             module._ORIGINAL_RETIRE_AFTER_FAILURE = original_retire
+            module._ORIGINAL_POOL_REMOVE_ENTRY = original_remove
             module._PIXEL_UPLOAD_QUEUE = original_queue
             module._SMS_WEB = original_sms_web
 
         target = result_dir / "task-ban_banned_at_example.test.json"
         local_payload = json.loads(target.read_text(encoding="utf-8"))
-        self.assertEqual(pool.damaged, [(entry.email, message)])
+        self.assertEqual(pool.removed, [entry.key])
+        self.assertEqual(pool.damaged, [])
         self.assertEqual(persisted, [("account_banned", message)])
         self.assertEqual(local_payload["error"], message)
         self.assertEqual(local_payload["technical_error"], message)
@@ -1435,7 +1535,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(task_states[0][1]["status"], "account_banned")
         self.assertEqual(task_states[0][1]["error"], message)
         self.assertNotIn("private-token", json.dumps(task_states[0][1]))
-        self.assertEqual(logs, [(message, "error")])
+        self.assertEqual(logs, [(f"{message}；已从邮箱池移除", "error")])
         self.assertEqual(enqueued, [])
 
 

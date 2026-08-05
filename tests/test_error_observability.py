@@ -96,6 +96,17 @@ class ErrorObservabilityTests(unittest.TestCase):
         self.assertEqual(failure["error_code"], "email_login_failed")
         self.assertIn("connection reset", failure["technical_summary"])
 
+    def test_phone_context_failure_is_not_reported_as_openai_number_rejection(self):
+        failure = classify_failure(
+            error="auth_context_page_mismatch: 当前登录页面不是手机号验证页面",
+            progress={"code": "phone_acquiring"},
+        )
+
+        self.assertEqual(failure["node_code"], "phone_submitting")
+        self.assertEqual(failure["error_code"], "auth_context_page_mismatch")
+        self.assertIn("页面上下文无效", failure["public_message"])
+        self.assertNotIn("OpenAI 拒绝当前号码", failure["public_message"])
+
     def test_sms_route_and_key_pool_exhaustion_remain_distinguishable(self):
         routes = classify_failure(error="sms_smart_no_candidate")
         platforms = classify_failure(

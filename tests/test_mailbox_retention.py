@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import unittest
 from unittest.mock import patch
 
-from mac_overrides.mailbox_retention import preserve_consumed_entry
+from mac_overrides.mailbox_retention import preserve_consumed_entry, remove_banned_entry
 
 
 @dataclass
@@ -74,6 +74,40 @@ class MailboxRetentionTests(unittest.TestCase):
 
         self.assertFalse(changed)
         self.assertEqual(pool.state, {"items": {}})
+
+    def test_confirmed_ban_removes_exact_row_and_refreshes_line_bindings(self):
+        pool = FakePool()
+        first, second = pool.entries
+        pool.state["items"] = {
+            first.key: {"email": first.email, "line_no": 1},
+            second.key: {"email": second.email, "line_no": 2},
+        }
+
+        def original_remove(target_pool, entry, *, reason=""):
+            self.assertIs(target_pool, pool)
+            self.assertEqual(entry.key, first.key)
+            self.assertEqual(reason, "account_banned")
+            target_pool.entries = [
+                FakeEntry(second.key, second.email, 1),
+            ]
+            target_pool.pool_lines = ["second-secret-row"]
+            return True
+
+        changed = remove_banned_entry(pool, first, original_remove)
+
+        self.assertTrue(changed)
+        self.assertEqual(pool.pool_lines, ["second-secret-row"])
+        self.assertNotIn(first.key, pool.state["items"])
+        self.assertEqual(pool.state["items"][second.key]["line_no"], 1)
+
+    def test_confirmed_ban_does_not_touch_state_when_source_row_is_missing(self):
+        pool = FakePool()
+        original = dict(pool.state)
+
+        changed = remove_banned_entry(pool, pool.entries[0], lambda *_args, **_kwargs: False)
+
+        self.assertFalse(changed)
+        self.assertEqual(pool.state, original)
 
 
 if __name__ == "__main__":

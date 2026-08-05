@@ -22,19 +22,31 @@ const smsProviderDefaults: Record<string, string> = {
 
 function normalizeSmsProviderPools(value: any, legacy: any = {}): SmsProviderPool[] {
   const rows = Array.isArray(value) ? value : []
-  const normalized = rows.flatMap((row: any) => {
-    if (!row || typeof row !== 'object') return []
+  const byProvider = new Map<string, SmsProviderPool>()
+  rows.forEach((row: any) => {
+    if (!row || typeof row !== 'object') return
     const provider = String(row.provider || '').trim().toLowerCase()
-    if (!provider) return []
+    if (!provider) return
     const rawKeys = Array.isArray(row.api_keys) ? row.api_keys : [row.api_key || '']
     const keys = [...new Set<string>(rawKeys.map((key: unknown) => String(key || '').trim()).filter(Boolean))]
-    return [{
+    const previous = byProvider.get(provider)
+    if (previous) {
+      previous.enabled = previous.enabled || row.enabled !== false
+      const mergedKeys = [...new Set<string>([...previous.api_keys, ...keys]
+        .map(key => String(key || '').trim())
+        .filter(Boolean))]
+      previous.api_keys = mergedKeys.length ? mergedKeys : ['']
+      if (!previous.service) previous.service = String(row.service || smsProviderDefaults[provider] || 'dr').trim()
+      return
+    }
+    byProvider.set(provider, {
       provider,
       enabled: row.enabled !== false,
       api_keys: keys.length ? keys : [''],
       service: String(row.service || smsProviderDefaults[provider] || 'dr').trim(),
-    }]
+    })
   })
+  const normalized = [...byProvider.values()]
   if (normalized.length) return normalized
 
   const provider = String(legacy.sms_provider || 'smsbower').trim().toLowerCase() || 'smsbower'

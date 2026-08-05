@@ -206,25 +206,34 @@ def normalize_sms_provider_pools(
     """Normalize platform pools while accepting the pre-pool SMS settings."""
     rows = value if isinstance(value, (list, tuple)) else []
     pools: list[dict[str, Any]] = []
-    seen: set[str] = set()
+    by_provider: dict[str, dict[str, Any]] = {}
     for raw in rows:
         if not isinstance(raw, dict):
             continue
         provider = normalize_sms_provider_name(raw.get("provider"))
-        if not provider or provider in seen:
+        if not provider:
             continue
-        seen.add(provider)
         service = str(
             raw.get("service") or SMS_PROVIDER_DEFAULT_SERVICES.get(provider, "dr")
         ).strip() or SMS_PROVIDER_DEFAULT_SERVICES.get(provider, "dr")
-        pools.append(
-            {
-                "provider": provider,
-                "enabled": bool(raw.get("enabled", True)),
-                "api_keys": normalize_sms_keys(raw.get("api_keys")),
-                "service": service,
-            }
-        )
+        keys = normalize_sms_keys(raw.get("api_keys"))
+        existing = by_provider.get(provider)
+        if existing is not None:
+            existing["enabled"] = bool(existing.get("enabled")) or bool(raw.get("enabled", True))
+            existing["api_keys"] = normalize_sms_keys(
+                [*(existing.get("api_keys") or []), *keys]
+            )
+            if not existing.get("service"):
+                existing["service"] = service
+            continue
+        pool = {
+            "provider": provider,
+            "enabled": bool(raw.get("enabled", True)),
+            "api_keys": keys,
+            "service": service,
+        }
+        by_provider[provider] = pool
+        pools.append(pool)
     if pools:
         return pools
 

@@ -196,7 +196,38 @@ class SmsWebTests(unittest.TestCase):
             "transient_server",
         )
         self.assertEqual(self.integration.classify_error("phone_otp_empty"), "timeout")
+        self.assertEqual(
+            self.integration.classify_error("auth_context_page_mismatch: stale page"),
+            "auth_context",
+        )
         self.assertEqual(self.integration.classify_error("permanent failure"), "other")
+
+    def test_auth_context_failure_releases_route_without_scoring_it(self):
+        scored = []
+        self.integration.original_record_result = lambda *args: scored.append(args)
+        candidate = SimpleNamespace(
+            platform="smsbower",
+            country="1",
+            provider_id="101",
+        )
+        key = ("smsbower", "1", "101")
+        selector = SimpleNamespace(
+            lock=threading.RLock(),
+            stats={key: {"inflight": 1, "fail": 0}},
+            country_stats={},
+            _route_inflight=lambda _row, _now: 0,
+        )
+
+        self.integration.smart_record_result(
+            selector,
+            candidate,
+            False,
+            "auth_context_cookies_missing: session expired",
+        )
+
+        self.assertEqual(scored, [])
+        self.assertNotIn("inflight", selector.stats[key])
+        self.assertEqual(selector.stats[key]["fail"], 0)
 
     def test_route_results_cool_unavailable_route_and_remember_success(self):
         logs = FakeLogs()

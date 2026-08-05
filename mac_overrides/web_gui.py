@@ -84,6 +84,7 @@ _spec.loader.exec_module(_module)
 
 _ORIGINAL_POOL_ENTRIES_UNLOCKED = _runtime.MailboxPool._entries_unlocked
 _ORIGINAL_POOL_LEASE = _runtime.MailboxPool.lease
+_ORIGINAL_POOL_REMOVE_ENTRY = _runtime.MailboxPool.remove_entry
 _ORIGINAL_OUTLOOK_OTP_PROVIDER = _runtime.OutlookMailboxOtpProvider
 _ORIGINAL_MAILBOX_URL_SNAPSHOT = _runtime.MailboxUrlCodeProvider.snapshot
 _ORIGINAL_MAILBOX_URL_SAME_AS_BASELINE = _runtime.MailboxUrlCodeProvider._same_as_baseline
@@ -207,6 +208,19 @@ def _is_oauth_session_invalid_failure(result=None, error=""):
     return any(
         _auth_session_runtime_ext.is_session_invalid(value.get(key))
         for key in ("error", "phase2_error", "technical_error")
+    )
+
+
+def _is_auth_session_reset_failure(result=None, error=""):
+    if _is_oauth_session_invalid_failure(result, error):
+        return True
+    values = [error]
+    if isinstance(result, dict):
+        values.extend(result.get(key) for key in ("error", "phase2_error", "technical_error"))
+    text = " ".join(str(value or "").lower() for value in values)
+    return any(
+        marker in text
+        for marker in ("auth_context_page_mismatch", "auth_context_cookies_missing")
     )
 
 
@@ -1141,7 +1155,7 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
     batch_id = str((settings or {}).get("batch_id") or "").strip()[:80]
     batch_started_at = _int_value((settings or {}).get("batch_started_at"), 0, minimum=0)
     if isinstance(result, dict):
-        if _is_oauth_session_invalid_failure(result, error):
+        if _is_auth_session_reset_failure(result, error):
             result["resume_stage"] = "fresh_oauth"
         if batch_id:
             result["batch_id"] = batch_id
@@ -1269,7 +1283,7 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
 
 
 def _patched_retire_after_failure(self, settings, pool, entry, task_id, result, error):
-    if _is_oauth_session_invalid_failure(result, error):
+    if _is_auth_session_reset_failure(result, error):
         if isinstance(result, dict):
             result["resume_stage"] = "fresh_oauth"
         key = str(getattr(entry, "key", "") or getattr(entry, "email", "") or "").strip()
@@ -1335,7 +1349,6 @@ def _patched_retire_after_failure(self, settings, pool, entry, task_id, result, 
         technical_detail = _safe_runtime_error(technical_source)
     token = _ACCOUNT_BANNED_DETAIL_CONTEXT.set(str(technical_detail or message)[:1000])
     try:
-        pool.mark_damaged_entry(entry, reason=message)
         self._persist_result(
             settings,
             task_id,
@@ -1346,6 +1359,20 @@ def _patched_retire_after_failure(self, settings, pool, entry, task_id, result, 
         )
     finally:
         _ACCOUNT_BANNED_DETAIL_CONTEXT.reset(token)
+
+    removal_error = ""
+    try:
+        removed_from_pool = _mailbox_retention_ext.remove_banned_entry(
+            pool,
+            entry,
+            _ORIGINAL_POOL_REMOVE_ENTRY,
+            reason="account_banned",
+        )
+    except Exception as exc:
+        removed_from_pool = False
+        removal_error = _safe_runtime_error(exc)
+    if not removed_from_pool:
+        pool.mark_damaged_entry(entry, reason=message)
 
     public_result = _runtime._public_result(result if isinstance(result, dict) else {})
     if isinstance(public_result, dict):
@@ -1362,7 +1389,15 @@ def _patched_retire_after_failure(self, settings, pool, entry, task_id, result, 
         result=public_result,
     )
     try:
-        self._log(message, "error")
+        if removed_from_pool:
+            self._log(f"{message}；已从邮箱池移除", "error")
+        else:
+            detail = removal_error or "未找到对应的邮箱源行"
+            self._log(
+                f"{task_id} [检查 OpenAI 账号状态/account_banned] {message}；"
+                f"邮箱池移除失败：{detail}；已标记损坏",
+                "error",
+            )
     except Exception:
         pass
     return None
@@ -1390,7 +1425,13 @@ def _real_send_phone_number_otp(self, phone, channel="sms"):
     try:
         _auth_request_runtime_ext.validate_phone_context(self, _AUTH_SESSIONS)
     except _auth_request_runtime_ext.AuthRequestContextError as exc:
-        return {"_status": 0, "error": f"{exc.code}: {exc}"}
+        _auth_request_runtime_ext.invalidate_auth_session(
+            self,
+            _AUTH_SESSIONS,
+            f"{exc.code}: {exc}",
+            stage="phone_submitting",
+        )
+        raise _codex_oauth_chain.CodexChainError(f"{exc.code}: {exc}") from exc
 
     request_context = _auth_request_runtime_ext.begin_request(
         self,
@@ -1715,7 +1756,7 @@ def _run_codex_after_registration(
         email_otp_provider=email_otp_provider,
         phone_otp_provider=phone_otp_provider,
     )
-    if isinstance(result, dict) and _auth_session_runtime_ext.is_session_invalid(result):
+    if isinstance(result, dict) and _is_auth_session_reset_failure(result):
         result = dict(result)
         result["resume_stage"] = "fresh_oauth"
         runtime_config.pop("phase1_active_session", None)

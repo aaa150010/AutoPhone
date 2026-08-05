@@ -20,7 +20,20 @@ except ImportError:  # Loaded as a top-level runtime override.
     from auth_session_runtime import AuthSessionRegistry, _short_fingerprint, _safe_path  # type: ignore[no-redef]
 
 
-PHONE_PAGE_TYPES = frozenset({"add_phone", "contact_verification", "phone_number_collection"})
+# OpenAI keeps the same authenticated transport while moving from the number
+# entry page to the SMS code page. A timed-out SMS order may therefore leave
+# the transport on an OTP page when the next number is submitted.
+PHONE_PAGE_TYPES = frozenset(
+    {
+        "add_phone",
+        "contact_verification",
+        "phone_number_collection",
+        "phone_otp",
+        "phone-verification",
+        "phone_number_verification",
+        "sms_otp",
+    }
+)
 
 
 class AuthRequestContextError(RuntimeError):

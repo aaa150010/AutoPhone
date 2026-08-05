@@ -76,7 +76,7 @@ CHAIN_STATE_STAGES = {
     "EMAIL_OTP_REQUIRED": "email_code_waiting",
     "EMAIL_OTP_VERIFIED": "email_code_verifying",
     "PHONE_REQUIRED": "phone_acquiring",
-    "PHONE_SEND_REJECTED": "phone_acquiring",
+    "PHONE_SEND_REJECTED": "phone_submitting",
     "PHONE_OTP_SENT": "sms_waiting",
     "PHONE_OTP_VERIFIED": "finalizing_profile",
     "CONSENT_REQUIRED": "finalizing_callback",

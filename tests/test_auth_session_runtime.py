@@ -3,7 +3,12 @@ from __future__ import annotations
 import unittest
 from types import SimpleNamespace
 
-from mac_overrides.auth_request_runtime import begin_request, finish_request
+from mac_overrides.auth_request_runtime import (
+    AuthRequestContextError,
+    begin_request,
+    finish_request,
+    validate_phone_context,
+)
 from mac_overrides.auth_session_runtime import AuthSessionRegistry, is_session_invalid
 
 
@@ -12,6 +17,37 @@ class AuthSessionRuntimeTests(unittest.TestCase):
         self.assertTrue(is_session_invalid("oauth_session_invalid: Your sign-in session is no longer valid"))
         self.assertTrue(is_session_invalid({"code": "oauth_session_invalid", "status": 401}))
         self.assertFalse(is_session_invalid({"code": "phone_send_rejected"}))
+
+    def test_phone_context_accepts_number_entry_and_otp_pages(self):
+        for page_type in (
+            "add_phone",
+            "contact_verification",
+            "phone_number_collection",
+            "phone_otp",
+            "phone-verification",
+            "phone_number_verification",
+            "sms_otp",
+        ):
+            with self.subTest(page_type=page_type):
+                transport = SimpleNamespace(
+                    config={"sms_task_id": f"task-{page_type}"},
+                    session=SimpleNamespace(cookies={"session": "present"}),
+                    _gptphone_page_type=page_type,
+                )
+                context = validate_phone_context(transport, AuthSessionRegistry())
+                self.assertEqual(context.task_id, f"task-{page_type}")
+
+    def test_phone_context_still_rejects_unrelated_auth_page(self):
+        transport = SimpleNamespace(
+            config={"sms_task_id": "task-consent"},
+            session=SimpleNamespace(cookies={"session": "present"}),
+            _gptphone_page_type="consent",
+        )
+
+        with self.assertRaisesRegex(AuthRequestContextError, "不是手机号验证页面") as raised:
+            validate_phone_context(transport, AuthSessionRegistry())
+
+        self.assertEqual(raised.exception.code, "auth_context_page_mismatch")
 
     def test_invalidation_keeps_count_across_fresh_generation_and_cancels_sms(self):
         cancellations = []

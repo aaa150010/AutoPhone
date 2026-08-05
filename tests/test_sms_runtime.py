@@ -254,6 +254,17 @@ class SmsRuntimeTests(unittest.TestCase):
         self.assertEqual([pool["provider"] for pool in pools], ["smsbower", "herosms", "5sim"])
         self.assertEqual(pools[2]["service"], "openai")
 
+    def test_duplicate_provider_pool_rows_merge_keys_instead_of_dropping_one(self):
+        pools = normalize_sms_provider_pools([
+            {"provider": "smsbower", "api_keys": ["key-a"], "enabled": True},
+            {"provider": "SMSBower", "api_keys": ["key-b"], "enabled": False},
+        ])
+
+        self.assertEqual(len(pools), 1)
+        self.assertEqual(pools[0]["provider"], "smsbower")
+        self.assertEqual(pools[0]["api_keys"], ["key-a", "key-b"])
+        self.assertTrue(pools[0]["enabled"])
+
     def test_multi_platform_registry_preflight_isolated_status_and_secret_redaction(self):
         secret = "hero-secret/key"
         factory = FakeMultiPlatformFactory({

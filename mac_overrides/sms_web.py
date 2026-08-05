@@ -507,6 +507,11 @@ class SmsWebIntegration:
         text = str(error or "").lower()
         if any(
             marker in text
+            for marker in ("auth_context_page_mismatch", "auth_context_cookies_missing")
+        ):
+            return "auth_context"
+        if any(
+            marker in text
             for marker in ("phone_otp_empty", "no sms code", "no verification code", "未收到验证码")
         ):
             return "timeout"
@@ -590,7 +595,7 @@ class SmsWebIntegration:
 
     def smart_record_result(self, selector: Any, candidate: Any, ok: bool, error: Any = "") -> Any:
         kind = self.classify_error(error)
-        if not ok and kind in {"transient_server", "auth_session"}:
+        if not ok and kind in {"transient_server", "auth_session", "auth_context"}:
             self._release_route_without_score(selector, candidate)
             return None
         result = self.original_record_result(selector, candidate, ok, error)

@@ -31,6 +31,7 @@ class TaskProgressTests(unittest.TestCase):
         self.assertEqual(stage_for_chain_state("CONSENT_REQUIRED"), "finalizing_callback")
         self.assertEqual(stage_for_chain_state("CALLBACK_RECEIVED"), "finalizing_token")
         self.assertEqual(stage_for_chain_state("TOKEN_EXCHANGED"), "finalizing_upload")
+        self.assertEqual(stage_for_chain_state("PHONE_SEND_REJECTED"), "phone_submitting")
         self.assertEqual(stage_for_chain_state("FAILED"), None)
 
         self.tracker.observe_task_state("T001", "queued")

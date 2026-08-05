@@ -1,9 +1,9 @@
-"""Keep successful mailbox source rows while retiring them from future runs."""
+"""Mailbox source-row retention policies for terminal task outcomes."""
 
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Callable
 
 
 def preserve_consumed_entry(pool: Any, entry: Any, *, reason: str = "sub2_uploaded") -> bool:
@@ -37,4 +37,40 @@ def preserve_consumed_entry(pool: Any, entry: Any, *, reason: str = "sub2_upload
     return bool(pool._update(consume_item))
 
 
-__all__ = ["preserve_consumed_entry"]
+def remove_banned_entry(
+    pool: Any,
+    entry: Any,
+    remove_fn: Callable[..., Any],
+    *,
+    reason: str = "account_banned",
+) -> bool:
+    """Remove one confirmed-banned source row and refresh remaining line bindings."""
+    wanted_key = str(getattr(entry, "key", "") or "").strip()
+    if not wanted_key:
+        return False
+    if not bool(remove_fn(pool, entry, reason=str(reason or "account_banned")[:180])):
+        return False
+
+    def refresh_line_bindings(state: dict[str, Any], entries: list[Any]) -> bool:
+        items = state.get("items") if isinstance(state.get("items"), dict) else {}
+        current = {
+            str(getattr(candidate, "key", "") or "").strip(): candidate
+            for candidate in entries
+            if str(getattr(candidate, "key", "") or "").strip()
+        }
+        items.pop(wanted_key, None)
+        for key, item in items.items():
+            candidate = current.get(str(key))
+            if candidate is None or not isinstance(item, dict):
+                continue
+            item["line_no"] = int(getattr(candidate, "line_no", 0) or 0)
+            email = str(getattr(candidate, "email", "") or "").strip().lower()
+            if email:
+                item["email"] = email
+        state["items"] = items
+        return True
+
+    return bool(pool._update(refresh_line_bindings))
+
+
+__all__ = ["preserve_consumed_entry", "remove_banned_entry"]
