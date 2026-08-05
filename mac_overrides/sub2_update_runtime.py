@@ -209,11 +209,142 @@ def update_existing_sub2_account(
 
     current_data = _detail_data(current)
     current_credentials = current_data.get("credentials")
-    merged_credentials = dict(current_credentials) if isinstance(current_credentials, Mapping) else {}
+    original_credentials = (
+        dict(current_credentials) if isinstance(current_credentials, Mapping) else {}
+    )
+    merged_credentials = dict(original_credentials)
     merged_credentials.update(credentials_payload)
     current_extra = current_data.get("extra")
-    merged_extra = dict(current_extra) if isinstance(current_extra, Mapping) else {}
+    original_extra = dict(current_extra) if isinstance(current_extra, Mapping) else {}
+    merged_extra = dict(original_extra)
     merged_extra.update(extra)
+
+    update_url = f"{base}/api/v1/admin/accounts/{urllib.parse.quote(remote_id, safe='')}"
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    def put_snapshot(credentials_value: Mapping[str, Any], extra_value: Mapping[str, Any]) -> Any:
+        return dependencies.put(
+            update_url,
+            json={
+                "credentials": dict(credentials_value),
+                "extra": dict(extra_value),
+            },
+            headers=headers,
+            timeout=30,
+            **dict(dependencies.requests_kwargs(upload_proxy) or {}),
+        )
+
+    def previous_snapshot_matches(detail: Any) -> bool:
+        if not _binding_matches(detail, remote_id, normalized_email):
+            return False
+        data = _detail_data(detail)
+        actual_credentials = data.get("credentials")
+        actual_extra = data.get("extra")
+        return bool(
+            isinstance(actual_credentials, Mapping)
+            and isinstance(actual_extra, Mapping)
+            and dict(actual_credentials) == original_credentials
+            and dict(actual_extra) == original_extra
+        )
+
+    def attempted_snapshot_matches(detail: Any) -> bool:
+        if not _binding_matches(detail, remote_id, normalized_email):
+            return False
+        actual_credentials = _detail_data(detail).get("credentials")
+        if not isinstance(actual_credentials, Mapping):
+            return False
+        return all(
+            _clean(actual_credentials.get(key)) == _clean(merged_credentials.get(key))
+            for key in ("access_token", "refresh_token", "id_token")
+        )
+
+    unchecked = object()
+
+    def failure_after_update(
+        code: str,
+        message: str,
+        *,
+        http_status: int | None = None,
+        observed_detail: Any = unchecked,
+    ) -> dict[str, Any]:
+        preserved = False
+        rollback_attempted = False
+        rollback_conflict = False
+        observed = observed_detail
+        if observed_detail is not unchecked:
+            preserved = previous_snapshot_matches(observed_detail)
+        else:
+            try:
+                observed = dependencies.fetch_detail(
+                    base,
+                    admin_token,
+                    remote_id,
+                    log_fn=log_fn,
+                    proxy=upload_proxy,
+                )
+                preserved = previous_snapshot_matches(observed)
+            except Exception:
+                observed = unchecked
+                preserved = False
+
+        if (
+            not preserved
+            and observed is not unchecked
+            and _binding_matches(observed, remote_id, normalized_email)
+            and not attempted_snapshot_matches(observed)
+        ):
+            rollback_conflict = True
+
+        for _attempt in range(2):
+            if preserved or rollback_conflict:
+                break
+            rollback_attempted = True
+            try:
+                put_snapshot(original_credentials, original_extra)
+            except Exception:
+                pass
+            try:
+                restored = dependencies.fetch_detail(
+                    base,
+                    admin_token,
+                    remote_id,
+                    log_fn=log_fn,
+                    proxy=upload_proxy,
+                )
+                preserved = previous_snapshot_matches(restored)
+            except Exception:
+                preserved = False
+
+        if log_fn is not None:
+            try:
+                if rollback_conflict:
+                    rollback_message = (
+                        "  [SUB2] 更新失败且远端状态已发生其他变化，已停止旧快照回滚"
+                    )
+                    rollback_level = "error"
+                elif preserved:
+                    rollback_message = "  [SUB2] 更新失败，原账号旧凭据已确认保留"
+                    rollback_level = "warn"
+                else:
+                    rollback_message = (
+                        "  [SUB2] 更新失败且旧凭据回滚未确认，请人工核对原账号"
+                    )
+                    rollback_level = "error"
+                log_fn(
+                    rollback_message,
+                    rollback_level,
+                )
+            except Exception:
+                pass
+        if rollback_conflict:
+            message = f"{message}；远端状态已被其他更新改变，未执行旧快照回滚"
+        elif not preserved:
+            message = f"{message}；旧凭据自动回滚未确认，请人工核对原账号"
+        result = _failure(code, message, remote_id, http_status=http_status)
+        result["sub2_rollback_attempted"] = rollback_attempted
+        result["sub2_rollback_conflict"] = rollback_conflict
+        result["sub2_previous_state_preserved"] = preserved
+        return result
 
     if log_fn is not None:
         try:
@@ -221,23 +352,19 @@ def update_existing_sub2_account(
         except Exception:
             pass
     try:
-        response = dependencies.put(
-            f"{base}/api/v1/admin/accounts/{urllib.parse.quote(remote_id, safe='')}",
-            json={"credentials": merged_credentials, "extra": merged_extra},
-            headers={"Authorization": f"Bearer {admin_token}"},
-            timeout=30,
-            **dict(dependencies.requests_kwargs(upload_proxy) or {}),
-        )
+        response = put_snapshot(merged_credentials, merged_extra)
     except Exception:
-        return _failure("sub2_update_existing_failed", "SUB2 原账号更新请求失败", remote_id)
+        return failure_after_update(
+            "sub2_update_existing_failed",
+            "SUB2 原账号更新请求失败",
+        )
 
     update_payload = _response_json(response)
     update_ok, http_status = _response_ok(response, update_payload)
     if not update_ok:
-        return _failure(
+        return failure_after_update(
             "sub2_update_existing_failed",
             f"SUB2 原账号更新失败（HTTP {http_status or 'unknown'}）",
-            remote_id,
             http_status=http_status or None,
         )
 
@@ -252,10 +379,10 @@ def update_existing_sub2_account(
     except Exception:
         refreshed = {}
     if not refreshed or not _binding_matches(refreshed, remote_id, normalized_email):
-        return _failure(
+        return failure_after_update(
             "sub2_update_verification_failed",
             "SUB2 原账号更新后回查失败",
-            remote_id,
+            observed_detail=refreshed,
         )
 
     try:
@@ -266,10 +393,10 @@ def update_existing_sub2_account(
             allow_unknown=False,
         )
     except Exception:
-        return _failure(
+        return failure_after_update(
             "sub2_update_group_verification_failed",
             "SUB2 原账号更新后分组校验失败",
-            remote_id,
+            observed_detail=refreshed,
         )
 
     try:
@@ -288,10 +415,10 @@ def update_existing_sub2_account(
         and _clean(extra_id) == expected_chatgpt_id
     )
     if not identity_verified:
-        return _failure(
+        return failure_after_update(
             "sub2_update_identity_verification_failed",
             "SUB2 原账号更新后 OpenAI 身份校验失败",
-            remote_id,
+            observed_detail=refreshed,
         )
 
     return {

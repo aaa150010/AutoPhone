@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from dataclasses import replace
 from types import SimpleNamespace
 import unittest
@@ -26,7 +27,6 @@ class FakeResponse:
 
 class Sub2ExistingAccountUpdateTests(unittest.TestCase):
     def dependencies(self, *, response=None, bound_email=EMAIL):
-        calls = SimpleNamespace(puts=[], fetches=[], posts=[])
         before = {
             "data": {
                 "id": ACCOUNT_ID,
@@ -45,29 +45,16 @@ class Sub2ExistingAccountUpdateTests(unittest.TestCase):
                 },
             }
         }
-        after = {
-            "data": {
-                "id": ACCOUNT_ID,
-                "name": bound_email,
-                "group_ids": [7],
-                "credentials": {
-                    "email": bound_email,
-                    "access_token": "new-access",
-                    "chatgpt_account_id": CHATGPT_ACCOUNT_ID,
-                    "account_id": CHATGPT_ACCOUNT_ID,
-                },
-                "extra": {
-                    "email": bound_email,
-                    "chatgpt_account_id": CHATGPT_ACCOUNT_ID,
-                    "account_id": CHATGPT_ACCOUNT_ID,
-                },
-            }
-        }
-        details = [before, after]
+        calls = SimpleNamespace(
+            puts=[],
+            fetches=[],
+            posts=[],
+            remote=copy.deepcopy(before["data"]),
+        )
 
         def fetch_detail(_base, _token, account_id, **_kwargs):
             calls.fetches.append(account_id)
-            return details.pop(0) if details else after
+            return {"data": copy.deepcopy(calls.remote)}
 
         def extract_fields(_credentials, *, exchange_data=None):
             value = exchange_data or {}
@@ -87,7 +74,15 @@ class Sub2ExistingAccountUpdateTests(unittest.TestCase):
 
         def put(url, **kwargs):
             calls.puts.append((url, kwargs))
-            return response or FakeResponse()
+            active_response = response or FakeResponse()
+            payload = kwargs.get("json") or {}
+            if (
+                200 <= int(active_response.status_code) < 300
+                and active_response.payload.get("code") in (None, 0)
+            ):
+                calls.remote["credentials"] = copy.deepcopy(payload.get("credentials") or {})
+                calls.remote["extra"] = copy.deepcopy(payload.get("extra") or {})
+            return active_response
 
         dependencies = Sub2UpdateDependencies(
             get_admin_token=lambda *_args, **_kwargs: "admin-token",
@@ -167,6 +162,75 @@ class Sub2ExistingAccountUpdateTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["error_code"], "sub2_update_existing_failed")
         self.assertEqual(result["http_status"], 500)
+        self.assertEqual(len(calls.puts), 1)
+        self.assertEqual(calls.posts, [])
+        self.assertFalse(result["sub2_rollback_attempted"])
+        self.assertTrue(result["sub2_previous_state_preserved"])
+        self.assertEqual(calls.remote["credentials"]["access_token"], "old-access")
+
+    def test_ambiguous_put_exception_restores_previous_credentials(self):
+        dependencies, calls = self.dependencies()
+        attempts = [0]
+
+        def ambiguous_put(url, **kwargs):
+            attempts[0] += 1
+            calls.puts.append((url, kwargs))
+            payload = kwargs.get("json") or {}
+            calls.remote["credentials"] = copy.deepcopy(payload.get("credentials") or {})
+            calls.remote["extra"] = copy.deepcopy(payload.get("extra") or {})
+            raise RuntimeError(
+                "connection closed after update write"
+                if attempts[0] == 1
+                else "connection closed after rollback write"
+            )
+
+        result = update_existing_sub2_account(
+            config=self.config(),
+            credentials=self.credentials(),
+            email=EMAIL,
+            account_id=ACCOUNT_ID,
+            upload_proxy="",
+            log_fn=None,
+            dependencies=replace(dependencies, put=ambiguous_put),
+        )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "sub2_update_existing_failed")
+        self.assertTrue(result["sub2_rollback_attempted"])
+        self.assertTrue(result["sub2_previous_state_preserved"])
+        self.assertEqual(calls.remote["credentials"]["access_token"], "old-access")
+        self.assertNotIn("refresh_token", calls.remote["credentials"])
+        self.assertEqual(len(calls.puts), 2)
+        self.assertEqual(calls.posts, [])
+
+    def test_failed_update_does_not_rollback_over_a_concurrent_remote_change(self):
+        dependencies, calls = self.dependencies()
+
+        def conflicting_put(url, **kwargs):
+            calls.puts.append((url, kwargs))
+            calls.remote["credentials"] = {
+                **calls.remote["credentials"],
+                "access_token": "external-access",
+                "refresh_token": "external-refresh",
+                "id_token": "external-id",
+            }
+            return FakeResponse(500, {"code": 500})
+
+        result = update_existing_sub2_account(
+            config=self.config(),
+            credentials=self.credentials(),
+            email=EMAIL,
+            account_id=ACCOUNT_ID,
+            upload_proxy="",
+            log_fn=None,
+            dependencies=replace(dependencies, put=conflicting_put),
+        )
+
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["sub2_rollback_attempted"])
+        self.assertTrue(result["sub2_rollback_conflict"])
+        self.assertFalse(result["sub2_previous_state_preserved"])
+        self.assertEqual(calls.remote["credentials"]["access_token"], "external-access")
         self.assertEqual(len(calls.puts), 1)
         self.assertEqual(calls.posts, [])
 
@@ -257,6 +321,7 @@ class Sub2ExistingAccountUpdateTests(unittest.TestCase):
                 "name": EMAIL,
                 "credentials": {
                     "email": EMAIL,
+                    "access_token": "old-access",
                     "chatgpt_account_id": CHATGPT_ACCOUNT_ID,
                 },
                 "extra": {
@@ -268,9 +333,15 @@ class Sub2ExistingAccountUpdateTests(unittest.TestCase):
 
         dependencies, calls = self.dependencies()
         details = [before, {}]
+
+        def verification_fetch(*_args, **_kwargs):
+            if details:
+                return copy.deepcopy(details.pop(0))
+            return {"data": copy.deepcopy(calls.remote)}
+
         verification_dependencies = replace(
             dependencies,
-            fetch_detail=lambda *_args, **_kwargs: details.pop(0),
+            fetch_detail=verification_fetch,
         )
         verification = update_existing_sub2_account(
             config=self.config(),
@@ -315,9 +386,20 @@ class Sub2ExistingAccountUpdateTests(unittest.TestCase):
         self.assertEqual(verification["error_code"], "sub2_update_verification_failed")
         self.assertEqual(group["error_code"], "sub2_update_group_verification_failed")
         self.assertEqual(identity["error_code"], "sub2_update_identity_verification_failed")
-        for branch_calls in (calls, group_calls, identity_calls):
-            self.assertEqual(len(branch_calls.puts), 1)
+        for result, branch_calls in (
+            (verification, calls),
+            (group, group_calls),
+            (identity, identity_calls),
+        ):
+            self.assertTrue(result["sub2_rollback_attempted"])
+            self.assertTrue(result["sub2_previous_state_preserved"])
+            self.assertEqual(len(branch_calls.puts), 2)
             self.assertEqual(branch_calls.posts, [])
+            rollback_payload = branch_calls.puts[-1][1]["json"]
+            self.assertEqual(rollback_payload["credentials"]["access_token"], "old-access")
+            self.assertNotIn("refresh_token", rollback_payload["credentials"])
+            self.assertEqual(branch_calls.remote["credentials"], rollback_payload["credentials"])
+            self.assertEqual(branch_calls.remote["extra"], rollback_payload["extra"])
 
 
 if __name__ == "__main__":
