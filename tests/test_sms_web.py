@@ -312,14 +312,11 @@ class SmsWebTests(unittest.TestCase):
             _route_inflight=lambda _row, _now: 0,
         )
 
-        def update_shared(route, route_update, country_update):
+        def update_shared(route, route_update):
             persisted_keys.append(route)
-            return (
-                route_update(dict(selector.stats.get(route) or {})),
-                country_update(dict(selector.country_stats.get(route[0]) or {})),
-            )
+            return route_update(dict(selector.stats.get(route) or {}))
 
-        selector._update_shared_route_and_country = update_shared
+        selector._update_shared_stats = update_shared
 
         self.integration.smart_record_result(
             selector,
@@ -341,31 +338,39 @@ class SmsWebTests(unittest.TestCase):
             "oauth_session_invalid: sign-in session is no longer valid",
             "The server had an error processing your request",
             "sms_provider_poll_failed: TLS connection reset",
+            RuntimeError("TLS handshake failed"),
+            ConnectionError("socket closed"),
+            RuntimeError("ProxyError: proxy tunnel failed"),
+            RuntimeError("curl: (56) recv failure"),
+            "HTTP 429",
+            "status=429",
+            {"_status": 429, "error": "too many requests"},
+            "too many requests",
         )
-        for pool, error in zip(("main", "semi", "explore"), errors, strict=True):
-            with self.subTest(pool=pool, error=error):
+        for index, error in enumerate(errors):
+            with self.subTest(error=error):
                 key = ("37", "3237")
                 persisted_keys = []
                 selector = SimpleNamespace(
                     lock=threading.RLock(),
                     stats={key: {"inflight": 1, "fail": 4}},
-                    country_stats={"37": {"fail": 4}},
+                    country_stats={"37": {"fail": 4, "updated_at": 123.0}},
                     _route_inflight=lambda _row, _now: 0,
                 )
 
-                def update_shared(route, route_update, country_update):
+                def update_shared(route, route_update):
                     persisted_keys.append(route)
-                    return (
-                        route_update(dict(selector.stats.get(route) or {})),
-                        country_update(dict(selector.country_stats.get(route[0]) or {})),
-                    )
+                    return route_update(dict(selector.stats.get(route) or {}))
 
-                selector._update_shared_route_and_country = update_shared
+                selector._update_shared_stats = update_shared
+                selector._update_shared_route_and_country = lambda *_args: self.fail(
+                    "route-neutral release must not update country stats"
+                )
                 scored = []
                 self.integration.original_record_result = lambda *args: scored.append(args)
                 candidate = SimpleNamespace(
                     platform="smsbower",
-                    pool=pool,
+                    pool=f"pool-{index}",
                     country="37",
                     provider_id="3237",
                 )
@@ -377,6 +382,10 @@ class SmsWebTests(unittest.TestCase):
                 self.assertEqual(selector.stats[key]["fail"], 4)
                 self.assertNotIn("inflight", selector.stats[key])
                 self.assertNotIn("cooldown_until", selector.stats[key])
+                self.assertEqual(
+                    selector.country_stats["37"],
+                    {"fail": 4, "updated_at": 123.0},
+                )
 
     def test_phone_context_preflight_runs_before_paid_number_allocation(self):
         calls = []
@@ -439,11 +448,11 @@ class SmsWebTests(unittest.TestCase):
             _route_inflight=lambda row, _now: int(row.get("inflight") or 0),
         )
 
-        def update_shared(route, route_update, country_update):
+        def update_shared(route, route_update):
             persisted_keys.append(route)
-            return route_update(dict(selector.stats.get(route) or {})), country_update({})
+            return route_update(dict(selector.stats.get(route) or {}))
 
-        selector._update_shared_route_and_country = update_shared
+        selector._update_shared_stats = update_shared
         scored = []
         self.integration.original_record_result = (
             lambda *_args, **_kwargs: scored.append(True)
@@ -481,13 +490,11 @@ class SmsWebTests(unittest.TestCase):
             _route_inflight=lambda _row, _now: 0,
         )
 
-        def update_shared(key, route_update, country_update):
+        def update_shared(key, route_update):
             persisted_keys.append(key)
-            route_row = route_update(dict(selector.stats.get(key) or {}))
-            country_row = country_update(dict(selector.country_stats.get(key[0]) or {}))
-            return route_row, country_row
+            return route_update(dict(selector.stats.get(key) or {}))
 
-        selector._update_shared_route_and_country = update_shared
+        selector._update_shared_stats = update_shared
 
         def record_result(_selector, _candidate, ok, error=""):
             key = (_candidate.country, _candidate.provider_id)
@@ -526,6 +533,59 @@ class SmsWebTests(unittest.TestCase):
             any(isinstance(key, tuple) and len(key) == 3 for key in selector.stats)
         )
 
+    def test_success_timestamp_does_not_regress_when_callbacks_finish_out_of_order(self):
+        clock = [1200.0]
+        candidate = SimpleNamespace(country="37", provider_id="3237")
+        key = ("37", "3237")
+        selector = SimpleNamespace(
+            lock=threading.RLock(),
+            stats={key: {}},
+            country_stats={"37": {"updated_at": 900.0}},
+            _route_inflight=lambda _row, _now: 0,
+        )
+        selector._update_shared_stats = lambda route, update: update(
+            dict(selector.stats.get(route) or {})
+        )
+
+        def record_result(_selector, _candidate, ok, _error=""):
+            row = dict(_selector.stats.get(key) or {})
+            row["success"] = int(row.get("success") or 0) + int(bool(ok))
+            _selector.stats[key] = row
+
+        self.integration.original_record_result = record_result
+        self.integration.route_policy = sms_runtime.SmsRoutePolicy(now_fn=lambda: clock[0])
+
+        self.integration.smart_record_result(selector, candidate, True)
+        clock[0] = 1100.0
+        self.integration.smart_record_result(selector, candidate, True)
+
+        self.assertEqual(selector.stats[key]["last_success_at"], 1200.0)
+        self.assertEqual(selector.country_stats["37"]["updated_at"], 900.0)
+
+    def test_result_timestamp_is_captured_before_persistence_wait(self):
+        clock = [100.0]
+        candidate = SimpleNamespace(country="37", provider_id="3237")
+        key = ("37", "3237")
+        selector = SimpleNamespace(
+            lock=threading.RLock(),
+            stats={key: {}},
+            country_stats={},
+            _route_inflight=lambda _row, _now: 0,
+        )
+        selector._update_shared_stats = lambda route, update: update(
+            dict(selector.stats.get(route) or {})
+        )
+
+        def delayed_record_result(_selector, _candidate, _ok, _error=""):
+            clock[0] = 300.0
+
+        self.integration.original_record_result = delayed_record_result
+        self.integration.route_policy = sms_runtime.SmsRoutePolicy(now_fn=lambda: clock[0])
+
+        self.integration.smart_record_result(selector, candidate, True)
+
+        self.assertEqual(selector.stats[key]["last_success_at"], 100.0)
+
     def test_wait_flow_does_not_cool_route_until_code_wait_really_fails(self):
         logs = FakeLogs()
         candidate = SimpleNamespace(country="37", provider_id="3237")
@@ -537,13 +597,10 @@ class SmsWebTests(unittest.TestCase):
             _route_inflight=lambda _row, _now: 0,
         )
 
-        def update_shared(key, route_update, country_update):
-            return (
-                route_update(dict(selector.stats.get(key) or {})),
-                country_update(dict(selector.country_stats.get(key[0]) or {})),
-            )
+        def update_shared(key, route_update):
+            return route_update(dict(selector.stats.get(key) or {}))
 
-        selector._update_shared_route_and_country = update_shared
+        selector._update_shared_stats = update_shared
         records = []
 
         def record_result(_selector, _candidate, ok, error=""):
@@ -692,13 +749,11 @@ class SmsWebTests(unittest.TestCase):
             last_refresh=123.0,
         )
 
-        def update_shared(key, route_update, country_update):
+        def update_shared(key, route_update):
             persisted_keys.append(key)
-            route_row = route_update(dict(selector.stats.get(key) or {}))
-            country_row = country_update(dict(selector.country_stats.get(key[0]) or {}))
-            return route_row, country_row
+            return route_update(dict(selector.stats.get(key) or {}))
 
-        selector._update_shared_route_and_country = update_shared
+        selector._update_shared_stats = update_shared
         self.integration.route_policy = sms_runtime.SmsRoutePolicy(now_fn=lambda: 1000.0)
         self.integration.original_adapter_wait_code = lambda *_args, **_kwargs: "123456"
         self.integration.cost_ledger = FakeCostLedger()
@@ -742,9 +797,8 @@ class SmsWebTests(unittest.TestCase):
             stats={("37", "3237"): {"inflight": 1}},
             country_stats={},
         )
-        selector._update_shared_route_and_country = lambda key, route_update, country_update: (
-            route_update(dict(selector.stats.get(key) or {})),
-            country_update(dict(selector.country_stats.get(key[0]) or {})),
+        selector._update_shared_stats = lambda key, route_update: (
+            route_update(dict(selector.stats.get(key) or {}))
         )
         lease = SimpleNamespace(
             activation_id="order-1",

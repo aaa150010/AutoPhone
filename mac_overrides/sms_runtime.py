@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -775,6 +776,52 @@ def is_protocol_pressure_error(value: Any) -> bool:
             "http 429",
             "too many requests",
             "rate limit",
+        )
+    )
+
+
+def is_sms_route_infrastructure_error(value: Any) -> bool:
+    """Return whether an SMS outcome says nothing about route quality."""
+    if isinstance(value, Mapping):
+        status_value = (
+            value.get("_status")
+            or value.get("status")
+            or value.get("status_code")
+        )
+    else:
+        status_value = (
+            getattr(value, "status_code", None)
+            or getattr(getattr(value, "response", None), "status_code", None)
+        )
+    if int(_as_float(status_value, 0)) == 429:
+        return True
+
+    type_name = "" if value is None else type(value).__name__
+    text = f"{type_name}: {value or ''}".lower()
+    if re.search(r"\b429\b", text) and any(
+        marker in text
+        for marker in ("http", "status", "too many requests", "rate limit")
+    ):
+        return True
+    return any(
+        marker in text
+        for marker in (
+            "tls",
+            "ssl",
+            "unexpected_eof",
+            "connection",
+            "connecterror",
+            "connect error",
+            "failed to connect",
+            "remote disconnected",
+            "server disconnected",
+            "proxy",
+            "curl",
+            "network is unreachable",
+            "name resolution",
+            "too many requests",
+            "rate limit",
+            "ratelimit",
         )
     )
 
@@ -2789,55 +2836,64 @@ class SmsRoutePolicy:
         row = dict(stat or {}) if isinstance(stat, dict) else {}
         current = self.now_fn() if now is None else float(now)
         if ok:
-            for name in (
-                "no_numbers_streak",
-                "last_no_numbers_at",
-                "no_code_streak",
-                "last_no_code_at",
-                "generic_failure_streak",
-                "last_generic_failure_at",
+            for streak_name, timestamp_name in (
+                ("no_numbers_streak", "last_no_numbers_at"),
+                ("no_code_streak", "last_no_code_at"),
+                ("generic_failure_streak", "last_generic_failure_at"),
             ):
-                row.pop(name, None)
+                failure_at = _as_float(row.get(timestamp_name), 0.0)
+                if timestamp_name not in row or failure_at <= current:
+                    row.pop(streak_name, None)
+                    row.pop(timestamp_name, None)
+            return row
+
+        latest_success_at = max(
+            _as_float(row.get("last_success_at"), 0.0),
+            _as_float(row.get("last_delivery_at"), 0.0),
+        )
+        if latest_success_at > current:
+            return row
+
+        def record_failure(streak_name: str, timestamp_name: str) -> dict[str, Any]:
+            has_previous = timestamp_name in row
+            previous_at = _as_float(row.get(timestamp_name), 0.0)
+            delta = current - previous_at
+            if has_previous and delta < -self.streak_window_seconds:
+                return row
+            within_window = bool(
+                has_previous
+                and self.streak_window_seconds > 0
+                and abs(delta) <= self.streak_window_seconds
+            )
+            previous = max(0, int(_as_float(row.get(streak_name), 0)))
+            row[streak_name] = previous + 1 if within_window else 1
+            row[timestamp_name] = max(previous_at, current) if has_previous else current
             return row
 
         if kind == "no_numbers":
-            previous_at = _as_float(row.get("last_no_numbers_at"), 0.0)
-            previous = max(0, int(_as_float(row.get("no_numbers_streak"), 0)))
-            within_window = bool(
-                "last_no_numbers_at" in row
-                and self.streak_window_seconds > 0
-                and 0 <= current - previous_at <= self.streak_window_seconds
+            return record_failure(
+                "no_numbers_streak",
+                "last_no_numbers_at",
             )
-            row["no_numbers_streak"] = previous + 1 if within_window else 1
-            row["last_no_numbers_at"] = current
-        elif kind in {"timeout", "no_code"}:
-            previous_at = _as_float(row.get("last_no_code_at"), 0.0)
-            previous = max(0, int(_as_float(row.get("no_code_streak"), 0)))
-            within_window = bool(
-                "last_no_code_at" in row
-                and self.streak_window_seconds > 0
-                and 0 <= current - previous_at <= self.streak_window_seconds
+        if kind in {"timeout", "no_code"}:
+            return record_failure(
+                "no_code_streak",
+                "last_no_code_at",
             )
-            row["no_code_streak"] = previous + 1 if within_window else 1
-            row["last_no_code_at"] = current
-        else:
-            previous_at = _as_float(row.get("last_generic_failure_at"), 0.0)
-            previous = max(0, int(_as_float(row.get("generic_failure_streak"), 0)))
-            within_window = bool(
-                "last_generic_failure_at" in row
-                and self.streak_window_seconds > 0
-                and 0 <= current - previous_at <= self.streak_window_seconds
-            )
-            row["generic_failure_streak"] = previous + 1 if within_window else 1
-            row["last_generic_failure_at"] = current
-        return row
+        return record_failure(
+            "generic_failure_streak",
+            "last_generic_failure_at",
+        )
 
     def record_delivery(self, stat: Any, *, now: float | None = None) -> dict[str, Any]:
         """Record one real SMS delivery and make that route immediately reusable."""
-        row = self.update_stat_for_outcome(stat, ok=True, kind="success", now=now)
         current = self.now_fn() if now is None else float(now)
+        row = self.update_stat_for_outcome(stat, ok=True, kind="success", now=current)
         row["otp_received"] = max(0, int(_as_float(row.get("otp_received"), 0))) + 1
-        row["last_delivery_at"] = current
+        row["last_delivery_at"] = max(
+            _as_float(row.get("last_delivery_at"), 0.0),
+            current,
+        )
         row["last_kind"] = "otp_received"
         row.pop("cooldown_until", None)
         return row

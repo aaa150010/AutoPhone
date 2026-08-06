@@ -28,6 +28,7 @@ from mac_overrides.sms_runtime import (
     confirm_herosms_cancellation,
     isolated_sms_get,
     is_protocol_pressure_error,
+    is_sms_route_infrastructure_error,
     is_transient_openai_error,
     migrate_performance_config,
     normalize_sms_keys,
@@ -1494,6 +1495,86 @@ class SmsRuntimeTests(unittest.TestCase):
         stat = policy.update_stat_for_outcome(stat, ok=False, kind="no_numbers", now=100.0)
         self.assertEqual(stat["no_numbers_streak"], 2)
 
+    def test_route_streaks_handle_out_of_order_failures_and_successes(self):
+        policy = SmsRoutePolicy()
+        cases = (
+            ("no_numbers", "no_numbers_streak", "last_no_numbers_at"),
+            ("no_code", "no_code_streak", "last_no_code_at"),
+            ("other", "generic_failure_streak", "last_generic_failure_at"),
+        )
+
+        for kind, streak_name, timestamp_name in cases:
+            with self.subTest(kind=kind):
+                stat = policy.update_stat_for_outcome(
+                    {}, ok=False, kind=kind, now=1000.0
+                )
+                stat = policy.update_stat_for_outcome(
+                    stat, ok=False, kind=kind, now=1100.0
+                )
+                stale_failure = policy.update_stat_for_outcome(
+                    stat, ok=False, kind=kind, now=1050.0
+                )
+                self.assertEqual(stale_failure[streak_name], 3)
+                self.assertEqual(stale_failure[timestamp_name], 1100.0)
+
+                far_older_failure = policy.update_stat_for_outcome(
+                    stale_failure, ok=False, kind=kind, now=-1000.0
+                )
+                self.assertEqual(far_older_failure[streak_name], 3)
+                self.assertEqual(far_older_failure[timestamp_name], 1100.0)
+
+                stale_success = policy.update_stat_for_outcome(
+                    far_older_failure, ok=True, kind="success", now=1050.0
+                )
+                self.assertEqual(stale_success[streak_name], 3)
+                self.assertEqual(stale_success[timestamp_name], 1100.0)
+
+                current_success = policy.update_stat_for_outcome(
+                    stale_success, ok=True, kind="success", now=1200.0
+                )
+                current_success["last_success_at"] = 1200.0
+                self.assertNotIn(streak_name, current_success)
+                self.assertNotIn(timestamp_name, current_success)
+
+                stale_after_success = policy.update_stat_for_outcome(
+                    current_success, ok=False, kind=kind, now=1150.0
+                )
+                self.assertNotIn(streak_name, stale_after_success)
+                self.assertNotIn(timestamp_name, stale_after_success)
+
+    def test_concurrent_route_failures_keep_every_in_window_event(self):
+        policy = SmsRoutePolicy(streak_window_seconds=1800.0)
+        timestamps = [
+            1000.0 + offset
+            for offset in (90, 10, 80, 20, 70, 30, 60, 40, 50)
+        ]
+        barrier = threading.Barrier(len(timestamps))
+        update_lock = threading.Lock()
+        stat: dict[str, float | int] = {}
+
+        def worker(observed_at: float) -> None:
+            nonlocal stat
+            barrier.wait()
+            with update_lock:
+                stat = policy.update_stat_for_outcome(
+                    stat,
+                    ok=False,
+                    kind="no_numbers",
+                    now=observed_at,
+                )
+
+        threads = [
+            threading.Thread(target=worker, args=(observed_at,))
+            for observed_at in timestamps
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        self.assertEqual(stat["no_numbers_streak"], len(timestamps))
+        self.assertEqual(stat["last_no_numbers_at"], max(timestamps))
+
     def test_record_delivery_clears_failure_state_and_records_timestamp(self):
         clock = [1000.0]
         policy = SmsRoutePolicy(now_fn=lambda: clock[0])
@@ -1509,6 +1590,24 @@ class SmsRuntimeTests(unittest.TestCase):
         self.assertNotIn("no_numbers_streak", first)
         self.assertNotIn("no_code_streak", first)
         self.assertNotIn("cooldown_until", first)
+
+    def test_record_delivery_preserves_newer_failure_and_monotonic_timestamp(self):
+        policy = SmsRoutePolicy()
+        stat = {
+            "otp_received": 2,
+            "last_delivery_at": 1000.0,
+            "no_code_streak": 2,
+            "last_no_code_at": 1200.0,
+        }
+
+        stale = policy.record_delivery(stat, now=1100.0)
+        self.assertEqual(stale["last_delivery_at"], 1100.0)
+        self.assertEqual(stale["no_code_streak"], 2)
+        self.assertEqual(stale["last_no_code_at"], 1200.0)
+
+        current = policy.record_delivery(stale, now=1300.0)
+        stale_again = policy.record_delivery(current, now=1250.0)
+        self.assertEqual(stale_again["last_delivery_at"], 1300.0)
 
     def test_candidate_ranking_prefers_proven_acceptance_over_static_priority(self):
         @dataclass
@@ -2094,6 +2193,25 @@ class SmsRuntimeTests(unittest.TestCase):
         ):
             with self.subTest(error=error):
                 self.assertTrue(is_protocol_pressure_error(error))
+
+    def test_route_infrastructure_classifier_covers_raw_transport_and_429(self):
+        for error in (
+            RuntimeError("TLS handshake failed"),
+            ConnectionError(),
+            RuntimeError("ProxyError: tunnel failed"),
+            RuntimeError("curl: (7) failed to connect"),
+            {"_status": 429, "error": "provider throttled"},
+            {"status_code": "429"},
+            "HTTP/status 429",
+            "status_code: 429",
+            RuntimeError("HTTPError: 429 Client Error"),
+            "too many requests",
+        ):
+            with self.subTest(error=error):
+                self.assertTrue(is_sms_route_infrastructure_error(error))
+
+        self.assertFalse(is_sms_route_infrastructure_error("sms_timeout: no code received"))
+        self.assertFalse(is_protocol_pressure_error("sms_timeout: no code received"))
 
     def test_proxy_protocol_gate_fake_clock_launches_at_one_second_offsets(self):
         clock = [100.0]

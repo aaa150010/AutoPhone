@@ -711,7 +711,7 @@ class SmsWebIntegration:
                 "sms_activation_replaced",
                 "sms_poll_already_active",
             )
-        ):
+        ) or self.sms_runtime.is_sms_route_infrastructure_error(error):
             return "provider_network"
         if any(
             marker in text
@@ -736,11 +736,7 @@ class SmsWebIntegration:
             return
         with selector.lock:
             try:
-                route_row, country_row = selector._update_shared_route_and_country(
-                    key,
-                    update_fn,
-                    lambda stat: dict(stat or {}),
-                )
+                route_row = selector._update_shared_stats(key, update_fn)
             except Exception:
                 # Route telemetry must never take down a registration if its
                 # local stats file is temporarily unavailable.
@@ -748,7 +744,6 @@ class SmsWebIntegration:
                 selector.stats[key] = update_fn(stat)
             else:
                 selector.stats[key] = route_row
-                selector.country_stats[country] = country_row
 
     def _release_route_without_score(self, selector: Any, candidate: Any) -> None:
         now = self._route_now()
@@ -796,8 +791,8 @@ class SmsWebIntegration:
         }:
             self._release_route_without_score(selector, candidate)
             return None
-        result = self.original_record_result(selector, candidate, ok, error)
         outcome_now = self._route_now()
+        result = self.original_record_result(selector, candidate, ok, error)
         if ok:
             def remember_success(stat: Any) -> dict[str, Any]:
                 row = self.route_policy.update_stat_for_outcome(
@@ -806,7 +801,10 @@ class SmsWebIntegration:
                     kind="success",
                     now=outcome_now,
                 )
-                row["last_success_at"] = outcome_now
+                row["last_success_at"] = max(
+                    self.sms_runtime._as_float(row.get("last_success_at"), 0.0),
+                    outcome_now,
+                )
                 return row
 
             self._update_route_stat(selector, candidate, remember_success)
