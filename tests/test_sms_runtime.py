@@ -10,6 +10,7 @@ import unittest
 import urllib.parse
 
 from mac_overrides.sms_runtime import (
+    _candidate_route,
     ExchangeRateCache,
     HeroSmsCancellationDeferred,
     PhoneSubmissionGate,
@@ -823,23 +824,42 @@ class SmsRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(registry.public_statuses()[0]["in_flight"], 0)
 
-    def test_platform_route_ranking_uses_platform_specific_history(self):
+    def test_quality_pools_share_the_persisted_route_identity(self):
         @dataclass
         class Candidate:
             pool: str
             country: str = "151"
             provider_id: str = "any"
 
-        bower = Candidate("smsbower")
-        hero = Candidate("herosms")
+        quality_candidates = [
+            Candidate("main"),
+            Candidate("semi"),
+            Candidate("preferred"),
+            Candidate("explore"),
+        ]
+        cold = Candidate("main", country="37", provider_id="cold")
         ranked = rank_sms_candidates(
-            [bower, hero],
+            [cold, *quality_candidates],
             {
-                ("smsbower", "151", "any"): {"success": 1, "fail": 8},
-                ("herosms", "151", "any"): {"success": 8, "fail": 1},
+                ("151", "any"): {"success": 8, "fail": 1},
             },
         )
-        self.assertEqual(ranked, [hero, bower])
+
+        self.assertEqual(ranked[:4], quality_candidates)
+        for candidate in quality_candidates:
+            with self.subTest(pool=candidate.pool):
+                self.assertEqual(_candidate_route(candidate), ("151", "any"))
+
+        platform_candidate = {
+            "platform": "smsbower",
+            "pool": "main",
+            "country": "151",
+            "provider_id": "any",
+        }
+        self.assertEqual(
+            _candidate_route(platform_candidate),
+            ("151", "any"),
+        )
 
     def test_preflight_reports_mixed_balances(self):
         factory = FakeFactory({

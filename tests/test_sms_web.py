@@ -289,19 +289,30 @@ class SmsWebTests(unittest.TestCase):
 
     def test_auth_context_failure_releases_route_without_scoring_it(self):
         scored = []
+        persisted_keys = []
         self.integration.original_record_result = lambda *args: scored.append(args)
         candidate = SimpleNamespace(
             platform="smsbower",
+            pool="main",
             country="1",
             provider_id="101",
         )
-        key = ("smsbower", "1", "101")
+        key = ("1", "101")
         selector = SimpleNamespace(
             lock=threading.RLock(),
             stats={key: {"inflight": 1, "fail": 0}},
             country_stats={},
             _route_inflight=lambda _row, _now: 0,
         )
+
+        def update_shared(route, route_update, country_update):
+            persisted_keys.append(route)
+            return (
+                route_update(dict(selector.stats.get(route) or {})),
+                country_update(dict(selector.country_stats.get(route[0]) or {})),
+            )
+
+        selector._update_shared_route_and_country = update_shared
 
         self.integration.smart_record_result(
             selector,
@@ -311,8 +322,54 @@ class SmsWebTests(unittest.TestCase):
         )
 
         self.assertEqual(scored, [])
+        self.assertEqual(persisted_keys, [key])
         self.assertNotIn("inflight", selector.stats[key])
         self.assertEqual(selector.stats[key]["fail"], 0)
+        self.assertFalse(
+            any(isinstance(route, tuple) and len(route) == 3 for route in selector.stats)
+        )
+
+    def test_session_and_network_failures_never_pollute_route_stats(self):
+        errors = (
+            "oauth_session_invalid: sign-in session is no longer valid",
+            "The server had an error processing your request",
+            "sms_provider_poll_failed: TLS connection reset",
+        )
+        for pool, error in zip(("main", "semi", "explore"), errors, strict=True):
+            with self.subTest(pool=pool, error=error):
+                key = ("37", "3237")
+                persisted_keys = []
+                selector = SimpleNamespace(
+                    lock=threading.RLock(),
+                    stats={key: {"inflight": 1, "fail": 4}},
+                    country_stats={"37": {"fail": 4}},
+                    _route_inflight=lambda _row, _now: 0,
+                )
+
+                def update_shared(route, route_update, country_update):
+                    persisted_keys.append(route)
+                    return (
+                        route_update(dict(selector.stats.get(route) or {})),
+                        country_update(dict(selector.country_stats.get(route[0]) or {})),
+                    )
+
+                selector._update_shared_route_and_country = update_shared
+                scored = []
+                self.integration.original_record_result = lambda *args: scored.append(args)
+                candidate = SimpleNamespace(
+                    platform="smsbower",
+                    pool=pool,
+                    country="37",
+                    provider_id="3237",
+                )
+
+                self.integration.smart_record_result(selector, candidate, False, error)
+
+                self.assertEqual(scored, [])
+                self.assertEqual(persisted_keys, [key])
+                self.assertEqual(selector.stats[key]["fail"], 4)
+                self.assertNotIn("inflight", selector.stats[key])
+                self.assertNotIn("cooldown_until", selector.stats[key])
 
     def test_phone_context_preflight_runs_before_paid_number_allocation(self):
         calls = []
@@ -360,18 +417,26 @@ class SmsWebTests(unittest.TestCase):
         self.assertEqual(allocations, [])
 
     def test_provider_poll_failure_releases_route_without_delivery_penalty(self):
-        candidate = SimpleNamespace(country="37", provider_id="3237")
+        candidate = SimpleNamespace(
+            platform="herosms",
+            pool="explore",
+            country="37",
+            provider_id="3237",
+        )
         key = ("37", "3237")
+        persisted_keys = []
         selector = SimpleNamespace(
             lock=threading.RLock(),
             stats={key: {"inflight": 1}},
             country_stats={},
             _route_inflight=lambda row, _now: int(row.get("inflight") or 0),
         )
-        selector._update_shared_route_and_country = lambda route, route_update, country_update: (
-            route_update(dict(selector.stats.get(route) or {})),
-            country_update({}),
-        )
+
+        def update_shared(route, route_update, country_update):
+            persisted_keys.append(route)
+            return route_update(dict(selector.stats.get(route) or {})), country_update({})
+
+        selector._update_shared_route_and_country = update_shared
         scored = []
         self.integration.original_record_result = (
             lambda *_args, **_kwargs: scored.append(True)
@@ -385,12 +450,22 @@ class SmsWebTests(unittest.TestCase):
         )
 
         self.assertEqual(scored, [])
+        self.assertEqual(persisted_keys, [key])
         self.assertNotIn("inflight", selector.stats[key])
         self.assertNotIn("cooldown_until", selector.stats[key])
+        self.assertFalse(
+            any(isinstance(route, tuple) and len(route) == 3 for route in selector.stats)
+        )
 
     def test_route_results_cool_unavailable_route_and_remember_success(self):
         logs = FakeLogs()
-        candidate = SimpleNamespace(country="37", provider_id="3237")
+        candidate = SimpleNamespace(
+            platform="smsbower",
+            pool="preferred",
+            country="37",
+            provider_id="3237",
+        )
+        persisted_keys = []
         selector = SimpleNamespace(
             lock=threading.RLock(),
             stats={},
@@ -400,6 +475,7 @@ class SmsWebTests(unittest.TestCase):
         )
 
         def update_shared(key, route_update, country_update):
+            persisted_keys.append(key)
             route_row = route_update(dict(selector.stats.get(key) or {}))
             country_row = country_update(dict(selector.country_stats.get(key[0]) or {}))
             return route_row, country_row
@@ -437,6 +513,11 @@ class SmsWebTests(unittest.TestCase):
         self.assertEqual(succeeded["success"], 1)
         self.assertGreater(succeeded["last_success_at"], 0)
         self.assertNotIn("cooldown_until", succeeded)
+        self.assertTrue(persisted_keys)
+        self.assertTrue(all(key == ("37", "3237") for key in persisted_keys))
+        self.assertFalse(
+            any(isinstance(key, tuple) and len(key) == 3 for key in selector.stats)
+        )
 
     def test_wait_flow_does_not_cool_route_until_code_wait_really_fails(self):
         logs = FakeLogs()
@@ -532,7 +613,13 @@ class SmsWebTests(unittest.TestCase):
         self.assertEqual(first.meta["sms_wait_failure"], "sms_timeout")
 
     def test_received_code_updates_route_once_and_clears_failure_streak(self):
-        candidate = SimpleNamespace(country="37", provider_id="3237")
+        candidate = SimpleNamespace(
+            platform="herosms",
+            pool="semi",
+            country="37",
+            provider_id="3237",
+        )
+        persisted_keys = []
         selector = SimpleNamespace(
             lock=threading.RLock(),
             stats={
@@ -549,6 +636,7 @@ class SmsWebTests(unittest.TestCase):
         )
 
         def update_shared(key, route_update, country_update):
+            persisted_keys.append(key)
             route_row = route_update(dict(selector.stats.get(key) or {}))
             country_row = country_update(dict(selector.country_stats.get(key[0]) or {}))
             return route_row, country_row
@@ -577,6 +665,10 @@ class SmsWebTests(unittest.TestCase):
         self.assertNotIn("no_numbers_streak", row)
         self.assertNotIn("no_code_streak", row)
         self.assertNotIn("cooldown_until", row)
+        self.assertEqual(persisted_keys, [("37", "3237")])
+        self.assertFalse(
+            any(isinstance(key, tuple) and len(key) == 3 for key in selector.stats)
+        )
         self.assertEqual(selector.candidates, [candidate])
         self.assertEqual(selector.raw_rows, [{"country": "37"}])
         self.assertEqual(selector.last_refresh, 123.0)

@@ -147,8 +147,6 @@ class SmsWebIntegration:
             stat = route_stats.get(key) if isinstance(route_stats, dict) else None
             if not isinstance(stat, dict) and isinstance(route_stats, dict):
                 stat = route_stats.get("::".join(key))
-            if not isinstance(stat, dict) and len(key) == 3 and isinstance(route_stats, dict):
-                stat = route_stats.get(key[-2:]) or route_stats.get("::".join(key[-2:]))
             stat = stat if isinstance(stat, dict) else {}
             cooldown_until = self.sms_runtime._as_float(
                 stat.get("cooldown_until"),
@@ -708,38 +706,33 @@ class SmsWebIntegration:
             return "timeout"
         return self.original_classify_error(error)
 
-    @staticmethod
-    def _update_route_stat(selector: Any, candidate: Any, update_fn: Callable[..., Any]) -> None:
+    def _update_route_stat(
+        self,
+        selector: Any,
+        candidate: Any,
+        update_fn: Callable[..., Any],
+    ) -> None:
         if selector is None or candidate is None:
             return
-        platform = str(
-            getattr(candidate, "platform", "")
-            or getattr(candidate, "pool", "")
-            or ""
-        )
-        country = str(getattr(candidate, "country", "") or "")
-        provider_id = str(getattr(candidate, "provider_id", "") or "")
-        key = (platform, country, provider_id) if platform else (country, provider_id)
+        key = self.sms_runtime._candidate_route(candidate)
+        country, provider_id = key
         if not country or not provider_id:
             return
         with selector.lock:
-            if len(key) == 3:
-                stat = selector.stats.get(key)
-                if not isinstance(stat, dict):
-                    stat = selector.stats.get(key[-2:]) or selector.stats.get("::".join(key[-2:]))
-                selector.stats[key] = update_fn(dict(stat or {}))
-                return
             try:
                 route_row, country_row = selector._update_shared_route_and_country(
                     key,
                     update_fn,
                     lambda stat: dict(stat or {}),
                 )
-                selector.stats[key] = route_row
-                selector.country_stats[str(getattr(candidate, "country", ""))] = country_row
             except Exception:
+                # Route telemetry must never take down a registration if its
+                # local stats file is temporarily unavailable.
                 stat = dict(selector.stats.get(key) or {})
                 selector.stats[key] = update_fn(stat)
+            else:
+                selector.stats[key] = route_row
+                selector.country_stats[country] = country_row
 
     def _release_route_without_score(self, selector: Any, candidate: Any) -> None:
         now = self._route_now()
@@ -766,22 +759,15 @@ class SmsWebIntegration:
 
         self._update_route_stat(selector, candidate, update)
 
-    @staticmethod
-    def _route_stat_snapshot(selector: Any, candidate: Any) -> dict[str, Any]:
-        platform = str(
-            getattr(candidate, "platform", "")
-            or getattr(candidate, "pool", "")
-            or ""
-        )
-        country = str(getattr(candidate, "country", "") or "")
-        provider_id = str(getattr(candidate, "provider_id", "") or "")
-        key = (platform, country, provider_id) if platform else (country, provider_id)
+    def _route_stat_snapshot(self, selector: Any, candidate: Any) -> dict[str, Any]:
+        key = self.sms_runtime._candidate_route(candidate)
+        country, provider_id = key
         if not country or not provider_id:
             return {}
         with selector.lock:
             value = selector.stats.get(key)
-            if not isinstance(value, dict) and len(key) == 3:
-                value = selector.stats.get(key[-2:]) or selector.stats.get("::".join(key[-2:]))
+            if not isinstance(value, dict):
+                value = selector.stats.get("::".join(key))
             return dict(value or {})
 
     def smart_record_result(self, selector: Any, candidate: Any, ok: bool, error: Any = "") -> Any:

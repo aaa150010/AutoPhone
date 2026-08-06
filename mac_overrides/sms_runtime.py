@@ -473,27 +473,25 @@ def _candidate_value(candidate: Any, name: str, default: Any = None) -> Any:
     return getattr(candidate, name, default)
 
 
-def _candidate_route(candidate: Any) -> tuple[str, ...]:
-    platform = str(
-        _candidate_value(candidate, "platform", "")
-        or _candidate_value(candidate, "pool", "")
-        or ""
-    ).strip()
+def _candidate_route(candidate: Any) -> tuple[str, str]:
+    """Return the recovered selector's persisted route identity.
+
+    ``SmsCandidate.pool`` describes the selector quality bucket (for example
+    ``main`` or ``explore``), not an SMS platform.  The recovered selector
+    persists routes strictly as ``country::provider_id`` and shares their
+    history across those transient buckets.
+    """
     country = str(_candidate_value(candidate, "country", "") or "")
     provider_id = str(_candidate_value(candidate, "provider_id", "") or "")
-    return (platform, country, provider_id) if platform else (country, provider_id)
+    return country, provider_id
 
 
-def _route_stat(route_stats: Any, route: tuple[str, ...]) -> dict[str, Any]:
+def _route_stat(route_stats: Any, route: tuple[str, str]) -> dict[str, Any]:
     if not isinstance(route_stats, dict):
         return {}
     value = route_stats.get(route)
     if not isinstance(value, dict):
         value = route_stats.get("::".join(route))
-    if not isinstance(value, dict) and len(route) == 3:
-        value = route_stats.get((route[1], route[2]))
-        if not isinstance(value, dict):
-            value = route_stats.get(f"{route[1]}::{route[2]}")
     return value if isinstance(value, dict) else {}
 
 
