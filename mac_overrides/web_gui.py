@@ -206,8 +206,6 @@ _PASSWORD_DAMAGED_MESSAGE = "OpenAI 登录密码验证失败，请检查账号�
 _HISTORICAL_SUCCESS_REASONS = frozenset({"sub2_uploaded"})
 _TASK_FAILURES: dict[str, dict] = {}
 _TASK_FAILURES_LOCK = threading.RLock()
-_AUTH_EMAIL_COOLDOWNS: dict[str, float] = {}
-_AUTH_EMAIL_COOLDOWNS_LOCK = threading.RLock()
 _RUN_LIFECYCLE_LOCK = threading.Lock()
 _RUN_NOTIFICATION_LOCK = threading.RLock()
 _RUN_NOTIFICATION_CONTEXT = None
@@ -1516,10 +1514,6 @@ def _patched_retire_after_failure(self, settings, pool, entry, task_id, result, 
     if _is_auth_session_reset_failure(result, error):
         if isinstance(result, dict):
             result["resume_stage"] = "fresh_oauth"
-        key = str(getattr(entry, "key", "") or getattr(entry, "email", "") or "").strip()
-        if key:
-            with _AUTH_EMAIL_COOLDOWNS_LOCK:
-                _AUTH_EMAIL_COOLDOWNS[key] = time.time() + 1800
     password_rejected = False
     if isinstance(result, dict):
         try:
@@ -2189,7 +2183,7 @@ def _run_codex_after_registration(
     return result
 
 
-def _mailbox_entries_with_auth_cooldown(pool_self):
+def _mailbox_entries_for_run_selection(pool_self):
     entries, errors = _TOTP_PATCHES.entries_unlocked(pool_self)
     if not _MAILBOX_LEASE_FILTER_ACTIVE.get():
         return entries, errors
@@ -2201,21 +2195,10 @@ def _mailbox_entries_with_auth_cooldown(pool_self):
             for entry in entries
             if int(getattr(entry, "line_no", 0) or 0) in selected_lines
         ]
-    now = time.time()
-    with _AUTH_EMAIL_COOLDOWNS_LOCK:
-        for key, until in tuple(_AUTH_EMAIL_COOLDOWNS.items()):
-            if float(until or 0) <= now:
-                _AUTH_EMAIL_COOLDOWNS.pop(key, None)
-        cooled = dict(_AUTH_EMAIL_COOLDOWNS)
-    available = []
-    for entry in entries:
-        key = str(getattr(entry, "key", "") or getattr(entry, "email", "") or "").strip()
-        if float(cooled.get(key) or 0) <= now:
-            available.append(entry)
-    return available, errors
+    return entries, errors
 
 
-def _mailbox_lease_with_auth_cooldown(self, *, lease_seconds=1800):
+def _mailbox_lease_for_run_selection(self, *, lease_seconds=1800):
     token = _MAILBOX_LEASE_FILTER_ACTIVE.set(True)
     try:
         return _ORIGINAL_POOL_LEASE(self, lease_seconds=lease_seconds)
@@ -2561,8 +2544,8 @@ _configure_sms_pool = _SMS_WEB.configure_pool
 _preflight_sms_pool = _SMS_WEB.preflight_pool
 
 
-_runtime.MailboxPool._entries_unlocked = _mailbox_entries_with_auth_cooldown
-_runtime.MailboxPool.lease = _mailbox_lease_with_auth_cooldown
+_runtime.MailboxPool._entries_unlocked = _mailbox_entries_for_run_selection
+_runtime.MailboxPool.lease = _mailbox_lease_for_run_selection
 _runtime.MailboxPool.restore_entry = _mailbox_restore_preserving_relogin
 _runtime.MailboxPool.remove_entry = _mailbox_retention_ext.preserve_consumed_entry
 _runtime.ManualMailboxPool.remove_entry = _mailbox_retention_ext.preserve_consumed_entry

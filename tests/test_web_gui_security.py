@@ -305,7 +305,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(explicit_config["email_otp_verify_attempts"], 3)
         self.assertFalse(explicit_config["email_otp_resend_on_retry"])
 
-    def test_register_start_counts_the_same_auth_cooled_pool_used_by_lease(self):
+    def test_register_start_applies_one_run_mailbox_selection_filter(self):
         module = self.module
         original_start = module._importer_scheduler_ext.start_bounded_importer
         original_notifications = module._begin_notification_run
