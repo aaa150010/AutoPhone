@@ -245,6 +245,29 @@ class SmsWebTests(unittest.TestCase):
         self.assertEqual(self.alerts.rows[0][0], "sms_balance_insufficient")
         self.assertIn("Key 2", logs.rows[0][0])
 
+    def test_balance_query_uses_an_isolated_registry_and_returns_no_raw_keys(self):
+        secret = "query-secret/key"
+        calls = []
+
+        def create_provider(provider, key, proxy=""):
+            calls.append((provider, key, proxy))
+            return SimpleNamespace(balance=lambda: "ACCESS_BALANCE:1.75")
+
+        self.integration.original_create_provider = create_provider
+        statuses = self.integration.query_balances({
+            "sms_provider_pools": [
+                {"provider": "smsbower", "enabled": True, "api_keys": [secret]},
+            ],
+            "proxy": "http://127.0.0.1:7897",
+            "proxy_scope": {"sms": True},
+        })
+
+        self.assertIsNone(self.pool.configured)
+        self.assertEqual(calls, [("smsbower", secret, "http://127.0.0.1:7897")])
+        self.assertEqual(statuses[0]["balance_usd"], 1.75)
+        self.assertEqual(statuses[0]["status"], "usable")
+        self.assertNotIn(secret, str(statuses))
+
     def test_transient_openai_errors_bypass_route_penalty(self):
         self.assertEqual(
             self.integration.classify_error("The server had an error processing your request"),

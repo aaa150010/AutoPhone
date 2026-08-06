@@ -9,10 +9,11 @@ import type { NotificationRuntimeStatus } from '../types/api'
 defineProps<{
   modelValue: any
   smsKeyStatuses?: SmsKeyStatus[]
+  queryingSmsBalances?: boolean
   testingNotification?: boolean
   notificationStatus?: NotificationRuntimeStatus
 }>()
-const emit = defineEmits<{ 'update:modelValue': [any]; testNotification: [] }>()
+const emit = defineEmits<{ 'update:modelValue': [any]; testNotification: []; querySmsBalances: [] }>()
 </script>
 
 <template>
@@ -24,7 +25,9 @@ const emit = defineEmits<{ 'update:modelValue': [any]; testNotification: [] }>()
     <SmsSettingsSection
       :model-value="modelValue"
       :statuses="smsKeyStatuses"
+      :querying-balances="queryingSmsBalances"
       @update:model-value="emit('update:modelValue', $event)"
+      @query-balances="emit('querySmsBalances')"
     />
 
     <IntegrationSettingsSection

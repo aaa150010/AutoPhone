@@ -321,6 +321,9 @@ export interface PixelUploadTargetRecord {
 export interface PixelUploadRecord {
   recordId: string
   taskId: string
+  batchId: string
+  batchStartedAt: string | number | null
+  sourceEmail: string
   jobId: string
   status: PixelUploadTargetState | string
   error: string

@@ -19,16 +19,19 @@ interface UploadRow extends PixelUploadTargetRecord {
   rowKey: string
   recordId: string
   taskId: string
-  jobId: string
+  batchId: string
+  batchStartedAt: string | number | null
+  sourceEmail: string
   recordError: string
   recordStatus: string
   recordCreatedAt: string | number | null
   firstForRecord: boolean
+  targetCount: number
   hasRetryableTargets: boolean
 }
 
 const rows = computed<UploadRow[]>(() => props.records.flatMap((record) => {
-  const targets = record.targets.length ? record.targets : [{
+  const targets: PixelUploadTargetRecord[] = record.targets.length ? record.targets : [{
     targetId: '-',
     status: record.status,
     stage: '',
@@ -47,11 +50,14 @@ const rows = computed<UploadRow[]>(() => props.records.flatMap((record) => {
     rowKey: `${record.recordId}:${target.targetId}:${index}`,
     recordId: record.recordId,
     taskId: record.taskId,
-    jobId: record.jobId,
+    batchId: record.batchId,
+    batchStartedAt: record.batchStartedAt,
+    sourceEmail: record.sourceEmail,
     recordError: record.error,
     recordStatus: record.status,
     recordCreatedAt: record.createdAt,
     firstForRecord: index === 0,
+    targetCount: targets.length,
     hasRetryableTargets,
   }))
 }))
@@ -90,7 +96,7 @@ function statusTone(status: string): 'success' | 'warning' | 'danger' | 'info' {
   const value = String(status || '').toLowerCase()
   if (['success', 'complete', 'completed'].includes(value)) return 'success'
   if (['pending', 'queued', 'waiting', 'uploading', 'importing', 'imported', 'sharing', 'processing', 'retrying'].includes(value)) return 'warning'
-  if (['failed', 'partial', 'retry_pending', 'pending_retry', 'import_failed', 'share_failed'].includes(value)) return 'danger'
+  if (['failed', 'partial', 'retry_pending', 'pending_retry', 'import_failed', 'share_failed', 'source_unavailable'].includes(value)) return 'danger'
   return 'info'
 }
 
@@ -103,16 +109,27 @@ function dateLabel(value: string | number | null) {
     : new Date(String(value))
   return Number.isNaN(date.getTime())
     ? '-'
-    : date.toLocaleString('zh-CN', { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-}
-
-function shortId(value: string) {
-  return value.length > 14 ? `${value.slice(0, 12)}...` : value
+    : date.toLocaleString('zh-CN', {
+        hour12: false,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
 }
 
 function isRetrying(recordId: string, targetId?: string) {
   const keys = props.retryingKeys || []
   return keys.includes(targetId ? `${recordId}:${targetId}` : `${recordId}:*`)
+}
+
+function spanMethod({ row, column }: { row: UploadRow; column: { property?: string } }) {
+  if (!['batchId', 'taskTime', 'recordStatus', 'sourceEmail'].includes(column.property || '')) return undefined
+  return row.firstForRecord
+    ? { rowspan: row.targetCount, colspan: 1 }
+    : { rowspan: 0, colspan: 0 }
 }
 </script>
 
@@ -121,43 +138,35 @@ function isRetrying(recordId: string, targetId?: string) {
     v-loading="loading"
     class="upload-record-table"
     :data="rows"
+    :span-method="spanMethod"
     row-key="rowKey"
     height="100%"
     stripe
   >
-    <el-table-column label="记录" width="126" show-overflow-tooltip>
+    <el-table-column prop="batchId" label="批次" width="218" show-overflow-tooltip>
       <template #default="{ row }">
-        <el-tooltip :content="row.recordId" placement="top"><span class="record-id">{{ shortId(row.recordId) }}</span></el-tooltip>
+        <el-tooltip :content="`任务 ${row.taskId || '-'} / 记录 ${row.recordId}`" placement="top">
+          <span class="batch-id">{{ row.batchId || '-' }}</span>
+        </el-tooltip>
       </template>
     </el-table-column>
-    <el-table-column label="任务" width="118" show-overflow-tooltip>
-      <template #default="{ row }">{{ shortId(row.taskId || '-') }}</template>
+    <el-table-column prop="taskTime" label="任务时间" width="172">
+      <template #default="{ row }">{{ dateLabel(row.recordCreatedAt || row.batchStartedAt) }}</template>
     </el-table-column>
-    <el-table-column label="远端任务" width="118" show-overflow-tooltip>
-      <template #default="{ row }">{{ shortId(row.jobId || '-') }}</template>
+    <el-table-column prop="recordStatus" label="任务状态" width="118">
+      <template #default="{ row }"><el-tag :type="statusTone(row.recordStatus)" effect="light">{{ statusLabel(row.recordStatus) }}</el-tag></template>
     </el-table-column>
-    <el-table-column prop="targetId" label="目标" width="86" />
-    <el-table-column label="状态" width="118">
-      <template #default="{ row }"><el-tag :type="statusTone(row.status)" effect="light">{{ statusLabel(row.status) }}</el-tag></template>
+    <el-table-column prop="sourceEmail" label="初始邮箱名" min-width="230" show-overflow-tooltip>
+      <template #default="{ row }"><span class="email-name">{{ row.sourceEmail || '-' }}</span></template>
     </el-table-column>
-    <el-table-column label="阶段" width="100" show-overflow-tooltip>
-      <template #default="{ row }">{{ row.stage || '-' }}</template>
+    <el-table-column prop="generatedName" label="上传后邮箱名" min-width="310" show-overflow-tooltip>
+      <template #default="{ row }">
+        <span class="target-id">{{ row.targetId }}</span>
+        <span class="email-name">{{ row.generatedName || '-' }}</span>
+      </template>
     </el-table-column>
-    <el-table-column label="生成账号名" min-width="210" show-overflow-tooltip>
-      <template #default="{ row }"><span class="generated-name">{{ row.generatedName || '-' }}</span></template>
-    </el-table-column>
-    <el-table-column label="远端 ID" width="90" show-overflow-tooltip>
-      <template #default="{ row }">{{ row.remoteAccountId ?? '-' }}</template>
-    </el-table-column>
-    <el-table-column label="并发" width="64" align="right">
-      <template #default="{ row }">{{ row.concurrency ?? '-' }}</template>
-    </el-table-column>
-    <el-table-column prop="attempts" label="尝试" width="62" align="right" />
-    <el-table-column label="失败说明" min-width="190" show-overflow-tooltip>
+    <el-table-column label="失败说明" min-width="240" show-overflow-tooltip>
       <template #default="{ row }"><span :class="{ danger: row.error || row.recordError }">{{ row.error || row.recordError || '-' }}</span></template>
-    </el-table-column>
-    <el-table-column label="更新时间" width="126">
-      <template #default="{ row }">{{ dateLabel(row.updatedAt || row.recordCreatedAt) }}</template>
     </el-table-column>
     <el-table-column label="操作" width="142" fixed="right">
       <template #default="{ row }">
@@ -186,7 +195,8 @@ function isRetrying(recordId: string, targetId?: string) {
 
 <style scoped>
 .upload-record-table { width: 100%; height: 100%; min-height: 0; }
-.record-id,
-.generated-name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+.batch-id,
+.email-name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+.target-id { display: inline-block; min-width: 58px; margin-right: 8px; color: var(--el-text-color-secondary); font-size: 11px; }
 .danger { color: var(--el-color-danger); }
 </style>

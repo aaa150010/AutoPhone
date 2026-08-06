@@ -315,6 +315,35 @@ class SmsRuntimeTests(unittest.TestCase):
         self.assertNotIn(secret, str(statuses))
         self.assertNotIn(secret, registry.safe_error(f"provider rejected api_key={secret}"))
 
+    def test_multi_platform_balance_query_skips_inventory_and_includes_disabled_keys(self):
+        secret = "disabled-secret/key"
+        factory = FakeMultiPlatformFactory({
+            ("smsbower", "bower-a"): {"balance": 2.5},
+            ("herosms", secret): {"balance": 0.005},
+        })
+        registry = SmsProviderRegistry(factory)
+        registry.configure(
+            {
+                "sms_provider_pools": [
+                    {"provider": "smsbower", "enabled": True, "api_keys": ["bower-a"]},
+                    {"provider": "herosms", "enabled": False, "api_keys": [secret]},
+                ]
+            },
+            min_price=0.01,
+        )
+
+        statuses = registry.query_balances(proxy="http://127.0.0.1:7897")
+
+        self.assertEqual(
+            [(row["provider"], row["status"], row["balance_usd"], row["enabled"]) for row in statuses],
+            [
+                ("smsbower", "usable", 2.5, True),
+                ("herosms", "insufficient_balance", 0.005, False),
+            ],
+        )
+        self.assertFalse(any(call[0] == "prices" for call in factory.calls))
+        self.assertNotIn(secret, str(statuses))
+
     def test_multi_platform_activation_failover_binds_order_to_platform_and_key(self):
         factory = FakeMultiPlatformFactory({
             ("smsbower", "bower-a"): {

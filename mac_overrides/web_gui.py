@@ -3474,6 +3474,7 @@ _WEB_ROUTE_CONTEXT = _web_routes_ext.WebRouteContext(
     pixel_client=_PIXEL_CLIENT,
     pixel_upload_queue=_PIXEL_UPLOAD_QUEUE,
     pixel_payload_builder=_pixel_runtime_ext.build_pixel_import_payload,
+    query_sms_balances=_SMS_WEB.query_balances,
 )
 
 

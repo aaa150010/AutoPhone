@@ -11,6 +11,17 @@ from typing import Any, Callable
 import uuid
 
 _PIXEL_AUTO_TARGET_IDS = tuple(f"pixel-{index}" for index in range(2, 8))
+_SMS_BALANCE_CONFIG_KEYS = (
+    "sms_provider_pools",
+    "sms_provider",
+    "sms_api_keys",
+    "sms_api_key",
+    "service",
+    "sms_min_price",
+    "max_price",
+    "proxy",
+    "proxy_scope",
+)
 
 
 def _safe_int(value: Any, default: int) -> int:
@@ -72,6 +83,7 @@ class WebRouteContext:
     pixel_upload_queue: Any | None = None
     pixel_payload_builder: Callable[[Mapping[str, Any]], dict[str, Any]] | None = None
     mailbox_url_test_factory: Callable[[], Any] | None = None
+    query_sms_balances: Callable[[dict[str, Any]], list[dict[str, Any]]] | None = None
 
 
 def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
@@ -921,6 +933,55 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             config=context.masked_local_config(context.read_local_config()),
         )
 
+    def api_sms_balances():
+        if context.query_sms_balances is None:
+            return module.jsonify(
+                ok=False,
+                node_code="sms_balance_query",
+                node_label="接码余额",
+                error_code="sms_balance_query_unavailable",
+                error="接码余额查询 [接码余额/sms_balance_query]：服务尚未启用",
+            ), 503
+        data = module.request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            return module.jsonify(
+                ok=False,
+                node_code="sms_balance_query",
+                node_label="接码余额",
+                error_code="invalid_request",
+                error="接码余额查询 [接码余额/sms_balance_query]：配置必须是 JSON 对象",
+            ), 400
+        try:
+            local = context.read_local_config()
+            config = {
+                key: data[key] if key in data else local[key]
+                for key in _SMS_BALANCE_CONFIG_KEYS
+                if key in data or key in local
+            }
+            statuses = context.query_sms_balances(config)
+            return module.jsonify(
+                ok=True,
+                queried_at=int(time.time()),
+                sms_key_statuses=statuses,
+            )
+        except ValueError as exc:
+            safe = context.safe_runtime_error(exc)
+            return module.jsonify(
+                ok=False,
+                node_code="sms_balance_query",
+                node_label="接码余额",
+                error_code="sms_balance_query_failed",
+                error=f"接码余额查询 [接码余额/sms_balance_query]：{safe}",
+            ), 400
+        except Exception:
+            return module.jsonify(
+                ok=False,
+                node_code="sms_balance_query",
+                node_label="接码余额",
+                error_code="sms_balance_query_failed",
+                error="接码余额查询 [接码余额/sms_balance_query]：平台请求失败，请检查 Key、代理和网络",
+            ), 502
+
     def api_local_config_export():
         try:
             data = module.request.get_json(silent=True) or {}
@@ -1041,6 +1102,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             ["POST"],
         ),
         ("/api/local-config", "api_local_config", api_local_config, ["GET"]),
+        ("/api/sms/balances", "api_sms_balances", api_sms_balances, ["POST"]),
         ("/api/local-config/export", "api_local_config_export", api_local_config_export, ["POST"]),
         ("/api/local-config/import", "api_local_config_import", api_local_config_import, ["POST"]),
         ("/api/local-config/secret", "api_local_config_secret", api_local_config_secret, ["POST"]),

@@ -959,6 +959,30 @@ class SmsWebIntegration:
                 pass
         return sms_proxy
 
+    def query_balances(self, config: Any) -> list[dict[str, Any]]:
+        """Check form credentials in an isolated registry with no runtime mutation."""
+        value = dict(config or {})
+        proxy_scope = dict(value.get("proxy_scope") or {})
+        sms_proxy = (
+            str(value.get("proxy") or "")
+            if self.as_enabled(proxy_scope.get("sms"), False)
+            else ""
+        )
+        try:
+            min_price = float(value.get("sms_min_price") or self.min_price_default)
+        except (TypeError, ValueError):
+            min_price = self.min_price_default
+        registry = self.sms_runtime.SmsProviderRegistry(self.original_create_provider)
+        registry.configure(
+            value,
+            min_price=min_price,
+            max_price=float(self.clamp_max_price(value.get("max_price"))),
+        )
+        statuses = registry.query_balances(proxy=sms_proxy)
+        if not statuses:
+            raise ValueError("请至少填写一个 SMS API Key")
+        return statuses
+
     def preflight_pool(self, config: Any, *, logs: Any = None, importer: Any = None):
         proxy = self.configure_pool(config, logs=logs, importer=importer)
         pool = self.provider_registry or self.key_pool

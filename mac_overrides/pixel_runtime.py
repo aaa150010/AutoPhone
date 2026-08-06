@@ -2,7 +2,8 @@
 
 The recovered runtime should only enqueue an already-persisted success result.
 OAuth credentials remain in that result file and are loaded immediately before
-an upload; the outbox contains references, fingerprints, and public status only.
+an upload; the outbox contains references, fingerprints, safe task metadata,
+and public status only.
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ import uuid
 DEFAULT_PIXEL_PROXY_BASE_URL = "https://lynote.xyz/gpt-api"
 PIXEL_AUTO_TARGET_IDS = tuple(f"pixel-{index}" for index in range(2, 8))
 PIXEL_EXCLUDED_TARGET_IDS = ("pixel-1",)
-OUTBOX_VERSION = 1
+OUTBOX_VERSION = 2
 SECRET_MASK = "********"
 _SANITIZE_INPUT_LIMIT = 8192
 
@@ -335,6 +336,33 @@ def build_pixel_import_payload(success_result: Mapping[str, Any]) -> dict[str, A
                 "extra": extra,
             }
         ],
+    }
+
+
+def _source_public_metadata(
+    source: Mapping[str, Any],
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    try:
+        source_email = _clean(payload["accounts"][0]["name"]).lower()
+    except (KeyError, IndexError, TypeError):
+        source_email = ""
+    if not _EMAIL_RE.fullmatch(source_email):
+        source_email = ""
+
+    wrapped = source.get("result")
+    sources = [source]
+    if isinstance(wrapped, Mapping):
+        sources.append(wrapped)
+    batch_id = _safe_identifier(_first_value(sources, "batch_id"), maximum=80)
+    batch_started_at = max(
+        _safe_int(_first_value(sources, "batch_started_at")),
+        0,
+    )
+    return {
+        "source_email": source_email,
+        "batch_id": batch_id,
+        "batch_started_at": batch_started_at,
     }
 
 
@@ -853,6 +881,8 @@ class PixelUploadQueue:
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._store = self._load_store()
+        if self._backfill_source_metadata():
+            self._save_locked()
         if resume_pending:
             self._schedule_recoverable()
         if auto_start:
@@ -879,6 +909,26 @@ class PixelUploadQueue:
     def _save_locked(self) -> None:
         _atomic_write_json(self.outbox_path, self._store)
 
+    def _backfill_source_metadata(self) -> bool:
+        changed = False
+        for record in self._store["records"]:
+            if (
+                _EMAIL_RE.fullmatch(_clean(record.get("source_email")))
+                and _safe_identifier(record.get("batch_id"), maximum=80)
+                and _safe_int(record.get("batch_started_at")) > 0
+            ):
+                continue
+            try:
+                _payload, _fingerprint, _secrets, metadata = self._read_source(record)
+            except PixelRuntimeError:
+                continue
+            for key in ("source_email", "batch_id", "batch_started_at"):
+                if record.get(key) or not metadata.get(key):
+                    continue
+                record[key] = metadata[key]
+                changed = True
+        return changed
+
     def _record_locked(self, record_id: str) -> dict[str, Any]:
         for record in self._store["records"]:
             if record.get("record_id") == record_id:
@@ -893,7 +943,10 @@ class PixelUploadQueue:
             raise PixelSourceError("成功结果文件位置无效") from None
         return candidate
 
-    def _read_source(self, record: Mapping[str, Any]) -> tuple[dict[str, Any], str, tuple[str, ...]]:
+    def _read_source(
+        self,
+        record: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], str, tuple[str, ...], dict[str, Any]]:
         path = self._source_path(record)
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
@@ -906,7 +959,12 @@ class PixelUploadQueue:
         payload = build_pixel_import_payload(raw)
         credentials = payload["accounts"][0]["credentials"]
         secrets = tuple(_clean(credentials.get(key)) for key in ("access_token", "refresh_token", "id_token") if _clean(credentials.get(key)))
-        return payload, credential_fingerprint(payload), secrets
+        return (
+            payload,
+            credential_fingerprint(payload),
+            secrets,
+            _source_public_metadata(raw, payload),
+        )
 
     @staticmethod
     def _initial_target(target_id: str, now: int) -> dict[str, Any]:
@@ -981,6 +1039,29 @@ class PixelUploadQueue:
             path_available = self._source_path(record).is_file()
         except PixelRuntimeError:
             pass
+        metadata = {
+            "source_email": _clean(record.get("source_email")).lower(),
+            "batch_id": _safe_identifier(record.get("batch_id"), maximum=80),
+            "batch_started_at": max(_safe_int(record.get("batch_started_at")), 0),
+        }
+        if (
+            path_available
+            and (
+                not _EMAIL_RE.fullmatch(metadata["source_email"])
+                or not metadata["batch_id"]
+                or not metadata["batch_started_at"]
+            )
+        ):
+            try:
+                _payload, _fingerprint, _secrets, source_metadata = self._read_source(record)
+                metadata = {
+                    key: metadata.get(key) or source_metadata.get(key)
+                    for key in ("source_email", "batch_id", "batch_started_at")
+                }
+            except PixelRuntimeError:
+                pass
+        if not _EMAIL_RE.fullmatch(_clean(metadata.get("source_email"))):
+            metadata["source_email"] = ""
         targets = record.get("targets") if isinstance(record.get("targets"), Mapping) else {}
         target_values = [item for item in targets.values() if isinstance(item, Mapping)]
         job_values = sorted(
@@ -995,6 +1076,9 @@ class PixelUploadQueue:
         return {
             "record_id": _safe_identifier(record.get("record_id")),
             "task_id": _safe_identifier(record.get("task_id")),
+            "batch_id": _safe_identifier(metadata.get("batch_id"), maximum=80),
+            "batch_started_at": max(_safe_int(metadata.get("batch_started_at")), 0),
+            "source_email": _clean(metadata.get("source_email")).lower(),
             "credential_fingerprint": _clean(record.get("credential_fingerprint"))[:16],
             "status": _clean(record.get("status")) or "queued",
             "source_available": path_available,
@@ -1031,9 +1115,10 @@ class PixelUploadQueue:
         now = self._timestamp()
         source_error = ""
         fingerprint = ""
+        source_metadata: dict[str, Any] = {}
         temporary = {"result_file": relative}
         try:
-            _payload, fingerprint, _secrets = self._read_source(temporary)
+            _payload, fingerprint, _secrets, source_metadata = self._read_source(temporary)
         except PixelSourceError as exc:
             source_error = exc.public_message
         record_id = hashlib.sha256(f"{safe_task_id}\0{relative}\0{fingerprint}".encode("utf-8")).hexdigest()[:24]
@@ -1059,6 +1144,9 @@ class PixelUploadQueue:
             record = {
                 "record_id": record_id,
                 "task_id": safe_task_id,
+                "batch_id": source_metadata.get("batch_id") or "",
+                "batch_started_at": source_metadata.get("batch_started_at") or 0,
+                "source_email": source_metadata.get("source_email") or "",
                 "result_file": relative,
                 "upload_file_name": f"autophone-{record_id}.json",
                 "credential_fingerprint": fingerprint,
@@ -1982,7 +2070,7 @@ class PixelUploadQueue:
         ]
         self._set_targets_stage(record_id, source_targets, "source")
         try:
-            payload, fingerprint, secrets = self._read_source(record)
+            payload, fingerprint, secrets, _source_metadata = self._read_source(record)
         except PixelSourceError as exc:
             self._update_targets_error(
                 record_id,

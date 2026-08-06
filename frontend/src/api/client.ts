@@ -6,6 +6,7 @@ import type {
   PixelAccountPage,
   PixelBulkOperationResponse,
   PixelUploadRecord,
+  SmsKeyStatus,
 } from '../types/api'
 
 export class ApiError extends Error {
@@ -87,6 +88,9 @@ export const testMailboxUrl = (value: string) => (
   api<MailboxUrlTestResult>('/api/mailbox-url-test', { value })
 )
 export const testEmailNotification = (data: Record<string, any>) => api('/api/notifications/email/test', data)
+export const querySmsBalances = (data: Record<string, any>) => (
+  api<{ ok: true; queried_at: number; sms_key_statuses: SmsKeyStatus[] }>('/api/sms/balances', data)
+)
 
 export const getPixelTargets = () => api<Record<string, any>>('/api/pixel/targets')
 export const getPixelAccounts = (

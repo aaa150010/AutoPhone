@@ -8,16 +8,16 @@ from mac_overrides.log_retention import GuiLogRetention
 
 
 class GuiLogRetentionTests(unittest.TestCase):
-    def test_logs_older_than_twelve_hours_are_pruned_on_periodic_check(self):
+    def test_logs_older_than_two_days_are_pruned_on_periodic_check(self):
         clock = [1_000_000.0]
         retention = GuiLogRetention(now_fn=lambda: clock[0])
         target = SimpleNamespace(lock=threading.Lock(), items=[])
 
         retention.add(target, "first", "info", max_items=240)
-        clock[0] += 12 * 60 * 60 - 1
+        clock[0] += 2 * 24 * 60 * 60 - 1
         self.assertEqual([row["message"] for row in retention.snapshot(target)], ["first"])
 
-        clock[0] += 301
+        clock[0] += 2
         self.assertEqual(retention.snapshot(target), [])
 
     def test_count_limit_and_legacy_rows_are_preserved(self):

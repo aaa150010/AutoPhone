@@ -70,18 +70,18 @@ function statusAt(index: number) {
 }
 
 function statusLabel(status?: SmsKeyStatus) {
-  if (!status) return '未预检'
+  if (!status) return '未查询'
   if (status.status === 'usable') return `可用 $${Number(status.balance_usd || 0).toFixed(2)}`
   if (status.status === 'insufficient_balance') return `余额不足 $${Number(status.balance_usd || 0).toFixed(2)}`
   if (status.status === 'invalid') return 'Key 无效'
   if (status.status === 'rate_limited') return '请求限流'
   if (status.status === 'network_error') return '网络异常'
-  return status.message || '未预检'
+  return status.message || '未查询'
 }
 
 function statusType(status?: SmsKeyStatus) {
   if (status?.status === 'usable') return 'success'
-  if (status?.status === 'insufficient_balance' || status?.status === 'invalid') return 'danger'
+  if (['insufficient_balance', 'invalid', 'error'].includes(status?.status || '')) return 'danger'
   if (status?.status === 'rate_limited' || status?.status === 'network_error') return 'warning'
   return 'info'
 }

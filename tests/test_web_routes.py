@@ -487,6 +487,38 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(response.get_json()["config"]["sms_api_keys"], ["draft-key"])
         self.assertEqual(self.local_config, before)
 
+    def test_sms_balance_query_uses_draft_config_without_exposing_or_saving_keys(self):
+        secret = "draft-balance-secret"
+        captured = []
+
+        def query_balances(config):
+            captured.append(dict(config))
+            return [{
+                "provider": "smsbower",
+                "index": 1,
+                "fingerprint": "abc123",
+                "status": "usable",
+                "balance_usd": 4.25,
+                "last_checked_at": 123,
+            }]
+
+        app = self._app(replace(self.context, query_sms_balances=query_balances))
+        before_local = dict(self.local_config)
+        before_saved = list(self.store.saved)
+
+        with app.test_client() as client:
+            response = client.post(
+                "/api/sms/balances",
+                json={"sms_api_keys": [secret]},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(captured, [{"sms_api_keys": [secret]}])
+        self.assertEqual(response.get_json()["sms_key_statuses"][0]["balance_usd"], 4.25)
+        self.assertNotIn(secret, response.get_data(as_text=True))
+        self.assertEqual(self.local_config, before_local)
+        self.assertEqual(self.store.saved, before_saved)
+
     def test_settings_route_and_notification_test_are_available(self):
         app = self._app()
 

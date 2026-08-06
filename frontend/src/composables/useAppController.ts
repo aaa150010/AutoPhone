@@ -7,12 +7,13 @@ import {
   getSecret,
   getState,
   preflightRun,
+  querySmsBalances,
   saveConfig,
   startExistingRun,
   stopRun,
   testEmailNotification,
 } from '../api/client'
-import type { AppState, SmsProviderPool, SmsRuntimeAlert } from '../types/api'
+import type { AppState, SmsKeyStatus, SmsProviderPool, SmsRuntimeAlert } from '../types/api'
 
 const smsProviderDefaults: Record<string, string> = {
   smsbower: 'dr',
@@ -243,7 +244,9 @@ export function createAppController() {
     importing: false,
     exporting: false,
     testingNotification: false,
+    queryingSmsBalances: false,
   })
+  const queriedSmsKeyStatuses = ref<SmsKeyStatus[] | null>(null)
   const seenAlerts = new Set<string>()
   let baseline = signature(form)
   let pollTimer = 0
@@ -254,7 +257,12 @@ export function createAppController() {
   const runtime = computed(() => state.value.runtime || {})
   const running = computed(() => Boolean(runtime.value.running))
   const hasPool = computed(() => Number(runtime.value.pool?.available || 0) > 0)
-  const smsKeyStatuses = computed(() => state.value.sms_key_statuses || runtime.value.sms_key_statuses || [])
+  const smsKeyStatuses = computed(() => (
+    queriedSmsKeyStatuses.value
+    || state.value.sms_key_statuses
+    || runtime.value.sms_key_statuses
+    || []
+  ))
 
   function showRuntimeAlerts(alerts: SmsRuntimeAlert[]) {
     for (const alert of alerts || []) {
@@ -291,6 +299,7 @@ export function createAppController() {
 
   function updateForm(value: Record<string, any>) {
     Object.assign(form, mergeConfig(form, value))
+    queriedSmsKeyStatuses.value = []
     dirty.value = signature(form) !== baseline
   }
 
@@ -300,6 +309,19 @@ export function createAppController() {
     delete value.nvtoken
     delete value.nvtoken_upload
     return value
+  }
+
+  function smsBalanceDraftSignature() {
+    return JSON.stringify({
+      sms_provider_pools: form.sms_provider_pools,
+      sms_provider: form.sms_provider,
+      sms_api_keys: form.sms_api_keys,
+      sms_api_key: form.sms_api_key,
+      sms_min_price: form.sms_min_price,
+      max_price: form.max_price,
+      proxy: form.proxy,
+      proxy_scope: form.proxy_scope,
+    })
   }
 
   function resetRunSnapshot() {
@@ -442,6 +464,7 @@ export function createAppController() {
       await ensureSecretsLoaded()
       const result = await preflightRun(requestPayload())
       syncState(result)
+      queriedSmsKeyStatuses.value = result.sms_key_statuses || []
       markClean()
       return result
     } catch (error) {
@@ -531,6 +554,22 @@ export function createAppController() {
     }
   }
 
+  async function queryBalances() {
+    actions.queryingSmsBalances = true
+    try {
+      await ensureSecretsLoaded()
+      const draftSignature = smsBalanceDraftSignature()
+      const result = await querySmsBalances(requestPayload())
+      if (draftSignature !== smsBalanceDraftSignature()) {
+        throw new Error('接码 Key 配置已变化，请重新查询余额')
+      }
+      queriedSmsKeyStatuses.value = result.sms_key_statuses || []
+      return result
+    } finally {
+      actions.queryingSmsBalances = false
+    }
+  }
+
   async function poll() {
     await refresh()
     if (pollingStopped) return
@@ -570,6 +609,7 @@ export function createAppController() {
     importConfig,
     exportConfig,
     sendTestNotification,
+    queryBalances,
     startPolling,
     stopPolling,
   }

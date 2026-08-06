@@ -32,6 +32,8 @@ SOURCE_EMAIL = "registered@example.test"
 def success_document(*, task_id: str = "T0001") -> dict:
     return {
         "task_id": task_id,
+        "batch_id": "20260806-120000-a1b2c3",
+        "batch_started_at": 1_786_000_000,
         "email": SOURCE_EMAIL,
         "status": "success",
         "source_row": "credential-bearing-source-row",
@@ -350,7 +352,7 @@ class PixelUploadQueueTests(unittest.TestCase):
     def stages(record: dict) -> dict[str, str]:
         return {item["target_id"]: item["stage"] for item in record["targets"]}
 
-    def test_success_uploads_exactly_six_targets_and_persists_no_credentials(self):
+    def test_success_uploads_exactly_six_targets_and_persists_safe_history_metadata(self):
         client = FakePixelClient()
         service = PixelUploadQueue(self.root, client=client, auto_start=False)
         queued = service.enqueue("T0001", self.write_result())
@@ -373,11 +375,30 @@ class PixelUploadQueueTests(unittest.TestCase):
         self.assertNotIn(ACCESS_TOKEN, persisted)
         self.assertNotIn(REFRESH_TOKEN, persisted)
         self.assertNotIn(ID_TOKEN, persisted)
-        self.assertNotIn(SOURCE_EMAIL, persisted)
+        self.assertNotIn("must-not-be-copied", persisted)
+        self.assertNotIn("credential-bearing-source-row", persisted)
         self.assertNotIn("result_file", json.dumps(completed))
         stored = json.loads(persisted)["records"][0]
         self.assertEqual(stored["result_file"], "results/result.json")
+        self.assertEqual(stored["batch_id"], "20260806-120000-a1b2c3")
+        self.assertEqual(stored["batch_started_at"], 1_786_000_000)
+        self.assertEqual(stored["source_email"], SOURCE_EMAIL)
+        self.assertEqual(completed["batch_id"], stored["batch_id"])
+        self.assertEqual(completed["source_email"], SOURCE_EMAIL)
         self.assertEqual(os.stat(service.outbox_path).st_mode & 0o777, 0o600)
+
+    def test_safe_history_metadata_survives_source_result_removal(self):
+        service = PixelUploadQueue(self.root, client=FakePixelClient(), auto_start=False)
+        result_file = self.write_result()
+        queued = service.enqueue("T0001", result_file)
+
+        result_file.unlink()
+        retained = service.get(queued["record_id"])
+
+        self.assertFalse(retained["source_available"])
+        self.assertEqual(retained["batch_id"], "20260806-120000-a1b2c3")
+        self.assertEqual(retained["batch_started_at"], 1_786_000_000)
+        self.assertEqual(retained["source_email"], SOURCE_EMAIL)
 
     def test_manual_requeue_resets_all_targets_without_persisting_credentials(self):
         client = FakePixelClient()
@@ -394,7 +415,7 @@ class PixelUploadQueueTests(unittest.TestCase):
         self.assertEqual(set(self.states(requeued).values()), {"pending"})
         self.assertTrue(all(item["attempts"] == 0 for item in requeued["targets"]))
         persisted = service.outbox_path.read_text(encoding="utf-8")
-        for secret in (ACCESS_TOKEN, REFRESH_TOKEN, ID_TOKEN, SOURCE_EMAIL):
+        for secret in (ACCESS_TOKEN, REFRESH_TOKEN, ID_TOKEN, "must-not-be-copied"):
             self.assertNotIn(secret, persisted)
 
     def test_success_requires_proxy_random_names_to_match_domain_and_be_unique(self):
@@ -433,7 +454,9 @@ class PixelUploadQueueTests(unittest.TestCase):
         self.assertEqual(by_target["pixel-4"]["state"], "needs_confirmation")
         self.assertIn("重复", by_target["pixel-3"]["error"])
         self.assertFalse(by_target["pixel-2"]["retryable"])
-        self.assertNotIn(SOURCE_EMAIL, service.outbox_path.read_text(encoding="utf-8"))
+        persisted = service.outbox_path.read_text(encoding="utf-8")
+        self.assertNotIn(ACCESS_TOKEN, persisted)
+        self.assertNotIn(REFRESH_TOKEN, persisted)
 
     def test_duplicate_identity_with_existing_id_reuses_account_and_shares_without_reimport(self):
         client = FakePixelClient()
@@ -882,6 +905,8 @@ class PixelUploadQueueTests(unittest.TestCase):
         record = service.enqueue("T0001", self.write_result())
         service.process_next()
         stored = json.loads(service.outbox_path.read_text(encoding="utf-8"))
+        for key in ("source_email", "batch_id", "batch_started_at"):
+            stored["records"][0].pop(key, None)
         for target in stored["records"][0]["targets"].values():
             target.pop("stage", None)
         service.outbox_path.write_text(json.dumps(stored), encoding="utf-8")
@@ -893,7 +918,11 @@ class PixelUploadQueueTests(unittest.TestCase):
             resume_pending=False,
         )
 
-        self.assertEqual(set(self.stages(restored.get(record["record_id"])).values()), {"verification"})
+        public = restored.get(record["record_id"])
+        self.assertEqual(set(self.stages(public).values()), {"verification"})
+        self.assertEqual(public["source_email"], SOURCE_EMAIL)
+        migrated = json.loads(restored.outbox_path.read_text(encoding="utf-8"))["records"][0]
+        self.assertEqual(migrated["batch_id"], "20260806-120000-a1b2c3")
 
     def test_restart_resumes_known_remote_job_without_duplicate_import(self):
         path = self.write_result()

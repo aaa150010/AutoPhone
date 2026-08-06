@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Setting } from '@element-plus/icons-vue'
+import { Coin, Setting } from '@element-plus/icons-vue'
 import SmsApiKeyEditor from './SmsApiKeyEditor.vue'
 import type { SmsKeyStatus, SmsProviderPool } from '../types/api'
 
-const props = defineProps<{ modelValue: any; statuses?: SmsKeyStatus[] }>()
-const emit = defineEmits<{ 'update:modelValue': [any] }>()
+const props = defineProps<{ modelValue: any; statuses?: SmsKeyStatus[]; queryingBalances?: boolean }>()
+const emit = defineEmits<{ 'update:modelValue': [any]; queryBalances: [] }>()
 
 function update(key: string, value: any) {
   emit('update:modelValue', { ...props.modelValue, [key]: value })
@@ -52,6 +52,10 @@ const providerPools = computed(() => {
   return [...known, ...extras]
 })
 
+const hasConfiguredKeys = computed(() => providerPools.value.some(pool => (
+  pool.api_keys.some((key: string) => String(key || '').trim())
+)))
+
 function updateProvider(provider: string, patch: Partial<SmsProviderPool>) {
   const pools = providerPools.value.map(pool => (
     pool.provider === provider ? { ...pool, ...patch, label: undefined } : { ...pool, label: undefined }
@@ -96,7 +100,15 @@ function statusesFor(provider: string) {
 
 <template>
   <div class="settings-section">
-    <h2 class="section-title">SMS 接码</h2>
+    <div class="section-heading">
+      <h2 class="section-title">SMS 接码</h2>
+      <el-button
+        :icon="Coin"
+        :loading="queryingBalances"
+        :disabled="!hasConfiguredKeys"
+        @click="emit('queryBalances')"
+      >查询余额</el-button>
+    </div>
     <el-row :gutter="10">
       <el-col :span="12">
         <el-form-item label="SMS 最低价格">
@@ -193,7 +205,8 @@ function statusesFor(provider: string) {
 </template>
 
 <style scoped>
-.section-title { margin: 0 0 9px; font-size: 14px; line-height: 20px; font-weight: 680; letter-spacing: 0; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; min-height: 32px; margin-bottom: 9px; }
+.section-title { margin: 0; font-size: 14px; line-height: 20px; font-weight: 680; letter-spacing: 0; }
 .settings-section :deep(.el-input-number) { width: 100%; }
 .provider-pools { border-top: 1px solid var(--el-border-color-lighter); }
 .provider-pool { padding: 9px 0 2px; border-bottom: 1px solid var(--el-border-color-lighter); }

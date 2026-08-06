@@ -101,6 +101,21 @@ async function testNotification() {
   }
 }
 
+async function querySmsBalances() {
+  try {
+    const result = await controller.queryBalances()
+    const statuses = result.sms_key_statuses || []
+    const unavailable = statuses.filter(status => status.status !== 'usable').length
+    if (unavailable) {
+      ElMessage.warning(`余额查询完成：${statuses.length - unavailable} 个可用，${unavailable} 个异常`)
+    } else {
+      ElMessage.success(`余额查询完成，共 ${statuses.length} 个 Key`)
+    }
+  } catch (error) {
+    ElMessage.error(messageFor(error))
+  }
+}
+
 onMounted(async () => {
   try {
     await controller.ensureSecretsLoaded()
@@ -121,10 +136,12 @@ onMounted(async () => {
         <SettingsForm
           :model-value="controller.form"
           :sms-key-statuses="controller.smsKeyStatuses.value"
+          :querying-sms-balances="controller.actions.queryingSmsBalances"
           :testing-notification="controller.actions.testingNotification"
           :notification-status="controller.runtime.value.notification"
           @update:model-value="controller.updateForm"
           @test-notification="testNotification"
+          @query-sms-balances="querySmsBalances"
         />
       </WorkspacePanel>
 

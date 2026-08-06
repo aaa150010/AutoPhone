@@ -6,7 +6,7 @@ import time
 from typing import Any, Callable
 
 
-LOG_RETENTION_SECONDS = 12 * 60 * 60
+LOG_RETENTION_SECONDS = 2 * 24 * 60 * 60
 LOG_CLEANUP_INTERVAL_SECONDS = 5 * 60
 
 
@@ -35,9 +35,17 @@ class GuiLogRetention:
             getattr(target, "_gptphone_log_cleanup_at", 0),
             0,
         )
-        if not force and last_cleanup and now - last_cleanup < self.cleanup_interval_seconds:
-            return
         cutoff = now - self.retention_seconds
+        if not force and last_cleanup and now - last_cleanup < self.cleanup_interval_seconds:
+            has_expired = any(
+                self._timestamp(
+                    value.get("created_at") if isinstance(value, dict) else None,
+                    now,
+                ) < cutoff
+                for value in list(getattr(target, "items", ()) or ())
+            )
+            if not has_expired:
+                return
         retained: list[dict[str, Any]] = []
         for value in list(getattr(target, "items", ()) or ()):
             row = dict(value) if isinstance(value, dict) else {"message": str(value or "")}
