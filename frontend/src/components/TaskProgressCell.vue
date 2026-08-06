@@ -24,6 +24,15 @@ const totalElapsedSeconds = computed(() => {
   return Math.max(Number(timing.elapsed_seconds || 0), Math.floor(end - timing.started_at))
 })
 
+function formatSeconds(value: unknown) {
+  const seconds = Math.max(0, Number(value || 0))
+  if (!Number.isFinite(seconds)) return '0'
+  if (seconds > 0 && seconds < 10 && !Number.isInteger(seconds)) {
+    return seconds.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
+  }
+  return String(Math.floor(seconds))
+}
+
 const tagType = computed(() => {
   const tones: Record<TaskStageGroup, 'primary' | 'success' | 'warning' | 'info'> = {
     queue: 'info',
@@ -46,8 +55,16 @@ const tooltip = computed(() => {
   const stages = (timing?.stages || [])
     .map(stage => `${stage.label} ${Math.floor(Number(stage.elapsed_seconds || 0))} 秒${stage.visits > 1 ? `（${stage.visits} 次）` : ''}`)
     .join(' · ')
+  const segments = (timing?.segments || [])
+    .map(segment => `${segment.label} ${formatSeconds(segment.elapsed_seconds)} 秒${segment.visits > 1 ? `（${segment.visits} 次）` : ''}`)
+    .join(' · ')
   const current = progress ? `进入节点 ${entered} · 当前 ${elapsedSeconds.value} 秒` : ''
-  return [current, `总耗时 ${totalElapsedSeconds.value} 秒`, stages].filter(Boolean).join(' · ')
+  return [
+    current,
+    `总耗时 ${totalElapsedSeconds.value} 秒`,
+    stages ? `阶段：${stages}` : '',
+    segments ? `细分：${segments}` : '',
+  ].filter(Boolean).join(' · ')
 })
 </script>
 

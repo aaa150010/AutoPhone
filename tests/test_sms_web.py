@@ -54,7 +54,10 @@ class FakePhoneGate:
         kwargs.pop("is_transient", None)
         kwargs.pop("max_attempts", None)
         kwargs.pop("on_retry", None)
+        on_wait = kwargs.pop("on_wait", None)
         kwargs.pop("stop_event", None)
+        if callable(on_wait):
+            on_wait(0.25)
         return function(*args, **kwargs)
 
 
@@ -78,12 +81,16 @@ class FakeTaskProgress:
     def __init__(self):
         self.stages = []
         self.statuses = []
+        self.segments = []
 
     def set_stage(self, task_id, stage):
         self.stages.append((task_id, stage))
 
     def observe_task_state(self, task_id, status):
         self.statuses.append((task_id, status))
+
+    def record_segment(self, task_id, code, elapsed_seconds):
+        self.segments.append((task_id, code, elapsed_seconds))
 
 
 class SmsWebTests(unittest.TestCase):
@@ -573,6 +580,56 @@ class SmsWebTests(unittest.TestCase):
         self.assertEqual(records, [(False, "phone_otp_empty")])
         self.assertGreater(selector.stats[("37", "3237")]["cooldown_until"], 0)
         self.assertIn("短信验证码未送达冷却 180 秒", logs.rows[-1][0])
+
+    def test_phone_gate_and_provider_ready_record_segments_without_changing_results(self):
+        progress = FakeTaskProgress()
+        self.integration.task_progress = progress
+        self.integration.phone_gate = FakePhoneGate()
+        self.integration.original_send_phone_otp = lambda *_args: {"_status": 200}
+        transport = SimpleNamespace(config={"sms_task_id": "task-timing"}, log_fn=None)
+
+        result = self.integration.send_phone_number_otp(
+            transport,
+            "+15550001234",
+        )
+
+        self.assertEqual(result["_status"], 200)
+        self.assertEqual(
+            progress.segments[0],
+            ("task-timing", "phone_slot_waiting", 0.25),
+        )
+
+        adapter = SimpleNamespace(
+            config={"sms_task_id": "task-timing"},
+            provider=SimpleNamespace(set_ready=lambda: None),
+        )
+        lease = SimpleNamespace(activation_id="order-timing", meta={})
+        self.integration.adapter_mark_ready(adapter, lease)
+        self.assertEqual(progress.segments[1][0:2], ("task-timing", "sms_provider_ready"))
+        self.assertGreaterEqual(progress.segments[1][2], 0)
+
+        adapter.provider = SimpleNamespace(
+            set_ready=lambda: (_ for _ in ()).throw(RuntimeError("ready failed"))
+        )
+        with self.assertRaisesRegex(RuntimeError, "ready failed"):
+            self.integration.adapter_mark_ready(adapter, lease)
+        self.assertEqual(progress.segments[2][0:2], ("task-timing", "sms_provider_ready"))
+
+    def test_segment_recorder_failure_never_masks_phone_result(self):
+        self.integration.phone_gate = FakePhoneGate()
+        self.integration.original_send_phone_otp = lambda *_args: {"_status": 200}
+        self.integration.task_progress = SimpleNamespace(
+            record_segment=lambda *_args: (_ for _ in ()).throw(
+                RuntimeError("telemetry unavailable")
+            )
+        )
+
+        result = self.integration.send_phone_number_otp(
+            SimpleNamespace(config={"sms_task_id": "task-safe"}, log_fn=None),
+            "+15550001234",
+        )
+
+        self.assertEqual(result["_status"], 200)
 
     def test_sms_timeout_returns_no_code_so_next_loop_can_allocate_new_phone(self):
         allocations = []

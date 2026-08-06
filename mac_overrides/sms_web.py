@@ -110,6 +110,14 @@ class SmsWebIntegration:
         except Exception:
             return time.time()
 
+    def _record_segment(self, task_id: Any, code: str, elapsed_seconds: Any) -> None:
+        try:
+            recorder = getattr(self.task_progress, "record_segment", None)
+            if task_id and callable(recorder):
+                recorder(task_id, code, elapsed_seconds)
+        except Exception:
+            pass
+
     def clamp_max_price(self, value: Any) -> str:
         try:
             price = float(str(value or "").strip())
@@ -514,7 +522,15 @@ class SmsWebIntegration:
             self.task_progress.set_stage(task_id, "sms_waiting")
         provider = getattr(adapter, "provider", None)
         if provider is not None and hasattr(provider, "set_ready"):
-            provider.set_ready()
+            ready_started = time.monotonic()
+            try:
+                provider.set_ready()
+            finally:
+                self._record_segment(
+                    task_id,
+                    "sms_provider_ready",
+                    time.monotonic() - ready_started,
+                )
         meta = dict(getattr(lease, "meta", None) or {})
         meta["ready_sent"] = True
         meta["sms_order_state"] = "ready"
@@ -835,12 +851,21 @@ class SmsWebIntegration:
         return self.route_policy.route_limit(stat)
 
     def send_phone_number_otp(self, transport: Any, phone: str, channel: str = "sms") -> Any:
+        task_id = self.transport_task_id(transport)
+
         def on_retry(delay: float, _attempt: int) -> None:
             log_fn = getattr(transport, "log_fn", None)
             _call_log(
                 log_fn,
                 f"  [Codex] 手机提交遇到临时服务错误，{delay:g} 秒后使用新的请求上下文重试当前号码",
                 "warn",
+            )
+
+        def on_wait(elapsed_seconds: float) -> None:
+            self._record_segment(
+                task_id,
+                "phone_slot_waiting",
+                elapsed_seconds,
             )
 
         try:
@@ -852,6 +877,7 @@ class SmsWebIntegration:
                 is_transient=self.sms_runtime.is_transient_openai_error,
                 max_attempts=4,
                 on_retry=on_retry,
+                on_wait=on_wait,
                 stop_event=(getattr(transport, "config", None) or {}).get("_stop_requested"),
             )
         except Exception as exc:

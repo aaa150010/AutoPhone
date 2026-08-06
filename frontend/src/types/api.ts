@@ -41,11 +41,19 @@ export interface TaskStageTiming {
   visits: number
 }
 
+export interface TaskTimingSegment {
+  code: string
+  label: string
+  elapsed_seconds: number
+  visits: number
+}
+
 export interface TaskTiming {
   started_at: number
   finished_at: number | null
   elapsed_seconds: number
   stages: TaskStageTiming[]
+  segments?: TaskTimingSegment[]
 }
 
 export interface TaskProgress {

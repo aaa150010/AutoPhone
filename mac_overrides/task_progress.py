@@ -4,12 +4,21 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass
+import math
 from threading import RLock
 import time
 from typing import Any, Callable
 
 
 STAGE_GROUPS = ("queue", "oauth", "email", "phone", "sms", "finalizing")
+
+SEGMENTS = {
+    "protocol_slot_waiting": "等待协议槽",
+    "phone_slot_waiting": "等待手机号提交槽",
+    "phone_submit_http": "手机号提交接口",
+    "sentinel_refresh": "Sentinel 刷新",
+    "sms_provider_ready": "接码平台确认订单",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +206,58 @@ class TaskProgressTracker:
             )
         else:
             row["visits"] = max(0, int(row.get("visits") or 0)) + 1
+
+    def record_segment(
+        self,
+        task_id: Any,
+        code: str,
+        elapsed_seconds: Any,
+    ) -> bool:
+        key = str(task_id or "").strip()
+        segment_code = str(code or "").strip()
+        label = SEGMENTS.get(segment_code)
+        if not key or label is None:
+            return False
+        try:
+            elapsed = float(elapsed_seconds)
+        except (TypeError, ValueError):
+            return False
+        if not math.isfinite(elapsed):
+            return False
+        elapsed = max(0.0, elapsed)
+        with self._lock:
+            current = self._tasks.get(key)
+            if current is None or current.get("finished_at") is not None:
+                return False
+            timing = current.setdefault("timing", {})
+            segments = timing.setdefault("segments", [])
+            if not isinstance(segments, list):
+                segments = []
+                timing["segments"] = segments
+            row = next(
+                (
+                    item
+                    for item in segments
+                    if isinstance(item, dict) and item.get("code") == segment_code
+                ),
+                None,
+            )
+            if row is None:
+                segments.append(
+                    {
+                        "code": segment_code,
+                        "label": label,
+                        "elapsed_seconds": round(elapsed, 3),
+                        "visits": 1,
+                    }
+                )
+            else:
+                row["elapsed_seconds"] = round(
+                    max(0.0, float(row.get("elapsed_seconds") or 0.0)) + elapsed,
+                    3,
+                )
+                row["visits"] = max(0, int(row.get("visits") or 0)) + 1
+            return True
 
     def _close_current_stage(self, current: dict[str, Any], timestamp: int) -> None:
         entered_at = int(current.get("entered_at") or timestamp)

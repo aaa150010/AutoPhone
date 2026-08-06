@@ -790,6 +790,15 @@ class _ProxyProtocolState:
     success_streak: int = 0
 
 
+def _notify_observer(observer: Any, value: Any) -> None:
+    if not callable(observer):
+        return
+    try:
+        observer(value)
+    except Exception:
+        pass
+
+
 class ProxyProtocolGate:
     """Limit full protocol sessions independently for each configured proxy."""
 
@@ -849,46 +858,75 @@ class ProxyProtocolGate:
         return bool(stop_event()) if callable(stop_event) else bool(stop_event)
 
     @contextmanager
-    def acquire(self, proxy: Any, *, stop_event: Any = None) -> Iterator[str]:
+    def acquire(
+        self,
+        proxy: Any,
+        *,
+        stop_event: Any = None,
+        on_wait: Callable[[float], Any] | None = None,
+    ) -> Iterator[str]:
         key = self.key(proxy)
         acquired = False
-        with self.condition:
-            state = self._state(key)
-            state.waiting += 1
-            try:
-                while True:
-                    if self._stopped(stop_event):
-                        raise RuntimeError("task_stopped")
-                    now = float(self.now_fn())
-                    launch_wait = (
-                        max(
-                            0.0,
-                            state.last_started_at + self.launch_interval_seconds - now,
-                        )
-                        if state.last_started_at > 0
-                        else 0.0
-                    )
-                    if state.active < state.limit and launch_wait <= 0:
-                        state.active += 1
-                        state.last_started_at = now
-                        acquired = True
-                        break
-                    self.condition.wait(timeout=min(0.25, launch_wait) if launch_wait else 0.25)
-            finally:
-                state.waiting = max(0, state.waiting - 1)
+        wait_started = float(self.now_fn())
+        wait_reported = False
         try:
+            try:
+                with self.condition:
+                    state = self._state(key)
+                    state.waiting += 1
+                    try:
+                        while True:
+                            if self._stopped(stop_event):
+                                raise RuntimeError("task_stopped")
+                            now = float(self.now_fn())
+                            launch_wait = (
+                                max(
+                                    0.0,
+                                    state.last_started_at
+                                    + self.launch_interval_seconds
+                                    - now,
+                                )
+                                if state.last_started_at > 0
+                                else 0.0
+                            )
+                            if state.active < state.limit and launch_wait <= 0:
+                                state.active += 1
+                                state.last_started_at = now
+                                acquired = True
+                                break
+                            self.condition.wait(
+                                timeout=min(0.25, launch_wait) if launch_wait else 0.25
+                            )
+                    finally:
+                        state.waiting = max(0, state.waiting - 1)
+            finally:
+                waited = max(0.0, float(self.now_fn()) - wait_started)
+                _notify_observer(on_wait, waited)
+                wait_reported = True
             yield key
         finally:
+            if not wait_reported:
+                waited = max(0.0, float(self.now_fn()) - wait_started)
+                _notify_observer(on_wait, waited)
             if acquired:
                 with self.condition:
                     state.active = max(0, state.active - 1)
                     self.condition.notify_all()
 
-    def report(self, proxy: Any, value: Any = None, *, success: bool = False) -> int:
+    def report(
+        self,
+        proxy: Any,
+        value: Any = None,
+        *,
+        success: bool = False,
+        on_limit_change: Callable[[dict[str, Any]], Any] | None = None,
+    ) -> int:
         key = self.key(proxy)
+        event: dict[str, Any] | None = None
         with self.condition:
             state = self._state(key)
             now = float(self.now_fn())
+            old_limit = state.limit
             if success:
                 state.pressure_events = [
                     observed
@@ -900,21 +938,31 @@ class ProxyProtocolGate:
                     state.limit += 1
                     state.success_streak = 0
                     self.condition.notify_all()
-                return state.limit
-            if not is_protocol_pressure_error(value):
+            elif not is_protocol_pressure_error(value):
                 state.success_streak = 0
-                return state.limit
-            state.success_streak = 0
-            state.pressure_events = [
-                observed
-                for observed in state.pressure_events
-                if 0 <= now - observed <= self.pressure_window_seconds
-            ]
-            state.pressure_events.append(now)
-            if len(state.pressure_events) >= 2 and state.limit > 1:
-                state.limit -= 1
-                state.pressure_events.clear()
-            return state.limit
+            else:
+                state.success_streak = 0
+                state.pressure_events = [
+                    observed
+                    for observed in state.pressure_events
+                    if 0 <= now - observed <= self.pressure_window_seconds
+                ]
+                state.pressure_events.append(now)
+                if len(state.pressure_events) >= 2 and state.limit > 1:
+                    state.limit -= 1
+                    state.pressure_events.clear()
+            new_limit = state.limit
+            if new_limit != old_limit:
+                event = {
+                    "kind": "restored" if new_limit > old_limit else "degraded",
+                    "old_limit": old_limit,
+                    "new_limit": new_limit,
+                    "ceiling": state.ceiling,
+                    "proxy_key": key,
+                }
+        if event is not None:
+            _notify_observer(on_limit_change, event)
+        return new_limit
 
     def snapshot(self, proxy: Any) -> dict[str, int]:
         key = self.key(proxy)
@@ -2592,10 +2640,15 @@ class PhoneSubmissionGate:
         function: Callable[..., Any],
         *args: Any,
         stop_event: Any = None,
+        on_wait: Callable[[float], Any] | None = None,
         **kwargs: Any,
     ) -> Any:
-        self._acquire(stop_event)
+        wait_started = float(self.now_fn())
+        acquired = False
+        wait_reported = False
         try:
+            self._acquire(stop_event)
+            acquired = True
             while True:
                 with self.spacing_lock:
                     now = self.now_fn()
@@ -2608,9 +2661,20 @@ class PhoneSubmissionGate:
                         break
                 if wait_for > 0:
                     self._wait(wait_for, stop_event)
+            _notify_observer(
+                on_wait,
+                max(0.0, float(self.now_fn()) - wait_started),
+            )
+            wait_reported = True
             return function(*args, **kwargs)
         finally:
-            self._release()
+            if not wait_reported:
+                _notify_observer(
+                    on_wait,
+                    max(0.0, float(self.now_fn()) - wait_started),
+                )
+            if acquired:
+                self._release()
 
     def call_with_retries(
         self,
@@ -2620,6 +2684,7 @@ class PhoneSubmissionGate:
         max_attempts: int = 4,
         on_retry: Callable[[float, int], None] | None = None,
         stop_event: Any = None,
+        on_wait: Callable[[float], Any] | None = None,
         **kwargs: Any,
     ) -> Any:
         attempts = max(1, int(max_attempts))
@@ -2630,6 +2695,7 @@ class PhoneSubmissionGate:
                     function,
                     *args,
                     stop_event=stop_event,
+                    on_wait=on_wait,
                     **kwargs,
                 )
             except Exception as exc:

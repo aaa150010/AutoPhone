@@ -755,6 +755,14 @@ def _set_current_task_stage(code):
         _TASK_PROGRESS.set_stage(task_id, code)
 
 
+def _record_task_segment(task_id, code, elapsed_seconds):
+    try:
+        if task_id:
+            _TASK_PROGRESS.record_segment(task_id, code, elapsed_seconds)
+    except Exception:
+        pass
+
+
 def _generate_sub2_oauth_session(config, *, upload_proxy="", log_fn=None):
     _set_current_task_stage("oauth_session")
     labels = {
@@ -1765,6 +1773,7 @@ def _real_send_phone_number_otp(self, phone, channel="sms"):
         headers,
         include_sentinel=False,
     )
+    request_started = time.monotonic()
     try:
         raw_response = self.session.post(
             f"{_codex_oauth_chain.AUTH}{endpoint}",
@@ -1784,6 +1793,12 @@ def _real_send_phone_number_otp(self, phone, channel="sms"):
             "error": _error_observability_ext.sanitize_failure_detail(exc, limit=220)
             or "phone_send_request_failed",
         }
+    finally:
+        _record_task_segment(
+            _transport_task_id(self) or _TASK_CONTEXT.get(),
+            "phone_submit_http",
+            time.monotonic() - request_started,
+        )
     response = _reject_phone_channel_mismatch(response, requested_channel)
     self.last_response = response
     finished = _auth_request_runtime_ext.finish_request(
@@ -1822,6 +1837,7 @@ def _real_send_phone_number_otp(self, phone, channel="sms"):
         _AUTH_SESSIONS,
         response,
     )
+    sentinel_started = time.monotonic()
     try:
         _auth_request_runtime_ext.refresh_sentinel(
             self,
@@ -1831,6 +1847,12 @@ def _real_send_phone_number_otp(self, phone, channel="sms"):
         )
     except _auth_request_runtime_ext.AuthRequestContextError as exc:
         raise _codex_oauth_chain.CodexChainError(f"{exc.code}: {exc}") from exc
+    finally:
+        _record_task_segment(
+            _transport_task_id(self) or _TASK_CONTEXT.get(),
+            "sentinel_refresh",
+            time.monotonic() - sentinel_started,
+        )
     return response
 
 
@@ -2150,10 +2172,34 @@ def _run_codex_after_registration(
         del request_context
         _register_sms_transport(expected_task_id, transport)
     transport_token = _ACTIVE_SMS_TRANSPORT.set(transport)
+    task_id = str(runtime_config.get("sms_task_id") or runtime_config.get("run_id") or "")
+
+    def record_protocol_wait(elapsed_seconds):
+        _record_task_segment(
+            task_id,
+            "protocol_slot_waiting",
+            elapsed_seconds,
+        )
+
+    def log_protocol_limit_change(event):
+        value = dict(event or {})
+        old_limit = int(value.get("old_limit") or 0)
+        new_limit = int(value.get("new_limit") or 0)
+        if old_limit <= 0 or new_limit <= 0 or old_limit == new_limit:
+            return
+        restored = str(value.get("kind") or "") == "restored"
+        reason = "连续成功后恢复" if restored else "60 秒内连接压力达到阈值"
+        _call_log(
+            log_fn,
+            f"  [并发保护] 协议并发 {old_limit} -> {new_limit}（{reason}）",
+            "info" if restored else "warn",
+        )
+
     try:
         with _PROTOCOL_GATE.acquire(
             proxy,
             stop_event=runtime_config.get("_stop_requested"),
+            on_wait=record_protocol_wait,
         ):
             try:
                 result = _ORIGINAL_RUN_CODEX_AFTER_REGISTRATION(
@@ -2186,7 +2232,11 @@ def _run_codex_after_registration(
                     phone_otp_provider=phone_otp_provider,
                 )
             except Exception as exc:
-                _PROTOCOL_GATE.report(proxy, exc)
+                _PROTOCOL_GATE.report(
+                    proxy,
+                    exc,
+                    on_limit_change=log_protocol_limit_change,
+                )
                 raise
             else:
                 failure_value = result
@@ -2199,6 +2249,7 @@ def _run_codex_after_registration(
                     proxy,
                     failure_value,
                     success=bool(isinstance(result, dict) and result.get("ok")),
+                    on_limit_change=log_protocol_limit_change,
                 )
     finally:
         _ACTIVE_SMS_TRANSPORT.reset(transport_token)

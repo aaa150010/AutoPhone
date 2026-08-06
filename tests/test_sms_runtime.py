@@ -1720,6 +1720,7 @@ class SmsRuntimeTests(unittest.TestCase):
     def test_phone_submission_gate_spaces_requests(self):
         clock = [10.0]
         sleeps: list[float] = []
+        waits: list[float] = []
 
         def sleep(seconds: float) -> None:
             sleeps.append(seconds)
@@ -1731,10 +1732,17 @@ class SmsRuntimeTests(unittest.TestCase):
             now_fn=lambda: clock[0],
             sleep_fn=sleep,
         )
-        self.assertEqual(gate.call(lambda value: value, "first"), "first")
-        self.assertEqual(gate.call(lambda value: value, "second"), "second")
+        self.assertEqual(
+            gate.call(lambda value: value, "first", on_wait=waits.append),
+            "first",
+        )
+        self.assertEqual(
+            gate.call(lambda value: value, "second", on_wait=waits.append),
+            "second",
+        )
         self.assertEqual(len(sleeps), 1)
         self.assertAlmostEqual(sleeps[0], 0.75)
+        self.assertEqual(waits, [0.0, 0.75])
 
     def test_phone_submission_gate_shares_exponential_backoff(self):
         clock = [0.0]
@@ -1757,18 +1765,42 @@ class SmsRuntimeTests(unittest.TestCase):
             sleep_fn=sleep,
         )
         retries: list[tuple[float, int]] = []
+        waits: list[float] = []
 
         result = gate.call_with_retries(
             lambda: outcomes.pop(0),
             is_transient=is_transient_openai_error,
             max_attempts=4,
             on_retry=lambda delay, attempt: retries.append((delay, attempt)),
+            on_wait=waits.append,
         )
 
         self.assertEqual(result, {"status": 200})
         self.assertEqual(sleeps, [2.0, 4.0, 8.0])
         self.assertEqual(retries, [(2.0, 1), (4.0, 2), (8.0, 3)])
+        self.assertEqual(waits, [0.0, 2.0, 4.0, 8.0])
         self.assertEqual(gate.transient_streak, 0)
+
+    def test_phone_submission_wait_observer_never_changes_gate_outcome(self):
+        gate = PhoneSubmissionGate(concurrency=1, interval_seconds=0)
+
+        self.assertEqual(
+            gate.call(
+                lambda: "ok",
+                on_wait=lambda _elapsed: (_ for _ in ()).throw(
+                    RuntimeError("telemetry unavailable")
+                ),
+            ),
+            "ok",
+        )
+
+        stopped = threading.Event()
+        stopped.set()
+        waits: list[float] = []
+        with self.assertRaisesRegex(RuntimeError, "task_stopped"):
+            gate.call(lambda: None, stop_event=stopped, on_wait=waits.append)
+        self.assertEqual(len(waits), 1)
+        self.assertEqual(gate.status(), {"active": 0, "limit": 1, "waiting": 0})
 
     def test_phone_submission_gate_begin_run_clears_shared_backoff(self):
         clock = [50.0]
@@ -1985,13 +2017,57 @@ class SmsRuntimeTests(unittest.TestCase):
             thread.join()
         self.assertEqual(maximum, 3)
 
-        gate.report("http://proxy-a:7897", "TLS connection reset")
-        gate.report("http://proxy-a:7897", "HTTP 429")
+        events = []
+        gate.report(
+            "http://proxy-a:7897",
+            "TLS connection reset",
+            on_limit_change=events.append,
+        )
+        gate.report(
+            "http://proxy-a:7897",
+            "HTTP 429",
+            on_limit_change=events.append,
+        )
         self.assertEqual(gate.snapshot("http://proxy-a:7897")["limit"], 2)
         self.assertEqual(gate.snapshot("http://proxy-b:7897")["limit"], 3)
-        gate.report("http://proxy-a:7897", success=True)
-        gate.report("http://proxy-a:7897", success=True)
+        gate.report(
+            "http://proxy-a:7897",
+            success=True,
+            on_limit_change=events.append,
+        )
+        gate.report(
+            "http://proxy-a:7897",
+            success=True,
+            on_limit_change=events.append,
+        )
         self.assertEqual(gate.snapshot("http://proxy-a:7897")["limit"], 3)
+        self.assertEqual(
+            [(row["kind"], row["old_limit"], row["new_limit"]) for row in events],
+            [("degraded", 3, 2), ("restored", 2, 3)],
+        )
+        self.assertNotIn("http://proxy-a:7897", str(events))
+
+    def test_protocol_gate_observer_failures_do_not_change_limits_or_leak_slots(self):
+        gate = ProxyProtocolGate(default_limit=5, launch_interval_seconds=0)
+        raising = lambda _value: (_ for _ in ()).throw(
+            RuntimeError("telemetry unavailable")
+        )
+
+        waits = []
+        with gate.acquire("private-proxy", on_wait=waits.append):
+            self.assertEqual(gate.snapshot("private-proxy")["active"], 1)
+        self.assertEqual(len(waits), 1)
+        self.assertEqual(gate.snapshot("private-proxy")["active"], 0)
+
+        gate.report("private-proxy", "TLS connection reset")
+        self.assertEqual(
+            gate.report(
+                "private-proxy",
+                "HTTP 429",
+                on_limit_change=raising,
+            ),
+            4,
+        )
 
     def test_proxy_protocol_gate_keeps_pressure_events_across_success(self):
         clock = [100.0]
@@ -2042,16 +2118,25 @@ class SmsRuntimeTests(unittest.TestCase):
             now_fn=lambda: clock[0],
             launch_interval_seconds=0,
         )
-        gate.report("proxy-a", "TLS connection reset")
+        events = []
+        gate.report(
+            "proxy-a",
+            "TLS connection reset",
+            on_limit_change=events.append,
+        )
         clock[0] += 30
-        gate.report("proxy-a", "HTTP 429")
+        gate.report("proxy-a", "HTTP 429", on_limit_change=events.append)
         self.assertEqual(gate.snapshot("proxy-a")["limit"], 4)
 
         for _ in range(5):
-            gate.report("proxy-a", success=True)
+            gate.report("proxy-a", success=True, on_limit_change=events.append)
         self.assertEqual(gate.snapshot("proxy-a")["limit"], 4)
-        gate.report("proxy-a", success=True)
+        gate.report("proxy-a", success=True, on_limit_change=events.append)
         self.assertEqual(gate.snapshot("proxy-a")["limit"], 5)
+        self.assertEqual(
+            [(row["kind"], row["old_limit"], row["new_limit"]) for row in events],
+            [("degraded", 5, 4), ("restored", 4, 5)],
+        )
 
     def test_proxy_protocol_gate_staggers_launches_and_supports_stop(self):
         gate = ProxyProtocolGate(default_limit=5, launch_interval_seconds=0.03)
@@ -2078,10 +2163,15 @@ class SmsRuntimeTests(unittest.TestCase):
         stopped = threading.Event()
         waiter_done = threading.Event()
         errors: list[str] = []
+        stopped_waits: list[float] = []
 
         def waiter():
             try:
-                with blocker.acquire("proxy-a", stop_event=stopped):
+                with blocker.acquire(
+                    "proxy-a",
+                    stop_event=stopped,
+                    on_wait=stopped_waits.append,
+                ):
                     pass
             except RuntimeError as exc:
                 errors.append(str(exc))
@@ -2098,6 +2188,7 @@ class SmsRuntimeTests(unittest.TestCase):
             self.assertTrue(waiter_done.wait(1))
         waiting_thread.join()
         self.assertEqual(errors, ["task_stopped"])
+        self.assertEqual(len(stopped_waits), 1)
         self.assertEqual(blocker.snapshot("proxy-a")["waiting"], 0)
 
     def test_cleanup_queue_resumes_after_recreation(self):

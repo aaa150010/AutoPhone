@@ -871,6 +871,82 @@ class WebGuiSecurityTests(unittest.TestCase):
         finally:
             module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = original_run
 
+    def test_protocol_wait_and_limit_changes_are_recorded_without_proxy_details(self):
+        module = self.module
+        original_run = module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION
+        original_gate = module._PROTOCOL_GATE
+        outcomes = [
+            {"ok": False, "error": "TLS connection reset"},
+            {"ok": True},
+        ]
+        logs = []
+
+        class Lease:
+            def __init__(self, on_wait):
+                self.on_wait = on_wait
+
+            def __enter__(self):
+                self.on_wait(1.25)
+                return "proxy:masked"
+
+            def __exit__(self, *_args):
+                return False
+
+        class Gate:
+            def acquire(self, _proxy, *, stop_event=None, on_wait=None):
+                del stop_event
+                return Lease(on_wait)
+
+            def report(
+                self,
+                _proxy,
+                _value=None,
+                *,
+                success=False,
+                on_limit_change=None,
+            ):
+                event = {
+                    "kind": "restored" if success else "degraded",
+                    "old_limit": 4 if success else 5,
+                    "new_limit": 5 if success else 4,
+                    "ceiling": 5,
+                    "proxy_key": "proxy:masked",
+                }
+                on_limit_change(event)
+                return event["new_limit"]
+
+        module._TASK_PROGRESS.reset()
+        try:
+            module._PROTOCOL_GATE = Gate()
+            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = lambda **_kwargs: outcomes.pop(0)
+            for task_id in ("task-protocol-down", "task-protocol-up"):
+                module._TASK_PROGRESS.set_stage(task_id, "oauth_create_node")
+                module._run_codex_after_registration(
+                    oauth_url="https://auth.example.test/authorize",
+                    account_email="timing@example.test",
+                    proxy="http://private-user:private-pass@127.0.0.1:7897",
+                    config={"sms_task_id": task_id},
+                    log_fn=lambda message, level="info": logs.append((message, level)),
+                )
+        finally:
+            segments = {
+                task_id: (module._TASK_PROGRESS.progress(task_id) or {}).get("timing", {}).get(
+                    "segments", []
+                )
+                for task_id in ("task-protocol-down", "task-protocol-up")
+            }
+            module._TASK_PROGRESS.reset()
+            module._PROTOCOL_GATE = original_gate
+            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = original_run
+
+        for rows in segments.values():
+            self.assertEqual(rows[0]["code"], "protocol_slot_waiting")
+            self.assertEqual(rows[0]["elapsed_seconds"], 1.25)
+        self.assertTrue(any("5 -> 4" in message for message, _level in logs))
+        self.assertTrue(any("4 -> 5" in message for message, _level in logs))
+        self.assertNotIn("private-user", str(logs))
+        self.assertNotIn("private-pass", str(logs))
+
     def test_relogin_whole_chain_retry_policy_rejects_credential_and_state_failures(self):
         module = self.module
         token = module._RUN_MODE_CONTEXT.set("relogin")
@@ -971,6 +1047,9 @@ class WebGuiSecurityTests(unittest.TestCase):
             _gptphone_page_type="add_phone",
         )
         self.module._AUTH_SESSIONS.clear("task-phone")
+        self.module._TASK_PROGRESS.reset()
+        self.module._TASK_PROGRESS.set_stage("task-phone", "phone_submitting")
+        other_token = self.module._TASK_CONTEXT.set("task-other")
         try:
             result = self.module._real_send_phone_number_otp(
                 transport,
@@ -978,6 +1057,10 @@ class WebGuiSecurityTests(unittest.TestCase):
                 "sms",
             )
         finally:
+            timing = self.module._TASK_PROGRESS.progress("task-phone")["timing"]
+            other_progress = self.module._TASK_PROGRESS.progress("task-other")
+            self.module._TASK_CONTEXT.reset(other_token)
+            self.module._TASK_PROGRESS.reset()
             self.module._AUTH_SESSIONS.clear("task-phone")
 
         self.assertEqual(result["_status"], 200)
@@ -993,6 +1076,10 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertTrue(headers["x-access-flow-invocation-id"])
         self.assertEqual(sentinel_calls[0][0], "reset")
         self.assertEqual(sentinel_calls[1][0], "token_for")
+        segments = {row["code"]: row for row in timing["segments"]}
+        self.assertEqual(segments["phone_submit_http"]["visits"], 1)
+        self.assertEqual(segments["sentinel_refresh"]["visits"], 1)
+        self.assertNotIn("segments", (other_progress or {}).get("timing", {}))
 
     def test_real_phone_send_rejects_forced_whatsapp_channel(self):
         calls = []
@@ -1034,6 +1121,12 @@ class WebGuiSecurityTests(unittest.TestCase):
             _gptphone_page_type="add_phone",
         )
         self.module._AUTH_SESSIONS.clear("task-forced-whatsapp")
+        self.module._TASK_PROGRESS.reset()
+        self.module._TASK_PROGRESS.set_stage(
+            "task-forced-whatsapp",
+            "phone_submitting",
+        )
+        task_token = self.module._TASK_CONTEXT.set("task-forced-whatsapp")
         try:
             result = self.module._real_send_phone_number_otp(
                 transport,
@@ -1041,6 +1134,11 @@ class WebGuiSecurityTests(unittest.TestCase):
                 "sms",
             )
         finally:
+            timing = self.module._TASK_PROGRESS.progress("task-forced-whatsapp")[
+                "timing"
+            ]
+            self.module._TASK_CONTEXT.reset(task_token)
+            self.module._TASK_PROGRESS.reset()
             self.module._AUTH_SESSIONS.clear("task-forced-whatsapp")
 
         self.assertEqual(
@@ -1057,6 +1155,93 @@ class WebGuiSecurityTests(unittest.TestCase):
         error_text = self.module._codex_oauth_chain._error_text(result)
         self.assertIn("phone_channel_mismatch", error_text)
         self.assertEqual(self.module._SMS_WEB.classify_error(error_text), "phone_rejected")
+        segment_codes = [row["code"] for row in timing["segments"]]
+        self.assertEqual(segment_codes, ["phone_submit_http"])
+
+    def test_phone_http_and_sentinel_failures_still_record_their_segments(self):
+        module = self.module
+
+        class FailingSession:
+            cookies = {"session": "present"}
+
+            def post(self, _url, **_kwargs):
+                raise RuntimeError("private HTTP failure")
+
+        def transport_for(task_id, session):
+            return SimpleNamespace(
+                config={"sms_task_id": task_id, "_auth_account_email": "user@example.test"},
+                account_email="user@example.test",
+                session=session,
+                sentinel_provider=SimpleNamespace(),
+                device_id="device-1",
+                proxy="",
+                _gptphone_page_type="add_phone",
+            )
+
+        task_id = "task-phone-http-failure"
+        module._AUTH_SESSIONS.clear(task_id)
+        module._TASK_PROGRESS.reset()
+        module._TASK_PROGRESS.set_stage(task_id, "phone_submitting")
+        token = module._TASK_CONTEXT.set(task_id)
+        try:
+            result = module._real_send_phone_number_otp(
+                transport_for(task_id, FailingSession()),
+                "+15550001234",
+                "sms",
+            )
+            timing = module._TASK_PROGRESS.progress(task_id)["timing"]
+        finally:
+            module._TASK_CONTEXT.reset(token)
+            module._TASK_PROGRESS.reset()
+            module._AUTH_SESSIONS.clear(task_id)
+
+        self.assertEqual(result["_status"], 0)
+        self.assertEqual(
+            [row["code"] for row in timing["segments"]],
+            ["phone_submit_http"],
+        )
+
+        class SuccessfulSession:
+            cookies = {"session": "present"}
+
+            def post(self, _url, **_kwargs):
+                return {"_status": 200, "page": {"type": "add_phone"}}
+
+        task_id = "task-sentinel-failure"
+        original_refresh = module._auth_request_runtime_ext.refresh_sentinel
+        module._AUTH_SESSIONS.clear(task_id)
+        module._TASK_PROGRESS.reset()
+        module._TASK_PROGRESS.set_stage(task_id, "phone_submitting")
+        token = module._TASK_CONTEXT.set(task_id)
+        try:
+            module._auth_request_runtime_ext.refresh_sentinel = lambda *_args, **_kwargs: (
+                _ for _ in ()
+            ).throw(
+                module._auth_request_runtime_ext.AuthRequestContextError(
+                    "sentinel_refresh_failed",
+                    "private sentinel failure",
+                )
+            )
+            with self.assertRaisesRegex(
+                module._codex_oauth_chain.CodexChainError,
+                "sentinel_refresh_failed",
+            ):
+                module._real_send_phone_number_otp(
+                    transport_for(task_id, SuccessfulSession()),
+                    "+15550001234",
+                    "sms",
+                )
+            timing = module._TASK_PROGRESS.progress(task_id)["timing"]
+        finally:
+            module._auth_request_runtime_ext.refresh_sentinel = original_refresh
+            module._TASK_CONTEXT.reset(token)
+            module._TASK_PROGRESS.reset()
+            module._AUTH_SESSIONS.clear(task_id)
+
+        self.assertEqual(
+            [row["code"] for row in timing["segments"]],
+            ["phone_submit_http", "sentinel_refresh"],
+        )
 
     def test_real_phone_send_requires_entry_page_recovery_before_replacement(self):
         calls = []
@@ -1867,6 +2052,11 @@ class WebGuiSecurityTests(unittest.TestCase):
             module._ORIGINAL_PERSIST_RESULT = persist
             module._TASK_PROGRESS.reset()
             module._TASK_PROGRESS.set_stage("T003-safe", "finalizing_token")
+            module._TASK_PROGRESS.record_segment(
+                "T003-safe",
+                "protocol_slot_waiting",
+                1.25,
+            )
             result = {"phase2_error": "sub2_exchange_failed: HTTP 401 OPENAI_OAUTH_SESSION_NOT_FOUND"}
             module._patched_persist_result(
                 fake_self,
@@ -1895,6 +2085,17 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(payload["result"]["failure"], payload["failure"])
         self.assertEqual(payload["timing"], frozen_timing)
         self.assertEqual(payload["result"]["timing"], frozen_timing)
+        self.assertEqual(
+            payload["timing"]["segments"],
+            [
+                {
+                    "code": "protocol_slot_waiting",
+                    "label": "等待协议槽",
+                    "elapsed_seconds": 1.25,
+                    "visits": 1,
+                }
+            ],
+        )
 
     def test_persistence_exception_reports_save_node_with_sanitized_cause(self):
         module = self.module

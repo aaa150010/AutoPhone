@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+import threading
 import unittest
 
 from mac_overrides.task_progress import (
@@ -62,6 +64,67 @@ class TaskProgressTests(unittest.TestCase):
 
         self.assertFalse(changed)
         self.assertEqual(self.tracker.progress("T001")["entered_at"], 100)
+
+    def test_segments_accumulate_without_changing_stage_and_freeze_at_terminal(self):
+        self.tracker.set_stage("T001", "phone_submitting")
+
+        self.assertTrue(
+            self.tracker.record_segment("T001", "phone_slot_waiting", 0.375)
+        )
+        self.assertTrue(
+            self.tracker.record_segment("T001", "phone_slot_waiting", 0.625)
+        )
+        self.assertTrue(
+            self.tracker.record_segment("T001", "sentinel_refresh", 1.2345)
+        )
+
+        progress = self.tracker.progress("T001")
+        self.assertEqual(progress["code"], "phone_submitting")
+        segments = {row["code"]: row for row in progress["timing"]["segments"]}
+        self.assertEqual(segments["phone_slot_waiting"]["visits"], 2)
+        self.assertEqual(segments["phone_slot_waiting"]["elapsed_seconds"], 1.0)
+        self.assertEqual(segments["sentinel_refresh"]["elapsed_seconds"], 1.234)
+
+        self.tracker.finish("T001")
+        frozen = self.tracker.progress("T001")["timing"]["segments"]
+        self.assertFalse(
+            self.tracker.record_segment("T001", "phone_slot_waiting", 10)
+        )
+        self.assertEqual(self.tracker.progress("T001")["timing"]["segments"], frozen)
+
+    def test_segments_reject_unknown_codes_and_untracked_tasks(self):
+        self.assertFalse(
+            self.tracker.record_segment("missing", "protocol_slot_waiting", 1)
+        )
+        self.tracker.set_stage("T001", "oauth_create_node")
+        self.assertFalse(self.tracker.record_segment("T001", "private-value", 1))
+        for value in (math.nan, math.inf, -math.inf):
+            with self.subTest(value=value):
+                self.assertFalse(
+                    self.tracker.record_segment(
+                        "T001",
+                        "protocol_slot_waiting",
+                        value,
+                    )
+                )
+
+    def test_segments_accumulate_atomically_across_threads(self):
+        self.tracker.set_stage("T001", "phone_submitting")
+        threads = [
+            threading.Thread(
+                target=self.tracker.record_segment,
+                args=("T001", "phone_slot_waiting", 0.01),
+            )
+            for _ in range(20)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        segment = self.tracker.progress("T001")["timing"]["segments"][0]
+        self.assertEqual(segment["visits"], 20)
+        self.assertEqual(segment["elapsed_seconds"], 0.2)
 
     def test_active_progress_can_drive_mailbox_running_state(self):
         self.tracker.set_stage("T001", "phone_acquiring")

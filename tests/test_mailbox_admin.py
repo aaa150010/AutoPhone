@@ -804,6 +804,14 @@ class MailboxAdminTests(unittest.TestCase):
                 "finished_at": None,
                 "elapsed_seconds": 20,
                 "stages": [],
+                "segments": [
+                    {
+                        "code": "phone_slot_waiting",
+                        "label": "等待手机号提交槽",
+                        "elapsed_seconds": 0.75,
+                        "visits": 1,
+                    }
+                ],
             },
             "mailbox_password": "must-not-leak",
         }
@@ -819,6 +827,10 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertEqual((running["status"], running["task_id"]), ("running", "T-current"))
         self.assertEqual(running["progress"]["code"], "sms_waiting")
         self.assertEqual(running["timing"], running["progress"]["timing"])
+        self.assertEqual(
+            running["timing"]["segments"][0]["code"],
+            "phone_slot_waiting",
+        )
         self.assertNotIn("mailbox_password", running["progress"])
         self.assertEqual((done["status"], done["sms_cost_usd"], done["sms_cost_cny"]), ("consumed", 0.05, 0.36))
         self.assertEqual(done["timing"]["elapsed_seconds"], 50)
