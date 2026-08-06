@@ -253,6 +253,33 @@ class ImporterSchedulerTests(unittest.TestCase):
         self.assertEqual(importer.max_active, 2)
         self.assertIn("目标邮箱 6/20", importer.logs[-1][0])
 
+    def test_selected_rows_override_temporary_target_with_unique_binding_count(self):
+        importer = FakeImporter(available=20)
+        start(importer, {
+            "target_count": 1,
+            "concurrency": 5,
+            "_gptphone_run_mailbox_rows": [
+                {"row_id": "A" * 64, "line_no": 5},
+                {"row_id": "a" * 64, "line_no": "5"},
+                {"row_id": "B" * 64, "line_no": 8},
+            ],
+        })
+
+        self.assertTrue(importer.finished.wait(2))
+        self.assertEqual(sorted(importer.ordinals), [1, 2])
+        self.assertEqual(importer.pool.lease_calls, 2)
+
+    def test_invalid_selected_row_binding_fails_before_runtime_state_changes(self):
+        importer = FakeImporter(available=3)
+        with self.assertRaisesRegex(ValueError, "邮箱行绑定参数无效"):
+            start(importer, {
+                "target_count": 3,
+                "_gptphone_run_mailbox_rows": [{"row_id": "", "line_no": 1}],
+            })
+
+        self.assertFalse(importer.running)
+        self.assertEqual(importer.pool.lease_calls, 0)
+
     def test_target_is_capped_by_available_mailboxes(self):
         importer = FakeImporter(available=3)
         start(importer, {"target_count": 9, "concurrency": 5})

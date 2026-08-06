@@ -381,13 +381,15 @@ class WebRouteTests(unittest.TestCase):
         self.assertIsNone(self.importer.started_with)
 
     def test_start_existing_keeps_one_run_mailbox_selection_out_of_saved_config(self):
+        self.store.current["target_count"] = 61
         app = self._app()
         response = app.test_client().post(
             "/api/start-existing",
             json={
-                "target_count": 2,
+                "target_count": 1,
                 "run_mailbox_rows": [
                     {"row_id": "A" * 64, "line_no": 25},
+                    {"row_id": "a" * 64, "line_no": "25"},
                     {"row_id": "B" * 64, "line_no": 83},
                 ],
             },
@@ -401,8 +403,24 @@ class WebRouteTests(unittest.TestCase):
                 {"row_id": "b" * 64, "line_no": 83},
             ],
         )
+        self.assertEqual(self.importer.started_with["target_count"], 2)
+        self.assertEqual(self.store.current["target_count"], 61)
         self.assertNotIn("run_mailbox_rows", self.importer.started_with)
         self.assertNotIn("run_mailbox_rows", self.store.current)
+
+    def test_start_existing_without_selected_rows_keeps_requested_target_behavior(self):
+        self.store.current["target_count"] = 61
+        app = self._app()
+
+        response = app.test_client().post(
+            "/api/start-existing",
+            json={"target_count": 1},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.importer.started_with["target_count"], 1)
+        self.assertEqual(self.store.current["target_count"], 1)
+        self.assertNotIn("_gptphone_run_mailbox_rows", self.importer.started_with)
 
     def test_relogin_starts_from_server_bound_rows_without_sms_preflight_or_config_save(self):
         app = self._app()

@@ -285,6 +285,12 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                     ok=False,
                     error="本次运行的邮箱行绑定参数无效",
                 ), 400
+            if run_mailbox_rows:
+                persisted_config = store.load()
+                if "target_count" in persisted_config:
+                    data["target_count"] = persisted_config["target_count"]
+                else:
+                    data.pop("target_count", None)
 
             pool_content = data.pop("pool_content", "")
             auto_content = module._clean(pool_content) if replace_pool else ""
@@ -340,6 +346,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 f"{uuid.uuid4().hex[:6]}"
             )
             if run_mailbox_rows:
+                run_config["target_count"] = len(run_mailbox_rows)
                 run_config["_gptphone_run_mailbox_rows"] = run_mailbox_rows
             importer.start(run_config)
             return module.jsonify(ok=True, state=public_state())

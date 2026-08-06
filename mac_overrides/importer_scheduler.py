@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import hmac
@@ -21,6 +22,31 @@ def _bounded_int(value: Any, default: int, minimum: int, maximum: int) -> int:
 
 def _is_relogin(settings: dict[str, Any]) -> bool:
     return str(settings.get("run_mode") or "").strip().lower() == "relogin"
+
+
+def _selected_run_target(
+    settings: dict[str, Any],
+    mailbox_error_type: type[Exception],
+) -> int | None:
+    bindings = settings.get("_gptphone_run_mailbox_rows")
+    if not bindings:
+        return None
+    if not isinstance(bindings, Sequence) or isinstance(bindings, (str, bytes)):
+        raise mailbox_error_type("本次运行的邮箱行绑定参数无效")
+
+    selected: set[tuple[str, int]] = set()
+    for binding in bindings:
+        if not isinstance(binding, Mapping):
+            raise mailbox_error_type("本次运行的邮箱行绑定参数无效")
+        row_id = str(binding.get("row_id") or "").strip().lower()
+        try:
+            line_no = int(binding.get("line_no") or 0)
+        except (TypeError, ValueError):
+            line_no = 0
+        if not row_id or line_no <= 0 or len(row_id) > 128:
+            raise mailbox_error_type("本次运行的邮箱行绑定参数无效")
+        selected.add((row_id, line_no))
+    return len(selected)
 
 
 def _relogin_entries(
@@ -92,7 +118,12 @@ def start_bounded_importer(
     if available <= 0:
         raise mailbox_error_type("没有可运行的邮箱")
 
-    requested = _bounded_int(settings.get("target_count"), 1, 1, available)
+    selected_target = _selected_run_target(settings, mailbox_error_type)
+    requested = (
+        selected_target
+        if selected_target is not None
+        else _bounded_int(settings.get("target_count"), 1, 1, available)
+    )
     target = min(available, requested)
     concurrency = _bounded_int(settings.get("concurrency"), 1, 1, 100)
     worker_count = min(target, concurrency)
