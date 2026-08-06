@@ -11,6 +11,7 @@ from typing import Any, Callable
 import uuid
 
 _PIXEL_AUTO_TARGET_IDS = tuple(f"pixel-{index}" for index in range(2, 8))
+_SHA256_HEX_CHARACTERS = frozenset("0123456789abcdef")
 _SMS_BALANCE_CONFIG_KEYS = (
     "sms_provider_pools",
     "sms_provider",
@@ -44,7 +45,11 @@ def _normalize_run_mailbox_rows(value: Any) -> list[dict[str, Any]] | None:
             return None
         row_id = str(item.get("row_id") or "").strip().lower()
         line_no = _safe_int(item.get("line_no"), 0)
-        if not row_id or line_no <= 0 or len(row_id) > 128:
+        if (
+            len(row_id) != 64
+            or any(character not in _SHA256_HEX_CHARACTERS for character in row_id)
+            or line_no <= 0
+        ):
             return None
         binding = (row_id, line_no)
         if binding in seen:

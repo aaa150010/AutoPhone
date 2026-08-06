@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextvars import ContextVar
 import importlib.util
 import copy
+import hmac
 import json
 import os
 import re
@@ -2287,11 +2288,28 @@ def _mailbox_entries_for_run_selection(pool_self):
         return entries, errors
     selected = _MAILBOX_RUN_SELECTION.get()
     if selected:
-        selected_lines = {line_no for _row_id, line_no in selected}
+        selected_by_public_line: dict[int, set[str]] = {}
+        for row_id, line_no in selected:
+            selected_by_public_line.setdefault(line_no, set()).add(row_id)
+
+        selected_physical_lines = set()
+        public_line_no = 0
+        raw_lines = Path(pool_self.pool_path).read_text(encoding="utf-8-sig").splitlines()
+        for physical_line_no, raw in enumerate(raw_lines, start=1):
+            source_row = raw.strip()
+            if not source_row:
+                continue
+            public_line_no += 1
+            expected_row_ids = selected_by_public_line.get(public_line_no)
+            if not expected_row_ids:
+                continue
+            actual_row_id = _mailbox_admin_ext.row_id_from_source(source_row)
+            if any(hmac.compare_digest(actual_row_id, row_id) for row_id in expected_row_ids):
+                selected_physical_lines.add(physical_line_no)
         entries = [
             entry
             for entry in entries
-            if int(getattr(entry, "line_no", 0) or 0) in selected_lines
+            if int(getattr(entry, "line_no", 0) or 0) in selected_physical_lines
         ]
     return entries, errors
 

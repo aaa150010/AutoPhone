@@ -255,6 +255,7 @@ class ImporterSchedulerTests(unittest.TestCase):
 
     def test_selected_rows_override_temporary_target_with_unique_binding_count(self):
         importer = FakeImporter(available=20)
+        importer.pool.summary = lambda: {"total": 2, "available": 2}
         start(importer, {
             "target_count": 1,
             "concurrency": 5,
@@ -269,8 +270,36 @@ class ImporterSchedulerTests(unittest.TestCase):
         self.assertEqual(sorted(importer.ordinals), [1, 2])
         self.assertEqual(importer.pool.lease_calls, 2)
 
+    def test_selected_rows_must_all_exist_and_be_available_before_any_lease(self):
+        summaries = (
+            {"total": 0, "available": 0},
+            {"total": 1, "available": 1},
+            {"total": 2, "available": 1},
+        )
+        for summary in summaries:
+            with self.subTest(summary=summary):
+                importer = FakeImporter(available=2)
+                importer.pool.summary = lambda summary=summary: dict(summary)
+
+                with self.assertRaisesRegex(ValueError, "已变化、缺失或不可用"):
+                    start(importer, {
+                        "target_count": 9,
+                        "concurrency": 2,
+                        "_gptphone_run_mailbox_rows": [
+                            {"row_id": "a" * 64, "line_no": 1},
+                            {"row_id": "b" * 64, "line_no": 2},
+                        ],
+                    })
+
+                self.assertEqual(importer.pool.lease_calls, 0)
+                self.assertFalse(importer.running)
+                self.assertEqual(importer.tasks, {})
+
     def test_invalid_selected_row_binding_fails_before_runtime_state_changes(self):
         importer = FakeImporter(available=3)
+        importer.pool.summary = lambda: (_ for _ in ()).throw(
+            AssertionError("invalid selection must fail before pool summary"),
+        )
         with self.assertRaisesRegex(ValueError, "邮箱行绑定参数无效"):
             start(importer, {
                 "target_count": 3,

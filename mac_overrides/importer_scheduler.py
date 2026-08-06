@@ -24,6 +24,10 @@ def _is_relogin(settings: dict[str, Any]) -> bool:
     return str(settings.get("run_mode") or "").strip().lower() == "relogin"
 
 
+def _is_sha256_row_id(value: str) -> bool:
+    return len(value) == 64 and all(character in "0123456789abcdef" for character in value)
+
+
 def _selected_run_target(
     settings: dict[str, Any],
     mailbox_error_type: type[Exception],
@@ -43,7 +47,7 @@ def _selected_run_target(
             line_no = int(binding.get("line_no") or 0)
         except (TypeError, ValueError):
             line_no = 0
-        if not row_id or line_no <= 0 or len(row_id) > 128:
+        if not _is_sha256_row_id(row_id) or line_no <= 0:
             raise mailbox_error_type("本次运行的邮箱行绑定参数无效")
         selected.add((row_id, line_no))
     return len(selected)
@@ -112,13 +116,17 @@ def start_bounded_importer(
     else:
         importer.settings_validation(settings, remote=True)
     pool = importer._pool(settings)
+    selected_target = _selected_run_target(settings, mailbox_error_type)
     relogin_entries = _relogin_entries(pool, settings, mailbox_error_type) if relogin else []
     pool_summary = pool.summary()
     available = len(relogin_entries) if relogin else int(pool_summary.get("available") or 0)
+    if selected_target is not None and not relogin:
+        selected_total = int(pool_summary.get("total") or 0)
+        if selected_total != selected_target or available != selected_target:
+            raise mailbox_error_type("所选邮箱已变化、缺失或不可用，请刷新邮箱列表后重试")
     if available <= 0:
         raise mailbox_error_type("没有可运行的邮箱")
 
-    selected_target = _selected_run_target(settings, mailbox_error_type)
     requested = (
         selected_target
         if selected_target is not None

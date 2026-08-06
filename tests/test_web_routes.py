@@ -408,6 +408,22 @@ class WebRouteTests(unittest.TestCase):
         self.assertNotIn("run_mailbox_rows", self.importer.started_with)
         self.assertNotIn("run_mailbox_rows", self.store.current)
 
+    def test_start_existing_rejects_non_sha256_mailbox_row_ids(self):
+        app = self._app()
+
+        for row_id in ("a" * 63, "g" * 64, "邮箱" * 32):
+            with self.subTest(row_id=row_id):
+                response = app.test_client().post(
+                    "/api/start-existing",
+                    json={
+                        "run_mailbox_rows": [{"row_id": row_id, "line_no": 1}],
+                    },
+                )
+
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.get_json()["error"], "本次运行的邮箱行绑定参数无效")
+                self.assertIsNone(self.importer.started_with)
+
     def test_start_existing_without_selected_rows_keeps_requested_target_behavior(self):
         self.store.current["target_count"] = 61
         app = self._app()

@@ -384,6 +384,63 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(observed, [True, False])
         self.assertFalse(module._MAILBOX_LEASE_FILTER_ACTIVE.get())
 
+    def test_run_selection_matches_raw_row_hash_and_public_line_number(self):
+        module = self.module
+        pool_path = Path(self.tempdir.name) / "run-selection-pool.txt"
+        first_row = "first@example.test----first-password"
+        selected_row = "selected@example.test----private-password"
+        pool_path.write_text(f"{first_row}\n\n  {selected_row}  \n", encoding="utf-8")
+        entries = [
+            SimpleNamespace(line_no=1, source_row=first_row),
+            SimpleNamespace(line_no=3, source_row="selected@example.test----********"),
+        ]
+        original_patches = module._TOTP_PATCHES
+        selection_token = module._MAILBOX_RUN_SELECTION.set(frozenset({
+            (module._mailbox_admin_ext.row_id_from_source(selected_row), 2),
+        }))
+        filter_token = module._MAILBOX_LEASE_FILTER_ACTIVE.set(True)
+        try:
+            module._TOTP_PATCHES = SimpleNamespace(
+                entries_unlocked=lambda _pool: (list(entries), []),
+            )
+            filtered, errors = module._mailbox_entries_for_run_selection(
+                SimpleNamespace(pool_path=pool_path),
+            )
+        finally:
+            module._MAILBOX_LEASE_FILTER_ACTIVE.reset(filter_token)
+            module._MAILBOX_RUN_SELECTION.reset(selection_token)
+            module._TOTP_PATCHES = original_patches
+
+        self.assertEqual(errors, [])
+        self.assertEqual(filtered, [entries[1]])
+
+    def test_run_selection_rejects_replaced_content_at_same_public_line(self):
+        module = self.module
+        pool_path = Path(self.tempdir.name) / "stale-run-selection-pool.txt"
+        current_row = "replacement@example.test----current-password"
+        pool_path.write_text(f"{current_row}\n", encoding="utf-8")
+        entry = SimpleNamespace(line_no=1, source_row=current_row)
+        original_patches = module._TOTP_PATCHES
+        stale_row_id = module._mailbox_admin_ext.row_id_from_source(
+            "previous@example.test----previous-password",
+        )
+        selection_token = module._MAILBOX_RUN_SELECTION.set(frozenset({(stale_row_id, 1)}))
+        filter_token = module._MAILBOX_LEASE_FILTER_ACTIVE.set(True)
+        try:
+            module._TOTP_PATCHES = SimpleNamespace(
+                entries_unlocked=lambda _pool: ([entry], []),
+            )
+            filtered, errors = module._mailbox_entries_for_run_selection(
+                SimpleNamespace(pool_path=pool_path),
+            )
+        finally:
+            module._MAILBOX_LEASE_FILTER_ACTIVE.reset(filter_token)
+            module._MAILBOX_RUN_SELECTION.reset(selection_token)
+            module._TOTP_PATCHES = original_patches
+
+        self.assertEqual(errors, [])
+        self.assertEqual(filtered, [])
+
     def test_register_start_caps_total_auth_sessions_at_five(self):
         module = self.module
         original_start = module._importer_scheduler_ext.start_bounded_importer
