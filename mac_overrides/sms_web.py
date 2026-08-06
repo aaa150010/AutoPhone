@@ -191,6 +191,7 @@ class SmsWebIntegration:
             priority_routes=route_order,
             priority_countries=self.priority_countries,
             now=now,
+            reliability_mode=bool(full_config.get("_phone_risk_retry")),
         )
 
     def _invalidate_candidate_cache(self, selector: Any, candidate: Any = None) -> None:
@@ -677,6 +678,8 @@ class SmsWebIntegration:
         if any(
             marker in text
             for marker in (
+                "phone_flow_mfa_regressed",
+                "phone_flow_login_regressed",
                 "auth_context_page_mismatch",
                 "auth_context_cookies_missing",
                 "auth_context_task_mismatch",

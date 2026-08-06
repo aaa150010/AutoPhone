@@ -11,7 +11,7 @@ from mac_overrides.mailbox_url_test_runtime import MailboxUrlTester, parse_test_
 
 
 class MailboxUrlTestRuntimeTests(unittest.TestCase):
-    def test_query_url_and_expected_code_are_read_without_returning_code(self):
+    def test_query_url_and_extracted_code_are_returned_for_success_display(self):
         url = (
             "https://mail.example.test/messages/sample-access-token/"
             "user%40example.test?all=1"
@@ -49,7 +49,8 @@ class MailboxUrlTestRuntimeTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertTrue(result["code_found"])
-        self.assertNotIn("654321", result)
+        self.assertEqual(result["verification_code"], "654321")
+        self.assertNotIn("code", result)
         self.assertEqual(captured[0][0], url)
         self.assertEqual(captured[0][1]["timeout_seconds"], 15)
 

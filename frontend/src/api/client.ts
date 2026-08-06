@@ -72,7 +72,7 @@ export const exportMailboxSub2 = (rows: Array<{ row_id: string; line_no: number 
   )
 )
 export const getMailboxTotp = (row: { row_id: string; line_no: number }) => (
-  api<{ ok: true; totp_secret: string }>('/api/mailboxes/totp', row)
+  api<{ ok: true; kind: 'totp'; code: string; remaining: number }>('/api/mailboxes/totp', row)
 )
 export const getMailboxUrl = (row: { row_id: string; line_no: number }) => (
   api<{ ok: true; mailbox_url: string }>('/api/mailboxes/url', row)

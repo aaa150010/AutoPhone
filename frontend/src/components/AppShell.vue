@@ -91,7 +91,7 @@ onUnmounted(() => {
         <el-menu :default-active="activePath" :collapse-transition="false" @select="selectPage">
           <el-menu-item index="/"><el-icon><Monitor /></el-icon><span>运行中心</span></el-menu-item>
           <el-menu-item index="/mailboxes"><el-icon><MessageBox /></el-icon><span>邮箱管理</span></el-menu-item>
-          <el-menu-item index="/url-test"><el-icon><Link /></el-icon><span>URL 取件测试</span></el-menu-item>
+          <el-menu-item index="/url-test"><el-icon><Link /></el-icon><span>URL测试</span></el-menu-item>
           <el-menu-item index="/accounts"><el-icon><UserFilled /></el-icon><span>账号管理</span></el-menu-item>
           <el-menu-item index="/settings"><el-icon><Setting /></el-icon><span>运行配置</span></el-menu-item>
         </el-menu>

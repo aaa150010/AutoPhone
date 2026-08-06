@@ -451,6 +451,7 @@ class MailboxAdminService:
         openai_quota_query: Callable[[Mapping[str, Any], str], Mapping[str, Any]] | None = None,
         openai_quota_status_lookup: Callable[[str], Mapping[str, Any] | None] | None = None,
         openai_quota_status_store: Callable[[str, Mapping[str, Any]], Mapping[str, Any] | None] | None = None,
+        phone_risk_lookup: Callable[[str], Mapping[str, Any] | None] | None = None,
     ) -> None:
         self.store = store
         self.validate_pool = validate_pool
@@ -469,6 +470,7 @@ class MailboxAdminService:
         self.openai_quota_query = openai_quota_query
         self.openai_quota_status_lookup = openai_quota_status_lookup
         self.openai_quota_status_store = openai_quota_status_store
+        self.phone_risk_lookup = phone_risk_lookup
         self._lock = RLock()
 
     def _config(self) -> dict[str, Any]:
@@ -617,9 +619,15 @@ class MailboxAdminService:
                 return {
                     "ok": False,
                     "code": "mailbox_totp_missing",
-                    "error": "这一行没有可复制的 2FA 密钥",
+                    "error": "这一行没有可复制的临时 2FA 验证码",
                 }
-            return {"ok": True, "totp_secret": secret}
+            now = self.now_fn()
+            return {
+                "ok": True,
+                "kind": "totp",
+                "code": generate_totp_code(secret, now=now),
+                "remaining": 30 - (int(now) % 30),
+            }
 
     def reveal_mailbox_url(self, row_id: Any, line_no: Any) -> dict[str, Any]:
         expected_row_id = str(row_id or "").strip()
@@ -900,6 +908,24 @@ class MailboxAdminService:
             detail_error = public_mailbox_reason(detail_error)
             failure_message = self._format_error((failure or {}).get("public_message") or "", row_secrets)
             friendly_error = failure_message or friendly_mailbox_error(detail_error)
+            phone_risk: Mapping[str, Any] = {}
+            if email and self.phone_risk_lookup is not None:
+                try:
+                    phone_risk = self.phone_risk_lookup(email) or {}
+                except Exception:
+                    phone_risk = {}
+            phone_risk_retry = bool(phone_risk.get("active"))
+            phone_risk_label = (
+                "手机号风控重试：已启用成熟线路优先"
+                if phone_risk_retry
+                else ""
+            )
+            if phone_risk_label:
+                friendly_error = (
+                    f"{friendly_error}；{phone_risk_label}"
+                    if friendly_error
+                    else phone_risk_label
+                )
             if failure is not None:
                 failure = dict(failure)
                 failure["public_message"] = failure_message
@@ -1007,6 +1033,8 @@ class MailboxAdminService:
                     "password": _SECRET_MASK if password_from_row(row) else "",
                     "has_totp": bool(totp_secret_from_row(row)),
                     "has_mailbox_url": bool(mailbox_url_from_row(row)),
+                    "phone_risk_retry": phone_risk_retry,
+                    "phone_risk_label": phone_risk_label,
                     "status": status_key,
                     "status_label": status_label,
                     "pool_status": state_item.get("status") or "available",

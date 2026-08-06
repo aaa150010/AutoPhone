@@ -206,7 +206,7 @@ defineExpose({ clearSelection })
     </el-table-column>
     <el-table-column label="2FA" width="86" align="center">
       <template #default="{ row }">
-        <el-tooltip v-if="row.has_totp" content="复制 2FA 密钥" placement="top">
+        <el-tooltip v-if="row.has_totp" content="复制临时 2FA 验证码" placement="top">
           <el-button
             link
             class="password-copy"

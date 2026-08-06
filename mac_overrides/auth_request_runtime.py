@@ -16,9 +16,19 @@ from typing import Any, Mapping
 from urllib.parse import urljoin, urlsplit
 
 try:
-    from .auth_session_runtime import AuthSessionRegistry, _short_fingerprint, _safe_path
+    from .auth_session_runtime import (
+        AuthSessionRegistry,
+        _short_fingerprint,
+        _safe_path,
+        invalidation_reason_code,
+    )
 except ImportError:  # Loaded as a top-level runtime override.
-    from auth_session_runtime import AuthSessionRegistry, _short_fingerprint, _safe_path  # type: ignore[no-redef]
+    from auth_session_runtime import (  # type: ignore[no-redef]
+        AuthSessionRegistry,
+        _short_fingerprint,
+        _safe_path,
+        invalidation_reason_code,
+    )
 
 
 # OpenAI keeps the same authenticated transport while moving from the number
@@ -42,11 +52,40 @@ PHONE_OTP_PAGE_TYPES = frozenset(
     }
 )
 PHONE_PAGE_TYPES = PHONE_ENTRY_PAGE_TYPES | PHONE_OTP_PAGE_TYPES
+MFA_PAGE_TYPES = frozenset({"mfa_otp", "mfa_challenge", "mfa_otp_verification"})
+LOGIN_PAGE_TYPES = frozenset(
+    {
+        "login",
+        "log_in",
+        "login_email",
+        "login_or_signup",
+        "login_password",
+        "email",
+        "email_login",
+        "email_verification",
+        "email_otp",
+        "email_otp_verification",
+        "password",
+        "password_required",
+        "password_verification",
+    }
+)
 _HTML_PHONE_ENTRY_PATHS = {
     "/add-phone": "add_phone",
     "/contact-verification": "contact_verification",
     "/phone-number-collection": "phone_number_collection",
 }
+_HTML_LOGIN_PATHS = frozenset(
+    {
+        "/login",
+        "/log-in",
+        "/email",
+        "/email-verification",
+        "/password",
+        "/password-verification",
+    }
+)
+_HTML_MFA_PATH_PREFIXES = ("/mfa", "/mfa-challenge", "/two-factor")
 _HTML_PHONE_ENTRY_MARKERS = (
     "phone number required",
     "enter your phone number",
@@ -60,6 +99,22 @@ _HTML_PHONE_ENTRY_MARKERS = (
     "autocomplete='tel'",
     "手机号",
     "电话号码",
+)
+_HTML_LOGIN_MARKERS = (
+    "log in",
+    "sign in",
+    "welcome back",
+    'autocomplete="email"',
+    "autocomplete='email'",
+    'autocomplete="current-password"',
+    "autocomplete='current-password'",
+)
+_HTML_MFA_MARKERS = (
+    "multi-factor authentication",
+    "two-factor authentication",
+    "authenticator app",
+    "mfa challenge",
+    "2fa verification",
 )
 
 
@@ -80,6 +135,25 @@ def is_phone_entry_page_type(value: Any) -> bool:
 
 def is_phone_otp_page_type(value: Any) -> bool:
     return normalize_page_type(value) in PHONE_OTP_PAGE_TYPES
+
+
+def _phone_page_error(page_type: Any, *, recovery: bool = False) -> AuthRequestContextError:
+    normalized = normalize_page_type(page_type)
+    if normalized in MFA_PAGE_TYPES:
+        return AuthRequestContextError(
+            "phone_flow_mfa_regressed",
+            "手机号流程回退到 2FA/MFA 验证页面，需要重新建立登录会话",
+        )
+    if normalized in LOGIN_PAGE_TYPES:
+        return AuthRequestContextError(
+            "phone_flow_login_regressed",
+            "手机号流程回退到登录验证页面，需要重新建立登录会话",
+        )
+    action = "手机号录入页面恢复失败" if recovery else "当前登录页面不是手机号录入页面"
+    return AuthRequestContextError(
+        "auth_context_page_mismatch",
+        f"{action} (page_type={normalized or 'unknown'})",
+    )
 
 
 class AuthRequestContextError(RuntimeError):
@@ -169,8 +243,8 @@ def _page_type(response: Any) -> str:
     return str(response.get("page_type") or "")[:80]
 
 
-def _html_phone_entry_page_type(response: Any) -> str:
-    """Recognize a successful auth HTML page without trusting arbitrary HTML."""
+def _html_auth_page_type(response: Any) -> str:
+    """Recognize a successful auth HTML page without retaining its contents."""
 
     if not isinstance(response, Mapping):
         return ""
@@ -188,16 +262,22 @@ def _html_phone_entry_page_type(response: Any) -> str:
     if final_url.scheme != "https" or final_url.hostname != "auth.openai.com":
         return ""
     path = final_url.path.rstrip("/") or "/"
-    page_type = _HTML_PHONE_ENTRY_PATHS.get(path, "")
-    if not page_type:
-        return ""
     html_evidence = "\n".join(
         str(response.get(key) or "")
         for key in ("_html_title", "_body", "_body_summary")
     ).lower()
-    if not any(marker in html_evidence for marker in _HTML_PHONE_ENTRY_MARKERS):
-        return ""
-    return page_type
+    phone_page = _HTML_PHONE_ENTRY_PATHS.get(path, "")
+    if phone_page and any(marker in html_evidence for marker in _HTML_PHONE_ENTRY_MARKERS):
+        return phone_page
+    if path.startswith(_HTML_MFA_PATH_PREFIXES) or any(
+        marker in html_evidence for marker in _HTML_MFA_MARKERS
+    ):
+        return "mfa_challenge"
+    if path in _HTML_LOGIN_PATHS or any(
+        marker in html_evidence for marker in _HTML_LOGIN_MARKERS
+    ):
+        return "login"
+    return ""
 
 
 def _cookies_present(transport: Any) -> bool:
@@ -389,10 +469,7 @@ def validate_phone_context(
         getattr(transport, "_gptphone_page_type", "") or context.page_type
     )
     if page_type not in PHONE_ENTRY_PAGE_TYPES:
-        raise AuthRequestContextError(
-            "auth_context_page_mismatch",
-            f"当前登录页面不是手机号录入页面 (page_type={page_type or 'unknown'})",
-        )
+        raise _phone_page_error(page_type)
     if not _cookies_present(transport):
         raise AuthRequestContextError("auth_context_cookies_missing", "当前登录会话缺少有效 cookies")
     return context
@@ -447,15 +524,12 @@ def recover_phone_entry_context(
             f"手机号录入页面恢复请求失败 ({type(exc).__name__})",
         ) from exc
     restored_page = normalize_page_type(
-        _page_type(response) or _html_phone_entry_page_type(response)
+        _page_type(response) or _html_auth_page_type(response)
     )
     context.observe(response, page_type=restored_page)
     setattr(transport, "_gptphone_page_type", restored_page)
     if restored_page not in PHONE_ENTRY_PAGE_TYPES:
-        raise AuthRequestContextError(
-            "auth_context_page_mismatch",
-            f"手机号录入页面恢复失败 (page_type={restored_page or 'unknown'})",
-        )
+        raise _phone_page_error(restored_page, recovery=True)
     return validate_phone_context(
         transport,
         registry,
@@ -491,8 +565,30 @@ def invalidate_auth_session(
     stage: str = "phone_submitting",
 ) -> None:
     context = ensure_transport_context(transport, registry)
+    reason_code = invalidation_reason_code(error)
+    config = getattr(transport, "config", None)
+    if isinstance(config, dict):
+        config.pop("phase1_active_session", None)
+        if str(stage or "").strip() in {"phone_submitting", "sms_verifying"}:
+            config["_phone_risk_retry"] = True
+            config["_phone_risk_reason_code"] = reason_code
     context.rotate()
     setattr(transport, "_gptphone_page_type", "")
+    session = getattr(transport, "session", None)
+    cookies = getattr(session, "cookies", None)
+    clear_cookies = getattr(cookies, "clear", None)
+    if callable(clear_cookies):
+        try:
+            clear_cookies()
+        except Exception:
+            pass
+    sentinel = getattr(transport, "sentinel_provider", None)
+    reset_sentinel = getattr(sentinel, "reset", None)
+    if callable(reset_sentinel):
+        try:
+            reset_sentinel()
+        except Exception:
+            pass
     if registry is not None and context.task_id:
         registry.invalidate(
             context.task_id,
@@ -572,6 +668,8 @@ def safe_context_snapshot(transport: Any) -> dict[str, Any]:
 
 __all__ = [
     "AuthRequestContextError",
+    "LOGIN_PAGE_TYPES",
+    "MFA_PAGE_TYPES",
     "PHONE_ENTRY_PAGE_TYPES",
     "PHONE_OTP_PAGE_TYPES",
     "PHONE_PAGE_TYPES",

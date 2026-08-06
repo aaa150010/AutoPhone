@@ -100,6 +100,12 @@ class FakeMailboxAdmin:
             ],
         }
         self.relogin_payloads: list[dict] = []
+        self.totp_result = {
+            "ok": True,
+            "kind": "totp",
+            "code": "123456",
+            "remaining": 17,
+        }
 
     def list_mailboxes(self):
         return {"ok": True, "counts": {}, "rows": []}
@@ -118,6 +124,9 @@ class FakeMailboxAdmin:
 
     def reveal_password(self, _row_id, _line_no):
         return {"ok": False, "code": "mailbox_row_stale", "error": "邮箱列表已变化"}
+
+    def reveal_totp(self, _row_id, _line_no):
+        return dict(self.totp_result)
 
     def reveal_mailbox_url(self, _row_id, _line_no):
         return {"ok": True, "mailbox_url": "https://mail.example.test/messages/token"}
@@ -508,6 +517,7 @@ class WebRouteTests(unittest.TestCase):
                 return {
                     "ok": True,
                     "code_found": True,
+                    "verification_code": "654321",
                     "reason": "code_found",
                     "attempts": 1,
                     "elapsed_seconds": 0.1,
@@ -539,12 +549,46 @@ class WebRouteTests(unittest.TestCase):
             response = client.post("/api/mailbox-url-test", json={"value": url})
 
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.get_json()["ok"])
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["verification_code"], "654321")
         self.assertEqual(calls[0][0], url)
         self.assertEqual(calls[0][1]["timeout_seconds"], 60)
         self.assertEqual(calls[0][1]["interval_seconds"], 5)
         self.assertEqual(calls[0][1]["resend_after_seconds"], 15)
         self.assertEqual(calls[0][1]["proxy"], "http://127.0.0.1:7897")
+
+    def test_mailbox_totp_route_returns_temporary_code_without_base32_secret(self):
+        app = self._app()
+
+        with app.test_client() as client:
+            response = client.post(
+                "/api/mailboxes/totp",
+                json={"row_id": "a" * 64, "line_no": 1},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(
+            payload,
+            {"ok": True, "kind": "totp", "code": "123456", "remaining": 17},
+        )
+        self.assertNotIn("totp_secret", payload)
+
+        self.mailbox_admin.totp_result = {
+            "ok": False,
+            "code": "mailbox_row_stale",
+            "error": "邮箱列表已变化，请刷新后重试",
+        }
+        with app.test_client() as client:
+            stale = client.post(
+                "/api/mailboxes/totp",
+                json={"row_id": "b" * 64, "line_no": 1},
+            )
+
+        self.assertEqual(stale.status_code, 409)
+        self.assertEqual(stale.get_json()["code"], "mailbox_row_stale")
+        self.assertNotIn("totp_secret", stale.get_json())
 
     def test_stale_mailbox_password_request_returns_conflict(self):
         app = self._app()

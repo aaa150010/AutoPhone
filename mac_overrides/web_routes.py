@@ -456,7 +456,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             status = 409 if result.get("code") == "mailbox_row_stale" else 400
             return module.jsonify(result), status
         except Exception:
-            return module.jsonify(ok=False, error="读取 2FA 密钥失败"), 500
+            return module.jsonify(ok=False, error="读取临时 2FA 验证码失败"), 500
 
     def api_mailboxes_url():
         try:

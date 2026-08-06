@@ -966,6 +966,52 @@ class MailboxAdminTests(unittest.TestCase):
 
         self.assertEqual(result, {"ok": True, "password": "mail-pass"})
 
+    def test_reveal_totp_returns_only_current_temporary_code_from_one_clock_snapshot(self):
+        row = "mfa@example.com|login-pass|JBSWY3DPEHPK3PXP"
+        self._write_pool(row + "\n")
+        self.clock = 59.0
+        public_row = self.service.list_mailboxes()["rows"][0]
+
+        result = self.service.reveal_totp(public_row["row_id"], public_row["line_no"])
+
+        self.assertEqual(result["kind"], "totp")
+        self.assertEqual(result["code"], generate_totp_code("JBSWY3DPEHPK3PXP", now=59))
+        self.assertRegex(result["code"], r"^\d{6}$")
+        self.assertEqual(result["remaining"], 1)
+        self.assertNotIn("totp_secret", result)
+        self.assertNotIn("JBSWY3DPEHPK3PXP", json.dumps(result))
+
+    def test_reveal_totp_rejects_stale_row_without_returning_code_or_secret(self):
+        original = "mfa@example.com|login-pass|JBSWY3DPEHPK3PXP"
+        replacement = "other@example.com|other-pass|KRUGS4ZANFZSAYJA"
+        self._write_pool(original + "\n")
+        captured = self.service.list_mailboxes()["rows"][0]
+        self._write_pool(replacement + "\n" + original + "\n")
+
+        result = self.service.reveal_totp(captured["row_id"], captured["line_no"])
+
+        self.assertEqual(result["code"], "mailbox_row_stale")
+        self.assertNotIn("totp_secret", result)
+        self.assertNotIn("JBSWY3DPEHPK3PXP", json.dumps(result))
+        self.assertNotIn("KRUGS4ZANFZSAYJA", json.dumps(result))
+
+    def test_mailbox_row_exposes_safe_phone_risk_retry_label(self):
+        self._write_pool("risk@example.com----mail-pass\n")
+        self.service.phone_risk_lookup = lambda email: {
+            "active": email == "risk@example.com",
+            "reason_code": "oauth_session_invalid",
+            "count": 2,
+        }
+
+        row = self.service.list_mailboxes()["rows"][0]
+
+        self.assertTrue(row["phone_risk_retry"])
+        self.assertEqual(row["phone_risk_label"], "手机号风控重试：已启用成熟线路优先")
+        self.assertIn(row["phone_risk_label"], row["error"])
+        serialized = json.dumps(row, ensure_ascii=False)
+        self.assertNotIn("mail-pass", serialized)
+        self.assertNotIn("oauth_session_invalid", serialized)
+
     def test_mailbox_url_is_publicly_flagged_and_revealed_by_current_row_binding(self):
         row = "url@example.com----https://mail.example.test/messages/private-token"
         self._write_pool(row + "\n")

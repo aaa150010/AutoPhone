@@ -145,6 +145,8 @@ export interface MailboxRow {
   password?: string
   has_totp?: boolean
   has_mailbox_url?: boolean
+  phone_risk_retry?: boolean
+  phone_risk_label?: string
   quota_status?: 'ok' | 'error' | string
   quota_error?: string
   quota_queried_at?: number | null
@@ -217,6 +219,7 @@ export interface MailboxUrlTestDiagnostics {
 export interface MailboxUrlTestResult {
   ok: boolean
   code?: string
+  verification_code?: string
   email?: string
   code_found: boolean
   reason: string

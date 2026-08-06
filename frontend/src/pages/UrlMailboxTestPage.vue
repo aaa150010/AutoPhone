@@ -50,7 +50,7 @@ async function runTest() {
         diagnostics: diagnostics.value,
       }
     } else {
-      ElMessage.error('URL 取件测试失败')
+      ElMessage.error('URL测试失败')
     }
   } finally {
     loading.value = false
@@ -65,7 +65,7 @@ function clearTest() {
 
 <template>
   <div class="url-test-page">
-    <PageToolbar title="URL 取件测试" :status="resultLabel" :tone="resultTone">
+    <PageToolbar title="URL测试" :status="resultLabel" :tone="resultTone">
       <el-button :disabled="loading" @click="clearTest"><el-icon><CircleClose /></el-icon>清空</el-button>
       <el-button type="primary" :loading="loading" :disabled="!value.trim()" @click="runTest">
         <el-icon><Search /></el-icon>开始测试
@@ -102,6 +102,10 @@ function clearTest() {
               <span v-else-if="loading">详情会轮转刷新，最长等待 60 秒</span>
               <span v-else>{{ result?.reason }}</span>
             </div>
+          </div>
+          <div v-if="result?.ok && result.verification_code" class="verification-code">
+            <span>提取成功的验证码</span>
+            <strong>{{ result.verification_code }}</strong>
           </div>
           <div class="result-metrics">
             <div><span>轮询次数</span><strong>{{ result?.attempts || 0 }}</strong></div>
@@ -140,6 +144,9 @@ function clearTest() {
 .result-banner div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .result-banner strong { font-size: 14px; }
 .result-banner span { color: inherit; font-size: 12px; word-break: break-word; }
+.verification-code { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 70px; padding: 12px 16px; border: 1px solid #b7e1c4; border-radius: 5px; background: #f0fbf3; }
+.verification-code span { color: #4d6c58; font-size: 12px; }
+.verification-code strong { color: #1f7542; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 30px; line-height: 1; letter-spacing: 0; }
 .result-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .result-metrics div { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px solid var(--workspace-border); border-radius: 4px; background: #fbfdff; }
 .result-metrics span { color: #78859a; font-size: 11px; }

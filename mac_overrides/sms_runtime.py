@@ -506,8 +506,9 @@ def rank_sms_candidates(
     minimum_proven_rate: float = 0.10,
     now: float | None = None,
     recent_success_window_seconds: float = 600.0,
+    reliability_mode: bool = False,
 ) -> list[Any]:
-    """Rank proven routes by delivery yield and recent completed orders."""
+    """Rank routes normally, or put mature delivery routes first for risk retries."""
     route_priority = {route: index for index, route in enumerate(priority_routes)}
     country_priority = {country: index for index, country in enumerate(priority_countries)}
     default_route_priority = len(route_priority)
@@ -515,16 +516,14 @@ def rank_sms_candidates(
     current = time.time() if now is None else float(now)
     recent_window = max(0.0, float(recent_success_window_seconds))
 
-    def key(candidate: Any) -> tuple[Any, ...]:
+    def metrics(candidate: Any) -> dict[str, Any]:
         route = _candidate_route(candidate)
         legacy_route = route[-2:]
         stat = _route_stat(route_stats, route)
         if not stat and route != legacy_route:
             stat = _route_stat(route_stats, legacy_route)
-        success = max(
-            int(_as_float(stat.get("success"), 0)),
-            int(_as_float(stat.get("otp_received"), 0)),
-        )
+        final_success = max(0, int(_as_float(stat.get("success"), 0)))
+        otp_received = max(0, int(_as_float(stat.get("otp_received"), 0)))
         failures = max(0, int(_as_float(stat.get("fail"), 0)))
         no_numbers = max(0, int(_as_float(stat.get("no_numbers"), 0)))
         classified_failures = sum(
@@ -532,8 +531,17 @@ def rank_sms_candidates(
             for name in ("phone_rejected", "register_rejected", "invalid_auth_step", "timeout")
         )
         rejected = max(0, failures - no_numbers, classified_failures)
-        observations = success + rejected + no_numbers
-        acceptance_rate = success / observations if observations else 0.0
+        acceptance_success = max(final_success, otp_received)
+        observations = acceptance_success + rejected + no_numbers
+        acceptance_rate = acceptance_success / observations if observations else 0.0
+        final_attempts = final_success + rejected
+        final_success_rate = final_success / final_attempts if final_attempts else 0.0
+        delivery_failures = max(
+            int(_as_float(stat.get("timeout"), 0)),
+            int(_as_float(stat.get("otp_sent"), 0)),
+        )
+        delivery_attempts = otp_received + max(0, delivery_failures)
+        delivery_rate = otp_received / delivery_attempts if delivery_attempts else 0.0
         last_success_at = max(
             _as_float(stat.get("last_success_at"), 0.0),
             _as_float(stat.get("last_delivery_at"), 0.0),
@@ -545,9 +553,31 @@ def rank_sms_candidates(
         )
         preferred = route in route_priority or legacy_route in route_priority
 
+        return {
+            "route": route,
+            "legacy_route": legacy_route,
+            "final_success": final_success,
+            "otp_received": otp_received,
+            "observations": observations,
+            "acceptance_rate": acceptance_rate,
+            "final_success_rate": final_success_rate,
+            "delivery_rate": delivery_rate,
+            "last_success_at": last_success_at,
+            "recently_successful": recently_successful,
+            "preferred": preferred,
+        }
+
+    def normal_key(candidate: Any) -> tuple[Any, ...]:
+        values = metrics(candidate)
+        route = values["route"]
+        legacy_route = values["legacy_route"]
+        success = max(values["final_success"], values["otp_received"])
+        observations = values["observations"]
+        acceptance_rate = values["acceptance_rate"]
+
         if success > 0 and acceptance_rate >= minimum_proven_rate:
             tier = 0
-        elif observations == 0 and preferred:
+        elif observations == 0 and values["preferred"]:
             tier = 1
         elif success > 0:
             tier = 2
@@ -558,7 +588,7 @@ def rank_sms_candidates(
 
         return (
             tier,
-            not recently_successful,
+            not values["recently_successful"],
             -acceptance_rate,
             -success,
             route_priority.get(route, route_priority.get(legacy_route, default_route_priority)),
@@ -568,7 +598,33 @@ def rank_sms_candidates(
             -int(_as_float(_candidate_value(candidate, "count", 0), 0)),
         )
 
-    return sorted(candidates, key=key)
+    if not reliability_mode:
+        return sorted(candidates, key=normal_key)
+
+    def reliability_key(candidate: Any) -> tuple[Any, ...]:
+        values = metrics(candidate)
+        qualified = (
+            values["final_success"] > 0
+            and values["final_success_rate"] >= minimum_proven_rate
+        )
+        if values["otp_received"] > 0 and qualified:
+            tier = 0
+        elif values["otp_received"] == 0 and qualified:
+            tier = 1
+        else:
+            return (2, *normal_key(candidate))
+        return (
+            tier,
+            not values["recently_successful"],
+            -values["last_success_at"],
+            -values["delivery_rate"],
+            -values["final_success_rate"],
+            -values["final_success"],
+            _as_float(_candidate_value(candidate, "price", 999.0), 999.0),
+            -int(_as_float(_candidate_value(candidate, "count", 0), 0)),
+        )
+
+    return sorted(candidates, key=reliability_key)
 
 
 def parse_sms_balance(value: Any) -> float:

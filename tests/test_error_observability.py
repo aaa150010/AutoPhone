@@ -108,6 +108,30 @@ class ErrorObservabilityTests(unittest.TestCase):
         self.assertIn("页面上下文无效", failure["public_message"])
         self.assertNotIn("OpenAI 拒绝当前号码", failure["public_message"])
 
+    def test_session_invalid_keeps_the_stage_where_it_surfaced(self):
+        for stage, expected_node, risk_signal in (
+            ("phone_submitting", "phone_submitting", True),
+            ("sms_verifying", "sms_verifying", True),
+            ("oauth_authorize_node", "oauth_authorize_node", False),
+        ):
+            with self.subTest(stage=stage):
+                failure = classify_failure(
+                    error="oauth_session_invalid: sign-in session is no longer valid",
+                    progress={"code": stage},
+                )
+
+                self.assertEqual(failure["node_code"], expected_node)
+                self.assertEqual(failure["error_code"], "oauth_session_invalid")
+                self.assertIn("OpenAI 登录会话已失效", failure["public_message"])
+                self.assertEqual("疑似手机号阶段风控" in failure["public_message"], risk_signal)
+                self.assertTrue(failure["retryable"])
+
+        phone_failure = classify_failure(
+            error="oauth_session_invalid: sign-in session is no longer valid",
+            progress={"code": "phone_submitting"},
+        )
+        self.assertIn("提交接码号码失败", phone_failure["public_message"])
+
     def test_relogin_phone_requirement_is_stable_and_not_retryable(self):
         failure = classify_failure(
             error=(

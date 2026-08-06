@@ -435,6 +435,8 @@ _RULES = (
     (("sms_smart_no_candidate",), "phone_acquiring", "sms_route_pool_exhausted", "当前候选线路均已失败、无号或处于冷却中", True),
     (("sms_key_pool_temporarily_unavailable",), "phone_acquiring", "sms_key_pool_temporarily_unavailable", "所有 SMS Key 正在临时冷却，当前没有可用 Key", True),
     (("no_numbers", "getnumber failed", "get_number", "no numbers"), "phone_acquiring", "phone_acquisition_failed", "接码平台当前没有可用号码", True),
+    (("phone_flow_mfa_regressed",), "phone_submitting", "phone_flow_mfa_regressed", "手机号流程回退到 2FA/MFA 页面，需要重新建立登录会话", True),
+    (("phone_flow_login_regressed",), "phone_submitting", "phone_flow_login_regressed", "手机号流程回退到登录页面，需要重新建立登录会话", True),
     (("auth_context_page_mismatch",), "phone_submitting", "auth_context_page_mismatch", "手机号提交页面上下文无效，需要重新建立登录会话", True),
     (("auth_context_cookies_missing",), "phone_submitting", "auth_context_cookies_missing", "手机号提交会话缺少有效 cookies，需要重新建立登录会话", True),
     (("auth_context_task_mismatch", "auth_context_generation_mismatch"), "phone_submitting", "auth_context_session_mismatch", "手机号提交会话不属于当前任务，需要重新建立登录会话", True),
@@ -524,9 +526,9 @@ def classify_failure(
     search_text = _combined_search_text(values)
     current_node = _current_node(result, progress)
     rule = _rule_for(search_text)
-    # A session error can contain the phone endpoint name. Preserve the
-    # operation that actually failed instead of letting a broad OAuth marker
-    # or phone-rejection rule rewrite it as a generic authorization failure.
+    # Session invalidation during phone verification is both an authorization
+    # failure and an account-level phone risk signal. Keep the operation where
+    # it surfaced so persisted results and public diagnostics agree.
     if _is_oauth_session_invalid(search_text):
         states = _chain_states(result)
         if current_node in {"phone_submitting", "sms_verifying"}:
@@ -537,10 +539,13 @@ def classify_failure(
             session_node = "phone_submitting"
         else:
             session_node = "oauth_authorize_node"
+        cause = "OpenAI 登录会话已失效"
+        if session_node in {"phone_submitting", "sms_verifying"}:
+            cause += "，疑似手机号阶段风控"
         rule = (
             session_node,
             "oauth_session_invalid",
-            "OpenAI 登录会话已失效",
+            cause,
             True,
         )
     if str(status or "").strip().lower() == "account_banned":

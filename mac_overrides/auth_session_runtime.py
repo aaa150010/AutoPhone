@@ -15,6 +15,15 @@ SESSION_INVALID_MARKERS = (
     "session is no longer valid",
 )
 
+_INVALIDATION_CODES = (
+    "phone_flow_mfa_regressed",
+    "phone_flow_login_regressed",
+    "auth_context_page_mismatch",
+    "auth_context_cookies_missing",
+    "auth_context_task_mismatch",
+    "auth_context_generation_mismatch",
+)
+
 
 def is_session_invalid(value: Any) -> bool:
     if isinstance(value, Mapping):
@@ -23,6 +32,20 @@ def is_session_invalid(value: Any) -> bool:
         candidates = [value]
     text = " ".join(str(item or "") for item in candidates).lower()
     return any(marker in text for marker in SESSION_INVALID_MARKERS)
+
+
+def invalidation_reason_code(value: Any) -> str:
+    if is_session_invalid(value):
+        return "oauth_session_invalid"
+    if isinstance(value, Mapping):
+        candidates = (value.get("code"), value.get("error"), value.get("message"))
+    else:
+        candidates = (value,)
+    text = " ".join(str(item or "").lower() for item in candidates)
+    for code in _INVALIDATION_CODES:
+        if code in text:
+            return code
+    return "auth_session_invalid"
 
 
 def _short_fingerprint(value: Any) -> str:
@@ -160,7 +183,7 @@ class AuthSessionContext:
         self.invalidations += 1
         self.invalid = True
         self.fresh_oauth_required = True
-        self.invalid_code = "oauth_session_invalid" if is_session_invalid(value) else "auth_session_invalid"
+        self.invalid_code = invalidation_reason_code(value)
         self.latest_continue_path = ""
         self.node_instance_id = ""
         self.transport_instance_id = ""
@@ -183,14 +206,27 @@ class AuthSessionContext:
 class AuthSessionRegistry:
     """Keep authentication state isolated by task without retaining credentials."""
 
-    def __init__(self, *, cancel_sms: Callable[[str, str], Any] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        cancel_sms: Callable[[str, str], Any] | None = None,
+        on_invalidate: Callable[[str, str, str, str], Any] | None = None,
+    ) -> None:
         self._lock = threading.RLock()
         self._items: dict[str, AuthSessionContext] = {}
         self._cancel_sms = cancel_sms
+        self._on_invalidate = on_invalidate
 
     def set_cancel_sms(self, callback: Callable[[str, str], Any] | None) -> None:
         with self._lock:
             self._cancel_sms = callback
+
+    def set_invalidation_callback(
+        self,
+        callback: Callable[[str, str, str, str], Any] | None,
+    ) -> None:
+        with self._lock:
+            self._on_invalidate = callback
 
     def get(self, task_id: Any, *, email: Any = "") -> AuthSessionContext:
         key = str(task_id or "").strip()
@@ -223,9 +259,21 @@ class AuthSessionRegistry:
             if stage:
                 item.current_stage = str(stage)
             item.invalidate(value)
+            callback = self._on_invalidate
+            callback_args = (
+                item.task_id,
+                item.email,
+                item.invalid_code,
+                item.current_stage,
+            )
+        if callable(callback):
+            try:
+                callback(*callback_args)
+            except Exception:
+                pass
         if callable(self._cancel_sms) and item.task_id:
             try:
-                self._cancel_sms(item.task_id, "oauth_session_invalid")
+                self._cancel_sms(item.task_id, item.invalid_code)
             except Exception:
                 pass
         return item

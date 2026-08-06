@@ -533,11 +533,11 @@ async function copyTotp(row: MailboxRow) {
   loadingTotp.value = [...loadingTotp.value, row.row_id]
   try {
     const result = await getMailboxTotp({ row_id: row.row_id, line_no: row.line_no })
-    await navigator.clipboard.writeText(String(result.totp_secret || ''))
-    ElMessage.success('已复制 2FA 密钥')
+    await navigator.clipboard.writeText(String(result.code || ''))
+    ElMessage.success(`已复制临时 2FA 验证码，约 ${result.remaining} 秒后刷新`)
   } catch (error: any) {
     if (error instanceof ApiError && error.payload?.code === 'mailbox_row_stale') await refresh()
-    ElMessage.error(error?.message || '复制 2FA 密钥失败')
+    ElMessage.error(error?.message || '复制临时 2FA 验证码失败')
   } finally {
     loadingTotp.value = loadingTotp.value.filter(id => id !== row.row_id)
   }

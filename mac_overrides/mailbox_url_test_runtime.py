@@ -107,6 +107,7 @@ class MailboxUrlTester:
                     return {
                         "ok": True,
                         "code_found": True,
+                        "verification_code": str(selection.code),
                         "reason": "code_found",
                         "attempts": attempts,
                         "elapsed_seconds": round(elapsed, 3),

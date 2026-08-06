@@ -7,11 +7,16 @@ from mac_overrides.auth_request_runtime import (
     AuthRequestContextError,
     begin_request,
     finish_request,
+    invalidate_auth_session,
     mark_phone_ready,
     recover_phone_entry_context,
     validate_phone_context,
 )
-from mac_overrides.auth_session_runtime import AuthSessionRegistry, is_session_invalid
+from mac_overrides.auth_session_runtime import (
+    AuthSessionRegistry,
+    invalidation_reason_code,
+    is_session_invalid,
+)
 
 
 class AuthSessionRuntimeTests(unittest.TestCase):
@@ -19,6 +24,10 @@ class AuthSessionRuntimeTests(unittest.TestCase):
         self.assertTrue(is_session_invalid("oauth_session_invalid: Your sign-in session is no longer valid"))
         self.assertTrue(is_session_invalid({"code": "oauth_session_invalid", "status": 401}))
         self.assertFalse(is_session_invalid({"code": "phone_send_rejected"}))
+        self.assertEqual(
+            invalidation_reason_code("private_mailbox_token: unexpected failure"),
+            "auth_session_invalid",
+        )
 
     def test_phone_context_accepts_only_number_entry_pages(self):
         for page_type in (
@@ -126,7 +135,7 @@ class AuthSessionRuntimeTests(unittest.TestCase):
         transport._gptphone_page_type = "phone_otp_verification"
         transport._gptphone_request_context.page_type = "phone_otp_verification"
 
-        with self.assertRaisesRegex(AuthRequestContextError, "page_type=unknown"):
+        with self.assertRaises(AuthRequestContextError) as raised:
             recover_phone_entry_context(
                 transport,
                 registry,
@@ -139,10 +148,21 @@ class AuthSessionRuntimeTests(unittest.TestCase):
                 },
             )
 
+        self.assertEqual(raised.exception.code, "phone_flow_login_regressed")
+        self.assertIn("回退到登录验证页面", str(raised.exception))
+
     def test_phone_otp_html_recovery_rejects_non_phone_html_on_entry_url(self):
-        for title, body in (
-            ("Log in - OpenAI", "<main><h1>Welcome back</h1></main>"),
-            ("Just a moment...", "<main>Checking your browser</main>"),
+        for title, body, expected_code in (
+            (
+                "Log in - OpenAI",
+                "<main><h1>Welcome back</h1></main>",
+                "phone_flow_login_regressed",
+            ),
+            (
+                "Just a moment...",
+                "<main>Checking your browser</main>",
+                "auth_context_page_mismatch",
+            ),
         ):
             with self.subTest(title=title):
                 registry = AuthSessionRegistry()
@@ -160,7 +180,7 @@ class AuthSessionRuntimeTests(unittest.TestCase):
                 transport._gptphone_page_type = "phone_otp_verification"
                 transport._gptphone_request_context.page_type = "phone_otp_verification"
 
-                with self.assertRaisesRegex(AuthRequestContextError, "page_type=unknown"):
+                with self.assertRaises(AuthRequestContextError) as raised:
                     recover_phone_entry_context(
                         transport,
                         registry,
@@ -173,6 +193,24 @@ class AuthSessionRuntimeTests(unittest.TestCase):
                             "_body": body,
                         },
                     )
+                self.assertEqual(raised.exception.code, expected_code)
+
+    def test_phone_context_distinguishes_mfa_and_login_regressions(self):
+        for page_type, expected_code in (
+            ("mfa_otp_verification", "phone_flow_mfa_regressed"),
+            ("password_verification", "phone_flow_login_regressed"),
+            ("login_password", "phone_flow_login_regressed"),
+            ("password_required", "phone_flow_login_regressed"),
+        ):
+            with self.subTest(page_type=page_type):
+                transport = SimpleNamespace(
+                    config={"sms_task_id": f"task-{page_type}"},
+                    session=SimpleNamespace(cookies={"session": "present"}),
+                    _gptphone_page_type=page_type,
+                )
+                with self.assertRaises(AuthRequestContextError) as raised:
+                    validate_phone_context(transport, AuthSessionRegistry())
+                self.assertEqual(raised.exception.code, expected_code)
 
     def test_phone_otp_recovery_without_saved_entry_fails(self):
         transport = SimpleNamespace(
@@ -226,6 +264,68 @@ class AuthSessionRuntimeTests(unittest.TestCase):
         registry.invalidate("task-1", "oauth_session_invalid", stage="phone_submitting")
         self.assertEqual(fresh.invalidations, 2)
         self.assertEqual(len(cancellations), 2)
+
+    def test_transport_invalidation_clears_private_auth_state_and_reports_exact_reason(self):
+        callbacks = []
+        cancellations = []
+        sentinel_resets = []
+        registry = AuthSessionRegistry(
+            cancel_sms=lambda task_id, reason: cancellations.append((task_id, reason)),
+            on_invalidate=lambda *args: callbacks.append(args),
+        )
+        cookies = {"session": "present", "other": "private"}
+        transport = SimpleNamespace(
+            config={
+                "sms_task_id": "task-clean",
+                "_auth_account_email": "risk@example.test",
+                "phase1_active_session": "must-be-discarded",
+            },
+            account_email="risk@example.test",
+            session=SimpleNamespace(cookies=cookies),
+            sentinel_provider=SimpleNamespace(
+                reset=lambda: sentinel_resets.append(True),
+            ),
+            _gptphone_page_type="add_phone",
+        )
+        mark_phone_ready(
+            transport,
+            registry,
+            {"_status": 200, "page": {"type": "add_phone"}},
+            continue_url="https://auth.openai.com/add-phone?state=private-state",
+        )
+        context = transport._gptphone_request_context
+
+        invalidate_auth_session(
+            transport,
+            registry,
+            "phone_flow_mfa_regressed: stale MFA page",
+            stage="phone_submitting",
+        )
+
+        self.assertEqual(cookies, {})
+        self.assertEqual(sentinel_resets, [True])
+        self.assertNotIn("phase1_active_session", transport.config)
+        self.assertTrue(transport.config["_phone_risk_retry"])
+        self.assertEqual(
+            transport.config["_phone_risk_reason_code"],
+            "phone_flow_mfa_regressed",
+        )
+        self.assertEqual(context.phone_entry_url, "")
+        self.assertEqual(context.continue_path, "")
+        self.assertEqual(context.last_sentinel, {})
+        self.assertEqual(
+            callbacks,
+            [(
+                "task-clean",
+                "risk@example.test",
+                "phone_flow_mfa_regressed",
+                "phone_submitting",
+            )],
+        )
+        self.assertEqual(
+            cancellations,
+            [("task-clean", "phone_flow_mfa_regressed")],
+        )
 
     def test_public_snapshot_contains_fingerprints_but_not_session_material(self):
         registry = AuthSessionRegistry()

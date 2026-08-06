@@ -1535,6 +1535,139 @@ class SmsRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(ranked, [recent, historical])
 
+    def test_risk_retry_ranking_prefers_real_receipt_then_legacy_mature_routes(self):
+        @dataclass
+        class Candidate:
+            country: str
+            provider_id: str
+            price: float = 0.04
+            count: int = 10
+
+        real_receipt = Candidate("1", "real")
+        legacy_success = Candidate("2", "legacy")
+        ordinary = Candidate("3", "ordinary")
+
+        ranked = rank_sms_candidates(
+            [ordinary, legacy_success, real_receipt],
+            {
+                ("1", "real"): {
+                    "success": 2,
+                    "fail": 1,
+                    "otp_received": 1,
+                    "last_delivery_at": 990,
+                },
+                ("2", "legacy"): {"success": 20, "fail": 0},
+            },
+            reliability_mode=True,
+            now=1000,
+        )
+
+        self.assertEqual(ranked, [real_receipt, legacy_success, ordinary])
+
+    def test_risk_retry_ranking_uses_recent_delivery_and_quality_within_tier(self):
+        @dataclass
+        class Candidate:
+            country: str
+            provider_id: str
+            price: float = 0.04
+            count: int = 10
+
+        recent = Candidate("1", "recent")
+        historical = Candidate("2", "historical")
+        high_delivery = Candidate("3", "high-delivery")
+        low_delivery = Candidate("4", "low-delivery")
+        stats = {
+            ("1", "recent"): {
+                "success": 2,
+                "fail": 2,
+                "otp_received": 2,
+                "timeout": 2,
+                "last_delivery_at": 990,
+            },
+            ("2", "historical"): {
+                "success": 10,
+                "fail": 0,
+                "otp_received": 10,
+                "last_delivery_at": 100,
+            },
+            ("3", "high-delivery"): {
+                "success": 4,
+                "fail": 1,
+                "otp_received": 8,
+                "timeout": 2,
+                "last_delivery_at": 980,
+            },
+            ("4", "low-delivery"): {
+                "success": 9,
+                "fail": 1,
+                "otp_received": 2,
+                "timeout": 8,
+                "last_delivery_at": 980,
+            },
+        }
+
+        ranked = rank_sms_candidates(
+            [historical, low_delivery, recent, high_delivery],
+            stats,
+            reliability_mode=True,
+            now=1000,
+            recent_success_window_seconds=300,
+        )
+
+        self.assertLess(ranked.index(recent), ranked.index(historical))
+        self.assertLess(ranked.index(high_delivery), ranked.index(low_delivery))
+
+    def test_risk_retry_legacy_threshold_excludes_no_number_outcomes(self):
+        @dataclass
+        class Candidate:
+            country: str
+            provider_id: str
+
+        mature = Candidate("1", "mature")
+        below_threshold = Candidate("2", "weak")
+
+        ranked = rank_sms_candidates(
+            [below_threshold, mature],
+            {
+                ("1", "mature"): {
+                    "success": 1,
+                    "fail": 10,
+                    "no_numbers": 9,
+                },
+                ("2", "weak"): {"success": 1, "fail": 10},
+            },
+            reliability_mode=True,
+        )
+
+        self.assertEqual(ranked, [mature, below_threshold])
+
+    def test_risk_retry_without_mature_routes_preserves_normal_fallback_order(self):
+        @dataclass
+        class Candidate:
+            country: str
+            provider_id: str
+
+        preferred = Candidate("151", "3109")
+        cold = Candidate("37", "3237")
+        failed = Candidate("172", "3309")
+        candidates = [failed, cold, preferred]
+        stats = {("172", "3309"): {"fail": 3}}
+        kwargs = {
+            "priority_routes": (("151", "3109"),),
+            "priority_countries": ("151", "37"),
+            "now": 1000,
+        }
+
+        normal = rank_sms_candidates(candidates, stats, **kwargs)
+        risk_retry = rank_sms_candidates(
+            candidates,
+            stats,
+            reliability_mode=True,
+            **kwargs,
+        )
+
+        self.assertEqual(risk_retry, normal)
+
     def test_phone_submission_gate_spaces_requests(self):
         clock = [10.0]
         sleeps: list[float] = []

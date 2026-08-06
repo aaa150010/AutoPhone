@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 import threading
 import unittest
+from unittest.mock import patch
 
 from mac_overrides import sms_runtime
 from mac_overrides.runtime_policy import ACCOUNT_BANNED_MESSAGE, AccountBannedError
@@ -167,6 +168,59 @@ class SmsWebTests(unittest.TestCase):
             None,
         )
         self.assertEqual(ranked, [])
+
+    def test_risk_retry_mode_reaches_ranking_after_price_and_cooldown_filters(self):
+        eligible = SimpleNamespace(
+            country="1",
+            provider_id="eligible",
+            price=0.04,
+            count=8,
+            score=1.0,
+        )
+        cooled = SimpleNamespace(
+            country="2",
+            provider_id="cooled",
+            price=0.04,
+            count=8,
+            score=1.0,
+        )
+        overpriced = SimpleNamespace(
+            country="3",
+            provider_id="overpriced",
+            price=0.20,
+            count=8,
+            score=1.0,
+        )
+        selector = SimpleNamespace(
+            config={
+                "_phone_risk_retry": True,
+                "max_price": "0.10",
+                "sms_min_price": "0.01",
+            },
+            stats={
+                ("2", "cooled"): {
+                    "cooldown_until": 1200.0,
+                    "last_kind": "timeout",
+                }
+            },
+        )
+
+        with patch.object(
+            sms_runtime,
+            "rank_sms_candidates",
+            return_value=[eligible],
+        ) as rank:
+            result = self.integration.smart_build_candidates(
+                selector,
+                [cooled, overpriced, eligible],
+                1000.0,
+                None,
+                None,
+            )
+
+        self.assertEqual(result, [eligible])
+        self.assertEqual(rank.call_args.args[0], [eligible])
+        self.assertTrue(rank.call_args.kwargs["reliability_mode"])
 
     def test_configure_and_preflight_use_all_keys_without_key_count_special_cases(self):
         logs = FakeLogs()

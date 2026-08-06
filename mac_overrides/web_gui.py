@@ -36,6 +36,7 @@ import mailbox_url_runtime as _mailbox_url_runtime_ext
 import mailbox_url_test_runtime as _mailbox_url_test_runtime_ext
 import mailbox_retention as _mailbox_retention_ext
 import pixel_runtime as _pixel_runtime_ext
+import phone_risk_runtime as _phone_risk_runtime_ext
 import openai_quota_runtime as _openai_quota_runtime_ext
 import openai_direct_test_runtime as _openai_direct_test_runtime_ext
 import run_notifications as _run_notifications_ext
@@ -181,6 +182,9 @@ _SMS_ROUTE_POLICY = _sms_runtime_ext.SmsRoutePolicy()
 _SMS_ALERTS = _sms_runtime_ext.RuntimeAlertBuffer()
 _GUI_LOG_RETENTION = _log_retention_ext.GuiLogRetention()
 _TASK_PROGRESS = _task_progress_ext.TaskProgressTracker()
+_PHONE_RISK_STORE = _phone_risk_runtime_ext.PhoneRiskStore(
+    _RUNTIME_DATA_DIR / "phone_risk_markers.json"
+)
 _TASK_CONTEXT: ContextVar[str] = ContextVar("gptphone_task_id", default="")
 _RUN_MODE_CONTEXT: ContextVar[str] = ContextVar("gptphone_run_mode", default="register")
 _ACTIVE_SMS_TRANSPORT: ContextVar[object | None] = ContextVar(
@@ -304,7 +308,14 @@ def _is_auth_session_reset_failure(result=None, error=""):
     text = " ".join(str(value or "").lower() for value in values)
     return any(
         marker in text
-        for marker in ("auth_context_page_mismatch", "auth_context_cookies_missing")
+        for marker in (
+            "phone_flow_mfa_regressed",
+            "phone_flow_login_regressed",
+            "auth_context_page_mismatch",
+            "auth_context_cookies_missing",
+            "auth_context_task_mismatch",
+            "auth_context_generation_mismatch",
+        )
     )
 
 
@@ -654,6 +665,12 @@ def _patched_task_config(self, settings, email, task_id, *, password=""):
             "email_otp_resend_on_retry": email_resend,
         }
     )
+    risk_status = _PHONE_RISK_STORE.status(email)
+    if risk_status.get("active"):
+        config["_phone_risk_retry"] = True
+        config["_phone_risk_reason_code"] = str(
+            risk_status.get("reason_code") or "oauth_session_invalid"
+        )
     if relogin:
         normalized_email = str(email or "").strip().lower()
         binding = next(
@@ -1293,7 +1310,7 @@ def _patched_pre_auth_session_retryable(result):
         return False
     if _RUN_MODE_CONTEXT.get() == "relogin":
         return _runtime_policy_ext.is_relogin_transient_failure(result)
-    if _auth_session_runtime_ext.is_session_invalid(result):
+    if _is_auth_session_reset_failure(result):
         # The recovered importer owns the configured whole-session retry
         # limit. Do not impose a second, hidden two-session cap here.
         return True
@@ -1327,6 +1344,13 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
     batch_id = str((settings or {}).get("batch_id") or "").strip()[:80]
     batch_started_at = _int_value((settings or {}).get("batch_started_at"), 0, minimum=0)
     if isinstance(result, dict):
+        risk_status = _PHONE_RISK_STORE.status(getattr(entry, "email", ""))
+        if risk_status.get("active"):
+            result["phone_risk_retry"] = True
+            result["phone_risk_label"] = "手机号风控重试：已启用成熟线路优先"
+            result["phone_risk_reason_code"] = str(
+                risk_status.get("reason_code") or "oauth_session_invalid"
+            )
         progress_snapshot = _TASK_PROGRESS.progress(task_id) or {}
         if isinstance(progress_snapshot.get("timing"), dict):
             result["timing"] = copy.deepcopy(progress_snapshot["timing"])
@@ -1872,6 +1896,29 @@ _SMS_WEB = _sms_web_ext.SmsWebIntegration(
 )
 _AUTH_SESSIONS = _auth_session_runtime_ext.AuthSessionRegistry()
 _AUTH_SESSIONS.set_cancel_sms(_SMS_WEB.cancel_active_lease)
+
+
+def _persist_phone_risk_marker(task_id, email, reason_code, stage):
+    normalized_stage = str(stage or "").strip()
+    if normalized_stage not in {"phone_submitting", "sms_verifying"}:
+        return
+    marker = _PHONE_RISK_STORE.mark(
+        email,
+        reason_code=reason_code,
+        stage=normalized_stage,
+    )
+    if not marker.get("active"):
+        return
+    transport = _transport_for_task(task_id)
+    config = getattr(transport, "config", None)
+    if isinstance(config, dict):
+        config["_phone_risk_retry"] = True
+        config["_phone_risk_reason_code"] = str(
+            marker.get("reason_code") or "oauth_session_invalid"
+        )
+
+
+_AUTH_SESSIONS.set_invalidation_callback(_persist_phone_risk_marker)
 _TOTP_PATCHES = _chatgpt_totp_ext.build_chatgpt_totp_patches(
     runtime_module=_runtime,
     codex_oauth_chain=_codex_oauth_chain,
@@ -2248,6 +2295,19 @@ def _sms_send_phone_number_otp(self, phone, channel="sms"):
     return _SMS_WEB.send_phone_number_otp(self, phone, channel)
 
 
+def _phone_otp_was_accepted(response):
+    if not _codex_oauth_chain._is_success_response(response):
+        return False
+    page_type = _auth_request_runtime_ext.normalize_page_type(
+        _codex_oauth_chain._page_type(response)
+    )
+    return page_type not in (
+        _auth_request_runtime_ext.PHONE_PAGE_TYPES
+        | _auth_request_runtime_ext.MFA_PAGE_TYPES
+        | _auth_request_runtime_ext.LOGIN_PAGE_TYPES
+    )
+
+
 def _real_verify_phone_otp(self, code):
     try:
         response = self._post_auth_json(
@@ -2261,7 +2321,31 @@ def _real_verify_phone_otp(self, code):
         _SMS_WEB.ensure_account_active(self, exc)
         raise
     response = _SMS_WEB.ensure_account_active(self, response)
+    if _auth_session_runtime_ext.is_session_invalid(response):
+        task_id = _transport_task_id(self)
+        state = _AUTH_SESSIONS.get(task_id) if task_id else None
+        if state is None or not state.invalid:
+            _auth_request_runtime_ext.invalidate_auth_session(
+                self,
+                _AUTH_SESSIONS,
+                response,
+                stage="sms_verifying",
+            )
+        raise _codex_oauth_chain.CodexChainError(
+            "oauth_session_invalid: OpenAI 登录会话已失效"
+        )
     _observe_auth_step(self, response, "sms_verifying")
+    if _phone_otp_was_accepted(response):
+        email = str(
+            getattr(self, "account_email", "")
+            or (getattr(self, "config", None) or {}).get("_auth_account_email")
+            or ""
+        ).strip().lower()
+        _PHONE_RISK_STORE.clear(email)
+        config = getattr(self, "config", None)
+        if isinstance(config, dict):
+            config.pop("_phone_risk_retry", None)
+            config.pop("_phone_risk_reason_code", None)
     return response
 
 
@@ -2890,6 +2974,9 @@ def _public_task(task):
             "sms_exchange_date",
             "timing",
             "run_mode",
+            "phone_risk_retry",
+            "phone_risk_label",
+            "phone_risk_reason_code",
         )
         if key in result
     }
@@ -3355,6 +3442,7 @@ def _mailbox_admin_factory(store, importer, logs):
         openai_quota_query=query_openai_quota,
         openai_quota_status_lookup=_OPENAI_QUOTA_SNAPSHOTS.status_for,
         openai_quota_status_store=_OPENAI_QUOTA_SNAPSHOTS.put,
+        phone_risk_lookup=_PHONE_RISK_STORE.status,
     )
 
 

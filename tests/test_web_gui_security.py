@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 import tempfile
 import time
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 import unittest
 
 
@@ -204,35 +204,58 @@ class WebGuiSecurityTests(unittest.TestCase):
             module._ACTIVE_SMS_TRANSPORT.reset(token)
         self.assertEqual(calls, [])
 
-    def test_sms_preflight_unknown_page_blocks_paid_allocation(self):
+    def test_sms_preflight_regressions_block_paid_allocation_and_mark_risk(self):
         module = self.module
         original_preflight = module._SMS_WEB.phone_context_preflight
         original_allocate = module._SMS_WEB.original_adapter_get_number
-        calls = []
-        transport = SimpleNamespace(
-            config={"sms_task_id": "task-unknown-page"},
-            _gptphone_page_type="unknown",
-        )
-        module._register_sms_transport("task-unknown-page", transport)
-        token = module._ACTIVE_SMS_TRANSPORT.set(None)
         try:
             module._SMS_WEB.phone_context_preflight = module._preflight_sms_phone_context
-            module._SMS_WEB.original_adapter_get_number = (
-                lambda *_args, **_kwargs: calls.append(True)
-            )
-            adapter = SimpleNamespace(
-                config={"sms_task_id": "task-unknown-page"},
-                provider=SimpleNamespace(),
-                selector=None,
-            )
-            with self.assertRaisesRegex(Exception, "auth_context_page_mismatch"):
-                module._SMS_WEB.adapter_get_number(adapter)
+            for suffix, page_type, cookies, expected_code in (
+                ("unknown", "unknown", {"session": "present"}, "auth_context_page_mismatch"),
+                ("mfa", "mfa_otp_verification", {"session": "present"}, "phone_flow_mfa_regressed"),
+                ("login", "password_verification", {"session": "present"}, "phone_flow_login_regressed"),
+                ("cookies", "add_phone", {}, "auth_context_cookies_missing"),
+            ):
+                with self.subTest(page_type=page_type):
+                    calls = []
+                    task_id = f"task-preflight-{suffix}"
+                    email = f"preflight-{suffix}@example.test"
+                    transport = SimpleNamespace(
+                        config={
+                            "sms_task_id": task_id,
+                            "_auth_account_email": email,
+                        },
+                        account_email=email,
+                        session=SimpleNamespace(cookies=dict(cookies)),
+                        sentinel_provider=SimpleNamespace(reset=lambda: None),
+                        proxy="",
+                        _gptphone_page_type=page_type,
+                    )
+                    module._register_sms_transport(task_id, transport)
+                    token = module._ACTIVE_SMS_TRANSPORT.set(None)
+                    module._SMS_WEB.original_adapter_get_number = (
+                        lambda *_args, **_kwargs: calls.append(True)
+                    )
+                    adapter = SimpleNamespace(
+                        config={"sms_task_id": task_id},
+                        provider=SimpleNamespace(),
+                        selector=None,
+                    )
+                    try:
+                        with self.assertRaisesRegex(Exception, expected_code):
+                            module._SMS_WEB.adapter_get_number(adapter)
+                        marker = module._PHONE_RISK_STORE.status(email)
+                    finally:
+                        module._ACTIVE_SMS_TRANSPORT.reset(token)
+                        module._unregister_sms_transport(task_id, transport)
+                        module._AUTH_SESSIONS.clear(task_id)
+                        module._PHONE_RISK_STORE.clear(email)
+                    self.assertEqual(calls, [])
+                    self.assertTrue(marker["active"])
+                    self.assertEqual(marker["reason_code"], expected_code)
         finally:
             module._SMS_WEB.phone_context_preflight = original_preflight
             module._SMS_WEB.original_adapter_get_number = original_allocate
-            module._ACTIVE_SMS_TRANSPORT.reset(token)
-            module._unregister_sms_transport("task-unknown-page", transport)
-        self.assertEqual(calls, [])
 
     def test_task_config_allows_fifteen_attempts_per_enabled_sms_platform(self):
         module = self.module
@@ -304,6 +327,40 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertTrue(default_config["email_otp_resend_on_retry"])
         self.assertEqual(explicit_config["email_otp_verify_attempts"], 3)
         self.assertFalse(explicit_config["email_otp_resend_on_retry"])
+
+    def test_phone_risk_marker_restores_reliability_mode_across_tasks(self):
+        module = self.module
+        original_task_config = module._ORIGINAL_TASK_CONFIG
+        email = "persisted-risk@example.test"
+        module._PHONE_RISK_STORE.mark(
+            email,
+            reason_code="oauth_session_invalid",
+            stage="phone_submitting",
+        )
+        try:
+            module._ORIGINAL_TASK_CONFIG = lambda *_args, **_kwargs: {"code_timeout": 30}
+            first = module._patched_task_config(
+                SimpleNamespace(data_dir=self.tempdir.name),
+                {},
+                email,
+                "risk-task-1",
+            )
+            second = module._patched_task_config(
+                SimpleNamespace(data_dir=self.tempdir.name),
+                {},
+                email.upper(),
+                "risk-task-2",
+            )
+        finally:
+            module._ORIGINAL_TASK_CONFIG = original_task_config
+            module._PHONE_RISK_STORE.clear(email)
+
+        for config in (first, second):
+            self.assertTrue(config["_phone_risk_retry"])
+            self.assertEqual(
+                config["_phone_risk_reason_code"],
+                "oauth_session_invalid",
+            )
 
     def test_register_start_applies_one_run_mailbox_selection_filter(self):
         module = self.module
@@ -1101,6 +1158,7 @@ class WebGuiSecurityTests(unittest.TestCase):
             snapshot = self.module._AUTH_SESSIONS.public_snapshot("task-phone-invalid")
         finally:
             self.module._AUTH_SESSIONS.clear("task-phone-invalid")
+            self.module._PHONE_RISK_STORE.clear("user@example.test")
 
         self.assertEqual(calls, [])
         self.assertTrue(snapshot["invalid"])
@@ -1112,6 +1170,157 @@ class WebGuiSecurityTests(unittest.TestCase):
                 error="auth_context_page_mismatch: stale page"
             )
         )
+
+    def test_phone_stage_invalidation_marks_current_transport_immediately(self):
+        module = self.module
+        task_id = "task-risk-immediate"
+        email = "immediate-risk@example.test"
+        sentinel_resets = []
+        transport = SimpleNamespace(
+            config={
+                "sms_task_id": task_id,
+                "_auth_account_email": email,
+                "phase1_active_session": "discard-me",
+            },
+            account_email=email,
+            session=SimpleNamespace(cookies={"session": "present"}),
+            sentinel_provider=SimpleNamespace(reset=lambda: sentinel_resets.append(True)),
+            proxy="",
+            _gptphone_page_type="add_phone",
+        )
+        module._AUTH_SESSIONS.clear(task_id)
+        module._register_sms_transport(task_id, transport)
+        try:
+            module._auth_request_runtime_ext.ensure_transport_context(
+                transport,
+                module._AUTH_SESSIONS,
+                force_new=True,
+            )
+            module._auth_request_runtime_ext.invalidate_auth_session(
+                transport,
+                module._AUTH_SESSIONS,
+                "oauth_session_invalid: sign-in session is no longer valid",
+                stage="phone_submitting",
+            )
+            marker = module._PHONE_RISK_STORE.status(email)
+        finally:
+            module._unregister_sms_transport(task_id, transport)
+            module._AUTH_SESSIONS.clear(task_id)
+            module._PHONE_RISK_STORE.clear(email)
+
+        self.assertTrue(marker["active"])
+        self.assertEqual(marker["stage"], "phone_submitting")
+        self.assertTrue(transport.config["_phone_risk_retry"])
+        self.assertNotIn("phase1_active_session", transport.config)
+        self.assertEqual(transport.session.cookies, {})
+        self.assertEqual(sentinel_resets, [True])
+
+    def test_phone_otp_session_invalidation_aborts_before_another_number_attempt(self):
+        module = self.module
+        task_id = "task-risk-sms-verify"
+        email = "sms-verify-risk@example.test"
+        original_post = module._ORIGINAL_REAL_POST_AUTH_JSON
+        sentinel_resets = []
+        transport = SimpleNamespace(
+            config={
+                "sms_task_id": task_id,
+                "_auth_account_email": email,
+                "phase1_active_session": "discard-me",
+            },
+            account_email=email,
+            session=SimpleNamespace(cookies={"session": "present"}),
+            sentinel_provider=SimpleNamespace(
+                reset=lambda flow="": sentinel_resets.append(flow),
+            ),
+            proxy="",
+            _gptphone_page_type="phone_otp_verification",
+        )
+        transport._post_auth_json = MethodType(module._real_post_auth_json, transport)
+        module._AUTH_SESSIONS.clear(task_id)
+        module._register_sms_transport(task_id, transport)
+        try:
+            module._ORIGINAL_REAL_POST_AUTH_JSON = lambda *_args, **_kwargs: {
+                "_status": 401,
+                "error": {
+                    "code": "oauth_session_invalid",
+                    "message": "sign-in session is no longer valid",
+                },
+            }
+            with self.assertRaisesRegex(
+                module._codex_oauth_chain.CodexChainError,
+                "oauth_session_invalid",
+            ):
+                module._real_verify_phone_otp(transport, "123456")
+            marker = module._PHONE_RISK_STORE.status(email)
+            snapshot = module._AUTH_SESSIONS.public_snapshot(task_id)
+        finally:
+            module._ORIGINAL_REAL_POST_AUTH_JSON = original_post
+            module._unregister_sms_transport(task_id, transport)
+            module._AUTH_SESSIONS.clear(task_id)
+            module._PHONE_RISK_STORE.clear(email)
+
+        self.assertTrue(marker["active"])
+        self.assertEqual(marker["reason_code"], "oauth_session_invalid")
+        self.assertEqual(marker["stage"], "sms_verifying")
+        self.assertEqual(snapshot["invalidations"], 1)
+        self.assertEqual(snapshot["current_stage"], "sms_verifying")
+        self.assertTrue(transport.config["_phone_risk_retry"])
+        self.assertNotIn("phase1_active_session", transport.config)
+        self.assertEqual(transport.session.cookies, {})
+        self.assertEqual(sentinel_resets, [""])
+
+    def test_non_phone_session_invalidation_does_not_create_phone_risk_marker(self):
+        email = "oauth-only@example.test"
+
+        self.module._persist_phone_risk_marker(
+            "task-oauth-only",
+            email,
+            "oauth_session_invalid",
+            "oauth_authorize_node",
+        )
+
+        self.assertEqual(self.module._PHONE_RISK_STORE.status(email), {})
+
+    def test_phone_risk_marker_clears_only_after_phone_otp_is_accepted(self):
+        module = self.module
+        task_id = "task-risk-clear"
+        email = "risk-clear@example.test"
+        responses = [
+            {"_status": 200, "page": {"type": "phone_otp_verification"}},
+            {
+                "_status": 200,
+                "page": {"type": "sign_in_with_chatgpt_codex_consent"},
+                "continue_url": "/sign-in-with-chatgpt/codex/consent",
+            },
+        ]
+        transport = SimpleNamespace(
+            config={
+                "sms_task_id": task_id,
+                "_auth_account_email": email,
+                "_phone_risk_retry": True,
+                "_phone_risk_reason_code": "oauth_session_invalid",
+            },
+            account_email=email,
+            session=SimpleNamespace(cookies={"session": "present"}),
+            sentinel_provider=SimpleNamespace(reset=lambda *_args: None),
+            proxy="",
+            _gptphone_page_type="phone_otp_verification",
+            _post_auth_json=lambda *_args, **_kwargs: responses.pop(0),
+        )
+        module._PHONE_RISK_STORE.mark(email)
+        module._AUTH_SESSIONS.clear(task_id)
+        try:
+            module._real_verify_phone_otp(transport, "111111")
+            self.assertTrue(module._PHONE_RISK_STORE.is_active(email))
+            self.assertTrue(transport.config["_phone_risk_retry"])
+
+            module._real_verify_phone_otp(transport, "222222")
+            self.assertFalse(module._PHONE_RISK_STORE.is_active(email))
+            self.assertNotIn("_phone_risk_retry", transport.config)
+            self.assertNotIn("_phone_risk_reason_code", transport.config)
+        finally:
+            module._AUTH_SESSIONS.clear(task_id)
+            module._PHONE_RISK_STORE.clear(email)
 
     def test_public_task_drops_composite_account_tokens_and_source_row(self):
         task = {
@@ -1132,6 +1341,37 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertNotIn("access_token", serialized)
         for secret in ("mail-pass", "client-id", "refresh-token", "access-secret"):
             self.assertNotIn(secret, serialized)
+
+    def test_public_task_exposes_only_safe_phone_risk_fields(self):
+        task = {
+            "task_id": "task-risk-public",
+            "email": "risk@example.test",
+            "status": "failed",
+            "result": {
+                "phone_risk_retry": True,
+                "phone_risk_label": "手机号风控重试：已启用成熟线路优先",
+                "phone_risk_reason_code": "oauth_session_invalid",
+                "phone_risk_private": {
+                    "email": "risk@example.test",
+                    "phone": "+15550001111",
+                },
+            },
+        }
+
+        public = self.module._public_task(task)
+        serialized = json.dumps(public, ensure_ascii=False)
+
+        self.assertTrue(public["result"]["phone_risk_retry"])
+        self.assertEqual(
+            public["result"]["phone_risk_label"],
+            "手机号风控重试：已启用成熟线路优先",
+        )
+        self.assertEqual(
+            public["result"]["phone_risk_reason_code"],
+            "oauth_session_invalid",
+        )
+        self.assertNotIn("phone_risk_private", serialized)
+        self.assertNotIn("+15550001111", serialized)
 
     def test_public_task_exposes_only_sanitized_structured_failure(self):
         task = {
@@ -1855,6 +2095,51 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(payload["batch_started_at"], settings["batch_started_at"])
         self.assertEqual(payload["result"]["batch_id"], settings["batch_id"])
         self.assertEqual(payload["result"]["batch_started_at"], settings["batch_started_at"])
+
+    def test_persisted_result_keeps_safe_phone_risk_retry_fields(self):
+        module = self.module
+        original_persist = module._ORIGINAL_PERSIST_RESULT
+        email = "persist-risk-result@example.test"
+        captured = []
+        result = {}
+        fake_self = SimpleNamespace(data_dir=self.tempdir.name)
+        entry = SimpleNamespace(email=email)
+        module._PHONE_RISK_STORE.mark(
+            email,
+            reason_code="oauth_session_invalid",
+            stage="sms_verifying",
+        )
+        try:
+            module._ORIGINAL_PERSIST_RESULT = (
+                lambda _self, _settings, _task_id, _entry, value, **_kwargs: (
+                    captured.append(copy.deepcopy(value)) or "persisted"
+                )
+            )
+            returned = module._patched_persist_result(
+                fake_self,
+                {"pixel_upload_enabled": False},
+                "task-persist-risk",
+                entry,
+                result,
+                status="stopped",
+            )
+        finally:
+            module._ORIGINAL_PERSIST_RESULT = original_persist
+            module._PHONE_RISK_STORE.clear(email)
+            module._TASK_PROGRESS.reset()
+
+        self.assertEqual(returned, "persisted")
+        self.assertTrue(captured[0]["phone_risk_retry"])
+        self.assertEqual(
+            captured[0]["phone_risk_label"],
+            "手机号风控重试：已启用成熟线路优先",
+        )
+        self.assertEqual(
+            captured[0]["phone_risk_reason_code"],
+            "oauth_session_invalid",
+        )
+        serialized = json.dumps(captured[0], ensure_ascii=False)
+        self.assertNotIn(email, serialized)
 
     def test_runtime_summary_only_counts_current_batch(self):
         module = self.module
