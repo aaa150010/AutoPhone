@@ -41,6 +41,7 @@ import pixel_runtime as _pixel_runtime_ext
 import phone_risk_runtime as _phone_risk_runtime_ext
 import openai_quota_runtime as _openai_quota_runtime_ext
 import openai_direct_test_runtime as _openai_direct_test_runtime_ext
+import online_mailbox_runtime as _online_mailbox_runtime_ext
 import run_notifications as _run_notifications_ext
 import runtime as _runtime
 import runtime_policy as _runtime_policy_ext
@@ -369,12 +370,18 @@ def _failure_secrets(importer=None, entry=None, settings=None):
         if isinstance(config.get("email_notification"), dict)
         else {}
     )
+    online_mailbox = (
+        config.get("online_mailbox")
+        if isinstance(config.get("online_mailbox"), dict)
+        else {}
+    )
     values.extend(_sms_keys_from_config(config))
     values.extend(
         (
             config.get("gptmail_api_key"),
             sub2api.get("password"),
             notification.get("password"),
+            online_mailbox.get("api_token"),
             *_mailbox_admin_ext.url_credential_secrets(config.get("proxy")),
         )
     )
@@ -3135,6 +3142,7 @@ def _masked_local_config(data):
     value.pop("nvtoken_upload", None)
     sub2api = dict(value.get("sub2api") or {})
     email_notification = dict(value.get("email_notification") or {})
+    online_mailbox = dict(value.get("online_mailbox") or {})
     sms_pools = _sms_provider_pools_from_config(value)
     sms_keys = _sms_runtime_ext.legacy_sms_provider_keys(
         sms_pools,
@@ -3161,6 +3169,9 @@ def _masked_local_config(data):
     if email_notification:
         email_notification["password"] = _mask_secret(email_notification.get("password"))
         value["email_notification"] = email_notification
+    if online_mailbox:
+        online_mailbox["api_token"] = _mask_secret(online_mailbox.get("api_token"))
+        value["online_mailbox"] = online_mailbox
     return value
 
 
@@ -3343,10 +3354,12 @@ def _public_logs(logs, tasks):
     local = _read_local_config()
     sub2api = dict(local.get("sub2api") or {})
     notification = dict(local.get("email_notification") or {})
+    online_mailbox = dict(local.get("online_mailbox") or {})
     secrets = [
         *_sms_keys_from_config(local),
         sub2api.get("password"),
         notification.get("password"),
+        online_mailbox.get("api_token"),
         *_mailbox_admin_ext.url_credential_secrets(local.get("proxy")),
     ]
     task_failures = {}
@@ -3497,6 +3510,7 @@ def _local_config_secret(secret_id):
     local = _read_local_config()
     sub2api = dict(local.get("sub2api") or {})
     email_notification = dict(local.get("email_notification") or {})
+    online_mailbox = dict(local.get("online_mailbox") or {})
     sms_keys = _sms_keys_from_config(local)
     sms_pools = _sms_provider_pools_from_config(local)
     values = {
@@ -3505,6 +3519,7 @@ def _local_config_secret(secret_id):
         "sms_api_key": sms_keys[0] if sms_keys else "",
         "sub2_password": sub2api.get("password") or "",
         "notification_email_password": email_notification.get("password") or "",
+        "online_mailbox_api_token": online_mailbox.get("api_token") or "",
         "proxy": local.get("proxy") or "",
     }
     return values.get(str(secret_id or ""), "")
@@ -3527,6 +3542,8 @@ def _local_config_from_runtime(data, existing=None):
     existing_sub2api = dict(existing.get("sub2api") or {})
     email_notification = dict(data.get("email_notification") or {})
     existing_email_notification = dict(existing.get("email_notification") or {})
+    online_mailbox = dict(data.get("online_mailbox") or {})
+    existing_online_mailbox = dict(existing.get("online_mailbox") or {})
     resolved_email_notification = _run_notifications_ext.normalize_email_notification(
         _merge_email_notification(existing_email_notification, email_notification)
     )
@@ -3545,6 +3562,17 @@ def _local_config_from_runtime(data, existing=None):
             "email": str(sub2api.get("email") or "").strip(),
             "password": _local_secret(sub2api.get("password"), existing_sub2api.get("password")),
             "group": str(sub2api.get("group") or "").strip(),
+        },
+        "online_mailbox": {
+            "base_url": str(
+                online_mailbox.get("base_url")
+                or existing_online_mailbox.get("base_url")
+                or _online_mailbox_runtime_ext.DEFAULT_ONLINE_MAILBOX_BASE_URL
+            ).strip(),
+            "api_token": _local_secret(
+                online_mailbox.get("api_token"),
+                existing_online_mailbox.get("api_token"),
+            ).strip(),
         },
         "email_notification": resolved_email_notification,
     }
@@ -3618,6 +3646,11 @@ def _merge_local_config(data):
         patched["email_notification"] = _merge_email_notification(
             local.get("email_notification") or {},
             patched.get("email_notification") or {},
+        )
+    if isinstance(local.get("online_mailbox"), dict):
+        patched["online_mailbox"] = _merge_nonempty(
+            local.get("online_mailbox") or {},
+            patched.get("online_mailbox") or {},
         )
     return patched
 
@@ -3716,6 +3749,10 @@ def _mailbox_admin_factory(store, importer, logs):
     )
 
 
+def _online_mailbox_client_factory(base_url, api_token):
+    return _online_mailbox_runtime_ext.OnlineMailboxClient(base_url, api_token)
+
+
 _WEB_ROUTE_CONTEXT = _web_routes_ext.WebRouteContext(
     module=_module,
     app_dir=APP_DIR,
@@ -3745,6 +3782,7 @@ _WEB_ROUTE_CONTEXT = _web_routes_ext.WebRouteContext(
     pixel_upload_queue=_PIXEL_UPLOAD_QUEUE,
     pixel_payload_builder=_pixel_runtime_ext.build_pixel_import_payload,
     query_sms_balances=_SMS_WEB.query_balances,
+    online_mailbox_client_factory=_online_mailbox_client_factory,
 )
 
 

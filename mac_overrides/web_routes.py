@@ -90,6 +90,7 @@ class WebRouteContext:
     pixel_payload_builder: Callable[[Mapping[str, Any]], dict[str, Any]] | None = None
     mailbox_url_test_factory: Callable[[], Any] | None = None
     query_sms_balances: Callable[[dict[str, Any]], list[dict[str, Any]]] | None = None
+    online_mailbox_client_factory: Callable[[str, str], Any] | None = None
 
 
 def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
@@ -450,6 +451,82 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
 
     def api_mailboxes_restore():
         return mailbox_mutation("放回可领取", mailbox_admin.restore_mailboxes)
+
+    def api_mailboxes_website_import():
+        node_code = "online_mailbox_upload"
+        node_label = "网站邮箱上传"
+
+        def failure(message: str, code: str, status: int, provider_status: Any = None):
+            public_message = f"网站邮箱上传 [{node_label}/{node_code}]：{message}"
+            logs.add(public_message, "error")
+            payload = {
+                "ok": False,
+                "node_code": node_code,
+                "node_label": node_label,
+                "error_code": code,
+                "error": public_message,
+            }
+            if provider_status is not None:
+                payload["provider_status"] = provider_status
+            return module.jsonify(payload), status
+
+        if context.online_mailbox_client_factory is None:
+            return failure("服务尚未配置", "online_mailbox_not_configured", 503)
+        try:
+            local = context.read_local_config()
+            config = local.get("online_mailbox") if isinstance(local, Mapping) else {}
+            config = config if isinstance(config, Mapping) else {}
+            base_url = str(config.get("base_url") or "").strip()
+            api_token = str(config.get("api_token") or "").strip()
+            if not api_token or api_token == "********":
+                return failure(
+                    "尚未配置 API 密钥，请先在平台集成中保存",
+                    "online_mailbox_token_missing",
+                    400,
+                )
+            snapshotter = getattr(mailbox_admin, "online_mailbox_snapshot", None)
+            if not callable(snapshotter):
+                return failure("本机邮箱快照不可用", "online_mailbox_snapshot_unavailable", 503)
+            snapshot = snapshotter()
+            items = snapshot.get("items") if isinstance(snapshot, Mapping) else []
+            if not items:
+                return failure(
+                    "本机没有带取件 URL 的可上传邮箱",
+                    "online_mailbox_items_empty",
+                    400,
+                )
+            client = context.online_mailbox_client_factory(base_url, api_token)
+            result = client.upload(items, batch_id=str(uuid.uuid4()))
+            response = {
+                "ok": True,
+                "batch_id": str(result.get("batch_id") or ""),
+                "submitted": int(result.get("submitted") or 0),
+                "created": int(result.get("created") or 0),
+                "updated": int(result.get("updated") or 0),
+                "duplicates": int(result.get("duplicates") or 0),
+                "rejected": int(result.get("rejected") or 0),
+                "skipped": int(snapshot.get("skipped") or 0),
+                "local_duplicates": int(snapshot.get("local_duplicates") or 0),
+                "manager_url": str(result.get("manager_url") or ""),
+            }
+            logs.add(
+                "网站邮箱上传完成: "
+                f"新增 {response['created']}，更新 {response['updated']}，"
+                f"重复 {response['duplicates']}，跳过 {response['skipped']}",
+                "success",
+            )
+            return module.jsonify(response)
+        except Exception as exc:
+            public = str(getattr(exc, "public_message", "") or "服务端未返回错误详情")
+            code = str(getattr(exc, "code", "") or "online_mailbox_upload_failed")
+            try:
+                status = int(getattr(exc, "status_code", 502) or 502)
+            except (TypeError, ValueError):
+                status = 502
+            if status < 400 or status > 599:
+                status = 502
+            provider_status = getattr(exc, "provider_status", None)
+            return failure(public, code, status, provider_status)
 
     def api_mailboxes_latest_code():
         try:
@@ -1166,6 +1243,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/mailboxes/import", "api_mailboxes_import", api_mailboxes_import, ["POST"]),
         ("/api/mailboxes/delete", "api_mailboxes_delete", api_mailboxes_delete, ["POST"]),
         ("/api/mailboxes/restore", "api_mailboxes_restore", api_mailboxes_restore, ["POST"]),
+        ("/api/mailboxes/website-import", "api_mailboxes_website_import", api_mailboxes_website_import, ["POST"]),
         ("/api/mailboxes/latest-code", "api_mailboxes_latest_code", api_mailboxes_latest_code, ["POST"]),
         ("/api/mailboxes/password", "api_mailboxes_password", api_mailboxes_password, ["POST"]),
         ("/api/mailboxes/totp", "api_mailboxes_totp", api_mailboxes_totp, ["POST"]),

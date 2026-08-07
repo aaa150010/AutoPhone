@@ -132,6 +132,18 @@ class FakeMailboxAdmin:
     def reveal_mailbox_url(self, _row_id, _line_no):
         return {"ok": True, "mailbox_url": "https://mail.example.test/messages/token"}
 
+    def online_mailbox_snapshot(self):
+        return {
+            "ok": True,
+            "items": [{
+                "email": "user@example.test",
+                "mailbox_url": "https://mail.example.test/messages/private-token",
+            }],
+            "eligible": 1,
+            "skipped": 2,
+            "local_duplicates": 1,
+        }
+
     def sub2_test(self, _payload):
         return dict(self.sub2_result)
 
@@ -151,6 +163,36 @@ class FakePixelError(RuntimeError):
         self.public_message = public_message
         self.status_code = status_code
         super().__init__("private-token-must-not-leak")
+
+
+class FakeOnlineMailboxClient:
+    def __init__(self):
+        self.calls = []
+        self.error = None
+
+    def upload(self, items, *, batch_id):
+        self.calls.append((list(items), batch_id))
+        if self.error is not None:
+            raise self.error
+        return {
+            "ok": True,
+            "batch_id": batch_id,
+            "submitted": len(items),
+            "created": 1,
+            "updated": 0,
+            "duplicates": 0,
+            "rejected": 0,
+            "manager_url": "https://lynote.xyz/token-tool/mailboxes/",
+        }
+
+
+class FakeOnlineMailboxError(RuntimeError):
+    def __init__(self, message, *, code, status_code, provider_status=None):
+        self.public_message = message
+        self.code = code
+        self.status_code = status_code
+        self.provider_status = provider_status
+        super().__init__("private-provider-detail-must-not-leak")
 
 
 class FakePixelClient:
@@ -276,6 +318,8 @@ class WebRouteTests(unittest.TestCase):
         self.active_sms_keys: list[str] = []
         self.fail_configure_keys: list[str] | None = None
         self.local_config = {}
+        self.online_mailbox_client = FakeOnlineMailboxClient()
+        self.online_mailbox_factory_calls = []
         self.module = SimpleNamespace(
             jsonify=jsonify,
             request=request,
@@ -319,6 +363,7 @@ class WebRouteTests(unittest.TestCase):
             sms_phone_gate=component,
             mailbox_admin_factory=lambda _store, _importer, _logs: self.mailbox_admin,
             mailbox_manager_html="fallback",
+            online_mailbox_client_factory=self._online_mailbox_client_factory,
         )
 
     def tearDown(self):
@@ -327,6 +372,10 @@ class WebRouteTests(unittest.TestCase):
     def _write_local_config(self, value):
         self.local_config = dict(value)
         return dict(value)
+
+    def _online_mailbox_client_factory(self, base_url, api_token):
+        self.online_mailbox_factory_calls.append((base_url, api_token))
+        return self.online_mailbox_client
 
     def _configure_sms_pool(self, config, **_kwargs):
         self.configure_configs.append(dict(config))
@@ -740,6 +789,68 @@ class WebRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.get_json()["code"], "mailbox_rows_stale")
+
+    def test_website_mailbox_import_uploads_server_snapshot_and_returns_counts(self):
+        api_token = "online-api-private-token"
+        app = self._app()
+        self.local_config = {
+            "online_mailbox": {
+                "base_url": "https://lynote.xyz/token-tool",
+                "api_token": api_token,
+            }
+        }
+        response = app.test_client().post("/api/mailboxes/website-import", json={})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["created"], 1)
+        self.assertEqual(payload["skipped"], 2)
+        self.assertEqual(payload["local_duplicates"], 1)
+        self.assertEqual(
+            self.online_mailbox_factory_calls,
+            [("https://lynote.xyz/token-tool", api_token)],
+        )
+        self.assertEqual(len(self.online_mailbox_client.calls), 1)
+        log_text = str(self.logs.rows)
+        self.assertNotIn(api_token, log_text)
+        self.assertNotIn("private-token", log_text)
+        self.assertNotIn("user@example.test", log_text)
+
+    def test_website_mailbox_import_preserves_safe_failure_identity(self):
+        api_token = "online-api-private-token"
+        app = self._app()
+        self.local_config = {
+            "online_mailbox": {
+                "base_url": "https://lynote.xyz/token-tool",
+                "api_token": api_token,
+            }
+        }
+        self.online_mailbox_client.error = FakeOnlineMailboxError(
+            "网站邮箱上传鉴权失败，请检查 API 密钥",
+            code="online_mailbox_provider_http_error",
+            status_code=401,
+            provider_status=401,
+        )
+        response = app.test_client().post("/api/mailboxes/website-import", json={})
+
+        self.assertEqual(response.status_code, 401)
+        payload = response.get_json()
+        self.assertEqual(payload["node_code"], "online_mailbox_upload")
+        self.assertEqual(payload["node_label"], "网站邮箱上传")
+        self.assertEqual(payload["provider_status"], 401)
+        self.assertIn("网站邮箱上传鉴权失败", payload["error"])
+        serialized = str(payload) + str(self.logs.rows)
+        self.assertNotIn(api_token, serialized)
+        self.assertNotIn("private-provider-detail", serialized)
+
+    def test_website_mailbox_import_requires_configured_token(self):
+        app = self._app()
+
+        response = app.test_client().post("/api/mailboxes/website-import", json={})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["error_code"], "online_mailbox_token_missing")
+        self.assertEqual(self.online_mailbox_client.calls, [])
 
     def test_sub2_test_maps_stale_and_admin_failures_and_refreshes_success(self):
         app = self._app()

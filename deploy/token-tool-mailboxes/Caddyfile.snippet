@@ -1,0 +1,7 @@
+    handle /token-tool/mailboxes* {
+        reverse_proxy token-tool-mailboxes:8000
+    }
+
+    handle /token-tool/api/* {
+        reverse_proxy token-tool-mailboxes:8000
+    }

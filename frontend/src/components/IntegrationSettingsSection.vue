@@ -84,6 +84,26 @@ function updateNested(group: string, key: string, value: any) {
         </el-form-item>
       </el-col>
     </el-row>
+
+    <el-row :gutter="10">
+      <el-col :span="12">
+        <el-form-item label="网站邮箱地址">
+          <el-input
+            :model-value="modelValue.online_mailbox?.base_url"
+            placeholder="https://lynote.xyz/token-tool"
+            @update:model-value="updateNested('online_mailbox', 'base_url', $event)"
+          />
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
+        <SecretInput
+          :model-value="modelValue.online_mailbox?.api_token || ''"
+          secret-id="online_mailbox_api_token"
+          label="网站邮箱 API 密钥"
+          @update:model-value="updateNested('online_mailbox', 'api_token', $event)"
+        />
+      </el-col>
+    </el-row>
   </div>
 </template>
 

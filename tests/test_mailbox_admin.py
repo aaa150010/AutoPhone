@@ -165,6 +165,28 @@ class MailboxAdminTests(unittest.TestCase):
         )
         self.assertEqual(selected_line_numbers({"line_nos": ["3", 1, 3, 0, "bad"]}), [1, 3])
 
+    def test_online_mailbox_snapshot_uses_latest_url_and_excludes_other_secrets(self):
+        old_url = "https://mail.example.test/inbox/old-private"
+        new_url = "https://mail.example.test/inbox/new-private"
+        self._write_pool("\n".join((
+            f"User@Example.com---{old_url}",
+            "oauth@example.com----mail-pass----client-id----refresh-token",
+            "totp@example.com|login-pass|JBSWY3DPEHPK3PXP",
+            f"user@example.com----{new_url}----JBSWY3DPEHPK3PXP",
+            "other@example.com|https://mail.example.test/inbox/other-private",
+        )))
+
+        snapshot = self.service.online_mailbox_snapshot()
+
+        self.assertEqual(snapshot["eligible"], 2)
+        self.assertEqual(snapshot["skipped"], 2)
+        self.assertEqual(snapshot["local_duplicates"], 1)
+        by_email = {item["email"]: item for item in snapshot["items"]}
+        self.assertEqual(by_email["user@example.com"]["mailbox_url"], new_url)
+        serialized = json.dumps(snapshot)
+        for secret in ("mail-pass", "client-id", "refresh-token", "login-pass", "JBSWY3DPEHPK3PXP"):
+            self.assertNotIn(secret, serialized)
+
     def test_public_sub2_status_recomputes_legacy_classification_flags(self):
         fixtures = (
             (

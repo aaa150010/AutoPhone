@@ -181,6 +181,10 @@ const defaultForm = () => ({
   sms_provider_pools: normalizeSmsProviderPools(null),
   pixel_upload_enabled: true,
   sub2api: {},
+  online_mailbox: {
+    base_url: 'https://lynote.xyz/token-tool',
+    api_token: '',
+  },
   email_notification: defaultEmailNotification(),
 })
 
@@ -422,6 +426,9 @@ export function createAppController() {
         loadSecret(() => form.email_notification?.password, value => {
           form.email_notification.password = String(value || '')
         }, 'notification_email_password'),
+        loadSecret(() => form.online_mailbox?.api_token, value => {
+          form.online_mailbox.api_token = String(value || '')
+        }, 'online_mailbox_api_token'),
         loadSecret(() => form.proxy, value => { form.proxy = String(value || '') }, 'proxy'),
       ])
       secretsLoaded.value = true

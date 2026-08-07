@@ -1180,6 +1180,33 @@ class MailboxAdminService:
         )
         return {"ok": True, "counts": counts, "rows": rows, "pool_path": str(pool_path)}
 
+    def online_mailbox_snapshot(self) -> dict[str, Any]:
+        """Return one latest URL mailbox per email without other credentials."""
+        with self._lock:
+            config = self._config()
+            lines = self._read_pool_lines(config)
+
+        latest: dict[str, dict[str, str]] = {}
+        skipped = 0
+        local_duplicates = 0
+        for row in lines:
+            email = email_from_row(row)
+            mailbox_url = mailbox_url_from_row(row)
+            if not email or not mailbox_url:
+                skipped += 1
+                continue
+            if email in latest:
+                local_duplicates += 1
+                latest.pop(email, None)
+            latest[email] = {"email": email, "mailbox_url": mailbox_url}
+        return {
+            "ok": True,
+            "items": list(latest.values()),
+            "eligible": len(latest),
+            "skipped": skipped,
+            "local_duplicates": local_duplicates,
+        }
+
     def import_mailboxes(self, content: Any) -> dict[str, Any]:
         new_lines = [
             line.strip()

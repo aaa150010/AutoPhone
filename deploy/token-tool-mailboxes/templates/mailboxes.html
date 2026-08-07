@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>在线邮箱管理</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='mailboxes.css') }}">
+</head>
+<body>
+  <main class="manager-shell">
+    <header class="manager-header">
+      <div class="brand-group">
+        <a class="brand-mark" href="/token-tool/" aria-label="返回 Token 工具">{ }</a>
+        <div>
+          <h1>在线邮箱管理</h1>
+          <p>Online Mailbox Registry</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span class="secure-status"><span></span>安全会话</span>
+        <a class="secondary-command" href="/token-tool/">Token 工具</a>
+        <form method="post" action="/token-tool/mailboxes/logout">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="secondary-command" type="submit">退出</button>
+        </form>
+      </div>
+    </header>
+
+    <section class="workspace" aria-label="在线邮箱管理工作区">
+      <div class="workspace-toolbar">
+        <div class="segmented-control" role="tablist" aria-label="管理视图">
+          <button class="segment is-active" type="button" role="tab" aria-selected="true" data-view="mailboxes">邮箱列表</button>
+          <button class="segment" type="button" role="tab" aria-selected="false" data-view="uploads">上传历史</button>
+        </div>
+        <div class="toolbar-controls">
+          <input id="searchInput" class="search-input" type="search" placeholder="搜索邮箱" autocomplete="off">
+          <select id="actionFilter" class="action-filter" aria-label="上传动作" hidden>
+            <option value="">全部动作</option>
+            <option value="created">新增</option>
+            <option value="updated">更新</option>
+            <option value="duplicate">重复</option>
+          </select>
+          <button id="refreshButton" class="icon-command" type="button" title="刷新" aria-label="刷新">↻</button>
+        </div>
+      </div>
+
+      <div class="table-summary">
+        <strong id="viewTitle">唯一邮箱</strong>
+        <span id="totalText">0 条</span>
+        <span id="loadingText" class="loading-text" aria-live="polite"></span>
+      </div>
+
+      <div class="table-region">
+        <table id="mailboxTable">
+          <thead>
+            <tr>
+              <th class="index-column">序号</th>
+              <th>邮箱</th>
+              <th class="status-column">状态</th>
+              <th>取件 URL</th>
+              <th class="time-column">首次上传</th>
+              <th class="time-column">最后上传</th>
+              <th class="count-column">次数</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+
+        <table id="uploadTable" hidden>
+          <thead>
+            <tr>
+              <th class="index-column">序号</th>
+              <th class="time-column">上传时间</th>
+              <th>邮箱</th>
+              <th class="action-column">动作</th>
+              <th>提交 URL</th>
+              <th>原 URL</th>
+              <th class="batch-column">批次</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+
+        <div id="emptyState" class="empty-state" hidden>
+          <strong>暂无记录</strong>
+          <span>完成一次 AutoPhone 网站邮箱导入后会显示在这里</span>
+        </div>
+      </div>
+
+      <footer class="pagination">
+        <span id="pageText">第 1 页</span>
+        <div>
+          <button id="previousButton" class="icon-command" type="button" title="上一页" aria-label="上一页">‹</button>
+          <button id="nextButton" class="icon-command" type="button" title="下一页" aria-label="下一页">›</button>
+        </div>
+      </footer>
+    </section>
+  </main>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="{{ url_for('static', filename='mailboxes.js') }}"></script>
+</body>
+</html>

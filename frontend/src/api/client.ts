@@ -87,6 +87,20 @@ export const reloginMailboxRows = (rows: Array<{ row_id: string; line_no: number
     { rows },
   )
 )
+export const importWebsiteMailboxes = () => (
+  api<{
+    ok: true
+    batch_id: string
+    submitted: number
+    created: number
+    updated: number
+    duplicates: number
+    rejected: number
+    skipped: number
+    local_duplicates: number
+    manager_url: string
+  }>('/api/mailboxes/website-import', {})
+)
 export const testMailboxUrl = (value: string) => (
   api<MailboxUrlTestResult>('/api/mailbox-url-test', { value })
 )

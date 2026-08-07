@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>在线邮箱管理登录</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='mailboxes.css') }}">
+</head>
+<body class="login-body">
+  <main class="login-shell">
+    <a class="back-link" href="/token-tool/">返回 Token 工具</a>
+    <section class="login-panel" aria-labelledby="loginTitle">
+      <div class="brand-mark" aria-hidden="true">{ }</div>
+      <div class="login-heading">
+        <h1 id="loginTitle">在线邮箱管理</h1>
+        <p>输入访问密码以查看邮箱和上传记录</p>
+      </div>
+      <form method="post" action="/token-tool/mailboxes/login">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label for="password">访问密码</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+        {% if error %}<div class="form-error" role="alert">{{ error }}</div>{% endif %}
+        <button class="primary-command" type="submit">登录</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

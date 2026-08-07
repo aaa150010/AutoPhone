@@ -47,12 +47,17 @@ class WebGuiSecurityTests(unittest.TestCase):
                 "provider": "qq",
                 "password": "smtp-secret",
             },
+            "online_mailbox": {
+                "base_url": "https://lynote.xyz/token-tool",
+                "api_token": "online-mailbox-secret",
+            },
         }
         draft = {
             "performance_policy_version": 5,
             "sms_api_keys": ["********", "********"],
             "proxy": "********",
             "email_notification": {"password": "********"},
+            "online_mailbox": {"api_token": "********"},
         }
 
         resolved = self.module._local_config_from_runtime(draft, existing)
@@ -60,6 +65,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(resolved["sms_api_keys"], ["sms-secret-a", "sms-secret-b"])
         self.assertEqual(resolved["proxy"], existing["proxy"])
         self.assertEqual(resolved["email_notification"]["password"], "smtp-secret")
+        self.assertEqual(resolved["online_mailbox"]["api_token"], "online-mailbox-secret")
 
     def test_multi_platform_key_counts_survive_masked_save_and_reload(self):
         existing = {
@@ -130,14 +136,22 @@ class WebGuiSecurityTests(unittest.TestCase):
             "proxy": "http://proxy-user:proxy-pass@127.0.0.1:7890",
             "sub2api": {"password": "sub2-secret"},
             "email_notification": {"password": "smtp-secret"},
+            "online_mailbox": {"api_token": "online-mailbox-secret"},
         }
 
         masked = self.module._masked_local_config(config)
         serialized = json.dumps(masked)
 
-        for secret in ("sms-secret", "proxy-pass", "sub2-secret", "smtp-secret"):
+        for secret in (
+            "sms-secret",
+            "proxy-pass",
+            "sub2-secret",
+            "smtp-secret",
+            "online-mailbox-secret",
+        ):
             self.assertNotIn(secret, serialized)
         self.assertEqual(masked["email_notification"]["password"], "********")
+        self.assertEqual(masked["online_mailbox"]["api_token"], "********")
 
     def test_sms_transport_registry_recovers_when_contextvar_is_empty(self):
         transport = SimpleNamespace(config={"sms_task_id": "task-transport"})

@@ -22,6 +22,7 @@ import {
   getMailboxUrl,
   getMailboxTotp,
   getMailboxes,
+  importWebsiteMailboxes,
   queryMailboxQuotas,
   reloginMailboxRows,
   retryMailboxPixel,
@@ -53,6 +54,7 @@ const reloginStarting = ref(false)
 const retryingPixel = ref(false)
 const exportingSub2 = ref(false)
 const queryingQuota = ref(false)
+const uploadingWebsite = ref(false)
 const quotaProgress = ref('')
 const openaiTestProgress = ref('')
 const retryingQuotaRows = ref<string[]>([])
@@ -298,6 +300,49 @@ async function mutate(path: string, message: string) {
   } catch (error: any) {
     ElMessage.error(error?.message || '操作失败')
   } finally {
+    mutating.value = false
+  }
+}
+
+async function uploadWebsiteMailboxes() {
+  try {
+    await ElMessageBox.confirm(
+      '将扫描本机全部带取件 URL 的邮箱并增量上传到网站，完整取件 URL 会保存到受密码保护的在线管理页。',
+      '导入网站邮箱',
+      { type: 'warning', confirmButtonText: '确认上传', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+
+  uploadingWebsite.value = true
+  mutating.value = true
+  try {
+    const result = await importWebsiteMailboxes()
+    const summary = [
+      `新增 ${Number(result.created || 0)}`,
+      `更新 ${Number(result.updated || 0)}`,
+      `重复 ${Number(result.duplicates || 0)}`,
+      `跳过 ${Number(result.skipped || 0)}`,
+    ].join('，')
+    ElMessage.success(`网站邮箱导入完成：${summary}`)
+    if (result.manager_url) {
+      try {
+        await ElMessageBox.confirm(
+          summary,
+          '网站邮箱导入完成',
+          { type: 'success', confirmButtonText: '打开在线管理', cancelButtonText: '关闭' },
+        )
+        const target = window.open(result.manager_url, '_blank')
+        if (target) target.opener = null
+      } catch {
+        // The upload is complete; closing the result dialog needs no follow-up.
+      }
+    }
+  } catch (error: any) {
+    ElMessage.error(error?.message || '网站邮箱上传失败')
+  } finally {
+    uploadingWebsite.value = false
     mutating.value = false
   }
 }
@@ -646,6 +691,9 @@ onUnmounted(() => {
         </el-button>
         <el-button :disabled="mutating || !selectedRows.length" @click="mutate('/api/mailboxes/restore', '将选中邮箱恢复为可用状态？')">
           <el-icon><RefreshLeft /></el-icon>恢复可用
+        </el-button>
+        <el-button :loading="uploadingWebsite" :disabled="mutating" @click="uploadWebsiteMailboxes">
+          <el-icon><UploadFilled /></el-icon>导入网站邮箱
         </el-button>
         <el-button type="danger" plain :disabled="mutating || !selectedRows.length" @click="mutate('/api/mailboxes/delete', '确定删除选中的邮箱？')">
           <el-icon><Delete /></el-icon>删除
