@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   CircleCheckFilled,
@@ -10,13 +10,16 @@ import {
   FirstAidKit,
   Message,
   Monitor,
+  Upload,
   VideoPause,
 } from '@element-plus/icons-vue'
 import LogPanel from '../components/LogPanel.vue'
+import MailboxImportDialog from '../components/MailboxImportDialog.vue'
 import PageToolbar from '../components/PageToolbar.vue'
 import RunOverview from '../components/RunOverview.vue'
 import RunPipelineMonitor from '../components/RunPipelineMonitor.vue'
 import RunServiceHealth from '../components/RunServiceHealth.vue'
+import RunUploadDialog from '../components/RunUploadDialog.vue'
 import TaskResultsPanel from '../components/TaskResultsPanel.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useAppController } from '../composables/useAppController'
@@ -24,6 +27,8 @@ import type { RuntimeTask } from '../types/api'
 
 const emit = defineEmits<{ navigate: [string] }>()
 const controller = useAppController()
+const mailboxImportDialog = ref<InstanceType<typeof MailboxImportDialog>>()
+const uploadDialog = ref<InstanceType<typeof RunUploadDialog>>()
 
 const terminalStatuses = new Set([
   'success', 'failed', 'stopped', 'stopped_before_start', 'retryable_infra',
@@ -66,15 +71,23 @@ const statusLabel = computed(() => {
   return controller.running.value ? '运行中' : '空闲'
 })
 const statusTone = computed(() => controller.runtime.value.stop_requested ? 'warning' : controller.running.value ? 'success' : 'info')
+const nvConfigured = computed(() => Boolean(
+  String(controller.form.nv_import?.endpoint || '').trim()
+  && String(controller.form.nv_import?.api_key || '').trim(),
+))
 
-async function start() {
+function openStartDialog() {
   if (controller.dirty.value) {
     emit('navigate', '/settings')
     ElMessage.warning('请先保存运行配置')
     return
   }
+  uploadDialog.value?.open()
+}
+
+async function start(uploadTargets: { pixel: boolean; nv: boolean }) {
   try {
-    const result = await controller.start()
+    const result = await controller.start(false, uploadTargets)
     if (!result) return
     ElMessage.success('任务已启动')
   } catch (error: any) {
@@ -89,6 +102,10 @@ async function stop() {
   } catch (error: any) {
     ElMessage.error(error?.message || '停止失败')
   }
+}
+
+function applyImportedMailboxes(result: any) {
+  controller.syncState(result)
 }
 
 async function copyTaskAccount(task: RuntimeTask) {
@@ -117,10 +134,11 @@ async function copyTaskAccount(task: RuntimeTask) {
   >
     <PageToolbar title="运行中心" :status="statusLabel" :tone="statusTone">
       <el-button @click="emit('navigate', '/settings')"><el-icon><Setting /></el-icon>运行配置</el-button>
+      <el-button @click="mailboxImportDialog?.open()"><el-icon><Upload /></el-icon>导入邮箱</el-button>
       <el-tooltip v-if="controller.dirty.value" content="存在未保存配置，请先进入运行配置保存" placement="bottom">
         <span><el-button type="primary" disabled><el-icon><VideoPlay /></el-icon>开始运行</el-button></span>
       </el-tooltip>
-      <el-button v-else type="primary" :loading="controller.actions.starting" :disabled="controller.running.value || !controller.hasPool.value" @click="start">
+      <el-button v-else type="primary" :loading="controller.actions.starting" :disabled="controller.running.value || !controller.hasPool.value" @click="openStartDialog">
         <el-icon><VideoPlay /></el-icon>开始运行
       </el-button>
       <el-button type="danger" plain :loading="controller.actions.stopping" :disabled="!controller.running.value" @click="stop">
@@ -159,6 +177,14 @@ async function copyTaskAccount(task: RuntimeTask) {
         <LogPanel :logs="controller.state.value.logs || []" :auto-scroll="true" />
       </WorkspacePanel>
     </div>
+
+    <RunUploadDialog
+      ref="uploadDialog"
+      :nv-configured="nvConfigured"
+      :loading="controller.actions.starting"
+      @confirm="start"
+    />
+    <MailboxImportDialog ref="mailboxImportDialog" @imported="applyImportedMailboxes" />
   </div>
 </template>
 

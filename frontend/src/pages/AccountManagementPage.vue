@@ -3,23 +3,38 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh, UploadFilled, UserFilled } from '@element-plus/icons-vue'
 import {
+  getBatchUploadManifests,
+  getNvOverview,
+  getNvUploadBatches,
+  getNvUploadRecords,
   getPixelBatchRecords,
   getPixelOverview,
   getPixelUploadBatches,
+  retryBatchUploadManifest,
+  retryNvUpload,
   retryPixelUpload,
 } from '../api/client'
 import DashboardMetricCard from '../components/DashboardMetricCard.vue'
+import BatchUploadManifests from '../components/BatchUploadManifests.vue'
+import ContentEmptyState from '../components/ContentEmptyState.vue'
 import PageToolbar from '../components/PageToolbar.vue'
+import NvUploadRecords from '../components/NvUploadRecords.vue'
 import PixelBatchOverview from '../components/PixelBatchOverview.vue'
 import PixelUploadBatchList from '../components/PixelUploadBatchList.vue'
 import PixelUploadRecords from '../components/PixelUploadRecords.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import type {
+  BatchUploadManifest,
+  NvOverview,
+  NvUploadBatch,
+  NvUploadRecord,
   PixelOverview,
   PixelUploadBatch,
   PixelUploadRecord,
   PixelUploadTargetRecord,
 } from '../types/api'
+
+const platform = ref<'pixel' | 'nv'>('pixel')
 
 const overview = ref<PixelOverview>({
   revision: 0,
@@ -48,21 +63,77 @@ const recordPageSize = ref(25)
 const recordTotal = ref(0)
 const recordStatus = ref('')
 const retryingKeys = ref<string[]>([])
+const nvOverview = ref<NvOverview>({
+  revision: 0,
+  configured: false,
+  queue: {
+    active: 0,
+    pending: 0,
+    alive: false,
+    configured_workers: 1,
+    alive_workers: 0,
+    active_workers: 0,
+    pending_records: 0,
+    running_records: 0,
+  },
+  current_batch: null,
+  batch_count: 0,
+})
+const nvBatches = ref<NvUploadBatch[]>([])
+const nvRecords = ref<NvUploadRecord[]>([])
+const manifests = ref<BatchUploadManifest[]>([])
+const nvLoading = ref(false)
+const nvRetryingIds = ref<string[]>([])
+const manifestRetryingKeys = ref<string[]>([])
+const nvBatchPage = ref(1)
+const nvBatchPageSize = ref(20)
+const nvBatchTotal = ref(0)
+const nvRecordPage = ref(1)
+const nvRecordPageSize = ref(50)
+const nvRecordTotal = ref(0)
 const OVERVIEW_REFRESH_INTERVAL_MS = 3000
 let overviewTimer = 0
 let destroyed = false
 let lastRevision = -1
 let batchRequest = 0
 let recordRequest = 0
+let lastNvRevision = -1
 
-const queueActive = computed(() => (
+const pixelQueueActive = computed(() => (
   overview.value.current_batch?.status === 'processing'
   || Number(overview.value.queue.active_workers || 0) > 0
   || Number(overview.value.queue.pending_records || 0) > 0
+  || manifests.value.some(item => (
+    item.targets?.pixel
+    && ['waiting', 'queueing'].includes(String(item.platforms?.pixel?.status || '').toLowerCase())
+  ))
 ))
+const nvQueueActive = computed(() => (
+  nvOverview.value.current_batch?.status === 'processing'
+  || Number(nvOverview.value.queue.active_workers ?? nvOverview.value.queue.active ?? 0) > 0
+  || Number(nvOverview.value.queue.pending_records ?? nvOverview.value.queue.pending ?? 0) > 0
+  || manifests.value.some(item => (
+    item.targets?.nv
+    && (
+      ['waiting', 'collected'].includes(String(item.status || '').toLowerCase())
+      || ['waiting', 'queueing'].includes(String(item.platforms?.nv?.status || '').toLowerCase())
+    )
+  ))
+))
+const queueActive = computed(() => platform.value === 'pixel' ? pixelQueueActive.value : nvQueueActive.value)
 const queueStatusLabel = computed(() => {
+  if (platform.value === 'nv') {
+    const queue = nvOverview.value.queue
+    const active = Number(queue.active_workers ?? queue.active ?? 0)
+    const pending = Number(queue.pending_records ?? queue.pending ?? 0)
+    const alive = Number(queue.alive_workers ?? (queue.alive ? 1 : 0))
+    const configured = Number(queue.configured_workers || 1)
+    return nvQueueActive.value
+      ? `上传中 ${active} / 等待 ${pending}`
+      : `worker ${alive}/${configured}`
+  }
   const queue = overview.value.queue
-  if (queueActive.value) return `上传中 ${queue.active_workers || 0}/${queue.configured_workers || 0}`
+  if (pixelQueueActive.value) return `上传中 ${queue.active_workers || 0}/${queue.configured_workers || 0}`
   return `worker ${queue.alive_workers || 0}/${queue.configured_workers || 0}`
 })
 const targetCards = computed(() => {
@@ -88,6 +159,16 @@ function numberOrNull(value: any) {
 
 function uploadStatus(raw: any) {
   return String(first(raw, 'status', 'state', 'result_status', 'resultStatus') || 'pending')
+}
+
+function nvBatchStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    processing: '上传中',
+    success: '成功',
+    partial: '部分接收/需确认',
+    failed: '失败',
+  }
+  return labels[String(status || '').toLowerCase()] || status || '未知'
 }
 
 function normalizeUploadTarget(raw: any, fallbackTargetId = '', recordCanRetry = false): PixelUploadTargetRecord {
@@ -144,6 +225,8 @@ function normalizeUploadRecord(raw: any, index: number): PixelUploadRecord {
   return {
     recordId,
     taskId: String(first(raw, 'taskId', 'task_id') || ''),
+    taskIds: (first(raw, 'taskIds', 'task_ids') || []).map((value: any) => String(value)),
+    sourceCount: Number(first(raw, 'sourceCount', 'source_count') || 1),
     batchId: String(first(raw, 'batchId', 'batch_id') || ''),
     batchStartedAt: first(raw, 'batchStartedAt', 'batch_started_at') ?? null,
     sourceEmail: String(first(raw, 'sourceEmail', 'source_email', 'initial_email') || ''),
@@ -170,7 +253,53 @@ function clearOverviewTimer() {
 function scheduleOverviewRefresh() {
   clearOverviewTimer()
   if (destroyed || document.hidden || !queueActive.value) return
-  overviewTimer = window.setTimeout(() => { void loadOverview(true) }, OVERVIEW_REFRESH_INTERVAL_MS)
+  overviewTimer = window.setTimeout(() => { void refreshActive(true) }, OVERVIEW_REFRESH_INTERVAL_MS)
+}
+
+async function loadNv(silent = false, force = false) {
+  if (nvLoading.value) return
+  nvLoading.value = true
+  try {
+    const currentOverview = await getNvOverview()
+    const revisionChanged = lastNvRevision !== Number(currentOverview.revision)
+    nvOverview.value = currentOverview
+    const requests: Promise<any>[] = [getBatchUploadManifests()]
+    if (force || revisionChanged) {
+      requests.push(
+        getNvUploadBatches(nvBatchPage.value, nvBatchPageSize.value),
+        getNvUploadRecords(nvRecordPage.value, nvRecordPageSize.value),
+      )
+    }
+    const [manifestPayload, batchPayload, recordPayload] = await Promise.all(requests)
+    manifests.value = manifestPayload.records || []
+    if (batchPayload) {
+      nvBatches.value = batchPayload.items || []
+      nvBatchTotal.value = Number(batchPayload.total || 0)
+      nvBatchPage.value = Number(batchPayload.page || nvBatchPage.value)
+    }
+    if (recordPayload) {
+      nvRecords.value = recordPayload.records || []
+      nvRecordTotal.value = Number(recordPayload.total || 0)
+      nvRecordPage.value = Number(recordPayload.page || nvRecordPage.value)
+    }
+    lastNvRevision = Number(currentOverview.revision)
+  } catch (error: any) {
+    if (!silent) ElMessage.error(messageFor(error, 'NV 上传记录读取失败'))
+  } finally {
+    nvLoading.value = false
+    scheduleOverviewRefresh()
+  }
+}
+
+async function refreshActive(silent = false, force = false) {
+  if (platform.value === 'nv') return loadNv(silent, force)
+  return loadOverview(silent, force)
+}
+
+async function changePlatform(value: string | number | boolean | undefined) {
+  platform.value = value === 'nv' ? 'nv' : 'pixel'
+  clearOverviewTimer()
+  await refreshActive(false, true)
 }
 
 async function loadBatches(silent = false) {
@@ -231,7 +360,11 @@ async function loadOverview(silent = false, force = false) {
   if (overviewLoading.value) return
   overviewLoading.value = true
   try {
-    const payload = await getPixelOverview()
+    const [payload, manifestPayload] = await Promise.all([
+      getPixelOverview(),
+      getBatchUploadManifests(),
+    ])
+    manifests.value = manifestPayload.records || []
     const revisionChanged = lastRevision !== Number(payload.revision)
     overview.value = payload
     if (!selectedBatchId.value && payload.current_batch?.batch_id) {
@@ -300,9 +433,60 @@ async function retryRecord(recordId: string, targetId?: string) {
   }
 }
 
+async function retryNvRecord(recordId: string) {
+  if (nvRetryingIds.value.includes(recordId)) return
+  nvRetryingIds.value = [...nvRetryingIds.value, recordId]
+  try {
+    await retryNvUpload(recordId)
+    ElMessage.success('NV 记录已加入重传队列')
+    await refreshActive(true, true)
+  } catch (error: any) {
+    ElMessage.error(messageFor(error, 'NV 重传失败'))
+  } finally {
+    nvRetryingIds.value = nvRetryingIds.value.filter(value => value !== recordId)
+  }
+}
+
+async function retryManifest(batchId: string, target: 'pixel' | 'nv') {
+  const key = `${batchId}:${target}`
+  if (manifestRetryingKeys.value.includes(key)) return
+  manifestRetryingKeys.value = [...manifestRetryingKeys.value, key]
+  try {
+    await retryBatchUploadManifest(batchId, target)
+    ElMessage.success(`${target.toUpperCase()} 批次已重新入队`)
+    await refreshActive(true, true)
+  } catch (error: any) {
+    ElMessage.error(messageFor(error, `${target.toUpperCase()} 批次重试失败`))
+  } finally {
+    manifestRetryingKeys.value = manifestRetryingKeys.value.filter(value => value !== key)
+  }
+}
+
+async function changeNvBatchPage(page: number) {
+  nvBatchPage.value = page
+  await loadNv(false, true)
+}
+
+async function changeNvBatchPageSize(size: number) {
+  nvBatchPageSize.value = size
+  nvBatchPage.value = 1
+  await loadNv(false, true)
+}
+
+async function changeNvRecordPage(page: number) {
+  nvRecordPage.value = page
+  await loadNv(false, true)
+}
+
+async function changeNvRecordPageSize(size: number) {
+  nvRecordPageSize.value = size
+  nvRecordPage.value = 1
+  await loadNv(false, true)
+}
+
 function handleVisibilityChange() {
   clearOverviewTimer()
-  if (!document.hidden && !destroyed) void loadOverview(true)
+  if (!document.hidden && !destroyed) void refreshActive(true)
 }
 
 onMounted(() => {
@@ -320,19 +504,23 @@ onUnmounted(() => {
 
 <template>
   <div class="account-page">
-    <PageToolbar title="Pixel 管理" :status="queueStatusLabel" :tone="queueActive ? 'warning' : 'info'">
-      <el-tooltip content="刷新 Pixel 概览与当前页" placement="bottom">
+    <PageToolbar title="账号管理" :status="queueStatusLabel" :tone="queueActive ? 'warning' : 'info'">
+      <el-radio-group :model-value="platform" @update:model-value="changePlatform">
+        <el-radio-button value="pixel">Pixel</el-radio-button>
+        <el-radio-button value="nv">NV</el-radio-button>
+      </el-radio-group>
+      <el-tooltip content="刷新当前平台上传记录" placement="bottom">
         <el-button
           circle
           :icon="Refresh"
-          :loading="overviewLoading || batchesLoading || recordsLoading"
-          aria-label="刷新 Pixel 概览与当前页"
-          @click="loadOverview(false, true)"
+          :loading="overviewLoading || batchesLoading || recordsLoading || nvLoading"
+          aria-label="刷新当前平台上传记录"
+          @click="refreshActive(false, true)"
         />
       </el-tooltip>
     </PageToolbar>
 
-    <div class="target-total-grid">
+    <div v-if="platform === 'pixel'" class="target-total-grid">
       <DashboardMetricCard
         v-for="target in targetCards"
         :key="target.targetId"
@@ -345,20 +533,30 @@ onUnmounted(() => {
       />
     </div>
 
-    <PixelBatchOverview :overview="overview" />
+    <PixelBatchOverview v-if="platform === 'pixel'" :overview="overview" />
 
-    <div class="pixel-workspace">
-      <PixelUploadBatchList
-        :batches="batches"
-        :loading="batchesLoading"
-        :page="batchPage"
-        :page-size="batchPageSize"
-        :total="batchTotal"
-        :selected-batch-id="selectedBatchId"
-        @select="selectBatch"
-        @page="changeBatchPage"
-        @page-size="changeBatchPageSize"
-      />
+    <div v-if="platform === 'pixel'" class="pixel-workspace">
+      <div class="pixel-left-stack">
+        <WorkspacePanel class="manifest-panel" title="批次上传清单" :icon="UploadFilled" fill body-padding="none">
+          <BatchUploadManifests
+            :records="manifests"
+            :loading="overviewLoading"
+            :retrying-keys="manifestRetryingKeys"
+            @retry="retryManifest"
+          />
+        </WorkspacePanel>
+        <PixelUploadBatchList
+          :batches="batches"
+          :loading="batchesLoading"
+          :page="batchPage"
+          :page-size="batchPageSize"
+          :total="batchTotal"
+          :selected-batch-id="selectedBatchId"
+          @select="selectBatch"
+          @page="changeBatchPage"
+          @page-size="changeBatchPageSize"
+        />
+      </div>
 
       <WorkspacePanel class="records-panel" title="来源记录与目标投递" :icon="UploadFilled" fill body-padding="none">
         <template #actions>
@@ -402,6 +600,64 @@ onUnmounted(() => {
         </div>
       </WorkspacePanel>
     </div>
+
+    <div v-else class="nv-workspace">
+      <div class="nv-left-stack">
+        <WorkspacePanel class="manifest-panel" title="批次上传清单" :icon="UploadFilled" fill body-padding="none">
+          <BatchUploadManifests
+            :records="manifests"
+            :loading="nvLoading"
+            :retrying-keys="manifestRetryingKeys"
+            @retry="retryManifest"
+          />
+        </WorkspacePanel>
+        <WorkspacePanel class="nv-batches-panel" title="NV 上传批次" :icon="UploadFilled" fill body-padding="none">
+          <div class="nv-table-region">
+            <el-table v-loading="nvLoading" :data="nvBatches" height="100%" row-key="batch_id" stripe>
+              <el-table-column prop="batch_id" label="批次" min-width="190" show-overflow-tooltip />
+              <el-table-column label="成功" width="96" align="right">
+                <template #default="{ row }">{{ row.source.success }}/{{ row.source.total }}</template>
+              </el-table-column>
+              <el-table-column label="状态" width="132">
+                <template #default="{ row }">{{ nvBatchStatusLabel(row.status) }}</template>
+              </el-table-column>
+              <template #empty><ContentEmptyState description="暂无 NV 上传批次" /></template>
+            </el-table>
+            <el-pagination
+              :current-page="nvBatchPage"
+              :page-size="nvBatchPageSize"
+              class="pager"
+              background
+              layout="total, prev, pager, next"
+              :total="nvBatchTotal"
+              @update:current-page="changeNvBatchPage"
+              @update:page-size="changeNvBatchPageSize"
+            />
+          </div>
+        </WorkspacePanel>
+      </div>
+      <WorkspacePanel class="nv-records-panel" title="NV 上传记录" :icon="UploadFilled" fill body-padding="none">
+        <div class="nv-table-region">
+          <NvUploadRecords
+            :records="nvRecords"
+            :loading="nvLoading"
+            :retrying-ids="nvRetryingIds"
+            @retry="retryNvRecord"
+          />
+          <el-pagination
+            :current-page="nvRecordPage"
+            :page-size="nvRecordPageSize"
+            class="pager"
+            background
+            layout="total, sizes, prev, pager, next"
+            :page-sizes="[25, 50, 100]"
+            :total="nvRecordTotal"
+            @update:current-page="changeNvRecordPage"
+            @update:page-size="changeNvRecordPageSize"
+          />
+        </div>
+      </WorkspacePanel>
+    </div>
   </div>
 </template>
 
@@ -417,7 +673,14 @@ onUnmounted(() => {
 }
 .target-total-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 7px; min-width: 0; }
 .target-total-grid :deep(.metric-card.framed) { height: 64px; min-height: 64px; }
-.pixel-workspace { display: grid; grid-template-columns: minmax(460px, 38%) minmax(0, 1fr); gap: 6px; min-width: 0; min-height: 0; }
+.pixel-workspace { display: grid; grid-template-columns: minmax(520px, 42%) minmax(0, 1fr); gap: 6px; min-width: 0; min-height: 0; }
+.pixel-left-stack,
+.nv-left-stack { display: grid; grid-template-rows: minmax(210px, 44%) minmax(0, 1fr); gap: 6px; min-width: 0; min-height: 0; }
+.nv-workspace { grid-row: 2 / -1; display: grid; grid-template-columns: minmax(520px, 42%) minmax(0, 1fr); gap: 6px; min-width: 0; min-height: 0; }
+.manifest-panel,
+.nv-batches-panel,
+.nv-records-panel { min-width: 0; min-height: 0; }
+.nv-table-region { display: grid; grid-template-rows: minmax(0, 1fr) 42px; width: 100%; height: 100%; min-height: 0; padding: 7px 8px 0; }
 .records-panel { min-width: 0; min-height: 0; }
 .record-table-region { display: grid; grid-template-rows: minmax(0, 1fr) 42px; width: 100%; height: 100%; min-height: 0; padding: 7px 8px 0; }
 .pager { justify-content: flex-end; min-width: 0; border-top: 1px solid var(--workspace-border); }

@@ -290,6 +290,64 @@ class FakePixelQueue:
         return {"record_id": f"record-{task_id}", "targets": []}
 
 
+class FakeNvClient:
+    def __init__(self, configured=True):
+        self.is_configured = configured
+
+    def configured(self):
+        return self.is_configured
+
+
+class FakeNvQueue:
+    def __init__(self, configured=True):
+        self.client = FakeNvClient(configured)
+        self.calls = []
+
+    def overview(self):
+        return {"revision": 1, "configured": self.client.configured(), "queue": {"active": 0, "pending": 0}, "current_batch": None, "batch_count": 1}
+
+    def records(self):
+        return [{"record_id": "nv-record", "status": "failed", "error": "safe"}]
+
+    def batches(self):
+        return [{"batch_id": "nv-batch", "status": "failed"}]
+
+    def retry(self, record_id):
+        self.calls.append(record_id)
+        return {"record_id": record_id, "status": "queued"}
+
+
+class FakeBatchUploadCoordinator:
+    def __init__(self):
+        self.calls = []
+        self.retry_calls = []
+
+    def begin(self, importer, settings):
+        self.calls.append((importer, dict(settings)))
+        return {"batch_id": settings["batch_id"]}
+
+    def records(self):
+        return [{
+            "batch_id": "batch-a",
+            "targets": {"pixel": True, "nv": True},
+            "platforms": {
+                "pixel": {"status": "queued", "error": ""},
+                "nv": {"status": "queue_failed", "error": "safe failure"},
+            },
+        }]
+
+    def retry(self, batch_id, platform):
+        self.retry_calls.append((batch_id, platform))
+        if batch_id == "missing":
+            raise KeyError(batch_id)
+        if platform == "pixel":
+            raise ValueError("该平台当前不可重试")
+        return {
+            "batch_id": batch_id,
+            "platforms": {platform: {"status": "queued", "error": ""}},
+        }
+
+
 class FakeRunComponent:
     def begin_run(self):
         return None
@@ -514,6 +572,114 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(self.store.current["target_count"], 1)
         self.assertNotIn("_gptphone_run_mailbox_rows", self.importer.started_with)
 
+    def test_start_upload_targets_are_transient_and_coordinator_receives_selection(self):
+        pixel = FakePixelQueue()
+        nv = FakeNvQueue()
+        coordinator = FakeBatchUploadCoordinator()
+        app = self._app(replace(
+            self.context,
+            pixel_upload_queue=pixel,
+            nv_upload_queue=nv,
+            batch_upload_coordinator=coordinator,
+        ))
+
+        response = app.test_client().post(
+            "/api/start-existing",
+            json={"target_count": 1, "upload_targets": {"pixel": True, "nv": True}},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["upload_targets"], {"pixel": True, "nv": True})
+        self.assertNotIn("upload_targets", self.store.current)
+        self.assertNotIn("_gptphone_upload_targets", self.store.current)
+        self.assertEqual(
+            self.importer.started_with["_gptphone_upload_targets"],
+            {"pixel": True, "nv": True},
+        )
+        self.assertEqual(
+            coordinator.calls[0][1]["_gptphone_upload_targets"],
+            {"pixel": True, "nv": True},
+        )
+
+    def test_start_defaults_both_upload_targets_off_and_rejects_unconfigured_nv(self):
+        coordinator = FakeBatchUploadCoordinator()
+        app = self._app(replace(
+            self.context,
+            pixel_upload_queue=FakePixelQueue(),
+            nv_upload_queue=FakeNvQueue(configured=False),
+            batch_upload_coordinator=coordinator,
+        ))
+
+        missing = app.test_client().post(
+            "/api/start-existing",
+            json={"upload_targets": {"nv": True}},
+        )
+        self.assertEqual(missing.status_code, 400)
+        self.assertEqual(missing.get_json()["code"], "nv_configuration_invalid")
+        self.assertIsNone(self.importer.started_with)
+
+        defaulted = app.test_client().post("/api/start-existing", json={})
+        self.assertEqual(defaulted.status_code, 200)
+        self.assertEqual(
+            self.importer.started_with["_gptphone_upload_targets"],
+            {"pixel": False, "nv": False},
+        )
+        self.assertEqual(coordinator.calls, [])
+
+    def test_start_accepts_valid_nv_configuration_from_settings_draft(self):
+        coordinator = FakeBatchUploadCoordinator()
+        app = self._app(replace(
+            self.context,
+            nv_upload_queue=FakeNvQueue(configured=False),
+            batch_upload_coordinator=coordinator,
+        ))
+
+        response = app.test_client().post(
+            "/api/start-existing",
+            json={
+                "target_count": 1,
+                "nv_import": {
+                    "endpoint": "https://nv.example.test/api/import",
+                    "api_key": "draft-nv-secret",
+                },
+                "upload_targets": {"nv": True},
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["upload_targets"], {"pixel": False, "nv": True})
+        self.assertEqual(self.local_config["nv_import"]["api_key"], "draft-nv-secret")
+        self.assertEqual(
+            self.importer.started_with["_gptphone_upload_targets"],
+            {"pixel": False, "nv": True},
+        )
+
+    def test_start_rejects_remote_http_nv_draft_before_saving_or_starting(self):
+        app = self._app(replace(
+            self.context,
+            nv_upload_queue=FakeNvQueue(configured=False),
+            batch_upload_coordinator=FakeBatchUploadCoordinator(),
+        ))
+        local_config_before = dict(self.local_config)
+
+        response = app.test_client().post(
+            "/api/start-existing",
+            json={
+                "nv_import": {
+                    "endpoint": "http://nv.example.test/api/import",
+                    "schema_url": "https://nv.example.test/api/schema",
+                    "api_key": "draft-nv-secret",
+                },
+                "upload_targets": {"nv": True},
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["code"], "nv_configuration_invalid")
+        self.assertIn("HTTPS", response.get_json()["error"])
+        self.assertIsNone(self.importer.started_with)
+        self.assertEqual(self.local_config, local_config_before)
+
     def test_relogin_starts_from_server_bound_rows_without_sms_preflight_or_config_save(self):
         app = self._app()
         payload = {
@@ -534,7 +700,10 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(self.preflight_configs, [])
         self.assertEqual(self.store.saved, [])
         self.assertEqual(self.importer.started_with["run_mode"], "relogin")
-        self.assertFalse(self.importer.started_with["pixel_upload_enabled"])
+        self.assertEqual(
+            self.importer.started_with["_gptphone_upload_targets"],
+            {"pixel": False, "nv": False},
+        )
         self.assertEqual(self.importer.started_with["target_count"], 1)
         self.assertEqual(
             self.importer.started_with["_gptphone_relogin_rows"][0]["sub2api_account_id"],
@@ -596,6 +765,34 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["config"]["sms_api_keys"], ["draft-key"])
         self.assertEqual(self.local_config, before)
+
+    def test_local_config_export_never_contains_nv_api_key(self):
+        secret = "nv-export-secret"
+        app = self._app(replace(
+            self.context,
+            local_config_secret=lambda name: secret if name == "nv_import_api_key" else "",
+        ))
+
+        with app.test_client() as client:
+            exported = client.post(
+                "/api/local-config/export",
+                json={
+                    "download": True,
+                    "nv_import": {
+                        "endpoint": "https://nv.example.test/import",
+                        "api_key": secret,
+                    },
+                },
+            )
+            revealed = client.post(
+                "/api/local-config/secret",
+                json={"id": "nv_import_api_key"},
+            )
+
+        self.assertEqual(exported.status_code, 200)
+        self.assertNotIn("api_key", exported.get_json()["config"]["nv_import"])
+        self.assertNotIn(secret, exported.get_data(as_text=True))
+        self.assertEqual(revealed.get_json()["value"], secret)
 
     def test_sms_balance_query_uses_draft_config_without_exposing_or_saving_keys(self):
         secret = "draft-balance-secret"
@@ -1059,6 +1256,96 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(failed.status_code, 409)
         self.assertEqual(failed.get_json()["error"], "可以公开")
         self.assertNotIn("private-token", failed.get_data(as_text=True))
+
+    def test_nv_upload_records_batches_overview_and_retry_routes(self):
+        nv = FakeNvQueue()
+        coordinator = FakeBatchUploadCoordinator()
+        app = self._app(replace(
+            self.context,
+            nv_upload_queue=nv,
+            batch_upload_coordinator=coordinator,
+        ))
+
+        with app.test_client() as client:
+            overview = client.get("/api/nv/overview")
+            records = client.get("/api/nv/upload-records")
+            batches = client.get("/api/nv/upload-batches")
+            retried = client.post("/api/nv/upload-records/nv-record/retry", json={})
+            manifests = client.get("/api/upload-manifests")
+
+        self.assertEqual(overview.status_code, 200)
+        self.assertEqual(overview.get_json()["batch_count"], 1)
+        self.assertEqual(records.get_json()["records"][0]["record_id"], "nv-record")
+        self.assertEqual(batches.get_json()["items"][0]["batch_id"], "nv-batch")
+        self.assertEqual(retried.status_code, 200)
+        self.assertEqual(nv.calls, ["nv-record"])
+        self.assertEqual(manifests.get_json()["records"][0]["batch_id"], "batch-a")
+
+    def test_nv_upload_records_and_batches_are_paginated(self):
+        nv = FakeNvQueue()
+        nv.records = lambda: [
+            {"record_id": f"record-{index}", "status": "success"}
+            for index in range(7)
+        ]
+        nv.batches = lambda: [
+            {"batch_id": f"batch-{index}", "status": "success"}
+            for index in range(5)
+        ]
+        app = self._app(replace(self.context, nv_upload_queue=nv))
+
+        with app.test_client() as client:
+            records = client.get("/api/nv/upload-records?page=2&page_size=3")
+            batches = client.get("/api/nv/upload-batches?page=2&page_size=2")
+
+        self.assertEqual(records.status_code, 200)
+        self.assertEqual([item["record_id"] for item in records.get_json()["records"]], [
+            "record-3", "record-4", "record-5",
+        ])
+        self.assertEqual(records.get_json()["total"], 7)
+        self.assertEqual(records.get_json()["pages"], 3)
+        self.assertEqual([item["batch_id"] for item in batches.get_json()["items"]], [
+            "batch-2", "batch-3",
+        ])
+        self.assertEqual(batches.get_json()["total"], 5)
+
+    def test_batch_upload_manifest_retry_validates_platform_and_maps_errors(self):
+        coordinator = FakeBatchUploadCoordinator()
+        app = self._app(replace(self.context, batch_upload_coordinator=coordinator))
+
+        with app.test_client() as client:
+            invalid = client.post(
+                "/api/upload-manifests/batch-a/retry",
+                json={"platform": "other"},
+            )
+            extra = client.post(
+                "/api/upload-manifests/batch-a/retry",
+                json={"platform": "nv", "token": "must-not-be-accepted"},
+            )
+            missing = client.post(
+                "/api/upload-manifests/missing/retry",
+                json={"platform": "nv"},
+            )
+            unavailable = client.post(
+                "/api/upload-manifests/batch-a/retry",
+                json={"platform": "pixel"},
+            )
+            retried = client.post(
+                "/api/upload-manifests/batch-a/retry",
+                json={"platform": "nv"},
+            )
+
+        self.assertEqual(invalid.status_code, 400)
+        self.assertEqual(extra.status_code, 400)
+        self.assertEqual(missing.status_code, 404)
+        self.assertEqual(unavailable.status_code, 409)
+        self.assertNotIn("secret", unavailable.get_data(as_text=True))
+        self.assertEqual(retried.status_code, 200)
+        self.assertEqual(retried.get_json()["manifest"]["platforms"]["nv"]["status"], "queued")
+        self.assertEqual(coordinator.retry_calls, [
+            ("missing", "nv"),
+            ("batch-a", "pixel"),
+            ("batch-a", "nv"),
+        ])
 
     def test_pixel_overview_and_paginated_batch_routes_are_lightweight(self):
         pixel = FakePixelClient()

@@ -9,6 +9,12 @@ import type {
   PixelBatchRecordPage,
   PixelOverview,
   PixelUploadRecord,
+  NvOverview,
+  NvUploadBatchPage,
+  NvUploadBatch,
+  NvUploadRecordPage,
+  NvUploadRecord,
+  BatchUploadManifest,
   SmsKeyStatus,
 } from '../types/api'
 
@@ -49,6 +55,13 @@ export const preflightRun = (data: Record<string, any>) => api('/api/preflight',
 export const startExistingRun = (data: Record<string, any>) => api('/api/start-existing', data)
 export const stopRun = () => api('/api/stop', {})
 export const getMailboxes = () => api<MailboxPayload>('/api/mailboxes')
+export const importMailboxes = (poolContent: string) => api<{
+  ok: true
+  imported: number
+  skipped: number
+  mailboxes?: MailboxPayload
+  state?: AppState
+}>('/api/mailboxes/import', { pool_content: poolContent })
 export const queryMailboxQuotas = (rows: Array<{ row_id: string; line_no: number }>) => (
   api<{
     ok: true
@@ -172,4 +185,25 @@ export const retryPixelUpload = (recordId: string, targetId?: string) => (
   api(`/api/pixel/upload-records/${encodeURIComponent(recordId)}/retry`, targetId
     ? { target_id: targetId, targetId, target_ids: [targetId], targetIds: [targetId] }
     : {})
+)
+export const getNvOverview = () => api<NvOverview>('/api/nv/overview')
+export const getNvUploadBatches = (page = 1, pageSize = 20) => {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+  return api<NvUploadBatchPage>(`/api/nv/upload-batches?${params}`)
+}
+export const getNvUploadRecords = (page = 1, pageSize = 50) => {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+  return api<NvUploadRecordPage>(`/api/nv/upload-records?${params}`)
+}
+export const retryNvUpload = (recordId: string) => (
+  api(`/api/nv/upload-records/${encodeURIComponent(recordId)}/retry`, {})
+)
+export const getBatchUploadManifests = (limit = 100) => (
+  api<{ records: BatchUploadManifest[]; total: number }>(`/api/upload-manifests?limit=${limit}`)
+)
+export const retryBatchUploadManifest = (batchId: string, platform: 'pixel' | 'nv') => (
+  api<{ manifest: BatchUploadManifest }>(
+    `/api/upload-manifests/${encodeURIComponent(batchId)}/retry`,
+    { platform },
+  )
 )

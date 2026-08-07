@@ -334,6 +334,8 @@ export interface PixelUploadTargetRecord {
 export interface PixelUploadRecord {
   recordId: string
   taskId: string
+  taskIds: string[]
+  sourceCount: number
   batchId: string
   batchStartedAt: string | number | null
   sourceEmail: string
@@ -405,4 +407,92 @@ export interface PixelBatchRecordPage {
   page_size: number
   pages: number
   revision: number
+}
+
+export interface NvUploadRecord {
+  record_id: string
+  batch_id: string
+  batch_started_at: number
+  task_ids: string[]
+  source_count: number
+  status: string
+  stage: string
+  attempts: number
+  accepted: number
+  source_available: boolean
+  can_retry: boolean
+  needs_confirmation: boolean
+  error: string
+  failure?: TaskFailure | null
+  created_at: number
+  updated_at: number
+}
+
+export interface NvUploadBatch {
+  batch_id: string
+  batch_started_at: number
+  updated_at: number
+  status: string
+  source: {
+    total: number
+    queued: number
+    processing: number
+    success: number
+    partial: number
+    failed: number
+  }
+}
+
+export interface NvOverview {
+  revision: number
+  configured: boolean
+  queue: {
+    active: number
+    pending: number
+    alive: boolean
+    configured_workers: number
+    alive_workers: number
+    active_workers: number
+    pending_records: number
+    running_records: number
+  }
+  current_batch: NvUploadBatch | null
+  batch_count: number
+}
+
+export interface NvUploadBatchPage {
+  items: NvUploadBatch[]
+  total: number
+  page: number
+  page_size: number
+  pages: number
+  revision: number
+}
+
+export interface NvUploadRecordPage {
+  records: NvUploadRecord[]
+  total: number
+  page: number
+  page_size: number
+  pages: number
+  revision: number
+}
+
+export interface BatchUploadPlatformState {
+  status: string
+  error: string
+}
+
+export interface BatchUploadManifest {
+  batch_id: string
+  batch_started_at: number
+  targets: { pixel: boolean; nv: boolean }
+  platforms: {
+    pixel?: BatchUploadPlatformState
+    nv?: BatchUploadPlatformState
+  }
+  status: string
+  source_count: number
+  created_at: number
+  updated_at: number
 }

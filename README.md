@@ -1,26 +1,30 @@
 # 自动接码机（gptPhone）macOS 使用说明
 
-这是一个 macOS 可双击运行的 Element Plus WebUI 工具。主要用途是批量导入邮箱账号，自动走 ChatGPT/OpenAI Auth 授权、邮箱取码、必要时手机接码，并把成功结果上传到 SUB2 分组和 Pixel 账号管理平台。
+这是一个 macOS 可双击运行的 Element Plus WebUI 工具。主要用途是批量导入邮箱账号，自动走 ChatGPT/OpenAI Auth 授权、邮箱取码、必要时手机接码，并把成功结果上传到 SUB2；每批结束后还可选择批量上传到 Pixel 和 NV。
 
 ## 快速启动
 
-拉完代码后进入项目目录：
+Mac 需要已安装 Git。建议同时安装 [Homebrew](https://brew.sh/)，启动脚本可通过 Homebrew 补齐 Python 3.13 和 Node.js。
+
+第一次拉取代码：
 
 ```sh
-cd /Users/lwh/projects/gptPhone
-```
-
-第一次运行前建议给启动脚本加执行权限：
-
-```sh
+git clone https://github.com/aaa150010/AutoPhone.git AutoPhone
+cd AutoPhone
 chmod +x start.command
+./start.command
 ```
 
-然后直接双击：
+已经拉取过代码时，在现有目录更新并启动：
 
-```text
-start.command
+```sh
+cd /你的路径/AutoPhone
+git pull --ff-only
+chmod +x start.command
+./start.command
 ```
+
+也可以在 Finder 中双击 `start.command`。首次运行需要创建 Python 虚拟环境、安装依赖并构建前端，时间会比后续启动长。更新代码不会覆盖 `data/` 中的邮箱池、运行配置、结果和上传记录；不要为了更新而删除 `data/`。
 
 脚本会自动做这些事：
 
@@ -42,7 +46,7 @@ http://127.0.0.1:18777/settings
 
 端口固定为 `18777`。如果重复双击启动，脚本会先关闭旧的 WebUI 实例，再在同一端口启动新的。
 
-左侧栏固定显示“自动接码机”品牌，以及“运行中心”“邮箱管理”“账号管理”“运行配置”四个入口。侧栏底部会持续显示全局运行状态、本轮完成进度和最近一次通知状态，不需要同时打开多个浏览器标签页。
+左侧栏固定显示“自动接码机”品牌，以及“运行中心”“邮箱管理”“URL测试”“账号管理”“运行配置”五个入口。侧栏底部会持续显示全局运行状态和最近一次通知状态，不需要同时打开多个浏览器标签页。
 
 停止运行：关闭启动脚本打开的 Terminal 窗口，或在 Terminal 里按 `Ctrl-C`。
 
@@ -84,19 +88,17 @@ chmod +x start.command
 
 打开左侧独立的“运行配置”页面，按需填写：
 
-- 代理地址及 SMS、邮箱取码、SUB2 的代理开关
+- 代理地址及 SMS、邮箱取码、SUB2/NV 的代理开关
 - 目标数量、并发数、Node 并发数和 Node 超时
-- SMSBower 最低/最高价格、短信超时、手机阶段超时、每号最大尝试和一个或多个 API Key
+- SMSBower 最低/最高价格、短信超时、手机阶段超时、每平台最大尝试和一个或多个 API Key
 - 鉴权额外重试次数；`0` 表示失败后不额外重试，默认 `1`
 - SUB2 地址、账号、管理密码和分组
-- 注册成功后是否自动上传 Pixel；`pixel_upload_enabled` 默认开启
+- Pixel 上传 worker 数，以及 NV 导入地址和 API Key
 - QQ 邮箱通知账号、SMTP 授权码、收件人、停滞阈值和通知事件
 
-“每号最大尝试”默认和上限都是 `15`，手机阶段超时默认和上限都是 `480` 秒。旧配置第一次加载时会迁移到这组受限默认值，避免异常线路无限消耗号码。
+“每平台最大尝试”默认和上限都是 `15`；每个任务的总尝试数按已启用且配置了 Key 的平台数计算，最多 `45`。手机阶段超时默认和上限都是 `1800` 秒。
 
-SUB2 管理密码和 SMS API Key 都使用 Element Plus 原生密码输入框，点击输入框右侧眼睛可以显示或隐藏当前内容。SMS Key 编辑器右侧的加号可新增一行，每行独立显示和删除，至少保留一个可填写行。保存时会去除空行、首尾空格和重复 Key，并保留原顺序。Pixel 登录密码由 Aliyun 管理代理保管，本机不保存或回显。
-
-关闭“注册成功后自动上传 Pixel”只会阻止之后新成功结果进入自动上传队列；已经创建的上传记录仍可在“账号管理”中手动重传。
+SUB2 管理密码、NV API Key 和 SMS API Key 都使用 Element Plus 原生密码输入框，点击输入框右侧眼睛可以显示或隐藏当前内容。SMS Key 编辑器右侧的加号可新增一行，每行独立显示和删除，至少保留一个可填写行。保存时会去除空行、首尾空格和重复 Key，并保留原顺序。Pixel 登录密码由 Aliyun 管理代理保管，本机不保存或回显。
 
 配置有改动后，页面会显示“有未保存修改”。切换入口、浏览器前进后退或关闭/刷新页面时都会提醒；运行中心也会禁止用未保存草稿启动，并引导回运行配置页。保存成功后草稿成为当前活动配置；从配置页启动成功后会自动进入运行中心。
 
@@ -123,13 +125,15 @@ SUB2 管理密码和 SMS API Key 都使用 Element Plus 原生密码输入框，
 运行配置下方的操作栏按两行三列均匀排列，顺序为：
 
 1. **导入配置**：读取本机 JSON，兼容新版 Key 数组和旧版单 Key；导入成功后立即应用并清除未保存状态。
-2. **导出配置**：二次确认后下载包含完整敏感信息的 JSON。
+2. **导出配置**：二次确认后下载包含可迁移敏感信息、但不含 NV API Key 的 JSON。
 3. **保存配置**：保存当前页面设置。
 4. **真实链路预检**：检查所有 SMS Key 余额、SMS 报价、SUB2、Node 链路等条件，不启动批量任务。
-5. **开始运行**：使用当前邮箱池启动任务。
+5. **开始运行**：打开本次上传目标弹窗，再使用当前邮箱池启动任务。Pixel、NV 每次打开都默认不勾选，选择不会写回运行配置。
 6. **停止**：向正在运行的任务发送安全停止请求。
 
-建议第一次配置或修改 SUB2/代理后，先保存配置，再执行一次真实链路预检，预检通过后开始运行。Pixel 账号测试、共享和上传重试在“账号管理”页单独执行，不会启动注册流程。
+建议第一次配置或修改 SUB2/代理后，先保存配置，再执行一次真实链路预检，预检通过后开始运行。取消运行弹窗不会启动任务；确认后，即使 Pixel 或 NV 上传失败，注册任务和已经保存的成功结果也不会变成失败。Pixel 账号测试、共享和上传重试在“账号管理”页单独执行，不会启动注册流程。
+
+“运行中心”工具栏也提供“导入邮箱”，可直接打开与“邮箱管理”相同的批量追加弹窗；导入成功后首页的可用邮箱数量和开始按钮会立即更新。
 
 ### 5. 查看运行状态和结果
 
@@ -139,21 +143,21 @@ SUB2 管理密码和 SMS API Key 都使用 Element Plus 原生密码输入框，
 
 `/api/state` 的任务项会返回 `progress.code`、`progress.label`、`progress.group`、`progress.entered_at` 和 `progress.finished_at`，`runtime.stage_counts` 固定返回上述六组计数。这些字段只包含节点名称和时间，不包含邮箱密码、手机号、SMS Key、Token 或底层链路事件详情。
 
-### 6. 管理 Pixel 账号与上传记录
+### 6. 管理 Pixel / NV 上传记录
 
-打开“账号管理”可以查看 Aliyun Pixel 管理代理返回的全部七个目标及其账号。目标列表和账号表都支持分页；账号表还支持搜索、状态筛选、稳定勾选、批量连接测试、批量公开共享和目标重新授权。账号管理页不会显示登录密码或 OAuth 凭据。
+打开“账号管理”可在 Pixel 和 NV 两个平台间切换。Pixel 视图显示 Aliyun Pixel 管理代理返回的目标、账号、批次和投递记录；NV 视图显示批次完成度、分片账号数、尝试次数、脱敏错误和人工重试操作。账号管理页不会显示登录密码、API Key 或 OAuth 凭据。
 
 `pixel-2` 至 `pixel-7` 是自动上传目标。`pixel-1`（账号管理中对应 `1745627971@qq.com`）仍可查看、测试连接和手动重新授权，但明确标记为“不自动上传”，不会被注册成功后的自动流程或“一键共享”提交。
 
 批量公开共享会为每个账号独立随机选择 `3` 至 `10` 的并发，并设置为公开；一键共享会扫描六个自动上传目标的全部分页账号后执行同样的操作。接口表面成功后仍会回查实际共享状态和并发，未达到公开或 `3–10` 范围的账号会保留为失败，便于再次处理。
 
-下方“Pixel 上传记录”按结果和目标分别保存导入任务、生成的随机账号名、远端账号 ID、实际并发、尝试次数和脱敏错误。导入失败、共享失败、部分失败、需人工确认和源数据不可用都会持久化，不会把注册成功改成失败。对失败目标可以单独重传，导入已经成功但共享失败时只重做共享；成功目标不会重复上传。记录保存在本机 `data/pixel_upload_records.json`，源结果文件损坏或缺失时会显示“源数据不可用”，不会回显 token。
+Pixel 上传记录按批次来源和目标保存导入任务、生成的随机账号名、远端账号 ID、实际并发、尝试次数和脱敏错误。NV 上传记录保存批次、阶段、次数、安全 HTTP/provider 状态和脱敏错误。导入失败、共享失败、部分失败、需人工确认和源数据不可用都会持久化，不会把注册成功改成失败。记录分别保存在 `data/pixel_upload_records.json` 和 `data/nv_upload_records.json`，只引用成功结果文件，不复制 token。
 
 ### 7. 导入和导出配置
 
-“导入配置”和“导出配置”用于迁移本机保存的 SMS、SUB2、Pixel 开关和邮件通知配置。新版 JSON 使用 `sms_api_keys: string[]`；旧文件里的 `sms_api_key` 会自动变成一行，不会按 `-` 拆分。
+“导入配置”和“导出配置”用于迁移本机保存的 SMS、SUB2、NV 地址和邮件通知配置。新版 JSON 使用 `sms_api_keys: string[]`；旧文件里的 `sms_api_key` 会自动变成一行，不会按 `-` 拆分。Pixel/NV 的本次上传选择不会进入导出配置，NV API Key 也不会写入下载文件，需要在目标 Mac 的运行配置页单独填写。
 
-SMTP 授权码在公共状态和普通配置响应中保持 `********` 遮罩，并通过固定密钥标识单独读取。完整下载导出会在二次确认后写入 SMS Key、SMTP 授权码及其他密钥，文件应仅保存在可信设备上，不要提交到 Git 或发送给他人。
+SMTP 授权码在公共状态和普通配置响应中保持 `********` 遮罩，并通过固定密钥标识单独读取。完整下载导出会在二次确认后写入 SMS Key、SMTP 授权码及其他可迁移密钥，但始终排除 NV API Key。导出文件应仅保存在可信设备上，不要提交到 Git 或发送给他人。
 
 ## 邮箱导入格式
 
@@ -207,11 +211,13 @@ GPT账号<Tab>登录密码<Tab>BASE32密钥
 
 导入时会先判断 OAuth 四段格式，再判断三段 TOTP，因而同一个邮箱池可以混放 Outlook OAuth 与 TOTP 账号。TOTP 行必须包含合法邮箱、非空密码和可校验的 Base32 密钥；注释行、字段缺失、无效 Base32 或无法明确识别的行会被拒绝。密码中的普通标点不会被误当成分隔符。页面、日志和接口只返回脱敏邮箱行，不回显密码、2FA 密钥或 OAuth 凭据。
 
+2FA 密钥本身不会过期；它每 30 秒生成一个新的 6 位 TOTP。程序会先完成 Sentinel/header 准备，再在发送前生成动态码；当前窗口不足 5 秒时会等待下一个窗口。服务端返回 `Invalid authorization step` 时会废弃当前 challenge 并建立新的 OAuth 会话，而不是把它误判成密码或永久 2FA 错误。
+
 ## 关于手机验证码
 
 手机验证码不是每条邮箱链路都强制需要。
 
-运行时会先完成邮箱/账号登录。如果 OpenAI/ChatGPT 页面没有要求手机验证，流程会直接继续 OAuth callback、token exchange 和 SUB2 上传；成功结果随后按设置进入 Pixel 上传队列。只有页面进入 `add_phone`、`contact_verification`、`phone_number_collection` 等手机验证状态时，才会调用 SMS 接码平台买号、发短信、等待手机验证码。
+运行时会先完成邮箱/账号登录。如果 OpenAI/ChatGPT 页面没有要求手机验证，流程会直接继续 OAuth callback、token exchange 和 SUB2 上传。只有页面进入 `add_phone`、`contact_verification`、`phone_number_collection` 等手机验证状态时，才会调用 SMS 接码平台买号、发短信、等待手机验证码。
 
 ### 多 SMS Key 与余额
 
@@ -229,12 +235,12 @@ GPT账号<Tab>登录密码<Tab>BASE32密钥
 
 - 批量任务并发和 Node 并发默认都是 `5`。
 - `target_count` 会限制本次实际任务总数；调度器只预留本批目标邮箱，执行线程不超过 `min(target_count, concurrency)`，同一批次不会反复领取刚归还的邮箱。
-- 手机号提交全局最多并发 `2`，相邻提交至少间隔 `750ms`。
+- 手机号提交每批从基础并发 `2` 开始，上限 `5`，相邻提交至少间隔 `750ms`。每 4 次真实 2xx 提升 1 个槽位；429、5xx 或临时网络错误立即降低 1 个槽位并沿用 `2/4/8` 秒退避。
 - 未验证线路同时使用 `1` 个号码；已有 OTP 发出或成功记录的线路最多并发 `2`。
 - 线路排序优先使用本机历史有效号码成功率；静态优先线路只负责没有历史样本时的冷启动，不额外发送线路预热请求。
 - OpenAI 临时服务错误复用同一个号码，并在所有任务之间共享 `2/4/8` 秒退避，避免并发任务同时重试形成尖峰。
 - 已使用号码线路冷却 `10` 分钟，可疑相似号码线路冷却 `30` 分钟，连续两次没有验证码的线路冷却 `5` 分钟。
-- 每个任务最多尝试 `15` 个号码，手机阶段最多运行 `480` 秒。
+- 每个平台最多尝试 `15` 个号码；每个任务按启用平台数合计，最多尝试 `45` 个号码。手机阶段最多运行 `1800` 秒。
 - 手机已验证后如果 SUB2 授权会话恰好过期，会按“鉴权额外重试次数”建立全新会话继续；设置为 `0` 时不会额外重试。
 
 这些限制只约束手机号阶段，不会把整个任务并发强制降到 `2`。
@@ -254,29 +260,29 @@ USD/CNY 每 24 小时从 ECB 日汇率推导一次。网络失败时先使用上
 
 ## 结果上传
 
-任务成功后会先把授权结果上传到配置好的 SUB2 地址和目标分组，再按 `pixel_upload_enabled` 设置把成功结果排入 Pixel 队列。Pixel 自动目标固定为 `pixel-2` 至 `pixel-7` 共六个目标；`pixel-1`（`1745627971@qq.com`）仅在账号管理中可见，不参与自动上传。
+单个任务成功后会先把授权结果上传到配置好的 SUB2 地址和目标分组。Pixel 和 NV 不在单账号完成时上传；只有整批注册任务全部进入终态后，程序才收集该批已经成功落盘的账号，并按开始运行弹窗中的选择入队。失败、停止或中断账号不会进入上传，部分成功批次仍会上传成功账号。
 
-每个目标使用成本计算器兼容的单账号 `accounts` JSON，并为该目标生成独立的 `acct-<12位随机十六进制>@<原域名>` 名称，六个目标不会复用同一个随机名称。上传和轮询由本机单线程持久化队列执行，不阻塞注册或 SUB2 主流程。导入成功后，每个新账号独立随机设置 `3–10` 并发并开启公开共享；共享失败时只重试失败账号，不重新导入。
+Pixel 按邮箱域名分组，每组最多 100 个账号合并为一个导入任务，并投递到 `pixel-2` 至 `pixel-7`；`pixel-1` 不参与自动批量上传。每个目标为账号生成独立的 `acct-<12位随机十六进制>@<原域名>` 名称。导入成功后，每个新账号独立随机设置 `3–10` 并发并开启公开共享；共享失败时只重试失败账号，不重新导入。
 
-自动上传开关默认开启。关闭后不会创建新的自动上传记录，但已有记录仍保留在“账号管理”中，可按目标手动重传。每个目标的成功状态会持久化并防止重复上传；部分失败、导入失败、共享失败、需人工确认和源数据不可用都会保留记录及脱敏错误，便于按目标重传或人工处理。
+NV 同样按最多 100 个账号分片，提交 `access_token`、`refresh_token`、`email` 和固定 `type: codex`。网络错误、429 和 5xx 自动尝试 3 次；其他 4xx 保留脱敏诊断等待人工重试。Pixel/NV 队列相互独立，任何上传失败都不会修改注册成功状态。批次选择和成功结果清单持久化后，进程重启也能恢复未完成的入队操作。
 
 ## 本地配置
 
-SMS API Key、SUB2、Pixel 开关、SMTP 授权码和通知收件人等配置保存在本机 `data/local_config.json`，不会提交到 Git。`pixel_upload_enabled` 缺省为 `true`（开启自动上传）；设为 `false` 后只影响新任务，已有上传记录仍可手动重传。公共状态接口不会返回原始凭据；SMS Key、代理密码、SUB2 管理密码和 SMTP 授权码按密钥处理，只有专用密钥接口和二次确认后的完整下载导出返回明文。Pixel 登录密码只保存在远端 Aliyun 管理代理，不写入本机配置。运行配置页可导入/导出这份 JSON，方便迁移到其他 Mac。
+SMS API Key、SUB2、NV 地址/API Key、SMTP 授权码和通知收件人等配置保存在本机 `data/local_config.json`，不会提交到 Git。公共状态接口不会返回原始凭据；SMS Key、代理密码、SUB2 管理密码、NV API Key 和 SMTP 授权码按密钥处理。NV API Key 只通过专用密钥接口供本机配置页读取，不进入下载导出；Pixel 登录密码只保存在远端 Aliyun 管理代理，不写入本机配置。运行配置页可导入/导出其余配置，方便迁移到其他 Mac。
 
-Pixel 上传 outbox 保存在本机 `data/pixel_upload_records.json`，以原子方式记录任务 ID、结果文件引用、凭据短指纹、远端任务 ID、目标阶段、随机生成名称、远端账号 ID、失败 ID、实际并发、脱敏错误、尝试次数和时间；不会保存管理员 token 或原始响应。`data/` 目录及其上传记录不应提交 Git。
+Pixel、NV outbox 和批次清单分别保存在 `data/pixel_upload_records.json`、`data/nv_upload_records.json`、`data/batch_upload_manifests.json`。它们以原子方式记录结果文件相对路径、批次、阶段、次数和脱敏诊断，不保存 OAuth Token、API Key、管理员 token 或原始响应。`data/` 目录及其上传记录不应提交 Git。
 
 - OpenAI 主代理默认: `http://127.0.0.1:7897`
 - SMS 最低价格默认: `0.01`
 - SMS 最高价格默认: `0.15`
 - Node 超时默认: `45` 秒
 - 任务并发 / Node 并发默认: `5 / 5`
-- 每号最大尝试默认: `15`
-- 手机阶段超时默认: `480` 秒
+- 每平台最大尝试默认: `15`（每任务总上限 `45`）
+- 手机阶段超时默认: `1800` 秒
 - 鉴权额外重试默认: `1`
-- Pixel 自动上传 (`pixel_upload_enabled`) 默认: `true`
+- 手机提交基础并发 / 自适应上限默认: `2 / 5`
 
-主代理仍可在页面里修改。SMS、SUB2 是否走代理由页面上的勾选项控制；邮箱取码按导入行自身的取码方式执行。
+主代理仍可在页面里修改。SMS、邮箱取码、SUB2/NV 是否走代理由页面上的勾选项控制；NV 默认直连，只有勾选 SUB2/NV 上传代理时才使用主代理。
 
 ## 前端开发与构建
 
@@ -298,6 +304,7 @@ npm run build
 mac_runtime/.venv/bin/python -m unittest discover -s tests -v
 mac_runtime/.venv/bin/python -m py_compile \
   mac_overrides/web_gui.py \
+  mac_overrides/batch_upload_runtime.py \
   mac_overrides/chatgpt_totp.py \
   mac_overrides/importer_scheduler.py \
   mac_overrides/legacy_ui.py \
@@ -305,12 +312,14 @@ mac_runtime/.venv/bin/python -m py_compile \
   mac_overrides/run_notifications.py \
   mac_overrides/runtime_policy.py \
   mac_overrides/pixel_runtime.py \
+  mac_overrides/nv_runtime.py \
   mac_overrides/sms_runtime.py \
   mac_overrides/sms_web.py \
   mac_overrides/sub2_runtime.py \
   mac_overrides/task_progress.py \
   mac_overrides/web_routes.py \
   tests/test_chatgpt_totp.py \
+  tests/test_batch_upload_runtime.py \
   tests/test_importer_scheduler.py \
   tests/test_legacy_ui.py \
   tests/test_mailbox_admin.py \
@@ -319,6 +328,7 @@ mac_runtime/.venv/bin/python -m py_compile \
   tests/test_sms_runtime.py \
   tests/test_sms_web.py \
   tests/test_pixel_runtime.py \
+  tests/test_nv_runtime.py \
   tests/test_sub2_runtime.py \
   tests/test_task_progress.py \
   tests/test_web_gui_security.py \

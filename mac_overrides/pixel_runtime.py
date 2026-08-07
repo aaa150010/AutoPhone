@@ -28,7 +28,7 @@ import uuid
 DEFAULT_PIXEL_PROXY_BASE_URL = "https://lynote.xyz/gpt-api"
 PIXEL_AUTO_TARGET_IDS = tuple(f"pixel-{index}" for index in range(2, 8))
 PIXEL_EXCLUDED_TARGET_IDS = ("pixel-1",)
-OUTBOX_VERSION = 3
+OUTBOX_VERSION = 4
 SECRET_MASK = "********"
 _SANITIZE_INPUT_LIMIT = 8192
 
@@ -537,10 +537,23 @@ def _valid_generated_name(value: str, expected_domain: str) -> bool:
 
 def credential_fingerprint(payload: Mapping[str, Any]) -> str:
     try:
-        credentials = payload["accounts"][0]["credentials"]
-    except (KeyError, IndexError, TypeError):
+        accounts = payload["accounts"]
+    except (KeyError, TypeError):
         raise PixelSourceError("Pixel 上传载荷格式无效") from None
-    material = "\0".join(_clean(credentials.get(key)) for key in ("access_token", "refresh_token", "id_token"))
+    if not isinstance(accounts, list) or not accounts:
+        raise PixelSourceError("Pixel 上传载荷格式无效")
+    rows: list[str] = []
+    for account in accounts:
+        if not isinstance(account, Mapping) or not isinstance(account.get("credentials"), Mapping):
+            raise PixelSourceError("Pixel 上传载荷格式无效")
+        credentials = account["credentials"]
+        rows.append(
+            "\0".join(
+                _clean(credentials.get(key))
+                for key in ("access_token", "refresh_token", "id_token")
+            )
+        )
+    material = "\n".join(rows)
     if not material.replace("\0", ""):
         raise PixelSourceError("Pixel 上传载荷缺少 OAuth 凭据")
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:12]
@@ -1024,35 +1037,81 @@ class PixelUploadQueue:
                 return record
         raise PixelStateError("Pixel 上传记录不存在", 404)
 
+    def _source_paths(self, record: Mapping[str, Any]) -> list[Path]:
+        values = record.get("result_files")
+        if not isinstance(values, list) or not values:
+            values = [record.get("result_file")]
+        paths: list[Path] = []
+        for value in values:
+            relative = _clean(value)
+            if not relative:
+                raise PixelSourceError("成功结果文件位置无效")
+            candidate = (self.data_dir / relative).resolve()
+            try:
+                candidate.relative_to(self.data_dir)
+            except ValueError:
+                raise PixelSourceError("成功结果文件位置无效") from None
+            paths.append(candidate)
+        if len(paths) > 100:
+            raise PixelSourceError("单个 Pixel 批量上传不能超过 100 个账号")
+        return paths
+
     def _source_path(self, record: Mapping[str, Any]) -> Path:
-        candidate = (self.data_dir / _clean(record.get("result_file"))).resolve()
-        try:
-            candidate.relative_to(self.data_dir)
-        except ValueError:
-            raise PixelSourceError("成功结果文件位置无效") from None
-        return candidate
+        return self._source_paths(record)[0]
 
     def _read_source(
         self,
         record: Mapping[str, Any],
     ) -> tuple[dict[str, Any], str, tuple[str, ...], dict[str, Any]]:
-        path = self._source_path(record)
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            raise PixelSourceError("成功结果文件不存在") from None
-        except (OSError, UnicodeError, json.JSONDecodeError):
-            raise PixelSourceError("成功结果文件格式无效") from None
-        if not isinstance(raw, Mapping):
-            raise PixelSourceError("成功结果文件格式无效")
-        payload = build_pixel_import_payload(raw)
-        credentials = payload["accounts"][0]["credentials"]
-        secrets = tuple(_clean(credentials.get(key)) for key in ("access_token", "refresh_token", "id_token") if _clean(credentials.get(key)))
+        accounts: list[dict[str, Any]] = []
+        secrets: list[str] = []
+        metadata_rows: list[dict[str, Any]] = []
+        domains: set[str] = set()
+        for path in self._source_paths(record):
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                raise PixelSourceError("成功结果文件不存在") from None
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                raise PixelSourceError("成功结果文件格式无效") from None
+            if not isinstance(raw, Mapping):
+                raise PixelSourceError("成功结果文件格式无效")
+            source_payload = build_pixel_import_payload(raw)
+            domains.add(_payload_email_domain(source_payload))
+            accounts.extend(copy.deepcopy(source_payload["accounts"]))
+            credentials = source_payload["accounts"][0]["credentials"]
+            secrets.extend(
+                _clean(credentials.get(key))
+                for key in ("access_token", "refresh_token", "id_token")
+                if _clean(credentials.get(key))
+            )
+            metadata_rows.append(_source_public_metadata(raw, source_payload))
+        if len(domains) != 1:
+            raise PixelSourceError("同一个 Pixel 批量上传必须使用相同邮箱域名")
+        payload = {"proxies": [], "accounts": accounts}
+        batch_ids = {
+            _safe_identifier(item.get("batch_id"), maximum=80)
+            for item in metadata_rows
+            if _safe_identifier(item.get("batch_id"), maximum=80)
+        }
+        source_emails = [
+            _clean(item.get("source_email")).lower()
+            for item in metadata_rows
+            if _EMAIL_RE.fullmatch(_clean(item.get("source_email")))
+        ]
+        metadata = {
+            "source_email": source_emails[0] if len(source_emails) == 1 else "",
+            "batch_id": next(iter(batch_ids)) if len(batch_ids) == 1 else "",
+            "batch_started_at": max(
+                (_safe_int(item.get("batch_started_at")) for item in metadata_rows),
+                default=0,
+            ),
+        }
         return (
             payload,
             credential_fingerprint(payload),
-            secrets,
-            _source_public_metadata(raw, payload),
+            tuple(secrets),
+            metadata,
         )
 
     @staticmethod
@@ -1131,7 +1190,8 @@ class PixelUploadQueue:
     def _public_record(self, record: Mapping[str, Any]) -> dict[str, Any]:
         path_available = False
         try:
-            path_available = self._source_path(record).is_file()
+            source_paths = self._source_paths(record)
+            path_available = bool(source_paths) and all(path.is_file() for path in source_paths)
         except PixelRuntimeError:
             pass
         metadata = {
@@ -1168,9 +1228,18 @@ class PixelUploadQueue:
             reverse=True,
         )
         can_retry = path_available and any(_clean(item.get("state")) in _RETRYABLE_STATES for item in target_values)
+        task_ids = [
+            _safe_identifier(value)
+            for value in (record.get("task_ids") or [record.get("task_id")])
+            if _safe_identifier(value)
+        ]
+        source_count = max(_safe_int(record.get("source_count")), len(task_ids), 1)
         return {
             "record_id": _safe_identifier(record.get("record_id")),
-            "task_id": _safe_identifier(record.get("task_id")),
+            "task_id": task_ids[0] if task_ids else _safe_identifier(record.get("task_id")),
+            "task_ids": task_ids,
+            "source_count": source_count,
+            "batch_source": _clean(record.get("batch_source")) or ("legacy" if source_count == 1 else "run_batch"),
             "batch_id": _safe_identifier(metadata.get("batch_id"), maximum=80),
             "batch_started_at": max(_safe_int(metadata.get("batch_started_at")), 0),
             "source_email": _clean(metadata.get("source_email")).lower(),
@@ -1179,6 +1248,7 @@ class PixelUploadQueue:
             "source_available": path_available,
             "can_retry": can_retry,
             "job_id": job_values[0][1] if job_values else "",
+            "job_ids": [value for _updated_at, value in job_values],
             "upload_file_name": Path(_clean(record.get("upload_file_name")) or "accounts.json").name,
             "error": sanitize_error(record.get("error")),
             "failure": _public_pixel_failure(record.get("failure")),
@@ -1200,7 +1270,7 @@ class PixelUploadQueue:
         batch_id: str,
         records: list[Mapping[str, Any]],
     ) -> dict[str, Any]:
-        source_total = len(records)
+        source_total = sum(max(_safe_int(record.get("source_count")), 1) for record in records)
         source_success = 0
         source_completed = 0
         source_processing = 0
@@ -1219,6 +1289,7 @@ class PixelUploadQueue:
         started_at = 0
 
         for record in records:
+            record_source_count = max(_safe_int(record.get("source_count")), 1)
             updated_at = max(updated_at, _safe_int(record.get("updated_at")))
             started_at = max(
                 started_at,
@@ -1244,20 +1315,20 @@ class PixelUploadQueue:
                     else:
                         category = "failed"
                 categories.append(category)
-                deliveries[category] += 1
+                deliveries[category] += record_source_count
 
             if categories and all(value == "success" for value in categories):
-                source_success += 1
-                source_completed += 1
+                source_success += record_source_count
+                source_completed += record_source_count
             elif "processing" in categories:
-                source_processing += 1
+                source_processing += record_source_count
             elif "pending" in categories:
-                source_pending += 1
+                source_pending += record_source_count
             else:
-                source_completed += 1
-                source_failed += 1
+                source_completed += record_source_count
+                source_failed += record_source_count
             if "needs_confirmation" in categories:
-                source_needs_confirmation += 1
+                source_needs_confirmation += record_source_count
 
         deliveries["completed"] = (
             deliveries["success"]
@@ -1445,29 +1516,45 @@ class PixelUploadQueue:
         with self._lock:
             return self._public_record(self._record_locked(_clean(record_id)))
 
-    def enqueue(self, task_id: Any, result_file: str | Path) -> dict[str, Any]:
+    def _relative_source(self, result_file: str | Path) -> str:
         path = Path(result_file)
         if not path.is_absolute():
             path = self.data_dir / path
-        resolved = path.resolve()
         try:
-            relative = resolved.relative_to(self.data_dir).as_posix()
+            return path.resolve().relative_to(self.data_dir).as_posix()
         except ValueError:
             raise PixelSourceError("成功结果文件必须位于本地数据目录") from None
 
-        safe_task_id = _safe_identifier(task_id)
-        if not safe_task_id:
-            raise PixelStateError("任务 ID 不能为空", 400)
+    def _enqueue_sources(
+        self,
+        sources: Iterable[tuple[Any, str | Path]],
+        *,
+        batch_id: Any = "",
+        batch_source: str = "run_batch",
+    ) -> dict[str, Any]:
+        normalized: list[tuple[str, str]] = []
+        for task_id, result_file in sources:
+            safe_task_id = _safe_identifier(task_id)
+            if not safe_task_id:
+                raise PixelStateError("任务 ID 不能为空", 400)
+            normalized.append((safe_task_id, self._relative_source(result_file)))
+        if not normalized:
+            raise PixelStateError("Pixel 批量上传没有成功结果", 400)
+        if len(normalized) > 100:
+            raise PixelStateError("单个 Pixel 批量上传不能超过 100 个账号", 400)
+        task_ids = [item[0] for item in normalized]
+        result_files = [item[1] for item in normalized]
         now = self._timestamp()
         source_error = ""
         fingerprint = ""
         source_metadata: dict[str, Any] = {}
-        temporary = {"result_file": relative}
+        temporary = {"result_files": result_files}
         try:
             _payload, fingerprint, _secrets, source_metadata = self._read_source(temporary)
         except PixelSourceError as exc:
             source_error = exc.public_message
-        record_id = hashlib.sha256(f"{safe_task_id}\0{relative}\0{fingerprint}".encode("utf-8")).hexdigest()[:24]
+        identity = "\n".join(f"{task_id}\0{relative}" for task_id, relative in normalized)
+        record_id = hashlib.sha256(f"{identity}\0{fingerprint}".encode("utf-8")).hexdigest()[:24]
 
         with self._lock:
             try:
@@ -1489,11 +1576,15 @@ class PixelUploadQueue:
                     )
             record = {
                 "record_id": record_id,
-                "task_id": safe_task_id,
-                "batch_id": source_metadata.get("batch_id") or "",
+                "task_id": task_ids[0],
+                "task_ids": task_ids,
+                "source_count": len(result_files),
+                "batch_source": _clean(batch_source)[:40] or "run_batch",
+                "batch_id": _safe_identifier(batch_id, maximum=80) or source_metadata.get("batch_id") or "",
                 "batch_started_at": source_metadata.get("batch_started_at") or 0,
                 "source_email": source_metadata.get("source_email") or "",
-                "result_file": relative,
+                "result_file": result_files[0],
+                "result_files": result_files,
                 "upload_file_name": f"autophone-{record_id}.json",
                 "credential_fingerprint": fingerprint,
                 "status": "source_unavailable" if source_error else "queued",
@@ -1508,6 +1599,60 @@ class PixelUploadQueue:
         if not source_error:
             self._schedule(record_id)
         return public
+
+    def enqueue(self, task_id: Any, result_file: str | Path) -> dict[str, Any]:
+        return self._enqueue_sources(
+            [(task_id, result_file)],
+            batch_source="legacy_single",
+        )
+
+    def enqueue_batch(
+        self,
+        batch_id: Any,
+        sources: Iterable[Mapping[str, Any] | tuple[Any, str | Path]],
+    ) -> list[dict[str, Any]]:
+        """Group successful result files by email domain and queue 100 at a time."""
+        grouped: dict[str, list[tuple[str, str]]] = {}
+        rejected: list[tuple[str, str]] = []
+        for source in sources:
+            if isinstance(source, Mapping):
+                task_id = source.get("task_id")
+                result_file = source.get("result_file")
+            else:
+                try:
+                    task_id, result_file = source
+                except (TypeError, ValueError):
+                    raise PixelStateError("Pixel 批量来源参数无效", 400) from None
+            safe_task_id = _safe_identifier(task_id)
+            relative = self._relative_source(result_file)
+            try:
+                payload, _fingerprint, _secrets, _metadata = self._read_source(
+                    {"result_file": relative}
+                )
+            except PixelSourceError:
+                rejected.append((safe_task_id, relative))
+                continue
+            domain = _payload_email_domain(payload)
+            grouped.setdefault(domain, []).append((safe_task_id, relative))
+        records = [
+            self._enqueue_sources(
+                [source],
+                batch_id=batch_id,
+                batch_source="run_batch",
+            )
+            for source in rejected
+        ]
+        for domain in sorted(grouped):
+            rows = grouped[domain]
+            for offset in range(0, len(rows), 100):
+                records.append(
+                    self._enqueue_sources(
+                        rows[offset:offset + 100],
+                        batch_id=batch_id,
+                        batch_source="run_batch",
+                    )
+                )
+        return records
 
     def requeue(self, task_id: Any, result_file: str | Path) -> dict[str, Any]:
         """Explicitly enqueue all targets again for a selected successful result."""
@@ -1879,7 +2024,15 @@ class PixelUploadQueue:
         # The proxy returns import records newest first.
         return matches[0] if matches else None
 
-    def _apply_target_result(self, item: dict[str, Any], result: Mapping[str, Any], secrets: Iterable[Any] = ()) -> None:
+    def _apply_target_result(
+        self,
+        item: dict[str, Any],
+        result: Mapping[str, Any],
+        secrets: Iterable[Any] = (),
+        *,
+        expected_count: int = 1,
+    ) -> None:
+        expected_count = max(_safe_int(expected_count), 1)
         generated_names = [
             value
             for value in _result_generated_names(result)
@@ -1909,7 +2062,10 @@ class PixelUploadQueue:
         shared = max(_safe_int(result.get("shared")), 0)
         share_failed = max(_safe_int(result.get("shareFailed")), len(failed_share_ids))
         remote_status = _clean(result.get("status")).lower()
-        verified_concurrency = shared > 0 and len(concurrency_by_id) == shared
+        imported = created + updated
+        import_complete = imported == expected_count
+        share_complete = shared == expected_count
+        verified_concurrency = share_complete and len(concurrency_by_id) == expected_count
         if duplicate_import and not existing_account_ids:
             state = "needs_confirmation"
             stage = "verification"
@@ -1925,12 +2081,22 @@ class PixelUploadQueue:
         elif share_failed:
             state = "needs_confirmation"
             stage = "share"
-        elif remote_status == "success" and not failed and verified_concurrency:
+        elif (
+            remote_status == "success"
+            and not failed
+            and import_complete
+            and verified_concurrency
+        ):
             state = "success"
             stage = "verification"
         elif remote_status == "success" and not failed:
             state = "needs_confirmation"
-            stage = "verification"
+            if not import_complete:
+                stage = "import"
+            elif not share_complete:
+                stage = "share"
+            else:
+                stage = "verification"
         elif failed and not created and not updated:
             state = "import_failed"
             stage = "import"
@@ -1949,8 +2115,32 @@ class PixelUploadQueue:
             error = "远端账号已存在，但响应未返回账号 ID，无法安全映射；请在账号管理中人工确认"
         elif duplicate_import and existing_account_ids:
             error = "远端账号已存在，已定位现有账号，等待公开共享"
-        elif state == "needs_confirmation" and remote_status == "success" and not verified_concurrency:
-            error = "远端共享结果缺少已验证的 3-10 并发值"
+        elif failed_share_ids:
+            error = (
+                f"远端公开共享部分失败，期望 {expected_count} 个，"
+                f"已共享 {shared} 个，失败 {len(failed_share_ids)} 个"
+            )
+        elif share_failed:
+            error = (
+                f"远端公开共享结果不完整，期望 {expected_count} 个，"
+                f"已共享 {shared} 个"
+            )
+        elif state == "needs_confirmation" and remote_status == "success" and not failed:
+            if not import_complete:
+                error = (
+                    f"远端导入完成数量不匹配，期望 {expected_count} 个，"
+                    f"实际 {imported} 个"
+                )
+            elif not share_complete:
+                error = (
+                    f"远端公开共享数量不匹配，期望 {expected_count} 个，"
+                    f"实际 {shared} 个"
+                )
+            elif not verified_concurrency:
+                error = (
+                    f"远端共享验证数量不匹配，期望 {expected_count} 个，"
+                    f"实际 {len(concurrency_by_id)} 个；缺少已验证的 3-10 并发值"
+                )
         item.update(
             {
                 "state": state,
@@ -1991,15 +2181,17 @@ class PixelUploadQueue:
         }
         with self._lock:
             record = self._record_locked(record_id)
+            expected_name_count = max(_safe_int(record.get("source_count")), 1)
             generated_name_owners: dict[str, list[str]] = {}
             for target_id, target in record["targets"].items():
                 if target_id in selected_set or not isinstance(target, Mapping):
                     continue
                 names = target.get("generated_names") or []
-                if target.get("state") == "success" and len(names) == 1:
-                    name = _clean(names[0]).lower()
-                    if _valid_generated_name(name, expected_domain):
-                        generated_name_owners.setdefault(name, []).append(target_id)
+                if target.get("state") == "success" and len(names) == expected_name_count:
+                    for raw_name in names:
+                        name = _clean(raw_name).lower()
+                        if _valid_generated_name(name, expected_domain):
+                            generated_name_owners.setdefault(name, []).append(target_id)
             for target_id in selected_set:
                 target = record["targets"][target_id]
                 result = result_map.get(target_id)
@@ -2014,22 +2206,29 @@ class PixelUploadQueue:
                         }
                     )
                 else:
-                    self._apply_target_result(target, result, secrets)
+                    self._apply_target_result(
+                        target,
+                        result,
+                        secrets,
+                        expected_count=expected_name_count,
+                    )
                     if target.get("state") != "success":
                         continue
                     names = _result_generated_names(result)
-                    if len(names) != 1:
+                    if len(names) != expected_name_count:
                         target.update(
                             {
                                 "state": "needs_confirmation",
                                 "stage": "verification",
                                 "generated_names": [],
-                                "error": "远端导入结果缺少唯一的随机邮箱名",
+                                "error": (
+                                    f"远端导入结果随机邮箱名数量不匹配，"
+                                    f"期望 {expected_name_count} 个"
+                                ),
                             }
                         )
                         continue
-                    generated_name = names[0]
-                    if not _valid_generated_name(generated_name, expected_domain):
+                    if any(not _valid_generated_name(name, expected_domain) for name in names):
                         target.update(
                             {
                                 "state": "needs_confirmation",
@@ -2039,8 +2238,19 @@ class PixelUploadQueue:
                             }
                         )
                         continue
-                    target["generated_names"] = [generated_name]
-                    generated_name_owners.setdefault(generated_name, []).append(target_id)
+                    if len(set(names)) != len(names):
+                        target.update(
+                            {
+                                "state": "needs_confirmation",
+                                "stage": "verification",
+                                "generated_names": [],
+                                "error": "远端导入结果包含重复的随机邮箱名",
+                            }
+                        )
+                        continue
+                    target["generated_names"] = names
+                    for generated_name in names:
+                        generated_name_owners.setdefault(generated_name, []).append(target_id)
             for generated_name, owner_ids in generated_name_owners.items():
                 if len(owner_ids) < 2:
                     continue
@@ -2220,6 +2430,7 @@ class PixelUploadQueue:
             with self._lock:
                 record = self._record_locked(record_id)
                 item = record["targets"][target_id]
+                expected_count = max(_safe_int(record.get("source_count")), 1)
                 item["account_ids"] = list(dict.fromkeys([*(item.get("account_ids") or []), *success_ids, *failed_ids]))
                 item["failed_share_ids"] = failed_ids
                 item["concurrency_by_id"] = {
@@ -2229,10 +2440,27 @@ class PixelUploadQueue:
                 concurrency_values = set(item["concurrency_by_id"].values())
                 item["concurrency"] = next(iter(concurrency_values)) if len(concurrency_values) == 1 else None
                 item["shared"] = max(_safe_int(item.get("shared")), 0) + len(success_ids)
-                item["state"] = "success" if ok else "share_failed"
-                item["stage"] = stage
-                if ok:
+                verified_count = len(item["concurrency_by_id"])
+                mapped_count = len({_safe_int(value) for value in item["account_ids"] if _safe_int(value) > 0})
+                delivery_complete = (
+                    item["shared"] >= expected_count
+                    and verified_count >= expected_count
+                    and mapped_count >= expected_count
+                )
+                item["state"] = (
+                    "success"
+                    if ok and delivery_complete
+                    else "share_failed"
+                )
+                item["stage"] = stage if share_failed else "verification"
+                if ok and delivery_complete:
                     item["error"] = ""
+                elif ok:
+                    item["error"] = (
+                        f"远端公开共享验证数量不完整，期望 {expected_count} 个，"
+                        f"实际 {min(item['shared'], verified_count, mapped_count)} 个；"
+                        "缺少已验证的 3-10 并发值"
+                    )
                 elif stage == "verification":
                     item["error"] = "公开共享结果缺少已验证的 3-10 并发值"
                 else:
@@ -2259,7 +2487,9 @@ class PixelUploadQueue:
         if not callable(finder):
             return
         accounts = payload.get("accounts") if isinstance(payload, Mapping) else None
-        source_account = accounts[0] if isinstance(accounts, list) and accounts and isinstance(accounts[0], Mapping) else None
+        if not isinstance(accounts, list) or len(accounts) != 1:
+            return
+        source_account = accounts[0] if isinstance(accounts[0], Mapping) else None
         if source_account is None:
             return
         identity_values = _account_identity_values(source_account)

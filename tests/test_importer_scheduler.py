@@ -370,7 +370,10 @@ class ImporterSchedulerTests(unittest.TestCase):
 
         self.assertEqual(queued_before_stop, ["queued", "queued", "queued"])
         self.assertEqual(len(started), 1)
-        self.assertEqual(sorted(importer.pool.restored), [2, 3, 4])
+        self.assertEqual(
+            sorted(importer.pool.restored),
+            sorted(set(range(1, 5)).difference(importer.entry_numbers)),
+        )
         self.assertEqual(importer.cancelled_waiting, 3)
         self.assertEqual(admission.snapshot()["active"], 0)
 

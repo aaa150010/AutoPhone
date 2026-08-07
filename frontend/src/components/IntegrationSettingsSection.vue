@@ -62,17 +62,6 @@ function updateNested(group: string, key: string, value: any) {
 
     <el-row :gutter="10">
       <el-col :span="12">
-        <el-form-item label="注册成功后自动上传 Pixel">
-          <el-switch
-            :model-value="modelValue.pixel_upload_enabled !== false"
-            inline-prompt
-            active-text="开"
-            inactive-text="关"
-            @update:model-value="update('pixel_upload_enabled', $event)"
-          />
-        </el-form-item>
-      </el-col>
-      <el-col :span="12">
         <el-form-item label="Pixel 上传 worker 数">
           <el-input-number
             :model-value="Number(modelValue.pixel_upload_concurrency ?? 2)"
@@ -82,6 +71,25 @@ function updateNested(group: string, key: string, value: any) {
             @update:model-value="update('pixel_upload_concurrency', Number($event ?? 2))"
           />
         </el-form-item>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="10">
+      <el-col :span="12">
+        <el-form-item label="NV 导入地址">
+          <el-input
+            :model-value="modelValue.nv_import?.endpoint"
+            @update:model-value="updateNested('nv_import', 'endpoint', $event)"
+          />
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
+        <SecretInput
+          :model-value="modelValue.nv_import?.api_key || ''"
+          secret-id="nv_import_api_key"
+          label="NV API Key"
+          @update:model-value="updateNested('nv_import', 'api_key', $event)"
+        />
       </el-col>
     </el-row>
 

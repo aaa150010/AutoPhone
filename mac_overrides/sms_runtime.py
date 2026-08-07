@@ -379,7 +379,8 @@ def migrate_performance_config(value: Any) -> tuple[dict[str, Any], bool]:
             parsed = int(config.get(key) or PERFORMANCE_DEFAULTS[key])
         except (TypeError, ValueError):
             parsed = PERFORMANCE_DEFAULTS[key]
-        config[key] = max(1, min(3, parsed))
+        maximum = 5 if key == "phone_submission_concurrency" else 3
+        config[key] = max(1, min(maximum, parsed))
 
     pools = normalize_sms_provider_pools(
         config.get("sms_provider_pools"),
@@ -2614,10 +2615,15 @@ class PhoneSubmissionGate:
         concurrency: int = 2,
         interval_seconds: float = 0.75,
         *,
+        ceiling: int = 5,
+        restore_successes: int = 4,
         now_fn: Callable[[], float] = time.monotonic,
         sleep_fn: Callable[[float], None] = time.sleep,
     ) -> None:
-        self.limit = max(1, min(3, int(concurrency)))
+        self.base_limit = max(1, min(5, int(concurrency)))
+        self.ceiling = max(self.base_limit, min(5, int(ceiling)))
+        self.limit = self.base_limit
+        self.restore_successes = max(1, int(restore_successes))
         self.interval_seconds = max(0.0, float(interval_seconds))
         self.now_fn = now_fn
         self.sleep_fn = sleep_fn
@@ -2628,12 +2634,21 @@ class PhoneSubmissionGate:
         self.last_started_at = 0.0
         self.not_before = 0.0
         self.transient_streak = 0
+        self.success_streak = 0
+        self.restorations = 0
+        self.degradations = 0
 
     def begin_run(self) -> None:
         with self.spacing_lock:
             self.last_started_at = 0.0
             self.not_before = 0.0
             self.transient_streak = 0
+        with self.status_condition:
+            self.limit = self.base_limit
+            self.success_streak = 0
+            self.restorations = 0
+            self.degradations = 0
+            self.status_condition.notify_all()
 
     def configure(self, concurrency: Any) -> int:
         try:
@@ -2641,7 +2656,10 @@ class PhoneSubmissionGate:
         except (TypeError, ValueError):
             limit = 2
         with self.status_condition:
-            self.limit = max(1, min(3, limit))
+            self.base_limit = max(1, min(5, limit))
+            self.ceiling = max(self.base_limit, 5)
+            self.limit = self.base_limit
+            self.success_streak = 0
             self.status_condition.notify_all()
             return self.limit
 
@@ -2650,18 +2668,42 @@ class PhoneSubmissionGate:
             self.transient_streak += 1
             delay = min(8.0, 2.0 ** self.transient_streak)
             self.not_before = max(self.not_before, self.now_fn() + delay)
-            return delay
+        with self.status_condition:
+            self.success_streak = 0
+            if self.limit > self.base_limit:
+                self.limit -= 1
+                self.degradations += 1
+                self.status_condition.notify_all()
+        return delay
 
     def report_success(self) -> None:
         with self.spacing_lock:
             self.transient_streak = 0
+        with self.status_condition:
+            self.success_streak += 1
+            if self.success_streak >= self.restore_successes and self.limit < self.ceiling:
+                self.limit += 1
+                self.success_streak = 0
+                self.restorations += 1
+                self.status_condition.notify_all()
+
+    def report_business_failure(self) -> None:
+        with self.spacing_lock:
+            self.transient_streak = 0
+        with self.status_condition:
+            self.success_streak = 0
 
     def status(self) -> dict[str, int]:
         with self.status_condition:
             return {
                 "active": self.active,
+                "base": self.base_limit,
                 "limit": self.limit,
+                "ceiling": self.ceiling,
                 "waiting": self.waiting,
+                "success_streak": self.success_streak,
+                "restorations": self.restorations,
+                "degradations": self.degradations,
             }
 
     @staticmethod
@@ -2709,6 +2751,23 @@ class PhoneSubmissionGate:
         on_wait: Callable[[float], Any] | None = None,
         **kwargs: Any,
     ) -> Any:
+        return self._call_once(
+            function,
+            *args,
+            stop_event=stop_event,
+            on_wait=on_wait,
+            **kwargs,
+        )
+
+    def _call_once(
+        self,
+        function: Callable[..., Any],
+        *args: Any,
+        stop_event: Any = None,
+        on_wait: Callable[[float], Any] | None = None,
+        before_release: Callable[[Any, Exception | None], Any] | None = None,
+        **kwargs: Any,
+    ) -> Any:
         wait_started = float(self.now_fn())
         acquired = False
         wait_reported = False
@@ -2732,7 +2791,15 @@ class PhoneSubmissionGate:
                 max(0.0, float(self.now_fn()) - wait_started),
             )
             wait_reported = True
-            return function(*args, **kwargs)
+            try:
+                result = function(*args, **kwargs)
+            except Exception as exc:
+                if callable(before_release):
+                    before_release(None, exc)
+                raise
+            if callable(before_release):
+                before_release(result, None)
+            return result
         finally:
             if not wait_reported:
                 _notify_observer(
@@ -2756,26 +2823,46 @@ class PhoneSubmissionGate:
         attempts = max(1, int(max_attempts))
         last_error: Any = None
         for attempt in range(1, attempts + 1):
+            outcome = {"transient": False, "delay": 0.0}
+
+            def classify_before_release(result: Any, error: Exception | None) -> None:
+                value = error if error is not None else result
+                if is_transient(value):
+                    outcome["transient"] = True
+                    outcome["delay"] = self.report_transient()
+                    return
+                if error is not None:
+                    self.report_business_failure()
+                    return
+                status = (
+                    int(_as_float(result.get("_status") or result.get("status"), 0))
+                    if isinstance(result, Mapping)
+                    else 200
+                )
+                if not isinstance(result, Mapping) or 200 <= status < 300:
+                    self.report_success()
+                else:
+                    self.report_business_failure()
+
             try:
-                result = self.call(
+                result = self._call_once(
                     function,
                     *args,
                     stop_event=stop_event,
                     on_wait=on_wait,
+                    before_release=classify_before_release,
                     **kwargs,
                 )
             except Exception as exc:
-                if not is_transient(exc):
-                    self.report_success()
+                if not outcome["transient"]:
                     raise
                 last_error = exc
             else:
-                if not is_transient(result):
-                    self.report_success()
+                if not outcome["transient"]:
                     return result
                 last_error = result
 
-            delay = self.report_transient()
+            delay = float(outcome["delay"])
             if attempt < attempts and callable(on_retry):
                 try:
                     on_retry(delay, attempt)
@@ -2788,16 +2875,28 @@ class PhoneSubmissionGate:
 
 
 def is_transient_openai_error(value: Any) -> bool:
-    if isinstance(value, dict):
+    status = None
+    if isinstance(value, Mapping):
         error = value.get("error") or value.get("message") or ""
-        if isinstance(error, dict):
+        if isinstance(error, Mapping):
             error = f"{error.get('code') or ''} {error.get('message') or ''}"
-        status = int(_as_float(value.get("_status") or value.get("status"), 0))
+        for key in ("_status", "status", "status_code", "http_status"):
+            if key not in value:
+                continue
+            try:
+                status = int(float(value.get(key)))
+            except (TypeError, ValueError):
+                status = None
+            break
         text = str(error).lower()
-        if status in {500, 502, 503, 504}:
+        if status == 0 or status == 429 or (status is not None and 500 <= status < 600):
             return True
+        if status is not None and 400 <= status < 500:
+            return False
     else:
         text = str(value or "").lower()
+    if "sms_timeout" in text:
+        return False
     return any(
         marker in text
         for marker in (
@@ -2806,6 +2905,21 @@ def is_transient_openai_error(value: Any) -> bool:
             "temporarily unavailable",
             "service unavailable",
             "upstream connect error",
+            "readtimeout",
+            "connecttimeout",
+            "timed out",
+            "timeout",
+            "connection reset",
+            "connection aborted",
+            "connection refused",
+            "remote disconnected",
+            "remote end closed connection",
+            "server disconnected",
+            "proxyerror",
+            "proxy error",
+            "network is unreachable",
+            "temporary failure in name resolution",
+            "name resolution",
         )
     )
 

@@ -28,6 +28,7 @@ import {
   retryMailboxPixel,
 } from '../api/client'
 import DashboardMetricCard from '../components/DashboardMetricCard.vue'
+import MailboxImportDialog from '../components/MailboxImportDialog.vue'
 import MailboxTable from '../components/MailboxTable.vue'
 import PageToolbar from '../components/PageToolbar.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
@@ -36,8 +37,7 @@ import type { MailboxPayload, MailboxRow } from '../types/api'
 
 const controller = useAppController()
 const data = ref<MailboxPayload>({ counts: {}, rows: [] })
-const importContent = ref('')
-const importVisible = ref(false)
+const mailboxImportDialog = ref<InstanceType<typeof MailboxImportDialog>>()
 const filter = ref('all')
 const sub2Filter = ref('all')
 const quotaFilter = ref('all')
@@ -251,26 +251,17 @@ async function refresh() {
   }
 }
 
-async function append() {
-  if (!importContent.value.trim()) {
-    ElMessage.warning('请先粘贴要导入的邮箱')
-    return
+function setImportBusy(value: boolean) {
+  if (value) {
+    dataVersion += 1
+    latestRefresh += 1
   }
-  mutating.value = true
-  dataVersion += 1
-  latestRefresh += 1
-  try {
-    const result: any = await api('/api/mailboxes/import', { pool_content: importContent.value })
-    applyMailboxPayload(result)
-    currentPage.value = 1
-    importContent.value = ''
-    importVisible.value = false
-    ElMessage.success(`已追加 ${result.imported || 0} 条，跳过 ${result.skipped || 0} 条`)
-  } catch (error: any) {
-    ElMessage.error(error?.message || '导入失败')
-  } finally {
-    mutating.value = false
-  }
+  mutating.value = value
+}
+
+function applyImportedMailboxes(result: any) {
+  applyMailboxPayload(result)
+  currentPage.value = 1
 }
 
 async function mutate(path: string, message: string) {
@@ -631,7 +622,7 @@ onUnmounted(() => {
 <template>
   <div class="mailbox-page">
     <PageToolbar title="邮箱管理" status="邮箱池" tone="info">
-      <el-button type="primary" :disabled="mutating" @click="importVisible = true"><el-icon><Upload /></el-icon>导入邮箱</el-button>
+      <el-button type="primary" :disabled="mutating" @click="mailboxImportDialog?.open()"><el-icon><Upload /></el-icon>导入邮箱</el-button>
     </PageToolbar>
 
     <div class="metric-grid">
@@ -727,19 +718,11 @@ onUnmounted(() => {
       </div>
     </WorkspacePanel>
 
-    <el-dialog v-model="importVisible" title="批量追加邮箱" width="720px" destroy-on-close>
-      <el-input
-        v-model="importContent"
-        type="textarea"
-        :rows="12"
-        resize="none"
-        placeholder="URL 邮箱：邮箱---https://接码地址&#10;URL 邮箱：邮箱|https://接码地址&#10;TOTP：GPT账号---登录密码---Base32 2FA密钥&#10;TOTP：GPT账号|登录密码|Base32 2FA密钥&#10;OAuth：邮箱----密码----client_id----refresh_token&#10;&#10;URL 邮箱支持 --- / ---- / | / ｜"
-      />
-      <template #footer>
-        <el-button @click="importVisible = false">取消</el-button>
-        <el-button type="primary" :loading="mutating" @click="append"><el-icon><Upload /></el-icon>追加导入</el-button>
-      </template>
-    </el-dialog>
+    <MailboxImportDialog
+      ref="mailboxImportDialog"
+      @busy-change="setImportBusy"
+      @imported="applyImportedMailboxes"
+    />
   </div>
 </template>
 

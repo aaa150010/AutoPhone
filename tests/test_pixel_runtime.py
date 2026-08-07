@@ -400,6 +400,145 @@ class PixelUploadQueueTests(unittest.TestCase):
         self.assertEqual(retained["batch_started_at"], 1_786_000_000)
         self.assertEqual(retained["source_email"], SOURCE_EMAIL)
 
+    def test_batch_enqueue_groups_domains_and_chunks_at_one_hundred(self):
+        service = PixelUploadQueue(self.root, client=FakePixelClient(), auto_start=False)
+        sources = []
+        for index in range(101):
+            document = success_document(task_id=f"T{index:03d}")
+            document["email"] = f"account-{index}@example.test"
+            document["result"]["email"] = document["email"]
+            document["result"]["access_token"] = f"{ACCESS_TOKEN}-{index}"
+            document["result"]["refresh_token"] = f"{REFRESH_TOKEN}-{index}"
+            document["result"]["id_token"] = f"{ID_TOKEN}-{index}"
+            path = self.results / f"example-{index}.json"
+            path.write_text(json.dumps(document), encoding="utf-8")
+            sources.append({"task_id": document["task_id"], "result_file": path})
+        other = success_document(task_id="TOTHER")
+        other["email"] = "other@second.test"
+        other["result"]["email"] = other["email"]
+        other_path = self.results / "other.json"
+        other_path.write_text(json.dumps(other), encoding="utf-8")
+        sources.append({"task_id": "TOTHER", "result_file": other_path})
+
+        records = service.enqueue_batch("batch-pixel", sources)
+
+        self.assertEqual(sorted(item["source_count"] for item in records), [1, 1, 100])
+        self.assertTrue(all(item["batch_id"] == "batch-pixel" for item in records))
+        self.assertTrue(all(item["batch_source"] == "run_batch" for item in records))
+        self.assertEqual(service.overview()["current_batch"]["source"]["total"], 102)
+        persisted = service.outbox_path.read_text(encoding="utf-8")
+        self.assertNotIn(ACCESS_TOKEN, persisted)
+        self.assertNotIn(REFRESH_TOKEN, persisted)
+        self.assertNotIn(ID_TOKEN, persisted)
+
+    def test_batch_enqueue_isolates_invalid_source_and_processes_valid_account(self):
+        client = FakePixelClient()
+        service = PixelUploadQueue(self.root, client=client, auto_start=False)
+        valid_path = self.write_result("batch-valid.json", task_id="TVALID")
+        invalid = success_document(task_id="TBAD")
+        invalid["email"] = "bad@example.test"
+        invalid["result"]["email"] = invalid["email"]
+        invalid["result"].pop("id_token")
+        invalid_path = self.results / "batch-invalid.json"
+        invalid_path.write_text(json.dumps(invalid), encoding="utf-8")
+
+        records = service.enqueue_batch(
+            "batch-source-isolation",
+            [
+                {"task_id": "TVALID", "result_file": valid_path},
+                {"task_id": "TBAD", "result_file": invalid_path},
+            ],
+        )
+
+        self.assertEqual(sorted(item["status"] for item in records), ["queued", "source_unavailable"])
+        self.assertTrue(service.process_next())
+        final = {item["task_id"]: item for item in service.records()}
+        self.assertEqual(final["TVALID"]["status"], "success")
+        self.assertEqual(final["TBAD"]["status"], "source_unavailable")
+        self.assertIn("OAuth", final["TBAD"]["error"])
+        self.assertEqual(json.loads(valid_path.read_text(encoding="utf-8"))["status"], "success")
+        self.assertEqual(json.loads(invalid_path.read_text(encoding="utf-8"))["status"], "success")
+
+    def test_batch_partial_share_never_reports_success(self):
+        client = FakePixelClient()
+        results = []
+        for target_id in PIXEL_AUTO_TARGET_IDS:
+            suffix = int(target_id.rsplit("-", 1)[-1])
+            item = target_result(
+                target_id,
+                created=2,
+                shared=1,
+                concurrency_by_id={str(suffix * 1000 + 1): 5},
+            )
+            item["sourceCount"] = 2
+            item["generatedNames"] = [
+                f"acct-{suffix * 100 + index:012x}@example.test"
+                for index in range(2)
+            ]
+            results.append(item)
+        client.jobs.append({"jobId": "job-1", "status": "completed", "results": results})
+        service = PixelUploadQueue(self.root, client=client, auto_start=False)
+        sources = []
+        for index in range(2):
+            document = success_document(task_id=f"TBATCH{index}")
+            document["email"] = f"batch-{index}@example.test"
+            document["result"]["email"] = document["email"]
+            document["result"]["access_token"] = f"{ACCESS_TOKEN}-{index}"
+            document["result"]["refresh_token"] = f"{REFRESH_TOKEN}-{index}"
+            document["result"]["id_token"] = f"{ID_TOKEN}-{index}"
+            path = self.results / f"batch-partial-{index}.json"
+            path.write_text(json.dumps(document), encoding="utf-8")
+            sources.append({"task_id": document["task_id"], "result_file": path})
+
+        queued = service.enqueue_batch("batch-partial-share", sources)[0]
+        self.assertTrue(service.process_next())
+        completed = service.get(queued["record_id"])
+
+        self.assertEqual(completed["status"], "failed")
+        self.assertEqual(set(self.states(completed).values()), {"needs_confirmation"})
+        self.assertEqual(set(self.stages(completed).values()), {"share"})
+        self.assertTrue(all("期望 2 个，实际 1 个" in item["error"] for item in completed["targets"]))
+        self.assertTrue(all(item["failure"]["node_code"] == "pixel_share" for item in completed["targets"]))
+
+    def test_batch_full_import_share_and_verification_reports_success(self):
+        client = FakePixelClient()
+        results = []
+        for target_id in PIXEL_AUTO_TARGET_IDS:
+            suffix = int(target_id.rsplit("-", 1)[-1])
+            item = target_result(
+                target_id,
+                created=2,
+                shared=2,
+                concurrency_by_id={
+                    str(suffix * 1000 + 1): 5,
+                    str(suffix * 1000 + 2): 6,
+                },
+            )
+            item["sourceCount"] = 2
+            item["generatedNames"] = [
+                f"acct-{suffix * 100 + index:012x}@example.test"
+                for index in range(2)
+            ]
+            results.append(item)
+        client.jobs.append({"jobId": "job-1", "status": "completed", "results": results})
+        service = PixelUploadQueue(self.root, client=client, auto_start=False)
+        sources = []
+        for index in range(2):
+            document = success_document(task_id=f"TFULL{index}")
+            document["email"] = f"full-{index}@example.test"
+            document["result"]["email"] = document["email"]
+            document["result"]["access_token"] = f"{ACCESS_TOKEN}-full-{index}"
+            document["result"]["refresh_token"] = f"{REFRESH_TOKEN}-full-{index}"
+            document["result"]["id_token"] = f"{ID_TOKEN}-full-{index}"
+            path = self.results / f"batch-full-{index}.json"
+            path.write_text(json.dumps(document), encoding="utf-8")
+            sources.append({"task_id": document["task_id"], "result_file": path})
+
+        queued = service.enqueue_batch("batch-full-share", sources)[0]
+        self.assertTrue(service.process_next())
+
+        self.assertEqual(service.get(queued["record_id"])["status"], "success")
+
     def test_manual_requeue_resets_all_targets_without_persisting_credentials(self):
         client = FakePixelClient()
         service = PixelUploadQueue(self.root, client=client, auto_start=False)

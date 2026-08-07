@@ -5,10 +5,12 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import ipaddress
 from pathlib import Path
 import threading
 import time
 from typing import Any, Callable
+import urllib.parse
 import uuid
 
 _PIXEL_AUTO_TARGET_IDS = tuple(f"pixel-{index}" for index in range(2, 8))
@@ -60,6 +62,41 @@ def _normalize_run_mailbox_rows(value: Any) -> list[dict[str, Any]] | None:
     return normalized
 
 
+def _normalize_upload_targets(value: Any) -> dict[str, bool] | None:
+    if value is None:
+        return {"pixel": False, "nv": False}
+    if not isinstance(value, Mapping):
+        return None
+    return {
+        "pixel": value.get("pixel") is True,
+        "nv": value.get("nv") is True,
+    }
+
+
+def _is_secure_nv_url(value: Any) -> bool:
+    try:
+        parsed = urllib.parse.urlsplit(str(value or "").strip())
+        hostname = parsed.hostname
+        parsed.port
+    except ValueError:
+        return False
+    if (
+        parsed.scheme.lower() not in {"http", "https"}
+        or not hostname
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        return False
+    normalized_host = hostname.lower().rstrip(".")
+    is_loopback = normalized_host == "localhost"
+    if not is_loopback:
+        try:
+            is_loopback = ipaddress.ip_address(normalized_host).is_loopback
+        except ValueError:
+            is_loopback = False
+    return parsed.scheme.lower() == "https" or is_loopback
+
+
 @dataclass(frozen=True)
 class WebRouteContext:
     module: Any
@@ -87,6 +124,8 @@ class WebRouteContext:
     mailbox_manager_html: str
     pixel_client: Any | None = None
     pixel_upload_queue: Any | None = None
+    nv_upload_queue: Any | None = None
+    batch_upload_coordinator: Any | None = None
     pixel_payload_builder: Callable[[Mapping[str, Any]], dict[str, Any]] | None = None
     mailbox_url_test_factory: Callable[[], Any] | None = None
     query_sms_balances: Callable[[dict[str, Any]], list[dict[str, Any]]] | None = None
@@ -111,6 +150,10 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     mailbox_admin = context.mailbox_admin_factory(store, importer, logs)
     if context.pixel_upload_queue is not None:
         context.pixel_upload_queue.log_fn = logs.add
+    if context.nv_upload_queue is not None:
+        context.nv_upload_queue.log_fn = logs.add
+    if context.batch_upload_coordinator is not None:
+        context.batch_upload_coordinator.log_fn = logs.add
     pixel_target_cache: dict[str, Any] = {
         "expires_at": 0.0,
         "targets": [],
@@ -291,6 +334,50 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             if not isinstance(data, dict):
                 return module.jsonify(ok=False, error="配置必须是 JSON 对象"), 400
 
+            upload_targets = _normalize_upload_targets(data.pop("upload_targets", None))
+            if upload_targets is None:
+                return module.jsonify(ok=False, error="上传目标参数必须是 JSON 对象"), 400
+            if upload_targets["pixel"] and context.pixel_upload_queue is None:
+                return module.jsonify(ok=False, error="Pixel 上传服务尚未启用"), 503
+            if upload_targets["nv"]:
+                request_nv_import = data.get("nv_import")
+                request_has_nv_config = isinstance(request_nv_import, Mapping) and any(
+                    key in request_nv_import for key in ("endpoint", "schema_url", "api_key")
+                )
+                prospective = context.local_config_from_runtime(
+                    data,
+                    context.read_local_config(),
+                )
+                nv_import = prospective.get("nv_import") if isinstance(prospective, Mapping) else None
+                nv_import = nv_import if isinstance(nv_import, Mapping) else {}
+                endpoint = str(nv_import.get("endpoint") or "").strip()
+                schema_url = str(nv_import.get("schema_url") or "").strip()
+                api_key = str(nv_import.get("api_key") or "").strip()
+                configured_from_request = bool(
+                    context.nv_upload_queue is not None
+                    and _is_secure_nv_url(endpoint)
+                    and (not schema_url or _is_secure_nv_url(schema_url))
+                    and api_key
+                    and api_key != "********"
+                )
+                nv_client = getattr(context.nv_upload_queue, "client", None)
+                configured = configured_from_request if request_has_nv_config else bool(
+                    context.nv_upload_queue is not None
+                    and callable(getattr(nv_client, "configured", None))
+                    and nv_client.configured()
+                )
+                if not configured:
+                    return module.jsonify(
+                        ok=False,
+                        code="nv_configuration_invalid",
+                        node_code="nv_import",
+                        node_label="NV 账号导入",
+                        error=(
+                            "NV 账号导入 [NV 账号导入/nv_import]：地址必须使用 HTTPS"
+                            "（仅本机回环地址可使用 HTTP），且 API Key 必须已配置"
+                        ),
+                    ), 400
+
             run_mailbox_rows = _normalize_run_mailbox_rows(data.pop("run_mailbox_rows", None))
             if run_mailbox_rows is None:
                 return module.jsonify(
@@ -357,11 +444,21 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 f"{time.strftime('%Y%m%d-%H%M%S', time.localtime(batch_started_at))}-"
                 f"{uuid.uuid4().hex[:6]}"
             )
+            run_config["_gptphone_upload_targets"] = upload_targets
             if run_mailbox_rows:
                 run_config["target_count"] = len(run_mailbox_rows)
                 run_config["_gptphone_run_mailbox_rows"] = run_mailbox_rows
             importer.start(run_config)
-            return module.jsonify(ok=True, state=public_state())
+            if context.batch_upload_coordinator is not None and any(upload_targets.values()):
+                try:
+                    context.batch_upload_coordinator.begin(importer, run_config)
+                except Exception as exc:
+                    logs.add(
+                        "批次上传清单创建失败 [批次上传协调/batch_upload_manifest]："
+                        f"{context.safe_runtime_error(exc)}；注册任务继续运行",
+                        "error",
+                    )
+            return module.jsonify(ok=True, upload_targets=upload_targets, state=public_state())
         except ValueError as exc:
             safe = context.safe_runtime_error(exc)
             return module.jsonify(ok=False, error=safe, state=public_state()), 400
@@ -629,7 +726,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                     f"relogin-{time.strftime('%Y%m%d-%H%M%S', time.localtime(batch_started_at))}-"
                     f"{uuid.uuid4().hex[:6]}"
                 ),
-                pixel_upload_enabled=False,
+                _gptphone_upload_targets={"pixel": False, "nv": False},
                 _gptphone_relogin_rows=rows,
                 _gptphone_run_mailbox_rows=[
                     {"row_id": row["row_id"], "line_no": row["line_no"]}
@@ -833,6 +930,36 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     def pixel_unavailable(*, queue: bool = False):
         name = "Pixel 上传队列" if queue else "Pixel 管理服务"
         return module.jsonify(ok=False, error=f"{name}尚未配置"), 503
+
+    def nv_error_response(exc: Exception):
+        public_message = str(getattr(exc, "public_message", "") or "")
+        failure_builder = getattr(exc, "failure", None)
+        failure = failure_builder() if callable(failure_builder) else None
+        try:
+            status = int(getattr(exc, "status_code", 500) or 500)
+        except (TypeError, ValueError):
+            status = 500
+        if not 400 <= status <= 599:
+            status = 500
+        if public_message:
+            payload = {
+                "ok": False,
+                "node_code": "nv_import",
+                "node_label": "NV 账号导入",
+                "error": public_message,
+            }
+            if isinstance(failure, Mapping):
+                payload["failure"] = dict(failure)
+                payload["code"] = str(failure.get("error_code") or "nv_import_failed")
+            return module.jsonify(payload), status
+        logs.add("NV 上传记录操作失败 [NV 账号导入/nv_import]：未返回可用诊断", "error")
+        return module.jsonify(
+            ok=False,
+            code="nv_import_failed",
+            node_code="nv_import",
+            node_label="NV 账号导入",
+            error="NV 账号导入失败：未返回可用诊断",
+        ), 500
 
     def pixel_json_result(value: Any, **extra: Any):
         payload = dict(value) if isinstance(value, Mapping) else {}
@@ -1113,6 +1240,128 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         except Exception as exc:
             return pixel_error_response(exc)
 
+    def api_nv_overview():
+        if context.nv_upload_queue is None:
+            return module.jsonify(ok=False, error="NV 上传队列尚未配置"), 503
+        try:
+            return module.jsonify(ok=True, **context.nv_upload_queue.overview())
+        except Exception as exc:
+            return nv_error_response(exc)
+
+    def api_nv_upload_records():
+        if context.nv_upload_queue is None:
+            return module.jsonify(ok=False, error="NV 上传队列尚未配置"), 503
+        try:
+            records = context.nv_upload_queue.records()
+            page = max(1, _safe_int(module.request.args.get("page"), 1))
+            page_size = min(max(1, _safe_int(module.request.args.get("page_size"), 50)), 100)
+            total = len(records)
+            pages = max(1, (total + page_size - 1) // page_size)
+            page = min(page, pages)
+            start = (page - 1) * page_size
+            return module.jsonify(
+                ok=True,
+                records=records[start:start + page_size],
+                total=total,
+                page=page,
+                page_size=page_size,
+                pages=pages,
+                revision=_safe_int(context.nv_upload_queue.overview().get("revision"), 0),
+            )
+        except Exception as exc:
+            return nv_error_response(exc)
+
+    def api_nv_upload_batches():
+        if context.nv_upload_queue is None:
+            return module.jsonify(ok=False, error="NV 上传队列尚未配置"), 503
+        try:
+            items = context.nv_upload_queue.batches()
+            page = max(1, _safe_int(module.request.args.get("page"), 1))
+            page_size = min(max(1, _safe_int(module.request.args.get("page_size"), 20)), 100)
+            total = len(items)
+            pages = max(1, (total + page_size - 1) // page_size)
+            page = min(page, pages)
+            start = (page - 1) * page_size
+            return module.jsonify(
+                ok=True,
+                items=items[start:start + page_size],
+                total=total,
+                page=page,
+                page_size=page_size,
+                pages=pages,
+                revision=_safe_int(context.nv_upload_queue.overview().get("revision"), 0),
+            )
+        except Exception as exc:
+            return nv_error_response(exc)
+
+    def api_nv_upload_retry(record_id: str):
+        if context.nv_upload_queue is None:
+            return module.jsonify(ok=False, error="NV 上传队列尚未配置"), 503
+        try:
+            return module.jsonify(ok=True, record=context.nv_upload_queue.retry(record_id))
+        except Exception as exc:
+            return nv_error_response(exc)
+
+    def api_batch_upload_manifests():
+        if context.batch_upload_coordinator is None:
+            return module.jsonify(ok=True, records=[])
+        try:
+            limit = min(max(1, _safe_int(module.request.args.get("limit"), 100)), 500)
+            records = context.batch_upload_coordinator.records()
+            return module.jsonify(ok=True, records=records[:limit], total=len(records))
+        except Exception as exc:
+            logs.add("批次上传清单查询失败 [批次上传协调/batch_upload_manifest]", "error")
+            return module.jsonify(ok=False, error=context.safe_runtime_error(exc)), 500
+
+    def api_batch_upload_manifest_retry(batch_id: str):
+        if context.batch_upload_coordinator is None:
+            return module.jsonify(
+                ok=False,
+                node_code="batch_upload_manifest",
+                node_label="批次上传协调",
+                error_code="batch_upload_coordinator_unavailable",
+                error="批次上传协调 [批次上传协调/batch_upload_manifest]：服务尚未启用",
+            ), 503
+        data = module.request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            return module.jsonify(ok=False, error="批次上传重试参数必须是 JSON 对象"), 400
+        if set(data) != {"platform"}:
+            return module.jsonify(ok=False, error="批次上传重试只接受 platform 参数"), 400
+        platform = data.get("platform")
+        if platform not in {"pixel", "nv"}:
+            return module.jsonify(ok=False, error="批次上传重试平台必须是 pixel 或 nv"), 400
+        try:
+            manifest = context.batch_upload_coordinator.retry(batch_id, platform)
+            return module.jsonify(ok=True, manifest=manifest)
+        except KeyError:
+            return module.jsonify(
+                ok=False,
+                node_code="batch_upload_manifest",
+                node_label="批次上传协调",
+                error_code="batch_upload_manifest_not_found",
+                error="批次上传协调 [批次上传协调/batch_upload_manifest]：批次不存在",
+            ), 404
+        except ValueError as exc:
+            return module.jsonify(
+                ok=False,
+                node_code="batch_upload_manifest",
+                node_label="批次上传协调",
+                error_code="batch_upload_retry_unavailable",
+                error=(
+                    "批次上传协调 [批次上传协调/batch_upload_manifest]："
+                    f"{context.safe_runtime_error(exc)}"
+                ),
+            ), 409
+        except Exception:
+            logs.add("批次上传重试失败 [批次上传协调/batch_upload_manifest]", "error")
+            return module.jsonify(
+                ok=False,
+                node_code="batch_upload_manifest",
+                node_label="批次上传协调",
+                error_code="batch_upload_retry_failed",
+                error="批次上传协调 [批次上传协调/batch_upload_manifest]：未返回可用诊断",
+            ), 500
+
     def api_local_config():
         return module.jsonify(
             ok=True,
@@ -1173,6 +1422,11 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             data = module.request.get_json(silent=True) or {}
             download = bool(data.pop("download", False)) if isinstance(data, dict) else False
             config = context.local_config_from_runtime(data, context.read_local_config())
+            config = dict(config)
+            if isinstance(config.get("nv_import"), Mapping):
+                nv_import = dict(config["nv_import"])
+                nv_import.pop("api_key", None)
+                config["nv_import"] = nv_import
             return module.jsonify(
                 ok=True,
                 config=config if download else context.masked_local_config(config),
@@ -1294,6 +1548,22 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             "/api/pixel/upload-records/<record_id>/retry",
             "api_pixel_upload_retry",
             api_pixel_upload_retry,
+            ["POST"],
+        ),
+        ("/api/nv/overview", "api_nv_overview", api_nv_overview, ["GET"]),
+        ("/api/nv/upload-batches", "api_nv_upload_batches", api_nv_upload_batches, ["GET"]),
+        ("/api/nv/upload-records", "api_nv_upload_records", api_nv_upload_records, ["GET"]),
+        (
+            "/api/nv/upload-records/<record_id>/retry",
+            "api_nv_upload_retry",
+            api_nv_upload_retry,
+            ["POST"],
+        ),
+        ("/api/upload-manifests", "api_batch_upload_manifests", api_batch_upload_manifests, ["GET"]),
+        (
+            "/api/upload-manifests/<batch_id>/retry",
+            "api_batch_upload_manifest_retry",
+            api_batch_upload_manifest_retry,
             ["POST"],
         ),
         ("/api/local-config", "api_local_config", api_local_config, ["GET"]),

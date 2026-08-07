@@ -46,7 +46,7 @@ class ErrorObservabilityTests(unittest.TestCase):
             ("password_verify_failed: incorrect password", "email_password"),
             ("email_otp_send_failed: HTTP 429", "email_code_waiting"),
             ("email_otp_timeout", "email_code_waiting"),
-            ("email_otp_failed: invalid authorization step", "email_code_verifying"),
+            ("email_otp_failed: invalid authorization step", "mfa_otp_verifying"),
             ("getNumber failed: no_numbers", "phone_acquiring"),
             ("phone_send_rejected: unsupported_country_region_territory", "phone_submitting"),
             ("sms_timeout while wait_code", "sms_waiting"),
@@ -65,6 +65,11 @@ class ErrorObservabilityTests(unittest.TestCase):
         send_failure = classify_failure(error="email_otp_send_failed: HTTP 429")
         self.assertEqual(send_failure["error_code"], "email_otp_send_failed")
         self.assertIn("发送接口失败", send_failure["public_message"])
+
+        expired = classify_failure(error="mfa_otp_failed: Invalid authorization step.")
+        self.assertEqual(expired["node_code"], "mfa_otp_verifying")
+        self.assertEqual(expired["error_code"], "mfa_authorization_step_expired")
+        self.assertIn("重新建立 OAuth 会话", expired["public_message"])
 
     def test_last_success_event_points_at_the_operation_that_can_fail_next(self):
         after_chat_requirements = classify_failure(
@@ -369,7 +374,7 @@ class ErrorObservabilityTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(failure["node_code"], "email_code_verifying")
+        self.assertEqual(failure["node_code"], "mfa_otp_verifying")
         self.assertEqual(failure["error_code"], "node_sentinel_timeout")
         self.assertIn("Node/Sentinel 请求超时", failure["public_message"])
         self.assertNotIn("初始化 Node/Sentinel失败", failure["public_message"])

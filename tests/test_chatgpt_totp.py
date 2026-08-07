@@ -9,6 +9,8 @@ from mac_overrides.chatgpt_totp import (
     build_chatgpt_totp_patches,
     masked_chatgpt_totp_row,
     parse_chatgpt_totp_row,
+    pending_transport_totp_payload,
+    refresh_transport_totp_payload,
     totp_code,
 )
 from mac_overrides.mailbox_admin import parse_oauth_mailbox_row
@@ -299,6 +301,92 @@ class ChatGptTotpTests(unittest.TestCase):
         self.assertIsNone(provider.acquire_login_slot())
         self.assertEqual(len(provider.wait_code("totp@example.com")), 6)
         self.assertEqual(gate.calls, 0)
+
+    def test_task_reset_prevents_next_account_from_inheriting_totp_flow(self):
+        ordinary_provider = object()
+        patches = build_chatgpt_totp_patches(
+            runtime_module=SimpleNamespace(),
+            codex_oauth_chain=SimpleNamespace(),
+            original_entries_unlocked=lambda _pool: ([], []),
+            original_outlook_otp_provider=lambda *args, **kwargs: ordinary_provider,
+            original_account_label=lambda entry: entry.email,
+            original_verify_password=lambda *args: {},
+            original_send_mfa_otp=lambda *args: {},
+            original_verify_mfa_otp=lambda *args: {},
+            parse_oauth_mailbox_row=parse_oauth_mailbox_row,
+        )
+        patches.outlook_otp_provider(
+            SimpleNamespace(
+                source_row="totp@example.com|password|JBSWY3DPEHPK3PXP",
+                oauth_client_id="chatgpt_totp",
+                oauth_refresh_token="JBSWY3DPEHPK3PXP",
+            ),
+            {},
+            None,
+        )
+
+        patches.reset_task_state()
+        self.assertIs(
+            patches.outlook_otp_provider(
+                SimpleNamespace(
+                    source_row="ordinary@example.com|password",
+                    oauth_client_id="",
+                    oauth_refresh_token="",
+                ),
+                {},
+                None,
+            ),
+            ordinary_provider,
+        )
+        transport = SimpleNamespace()
+        patches.verify_password(transport, "password")
+
+        self.assertFalse(transport._gptphone_totp_flow)
+        self.assertFalse(hasattr(transport, "_gptphone_totp_secret"))
+
+    def test_pending_totp_is_refreshed_after_slow_header_preparation(self):
+        payload = {"code": "stale"}
+        transport = SimpleNamespace(
+            _gptphone_totp_payload=payload,
+            _gptphone_totp_secret="JBSWY3DPEHPK3PXP",
+        )
+        now_values = iter((59.0, 60.05))
+        sleeps = []
+
+        refreshed = refresh_transport_totp_payload(
+            transport,
+            "mfa_otp_verify",
+            now_fn=lambda: next(now_values),
+            sleep_fn=sleeps.append,
+        )
+
+        self.assertTrue(refreshed)
+        self.assertAlmostEqual(sleeps[0], 1.05, places=2)
+        self.assertEqual(payload["code"], totp_code("JBSWY3DPEHPK3PXP", now=60.05))
+
+    def test_pending_totp_context_restores_transport_state_after_failure(self):
+        original_payload = {"code": "original"}
+        transport = SimpleNamespace(
+            _gptphone_totp_payload=original_payload,
+            _gptphone_totp_secret="ORIGINAL",
+        )
+        payload = {"code": "stale"}
+
+        with self.assertRaisesRegex(RuntimeError, "request failed"):
+            with pending_transport_totp_payload(
+                transport,
+                payload,
+                "JBSWY3DPEHPK3PXP",
+            ):
+                self.assertIs(transport._gptphone_totp_payload, payload)
+                self.assertEqual(
+                    transport._gptphone_totp_secret,
+                    "JBSWY3DPEHPK3PXP",
+                )
+                raise RuntimeError("request failed")
+
+        self.assertIs(transport._gptphone_totp_payload, original_payload)
+        self.assertEqual(transport._gptphone_totp_secret, "ORIGINAL")
 
 
 if __name__ == "__main__":

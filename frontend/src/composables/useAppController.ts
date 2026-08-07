@@ -1,5 +1,5 @@
 import { computed, inject, reactive, readonly, ref, shallowRef, type InjectionKey } from 'vue'
-import { ElMessageBox, ElNotification } from 'element-plus'
+import { ElNotification } from 'element-plus'
 import {
   ApiError,
   api,
@@ -179,8 +179,12 @@ const defaultForm = () => ({
   phone_session_cycle_seconds: 1800,
   sms_api_keys: [''],
   sms_provider_pools: normalizeSmsProviderPools(null),
-  pixel_upload_enabled: true,
   sub2api: {},
+  nv_import: {
+    endpoint: 'https://nvtokens.com/api/inventory/cards/import',
+    schema_url: 'https://nvtokens.com/api/inventory/cards/import/schema',
+    api_key: '',
+  },
   online_mailbox: {
     base_url: 'https://lynote.xyz/token-tool',
     api_token: '',
@@ -231,8 +235,8 @@ function normalizeImportedConfig(value: any) {
   syncLegacySmsFields(config)
   delete config.nvtoken
   delete config.nvtoken_upload
-  if (config.pixel_upload_enabled == null) config.pixel_upload_enabled = true
-  config.phone_submission_concurrency = Math.max(1, Math.min(3, Number(config.phone_submission_concurrency) || 2))
+  delete config.pixel_upload_enabled
+  config.phone_submission_concurrency = Math.max(1, Math.min(5, Number(config.phone_submission_concurrency) || 2))
   config.pixel_upload_concurrency = Math.max(1, Math.min(3, Number(config.pixel_upload_concurrency) || 2))
   config.email_notification = normalizeEmailNotificationDraft(config.email_notification)
   return config
@@ -316,6 +320,7 @@ export function createAppController() {
     value.email_notification = normalizeEmailNotificationDraft(value.email_notification)
     delete value.nvtoken
     delete value.nvtoken_upload
+    delete value.pixel_upload_enabled
     return value
   }
 
@@ -356,25 +361,6 @@ export function createAppController() {
     stateSignature = JSON.stringify(state.value)
   }
 
-  async function pixelUploadChoice() {
-    try {
-      await ElMessageBox.confirm(
-        '本次运行成功的账号是否自动上传到 Pixel？',
-        '开始运行',
-        {
-          type: 'info',
-          distinguishCancelAndClose: true,
-          confirmButtonText: '上传到 Pixel',
-          cancelButtonText: '本次不上传',
-        },
-      )
-      return true
-    } catch (action) {
-      if (action === 'cancel') return false
-      return null
-    }
-  }
-
   async function refresh() {
     try {
       syncState(await getState())
@@ -390,8 +376,8 @@ export function createAppController() {
     const merged = mergeConfig(defaultForm(), state.value.settings || {}, localResult.config || {})
     delete merged.nvtoken
     delete merged.nvtoken_upload
-    if (merged.pixel_upload_enabled == null) merged.pixel_upload_enabled = true
-    merged.phone_submission_concurrency = Math.max(1, Math.min(3, Number(merged.phone_submission_concurrency) || 2))
+    delete merged.pixel_upload_enabled
+    merged.phone_submission_concurrency = Math.max(1, Math.min(5, Number(merged.phone_submission_concurrency) || 2))
     merged.pixel_upload_concurrency = Math.max(1, Math.min(3, Number(merged.pixel_upload_concurrency) || 2))
     Object.assign(form, merged)
     syncLegacySmsFields(form)
@@ -423,6 +409,7 @@ export function createAppController() {
             }).catch(() => undefined)
           : Promise.resolve(),
         loadSecret(() => form.sub2api?.password, value => { form.sub2api.password = String(value || '') }, 'sub2_password'),
+        loadSecret(() => form.nv_import?.api_key, value => { form.nv_import.api_key = String(value || '') }, 'nv_import_api_key'),
         loadSecret(() => form.email_notification?.password, value => {
           form.email_notification.password = String(value || '')
         }, 'notification_email_password'),
@@ -488,16 +475,20 @@ export function createAppController() {
     }
   }
 
-  async function start(allowDirty = false) {
+  async function start(
+    allowDirty = false,
+    uploadTargets: { pixel: boolean; nv: boolean } = { pixel: false, nv: false },
+  ) {
     await ensureSecretsLoaded()
     if (dirty.value && !allowDirty) throw new Error('运行配置有未保存修改')
-    const uploadToPixel = await pixelUploadChoice()
-    if (uploadToPixel == null) return null
     actions.starting = true
     resetRunSnapshot()
     try {
       const payload = requestPayload()
-      payload.pixel_upload_enabled = uploadToPixel
+      payload.upload_targets = {
+        pixel: uploadTargets.pixel === true,
+        nv: uploadTargets.nv === true,
+      }
       const result = await startExistingRun(payload)
       syncState(result)
       markClean()

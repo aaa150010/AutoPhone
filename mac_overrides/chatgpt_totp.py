@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from contextlib import contextmanager
 from dataclasses import dataclass
 import hashlib
 import hmac
@@ -10,7 +11,7 @@ import re
 import struct
 import threading
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 from urllib.parse import urlsplit
 
 try:
@@ -130,6 +131,62 @@ def totp_code(secret: Any, *, now: float | None = None, digits: int = 6, period:
     return str(value % (10**digits)).zfill(digits)
 
 
+def refresh_transport_totp_payload(
+    transport: Any,
+    flow: Any,
+    *,
+    now_fn: Callable[[], float] | None = None,
+    sleep_fn: Callable[[float], None] | None = None,
+) -> bool:
+    """Refresh a pending MFA payload after Sentinel headers are ready."""
+    if str(flow or "") != "mfa_otp_verify":
+        return False
+    payload = getattr(transport, "_gptphone_totp_payload", None)
+    secret = str(getattr(transport, "_gptphone_totp_secret", "") or "")
+    if not isinstance(payload, dict) or not secret:
+        return False
+    now_fn = now_fn or time.time
+    sleep_fn = sleep_fn or time.sleep
+    now = float(now_fn())
+    remaining = 30.0 - (now % 30.0)
+    if remaining < 5.0:
+        sleep_fn(remaining + 0.05)
+        now = float(now_fn())
+    payload["code"] = totp_code(secret, now=now)
+    return True
+
+
+@contextmanager
+def pending_transport_totp_payload(
+    transport: Any,
+    payload: dict[str, Any],
+    secret: Any,
+) -> Iterator[dict[str, Any]]:
+    """Expose a TOTP payload only for the request whose headers refresh it."""
+    missing = object()
+    previous_payload = getattr(transport, "_gptphone_totp_payload", missing)
+    previous_secret = getattr(transport, "_gptphone_totp_secret", missing)
+    setattr(transport, "_gptphone_totp_payload", payload)
+    setattr(transport, "_gptphone_totp_secret", _normalize_totp_secret(secret))
+    try:
+        yield payload
+    finally:
+        if previous_payload is missing:
+            try:
+                delattr(transport, "_gptphone_totp_payload")
+            except AttributeError:
+                pass
+        else:
+            setattr(transport, "_gptphone_totp_payload", previous_payload)
+        if previous_secret is missing:
+            try:
+                delattr(transport, "_gptphone_totp_secret")
+            except AttributeError:
+                pass
+        else:
+            setattr(transport, "_gptphone_totp_secret", previous_secret)
+
+
 def _call_log(log_fn: Any, message: str, level: str = "info") -> None:
     if not callable(log_fn):
         return
@@ -149,6 +206,7 @@ class ChatGptTotpPatchSet:
     verify_password: Callable[..., Any]
     send_mfa_otp: Callable[..., Any]
     verify_mfa_otp: Callable[..., Any]
+    reset_task_state: Callable[[], None]
 
 
 def build_chatgpt_totp_patches(
@@ -174,6 +232,13 @@ def build_chatgpt_totp_patches(
             float(getattr(active_state, "until", 0.0) or 0.0),
             time.time() + seconds,
         )
+
+    def remember_totp_secret(secret: Any) -> None:
+        active_state.totp_secret = _normalize_totp_secret(secret)
+
+    def reset_task_state() -> None:
+        active_state.until = 0.0
+        active_state.totp_secret = ""
 
     def page_type(response: Any) -> str:
         try:
@@ -258,6 +323,11 @@ def build_chatgpt_totp_patches(
         active_state.until = 0.0
         setattr(transport, "_gptphone_totp_flow", totp_flow)
         if totp_flow:
+            secret = str(getattr(active_state, "totp_secret", "") or "")
+            if secret:
+                setattr(transport, "_gptphone_totp_secret", secret)
+        active_state.totp_secret = ""
+        if totp_flow:
             trace(
                 transport,
                 "password_verify",
@@ -328,13 +398,23 @@ def build_chatgpt_totp_patches(
             }
             trace(transport, "mfa_verify", "/api/accounts/mfa/verify", response)
             return response
-        response = transport._post_auth_json(
-            "/api/accounts/mfa/verify",
-            {"id": factor_id, "type": "totp", "code": code},
-            flow="mfa_otp_verify",
-            referer=f"{codex_oauth_chain.AUTH}/mfa-challenge/{factor_id}",
-            timeout=30,
-        )
+        payload = {"id": factor_id, "type": "totp", "code": code}
+        secret = getattr(transport, "_gptphone_totp_secret", "")
+        try:
+            with pending_transport_totp_payload(transport, payload, secret):
+                if not getattr(transport, "_gptphone_totp_refresh_in_headers", False):
+                    refresh_transport_totp_payload(transport, "mfa_otp_verify")
+                response = transport._post_auth_json(
+                    "/api/accounts/mfa/verify",
+                    payload,
+                    flow="mfa_otp_verify",
+                    referer=f"{codex_oauth_chain.AUTH}/mfa-challenge/{factor_id}",
+                    timeout=30,
+                )
+        finally:
+            setattr(transport, "_gptphone_totp_flow", False)
+            setattr(transport, "_gptphone_totp_secret", "")
+            active_state.until = 0.0
         trace(
             transport,
             "mfa_verify",
@@ -343,8 +423,6 @@ def build_chatgpt_totp_patches(
             factor_id_present="1",
         )
         remember_post_auth_continue(transport, response)
-        setattr(transport, "_gptphone_totp_flow", False)
-        active_state.until = 0.0
         return response
 
     def patched_entries_unlocked(pool_self: Any) -> Any:
@@ -449,12 +527,14 @@ def build_chatgpt_totp_patches(
             self.state_fn = state_fn
             self.phase_gate = phase_gate
             self.sent_at = 0.0
+            remember_totp_secret(getattr(entry, "oauth_refresh_token", ""))
             activate()
 
         def acquire_login_slot(self):
             return None
 
         def mark_sent(self):
+            remember_totp_secret(getattr(self.entry, "oauth_refresh_token", ""))
             activate()
             self.sent_at = time.time()
 
@@ -464,7 +544,9 @@ def build_chatgpt_totp_patches(
         def wait_code(self, _email):
             if self.stop_event is not None and self.stop_event.is_set():
                 return ""
-            code = totp_code(getattr(self.entry, "oauth_refresh_token", ""))
+            secret = getattr(self.entry, "oauth_refresh_token", "")
+            remember_totp_secret(secret)
+            code = totp_code(secret)
             activate(120)
             _call_log(self.log_fn, "  [Codex] 已根据 2FA 密钥生成临时验证码", "info")
             return code
@@ -497,6 +579,7 @@ def build_chatgpt_totp_patches(
         verify_password=patched_verify_password,
         send_mfa_otp=patched_send_mfa_otp,
         verify_mfa_otp=patched_verify_mfa_otp,
+        reset_task_state=reset_task_state,
     )
 
 

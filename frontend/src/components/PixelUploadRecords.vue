@@ -19,6 +19,8 @@ interface UploadRow extends PixelUploadTargetRecord {
   rowKey: string
   recordId: string
   taskId: string
+  taskIds: string[]
+  sourceCount: number
   batchId: string
   batchStartedAt: string | number | null
   sourceEmail: string
@@ -50,6 +52,8 @@ const rows = computed<UploadRow[]>(() => props.records.flatMap((record) => {
     rowKey: `${record.recordId}:${target.targetId}:${index}`,
     recordId: record.recordId,
     taskId: record.taskId,
+    taskIds: record.taskIds,
+    sourceCount: record.sourceCount,
     batchId: record.batchId,
     batchStartedAt: record.batchStartedAt,
     sourceEmail: record.sourceEmail,
@@ -145,7 +149,7 @@ function spanMethod({ row, column }: { row: UploadRow; column: { property?: stri
   >
     <el-table-column prop="batchId" label="批次" width="218" show-overflow-tooltip>
       <template #default="{ row }">
-        <el-tooltip :content="`任务 ${row.taskId || '-'} / 记录 ${row.recordId}`" placement="top">
+        <el-tooltip :content="`任务 ${(row.taskIds || [row.taskId]).join(', ') || '-'} / 记录 ${row.recordId}`" placement="top">
           <span class="batch-id">{{ row.batchId || '-' }}</span>
         </el-tooltip>
       </template>
@@ -157,7 +161,9 @@ function spanMethod({ row, column }: { row: UploadRow; column: { property?: stri
       <template #default="{ row }"><el-tag :type="statusTone(row.recordStatus)" effect="light">{{ statusLabel(row.recordStatus) }}</el-tag></template>
     </el-table-column>
     <el-table-column prop="sourceEmail" label="初始邮箱名" min-width="230" show-overflow-tooltip>
-      <template #default="{ row }"><span class="email-name">{{ row.sourceEmail || '-' }}</span></template>
+      <template #default="{ row }">
+        <span class="email-name">{{ row.sourceCount > 1 ? `${row.sourceCount} 个同域账号` : row.sourceEmail || '-' }}</span>
+      </template>
     </el-table-column>
     <el-table-column prop="generatedName" label="上传后邮箱名" min-width="310" show-overflow-tooltip>
       <template #default="{ row }">

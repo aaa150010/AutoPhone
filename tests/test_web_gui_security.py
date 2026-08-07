@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import threading
 import time
 from types import MethodType, SimpleNamespace
 import unittest
@@ -51,6 +52,10 @@ class WebGuiSecurityTests(unittest.TestCase):
                 "base_url": "https://lynote.xyz/token-tool",
                 "api_token": "online-mailbox-secret",
             },
+            "nv_import": {
+                "endpoint": "https://nv.example.test/import",
+                "api_key": "nv-secret",
+            },
         }
         draft = {
             "performance_policy_version": 5,
@@ -58,6 +63,7 @@ class WebGuiSecurityTests(unittest.TestCase):
             "proxy": "********",
             "email_notification": {"password": "********"},
             "online_mailbox": {"api_token": "********"},
+            "nv_import": {"api_key": "********"},
         }
 
         resolved = self.module._local_config_from_runtime(draft, existing)
@@ -66,6 +72,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(resolved["proxy"], existing["proxy"])
         self.assertEqual(resolved["email_notification"]["password"], "smtp-secret")
         self.assertEqual(resolved["online_mailbox"]["api_token"], "online-mailbox-secret")
+        self.assertEqual(resolved["nv_import"]["api_key"], "nv-secret")
 
     def test_multi_platform_key_counts_survive_masked_save_and_reload(self):
         existing = {
@@ -137,6 +144,7 @@ class WebGuiSecurityTests(unittest.TestCase):
             "sub2api": {"password": "sub2-secret"},
             "email_notification": {"password": "smtp-secret"},
             "online_mailbox": {"api_token": "online-mailbox-secret"},
+            "nv_import": {"api_key": "nv-secret"},
         }
 
         masked = self.module._masked_local_config(config)
@@ -148,10 +156,12 @@ class WebGuiSecurityTests(unittest.TestCase):
             "sub2-secret",
             "smtp-secret",
             "online-mailbox-secret",
+            "nv-secret",
         ):
             self.assertNotIn(secret, serialized)
         self.assertEqual(masked["email_notification"]["password"], "********")
         self.assertEqual(masked["online_mailbox"]["api_token"], "********")
+        self.assertEqual(masked["nv_import"]["api_key"], "********")
 
     def test_sms_transport_registry_recovers_when_contextvar_is_empty(self):
         transport = SimpleNamespace(config={"sms_task_id": "task-transport"})
@@ -1033,6 +1043,15 @@ class WebGuiSecurityTests(unittest.TestCase):
                 )
             )
             for error in (
+                "mfa_otp_failed: Invalid authorization step.",
+                "Invalid authorization step.",
+                "mfa_authorization_step_expired",
+            ):
+                with self.subTest(error=error):
+                    self.assertTrue(
+                        module._patched_pre_auth_session_retryable({"error": error})
+                    )
+            for error in (
                 "password_verify_failed: invalid password",
                 "mfa_otp_failed: invalid code",
                 "oauth_callback_state_mismatch: invalid_state",
@@ -1845,13 +1864,113 @@ class WebGuiSecurityTests(unittest.TestCase):
 
             self.assertEqual(
                 module._TASK_PROGRESS.progress("T-mfa-stage")["code"],
-                "email_code_verifying",
+                "mfa_otp_verifying",
             )
         finally:
             module._ORIGINAL_REAL_POST_AUTH_JSON = original_post
             module._auth_request_runtime_ext.begin_request = original_begin
             module._TASK_PROGRESS.reset()
             module._TASK_CONTEXT.reset(token)
+
+    def test_url_mailbox_totp_is_generated_after_slow_header_preparation(self):
+        module = self.module
+        secret = "JBSWY3DPEHPK3PXP"
+        clock = [1.0]
+        sent_payloads = []
+        logs = []
+        observed_stages = []
+        originals = {
+            "verify_email": module._ORIGINAL_REAL_VERIFY_EMAIL_OTP,
+            "headers": module._ORIGINAL_REAL_HEADERS,
+            "request_headers": module._auth_request_runtime_ext.request_headers,
+            "observe": module._observe_auth_step,
+            "refresh": module._chatgpt_totp_ext.refresh_transport_totp_payload,
+        }
+
+        def slow_headers(_transport, _flow, _referer):
+            clock[0] = 37.0
+            return {"content-type": "application/json"}
+
+        def post_auth_json(transport, _path, payload, *, flow, referer, timeout=30):
+            self.assertEqual(timeout, 30)
+            module._real_headers(transport, flow, referer)
+            sent_payloads.append(copy.deepcopy(payload))
+            return {"_status": 200, "page": {"type": "consent"}}
+
+        transport = SimpleNamespace(
+            _gptphone_totp_refresh_in_headers=True,
+            log_fn=lambda message, level="info": logs.append((message, level)),
+        )
+        transport._post_auth_json = MethodType(post_auth_json, transport)
+        module._MAILBOX_TOTP_SECRET_CONTEXT.set(secret)
+        try:
+            module._ORIGINAL_REAL_VERIFY_EMAIL_OTP = lambda *_args: {
+                "_status": 200,
+                "page": {
+                    "type": "mfa_otp",
+                    "payload": {"factor_id": "factor-safe"},
+                },
+            }
+            module._ORIGINAL_REAL_HEADERS = slow_headers
+            module._auth_request_runtime_ext.request_headers = (
+                lambda _transport, headers: headers
+            )
+            module._observe_auth_step = (
+                lambda _transport, _response, stage: observed_stages.append(stage)
+            )
+            module._chatgpt_totp_ext.refresh_transport_totp_payload = (
+                lambda current_transport, flow: originals["refresh"](
+                    current_transport,
+                    flow,
+                    now_fn=lambda: clock[0],
+                    sleep_fn=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+                )
+            )
+
+            response = module._real_verify_email_otp(transport, "private-email-code")
+        finally:
+            module._MAILBOX_TOTP_SECRET_CONTEXT.set("")
+            module._ORIGINAL_REAL_VERIFY_EMAIL_OTP = originals["verify_email"]
+            module._ORIGINAL_REAL_HEADERS = originals["headers"]
+            module._auth_request_runtime_ext.request_headers = originals["request_headers"]
+            module._observe_auth_step = originals["observe"]
+            module._chatgpt_totp_ext.refresh_transport_totp_payload = originals["refresh"]
+
+        self.assertEqual(response["_status"], 200)
+        self.assertEqual(len(sent_payloads), 1)
+        self.assertEqual(
+            sent_payloads[0]["code"],
+            module._chatgpt_totp_ext.totp_code(secret, now=37.0),
+        )
+        self.assertEqual(observed_stages, ["mfa_otp_verifying"])
+        self.assertFalse(hasattr(transport, "_gptphone_totp_payload"))
+        self.assertFalse(hasattr(transport, "_gptphone_totp_secret"))
+        serialized_logs = json.dumps(logs, ensure_ascii=False)
+        self.assertNotIn(secret, serialized_logs)
+        self.assertNotIn(sent_payloads[0]["code"], serialized_logs)
+        self.assertNotIn("private-email-code", serialized_logs)
+
+    def test_task_boundary_clears_url_totp_secret_after_early_exit(self):
+        module = self.module
+        original_run_one = module._ORIGINAL_IMPORTER_RUN_ONE
+        observed = []
+
+        def run_one(_self, _settings, ordinal, *_args):
+            observed.append(module._MAILBOX_TOTP_SECRET_CONTEXT.get(""))
+            if ordinal == 1:
+                module._MAILBOX_TOTP_SECRET_CONTEXT.set("JBSWY3DPEHPK3PXP")
+            return ordinal
+
+        try:
+            module._ORIGINAL_IMPORTER_RUN_ONE = run_one
+            self.assertEqual(module._patched_importer_run_one(object(), {}, 1), 1)
+            self.assertEqual(module._patched_importer_run_one(object(), {}, 2), 2)
+        finally:
+            module._ORIGINAL_IMPORTER_RUN_ONE = original_run_one
+            module._MAILBOX_TOTP_SECRET_CONTEXT.set("")
+
+        self.assertEqual(observed, ["", ""])
+        self.assertEqual(module._MAILBOX_TOTP_SECRET_CONTEXT.get(""), "")
 
     def test_sentinel_emit_formats_internal_failure_as_non_terminal_retry(self):
         module = self.module
@@ -2048,7 +2167,7 @@ class WebGuiSecurityTests(unittest.TestCase):
 
         public = module._public_task(task)
 
-        self.assertEqual(public["failure"]["node_code"], "email_code_verifying")
+        self.assertEqual(public["failure"]["node_code"], "mfa_otp_verifying")
         self.assertEqual(public["failure"]["error_code"], "node_sentinel_timeout")
         self.assertNotIn("初始化 Node/Sentinel失败", public["error"])
 
@@ -2365,7 +2484,8 @@ class WebGuiSecurityTests(unittest.TestCase):
         for value in (loaded, persisted):
             self.assertNotIn("nvtoken", value)
             self.assertNotIn("nvtoken_upload", value)
-            self.assertFalse(value["pixel_upload_enabled"])
+            self.assertNotIn("pixel_upload_enabled", value)
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
 
     def test_email_timeout_migration_updates_legacy_default_and_preserves_custom_value(self):
         module = self.module
@@ -2400,6 +2520,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(loaded["email_otp_verify_attempts"], 2)
         self.assertTrue(loaded["email_otp_resend_on_retry"])
         self.assertEqual(persisted["email_timeout_strategy_version"], 2)
+        self.assertEqual(Path(store.path).stat().st_mode & 0o777, 0o600)
 
         saved = store.save({
             **loaded,
@@ -2412,6 +2533,37 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(saved["email_timeout_strategy_version"], 2)
         self.assertEqual(saved["email_otp_verify_attempts"], 3)
         self.assertFalse(saved["email_otp_resend_on_retry"])
+        self.assertEqual(Path(store.path).stat().st_mode & 0o777, 0o600)
+
+    def test_private_json_writes_remain_atomic_under_concurrent_saves(self):
+        module = self.module
+        path = Path(self.tempdir.name) / "concurrent-config" / "config.json"
+        barrier = threading.Barrier(5)
+        errors = []
+
+        def write(index):
+            try:
+                barrier.wait(timeout=2)
+                module._atomic_write_private_json(
+                    path,
+                    {"writer": index, "secret": f"private-{index}"},
+                )
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=write, args=(index,)) for index in range(4)]
+        for thread in threads:
+            thread.start()
+        barrier.wait(timeout=2)
+        for thread in threads:
+            thread.join(timeout=2)
+
+        self.assertEqual(errors, [])
+        self.assertTrue(all(not thread.is_alive() for thread in threads))
+        persisted = json.loads(path.read_text(encoding="utf-8"))
+        self.assertIn(persisted["writer"], range(4))
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(list(path.parent.glob(".*.tmp")), [])
 
     def test_result_file_persists_batch_identity(self):
         module = self.module
@@ -2540,7 +2692,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(summary["active"], 1)
         self.assertEqual(summary["sms_cost_cny"], 0)
 
-    def test_success_result_is_persisted_before_pixel_enqueue_and_enqueue_failure_is_isolated(self):
+    def test_success_result_persistence_does_not_enqueue_pixel_before_batch_terminal(self):
         module = self.module
         original_persist = module._ORIGINAL_PERSIST_RESULT
         original_queue = module._PIXEL_UPLOAD_QUEUE
@@ -2554,14 +2706,8 @@ class WebGuiSecurityTests(unittest.TestCase):
             return "persisted"
 
         class Queue:
-            def __init__(self, fail=False):
-                self.fail = fail
-
-            def enqueue(self, task_id, path):
-                calls.append((task_id, Path(path), Path(path).is_file()))
-                if self.fail:
-                    raise RuntimeError("private transport failure")
-                return {"record_id": "record-a"}
+            def enqueue(self, *_args, **_kwargs):
+                raise AssertionError("Pixel must wait until the batch is terminal")
 
         fake_self = SimpleNamespace(
             data_dir=self.tempdir.name,
@@ -2573,39 +2719,15 @@ class WebGuiSecurityTests(unittest.TestCase):
             module._PIXEL_UPLOAD_QUEUE = Queue()
             returned = module._patched_persist_result(
                 fake_self,
-                {"results_dir": str(result_dir), "pixel_upload_enabled": True},
+                {"results_dir": str(result_dir)},
                 "task-1",
                 entry,
                 {"access_token": "not-used"},
                 status="success",
             )
             self.assertEqual(returned, "persisted")
-            self.assertEqual(calls[0][0:2], ("task-1", result_dir / "task-1_success_at_example.test.json"))
-            self.assertTrue(calls[0][2])
-
-            calls.clear()
-            module._PIXEL_UPLOAD_QUEUE = Queue(fail=True)
-            module._patched_persist_result(
-                fake_self,
-                {"results_dir": str(result_dir), "pixel_upload_enabled": True},
-                "task-2",
-                entry,
-                {},
-                status="success",
-            )
-            self.assertTrue(any("Pixel 自动上传记录创建失败" in item[0] for item in calls if isinstance(item, tuple)))
-
-            calls.clear()
-            module._PIXEL_UPLOAD_QUEUE = Queue()
-            module._patched_persist_result(
-                fake_self,
-                {"results_dir": str(result_dir), "pixel_upload_enabled": False},
-                "task-3",
-                entry,
-                {},
-                status="success",
-            )
             self.assertEqual(calls, [])
+            self.assertTrue((result_dir / "task-1_success_at_example.test.json").is_file())
         finally:
             module._ORIGINAL_PERSIST_RESULT = original_persist
             module._PIXEL_UPLOAD_QUEUE = original_queue

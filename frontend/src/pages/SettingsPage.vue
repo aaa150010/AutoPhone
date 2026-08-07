@@ -1,20 +1,26 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Operation, Setting } from '@element-plus/icons-vue'
 import PageToolbar from '../components/PageToolbar.vue'
 import RunOperationBar from '../components/RunOperationBar.vue'
+import RunUploadDialog from '../components/RunUploadDialog.vue'
 import SettingsForm from '../components/SettingsForm.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useAppController } from '../composables/useAppController'
 
 const emit = defineEmits<{ navigate: [string] }>()
 const controller = useAppController()
+const uploadDialog = ref<InstanceType<typeof RunUploadDialog>>()
 
 const statusLabel = computed(() => controller.running.value
   ? controller.runtime.value.stop_requested ? '正在停止' : '运行中'
   : '空闲')
 const statusTone = computed(() => controller.running.value ? 'success' : 'info')
+const nvConfigured = computed(() => Boolean(
+  String(controller.form.nv_import?.endpoint || '').trim()
+  && String(controller.form.nv_import?.api_key || '').trim(),
+))
 
 function messageFor(error: any) {
   return error?.message || String(error || '操作失败')
@@ -38,9 +44,13 @@ async function preflight() {
   }
 }
 
-async function start() {
+function openStartDialog() {
+  uploadDialog.value?.open()
+}
+
+async function start(uploadTargets: { pixel: boolean; nv: boolean }) {
   try {
-    const result = await controller.start(true)
+    const result = await controller.start(true, uploadTargets)
     if (!result) return
     ElMessage.success('任务已启动')
     emit('navigate', '/')
@@ -70,7 +80,7 @@ async function importConfig(config: any) {
 async function exportConfig() {
   try {
     await ElMessageBox.confirm(
-      '导出文件包含 SMS Key、SMTP 授权码及其他完整密钥，请仅保存在可信设备。',
+      '导出文件包含 SMS Key、SMTP 授权码及其他可迁移密钥，但不包含 NV API Key，请仅保存在可信设备。',
       '导出敏感配置',
       { type: 'warning', confirmButtonText: '确认导出', cancelButtonText: '取消' },
     )
@@ -164,11 +174,17 @@ onMounted(async () => {
           @export-config="exportConfig"
           @save="save"
           @preflight="preflight"
-          @start="start"
+          @start="openStartDialog"
           @stop="stop"
         />
       </WorkspacePanel>
     </div>
+    <RunUploadDialog
+      ref="uploadDialog"
+      :nv-configured="nvConfigured"
+      :loading="controller.actions.starting"
+      @confirm="start"
+    />
   </div>
 </template>
 

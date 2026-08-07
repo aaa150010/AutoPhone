@@ -115,6 +115,10 @@ _RELOGIN_RATE_LIMIT_MARKERS = (
     "rate limit",
     "rate_limited",
 )
+_RELOGIN_SESSION_RESET_MARKERS = (
+    "invalid authorization step",
+    "mfa_authorization_step_expired",
+)
 
 ACCOUNT_BANNED_MESSAGE = "OpenAI 账号已被封禁，无法继续接码"
 
@@ -254,6 +258,8 @@ def transient_pre_auth_error_code(value: Any) -> str:
 def is_relogin_transient_failure(value: Any) -> bool:
     """Allow whole-chain relogin retries only for narrow transient failures."""
     text = _searchable_failure_text(value)
+    if any(marker in text for marker in _RELOGIN_SESSION_RESET_MARKERS):
+        return True
     if not text or any(marker in text for marker in _RELOGIN_NON_RETRYABLE_MARKERS):
         return False
     statuses = _failure_http_statuses(value)

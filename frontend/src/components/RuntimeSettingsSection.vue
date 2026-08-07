@@ -40,7 +40,7 @@ function updateProxyScope(key: string, value: boolean | string | number) {
       <el-checkbox
         :model-value="Boolean(modelValue.proxy_scope?.upload)"
         @update:model-value="updateProxyScope('upload', $event)"
-      >SUB2 走代理</el-checkbox>
+      >SUB2 / NV 走代理</el-checkbox>
     </div>
 
     <el-row :gutter="10">
@@ -124,7 +124,7 @@ function updateProxyScope(key: string, value: boolean | string | number) {
           <el-input-number
             :model-value="Number(modelValue.phone_submission_concurrency ?? 2)"
             :min="1"
-            :max="3"
+            :max="5"
             controls-position="right"
             @update:model-value="update('phone_submission_concurrency', Number($event ?? 2))"
           />

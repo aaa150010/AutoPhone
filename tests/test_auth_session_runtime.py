@@ -23,7 +23,16 @@ class AuthSessionRuntimeTests(unittest.TestCase):
     def test_session_invalid_marker_is_detected_without_needing_raw_response_shape(self):
         self.assertTrue(is_session_invalid("oauth_session_invalid: Your sign-in session is no longer valid"))
         self.assertTrue(is_session_invalid({"code": "oauth_session_invalid", "status": 401}))
+        self.assertTrue(is_session_invalid("mfa_otp_failed: Invalid authorization step."))
         self.assertFalse(is_session_invalid({"code": "phone_send_rejected"}))
+        self.assertEqual(
+            invalidation_reason_code("mfa_otp_failed: Invalid authorization step."),
+            "mfa_authorization_step_expired",
+        )
+        self.assertEqual(
+            invalidation_reason_code({"code": "mfa_authorization_step_expired"}),
+            "mfa_authorization_step_expired",
+        )
         self.assertEqual(
             invalidation_reason_code("private_mailbox_token: unexpected failure"),
             "auth_session_invalid",

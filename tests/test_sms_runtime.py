@@ -271,7 +271,7 @@ class SmsRuntimeTests(unittest.TestCase):
             "pixel_upload_concurrency": 0,
         })
         self.assertEqual(bounded["concurrency"], 8)
-        self.assertEqual(bounded["phone_submission_concurrency"], 3)
+        self.assertEqual(bounded["phone_submission_concurrency"], 5)
         self.assertEqual(bounded["pixel_upload_concurrency"], 2)
 
     def test_provider_pool_config_migrates_legacy_and_preserves_platform_defaults(self):
@@ -1911,7 +1911,146 @@ class SmsRuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "task_stopped"):
             gate.call(lambda: None, stop_event=stopped, on_wait=waits.append)
         self.assertEqual(len(waits), 1)
-        self.assertEqual(gate.status(), {"active": 0, "limit": 1, "waiting": 0})
+        self.assertEqual(
+            gate.status(),
+            {
+                "active": 0,
+                "base": 1,
+                "limit": 1,
+                "ceiling": 5,
+                "waiting": 0,
+                "success_streak": 0,
+                "restorations": 0,
+                "degradations": 0,
+            },
+        )
+
+    def test_phone_submission_gate_adapts_between_base_and_ceiling(self):
+        gate = PhoneSubmissionGate(concurrency=2, interval_seconds=0)
+
+        for _index in range(12):
+            gate.report_success()
+        self.assertEqual(gate.status()["limit"], 5)
+        self.assertEqual(gate.status()["restorations"], 3)
+
+        gate.report_transient()
+        gate.report_transient()
+        gate.report_transient()
+        self.assertEqual(gate.status()["limit"], 2)
+        self.assertEqual(gate.status()["degradations"], 3)
+
+        gate.report_success()
+        gate.report_business_failure()
+        self.assertEqual(gate.status()["success_streak"], 0)
+
+    def test_phone_submission_transient_classifier_covers_pressure_and_network_failures(self):
+        transient = (
+            {"_status": 429, "error": "too many requests"},
+            {"_status": 500, "error": "server error"},
+            {"_status": 501, "error": "not implemented"},
+            {"_status": 520, "error": "upstream error"},
+            {"_status": 599, "error": "upstream timeout"},
+            {"_status": 0, "error": "ReadTimeout after 30 seconds"},
+            {"_status": 0, "error": "Connection reset by peer"},
+            RuntimeError("remote end closed connection without response"),
+        )
+        for value in transient:
+            with self.subTest(value=value):
+                self.assertTrue(is_transient_openai_error(value))
+
+        for value in (
+            {"_status": 400, "error": "invalid phone number"},
+            {"_status": 400, "error": "phone validation timeout"},
+            {"_status": 409, "error": "phone_channel_mismatch"},
+            {"_status": 422, "error": "unsupported country"},
+        ):
+            with self.subTest(value=value):
+                self.assertFalse(is_transient_openai_error(value))
+
+    def test_phone_submission_gate_degrades_before_releasing_a_waiter(self):
+        clock = [0.0]
+        clock_lock = threading.Lock()
+
+        def now():
+            with clock_lock:
+                return clock[0]
+
+        def sleep(seconds):
+            with clock_lock:
+                clock[0] += seconds
+
+        gate = PhoneSubmissionGate(
+            concurrency=2,
+            interval_seconds=0,
+            now_fn=now,
+            sleep_fn=sleep,
+        )
+        for _index in range(12):
+            gate.report_success()
+        self.assertEqual(gate.status()["limit"], 5)
+
+        entered = threading.Barrier(6)
+        release_stable = threading.Event()
+        release_transient = threading.Event()
+        waiter_entered = threading.Event()
+        transient_results = []
+
+        def stable_call():
+            def operation():
+                entered.wait(timeout=2)
+                release_stable.wait(timeout=2)
+                return "ok"
+
+            gate.call(operation)
+
+        def transient_call():
+            def operation():
+                entered.wait(timeout=2)
+                release_transient.wait(timeout=2)
+                return {"_status": 429, "error": "too many requests"}
+
+            transient_results.append(
+                gate.call_with_retries(
+                    operation,
+                    is_transient=is_transient_openai_error,
+                    max_attempts=1,
+                )
+            )
+
+        stable_threads = [threading.Thread(target=stable_call) for _index in range(4)]
+        transient_thread = threading.Thread(target=transient_call)
+        waiter_thread = threading.Thread(
+            target=lambda: gate.call(lambda: waiter_entered.set(), stop_event=None)
+        )
+        try:
+            for thread in (*stable_threads, transient_thread):
+                thread.start()
+            entered.wait(timeout=2)
+            waiter_thread.start()
+            deadline = time.time() + 1
+            while gate.status()["waiting"] < 1 and time.time() < deadline:
+                time.sleep(0.01)
+            self.assertEqual(gate.status()["waiting"], 1)
+
+            release_transient.set()
+            transient_thread.join(timeout=2)
+            self.assertFalse(transient_thread.is_alive())
+            self.assertEqual(gate.status()["limit"], 4)
+            self.assertEqual(gate.status()["active"], 4)
+            self.assertFalse(waiter_entered.wait(0.15))
+
+            release_stable.set()
+            self.assertTrue(waiter_entered.wait(1))
+            self.assertEqual(
+                transient_results,
+                [{"_status": 429, "error": "too many requests"}],
+            )
+        finally:
+            release_transient.set()
+            release_stable.set()
+            for thread in (*stable_threads, transient_thread, waiter_thread):
+                if thread.ident is not None:
+                    thread.join(timeout=2)
 
     def test_phone_submission_gate_begin_run_clears_shared_backoff(self):
         clock = [50.0]
@@ -2004,7 +2143,13 @@ class SmsRuntimeTests(unittest.TestCase):
     def test_transient_openai_error_detection(self):
         self.assertTrue(is_transient_openai_error({"status": 503, "error": "busy"}))
         self.assertTrue(is_transient_openai_error(RuntimeError("service temporarily unavailable")))
+        self.assertFalse(
+            is_transient_openai_error(RuntimeError("sms_timeout: no code received"))
+        )
         self.assertFalse(is_transient_openai_error({"status": 400, "error": "invalid phone"}))
+        self.assertFalse(
+            is_transient_openai_error({"status": 400, "error": "sms_timeout: rejected"})
+        )
 
     def test_provider_capabilities_resend_only_handler_api_platforms(self):
         for platform, expected_ready_calls in (

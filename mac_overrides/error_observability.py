@@ -31,6 +31,7 @@ NODE_LABELS = {
     "email_password": "验证邮箱密码",
     "email_code_waiting": "等待邮箱验证码",
     "email_code_verifying": "验证邮箱验证码",
+    "mfa_otp_verifying": "验证 2FA 动态码",
     "phone_acquiring": "获取接码号码",
     "phone_submitting": "提交接码号码",
     "sms_waiting": "等待短信验证码",
@@ -116,7 +117,7 @@ _NODE_FAILURE_MARKERS = (
 )
 
 _NODE_OPERATION_NODES = (
-    (("mfa_otp_verify", "mfa_otp_failed", "verify_mfa_otp"), "email_code_verifying"),
+    (("mfa_otp_verify", "mfa_otp_failed", "verify_mfa_otp"), "mfa_otp_verifying"),
     (("email_otp_verify", "email_otp_failed", "verify_email_otp"), "email_code_verifying"),
     (("mfa_otp_issue", "email_otp_send_failed"), "email_code_waiting"),
     (("password_verify", "password_verify_failed"), "email_password"),
@@ -407,6 +408,7 @@ def _extract_provider_code(values: Sequence[Any]) -> str:
 
 _RULES = (
     (("account_banned", "account_deactivated", "account_suspended", ACCOUNT_BANNED_MESSAGE.lower()), "account_banned", "account_banned", "", False),
+    (("invalid authorization step", "mfa_authorization_step_expired"), "mfa_otp_verifying", "mfa_authorization_step_expired", "2FA 授权步骤在动态码提交前已失效，需要重新建立 OAuth 会话", True),
     (("relogin_phone_required",), "phone_acquiring", "relogin_phone_required", "重登进入手机号验证页面，已停止且未调用接码平台", False),
     (("relogin_sub2_binding_missing",), "finalizing_upload", "relogin_sub2_binding_missing", "重登缺少经过服务端校验的 SUB2 原账号绑定", False),
     (("sub2_update_binding_missing",), "finalizing_upload", "sub2_update_binding_missing", "SUB2 原账号绑定信息缺失", False),
@@ -430,7 +432,8 @@ _RULES = (
     (("microsoft token refresh failed", "authenticated but not connected", "mailbox_imap_error", "authenticate failed", "authenticationfailed", "imap"), "email_login", "mailbox_login_failed", "邮箱登录或 IMAP 授权失败", False),
     (("email_otp_send_failed",), "email_code_waiting", "email_otp_send_failed", "OpenAI 邮箱验证码发送接口失败", True),
     (("mailbox_code_timeout", "gptmail_code_timeout", "email_otp_timeout", "manual_code_timeout", "mailbox still returns baseline code"), "email_code_waiting", "email_code_timeout", "邮箱验证码等待超时，未获取到新验证码", True),
-    (("email_otp_failed", "mfa_otp_failed", "verify_email_otp", "verify_mfa_otp"), "email_code_verifying", "email_code_verification_failed", "邮箱验证码或 MFA 验证失败", True),
+    (("mfa_otp_failed", "verify_mfa_otp"), "mfa_otp_verifying", "mfa_otp_verification_failed", "2FA 动态码验证失败", True),
+    (("email_otp_failed", "verify_email_otp"), "email_code_verifying", "email_code_verification_failed", "邮箱验证码验证失败", True),
     (("sms_provider_pool_unavailable",), "phone_acquiring", "sms_provider_pool_unavailable", "所有启用接码平台均无可用线路或号码", True),
     (("sms_smart_no_candidate",), "phone_acquiring", "sms_route_pool_exhausted", "当前候选线路均已失败、无号或处于冷却中", True),
     (("sms_key_pool_temporarily_unavailable",), "phone_acquiring", "sms_key_pool_temporarily_unavailable", "所有 SMS Key 正在临时冷却，当前没有可用 Key", True),

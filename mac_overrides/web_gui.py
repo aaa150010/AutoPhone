@@ -29,6 +29,7 @@ import error_observability as _error_observability_ext
 import auth_request_runtime as _auth_request_runtime_ext
 import auth_session_runtime as _auth_session_runtime_ext
 import adaptive_concurrency as _adaptive_concurrency_ext
+import batch_upload_runtime as _batch_upload_runtime_ext
 import imap_poller as _imap_poller
 import importer_scheduler as _importer_scheduler_ext
 import legacy_ui as _legacy_ui_ext
@@ -37,6 +38,7 @@ import mailbox_admin as _mailbox_admin_ext
 import mailbox_url_runtime as _mailbox_url_runtime_ext
 import mailbox_url_test_runtime as _mailbox_url_test_runtime_ext
 import mailbox_retention as _mailbox_retention_ext
+import nv_runtime as _nv_runtime_ext
 import pixel_runtime as _pixel_runtime_ext
 import phone_risk_runtime as _phone_risk_runtime_ext
 import openai_quota_runtime as _openai_quota_runtime_ext
@@ -347,6 +349,8 @@ def _is_auth_session_reset_failure(result=None, error=""):
             "auth_context_cookies_missing",
             "auth_context_task_mismatch",
             "auth_context_generation_mismatch",
+            "invalid authorization step",
+            "mfa_authorization_step_expired",
         )
     )
 
@@ -524,18 +528,36 @@ def _read_store_config(store):
     return value if isinstance(value, dict) else {}
 
 
+def _atomic_write_private_json(path, value):
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(value, ensure_ascii=False, indent=2)
+    temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, target)
+        os.chmod(target, 0o600)
+    except BaseException:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+
+
 def _write_store_config(store, value):
-    path = Path(store.path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-    temporary.replace(path)
+    _atomic_write_private_json(store.path, value)
 
 
 def _patched_config_load(self):
     raw = _read_store_config(self)
     removed_legacy_fields = False
-    for key in ("nvtoken", "nvtoken_upload"):
+    for key in ("nvtoken", "nvtoken_upload", "pixel_upload_enabled"):
         if key in raw:
             raw.pop(key, None)
             removed_legacy_fields = True
@@ -592,10 +614,7 @@ def _patched_config_load(self):
         changed = True
 
     normalized, migrated = _sms_runtime_ext.migrate_performance_config(loaded)
-    pixel_upload_enabled = _as_enabled(raw.get("pixel_upload_enabled"), True)
-    if normalized.get("pixel_upload_enabled") != pixel_upload_enabled:
-        changed = True
-    normalized["pixel_upload_enabled"] = pixel_upload_enabled
+    normalized.pop("pixel_upload_enabled", None)
     policy_keys = (
         "performance_policy_version",
         "auto_email_login_concurrency",
@@ -625,6 +644,7 @@ def _patched_config_save(self, values):
     cleaned = dict(values or {})
     cleaned.pop("nvtoken", None)
     cleaned.pop("nvtoken_upload", None)
+    cleaned.pop("pixel_upload_enabled", None)
     if cleaned.get("email_otp_verify_attempts") in (None, ""):
         cleaned["email_otp_verify_attempts"] = _EMAIL_OTP_VERIFY_ATTEMPTS_DEFAULT
     if cleaned.get("email_otp_resend_on_retry") in (None, ""):
@@ -1273,7 +1293,7 @@ def _patched_importer_start(self, settings):
                 internal.get("phone_submission_concurrency"),
                 2,
                 minimum=1,
-                maximum=3,
+                maximum=5,
             )
         )
         _SMS_PHONE_GATE.begin_run()
@@ -1397,6 +1417,8 @@ def _patched_importer_run_one(
     assigned_task_id="",
 ):
     run_mode = str((settings or {}).get("run_mode") or "register").strip().lower()
+    _MAILBOX_TOTP_SECRET_CONTEXT.set("")
+    _TOTP_PATCHES.reset_task_state()
     token = _RUN_MODE_CONTEXT.set(run_mode)
     task_token = _TASK_CONTEXT.set(str(assigned_task_id or ""))
     admission_token = _TASK_ADMISSION_CONTEXT.set(getattr(self, "task_admission", None))
@@ -1409,6 +1431,8 @@ def _patched_importer_run_one(
             assigned_task_id,
         )
     finally:
+        _MAILBOX_TOTP_SECRET_CONTEXT.set("")
+        _TOTP_PATCHES.reset_task_state()
         _TASK_ADMISSION_CONTEXT.reset(admission_token)
         _TASK_CONTEXT.reset(task_token)
         _RUN_MODE_CONTEXT.reset(token)
@@ -1472,12 +1496,12 @@ def _patched_importer_watch(self):
 def _patched_pre_auth_session_retryable(result):
     if "relogin_phone_required" in str(result or "").lower():
         return False
-    if _RUN_MODE_CONTEXT.get() == "relogin":
-        return _runtime_policy_ext.is_relogin_transient_failure(result)
     if _is_auth_session_reset_failure(result):
         # The recovered importer owns the configured whole-session retry
         # limit. Do not impose a second, hidden two-session cap here.
         return True
+    if _RUN_MODE_CONTEXT.get() == "relogin":
+        return _runtime_policy_ext.is_relogin_transient_failure(result)
     if _runtime_policy_ext.should_retry_expired_sub2_session(result):
         return True
     return _ORIGINAL_PRE_AUTH_SESSION_RETRYABLE(result)
@@ -1644,25 +1668,6 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
                         or _runtime_policy_ext.ACCOUNT_BANNED_MESSAGE
                     )
                     _runtime.atomic_write_json(target, payload)
-            except Exception:
-                pass
-    if status == "success" and _as_enabled((settings or {}).get("pixel_upload_enabled"), True):
-        try:
-            root = Path(
-                str((settings or {}).get("results_dir") or "").strip()
-                or Path(self.data_dir) / "results"
-            )
-            email = str(getattr(entry, "email", "") or "")
-            result_file = root / f"{task_id}_{email.replace('@', '_at_')}.json"
-            _PIXEL_UPLOAD_QUEUE.enqueue(task_id, result_file)
-        except Exception as exc:
-            try:
-                detail = _error_observability_ext.sanitize_failure_detail(exc, secrets=secrets)
-                self._log(
-                    "Pixel 自动上传记录创建失败 [自动上传队列/pixel_enqueue]："
-                    f"{detail or '未返回错误详情'}；注册结果已保留，可稍后从账号管理重试",
-                    "error",
-                )
             except Exception:
                 pass
     return persisted
@@ -2131,6 +2136,7 @@ def _real_transport_init(
     )
     runtime_config = config if isinstance(config, dict) else {}
     self.account_email = str(runtime_config.get("_auth_account_email") or "").strip().lower()
+    self._gptphone_totp_refresh_in_headers = True
     _auth_request_runtime_ext.ensure_transport_context(self, _AUTH_SESSIONS, force_new=True)
     _register_sms_transport(_transport_task_id(self), self)
     _ACTIVE_SMS_TRANSPORT.set(self)
@@ -2138,13 +2144,14 @@ def _real_transport_init(
 
 def _real_headers(self, flow, referer):
     headers = _ORIGINAL_REAL_HEADERS(self, flow, referer)
+    _chatgpt_totp_ext.refresh_transport_totp_payload(self, flow)
     return _auth_request_runtime_ext.request_headers(self, headers)
 
 
 def _real_post_auth_json(self, path, payload, *, flow, referer, timeout=30):
     stage = {
         "/api/accounts/email-otp/validate": "email_code_verifying",
-        "/api/accounts/mfa/verify": "email_code_verifying",
+        "/api/accounts/mfa/verify": "mfa_otp_verifying",
         "/api/accounts/phone-otp/validate": "sms_verifying",
     }.get(str(path), "oauth_authorize_node")
     _set_current_task_stage(stage)
@@ -2243,7 +2250,7 @@ def _real_verify_password(self, password):
 
 def _real_verify_mfa_otp(self, code):
     response = _TOTP_PATCHES.verify_mfa_otp(self, code)
-    _observe_auth_step(self, response, "email_code_verifying")
+    _observe_auth_step(self, response, "mfa_otp_verifying")
     return response
 
 
@@ -2831,6 +2838,7 @@ def _mfa_factor_id_from_response(response):
 def _real_verify_email_otp(self, code):
     response = _ORIGINAL_REAL_VERIFY_EMAIL_OTP(self, code)
     secret = _MAILBOX_TOTP_SECRET_CONTEXT.get("")
+    _MAILBOX_TOTP_SECRET_CONTEXT.set("")
     try:
         page_type = _codex_oauth_chain._page_type(response)
     except Exception:
@@ -2842,20 +2850,23 @@ def _real_verify_email_otp(self, code):
     if not factor_id:
         _observe_auth_step(self, response, "email_code_verifying")
         return response
-    mfa_code = _chatgpt_totp_ext.totp_code(secret)
     _call_log(
         getattr(self, "log_fn", None),
-        "  [Codex] 邮箱验证码后遇到 MFA，已根据 2FA 密钥生成临时验证码",
+        "  [Codex] 邮箱验证码后遇到 MFA，正在验证 2FA 动态码",
         "info",
     )
-    response = self._post_auth_json(
-        "/api/accounts/mfa/verify",
-        {"id": factor_id, "type": "totp", "code": mfa_code},
-        flow="mfa_otp_verify",
-        referer=f"{_codex_oauth_chain.AUTH}/mfa-challenge/{factor_id}",
-        timeout=30,
-    )
-    _observe_auth_step(self, response, "email_code_verifying")
+    payload = {"id": factor_id, "type": "totp", "code": ""}
+    with _chatgpt_totp_ext.pending_transport_totp_payload(self, payload, secret):
+        if not getattr(self, "_gptphone_totp_refresh_in_headers", False):
+            _chatgpt_totp_ext.refresh_transport_totp_payload(self, "mfa_otp_verify")
+        response = self._post_auth_json(
+            "/api/accounts/mfa/verify",
+            payload,
+            flow="mfa_otp_verify",
+            referer=f"{_codex_oauth_chain.AUTH}/mfa-challenge/{factor_id}",
+            timeout=30,
+        )
+    _observe_auth_step(self, response, "mfa_otp_verifying")
     return response
 
 
@@ -2963,9 +2974,10 @@ def _read_local_config():
     if not isinstance(value, dict):
         return {}
     changed = False
-    if "nvtoken" in value or "nvtoken_upload" in value:
+    if "nvtoken" in value or "nvtoken_upload" in value or "pixel_upload_enabled" in value:
         value.pop("nvtoken", None)
         value.pop("nvtoken_upload", None)
+        value.pop("pixel_upload_enabled", None)
         changed = True
     value, timeout_migrated = _migrate_email_timeout_config(value)
     value, performance_migrated = _sms_runtime_ext.migrate_performance_config(value)
@@ -2978,12 +2990,10 @@ def _write_local_config(data):
     value = dict(data) if isinstance(data, dict) else {}
     value.pop("nvtoken", None)
     value.pop("nvtoken_upload", None)
+    value.pop("pixel_upload_enabled", None)
     value, _timeout_migrated = _migrate_email_timeout_config(value)
     value, _performance_migrated = _sms_runtime_ext.migrate_performance_config(value)
-    _LOCAL_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    temporary = _LOCAL_CONFIG_FILE.with_suffix(_LOCAL_CONFIG_FILE.suffix + ".tmp")
-    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-    temporary.replace(_LOCAL_CONFIG_FILE)
+    _atomic_write_private_json(_LOCAL_CONFIG_FILE, value)
     pixel_queue = globals().get("_PIXEL_UPLOAD_QUEUE")
     if pixel_queue is not None:
         try:
@@ -3013,10 +3023,20 @@ _PIXEL_UPLOAD_QUEUE = _pixel_runtime_ext.PixelUploadQueue(
         maximum=3,
     ),
     auto_start=True,
-    resume_pending=_as_enabled(
-        _read_local_config().get("pixel_upload_enabled"),
-        True,
-    ),
+    resume_pending=True,
+)
+_NV_IMPORT_CLIENT = _nv_runtime_ext.NvImportClient(_read_local_config)
+_NV_UPLOAD_QUEUE = _nv_runtime_ext.NvUploadQueue(
+    _RUNTIME_DATA_DIR,
+    _NV_IMPORT_CLIENT,
+    auto_start=True,
+    resume_pending=True,
+)
+_BATCH_UPLOAD_COORDINATOR = _batch_upload_runtime_ext.BatchUploadCoordinator(
+    _RUNTIME_DATA_DIR,
+    pixel_queue=_PIXEL_UPLOAD_QUEUE,
+    nv_queue=_NV_UPLOAD_QUEUE,
+    recover_pending=True,
 )
 _SUB2_RUNTIME = _sub2_runtime_ext.Sub2Runtime(
     _read_local_config,
@@ -3140,7 +3160,9 @@ def _masked_local_config(data):
     value = json.loads(json.dumps(data if isinstance(data, dict) else {}))
     value.pop("nvtoken", None)
     value.pop("nvtoken_upload", None)
+    value.pop("pixel_upload_enabled", None)
     sub2api = dict(value.get("sub2api") or {})
+    nv_import = dict(value.get("nv_import") or {})
     email_notification = dict(value.get("email_notification") or {})
     online_mailbox = dict(value.get("online_mailbox") or {})
     sms_pools = _sms_provider_pools_from_config(value)
@@ -3166,6 +3188,9 @@ def _masked_local_config(data):
     if sub2api:
         sub2api["password"] = _mask_secret(sub2api.get("password"))
         value["sub2api"] = sub2api
+    if nv_import:
+        nv_import["api_key"] = _mask_secret(nv_import.get("api_key"))
+        value["nv_import"] = nv_import
     if email_notification:
         email_notification["password"] = _mask_secret(email_notification.get("password"))
         value["email_notification"] = email_notification
@@ -3353,11 +3378,13 @@ def _public_logs(logs, tasks):
         return logs
     local = _read_local_config()
     sub2api = dict(local.get("sub2api") or {})
+    nv_import = dict(local.get("nv_import") or {})
     notification = dict(local.get("email_notification") or {})
     online_mailbox = dict(local.get("online_mailbox") or {})
     secrets = [
         *_sms_keys_from_config(local),
         sub2api.get("password"),
+        nv_import.get("api_key"),
         notification.get("password"),
         online_mailbox.get("api_token"),
         *_mailbox_admin_ext.url_credential_secrets(local.get("proxy")),
@@ -3509,6 +3536,7 @@ def _masked_state(data):
 def _local_config_secret(secret_id):
     local = _read_local_config()
     sub2api = dict(local.get("sub2api") or {})
+    nv_import = dict(local.get("nv_import") or {})
     email_notification = dict(local.get("email_notification") or {})
     online_mailbox = dict(local.get("online_mailbox") or {})
     sms_keys = _sms_keys_from_config(local)
@@ -3518,6 +3546,7 @@ def _local_config_secret(secret_id):
         "sms_api_keys": sms_keys,
         "sms_api_key": sms_keys[0] if sms_keys else "",
         "sub2_password": sub2api.get("password") or "",
+        "nv_import_api_key": nv_import.get("api_key") or "",
         "notification_email_password": email_notification.get("password") or "",
         "online_mailbox_api_token": online_mailbox.get("api_token") or "",
         "proxy": local.get("proxy") or "",
@@ -3540,6 +3569,8 @@ def _local_config_from_runtime(data, existing=None):
     data, _timeout_migrated = _migrate_email_timeout_config(data)
     sub2api = dict(data.get("sub2api") or {})
     existing_sub2api = dict(existing.get("sub2api") or {})
+    nv_import = dict(data.get("nv_import") or {})
+    existing_nv_import = dict(existing.get("nv_import") or {})
     email_notification = dict(data.get("email_notification") or {})
     existing_email_notification = dict(existing.get("email_notification") or {})
     online_mailbox = dict(data.get("online_mailbox") or {})
@@ -3562,6 +3593,22 @@ def _local_config_from_runtime(data, existing=None):
             "email": str(sub2api.get("email") or "").strip(),
             "password": _local_secret(sub2api.get("password"), existing_sub2api.get("password")),
             "group": str(sub2api.get("group") or "").strip(),
+        },
+        "nv_import": {
+            "endpoint": str(
+                nv_import.get("endpoint")
+                or existing_nv_import.get("endpoint")
+                or _nv_runtime_ext.DEFAULT_NV_ENDPOINT
+            ).strip(),
+            "schema_url": str(
+                nv_import.get("schema_url")
+                or existing_nv_import.get("schema_url")
+                or _nv_runtime_ext.DEFAULT_NV_SCHEMA_URL
+            ).strip(),
+            "api_key": _local_secret(
+                nv_import.get("api_key"),
+                existing_nv_import.get("api_key"),
+            ).strip(),
         },
         "online_mailbox": {
             "base_url": str(
@@ -3597,7 +3644,6 @@ def _local_config_from_runtime(data, existing=None):
         "phone_max_attempts",
         "phone_attempts_per_provider",
         "phone_session_cycle_seconds",
-        "pixel_upload_enabled",
     ):
         if key in data:
             result[key] = copy.deepcopy(data[key])
@@ -3642,6 +3688,8 @@ def _merge_local_config(data):
     patched["proxy"] = _local_secret(patched.get("proxy"), local.get("proxy"))
     if isinstance(local.get("sub2api"), dict):
         patched["sub2api"] = _merge_nonempty(local.get("sub2api") or {}, patched.get("sub2api") or {})
+    if isinstance(local.get("nv_import"), dict):
+        patched["nv_import"] = _merge_nonempty(local.get("nv_import") or {}, patched.get("nv_import") or {})
     if isinstance(local.get("email_notification"), dict):
         patched["email_notification"] = _merge_email_notification(
             local.get("email_notification") or {},
@@ -3669,7 +3717,19 @@ def _apply_server_defaults(data):
     patched.pop("manual_pool_content", None)
     patched.pop("nvtoken", None)
     patched.pop("nvtoken_upload", None)
+    patched.pop("pixel_upload_enabled", None)
     patched["sub2api"] = dict(patched.get("sub2api") or {})
+    patched["nv_import"] = {
+        "endpoint": str(
+            (patched.get("nv_import") or {}).get("endpoint")
+            or _nv_runtime_ext.DEFAULT_NV_ENDPOINT
+        ).strip(),
+        "schema_url": str(
+            (patched.get("nv_import") or {}).get("schema_url")
+            or _nv_runtime_ext.DEFAULT_NV_SCHEMA_URL
+        ).strip(),
+        "api_key": str((patched.get("nv_import") or {}).get("api_key") or "").strip(),
+    }
     patched["email_notification"] = _run_notifications_ext.validate_email_notification(
         patched.get("email_notification") or {}
     )
@@ -3683,7 +3743,7 @@ def _apply_server_defaults(data):
         patched.get("phone_submission_concurrency"),
         2,
         minimum=1,
-        maximum=3,
+        maximum=5,
     )
     patched["pixel_upload_concurrency"] = _int_value(
         patched.get("pixel_upload_concurrency"),
@@ -3713,7 +3773,6 @@ def _apply_server_defaults(data):
         "register_rejected_cooldown": 60,
         "register_rejected_min_cooldown": 180,
     }
-    patched["pixel_upload_enabled"] = _as_enabled(patched.get("pixel_upload_enabled"), True)
     return patched
 
 
@@ -3780,6 +3839,8 @@ _WEB_ROUTE_CONTEXT = _web_routes_ext.WebRouteContext(
     mailbox_url_test_factory=_mailbox_url_test_runtime_ext.MailboxUrlTester,
     pixel_client=_PIXEL_CLIENT,
     pixel_upload_queue=_PIXEL_UPLOAD_QUEUE,
+    nv_upload_queue=_NV_UPLOAD_QUEUE,
+    batch_upload_coordinator=_BATCH_UPLOAD_COORDINATOR,
     pixel_payload_builder=_pixel_runtime_ext.build_pixel_import_payload,
     query_sms_balances=_SMS_WEB.query_balances,
     online_mailbox_client_factory=_online_mailbox_client_factory,

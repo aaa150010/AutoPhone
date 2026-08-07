@@ -13,6 +13,13 @@ SESSION_INVALID_MARKERS = (
     "oauth_session_invalid",
     "sign-in session is no longer valid",
     "session is no longer valid",
+    "invalid authorization step",
+    "mfa_authorization_step_expired",
+)
+
+_MFA_AUTHORIZATION_STEP_MARKERS = (
+    "invalid authorization step",
+    "mfa_authorization_step_expired",
 )
 
 _INVALIDATION_CODES = (
@@ -35,13 +42,15 @@ def is_session_invalid(value: Any) -> bool:
 
 
 def invalidation_reason_code(value: Any) -> str:
+    if isinstance(value, Mapping):
+        candidates = [value.get("error"), value.get("message"), value.get("code")]
+    else:
+        candidates = [value]
+    text = " ".join(str(item or "") for item in candidates).lower()
+    if any(marker in text for marker in _MFA_AUTHORIZATION_STEP_MARKERS):
+        return "mfa_authorization_step_expired"
     if is_session_invalid(value):
         return "oauth_session_invalid"
-    if isinstance(value, Mapping):
-        candidates = (value.get("code"), value.get("error"), value.get("message"))
-    else:
-        candidates = (value,)
-    text = " ".join(str(item or "").lower() for item in candidates)
     for code in _INVALIDATION_CODES:
         if code in text:
             return code

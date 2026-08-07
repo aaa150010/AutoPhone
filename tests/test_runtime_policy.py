@@ -157,12 +157,14 @@ class RuntimePolicyTests(unittest.TestCase):
             "remote_disconnected",
         )
 
-    def test_relogin_whole_chain_retry_allows_only_network_tls_timeout_or_429(self):
+    def test_relogin_whole_chain_retry_allows_transient_or_session_reset_failures(self):
         retryable = (
             {"error": "curl: (35) TLS connect error"},
             {"error": "remote end closed connection without response"},
             {"error": "connection timed out after 30001 milliseconds"},
             {"_status": 429, "error": "too many requests"},
+            {"error": "mfa_otp_failed: Invalid authorization step."},
+            {"code": "mfa_authorization_step_expired"},
         )
         terminal = (
             {"error": "password_verify_failed: invalid password"},
