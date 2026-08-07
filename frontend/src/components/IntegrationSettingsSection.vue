@@ -60,18 +60,34 @@ function updateNested(group: string, key: string, value: any) {
       </el-col>
     </el-row>
 
-    <el-form-item label="注册成功后自动上传 Pixel">
-      <el-switch
-        :model-value="modelValue.pixel_upload_enabled !== false"
-        inline-prompt
-        active-text="开"
-        inactive-text="关"
-        @update:model-value="update('pixel_upload_enabled', $event)"
-      />
-    </el-form-item>
+    <el-row :gutter="10">
+      <el-col :span="12">
+        <el-form-item label="注册成功后自动上传 Pixel">
+          <el-switch
+            :model-value="modelValue.pixel_upload_enabled !== false"
+            inline-prompt
+            active-text="开"
+            inactive-text="关"
+            @update:model-value="update('pixel_upload_enabled', $event)"
+          />
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
+        <el-form-item label="Pixel 上传 worker 数">
+          <el-input-number
+            :model-value="Number(modelValue.pixel_upload_concurrency ?? 2)"
+            :min="1"
+            :max="3"
+            controls-position="right"
+            @update:model-value="update('pixel_upload_concurrency', Number($event ?? 2))"
+          />
+        </el-form-item>
+      </el-col>
+    </el-row>
   </div>
 </template>
 
 <style scoped>
 .section-title { margin: 0 0 9px; font-size: 14px; line-height: 20px; font-weight: 680; letter-spacing: 0; }
+.settings-section :deep(.el-input-number) { width: 100%; }
 </style>

@@ -28,6 +28,7 @@ import chatgpt_totp as _chatgpt_totp_ext
 import error_observability as _error_observability_ext
 import auth_request_runtime as _auth_request_runtime_ext
 import auth_session_runtime as _auth_session_runtime_ext
+import adaptive_concurrency as _adaptive_concurrency_ext
 import imap_poller as _imap_poller
 import importer_scheduler as _importer_scheduler_ext
 import legacy_ui as _legacy_ui_ext
@@ -187,6 +188,10 @@ _PHONE_RISK_STORE = _phone_risk_runtime_ext.PhoneRiskStore(
     _RUNTIME_DATA_DIR / "phone_risk_markers.json"
 )
 _TASK_CONTEXT: ContextVar[str] = ContextVar("gptphone_task_id", default="")
+_TASK_ADMISSION_CONTEXT: ContextVar[object | None] = ContextVar(
+    "gptphone_task_admission",
+    default=None,
+)
 _RUN_MODE_CONTEXT: ContextVar[str] = ContextVar("gptphone_run_mode", default="register")
 _ACTIVE_SMS_TRANSPORT: ContextVar[object | None] = ContextVar(
     "gptphone_active_sms_transport",
@@ -214,10 +219,35 @@ _TASK_FAILURES_LOCK = threading.RLock()
 _RUN_LIFECYCLE_LOCK = threading.Lock()
 _RUN_NOTIFICATION_LOCK = threading.RLock()
 _RUN_NOTIFICATION_CONTEXT = None
+_CURRENT_TASK_ADMISSION = None
 _PROTOCOL_GATE = _sms_runtime_ext.ProxyProtocolGate(
     default_limit=5,
     launch_interval_seconds=1.0,
 )
+
+
+def _report_task_pressure(task_id, value, *, node_code=""):
+    gate = _TASK_ADMISSION_CONTEXT.get()
+    if gate is None:
+        gate = globals().get("_CURRENT_TASK_ADMISSION")
+    if gate is None:
+        return
+    identifier = str(task_id or "").strip()
+    code = str(node_code or "").strip().lower()
+    if not code:
+        try:
+            failure = _error_observability_ext.classify_failure(
+                error=value,
+                progress=_TASK_PROGRESS.progress(identifier),
+                status="retryable_infra",
+            )
+            code = str(failure.get("node_code") or "").strip().lower()
+        except Exception:
+            code = "infrastructure_pressure"
+    try:
+        gate.report_pressure(identifier, code or "infrastructure_pressure")
+    except Exception:
+        pass
 
 
 def _transport_task_id(transport) -> str:
@@ -562,6 +592,8 @@ def _patched_config_load(self):
     policy_keys = (
         "performance_policy_version",
         "auto_email_login_concurrency",
+        "phone_submission_concurrency",
+        "pixel_upload_concurrency",
         "phone_max_attempts",
         "phone_attempts_per_provider",
         "phone_session_cycle_seconds",
@@ -596,6 +628,8 @@ def _patched_config_save(self, values):
     for key in (
         "performance_policy_version",
         "auto_email_login_concurrency",
+        "phone_submission_concurrency",
+        "pixel_upload_concurrency",
         "phone_max_attempts",
         "phone_attempts_per_provider",
         "phone_session_cycle_seconds",
@@ -972,6 +1006,32 @@ def _patched_task_state(self, task_id: str, **values):
         _TASK_CONTEXT.set(str(task_id or ""))
     _TASK_PROGRESS.observe_task_state(task_id, status)
     if status in _task_progress_ext.TERMINAL_TASK_STATUSES:
+        admission = getattr(self, "task_admission", None)
+        if admission is not None:
+            if status == "success":
+                admission.report_success(task_id)
+            else:
+                detail = (
+                    values.get("technical_error")
+                    or values.get("error")
+                    or values.get("reason")
+                    or ""
+                )
+                node_pressure = _error_observability_ext.is_retryable_node_failure(detail)
+                protocol_pressure = _sms_runtime_ext.is_protocol_pressure_error(detail)
+                if node_pressure or protocol_pressure:
+                    failure = values.get("failure") if isinstance(values.get("failure"), dict) else {}
+                    _report_task_pressure(
+                        task_id,
+                        detail,
+                        node_code=(
+                            failure.get("node_code")
+                            if node_pressure
+                            else "protocol_pressure"
+                        ),
+                    )
+                admission.report_failure(task_id)
+    if status in _task_progress_ext.TERMINAL_TASK_STATUSES:
         _SMS_PROVIDER_REGISTRY.clear_task_attempt_counts(task_id)
     if status in _task_progress_ext.TERMINAL_TASK_STATUSES and _TASK_CONTEXT.get() == str(task_id or ""):
         _TASK_CONTEXT.set("")
@@ -1017,6 +1077,8 @@ def _patched_chain_event(
             log_fn=log_fn,
             tag=tag,
         )
+
+    _report_task_pressure(task_id, detail)
 
     # Keep the FAILED event in the persisted chain for diagnosis. The chain
     # may immediately create a fresh bridge and continue, so emit a retry
@@ -1183,12 +1245,15 @@ def _cancel_notification_run(importer, context):
 
 
 def _patched_importer_start(self, settings):
+    global _CURRENT_TASK_ADMISSION
     internal = copy.deepcopy(dict(settings or {}))
     additional_retries = _int_value(internal.get("auth_session_retries"), 1, minimum=0, maximum=4)
     internal["auth_session_retries"] = additional_retries + 1
     already_running = bool(self.status(internal).get("running"))
+    task_admission = getattr(self, "task_admission", None)
     if not already_running:
-        task_limit = _int_value(internal.get("concurrency"), 5, minimum=1, maximum=100)
+        task_limit = _int_value(internal.get("concurrency"), 5, minimum=1, maximum=8)
+        internal["concurrency"] = task_limit
         node_limit = _int_value(
             internal.get("node_concurrency"),
             task_limit,
@@ -1196,6 +1261,44 @@ def _patched_importer_start(self, settings):
             maximum=task_limit,
         )
         _PROTOCOL_GATE.begin_run(min(task_limit, node_limit))
+        _SMS_PHONE_GATE.configure(
+            _int_value(
+                internal.get("phone_submission_concurrency"),
+                2,
+                minimum=1,
+                maximum=3,
+            )
+        )
+        _SMS_PHONE_GATE.begin_run()
+
+        def log_task_limit_change(event):
+            value = dict(event or {})
+            old_limit = _int_value(value.get("old_limit"), 0, minimum=0)
+            new_limit = _int_value(value.get("new_limit"), 0, minimum=0)
+            if old_limit <= 0 or new_limit <= 0:
+                return
+            if str(value.get("kind") or "") == "restored":
+                message = f"[任务并发/registration_admission] 连续成功，任务并发 {old_limit} -> {new_limit}"
+                level = "info"
+            else:
+                pause_seconds = _int_value(value.get("pause_seconds"), 15, minimum=0)
+                message = (
+                    f"[任务并发/registration_admission] 基础设施压力达到阈值，"
+                    f"任务并发 {old_limit} -> {new_limit}，暂停新任务 {pause_seconds} 秒"
+                )
+                level = "warn"
+            try:
+                self._log(message, level)
+            except Exception:
+                pass
+
+        run_mode = str(internal.get("run_mode") or "register").strip().lower()
+        task_admission = _adaptive_concurrency_ext.AdaptiveConcurrencyGate(
+            task_limit,
+            ceiling=task_limit if run_mode == "relogin" else 8,
+            on_change=log_task_limit_change,
+        )
+        _CURRENT_TASK_ADMISSION = task_admission
         _TASK_PROGRESS.reset()
         with _TASK_FAILURES_LOCK:
             _TASK_FAILURES.clear()
@@ -1215,6 +1318,21 @@ def _patched_importer_start(self, settings):
     if str(internal.get("run_mode") or "").strip().lower() != "relogin":
         lease_filter_token = _MAILBOX_LEASE_FILTER_ACTIVE.set(True)
     notification_context = None
+
+    def observed_phase_gate(limit, segment_code):
+        return _importer_scheduler_ext.ObservedPhaseGate(
+            _runtime.AutoEmailPhaseGate(limit),
+            lambda elapsed: _record_task_segment(
+                _TASK_CONTEXT.get(),
+                segment_code,
+                elapsed,
+            ),
+        )
+
+    def task_started(task_id, elapsed):
+        _TASK_PROGRESS.mark_execution_started(task_id)
+        _record_task_segment(task_id, "task_slot_waiting", elapsed)
+
     try:
         if not already_running:
             notification_context = _begin_notification_run(self, internal)
@@ -1224,6 +1342,16 @@ def _patched_importer_start(self, settings):
             mailbox_error_type=_runtime.MailboxPoolError,
             manual_code_factory=_runtime.ManualCodeCoordinator,
             phase_gate_factory=_runtime.AutoEmailPhaseGate,
+            task_admission=task_admission,
+            email_phase_gate_factory=lambda limit: observed_phase_gate(
+                limit,
+                "email_slot_waiting",
+            ),
+            node_phase_gate_factory=lambda limit: observed_phase_gate(
+                limit,
+                "node_slot_waiting",
+            ),
+            on_task_started=task_started,
         )
         if notification_context is not None:
             aggregate, last_activity_at = _notification_aggregate(self, notification_context)
@@ -1242,6 +1370,8 @@ def _patched_importer_start(self, settings):
         if notification_context is not None:
             _cancel_notification_run(self, notification_context)
         if not already_running:
+            if _CURRENT_TASK_ADMISSION is task_admission:
+                _CURRENT_TASK_ADMISSION = None
             _TASK_PROGRESS.reset()
             with _TASK_FAILURES_LOCK:
                 _TASK_FAILURES.clear()
@@ -1261,6 +1391,8 @@ def _patched_importer_run_one(
 ):
     run_mode = str((settings or {}).get("run_mode") or "register").strip().lower()
     token = _RUN_MODE_CONTEXT.set(run_mode)
+    task_token = _TASK_CONTEXT.set(str(assigned_task_id or ""))
+    admission_token = _TASK_ADMISSION_CONTEXT.set(getattr(self, "task_admission", None))
     try:
         return _ORIGINAL_IMPORTER_RUN_ONE(
             self,
@@ -1270,6 +1402,8 @@ def _patched_importer_run_one(
             assigned_task_id,
         )
     finally:
+        _TASK_ADMISSION_CONTEXT.reset(admission_token)
+        _TASK_CONTEXT.reset(task_token)
         _RUN_MODE_CONTEXT.reset(token)
 
 
@@ -1309,6 +1443,20 @@ def _patched_importer_watch(self):
                     context["run_id"],
                     aggregate,
                     completed=completed,
+                )
+            except Exception:
+                pass
+        admission = getattr(self, "task_admission", None)
+        if admission is not None:
+            try:
+                capacity = admission.snapshot()
+                self._log(
+                    "[任务并发/registration_admission] 批次并发汇总："
+                    f"基础 {capacity.get('base', 0)}，峰值 {capacity.get('peak_limit', 0)}，"
+                    f"升档 {capacity.get('restorations', 0)} 次，"
+                    f"降档 {capacity.get('degradations', 0)} 次，"
+                    f"累计排队 {capacity.get('total_wait_seconds', 0)} 秒",
+                    "info",
                 )
             except Exception:
                 pass
@@ -2233,6 +2381,12 @@ def _run_codex_after_registration(
                     phone_otp_provider=phone_otp_provider,
                 )
             except Exception as exc:
+                if _sms_runtime_ext.is_protocol_pressure_error(exc):
+                    _report_task_pressure(
+                        task_id,
+                        exc,
+                        node_code="protocol_pressure",
+                    )
                 _PROTOCOL_GATE.report(
                     proxy,
                     exc,
@@ -2245,6 +2399,12 @@ def _run_codex_after_registration(
                     failure_value = " ".join(
                         str(result.get(key) or "")
                         for key in ("error", "technical_error", "phase2_error")
+                    )
+                if _sms_runtime_ext.is_protocol_pressure_error(failure_value):
+                    _report_task_pressure(
+                        task_id,
+                        failure_value,
+                        node_code="protocol_pressure",
                     )
                 _PROTOCOL_GATE.report(
                     proxy,
@@ -2801,7 +2961,8 @@ def _read_local_config():
         value.pop("nvtoken_upload", None)
         changed = True
     value, timeout_migrated = _migrate_email_timeout_config(value)
-    if changed or timeout_migrated:
+    value, performance_migrated = _sms_runtime_ext.migrate_performance_config(value)
+    if changed or timeout_migrated or performance_migrated:
         _write_local_config(value)
     return value
 
@@ -2811,10 +2972,23 @@ def _write_local_config(data):
     value.pop("nvtoken", None)
     value.pop("nvtoken_upload", None)
     value, _timeout_migrated = _migrate_email_timeout_config(value)
+    value, _performance_migrated = _sms_runtime_ext.migrate_performance_config(value)
     _LOCAL_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     temporary = _LOCAL_CONFIG_FILE.with_suffix(_LOCAL_CONFIG_FILE.suffix + ".tmp")
     temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
     temporary.replace(_LOCAL_CONFIG_FILE)
+    pixel_queue = globals().get("_PIXEL_UPLOAD_QUEUE")
+    if pixel_queue is not None:
+        try:
+            pixel_queue.configure_workers(value.get("pixel_upload_concurrency", 2))
+        except Exception:
+            pass
+    phone_gate = globals().get("_SMS_PHONE_GATE")
+    if phone_gate is not None:
+        try:
+            phone_gate.configure(value.get("phone_submission_concurrency", 2))
+        except Exception:
+            pass
     return value
 
 
@@ -2825,6 +2999,12 @@ _PIXEL_CLIENT = _pixel_runtime_ext.PixelProxyClient(
 _PIXEL_UPLOAD_QUEUE = _pixel_runtime_ext.PixelUploadQueue(
     _RUNTIME_DATA_DIR,
     client=_PIXEL_CLIENT,
+    worker_count=_int_value(
+        _read_local_config().get("pixel_upload_concurrency"),
+        2,
+        minimum=1,
+        maximum=3,
+    ),
     auto_start=True,
     resume_pending=_as_enabled(
         _read_local_config().get("pixel_upload_enabled"),
@@ -3285,6 +3465,13 @@ def _masked_state(data):
             concurrency = {}
             runtime["concurrency"] = concurrency
         task_capacity = concurrency.get("task")
+        admission = globals().get("_CURRENT_TASK_ADMISSION")
+        if admission is not None:
+            try:
+                concurrency["task"] = admission.snapshot()
+                task_capacity = concurrency["task"]
+            except Exception:
+                pass
         if isinstance(task_capacity, dict):
             task_capacity["waiting"] = sum(
                 1
@@ -3369,6 +3556,8 @@ def _local_config_from_runtime(data, existing=None):
         "concurrency",
         "node_concurrency",
         "auto_email_login_concurrency",
+        "phone_submission_concurrency",
+        "pixel_upload_concurrency",
         "node_timeout",
         "auth_session_retries",
         "email_code_timeout",
@@ -3457,6 +3646,18 @@ def _apply_server_defaults(data):
         patched["concurrency"] = "5"
     if not _module._clean(patched.get("node_concurrency")):
         patched["node_concurrency"] = "5"
+    patched["phone_submission_concurrency"] = _int_value(
+        patched.get("phone_submission_concurrency"),
+        2,
+        minimum=1,
+        maximum=3,
+    )
+    patched["pixel_upload_concurrency"] = _int_value(
+        patched.get("pixel_upload_concurrency"),
+        2,
+        minimum=1,
+        maximum=3,
+    )
     if not _module._clean(patched.get("sms_min_price")):
         patched["sms_min_price"] = str(_SMS_MIN_PRICE_DEFAULT)
     patched["max_price"] = _clamp_sms_max_price(patched.get("max_price"))

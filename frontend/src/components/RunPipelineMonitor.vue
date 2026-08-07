@@ -51,10 +51,14 @@ const concurrencyRows = computed(() => [
 ].map((item) => {
   const active = numeric(item.value.active)
   const limit = numeric(item.value.limit)
+  const base = numeric(item.value.base)
+  const pauseRemaining = numeric(item.value.pause_remaining_seconds)
   return {
     label: item.label,
     active,
     limit,
+    base,
+    pauseRemaining,
     waiting: numeric(item.value.waiting),
     usage: limit > 0 ? Math.min(100, (active / limit) * 100) : 0,
   }
@@ -77,9 +81,10 @@ const concurrencyRows = computed(() => [
     <div class="capacity-grid">
       <div v-for="item in concurrencyRows" :key="item.label" class="capacity-item">
         <div class="capacity-copy">
-          <span>{{ item.label }}</span>
+          <span>{{ item.label }}<template v-if="item.base"> · 基{{ item.base }}</template></span>
           <strong>{{ item.active }}/{{ item.limit }}</strong>
-          <small v-if="item.waiting">等 {{ item.waiting }}</small>
+          <small v-if="item.pauseRemaining">停 {{ item.pauseRemaining }}s</small>
+          <small v-else-if="item.waiting">等 {{ item.waiting }}</small>
         </div>
         <b class="capacity-track"><i :style="{ width: `${item.usage}%` }" /></b>
       </div>

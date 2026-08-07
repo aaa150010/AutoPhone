@@ -50,8 +50,12 @@ export interface TaskTimingSegment {
 
 export interface TaskTiming {
   started_at: number
+  queued_at?: number
+  execution_started_at?: number | null
   finished_at: number | null
   elapsed_seconds: number
+  queue_elapsed_seconds?: number
+  execution_elapsed_seconds?: number
   stages: TaskStageTiming[]
   segments?: TaskTimingSegment[]
 }
@@ -148,6 +152,7 @@ export interface AppState {
 export interface MailboxRow {
   row_id: string
   line_no: number
+  display_index?: number
   source_row: string
   email: string
   password?: string
@@ -340,4 +345,64 @@ export interface PixelUploadRecord {
   createdAt: string | number | null
   updatedAt: string | number | null
   targets: PixelUploadTargetRecord[]
+}
+
+export interface PixelBatchCounts {
+  total: number
+  completed: number
+  success: number
+  pending: number
+  processing: number
+  failed: number
+  needs_confirmation: number
+}
+
+export interface PixelUploadBatch {
+  batch_id: string
+  batch_started_at: number
+  updated_at: number
+  status: string
+  source: PixelBatchCounts
+  deliveries: PixelBatchCounts
+}
+
+export interface PixelQueueOverview {
+  configured_workers: number
+  alive_workers: number
+  active_workers: number
+  pending_records: number
+  running_records: number
+}
+
+export interface PixelTargetCount {
+  target_id: string
+  account_count: number | null
+}
+
+export interface PixelOverview {
+  revision: number
+  queue: PixelQueueOverview
+  current_batch: PixelUploadBatch | null
+  batch_count: number
+  targets: PixelTargetCount[]
+  target_error?: string
+}
+
+export interface PixelBatchPage {
+  items: PixelUploadBatch[]
+  total: number
+  page: number
+  page_size: number
+  pages: number
+  revision: number
+}
+
+export interface PixelBatchRecordPage {
+  batch: PixelUploadBatch
+  items: Record<string, any>[]
+  total: number
+  page: number
+  page_size: number
+  pages: number
+  revision: number
 }

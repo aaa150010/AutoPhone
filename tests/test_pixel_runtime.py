@@ -975,7 +975,7 @@ class PixelUploadQueueTests(unittest.TestCase):
         self.assertNotIn(ACCESS_TOKEN, json.dumps(service.get(record["record_id"])))
         self.assertNotIn(ACCESS_TOKEN, service.outbox_path.read_text(encoding="utf-8"))
 
-    def test_background_worker_processes_records_serially(self):
+    def test_background_workers_process_distinct_records_in_parallel(self):
         client = FakePixelClient()
         client.delay = 0.02
         service = PixelUploadQueue(self.root, client=client, auto_start=False)
@@ -991,7 +991,183 @@ class PixelUploadQueueTests(unittest.TestCase):
 
         self.assertEqual(service.get(first["record_id"])["status"], "success")
         self.assertEqual(service.get(second["record_id"])["status"], "success")
-        self.assertEqual(client.max_active, 1)
+        self.assertEqual(client.max_active, 2)
+        self.assertEqual(service.queue_status()["configured_workers"], 2)
+
+    def test_worker_count_can_shrink_after_active_records_finish(self):
+        client = FakePixelClient()
+        client.delay = 0.04
+        service = PixelUploadQueue(self.root, client=client, auto_start=False, worker_count=2)
+        records = [
+            service.enqueue(
+                f"T000{index}",
+                self.write_result(f"worker-{index}.json", task_id=f"T000{index}"),
+            )
+            for index in range(1, 4)
+        ]
+        service.start()
+        deadline = time.monotonic() + 1
+        while service.queue_status()["active_workers"] < 2 and time.monotonic() < deadline:
+            time.sleep(0.005)
+        self.assertEqual(service.configure_workers(1), 1)
+
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            if all(service.get(item["record_id"])["status"] == "success" for item in records):
+                break
+            time.sleep(0.01)
+        deadline = time.monotonic() + 1
+        while service.queue_status()["alive_workers"] != 1 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        status = service.queue_status()
+        service.stop()
+
+        self.assertEqual(status["configured_workers"], 1)
+        self.assertEqual(status["alive_workers"], 1)
+        self.assertTrue(all(service.get(item["record_id"])["status"] == "success" for item in records))
+
+    def test_retiring_worker_returns_a_dequeued_record_without_processing_it(self):
+        client = FakePixelClient()
+        service = PixelUploadQueue(self.root, client=client, auto_start=False, worker_count=2)
+        record = service.enqueue("T0001", self.write_result("retiring-worker.json"))
+        service._retiring_workers.add(2)
+
+        self.assertFalse(service.process_next(worker_id=2))
+        self.assertEqual(client.created, [])
+        self.assertEqual(service.queue_status()["pending_records"], 1)
+        self.assertTrue(service.process_next())
+        self.assertEqual(service.get(record["record_id"])["status"], "success")
+
+    def test_worker_count_can_expand_while_a_record_is_active(self):
+        client = FakePixelClient()
+        client.delay = 0.05
+        service = PixelUploadQueue(self.root, client=client, auto_start=False, worker_count=1)
+        records = [
+            service.enqueue(
+                f"T000{index}",
+                self.write_result(f"expand-{index}.json", task_id=f"T000{index}"),
+            )
+            for index in range(1, 4)
+        ]
+        service.start()
+        deadline = time.monotonic() + 1
+        while service.queue_status()["active_workers"] < 1 and time.monotonic() < deadline:
+            time.sleep(0.005)
+        self.assertEqual(service.configure_workers(3), 3)
+
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            if all(service.get(item["record_id"])["status"] == "success" for item in records):
+                break
+            time.sleep(0.01)
+        status = service.queue_status()
+        service.stop()
+
+        self.assertEqual(status["configured_workers"], 3)
+        self.assertEqual(status["alive_workers"], 3)
+        self.assertEqual(client.max_active, 3)
+        self.assertTrue(all(service.get(item["record_id"])["status"] == "success" for item in records))
+
+    def test_batch_overview_counts_sources_and_six_target_deliveries(self):
+        service = PixelUploadQueue(self.root, client=FakePixelClient(), auto_start=False)
+        first = service.enqueue("T0001", self.write_result("overview-one.json", task_id="T0001"))
+        service.enqueue("T0002", self.write_result("overview-two.json", task_id="T0002"))
+
+        queued = service.overview()["current_batch"]
+        self.assertEqual(queued["source"]["total"], 2)
+        self.assertEqual(queued["source"]["pending"], 2)
+        self.assertEqual(queued["deliveries"]["total"], 12)
+        self.assertEqual(queued["deliveries"]["pending"], 12)
+
+        service.process_next()
+        partial = service.batches(page=1, page_size=20)["items"][0]
+        self.assertEqual(partial["source"]["success"], 1)
+        self.assertEqual(partial["deliveries"]["success"], 6)
+        page = service.batch_records(partial["batch_id"], page=1, page_size=1)
+        self.assertEqual(page["total"], 2)
+        self.assertEqual(len(page["items"]), 1)
+        self.assertEqual(service.get(first["record_id"])["status"], "success")
+
+    def test_batch_record_needs_confirmation_filter_matches_target_state(self):
+        client = FakePixelClient()
+        client.jobs.append({
+            "jobId": "job-1",
+            "status": "completed",
+            "results": [
+                target_result(target_id, concurrency_by_id={})
+                for target_id in PIXEL_AUTO_TARGET_IDS
+            ],
+        })
+        service = PixelUploadQueue(self.root, client=client, auto_start=False)
+        record = service.enqueue("T0001", self.write_result("needs-confirmation.json"))
+        service.process_next()
+
+        batch_id = service.get(record["record_id"])["batch_id"]
+        filtered = service.batch_records(batch_id, status="needs_confirmation")
+        failed = service.batch_records(batch_id, status="failed")
+
+        self.assertEqual(service.get(record["record_id"])["status"], "failed")
+        self.assertEqual(filtered["total"], 1)
+        self.assertEqual(filtered["items"][0]["record_id"], record["record_id"])
+        self.assertEqual(failed["total"], 0)
+
+    def test_batch_record_failed_filter_matches_failed_target_in_partial_record(self):
+        client = FakePixelClient()
+        client.jobs.append({
+            "jobId": "job-1",
+            "status": "completed",
+            "results": [
+                target_result(
+                    target_id,
+                    status="failed" if target_id == "pixel-3" else "success",
+                    created=0 if target_id == "pixel-3" else 1,
+                    failed=1 if target_id == "pixel-3" else 0,
+                    shared=0 if target_id == "pixel-3" else 1,
+                    message="import rejected" if target_id == "pixel-3" else "ok",
+                )
+                for target_id in PIXEL_AUTO_TARGET_IDS
+            ],
+        })
+        service = PixelUploadQueue(self.root, client=client, auto_start=False)
+        record = service.enqueue("T0001", self.write_result("partial-failure.json"))
+        service.process_next()
+
+        current = service.get(record["record_id"])
+        filtered = service.batch_records(current["batch_id"], status="failed")
+
+        self.assertEqual(current["status"], "partial")
+        self.assertEqual(filtered["total"], 1)
+        self.assertEqual(filtered["items"][0]["record_id"], record["record_id"])
+
+    def test_target_failure_contract_matches_persisted_outbox(self):
+        client = FakePixelClient()
+        client.jobs.append({
+            "jobId": "job-1",
+            "status": "completed",
+            "results": [
+                target_result(
+                    target_id,
+                    status="failed",
+                    created=0,
+                    failed=1,
+                    shared=0,
+                    message="provider rejected import",
+                )
+                for target_id in PIXEL_AUTO_TARGET_IDS
+            ],
+        })
+        service = PixelUploadQueue(self.root, client=client, auto_start=False)
+        record = service.enqueue("T0001", self.write_result("failure-contract.json"))
+        service.process_next()
+
+        public = service.get(record["record_id"])
+        stored = json.loads(service.outbox_path.read_text(encoding="utf-8"))["records"][0]
+        public_failure = public["targets"][0]["failure"]
+        stored_failure = next(iter(stored["targets"].values()))["failure"]
+        self.assertEqual(public_failure["node_code"], "pixel_import")
+        self.assertEqual(public_failure["node_label"], "Pixel 账号导入")
+        self.assertEqual(public_failure, stored_failure)
+        self.assertNotIn(ACCESS_TOKEN, json.dumps(stored))
 
 
 if __name__ == "__main__":

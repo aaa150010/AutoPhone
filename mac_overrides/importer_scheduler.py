@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import hmac
 import threading
+import time
 from typing import Any, Callable
 import uuid
 
@@ -26,6 +27,38 @@ def _is_relogin(settings: dict[str, Any]) -> bool:
 
 def _is_sha256_row_id(value: str) -> bool:
     return len(value) == 64 and all(character in "0123456789abcdef" for character in value)
+
+
+class ObservedPhaseGate:
+    """Record phase-gate waits without changing the recovered gate contract."""
+
+    def __init__(
+        self,
+        gate: Any,
+        on_wait: Callable[[float], Any] | None = None,
+        *,
+        now_fn: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.gate = gate
+        self.on_wait = on_wait
+        self.now_fn = now_fn
+
+    def acquire(self, stop_event: Any) -> None:
+        started = float(self.now_fn())
+        try:
+            self.gate.acquire(stop_event)
+        finally:
+            if callable(self.on_wait):
+                try:
+                    self.on_wait(max(0.0, float(self.now_fn()) - started))
+                except Exception:
+                    pass
+
+    def release(self) -> None:
+        self.gate.release()
+
+    def status(self) -> dict[str, int]:
+        return self.gate.status()
 
 
 def _selected_run_target(
@@ -103,6 +136,10 @@ def start_bounded_importer(
     phase_gate_factory: Callable[[int], Any],
     executor_factory: Callable[..., Any] = ThreadPoolExecutor,
     thread_factory: Callable[..., Any] = threading.Thread,
+    task_admission: Any = None,
+    email_phase_gate_factory: Callable[[int], Any] | None = None,
+    node_phase_gate_factory: Callable[[int], Any] | None = None,
+    on_task_started: Callable[[str, float], Any] | None = None,
 ) -> None:
     """Start only the requested number of reserved pool entries."""
     relogin = _is_relogin(settings)
@@ -133,8 +170,17 @@ def start_bounded_importer(
         else _bounded_int(settings.get("target_count"), 1, 1, available)
     )
     target = min(available, requested)
-    concurrency = _bounded_int(settings.get("concurrency"), 1, 1, 100)
+    concurrency = _bounded_int(settings.get("concurrency"), 5, 1, 8)
     worker_count = min(target, concurrency)
+    worker_capacity = worker_count
+    if task_admission is not None:
+        try:
+            worker_capacity = min(
+                target,
+                max(worker_count, int(task_admission.snapshot().get("ceiling") or worker_count)),
+            )
+        except Exception:
+            worker_capacity = worker_count
     email_login_concurrency = _bounded_int(
         settings.get("auto_email_login_concurrency"),
         min(5, worker_count),
@@ -155,19 +201,67 @@ def start_bounded_importer(
     batch_id = str(settings.get("batch_id") or "").strip()
     batch_started_at = _bounded_int(settings.get("batch_started_at"), 0, 0, 4_102_444_800)
 
-    def run_after_start(*args: Any) -> None:
+    def stopped_before_admission(entry: Any, task_id: str) -> None:
+        if not relogin:
+            try:
+                pool.restore_entry(entry, reason="stopped_before_start")
+            except Exception:
+                pass
+        try:
+            importer._task_state(task_id, status="stopped", error="未启动，已停止")
+        except Exception:
+            pass
+        with importer.lock:
+            importer.cancelled_waiting += 1
+
+    def run_after_start(
+        task_settings: dict[str, Any],
+        ordinal: int,
+        entry: Any,
+        task_id: str,
+        queued_at: float,
+    ) -> None:
         startup_gate.wait()
-        if startup_ready.is_set():
-            importer._run_one(*args)
+        if not startup_ready.is_set():
+            return
+        if task_admission is None:
+            importer._run_one(task_settings, ordinal, entry, task_id)
+            return
+
+        wait_seconds = 0.0
+
+        def observed_wait(value: float) -> None:
+            nonlocal wait_seconds
+            wait_seconds = max(0.0, float(value))
+
+        try:
+            with task_admission.acquire(
+                stop_event=importer.stop_event,
+                on_wait=observed_wait,
+                queued_at=queued_at,
+            ):
+                if callable(on_task_started):
+                    try:
+                        on_task_started(task_id, wait_seconds)
+                    except Exception:
+                        pass
+                importer._run_one(task_settings, ordinal, entry, task_id)
+        except RuntimeError as exc:
+            if str(exc) != "task_stopped":
+                raise
+            stopped_before_admission(entry, task_id)
 
     with importer.lock:
         if importer.running:
             raise RuntimeError("已有导入任务正在运行")
         importer.stop_event.clear()
         importer.manual_codes = manual_code_factory()
-        importer.auto_email_phase_gate = phase_gate_factory(email_login_concurrency)
-        importer.node_gate = phase_gate_factory(node_concurrency)
+        email_factory = email_phase_gate_factory or phase_gate_factory
+        node_factory = node_phase_gate_factory or phase_gate_factory
+        importer.auto_email_phase_gate = email_factory(email_login_concurrency)
+        importer.node_gate = node_factory(node_concurrency)
         importer.task_concurrency = worker_count
+        importer.task_admission = task_admission
         importer.running = True
         importer.tasks = {}
         importer.cancelled_waiting = 0
@@ -197,17 +291,22 @@ def start_bounded_importer(
                 )
 
             executor = executor_factory(
-                max_workers=worker_count,
+                max_workers=worker_capacity,
                 thread_name_prefix="email-auth-import",
             )
             importer.executor = executor
             for task_id, ordinal, entry, _restore_on_cancel in reserved:
+                try:
+                    queued_at = float(task_admission.now_fn()) if task_admission is not None else time.monotonic()
+                except Exception:
+                    queued_at = time.monotonic()
                 future = executor.submit(
                     run_after_start,
                     copy.deepcopy(settings),
                     ordinal,
                     entry,
                     task_id,
+                    queued_at,
                 )
                 futures.append(future)
                 importer.future_assignments[future] = (pool, entry, task_id)
@@ -264,7 +363,8 @@ def start_bounded_importer(
             )
         else:
             message = (
-                f"导入任务启动: 目标邮箱 {target}/{available}，实际任务并发 {worker_count}，"
+                f"导入任务启动: 目标邮箱 {target}/{available}，基础任务并发 {worker_count}，"
+                f"健康上限 {worker_capacity}，"
                 f"Node 并发 {node_concurrency}，邮箱验证码槽 {email_login_concurrency}；"
                 "仅预留本批目标邮箱，验证码通过后立即释放，号码/SUB2 保持并发"
             )
@@ -276,6 +376,12 @@ def start_bounded_importer(
 def stop_bounded_importer(importer: Any) -> None:
     """Stop pending work without racing the recovered watcher assignment cleanup."""
     importer.stop_event.set()
+    task_admission = getattr(importer, "task_admission", None)
+    if task_admission is not None:
+        try:
+            task_admission.wake_all()
+        except Exception:
+            pass
     cleanup_failures = 0
     try:
         importer.manual_codes.cancel_all()
@@ -330,3 +436,10 @@ def stop_bounded_importer(importer: Any) -> None:
             importer._log(f"停止清理有 {cleanup_failures} 项未完成", "error")
     except Exception:
         pass
+
+
+__all__ = [
+    "ObservedPhaseGate",
+    "start_bounded_importer",
+    "stop_bounded_importer",
+]

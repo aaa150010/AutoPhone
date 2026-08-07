@@ -33,10 +33,12 @@ SMS_PROVIDER_ALIASES = {
     "fivesim": "5sim",
     "five_sim": "5sim",
 }
-PERFORMANCE_POLICY_VERSION = 10
+PERFORMANCE_POLICY_VERSION = 11
 PHONE_MAX_ATTEMPTS_LIMIT = 45
 PERFORMANCE_DEFAULTS = {
     "auto_email_login_concurrency": 5,
+    "phone_submission_concurrency": 2,
+    "pixel_upload_concurrency": 2,
     "phone_max_attempts": PHONE_MAX_ATTEMPTS_LIMIT,
     "phone_attempts_per_provider": 15,
     "phone_session_cycle_seconds": 1800,
@@ -357,9 +359,10 @@ def migrate_performance_config(value: Any) -> tuple[dict[str, Any], bool]:
         config["phone_max_attempts"] = PHONE_MAX_ATTEMPTS_LIMIT
 
     try:
-        task_concurrency = max(1, min(100, int(config.get("concurrency") or 5)))
+        task_concurrency = max(1, min(8, int(config.get("concurrency") or 5)))
     except (TypeError, ValueError):
         task_concurrency = 5
+    config["concurrency"] = task_concurrency
     try:
         email_concurrency = int(
             config.get("auto_email_login_concurrency")
@@ -371,6 +374,12 @@ def migrate_performance_config(value: Any) -> tuple[dict[str, Any], bool]:
         1,
         min(task_concurrency, email_concurrency),
     )
+    for key in ("phone_submission_concurrency", "pixel_upload_concurrency"):
+        try:
+            parsed = int(config.get(key) or PERFORMANCE_DEFAULTS[key])
+        except (TypeError, ValueError):
+            parsed = PERFORMANCE_DEFAULTS[key]
+        config[key] = max(1, min(3, parsed))
 
     pools = normalize_sms_provider_pools(
         config.get("sms_provider_pools"),
@@ -2608,13 +2617,12 @@ class PhoneSubmissionGate:
         now_fn: Callable[[], float] = time.monotonic,
         sleep_fn: Callable[[float], None] = time.sleep,
     ) -> None:
-        self.limit = max(1, int(concurrency))
-        self.semaphore = threading.BoundedSemaphore(self.limit)
+        self.limit = max(1, min(3, int(concurrency)))
         self.interval_seconds = max(0.0, float(interval_seconds))
         self.now_fn = now_fn
         self.sleep_fn = sleep_fn
         self.spacing_lock = threading.Lock()
-        self.status_lock = threading.Lock()
+        self.status_condition = threading.Condition()
         self.active = 0
         self.waiting = 0
         self.last_started_at = 0.0
@@ -2626,6 +2634,16 @@ class PhoneSubmissionGate:
             self.last_started_at = 0.0
             self.not_before = 0.0
             self.transient_streak = 0
+
+    def configure(self, concurrency: Any) -> int:
+        try:
+            limit = int(concurrency)
+        except (TypeError, ValueError):
+            limit = 2
+        with self.status_condition:
+            self.limit = max(1, min(3, limit))
+            self.status_condition.notify_all()
+            return self.limit
 
     def report_transient(self) -> float:
         with self.spacing_lock:
@@ -2639,7 +2657,7 @@ class PhoneSubmissionGate:
             self.transient_streak = 0
 
     def status(self) -> dict[str, int]:
-        with self.status_lock:
+        with self.status_condition:
             return {
                 "active": self.active,
                 "limit": self.limit,
@@ -2651,24 +2669,25 @@ class PhoneSubmissionGate:
         return ProxyProtocolGate._stopped(stop_event)
 
     def _acquire(self, stop_event: Any) -> None:
-        with self.status_lock:
+        with self.status_condition:
             self.waiting += 1
         try:
-            while True:
-                if self._stopped(stop_event):
-                    raise RuntimeError("task_stopped")
-                if self.semaphore.acquire(timeout=0.25):
-                    with self.status_lock:
+            with self.status_condition:
+                while True:
+                    if self._stopped(stop_event):
+                        raise RuntimeError("task_stopped")
+                    if self.active < self.limit:
                         self.active += 1
-                    return
+                        return
+                    self.status_condition.wait(timeout=0.25)
         finally:
-            with self.status_lock:
+            with self.status_condition:
                 self.waiting = max(0, self.waiting - 1)
 
     def _release(self) -> None:
-        with self.status_lock:
+        with self.status_condition:
             self.active = max(0, self.active - 1)
-        self.semaphore.release()
+            self.status_condition.notify_all()
 
     def _wait(self, seconds: float, stop_event: Any) -> None:
         remaining = max(0.0, float(seconds))

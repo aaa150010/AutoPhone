@@ -65,6 +65,8 @@ _EMAIL_RE = re.compile(
 )
 _PROGRESS_FIELDS = ("code", "label", "group", "entered_at", "finished_at", "timing")
 _SECRET_MASK = "********"
+_IMPORT_ORDER_VERSION = 1
+_IMPORT_ORDER_FILE_NAME = "mailbox_import_order.json"
 _SUB2_BATCH_LIMIT = 20
 _REDACTION_INPUT_LIMIT = 4096
 _INTERNAL_MAILBOX_REASONS = frozenset(
@@ -493,6 +495,105 @@ class MailboxAdminService:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    def _import_order_path(self) -> Path:
+        return Path(self.store.data_dir).resolve() / _IMPORT_ORDER_FILE_NAME
+
+    @staticmethod
+    def _write_import_order_file(path: Path, value: Mapping[str, Any]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(path.suffix + ".tmp")
+        temporary.write_text(
+            json.dumps(value, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        temporary.chmod(0o600)
+        temporary.replace(path)
+        path.chmod(0o600)
+
+    def _reconcile_import_order(
+        self,
+        lines: Sequence[str],
+        *,
+        external_as_new: bool = True,
+    ) -> dict[str, Any]:
+        path = self._import_order_path()
+        raw = self._read_json_file(path)
+        try:
+            version = int(raw.get("version") or 0)
+        except (TypeError, ValueError):
+            version = 0
+        valid_store = (
+            version == _IMPORT_ORDER_VERSION
+            and isinstance(raw.get("entries"), Mapping)
+        )
+        try:
+            next_batch = max(0, int(raw.get("next_batch") or 0)) if valid_store else 0
+        except (TypeError, ValueError):
+            next_batch = 0
+        entries: dict[str, dict[str, int]] = {}
+        if valid_store:
+            for raw_row_id, raw_item in raw["entries"].items():
+                row_id = str(raw_row_id or "").strip().lower()
+                if not re.fullmatch(r"[0-9a-f]{64}", row_id) or not isinstance(raw_item, Mapping):
+                    continue
+                try:
+                    batch = max(0, int(raw_item.get("batch") or 0))
+                    order = max(0, int(raw_item.get("order") or 0))
+                except (TypeError, ValueError):
+                    continue
+                entries[row_id] = {"batch": batch, "order": order}
+                next_batch = max(next_batch, batch)
+
+        row_ids = [row_id_from_source(line) for line in lines]
+        current = set(row_ids)
+        entries = {
+            row_id: item
+            for row_id, item in entries.items()
+            if row_id in current
+        }
+        missing = [row_id for row_id in row_ids if row_id not in entries]
+        if missing:
+            if valid_store and external_as_new:
+                next_batch += 1
+                batch = next_batch
+            else:
+                batch = 0
+            for order, row_id in enumerate(missing):
+                entries[row_id] = {"batch": batch, "order": order}
+
+        reconciled = {
+            "version": _IMPORT_ORDER_VERSION,
+            "next_batch": next_batch,
+            "entries": entries,
+        }
+        if reconciled != raw:
+            self._write_import_order_file(path, reconciled)
+        return reconciled
+
+    def _append_import_order_batch(
+        self,
+        state: Mapping[str, Any],
+        appended: Sequence[str],
+    ) -> dict[str, Any]:
+        next_batch = max(0, int(state.get("next_batch") or 0)) + 1
+        entries = {
+            str(row_id): dict(item)
+            for row_id, item in (state.get("entries") or {}).items()
+            if isinstance(item, Mapping)
+        }
+        for order, line in enumerate(appended):
+            entries[row_id_from_source(line)] = {
+                "batch": next_batch,
+                "order": order,
+            }
+        value = {
+            "version": _IMPORT_ORDER_VERSION,
+            "next_batch": next_batch,
+            "entries": entries,
+        }
+        self._write_import_order_file(self._import_order_path(), value)
+        return value
+
     def _read_pool_lines(self, config: Mapping[str, Any] | None = None) -> list[str]:
         cfg = config or self._config()
         pool_path = self._path(cfg, "pool_path")
@@ -848,6 +949,7 @@ class MailboxAdminService:
             state_path = self._path(config, "state_path")
             results_dir = self._path(config, "results_dir")
             lines = self._read_pool_lines(config)
+            import_order = self._reconcile_import_order(lines)
             state = self._read_json_file(state_path)
 
         state_by_line: dict[int, Mapping[str, Any]] = {}
@@ -1068,13 +1170,13 @@ class MailboxAdminService:
                     "quota_7d": quota_status.get("quota_7d"),
                 }
             )
+        order_entries = import_order.get("entries") if isinstance(import_order.get("entries"), Mapping) else {}
         rows.sort(
             key=lambda item: (
-                int(item.get("batch_started_at") or item.get("updated_at") or 0),
-                int(item.get("updated_at") or 0),
-                -int(item.get("line_no") or 0),
-            ),
-            reverse=True,
+                -int((order_entries.get(str(item.get("row_id") or "")) or {}).get("batch") or 0),
+                int((order_entries.get(str(item.get("row_id") or "")) or {}).get("order") or 0),
+                int(item.get("line_no") or 0),
+            )
         )
         return {"ok": True, "counts": counts, "rows": rows, "pool_path": str(pool_path)}
 
@@ -1090,6 +1192,7 @@ class MailboxAdminService:
         with self._lock:
             config = self._config()
             old_lines = self._read_pool_lines(config)
+            import_order = self._reconcile_import_order(old_lines)
             seen = {line.lower() for line in old_lines}
             appended = []
             skipped = 0
@@ -1102,6 +1205,7 @@ class MailboxAdminService:
             if not appended:
                 return {"ok": False, "error": "没有新增邮箱，可能都是重复行"}
             self._write_pool_lines(old_lines + appended, config)
+            self._append_import_order_batch(import_order, appended)
             check = self._validate_pool()
 
         self._log(f"邮箱管理追加导入: 新增 {len(appended)} 条，跳过重复 {skipped} 条", "success")
@@ -1146,15 +1250,54 @@ class MailboxAdminService:
         if not selected:
             return {"ok": False, "error": "请先勾选要删除的邮箱"}
 
+        value = payload if isinstance(payload, Mapping) else {}
+        requested = value.get("rows")
+        bindings: list[tuple[int, str]] = []
+        if requested is not None:
+            if not isinstance(requested, Sequence) or isinstance(requested, (str, bytes)):
+                return {"ok": False, "code": "mailbox_rows_invalid", "error": "删除参数无效"}
+            seen_bindings: set[tuple[int, str]] = set()
+            for item in requested:
+                if not isinstance(item, Mapping):
+                    return {"ok": False, "code": "mailbox_rows_invalid", "error": "删除参数无效"}
+                try:
+                    line_no = int(item.get("line_no") or 0)
+                except (TypeError, ValueError):
+                    line_no = 0
+                row_id = str(item.get("row_id") or "").strip().lower()
+                binding = (line_no, row_id)
+                if (
+                    line_no <= 0
+                    or not re.fullmatch(r"[0-9a-f]{64}", row_id)
+                    or binding in seen_bindings
+                ):
+                    return {"ok": False, "code": "mailbox_rows_invalid", "error": "删除参数无效"}
+                seen_bindings.add(binding)
+                bindings.append(binding)
+            if {line_no for line_no, _row_id in bindings} != set(selected):
+                return {"ok": False, "code": "mailbox_rows_invalid", "error": "删除参数无效"}
+
         with self._lock:
             config = self._config()
             lines = self._read_pool_lines(config)
+            self._reconcile_import_order(lines)
+            for line_no, expected_row_id in bindings:
+                if line_no > len(lines) or not hmac.compare_digest(
+                    expected_row_id,
+                    row_id_from_source(lines[line_no - 1]),
+                ):
+                    return {
+                        "ok": False,
+                        "code": "mailbox_rows_stale",
+                        "error": "邮箱列表已变化，请刷新后重试",
+                    }
             selected_set = set(selected)
             deleted_lines = [line for index, line in enumerate(lines, start=1) if index in selected_set]
             kept_lines = [line for index, line in enumerate(lines, start=1) if index not in selected_set]
             if not deleted_lines:
                 return {"ok": False, "error": "选中的邮箱不存在或已经删除"}
             self._write_pool_lines(kept_lines, config)
+            self._reconcile_import_order(kept_lines, external_as_new=False)
             deleted_emails = {email_from_row(line) for line in deleted_lines if email_from_row(line)}
             self._rewrite_state_after_delete(kept_lines, selected_set, deleted_emails, config)
             self._validate_pool()

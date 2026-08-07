@@ -24,6 +24,22 @@ const totalElapsedSeconds = computed(() => {
   return Math.max(Number(timing.elapsed_seconds || 0), Math.floor(end - timing.started_at))
 })
 
+const queueElapsedSeconds = computed(() => {
+  const timing = resolvedTiming.value
+  if (!timing) return 0
+  if (timing.execution_started_at != null) return Number(timing.queue_elapsed_seconds || 0)
+  const queuedAt = Number(timing.queued_at || timing.started_at || 0)
+  const end = timing.finished_at ?? props.nowSeconds
+  return queuedAt ? Math.max(0, Math.floor(end - queuedAt)) : Number(timing.queue_elapsed_seconds || 0)
+})
+
+const executionElapsedSeconds = computed(() => {
+  const timing = resolvedTiming.value
+  if (!timing?.execution_started_at) return Number(timing?.execution_elapsed_seconds || 0)
+  const end = timing.finished_at ?? props.nowSeconds
+  return Math.max(Number(timing.execution_elapsed_seconds || 0), Math.floor(end - timing.execution_started_at))
+})
+
 function formatSeconds(value: unknown) {
   const seconds = Math.max(0, Number(value || 0))
   if (!Number.isFinite(seconds)) return '0'
@@ -62,6 +78,7 @@ const tooltip = computed(() => {
   return [
     current,
     `总耗时 ${totalElapsedSeconds.value} 秒`,
+    `排队 ${queueElapsedSeconds.value} 秒 · 执行 ${executionElapsedSeconds.value} 秒`,
     stages ? `阶段：${stages}` : '',
     segments ? `细分：${segments}` : '',
   ].filter(Boolean).join(' · ')

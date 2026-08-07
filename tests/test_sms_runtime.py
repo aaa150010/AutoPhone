@@ -218,6 +218,8 @@ class SmsRuntimeTests(unittest.TestCase):
         self.assertEqual(migrated["phone_session_cycle_seconds"], 1800)
         self.assertEqual(migrated["auth_session_retries"], 1)
         self.assertEqual(migrated["auto_email_login_concurrency"], 5)
+        self.assertEqual(migrated["phone_submission_concurrency"], 2)
+        self.assertEqual(migrated["pixel_upload_concurrency"], 2)
 
         upgraded, changed = migrate_performance_config({
             "performance_policy_version": 4,
@@ -261,6 +263,16 @@ class SmsRuntimeTests(unittest.TestCase):
         })
         self.assertFalse(changed)
         self.assertEqual(over_limit["phone_max_attempts"], 45)
+
+        bounded, _changed = migrate_performance_config({
+            "performance_policy_version": PERFORMANCE_POLICY_VERSION,
+            "concurrency": 99,
+            "phone_submission_concurrency": 9,
+            "pixel_upload_concurrency": 0,
+        })
+        self.assertEqual(bounded["concurrency"], 8)
+        self.assertEqual(bounded["phone_submission_concurrency"], 3)
+        self.assertEqual(bounded["pixel_upload_concurrency"], 2)
 
     def test_provider_pool_config_migrates_legacy_and_preserves_platform_defaults(self):
         legacy, _changed = migrate_performance_config({

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -842,7 +843,7 @@ class MailboxAdminTests(unittest.TestCase):
         for secret in ("run-pass", "done-pass", "login-pass", "refresh-a", "JBSWY3DPEHPK3PXP"):
             self.assertNotIn(secret, public_payload)
 
-    def test_mailboxes_sort_newest_batch_first_and_resolve_only_success_results(self):
+    def test_legacy_mailboxes_keep_pool_order_and_resolve_only_success_results(self):
         older = "older@example.com----pass-a----client-a----refresh-a"
         newer = "newer@example.com----pass-b----client-b----refresh-b"
         failed = "failed@example.com----pass-c----client-c----refresh-c"
@@ -878,9 +879,9 @@ class MailboxAdminTests(unittest.TestCase):
         listed = self.service.list_mailboxes()["rows"]
 
         self.assertEqual([row["email"] for row in listed], [
-            "failed@example.com",
-            "newer@example.com",
             "older@example.com",
+            "newer@example.com",
+            "failed@example.com",
         ])
         self.assertEqual(listed[1]["batch_id"], "batch-new")
         self.assertEqual(listed[1]["batch_started_at"], 300)
@@ -898,8 +899,84 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertEqual(selected["items"][0]["task_id"], "task-new")
         self.assertEqual(selected["items"][0]["result_file"], (results / "newer.json").resolve())
 
+    def test_new_import_batches_sort_first_and_preserve_pasted_order(self):
+        legacy = [
+            "legacy-one@example.com----legacy-pass-one----legacy-client-one----legacy-refresh-one",
+            "legacy-two@example.com----legacy-pass-two----legacy-client-two----legacy-refresh-two",
+        ]
+        first_batch = [
+            "first-one@example.com----first-pass-one----first-client-one----first-refresh-one",
+            "first-two@example.com----first-pass-two----first-client-two----first-refresh-two",
+        ]
+        second_batch = [
+            "second-one@example.com----second-pass-one----second-client-one----second-refresh-one",
+            "second-two@example.com----second-pass-two----second-client-two----second-refresh-two",
+        ]
+        self._write_pool("\n".join(legacy) + "\n")
+        self._write_state({})
+        self.assertEqual(
+            [row["email"] for row in self.service.list_mailboxes()["rows"]],
+            ["legacy-one@example.com", "legacy-two@example.com"],
+        )
+
+        self.service.append("\n".join(first_batch))
+        self.service.append("\n".join(second_batch))
+        listed = self.service.list_mailboxes()["rows"]
+
+        self.assertEqual(
+            [row["email"] for row in listed],
+            [
+                "second-one@example.com",
+                "second-two@example.com",
+                "first-one@example.com",
+                "first-two@example.com",
+                "legacy-one@example.com",
+                "legacy-two@example.com",
+            ],
+        )
+        sidecar_text = (self.root / "mailbox_import_order.json").read_text(encoding="utf-8")
+        for secret in (*legacy, *first_batch, *second_batch, "example.com", "pass"):
+            self.assertNotIn(secret, sidecar_text)
+        sidecar = json.loads(sidecar_text)
+        self.assertEqual(sidecar["version"], 1)
+        self.assertEqual(sidecar["next_batch"], 2)
+        self.assertEqual(len(sidecar["entries"]), 6)
+        self.assertEqual(os.stat(self.root / "mailbox_import_order.json").st_mode & 0o777, 0o600)
+
+    def test_task_updates_do_not_reorder_import_batches_and_external_append_is_newest(self):
+        old = "old@example.com----old-pass----old-client----old-refresh"
+        imported = "imported@example.com----imported-pass----imported-client----imported-refresh"
+        external = "external@example.com----external-pass----external-client----external-refresh"
+        self._write_pool(old + "\n")
+        self._write_state({})
+        self.service.list_mailboxes()
+        self.service.append(imported)
+
+        results = self.root / "results"
+        results.mkdir()
+        (results / "old-new-task.json").write_text(
+            json.dumps({
+                "email": "old@example.com",
+                "status": "failed",
+                "created_at": 9_999_999,
+                "batch_started_at": 9_999_000,
+                "task_id": "old-late-task",
+            }),
+            encoding="utf-8",
+        )
+        self.assertEqual(
+            [row["email"] for row in self.service.list_mailboxes()["rows"]],
+            ["imported@example.com", "old@example.com"],
+        )
+
+        self._write_pool("\n".join([old, imported, external]) + "\n")
+        self.assertEqual(
+            [row["email"] for row in self.service.list_mailboxes()["rows"]],
+            ["external@example.com", "imported@example.com", "old@example.com"],
+        )
+
         stale = self.service.selected_success_results({
-            "rows": [{"row_id": row_id_from_source(older), "line_no": 2}],
+            "rows": [{"row_id": row_id_from_source(old), "line_no": 2}],
         })
         self.assertFalse(stale["ok"])
         self.assertEqual(stale["code"], "mailbox_rows_stale")
@@ -1213,6 +1290,27 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertEqual(state["items"]["three"]["line_no"], 2)
         self.assertEqual(state["updated_at"], 1000)
         self.assertEqual(self.logs[-1], ("邮箱管理删除: 1 条", "warn"))
+        sidecar = json.loads((self.root / "mailbox_import_order.json").read_text(encoding="utf-8"))
+        self.assertNotIn(row_id_from_source(rows[1]), sidecar["entries"])
+        self.assertEqual(set(sidecar["entries"]), {row_id_from_source(rows[0]), row_id_from_source(rows[2])})
+
+    def test_delete_rejects_stale_stable_row_binding_without_mutating_pool(self):
+        rows = [
+            "one@example.com----pass-one",
+            "two@example.com----pass-two",
+        ]
+        self._write_pool("\n".join(rows) + "\n")
+        self._write_state({})
+
+        result = self.service.delete({
+            "line_nos": [2],
+            "rows": [{"row_id": row_id_from_source(rows[0]), "line_no": 2}],
+        })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "mailbox_rows_stale")
+        self.assertEqual(self._pool_lines(), rows)
+        self.assertEqual(self.logs, [])
 
     def test_restore_updates_selected_state_and_history(self):
         self._write_pool("one@example.com----pass-one\ntwo@example.com----pass-two\n")

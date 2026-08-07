@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import threading
+import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
 
+from mac_overrides.adaptive_concurrency import AdaptiveConcurrencyGate
 from mac_overrides.importer_scheduler import start_bounded_importer, stop_bounded_importer
 
 
@@ -341,6 +343,36 @@ class ImporterSchedulerTests(unittest.TestCase):
         self.assertEqual(importer.pool.lease_calls, 10)
         self.assertEqual(len(importer.pool.restored), 8)
         self.assertEqual(importer.cancelled_waiting, 8)
+
+    def test_stop_wakes_admission_waiters_and_keeps_them_queued_until_cancelled(self):
+        importer = FakeImporter(available=4, blocked=True)
+        admission = AdaptiveConcurrencyGate(1, ceiling=4)
+        started: list[str] = []
+        start(
+            importer,
+            {"target_count": 4, "concurrency": 1},
+            task_admission=admission,
+            on_task_started=lambda task_id, _elapsed: started.append(task_id),
+        )
+        self.assertTrue(importer.one_started.wait(1))
+        deadline = time.time() + 1
+        while admission.snapshot()["waiting"] < 3 and time.time() < deadline:
+            time.sleep(0.01)
+
+        queued_before_stop = [
+            task["status"]
+            for task_id, task in importer.tasks.items()
+            if task_id not in started
+        ]
+        importer.stop()
+        importer.release_tasks.set()
+        self.assertTrue(importer.finished.wait(2))
+
+        self.assertEqual(queued_before_stop, ["queued", "queued", "queued"])
+        self.assertEqual(len(started), 1)
+        self.assertEqual(sorted(importer.pool.restored), [2, 3, 4])
+        self.assertEqual(importer.cancelled_waiting, 3)
+        self.assertEqual(admission.snapshot()["active"], 0)
 
     def test_startup_failure_restores_idle_state(self):
         importer = FakeImporter(available=2)

@@ -165,6 +165,8 @@ const defaultForm = () => ({
   concurrency: '5',
   node_concurrency: '5',
   auto_email_login_concurrency: 5,
+  phone_submission_concurrency: 2,
+  pixel_upload_concurrency: 2,
   node_timeout: 45,
   email_code_timeout: 90,
   auth_session_retries: 1,
@@ -226,6 +228,8 @@ function normalizeImportedConfig(value: any) {
   delete config.nvtoken
   delete config.nvtoken_upload
   if (config.pixel_upload_enabled == null) config.pixel_upload_enabled = true
+  config.phone_submission_concurrency = Math.max(1, Math.min(3, Number(config.phone_submission_concurrency) || 2))
+  config.pixel_upload_concurrency = Math.max(1, Math.min(3, Number(config.pixel_upload_concurrency) || 2))
   config.email_notification = normalizeEmailNotificationDraft(config.email_notification)
   return config
 }
@@ -383,6 +387,8 @@ export function createAppController() {
     delete merged.nvtoken
     delete merged.nvtoken_upload
     if (merged.pixel_upload_enabled == null) merged.pixel_upload_enabled = true
+    merged.phone_submission_concurrency = Math.max(1, Math.min(3, Number(merged.phone_submission_concurrency) || 2))
+    merged.pixel_upload_concurrency = Math.max(1, Math.min(3, Number(merged.pixel_upload_concurrency) || 2))
     Object.assign(form, merged)
     syncLegacySmsFields(form)
     form.email_notification = normalizeEmailNotificationDraft(form.email_notification)

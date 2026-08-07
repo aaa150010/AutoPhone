@@ -100,6 +100,7 @@ class FakeMailboxAdmin:
             ],
         }
         self.relogin_payloads: list[dict] = []
+        self.delete_result = {"ok": True, "deleted": 0}
         self.totp_result = {
             "ok": True,
             "kind": "totp",
@@ -114,7 +115,7 @@ class FakeMailboxAdmin:
         return {"ok": True, "imported": 0, "skipped": 0}
 
     def delete_mailboxes(self, _payload):
-        return {"ok": True, "deleted": 0}
+        return dict(self.delete_result)
 
     def restore_mailboxes(self, _payload):
         return {"ok": True, "restored": 0}
@@ -170,12 +171,12 @@ class FakePixelClient:
         return {
             "targets": [
                 {"id": "pixel-1", "email": "excluded@example.com"},
-                {"id": "pixel-2", "email": "automatic@example.com"},
-                {"id": "pixel-3", "email": "automatic-3@example.com"},
-                {"id": "pixel-4", "email": "automatic-4@example.com"},
-                {"id": "pixel-5", "email": "automatic-5@example.com"},
-                {"id": "pixel-6", "email": "automatic-6@example.com"},
-                {"targetId": "pixel-7", "email": "automatic-7@example.com"},
+                {"id": "pixel-2", "email": "automatic@example.com", "accountCount": 12},
+                {"id": "pixel-3", "email": "automatic-3@example.com", "accountCount": 13},
+                {"id": "pixel-4", "email": "automatic-4@example.com", "accountCount": 14},
+                {"id": "pixel-5", "email": "automatic-5@example.com", "accountCount": 15},
+                {"id": "pixel-6", "email": "automatic-6@example.com", "accountCount": 16},
+                {"targetId": "pixel-7", "email": "automatic-7@example.com", "accountCount": 17},
             ]
         }
 
@@ -207,6 +208,32 @@ class FakePixelQueue:
         if self.error is not None:
             raise self.error
         return [{"record_id": "record-a", "targets": []}]
+
+    def overview(self):
+        return {
+            "revision": 7,
+            "queue": {"configured_workers": 2, "active_workers": 1, "pending_records": 3},
+            "current_batch": {
+                "batch_id": "batch-a",
+                "status": "processing",
+                "source": {"total": 4, "completed": 1, "success": 1},
+                "deliveries": {"total": 24, "success": 6},
+            },
+        }
+
+    def batches(self, *, page, page_size):
+        self.calls.append(("batches", page, page_size))
+        return {"items": [self.overview()["current_batch"]], "total": 1, "page": 1, "page_size": 20}
+
+    def batch_records(self, batch_id, *, page, page_size, status):
+        self.calls.append(("batch_records", batch_id, page, page_size, status))
+        return {
+            "batch": self.overview()["current_batch"],
+            "items": [{"record_id": "record-a", "targets": []}],
+            "total": 1,
+            "page": 1,
+            "page_size": 50,
+        }
 
     def retry(self, record_id, target_ids):
         self.calls.append((record_id, target_ids))
@@ -698,6 +725,22 @@ class WebRouteTests(unittest.TestCase):
         self.assertIn("password", payload["error"])
         self.assertIn("state", payload)
 
+    def test_mailbox_delete_maps_stale_binding_to_conflict(self):
+        self.mailbox_admin.delete_result = {
+            "ok": False,
+            "code": "mailbox_rows_stale",
+            "error": "邮箱列表已变化，请刷新后重试",
+        }
+        app = self._app()
+
+        response = app.test_client().post(
+            "/api/mailboxes/delete",
+            json={"line_nos": [2], "rows": [{"row_id": "a" * 64, "line_no": 2}]},
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.get_json()["code"], "mailbox_rows_stale")
+
     def test_sub2_test_maps_stale_and_admin_failures_and_refreshes_success(self):
         app = self._app()
         with app.test_client() as client:
@@ -905,6 +948,37 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(failed.status_code, 409)
         self.assertEqual(failed.get_json()["error"], "可以公开")
         self.assertNotIn("private-token", failed.get_data(as_text=True))
+
+    def test_pixel_overview_and_paginated_batch_routes_are_lightweight(self):
+        pixel = FakePixelClient()
+        queue = FakePixelQueue()
+        app = self._app(replace(
+            self.context,
+            pixel_client=pixel,
+            pixel_upload_queue=queue,
+        ))
+
+        with app.test_client() as client:
+            overview = client.get("/api/pixel/overview")
+            cached_overview = client.get("/api/pixel/overview")
+            batches = client.get("/api/pixel/upload-batches?page=2&page_size=10")
+            records = client.get(
+                "/api/pixel/upload-batches/batch-a/records?page=3&page_size=25&status=failed"
+            )
+
+        self.assertEqual(overview.status_code, 200)
+        self.assertEqual(overview.get_json()["current_batch"]["source"]["total"], 4)
+        self.assertEqual(overview.get_json()["current_batch"]["deliveries"]["total"], 24)
+        self.assertEqual(
+            [item["account_count"] for item in overview.get_json()["targets"]],
+            [12, 13, 14, 15, 16, 17],
+        )
+        self.assertEqual(cached_overview.status_code, 200)
+        self.assertEqual(pixel.calls.count(("targets",)), 1)
+        self.assertEqual(batches.status_code, 200)
+        self.assertEqual(records.status_code, 200)
+        self.assertIn(("batches", "2", "10"), queue.calls)
+        self.assertIn(("batch_records", "batch-a", "3", "25", "failed"), queue.calls)
 
 
 if __name__ == "__main__":

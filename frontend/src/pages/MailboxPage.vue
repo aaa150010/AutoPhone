@@ -121,10 +121,12 @@ const rows = computed(() => data.value.rows.filter((row) => {
   return matchesFilter && matchesSub2 && matchesQuota && (!query || haystack.includes(query))
 }))
 
-const pageRows = computed(() => rows.value.slice(
-  (currentPage.value - 1) * pageSize.value,
-  currentPage.value * pageSize.value,
-))
+const pageRows = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return rows.value
+    .slice(start, currentPage.value * pageSize.value)
+    .map((row, index) => ({ ...row, display_index: start + index + 1 }))
+})
 
 watch([filter, sub2Filter, quotaFilter, searchText, pageSize], () => { currentPage.value = 1 })
 watch(() => rows.value.length, (total) => {
@@ -258,6 +260,7 @@ async function append() {
   try {
     const result: any = await api('/api/mailboxes/import', { pool_content: importContent.value })
     applyMailboxPayload(result)
+    currentPage.value = 1
     importContent.value = ''
     importVisible.value = false
     ElMessage.success(`已追加 ${result.imported || 0} 条，跳过 ${result.skipped || 0} 条`)

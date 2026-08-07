@@ -65,6 +65,23 @@ class TaskProgressTests(unittest.TestCase):
         self.assertFalse(changed)
         self.assertEqual(self.tracker.progress("T001")["entered_at"], 100)
 
+    def test_queue_and_execution_timing_are_separate_and_freeze(self):
+        self.tracker.observe_task_state("T001", "queued")
+        self.clock.value = 112
+        self.assertTrue(self.tracker.mark_execution_started("T001"))
+        self.assertTrue(self.tracker.record_segment("T001", "task_slot_waiting", 12))
+        self.clock.value = 142
+        self.tracker.observe_task_state("T001", "success")
+        self.clock.value = 200
+
+        timing = self.tracker.progress("T001")["timing"]
+        self.assertEqual(timing["queued_at"], 100)
+        self.assertEqual(timing["execution_started_at"], 112)
+        self.assertEqual(timing["queue_elapsed_seconds"], 12)
+        self.assertEqual(timing["execution_elapsed_seconds"], 30)
+        self.assertEqual(timing["elapsed_seconds"], 42)
+        self.assertEqual(timing["segments"][0]["code"], "task_slot_waiting")
+
     def test_segments_accumulate_without_changing_stage_and_freeze_at_terminal(self):
         self.tracker.set_stage("T001", "phone_submitting")
 

@@ -5,6 +5,9 @@ import type {
   MailboxUrlTestResult,
   PixelAccountPage,
   PixelBulkOperationResponse,
+  PixelBatchPage,
+  PixelBatchRecordPage,
+  PixelOverview,
   PixelUploadRecord,
   SmsKeyStatus,
 } from '../types/api'
@@ -134,6 +137,23 @@ export const shareAllPixelAccounts = (targetIds: string[]) => api<Record<string,
 export const getPixelUploadRecords = () => (
   api<{ records?: PixelUploadRecord[]; items?: PixelUploadRecord[] }>('/api/pixel/upload-records')
 )
+export const getPixelOverview = () => api<PixelOverview>('/api/pixel/overview')
+export const getPixelUploadBatches = (page = 1, pageSize = 20) => {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+  return api<PixelBatchPage>(`/api/pixel/upload-batches?${params}`)
+}
+export const getPixelBatchRecords = (
+  batchId: string,
+  page = 1,
+  pageSize = 50,
+  status = '',
+) => {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+  if (status) params.set('status', status)
+  return api<PixelBatchRecordPage>(
+    `/api/pixel/upload-batches/${encodeURIComponent(batchId)}/records?${params}`,
+  )
+}
 export const retryPixelUpload = (recordId: string, targetId?: string) => (
   api(`/api/pixel/upload-records/${encodeURIComponent(recordId)}/retry`, targetId
     ? { target_id: targetId, targetId, target_ids: [targetId], targetIds: [targetId] }

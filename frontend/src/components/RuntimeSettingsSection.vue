@@ -60,7 +60,7 @@ function updateProxyScope(key: string, value: boolean | string | number) {
           <el-input-number
             :model-value="Number(modelValue.concurrency || 5)"
             :min="1"
-            :max="100"
+            :max="8"
             controls-position="right"
             @update:model-value="update('concurrency', String($event ?? 5))"
           />
@@ -119,6 +119,17 @@ function updateProxyScope(key: string, value: boolean | string | number) {
     </el-row>
 
     <el-row :gutter="10">
+      <el-col :span="12">
+        <el-form-item label="手机提交并发数">
+          <el-input-number
+            :model-value="Number(modelValue.phone_submission_concurrency ?? 2)"
+            :min="1"
+            :max="3"
+            controls-position="right"
+            @update:model-value="update('phone_submission_concurrency', Number($event ?? 2))"
+          />
+        </el-form-item>
+      </el-col>
       <el-col :span="12">
         <el-form-item label="邮箱验证码等待超时（秒）">
           <el-input-number

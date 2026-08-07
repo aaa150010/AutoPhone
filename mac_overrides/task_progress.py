@@ -13,6 +13,9 @@ from typing import Any, Callable
 STAGE_GROUPS = ("queue", "oauth", "email", "phone", "sms", "finalizing")
 
 SEGMENTS = {
+    "task_slot_waiting": "等待任务槽",
+    "node_slot_waiting": "等待 Node 槽",
+    "email_slot_waiting": "等待邮箱槽",
     "protocol_slot_waiting": "等待协议槽",
     "phone_slot_waiting": "等待手机号提交槽",
     "phone_submit_http": "手机号提交接口",
@@ -162,8 +165,12 @@ class TaskProgressTracker:
                     "finished_at": None,
                     "timing": {
                         "started_at": timestamp,
+                        "queued_at": timestamp,
+                        "execution_started_at": None,
                         "finished_at": None,
                         "elapsed_seconds": 0,
+                        "queue_elapsed_seconds": 0,
+                        "execution_elapsed_seconds": 0,
                         "stages": [],
                     },
                 }
@@ -179,6 +186,35 @@ class TaskProgressTracker:
                     }
                 )
             self._record_stage_visit(current, stage)
+            return True
+
+    def mark_execution_started(
+        self,
+        task_id: Any,
+        *,
+        now: float | int | None = None,
+    ) -> bool:
+        key = str(task_id or "").strip()
+        if not key:
+            return False
+        timestamp = self._timestamp(now)
+        with self._lock:
+            current = self._tasks.get(key)
+            if current is None or current.get("finished_at") is not None:
+                return False
+            timing = current.setdefault("timing", {})
+            if timing.get("execution_started_at") is not None:
+                return False
+            queued_at = int(
+                timing.get("queued_at")
+                or timing.get("started_at")
+                or current.get("entered_at")
+                or timestamp
+            )
+            timing["queued_at"] = queued_at
+            timing["execution_started_at"] = timestamp
+            timing["queue_elapsed_seconds"] = max(0, timestamp - queued_at)
+            timing["execution_elapsed_seconds"] = 0
             return True
 
     @staticmethod
@@ -274,9 +310,22 @@ class TaskProgressTracker:
         value = copy.deepcopy(current)
         timing = value.get("timing") if isinstance(value.get("timing"), dict) else {}
         started_at = int(timing.get("started_at") or value.get("entered_at") or timestamp)
+        queued_at = int(timing.get("queued_at") or started_at)
+        execution_started_at = timing.get("execution_started_at")
         finished_at = timing.get("finished_at")
         end = int(finished_at) if finished_at is not None else timestamp
         timing["elapsed_seconds"] = max(0, end - started_at)
+        timing["queued_at"] = queued_at
+        timing["queue_elapsed_seconds"] = max(
+            0,
+            (int(execution_started_at) if execution_started_at is not None else end)
+            - queued_at,
+        )
+        timing["execution_elapsed_seconds"] = (
+            max(0, end - int(execution_started_at))
+            if execution_started_at is not None
+            else 0
+        )
         if finished_at is None:
             current_elapsed = max(0, timestamp - int(value.get("entered_at") or timestamp))
             for row in timing.get("stages") or []:
@@ -305,6 +354,18 @@ class TaskProgressTracker:
             timing["elapsed_seconds"] = max(
                 0,
                 timestamp - int(timing.get("started_at") or timestamp),
+            )
+            queued_at = int(timing.get("queued_at") or timing.get("started_at") or timestamp)
+            execution_started_at = timing.get("execution_started_at")
+            timing["queue_elapsed_seconds"] = max(
+                0,
+                (int(execution_started_at) if execution_started_at is not None else timestamp)
+                - queued_at,
+            )
+            timing["execution_elapsed_seconds"] = (
+                max(0, timestamp - int(execution_started_at))
+                if execution_started_at is not None
+                else 0
             )
             current["timing"] = timing
             return True
@@ -357,11 +418,18 @@ class TaskProgressTracker:
                         "finished_at": None,
                         "timing": {
                             "started_at": int(task.get("created_at") or task.get("updated_at") or now),
+                            "queued_at": int(task.get("created_at") or task.get("updated_at") or now),
+                            "execution_started_at": None,
                             "finished_at": None,
                             "elapsed_seconds": max(
                                 0,
                                 now - int(task.get("created_at") or task.get("updated_at") or now),
                             ),
+                            "queue_elapsed_seconds": max(
+                                0,
+                                now - int(task.get("created_at") or task.get("updated_at") or now),
+                            ),
+                            "execution_elapsed_seconds": 0,
                             "stages": [
                                 {
                                     "code": fallback.code,

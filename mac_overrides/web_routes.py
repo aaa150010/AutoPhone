@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+import threading
 import time
 from typing import Any, Callable
 import uuid
@@ -109,6 +110,11 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     mailbox_admin = context.mailbox_admin_factory(store, importer, logs)
     if context.pixel_upload_queue is not None:
         context.pixel_upload_queue.log_fn = logs.add
+    pixel_target_cache: dict[str, Any] = {
+        "expires_at": 0.0,
+        "targets": [],
+    }
+    pixel_target_cache_lock = threading.Lock()
     initial_config = store.load()
     context.write_local_config(
         context.local_config_from_runtime(initial_config, context.read_local_config())
@@ -423,7 +429,8 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             data = module.request.get_json(silent=True) or {}
             result = action(data)
             if not result.get("ok"):
-                return module.jsonify(result), 400
+                status = 409 if result.get("code") == "mailbox_rows_stale" else 400
+                return module.jsonify(result), status
             result["mailboxes"] = mailbox_admin.list_mailboxes()
             result["state"] = public_state()
             return module.jsonify(result)
@@ -801,6 +808,56 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             error="Pixel 账号管理：该目标未开放（仅支持 pixel-2 至 pixel-7）",
         ), 404
 
+    def pixel_target_totals() -> tuple[list[dict[str, Any]], str]:
+        now = time.monotonic()
+        with pixel_target_cache_lock:
+            if pixel_target_cache["targets"] and now < float(pixel_target_cache["expires_at"]):
+                return [dict(item) for item in pixel_target_cache["targets"]], ""
+        if context.pixel_client is None:
+            return [
+                {"target_id": target_id, "account_count": None}
+                for target_id in _PIXEL_AUTO_TARGET_IDS
+            ], "Pixel 管理服务尚未配置"
+        try:
+            payload = context.pixel_client.targets()
+            source = payload.get("data") if isinstance(payload, Mapping) and isinstance(payload.get("data"), Mapping) else payload
+            raw_targets = source.get("targets") if isinstance(source, Mapping) else []
+            by_id: dict[str, Mapping[str, Any]] = {}
+            for item in raw_targets if isinstance(raw_targets, list) else []:
+                if not isinstance(item, Mapping):
+                    continue
+                target_id = str(
+                    item.get("id") or item.get("target_id") or item.get("targetId") or ""
+                ).strip()
+                if target_id in _PIXEL_AUTO_TARGET_IDS:
+                    by_id[target_id] = item
+            targets = []
+            for target_id in _PIXEL_AUTO_TARGET_IDS:
+                item = by_id.get(target_id, {})
+                raw_count = None
+                for key in ("account_count", "accountCount", "accounts_count", "accountsCount", "total"):
+                    if item.get(key) is not None:
+                        raw_count = item.get(key)
+                        break
+                if raw_count is None and isinstance(item.get("stats"), Mapping):
+                    raw_count = item["stats"].get("total")
+                count = max(0, _safe_int(raw_count, 0)) if raw_count is not None else None
+                targets.append({"target_id": target_id, "account_count": count})
+            with pixel_target_cache_lock:
+                pixel_target_cache["targets"] = [dict(item) for item in targets]
+                pixel_target_cache["expires_at"] = now + 30.0
+            return targets, ""
+        except Exception as exc:
+            public_message = str(getattr(exc, "public_message", "") or "").strip()
+            with pixel_target_cache_lock:
+                cached = [dict(item) for item in pixel_target_cache["targets"]]
+            if not cached:
+                cached = [
+                    {"target_id": target_id, "account_count": None}
+                    for target_id in _PIXEL_AUTO_TARGET_IDS
+                ]
+            return cached, public_message or "Pixel 平台账号总数暂时无法读取"
+
     def api_pixel_targets():
         if context.pixel_client is None:
             return pixel_unavailable()
@@ -918,6 +975,46 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             return module.jsonify(
                 ok=True,
                 records=context.pixel_upload_queue.records(),
+            )
+        except Exception as exc:
+            return pixel_error_response(exc)
+
+    def api_pixel_overview():
+        if context.pixel_upload_queue is None:
+            return pixel_unavailable(queue=True)
+        try:
+            payload = dict(context.pixel_upload_queue.overview())
+            targets, target_error = pixel_target_totals()
+            payload["targets"] = targets
+            payload["target_error"] = target_error
+            return pixel_json_result(payload)
+        except Exception as exc:
+            return pixel_error_response(exc)
+
+    def api_pixel_upload_batches():
+        if context.pixel_upload_queue is None:
+            return pixel_unavailable(queue=True)
+        try:
+            return pixel_json_result(
+                context.pixel_upload_queue.batches(
+                    page=module.request.args.get("page", 1),
+                    page_size=module.request.args.get("page_size", 20),
+                )
+            )
+        except Exception as exc:
+            return pixel_error_response(exc)
+
+    def api_pixel_batch_records(batch_id: str):
+        if context.pixel_upload_queue is None:
+            return pixel_unavailable(queue=True)
+        try:
+            return pixel_json_result(
+                context.pixel_upload_queue.batch_records(
+                    batch_id,
+                    page=module.request.args.get("page", 1),
+                    page_size=module.request.args.get("page_size", 50),
+                    status=module.request.args.get("status", ""),
+                )
             )
         except Exception as exc:
             return pixel_error_response(exc)
@@ -1106,6 +1203,14 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             ["POST"],
         ),
         ("/api/pixel/share-all", "api_pixel_share_all", api_pixel_share_all, ["POST"]),
+        ("/api/pixel/overview", "api_pixel_overview", api_pixel_overview, ["GET"]),
+        ("/api/pixel/upload-batches", "api_pixel_upload_batches", api_pixel_upload_batches, ["GET"]),
+        (
+            "/api/pixel/upload-batches/<batch_id>/records",
+            "api_pixel_batch_records",
+            api_pixel_batch_records,
+            ["GET"],
+        ),
         ("/api/pixel/upload-records", "api_pixel_upload_records", api_pixel_upload_records, ["GET"]),
         (
             "/api/pixel/upload-records/<record_id>/retry",

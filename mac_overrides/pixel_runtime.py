@@ -28,7 +28,7 @@ import uuid
 DEFAULT_PIXEL_PROXY_BASE_URL = "https://lynote.xyz/gpt-api"
 PIXEL_AUTO_TARGET_IDS = tuple(f"pixel-{index}" for index in range(2, 8))
 PIXEL_EXCLUDED_TARGET_IDS = ("pixel-1",)
-OUTBOX_VERSION = 2
+OUTBOX_VERSION = 3
 SECRET_MASK = "********"
 _SANITIZE_INPUT_LIMIT = 8192
 
@@ -84,6 +84,18 @@ _STAGE_LABELS = {
     "import": "导入",
     "share": "公开共享",
     "verification": "状态回查",
+}
+_STAGE_NODE_CODES = {
+    "source": "pixel_enqueue",
+    "import": "pixel_import",
+    "share": "pixel_share",
+    "verification": "pixel_verification",
+}
+_STAGE_NODE_LABELS = {
+    "source": "Pixel 自动上传入队",
+    "import": "Pixel 账号导入",
+    "share": "Pixel 公开共享",
+    "verification": "Pixel 状态验证",
 }
 
 _CREDENTIAL_FIELDS = (
@@ -241,6 +253,46 @@ def sanitize_error(value: Any, secrets: Iterable[Any] = (), *, maximum: int = 50
     text = _JWT_RE.sub(SECRET_MASK, text)
     text = re.sub(r"\s+", " ", text).strip()
     return text[:maximum]
+
+
+def _pixel_failure(stage: Any, state: Any, error: Any) -> dict[str, Any] | None:
+    normalized_stage = str(stage or "").strip().lower()
+    normalized_state = str(state or "").strip().lower()
+    if normalized_state in {"", "pending", "importing", "success"}:
+        return None
+    if normalized_stage not in _TARGET_STAGES:
+        normalized_stage = _stage_for_state(normalized_state)
+    node_code = _STAGE_NODE_CODES.get(normalized_stage, "pixel_verification")
+    node_label = _STAGE_NODE_LABELS.get(normalized_stage, "Pixel 状态验证")
+    cause = sanitize_error(error) or "服务端未返回错误详情"
+    return {
+        "node_code": node_code,
+        "node_label": node_label,
+        "error_code": sanitize_error(normalized_state, maximum=80) or f"{node_code}_failed",
+        "provider_code": "",
+        "public_message": sanitize_error(f"{node_label}失败：{cause}"),
+        "technical_summary": cause,
+        "retryable": normalized_state in _RETRYABLE_STATES,
+        "http_status": None,
+    }
+
+
+def _public_pixel_failure(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, Mapping):
+        return None
+    node_code = str(value.get("node_code") or "").strip()
+    if node_code not in set(_STAGE_NODE_CODES.values()) | {"pixel_persistence"}:
+        return None
+    return {
+        "node_code": node_code,
+        "node_label": sanitize_error(value.get("node_label"), maximum=80),
+        "error_code": sanitize_error(value.get("error_code"), maximum=80),
+        "provider_code": sanitize_error(value.get("provider_code"), maximum=80),
+        "public_message": sanitize_error(value.get("public_message")),
+        "technical_summary": sanitize_error(value.get("technical_summary")),
+        "retryable": bool(value.get("retryable")),
+        "http_status": _safe_int(value.get("http_status")) or None,
+    }
 
 
 def _public_proxy_value(value: Any) -> Any:
@@ -852,7 +904,7 @@ def _atomic_write_json(path: Path, value: Mapping[str, Any]) -> None:
 
 
 class PixelUploadQueue:
-    """A persistent single-worker outbox for successful registration results."""
+    """A persistent multi-worker outbox for successful registration results."""
 
     def __init__(
         self,
@@ -863,6 +915,7 @@ class PixelUploadQueue:
         target_ids: Iterable[str] = PIXEL_AUTO_TARGET_IDS,
         now: Callable[[], float] = time.time,
         log_fn: Callable[[str, str], None] | None = None,
+        worker_count: int = 2,
         auto_start: bool = True,
         resume_pending: bool = True,
     ) -> None:
@@ -878,9 +931,18 @@ class PixelUploadQueue:
         self._lock = threading.RLock()
         self._work: queue.Queue[str] = queue.Queue()
         self._scheduled: set[str] = set()
+        self._active_record_ids: set[str] = set()
         self._stop_event = threading.Event()
-        self._thread: threading.Thread | None = None
+        self._started = False
+        self._desired_workers = max(1, min(3, _safe_int(worker_count, 2)))
+        self._worker_serial = 0
+        self._worker_threads: dict[int, threading.Thread] = {}
+        self._retiring_workers: set[int] = set()
         self._store = self._load_store()
+        self._revision = max(
+            (_safe_int(item.get("updated_at")) for item in self._store["records"]),
+            default=0,
+        )
         if self._backfill_source_metadata():
             self._save_locked()
         if resume_pending:
@@ -907,7 +969,34 @@ class PixelUploadQueue:
         }
 
     def _save_locked(self) -> None:
+        self._sync_failures_locked()
         _atomic_write_json(self.outbox_path, self._store)
+        self._revision += 1
+
+    def _sync_failures_locked(self) -> None:
+        for record in self._store.get("records") or []:
+            if not isinstance(record, dict):
+                continue
+            first_failure = None
+            targets = record.get("targets") if isinstance(record.get("targets"), Mapping) else {}
+            for item in targets.values():
+                if not isinstance(item, dict):
+                    continue
+                failure = _pixel_failure(
+                    _target_stage(item),
+                    item.get("state"),
+                    item.get("error"),
+                )
+                if failure is None:
+                    item.pop("failure", None)
+                else:
+                    item["failure"] = failure
+                    if first_failure is None:
+                        first_failure = failure
+            if first_failure is None:
+                record.pop("failure", None)
+            else:
+                record["failure"] = first_failure
 
     def _backfill_source_metadata(self) -> bool:
         changed = False
@@ -1007,6 +1096,11 @@ class PixelUploadQueue:
             concurrency = _safe_int(item.get("concurrency")) or None
         retryable = state in _RETRYABLE_STATES
         stage = _target_stage(item)
+        failure = _public_pixel_failure(item.get("failure")) or _pixel_failure(
+            stage,
+            state,
+            item.get("error"),
+        )
         return {
             "target_id": _clean(item.get("target_id")),
             "state": state,
@@ -1027,6 +1121,7 @@ class PixelUploadQueue:
             "failed": max(_safe_int(item.get("failed")), 0),
             "shared": max(_safe_int(item.get("shared")), 0),
             "error": sanitize_error(item.get("error")),
+            "failure": failure,
             "updated_at": max(_safe_int(item.get("updated_at")), 0),
             "needs_retry": retryable,
             "retryable": retryable,
@@ -1086,6 +1181,7 @@ class PixelUploadQueue:
             "job_id": job_values[0][1] if job_values else "",
             "upload_file_name": Path(_clean(record.get("upload_file_name")) or "accounts.json").name,
             "error": sanitize_error(record.get("error")),
+            "failure": _public_pixel_failure(record.get("failure")),
             "created_at": max(_safe_int(record.get("created_at")), 0),
             "updated_at": max(_safe_int(record.get("updated_at")), 0),
             "targets": [self._target_public(item) for item in target_values],
@@ -1094,6 +1190,256 @@ class PixelUploadQueue:
     def records(self) -> list[dict[str, Any]]:
         with self._lock:
             return [self._public_record(record) for record in reversed(self._store["records"])]
+
+    @staticmethod
+    def _batch_identifier(record: Mapping[str, Any]) -> str:
+        return _safe_identifier(record.get("batch_id"), maximum=80) or "legacy"
+
+    def _batch_summary_locked(
+        self,
+        batch_id: str,
+        records: list[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        source_total = len(records)
+        source_success = 0
+        source_completed = 0
+        source_processing = 0
+        source_pending = 0
+        source_failed = 0
+        source_needs_confirmation = 0
+        deliveries = {
+            "total": source_total * len(self.target_ids),
+            "success": 0,
+            "pending": 0,
+            "processing": 0,
+            "failed": 0,
+            "needs_confirmation": 0,
+        }
+        updated_at = 0
+        started_at = 0
+
+        for record in records:
+            updated_at = max(updated_at, _safe_int(record.get("updated_at")))
+            started_at = max(
+                started_at,
+                _safe_int(record.get("batch_started_at")),
+                _safe_int(record.get("created_at")),
+            )
+            targets = record.get("targets") if isinstance(record.get("targets"), Mapping) else {}
+            categories: list[str] = []
+            for target_id in self.target_ids:
+                target = targets.get(target_id) if isinstance(targets, Mapping) else None
+                if not isinstance(target, Mapping):
+                    category = "pending"
+                else:
+                    state = _clean(target.get("state")).lower() or "pending"
+                    if state == "success":
+                        category = "success"
+                    elif state == "needs_confirmation":
+                        category = "needs_confirmation"
+                    elif state == "importing":
+                        category = "processing"
+                    elif state == "pending" or bool(target.get("retry_requested")):
+                        category = "pending"
+                    else:
+                        category = "failed"
+                categories.append(category)
+                deliveries[category] += 1
+
+            if categories and all(value == "success" for value in categories):
+                source_success += 1
+                source_completed += 1
+            elif "processing" in categories:
+                source_processing += 1
+            elif "pending" in categories:
+                source_pending += 1
+            else:
+                source_completed += 1
+                source_failed += 1
+            if "needs_confirmation" in categories:
+                source_needs_confirmation += 1
+
+        deliveries["completed"] = (
+            deliveries["success"]
+            + deliveries["failed"]
+            + deliveries["needs_confirmation"]
+        )
+        source = {
+            "total": source_total,
+            "completed": source_completed,
+            "success": source_success,
+            "pending": source_pending,
+            "processing": source_processing,
+            "failed": source_failed,
+            "needs_confirmation": source_needs_confirmation,
+        }
+        if source_total and source_success == source_total:
+            status = "success"
+        elif source_pending or source_processing:
+            status = "processing"
+        elif source_success:
+            status = "partial"
+        elif source_total:
+            status = "failed"
+        else:
+            status = "empty"
+        return {
+            "batch_id": batch_id,
+            "batch_started_at": started_at,
+            "updated_at": updated_at,
+            "status": status,
+            "source": source,
+            "deliveries": deliveries,
+        }
+
+    def _batch_summaries_locked(self) -> list[dict[str, Any]]:
+        grouped: dict[str, list[Mapping[str, Any]]] = {}
+        for record in self._store.get("records") or []:
+            if not isinstance(record, Mapping):
+                continue
+            grouped.setdefault(self._batch_identifier(record), []).append(record)
+        summaries = [
+            self._batch_summary_locked(batch_id, records)
+            for batch_id, records in grouped.items()
+        ]
+        summaries.sort(
+            key=lambda item: (
+                _safe_int(item.get("batch_started_at")),
+                _safe_int(item.get("updated_at")),
+                str(item.get("batch_id") or ""),
+            ),
+            reverse=True,
+        )
+        return summaries
+
+    def queue_status(self) -> dict[str, Any]:
+        with self._lock:
+            alive = sum(1 for thread in self._worker_threads.values() if thread.is_alive())
+            return {
+                "configured_workers": self._desired_workers,
+                "alive_workers": alive,
+                "active_workers": len(self._active_record_ids),
+                "pending_records": max(0, len(self._scheduled) - len(self._active_record_ids)),
+                "running_records": len(self._active_record_ids),
+            }
+
+    def overview(self) -> dict[str, Any]:
+        with self._lock:
+            batches = self._batch_summaries_locked()
+            current = next(
+                (item for item in batches if item.get("status") == "processing"),
+                batches[0] if batches else None,
+            )
+            alive = sum(1 for thread in self._worker_threads.values() if thread.is_alive())
+            return {
+                "revision": self._revision,
+                "queue": {
+                    "configured_workers": self._desired_workers,
+                    "alive_workers": alive,
+                    "active_workers": len(self._active_record_ids),
+                    "pending_records": max(0, len(self._scheduled) - len(self._active_record_ids)),
+                    "running_records": len(self._active_record_ids),
+                },
+                "current_batch": copy.deepcopy(current),
+                "batch_count": len(batches),
+            }
+
+    def batches(self, *, page: Any = 1, page_size: Any = 20) -> dict[str, Any]:
+        normalized_page = max(1, _safe_int(page, 1))
+        normalized_size = min(max(1, _safe_int(page_size, 20)), 100)
+        with self._lock:
+            items = self._batch_summaries_locked()
+            total = len(items)
+            pages = max(1, (total + normalized_size - 1) // normalized_size)
+            normalized_page = min(normalized_page, pages)
+            start = (normalized_page - 1) * normalized_size
+            return {
+                "items": copy.deepcopy(items[start:start + normalized_size]),
+                "total": total,
+                "page": normalized_page,
+                "page_size": normalized_size,
+                "pages": pages,
+                "revision": self._revision,
+            }
+
+    def batch_records(
+        self,
+        batch_id: Any,
+        *,
+        page: Any = 1,
+        page_size: Any = 50,
+        status: Any = "",
+    ) -> dict[str, Any]:
+        identifier = _safe_identifier(batch_id, maximum=80)
+        if not identifier:
+            raise PixelStateError("Pixel 批次 ID 无效", 400)
+        normalized_page = max(1, _safe_int(page, 1))
+        normalized_size = min(max(1, _safe_int(page_size, 50)), 100)
+        normalized_status = _clean(status).lower()[:40]
+
+        def matches_status(record: Mapping[str, Any]) -> bool:
+            if not normalized_status:
+                return True
+            record_status = _clean(record.get("status")).lower()
+            targets = record.get("targets") if isinstance(record.get("targets"), Mapping) else {}
+            target_values = [item for item in targets.values() if isinstance(item, Mapping)]
+            target_states = {_clean(item.get("state")).lower() for item in target_values}
+            if normalized_status == "needs_confirmation":
+                return "needs_confirmation" in target_states
+            if normalized_status == "queued":
+                return record_status == "queued" or any(
+                    _clean(item.get("state")).lower() == "pending"
+                    or bool(item.get("retry_requested"))
+                    for item in target_values
+                )
+            if normalized_status == "processing":
+                return record_status == "processing" or "importing" in target_states
+            if normalized_status == "failed":
+                return any(
+                    _clean(item.get("state")).lower()
+                    not in {"success", "pending", "importing", "needs_confirmation"}
+                    and not bool(item.get("retry_requested"))
+                    for item in target_values
+                )
+            return record_status == normalized_status
+
+        with self._lock:
+            matched = [
+                record
+                for record in reversed(self._store.get("records") or [])
+                if isinstance(record, Mapping)
+                and self._batch_identifier(record) == identifier
+                and matches_status(record)
+            ]
+            if not matched and identifier not in {
+                self._batch_identifier(record)
+                for record in self._store.get("records") or []
+                if isinstance(record, Mapping)
+            }:
+                raise PixelStateError("Pixel 上传批次不存在", 404)
+            total = len(matched)
+            pages = max(1, (total + normalized_size - 1) // normalized_size)
+            normalized_page = min(normalized_page, pages)
+            start = (normalized_page - 1) * normalized_size
+            items = [
+                self._public_record(record)
+                for record in matched[start:start + normalized_size]
+            ]
+            batch_records = [
+                record
+                for record in self._store.get("records") or []
+                if isinstance(record, Mapping)
+                and self._batch_identifier(record) == identifier
+            ]
+            return {
+                "batch": self._batch_summary_locked(identifier, batch_records),
+                "items": items,
+                "total": total,
+                "page": normalized_page,
+                "page_size": normalized_size,
+                "pages": pages,
+                "revision": self._revision,
+            }
 
     def get(self, record_id: str) -> dict[str, Any]:
         with self._lock:
@@ -1300,29 +1646,96 @@ class PixelUploadQueue:
             self._scheduled.add(record_id)
             self._work.put(record_id)
 
+    def configure_workers(self, worker_count: Any) -> int:
+        desired = max(1, min(3, _safe_int(worker_count, 2)))
+        with self._lock:
+            self._desired_workers = desired
+            alive_ids = {
+                worker_id
+                for worker_id, thread in self._worker_threads.items()
+                if thread.is_alive()
+            }
+            effective_ids = alive_ids.difference(self._retiring_workers)
+            if len(effective_ids) > desired:
+                retire = sorted(effective_ids, reverse=True)[:len(effective_ids) - desired]
+                self._retiring_workers.update(retire)
+            elif len(effective_ids) < desired:
+                needed = desired - len(effective_ids)
+                reusable = sorted(alive_ids.intersection(self._retiring_workers))
+                for worker_id in reusable[:needed]:
+                    self._retiring_workers.discard(worker_id)
+                    needed -= 1
+                if self._started and needed > 0:
+                    self._spawn_workers_locked(needed)
+            return self._desired_workers
+
+    def _spawn_workers_locked(self, count: int) -> None:
+        for _index in range(max(0, int(count))):
+            self._worker_serial += 1
+            worker_id = self._worker_serial
+            thread = threading.Thread(
+                target=self._worker,
+                args=(worker_id,),
+                name=f"pixel-upload-worker-{worker_id}",
+                daemon=True,
+            )
+            self._worker_threads[worker_id] = thread
+            thread.start()
+
     def start(self) -> None:
         with self._lock:
-            if self._thread is not None and self._thread.is_alive():
+            if self._started:
                 return
             self._stop_event.clear()
-            self._thread = threading.Thread(target=self._worker, name="pixel-upload-worker", daemon=True)
-            self._thread.start()
+            self._started = True
+            self._retiring_workers.clear()
+            alive = sum(1 for thread in self._worker_threads.values() if thread.is_alive())
+            self._spawn_workers_locked(max(0, self._desired_workers - alive))
 
     def stop(self, *, wait: bool = True, timeout: float = 5.0) -> None:
-        self._stop_event.set()
-        thread = self._thread
-        if wait and thread is not None and thread is not threading.current_thread():
-            thread.join(timeout=max(timeout, 0.0))
+        with self._lock:
+            self._started = False
+            self._stop_event.set()
+            threads = list(self._worker_threads.values())
+        if wait:
+            deadline = time.monotonic() + max(timeout, 0.0)
+            for thread in threads:
+                if thread is threading.current_thread():
+                    continue
+                thread.join(timeout=max(0.0, deadline - time.monotonic()))
 
-    def _worker(self) -> None:
-        while not self._stop_event.is_set():
-            self.process_next(timeout=0.25)
+    def _worker(self, worker_id: int) -> None:
+        try:
+            while not self._stop_event.is_set():
+                with self._lock:
+                    if worker_id in self._retiring_workers:
+                        break
+                self.process_next(timeout=0.25, worker_id=worker_id)
+        finally:
+            with self._lock:
+                self._worker_threads.pop(worker_id, None)
+                self._retiring_workers.discard(worker_id)
+                if self._started and not self._stop_event.is_set():
+                    effective = sum(
+                        1
+                        for identifier, thread in self._worker_threads.items()
+                        if thread.is_alive() and identifier not in self._retiring_workers
+                    )
+                    self._spawn_workers_locked(max(0, self._desired_workers - effective))
 
-    def process_next(self, *, timeout: float = 0.0) -> bool:
+    def process_next(self, *, timeout: float = 0.0, worker_id: int | None = None) -> bool:
         try:
             record_id = self._work.get(timeout=max(timeout, 0.0)) if timeout else self._work.get_nowait()
         except queue.Empty:
             return False
+        with self._lock:
+            if worker_id is not None and (
+                worker_id in self._retiring_workers or self._stop_event.is_set()
+            ):
+                self._work.put(record_id)
+                self._work.task_done()
+                return False
+            self._active_record_ids.add(record_id)
         try:
             self._process_record(record_id)
         except Exception as exc:
@@ -1330,6 +1743,7 @@ class PixelUploadQueue:
             self._set_record_error(record_id, f"Pixel 上传队列意外失败: {detail}")
         finally:
             with self._lock:
+                self._active_record_ids.discard(record_id)
                 self._scheduled.discard(record_id)
             self._work.task_done()
         return True

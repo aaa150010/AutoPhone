@@ -1645,6 +1645,33 @@ class WebGuiSecurityTests(unittest.TestCase):
         for secret in ("mail-pass", "client-id", "refresh-token", "raw-access-token"):
             self.assertNotIn(secret, serialized)
 
+    def test_runtime_task_waiting_count_includes_executor_backlog(self):
+        module = self.module
+        original_admission = module._CURRENT_TASK_ADMISSION
+        gate = module._adaptive_concurrency_ext.AdaptiveConcurrencyGate(5, ceiling=8)
+        try:
+            module._CURRENT_TASK_ADMISSION = gate
+            public = module._masked_state({
+                "runtime": {
+                    "running": True,
+                    "concurrency": {},
+                    "tasks": [
+                        *(
+                            {"task_id": f"queued-{index}", "status": "queued", "created_at": 100}
+                            for index in range(45)
+                        ),
+                        *(
+                            {"task_id": f"active-{index}", "status": "authorizing", "created_at": 100}
+                            for index in range(5)
+                        ),
+                    ],
+                }
+            })
+        finally:
+            module._CURRENT_TASK_ADMISSION = original_admission
+
+        self.assertEqual(public["runtime"]["concurrency"]["task"]["waiting"], 45)
+
     def test_success_task_historical_sub2_event_is_not_exposed_as_failure_explanation(self):
         task = {
             "task_id": "T-success-history",
@@ -1686,6 +1713,71 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertIn("获取 OAuth 回调失败", values["error"])
         self.assertNotIn("授权或上传未完成", values["error"])
         self.assertEqual(values["technical_error"], "服务端未返回错误详情")
+
+    def test_node_pressure_is_deduplicated_between_retry_event_and_terminal_state(self):
+        module = self.module
+        gate = module._adaptive_concurrency_ext.AdaptiveConcurrencyGate(5, ceiling=8)
+        fake_self = SimpleNamespace(task_admission=gate)
+        original_state = module._ORIGINAL_TASK_STATE
+        original_event = module._ORIGINAL_CHAIN_EVENT
+        original_admission = module._CURRENT_TASK_ADMISSION
+        task_token = module._TASK_CONTEXT.set("T-pressure-node")
+        try:
+            module._CURRENT_TASK_ADMISSION = gate
+            module._ORIGINAL_TASK_STATE = lambda *_args, **_kwargs: None
+            module._ORIGINAL_CHAIN_EVENT = lambda *_args, **_kwargs: None
+            module._TASK_PROGRESS.reset()
+            module._patched_chain_event(
+                [],
+                "FAILED",
+                detail="node_sentinel_failed: node_bridge_timeout",
+            )
+            module._patched_task_state(
+                fake_self,
+                "T-pressure-node",
+                status="failed",
+                error="node_sentinel_failed: node_bridge_timeout",
+            )
+        finally:
+            module._TASK_CONTEXT.reset(task_token)
+            module._ORIGINAL_TASK_STATE = original_state
+            module._ORIGINAL_CHAIN_EVENT = original_event
+            module._CURRENT_TASK_ADMISSION = original_admission
+            module._TASK_PROGRESS.reset()
+
+        snapshot = gate.snapshot()
+        self.assertEqual(snapshot["pressure_count"], 1)
+        self.assertEqual(snapshot["limit"], 5)
+        gate.report_pressure("T-pressure-other", "oauth_create_node")
+        self.assertEqual(gate.snapshot()["limit"], 4)
+
+    def test_business_terminal_failures_do_not_create_admission_pressure(self):
+        module = self.module
+        gate = module._adaptive_concurrency_ext.AdaptiveConcurrencyGate(5, ceiling=8)
+        fake_self = SimpleNamespace(task_admission=gate)
+        original_state = module._ORIGINAL_TASK_STATE
+        try:
+            module._ORIGINAL_TASK_STATE = lambda *_args, **_kwargs: None
+            module._TASK_PROGRESS.reset()
+            for task_id, status, detail in (
+                ("T-sms-timeout", "failed", "sms_timeout: no code received"),
+                ("T-mailbox", "failed", "mailbox_code_timeout: no new code"),
+                ("T-banned", "account_banned", "account disabled"),
+            ):
+                module._patched_task_state(
+                    fake_self,
+                    task_id,
+                    status=status,
+                    error=detail,
+                )
+        finally:
+            module._ORIGINAL_TASK_STATE = original_state
+            module._TASK_PROGRESS.reset()
+
+        snapshot = gate.snapshot()
+        self.assertEqual(snapshot["pressure_count"], 0)
+        self.assertEqual(snapshot["limit"], 5)
+        self.assertEqual(snapshot["failure_count"], 3)
 
     def test_node_bridge_retry_event_is_persisted_without_terminal_log(self):
         module = self.module
