@@ -2557,10 +2557,17 @@ class SmsRuntimeTests(unittest.TestCase):
 
     def test_alert_buffer_deduplicates_per_run(self):
         alerts = RuntimeAlertBuffer()
-        self.assertIsNotNone(alerts.add("balance", "low", dedupe_key="key-a:balance"))
+        first = alerts.add("balance", "low", dedupe_key="key-a:balance")
+        self.assertIsNotNone(first)
         self.assertIsNone(alerts.add("balance", "low", dedupe_key="key-a:balance"))
         alerts.begin_run()
-        self.assertIsNotNone(alerts.add("balance", "low", dedupe_key="key-a:balance"))
+        next_run = alerts.add("balance", "low", dedupe_key="key-a:balance")
+        self.assertIsNotNone(next_run)
+        self.assertEqual(first["generation"], next_run["generation"])
+
+        other = RuntimeAlertBuffer().add("balance", "low")
+        self.assertIsNotNone(other)
+        self.assertNotEqual(first["generation"], other["generation"])
 
 
 if __name__ == "__main__":

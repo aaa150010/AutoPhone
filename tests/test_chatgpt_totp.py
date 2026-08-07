@@ -9,6 +9,7 @@ from mac_overrides.chatgpt_totp import (
     build_chatgpt_totp_patches,
     masked_chatgpt_totp_row,
     parse_chatgpt_totp_row,
+    parse_mailbox_url_totp_row,
     pending_transport_totp_payload,
     refresh_transport_totp_payload,
     totp_code,
@@ -127,6 +128,36 @@ class ChatGptTotpTests(unittest.TestCase):
             with self.subTest(row=row):
                 self.assertIsNone(parse_oauth_mailbox_row(row))
                 self.assertIsNone(parse_chatgpt_totp_row(row))
+
+    def test_url_totp_requires_exactly_three_valid_segments(self):
+        valid = (
+            "user@example.com----https://mail.example.test/latest?mail=user%40example.com----"
+            "JBSWY3DPEHPK3PXP"
+        )
+        self.assertEqual(
+            parse_mailbox_url_totp_row(valid),
+            (
+                "user@example.com",
+                "https://mail.example.test/latest?mail=user%40example.com",
+                "JBSWY3DPEHPK3PXP",
+            ),
+        )
+
+        oauth = (
+            "user@example.com----https://mail.example.test/password----"
+            "JBSWY3DPEHPK3PXP----refresh-token"
+        )
+        self.assertIsNotNone(parse_oauth_mailbox_row(oauth))
+        self.assertIsNone(parse_mailbox_url_totp_row(oauth))
+        for invalid in (
+            valid + "----extra",
+            "user@example.com----https:///missing-host----JBSWY3DPEHPK3PXP",
+            "user@example.com----https://mail.example.test:99999/inbox----JBSWY3DPEHPK3PXP",
+            "user@example.com----https://mail.example.test/has space----JBSWY3DPEHPK3PXP",
+            "user@example.com----https://mail.example.test/inbox----INVALID018",
+        ):
+            with self.subTest(invalid=invalid):
+                self.assertIsNone(parse_mailbox_url_totp_row(invalid))
 
     def test_mixed_pool_builds_the_correct_runtime_entry_type(self):
         class PoolEntry:

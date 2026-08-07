@@ -16,6 +16,7 @@ import time
 from typing import Any, Callable, Iterator
 import urllib.parse
 import urllib.request
+import uuid
 import xml.etree.ElementTree as ET
 
 
@@ -3080,6 +3081,7 @@ class RuntimeAlertBuffer:
         self.items: list[dict[str, Any]] = []
         self.seen: set[str] = set()
         self.sequence = 0
+        self.generation = uuid.uuid4().hex
 
     def begin_run(self) -> None:
         with self.lock:
@@ -3104,6 +3106,7 @@ class RuntimeAlertBuffer:
             self.sequence += 1
             item = {
                 "id": f"sms-alert-{self.sequence}",
+                "generation": self.generation,
                 "kind": kind,
                 "level": level,
                 "message": str(message),

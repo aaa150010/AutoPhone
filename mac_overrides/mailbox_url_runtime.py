@@ -25,6 +25,11 @@ REQUEST_CLOCK_SKEW_SECONDS = 120
 RECENT_BASELINE_CODE_WINDOW_SECONDS = 600
 BASELINE_FALLBACK_MAX_ATTEMPTS = 3
 BASELINE_FALLBACK_POLL_MILESTONES = (10, 20, 30)
+_CLIENT_MAILBOX_REFRESH_INTERVAL_SECONDS = 10
+_CLIENT_MAILBOX_DEEP_REFRESH_AFTER_SECONDS = 25
+_MAX_JSON_DEPTH = 64
+_MAX_JSON_CONTAINER_NODES = 4096
+_MAX_PARSED_MESSAGES = MAX_MESSAGES * 4
 _EMAIL_PATTERN = re.compile(
     r"(?i)[a-z0-9][a-z0-9._%+-]*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}"
 )
@@ -78,6 +83,7 @@ _RECEIVED_KEYS = (
     "createdAt",
     "created_at",
     "timestamp",
+    "received_time",
     "date",
     "time",
 )
@@ -92,6 +98,17 @@ _BODY_KEYS = (
     "content",
 )
 _DETAIL_KEYS = ("detailUrl", "detail_url", "messageUrl", "message_url", "href", "url", "link")
+_EXPLICIT_CODE_KEYS = ("verification_code",)
+_CLIENT_MAILBOX_SHELL_PATH = "/latest"
+_CLIENT_MAILBOX_SHELL_MARKERS = (
+    "weimail_customer.js",
+    'id="mail-address"',
+    'id="message-list"',
+    'id="code-box"',
+)
+_CLIENT_MAILBOX_EMAIL_QUERY_KEYS = ("email", "mail")
+_CLIENT_MAILBOX_AUTH_QUERY_KEYS = ("auth_code", "code", "key")
+_CLIENT_MAILBOX_AUTH_MAX_LENGTH = 512
 
 
 class MailboxUrlError(RuntimeError):
@@ -119,6 +136,14 @@ class MailboxResponse:
 
 
 @dataclass(frozen=True)
+class _ClientMailboxApi:
+    payload_url: str
+    cache_url: str
+    refresh_url: str
+    deep_refresh_url: str
+
+
+@dataclass(frozen=True)
 class MailboxMessage:
     identity: str
     sender: str = ""
@@ -129,6 +154,7 @@ class MailboxMessage:
     detail_url: str = ""
     code: str = ""
     order: int = 0
+    explicit_code: bool = False
 
 
 @dataclass(frozen=True)
@@ -160,6 +186,8 @@ class MailboxScanDiagnostics:
     detail_refreshed: int = 0
     detail_cache_hits: int = 0
     detail_errors: int = 0
+    refresh_error_code: str = ""
+    refresh_http_status: int | None = None
     openai_messages: int = 0
     code_messages: int = 0
 
@@ -170,6 +198,9 @@ def parse_mailbox_url_row(value: Any) -> MailboxUrlRow | None:
     if not match:
         return None
     mailbox_url = match.group("url").strip()
+    separator = match.group("separator")
+    if "----" in mailbox_url:
+        return None
     try:
         parsed = urllib.parse.urlsplit(mailbox_url)
         port = parsed.port
@@ -182,7 +213,7 @@ def parse_mailbox_url_row(value: Any) -> MailboxUrlRow | None:
     return MailboxUrlRow(
         email=match.group("email").lower(),
         mailbox_url=mailbox_url,
-        separator=match.group("separator"),
+        separator=separator,
     )
 
 
@@ -205,18 +236,54 @@ def _first(mapping: Mapping[str, Any], keys: Sequence[str]) -> Any:
     return ""
 
 
+def _strict_explicit_code(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    candidate = value.strip()
+    return candidate if re.fullmatch(r"\d{6}", candidate) else ""
+
+
+def _safe_http_status(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        status = int(value)
+    except (TypeError, ValueError):
+        return None
+    return status if 100 <= status <= 599 else None
+
+
 def _scalar_text(value: Any) -> str:
-    if isinstance(value, str):
-        return value
-    if isinstance(value, (int, float)):
-        return str(value)
-    if isinstance(value, Mapping):
-        parts = [_scalar_text(item) for item in value.values()]
-        return "\n".join(part for part in parts if part)
-    if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray, str)):
-        parts = [_scalar_text(item) for item in value]
-        return "\n".join(part for part in parts if part)
-    return ""
+    parts: list[str] = []
+    stack: list[tuple[Any, int]] = [(value, 0)]
+    visited = 0
+    while stack:
+        current, depth = stack.pop()
+        visited += 1
+        if visited > _MAX_JSON_CONTAINER_NODES or depth > _MAX_JSON_DEPTH:
+            raise _response_too_complex()
+        if isinstance(current, str):
+            parts.append(current)
+            continue
+        if isinstance(current, (int, float)):
+            parts.append(str(current))
+            continue
+        if isinstance(current, Mapping):
+            values = current.values()
+        elif isinstance(current, Sequence) and not isinstance(
+            current,
+            (bytes, bytearray, str),
+        ):
+            values = current
+        else:
+            continue
+        children: list[tuple[Any, int]] = []
+        for child in values:
+            if visited + len(stack) + len(children) >= _MAX_JSON_CONTAINER_NODES:
+                raise _response_too_complex()
+            children.append((child, depth + 1))
+        stack.extend(reversed(children))
+    return "\n".join(part for part in parts if part)
 
 
 class _VisibleTextParser(HTMLParser):
@@ -381,7 +448,100 @@ def _safe_detail_url(base_url: str, value: Any) -> str:
     return candidate
 
 
-def _message_from_mapping(value: Mapping[str, Any], source_url: str, order: int) -> MailboxMessage | None:
+def _first_query_value(params: Mapping[str, Sequence[str]], keys: Sequence[str]) -> str:
+    for key in keys:
+        values = params.get(key) or ()
+        candidate = str(values[0] if values else "").strip()
+        if candidate:
+            return candidate
+    return ""
+
+
+def _client_mailbox_api_from_shell(page_url: str, raw: str) -> _ClientMailboxApi | None:
+    try:
+        parsed = urllib.parse.urlsplit(page_url)
+    except ValueError:
+        return None
+    if parsed.path.rstrip("/") != _CLIENT_MAILBOX_SHELL_PATH:
+        return None
+    lowered = raw.lower()
+    if not all(marker in lowered for marker in _CLIENT_MAILBOX_SHELL_MARKERS):
+        return None
+    try:
+        params = urllib.parse.parse_qs(
+            parsed.query,
+            keep_blank_values=True,
+            max_num_fields=32,
+        )
+    except ValueError:
+        return None
+    email = _first_query_value(params, _CLIENT_MAILBOX_EMAIL_QUERY_KEYS)
+    auth_code = _first_query_value(params, _CLIENT_MAILBOX_AUTH_QUERY_KEYS)
+    if not _EMAIL_PATTERN.fullmatch(email):
+        return None
+    if (
+        not auth_code
+        or len(auth_code) > _CLIENT_MAILBOX_AUTH_MAX_LENGTH
+        or any(ord(character) < 32 or ord(character) == 127 for character in auth_code)
+    ):
+        return None
+    api_path = "/mail-api/{}/{}".format(
+        urllib.parse.quote(auth_code, safe=""),
+        urllib.parse.quote(email, safe=""),
+    )
+    payload_url = urllib.parse.urlunsplit((
+        parsed.scheme,
+        parsed.netloc,
+        api_path,
+        "",
+        "",
+    ))
+    cache_url = urllib.parse.urlunsplit((
+        parsed.scheme,
+        parsed.netloc,
+        api_path,
+        urllib.parse.urlencode((("folder", "inbox"), ("cache_first", "1"))),
+        "",
+    ))
+    refresh_url = urllib.parse.urlunsplit((
+        parsed.scheme,
+        parsed.netloc,
+        api_path,
+        urllib.parse.urlencode((("folder", "inbox"), ("refresh", "1"), ("async", "1"))),
+        "",
+    ))
+    deep_refresh_url = urllib.parse.urlunsplit((
+        parsed.scheme,
+        parsed.netloc,
+        api_path,
+        urllib.parse.urlencode((
+            ("folder", "inbox"),
+            ("refresh", "1"),
+            ("async", "1"),
+            ("deep", "1"),
+        )),
+        "",
+    ))
+    if not all(
+        _same_origin(page_url, candidate)
+        for candidate in (cache_url, refresh_url, deep_refresh_url)
+    ):
+        return None
+    return _ClientMailboxApi(
+        payload_url=payload_url,
+        cache_url=cache_url,
+        refresh_url=refresh_url,
+        deep_refresh_url=deep_refresh_url,
+    )
+
+
+def _message_from_mapping(
+    value: Mapping[str, Any],
+    source_url: str,
+    order: int,
+    *,
+    trust_explicit_code: bool = False,
+) -> MailboxMessage | None:
     message_id = _scalar_text(_first(value, _ID_KEYS)).strip()
     sender = decode_mail_body(_first(value, _SENDER_KEYS))
     subject = decode_mail_body(_first(value, _SUBJECT_KEYS))
@@ -390,8 +550,13 @@ def _message_from_mapping(value: Mapping[str, Any], source_url: str, order: int)
     body_values = [value[key] for key in _BODY_KEYS if key in value and value[key] not in (None, "")]
     body = " ".join(part for part in (decode_mail_body(item) for item in body_values) if part)
     detail_url = _safe_detail_url(source_url, _first(value, _DETAIL_KEYS))
-    code = extract_openai_code(sender, subject, body)
-    if not any((message_id, sender, subject, received_at, body, detail_url)):
+    explicit_code = (
+        _strict_explicit_code(_first(value, _EXPLICIT_CODE_KEYS))
+        if trust_explicit_code
+        else ""
+    )
+    code = explicit_code or extract_openai_code(sender, subject, body)
+    if not any((message_id, sender, subject, received_at, body, detail_url, code)):
         return None
     if message_id or detail_url:
         identity = _safe_identity(
@@ -406,6 +571,8 @@ def _message_from_mapping(value: Mapping[str, Any], source_url: str, order: int)
         identity = _safe_identity(source_url, received_at, sender, subject)
     else:
         identity = _safe_identity(source_url, sender, subject, body)
+    if explicit_code:
+        identity = _safe_identity(identity, received_at, explicit_code)
     return MailboxMessage(
         identity=identity,
         sender=sender,
@@ -419,17 +586,73 @@ def _message_from_mapping(value: Mapping[str, Any], source_url: str, order: int)
         detail_url=detail_url,
         code=code,
         order=order,
+        explicit_code=bool(explicit_code),
+    )
+
+
+def _response_too_complex() -> MailboxUrlError:
+    return MailboxUrlError(
+        "mailbox_provider_response_too_complex",
+        "邮箱取码响应结构超过复杂度限制",
     )
 
 
 def _walk_mappings(value: Any) -> Iterable[Mapping[str, Any]]:
-    if isinstance(value, Mapping):
-        yield value
-        for child in value.values():
-            yield from _walk_mappings(child)
-    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-        for child in value:
-            yield from _walk_mappings(child)
+    stack: list[tuple[Any, int]] = [(value, 0)]
+    container_nodes = 0
+    while stack:
+        current, depth = stack.pop()
+        container_nodes += 1
+        if depth > _MAX_JSON_DEPTH or container_nodes > _MAX_JSON_CONTAINER_NODES:
+            raise _response_too_complex()
+        if isinstance(current, Mapping):
+            yield current
+            values = current.values()
+        elif isinstance(current, Sequence) and not isinstance(
+            current,
+            (str, bytes, bytearray),
+        ):
+            values = current
+        else:
+            continue
+        children: list[tuple[Any, int]] = []
+        for child in values:
+            if isinstance(child, Mapping) or (
+                isinstance(child, Sequence)
+                and not isinstance(child, (str, bytes, bytearray))
+            ):
+                if container_nodes + len(stack) + len(children) >= _MAX_JSON_CONTAINER_NODES:
+                    raise _response_too_complex()
+                children.append((child, depth + 1))
+        stack.extend(reversed(children))
+
+
+def _messages_from_json(
+    parsed: Any,
+    source_url: str,
+    *,
+    start_order: int = 0,
+    message_limit: int = _MAX_PARSED_MESSAGES,
+) -> tuple[list[MailboxMessage], list[str]]:
+    messages: list[MailboxMessage] = []
+    detail_urls: list[str] = []
+    order = start_order
+    limit = max(0, min(int(message_limit), _MAX_PARSED_MESSAGES))
+    for mapping in _walk_mappings(parsed):
+        if len(messages) >= limit:
+            break
+        message = _message_from_mapping(
+            mapping,
+            source_url,
+            order,
+        )
+        if message is None:
+            continue
+        messages.append(message)
+        order += 1
+        if message.detail_url:
+            detail_urls.append(message.detail_url)
+    return messages, detail_urls
 
 
 @dataclass
@@ -556,15 +779,21 @@ def _parse_html_messages(raw: str, source_url: str, start_order: int = 0) -> tup
     for script in parser.json_scripts:
         try:
             parsed = json.loads(script)
+        except RecursionError as exc:
+            raise _response_too_complex() from exc
         except (TypeError, ValueError):
             continue
-        for mapping in _walk_mappings(parsed):
-            message = _message_from_mapping(mapping, source_url, order)
-            if message:
-                messages.append(message)
-                order += 1
-                if message.detail_url:
-                    detail_urls.append(message.detail_url)
+        script_messages, script_detail_urls = _messages_from_json(
+            parsed,
+            source_url,
+            start_order=order,
+            message_limit=_MAX_PARSED_MESSAGES - len(messages),
+        )
+        messages.extend(script_messages)
+        detail_urls.extend(script_detail_urls)
+        order += len(script_messages)
+        if len(messages) >= _MAX_PARSED_MESSAGES:
+            break
     detail_urls.extend(_inferred_detail_urls(source_url, raw, message_ids))
     visible = decode_mail_body(" ".join(parser.all_text))
     if visible:
@@ -593,25 +822,125 @@ def _merge_messages(messages: Iterable[MailboxMessage]) -> tuple[MailboxMessage,
     return tuple((with_code + without_code)[:MAX_MESSAGES])
 
 
-def parse_mailbox_payload(raw: str, source_url: str) -> tuple[tuple[MailboxMessage, ...], tuple[str, ...]]:
-    messages: list[MailboxMessage] = []
-    detail_urls: list[str] = []
+def parse_mailbox_payload(
+    raw: str,
+    source_url: str,
+) -> tuple[tuple[MailboxMessage, ...], tuple[str, ...]]:
     try:
         parsed = json.loads(raw)
+    except RecursionError as exc:
+        raise _response_too_complex() from exc
     except (TypeError, ValueError):
         parsed = None
     if parsed is not None:
-        order = 0
-        for mapping in _walk_mappings(parsed):
-            message = _message_from_mapping(mapping, source_url, order)
-            if message:
-                messages.append(message)
-                order += 1
-                if message.detail_url:
-                    detail_urls.append(message.detail_url)
+        messages, detail_urls = _messages_from_json(
+            parsed,
+            source_url,
+        )
     else:
         messages, detail_urls = _parse_html_messages(raw, source_url)
     return _merge_messages(messages), tuple(dict.fromkeys(detail_urls[:MAX_MESSAGES]))
+
+
+def _parse_client_mailbox_payload(
+    raw: str,
+    source_url: str,
+    *,
+    include_messages: bool = True,
+) -> tuple[
+    tuple[MailboxMessage, ...],
+    tuple[str, ...],
+    bool,
+    bool,
+    str,
+    int | None,
+]:
+    try:
+        parsed = json.loads(raw)
+    except RecursionError as exc:
+        raise _response_too_complex() from exc
+    except (TypeError, ValueError) as exc:
+        raise MailboxUrlError(
+            "mailbox_provider_response_invalid",
+            "邮箱取码数据接口返回了无法识别的响应",
+        ) from exc
+    if not isinstance(parsed, Mapping):
+        raise MailboxUrlError(
+            "mailbox_provider_response_invalid",
+            "邮箱取码数据接口返回了无法识别的响应",
+        )
+    provider_http_status = _safe_http_status(
+        _first(parsed, ("status", "status_code", "http_status"))
+    )
+    if parsed.get("ok") is False:
+        raise MailboxUrlError(
+            "mailbox_provider_error",
+            "邮箱取码数据接口返回失败",
+            status=provider_http_status,
+        )
+
+    if include_messages:
+        raw_messages = parsed.get("messages")
+        if not isinstance(raw_messages, list):
+            raise MailboxUrlError(
+                "mailbox_provider_response_invalid",
+                "邮箱取码数据接口返回了无法识别的响应",
+            )
+        parsed_messages: list[MailboxMessage] = []
+        parsed_detail_urls: list[str] = []
+        for raw_message in raw_messages[:_MAX_PARSED_MESSAGES]:
+            if not isinstance(raw_message, Mapping):
+                continue
+            message = _message_from_mapping(
+                raw_message,
+                source_url,
+                len(parsed_messages),
+                trust_explicit_code=True,
+            )
+            if message is None:
+                continue
+            parsed_messages.append(message)
+            if message.detail_url:
+                parsed_detail_urls.append(message.detail_url)
+        messages = _merge_messages(parsed_messages)
+        detail_urls = tuple(dict.fromkeys(parsed_detail_urls[:MAX_MESSAGES]))
+    else:
+        messages = ()
+        detail_urls = ()
+    if include_messages and not any(message.code for message in messages):
+        top_level_code = _strict_explicit_code(parsed.get("code"))
+        if top_level_code:
+            fallback = MailboxMessage(
+                identity=_safe_identity(
+                    "client-mailbox-top-level-code",
+                    source_url,
+                    top_level_code,
+                ),
+                code=top_level_code,
+                order=min((message.order for message in messages), default=0) - 1,
+                explicit_code=True,
+            )
+            messages = _merge_messages((*messages, fallback))
+
+    refresh_error = parsed.get("refresh_error")
+    refresh_error_code = (
+        "mailbox_provider_refresh_error"
+        if refresh_error not in (None, "", False)
+        else ""
+    )
+    refresh_status_value = _first(
+        refresh_error if isinstance(refresh_error, Mapping) else parsed,
+        ("status", "status_code", "http_status", "refresh_status"),
+    )
+    refresh_http_status = _safe_http_status(refresh_status_value)
+    return (
+        messages,
+        detail_urls,
+        parsed.get("smtp_inbound") is True,
+        parsed.get("refreshing") is True,
+        refresh_error_code,
+        refresh_http_status,
+    )
 
 
 def select_latest_code(
@@ -664,7 +993,9 @@ def select_latest_code(
         for message in scan.messages:
             if not message.code or message.identity not in baseline:
                 continue
-            if not _OPENAI_PATTERN.search(" ".join((message.sender, message.subject, message.body))):
+            if not message.explicit_code and not _OPENAI_PATTERN.search(
+                " ".join((message.sender, message.subject, message.body))
+            ):
                 continue
             if allow_recent_baseline or allow_baseline_fallback:
                 if requested_at is not None and message.received_timestamp is not None:
@@ -693,7 +1024,9 @@ def select_latest_code(
                 baseline_fallback_reason if allow_baseline_fallback else "mailbox_recent_baseline_code",
             )
     fingerprint = _safe_identity("empty", *sorted(scan.identities), scan.page_fingerprint)
-    if baseline_rejected:
+    if scan.diagnostics.refresh_error_code:
+        reason = "mailbox_refresh_request_failed"
+    elif baseline_rejected:
         reason = "mailbox_only_baseline_code"
     elif stale_rejected:
         reason = "mailbox_candidate_too_old"
@@ -748,6 +1081,51 @@ class MailboxUrlClient:
         self.now_fn = now_fn
         self._detail_cache: dict[str, tuple[MailboxMessage, ...]] = {}
         self._detail_refresh_cursor = 0
+        self._client_mailbox_api: _ClientMailboxApi | None = None
+        self._client_mailbox_refresh_pending = False
+        self._client_mailbox_refresh_forced = False
+        self._client_mailbox_next_refresh_at = 0.0
+        self._client_mailbox_request_started_at: float | None = None
+        self._client_mailbox_deep_refresh_done = False
+        self._client_mailbox_refresh_error_code = ""
+        self._client_mailbox_refresh_http_status: int | None = None
+
+    def _request_client_mailbox_refresh(self, *, force: bool = False) -> None:
+        self._client_mailbox_refresh_pending = True
+        if force:
+            self._client_mailbox_refresh_forced = True
+            self._client_mailbox_request_started_at = float(self.now_fn())
+            self._client_mailbox_deep_refresh_done = False
+            self._clear_client_mailbox_refresh_error()
+
+    def _clear_client_mailbox_refresh_error(self) -> None:
+        self._client_mailbox_refresh_error_code = ""
+        self._client_mailbox_refresh_http_status = None
+
+    def _remember_client_mailbox_refresh_error(self, exc: MailboxUrlError) -> None:
+        self._set_client_mailbox_refresh_error(
+            str(getattr(exc, "code", "") or "mailbox_request_failed"),
+            getattr(exc, "status", None),
+        )
+
+    def _set_client_mailbox_refresh_error(
+        self,
+        code: str,
+        status: int | None = None,
+    ) -> None:
+        self._client_mailbox_refresh_error_code = str(code or "mailbox_request_failed")
+        self._client_mailbox_refresh_http_status = (
+            int(status)
+            if isinstance(status, int) and not isinstance(status, bool)
+            else None
+        )
+
+    def _finish_client_mailbox_request(self) -> None:
+        self._client_mailbox_refresh_pending = False
+        self._client_mailbox_refresh_forced = False
+        self._client_mailbox_request_started_at = None
+        self._client_mailbox_deep_refresh_done = False
+        self._clear_client_mailbox_refresh_error()
 
     def _opener(self):
         handlers: list[Any] = [_SameOriginRedirectHandler(self.mailbox_url)]
@@ -807,10 +1185,100 @@ class MailboxUrlClient:
         return MailboxResponse(final_url, body, content_type, status)
 
     def scan(self) -> MailboxScan:
-        response = self._fetch(self.mailbox_url)
+        client_api = self._client_mailbox_api
+        response = self._fetch(client_api.cache_url if client_api is not None else self.mailbox_url)
         raw = _decode_bytes(response.body, response.content_type)
-        messages, detail_urls = parse_mailbox_payload(raw, response.url)
+        if client_api is None:
+            client_api = _client_mailbox_api_from_shell(response.url, raw)
+            if client_api is not None:
+                self._client_mailbox_api = client_api
+                response = self._fetch(client_api.cache_url)
+                raw = _decode_bytes(response.body, response.content_type)
+
+        detail_request_errors = 0
+        if client_api is not None:
+            (
+                messages,
+                detail_urls,
+                smtp_inbound,
+                refreshing,
+                cache_refresh_error_code,
+                cache_refresh_http_status,
+            ) = _parse_client_mailbox_payload(raw, client_api.payload_url)
+            if cache_refresh_error_code:
+                self._set_client_mailbox_refresh_error(
+                    cache_refresh_error_code,
+                    cache_refresh_http_status,
+                )
+        else:
+            messages, detail_urls = parse_mailbox_payload(raw, response.url)
+            smtp_inbound = False
+            refreshing = False
         combined = list(messages)
+
+        if client_api is not None:
+            if smtp_inbound is True:
+                self._client_mailbox_refresh_pending = False
+                self._client_mailbox_refresh_forced = False
+                self._clear_client_mailbox_refresh_error()
+            elif self._client_mailbox_refresh_pending:
+                now = float(self.now_fn())
+                deep_due = (
+                    self._client_mailbox_request_started_at is not None
+                    and not self._client_mailbox_deep_refresh_done
+                    and now - self._client_mailbox_request_started_at
+                    >= _CLIENT_MAILBOX_DEEP_REFRESH_AFTER_SECONDS
+                )
+                regular_due = not refreshing and (
+                    self._client_mailbox_refresh_forced
+                    or now >= self._client_mailbox_next_refresh_at
+                )
+                if deep_due or regular_due:
+                    self._client_mailbox_refresh_pending = False
+                    self._client_mailbox_refresh_forced = False
+                    self._client_mailbox_next_refresh_at = (
+                        now + _CLIENT_MAILBOX_REFRESH_INTERVAL_SECONDS
+                    )
+                    refresh_url = (
+                        client_api.deep_refresh_url
+                        if deep_due
+                        else client_api.refresh_url
+                    )
+                    if deep_due:
+                        self._client_mailbox_deep_refresh_done = True
+                    try:
+                        refresh_response = self._fetch(refresh_url)
+                        refresh_raw = _decode_bytes(
+                            refresh_response.body,
+                            refresh_response.content_type,
+                        )
+                        (
+                            _refresh_messages,
+                            _refresh_detail_urls,
+                            refresh_smtp_inbound,
+                            _refreshing,
+                            refresh_error_code,
+                            refresh_http_status,
+                        ) = _parse_client_mailbox_payload(
+                            refresh_raw,
+                            client_api.payload_url,
+                            include_messages=False,
+                        )
+                    except MailboxUrlError as exc:
+                        self._remember_client_mailbox_refresh_error(exc)
+                    else:
+                        if refresh_error_code:
+                            self._set_client_mailbox_refresh_error(
+                                refresh_error_code,
+                                refresh_http_status,
+                            )
+                        elif not cache_refresh_error_code:
+                            self._clear_client_mailbox_refresh_error()
+                        if refresh_smtp_inbound is True:
+                            self._client_mailbox_refresh_pending = False
+                            self._client_mailbox_refresh_forced = False
+
+        listing_messages = len(_merge_messages(combined))
         active_detail_urls = list(dict.fromkeys(detail_urls[:MAX_MESSAGES]))
         active_set = set(active_detail_urls)
         for stale_url in tuple(self._detail_cache):
@@ -832,7 +1300,6 @@ class MailboxUrlClient:
                 else 0
             )
 
-        detail_errors = 0
         refreshed = 0
         for detail_url in [*uncached_urls, *refresh_urls]:
             try:
@@ -840,7 +1307,7 @@ class MailboxUrlClient:
                 detail_raw = _decode_bytes(detail_response.body, detail_response.content_type)
                 detail_messages, _unused_links = parse_mailbox_payload(detail_raw, detail_response.url)
             except MailboxUrlError:
-                detail_errors += 1
+                detail_request_errors += 1
                 continue
             self._detail_cache[detail_url] = detail_messages
             refreshed += 1
@@ -854,11 +1321,13 @@ class MailboxUrlClient:
             if _OPENAI_PATTERN.search(" ".join((message.sender, message.subject, message.body)))
         )
         diagnostics = MailboxScanDiagnostics(
-            listing_messages=len(messages),
+            listing_messages=listing_messages,
             detail_links=len(active_detail_urls),
             detail_refreshed=refreshed,
             detail_cache_hits=sum(1 for url in active_detail_urls if url in self._detail_cache),
-            detail_errors=detail_errors,
+            detail_errors=detail_request_errors,
+            refresh_error_code=self._client_mailbox_refresh_error_code,
+            refresh_http_status=self._client_mailbox_refresh_http_status,
             openai_messages=openai_messages,
             code_messages=sum(1 for message in merged if message.code),
         )
@@ -897,6 +1366,9 @@ class MailboxRequestState:
         self.poll_attempt = 0
         self.baseline_fallback_age_seconds = None
         self.baseline_fallback_poll = None
+        request_refresh = getattr(self.client, "_request_client_mailbox_refresh", None)
+        if callable(request_refresh):
+            request_refresh(force=True)
 
     def _baseline_fallback(
         self,
@@ -965,6 +1437,10 @@ class MailboxRequestState:
             and self.poll_attempt <= self.max_poll_attempts
         ):
             self._baseline_fallback(scan, reason="mailbox_baseline_code_fallback")
+        if self.active and not self.last_selection.code:
+            request_refresh = getattr(self.client, "_request_client_mailbox_refresh", None)
+            if callable(request_refresh):
+                request_refresh()
         return self.last_selection
 
     def final_baseline_fallback(self) -> MailboxSelection:
@@ -989,6 +1465,9 @@ class MailboxRequestState:
             self.baseline_identities = self.last_scan.identities
         self.active = False
         self.requested_at = None
+        finish_client_request = getattr(self.client, "_finish_client_mailbox_request", None)
+        if callable(finish_client_request):
+            finish_client_request()
 
 
 def _runtime_state(provider: Any) -> MailboxRequestState:
@@ -1046,6 +1525,8 @@ def runtime_diagnostic(provider: Any) -> dict[str, Any]:
             0,
         ),
         "detail_errors": diagnostics.detail_errors,
+        "refresh_error_code": diagnostics.refresh_error_code,
+        "refresh_http_status": diagnostics.refresh_http_status,
         "openai_messages": diagnostics.openai_messages,
         "code_messages": diagnostics.code_messages,
     }

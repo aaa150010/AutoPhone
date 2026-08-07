@@ -14,6 +14,7 @@ import {
   testEmailNotification,
 } from '../api/client'
 import type { AppState, SmsKeyStatus, SmsProviderPool, SmsRuntimeAlert } from '../types/api'
+import { createRuntimeAlertTracker, runtimeAlertDuration } from './runtimeAlerts'
 
 const smsProviderDefaults: Record<string, string> = {
   smsbower: 'dr',
@@ -259,7 +260,7 @@ export function createAppController() {
     queryingSmsBalances: false,
   })
   const queriedSmsKeyStatuses = ref<SmsKeyStatus[] | null>(null)
-  const seenAlerts = new Set<string>()
+  const runtimeAlertTracker = createRuntimeAlertTracker()
   let baseline = signature(form)
   let pollTimer = 0
   let pollingStopped = true
@@ -278,13 +279,12 @@ export function createAppController() {
 
   function showRuntimeAlerts(alerts: SmsRuntimeAlert[]) {
     for (const alert of alerts || []) {
-      if (!alert?.id || seenAlerts.has(alert.id)) continue
-      seenAlerts.add(alert.id)
+      if (!runtimeAlertTracker.accept(alert)) continue
       ElNotification({
         title: alert.level === 'error' ? 'SMS 服务异常' : 'SMS 服务提醒',
         message: alert.message,
         type: alert.level || 'warning',
-        duration: alert.persistent ? 0 : 5000,
+        duration: runtimeAlertDuration(alert),
       })
     }
   }

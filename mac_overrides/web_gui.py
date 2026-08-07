@@ -2667,6 +2667,7 @@ _MAILBOX_DIAGNOSTIC_LABELS = {
     "mailbox_candidate_too_old": "识别到的验证码邮件早于本次请求",
     "mailbox_detail_request_failed": "部分邮件详情读取失败，未识别到新验证码",
     "mailbox_detail_refresh_pending": "仍有缓存邮件详情等待下一轮刷新",
+    "mailbox_refresh_request_failed": "邮箱异步刷新失败，仍在按受控间隔重试",
 }
 
 
@@ -2683,9 +2684,16 @@ def _log_mailbox_diagnostic(provider, log_fn):
         f"待轮转 {int(diagnostic.get('detail_refresh_pending') or 0)}，"
         f"详情错误 {int(diagnostic.get('detail_errors') or 0)}"
     )
+    refresh_error_code = str(diagnostic.get("refresh_error_code") or "")
+    refresh_http_status = diagnostic.get("refresh_http_status")
+    refresh_detail = ""
+    if refresh_error_code:
+        refresh_detail = f"；刷新错误 {refresh_error_code}"
+        if isinstance(refresh_http_status, int) and not isinstance(refresh_http_status, bool):
+            refresh_detail += f"/HTTP {refresh_http_status}"
     _call_log(
         log_fn,
-        f"  [邮箱取码诊断/email_code_waiting] {label}（{reason}；{counts}）",
+        f"  [邮箱取码诊断/email_code_waiting] {label}（{reason}；{counts}{refresh_detail}）",
         "warn",
     )
 

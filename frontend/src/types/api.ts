@@ -23,6 +23,7 @@ export interface SmsProviderPool {
 
 export interface SmsRuntimeAlert {
   id: string
+  generation?: string
   kind: string
   level: 'success' | 'warning' | 'info' | 'error'
   message: string

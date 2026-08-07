@@ -7,6 +7,11 @@ from typing import Any, Callable
 from urllib.parse import urlsplit
 
 try:
+    from .chatgpt_totp import parse_mailbox_url_totp_row
+except ImportError:  # Loaded as a top-level runtime override.
+    from chatgpt_totp import parse_mailbox_url_totp_row
+
+try:
     from .mailbox_url_runtime import MailboxRequestState, MailboxUrlClient, MailboxUrlError, parse_mailbox_url_row
 except ImportError:  # Loaded as a top-level runtime override.
     from mailbox_url_runtime import (  # type: ignore[no-redef]
@@ -19,9 +24,15 @@ except ImportError:  # Loaded as a top-level runtime override.
 
 def parse_test_input(value: Any) -> tuple[str, str]:
     raw = str(value or "").strip()
+    parsed_url_totp = parse_mailbox_url_totp_row(raw)
+    if parsed_url_totp is not None:
+        email, mailbox_url, _totp_secret = parsed_url_totp
+        return email, mailbox_url
     parsed_row = parse_mailbox_url_row(raw)
     if parsed_row is not None:
         return parsed_row.email, parsed_row.mailbox_url
+    if "----" in raw:
+        raise MailboxUrlError("mailbox_url_invalid", "请输入完整的 HTTP(S) 取件 URL")
     try:
         parsed = urlsplit(raw)
     except ValueError as exc:
@@ -31,7 +42,7 @@ def parse_test_input(value: Any) -> tuple[str, str]:
     return "", raw
 
 
-def _diagnostics(selection: Any) -> dict[str, int]:
+def _diagnostics(selection: Any) -> dict[str, Any]:
     scan = getattr(selection, "scan", None)
     value = getattr(scan, "diagnostics", None)
     if value is None:
@@ -42,6 +53,8 @@ def _diagnostics(selection: Any) -> dict[str, int]:
             "detail_cache_hits": 0,
             "detail_refresh_pending": 0,
             "detail_errors": 0,
+            "refresh_error_code": "",
+            "refresh_http_status": None,
             "openai_messages": 0,
             "code_messages": 0,
         }
@@ -54,6 +67,13 @@ def _diagnostics(selection: Any) -> dict[str, int]:
         "detail_cache_hits": max(0, int(getattr(value, "detail_cache_hits", 0) or 0)),
         "detail_refresh_pending": max(0, detail_links - detail_refreshed),
         "detail_errors": max(0, int(getattr(value, "detail_errors", 0) or 0)),
+        "refresh_error_code": str(getattr(value, "refresh_error_code", "") or ""),
+        "refresh_http_status": (
+            int(getattr(value, "refresh_http_status"))
+            if isinstance(getattr(value, "refresh_http_status", None), int)
+            and not isinstance(getattr(value, "refresh_http_status", None), bool)
+            else None
+        ),
         "openai_messages": max(0, int(getattr(value, "openai_messages", 0) or 0)),
         "code_messages": max(0, int(getattr(value, "code_messages", 0) or 0)),
     }

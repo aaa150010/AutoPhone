@@ -250,7 +250,31 @@ class SmsWebTests(unittest.TestCase):
         self.assertEqual(self.pool.proxy, "http://127.0.0.1:7897")
         self.assertEqual(statuses, self.pool.statuses)
         self.assertEqual(self.alerts.rows[0][0], "sms_balance_insufficient")
+        self.assertFalse(self.alerts.rows[0][2]["persistent"])
         self.assertIn("Key 2", logs.rows[0][0])
+
+    def test_only_runtime_balance_alert_is_non_persistent(self):
+        kinds = (
+            "insufficient_balance",
+            "sms_balance_insufficient",
+            "invalid",
+            "rate_limited",
+            "network_error",
+        )
+
+        for index, kind in enumerate(kinds, start=1):
+            self.integration.runtime_alert({
+                "kind": kind,
+                "provider": "sms-provider",
+                "index": index,
+                "fingerprint": f"fingerprint-{index}",
+                "message": f"status-{kind}",
+            })
+
+        self.assertEqual([row[0] for row in self.alerts.rows], list(kinds))
+        self.assertFalse(self.alerts.rows[0][2]["persistent"])
+        self.assertFalse(self.alerts.rows[1][2]["persistent"])
+        self.assertTrue(all(row[2]["persistent"] for row in self.alerts.rows[2:]))
 
     def test_balance_query_uses_an_isolated_registry_and_returns_no_raw_keys(self):
         secret = "query-secret/key"

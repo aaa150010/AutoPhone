@@ -14,8 +14,10 @@ from mac_overrides.mailbox_admin import (
     email_from_row,
     generate_totp_code,
     is_importable_mailbox_row,
+    mailbox_url_from_row,
     masked_source_row,
     parse_chatgpt_totp_row,
+    parse_mailbox_url_totp_row,
     parse_mailbox_url_row,
     parse_oauth_mailbox_row,
     password_from_row,
@@ -24,6 +26,7 @@ from mac_overrides.mailbox_admin import (
     redact_mailbox_credentials,
     row_id_from_source,
     selected_line_numbers,
+    totp_secret_from_row,
     url_credential_secrets,
 )
 
@@ -120,6 +123,11 @@ class MailboxAdminTests(unittest.TestCase):
         totp = "Mfa@Example.com|login-pass|JBSW Y3DP EHPK3PXP"
         dashed_totp = "Mfa2@Example.com--login-pass-2--JBSW Y3DP EHPK3PXP"
         url_row = "Url@Example.com｜https://mail.example.test/messages/private-token"
+        url_totp = (
+            "UrlMfa@Example.com----"
+            "https://mail.example.test/latest?email=urlmfa%40example.com&auth_code=private----"
+            "JBSWY3DPEHPK3PXP"
+        )
 
         self.assertEqual(email_from_row(oauth), "user@example.com")
         self.assertEqual(
@@ -146,6 +154,25 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertTrue(is_importable_mailbox_row(url_row))
         self.assertEqual(password_from_row(url_row), "")
         self.assertEqual(masked_source_row(url_row), "url@example.com｜********")
+        self.assertEqual(
+            parse_mailbox_url_totp_row(url_totp),
+            (
+                "urlmfa@example.com",
+                "https://mail.example.test/latest?email=urlmfa%40example.com&auth_code=private",
+                "JBSWY3DPEHPK3PXP",
+            ),
+        )
+        self.assertTrue(is_importable_mailbox_row(url_totp))
+        self.assertEqual(password_from_row(url_totp), "")
+        self.assertEqual(
+            mailbox_url_from_row(url_totp),
+            "https://mail.example.test/latest?email=urlmfa%40example.com&auth_code=private",
+        )
+        self.assertEqual(totp_secret_from_row(url_totp), "JBSWY3DPEHPK3PXP")
+        self.assertEqual(
+            masked_source_row(url_totp),
+            "urlmfa@example.com----********----********",
+        )
         self.assertEqual(
             masked_source_row(dashed_totp),
             "mfa2@example.com--********--********",
@@ -1429,6 +1456,44 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertEqual(reader_calls[0][0], ("https://mail.example.test/messages/private-token",))
         self.assertEqual(reader_calls[0][1], {"timeout_seconds": 5, "proxy": ""})
         self.assertTrue(reader.include_existing)
+
+    def test_url_totp_latest_code_sends_only_url_and_skips_imap(self):
+        mailbox_url = (
+            "https://mail.example.test/latest?"
+            "email=urlmfa%40example.com&auth_code=private"
+        )
+        self._write_pool(
+            f"urlmfa@example.com----{mailbox_url}----JBSWY3DPEHPK3PXP\n"
+        )
+        reader_calls = []
+
+        class FakeReader:
+            def latest_code(self, *, include_existing):
+                self.include_existing = include_existing
+                return SimpleNamespace(code="012345")
+
+        reader = FakeReader()
+
+        def reader_factory(*args, **kwargs):
+            reader_calls.append((args, kwargs))
+            return reader
+
+        service = MailboxAdminService(
+            self.store,
+            validate_pool=lambda _config: {"ok": True},
+            imap_poller_factory=self.create_poller,
+            mailbox_url_reader_factory=reader_factory,
+        )
+
+        result = service.latest_code({"line_no": 1})
+
+        self.assertEqual(result["code"], "012345")
+        self.assertEqual(result["kind"], "email")
+        self.assertEqual(reader_calls[0][0], (mailbox_url,))
+        self.assertEqual(reader_calls[0][1], {"timeout_seconds": 5, "proxy": ""})
+        self.assertNotIn("JBSWY3DPEHPK3PXP", reader_calls[0][0][0])
+        self.assertTrue(reader.include_existing)
+        self.assertEqual(self.pollers, [])
 
     def test_url_latest_code_failure_redacts_url_and_email(self):
         row = "url@example.com|https://mail.example.test/messages/private-token"

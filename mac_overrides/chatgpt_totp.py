@@ -89,17 +89,14 @@ def parse_chatgpt_totp_row(raw: Any) -> tuple[str, str, str] | None:
 
 def parse_mailbox_url_totp_row(raw: Any) -> tuple[str, str, str] | None:
     parts = [part.strip() for part in str(raw or "").strip().split("----")]
-    if len(parts) < 3:
+    if len(parts) != 3:
         return None
     email, mailbox_url = parts[0].lower(), parts[1]
     totp_secret = _normalize_totp_secret(parts[2])
-    if not _EMAIL_PATTERN.fullmatch(email):
+    parsed_url = parse_mailbox_url_row(f"{email}|{mailbox_url}")
+    if parsed_url is None or not totp_secret:
         return None
-    if not mailbox_url.lower().startswith(("http://", "https://")):
-        return None
-    if not totp_secret:
-        return None
-    return email, mailbox_url, totp_secret
+    return parsed_url.email, parsed_url.mailbox_url, totp_secret
 
 
 def masked_chatgpt_totp_row(raw: Any, mask: str = "***") -> str:

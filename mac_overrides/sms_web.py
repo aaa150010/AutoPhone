@@ -906,13 +906,14 @@ class SmsWebIntegration:
     def runtime_alert(self, payload: Any) -> None:
         value = dict(payload or {})
         provider = str(value.get("provider") or "")
+        kind = str(value.get("kind") or "sms_warning")
         prefix = f"{provider} " if provider else ""
         self.alerts.add(
-            str(value.get("kind") or "sms_warning"),
+            kind,
             f"{prefix}{str(value.get('message') or 'SMS Key 状态异常')}",
             level="warning",
-            dedupe_key=f"runtime:{provider}:{value.get('fingerprint')}:{value.get('kind')}",
-            persistent=True,
+            dedupe_key=f"runtime:{provider}:{value.get('fingerprint')}:{kind}",
+            persistent=kind not in {"insufficient_balance", "sms_balance_insufficient"},
             provider=provider,
             key_index=value.get("index"),
             fingerprint=value.get("fingerprint") or "",
