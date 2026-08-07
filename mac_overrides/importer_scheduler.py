@@ -13,6 +13,10 @@ from typing import Any, Callable
 import uuid
 
 
+_MAX_WORKER_CAPACITY = 12
+_QUEUE_NODE = "[排队等待/queue_waiting]"
+
+
 def _bounded_int(value: Any, default: int, minimum: int, maximum: int) -> int:
     try:
         parsed = int(value)
@@ -177,6 +181,7 @@ def start_bounded_importer(
         try:
             worker_capacity = min(
                 target,
+                _MAX_WORKER_CAPACITY,
                 max(worker_count, int(task_admission.snapshot().get("ceiling") or worker_count)),
             )
         except Exception:
@@ -196,23 +201,64 @@ def start_bounded_importer(
     reserved: list[tuple[str, int, Any, bool]] = []
     executor = None
     futures: list[Any] = []
+    admission_tracks_pending = False
     startup_gate = threading.Event()
     startup_ready = threading.Event()
     batch_id = str(settings.get("batch_id") or "").strip()
     batch_started_at = _bounded_int(settings.get("batch_started_at"), 0, 0, 4_102_444_800)
 
-    def stopped_before_admission(entry: Any, task_id: str) -> None:
+    def finish_before_admission(
+        entry: Any,
+        task_id: str,
+        *,
+        stopped: bool,
+        cause: Exception | None = None,
+    ) -> None:
+        restore_error = ""
         if not relogin:
             try:
-                pool.restore_entry(entry, reason="stopped_before_start")
+                restored = bool(pool.restore_entry(entry, reason="stopped_before_start"))
+                if not restored:
+                    restore_error = "邮箱池未确认归还"
+            except Exception as exc:
+                restore_error = f"邮箱归还失败（{type(exc).__name__}）"
+
+        if cause is not None:
+            error = f"{_QUEUE_NODE} 任务准入失败（{type(cause).__name__}）"
+            if restore_error:
+                error = f"{error}；{restore_error}"
+            elif not relogin:
+                error = f"{error}；邮箱已归还"
+            status = "failed"
+        elif restore_error:
+            error = f"{_QUEUE_NODE} 停止清理失败：{restore_error}"
+            status = "failed"
+        else:
+            error = "未启动，已停止"
+            status = "stopped"
+
+        try:
+            values = {"status": status, "error": error}
+            if status == "failed":
+                values["technical_error"] = error
+            importer._task_state(task_id, **values)
+        except Exception as exc:
+            try:
+                importer._log(
+                    f"{task_id} {_QUEUE_NODE} 任务终态写入失败（{type(exc).__name__}）",
+                    "error",
+                )
             except Exception:
                 pass
-        try:
-            importer._task_state(task_id, status="stopped", error="未启动，已停止")
-        except Exception:
-            pass
-        with importer.lock:
-            importer.cancelled_waiting += 1
+
+        if restore_error:
+            try:
+                importer._log(f"{task_id} {error}", "error")
+            except Exception:
+                pass
+        if stopped:
+            with importer.lock:
+                importer.cancelled_waiting += 1
 
     def run_after_start(
         task_settings: dict[str, Any],
@@ -234,22 +280,35 @@ def start_bounded_importer(
             nonlocal wait_seconds
             wait_seconds = max(0.0, float(value))
 
+        business_started = False
         try:
+            acquire_options = {
+                "stop_event": importer.stop_event,
+                "on_wait": observed_wait,
+                "queued_at": queued_at,
+            }
+            if admission_tracks_pending:
+                acquire_options["registered_pending"] = True
             with task_admission.acquire(
-                stop_event=importer.stop_event,
-                on_wait=observed_wait,
-                queued_at=queued_at,
+                **acquire_options,
             ):
                 if callable(on_task_started):
                     try:
                         on_task_started(task_id, wait_seconds)
                     except Exception:
                         pass
+                business_started = True
                 importer._run_one(task_settings, ordinal, entry, task_id)
-        except RuntimeError as exc:
-            if str(exc) != "task_stopped":
+        except Exception as exc:
+            if business_started:
                 raise
-            stopped_before_admission(entry, task_id)
+            if isinstance(exc, RuntimeError) and str(exc) == "task_stopped":
+                finish_before_admission(entry, task_id, stopped=True)
+                return
+            finish_before_admission(entry, task_id, stopped=False, cause=exc)
+            raise RuntimeError(
+                f"{_QUEUE_NODE} 任务准入失败（{type(exc).__name__}）"
+            ) from exc
 
     with importer.lock:
         if importer.running:
@@ -290,6 +349,11 @@ def start_bounded_importer(
                     run_mode="relogin" if relogin else "register",
                 )
 
+            register_pending = getattr(task_admission, "register_pending", None)
+            if callable(register_pending):
+                register_pending(target)
+                admission_tracks_pending = True
+
             executor = executor_factory(
                 max_workers=worker_capacity,
                 thread_name_prefix="email-auth-import",
@@ -325,21 +389,47 @@ def start_bounded_importer(
             cleanup_failures = 0
             for future in futures:
                 try:
-                    future.cancel()
+                    was_cancelled = future.cancel()
                 except Exception:
                     cleanup_failures += 1
+                else:
+                    if was_cancelled and admission_tracks_pending:
+                        try:
+                            task_admission.discard_pending()
+                        except Exception:
+                            cleanup_failures += 1
             if executor is not None:
                 try:
                     executor.shutdown(wait=True, cancel_futures=True)
                 except Exception:
                     cleanup_failures += 1
-            for _task_id, _ordinal, entry, restore_on_cancel in reserved:
+            if admission_tracks_pending:
+                try:
+                    task_admission.clear_pending()
+                except Exception:
+                    cleanup_failures += 1
+            cleanup_diagnostics: list[str] = []
+            for task_id, _ordinal, entry, restore_on_cancel in reserved:
                 if not restore_on_cancel:
                     continue
                 try:
-                    pool.restore_entry(entry, reason="batch_start_failed")
-                except Exception:
+                    restored = bool(pool.restore_entry(entry, reason="batch_start_failed"))
+                    if not restored:
+                        cleanup_failures += 1
+                        cleanup_diagnostics.append(
+                            f"{task_id} {_QUEUE_NODE} 启动失败清理失败：邮箱池未确认归还"
+                        )
+                except Exception as exc:
                     cleanup_failures += 1
+                    cleanup_diagnostics.append(
+                        f"{task_id} {_QUEUE_NODE} 启动失败清理失败："
+                        f"邮箱归还失败（{type(exc).__name__}）"
+                    )
+            for diagnostic in cleanup_diagnostics:
+                try:
+                    importer._log(diagnostic, "error")
+                except Exception:
+                    pass
             try:
                 if cleanup_failures:
                     importer._log(f"启动失败清理有 {cleanup_failures} 项未完成", "error")
@@ -405,17 +495,38 @@ def stop_bounded_importer(importer: Any) -> None:
             continue
         if not was_cancelled:
             continue
+        if task_admission is not None:
+            discard_pending = getattr(task_admission, "discard_pending", None)
+            if callable(discard_pending):
+                try:
+                    discard_pending()
+                except Exception:
+                    cleanup_failures += 1
         assignment = assignments.get(future)
         if assignment is None:
             continue
         pool, entry, task_id = assignment
+        restore_error = ""
         if task_id not in preselected_task_ids:
             try:
-                pool.restore_entry(entry, reason="stopped_before_start")
-            except Exception:
+                restored = bool(pool.restore_entry(entry, reason="stopped_before_start"))
+                if not restored:
+                    restore_error = "邮箱池未确认归还"
+            except Exception as exc:
+                restore_error = f"邮箱归还失败（{type(exc).__name__}）"
+            if restore_error:
                 cleanup_failures += 1
         try:
-            importer._task_state(task_id, status="stopped", error="未启动，已停止")
+            if restore_error:
+                error = f"{_QUEUE_NODE} 停止清理失败：{restore_error}"
+                importer._task_state(
+                    task_id,
+                    status="failed",
+                    error=error,
+                    technical_error=error,
+                )
+            else:
+                importer._task_state(task_id, status="stopped", error="未启动，已停止")
         except Exception:
             cleanup_failures += 1
         cancelled += 1
@@ -429,7 +540,7 @@ def stop_bounded_importer(importer: Any) -> None:
             cleanup_failures += 1
     try:
         importer._log(
-            f"已停止：取消 {cancelled} 个等待任务，正在运行任务立即中断并归还邮箱",
+            f"已停止：取消 {cancelled} 个等待任务，正在运行任务已请求中断并执行邮箱清理",
             "warn",
         )
         if cleanup_failures:

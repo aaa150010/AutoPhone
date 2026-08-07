@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 import threading
 import time
 import unittest
@@ -53,7 +54,13 @@ class FakePhaseGate:
 
 
 class FakeImporter:
-    def __init__(self, available: int, *, blocked: bool = False) -> None:
+    def __init__(
+        self,
+        available: int,
+        *,
+        blocked: bool = False,
+        restore_running_on_stop: bool = False,
+    ) -> None:
         self.pool = FakePool(available)
         self.lock = threading.RLock()
         self.stop_event = threading.Event()
@@ -69,6 +76,7 @@ class FakeImporter:
         self.node_gate = FakePhaseGate(1)
         self.task_concurrency = 1
         self.blocked = blocked
+        self.restore_running_on_stop = restore_running_on_stop
         self.release_tasks = threading.Event()
         if not blocked:
             self.release_tasks.set()
@@ -100,6 +108,9 @@ class FakeImporter:
             if len(self.ordinals) >= 2:
                 self.two_started.set()
         self.release_tasks.wait(2)
+        if self.restore_running_on_stop and self.stop_event.is_set():
+            self.pool.restore_entry(entry, reason="stopped")
+            self._task_state(task_id, status="stopped", error="已停止")
         with self.lock:
             self.active -= 1
 
@@ -148,6 +159,15 @@ def start(importer: FakeImporter, settings: dict, **kwargs):
 
 
 class ImporterSchedulerTests(unittest.TestCase):
+    @staticmethod
+    def _wait_until(predicate, timeout: float = 1.0) -> bool:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if predicate():
+                return True
+            time.sleep(0.01)
+        return bool(predicate())
+
     def test_relogin_uses_consumed_preselected_rows_without_pool_lease(self):
         importer = FakeImporter(available=3)
         rows = [
@@ -377,6 +397,268 @@ class ImporterSchedulerTests(unittest.TestCase):
         self.assertEqual(importer.cancelled_waiting, 3)
         self.assertEqual(admission.snapshot()["active"], 0)
 
+    def test_burst_ceiling_preallocates_twelve_workers_but_initially_admits_eight(self):
+        importer = FakeImporter(available=20, blocked=True)
+        admission = AdaptiveConcurrencyGate(
+            8,
+            ceiling=12,
+            restore_ceiling=8,
+        )
+        executor_options: list[dict] = []
+
+        def recording_executor(**kwargs):
+            executor_options.append(dict(kwargs))
+            return ThreadPoolExecutor(**kwargs)
+
+        start(
+            importer,
+            {
+                "target_count": 20,
+                "concurrency": 8,
+                "node_concurrency": 12,
+                "auto_email_login_concurrency": 12,
+            },
+            task_admission=admission,
+            executor_factory=recording_executor,
+        )
+
+        self.assertTrue(self._wait_until(
+            lambda: importer.max_active == 8 and admission.snapshot()["waiting"] == 4,
+        ))
+        snapshot = admission.snapshot()
+        self.assertEqual(executor_options[0]["max_workers"], 12)
+        self.assertEqual(snapshot["base"], 8)
+        self.assertEqual(snapshot["limit"], 8)
+        self.assertEqual(snapshot["ceiling"], 12)
+        self.assertEqual(snapshot["active"], 8)
+        self.assertEqual(admission.pending, 12)
+        self.assertEqual(importer.task_concurrency, 8)
+        self.assertEqual(importer.node_gate.concurrency, 8)
+        self.assertEqual(importer.auto_email_phase_gate.concurrency, 8)
+
+        importer.release_tasks.set()
+        self.assertTrue(importer.finished.wait(2))
+        self.assertEqual(admission.snapshot()["active"], 0)
+        self.assertEqual(admission.pending, 0)
+
+    def test_worker_capacity_never_exceeds_twelve_when_gate_ceiling_is_higher(self):
+        importer = FakeImporter(available=30, blocked=True)
+        admission = AdaptiveConcurrencyGate(
+            8,
+            ceiling=50,
+            restore_ceiling=8,
+        )
+        executor_options: list[dict] = []
+
+        def recording_executor(**kwargs):
+            executor_options.append(dict(kwargs))
+            return ThreadPoolExecutor(**kwargs)
+
+        start(
+            importer,
+            {
+                "target_count": 30,
+                "concurrency": 8,
+                "node_concurrency": 30,
+                "auto_email_login_concurrency": 30,
+            },
+            task_admission=admission,
+            executor_factory=recording_executor,
+        )
+
+        self.assertTrue(self._wait_until(
+            lambda: importer.max_active == 8 and admission.snapshot()["waiting"] == 4,
+        ))
+        self.assertEqual(executor_options[0]["max_workers"], 12)
+        self.assertEqual(importer.node_gate.concurrency, 8)
+        self.assertEqual(importer.auto_email_phase_gate.concurrency, 8)
+
+        importer.stop()
+        importer.release_tasks.set()
+        self.assertTrue(importer.finished.wait(2))
+        self.assertEqual(admission.snapshot()["active"], 0)
+        self.assertEqual(admission.pending, 0)
+
+    def test_stop_at_real_burst_capacity_restores_all_mailboxes_and_gate_counts(self):
+        importer = FakeImporter(
+            available=20,
+            blocked=True,
+            restore_running_on_stop=True,
+        )
+        admission = AdaptiveConcurrencyGate(
+            8,
+            ceiling=12,
+            restore_ceiling=8,
+        )
+        started: list[str] = []
+        start(
+            importer,
+            {
+                "target_count": 20,
+                "concurrency": 8,
+                "node_concurrency": 8,
+                "auto_email_login_concurrency": 8,
+            },
+            task_admission=admission,
+            on_task_started=lambda task_id, _elapsed: started.append(task_id),
+        )
+
+        self.assertTrue(self._wait_until(
+            lambda: admission.snapshot()["active"] == 8
+            and admission.snapshot()["waiting"] == 4,
+        ))
+        for index in range(4):
+            admission.report_account_banned(f"banned-{index}")
+        self.assertTrue(self._wait_until(
+            lambda: admission.snapshot()["limit"] == 10
+            and admission.snapshot()["active"] == 10,
+        ))
+        for index in range(4, 8):
+            admission.report_account_banned(f"banned-{index}")
+        self.assertTrue(self._wait_until(
+            lambda: admission.snapshot()["limit"] == 12
+            and admission.snapshot()["active"] == 12,
+        ))
+        self.assertEqual(admission.snapshot()["waiting"], 0)
+        self.assertEqual(admission.pending, 8)
+        importer.stop()
+        importer.release_tasks.set()
+        self.assertTrue(importer.finished.wait(2))
+
+        self.assertEqual(len(started), 12)
+        self.assertEqual(importer.max_active, 12)
+        self.assertEqual(sorted(importer.pool.restored), list(range(1, 21)))
+        self.assertEqual(importer.cancelled_waiting, 8)
+        self.assertEqual(admission.snapshot()["active"], 0)
+        self.assertEqual(admission.snapshot()["waiting"], 0)
+        self.assertEqual(admission.pending, 0)
+
+    def test_admission_failure_marks_terminal_and_restores_reserved_entry(self):
+        importer = FakeImporter(available=1)
+
+        class FailingAdmission(AdaptiveConcurrencyGate):
+            @contextmanager
+            def acquire(self, *, registered_pending=False, **_kwargs):
+                if registered_pending:
+                    self.discard_pending()
+                raise OSError("proxy-password=must-not-leak")
+                yield
+
+        admission = FailingAdmission(1)
+        start(
+            importer,
+            {"target_count": 1, "concurrency": 1},
+            task_admission=admission,
+        )
+        self.assertTrue(importer.finished.wait(2))
+
+        task = next(iter(importer.tasks.values()))
+        self.assertEqual(task["status"], "failed")
+        self.assertIn("任务准入失败（OSError）", task["error"])
+        self.assertIn("邮箱已归还", task["error"])
+        self.assertEqual(importer.pool.restored, [1])
+        self.assertEqual(admission.pending, 0)
+        public_text = repr(importer.tasks) + repr(importer.logs)
+        self.assertNotIn("must-not-leak", public_text)
+
+    def test_business_task_stopped_error_is_not_reclassified_as_pre_admission(self):
+        importer = FakeImporter(available=1)
+
+        def fail_in_business(_settings, _ordinal, _entry=None, task_id=""):
+            importer._task_state(task_id, status="failed", error="业务层已处理")
+            raise RuntimeError("task_stopped")
+
+        importer._run_one = fail_in_business
+        admission = AdaptiveConcurrencyGate(1)
+        start(
+            importer,
+            {"target_count": 1, "concurrency": 1},
+            task_admission=admission,
+        )
+        self.assertTrue(importer.finished.wait(2))
+
+        task = next(iter(importer.tasks.values()))
+        self.assertEqual(task["status"], "failed")
+        self.assertEqual(task["error"], "业务层已处理")
+        self.assertEqual(importer.pool.restored, [])
+        self.assertEqual(importer.cancelled_waiting, 0)
+        self.assertEqual(admission.snapshot()["active"], 0)
+        self.assertEqual(admission.pending, 0)
+
+    def test_waiter_restore_failure_is_terminal_and_diagnostic(self):
+        importer = FakeImporter(available=2, blocked=True)
+        restore_attempts: list[int] = []
+
+        def fail_restore(entry, *, reason=""):
+            restore_attempts.append(entry.number)
+            raise OSError("mailbox-password=must-not-leak")
+
+        importer.pool.restore_entry = fail_restore
+        admission = AdaptiveConcurrencyGate(1, ceiling=2)
+        start(
+            importer,
+            {"target_count": 2, "concurrency": 1},
+            task_admission=admission,
+        )
+        self.assertTrue(self._wait_until(
+            lambda: admission.snapshot()["active"] == 1
+            and admission.snapshot()["waiting"] == 1,
+        ))
+
+        importer.stop()
+        importer.release_tasks.set()
+        self.assertTrue(importer.finished.wait(2))
+
+        failed = [task for task in importer.tasks.values() if task["status"] == "failed"]
+        self.assertEqual(len(failed), 1)
+        self.assertIn("停止清理失败", failed[0]["error"])
+        self.assertIn("邮箱归还失败（OSError）", failed[0]["error"])
+        self.assertEqual(len(restore_attempts), 1)
+        self.assertEqual(importer.cancelled_waiting, 1)
+        self.assertEqual(admission.snapshot()["active"], 0)
+        self.assertEqual(admission.snapshot()["waiting"], 0)
+        self.assertEqual(admission.pending, 0)
+        public_text = repr(importer.tasks) + repr(importer.logs)
+        self.assertIn("邮箱归还失败（OSError）", public_text)
+        self.assertNotIn("must-not-leak", public_text)
+
+    def test_relogin_admission_failure_does_not_restore_preselected_row(self):
+        importer = FakeImporter(available=1)
+        entry = FakeEntry(1)
+
+        class FailingAdmission(AdaptiveConcurrencyGate):
+            @contextmanager
+            def acquire(self, *, registered_pending=False, **_kwargs):
+                if registered_pending:
+                    self.discard_pending()
+                raise OSError("gate unavailable")
+                yield
+
+        admission = FailingAdmission(1)
+        start(
+            importer,
+            {
+                "run_mode": "relogin",
+                "target_count": 1,
+                "concurrency": 1,
+                "_gptphone_relogin_rows": [{
+                    "row_id": hashlib.sha256(entry.source_row.encode()).hexdigest(),
+                    "line_no": 1,
+                    "email": entry.email,
+                    "sub2api_account_id": "101",
+                }],
+            },
+            task_admission=admission,
+        )
+        self.assertTrue(importer.finished.wait(2))
+
+        task = next(iter(importer.tasks.values()))
+        self.assertEqual(task["status"], "failed")
+        self.assertIn("任务准入失败（OSError）", task["error"])
+        self.assertEqual(importer.pool.lease_calls, 0)
+        self.assertEqual(importer.pool.restored, [])
+        self.assertEqual(admission.pending, 0)
+
     def test_startup_failure_restores_idle_state(self):
         importer = FakeImporter(available=2)
 
@@ -423,6 +705,39 @@ class ImporterSchedulerTests(unittest.TestCase):
         self.assertFalse(importer.running)
         self.assertIsNone(importer.executor)
         self.assertEqual(importer.tasks, {})
+
+    def test_startup_cleanup_treats_false_restore_as_failure_with_safe_diagnostic(self):
+        importer = FakeImporter(available=2)
+        restore_attempts: list[int] = []
+        original_restore = importer.pool.restore_entry
+
+        def rejecting_restore(entry, *, reason=""):
+            restore_attempts.append(entry.number)
+            if entry.number == 1:
+                return False
+            return original_restore(entry, reason=reason)
+
+        importer.pool.restore_entry = rejecting_restore
+
+        with self.assertRaisesRegex(RuntimeError, "executor unavailable"):
+            start(
+                importer,
+                {"target_count": 2, "concurrency": 2},
+                executor_factory=lambda **_kwargs: (_ for _ in ()).throw(
+                    RuntimeError("executor unavailable")
+                ),
+            )
+
+        self.assertEqual(restore_attempts, [1, 2])
+        self.assertEqual(importer.pool.restored, [2])
+        self.assertFalse(importer.running)
+        self.assertIsNone(importer.executor)
+        self.assertEqual(importer.tasks, {})
+        log_text = "\n".join(message for message, _level in importer.logs)
+        self.assertIn("启动失败清理失败：邮箱池未确认归还", log_text)
+        self.assertIn("启动失败清理有 1 项未完成", log_text)
+        self.assertNotIn("mailbox-1@example.test", log_text)
+        self.assertNotIn("password-1", log_text)
 
     def test_partial_submit_failure_waits_for_wrappers_before_restoring(self):
         importer = FakeImporter(available=3)
@@ -522,7 +837,12 @@ class ImporterSchedulerTests(unittest.TestCase):
         self.assertEqual(restore_attempts, [1, 2])
         self.assertEqual(importer.pool.restored, [2])
         self.assertEqual(importer.cancelled_waiting, 2)
-        self.assertEqual([importer.tasks[task_id]["status"] for task_id in task_ids], ["stopped", "stopped"])
+        self.assertEqual(
+            [importer.tasks[task_id]["status"] for task_id in task_ids],
+            ["failed", "stopped"],
+        )
+        self.assertIn("停止清理失败", importer.tasks[task_ids[0]]["error"])
+        self.assertIn("邮箱归还失败（RuntimeError）", importer.tasks[task_ids[0]]["error"])
         self.assertIn("停止清理有 1 项未完成", importer.logs[-1][0])
 
     def test_empty_pool_fails_before_runtime_state_changes(self):

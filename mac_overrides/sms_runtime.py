@@ -768,7 +768,36 @@ def isolated_sms_get(
 
 
 def is_protocol_pressure_error(value: Any) -> bool:
-    text = str(value or "").lower()
+    status_candidates = [value, getattr(value, "response", None)]
+    if isinstance(value, Mapping):
+        status_candidates.extend(
+            value.get(key)
+            for key in ("error", "response")
+            if isinstance(value.get(key), Mapping)
+        )
+    for candidate in status_candidates:
+        if candidate is None:
+            continue
+        for key in ("_status", "status", "status_code", "http_status"):
+            try:
+                raw_status = (
+                    candidate.get(key)
+                    if isinstance(candidate, Mapping)
+                    else getattr(candidate, key, None)
+                )
+                status = int(raw_status)
+            except (TypeError, ValueError):
+                continue
+            if status == 429:
+                return True
+
+    type_name = "" if value is None else type(value).__name__
+    text = f"{type_name}: {value or ''}".lower()
+    if re.search(r"\b429\b", text) and any(
+        marker in text
+        for marker in ("http", "status", "too many requests", "rate limit")
+    ):
+        return True
     return any(
         marker in text
         for marker in (
@@ -776,17 +805,30 @@ def is_protocol_pressure_error(value: Any) -> bool:
             "sslerror",
             "unexpected_eof",
             "tls connect",
+            "tls handshake",
+            "ssl handshake",
+            "handshake failure",
             "connection reset",
             "connection aborted",
             "connection closed",
             "remote end closed connection",
             "remote disconnected",
             "server disconnected",
+            "proxyerror",
+            "proxy error",
+            "proxy_connect_failed",
+            "unable to connect to proxy",
+            "proxy connect aborted",
+            "failed to connect",
+            "connection refused",
+            "curl: (7)",
+            "curl: (35)",
             "curl: (56)",
             "status=429",
             "http 429",
             "too many requests",
             "rate limit",
+            "rate_limited",
         )
     )
 

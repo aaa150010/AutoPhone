@@ -2342,11 +2342,30 @@ class SmsRuntimeTests(unittest.TestCase):
         self.assertEqual(gate.snapshot("proxy-a")["limit"], 4)
 
     def test_protocol_pressure_classifier_covers_common_disconnect_shapes(self):
+        class Response429:
+            status_code = 429
+
+        class StructuredRateLimitError(RuntimeError):
+            response = Response429()
+
         for error in (
             "curl: (56) recv failure",
+            "curl: (7) failed to connect",
             "remote end closed connection without response",
             "server disconnected",
             "SSLERROR during handshake",
+            "TLS handshake failed",
+            "SSL handshake failed",
+            "curl: (35) handshake failure",
+            "ProxyError: tunnel failed",
+            "Proxy CONNECT aborted",
+            "proxy_connect_failed: unable to connect to proxy",
+            "connection refused",
+            {"_status": 429, "error": {"code": "rate_limited"}},
+            StructuredRateLimitError("provider did not return detail"),
+            "status_code: 429",
+            "HTTP status: 429",
+            RuntimeError("HTTPError: 429 Client Error"),
         ):
             with self.subTest(error=error):
                 self.assertTrue(is_protocol_pressure_error(error))

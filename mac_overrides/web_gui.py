@@ -7,6 +7,7 @@ import importlib.util
 import copy
 import hmac
 import json
+import math
 import os
 import re
 import threading
@@ -223,13 +224,73 @@ _RUN_LIFECYCLE_LOCK = threading.Lock()
 _RUN_NOTIFICATION_LOCK = threading.RLock()
 _RUN_NOTIFICATION_CONTEXT = None
 _CURRENT_TASK_ADMISSION = None
+_FAST_ACCOUNT_BANNED_MAX_EXECUTION_SECONDS = 90
+_FAST_ACCOUNT_BANNED_ALLOWED_GROUPS = frozenset({"queue", "oauth", "email"})
+_FAST_ACCOUNT_BANNED_TERMINAL_GROUPS = frozenset({"oauth", "email"})
+_MAILBOX_LOCAL_PRESSURE_CODES = frozenset(
+    {"email_code_timeout", "mailbox_login_failed", "mailbox_unavailable"}
+)
+_MAILBOX_LOCAL_PRESSURE_NODES = frozenset({"email_slot_waiting", "email_login"})
+_MAILBOX_LOCAL_PRESSURE_MARKERS = (
+    "mailbox_",
+    "gptmail_",
+    "manual_code_timeout",
+    "microsoft token refresh failed",
+    "authenticated but not connected",
+    "mailbox imap",
+    "imaplib",
+    "authenticationfailed",
+)
+_MAIN_CHAIN_PRESSURE_NODES = frozenset(
+    {
+        "oauth_create_node",
+        "oauth_session",
+        "oauth_authorize_node",
+        "email_password",
+        "email_code_waiting",
+        "email_code_verifying",
+        "mfa_otp_verifying",
+        "phone_submitting",
+        "sms_verifying",
+        "finalizing_profile",
+        "finalizing_callback",
+        "finalizing_token",
+    }
+)
+_SMS_PROVIDER_LOCAL_PRESSURE_NODES = frozenset({"phone_acquiring", "sms_waiting"})
+_SMS_PROVIDER_LOCAL_PRESSURE_CODES = frozenset(
+    {
+        "phone_acquisition_failed",
+        "sms_activation_replaced",
+        "sms_key_missing",
+        "sms_key_pool_temporarily_unavailable",
+        "sms_no_code",
+        "sms_poll_already_active",
+        "sms_provider_poll_failed",
+        "sms_provider_pool_unavailable",
+        "sms_provider_ready_failed",
+        "sms_route_pool_exhausted",
+        "sms_timeout",
+        "sms_wait_failed",
+    }
+)
+_SMS_PROVIDER_LOCAL_PRESSURE_MARKERS = (
+    "sms_provider_",
+    "sms_key_",
+    "sms_route_",
+    "sms_activation_",
+    "sms_poll_",
+    "sms_timeout",
+    "getnumber failed",
+    "no_numbers",
+)
 _PROTOCOL_GATE = _sms_runtime_ext.ProxyProtocolGate(
     default_limit=5,
     launch_interval_seconds=1.0,
 )
 
 
-def _report_task_pressure(task_id, value, *, node_code=""):
+def _report_task_pressure(task_id, value, *, node_code="", immediate=False):
     gate = _TASK_ADMISSION_CONTEXT.get()
     if gate is None:
         gate = globals().get("_CURRENT_TASK_ADMISSION")
@@ -248,9 +309,117 @@ def _report_task_pressure(task_id, value, *, node_code=""):
         except Exception:
             code = "infrastructure_pressure"
     try:
-        gate.report_pressure(identifier, code or "infrastructure_pressure")
+        gate.report_pressure(
+            identifier,
+            code or "infrastructure_pressure",
+            immediate=bool(immediate),
+        )
     except Exception:
         pass
+
+
+def _is_fast_account_banned_progress(progress) -> bool:
+    if not isinstance(progress, dict):
+        return False
+    if str(progress.get("group") or "").strip() not in _FAST_ACCOUNT_BANNED_TERMINAL_GROUPS:
+        return False
+    timing = progress.get("timing") if isinstance(progress.get("timing"), dict) else {}
+    if timing.get("execution_started_at") is None or timing.get("finished_at") is None:
+        return False
+    try:
+        elapsed = float(timing.get("execution_elapsed_seconds"))
+    except (TypeError, ValueError):
+        return False
+    if not math.isfinite(elapsed) or elapsed < 0 or elapsed > _FAST_ACCOUNT_BANNED_MAX_EXECUTION_SECONDS:
+        return False
+    stages = timing.get("stages") if isinstance(timing.get("stages"), list) else []
+    groups = {
+        str(item.get("group") or "").strip()
+        for item in stages
+        if isinstance(item, dict)
+    }
+    return bool(
+        groups
+        and groups.intersection(_FAST_ACCOUNT_BANNED_TERMINAL_GROUPS)
+        and groups.issubset(_FAST_ACCOUNT_BANNED_ALLOWED_GROUPS)
+    )
+
+
+def _is_mailbox_local_pressure(task_id, value, *, failure=None) -> bool:
+    progress = _TASK_PROGRESS.progress(task_id)
+    progress_node = str((progress or {}).get("code") or "").strip().lower()
+    if progress_node in _MAILBOX_LOCAL_PRESSURE_NODES:
+        return True
+    classified = failure if isinstance(failure, dict) else {}
+    if not classified:
+        try:
+            classified = _error_observability_ext.classify_failure(
+                error=value,
+                progress=_TASK_PROGRESS.progress(task_id),
+                status="retryable_infra",
+            )
+        except Exception:
+            classified = {}
+    error_code = str(classified.get("error_code") or "").strip().lower()
+    if error_code in _MAILBOX_LOCAL_PRESSURE_CODES:
+        return True
+    text = str(value or "").strip().lower()
+    return any(marker in text for marker in _MAILBOX_LOCAL_PRESSURE_MARKERS)
+
+
+def _pressure_failure(task_id, value, *, failure=None) -> dict:
+    classified = failure if isinstance(failure, dict) else {}
+    if classified:
+        return classified
+    try:
+        return _error_observability_ext.classify_failure(
+            result=value if isinstance(value, dict) else None,
+            error="" if isinstance(value, dict) else value,
+            progress=_TASK_PROGRESS.progress(task_id),
+            status="retryable_infra",
+        )
+    except Exception:
+        return {}
+
+
+def _is_sms_provider_local_pressure(task_id, value, *, failure=None) -> bool:
+    classified = failure if isinstance(failure, dict) else {}
+    progress = _TASK_PROGRESS.progress(task_id)
+    progress_node = str((progress or {}).get("code") or "").strip().lower()
+    node_code = str(classified.get("node_code") or "").strip().lower()
+    error_code = str(classified.get("error_code") or "").strip().lower()
+    if progress_node in _SMS_PROVIDER_LOCAL_PRESSURE_NODES:
+        return True
+    if node_code in _SMS_PROVIDER_LOCAL_PRESSURE_NODES:
+        return True
+    if error_code in _SMS_PROVIDER_LOCAL_PRESSURE_CODES:
+        return True
+    text = str(value or "").strip().lower()
+    return any(marker in text for marker in _SMS_PROVIDER_LOCAL_PRESSURE_MARKERS)
+
+
+def _is_main_chain_pressure_source(task_id, value, *, failure=None) -> tuple[bool, dict]:
+    classified = _pressure_failure(task_id, value, failure=failure)
+    if _is_mailbox_local_pressure(task_id, value, failure=classified):
+        return False, classified
+    if _is_sms_provider_local_pressure(task_id, value, failure=classified):
+        return False, classified
+    progress = _TASK_PROGRESS.progress(task_id)
+    node_code = str(
+        (progress or {}).get("code")
+        or classified.get("node_code")
+        or ""
+    ).strip().lower()
+    return node_code in _MAIN_CHAIN_PRESSURE_NODES, classified
+
+
+def _is_rate_limited_failure(failure) -> bool:
+    if not isinstance(failure, dict):
+        return False
+    try:
+        return int(failure.get("http_status")) == 429
+    except (TypeError, ValueError):
+        return False
 
 
 def _transport_task_id(transport) -> str:
@@ -489,6 +658,27 @@ def _int_value(value, default=0, minimum=None, maximum=None):
     if maximum is not None:
         result = min(int(maximum), result)
     return result
+
+
+def _safe_response_status(value) -> int | None:
+    pending = [value]
+    for _depth in range(2):
+        next_pending = []
+        for current in pending:
+            if not isinstance(current, dict):
+                continue
+            for key in ("_status", "status_code", "http_status", "status"):
+                try:
+                    status = int(current.get(key))
+                except (TypeError, ValueError):
+                    continue
+                if 100 <= status <= 599:
+                    return status
+            for key in ("error", "response"):
+                if isinstance(current.get(key), dict):
+                    next_pending.append(current[key])
+        pending = next_pending
+    return None
 
 
 def _migrate_email_timeout_config(value):
@@ -1033,21 +1223,41 @@ def _patched_task_state(self, task_id: str, **values):
         _TASK_CONTEXT.set(str(task_id or ""))
     _TASK_PROGRESS.observe_task_state(task_id, status)
     if status in _task_progress_ext.TERMINAL_TASK_STATUSES:
+        progress = _TASK_PROGRESS.progress(task_id)
         admission = getattr(self, "task_admission", None)
         if admission is not None:
             if status == "success":
                 admission.report_success(task_id)
             else:
+                if status == "account_banned" and _is_fast_account_banned_progress(progress):
+                    try:
+                        admission.report_account_banned(task_id)
+                    except Exception:
+                        pass
                 detail = (
                     values.get("technical_error")
                     or values.get("error")
                     or values.get("reason")
                     or ""
                 )
-                node_pressure = _error_observability_ext.is_retryable_node_failure(detail)
-                protocol_pressure = _sms_runtime_ext.is_protocol_pressure_error(detail)
+                failure = values.get("failure") if isinstance(values.get("failure"), dict) else {}
+                main_chain_pressure, pressure_failure = _is_main_chain_pressure_source(
+                    task_id,
+                    detail,
+                    failure=failure,
+                )
+                node_pressure = (
+                    main_chain_pressure
+                    and _error_observability_ext.is_retryable_node_failure(detail)
+                )
+                protocol_pressure = (
+                    main_chain_pressure
+                    and (
+                        _is_rate_limited_failure(pressure_failure)
+                        or _sms_runtime_ext.is_protocol_pressure_error(detail)
+                    )
+                )
                 if node_pressure or protocol_pressure:
-                    failure = values.get("failure") if isinstance(values.get("failure"), dict) else {}
                     _report_task_pressure(
                         task_id,
                         detail,
@@ -1056,6 +1266,7 @@ def _patched_task_state(self, task_id: str, **values):
                             if node_pressure
                             else "protocol_pressure"
                         ),
+                        immediate=True,
                     )
                 admission.report_failure(task_id)
     if status in _task_progress_ext.TERMINAL_TASK_STATUSES:
@@ -1304,9 +1515,30 @@ def _patched_importer_start(self, settings):
             new_limit = _int_value(value.get("new_limit"), 0, minimum=0)
             if old_limit <= 0 or new_limit <= 0:
                 return
-            if str(value.get("kind") or "") == "restored":
+            kind = str(value.get("kind") or "")
+            if kind == "restored":
                 message = f"[任务并发/registration_admission] 连续成功，任务并发 {old_limit} -> {new_limit}"
                 level = "info"
+            elif kind == "burst_activated":
+                hold_seconds = _int_value(value.get("hold_seconds"), 90, minimum=0)
+                message = (
+                    "[任务并发/registration_admission] 快速封禁达到阈值，"
+                    f"临时任务并发 {old_limit} -> {new_limit}，保持 {hold_seconds} 秒"
+                )
+                level = "info"
+            elif kind == "burst_expired":
+                message = (
+                    "[任务并发/registration_admission] 快速封禁升档到期，"
+                    f"任务并发 {old_limit} -> {new_limit}"
+                )
+                level = "info"
+            elif kind == "burst_revoked":
+                pause_seconds = _int_value(value.get("pause_seconds"), 15, minimum=0)
+                message = (
+                    "[任务并发/registration_admission] 基础设施强压力，撤销快速升档，"
+                    f"任务并发 {old_limit} -> {new_limit}，暂停新任务 {pause_seconds} 秒"
+                )
+                level = "warn"
             else:
                 pause_seconds = _int_value(value.get("pause_seconds"), 15, minimum=0)
                 message = (
@@ -1320,9 +1552,16 @@ def _patched_importer_start(self, settings):
                 pass
 
         run_mode = str(internal.get("run_mode") or "register").strip().lower()
+        restore_ceiling = task_limit if run_mode == "relogin" else 8
+        absolute_ceiling = (
+            12
+            if run_mode == "register" and task_limit == 8
+            else restore_ceiling
+        )
         task_admission = _adaptive_concurrency_ext.AdaptiveConcurrencyGate(
             task_limit,
-            ceiling=task_limit if run_mode == "relogin" else 8,
+            ceiling=absolute_ceiling,
+            restore_ceiling=restore_ceiling,
             on_change=log_task_limit_change,
         )
         _CURRENT_TASK_ADMISSION = task_admission
@@ -1484,7 +1723,9 @@ def _patched_importer_watch(self):
                 self._log(
                     "[任务并发/registration_admission] 批次并发汇总："
                     f"基础 {capacity.get('base', 0)}，峰值 {capacity.get('peak_limit', 0)}，"
-                    f"升档 {capacity.get('restorations', 0)} 次，"
+                    f"常规恢复 {capacity.get('restorations', 0)} 次，"
+                    f"快速升档 {capacity.get('burst_promotions', 0)} 次，"
+                    f"快速撤销 {capacity.get('burst_revocations', 0)} 次，"
                     f"降档 {capacity.get('degradations', 0)} 次，"
                     f"累计排队 {capacity.get('total_wait_seconds', 0)} 秒",
                     "info",
@@ -1496,9 +1737,11 @@ def _patched_importer_watch(self):
 def _patched_pre_auth_session_retryable(result):
     if "relogin_phone_required" in str(result or "").lower():
         return False
+    if _runtime_policy_ext.is_account_banned_failure(result):
+        return False
     if _is_auth_session_reset_failure(result):
         # The recovered importer owns the configured whole-session retry
-        # limit. Do not impose a second, hidden two-session cap here.
+        # limit. Do not impose a second, hidden cap here.
         return True
     if _RUN_MODE_CONTEXT.get() == "relogin":
         return _runtime_policy_ext.is_relogin_transient_failure(result)
@@ -2232,7 +2475,23 @@ def _real_submit_email_identifier(self, email):
     send_response = self.send_email_otp(continue_url)
     if not _codex_oauth_chain._is_success_response(send_response):
         cause = _codex_oauth_chain._error_text(send_response) or "发送接口未返回错误详情"
-        raise _codex_oauth_chain.CodexChainError(f"email_otp_send_failed: {cause}")
+        failure = _error_observability_ext.classify_failure(
+            result=send_response,
+            error=cause,
+            progress={"code": "email_code_waiting"},
+            status="retryable_infra",
+        )
+        qualifiers = []
+        status = _safe_response_status(send_response)
+        if status is not None:
+            qualifiers.append(f"HTTP {status}")
+        provider_code = str(failure.get("provider_code") or "").strip().lower()
+        if provider_code:
+            qualifiers.append(provider_code)
+        prefix = f"{' / '.join(dict.fromkeys(qualifiers))}: " if qualifiers else ""
+        raise _codex_oauth_chain.CodexChainError(
+            f"email_otp_send_failed: {prefix}{cause}"
+        )
     self._gptphone_initial_email_otp_send_confirmed = True
     _call_log(
         getattr(self, "log_fn", None),
@@ -2395,17 +2654,32 @@ def _run_codex_after_registration(
                     phone_otp_provider=phone_otp_provider,
                 )
             except Exception as exc:
-                if _sms_runtime_ext.is_protocol_pressure_error(exc):
+                main_chain_pressure, pressure_failure = _is_main_chain_pressure_source(
+                    task_id,
+                    exc,
+                )
+                protocol_pressure = main_chain_pressure and (
+                    _is_rate_limited_failure(pressure_failure)
+                    or _sms_runtime_ext.is_protocol_pressure_error(exc)
+                )
+                if protocol_pressure:
+                    pressure_node_code = "protocol_pressure"
+                    if _error_observability_ext.is_retryable_node_failure(exc):
+                        pressure_node_code = str(
+                            pressure_failure.get("node_code") or ""
+                        ).strip().lower()
                     _report_task_pressure(
                         task_id,
                         exc,
-                        node_code="protocol_pressure",
+                        node_code=pressure_node_code,
+                        immediate=True,
                     )
-                _PROTOCOL_GATE.report(
-                    proxy,
-                    exc,
-                    on_limit_change=log_protocol_limit_change,
-                )
+                if main_chain_pressure:
+                    _PROTOCOL_GATE.report(
+                        proxy,
+                        exc,
+                        on_limit_change=log_protocol_limit_change,
+                    )
                 raise
             else:
                 failure_value = result
@@ -2414,18 +2688,42 @@ def _run_codex_after_registration(
                         str(result.get(key) or "")
                         for key in ("error", "technical_error", "phase2_error")
                     )
-                if _sms_runtime_ext.is_protocol_pressure_error(failure_value):
+                succeeded = bool(isinstance(result, dict) and result.get("ok"))
+                main_chain_pressure, pressure_failure = _is_main_chain_pressure_source(
+                    task_id,
+                    result if isinstance(result, dict) else failure_value,
+                )
+                pressure_signal_value = (
+                    result if isinstance(result, dict) else failure_value
+                )
+                protocol_pressure = main_chain_pressure and (
+                    _is_rate_limited_failure(pressure_failure)
+                    or _sms_runtime_ext.is_protocol_pressure_error(pressure_signal_value)
+                )
+                if protocol_pressure:
+                    pressure_node_code = "protocol_pressure"
+                    if _error_observability_ext.is_retryable_node_failure(result):
+                        pressure_node_code = str(
+                            pressure_failure.get("node_code") or ""
+                        ).strip().lower()
                     _report_task_pressure(
                         task_id,
-                        failure_value,
-                        node_code="protocol_pressure",
+                        pressure_signal_value,
+                        node_code=pressure_node_code,
+                        immediate=True,
                     )
-                _PROTOCOL_GATE.report(
-                    proxy,
-                    failure_value,
-                    success=bool(isinstance(result, dict) and result.get("ok")),
-                    on_limit_change=log_protocol_limit_change,
-                )
+                if succeeded or main_chain_pressure:
+                    protocol_report_value = failure_value
+                    if protocol_pressure and _is_rate_limited_failure(pressure_failure):
+                        protocol_report_value = pressure_failure
+                    elif protocol_pressure:
+                        protocol_report_value = pressure_signal_value
+                    _PROTOCOL_GATE.report(
+                        proxy,
+                        protocol_report_value,
+                        success=succeeded,
+                        on_limit_change=log_protocol_limit_change,
+                    )
     finally:
         _ACTIVE_SMS_TRANSPORT.reset(transport_token)
         if transport is not None:

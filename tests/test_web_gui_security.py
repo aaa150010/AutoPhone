@@ -485,6 +485,50 @@ class WebGuiSecurityTests(unittest.TestCase):
 
         self.assertEqual(observed, [5])
 
+    def test_task_admission_burst_is_enabled_only_for_register_concurrency_eight(self):
+        module = self.module
+        original_start = module._importer_scheduler_ext.start_bounded_importer
+        original_notifications = module._begin_notification_run
+        original_admission = module._CURRENT_TASK_ADMISSION
+        observed = []
+        importer = SimpleNamespace(status=lambda _settings: {"running": False})
+        try:
+            module._begin_notification_run = lambda *_args: None
+            module._importer_scheduler_ext.start_bounded_importer = (
+                lambda _importer, settings, **kwargs: observed.append(
+                    (dict(settings), kwargs["task_admission"].snapshot())
+                )
+            )
+            module._patched_importer_start(importer, {"concurrency": 8})
+            module._patched_importer_start(importer, {"concurrency": 7})
+            module._patched_importer_start(
+                importer,
+                {"concurrency": 8, "run_mode": "relogin"},
+            )
+        finally:
+            module._CURRENT_TASK_ADMISSION = original_admission
+            module._importer_scheduler_ext.start_bounded_importer = original_start
+            module._begin_notification_run = original_notifications
+
+        register_eight, register_seven, relogin_eight = observed
+        self.assertEqual(
+            {
+                key: register_eight[1][key]
+                for key in ("base", "limit", "restore_ceiling", "ceiling", "burst_enabled")
+            },
+            {
+                "base": 8,
+                "limit": 8,
+                "restore_ceiling": 8,
+                "ceiling": 12,
+                "burst_enabled": True,
+            },
+        )
+        self.assertEqual(register_seven[1]["ceiling"], 8)
+        self.assertFalse(register_seven[1]["burst_enabled"])
+        self.assertEqual(relogin_eight[1]["ceiling"], 8)
+        self.assertFalse(relogin_eight[1]["burst_enabled"])
+
     def test_baseline_fallback_snapshot_bypasses_only_original_baseline_guard(self):
         module = self.module
         baseline = SimpleNamespace(
@@ -698,10 +742,15 @@ class WebGuiSecurityTests(unittest.TestCase):
         )
         try:
             module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = lambda _self, _email: response
-            with self.assertRaisesRegex(Exception, "email_otp_send_failed"):
+            with self.assertRaisesRegex(Exception, "email_otp_send_failed") as caught:
                 module._real_submit_email_identifier(transport, "user@example.test")
         finally:
             module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = original_submit
+
+        detail = str(caught.exception)
+        self.assertIn("HTTP 429", detail)
+        self.assertIn("rate_limited", detail)
+        self.assertTrue(module._sms_runtime_ext.is_protocol_pressure_error(detail))
 
     def test_task_config_binds_401_rerun_to_historical_sub2_account(self):
         module = self.module
@@ -1028,6 +1077,168 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertNotIn("private-user", str(logs))
         self.assertNotIn("private-pass", str(logs))
 
+    def test_mailbox_transport_error_does_not_report_global_protocol_pressure(self):
+        module = self.module
+        original_run = module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION
+        original_gate = module._PROTOCOL_GATE
+        reports = []
+        limits = []
+
+        class Admission:
+            def report_pressure(self, task_id, node_code, *, immediate=False):
+                reports.append((task_id, node_code, immediate))
+
+        outcomes = iter(
+            (
+                RuntimeError("mailbox_request_failed: TLS connection closed"),
+                RuntimeError("mailbox_request_failed: TLS connection closed"),
+                RuntimeError("ProxyError: tunnel failed"),
+                RuntimeError("ProxyError: tunnel failed"),
+            )
+        )
+
+        def fail_run(**_kwargs):
+            raise next(outcomes)
+
+        admission_token = module._TASK_ADMISSION_CONTEXT.set(Admission())
+        try:
+            module._PROTOCOL_GATE = module._sms_runtime_ext.ProxyProtocolGate(
+                default_limit=5,
+                launch_interval_seconds=0,
+            )
+            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = fail_run
+            for task_id, stage in (
+                ("T-mailbox-transport-1", "email_login"),
+                ("T-mailbox-transport-2", "email_login"),
+                ("T-oauth-proxy-1", "oauth_authorize_node"),
+                ("T-oauth-proxy-2", "oauth_authorize_node"),
+            ):
+                module._TASK_PROGRESS.set_stage(task_id, stage)
+                with self.assertRaises(RuntimeError):
+                    module._run_codex_after_registration(
+                        oauth_url="https://auth.example.test/authorize",
+                        account_email="masked@example.test",
+                        config={"sms_task_id": task_id},
+                    )
+                limits.append(module._PROTOCOL_GATE.snapshot("")["limit"])
+        finally:
+            module._TASK_ADMISSION_CONTEXT.reset(admission_token)
+            module._TASK_PROGRESS.reset()
+            module._PROTOCOL_GATE = original_gate
+            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = original_run
+
+        self.assertEqual(
+            reports,
+            [
+                ("T-oauth-proxy-1", "protocol_pressure", True),
+                ("T-oauth-proxy-2", "protocol_pressure", True),
+            ],
+        )
+        self.assertEqual(limits, [5, 5, 5, 4])
+
+    def test_sms_provider_pressure_does_not_touch_task_or_main_proxy_gates(self):
+        module = self.module
+        original_run = module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION
+        original_gate = module._PROTOCOL_GATE
+        reports = []
+
+        class Admission:
+            def report_pressure(self, task_id, node_code, *, immediate=False):
+                reports.append((task_id, node_code, immediate))
+
+        outcomes = iter(
+            (
+                RuntimeError("HTTPError: 429 Client Error"),
+                RuntimeError("sms_provider_poll_failed: TLS connection closed"),
+            )
+        )
+
+        admission_token = module._TASK_ADMISSION_CONTEXT.set(Admission())
+        try:
+            module._PROTOCOL_GATE = module._sms_runtime_ext.ProxyProtocolGate(
+                default_limit=5,
+                launch_interval_seconds=0,
+            )
+            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = lambda **_kwargs: (_ for _ in ()).throw(
+                next(outcomes)
+            )
+            for task_id, stage in (
+                ("T-sms-provider-rate", "phone_acquiring"),
+                ("T-sms-provider-tls", "sms_waiting"),
+            ):
+                module._TASK_PROGRESS.set_stage(task_id, stage)
+                with self.assertRaises(RuntimeError):
+                    module._run_codex_after_registration(
+                        oauth_url="https://auth.example.test/authorize",
+                        account_email="masked@example.test",
+                        config={"sms_task_id": task_id},
+                    )
+        finally:
+            protocol_limit = module._PROTOCOL_GATE.snapshot("")["limit"]
+            module._TASK_ADMISSION_CONTEXT.reset(admission_token)
+            module._TASK_PROGRESS.reset()
+            module._PROTOCOL_GATE = original_gate
+            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = original_run
+
+        self.assertEqual(reports, [])
+        self.assertEqual(protocol_limit, 5)
+
+    def test_structured_oauth_429_degrades_protocol_gate_and_success_restores_it(self):
+        module = self.module
+        original_run = module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION
+        original_gate = module._PROTOCOL_GATE
+        reports = []
+
+        class Admission:
+            def report_pressure(self, task_id, node_code, *, immediate=False):
+                reports.append((task_id, node_code, immediate))
+
+        outcomes = [
+            {"ok": False, "status_code": 429},
+            {"ok": False, "status_code": 429},
+            *({"ok": True} for _index in range(6)),
+        ]
+        admission_token = module._TASK_ADMISSION_CONTEXT.set(Admission())
+        try:
+            module._PROTOCOL_GATE = module._sms_runtime_ext.ProxyProtocolGate(
+                default_limit=5,
+                launch_interval_seconds=0,
+            )
+            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = lambda **_kwargs: outcomes.pop(0)
+            for index in range(2):
+                task_id = f"T-structured-rate-{index}"
+                module._TASK_PROGRESS.set_stage(task_id, "oauth_authorize_node")
+                module._run_codex_after_registration(
+                    oauth_url="https://auth.example.test/authorize",
+                    account_email="masked@example.test",
+                    config={"sms_task_id": task_id},
+                )
+            degraded_limit = module._PROTOCOL_GATE.snapshot("")["limit"]
+            for index in range(6):
+                task_id = f"T-protocol-success-{index}"
+                module._TASK_PROGRESS.set_stage(task_id, "oauth_authorize_node")
+                module._run_codex_after_registration(
+                    oauth_url="https://auth.example.test/authorize",
+                    account_email="masked@example.test",
+                    config={"sms_task_id": task_id},
+                )
+            restored_limit = module._PROTOCOL_GATE.snapshot("")["limit"]
+        finally:
+            module._TASK_ADMISSION_CONTEXT.reset(admission_token)
+            module._TASK_PROGRESS.reset()
+            module._PROTOCOL_GATE = original_gate
+            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = original_run
+
+        self.assertEqual(degraded_limit, 4)
+        self.assertEqual(restored_limit, 5)
+        self.assertEqual(
+            reports,
+            [
+                ("T-structured-rate-0", "protocol_pressure", True),
+                ("T-structured-rate-1", "protocol_pressure", True),
+            ],
+        )
+
     def test_relogin_whole_chain_retry_policy_rejects_credential_and_state_failures(self):
         module = self.module
         token = module._RUN_MODE_CONTEXT.set("relogin")
@@ -1074,15 +1285,29 @@ class WebGuiSecurityTests(unittest.TestCase):
             context.current_stage = "phone_submitting"
             context.invalidations = 7
 
-            self.assertTrue(
-                module._patched_pre_auth_session_retryable(
-                    {"error": "oauth_session_invalid: sign-in session is no longer valid"}
-                )
-            )
+            result = {"error": "oauth_session_invalid: sign-in session is no longer valid"}
+            self.assertTrue(module._patched_pre_auth_session_retryable(result))
+            self.assertTrue(module._patched_pre_auth_session_retryable(result))
         finally:
             module._AUTH_SESSIONS.clear("task-phone-session-retry")
             module._RUN_MODE_CONTEXT.reset(mode_token)
             module._TASK_CONTEXT.reset(task_token)
+
+    def test_account_banned_never_enters_whole_session_retry(self):
+        module = self.module
+        original = module._ORIGINAL_PRE_AUTH_SESSION_RETRYABLE
+        try:
+            module._ORIGINAL_PRE_AUTH_SESSION_RETRYABLE = lambda _result: True
+            result = {
+                "error": {
+                    "code": "account_deactivated",
+                    "message": "This account was deleted or deactivated.",
+                }
+            }
+
+            self.assertFalse(module._patched_pre_auth_session_retryable(result))
+        finally:
+            module._ORIGINAL_PRE_AUTH_SESSION_RETRYABLE = original
 
     def test_relogin_password_error_does_not_trigger_password_to_otp_fallback(self):
         module = self.module
@@ -1705,6 +1930,226 @@ class WebGuiSecurityTests(unittest.TestCase):
 
         self.assertEqual(public["runtime"]["concurrency"]["task"]["waiting"], 45)
 
+    def test_fast_account_banned_progress_requires_short_pre_phone_execution(self):
+        module = self.module
+
+        def progress(*, group="email", elapsed=50, stage_groups=("queue", "oauth", "email")):
+            return {
+                "group": group,
+                "timing": {
+                    "execution_started_at": 100,
+                    "finished_at": 100 + elapsed,
+                    "execution_elapsed_seconds": elapsed,
+                    "stages": [
+                        {"group": stage_group}
+                        for stage_group in stage_groups
+                    ],
+                },
+            }
+
+        self.assertTrue(module._is_fast_account_banned_progress(progress()))
+        for value in (
+            None,
+            {"group": "email", "timing": {}},
+            progress(elapsed=91),
+            progress(group="phone"),
+            progress(stage_groups=("queue", "oauth", "phone")),
+            progress(stage_groups=("queue", "email", "sms")),
+            progress(stage_groups=("queue", "email", "finalizing")),
+            progress(stage_groups=()),
+        ):
+            with self.subTest(progress=value):
+                self.assertFalse(module._is_fast_account_banned_progress(value))
+
+    def test_only_eligible_account_banned_terminal_reports_burst_signal(self):
+        module = self.module
+        original_state = module._ORIGINAL_TASK_STATE
+        original_progress = module._TASK_PROGRESS
+        reports = []
+        gate = SimpleNamespace(
+            report_account_banned=lambda task_id: reports.append(("banned", task_id)),
+            report_failure=lambda task_id: reports.append(("failure", task_id)),
+        )
+        tracker = module._task_progress_ext.TaskProgressTracker(clock=lambda: 150)
+        tracker.set_stage("T-fast-banned", "queue_waiting", now=100)
+        tracker.mark_execution_started("T-fast-banned", now=100)
+        tracker.set_stage("T-fast-banned", "oauth_authorize_node", now=110)
+        tracker.set_stage("T-fast-banned", "email_code_verifying", now=120)
+        try:
+            module._ORIGINAL_TASK_STATE = lambda *_args, **_kwargs: None
+            module._TASK_PROGRESS = tracker
+            module._patched_task_state(
+                SimpleNamespace(task_admission=gate),
+                "T-fast-banned",
+                status="account_banned",
+                error="account_banned: account has been banned",
+            )
+        finally:
+            module._ORIGINAL_TASK_STATE = original_state
+            module._TASK_PROGRESS = original_progress
+
+        self.assertEqual(
+            reports,
+            [("banned", "T-fast-banned"), ("failure", "T-fast-banned")],
+        )
+
+    def test_oauth_rate_limit_is_strong_pressure_but_mailbox_failure_is_not(self):
+        module = self.module
+        original_state = module._ORIGINAL_TASK_STATE
+        original_admission = module._CURRENT_TASK_ADMISSION
+        pressure = []
+        failures = []
+
+        class Gate:
+            def report_pressure(self, task_id, node_code, *, immediate=False):
+                pressure.append((task_id, node_code, immediate))
+
+            def report_failure(self, task_id):
+                failures.append(task_id)
+
+        gate = Gate()
+        try:
+            module._ORIGINAL_TASK_STATE = lambda *_args, **_kwargs: None
+            module._CURRENT_TASK_ADMISSION = gate
+            module._TASK_PROGRESS.reset()
+            module._TASK_PROGRESS.set_stage("T-rate-limit", "oauth_authorize_node")
+            module._patched_task_state(
+                SimpleNamespace(task_admission=gate),
+                "T-rate-limit",
+                status="retryable_infra",
+                error="email_identifier_failed: Too many requests. Please try again later.",
+            )
+            module._TASK_PROGRESS.set_stage("T-mailbox-origin", "email_login")
+            module._patched_task_state(
+                SimpleNamespace(task_admission=gate),
+                "T-mailbox-origin",
+                status="retryable_infra",
+                error="mailbox_cross_origin_redirect: mailbox source changed",
+            )
+            module._TASK_PROGRESS.set_stage("T-mailbox-tls", "email_login")
+            module._patched_task_state(
+                SimpleNamespace(task_admission=gate),
+                "T-mailbox-tls",
+                status="retryable_infra",
+                error="mailbox_request_failed: TLS connection closed",
+            )
+            module._TASK_PROGRESS.set_stage("T-email-send-rate", "email_code_waiting")
+            module._patched_task_state(
+                SimpleNamespace(task_admission=gate),
+                "T-email-send-rate",
+                status="retryable_infra",
+                error="email_otp_send_failed: Too many requests",
+            )
+        finally:
+            module._ORIGINAL_TASK_STATE = original_state
+            module._CURRENT_TASK_ADMISSION = original_admission
+            module._TASK_PROGRESS.reset()
+
+        self.assertEqual(
+            pressure,
+            [
+                ("T-rate-limit", "protocol_pressure", True),
+                ("T-email-send-rate", "protocol_pressure", True),
+            ],
+        )
+        self.assertEqual(
+            failures,
+            [
+                "T-rate-limit",
+                "T-mailbox-origin",
+                "T-mailbox-tls",
+                "T-email-send-rate",
+            ],
+        )
+
+    def test_terminal_oauth_429_variants_are_all_strong_pressure(self):
+        module = self.module
+        original_state = module._ORIGINAL_TASK_STATE
+        original_admission = module._CURRENT_TASK_ADMISSION
+        pressure = []
+
+        class Gate:
+            def report_pressure(self, task_id, node_code, *, immediate=False):
+                pressure.append((task_id, node_code, immediate))
+
+            def report_failure(self, _task_id):
+                return None
+
+        gate = Gate()
+        cases = (
+            ("T-status-code-429", "status_code: 429"),
+            ("T-http-status-429", "HTTP status: 429"),
+            ("T-http-error-429", "HTTPError: 429 Client Error"),
+        )
+        try:
+            module._ORIGINAL_TASK_STATE = lambda *_args, **_kwargs: None
+            module._CURRENT_TASK_ADMISSION = gate
+            module._TASK_PROGRESS.reset()
+            for task_id, detail in cases:
+                module._TASK_PROGRESS.set_stage(task_id, "oauth_authorize_node")
+                module._patched_task_state(
+                    SimpleNamespace(task_admission=gate),
+                    task_id,
+                    status="retryable_infra",
+                    error=detail,
+                )
+        finally:
+            module._ORIGINAL_TASK_STATE = original_state
+            module._CURRENT_TASK_ADMISSION = original_admission
+            module._TASK_PROGRESS.reset()
+
+        self.assertEqual(
+            pressure,
+            [(task_id, "protocol_pressure", True) for task_id, _detail in cases],
+        )
+
+    def test_terminal_local_provider_node_markers_do_not_create_global_pressure(self):
+        module = self.module
+        original_state = module._ORIGINAL_TASK_STATE
+        original_admission = module._CURRENT_TASK_ADMISSION
+        pressure = []
+        failures = []
+
+        class Gate:
+            def report_pressure(self, task_id, node_code, *, immediate=False):
+                pressure.append((task_id, node_code, immediate))
+
+            def report_failure(self, task_id):
+                failures.append(task_id)
+
+        gate = Gate()
+        cases = (
+            (
+                "T-mailbox-node-marker",
+                "email_login",
+                "mailbox_request_failed: node_sentinel_failed: TLS connection closed",
+            ),
+            (
+                "T-sms-node-marker",
+                "sms_waiting",
+                "sms_provider_poll_failed: node_sentinel_failed: HTTPError: 429 Client Error",
+            ),
+        )
+        try:
+            module._ORIGINAL_TASK_STATE = lambda *_args, **_kwargs: None
+            module._CURRENT_TASK_ADMISSION = gate
+            module._TASK_PROGRESS.reset()
+            for task_id, stage, detail in cases:
+                module._TASK_PROGRESS.set_stage(task_id, stage)
+                module._patched_task_state(
+                    SimpleNamespace(task_admission=gate),
+                    task_id,
+                    status="retryable_infra",
+                    error=detail,
+                )
+        finally:
+            module._ORIGINAL_TASK_STATE = original_state
+            module._CURRENT_TASK_ADMISSION = original_admission
+            module._TASK_PROGRESS.reset()
+
+        self.assertEqual(pressure, [])
+        self.assertEqual(failures, [task_id for task_id, _stage, _detail in cases])
+
     def test_success_task_historical_sub2_event_is_not_exposed_as_failure_explanation(self):
         task = {
             "task_id": "T-success-history",
@@ -1747,7 +2192,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertNotIn("授权或上传未完成", values["error"])
         self.assertEqual(values["technical_error"], "服务端未返回错误详情")
 
-    def test_node_pressure_is_deduplicated_between_retry_event_and_terminal_state(self):
+    def test_terminal_node_pressure_upgrades_the_nonterminal_retry_signal(self):
         module = self.module
         gate = module._adaptive_concurrency_ext.AdaptiveConcurrencyGate(5, ceiling=8)
         fake_self = SimpleNamespace(task_admission=gate)
@@ -1779,10 +2224,91 @@ class WebGuiSecurityTests(unittest.TestCase):
             module._TASK_PROGRESS.reset()
 
         snapshot = gate.snapshot()
-        self.assertEqual(snapshot["pressure_count"], 1)
-        self.assertEqual(snapshot["limit"], 5)
+        self.assertEqual(snapshot["pressure_count"], 2)
+        self.assertEqual(snapshot["limit"], 4)
         gate.report_pressure("T-pressure-other", "oauth_create_node")
         self.assertEqual(gate.snapshot()["limit"], 4)
+
+    def test_node_transport_failure_is_not_double_degraded_by_wrapper_and_terminal(self):
+        module = self.module
+        original_run = module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION
+        original_state = module._ORIGINAL_TASK_STATE
+        original_gate = module._PROTOCOL_GATE
+        original_admission = module._CURRENT_TASK_ADMISSION
+        cases = (
+            ("node_sentinel_failed: TLS handshake failed", True),
+            ("node_sentinel_failed: Proxy CONNECT aborted", False),
+        )
+        try:
+            module._ORIGINAL_TASK_STATE = lambda *_args, **_kwargs: None
+            for index, (detail, raises) in enumerate(cases):
+                task_id = f"T-node-transport-{index}"
+                gate = module._adaptive_concurrency_ext.AdaptiveConcurrencyGate(
+                    8,
+                    ceiling=12,
+                    restore_ceiling=8,
+                )
+                with gate.condition:
+                    gate.waiting = 1
+                for banned_index in range(4):
+                    gate.report_account_banned(f"banned-{index}-{banned_index}")
+                self.assertEqual(gate.snapshot()["limit"], 10)
+
+                module._CURRENT_TASK_ADMISSION = gate
+                module._PROTOCOL_GATE = module._sms_runtime_ext.ProxyProtocolGate(
+                    default_limit=5,
+                    launch_interval_seconds=0,
+                )
+                if raises:
+                    module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = (
+                        lambda failure=detail, **_kwargs: (_ for _ in ()).throw(
+                            RuntimeError(failure)
+                        )
+                    )
+                else:
+                    module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = (
+                        lambda failure=detail, **_kwargs: {
+                            "ok": False,
+                            "error": failure,
+                        }
+                    )
+                module._TASK_PROGRESS.reset()
+                module._TASK_PROGRESS.set_stage(task_id, "oauth_create_node")
+                admission_token = module._TASK_ADMISSION_CONTEXT.set(gate)
+                try:
+                    if raises:
+                        with self.assertRaises(RuntimeError):
+                            module._run_codex_after_registration(
+                                oauth_url="https://auth.example.test/authorize",
+                                account_email="masked@example.test",
+                                config={"sms_task_id": task_id},
+                            )
+                    else:
+                        module._run_codex_after_registration(
+                            oauth_url="https://auth.example.test/authorize",
+                            account_email="masked@example.test",
+                            config={"sms_task_id": task_id},
+                        )
+                finally:
+                    module._TASK_ADMISSION_CONTEXT.reset(admission_token)
+                module._patched_task_state(
+                    SimpleNamespace(task_admission=gate),
+                    task_id,
+                    status="retryable_infra",
+                    error=detail,
+                )
+
+                snapshot = gate.snapshot()
+                self.assertEqual(snapshot["limit"], 8)
+                self.assertEqual(snapshot["pressure_count"], 1)
+                self.assertEqual(snapshot["burst_revocations"], 1)
+                self.assertEqual(snapshot["degradations"], 0)
+        finally:
+            module._TASK_PROGRESS.reset()
+            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = original_run
+            module._ORIGINAL_TASK_STATE = original_state
+            module._PROTOCOL_GATE = original_gate
+            module._CURRENT_TASK_ADMISSION = original_admission
 
     def test_business_terminal_failures_do_not_create_admission_pressure(self):
         module = self.module
