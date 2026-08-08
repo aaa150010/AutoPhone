@@ -14,7 +14,7 @@ from mac_overrides.chatgpt_totp import (
     refresh_transport_totp_payload,
     totp_code,
 )
-from mac_overrides.mailbox_admin import parse_oauth_mailbox_row
+from mac_overrides.mailbox_admin import parse_oauth_mailbox_row, parse_plain_password_mailbox_row
 from mac_overrides.mailbox_url_runtime import parse_mailbox_url_row
 
 
@@ -205,6 +205,45 @@ class ChatGptTotpTests(unittest.TestCase):
         self.assertNotIn("oauth-pass", entries[2].source_row)
         self.assertNotIn("client-id", entries[2].source_row)
         self.assertNotIn("refresh-token", entries[2].source_row)
+
+    def test_plain_password_pool_rows_build_non_totp_password_entries(self):
+        class PoolEntry:
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+
+        rows = (
+            "plain@example.com--plain-pass",
+            "pipeplain@example.com|pipe-pass",
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            pool_path = Path(temp_dir) / "pool.txt"
+            pool_path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+            patches = build_chatgpt_totp_patches(
+                runtime_module=SimpleNamespace(PoolEntry=PoolEntry),
+                codex_oauth_chain=SimpleNamespace(),
+                original_entries_unlocked=lambda _pool: (
+                    [],
+                    ["line 1: bad", "line 2: bad"],
+                ),
+                original_outlook_otp_provider=lambda *args, **kwargs: None,
+                original_account_label=lambda entry: entry.email,
+                original_verify_password=lambda *args: {},
+                original_send_mfa_otp=lambda *args: {},
+                original_verify_mfa_otp=lambda *args: {},
+                parse_oauth_mailbox_row=parse_oauth_mailbox_row,
+            )
+
+            entries, errors = patches.entries_unlocked(SimpleNamespace(pool_path=pool_path))
+
+        self.assertEqual(errors, [])
+        self.assertEqual([entry.email for entry in entries], ["plain@example.com", "pipeplain@example.com"])
+        self.assertEqual([entry.password for entry in entries], ["plain-pass", "pipe-pass"])
+        self.assertEqual([entry.mailbox_type for entry in entries], ["outlook_password", "outlook_password"])
+        self.assertEqual([entry.oauth_client_id for entry in entries], ["", ""])
+        self.assertEqual([entry.oauth_refresh_token for entry in entries], ["", ""])
+        self.assertNotIn("plain-pass", entries[0].source_row)
+        self.assertNotIn("pipe-pass", entries[1].source_row)
+        self.assertEqual(parse_plain_password_mailbox_row(rows[0]), ("plain@example.com", "plain-pass", "--"))
 
     def test_url_rows_with_dash_and_pipe_separators_build_masked_runtime_entries(self):
         class PoolEntry:

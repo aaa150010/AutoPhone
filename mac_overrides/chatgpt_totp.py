@@ -19,6 +19,17 @@ try:
 except ImportError:  # Loaded as a top-level override module by the Mac launcher.
     from mailbox_url_runtime import masked_mailbox_url_row, parse_mailbox_url_row
 
+try:
+    from .plain_mailbox_rows import (
+        masked_plain_password_row,
+        parse_plain_password_mailbox_row,
+    )
+except ImportError:  # Loaded as a top-level override module by the Mac launcher.
+    from plain_mailbox_rows import (
+        masked_plain_password_row,
+        parse_plain_password_mailbox_row,
+    )
+
 
 _EMAIL_PATTERN = re.compile(
     r"(?i)[a-z0-9][a-z0-9._%+-]*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}"
@@ -435,6 +446,7 @@ def build_chatgpt_totp_patches(
             parsed_url_totp = parse_mailbox_url_totp_row(raw)
             parsed_totp = parse_chatgpt_totp_row(raw)
             parsed_url = parse_mailbox_url_row(raw)
+            parsed_plain = parse_plain_password_mailbox_row(raw)
             if parsed_oauth:
                 email, password, oauth_client_id, oauth_refresh_token = parsed_oauth
                 entry_key = _entry_key(runtime_module, email, raw)
@@ -489,6 +501,20 @@ def build_chatgpt_totp_patches(
                     oauth_client_id="",
                     oauth_refresh_token="",
                     source_row=masked_mailbox_url_row(raw, "***"),
+                )
+            elif parsed_plain:
+                email, password, _delimiter = parsed_plain
+                entry_key = _entry_key(runtime_module, email, raw)
+                replacements[line_no] = runtime_module.PoolEntry(
+                    email=email,
+                    mailbox_url="",
+                    line_no=line_no,
+                    key=entry_key,
+                    mailbox_type="outlook_password",
+                    password=password,
+                    oauth_client_id="",
+                    oauth_refresh_token="",
+                    source_row=masked_plain_password_row(raw, "***"),
                 )
         if not replacements:
             return entries, errors

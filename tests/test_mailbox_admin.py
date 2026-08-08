@@ -20,6 +20,7 @@ from mac_overrides.mailbox_admin import (
     parse_mailbox_url_totp_row,
     parse_mailbox_url_row,
     parse_oauth_mailbox_row,
+    parse_plain_password_mailbox_row,
     password_from_row,
     public_sub2_status,
     public_task_account,
@@ -144,9 +145,23 @@ class MailboxAdminTests(unittest.TestCase):
         )
         self.assertEqual(password_from_row(totp), "login-pass")
         self.assertEqual(password_from_row(dashed_totp), "login-pass-2")
+        plain = "Plain@Example.com--plain-pass"
+        pipe_plain = "PipePlain@Example.com|pipe-pass"
+        self.assertEqual(
+            parse_plain_password_mailbox_row(plain),
+            ("plain@example.com", "plain-pass", "--"),
+        )
+        self.assertEqual(
+            parse_plain_password_mailbox_row(pipe_plain),
+            ("pipeplain@example.com", "pipe-pass", "|"),
+        )
+        self.assertEqual(password_from_row(plain), "plain-pass")
+        self.assertEqual(masked_source_row(plain), "plain@example.com--********")
         self.assertTrue(is_importable_mailbox_row(oauth))
         self.assertTrue(is_importable_mailbox_row(totp))
         self.assertTrue(is_importable_mailbox_row(dashed_totp))
+        self.assertTrue(is_importable_mailbox_row(plain))
+        self.assertTrue(is_importable_mailbox_row(pipe_plain))
         self.assertEqual(
             parse_mailbox_url_row(url_row).mailbox_url,
             "https://mail.example.test/messages/private-token",
@@ -180,6 +195,9 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertFalse(is_importable_mailbox_row("# user@example.com----secret"))
         self.assertFalse(is_importable_mailbox_row("user@example.com----password"))
         self.assertFalse(is_importable_mailbox_row("user@example.com|password|INVALID018"))
+        self.assertIsNone(parse_plain_password_mailbox_row(url_row))
+        self.assertIsNone(parse_plain_password_mailbox_row(totp))
+        self.assertIsNone(parse_plain_password_mailbox_row(oauth))
         self.assertIsNone(
             parse_oauth_mailbox_row(
                 "prefix user@example.com----password----client-id----refresh-token"
@@ -1075,7 +1093,7 @@ class MailboxAdminTests(unittest.TestCase):
     def test_credential_redaction_uses_bounded_literal_matching(self):
         raw = "prefix SeCrEt-ToKeN suffix " + ("x" * 5000)
         with patch(
-            "mac_overrides.mailbox_admin.re.sub",
+            "mac_overrides.mailbox_redaction.re.sub",
             side_effect=AssertionError("regex redaction is forbidden"),
         ):
             redacted = redact_mailbox_credentials(raw, ["secret-token"])
@@ -1103,6 +1121,24 @@ class MailboxAdminTests(unittest.TestCase):
         result = self.service.reveal_password(public_row["row_id"], public_row["line_no"])
 
         self.assertEqual(result, {"ok": True, "password": "mail-pass"})
+
+    def test_plain_password_row_imports_and_exposes_only_masked_public_state(self):
+        row = "plain@example.com--plain-pass"
+        result = self.service.append(f"{row}\n{row.upper()}\n")
+
+        self.assertEqual(result["imported"], 1)
+        self.assertEqual(result["skipped"], 1)
+        self.assertEqual(self._pool_lines(), [row])
+        public_row = self.service.list_mailboxes()["rows"][0]
+
+        self.assertEqual(public_row["email"], "plain@example.com")
+        self.assertEqual(public_row["password"], "********")
+        self.assertEqual(public_row["source_row"], "plain@example.com--********")
+        self.assertNotIn("plain-pass", json.dumps(public_row))
+        self.assertEqual(
+            self.service.reveal_password(public_row["row_id"], public_row["line_no"]),
+            {"ok": True, "password": "plain-pass"},
+        )
 
     def test_reveal_totp_returns_only_current_temporary_code_from_one_clock_snapshot(self):
         row = "mfa@example.com|login-pass|JBSWY3DPEHPK3PXP"

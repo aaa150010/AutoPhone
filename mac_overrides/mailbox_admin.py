@@ -11,7 +11,6 @@ import re
 from threading import RLock
 import time
 from typing import Any, Callable, Mapping, Protocol, Sequence
-import urllib.parse
 
 try:
     from .chatgpt_totp import (
@@ -47,6 +46,11 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
     from error_observability import public_failure
 
 try:
+    from .mailbox_redaction import redact_mailbox_credentials, url_credential_secrets
+except ImportError:  # Loaded as a top-level override module by the Mac launcher.
+    from mailbox_redaction import redact_mailbox_credentials, url_credential_secrets
+
+try:
     from .openai_quota_runtime import (
         OpenAIQuotaError,
         credentials_from_result,
@@ -59,6 +63,17 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
         public_quota_snapshot,
     )
 
+try:
+    from .plain_mailbox_rows import (
+        masked_plain_password_row,
+        parse_plain_password_mailbox_row,
+    )
+except ImportError:  # Loaded as a top-level override module by the Mac launcher.
+    from plain_mailbox_rows import (
+        masked_plain_password_row,
+        parse_plain_password_mailbox_row,
+    )
+
 
 _EMAIL_RE = re.compile(
     r"(?i)\b[a-z0-9][a-z0-9._%+-]*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}\b"
@@ -68,7 +83,6 @@ _SECRET_MASK = "********"
 _IMPORT_ORDER_VERSION = 1
 _IMPORT_ORDER_FILE_NAME = "mailbox_import_order.json"
 _SUB2_BATCH_LIMIT = 20
-_REDACTION_INPUT_LIMIT = 4096
 _INTERNAL_MAILBOX_REASONS = frozenset(
     {
         "manual_reimport_retry",
@@ -123,6 +137,7 @@ def is_importable_mailbox_row(row: Any) -> bool:
         or parse_mailbox_url_totp_row(raw) is not None
         or parse_chatgpt_totp_row(raw) is not None
         or parse_mailbox_url_row(raw) is not None
+        or parse_plain_password_mailbox_row(raw) is not None
     )
 
 
@@ -138,6 +153,9 @@ def password_from_row(row: Any) -> str:
     parsed_totp = parse_chatgpt_totp_row(raw)
     if parsed_totp is not None:
         return parsed_totp[1]
+    parsed_plain = parse_plain_password_mailbox_row(raw)
+    if parsed_plain is not None:
+        return parsed_plain[1]
     delimiter = "----" if "----" in raw else "|" if "|" in raw else ""
     if not delimiter:
         return ""
@@ -180,22 +198,6 @@ def public_task_account(task: Any, source_row: Any = "") -> str:
     return ""
 
 
-def url_credential_secrets(value: Any) -> tuple[str, ...]:
-    """Return full and component forms that must be redacted from public text."""
-    raw = str(value or "").strip()
-    if not raw:
-        return ()
-    candidates = [raw]
-    try:
-        parsed = urllib.parse.urlsplit(raw)
-        for component in (parsed.username, parsed.password):
-            if component:
-                candidates.extend((component, urllib.parse.unquote(component)))
-    except (TypeError, ValueError):
-        pass
-    return tuple(dict.fromkeys(candidate for candidate in candidates if candidate))
-
-
 def masked_source_row(row: Any) -> str:
     raw = str(row or "").strip()
     email = email_from_row(raw)
@@ -209,6 +211,9 @@ def masked_source_row(row: Any) -> str:
         return masked_chatgpt_totp_row(raw, _SECRET_MASK)
     if parse_mailbox_url_row(raw) is not None:
         return masked_mailbox_url_row(raw, _SECRET_MASK)
+    masked_plain = masked_plain_password_row(raw, _SECRET_MASK)
+    if masked_plain:
+        return masked_plain
     return email
 
 
@@ -269,39 +274,6 @@ def friendly_mailbox_error(error: Any) -> str:
     if "email_otp_failed" in value:
         return "邮箱验证码提交后被 OpenAI 拒绝，请确认该邮箱对应的 OpenAI 账号是否可用"
     return value
-
-
-def redact_mailbox_credentials(error: Any, secrets: Sequence[Any]) -> str:
-    text = str(error or "")[:_REDACTION_INPUT_LIMIT]
-    candidates = {
-        str(secret)
-        for secret in secrets
-        if str(secret or "") and not set(str(secret)).issubset({"*"})
-    }
-    encoded = {
-        urllib.parse.quote(secret, safe="")
-        for secret in candidates
-        if urllib.parse.quote(secret, safe="") != secret
-    }
-    for secret in sorted(candidates | encoded, key=len, reverse=True):
-        if secret.isascii() and text.isascii():
-            needle = secret.lower()
-            source = text
-            lowered = source.lower()
-            pieces: list[str] = []
-            cursor = 0
-            while True:
-                start = lowered.find(needle, cursor)
-                if start < 0:
-                    break
-                pieces.extend((source[cursor:start], _SECRET_MASK))
-                cursor = start + len(secret)
-            if pieces:
-                pieces.append(source[cursor:])
-                text = "".join(pieces)
-        else:
-            text = text.replace(secret, _SECRET_MASK)
-    return text
 
 
 def resolve_config_path(store: ConfigStore, value: Any) -> Path:
@@ -1831,6 +1803,7 @@ __all__ = [
     "parse_chatgpt_totp_row",
     "parse_mailbox_url_row",
     "parse_oauth_mailbox_row",
+    "parse_plain_password_mailbox_row",
     "password_from_row",
     "mailbox_url_from_row",
     "pool_count_status",
