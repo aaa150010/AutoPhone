@@ -38,8 +38,10 @@ class AdaptiveConcurrencyGateTests(unittest.TestCase):
         return gate
 
     def test_six_clean_successes_restore_one_slot_up_to_ceiling(self):
-        for index in range(18):
-            self.gate.report_success(f"task-{index}")
+        for stage in range(3):
+            self.clock.value += 60
+            for index in range(6):
+                self.gate.report_success(f"task-{stage}-{index}")
 
         self.assertEqual(self.gate.snapshot()["limit"], 8)
         self.assertEqual(self.gate.snapshot()["peak_limit"], 8)
@@ -354,6 +356,7 @@ class AdaptiveConcurrencyGateTests(unittest.TestCase):
             now_fn=self.clock,
         )
 
+        self.clock.value += 60
         self.assertEqual(gate.report_success("success-0"), 8)
         for index in range(1, 10):
             gate.report_success(f"success-{index}")
@@ -428,6 +431,107 @@ class AdaptiveConcurrencyGateTests(unittest.TestCase):
         )
         self.assertEqual(self.events[0]["reason"], "infrastructure_pressure_immediate")
         self.assertEqual(self.events[0]["pause_seconds"], 15)
+
+    def test_conservative_adaptive_limit_resets_to_base_on_immediate_pressure(self):
+        gate = AdaptiveConcurrencyGate(
+            8,
+            ceiling=10,
+            restore_ceiling=10,
+            immediate_reset_limit=8,
+            now_fn=self.clock,
+            on_change=self.events.append,
+        )
+        for stage in range(2):
+            self.clock.value += 60
+            for index in range(6):
+                gate.report_success(f"success-{stage}-{index}")
+        self.assertEqual(gate.snapshot()["limit"], 10)
+
+        self.assertEqual(
+            gate.report_pressure("pressure", "protocol_pressure", immediate=True),
+            8,
+        )
+        snapshot = gate.snapshot()
+        self.assertEqual(snapshot["limit"], 8)
+        self.assertTrue(snapshot["paused"])
+        self.assertEqual((self.events[-1]["old_limit"], self.events[-1]["new_limit"]), (10, 8))
+
+    def test_fixed_compatibility_gate_ignores_adaptive_pressure(self):
+        gate = AdaptiveConcurrencyGate(
+            8,
+            ceiling=8,
+            restore_ceiling=8,
+            minimum=8,
+            adaptive_enabled=False,
+            now_fn=self.clock,
+        )
+
+        gate.report_pressure("pressure-a", "node_timeout")
+        self.assertEqual(gate.report_pressure("pressure-b", "protocol_pressure"), 8)
+
+        snapshot = gate.snapshot()
+        self.assertEqual(snapshot["base"], 8)
+        self.assertEqual(snapshot["limit"], 8)
+        self.assertFalse(snapshot["paused"])
+        self.assertEqual(snapshot["pressure_count"], 0)
+
+    def test_emfile_incident_caps_once_and_recovers_directly_to_baseline(self):
+        gate = AdaptiveConcurrencyGate(
+            8,
+            ceiling=10,
+            restore_ceiling=10,
+            minimum=4,
+            now_fn=self.clock,
+            on_change=self.events.append,
+        )
+
+        self.assertEqual(gate.report_resource_exhaustion("task-a", "resource_fd_exhausted"), 4)
+        self.assertEqual(gate.report_resource_exhaustion("task-b", "resource_fd_exhausted"), 4)
+        self.assertEqual(gate.snapshot()["pressure_count"], 1)
+        self.assertEqual([event["kind"] for event in self.events], ["resource_exhausted"])
+
+        gate.observe_resource_ratio(0.59)
+        self.clock.value += 60
+        self.assertEqual(gate.observe_resource_ratio(0.59), 8)
+        self.assertFalse(gate.snapshot()["resource_incident"])
+        self.assertEqual(self.events[-1]["kind"], "resource_recovered")
+
+    def test_fd_ratio_thresholds_return_to_eight_then_cap_four(self):
+        gate = AdaptiveConcurrencyGate(
+            8,
+            ceiling=10,
+            restore_ceiling=10,
+            minimum=4,
+            now_fn=self.clock,
+            on_change=self.events.append,
+        )
+        gate.limit = 10
+
+        self.assertEqual(gate.observe_resource_ratio(0.70), 8)
+        self.assertEqual(gate.snapshot()["last_reason"], "fd_usage_above_70_percent")
+        self.assertEqual(gate.observe_resource_ratio(0.80), 4)
+        snapshot = gate.snapshot()
+        self.assertTrue(snapshot["paused"])
+        self.assertEqual(snapshot["resource_incident_level"], 2)
+        self.assertEqual(snapshot["pressure_count"], 1)
+
+    def test_restore_can_require_real_backlog(self):
+        gate = AdaptiveConcurrencyGate(
+            8,
+            ceiling=10,
+            restore_ceiling=10,
+            require_backlog_for_restore=True,
+            now_fn=self.clock,
+        )
+        self.clock.value += 60
+        for index in range(6):
+            gate.report_success(f"idle-{index}")
+        self.assertEqual(gate.snapshot()["limit"], 8)
+
+        gate.register_pending(1)
+        for index in range(6):
+            gate.report_success(f"queued-{index}")
+        self.assertEqual(gate.snapshot()["limit"], 9)
 
     def test_same_pressure_key_can_upgrade_to_immediate_once(self):
         gate = self.make_burst_gate()

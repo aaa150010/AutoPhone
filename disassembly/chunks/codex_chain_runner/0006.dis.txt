@@ -1,0 +1,800 @@
+             692 LOAD_CONST           ("")
+             694 LOAD_CONST           ("Mock page.type after email OTP, e.g. add_phone or sign_in_with_chatgpt_codex_consent")
+             696 LOAD_CONST           (('default', 'help'))
+             698 CALL_KW              3
+             700 POP_TOP
+
+445:         702 LOAD_FAST            (parser)
+             704 LOAD_ATTR            (NULL|self + add_argument)
+             724 LOAD_CONST           ("--state-mismatch")
+             726 LOAD_CONST           ("store_true")
+             728 LOAD_CONST           ("Simulate OAuth callback state mismatch")
+             730 LOAD_CONST           (('action', 'help'))
+             732 CALL_KW              3
+             734 POP_TOP
+
+446:         736 LOAD_FAST            (parser)
+             738 LOAD_ATTR            (NULL|self + add_argument)
+             758 LOAD_CONST           ("--reuse-session-url")
+             760 LOAD_CONST           ("store_true")
+             762 LOAD_CONST           ("Strip forced-login params from generated OAuth URL")
+             764 LOAD_CONST           (('action', 'help'))
+             766 CALL_KW              3
+             768 POP_TOP
+
+447:         770 LOAD_FAST            (parser)
+             772 LOAD_ATTR            (NULL|self + add_argument)
+             792 LOAD_CONST           ("--node-bridge")
+             794 LOAD_CONST           (('off', 'mock', 'diagnostic', 'real'))
+             796 LOAD_CONST           ("mock")
+             798 LOAD_CONST           ("Run Node bridge diagnostics; real mode uses the chain runner directly")
+             800 LOAD_CONST           (('choices', 'default', 'help'))
+             802 CALL_KW              4
+             804 POP_TOP
+
+448:         806 LOAD_FAST            (parser)
+             808 LOAD_ATTR            (NULL|self + add_argument)
+             828 LOAD_CONST           ("--node-runner")
+             830 LOAD_CONST           ("")
+             832 LOAD_CONST           ("Real Node SentinelRunner path")
+             834 LOAD_CONST           (('default', 'help'))
+             836 CALL_KW              3
+             838 POP_TOP
+
+449:         840 LOAD_FAST            (parser)
+             842 LOAD_ATTR            (NULL|self + add_argument)
+             862 LOAD_CONST           ("--node-timeout")
+             864 LOAD_GLOBAL          (int)
+             874 LOAD_CONST           (0)
+             876 LOAD_CONST           ("Real Node SentinelRunner timeout seconds")
+             878 LOAD_CONST           (('type', 'default', 'help'))
+             880 CALL_KW              4
+             882 POP_TOP
+
+450:         884 LOAD_FAST            (parser)
+             886 LOAD_ATTR            (NULL|self + add_argument)
+             906 LOAD_CONST           ("--node-retries")
+             908 LOAD_GLOBAL          (int)
+             918 LOAD_CONST           (-1)
+             920 LOAD_CONST           ("Real Node SentinelRunner retry count")
+             922 LOAD_CONST           (('type', 'default', 'help'))
+             924 CALL_KW              4
+             926 POP_TOP
+
+451:         928 LOAD_FAST            (parser)
+             930 LOAD_ATTR            (NULL|self + add_argument)
+             950 LOAD_CONST           ("--node-create-account-timeout")
+             952 LOAD_GLOBAL          (int)
+             962 LOAD_CONST           (0)
+             964 LOAD_CONST           ("Timeout seconds for oauth_create_account Sentinel token")
+             966 LOAD_CONST           (('type', 'default', 'help'))
+             968 CALL_KW              4
+             970 POP_TOP
+
+452:         972 LOAD_FAST            (parser)
+             974 LOAD_ATTR            (NULL|self + add_argument)
+             994 LOAD_CONST           ("--device-id")
+             996 LOAD_CONST           ("")
+             998 LOAD_CONST           ("Optional device_id presence/value for consistency checks")
+            1000 LOAD_CONST           (('default', 'help'))
+            1002 CALL_KW              3
+            1004 POP_TOP
+
+453:        1006 LOAD_FAST            (parser)
+            1008 LOAD_ATTR            (NULL|self + add_argument)
+            1028 LOAD_CONST           ("--proxy")
+            1030 LOAD_CONST           ("")
+            1032 LOAD_CONST           ("Optional main proxy label/source for consistency checks")
+            1034 LOAD_CONST           (('default', 'help'))
+            1036 CALL_KW              3
+            1038 POP_TOP
+
+454:        1040 LOAD_FAST            (parser)
+            1042 LOAD_ATTR            (NULL|self + add_argument)
+            1062 LOAD_CONST           ("--email-proxy")
+            1064 LOAD_CONST           ("")
+            1066 LOAD_CONST           ("Optional email proxy label/source for consistency checks")
+            1068 LOAD_CONST           (('default', 'help'))
+            1070 CALL_KW              3
+            1072 POP_TOP
+
+455:        1074 LOAD_FAST            (parser)
+            1076 LOAD_ATTR            (NULL|self + add_argument)
+            1096 LOAD_CONST           ("--upload-proxy")
+            1098 LOAD_CONST           ("")
+            1100 LOAD_CONST           ("Optional upload proxy label/source for consistency checks")
+            1102 LOAD_CONST           (('default', 'help'))
+            1104 CALL_KW              3
+            1106 POP_TOP
+
+456:        1108 LOAD_FAST            (parser)
+            1110 LOAD_ATTR            (NULL|self + add_argument)
+            1130 LOAD_CONST           ("--sms-pool")
+            1132 LOAD_CONST           ("")
+            1134 LOAD_CONST           ("Local SMS pool file for real mode")
+            1136 LOAD_CONST           (('default', 'help'))
+            1138 CALL_KW              3
+            1140 POP_TOP
+
+457:        1142 LOAD_FAST            (parser)
+            1144 LOAD_ATTR            (NULL|self + add_argument)
+            1164 LOAD_CONST           ("--email-provider")
+            1166 LOAD_CONST           ("")
+            1168 LOAD_CONST           ("Email provider, normally gptmail")
+            1170 LOAD_CONST           (('default', 'help'))
+            1172 CALL_KW              3
+            1174 POP_TOP
+
+458:        1176 LOAD_FAST            (parser)
+            1178 LOAD_ATTR            (NULL|self + add_argument)
+            1198 LOAD_CONST           ("--gptmail-base-url")
+            1200 LOAD_CONST           ("")
+            1202 LOAD_CONST           ("GPTMail base URL")
+            1204 LOAD_CONST           (('default', 'help'))
+            1206 CALL_KW              3
+            1208 POP_TOP
+
+459:        1210 LOAD_FAST            (parser)
+            1212 LOAD_ATTR            (NULL|self + add_argument)
+            1232 LOAD_CONST           ("--gptmail-key")
+            1234 LOAD_CONST           ("")
+            1236 LOAD_CONST           ("GPTMail API key")
+            1238 LOAD_CONST           (('default', 'help'))
+            1240 CALL_KW              3
+            1242 POP_TOP
+
+460:        1244 LOAD_FAST            (parser)
+            1246 LOAD_ATTR            (NULL|self + add_argument)
+            1266 LOAD_CONST           ("--gptmail-keyword")
+            1268 LOAD_CONST           ("")
+            1270 LOAD_CONST           ("GPTMail OTP keyword")
+            1272 LOAD_CONST           (('default', 'help'))
+            1274 CALL_KW              3
+            1276 POP_TOP
+
+461:        1278 LOAD_FAST            (parser)
+            1280 LOAD_ATTR            (NULL|self + add_argument)
+            1300 LOAD_CONST           ("--sub2-url")
+            1302 LOAD_CONST           ("")
+            1304 LOAD_CONST           ("SUB2 base URL")
+            1306 LOAD_CONST           (('default', 'help'))
+            1308 CALL_KW              3
+            1310 POP_TOP
+
+462:        1312 LOAD_FAST            (parser)
+            1314 LOAD_ATTR            (NULL|self + add_argument)
+            1334 LOAD_CONST           ("--sub2-email")
+            1336 LOAD_CONST           ("")
+            1338 LOAD_CONST           ("SUB2 admin email")
+            1340 LOAD_CONST           (('default', 'help'))
+            1342 CALL_KW              3
+            1344 POP_TOP
+
+463:        1346 LOAD_FAST            (parser)
+            1348 LOAD_ATTR            (NULL|self + add_argument)
+            1368 LOAD_CONST           ("--sub2-password")
+            1370 LOAD_CONST           ("")
+            1372 LOAD_CONST           ("SUB2 admin password")
+            1374 LOAD_CONST           (('default', 'help'))
+            1376 CALL_KW              3
+            1378 POP_TOP
+
+464:        1380 LOAD_FAST            (parser)
+            1382 LOAD_ATTR            (NULL|self + add_argument)
+            1402 LOAD_CONST           ("--sub2-group")
+            1404 LOAD_CONST           ("")
+            1406 LOAD_CONST           ("SUB2 group name, e.g. 5.4")
+            1408 LOAD_CONST           (('default', 'help'))
+            1410 CALL_KW              3
+            1412 POP_TOP
+
+465:        1414 LOAD_FAST            (parser)
+            1416 LOAD_ATTR            (NULL|self + add_argument)
+            1436 LOAD_CONST           ("--sub2-proxy-id")
+            1438 LOAD_CONST           ("")
+            1440 LOAD_CONST           ("SUB2 proxy ID")
+            1442 LOAD_CONST           (('default', 'help'))
+            1444 CALL_KW              3
+            1446 POP_TOP
+
+466:        1448 LOAD_FAST            (parser)
+            1450 LOAD_ATTR            (NULL|self + add_argument)
+            1470 LOAD_CONST           ("--cpa-url")
+            1472 LOAD_CONST           ("")
+            1474 LOAD_CONST           ("CPA/CLIProxyAPI base URL")
+            1476 LOAD_CONST           (('default', 'help'))
+            1478 CALL_KW              3
+            1480 POP_TOP
+
+467:        1482 LOAD_FAST            (parser)
+            1484 LOAD_ATTR            (NULL|self + add_argument)
+            1504 LOAD_CONST           ("--cpa-key")
+            1506 LOAD_CONST           ("")
+            1508 LOAD_CONST           ("CPA/CLIProxyAPI management key")
+            1510 LOAD_CONST           (('default', 'help'))
+            1512 CALL_KW              3
+            1514 POP_TOP
+
+468:        1516 LOAD_FAST            (parser)
+            1518 LOAD_ATTR            (NULL|self + add_argument)
+            1538 LOAD_CONST           ("--phone-max-attempts")
+            1540 LOAD_GLOBAL          (int)
+            1550 LOAD_CONST           (0)
+            1552 LOAD_CONST           ("Real phone attempts limit")
+            1554 LOAD_CONST           (('type', 'default', 'help'))
+            1556 CALL_KW              4
+            1558 POP_TOP
+
+469:        1560 LOAD_FAST            (parser)
+            1562 LOAD_ATTR            (NULL|self + add_argument)
+            1582 LOAD_CONST           ("--phone-channels")
+            1584 LOAD_CONST           ("")
+            1586 LOAD_CONST           ("Comma-separated phone channels, e.g. sms,whatsapp")
+            1588 LOAD_CONST           (('default', 'help'))
+            1590 CALL_KW              3
+            1592 POP_TOP
+
+470:        1594 LOAD_FAST            (parser)
+            1596 LOAD_ATTR            (NULL|self + add_argument)
+            1616 LOAD_CONST           ("--code-timeout")
+            1618 LOAD_GLOBAL          (int)
+            1628 LOAD_CONST           (0)
+            1630 LOAD_CONST           ("OTP timeout seconds")
+            1632 LOAD_CONST           (('type', 'default', 'help'))
+            1634 CALL_KW              4
+            1636 POP_TOP
+
+471:        1638 LOAD_FAST            (parser)
+            1640 LOAD_ATTR            (NULL|self + add_argument)
+            1660 LOAD_CONST           ("--upload-target")
+            1662 LOAD_CONST           ("")
+            1664 LOAD_CONST           (('', 'local', 'sub2', 'cpa'))
+            1666 LOAD_CONST           ("Upload target; real defaults to OAuth provider or sub2")
+            1668 LOAD_CONST           (('default', 'choices', 'help'))
+            1670 CALL_KW              4
+            1672 POP_TOP
+
+472:        1674 LOAD_FAST            (parser)
+            1676 LOAD_ATTR            (NULL|self + add_argument)
+            1696 LOAD_CONST           ("--archive-local")
+            1698 LOAD_CONST           ("store_true")
+            1700 LOAD_CONST           ("After success, save a local account JSON plus a SUB2 manual import JSON")
+            1702 LOAD_CONST           (('action', 'help'))
+            1704 CALL_KW              3
+            1706 POP_TOP
+
+473:        1708 LOAD_FAST            (parser)
+            1710 LOAD_ATTR            (NULL|self + add_argument)
+            1730 LOAD_CONST           ("--archive-dir")
+            1732 LOAD_CONST           ("runtime/local_archive")
+            1734 LOAD_CONST           ("Directory for --archive-local output")
+            1736 LOAD_CONST           (('default', 'help'))
+            1738 CALL_KW              3
+            1740 POP_TOP
+
+474:        1742 LOAD_FAST            (parser)
+            1744 LOAD_ATTR            (NULL|self + add_argument)
+            1764 LOAD_CONST           ("--sub2-import-out")
+            1766 LOAD_CONST           ("")
+            1768 LOAD_CONST           ("Explicit SUB2 manual import JSON path for --archive-local")
+            1770 LOAD_CONST           (('default', 'help'))
+            1772 CALL_KW              3
+            1774 POP_TOP
+
+475:        1776 LOAD_FAST            (parser)
+            1778 LOAD_ATTR            (NULL|self + add_argument)
+            1798 LOAD_CONST           ("--archive-group")
+            1800 LOAD_CONST           ("")
+            1802 LOAD_CONST           ("Optional SUB2 group name/id to resolve into manual import group_ids")
+            1804 LOAD_CONST           (('default', 'help'))
+            1806 CALL_KW              3
+            1808 POP_TOP
+
+476:        1810 LOAD_FAST            (parser)
+            1812 LOAD_ATTR            (NULL|self + add_argument)
+            1832 LOAD_CONST           ("--archive-group-id")
+            1834 LOAD_GLOBAL          (int)
+            1844 LOAD_CONST           (0)
+            1846 LOAD_CONST           ("Optional SUB2 numeric group id for manual import group_ids")
+            1848 LOAD_CONST           (('type', 'default', 'help'))
+            1850 CALL_KW              4
+            1852 POP_TOP
+
+477:        1854 LOAD_FAST            (parser)
+            1856 LOAD_ATTR            (NULL|self + add_argument)
+            1876 LOAD_CONST           ("--archive-proxy-id")
+            1878 LOAD_GLOBAL          (int)
+            1888 LOAD_CONST           (None)
+            1890 LOAD_CONST           ("Optional SUB2 proxy_id for manual import JSON")
+            1892 LOAD_CONST           (('type', 'default', 'help'))
+            1894 CALL_KW              4
+            1896 POP_TOP
+
+478:        1898 LOAD_FAST            (parser)
+            1900 LOAD_ATTR            (NULL|self + add_argument)
+            1920 LOAD_CONST           ("--archive-concurrency")
+            1922 LOAD_GLOBAL          (int)
+            1932 LOAD_CONST           (10)
+            1934 LOAD_CONST           (('type', 'default'))
+            1936 CALL_KW              3
+            1938 POP_TOP
+
+479:        1940 LOAD_FAST            (parser)
+            1942 LOAD_ATTR            (NULL|self + add_argument)
+            1962 LOAD_CONST           ("--archive-priority")
+            1964 LOAD_GLOBAL          (int)
+            1974 LOAD_CONST           (1)
+            1976 LOAD_CONST           (('type', 'default'))
+            1978 CALL_KW              3
+            1980 POP_TOP
+
+480:        1982 LOAD_FAST            (parser)
+            1984 LOAD_ATTR            (NULL|self + add_argument)
+            2004 LOAD_CONST           ("--archive-rate-multiplier")
+            2006 LOAD_GLOBAL          (int)
+            2016 LOAD_CONST           (1)
+            2018 LOAD_CONST           (('type', 'default'))
+            2020 CALL_KW              3
+            2022 POP_TOP
+
+481:        2024 LOAD_FAST            (parser)
+            2026 LOAD_ATTR            (NULL|self + add_argument)
+            2046 LOAD_CONST           ("--strict-context")
+            2048 LOAD_CONST           ("store_true")
+            2050 LOAD_CONST           ("Fail when runtime context validation has errors")
+            2052 LOAD_CONST           (('action', 'help'))
+            2054 CALL_KW              3
+            2056 POP_TOP
+
+482:        2058 LOAD_FAST            (parser)
+            2060 LOAD_ATTR            (NULL|self + add_argument)
+            2080 LOAD_CONST           ("--prime-chatgpt-oauth-session")
+            2082 LOAD_CONST           ("store_true")
+            2084 LOAD_CONST           ("Real mode: create the ChatGPT NextAuth OAuth session before Codex authorize")
+            2086 LOAD_CONST           (('action', 'help'))
+            2088 CALL_KW              3
+            2090 POP_TOP
+
+483:        2092 LOAD_FAST            (parser)
+            2094 LOAD_ATTR            (NULL|self + add_argument)
+            2114 LOAD_CONST           ("--run-chatgpt-signup-phase")
+            2116 LOAD_CONST           ("store_true")
+            2118 LOAD_CONST           ("Real mode: create/finish the ChatGPT free account before Codex authorize")
+            2120 LOAD_CONST           (('action', 'help'))
+            2122 CALL_KW              3
+            2124 POP_TOP
+
+484:        2126 LOAD_FAST            (parser)
+            2128 LOAD_ATTR            (NULL|self + add_argument)
+            2148 LOAD_CONST           ("--reuse-session-on-reauthorize")
+            2150 LOAD_CONST           ("store_true")
+            2152 LOAD_CONST           ("Real mode: strip forced-login params only when retrying authorize after ChatGPT callback")
+            2154 LOAD_CONST           (('action', 'help'))
+            2156 CALL_KW              3
+            2158 POP_TOP
+
+485:        2160 LOAD_FAST            (parser)
+            2162 LOAD_ATTR            (NULL|self + add_argument)
+            2182 LOAD_CONST           ("--trace-continue")
+            2184 LOAD_CONST           ("store_true")
+            2186 LOAD_CONST           ("Real mode: log redacted consent/continue redirect trace")
+            2188 LOAD_CONST           (('action', 'help'))
+            2190 CALL_KW              3
+            2192 POP_TOP
+
+486:        2194 LOAD_FAST            (parser)
+            2196 LOAD_ATTR            (NULL|self + add_argument)
+            2216 LOAD_CONST           ("--json")
+            2218 LOAD_CONST           ("store_true")
+            2220 LOAD_CONST           ("Print redacted JSON result")
+            2222 LOAD_CONST           (('action', 'help'))
+            2224 CALL_KW              3
+            2226 POP_TOP
+
+487:        2228 LOAD_FAST            (parser)
+            2230 LOAD_ATTR            (NULL|self + add_argument)
+            2250 LOAD_CONST           ("--json-private")
+            2252 LOAD_CONST           ("store_true")
+            2254 LOAD_CONST           ("Print full local JSON result for trusted adapters")
+            2256 LOAD_CONST           (('action', 'help'))
+            2258 CALL_KW              3
+            2260 POP_TOP
+
+488:        2262 LOAD_FAST            (parser)
+            2264 LOAD_ATTR            (NULL|self + parse_args)
+            2284 LOAD_FAST            (argv)
+            2286 CALL                 (1 positional)
+            2294 STORE_FAST           (args)
+
+490:        2296 LOAD_FAST            (args)
+            2298 LOAD_ATTR            (mode)
+            2318 LOAD_CONST           ("manual")
+            2320 COMPARE_OP           (==)
+            2324 POP_JUMP_IF_FALSE    (to 2478)
+
+491:        2328 LOAD_GLOBAL          (NULL + _collect_manual_fixture)
+            2338 LOAD_FAST            (args)
+            2340 LOAD_ATTR            (email)
+            2360 LOAD_FAST            (args)
+            2362 LOAD_ATTR            (fixture)
+            2382 CALL                 (2 positional)
+            2390 STORE_FAST           (output)
+
+492:        2392 LOAD_GLOBAL          (NULL + print)
+            2402 LOAD_CONST           ("manual fixture saved: ")
+            2404 LOAD_FAST            (output)
+            2406 FORMAT_SIMPLE
+            2408 BUILD_STRING         2
+            2410 CALL                 (1 positional)
+            2418 POP_TOP
+
+493:        2420 LOAD_GLOBAL          (NULL + print)
+            2430 LOAD_CONST           ("replay command: python codex_chain_runner.py --email ")
+            2432 LOAD_FAST            (args)
+            2434 LOAD_ATTR            (email)
+            2454 FORMAT_SIMPLE
+            2456 LOAD_CONST           (' --mode replay --fixture "')
+            2458 LOAD_FAST            (output)
+            2460 FORMAT_SIMPLE
+            2462 LOAD_CONST           ('"')
+            2464 BUILD_STRING         5
+            2466 CALL                 (1 positional)
+            2474 POP_TOP
+
+494:        2476 RETURN_CONST         (0)
+
+496:     >> 2478 LOAD_GLOBAL          (NULL + _load_config)
+            2488 LOAD_FAST            (args)
+            2490 LOAD_ATTR            (config)
+            2510 CALL                 (1 positional)
+            2518 STORE_FAST           (config)
+
+497:        2520 LOAD_FAST            (args)
+            2522 LOAD_ATTR            (mode)
+            2542 STORE_FAST           (run_mode)
+
+498:        2544 LOAD_FAST_LOAD_FAST  (run_mode, config)
+            2546 LOAD_CONST           ("codex_chain_mode")
+            2548 STORE_SUBSCR
+
+499:        2552 LOAD_FAST            (config)
+            2554 LOAD_ATTR            (NULL|self + setdefault)
+            2574 LOAD_CONST           ("codex_chain_mock")
+            2576 BUILD_MAP            0
+            2578 CALL                 (2 positional)
+            2586 STORE_FAST           (mock_cfg)
+
+500:        2588 LOAD_GLOBAL          (NULL + isinstance)
+            2598 LOAD_FAST            (mock_cfg)
+            2600 LOAD_GLOBAL          (dict)
+            2610 CALL                 (2 positional)
+            2618 TO_BOOL
+            2626 POP_JUMP_IF_TRUE     (to 2642)
+
+501:        2630 BUILD_MAP            0
+            2632 STORE_FAST           (mock_cfg)
+
+502:        2634 LOAD_FAST_LOAD_FAST  (mock_cfg, config)
+            2636 LOAD_CONST           ("codex_chain_mock")
+            2638 STORE_SUBSCR
+
+503:     >> 2642 LOAD_GLOBAL          (NULL + int)
+            2652 LOAD_FAST            (args)
+            2654 LOAD_ATTR            (phone_rejects)
+            2674 COPY                 1
+            2676 TO_BOOL
+            2684 POP_JUMP_IF_TRUE     (to 2692)
+            2688 POP_TOP
+            2690 LOAD_CONST           (0)
+         >> 2692 CALL                 (1 positional)
+            2700 LOAD_FAST            (mock_cfg)
+            2702 LOAD_CONST           ("phone_send_rejects")
+            2704 STORE_SUBSCR
+
+504:        2708 LOAD_FAST            (args)
+            2710 LOAD_ATTR            (require_password)
+            2730 TO_BOOL
+            2738 POP_JUMP_IF_FALSE    (to 2752)
+
+505:        2742 LOAD_CONST           (True)
+            2744 LOAD_FAST            (mock_cfg)
+            2746 LOAD_CONST           ("require_password")
+            2748 STORE_SUBSCR
+
+506:     >> 2752 LOAD_FAST            (args)
+            2754 LOAD_ATTR            (email_otp)
+            2774 TO_BOOL
+            2782 POP_JUMP_IF_FALSE    (to 2816)
+
+507:        2786 LOAD_FAST            (args)
+            2788 LOAD_ATTR            (email_otp)
+            2808 LOAD_FAST            (mock_cfg)
+            2810 LOAD_CONST           ("email_otp")
+            2812 STORE_SUBSCR
+
+508:     >> 2816 LOAD_FAST            (args)
+            2818 LOAD_ATTR            (phone_otp)
+            2838 TO_BOOL
+            2846 POP_JUMP_IF_FALSE    (to 2880)
+
+509:        2850 LOAD_FAST            (args)
+            2852 LOAD_ATTR            (phone_otp)
+            2872 LOAD_FAST            (mock_cfg)
+            2874 LOAD_CONST           ("phone_otp")
+            2876 STORE_SUBSCR
+
+510:     >> 2880 LOAD_FAST            (args)
+            2882 LOAD_ATTR            (after_password_page)
+            2902 TO_BOOL
+            2910 POP_JUMP_IF_FALSE    (to 2944)
+
+511:        2914 LOAD_FAST            (args)
+            2916 LOAD_ATTR            (after_password_page)
+            2936 LOAD_FAST            (mock_cfg)
+            2938 LOAD_CONST           ("password_after_verify_page")
+            2940 STORE_SUBSCR
+
+512:     >> 2944 LOAD_FAST            (args)
+            2946 LOAD_ATTR            (after_email_page)
+            2966 TO_BOOL
+            2974 POP_JUMP_IF_FALSE    (to 3008)
+
+513:        2978 LOAD_FAST            (args)
+            2980 LOAD_ATTR            (after_email_page)
+            3000 LOAD_FAST            (mock_cfg)
+            3002 LOAD_CONST           ("email_after_verify_page")
+            3004 STORE_SUBSCR
+
+514:     >> 3008 LOAD_FAST            (args)
+            3010 LOAD_ATTR            (fixture)
+            3030 TO_BOOL
+            3038 POP_JUMP_IF_FALSE    (to 3296)
+
+515:        3042 LOAD_GLOBAL          (NULL + Path)
+            3052 LOAD_FAST            (args)
+            3054 LOAD_ATTR            (fixture)
+            3074 CALL                 (1 positional)
+            3082 STORE_FAST           (fixture_path)
+
+516:        3084 LOAD_FAST            (fixture_path)
+            3086 LOAD_ATTR            (NULL|self + exists)
+            3106 CALL                 (0 positional)
+            3114 TO_BOOL
+            3122 POP_JUMP_IF_TRUE     (to 3154)
+
+517:        3126 LOAD_GLOBAL          (NULL + FileNotFoundError)
+            3136 LOAD_CONST           ("fixture not found: ")
+            3138 LOAD_FAST            (fixture_path)
+            3140 FORMAT_SIMPLE
+            3142 BUILD_STRING         2
+            3144 CALL                 (1 positional)
+            3152 RAISE_VARARGS        (exception instance)
+
+518:     >> 3154 LOAD_GLOBAL          (json)
+            3164 LOAD_ATTR            (loads)
+            3184 PUSH_NULL
+            3186 LOAD_FAST            (fixture_path)
+            3188 LOAD_ATTR            (NULL|self + read_text)
+            3208 LOAD_CONST           ("utf-8")
+            3210 LOAD_CONST           (('encoding',))
+            3212 CALL_KW              1
+            3214 CALL                 (1 positional)
+            3222 STORE_FAST           (fixture)
+
+519:        3224 LOAD_GLOBAL          (NULL + isinstance)
+            3234 LOAD_FAST            (fixture)
+            3236 LOAD_GLOBAL          (dict)
+            3246 CALL                 (2 positional)
+            3254 TO_BOOL
+            3262 POP_JUMP_IF_TRUE     (to 3288)
+
+520:        3266 LOAD_GLOBAL          (NULL + ValueError)
+            3276 LOAD_CONST           ("fixture must be a JSON object")
+            3278 CALL                 (1 positional)
+            3286 RAISE_VARARGS        (exception instance)
+
+521:     >> 3288 LOAD_FAST_LOAD_FAST  (fixture, config)
+            3290 LOAD_CONST           ("codex_chain_replay")
+            3292 STORE_SUBSCR
+
+522:     >> 3296 LOAD_FAST            (args)
+            3298 LOAD_ATTR            (device_id)
+            3318 TO_BOOL
+            3326 POP_JUMP_IF_FALSE    (to 3362)
+
+523:        3330 LOAD_FAST            (args)
+            3332 LOAD_ATTR            (device_id)
+            3352 LOAD_FAST            (config)
+            3354 LOAD_CONST           ("openai_device_id")
+            3356 STORE_SUBSCR
+            3360 JUMP_FORWARD         (to 3548)
+
+524:     >> 3362 LOAD_FAST            (run_mode)
+            3364 LOAD_CONST           ("real")
+            3366 COMPARE_OP           (==)
+            3370 POP_JUMP_IF_FALSE    (to 3548)
+            3374 LOAD_GLOBAL          (NULL + str)
+            3384 LOAD_FAST            (config)
+            3386 LOAD_ATTR            (NULL|self + get)
+            3406 LOAD_CONST           ("openai_device_id")
+            3408 CALL                 (1 positional)
+            3416 COPY                 1
+            3418 TO_BOOL
+            3426 POP_JUMP_IF_TRUE     (to 3434)
+            3430 POP_TOP
+            3432 LOAD_CONST           ("")
+         >> 3434 CALL                 (1 positional)
+            3442 LOAD_ATTR            (NULL|self + strip)
+            3462 CALL                 (0 positional)
+            3470 TO_BOOL
+            3478 POP_JUMP_IF_TRUE     (to 3548)
+
+525:        3482 LOAD_GLOBAL          (NULL + str)
+            3492 LOAD_GLOBAL          (uuid)
+            3502 LOAD_ATTR            (uuid4)
+            3522 PUSH_NULL
+            3524 CALL                 (0 positional)
+            3532 CALL                 (1 positional)
+            3540 LOAD_FAST            (config)
+            3542 LOAD_CONST           ("openai_device_id")
+            3544 STORE_SUBSCR
+
+526:     >> 3548 LOAD_FAST            (args)
+            3550 LOAD_ATTR            (proxy)
+            3570 TO_BOOL
+            3578 POP_JUMP_IF_FALSE    (to 3612)
+
+527:        3582 LOAD_FAST            (args)
+            3584 LOAD_ATTR            (proxy)
+            3604 LOAD_FAST            (config)
+            3606 LOAD_CONST           ("proxy")
+            3608 STORE_SUBSCR
+
+528:     >> 3612 LOAD_FAST            (args)
+            3614 LOAD_ATTR            (email_proxy)
+            3634 TO_BOOL
+            3642 POP_JUMP_IF_FALSE    (to 3676)
+
+529:        3646 LOAD_FAST            (args)
+            3648 LOAD_ATTR            (email_proxy)
+            3668 LOAD_FAST            (config)
+            3670 LOAD_CONST           ("email_proxy")
+            3672 STORE_SUBSCR
+
+530:     >> 3676 LOAD_FAST            (args)
+            3678 LOAD_ATTR            (upload_proxy)
+            3698 TO_BOOL
+            3706 POP_JUMP_IF_FALSE    (to 3740)
+
+531:        3710 LOAD_FAST            (args)
+            3712 LOAD_ATTR            (upload_proxy)
+            3732 LOAD_FAST            (config)
+            3734 LOAD_CONST           ("upload_proxy")
+            3736 STORE_SUBSCR
+
+532:     >> 3740 LOAD_FAST            (args)
+            3742 LOAD_ATTR            (node_runner)
+            3762 TO_BOOL
+            3770 POP_JUMP_IF_FALSE    (to 3804)
+
+533:        3774 LOAD_FAST            (args)
+            3776 LOAD_ATTR            (node_runner)
+            3796 LOAD_FAST            (config)
+            3798 LOAD_CONST           ("codex_node_runner")
+            3800 STORE_SUBSCR
+
+534:     >> 3804 LOAD_FAST            (args)
+            3806 LOAD_ATTR            (node_timeout)
+            3826 TO_BOOL
+            3834 POP_JUMP_IF_FALSE    (to 3868)
+
+535:        3838 LOAD_FAST            (args)
+            3840 LOAD_ATTR            (node_timeout)
+            3860 LOAD_FAST            (config)
+            3862 LOAD_CONST           ("codex_node_timeout")
+            3864 STORE_SUBSCR
+
+536:     >> 3868 LOAD_FAST            (args)
+            3870 LOAD_ATTR            (node_retries)
+            3890 LOAD_CONST           (0)
+            3892 COMPARE_OP           (>=)
+            3896 POP_JUMP_IF_FALSE    (to 3930)
+
+537:        3900 LOAD_FAST            (args)
+            3902 LOAD_ATTR            (node_retries)
+            3922 LOAD_FAST            (config)
+            3924 LOAD_CONST           ("codex_node_retries")
+            3926 STORE_SUBSCR
+
+538:     >> 3930 LOAD_FAST            (args)
+            3932 LOAD_ATTR            (node_create_account_timeout)
+            3952 TO_BOOL
+            3960 POP_JUMP_IF_FALSE    (to 4230)
+
+539:        3964 LOAD_GLOBAL          (NULL + isinstance)
+            3974 LOAD_FAST            (config)
+            3976 LOAD_ATTR            (NULL|self + get)
+            3996 LOAD_CONST           ("node")
+            3998 CALL                 (1 positional)
+            4006 LOAD_GLOBAL          (dict)
+            4016 CALL                 (2 positional)
+            4024 TO_BOOL
+            4032 POP_JUMP_IF_FALSE    (to 4070)
+            4036 LOAD_FAST            (config)
+            4038 LOAD_ATTR            (NULL|self + get)
+            4058 LOAD_CONST           ("node")
+            4060 CALL                 (1 positional)
+            4068 JUMP_FORWARD         (to 4072)
+         >> 4070 BUILD_MAP            0
+         >> 4072 STORE_FAST           (node_cfg)
+
+540:        4074 LOAD_GLOBAL          (NULL + isinstance)
+            4084 LOAD_FAST            (node_cfg)
+            4086 LOAD_ATTR            (NULL|self + get)
+            4106 LOAD_CONST           ("flow_timeouts")
+            4108 CALL                 (1 positional)
+            4116 LOAD_GLOBAL          (dict)
+            4126 CALL                 (2 positional)
+            4134 TO_BOOL
+            4142 POP_JUMP_IF_FALSE    (to 4180)
+            4146 LOAD_FAST            (node_cfg)
+            4148 LOAD_ATTR            (NULL|self + get)
+            4168 LOAD_CONST           ("flow_timeouts")
+            4170 CALL                 (1 positional)
+            4178 JUMP_FORWARD         (to 4182)
+         >> 4180 BUILD_MAP            0
+         >> 4182 STORE_FAST           (flow_timeouts)
+
+541:        4184 LOAD_FAST            (args)
+            4186 LOAD_ATTR            (node_create_account_timeout)
+            4206 LOAD_FAST            (flow_timeouts)
+            4208 LOAD_CONST           ("oauth_create_account")
+            4210 STORE_SUBSCR
+
+542:        4214 LOAD_FAST_LOAD_FAST  (flow_timeouts, node_cfg)
+            4216 LOAD_CONST           ("flow_timeouts")
+            4218 STORE_SUBSCR
+
+543:        4222 LOAD_FAST_LOAD_FAST  (node_cfg, config)
+            4224 LOAD_CONST           ("node")
+            4226 STORE_SUBSCR
+
+544:     >> 4230 LOAD_FAST            (args)
+            4232 LOAD_ATTR            (sms_pool)
+            4252 TO_BOOL
+            4260 POP_JUMP_IF_FALSE    (to 4350)
+
+545:        4264 LOAD_CONST           ("localpool")
+            4266 LOAD_FAST            (config)
+            4268 LOAD_CONST           ("sms_provider")
+            4270 STORE_SUBSCR
+
+546:        4274 LOAD_GLOBAL          (NULL + _set_nested)
+            4284 LOAD_FAST            (config)
+            4286 LOAD_CONST           ("localpool")
+            4288 LOAD_CONST           ("api_key")
+            4290 LOAD_FAST            (args)
+            4292 LOAD_ATTR            (sms_pool)
+            4312 CALL                 (4 positional)
+            4320 POP_TOP
+
+547:        4322 LOAD_GLOBAL          (NULL + _set_nested)
+            4332 LOAD_FAST            (config)
+            4334 LOAD_CONST           ("localpool")
+            4336 LOAD_CONST           ("pick_mode")
+            4338 LOAD_CONST           ("middle")
+            4340 CALL                 (4 positional)
+            4348 POP_TOP
+
+548:     >> 4350 LOAD_FAST            (args)
+            4352 LOAD_ATTR            (email_provider)
+            4372 TO_BOOL
+            4380 POP_JUMP_IF_FALSE    (to 4414)
+
+549:        4384 LOAD_FAST            (args)
+            4386 LOAD_ATTR            (email_provider)
+            4406 LOAD_FAST            (config)
+            4408 LOAD_CONST           ("email_provider")
+            4410 STORE_SUBSCR
+
+550:     >> 4414 LOAD_FAST            (args)

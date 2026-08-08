@@ -1,0 +1,403 @@
+206:        1168 LOAD_FAST            (issues)
+            1170 LOAD_ATTR            (NULL|self + append)
+            1190 LOAD_GLOBAL          (NULL + ConsistencyIssue)
+            1200 LOAD_CONST           ("upload_proxy_differs")
+            1202 LOAD_CONST           ("upload proxy differs from main proxy")
+            1204 LOAD_CONST           ("warn")
+            1206 CALL                 (3 positional)
+            1214 CALL                 (1 positional)
+            1222 POP_TOP
+
+208:     >> 1224 LOAD_FAST            (context)
+            1226 LOAD_ATTR            (node_bridge_present)
+            1246 TO_BOOL
+            1254 POP_JUMP_IF_FALSE    (to 1348)
+            1258 LOAD_FAST            (context)
+            1260 LOAD_ATTR            (node_fingerprint_present)
+            1280 TO_BOOL
+            1288 POP_JUMP_IF_TRUE     (to 1348)
+
+209:        1292 LOAD_FAST            (issues)
+            1294 LOAD_ATTR            (NULL|self + append)
+            1314 LOAD_GLOBAL          (NULL + ConsistencyIssue)
+            1324 LOAD_CONST           ("node_fingerprint_missing")
+            1326 LOAD_CONST           ("Node bridge ran but did not report fingerprint presence")
+            1328 LOAD_CONST           ("warn")
+            1330 CALL                 (3 positional)
+            1338 CALL                 (1 positional)
+            1346 POP_TOP
+
+211:     >> 1348 LOAD_GLOBAL          (NULL + sum)
+            1358 LOAD_CONST           (<Code311 code object <genexpr> at 0x10962a730, file codex_runtime_context.py>, line 211)
+            1360 MAKE_FUNCTION
+            1362 LOAD_FAST            (issues)
+            1364 GET_ITER
+            1366 CALL                 (0 positional)
+            1374 CALL                 (1 positional)
+            1382 STORE_FAST           (error_count)
+
+212:        1384 LOAD_GLOBAL          (NULL + sum)
+            1394 LOAD_CONST           (<Code311 code object <genexpr> at 0x10962a760, file codex_runtime_context.py>, line 212)
+            1396 MAKE_FUNCTION
+            1398 LOAD_FAST            (issues)
+            1400 GET_ITER
+            1402 CALL                 (0 positional)
+            1410 CALL                 (1 positional)
+            1418 STORE_FAST           (warn_count)
+
+214:        1420 LOAD_FAST            (error_count)
+            1422 LOAD_CONST           (0)
+            1424 COMPARE_OP           (==)
+
+215:        1428 LOAD_FAST            (strict)
+
+216:        1430 LOAD_FAST            (error_count)
+
+217:        1432 LOAD_FAST            (warn_count)
+
+218:        1434 LOAD_FAST            (issues)
+            1436 GET_ITER
+            1438 LOAD_FAST_AND_CLEAR  (item)
+            1440 SWAP                 (TOS <-> TOS1)
+            1442 BUILD_LIST           0
+            1444 SWAP                 (TOS <-> TOS1)
+            1446 GET_ITER
+            1448 FOR_ITER             (to 1488)
+            1452 STORE_FAST_LOAD_FAST (item, item)
+            1454 LOAD_ATTR            (NULL|self + to_dict)
+            1474 CALL                 (0 positional)
+            1482 LIST_APPEND          2
+            1484 JUMP_BACKWARD        (to 1448)
+         >> 1488 END_FOR
+            1490 POP_TOP
+            1492 SWAP                 (TOS <-> TOS1)
+            1494 STORE_FAST           (item)
+
+219:        1496 LOAD_FAST            (context)
+            1498 LOAD_ATTR            (NULL|self + to_dict)
+            1518 CALL                 (0 positional)
+
+213:        1526 LOAD_CONST           (('ok', 'strict', 'error_count', 'warn_count', 'issues', 'context'))
+         >> 1528 BUILD_CONST_KEY_MAP  6
+            1530 RETURN_VALUE
+         >> 1532 SWAP                 (TOS <-> TOS1)
+            1534 POP_TOP
+
+218:        1536 SWAP                 (TOS <-> TOS1)
+            1538 STORE_FAST           (item)
+            1540 RERAISE              0
+
+ExceptionTable:
+  1442 to 1490 -> 1532 [6]
+
+# Method Name:       to_dict
+# Filename:          codex_runtime_context.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        61
+# Constants:
+#    0: None
+#    1: ('code', 'message', 'severity')
+# Names:
+#    0: code
+#    1: message
+#    2: severity
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+ 61:           0 RESUME               0
+
+ 62:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (code)
+              24 LOAD_FAST            (self)
+              26 LOAD_ATTR            (message)
+              46 LOAD_FAST            (self)
+              48 LOAD_ATTR            (severity)
+              68 LOAD_CONST           (('code', 'message', 'severity'))
+              70 BUILD_CONST_KEY_MAP  3
+              72 RETURN_VALUE
+
+
+# Method Name:       to_dict
+# Filename:          codex_runtime_context.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        84
+# Constants:
+#    0: None
+#    1: 'account_email'
+#    2: 'device_id_present'
+#    3: 'device_id_hash'
+#    4: 'proxy_label'
+#    5: 'email_proxy_label'
+#    6: 'upload_proxy_label'
+#    7: 'oauth_state_present'
+#    8: 'oauth_state_hash'
+#    9: 'code_verifier_present'
+#   10: 'cookie_jar_present'
+#   11: 'session_present'
+#   12: 'browser_fingerprint_present'
+#   13: 'node_fingerprint_present'
+#   14: 'node_bridge_present'
+#   15: 'node_bridge_mode'
+#   16: 'node_bridge_version'
+#   17: 'phase1_active'
+#   18: 'metadata'
+# Names:
+#    0: account_email
+#    1: bool
+#    2: device_id
+#    3: _short_hash
+#    4: proxy_label
+#    5: email_proxy_label
+#    6: upload_proxy_label
+#    7: oauth_state
+#    8: code_verifier_present
+#    9: cookie_jar_present
+#   10: session_present
+#   11: browser_fingerprint_present
+#   12: node_fingerprint_present
+#   13: node_bridge_present
+#   14: node_bridge_mode
+#   15: node_bridge_version
+#   16: phase1_active
+#   17: dict
+#   18: metadata
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+ 84:           0 RESUME               0
+
+ 85:           2 BUILD_MAP            0
+
+ 86:           4 LOAD_CONST           ("account_email")
+               6 LOAD_FAST            (self)
+               8 LOAD_ATTR            (account_email)
+
+ 85:          28 MAP_ADD              1
+
+ 87:          30 LOAD_CONST           ("device_id_present")
+              32 LOAD_GLOBAL          (NULL + bool)
+              42 LOAD_FAST            (self)
+              44 LOAD_ATTR            (device_id)
+              64 CALL                 (1 positional)
+
+ 85:          72 MAP_ADD              1
+
+ 88:          74 LOAD_CONST           ("device_id_hash")
+              76 LOAD_GLOBAL          (NULL + _short_hash)
+              86 LOAD_FAST            (self)
+              88 LOAD_ATTR            (device_id)
+             108 CALL                 (1 positional)
+
+ 85:         116 MAP_ADD              1
+
+ 89:         118 LOAD_CONST           ("proxy_label")
+             120 LOAD_FAST            (self)
+             122 LOAD_ATTR            (proxy_label)
+
+ 85:         142 MAP_ADD              1
+
+ 90:         144 LOAD_CONST           ("email_proxy_label")
+             146 LOAD_FAST            (self)
+             148 LOAD_ATTR            (email_proxy_label)
+
+ 85:         168 MAP_ADD              1
+
+ 91:         170 LOAD_CONST           ("upload_proxy_label")
+             172 LOAD_FAST            (self)
+             174 LOAD_ATTR            (upload_proxy_label)
+
+ 85:         194 MAP_ADD              1
+
+ 92:         196 LOAD_CONST           ("oauth_state_present")
+             198 LOAD_GLOBAL          (NULL + bool)
+             208 LOAD_FAST            (self)
+             210 LOAD_ATTR            (oauth_state)
+             230 CALL                 (1 positional)
+
+ 85:         238 MAP_ADD              1
+
+ 93:         240 LOAD_CONST           ("oauth_state_hash")
+             242 LOAD_GLOBAL          (NULL + _short_hash)
+             252 LOAD_FAST            (self)
+             254 LOAD_ATTR            (oauth_state)
+             274 CALL                 (1 positional)
+
+ 85:         282 MAP_ADD              1
+
+ 94:         284 LOAD_CONST           ("code_verifier_present")
+             286 LOAD_FAST            (self)
+             288 LOAD_ATTR            (code_verifier_present)
+
+ 85:         308 MAP_ADD              1
+
+ 95:         310 LOAD_CONST           ("cookie_jar_present")
+             312 LOAD_FAST            (self)
+             314 LOAD_ATTR            (cookie_jar_present)
+
+ 85:         334 MAP_ADD              1
+
+ 96:         336 LOAD_CONST           ("session_present")
+             338 LOAD_FAST            (self)
+             340 LOAD_ATTR            (session_present)
+
+ 85:         360 MAP_ADD              1
+
+ 97:         362 LOAD_CONST           ("browser_fingerprint_present")
+             364 LOAD_FAST            (self)
+             366 LOAD_ATTR            (browser_fingerprint_present)
+
+ 85:         386 MAP_ADD              1
+
+ 98:         388 LOAD_CONST           ("node_fingerprint_present")
+             390 LOAD_FAST            (self)
+             392 LOAD_ATTR            (node_fingerprint_present)
+
+ 85:         412 MAP_ADD              1
+
+ 99:         414 LOAD_CONST           ("node_bridge_present")
+             416 LOAD_FAST            (self)
+             418 LOAD_ATTR            (node_bridge_present)
+
+ 85:         438 MAP_ADD              1
+
+100:         440 LOAD_CONST           ("node_bridge_mode")
+             442 LOAD_FAST            (self)
+             444 LOAD_ATTR            (node_bridge_mode)
+
+ 85:         464 MAP_ADD              1
+
+101:         466 LOAD_CONST           ("node_bridge_version")
+             468 LOAD_FAST            (self)
+             470 LOAD_ATTR            (node_bridge_version)
+
+ 85:         490 MAP_ADD              1
+
+102:         492 LOAD_CONST           ("phase1_active")
+             494 LOAD_FAST            (self)
+             496 LOAD_ATTR            (phase1_active)
+
+ 85:         516 MAP_ADD              1
+
+103:         518 LOAD_CONST           ("metadata")
+             520 LOAD_GLOBAL          (NULL + dict)
+             530 LOAD_FAST            (self)
+             532 LOAD_ATTR            (metadata)
+             552 COPY                 1
+             554 TO_BOOL
+             562 POP_JUMP_IF_TRUE     (to 570)
+             566 POP_TOP
+             568 BUILD_MAP            0
+         >>  570 CALL                 (1 positional)
+
+ 85:         578 BUILD_MAP            1
+             580 DICT_UPDATE          1
+             582 RETURN_VALUE
+
+
+# Method Name:       <genexpr>
+# Filename:          codex_runtime_context.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        211
+# Constants:
+#    0: 'error'
+#    1: 1
+#    2: None
+# Names:
+#    0: severity
+# Varnames:
+#	.0, item
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: item
+211:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 62)
+              14 STORE_FAST_LOAD_FAST (item, item)
+              16 LOAD_ATTR            (severity)
+              36 LOAD_CONST           ("error")
+              38 COMPARE_OP           (==)
+              42 POP_JUMP_IF_TRUE     (to 50)
+              46 JUMP_BACKWARD        (to 10)
+         >>   50 LOAD_CONST           (1)
+              52 YIELD_VALUE          0
+              54 RESUME               5
+              56 POP_TOP
+              58 JUMP_BACKWARD        (to 10)
+         >>   62 END_FOR
+              64 POP_TOP
+              66 RETURN_CONST         (None)
+         >>   68 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              70 RERAISE              1
+
+ExceptionTable:
+  4 to 40 -> 68 [0] lasti
+  50 to 66 -> 68 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          codex_runtime_context.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        212
+# Constants:
+#    0: 'warn'
+#    1: 1
+#    2: None
+# Names:
+#    0: severity
+# Varnames:
+#	.0, item
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: item
+212:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 62)
+              14 STORE_FAST_LOAD_FAST (item, item)
+              16 LOAD_ATTR            (severity)
+              36 LOAD_CONST           ("warn")
+              38 COMPARE_OP           (==)
+              42 POP_JUMP_IF_TRUE     (to 50)
+              46 JUMP_BACKWARD        (to 10)
+         >>   50 LOAD_CONST           (1)
+              52 YIELD_VALUE          0
+              54 RESUME               5
+              56 POP_TOP
+              58 JUMP_BACKWARD        (to 10)
+         >>   62 END_FOR
+              64 POP_TOP
+              66 RETURN_CONST         (None)
+         >>   68 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              70 RERAISE              1
+
+ExceptionTable:
+  4 to 40 -> 68 [0] lasti
+  50 to 66 -> 68 [0] lasti

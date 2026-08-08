@@ -1,0 +1,800 @@
+            4416 LOAD_ATTR            (gptmail_base_url)
+            4436 TO_BOOL
+            4444 POP_JUMP_IF_FALSE    (to 4496)
+
+551:        4448 LOAD_GLOBAL          (NULL + _set_nested)
+            4458 LOAD_FAST            (config)
+            4460 LOAD_CONST           ("gptmail")
+            4462 LOAD_CONST           ("base_url")
+            4464 LOAD_FAST            (args)
+            4466 LOAD_ATTR            (gptmail_base_url)
+            4486 CALL                 (4 positional)
+            4494 POP_TOP
+
+552:     >> 4496 LOAD_FAST            (args)
+            4498 LOAD_ATTR            (gptmail_key)
+            4518 TO_BOOL
+            4526 POP_JUMP_IF_FALSE    (to 4578)
+
+553:        4530 LOAD_GLOBAL          (NULL + _set_nested)
+            4540 LOAD_FAST            (config)
+            4542 LOAD_CONST           ("gptmail")
+            4544 LOAD_CONST           ("api_key")
+            4546 LOAD_FAST            (args)
+            4548 LOAD_ATTR            (gptmail_key)
+            4568 CALL                 (4 positional)
+            4576 POP_TOP
+
+554:     >> 4578 LOAD_FAST            (args)
+            4580 LOAD_ATTR            (gptmail_keyword)
+            4600 TO_BOOL
+            4608 POP_JUMP_IF_FALSE    (to 4660)
+
+555:        4612 LOAD_GLOBAL          (NULL + _set_nested)
+            4622 LOAD_FAST            (config)
+            4624 LOAD_CONST           ("gptmail")
+            4626 LOAD_CONST           ("keyword")
+            4628 LOAD_FAST            (args)
+            4630 LOAD_ATTR            (gptmail_keyword)
+            4650 CALL                 (4 positional)
+            4658 POP_TOP
+
+556:     >> 4660 LOAD_FAST            (args)
+            4662 LOAD_ATTR            (sub2_url)
+            4682 TO_BOOL
+            4690 POP_JUMP_IF_FALSE    (to 4742)
+
+557:        4694 LOAD_GLOBAL          (NULL + _set_nested)
+            4704 LOAD_FAST            (config)
+            4706 LOAD_CONST           ("sub2api")
+            4708 LOAD_CONST           ("url")
+            4710 LOAD_FAST            (args)
+            4712 LOAD_ATTR            (sub2_url)
+            4732 CALL                 (4 positional)
+            4740 POP_TOP
+
+558:     >> 4742 LOAD_FAST            (args)
+            4744 LOAD_ATTR            (sub2_email)
+            4764 TO_BOOL
+            4772 POP_JUMP_IF_FALSE    (to 4824)
+
+559:        4776 LOAD_GLOBAL          (NULL + _set_nested)
+            4786 LOAD_FAST            (config)
+            4788 LOAD_CONST           ("sub2api")
+            4790 LOAD_CONST           ("email")
+            4792 LOAD_FAST            (args)
+            4794 LOAD_ATTR            (sub2_email)
+            4814 CALL                 (4 positional)
+            4822 POP_TOP
+
+560:     >> 4824 LOAD_FAST            (args)
+            4826 LOAD_ATTR            (sub2_password)
+            4846 TO_BOOL
+            4854 POP_JUMP_IF_FALSE    (to 4906)
+
+561:        4858 LOAD_GLOBAL          (NULL + _set_nested)
+            4868 LOAD_FAST            (config)
+            4870 LOAD_CONST           ("sub2api")
+            4872 LOAD_CONST           ("pwd")
+            4874 LOAD_FAST            (args)
+            4876 LOAD_ATTR            (sub2_password)
+            4896 CALL                 (4 positional)
+            4904 POP_TOP
+
+562:     >> 4906 LOAD_FAST            (args)
+            4908 LOAD_ATTR            (sub2_group)
+            4928 TO_BOOL
+            4936 POP_JUMP_IF_FALSE    (to 4988)
+
+563:        4940 LOAD_GLOBAL          (NULL + _set_nested)
+            4950 LOAD_FAST            (config)
+            4952 LOAD_CONST           ("sub2api")
+            4954 LOAD_CONST           ("group")
+            4956 LOAD_FAST            (args)
+            4958 LOAD_ATTR            (sub2_group)
+            4978 CALL                 (4 positional)
+            4986 POP_TOP
+
+564:     >> 4988 LOAD_FAST            (args)
+            4990 LOAD_ATTR            (sub2_proxy_id)
+            5010 TO_BOOL
+            5018 POP_JUMP_IF_FALSE    (to 5070)
+
+565:        5022 LOAD_GLOBAL          (NULL + _set_nested)
+            5032 LOAD_FAST            (config)
+            5034 LOAD_CONST           ("sub2api")
+            5036 LOAD_CONST           ("proxy_id")
+            5038 LOAD_FAST            (args)
+            5040 LOAD_ATTR            (sub2_proxy_id)
+            5060 CALL                 (4 positional)
+            5068 POP_TOP
+
+566:     >> 5070 LOAD_FAST            (args)
+            5072 LOAD_ATTR            (cpa_url)
+            5092 TO_BOOL
+            5100 POP_JUMP_IF_FALSE    (to 5152)
+
+567:        5104 LOAD_GLOBAL          (NULL + _set_nested)
+            5114 LOAD_FAST            (config)
+            5116 LOAD_CONST           ("cpa")
+            5118 LOAD_CONST           ("url")
+            5120 LOAD_FAST            (args)
+            5122 LOAD_ATTR            (cpa_url)
+            5142 CALL                 (4 positional)
+            5150 POP_TOP
+
+568:     >> 5152 LOAD_FAST            (args)
+            5154 LOAD_ATTR            (cpa_key)
+            5174 TO_BOOL
+            5182 POP_JUMP_IF_FALSE    (to 5234)
+
+569:        5186 LOAD_GLOBAL          (NULL + _set_nested)
+            5196 LOAD_FAST            (config)
+            5198 LOAD_CONST           ("cpa")
+            5200 LOAD_CONST           ("key")
+            5202 LOAD_FAST            (args)
+            5204 LOAD_ATTR            (cpa_key)
+            5224 CALL                 (4 positional)
+            5232 POP_TOP
+
+570:     >> 5234 LOAD_FAST            (args)
+            5236 LOAD_ATTR            (phone_max_attempts)
+            5256 TO_BOOL
+            5264 POP_JUMP_IF_FALSE    (to 5298)
+
+571:        5268 LOAD_FAST            (args)
+            5270 LOAD_ATTR            (phone_max_attempts)
+            5290 LOAD_FAST            (config)
+            5292 LOAD_CONST           ("phone_max_attempts")
+            5294 STORE_SUBSCR
+
+572:     >> 5298 LOAD_FAST            (args)
+            5300 LOAD_ATTR            (phone_channels)
+            5320 TO_BOOL
+            5328 POP_JUMP_IF_FALSE    (to 5498)
+
+573:        5332 LOAD_FAST            (args)
+            5334 LOAD_ATTR            (phone_channels)
+            5354 LOAD_ATTR            (NULL|self + split)
+            5374 LOAD_CONST           (",")
+            5376 CALL                 (1 positional)
+            5384 GET_ITER
+            5386 LOAD_FAST_AND_CLEAR  (item)
+            5388 SWAP                 (TOS <-> TOS1)
+            5390 BUILD_LIST           0
+            5392 SWAP                 (TOS <-> TOS1)
+            5394 GET_ITER
+            5396 FOR_ITER             (to 5482)
+            5400 STORE_FAST_LOAD_FAST (item, item)
+            5402 LOAD_ATTR            (NULL|self + strip)
+            5422 CALL                 (0 positional)
+            5430 TO_BOOL
+            5438 POP_JUMP_IF_TRUE     (to 5446)
+            5442 JUMP_BACKWARD        (to 5396)
+         >> 5446 LOAD_FAST            (item)
+            5448 LOAD_ATTR            (NULL|self + strip)
+            5468 CALL                 (0 positional)
+            5476 LIST_APPEND          2
+            5478 JUMP_BACKWARD        (to 5396)
+         >> 5482 END_FOR
+            5484 POP_TOP
+            5486 SWAP                 (TOS <-> TOS1)
+            5488 STORE_FAST           (item)
+            5490 LOAD_FAST            (config)
+            5492 LOAD_CONST           ("phone_channels")
+            5494 STORE_SUBSCR
+
+574:     >> 5498 LOAD_FAST            (args)
+            5500 LOAD_ATTR            (code_timeout)
+            5520 TO_BOOL
+            5528 POP_JUMP_IF_FALSE    (to 5592)
+
+575:        5532 LOAD_FAST            (args)
+            5534 LOAD_ATTR            (code_timeout)
+            5554 LOAD_FAST            (config)
+            5556 LOAD_CONST           ("code_timeout")
+            5558 STORE_SUBSCR
+
+576:        5562 LOAD_FAST            (args)
+            5564 LOAD_ATTR            (code_timeout)
+            5584 LOAD_FAST            (config)
+            5586 LOAD_CONST           ("sms_timeout")
+            5588 STORE_SUBSCR
+
+577:     >> 5592 LOAD_FAST            (args)
+            5594 LOAD_ATTR            (prime_chatgpt_oauth_session)
+            5614 TO_BOOL
+            5622 POP_JUMP_IF_FALSE    (to 5636)
+
+578:        5626 LOAD_CONST           (True)
+            5628 LOAD_FAST            (config)
+            5630 LOAD_CONST           ("prime_chatgpt_oauth_session")
+            5632 STORE_SUBSCR
+
+579:     >> 5636 LOAD_FAST            (args)
+            5638 LOAD_ATTR            (run_chatgpt_signup_phase)
+            5658 TO_BOOL
+            5666 POP_JUMP_IF_FALSE    (to 5680)
+
+580:        5670 LOAD_CONST           (True)
+            5672 LOAD_FAST            (config)
+            5674 LOAD_CONST           ("run_chatgpt_signup_phase")
+            5676 STORE_SUBSCR
+
+581:     >> 5680 LOAD_FAST            (args)
+            5682 LOAD_ATTR            (reuse_session_on_reauthorize)
+            5702 TO_BOOL
+            5710 POP_JUMP_IF_FALSE    (to 5724)
+
+582:        5714 LOAD_CONST           (True)
+            5716 LOAD_FAST            (config)
+            5718 LOAD_CONST           ("reuse_session_url_on_reauthorize")
+            5720 STORE_SUBSCR
+
+583:     >> 5724 LOAD_FAST            (args)
+            5726 LOAD_ATTR            (trace_continue)
+            5746 TO_BOOL
+            5754 POP_JUMP_IF_FALSE    (to 5778)
+
+584:        5758 LOAD_CONST           (True)
+            5760 LOAD_FAST            (config)
+            5762 LOAD_CONST           ("trace_continue")
+            5764 STORE_SUBSCR
+
+585:        5768 LOAD_CONST           (True)
+            5770 LOAD_FAST            (config)
+            5772 LOAD_CONST           ("trace_cookies")
+            5774 STORE_SUBSCR
+
+587:     >> 5778 LOAD_FAST            (run_mode)
+            5780 LOAD_CONST           ("real")
+            5782 COMPARE_OP           (==)
+            5786 EXTENDED_ARG         (256)
+            5788 POP_JUMP_IF_FALSE    (to 6570)
+
+588:        5792 LOAD_FAST            (config)
+            5794 LOAD_ATTR            (NULL|self + setdefault)
+            5814 LOAD_CONST           ("email_provider")
+            5816 LOAD_CONST           ("gptmail")
+            5818 CALL                 (2 positional)
+            5826 POP_TOP
+
+589:        5828 LOAD_FAST            (config)
+            5830 LOAD_ATTR            (NULL|self + setdefault)
+            5850 LOAD_CONST           ("sms_provider")
+            5852 LOAD_CONST           ("localpool")
+            5854 CALL                 (2 positional)
+            5862 POP_TOP
+
+590:        5864 LOAD_FAST            (config)
+            5866 LOAD_ATTR            (NULL|self + setdefault)
+            5886 LOAD_CONST           ("provider")
+            5888 LOAD_FAST            (config)
+            5890 LOAD_ATTR            (NULL|self + get)
+            5910 LOAD_CONST           ("sms_provider")
+            5912 CALL                 (1 positional)
+            5920 CALL                 (2 positional)
+            5928 POP_TOP
+
+591:        5930 LOAD_FAST            (config)
+            5932 LOAD_ATTR            (NULL|self + setdefault)
+            5952 LOAD_CONST           ("proxy_scope")
+            5954 LOAD_CONST           (True)
+            5956 LOAD_CONST           (True)
+            5958 LOAD_CONST           (True)
+            5960 LOAD_CONST           (('sms', 'email', 'upload'))
+            5962 BUILD_CONST_KEY_MAP  3
+            5964 CALL                 (2 positional)
+            5972 POP_TOP
+
+592:        5974 LOAD_FAST            (config)
+            5976 LOAD_ATTR            (NULL|self + setdefault)
+            5996 LOAD_CONST           ("codex_node_timeout")
+            5998 LOAD_CONST           (45)
+            6000 CALL                 (2 positional)
+            6008 POP_TOP
+
+593:        6010 LOAD_FAST            (config)
+            6012 LOAD_ATTR            (NULL|self + setdefault)
+            6032 LOAD_CONST           ("codex_node_retries")
+            6034 LOAD_CONST           (1)
+            6036 CALL                 (2 positional)
+            6044 POP_TOP
+
+594:        6046 LOAD_GLOBAL          (NULL + isinstance)
+            6056 LOAD_FAST            (config)
+            6058 LOAD_ATTR            (NULL|self + get)
+            6078 LOAD_CONST           ("node")
+            6080 CALL                 (1 positional)
+            6088 LOAD_GLOBAL          (dict)
+            6098 CALL                 (2 positional)
+            6106 TO_BOOL
+            6114 POP_JUMP_IF_FALSE    (to 6152)
+            6118 LOAD_FAST            (config)
+            6120 LOAD_ATTR            (NULL|self + get)
+            6140 LOAD_CONST           ("node")
+            6142 CALL                 (1 positional)
+            6150 JUMP_FORWARD         (to 6154)
+         >> 6152 BUILD_MAP            0
+         >> 6154 STORE_FAST           (node_cfg)
+
+595:        6156 LOAD_GLOBAL          (NULL + isinstance)
+            6166 LOAD_FAST            (node_cfg)
+            6168 LOAD_ATTR            (NULL|self + get)
+            6188 LOAD_CONST           ("flow_timeouts")
+            6190 CALL                 (1 positional)
+            6198 LOAD_GLOBAL          (dict)
+            6208 CALL                 (2 positional)
+            6216 TO_BOOL
+            6224 POP_JUMP_IF_FALSE    (to 6262)
+            6228 LOAD_FAST            (node_cfg)
+            6230 LOAD_ATTR            (NULL|self + get)
+            6250 LOAD_CONST           ("flow_timeouts")
+            6252 CALL                 (1 positional)
+            6260 JUMP_FORWARD         (to 6264)
+         >> 6262 BUILD_MAP            0
+         >> 6264 STORE_FAST           (flow_timeouts)
+
+596:        6266 LOAD_FAST            (flow_timeouts)
+            6268 LOAD_ATTR            (NULL|self + setdefault)
+            6288 LOAD_CONST           ("oauth_create_account")
+            6290 LOAD_CONST           (120)
+            6292 CALL                 (2 positional)
+            6300 POP_TOP
+
+597:        6302 LOAD_FAST_LOAD_FAST  (flow_timeouts, node_cfg)
+            6304 LOAD_CONST           ("flow_timeouts")
+            6306 STORE_SUBSCR
+
+598:        6310 LOAD_FAST_LOAD_FAST  (node_cfg, config)
+            6312 LOAD_CONST           ("node")
+            6314 STORE_SUBSCR
+
+599:        6318 LOAD_CONST           ("real")
+            6320 LOAD_FAST            (config)
+            6322 LOAD_CONST           ("codex_node_mode")
+            6324 STORE_SUBSCR
+
+600:        6328 LOAD_FAST            (config)
+            6330 LOAD_ATTR            (NULL|self + get)
+            6350 LOAD_CONST           ("browser_fingerprint")
+            6352 CALL                 (1 positional)
+            6360 COPY                 1
+            6362 TO_BOOL
+            6370 POP_JUMP_IF_TRUE     (to 6408)
+            6374 POP_TOP
+            6376 LOAD_FAST            (config)
+            6378 LOAD_ATTR            (NULL|self + get)
+            6398 LOAD_CONST           ("openai_persona")
+            6400 CALL                 (1 positional)
+         >> 6408 STORE_FAST           (persona)
+
+601:        6410 LOAD_GLOBAL          (NULL + isinstance)
+            6420 LOAD_FAST            (persona)
+            6422 LOAD_GLOBAL          (dict)
+            6432 CALL                 (2 positional)
+            6440 TO_BOOL
+            6448 POP_JUMP_IF_FALSE    (to 6466)
+            6452 LOAD_FAST            (persona)
+            6454 TO_BOOL
+            6462 POP_JUMP_IF_TRUE     (to 6570)
+
+602:     >> 6466 LOAD_GLOBAL          (NULL + _default_openai_persona)
+            6476 LOAD_GLOBAL          (NULL + str)
+            6486 LOAD_FAST            (config)
+            6488 LOAD_ATTR            (NULL|self + get)
+            6508 LOAD_CONST           ("proxy")
+            6510 CALL                 (1 positional)
+            6518 COPY                 1
+            6520 TO_BOOL
+            6528 POP_JUMP_IF_TRUE     (to 6536)
+            6532 POP_TOP
+            6534 LOAD_CONST           ("")
+         >> 6536 CALL                 (1 positional)
+            6544 CALL                 (1 positional)
+            6552 STORE_FAST           (persona)
+
+603:        6554 LOAD_FAST_LOAD_FAST  (persona, config)
+            6556 LOAD_CONST           ("openai_persona")
+            6558 STORE_SUBSCR
+
+604:        6562 LOAD_FAST_LOAD_FAST  (persona, config)
+            6564 LOAD_CONST           ("browser_fingerprint")
+            6566 STORE_SUBSCR
+
+606:     >> 6570 LOAD_GLOBAL          (NULL + str)
+            6580 LOAD_FAST            (args)
+            6582 LOAD_ATTR            (email)
+            6602 COPY                 1
+            6604 TO_BOOL
+            6612 POP_JUMP_IF_TRUE     (to 6620)
+            6616 POP_TOP
+            6618 LOAD_CONST           ("")
+         >> 6620 CALL                 (1 positional)
+            6628 LOAD_ATTR            (NULL|self + strip)
+            6648 CALL                 (0 positional)
+            6656 STORE_FAST           (account_email)
+
+607:        6658 LOAD_FAST            (run_mode)
+            6660 LOAD_CONST           ("real")
+            6662 COMPARE_OP           (==)
+            6666 POP_JUMP_IF_FALSE    (to 6798)
+            6670 LOAD_FAST            (account_email)
+            6672 LOAD_ATTR            (NULL|self + lower)
+            6692 CALL                 (0 positional)
+            6700 LOAD_CONST           ({'gptmail', 'auto', 'reserve'})
+            6702 CONTAINS_OP          (in)
+            6706 POP_JUMP_IF_FALSE    (to 6798)
+
+608:        6710 LOAD_GLOBAL          (NULL + _auto_email_from_provider)
+            6720 LOAD_FAST            (config)
+            6722 CALL                 (1 positional)
+            6730 STORE_FAST           (account_email)
+
+609:        6732 LOAD_FAST            (account_email)
+            6734 TO_BOOL
+            6742 POP_JUMP_IF_TRUE     (to 6768)
+
+610:        6746 LOAD_GLOBAL          (NULL + RuntimeError)
+            6756 LOAD_CONST           ("email auto returned empty mailbox")
+            6758 CALL                 (1 positional)
+            6766 RAISE_VARARGS        (exception instance)
+
+611:     >> 6768 LOAD_GLOBAL          (NULL + _log)
+            6778 LOAD_CONST           ("自动领取邮箱完成：")
+            6780 LOAD_FAST            (account_email)
+            6782 FORMAT_SIMPLE
+            6784 BUILD_STRING         2
+            6786 LOAD_CONST           ("info")
+            6788 CALL                 (2 positional)
+            6796 POP_TOP
+
+613:     >> 6798 LOAD_FAST            (config)
+            6800 LOAD_ATTR            (NULL|self + get)
+            6820 LOAD_CONST           ("browser_fingerprint")
+            6822 CALL                 (1 positional)
+            6830 COPY                 1
+            6832 TO_BOOL
+            6840 POP_JUMP_IF_TRUE     (to 6926)
+            6844 POP_TOP
+            6846 LOAD_FAST            (config)
+            6848 LOAD_ATTR            (NULL|self + get)
+            6868 LOAD_CONST           ("openai_persona")
+            6870 CALL                 (1 positional)
+            6878 COPY                 1
+            6880 TO_BOOL
+            6888 POP_JUMP_IF_TRUE     (to 6926)
+            6892 POP_TOP
+            6894 LOAD_FAST            (config)
+            6896 LOAD_ATTR            (NULL|self + get)
+            6916 LOAD_CONST           ("fingerprint")
+            6918 CALL                 (1 positional)
+         >> 6926 STORE_FAST           (fingerprint)
+
+614:        6928 LOAD_GLOBAL          (NULL + isinstance)
+            6938 LOAD_FAST            (fingerprint)
+            6940 LOAD_GLOBAL          (dict)
+            6950 CALL                 (2 positional)
+            6958 TO_BOOL
+            6966 POP_JUMP_IF_TRUE     (to 6974)
+
+615:        6970 BUILD_MAP            0
+            6972 STORE_FAST           (fingerprint)
+
+616:     >> 6974 LOAD_FAST            (run_mode)
+            6976 LOAD_CONST           ("real")
+            6978 COMPARE_OP           (==)
+            6982 POP_JUMP_IF_FALSE    (to 7116)
+
+618:        6986 LOAD_CONST           (True)
+
+619:        6988 LOAD_CONST           ("real")
+
+620:        6990 LOAD_CONST           ("node-bridge-v2")
+
+621:        6992 LOAD_CONST           (True)
+
+622:        6994 LOAD_GLOBAL          (NULL + bool)
+            7004 LOAD_GLOBAL          (NULL + str)
+            7014 LOAD_FAST            (config)
+            7016 LOAD_ATTR            (NULL|self + get)
+            7036 LOAD_CONST           ("codex_node_runner")
+            7038 CALL                 (1 positional)
+            7046 COPY                 1
+            7048 TO_BOOL
+            7056 POP_JUMP_IF_TRUE     (to 7064)
+            7060 POP_TOP
+            7062 LOAD_CONST           ("")
+         >> 7064 CALL                 (1 positional)
+            7072 LOAD_ATTR            (NULL|self + strip)
+            7092 CALL                 (0 positional)
+            7100 CALL                 (1 positional)
+
+617:        7108 LOAD_CONST           (('ok', 'mode', 'version', 'token_generated', 'runner_configured'))
+            7110 BUILD_CONST_KEY_MAP  5
+            7112 STORE_FAST           (node_result)
+            7114 JUMP_FORWARD         (to 7400)
+
+625:     >> 7116 LOAD_GLOBAL          (NULL + run_node_bridge)
+
+626:        7126 LOAD_FAST            (args)
+            7128 LOAD_ATTR            (node_bridge)
+
+627:        7148 LOAD_GLOBAL          (NULL + str)
+            7158 LOAD_FAST            (config)
+            7160 LOAD_ATTR            (NULL|self + get)
+            7180 LOAD_CONST           ("openai_device_id")
+            7182 CALL                 (1 positional)
+            7190 COPY                 1
+            7192 TO_BOOL
+            7200 POP_JUMP_IF_TRUE     (to 7208)
+            7204 POP_TOP
+            7206 LOAD_CONST           ("")
+         >> 7208 CALL                 (1 positional)
+
+628:        7216 LOAD_GLOBAL          (NULL + proxy_label_for)
+            7226 LOAD_GLOBAL          (NULL + str)
+            7236 LOAD_FAST            (config)
+            7238 LOAD_ATTR            (NULL|self + get)
+            7258 LOAD_CONST           ("proxy")
+            7260 CALL                 (1 positional)
+            7268 COPY                 1
+            7270 TO_BOOL
+            7278 POP_JUMP_IF_TRUE     (to 7286)
+            7282 POP_TOP
+            7284 LOAD_CONST           ("")
+         >> 7286 CALL                 (1 positional)
+            7294 CALL                 (1 positional)
+
+629:        7302 LOAD_GLOBAL          (NULL + str)
+            7312 LOAD_FAST            (config)
+            7314 LOAD_ATTR            (NULL|self + get)
+            7334 LOAD_CONST           ("proxy")
+            7336 CALL                 (1 positional)
+            7344 COPY                 1
+            7346 TO_BOOL
+            7354 POP_JUMP_IF_TRUE     (to 7362)
+            7358 POP_TOP
+            7360 LOAD_CONST           ("")
+         >> 7362 CALL                 (1 positional)
+
+630:        7370 LOAD_FAST            (fingerprint)
+
+631:        7372 LOAD_FAST            (args)
+            7374 LOAD_ATTR            (node_runner)
+
+625:        7394 LOAD_CONST           (('mode', 'device_id', 'proxy_label', 'proxy', 'fingerprint', 'script_path'))
+            7396 CALL_KW              6
+            7398 STORE_FAST           (node_result)
+
+634:     >> 7400 BUILD_MAP            0
+            7402 STORE_FAST           (manual_session)
+
+635:        7404 LOAD_FAST            (args)
+            7406 LOAD_ATTR            (manual_session)
+            7426 TO_BOOL
+            7434 POP_JUMP_IF_FALSE    (to 7688)
+
+636:        7438 LOAD_GLOBAL          (NULL + Path)
+            7448 LOAD_FAST            (args)
+            7450 LOAD_ATTR            (manual_session)
+            7470 CALL                 (1 positional)
+            7478 STORE_FAST           (session_path)
+
+637:        7480 LOAD_FAST            (session_path)
+            7482 LOAD_ATTR            (NULL|self + exists)
+            7502 CALL                 (0 positional)
+            7510 TO_BOOL
+            7518 POP_JUMP_IF_TRUE     (to 7550)
+
+638:        7522 LOAD_GLOBAL          (NULL + FileNotFoundError)
+            7532 LOAD_CONST           ("manual session not found: ")
+            7534 LOAD_FAST            (session_path)
+            7536 FORMAT_SIMPLE
+            7538 BUILD_STRING         2
+            7540 CALL                 (1 positional)
+            7548 RAISE_VARARGS        (exception instance)
+
+639:     >> 7550 LOAD_GLOBAL          (json)
+            7560 LOAD_ATTR            (loads)
+            7580 PUSH_NULL
+            7582 LOAD_FAST            (session_path)
+            7584 LOAD_ATTR            (NULL|self + read_text)
+            7604 LOAD_CONST           ("utf-8")
+            7606 LOAD_CONST           (('encoding',))
+            7608 CALL_KW              1
+            7610 CALL                 (1 positional)
+            7618 STORE_FAST           (loaded_session)
+
+640:        7620 LOAD_GLOBAL          (NULL + isinstance)
+            7630 LOAD_FAST            (loaded_session)
+            7632 LOAD_GLOBAL          (dict)
+            7642 CALL                 (2 positional)
+            7650 TO_BOOL
+            7658 POP_JUMP_IF_TRUE     (to 7684)
+
+641:        7662 LOAD_GLOBAL          (NULL + ValueError)
+            7672 LOAD_CONST           ("manual session must be a JSON object")
+            7674 CALL                 (1 positional)
+            7682 RAISE_VARARGS        (exception instance)
+
+642:     >> 7684 LOAD_FAST            (loaded_session)
+            7686 STORE_FAST           (manual_session)
+
+644:     >> 7688 LOAD_GLOBAL          (NULL + str)
+            7698 LOAD_FAST            (args)
+            7700 LOAD_ATTR            (oauth_url)
+            7720 COPY                 1
+            7722 TO_BOOL
+            7730 POP_JUMP_IF_TRUE     (to 7786)
+            7734 POP_TOP
+            7736 LOAD_FAST            (manual_session)
+            7738 LOAD_ATTR            (NULL|self + get)
+            7758 LOAD_CONST           ("oauth_url")
+            7760 CALL                 (1 positional)
+            7768 COPY                 1
+            7770 TO_BOOL
+            7778 POP_JUMP_IF_TRUE     (to 7786)
+            7782 POP_TOP
+            7784 LOAD_CONST           ("")
+         >> 7786 CALL                 (1 positional)
+            7794 LOAD_ATTR            (NULL|self + strip)
+            7814 CALL                 (0 positional)
+            7822 STORE_FAST           (oauth_url)
+
+645:        7824 LOAD_GLOBAL          (NULL + str)
+            7834 LOAD_FAST            (args)
+            7836 LOAD_ATTR            (code_verifier)
+            7856 COPY                 1
+            7858 TO_BOOL
+            7866 POP_JUMP_IF_TRUE     (to 7922)
+            7870 POP_TOP
+            7872 LOAD_FAST            (manual_session)
+            7874 LOAD_ATTR            (NULL|self + get)
+            7894 LOAD_CONST           ("code_verifier")
+            7896 CALL                 (1 positional)
+            7904 COPY                 1
+            7906 TO_BOOL
+            7914 POP_JUMP_IF_TRUE     (to 7922)
+            7918 POP_TOP
+            7920 LOAD_CONST           ("")
+         >> 7922 CALL                 (1 positional)
+            7930 LOAD_ATTR            (NULL|self + strip)
+            7950 CALL                 (0 positional)
+            7958 STORE_FAST           (verifier)
+
+646:        7960 LOAD_GLOBAL          (NULL + str)
+            7970 LOAD_FAST            (manual_session)
+            7972 LOAD_ATTR            (NULL|self + get)
+            7992 LOAD_CONST           ("state")
+            7994 CALL                 (1 positional)
+            8002 COPY                 1
+            8004 TO_BOOL
+            8012 POP_JUMP_IF_TRUE     (to 8020)
+            8016 POP_TOP
+            8018 LOAD_CONST           ("")
+         >> 8020 CALL                 (1 positional)
+            8028 LOAD_ATTR            (NULL|self + strip)
+            8048 CALL                 (0 positional)
+            8056 STORE_FAST           (oauth_state)
+
+647:        8058 LOAD_GLOBAL          (NULL + str)
+            8068 LOAD_FAST            (manual_session)
+            8070 LOAD_ATTR            (NULL|self + get)
+            8090 LOAD_CONST           ("session_id")
+            8092 CALL                 (1 positional)
+            8100 COPY                 1
+            8102 TO_BOOL
+            8110 POP_JUMP_IF_TRUE     (to 8118)
+            8114 POP_TOP
+            8116 LOAD_CONST           ("")
+         >> 8118 CALL                 (1 positional)
+            8126 LOAD_ATTR            (NULL|self + strip)
+            8146 CALL                 (0 positional)
+            8154 STORE_FAST           (oauth_session_id)
+
+648:        8156 LOAD_GLOBAL          (NULL + _resolve_oauth_provider)
+            8166 LOAD_FAST_LOAD_FAST  (args, config)
+            8168 LOAD_FAST            (manual_session)
+            8170 CALL                 (3 positional)
+            8178 STORE_FAST           (oauth_provider)
+
+649:        8180 LOAD_FAST            (oauth_url)
+            8182 TO_BOOL
+            8190 EXTENDED_ARG         (256)
+            8192 POP_JUMP_IF_TRUE     (to 8946)
+
+650:        8196 LOAD_FAST            (oauth_provider)
+            8198 LOAD_CONST           ("sub2")
+            8200 COMPARE_OP           (==)
+            8204 POP_JUMP_IF_FALSE    (to 8332)
+
+651:        8208 LOAD_GLOBAL          (NULL + _generate_sub2_oauth_session)
+            8218 LOAD_FAST            (config)
+            8220 LOAD_GLOBAL          (NULL + str)
+            8230 LOAD_FAST            (config)
+            8232 LOAD_ATTR            (NULL|self + get)
+            8252 LOAD_CONST           ("upload_proxy")
+            8254 CALL                 (1 positional)
+            8262 COPY                 1
+            8264 TO_BOOL
+            8272 POP_JUMP_IF_TRUE     (to 8280)
+            8276 POP_TOP
+            8278 LOAD_CONST           ("")
+         >> 8280 CALL                 (1 positional)
+            8288 LOAD_CONST           (('upload_proxy',))
+            8290 CALL_KW              2
+            8292 STORE_FAST           (session_info)
+
+652:        8294 LOAD_FAST            (session_info)
+            8296 LOAD_CONST           ("oauth_url")
+            8298 BINARY_SUBSCR
+            8302 STORE_FAST           (oauth_url)
+
+653:        8304 LOAD_FAST            (session_info)
+            8306 LOAD_CONST           ("state")
+            8308 BINARY_SUBSCR
+            8312 STORE_FAST           (oauth_state)
+
+654:        8314 LOAD_FAST            (session_info)
+            8316 LOAD_CONST           ("session_id")
+            8318 BINARY_SUBSCR
+            8322 STORE_FAST           (oauth_session_id)
+
+655:        8324 LOAD_CONST           ("")
+            8326 STORE_FAST           (verifier)
+            8328 EXTENDED_ARG         (256)
+            8330 JUMP_FORWARD         (to 8946)
+
+656:     >> 8332 LOAD_FAST            (oauth_provider)
+            8334 LOAD_CONST           ("cpa")
+            8336 COMPARE_OP           (==)
+            8340 POP_JUMP_IF_FALSE    (to 8398)
+
+657:        8344 LOAD_GLOBAL          (NULL + _generate_cpa_oauth_session)
+            8354 LOAD_FAST            (config)
+            8356 CALL                 (1 positional)
+            8364 STORE_FAST           (session_info)
+
+658:        8366 LOAD_FAST            (session_info)
+            8368 LOAD_CONST           ("oauth_url")
+            8370 BINARY_SUBSCR
+            8374 STORE_FAST           (oauth_url)
+
+659:        8376 LOAD_FAST            (session_info)
+            8378 LOAD_CONST           ("state")
+            8380 BINARY_SUBSCR
+            8384 STORE_FAST           (oauth_state)
+
+660:        8386 LOAD_CONST           ("")
+            8388 STORE_FAST           (oauth_session_id)
+
+661:        8390 LOAD_CONST           ("")
+            8392 STORE_FAST           (verifier)
+            8394 EXTENDED_ARG         (256)
+            8396 JUMP_FORWARD         (to 8946)
+
+663:     >> 8398 LOAD_FAST            (config)
+            8400 LOAD_ATTR            (NULL|self + get)
+            8420 LOAD_CONST           ("local_oauth_force_login_hint")
+            8422 CALL                 (1 positional)
+            8430 TO_BOOL
+            8438 POP_JUMP_IF_FALSE    (to 8446)
+            8442 LOAD_FAST            (account_email)
+            8444 JUMP_FORWARD         (to 8448)
+         >> 8446 LOAD_CONST           ("")
+         >> 8448 STORE_FAST           (local_login_hint)
+
+664:        8450 LOAD_FAST            (config)
+            8452 LOAD_ATTR            (NULL|self + get)
+            8472 LOAD_CONST           ("local_oauth_force_login_hint")
+            8474 CALL                 (1 positional)
+            8482 TO_BOOL
+            8490 POP_JUMP_IF_FALSE    (to 8498)
+            8494 LOAD_CONST           ("login_or_signup")
+            8496 JUMP_FORWARD         (to 8500)
+         >> 8498 LOAD_CONST           ("")
+         >> 8500 STORE_FAST           (local_screen_hint)
+
+665:        8502 LOAD_FAST            (config)
+            8504 LOAD_ATTR            (NULL|self + get)

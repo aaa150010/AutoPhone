@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Cellphone, ChatDotRound, Clock, Connection, Message, UploadFilled } from '@element-plus/icons-vue'
+import { Cellphone, ChatDotRound, Clock, Connection, Message, UploadFilled, WarningFilled } from '@element-plus/icons-vue'
 import type { RuntimeState, TaskStageGroup } from '../types/api'
+import { buildTaskCapacityView } from '../utils/runtimeCapacity'
 
 const props = defineProps<{ runtime: RuntimeState }>()
 
@@ -43,24 +44,28 @@ function connectorState(index: number) {
 }
 
 const concurrencyRows = computed(() => [
-  { label: '任务容量', value: props.runtime.concurrency?.task || {} },
-  { label: 'Node 容量', value: props.runtime.concurrency?.node || {} },
-  { label: '协议容量', value: props.runtime.concurrency?.protocol || {} },
-  { label: '邮箱码容量', value: props.runtime.concurrency?.email || {} },
-  { label: '手机提交', value: props.runtime.concurrency?.phone || {} },
+  { key: 'task', label: '任务容量', value: props.runtime.concurrency?.task || {} },
+  { key: 'node', label: 'Node 容量', value: props.runtime.concurrency?.node || {} },
+  { key: 'protocol', label: '协议容量', value: props.runtime.concurrency?.protocol || {} },
+  { key: 'email', label: '邮箱码容量', value: props.runtime.concurrency?.email || {} },
+  { key: 'phone', label: '手机提交', value: props.runtime.concurrency?.phone || {} },
 ].map((item) => {
   const active = numeric(item.value.active)
   const limit = numeric(item.value.limit)
   const base = numeric(item.value.base)
   const pauseRemaining = numeric(item.value.pause_remaining_seconds)
+  const taskCapacity = item.key === 'task' ? buildTaskCapacityView(item.value) : null
   return {
+    key: item.key,
     label: item.label,
     active,
     limit,
     base,
+    isTask: item.key === 'task',
     pauseRemaining,
     waiting: numeric(item.value.waiting),
     usage: limit > 0 ? Math.min(100, (active / limit) * 100) : 0,
+    taskCapacity,
   }
 }))
 </script>
@@ -79,12 +84,36 @@ const concurrencyRows = computed(() => [
     </div>
 
     <div class="capacity-grid">
-      <div v-for="item in concurrencyRows" :key="item.label" class="capacity-item">
+      <div
+        v-for="item in concurrencyRows"
+        :key="item.key"
+        class="capacity-item"
+        :class="{ 'is-task-capacity': item.isTask, 'is-degraded': item.taskCapacity?.degraded }"
+      >
         <div class="capacity-copy">
-          <span>{{ item.label }}<template v-if="item.base"> · 基{{ item.base }}</template></span>
-          <strong>{{ item.active }}/{{ item.limit }}</strong>
-          <small v-if="item.pauseRemaining">停 {{ item.pauseRemaining }}s</small>
-          <small v-else-if="item.waiting">等 {{ item.waiting }}</small>
+          <span>
+            {{ item.label }}<template v-if="!item.isTask && item.base"> · 基{{ item.base }}</template>
+            <el-tooltip
+              v-if="item.taskCapacity?.degraded"
+              :content="item.taskCapacity.tooltip"
+              placement="top"
+            >
+              <i class="capacity-reason" tabindex="0" :aria-label="item.taskCapacity.reasonLabel">
+                <el-icon><WarningFilled /></el-icon>
+              </i>
+            </el-tooltip>
+          </span>
+          <strong v-if="item.taskCapacity">运行 {{ item.taskCapacity.active }} / 当前 {{ item.taskCapacity.currentLimit }}</strong>
+          <strong v-else>{{ item.active }}/{{ item.limit }}</strong>
+          <template v-if="!item.isTask">
+            <small v-if="item.pauseRemaining">停 {{ item.pauseRemaining }}s</small>
+            <small v-else-if="item.waiting">等 {{ item.waiting }}</small>
+          </template>
+        </div>
+        <div v-if="item.taskCapacity" class="task-capacity-meta">
+          <span>基线 {{ item.taskCapacity.base }} · 健康上限 {{ item.taskCapacity.healthCeiling }}</span>
+          <small v-if="item.taskCapacity.pauseRemaining">暂停 {{ item.taskCapacity.pauseRemaining }}s</small>
+          <small v-else-if="item.taskCapacity.waiting">等待 {{ item.taskCapacity.waiting }}</small>
         </div>
         <b class="capacity-track"><i :style="{ width: `${item.usage}%` }" /></b>
       </div>
@@ -132,12 +161,18 @@ const concurrencyRows = computed(() => [
 .flow-line { flex: 1 1 auto; min-width: 5px; height: 2px; margin-top: 13px; background: #dfe5ed; }
 .flow-line.is-done { background: #65be8c; }
 .flow-line.is-active { background: #4a9ee8; }
-.capacity-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; padding: 3px 12px 10px; }
+.capacity-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) repeat(4, minmax(0, 1fr)); gap: 7px; padding: 3px 12px 10px; }
 .capacity-item { min-width: 0; }
 .capacity-copy { display: flex; align-items: baseline; gap: 4px; min-width: 0; margin-bottom: 5px; }
-.capacity-copy span { overflow: hidden; color: #788496; font-size: 9px; line-height: 13px; text-overflow: ellipsis; white-space: nowrap; }
-.capacity-copy strong { margin-left: auto; color: #344055; font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.capacity-copy > span { display: flex; align-items: center; min-width: 0; overflow: hidden; color: #788496; font-size: 9px; line-height: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.capacity-copy strong { margin-left: auto; color: #344055; font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .capacity-copy small { color: #cf7a00; font-size: 9px; white-space: nowrap; }
+.capacity-reason { display: inline-flex; flex: 0 0 auto; margin-left: 3px; color: #cf7a00; cursor: help; font-size: 11px; }
+.capacity-reason:focus-visible { outline: 1px solid #cf7a00; outline-offset: 1px; }
+.task-capacity-meta { display: flex; align-items: center; gap: 4px; min-width: 0; margin: -2px 0 4px; font-size: 9px; line-height: 11px; }
+.task-capacity-meta span { min-width: 0; overflow: hidden; color: #788496; text-overflow: ellipsis; white-space: nowrap; }
+.task-capacity-meta small { flex: 0 0 auto; margin-left: auto; color: #cf7a00; font-size: 9px; white-space: nowrap; }
 .capacity-track { display: block; height: 4px; overflow: hidden; border-radius: 2px; background: #e7ecf2; }
 .capacity-track i { display: block; height: 100%; border-radius: inherit; background: #4a9ee8; }
+.capacity-item.is-degraded .capacity-track i { background: #e6a23c; }
 </style>

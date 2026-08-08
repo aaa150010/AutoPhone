@@ -1,0 +1,800 @@
+# Constants:
+#    0: '通知平台号码已就绪'
+#    1: None
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+174:           0 RESUME               0
+
+177:           2 RETURN_CONST         (None)
+
+
+# Method Name:       wait_code
+# Filename:          sms_providers.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        1
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        179
+# Constants:
+#    0: '等待验证码'
+#    1: None
+# Varnames:
+#	self, timeout, interval
+# Positional arguments:
+#	self, timeout, interval
+179:           0 RESUME               0
+
+182:           2 RETURN_CONST         (None)
+
+
+# Method Name:       complete
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        1
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        184
+# Constants:
+#    0: '确认激活完成'
+#    1: None
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+184:           0 RESUME               0
+
+187:           2 RETURN_CONST         (None)
+
+
+# Method Name:       cancel
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        1
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        189
+# Constants:
+#    0: '取消激活'
+#    1: None
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+189:           0 RESUME               0
+
+192:           2 RETURN_CONST         (None)
+
+
+# Method Name:       get_price_candidates
+# Filename:          sms_providers.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        1
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        194
+# Constants:
+#    0: 'Return number candidates for smart selection.\n\nProviders that support stock/price discovery should return rows with:\ncountry, provider_id, price, count.\n'
+# Varnames:
+#	self, service, countries
+# Positional arguments:
+#	self, service, countries
+194:           0 RESUME               0
+
+200:           2 BUILD_LIST           0
+               4 RETURN_VALUE
+
+
+# Method Name:       _get_http
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        2
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        202
+# Constants:
+#    0: '获取 requests 模块（自动选代理版本）'
+#    1: 0
+#    2: ('requests',)
+#    3: None
+# Names:
+#    0: proxy
+#    1: curl_cffi
+#    2: requests
+# Varnames:
+#	self, curl_requests, requests
+# Positional arguments:
+#	self
+# Local variables:
+#    1: curl_requests
+#    2: requests
+202:           0 RESUME               0
+
+204:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (proxy)
+              24 TO_BOOL
+              32 POP_JUMP_IF_FALSE    (to 52)
+
+205:          36 LOAD_CONST           (0)
+              38 LOAD_CONST           (('requests',))
+              40 IMPORT_NAME          (curl_cffi)
+              42 IMPORT_FROM          (requests)
+              44 STORE_FAST           (curl_requests)
+              46 POP_TOP
+
+206:          48 LOAD_FAST            (curl_requests)
+              50 RETURN_VALUE
+
+207:     >>   52 LOAD_CONST           (0)
+              54 LOAD_CONST           (None)
+              56 IMPORT_NAME          (requests)
+              58 STORE_FAST           (requests)
+
+208:          60 LOAD_FAST            (requests)
+              62 RETURN_VALUE
+
+
+# Method Name:       _try_get
+# Filename:          sms_providers.py
+# Argument count:    4
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  7
+# Stack size:        9
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        210
+# Constants:
+#    0: '单次 GET 请求'
+#    1: 0
+#    2: ('requests',)
+#    3: 'chrome'
+#    4: False
+#    5: ('params', 'timeout', 'proxy', 'impersonate', 'verify')
+#    6: None
+#    7: ('params', 'timeout')
+# Names:
+#    0: curl_cffi
+#    1: requests
+#    2: get
+#    3: text
+#    4: strip
+# Varnames:
+#	url, params, proxy, timeout, curl_requests, r, requests
+# Positional arguments:
+#	url, params, proxy, timeout
+# Local variables:
+#    4: curl_requests
+#    5: r
+#    6: requests
+210:           0 RESUME               0
+
+213:           2 LOAD_FAST            (proxy)
+               4 TO_BOOL
+              12 POP_JUMP_IF_FALSE    (to 68)
+
+214:          16 LOAD_CONST           (0)
+              18 LOAD_CONST           (('requests',))
+              20 IMPORT_NAME          (curl_cffi)
+              22 IMPORT_FROM          (requests)
+              24 STORE_FAST           (curl_requests)
+              26 POP_TOP
+
+215:          28 LOAD_FAST            (curl_requests)
+              30 LOAD_ATTR            (NULL|self + get)
+              50 LOAD_FAST_LOAD_FAST  (url, params)
+              52 LOAD_FAST            (timeout)
+
+216:          54 LOAD_FAST            (proxy)
+              56 LOAD_CONST           ("chrome")
+              58 LOAD_CONST           (False)
+
+215:          60 LOAD_CONST           (('params', 'timeout', 'proxy', 'impersonate', 'verify'))
+              62 CALL_KW              6
+              64 STORE_FAST           (r)
+              66 JUMP_FORWARD         (to 108)
+
+218:     >>   68 LOAD_CONST           (0)
+              70 LOAD_CONST           (None)
+              72 IMPORT_NAME          (requests)
+              74 STORE_FAST           (requests)
+
+219:          76 LOAD_FAST            (requests)
+              78 LOAD_ATTR            (NULL|self + get)
+              98 LOAD_FAST_LOAD_FAST  (url, params)
+             100 LOAD_FAST            (timeout)
+             102 LOAD_CONST           (('params', 'timeout'))
+             104 CALL_KW              3
+             106 STORE_FAST           (r)
+
+220:     >>  108 LOAD_FAST            (r)
+             110 LOAD_ATTR            (text)
+             130 LOAD_ATTR            (NULL|self + strip)
+             150 CALL                 (0 positional)
+             158 RETURN_VALUE
+
+
+# Method Name:       _get
+# Filename:          sms_providers.py
+# Argument count:    4
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  8
+# Stack size:        7
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        222
+# Constants:
+#    0: 'GET 请求，支持多代理故障转移（逗号分隔）'
+#    1: ','
+#    2: ''
+#    3: None
+#    4: 'All proxies failed: '
+# Names:
+#    0: proxy
+#    1: split
+#    2: strip
+#    3: _try_get
+#    4: Exception
+#    5: str
+#    6: RuntimeError
+# Varnames:
+#	self, url, params, timeout, p, proxies, last_err, e
+# Positional arguments:
+#	self, url, params, timeout
+# Local variables:
+#    4: p
+#    5: proxies
+#    6: last_err
+#    7: e
+222:           0 RESUME               0
+
+224:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (proxy)
+              24 TO_BOOL
+              32 POP_JUMP_IF_FALSE    (to 196)
+              36 LOAD_FAST            (self)
+              38 LOAD_ATTR            (proxy)
+              58 LOAD_ATTR            (NULL|self + split)
+              78 LOAD_CONST           (",")
+              80 CALL                 (1 positional)
+              88 GET_ITER
+              90 LOAD_FAST_AND_CLEAR  (p)
+              92 SWAP                 (TOS <-> TOS1)
+              94 BUILD_LIST           0
+              96 SWAP                 (TOS <-> TOS1)
+              98 GET_ITER
+             100 FOR_ITER             (to 186)
+             104 STORE_FAST_LOAD_FAST (p, p)
+             106 LOAD_ATTR            (NULL|self + strip)
+             126 CALL                 (0 positional)
+             134 TO_BOOL
+             142 POP_JUMP_IF_TRUE     (to 150)
+             146 JUMP_BACKWARD        (to 100)
+         >>  150 LOAD_FAST            (p)
+             152 LOAD_ATTR            (NULL|self + strip)
+             172 CALL                 (0 positional)
+             180 LIST_APPEND          2
+             182 JUMP_BACKWARD        (to 100)
+         >>  186 END_FOR
+             188 POP_TOP
+             190 SWAP                 (TOS <-> TOS1)
+             192 STORE_FAST           (p)
+             194 JUMP_FORWARD         (to 200)
+         >>  196 LOAD_CONST           ("")
+             198 BUILD_LIST           1
+         >>  200 STORE_FAST           (proxies)
+
+225:         202 LOAD_CONST           ("")
+             204 STORE_FAST           (last_err)
+
+226:         206 LOAD_FAST            (proxies)
+             208 GET_ITER
+             210 FOR_ITER             (to 258)
+             214 STORE_FAST           (p)
+
+227:         216 NOP
+
+228:         218 LOAD_FAST            (self)
+             220 LOAD_ATTR            (NULL|self + _try_get)
+             240 LOAD_FAST_LOAD_FAST  (url, params)
+             242 LOAD_FAST_LOAD_FAST  (p, timeout)
+             244 CALL                 (4 positional)
+             252 SWAP                 (TOS <-> TOS1)
+             254 POP_TOP
+             256 RETURN_VALUE
+
+226:     >>  258 END_FOR
+             260 POP_TOP
+
+232:         262 LOAD_GLOBAL          (NULL + RuntimeError)
+         >>  272 LOAD_CONST           ("All proxies failed: ")
+             274 LOAD_FAST            (last_err)
+             276 FORMAT_SIMPLE
+             278 BUILD_STRING         2
+             280 CALL                 (1 positional)
+             288 RAISE_VARARGS        (exception instance)
+         >>  290 SWAP                 (TOS <-> TOS1)
+             292 POP_TOP
+
+224:         294 SWAP                 (TOS <-> TOS1)
+             296 STORE_FAST           (p)
+             298 RERAISE              0
+         >>  300 PUSH_EXC_INFO
+
+229:         302 LOAD_GLOBAL          (Exception)
+             312 CHECK_EXC_MATCH
+             314 POP_JUMP_IF_FALSE    (to 362)
+             318 STORE_FAST           (e)
+
+230:         320 LOAD_GLOBAL          (NULL + str)
+             330 LOAD_FAST            (e)
+             332 CALL                 (1 positional)
+             340 STORE_FAST           (last_err)
+
+231:         342 POP_EXCEPT
+             344 LOAD_CONST           (None)
+             346 STORE_FAST           (e)
+             348 DELETE_FAST          (e)
+             350 JUMP_BACKWARD        (to 210)
+         >>  354 LOAD_CONST           (None)
+             356 STORE_FAST           (e)
+             358 DELETE_FAST          (e)
+             360 RERAISE              1
+
+229:     >>  362 RERAISE              0
+         >>  364 COPY                 3
+             366 POP_EXCEPT
+             368 RERAISE              1
+
+ExceptionTable:
+  94 to 140 -> 290 [2]
+  150 to 188 -> 290 [2]
+  218 to 250 -> 300 [1]
+  300 to 318 -> 364 [2] lasti
+  320 to 340 -> 354 [2] lasti
+  354 to 362 -> 364 [2] lasti
+
+# Method Name:       balance
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        244
+# Constants:
+#    0: None
+#    1: 'action'
+#    2: 'getBalance'
+# Names:
+#    0: _api
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+244:           0 RESUME               0
+
+245:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _api)
+              24 LOAD_CONST           ("action")
+              26 LOAD_CONST           ("getBalance")
+              28 BUILD_MAP            1
+              30 CALL                 (1 positional)
+              38 RETURN_VALUE
+
+
+# Method Name:       _parse_max_price
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        247
+# Constants:
+#    0: None
+#    1: ''
+#    2: '最高价格格式错误: '
+# Names:
+#    0: str
+#    1: strip
+#    2: float
+#    3: ValueError
+#    4: RuntimeError
+# Varnames:
+#	max_price, text
+# Positional arguments:
+#	max_price
+# Local variables:
+#    1: text
+247:           0 RESUME               0
+
+249:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (max_price)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + strip)
+              60 CALL                 (0 positional)
+              68 STORE_FAST           (text)
+
+250:          70 LOAD_FAST            (text)
+              72 TO_BOOL
+              80 POP_JUMP_IF_TRUE     (to 86)
+
+251:          84 RETURN_CONST         (None)
+
+252:     >>   86 NOP
+
+253:          88 LOAD_GLOBAL          (NULL + float)
+              98 LOAD_FAST            (text)
+             100 CALL                 (1 positional)
+             108 RETURN_VALUE
+         >>  110 PUSH_EXC_INFO
+
+254:         112 LOAD_GLOBAL          (ValueError)
+             122 CHECK_EXC_MATCH
+             124 POP_JUMP_IF_FALSE    (to 158)
+             128 POP_TOP
+
+255:         130 LOAD_GLOBAL          (NULL + RuntimeError)
+             140 LOAD_CONST           ("最高价格格式错误: ")
+             142 LOAD_FAST            (max_price)
+             144 FORMAT_SIMPLE
+             146 BUILD_STRING         2
+             148 CALL                 (1 positional)
+             156 RAISE_VARARGS        (exception instance)
+
+254:     >>  158 RERAISE              0
+         >>  160 COPY                 3
+             162 POP_EXCEPT
+             164 RERAISE              1
+
+ExceptionTable:
+  88 to 106 -> 110 [0]
+  110 to 158 -> 160 [1] lasti
+
+# Method Name:       _parse_count
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        5
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        257
+# Constants:
+#    0: None
+#    1: 0
+# Names:
+#    0: int
+#    1: float
+#    2: TypeError
+#    3: ValueError
+# Varnames:
+#	value
+# Positional arguments:
+#	value
+257:           0 RESUME               0
+
+259:           2 LOAD_FAST            (value)
+               4 POP_JUMP_IF_NOT_NONE (to 10)
+
+260:           8 RETURN_CONST         (None)
+
+261:     >>   10 NOP
+
+262:          12 LOAD_GLOBAL          (NULL + int)
+              22 LOAD_GLOBAL          (NULL + float)
+              32 LOAD_FAST            (value)
+              34 CALL                 (1 positional)
+              42 CALL                 (1 positional)
+              50 RETURN_VALUE
+         >>   52 PUSH_EXC_INFO
+
+263:          54 LOAD_GLOBAL          (TypeError)
+              64 LOAD_GLOBAL          (ValueError)
+              74 BUILD_TUPLE          2
+              76 CHECK_EXC_MATCH
+              78 POP_JUMP_IF_FALSE    (to 88)
+              82 POP_TOP
+
+264:          84 POP_EXCEPT
+              86 RETURN_CONST         (0)
+
+263:     >>   88 RERAISE              0
+         >>   90 COPY                 3
+              92 POP_EXCEPT
+              94 RERAISE              1
+
+ExceptionTable:
+  12 to 48 -> 52 [0]
+  52 to 82 -> 90 [1] lasti
+  88 to 88 -> 90 [1] lasti
+
+# Method Name:       _allowed_provider_ids
+# Filename:          sms_providers.py
+# Argument count:    5
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  21
+# Stack size:        12
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        266
+# Constants:
+#    0: None
+#    1: 'getPricesV3'
+#    2: ('action', 'service', 'country')
+#    3: ' price check failed: '
+#    4: '/'
+#    5: ', max_price='
+#    6: '.4f'
+#    7: ': '
+#    8: ' price unavailable, max_price='
+#    9: ''
+#   10: ','
+#   11: 'count'
+#   12: 0
+#   13: 'price'
+#   14: 999
+#   15: '='
+#   16: 'providers='
+#   17: 'all providers'
+#   18: '; blocked: '
+#   19: ', '
+#   20: 10
+#   21: ' price too high: '
+# Names:
+#    0: _parse_max_price
+#    1: _api
+#    2: json
+#    3: loads
+#    4: Exception
+#    5: RuntimeError
+#    6: __class__
+#    7: __name__
+#    8: get
+#    9: str
+#   10: isinstance
+#   11: dict
+#   12: split
+#   13: strip
+#   14: items
+#   15: _parse_count
+#   16: float
+#   17: TypeError
+#   18: ValueError
+#   19: append
+#   20: join
+# Varnames:
+#	self, service, country, provider_ids, max_price, limit, text, data, e, services, providers, p, selected, allowed, blocked, pid, info, count, price, scope, detail
+# Positional arguments:
+#	self, service, country, provider_ids, max_price
+# Local variables:
+#    5: limit
+#    6: text
+#    7: data
+#    8: e
+#    9: services
+#   10: providers
+#   11: p
+#   12: selected
+#   13: allowed
+#   14: blocked
+#   15: pid
+#   16: info
+#   17: count
+#   18: price
+#   19: scope
+#   20: detail
+266:           0 RESUME               0
+
+269:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _parse_max_price)
+              24 LOAD_FAST            (max_price)
+              26 CALL                 (1 positional)
+              34 STORE_FAST           (limit)
+
+270:          36 LOAD_FAST            (limit)
+              38 POP_JUMP_IF_NOT_NONE (to 46)
+
+271:          42 LOAD_FAST            (provider_ids)
+              44 RETURN_VALUE
+
+273:     >>   46 NOP
+
+274:          48 LOAD_FAST            (self)
+              50 LOAD_ATTR            (NULL|self + _api)
+              70 LOAD_CONST           ("getPricesV3")
+              72 LOAD_FAST_LOAD_FAST  (service, country)
+              74 LOAD_CONST           (('action', 'service', 'country'))
+              76 BUILD_CONST_KEY_MAP  3
+              78 CALL                 (1 positional)
+              86 STORE_FAST           (text)
+
+275:          88 LOAD_GLOBAL          (json)
+              98 LOAD_ATTR            (loads)
+             118 PUSH_NULL
+             120 LOAD_FAST            (text)
+             122 CALL                 (1 positional)
+             130 STORE_FAST           (data)
+
+281:         132 LOAD_FAST            (data)
+             134 LOAD_ATTR            (NULL|self + get)
+             154 LOAD_GLOBAL          (NULL + str)
+             164 LOAD_FAST            (country)
+             166 CALL                 (1 positional)
+             174 BUILD_MAP            0
+             176 CALL                 (2 positional)
+             184 STORE_FAST           (services)
+
+282:         186 LOAD_GLOBAL          (NULL + isinstance)
+             196 LOAD_FAST            (services)
+             198 LOAD_GLOBAL          (dict)
+             208 CALL                 (2 positional)
+             216 TO_BOOL
+             224 POP_JUMP_IF_FALSE    (to 264)
+             228 LOAD_FAST            (services)
+             230 LOAD_ATTR            (NULL|self + get)
+             250 LOAD_FAST            (service)
+             252 BUILD_MAP            0
+             254 CALL                 (2 positional)
+             262 JUMP_FORWARD         (to 266)
+         >>  264 BUILD_MAP            0
+         >>  266 STORE_FAST           (providers)
+
+283:         268 LOAD_GLOBAL          (NULL + isinstance)
+             278 LOAD_FAST            (providers)
+             280 LOAD_GLOBAL          (dict)
+             290 CALL                 (2 positional)
+             298 TO_BOOL
+             306 POP_JUMP_IF_FALSE    (to 324)
+             310 LOAD_FAST            (providers)
+             312 TO_BOOL
+             320 POP_JUMP_IF_TRUE     (to 410)
+
+284:     >>  324 LOAD_GLOBAL          (NULL + RuntimeError)
+
+285:         334 LOAD_FAST            (self)
+             336 LOAD_ATTR            (__class__)
+             356 LOAD_ATTR            (__name__)
+             376 FORMAT_SIMPLE
+             378 LOAD_CONST           (" price check failed: ")
+             380 LOAD_FAST            (country)
+             382 FORMAT_SIMPLE
+             384 LOAD_CONST           ("/")
+             386 LOAD_FAST            (service)
+             388 FORMAT_SIMPLE
+             390 LOAD_CONST           (" price unavailable, max_price=")
+             392 LOAD_FAST            (limit)
+             394 LOAD_CONST           (".4f")
+             396 FORMAT_WITH_SPEC
+             398 BUILD_STRING         7
+
+284:         400 CALL                 (1 positional)
+             408 RAISE_VARARGS        (exception instance)
+
+288:     >>  410 LOAD_GLOBAL          (NULL + str)
+             420 LOAD_FAST            (provider_ids)
+             422 COPY                 1
+             424 TO_BOOL
+             432 POP_JUMP_IF_TRUE     (to 440)
+             436 POP_TOP
+             438 LOAD_CONST           ("")
+         >>  440 CALL                 (1 positional)
+             448 LOAD_ATTR            (NULL|self + split)
+             468 LOAD_CONST           (",")
+             470 CALL                 (1 positional)
+             478 GET_ITER
+             480 LOAD_FAST_AND_CLEAR  (p)
+             482 SWAP                 (TOS <-> TOS1)
+             484 BUILD_SET            0
+             486 SWAP                 (TOS <-> TOS1)
+             488 GET_ITER
+             490 FOR_ITER             (to 576)
+             494 STORE_FAST_LOAD_FAST (p, p)
+             496 LOAD_ATTR            (NULL|self + strip)
+             516 CALL                 (0 positional)
+             524 TO_BOOL
+             532 POP_JUMP_IF_TRUE     (to 540)
+             536 JUMP_BACKWARD        (to 490)
+         >>  540 LOAD_FAST            (p)
+             542 LOAD_ATTR            (NULL|self + strip)
+             562 CALL                 (0 positional)
+             570 SET_ADD              2
+             572 JUMP_BACKWARD        (to 490)
+         >>  576 END_FOR
+             578 POP_TOP
+             580 STORE_FAST           (selected)
+             582 STORE_FAST           (p)
+
+289:         584 BUILD_LIST           0
+             586 STORE_FAST           (allowed)
+
+290:         588 BUILD_LIST           0
+         >>  590 STORE_FAST           (blocked)
+
+291:         592 LOAD_FAST            (providers)
+             594 LOAD_ATTR            (NULL|self + items)
+             614 CALL                 (0 positional)
+             622 GET_ITER
+             624 FOR_ITER             (to 990)
+             628 UNPACK_SEQUENCE      2
+             632 STORE_FAST           (pid)
+             634 STORE_FAST           (info)
+
+292:         636 LOAD_FAST            (selected)
+             638 TO_BOOL
+             646 POP_JUMP_IF_FALSE    (to 684)
+             650 LOAD_GLOBAL          (NULL + str)
+             660 LOAD_FAST            (pid)
+         >>  662 CALL                 (1 positional)
+             670 LOAD_FAST            (selected)
+             672 CONTAINS_OP          (not in)
+             676 POP_JUMP_IF_FALSE    (to 684)
+
+293:         680 JUMP_BACKWARD        (to 624)
+
+294:     >>  684 LOAD_GLOBAL          (NULL + isinstance)
+             694 LOAD_FAST            (info)
+             696 LOAD_GLOBAL          (dict)
+             706 CALL                 (2 positional)
+             714 TO_BOOL
+             722 POP_JUMP_IF_TRUE     (to 730)
+
+295:         726 JUMP_BACKWARD        (to 624)
+
+296:     >>  730 LOAD_FAST            (self)
+             732 LOAD_ATTR            (NULL|self + _parse_count)
+             752 LOAD_FAST            (info)
+             754 LOAD_ATTR            (NULL|self + get)
+             774 LOAD_CONST           ("count")
+             776 CALL                 (1 positional)
+             784 CALL                 (1 positional)
+             792 STORE_FAST           (count)
+
+297:         794 LOAD_FAST            (count)
+             796 POP_JUMP_IF_NONE     (to 816)
+             800 LOAD_FAST            (count)
+             802 LOAD_CONST           (0)
+             804 COMPARE_OP           (<=)
+             808 POP_JUMP_IF_FALSE    (to 816)
+
+298:         812 JUMP_BACKWARD        (to 624)
+
+299:     >>  816 NOP
+
+300:         818 LOAD_GLOBAL          (NULL + float)
+             828 LOAD_FAST            (info)
+             830 LOAD_ATTR            (NULL|self + get)
+             850 LOAD_CONST           ("price")
+             852 LOAD_CONST           (999)
+             854 CALL                 (2 positional)
+             862 CALL                 (1 positional)
+             870 STORE_FAST           (price)
+
+303:         872 LOAD_FAST            (price)
+             874 LOAD_FAST            (limit)
+             876 COMPARE_OP           (<=)
+             880 POP_JUMP_IF_FALSE    (to 940)
+
+304:         884 LOAD_FAST            (allowed)
+             886 LOAD_ATTR            (NULL|self + append)
+             906 LOAD_GLOBAL          (NULL + str)
+             916 LOAD_FAST            (pid)
+             918 CALL                 (1 positional)

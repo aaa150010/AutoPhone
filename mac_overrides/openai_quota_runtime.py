@@ -11,7 +11,7 @@ import re
 from threading import RLock
 import tempfile
 import time
-from typing import Any, Mapping, Protocol
+from typing import Any, Callable, Mapping, Protocol
 
 
 OPENAI_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
@@ -339,6 +339,30 @@ class OpenAIQuotaSnapshotStore:
         return snapshot
 
 
+def persist_quota_snapshot(
+    status_store: Callable[[str, Mapping[str, Any]], Mapping[str, Any] | None] | None,
+    account_id: Any,
+    value: Any,
+) -> dict[str, Any]:
+    """Persist one completed row and surface a redacted write failure."""
+
+    snapshot = public_quota_snapshot(value)
+    key = str(account_id or "").strip()
+    if not key or not callable(status_store):
+        return snapshot
+    try:
+        stored = status_store(key, snapshot)
+    except Exception:
+        failed = dict(snapshot)
+        failed.update(
+            status="error",
+            code="openai_quota_snapshot_persist_failed",
+            error="OpenAI 额度已查询，但本地状态保存失败，请重试该行",
+        )
+        return public_quota_snapshot(failed, previous=snapshot)
+    return public_quota_snapshot(stored, previous=snapshot) if isinstance(stored, Mapping) else snapshot
+
+
 def _window(value: Any, queried_at: int) -> dict[str, Any] | None:
     row = _mapping(value)
     used = _number(row.get("used_percent"))
@@ -588,5 +612,6 @@ __all__ = [
     "credentials_from_result",
     "normalize_quota_headers",
     "normalize_quota_payload",
+    "persist_quota_snapshot",
     "public_quota_snapshot",
 ]

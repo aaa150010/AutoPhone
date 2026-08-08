@@ -1,0 +1,800 @@
+# Varnames:
+#	self, continue_url
+# Positional arguments:
+#	self, continue_url
+1610:           0 RESUME               0
+
+1611:           2 LOAD_CONST           (200)
+               4 LOAD_CONST           ("type")
+               6 LOAD_CONST           ("email_otp_verification")
+               8 BUILD_MAP            1
+              10 LOAD_FAST            (continue_url)
+              12 LOAD_CONST           (('_status', 'page', 'continue_url'))
+              14 BUILD_CONST_KEY_MAP  3
+              16 RETURN_VALUE
+
+
+# Method Name:       send_mfa_otp
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1613
+# Constants:
+#    0: None
+#    1: 200
+#    2: 'type'
+#    3: 'mfa_challenge'
+#    4: ('_status', 'page', 'continue_url')
+# Varnames:
+#	self, continue_url
+# Positional arguments:
+#	self, continue_url
+1613:           0 RESUME               0
+
+1614:           2 LOAD_CONST           (200)
+               4 LOAD_CONST           ("type")
+               6 LOAD_CONST           ("mfa_challenge")
+               8 BUILD_MAP            1
+              10 LOAD_FAST            (continue_url)
+              12 LOAD_CONST           (('_status', 'page', 'continue_url'))
+              14 BUILD_CONST_KEY_MAP  3
+              16 RETURN_VALUE
+
+
+# Method Name:       send_phone_number_otp
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1616
+# Constants:
+#    0: None
+#    1: 0
+#    2: 1
+#    3: 400
+#    4: 'phone_rejected'
+#    5: 'mock phone rejected on channel '
+#    6: ('code', 'message')
+#    7: 'type'
+#    8: 'add_phone'
+#    9: ('_status', 'error', 'page')
+#   10: 200
+#   11: 'phone_otp'
+#   12: ('_status', 'page', 'phone', 'channel')
+# Names:
+#    0: phone_send_rejects_left
+# Varnames:
+#	self, phone, channel
+# Positional arguments:
+#	self, phone, channel
+1616:           0 RESUME               0
+
+1617:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (phone_send_rejects_left)
+              24 LOAD_CONST           (0)
+              26 COMPARE_OP           (>)
+              30 POP_JUMP_IF_FALSE    (to 104)
+
+1618:          34 LOAD_FAST            (self)
+              36 COPY                 1
+              38 LOAD_ATTR            (phone_send_rejects_left)
+              58 LOAD_CONST           (1)
+              60 BINARY_OP            (-=)
+              64 SWAP                 (TOS <-> TOS1)
+              66 STORE_ATTR           (phone_send_rejects_left)
+
+1620:          76 LOAD_CONST           (400)
+
+1622:          78 LOAD_CONST           ("phone_rejected")
+
+1623:          80 LOAD_CONST           ("mock phone rejected on channel ")
+              82 LOAD_FAST            (channel)
+              84 FORMAT_SIMPLE
+              86 BUILD_STRING         2
+
+1621:          88 LOAD_CONST           (('code', 'message'))
+              90 BUILD_CONST_KEY_MAP  2
+
+1625:          92 LOAD_CONST           ("type")
+              94 LOAD_CONST           ("add_phone")
+              96 BUILD_MAP            1
+
+1619:          98 LOAD_CONST           (('_status', 'error', 'page'))
+             100 BUILD_CONST_KEY_MAP  3
+             102 RETURN_VALUE
+
+1627:     >>  104 LOAD_CONST           (200)
+             106 LOAD_CONST           ("type")
+             108 LOAD_CONST           ("phone_otp")
+             110 BUILD_MAP            1
+             112 LOAD_FAST_LOAD_FAST  (phone, channel)
+             114 LOAD_CONST           (('_status', 'page', 'phone', 'channel'))
+             116 BUILD_CONST_KEY_MAP  4
+             118 RETURN_VALUE
+
+
+# Method Name:       verify_phone_otp
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1629
+# Constants:
+#    0: None
+#    1: 200
+#    2: 'type'
+#    3: 'sign_in_with_chatgpt_codex_consent'
+#    4: '/mock/consent'
+#    5: ('_status', 'page', 'continue_url')
+# Varnames:
+#	self, code
+# Positional arguments:
+#	self, code
+1629:           0 RESUME               0
+
+1631:           2 LOAD_CONST           (200)
+
+1632:           4 LOAD_CONST           ("type")
+               6 LOAD_CONST           ("sign_in_with_chatgpt_codex_consent")
+               8 BUILD_MAP            1
+
+1633:          10 LOAD_CONST           ("/mock/consent")
+
+1630:          12 LOAD_CONST           (('_status', 'page', 'continue_url'))
+              14 BUILD_CONST_KEY_MAP  3
+              16 RETURN_VALUE
+
+
+# Method Name:       accept_consent
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1636
+# Constants:
+#    0: None
+#    1: 200
+#    2: 'type'
+#    3: 'external_url'
+#    4: '/mock/consent'
+#    5: ('_status', 'page', 'continue_url')
+# Varnames:
+#	self, continue_url
+# Positional arguments:
+#	self, continue_url
+1636:           0 RESUME               0
+
+1637:           2 LOAD_CONST           (200)
+               4 LOAD_CONST           ("type")
+               6 LOAD_CONST           ("external_url")
+               8 BUILD_MAP            1
+              10 LOAD_FAST            (continue_url)
+              12 COPY                 1
+              14 TO_BOOL
+              22 POP_JUMP_IF_TRUE     (to 30)
+              26 POP_TOP
+              28 LOAD_CONST           ("/mock/consent")
+         >>   30 LOAD_CONST           (('_status', 'page', 'continue_url'))
+              32 BUILD_CONST_KEY_MAP  3
+              34 RETURN_VALUE
+
+
+# Method Name:       follow_continue_until_code
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1639
+# Constants:
+#    0: None
+#    1: 'redirect_uri'
+# Names:
+#    0: _callback_url
+#    1: get
+#    2: DEFAULT_REDIRECT_URI
+#    3: callback_code
+#    4: callback_state
+# Varnames:
+#	self, continue_url, oauth_params
+# Positional arguments:
+#	self, continue_url, oauth_params
+1639:           0 RESUME               0
+
+1640:           2 LOAD_GLOBAL          (NULL + _callback_url)
+              12 LOAD_FAST            (oauth_params)
+              14 LOAD_ATTR            (NULL|self + get)
+              34 LOAD_CONST           ("redirect_uri")
+              36 CALL                 (1 positional)
+              44 COPY                 1
+              46 TO_BOOL
+              54 POP_JUMP_IF_TRUE     (to 70)
+              58 POP_TOP
+              60 LOAD_GLOBAL          (DEFAULT_REDIRECT_URI)
+         >>   70 LOAD_FAST            (self)
+              72 LOAD_ATTR            (callback_code)
+              92 LOAD_FAST            (self)
+              94 LOAD_ATTR            (callback_state)
+             114 CALL                 (3 positional)
+             122 RETURN_VALUE
+
+
+# Method Name:       exchange_code
+# Filename:          codex_oauth_chain.py
+# Argument count:    6
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  7
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1642
+# Constants:
+#    0: None
+#    1: 3600
+#    2: 'Bearer'
+#    3: 'openid profile email offline_access'
+#    4: ('id_token', 'access_token', 'refresh_token', 'expires_at', 'token_type', 'scope', 'email')
+# Names:
+#    0: email
+#    1: id_token
+#    2: access_token
+#    3: refresh_token
+#    4: int
+#    5: time
+# Varnames:
+#	self, code, code_verifier, client_id, redirect_uri, account_email, email
+# Positional arguments:
+#	self, code, code_verifier, client_id, redirect_uri, account_email
+# Local variables:
+#    6: email
+1642:           0 RESUME               0
+
+1643:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (email)
+              24 COPY                 1
+              26 TO_BOOL
+              34 POP_JUMP_IF_TRUE     (to 42)
+              38 POP_TOP
+              40 LOAD_FAST            (account_email)
+         >>   42 STORE_FAST           (email)
+
+1645:          44 LOAD_FAST            (self)
+              46 LOAD_ATTR            (id_token)
+
+1646:          66 LOAD_FAST            (self)
+              68 LOAD_ATTR            (access_token)
+
+1647:          88 LOAD_FAST            (self)
+              90 LOAD_ATTR            (refresh_token)
+
+1648:         110 LOAD_GLOBAL          (NULL + int)
+             120 LOAD_GLOBAL          (time)
+             130 LOAD_ATTR            (time)
+             150 PUSH_NULL
+             152 CALL                 (0 positional)
+             160 CALL                 (1 positional)
+             168 LOAD_CONST           (3600)
+             170 BINARY_OP            (+)
+
+1649:         174 LOAD_CONST           ("Bearer")
+
+1650:         176 LOAD_CONST           ("openid profile email offline_access")
+
+1651:         178 LOAD_FAST            (email)
+
+1644:         180 LOAD_CONST           (('id_token', 'access_token', 'refresh_token', 'expires_at', 'token_type', 'scope', 'email'))
+             182 BUILD_CONST_KEY_MAP  7
+             184 RETURN_VALUE
+
+
+# Method Name:       __init__
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 6
+# Number of locals:  8
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1658
+# Constants:
+#    0: None
+#    1: 'proxy'
+#    2: 'node'
+#    3: 'codex_node_mode'
+#    4: 'mode'
+#    5: 'real'
+#    6: 'codex_node_runner'
+#    7: 'runner'
+#    8: 'script'
+#    9: 'codex_node_timeout'
+#   10: 'timeout'
+#   11: 45
+#   12: 5
+#   13: 180
+#   14: 'flow_timeouts'
+#   15: 'codex_node_retries'
+#   16: 'retries'
+#   17: 1
+#   18: 0
+# Names:
+#    0: config
+#    1: _clean
+#    2: str
+#    3: uuid
+#    4: uuid4
+#    5: device_id
+#    6: proxy_label
+#    7: get
+#    8: proxy
+#    9: isinstance
+#   10: dict
+#   11: fingerprint
+#   12: log_fn
+#   13: lower
+#   14: mode
+#   15: script_path
+#   16: _as_int
+#   17: timeout
+#   18: flow_timeouts
+#   19: retries
+#   20: _cache
+# Varnames:
+#	self, config, device_id, proxy_label, proxy, fingerprint, log_fn, node_cfg
+# Positional arguments:
+#	self
+# Local variables:
+#    1: config
+#    2: device_id
+#    3: proxy_label
+#    4: proxy
+#    5: fingerprint
+#    6: log_fn
+#    7: node_cfg
+1658:           0 RESUME               0
+
+1668:           2 LOAD_FAST            (config)
+               4 COPY                 1
+               6 TO_BOOL
+              14 POP_JUMP_IF_TRUE     (to 22)
+              18 POP_TOP
+              20 BUILD_MAP            0
+         >>   22 LOAD_FAST            (self)
+              24 STORE_ATTR           (config)
+
+1669:          34 LOAD_GLOBAL          (NULL + _clean)
+              44 LOAD_FAST            (device_id)
+              46 CALL                 (1 positional)
+              54 COPY                 1
+              56 TO_BOOL
+              64 POP_JUMP_IF_TRUE     (to 128)
+              68 POP_TOP
+              70 LOAD_GLOBAL          (NULL + str)
+              80 LOAD_GLOBAL          (uuid)
+              90 LOAD_ATTR            (uuid4)
+             110 PUSH_NULL
+             112 CALL                 (0 positional)
+             120 CALL                 (1 positional)
+         >>  128 LOAD_FAST            (self)
+             130 STORE_ATTR           (device_id)
+
+1670:         140 LOAD_GLOBAL          (NULL + _clean)
+             150 LOAD_FAST            (proxy_label)
+             152 CALL                 (1 positional)
+             160 LOAD_FAST            (self)
+             162 STORE_ATTR           (proxy_label)
+
+1671:         172 LOAD_GLOBAL          (NULL + _clean)
+             182 LOAD_FAST            (proxy)
+             184 CALL                 (1 positional)
+             192 COPY                 1
+             194 TO_BOOL
+             202 POP_JUMP_IF_TRUE     (to 316)
+             206 POP_TOP
+             208 LOAD_GLOBAL          (NULL + _clean)
+             218 LOAD_FAST            (self)
+             220 LOAD_ATTR            (config)
+             240 LOAD_ATTR            (NULL|self + get)
+             260 LOAD_CONST           ("proxy")
+             262 CALL                 (1 positional)
+             270 CALL                 (1 positional)
+             278 COPY                 1
+             280 TO_BOOL
+             288 POP_JUMP_IF_TRUE     (to 316)
+             292 POP_TOP
+             294 LOAD_FAST            (self)
+             296 LOAD_ATTR            (proxy_label)
+         >>  316 LOAD_FAST            (self)
+             318 STORE_ATTR           (proxy)
+
+1672:         328 LOAD_GLOBAL          (NULL + isinstance)
+             338 LOAD_FAST            (fingerprint)
+             340 LOAD_GLOBAL          (dict)
+             350 CALL                 (2 positional)
+             358 TO_BOOL
+             366 POP_JUMP_IF_FALSE    (to 374)
+             370 LOAD_FAST            (fingerprint)
+             372 JUMP_FORWARD         (to 376)
+         >>  374 BUILD_MAP            0
+         >>  376 LOAD_FAST            (self)
+             378 STORE_ATTR           (fingerprint)
+
+1673:         388 LOAD_FAST_LOAD_FAST  (log_fn, self)
+             390 STORE_ATTR           (log_fn)
+
+1674:         400 LOAD_GLOBAL          (NULL + isinstance)
+             410 LOAD_FAST            (self)
+             412 LOAD_ATTR            (config)
+             432 LOAD_ATTR            (NULL|self + get)
+             452 LOAD_CONST           ("node")
+             454 CALL                 (1 positional)
+             462 LOAD_GLOBAL          (dict)
+             472 CALL                 (2 positional)
+             480 TO_BOOL
+             488 POP_JUMP_IF_FALSE    (to 546)
+             492 LOAD_FAST            (self)
+             494 LOAD_ATTR            (config)
+             514 LOAD_ATTR            (NULL|self + get)
+             534 LOAD_CONST           ("node")
+             536 CALL                 (1 positional)
+             544 JUMP_FORWARD         (to 548)
+         >>  546 BUILD_MAP            0
+         >>  548 STORE_FAST           (node_cfg)
+
+1675:         550 LOAD_GLOBAL          (NULL + _clean)
+             560 LOAD_FAST            (self)
+             562 LOAD_ATTR            (config)
+             582 LOAD_ATTR            (NULL|self + get)
+             602 LOAD_CONST           ("codex_node_mode")
+             604 CALL                 (1 positional)
+             612 COPY                 1
+             614 TO_BOOL
+             622 POP_JUMP_IF_TRUE     (to 678)
+             626 POP_TOP
+             628 LOAD_FAST            (node_cfg)
+             630 LOAD_ATTR            (NULL|self + get)
+             650 LOAD_CONST           ("mode")
+             652 CALL                 (1 positional)
+             660 COPY                 1
+             662 TO_BOOL
+             670 POP_JUMP_IF_TRUE     (to 678)
+             674 POP_TOP
+             676 LOAD_CONST           ("real")
+         >>  678 CALL                 (1 positional)
+             686 LOAD_ATTR            (NULL|self + lower)
+             706 CALL                 (0 positional)
+             714 LOAD_FAST            (self)
+             716 STORE_ATTR           (mode)
+
+1676:         726 LOAD_GLOBAL          (NULL + _clean)
+             736 LOAD_FAST            (self)
+             738 LOAD_ATTR            (config)
+             758 LOAD_ATTR            (NULL|self + get)
+             778 LOAD_CONST           ("codex_node_runner")
+             780 CALL                 (1 positional)
+             788 COPY                 1
+             790 TO_BOOL
+             798 POP_JUMP_IF_TRUE     (to 884)
+             802 POP_TOP
+             804 LOAD_FAST            (node_cfg)
+             806 LOAD_ATTR            (NULL|self + get)
+             826 LOAD_CONST           ("runner")
+             828 CALL                 (1 positional)
+             836 COPY                 1
+             838 TO_BOOL
+             846 POP_JUMP_IF_TRUE     (to 884)
+             850 POP_TOP
+             852 LOAD_FAST            (node_cfg)
+             854 LOAD_ATTR            (NULL|self + get)
+             874 LOAD_CONST           ("script")
+             876 CALL                 (1 positional)
+         >>  884 CALL                 (1 positional)
+             892 LOAD_FAST            (self)
+             894 STORE_ATTR           (script_path)
+
+1677:         904 LOAD_GLOBAL          (NULL + _as_int)
+             914 LOAD_FAST            (self)
+             916 LOAD_ATTR            (config)
+             936 LOAD_ATTR            (NULL|self + get)
+             956 LOAD_CONST           ("codex_node_timeout")
+             958 CALL                 (1 positional)
+             966 COPY                 1
+             968 TO_BOOL
+             976 POP_JUMP_IF_TRUE     (to 1014)
+             980 POP_TOP
+             982 LOAD_FAST            (node_cfg)
+             984 LOAD_ATTR            (NULL|self + get)
+            1004 LOAD_CONST           ("timeout")
+            1006 CALL                 (1 positional)
+         >> 1014 LOAD_CONST           (45)
+            1016 LOAD_CONST           (5)
+            1018 LOAD_CONST           (180)
+            1020 CALL                 (4 positional)
+            1028 LOAD_FAST            (self)
+            1030 STORE_ATTR           (timeout)
+
+1678:        1040 LOAD_GLOBAL          (NULL + isinstance)
+            1050 LOAD_FAST            (node_cfg)
+            1052 LOAD_ATTR            (NULL|self + get)
+            1072 LOAD_CONST           ("flow_timeouts")
+            1074 CALL                 (1 positional)
+            1082 LOAD_GLOBAL          (dict)
+            1092 CALL                 (2 positional)
+            1100 TO_BOOL
+            1108 POP_JUMP_IF_FALSE    (to 1146)
+            1112 LOAD_FAST            (node_cfg)
+            1114 LOAD_ATTR            (NULL|self + get)
+            1134 LOAD_CONST           ("flow_timeouts")
+            1136 CALL                 (1 positional)
+            1144 JUMP_FORWARD         (to 1148)
+         >> 1146 BUILD_MAP            0
+         >> 1148 LOAD_FAST            (self)
+            1150 STORE_ATTR           (flow_timeouts)
+
+1679:        1160 LOAD_GLOBAL          (NULL + _as_int)
+            1170 LOAD_FAST            (self)
+            1172 LOAD_ATTR            (config)
+            1192 LOAD_ATTR            (NULL|self + get)
+            1212 LOAD_CONST           ("codex_node_retries")
+            1214 CALL                 (1 positional)
+            1222 COPY                 1
+            1224 TO_BOOL
+            1232 POP_JUMP_IF_TRUE     (to 1270)
+            1236 POP_TOP
+            1238 LOAD_FAST            (node_cfg)
+            1240 LOAD_ATTR            (NULL|self + get)
+            1260 LOAD_CONST           ("retries")
+            1262 CALL                 (1 positional)
+         >> 1270 LOAD_CONST           (1)
+            1272 LOAD_CONST           (0)
+            1274 LOAD_CONST           (5)
+            1276 CALL                 (4 positional)
+            1284 LOAD_FAST            (self)
+            1286 STORE_ATTR           (retries)
+
+1680:        1296 BUILD_MAP            0
+            1298 LOAD_FAST            (self)
+            1300 STORE_ATTR           (_cache)
+            1310 RETURN_CONST         (None)
+
+
+# Method Name:       reset
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1682
+# Constants:
+#    0: None
+# Names:
+#    0: _clean
+#    1: _cache
+#    2: pop
+#    3: clear
+# Varnames:
+#	self, flow
+# Positional arguments:
+#	self, flow
+1682:           0 RESUME               0
+
+1683:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (flow)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (flow)
+
+1684:          24 LOAD_FAST            (flow)
+              26 TO_BOOL
+              34 POP_JUMP_IF_FALSE    (to 96)
+
+1685:          38 LOAD_FAST            (self)
+              40 LOAD_ATTR            (_cache)
+              60 LOAD_ATTR            (NULL|self + pop)
+              80 LOAD_FAST            (flow)
+              82 LOAD_CONST           (None)
+              84 CALL                 (2 positional)
+              92 POP_TOP
+              94 RETURN_CONST         (None)
+
+1687:     >>   96 LOAD_FAST            (self)
+              98 LOAD_ATTR            (_cache)
+             118 LOAD_ATTR            (NULL|self + clear)
+             138 CALL                 (0 positional)
+             146 POP_TOP
+             148 RETURN_CONST         (None)
+
+
+# Method Name:       token_for
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  9
+# Stack size:        14
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1689
+# Constants:
+#    0: None
+#    1: 0
+#    2: ('run_node_bridge',)
+#    3: 'persona'
+#    4: 'codex_persona'
+#    5: 'chatgpt-noauth'
+#    6: 5
+#    7: 300
+#    8: 1
+#    9: '  [SentinelRunner] 调用 Node 生成 token, flow='
+#   10: ', attempt='
+#   11: '/'
+#   12: ', timeout='
+#   13: 's'
+#   14: 'info'
+#   15: ('mode', 'device_id', 'proxy_label', 'proxy', 'fingerprint', 'flow', 'persona', 'script_path', 'context', 'timeout')
+#   16: 'ok'
+#   17: 'token_generated'
+#   18: 'error'
+#   19: 'task_stopped'
+#   20: '  [SentinelRunner] token 生成失败，重试 flow='
+#   21: ': '
+#   22: 'no token'
+#   23: 160
+#   24: 'warn'
+#   25: 1.0
+#   26: 'node_sentinel_failed:'
+#   27: '  [SentinelRunner] token 生成成功, flow='
+#   28: ', 包含 so='
+#   29: 'so_token'
+# Names:
+#    0: codex_node_bridge
+#    1: run_node_bridge
+#    2: _clean
+#    3: _cache
+#    4: get
+#    5: config
+#    6: _as_int
+#    7: flow_timeouts
+#    8: timeout
+#    9: max
+#   10: retries
+#   11: range
+#   12: _emit
+#   13: log_fn
+#   14: mode
+#   15: device_id
+#   16: proxy_label
+#   17: proxy
+#   18: fingerprint
+#   19: script_path
+#   20: lower
+#   21: CodexChainError
+#   22: str
+#   23: time
+#   24: sleep
+#   25: bool
+# Varnames:
+#	self, flow, context, run_node_bridge, persona, flow_timeout, attempts, result, attempt
+# Positional arguments:
+#	self, flow, context
+# Local variables:
+#    3: run_node_bridge
+#    4: persona
+#    5: flow_timeout
+#    6: attempts
+#    7: result
+#    8: attempt
+1689:           0 RESUME               0
+
+1690:           2 LOAD_CONST           (0)
+               4 LOAD_CONST           (('run_node_bridge',))
+               6 IMPORT_NAME          (codex_node_bridge)
+               8 IMPORT_FROM          (run_node_bridge)
+              10 STORE_FAST           (run_node_bridge)
+              12 POP_TOP
+
+1692:          14 LOAD_GLOBAL          (NULL + _clean)
+              24 LOAD_FAST            (flow)
+              26 CALL                 (1 positional)
+              34 STORE_FAST           (flow)
+
+1693:          36 LOAD_FAST_LOAD_FAST  (flow, self)
+              38 LOAD_ATTR            (_cache)
+              58 CONTAINS_OP          (in)
+              62 POP_JUMP_IF_FALSE    (to 96)
+
+1694:          66 LOAD_FAST            (self)
+              68 LOAD_ATTR            (_cache)
+              88 LOAD_FAST            (flow)
+              90 BINARY_SUBSCR
+              94 RETURN_VALUE
+
+1695:     >>   96 LOAD_GLOBAL          (NULL + _clean)
+             106 LOAD_FAST            (context)
+             108 COPY                 1
+             110 TO_BOOL
+             118 POP_JUMP_IF_TRUE     (to 126)
+             122 POP_TOP
+             124 BUILD_MAP            0
+         >>  126 LOAD_ATTR            (NULL|self + get)
+             146 LOAD_CONST           ("persona")
+             148 CALL                 (1 positional)
+             156 COPY                 1
+             158 TO_BOOL
+             166 POP_JUMP_IF_TRUE     (to 242)
+             170 POP_TOP
+             172 LOAD_FAST            (self)
+             174 LOAD_ATTR            (config)
+             194 LOAD_ATTR            (NULL|self + get)
+             214 LOAD_CONST           ("codex_persona")
+             216 CALL                 (1 positional)
+             224 COPY                 1
+             226 TO_BOOL
+             234 POP_JUMP_IF_TRUE     (to 242)
+             238 POP_TOP
+             240 LOAD_CONST           ("chatgpt-noauth")
+         >>  242 CALL                 (1 positional)
+             250 STORE_FAST           (persona)
+
+1696:         252 LOAD_GLOBAL          (NULL + _as_int)
+             262 LOAD_FAST            (self)
+             264 LOAD_ATTR            (flow_timeouts)
+             284 LOAD_ATTR            (NULL|self + get)
+             304 LOAD_FAST            (flow)
+             306 CALL                 (1 positional)
+             314 LOAD_FAST            (self)
+             316 LOAD_ATTR            (timeout)
+             336 LOAD_CONST           (5)
+             338 LOAD_CONST           (300)
+             340 CALL                 (4 positional)
+             348 STORE_FAST           (flow_timeout)
+
+1697:         350 LOAD_GLOBAL          (NULL + max)
+             360 LOAD_CONST           (1)
+             362 LOAD_FAST            (self)
+             364 LOAD_ATTR            (retries)
+             384 LOAD_CONST           (1)
+             386 BINARY_OP            (+)
+             390 CALL                 (2 positional)
+             398 STORE_FAST           (attempts)
+
+1698:         400 BUILD_MAP            0
+             402 STORE_FAST           (result)
+
+1699:         404 LOAD_GLOBAL          (NULL + range)
+             414 LOAD_CONST           (1)
+             416 LOAD_FAST            (attempts)
+             418 LOAD_CONST           (1)
+             420 BINARY_OP            (+)
+             424 CALL                 (2 positional)
+             432 GET_ITER
+             434 EXTENDED_ARG         (256)
+             436 FOR_ITER             (to 1060)
+             440 STORE_FAST           (attempt)
+
+1700:         442 LOAD_GLOBAL          (NULL + _emit)
+             452 LOAD_FAST            (self)
+             454 LOAD_ATTR            (log_fn)
+             474 LOAD_CONST           ("  [SentinelRunner] 调用 Node 生成 token, flow=")
+             476 LOAD_FAST            (flow)
+             478 FORMAT_SIMPLE
+             480 LOAD_CONST           (", attempt=")
+             482 LOAD_FAST            (attempt)
+             484 FORMAT_SIMPLE
+             486 LOAD_CONST           ("/")
+             488 LOAD_FAST            (attempts)
+             490 FORMAT_SIMPLE

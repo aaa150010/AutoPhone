@@ -349,7 +349,7 @@ class Sub2RuntimeTests(unittest.TestCase):
         self.assertEqual(captured.exception.code, "sub2_admin_auth_failed")
         self.assertFalse((self.root / "snapshots.json").exists())
 
-    def test_batch_limits_workers_keeps_unlinked_and_persists_only_after_successful_batch(self):
+    def test_batch_limits_workers_keeps_unlinked_and_persists_completed_rows(self):
         barrier = threading.Barrier(3)
         active = 0
         max_active = 0
@@ -390,7 +390,7 @@ class Sub2RuntimeTests(unittest.TestCase):
         self.assertEqual(queued["tested"], 18)
         self.assertEqual(queued["unlinked"], 6)
 
-    def test_queued_batch_does_not_persist_partial_snapshot_when_later_admin_auth_fails(self):
+    def test_queued_batch_keeps_completed_snapshot_when_later_admin_auth_fails(self):
         attempts = []
 
         def handler(call):
@@ -414,7 +414,8 @@ class Sub2RuntimeTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["code"], "sub2_admin_auth_failed")
         self.assertEqual(result["completed_batches"], 1)
-        self.assertFalse((self.root / "snapshots.json").exists())
+        self.assertEqual(client.stored_status("1").kind, "healthy")
+        self.assertTrue((self.root / "snapshots.json").exists())
 
     def test_batch_counts_rate_limited_separately_from_failures(self):
         def handler(call):
@@ -471,9 +472,10 @@ class Sub2RuntimeTests(unittest.TestCase):
         self.assertTrue(public["is_test_failure"])
         self.assertTrue(public["needs_rerun"])
 
-    def test_admin_failure_discards_other_completed_batch_results(self):
+    def test_admin_failure_does_not_discard_an_already_completed_row(self):
         test_attempts = {}
         lock = threading.Lock()
+        good_persisted = threading.Event()
 
         def handler(call):
             if call["url"].endswith("/auth/login"):
@@ -482,11 +484,20 @@ class Sub2RuntimeTests(unittest.TestCase):
             with lock:
                 test_attempts[account_id] = test_attempts.get(account_id, 0) + 1
             if account_id == "bad-admin":
+                self.assertTrue(good_persisted.wait(2))
                 return FakeResponse(401)
             return sse_response({"type": "test_complete", "success": True})
 
         transport = FakeTransport(handler)
         client = self._client(transport)
+        original_persist = client.persist_statuses
+
+        def persist_statuses(values):
+            original_persist(values)
+            if "good" in values:
+                good_persisted.set()
+
+        client.persist_statuses = persist_statuses
         result = Sub2BatchService(client).test_rows(
             [
                 {"row_id": "one", "line_no": 1, "sub2api_account_id": "good"},
@@ -496,7 +507,8 @@ class Sub2RuntimeTests(unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["code"], "sub2_admin_auth_failed")
-        self.assertFalse((self.root / "snapshots.json").exists())
+        self.assertEqual(client.stored_status("good").kind, "healthy")
+        self.assertTrue((self.root / "snapshots.json").exists())
 
     def test_runtime_uses_service_fingerprint_when_enriching_status(self):
         config = {

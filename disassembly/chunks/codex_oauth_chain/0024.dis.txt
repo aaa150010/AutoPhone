@@ -1,0 +1,800 @@
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1039
+# Constants:
+#    0: None
+# Names:
+#    0: completed
+#    1: append
+#    2: activation_id
+# Varnames:
+#	self, lease
+# Positional arguments:
+#	self, lease
+1039:           0 RESUME               0
+
+1040:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (completed)
+              24 LOAD_ATTR            (NULL|self + append)
+              44 LOAD_FAST            (lease)
+              46 LOAD_ATTR            (activation_id)
+              66 CALL                 (1 positional)
+              74 POP_TOP
+              76 RETURN_CONST         (None)
+
+
+# Method Name:       cancel
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1042
+# Constants:
+#    0: None
+# Names:
+#    0: cancelled
+#    1: append
+#    2: activation_id
+# Varnames:
+#	self, lease, reason
+# Positional arguments:
+#	self, lease, reason
+1042:           0 RESUME               0
+
+1043:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (cancelled)
+              24 LOAD_ATTR            (NULL|self + append)
+              44 LOAD_FAST            (lease)
+              46 LOAD_ATTR            (activation_id)
+              66 CALL                 (1 positional)
+              74 POP_TOP
+              76 RETURN_CONST         (None)
+
+
+# Method Name:       __init__
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 2
+# Number of locals:  4
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1049
+# Constants:
+#    0: None
+#    1: 5
+#    2: 180
+# Names:
+#    0: Path
+#    1: path
+#    2: max
+#    3: int
+#    4: timeout
+#    5: log_fn
+# Varnames:
+#	self, path, timeout, log_fn
+# Positional arguments:
+#	self, path
+# Local variables:
+#    2: timeout
+#    3: log_fn
+1049:           0 RESUME               0
+
+1050:           2 LOAD_GLOBAL          (NULL + Path)
+              12 LOAD_FAST            (path)
+              14 CALL                 (1 positional)
+              22 LOAD_FAST            (self)
+              24 STORE_ATTR           (path)
+
+1051:          34 LOAD_GLOBAL          (NULL + max)
+              44 LOAD_CONST           (5)
+              46 LOAD_GLOBAL          (NULL + int)
+              56 LOAD_FAST            (timeout)
+              58 COPY                 1
+              60 TO_BOOL
+              68 POP_JUMP_IF_TRUE     (to 76)
+              72 POP_TOP
+              74 LOAD_CONST           (180)
+         >>   76 CALL                 (1 positional)
+              84 CALL                 (2 positional)
+              92 LOAD_FAST            (self)
+              94 STORE_ATTR           (timeout)
+
+1052:         104 LOAD_FAST_LOAD_FAST  (log_fn, self)
+             106 STORE_ATTR           (log_fn)
+             116 RETURN_CONST         (None)
+
+
+# Method Name:       wait_code
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1054
+# Constants:
+#    0: None
+#    1: True
+#    2: ('parents', 'exist_ok')
+#    3: ''
+#    4: 'utf-8'
+#    5: ('encoding',)
+#    6: '  [Codex] 等待邮箱 OTP 文件：'
+#    7: 'info'
+#    8: '\\b(\\d{6})\\b'
+#    9: 1
+#   10: 'email_otp_timeout'
+# Names:
+#    0: path
+#    1: parent
+#    2: mkdir
+#    3: write_text
+#    4: Exception
+#    5: _emit
+#    6: log_fn
+#    7: time
+#    8: timeout
+#    9: read_text
+#   10: strip
+#   11: re
+#   12: search
+#   13: group
+#   14: sleep
+#   15: CodexChainError
+# Varnames:
+#	self, email, deadline, text, match
+# Positional arguments:
+#	self, email
+# Local variables:
+#    2: deadline
+#    3: text
+#    4: match
+1054:           0 RESUME               0
+
+1055:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (path)
+              24 LOAD_ATTR            (parent)
+              44 LOAD_ATTR            (NULL|self + mkdir)
+              64 LOAD_CONST           (True)
+              66 LOAD_CONST           (True)
+              68 LOAD_CONST           (('parents', 'exist_ok'))
+              70 CALL_KW              2
+              72 POP_TOP
+
+1056:          74 NOP
+
+1057:          76 LOAD_FAST            (self)
+              78 LOAD_ATTR            (path)
+              98 LOAD_ATTR            (NULL|self + write_text)
+             118 LOAD_CONST           ("")
+             120 LOAD_CONST           ("utf-8")
+             122 LOAD_CONST           (('encoding',))
+             124 CALL_KW              2
+             126 POP_TOP
+
+1060:         128 LOAD_GLOBAL          (NULL + _emit)
+             138 LOAD_FAST            (self)
+             140 LOAD_ATTR            (log_fn)
+             160 LOAD_CONST           ("  [Codex] 等待邮箱 OTP 文件：")
+             162 LOAD_FAST            (self)
+             164 LOAD_ATTR            (path)
+             184 FORMAT_SIMPLE
+             186 BUILD_STRING         2
+             188 LOAD_CONST           ("info")
+             190 CALL                 (3 positional)
+             198 POP_TOP
+
+1061:         200 LOAD_GLOBAL          (time)
+             210 LOAD_ATTR            (time)
+             230 PUSH_NULL
+             232 CALL                 (0 positional)
+             240 LOAD_FAST            (self)
+             242 LOAD_ATTR            (timeout)
+             262 BINARY_OP            (+)
+             266 STORE_FAST           (deadline)
+
+1062:         268 LOAD_GLOBAL          (time)
+             278 LOAD_ATTR            (time)
+             298 PUSH_NULL
+             300 CALL                 (0 positional)
+             308 LOAD_FAST            (deadline)
+             310 COMPARE_OP           (<)
+             314 POP_JUMP_IF_FALSE    (to 590)
+
+1063:         318 NOP
+
+1064:         320 LOAD_FAST            (self)
+             322 LOAD_ATTR            (path)
+             342 LOAD_ATTR            (NULL|self + read_text)
+             362 LOAD_CONST           ("utf-8")
+             364 LOAD_CONST           (('encoding',))
+             366 CALL_KW              1
+             368 LOAD_ATTR            (NULL|self + strip)
+             388 CALL                 (0 positional)
+             396 STORE_FAST           (text)
+
+1067:         398 LOAD_GLOBAL          (re)
+             408 LOAD_ATTR            (search)
+             428 PUSH_NULL
+             430 LOAD_CONST           ("\\b(\\d{6})\\b")
+             432 LOAD_FAST            (text)
+             434 CALL                 (2 positional)
+             442 STORE_FAST           (match)
+
+1068:         444 LOAD_FAST            (match)
+             446 TO_BOOL
+             454 POP_JUMP_IF_FALSE    (to 492)
+
+1069:         458 LOAD_FAST            (match)
+             460 LOAD_ATTR            (NULL|self + group)
+             480 LOAD_CONST           (1)
+             482 CALL                 (1 positional)
+             490 RETURN_VALUE
+
+1070:     >>  492 LOAD_GLOBAL          (time)
+             502 LOAD_ATTR            (sleep)
+             522 PUSH_NULL
+             524 LOAD_CONST           (1)
+             526 CALL                 (1 positional)
+             534 POP_TOP
+
+1062:         536 LOAD_GLOBAL          (time)
+             546 LOAD_ATTR            (time)
+             566 PUSH_NULL
+             568 CALL                 (0 positional)
+             576 LOAD_FAST            (deadline)
+             578 COMPARE_OP           (<)
+             582 POP_JUMP_IF_FALSE    (to 590)
+             586 JUMP_BACKWARD        (to 318)
+
+1071:     >>  590 LOAD_GLOBAL          (NULL + CodexChainError)
+             600 LOAD_CONST           ("email_otp_timeout")
+             602 CALL                 (1 positional)
+             610 RAISE_VARARGS        (exception instance)
+         >>  612 PUSH_EXC_INFO
+
+1058:         614 LOAD_GLOBAL          (Exception)
+             624 CHECK_EXC_MATCH
+             626 POP_JUMP_IF_FALSE    (to 636)
+             630 POP_TOP
+
+1059:         632 POP_EXCEPT
+             634 JUMP_BACKWARD_NO_INTERRUPT (to 128)
+
+1058:     >>  636 RERAISE              0
+         >>  638 COPY                 3
+             640 POP_EXCEPT
+             642 RERAISE              1
+         >>  644 PUSH_EXC_INFO
+
+1065:         646 LOAD_GLOBAL          (Exception)
+             656 CHECK_EXC_MATCH
+             658 POP_JUMP_IF_FALSE    (to 672)
+             662 POP_TOP
+
+1066:         664 LOAD_CONST           ("")
+             666 STORE_FAST           (text)
+             668 POP_EXCEPT
+             670 JUMP_BACKWARD_NO_INTERRUPT (to 398)
+
+1065:     >>  672 RERAISE              0
+         >>  674 COPY                 3
+             676 POP_EXCEPT
+             678 RERAISE              1
+
+ExceptionTable:
+  76 to 126 -> 612 [0]
+  320 to 396 -> 644 [0]
+  612 to 630 -> 638 [1] lasti
+  636 to 636 -> 638 [1] lasti
+  644 to 666 -> 674 [1] lasti
+  672 to 672 -> 674 [1] lasti
+
+# Method Name:       __init__
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 2
+# Number of locals:  5
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1077
+# Constants:
+#    0: None
+#    1: 5
+#    2: 180
+# Names:
+#    0: _clean
+#    1: phone
+#    2: Path
+#    3: path
+#    4: max
+#    5: int
+#    6: timeout
+#    7: log_fn
+#    8: completed
+#    9: cancelled
+# Varnames:
+#	self, phone, path, timeout, log_fn
+# Positional arguments:
+#	self, phone, path
+# Local variables:
+#    3: timeout
+#    4: log_fn
+1077:           0 RESUME               0
+
+1078:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (phone)
+              14 CALL                 (1 positional)
+              22 LOAD_FAST            (self)
+              24 STORE_ATTR           (phone)
+
+1079:          34 LOAD_GLOBAL          (NULL + Path)
+              44 LOAD_FAST            (path)
+              46 CALL                 (1 positional)
+              54 LOAD_FAST            (self)
+              56 STORE_ATTR           (path)
+
+1080:          66 LOAD_GLOBAL          (NULL + max)
+              76 LOAD_CONST           (5)
+              78 LOAD_GLOBAL          (NULL + int)
+              88 LOAD_FAST            (timeout)
+              90 COPY                 1
+              92 TO_BOOL
+             100 POP_JUMP_IF_TRUE     (to 108)
+             104 POP_TOP
+             106 LOAD_CONST           (180)
+         >>  108 CALL                 (1 positional)
+             116 CALL                 (2 positional)
+             124 LOAD_FAST            (self)
+             126 STORE_ATTR           (timeout)
+
+1081:         136 LOAD_FAST_LOAD_FAST  (log_fn, self)
+             138 STORE_ATTR           (log_fn)
+
+1082:         148 BUILD_LIST           0
+             150 LOAD_FAST            (self)
+             152 STORE_ATTR           (completed)
+
+1083:         162 BUILD_LIST           0
+             164 LOAD_FAST            (self)
+             166 STORE_ATTR           (cancelled)
+             176 RETURN_CONST         (None)
+
+
+# Method Name:       get_number
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x0100000b (0x1000000 | VARKEYWORDS | NEWLOCALS | OPTIMIZED)
+# First Line:        1085
+# Constants:
+#    0: None
+#    1: 'manual_phone_missing'
+#    2: 'file-phone'
+#    3: 'file'
+# Names:
+#    0: phone
+#    1: CodexChainError
+#    2: PhoneLease
+# Varnames:
+#	self, _
+# Positional arguments:
+#	self
+# Local variables:
+#    1: _
+1085:           0 RESUME               0
+
+1086:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (phone)
+              24 TO_BOOL
+              32 POP_JUMP_IF_TRUE     (to 58)
+
+1087:          36 LOAD_GLOBAL          (NULL + CodexChainError)
+              46 LOAD_CONST           ("manual_phone_missing")
+              48 CALL                 (1 positional)
+              56 RAISE_VARARGS        (exception instance)
+
+1088:     >>   58 LOAD_GLOBAL          (NULL + PhoneLease)
+              68 LOAD_CONST           ("file-phone")
+              70 LOAD_FAST            (self)
+              72 LOAD_ATTR            (phone)
+              92 LOAD_CONST           ("file")
+              94 CALL                 (3 positional)
+             102 RETURN_VALUE
+
+
+# Method Name:       mark_ready
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1090
+# Constants:
+#    0: None
+#    1: True
+#    2: ('parents', 'exist_ok')
+#    3: ''
+#    4: 'utf-8'
+#    5: ('encoding',)
+#    6: '  [Codex] 等待手机 OTP 文件：'
+#    7: 'info'
+# Names:
+#    0: path
+#    1: parent
+#    2: mkdir
+#    3: write_text
+#    4: Exception
+#    5: _emit
+#    6: log_fn
+# Varnames:
+#	self, lease
+# Positional arguments:
+#	self, lease
+1090:           0 RESUME               0
+
+1091:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (path)
+              24 LOAD_ATTR            (parent)
+              44 LOAD_ATTR            (NULL|self + mkdir)
+              64 LOAD_CONST           (True)
+              66 LOAD_CONST           (True)
+              68 LOAD_CONST           (('parents', 'exist_ok'))
+              70 CALL_KW              2
+              72 POP_TOP
+
+1092:          74 NOP
+
+1093:          76 LOAD_FAST            (self)
+              78 LOAD_ATTR            (path)
+              98 LOAD_ATTR            (NULL|self + write_text)
+             118 LOAD_CONST           ("")
+             120 LOAD_CONST           ("utf-8")
+             122 LOAD_CONST           (('encoding',))
+             124 CALL_KW              2
+             126 POP_TOP
+
+1096:         128 LOAD_GLOBAL          (NULL + _emit)
+             138 LOAD_FAST            (self)
+             140 LOAD_ATTR            (log_fn)
+             160 LOAD_CONST           ("  [Codex] 等待手机 OTP 文件：")
+             162 LOAD_FAST            (self)
+             164 LOAD_ATTR            (path)
+             184 FORMAT_SIMPLE
+             186 BUILD_STRING         2
+             188 LOAD_CONST           ("info")
+             190 CALL                 (3 positional)
+             198 POP_TOP
+             200 RETURN_CONST         (None)
+         >>  202 PUSH_EXC_INFO
+
+1094:         204 LOAD_GLOBAL          (Exception)
+             214 CHECK_EXC_MATCH
+             216 POP_JUMP_IF_FALSE    (to 226)
+             220 POP_TOP
+
+1095:         222 POP_EXCEPT
+             224 JUMP_BACKWARD_NO_INTERRUPT (to 128)
+
+1094:     >>  226 RERAISE              0
+         >>  228 COPY                 3
+             230 POP_EXCEPT
+             232 RERAISE              1
+
+ExceptionTable:
+  76 to 126 -> 202 [0]
+  202 to 220 -> 228 [1] lasti
+  226 to 226 -> 228 [1] lasti
+
+# Method Name:       wait_code
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1098
+# Constants:
+#    0: None
+#    1: 5
+#    2: 'utf-8'
+#    3: ('encoding',)
+#    4: ''
+#    5: '\\b(\\d{6})\\b'
+#    6: 1
+#    7: 'phone_otp_empty'
+# Names:
+#    0: time
+#    1: max
+#    2: int
+#    3: timeout
+#    4: path
+#    5: read_text
+#    6: strip
+#    7: Exception
+#    8: re
+#    9: search
+#   10: group
+#   11: sleep
+#   12: CodexChainError
+# Varnames:
+#	self, lease, timeout, deadline, text, match
+# Positional arguments:
+#	self, lease, timeout
+# Local variables:
+#    3: deadline
+#    4: text
+#    5: match
+1098:           0 RESUME               0
+
+1099:           2 LOAD_GLOBAL          (time)
+              12 LOAD_ATTR            (time)
+              32 PUSH_NULL
+              34 CALL                 (0 positional)
+              42 LOAD_GLOBAL          (NULL + max)
+              52 LOAD_CONST           (5)
+              54 LOAD_GLOBAL          (NULL + int)
+              64 LOAD_FAST            (timeout)
+              66 COPY                 1
+              68 TO_BOOL
+              76 POP_JUMP_IF_TRUE     (to 104)
+              80 POP_TOP
+              82 LOAD_FAST            (self)
+              84 LOAD_ATTR            (timeout)
+         >>  104 CALL                 (1 positional)
+             112 CALL                 (2 positional)
+             120 BINARY_OP            (+)
+             124 STORE_FAST           (deadline)
+
+1100:         126 LOAD_GLOBAL          (time)
+             136 LOAD_ATTR            (time)
+             156 PUSH_NULL
+             158 CALL                 (0 positional)
+             166 LOAD_FAST            (deadline)
+             168 COMPARE_OP           (<)
+             172 POP_JUMP_IF_FALSE    (to 448)
+
+1101:         176 NOP
+
+1102:         178 LOAD_FAST            (self)
+             180 LOAD_ATTR            (path)
+             200 LOAD_ATTR            (NULL|self + read_text)
+             220 LOAD_CONST           ("utf-8")
+             222 LOAD_CONST           (('encoding',))
+             224 CALL_KW              1
+             226 LOAD_ATTR            (NULL|self + strip)
+             246 CALL                 (0 positional)
+             254 STORE_FAST           (text)
+
+1105:         256 LOAD_GLOBAL          (re)
+             266 LOAD_ATTR            (search)
+             286 PUSH_NULL
+             288 LOAD_CONST           ("\\b(\\d{6})\\b")
+             290 LOAD_FAST            (text)
+             292 CALL                 (2 positional)
+             300 STORE_FAST           (match)
+
+1106:         302 LOAD_FAST            (match)
+             304 TO_BOOL
+             312 POP_JUMP_IF_FALSE    (to 350)
+
+1107:         316 LOAD_FAST            (match)
+             318 LOAD_ATTR            (NULL|self + group)
+             338 LOAD_CONST           (1)
+             340 CALL                 (1 positional)
+             348 RETURN_VALUE
+
+1108:     >>  350 LOAD_GLOBAL          (time)
+             360 LOAD_ATTR            (sleep)
+             380 PUSH_NULL
+             382 LOAD_CONST           (1)
+             384 CALL                 (1 positional)
+             392 POP_TOP
+
+1100:         394 LOAD_GLOBAL          (time)
+             404 LOAD_ATTR            (time)
+             424 PUSH_NULL
+             426 CALL                 (0 positional)
+             434 LOAD_FAST            (deadline)
+             436 COMPARE_OP           (<)
+             440 POP_JUMP_IF_FALSE    (to 448)
+             444 JUMP_BACKWARD        (to 176)
+
+1109:     >>  448 LOAD_GLOBAL          (NULL + CodexChainError)
+             458 LOAD_CONST           ("phone_otp_empty")
+             460 CALL                 (1 positional)
+             468 RAISE_VARARGS        (exception instance)
+         >>  470 PUSH_EXC_INFO
+
+1103:         472 LOAD_GLOBAL          (Exception)
+             482 CHECK_EXC_MATCH
+             484 POP_JUMP_IF_FALSE    (to 498)
+             488 POP_TOP
+
+1104:         490 LOAD_CONST           ("")
+             492 STORE_FAST           (text)
+             494 POP_EXCEPT
+             496 JUMP_BACKWARD_NO_INTERRUPT (to 256)
+
+1103:     >>  498 RERAISE              0
+         >>  500 COPY                 3
+             502 POP_EXCEPT
+             504 RERAISE              1
+
+ExceptionTable:
+  178 to 254 -> 470 [0]
+  470 to 492 -> 500 [1] lasti
+  498 to 498 -> 500 [1] lasti
+
+# Method Name:       complete
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1111
+# Constants:
+#    0: None
+# Names:
+#    0: completed
+#    1: append
+#    2: activation_id
+# Varnames:
+#	self, lease
+# Positional arguments:
+#	self, lease
+1111:           0 RESUME               0
+
+1112:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (completed)
+              24 LOAD_ATTR            (NULL|self + append)
+              44 LOAD_FAST            (lease)
+              46 LOAD_ATTR            (activation_id)
+              66 CALL                 (1 positional)
+              74 POP_TOP
+              76 RETURN_CONST         (None)
+
+
+# Method Name:       cancel
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1114
+# Constants:
+#    0: None
+# Names:
+#    0: cancelled
+#    1: append
+#    2: activation_id
+# Varnames:
+#	self, lease, reason
+# Positional arguments:
+#	self, lease, reason
+1114:           0 RESUME               0
+
+1115:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (cancelled)
+              24 LOAD_ATTR            (NULL|self + append)
+              44 LOAD_FAST            (lease)
+              46 LOAD_ATTR            (activation_id)
+              66 CALL                 (1 positional)
+              74 POP_TOP
+              76 RETURN_CONST         (None)
+
+
+# Method Name:       __init__
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 2
+# Number of locals:  4
+# Stack size:        2
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1121
+# Constants:
+#    0: None
+# Names:
+#    0: config
+#    1: upload_proxy
+#    2: log_fn
+# Varnames:
+#	self, config, upload_proxy, log_fn
+# Positional arguments:
+#	self, config
+# Local variables:
+#    2: upload_proxy
+#    3: log_fn
+1121:           0 RESUME               0
+
+1122:           2 LOAD_FAST            (config)
+               4 COPY                 1
+               6 TO_BOOL
+              14 POP_JUMP_IF_TRUE     (to 22)
+              18 POP_TOP
+              20 BUILD_MAP            0
+         >>   22 LOAD_FAST            (self)
+              24 STORE_ATTR           (config)
+
+1123:          34 LOAD_FAST_LOAD_FAST  (upload_proxy, self)
+              36 STORE_ATTR           (upload_proxy)
+
+1124:          46 LOAD_FAST_LOAD_FAST  (log_fn, self)
+              48 STORE_ATTR           (log_fn)
+              58 RETURN_CONST         (None)
+
+
+# Method Name:       upload
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 2
+# Number of locals:  59
+# Stack size:        14
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1126
+# Constants:
+#    0: None
+#    1: 'sub2api'
+#    2: 'url'
+#    3: '/'
+#    4: 'email'
+#    5: 'pwd'
+#    6: 'password'
+#    7: 'group'
+#    8: 'CHATGPT'
+#    9: 'proxy_id'
+#   10: 0
+#   11: 1000000
+#   12: False
+#   13: 'SUB2API config missing'
+#   14: ('ok', 'error')
+#   15: 'access_token'
+#   16: 'refresh_token'
+#   17: 'id_token'
+#   18: 'token bundle incomplete for SUB2 upload'
+#   19: ('requests_kwargs',)
+#   20: ('Sub2GroupError', 'assert_sub2_account_group', 'resolve_sub2_group_id')
+#   21: ('get_admin_token',)
+#   22: ('extract_chatgpt_auth_fields', 'fetch_sub2_account_detail', 'sub2_extra_from_item')
+#   23: 'SUB2 helper import failed: '
+#   24: ''
+#   25: 'expires_at'
+#   26: ('id_token', 'access_token', 'refresh_token', 'expires_at', 'email')
+#   27: ('exchange_data',)
+#   28: 'chatgpt_account_id'
+#   29: '  [SUB2] 授权结果暂未解析到 chatgpt_account_id，继续上传并在远端回填复核'
+#   30: 'warn'
+#   31: ('chatgpt_account_id', 'account_id', 'chatgpt_account_user_id', 'chatgpt_user_id', 'chatgpt_auth_user_id', 'chatgpt_plan_type')
+#   32: 'account_id'
+#   33: ('email', 'access_token', 'refresh_token', 'id_token')
+#   34: 'SUB2 upload missing: '
+#   35: ', '
+#   36: 30
+#   37: <Code311 code object <lambda> at 0x105ef91f0, file codex_oauth_chain.py>, line 1196
+#   38: ('timeout', 'log_fn', 'proxy')
+#   39: 3
+#   40: 15
+#   41: <Code311 code object <lambda> at 0x105ef9220, file codex_oauth_chain.py>, line 1205
+#   42: ('attempts', 'timeout', 'log_fn', 'proxy')
+#   43: 'SUB2 prepare failed: '

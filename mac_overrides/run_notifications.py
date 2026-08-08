@@ -47,6 +47,20 @@ _EVENT_LABELS = {
     EVENT_MANUAL_STOP: "手动停止",
 }
 _ADDRESS_PATTERN = re.compile(r"^[^@\s<>]+@[^@\s<>]+$")
+_SAFE_BATCH_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
+_SAFE_TASK_ID_PATTERN = re.compile(r"^T\d{1,6}(?:-[A-Za-z0-9]{1,24})?$")
+_TERMINATION_REASON_LABELS = {
+    "unfinished_tasks": "批次监控已退出，但仍有任务未终态",
+    "watch_returned_with_unfinished_tasks": "批次监控正常返回，但仍有任务未终态",
+    "watch_failed": "批次监控发生异常并提前退出",
+    "scheduler_returned_with_unfinished_tasks": "任务调度器已退出，但仍有任务未终态",
+    "scheduler_watch_failed": "任务调度监控发生异常并提前退出",
+    "process_shutdown": "运行进程退出，批次未能正常收尾",
+    "service_replaced": "新批次启动前，上一批次仍未完成",
+    "manual_stop": "用户主动停止了本批次",
+    "unexpected_stop": "批次未按预期完成",
+}
+MAX_UNFINISHED_TASK_IDS = 200
 
 
 class NotificationConfigError(ValueError):
@@ -68,6 +82,36 @@ def _as_bool(value: Any, default: bool = False) -> bool:
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _safe_batch_id(value: Any) -> str:
+    candidate = _text(value)
+    return candidate if _SAFE_BATCH_ID_PATTERN.fullmatch(candidate) else ""
+
+
+def _safe_task_ids(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        candidates = [value]
+    elif isinstance(value, (list, tuple, set, frozenset)):
+        candidates = list(value)
+    else:
+        candidates = []
+    result: list[str] = []
+    seen: set[str] = set()
+    for raw in candidates:
+        candidate = _text(raw)
+        if not _SAFE_TASK_ID_PATTERN.fullmatch(candidate) or candidate in seen:
+            continue
+        seen.add(candidate)
+        result.append(candidate)
+        if len(result) >= MAX_UNFINISHED_TASK_IDS:
+            break
+    return tuple(result)
+
+
+def _safe_termination_reason(value: Any) -> str:
+    candidate = _text(value).lower()
+    return candidate if candidate in _TERMINATION_REASON_LABELS else ""
 
 
 def _first(config: Mapping[str, Any], *names: str) -> Any:
@@ -279,10 +323,31 @@ class RunAggregate:
 class RunNotification:
     event: str
     aggregate: RunAggregate
+    batch_id: str = ""
+    unfinished_task_ids: tuple[str, ...] = ()
+    termination_reason: str = ""
 
     def __post_init__(self) -> None:
         if self.event not in NOTIFICATION_EVENTS:
             raise ValueError("unsupported notification event")
+        object.__setattr__(self, "batch_id", _safe_batch_id(self.batch_id))
+        object.__setattr__(
+            self,
+            "unfinished_task_ids",
+            _safe_task_ids(self.unfinished_task_ids),
+        )
+        object.__setattr__(
+            self,
+            "termination_reason",
+            _safe_termination_reason(self.termination_reason),
+        )
+
+    @property
+    def unfinished_count(self) -> int:
+        return max(
+            self.aggregate.active + self.aggregate.pending,
+            len(self.unfinished_task_ids),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -310,13 +375,23 @@ def _smtp_settings(config: Any) -> _SmtpSettings:
 
 
 def _build_message(settings: _SmtpSettings, notification: RunNotification) -> EmailMessage:
-    label = _EVENT_LABELS[notification.event]
+    unfinished = notification.unfinished_count
+    is_unfinished_stop = (
+        notification.event == EVENT_UNEXPECTED_STOP and unfinished > 0
+    )
+    label = "运行异常（仍有任务未终态）" if is_unfinished_stop else _EVENT_LABELS[notification.event]
     aggregate = notification.aggregate
     message = EmailMessage()
-    message["Subject"] = (
-        f"[自动接码机] {label}｜成功 {aggregate.succeeded} / "
-        f"失败 {aggregate.failed} / 停止 {aggregate.stopped}"
-    )
+    subject_parts = [f"[自动接码机] {label}"]
+    if notification.batch_id:
+        subject_parts.append(f"批次 {notification.batch_id}")
+    if unfinished:
+        subject_parts.append(f"未终态 {unfinished}")
+    else:
+        subject_parts.append(
+            f"成功 {aggregate.succeeded} / 失败 {aggregate.failed} / 停止 {aggregate.stopped}"
+        )
+    message["Subject"] = "｜".join(subject_parts)
     message["From"] = settings.sender
     message["To"] = ", ".join(settings.recipients)
     lines = [
@@ -328,6 +403,18 @@ def _build_message(settings: _SmtpSettings, notification: RunNotification) -> Em
         f"运行中：{aggregate.active}",
         f"等待中：{aggregate.pending}",
     ]
+    if notification.batch_id:
+        lines.insert(1, f"共享批次：{notification.batch_id}")
+    if unfinished:
+        lines.append(f"未终态任务数：{unfinished}")
+    if notification.unfinished_task_ids:
+        lines.append(f"未终态任务：{'、'.join(notification.unfinished_task_ids)}")
+    if notification.termination_reason:
+        lines.append(
+            f"结束原因：{_TERMINATION_REASON_LABELS[notification.termination_reason]}"
+        )
+    if is_unfinished_stop:
+        lines.append("状态说明：这不是批次最终结果；任务转为终态后仍会发送最终汇总。")
     if aggregate.duration_seconds:
         minutes, seconds = divmod(aggregate.duration_seconds, 60)
         lines.append(f"运行耗时：{minutes} 分 {seconds} 秒")
@@ -345,9 +432,19 @@ def build_notification_message(
     config: Any,
     event: str,
     aggregate: Any = None,
+    *,
+    batch_id: Any = "",
+    unfinished_task_ids: Any = (),
+    termination_reason: Any = "",
 ) -> EmailMessage:
-    """Build a message whose dynamic content is limited to aggregate counts."""
-    notification = RunNotification(event, RunAggregate.from_value(aggregate))
+    """Build a message from aggregate counts and strictly validated run metadata."""
+    notification = RunNotification(
+        event,
+        RunAggregate.from_value(aggregate),
+        batch_id=_safe_batch_id(batch_id),
+        unfinished_task_ids=_safe_task_ids(unfinished_task_ids),
+        termination_reason=_safe_termination_reason(termination_reason),
+    )
     return _build_message(_smtp_settings(config), notification)
 
 
@@ -558,6 +655,7 @@ class NotificationQueue:
 class _RunState:
     aggregate: RunAggregate
     last_progress_at: float
+    batch_id: str = ""
     manual_stop: bool = False
     finalized: bool = False
     triggered_events: set[str] = field(default_factory=set)
@@ -604,6 +702,9 @@ class RunNotificationCoordinator:
         self,
         state: _RunState,
         event: str,
+        *,
+        unfinished_task_ids: Any = (),
+        termination_reason: Any = "",
     ) -> RunNotification | None:
         if event in state.triggered_events:
             return None
@@ -611,7 +712,13 @@ class RunNotificationCoordinator:
         self._triggered_counts[event] += 1
         if not self._config["enabled"] or not self._config["events"][event]:
             return None
-        return RunNotification(event, state.aggregate)
+        return RunNotification(
+            event,
+            state.aggregate,
+            batch_id=state.batch_id,
+            unfinished_task_ids=_safe_task_ids(unfinished_task_ids),
+            termination_reason=_safe_termination_reason(termination_reason),
+        )
 
     def _submit(self, notifications: list[RunNotification]) -> tuple[str, ...]:
         for notification in notifications:
@@ -626,6 +733,7 @@ class RunNotificationCoordinator:
         run_id: Any,
         aggregate: Any = None,
         *,
+        batch_id: Any = "",
         now: float | None = None,
     ) -> bool:
         key = self._run_key(run_id)
@@ -634,7 +742,11 @@ class RunNotificationCoordinator:
         with self._lock:
             if key in self._runs:
                 return False
-            self._runs[key] = _RunState(summary, timestamp)
+            self._runs[key] = _RunState(
+                summary,
+                timestamp,
+                batch_id=_safe_batch_id(batch_id),
+            )
             return True
 
     def observe_run(
@@ -714,23 +826,44 @@ class RunNotificationCoordinator:
         aggregate: Any,
         *,
         completed: bool = True,
+        batch_id: Any = "",
+        unfinished_task_ids: Any = (),
+        termination_reason: Any = "",
     ) -> tuple[str, ...]:
         key = self._run_key(run_id)
         summary = RunAggregate.from_value(aggregate)
+        safe_batch_id = _safe_batch_id(batch_id)
+        safe_task_ids = _safe_task_ids(unfinished_task_ids)
+        unfinished = summary.has_unfinished_work or bool(safe_task_ids)
         notifications: list[RunNotification] = []
         with self._lock:
             state = self._runs.get(key)
             if state is None or state.finalized:
                 return ()
             state.aggregate = summary
-            state.finalized = True
+            if safe_batch_id:
+                state.batch_id = safe_batch_id
             if state.manual_stop:
                 event = EVENT_MANUAL_STOP
-            elif completed:
+                reason = _safe_termination_reason(termination_reason) or "manual_stop"
+            elif completed and not unfinished:
                 event = EVENT_BATCH_COMPLETED
+                reason = ""
             else:
                 event = EVENT_UNEXPECTED_STOP
-            notification = self._reserve_locked(state, event)
+                reason = (
+                    _safe_termination_reason(termination_reason)
+                    or ("unfinished_tasks" if unfinished else "unexpected_stop")
+                )
+            # A watcher can return while worker tasks are still alive.  That is
+            # an actionable alert, but it is not the batch's final state.
+            state.finalized = not unfinished
+            notification = self._reserve_locked(
+                state,
+                event,
+                unfinished_task_ids=safe_task_ids,
+                termination_reason=reason,
+            )
             if notification is not None:
                 notifications.append(notification)
         return self._submit(notifications)

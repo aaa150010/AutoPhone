@@ -1,0 +1,800 @@
+            1284 BEFORE_WITH
+            1286 POP_TOP
+
+2031:        1288 LOAD_FAST            (pool_path)
+            1290 LOAD_ATTR            (NULL|self + read_text)
+            1310 LOAD_CONST           ("utf-8-sig")
+            1312 LOAD_CONST           (('encoding',))
+            1314 CALL_KW              1
+            1316 LOAD_ATTR            (NULL|self + splitlines)
+            1336 CALL                 (0 positional)
+            1344 STORE_FAST           (source_lines)
+
+2032:        1346 LOAD_FAST            (success_path)
+            1348 LOAD_ATTR            (NULL|self + exists)
+            1368 CALL                 (0 positional)
+            1376 TO_BOOL
+            1384 POP_JUMP_IF_FALSE    (to 1446)
+            1388 LOAD_FAST            (success_path)
+            1390 LOAD_ATTR            (NULL|self + read_text)
+            1410 LOAD_CONST           ("utf-8-sig")
+            1412 LOAD_CONST           (('encoding',))
+            1414 CALL_KW              1
+            1416 LOAD_ATTR            (NULL|self + splitlines)
+            1436 CALL                 (0 positional)
+            1444 JUMP_FORWARD         (to 1448)
+         >> 1446 BUILD_LIST           0
+         >> 1448 STORE_FAST           (success_lines)
+
+2033:        1450 LOAD_FAST            (success_lines)
+            1452 GET_ITER
+            1454 LOAD_FAST_AND_CLEAR  (line)
+            1456 SWAP                 (TOS <-> TOS1)
+            1458 BUILD_SET            0
+            1460 SWAP                 (TOS <-> TOS1)
+            1462 GET_ITER
+            1464 FOR_ITER             (to 1502)
+            1468 STORE_FAST           (line)
+            1470 LOAD_GLOBAL          (NULL + _localpool_line_key)
+            1480 LOAD_FAST            (line)
+            1482 CALL                 (1 positional)
+            1490 LOAD_CONST           (0)
+            1492 BINARY_SUBSCR
+            1496 SET_ADD              2
+            1498 JUMP_BACKWARD        (to 1464)
+         >> 1502 END_FOR
+            1504 POP_TOP
+            1506 STORE_FAST           (success_keys)
+            1508 STORE_FAST           (line)
+
+2034:        1510 LOAD_FAST            (success_lines)
+            1512 GET_ITER
+            1514 LOAD_FAST_AND_CLEAR  (line)
+            1516 SWAP                 (TOS <-> TOS1)
+            1518 BUILD_SET            0
+            1520 SWAP                 (TOS <-> TOS1)
+            1522 GET_ITER
+            1524 FOR_ITER             (to 1610)
+            1528 STORE_FAST_LOAD_FAST (line, line)
+            1530 LOAD_ATTR            (NULL|self + strip)
+            1550 CALL                 (0 positional)
+            1558 TO_BOOL
+            1566 POP_JUMP_IF_TRUE     (to 1574)
+            1570 JUMP_BACKWARD        (to 1524)
+         >> 1574 LOAD_FAST            (line)
+            1576 LOAD_ATTR            (NULL|self + strip)
+            1596 CALL                 (0 positional)
+            1604 SET_ADD              2
+            1606 JUMP_BACKWARD        (to 1524)
+         >> 1610 END_FOR
+            1612 POP_TOP
+            1614 STORE_FAST           (success_norm)
+            1616 STORE_FAST           (line)
+
+2036:        1618 BUILD_LIST           0
+            1620 STORE_FAST           (kept)
+
+2037:        1622 LOAD_CONST           ("")
+         >> 1624 STORE_FAST           (moved_line)
+
+2038:        1626 LOAD_CONST           ("")
+            1628 STORE_FAST           (moved_key)
+
+2039:        1630 LOAD_FAST            (source_lines)
+            1632 GET_ITER
+            1634 FOR_ITER             (to 1900)
+            1638 STORE_FAST           (raw)
+
+2040:        1640 LOAD_GLOBAL          (NULL + _localpool_line_key)
+            1650 LOAD_FAST            (raw)
+            1652 CALL                 (1 positional)
+            1660 UNPACK_SEQUENCE      3
+            1664 STORE_FAST           (key)
+            1666 STORE_FAST           (row_phone)
+            1668 STORE_FAST           (_url)
+
+2041:        1670 LOAD_CONST           (False)
+            1672 STORE_FAST           (matched)
+
+2042:        1674 LOAD_FAST            (key)
+            1676 TO_BOOL
+            1684 POP_JUMP_IF_FALSE    (to 1794)
+
+2043:        1688 LOAD_GLOBAL          (NULL + bool)
+            1698 LOAD_FAST            (activation)
+            1700 COPY                 1
+            1702 TO_BOOL
+            1710 POP_JUMP_IF_FALSE    (to 1724)
+            1714 POP_TOP
+            1716 LOAD_FAST            (key)
+            1718 LOAD_FAST            (activation)
+            1720 COMPARE_OP           (==)
+         >> 1724 CALL                 (1 positional)
+            1732 COPY                 1
+            1734 TO_BOOL
+            1742 POP_JUMP_IF_TRUE     (to 1792)
+            1746 POP_TOP
+            1748 LOAD_GLOBAL          (NULL + bool)
+            1758 LOAD_FAST            (wanted_phone)
+            1760 COPY                 1
+            1762 TO_BOOL
+            1770 POP_JUMP_IF_FALSE    (to 1784)
+            1774 POP_TOP
+            1776 LOAD_FAST            (row_phone)
+            1778 LOAD_FAST            (wanted_phone)
+            1780 COMPARE_OP           (==)
+         >> 1784 CALL                 (1 positional)
+         >> 1792 STORE_FAST           (matched)
+
+2044:     >> 1794 LOAD_FAST            (matched)
+            1796 TO_BOOL
+            1804 POP_JUMP_IF_FALSE    (to 1862)
+            1808 LOAD_FAST            (moved_line)
+            1810 TO_BOOL
+            1818 POP_JUMP_IF_TRUE     (to 1862)
+
+2045:        1822 LOAD_FAST            (raw)
+            1824 LOAD_ATTR            (NULL|self + strip)
+            1844 CALL                 (0 positional)
+            1852 STORE_FAST           (moved_line)
+
+2046:        1854 LOAD_FAST            (key)
+            1856 STORE_FAST           (moved_key)
+
+2047:        1858 JUMP_BACKWARD        (to 1634)
+
+2048:     >> 1862 LOAD_FAST            (kept)
+            1864 LOAD_ATTR            (NULL|self + append)
+            1884 LOAD_FAST            (raw)
+            1886 CALL                 (1 positional)
+            1894 POP_TOP
+            1896 JUMP_BACKWARD        (to 1634)
+
+2039:     >> 1900 END_FOR
+            1902 POP_TOP
+
+2050:        1904 LOAD_FAST            (moved_line)
+            1906 TO_BOOL
+            1914 POP_JUMP_IF_TRUE     (to 2084)
+
+2051:        1918 LOAD_FAST            (activation)
+            1920 TO_BOOL
+            1928 POP_JUMP_IF_FALSE    (to 2014)
+            1932 LOAD_FAST            (activation)
+            1934 LOAD_FAST            (success_keys)
+            1936 CONTAINS_OP          (in)
+            1940 POP_JUMP_IF_FALSE    (to 2014)
+
+2053:        1944 LOAD_CONST           (True)
+
+2054:        1946 LOAD_CONST           (False)
+
+2055:        1948 LOAD_CONST           ("already_archived")
+
+2056:        1950 LOAD_GLOBAL          (NULL + str)
+            1960 LOAD_FAST            (success_path)
+            1962 CALL                 (1 positional)
+
+2057:        1970 LOAD_GLOBAL          (NULL + str)
+            1980 LOAD_FAST            (pool_path)
+            1982 CALL                 (1 positional)
+
+2052:        1990 LOAD_CONST           (('ok', 'moved', 'reason', 'success_file', 'pool_file'))
+            1992 BUILD_CONST_KEY_MAP  5
+
+2030:        1994 SWAP                 (TOS <-> TOS1)
+            1996 LOAD_CONST           (None)
+            1998 LOAD_CONST           (None)
+            2000 LOAD_CONST           (None)
+            2002 CALL                 (2 positional)
+            2010 POP_TOP
+            2012 RETURN_VALUE
+
+2060:     >> 2014 LOAD_CONST           (True)
+
+2061:        2016 LOAD_CONST           (False)
+
+2062:        2018 LOAD_CONST           ("source_line_not_found")
+
+2063:        2020 LOAD_GLOBAL          (NULL + str)
+            2030 LOAD_FAST            (success_path)
+            2032 CALL                 (1 positional)
+
+2064:        2040 LOAD_GLOBAL          (NULL + str)
+            2050 LOAD_FAST            (pool_path)
+            2052 CALL                 (1 positional)
+
+2059:        2060 LOAD_CONST           (('ok', 'moved', 'reason', 'success_file', 'pool_file'))
+            2062 BUILD_CONST_KEY_MAP  5
+
+2030:        2064 SWAP                 (TOS <-> TOS1)
+            2066 LOAD_CONST           (None)
+            2068 LOAD_CONST           (None)
+            2070 LOAD_CONST           (None)
+            2072 CALL                 (2 positional)
+            2080 POP_TOP
+            2082 RETURN_VALUE
+
+2067:     >> 2084 LOAD_FAST            (moved_line)
+            2086 LOAD_ATTR            (NULL|self + strip)
+            2106 CALL                 (0 positional)
+            2114 LOAD_FAST            (success_norm)
+            2116 CONTAINS_OP          (not in)
+            2120 POP_JUMP_IF_FALSE    (to 2170)
+            2124 LOAD_FAST            (moved_key)
+            2126 LOAD_FAST            (success_keys)
+            2128 CONTAINS_OP          (not in)
+            2132 POP_JUMP_IF_FALSE    (to 2170)
+
+2068:        2136 LOAD_FAST            (success_lines)
+            2138 LOAD_ATTR            (NULL|self + append)
+            2158 LOAD_FAST            (moved_line)
+            2160 CALL                 (1 positional)
+            2168 POP_TOP
+
+2070:     >> 2170 LOAD_CONST           ("\n")
+            2172 LOAD_ATTR            (NULL|self + join)
+            2192 LOAD_FAST            (kept)
+            2194 CALL                 (1 positional)
+            2202 STORE_FAST           (source_text)
+
+2071:        2204 LOAD_FAST            (source_text)
+            2206 TO_BOOL
+            2214 POP_JUMP_IF_FALSE    (to 2228)
+
+2072:        2218 LOAD_FAST            (source_text)
+            2220 LOAD_CONST           ("\n")
+            2222 BINARY_OP            (+=)
+            2226 STORE_FAST           (source_text)
+
+2073:     >> 2228 LOAD_CONST           ("\n")
+            2230 LOAD_ATTR            (NULL|self + join)
+            2250 LOAD_FAST            (success_lines)
+            2252 CALL                 (1 positional)
+            2260 STORE_FAST           (success_text)
+
+2074:        2262 LOAD_FAST            (success_text)
+            2264 TO_BOOL
+            2272 POP_JUMP_IF_FALSE    (to 2286)
+
+2075:        2276 LOAD_FAST            (success_text)
+            2278 LOAD_CONST           ("\n")
+            2280 BINARY_OP            (+=)
+            2284 STORE_FAST           (success_text)
+
+2076:     >> 2286 LOAD_GLOBAL          (NULL + atomic_write_text)
+            2296 LOAD_FAST            (pool_path)
+            2298 LOAD_FAST            (source_text)
+            2300 LOAD_CONST           ("utf-8")
+            2302 LOAD_CONST           (('encoding',))
+            2304 CALL_KW              3
+            2306 POP_TOP
+
+2077:        2308 LOAD_GLOBAL          (NULL + atomic_write_text)
+            2318 LOAD_FAST            (success_path)
+            2320 LOAD_FAST            (success_text)
+            2322 LOAD_CONST           ("utf-8")
+            2324 LOAD_CONST           (('encoding',))
+            2326 CALL_KW              3
+            2328 POP_TOP
+
+2079:        2330 LOAD_CONST           (True)
+
+2080:        2332 LOAD_CONST           (True)
+
+2081:        2334 LOAD_FAST            (wanted_phone)
+
+2082:        2336 LOAD_FAST            (moved_line)
+
+2083:        2338 LOAD_GLOBAL          (NULL + str)
+            2348 LOAD_FAST            (success_path)
+            2350 CALL                 (1 positional)
+
+2084:        2358 LOAD_GLOBAL          (NULL + str)
+            2368 LOAD_FAST            (pool_path)
+            2370 CALL                 (1 positional)
+
+2078:        2378 LOAD_CONST           (('ok', 'moved', 'phone', 'line', 'success_file', 'pool_file'))
+            2380 BUILD_CONST_KEY_MAP  6
+
+2030:        2382 SWAP                 (TOS <-> TOS1)
+            2384 LOAD_CONST           (None)
+            2386 LOAD_CONST           (None)
+            2388 LOAD_CONST           (None)
+            2390 CALL                 (2 positional)
+            2398 POP_TOP
+            2400 RETURN_VALUE
+         >> 2402 SWAP                 (TOS <-> TOS1)
+            2404 POP_TOP
+
+2033:        2406 SWAP                 (TOS <-> TOS1)
+            2408 STORE_FAST           (line)
+            2410 RERAISE              0
+         >> 2412 SWAP                 (TOS <-> TOS1)
+            2414 POP_TOP
+
+2034:        2416 SWAP                 (TOS <-> TOS1)
+            2418 STORE_FAST           (line)
+            2420 RERAISE              0
+
+2030:     >> 2422 PUSH_EXC_INFO
+            2424 WITH_EXCEPT_START    0
+            2426 TO_BOOL
+            2434 POP_JUMP_IF_TRUE     (to 2440)
+            2438 RERAISE              2
+         >> 2440 POP_TOP
+            2442 POP_EXCEPT
+            2444 POP_TOP
+            2446 POP_TOP
+            2448 RETURN_CONST         (None)
+         >> 2450 COPY                 3
+            2452 POP_EXCEPT
+            2454 RERAISE              1
+
+ExceptionTable:
+  1286 to 1456 -> 2422 [1] lasti
+  1458 to 1504 -> 2402 [3]
+  1506 to 1516 -> 2422 [1] lasti
+  1518 to 1564 -> 2412 [3]
+  1574 to 1612 -> 2412 [3]
+  1614 to 1992 -> 2422 [1] lasti
+  2014 to 2062 -> 2422 [1] lasti
+  2084 to 2380 -> 2422 [1] lasti
+  2402 to 2420 -> 2422 [1] lasti
+  2422 to 2440 -> 2450 [3] lasti
+
+# Method Name:       apply_localpool_runtime_config
+# Filename:          sms_providers.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  9
+# Stack size:        7
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        2103
+# Constants:
+#    0: 'Apply local pool runtime settings before a provider is instantiated.'
+#    1: 'sms_provider'
+#    2: ''
+#    3: 'localpool'
+#    4: None
+#    5: 'reuse_mode'
+#    6: 'no_repeat'
+#    7: 'repeat'
+#    8: 'CHATGPT_AR_LOCALPOOL_REUSE_MODE'
+#    9: (('CHATGPT_AR_LOCALPOOL_CODE_TIMEOUT', 'code_timeout', 180), ('CHATGPT_AR_LOCALPOOL_POLL_INTERVAL', 'poll_interval', 5))
+# Names:
+#    0: str
+#    1: get
+#    2: strip
+#    3: lower
+#    4: isinstance
+#    5: dict
+#    6: os
+#    7: environ
+#    8: int
+#    9: Exception
+# Varnames:
+#	config, provider_name, name, local_cfg, mode, env_name, cfg_key, default, value
+# Positional arguments:
+#	config, provider_name
+# Local variables:
+#    2: name
+#    3: local_cfg
+#    4: mode
+#    5: env_name
+#    6: cfg_key
+#    7: default
+#    8: value
+2103:           0 RESUME               0
+
+2105:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (provider_name)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 98)
+              28 POP_TOP
+              30 LOAD_FAST            (config)
+              32 COPY                 1
+              34 TO_BOOL
+              42 POP_JUMP_IF_TRUE     (to 50)
+              46 POP_TOP
+              48 BUILD_MAP            0
+         >>   50 LOAD_ATTR            (NULL|self + get)
+              70 LOAD_CONST           ("sms_provider")
+              72 CALL                 (1 positional)
+              80 COPY                 1
+              82 TO_BOOL
+              90 POP_JUMP_IF_TRUE     (to 98)
+              94 POP_TOP
+              96 LOAD_CONST           ("")
+         >>   98 CALL                 (1 positional)
+             106 LOAD_ATTR            (NULL|self + strip)
+             126 CALL                 (0 positional)
+             134 LOAD_ATTR            (NULL|self + lower)
+             154 CALL                 (0 positional)
+             162 STORE_FAST           (name)
+
+2106:         164 LOAD_FAST            (name)
+             166 LOAD_CONST           ("localpool")
+             168 COMPARE_OP           (!=)
+             172 POP_JUMP_IF_FALSE    (to 178)
+
+2107:         176 RETURN_CONST         (None)
+
+2108:     >>  178 LOAD_GLOBAL          (NULL + isinstance)
+             188 LOAD_FAST            (config)
+             190 COPY                 1
+             192 TO_BOOL
+             200 POP_JUMP_IF_TRUE     (to 208)
+             204 POP_TOP
+             206 BUILD_MAP            0
+         >>  208 LOAD_ATTR            (NULL|self + get)
+             228 LOAD_CONST           ("localpool")
+             230 CALL                 (1 positional)
+             238 LOAD_GLOBAL          (dict)
+             248 CALL                 (2 positional)
+             256 TO_BOOL
+             264 POP_JUMP_IF_FALSE    (to 320)
+             268 LOAD_FAST            (config)
+             270 COPY                 1
+             272 TO_BOOL
+             280 POP_JUMP_IF_TRUE     (to 288)
+             284 POP_TOP
+             286 BUILD_MAP            0
+         >>  288 LOAD_ATTR            (NULL|self + get)
+             308 LOAD_CONST           ("localpool")
+             310 CALL                 (1 positional)
+             318 JUMP_FORWARD         (to 322)
+         >>  320 BUILD_MAP            0
+         >>  322 STORE_FAST           (local_cfg)
+
+2109:         324 LOAD_GLOBAL          (NULL + str)
+             334 LOAD_FAST            (local_cfg)
+             336 LOAD_ATTR            (NULL|self + get)
+             356 LOAD_CONST           ("reuse_mode")
+             358 CALL                 (1 positional)
+             366 COPY                 1
+             368 TO_BOOL
+             376 POP_JUMP_IF_TRUE     (to 384)
+             380 POP_TOP
+             382 LOAD_CONST           ("no_repeat")
+         >>  384 CALL                 (1 positional)
+             392 LOAD_ATTR            (NULL|self + strip)
+             412 CALL                 (0 positional)
+             420 LOAD_ATTR            (NULL|self + lower)
+             440 CALL                 (0 positional)
+             448 STORE_FAST           (mode)
+
+2110:         450 LOAD_FAST            (mode)
+             452 LOAD_CONST           ("repeat")
+             454 COMPARE_OP           (==)
+             458 POP_JUMP_IF_FALSE    (to 466)
+             462 LOAD_CONST           ("repeat")
+             464 JUMP_FORWARD         (to 468)
+         >>  466 LOAD_CONST           ("no_repeat")
+         >>  468 LOAD_GLOBAL          (os)
+             478 LOAD_ATTR            (environ)
+             498 LOAD_CONST           ("CHATGPT_AR_LOCALPOOL_REUSE_MODE")
+             500 STORE_SUBSCR
+
+2111:         504 LOAD_CONST           ((('CHATGPT_AR_LOCALPOOL_CODE_TIMEOUT', 'code_timeout', 180), ('CHATGPT_AR_LOCALPOOL_POLL_INTERVAL', 'poll_interval', 5)))
+             506 GET_ITER
+             508 FOR_ITER             (to 652)
+             512 UNPACK_SEQUENCE      3
+             516 STORE_FAST_STORE_FAST (env_name, cfg_key)
+             518 STORE_FAST           (default)
+
+2115:         520 NOP
+
+2116:         522 LOAD_GLOBAL          (NULL + int)
+             532 LOAD_FAST            (local_cfg)
+             534 LOAD_ATTR            (NULL|self + get)
+             554 LOAD_FAST_LOAD_FAST  (cfg_key, default)
+             556 CALL                 (2 positional)
+             564 COPY                 1
+             566 TO_BOOL
+             574 POP_JUMP_IF_TRUE     (to 582)
+             578 POP_TOP
+             580 LOAD_FAST            (default)
+         >>  582 CALL                 (1 positional)
+             590 STORE_FAST           (value)
+
+2119:         592 LOAD_GLOBAL          (NULL + str)
+             602 LOAD_FAST            (value)
+             604 CALL                 (1 positional)
+             612 LOAD_GLOBAL          (os)
+             622 LOAD_ATTR            (environ)
+             642 LOAD_FAST            (env_name)
+             644 STORE_SUBSCR
+             648 JUMP_BACKWARD        (to 508)
+
+2111:     >>  652 END_FOR
+             654 POP_TOP
+             656 RETURN_CONST         (None)
+         >>  658 PUSH_EXC_INFO
+
+2117:         660 LOAD_GLOBAL          (Exception)
+             670 CHECK_EXC_MATCH
+             672 POP_JUMP_IF_FALSE    (to 686)
+             676 POP_TOP
+
+2118:         678 LOAD_FAST            (default)
+             680 STORE_FAST           (value)
+             682 POP_EXCEPT
+             684 JUMP_BACKWARD_NO_INTERRUPT (to 592)
+
+2117:     >>  686 RERAISE              0
+         >>  688 COPY                 3
+             690 POP_EXCEPT
+             692 RERAISE              1
+
+ExceptionTable:
+  522 to 590 -> 658 [1]
+  658 to 680 -> 688 [2] lasti
+  686 to 686 -> 688 [2] lasti
+
+# Method Name:       provider_api_key
+# Filename:          sms_providers.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        5
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        2122
+# Constants:
+#    0: 'Return the API key/file for the selected provider without cross-provider fallback.'
+#    1: 'sms_provider'
+#    2: 'smsbower'
+#    3: 'api_key'
+#    4: ''
+#    5: 'localpool'
+#    6: 'sms_pool.txt'
+# Names:
+#    0: str
+#    1: get
+#    2: strip
+#    3: lower
+#    4: isinstance
+#    5: dict
+# Varnames:
+#	config, provider_name, cfg, name, provider_cfg, key
+# Positional arguments:
+#	config, provider_name
+# Local variables:
+#    2: cfg
+#    3: name
+#    4: provider_cfg
+#    5: key
+2122:           0 RESUME               0
+
+2124:           2 LOAD_FAST            (config)
+               4 COPY                 1
+               6 TO_BOOL
+              14 POP_JUMP_IF_TRUE     (to 22)
+              18 POP_TOP
+              20 BUILD_MAP            0
+         >>   22 STORE_FAST           (cfg)
+
+2125:          24 LOAD_GLOBAL          (NULL + str)
+              34 LOAD_FAST            (provider_name)
+              36 COPY                 1
+              38 TO_BOOL
+              46 POP_JUMP_IF_TRUE     (to 102)
+              50 POP_TOP
+              52 LOAD_FAST            (cfg)
+              54 LOAD_ATTR            (NULL|self + get)
+              74 LOAD_CONST           ("sms_provider")
+              76 CALL                 (1 positional)
+              84 COPY                 1
+              86 TO_BOOL
+              94 POP_JUMP_IF_TRUE     (to 102)
+              98 POP_TOP
+             100 LOAD_CONST           ("smsbower")
+         >>  102 CALL                 (1 positional)
+             110 LOAD_ATTR            (NULL|self + strip)
+             130 CALL                 (0 positional)
+             138 LOAD_ATTR            (NULL|self + lower)
+             158 CALL                 (0 positional)
+             166 STORE_FAST           (name)
+
+2126:         168 LOAD_GLOBAL          (NULL + isinstance)
+             178 LOAD_FAST            (cfg)
+             180 LOAD_ATTR            (NULL|self + get)
+             200 LOAD_FAST            (name)
+             202 CALL                 (1 positional)
+             210 LOAD_GLOBAL          (dict)
+             220 CALL                 (2 positional)
+             228 TO_BOOL
+             236 POP_JUMP_IF_FALSE    (to 274)
+             240 LOAD_FAST            (cfg)
+             242 LOAD_ATTR            (NULL|self + get)
+             262 LOAD_FAST            (name)
+             264 CALL                 (1 positional)
+             272 JUMP_FORWARD         (to 276)
+         >>  274 BUILD_MAP            0
+         >>  276 STORE_FAST           (provider_cfg)
+
+2127:         278 LOAD_GLOBAL          (NULL + str)
+             288 LOAD_FAST            (provider_cfg)
+             290 LOAD_ATTR            (NULL|self + get)
+             310 LOAD_CONST           ("api_key")
+             312 CALL                 (1 positional)
+             320 COPY                 1
+             322 TO_BOOL
+             330 POP_JUMP_IF_TRUE     (to 338)
+             334 POP_TOP
+             336 LOAD_CONST           ("")
+         >>  338 CALL                 (1 positional)
+             346 LOAD_ATTR            (NULL|self + strip)
+             366 CALL                 (0 positional)
+             374 STORE_FAST           (key)
+
+2128:         376 LOAD_FAST            (name)
+             378 LOAD_CONST           ("localpool")
+             380 COMPARE_OP           (==)
+             384 POP_JUMP_IF_FALSE    (to 404)
+             388 LOAD_FAST            (key)
+             390 TO_BOOL
+             398 POP_JUMP_IF_TRUE     (to 404)
+
+2129:         402 RETURN_CONST         ("sms_pool.txt")
+
+2130:     >>  404 LOAD_FAST            (key)
+             406 RETURN_VALUE
+
+
+# Method Name:       create_provider
+# Filename:          sms_providers.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        9
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        2133
+# Constants:
+#    0: '创建接码平台实例'
+#    1: '未知接码平台: '
+#    2: '，支持: '
+#    3: ('api_key', 'proxy')
+# Names:
+#    0: PROVIDERS
+#    1: get
+#    2: lower
+#    3: ValueError
+#    4: list
+#    5: keys
+# Varnames:
+#	name, api_key, proxy, cls
+# Positional arguments:
+#	name, api_key, proxy
+# Local variables:
+#    3: cls
+2133:           0 RESUME               0
+
+2135:           2 LOAD_GLOBAL          (PROVIDERS)
+              12 LOAD_ATTR            (NULL|self + get)
+              32 LOAD_FAST            (name)
+              34 LOAD_ATTR            (NULL|self + lower)
+              54 CALL                 (0 positional)
+              62 CALL                 (1 positional)
+              70 STORE_FAST           (cls)
+
+2136:          72 LOAD_FAST            (cls)
+              74 TO_BOOL
+              82 POP_JUMP_IF_TRUE     (to 174)
+
+2137:          86 LOAD_GLOBAL          (NULL + ValueError)
+              96 LOAD_CONST           ("未知接码平台: ")
+              98 LOAD_FAST            (name)
+             100 FORMAT_SIMPLE
+             102 LOAD_CONST           ("，支持: ")
+             104 LOAD_GLOBAL          (NULL + list)
+             114 LOAD_GLOBAL          (PROVIDERS)
+             124 LOAD_ATTR            (NULL|self + keys)
+             144 CALL                 (0 positional)
+             152 CALL                 (1 positional)
+             160 FORMAT_SIMPLE
+             162 BUILD_STRING         4
+             164 CALL                 (1 positional)
+             172 RAISE_VARARGS        (exception instance)
+
+2138:     >>  174 LOAD_FAST            (cls)
+             176 PUSH_NULL
+             178 LOAD_FAST_LOAD_FAST  (api_key, proxy)
+             180 LOAD_CONST           (('api_key', 'proxy'))
+             182 CALL_KW              2
+             184 RETURN_VALUE
+
+
+# Method Name:       __init__
+# Filename:          sms_providers.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        2
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        155
+# Constants:
+#    0: None
+# Names:
+#    0: api_key
+#    1: proxy
+#    2: activation_id
+#    3: phone
+# Varnames:
+#	self, api_key, proxy
+# Positional arguments:
+#	self, api_key, proxy
+155:           0 RESUME               0
+
+156:           2 LOAD_FAST_LOAD_FAST  (api_key, self)
+               4 STORE_ATTR           (api_key)
+
+157:          14 LOAD_FAST_LOAD_FAST  (proxy, self)
+              16 STORE_ATTR           (proxy)
+
+158:          26 LOAD_CONST           (None)
+              28 LOAD_FAST            (self)
+              30 STORE_ATTR           (activation_id)
+
+159:          40 LOAD_CONST           (None)
+              42 LOAD_FAST            (self)
+              44 STORE_ATTR           (phone)
+              54 RETURN_CONST         (None)
+
+
+# Method Name:       balance
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        1
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        161
+# Constants:
+#    0: '查询余额'
+#    1: None
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+161:           0 RESUME               0
+
+164:           2 RETURN_CONST         (None)
+
+
+# Method Name:       get_number
+# Filename:          sms_providers.py
+# Argument count:    5
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        1
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        166
+# Constants:
+#    0: '获取号码 → (activation_id, phone)'
+#    1: None
+# Varnames:
+#	self, service, country, provider_ids, max_price
+# Positional arguments:
+#	self, service, country, provider_ids, max_price
+166:           0 RESUME               0
+
+172:           2 RETURN_CONST         (None)
+
+
+# Method Name:       set_ready
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        1
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        174

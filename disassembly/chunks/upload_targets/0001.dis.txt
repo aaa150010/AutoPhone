@@ -1,0 +1,800 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          upload_targets.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        4
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1
+# Constants:
+#    0: 'Upload target helpers for SUB2API and CLIProxyAPI (CPA).'
+#    1: 0
+#    2: ('annotations',)
+#    3: None
+#    4: ('contextmanager',)
+#    5: ('Path',)
+#    6: ('Any', 'Callable', 'Dict', 'Iterable', 'Optional')
+#    7: ('urljoin',)
+#    8: ('merge_chatgpt_fields',)
+#    9: ('scoped_requests_kwargs',)
+#   10: ('runtime_path',)
+#   11: 'nt'
+#   12: 'sub2'
+#   13: 'cpa'
+#   14: 'local'
+#   15: False
+#   16: <Code311 code object _as_bool at 0x10987fb20, file upload_targets.py>, line 36
+#   17: <Code311 code object ensure_upload_config at 0x10987fa00, file upload_targets.py>, line 49
+#   18: <Code311 code object is_upload_enabled at 0x10987f9d0, file upload_targets.py>, line 93
+#   19: <Code311 code object upload_target at 0x10987f9a0, file upload_targets.py>, line 97
+#   20: <Code311 code object selected_upload_target at 0x10987f940, file upload_targets.py>, line 101
+#   21: <Code311 code object is_sub2_upload_selected at 0x10987f8e0, file upload_targets.py>, line 106
+#   22: <Code311 code object is_cpa_upload_selected at 0x10984e400, file upload_targets.py>, line 110
+#   23: <Code311 code object cpa_config at 0x10984e460, file upload_targets.py>, line 114
+#   24: <Code311 code object cpa_headers at 0x10984e4c0, file upload_targets.py>, line 120
+#   25: <Code311 code object cpa_base_url at 0x10984e4f0, file upload_targets.py>, line 129
+#   26: ('log_fn',)
+#   27: <Code311 code object cpa_oauth_lock at 0x10984e640, file upload_targets.py>, line 134
+#   28: <Code311 code object _request_json at 0x10984e670, file upload_targets.py>, line 196
+#   29: <Code311 code object _upload_request_kwargs at 0x10984e6a0, file upload_targets.py>, line 210
+#   30: <Code311 code object test_cpa_connection at 0x10984e730, file upload_targets.py>, line 214
+#   31: ('is_webui',)
+#   32: <Code311 code object get_cpa_oauth_url at 0x10984e790, file upload_targets.py>, line 237
+#   33: <Code311 code object submit_cpa_oauth_code at 0x10984e820, file upload_targets.py>, line 256
+#   34: 120
+#   35: 1.0
+#   36: ('timeout', 'interval')
+#   37: <Code311 code object poll_cpa_auth_status at 0x10984e8e0, file upload_targets.py>, line 276
+#   38: <Code311 code object list_cpa_auth_files at 0x10984e940, file upload_targets.py>, line 308
+#   39: <Code311 code object _cpa_file_name at 0x10984e8b0, file upload_targets.py>, line 324
+#   40: <Code311 code object _cpa_file_email at 0x10984e9a0, file upload_targets.py>, line 334
+#   41: ''
+#   42: ('auth_file', 'email')
+#   43: <Code311 code object cpa_auth_file_matches at 0x10984ea30, file upload_targets.py>, line 344
+#   44: ('auth_file', 'email', 'files')
+#   45: <Code311 code object confirm_cpa_auth_file at 0x10984e3d0, file upload_targets.py>, line 366
+#   46: <Code311 code object _cpa_auth_dir at 0x10984e370, file upload_targets.py>, line 388
+#   47: <Code311 code object _safe_cpa_name at 0x10984e340, file upload_targets.py>, line 397
+#   48: <Code311 code object write_cpa_auth_file_from_tokens at 0x10984e280, file upload_targets.py>, line 403
+#   49: ('email', 'log_fn')
+#   50: <Code311 code object complete_cpa_upload at 0x10984e1c0, file upload_targets.py>, line 470
+#   51: <Code311 code object merge_cpa_status at 0x10984e190, file upload_targets.py>, line 521
+#   52: (False,)
+#   53: ('value', 'Any', 'default', 'bool', 'return', 'bool')
+#   54: ('config', 'Dict[str, Any]', 'return', 'Dict[str, Any]')
+#   55: ('config', 'Dict[str, Any]', 'return', 'bool')
+#   56: ('config', 'Dict[str, Any]', 'return', 'str')
+#   57: ('config', 'Dict[str, Any]', 'return', 'Dict[str, str]')
+#   58: ('config', 'Dict[str, Any]', 'log_fn', 'Optional[Callable[[str], None]]')
+#   59: ('method', 'str', 'url', 'str', 'headers', 'Dict[str, str]', 'timeout', 'int', 'return', 'Dict[str, Any]')
+#   60: ('config', 'Dict[str, Any]', 'is_webui', 'bool', 'return', 'Dict[str, str]')
+#   61: ('config', 'Dict[str, Any]', 'code', 'str', 'state', 'str', 'return', 'Dict[str, Any]')
+#   62: ('config', 'Dict[str, Any]', 'state', 'str', 'timeout', 'int', 'interval', 'float', 'return', 'Dict[str, Any]')
+#   63: ('config', 'Dict[str, Any]', 'return', 'Iterable[Dict[str, Any]]')
+#   64: ('item', 'Dict[str, Any]', 'return', 'str')
+#   65: ('files', 'Iterable[Dict[str, Any]]', 'auth_file', 'str', 'email', 'str', 'return', 'Dict[str, Any]')
+#   66: ('config', 'Dict[str, Any]', 'auth_file', 'str', 'email', 'str', 'files', 'Iterable[Dict[str, Any]] | None', 'return', 'Dict[str, Any]')
+#   67: ('config', 'Dict[str, Any]', 'return', 'Path')
+#   68: ('value', 'str', 'return', 'str')
+#   69: ('config', 'Dict[str, Any]', 'credentials', 'Dict[str, Any]', 'log_fn', 'Optional[Callable[[str], None]]', 'return', 'Dict[str, Any]')
+#   70: ('config', 'Dict[str, Any]', 'code', 'str', 'state', 'str', 'email', 'str', 'log_fn', 'Optional[Callable[[str], None]]', 'return', 'Dict[str, Any]')
+#   71: ('result', 'Dict[str, Any]', 'upload_result', 'Dict[str, Any]', 'return', 'None')
+# Names:
+#    0: __doc__
+#    1: __future__
+#    2: annotations
+#    3: time
+#    4: os
+#    5: json
+#    6: re
+#    7: contextlib
+#    8: contextmanager
+#    9: pathlib
+#   10: Path
+#   11: typing
+#   12: Any
+#   13: Callable
+#   14: Dict
+#   15: Iterable
+#   16: Optional
+#   17: urllib.parse
+#   18: urljoin
+#   19: requests
+#   20: chatgpt_fields
+#   21: merge_chatgpt_fields
+#   22: proxy_scope
+#   23: scoped_requests_kwargs
+#   24: runtime_paths
+#   25: runtime_path
+#   26: name
+#   27: msvcrt
+#   28: fcntl
+#   29: ROOT
+#   30: UPLOAD_TARGET_SUB2
+#   31: UPLOAD_TARGET_CPA
+#   32: UPLOAD_TARGET_LOCAL
+#   33: VALID_UPLOAD_TARGETS
+#   34: _as_bool
+#   35: ensure_upload_config
+#   36: is_upload_enabled
+#   37: upload_target
+#   38: selected_upload_target
+#   39: is_sub2_upload_selected
+#   40: is_cpa_upload_selected
+#   41: cpa_config
+#   42: cpa_headers
+#   43: cpa_base_url
+#   44: cpa_oauth_lock
+#   45: _request_json
+#   46: _upload_request_kwargs
+#   47: test_cpa_connection
+#   48: get_cpa_oauth_url
+#   49: submit_cpa_oauth_code
+#   50: poll_cpa_auth_status
+#   51: list_cpa_auth_files
+#   52: _cpa_file_name
+#   53: _cpa_file_email
+#   54: cpa_auth_file_matches
+#   55: confirm_cpa_auth_file
+#   56: _cpa_auth_dir
+#   57: _safe_cpa_name
+#   58: write_cpa_auth_file_from_tokens
+#   59: complete_cpa_upload
+#   60: merge_cpa_status
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ("Upload target helpers for SUB2API and CLIProxyAPI (CPA).")
+               4 STORE_NAME           (__doc__)
+
+  4:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (('annotations',))
+              10 IMPORT_NAME          (__future__)
+              12 IMPORT_FROM          (annotations)
+              14 STORE_NAME           (annotations)
+              16 POP_TOP
+
+  6:          18 LOAD_CONST           (0)
+              20 LOAD_CONST           (None)
+              22 IMPORT_NAME          (time)
+              24 STORE_NAME           (time)
+
+  7:          26 LOAD_CONST           (0)
+              28 LOAD_CONST           (None)
+              30 IMPORT_NAME          (os)
+              32 STORE_NAME           (os)
+
+  8:          34 LOAD_CONST           (0)
+              36 LOAD_CONST           (None)
+              38 IMPORT_NAME          (json)
+              40 STORE_NAME           (json)
+
+  9:          42 LOAD_CONST           (0)
+              44 LOAD_CONST           (None)
+              46 IMPORT_NAME          (re)
+              48 STORE_NAME           (re)
+
+ 10:          50 LOAD_CONST           (0)
+              52 LOAD_CONST           (('contextmanager',))
+              54 IMPORT_NAME          (contextlib)
+              56 IMPORT_FROM          (contextmanager)
+              58 STORE_NAME           (contextmanager)
+              60 POP_TOP
+
+ 11:          62 LOAD_CONST           (0)
+              64 LOAD_CONST           (('Path',))
+              66 IMPORT_NAME          (pathlib)
+              68 IMPORT_FROM          (Path)
+              70 STORE_NAME           (Path)
+              72 POP_TOP
+
+ 12:          74 LOAD_CONST           (0)
+              76 LOAD_CONST           (('Any', 'Callable', 'Dict', 'Iterable', 'Optional'))
+              78 IMPORT_NAME          (typing)
+              80 IMPORT_FROM          (Any)
+              82 STORE_NAME           (Any)
+              84 IMPORT_FROM          (Callable)
+              86 STORE_NAME           (Callable)
+              88 IMPORT_FROM          (Dict)
+              90 STORE_NAME           (Dict)
+              92 IMPORT_FROM          (Iterable)
+              94 STORE_NAME           (Iterable)
+              96 IMPORT_FROM          (Optional)
+              98 STORE_NAME           (Optional)
+             100 POP_TOP
+
+ 13:         102 LOAD_CONST           (0)
+             104 LOAD_CONST           (('urljoin',))
+             106 IMPORT_NAME          (urllib.parse)
+             108 IMPORT_FROM          (urljoin)
+             110 STORE_NAME           (urljoin)
+             112 POP_TOP
+
+ 15:         114 LOAD_CONST           (0)
+             116 LOAD_CONST           (None)
+             118 IMPORT_NAME          (requests)
+             120 STORE_NAME           (requests)
+
+ 17:         122 LOAD_CONST           (0)
+             124 LOAD_CONST           (('merge_chatgpt_fields',))
+             126 IMPORT_NAME          (chatgpt_fields)
+             128 IMPORT_FROM          (merge_chatgpt_fields)
+             130 STORE_NAME           (merge_chatgpt_fields)
+             132 POP_TOP
+
+ 18:         134 LOAD_CONST           (0)
+             136 LOAD_CONST           (('scoped_requests_kwargs',))
+             138 IMPORT_NAME          (proxy_scope)
+             140 IMPORT_FROM          (scoped_requests_kwargs)
+             142 STORE_NAME           (scoped_requests_kwargs)
+             144 POP_TOP
+
+ 19:         146 LOAD_CONST           (0)
+             148 LOAD_CONST           (('runtime_path',))
+             150 IMPORT_NAME          (runtime_paths)
+             152 IMPORT_FROM          (runtime_path)
+             154 STORE_NAME           (runtime_path)
+             156 POP_TOP
+
+ 21:         158 LOAD_NAME            (os)
+             160 LOAD_ATTR            (name)
+             180 LOAD_CONST           ("nt")
+             182 COMPARE_OP           (==)
+             186 POP_JUMP_IF_FALSE    (to 200)
+
+ 22:         190 LOAD_CONST           (0)
+             192 LOAD_CONST           (None)
+             194 IMPORT_NAME          (msvcrt)
+             196 STORE_NAME           (msvcrt)
+             198 JUMP_FORWARD         (to 208)
+
+ 24:     >>  200 LOAD_CONST           (0)
+             202 LOAD_CONST           (None)
+             204 IMPORT_NAME          (fcntl)
+             206 STORE_NAME           (fcntl)
+
+ 27:     >>  208 LOAD_NAME            (runtime_path)
+             210 PUSH_NULL
+             212 CALL                 (0 positional)
+             220 STORE_NAME           (ROOT)
+
+ 30:         222 LOAD_CONST           ("sub2")
+             224 STORE_NAME           (UPLOAD_TARGET_SUB2)
+
+ 31:         226 LOAD_CONST           ("cpa")
+             228 STORE_NAME           (UPLOAD_TARGET_CPA)
+
+ 32:         230 LOAD_CONST           ("local")
+             232 STORE_NAME           (UPLOAD_TARGET_LOCAL)
+
+ 33:         234 LOAD_NAME            (UPLOAD_TARGET_SUB2)
+             236 LOAD_NAME            (UPLOAD_TARGET_CPA)
+             238 LOAD_NAME            (UPLOAD_TARGET_LOCAL)
+             240 BUILD_SET            3
+             242 STORE_NAME           (VALID_UPLOAD_TARGETS)
+
+ 36:         244 LOAD_CONST           ((False,))
+             246 LOAD_CONST           (('value', 'Any', 'default', 'bool', 'return', 'bool'))
+             248 LOAD_CONST           (<Code311 code object _as_bool at 0x10987fb20, file upload_targets.py>, line 36)
+             250 MAKE_FUNCTION
+             252 SET_FUNCTION_ATTRIBUTE 4
+             254 SET_FUNCTION_ATTRIBUTE 1
+             256 STORE_NAME           (_as_bool)
+
+ 49:         258 LOAD_CONST           (('config', 'Dict[str, Any]', 'return', 'Dict[str, Any]'))
+             260 LOAD_CONST           (<Code311 code object ensure_upload_config at 0x10987fa00, file upload_targets.py>, line 49)
+             262 MAKE_FUNCTION
+             264 SET_FUNCTION_ATTRIBUTE 4
+             266 STORE_NAME           (ensure_upload_config)
+
+ 93:         268 LOAD_CONST           (('config', 'Dict[str, Any]', 'return', 'bool'))
+             270 LOAD_CONST           (<Code311 code object is_upload_enabled at 0x10987f9d0, file upload_targets.py>, line 93)
+             272 MAKE_FUNCTION
+             274 SET_FUNCTION_ATTRIBUTE 4
+             276 STORE_NAME           (is_upload_enabled)
+
+ 97:         278 LOAD_CONST           (('config', 'Dict[str, Any]', 'return', 'str'))
+             280 LOAD_CONST           (<Code311 code object upload_target at 0x10987f9a0, file upload_targets.py>, line 97)
+             282 MAKE_FUNCTION
+             284 SET_FUNCTION_ATTRIBUTE 4
+             286 STORE_NAME           (upload_target)
+
+101:         288 LOAD_CONST           (('config', 'Dict[str, Any]', 'return', 'str'))
+             290 LOAD_CONST           (<Code311 code object selected_upload_target at 0x10987f940, file upload_targets.py>, line 101)
+             292 MAKE_FUNCTION
+             294 SET_FUNCTION_ATTRIBUTE 4
+             296 STORE_NAME           (selected_upload_target)
+
+106:         298 LOAD_CONST           (('config', 'Dict[str, Any]', 'return', 'bool'))
+             300 LOAD_CONST           (<Code311 code object is_sub2_upload_selected at 0x10987f8e0, file upload_targets.py>, line 106)
+             302 MAKE_FUNCTION
+             304 SET_FUNCTION_ATTRIBUTE 4
+             306 STORE_NAME           (is_sub2_upload_selected)
+
+110:         308 LOAD_CONST           (('config', 'Dict[str, Any]', 'return', 'bool'))
+             310 LOAD_CONST           (<Code311 code object is_cpa_upload_selected at 0x10984e400, file upload_targets.py>, line 110)
+             312 MAKE_FUNCTION
+             314 SET_FUNCTION_ATTRIBUTE 4
+             316 STORE_NAME           (is_cpa_upload_selected)
+
+114:         318 LOAD_CONST           (('config', 'Dict[str, Any]', 'return', 'Dict[str, Any]'))
+             320 LOAD_CONST           (<Code311 code object cpa_config at 0x10984e460, file upload_targets.py>, line 114)
+             322 MAKE_FUNCTION
+             324 SET_FUNCTION_ATTRIBUTE 4
+             326 STORE_NAME           (cpa_config)
+
+120:         328 LOAD_CONST           (('config', 'Dict[str, Any]', 'return', 'Dict[str, str]'))
+             330 LOAD_CONST           (<Code311 code object cpa_headers at 0x10984e4c0, file upload_targets.py>, line 120)
+             332 MAKE_FUNCTION
+             334 SET_FUNCTION_ATTRIBUTE 4
+             336 STORE_NAME           (cpa_headers)
+
+129:         338 LOAD_CONST           (('config', 'Dict[str, Any]', 'return', 'str'))
+             340 LOAD_CONST           (<Code311 code object cpa_base_url at 0x10984e4f0, file upload_targets.py>, line 129)
+             342 MAKE_FUNCTION
+             344 SET_FUNCTION_ATTRIBUTE 4
+             346 STORE_NAME           (cpa_base_url)
+
+134:         348 LOAD_NAME            (contextmanager)
+
+138:         350 LOAD_CONST           (None)
+
+135:         352 LOAD_CONST           (('log_fn',))
+             354 BUILD_CONST_KEY_MAP  1
+
+136:         356 NOP
+
+135:         358 NOP
+
+138:         360 NOP
+
+135:         362 LOAD_CONST           (('config', 'Dict[str, Any]', 'log_fn', 'Optional[Callable[[str], None]]'))
+             364 LOAD_CONST           (<Code311 code object cpa_oauth_lock at 0x10984e640, file upload_targets.py>, line 134)
+             366 MAKE_FUNCTION
+             368 SET_FUNCTION_ATTRIBUTE 4
+             370 SET_FUNCTION_ATTRIBUTE 2
+
+134:         372 CALL                 (0 positional)
+
+135:         380 STORE_NAME           (cpa_oauth_lock)
+
+196:         382 LOAD_CONST           (('method', 'str', 'url', 'str', 'headers', 'Dict[str, str]', 'timeout', 'int', 'return', 'Dict[str, Any]'))
+             384 LOAD_CONST           (<Code311 code object _request_json at 0x10984e670, file upload_targets.py>, line 196)
+             386 MAKE_FUNCTION
+             388 SET_FUNCTION_ATTRIBUTE 4
+             390 STORE_NAME           (_request_json)
+
+210:         392 LOAD_CONST           (('config', 'Dict[str, Any]', 'return', 'Dict[str, Any]'))
+             394 LOAD_CONST           (<Code311 code object _upload_request_kwargs at 0x10984e6a0, file upload_targets.py>, line 210)
+             396 MAKE_FUNCTION
+             398 SET_FUNCTION_ATTRIBUTE 4
+             400 STORE_NAME           (_upload_request_kwargs)
+
+214:         402 LOAD_CONST           (('config', 'Dict[str, Any]', 'return', 'Dict[str, Any]'))
+             404 LOAD_CONST           (<Code311 code object test_cpa_connection at 0x10984e730, file upload_targets.py>, line 214)
+             406 MAKE_FUNCTION
+             408 SET_FUNCTION_ATTRIBUTE 4
+             410 STORE_NAME           (test_cpa_connection)
+
+237:         412 LOAD_CONST           (False)
+             414 LOAD_CONST           (('is_webui',))
+             416 BUILD_CONST_KEY_MAP  1
+             418 LOAD_CONST           (('config', 'Dict[str, Any]', 'is_webui', 'bool', 'return', 'Dict[str, str]'))
+             420 LOAD_CONST           (<Code311 code object get_cpa_oauth_url at 0x10984e790, file upload_targets.py>, line 237)
+             422 MAKE_FUNCTION
+             424 SET_FUNCTION_ATTRIBUTE 4
+             426 SET_FUNCTION_ATTRIBUTE 2
+             428 STORE_NAME           (get_cpa_oauth_url)
+
+256:         430 LOAD_CONST           (('config', 'Dict[str, Any]', 'code', 'str', 'state', 'str', 'return', 'Dict[str, Any]'))
+             432 LOAD_CONST           (<Code311 code object submit_cpa_oauth_code at 0x10984e820, file upload_targets.py>, line 256)
+             434 MAKE_FUNCTION
+             436 SET_FUNCTION_ATTRIBUTE 4
+             438 STORE_NAME           (submit_cpa_oauth_code)
+
+280:         440 LOAD_CONST           (120)
+
+281:         442 LOAD_CONST           (1.0)
+
+276:         444 LOAD_CONST           (('timeout', 'interval'))
+             446 BUILD_CONST_KEY_MAP  2
+
+277:         448 NOP
+
+276:         450 NOP
+
+278:         452 NOP
+
+276:         454 NOP
+
+280:         456 NOP
+
+276:         458 NOP
+
+281:         460 NOP
+
+276:         462 NOP
+
+282:         464 NOP
+
+276:         466 LOAD_CONST           (('config', 'Dict[str, Any]', 'state', 'str', 'timeout', 'int', 'interval', 'float', 'return', 'Dict[str, Any]'))
+             468 LOAD_CONST           (<Code311 code object poll_cpa_auth_status at 0x10984e8e0, file upload_targets.py>, line 276)
+             470 MAKE_FUNCTION
+             472 SET_FUNCTION_ATTRIBUTE 4
+             474 SET_FUNCTION_ATTRIBUTE 2
+             476 STORE_NAME           (poll_cpa_auth_status)
+
+308:         478 LOAD_CONST           (('config', 'Dict[str, Any]', 'return', 'Iterable[Dict[str, Any]]'))
+             480 LOAD_CONST           (<Code311 code object list_cpa_auth_files at 0x10984e940, file upload_targets.py>, line 308)
+             482 MAKE_FUNCTION
+             484 SET_FUNCTION_ATTRIBUTE 4
+             486 STORE_NAME           (list_cpa_auth_files)
+
+324:         488 LOAD_CONST           (('item', 'Dict[str, Any]', 'return', 'str'))
+             490 LOAD_CONST           (<Code311 code object _cpa_file_name at 0x10984e8b0, file upload_targets.py>, line 324)
+             492 MAKE_FUNCTION
+             494 SET_FUNCTION_ATTRIBUTE 4
+             496 STORE_NAME           (_cpa_file_name)
+
+334:         498 LOAD_CONST           (('item', 'Dict[str, Any]', 'return', 'str'))
+             500 LOAD_CONST           (<Code311 code object _cpa_file_email at 0x10984e9a0, file upload_targets.py>, line 334)
+             502 MAKE_FUNCTION
+             504 SET_FUNCTION_ATTRIBUTE 4
+             506 STORE_NAME           (_cpa_file_email)
+
+347:         508 LOAD_CONST           ("")
+
+348:         510 LOAD_CONST           ("")
+
+344:         512 LOAD_CONST           (('auth_file', 'email'))
+             514 BUILD_CONST_KEY_MAP  2
+
+345:         516 NOP
+
+344:         518 NOP
+
+347:         520 NOP
+
+344:         522 NOP
+
+348:         524 NOP
+
+344:         526 NOP
+
+349:         528 NOP
+
+344:         530 LOAD_CONST           (('files', 'Iterable[Dict[str, Any]]', 'auth_file', 'str', 'email', 'str', 'return', 'Dict[str, Any]'))
+             532 LOAD_CONST           (<Code311 code object cpa_auth_file_matches at 0x10984ea30, file upload_targets.py>, line 344)
+             534 MAKE_FUNCTION
+             536 SET_FUNCTION_ATTRIBUTE 4
+             538 SET_FUNCTION_ATTRIBUTE 2
+             540 STORE_NAME           (cpa_auth_file_matches)
+
+369:         542 LOAD_CONST           ("")
+
+370:         544 LOAD_CONST           ("")
+
+371:         546 LOAD_CONST           (None)
+
+366:         548 LOAD_CONST           (('auth_file', 'email', 'files'))
+             550 BUILD_CONST_KEY_MAP  3
+
+367:         552 NOP
+
+366:         554 NOP
+
+369:         556 NOP
+
+366:         558 NOP
+
+370:         560 NOP
+
+366:         562 NOP
+
+371:         564 NOP
+
+366:         566 NOP
+
+372:         568 NOP
+
+366:         570 LOAD_CONST           (('config', 'Dict[str, Any]', 'auth_file', 'str', 'email', 'str', 'files', 'Iterable[Dict[str, Any]] | None', 'return', 'Dict[str, Any]'))
+             572 LOAD_CONST           (<Code311 code object confirm_cpa_auth_file at 0x10984e3d0, file upload_targets.py>, line 366)
+             574 MAKE_FUNCTION
+             576 SET_FUNCTION_ATTRIBUTE 4
+             578 SET_FUNCTION_ATTRIBUTE 2
+             580 STORE_NAME           (confirm_cpa_auth_file)
+
+388:         582 LOAD_CONST           (('config', 'Dict[str, Any]', 'return', 'Path'))
+             584 LOAD_CONST           (<Code311 code object _cpa_auth_dir at 0x10984e370, file upload_targets.py>, line 388)
+             586 MAKE_FUNCTION
+             588 SET_FUNCTION_ATTRIBUTE 4
+             590 STORE_NAME           (_cpa_auth_dir)
+
+397:         592 LOAD_CONST           (('value', 'str', 'return', 'str'))
+             594 LOAD_CONST           (<Code311 code object _safe_cpa_name at 0x10984e340, file upload_targets.py>, line 397)
+             596 MAKE_FUNCTION
+             598 SET_FUNCTION_ATTRIBUTE 4
+             600 STORE_NAME           (_safe_cpa_name)
+
+407:         602 LOAD_CONST           (None)
+
+403:         604 LOAD_CONST           (('log_fn',))
+             606 BUILD_CONST_KEY_MAP  1
+
+404:         608 NOP
+
+403:         610 NOP
+
+405:         612 NOP
+
+403:         614 NOP
+
+407:         616 NOP
+
+403:         618 NOP
+
+408:         620 NOP
+
+403:         622 LOAD_CONST           (('config', 'Dict[str, Any]', 'credentials', 'Dict[str, Any]', 'log_fn', 'Optional[Callable[[str], None]]', 'return', 'Dict[str, Any]'))
+             624 LOAD_CONST           (<Code311 code object write_cpa_auth_file_from_tokens at 0x10984e280, file upload_targets.py>, line 403)
+             626 MAKE_FUNCTION
+             628 SET_FUNCTION_ATTRIBUTE 4
+             630 SET_FUNCTION_ATTRIBUTE 2
+             632 STORE_NAME           (write_cpa_auth_file_from_tokens)
+
+475:         634 LOAD_CONST           ("")
+
+476:         636 LOAD_CONST           (None)
+
+470:         638 LOAD_CONST           (('email', 'log_fn'))
+             640 BUILD_CONST_KEY_MAP  2
+
+471:         642 NOP
+
+470:         644 NOP
+
+472:         646 NOP
+
+470:         648 NOP
+
+473:         650 NOP
+
+470:         652 NOP
+
+475:         654 NOP
+
+470:         656 NOP
+
+476:         658 NOP
+
+470:         660 NOP
+
+477:         662 NOP
+
+470:         664 LOAD_CONST           (('config', 'Dict[str, Any]', 'code', 'str', 'state', 'str', 'email', 'str', 'log_fn', 'Optional[Callable[[str], None]]', 'return', 'Dict[str, Any]'))
+             666 LOAD_CONST           (<Code311 code object complete_cpa_upload at 0x10984e1c0, file upload_targets.py>, line 470)
+             668 MAKE_FUNCTION
+             670 SET_FUNCTION_ATTRIBUTE 4
+             672 SET_FUNCTION_ATTRIBUTE 2
+             674 STORE_NAME           (complete_cpa_upload)
+
+521:         676 LOAD_CONST           (('result', 'Dict[str, Any]', 'upload_result', 'Dict[str, Any]', 'return', 'None'))
+             678 LOAD_CONST           (<Code311 code object merge_cpa_status at 0x10984e190, file upload_targets.py>, line 521)
+             680 MAKE_FUNCTION
+             682 SET_FUNCTION_ATTRIBUTE 4
+             684 STORE_NAME           (merge_cpa_status)
+             686 RETURN_CONST         (None)
+
+
+# Method Name:       _as_bool
+# Filename:          upload_targets.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        36
+# Constants:
+#    0: None
+#    1: 0
+#    2: {'on', '1', '开启', 'enable', 'enabled', 'yes', 'true'}
+# Names:
+#    0: isinstance
+#    1: bool
+#    2: int
+#    3: float
+#    4: str
+#    5: strip
+#    6: lower
+# Varnames:
+#	value, default, text
+# Positional arguments:
+#	value, default
+# Local variables:
+#    2: text
+ 36:           0 RESUME               0
+
+ 37:           2 LOAD_FAST            (value)
+               4 POP_JUMP_IF_NOT_NONE (to 12)
+
+ 38:           8 LOAD_FAST            (default)
+              10 RETURN_VALUE
+
+ 39:     >>   12 LOAD_GLOBAL          (NULL + isinstance)
+              22 LOAD_FAST            (value)
+              24 LOAD_GLOBAL          (bool)
+              34 CALL                 (2 positional)
+              42 TO_BOOL
+              50 POP_JUMP_IF_FALSE    (to 58)
+
+ 40:          54 LOAD_FAST            (value)
+              56 RETURN_VALUE
+
+ 41:     >>   58 LOAD_GLOBAL          (NULL + isinstance)
+              68 LOAD_FAST            (value)
+              70 LOAD_GLOBAL          (int)
+              80 LOAD_GLOBAL          (float)
+              90 BUILD_TUPLE          2
+              92 CALL                 (2 positional)
+             100 TO_BOOL
+             108 POP_JUMP_IF_FALSE    (to 122)
+
+ 42:         112 LOAD_FAST            (value)
+             114 LOAD_CONST           (0)
+             116 COMPARE_OP           (!=)
+             120 RETURN_VALUE
+
+ 43:     >>  122 LOAD_GLOBAL          (NULL + str)
+             132 LOAD_FAST            (value)
+             134 CALL                 (1 positional)
+             142 LOAD_ATTR            (NULL|self + strip)
+             162 CALL                 (0 positional)
+             170 LOAD_ATTR            (NULL|self + lower)
+             190 CALL                 (0 positional)
+             198 STORE_FAST           (text)
+
+ 44:         200 LOAD_FAST            (text)
+             202 TO_BOOL
+             210 POP_JUMP_IF_TRUE     (to 218)
+
+ 45:         214 LOAD_FAST            (default)
+             216 RETURN_VALUE
+
+ 46:     >>  218 LOAD_FAST            (text)
+             220 LOAD_CONST           ({'on', '1', '开启', 'enable', 'enabled', 'yes', 'true'})
+             222 CONTAINS_OP          (in)
+             226 RETURN_VALUE
+
+
+# Method Name:       ensure_upload_config
+# Filename:          upload_targets.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        49
+# Constants:
+#    0: 'Normalize upload config while keeping legacy values compatible.'
+#    1: 'upload'
+#    2: 'uploads'
+#    3: 'enabled'
+#    4: 'sub2_enabled'
+#    5: 'target'
+#    6: 'cpa_enabled'
+#    7: False
+#    8: True
+#    9: {'false', 'disabled', 'none', 'no', 'off'}
+#   10: 'cpa'
+#   11: 'url'
+#   12: 'http://127.0.0.1:48317'
+#   13: 'key'
+#   14: ''
+#   15: 'timeout'
+#   16: 15
+# Names:
+#    0: get
+#    1: isinstance
+#    2: dict
+#    3: _as_bool
+#    4: UPLOAD_TARGET_CPA
+#    5: UPLOAD_TARGET_SUB2
+#    6: str
+#    7: strip
+#    8: lower
+#    9: UPLOAD_TARGET_LOCAL
+#   10: VALID_UPLOAD_TARGETS
+#   11: setdefault
+# Varnames:
+#	config, upload, legacy_uploads, target, cpa
+# Positional arguments:
+#	config
+# Local variables:
+#    1: upload
+#    2: legacy_uploads
+#    3: target
+#    4: cpa
+ 49:           0 RESUME               0
+
+ 51:           2 LOAD_FAST            (config)
+               4 LOAD_ATTR            (NULL|self + get)
+              24 LOAD_CONST           ("upload")
+              26 CALL                 (1 positional)
+              34 STORE_FAST           (upload)
+
+ 52:          36 LOAD_GLOBAL          (NULL + isinstance)
+              46 LOAD_FAST            (upload)
+              48 LOAD_GLOBAL          (dict)
+              58 CALL                 (2 positional)
+              66 TO_BOOL
+              74 POP_JUMP_IF_TRUE     (to 90)
+
+ 53:          78 BUILD_MAP            0
+              80 STORE_FAST           (upload)
+
+ 54:          82 LOAD_FAST_LOAD_FAST  (upload, config)
+              84 LOAD_CONST           ("upload")
+              86 STORE_SUBSCR
+
+ 56:     >>   90 LOAD_FAST            (config)
+              92 LOAD_ATTR            (NULL|self + get)
+             112 LOAD_CONST           ("uploads")
+             114 CALL                 (1 positional)
+             122 STORE_FAST           (legacy_uploads)
+
+ 57:         124 LOAD_GLOBAL          (NULL + isinstance)
+             134 LOAD_FAST            (legacy_uploads)
+             136 LOAD_GLOBAL          (dict)
+             146 CALL                 (2 positional)
+             154 TO_BOOL
+             162 POP_JUMP_IF_FALSE    (to 462)
+
+ 58:         166 LOAD_CONST           ("enabled")
+             168 LOAD_FAST            (upload)
+             170 CONTAINS_OP          (not in)
+             174 POP_JUMP_IF_FALSE    (to 284)
+
+ 59:         178 LOAD_CONST           ("enabled")
+             180 LOAD_FAST            (legacy_uploads)
+             182 CONTAINS_OP          (in)
+             186 POP_JUMP_IF_FALSE    (to 232)
+
+ 60:         190 LOAD_FAST            (legacy_uploads)
+             192 LOAD_ATTR            (NULL|self + get)
+             212 LOAD_CONST           ("enabled")
+             214 CALL                 (1 positional)
+             222 LOAD_FAST            (upload)
+             224 LOAD_CONST           ("enabled")
+             226 STORE_SUBSCR
+             230 JUMP_FORWARD         (to 284)
+
+ 61:     >>  232 LOAD_CONST           ("sub2_enabled")
+             234 LOAD_FAST            (legacy_uploads)
+             236 CONTAINS_OP          (in)
+             240 POP_JUMP_IF_FALSE    (to 284)
+
+ 62:         244 LOAD_FAST            (legacy_uploads)
+             246 LOAD_ATTR            (NULL|self + get)
+             266 LOAD_CONST           ("sub2_enabled")
+             268 CALL                 (1 positional)
+             276 LOAD_FAST            (upload)
+             278 LOAD_CONST           ("enabled")
+             280 STORE_SUBSCR
+
+ 63:     >>  284 LOAD_CONST           ("target")
+             286 LOAD_FAST            (upload)
+             288 CONTAINS_OP          (not in)
+             292 POP_JUMP_IF_FALSE    (to 462)
+
+ 64:         296 LOAD_GLOBAL          (NULL + _as_bool)
+             306 LOAD_FAST            (legacy_uploads)
+             308 LOAD_ATTR            (NULL|self + get)
+             328 LOAD_CONST           ("cpa_enabled")

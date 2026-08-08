@@ -1,0 +1,800 @@
+             406 LOAD_CONST           (<Code311 code object _random_order at 0x1077b1340, file sms_providers.py>, line 1673)
+             408 MAKE_FUNCTION
+             410 SET_FUNCTION_ATTRIBUTE 4
+             412 SET_FUNCTION_ATTRIBUTE 1
+
+1673:         414 CALL                 (0 positional)
+
+1674:         422 STORE_NAME           (_random_order)
+
+1694:         424 LOAD_CONST           ("return")
+             426 LOAD_NAME            (list)
+             428 LOAD_NAME            (dict)
+             430 BINARY_SUBSCR
+             434 BUILD_TUPLE          2
+             436 LOAD_CONST           (<Code311 code object _read_rows at 0x1077b13a0, file sms_providers.py>, line 1694)
+             438 MAKE_FUNCTION
+             440 SET_FUNCTION_ATTRIBUTE 4
+             442 STORE_NAME           (_read_rows)
+
+1723:         444 LOAD_CONST           ("return")
+             446 LOAD_NAME            (dict)
+             448 BUILD_TUPLE          2
+             450 LOAD_CONST           (<Code311 code object _read_state at 0x1077b13d0, file sms_providers.py>, line 1723)
+             452 MAKE_FUNCTION
+             454 SET_FUNCTION_ATTRIBUTE 4
+             456 STORE_NAME           (_read_state)
+
+1733:         458 LOAD_CONST           ("return")
+             460 LOAD_NAME            (tuple)
+             462 LOAD_NAME            (int)
+             464 LOAD_NAME            (int)
+             466 BUILD_TUPLE          2
+             468 BINARY_SUBSCR
+             472 BUILD_TUPLE          2
+             474 LOAD_CONST           (<Code311 code object _counts at 0x1077b1400, file sms_providers.py>, line 1733)
+             476 MAKE_FUNCTION
+             478 SET_FUNCTION_ATTRIBUTE 4
+             480 STORE_NAME           (_counts)
+
+1752:         482 LOAD_CONST           ("return")
+             484 LOAD_NAME            (str)
+             486 BUILD_TUPLE          2
+             488 LOAD_CONST           (<Code311 code object balance at 0x1077b1430, file sms_providers.py>, line 1752)
+             490 MAKE_FUNCTION
+             492 SET_FUNCTION_ATTRIBUTE 4
+             494 STORE_NAME           (balance)
+
+1756:         496 LOAD_CONST           (('dr', None))
+             498 LOAD_CONST           ("service")
+             500 LOAD_NAME            (str)
+             502 LOAD_CONST           ("countries")
+             504 LOAD_NAME            (list)
+             506 LOAD_NAME            (str)
+             508 BINARY_SUBSCR
+             512 LOAD_CONST           (None)
+             514 BINARY_OP            (|)
+             518 LOAD_CONST           ("return")
+             520 LOAD_NAME            (list)
+             522 LOAD_NAME            (dict)
+             524 BINARY_SUBSCR
+             528 BUILD_TUPLE          6
+             530 LOAD_CONST           (<Code311 code object get_price_candidates at 0x1077b12e0, file sms_providers.py>, line 1756)
+             532 MAKE_FUNCTION
+             534 SET_FUNCTION_ATTRIBUTE 4
+             536 SET_FUNCTION_ATTRIBUTE 1
+             538 STORE_NAME           (get_price_candidates)
+
+1791:         540 NOP
+
+1792:         542 NOP
+
+1790:         544 LOAD_CONST           (('dr', '151', '', ''))
+             546 LOAD_CONST           ("service")
+
+1791:         548 LOAD_NAME            (str)
+
+1790:         550 LOAD_CONST           ("country")
+
+1791:         552 LOAD_NAME            (str)
+
+1790:         554 LOAD_CONST           ("provider_ids")
+
+1792:         556 LOAD_NAME            (str)
+
+1790:         558 LOAD_CONST           ("max_price")
+
+1792:         560 LOAD_NAME            (str)
+
+1790:         562 LOAD_CONST           ("return")
+
+1793:         564 LOAD_NAME            (Tuple)
+             566 LOAD_NAME            (str)
+             568 LOAD_NAME            (str)
+             570 BUILD_TUPLE          2
+             572 BINARY_SUBSCR
+
+1790:         576 BUILD_TUPLE          10
+             578 LOAD_CONST           (<Code311 code object get_number at 0x1077b1550, file sms_providers.py>, line 1790)
+             580 MAKE_FUNCTION
+             582 SET_FUNCTION_ATTRIBUTE 4
+             584 SET_FUNCTION_ATTRIBUTE 1
+             586 STORE_NAME           (get_number)
+
+1845:         588 LOAD_CONST           (<Code311 code object set_ready at 0x1077b1580, file sms_providers.py>, line 1845)
+             590 MAKE_FUNCTION
+             592 STORE_NAME           (set_ready)
+
+1848:         594 LOAD_NAME            (classmethod)
+
+1849:         596 LOAD_CONST           ("return")
+             598 LOAD_NAME            (list)
+             600 LOAD_NAME            (str)
+             602 BINARY_SUBSCR
+             606 BUILD_TUPLE          2
+             608 LOAD_CONST           (<Code311 code object _extract_codes at 0x1077b1610, file sms_providers.py>, line 1848)
+             610 MAKE_FUNCTION
+             612 SET_FUNCTION_ATTRIBUTE 4
+
+1848:         614 CALL                 (0 positional)
+
+1849:         622 STORE_NAME           (_extract_codes)
+
+1874:         624 LOAD_NAME            (classmethod)
+
+1875:         626 LOAD_CONST           ("return")
+             628 LOAD_NAME            (str)
+             630 BUILD_TUPLE          2
+             632 LOAD_CONST           (<Code311 code object _extract_code at 0x1077b1640, file sms_providers.py>, line 1874)
+             634 MAKE_FUNCTION
+             636 SET_FUNCTION_ATTRIBUTE 4
+
+1874:         638 CALL                 (0 positional)
+
+1875:         646 STORE_NAME           (_extract_code)
+
+1879:         648 LOAD_CONST           ("return")
+             650 LOAD_NAME            (str)
+             652 BUILD_TUPLE          2
+             654 LOAD_CONST           (<Code311 code object _request_sms at 0x1077b1670, file sms_providers.py>, line 1879)
+             656 MAKE_FUNCTION
+             658 SET_FUNCTION_ATTRIBUTE 4
+             660 STORE_NAME           (_request_sms)
+
+1910:         662 LOAD_CONST           ((300, 3))
+             664 LOAD_CONST           ("timeout")
+             666 LOAD_NAME            (int)
+             668 LOAD_CONST           ("interval")
+             670 LOAD_NAME            (int)
+             672 LOAD_CONST           ("return")
+             674 LOAD_NAME            (Optional)
+             676 LOAD_NAME            (str)
+             678 BINARY_SUBSCR
+             682 BUILD_TUPLE          6
+             684 LOAD_CONST           (<Code311 code object wait_code at 0x1077b16a0, file sms_providers.py>, line 1910)
+             686 MAKE_FUNCTION
+             688 SET_FUNCTION_ATTRIBUTE 4
+             690 SET_FUNCTION_ATTRIBUTE 1
+             692 STORE_NAME           (wait_code)
+
+1927:         694 LOAD_CONST           ("code")
+             696 LOAD_NAME            (str)
+             698 LOAD_CONST           ("return")
+             700 LOAD_CONST           (None)
+             702 BUILD_TUPLE          4
+             704 LOAD_CONST           (<Code311 code object ignore_code at 0x1077b16d0, file sms_providers.py>, line 1927)
+             706 MAKE_FUNCTION
+             708 SET_FUNCTION_ATTRIBUTE 4
+             710 STORE_NAME           (ignore_code)
+
+1932:         712 LOAD_CONST           ((False,))
+             714 LOAD_CONST           ("status")
+             716 LOAD_NAME            (str)
+             718 LOAD_CONST           ("failed")
+             720 LOAD_NAME            (bool)
+             722 LOAD_CONST           ("return")
+             724 LOAD_CONST           (None)
+             726 BUILD_TUPLE          6
+             728 LOAD_CONST           (<Code311 code object _mark at 0x1077b1730, file sms_providers.py>, line 1932)
+             730 MAKE_FUNCTION
+             732 SET_FUNCTION_ATTRIBUTE 4
+             734 SET_FUNCTION_ATTRIBUTE 1
+             736 STORE_NAME           (_mark)
+
+1965:         738 LOAD_CONST           (<Code311 code object complete at 0x1077b15b0, file sms_providers.py>, line 1965)
+             740 MAKE_FUNCTION
+             742 STORE_NAME           (complete)
+
+1968:         744 LOAD_CONST           (<Code311 code object cancel at 0x1077b1760, file sms_providers.py>, line 1968)
+             746 MAKE_FUNCTION
+             748 STORE_NAME           (cancel)
+             750 LOAD_CONST           (('_current_key', '_current_url', '_ignored_codes', 'activation_id', 'default_interval', 'default_timeout', 'phone', 'pool_path', 'reuse_mode'))
+             752 STORE_NAME           (__static_attributes__)
+             754 LOAD_FAST            (__class__)
+             756 COPY                 1
+             758 STORE_NAME           (__classcell__)
+             760 RETURN_VALUE
+
+
+# Method Name:       _localpool_success_file
+# Filename:          sms_providers.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        6
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1972
+# Constants:
+#    0: None
+#    1: 'localpool'
+#    2: 'success_pool_file'
+#    3: 'success_file'
+#    4: 'CHATGPT_AR_LOCALPOOL_SUCCESS_FILE'
+#    5: ''
+#    6: '注册成功.txt'
+#    7: '自建号池分类'
+# Names:
+#    0: isinstance
+#    1: get
+#    2: dict
+#    3: str
+#    4: os
+#    5: environ
+#    6: strip
+#    7: resolve_runtime_path
+#    8: parent
+# Varnames:
+#	config, pool_path, local_cfg, raw
+# Positional arguments:
+#	config, pool_path
+# Local variables:
+#    2: local_cfg
+#    3: raw
+1972:           0 RESUME               0
+
+1973:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (config)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 BUILD_MAP            0
+         >>   32 LOAD_ATTR            (NULL|self + get)
+              52 LOAD_CONST           ("localpool")
+              54 CALL                 (1 positional)
+              62 LOAD_GLOBAL          (dict)
+              72 CALL                 (2 positional)
+              80 TO_BOOL
+              88 POP_JUMP_IF_FALSE    (to 144)
+              92 LOAD_FAST            (config)
+              94 COPY                 1
+              96 TO_BOOL
+             104 POP_JUMP_IF_TRUE     (to 112)
+             108 POP_TOP
+             110 BUILD_MAP            0
+         >>  112 LOAD_ATTR            (NULL|self + get)
+             132 LOAD_CONST           ("localpool")
+             134 CALL                 (1 positional)
+             142 JUMP_FORWARD         (to 146)
+         >>  144 BUILD_MAP            0
+         >>  146 STORE_FAST           (local_cfg)
+
+1974:         148 LOAD_GLOBAL          (NULL + str)
+
+1975:         158 LOAD_FAST            (local_cfg)
+             160 LOAD_ATTR            (NULL|self + get)
+             180 LOAD_CONST           ("success_pool_file")
+             182 CALL                 (1 positional)
+             190 COPY                 1
+             192 TO_BOOL
+             200 POP_JUMP_IF_TRUE     (to 316)
+             204 POP_TOP
+
+1976:         206 LOAD_FAST            (local_cfg)
+             208 LOAD_ATTR            (NULL|self + get)
+             228 LOAD_CONST           ("success_file")
+             230 CALL                 (1 positional)
+
+1975:         238 COPY                 1
+             240 TO_BOOL
+             248 POP_JUMP_IF_TRUE     (to 316)
+             252 POP_TOP
+
+1977:         254 LOAD_GLOBAL          (os)
+             264 LOAD_ATTR            (environ)
+             284 LOAD_ATTR            (NULL|self + get)
+             304 LOAD_CONST           ("CHATGPT_AR_LOCALPOOL_SUCCESS_FILE")
+             306 LOAD_CONST           ("")
+             308 CALL                 (2 positional)
+
+1974:     >>  316 CALL                 (1 positional)
+
+1978:         324 LOAD_ATTR            (NULL|self + strip)
+             344 CALL                 (0 positional)
+
+1974:         352 STORE_FAST           (raw)
+
+1979:         354 LOAD_FAST            (raw)
+             356 TO_BOOL
+             364 POP_JUMP_IF_FALSE    (to 392)
+
+1980:         368 LOAD_GLOBAL          (NULL + resolve_runtime_path)
+             378 LOAD_FAST            (raw)
+             380 LOAD_CONST           ("注册成功.txt")
+             382 CALL                 (2 positional)
+             390 RETURN_VALUE
+
+1981:     >>  392 LOAD_FAST            (pool_path)
+             394 LOAD_ATTR            (parent)
+             414 LOAD_CONST           ("自建号池分类")
+             416 BINARY_OP            (/)
+             420 LOAD_CONST           ("注册成功.txt")
+             422 BINARY_OP            (/)
+             426 RETURN_VALUE
+
+
+# Method Name:       _localpool_line_key
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        5
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1984
+# Constants:
+#    0: None
+#    1: ''
+#    2: '#'
+#    3: ('', '', '')
+#    4: '----'
+#    5: 2
+#    6: 0
+#    7: 1
+# Names:
+#    0: str
+#    1: strip
+#    2: startswith
+#    3: split
+#    4: len
+#    5: LocalSmsPoolProvider
+#    6: _normalize_phone
+#    7: _state_key
+# Varnames:
+#	raw, line, part, parts, phone, url
+# Positional arguments:
+#	raw
+# Local variables:
+#    1: line
+#    2: part
+#    3: parts
+#    4: phone
+#    5: url
+1984:           0 RESUME               0
+
+1985:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (raw)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + strip)
+              60 CALL                 (0 positional)
+              68 STORE_FAST           (line)
+
+1986:          70 LOAD_FAST            (line)
+              72 TO_BOOL
+              80 POP_JUMP_IF_FALSE    (to 128)
+              84 LOAD_FAST            (line)
+              86 LOAD_ATTR            (NULL|self + startswith)
+             106 LOAD_CONST           ("#")
+             108 CALL                 (1 positional)
+             116 TO_BOOL
+             124 POP_JUMP_IF_FALSE    (to 130)
+
+1987:     >>  128 RETURN_CONST         (('', '', ''))
+
+1988:     >>  130 LOAD_FAST            (line)
+             132 LOAD_ATTR            (NULL|self + split)
+             152 LOAD_CONST           ("----")
+             154 CALL                 (1 positional)
+             162 GET_ITER
+             164 LOAD_FAST_AND_CLEAR  (part)
+             166 SWAP                 (TOS <-> TOS1)
+             168 BUILD_LIST           0
+             170 SWAP                 (TOS <-> TOS1)
+             172 GET_ITER
+             174 FOR_ITER             (to 214)
+             178 STORE_FAST_LOAD_FAST (part, part)
+             180 LOAD_ATTR            (NULL|self + strip)
+             200 CALL                 (0 positional)
+             208 LIST_APPEND          2
+             210 JUMP_BACKWARD        (to 174)
+         >>  214 END_FOR
+             216 POP_TOP
+             218 STORE_FAST           (parts)
+             220 STORE_FAST           (part)
+
+1989:         222 LOAD_GLOBAL          (NULL + len)
+             232 LOAD_FAST            (parts)
+             234 CALL                 (1 positional)
+             242 LOAD_CONST           (2)
+             244 COMPARE_OP           (<)
+             248 POP_JUMP_IF_FALSE    (to 254)
+
+1990:         252 RETURN_CONST         (('', '', ''))
+
+1991:     >>  254 LOAD_GLOBAL          (LocalSmsPoolProvider)
+             264 LOAD_ATTR            (NULL|self + _normalize_phone)
+             284 LOAD_FAST            (parts)
+             286 LOAD_CONST           (0)
+             288 BINARY_SUBSCR
+             292 CALL                 (1 positional)
+             300 STORE_FAST           (phone)
+
+1992:         302 LOAD_FAST            (parts)
+             304 LOAD_CONST           (1)
+             306 BINARY_SUBSCR
+             310 STORE_FAST           (url)
+
+1993:         312 LOAD_FAST            (phone)
+             314 TO_BOOL
+             322 POP_JUMP_IF_FALSE    (to 340)
+             326 LOAD_FAST            (url)
+             328 TO_BOOL
+             336 POP_JUMP_IF_TRUE     (to 342)
+
+1994:     >>  340 RETURN_CONST         (('', '', ''))
+
+1995:     >>  342 LOAD_GLOBAL          (LocalSmsPoolProvider)
+             352 LOAD_ATTR            (NULL|self + _state_key)
+             372 LOAD_FAST_LOAD_FAST  (phone, url)
+             374 CALL                 (2 positional)
+             382 LOAD_FAST_LOAD_FAST  (phone, url)
+             384 BUILD_TUPLE          3
+             386 RETURN_VALUE
+         >>  388 SWAP                 (TOS <-> TOS1)
+             390 POP_TOP
+
+1988:         392 SWAP                 (TOS <-> TOS1)
+             394 STORE_FAST           (part)
+             396 RERAISE              0
+
+ExceptionTable:
+  168 to 216 -> 388 [2]
+
+# Method Name:       archive_localpool_success_number
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 2
+# Number of locals:  28
+# Stack size:        9
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1998
+# Constants:
+#    0: 'Move a successful localpool row from the source pool into success pool.'
+#    1: 'sms_provider'
+#    2: 'provider'
+#    3: ''
+#    4: 'localpool'
+#    5: True
+#    6: False
+#    7: 'not_localpool'
+#    8: ('ok', 'moved', 'reason')
+#    9: 'success_archive_enabled'
+#   10: 'disabled'
+#   11: 'reuse_mode'
+#   12: 'CHATGPT_AR_LOCALPOOL_REUSE_MODE'
+#   13: 'no_repeat'
+#   14: 'repeat'
+#   15: 'success_archive_in_repeat'
+#   16: 'repeat_mode'
+#   17: 'sms_pool.txt'
+#   18: '::'
+#   19: 1
+#   20: 0
+#   21: 'missing_identifier'
+#   22: 'pool_not_found:'
+#   23: 'utf-8'
+#   24: 'ignore'
+#   25: ('errors',)
+#   26: None
+#   27: 16
+#   28: 'localpool_success_archive_'
+#   29: 'utf-8-sig'
+#   30: ('encoding',)
+#   31: 'already_archived'
+#   32: ('ok', 'moved', 'reason', 'success_file', 'pool_file')
+#   33: 'source_line_not_found'
+#   34: '\n'
+#   35: ('ok', 'moved', 'phone', 'line', 'success_file', 'pool_file')
+# Names:
+#    0: str
+#    1: get
+#    2: strip
+#    3: lower
+#    4: isinstance
+#    5: dict
+#    6: os
+#    7: environ
+#    8: bool
+#    9: resolve_runtime_path
+#   10: provider_api_key
+#   11: _localpool_success_file
+#   12: LocalSmsPoolProvider
+#   13: _normalize_phone
+#   14: split
+#   15: exists
+#   16: hashlib
+#   17: sha256
+#   18: resolve
+#   19: encode
+#   20: hexdigest
+#   21: named_file_lock
+#   22: read_text
+#   23: splitlines
+#   24: _localpool_line_key
+#   25: append
+#   26: join
+#   27: atomic_write_text
+# Varnames:
+#	config, activation_id, phone, cfg, provider_name, local_cfg, reuse_mode, pool_path, success_path, activation, wanted_phone, digest, lock_name, source_lines, success_lines, line, success_keys, success_norm, kept, moved_line, moved_key, raw, key, row_phone, _url, matched, source_text, success_text
+# Positional arguments:
+#	config
+# Local variables:
+#    1: activation_id
+#    2: phone
+#    3: cfg
+#    4: provider_name
+#    5: local_cfg
+#    6: reuse_mode
+#    7: pool_path
+#    8: success_path
+#    9: activation
+#   10: wanted_phone
+#   11: digest
+#   12: lock_name
+#   13: source_lines
+#   14: success_lines
+#   15: line
+#   16: success_keys
+#   17: success_norm
+#   18: kept
+#   19: moved_line
+#   20: moved_key
+#   21: raw
+#   22: key
+#   23: row_phone
+#   24: _url
+#   25: matched
+#   26: source_text
+#   27: success_text
+1998:           0 RESUME               0
+
+2005:           2 LOAD_FAST            (config)
+               4 COPY                 1
+               6 TO_BOOL
+              14 POP_JUMP_IF_TRUE     (to 22)
+              18 POP_TOP
+              20 BUILD_MAP            0
+         >>   22 STORE_FAST           (cfg)
+
+2006:          24 LOAD_GLOBAL          (NULL + str)
+              34 LOAD_FAST            (cfg)
+              36 LOAD_ATTR            (NULL|self + get)
+              56 LOAD_CONST           ("sms_provider")
+              58 CALL                 (1 positional)
+              66 COPY                 1
+              68 TO_BOOL
+              76 POP_JUMP_IF_TRUE     (to 132)
+              80 POP_TOP
+              82 LOAD_FAST            (cfg)
+              84 LOAD_ATTR            (NULL|self + get)
+             104 LOAD_CONST           ("provider")
+             106 CALL                 (1 positional)
+             114 COPY                 1
+             116 TO_BOOL
+             124 POP_JUMP_IF_TRUE     (to 132)
+             128 POP_TOP
+             130 LOAD_CONST           ("")
+         >>  132 CALL                 (1 positional)
+             140 LOAD_ATTR            (NULL|self + strip)
+             160 CALL                 (0 positional)
+             168 LOAD_ATTR            (NULL|self + lower)
+             188 CALL                 (0 positional)
+             196 STORE_FAST           (provider_name)
+
+2007:         198 LOAD_FAST            (provider_name)
+             200 LOAD_CONST           ("localpool")
+             202 COMPARE_OP           (!=)
+             206 POP_JUMP_IF_FALSE    (to 222)
+
+2008:         210 LOAD_CONST           (True)
+             212 LOAD_CONST           (False)
+             214 LOAD_CONST           ("not_localpool")
+             216 LOAD_CONST           (('ok', 'moved', 'reason'))
+             218 BUILD_CONST_KEY_MAP  3
+             220 RETURN_VALUE
+
+2010:     >>  222 LOAD_GLOBAL          (NULL + isinstance)
+             232 LOAD_FAST            (cfg)
+             234 LOAD_ATTR            (NULL|self + get)
+             254 LOAD_CONST           ("localpool")
+             256 CALL                 (1 positional)
+             264 LOAD_GLOBAL          (dict)
+             274 CALL                 (2 positional)
+             282 TO_BOOL
+             290 POP_JUMP_IF_FALSE    (to 328)
+             294 LOAD_FAST            (cfg)
+             296 LOAD_ATTR            (NULL|self + get)
+             316 LOAD_CONST           ("localpool")
+             318 CALL                 (1 positional)
+             326 JUMP_FORWARD         (to 330)
+         >>  328 BUILD_MAP            0
+         >>  330 STORE_FAST           (local_cfg)
+
+2011:         332 LOAD_FAST            (local_cfg)
+             334 LOAD_ATTR            (NULL|self + get)
+             354 LOAD_CONST           ("success_archive_enabled")
+             356 CALL                 (1 positional)
+             364 LOAD_CONST           (False)
+             366 IS_OP                (is)
+             368 POP_JUMP_IF_FALSE    (to 384)
+
+2012:         372 LOAD_CONST           (True)
+             374 LOAD_CONST           (False)
+             376 LOAD_CONST           ("disabled")
+             378 LOAD_CONST           (('ok', 'moved', 'reason'))
+             380 BUILD_CONST_KEY_MAP  3
+             382 RETURN_VALUE
+
+2013:     >>  384 LOAD_GLOBAL          (NULL + str)
+             394 LOAD_FAST            (local_cfg)
+             396 LOAD_ATTR            (NULL|self + get)
+             416 LOAD_CONST           ("reuse_mode")
+             418 CALL                 (1 positional)
+             426 COPY                 1
+             428 TO_BOOL
+             436 POP_JUMP_IF_TRUE     (to 520)
+             440 POP_TOP
+             442 LOAD_GLOBAL          (os)
+             452 LOAD_ATTR            (environ)
+             472 LOAD_ATTR            (NULL|self + get)
+             492 LOAD_CONST           ("CHATGPT_AR_LOCALPOOL_REUSE_MODE")
+             494 CALL                 (1 positional)
+             502 COPY                 1
+             504 TO_BOOL
+             512 POP_JUMP_IF_TRUE     (to 520)
+             516 POP_TOP
+             518 LOAD_CONST           ("no_repeat")
+         >>  520 CALL                 (1 positional)
+             528 LOAD_ATTR            (NULL|self + strip)
+             548 CALL                 (0 positional)
+             556 LOAD_ATTR            (NULL|self + lower)
+             576 CALL                 (0 positional)
+             584 STORE_FAST           (reuse_mode)
+
+2014:         586 LOAD_FAST            (reuse_mode)
+             588 LOAD_CONST           ("repeat")
+             590 COMPARE_OP           (==)
+             594 POP_JUMP_IF_FALSE    (to 674)
+             598 LOAD_GLOBAL          (NULL + bool)
+             608 LOAD_FAST            (local_cfg)
+             610 LOAD_ATTR            (NULL|self + get)
+             630 LOAD_CONST           ("success_archive_in_repeat")
+             632 LOAD_CONST           (False)
+             634 CALL                 (2 positional)
+             642 CALL                 (1 positional)
+             650 TO_BOOL
+             658 POP_JUMP_IF_TRUE     (to 674)
+
+2015:         662 LOAD_CONST           (True)
+             664 LOAD_CONST           (False)
+             666 LOAD_CONST           ("repeat_mode")
+             668 LOAD_CONST           (('ok', 'moved', 'reason'))
+             670 BUILD_CONST_KEY_MAP  3
+             672 RETURN_VALUE
+
+2017:     >>  674 LOAD_GLOBAL          (NULL + resolve_runtime_path)
+             684 LOAD_GLOBAL          (NULL + provider_api_key)
+             694 LOAD_FAST            (cfg)
+             696 LOAD_CONST           ("localpool")
+             698 CALL                 (2 positional)
+             706 COPY                 1
+             708 TO_BOOL
+             716 POP_JUMP_IF_TRUE     (to 724)
+             720 POP_TOP
+             722 LOAD_CONST           ("sms_pool.txt")
+         >>  724 LOAD_CONST           ("sms_pool.txt")
+             726 CALL                 (2 positional)
+             734 STORE_FAST           (pool_path)
+
+2018:         736 LOAD_GLOBAL          (NULL + _localpool_success_file)
+             746 LOAD_FAST_LOAD_FAST  (cfg, pool_path)
+             748 CALL                 (2 positional)
+             756 STORE_FAST           (success_path)
+
+2019:         758 LOAD_GLOBAL          (NULL + str)
+             768 LOAD_FAST            (activation_id)
+             770 COPY                 1
+             772 TO_BOOL
+             780 POP_JUMP_IF_TRUE     (to 788)
+             784 POP_TOP
+             786 LOAD_CONST           ("")
+         >>  788 CALL                 (1 positional)
+             796 LOAD_ATTR            (NULL|self + strip)
+             816 CALL                 (0 positional)
+             824 STORE_FAST           (activation)
+
+2020:         826 LOAD_GLOBAL          (LocalSmsPoolProvider)
+             836 LOAD_ATTR            (NULL|self + _normalize_phone)
+             856 LOAD_FAST            (phone)
+             858 CALL                 (1 positional)
+             866 STORE_FAST           (wanted_phone)
+
+2021:         868 LOAD_FAST            (wanted_phone)
+             870 TO_BOOL
+             878 POP_JUMP_IF_TRUE     (to 974)
+             882 LOAD_CONST           ("::")
+             884 LOAD_FAST            (activation)
+             886 CONTAINS_OP          (in)
+             890 POP_JUMP_IF_FALSE    (to 974)
+
+2022:         894 LOAD_GLOBAL          (LocalSmsPoolProvider)
+             904 LOAD_ATTR            (NULL|self + _normalize_phone)
+             924 LOAD_FAST            (activation)
+             926 LOAD_ATTR            (NULL|self + split)
+             946 LOAD_CONST           ("::")
+             948 LOAD_CONST           (1)
+             950 CALL                 (2 positional)
+             958 LOAD_CONST           (0)
+             960 BINARY_SUBSCR
+             964 CALL                 (1 positional)
+             972 STORE_FAST           (wanted_phone)
+
+2023:     >>  974 LOAD_FAST            (activation)
+             976 TO_BOOL
+             984 POP_JUMP_IF_TRUE     (to 1014)
+             988 LOAD_FAST            (wanted_phone)
+             990 TO_BOOL
+             998 POP_JUMP_IF_TRUE     (to 1014)
+
+2024:        1002 LOAD_CONST           (True)
+            1004 LOAD_CONST           (False)
+            1006 LOAD_CONST           ("missing_identifier")
+            1008 LOAD_CONST           (('ok', 'moved', 'reason'))
+            1010 BUILD_CONST_KEY_MAP  3
+            1012 RETURN_VALUE
+
+2025:     >> 1014 LOAD_FAST            (pool_path)
+            1016 LOAD_ATTR            (NULL|self + exists)
+            1036 CALL                 (0 positional)
+            1044 TO_BOOL
+            1052 POP_JUMP_IF_TRUE     (to 1074)
+
+2026:        1056 LOAD_CONST           (False)
+            1058 LOAD_CONST           (False)
+            1060 LOAD_CONST           ("pool_not_found:")
+            1062 LOAD_FAST            (pool_path)
+            1064 FORMAT_SIMPLE
+            1066 BUILD_STRING         2
+            1068 LOAD_CONST           (('ok', 'moved', 'reason'))
+            1070 BUILD_CONST_KEY_MAP  3
+            1072 RETURN_VALUE
+
+2028:     >> 1074 LOAD_GLOBAL          (hashlib)
+            1084 LOAD_ATTR            (sha256)
+            1104 PUSH_NULL
+            1106 LOAD_GLOBAL          (NULL + str)
+            1116 LOAD_FAST            (pool_path)
+            1118 LOAD_ATTR            (NULL|self + resolve)
+            1138 CALL                 (0 positional)
+            1146 CALL                 (1 positional)
+            1154 LOAD_ATTR            (NULL|self + lower)
+            1174 CALL                 (0 positional)
+            1182 LOAD_ATTR            (NULL|self + encode)
+            1202 LOAD_CONST           ("utf-8")
+            1204 LOAD_CONST           ("ignore")
+            1206 LOAD_CONST           (('errors',))
+            1208 CALL_KW              2
+            1210 CALL                 (1 positional)
+            1218 LOAD_ATTR            (NULL|self + hexdigest)
+            1238 CALL                 (0 positional)
+            1246 LOAD_CONST           (None)
+            1248 LOAD_CONST           (16)
+            1250 BINARY_SLICE
+            1252 STORE_FAST           (digest)
+
+2029:        1254 LOAD_CONST           ("localpool_success_archive_")
+            1256 LOAD_FAST            (digest)
+            1258 FORMAT_SIMPLE
+            1260 BUILD_STRING         2
+            1262 STORE_FAST           (lock_name)
+
+2030:        1264 LOAD_GLOBAL          (NULL + named_file_lock)
+            1274 LOAD_FAST            (lock_name)
+            1276 CALL                 (1 positional)

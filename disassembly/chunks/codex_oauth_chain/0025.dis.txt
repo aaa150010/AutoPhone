@@ -1,0 +1,800 @@
+#   44: 'openai'
+#   45: 'oauth'
+#   46: 1
+#   47: True
+#   48: 'concurrency'
+#   49: 10
+#   50: 1000
+#   51: ('name', 'platform', 'type', 'credentials', 'group_ids', 'priority', 'auto_pause_on_expired', 'concurrency')
+#   52: 'extra'
+#   53: '/api/v1/admin/accounts'
+#   54: 'Authorization'
+#   55: 'Bearer '
+#   56: ('json', 'headers', 'timeout')
+#   57: 'SUB2 account create request failed: '
+#   58: 'code'
+#   59: 'SUB2 account create failed: '
+#   60: 'data'
+#   61: 'id'
+#   62: <Code311 code object <lambda> at 0x105ef9250, file codex_oauth_chain.py>, line 1244
+#   63: ('log_fn', 'proxy')
+#   64: ('allow_unknown',)
+#   65: ('ok', 'error', 'sub2api_account_id', 'sub2api_group_id', 'sub2api_group_name')
+#   66: 'SUB2 upload missing account id'
+#   67: 'SUB2 remote verification failed'
+#   68: ('ok', 'error', 'sub2api_account_id')
+#   69: 'SUB2 group verification failed'
+#   70: 'credentials'
+#   71: '  [SUB2] 正在将 chatgpt_account_id 写入 credentials 和 extra 并复核'
+#   72: '/api/v1/admin/accounts/'
+#   73: ('credentials', 'extra')
+#   74: 'error'
+#   75: 200
+#   76: 300
+#   77: (None, 0)
+#   78: <Code311 code object <lambda> at 0x105ef9280, file codex_oauth_chain.py>, line 1319
+#   79: ('chatgpt_account_user_id', 'chatgpt_user_id', 'chatgpt_auth_user_id', 'chatgpt_plan_type')
+#   80: '/api/v1/admin/accounts/import/codex-session'
+#   81: ('ensure_ascii',)
+#   82: ('content', 'group_ids', 'priority', 'auto_pause_on_expired', 'update_existing', 'extra')
+#   83: 60
+#   84: <Code311 code object <lambda> at 0x105ef92b0, file codex_oauth_chain.py>, line 1384
+#   85: 'SUB2 uploaded but chatgpt_account_id verification failed'
+#   86: ('ok', 'error', 'sub2api_account_id', 'sub2api_group_id', 'sub2api_group_name', 'sub2_remote_verified', 'sub2_group_verified', 'chatgpt_account_id', 'account_id', 'sub2_chatgpt_account_id_verified', 'sub2_chatgpt_account_id_backfilled', 'sub2_chatgpt_account_id_import_updated', 'sub2_upload_created')
+#   87: 'SUB2 group verification failed after metadata update'
+#   88: ('ok', 'error', 'sub2api_account_id', 'sub2api_group_id', 'sub2api_group_name', 'chatgpt_account_id', 'account_id', 'sub2_chatgpt_account_id_verified', 'sub2_chatgpt_account_id_backfilled', 'sub2_chatgpt_account_id_import_updated')
+#   89: ('ok', 'sub2api_account_id', 'sub2api_group_id', 'sub2api_group_name', 'sub2api_group_ids', 'sub2api_group_names', 'sub2_remote_verified', 'sub2_group_verified', 'chatgpt_account_id', 'account_id', 'sub2_chatgpt_account_id_verified', 'sub2_chatgpt_account_id_backfilled', 'sub2_chatgpt_account_id_import_updated')
+# Names:
+#    0: isinstance
+#    1: config
+#    2: get
+#    3: dict
+#    4: _clean
+#    5: rstrip
+#    6: _as_int
+#    7: proxy_scope
+#    8: requests_kwargs
+#    9: sub2_groups
+#   10: Sub2GroupError
+#   11: assert_sub2_account_group
+#   12: resolve_sub2_group_id
+#   13: sub2_session
+#   14: get_admin_token
+#   15: chatgpt_fields
+#   16: extract_chatgpt_auth_fields
+#   17: fetch_sub2_account_detail
+#   18: sub2_extra_from_item
+#   19: Exception
+#   20: _emit
+#   21: log_fn
+#   22: update
+#   23: join
+#   24: upload_proxy
+#   25: requests
+#   26: post
+#   27: json
+#   28: _redacted
+#   29: str
+#   30: bool
+#   31: _sub2_identity_locations
+#   32: put
+#   33: status_code
+#   34: dumps
+# Varnames:
+#	self, credentials, email, sub, base, user, password, group_name, proxy_id, requests_kwargs, Sub2GroupError, assert_sub2_account_group, resolve_sub2_group_id, get_admin_token, extract_chatgpt_auth_fields, fetch_sub2_account_detail, sub2_extra_from_item, exc, credentials_payload, chatgpt_fields, chatgpt_account_id, extra_source, extra, identity_keys, key, value, missing, admin_token, group_id, resolved_group_name, payload, requests, response, data, account_id, detail, actual_group_ids, actual_group_names, group_verified, remote_fields, remote_chatgpt_account_id, remote_credentials_id, remote_extra_id, metadata_verified, metadata_backfilled, metadata_import_updated, detail_data, current_extra, merged_extra, current_credentials, merged_credentials, update_response, update_data, update_ok, import_content, import_response, import_data, import_ok, imported_id
+# Positional arguments:
+#	self
+# Local variables:
+#    1: credentials
+#    2: email
+#    3: sub
+#    4: base
+#    5: user
+#    6: password
+#    7: group_name
+#    8: proxy_id
+#    9: requests_kwargs
+#   10: Sub2GroupError
+#   11: assert_sub2_account_group
+#   12: resolve_sub2_group_id
+#   13: get_admin_token
+#   14: extract_chatgpt_auth_fields
+#   15: fetch_sub2_account_detail
+#   16: sub2_extra_from_item
+#   17: exc
+#   18: credentials_payload
+#   19: chatgpt_fields
+#   20: chatgpt_account_id
+#   21: extra_source
+#   22: extra
+#   23: identity_keys
+#   24: key
+#   25: value
+#   26: missing
+#   27: admin_token
+#   28: group_id
+#   29: resolved_group_name
+#   30: payload
+#   31: requests
+#   32: response
+#   33: data
+#   34: account_id
+#   35: detail
+#   36: actual_group_ids
+#   37: actual_group_names
+#   38: group_verified
+#   39: remote_fields
+#   40: remote_chatgpt_account_id
+#   41: remote_credentials_id
+#   42: remote_extra_id
+#   43: metadata_verified
+#   44: metadata_backfilled
+#   45: metadata_import_updated
+#   46: detail_data
+#   47: current_extra
+#   48: merged_extra
+#   49: current_credentials
+#   50: merged_credentials
+#   51: update_response
+#   52: update_data
+#   53: update_ok
+#   54: import_content
+#   55: import_response
+#   56: import_data
+#   57: import_ok
+#   58: imported_id
+# Cell variables:
+#    0: self
+               0 MAKE_CELL            (self)
+
+1126:           2 RESUME               0
+
+1127:           4 LOAD_GLOBAL          (NULL + isinstance)
+              14 LOAD_DEREF           (self)
+              16 LOAD_ATTR            (config)
+              36 LOAD_ATTR            (NULL|self + get)
+              56 LOAD_CONST           ("sub2api")
+              58 CALL                 (1 positional)
+              66 LOAD_GLOBAL          (dict)
+              76 CALL                 (2 positional)
+              84 TO_BOOL
+              92 POP_JUMP_IF_FALSE    (to 150)
+              96 LOAD_DEREF           (self)
+              98 LOAD_ATTR            (config)
+             118 LOAD_ATTR            (NULL|self + get)
+             138 LOAD_CONST           ("sub2api")
+             140 CALL                 (1 positional)
+             148 JUMP_FORWARD         (to 152)
+         >>  150 BUILD_MAP            0
+         >>  152 STORE_FAST           (sub)
+
+1128:         154 LOAD_GLOBAL          (NULL + _clean)
+             164 LOAD_FAST            (sub)
+             166 LOAD_ATTR            (NULL|self + get)
+             186 LOAD_CONST           ("url")
+             188 CALL                 (1 positional)
+             196 CALL                 (1 positional)
+             204 LOAD_ATTR            (NULL|self + rstrip)
+             224 LOAD_CONST           ("/")
+             226 CALL                 (1 positional)
+             234 STORE_FAST           (base)
+
+1129:         236 LOAD_GLOBAL          (NULL + _clean)
+             246 LOAD_FAST            (sub)
+             248 LOAD_ATTR            (NULL|self + get)
+             268 LOAD_CONST           ("email")
+             270 CALL                 (1 positional)
+             278 CALL                 (1 positional)
+             286 STORE_FAST           (user)
+
+1130:         288 LOAD_GLOBAL          (NULL + _clean)
+             298 LOAD_FAST            (sub)
+             300 LOAD_ATTR            (NULL|self + get)
+             320 LOAD_CONST           ("pwd")
+             322 CALL                 (1 positional)
+             330 COPY                 1
+             332 TO_BOOL
+             340 POP_JUMP_IF_TRUE     (to 378)
+             344 POP_TOP
+             346 LOAD_FAST            (sub)
+             348 LOAD_ATTR            (NULL|self + get)
+             368 LOAD_CONST           ("password")
+             370 CALL                 (1 positional)
+         >>  378 CALL                 (1 positional)
+             386 STORE_FAST           (password)
+
+1131:         388 LOAD_GLOBAL          (NULL + _clean)
+             398 LOAD_FAST            (sub)
+             400 LOAD_ATTR            (NULL|self + get)
+             420 LOAD_CONST           ("group")
+             422 CALL                 (1 positional)
+             430 CALL                 (1 positional)
+             438 COPY                 1
+             440 TO_BOOL
+             448 POP_JUMP_IF_TRUE     (to 456)
+             452 POP_TOP
+             454 LOAD_CONST           ("CHATGPT")
+         >>  456 STORE_FAST           (group_name)
+
+1132:         458 LOAD_GLOBAL          (NULL + _as_int)
+             468 LOAD_FAST            (sub)
+             470 LOAD_ATTR            (NULL|self + get)
+             490 LOAD_CONST           ("proxy_id")
+             492 CALL                 (1 positional)
+             500 LOAD_CONST           (0)
+             502 LOAD_CONST           (0)
+             504 LOAD_CONST           (1000000)
+             506 CALL                 (4 positional)
+             514 STORE_FAST           (proxy_id)
+
+1133:         516 LOAD_FAST            (base)
+             518 TO_BOOL
+             526 POP_JUMP_IF_FALSE    (to 544)
+             530 LOAD_FAST            (user)
+             532 TO_BOOL
+             540 POP_JUMP_IF_TRUE     (to 554)
+
+1134:     >>  544 LOAD_CONST           (False)
+             546 LOAD_CONST           ("SUB2API config missing")
+             548 LOAD_CONST           (('ok', 'error'))
+             550 BUILD_CONST_KEY_MAP  2
+             552 RETURN_VALUE
+
+1135:     >>  554 LOAD_FAST            (credentials)
+             556 LOAD_ATTR            (NULL|self + get)
+             576 LOAD_CONST           ("access_token")
+             578 CALL                 (1 positional)
+             586 TO_BOOL
+             594 POP_JUMP_IF_FALSE    (to 686)
+             598 LOAD_FAST            (credentials)
+             600 LOAD_ATTR            (NULL|self + get)
+             620 LOAD_CONST           ("refresh_token")
+             622 CALL                 (1 positional)
+             630 TO_BOOL
+             638 POP_JUMP_IF_FALSE    (to 686)
+             642 LOAD_FAST            (credentials)
+             644 LOAD_ATTR            (NULL|self + get)
+             664 LOAD_CONST           ("id_token")
+             666 CALL                 (1 positional)
+             674 TO_BOOL
+             682 POP_JUMP_IF_TRUE     (to 696)
+
+1136:     >>  686 LOAD_CONST           (False)
+             688 LOAD_CONST           ("token bundle incomplete for SUB2 upload")
+             690 LOAD_CONST           (('ok', 'error'))
+             692 BUILD_CONST_KEY_MAP  2
+             694 RETURN_VALUE
+
+1137:     >>  696 NOP
+
+1138:         698 LOAD_CONST           (0)
+             700 LOAD_CONST           (('requests_kwargs',))
+             702 IMPORT_NAME          (proxy_scope)
+             704 IMPORT_FROM          (requests_kwargs)
+             706 STORE_FAST           (requests_kwargs)
+             708 POP_TOP
+
+1139:         710 LOAD_CONST           (0)
+             712 LOAD_CONST           (('Sub2GroupError', 'assert_sub2_account_group', 'resolve_sub2_group_id'))
+             714 IMPORT_NAME          (sub2_groups)
+             716 IMPORT_FROM          (Sub2GroupError)
+             718 STORE_FAST           (Sub2GroupError)
+             720 IMPORT_FROM          (assert_sub2_account_group)
+             722 STORE_FAST           (assert_sub2_account_group)
+             724 IMPORT_FROM          (resolve_sub2_group_id)
+             726 STORE_FAST           (resolve_sub2_group_id)
+             728 POP_TOP
+
+1140:         730 LOAD_CONST           (0)
+             732 LOAD_CONST           (('get_admin_token',))
+             734 IMPORT_NAME          (sub2_session)
+             736 IMPORT_FROM          (get_admin_token)
+             738 STORE_FAST           (get_admin_token)
+             740 POP_TOP
+
+1141:         742 LOAD_CONST           (0)
+             744 LOAD_CONST           (('extract_chatgpt_auth_fields', 'fetch_sub2_account_detail', 'sub2_extra_from_item'))
+             746 IMPORT_NAME          (chatgpt_fields)
+             748 IMPORT_FROM          (extract_chatgpt_auth_fields)
+             750 STORE_FAST           (extract_chatgpt_auth_fields)
+             752 IMPORT_FROM          (fetch_sub2_account_detail)
+             754 STORE_FAST           (fetch_sub2_account_detail)
+             756 IMPORT_FROM          (sub2_extra_from_item)
+             758 STORE_FAST           (sub2_extra_from_item)
+             760 POP_TOP
+
+1150:         762 LOAD_FAST            (credentials)
+             764 LOAD_ATTR            (NULL|self + get)
+             784 LOAD_CONST           ("id_token")
+             786 LOAD_CONST           ("")
+             788 CALL                 (2 positional)
+
+1151:         796 LOAD_FAST            (credentials)
+             798 LOAD_ATTR            (NULL|self + get)
+             818 LOAD_CONST           ("access_token")
+             820 LOAD_CONST           ("")
+             822 CALL                 (2 positional)
+
+1152:         830 LOAD_FAST            (credentials)
+             832 LOAD_ATTR            (NULL|self + get)
+             852 LOAD_CONST           ("refresh_token")
+             854 LOAD_CONST           ("")
+             856 CALL                 (2 positional)
+
+1153:         864 LOAD_FAST            (credentials)
+             866 LOAD_ATTR            (NULL|self + get)
+             886 LOAD_CONST           ("expires_at")
+             888 LOAD_CONST           (0)
+             890 CALL                 (2 positional)
+
+1154:         898 LOAD_FAST            (email)
+
+1149:         900 LOAD_CONST           (('id_token', 'access_token', 'refresh_token', 'expires_at', 'email'))
+             902 BUILD_CONST_KEY_MAP  5
+             904 STORE_FAST           (credentials_payload)
+
+1159:         906 LOAD_FAST            (extract_chatgpt_auth_fields)
+             908 PUSH_NULL
+             910 LOAD_FAST            (credentials_payload)
+             912 LOAD_FAST            (credentials)
+             914 LOAD_CONST           (('exchange_data',))
+             916 CALL_KW              2
+             918 STORE_FAST           (chatgpt_fields)
+
+1160:         920 LOAD_GLOBAL          (NULL + _clean)
+             930 LOAD_FAST            (chatgpt_fields)
+             932 LOAD_ATTR            (NULL|self + get)
+             952 LOAD_CONST           ("chatgpt_account_id")
+             954 CALL                 (1 positional)
+             962 CALL                 (1 positional)
+             970 STORE_FAST           (chatgpt_account_id)
+
+1161:         972 LOAD_FAST            (chatgpt_account_id)
+             974 TO_BOOL
+             982 POP_JUMP_IF_TRUE     (to 1032)
+
+1162:         986 LOAD_GLOBAL          (NULL + _emit)
+             996 LOAD_DEREF           (self)
+             998 LOAD_ATTR            (log_fn)
+            1018 LOAD_CONST           ("  [SUB2] 授权结果暂未解析到 chatgpt_account_id，继续上传并在远端回填复核")
+            1020 LOAD_CONST           ("warn")
+            1022 CALL                 (3 positional)
+            1030 POP_TOP
+
+1163:     >> 1032 LOAD_GLOBAL          (NULL + dict)
+            1042 LOAD_FAST            (credentials)
+            1044 CALL                 (1 positional)
+            1052 STORE_FAST           (extra_source)
+
+1164:        1054 LOAD_FAST            (extra_source)
+            1056 LOAD_ATTR            (NULL|self + update)
+            1076 LOAD_FAST            (chatgpt_fields)
+            1078 CALL                 (1 positional)
+            1086 POP_TOP
+
+1165:        1088 LOAD_FAST            (sub2_extra_from_item)
+            1090 PUSH_NULL
+            1092 LOAD_FAST            (extra_source)
+            1094 CALL                 (1 positional)
+            1102 STORE_FAST           (extra)
+
+1166:        1104 LOAD_FAST            (email)
+            1106 TO_BOOL
+            1114 POP_JUMP_IF_FALSE    (to 1128)
+
+1167:        1118 LOAD_FAST            (email)
+            1120 LOAD_FAST            (extra)
+            1122 LOAD_CONST           ("email")
+            1124 STORE_SUBSCR
+
+1168:     >> 1128 LOAD_CONST           (('chatgpt_account_id', 'account_id', 'chatgpt_account_user_id', 'chatgpt_user_id', 'chatgpt_auth_user_id', 'chatgpt_plan_type'))
+            1130 STORE_FAST           (identity_keys)
+
+1176:        1132 LOAD_FAST            (identity_keys)
+            1134 GET_ITER
+            1136 FOR_ITER             (to 1236)
+            1140 STORE_FAST           (key)
+
+1177:        1142 LOAD_GLOBAL          (NULL + _clean)
+            1152 LOAD_FAST            (chatgpt_fields)
+            1154 LOAD_ATTR            (NULL|self + get)
+            1174 LOAD_FAST            (key)
+            1176 CALL                 (1 positional)
+            1184 CALL                 (1 positional)
+            1192 STORE_FAST           (value)
+
+1178:        1194 LOAD_FAST            (value)
+            1196 TO_BOOL
+            1204 POP_JUMP_IF_TRUE     (to 1212)
+            1208 JUMP_BACKWARD        (to 1136)
+
+1179:     >> 1212 LOAD_FAST            (value)
+            1214 LOAD_FAST            (credentials_payload)
+            1216 LOAD_FAST            (key)
+            1218 STORE_SUBSCR
+
+1180:        1222 LOAD_FAST            (value)
+            1224 LOAD_FAST            (extra)
+            1226 LOAD_FAST            (key)
+            1228 STORE_SUBSCR
+            1232 JUMP_BACKWARD        (to 1136)
+
+1176:     >> 1236 END_FOR
+            1238 POP_TOP
+
+1181:        1240 LOAD_FAST            (chatgpt_account_id)
+            1242 TO_BOOL
+            1250 POP_JUMP_IF_FALSE    (to 1294)
+
+1182:        1254 LOAD_FAST            (chatgpt_account_id)
+            1256 LOAD_FAST            (credentials_payload)
+            1258 LOAD_CONST           ("chatgpt_account_id")
+            1260 STORE_SUBSCR
+
+1183:        1264 LOAD_FAST            (chatgpt_account_id)
+            1266 LOAD_FAST            (credentials_payload)
+            1268 LOAD_CONST           ("account_id")
+            1270 STORE_SUBSCR
+
+1184:        1274 LOAD_FAST            (chatgpt_account_id)
+            1276 LOAD_FAST            (extra)
+            1278 LOAD_CONST           ("chatgpt_account_id")
+            1280 STORE_SUBSCR
+
+1185:        1284 LOAD_FAST            (chatgpt_account_id)
+            1286 LOAD_FAST            (extra)
+         >> 1288 LOAD_CONST           ("account_id")
+            1290 STORE_SUBSCR
+
+1186:     >> 1294 LOAD_CONST           (('email', 'access_token', 'refresh_token', 'id_token'))
+            1296 GET_ITER
+            1298 LOAD_FAST_AND_CLEAR  (key)
+            1300 SWAP                 (TOS <-> TOS1)
+            1302 BUILD_LIST           0
+            1304 SWAP                 (TOS <-> TOS1)
+            1306 GET_ITER
+            1308 FOR_ITER             (to 1370)
+            1312 STORE_FAST           (key)
+            1314 LOAD_FAST            (credentials_payload)
+            1316 LOAD_ATTR            (NULL|self + get)
+         >> 1336 LOAD_FAST            (key)
+            1338 CALL                 (1 positional)
+            1346 TO_BOOL
+            1354 POP_JUMP_IF_FALSE    (to 1362)
+            1358 JUMP_BACKWARD        (to 1308)
+         >> 1362 LOAD_FAST            (key)
+            1364 LIST_APPEND          2
+            1366 JUMP_BACKWARD        (to 1308)
+         >> 1370 END_FOR
+            1372 POP_TOP
+            1374 STORE_FAST           (missing)
+            1376 STORE_FAST           (key)
+
+1187:        1378 LOAD_FAST            (missing)
+            1380 TO_BOOL
+            1388 POP_JUMP_IF_FALSE    (to 1438)
+
+1188:        1392 LOAD_CONST           (False)
+            1394 LOAD_CONST           ("SUB2 upload missing: ")
+            1396 LOAD_CONST           (", ")
+            1398 LOAD_ATTR            (NULL|self + join)
+            1418 LOAD_FAST            (missing)
+            1420 CALL                 (1 positional)
+            1428 BINARY_OP            (+)
+         >> 1432 LOAD_CONST           (('ok', 'error'))
+            1434 BUILD_CONST_KEY_MAP  2
+            1436 RETURN_VALUE
+
+1190:     >> 1438 NOP
+
+1191:        1440 LOAD_FAST            (get_admin_token)
+            1442 PUSH_NULL
+
+1192:        1444 LOAD_FAST            (base)
+
+1193:        1446 LOAD_FAST            (user)
+
+1194:        1448 LOAD_FAST            (password)
+
+1195:        1450 LOAD_CONST           (30)
+
+1196:        1452 LOAD_FAST            (self)
+            1454 BUILD_TUPLE          1
+            1456 LOAD_CONST           (<Code311 code object <lambda> at 0x105ef91f0, file codex_oauth_chain.py>, line 1196)
+            1458 MAKE_FUNCTION
+            1460 SET_FUNCTION_ATTRIBUTE 8
+
+1197:        1462 LOAD_DEREF           (self)
+            1464 LOAD_ATTR            (upload_proxy)
+
+1191:        1484 LOAD_CONST           (('timeout', 'log_fn', 'proxy'))
+            1486 CALL_KW              6
+            1488 STORE_FAST           (admin_token)
+
+1199:        1490 LOAD_FAST            (resolve_sub2_group_id)
+            1492 PUSH_NULL
+
+1200:        1494 LOAD_FAST            (base)
+
+1201:        1496 LOAD_FAST            (admin_token)
+
+1202:        1498 LOAD_FAST            (group_name)
+
+1203:        1500 LOAD_CONST           (3)
+
+1204:        1502 LOAD_CONST           (15)
+
+1205:        1504 LOAD_FAST            (self)
+            1506 BUILD_TUPLE          1
+            1508 LOAD_CONST           (<Code311 code object <lambda> at 0x105ef9220, file codex_oauth_chain.py>, line 1205)
+            1510 MAKE_FUNCTION
+            1512 SET_FUNCTION_ATTRIBUTE 8
+
+1206:        1514 LOAD_DEREF           (self)
+            1516 LOAD_ATTR            (upload_proxy)
+
+1199:        1536 LOAD_CONST           (('attempts', 'timeout', 'log_fn', 'proxy'))
+            1538 CALL_KW              7
+            1540 UNPACK_SEQUENCE      2
+            1544 STORE_FAST           (group_id)
+            1546 STORE_FAST           (resolved_group_name)
+
+1212:        1548 LOAD_FAST            (email)
+
+1213:        1550 LOAD_CONST           ("openai")
+
+1214:        1552 LOAD_CONST           ("oauth")
+
+1215:        1554 LOAD_FAST            (credentials_payload)
+
+1216:        1556 LOAD_FAST            (group_id)
+            1558 BUILD_LIST           1
+
+1217:        1560 LOAD_CONST           (1)
+
+1218:        1562 LOAD_CONST           (True)
+
+1219:        1564 LOAD_GLOBAL          (NULL + _as_int)
+            1574 LOAD_FAST            (sub)
+            1576 LOAD_ATTR            (NULL|self + get)
+            1596 LOAD_CONST           ("concurrency")
+            1598 CALL                 (1 positional)
+            1606 LOAD_CONST           (10)
+            1608 LOAD_CONST           (1)
+            1610 LOAD_CONST           (1000)
+            1612 CALL                 (4 positional)
+
+1211:        1620 LOAD_CONST           (('name', 'platform', 'type', 'credentials', 'group_ids', 'priority', 'auto_pause_on_expired', 'concurrency'))
+            1622 BUILD_CONST_KEY_MAP  8
+            1624 STORE_FAST           (payload)
+
+1221:        1626 LOAD_FAST            (extra)
+            1628 TO_BOOL
+            1636 POP_JUMP_IF_FALSE    (to 1650)
+
+1222:        1640 LOAD_FAST            (extra)
+            1642 LOAD_FAST            (payload)
+            1644 LOAD_CONST           ("extra")
+            1646 STORE_SUBSCR
+
+1223:     >> 1650 LOAD_FAST            (proxy_id)
+            1652 TO_BOOL
+            1660 POP_JUMP_IF_FALSE    (to 1674)
+
+1224:        1664 LOAD_FAST            (proxy_id)
+            1666 LOAD_FAST            (payload)
+            1668 LOAD_CONST           ("proxy_id")
+            1670 STORE_SUBSCR
+
+1225:     >> 1674 NOP
+
+1226:        1676 LOAD_CONST           (0)
+            1678 LOAD_CONST           (None)
+            1680 IMPORT_NAME          (requests)
+            1682 STORE_FAST           (requests)
+
+1228:        1684 LOAD_FAST            (requests)
+            1686 LOAD_ATTR            (post)
+            1706 PUSH_NULL
+
+1229:        1708 LOAD_FAST            (base)
+            1710 FORMAT_SIMPLE
+            1712 LOAD_CONST           ("/api/v1/admin/accounts")
+            1714 BUILD_STRING         2
+
+1228:        1716 BUILD_TUPLE          1
+
+1230:        1718 LOAD_FAST            (payload)
+
+1231:        1720 LOAD_CONST           ("Authorization")
+            1722 LOAD_CONST           ("Bearer ")
+            1724 LOAD_FAST            (admin_token)
+            1726 FORMAT_SIMPLE
+            1728 BUILD_STRING         2
+            1730 BUILD_MAP            1
+
+1232:        1732 LOAD_CONST           (30)
+
+1228:        1734 LOAD_CONST           (('json', 'headers', 'timeout'))
+            1736 BUILD_CONST_KEY_MAP  3
+
+1233:        1738 LOAD_FAST            (requests_kwargs)
+            1740 PUSH_NULL
+            1742 LOAD_DEREF           (self)
+            1744 LOAD_ATTR            (upload_proxy)
+            1764 CALL                 (1 positional)
+
+1228:        1772 DICT_MERGE           1
+            1774 CALL_FUNCTION_EX     (keyword and positional arguments)
+            1776 STORE_FAST           (response)
+
+1235:        1778 LOAD_FAST            (response)
+            1780 LOAD_ATTR            (NULL|self + json)
+            1800 CALL                 (0 positional)
+            1808 STORE_FAST           (data)
+
+1238:        1810 LOAD_GLOBAL          (NULL + isinstance)
+            1820 LOAD_FAST            (data)
+            1822 LOAD_GLOBAL          (dict)
+            1832 CALL                 (2 positional)
+            1840 TO_BOOL
+            1848 POP_JUMP_IF_FALSE    (to 1894)
+            1852 LOAD_FAST            (data)
+            1854 LOAD_ATTR            (NULL|self + get)
+            1874 LOAD_CONST           ("code")
+            1876 CALL                 (1 positional)
+            1884 LOAD_CONST           (0)
+            1886 COMPARE_OP           (!=)
+            1890 POP_JUMP_IF_FALSE    (to 1928)
+
+1239:     >> 1894 LOAD_CONST           (False)
+            1896 LOAD_CONST           ("SUB2 account create failed: ")
+            1898 LOAD_GLOBAL          (NULL + _redacted)
+            1908 LOAD_FAST            (data)
+            1910 CALL                 (1 positional)
+            1918 FORMAT_SIMPLE
+            1920 BUILD_STRING         2
+            1922 LOAD_CONST           (('ok', 'error'))
+            1924 BUILD_CONST_KEY_MAP  2
+            1926 RETURN_VALUE
+
+1240:     >> 1928 LOAD_GLOBAL          (NULL + _clean)
+            1938 LOAD_GLOBAL          (NULL + isinstance)
+            1948 LOAD_FAST            (data)
+            1950 LOAD_ATTR            (NULL|self + get)
+            1970 LOAD_CONST           ("data")
+            1972 CALL                 (1 positional)
+            1980 LOAD_GLOBAL          (dict)
+            1990 CALL                 (2 positional)
+            1998 TO_BOOL
+            2006 POP_JUMP_IF_FALSE    (to 2062)
+            2010 LOAD_FAST            (data)
+            2012 LOAD_ATTR            (NULL|self + get)
+            2032 LOAD_CONST           ("data")
+            2034 CALL                 (1 positional)
+            2042 COPY                 1
+            2044 TO_BOOL
+            2052 POP_JUMP_IF_TRUE     (to 2060)
+            2056 POP_TOP
+            2058 BUILD_MAP            0
+         >> 2060 JUMP_FORWARD         (to 2064)
+
+1240:     >> 2062 BUILD_MAP            0
+         >> 2064 LOAD_ATTR            (NULL|self + get)
+            2084 LOAD_CONST           ("id")
+            2086 CALL                 (1 positional)
+            2094 CALL                 (1 positional)
+            2102 STORE_FAST           (account_id)
+
+1241:        2104 BUILD_MAP            0
+            2106 STORE_FAST           (detail)
+
+1242:        2108 LOAD_FAST            (account_id)
+            2110 TO_BOOL
+            2118 POP_JUMP_IF_FALSE    (to 2172)
+
+1243:        2122 NOP
+
+1244:        2124 LOAD_FAST            (fetch_sub2_account_detail)
+            2126 PUSH_NULL
+            2128 LOAD_FAST            (base)
+            2130 LOAD_FAST            (admin_token)
+            2132 LOAD_FAST            (account_id)
+            2134 LOAD_FAST            (self)
+            2136 BUILD_TUPLE          1
+            2138 LOAD_CONST           (<Code311 code object <lambda> at 0x105ef9250, file codex_oauth_chain.py>, line 1244)
+            2140 MAKE_FUNCTION
+            2142 SET_FUNCTION_ATTRIBUTE 8
+            2144 LOAD_DEREF           (self)
+            2146 LOAD_ATTR            (upload_proxy)
+            2166 LOAD_CONST           (('log_fn', 'proxy'))
+            2168 CALL_KW              5
+            2170 STORE_FAST           (detail)
+
+1247:     >> 2172 NOP
+
+1248:        2174 LOAD_FAST            (assert_sub2_account_group)
+            2176 PUSH_NULL
+
+1249:        2178 LOAD_FAST            (data)
+            2180 LOAD_FAST            (detail)
+            2182 BUILD_LIST           2
+
+1250:        2184 LOAD_FAST            (group_id)
+
+1251:        2186 LOAD_FAST            (resolved_group_name)
+
+1252:        2188 LOAD_CONST           (False)
+
+1248:        2190 LOAD_CONST           (('allow_unknown',))
+            2192 CALL_KW              4
+            2194 UNPACK_SEQUENCE      2
+            2198 STORE_FAST           (actual_group_ids)
+            2200 STORE_FAST           (actual_group_names)
+
+1262:        2202 LOAD_GLOBAL          (NULL + bool)
+            2212 LOAD_FAST            (actual_group_ids)
+            2214 COPY                 1
+            2216 TO_BOOL
+            2224 POP_JUMP_IF_FALSE    (to 2238)
+            2228 POP_TOP
+            2230 LOAD_FAST            (group_id)
+            2232 LOAD_FAST            (actual_group_ids)
+            2234 CONTAINS_OP          (in)
+         >> 2238 CALL                 (1 positional)
+            2246 STORE_FAST           (group_verified)
+
+1263:        2248 LOAD_FAST            (account_id)
+            2250 TO_BOOL
+            2258 POP_JUMP_IF_TRUE     (to 2272)
+
+1264:        2262 LOAD_CONST           (False)
+            2264 LOAD_CONST           ("SUB2 upload missing account id")
+            2266 LOAD_CONST           (('ok', 'error'))
+            2268 BUILD_CONST_KEY_MAP  2
+            2270 RETURN_VALUE
+
+1265:     >> 2272 LOAD_FAST            (detail)
+            2274 TO_BOOL
+            2282 POP_JUMP_IF_TRUE     (to 2298)
+
+1266:        2286 LOAD_CONST           (False)
+            2288 LOAD_CONST           ("SUB2 remote verification failed")
+            2290 LOAD_FAST            (account_id)
+            2292 LOAD_CONST           (('ok', 'error', 'sub2api_account_id'))
+            2294 BUILD_CONST_KEY_MAP  3
+            2296 RETURN_VALUE
+
+1267:     >> 2298 LOAD_FAST            (group_verified)
+            2300 TO_BOOL
+            2308 POP_JUMP_IF_TRUE     (to 2324)
+
+1268:        2312 LOAD_CONST           (False)
+            2314 LOAD_CONST           ("SUB2 group verification failed")
+            2316 LOAD_FAST            (account_id)
+            2318 LOAD_CONST           (('ok', 'error', 'sub2api_account_id'))
+            2320 BUILD_CONST_KEY_MAP  3
+            2322 RETURN_VALUE
+
+1273:     >> 2324 LOAD_FAST            (extract_chatgpt_auth_fields)
+            2326 PUSH_NULL
+            2328 BUILD_MAP            0
+            2330 LOAD_FAST            (detail)
+            2332 LOAD_CONST           (('exchange_data',))
+            2334 CALL_KW              2
+            2336 STORE_FAST           (remote_fields)
+
+1274:        2338 LOAD_GLOBAL          (NULL + _clean)
+            2348 LOAD_FAST            (remote_fields)
+            2350 LOAD_ATTR            (NULL|self + get)
+            2370 LOAD_CONST           ("chatgpt_account_id")
+            2372 CALL                 (1 positional)
+            2380 CALL                 (1 positional)
+            2388 STORE_FAST           (remote_chatgpt_account_id)
+
+1275:        2390 LOAD_GLOBAL          (NULL + _sub2_identity_locations)
+            2400 LOAD_FAST            (detail)
+            2402 CALL                 (1 positional)
+            2410 UNPACK_SEQUENCE      2
+            2414 STORE_FAST           (remote_credentials_id)
+            2416 STORE_FAST           (remote_extra_id)

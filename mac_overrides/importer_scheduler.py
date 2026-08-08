@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import hmac
+import inspect
 import threading
 import time
 from typing import Any, Callable
@@ -31,6 +32,19 @@ def _is_relogin(settings: dict[str, Any]) -> bool:
 
 def _is_sha256_row_id(value: str) -> bool:
     return len(value) == 64 and all(character in "0123456789abcdef" for character in value)
+
+
+def _accepts_keyword(callback: Callable[..., Any], name: str) -> bool:
+    try:
+        parameters = inspect.signature(callback).parameters
+    except (TypeError, ValueError):
+        return False
+    parameter = parameters.get(name)
+    return bool(
+        parameter
+        and parameter.kind
+        in {inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY}
+    ) or any(item.kind == inspect.Parameter.VAR_KEYWORD for item in parameters.values())
 
 
 class ObservedPhaseGate:
@@ -144,6 +158,8 @@ def start_bounded_importer(
     email_phase_gate_factory: Callable[[int], Any] | None = None,
     node_phase_gate_factory: Callable[[int], Any] | None = None,
     on_task_started: Callable[[str, float], Any] | None = None,
+    batch_manifest: Any = None,
+    batch_reserve: Callable[..., Sequence[Any]] | None = None,
 ) -> None:
     """Start only the requested number of reserved pool entries."""
     relogin = _is_relogin(settings)
@@ -206,6 +222,71 @@ def start_bounded_importer(
     startup_ready = threading.Event()
     batch_id = str(settings.get("batch_id") or "").strip()
     batch_started_at = _bounded_int(settings.get("batch_started_at"), 0, 0, 4_102_444_800)
+    task_specs = [
+        (f"T{ordinal:03d}-{uuid.uuid4().hex[:6]}", ordinal)
+        for ordinal in range(1, target + 1)
+    ]
+    batch_prepared = False
+    batch_committed = False
+    reserve_handles_rollback = False
+    reservation_returned = False
+
+    def begin_batch(entries: Sequence[Any]) -> None:
+        nonlocal batch_prepared
+        if batch_manifest is None or not batch_id:
+            return
+        if len(entries) != target:
+            raise mailbox_error_type("运行批次预选成员数量与目标数量不一致")
+        members = []
+        for (task_id, ordinal), entry in zip(task_specs, entries, strict=True):
+            source_row = str(getattr(entry, "source_row", "") or "")
+            members.append(
+                {
+                    "task_id": task_id,
+                    "ordinal": ordinal,
+                    "row_id": source_row,
+                    "line_no": int(getattr(entry, "line_no", 0) or 0),
+                }
+            )
+        prepare = getattr(batch_manifest, "prepare", None)
+        callback = prepare if callable(prepare) else batch_manifest.begin
+        callback(settings, target=target, members=members)
+        batch_prepared = True
+
+    def commit_batch(_entries: Sequence[Any] = ()) -> None:
+        nonlocal batch_committed
+        if batch_manifest is None or not batch_id or batch_committed:
+            return
+        callback = getattr(batch_manifest, "commit_prepared", None)
+        if callable(callback):
+            callback(batch_id)
+        batch_committed = True
+
+    def rollback_batch(_entries: Sequence[Any] = (), _error: Exception | None = None) -> None:
+        nonlocal batch_prepared
+        if batch_manifest is None or not batch_id or not batch_prepared or batch_committed:
+            return
+        callback = getattr(batch_manifest, "rollback_prepared", None)
+        if callable(callback):
+            callback(batch_id)
+        batch_prepared = False
+
+    def record_batch(method: str, *args: Any, **kwargs: Any) -> None:
+        if batch_manifest is None or not batch_id:
+            return
+        callback = getattr(batch_manifest, method, None)
+        if not callable(callback):
+            return
+        try:
+            callback(*args, **kwargs)
+        except Exception as exc:
+            try:
+                importer._log(
+                    f"[运行批次对账/run_batch_manifest] {method} 更新失败（{type(exc).__name__}）",
+                    "error",
+                )
+            except Exception:
+                pass
 
     def finish_before_admission(
         entry: Any,
@@ -242,6 +323,7 @@ def start_bounded_importer(
             if status == "failed":
                 values["technical_error"] = error
             importer._task_state(task_id, **values)
+            record_batch("observe_task", task_id, status)
         except Exception as exc:
             try:
                 importer._log(
@@ -271,6 +353,7 @@ def start_bounded_importer(
         if not startup_ready.is_set():
             return
         if task_admission is None:
+            record_batch("mark_started", task_id)
             importer._run_one(task_settings, ordinal, entry, task_id)
             return
 
@@ -297,6 +380,7 @@ def start_bounded_importer(
                         on_task_started(task_id, wait_seconds)
                     except Exception:
                         pass
+                record_batch("mark_started", task_id)
                 business_started = True
                 importer._run_one(task_settings, ordinal, entry, task_id)
         except Exception as exc:
@@ -328,13 +412,71 @@ def start_bounded_importer(
         importer.future_assignments = {}
         importer.active_task_ids = set()
         importer._gptphone_preselected_task_ids = set()
+        importer._gptphone_batch_manifest = batch_manifest
 
         try:
-            for index in range(target):
-                entry = relogin_entries[index] if relogin else pool.lease(lease_seconds=3600)
-                ordinal = index + 1
-                task_id = f"T{ordinal:03d}-{uuid.uuid4().hex[:6]}"
-                reserved.append((task_id, ordinal, entry, not relogin))
+            if relogin:
+                selected_entries = list(relogin_entries[:target])
+                begin_batch(selected_entries)
+                reserved.extend(
+                    (task_id, ordinal, entry, False)
+                    for (task_id, ordinal), entry in zip(
+                        task_specs,
+                        selected_entries,
+                        strict=True,
+                    )
+                )
+                commit_batch(selected_entries)
+            elif callable(batch_reserve):
+                reserve_options = {
+                    "lease_seconds": 3600,
+                    "before_reserve": begin_batch,
+                }
+                if batch_id and _accepts_keyword(batch_reserve, "lease_owner_batch_id"):
+                    reserve_options["lease_owner_batch_id"] = batch_id
+                if _accepts_keyword(batch_reserve, "after_reserve"):
+                    reserve_options["after_reserve"] = commit_batch
+                if _accepts_keyword(batch_reserve, "on_reserve_failed"):
+                    reserve_options["on_reserve_failed"] = rollback_batch
+                    reserve_handles_rollback = True
+                selected_entries = list(
+                    batch_reserve(
+                        pool,
+                        target,
+                        **reserve_options,
+                    )
+                )
+                reservation_returned = True
+                if len(selected_entries) != target:
+                    raise mailbox_error_type("运行批次原子预留数量与目标数量不一致")
+                reserved.extend(
+                    (task_id, ordinal, entry, True)
+                    for (task_id, ordinal), entry in zip(
+                        task_specs,
+                        selected_entries,
+                        strict=True,
+                    )
+                )
+                commit_batch(selected_entries)
+            else:
+                preview_entries, preview_errors = pool._entries_unlocked()
+                if preview_errors or len(preview_entries) < target:
+                    raise mailbox_error_type("运行批次无法冻结完整成员")
+                begin_batch(preview_entries[:target])
+                for (task_id, ordinal) in task_specs:
+                    entry = pool.lease(lease_seconds=3600)
+                    reserved.append((task_id, ordinal, entry, True))
+                commit_batch([item[2] for item in reserved])
+
+            for task_id, ordinal, entry, _restore_on_cancel in reserved:
+                if batch_manifest is not None and batch_id:
+                    source_row = str(getattr(entry, "source_row", "") or "")
+                    batch_manifest.reserve(
+                        batch_id,
+                        task_id,
+                        row_identity=source_row,
+                        line_no=int(getattr(entry, "line_no", 0) or 0),
+                    )
                 if relogin:
                     importer._gptphone_preselected_task_ids.add(task_id)
                 importer._task_state(
@@ -375,8 +517,32 @@ def start_bounded_importer(
                 futures.append(future)
                 importer.future_assignments[future] = (pool, entry, task_id)
             importer.futures = futures
+
+            def watch_and_reconcile() -> None:
+                try:
+                    importer._watch()
+                finally:
+                    if batch_manifest is not None and batch_id:
+                        try:
+                            with importer.lock:
+                                task_snapshot = copy.deepcopy(dict(importer.tasks))
+                            batch_manifest.finalize(
+                                batch_id,
+                                tasks=task_snapshot,
+                                reason="batch_finished",
+                            )
+                        except Exception as exc:
+                            try:
+                                importer._log(
+                                    "[运行批次对账/run_batch_manifest] 批次结束对账失败"
+                                    f"（{type(exc).__name__}）",
+                                    "error",
+                                )
+                            except Exception:
+                                pass
+
             watcher = thread_factory(
-                target=importer._watch,
+                target=watch_and_reconcile,
                 name="email-auth-watch",
                 daemon=True,
             )
@@ -442,6 +608,39 @@ def start_bounded_importer(
                 importer._gptphone_preselected_task_ids = set()
                 importer.tasks = {}
                 importer.running = False
+            if batch_manifest is not None and batch_id and batch_committed:
+                try:
+                    batch_manifest.finalize(
+                        batch_id,
+                        tasks={},
+                        reason="batch_start_failed",
+                    )
+                except Exception as exc:
+                    try:
+                        importer._log(
+                            "[运行批次对账/run_batch_manifest] 启动失败批次对账失败"
+                            f"（{type(exc).__name__}）",
+                            "error",
+                        )
+                    except Exception:
+                        pass
+            elif (
+                batch_manifest is not None
+                and batch_id
+                and batch_prepared
+                and (not reserve_handles_rollback or reservation_returned)
+            ):
+                try:
+                    rollback_batch()
+                except Exception as exc:
+                    try:
+                        importer._log(
+                            "[运行批次对账/run_batch_manifest] 启动失败预备清单回滚失败"
+                            f"（{type(exc).__name__}）",
+                            "error",
+                        )
+                    except Exception:
+                        pass
             raise
 
     try:
@@ -527,6 +726,9 @@ def stop_bounded_importer(importer: Any) -> None:
                 )
             else:
                 importer._task_state(task_id, status="stopped", error="未启动，已停止")
+            batch_manifest = getattr(importer, "_gptphone_batch_manifest", None)
+            if batch_manifest is not None:
+                batch_manifest.observe_task(task_id, "failed" if restore_error else "stopped")
         except Exception:
             cleanup_failures += 1
         cancelled += 1

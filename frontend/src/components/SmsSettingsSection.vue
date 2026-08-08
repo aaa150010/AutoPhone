@@ -120,9 +120,14 @@ function statusesFor(provider: string) {
       </el-col>
       <el-col :span="12">
         <el-form-item label="SMS 最高价格">
-          <el-input
-            :model-value="modelValue.max_price || '0.15'"
-            @update:model-value="update('max_price', $event)"
+          <el-input-number
+            :model-value="Number(modelValue.max_price || 0.15)"
+            :min="0.001"
+            :max="0.18"
+            :step="0.005"
+            :precision="3"
+            controls-position="right"
+            @update:model-value="update('max_price', String($event ?? 0.15))"
           />
         </el-form-item>
       </el-col>
@@ -160,6 +165,13 @@ function statusesFor(provider: string) {
         :max="1800"
         controls-position="right"
         @update:model-value="update('phone_session_cycle_seconds', Number($event ?? 1800))"
+      />
+    </el-form-item>
+
+    <el-form-item label="质量优先与自适应等待">
+      <el-switch
+        :model-value="modelValue.sms_quality_optimization !== false"
+        @update:model-value="update('sms_quality_optimization', Boolean($event))"
       />
     </el-form-item>
 

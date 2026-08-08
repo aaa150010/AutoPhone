@@ -1,0 +1,800 @@
+#    5: group
+#    6: _clean
+#    7: search
+#    8: lower
+#    9: append
+#   10: sub
+#   11: strip
+#   12: join
+#   13: any
+# Varnames:
+#	body, text, forms, form_match, attrs, form_body, method, action, names, name_match, name, buttons, button_match, label, refs, ref_match, ref, parts
+# Positional arguments:
+#	body
+# Local variables:
+#    1: text
+#    2: forms
+#    3: form_match
+#    4: attrs
+#    5: form_body
+#    6: method
+#    7: action
+#    8: names
+#    9: name_match
+#   10: name
+#   11: buttons
+#   12: button_match
+#   13: label
+#   14: refs
+#   15: ref_match
+#   16: ref
+#   17: parts
+# Cell variables:
+#    0: low
+               0 MAKE_CELL            (low)
+
+553:           2 RESUME               0
+
+554:           4 LOAD_GLOBAL          (NULL + str)
+              14 LOAD_FAST            (body)
+              16 COPY                 1
+              18 TO_BOOL
+              26 POP_JUMP_IF_TRUE     (to 34)
+              30 POP_TOP
+              32 LOAD_CONST           ("")
+         >>   34 CALL                 (1 positional)
+              42 STORE_FAST           (text)
+
+555:          44 LOAD_FAST            (text)
+              46 TO_BOOL
+              54 POP_JUMP_IF_TRUE     (to 60)
+
+556:          58 RETURN_CONST         ("")
+
+557:     >>   60 BUILD_LIST           0
+              62 STORE_FAST           (forms)
+
+558:          64 LOAD_GLOBAL          (re)
+              74 LOAD_ATTR            (finditer)
+              94 PUSH_NULL
+              96 LOAD_CONST           ("<form\\b(?P<attrs>[^>]*)>(?P<body>.*?)</form>")
+              98 LOAD_FAST            (text)
+             100 LOAD_GLOBAL          (re)
+             110 LOAD_ATTR            (IGNORECASE)
+             130 LOAD_GLOBAL          (re)
+             140 LOAD_ATTR            (DOTALL)
+             160 BINARY_OP            (|)
+             164 LOAD_CONST           (('flags',))
+             166 CALL_KW              3
+             168 GET_ITER
+             170 EXTENDED_ARG         (512)
+             172 FOR_ITER             (to 1310)
+             176 STORE_FAST           (form_match)
+
+559:         178 LOAD_FAST            (form_match)
+             180 LOAD_ATTR            (NULL|self + group)
+             200 LOAD_CONST           ("attrs")
+             202 CALL                 (1 positional)
+             210 COPY                 1
+             212 TO_BOOL
+             220 POP_JUMP_IF_TRUE     (to 228)
+             224 POP_TOP
+             226 LOAD_CONST           ("")
+         >>  228 STORE_FAST           (attrs)
+
+560:         230 LOAD_FAST            (form_match)
+             232 LOAD_ATTR            (NULL|self + group)
+             252 LOAD_CONST           ("body")
+             254 CALL                 (1 positional)
+             262 COPY                 1
+             264 TO_BOOL
+             272 POP_JUMP_IF_TRUE     (to 280)
+             276 POP_TOP
+             278 LOAD_CONST           ("")
+         >>  280 STORE_FAST           (form_body)
+
+561:         282 LOAD_GLOBAL          (NULL + _clean)
+             292 LOAD_GLOBAL          (re)
+             302 LOAD_ATTR            (search)
+             322 PUSH_NULL
+             324 LOAD_CONST           ('\\bmethod=[\\"\']?([^\\"\'\\s>]+)')
+             326 LOAD_FAST            (attrs)
+             328 LOAD_GLOBAL          (re)
+             338 LOAD_ATTR            (IGNORECASE)
+             358 LOAD_CONST           (('flags',))
+             360 CALL_KW              3
+             362 COPY                 1
+             364 TO_BOOL
+             372 POP_JUMP_IF_TRUE     (to 384)
+             376 POP_TOP
+             378 LOAD_CONST           ("")
+             380 LOAD_CONST           ("")
+             382 BUILD_LIST           2
+         >>  384 LOAD_CONST           (1)
+             386 BINARY_SUBSCR
+             390 CALL                 (1 positional)
+             398 LOAD_ATTR            (NULL|self + lower)
+             418 CALL                 (0 positional)
+             426 COPY                 1
+             428 TO_BOOL
+             436 POP_JUMP_IF_TRUE     (to 444)
+             440 POP_TOP
+             442 LOAD_CONST           ("get")
+         >>  444 STORE_FAST           (method)
+
+562:         446 LOAD_GLOBAL          (NULL + _clean)
+             456 LOAD_GLOBAL          (re)
+             466 LOAD_ATTR            (search)
+             486 PUSH_NULL
+             488 LOAD_CONST           ('\\baction=[\\"\']?([^\\"\'\\s>]+)')
+             490 LOAD_FAST            (attrs)
+             492 LOAD_GLOBAL          (re)
+             502 LOAD_ATTR            (IGNORECASE)
+             522 LOAD_CONST           (('flags',))
+             524 CALL_KW              3
+             526 COPY                 1
+             528 TO_BOOL
+             536 POP_JUMP_IF_TRUE     (to 548)
+             540 POP_TOP
+             542 LOAD_CONST           ("")
+             544 LOAD_CONST           ("")
+             546 BUILD_LIST           2
+         >>  548 LOAD_CONST           (1)
+             550 BINARY_SUBSCR
+             554 CALL                 (1 positional)
+             562 STORE_FAST           (action)
+
+563:         564 BUILD_LIST           0
+             566 STORE_FAST           (names)
+
+564:         568 LOAD_GLOBAL          (re)
+             578 LOAD_ATTR            (finditer)
+             598 PUSH_NULL
+             600 LOAD_CONST           ('\\bname=[\\"\']?([^\\"\'\\s>]+)')
+             602 LOAD_FAST            (form_body)
+             604 LOAD_GLOBAL          (re)
+             614 LOAD_ATTR            (IGNORECASE)
+             634 LOAD_CONST           (('flags',))
+             636 CALL_KW              3
+             638 GET_ITER
+             640 FOR_ITER             (to 768)
+             644 STORE_FAST           (name_match)
+
+565:         646 LOAD_GLOBAL          (NULL + _clean)
+             656 LOAD_FAST            (name_match)
+             658 LOAD_ATTR            (NULL|self + group)
+             678 LOAD_CONST           (1)
+             680 CALL                 (1 positional)
+             688 CALL                 (1 positional)
+             696 STORE_FAST           (name)
+
+566:         698 LOAD_FAST            (name)
+             700 TO_BOOL
+             708 POP_JUMP_IF_TRUE     (to 716)
+             712 JUMP_BACKWARD        (to 640)
+         >>  716 LOAD_FAST_LOAD_FAST  (name, names)
+             718 CONTAINS_OP          (not in)
+             722 POP_JUMP_IF_TRUE     (to 730)
+             726 JUMP_BACKWARD        (to 640)
+
+567:     >>  730 LOAD_FAST            (names)
+             732 LOAD_ATTR            (NULL|self + append)
+             752 LOAD_FAST            (name)
+             754 CALL                 (1 positional)
+             762 POP_TOP
+             764 JUMP_BACKWARD        (to 640)
+
+564:     >>  768 END_FOR
+             770 POP_TOP
+
+568:         772 BUILD_LIST           0
+             774 STORE_FAST           (buttons)
+
+569:         776 LOAD_GLOBAL          (re)
+             786 LOAD_ATTR            (finditer)
+             806 PUSH_NULL
+             808 LOAD_CONST           ("<button\\b[^>]*>(.*?)</button>")
+             810 LOAD_FAST            (form_body)
+             812 LOAD_GLOBAL          (re)
+             822 LOAD_ATTR            (IGNORECASE)
+             842 LOAD_GLOBAL          (re)
+             852 LOAD_ATTR            (DOTALL)
+             872 BINARY_OP            (|)
+             876 LOAD_CONST           (('flags',))
+             878 CALL_KW              3
+             880 GET_ITER
+             882 FOR_ITER             (to 1118)
+             886 STORE_FAST           (button_match)
+
+570:         888 LOAD_GLOBAL          (re)
+             898 LOAD_ATTR            (sub)
+             918 PUSH_NULL
+             920 LOAD_CONST           ("<[^>]+>")
+             922 LOAD_CONST           ("")
+             924 LOAD_FAST            (button_match)
+             926 LOAD_ATTR            (NULL|self + group)
+             946 LOAD_CONST           (1)
+             948 CALL                 (1 positional)
+             956 CALL                 (3 positional)
+             964 STORE_FAST           (label)
+
+571:         966 LOAD_GLOBAL          (re)
+             976 LOAD_ATTR            (sub)
+             996 PUSH_NULL
+             998 LOAD_CONST           ("\\s+")
+            1000 LOAD_CONST           (" ")
+            1002 LOAD_FAST            (label)
+            1004 CALL                 (3 positional)
+            1012 LOAD_ATTR            (NULL|self + strip)
+            1032 CALL                 (0 positional)
+            1040 STORE_FAST           (label)
+
+572:        1042 LOAD_FAST            (label)
+            1044 TO_BOOL
+            1052 POP_JUMP_IF_TRUE     (to 1060)
+            1056 JUMP_BACKWARD        (to 882)
+         >> 1060 LOAD_FAST_LOAD_FAST  (label, buttons)
+            1062 CONTAINS_OP          (not in)
+            1066 POP_JUMP_IF_TRUE     (to 1074)
+            1070 JUMP_BACKWARD        (to 882)
+
+573:     >> 1074 LOAD_FAST            (buttons)
+            1076 LOAD_ATTR            (NULL|self + append)
+            1096 LOAD_FAST            (label)
+            1098 LOAD_CONST           (None)
+            1100 LOAD_CONST           (40)
+            1102 BINARY_SLICE
+            1104 CALL                 (1 positional)
+            1112 POP_TOP
+            1114 JUMP_BACKWARD        (to 882)
+
+569:     >> 1118 END_FOR
+            1120 POP_TOP
+
+574:        1122 LOAD_FAST            (forms)
+            1124 LOAD_ATTR            (NULL|self + append)
+            1144 LOAD_FAST            (method)
+            1146 FORMAT_SIMPLE
+            1148 LOAD_CONST           (":")
+            1150 LOAD_FAST            (action)
+            1152 COPY                 1
+            1154 TO_BOOL
+            1162 POP_JUMP_IF_TRUE     (to 1170)
+            1166 POP_TOP
+            1168 LOAD_CONST           ("<self>")
+         >> 1170 FORMAT_SIMPLE
+            1172 LOAD_CONST           (":names=")
+            1174 LOAD_CONST           (",")
+            1176 LOAD_ATTR            (NULL|self + join)
+            1196 LOAD_FAST            (names)
+            1198 LOAD_CONST           (None)
+            1200 LOAD_CONST           (8)
+            1202 BINARY_SLICE
+            1204 CALL                 (1 positional)
+            1212 COPY                 1
+            1214 TO_BOOL
+            1222 POP_JUMP_IF_TRUE     (to 1230)
+            1226 POP_TOP
+            1228 LOAD_CONST           ("-")
+         >> 1230 FORMAT_SIMPLE
+            1232 LOAD_CONST           (":buttons=")
+            1234 LOAD_CONST           (",")
+            1236 LOAD_ATTR            (NULL|self + join)
+            1256 LOAD_FAST            (buttons)
+            1258 LOAD_CONST           (None)
+            1260 LOAD_CONST           (3)
+            1262 BINARY_SLICE
+            1264 CALL                 (1 positional)
+            1272 COPY                 1
+            1274 TO_BOOL
+            1282 POP_JUMP_IF_TRUE     (to 1290)
+            1286 POP_TOP
+            1288 LOAD_CONST           ("-")
+         >> 1290 FORMAT_SIMPLE
+            1292 BUILD_STRING         7
+            1294 CALL                 (1 positional)
+            1302 POP_TOP
+            1304 EXTENDED_ARG         (512)
+            1306 JUMP_BACKWARD        (to 170)
+
+558:     >> 1310 END_FOR
+            1312 POP_TOP
+
+575:        1314 BUILD_LIST           0
+            1316 STORE_FAST           (refs)
+
+576:        1318 LOAD_GLOBAL          (re)
+            1328 LOAD_ATTR            (finditer)
+            1348 PUSH_NULL
+            1350 LOAD_CONST           ('(?:href|action)=[\\"\']([^\\"\']+)')
+            1352 LOAD_FAST            (text)
+         >> 1354 LOAD_GLOBAL          (re)
+            1364 LOAD_ATTR            (IGNORECASE)
+            1384 LOAD_CONST           (('flags',))
+            1386 CALL_KW              3
+            1388 GET_ITER
+            1390 FOR_ITER             (to 1614)
+            1394 STORE_FAST           (ref_match)
+
+577:        1396 LOAD_GLOBAL          (NULL + _clean)
+            1406 LOAD_FAST            (ref_match)
+            1408 LOAD_ATTR            (NULL|self + group)
+            1428 LOAD_CONST           (1)
+            1430 CALL                 (1 positional)
+            1438 CALL                 (1 positional)
+            1446 STORE_FAST           (ref)
+
+578:        1448 LOAD_FAST            (ref)
+            1450 TO_BOOL
+            1458 POP_JUMP_IF_TRUE     (to 1466)
+
+579:        1462 JUMP_BACKWARD        (to 1390)
+
+580:     >> 1466 LOAD_FAST            (ref)
+            1468 LOAD_ATTR            (NULL|self + lower)
+            1488 CALL                 (0 positional)
+            1496 STORE_DEREF          (low)
+
+581:        1498 LOAD_GLOBAL          (NULL + any)
+            1508 LOAD_FAST            (low)
+            1510 BUILD_TUPLE          1
+            1512 LOAD_CONST           (<Code311 code object <genexpr> at 0x105ef4340, file codex_oauth_chain.py>, line 581)
+            1514 MAKE_FUNCTION
+            1516 SET_FUNCTION_ATTRIBUTE 8
+            1518 LOAD_CONST           (('consent', 'continue', 'authorize', 'oauth', 'callback', '/api/accounts'))
+            1520 GET_ITER
+            1522 CALL                 (0 positional)
+            1530 CALL                 (1 positional)
+            1538 TO_BOOL
+            1546 POP_JUMP_IF_TRUE     (to 1554)
+            1550 JUMP_BACKWARD        (to 1390)
+         >> 1554 LOAD_FAST            (ref)
+            1556 LOAD_FAST            (refs)
+            1558 CONTAINS_OP          (not in)
+            1562 POP_JUMP_IF_TRUE     (to 1570)
+            1566 JUMP_BACKWARD        (to 1390)
+
+582:     >> 1570 LOAD_FAST            (refs)
+            1572 LOAD_ATTR            (NULL|self + append)
+            1592 LOAD_FAST            (ref)
+            1594 LOAD_CONST           (None)
+            1596 LOAD_CONST           (120)
+            1598 BINARY_SLICE
+            1600 CALL                 (1 positional)
+            1608 POP_TOP
+            1610 JUMP_BACKWARD        (to 1390)
+
+576:     >> 1614 END_FOR
+            1616 POP_TOP
+
+583:        1618 BUILD_LIST           0
+            1620 STORE_FAST           (parts)
+
+584:        1622 LOAD_FAST            (forms)
+            1624 TO_BOOL
+            1632 POP_JUMP_IF_FALSE    (to 1712)
+
+585:        1636 LOAD_FAST            (parts)
+            1638 LOAD_ATTR            (NULL|self + append)
+            1658 LOAD_CONST           ("forms=")
+            1660 LOAD_CONST           (" | ")
+            1662 LOAD_ATTR            (NULL|self + join)
+            1682 LOAD_FAST            (forms)
+            1684 LOAD_CONST           (None)
+            1686 LOAD_CONST           (4)
+            1688 BINARY_SLICE
+            1690 CALL                 (1 positional)
+            1698 BINARY_OP            (+)
+            1702 CALL                 (1 positional)
+            1710 POP_TOP
+
+586:     >> 1712 LOAD_FAST            (refs)
+            1714 TO_BOOL
+            1722 POP_JUMP_IF_FALSE    (to 1802)
+
+587:        1726 LOAD_FAST            (parts)
+            1728 LOAD_ATTR            (NULL|self + append)
+            1748 LOAD_CONST           ("refs=")
+         >> 1750 LOAD_CONST           (" | ")
+            1752 LOAD_ATTR            (NULL|self + join)
+            1772 LOAD_FAST            (refs)
+            1774 LOAD_CONST           (None)
+            1776 LOAD_CONST           (8)
+            1778 BINARY_SLICE
+            1780 CALL                 (1 positional)
+            1788 BINARY_OP            (+)
+            1792 CALL                 (1 positional)
+            1800 POP_TOP
+
+588:     >> 1802 LOAD_CONST           ("; ")
+            1804 LOAD_ATTR            (NULL|self + join)
+            1824 LOAD_FAST            (parts)
+            1826 CALL                 (1 positional)
+            1834 RETURN_VALUE
+
+
+# Method Name:       _response_cookie_names
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  7
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        591
+# Constants:
+#    0: None
+#    1: 'cookies'
+#    2: 'name'
+#    3: ''
+#    4: 'headers'
+#    5: 'set-cookie'
+#    6: '(?:^|,\\s*)([A-Za-z0-9_.-]+)='
+#    7: 1
+#    8: {'path', 'samesite', 'domain', 'expires', 'max-age'}
+# Names:
+#    0: getattr
+#    1: isinstance
+#    2: str
+#    3: append
+#    4: Exception
+#    5: get
+#    6: re
+#    7: finditer
+#    8: group
+#    9: lower
+#   10: sorted
+#   11: set
+# Varnames:
+#	response, names, cookies, cookie, name, header, match
+# Positional arguments:
+#	response
+# Local variables:
+#    1: names
+#    2: cookies
+#    3: cookie
+#    4: name
+#    5: header
+#    6: match
+591:           0 RESUME               0
+
+592:           2 BUILD_LIST           0
+               4 STORE_FAST           (names)
+
+593:           6 LOAD_GLOBAL          (NULL + getattr)
+              16 LOAD_FAST            (response)
+              18 LOAD_CONST           ("cookies")
+              20 LOAD_CONST           (None)
+              22 CALL                 (3 positional)
+              30 STORE_FAST           (cookies)
+
+594:          32 NOP
+
+595:          34 LOAD_FAST            (cookies)
+              36 COPY                 1
+              38 TO_BOOL
+              46 POP_JUMP_IF_TRUE     (to 54)
+              50 POP_TOP
+              52 BUILD_LIST           0
+         >>   54 GET_ITER
+              56 FOR_ITER             (to 222)
+              60 STORE_FAST           (cookie)
+
+596:          62 LOAD_GLOBAL          (NULL + getattr)
+              72 LOAD_FAST            (cookie)
+              74 LOAD_CONST           ("name")
+              76 LOAD_CONST           ("")
+              78 CALL                 (3 positional)
+              86 STORE_FAST           (name)
+
+597:          88 LOAD_FAST            (name)
+              90 TO_BOOL
+              98 POP_JUMP_IF_TRUE     (to 148)
+             102 LOAD_GLOBAL          (NULL + isinstance)
+             112 LOAD_FAST            (cookie)
+             114 LOAD_GLOBAL          (str)
+             124 CALL                 (2 positional)
+             132 TO_BOOL
+             140 POP_JUMP_IF_FALSE    (to 148)
+
+598:         144 LOAD_FAST            (cookie)
+             146 STORE_FAST           (name)
+
+599:     >>  148 LOAD_FAST            (name)
+             150 TO_BOOL
+             158 POP_JUMP_IF_TRUE     (to 166)
+             162 JUMP_BACKWARD        (to 56)
+
+600:     >>  166 LOAD_FAST            (names)
+             168 LOAD_ATTR            (NULL|self + append)
+             188 LOAD_GLOBAL          (NULL + str)
+             198 LOAD_FAST            (name)
+             200 CALL                 (1 positional)
+             208 CALL                 (1 positional)
+             216 POP_TOP
+             218 JUMP_BACKWARD        (to 56)
+
+595:     >>  222 END_FOR
+             224 POP_TOP
+
+603:         226 LOAD_FAST            (names)
+             228 TO_BOOL
+             236 POP_JUMP_IF_TRUE     (to 524)
+
+604:         240 LOAD_GLOBAL          (NULL + str)
+             250 LOAD_GLOBAL          (NULL + getattr)
+             260 LOAD_FAST            (response)
+             262 LOAD_CONST           ("headers")
+             264 BUILD_MAP            0
+             266 CALL                 (3 positional)
+             274 LOAD_ATTR            (NULL|self + get)
+             294 LOAD_CONST           ("set-cookie")
+             296 LOAD_CONST           ("")
+             298 CALL                 (2 positional)
+             306 COPY                 1
+             308 TO_BOOL
+             316 POP_JUMP_IF_TRUE     (to 324)
+             320 POP_TOP
+             322 LOAD_CONST           ("")
+         >>  324 CALL                 (1 positional)
+             332 STORE_FAST           (header)
+
+605:         334 LOAD_GLOBAL          (re)
+             344 LOAD_ATTR            (finditer)
+             364 PUSH_NULL
+             366 LOAD_CONST           ("(?:^|,\\s*)([A-Za-z0-9_.-]+)=")
+             368 LOAD_FAST            (header)
+             370 CALL                 (2 positional)
+             378 GET_ITER
+             380 FOR_ITER             (to 520)
+             384 STORE_FAST           (match)
+
+606:         386 LOAD_FAST            (match)
+         >>  388 LOAD_ATTR            (NULL|self + group)
+             408 LOAD_CONST           (1)
+             410 CALL                 (1 positional)
+             418 STORE_FAST           (name)
+
+607:         420 LOAD_FAST            (name)
+             422 TO_BOOL
+             430 POP_JUMP_IF_TRUE     (to 438)
+             434 JUMP_BACKWARD        (to 380)
+         >>  438 LOAD_FAST            (name)
+             440 LOAD_ATTR            (NULL|self + lower)
+             460 CALL                 (0 positional)
+             468 LOAD_CONST           ({'path', 'samesite', 'domain', 'expires', 'max-age'})
+             470 CONTAINS_OP          (not in)
+             474 POP_JUMP_IF_TRUE     (to 482)
+             478 JUMP_BACKWARD        (to 380)
+
+608:     >>  482 LOAD_FAST            (names)
+             484 LOAD_ATTR            (NULL|self + append)
+             504 LOAD_FAST            (name)
+             506 CALL                 (1 positional)
+             514 POP_TOP
+             516 JUMP_BACKWARD        (to 380)
+
+605:     >>  520 END_FOR
+             522 POP_TOP
+
+609:     >>  524 LOAD_GLOBAL          (NULL + sorted)
+             534 LOAD_GLOBAL          (NULL + set)
+             544 LOAD_FAST            (names)
+             546 CALL                 (1 positional)
+             554 CALL                 (1 positional)
+             562 RETURN_VALUE
+         >>  564 PUSH_EXC_INFO
+
+601:         566 LOAD_GLOBAL          (Exception)
+             576 CHECK_EXC_MATCH
+             578 POP_JUMP_IF_FALSE    (to 588)
+             582 POP_TOP
+
+602:     >>  584 POP_EXCEPT
+             586 JUMP_BACKWARD_NO_INTERRUPT (to 226)
+
+601:     >>  588 RERAISE              0
+         >>  590 COPY                 3
+             592 POP_EXCEPT
+             594 RERAISE              1
+
+ExceptionTable:
+  34 to 156 -> 564 [0]
+  166 to 224 -> 564 [0]
+  564 to 582 -> 590 [1] lasti
+  588 to 588 -> 590 [1] lasti
+
+# Method Name:       _cookie_domain_for_url
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        612
+# Constants:
+#    0: None
+#    1: ''
+#    2: 'auth.openai.com'
+# Names:
+#    0: urlparse
+#    1: str
+#    2: hostname
+#    3: Exception
+# Varnames:
+#	url, host
+# Positional arguments:
+#	url
+# Local variables:
+#    1: host
+612:           0 RESUME               0
+
+613:           2 NOP
+
+614:           4 LOAD_GLOBAL          (NULL + urlparse)
+              14 LOAD_GLOBAL          (NULL + str)
+              24 LOAD_FAST            (url)
+              26 COPY                 1
+              28 TO_BOOL
+              36 POP_JUMP_IF_TRUE     (to 44)
+              40 POP_TOP
+              42 LOAD_CONST           ("")
+         >>   44 CALL                 (1 positional)
+              52 CALL                 (1 positional)
+              60 LOAD_ATTR            (hostname)
+              80 COPY                 1
+              82 TO_BOOL
+              90 POP_JUMP_IF_TRUE     (to 98)
+              94 POP_TOP
+              96 LOAD_CONST           ("")
+         >>   98 STORE_FAST           (host)
+
+615:         100 LOAD_FAST            (host)
+             102 COPY                 1
+             104 TO_BOOL
+             112 POP_JUMP_IF_TRUE     (to 120)
+             116 POP_TOP
+             118 LOAD_CONST           ("auth.openai.com")
+         >>  120 RETURN_VALUE
+         >>  122 PUSH_EXC_INFO
+
+616:         124 LOAD_GLOBAL          (Exception)
+             134 CHECK_EXC_MATCH
+             136 POP_JUMP_IF_FALSE    (to 146)
+             140 POP_TOP
+
+617:         142 POP_EXCEPT
+             144 RETURN_CONST         ("auth.openai.com")
+
+616:     >>  146 RERAISE              0
+         >>  148 COPY                 3
+             150 POP_EXCEPT
+             152 RERAISE              1
+
+ExceptionTable:
+  4 to 118 -> 122 [0]
+  122 to 140 -> 148 [1] lasti
+  146 to 146 -> 148 [1] lasti
+
+# Method Name:       _normalize_cookie_domain
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        620
+# Constants:
+#    0: None
+#    1: '.'
+# Names:
+#    0: _clean
+#    1: lstrip
+#    2: _cookie_domain_for_url
+# Varnames:
+#	domain, fallback_url, value
+# Positional arguments:
+#	domain, fallback_url
+# Local variables:
+#    2: value
+620:           0 RESUME               0
+
+621:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (domain)
+              14 CALL                 (1 positional)
+              22 LOAD_ATTR            (NULL|self + lstrip)
+              42 LOAD_CONST           (".")
+              44 CALL                 (1 positional)
+              52 STORE_FAST           (value)
+
+622:          54 LOAD_FAST            (value)
+              56 TO_BOOL
+              64 POP_JUMP_IF_FALSE    (to 72)
+
+623:          68 LOAD_FAST            (value)
+              70 RETURN_VALUE
+
+624:     >>   72 LOAD_GLOBAL          (NULL + _cookie_domain_for_url)
+              82 LOAD_FAST            (fallback_url)
+              84 CALL                 (1 positional)
+              92 RETURN_VALUE
+
+
+# Method Name:       _is_cloudflare_challenge
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        11
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        627
+# Constants:
+#    0: None
+#    1: False
+#    2: ' '
+#    3: '_html_title'
+#    4: '_body_summary'
+#    5: '_body'
+#    6: '_url'
+#    7: '_location'
+#    8: ('just a moment', 'challenge-platform', 'cf-chl', '_cf_chl_opt', 'cloudflare', 'verify you are human')
+#    9: <Code311 code object <genexpr> at 0x105ef4460, file codex_oauth_chain.py>, line 647
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: join
+#    3: _clean
+#    4: get
+#    5: lower
+#    6: any
+# Varnames:
+#	response, markers
+# Positional arguments:
+#	response
+# Local variables:
+#    1: markers
+# Cell variables:
+#    0: text
+               0 MAKE_CELL            (text)
+
+627:           2 RESUME               0
+
+628:           4 LOAD_GLOBAL          (NULL + isinstance)
+              14 LOAD_FAST            (response)
+              16 LOAD_GLOBAL          (dict)
+              26 CALL                 (2 positional)
+              34 TO_BOOL
+              42 POP_JUMP_IF_TRUE     (to 48)
+
+629:          46 RETURN_CONST         (False)
+
+630:     >>   48 LOAD_CONST           (" ")
+              50 LOAD_ATTR            (NULL|self + join)
+
+632:          70 LOAD_GLOBAL          (NULL + _clean)
+              80 LOAD_FAST            (response)
+              82 LOAD_ATTR            (NULL|self + get)
+             102 LOAD_CONST           ("_html_title")
+             104 CALL                 (1 positional)
+             112 CALL                 (1 positional)
+
+633:         120 LOAD_GLOBAL          (NULL + _clean)
+             130 LOAD_FAST            (response)
+             132 LOAD_ATTR            (NULL|self + get)
+             152 LOAD_CONST           ("_body_summary")
+             154 CALL                 (1 positional)
+             162 CALL                 (1 positional)
+
+634:         170 LOAD_GLOBAL          (NULL + _clean)
+             180 LOAD_FAST            (response)
+             182 LOAD_ATTR            (NULL|self + get)
+             202 LOAD_CONST           ("_body")
+             204 CALL                 (1 positional)
+             212 CALL                 (1 positional)
+
+635:         220 LOAD_GLOBAL          (NULL + _clean)
+             230 LOAD_FAST            (response)
+             232 LOAD_ATTR            (NULL|self + get)

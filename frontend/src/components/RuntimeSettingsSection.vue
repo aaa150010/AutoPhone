@@ -143,6 +143,13 @@ function updateProxyScope(key: string, value: boolean | string | number) {
       </el-col>
     </el-row>
 
+    <el-form-item label="保守自适应任务并发">
+      <el-switch
+        :model-value="modelValue.adaptive_task_concurrency !== false"
+        @update:model-value="update('adaptive_task_concurrency', Boolean($event))"
+      />
+    </el-form-item>
+
   </div>
 </template>
 

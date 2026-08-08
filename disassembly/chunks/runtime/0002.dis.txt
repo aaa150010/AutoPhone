@@ -1,0 +1,800 @@
+# Varnames:
+#	value
+# Positional arguments:
+#	value
+ 79:           0 RESUME               0
+
+ 80:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (value)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + strip)
+              60 CALL                 (0 positional)
+              68 RETURN_VALUE
+
+
+# Method Name:       _as_bool
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        83
+# Constants:
+#    0: None
+#    1: {'yes', '1', 'on', 'true', '开启'}
+#    2: True
+#    3: {'off', '关闭', '0', 'no', 'false'}
+#    4: False
+# Names:
+#    0: isinstance
+#    1: bool
+#    2: _clean
+#    3: lower
+# Varnames:
+#	value, default, text
+# Positional arguments:
+#	value, default
+# Local variables:
+#    2: text
+ 83:           0 RESUME               0
+
+ 84:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (value)
+              14 LOAD_GLOBAL          (bool)
+              24 CALL                 (2 positional)
+              32 TO_BOOL
+              40 POP_JUMP_IF_FALSE    (to 48)
+
+ 85:          44 LOAD_FAST            (value)
+              46 RETURN_VALUE
+
+ 86:     >>   48 LOAD_GLOBAL          (NULL + _clean)
+              58 LOAD_FAST            (value)
+              60 CALL                 (1 positional)
+              68 LOAD_ATTR            (NULL|self + lower)
+              88 CALL                 (0 positional)
+              96 STORE_FAST           (text)
+
+ 87:          98 LOAD_FAST            (text)
+             100 LOAD_CONST           ({'yes', '1', 'on', 'true', '开启'})
+             102 CONTAINS_OP          (in)
+             106 POP_JUMP_IF_FALSE    (to 112)
+
+ 88:         110 RETURN_CONST         (True)
+
+ 89:     >>  112 LOAD_FAST            (text)
+             114 LOAD_CONST           ({'off', '关闭', '0', 'no', 'false'})
+             116 CONTAINS_OP          (in)
+             120 POP_JUMP_IF_FALSE    (to 126)
+
+ 90:         124 RETURN_CONST         (False)
+
+ 91:     >>  126 LOAD_FAST            (default)
+             128 RETURN_VALUE
+
+
+# Method Name:       _as_int
+# Filename:          runtime.py
+# Argument count:    4
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        94
+# Constants:
+#    0: None
+# Names:
+#    0: int
+#    1: TypeError
+#    2: ValueError
+#    3: max
+#    4: min
+# Varnames:
+#	value, default, low, high, number
+# Positional arguments:
+#	value, default, low, high
+# Local variables:
+#    4: number
+ 94:           0 RESUME               0
+
+ 95:           2 NOP
+
+ 96:           4 LOAD_GLOBAL          (NULL + int)
+              14 LOAD_FAST            (value)
+              16 CALL                 (1 positional)
+              24 STORE_FAST           (number)
+
+ 99:          26 LOAD_GLOBAL          (NULL + max)
+              36 LOAD_FAST            (low)
+              38 LOAD_GLOBAL          (NULL + min)
+              48 LOAD_FAST_LOAD_FAST  (high, number)
+              50 CALL                 (2 positional)
+              58 CALL                 (2 positional)
+              66 RETURN_VALUE
+         >>   68 PUSH_EXC_INFO
+
+ 97:          70 LOAD_GLOBAL          (TypeError)
+              80 LOAD_GLOBAL          (ValueError)
+              90 BUILD_TUPLE          2
+              92 CHECK_EXC_MATCH
+              94 POP_JUMP_IF_FALSE    (to 108)
+              98 POP_TOP
+
+ 98:         100 LOAD_FAST            (default)
+             102 STORE_FAST           (number)
+             104 POP_EXCEPT
+             106 JUMP_BACKWARD_NO_INTERRUPT (to 26)
+
+ 97:     >>  108 RERAISE              0
+         >>  110 COPY                 3
+             112 POP_EXCEPT
+             114 RERAISE              1
+
+ExceptionTable:
+  4 to 24 -> 68 [0]
+  68 to 102 -> 110 [1] lasti
+  108 to 108 -> 110 [1] lasti
+
+# Method Name:       _redact_text
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        102
+# Constants:
+#    0: None
+#    1: 'https?://\\S+'
+#    2: '<链接已隐藏>'
+#    3: '\\b\\d{6}\\b'
+#    4: '<验证码已隐藏>'
+#    5: 500
+# Names:
+#    0: _clean
+#    1: re
+#    2: sub
+# Varnames:
+#	value, text
+# Positional arguments:
+#	value
+# Local variables:
+#    1: text
+102:           0 RESUME               0
+
+103:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (value)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (text)
+
+104:          24 LOAD_GLOBAL          (re)
+              34 LOAD_ATTR            (sub)
+              54 PUSH_NULL
+              56 LOAD_CONST           ("https?://\\S+")
+              58 LOAD_CONST           ("<链接已隐藏>")
+              60 LOAD_FAST            (text)
+              62 CALL                 (3 positional)
+              70 STORE_FAST           (text)
+
+105:          72 LOAD_GLOBAL          (re)
+              82 LOAD_ATTR            (sub)
+             102 PUSH_NULL
+             104 LOAD_CONST           ("\\b\\d{6}\\b")
+             106 LOAD_CONST           ("<验证码已隐藏>")
+             108 LOAD_FAST            (text)
+             110 CALL                 (3 positional)
+             118 STORE_FAST           (text)
+
+106:         120 LOAD_FAST            (text)
+             122 LOAD_CONST           (None)
+             124 LOAD_CONST           (500)
+             126 BINARY_SLICE
+             128 RETURN_VALUE
+
+
+# Method Name:       _summarize_error
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        109
+# Constants:
+#    0: 'Turn noisy provider/bridge errors into one actionable Chinese reason.'
+#    1: ((('unsupported_country_region_territory', 'country, region, or territory not supported'), '地区不受支持：请更换出口或允许的国家'), (('phone_send_rejected', 'suspicious behavior from phone numbers', 'phone number'), '号码被 OpenAI 拒绝：更换号码后重试'), (('no_numbers', 'getnumber failed', 'no numbers'), '当前线路无可用号码：已继续换线路'), (('mailbox_code_timeout', 'gptmail_code_timeout', 'mailbox still returns baseline code', 'email_otp_timeout'), '邮箱验证码超时：轮询窗口内未收到新码'), (('authenticated but not connected',), '微软已签发令牌，但该邮箱未开放 IMAP 读取权限'), (('microsoft token refresh failed', 'invalid_grant'), '微软邮箱 OAuth 授权已失效：需要更换 refresh token'), (('mailbox_imap_error', 'authenticate failed', 'authenticationfailed'), '邮箱 IMAP 登录失败：检查授权、密码或 IMAP 权限'), (('email_otp_failed', 'email_otp_send_failed', 'mfa_otp_failed', 'invalid authorization step'), '邮箱验证码校验失败：请确认最新一封验证码'), (('password_verify_failed', 'login failed'), '邮箱密码登录失败：检查账号密码'), (('oauth_session_invalid', 'sign-in session is no longer valid'), '登录会话已失效：正在建立新会话重试'), (('oauth_callback_missing_code', 'callback missing code'), 'OAuth 回调缺少 code：授权未完成'), (('proxyerror', 'unable to connect to proxy', 'proxy_connect_failed', 'winerror 10061', '主代理不可用'), '主代理不可用：请启动当前电脑的代理端口，或清空主代理改为直连'), (('node_sentinel_failed', 'sentinel launcher missing', 'node_bridge_timeout', 'node bridge timeout'), 'Node 链路失败：已保护性重试一次'), (('sub2_exchange_failed', 'openai_oauth_token_exchange_failed'), 'SUB2 兑换失败：检查会话或服务状态'), (('ssleoferror', 'sslerror', 'unexpected_eof_while_reading'), 'SMS 服务 TLS 连接失败：检查网络或代理'), (('mailbox_dead',), '邮箱不可用：已移入损坏列表'))
+#    2: <Code311 code object <genexpr> at 0x105526670, file runtime.py>, line 132
+#    3: '未知错误'
+# Names:
+#    0: _redact_text
+#    1: lower
+#    2: any
+# Varnames:
+#	value, text, rules, markers, summary
+# Positional arguments:
+#	value
+# Local variables:
+#    1: text
+#    2: rules
+#    3: markers
+#    4: summary
+# Cell variables:
+#    0: low
+               0 MAKE_CELL            (low)
+
+109:           2 RESUME               0
+
+111:           4 LOAD_GLOBAL          (NULL + _redact_text)
+              14 LOAD_FAST            (value)
+              16 CALL                 (1 positional)
+              24 STORE_FAST           (text)
+
+112:          26 LOAD_FAST            (text)
+              28 LOAD_ATTR            (NULL|self + lower)
+              48 CALL                 (0 positional)
+              56 STORE_DEREF          (low)
+
+113:          58 LOAD_CONST           (((('unsupported_country_region_territory', 'country, region, or territory not supported'), '地区不受支持：请更换出口或允许的国家'), (('phone_send_rejected', 'suspicious behavior from phone numbers', 'phone number'), '号码被 OpenAI 拒绝：更换号码后重试'), (('no_numbers', 'getnumber failed', 'no numbers'), '当前线路无可用号码：已继续换线路'), (('mailbox_code_timeout', 'gptmail_code_timeout', 'mailbox still returns baseline code', 'email_otp_timeout'), '邮箱验证码超时：轮询窗口内未收到新码'), (('authenticated but not connected',), '微软已签发令牌，但该邮箱未开放 IMAP 读取权限'), (('microsoft token refresh failed', 'invalid_grant'), '微软邮箱 OAuth 授权已失效：需要更换 refresh token'), (('mailbox_imap_error', 'authenticate failed', 'authenticationfailed'), '邮箱 IMAP 登录失败：检查授权、密码或 IMAP 权限'), (('email_otp_failed', 'email_otp_send_failed', 'mfa_otp_failed', 'invalid authorization step'), '邮箱验证码校验失败：请确认最新一封验证码'), (('password_verify_failed', 'login failed'), '邮箱密码登录失败：检查账号密码'), (('oauth_session_invalid', 'sign-in session is no longer valid'), '登录会话已失效：正在建立新会话重试'), (('oauth_callback_missing_code', 'callback missing code'), 'OAuth 回调缺少 code：授权未完成'), (('proxyerror', 'unable to connect to proxy', 'proxy_connect_failed', 'winerror 10061', '主代理不可用'), '主代理不可用：请启动当前电脑的代理端口，或清空主代理改为直连'), (('node_sentinel_failed', 'sentinel launcher missing', 'node_bridge_timeout', 'node bridge timeout'), 'Node 链路失败：已保护性重试一次'), (('sub2_exchange_failed', 'openai_oauth_token_exchange_failed'), 'SUB2 兑换失败：检查会话或服务状态'), (('ssleoferror', 'sslerror', 'unexpected_eof_while_reading'), 'SMS 服务 TLS 连接失败：检查网络或代理'), (('mailbox_dead',), '邮箱不可用：已移入损坏列表')))
+              60 STORE_FAST           (rules)
+
+131:          62 LOAD_FAST            (rules)
+              64 GET_ITER
+              66 FOR_ITER             (to 140)
+              70 UNPACK_SEQUENCE      2
+              74 STORE_FAST_STORE_FAST (markers, summary)
+
+132:          76 LOAD_GLOBAL          (NULL + any)
+              86 LOAD_FAST            (low)
+              88 BUILD_TUPLE          1
+              90 LOAD_CONST           (<Code311 code object <genexpr> at 0x105526670, file runtime.py>, line 132)
+              92 MAKE_FUNCTION
+              94 SET_FUNCTION_ATTRIBUTE 8
+              96 LOAD_FAST            (markers)
+              98 GET_ITER
+             100 CALL                 (0 positional)
+             108 CALL                 (1 positional)
+             116 TO_BOOL
+             124 POP_JUMP_IF_TRUE     (to 132)
+             128 JUMP_BACKWARD        (to 66)
+
+133:     >>  132 LOAD_FAST            (summary)
+             134 SWAP                 (TOS <-> TOS1)
+             136 POP_TOP
+             138 RETURN_VALUE
+
+131:     >>  140 END_FOR
+             142 POP_TOP
+
+134:         144 LOAD_FAST            (text)
+             146 COPY                 1
+             148 TO_BOOL
+             156 POP_JUMP_IF_TRUE     (to 164)
+             160 POP_TOP
+             162 LOAD_CONST           ("未知错误")
+         >>  164 RETURN_VALUE
+
+
+# Method Name:       _friendly_log_message
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        137
+# Constants:
+#    0: 'Keep frontend logs short while retaining a useful technical marker.'
+#    1: <Code311 code object <genexpr> at 0x105526700, file runtime.py>, line 141
+#    2: ('failed:', 'failed ', 'error:', 'exception', 'rejected', 'timeout', 'no_numbers', 'unsupported_country')
+#    3: '未知错误'
+# Names:
+#    0: _redact_text
+#    1: lower
+#    2: any
+#    3: _summarize_error
+# Varnames:
+#	value, text, summary
+# Positional arguments:
+#	value
+# Local variables:
+#    1: text
+#    2: summary
+# Cell variables:
+#    0: low
+               0 MAKE_CELL            (low)
+
+137:           2 RESUME               0
+
+139:           4 LOAD_GLOBAL          (NULL + _redact_text)
+              14 LOAD_FAST            (value)
+              16 CALL                 (1 positional)
+              24 STORE_FAST           (text)
+
+140:          26 LOAD_FAST            (text)
+              28 LOAD_ATTR            (NULL|self + lower)
+              48 CALL                 (0 positional)
+              56 STORE_DEREF          (low)
+
+141:          58 LOAD_GLOBAL          (NULL + any)
+              68 LOAD_FAST            (low)
+              70 BUILD_TUPLE          1
+              72 LOAD_CONST           (<Code311 code object <genexpr> at 0x105526700, file runtime.py>, line 141)
+              74 MAKE_FUNCTION
+              76 SET_FUNCTION_ATTRIBUTE 8
+              78 LOAD_CONST           (('failed:', 'failed ', 'error:', 'exception', 'rejected', 'timeout', 'no_numbers', 'unsupported_country'))
+              80 GET_ITER
+              82 CALL                 (0 positional)
+              90 CALL                 (1 positional)
+              98 TO_BOOL
+             106 POP_JUMP_IF_FALSE    (to 158)
+
+142:         110 LOAD_GLOBAL          (NULL + _summarize_error)
+             120 LOAD_FAST            (text)
+             122 CALL                 (1 positional)
+             130 STORE_FAST           (summary)
+
+143:         132 LOAD_FAST            (summary)
+             134 LOAD_CONST           ("未知错误")
+             136 COMPARE_OP           (!=)
+             140 POP_JUMP_IF_FALSE    (to 158)
+             144 LOAD_FAST_LOAD_FAST  (summary, text)
+             146 COMPARE_OP           (!=)
+             150 POP_JUMP_IF_FALSE    (to 158)
+
+144:         154 LOAD_FAST            (summary)
+             156 RETURN_VALUE
+
+145:     >>  158 LOAD_FAST            (text)
+             160 RETURN_VALUE
+
+
+# Method Name:       _validate_main_proxy
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  12
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        148
+# Constants:
+#    0: 'Reject a copied machine-local proxy before any mailbox task starts.'
+#    1: None
+#    2: ''
+#    3: 'https'
+#    4: 443
+#    5: 80
+#    6: ':'
+#    7: {'localhost', '127.0.0.1', '::1'}
+#    8: 2.0
+#    9: ('timeout',)
+#   10: '主代理不可用：'
+#   11: ' 未监听；换电脑后请启动本机代理，或清空主代理改为直连'
+#   12: 2
+#   13: ('http', 'https')
+#   14: ('proxies', 'timeout')
+#   15: 'impersonate'
+#   16: 'chrome'
+#   17: 0
+#   18: 0.4
+#   19: ' 无法访问 Sentinel：'
+#   20: 200
+#   21: 400
+#   22: ' 访问 Sentinel 返回 HTTP '
+#   23: ('https://sentinel.openai.com/backend-api/sentinel/frame.html?sv=20260219f9f6',)
+# Names:
+#    0: normalize_proxy_url
+#    1: urlsplit
+#    2: str
+#    3: hostname
+#    4: strip
+#    5: int
+#    6: port
+#    7: scheme
+#    8: lower
+#    9: socket
+#   10: create_connection
+#   11: min
+#   12: OSError
+#   13: RuntimeError
+#   14: range
+#   15: _curl_requests
+#   16: get
+#   17: requests
+#   18: Exception
+#   19: time
+#   20: sleep
+#   21: _redact_text
+#   22: status_code
+# Varnames:
+#	proxy, timeout, normalized, parsed, host, port, label, exc, response, last_error, attempt, kwargs
+# Positional arguments:
+#	proxy
+# Local variables:
+#    1: timeout
+#    2: normalized
+#    3: parsed
+#    4: host
+#    5: port
+#    6: label
+#    7: exc
+#    8: response
+#    9: last_error
+#   10: attempt
+#   11: kwargs
+148:           0 RESUME               0
+
+150:           2 LOAD_GLOBAL          (NULL + normalize_proxy_url)
+              12 LOAD_FAST            (proxy)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (normalized)
+
+151:          24 LOAD_FAST            (normalized)
+              26 TO_BOOL
+              34 POP_JUMP_IF_TRUE     (to 40)
+
+152:          38 RETURN_CONST         (None)
+
+153:     >>   40 LOAD_GLOBAL          (NULL + urlsplit)
+              50 LOAD_FAST            (normalized)
+              52 CALL                 (1 positional)
+              60 STORE_FAST           (parsed)
+
+154:          62 LOAD_GLOBAL          (NULL + str)
+              72 LOAD_FAST            (parsed)
+              74 LOAD_ATTR            (hostname)
+              94 COPY                 1
+              96 TO_BOOL
+             104 POP_JUMP_IF_TRUE     (to 112)
+             108 POP_TOP
+             110 LOAD_CONST           ("")
+         >>  112 CALL                 (1 positional)
+             120 LOAD_ATTR            (NULL|self + strip)
+             140 CALL                 (0 positional)
+             148 STORE_FAST           (host)
+
+155:         150 LOAD_GLOBAL          (NULL + int)
+             160 LOAD_FAST            (parsed)
+             162 LOAD_ATTR            (port)
+             182 COPY                 1
+             184 TO_BOOL
+             192 POP_JUMP_IF_TRUE     (to 236)
+             196 POP_TOP
+             198 LOAD_FAST            (parsed)
+             200 LOAD_ATTR            (scheme)
+             220 LOAD_CONST           ("https")
+             222 COMPARE_OP           (==)
+             226 POP_JUMP_IF_FALSE    (to 234)
+             230 LOAD_CONST           (443)
+             232 JUMP_FORWARD         (to 236)
+         >>  234 LOAD_CONST           (80)
+         >>  236 CALL                 (1 positional)
+             244 STORE_FAST           (port)
+
+156:         246 LOAD_FAST            (host)
+             248 FORMAT_SIMPLE
+             250 LOAD_CONST           (":")
+             252 LOAD_FAST            (port)
+             254 FORMAT_SIMPLE
+             256 BUILD_STRING         3
+             258 STORE_FAST           (label)
+
+157:         260 LOAD_FAST            (host)
+             262 LOAD_ATTR            (NULL|self + lower)
+             282 CALL                 (0 positional)
+             290 LOAD_CONST           ({'localhost', '127.0.0.1', '::1'})
+             292 CONTAINS_OP          (in)
+             296 POP_JUMP_IF_FALSE    (to 386)
+
+158:         300 NOP
+
+159:         302 LOAD_GLOBAL          (socket)
+             312 LOAD_ATTR            (create_connection)
+             332 PUSH_NULL
+             334 LOAD_FAST_LOAD_FAST  (host, port)
+             336 BUILD_TUPLE          2
+             338 LOAD_GLOBAL          (NULL + min)
+             348 LOAD_FAST            (timeout)
+             350 LOAD_CONST           (2.0)
+             352 CALL                 (2 positional)
+             360 LOAD_CONST           (('timeout',))
+             362 CALL_KW              2
+             364 BEFORE_WITH
+             366 POP_TOP
+
+160:         368 NOP
+
+159:         370 LOAD_CONST           (None)
+             372 LOAD_CONST           (None)
+             374 LOAD_CONST           (None)
+             376 CALL                 (2 positional)
+             384 POP_TOP
+
+165:     >>  386 LOAD_CONST           (None)
+             388 STORE_FAST           (response)
+
+166:         390 LOAD_CONST           (None)
+             392 STORE_FAST           (last_error)
+
+167:         394 LOAD_GLOBAL          (NULL + range)
+             404 LOAD_CONST           (2)
+             406 CALL                 (1 positional)
+             414 GET_ITER
+             416 FOR_ITER             (to 554)
+             420 STORE_FAST           (attempt)
+
+168:         422 NOP
+
+169:         424 LOAD_FAST_LOAD_FAST  (normalized, normalized)
+             426 LOAD_CONST           (('http', 'https'))
+             428 BUILD_CONST_KEY_MAP  2
+             430 LOAD_FAST            (timeout)
+             432 LOAD_CONST           (('proxies', 'timeout'))
+             434 BUILD_CONST_KEY_MAP  2
+             436 STORE_FAST           (kwargs)
+
+170:         438 LOAD_GLOBAL          (_curl_requests)
+             448 POP_JUMP_IF_NONE     (to 504)
+
+171:         452 LOAD_GLOBAL          (_curl_requests)
+             462 LOAD_ATTR            (get)
+             482 PUSH_NULL
+
+172:         484 NOP
+
+171:         486 LOAD_CONST           (('https://sentinel.openai.com/backend-api/sentinel/frame.html?sv=20260219f9f6',))
+             488 LOAD_CONST           ("impersonate")
+
+173:         490 LOAD_CONST           ("chrome")
+
+171:         492 BUILD_MAP            1
+
+174:         494 LOAD_FAST            (kwargs)
+
+171:         496 DICT_MERGE           1
+             498 CALL_FUNCTION_EX     (keyword and positional arguments)
+             500 STORE_FAST           (response)
+             502 JUMP_FORWARD         (to 550)
+
+177:     >>  504 LOAD_GLOBAL          (requests)
+             514 LOAD_ATTR            (get)
+             534 PUSH_NULL
+
+178:         536 NOP
+
+177:         538 LOAD_CONST           (('https://sentinel.openai.com/backend-api/sentinel/frame.html?sv=20260219f9f6',))
+             540 BUILD_MAP            0
+
+179:         542 LOAD_FAST            (kwargs)
+
+177:         544 DICT_MERGE           1
+             546 CALL_FUNCTION_EX     (keyword and positional arguments)
+             548 STORE_FAST           (response)
+
+181:     >>  550 POP_TOP
+             552 JUMP_FORWARD         (to 558)
+
+167:     >>  554 END_FOR
+             556 POP_TOP
+
+186:     >>  558 LOAD_FAST            (response)
+             560 POP_JUMP_IF_NOT_NONE (to 618)
+
+187:         564 LOAD_GLOBAL          (NULL + RuntimeError)
+             574 LOAD_CONST           ("主代理不可用：")
+             576 LOAD_FAST            (label)
+             578 FORMAT_SIMPLE
+             580 LOAD_CONST           (" 无法访问 Sentinel：")
+             582 LOAD_GLOBAL          (NULL + _redact_text)
+             592 LOAD_FAST            (last_error)
+             594 CALL                 (1 positional)
+             602 FORMAT_SIMPLE
+             604 BUILD_STRING         4
+             606 CALL                 (1 positional)
+             614 LOAD_FAST            (last_error)
+             616 RAISE_VARARGS        (exception instance with __cause__)
+
+188:     >>  618 LOAD_CONST           (200)
+             620 LOAD_GLOBAL          (NULL + int)
+             630 LOAD_FAST            (response)
+             632 LOAD_ATTR            (status_code)
+             652 CALL                 (1 positional)
+             660 SWAP                 (TOS <-> TOS1)
+             662 COPY                 2
+             664 COMPARE_OP           (<=)
+             668 POP_JUMP_IF_FALSE    (to 684)
+             672 LOAD_CONST           (400)
+             674 COMPARE_OP           (<)
+             678 POP_JUMP_IF_TRUE     (to 740)
+             682 JUMP_FORWARD         (to 686)
+         >>  684 POP_TOP
+
+189:     >>  686 LOAD_GLOBAL          (NULL + RuntimeError)
+             696 LOAD_CONST           ("主代理不可用：")
+             698 LOAD_FAST            (label)
+             700 FORMAT_SIMPLE
+             702 LOAD_CONST           (" 访问 Sentinel 返回 HTTP ")
+             704 LOAD_FAST            (response)
+             706 LOAD_ATTR            (status_code)
+             726 FORMAT_SIMPLE
+             728 BUILD_STRING         4
+             730 CALL                 (1 positional)
+             738 RAISE_VARARGS        (exception instance)
+
+188:     >>  740 RETURN_CONST         (None)
+
+159:     >>  742 PUSH_EXC_INFO
+             744 WITH_EXCEPT_START    0
+             746 TO_BOOL
+             754 POP_JUMP_IF_TRUE     (to 760)
+             758 RERAISE              2
+         >>  760 POP_TOP
+             762 POP_EXCEPT
+             764 POP_TOP
+             766 POP_TOP
+             768 JUMP_BACKWARD_NO_INTERRUPT (to 386)
+         >>  770 COPY                 3
+             772 POP_EXCEPT
+             774 RERAISE              1
+         >>  776 PUSH_EXC_INFO
+
+161:         778 LOAD_GLOBAL          (OSError)
+             788 CHECK_EXC_MATCH
+             790 POP_JUMP_IF_FALSE    (to 836)
+             794 STORE_FAST           (exc)
+
+162:         796 LOAD_GLOBAL          (NULL + RuntimeError)
+
+163:         806 LOAD_CONST           ("主代理不可用：")
+             808 LOAD_FAST            (label)
+             810 FORMAT_SIMPLE
+             812 LOAD_CONST           (" 未监听；换电脑后请启动本机代理，或清空主代理改为直连")
+             814 BUILD_STRING         3
+
+162:         816 CALL                 (1 positional)
+
+164:         824 LOAD_FAST            (exc)
+
+162:         826 RAISE_VARARGS        (exception instance with __cause__)
+         >>  828 LOAD_CONST           (None)
+             830 STORE_FAST           (exc)
+             832 DELETE_FAST          (exc)
+             834 RERAISE              1
+
+161:     >>  836 RERAISE              0
+         >>  838 COPY                 3
+             840 POP_EXCEPT
+             842 RERAISE              1
+         >>  844 PUSH_EXC_INFO
+
+182:         846 LOAD_GLOBAL          (Exception)
+             856 CHECK_EXC_MATCH
+             858 POP_JUMP_IF_FALSE    (to 960)
+             862 STORE_FAST           (exc)
+
+183:         864 LOAD_FAST            (exc)
+             866 STORE_FAST           (last_error)
+
+184:         868 LOAD_FAST            (attempt)
+             870 LOAD_CONST           (0)
+             872 COMPARE_OP           (==)
+             876 POP_JUMP_IF_FALSE    (to 938)
+
+185:         880 LOAD_GLOBAL          (time)
+             890 LOAD_ATTR            (sleep)
+             910 PUSH_NULL
+             912 LOAD_CONST           (0.4)
+             914 CALL                 (1 positional)
+             922 POP_TOP
+             924 POP_EXCEPT
+             926 LOAD_CONST           (None)
+             928 STORE_FAST           (exc)
+             930 DELETE_FAST          (exc)
+             932 EXTENDED_ARG         (256)
+             934 JUMP_BACKWARD        (to 416)
+
+184:     >>  938 POP_EXCEPT
+             940 LOAD_CONST           (None)
+             942 STORE_FAST           (exc)
+             944 DELETE_FAST          (exc)
+             946 EXTENDED_ARG         (256)
+             948 JUMP_BACKWARD        (to 416)
+         >>  952 LOAD_CONST           (None)
+             954 STORE_FAST           (exc)
+             956 DELETE_FAST          (exc)
+             958 RERAISE              1
+
+182:     >>  960 RERAISE              0
+         >>  962 COPY                 3
+             964 POP_EXCEPT
+             966 RERAISE              1
+
+ExceptionTable:
+  302 to 364 -> 776 [0]
+  366 to 366 -> 742 [1] lasti
+  370 to 384 -> 776 [0]
+  424 to 548 -> 844 [1]
+  742 to 760 -> 770 [3] lasti
+  762 to 766 -> 776 [0]
+  770 to 774 -> 776 [0]
+  776 to 794 -> 838 [1] lasti
+  796 to 826 -> 828 [1] lasti
+  828 to 836 -> 838 [1] lasti
+  844 to 862 -> 962 [2] lasti
+  864 to 922 -> 952 [2] lasti
+  952 to 960 -> 962 [2] lasti
+
+# Method Name:       _public_result
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        192
+# Constants:
+#    0: None
+#    1: 'token'
+#    2: 'code'
+#    3: '<已隐藏>'
+#    4: ''
+#    5: '_url'
+#    6: 'callback'
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: items
+#    3: str
+#    4: lower
+#    5: SENSITIVE_KEYS
+#    6: endswith
+#    7: _public_result
+#    8: list
+# Varnames:
+#	value, result, key, item, lower
+# Positional arguments:
+#	value
+# Local variables:
+#    1: result
+#    2: key
+#    3: item
+#    4: lower
+192:           0 RESUME               0
+
+193:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (value)
+              14 LOAD_GLOBAL          (dict)
+              24 CALL                 (2 positional)
+              32 TO_BOOL
+              40 POP_JUMP_IF_FALSE    (to 398)
+
+194:          44 BUILD_MAP            0
+              46 STORE_FAST           (result)
+
+195:          48 LOAD_FAST            (value)
+              50 LOAD_ATTR            (NULL|self + items)
+              70 CALL                 (0 positional)
+              78 GET_ITER
+              80 FOR_ITER             (to 390)
+              84 UNPACK_SEQUENCE      2
+              88 STORE_FAST_STORE_FAST (key, item)
+
+196:          90 LOAD_GLOBAL          (NULL + str)
+             100 LOAD_FAST            (key)
+             102 CALL                 (1 positional)
+             110 LOAD_ATTR            (NULL|self + lower)
+             130 CALL                 (0 positional)
+             138 STORE_FAST           (lower)
+

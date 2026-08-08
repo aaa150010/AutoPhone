@@ -1,0 +1,800 @@
+             192 LOAD_CONST           ("node_bridge_mode")
+             194 STORE_SUBSCR
+
+ 80:         198 LOAD_CONST           ("")
+             200 STORE_NAME           (node_bridge_version)
+             202 LOAD_CONST           ("str")
+             204 LOAD_NAME            (__annotations__)
+             206 LOAD_CONST           ("node_bridge_version")
+             208 STORE_SUBSCR
+
+ 81:         212 LOAD_CONST           (False)
+             214 STORE_NAME           (phase1_active)
+             216 LOAD_CONST           ("bool")
+             218 LOAD_NAME            (__annotations__)
+             220 LOAD_CONST           ("phase1_active")
+             222 STORE_SUBSCR
+
+ 82:         226 LOAD_NAME            (field)
+             228 PUSH_NULL
+             230 LOAD_NAME            (dict)
+             232 LOAD_CONST           (('default_factory',))
+             234 CALL_KW              1
+             236 STORE_NAME           (metadata)
+             238 LOAD_CONST           ("Dict[str, Any]")
+             240 LOAD_NAME            (__annotations__)
+             242 LOAD_CONST           ("metadata")
+             244 STORE_SUBSCR
+
+ 84:         248 LOAD_CONST           (('return', 'Dict[str, Any]'))
+             250 LOAD_CONST           (<Code311 code object to_dict at 0x10962a4f0, file codex_runtime_context.py>, line 84)
+             252 MAKE_FUNCTION
+             254 SET_FUNCTION_ATTRIBUTE 4
+             256 STORE_NAME           (to_dict)
+             258 LOAD_CONST           (())
+             260 STORE_NAME           (__static_attributes__)
+             262 RETURN_CONST         (None)
+
+
+# Method Name:       oauth_state_from_url
+# Filename:          codex_runtime_context.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        107
+# Constants:
+#    0: None
+#    1: 'state'
+#    2: ''
+#    3: 0
+# Names:
+#    0: urlparse
+#    1: _clean
+#    2: parse_qs
+#    3: query
+#    4: get
+# Varnames:
+#	oauth_url, parsed
+# Positional arguments:
+#	oauth_url
+# Local variables:
+#    1: parsed
+107:           0 RESUME               0
+
+108:           2 LOAD_GLOBAL          (NULL + urlparse)
+              12 LOAD_GLOBAL          (NULL + _clean)
+              22 LOAD_FAST            (oauth_url)
+              24 CALL                 (1 positional)
+              32 CALL                 (1 positional)
+              40 STORE_FAST           (parsed)
+
+109:          42 LOAD_GLOBAL          (NULL + _clean)
+              52 LOAD_GLOBAL          (NULL + parse_qs)
+              62 LOAD_FAST            (parsed)
+              64 LOAD_ATTR            (query)
+              84 CALL                 (1 positional)
+              92 LOAD_ATTR            (NULL|self + get)
+             112 LOAD_CONST           ("state")
+             114 CALL                 (1 positional)
+             122 COPY                 1
+             124 TO_BOOL
+             132 POP_JUMP_IF_TRUE     (to 142)
+             136 POP_TOP
+             138 LOAD_CONST           ("")
+             140 BUILD_LIST           1
+         >>  142 LOAD_CONST           (0)
+             144 BINARY_SUBSCR
+             148 CALL                 (1 positional)
+             156 RETURN_VALUE
+
+
+# Method Name:       runtime_context_from_inputs
+# Filename:          codex_runtime_context.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 9
+# Number of locals:  15
+# Stack size:        11
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        112
+# Constants:
+#    0: None
+#    1: 'device_id'
+#    2: ''
+#    3: 'openai_device_id'
+#    4: 'browser_fingerprint'
+#    5: 'openai_persona'
+#    6: 'fingerprint'
+#    7: 'session'
+#    8: 'cookies'
+#    9: 'cookie_jar_present'
+#   10: 'cookies_present'
+#   11: 'account_email'
+#   12: 'proxy_label'
+#   13: 'proxy'
+#   14: 'email_proxy_label'
+#   15: 'email_proxy'
+#   16: 'upload_proxy_label'
+#   17: 'upload_proxy'
+#   18: 'oauth_state'
+#   19: 'code_verifier_present'
+#   20: 'session_present'
+#   21: 'browser_fingerprint_present'
+#   22: 'node_fingerprint_present'
+#   23: 'fingerprint_present'
+#   24: 'node_bridge_present'
+#   25: 'ok'
+#   26: 'node_bridge_mode'
+#   27: 'mode'
+#   28: 'node_bridge_version'
+#   29: 'version'
+#   30: 'phase1_active'
+#   31: 'metadata'
+#   32: 0
+#   33: ('python_version', 'platform')
+#   34: ()
+# Names:
+#    0: _clean
+#    1: getattr
+#    2: get
+#    3: isinstance
+#    4: dict
+#    5: bool
+#    6: RuntimeContext
+#    7: _proxy_label
+#    8: oauth_state_from_url
+#    9: _bool
+#   10: sys
+#   11: version
+#   12: split
+#   13: platform
+#   14: system
+# Varnames:
+#	account_email, oauth_url, code_verifier, proxy, email_proxy, upload_proxy, config, phase1_register, node_result, cfg, device_id, fingerprint, node, session_obj, cookie_jar_present
+# Local variables:
+#    0: account_email
+#    1: oauth_url
+#    2: code_verifier
+#    3: proxy
+#    4: email_proxy
+#    5: upload_proxy
+#    6: config
+#    7: phase1_register
+#    8: node_result
+#    9: cfg
+#   10: device_id
+#   11: fingerprint
+#   12: node
+#   13: session_obj
+#   14: cookie_jar_present
+112:           0 RESUME               0
+
+124:           2 LOAD_FAST            (config)
+               4 COPY                 1
+               6 TO_BOOL
+              14 POP_JUMP_IF_TRUE     (to 22)
+              18 POP_TOP
+              20 BUILD_MAP            0
+         >>   22 STORE_FAST           (cfg)
+
+125:          24 LOAD_GLOBAL          (NULL + _clean)
+
+126:          34 LOAD_GLOBAL          (NULL + getattr)
+              44 LOAD_FAST            (phase1_register)
+              46 LOAD_CONST           ("device_id")
+              48 LOAD_CONST           ("")
+              50 CALL                 (3 positional)
+              58 COPY                 1
+              60 TO_BOOL
+              68 POP_JUMP_IF_TRUE     (to 154)
+              72 POP_TOP
+
+127:          74 LOAD_FAST            (cfg)
+              76 LOAD_ATTR            (NULL|self + get)
+              96 LOAD_CONST           ("openai_device_id")
+              98 CALL                 (1 positional)
+
+126:         106 COPY                 1
+             108 TO_BOOL
+             116 POP_JUMP_IF_TRUE     (to 154)
+             120 POP_TOP
+
+128:         122 LOAD_FAST            (cfg)
+             124 LOAD_ATTR            (NULL|self + get)
+             144 LOAD_CONST           ("device_id")
+             146 CALL                 (1 positional)
+
+125:     >>  154 CALL                 (1 positional)
+             162 STORE_FAST           (device_id)
+
+130:         164 LOAD_FAST            (cfg)
+             166 LOAD_ATTR            (NULL|self + get)
+             186 LOAD_CONST           ("browser_fingerprint")
+             188 CALL                 (1 positional)
+             196 COPY                 1
+             198 TO_BOOL
+             206 POP_JUMP_IF_TRUE     (to 292)
+             210 POP_TOP
+             212 LOAD_FAST            (cfg)
+             214 LOAD_ATTR            (NULL|self + get)
+             234 LOAD_CONST           ("openai_persona")
+             236 CALL                 (1 positional)
+             244 COPY                 1
+             246 TO_BOOL
+             254 POP_JUMP_IF_TRUE     (to 292)
+             258 POP_TOP
+             260 LOAD_FAST            (cfg)
+             262 LOAD_ATTR            (NULL|self + get)
+             282 LOAD_CONST           ("fingerprint")
+             284 CALL                 (1 positional)
+         >>  292 STORE_FAST           (fingerprint)
+
+131:         294 LOAD_GLOBAL          (NULL + isinstance)
+             304 LOAD_FAST            (node_result)
+             306 LOAD_GLOBAL          (dict)
+             316 CALL                 (2 positional)
+             324 TO_BOOL
+             332 POP_JUMP_IF_FALSE    (to 340)
+             336 LOAD_FAST            (node_result)
+             338 JUMP_FORWARD         (to 342)
+         >>  340 BUILD_MAP            0
+         >>  342 STORE_FAST           (node)
+
+132:         344 LOAD_GLOBAL          (NULL + getattr)
+             354 LOAD_FAST            (phase1_register)
+             356 LOAD_CONST           ("session")
+             358 LOAD_CONST           (None)
+             360 CALL                 (3 positional)
+             368 STORE_FAST           (session_obj)
+
+133:         370 LOAD_GLOBAL          (NULL + bool)
+
+134:         380 LOAD_GLOBAL          (NULL + getattr)
+             390 LOAD_FAST            (session_obj)
+             392 LOAD_CONST           ("cookies")
+             394 LOAD_CONST           (None)
+             396 CALL                 (3 positional)
+             404 COPY                 1
+             406 TO_BOOL
+             414 POP_JUMP_IF_TRUE     (to 500)
+             418 POP_TOP
+
+135:         420 LOAD_FAST            (cfg)
+             422 LOAD_ATTR            (NULL|self + get)
+             442 LOAD_CONST           ("cookie_jar_present")
+             444 CALL                 (1 positional)
+
+134:         452 COPY                 1
+             454 TO_BOOL
+             462 POP_JUMP_IF_TRUE     (to 500)
+             466 POP_TOP
+
+136:         468 LOAD_FAST            (cfg)
+             470 LOAD_ATTR            (NULL|self + get)
+             490 LOAD_CONST           ("cookies_present")
+             492 CALL                 (1 positional)
+
+133:     >>  500 CALL                 (1 positional)
+             508 STORE_FAST           (cookie_jar_present)
+
+138:         510 LOAD_GLOBAL          (NULL + RuntimeContext)
+             520 LOAD_CONST           (())
+             522 BUILD_MAP            0
+             524 LOAD_CONST           ("account_email")
+
+139:         526 LOAD_GLOBAL          (NULL + _clean)
+             536 LOAD_FAST            (account_email)
+             538 CALL                 (1 positional)
+             546 MAP_ADD              1
+
+138:         548 LOAD_CONST           ("device_id")
+
+140:         550 LOAD_FAST            (device_id)
+             552 MAP_ADD              1
+
+138:         554 LOAD_CONST           ("proxy_label")
+
+141:         556 LOAD_GLOBAL          (NULL + _proxy_label)
+             566 LOAD_FAST            (proxy)
+             568 COPY                 1
+             570 TO_BOOL
+             578 POP_JUMP_IF_TRUE     (to 618)
+             582 POP_TOP
+             584 LOAD_FAST            (cfg)
+             586 LOAD_ATTR            (NULL|self + get)
+             606 LOAD_CONST           ("proxy")
+             608 LOAD_CONST           ("")
+             610 CALL                 (2 positional)
+         >>  618 CALL                 (1 positional)
+             626 MAP_ADD              1
+
+138:         628 LOAD_CONST           ("email_proxy_label")
+
+142:         630 LOAD_GLOBAL          (NULL + _proxy_label)
+             640 LOAD_FAST            (email_proxy)
+             642 COPY                 1
+             644 TO_BOOL
+             652 POP_JUMP_IF_TRUE     (to 692)
+             656 POP_TOP
+             658 LOAD_FAST            (cfg)
+             660 LOAD_ATTR            (NULL|self + get)
+             680 LOAD_CONST           ("email_proxy")
+             682 LOAD_CONST           ("")
+             684 CALL                 (2 positional)
+         >>  692 CALL                 (1 positional)
+             700 MAP_ADD              1
+
+138:         702 LOAD_CONST           ("upload_proxy_label")
+
+143:         704 LOAD_GLOBAL          (NULL + _proxy_label)
+             714 LOAD_FAST            (upload_proxy)
+             716 COPY                 1
+             718 TO_BOOL
+             726 POP_JUMP_IF_TRUE     (to 766)
+             730 POP_TOP
+             732 LOAD_FAST            (cfg)
+             734 LOAD_ATTR            (NULL|self + get)
+             754 LOAD_CONST           ("upload_proxy")
+             756 LOAD_CONST           ("")
+             758 CALL                 (2 positional)
+         >>  766 CALL                 (1 positional)
+             774 MAP_ADD              1
+
+138:         776 LOAD_CONST           ("oauth_state")
+
+144:         778 LOAD_GLOBAL          (NULL + oauth_state_from_url)
+             788 LOAD_FAST            (oauth_url)
+             790 CALL                 (1 positional)
+             798 MAP_ADD              1
+
+138:         800 LOAD_CONST           ("code_verifier_present")
+
+145:         802 LOAD_GLOBAL          (NULL + bool)
+             812 LOAD_GLOBAL          (NULL + _clean)
+             822 LOAD_FAST            (code_verifier)
+             824 CALL                 (1 positional)
+             832 CALL                 (1 positional)
+             840 MAP_ADD              1
+
+138:         842 LOAD_CONST           ("cookie_jar_present")
+
+146:         844 LOAD_FAST            (cookie_jar_present)
+             846 MAP_ADD              1
+
+138:         848 LOAD_CONST           ("session_present")
+
+147:         850 LOAD_FAST            (session_obj)
+             852 LOAD_CONST           (None)
+             854 IS_OP                (is not)
+             856 COPY                 1
+             858 TO_BOOL
+             866 POP_JUMP_IF_TRUE     (to 922)
+             870 POP_TOP
+             872 LOAD_GLOBAL          (NULL + _bool)
+             882 LOAD_FAST            (cfg)
+             884 LOAD_ATTR            (NULL|self + get)
+             904 LOAD_CONST           ("session_present")
+             906 CALL                 (1 positional)
+             914 CALL                 (1 positional)
+         >>  922 MAP_ADD              1
+
+138:         924 LOAD_CONST           ("browser_fingerprint_present")
+
+148:         926 LOAD_GLOBAL          (NULL + isinstance)
+             936 LOAD_FAST            (fingerprint)
+             938 LOAD_GLOBAL          (dict)
+             948 CALL                 (2 positional)
+             956 COPY                 1
+             958 TO_BOOL
+             966 POP_JUMP_IF_FALSE    (to 992)
+             970 POP_TOP
+             972 LOAD_GLOBAL          (NULL + bool)
+             982 LOAD_FAST            (fingerprint)
+             984 CALL                 (1 positional)
+         >>  992 MAP_ADD              1
+
+138:         994 LOAD_CONST           ("node_fingerprint_present")
+
+149:         996 LOAD_GLOBAL          (NULL + _bool)
+            1006 LOAD_FAST            (node)
+            1008 LOAD_ATTR            (NULL|self + get)
+            1028 LOAD_CONST           ("fingerprint_present")
+            1030 CALL                 (1 positional)
+            1038 CALL                 (1 positional)
+            1046 MAP_ADD              1
+
+138:        1048 LOAD_CONST           ("node_bridge_present")
+
+150:        1050 LOAD_GLOBAL          (NULL + _bool)
+            1060 LOAD_FAST            (node)
+            1062 LOAD_ATTR            (NULL|self + get)
+            1082 LOAD_CONST           ("ok")
+            1084 CALL                 (1 positional)
+            1092 CALL                 (1 positional)
+            1100 MAP_ADD              1
+
+138:        1102 LOAD_CONST           ("node_bridge_mode")
+
+151:        1104 LOAD_GLOBAL          (NULL + _clean)
+            1114 LOAD_FAST            (node)
+            1116 LOAD_ATTR            (NULL|self + get)
+            1136 LOAD_CONST           ("mode")
+            1138 CALL                 (1 positional)
+            1146 CALL                 (1 positional)
+            1154 MAP_ADD              1
+
+138:        1156 LOAD_CONST           ("node_bridge_version")
+
+152:        1158 LOAD_GLOBAL          (NULL + _clean)
+            1168 LOAD_FAST            (node)
+            1170 LOAD_ATTR            (NULL|self + get)
+            1190 LOAD_CONST           ("version")
+            1192 CALL                 (1 positional)
+            1200 CALL                 (1 positional)
+            1208 MAP_ADD              1
+
+138:        1210 LOAD_CONST           ("phase1_active")
+
+153:        1212 LOAD_FAST            (phase1_register)
+            1214 LOAD_CONST           (None)
+            1216 IS_OP                (is not)
+            1218 COPY                 1
+            1220 TO_BOOL
+            1228 POP_JUMP_IF_TRUE     (to 1284)
+            1232 POP_TOP
+            1234 LOAD_GLOBAL          (NULL + _bool)
+            1244 LOAD_FAST            (cfg)
+            1246 LOAD_ATTR            (NULL|self + get)
+            1266 LOAD_CONST           ("phase1_active")
+            1268 CALL                 (1 positional)
+            1276 CALL                 (1 positional)
+         >> 1284 MAP_ADD              1
+
+138:        1286 LOAD_CONST           ("metadata")
+
+155:        1288 LOAD_GLOBAL          (sys)
+            1298 LOAD_ATTR            (version)
+            1318 LOAD_ATTR            (NULL|self + split)
+            1338 CALL                 (0 positional)
+            1346 LOAD_CONST           (0)
+            1348 BINARY_SUBSCR
+
+156:        1352 LOAD_GLOBAL          (platform)
+            1362 LOAD_ATTR            (system)
+            1382 PUSH_NULL
+            1384 CALL                 (0 positional)
+
+154:        1392 LOAD_CONST           (('python_version', 'platform'))
+            1394 BUILD_CONST_KEY_MAP  2
+            1396 MAP_ADD              1
+
+138:        1398 CALL_FUNCTION_EX     (keyword and positional arguments)
+            1400 RETURN_VALUE
+
+
+# Method Name:       _expected_bool
+# Filename:          codex_runtime_context.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        161
+# Constants:
+#    0: None
+# Names:
+#    0: _bool
+#    1: get
+# Varnames:
+#	expected, key
+# Positional arguments:
+#	expected, key
+161:           0 RESUME               0
+
+162:           2 LOAD_FAST_LOAD_FAST  (key, expected)
+               4 CONTAINS_OP          (not in)
+               8 POP_JUMP_IF_FALSE    (to 14)
+
+163:          12 RETURN_CONST         (None)
+
+164:     >>   14 LOAD_GLOBAL          (NULL + _bool)
+              24 LOAD_FAST            (expected)
+              26 LOAD_ATTR            (NULL|self + get)
+              46 LOAD_FAST            (key)
+              48 CALL                 (1 positional)
+              56 CALL                 (1 positional)
+              64 RETURN_VALUE
+
+
+# Method Name:       validate_runtime_context
+# Filename:          codex_runtime_context.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 2
+# Number of locals:  13
+# Stack size:        14
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        167
+# Constants:
+#    0: 'Validate local context against optional fixture expectations.'
+#    1: ('device_id_present', 'oauth_state_present', 'code_verifier_present')
+#    2: ' is false'
+#    3: 'error'
+#    4: 'warn'
+#    5: ('device_id_present', 'oauth_state_present', 'code_verifier_present', 'cookie_jar_present', 'session_present', 'browser_fingerprint_present', 'node_fingerprint_present')
+#    6: '_mismatch'
+#    7: 'expected '
+#    8: '='
+#    9: ', actual='
+#   10: 'proxy_label'
+#   11: 'proxy_label_mismatch'
+#   12: 'expected proxy_label='
+#   13: 'email_proxy_differs'
+#   14: 'email proxy differs from main proxy'
+#   15: 'upload_proxy_differs'
+#   16: 'upload proxy differs from main proxy'
+#   17: 'node_fingerprint_missing'
+#   18: 'Node bridge ran but did not report fingerprint presence'
+#   19: <Code311 code object <genexpr> at 0x10962a730, file codex_runtime_context.py>, line 211
+#   20: <Code311 code object <genexpr> at 0x10962a760, file codex_runtime_context.py>, line 212
+#   21: 0
+#   22: ('ok', 'strict', 'error_count', 'warn_count', 'issues', 'context')
+# Names:
+#    0: bool
+#    1: device_id
+#    2: oauth_state
+#    3: code_verifier_present
+#    4: items
+#    5: append
+#    6: ConsistencyIssue
+#    7: cookie_jar_present
+#    8: session_present
+#    9: browser_fingerprint_present
+#   10: node_fingerprint_present
+#   11: _expected_bool
+#   12: _clean
+#   13: get
+#   14: proxy_label
+#   15: email_proxy_label
+#   16: upload_proxy_label
+#   17: node_bridge_present
+#   18: sum
+#   19: to_dict
+# Varnames:
+#	context, expected, strict, issues, required, key, present, actual, exp, expected_proxy, error_count, warn_count, item
+# Positional arguments:
+#	context
+# Local variables:
+#    1: expected
+#    2: strict
+#    3: issues
+#    4: required
+#    5: key
+#    6: present
+#    7: actual
+#    8: exp
+#    9: expected_proxy
+#   10: error_count
+#   11: warn_count
+#   12: item
+167:           0 RESUME               0
+
+174:           2 LOAD_FAST            (expected)
+               4 COPY                 1
+               6 TO_BOOL
+              14 POP_JUMP_IF_TRUE     (to 22)
+              18 POP_TOP
+              20 BUILD_MAP            0
+         >>   22 STORE_FAST           (expected)
+
+175:          24 BUILD_LIST           0
+              26 STORE_FAST           (issues)
+
+178:          28 LOAD_GLOBAL          (NULL + bool)
+              38 LOAD_FAST            (context)
+              40 LOAD_ATTR            (device_id)
+              60 CALL                 (1 positional)
+
+179:          68 LOAD_GLOBAL          (NULL + bool)
+              78 LOAD_FAST            (context)
+              80 LOAD_ATTR            (oauth_state)
+             100 CALL                 (1 positional)
+
+180:         108 LOAD_FAST            (context)
+             110 LOAD_ATTR            (code_verifier_present)
+
+177:         130 LOAD_CONST           (('device_id_present', 'oauth_state_present', 'code_verifier_present'))
+             132 BUILD_CONST_KEY_MAP  3
+             134 STORE_FAST           (required)
+
+182:         136 LOAD_FAST            (required)
+             138 LOAD_ATTR            (NULL|self + items)
+             158 CALL                 (0 positional)
+             166 GET_ITER
+             168 FOR_ITER             (to 278)
+             172 UNPACK_SEQUENCE      2
+             176 STORE_FAST_STORE_FAST (key, present)
+
+183:         178 LOAD_FAST            (present)
+             180 TO_BOOL
+             188 POP_JUMP_IF_FALSE    (to 196)
+             192 JUMP_BACKWARD        (to 168)
+
+184:     >>  196 LOAD_FAST            (issues)
+             198 LOAD_ATTR            (NULL|self + append)
+             218 LOAD_GLOBAL          (NULL + ConsistencyIssue)
+             228 LOAD_FAST_LOAD_FAST  (key, key)
+             230 FORMAT_SIMPLE
+             232 LOAD_CONST           (" is false")
+             234 BUILD_STRING         2
+             236 LOAD_FAST            (strict)
+             238 TO_BOOL
+             246 POP_JUMP_IF_FALSE    (to 254)
+             250 LOAD_CONST           ("error")
+             252 JUMP_FORWARD         (to 256)
+         >>  254 LOAD_CONST           ("warn")
+         >>  256 CALL                 (3 positional)
+             264 CALL                 (1 positional)
+             272 POP_TOP
+             274 JUMP_BACKWARD        (to 168)
+
+182:     >>  278 END_FOR
+             280 POP_TOP
+
+187:         282 LOAD_GLOBAL          (NULL + bool)
+             292 LOAD_FAST            (context)
+             294 LOAD_ATTR            (device_id)
+             314 CALL                 (1 positional)
+
+188:         322 LOAD_GLOBAL          (NULL + bool)
+             332 LOAD_FAST            (context)
+             334 LOAD_ATTR            (oauth_state)
+             354 CALL                 (1 positional)
+
+189:         362 LOAD_FAST            (context)
+             364 LOAD_ATTR            (code_verifier_present)
+
+190:         384 LOAD_FAST            (context)
+             386 LOAD_ATTR            (cookie_jar_present)
+
+191:         406 LOAD_FAST            (context)
+             408 LOAD_ATTR            (session_present)
+
+192:         428 LOAD_FAST            (context)
+             430 LOAD_ATTR            (browser_fingerprint_present)
+
+193:         450 LOAD_FAST            (context)
+             452 LOAD_ATTR            (node_fingerprint_present)
+
+186:         472 LOAD_CONST           (('device_id_present', 'oauth_state_present', 'code_verifier_present', 'cookie_jar_present', 'session_present', 'browser_fingerprint_present', 'node_fingerprint_present'))
+             474 BUILD_CONST_KEY_MAP  7
+
+194:         476 LOAD_ATTR            (NULL|self + items)
+             496 CALL                 (0 positional)
+
+186:         504 GET_ITER
+             506 FOR_ITER             (to 684)
+             510 UNPACK_SEQUENCE      2
+             514 STORE_FAST_STORE_FAST (key, actual)
+
+195:         516 LOAD_GLOBAL          (NULL + _expected_bool)
+             526 LOAD_FAST_LOAD_FAST  (expected, key)
+             528 CALL                 (2 positional)
+             536 STORE_FAST           (exp)
+
+196:         538 LOAD_FAST            (exp)
+             540 POP_JUMP_IF_NOT_NONE (to 548)
+             544 JUMP_BACKWARD        (to 506)
+         >>  548 LOAD_FAST            (exp)
+             550 LOAD_GLOBAL          (NULL + bool)
+             560 LOAD_FAST            (actual)
+             562 CALL                 (1 positional)
+             570 COMPARE_OP           (!=)
+             574 POP_JUMP_IF_TRUE     (to 582)
+             578 JUMP_BACKWARD        (to 506)
+
+197:     >>  582 LOAD_FAST            (issues)
+             584 LOAD_ATTR            (NULL|self + append)
+             604 LOAD_GLOBAL          (NULL + ConsistencyIssue)
+             614 LOAD_FAST            (key)
+             616 FORMAT_SIMPLE
+             618 LOAD_CONST           ("_mismatch")
+             620 BUILD_STRING         2
+             622 LOAD_CONST           ("expected ")
+             624 LOAD_FAST            (key)
+             626 FORMAT_SIMPLE
+             628 LOAD_CONST           ("=")
+             630 LOAD_FAST            (exp)
+             632 FORMAT_SIMPLE
+             634 LOAD_CONST           (", actual=")
+             636 LOAD_GLOBAL          (NULL + bool)
+             646 LOAD_FAST            (actual)
+             648 CALL                 (1 positional)
+             656 FORMAT_SIMPLE
+         >>  658 BUILD_STRING         6
+             660 LOAD_CONST           ("error")
+             662 CALL                 (3 positional)
+             670 CALL                 (1 positional)
+             678 POP_TOP
+             680 JUMP_BACKWARD        (to 506)
+
+186:     >>  684 END_FOR
+             686 POP_TOP
+
+199:         688 LOAD_GLOBAL          (NULL + _clean)
+             698 LOAD_FAST            (expected)
+             700 LOAD_ATTR            (NULL|self + get)
+             720 LOAD_CONST           ("proxy_label")
+             722 CALL                 (1 positional)
+             730 CALL                 (1 positional)
+             738 STORE_FAST           (expected_proxy)
+
+200:         740 LOAD_FAST            (expected_proxy)
+             742 TO_BOOL
+             750 POP_JUMP_IF_FALSE    (to 872)
+             754 LOAD_FAST_LOAD_FAST  (expected_proxy, context)
+             756 LOAD_ATTR            (proxy_label)
+             776 COMPARE_OP           (!=)
+             780 POP_JUMP_IF_FALSE    (to 872)
+
+201:         784 LOAD_FAST            (issues)
+             786 LOAD_ATTR            (NULL|self + append)
+             806 LOAD_GLOBAL          (NULL + ConsistencyIssue)
+             816 LOAD_CONST           ("proxy_label_mismatch")
+             818 LOAD_CONST           ("expected proxy_label=")
+             820 LOAD_FAST            (expected_proxy)
+             822 FORMAT_SIMPLE
+             824 LOAD_CONST           (", actual=")
+             826 LOAD_FAST            (context)
+             828 LOAD_ATTR            (proxy_label)
+             848 FORMAT_SIMPLE
+             850 BUILD_STRING         4
+             852 LOAD_CONST           ("error")
+             854 CALL                 (3 positional)
+         >>  862 CALL                 (1 positional)
+             870 POP_TOP
+
+203:     >>  872 LOAD_FAST            (context)
+             874 LOAD_ATTR            (email_proxy_label)
+             894 TO_BOOL
+             902 POP_JUMP_IF_FALSE    (to 1048)
+             906 LOAD_FAST            (context)
+             908 LOAD_ATTR            (proxy_label)
+             928 TO_BOOL
+             936 POP_JUMP_IF_FALSE    (to 1048)
+             940 LOAD_FAST            (context)
+             942 LOAD_ATTR            (email_proxy_label)
+             962 LOAD_FAST            (context)
+             964 LOAD_ATTR            (proxy_label)
+             984 COMPARE_OP           (!=)
+             988 POP_JUMP_IF_FALSE    (to 1048)
+
+204:         992 LOAD_FAST            (issues)
+             994 LOAD_ATTR            (NULL|self + append)
+            1014 LOAD_GLOBAL          (NULL + ConsistencyIssue)
+            1024 LOAD_CONST           ("email_proxy_differs")
+            1026 LOAD_CONST           ("email proxy differs from main proxy")
+            1028 LOAD_CONST           ("warn")
+            1030 CALL                 (3 positional)
+            1038 CALL                 (1 positional)
+            1046 POP_TOP
+
+205:     >> 1048 LOAD_FAST            (context)
+            1050 LOAD_ATTR            (upload_proxy_label)
+            1070 TO_BOOL
+            1078 POP_JUMP_IF_FALSE    (to 1224)
+            1082 LOAD_FAST            (context)
+            1084 LOAD_ATTR            (proxy_label)
+            1104 TO_BOOL
+            1112 POP_JUMP_IF_FALSE    (to 1224)
+            1116 LOAD_FAST            (context)
+            1118 LOAD_ATTR            (upload_proxy_label)
+            1138 LOAD_FAST            (context)
+            1140 LOAD_ATTR            (proxy_label)
+            1160 COMPARE_OP           (!=)
+            1164 POP_JUMP_IF_FALSE    (to 1224)
+

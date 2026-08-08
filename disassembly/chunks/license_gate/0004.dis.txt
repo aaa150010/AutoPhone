@@ -1,0 +1,800 @@
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  11
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        276
+# Constants:
+#    0: None
+#    1: ''
+#    2: False
+#    3: 'license_missing'
+#    4: 'product'
+#    5: 'product_mismatch'
+#    6: 'license_version'
+#    7: 0
+#    8: 'license_version_mismatch'
+#    9: <Code311 code object <genexpr> at 0x1056fe3d0, file license_gate.py>, line 287
+#   10: <Code311 code object <genexpr> at 0x1056fe3a0, file license_gate.py>, line 288
+#   11: 'machine_mismatch'
+#   12: 'expires_at'
+#   13: 'Z'
+#   14: '%Y-%m-%dT%H:%M:%S'
+#   15: 'license_expired'
+#   16: 'license_expiry_invalid'
+#   17: 'signature'
+#   18: 'signature_missing'
+#   19: 'signature_invalid'
+#   20: 'signature_error: '
+#   21: True
+#   22: 'ok'
+# Names:
+#    0: _read_license
+#    1: isinstance
+#    2: dict
+#    3: get
+#    4: PRODUCT
+#    5: int
+#    6: LICENSE_VERSION
+#    7: _candidate_fingerprint_hashes
+#    8: _machine_code_from_fingerprint
+#    9: any
+#   10: str
+#   11: strip
+#   12: time
+#   13: strptime
+#   14: replace
+#   15: mktime
+#   16: Exception
+#   17: Ed25519PublicKey
+#   18: from_public_bytes
+#   19: _b64decode
+#   20: PUBLIC_KEY_B64
+#   21: verify
+#   22: _canonical_payload
+#   23: InvalidSignature
+# Varnames:
+#	payload, path, read_error, local_fps, fp, local_machines, expires_at, expiry, signature, public_key, exc
+# Positional arguments:
+#	payload
+# Local variables:
+#    1: path
+#    2: read_error
+#    3: local_fps
+#    4: fp
+#    5: local_machines
+#    6: expires_at
+#    7: expiry
+#    8: signature
+#    9: public_key
+#   10: exc
+# Cell variables:
+#    0: data
+               0 MAKE_CELL            (data)
+
+276:           2 RESUME               0
+
+277:           4 LOAD_FAST            (payload)
+               6 POP_JUMP_IF_NOT_NONE (to 30)
+              10 LOAD_GLOBAL          (NULL + _read_license)
+              20 CALL                 (0 positional)
+              28 JUMP_FORWARD         (to 38)
+         >>   30 LOAD_FAST            (payload)
+              32 LOAD_CONST           (None)
+              34 LOAD_CONST           ("")
+              36 BUILD_TUPLE          3
+         >>   38 UNPACK_SEQUENCE      3
+              42 STORE_DEREF          (data)
+              44 STORE_FAST_STORE_FAST (path, read_error)
+
+278:          46 LOAD_GLOBAL          (NULL + isinstance)
+              56 LOAD_DEREF           (data)
+              58 LOAD_GLOBAL          (dict)
+              68 CALL                 (2 positional)
+              76 TO_BOOL
+              84 POP_JUMP_IF_FALSE    (to 102)
+              88 LOAD_DEREF           (data)
+              90 TO_BOOL
+              98 POP_JUMP_IF_TRUE     (to 130)
+
+279:     >>  102 LOAD_CONST           (False)
+             104 LOAD_FAST            (read_error)
+             106 COPY                 1
+             108 TO_BOOL
+             116 POP_JUMP_IF_TRUE     (to 124)
+             120 POP_TOP
+             122 LOAD_CONST           ("license_missing")
+         >>  124 LOAD_FAST            (path)
+             126 BUILD_TUPLE          3
+             128 RETURN_VALUE
+
+280:     >>  130 LOAD_DEREF           (data)
+             132 LOAD_ATTR            (NULL|self + get)
+             152 LOAD_CONST           ("product")
+             154 CALL                 (1 positional)
+             162 LOAD_GLOBAL          (PRODUCT)
+             172 COMPARE_OP           (!=)
+             176 POP_JUMP_IF_FALSE    (to 190)
+
+281:         180 LOAD_CONST           (False)
+             182 LOAD_CONST           ("product_mismatch")
+             184 LOAD_FAST            (path)
+             186 BUILD_TUPLE          3
+             188 RETURN_VALUE
+
+282:     >>  190 LOAD_GLOBAL          (NULL + int)
+             200 LOAD_DEREF           (data)
+             202 LOAD_ATTR            (NULL|self + get)
+             222 LOAD_CONST           ("license_version")
+             224 CALL                 (1 positional)
+             232 COPY                 1
+             234 TO_BOOL
+             242 POP_JUMP_IF_TRUE     (to 250)
+             246 POP_TOP
+             248 LOAD_CONST           (0)
+         >>  250 CALL                 (1 positional)
+             258 LOAD_GLOBAL          (LICENSE_VERSION)
+             268 COMPARE_OP           (!=)
+             272 POP_JUMP_IF_FALSE    (to 286)
+
+283:         276 LOAD_CONST           (False)
+             278 LOAD_CONST           ("license_version_mismatch")
+             280 LOAD_FAST            (path)
+             282 BUILD_TUPLE          3
+             284 RETURN_VALUE
+
+284:     >>  286 LOAD_GLOBAL          (NULL + _candidate_fingerprint_hashes)
+             296 CALL                 (0 positional)
+             304 STORE_FAST           (local_fps)
+
+285:         306 LOAD_FAST            (local_fps)
+             308 GET_ITER
+             310 LOAD_FAST_AND_CLEAR  (fp)
+             312 SWAP                 (TOS <-> TOS1)
+             314 BUILD_LIST           0
+             316 SWAP                 (TOS <-> TOS1)
+             318 GET_ITER
+             320 FOR_ITER             (to 352)
+             324 STORE_FAST           (fp)
+             326 LOAD_GLOBAL          (NULL + _machine_code_from_fingerprint)
+             336 LOAD_FAST            (fp)
+             338 CALL                 (1 positional)
+             346 LIST_APPEND          2
+             348 JUMP_BACKWARD        (to 320)
+         >>  352 END_FOR
+             354 POP_TOP
+             356 STORE_FAST           (local_machines)
+             358 STORE_FAST           (fp)
+
+287:         360 LOAD_GLOBAL          (NULL + any)
+             370 LOAD_FAST            (data)
+             372 BUILD_TUPLE          1
+             374 LOAD_CONST           (<Code311 code object <genexpr> at 0x1056fe3d0, file license_gate.py>, line 287)
+             376 MAKE_FUNCTION
+             378 SET_FUNCTION_ATTRIBUTE 8
+             380 LOAD_FAST            (local_machines)
+             382 GET_ITER
+         >>  384 CALL                 (0 positional)
+             392 CALL                 (1 positional)
+             400 TO_BOOL
+             408 POP_JUMP_IF_TRUE     (to 474)
+
+288:         412 LOAD_GLOBAL          (NULL + any)
+             422 LOAD_FAST            (data)
+             424 BUILD_TUPLE          1
+             426 LOAD_CONST           (<Code311 code object <genexpr> at 0x1056fe3a0, file license_gate.py>, line 288)
+             428 MAKE_FUNCTION
+             430 SET_FUNCTION_ATTRIBUTE 8
+             432 LOAD_FAST            (local_fps)
+             434 GET_ITER
+             436 CALL                 (0 positional)
+             444 CALL                 (1 positional)
+             452 TO_BOOL
+             460 POP_JUMP_IF_TRUE     (to 474)
+
+290:         464 LOAD_CONST           (False)
+             466 LOAD_CONST           ("machine_mismatch")
+             468 LOAD_FAST            (path)
+             470 BUILD_TUPLE          3
+             472 RETURN_VALUE
+
+291:     >>  474 LOAD_GLOBAL          (NULL + str)
+             484 LOAD_DEREF           (data)
+             486 LOAD_ATTR            (NULL|self + get)
+             506 LOAD_CONST           ("expires_at")
+             508 CALL                 (1 positional)
+             516 COPY                 1
+             518 TO_BOOL
+             526 POP_JUMP_IF_TRUE     (to 534)
+             530 POP_TOP
+             532 LOAD_CONST           ("")
+         >>  534 CALL                 (1 positional)
+             542 LOAD_ATTR            (NULL|self + strip)
+             562 CALL                 (0 positional)
+             570 STORE_FAST           (expires_at)
+
+292:         572 LOAD_FAST            (expires_at)
+             574 TO_BOOL
+             582 POP_JUMP_IF_FALSE    (to 768)
+
+293:         586 NOP
+
+294:         588 LOAD_GLOBAL          (time)
+             598 LOAD_ATTR            (strptime)
+             618 PUSH_NULL
+             620 LOAD_FAST            (expires_at)
+             622 LOAD_ATTR            (NULL|self + replace)
+             642 LOAD_CONST           ("Z")
+             644 LOAD_CONST           ("")
+             646 CALL                 (2 positional)
+             654 LOAD_CONST           ("%Y-%m-%dT%H:%M:%S")
+             656 CALL                 (2 positional)
+             664 STORE_FAST           (expiry)
+
+295:         666 LOAD_GLOBAL          (time)
+             676 LOAD_ATTR            (time)
+             696 PUSH_NULL
+             698 CALL                 (0 positional)
+             706 LOAD_GLOBAL          (time)
+             716 LOAD_ATTR            (mktime)
+             736 PUSH_NULL
+             738 LOAD_FAST            (expiry)
+             740 CALL                 (1 positional)
+             748 COMPARE_OP           (>)
+             752 POP_JUMP_IF_FALSE    (to 766)
+
+296:         756 LOAD_CONST           (False)
+             758 LOAD_CONST           ("license_expired")
+             760 LOAD_FAST            (path)
+             762 BUILD_TUPLE          3
+             764 RETURN_VALUE
+
+295:     >>  766 NOP
+
+299:     >>  768 LOAD_GLOBAL          (NULL + str)
+             778 LOAD_DEREF           (data)
+             780 LOAD_ATTR            (NULL|self + get)
+             800 LOAD_CONST           ("signature")
+             802 CALL                 (1 positional)
+             810 COPY                 1
+             812 TO_BOOL
+             820 POP_JUMP_IF_TRUE     (to 828)
+             824 POP_TOP
+             826 LOAD_CONST           ("")
+         >>  828 CALL                 (1 positional)
+             836 LOAD_ATTR            (NULL|self + strip)
+             856 CALL                 (0 positional)
+             864 STORE_FAST           (signature)
+
+300:         866 LOAD_FAST            (signature)
+             868 TO_BOOL
+             876 POP_JUMP_IF_TRUE     (to 890)
+
+301:         880 LOAD_CONST           (False)
+             882 LOAD_CONST           ("signature_missing")
+             884 LOAD_FAST            (path)
+             886 BUILD_TUPLE          3
+             888 RETURN_VALUE
+
+302:     >>  890 NOP
+
+303:         892 LOAD_GLOBAL          (Ed25519PublicKey)
+             902 LOAD_ATTR            (from_public_bytes)
+             922 PUSH_NULL
+             924 LOAD_GLOBAL          (NULL + _b64decode)
+             934 LOAD_GLOBAL          (PUBLIC_KEY_B64)
+             944 CALL                 (1 positional)
+             952 CALL                 (1 positional)
+             960 STORE_FAST           (public_key)
+
+304:         962 LOAD_FAST            (public_key)
+             964 LOAD_ATTR            (NULL|self + verify)
+             984 LOAD_GLOBAL          (NULL + _b64decode)
+             994 LOAD_FAST            (signature)
+             996 CALL                 (1 positional)
+            1004 LOAD_GLOBAL          (NULL + _canonical_payload)
+            1014 LOAD_DEREF           (data)
+            1016 CALL                 (1 positional)
+            1024 CALL                 (2 positional)
+            1032 POP_TOP
+
+309:        1034 LOAD_CONST           (True)
+            1036 LOAD_CONST           ("ok")
+            1038 LOAD_FAST            (path)
+            1040 BUILD_TUPLE          3
+            1042 RETURN_VALUE
+         >> 1044 SWAP                 (TOS <-> TOS1)
+            1046 POP_TOP
+
+285:        1048 SWAP                 (TOS <-> TOS1)
+            1050 STORE_FAST           (fp)
+            1052 RERAISE              0
+         >> 1054 PUSH_EXC_INFO
+
+297:        1056 LOAD_GLOBAL          (Exception)
+            1066 CHECK_EXC_MATCH
+            1068 POP_JUMP_IF_FALSE    (to 1088)
+            1072 POP_TOP
+
+298:        1074 LOAD_CONST           (False)
+            1076 LOAD_CONST           ("license_expiry_invalid")
+            1078 LOAD_FAST            (path)
+            1080 BUILD_TUPLE          3
+            1082 SWAP                 (TOS <-> TOS1)
+            1084 POP_EXCEPT
+            1086 RETURN_VALUE
+
+297:     >> 1088 RERAISE              0
+         >> 1090 COPY                 3
+            1092 POP_EXCEPT
+            1094 RERAISE              1
+         >> 1096 PUSH_EXC_INFO
+
+305:        1098 LOAD_GLOBAL          (InvalidSignature)
+            1108 CHECK_EXC_MATCH
+            1110 POP_JUMP_IF_FALSE    (to 1130)
+            1114 POP_TOP
+
+306:        1116 LOAD_CONST           (False)
+            1118 LOAD_CONST           ("signature_invalid")
+            1120 LOAD_FAST            (path)
+            1122 BUILD_TUPLE          3
+            1124 SWAP                 (TOS <-> TOS1)
+            1126 POP_EXCEPT
+            1128 RETURN_VALUE
+
+307:     >> 1130 LOAD_GLOBAL          (Exception)
+            1140 CHECK_EXC_MATCH
+            1142 POP_JUMP_IF_FALSE    (to 1182)
+            1146 STORE_FAST           (exc)
+
+308:        1148 LOAD_CONST           (False)
+            1150 LOAD_CONST           ("signature_error: ")
+            1152 LOAD_FAST            (exc)
+            1154 FORMAT_SIMPLE
+            1156 BUILD_STRING         2
+            1158 LOAD_FAST            (path)
+            1160 BUILD_TUPLE          3
+            1162 SWAP                 (TOS <-> TOS1)
+            1164 POP_EXCEPT
+            1166 LOAD_CONST           (None)
+            1168 STORE_FAST           (exc)
+            1170 DELETE_FAST          (exc)
+            1172 RETURN_VALUE
+         >> 1174 LOAD_CONST           (None)
+            1176 STORE_FAST           (exc)
+            1178 DELETE_FAST          (exc)
+            1180 RERAISE              1
+
+307:     >> 1182 RERAISE              0
+         >> 1184 COPY                 3
+            1186 POP_EXCEPT
+            1188 RERAISE              1
+
+ExceptionTable:
+  314 to 354 -> 1044 [2]
+  588 to 762 -> 1054 [0]
+  892 to 1032 -> 1096 [0]
+  1054 to 1082 -> 1090 [1] lasti
+  1088 to 1088 -> 1090 [1] lasti
+  1096 to 1124 -> 1184 [1] lasti
+  1130 to 1146 -> 1184 [1] lasti
+  1148 to 1160 -> 1174 [1] lasti
+  1162 to 1162 -> 1184 [1] lasti
+  1174 to 1182 -> 1184 [1] lasti
+
+# Method Name:       license_required
+# Filename:          license_gate.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        312
+# Constants:
+#    0: None
+#    1: True
+#    2: 'PLUS_BIND_TOOL_LICENSE_REQUIRED'
+#    3: ''
+#    4: {'0', 'no', 'off', 'false'}
+#    5: False
+#    6: {'1', 'yes', 'true', 'on'}
+# Names:
+#    0: PROTECTED_BUILD
+#    1: os
+#    2: environ
+#    3: get
+#    4: strip
+#    5: lower
+#    6: bool
+# Varnames:
+#	raw
+# Local variables:
+#    0: raw
+312:           0 RESUME               0
+
+313:           2 LOAD_GLOBAL          (PROTECTED_BUILD)
+              12 TO_BOOL
+              20 POP_JUMP_IF_FALSE    (to 26)
+
+314:          24 RETURN_CONST         (True)
+
+315:     >>   26 LOAD_GLOBAL          (os)
+              36 LOAD_ATTR            (environ)
+              56 LOAD_ATTR            (NULL|self + get)
+              76 LOAD_CONST           ("PLUS_BIND_TOOL_LICENSE_REQUIRED")
+              78 LOAD_CONST           ("")
+              80 CALL                 (2 positional)
+              88 LOAD_ATTR            (NULL|self + strip)
+             108 CALL                 (0 positional)
+             116 LOAD_ATTR            (NULL|self + lower)
+             136 CALL                 (0 positional)
+             144 STORE_FAST           (raw)
+
+316:         146 LOAD_FAST            (raw)
+             148 LOAD_CONST           ({'0', 'no', 'off', 'false'})
+             150 CONTAINS_OP          (in)
+             154 POP_JUMP_IF_FALSE    (to 160)
+
+317:         158 RETURN_CONST         (False)
+
+318:     >>  160 LOAD_FAST            (raw)
+             162 LOAD_CONST           ({'1', 'yes', 'true', 'on'})
+             164 CONTAINS_OP          (in)
+             168 POP_JUMP_IF_FALSE    (to 174)
+
+319:         172 RETURN_CONST         (True)
+
+320:     >>  174 LOAD_GLOBAL          (NULL + bool)
+             184 LOAD_GLOBAL          (PROTECTED_BUILD)
+             194 CALL                 (1 positional)
+             202 RETURN_VALUE
+
+
+# Method Name:       _stdin_interactive
+# Filename:          license_gate.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        323
+# Constants:
+#    0: None
+#    1: 'PLUS_BIND_TOOL_LICENSE_INTERACTIVE'
+#    2: ''
+#    3: {'1', 'yes', 'true', 'on'}
+#    4: True
+#    5: {'0', 'no', 'off', 'false'}
+#    6: False
+# Names:
+#    0: os
+#    1: environ
+#    2: get
+#    3: strip
+#    4: lower
+#    5: bool
+#    6: sys
+#    7: stdin
+#    8: isatty
+#    9: Exception
+# Varnames:
+#	raw
+# Local variables:
+#    0: raw
+323:           0 RESUME               0
+
+324:           2 LOAD_GLOBAL          (os)
+              12 LOAD_ATTR            (environ)
+              32 LOAD_ATTR            (NULL|self + get)
+              52 LOAD_CONST           ("PLUS_BIND_TOOL_LICENSE_INTERACTIVE")
+              54 LOAD_CONST           ("")
+              56 CALL                 (2 positional)
+              64 LOAD_ATTR            (NULL|self + strip)
+              84 CALL                 (0 positional)
+              92 LOAD_ATTR            (NULL|self + lower)
+             112 CALL                 (0 positional)
+             120 STORE_FAST           (raw)
+
+325:         122 LOAD_FAST            (raw)
+             124 LOAD_CONST           ({'1', 'yes', 'true', 'on'})
+             126 CONTAINS_OP          (in)
+             130 POP_JUMP_IF_FALSE    (to 136)
+
+326:         134 RETURN_CONST         (True)
+
+327:     >>  136 LOAD_FAST            (raw)
+             138 LOAD_CONST           ({'0', 'no', 'off', 'false'})
+             140 CONTAINS_OP          (in)
+             144 POP_JUMP_IF_FALSE    (to 150)
+
+328:         148 RETURN_CONST         (False)
+
+329:     >>  150 NOP
+
+330:         152 LOAD_GLOBAL          (NULL + bool)
+             162 LOAD_GLOBAL          (sys)
+             172 LOAD_ATTR            (stdin)
+             192 COPY                 1
+             194 TO_BOOL
+             202 POP_JUMP_IF_FALSE    (to 266)
+             206 POP_TOP
+             208 LOAD_GLOBAL          (sys)
+             218 LOAD_ATTR            (stdin)
+             238 LOAD_ATTR            (NULL|self + isatty)
+             258 CALL                 (0 positional)
+         >>  266 CALL                 (1 positional)
+             274 RETURN_VALUE
+         >>  276 PUSH_EXC_INFO
+
+331:         278 LOAD_GLOBAL          (Exception)
+             288 CHECK_EXC_MATCH
+             290 POP_JUMP_IF_FALSE    (to 300)
+             294 POP_TOP
+
+332:         296 POP_EXCEPT
+             298 RETURN_CONST         (False)
+
+331:     >>  300 RERAISE              0
+         >>  302 COPY                 3
+             304 POP_EXCEPT
+             306 RERAISE              1
+
+ExceptionTable:
+  152 to 272 -> 276 [0]
+  276 to 294 -> 302 [1] lasti
+  300 to 300 -> 302 [1] lasti
+
+# Method Name:       license_info
+# Filename:          license_gate.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        13
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        335
+# Constants:
+#    0: None
+#    1: 0
+#    2: ('product', 'protected', 'valid', 'reason', 'machine_code', 'fingerprint_hash', 'license_path', 'search_paths')
+# Names:
+#    0: verify_license
+#    1: PRODUCT
+#    2: license_required
+#    3: machine_code
+#    4: fingerprint_hash
+#    5: str
+#    6: license_paths
+# Varnames:
+#	valid, reason, path, p
+# Local variables:
+#    0: valid
+#    1: reason
+#    2: path
+#    3: p
+335:           0 RESUME               0
+
+336:           2 LOAD_GLOBAL          (NULL + verify_license)
+              12 CALL                 (0 positional)
+              20 UNPACK_SEQUENCE      3
+              24 STORE_FAST_STORE_FAST (valid, reason)
+              26 STORE_FAST           (path)
+
+338:          28 LOAD_GLOBAL          (PRODUCT)
+
+339:          38 LOAD_GLOBAL          (NULL + license_required)
+              48 CALL                 (0 positional)
+
+340:          56 LOAD_FAST            (valid)
+
+341:          58 LOAD_FAST            (reason)
+
+342:          60 LOAD_GLOBAL          (NULL + machine_code)
+              70 CALL                 (0 positional)
+
+343:          78 LOAD_GLOBAL          (NULL + fingerprint_hash)
+              88 CALL                 (0 positional)
+
+344:          96 LOAD_GLOBAL          (NULL + str)
+             106 LOAD_FAST            (path)
+             108 COPY                 1
+             110 TO_BOOL
+             118 POP_JUMP_IF_TRUE     (to 148)
+             122 POP_TOP
+             124 LOAD_GLOBAL          (NULL + license_paths)
+             134 CALL                 (0 positional)
+             142 LOAD_CONST           (0)
+             144 BINARY_SUBSCR
+         >>  148 CALL                 (1 positional)
+
+345:         156 LOAD_GLOBAL          (NULL + license_paths)
+             166 CALL                 (0 positional)
+             174 GET_ITER
+             176 LOAD_FAST_AND_CLEAR  (p)
+             178 SWAP                 (TOS <-> TOS1)
+             180 BUILD_LIST           0
+             182 SWAP                 (TOS <-> TOS1)
+             184 GET_ITER
+             186 FOR_ITER             (to 218)
+             190 STORE_FAST           (p)
+             192 LOAD_GLOBAL          (NULL + str)
+             202 LOAD_FAST            (p)
+             204 CALL                 (1 positional)
+             212 LIST_APPEND          2
+             214 JUMP_BACKWARD        (to 186)
+         >>  218 END_FOR
+             220 POP_TOP
+             222 SWAP                 (TOS <-> TOS1)
+             224 STORE_FAST           (p)
+
+337:         226 LOAD_CONST           (('product', 'protected', 'valid', 'reason', 'machine_code', 'fingerprint_hash', 'license_path', 'search_paths'))
+             228 BUILD_CONST_KEY_MAP  8
+             230 RETURN_VALUE
+         >>  232 SWAP                 (TOS <-> TOS1)
+             234 POP_TOP
+
+345:         236 SWAP                 (TOS <-> TOS1)
+             238 STORE_FAST           (p)
+             240 RERAISE              0
+
+ExceptionTable:
+  180 to 220 -> 232 [9]
+
+# Method Name:       _write_license_payload
+# Filename:          license_gate.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        349
+# Constants:
+#    0: None
+#    1: 0
+#    2: True
+#    3: ('parents', 'exist_ok')
+#    4: False
+#    5: 2
+#    6: ('ensure_ascii', 'indent')
+#    7: '\n'
+#    8: 'utf-8'
+#    9: ('encoding',)
+# Names:
+#    0: license_paths
+#    1: parent
+#    2: mkdir
+#    3: write_text
+#    4: json
+#    5: dumps
+# Varnames:
+#	payload, path
+# Positional arguments:
+#	payload
+# Local variables:
+#    1: path
+349:           0 RESUME               0
+
+350:           2 LOAD_GLOBAL          (NULL + license_paths)
+              12 CALL                 (0 positional)
+              20 LOAD_CONST           (0)
+              22 BINARY_SUBSCR
+              26 STORE_FAST           (path)
+
+351:          28 LOAD_FAST            (path)
+              30 LOAD_ATTR            (parent)
+              50 LOAD_ATTR            (NULL|self + mkdir)
+              70 LOAD_CONST           (True)
+              72 LOAD_CONST           (True)
+              74 LOAD_CONST           (('parents', 'exist_ok'))
+              76 CALL_KW              2
+              78 POP_TOP
+
+352:          80 LOAD_FAST            (path)
+              82 LOAD_ATTR            (NULL|self + write_text)
+             102 LOAD_GLOBAL          (json)
+             112 LOAD_ATTR            (dumps)
+             132 PUSH_NULL
+             134 LOAD_FAST            (payload)
+             136 LOAD_CONST           (False)
+             138 LOAD_CONST           (2)
+             140 LOAD_CONST           (('ensure_ascii', 'indent'))
+             142 CALL_KW              3
+             144 LOAD_CONST           ("\n")
+             146 BINARY_OP            (+)
+             150 LOAD_CONST           ("utf-8")
+             152 LOAD_CONST           (('encoding',))
+             154 CALL_KW              2
+             156 POP_TOP
+
+353:         158 LOAD_FAST            (path)
+             160 RETURN_VALUE
+
+
+# Method Name:       prompt_for_license_install
+# Filename:          license_gate.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  9
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        356
+# Constants:
+#    0: None
+#    1: ''
+#    2: True
+#    3: ('flush',)
+#    4: '============================================================'
+#    5: '本机尚未授权。'
+#    6: '机器码: '
+#    7: 'machine_code'
+#    8: '请复制机器码发给管理员生成授权。'
+#    9: '拿到授权后，直接粘贴以下任意一种内容并回车：'
+#   10: '1) 管理员工具生成的一行授权码 NRLIC-...'
+#   11: '2) license.key 文件完整路径'
+#   12: '3) license.key 文件内容(JSON)'
+#   13: '授权成功后会自动写入当前目录的 license.key，并继续启动。'
+#   14: '以后覆盖新版时保留这个 license.key 即可；复制到别的电脑需要重新授权。'
+#   15: '当前原因: '
+#   16: '输入 exit 退出。'
+#   17: '请粘贴授权码/license.key路径后回车> '
+#   18: False
+#   19: {'exit', 'q', 'quit'}
+#   20: '授权无效: '
+#   21: '授权成功，已写入: '
+#   22: '授权内容无法识别: '
+# Names:
+#    0: license_info
+#    1: print
+#    2: input
+#    3: strip
+#    4: EOFError
+#    5: KeyboardInterrupt
+#    6: lower
+#    7: parse_license_input
+#    8: verify_license
+#    9: _write_license_payload
+#   10: Exception
+# Varnames:
+#	reason, info, entered, payload, valid, verify_reason, _, path, exc
+# Positional arguments:
+#	reason
+# Local variables:
+#    1: info
+#    2: entered
+#    3: payload
+#    4: valid
+#    5: verify_reason
+#    6: _
+#    7: path
+#    8: exc
+356:           0 RESUME               0
+
+357:           2 LOAD_GLOBAL          (NULL + license_info)
+              12 CALL                 (0 positional)
+              20 STORE_FAST           (info)
+
+358:          22 LOAD_GLOBAL          (NULL + print)
+              32 LOAD_CONST           ("")
+              34 LOAD_CONST           (True)
+              36 LOAD_CONST           (('flush',))
+              38 CALL_KW              2
+              40 POP_TOP
+
+359:          42 LOAD_GLOBAL          (NULL + print)
+              52 LOAD_CONST           ("============================================================")
+              54 LOAD_CONST           (True)
+              56 LOAD_CONST           (('flush',))
+              58 CALL_KW              2
+              60 POP_TOP
+
+360:          62 LOAD_GLOBAL          (NULL + print)
+              72 LOAD_CONST           ("本机尚未授权。")
+              74 LOAD_CONST           (True)
+              76 LOAD_CONST           (('flush',))
+              78 CALL_KW              2
+              80 POP_TOP

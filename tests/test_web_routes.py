@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
+import json
 from pathlib import Path
 from types import SimpleNamespace
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 
 from flask import Flask, Response, jsonify, request
 
@@ -956,6 +959,86 @@ class WebRouteTests(unittest.TestCase):
             "https://mail.example.test/messages/token",
         )
 
+    def test_runtime_task_mailbox_url_rebinds_private_task_to_current_pool_row(self):
+        source_row = (
+            "private@example.test----password----client----refresh----"
+            "https://mail.example.test/messages/private-token"
+        )
+        row_id = hashlib.sha256(source_row.encode("utf-8")).hexdigest()
+        self.importer.tasks = {
+            "T001-bound": {
+                "task_id": "T001-bound",
+                "source_row": source_row,
+                "status": "authorizing",
+            }
+        }
+        self.importer.lock = threading.RLock()
+        self.mailbox_admin.list_mailboxes = lambda: {
+            "ok": True,
+            "rows": [{"row_id": row_id, "line_no": 7, "has_mailbox_url": True}],
+        }
+        reveal_calls = []
+
+        def reveal(bound_row_id, line_no):
+            reveal_calls.append((bound_row_id, line_no))
+            return {
+                "ok": True,
+                "mailbox_url": "https://mail.example.test/messages/private-token",
+            }
+
+        self.mailbox_admin.reveal_mailbox_url = reveal
+        app = self._app()
+
+        response = app.test_client().post(
+            "/api/runtime/tasks/mailbox-url",
+            json={"task_id": "T001-bound"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(reveal_calls, [(row_id, 7)])
+        payload = response.get_json()
+        self.assertEqual(
+            payload["mailbox_url"],
+            "https://mail.example.test/messages/private-token",
+        )
+        serialized = json.dumps(payload)
+        self.assertNotIn("private@example.test", serialized)
+        self.assertNotIn("password", serialized)
+        self.assertNotIn("refresh", serialized)
+
+    def test_runtime_task_mailbox_url_rejects_missing_and_stale_tasks(self):
+        source_row = "stale@example.test----password----private-url"
+        self.importer.tasks = {
+            "T002-stale": {
+                "task_id": "T002-stale",
+                "source_row": source_row,
+                "status": "authorizing",
+            }
+        }
+        self.mailbox_admin.list_mailboxes = lambda: {"ok": True, "rows": []}
+        app = self._app()
+
+        with app.test_client() as client:
+            missing = client.post(
+                "/api/runtime/tasks/mailbox-url",
+                json={"task_id": "T999-missing"},
+            )
+            stale = client.post(
+                "/api/runtime/tasks/mailbox-url",
+                json={"task_id": "T002-stale"},
+            )
+            rejected = client.post(
+                "/api/runtime/tasks/mailbox-url",
+                json={"task_id": "T002-stale", "source_row": source_row},
+            )
+
+        self.assertEqual(missing.status_code, 404)
+        self.assertEqual(stale.status_code, 409)
+        self.assertEqual(stale.get_json()["code"], "mailbox_row_stale")
+        self.assertEqual(rejected.status_code, 400)
+        self.assertNotIn("stale@example.test", stale.get_data(as_text=True))
+        self.assertNotIn("private-url", stale.get_data(as_text=True))
+
     def test_start_existing_returns_bad_request_for_invalid_notification_config(self):
         def invalid_config(_data):
             raise ValueError("enabled email_notification has invalid fields: password")
@@ -986,6 +1069,41 @@ class WebRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.get_json()["code"], "mailbox_rows_stale")
+
+    def test_mailbox_unavailable_route_passes_stable_bindings_and_refreshes_rows(self):
+        selected = [{"row_id": "a" * 64, "line_no": 2}]
+        with patch(
+            "mac_overrides.web_routes.mark_mailboxes_unavailable",
+            return_value={"ok": True, "unavailable": 1},
+        ) as unavailable:
+            app = self._app()
+            response = app.test_client().post(
+                "/api/mailboxes/unavailable",
+                json={"line_nos": [2], "rows": selected},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["unavailable"], 1)
+        self.assertIn("mailboxes", response.get_json())
+        unavailable.assert_called_once_with(
+            self.mailbox_admin,
+            {"line_nos": [2], "rows": selected},
+        )
+
+        with patch(
+            "mac_overrides.web_routes.mark_mailboxes_unavailable",
+            return_value={
+                "ok": False,
+                "code": "mailbox_rows_running",
+                "error": "选中的邮箱仍在运行中，请等待任务结束后重试",
+            },
+        ):
+            conflict = app.test_client().post(
+                "/api/mailboxes/unavailable",
+                json={"line_nos": [2], "rows": selected},
+            )
+        self.assertEqual(conflict.status_code, 409)
+        self.assertEqual(conflict.get_json()["code"], "mailbox_rows_running")
 
     def test_website_mailbox_import_uploads_server_snapshot_and_returns_counts(self):
         api_token = "online-api-private-token"
@@ -1088,6 +1206,162 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["ok"], True)
         self.assertIn("results", response.get_json())
+
+    def test_mailbox_api_exposes_first_completed_row_while_peer_is_blocked(self):
+        app = self._app()
+        first_completed = threading.Event()
+        release_second = threading.Event()
+        rows = [
+            {"row_id": "row-one", "line_no": 1},
+            {"row_id": "row-two", "line_no": 2},
+        ]
+        public_rows = [
+            {**row, "quota_status": "", "quota_5h": None, "quota_7d": None}
+            for row in rows
+        ]
+
+        def list_mailboxes():
+            return {"ok": True, "counts": {}, "rows": [dict(row) for row in public_rows]}
+
+        def query_quotas(payload):
+            callback = payload["_on_row_completed"]
+            public_rows[0].update(
+                quota_status="ok",
+                quota_5h={"remaining_percent": 81},
+                quota_7d={"remaining_percent": 41},
+            )
+            callback(payload["rows"][0])
+            first_completed.set()
+            self.assertTrue(release_second.wait(2))
+            public_rows[1].update(
+                quota_status="ok",
+                quota_5h={"remaining_percent": 82},
+                quota_7d={"remaining_percent": 42},
+            )
+            callback(payload["rows"][1])
+            return {"ok": True, "queried": 2, "failed": 0, "skipped": 0, "results": []}
+
+        self.mailbox_admin.list_mailboxes = list_mailboxes
+        self.mailbox_admin.query_openai_quotas = query_quotas
+        accepted = app.test_client().post(
+            "/api/mailboxes/quota",
+            json={"background": True, "rows": rows},
+        )
+        operation = accepted.get_json()["operation"]
+        try:
+            self.assertTrue(first_completed.wait(1))
+            refreshed = app.test_client().get("/api/mailboxes").get_json()
+            self.assertEqual(refreshed["operation"]["completed"], 1)
+            self.assertEqual(refreshed["rows"][0]["quota_5h"]["remaining_percent"], 81)
+            self.assertIsNone(refreshed["rows"][1]["quota_5h"])
+        finally:
+            release_second.set()
+
+        manager = app.extensions["gptphone_mailbox_batch_operations"]
+        self.assertEqual(manager.wait(operation["job_id"], 2)["completed"], 2)
+
+    def test_mailbox_background_operation_survives_refresh_and_rejects_overlap(self):
+        app = self._app()
+        started = threading.Event()
+        release = threading.Event()
+        calls = []
+        rows = [
+            {
+                "row_id": f"row-{index}",
+                "line_no": index + 1,
+                "email": "private@example.test",
+                "access_token": "access-secret",
+            }
+            for index in range(7)
+        ]
+
+        def openai_test(payload):
+            calls.append(payload)
+            if len(calls) == 1:
+                started.set()
+                release.wait(2)
+            return {
+                "ok": True,
+                "tested": len(payload["rows"]),
+                "healthy": len(payload["rows"]),
+                "results": [{"refresh_token": "must-not-be-retained"}],
+            }
+
+        self.mailbox_admin.openai_test = openai_test
+        try:
+            with app.test_client() as client:
+                accepted = client.post(
+                    "/api/mailboxes/openai-test",
+                    json={"background": True, "rows": rows},
+                )
+            self.assertEqual(accepted.status_code, 202)
+            operation = accepted.get_json()["operation"]
+            self.assertTrue(started.wait(1))
+
+            with app.test_client() as refreshed_client:
+                refreshed = refreshed_client.get("/api/mailboxes")
+                duplicate = refreshed_client.post(
+                    "/api/mailboxes/sub2-test",
+                    json={"background": True, "rows": rows},
+                )
+                overlap = refreshed_client.post(
+                    "/api/mailboxes/quota",
+                    json={"background": True, "rows": rows},
+                )
+            refreshed_operation = refreshed.get_json()["operation"]
+            self.assertEqual(refreshed_operation["job_id"], operation["job_id"])
+            self.assertEqual(refreshed_operation["status"], "running")
+            self.assertEqual(duplicate.status_code, 202)
+            self.assertFalse(duplicate.get_json()["created"])
+            self.assertEqual(overlap.status_code, 409)
+            self.assertEqual(overlap.get_json()["operation"]["job_id"], operation["job_id"])
+        finally:
+            release.set()
+
+        manager = app.extensions["gptphone_mailbox_batch_operations"]
+        completed = manager.wait(operation["job_id"], 2)
+        self.assertEqual(completed["status"], "completed")
+        self.assertEqual(completed["completed"], 7)
+        self.assertEqual([len(call["rows"]) for call in calls], [5, 2])
+        serialized = json.dumps({
+            "accepted": accepted.get_json(),
+            "refreshed": refreshed.get_json(),
+            "completed": completed,
+            "logs": self.logs.rows,
+        })
+        self.assertNotIn("private@example.test", serialized)
+        self.assertNotIn("access-secret", serialized)
+        self.assertNotIn("must-not-be-retained", serialized)
+
+    def test_mailbox_quota_background_route_chunks_all_stable_bindings(self):
+        app = self._app()
+        calls = []
+
+        def query_quotas(payload):
+            calls.append(payload)
+            return {
+                "ok": True,
+                "queried": len(payload["rows"]),
+                "failed": 0,
+                "skipped": 0,
+                "results": [],
+            }
+
+        self.mailbox_admin.query_openai_quotas = query_quotas
+        rows = [{"row_id": f"quota-{index}", "line_no": index + 1} for index in range(11)]
+        response = app.test_client().post(
+            "/api/mailboxes/quota",
+            json={"background": True, "rows": rows},
+        )
+
+        self.assertEqual(response.status_code, 202)
+        operation = response.get_json()["operation"]
+        manager = app.extensions["gptphone_mailbox_batch_operations"]
+        completed = manager.wait(operation["job_id"], 2)
+        self.assertEqual(completed["kind"], "quota")
+        self.assertEqual(completed["status"], "completed")
+        self.assertEqual(completed["succeeded"], 11)
+        self.assertEqual([len(call["rows"]) for call in calls], [5, 5, 1])
 
     def test_mailbox_pixel_requeue_and_sub2_export_use_server_side_success_result(self):
         queue = FakePixelQueue()

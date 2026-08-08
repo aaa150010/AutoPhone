@@ -1,0 +1,180 @@
+             934 CHECK_EXC_MATCH
+             936 POP_JUMP_IF_FALSE    (to 962)
+             940 POP_TOP
+
+ 97:         942 POP_EXCEPT
+
+ 90:         944 LOAD_CONST           (None)
+             946 LOAD_CONST           (None)
+             948 LOAD_CONST           (None)
+             950 CALL                 (2 positional)
+             958 POP_TOP
+             960 RETURN_CONST         (None)
+
+ 96:     >>  962 RERAISE              0
+         >>  964 COPY                 3
+             966 POP_EXCEPT
+             968 RERAISE              1
+         >>  970 PUSH_EXC_INFO
+
+105:         972 LOAD_GLOBAL          (OSError)
+             982 CHECK_EXC_MATCH
+             984 POP_JUMP_IF_FALSE    (to 994)
+             988 POP_TOP
+
+106:         990 POP_EXCEPT
+             992 JUMP_BACKWARD_NO_INTERRUPT (to 902)
+
+105:     >>  994 RERAISE              0
+         >>  996 COPY                 3
+             998 POP_EXCEPT
+            1000 RERAISE              1
+         >> 1002 PUSH_EXC_INFO
+
+102:        1004 LOAD_FAST            (handle)
+            1006 LOAD_ATTR            (NULL|self + seek)
+            1026 LOAD_CONST           (0)
+            1028 CALL                 (1 positional)
+            1036 POP_TOP
+
+103:        1038 NOP
+
+104:        1040 LOAD_FAST            (msvcrt)
+            1042 LOAD_ATTR            (NULL|self + locking)
+            1062 LOAD_FAST            (handle)
+            1064 LOAD_ATTR            (NULL|self + fileno)
+            1084 CALL                 (0 positional)
+            1092 LOAD_FAST            (msvcrt)
+            1094 LOAD_ATTR            (LK_UNLCK)
+            1114 LOAD_CONST           (1)
+            1116 CALL                 (3 positional)
+            1124 POP_TOP
+            1126 RERAISE              0
+         >> 1128 PUSH_EXC_INFO
+
+105:        1130 LOAD_GLOBAL          (OSError)
+            1140 CHECK_EXC_MATCH
+            1142 POP_JUMP_IF_FALSE    (to 1152)
+            1146 POP_TOP
+
+106:        1148 POP_EXCEPT
+            1150 RERAISE              0
+
+105:     >> 1152 RERAISE              0
+         >> 1154 COPY                 3
+            1156 POP_EXCEPT
+            1158 RERAISE              1
+         >> 1160 COPY                 3
+            1162 POP_EXCEPT
+            1164 RERAISE              1
+         >> 1166 PUSH_EXC_INFO
+
+111:        1168 LOAD_GLOBAL          (OSError)
+            1178 CHECK_EXC_MATCH
+            1180 POP_JUMP_IF_FALSE    (to 1206)
+            1184 POP_TOP
+
+112:        1186 POP_EXCEPT
+
+ 90:        1188 LOAD_CONST           (None)
+            1190 LOAD_CONST           (None)
+            1192 LOAD_CONST           (None)
+            1194 CALL                 (2 positional)
+            1202 POP_TOP
+            1204 RETURN_CONST         (None)
+
+111:     >> 1206 RERAISE              0
+         >> 1208 COPY                 3
+            1210 POP_EXCEPT
+            1212 RERAISE              1
+         >> 1214 PUSH_EXC_INFO
+
+117:        1216 LOAD_FAST            (fcntl)
+            1218 LOAD_ATTR            (NULL|self + flock)
+            1238 LOAD_FAST            (handle)
+            1240 LOAD_ATTR            (NULL|self + fileno)
+            1260 CALL                 (0 positional)
+            1268 LOAD_FAST            (fcntl)
+            1270 LOAD_ATTR            (LOCK_UN)
+            1290 CALL                 (2 positional)
+            1298 POP_TOP
+            1300 RERAISE              0
+         >> 1302 COPY                 3
+            1304 POP_EXCEPT
+            1306 RERAISE              1
+
+ 90:     >> 1308 PUSH_EXC_INFO
+            1310 WITH_EXCEPT_START    0
+            1312 TO_BOOL
+            1320 POP_JUMP_IF_TRUE     (to 1326)
+            1324 RERAISE              2
+         >> 1326 POP_TOP
+            1328 POP_EXCEPT
+            1330 POP_TOP
+            1332 POP_TOP
+            1334 RETURN_CONST         (None)
+         >> 1336 COPY                 3
+            1338 POP_EXCEPT
+            1340 RERAISE              1
+         >> 1342 PUSH_EXC_INFO
+
+118:        1344 LOAD_GLOBAL          (Exception)
+            1354 CHECK_EXC_MATCH
+            1356 POP_JUMP_IF_FALSE    (to 1410)
+            1360 POP_TOP
+
+120:        1362 LOAD_GLOBAL          (time)
+            1372 LOAD_ATTR            (sleep)
+            1392 PUSH_NULL
+            1394 LOAD_CONST           (0)
+            1396 CALL                 (1 positional)
+            1404 POP_TOP
+            1406 POP_EXCEPT
+            1408 RETURN_CONST         (None)
+
+118:     >> 1410 RERAISE              0
+         >> 1412 COPY                 3
+            1414 POP_EXCEPT
+            1416 RERAISE              1
+
+ExceptionTable:
+  144 to 228 -> 1342 [0]
+  230 to 312 -> 1308 [1] lasti
+  316 to 400 -> 922 [1]
+  404 to 486 -> 1002 [1]
+  488 to 520 -> 1308 [1] lasti
+  524 to 608 -> 970 [1]
+  610 to 618 -> 1308 [1] lasti
+  622 to 730 -> 1166 [1]
+  734 to 816 -> 1214 [1]
+  818 to 900 -> 1308 [1] lasti
+  902 to 916 -> 1342 [0]
+  922 to 940 -> 964 [2] lasti
+  942 to 942 -> 1308 [1] lasti
+  944 to 958 -> 1342 [0]
+  962 to 962 -> 964 [2] lasti
+  964 to 968 -> 1308 [1] lasti
+  970 to 988 -> 996 [2] lasti
+  990 to 992 -> 1308 [1] lasti
+  994 to 994 -> 996 [2] lasti
+  996 to 1000 -> 1308 [1] lasti
+  1002 to 1036 -> 1160 [2] lasti
+  1040 to 1124 -> 1128 [3]
+  1126 to 1126 -> 1160 [2] lasti
+  1128 to 1146 -> 1154 [4] lasti
+  1148 to 1150 -> 1160 [2] lasti
+  1152 to 1152 -> 1154 [4] lasti
+  1154 to 1158 -> 1160 [2] lasti
+  1160 to 1164 -> 1308 [1] lasti
+  1166 to 1184 -> 1208 [2] lasti
+  1186 to 1186 -> 1308 [1] lasti
+  1188 to 1202 -> 1342 [0]
+  1206 to 1206 -> 1208 [2] lasti
+  1208 to 1212 -> 1308 [1] lasti
+  1214 to 1300 -> 1302 [2] lasti
+  1302 to 1306 -> 1308 [1] lasti
+  1308 to 1326 -> 1336 [3] lasti
+  1328 to 1332 -> 1342 [0]
+  1336 to 1340 -> 1342 [0]
+  1342 to 1404 -> 1412 [1] lasti
+  1410 to 1410 -> 1412 [1] lasti

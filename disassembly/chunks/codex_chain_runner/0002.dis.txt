@@ -1,0 +1,800 @@
+# Position-only argument count: 0
+# Keyword-only arguments: 2
+# Number of locals:  20
+# Stack size:        9
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        86
+# Constants:
+#    0: None
+#    1: 'sub2api'
+#    2: 'url'
+#    3: 'email'
+#    4: 'pwd'
+#    5: 'password'
+#    6: 'SUB2API config missing url/email'
+#    7: 0
+#    8: ('requests_kwargs',)
+#    9: ('get_admin_token',)
+#   10: <Code311 code object <lambda> at 0x1080e2490, file codex_chain_runner.py>, line 97
+#   11: 30
+#   12: <Code311 code object <lambda> at 0x1080e24c0, file codex_chain_runner.py>, line 98
+#   13: ('timeout', 'proxy', 'log_fn')
+#   14: 'redirect_uri'
+#   15: 'proxy_id'
+#   16: '/api/v1/admin/openai/generate-auth-url'
+#   17: 'Authorization'
+#   18: 'Bearer '
+#   19: 60
+#   20: ('json', 'headers', 'timeout')
+#   21: 'code'
+#   22: 'SUB2 generate-auth-url failed: '
+#   23: 'data'
+#   24: 'auth_url'
+#   25: 'session_id'
+#   26: 'state'
+#   27: 'SUB2 OAuth response missing auth_url/session_id/state: '
+#   28: 'sub2'
+#   29: ('oauth_provider', 'oauth_url', 'session_id', 'state')
+#   30: ('info',)
+# Names:
+#    0: isinstance
+#    1: get
+#    2: dict
+#    3: _base_url
+#    4: _clean
+#    5: RuntimeError
+#    6: proxy_scope
+#    7: requests_kwargs
+#    8: sub2_session
+#    9: get_admin_token
+#   10: requests
+#   11: DEFAULT_REDIRECT_URI
+#   12: int
+#   13: Exception
+#   14: post
+#   15: json
+#   16: _state_from_url
+# Varnames:
+#	config, upload_proxy, log_fn, sub, base, email, password, requests_kwargs, get_admin_token, requests, admin_token, body, proxy_id, parsed_proxy_id, response, data, payload, oauth_url, session_id, state
+# Positional arguments:
+#	config
+# Local variables:
+#    1: upload_proxy
+#    2: log_fn
+#    3: sub
+#    4: base
+#    5: email
+#    6: password
+#    7: requests_kwargs
+#    8: get_admin_token
+#    9: requests
+#   10: admin_token
+#   11: body
+#   12: proxy_id
+#   13: parsed_proxy_id
+#   14: response
+#   15: data
+#   16: payload
+#   17: oauth_url
+#   18: session_id
+#   19: state
+# Cell variables:
+#    0: logger
+               0 MAKE_CELL            (logger)
+
+ 86:           2 RESUME               0
+
+ 87:           4 LOAD_GLOBAL          (NULL + isinstance)
+              14 LOAD_FAST            (config)
+              16 LOAD_ATTR            (NULL|self + get)
+              36 LOAD_CONST           ("sub2api")
+              38 CALL                 (1 positional)
+              46 LOAD_GLOBAL          (dict)
+              56 CALL                 (2 positional)
+              64 TO_BOOL
+              72 POP_JUMP_IF_FALSE    (to 110)
+              76 LOAD_FAST            (config)
+              78 LOAD_ATTR            (NULL|self + get)
+              98 LOAD_CONST           ("sub2api")
+             100 CALL                 (1 positional)
+             108 JUMP_FORWARD         (to 112)
+         >>  110 BUILD_MAP            0
+         >>  112 STORE_FAST           (sub)
+
+ 88:         114 LOAD_GLOBAL          (NULL + _base_url)
+             124 LOAD_FAST            (sub)
+             126 LOAD_ATTR            (NULL|self + get)
+             146 LOAD_CONST           ("url")
+             148 CALL                 (1 positional)
+             156 CALL                 (1 positional)
+             164 STORE_FAST           (base)
+
+ 89:         166 LOAD_GLOBAL          (NULL + _clean)
+             176 LOAD_FAST            (sub)
+             178 LOAD_ATTR            (NULL|self + get)
+             198 LOAD_CONST           ("email")
+             200 CALL                 (1 positional)
+             208 CALL                 (1 positional)
+             216 STORE_FAST           (email)
+
+ 90:         218 LOAD_GLOBAL          (NULL + _clean)
+             228 LOAD_FAST            (sub)
+             230 LOAD_ATTR            (NULL|self + get)
+             250 LOAD_CONST           ("pwd")
+             252 CALL                 (1 positional)
+             260 COPY                 1
+             262 TO_BOOL
+             270 POP_JUMP_IF_TRUE     (to 308)
+             274 POP_TOP
+             276 LOAD_FAST            (sub)
+             278 LOAD_ATTR            (NULL|self + get)
+             298 LOAD_CONST           ("password")
+             300 CALL                 (1 positional)
+         >>  308 CALL                 (1 positional)
+             316 STORE_FAST           (password)
+
+ 91:         318 LOAD_FAST            (base)
+             320 TO_BOOL
+             328 POP_JUMP_IF_FALSE    (to 346)
+             332 LOAD_FAST            (email)
+             334 TO_BOOL
+             342 POP_JUMP_IF_TRUE     (to 368)
+
+ 92:     >>  346 LOAD_GLOBAL          (NULL + RuntimeError)
+             356 LOAD_CONST           ("SUB2API config missing url/email")
+             358 CALL                 (1 positional)
+             366 RAISE_VARARGS        (exception instance)
+
+ 93:     >>  368 LOAD_CONST           (0)
+             370 LOAD_CONST           (('requests_kwargs',))
+             372 IMPORT_NAME          (proxy_scope)
+             374 IMPORT_FROM          (requests_kwargs)
+             376 STORE_FAST           (requests_kwargs)
+             378 POP_TOP
+
+ 94:         380 LOAD_CONST           (0)
+             382 LOAD_CONST           (('get_admin_token',))
+             384 IMPORT_NAME          (sub2_session)
+             386 IMPORT_FROM          (get_admin_token)
+             388 STORE_FAST           (get_admin_token)
+             390 POP_TOP
+
+ 95:         392 LOAD_CONST           (0)
+             394 LOAD_CONST           (None)
+             396 IMPORT_NAME          (requests)
+             398 STORE_FAST           (requests)
+
+ 97:         400 LOAD_FAST            (log_fn)
+             402 COPY                 1
+             404 TO_BOOL
+             412 POP_JUMP_IF_TRUE     (to 426)
+             416 POP_TOP
+             418 LOAD_CONST           (('info',))
+             420 LOAD_CONST           (<Code311 code object <lambda> at 0x1080e2490, file codex_chain_runner.py>, line 97)
+             422 MAKE_FUNCTION
+             424 SET_FUNCTION_ATTRIBUTE 1
+         >>  426 STORE_DEREF          (logger)
+
+ 98:         428 LOAD_FAST            (get_admin_token)
+             430 PUSH_NULL
+             432 LOAD_FAST_LOAD_FAST  (base, email)
+             434 LOAD_FAST            (password)
+             436 LOAD_CONST           (30)
+             438 LOAD_FAST            (upload_proxy)
+             440 LOAD_FAST            (logger)
+             442 BUILD_TUPLE          1
+             444 LOAD_CONST           (<Code311 code object <lambda> at 0x1080e24c0, file codex_chain_runner.py>, line 98)
+             446 MAKE_FUNCTION
+             448 SET_FUNCTION_ATTRIBUTE 8
+             450 LOAD_CONST           (('timeout', 'proxy', 'log_fn'))
+             452 CALL_KW              6
+             454 STORE_FAST           (admin_token)
+
+ 99:         456 LOAD_CONST           ("redirect_uri")
+             458 LOAD_GLOBAL          (DEFAULT_REDIRECT_URI)
+             468 BUILD_MAP            1
+             470 STORE_FAST           (body)
+
+100:         472 LOAD_GLOBAL          (NULL + _clean)
+             482 LOAD_FAST            (sub)
+             484 LOAD_ATTR            (NULL|self + get)
+             504 LOAD_CONST           ("proxy_id")
+             506 CALL                 (1 positional)
+             514 CALL                 (1 positional)
+             522 STORE_FAST           (proxy_id)
+
+101:         524 LOAD_FAST            (proxy_id)
+             526 TO_BOOL
+             534 POP_JUMP_IF_FALSE    (to 584)
+
+102:         538 NOP
+
+103:         540 LOAD_GLOBAL          (NULL + int)
+             550 LOAD_FAST            (proxy_id)
+             552 CALL                 (1 positional)
+             560 STORE_FAST           (parsed_proxy_id)
+
+106:         562 LOAD_FAST            (parsed_proxy_id)
+             564 TO_BOOL
+             572 POP_JUMP_IF_FALSE    (to 584)
+
+107:         576 LOAD_FAST_LOAD_FAST  (parsed_proxy_id, body)
+             578 LOAD_CONST           ("proxy_id")
+             580 STORE_SUBSCR
+
+108:     >>  584 LOAD_FAST            (requests)
+             586 LOAD_ATTR            (post)
+             606 PUSH_NULL
+
+109:         608 LOAD_FAST            (base)
+             610 FORMAT_SIMPLE
+             612 LOAD_CONST           ("/api/v1/admin/openai/generate-auth-url")
+             614 BUILD_STRING         2
+
+108:         616 BUILD_TUPLE          1
+
+110:         618 LOAD_FAST            (body)
+
+111:         620 LOAD_CONST           ("Authorization")
+             622 LOAD_CONST           ("Bearer ")
+             624 LOAD_FAST            (admin_token)
+             626 FORMAT_SIMPLE
+             628 BUILD_STRING         2
+             630 BUILD_MAP            1
+
+112:         632 LOAD_CONST           (60)
+
+108:         634 LOAD_CONST           (('json', 'headers', 'timeout'))
+             636 BUILD_CONST_KEY_MAP  3
+
+113:         638 LOAD_FAST            (requests_kwargs)
+             640 PUSH_NULL
+             642 LOAD_FAST            (upload_proxy)
+             644 CALL                 (1 positional)
+
+108:         652 DICT_MERGE           1
+             654 CALL_FUNCTION_EX     (keyword and positional arguments)
+             656 STORE_FAST           (response)
+
+115:         658 LOAD_FAST            (response)
+             660 LOAD_ATTR            (NULL|self + json)
+             680 CALL                 (0 positional)
+             688 STORE_FAST           (data)
+
+116:         690 LOAD_GLOBAL          (NULL + isinstance)
+             700 LOAD_FAST            (data)
+             702 LOAD_GLOBAL          (dict)
+             712 CALL                 (2 positional)
+             720 TO_BOOL
+             728 POP_JUMP_IF_FALSE    (to 774)
+             732 LOAD_FAST            (data)
+             734 LOAD_ATTR            (NULL|self + get)
+             754 LOAD_CONST           ("code")
+             756 CALL                 (1 positional)
+             764 LOAD_CONST           (0)
+             766 COMPARE_OP           (!=)
+             770 POP_JUMP_IF_FALSE    (to 802)
+
+117:     >>  774 LOAD_GLOBAL          (NULL + RuntimeError)
+             784 LOAD_CONST           ("SUB2 generate-auth-url failed: ")
+             786 LOAD_FAST            (data)
+             788 FORMAT_SIMPLE
+             790 BUILD_STRING         2
+             792 CALL                 (1 positional)
+             800 RAISE_VARARGS        (exception instance)
+
+118:     >>  802 LOAD_GLOBAL          (NULL + isinstance)
+             812 LOAD_FAST            (data)
+             814 LOAD_ATTR            (NULL|self + get)
+             834 LOAD_CONST           ("data")
+             836 CALL                 (1 positional)
+             844 LOAD_GLOBAL          (dict)
+             854 CALL                 (2 positional)
+             862 TO_BOOL
+             870 POP_JUMP_IF_FALSE    (to 908)
+             874 LOAD_FAST            (data)
+             876 LOAD_ATTR            (NULL|self + get)
+             896 LOAD_CONST           ("data")
+             898 CALL                 (1 positional)
+             906 JUMP_FORWARD         (to 910)
+         >>  908 BUILD_MAP            0
+         >>  910 STORE_FAST           (payload)
+
+119:         912 LOAD_GLOBAL          (NULL + _clean)
+             922 LOAD_FAST            (payload)
+             924 LOAD_ATTR            (NULL|self + get)
+             944 LOAD_CONST           ("auth_url")
+             946 CALL                 (1 positional)
+             954 COPY                 1
+             956 TO_BOOL
+             964 POP_JUMP_IF_TRUE     (to 1002)
+             968 POP_TOP
+             970 LOAD_FAST            (payload)
+             972 LOAD_ATTR            (NULL|self + get)
+             992 LOAD_CONST           ("url")
+             994 CALL                 (1 positional)
+         >> 1002 CALL                 (1 positional)
+            1010 STORE_FAST           (oauth_url)
+
+120:        1012 LOAD_GLOBAL          (NULL + _clean)
+            1022 LOAD_FAST            (payload)
+            1024 LOAD_ATTR            (NULL|self + get)
+            1044 LOAD_CONST           ("session_id")
+            1046 CALL                 (1 positional)
+            1054 CALL                 (1 positional)
+            1062 STORE_FAST           (session_id)
+
+121:        1064 LOAD_GLOBAL          (NULL + _clean)
+            1074 LOAD_FAST            (payload)
+            1076 LOAD_ATTR            (NULL|self + get)
+            1096 LOAD_CONST           ("state")
+            1098 CALL                 (1 positional)
+            1106 COPY                 1
+            1108 TO_BOOL
+            1116 POP_JUMP_IF_TRUE     (to 1142)
+            1120 POP_TOP
+            1122 LOAD_GLOBAL          (NULL + _state_from_url)
+            1132 LOAD_FAST            (oauth_url)
+            1134 CALL                 (1 positional)
+         >> 1142 CALL                 (1 positional)
+            1150 STORE_FAST           (state)
+
+122:        1152 LOAD_FAST            (oauth_url)
+            1154 TO_BOOL
+            1162 POP_JUMP_IF_FALSE    (to 1194)
+            1166 LOAD_FAST            (session_id)
+            1168 TO_BOOL
+            1176 POP_JUMP_IF_FALSE    (to 1194)
+            1180 LOAD_FAST            (state)
+            1182 TO_BOOL
+            1190 POP_JUMP_IF_TRUE     (to 1222)
+
+123:     >> 1194 LOAD_GLOBAL          (NULL + RuntimeError)
+            1204 LOAD_CONST           ("SUB2 OAuth response missing auth_url/session_id/state: ")
+            1206 LOAD_FAST            (data)
+            1208 FORMAT_SIMPLE
+            1210 BUILD_STRING         2
+            1212 CALL                 (1 positional)
+            1220 RAISE_VARARGS        (exception instance)
+
+124:     >> 1222 LOAD_CONST           ("sub2")
+            1224 LOAD_FAST            (oauth_url)
+            1226 LOAD_FAST            (session_id)
+            1228 LOAD_FAST            (state)
+            1230 LOAD_CONST           (('oauth_provider', 'oauth_url', 'session_id', 'state'))
+            1232 BUILD_CONST_KEY_MAP  4
+            1234 RETURN_VALUE
+         >> 1236 PUSH_EXC_INFO
+
+104:        1238 LOAD_GLOBAL          (Exception)
+            1248 CHECK_EXC_MATCH
+            1250 POP_JUMP_IF_FALSE    (to 1266)
+            1254 POP_TOP
+
+105:        1256 LOAD_CONST           (0)
+            1258 STORE_FAST           (parsed_proxy_id)
+            1260 POP_EXCEPT
+            1262 EXTENDED_ARG         (256)
+            1264 JUMP_BACKWARD_NO_INTERRUPT (to 562)
+
+104:     >> 1266 RERAISE              0
+         >> 1268 COPY                 3
+            1270 POP_EXCEPT
+            1272 RERAISE              1
+
+ExceptionTable:
+  540 to 560 -> 1236 [0]
+  1236 to 1258 -> 1268 [1] lasti
+  1266 to 1266 -> 1268 [1] lasti
+
+# Method Name:       _generate_cpa_oauth_session
+# Filename:          codex_chain_runner.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        127
+# Constants:
+#    0: None
+#    1: 0
+#    2: ('get_cpa_oauth_url',)
+#    3: 'url'
+#    4: 'auth_url'
+#    5: 'state'
+#    6: 'CPA OAuth response missing url/state: '
+#    7: 'cpa'
+#    8: ''
+#    9: ('oauth_provider', 'oauth_url', 'session_id', 'state')
+# Names:
+#    0: upload_targets
+#    1: get_cpa_oauth_url
+#    2: _clean
+#    3: get
+#    4: _state_from_url
+#    5: RuntimeError
+# Varnames:
+#	config, get_cpa_oauth_url, info, oauth_url, state
+# Positional arguments:
+#	config
+# Local variables:
+#    1: get_cpa_oauth_url
+#    2: info
+#    3: oauth_url
+#    4: state
+127:           0 RESUME               0
+
+128:           2 LOAD_CONST           (0)
+               4 LOAD_CONST           (('get_cpa_oauth_url',))
+               6 IMPORT_NAME          (upload_targets)
+               8 IMPORT_FROM          (get_cpa_oauth_url)
+              10 STORE_FAST           (get_cpa_oauth_url)
+              12 POP_TOP
+
+130:          14 LOAD_FAST            (get_cpa_oauth_url)
+              16 PUSH_NULL
+              18 LOAD_FAST            (config)
+              20 CALL                 (1 positional)
+              28 STORE_FAST           (info)
+
+131:          30 LOAD_GLOBAL          (NULL + _clean)
+              40 LOAD_FAST            (info)
+              42 LOAD_ATTR            (NULL|self + get)
+              62 LOAD_CONST           ("url")
+              64 CALL                 (1 positional)
+              72 COPY                 1
+              74 TO_BOOL
+              82 POP_JUMP_IF_TRUE     (to 120)
+              86 POP_TOP
+              88 LOAD_FAST            (info)
+              90 LOAD_ATTR            (NULL|self + get)
+             110 LOAD_CONST           ("auth_url")
+             112 CALL                 (1 positional)
+         >>  120 CALL                 (1 positional)
+             128 STORE_FAST           (oauth_url)
+
+132:         130 LOAD_GLOBAL          (NULL + _clean)
+             140 LOAD_FAST            (info)
+             142 LOAD_ATTR            (NULL|self + get)
+             162 LOAD_CONST           ("state")
+             164 CALL                 (1 positional)
+             172 COPY                 1
+             174 TO_BOOL
+             182 POP_JUMP_IF_TRUE     (to 208)
+             186 POP_TOP
+             188 LOAD_GLOBAL          (NULL + _state_from_url)
+             198 LOAD_FAST            (oauth_url)
+             200 CALL                 (1 positional)
+         >>  208 CALL                 (1 positional)
+             216 STORE_FAST           (state)
+
+133:         218 LOAD_FAST            (oauth_url)
+             220 TO_BOOL
+             228 POP_JUMP_IF_FALSE    (to 246)
+             232 LOAD_FAST            (state)
+             234 TO_BOOL
+             242 POP_JUMP_IF_TRUE     (to 274)
+
+134:     >>  246 LOAD_GLOBAL          (NULL + RuntimeError)
+             256 LOAD_CONST           ("CPA OAuth response missing url/state: ")
+             258 LOAD_FAST            (info)
+             260 FORMAT_SIMPLE
+             262 BUILD_STRING         2
+             264 CALL                 (1 positional)
+             272 RAISE_VARARGS        (exception instance)
+
+135:     >>  274 LOAD_CONST           ("cpa")
+             276 LOAD_FAST            (oauth_url)
+             278 LOAD_CONST           ("")
+             280 LOAD_FAST            (state)
+             282 LOAD_CONST           (('oauth_provider', 'oauth_url', 'session_id', 'state'))
+             284 BUILD_CONST_KEY_MAP  4
+             286 RETURN_VALUE
+
+
+# Method Name:       _log
+# Filename:          codex_chain_runner.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        138
+# Constants:
+#    0: None
+#    1: '['
+#    2: '] '
+#    3: True
+#    4: ('file', 'flush')
+# Names:
+#    0: print
+#    1: sys
+#    2: stderr
+# Varnames:
+#	message, tag
+# Positional arguments:
+#	message, tag
+138:           0 RESUME               0
+
+139:           2 LOAD_GLOBAL          (NULL + print)
+              12 LOAD_CONST           ("[")
+              14 LOAD_FAST            (tag)
+              16 FORMAT_SIMPLE
+              18 LOAD_CONST           ("] ")
+              20 LOAD_FAST            (message)
+              22 FORMAT_SIMPLE
+              24 BUILD_STRING         4
+              26 LOAD_GLOBAL          (sys)
+              36 LOAD_ATTR            (stderr)
+              56 LOAD_CONST           (True)
+              58 LOAD_CONST           (('file', 'flush'))
+              60 CALL_KW              3
+              62 POP_TOP
+              64 RETURN_CONST         (None)
+
+
+# Method Name:       _ask
+# Filename:          codex_chain_runner.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        142
+# Constants:
+#    0: None
+#    1: ' ['
+#    2: ']'
+#    3: ''
+#    4: ': '
+# Names:
+#    0: input
+#    1: strip
+# Varnames:
+#	prompt, default, suffix, value
+# Positional arguments:
+#	prompt, default
+# Local variables:
+#    2: suffix
+#    3: value
+142:           0 RESUME               0
+
+143:           2 LOAD_FAST            (default)
+               4 TO_BOOL
+              12 POP_JUMP_IF_FALSE    (to 28)
+              16 LOAD_CONST           (" [")
+              18 LOAD_FAST            (default)
+              20 FORMAT_SIMPLE
+              22 LOAD_CONST           ("]")
+              24 BUILD_STRING         3
+              26 JUMP_FORWARD         (to 30)
+         >>   28 LOAD_CONST           ("")
+         >>   30 STORE_FAST           (suffix)
+
+144:          32 LOAD_GLOBAL          (NULL + input)
+              42 LOAD_FAST            (prompt)
+              44 FORMAT_SIMPLE
+              46 LOAD_FAST            (suffix)
+              48 FORMAT_SIMPLE
+              50 LOAD_CONST           (": ")
+              52 BUILD_STRING         3
+              54 CALL                 (1 positional)
+              62 LOAD_ATTR            (NULL|self + strip)
+              82 CALL                 (0 positional)
+              90 STORE_FAST           (value)
+
+145:          92 LOAD_FAST            (value)
+              94 COPY                 1
+              96 TO_BOOL
+             104 POP_JUMP_IF_TRUE     (to 112)
+             108 POP_TOP
+             110 LOAD_FAST            (default)
+         >>  112 RETURN_VALUE
+
+
+# Method Name:       _ask_int
+# Filename:          codex_chain_runner.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        148
+# Constants:
+#    0: None
+#    1: '请输入数字，例如 200 或 400'
+# Names:
+#    0: _ask
+#    1: str
+#    2: int
+#    3: ValueError
+#    4: print
+# Varnames:
+#	prompt, default, raw
+# Positional arguments:
+#	prompt, default
+# Local variables:
+#    2: raw
+148:           0 RESUME               0
+
+149:           2 NOP
+
+150:           4 LOAD_GLOBAL          (NULL + _ask)
+              14 LOAD_FAST            (prompt)
+              16 LOAD_GLOBAL          (NULL + str)
+              26 LOAD_FAST            (default)
+              28 CALL                 (1 positional)
+              36 CALL                 (2 positional)
+              44 STORE_FAST           (raw)
+
+151:          46 NOP
+
+152:          48 LOAD_GLOBAL          (NULL + int)
+              58 LOAD_FAST            (raw)
+              60 CALL                 (1 positional)
+              68 RETURN_VALUE
+         >>   70 PUSH_EXC_INFO
+
+153:          72 LOAD_GLOBAL          (ValueError)
+              82 CHECK_EXC_MATCH
+              84 POP_JUMP_IF_FALSE    (to 116)
+              88 POP_TOP
+
+154:          90 LOAD_GLOBAL          (NULL + print)
+             100 LOAD_CONST           ("请输入数字，例如 200 或 400")
+             102 CALL                 (1 positional)
+             110 POP_TOP
+             112 POP_EXCEPT
+             114 JUMP_FORWARD         (to 124)
+
+153:     >>  116 RERAISE              0
+         >>  118 COPY                 3
+             120 POP_EXCEPT
+             122 RERAISE              1
+
+149:     >>  124 JUMP_BACKWARD        (to 4)
+
+ExceptionTable:
+  48 to 66 -> 70 [0]
+  70 to 110 -> 118 [1] lasti
+  116 to 116 -> 118 [1] lasti
+
+# Method Name:       _ask_bool
+# Filename:          codex_chain_runner.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        157
+# Constants:
+#    0: None
+#    1: 'y'
+#    2: 'n'
+#    3: True
+#    4: {'y', '1', '有', 'true', '是', 'yes'}
+#    5: {'0', 'false', 'no', '无', '否', 'n'}
+#    6: False
+#    7: '请输入 y/n'
+# Names:
+#    0: _ask
+#    1: lower
+#    2: print
+# Varnames:
+#	prompt, default, default_text, raw
+# Positional arguments:
+#	prompt, default
+# Local variables:
+#    2: default_text
+#    3: raw
+157:           0 RESUME               0
+
+158:           2 LOAD_FAST            (default)
+               4 TO_BOOL
+              12 POP_JUMP_IF_FALSE    (to 20)
+              16 LOAD_CONST           ("y")
+              18 JUMP_FORWARD         (to 22)
+         >>   20 LOAD_CONST           ("n")
+         >>   22 STORE_FAST           (default_text)
+
+159:          24 NOP
+
+160:          26 LOAD_GLOBAL          (NULL + _ask)
+              36 LOAD_FAST_LOAD_FAST  (prompt, default_text)
+              38 CALL                 (2 positional)
+              46 LOAD_ATTR            (NULL|self + lower)
+              66 CALL                 (0 positional)
+              74 STORE_FAST           (raw)
+
+161:          76 LOAD_FAST            (raw)
+              78 LOAD_CONST           ({'y', '1', '有', 'true', '是', 'yes'})
+              80 CONTAINS_OP          (in)
+              84 POP_JUMP_IF_FALSE    (to 90)
+
+162:          88 RETURN_CONST         (True)
+
+163:     >>   90 LOAD_FAST            (raw)
+              92 LOAD_CONST           ({'0', 'false', 'no', '无', '否', 'n'})
+              94 CONTAINS_OP          (in)
+              98 POP_JUMP_IF_FALSE    (to 104)
+
+164:         102 RETURN_CONST         (False)
+
+165:     >>  104 LOAD_GLOBAL          (NULL + print)
+             114 LOAD_CONST           ("请输入 y/n")
+             116 CALL                 (1 positional)
+             124 POP_TOP
+
+159:         126 JUMP_BACKWARD        (to 26)
+
+
+# Method Name:       _auto_email_from_provider
+# Filename:          codex_chain_runner.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  9
+# Stack size:        14
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        168
+# Constants:
+#    0: 'Reserve one mailbox from GPTMail/MailManage when --email auto is used.'
+#    1: 0
+#    2: ('get_mail_api_config', 'is_mailmanage_compatible')
+#    3: ('email_proxy',)
+#    4: 'email auto requires email_provider=gptmail or mailmanage'
+#    5: 'api_key'
+#    6: ''
+#    7: ' api_key missing'
+#    8: ('MailManageClient',)
+#    9: 'base_url'
+#   10: 'https://mailmanage.lizaliza.top'
+#   11: 'safe_reserve'
+#   12: True
+#   13: 'recycle_failed'
+#   14: False
+#   15: 'lease_seconds'
+#   16: 1800
+#   17: 'verify_reserved'
+#   18: 'reserve_attempts'
+#   19: 5
+#   20: ('api_key', 'base_url', 'safe_reserve', 'consume_on_reserve', 'lease_seconds', 'verify_reserved', 'reserve_attempts', 'label', 'verbose', 'proxy')
+#   21: 'category'
+#   22: 'safe'
+#   23: ('category',)
+#   24: ' no available email'
+# Names:
+#    0: email_provider_branch
+#    1: get_mail_api_config
+#    2: is_mailmanage_compatible
+#    3: proxy_scope
+#    4: email_proxy
+#    5: RuntimeError
+#    6: str
+#    7: get
+#    8: strip
+#    9: mailmanage_client
+#   10: MailManageClient
+#   11: bool
+#   12: int
+#   13: get_available_email
+# Varnames:
+#	config, get_mail_api_config, is_mailmanage_compatible, email_proxy, mail_cfg, label, MailManageClient, client, email
+# Positional arguments:
+#	config
+# Local variables:
+#    1: get_mail_api_config
+#    2: is_mailmanage_compatible
+#    3: email_proxy
+#    4: mail_cfg
+#    5: label
+#    6: MailManageClient
+#    7: client
+#    8: email
+168:           0 RESUME               0
+

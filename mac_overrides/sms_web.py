@@ -6,6 +6,9 @@ from threading import RLock
 import time
 from typing import Any, Callable
 
+
+SMS_MAX_PRICE_HARD_LIMIT = 0.18
+
 try:
     from .runtime_policy import (
         ACCOUNT_BANNED_MESSAGE,
@@ -67,6 +70,8 @@ class SmsWebIntegration:
         provider_registry: Any = None,
         phone_context_preflight: Callable[[Any, str], Any] | None = None,
         cleanup_queue: Any = None,
+        optimization_guard: Any = None,
+        max_price_hard_limit: float = SMS_MAX_PRICE_HARD_LIMIT,
     ) -> None:
         self.sms_runtime = sms_runtime
         self.original_create_provider = original_create_provider
@@ -89,12 +94,17 @@ class SmsWebIntegration:
         self.blocked_routes = blocked_routes
         self.min_price_default = min_price_default
         self.max_price_default = max_price_default
+        try:
+            self.max_price_hard_limit = max(0.01, float(max_price_hard_limit))
+        except (TypeError, ValueError):
+            self.max_price_hard_limit = SMS_MAX_PRICE_HARD_LIMIT
         self.sms_keys_from_config = sms_keys_from_config
         self.as_enabled = as_enabled
         self.safe_error_fn = safe_error
         self.provider_registry = provider_registry
         self.phone_context_preflight = phone_context_preflight
         self.cleanup_queue = cleanup_queue
+        self.optimization_guard = optimization_guard
         self._sms_proxy = ""
         self._active_lease_lock = RLock()
         self._active_leases: dict[str, tuple[Any, Any]] = {}
@@ -123,9 +133,22 @@ class SmsWebIntegration:
             price = float(str(value or "").strip())
         except (TypeError, ValueError):
             return self.max_price_default
-        if price <= 0 or price > 0.5:
+        if price <= 0 or price > self.max_price_hard_limit:
             return self.max_price_default
         return f"{price:g}"
+
+    def _sms_quality_enabled(self, config: Any) -> bool:
+        value = config if isinstance(config, dict) else {}
+        configured = self.as_enabled(value.get("sms_quality_optimization"), True)
+        guard = self.optimization_guard
+        checker = getattr(guard, "is_enabled", None)
+        if callable(checker):
+            try:
+                return bool(checker(configured))
+            except Exception:
+                # Guard telemetry must never change the configured behavior.
+                return configured
+        return configured
 
 
 
@@ -194,10 +217,12 @@ class SmsWebIntegration:
         return self.sms_runtime.rank_sms_candidates(
             rows,
             getattr(selector, "stats", {}),
+            country_stats=getattr(selector, "country_stats", {}),
             priority_routes=route_order,
             priority_countries=self.priority_countries,
             now=now,
             reliability_mode=bool(full_config.get("_phone_risk_retry")),
+            quality_optimization=self._sms_quality_enabled(full_config),
         )
 
     def _invalidate_candidate_cache(self, selector: Any, candidate: Any = None) -> None:
@@ -545,6 +570,64 @@ class SmsWebIntegration:
         meta["sms_order_state"] = "waiting"
         lease.meta = meta
         self._ledger_state(task_id, lease, "waiting")
+        candidate = meta.get("candidate")
+        selector = getattr(adapter, "selector", None)
+        adapter_config = getattr(adapter, "config", None) or {}
+        selector_config = getattr(selector, "config", None) or {}
+        quality_config = (
+            adapter_config
+            if "sms_quality_optimization" in adapter_config
+            else selector_config
+        )
+        if candidate is not None and selector is not None and self._sms_quality_enabled(quality_config):
+            stat = self._route_stat_snapshot(selector, candidate)
+
+            def better_mature_alternative() -> bool:
+                # The rolling guard can disable optimization while this
+                # order is already in its first wait round.  Recheck here so
+                # in-flight orders retain 40+20 but never early-release.
+                if not self._sms_quality_enabled(quality_config):
+                    return False
+                return self.sms_runtime.has_better_mature_alternative(
+                    candidate,
+                    getattr(selector, "candidates", ()),
+                    getattr(selector, "stats", {}),
+                    country_stats=getattr(selector, "country_stats", {}),
+                    priority_routes=self.priority_routes,
+                    priority_countries=self.priority_countries,
+                    now=self._route_now(),
+                    reliability_mode=bool(
+                        adapter_config.get("_phone_risk_retry")
+                        or selector_config.get("_phone_risk_retry")
+                    ),
+                    quality_optimization=True,
+                )
+
+            better_alternative = better_mature_alternative()
+            wait_plan = self.sms_runtime.build_sms_wait_plan(
+                stat,
+                optimization_enabled=True,
+                better_mature_alternative=better_alternative,
+            )
+            if wait_plan.degraded:
+                provider = getattr(adapter, "provider", None)
+                configure_wait_plan = getattr(provider, "configure_wait_plan", None)
+                if callable(configure_wait_plan):
+                    configure_wait_plan(wait_plan)
+                configure_switch_check = getattr(
+                    provider,
+                    "configure_early_switch_check",
+                    None,
+                )
+                if wait_plan.early_switch and callable(configure_switch_check):
+                    configure_switch_check(better_mature_alternative)
+                meta = dict(getattr(lease, "meta", None) or {})
+                meta["adaptive_wait_plan"] = {
+                    "first_seconds": wait_plan.first_seconds,
+                    "second_seconds": wait_plan.second_seconds,
+                    "early_switch": wait_plan.early_switch,
+                }
+                lease.meta = meta
         try:
             code = self.original_adapter_wait_code(adapter, lease, timeout=timeout)
         except Exception as exc:
@@ -562,7 +645,10 @@ class SmsWebIntegration:
             # their two polling rounds, so normalize that one terminal wait
             # outcome into the adapter's existing no-code contract.
             if error_kind == "timeout" and "sms_timeout" in error_text:
-                meta["sms_wait_failure"] = "sms_timeout"
+                early_switch = "sms_timeout_early_switch" in error_text
+                meta["sms_wait_failure"] = (
+                    "sms_timeout_early_switch" if early_switch else "sms_timeout"
+                )
                 meta["sms_order_state"] = "timeout"
                 lease.meta = meta
                 log_fn = getattr(adapter, "log_fn", None)
@@ -570,7 +656,11 @@ class SmsWebIntegration:
                     log_fn = getattr(getattr(adapter, "selector", None), "log_fn", None)
                 _call_log(
                     log_fn,
-                    "  [SMS] 短信验证码在两轮等待后仍未送达，释放当前号码并切换新号码",
+                    (
+                        "  [SMS] 退化线路等待 40 秒仍未送达，释放当前号码并切换更优成熟线路"
+                        if early_switch
+                        else "  [SMS] 短信验证码在两轮等待后仍未送达，释放当前号码并切换新号码"
+                    ),
                     "warn",
                 )
                 return None

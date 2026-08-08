@@ -1,0 +1,800 @@
+615:         306 LOAD_FAST            (self)
+             308 LOAD_ATTR            (safe_reserve)
+             328 TO_BOOL
+             336 POP_JUMP_IF_FALSE    (to 388)
+
+616:         340 LOAD_GLOBAL          (NULL + RuntimeError)
+             350 LOAD_FAST            (self)
+             352 LOAD_ATTR            (label)
+             372 FORMAT_SIMPLE
+             374 LOAD_CONST           (" 后台不支持并发安全领取接口 /api/mailboxes/reserve")
+             376 BUILD_STRING         2
+             378 CALL                 (1 positional)
+             386 RAISE_VARARGS        (exception instance)
+
+617:     >>  388 LOAD_FAST            (self)
+             390 LOAD_ATTR            (NULL|self + _log)
+             410 LOAD_CONST           ("后台不支持 reserve 接口，回退列表模式")
+             412 CALL                 (1 positional)
+             420 POP_TOP
+
+618:         422 RETURN_CONST         (None)
+
+620:     >>  424 NOP
+
+621:         426 LOAD_FAST            (resp)
+             428 LOAD_ATTR            (NULL|self + json)
+             448 CALL                 (0 positional)
+             456 STORE_FAST           (data)
+
+628:         458 NOP
+
+629:         460 LOAD_FAST            (resp)
+             462 LOAD_ATTR            (NULL|self + raise_for_status)
+             482 CALL                 (0 positional)
+             490 POP_TOP
+
+636:         492 LOAD_FAST            (data)
+             494 LOAD_ATTR            (NULL|self + get)
+             514 LOAD_CONST           ("ok")
+             516 CALL                 (1 positional)
+             524 TO_BOOL
+             532 EXTENDED_ARG         (256)
+             534 POP_JUMP_IF_FALSE    (to 1146)
+             538 LOAD_FAST            (data)
+             540 LOAD_ATTR            (NULL|self + get)
+             560 LOAD_CONST           ("mailbox")
+             562 CALL                 (1 positional)
+             570 TO_BOOL
+             578 EXTENDED_ARG         (256)
+             580 POP_JUMP_IF_FALSE    (to 1146)
+
+637:         584 LOAD_FAST            (data)
+             586 LOAD_ATTR            (NULL|self + get)
+             606 LOAD_CONST           ("mailbox")
+             608 CALL                 (1 positional)
+             616 COPY                 1
+             618 TO_BOOL
+             626 POP_JUMP_IF_TRUE     (to 634)
+             630 POP_TOP
+             632 BUILD_MAP            0
+         >>  634 LOAD_ATTR            (NULL|self + get)
+             654 LOAD_CONST           ("email")
+             656 LOAD_CONST           ("")
+             658 CALL                 (2 positional)
+             666 LOAD_ATTR            (NULL|self + strip)
+             686 CALL                 (0 positional)
+             694 STORE_FAST           (email)
+
+638:         696 LOAD_FAST            (email)
+             698 TO_BOOL
+             706 POP_JUMP_IF_FALSE    (to 1146)
+
+639:         710 LOAD_GLOBAL          (NULL + str)
+             720 LOAD_FAST            (data)
+             722 LOAD_ATTR            (NULL|self + get)
+             742 LOAD_CONST           ("lease_token")
+             744 CALL                 (1 positional)
+             752 COPY                 1
+             754 TO_BOOL
+             762 POP_JUMP_IF_TRUE     (to 866)
+             766 POP_TOP
+             768 LOAD_FAST            (data)
+             770 LOAD_ATTR            (NULL|self + get)
+             790 LOAD_CONST           ("mailbox")
+             792 CALL                 (1 positional)
+             800 COPY                 1
+             802 TO_BOOL
+             810 POP_JUMP_IF_TRUE     (to 818)
+             814 POP_TOP
+             816 BUILD_MAP            0
+         >>  818 LOAD_ATTR            (NULL|self + get)
+             838 LOAD_CONST           ("lease_token")
+             840 CALL                 (1 positional)
+             848 COPY                 1
+             850 TO_BOOL
+             858 POP_JUMP_IF_TRUE     (to 866)
+             862 POP_TOP
+             864 LOAD_CONST           ("")
+         >>  866 CALL                 (1 positional)
+             874 LOAD_ATTR            (NULL|self + strip)
+             894 CALL                 (0 positional)
+             902 STORE_FAST           (lease_token)
+
+640:         904 LOAD_FAST            (lease_token)
+             906 TO_BOOL
+             914 POP_JUMP_IF_FALSE    (to 974)
+
+641:         918 LOAD_FAST_LOAD_FAST  (lease_token, self)
+             920 LOAD_ATTR            (_leases)
+             940 LOAD_FAST            (email)
+             942 LOAD_ATTR            (NULL|self + lower)
+             962 CALL                 (0 positional)
+             970 STORE_SUBSCR
+
+642:     >>  974 LOAD_FAST            (request_id)
+             976 TO_BOOL
+             984 POP_JUMP_IF_FALSE    (to 1044)
+
+643:         988 LOAD_FAST_LOAD_FAST  (request_id, self)
+             990 LOAD_ATTR            (_reserve_request_ids)
+            1010 LOAD_FAST            (email)
+            1012 LOAD_ATTR            (NULL|self + lower)
+            1032 CALL                 (0 positional)
+            1040 STORE_SUBSCR
+
+644:     >> 1044 LOAD_FAST            (data)
+            1046 LOAD_ATTR            (NULL|self + get)
+            1066 LOAD_CONST           ("consumed")
+            1068 CALL                 (1 positional)
+            1076 TO_BOOL
+            1084 POP_JUMP_IF_FALSE    (to 1092)
+            1088 LOAD_CONST           ("已远程消费")
+            1090 JUMP_FORWARD         (to 1094)
+         >> 1092 LOAD_CONST           ("已锁定")
+         >> 1094 STORE_FAST           (mode)
+
+645:        1096 LOAD_FAST            (self)
+            1098 LOAD_ATTR            (NULL|self + _log)
+            1118 LOAD_CONST           ("后端")
+            1120 LOAD_FAST            (mode)
+            1122 FORMAT_SIMPLE
+            1124 LOAD_CONST           ("邮箱: ")
+            1126 LOAD_FAST            (email)
+            1128 FORMAT_SIMPLE
+            1130 BUILD_STRING         4
+            1132 CALL                 (1 positional)
+            1140 POP_TOP
+
+646:        1142 LOAD_FAST            (email)
+            1144 RETURN_VALUE
+
+648:     >> 1146 LOAD_FAST            (data)
+            1148 LOAD_ATTR            (NULL|self + get)
+            1168 LOAD_CONST           ("reason")
+            1170 CALL                 (1 positional)
+            1178 LOAD_CONST           (('no_available', 'not_found'))
+            1180 CONTAINS_OP          (in)
+            1184 POP_JUMP_IF_TRUE     (to 1320)
+
+649:        1188 LOAD_FAST            (data)
+            1190 LOAD_ATTR            (NULL|self + get)
+            1210 LOAD_CONST           ("ok")
+            1212 CALL                 (1 positional)
+            1220 TO_BOOL
+            1228 POP_JUMP_IF_FALSE    (to 1404)
+            1232 LOAD_FAST            (data)
+            1234 LOAD_ATTR            (NULL|self + get)
+            1254 LOAD_CONST           ("mailbox")
+            1256 CALL                 (1 positional)
+            1264 TO_BOOL
+            1272 POP_JUMP_IF_TRUE     (to 1404)
+            1276 LOAD_FAST            (data)
+            1278 LOAD_ATTR            (NULL|self + get)
+            1298 LOAD_CONST           ("email")
+            1300 CALL                 (1 positional)
+            1308 TO_BOOL
+            1316 POP_JUMP_IF_TRUE     (to 1404)
+
+651:     >> 1320 LOAD_FAST            (self)
+            1322 LOAD_ATTR            (NULL|self + _log)
+            1342 LOAD_CONST           ("无可领取邮箱: category=")
+            1344 LOAD_FAST            (category)
+            1346 COPY                 1
+            1348 TO_BOOL
+            1356 POP_JUMP_IF_TRUE     (to 1364)
+            1360 POP_TOP
+            1362 LOAD_CONST           ("all")
+         >> 1364 FORMAT_SIMPLE
+            1366 LOAD_CONST           (" status=")
+            1368 LOAD_FAST            (status)
+            1370 COPY                 1
+            1372 TO_BOOL
+            1380 POP_JUMP_IF_TRUE     (to 1388)
+            1384 POP_TOP
+            1386 LOAD_CONST           ("all")
+         >> 1388 FORMAT_SIMPLE
+            1390 BUILD_STRING         4
+            1392 CALL                 (1 positional)
+            1400 POP_TOP
+
+652:        1402 RETURN_CONST         ("")
+
+654:     >> 1404 LOAD_FAST            (self)
+            1406 LOAD_ATTR            (safe_reserve)
+            1426 TO_BOOL
+            1434 POP_JUMP_IF_FALSE    (to 1490)
+
+655:        1438 LOAD_GLOBAL          (NULL + RuntimeError)
+            1448 LOAD_FAST            (self)
+            1450 LOAD_ATTR            (label)
+            1470 FORMAT_SIMPLE
+            1472 LOAD_CONST           (" 并发安全领取失败: ")
+            1474 LOAD_FAST            (data)
+            1476 FORMAT_SIMPLE
+            1478 BUILD_STRING         3
+            1480 CALL                 (1 positional)
+            1488 RAISE_VARARGS        (exception instance)
+
+656:     >> 1490 LOAD_FAST            (self)
+            1492 LOAD_ATTR            (NULL|self + _log)
+            1512 LOAD_CONST           ("领取接口失败，回退列表模式: ")
+            1514 LOAD_FAST            (data)
+            1516 FORMAT_SIMPLE
+            1518 BUILD_STRING         2
+            1520 CALL                 (1 positional)
+            1528 POP_TOP
+
+657:        1530 RETURN_CONST         (None)
+         >> 1532 PUSH_EXC_INFO
+
+608:        1534 LOAD_GLOBAL          (requests)
+            1544 LOAD_ATTR            (RequestException)
+            1564 CHECK_EXC_MATCH
+            1566 POP_JUMP_IF_FALSE    (to 1718)
+            1570 STORE_FAST           (e)
+
+609:        1572 LOAD_FAST            (self)
+            1574 LOAD_ATTR            (safe_reserve)
+            1594 TO_BOOL
+            1602 POP_JUMP_IF_FALSE    (to 1660)
+
+610:        1606 LOAD_GLOBAL          (NULL + MailManageTemporaryError)
+            1616 LOAD_FAST            (self)
+            1618 LOAD_ATTR            (label)
+            1638 FORMAT_SIMPLE
+            1640 LOAD_CONST           (" 并发安全领取网络异常: ")
+            1642 LOAD_FAST            (e)
+            1644 FORMAT_SIMPLE
+            1646 BUILD_STRING         3
+            1648 CALL                 (1 positional)
+            1656 LOAD_FAST            (e)
+            1658 RAISE_VARARGS        (exception instance with __cause__)
+
+611:     >> 1660 LOAD_FAST            (self)
+            1662 LOAD_ATTR            (NULL|self + _log)
+            1682 LOAD_CONST           ("领取接口网络异常，回退列表模式: ")
+            1684 LOAD_FAST            (e)
+            1686 FORMAT_SIMPLE
+            1688 BUILD_STRING         2
+            1690 CALL                 (1 positional)
+            1698 POP_TOP
+
+612:        1700 POP_EXCEPT
+            1702 LOAD_CONST           (None)
+            1704 STORE_FAST           (e)
+            1706 DELETE_FAST          (e)
+            1708 RETURN_CONST         (None)
+         >> 1710 LOAD_CONST           (None)
+            1712 STORE_FAST           (e)
+            1714 DELETE_FAST          (e)
+            1716 RERAISE              1
+
+608:     >> 1718 RERAISE              0
+         >> 1720 COPY                 3
+            1722 POP_EXCEPT
+            1724 RERAISE              1
+         >> 1726 PUSH_EXC_INFO
+
+622:        1728 LOAD_GLOBAL          (ValueError)
+            1738 CHECK_EXC_MATCH
+            1740 POP_JUMP_IF_FALSE    (to 1892)
+            1744 STORE_FAST           (e)
+
+623:        1746 LOAD_FAST            (self)
+            1748 LOAD_ATTR            (safe_reserve)
+            1768 TO_BOOL
+            1776 POP_JUMP_IF_FALSE    (to 1834)
+
+624:        1780 LOAD_GLOBAL          (NULL + MailManageTemporaryError)
+            1790 LOAD_FAST            (self)
+            1792 LOAD_ATTR            (label)
+            1812 FORMAT_SIMPLE
+            1814 LOAD_CONST           (" 并发安全领取响应解析失败: ")
+            1816 LOAD_FAST            (e)
+            1818 FORMAT_SIMPLE
+            1820 BUILD_STRING         3
+            1822 CALL                 (1 positional)
+            1830 LOAD_FAST            (e)
+            1832 RAISE_VARARGS        (exception instance with __cause__)
+
+625:     >> 1834 LOAD_FAST            (self)
+            1836 LOAD_ATTR            (NULL|self + _log)
+            1856 LOAD_CONST           ("领取接口响应解析失败，回退列表模式: ")
+            1858 LOAD_FAST            (e)
+            1860 FORMAT_SIMPLE
+            1862 BUILD_STRING         2
+            1864 CALL                 (1 positional)
+            1872 POP_TOP
+
+626:        1874 POP_EXCEPT
+            1876 LOAD_CONST           (None)
+            1878 STORE_FAST           (e)
+            1880 DELETE_FAST          (e)
+            1882 RETURN_CONST         (None)
+         >> 1884 LOAD_CONST           (None)
+            1886 STORE_FAST           (e)
+            1888 DELETE_FAST          (e)
+            1890 RERAISE              1
+
+622:     >> 1892 RERAISE              0
+         >> 1894 COPY                 3
+            1896 POP_EXCEPT
+            1898 RERAISE              1
+         >> 1900 PUSH_EXC_INFO
+
+630:        1902 LOAD_GLOBAL          (Exception)
+            1912 CHECK_EXC_MATCH
+            1914 POP_JUMP_IF_FALSE    (to 2066)
+            1918 STORE_FAST           (e)
+
+631:        1920 LOAD_FAST            (self)
+            1922 LOAD_ATTR            (safe_reserve)
+            1942 TO_BOOL
+            1950 POP_JUMP_IF_FALSE    (to 2008)
+
+632:        1954 LOAD_GLOBAL          (NULL + MailManageTemporaryError)
+            1964 LOAD_FAST            (self)
+            1966 LOAD_ATTR            (label)
+            1986 FORMAT_SIMPLE
+            1988 LOAD_CONST           (" 并发安全领取 HTTP 异常: ")
+            1990 LOAD_FAST            (e)
+            1992 FORMAT_SIMPLE
+            1994 BUILD_STRING         3
+            1996 CALL                 (1 positional)
+            2004 LOAD_FAST            (e)
+            2006 RAISE_VARARGS        (exception instance with __cause__)
+
+633:     >> 2008 LOAD_FAST            (self)
+            2010 LOAD_ATTR            (NULL|self + _log)
+            2030 LOAD_CONST           ("领取接口 HTTP 异常，回退列表模式: ")
+            2032 LOAD_FAST            (e)
+            2034 FORMAT_SIMPLE
+            2036 BUILD_STRING         2
+            2038 CALL                 (1 positional)
+            2046 POP_TOP
+
+634:        2048 POP_EXCEPT
+            2050 LOAD_CONST           (None)
+            2052 STORE_FAST           (e)
+            2054 DELETE_FAST          (e)
+            2056 RETURN_CONST         (None)
+         >> 2058 LOAD_CONST           (None)
+            2060 STORE_FAST           (e)
+            2062 DELETE_FAST          (e)
+            2064 RERAISE              1
+
+630:     >> 2066 RERAISE              0
+         >> 2068 COPY                 3
+            2070 POP_EXCEPT
+            2072 RERAISE              1
+
+ExceptionTable:
+  164 to 272 -> 1532 [0]
+  426 to 456 -> 1726 [0]
+  460 to 490 -> 1900 [0]
+  1532 to 1570 -> 1720 [1] lasti
+  1572 to 1698 -> 1710 [1] lasti
+  1710 to 1718 -> 1720 [1] lasti
+  1726 to 1744 -> 1894 [1] lasti
+  1746 to 1872 -> 1884 [1] lasti
+  1884 to 1892 -> 1894 [1] lasti
+  1900 to 1918 -> 2068 [1] lasti
+  1920 to 2046 -> 2058 [1] lasti
+  2058 to 2066 -> 2068 [1] lasti
+
+# Method Name:       release_email
+# Filename:          mailmanage_client.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  8
+# Stack size:        8
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        659
+# Constants:
+#    0: '释放未消费的租约。默认 consume_on_reserve=True 时不会释放已消费邮箱。'
+#    1: None
+#    2: 'email'
+#    3: ''
+#    4: 'lease_token'
+#    5: 'request_id'
+#    6: '/api/mailboxes/release'
+#    7: 30
+#    8: ('headers', 'json', 'timeout')
+#    9: (404, 405)
+#   10: '释放邮箱: '
+#   11: ' released='
+#   12: 'released'
+#   13: '释放邮箱异常: '
+# Names:
+#    0: strip
+#    1: lower
+#    2: _leases
+#    3: pop
+#    4: _reserve_request_ids
+#    5: requests
+#    6: post
+#    7: base_url
+#    8: _headers
+#    9: _request_kwargs
+#   10: status_code
+#   11: json
+#   12: _log
+#   13: get
+#   14: Exception
+# Varnames:
+#	self, email, payload, lease_token, request_id, resp, data, e
+# Positional arguments:
+#	self, email
+# Local variables:
+#    2: payload
+#    3: lease_token
+#    4: request_id
+#    5: resp
+#    6: data
+#    7: e
+659:           0 RESUME               0
+
+661:           2 LOAD_FAST            (email)
+               4 LOAD_ATTR            (NULL|self + strip)
+              24 CALL                 (0 positional)
+              32 LOAD_ATTR            (NULL|self + lower)
+              52 CALL                 (0 positional)
+              60 STORE_FAST           (email)
+
+662:          62 LOAD_FAST            (email)
+              64 TO_BOOL
+              72 POP_JUMP_IF_TRUE     (to 78)
+
+663:          76 RETURN_CONST         (None)
+
+664:     >>   78 LOAD_CONST           ("email")
+              80 LOAD_FAST            (email)
+              82 BUILD_MAP            1
+              84 STORE_FAST           (payload)
+
+665:          86 LOAD_FAST            (self)
+              88 LOAD_ATTR            (_leases)
+             108 LOAD_ATTR            (NULL|self + pop)
+             128 LOAD_FAST            (email)
+             130 LOAD_CONST           ("")
+             132 CALL                 (2 positional)
+             140 STORE_FAST           (lease_token)
+
+666:         142 LOAD_FAST            (lease_token)
+             144 TO_BOOL
+             152 POP_JUMP_IF_FALSE    (to 164)
+
+667:         156 LOAD_FAST_LOAD_FAST  (lease_token, payload)
+             158 LOAD_CONST           ("lease_token")
+             160 STORE_SUBSCR
+
+668:     >>  164 LOAD_FAST            (self)
+             166 LOAD_ATTR            (_reserve_request_ids)
+             186 LOAD_ATTR            (NULL|self + pop)
+             206 LOAD_FAST            (email)
+             208 LOAD_CONST           ("")
+             210 CALL                 (2 positional)
+             218 STORE_FAST           (request_id)
+
+669:         220 LOAD_FAST            (request_id)
+             222 TO_BOOL
+             230 POP_JUMP_IF_FALSE    (to 242)
+
+670:         234 LOAD_FAST_LOAD_FAST  (request_id, payload)
+             236 LOAD_CONST           ("request_id")
+             238 STORE_SUBSCR
+
+671:     >>  242 NOP
+
+672:         244 LOAD_GLOBAL          (requests)
+             254 LOAD_ATTR            (post)
+             274 PUSH_NULL
+             276 LOAD_FAST            (self)
+             278 LOAD_ATTR            (base_url)
+             298 FORMAT_SIMPLE
+             300 LOAD_CONST           ("/api/mailboxes/release")
+             302 BUILD_STRING         2
+             304 BUILD_TUPLE          1
+             306 LOAD_FAST            (self)
+             308 LOAD_ATTR            (NULL|self + _headers)
+             328 CALL                 (0 positional)
+             336 LOAD_FAST            (payload)
+             338 LOAD_CONST           (30)
+             340 LOAD_CONST           (('headers', 'json', 'timeout'))
+             342 BUILD_CONST_KEY_MAP  3
+             344 LOAD_FAST            (self)
+             346 LOAD_ATTR            (NULL|self + _request_kwargs)
+             366 CALL                 (0 positional)
+             374 DICT_MERGE           1
+             376 CALL_FUNCTION_EX     (keyword and positional arguments)
+             378 STORE_FAST           (resp)
+
+673:         380 LOAD_FAST            (resp)
+             382 LOAD_ATTR            (status_code)
+             402 LOAD_CONST           ((404, 405))
+             404 CONTAINS_OP          (not in)
+             408 POP_JUMP_IF_FALSE    (to 522)
+
+674:         412 LOAD_FAST            (resp)
+             414 LOAD_ATTR            (NULL|self + json)
+             434 CALL                 (0 positional)
+             442 STORE_FAST           (data)
+
+675:         444 LOAD_FAST            (self)
+             446 LOAD_ATTR            (NULL|self + _log)
+             466 LOAD_CONST           ("释放邮箱: ")
+             468 LOAD_FAST            (email)
+             470 FORMAT_SIMPLE
+             472 LOAD_CONST           (" released=")
+             474 LOAD_FAST            (data)
+             476 LOAD_ATTR            (NULL|self + get)
+             496 LOAD_CONST           ("released")
+             498 CALL                 (1 positional)
+             506 FORMAT_SIMPLE
+             508 BUILD_STRING         4
+             510 CALL                 (1 positional)
+             518 POP_TOP
+             520 RETURN_CONST         (None)
+
+673:     >>  522 RETURN_CONST         (None)
+         >>  524 PUSH_EXC_INFO
+
+676:         526 LOAD_GLOBAL          (Exception)
+             536 CHECK_EXC_MATCH
+             538 POP_JUMP_IF_FALSE    (to 602)
+             542 STORE_FAST           (e)
+
+677:         544 LOAD_FAST            (self)
+             546 LOAD_ATTR            (NULL|self + _log)
+             566 LOAD_CONST           ("释放邮箱异常: ")
+             568 LOAD_FAST            (e)
+             570 FORMAT_SIMPLE
+             572 BUILD_STRING         2
+             574 CALL                 (1 positional)
+             582 POP_TOP
+             584 POP_EXCEPT
+             586 LOAD_CONST           (None)
+             588 STORE_FAST           (e)
+             590 DELETE_FAST          (e)
+             592 RETURN_CONST         (None)
+         >>  594 LOAD_CONST           (None)
+             596 STORE_FAST           (e)
+             598 DELETE_FAST          (e)
+             600 RERAISE              1
+
+676:     >>  602 RERAISE              0
+         >>  604 COPY                 3
+             606 POP_EXCEPT
+             608 RERAISE              1
+
+ExceptionTable:
+  244 to 518 -> 524 [0]
+  524 to 542 -> 604 [1] lasti
+  544 to 582 -> 594 [1] lasti
+  594 to 602 -> 604 [1] lasti
+
+# Method Name:       report_code_result
+# Filename:          mailmanage_client.py
+# Argument count:    5
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  11
+# Stack size:        8
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        679
+# Constants:
+#    0: '上报邮箱收码结果。timeout/no_code 会让后台把邮箱隔离出可用池。'
+#    1: None
+#    2: ('email', 'result', 'detail', 'threshold')
+#    3: ''
+#    4: 'lease_token'
+#    5: 'request_id'
+#    6: '/api/mailboxes/report-code'
+#    7: 30
+#    8: ('headers', 'json', 'timeout')
+#    9: (404, 405)
+#   10: '后台不支持 report-code 接口，跳过收码健康上报'
+#   11: 'ok'
+#   12: '收码结果已上报: '
+#   13: ' -> '
+#   14: 'code_health'
+#   15: '收码结果上报失败: '
+#   16: '收码结果上报异常: '
+# Names:
+#    0: strip
+#    1: lower
+#    2: _leases
+#    3: get
+#    4: _reserve_request_ids
+#    5: requests
+#    6: post
+#    7: base_url
+#    8: _headers
+#    9: _request_kwargs
+#   10: status_code
+#   11: _log
+#   12: json
+#   13: Exception
+# Varnames:
+#	self, email, result, detail, threshold, payload, lease_token, request_id, resp, data, e
+# Positional arguments:
+#	self, email, result, detail, threshold
+# Local variables:
+#    5: payload
+#    6: lease_token
+#    7: request_id
+#    8: resp
+#    9: data
+#   10: e
+679:           0 RESUME               0
+
+681:           2 LOAD_FAST            (email)
+               4 LOAD_ATTR            (NULL|self + strip)
+              24 CALL                 (0 positional)
+              32 LOAD_ATTR            (NULL|self + lower)
+              52 CALL                 (0 positional)
+              60 STORE_FAST           (email)
+
+682:          62 LOAD_FAST            (email)
+              64 TO_BOOL
+              72 POP_JUMP_IF_TRUE     (to 78)
+
+683:          76 RETURN_CONST         (None)
+
+685:     >>   78 LOAD_FAST            (email)
+
+686:          80 LOAD_FAST            (result)
+
+687:          82 LOAD_FAST            (detail)
+
+688:          84 LOAD_FAST            (threshold)
+
+684:          86 LOAD_CONST           (('email', 'result', 'detail', 'threshold'))
+              88 BUILD_CONST_KEY_MAP  4
+              90 STORE_FAST           (payload)
+
+690:          92 LOAD_FAST            (self)
+              94 LOAD_ATTR            (_leases)
+             114 LOAD_ATTR            (NULL|self + get)
+             134 LOAD_FAST            (email)
+             136 LOAD_CONST           ("")
+             138 CALL                 (2 positional)
+             146 STORE_FAST           (lease_token)
+
+691:         148 LOAD_FAST            (lease_token)
+             150 TO_BOOL
+             158 POP_JUMP_IF_FALSE    (to 170)
+
+692:         162 LOAD_FAST_LOAD_FAST  (lease_token, payload)
+             164 LOAD_CONST           ("lease_token")
+             166 STORE_SUBSCR
+
+693:     >>  170 LOAD_FAST            (self)
+             172 LOAD_ATTR            (_reserve_request_ids)
+             192 LOAD_ATTR            (NULL|self + get)
+             212 LOAD_FAST            (email)
+             214 LOAD_CONST           ("")
+             216 CALL                 (2 positional)
+             224 STORE_FAST           (request_id)
+
+694:         226 LOAD_FAST            (request_id)
+             228 TO_BOOL
+             236 POP_JUMP_IF_FALSE    (to 248)
+
+695:         240 LOAD_FAST_LOAD_FAST  (request_id, payload)
+             242 LOAD_CONST           ("request_id")
+             244 STORE_SUBSCR
+
+696:     >>  248 NOP
+
+697:         250 LOAD_GLOBAL          (requests)
+             260 LOAD_ATTR            (post)
+             280 PUSH_NULL
+             282 LOAD_FAST            (self)
+             284 LOAD_ATTR            (base_url)
+             304 FORMAT_SIMPLE
+             306 LOAD_CONST           ("/api/mailboxes/report-code")
+             308 BUILD_STRING         2
+             310 BUILD_TUPLE          1
+             312 LOAD_FAST            (self)
+             314 LOAD_ATTR            (NULL|self + _headers)
+             334 CALL                 (0 positional)
+             342 LOAD_FAST            (payload)
+             344 LOAD_CONST           (30)
+             346 LOAD_CONST           (('headers', 'json', 'timeout'))
+             348 BUILD_CONST_KEY_MAP  3
+             350 LOAD_FAST            (self)
+             352 LOAD_ATTR            (NULL|self + _request_kwargs)
+             372 CALL                 (0 positional)
+             380 DICT_MERGE           1
+             382 CALL_FUNCTION_EX     (keyword and positional arguments)
+             384 STORE_FAST           (resp)
+
+698:         386 LOAD_FAST            (resp)
+             388 LOAD_ATTR            (status_code)
+             408 LOAD_CONST           ((404, 405))
+             410 CONTAINS_OP          (in)
+             414 POP_JUMP_IF_FALSE    (to 454)
+
+699:         418 LOAD_FAST            (self)
+             420 LOAD_ATTR            (NULL|self + _log)
+             440 LOAD_CONST           ("后台不支持 report-code 接口，跳过收码健康上报")
+             442 CALL                 (1 positional)
+             450 POP_TOP
+
+700:         452 RETURN_CONST         (None)
+
+701:     >>  454 LOAD_FAST            (resp)
+             456 LOAD_ATTR            (NULL|self + json)
+             476 CALL                 (0 positional)
+             484 STORE_FAST           (data)
+
+702:         486 LOAD_FAST            (data)
+             488 LOAD_ATTR            (NULL|self + get)
+             508 LOAD_CONST           ("ok")
+             510 CALL                 (1 positional)
+             518 TO_BOOL
+             526 POP_JUMP_IF_FALSE    (to 608)
+
+703:         530 LOAD_FAST            (self)
+             532 LOAD_ATTR            (NULL|self + _log)
+             552 LOAD_CONST           ("收码结果已上报: ")
+             554 LOAD_FAST            (email)
+             556 FORMAT_SIMPLE
+             558 LOAD_CONST           (" -> ")
+             560 LOAD_FAST            (data)
+             562 LOAD_ATTR            (NULL|self + get)
+             582 LOAD_CONST           ("code_health")
+             584 CALL                 (1 positional)
+             592 FORMAT_SIMPLE
+             594 BUILD_STRING         4
+             596 CALL                 (1 positional)
+             604 POP_TOP
+             606 RETURN_CONST         (None)
+
+705:     >>  608 LOAD_FAST            (self)
+             610 LOAD_ATTR            (NULL|self + _log)
+             630 LOAD_CONST           ("收码结果上报失败: ")
+             632 LOAD_FAST            (data)
+             634 FORMAT_SIMPLE
+             636 BUILD_STRING         2
+             638 CALL                 (1 positional)
+             646 POP_TOP
+             648 RETURN_CONST         (None)
+         >>  650 PUSH_EXC_INFO
+
+706:         652 LOAD_GLOBAL          (Exception)
+             662 CHECK_EXC_MATCH
+             664 POP_JUMP_IF_FALSE    (to 728)
+             668 STORE_FAST           (e)
+
+707:         670 LOAD_FAST            (self)
+             672 LOAD_ATTR            (NULL|self + _log)
+             692 LOAD_CONST           ("收码结果上报异常: ")
+             694 LOAD_FAST            (e)
+             696 FORMAT_SIMPLE
+             698 BUILD_STRING         2
+             700 CALL                 (1 positional)
+             708 POP_TOP
+             710 POP_EXCEPT
+             712 LOAD_CONST           (None)
+             714 STORE_FAST           (e)
+             716 DELETE_FAST          (e)
+             718 RETURN_CONST         (None)
+         >>  720 LOAD_CONST           (None)
+             722 STORE_FAST           (e)
+             724 DELETE_FAST          (e)
+             726 RERAISE              1
+
+706:     >>  728 RERAISE              0
+         >>  730 COPY                 3
+             732 POP_EXCEPT
+             734 RERAISE              1
+
+ExceptionTable:
+  250 to 450 -> 650 [0]
+  454 to 604 -> 650 [0]
+  608 to 646 -> 650 [0]
+  650 to 668 -> 730 [1] lasti

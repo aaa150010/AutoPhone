@@ -1,0 +1,800 @@
+
+765:        1088 LOAD_CONST           ("limit")
+
+769:        1090 LOAD_NAME            (int)
+
+765:        1092 LOAD_CONST           ("timeout")
+
+770:        1094 LOAD_NAME            (int)
+
+765:        1096 LOAD_CONST           ("interval")
+
+771:        1098 LOAD_NAME            (int)
+
+765:        1100 LOAD_CONST           ("report_health")
+
+772:        1102 LOAD_NAME            (bool)
+
+765:        1104 LOAD_CONST           ("pending_threshold")
+
+773:        1106 LOAD_NAME            (int)
+
+765:        1108 LOAD_CONST           ("timeout_threshold")
+
+774:        1110 LOAD_NAME            (int)
+
+765:        1112 LOAD_CONST           ("since_ts")
+
+775:        1114 LOAD_NAME            (float)
+            1116 LOAD_CONST           (None)
+            1118 BINARY_OP            (|)
+
+765:        1122 LOAD_CONST           ("old_code_fast_fail")
+
+776:        1124 LOAD_NAME            (int)
+
+765:        1126 LOAD_CONST           ("return")
+
+777:        1128 LOAD_NAME            (Optional)
+            1130 LOAD_NAME            (Dict)
+            1132 BINARY_SUBSCR
+
+765:        1136 BUILD_TUPLE          22
+            1138 LOAD_CONST           (<Code311 code object get_code at 0x10774c190, file mailmanage_client.py>, line 765)
+            1140 MAKE_FUNCTION
+            1142 SET_FUNCTION_ATTRIBUTE 4
+            1144 SET_FUNCTION_ATTRIBUTE 1
+            1146 STORE_NAME           (get_code)
+            1148 LOAD_CONST           (('_leases', '_lock', '_reserve_request_ids', '_used', 'api_key', 'base_url', 'consume_on_reserve', 'label', 'lease_seconds', 'proxy', 'reserve_attempts', 'safe_reserve', 'used_file', 'verbose', 'verify_reserved'))
+            1150 STORE_NAME           (__static_attributes__)
+            1152 RETURN_CONST         (None)
+
+
+# Method Name:       __init__
+# Filename:          mailmanage_client.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        5
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        73
+# Constants:
+#    0: None
+#    1: 'mail_code_poll_failed'
+#    2: ''
+#    3: ': '
+# Names:
+#    0: str
+#    1: reason
+#    2: detail
+#    3: super
+#    4: __init__
+# Varnames:
+#	self, reason, detail
+# Positional arguments:
+#	self, reason, detail
+# Free variables:
+#    0: __class__
+               0 COPY_FREE_VARS       1
+
+ 73:           2 RESUME               0
+
+ 74:           4 LOAD_GLOBAL          (NULL + str)
+              14 LOAD_FAST            (reason)
+              16 COPY                 1
+              18 TO_BOOL
+              26 POP_JUMP_IF_TRUE     (to 34)
+              30 POP_TOP
+              32 LOAD_CONST           ("mail_code_poll_failed")
+         >>   34 CALL                 (1 positional)
+              42 LOAD_FAST            (self)
+              44 STORE_ATTR           (reason)
+
+ 75:          54 LOAD_GLOBAL          (NULL + str)
+              64 LOAD_FAST            (detail)
+              66 COPY                 1
+              68 TO_BOOL
+              76 POP_JUMP_IF_TRUE     (to 84)
+              80 POP_TOP
+              82 LOAD_CONST           ("")
+         >>   84 CALL                 (1 positional)
+              92 LOAD_FAST            (self)
+              94 STORE_ATTR           (detail)
+
+ 76:         104 LOAD_GLOBAL          (super)
+             114 LOAD_DEREF           (__class__)
+             116 LOAD_FAST            (self)
+             118 LOAD_SUPER_ATTR      (NULL|self + __init__)
+             122 LOAD_FAST            (self)
+             124 LOAD_ATTR            (detail)
+             144 TO_BOOL
+             152 POP_JUMP_IF_FALSE    (to 220)
+             156 LOAD_FAST            (self)
+             158 LOAD_ATTR            (reason)
+             178 FORMAT_SIMPLE
+             180 LOAD_CONST           (": ")
+             182 LOAD_FAST            (self)
+             184 LOAD_ATTR            (detail)
+             204 FORMAT_SIMPLE
+             206 BUILD_STRING         3
+             208 CALL                 (1 positional)
+             216 POP_TOP
+             218 RETURN_CONST         (None)
+         >>  220 LOAD_FAST            (self)
+             222 LOAD_ATTR            (reason)
+             242 CALL                 (1 positional)
+             250 POP_TOP
+             252 RETURN_CONST         (None)
+
+
+# Method Name:       __init__
+# Filename:          mailmanage_client.py
+# Argument count:    12
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  12
+# Stack size:        7
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        82
+# Constants:
+#    0: None
+#    1: '/'
+#    2: 1
+#    3: 5
+#    4: 'MailManage'
+# Names:
+#    0: api_key
+#    1: rstrip
+#    2: base_url
+#    3: used_file
+#    4: verbose
+#    5: safe_reserve
+#    6: consume_on_reserve
+#    7: lease_seconds
+#    8: bool
+#    9: verify_reserved
+#   10: max
+#   11: int
+#   12: reserve_attempts
+#   13: Exception
+#   14: strip
+#   15: label
+#   16: proxy
+#   17: _load_used
+#   18: _used
+#   19: _leases
+#   20: _reserve_request_ids
+#   21: threading
+#   22: Lock
+#   23: _lock
+# Varnames:
+#	self, api_key, base_url, used_file, verbose, safe_reserve, consume_on_reserve, lease_seconds, verify_reserved, reserve_attempts, label, proxy
+# Positional arguments:
+#	self, api_key, base_url, used_file, verbose, safe_reserve, consume_on_reserve, lease_seconds, verify_reserved, reserve_attempts, label, proxy
+ 82:           0 RESUME               0
+
+ 96:           2 LOAD_FAST_LOAD_FAST  (api_key, self)
+               4 STORE_ATTR           (api_key)
+
+ 97:          14 LOAD_FAST            (base_url)
+              16 LOAD_ATTR            (NULL|self + rstrip)
+              36 LOAD_CONST           ("/")
+              38 CALL                 (1 positional)
+              46 LOAD_FAST            (self)
+              48 STORE_ATTR           (base_url)
+
+ 98:          58 LOAD_FAST_LOAD_FAST  (used_file, self)
+              60 STORE_ATTR           (used_file)
+
+ 99:          70 LOAD_FAST_LOAD_FAST  (verbose, self)
+              72 STORE_ATTR           (verbose)
+
+100:          82 LOAD_FAST_LOAD_FAST  (safe_reserve, self)
+              84 STORE_ATTR           (safe_reserve)
+
+101:          94 LOAD_FAST_LOAD_FAST  (consume_on_reserve, self)
+              96 STORE_ATTR           (consume_on_reserve)
+
+102:         106 LOAD_FAST_LOAD_FAST  (lease_seconds, self)
+             108 STORE_ATTR           (lease_seconds)
+
+103:         118 LOAD_GLOBAL          (NULL + bool)
+             128 LOAD_FAST            (verify_reserved)
+             130 CALL                 (1 positional)
+             138 LOAD_FAST            (self)
+             140 STORE_ATTR           (verify_reserved)
+
+104:         150 NOP
+
+105:         152 LOAD_GLOBAL          (NULL + max)
+             162 LOAD_CONST           (1)
+             164 LOAD_GLOBAL          (NULL + int)
+             174 LOAD_FAST            (reserve_attempts)
+             176 COPY                 1
+             178 TO_BOOL
+             186 POP_JUMP_IF_TRUE     (to 194)
+             190 POP_TOP
+             192 LOAD_CONST           (1)
+         >>  194 CALL                 (1 positional)
+             202 CALL                 (2 positional)
+             210 LOAD_FAST            (self)
+             212 STORE_ATTR           (reserve_attempts)
+
+108:         222 LOAD_FAST            (label)
+             224 COPY                 1
+             226 TO_BOOL
+             234 POP_JUMP_IF_TRUE     (to 242)
+             238 POP_TOP
+             240 LOAD_CONST           ("MailManage")
+         >>  242 LOAD_ATTR            (NULL|self + strip)
+             262 CALL                 (0 positional)
+             270 COPY                 1
+             272 TO_BOOL
+             280 POP_JUMP_IF_TRUE     (to 288)
+             284 POP_TOP
+             286 LOAD_CONST           ("MailManage")
+         >>  288 LOAD_FAST            (self)
+             290 STORE_ATTR           (label)
+
+109:         300 LOAD_FAST_LOAD_FAST  (proxy, self)
+             302 STORE_ATTR           (proxy)
+
+110:         312 LOAD_FAST            (self)
+             314 LOAD_ATTR            (NULL|self + _load_used)
+             334 CALL                 (0 positional)
+             342 LOAD_FAST            (self)
+             344 STORE_ATTR           (_used)
+
+111:         354 BUILD_MAP            0
+             356 LOAD_FAST            (self)
+             358 STORE_ATTR           (_leases)
+
+112:         368 BUILD_MAP            0
+             370 LOAD_FAST            (self)
+             372 STORE_ATTR           (_reserve_request_ids)
+
+113:         382 LOAD_GLOBAL          (threading)
+             392 LOAD_ATTR            (Lock)
+             412 PUSH_NULL
+             414 CALL                 (0 positional)
+             422 LOAD_FAST            (self)
+             424 STORE_ATTR           (_lock)
+             434 RETURN_CONST         (None)
+         >>  436 PUSH_EXC_INFO
+
+106:         438 LOAD_GLOBAL          (Exception)
+             448 CHECK_EXC_MATCH
+             450 POP_JUMP_IF_FALSE    (to 474)
+             454 POP_TOP
+
+107:         456 LOAD_CONST           (5)
+             458 LOAD_FAST            (self)
+             460 STORE_ATTR           (reserve_attempts)
+             470 POP_EXCEPT
+             472 JUMP_BACKWARD_NO_INTERRUPT (to 222)
+
+106:     >>  474 RERAISE              0
+         >>  476 COPY                 3
+             478 POP_EXCEPT
+             480 RERAISE              1
+
+ExceptionTable:
+  152 to 220 -> 436 [0]
+  436 to 468 -> 476 [1] lasti
+  474 to 474 -> 476 [1] lasti
+
+# Method Name:       _log
+# Filename:          mailmanage_client.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        6
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        115
+# Constants:
+#    0: None
+#    1: '  ['
+#    2: '] '
+# Names:
+#    0: verbose
+#    1: print
+#    2: label
+# Varnames:
+#	self, msg
+# Positional arguments:
+#	self, msg
+115:           0 RESUME               0
+
+116:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (verbose)
+              24 TO_BOOL
+              32 POP_JUMP_IF_FALSE    (to 92)
+
+117:          36 LOAD_GLOBAL          (NULL + print)
+              46 LOAD_CONST           ("  [")
+              48 LOAD_FAST            (self)
+              50 LOAD_ATTR            (label)
+              70 FORMAT_SIMPLE
+              72 LOAD_CONST           ("] ")
+              74 LOAD_FAST            (msg)
+              76 FORMAT_SIMPLE
+              78 BUILD_STRING         4
+              80 CALL                 (1 positional)
+              88 POP_TOP
+              90 RETURN_CONST         (None)
+
+116:     >>   92 RETURN_CONST         (None)
+
+
+# Method Name:       _headers
+# Filename:          mailmanage_client.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        119
+# Constants:
+#    0: None
+#    1: 'Bearer '
+#    2: 'application/json'
+#    3: ('Authorization', 'Accept', 'Content-Type')
+# Names:
+#    0: api_key
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+119:           0 RESUME               0
+
+121:           2 LOAD_CONST           ("Bearer ")
+               4 LOAD_FAST            (self)
+               6 LOAD_ATTR            (api_key)
+              26 FORMAT_SIMPLE
+              28 BUILD_STRING         2
+
+122:          30 LOAD_CONST           ("application/json")
+
+123:          32 LOAD_CONST           ("application/json")
+
+120:          34 LOAD_CONST           (('Authorization', 'Accept', 'Content-Type'))
+              36 BUILD_CONST_KEY_MAP  3
+              38 RETURN_VALUE
+
+
+# Method Name:       _request_kwargs
+# Filename:          mailmanage_client.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        3
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        126
+# Constants:
+#    0: None
+# Names:
+#    0: requests_kwargs
+#    1: proxy
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+126:           0 RESUME               0
+
+127:           2 LOAD_GLOBAL          (NULL + requests_kwargs)
+              12 LOAD_FAST            (self)
+              14 LOAD_ATTR            (proxy)
+              34 CALL                 (1 positional)
+              42 RETURN_VALUE
+
+
+# Method Name:       _is_gptmail_openai_pool
+# Filename:          mailmanage_client.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        129
+# Constants:
+#    0: None
+#    1: ' '
+#    2: 'gptmail'
+#    3: 'passkissyou'
+# Names:
+#    0: label
+#    1: base_url
+#    2: lower
+# Varnames:
+#	self, text
+# Positional arguments:
+#	self
+# Local variables:
+#    1: text
+129:           0 RESUME               0
+
+130:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (label)
+              24 FORMAT_SIMPLE
+              26 LOAD_CONST           (" ")
+              28 LOAD_FAST            (self)
+              30 LOAD_ATTR            (base_url)
+              50 FORMAT_SIMPLE
+              52 BUILD_STRING         3
+              54 LOAD_ATTR            (NULL|self + lower)
+              74 CALL                 (0 positional)
+              82 STORE_FAST           (text)
+
+131:          84 LOAD_CONST           ("gptmail")
+              86 LOAD_FAST            (text)
+              88 CONTAINS_OP          (in)
+              92 COPY                 1
+              94 TO_BOOL
+             102 POP_JUMP_IF_TRUE     (to 116)
+             106 POP_TOP
+             108 LOAD_CONST           ("passkissyou")
+             110 LOAD_FAST            (text)
+             112 CONTAINS_OP          (in)
+         >>  116 RETURN_VALUE
+
+
+# Method Name:       _valid_openai_otp
+# Filename:          mailmanage_client.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        9
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        133
+# Constants:
+#    0: None
+#    1: '\\d{6}'
+#    2: ''
+# Names:
+#    0: bool
+#    1: re
+#    2: fullmatch
+#    3: str
+#    4: strip
+# Varnames:
+#	code
+# Positional arguments:
+#	code
+133:           0 RESUME               0
+
+135:           2 LOAD_GLOBAL          (NULL + bool)
+              12 LOAD_GLOBAL          (re)
+              22 LOAD_ATTR            (fullmatch)
+              42 PUSH_NULL
+              44 LOAD_CONST           ("\\d{6}")
+              46 LOAD_GLOBAL          (NULL + str)
+              56 LOAD_FAST            (code)
+              58 COPY                 1
+              60 TO_BOOL
+              68 POP_JUMP_IF_TRUE     (to 76)
+              72 POP_TOP
+              74 LOAD_CONST           ("")
+         >>   76 CALL                 (1 positional)
+              84 LOAD_ATTR            (NULL|self + strip)
+             104 CALL                 (0 positional)
+             112 CALL                 (2 positional)
+             120 CALL                 (1 positional)
+             128 RETURN_VALUE
+
+
+# Method Name:       _message_field
+# Filename:          mailmanage_client.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        8
+# Flags:             0x00000007 (VARARGS | NEWLOCALS | OPTIMIZED)
+# First Line:        137
+# Constants:
+#    0: None
+#    1: (None, '')
+#    2: False
+#    3: ('ensure_ascii',)
+#    4: ''
+# Names:
+#    0: get
+#    1: isinstance
+#    2: dict
+#    3: list
+#    4: tuple
+#    5: set
+#    6: json
+#    7: dumps
+#    8: Exception
+#    9: str
+# Varnames:
+#	message, keys, key, value
+# Positional arguments:
+#	message
+# Local variables:
+#    1: keys
+#    2: key
+#    3: value
+137:           0 RESUME               0
+
+139:           2 LOAD_FAST            (keys)
+               4 GET_ITER
+               6 FOR_ITER             (to 210)
+              10 STORE_FAST           (key)
+
+140:          12 LOAD_FAST            (message)
+              14 LOAD_ATTR            (NULL|self + get)
+              34 LOAD_FAST            (key)
+              36 CALL                 (1 positional)
+              44 STORE_FAST           (value)
+
+141:          46 LOAD_FAST            (value)
+              48 LOAD_CONST           ((None, ''))
+              50 CONTAINS_OP          (not in)
+              54 POP_JUMP_IF_TRUE     (to 62)
+              58 JUMP_BACKWARD        (to 6)
+
+142:     >>   62 LOAD_GLOBAL          (NULL + isinstance)
+              72 LOAD_FAST            (value)
+              74 LOAD_GLOBAL          (dict)
+              84 LOAD_GLOBAL          (list)
+              94 LOAD_GLOBAL          (tuple)
+             104 LOAD_GLOBAL          (set)
+             114 BUILD_TUPLE          4
+             116 CALL                 (2 positional)
+             124 TO_BOOL
+             132 POP_JUMP_IF_FALSE    (to 184)
+
+143:         136 NOP
+
+144:         138 LOAD_GLOBAL          (json)
+             148 LOAD_ATTR            (dumps)
+             168 PUSH_NULL
+             170 LOAD_FAST            (value)
+             172 LOAD_CONST           (False)
+             174 LOAD_CONST           (('ensure_ascii',))
+             176 CALL_KW              2
+             178 SWAP                 (TOS <-> TOS1)
+             180 POP_TOP
+             182 RETURN_VALUE
+
+147:     >>  184 LOAD_GLOBAL          (NULL + str)
+             194 LOAD_FAST            (value)
+             196 CALL                 (1 positional)
+             204 SWAP                 (TOS <-> TOS1)
+             206 POP_TOP
+             208 RETURN_VALUE
+
+139:     >>  210 END_FOR
+             212 POP_TOP
+
+148:         214 RETURN_CONST         ("")
+         >>  216 PUSH_EXC_INFO
+
+145:         218 LOAD_GLOBAL          (Exception)
+             228 CHECK_EXC_MATCH
+             230 POP_JUMP_IF_FALSE    (to 266)
+             234 POP_TOP
+
+146:         236 LOAD_GLOBAL          (NULL + str)
+             246 LOAD_FAST            (value)
+             248 CALL                 (1 positional)
+             256 SWAP                 (TOS <-> TOS1)
+             258 POP_EXCEPT
+             260 SWAP                 (TOS <-> TOS1)
+             262 POP_TOP
+             264 RETURN_VALUE
+
+145:     >>  266 RERAISE              0
+         >>  268 COPY                 3
+             270 POP_EXCEPT
+             272 RERAISE              1
+
+ExceptionTable:
+  138 to 176 -> 216 [1]
+  216 to 256 -> 268 [2] lasti
+  266 to 266 -> 268 [2] lasti
+
+# Method Name:       _message_search_text
+# Filename:          mailmanage_client.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        13
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        150
+# Constants:
+#    0: None
+#    1: ''
+#    2: 'subject'
+#    3: 'title'
+#    4: 'from_addr'
+#    5: 'from'
+#    6: 'sender'
+#    7: 'text'
+#    8: 'body'
+#    9: 'content'
+#   10: 'html'
+#   11: 'raw'
+#   12: 'full'
+#   13: 'snippet'
+#   14: 'preview'
+#   15: '\n'
+#   16: <Code311 code object <genexpr> at 0x1077466d0, file mailmanage_client.py>, line 159
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: _message_field
+#    3: join
+# Varnames:
+#	cls, message, parts
+# Positional arguments:
+#	cls, message
+# Local variables:
+#    2: parts
+150:           0 RESUME               0
+
+152:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (message)
+              14 LOAD_GLOBAL          (dict)
+              24 CALL                 (2 positional)
+              32 TO_BOOL
+              40 POP_JUMP_IF_TRUE     (to 46)
+
+153:          44 RETURN_CONST         ("")
+
+155:     >>   46 LOAD_FAST            (cls)
+              48 LOAD_ATTR            (NULL|self + _message_field)
+              68 LOAD_FAST            (message)
+              70 LOAD_CONST           ("subject")
+              72 LOAD_CONST           ("title")
+              74 CALL                 (3 positional)
+
+156:          82 LOAD_FAST            (cls)
+              84 LOAD_ATTR            (NULL|self + _message_field)
+             104 LOAD_FAST            (message)
+             106 LOAD_CONST           ("from_addr")
+             108 LOAD_CONST           ("from")
+             110 LOAD_CONST           ("sender")
+             112 CALL                 (4 positional)
+
+157:         120 LOAD_FAST            (cls)
+             122 LOAD_ATTR            (NULL|self + _message_field)
+             142 LOAD_FAST            (message)
+             144 LOAD_CONST           ("text")
+             146 LOAD_CONST           ("body")
+             148 LOAD_CONST           ("content")
+             150 LOAD_CONST           ("html")
+             152 LOAD_CONST           ("raw")
+             154 LOAD_CONST           ("full")
+             156 LOAD_CONST           ("snippet")
+             158 LOAD_CONST           ("preview")
+             160 CALL                 (9 positional)
+
+154:         168 BUILD_LIST           3
+             170 STORE_FAST           (parts)
+
+159:         172 LOAD_CONST           ("\n")
+             174 LOAD_ATTR            (NULL|self + join)
+             194 LOAD_CONST           (<Code311 code object <genexpr> at 0x1077466d0, file mailmanage_client.py>, line 159)
+             196 MAKE_FUNCTION
+             198 LOAD_FAST            (parts)
+             200 GET_ITER
+             202 CALL                 (0 positional)
+             210 CALL                 (1 positional)
+             218 RETURN_VALUE
+
+
+# Method Name:       _compact_text
+# Filename:          mailmanage_client.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        8
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        161
+# Constants:
+#    0: None
+#    1: '\\s+'
+#    2: ' '
+#    3: ''
+# Names:
+#    0: re
+#    1: sub
+#    2: str
+#    3: strip
+# Varnames:
+#	text
+# Positional arguments:
+#	text
+161:           0 RESUME               0
+
+163:           2 LOAD_GLOBAL          (re)
+              12 LOAD_ATTR            (sub)
+              32 PUSH_NULL
+              34 LOAD_CONST           ("\\s+")
+              36 LOAD_CONST           (" ")
+              38 LOAD_GLOBAL          (NULL + str)
+              48 LOAD_FAST            (text)
+              50 COPY                 1
+              52 TO_BOOL
+              60 POP_JUMP_IF_TRUE     (to 68)
+              64 POP_TOP
+              66 LOAD_CONST           ("")
+         >>   68 CALL                 (1 positional)
+              76 CALL                 (3 positional)
+              84 LOAD_ATTR            (NULL|self + strip)
+             104 CALL                 (0 positional)
+             112 RETURN_VALUE
+
+
+# Method Name:       _looks_like_openai_otp_message
+# Filename:          mailmanage_client.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        6
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        165
+# Constants:
+#    0: None
+#    1: False
+#    2: <Code311 code object <genexpr> at 0x1077467c0, file mailmanage_client.py>, line 170
+#    3: 'from_addr'
+#    4: 'from'
+#    5: 'sender'
+#    6: 'subject'
+#    7: 'title'
+#    8: 'noreply@tm.openai.com'
+#    9: 'openai'
+#   10: True
+#   11: 'chatgpt'
+# Names:
+#    0: _compact_text
+#    1: _message_search_text
+#    2: lower
+#    3: any
+#    4: OPENAI_OTP_ANCHORS
+#    5: _message_field
+# Varnames:
+#	cls, message, has_anchor, sender, subject
+# Positional arguments:
+#	cls, message
+# Local variables:
+#    2: has_anchor
+#    3: sender
+#    4: subject
+# Cell variables:
+#    0: text
+               0 MAKE_CELL            (text)
+
+165:           2 RESUME               0
+
+167:           4 LOAD_FAST            (cls)
+               6 LOAD_ATTR            (NULL|self + _compact_text)
+              26 LOAD_FAST            (cls)
+              28 LOAD_ATTR            (NULL|self + _message_search_text)
+              48 LOAD_FAST            (message)
+              50 CALL                 (1 positional)
+              58 CALL                 (1 positional)
+              66 LOAD_ATTR            (NULL|self + lower)
+              86 CALL                 (0 positional)
+              94 STORE_DEREF          (text)
+
+168:          96 LOAD_DEREF           (text)
+              98 TO_BOOL
+             106 POP_JUMP_IF_TRUE     (to 112)
+
+169:         110 RETURN_CONST         (False)
+
+170:     >>  112 LOAD_GLOBAL          (NULL + any)

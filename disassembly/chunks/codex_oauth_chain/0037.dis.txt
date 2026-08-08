@@ -1,0 +1,800 @@
+            1342 LOAD_FAST            (workspaces)
+            1344 CALL                 (1 positional)
+            1352 FORMAT_SIMPLE
+            1354 BUILD_STRING         2
+            1356 CALL                 (1 positional)
+            1364 POP_TOP
+
+2423:     >> 1366 LOAD_GLOBAL          (NULL + _clean)
+            1376 LOAD_FAST            (response)
+            1378 LOAD_ATTR            (NULL|self + get)
+            1398 LOAD_CONST           ("_location")
+            1400 CALL                 (1 positional)
+            1408 CALL                 (1 positional)
+            1416 STORE_FAST           (location)
+
+2424:        1418 LOAD_FAST            (location)
+            1420 TO_BOOL
+            1428 POP_JUMP_IF_FALSE    (to 1490)
+
+2425:        1432 LOAD_FAST            (parts)
+            1434 LOAD_ATTR            (NULL|self + append)
+            1454 LOAD_CONST           ("location=")
+            1456 LOAD_GLOBAL          (NULL + _url_shape)
+            1466 LOAD_FAST            (location)
+            1468 CALL                 (1 positional)
+            1476 FORMAT_SIMPLE
+            1478 BUILD_STRING         2
+            1480 CALL                 (1 positional)
+            1488 POP_TOP
+
+2426:     >> 1490 LOAD_GLOBAL          (NULL + _continue_url)
+            1500 LOAD_FAST            (response)
+            1502 CALL                 (1 positional)
+            1510 STORE_FAST           (next_url)
+
+2427:        1512 LOAD_FAST            (next_url)
+            1514 TO_BOOL
+            1522 POP_JUMP_IF_FALSE    (to 1672)
+            1526 LOAD_FAST_LOAD_FAST  (next_url, location)
+            1528 COMPARE_OP           (!=)
+            1532 POP_JUMP_IF_FALSE    (to 1672)
+
+2428:        1536 LOAD_FAST            (parts)
+            1538 LOAD_ATTR            (NULL|self + append)
+            1558 LOAD_CONST           ("next=")
+            1560 LOAD_GLOBAL          (NULL + _url_shape)
+            1570 LOAD_FAST            (next_url)
+            1572 CALL                 (1 positional)
+            1580 FORMAT_SIMPLE
+            1582 BUILD_STRING         2
+            1584 CALL                 (1 positional)
+            1592 POP_TOP
+
+2429:        1594 LOAD_FAST            (parts)
+            1596 LOAD_ATTR            (NULL|self + append)
+            1616 LOAD_CONST           ("next_path=")
+            1618 LOAD_GLOBAL          (NULL + urlparse)
+            1628 LOAD_FAST            (next_url)
+            1630 CALL                 (1 positional)
+            1638 LOAD_ATTR            (path)
+            1658 FORMAT_SIMPLE
+            1660 BUILD_STRING         2
+            1662 CALL                 (1 positional)
+            1670 POP_TOP
+
+2430:     >> 1672 LOAD_FAST            (response)
+            1674 LOAD_ATTR            (NULL|self + get)
+            1694 LOAD_CONST           ("error")
+            1696 CALL                 (1 positional)
+            1704 STORE_FAST           (error)
+
+2431:        1706 LOAD_GLOBAL          (NULL + isinstance)
+            1716 LOAD_FAST            (error)
+            1718 LOAD_GLOBAL          (dict)
+            1728 CALL                 (2 positional)
+            1736 TO_BOOL
+            1744 POP_JUMP_IF_FALSE    (to 1974)
+
+2432:        1748 LOAD_GLOBAL          (NULL + _clean)
+            1758 LOAD_FAST            (error)
+            1760 LOAD_ATTR            (NULL|self + get)
+            1780 LOAD_CONST           ("code")
+            1782 CALL                 (1 positional)
+            1790 CALL                 (1 positional)
+            1798 STORE_FAST           (error_code)
+
+2433:        1800 LOAD_GLOBAL          (NULL + _clean)
+            1810 LOAD_FAST            (error)
+            1812 LOAD_ATTR            (NULL|self + get)
+            1832 LOAD_CONST           ("message")
+            1834 CALL                 (1 positional)
+            1842 CALL                 (1 positional)
+            1850 STORE_FAST           (error_message)
+
+2434:        1852 LOAD_FAST            (error_code)
+            1854 TO_BOOL
+            1862 POP_JUMP_IF_FALSE    (to 1912)
+
+2435:        1866 LOAD_FAST            (parts)
+            1868 LOAD_ATTR            (NULL|self + append)
+            1888 LOAD_CONST           ("error_code=")
+            1890 LOAD_FAST            (error_code)
+            1892 LOAD_CONST           (None)
+            1894 LOAD_CONST           (80)
+            1896 BINARY_SLICE
+            1898 FORMAT_SIMPLE
+            1900 BUILD_STRING         2
+            1902 CALL                 (1 positional)
+            1910 POP_TOP
+
+2436:     >> 1912 LOAD_FAST            (error_message)
+            1914 TO_BOOL
+            1922 POP_JUMP_IF_FALSE    (to 1974)
+
+2437:        1926 LOAD_FAST            (parts)
+            1928 LOAD_ATTR            (NULL|self + append)
+            1948 LOAD_CONST           ("error_message=")
+            1950 LOAD_FAST            (error_message)
+            1952 LOAD_CONST           (None)
+            1954 LOAD_CONST           (120)
+            1956 BINARY_SLICE
+            1958 CONVERT_VALUE        2
+            1960 FORMAT_SIMPLE
+            1962 BUILD_STRING         2
+            1964 CALL                 (1 positional)
+            1972 POP_TOP
+
+2438:     >> 1974 LOAD_FAST            (response)
+            1976 LOAD_ATTR            (NULL|self + get)
+            1996 LOAD_CONST           ("_set_cookie_names")
+            1998 CALL                 (1 positional)
+            2006 STORE_FAST           (set_cookie_names)
+
+2439:        2008 LOAD_GLOBAL          (NULL + isinstance)
+            2018 LOAD_FAST            (set_cookie_names)
+            2020 LOAD_GLOBAL          (list)
+            2030 CALL                 (2 positional)
+            2038 TO_BOOL
+            2046 POP_JUMP_IF_FALSE    (to 2154)
+            2050 LOAD_FAST            (set_cookie_names)
+            2052 TO_BOOL
+            2060 POP_JUMP_IF_FALSE    (to 2154)
+
+2440:        2064 LOAD_FAST            (parts)
+            2066 LOAD_ATTR            (NULL|self + append)
+            2086 LOAD_CONST           ("set_cookies=")
+            2088 LOAD_CONST           (",")
+            2090 LOAD_ATTR            (NULL|self + join)
+            2110 LOAD_CONST           (<Code311 code object <genexpr> at 0x105f74610, file codex_oauth_chain.py>, line 2440)
+            2112 MAKE_FUNCTION
+            2114 LOAD_FAST            (set_cookie_names)
+            2116 LOAD_CONST           (None)
+            2118 LOAD_CONST           (12)
+            2120 BINARY_SLICE
+            2122 GET_ITER
+            2124 CALL                 (0 positional)
+            2132 CALL                 (1 positional)
+            2140 FORMAT_SIMPLE
+            2142 BUILD_STRING         2
+            2144 CALL                 (1 positional)
+            2152 POP_TOP
+
+2441:     >> 2154 LOAD_GLOBAL          (NULL + _clean)
+            2164 LOAD_FAST            (response)
+            2166 LOAD_ATTR            (NULL|self + get)
+            2186 LOAD_CONST           ("_body_summary")
+            2188 CALL                 (1 positional)
+            2196 CALL                 (1 positional)
+            2204 STORE_FAST           (body)
+
+2442:        2206 LOAD_FAST            (body)
+            2208 TO_BOOL
+            2216 POP_JUMP_IF_FALSE    (to 2466)
+
+2445:        2220 LOAD_CONST           (('consent', 'workspace', 'error', 'continue', 'callback', 'login', 'log in', 'email', 'authorize', '__next_data__', 'just a moment', 'cloudflare'))
+            2222 GET_ITER
+
+2443:        2224 LOAD_FAST_AND_CLEAR  (name)
+            2226 SWAP                 (TOS <-> TOS1)
+            2228 BUILD_LIST           0
+            2230 SWAP                 (TOS <-> TOS1)
+
+2445:        2232 GET_ITER
+            2234 FOR_ITER             (to 2292)
+            2238 STORE_FAST           (name)
+
+2459:        2240 LOAD_FAST            (name)
+            2242 LOAD_FAST            (body)
+            2244 LOAD_ATTR            (NULL|self + lower)
+            2264 CALL                 (0 positional)
+            2272 CONTAINS_OP          (in)
+
+2444:        2276 POP_JUMP_IF_TRUE     (to 2284)
+            2280 JUMP_BACKWARD        (to 2234)
+         >> 2284 LOAD_FAST            (name)
+            2286 LIST_APPEND          2
+            2288 JUMP_BACKWARD        (to 2234)
+
+2445:     >> 2292 END_FOR
+            2294 POP_TOP
+
+2443:        2296 STORE_FAST           (markers)
+            2298 STORE_FAST           (name)
+
+2461:        2300 LOAD_FAST            (parts)
+            2302 LOAD_ATTR            (NULL|self + append)
+            2322 LOAD_CONST           ("body_len=")
+            2324 LOAD_GLOBAL          (NULL + len)
+         >> 2334 LOAD_FAST            (body)
+            2336 CALL                 (1 positional)
+            2344 FORMAT_SIMPLE
+            2346 LOAD_CONST           (" body_hash=")
+            2348 LOAD_GLOBAL          (NULL + _short_hash)
+            2358 LOAD_FAST            (body)
+            2360 CALL                 (1 positional)
+            2368 FORMAT_SIMPLE
+            2370 BUILD_STRING         4
+            2372 CALL                 (1 positional)
+            2380 POP_TOP
+
+2462:        2382 LOAD_FAST            (markers)
+            2384 TO_BOOL
+            2392 POP_JUMP_IF_FALSE    (to 2466)
+
+2463:        2396 LOAD_FAST            (parts)
+            2398 LOAD_ATTR            (NULL|self + append)
+            2418 LOAD_CONST           ("markers=")
+            2420 LOAD_CONST           (",")
+            2422 LOAD_ATTR            (NULL|self + join)
+            2442 LOAD_FAST            (markers)
+            2444 CALL                 (1 positional)
+            2452 FORMAT_SIMPLE
+            2454 BUILD_STRING         2
+            2456 CALL                 (1 positional)
+            2464 POP_TOP
+
+2464:     >> 2466 LOAD_GLOBAL          (NULL + _html_probe)
+            2476 LOAD_FAST            (response)
+            2478 LOAD_ATTR            (NULL|self + get)
+            2498 LOAD_CONST           ("_body")
+            2500 CALL                 (1 positional)
+            2508 COPY                 1
+            2510 TO_BOOL
+            2518 POP_JUMP_IF_TRUE     (to 2526)
+            2522 POP_TOP
+            2524 LOAD_CONST           ("")
+         >> 2526 CALL                 (1 positional)
+            2534 STORE_FAST           (html_probe)
+
+2465:        2536 LOAD_FAST            (html_probe)
+            2538 TO_BOOL
+            2546 POP_JUMP_IF_FALSE    (to 2590)
+
+2466:        2550 LOAD_FAST            (parts)
+            2552 LOAD_ATTR            (NULL|self + append)
+            2572 LOAD_CONST           ("html_probe=")
+            2574 LOAD_FAST            (html_probe)
+            2576 FORMAT_SIMPLE
+            2578 BUILD_STRING         2
+            2580 CALL                 (1 positional)
+            2588 POP_TOP
+
+2467:     >> 2590 LOAD_GLOBAL          (NULL + _as_bool)
+            2600 LOAD_FAST            (self)
+            2602 LOAD_ATTR            (config)
+            2622 LOAD_ATTR            (NULL|self + get)
+            2642 LOAD_CONST           ("trace_cookies")
+            2644 CALL                 (1 positional)
+            2652 LOAD_CONST           (False)
+            2654 CALL                 (2 positional)
+            2662 TO_BOOL
+            2670 POP_JUMP_IF_FALSE    (to 3074)
+
+2468:        2674 LOAD_FAST            (self)
+            2676 LOAD_ATTR            (NULL|self + _cookie_snapshot)
+            2696 CALL                 (0 positional)
+            2704 STORE_FAST           (snapshot)
+
+2469:        2706 LOAD_GLOBAL          (NULL + isinstance)
+            2716 LOAD_FAST            (snapshot)
+            2718 LOAD_GLOBAL          (dict)
+            2728 CALL                 (2 positional)
+            2736 TO_BOOL
+            2744 POP_JUMP_IF_FALSE    (to 2782)
+            2748 LOAD_FAST            (snapshot)
+            2750 LOAD_ATTR            (NULL|self + get)
+            2770 LOAD_CONST           ("session_markers")
+            2772 CALL                 (1 positional)
+            2780 JUMP_FORWARD         (to 2784)
+         >> 2782 BUILD_LIST           0
+         >> 2784 STORE_FAST           (markers)
+
+2470:        2786 LOAD_GLOBAL          (NULL + isinstance)
+            2796 LOAD_FAST            (snapshot)
+            2798 LOAD_GLOBAL          (dict)
+            2808 CALL                 (2 positional)
+            2816 TO_BOOL
+            2824 POP_JUMP_IF_FALSE    (to 2862)
+            2828 LOAD_FAST            (snapshot)
+            2830 LOAD_ATTR            (NULL|self + get)
+            2850 LOAD_CONST           ("domains")
+            2852 CALL                 (1 positional)
+            2860 JUMP_FORWARD         (to 2864)
+         >> 2862 BUILD_LIST           0
+         >> 2864 STORE_FAST           (domains)
+
+2471:        2866 LOAD_FAST            (markers)
+            2868 TO_BOOL
+            2876 POP_JUMP_IF_FALSE    (to 2970)
+
+2472:        2880 LOAD_FAST            (parts)
+            2882 LOAD_ATTR            (NULL|self + append)
+            2902 LOAD_CONST           ("cookie_markers=")
+            2904 LOAD_CONST           (",")
+            2906 LOAD_ATTR            (NULL|self + join)
+            2926 LOAD_CONST           (<Code311 code object <genexpr> at 0x105f745b0, file codex_oauth_chain.py>, line 2472)
+            2928 MAKE_FUNCTION
+            2930 LOAD_FAST            (markers)
+            2932 LOAD_CONST           (None)
+            2934 LOAD_CONST           (12)
+            2936 BINARY_SLICE
+            2938 GET_ITER
+            2940 CALL                 (0 positional)
+            2948 CALL                 (1 positional)
+            2956 FORMAT_SIMPLE
+            2958 BUILD_STRING         2
+            2960 CALL                 (1 positional)
+            2968 POP_TOP
+
+2473:     >> 2970 LOAD_FAST            (domains)
+            2972 TO_BOOL
+            2980 POP_JUMP_IF_FALSE    (to 3074)
+
+2474:        2984 LOAD_FAST            (parts)
+            2986 LOAD_ATTR            (NULL|self + append)
+            3006 LOAD_CONST           ("cookie_domains=")
+            3008 LOAD_CONST           (",")
+            3010 LOAD_ATTR            (NULL|self + join)
+            3030 LOAD_CONST           (<Code311 code object <genexpr> at 0x105f74550, file codex_oauth_chain.py>, line 2474)
+            3032 MAKE_FUNCTION
+            3034 LOAD_FAST            (domains)
+            3036 LOAD_CONST           (None)
+            3038 LOAD_CONST           (8)
+            3040 BINARY_SLICE
+            3042 GET_ITER
+            3044 CALL                 (0 positional)
+            3052 CALL                 (1 positional)
+            3060 FORMAT_SIMPLE
+            3062 BUILD_STRING         2
+            3064 CALL                 (1 positional)
+            3072 POP_TOP
+
+2475:     >> 3074 LOAD_GLOBAL          (NULL + _emit)
+            3084 LOAD_FAST            (self)
+            3086 LOAD_ATTR            (log_fn)
+            3106 LOAD_CONST           (" ")
+            3108 LOAD_ATTR            (NULL|self + join)
+            3128 LOAD_FAST            (parts)
+            3130 CALL                 (1 positional)
+            3138 LOAD_CONST           ("info")
+            3140 CALL                 (3 positional)
+            3148 POP_TOP
+            3150 RETURN_CONST         (None)
+         >> 3152 SWAP                 (TOS <-> TOS1)
+            3154 POP_TOP
+
+2443:        3156 SWAP                 (TOS <-> TOS1)
+            3158 STORE_FAST           (name)
+            3160 RERAISE              0
+
+ExceptionTable:
+  2228 to 2274 -> 3152 [2]
+  2284 to 2294 -> 3152 [2]
+
+# Method Name:       _headers_for_url
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2477
+# Constants:
+#    0: None
+#    1: 'referer'
+#    2: 'same-origin'
+#    3: 'cross-site'
+#    4: 'sec-fetch-site'
+#    5: 'navigate'
+#    6: 'sec-fetch-mode'
+# Names:
+#    0: dict
+#    1: PAGE_HEADERS
+#    2: urlparse
+#    3: _clean
+#    4: netloc
+# Varnames:
+#	self, url, referer, headers, target, ref
+# Positional arguments:
+#	self, url, referer
+# Local variables:
+#    3: headers
+#    4: target
+#    5: ref
+2477:           0 RESUME               0
+
+2478:           2 LOAD_GLOBAL          (NULL + dict)
+              12 LOAD_GLOBAL          (PAGE_HEADERS)
+              22 CALL                 (1 positional)
+              30 STORE_FAST           (headers)
+
+2479:          32 LOAD_FAST            (referer)
+              34 TO_BOOL
+              42 POP_JUMP_IF_FALSE    (to 54)
+
+2480:          46 LOAD_FAST_LOAD_FAST  (referer, headers)
+              48 LOAD_CONST           ("referer")
+              50 STORE_SUBSCR
+
+2481:     >>   54 LOAD_GLOBAL          (NULL + urlparse)
+              64 LOAD_GLOBAL          (NULL + _clean)
+              74 LOAD_FAST            (url)
+              76 CALL                 (1 positional)
+              84 CALL                 (1 positional)
+              92 STORE_FAST           (target)
+
+2482:          94 LOAD_GLOBAL          (NULL + urlparse)
+             104 LOAD_GLOBAL          (NULL + _clean)
+             114 LOAD_FAST            (referer)
+             116 CALL                 (1 positional)
+             124 CALL                 (1 positional)
+             132 STORE_FAST           (ref)
+
+2483:         134 LOAD_FAST            (target)
+             136 LOAD_ATTR            (netloc)
+             156 TO_BOOL
+             164 POP_JUMP_IF_FALSE    (to 270)
+             168 LOAD_FAST            (ref)
+             170 LOAD_ATTR            (netloc)
+             190 TO_BOOL
+             198 POP_JUMP_IF_FALSE    (to 270)
+
+2484:         202 LOAD_FAST            (target)
+             204 LOAD_ATTR            (netloc)
+             224 LOAD_FAST            (ref)
+             226 LOAD_ATTR            (netloc)
+             246 COMPARE_OP           (==)
+             250 POP_JUMP_IF_FALSE    (to 258)
+             254 LOAD_CONST           ("same-origin")
+             256 JUMP_FORWARD         (to 260)
+         >>  258 LOAD_CONST           ("cross-site")
+         >>  260 LOAD_FAST            (headers)
+             262 LOAD_CONST           ("sec-fetch-site")
+             264 STORE_SUBSCR
+             268 JUMP_FORWARD         (to 326)
+
+2485:     >>  270 LOAD_FAST            (target)
+             272 LOAD_ATTR            (netloc)
+             292 TO_BOOL
+             300 POP_JUMP_IF_FALSE    (to 316)
+
+2486:         304 LOAD_CONST           ("cross-site")
+             306 LOAD_FAST            (headers)
+             308 LOAD_CONST           ("sec-fetch-site")
+             310 STORE_SUBSCR
+             314 JUMP_FORWARD         (to 326)
+
+2488:     >>  316 LOAD_CONST           ("same-origin")
+             318 LOAD_FAST            (headers)
+             320 LOAD_CONST           ("sec-fetch-site")
+             322 STORE_SUBSCR
+
+2489:     >>  326 LOAD_CONST           ("navigate")
+             328 LOAD_FAST            (headers)
+             330 LOAD_CONST           ("sec-fetch-mode")
+             332 STORE_SUBSCR
+
+2490:         336 LOAD_FAST            (headers)
+             338 RETURN_VALUE
+
+
+# Method Name:       _next_url
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2492
+# Constants:
+#    0: None
+#    1: ('base_url', 'default_base')
+# Names:
+#    0: _abs_url
+#    1: _url_origin
+#    2: AUTH
+# Varnames:
+#	self, current_url, raw_next
+# Positional arguments:
+#	self, current_url, raw_next
+2492:           0 RESUME               0
+
+2493:           2 LOAD_GLOBAL          (NULL + _abs_url)
+              12 LOAD_FAST_LOAD_FAST  (raw_next, current_url)
+              14 LOAD_GLOBAL          (NULL + _url_origin)
+              24 LOAD_FAST            (current_url)
+              26 CALL                 (1 positional)
+              34 COPY                 1
+              36 TO_BOOL
+              44 POP_JUMP_IF_TRUE     (to 60)
+              48 POP_TOP
+              50 LOAD_GLOBAL          (AUTH)
+         >>   60 LOAD_CONST           (('base_url', 'default_base'))
+              62 CALL_KW              3
+              64 RETURN_VALUE
+
+
+# Method Name:       _fetch_continue_step
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  9
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2495
+# Constants:
+#    0: None
+#    1: False
+#    2: 30
+#    3: ('headers', 'allow_redirects', 'timeout')
+#    4: 'url'
+#    5: ''
+#    6: 'headers'
+#    7: 'location'
+# Names:
+#    0: session
+#    1: get
+#    2: _headers_for_url
+#    3: _json_response
+#    4: str
+#    5: getattr
+#    6: _next_url
+#    7: _continue_url
+# Varnames:
+#	self, url, referer, response, data, final_url, location, next_url, raw_continue
+# Positional arguments:
+#	self, url, referer
+# Local variables:
+#    3: response
+#    4: data
+#    5: final_url
+#    6: location
+#    7: next_url
+#    8: raw_continue
+2495:           0 RESUME               0
+
+2496:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (session)
+              24 LOAD_ATTR            (NULL|self + get)
+
+2497:          44 LOAD_FAST            (url)
+
+2498:          46 LOAD_FAST            (self)
+              48 LOAD_ATTR            (NULL|self + _headers_for_url)
+              68 LOAD_FAST_LOAD_FAST  (url, referer)
+              70 CALL                 (2 positional)
+
+2499:          78 LOAD_CONST           (False)
+
+2500:          80 LOAD_CONST           (30)
+
+2496:          82 LOAD_CONST           (('headers', 'allow_redirects', 'timeout'))
+              84 CALL_KW              4
+              86 STORE_FAST           (response)
+
+2502:          88 LOAD_GLOBAL          (NULL + _json_response)
+              98 LOAD_FAST            (response)
+             100 CALL                 (1 positional)
+             108 STORE_FAST           (data)
+
+2503:         110 LOAD_GLOBAL          (NULL + str)
+             120 LOAD_GLOBAL          (NULL + getattr)
+             130 LOAD_FAST            (response)
+             132 LOAD_CONST           ("url")
+             134 LOAD_CONST           ("")
+             136 CALL                 (3 positional)
+             144 COPY                 1
+             146 TO_BOOL
+             154 POP_JUMP_IF_TRUE     (to 162)
+             158 POP_TOP
+             160 LOAD_FAST            (url)
+         >>  162 CALL                 (1 positional)
+             170 STORE_FAST           (final_url)
+
+2504:         172 LOAD_GLOBAL          (NULL + str)
+             182 LOAD_GLOBAL          (NULL + getattr)
+             192 LOAD_FAST            (response)
+             194 LOAD_CONST           ("headers")
+             196 BUILD_MAP            0
+             198 CALL                 (3 positional)
+             206 LOAD_ATTR            (NULL|self + get)
+             226 LOAD_CONST           ("location")
+             228 LOAD_CONST           ("")
+             230 CALL                 (2 positional)
+             238 COPY                 1
+             240 TO_BOOL
+             248 POP_JUMP_IF_TRUE     (to 256)
+             252 POP_TOP
+             254 LOAD_CONST           ("")
+         >>  256 CALL                 (1 positional)
+             264 STORE_FAST           (location)
+
+2505:         266 LOAD_FAST            (location)
+             268 TO_BOOL
+             276 POP_JUMP_IF_FALSE    (to 314)
+             280 LOAD_FAST            (self)
+             282 LOAD_ATTR            (NULL|self + _next_url)
+             302 LOAD_FAST_LOAD_FAST  (final_url, location)
+             304 CALL                 (2 positional)
+             312 JUMP_FORWARD         (to 316)
+         >>  314 LOAD_CONST           ("")
+         >>  316 STORE_FAST           (next_url)
+
+2506:         318 LOAD_FAST            (next_url)
+             320 TO_BOOL
+             328 POP_JUMP_IF_TRUE     (to 402)
+
+2507:         332 LOAD_GLOBAL          (NULL + _continue_url)
+             342 LOAD_FAST            (data)
+             344 CALL                 (1 positional)
+             352 STORE_FAST           (raw_continue)
+
+2508:         354 LOAD_FAST            (raw_continue)
+             356 TO_BOOL
+             364 POP_JUMP_IF_FALSE    (to 402)
+
+2509:         368 LOAD_FAST            (self)
+             370 LOAD_ATTR            (NULL|self + _next_url)
+             390 LOAD_FAST_LOAD_FAST  (final_url, raw_continue)
+             392 CALL                 (2 positional)
+             400 STORE_FAST           (next_url)
+
+2510:     >>  402 LOAD_FAST_LOAD_FAST  (data, final_url)
+             404 LOAD_FAST            (next_url)
+             406 BUILD_TUPLE          3
+             408 RETURN_VALUE
+
+
+# Method Name:       _follow_url_until_code
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 3
+# Number of locals:  15
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2512
+# Constants:
+#    0: None
+#    1: ':step'
+#    2: 1
+#    3: ':request'
+#    4: ':code_in_url'
+#    5: ':response'
+#    6: ':code_in_final_url'
+#    7: ':code_in_next_url'
+#    8: ''
+# Names:
+#    0: _clean
+#    1: range
+#    2: _trace_continue
+#    3: _extract_target_code
+#    4: _fetch_continue_step
+# Varnames:
+#	self, start_url, oauth_params, stage, referer, max_steps, url, last_data, current_referer, idx, code, _state, data, final_url, next_url
+# Positional arguments:
+#	self, start_url, oauth_params
+# Local variables:
+#    3: stage
+#    4: referer
+#    5: max_steps
+#    6: url
+#    7: last_data
+#    8: current_referer
+#    9: idx
+#   10: code
+#   11: _state
+#   12: data
+#   13: final_url
+#   14: next_url
+2512:           0 RESUME               0
+
+2521:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (start_url)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (url)
+
+2522:          24 BUILD_MAP            0
+              26 STORE_FAST           (last_data)
+
+2523:          28 LOAD_FAST            (referer)
+              30 STORE_FAST           (current_referer)
+
+2524:          32 LOAD_GLOBAL          (NULL + range)
+              42 LOAD_FAST            (max_steps)
+              44 CALL                 (1 positional)
+              52 GET_ITER
+              54 EXTENDED_ARG         (256)
+              56 FOR_ITER             (to 642)
+              60 STORE_FAST           (idx)
+
+2525:          62 LOAD_FAST            (url)
+              64 TO_BOOL
+              72 POP_JUMP_IF_TRUE     (to 86)
+
+2526:          76 POP_TOP
+
+2547:          78 LOAD_CONST           ("")
+              80 LOAD_FAST            (last_data)
+              82 BUILD_TUPLE          2
+              84 RETURN_VALUE
+
+2527:     >>   86 LOAD_FAST            (self)
+              88 LOAD_ATTR            (NULL|self + _trace_continue)
+             108 LOAD_FAST            (stage)
+             110 FORMAT_SIMPLE
+             112 LOAD_CONST           (":step")
+             114 LOAD_FAST            (idx)
+             116 LOAD_CONST           (1)
+             118 BINARY_OP            (+)
+             122 FORMAT_SIMPLE
+             124 LOAD_CONST           (":request")
+             126 BUILD_STRING         4
+             128 LOAD_FAST            (url)
+             130 CALL                 (2 positional)
+             138 POP_TOP
+
+2528:         140 LOAD_FAST            (self)
+             142 LOAD_ATTR            (NULL|self + _extract_target_code)
+             162 LOAD_FAST_LOAD_FAST  (url, oauth_params)
+             164 CALL                 (2 positional)
+             172 UNPACK_SEQUENCE      2
+             176 STORE_FAST_STORE_FAST (code, _state)
+
+2529:         178 LOAD_FAST            (code)
+             180 TO_BOOL
+             188 POP_JUMP_IF_FALSE    (to 256)
+
+2530:         192 LOAD_FAST            (self)
+             194 LOAD_ATTR            (NULL|self + _trace_continue)
+             214 LOAD_FAST            (stage)
+             216 FORMAT_SIMPLE
+             218 LOAD_CONST           (":step")
+             220 LOAD_FAST            (idx)
+             222 LOAD_CONST           (1)
+             224 BINARY_OP            (+)
+             228 FORMAT_SIMPLE
+             230 LOAD_CONST           (":code_in_url")
+             232 BUILD_STRING         4
+             234 LOAD_FAST            (url)
+             236 CALL                 (2 positional)
+             244 POP_TOP
+
+2531:         246 LOAD_FAST_LOAD_FAST  (url, last_data)
+             248 BUILD_TUPLE          2
+             250 SWAP                 (TOS <-> TOS1)
+             252 POP_TOP
+             254 RETURN_VALUE
+
+2532:     >>  256 LOAD_FAST            (self)
+             258 LOAD_ATTR            (NULL|self + _fetch_continue_step)
+             278 LOAD_FAST_LOAD_FAST  (url, current_referer)
+             280 CALL                 (2 positional)
+             288 UNPACK_SEQUENCE      3
+             292 STORE_FAST_STORE_FAST (data, final_url)
+             294 STORE_FAST           (next_url)
+
+2533:         296 LOAD_FAST            (data)
+             298 STORE_FAST           (last_data)
+
+2534:         300 LOAD_FAST            (self)
+             302 LOAD_ATTR            (NULL|self + _trace_continue)
+             322 LOAD_FAST            (stage)
+             324 FORMAT_SIMPLE
+             326 LOAD_CONST           (":step")
+             328 LOAD_FAST            (idx)
+             330 LOAD_CONST           (1)
+             332 BINARY_OP            (+)
+             336 FORMAT_SIMPLE
+             338 LOAD_CONST           (":response")
+             340 BUILD_STRING         4
+             342 LOAD_FAST_LOAD_FAST  (url, data)
+             344 CALL                 (3 positional)
+             352 POP_TOP
+
+2535:         354 LOAD_FAST            (self)
+             356 LOAD_ATTR            (NULL|self + _extract_target_code)

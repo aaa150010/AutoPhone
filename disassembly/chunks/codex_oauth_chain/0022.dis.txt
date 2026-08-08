@@ -1,0 +1,800 @@
+# Positional arguments:
+#	self
+# Local variables:
+#    1: kwargs
+#    2: candidate
+#    3: service
+#    4: max_price
+#    5: activation_id
+#    6: phone
+#    7: exc
+834:           0 RESUME               0
+
+835:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (selector)
+              24 EXTENDED_ARG         (256)
+              26 POP_JUMP_IF_NONE     (to 986)
+
+836:          30 LOAD_FAST            (self)
+              32 LOAD_ATTR            (selector)
+              52 LOAD_ATTR            (NULL|self + pick)
+              72 LOAD_GLOBAL          (NULL + set)
+              82 LOAD_FAST            (self)
+              84 LOAD_ATTR            (_session_excluded_routes)
+             104 CALL                 (1 positional)
+             112 LOAD_CONST           (('exclude_routes',))
+             114 CALL_KW              1
+             116 STORE_FAST           (candidate)
+
+837:         118 LOAD_FAST            (candidate)
+             120 TO_BOOL
+             128 POP_JUMP_IF_TRUE     (to 154)
+
+838:         132 LOAD_GLOBAL          (NULL + CodexChainError)
+             142 LOAD_CONST           ("sms_smart_no_candidate")
+             144 CALL                 (1 positional)
+             152 RAISE_VARARGS        (exception instance)
+
+839:     >>  154 LOAD_GLOBAL          (NULL + _emit)
+
+840:         164 LOAD_FAST            (self)
+             166 LOAD_ATTR            (log_fn)
+
+841:         186 LOAD_CONST           ("  [SMS智能] 选择线路: 国家 ")
+             188 LOAD_FAST            (candidate)
+             190 LOAD_ATTR            (country)
+             210 FORMAT_SIMPLE
+             212 LOAD_CONST           (" 运营商 ")
+             214 LOAD_FAST            (candidate)
+             216 LOAD_ATTR            (provider_id)
+             236 FORMAT_SIMPLE
+             238 LOAD_CONST           (" 库存 ")
+             240 LOAD_FAST            (candidate)
+             242 LOAD_ATTR            (count)
+             262 FORMAT_SIMPLE
+             264 LOAD_CONST           (" 价格 ")
+             266 LOAD_FAST            (candidate)
+             268 LOAD_ATTR            (price)
+             288 LOAD_CONST           (".4f")
+             290 FORMAT_WITH_SPEC
+             292 BUILD_STRING         8
+
+842:         294 LOAD_CONST           ("info")
+
+839:         296 CALL                 (3 positional)
+             304 POP_TOP
+
+844:         306 NOP
+
+845:         308 LOAD_GLOBAL          (NULL + _clean)
+             318 LOAD_FAST            (kwargs)
+             320 LOAD_ATTR            (NULL|self + get)
+             340 LOAD_CONST           ("service")
+             342 CALL                 (1 positional)
+             350 COPY                 1
+             352 TO_BOOL
+             360 POP_JUMP_IF_TRUE     (to 436)
+             364 POP_TOP
+             366 LOAD_FAST            (self)
+             368 LOAD_ATTR            (config)
+             388 LOAD_ATTR            (NULL|self + get)
+             408 LOAD_CONST           ("service")
+             410 CALL                 (1 positional)
+             418 COPY                 1
+             420 TO_BOOL
+             428 POP_JUMP_IF_TRUE     (to 436)
+             432 POP_TOP
+             434 LOAD_CONST           ("dr")
+         >>  436 CALL                 (1 positional)
+             444 STORE_FAST           (service)
+
+846:         446 LOAD_GLOBAL          (NULL + _clean)
+             456 LOAD_FAST            (kwargs)
+             458 LOAD_ATTR            (NULL|self + get)
+             478 LOAD_CONST           ("max_price")
+             480 CALL                 (1 positional)
+             488 COPY                 1
+             490 TO_BOOL
+             498 POP_JUMP_IF_TRUE     (to 574)
+             502 POP_TOP
+             504 LOAD_FAST            (self)
+             506 LOAD_ATTR            (config)
+             526 LOAD_ATTR            (NULL|self + get)
+             546 LOAD_CONST           ("max_price")
+             548 CALL                 (1 positional)
+             556 COPY                 1
+             558 TO_BOOL
+             566 POP_JUMP_IF_TRUE     (to 574)
+             570 POP_TOP
+             572 LOAD_CONST           ("")
+         >>  574 CALL                 (1 positional)
+             582 STORE_FAST           (max_price)
+
+847:         584 LOAD_GLOBAL          (NULL + hasattr)
+             594 LOAD_FAST            (self)
+             596 LOAD_ATTR            (provider)
+             616 LOAD_CONST           ("get_number_from_candidate")
+             618 CALL                 (2 positional)
+             626 TO_BOOL
+             634 POP_JUMP_IF_FALSE    (to 762)
+
+848:         638 LOAD_FAST            (self)
+             640 LOAD_ATTR            (provider)
+             660 LOAD_ATTR            (NULL|self + get_number_from_candidate)
+
+849:         680 LOAD_FAST            (service)
+
+850:         682 LOAD_FAST            (candidate)
+             684 LOAD_ATTR            (country)
+
+851:         704 LOAD_FAST            (candidate)
+             706 LOAD_ATTR            (provider_id)
+
+852:         726 LOAD_FAST            (max_price)
+
+853:         728 LOAD_FAST            (candidate)
+             730 LOAD_ATTR            (price)
+
+848:         750 LOAD_CONST           (('service', 'country', 'provider_ids', 'max_price', 'candidate_price'))
+             752 CALL_KW              5
+             754 UNPACK_SEQUENCE      2
+             758 STORE_FAST_STORE_FAST (activation_id, phone)
+             760 JUMP_FORWARD         (to 862)
+
+856:     >>  762 LOAD_FAST            (self)
+             764 LOAD_ATTR            (provider)
+             784 LOAD_ATTR            (NULL|self + get_number)
+
+857:         804 LOAD_FAST            (service)
+
+858:         806 LOAD_FAST            (candidate)
+             808 LOAD_ATTR            (country)
+
+859:         828 LOAD_FAST            (candidate)
+             830 LOAD_ATTR            (provider_id)
+
+860:         850 LOAD_FAST            (max_price)
+
+856:         852 LOAD_CONST           (('service', 'country', 'provider_ids', 'max_price'))
+             854 CALL_KW              4
+             856 UNPACK_SEQUENCE      2
+             860 STORE_FAST_STORE_FAST (activation_id, phone)
+
+862:     >>  862 LOAD_GLOBAL          (NULL + PhoneLease)
+
+863:         872 LOAD_GLOBAL          (NULL + _clean)
+             882 LOAD_FAST            (activation_id)
+             884 CALL                 (1 positional)
+
+864:         892 LOAD_GLOBAL          (NULL + _clean)
+             902 LOAD_FAST            (phone)
+             904 CALL                 (1 positional)
+
+865:         912 LOAD_CONST           ("smart:")
+             914 LOAD_FAST            (candidate)
+             916 LOAD_ATTR            (country)
+             936 FORMAT_SIMPLE
+             938 LOAD_CONST           ("/")
+             940 LOAD_FAST            (candidate)
+             942 LOAD_ATTR            (provider_id)
+             962 FORMAT_SIMPLE
+             964 BUILD_STRING         4
+
+866:         966 LOAD_FAST            (candidate)
+             968 LOAD_CONST           (False)
+             970 LOAD_CONST           (False)
+             972 LOAD_CONST           (('candidate', 'ready_recorded', 'complete_recorded'))
+             974 BUILD_CONST_KEY_MAP  3
+
+862:         976 CALL                 (4 positional)
+             984 RETURN_VALUE
+
+872:     >>  986 LOAD_FAST            (self)
+             988 LOAD_ATTR            (provider)
+            1008 LOAD_ATTR            (get_number)
+            1028 PUSH_NULL
+            1030 LOAD_CONST           (())
+            1032 BUILD_MAP            0
+            1034 LOAD_FAST            (kwargs)
+            1036 DICT_MERGE           1
+            1038 CALL_FUNCTION_EX     (keyword and positional arguments)
+            1040 UNPACK_SEQUENCE      2
+            1044 STORE_FAST_STORE_FAST (activation_id, phone)
+
+873:        1046 LOAD_GLOBAL          (NULL + PhoneLease)
+            1056 LOAD_GLOBAL          (NULL + _clean)
+            1066 LOAD_FAST            (activation_id)
+            1068 CALL                 (1 positional)
+            1076 LOAD_GLOBAL          (NULL + _clean)
+            1086 LOAD_FAST            (phone)
+            1088 CALL                 (1 positional)
+            1096 LOAD_CONST           ("fixed")
+            1098 CALL                 (3 positional)
+            1106 RETURN_VALUE
+         >> 1108 PUSH_EXC_INFO
+
+868:        1110 LOAD_GLOBAL          (Exception)
+            1120 CHECK_EXC_MATCH
+            1122 POP_JUMP_IF_FALSE    (to 1248)
+            1126 STORE_FAST           (exc)
+
+869:        1128 LOAD_FAST            (self)
+            1130 LOAD_ATTR            (selector)
+            1150 LOAD_ATTR            (NULL|self + record_result)
+            1170 LOAD_FAST            (candidate)
+            1172 LOAD_CONST           (False)
+            1174 LOAD_GLOBAL          (NULL + str)
+            1184 LOAD_FAST            (exc)
+            1186 CALL                 (1 positional)
+            1194 CALL                 (3 positional)
+            1202 POP_TOP
+
+870:        1204 LOAD_FAST            (self)
+            1206 LOAD_ATTR            (NULL|self + _exclude_candidate)
+            1226 LOAD_FAST            (candidate)
+            1228 CALL                 (1 positional)
+            1236 POP_TOP
+
+871:        1238 RAISE_VARARGS        (reraise)
+         >> 1240 LOAD_CONST           (None)
+            1242 STORE_FAST           (exc)
+            1244 DELETE_FAST          (exc)
+            1246 RERAISE              1
+
+868:     >> 1248 RERAISE              0
+         >> 1250 COPY                 3
+            1252 POP_EXCEPT
+            1254 RERAISE              1
+
+ExceptionTable:
+  308 to 982 -> 1108 [0]
+  1108 to 1126 -> 1250 [1] lasti
+  1128 to 1238 -> 1240 [1] lasti
+  1240 to 1248 -> 1250 [1] lasti
+
+# Method Name:       mark_ready
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        875
+# Constants:
+#    0: None
+#    1: 'set_ready'
+#    2: 'candidate'
+#    3: 'ready_recorded'
+#    4: False
+#    5: 'timeout'
+#    6: True
+# Names:
+#    0: hasattr
+#    1: provider
+#    2: set_ready
+#    3: isinstance
+#    4: meta
+#    5: dict
+#    6: get
+#    7: selector
+#    8: record_result
+# Varnames:
+#	self, lease, meta, candidate
+# Positional arguments:
+#	self, lease
+# Local variables:
+#    2: meta
+#    3: candidate
+875:           0 RESUME               0
+
+876:           2 LOAD_GLOBAL          (NULL + hasattr)
+              12 LOAD_FAST            (self)
+              14 LOAD_ATTR            (provider)
+              34 LOAD_CONST           ("set_ready")
+              36 CALL                 (2 positional)
+              44 TO_BOOL
+              52 POP_JUMP_IF_FALSE    (to 108)
+
+877:          56 LOAD_FAST            (self)
+              58 LOAD_ATTR            (provider)
+              78 LOAD_ATTR            (NULL|self + set_ready)
+              98 CALL                 (0 positional)
+             106 POP_TOP
+
+878:     >>  108 LOAD_GLOBAL          (NULL + isinstance)
+             118 LOAD_FAST            (lease)
+             120 LOAD_ATTR            (meta)
+             140 LOAD_GLOBAL          (dict)
+             150 CALL                 (2 positional)
+             158 TO_BOOL
+             166 POP_JUMP_IF_FALSE    (to 194)
+             170 LOAD_FAST            (lease)
+             172 LOAD_ATTR            (meta)
+             192 JUMP_FORWARD         (to 196)
+         >>  194 BUILD_MAP            0
+         >>  196 STORE_FAST           (meta)
+
+879:         198 LOAD_FAST            (meta)
+             200 LOAD_ATTR            (NULL|self + get)
+             220 LOAD_CONST           ("candidate")
+             222 CALL                 (1 positional)
+             230 STORE_FAST           (candidate)
+
+880:         232 LOAD_FAST            (self)
+             234 LOAD_ATTR            (selector)
+             254 POP_JUMP_IF_NONE     (to 382)
+             258 LOAD_FAST            (candidate)
+             260 POP_JUMP_IF_NONE     (to 380)
+             264 LOAD_FAST            (meta)
+             266 LOAD_ATTR            (NULL|self + get)
+             286 LOAD_CONST           ("ready_recorded")
+             288 CALL                 (1 positional)
+             296 TO_BOOL
+             304 POP_JUMP_IF_TRUE     (to 378)
+
+883:         308 LOAD_FAST            (self)
+             310 LOAD_ATTR            (selector)
+             330 LOAD_ATTR            (NULL|self + record_result)
+             350 LOAD_FAST            (candidate)
+             352 LOAD_CONST           (False)
+             354 LOAD_CONST           ("timeout")
+             356 CALL                 (3 positional)
+             364 POP_TOP
+
+884:         366 LOAD_CONST           (True)
+             368 LOAD_FAST            (meta)
+             370 LOAD_CONST           ("ready_recorded")
+             372 STORE_SUBSCR
+             376 RETURN_CONST         (None)
+
+880:     >>  378 RETURN_CONST         (None)
+         >>  380 RETURN_CONST         (None)
+         >>  382 RETURN_CONST         (None)
+
+
+# Method Name:       wait_code
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        886
+# Constants:
+#    0: None
+#    1: 180
+#    2: ('timeout',)
+# Names:
+#    0: int
+#    1: code_timeout
+#    2: _clean
+#    3: provider
+#    4: wait_code
+#    5: TypeError
+# Varnames:
+#	self, lease, timeout, timeout_value
+# Positional arguments:
+#	self, lease, timeout
+# Local variables:
+#    3: timeout_value
+886:           0 RESUME               0
+
+887:           2 LOAD_GLOBAL          (NULL + int)
+              12 LOAD_FAST            (timeout)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 70)
+              28 POP_TOP
+              30 LOAD_FAST            (self)
+              32 LOAD_ATTR            (code_timeout)
+              52 COPY                 1
+              54 TO_BOOL
+              62 POP_JUMP_IF_TRUE     (to 70)
+              66 POP_TOP
+              68 LOAD_CONST           (180)
+         >>   70 CALL                 (1 positional)
+              78 STORE_FAST           (timeout_value)
+
+888:          80 NOP
+
+889:          82 LOAD_GLOBAL          (NULL + _clean)
+              92 LOAD_FAST            (self)
+              94 LOAD_ATTR            (provider)
+             114 LOAD_ATTR            (NULL|self + wait_code)
+             134 LOAD_FAST            (timeout_value)
+             136 LOAD_CONST           (('timeout',))
+             138 CALL_KW              1
+             140 CALL                 (1 positional)
+             148 RETURN_VALUE
+         >>  150 PUSH_EXC_INFO
+
+890:         152 LOAD_GLOBAL          (TypeError)
+             162 CHECK_EXC_MATCH
+             164 POP_JUMP_IF_FALSE    (to 246)
+             168 POP_TOP
+
+891:         170 LOAD_GLOBAL          (NULL + _clean)
+             180 LOAD_FAST            (self)
+             182 LOAD_ATTR            (provider)
+             202 LOAD_ATTR            (NULL|self + wait_code)
+             222 LOAD_FAST            (timeout_value)
+             224 CALL                 (1 positional)
+             232 CALL                 (1 positional)
+             240 SWAP                 (TOS <-> TOS1)
+             242 POP_EXCEPT
+             244 RETURN_VALUE
+
+890:     >>  246 RERAISE              0
+         >>  248 COPY                 3
+             250 POP_EXCEPT
+             252 RERAISE              1
+
+ExceptionTable:
+  82 to 146 -> 150 [0]
+  150 to 240 -> 248 [1] lasti
+  246 to 246 -> 248 [1] lasti
+
+# Method Name:       complete
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        893
+# Constants:
+#    0: None
+#    1: 'complete'
+#    2: 'candidate'
+#    3: 'complete_recorded'
+#    4: True
+#    5: ''
+# Names:
+#    0: hasattr
+#    1: provider
+#    2: complete
+#    3: isinstance
+#    4: meta
+#    5: dict
+#    6: get
+#    7: selector
+#    8: record_result
+# Varnames:
+#	self, lease, meta, candidate
+# Positional arguments:
+#	self, lease
+# Local variables:
+#    2: meta
+#    3: candidate
+893:           0 RESUME               0
+
+894:           2 LOAD_GLOBAL          (NULL + hasattr)
+              12 LOAD_FAST            (self)
+              14 LOAD_ATTR            (provider)
+              34 LOAD_CONST           ("complete")
+              36 CALL                 (2 positional)
+              44 TO_BOOL
+              52 POP_JUMP_IF_FALSE    (to 108)
+
+895:          56 LOAD_FAST            (self)
+              58 LOAD_ATTR            (provider)
+              78 LOAD_ATTR            (NULL|self + complete)
+              98 CALL                 (0 positional)
+             106 POP_TOP
+
+896:     >>  108 LOAD_GLOBAL          (NULL + isinstance)
+             118 LOAD_FAST            (lease)
+             120 LOAD_ATTR            (meta)
+             140 LOAD_GLOBAL          (dict)
+             150 CALL                 (2 positional)
+             158 TO_BOOL
+             166 POP_JUMP_IF_FALSE    (to 194)
+             170 LOAD_FAST            (lease)
+             172 LOAD_ATTR            (meta)
+             192 JUMP_FORWARD         (to 196)
+         >>  194 BUILD_MAP            0
+         >>  196 STORE_FAST           (meta)
+
+897:         198 LOAD_FAST            (meta)
+             200 LOAD_ATTR            (NULL|self + get)
+             220 LOAD_CONST           ("candidate")
+             222 CALL                 (1 positional)
+             230 STORE_FAST           (candidate)
+
+898:         232 LOAD_FAST            (self)
+             234 LOAD_ATTR            (selector)
+             254 POP_JUMP_IF_NONE     (to 382)
+             258 LOAD_FAST            (candidate)
+             260 POP_JUMP_IF_NONE     (to 380)
+             264 LOAD_FAST            (meta)
+             266 LOAD_ATTR            (NULL|self + get)
+             286 LOAD_CONST           ("complete_recorded")
+             288 CALL                 (1 positional)
+             296 TO_BOOL
+             304 POP_JUMP_IF_TRUE     (to 378)
+
+899:         308 LOAD_FAST            (self)
+             310 LOAD_ATTR            (selector)
+             330 LOAD_ATTR            (NULL|self + record_result)
+             350 LOAD_FAST            (candidate)
+             352 LOAD_CONST           (True)
+             354 LOAD_CONST           ("")
+             356 CALL                 (3 positional)
+             364 POP_TOP
+
+900:         366 LOAD_CONST           (True)
+             368 LOAD_FAST            (meta)
+             370 LOAD_CONST           ("complete_recorded")
+             372 STORE_SUBSCR
+             376 RETURN_CONST         (None)
+
+898:     >>  378 RETURN_CONST         (None)
+         >>  380 RETURN_CONST         (None)
+         >>  382 RETURN_CONST         (None)
+
+
+# Method Name:       cancel
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  7
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        902
+# Constants:
+#    0: None
+#    1: 'cancel'
+#    2: 'candidate'
+#    3: 'ready_recorded'
+#    4: 'complete_recorded'
+#    5: 'register rejected'
+#    6: False
+#    7: 'phone_rejected'
+# Names:
+#    0: hasattr
+#    1: provider
+#    2: cancel
+#    3: isinstance
+#    4: meta
+#    5: dict
+#    6: get
+#    7: selector
+#    8: classify_error
+#    9: record_result
+#   10: _exclude_candidate
+# Varnames:
+#	self, lease, reason, meta, candidate, failure_reason, failure_kind
+# Positional arguments:
+#	self, lease, reason
+# Local variables:
+#    3: meta
+#    4: candidate
+#    5: failure_reason
+#    6: failure_kind
+902:           0 RESUME               0
+
+903:           2 LOAD_GLOBAL          (NULL + hasattr)
+              12 LOAD_FAST            (self)
+              14 LOAD_ATTR            (provider)
+              34 LOAD_CONST           ("cancel")
+              36 CALL                 (2 positional)
+              44 TO_BOOL
+              52 POP_JUMP_IF_FALSE    (to 108)
+
+904:          56 LOAD_FAST            (self)
+              58 LOAD_ATTR            (provider)
+              78 LOAD_ATTR            (NULL|self + cancel)
+              98 CALL                 (0 positional)
+             106 POP_TOP
+
+905:     >>  108 LOAD_GLOBAL          (NULL + isinstance)
+             118 LOAD_FAST            (lease)
+             120 LOAD_ATTR            (meta)
+             140 LOAD_GLOBAL          (dict)
+             150 CALL                 (2 positional)
+             158 TO_BOOL
+             166 POP_JUMP_IF_FALSE    (to 194)
+             170 LOAD_FAST            (lease)
+             172 LOAD_ATTR            (meta)
+             192 JUMP_FORWARD         (to 196)
+         >>  194 BUILD_MAP            0
+         >>  196 STORE_FAST           (meta)
+
+906:         198 LOAD_FAST            (meta)
+             200 LOAD_ATTR            (NULL|self + get)
+             220 LOAD_CONST           ("candidate")
+             222 CALL                 (1 positional)
+             230 STORE_FAST           (candidate)
+
+907:         232 LOAD_FAST            (self)
+             234 LOAD_ATTR            (selector)
+             254 POP_JUMP_IF_NONE     (to 542)
+             258 LOAD_FAST            (candidate)
+             260 POP_JUMP_IF_NONE     (to 540)
+             264 LOAD_FAST            (meta)
+             266 LOAD_ATTR            (NULL|self + get)
+             286 LOAD_CONST           ("ready_recorded")
+             288 CALL                 (1 positional)
+             296 TO_BOOL
+             304 POP_JUMP_IF_TRUE     (to 538)
+             308 LOAD_FAST            (meta)
+             310 LOAD_ATTR            (NULL|self + get)
+             330 LOAD_CONST           ("complete_recorded")
+             332 CALL                 (1 positional)
+             340 TO_BOOL
+             348 POP_JUMP_IF_TRUE     (to 536)
+
+908:         352 LOAD_FAST            (reason)
+             354 COPY                 1
+             356 TO_BOOL
+             364 POP_JUMP_IF_TRUE     (to 372)
+             368 POP_TOP
+             370 LOAD_CONST           ("register rejected")
+         >>  372 STORE_FAST           (failure_reason)
+
+909:         374 LOAD_FAST            (self)
+             376 LOAD_ATTR            (selector)
+             396 LOAD_ATTR            (NULL|self + classify_error)
+             416 LOAD_FAST            (failure_reason)
+             418 CALL                 (1 positional)
+             426 STORE_FAST           (failure_kind)
+
+910:         428 LOAD_FAST            (self)
+             430 LOAD_ATTR            (selector)
+             450 LOAD_ATTR            (NULL|self + record_result)
+             470 LOAD_FAST            (candidate)
+             472 LOAD_CONST           (False)
+             474 LOAD_FAST            (failure_reason)
+             476 CALL                 (3 positional)
+             484 POP_TOP
+
+914:         486 LOAD_FAST            (failure_kind)
+             488 LOAD_CONST           ("phone_rejected")
+             490 COMPARE_OP           (!=)
+             494 POP_JUMP_IF_FALSE    (to 534)
+
+915:         498 LOAD_FAST            (self)
+             500 LOAD_ATTR            (NULL|self + _exclude_candidate)
+             520 LOAD_FAST            (candidate)
+             522 CALL                 (1 positional)
+             530 POP_TOP
+             532 RETURN_CONST         (None)
+
+914:     >>  534 RETURN_CONST         (None)
+
+907:     >>  536 RETURN_CONST         (None)
+         >>  538 RETURN_CONST         (None)
+         >>  540 RETURN_CONST         (None)
+         >>  542 RETURN_CONST         (None)
+
+
+# Method Name:       __init__
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 2
+# Number of locals:  4
+# Stack size:        2
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        921
+# Constants:
+#    0: None
+#    1: 0.0
+# Names:
+#    0: config
+#    1: timeout
+#    2: log_fn
+#    3: since_ts
+# Varnames:
+#	self, config, timeout, log_fn
+# Positional arguments:
+#	self, config
+# Local variables:
+#    2: timeout
+#    3: log_fn
+921:           0 RESUME               0
+
+922:           2 LOAD_FAST            (config)
+               4 COPY                 1
+               6 TO_BOOL
+              14 POP_JUMP_IF_TRUE     (to 22)
+              18 POP_TOP
+              20 BUILD_MAP            0
+         >>   22 LOAD_FAST            (self)
+              24 STORE_ATTR           (config)
+
+923:          34 LOAD_FAST_LOAD_FAST  (timeout, self)
+              36 STORE_ATTR           (timeout)
+
+924:          46 LOAD_FAST_LOAD_FAST  (log_fn, self)
+              48 STORE_ATTR           (log_fn)
+
+925:          58 LOAD_CONST           (0.0)
+              60 LOAD_FAST            (self)
+              62 STORE_ATTR           (since_ts)
+              72 RETURN_CONST         (None)
+
+
+# Method Name:       mark_sent
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        2
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        927
+# Constants:
+#    0: None
+#    1: 2
+# Names:
+#    0: time
+#    1: since_ts
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+927:           0 RESUME               0
+
+929:           2 LOAD_GLOBAL          (time)
+              12 LOAD_ATTR            (time)
+              32 PUSH_NULL
+              34 CALL                 (0 positional)
+              42 LOAD_CONST           (2)
+              44 BINARY_OP            (-)
+              48 LOAD_FAST            (self)
+              50 STORE_ATTR           (since_ts)
+              60 RETURN_CONST         (None)
+
+
+# Method Name:       wait_code
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        10
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        931
+# Constants:
+#    0: None
+#    1: 'email_provider'
+#    2: 'gptmail'
+#    3: '  [Codex] 邮箱 OTP 收码来源：'
+#    4: 'info'
+#    5: 0
+#    6: ('poll_email_code',)
+#    7: 'email_code_poll module missing: '
+#    8: True
+#    9: <Code311 code object <lambda> at 0x105ef4c40, file codex_oauth_chain.py>, line 943
+#   10: 15
+#   11: False
+#   12: ('timeout', 'verbose', 'log_fn', 'since_ts', 'report_health')
+#   13: 'MAIL_CODE_ERROR:'
+#   14: '\\d{6}'
+#   15: 'email_otp_timeout'
+# Names:
+#    0: _clean
+#    1: config
+#    2: get
+#    3: lower
+#    4: _emit
+#    5: log_fn
+#    6: email_code_poll
+#    7: poll_email_code
+#    8: Exception
+#    9: CodexChainError
+#   10: timeout
+#   11: since_ts
+#   12: time
+#   13: startswith
+#   14: re
+#   15: fullmatch
+# Varnames:
+#	self, email, provider, poll_email_code, exc, code
+# Positional arguments:
+#	self, email

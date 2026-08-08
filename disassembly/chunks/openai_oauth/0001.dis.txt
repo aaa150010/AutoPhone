@@ -1,0 +1,800 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          openai_oauth.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        24
+# Flags:             0x00000000 (0x0)
+# First Line:        1
+# Constants:
+#    0: '\nOpenAI OAuth 纯协议模块\n处理 OAuth 授权码交换、session 管理、邮箱/手机号登录\n\nOpenAI 使用的 OAuth 端点 (Auth0):\n  - authorize:  https://auth.openai.com/oauth/authorize\n  - token:      https://auth.openai.com/oauth/token\n  - userinfo:   https://auth.openai.com/userinfo\n\n登录相关端点 (Auth0 Universal Login):\n  - identifier: POST /u/login/identifier\n  - password:   POST /u/login/password\n  - mfa:        POST /u/mfa-otp-challenge\n'
+#    1: 0
+#    2: None
+#    3: ('dataclass',)
+#    4: ('Optional', 'Dict', 'Any', 'Tuple')
+#    5: ('urlparse', 'parse_qs', 'urlencode')
+#    6: 'https://auth.openai.com/oauth/authorize'
+#    7: 'https://auth.openai.com/oauth/token'
+#    8: 'https://auth.openai.com/userinfo'
+#    9: 'https://auth.openai.com'
+#   10: 'app_EMoamEEZ73f0CkXaXp7hrann'
+#   11: 'http://localhost:1455/auth/callback'
+#   12: 'openid profile email offline_access'
+#   13: ''
+#   14: 'S256'
+#   15: 'length'
+#   16: 'return'
+#   17: <Code311 code object generate_code_verifier at 0x109747a30, file openai_oauth.py>, line 52
+#   18: 'verifier'
+#   19: <Code311 code object generate_code_challenge at 0x1097479d0, file openai_oauth.py>, line 58
+#   20: <Code311 code object generate_state at 0x1097479a0, file openai_oauth.py>, line 64
+#   21: 'proxy'
+#   22: <Code311 code object _normalize_proxy_url at 0x109747910, file openai_oauth.py>, line 69
+#   23: 'oauth_url'
+#   24: <Code311 code object parse_oauth_url at 0x109716400, file openai_oauth.py>, line 76
+#   25: <Code311 code object strip_oauth_login_for_session_reuse at 0x109716490, file openai_oauth.py>, line 83
+#   26: 'client_id'
+#   27: 'redirect_uri'
+#   28: 'scope'
+#   29: 'audience'
+#   30: 'state'
+#   31: 'code_challenge'
+#   32: 'login_hint'
+#   33: 'screen_hint'
+#   34: 'prompt'
+#   35: <Code311 code object build_oauth_url at 0x1097165e0, file openai_oauth.py>, line 99
+#   36: <Code311 code object OAuthTokens at 0x109716670, file openai_oauth.py>, line 148
+#   37: 'OAuthTokens'
+#   38: <Code311 code object OpenAI_OAuth at 0x109716700, file openai_oauth.py>, line 181
+#   39: 'OpenAI_OAuth'
+#   40: '__main__'
+#   41: '--code'
+#   42: 'OAuth 授权码'
+#   43: ('help',)
+#   44: '--code-verifier'
+#   45: ('default',)
+#   46: '--redirect-uri'
+#   47: '--sub2api-url'
+#   48: '从 SUB2API 获取 OAuth URL'
+#   49: '--sub2api-email'
+#   50: '--sub2api-password'
+#   51: '--proxy'
+#   52: '--verbose'
+#   53: '-v'
+#   54: 'store_true'
+#   55: ('action',)
+#   56: ('verbose', 'proxy')
+#   57: 'OAuth URL: '
+#   58: 'Session ID: '
+#   59: 'State: '
+#   60: ('redirect_uri', 'code_verifier')
+#   61: 'Access Token: '
+#   62: 50
+#   63: '...'
+#   64: 'Email: '
+#   65: 'Expires: '
+#   66: 'Code Verifier: '
+#   67: (64,)
+# Names:
+#    0: __doc__
+#    1: re
+#    2: json
+#    3: time
+#    4: secrets
+#    5: hashlib
+#    6: base64
+#    7: requests
+#    8: dataclasses
+#    9: dataclass
+#   10: typing
+#   11: Optional
+#   12: Dict
+#   13: Any
+#   14: Tuple
+#   15: urllib.parse
+#   16: urlparse
+#   17: parse_qs
+#   18: urlencode
+#   19: OAUTH_AUTHORIZE_URL
+#   20: OAUTH_TOKEN_URL
+#   21: OAUTH_USERINFO_URL
+#   22: AUTH0_DOMAIN
+#   23: DEFAULT_CLIENT_ID
+#   24: DEFAULT_REDIRECT_URI
+#   25: DEFAULT_SCOPE
+#   26: DEFAULT_AUDIENCE
+#   27: CODE_CHALLENGE_METHOD
+#   28: int
+#   29: str
+#   30: generate_code_verifier
+#   31: generate_code_challenge
+#   32: generate_state
+#   33: _normalize_proxy_url
+#   34: parse_oauth_url
+#   35: strip_oauth_login_for_session_reuse
+#   36: build_oauth_url
+#   37: OAuthTokens
+#   38: OpenAI_OAuth
+#   39: OpenAIOAuth
+#   40: __name__
+#   41: argparse
+#   42: ArgumentParser
+#   43: p
+#   44: add_argument
+#   45: parse_args
+#   46: args
+#   47: verbose
+#   48: proxy
+#   49: oauth
+#   50: sub2api_url
+#   51: get_oauth_url_from_sub2api
+#   52: sub2api_email
+#   53: sub2api_password
+#   54: url
+#   55: sid
+#   56: st
+#   57: print
+#   58: code
+#   59: exchange_code
+#   60: redirect_uri
+#   61: code_verifier
+#   62: tokens
+#   63: access_token
+#   64: email
+#   65: expires_at
+#   66: state
+#   67: verifier
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ("\nOpenAI OAuth 纯协议模块\n处理 OAuth 授权码交换、session 管理、邮箱/手机号登录\n\nOpenAI 使用的 OAuth 端点 (Auth0):\n  - authorize:  https://auth.openai.com/oauth/authorize\n  - token:      https://auth.openai.com/oauth/token\n  - userinfo:   https://auth.openai.com/userinfo\n\n登录相关端点 (Auth0 Universal Login):\n  - identifier: POST /u/login/identifier\n  - password:   POST /u/login/password\n  - mfa:        POST /u/mfa-otp-challenge\n")
+               4 STORE_NAME           (__doc__)
+
+ 17:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (None)
+              10 IMPORT_NAME          (re)
+              12 STORE_NAME           (re)
+
+ 18:          14 LOAD_CONST           (0)
+              16 LOAD_CONST           (None)
+              18 IMPORT_NAME          (json)
+              20 STORE_NAME           (json)
+
+ 19:          22 LOAD_CONST           (0)
+              24 LOAD_CONST           (None)
+              26 IMPORT_NAME          (time)
+              28 STORE_NAME           (time)
+
+ 20:          30 LOAD_CONST           (0)
+              32 LOAD_CONST           (None)
+              34 IMPORT_NAME          (secrets)
+              36 STORE_NAME           (secrets)
+
+ 21:          38 LOAD_CONST           (0)
+              40 LOAD_CONST           (None)
+              42 IMPORT_NAME          (hashlib)
+              44 STORE_NAME           (hashlib)
+
+ 22:          46 LOAD_CONST           (0)
+              48 LOAD_CONST           (None)
+              50 IMPORT_NAME          (base64)
+              52 STORE_NAME           (base64)
+
+ 23:          54 LOAD_CONST           (0)
+              56 LOAD_CONST           (None)
+              58 IMPORT_NAME          (requests)
+              60 STORE_NAME           (requests)
+
+ 24:          62 LOAD_CONST           (0)
+              64 LOAD_CONST           (('dataclass',))
+              66 IMPORT_NAME          (dataclasses)
+              68 IMPORT_FROM          (dataclass)
+              70 STORE_NAME           (dataclass)
+              72 POP_TOP
+
+ 25:          74 LOAD_CONST           (0)
+              76 LOAD_CONST           (('Optional', 'Dict', 'Any', 'Tuple'))
+              78 IMPORT_NAME          (typing)
+              80 IMPORT_FROM          (Optional)
+              82 STORE_NAME           (Optional)
+              84 IMPORT_FROM          (Dict)
+              86 STORE_NAME           (Dict)
+              88 IMPORT_FROM          (Any)
+              90 STORE_NAME           (Any)
+              92 IMPORT_FROM          (Tuple)
+              94 STORE_NAME           (Tuple)
+              96 POP_TOP
+
+ 26:          98 LOAD_CONST           (0)
+             100 LOAD_CONST           (('urlparse', 'parse_qs', 'urlencode'))
+             102 IMPORT_NAME          (urllib.parse)
+             104 IMPORT_FROM          (urlparse)
+             106 STORE_NAME           (urlparse)
+             108 IMPORT_FROM          (parse_qs)
+             110 STORE_NAME           (parse_qs)
+             112 IMPORT_FROM          (urlencode)
+             114 STORE_NAME           (urlencode)
+             116 POP_TOP
+
+ 33:         118 LOAD_CONST           ("https://auth.openai.com/oauth/authorize")
+             120 STORE_NAME           (OAUTH_AUTHORIZE_URL)
+
+ 34:         122 LOAD_CONST           ("https://auth.openai.com/oauth/token")
+             124 STORE_NAME           (OAUTH_TOKEN_URL)
+
+ 35:         126 LOAD_CONST           ("https://auth.openai.com/userinfo")
+             128 STORE_NAME           (OAUTH_USERINFO_URL)
+
+ 36:         130 LOAD_CONST           ("https://auth.openai.com")
+             132 STORE_NAME           (AUTH0_DOMAIN)
+
+ 39:         134 LOAD_CONST           ("app_EMoamEEZ73f0CkXaXp7hrann")
+             136 STORE_NAME           (DEFAULT_CLIENT_ID)
+
+ 40:         138 LOAD_CONST           ("http://localhost:1455/auth/callback")
+             140 STORE_NAME           (DEFAULT_REDIRECT_URI)
+
+ 41:         142 LOAD_CONST           ("openid profile email offline_access")
+             144 STORE_NAME           (DEFAULT_SCOPE)
+
+ 42:         146 LOAD_CONST           ("")
+             148 STORE_NAME           (DEFAULT_AUDIENCE)
+
+ 45:         150 LOAD_CONST           ("S256")
+             152 STORE_NAME           (CODE_CHALLENGE_METHOD)
+
+ 52:         154 LOAD_CONST           ((64,))
+             156 LOAD_CONST           ("length")
+             158 LOAD_NAME            (int)
+             160 LOAD_CONST           ("return")
+             162 LOAD_NAME            (str)
+             164 BUILD_TUPLE          4
+             166 LOAD_CONST           (<Code311 code object generate_code_verifier at 0x109747a30, file openai_oauth.py>, line 52)
+             168 MAKE_FUNCTION
+             170 SET_FUNCTION_ATTRIBUTE 4
+             172 SET_FUNCTION_ATTRIBUTE 1
+             174 STORE_NAME           (generate_code_verifier)
+
+ 58:         176 LOAD_CONST           ("verifier")
+             178 LOAD_NAME            (str)
+             180 LOAD_CONST           ("return")
+             182 LOAD_NAME            (str)
+             184 BUILD_TUPLE          4
+             186 LOAD_CONST           (<Code311 code object generate_code_challenge at 0x1097479d0, file openai_oauth.py>, line 58)
+             188 MAKE_FUNCTION
+             190 SET_FUNCTION_ATTRIBUTE 4
+             192 STORE_NAME           (generate_code_challenge)
+
+ 64:         194 LOAD_CONST           ("return")
+             196 LOAD_NAME            (str)
+             198 BUILD_TUPLE          2
+             200 LOAD_CONST           (<Code311 code object generate_state at 0x1097479a0, file openai_oauth.py>, line 64)
+             202 MAKE_FUNCTION
+             204 SET_FUNCTION_ATTRIBUTE 4
+             206 STORE_NAME           (generate_state)
+
+ 69:         208 LOAD_CONST           ("proxy")
+             210 LOAD_NAME            (Any)
+             212 LOAD_CONST           ("return")
+             214 LOAD_NAME            (str)
+             216 BUILD_TUPLE          4
+             218 LOAD_CONST           (<Code311 code object _normalize_proxy_url at 0x109747910, file openai_oauth.py>, line 69)
+             220 MAKE_FUNCTION
+             222 SET_FUNCTION_ATTRIBUTE 4
+             224 STORE_NAME           (_normalize_proxy_url)
+
+ 76:         226 LOAD_CONST           ("oauth_url")
+             228 LOAD_NAME            (str)
+             230 LOAD_CONST           ("return")
+             232 LOAD_NAME            (Dict)
+             234 LOAD_NAME            (str)
+             236 LOAD_NAME            (str)
+             238 BUILD_TUPLE          2
+             240 BINARY_SUBSCR
+             244 BUILD_TUPLE          4
+             246 LOAD_CONST           (<Code311 code object parse_oauth_url at 0x109716400, file openai_oauth.py>, line 76)
+             248 MAKE_FUNCTION
+             250 SET_FUNCTION_ATTRIBUTE 4
+             252 STORE_NAME           (parse_oauth_url)
+
+ 83:         254 LOAD_CONST           ("oauth_url")
+             256 LOAD_NAME            (str)
+             258 LOAD_CONST           ("return")
+             260 LOAD_NAME            (str)
+             262 BUILD_TUPLE          4
+             264 LOAD_CONST           (<Code311 code object strip_oauth_login_for_session_reuse at 0x109716490, file openai_oauth.py>, line 83)
+             266 MAKE_FUNCTION
+             268 SET_FUNCTION_ATTRIBUTE 4
+             270 STORE_NAME           (strip_oauth_login_for_session_reuse)
+
+100:         272 LOAD_NAME            (DEFAULT_CLIENT_ID)
+
+101:         274 LOAD_NAME            (DEFAULT_REDIRECT_URI)
+
+102:         276 LOAD_NAME            (DEFAULT_SCOPE)
+
+103:         278 LOAD_NAME            (DEFAULT_AUDIENCE)
+
+104:         280 LOAD_CONST           (None)
+
+105:         282 LOAD_CONST           (None)
+
+106:         284 LOAD_CONST           (None)
+
+107:         286 LOAD_CONST           (None)
+
+108:         288 LOAD_CONST           (None)
+
+ 99:         290 BUILD_TUPLE          9
+             292 LOAD_CONST           ("client_id")
+
+100:         294 LOAD_NAME            (str)
+
+ 99:         296 LOAD_CONST           ("redirect_uri")
+
+101:         298 LOAD_NAME            (str)
+
+ 99:         300 LOAD_CONST           ("scope")
+
+102:         302 LOAD_NAME            (str)
+
+ 99:         304 LOAD_CONST           ("audience")
+
+103:         306 LOAD_NAME            (str)
+
+ 99:         308 LOAD_CONST           ("state")
+
+104:         310 LOAD_NAME            (Optional)
+             312 LOAD_NAME            (str)
+             314 BINARY_SUBSCR
+
+ 99:         318 LOAD_CONST           ("code_challenge")
+
+105:         320 LOAD_NAME            (Optional)
+             322 LOAD_NAME            (str)
+             324 BINARY_SUBSCR
+
+ 99:         328 LOAD_CONST           ("login_hint")
+
+106:         330 LOAD_NAME            (Optional)
+             332 LOAD_NAME            (str)
+             334 BINARY_SUBSCR
+
+ 99:         338 LOAD_CONST           ("screen_hint")
+
+107:         340 LOAD_NAME            (Optional)
+             342 LOAD_NAME            (str)
+             344 BINARY_SUBSCR
+
+ 99:         348 LOAD_CONST           ("prompt")
+
+108:         350 LOAD_NAME            (Optional)
+             352 LOAD_NAME            (str)
+             354 BINARY_SUBSCR
+
+ 99:         358 LOAD_CONST           ("return")
+
+109:         360 LOAD_NAME            (Tuple)
+             362 LOAD_NAME            (str)
+             364 LOAD_NAME            (str)
+             366 LOAD_NAME            (str)
+             368 BUILD_TUPLE          3
+             370 BINARY_SUBSCR
+
+ 99:         374 BUILD_TUPLE          20
+             376 LOAD_CONST           (<Code311 code object build_oauth_url at 0x1097165e0, file openai_oauth.py>, line 99)
+             378 MAKE_FUNCTION
+             380 SET_FUNCTION_ATTRIBUTE 4
+             382 SET_FUNCTION_ATTRIBUTE 1
+             384 STORE_NAME           (build_oauth_url)
+
+148:         386 LOAD_NAME            (dataclass)
+
+149:         388 LOAD_BUILD_CLASS
+             390 PUSH_NULL
+             392 LOAD_CONST           (<Code311 code object OAuthTokens at 0x109716670, file openai_oauth.py>, line 148)
+             394 MAKE_FUNCTION
+             396 LOAD_CONST           ("OAuthTokens")
+             398 CALL                 (2 positional)
+
+148:         406 CALL                 (0 positional)
+
+149:         414 STORE_NAME           (OAuthTokens)
+
+181:         416 LOAD_BUILD_CLASS
+             418 PUSH_NULL
+             420 LOAD_CONST           (<Code311 code object OpenAI_OAuth at 0x109716700, file openai_oauth.py>, line 181)
+             422 MAKE_FUNCTION
+             424 LOAD_CONST           ("OpenAI_OAuth")
+             426 CALL                 (2 positional)
+             434 STORE_NAME           (OpenAI_OAuth)
+
+360:         436 LOAD_NAME            (OpenAI_OAuth)
+             438 STORE_NAME           (OpenAIOAuth)
+
+361:         440 LOAD_NAME            (OAuthTokens)
+             442 STORE_NAME           (OAuthTokens)
+
+364:         444 LOAD_NAME            (__name__)
+             446 LOAD_CONST           ("__main__")
+             448 COMPARE_OP           (==)
+             452 EXTENDED_ARG         (256)
+             454 POP_JUMP_IF_FALSE    (to 1424)
+
+365:         458 LOAD_CONST           (0)
+             460 LOAD_CONST           (None)
+             462 IMPORT_NAME          (argparse)
+             464 STORE_NAME           (argparse)
+
+366:         466 LOAD_NAME            (argparse)
+             468 LOAD_ATTR            (ArgumentParser)
+             488 PUSH_NULL
+             490 CALL                 (0 positional)
+             498 STORE_NAME           (p)
+
+367:         500 LOAD_NAME            (p)
+             502 LOAD_ATTR            (NULL|self + add_argument)
+             522 LOAD_CONST           ("--code")
+             524 LOAD_CONST           ("OAuth 授权码")
+             526 LOAD_CONST           (('help',))
+             528 CALL_KW              2
+             530 POP_TOP
+
+368:         532 LOAD_NAME            (p)
+             534 LOAD_ATTR            (NULL|self + add_argument)
+             554 LOAD_CONST           ("--code-verifier")
+             556 LOAD_CONST           ("")
+             558 LOAD_CONST           (('default',))
+             560 CALL_KW              2
+             562 POP_TOP
+
+369:         564 LOAD_NAME            (p)
+             566 LOAD_ATTR            (NULL|self + add_argument)
+             586 LOAD_CONST           ("--redirect-uri")
+             588 LOAD_NAME            (DEFAULT_REDIRECT_URI)
+             590 LOAD_CONST           (('default',))
+             592 CALL_KW              2
+             594 POP_TOP
+
+370:         596 LOAD_NAME            (p)
+             598 LOAD_ATTR            (NULL|self + add_argument)
+             618 LOAD_CONST           ("--sub2api-url")
+             620 LOAD_CONST           ("从 SUB2API 获取 OAuth URL")
+             622 LOAD_CONST           (('help',))
+             624 CALL_KW              2
+             626 POP_TOP
+
+371:         628 LOAD_NAME            (p)
+             630 LOAD_ATTR            (NULL|self + add_argument)
+             650 LOAD_CONST           ("--sub2api-email")
+             652 LOAD_CONST           ("")
+             654 LOAD_CONST           (('default',))
+             656 CALL_KW              2
+             658 POP_TOP
+
+372:         660 LOAD_NAME            (p)
+             662 LOAD_ATTR            (NULL|self + add_argument)
+             682 LOAD_CONST           ("--sub2api-password")
+             684 LOAD_CONST           ("")
+             686 LOAD_CONST           (('default',))
+             688 CALL_KW              2
+             690 POP_TOP
+
+373:         692 LOAD_NAME            (p)
+             694 LOAD_ATTR            (NULL|self + add_argument)
+             714 LOAD_CONST           ("--proxy")
+             716 LOAD_CONST           ("")
+             718 LOAD_CONST           (('default',))
+             720 CALL_KW              2
+             722 POP_TOP
+
+374:         724 LOAD_NAME            (p)
+             726 LOAD_ATTR            (NULL|self + add_argument)
+             746 LOAD_CONST           ("--verbose")
+             748 LOAD_CONST           ("-v")
+             750 LOAD_CONST           ("store_true")
+             752 LOAD_CONST           (('action',))
+             754 CALL_KW              3
+             756 POP_TOP
+
+375:         758 LOAD_NAME            (p)
+             760 LOAD_ATTR            (NULL|self + parse_args)
+             780 CALL                 (0 positional)
+             788 STORE_NAME           (args)
+
+377:         790 LOAD_NAME            (OpenAI_OAuth)
+             792 PUSH_NULL
+             794 LOAD_NAME            (args)
+             796 LOAD_ATTR            (verbose)
+             816 LOAD_NAME            (args)
+             818 LOAD_ATTR            (proxy)
+             838 LOAD_CONST           (('verbose', 'proxy'))
+             840 CALL_KW              2
+             842 STORE_NAME           (oauth)
+
+379:         844 LOAD_NAME            (args)
+             846 LOAD_ATTR            (sub2api_url)
+             866 TO_BOOL
+             874 POP_JUMP_IF_FALSE    (to 1052)
+
+380:         878 LOAD_NAME            (oauth)
+             880 LOAD_ATTR            (NULL|self + get_oauth_url_from_sub2api)
+
+381:         900 LOAD_NAME            (args)
+             902 LOAD_ATTR            (sub2api_url)
+             922 LOAD_NAME            (args)
+             924 LOAD_ATTR            (sub2api_email)
+             944 LOAD_NAME            (args)
+             946 LOAD_ATTR            (sub2api_password)
+
+380:         966 CALL                 (3 positional)
+             974 UNPACK_SEQUENCE      3
+             978 STORE_NAME           (url)
+             980 STORE_NAME           (sid)
+             982 STORE_NAME           (st)
+
+383:         984 LOAD_NAME            (print)
+             986 PUSH_NULL
+             988 LOAD_CONST           ("OAuth URL: ")
+             990 LOAD_NAME            (url)
+             992 FORMAT_SIMPLE
+             994 BUILD_STRING         2
+             996 CALL                 (1 positional)
+            1004 POP_TOP
+
+384:        1006 LOAD_NAME            (print)
+            1008 PUSH_NULL
+            1010 LOAD_CONST           ("Session ID: ")
+            1012 LOAD_NAME            (sid)
+            1014 FORMAT_SIMPLE
+            1016 BUILD_STRING         2
+            1018 CALL                 (1 positional)
+            1026 POP_TOP
+
+385:        1028 LOAD_NAME            (print)
+            1030 PUSH_NULL
+            1032 LOAD_CONST           ("State: ")
+            1034 LOAD_NAME            (st)
+            1036 FORMAT_SIMPLE
+            1038 BUILD_STRING         2
+            1040 CALL                 (1 positional)
+            1048 POP_TOP
+            1050 RETURN_CONST         (None)
+
+386:     >> 1052 LOAD_NAME            (args)
+            1054 LOAD_ATTR            (code)
+            1074 TO_BOOL
+            1082 POP_JUMP_IF_FALSE    (to 1334)
+
+387:        1086 LOAD_NAME            (oauth)
+            1088 LOAD_ATTR            (NULL|self + exchange_code)
+
+388:        1108 LOAD_NAME            (args)
+            1110 LOAD_ATTR            (code)
+
+389:        1130 LOAD_NAME            (args)
+            1132 LOAD_ATTR            (redirect_uri)
+
+390:        1152 LOAD_NAME            (args)
+            1154 LOAD_ATTR            (code_verifier)
+            1174 COPY                 1
+            1176 TO_BOOL
+            1184 POP_JUMP_IF_TRUE     (to 1192)
+            1188 POP_TOP
+            1190 LOAD_CONST           (None)
+
+387:     >> 1192 LOAD_CONST           (('redirect_uri', 'code_verifier'))
+            1194 CALL_KW              3
+            1196 STORE_NAME           (tokens)
+
+392:        1198 LOAD_NAME            (print)
+            1200 PUSH_NULL
+            1202 LOAD_CONST           ("Access Token: ")
+            1204 LOAD_NAME            (tokens)
+            1206 LOAD_ATTR            (access_token)
+            1226 LOAD_CONST           (None)
+            1228 LOAD_CONST           (50)
+            1230 BINARY_SLICE
+            1232 FORMAT_SIMPLE
+            1234 LOAD_CONST           ("...")
+            1236 BUILD_STRING         3
+            1238 CALL                 (1 positional)
+            1246 POP_TOP
+
+393:        1248 LOAD_NAME            (print)
+            1250 PUSH_NULL
+            1252 LOAD_CONST           ("Email: ")
+            1254 LOAD_NAME            (tokens)
+            1256 LOAD_ATTR            (email)
+            1276 FORMAT_SIMPLE
+            1278 BUILD_STRING         2
+            1280 CALL                 (1 positional)
+            1288 POP_TOP
+
+394:        1290 LOAD_NAME            (print)
+            1292 PUSH_NULL
+            1294 LOAD_CONST           ("Expires: ")
+            1296 LOAD_NAME            (tokens)
+            1298 LOAD_ATTR            (expires_at)
+            1318 FORMAT_SIMPLE
+            1320 BUILD_STRING         2
+            1322 CALL                 (1 positional)
+            1330 POP_TOP
+            1332 RETURN_CONST         (None)
+
+396:     >> 1334 LOAD_NAME            (build_oauth_url)
+            1336 PUSH_NULL
+            1338 CALL                 (0 positional)
+            1346 UNPACK_SEQUENCE      3
+            1350 STORE_NAME           (url)
+            1352 STORE_NAME           (state)
+            1354 STORE_NAME           (verifier)
+
+397:        1356 LOAD_NAME            (print)
+            1358 PUSH_NULL
+            1360 LOAD_CONST           ("OAuth URL: ")
+            1362 LOAD_NAME            (url)
+            1364 FORMAT_SIMPLE
+            1366 BUILD_STRING         2
+            1368 CALL                 (1 positional)
+            1376 POP_TOP
+
+398:        1378 LOAD_NAME            (print)
+            1380 PUSH_NULL
+            1382 LOAD_CONST           ("State: ")
+            1384 LOAD_NAME            (state)
+            1386 FORMAT_SIMPLE
+            1388 BUILD_STRING         2
+            1390 CALL                 (1 positional)
+            1398 POP_TOP
+
+399:        1400 LOAD_NAME            (print)
+            1402 PUSH_NULL
+            1404 LOAD_CONST           ("Code Verifier: ")
+            1406 LOAD_NAME            (verifier)
+            1408 FORMAT_SIMPLE
+            1410 BUILD_STRING         2
+            1412 CALL                 (1 positional)
+            1420 POP_TOP
+            1422 RETURN_CONST         (None)
+
+364:     >> 1424 RETURN_CONST         (None)
+
+
+# Method Name:       generate_code_verifier
+# Filename:          openai_oauth.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        6
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        52
+# Constants:
+#    0: '生成 PKCE code_verifier'
+#    1: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'
+#    2: ''
+#    3: <Code311 code object <genexpr> at 0x109747a60, file openai_oauth.py>, line 55
+# Names:
+#    0: join
+#    1: range
+# Varnames:
+#	length
+# Positional arguments:
+#	length
+# Cell variables:
+#    0: alphabet
+               0 MAKE_CELL            (alphabet)
+
+ 52:           2 RESUME               0
+
+ 54:           4 LOAD_CONST           ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+               6 STORE_DEREF          (alphabet)
+
+ 55:           8 LOAD_CONST           ("")
+              10 LOAD_ATTR            (NULL|self + join)
+              30 LOAD_FAST            (alphabet)
+              32 BUILD_TUPLE          1
+              34 LOAD_CONST           (<Code311 code object <genexpr> at 0x109747a60, file openai_oauth.py>, line 55)
+              36 MAKE_FUNCTION
+              38 SET_FUNCTION_ATTRIBUTE 8
+              40 LOAD_GLOBAL          (NULL + range)
+              50 LOAD_FAST            (length)
+              52 CALL                 (1 positional)
+              60 GET_ITER
+              62 CALL                 (0 positional)
+              70 CALL                 (1 positional)
+              78 RETURN_VALUE
+
+
+# Method Name:       generate_code_challenge
+# Filename:          openai_oauth.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        58
+# Constants:
+#    0: '从 code_verifier 计算 SHA-256 code_challenge'
+#    1: 'ascii'
+#    2: b'='
+# Names:
+#    0: hashlib
+#    1: sha256
+#    2: encode
+#    3: digest
+#    4: base64
+#    5: urlsafe_b64encode
+#    6: rstrip
+#    7: decode
+# Varnames:
+#	verifier, digest
+# Positional arguments:
+#	verifier
+# Local variables:
+#    1: digest
+ 58:           0 RESUME               0
+
+ 60:           2 LOAD_GLOBAL          (hashlib)
+              12 LOAD_ATTR            (sha256)
+              32 PUSH_NULL
+              34 LOAD_FAST            (verifier)
+              36 LOAD_ATTR            (NULL|self + encode)
+              56 LOAD_CONST           ("ascii")
+              58 CALL                 (1 positional)
+              66 CALL                 (1 positional)
+              74 LOAD_ATTR            (NULL|self + digest)
+              94 CALL                 (0 positional)
+             102 STORE_FAST           (digest)
+
+ 61:         104 LOAD_GLOBAL          (base64)
+             114 LOAD_ATTR            (urlsafe_b64encode)
+             134 PUSH_NULL
+             136 LOAD_FAST            (digest)
+             138 CALL                 (1 positional)
+             146 LOAD_ATTR            (NULL|self + rstrip)
+             166 LOAD_CONST           (b'=')
+             168 CALL                 (1 positional)
+             176 LOAD_ATTR            (NULL|self + decode)
+             196 LOAD_CONST           ("ascii")
+             198 CALL                 (1 positional)
+             206 RETURN_VALUE
+
+
+# Method Name:       generate_state
+# Filename:          openai_oauth.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        64
+# Constants:
+#    0: '生成随机的 OAuth state 参数'
+#    1: 32
+# Names:
+#    0: secrets
+#    1: token_hex
+ 64:           0 RESUME               0
+
+ 66:           2 LOAD_GLOBAL          (secrets)
+              12 LOAD_ATTR            (token_hex)
+              32 PUSH_NULL
+              34 LOAD_CONST           (32)
+              36 CALL                 (1 positional)
+              44 RETURN_VALUE
+
+
+# Method Name:       _normalize_proxy_url
+# Filename:          openai_oauth.py
+# Argument count:    1
+# Position-only argument count: 0

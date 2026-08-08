@@ -1,0 +1,800 @@
+# Varnames:
+#	self, email, csrf_data, csrf, redirect, response, location, data
+# Positional arguments:
+#	self, email
+# Local variables:
+#    2: csrf_data
+#    3: csrf
+#    4: redirect
+#    5: response
+#    6: location
+#    7: data
+1919:           0 RESUME               0
+
+1921:           2 LOAD_GLOBAL          (NULL + _emit)
+              12 LOAD_FAST            (self)
+              14 LOAD_ATTR            (log_fn)
+              34 LOAD_CONST           ("  [ChatGPT] 访问 login/csrf/signin/auth...")
+              36 LOAD_CONST           ("info")
+              38 CALL                 (3 positional)
+              46 POP_TOP
+
+1922:          48 LOAD_FAST            (self)
+              50 LOAD_ATTR            (session)
+              70 LOAD_ATTR            (NULL|self + get)
+
+1923:          90 LOAD_GLOBAL          (CHATGPT)
+             100 FORMAT_SIMPLE
+             102 LOAD_CONST           ("/auth/login")
+             104 BUILD_STRING         2
+
+1924:         106 LOAD_GLOBAL          (PAGE_HEADERS)
+
+1925:         116 LOAD_CONST           (True)
+
+1926:         118 LOAD_CONST           (30)
+
+1922:         120 LOAD_CONST           (('headers', 'allow_redirects', 'timeout'))
+             122 CALL_KW              4
+             124 POP_TOP
+
+1928:         126 LOAD_FAST            (self)
+             128 LOAD_ATTR            (NULL|self + _chatgpt_json_get)
+             148 LOAD_CONST           ("/api/auth/csrf")
+             150 LOAD_GLOBAL          (CHATGPT)
+             160 FORMAT_SIMPLE
+             162 LOAD_CONST           ("/auth/login")
+             164 BUILD_STRING         2
+             166 LOAD_CONST           (30)
+             168 LOAD_CONST           (('referer', 'timeout'))
+             170 CALL_KW              3
+             172 STORE_FAST           (csrf_data)
+
+1929:         174 LOAD_GLOBAL          (NULL + _clean)
+             184 LOAD_FAST            (csrf_data)
+             186 LOAD_ATTR            (NULL|self + get)
+             206 LOAD_CONST           ("csrfToken")
+             208 CALL                 (1 positional)
+             216 CALL                 (1 positional)
+             224 STORE_FAST           (csrf)
+
+1930:         226 LOAD_FAST            (csrf)
+             228 TO_BOOL
+             236 POP_JUMP_IF_TRUE     (to 286)
+
+1931:         240 LOAD_GLOBAL          (NULL + CodexChainError)
+             250 LOAD_CONST           ("chatgpt_csrf_failed: ")
+             252 LOAD_GLOBAL          (NULL + _error_text)
+             262 LOAD_FAST            (csrf_data)
+             264 CALL                 (1 positional)
+             272 FORMAT_SIMPLE
+             274 BUILD_STRING         2
+             276 CALL                 (1 positional)
+             284 RAISE_VARARGS        (exception instance)
+
+1932:     >>  286 LOAD_FAST            (self)
+             288 LOAD_ATTR            (NULL|self + _chatgpt_signin_url)
+             308 LOAD_FAST            (email)
+             310 CALL                 (1 positional)
+             318 STORE_FAST           (redirect)
+
+1933:         320 LOAD_FAST            (self)
+             322 LOAD_ATTR            (session)
+             342 LOAD_ATTR            (NULL|self + get)
+
+1934:         362 LOAD_FAST            (redirect)
+
+1935:         364 BUILD_MAP            0
+             366 LOAD_GLOBAL          (PAGE_HEADERS)
+             376 DICT_UPDATE          1
+             378 LOAD_GLOBAL          (CHATGPT)
+             388 LOAD_CONST           ("cross-site")
+             390 LOAD_CONST           ("navigate")
+             392 LOAD_CONST           (('referer', 'sec-fetch-site', 'sec-fetch-mode'))
+             394 BUILD_CONST_KEY_MAP  3
+             396 DICT_UPDATE          1
+
+1936:         398 LOAD_CONST           (False)
+
+1937:         400 LOAD_CONST           (45)
+
+1933:         402 LOAD_CONST           (('headers', 'allow_redirects', 'timeout'))
+             404 CALL_KW              4
+             406 STORE_FAST           (response)
+
+1939:         408 LOAD_GLOBAL          (NULL + _clean)
+             418 LOAD_GLOBAL          (NULL + getattr)
+             428 LOAD_FAST            (response)
+             430 LOAD_CONST           ("headers")
+             432 BUILD_MAP            0
+             434 CALL                 (3 positional)
+             442 LOAD_ATTR            (NULL|self + get)
+             462 LOAD_CONST           ("location")
+             464 LOAD_CONST           ("")
+             466 CALL                 (2 positional)
+             474 CALL                 (1 positional)
+             482 STORE_FAST           (location)
+
+1940:         484 LOAD_FAST            (location)
+             486 TO_BOOL
+             494 POP_JUMP_IF_FALSE    (to 604)
+
+1941:         498 LOAD_FAST            (self)
+             500 LOAD_ATTR            (session)
+             520 LOAD_ATTR            (NULL|self + get)
+
+1942:         540 LOAD_GLOBAL          (NULL + _abs_auth)
+             550 LOAD_FAST            (location)
+             552 CALL                 (1 positional)
+
+1943:         560 BUILD_MAP            0
+             562 LOAD_GLOBAL          (PAGE_HEADERS)
+             572 DICT_UPDATE          1
+             574 LOAD_GLOBAL          (AUTH)
+             584 LOAD_CONST           ("same-origin")
+             586 LOAD_CONST           ("navigate")
+             588 LOAD_CONST           (('referer', 'sec-fetch-site', 'sec-fetch-mode'))
+             590 BUILD_CONST_KEY_MAP  3
+             592 DICT_UPDATE          1
+
+1944:         594 LOAD_CONST           (True)
+
+1945:         596 LOAD_CONST           (45)
+
+1941:         598 LOAD_CONST           (('headers', 'allow_redirects', 'timeout'))
+             600 CALL_KW              4
+             602 STORE_FAST           (response)
+
+1947:     >>  604 LOAD_GLOBAL          (NULL + _json_response)
+             614 LOAD_FAST            (response)
+             616 CALL                 (1 positional)
+             624 STORE_FAST           (data)
+
+1948:         626 LOAD_GLOBAL          (NULL + str)
+             636 LOAD_GLOBAL          (NULL + getattr)
+             646 LOAD_FAST            (response)
+             648 LOAD_CONST           ("url")
+             650 LOAD_CONST           ("")
+             652 CALL                 (3 positional)
+             660 COPY                 1
+             662 TO_BOOL
+             670 POP_JUMP_IF_TRUE     (to 678)
+             674 POP_TOP
+             676 LOAD_FAST            (redirect)
+         >>  678 CALL                 (1 positional)
+             686 LOAD_FAST            (data)
+             688 LOAD_CONST           ("url")
+             690 STORE_SUBSCR
+
+1949:         694 LOAD_FAST_LOAD_FAST  (data, self)
+             696 STORE_ATTR           (last_response)
+
+1950:         706 LOAD_FAST            (data)
+             708 RETURN_VALUE
+
+
+# Method Name:       _headers
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1952
+# Constants:
+#    0: None
+#    1: 'empty'
+#    2: 'cors'
+#    3: 'same-origin'
+#    4: ('referer', 'oai-device-id', 'sec-fetch-dest', 'sec-fetch-mode', 'sec-fetch-site')
+#    5: 'codex_persona'
+#    6: 'chatgpt-noauth'
+#    7: ('persona', 'device_id', 'referer')
+#    8: 'token'
+#    9: 'OpenAI-Sentinel-Token'
+#   10: 'so_token'
+#   11: 'OpenAI-Sentinel-SO-Token'
+# Names:
+#    0: JSON_HEADERS
+#    1: device_id
+#    2: sentinel_provider
+#    3: token_for
+#    4: config
+#    5: get
+#    6: _clean
+# Varnames:
+#	self, flow, referer, headers, token
+# Positional arguments:
+#	self, flow, referer
+# Local variables:
+#    3: headers
+#    4: token
+1952:           0 RESUME               0
+
+1953:           2 BUILD_MAP            0
+
+1954:           4 LOAD_GLOBAL          (JSON_HEADERS)
+
+1953:          14 DICT_UPDATE          1
+
+1955:          16 LOAD_FAST            (referer)
+
+1956:          18 LOAD_FAST            (self)
+              20 LOAD_ATTR            (device_id)
+
+1957:          40 LOAD_CONST           ("empty")
+
+1958:          42 LOAD_CONST           ("cors")
+
+1959:          44 LOAD_CONST           ("same-origin")
+
+1953:          46 LOAD_CONST           (('referer', 'oai-device-id', 'sec-fetch-dest', 'sec-fetch-mode', 'sec-fetch-site'))
+              48 BUILD_CONST_KEY_MAP  5
+              50 DICT_UPDATE          1
+              52 STORE_FAST           (headers)
+
+1961:          54 LOAD_FAST            (self)
+              56 LOAD_ATTR            (sentinel_provider)
+              76 LOAD_ATTR            (NULL|self + token_for)
+
+1962:          96 LOAD_FAST            (flow)
+
+1964:          98 LOAD_FAST            (self)
+             100 LOAD_ATTR            (config)
+             120 LOAD_ATTR            (NULL|self + get)
+             140 LOAD_CONST           ("codex_persona")
+             142 CALL                 (1 positional)
+             150 COPY                 1
+             152 TO_BOOL
+             160 POP_JUMP_IF_TRUE     (to 168)
+             164 POP_TOP
+             166 LOAD_CONST           ("chatgpt-noauth")
+
+1965:     >>  168 LOAD_FAST            (self)
+             170 LOAD_ATTR            (device_id)
+
+1966:         190 LOAD_FAST            (referer)
+
+1963:         192 LOAD_CONST           (('persona', 'device_id', 'referer'))
+             194 BUILD_CONST_KEY_MAP  3
+
+1961:         196 CALL                 (2 positional)
+             204 STORE_FAST           (token)
+
+1969:         206 LOAD_FAST            (token)
+             208 LOAD_ATTR            (NULL|self + get)
+             228 LOAD_CONST           ("token")
+             230 CALL                 (1 positional)
+             238 TO_BOOL
+             246 POP_JUMP_IF_FALSE    (to 308)
+
+1970:         250 LOAD_GLOBAL          (NULL + _clean)
+             260 LOAD_FAST            (token)
+             262 LOAD_ATTR            (NULL|self + get)
+             282 LOAD_CONST           ("token")
+             284 CALL                 (1 positional)
+             292 CALL                 (1 positional)
+             300 LOAD_FAST            (headers)
+             302 LOAD_CONST           ("OpenAI-Sentinel-Token")
+             304 STORE_SUBSCR
+
+1971:     >>  308 LOAD_FAST            (token)
+             310 LOAD_ATTR            (NULL|self + get)
+             330 LOAD_CONST           ("so_token")
+             332 CALL                 (1 positional)
+             340 TO_BOOL
+             348 POP_JUMP_IF_FALSE    (to 410)
+
+1972:         352 LOAD_GLOBAL          (NULL + _clean)
+             362 LOAD_FAST            (token)
+             364 LOAD_ATTR            (NULL|self + get)
+             384 LOAD_CONST           ("so_token")
+             386 CALL                 (1 positional)
+             394 CALL                 (1 positional)
+             402 LOAD_FAST            (headers)
+             404 LOAD_CONST           ("OpenAI-Sentinel-SO-Token")
+             406 STORE_SUBSCR
+
+1973:     >>  410 LOAD_FAST            (headers)
+             412 RETURN_VALUE
+
+
+# Method Name:       _post_auth_json
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 3
+# Number of locals:  10
+# Stack size:        11
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1975
+# Constants:
+#    0: None
+#    1: 'trace_continue'
+#    2: False
+#    3: '  [CodexTrace] POST '
+#    4: ' flow='
+#    5: ' referer='
+#    6: 'info'
+#    7: ('json', 'headers', 'allow_redirects', 'timeout')
+#    8: 0
+#    9: ''
+#   10: 220
+#   11: ('_status', '_content_type', '_body', '_body_summary', '_location', 'error')
+#   12: ' exception='
+#   13: 160
+#   14: 'warn'
+#   15: 'POST '
+#   16: ':response'
+#   17: 200
+#   18: '_status'
+#   19: 300
+#   20: 'error'
+#   21: '_body_summary'
+#   22: '_body'
+# Names:
+#    0: AUTH
+#    1: _as_bool
+#    2: config
+#    3: get
+#    4: _emit
+#    5: log_fn
+#    6: _url_shape
+#    7: session
+#    8: post
+#    9: _headers
+#   10: Exception
+#   11: str
+#   12: last_response
+#   13: _json_response
+#   14: _trace_continue
+#   15: int
+# Varnames:
+#	self, path, payload, flow, referer, timeout, url, response, exc, data
+# Positional arguments:
+#	self, path, payload
+# Local variables:
+#    3: flow
+#    4: referer
+#    5: timeout
+#    6: url
+#    7: response
+#    8: exc
+#    9: data
+1975:           0 RESUME               0
+
+1976:           2 LOAD_GLOBAL          (AUTH)
+              12 FORMAT_SIMPLE
+              14 LOAD_FAST            (path)
+              16 FORMAT_SIMPLE
+              18 BUILD_STRING         2
+              20 STORE_FAST           (url)
+
+1977:          22 LOAD_GLOBAL          (NULL + _as_bool)
+              32 LOAD_FAST            (self)
+              34 LOAD_ATTR            (config)
+              54 LOAD_ATTR            (NULL|self + get)
+              74 LOAD_CONST           ("trace_continue")
+              76 CALL                 (1 positional)
+              84 LOAD_CONST           (False)
+              86 CALL                 (2 positional)
+              94 TO_BOOL
+             102 POP_JUMP_IF_FALSE    (to 188)
+
+1978:         106 LOAD_GLOBAL          (NULL + _emit)
+             116 LOAD_FAST            (self)
+             118 LOAD_ATTR            (log_fn)
+             138 LOAD_CONST           ("  [CodexTrace] POST ")
+             140 LOAD_FAST            (path)
+             142 FORMAT_SIMPLE
+             144 LOAD_CONST           (" flow=")
+             146 LOAD_FAST            (flow)
+             148 FORMAT_SIMPLE
+             150 LOAD_CONST           (" referer=")
+             152 LOAD_GLOBAL          (NULL + _url_shape)
+             162 LOAD_FAST            (referer)
+             164 CALL                 (1 positional)
+             172 FORMAT_SIMPLE
+             174 BUILD_STRING         6
+             176 LOAD_CONST           ("info")
+             178 CALL                 (3 positional)
+             186 POP_TOP
+
+1979:     >>  188 NOP
+
+1980:         190 LOAD_FAST            (self)
+             192 LOAD_ATTR            (session)
+             212 LOAD_ATTR            (NULL|self + post)
+
+1981:         232 LOAD_FAST            (url)
+
+1982:         234 LOAD_FAST            (payload)
+
+1983:         236 LOAD_FAST            (self)
+             238 LOAD_ATTR            (NULL|self + _headers)
+             258 LOAD_FAST_LOAD_FAST  (flow, referer)
+             260 CALL                 (2 positional)
+
+1984:         268 LOAD_CONST           (False)
+
+1985:         270 LOAD_FAST            (timeout)
+
+1980:         272 LOAD_CONST           (('json', 'headers', 'allow_redirects', 'timeout'))
+             274 CALL_KW              5
+             276 STORE_FAST           (response)
+
+1993:         278 LOAD_GLOBAL          (NULL + _json_response)
+             288 LOAD_FAST            (response)
+             290 CALL                 (1 positional)
+             298 STORE_FAST           (data)
+
+1994:         300 LOAD_FAST_LOAD_FAST  (data, self)
+             302 STORE_ATTR           (last_response)
+
+1995:         312 LOAD_GLOBAL          (NULL + _as_bool)
+             322 LOAD_FAST            (self)
+             324 LOAD_ATTR            (config)
+             344 LOAD_ATTR            (NULL|self + get)
+             364 LOAD_CONST           ("trace_continue")
+             366 CALL                 (1 positional)
+             374 LOAD_CONST           (False)
+             376 CALL                 (2 positional)
+             384 TO_BOOL
+             392 POP_JUMP_IF_FALSE    (to 440)
+
+1996:         396 LOAD_FAST            (self)
+             398 LOAD_ATTR            (NULL|self + _trace_continue)
+             418 LOAD_CONST           ("POST ")
+             420 LOAD_FAST            (path)
+             422 FORMAT_SIMPLE
+             424 LOAD_CONST           (":response")
+             426 BUILD_STRING         3
+             428 LOAD_FAST_LOAD_FAST  (url, data)
+             430 CALL                 (3 positional)
+             438 POP_TOP
+
+1997:     >>  440 LOAD_CONST           (200)
+             442 LOAD_GLOBAL          (NULL + int)
+             452 LOAD_FAST            (data)
+             454 LOAD_ATTR            (NULL|self + get)
+             474 LOAD_CONST           ("_status")
+             476 CALL                 (1 positional)
+             484 COPY                 1
+             486 TO_BOOL
+             494 POP_JUMP_IF_TRUE     (to 502)
+             498 POP_TOP
+             500 LOAD_CONST           (0)
+         >>  502 CALL                 (1 positional)
+             510 SWAP                 (TOS <-> TOS1)
+             512 COPY                 2
+             514 COMPARE_OP           (<=)
+             518 POP_JUMP_IF_FALSE    (to 536)
+             522 LOAD_CONST           (300)
+             524 COMPARE_OP           (<)
+             528 POP_JUMP_IF_FALSE    (to 538)
+             532 LOAD_FAST            (data)
+             534 RETURN_VALUE
+         >>  536 POP_TOP
+         >>  538 LOAD_CONST           ("error")
+             540 LOAD_FAST            (data)
+             542 LOAD_ATTR            (NULL|self + get)
+             562 LOAD_CONST           ("_body_summary")
+             564 CALL                 (1 positional)
+             572 COPY                 1
+             574 TO_BOOL
+             582 POP_JUMP_IF_TRUE     (to 670)
+             586 POP_TOP
+             588 LOAD_FAST            (data)
+             590 LOAD_ATTR            (NULL|self + get)
+             610 LOAD_CONST           ("_body")
+             612 CALL                 (1 positional)
+             620 COPY                 1
+             622 TO_BOOL
+             630 POP_JUMP_IF_TRUE     (to 670)
+             634 POP_TOP
+             636 LOAD_FAST            (data)
+             638 LOAD_ATTR            (NULL|self + get)
+             658 LOAD_CONST           ("error")
+             660 LOAD_CONST           ("")
+             662 CALL                 (2 positional)
+         >>  670 BUILD_MAP            1
+             672 LOAD_FAST            (data)
+             674 DICT_UPDATE          1
+             676 RETURN_VALUE
+         >>  678 PUSH_EXC_INFO
+
+1987:         680 LOAD_GLOBAL          (Exception)
+             690 CHECK_EXC_MATCH
+             692 POP_JUMP_IF_FALSE    (to 960)
+             696 STORE_FAST           (exc)
+
+1988:         698 LOAD_CONST           (0)
+             700 LOAD_CONST           ("")
+             702 LOAD_CONST           ("")
+             704 LOAD_GLOBAL          (NULL + str)
+             714 LOAD_FAST            (exc)
+             716 CALL                 (1 positional)
+             724 LOAD_CONST           (None)
+             726 LOAD_CONST           (220)
+             728 BINARY_SLICE
+             730 LOAD_CONST           ("")
+             732 LOAD_GLOBAL          (NULL + str)
+             742 LOAD_FAST            (exc)
+             744 CALL                 (1 positional)
+             752 LOAD_CONST           (('_status', '_content_type', '_body', '_body_summary', '_location', 'error'))
+             754 BUILD_CONST_KEY_MAP  6
+             756 STORE_FAST           (data)
+
+1989:         758 LOAD_FAST_LOAD_FAST  (data, self)
+             760 STORE_ATTR           (last_response)
+
+1990:         770 LOAD_GLOBAL          (NULL + _as_bool)
+             780 LOAD_FAST            (self)
+             782 LOAD_ATTR            (config)
+             802 LOAD_ATTR            (NULL|self + get)
+             822 LOAD_CONST           ("trace_continue")
+             824 CALL                 (1 positional)
+             832 LOAD_CONST           (False)
+             834 CALL                 (2 positional)
+             842 TO_BOOL
+             850 POP_JUMP_IF_FALSE    (to 938)
+
+1991:         854 LOAD_GLOBAL          (NULL + _emit)
+             864 LOAD_FAST            (self)
+             866 LOAD_ATTR            (log_fn)
+             886 LOAD_CONST           ("  [CodexTrace] POST ")
+             888 LOAD_FAST            (path)
+             890 FORMAT_SIMPLE
+             892 LOAD_CONST           (" exception=")
+             894 LOAD_GLOBAL          (NULL + str)
+             904 LOAD_FAST            (exc)
+             906 CALL                 (1 positional)
+             914 LOAD_CONST           (None)
+             916 LOAD_CONST           (160)
+             918 BINARY_SLICE
+             920 CONVERT_VALUE        2
+             922 FORMAT_SIMPLE
+             924 BUILD_STRING         4
+             926 LOAD_CONST           ("warn")
+             928 CALL                 (3 positional)
+             936 POP_TOP
+
+1992:     >>  938 LOAD_FAST            (data)
+             940 SWAP                 (TOS <-> TOS1)
+             942 POP_EXCEPT
+             944 LOAD_CONST           (None)
+             946 STORE_FAST           (exc)
+             948 DELETE_FAST          (exc)
+             950 RETURN_VALUE
+         >>  952 LOAD_CONST           (None)
+             954 STORE_FAST           (exc)
+             956 DELETE_FAST          (exc)
+             958 RERAISE              1
+
+1987:     >>  960 RERAISE              0
+         >>  962 COPY                 3
+             964 POP_EXCEPT
+             966 RERAISE              1
+
+ExceptionTable:
+  190 to 276 -> 678 [0]
+  678 to 696 -> 962 [1] lasti
+  698 to 938 -> 952 [1] lasti
+  940 to 940 -> 962 [1] lasti
+  952 to 960 -> 962 [1] lasti
+
+# Method Name:       initiate_oauth
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  10
+# Stack size:        11
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1999
+# Constants:
+#    0: None
+#    1: '  [Codex] 跟随 Codex authorize URL 建立会话...'
+#    2: 'info'
+#    3: 'login_hint'
+#    4: 'auth_impersonates'
+#    5: 1
+#    6: ('start',)
+#    7: 'prime_chatgpt_oauth_session'
+#    8: False
+#    9: '  [Codex] ChatGPT NextAuth 前置跳过('
+#   10: '): '
+#   11: 160
+#   12: 'warn'
+#   13: 'cross-site'
+#   14: 'navigate'
+#   15: ('sec-fetch-site', 'sec-fetch-mode')
+#   16: True
+#   17: 45
+#   18: ('headers', 'allow_redirects', 'timeout')
+#   19: 'url'
+#   20: ''
+#   21: 'trace_continue'
+#   22: 'oauth_start:'
+#   23: ':response'
+#   24: '  [Codex] OAuth 起始页遇到 Cloudflare challenge，切换指纹重试 '
+#   25: '/'
+#   26: ': '
+#   27: '/error'
+#   28: 'oauth_error_page:'
+#   29: 'error'
+#   30: 0
+#   31: 'oauth_start_no_response'
+#   32: ('_status', 'error')
+# Names:
+#    0: _emit
+#    1: log_fn
+#    2: _clean
+#    3: original_oauth_url
+#    4: oauth_params
+#    5: get
+#    6: _impersonate_candidates
+#    7: enumerate
+#    8: _curl
+#    9: chatgpt_signup_done
+#   10: _new_session
+#   11: session
+#   12: chatgpt_impersonate
+#   13: _as_bool
+#   14: config
+#   15: _prime_chatgpt_oauth_session
+#   16: Exception
+#   17: str
+#   18: PAGE_HEADERS
+#   19: _json_response
+#   20: getattr
+#   21: last_oauth_url
+#   22: last_response
+#   23: _trace_continue
+#   24: _is_cloudflare_challenge
+#   25: len
+#   26: _error_text
+# Varnames:
+#	self, oauth_url, login_hint, candidates, last_data, idx, impersonate, exc, response, data
+# Positional arguments:
+#	self, oauth_url
+# Local variables:
+#    2: login_hint
+#    3: candidates
+#    4: last_data
+#    5: idx
+#    6: impersonate
+#    7: exc
+#    8: response
+#    9: data
+1999:           0 RESUME               0
+
+2000:           2 LOAD_GLOBAL          (NULL + _emit)
+              12 LOAD_FAST            (self)
+              14 LOAD_ATTR            (log_fn)
+              34 LOAD_CONST           ("  [Codex] 跟随 Codex authorize URL 建立会话...")
+              36 LOAD_CONST           ("info")
+              38 CALL                 (3 positional)
+              46 POP_TOP
+
+2001:          48 LOAD_GLOBAL          (NULL + _clean)
+              58 LOAD_FAST            (oauth_url)
+              60 CALL                 (1 positional)
+              68 LOAD_FAST            (self)
+              70 STORE_ATTR           (original_oauth_url)
+
+2002:          80 LOAD_GLOBAL          (NULL + _clean)
+              90 LOAD_FAST            (self)
+              92 LOAD_ATTR            (oauth_params)
+             112 LOAD_ATTR            (NULL|self + get)
+             132 LOAD_CONST           ("login_hint")
+             134 CALL                 (1 positional)
+             142 CALL                 (1 positional)
+             150 STORE_FAST           (login_hint)
+
+2003:         152 LOAD_FAST            (self)
+             154 LOAD_ATTR            (NULL|self + _impersonate_candidates)
+             174 LOAD_CONST           ("auth_impersonates")
+             176 CALL                 (1 positional)
+             184 STORE_FAST           (candidates)
+
+2004:         186 BUILD_MAP            0
+             188 STORE_FAST           (last_data)
+
+2005:         190 LOAD_GLOBAL          (NULL + enumerate)
+             200 LOAD_FAST            (candidates)
+             202 LOAD_CONST           (1)
+             204 LOAD_CONST           (('start',))
+             206 CALL_KW              2
+             208 GET_ITER
+             210 EXTENDED_ARG         (256)
+             212 FOR_ITER             (to 1020)
+             216 UNPACK_SEQUENCE      2
+             220 STORE_FAST_STORE_FAST (idx, impersonate)
+
+2006:         222 LOAD_FAST            (self)
+             224 LOAD_ATTR            (_curl)
+             244 TO_BOOL
+             252 POP_JUMP_IF_FALSE    (to 346)
+             256 LOAD_FAST            (self)
+             258 LOAD_ATTR            (chatgpt_signup_done)
+             278 TO_BOOL
+             286 POP_JUMP_IF_TRUE     (to 346)
+
+2007:         290 LOAD_FAST            (self)
+             292 LOAD_ATTR            (NULL|self + _new_session)
+             312 LOAD_FAST            (impersonate)
+             314 CALL                 (1 positional)
+             322 LOAD_FAST            (self)
+             324 STORE_ATTR           (session)
+
+2008:         334 LOAD_FAST_LOAD_FAST  (impersonate, self)
+             336 STORE_ATTR           (chatgpt_impersonate)
+
+2009:     >>  346 LOAD_GLOBAL          (NULL + _as_bool)
+             356 LOAD_FAST            (self)
+             358 LOAD_ATTR            (config)
+             378 LOAD_ATTR            (NULL|self + get)
+             398 LOAD_CONST           ("prime_chatgpt_oauth_session")
+             400 CALL                 (1 positional)
+             408 LOAD_CONST           (False)
+             410 CALL                 (2 positional)
+             418 TO_BOOL
+             426 POP_JUMP_IF_FALSE    (to 514)
+             430 LOAD_FAST            (login_hint)
+             432 TO_BOOL
+             440 POP_JUMP_IF_FALSE    (to 514)
+             444 LOAD_FAST            (self)
+             446 LOAD_ATTR            (chatgpt_signup_done)
+             466 TO_BOOL
+             474 POP_JUMP_IF_TRUE     (to 514)
+
+2010:         478 NOP
+
+2011:         480 LOAD_FAST            (self)
+             482 LOAD_ATTR            (NULL|self + _prime_chatgpt_oauth_session)
+             502 LOAD_FAST            (login_hint)
+             504 CALL                 (1 positional)
+             512 POP_TOP
+
+2014:     >>  514 LOAD_FAST            (self)
+             516 LOAD_ATTR            (session)
+             536 LOAD_ATTR            (NULL|self + get)
+
+2015:         556 LOAD_FAST            (oauth_url)
+
+2016:         558 BUILD_MAP            0
+             560 LOAD_GLOBAL          (PAGE_HEADERS)
+             570 DICT_UPDATE          1
+             572 LOAD_CONST           ("cross-site")
+             574 LOAD_CONST           ("navigate")
+             576 LOAD_CONST           (('sec-fetch-site', 'sec-fetch-mode'))
+             578 BUILD_CONST_KEY_MAP  2
+             580 DICT_UPDATE          1
+
+2017:         582 LOAD_CONST           (True)
+
+2018:         584 LOAD_CONST           (45)
+
+2014:         586 LOAD_CONST           (('headers', 'allow_redirects', 'timeout'))
+             588 CALL_KW              4
+             590 STORE_FAST           (response)
+
+2020:         592 LOAD_GLOBAL          (NULL + _json_response)
+             602 LOAD_FAST            (response)
+             604 CALL                 (1 positional)
+             612 STORE_FAST           (data)
+
+2021:         614 LOAD_GLOBAL          (NULL + str)
+             624 LOAD_GLOBAL          (NULL + getattr)
+             634 LOAD_FAST            (response)
+             636 LOAD_CONST           ("url")
+             638 LOAD_CONST           ("")
+             640 CALL                 (3 positional)
+             648 COPY                 1
+             650 TO_BOOL
+             658 POP_JUMP_IF_TRUE     (to 666)
+             662 POP_TOP
+             664 LOAD_FAST            (oauth_url)
+         >>  666 CALL                 (1 positional)

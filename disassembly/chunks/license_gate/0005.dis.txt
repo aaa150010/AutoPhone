@@ -1,0 +1,738 @@
+
+361:          82 LOAD_GLOBAL          (NULL + print)
+              92 LOAD_CONST           ("机器码: ")
+              94 LOAD_FAST            (info)
+              96 LOAD_CONST           ("machine_code")
+              98 BINARY_SUBSCR
+             102 FORMAT_SIMPLE
+             104 BUILD_STRING         2
+             106 LOAD_CONST           (True)
+             108 LOAD_CONST           (('flush',))
+             110 CALL_KW              2
+             112 POP_TOP
+
+362:         114 LOAD_GLOBAL          (NULL + print)
+             124 LOAD_CONST           ("请复制机器码发给管理员生成授权。")
+             126 LOAD_CONST           (True)
+             128 LOAD_CONST           (('flush',))
+             130 CALL_KW              2
+             132 POP_TOP
+
+363:         134 LOAD_GLOBAL          (NULL + print)
+             144 LOAD_CONST           ("")
+             146 LOAD_CONST           (True)
+             148 LOAD_CONST           (('flush',))
+             150 CALL_KW              2
+             152 POP_TOP
+
+364:         154 LOAD_GLOBAL          (NULL + print)
+             164 LOAD_CONST           ("拿到授权后，直接粘贴以下任意一种内容并回车：")
+             166 LOAD_CONST           (True)
+             168 LOAD_CONST           (('flush',))
+             170 CALL_KW              2
+             172 POP_TOP
+
+365:         174 LOAD_GLOBAL          (NULL + print)
+             184 LOAD_CONST           ("1) 管理员工具生成的一行授权码 NRLIC-...")
+             186 LOAD_CONST           (True)
+             188 LOAD_CONST           (('flush',))
+             190 CALL_KW              2
+             192 POP_TOP
+
+366:         194 LOAD_GLOBAL          (NULL + print)
+             204 LOAD_CONST           ("2) license.key 文件完整路径")
+             206 LOAD_CONST           (True)
+             208 LOAD_CONST           (('flush',))
+             210 CALL_KW              2
+             212 POP_TOP
+
+367:         214 LOAD_GLOBAL          (NULL + print)
+             224 LOAD_CONST           ("3) license.key 文件内容(JSON)")
+             226 LOAD_CONST           (True)
+             228 LOAD_CONST           (('flush',))
+             230 CALL_KW              2
+             232 POP_TOP
+
+368:         234 LOAD_GLOBAL          (NULL + print)
+             244 LOAD_CONST           ("")
+             246 LOAD_CONST           (True)
+             248 LOAD_CONST           (('flush',))
+             250 CALL_KW              2
+             252 POP_TOP
+
+369:         254 LOAD_GLOBAL          (NULL + print)
+             264 LOAD_CONST           ("授权成功后会自动写入当前目录的 license.key，并继续启动。")
+             266 LOAD_CONST           (True)
+             268 LOAD_CONST           (('flush',))
+             270 CALL_KW              2
+             272 POP_TOP
+
+370:         274 LOAD_GLOBAL          (NULL + print)
+             284 LOAD_CONST           ("以后覆盖新版时保留这个 license.key 即可；复制到别的电脑需要重新授权。")
+             286 LOAD_CONST           (True)
+             288 LOAD_CONST           (('flush',))
+             290 CALL_KW              2
+             292 POP_TOP
+
+371:         294 LOAD_FAST            (reason)
+             296 TO_BOOL
+             304 POP_JUMP_IF_FALSE    (to 334)
+
+372:         308 LOAD_GLOBAL          (NULL + print)
+             318 LOAD_CONST           ("当前原因: ")
+             320 LOAD_FAST            (reason)
+             322 FORMAT_SIMPLE
+             324 BUILD_STRING         2
+             326 LOAD_CONST           (True)
+             328 LOAD_CONST           (('flush',))
+             330 CALL_KW              2
+             332 POP_TOP
+
+373:     >>  334 LOAD_GLOBAL          (NULL + print)
+             344 LOAD_CONST           ("输入 exit 退出。")
+             346 LOAD_CONST           (True)
+             348 LOAD_CONST           (('flush',))
+             350 CALL_KW              2
+             352 POP_TOP
+
+374:         354 LOAD_GLOBAL          (NULL + print)
+             364 LOAD_CONST           ("============================================================")
+             366 LOAD_CONST           (True)
+             368 LOAD_CONST           (('flush',))
+             370 CALL_KW              2
+             372 POP_TOP
+
+375:         374 NOP
+
+376:         376 NOP
+
+377:         378 LOAD_GLOBAL          (NULL + input)
+             388 LOAD_CONST           ("请粘贴授权码/license.key路径后回车> ")
+             390 CALL                 (1 positional)
+             398 LOAD_ATTR            (NULL|self + strip)
+             418 CALL                 (0 positional)
+             426 STORE_FAST           (entered)
+
+383:         428 LOAD_FAST            (entered)
+             430 TO_BOOL
+             438 POP_JUMP_IF_TRUE     (to 478)
+
+384:         442 LOAD_GLOBAL          (NULL + print)
+             452 LOAD_CONST           ("机器码: ")
+             454 LOAD_FAST            (info)
+             456 LOAD_CONST           ("machine_code")
+             458 BINARY_SUBSCR
+             462 FORMAT_SIMPLE
+             464 BUILD_STRING         2
+             466 LOAD_CONST           (True)
+             468 LOAD_CONST           (('flush',))
+             470 CALL_KW              2
+             472 POP_TOP
+
+385:         474 JUMP_BACKWARD        (to 374)
+
+386:     >>  478 LOAD_FAST            (entered)
+             480 LOAD_ATTR            (NULL|self + lower)
+             500 CALL                 (0 positional)
+             508 LOAD_CONST           ({'exit', 'q', 'quit'})
+             510 CONTAINS_OP          (in)
+             514 POP_JUMP_IF_FALSE    (to 520)
+
+387:         518 RETURN_CONST         (False)
+
+388:     >>  520 NOP
+
+389:         522 LOAD_GLOBAL          (NULL + parse_license_input)
+             532 LOAD_FAST            (entered)
+             534 CALL                 (1 positional)
+             542 STORE_FAST           (payload)
+
+390:         544 LOAD_GLOBAL          (NULL + verify_license)
+             554 LOAD_FAST            (payload)
+             556 CALL                 (1 positional)
+             564 UNPACK_SEQUENCE      3
+             568 STORE_FAST_STORE_FAST (valid, verify_reason)
+             570 STORE_FAST           (_)
+
+391:         572 LOAD_FAST            (valid)
+             574 TO_BOOL
+         >>  582 POP_JUMP_IF_TRUE     (to 616)
+
+392:         586 LOAD_GLOBAL          (NULL + print)
+             596 LOAD_CONST           ("授权无效: ")
+             598 LOAD_FAST            (verify_reason)
+             600 FORMAT_SIMPLE
+             602 BUILD_STRING         2
+             604 LOAD_CONST           (True)
+             606 LOAD_CONST           (('flush',))
+             608 CALL_KW              2
+             610 POP_TOP
+
+393:         612 JUMP_BACKWARD        (to 374)
+
+394:     >>  616 LOAD_GLOBAL          (NULL + _write_license_payload)
+             626 LOAD_FAST            (payload)
+             628 CALL                 (1 positional)
+             636 STORE_FAST           (path)
+
+395:         638 LOAD_GLOBAL          (NULL + print)
+             648 LOAD_CONST           ("授权成功，已写入: ")
+             650 LOAD_FAST            (path)
+             652 FORMAT_SIMPLE
+             654 BUILD_STRING         2
+             656 LOAD_CONST           (True)
+             658 LOAD_CONST           (('flush',))
+             660 CALL_KW              2
+             662 POP_TOP
+
+396:         664 RETURN_CONST         (True)
+         >>  666 PUSH_EXC_INFO
+
+378:         668 LOAD_GLOBAL          (EOFError)
+             678 CHECK_EXC_MATCH
+             680 POP_JUMP_IF_FALSE    (to 690)
+             684 POP_TOP
+
+379:         686 POP_EXCEPT
+             688 RETURN_CONST         (False)
+
+380:     >>  690 LOAD_GLOBAL          (KeyboardInterrupt)
+             700 CHECK_EXC_MATCH
+             702 POP_JUMP_IF_FALSE    (to 732)
+             706 POP_TOP
+
+381:         708 LOAD_GLOBAL          (NULL + print)
+             718 LOAD_CONST           ("")
+             720 LOAD_CONST           (True)
+             722 LOAD_CONST           (('flush',))
+             724 CALL_KW              2
+             726 POP_TOP
+
+382:         728 POP_EXCEPT
+             730 RETURN_CONST         (False)
+
+380:     >>  732 RERAISE              0
+         >>  734 COPY                 3
+             736 POP_EXCEPT
+             738 RERAISE              1
+         >>  740 PUSH_EXC_INFO
+
+397:         742 LOAD_GLOBAL          (Exception)
+             752 CHECK_EXC_MATCH
+             754 POP_JUMP_IF_FALSE    (to 804)
+             758 STORE_FAST           (exc)
+
+398:         760 LOAD_GLOBAL          (NULL + print)
+             770 LOAD_CONST           ("授权内容无法识别: ")
+             772 LOAD_FAST            (exc)
+             774 FORMAT_SIMPLE
+             776 BUILD_STRING         2
+             778 LOAD_CONST           (True)
+             780 LOAD_CONST           (('flush',))
+             782 CALL_KW              2
+             784 POP_TOP
+             786 POP_EXCEPT
+             788 LOAD_CONST           (None)
+             790 STORE_FAST           (exc)
+             792 DELETE_FAST          (exc)
+             794 JUMP_FORWARD         (to 812)
+         >>  796 LOAD_CONST           (None)
+             798 STORE_FAST           (exc)
+             800 DELETE_FAST          (exc)
+             802 RERAISE              1
+
+397:     >>  804 RERAISE              0
+         >>  806 COPY                 3
+             808 POP_EXCEPT
+             810 RERAISE              1
+
+375:     >>  812 JUMP_BACKWARD        (to 376)
+
+ExceptionTable:
+  378 to 426 -> 666 [0]
+  522 to 610 -> 740 [0]
+  616 to 662 -> 740 [0]
+  666 to 684 -> 734 [1] lasti
+  690 to 726 -> 734 [1] lasti
+  732 to 732 -> 734 [1] lasti
+  740 to 758 -> 806 [1] lasti
+  760 to 784 -> 796 [1] lasti
+  796 to 804 -> 806 [1] lasti
+
+# Method Name:       require_license_or_exit
+# Filename:          license_gate.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        401
+# Constants:
+#    0: None
+#    1: '未授权，程序未启动。'
+#    2: True
+#    3: ('flush',)
+#    4: '机器码: '
+#    5: 'machine_code'
+#    6: '请把机器码发给管理员生成 license.key 或授权码。'
+#    7: '原因: '
+#    8: 3
+# Names:
+#    0: license_required
+#    1: verify_license
+#    2: _stdin_interactive
+#    3: prompt_for_license_install
+#    4: license_info
+#    5: print
+#    6: SystemExit
+# Varnames:
+#	valid, reason, _path, info
+# Local variables:
+#    0: valid
+#    1: reason
+#    2: _path
+#    3: info
+401:           0 RESUME               0
+
+402:           2 LOAD_GLOBAL          (NULL + license_required)
+              12 CALL                 (0 positional)
+              20 TO_BOOL
+              28 POP_JUMP_IF_TRUE     (to 34)
+
+403:          32 RETURN_CONST         (None)
+
+404:     >>   34 LOAD_GLOBAL          (NULL + verify_license)
+              44 CALL                 (0 positional)
+              52 UNPACK_SEQUENCE      3
+              56 STORE_FAST_STORE_FAST (valid, reason)
+              58 STORE_FAST           (_path)
+
+405:          60 LOAD_FAST            (valid)
+              62 TO_BOOL
+              70 POP_JUMP_IF_FALSE    (to 76)
+
+406:          74 RETURN_CONST         (None)
+
+407:     >>   76 LOAD_GLOBAL          (NULL + _stdin_interactive)
+              86 CALL                 (0 positional)
+              94 TO_BOOL
+             102 POP_JUMP_IF_FALSE    (to 140)
+             106 LOAD_GLOBAL          (NULL + prompt_for_license_install)
+             116 LOAD_FAST            (reason)
+             118 CALL                 (1 positional)
+             126 TO_BOOL
+             134 POP_JUMP_IF_FALSE    (to 140)
+
+408:         138 RETURN_CONST         (None)
+
+409:     >>  140 LOAD_GLOBAL          (NULL + license_info)
+             150 CALL                 (0 positional)
+             158 STORE_FAST           (info)
+
+410:         160 LOAD_GLOBAL          (NULL + print)
+             170 LOAD_CONST           ("未授权，程序未启动。")
+             172 LOAD_CONST           (True)
+             174 LOAD_CONST           (('flush',))
+             176 CALL_KW              2
+             178 POP_TOP
+
+411:         180 LOAD_GLOBAL          (NULL + print)
+             190 LOAD_CONST           ("机器码: ")
+             192 LOAD_FAST            (info)
+             194 LOAD_CONST           ("machine_code")
+             196 BINARY_SUBSCR
+             200 FORMAT_SIMPLE
+             202 BUILD_STRING         2
+             204 LOAD_CONST           (True)
+             206 LOAD_CONST           (('flush',))
+             208 CALL_KW              2
+             210 POP_TOP
+
+412:         212 LOAD_GLOBAL          (NULL + print)
+             222 LOAD_CONST           ("请把机器码发给管理员生成 license.key 或授权码。")
+             224 LOAD_CONST           (True)
+             226 LOAD_CONST           (('flush',))
+             228 CALL_KW              2
+             230 POP_TOP
+
+413:         232 LOAD_GLOBAL          (NULL + print)
+             242 LOAD_CONST           ("原因: ")
+             244 LOAD_FAST            (reason)
+             246 FORMAT_SIMPLE
+             248 BUILD_STRING         2
+             250 LOAD_CONST           (True)
+             252 LOAD_CONST           (('flush',))
+             254 CALL_KW              2
+             256 POP_TOP
+
+414:         258 LOAD_GLOBAL          (NULL + SystemExit)
+             268 LOAD_CONST           (3)
+             270 CALL                 (1 positional)
+             278 RAISE_VARARGS        (exception instance)
+
+
+# Method Name:       main
+# Filename:          license_gate.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        417
+# Constants:
+#    0: None
+#    1: 'Show local license information'
+#    2: ('description',)
+#    3: '--json'
+#    4: 'store_true'
+#    5: ('action',)
+#    6: False
+#    7: 2
+#    8: ('ensure_ascii', 'indent')
+#    9: '机器码: '
+#   10: 'machine_code'
+#   11: '授权有效: '
+#   12: 'valid'
+#   13: '原因: '
+#   14: 'reason'
+#   15: 'license: '
+#   16: 'license_path'
+#   17: 0
+#   18: 3
+# Names:
+#    0: argparse
+#    1: ArgumentParser
+#    2: add_argument
+#    3: parse_args
+#    4: license_info
+#    5: json
+#    6: print
+#    7: dumps
+# Varnames:
+#	argv, parser, args, info
+# Positional arguments:
+#	argv
+# Local variables:
+#    1: parser
+#    2: args
+#    3: info
+417:           0 RESUME               0
+
+418:           2 LOAD_GLOBAL          (argparse)
+              12 LOAD_ATTR            (ArgumentParser)
+              32 PUSH_NULL
+              34 LOAD_CONST           ("Show local license information")
+              36 LOAD_CONST           (('description',))
+              38 CALL_KW              1
+              40 STORE_FAST           (parser)
+
+419:          42 LOAD_FAST            (parser)
+              44 LOAD_ATTR            (NULL|self + add_argument)
+              64 LOAD_CONST           ("--json")
+              66 LOAD_CONST           ("store_true")
+              68 LOAD_CONST           (('action',))
+              70 CALL_KW              2
+              72 POP_TOP
+
+420:          74 LOAD_FAST            (parser)
+              76 LOAD_ATTR            (NULL|self + parse_args)
+              96 LOAD_FAST            (argv)
+              98 CALL                 (1 positional)
+             106 STORE_FAST           (args)
+
+421:         108 LOAD_GLOBAL          (NULL + license_info)
+             118 CALL                 (0 positional)
+             126 STORE_FAST           (info)
+
+422:         128 LOAD_FAST            (args)
+             130 LOAD_ATTR            (json)
+             150 TO_BOOL
+             158 POP_JUMP_IF_FALSE    (to 226)
+
+423:         162 LOAD_GLOBAL          (NULL + print)
+             172 LOAD_GLOBAL          (json)
+             182 LOAD_ATTR            (dumps)
+             202 PUSH_NULL
+             204 LOAD_FAST            (info)
+             206 LOAD_CONST           (False)
+             208 LOAD_CONST           (2)
+             210 LOAD_CONST           (('ensure_ascii', 'indent'))
+             212 CALL_KW              3
+             214 CALL                 (1 positional)
+             222 POP_TOP
+             224 JUMP_FORWARD         (to 362)
+
+425:     >>  226 LOAD_GLOBAL          (NULL + print)
+             236 LOAD_CONST           ("机器码: ")
+             238 LOAD_FAST            (info)
+             240 LOAD_CONST           ("machine_code")
+             242 BINARY_SUBSCR
+             246 FORMAT_SIMPLE
+             248 BUILD_STRING         2
+             250 CALL                 (1 positional)
+             258 POP_TOP
+
+426:         260 LOAD_GLOBAL          (NULL + print)
+             270 LOAD_CONST           ("授权有效: ")
+             272 LOAD_FAST            (info)
+             274 LOAD_CONST           ("valid")
+             276 BINARY_SUBSCR
+             280 FORMAT_SIMPLE
+             282 BUILD_STRING         2
+             284 CALL                 (1 positional)
+             292 POP_TOP
+
+427:         294 LOAD_GLOBAL          (NULL + print)
+             304 LOAD_CONST           ("原因: ")
+             306 LOAD_FAST            (info)
+             308 LOAD_CONST           ("reason")
+             310 BINARY_SUBSCR
+             314 FORMAT_SIMPLE
+             316 BUILD_STRING         2
+             318 CALL                 (1 positional)
+             326 POP_TOP
+
+428:         328 LOAD_GLOBAL          (NULL + print)
+             338 LOAD_CONST           ("license: ")
+             340 LOAD_FAST            (info)
+             342 LOAD_CONST           ("license_path")
+             344 BINARY_SUBSCR
+             348 FORMAT_SIMPLE
+             350 BUILD_STRING         2
+             352 CALL                 (1 positional)
+             360 POP_TOP
+
+429:     >>  362 LOAD_FAST            (info)
+             364 LOAD_CONST           ("valid")
+             366 BINARY_SUBSCR
+             370 TO_BOOL
+             378 POP_JUMP_IF_FALSE    (to 386)
+             382 LOAD_CONST           (0)
+             384 RETURN_VALUE
+         >>  386 LOAD_CONST           (3)
+             388 RETURN_VALUE
+
+
+# Method Name:       <genexpr>
+# Filename:          license_gate.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        94
+# Constants:
+#    0: 'uuid'
+#    1: None
+# Names:
+#    0: lower
+# Varnames:
+#	.0, x
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: x
+ 94:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 70)
+              14 STORE_FAST_LOAD_FAST (x, x)
+              16 LOAD_ATTR            (NULL|self + lower)
+              36 CALL                 (0 positional)
+              44 LOAD_CONST           ("uuid")
+              46 COMPARE_OP           (!=)
+              50 POP_JUMP_IF_TRUE     (to 58)
+              54 JUMP_BACKWARD        (to 10)
+         >>   58 LOAD_FAST            (x)
+              60 YIELD_VALUE          0
+              62 RESUME               5
+              64 POP_TOP
+              66 JUMP_BACKWARD        (to 10)
+         >>   70 END_FOR
+              72 POP_TOP
+              74 RETURN_CONST         (None)
+         >>   76 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              78 RERAISE              1
+
+ExceptionTable:
+  4 to 48 -> 76 [0] lasti
+  58 to 74 -> 76 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          license_gate.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        4
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        189
+# Constants:
+#    0: '='
+#    1: None
+# Varnames:
+#	.0, k, v
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: k
+#    2: v
+189:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 42)
+              14 UNPACK_SEQUENCE      2
+              18 STORE_FAST_STORE_FAST (k, v)
+              20 LOAD_FAST            (k)
+              22 FORMAT_SIMPLE
+              24 LOAD_CONST           ("=")
+              26 LOAD_FAST            (v)
+              28 FORMAT_SIMPLE
+              30 BUILD_STRING         3
+              32 YIELD_VALUE          0
+              34 RESUME               5
+              36 POP_TOP
+              38 JUMP_BACKWARD        (to 10)
+         >>   42 END_FOR
+              44 POP_TOP
+              46 RETURN_CONST         (None)
+         >>   48 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              50 RERAISE              1
+
+ExceptionTable:
+  4 to 46 -> 48 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          license_gate.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        8
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        287
+# Constants:
+#    0: 'machine_code'
+#    1: ''
+#    2: None
+# Names:
+#    0: hmac
+#    1: compare_digest
+#    2: str
+#    3: get
+# Varnames:
+#	.0, code
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: code
+# Free variables:
+#    0: data
+               0 COPY_FREE_VARS       1
+
+287:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+              10 GET_ITER
+              12 FOR_ITER             (to 138)
+              16 STORE_FAST           (code)
+              18 LOAD_GLOBAL          (hmac)
+              28 LOAD_ATTR            (compare_digest)
+              48 PUSH_NULL
+              50 LOAD_GLOBAL          (NULL + str)
+              60 LOAD_DEREF           (data)
+              62 LOAD_ATTR            (NULL|self + get)
+              82 LOAD_CONST           ("machine_code")
+              84 CALL                 (1 positional)
+              92 COPY                 1
+              94 TO_BOOL
+             102 POP_JUMP_IF_TRUE     (to 110)
+             106 POP_TOP
+             108 LOAD_CONST           ("")
+         >>  110 CALL                 (1 positional)
+             118 LOAD_FAST            (code)
+             120 CALL                 (2 positional)
+             128 YIELD_VALUE          0
+             130 RESUME               5
+             132 POP_TOP
+             134 JUMP_BACKWARD        (to 12)
+         >>  138 END_FOR
+             140 POP_TOP
+             142 RETURN_CONST         (None)
+         >>  144 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+             146 RERAISE              1
+
+ExceptionTable:
+  6 to 142 -> 144 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          license_gate.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        8
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        288
+# Constants:
+#    0: 'fingerprint_hash'
+#    1: ''
+#    2: None
+# Names:
+#    0: hmac
+#    1: compare_digest
+#    2: str
+#    3: get
+# Varnames:
+#	.0, fp
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: fp
+# Free variables:
+#    0: data
+               0 COPY_FREE_VARS       1
+
+288:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+              10 GET_ITER
+              12 FOR_ITER             (to 138)
+              16 STORE_FAST           (fp)
+              18 LOAD_GLOBAL          (hmac)
+              28 LOAD_ATTR            (compare_digest)
+              48 PUSH_NULL
+              50 LOAD_GLOBAL          (NULL + str)
+              60 LOAD_DEREF           (data)
+              62 LOAD_ATTR            (NULL|self + get)
+              82 LOAD_CONST           ("fingerprint_hash")
+              84 CALL                 (1 positional)
+              92 COPY                 1
+              94 TO_BOOL
+             102 POP_JUMP_IF_TRUE     (to 110)
+             106 POP_TOP
+             108 LOAD_CONST           ("")
+         >>  110 CALL                 (1 positional)
+             118 LOAD_FAST            (fp)
+             120 CALL                 (2 positional)
+             128 YIELD_VALUE          0
+             130 RESUME               5
+             132 POP_TOP
+             134 JUMP_BACKWARD        (to 12)
+         >>  138 END_FOR
+             140 POP_TOP
+             142 RETURN_CONST         (None)
+         >>  144 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+             146 RERAISE              1
+
+ExceptionTable:
+  6 to 142 -> 144 [0] lasti

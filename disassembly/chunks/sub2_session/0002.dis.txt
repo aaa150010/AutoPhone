@@ -1,0 +1,491 @@
+             312 LOAD_ATTR            (NULL|self + get)
+             332 LOAD_FAST            (key)
+             334 CALL                 (1 positional)
+             342 LOAD_GLOBAL          (dict)
+             352 CALL                 (2 positional)
+             360 TO_BOOL
+             368 POP_JUMP_IF_FALSE    (to 406)
+             372 LOAD_FAST            (sessions)
+             374 LOAD_ATTR            (NULL|self + get)
+             394 LOAD_FAST            (key)
+             396 CALL                 (1 positional)
+             404 JUMP_FORWARD         (to 408)
+         >>  406 BUILD_MAP            0
+         >>  408 STORE_FAST           (item)
+
+ 81:         410 LOAD_GLOBAL          (NULL + _now)
+             420 CALL                 (0 positional)
+             428 STORE_FAST           (now)
+
+ 82:         430 LOAD_GLOBAL          (NULL + float)
+             440 LOAD_FAST            (item)
+             442 LOAD_ATTR            (NULL|self + get)
+             462 LOAD_CONST           ("cooldown_until")
+             464 CALL                 (1 positional)
+             472 COPY                 1
+             474 TO_BOOL
+             482 POP_JUMP_IF_TRUE     (to 490)
+             486 POP_TOP
+             488 LOAD_CONST           (0)
+         >>  490 CALL                 (1 positional)
+             498 STORE_FAST           (cooldown_until)
+
+ 83:         500 LOAD_FAST_LOAD_FAST  (cooldown_until, now)
+             502 COMPARE_OP           (>)
+             506 POP_JUMP_IF_FALSE    (to 566)
+
+ 84:         510 LOAD_GLOBAL          (NULL + int)
+             520 LOAD_FAST_LOAD_FAST  (cooldown_until, now)
+             522 BINARY_OP            (-)
+             526 CALL                 (1 positional)
+             534 STORE_FAST           (remain)
+
+ 85:         536 LOAD_GLOBAL          (NULL + Sub2RateLimited)
+             546 LOAD_CONST           ("SUB2API登录限流冷却中，约 ")
+             548 LOAD_FAST            (remain)
+             550 FORMAT_SIMPLE
+             552 LOAD_CONST           ("s 后重试")
+             554 BUILD_STRING         3
+             556 CALL                 (1 positional)
+             564 RAISE_VARARGS        (exception instance)
+
+ 86:     >>  566 LOAD_GLOBAL          (NULL + str)
+             576 LOAD_FAST            (item)
+             578 LOAD_ATTR            (NULL|self + get)
+             598 LOAD_CONST           ("access_token")
+             600 CALL                 (1 positional)
+             608 COPY                 1
+             610 TO_BOOL
+             618 POP_JUMP_IF_TRUE     (to 626)
+             622 POP_TOP
+             624 LOAD_CONST           ("")
+         >>  626 CALL                 (1 positional)
+             634 STORE_FAST           (token)
+
+ 87:         636 LOAD_GLOBAL          (NULL + float)
+             646 LOAD_FAST            (item)
+             648 LOAD_ATTR            (NULL|self + get)
+             668 LOAD_CONST           ("expires_at")
+             670 CALL                 (1 positional)
+             678 COPY                 1
+             680 TO_BOOL
+             688 POP_JUMP_IF_TRUE     (to 696)
+             692 POP_TOP
+             694 LOAD_CONST           (0)
+         >>  696 CALL                 (1 positional)
+             704 STORE_FAST           (expires_at)
+
+ 88:         706 LOAD_FAST            (token)
+             708 TO_BOOL
+             716 POP_JUMP_IF_FALSE    (to 804)
+             720 LOAD_FAST            (force_refresh)
+             722 TO_BOOL
+             730 POP_JUMP_IF_TRUE     (to 804)
+             734 LOAD_FAST            (expires_at)
+             736 LOAD_FAST            (now)
+             738 BINARY_OP            (-)
+             742 LOAD_CONST           (30)
+             744 COMPARE_OP           (>)
+             748 POP_JUMP_IF_FALSE    (to 804)
+
+ 89:         752 LOAD_FAST            (log_fn)
+             754 TO_BOOL
+             762 POP_JUMP_IF_FALSE    (to 782)
+
+ 90:         766 LOAD_FAST            (log_fn)
+             768 PUSH_NULL
+             770 LOAD_CONST           ("SUB2API登录复用缓存 token")
+             772 CALL                 (1 positional)
+             780 POP_TOP
+
+ 91:     >>  782 LOAD_FAST            (token)
+
+ 77:         784 SWAP                 (TOS <-> TOS1)
+             786 LOAD_CONST           (None)
+             788 LOAD_CONST           (None)
+             790 LOAD_CONST           (None)
+             792 CALL                 (2 positional)
+             800 POP_TOP
+             802 RETURN_VALUE
+
+ 92:     >>  804 LOAD_GLOBAL          (NULL + float)
+             814 LOAD_FAST            (item)
+             816 LOAD_ATTR            (NULL|self + get)
+             836 LOAD_CONST           ("last_login_at")
+             838 CALL                 (1 positional)
+             846 COPY                 1
+             848 TO_BOOL
+             856 POP_JUMP_IF_TRUE     (to 864)
+             860 POP_TOP
+             862 LOAD_CONST           (0)
+         >>  864 CALL                 (1 positional)
+             872 STORE_FAST           (last_login_at)
+
+ 93:         874 LOAD_GLOBAL          (MIN_LOGIN_INTERVAL_SECONDS)
+             884 LOAD_FAST            (now)
+             886 LOAD_FAST            (last_login_at)
+             888 BINARY_OP            (-)
+             892 BINARY_OP            (-)
+             896 STORE_FAST           (wait_for)
+
+ 94:         898 LOAD_FAST            (wait_for)
+             900 LOAD_CONST           (0)
+             902 COMPARE_OP           (>)
+             906 POP_JUMP_IF_FALSE    (to 954)
+
+ 95:         910 LOAD_GLOBAL          (time)
+             920 LOAD_ATTR            (sleep)
+             940 PUSH_NULL
+             942 LOAD_FAST            (wait_for)
+             944 CALL                 (1 positional)
+             952 POP_TOP
+
+ 96:     >>  954 LOAD_GLOBAL          (NULL + _now)
+             964 CALL                 (0 positional)
+             972 LOAD_FAST            (item)
+             974 LOAD_CONST           ("last_login_at")
+             976 STORE_SUBSCR
+
+ 97:         980 LOAD_FAST_LOAD_FAST  (item, sessions)
+             982 LOAD_FAST            (key)
+             984 STORE_SUBSCR
+
+ 98:         988 LOAD_GLOBAL          (NULL + _save_cache)
+             998 LOAD_FAST            (cache)
+            1000 CALL                 (1 positional)
+            1008 POP_TOP
+
+100:        1010 LOAD_GLOBAL          (requests)
+            1020 LOAD_ATTR            (post)
+            1040 PUSH_NULL
+
+101:        1042 LOAD_FAST            (base)
+            1044 FORMAT_SIMPLE
+            1046 LOAD_CONST           ("/api/v1/auth/login")
+            1048 BUILD_STRING         2
+
+100:        1050 BUILD_TUPLE          1
+
+102:        1052 LOAD_FAST_LOAD_FAST  (user, password)
+            1054 COPY                 1
+            1056 TO_BOOL
+            1064 POP_JUMP_IF_TRUE     (to 1072)
+            1068 POP_TOP
+            1070 LOAD_CONST           ("")
+         >> 1072 LOAD_CONST           (('email', 'password'))
+            1074 BUILD_CONST_KEY_MAP  2
+
+103:        1076 LOAD_FAST            (timeout)
+
+100:        1078 LOAD_CONST           (('json', 'timeout'))
+            1080 BUILD_CONST_KEY_MAP  2
+
+104:        1082 LOAD_GLOBAL          (NULL + requests_kwargs)
+            1092 LOAD_FAST            (proxy)
+            1094 CALL                 (1 positional)
+
+100:        1102 DICT_MERGE           1
+            1104 CALL_FUNCTION_EX     (keyword and positional arguments)
+            1106 STORE_FAST           (resp)
+
+106:        1108 NOP
+
+107:        1110 LOAD_FAST            (resp)
+            1112 LOAD_ATTR            (NULL|self + json)
+            1132 CALL                 (0 positional)
+            1140 STORE_FAST           (data)
+
+110:        1142 LOAD_FAST            (resp)
+            1144 LOAD_ATTR            (status_code)
+            1164 LOAD_CONST           (429)
+            1166 COMPARE_OP           (==)
+            1170 POP_JUMP_IF_TRUE     (to 1216)
+            1174 LOAD_FAST            (data)
+            1176 LOAD_ATTR            (NULL|self + get)
+            1196 LOAD_CONST           ("code")
+            1198 CALL                 (1 positional)
+            1206 LOAD_CONST           (0)
+            1208 COMPARE_OP           (!=)
+            1212 POP_JUMP_IF_FALSE    (to 1530)
+
+111:     >> 1216 LOAD_GLOBAL          (NULL + _is_rate_limited)
+            1226 LOAD_FAST            (data)
+            1228 CALL                 (1 positional)
+            1236 TO_BOOL
+            1244 POP_JUMP_IF_FALSE    (to 1470)
+
+112:        1248 LOAD_GLOBAL          (NULL + _now)
+            1258 CALL                 (0 positional)
+            1266 LOAD_GLOBAL          (RATE_LIMIT_COOLDOWN_SECONDS)
+            1276 BINARY_OP            (+)
+            1280 LOAD_FAST            (item)
+            1282 LOAD_CONST           ("cooldown_until")
+            1284 STORE_SUBSCR
+
+113:        1288 LOAD_FAST            (data)
+            1290 LOAD_ATTR            (NULL|self + get)
+            1310 LOAD_CONST           ("message")
+            1312 CALL                 (1 positional)
+            1320 COPY                 1
+            1322 TO_BOOL
+            1330 POP_JUMP_IF_TRUE     (to 1356)
+            1334 POP_TOP
+            1336 LOAD_GLOBAL          (NULL + str)
+            1346 LOAD_FAST            (data)
+            1348 CALL                 (1 positional)
+         >> 1356 LOAD_FAST            (item)
+            1358 LOAD_CONST           ("last_error")
+            1360 STORE_SUBSCR
+
+114:        1364 LOAD_FAST_LOAD_FAST  (item, sessions)
+            1366 LOAD_FAST            (key)
+            1368 STORE_SUBSCR
+
+115:        1372 LOAD_GLOBAL          (NULL + _save_cache)
+            1382 LOAD_FAST            (cache)
+            1384 CALL                 (1 positional)
+            1392 POP_TOP
+
+116:        1394 LOAD_GLOBAL          (NULL + Sub2RateLimited)
+            1404 LOAD_CONST           ("SUB2API登录失败: ")
+            1406 LOAD_FAST            (data)
+            1408 LOAD_ATTR            (NULL|self + get)
+            1428 LOAD_CONST           ("message")
+            1430 CALL                 (1 positional)
+            1438 COPY                 1
+            1440 TO_BOOL
+            1448 POP_JUMP_IF_TRUE     (to 1456)
+            1452 POP_TOP
+            1454 LOAD_FAST            (data)
+         >> 1456 FORMAT_SIMPLE
+            1458 BUILD_STRING         2
+            1460 CALL                 (1 positional)
+            1468 RAISE_VARARGS        (exception instance)
+
+117:     >> 1470 LOAD_GLOBAL          (NULL + RuntimeError)
+            1480 LOAD_CONST           ("SUB2API登录失败: ")
+            1482 LOAD_FAST            (data)
+            1484 LOAD_ATTR            (NULL|self + get)
+            1504 LOAD_CONST           ("message")
+            1506 LOAD_CONST           ("?")
+            1508 CALL                 (2 positional)
+            1516 FORMAT_SIMPLE
+            1518 BUILD_STRING         2
+            1520 CALL                 (1 positional)
+            1528 RAISE_VARARGS        (exception instance)
+
+118:     >> 1530 LOAD_GLOBAL          (NULL + str)
+            1540 LOAD_FAST            (data)
+            1542 LOAD_ATTR            (NULL|self + get)
+            1562 LOAD_CONST           ("data")
+            1564 CALL                 (1 positional)
+            1572 COPY                 1
+            1574 TO_BOOL
+            1582 POP_JUMP_IF_TRUE     (to 1590)
+            1586 POP_TOP
+            1588 BUILD_MAP            0
+         >> 1590 LOAD_ATTR            (NULL|self + get)
+            1610 LOAD_CONST           ("access_token")
+            1612 CALL                 (1 positional)
+            1620 COPY                 1
+            1622 TO_BOOL
+            1630 POP_JUMP_IF_TRUE     (to 1638)
+            1634 POP_TOP
+            1636 LOAD_CONST           ("")
+         >> 1638 CALL                 (1 positional)
+            1646 STORE_FAST           (token)
+
+119:        1648 LOAD_FAST            (token)
+            1650 TO_BOOL
+            1658 POP_JUMP_IF_TRUE     (to 1684)
+
+120:        1662 LOAD_GLOBAL          (NULL + RuntimeError)
+            1672 LOAD_CONST           ("SUB2API登录失败: missing access_token")
+            1674 CALL                 (1 positional)
+            1682 RAISE_VARARGS        (exception instance)
+
+121:     >> 1684 LOAD_FAST            (item)
+            1686 LOAD_ATTR            (NULL|self + update)
+
+122:        1706 LOAD_FAST            (token)
+
+123:        1708 LOAD_GLOBAL          (NULL + _now)
+            1718 CALL                 (0 positional)
+            1726 LOAD_GLOBAL          (TOKEN_TTL_SECONDS)
+            1736 BINARY_OP            (+)
+
+124:        1740 LOAD_CONST           (0)
+
+125:        1742 LOAD_CONST           ("")
+
+126:        1744 LOAD_GLOBAL          (time)
+            1754 LOAD_ATTR            (strftime)
+            1774 PUSH_NULL
+            1776 LOAD_CONST           ("%Y-%m-%d %H:%M:%S")
+            1778 CALL                 (1 positional)
+
+121:        1786 LOAD_CONST           (('access_token', 'expires_at', 'cooldown_until', 'last_error', 'updated_at'))
+            1788 BUILD_CONST_KEY_MAP  5
+            1790 CALL                 (1 positional)
+            1798 POP_TOP
+
+128:        1800 LOAD_FAST_LOAD_FAST  (item, sessions)
+            1802 LOAD_FAST            (key)
+            1804 STORE_SUBSCR
+
+129:        1808 LOAD_GLOBAL          (NULL + _save_cache)
+            1818 LOAD_FAST            (cache)
+            1820 CALL                 (1 positional)
+            1828 POP_TOP
+
+130:        1830 LOAD_FAST            (token)
+
+ 77:        1832 SWAP                 (TOS <-> TOS1)
+            1834 LOAD_CONST           (None)
+            1836 LOAD_CONST           (None)
+            1838 LOAD_CONST           (None)
+            1840 CALL                 (2 positional)
+            1848 POP_TOP
+            1850 RETURN_VALUE
+         >> 1852 PUSH_EXC_INFO
+
+108:        1854 LOAD_GLOBAL          (Exception)
+            1864 CHECK_EXC_MATCH
+            1866 POP_JUMP_IF_FALSE    (to 1934)
+            1870 POP_TOP
+
+109:        1872 LOAD_FAST            (resp)
+            1874 LOAD_ATTR            (status_code)
+            1894 LOAD_FAST            (resp)
+            1896 LOAD_ATTR            (text)
+            1916 LOAD_CONST           (None)
+            1918 LOAD_CONST           (300)
+            1920 BINARY_SLICE
+            1922 LOAD_CONST           (('code', 'message'))
+            1924 BUILD_CONST_KEY_MAP  2
+            1926 STORE_FAST           (data)
+            1928 POP_EXCEPT
+            1930 EXTENDED_ARG         (256)
+            1932 JUMP_BACKWARD_NO_INTERRUPT (to 1142)
+
+108:     >> 1934 RERAISE              0
+         >> 1936 COPY                 3
+            1938 POP_EXCEPT
+            1940 RERAISE              1
+
+ 77:     >> 1942 PUSH_EXC_INFO
+            1944 WITH_EXCEPT_START    0
+            1946 TO_BOOL
+            1954 POP_JUMP_IF_TRUE     (to 1960)
+            1958 RERAISE              2
+         >> 1960 POP_TOP
+            1962 POP_EXCEPT
+            1964 POP_TOP
+            1966 POP_TOP
+            1968 RETURN_CONST         (None)
+         >> 1970 COPY                 3
+            1972 POP_EXCEPT
+            1974 RERAISE              1
+
+ExceptionTable:
+  242 to 782 -> 1942 [1] lasti
+  804 to 1106 -> 1942 [1] lasti
+  1110 to 1140 -> 1852 [1]
+  1142 to 1830 -> 1942 [1] lasti
+  1852 to 1926 -> 1936 [2] lasti
+  1928 to 1932 -> 1942 [1] lasti
+  1934 to 1934 -> 1936 [2] lasti
+  1936 to 1940 -> 1942 [1] lasti
+  1942 to 1960 -> 1970 [3] lasti
+
+# Method Name:       clear_cached_token
+# Filename:          sub2_session.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        133
+# Constants:
+#    0: None
+#    1: 'sessions'
+# Names:
+#    0: _cache_key
+#    1: named_file_lock
+#    2: LOGIN_LOCK
+#    3: _load_cache
+#    4: setdefault
+#    5: pop
+#    6: _save_cache
+# Varnames:
+#	base_url, email, key, cache, sessions
+# Positional arguments:
+#	base_url, email
+# Local variables:
+#    2: key
+#    3: cache
+#    4: sessions
+133:           0 RESUME               0
+
+134:           2 LOAD_GLOBAL          (NULL + _cache_key)
+              12 LOAD_FAST_LOAD_FAST  (base_url, email)
+              14 CALL                 (2 positional)
+              22 STORE_FAST           (key)
+
+135:          24 LOAD_GLOBAL          (NULL + named_file_lock)
+              34 LOAD_GLOBAL          (LOGIN_LOCK)
+              44 CALL                 (1 positional)
+              52 BEFORE_WITH
+              54 POP_TOP
+
+136:          56 LOAD_GLOBAL          (NULL + _load_cache)
+              66 CALL                 (0 positional)
+              74 STORE_FAST           (cache)
+
+137:          76 LOAD_FAST            (cache)
+              78 LOAD_ATTR            (NULL|self + setdefault)
+              98 LOAD_CONST           ("sessions")
+             100 BUILD_MAP            0
+             102 CALL                 (2 positional)
+             110 STORE_FAST           (sessions)
+
+138:         112 LOAD_FAST_LOAD_FAST  (key, sessions)
+             114 CONTAINS_OP          (in)
+             118 POP_JUMP_IF_FALSE    (to 180)
+
+139:         122 LOAD_FAST            (sessions)
+             124 LOAD_ATTR            (NULL|self + pop)
+             144 LOAD_FAST            (key)
+             146 LOAD_CONST           (None)
+             148 CALL                 (2 positional)
+             156 POP_TOP
+
+140:         158 LOAD_GLOBAL          (NULL + _save_cache)
+             168 LOAD_FAST            (cache)
+             170 CALL                 (1 positional)
+             178 POP_TOP
+
+135:     >>  180 LOAD_CONST           (None)
+             182 LOAD_CONST           (None)
+             184 LOAD_CONST           (None)
+             186 CALL                 (2 positional)
+             194 POP_TOP
+             196 RETURN_CONST         (None)
+         >>  198 PUSH_EXC_INFO
+             200 WITH_EXCEPT_START    0
+             202 TO_BOOL
+             210 POP_JUMP_IF_TRUE     (to 216)
+             214 RERAISE              2
+         >>  216 POP_TOP
+             218 POP_EXCEPT
+             220 POP_TOP
+             222 POP_TOP
+             224 RETURN_CONST         (None)
+         >>  226 COPY                 3
+             228 POP_EXCEPT
+             230 RERAISE              1
+
+ExceptionTable:
+  54 to 178 -> 198 [1] lasti
+  198 to 216 -> 226 [3] lasti

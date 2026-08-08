@@ -1,0 +1,800 @@
+
+1510:         154 LOAD_GLOBAL          (NULL + _clean)
+             164 LOAD_FAST            (sub)
+             166 LOAD_ATTR            (NULL|self + get)
+             186 LOAD_CONST           ("url")
+             188 CALL                 (1 positional)
+             196 CALL                 (1 positional)
+             204 LOAD_ATTR            (NULL|self + rstrip)
+             224 LOAD_CONST           ("/")
+             226 CALL                 (1 positional)
+             234 STORE_FAST           (base)
+
+1511:         236 LOAD_GLOBAL          (NULL + _clean)
+             246 LOAD_FAST            (sub)
+             248 LOAD_ATTR            (NULL|self + get)
+             268 LOAD_CONST           ("email")
+             270 CALL                 (1 positional)
+             278 CALL                 (1 positional)
+             286 STORE_FAST           (user)
+
+1512:         288 LOAD_GLOBAL          (NULL + _clean)
+             298 LOAD_FAST            (sub)
+             300 LOAD_ATTR            (NULL|self + get)
+             320 LOAD_CONST           ("pwd")
+             322 CALL                 (1 positional)
+             330 COPY                 1
+             332 TO_BOOL
+             340 POP_JUMP_IF_TRUE     (to 378)
+             344 POP_TOP
+             346 LOAD_FAST            (sub)
+             348 LOAD_ATTR            (NULL|self + get)
+             368 LOAD_CONST           ("password")
+             370 CALL                 (1 positional)
+         >>  378 CALL                 (1 positional)
+             386 STORE_FAST           (password)
+
+1513:         388 LOAD_FAST            (base)
+             390 TO_BOOL
+             398 POP_JUMP_IF_FALSE    (to 450)
+             402 LOAD_FAST            (user)
+             404 TO_BOOL
+             412 POP_JUMP_IF_FALSE    (to 450)
+             416 LOAD_DEREF           (self)
+             418 LOAD_ATTR            (session_id)
+             438 TO_BOOL
+             446 POP_JUMP_IF_TRUE     (to 460)
+
+1514:     >>  450 LOAD_CONST           (False)
+             452 LOAD_CONST           ("SUB2 session exchange missing url/email/session_id")
+             454 LOAD_CONST           (('ok', 'error'))
+             456 BUILD_CONST_KEY_MAP  2
+             458 RETURN_VALUE
+
+1515:     >>  460 NOP
+
+1516:         462 LOAD_CONST           (0)
+             464 LOAD_CONST           (('requests_kwargs',))
+             466 IMPORT_NAME          (proxy_scope)
+             468 IMPORT_FROM          (requests_kwargs)
+             470 STORE_FAST           (requests_kwargs)
+             472 POP_TOP
+
+1517:         474 LOAD_CONST           (0)
+             476 LOAD_CONST           (('get_admin_token',))
+             478 IMPORT_NAME          (sub2_session)
+             480 IMPORT_FROM          (get_admin_token)
+             482 STORE_FAST           (get_admin_token)
+             484 POP_TOP
+
+1520:         486 NOP
+
+1521:         488 LOAD_CONST           (0)
+             490 LOAD_CONST           (None)
+             492 IMPORT_NAME          (requests)
+             494 STORE_FAST           (requests)
+
+1523:         496 LOAD_FAST            (get_admin_token)
+             498 PUSH_NULL
+
+1524:         500 LOAD_FAST            (base)
+
+1525:         502 LOAD_FAST            (user)
+
+1526:         504 LOAD_FAST            (password)
+
+1527:         506 LOAD_CONST           (30)
+
+1528:         508 LOAD_FAST            (self)
+             510 BUILD_TUPLE          1
+             512 LOAD_CONST           (<Code311 code object <lambda> at 0x105ef9580, file codex_oauth_chain.py>, line 1528)
+             514 MAKE_FUNCTION
+             516 SET_FUNCTION_ATTRIBUTE 8
+
+1529:         518 LOAD_DEREF           (self)
+             520 LOAD_ATTR            (upload_proxy)
+
+1523:         540 LOAD_CONST           (('timeout', 'log_fn', 'proxy'))
+             542 CALL_KW              6
+             544 STORE_FAST           (admin_token)
+
+1531:         546 LOAD_FAST            (requests)
+             548 LOAD_ATTR            (post)
+             568 PUSH_NULL
+
+1532:         570 LOAD_FAST            (base)
+             572 FORMAT_SIMPLE
+             574 LOAD_CONST           ("/api/v1/admin/openai/exchange-code")
+             576 BUILD_STRING         2
+
+1531:         578 BUILD_TUPLE          1
+
+1533:         580 LOAD_DEREF           (self)
+             582 LOAD_ATTR            (session_id)
+             602 LOAD_FAST            (code)
+             604 LOAD_DEREF           (self)
+             606 LOAD_ATTR            (state)
+             626 LOAD_CONST           (('session_id', 'code', 'state'))
+             628 BUILD_CONST_KEY_MAP  3
+
+1534:         630 LOAD_CONST           ("Authorization")
+             632 LOAD_CONST           ("Bearer ")
+             634 LOAD_FAST            (admin_token)
+             636 FORMAT_SIMPLE
+             638 BUILD_STRING         2
+             640 BUILD_MAP            1
+
+1535:         642 LOAD_CONST           (300)
+
+1531:         644 LOAD_CONST           (('json', 'headers', 'timeout'))
+             646 BUILD_CONST_KEY_MAP  3
+
+1536:         648 LOAD_FAST            (requests_kwargs)
+             650 PUSH_NULL
+             652 LOAD_DEREF           (self)
+             654 LOAD_ATTR            (upload_proxy)
+             674 CALL                 (1 positional)
+
+1531:         682 DICT_MERGE           1
+             684 CALL_FUNCTION_EX     (keyword and positional arguments)
+             686 STORE_FAST           (response)
+
+1538:         688 LOAD_FAST            (response)
+             690 LOAD_ATTR            (NULL|self + json)
+             710 CALL                 (0 positional)
+             718 STORE_FAST           (data)
+
+1541:         720 LOAD_GLOBAL          (NULL + isinstance)
+             730 LOAD_FAST            (data)
+             732 LOAD_GLOBAL          (dict)
+             742 CALL                 (2 positional)
+             750 TO_BOOL
+             758 POP_JUMP_IF_FALSE    (to 804)
+             762 LOAD_FAST            (data)
+             764 LOAD_ATTR            (NULL|self + get)
+             784 LOAD_CONST           ("code")
+             786 CALL                 (1 positional)
+             794 LOAD_CONST           (0)
+             796 COMPARE_OP           (!=)
+             800 POP_JUMP_IF_FALSE    (to 838)
+
+1542:     >>  804 LOAD_CONST           (False)
+             806 LOAD_CONST           ("SUB2 exchange-code failed: ")
+             808 LOAD_GLOBAL          (NULL + _redacted)
+             818 LOAD_FAST            (data)
+             820 CALL                 (1 positional)
+             828 FORMAT_SIMPLE
+             830 BUILD_STRING         2
+             832 LOAD_CONST           (('ok', 'error'))
+             834 BUILD_CONST_KEY_MAP  2
+             836 RETURN_VALUE
+
+1543:     >>  838 LOAD_GLOBAL          (NULL + isinstance)
+             848 LOAD_FAST            (data)
+             850 LOAD_ATTR            (NULL|self + get)
+             870 LOAD_CONST           ("data")
+             872 CALL                 (1 positional)
+             880 LOAD_GLOBAL          (dict)
+             890 CALL                 (2 positional)
+             898 TO_BOOL
+             906 POP_JUMP_IF_FALSE    (to 944)
+             910 LOAD_FAST            (data)
+             912 LOAD_ATTR            (NULL|self + get)
+             932 LOAD_CONST           ("data")
+             934 CALL                 (1 positional)
+             942 JUMP_FORWARD         (to 946)
+         >>  944 LOAD_FAST            (data)
+         >>  946 STORE_FAST           (creds)
+
+1544:         948 LOAD_GLOBAL          (NULL + isinstance)
+             958 LOAD_FAST            (creds)
+             960 LOAD_GLOBAL          (dict)
+             970 CALL                 (2 positional)
+             978 TO_BOOL
+             986 POP_JUMP_IF_TRUE     (to 994)
+
+1545:         990 BUILD_MAP            0
+             992 STORE_FAST           (creds)
+
+1547:     >>  994 LOAD_FAST            (creds)
+             996 LOAD_ATTR            (NULL|self + get)
+            1016 LOAD_CONST           ("id_token")
+            1018 LOAD_CONST           ("")
+            1020 CALL                 (2 positional)
+
+1548:        1028 LOAD_FAST            (creds)
+            1030 LOAD_ATTR            (NULL|self + get)
+            1050 LOAD_CONST           ("access_token")
+            1052 LOAD_CONST           ("")
+            1054 CALL                 (2 positional)
+
+1549:        1062 LOAD_FAST            (creds)
+            1064 LOAD_ATTR            (NULL|self + get)
+            1084 LOAD_CONST           ("refresh_token")
+            1086 LOAD_CONST           ("")
+            1088 CALL                 (2 positional)
+
+1550:        1096 LOAD_FAST            (creds)
+            1098 LOAD_ATTR            (NULL|self + get)
+            1118 LOAD_CONST           ("expires_at")
+            1120 LOAD_CONST           (0)
+            1122 CALL                 (2 positional)
+
+1551:        1130 LOAD_FAST            (creds)
+            1132 LOAD_ATTR            (NULL|self + get)
+            1152 LOAD_CONST           ("token_type")
+            1154 LOAD_CONST           ("Bearer")
+            1156 CALL                 (2 positional)
+
+1552:        1164 LOAD_FAST            (creds)
+            1166 LOAD_ATTR            (NULL|self + get)
+            1186 LOAD_CONST           ("scope")
+            1188 LOAD_CONST           ("")
+            1190 CALL                 (2 positional)
+
+1553:        1198 LOAD_FAST            (creds)
+            1200 LOAD_ATTR            (NULL|self + get)
+            1220 LOAD_CONST           ("email")
+            1222 CALL                 (1 positional)
+            1230 COPY                 1
+            1232 TO_BOOL
+            1240 POP_JUMP_IF_TRUE     (to 1248)
+            1244 POP_TOP
+            1246 LOAD_FAST            (account_email)
+
+1546:     >> 1248 LOAD_CONST           (('id_token', 'access_token', 'refresh_token', 'expires_at', 'token_type', 'scope', 'email'))
+            1250 BUILD_CONST_KEY_MAP  7
+            1252 STORE_FAST           (tokens)
+
+1555:        1254 LOAD_CONST           (('chatgpt_account_id', 'account_id', 'chatgpt_account_user_id', 'chatgpt_user_id', 'chatgpt_plan_type', 'chatgpt_auth_user_id'))
+            1256 GET_ITER
+            1258 FOR_ITER             (to 1356)
+            1262 STORE_FAST           (key)
+
+1563:        1264 LOAD_FAST            (creds)
+            1266 LOAD_ATTR            (NULL|self + get)
+            1286 LOAD_FAST            (key)
+            1288 CALL                 (1 positional)
+            1296 TO_BOOL
+            1304 POP_JUMP_IF_TRUE     (to 1312)
+            1308 JUMP_BACKWARD        (to 1258)
+
+1564:     >> 1312 LOAD_FAST            (creds)
+            1314 LOAD_ATTR            (NULL|self + get)
+            1334 LOAD_FAST            (key)
+            1336 CALL                 (1 positional)
+            1344 LOAD_FAST            (tokens)
+            1346 LOAD_FAST            (key)
+            1348 STORE_SUBSCR
+            1352 JUMP_BACKWARD        (to 1258)
+
+1555:     >> 1356 END_FOR
+            1358 POP_TOP
+
+1565:        1360 LOAD_GLOBAL          (NULL + _merge_real_chatgpt_fields)
+            1370 LOAD_FAST_LOAD_FAST  (tokens, data)
+            1372 LOAD_CONST           (('exchange_data',))
+            1374 CALL_KW              2
+            1376 POP_TOP
+
+1566:        1378 LOAD_CONST           (True)
+            1380 LOAD_FAST_LOAD_FAST  (tokens, data)
+            1382 LOAD_CONST           (('ok', 'tokens', 'exchange_data'))
+            1384 BUILD_CONST_KEY_MAP  3
+            1386 RETURN_VALUE
+         >> 1388 PUSH_EXC_INFO
+
+1518:        1390 LOAD_GLOBAL          (Exception)
+            1400 CHECK_EXC_MATCH
+            1402 POP_JUMP_IF_FALSE    (to 1442)
+            1406 STORE_FAST           (exc)
+
+1519:        1408 LOAD_CONST           (False)
+            1410 LOAD_CONST           ("SUB2 helper import failed: ")
+            1412 LOAD_FAST            (exc)
+            1414 FORMAT_SIMPLE
+            1416 BUILD_STRING         2
+            1418 LOAD_CONST           (('ok', 'error'))
+            1420 BUILD_CONST_KEY_MAP  2
+            1422 SWAP                 (TOS <-> TOS1)
+            1424 POP_EXCEPT
+            1426 LOAD_CONST           (None)
+            1428 STORE_FAST           (exc)
+            1430 DELETE_FAST          (exc)
+            1432 RETURN_VALUE
+         >> 1434 LOAD_CONST           (None)
+            1436 STORE_FAST           (exc)
+            1438 DELETE_FAST          (exc)
+            1440 RERAISE              1
+
+1518:     >> 1442 RERAISE              0
+         >> 1444 COPY                 3
+            1446 POP_EXCEPT
+            1448 RERAISE              1
+         >> 1450 PUSH_EXC_INFO
+
+1539:        1452 LOAD_GLOBAL          (Exception)
+            1462 CHECK_EXC_MATCH
+            1464 POP_JUMP_IF_FALSE    (to 1504)
+            1468 STORE_FAST           (exc)
+
+1540:        1470 LOAD_CONST           (False)
+            1472 LOAD_CONST           ("SUB2 exchange-code request failed: ")
+            1474 LOAD_FAST            (exc)
+            1476 FORMAT_SIMPLE
+            1478 BUILD_STRING         2
+            1480 LOAD_CONST           (('ok', 'error'))
+            1482 BUILD_CONST_KEY_MAP  2
+            1484 SWAP                 (TOS <-> TOS1)
+            1486 POP_EXCEPT
+            1488 LOAD_CONST           (None)
+            1490 STORE_FAST           (exc)
+            1492 DELETE_FAST          (exc)
+            1494 RETURN_VALUE
+         >> 1496 LOAD_CONST           (None)
+            1498 STORE_FAST           (exc)
+            1500 DELETE_FAST          (exc)
+            1502 RERAISE              1
+
+1539:     >> 1504 RERAISE              0
+         >> 1506 COPY                 3
+            1508 POP_EXCEPT
+            1510 RERAISE              1
+
+ExceptionTable:
+  462 to 484 -> 1388 [0]
+  488 to 718 -> 1450 [0]
+  1388 to 1406 -> 1444 [1] lasti
+  1408 to 1420 -> 1434 [1] lasti
+  1422 to 1422 -> 1444 [1] lasti
+  1434 to 1442 -> 1444 [1] lasti
+  1450 to 1468 -> 1506 [1] lasti
+  1470 to 1482 -> 1496 [1] lasti
+  1484 to 1484 -> 1506 [1] lasti
+  1496 to 1504 -> 1506 [1] lasti
+
+# Method Name:       __init__
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  4
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1576
+# Constants:
+#    0: None
+#    1: 'phone_send_rejects'
+#    2: 0
+#    3: 'require_password'
+#    4: False
+#    5: 'email_after_verify_page'
+#    6: 'add_phone'
+#    7: 'password_after_verify_page'
+#    8: 'mfa_after_verify_page'
+#    9: 'callback_state'
+#   10: 'state'
+#   11: ''
+#   12: 'callback_code'
+#   13: 'mock-codex-code'
+#   14: 'access_token'
+#   15: 'mock-access-token'
+#   16: 'refresh_token'
+#   17: 'mock-refresh-token'
+#   18: 'id_token'
+#   19: 'mock-id-token'
+#   20: 'email'
+# Names:
+#    0: _mock_cfg
+#    1: oauth_params
+#    2: int
+#    3: get
+#    4: phone_send_rejects_left
+#    5: _as_bool
+#    6: require_password
+#    7: _clean
+#    8: email_after_verify_page
+#    9: password_after_verify_page
+#   10: mfa_after_verify_page
+#   11: callback_state
+#   12: callback_code
+#   13: access_token
+#   14: refresh_token
+#   15: id_token
+#   16: email
+# Varnames:
+#	self, config, oauth_params, mock
+# Positional arguments:
+#	self, config
+# Local variables:
+#    2: oauth_params
+#    3: mock
+1576:           0 RESUME               0
+
+1577:           2 LOAD_GLOBAL          (NULL + _mock_cfg)
+              12 LOAD_FAST            (config)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (mock)
+
+1578:          24 LOAD_FAST_LOAD_FAST  (oauth_params, self)
+              26 STORE_ATTR           (oauth_params)
+
+1579:          36 LOAD_GLOBAL          (NULL + int)
+              46 LOAD_FAST            (mock)
+              48 LOAD_ATTR            (NULL|self + get)
+              68 LOAD_CONST           ("phone_send_rejects")
+              70 CALL                 (1 positional)
+              78 COPY                 1
+              80 TO_BOOL
+              88 POP_JUMP_IF_TRUE     (to 96)
+              92 POP_TOP
+              94 LOAD_CONST           (0)
+         >>   96 CALL                 (1 positional)
+             104 LOAD_FAST            (self)
+             106 STORE_ATTR           (phone_send_rejects_left)
+
+1580:         116 LOAD_GLOBAL          (NULL + _as_bool)
+             126 LOAD_FAST            (mock)
+             128 LOAD_ATTR            (NULL|self + get)
+             148 LOAD_CONST           ("require_password")
+             150 CALL                 (1 positional)
+             158 LOAD_CONST           (False)
+             160 CALL                 (2 positional)
+             168 LOAD_FAST            (self)
+             170 STORE_ATTR           (require_password)
+
+1581:         180 LOAD_GLOBAL          (NULL + _clean)
+             190 LOAD_FAST            (mock)
+             192 LOAD_ATTR            (NULL|self + get)
+             212 LOAD_CONST           ("email_after_verify_page")
+             214 CALL                 (1 positional)
+             222 COPY                 1
+             224 TO_BOOL
+             232 POP_JUMP_IF_TRUE     (to 240)
+             236 POP_TOP
+             238 LOAD_CONST           ("add_phone")
+         >>  240 CALL                 (1 positional)
+             248 LOAD_FAST            (self)
+             250 STORE_ATTR           (email_after_verify_page)
+
+1582:         260 LOAD_GLOBAL          (NULL + _clean)
+             270 LOAD_FAST            (mock)
+             272 LOAD_ATTR            (NULL|self + get)
+             292 LOAD_CONST           ("password_after_verify_page")
+             294 CALL                 (1 positional)
+             302 COPY                 1
+             304 TO_BOOL
+             312 POP_JUMP_IF_TRUE     (to 340)
+             316 POP_TOP
+             318 LOAD_FAST            (self)
+             320 LOAD_ATTR            (email_after_verify_page)
+         >>  340 CALL                 (1 positional)
+             348 LOAD_FAST            (self)
+             350 STORE_ATTR           (password_after_verify_page)
+
+1583:         360 LOAD_GLOBAL          (NULL + _clean)
+             370 LOAD_FAST            (mock)
+             372 LOAD_ATTR            (NULL|self + get)
+             392 LOAD_CONST           ("mfa_after_verify_page")
+             394 CALL                 (1 positional)
+             402 COPY                 1
+             404 TO_BOOL
+             412 POP_JUMP_IF_TRUE     (to 440)
+             416 POP_TOP
+             418 LOAD_FAST            (self)
+             420 LOAD_ATTR            (email_after_verify_page)
+         >>  440 CALL                 (1 positional)
+             448 LOAD_FAST            (self)
+             450 STORE_ATTR           (mfa_after_verify_page)
+
+1584:         460 LOAD_GLOBAL          (NULL + _clean)
+             470 LOAD_FAST            (mock)
+             472 LOAD_ATTR            (NULL|self + get)
+             492 LOAD_CONST           ("callback_state")
+             494 CALL                 (1 positional)
+             502 COPY                 1
+             504 TO_BOOL
+             512 POP_JUMP_IF_TRUE     (to 568)
+             516 POP_TOP
+             518 LOAD_FAST            (oauth_params)
+             520 LOAD_ATTR            (NULL|self + get)
+             540 LOAD_CONST           ("state")
+             542 CALL                 (1 positional)
+             550 COPY                 1
+             552 TO_BOOL
+             560 POP_JUMP_IF_TRUE     (to 568)
+             564 POP_TOP
+             566 LOAD_CONST           ("")
+         >>  568 CALL                 (1 positional)
+             576 LOAD_FAST            (self)
+             578 STORE_ATTR           (callback_state)
+
+1585:         588 LOAD_GLOBAL          (NULL + _clean)
+             598 LOAD_FAST            (mock)
+             600 LOAD_ATTR            (NULL|self + get)
+             620 LOAD_CONST           ("callback_code")
+             622 CALL                 (1 positional)
+             630 COPY                 1
+             632 TO_BOOL
+             640 POP_JUMP_IF_TRUE     (to 648)
+             644 POP_TOP
+             646 LOAD_CONST           ("mock-codex-code")
+         >>  648 CALL                 (1 positional)
+             656 LOAD_FAST            (self)
+             658 STORE_ATTR           (callback_code)
+
+1586:         668 LOAD_GLOBAL          (NULL + _clean)
+             678 LOAD_FAST            (mock)
+             680 LOAD_ATTR            (NULL|self + get)
+             700 LOAD_CONST           ("access_token")
+             702 CALL                 (1 positional)
+             710 COPY                 1
+             712 TO_BOOL
+             720 POP_JUMP_IF_TRUE     (to 728)
+             724 POP_TOP
+             726 LOAD_CONST           ("mock-access-token")
+         >>  728 CALL                 (1 positional)
+             736 LOAD_FAST            (self)
+             738 STORE_ATTR           (access_token)
+
+1587:         748 LOAD_GLOBAL          (NULL + _clean)
+             758 LOAD_FAST            (mock)
+             760 LOAD_ATTR            (NULL|self + get)
+             780 LOAD_CONST           ("refresh_token")
+             782 CALL                 (1 positional)
+             790 COPY                 1
+             792 TO_BOOL
+             800 POP_JUMP_IF_TRUE     (to 808)
+             804 POP_TOP
+             806 LOAD_CONST           ("mock-refresh-token")
+         >>  808 CALL                 (1 positional)
+             816 LOAD_FAST            (self)
+             818 STORE_ATTR           (refresh_token)
+
+1588:         828 LOAD_GLOBAL          (NULL + _clean)
+             838 LOAD_FAST            (mock)
+             840 LOAD_ATTR            (NULL|self + get)
+             860 LOAD_CONST           ("id_token")
+             862 CALL                 (1 positional)
+             870 COPY                 1
+             872 TO_BOOL
+             880 POP_JUMP_IF_TRUE     (to 888)
+             884 POP_TOP
+             886 LOAD_CONST           ("mock-id-token")
+         >>  888 CALL                 (1 positional)
+             896 LOAD_FAST            (self)
+             898 STORE_ATTR           (id_token)
+
+1589:         908 LOAD_GLOBAL          (NULL + _clean)
+             918 LOAD_FAST            (mock)
+             920 LOAD_ATTR            (NULL|self + get)
+             940 LOAD_CONST           ("email")
+             942 CALL                 (1 positional)
+             950 COPY                 1
+             952 TO_BOOL
+             960 POP_JUMP_IF_TRUE     (to 968)
+             964 POP_TOP
+             966 LOAD_CONST           ("")
+         >>  968 CALL                 (1 positional)
+             976 LOAD_FAST            (self)
+             978 STORE_ATTR           (email)
+             988 RETURN_CONST         (None)
+
+
+# Method Name:       initiate_oauth
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1591
+# Constants:
+#    0: None
+#    1: 200
+#    2: 'type'
+#    3: 'login'
+#    4: ('_status', 'page', 'url')
+# Varnames:
+#	self, oauth_url
+# Positional arguments:
+#	self, oauth_url
+1591:           0 RESUME               0
+
+1592:           2 LOAD_CONST           (200)
+               4 LOAD_CONST           ("type")
+               6 LOAD_CONST           ("login")
+               8 BUILD_MAP            1
+              10 LOAD_FAST            (oauth_url)
+              12 LOAD_CONST           (('_status', 'page', 'url'))
+              14 BUILD_CONST_KEY_MAP  3
+              16 RETURN_VALUE
+
+
+# Method Name:       submit_email_identifier
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1594
+# Constants:
+#    0: None
+#    1: 200
+#    2: 'type'
+#    3: 'login_password'
+#    4: ('_status', 'page', 'email')
+#    5: 'email_otp_verification'
+# Names:
+#    0: require_password
+# Varnames:
+#	self, email
+# Positional arguments:
+#	self, email
+1594:           0 RESUME               0
+
+1595:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (require_password)
+              24 TO_BOOL
+              32 POP_JUMP_IF_FALSE    (to 52)
+
+1596:          36 LOAD_CONST           (200)
+              38 LOAD_CONST           ("type")
+              40 LOAD_CONST           ("login_password")
+              42 BUILD_MAP            1
+              44 LOAD_FAST            (email)
+              46 LOAD_CONST           (('_status', 'page', 'email'))
+              48 BUILD_CONST_KEY_MAP  3
+              50 RETURN_VALUE
+
+1597:     >>   52 LOAD_CONST           (200)
+              54 LOAD_CONST           ("type")
+              56 LOAD_CONST           ("email_otp_verification")
+              58 BUILD_MAP            1
+              60 LOAD_FAST            (email)
+              62 LOAD_CONST           (('_status', 'page', 'email'))
+              64 BUILD_CONST_KEY_MAP  3
+              66 RETURN_VALUE
+
+
+# Method Name:       verify_password
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1599
+# Constants:
+#    0: None
+#    1: 400
+#    2: 'password_missing'
+#    3: 'password missing'
+#    4: ('code', 'message')
+#    5: ('_status', 'error')
+#    6: 200
+#    7: 'type'
+#    8: '/mock/after-password'
+#    9: ('_status', 'page', 'continue_url')
+# Names:
+#    0: _clean
+#    1: password_after_verify_page
+# Varnames:
+#	self, password
+# Positional arguments:
+#	self, password
+1599:           0 RESUME               0
+
+1600:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (password)
+              14 CALL                 (1 positional)
+              22 TO_BOOL
+              30 POP_JUMP_IF_TRUE     (to 50)
+
+1601:          34 LOAD_CONST           (400)
+              36 LOAD_CONST           ("password_missing")
+              38 LOAD_CONST           ("password missing")
+              40 LOAD_CONST           (('code', 'message'))
+              42 BUILD_CONST_KEY_MAP  2
+              44 LOAD_CONST           (('_status', 'error'))
+              46 BUILD_CONST_KEY_MAP  2
+              48 RETURN_VALUE
+
+1602:     >>   50 LOAD_CONST           (200)
+              52 LOAD_CONST           ("type")
+              54 LOAD_FAST            (self)
+              56 LOAD_ATTR            (password_after_verify_page)
+              76 BUILD_MAP            1
+              78 LOAD_CONST           ("/mock/after-password")
+              80 LOAD_CONST           (('_status', 'page', 'continue_url'))
+              82 BUILD_CONST_KEY_MAP  3
+              84 RETURN_VALUE
+
+
+# Method Name:       verify_email_otp
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1604
+# Constants:
+#    0: None
+#    1: 200
+#    2: 'type'
+#    3: '/mock/after-email'
+#    4: ('_status', 'page', 'continue_url')
+# Names:
+#    0: email_after_verify_page
+# Varnames:
+#	self, code
+# Positional arguments:
+#	self, code
+1604:           0 RESUME               0
+
+1605:           2 LOAD_CONST           (200)
+               4 LOAD_CONST           ("type")
+               6 LOAD_FAST            (self)
+               8 LOAD_ATTR            (email_after_verify_page)
+              28 BUILD_MAP            1
+              30 LOAD_CONST           ("/mock/after-email")
+              32 LOAD_CONST           (('_status', 'page', 'continue_url'))
+              34 BUILD_CONST_KEY_MAP  3
+              36 RETURN_VALUE
+
+
+# Method Name:       verify_mfa_otp
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1607
+# Constants:
+#    0: None
+#    1: 200
+#    2: 'type'
+#    3: '/mock/after-mfa'
+#    4: ('_status', 'page', 'continue_url')
+# Names:
+#    0: mfa_after_verify_page
+# Varnames:
+#	self, code
+# Positional arguments:
+#	self, code
+1607:           0 RESUME               0
+
+1608:           2 LOAD_CONST           (200)
+               4 LOAD_CONST           ("type")
+               6 LOAD_FAST            (self)
+               8 LOAD_ATTR            (mfa_after_verify_page)
+              28 BUILD_MAP            1
+              30 LOAD_CONST           ("/mock/after-mfa")
+              32 LOAD_CONST           (('_status', 'page', 'continue_url'))
+              34 BUILD_CONST_KEY_MAP  3
+              36 RETURN_VALUE
+
+
+# Method Name:       send_email_otp
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1610
+# Constants:
+#    0: None
+#    1: 200
+#    2: 'type'
+#    3: 'email_otp_verification'
+#    4: ('_status', 'page', 'continue_url')

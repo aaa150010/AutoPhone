@@ -1,0 +1,152 @@
+#    1: post
+#    2: json
+#    3: get
+#    4: RuntimeError
+#    5: DEFAULT_REDIRECT_URI
+# Varnames:
+#	sub2api_url, sub2api_email, sub2api_password, proxy_id, resp, data, token, body, result, oauth_url, session_id, state
+# Positional arguments:
+#	sub2api_url, sub2api_email, sub2api_password, proxy_id
+# Local variables:
+#    4: resp
+#    5: data
+#    6: token
+#    7: body
+#    8: result
+#    9: oauth_url
+#   10: session_id
+#   11: state
+314:           0 RESUME               0
+
+326:           2 LOAD_GLOBAL          (requests)
+              12 LOAD_ATTR            (post)
+              32 PUSH_NULL
+
+327:          34 LOAD_FAST            (sub2api_url)
+              36 FORMAT_SIMPLE
+              38 LOAD_CONST           ("/api/v1/auth/login")
+              40 BUILD_STRING         2
+
+328:          42 LOAD_FAST_LOAD_FAST  (sub2api_email, sub2api_password)
+              44 LOAD_CONST           (('email', 'password'))
+              46 BUILD_CONST_KEY_MAP  2
+
+329:          48 LOAD_CONST           (30)
+
+326:          50 LOAD_CONST           (('json', 'timeout'))
+              52 CALL_KW              3
+              54 STORE_FAST           (resp)
+
+331:          56 LOAD_FAST            (resp)
+              58 LOAD_ATTR            (NULL|self + json)
+              78 CALL                 (0 positional)
+              86 STORE_FAST           (data)
+
+332:          88 LOAD_FAST            (data)
+              90 LOAD_ATTR            (NULL|self + get)
+             110 LOAD_CONST           ("code")
+             112 CALL                 (1 positional)
+             120 LOAD_CONST           (0)
+             122 COMPARE_OP           (!=)
+             126 POP_JUMP_IF_FALSE    (to 158)
+
+333:         130 LOAD_GLOBAL          (NULL + RuntimeError)
+             140 LOAD_CONST           ("SUB2API 登录失败: ")
+             142 LOAD_FAST            (data)
+             144 FORMAT_SIMPLE
+             146 BUILD_STRING         2
+             148 CALL                 (1 positional)
+             156 RAISE_VARARGS        (exception instance)
+
+334:     >>  158 LOAD_FAST            (data)
+             160 LOAD_CONST           ("data")
+             162 BINARY_SUBSCR
+             166 LOAD_CONST           ("access_token")
+             168 BINARY_SUBSCR
+             172 STORE_FAST           (token)
+
+337:         174 LOAD_CONST           ("redirect_uri")
+             176 LOAD_GLOBAL          (DEFAULT_REDIRECT_URI)
+             186 BUILD_MAP            1
+             188 STORE_FAST           (body)
+
+338:         190 LOAD_FAST            (proxy_id)
+             192 TO_BOOL
+             200 POP_JUMP_IF_FALSE    (to 212)
+
+339:         204 LOAD_FAST_LOAD_FAST  (proxy_id, body)
+             206 LOAD_CONST           ("proxy_id")
+             208 STORE_SUBSCR
+
+341:     >>  212 LOAD_GLOBAL          (requests)
+             222 LOAD_ATTR            (post)
+             242 PUSH_NULL
+
+342:         244 LOAD_FAST            (sub2api_url)
+             246 FORMAT_SIMPLE
+             248 LOAD_CONST           ("/api/v1/admin/openai/generate-auth-url")
+             250 BUILD_STRING         2
+
+343:         252 LOAD_FAST            (body)
+
+344:         254 LOAD_CONST           ("Authorization")
+             256 LOAD_CONST           ("Bearer ")
+             258 LOAD_FAST            (token)
+             260 FORMAT_SIMPLE
+             262 BUILD_STRING         2
+             264 BUILD_MAP            1
+
+345:         266 LOAD_CONST           (30)
+
+341:         268 LOAD_CONST           (('json', 'headers', 'timeout'))
+             270 CALL_KW              4
+             272 STORE_FAST           (resp)
+
+347:         274 LOAD_FAST            (resp)
+             276 LOAD_ATTR            (NULL|self + json)
+             296 CALL                 (0 positional)
+             304 STORE_FAST           (data)
+
+348:         306 LOAD_FAST            (data)
+             308 LOAD_ATTR            (NULL|self + get)
+             328 LOAD_CONST           ("code")
+             330 CALL                 (1 positional)
+             338 LOAD_CONST           (0)
+             340 COMPARE_OP           (!=)
+             344 POP_JUMP_IF_FALSE    (to 376)
+
+349:         348 LOAD_GLOBAL          (NULL + RuntimeError)
+             358 LOAD_CONST           ("生成 OAuth URL 失败: ")
+             360 LOAD_FAST            (data)
+             362 FORMAT_SIMPLE
+             364 BUILD_STRING         2
+             366 CALL                 (1 positional)
+             374 RAISE_VARARGS        (exception instance)
+
+351:     >>  376 LOAD_FAST            (data)
+             378 LOAD_CONST           ("data")
+             380 BINARY_SUBSCR
+             384 STORE_FAST           (result)
+
+352:         386 LOAD_FAST            (result)
+             388 LOAD_CONST           ("auth_url")
+             390 BINARY_SUBSCR
+             394 STORE_FAST           (oauth_url)
+
+353:         396 LOAD_FAST            (result)
+             398 LOAD_CONST           ("session_id")
+             400 BINARY_SUBSCR
+             404 STORE_FAST           (session_id)
+
+354:         406 LOAD_FAST            (result)
+             408 LOAD_ATTR            (NULL|self + get)
+             428 LOAD_CONST           ("state")
+             430 LOAD_CONST           ("")
+             432 CALL                 (2 positional)
+             440 STORE_FAST           (state)
+
+356:         442 LOAD_FAST_LOAD_FAST  (oauth_url, session_id)
+             444 LOAD_FAST            (state)
+             446 BUILD_TUPLE          3
+             448 RETURN_VALUE
+

@@ -1,0 +1,800 @@
+937:     >>  196 LOAD_FAST            (event)
+             198 LOAD_ATTR            (NULL|self + set)
+             218 CALL                 (0 positional)
+             226 POP_TOP
+             228 JUMP_BACKWARD        (to 80)
+
+933:     >>  232 END_FOR
+             234 POP_TOP
+
+938:         236 BUILD_MAP            0
+             238 LOAD_FAST            (self)
+             240 STORE_ATTR           (pending)
+
+939:         250 BUILD_MAP            0
+             252 LOAD_FAST            (self)
+             254 STORE_ATTR           (buffered)
+
+940:         264 LOAD_CONST           ("")
+             266 LOAD_FAST            (self)
+             268 STORE_ATTR           (active_task_id)
+
+941:         278 LOAD_CONST           ("")
+             280 LOAD_FAST            (self)
+             282 STORE_ATTR           (active_email)
+
+942:         292 LOAD_FAST            (self)
+             294 LOAD_ATTR            (condition)
+             314 LOAD_ATTR            (NULL|self + notify_all)
+             334 CALL                 (0 positional)
+             342 POP_TOP
+
+932:         344 LOAD_CONST           (None)
+             346 LOAD_CONST           (None)
+             348 LOAD_CONST           (None)
+             350 CALL                 (2 positional)
+             358 POP_TOP
+             360 RETURN_CONST         (None)
+         >>  362 PUSH_EXC_INFO
+             364 WITH_EXCEPT_START    0
+             366 TO_BOOL
+             374 POP_JUMP_IF_TRUE     (to 380)
+             378 RERAISE              2
+         >>  380 POP_TOP
+             382 POP_EXCEPT
+         >>  384 POP_TOP
+             386 POP_TOP
+             388 RETURN_CONST         (None)
+         >>  390 COPY                 3
+             392 POP_EXCEPT
+             394 RERAISE              1
+
+ExceptionTable:
+  26 to 186 -> 362 [1] lasti
+  196 to 342 -> 362 [1] lasti
+  362 to 380 -> 390 [3] lasti
+
+# Method Name:       status
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        12
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        944
+# Constants:
+#    0: None
+#    1: 'task_id'
+#    2: 'email'
+#    3: 'requested_at'
+#    4: 'deadline_at'
+#    5: ('task_id', 'email', 'requested_at', 'deadline_at')
+#    6: ('task_id', 'email')
+#    7: 'queued_at'
+#    8: ('task_id', 'email', 'queued_at')
+#    9: 'submitted_at'
+#   10: ('task_id', 'email', 'submitted_at')
+#   11: ('active', 'slot', 'queued', 'buffered')
+# Names:
+#    0: condition
+#    1: pending
+#    2: get
+#    3: active_task_id
+#    4: isinstance
+#    5: dict
+#    6: active_email
+#    7: login_queue
+#    8: buffered
+#    9: values
+# Varnames:
+#	self, active, item
+# Positional arguments:
+#	self
+# Local variables:
+#    1: active
+#    2: item
+944:           0 RESUME               0
+
+945:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (condition)
+              24 BEFORE_WITH
+              26 POP_TOP
+
+946:          28 LOAD_FAST            (self)
+              30 LOAD_ATTR            (pending)
+              50 LOAD_ATTR            (NULL|self + get)
+              70 LOAD_FAST            (self)
+              72 LOAD_ATTR            (active_task_id)
+              92 CALL                 (1 positional)
+             100 STORE_FAST           (active)
+
+953:         102 LOAD_GLOBAL          (NULL + isinstance)
+             112 LOAD_FAST            (active)
+             114 LOAD_GLOBAL          (dict)
+             124 CALL                 (2 positional)
+             132 TO_BOOL
+             140 POP_JUMP_IF_FALSE    (to 278)
+
+949:         144 LOAD_FAST            (active)
+             146 LOAD_ATTR            (NULL|self + get)
+             166 LOAD_CONST           ("task_id")
+             168 CALL                 (1 positional)
+
+950:         176 LOAD_FAST            (active)
+             178 LOAD_ATTR            (NULL|self + get)
+             198 LOAD_CONST           ("email")
+             200 CALL                 (1 positional)
+
+951:         208 LOAD_FAST            (active)
+             210 LOAD_ATTR            (NULL|self + get)
+             230 LOAD_CONST           ("requested_at")
+             232 CALL                 (1 positional)
+
+952:         240 LOAD_FAST            (active)
+             242 LOAD_ATTR            (NULL|self + get)
+             262 LOAD_CONST           ("deadline_at")
+             264 CALL                 (1 positional)
+
+948:         272 LOAD_CONST           (('task_id', 'email', 'requested_at', 'deadline_at'))
+             274 BUILD_CONST_KEY_MAP  4
+             276 JUMP_FORWARD         (to 280)
+
+953:     >>  278 LOAD_CONST           (None)
+
+957:     >>  280 LOAD_FAST            (self)
+             282 LOAD_ATTR            (active_task_id)
+             302 TO_BOOL
+             310 POP_JUMP_IF_FALSE    (to 364)
+
+955:         314 LOAD_FAST            (self)
+             316 LOAD_ATTR            (active_task_id)
+
+956:         336 LOAD_FAST            (self)
+             338 LOAD_ATTR            (active_email)
+
+954:         358 LOAD_CONST           (('task_id', 'email'))
+             360 BUILD_CONST_KEY_MAP  2
+             362 JUMP_FORWARD         (to 366)
+
+957:     >>  364 LOAD_CONST           (None)
+
+960:     >>  366 LOAD_FAST            (self)
+             368 LOAD_ATTR            (login_queue)
+             388 GET_ITER
+
+958:         390 LOAD_FAST_AND_CLEAR  (item)
+             392 SWAP                 (TOS <-> TOS1)
+             394 BUILD_LIST           0
+             396 SWAP                 (TOS <-> TOS1)
+
+960:         398 GET_ITER
+             400 FOR_ITER             (to 440)
+             404 STORE_FAST           (item)
+
+959:         406 LOAD_FAST            (item)
+             408 LOAD_CONST           ("task_id")
+             410 BINARY_SUBSCR
+             414 LOAD_FAST            (item)
+             416 LOAD_CONST           ("email")
+             418 BINARY_SUBSCR
+             422 LOAD_FAST            (item)
+             424 LOAD_CONST           ("queued_at")
+             426 BINARY_SUBSCR
+             430 LOAD_CONST           (('task_id', 'email', 'queued_at'))
+             432 BUILD_CONST_KEY_MAP  3
+             434 LIST_APPEND          2
+             436 JUMP_BACKWARD        (to 400)
+
+960:     >>  440 END_FOR
+             442 POP_TOP
+
+958:         444 SWAP                 (TOS <-> TOS1)
+             446 STORE_FAST           (item)
+
+968:         448 LOAD_FAST            (self)
+             450 LOAD_ATTR            (buffered)
+             470 LOAD_ATTR            (NULL|self + values)
+             490 CALL                 (0 positional)
+             498 GET_ITER
+
+962:         500 LOAD_FAST_AND_CLEAR  (item)
+             502 SWAP                 (TOS <-> TOS1)
+             504 BUILD_LIST           0
+             506 SWAP                 (TOS <-> TOS1)
+
+968:         508 GET_ITER
+             510 FOR_ITER             (to 668)
+             514 STORE_FAST           (item)
+
+969:         516 LOAD_GLOBAL          (NULL + isinstance)
+             526 LOAD_FAST            (item)
+             528 LOAD_GLOBAL          (dict)
+             538 CALL                 (2 positional)
+             546 TO_BOOL
+
+963:         554 POP_JUMP_IF_TRUE     (to 562)
+             558 JUMP_BACKWARD        (to 510)
+
+964:     >>  562 LOAD_FAST            (item)
+             564 LOAD_ATTR            (NULL|self + get)
+             584 LOAD_CONST           ("task_id")
+             586 CALL                 (1 positional)
+
+965:         594 LOAD_FAST            (item)
+             596 LOAD_ATTR            (NULL|self + get)
+             616 LOAD_CONST           ("email")
+             618 CALL                 (1 positional)
+
+966:         626 LOAD_FAST            (item)
+             628 LOAD_ATTR            (NULL|self + get)
+             648 LOAD_CONST           ("submitted_at")
+             650 CALL                 (1 positional)
+
+963:         658 LOAD_CONST           (('task_id', 'email', 'submitted_at'))
+             660 BUILD_CONST_KEY_MAP  3
+             662 LIST_APPEND          2
+             664 JUMP_BACKWARD        (to 510)
+
+968:     >>  668 END_FOR
+             670 POP_TOP
+
+962:         672 SWAP                 (TOS <-> TOS1)
+             674 STORE_FAST           (item)
+
+947:         676 LOAD_CONST           (('active', 'slot', 'queued', 'buffered'))
+             678 BUILD_CONST_KEY_MAP  4
+
+945:         680 SWAP                 (TOS <-> TOS1)
+             682 LOAD_CONST           (None)
+             684 LOAD_CONST           (None)
+             686 LOAD_CONST           (None)
+             688 CALL                 (2 positional)
+             696 POP_TOP
+             698 RETURN_VALUE
+         >>  700 SWAP                 (TOS <-> TOS1)
+             702 POP_TOP
+
+958:         704 SWAP                 (TOS <-> TOS1)
+             706 STORE_FAST           (item)
+             708 RERAISE              0
+         >>  710 SWAP                 (TOS <-> TOS1)
+             712 POP_TOP
+
+962:         714 SWAP                 (TOS <-> TOS1)
+             716 STORE_FAST           (item)
+             718 RERAISE              0
+
+945:     >>  720 PUSH_EXC_INFO
+             722 WITH_EXCEPT_START    0
+             724 TO_BOOL
+             732 POP_JUMP_IF_TRUE     (to 738)
+             736 RERAISE              2
+         >>  738 POP_TOP
+             740 POP_EXCEPT
+             742 POP_TOP
+             744 POP_TOP
+             746 RETURN_CONST         (None)
+         >>  748 COPY                 3
+             750 POP_EXCEPT
+             752 RERAISE              1
+
+ExceptionTable:
+  26 to 392 -> 720 [1] lasti
+  394 to 442 -> 700 [5]
+  444 to 502 -> 720 [1] lasti
+  504 to 552 -> 710 [6]
+  562 to 670 -> 710 [6]
+  672 to 678 -> 720 [1] lasti
+  700 to 718 -> 720 [1] lasti
+  720 to 738 -> 748 [3] lasti
+
+# Method Name:       __init__
+# Filename:          runtime.py
+# Argument count:    8
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  8
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        977
+# Constants:
+#    0: None
+#    1: 'manual_code_timeout'
+#    2: 600
+#    3: 30
+#    4: 3600
+#    5: False
+# Names:
+#    0: entry
+#    1: task_id
+#    2: coordinator
+#    3: _as_int
+#    4: get
+#    5: timeout
+#    6: stop_event
+#    7: state_fn
+#    8: log_fn
+#    9: slot_acquired
+# Varnames:
+#	self, entry, task_id, coordinator, config, stop_event, state_fn, log_fn
+# Positional arguments:
+#	self, entry, task_id, coordinator, config, stop_event, state_fn, log_fn
+977:           0 RESUME               0
+
+978:           2 LOAD_FAST_LOAD_FAST  (entry, self)
+               4 STORE_ATTR           (entry)
+
+979:          14 LOAD_FAST_LOAD_FAST  (task_id, self)
+              16 STORE_ATTR           (task_id)
+
+980:          26 LOAD_FAST_LOAD_FAST  (coordinator, self)
+              28 STORE_ATTR           (coordinator)
+
+981:          38 LOAD_GLOBAL          (NULL + _as_int)
+              48 LOAD_FAST            (config)
+              50 LOAD_ATTR            (NULL|self + get)
+              70 LOAD_CONST           ("manual_code_timeout")
+              72 CALL                 (1 positional)
+              80 LOAD_CONST           (600)
+              82 LOAD_CONST           (30)
+              84 LOAD_CONST           (3600)
+              86 CALL                 (4 positional)
+              94 LOAD_FAST            (self)
+              96 STORE_ATTR           (timeout)
+
+982:         106 LOAD_FAST_LOAD_FAST  (stop_event, self)
+             108 STORE_ATTR           (stop_event)
+
+983:         118 LOAD_FAST_LOAD_FAST  (state_fn, self)
+             120 STORE_ATTR           (state_fn)
+
+984:         130 LOAD_FAST_LOAD_FAST  (log_fn, self)
+             132 STORE_ATTR           (log_fn)
+
+985:         142 LOAD_CONST           (False)
+             144 LOAD_FAST            (self)
+             146 STORE_ATTR           (slot_acquired)
+             156 RETURN_CONST         (None)
+
+
+# Method Name:       acquire_login_slot
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        987
+# Constants:
+#    0: None
+#    1: 'waiting_manual_login_turn'
+#    2: ('status', 'email')
+#    3: True
+# Names:
+#    0: state_fn
+#    1: task_id
+#    2: entry
+#    3: email
+#    4: coordinator
+#    5: acquire_login_slot
+#    6: stop_event
+#    7: slot_acquired
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+987:           0 RESUME               0
+
+988:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + state_fn)
+              24 LOAD_FAST            (self)
+              26 LOAD_ATTR            (task_id)
+              46 LOAD_CONST           ("waiting_manual_login_turn")
+              48 LOAD_FAST            (self)
+              50 LOAD_ATTR            (entry)
+              70 LOAD_ATTR            (email)
+              90 LOAD_CONST           (('status', 'email'))
+              92 CALL_KW              3
+              94 POP_TOP
+
+989:          96 LOAD_FAST            (self)
+              98 LOAD_ATTR            (coordinator)
+             118 LOAD_ATTR            (NULL|self + acquire_login_slot)
+             138 LOAD_FAST            (self)
+             140 LOAD_ATTR            (task_id)
+             160 LOAD_FAST            (self)
+             162 LOAD_ATTR            (entry)
+             182 LOAD_ATTR            (email)
+             202 LOAD_FAST            (self)
+             204 LOAD_ATTR            (stop_event)
+             224 CALL                 (3 positional)
+             232 POP_TOP
+
+990:         234 LOAD_CONST           (True)
+             236 LOAD_FAST            (self)
+             238 STORE_ATTR           (slot_acquired)
+             248 RETURN_CONST         (None)
+
+
+# Method Name:       mark_sent
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        992
+# Constants:
+#    0: None
+#    1: '等待手动输入邮箱验证码: '
+#    2: 'warn'
+# Names:
+#    0: log_fn
+#    1: entry
+#    2: email
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+992:           0 RESUME               0
+
+993:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + log_fn)
+              24 LOAD_CONST           ("等待手动输入邮箱验证码: ")
+              26 LOAD_FAST            (self)
+              28 LOAD_ATTR            (entry)
+              48 LOAD_ATTR            (email)
+              68 FORMAT_SIMPLE
+              70 BUILD_STRING         2
+              72 LOAD_CONST           ("warn")
+              74 CALL                 (2 positional)
+              82 POP_TOP
+              84 RETURN_CONST         (None)
+
+
+# Method Name:       mark_verified
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        995
+# Constants:
+#    0: None
+#    1: True
+#    2: ('discard_buffered',)
+#    3: False
+# Names:
+#    0: coordinator
+#    1: release_login_slot
+#    2: task_id
+#    3: slot_acquired
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+995:           0 RESUME               0
+
+999:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (coordinator)
+              24 LOAD_ATTR            (NULL|self + release_login_slot)
+              44 LOAD_FAST            (self)
+              46 LOAD_ATTR            (task_id)
+              66 LOAD_CONST           (True)
+              68 LOAD_CONST           (('discard_buffered',))
+              70 CALL_KW              2
+              72 POP_TOP
+
+1000:          74 LOAD_CONST           (False)
+              76 LOAD_FAST            (self)
+              78 STORE_ATTR           (slot_acquired)
+              88 RETURN_CONST         (None)
+
+
+# Method Name:       wait_code
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1002
+# Constants:
+#    0: None
+#    1: '邮箱任务与手动验证码不匹配'
+#    2: 'waiting_manual_email_code'
+#    3: ('status', 'email')
+#    4: False
+#    5: 'email_code_submitted'
+# Names:
+#    0: _clean
+#    1: lower
+#    2: entry
+#    3: email
+#    4: MailboxPoolError
+#    5: slot_acquired
+#    6: acquire_login_slot
+#    7: state_fn
+#    8: task_id
+#    9: coordinator
+#   10: wait_for_code
+#   11: timeout
+#   12: stop_event
+# Varnames:
+#	self, email, code
+# Positional arguments:
+#	self, email
+# Local variables:
+#    2: code
+1002:           0 RESUME               0
+
+1003:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (email)
+              14 CALL                 (1 positional)
+              22 LOAD_ATTR            (NULL|self + lower)
+              42 CALL                 (0 positional)
+              50 LOAD_FAST            (self)
+              52 LOAD_ATTR            (entry)
+              72 LOAD_ATTR            (email)
+              92 COMPARE_OP           (!=)
+              96 POP_JUMP_IF_FALSE    (to 122)
+
+1004:         100 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             110 LOAD_CONST           ("邮箱任务与手动验证码不匹配")
+             112 CALL                 (1 positional)
+             120 RAISE_VARARGS        (exception instance)
+
+1005:     >>  122 LOAD_FAST            (self)
+             124 LOAD_ATTR            (slot_acquired)
+             144 TO_BOOL
+             152 POP_JUMP_IF_TRUE     (to 188)
+
+1006:         156 LOAD_FAST            (self)
+             158 LOAD_ATTR            (NULL|self + acquire_login_slot)
+             178 CALL                 (0 positional)
+             186 POP_TOP
+
+1007:     >>  188 LOAD_FAST            (self)
+             190 LOAD_ATTR            (NULL|self + state_fn)
+             210 LOAD_FAST            (self)
+             212 LOAD_ATTR            (task_id)
+             232 LOAD_CONST           ("waiting_manual_email_code")
+             234 LOAD_FAST            (self)
+             236 LOAD_ATTR            (entry)
+             256 LOAD_ATTR            (email)
+             276 LOAD_CONST           (('status', 'email'))
+             278 CALL_KW              3
+             280 POP_TOP
+
+1008:         282 NOP
+
+1009:         284 LOAD_FAST            (self)
+             286 LOAD_ATTR            (coordinator)
+             306 LOAD_ATTR            (NULL|self + wait_for_code)
+             326 LOAD_FAST            (self)
+             328 LOAD_ATTR            (task_id)
+             348 LOAD_FAST            (self)
+             350 LOAD_ATTR            (entry)
+             370 LOAD_ATTR            (email)
+             390 LOAD_FAST            (self)
+             392 LOAD_ATTR            (timeout)
+             412 LOAD_FAST            (self)
+             414 LOAD_ATTR            (stop_event)
+             434 CALL                 (4 positional)
+             442 STORE_FAST           (code)
+
+1011:         444 LOAD_CONST           (False)
+             446 LOAD_FAST            (self)
+             448 STORE_ATTR           (slot_acquired)
+
+1012:         458 LOAD_FAST            (self)
+             460 LOAD_ATTR            (NULL|self + state_fn)
+             480 LOAD_FAST            (self)
+             482 LOAD_ATTR            (task_id)
+             502 LOAD_CONST           ("email_code_submitted")
+             504 LOAD_FAST            (self)
+             506 LOAD_ATTR            (entry)
+             526 LOAD_ATTR            (email)
+             546 LOAD_CONST           (('status', 'email'))
+             548 CALL_KW              3
+             550 POP_TOP
+
+1013:         552 LOAD_FAST            (code)
+             554 RETURN_VALUE
+         >>  556 PUSH_EXC_INFO
+
+1011:         558 LOAD_CONST           (False)
+             560 LOAD_FAST            (self)
+             562 STORE_ATTR           (slot_acquired)
+             572 RERAISE              0
+         >>  574 COPY                 3
+             576 POP_EXCEPT
+             578 RERAISE              1
+
+ExceptionTable:
+  284 to 442 -> 556 [0]
+  556 to 572 -> 574 [1] lasti
+
+# Method Name:       close
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1015
+# Constants:
+#    0: None
+#    1: True
+#    2: ('discard_buffered',)
+#    3: False
+# Names:
+#    0: coordinator
+#    1: release_login_slot
+#    2: task_id
+#    3: slot_acquired
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+1015:           0 RESUME               0
+
+1018:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (coordinator)
+              24 LOAD_ATTR            (NULL|self + release_login_slot)
+              44 LOAD_FAST            (self)
+              46 LOAD_ATTR            (task_id)
+              66 LOAD_CONST           (True)
+              68 LOAD_CONST           (('discard_buffered',))
+              70 CALL_KW              2
+              72 POP_TOP
+
+1019:          74 LOAD_CONST           (False)
+              76 LOAD_FAST            (self)
+              78 STORE_ATTR           (slot_acquired)
+              88 RETURN_CONST         (None)
+
+
+# Method Name:       __init__
+# Filename:          runtime.py
+# Argument count:    4
+# Position-only argument count: 0
+# Keyword-only arguments: 4
+# Number of locals:  9
+# Stack size:        10
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1025
+# Constants:
+#    0: None
+#    1: 0
+#    2: ('ImapPoller',)
+#    3: 'email_code_timeout'
+#    4: 150
+#    5: 30
+#    6: 600
+#    7: 'email_poll_interval'
+#    8: 5
+#    9: 1
+#   10: 60
+#   11: False
+#   12: ('verbose', 'oauth_client_id', 'oauth_refresh_token', 'proxy')
+# Names:
+#    0: imap_poller
+#    1: ImapPoller
+#    2: entry
+#    3: log_fn
+#    4: _as_int
+#    5: get
+#    6: timeout
+#    7: interval
+#    8: time
+#    9: sent_at
+#   10: phase_gate
+#   11: threading
+#   12: Event
+#   13: stop_event
+#   14: task_id
+#   15: state_fn
+#   16: phase_slot_acquired
+#   17: email
+#   18: password
+#   19: oauth_client_id
+#   20: oauth_refresh_token
+#   21: email_proxy
+#   22: poller
+# Varnames:
+#	self, entry, config, log_fn, phase_gate, stop_event, task_id, state_fn, ImapPoller
+# Positional arguments:
+#	self, entry, config, log_fn
+# Local variables:
+#    4: phase_gate
+#    5: stop_event
+#    6: task_id
+#    7: state_fn
+#    8: ImapPoller
+1025:           0 RESUME               0
+
+1026:           2 LOAD_CONST           (0)
+               4 LOAD_CONST           (('ImapPoller',))
+               6 IMPORT_NAME          (imap_poller)
+               8 IMPORT_FROM          (ImapPoller)
+              10 STORE_FAST           (ImapPoller)
+              12 POP_TOP
+
+1028:          14 LOAD_FAST_LOAD_FAST  (entry, self)
+              16 STORE_ATTR           (entry)
+
+1029:          26 LOAD_FAST_LOAD_FAST  (log_fn, self)
+              28 STORE_ATTR           (log_fn)
+
+1030:          38 LOAD_GLOBAL          (NULL + _as_int)
+              48 LOAD_FAST            (config)
+              50 LOAD_ATTR            (NULL|self + get)
+              70 LOAD_CONST           ("email_code_timeout")
+              72 CALL                 (1 positional)
+              80 LOAD_CONST           (150)
+              82 LOAD_CONST           (30)
+              84 LOAD_CONST           (600)
+              86 CALL                 (4 positional)
+              94 LOAD_FAST            (self)
+              96 STORE_ATTR           (timeout)
+
+1031:         106 LOAD_GLOBAL          (NULL + _as_int)
+             116 LOAD_FAST            (config)
+             118 LOAD_ATTR            (NULL|self + get)
+             138 LOAD_CONST           ("email_poll_interval")
+             140 CALL                 (1 positional)
+             148 LOAD_CONST           (5)
+             150 LOAD_CONST           (1)
+             152 LOAD_CONST           (60)
+             154 CALL                 (4 positional)
+             162 LOAD_FAST            (self)
+             164 STORE_ATTR           (interval)
+
+1032:         174 LOAD_GLOBAL          (time)
+             184 LOAD_ATTR            (time)
+             204 PUSH_NULL
+             206 CALL                 (0 positional)
+             214 LOAD_FAST            (self)
+             216 STORE_ATTR           (sent_at)
+
+1033:         226 LOAD_FAST_LOAD_FAST  (phase_gate, self)
+             228 STORE_ATTR           (phase_gate)
+
+1034:         238 LOAD_FAST            (stop_event)
+             240 COPY                 1
+             242 TO_BOOL
+             250 POP_JUMP_IF_TRUE     (to 296)
+             254 POP_TOP
+             256 LOAD_GLOBAL          (threading)
+             266 LOAD_ATTR            (Event)
+             286 PUSH_NULL
+             288 CALL                 (0 positional)
+         >>  296 LOAD_FAST            (self)
+             298 STORE_ATTR           (stop_event)
+
+1035:         308 LOAD_FAST_LOAD_FAST  (task_id, self)
+             310 STORE_ATTR           (task_id)
+
+1036:         320 LOAD_FAST_LOAD_FAST  (state_fn, self)
+             322 STORE_ATTR           (state_fn)
+
+1037:         332 LOAD_CONST           (False)
+             334 LOAD_FAST            (self)
+             336 STORE_ATTR           (phase_slot_acquired)
+
+1038:         346 LOAD_FAST            (ImapPoller)
+             348 PUSH_NULL
+
+1039:         350 LOAD_FAST            (entry)
+             352 LOAD_ATTR            (email)
+
+1040:         372 LOAD_FAST            (entry)
+             374 LOAD_ATTR            (password)

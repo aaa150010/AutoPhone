@@ -1,6 +1,8 @@
 import type {
   ApiErrorPayload,
   AppState,
+  MailboxBatchOperation,
+  MailboxOperationKind,
   MailboxPayload,
   MailboxUrlTestResult,
   PixelAccountPage,
@@ -79,8 +81,26 @@ export const queryMailboxQuotas = (rows: Array<{ row_id: string; line_no: number
     skipped?: number
   }>('/api/mailboxes/quota', { rows })
 )
+export const startMailboxBatchOperation = (
+  kind: MailboxOperationKind,
+  rows: Array<{ row_id: string; line_no: number }>,
+) => api<{
+  ok: true
+  background: true
+  created: boolean
+  operation: MailboxBatchOperation
+}>(kind === 'quota' ? '/api/mailboxes/quota' : '/api/mailboxes/openai-test', {
+  background: true,
+  rows,
+})
 export const retryMailboxPixel = (rows: Array<{ row_id: string; line_no: number }>) => (
   api('/api/mailboxes/pixel-retry', { rows })
+)
+export const setMailboxRowsUnavailable = (rows: Array<{ row_id: string; line_no: number }>) => (
+  api<{ ok: true; unavailable: number; mailboxes?: MailboxPayload; state?: AppState }>(
+    '/api/mailboxes/unavailable',
+    { rows, line_nos: rows.map(row => row.line_no) },
+  )
 )
 export const exportMailboxSub2 = (rows: Array<{ row_id: string; line_no: number }>) => (
   api<{ count: number; skipped?: number; filename: string; export: Record<string, any> }>(
@@ -93,6 +113,9 @@ export const getMailboxTotp = (row: { row_id: string; line_no: number }) => (
 )
 export const getMailboxUrl = (row: { row_id: string; line_no: number }) => (
   api<{ ok: true; mailbox_url: string }>('/api/mailboxes/url', row)
+)
+export const getRuntimeTaskMailboxUrl = (taskId: string) => (
+  api<{ ok: true; mailbox_url: string }>('/api/runtime/tasks/mailbox-url', { task_id: taskId })
 )
 export const reloginMailboxRows = (rows: Array<{ row_id: string; line_no: number }>) => (
   api<{ ok: true; run_mode: 'relogin'; started: number; mailboxes?: MailboxPayload; state?: any }>(
@@ -185,6 +208,12 @@ export const retryPixelUpload = (recordId: string, targetId?: string) => (
   api(`/api/pixel/upload-records/${encodeURIComponent(recordId)}/retry`, targetId
     ? { target_id: targetId, targetId, target_ids: [targetId], targetIds: [targetId] }
     : {})
+)
+export const retryPixelBatchTarget = (batchId: string, targetId: string) => (
+  api<{ queued_records: number; queued_deliveries: number; skipped_records: number }>(
+    `/api/pixel/upload-batches/${encodeURIComponent(batchId)}/retry`,
+    { target_id: targetId },
+  )
 )
 export const getNvOverview = () => api<NvOverview>('/api/nv/overview')
 export const getNvUploadBatches = (page = 1, pageSize = 20) => {

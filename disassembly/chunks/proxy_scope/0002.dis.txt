@@ -1,0 +1,258 @@
+
+100:        1282 POP_EXCEPT
+
+101:        1284 RETURN_CONST         ("")
+
+ 99:     >> 1286 RERAISE              0
+         >> 1288 COPY                 3
+            1290 POP_EXCEPT
+            1292 RERAISE              1
+
+ExceptionTable:
+  990 to 1042 -> 1262 [0]
+  1046 to 1078 -> 1262 [0]
+  1084 to 1106 -> 1230 [0]
+  1108 to 1120 -> 1262 [0]
+  1124 to 1222 -> 1262 [0]
+  1226 to 1226 -> 1262 [0]
+  1230 to 1248 -> 1256 [1] lasti
+  1250 to 1250 -> 1262 [0]
+  1254 to 1254 -> 1256 [1] lasti
+  1256 to 1260 -> 1262 [0]
+  1262 to 1280 -> 1288 [1] lasti
+  1286 to 1286 -> 1288 [1] lasti
+
+# Method Name:       scoped_proxy
+# Filename:          proxy_scope.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        104
+# Constants:
+#    0: None
+#    1: ''
+#    2: 'proxy'
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: route_proxy_enabled
+#    3: normalize_proxy_url
+#    4: get
+# Varnames:
+#	config, scope
+# Positional arguments:
+#	config, scope
+104:           0 RESUME               0
+
+105:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (config)
+              14 LOAD_GLOBAL          (dict)
+              24 CALL                 (2 positional)
+              32 TO_BOOL
+              40 POP_JUMP_IF_FALSE    (to 76)
+              44 LOAD_GLOBAL          (NULL + route_proxy_enabled)
+              54 LOAD_FAST_LOAD_FAST  (config, scope)
+              56 CALL                 (2 positional)
+              64 TO_BOOL
+              72 POP_JUMP_IF_TRUE     (to 78)
+
+106:     >>   76 RETURN_CONST         ("")
+
+107:     >>   78 LOAD_GLOBAL          (NULL + normalize_proxy_url)
+              88 LOAD_FAST            (config)
+              90 LOAD_ATTR            (NULL|self + get)
+             110 LOAD_CONST           ("proxy")
+             112 LOAD_CONST           ("")
+             114 CALL                 (2 positional)
+             122 CALL                 (1 positional)
+             130 RETURN_VALUE
+
+
+# Method Name:       sms_proxy
+# Filename:          proxy_scope.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        110
+# Constants:
+#    0: None
+#    1: 'sms'
+# Names:
+#    0: scoped_proxy
+# Varnames:
+#	config
+# Positional arguments:
+#	config
+110:           0 RESUME               0
+
+111:           2 LOAD_GLOBAL          (NULL + scoped_proxy)
+              12 LOAD_FAST            (config)
+              14 LOAD_CONST           ("sms")
+              16 CALL                 (2 positional)
+              24 RETURN_VALUE
+
+
+# Method Name:       email_proxy
+# Filename:          proxy_scope.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        114
+# Constants:
+#    0: None
+#    1: 'email'
+# Names:
+#    0: scoped_proxy
+# Varnames:
+#	config
+# Positional arguments:
+#	config
+114:           0 RESUME               0
+
+115:           2 LOAD_GLOBAL          (NULL + scoped_proxy)
+              12 LOAD_FAST            (config)
+              14 LOAD_CONST           ("email")
+              16 CALL                 (2 positional)
+              24 RETURN_VALUE
+
+
+# Method Name:       upload_proxy
+# Filename:          proxy_scope.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        118
+# Constants:
+#    0: None
+#    1: 'upload'
+# Names:
+#    0: scoped_proxy
+# Varnames:
+#	config
+# Positional arguments:
+#	config
+118:           0 RESUME               0
+
+119:           2 LOAD_GLOBAL          (NULL + scoped_proxy)
+              12 LOAD_FAST            (config)
+              14 LOAD_CONST           ("upload")
+              16 CALL                 (2 positional)
+              24 RETURN_VALUE
+
+
+# Method Name:       requests_proxies
+# Filename:          proxy_scope.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        122
+# Constants:
+#    0: None
+#    1: ('http', 'https')
+# Names:
+#    0: normalize_proxy_url
+# Varnames:
+#	proxy, value
+# Positional arguments:
+#	proxy
+# Local variables:
+#    1: value
+122:           0 RESUME               0
+
+123:           2 LOAD_GLOBAL          (NULL + normalize_proxy_url)
+              12 LOAD_FAST            (proxy)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (value)
+
+124:          24 LOAD_FAST            (value)
+              26 TO_BOOL
+              34 POP_JUMP_IF_TRUE     (to 40)
+
+125:          38 RETURN_CONST         (None)
+
+126:     >>   40 LOAD_FAST_LOAD_FAST  (value, value)
+              42 LOAD_CONST           (('http', 'https'))
+              44 BUILD_CONST_KEY_MAP  2
+              46 RETURN_VALUE
+
+
+# Method Name:       requests_kwargs
+# Filename:          proxy_scope.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        129
+# Constants:
+#    0: None
+#    1: 'proxies'
+# Names:
+#    0: requests_proxies
+# Varnames:
+#	proxy, proxies
+# Positional arguments:
+#	proxy
+# Local variables:
+#    1: proxies
+129:           0 RESUME               0
+
+130:           2 LOAD_GLOBAL          (NULL + requests_proxies)
+              12 LOAD_FAST            (proxy)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (proxies)
+
+131:          24 LOAD_FAST            (proxies)
+              26 TO_BOOL
+              34 POP_JUMP_IF_FALSE    (to 46)
+              38 LOAD_CONST           ("proxies")
+              40 LOAD_FAST            (proxies)
+              42 BUILD_MAP            1
+              44 RETURN_VALUE
+         >>   46 BUILD_MAP            0
+              48 RETURN_VALUE
+
+
+# Method Name:       scoped_requests_kwargs
+# Filename:          proxy_scope.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        134
+# Constants:
+#    0: None
+# Names:
+#    0: requests_kwargs
+#    1: scoped_proxy
+# Varnames:
+#	config, scope
+# Positional arguments:
+#	config, scope
+134:           0 RESUME               0
+
+135:           2 LOAD_GLOBAL          (NULL + requests_kwargs)
+              12 LOAD_GLOBAL          (NULL + scoped_proxy)
+              22 LOAD_FAST_LOAD_FAST  (config, scope)
+              24 CALL                 (2 positional)
+              32 CALL                 (1 positional)
+              40 RETURN_VALUE
+

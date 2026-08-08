@@ -1,0 +1,800 @@
+#   27: 'include_existing'
+#   28: <Code311 code object poll_code at 0x105fca670, file imap_poller.py>, line 203
+#   29: 'sender_filters'
+#   30: 'excluded'
+#   31: <Code311 code object _extract_code at 0x105fca790, file imap_poller.py>, line 315
+#   32: <Code311 code object _message_text at 0x105fca7f0, file imap_poller.py>, line 368
+#   33: <Code311 code object reset_baseline at 0x105fca850, file imap_poller.py>, line 399
+#   34: ('_last_count', '_oauth_access_token', 'email', 'imap_port', 'imap_server', 'last_error', 'oauth_client_id', 'oauth_refresh_token', 'password', 'proxy', 'verbose')
+#   35: ('', 993, True, '', '', '')
+#   36: (None, None, 60, 5, None, None, 20, False)
+#   37: (None,)
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: str
+#    6: int
+#    7: bool
+#    8: __init__
+#    9: staticmethod
+#   10: Exception
+#   11: _is_terminal_connection_error
+#   12: _log
+#   13: _get_microsoft_access_token
+#   14: _connect
+#   15: list
+#   16: set
+#   17: float
+#   18: Optional
+#   19: poll_code
+#   20: _extract_code
+#   21: _message_text
+#   22: reset_baseline
+#   23: __static_attributes__
+105:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("ImapPoller")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (105)
+              12 STORE_NAME           (__firstlineno__)
+
+106:          14 LOAD_CONST           ("通用 IMAP 邮箱验证码轮询器")
+              16 STORE_NAME           (__doc__)
+
+112:          18 NOP
+
+113:          20 NOP
+
+114:          22 NOP
+
+115:          24 NOP
+
+116:          26 NOP
+
+117:          28 NOP
+
+108:          30 LOAD_CONST           (('', 993, True, '', '', ''))
+              32 LOAD_CONST           ("email_addr")
+
+110:          34 LOAD_NAME            (str)
+
+108:          36 LOAD_CONST           ("password")
+
+111:          38 LOAD_NAME            (str)
+
+108:          40 LOAD_CONST           ("imap_server")
+
+112:          42 LOAD_NAME            (str)
+
+108:          44 LOAD_CONST           ("imap_port")
+
+113:          46 LOAD_NAME            (int)
+
+108:          48 LOAD_CONST           ("verbose")
+
+114:          50 LOAD_NAME            (bool)
+
+108:          52 LOAD_CONST           ("oauth_client_id")
+
+115:          54 LOAD_NAME            (str)
+
+108:          56 LOAD_CONST           ("oauth_refresh_token")
+
+116:          58 LOAD_NAME            (str)
+
+108:          60 LOAD_CONST           ("proxy")
+
+117:          62 LOAD_NAME            (str)
+
+108:          64 BUILD_TUPLE          16
+              66 LOAD_CONST           (<Code311 code object __init__ at 0x105ffb970, file imap_poller.py>, line 108)
+              68 MAKE_FUNCTION
+              70 SET_FUNCTION_ATTRIBUTE 4
+              72 SET_FUNCTION_ATTRIBUTE 1
+              74 STORE_NAME           (__init__)
+
+136:          76 LOAD_NAME            (staticmethod)
+
+137:          78 LOAD_CONST           ("error")
+              80 LOAD_NAME            (Exception)
+              82 LOAD_NAME            (str)
+              84 BINARY_OP            (|)
+              88 LOAD_CONST           ("return")
+              90 LOAD_NAME            (bool)
+              92 BUILD_TUPLE          4
+              94 LOAD_CONST           (<Code311 code object _is_terminal_connection_error at 0x105fca4c0, file imap_poller.py>, line 136)
+              96 MAKE_FUNCTION
+              98 SET_FUNCTION_ATTRIBUTE 4
+
+136:         100 CALL                 (0 positional)
+
+137:         108 STORE_NAME           (_is_terminal_connection_error)
+
+156:         110 LOAD_CONST           ("msg")
+             112 LOAD_NAME            (str)
+             114 BUILD_TUPLE          2
+             116 LOAD_CONST           (<Code311 code object _log at 0x105fca4f0, file imap_poller.py>, line 156)
+             118 MAKE_FUNCTION
+             120 SET_FUNCTION_ATTRIBUTE 4
+             122 STORE_NAME           (_log)
+
+160:         124 LOAD_CONST           ("return")
+             126 LOAD_NAME            (str)
+             128 BUILD_TUPLE          2
+             130 LOAD_CONST           (<Code311 code object _get_microsoft_access_token at 0x105fca580, file imap_poller.py>, line 160)
+             132 MAKE_FUNCTION
+             134 SET_FUNCTION_ATTRIBUTE 4
+             136 STORE_NAME           (_get_microsoft_access_token)
+
+191:         138 LOAD_CONST           (<Code311 code object _connect at 0x105fca610, file imap_poller.py>, line 191)
+             140 MAKE_FUNCTION
+             142 STORE_NAME           (_connect)
+
+205:         144 NOP
+
+206:         146 NOP
+
+207:         148 NOP
+
+208:         150 NOP
+
+209:         152 NOP
+
+210:         154 NOP
+
+211:         156 NOP
+
+212:         158 NOP
+
+203:         160 LOAD_CONST           ((None, None, 60, 5, None, None, 20, False))
+             162 LOAD_CONST           ("sender_keywords")
+
+205:         164 LOAD_NAME            (list)
+
+203:         166 LOAD_CONST           ("subject_keywords")
+
+206:         168 LOAD_NAME            (list)
+
+203:         170 LOAD_CONST           ("timeout")
+
+207:         172 LOAD_NAME            (int)
+
+203:         174 LOAD_CONST           ("interval")
+
+208:         176 LOAD_NAME            (int)
+
+203:         178 LOAD_CONST           ("exclude_codes")
+
+209:         180 LOAD_NAME            (set)
+
+203:         182 LOAD_CONST           ("since_ts")
+
+210:         184 LOAD_NAME            (float)
+             186 LOAD_CONST           (None)
+             188 BINARY_OP            (|)
+
+203:         192 LOAD_CONST           ("recent_scan_limit")
+
+211:         194 LOAD_NAME            (int)
+
+203:         196 LOAD_CONST           ("include_existing")
+
+212:         198 LOAD_NAME            (bool)
+
+203:         200 LOAD_CONST           ("return")
+
+213:         202 LOAD_NAME            (Optional)
+             204 LOAD_NAME            (str)
+             206 BINARY_SUBSCR
+
+203:         210 BUILD_TUPLE          18
+             212 LOAD_CONST           (<Code311 code object poll_code at 0x105fca670, file imap_poller.py>, line 203)
+             214 MAKE_FUNCTION
+             216 SET_FUNCTION_ATTRIBUTE 4
+             218 SET_FUNCTION_ATTRIBUTE 1
+             220 STORE_NAME           (poll_code)
+
+316:         222 NOP
+
+315:         224 LOAD_CONST           ((None,))
+             226 LOAD_CONST           ("sender_filters")
+
+316:         228 LOAD_NAME            (list)
+
+315:         230 LOAD_CONST           ("excluded")
+
+316:         232 LOAD_NAME            (set)
+
+315:         234 LOAD_CONST           ("since_ts")
+
+316:         236 LOAD_NAME            (float)
+             238 LOAD_CONST           (None)
+             240 BINARY_OP            (|)
+
+315:         244 LOAD_CONST           ("return")
+
+317:         246 LOAD_NAME            (Optional)
+             248 LOAD_NAME            (str)
+             250 BINARY_SUBSCR
+
+315:         254 BUILD_TUPLE          8
+             256 LOAD_CONST           (<Code311 code object _extract_code at 0x105fca790, file imap_poller.py>, line 315)
+             258 MAKE_FUNCTION
+             260 SET_FUNCTION_ATTRIBUTE 4
+             262 SET_FUNCTION_ATTRIBUTE 1
+             264 STORE_NAME           (_extract_code)
+
+368:         266 LOAD_NAME            (staticmethod)
+
+369:         268 LOAD_CONST           ("return")
+             270 LOAD_NAME            (str)
+             272 BUILD_TUPLE          2
+             274 LOAD_CONST           (<Code311 code object _message_text at 0x105fca7f0, file imap_poller.py>, line 368)
+             276 MAKE_FUNCTION
+             278 SET_FUNCTION_ATTRIBUTE 4
+
+368:         280 CALL                 (0 positional)
+
+369:         288 STORE_NAME           (_message_text)
+
+399:         290 LOAD_CONST           (<Code311 code object reset_baseline at 0x105fca850, file imap_poller.py>, line 399)
+             292 MAKE_FUNCTION
+             294 STORE_NAME           (reset_baseline)
+             296 LOAD_CONST           (('_last_count', '_oauth_access_token', 'email', 'imap_port', 'imap_server', 'last_error', 'oauth_client_id', 'oauth_refresh_token', 'password', 'proxy', 'verbose'))
+             298 STORE_NAME           (__static_attributes__)
+             300 RETURN_CONST         (None)
+
+
+# Method Name:       poll_outlook_code
+# Filename:          imap_poller.py
+# Argument count:    4
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        6
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        408
+# Constants:
+#    0: 'Outlook/Hotmail 快捷轮询'
+#    1: ('verbose',)
+#    2: ('timeout',)
+# Names:
+#    0: ImapPoller
+#    1: poll_code
+# Varnames:
+#	email_addr, app_password, timeout, verbose, poller
+# Positional arguments:
+#	email_addr, app_password, timeout, verbose
+# Local variables:
+#    4: poller
+408:           0 RESUME               0
+
+415:           2 LOAD_GLOBAL          (NULL + ImapPoller)
+              12 LOAD_FAST_LOAD_FAST  (email_addr, app_password)
+              14 LOAD_FAST            (verbose)
+              16 LOAD_CONST           (('verbose',))
+              18 CALL_KW              3
+              20 STORE_FAST           (poller)
+
+416:          22 LOAD_FAST            (poller)
+              24 LOAD_ATTR            (NULL|self + poll_code)
+              44 LOAD_FAST            (timeout)
+              46 LOAD_CONST           (('timeout',))
+              48 CALL_KW              1
+              50 RETURN_VALUE
+
+
+# Method Name:       __init__
+# Filename:          imap_poller.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        3
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        72
+# Constants:
+#    0: None
+#    1: ''
+# Names:
+#    0: super
+#    1: __init__
+#    2: text
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+# Free variables:
+#    0: __class__
+               0 COPY_FREE_VARS       1
+
+ 72:           2 RESUME               0
+
+ 73:           4 LOAD_GLOBAL          (super)
+              14 LOAD_DEREF           (__class__)
+              16 LOAD_FAST            (self)
+              18 LOAD_SUPER_ATTR      (NULL|self + __init__)
+              22 CALL                 (0 positional)
+              30 POP_TOP
+
+ 74:          32 LOAD_CONST           ("")
+              34 LOAD_FAST            (self)
+              36 STORE_ATTR           (text)
+              46 RETURN_CONST         (None)
+
+
+# Method Name:       handle_data
+# Filename:          imap_poller.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        76
+# Constants:
+#    0: None
+# Names:
+#    0: text
+# Varnames:
+#	self, data
+# Positional arguments:
+#	self, data
+ 76:           0 RESUME               0
+
+ 77:           2 LOAD_FAST            (self)
+               4 COPY                 1
+               6 LOAD_ATTR            (text)
+              26 LOAD_FAST            (data)
+              28 BINARY_OP            (+=)
+              32 SWAP                 (TOS <-> TOS1)
+              34 STORE_ATTR           (text)
+              44 RETURN_CONST         (None)
+
+
+# Method Name:       __init__
+# Filename:          imap_poller.py
+# Argument count:    9
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  9
+# Stack size:        4
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        108
+# Constants:
+#    0: None
+#    1: ''
+#    2: -1
+# Names:
+#    0: strip
+#    1: email
+#    2: password
+#    3: verbose
+#    4: str
+#    5: oauth_client_id
+#    6: oauth_refresh_token
+#    7: proxy
+#    8: _oauth_access_token
+#    9: last_error
+#   10: imap_server
+#   11: imap_port
+#   12: _detect_imap
+#   13: _last_count
+# Varnames:
+#	self, email_addr, password, imap_server, imap_port, verbose, oauth_client_id, oauth_refresh_token, proxy
+# Positional arguments:
+#	self, email_addr, password, imap_server, imap_port, verbose, oauth_client_id, oauth_refresh_token, proxy
+108:           0 RESUME               0
+
+119:           2 LOAD_FAST            (email_addr)
+               4 LOAD_ATTR            (NULL|self + strip)
+              24 CALL                 (0 positional)
+              32 LOAD_FAST            (self)
+              34 STORE_ATTR           (email)
+
+120:          44 LOAD_FAST_LOAD_FAST  (password, self)
+              46 STORE_ATTR           (password)
+
+121:          56 LOAD_FAST_LOAD_FAST  (verbose, self)
+              58 STORE_ATTR           (verbose)
+
+122:          68 LOAD_GLOBAL          (NULL + str)
+              78 LOAD_FAST            (oauth_client_id)
+              80 COPY                 1
+              82 TO_BOOL
+              90 POP_JUMP_IF_TRUE     (to 98)
+              94 POP_TOP
+              96 LOAD_CONST           ("")
+         >>   98 CALL                 (1 positional)
+             106 LOAD_ATTR            (NULL|self + strip)
+             126 CALL                 (0 positional)
+             134 LOAD_FAST            (self)
+             136 STORE_ATTR           (oauth_client_id)
+
+123:         146 LOAD_GLOBAL          (NULL + str)
+             156 LOAD_FAST            (oauth_refresh_token)
+             158 COPY                 1
+             160 TO_BOOL
+             168 POP_JUMP_IF_TRUE     (to 176)
+             172 POP_TOP
+             174 LOAD_CONST           ("")
+         >>  176 CALL                 (1 positional)
+             184 LOAD_ATTR            (NULL|self + strip)
+             204 CALL                 (0 positional)
+             212 LOAD_FAST            (self)
+             214 STORE_ATTR           (oauth_refresh_token)
+
+124:         224 LOAD_FAST_LOAD_FAST  (proxy, self)
+             226 STORE_ATTR           (proxy)
+
+125:         236 LOAD_CONST           ("")
+             238 LOAD_FAST            (self)
+             240 STORE_ATTR           (_oauth_access_token)
+
+126:         250 LOAD_CONST           ("")
+             252 LOAD_FAST            (self)
+             254 STORE_ATTR           (last_error)
+
+128:         264 LOAD_FAST            (imap_server)
+             266 TO_BOOL
+             274 POP_JUMP_IF_FALSE    (to 304)
+
+129:         278 LOAD_FAST_LOAD_FAST  (imap_server, self)
+             280 STORE_ATTR           (imap_server)
+
+130:         290 LOAD_FAST_LOAD_FAST  (imap_port, self)
+             292 STORE_ATTR           (imap_port)
+             302 JUMP_FORWARD         (to 372)
+
+132:     >>  304 LOAD_GLOBAL          (NULL + _detect_imap)
+             314 LOAD_FAST            (self)
+             316 LOAD_ATTR            (email)
+             336 CALL                 (1 positional)
+             344 UNPACK_SEQUENCE      2
+             348 LOAD_FAST            (self)
+             350 STORE_ATTR           (imap_server)
+             360 LOAD_FAST            (self)
+             362 STORE_ATTR           (imap_port)
+
+134:     >>  372 LOAD_CONST           (-1)
+             374 LOAD_FAST            (self)
+             376 STORE_ATTR           (_last_count)
+             386 RETURN_CONST         (None)
+
+
+# Method Name:       _is_terminal_connection_error
+# Filename:          imap_poller.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        136
+# Constants:
+#    0: 'Return true for mailbox authorization failures that cannot recover by polling.'
+#    1: ''
+#    2: <Code311 code object <genexpr> at 0x105ffb910, file imap_poller.py>, line 140
+#    3: ('authenticated but not connected', 'authentication failed', 'authenticate failed', 'invalid credentials', 'login failed', 'invalid_grant', 'imap access is disabled', 'imap access disabled', 'mailbox is disabled', 'permission denied')
+# Names:
+#    0: str
+#    1: lower
+#    2: any
+# Varnames:
+#	error
+# Positional arguments:
+#	error
+# Cell variables:
+#    0: text
+               0 MAKE_CELL            (text)
+
+136:           2 RESUME               0
+
+139:           4 LOAD_GLOBAL          (NULL + str)
+              14 LOAD_FAST            (error)
+              16 COPY                 1
+              18 TO_BOOL
+              26 POP_JUMP_IF_TRUE     (to 34)
+              30 POP_TOP
+              32 LOAD_CONST           ("")
+         >>   34 CALL                 (1 positional)
+              42 LOAD_ATTR            (NULL|self + lower)
+              62 CALL                 (0 positional)
+              70 STORE_DEREF          (text)
+
+140:          72 LOAD_GLOBAL          (NULL + any)
+              82 LOAD_FAST            (text)
+              84 BUILD_TUPLE          1
+              86 LOAD_CONST           (<Code311 code object <genexpr> at 0x105ffb910, file imap_poller.py>, line 140)
+              88 MAKE_FUNCTION
+              90 SET_FUNCTION_ATTRIBUTE 8
+
+142:          92 LOAD_CONST           (('authenticated but not connected', 'authentication failed', 'authenticate failed', 'invalid credentials', 'login failed', 'invalid_grant', 'imap access is disabled', 'imap access disabled', 'mailbox is disabled', 'permission denied'))
+              94 GET_ITER
+
+140:          96 CALL                 (0 positional)
+             104 CALL                 (1 positional)
+             112 RETURN_VALUE
+
+
+# Method Name:       _log
+# Filename:          imap_poller.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        156
+# Constants:
+#    0: None
+#    1: '  [IMAP] '
+# Names:
+#    0: verbose
+#    1: print
+# Varnames:
+#	self, msg
+# Positional arguments:
+#	self, msg
+156:           0 RESUME               0
+
+157:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (verbose)
+              24 TO_BOOL
+              32 POP_JUMP_IF_FALSE    (to 66)
+
+158:          36 LOAD_GLOBAL          (NULL + print)
+              46 LOAD_CONST           ("  [IMAP] ")
+              48 LOAD_FAST            (msg)
+              50 FORMAT_SIMPLE
+              52 BUILD_STRING         2
+              54 CALL                 (1 positional)
+              62 POP_TOP
+              64 RETURN_CONST         (None)
+
+157:     >>   66 RETURN_CONST         (None)
+
+
+# Method Name:       _get_microsoft_access_token
+# Filename:          imap_poller.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        8
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        160
+# Constants:
+#    0: None
+#    1: ''
+#    2: 0
+#    3: 'refresh_token'
+#    4: 'https://outlook.office.com/IMAP.AccessAsUser.All offline_access'
+#    5: ('client_id', 'grant_type', 'refresh_token', 'scope')
+#    6: 25
+#    7: ('data', 'timeout')
+#    8: 200
+#    9: 'error_description'
+#   10: 'error'
+#   11: 'Microsoft token refresh failed: '
+#   12: ' '
+#   13: 160
+#   14: 'access_token'
+#   15: 'Microsoft token refresh returned empty access_token'
+#   16: ('https://login.microsoftonline.com/consumers/oauth2/v2.0/token',)
+# Names:
+#    0: _oauth_access_token
+#    1: oauth_client_id
+#    2: oauth_refresh_token
+#    3: requests
+#    4: post
+#    5: requests_kwargs
+#    6: proxy
+#    7: status_code
+#    8: json
+#    9: get
+#   10: text
+#   11: Exception
+#   12: RuntimeError
+#   13: str
+# Varnames:
+#	self, requests, response, data, detail, token
+# Positional arguments:
+#	self
+# Local variables:
+#    1: requests
+#    2: response
+#    3: data
+#    4: detail
+#    5: token
+160:           0 RESUME               0
+
+161:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (_oauth_access_token)
+              24 TO_BOOL
+              32 POP_JUMP_IF_FALSE    (to 60)
+
+162:          36 LOAD_FAST            (self)
+              38 LOAD_ATTR            (_oauth_access_token)
+              58 RETURN_VALUE
+
+163:     >>   60 LOAD_FAST            (self)
+              62 LOAD_ATTR            (oauth_client_id)
+              82 TO_BOOL
+              90 POP_JUMP_IF_FALSE    (to 128)
+              94 LOAD_FAST            (self)
+              96 LOAD_ATTR            (oauth_refresh_token)
+             116 TO_BOOL
+             124 POP_JUMP_IF_TRUE     (to 130)
+
+164:     >>  128 RETURN_CONST         ("")
+
+165:     >>  130 LOAD_CONST           (0)
+             132 LOAD_CONST           (None)
+             134 IMPORT_NAME          (requests)
+             136 STORE_FAST           (requests)
+
+167:         138 LOAD_FAST            (requests)
+             140 LOAD_ATTR            (post)
+             160 PUSH_NULL
+
+168:         162 NOP
+
+167:         164 LOAD_CONST           (('https://login.microsoftonline.com/consumers/oauth2/v2.0/token',))
+
+170:         166 LOAD_FAST            (self)
+             168 LOAD_ATTR            (oauth_client_id)
+
+171:         188 LOAD_CONST           ("refresh_token")
+
+172:         190 LOAD_FAST            (self)
+             192 LOAD_ATTR            (oauth_refresh_token)
+
+173:         212 LOAD_CONST           ("https://outlook.office.com/IMAP.AccessAsUser.All offline_access")
+
+169:         214 LOAD_CONST           (('client_id', 'grant_type', 'refresh_token', 'scope'))
+             216 BUILD_CONST_KEY_MAP  4
+
+175:         218 LOAD_CONST           (25)
+
+167:         220 LOAD_CONST           (('data', 'timeout'))
+             222 BUILD_CONST_KEY_MAP  2
+
+176:         224 LOAD_GLOBAL          (NULL + requests_kwargs)
+             234 LOAD_FAST            (self)
+             236 LOAD_ATTR            (proxy)
+             256 CALL                 (1 positional)
+
+167:         264 DICT_MERGE           1
+             266 CALL_FUNCTION_EX     (keyword and positional arguments)
+             268 STORE_FAST           (response)
+
+178:         270 LOAD_FAST            (response)
+             272 LOAD_ATTR            (status_code)
+             292 LOAD_CONST           (200)
+             294 COMPARE_OP           (!=)
+             298 POP_JUMP_IF_FALSE    (to 534)
+
+179:         302 NOP
+
+180:         304 LOAD_FAST            (response)
+             306 LOAD_ATTR            (NULL|self + json)
+             326 CALL                 (0 positional)
+             334 STORE_FAST           (data)
+
+181:         336 LOAD_FAST            (data)
+             338 LOAD_ATTR            (NULL|self + get)
+             358 LOAD_CONST           ("error_description")
+             360 CALL                 (1 positional)
+             368 COPY                 1
+             370 TO_BOOL
+             378 POP_JUMP_IF_TRUE     (to 454)
+             382 POP_TOP
+             384 LOAD_FAST            (data)
+             386 LOAD_ATTR            (NULL|self + get)
+             406 LOAD_CONST           ("error")
+             408 CALL                 (1 positional)
+             416 COPY                 1
+             418 TO_BOOL
+             426 POP_JUMP_IF_TRUE     (to 454)
+             430 POP_TOP
+             432 LOAD_FAST            (response)
+             434 LOAD_ATTR            (text)
+         >>  454 STORE_FAST           (detail)
+
+184:         456 LOAD_GLOBAL          (NULL + RuntimeError)
+             466 LOAD_CONST           ("Microsoft token refresh failed: ")
+             468 LOAD_FAST            (response)
+             470 LOAD_ATTR            (status_code)
+             490 FORMAT_SIMPLE
+             492 LOAD_CONST           (" ")
+             494 LOAD_GLOBAL          (NULL + str)
+             504 LOAD_FAST            (detail)
+             506 CALL                 (1 positional)
+             514 LOAD_CONST           (None)
+             516 LOAD_CONST           (160)
+             518 BINARY_SLICE
+             520 FORMAT_SIMPLE
+             522 BUILD_STRING         4
+             524 CALL                 (1 positional)
+             532 RAISE_VARARGS        (exception instance)
+
+185:     >>  534 LOAD_GLOBAL          (NULL + str)
+             544 LOAD_FAST            (response)
+             546 LOAD_ATTR            (NULL|self + json)
+             566 CALL                 (0 positional)
+             574 LOAD_ATTR            (NULL|self + get)
+             594 LOAD_CONST           ("access_token")
+             596 CALL                 (1 positional)
+             604 COPY                 1
+             606 TO_BOOL
+             614 POP_JUMP_IF_TRUE     (to 622)
+             618 POP_TOP
+             620 LOAD_CONST           ("")
+         >>  622 CALL                 (1 positional)
+             630 STORE_FAST           (token)
+
+186:         632 LOAD_FAST            (token)
+             634 TO_BOOL
+             642 POP_JUMP_IF_TRUE     (to 668)
+
+187:         646 LOAD_GLOBAL          (NULL + RuntimeError)
+             656 LOAD_CONST           ("Microsoft token refresh returned empty access_token")
+             658 CALL                 (1 positional)
+             666 RAISE_VARARGS        (exception instance)
+
+188:     >>  668 LOAD_FAST_LOAD_FAST  (token, self)
+             670 STORE_ATTR           (_oauth_access_token)
+
+189:         680 LOAD_FAST            (token)
+             682 RETURN_VALUE
+         >>  684 PUSH_EXC_INFO
+
+182:         686 LOAD_GLOBAL          (Exception)
+             696 CHECK_EXC_MATCH
+             698 POP_JUMP_IF_FALSE    (to 732)
+             702 POP_TOP
+
+183:         704 LOAD_FAST            (response)
+             706 LOAD_ATTR            (text)
+             726 STORE_FAST           (detail)
+             728 POP_EXCEPT
+             730 JUMP_BACKWARD_NO_INTERRUPT (to 456)
+
+182:     >>  732 RERAISE              0
+         >>  734 COPY                 3
+             736 POP_EXCEPT
+             738 RERAISE              1
+
+ExceptionTable:
+  304 to 454 -> 684 [0]
+  684 to 726 -> 734 [1] lasti
+  732 to 732 -> 734 [1] lasti
+
+# Method Name:       _connect
+# Filename:          imap_poller.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        5
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        191
+# Constants:
+#    0: None
+#    1: 'user='
+#    2: '\x01auth=Bearer '
+#    3: '\x01\x01'
+#    4: 'XOAUTH2'
+#    5: <Code311 code object <lambda> at 0x105fca5e0, file imap_poller.py>, line 196
+# Names:
+#    0: imaplib
+#    1: IMAP4_SSL
+#    2: imap_server
+#    3: imap_port
+#    4: oauth_client_id
+#    5: oauth_refresh_token

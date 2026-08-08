@@ -1,0 +1,800 @@
+             262 CONTAINS_OP          (in)
+             266 POP_JUMP_IF_TRUE     (to 282)
+
+722:         270 LOAD_CONST           ("number you provided is not valid")
+             272 LOAD_FAST            (text)
+             274 CONTAINS_OP          (in)
+             278 POP_JUMP_IF_FALSE    (to 284)
+
+724:     >>  282 RETURN_CONST         ("phone_rejected")
+
+725:     >>  284 LOAD_CONST           ("注册被拒")
+             286 LOAD_FAST            (text)
+             288 CONTAINS_OP          (in)
+             292 POP_JUMP_IF_TRUE     (to 320)
+             296 LOAD_CONST           ("status=400")
+             298 LOAD_FAST            (text)
+             300 CONTAINS_OP          (in)
+             304 POP_JUMP_IF_TRUE     (to 320)
+             308 LOAD_CONST           ("register rejected")
+             310 LOAD_FAST            (text)
+             312 CONTAINS_OP          (in)
+             316 POP_JUMP_IF_FALSE    (to 322)
+
+726:     >>  320 RETURN_CONST         ("register_rejected")
+
+727:     >>  322 LOAD_CONST           ("unsupported_country_region_territory")
+             324 LOAD_FAST            (text)
+             326 CONTAINS_OP          (in)
+             330 POP_JUMP_IF_TRUE     (to 346)
+             334 LOAD_CONST           ("country, region")
+             336 LOAD_FAST            (text)
+             338 CONTAINS_OP          (in)
+             342 POP_JUMP_IF_FALSE    (to 348)
+
+728:     >>  346 RETURN_CONST         ("unsupported")
+
+729:     >>  348 LOAD_CONST           ("price")
+             350 LOAD_FAST            (text)
+             352 CONTAINS_OP          (in)
+             356 POP_JUMP_IF_TRUE     (to 372)
+             360 LOAD_CONST           ("too high")
+             362 LOAD_FAST            (text)
+             364 CONTAINS_OP          (in)
+             368 POP_JUMP_IF_FALSE    (to 374)
+
+730:     >>  372 RETURN_CONST         ("price")
+
+731:     >>  374 RETURN_CONST         ("fail")
+
+
+# Method Name:       record_result
+# Filename:          sms_selector.py
+# Argument count:    4
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  9
+# Stack size:        12
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        733
+# Constants:
+#    0: None
+#    1: 0
+#    2: 'success_hot_seconds'
+#    3: 600
+#    4: 0.0
+#    5: 'success_hot_score'
+#    6: 140.0
+#    7: 'country_success_hot_seconds'
+#    8: 300
+#    9: 'country_success_hot_score'
+#   10: 35.0
+#   11: 'semi_success_hot_seconds'
+#   12: 'semi_success_hot_score'
+#   13: 70.0
+#   14: 'country_semi_success_hot_seconds'
+#   15: 'country_semi_success_hot_score'
+#   16: 20.0
+#   17: 1.0
+#   18: 'failure_hot_decay'
+#   19: 0.35
+#   20: <Code311 code object _apply at 0x106029280, file sms_selector.py>, line 751
+#   21: <Code311 code object _apply_country at 0x1060292b0, file sms_selector.py>, line 822
+#   22: ('stat', 'dict', 'return', 'dict')
+# Names:
+#    0: country
+#    1: provider_id
+#    2: _cfg
+#    3: lock
+#    4: classify_error
+#    5: time
+#    6: max
+#    7: _int
+#    8: get
+#    9: _float
+#   10: min
+#   11: _update_shared_route_and_country
+#   12: stats
+#   13: country_stats
+# Varnames:
+#	self, candidate, ok, error, key, _apply, _apply_country, route_row, country_row
+# Positional arguments:
+#	self, candidate, ok, error
+# Local variables:
+#    4: key
+#    5: _apply
+#    6: _apply_country
+#    7: route_row
+#    8: country_row
+# Cell variables:
+#    0: self
+#    1: ok
+#    2: cfg
+#    3: country_hot_score
+#    4: country_hot_seconds
+#    5: country_semi_hot_score
+#    6: country_semi_hot_seconds
+#    7: failure_hot_decay
+#    8: kind
+#    9: now
+#   10: route_hot_score
+#   11: route_hot_seconds
+#   12: semi_hot_score
+#   13: semi_hot_seconds
+               0 MAKE_CELL            (self)
+               2 MAKE_CELL            (ok)
+               4 MAKE_CELL            (cfg)
+               6 MAKE_CELL            (country_hot_score)
+               8 MAKE_CELL            (country_hot_seconds)
+              10 MAKE_CELL            (country_semi_hot_score)
+              12 MAKE_CELL            (country_semi_hot_seconds)
+              14 MAKE_CELL            (failure_hot_decay)
+              16 MAKE_CELL            (kind)
+              18 MAKE_CELL            (now)
+              20 MAKE_CELL            (route_hot_score)
+              22 MAKE_CELL            (route_hot_seconds)
+              24 MAKE_CELL            (semi_hot_score)
+              26 MAKE_CELL            (semi_hot_seconds)
+
+733:          28 RESUME               0
+
+734:          30 LOAD_FAST            (candidate)
+              32 TO_BOOL
+              40 POP_JUMP_IF_TRUE     (to 46)
+
+735:          44 RETURN_CONST         (None)
+
+736:     >>   46 LOAD_FAST            (candidate)
+              48 LOAD_ATTR            (country)
+              68 LOAD_FAST            (candidate)
+              70 LOAD_ATTR            (provider_id)
+              90 BUILD_TUPLE          2
+              92 STORE_FAST           (key)
+
+737:          94 LOAD_DEREF           (self)
+              96 LOAD_ATTR            (NULL|self + _cfg)
+             116 CALL                 (0 positional)
+             124 STORE_DEREF          (cfg)
+
+738:         126 LOAD_DEREF           (self)
+             128 LOAD_ATTR            (lock)
+             148 BEFORE_WITH
+             150 POP_TOP
+
+739:         152 LOAD_DEREF           (self)
+             154 LOAD_ATTR            (NULL|self + classify_error)
+             174 LOAD_FAST            (error)
+             176 CALL                 (1 positional)
+             184 STORE_DEREF          (kind)
+
+740:         186 LOAD_GLOBAL          (time)
+             196 LOAD_ATTR            (time)
+             216 PUSH_NULL
+             218 CALL                 (0 positional)
+             226 STORE_DEREF          (now)
+
+741:         228 LOAD_GLOBAL          (NULL + max)
+             238 LOAD_CONST           (0)
+             240 LOAD_DEREF           (self)
+             242 LOAD_ATTR            (NULL|self + _int)
+             262 LOAD_DEREF           (cfg)
+             264 LOAD_ATTR            (NULL|self + get)
+             284 LOAD_CONST           ("success_hot_seconds")
+             286 CALL                 (1 positional)
+             294 LOAD_CONST           (600)
+             296 CALL                 (2 positional)
+             304 CALL                 (2 positional)
+             312 STORE_DEREF          (route_hot_seconds)
+
+742:         314 LOAD_GLOBAL          (NULL + max)
+             324 LOAD_CONST           (0.0)
+             326 LOAD_DEREF           (self)
+             328 LOAD_ATTR            (NULL|self + _float)
+             348 LOAD_DEREF           (cfg)
+             350 LOAD_ATTR            (NULL|self + get)
+             370 LOAD_CONST           ("success_hot_score")
+             372 CALL                 (1 positional)
+             380 LOAD_CONST           (140.0)
+             382 CALL                 (2 positional)
+             390 CALL                 (2 positional)
+             398 STORE_DEREF          (route_hot_score)
+
+743:         400 LOAD_GLOBAL          (NULL + max)
+             410 LOAD_CONST           (0)
+             412 LOAD_DEREF           (self)
+             414 LOAD_ATTR            (NULL|self + _int)
+             434 LOAD_DEREF           (cfg)
+             436 LOAD_ATTR            (NULL|self + get)
+             456 LOAD_CONST           ("country_success_hot_seconds")
+             458 CALL                 (1 positional)
+             466 LOAD_CONST           (300)
+             468 CALL                 (2 positional)
+             476 CALL                 (2 positional)
+             484 STORE_DEREF          (country_hot_seconds)
+
+744:         486 LOAD_GLOBAL          (NULL + max)
+             496 LOAD_CONST           (0.0)
+             498 LOAD_DEREF           (self)
+             500 LOAD_ATTR            (NULL|self + _float)
+             520 LOAD_DEREF           (cfg)
+             522 LOAD_ATTR            (NULL|self + get)
+             542 LOAD_CONST           ("country_success_hot_score")
+             544 CALL                 (1 positional)
+             552 LOAD_CONST           (35.0)
+             554 CALL                 (2 positional)
+             562 CALL                 (2 positional)
+             570 STORE_DEREF          (country_hot_score)
+
+745:         572 LOAD_GLOBAL          (NULL + max)
+             582 LOAD_CONST           (0)
+             584 LOAD_DEREF           (self)
+             586 LOAD_ATTR            (NULL|self + _int)
+             606 LOAD_DEREF           (cfg)
+             608 LOAD_ATTR            (NULL|self + get)
+             628 LOAD_CONST           ("semi_success_hot_seconds")
+             630 CALL                 (1 positional)
+             638 LOAD_CONST           (300)
+             640 CALL                 (2 positional)
+             648 CALL                 (2 positional)
+             656 STORE_DEREF          (semi_hot_seconds)
+
+746:         658 LOAD_GLOBAL          (NULL + max)
+             668 LOAD_CONST           (0.0)
+             670 LOAD_DEREF           (self)
+             672 LOAD_ATTR            (NULL|self + _float)
+             692 LOAD_DEREF           (cfg)
+             694 LOAD_ATTR            (NULL|self + get)
+             714 LOAD_CONST           ("semi_success_hot_score")
+             716 CALL                 (1 positional)
+             724 LOAD_CONST           (70.0)
+             726 CALL                 (2 positional)
+             734 CALL                 (2 positional)
+             742 STORE_DEREF          (semi_hot_score)
+
+747:         744 LOAD_GLOBAL          (NULL + max)
+             754 LOAD_CONST           (0)
+             756 LOAD_DEREF           (self)
+             758 LOAD_ATTR            (NULL|self + _int)
+             778 LOAD_DEREF           (cfg)
+             780 LOAD_ATTR            (NULL|self + get)
+             800 LOAD_CONST           ("country_semi_success_hot_seconds")
+             802 CALL                 (1 positional)
+             810 LOAD_CONST           (300)
+             812 CALL                 (2 positional)
+             820 CALL                 (2 positional)
+             828 STORE_DEREF          (country_semi_hot_seconds)
+
+748:         830 LOAD_GLOBAL          (NULL + max)
+             840 LOAD_CONST           (0.0)
+             842 LOAD_DEREF           (self)
+             844 LOAD_ATTR            (NULL|self + _float)
+             864 LOAD_DEREF           (cfg)
+             866 LOAD_ATTR            (NULL|self + get)
+             886 LOAD_CONST           ("country_semi_success_hot_score")
+             888 CALL                 (1 positional)
+             896 LOAD_CONST           (20.0)
+             898 CALL                 (2 positional)
+             906 CALL                 (2 positional)
+             914 STORE_DEREF          (country_semi_hot_score)
+
+749:         916 LOAD_GLOBAL          (NULL + min)
+             926 LOAD_CONST           (1.0)
+             928 LOAD_GLOBAL          (NULL + max)
+             938 LOAD_CONST           (0.0)
+             940 LOAD_DEREF           (self)
+             942 LOAD_ATTR            (NULL|self + _float)
+             962 LOAD_DEREF           (cfg)
+             964 LOAD_ATTR            (NULL|self + get)
+             984 LOAD_CONST           ("failure_hot_decay")
+             986 CALL                 (1 positional)
+             994 LOAD_CONST           (0.35)
+             996 CALL                 (2 positional)
+            1004 CALL                 (2 positional)
+            1012 CALL                 (2 positional)
+            1020 STORE_DEREF          (failure_hot_decay)
+
+751:        1022 LOAD_CONST           (('stat', 'dict', 'return', 'dict'))
+            1024 LOAD_FAST            (cfg)
+            1026 LOAD_FAST            (failure_hot_decay)
+            1028 LOAD_FAST            (kind)
+            1030 LOAD_FAST            (now)
+            1032 LOAD_FAST            (ok)
+            1034 LOAD_FAST            (route_hot_score)
+            1036 LOAD_FAST            (route_hot_seconds)
+            1038 LOAD_FAST            (self)
+            1040 LOAD_FAST            (semi_hot_score)
+            1042 LOAD_FAST            (semi_hot_seconds)
+            1044 BUILD_TUPLE          10
+            1046 LOAD_CONST           (<Code311 code object _apply at 0x106029280, file sms_selector.py>, line 751)
+            1048 MAKE_FUNCTION
+            1050 SET_FUNCTION_ATTRIBUTE 8
+            1052 SET_FUNCTION_ATTRIBUTE 4
+            1054 STORE_FAST           (_apply)
+
+822:        1056 LOAD_CONST           (('stat', 'dict', 'return', 'dict'))
+            1058 LOAD_FAST            (country_hot_score)
+            1060 LOAD_FAST            (country_hot_seconds)
+            1062 LOAD_FAST            (country_semi_hot_score)
+            1064 LOAD_FAST            (country_semi_hot_seconds)
+            1066 LOAD_FAST            (failure_hot_decay)
+            1068 LOAD_FAST            (kind)
+            1070 LOAD_FAST            (now)
+            1072 LOAD_FAST            (ok)
+            1074 LOAD_FAST            (self)
+            1076 BUILD_TUPLE          9
+            1078 LOAD_CONST           (<Code311 code object _apply_country at 0x1060292b0, file sms_selector.py>, line 822)
+            1080 MAKE_FUNCTION
+            1082 SET_FUNCTION_ATTRIBUTE 8
+            1084 SET_FUNCTION_ATTRIBUTE 4
+            1086 STORE_FAST           (_apply_country)
+
+852:        1088 LOAD_DEREF           (self)
+            1090 LOAD_ATTR            (NULL|self + _update_shared_route_and_country)
+            1110 LOAD_FAST_LOAD_FAST  (key, _apply)
+            1112 LOAD_FAST            (_apply_country)
+            1114 CALL                 (3 positional)
+            1122 UNPACK_SEQUENCE      2
+            1126 STORE_FAST_STORE_FAST (route_row, country_row)
+
+853:        1128 LOAD_FAST            (route_row)
+            1130 LOAD_DEREF           (self)
+            1132 LOAD_ATTR            (stats)
+            1152 LOAD_FAST            (key)
+            1154 STORE_SUBSCR
+
+854:        1158 LOAD_FAST            (country_row)
+            1160 LOAD_DEREF           (self)
+            1162 LOAD_ATTR            (country_stats)
+            1182 LOAD_FAST            (candidate)
+            1184 LOAD_ATTR            (country)
+            1204 STORE_SUBSCR
+
+738:        1208 LOAD_CONST           (None)
+            1210 LOAD_CONST           (None)
+            1212 LOAD_CONST           (None)
+            1214 CALL                 (2 positional)
+            1222 POP_TOP
+            1224 RETURN_CONST         (None)
+         >> 1226 PUSH_EXC_INFO
+            1228 WITH_EXCEPT_START    0
+            1230 TO_BOOL
+            1238 POP_JUMP_IF_TRUE     (to 1244)
+            1242 RERAISE              2
+         >> 1244 POP_TOP
+            1246 POP_EXCEPT
+            1248 POP_TOP
+            1250 POP_TOP
+            1252 RETURN_CONST         (None)
+         >> 1254 COPY                 3
+            1256 POP_EXCEPT
+            1258 RERAISE              1
+
+ExceptionTable:
+  150 to 1206 -> 1226 [1] lasti
+  1226 to 1244 -> 1254 [3] lasti
+
+# Method Name:       _update
+# Filename:          sms_selector.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        5
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        140
+# Constants:
+#    0: None
+#    1: 'routes'
+#    2: 0
+#    3: ('success', 'fail', 'timeout', 'no_numbers')
+#    4: 'updated_at'
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: setdefault
+#    3: get
+#    4: time
+# Varnames:
+#	data, routes, row
+# Positional arguments:
+#	data
+# Local variables:
+#    1: routes
+#    2: row
+# Free variables:
+#    0: raw_key
+#    1: update_fn
+               0 COPY_FREE_VARS       2
+
+140:           2 RESUME               0
+
+141:           4 LOAD_GLOBAL          (NULL + isinstance)
+              14 LOAD_FAST            (data)
+              16 LOAD_GLOBAL          (dict)
+              26 CALL                 (2 positional)
+              34 TO_BOOL
+              42 POP_JUMP_IF_TRUE     (to 54)
+
+142:          46 LOAD_CONST           ("routes")
+              48 BUILD_MAP            0
+              50 BUILD_MAP            1
+              52 STORE_FAST           (data)
+
+143:     >>   54 LOAD_FAST            (data)
+              56 LOAD_ATTR            (NULL|self + setdefault)
+              76 LOAD_CONST           ("routes")
+              78 BUILD_MAP            0
+              80 CALL                 (2 positional)
+              88 STORE_FAST           (routes)
+
+144:          90 LOAD_GLOBAL          (NULL + isinstance)
+             100 LOAD_FAST            (routes)
+             102 LOAD_GLOBAL          (dict)
+             112 CALL                 (2 positional)
+             120 TO_BOOL
+             128 POP_JUMP_IF_TRUE     (to 144)
+
+145:         132 BUILD_MAP            0
+             134 STORE_FAST           (routes)
+
+146:         136 LOAD_FAST_LOAD_FAST  (routes, data)
+             138 LOAD_CONST           ("routes")
+             140 STORE_SUBSCR
+
+147:     >>  144 LOAD_FAST            (routes)
+             146 LOAD_ATTR            (NULL|self + get)
+             166 LOAD_DEREF           (raw_key)
+             168 CALL                 (1 positional)
+             176 STORE_FAST           (row)
+
+148:         178 LOAD_GLOBAL          (NULL + isinstance)
+             188 LOAD_FAST            (row)
+             190 LOAD_GLOBAL          (dict)
+             200 CALL                 (2 positional)
+             208 TO_BOOL
+             216 POP_JUMP_IF_TRUE     (to 234)
+
+149:         220 LOAD_CONST           (0)
+             222 LOAD_CONST           (0)
+             224 LOAD_CONST           (0)
+             226 LOAD_CONST           (0)
+             228 LOAD_CONST           (('success', 'fail', 'timeout', 'no_numbers'))
+             230 BUILD_CONST_KEY_MAP  4
+             232 STORE_FAST           (row)
+
+150:     >>  234 LOAD_DEREF           (update_fn)
+             236 PUSH_NULL
+             238 LOAD_GLOBAL          (NULL + dict)
+             248 LOAD_FAST            (row)
+             250 CALL                 (1 positional)
+             258 CALL                 (1 positional)
+             266 STORE_FAST           (row)
+
+151:         268 LOAD_GLOBAL          (time)
+             278 LOAD_ATTR            (time)
+             298 PUSH_NULL
+             300 CALL                 (0 positional)
+             308 LOAD_FAST            (row)
+             310 LOAD_CONST           ("updated_at")
+             312 STORE_SUBSCR
+
+152:         316 LOAD_FAST_LOAD_FAST  (row, routes)
+             318 LOAD_DEREF           (raw_key)
+             320 STORE_SUBSCR
+
+153:         324 LOAD_FAST            (data)
+             326 RETURN_VALUE
+
+
+# Method Name:       _update
+# Filename:          sms_selector.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        5
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        168
+# Constants:
+#    0: None
+#    1: ('routes', 'countries')
+#    2: 'routes'
+#    3: 'countries'
+#    4: 0
+#    5: ('success', 'fail', 'timeout', 'no_numbers')
+#    6: 'updated_at'
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: setdefault
+#    3: get
+#    4: time
+# Varnames:
+#	data, routes, countries, route, country_row
+# Positional arguments:
+#	data
+# Local variables:
+#    1: routes
+#    2: countries
+#    3: route
+#    4: country_row
+# Free variables:
+#    0: country
+#    1: country_update_fn
+#    2: raw_key
+#    3: route_update_fn
+               0 COPY_FREE_VARS       4
+
+168:           2 RESUME               0
+
+169:           4 LOAD_GLOBAL          (NULL + isinstance)
+              14 LOAD_FAST            (data)
+              16 LOAD_GLOBAL          (dict)
+              26 CALL                 (2 positional)
+              34 TO_BOOL
+              42 POP_JUMP_IF_TRUE     (to 56)
+
+170:          46 BUILD_MAP            0
+              48 BUILD_MAP            0
+              50 LOAD_CONST           (('routes', 'countries'))
+              52 BUILD_CONST_KEY_MAP  2
+              54 STORE_FAST           (data)
+
+171:     >>   56 LOAD_FAST            (data)
+              58 LOAD_ATTR            (NULL|self + setdefault)
+              78 LOAD_CONST           ("routes")
+              80 BUILD_MAP            0
+              82 CALL                 (2 positional)
+              90 STORE_FAST           (routes)
+
+172:          92 LOAD_GLOBAL          (NULL + isinstance)
+             102 LOAD_FAST            (routes)
+             104 LOAD_GLOBAL          (dict)
+             114 CALL                 (2 positional)
+             122 TO_BOOL
+             130 POP_JUMP_IF_TRUE     (to 146)
+
+173:         134 BUILD_MAP            0
+             136 STORE_FAST           (routes)
+
+174:         138 LOAD_FAST_LOAD_FAST  (routes, data)
+             140 LOAD_CONST           ("routes")
+             142 STORE_SUBSCR
+
+175:     >>  146 LOAD_FAST            (data)
+             148 LOAD_ATTR            (NULL|self + setdefault)
+             168 LOAD_CONST           ("countries")
+             170 BUILD_MAP            0
+             172 CALL                 (2 positional)
+             180 STORE_FAST           (countries)
+
+176:         182 LOAD_GLOBAL          (NULL + isinstance)
+             192 LOAD_FAST            (countries)
+             194 LOAD_GLOBAL          (dict)
+             204 CALL                 (2 positional)
+             212 TO_BOOL
+             220 POP_JUMP_IF_TRUE     (to 236)
+
+177:         224 BUILD_MAP            0
+             226 STORE_FAST           (countries)
+
+178:         228 LOAD_FAST_LOAD_FAST  (countries, data)
+             230 LOAD_CONST           ("countries")
+             232 STORE_SUBSCR
+
+180:     >>  236 LOAD_FAST            (routes)
+             238 LOAD_ATTR            (NULL|self + get)
+             258 LOAD_DEREF           (raw_key)
+             260 CALL                 (1 positional)
+             268 STORE_FAST           (route)
+
+181:         270 LOAD_GLOBAL          (NULL + isinstance)
+             280 LOAD_FAST            (route)
+             282 LOAD_GLOBAL          (dict)
+             292 CALL                 (2 positional)
+             300 TO_BOOL
+             308 POP_JUMP_IF_TRUE     (to 326)
+
+182:         312 LOAD_CONST           (0)
+             314 LOAD_CONST           (0)
+             316 LOAD_CONST           (0)
+             318 LOAD_CONST           (0)
+             320 LOAD_CONST           (('success', 'fail', 'timeout', 'no_numbers'))
+             322 BUILD_CONST_KEY_MAP  4
+             324 STORE_FAST           (route)
+
+183:     >>  326 LOAD_DEREF           (route_update_fn)
+             328 PUSH_NULL
+             330 LOAD_GLOBAL          (NULL + dict)
+             340 LOAD_FAST            (route)
+             342 CALL                 (1 positional)
+             350 CALL                 (1 positional)
+             358 STORE_FAST           (route)
+
+184:         360 LOAD_GLOBAL          (time)
+             370 LOAD_ATTR            (time)
+             390 PUSH_NULL
+             392 CALL                 (0 positional)
+             400 LOAD_FAST            (route)
+             402 LOAD_CONST           ("updated_at")
+             404 STORE_SUBSCR
+
+185:         408 LOAD_FAST_LOAD_FAST  (route, routes)
+             410 LOAD_DEREF           (raw_key)
+             412 STORE_SUBSCR
+
+187:         416 LOAD_FAST            (countries)
+             418 LOAD_ATTR            (NULL|self + get)
+             438 LOAD_DEREF           (country)
+             440 CALL                 (1 positional)
+             448 STORE_FAST           (country_row)
+
+188:         450 LOAD_GLOBAL          (NULL + isinstance)
+             460 LOAD_FAST            (country_row)
+             462 LOAD_GLOBAL          (dict)
+             472 CALL                 (2 positional)
+             480 TO_BOOL
+             488 POP_JUMP_IF_TRUE     (to 506)
+
+189:         492 LOAD_CONST           (0)
+             494 LOAD_CONST           (0)
+             496 LOAD_CONST           (0)
+             498 LOAD_CONST           (0)
+             500 LOAD_CONST           (('success', 'fail', 'timeout', 'no_numbers'))
+             502 BUILD_CONST_KEY_MAP  4
+             504 STORE_FAST           (country_row)
+
+190:     >>  506 LOAD_DEREF           (country_update_fn)
+             508 PUSH_NULL
+             510 LOAD_GLOBAL          (NULL + dict)
+             520 LOAD_FAST            (country_row)
+             522 CALL                 (1 positional)
+             530 CALL                 (1 positional)
+             538 STORE_FAST           (country_row)
+
+191:         540 LOAD_GLOBAL          (time)
+             550 LOAD_ATTR            (time)
+             570 PUSH_NULL
+             572 CALL                 (0 positional)
+             580 LOAD_FAST            (country_row)
+             582 LOAD_CONST           ("updated_at")
+             584 STORE_SUBSCR
+
+192:         588 LOAD_FAST_LOAD_FAST  (country_row, countries)
+             590 LOAD_DEREF           (country)
+             592 STORE_SUBSCR
+
+193:         596 LOAD_FAST            (data)
+             598 RETURN_VALUE
+
+
+# Method Name:       <genexpr>
+# Filename:          sms_selector.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        3
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        322
+# Constants:
+#    0: None
+# Varnames:
+#	.0, _, value
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: _
+#    2: value
+322:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 32)
+              14 UNPACK_SEQUENCE      2
+              18 STORE_FAST_STORE_FAST (_, value)
+              20 LOAD_FAST            (value)
+              22 YIELD_VALUE          0
+              24 RESUME               5
+              26 POP_TOP
+              28 JUMP_BACKWARD        (to 10)
+         >>   32 END_FOR
+              34 POP_TOP
+              36 RETURN_CONST         (None)
+         >>   38 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              40 RERAISE              1
+
+ExceptionTable:
+  4 to 36 -> 38 [0] lasti
+
+# Method Name:       _apply
+# Filename:          sms_selector.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        8
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        346
+# Constants:
+#    0: None
+#    1: 0
+#    2: 'inflight'
+#    3: 'lease_until'
+#    4: 1.0
+#    5: 'route_lease_seconds'
+#    6: 8.0
+#    7: 1
+#    8: 'last_pick_at'
+#    9: True
+# Names:
+#    0: time
+#    1: _route_inflight
+#    2: pop
+#    3: _has_route_capacity
+#    4: max
+#    5: _float
+#    6: _cfg
+#    7: get
+# Varnames:
+#	stat, current, inflight, lease_seconds
+# Positional arguments:
+#	stat
+# Local variables:
+#    1: current
+#    2: inflight
+#    3: lease_seconds
+# Free variables:
+#    0: candidate
+#    1: reserved
+#    2: self
+#    3: throughput_priority
+               0 COPY_FREE_VARS       4
+
+346:           2 RESUME               0
+
+348:           4 LOAD_GLOBAL          (time)
+              14 LOAD_ATTR            (time)
+              34 PUSH_NULL
+              36 CALL                 (0 positional)
+              44 STORE_FAST           (current)
+
+349:          46 LOAD_DEREF           (self)
+              48 LOAD_ATTR            (NULL|self + _route_inflight)
+              68 LOAD_FAST_LOAD_FAST  (stat, current)
+              70 CALL                 (2 positional)
+              78 STORE_FAST           (inflight)
+
+350:          80 LOAD_FAST            (inflight)
+              82 LOAD_CONST           (0)
+              84 COMPARE_OP           (<=)
+              88 POP_JUMP_IF_FALSE    (to 164)
+
+351:          92 LOAD_FAST            (stat)
+              94 LOAD_ATTR            (NULL|self + pop)
+             114 LOAD_CONST           ("inflight")
+             116 LOAD_CONST           (None)
+             118 CALL                 (2 positional)
+             126 POP_TOP
+
+352:         128 LOAD_FAST            (stat)
+             130 LOAD_ATTR            (NULL|self + pop)
+             150 LOAD_CONST           ("lease_until")
+             152 LOAD_CONST           (None)
+             154 CALL                 (2 positional)
+             162 POP_TOP
+
+353:     >>  164 LOAD_DEREF           (throughput_priority)
+             166 TO_BOOL
+             174 POP_JUMP_IF_TRUE     (to 228)
+             178 LOAD_DEREF           (self)
+             180 LOAD_ATTR            (NULL|self + _has_route_capacity)
+             200 LOAD_DEREF           (candidate)
+             202 LOAD_FAST_LOAD_FAST  (stat, current)
+             204 CALL                 (3 positional)
+             212 TO_BOOL
+             220 POP_JUMP_IF_TRUE     (to 228)
+
+354:         224 LOAD_FAST            (stat)
+             226 RETURN_VALUE

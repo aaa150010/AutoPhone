@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import copy
-import importlib
 import json
 import os
 from pathlib import Path
-import sys
 import tempfile
 import threading
 import time
 from types import MethodType, SimpleNamespace
 import unittest
+
+from tests.web_gui_test_runtime import RecoveredWebGuiImport
 
 
 class WebGuiSecurityTests(unittest.TestCase):
@@ -19,11 +19,8 @@ class WebGuiSecurityTests(unittest.TestCase):
         cls.tempdir = tempfile.TemporaryDirectory()
         cls.previous_data_dir = os.environ.get("GPTPHONE_DATA_DIR")
         os.environ["GPTPHONE_DATA_DIR"] = cls.tempdir.name
-        root = Path(__file__).resolve().parents[1]
-        cls.import_paths = [str(root / "mac_overrides"), str(root / "business_pyc")]
-        for path in reversed(cls.import_paths):
-            sys.path.insert(0, path)
-        cls.module = importlib.import_module("web_gui")
+        cls.web_gui_import = RecoveredWebGuiImport(Path(__file__).resolve().parents[1])
+        cls.module = cls.web_gui_import.load()
 
     @classmethod
     def tearDownClass(cls):
@@ -31,12 +28,72 @@ class WebGuiSecurityTests(unittest.TestCase):
             os.environ.pop("GPTPHONE_DATA_DIR", None)
         else:
             os.environ["GPTPHONE_DATA_DIR"] = cls.previous_data_dir
-        for path in cls.import_paths:
-            try:
-                sys.path.remove(path)
-            except ValueError:
-                pass
+        cls.web_gui_import.cleanup()
         cls.tempdir.cleanup()
+
+    def test_successful_totp_trace_is_not_rewritten_as_oauth_failure(self):
+        message = (
+            "T002-ab12cd [CodexTOTP] password_verify endpoint=/api/accounts/password/verify "
+            "_status=200 page_type=mfa_challenge continue_path=/mfa-challenge/******** "
+            "error=- factor_id_present=1"
+        )
+
+        formatted = self.module._diagnostic_friendly_log_message(message)
+
+        self.assertEqual(formatted, message)
+        self.assertNotIn("OpenAI OAuth 授权失败", formatted)
+
+    def test_batch_reconcile_marks_missing_runtime_task_terminal(self):
+        module = self.module
+        updates = []
+
+        class Manifest:
+            def finalize(self, batch_id, *, tasks, reason):
+                self.batch_id = batch_id
+                self.tasks = tasks
+                self.reason = reason
+                return {
+                    "members": [
+                        {
+                            "task_id": "T002-ab12cd",
+                            "status": "failed",
+                            "reconciled_missing": True,
+                        }
+                    ]
+                }
+
+        importer = SimpleNamespace(
+            lock=threading.RLock(),
+            tasks={
+                "T002-ab12cd": {
+                    "task_id": "T002-ab12cd",
+                    "status": "authorizing",
+                    "result": {},
+                }
+            },
+            _gptphone_batch_manifest=Manifest(),
+            _log=lambda *_args: None,
+        )
+
+        def task_state(task_id, **values):
+            updates.append((task_id, copy.deepcopy(values)))
+            importer.tasks[task_id].update(values)
+
+        importer._task_state = task_state
+        summary = module._reconcile_finished_batch(
+            importer,
+            {"batch_id": "20260808-150600-b20be0"},
+        )
+
+        self.assertEqual(len(summary["members"]), 1)
+        self.assertEqual(updates[0][0], "T002-ab12cd")
+        self.assertEqual(updates[0][1]["status"], "failed")
+        self.assertEqual(
+            updates[0][1]["failure"]["node_code"],
+            "batch_member_missing_terminal",
+        )
+        serialized = json.dumps(updates, ensure_ascii=False)
+        self.assertNotIn("@", serialized)
 
     def test_masked_draft_preserves_existing_sms_and_smtp_secrets(self):
         existing = {
@@ -340,6 +397,7 @@ class WebGuiSecurityTests(unittest.TestCase):
                 {
                     "email_otp_verify_attempts": 3,
                     "email_otp_resend_on_retry": False,
+                    "dynamic_auth_challenges": False,
                 },
                 "user@example.test",
                 "email-retry-explicit",
@@ -349,8 +407,10 @@ class WebGuiSecurityTests(unittest.TestCase):
 
         self.assertEqual(default_config["email_otp_verify_attempts"], 2)
         self.assertTrue(default_config["email_otp_resend_on_retry"])
+        self.assertTrue(default_config["dynamic_auth_challenges"])
         self.assertEqual(explicit_config["email_otp_verify_attempts"], 3)
         self.assertFalse(explicit_config["email_otp_resend_on_retry"])
+        self.assertFalse(explicit_config["dynamic_auth_challenges"])
 
     def test_phone_risk_marker_restores_reliability_mode_across_tasks(self):
         module = self.module
@@ -465,6 +525,78 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(filtered, [])
 
+    def test_batch_priority_is_consumed_only_after_manifest_commit(self):
+        module = self.module
+        original_reserve = module._mailbox_priority_runtime_ext.reserve_available_batch
+        original_priority = module._MAILBOX_NEXT_BATCH_PRIORITY
+        events = []
+        entries = [SimpleNamespace(source_row="priority-row")]
+
+        def reserve(_pool, _target, **options):
+            options["before_reserve"](entries)
+            options["after_reserve"](entries)
+            return entries
+
+        token = module._MAILBOX_NEXT_BATCH_PRIORITY_ACTIVE.set(True)
+        try:
+            module._mailbox_priority_runtime_ext.reserve_available_batch = reserve
+            module._MAILBOX_NEXT_BATCH_PRIORITY = SimpleNamespace(
+                consume=lambda source_row: events.append(("consume", source_row)),
+            )
+            selected = module._reserve_mailbox_batch(
+                object(),
+                1,
+                before_reserve=lambda _rows: events.append(("prepare", "")),
+                after_reserve=lambda _rows: events.append(("commit", "")),
+            )
+        finally:
+            module._MAILBOX_NEXT_BATCH_PRIORITY_ACTIVE.reset(token)
+            module._MAILBOX_NEXT_BATCH_PRIORITY = original_priority
+            module._mailbox_priority_runtime_ext.reserve_available_batch = original_reserve
+
+        self.assertEqual(selected, entries)
+        self.assertEqual(
+            events,
+            [("prepare", ""), ("commit", ""), ("consume", "priority-row")],
+        )
+
+    def test_batch_recovery_uses_manifest_private_pool_paths(self):
+        module = self.module
+        original_pool = module._runtime.MailboxPool
+        original_release = module._mailbox_priority_runtime_ext.release_owned_batch_leases
+        observed = {}
+        custom_pool = Path(self.tempdir.name) / "custom-pool.txt"
+        custom_state = Path(self.tempdir.name) / "custom-state.json"
+
+        try:
+            module._runtime.MailboxPool = lambda pool_path, state_path: observed.update(
+                pool_path=Path(pool_path),
+                state_path=Path(state_path),
+            ) or "pool"
+            module._mailbox_priority_runtime_ext.release_owned_batch_leases = (
+                lambda pool, batch_id, members: observed.update(
+                    pool=pool,
+                    batch_id=batch_id,
+                    member_count=len(list(members)),
+                ) or {"released": 1}
+            )
+            result = module._release_recovered_batch_leases(
+                "batch-custom",
+                [{"row_id": "a" * 64, "line_no": 1}],
+                pool_path=custom_pool,
+                state_path=custom_state,
+            )
+        finally:
+            module._runtime.MailboxPool = original_pool
+            module._mailbox_priority_runtime_ext.release_owned_batch_leases = original_release
+
+        self.assertEqual(result, {"released": 1})
+        self.assertEqual(observed["pool_path"], custom_pool)
+        self.assertEqual(observed["state_path"], custom_state)
+        self.assertEqual(observed["pool"], "pool")
+        self.assertEqual(observed["batch_id"], "batch-custom")
+        self.assertEqual(observed["member_count"], 1)
+
     def test_register_start_caps_total_auth_sessions_at_five(self):
         module = self.module
         original_start = module._importer_scheduler_ext.start_bounded_importer
@@ -485,7 +617,7 @@ class WebGuiSecurityTests(unittest.TestCase):
 
         self.assertEqual(observed, [5])
 
-    def test_task_admission_burst_is_enabled_only_for_register_concurrency_eight(self):
+    def test_task_admission_adapts_only_for_register_concurrency_eight(self):
         module = self.module
         original_start = module._importer_scheduler_ext.start_bounded_importer
         original_notifications = module._begin_notification_run
@@ -496,7 +628,11 @@ class WebGuiSecurityTests(unittest.TestCase):
             module._begin_notification_run = lambda *_args: None
             module._importer_scheduler_ext.start_bounded_importer = (
                 lambda _importer, settings, **kwargs: observed.append(
-                    (dict(settings), kwargs["task_admission"].snapshot())
+                    (
+                        dict(settings),
+                        kwargs["task_admission"].snapshot(),
+                        kwargs["task_admission"].require_backlog_for_restore,
+                    )
                 )
             )
             module._patched_importer_start(importer, {"concurrency": 8})
@@ -505,12 +641,16 @@ class WebGuiSecurityTests(unittest.TestCase):
                 importer,
                 {"concurrency": 8, "run_mode": "relogin"},
             )
+            module._patched_importer_start(
+                importer,
+                {"concurrency": 8, "adaptive_task_concurrency": False},
+            )
         finally:
             module._CURRENT_TASK_ADMISSION = original_admission
             module._importer_scheduler_ext.start_bounded_importer = original_start
             module._begin_notification_run = original_notifications
 
-        register_eight, register_seven, relogin_eight = observed
+        register_eight, register_seven, relogin_eight, disabled_eight = observed
         self.assertEqual(
             {
                 key: register_eight[1][key]
@@ -519,15 +659,106 @@ class WebGuiSecurityTests(unittest.TestCase):
             {
                 "base": 8,
                 "limit": 8,
-                "restore_ceiling": 8,
-                "ceiling": 12,
-                "burst_enabled": True,
+                "restore_ceiling": 10,
+                "ceiling": 10,
+                "burst_enabled": False,
             },
         )
-        self.assertEqual(register_seven[1]["ceiling"], 8)
+        self.assertEqual(register_seven[1]["ceiling"], 7)
         self.assertFalse(register_seven[1]["burst_enabled"])
         self.assertEqual(relogin_eight[1]["ceiling"], 8)
         self.assertFalse(relogin_eight[1]["burst_enabled"])
+        self.assertEqual(disabled_eight[1]["ceiling"], 8)
+        self.assertFalse(disabled_eight[1]["burst_enabled"])
+        self.assertTrue(all(item[2] for item in observed))
+
+    def test_adaptive_task_events_sync_node_and_protocol_capacity(self):
+        module = self.module
+        original_start = module._importer_scheduler_ext.start_bounded_importer
+        original_notifications = module._begin_notification_run
+        original_admission = module._CURRENT_TASK_ADMISSION
+        original_protocol = module._PROTOCOL_GATE
+        observed = []
+        importer = SimpleNamespace(status=lambda _settings: {"running": False})
+
+        def capture(_importer, settings, **kwargs):
+            node_limit = int(settings.get("node_concurrency") or settings["concurrency"])
+            node_gate = kwargs["node_phase_gate_factory"](node_limit)
+            admission = kwargs["task_admission"]
+            admission.on_change({
+                "kind": "restored",
+                "old_limit": 8,
+                "new_limit": 9,
+                "reason": "success_streak",
+            })
+            promoted = (
+                node_gate.status(),
+                module._PROTOCOL_GATE.snapshot("proxy-test"),
+            )
+            admission.on_change({
+                "kind": "resource_exhausted",
+                "old_limit": 9,
+                "new_limit": 4,
+                "reason": "resource_fd_exhausted",
+                "pause_seconds": 15,
+            })
+            observed.append((
+                promoted,
+                node_gate.status(),
+                module._PROTOCOL_GATE.snapshot("proxy-test"),
+            ))
+
+        try:
+            module._begin_notification_run = lambda *_args: None
+            module._PROTOCOL_GATE = module._sms_runtime_ext.ProxyProtocolGate(
+                default_limit=8,
+                launch_interval_seconds=0,
+            )
+            module._importer_scheduler_ext.start_bounded_importer = capture
+            module._patched_importer_start(
+                importer,
+                {"concurrency": 8, "node_concurrency": 8},
+            )
+            module._patched_importer_start(
+                importer,
+                {"concurrency": 8, "node_concurrency": 7},
+            )
+        finally:
+            module._CURRENT_TASK_ADMISSION = original_admission
+            module._PROTOCOL_GATE = original_protocol
+            module._importer_scheduler_ext.start_bounded_importer = original_start
+            module._begin_notification_run = original_notifications
+
+        promoted, node_reduced, protocol_reduced = observed[0]
+        promoted_node, promoted_protocol = promoted
+        self.assertEqual((promoted_node["limit"], promoted_node["ceiling"]), (9, 10))
+        self.assertEqual((promoted_protocol["limit"], promoted_protocol["ceiling"]), (9, 9))
+        self.assertEqual(node_reduced["limit"], 4)
+        self.assertEqual((protocol_reduced["limit"], protocol_reduced["ceiling"]), (4, 4))
+
+        fixed_promoted, fixed_node, fixed_protocol = observed[1]
+        self.assertEqual(fixed_promoted[0]["limit"], 7)
+        self.assertEqual(fixed_promoted[1]["limit"], 7)
+        self.assertEqual(fixed_node["limit"], 7)
+        self.assertEqual((fixed_protocol["limit"], fixed_protocol["ceiling"]), (7, 7))
+
+    def test_running_fd_sampler_feeds_current_admission_without_subprocess_snapshot(self):
+        module = self.module
+        original_ratio = module._transport_lifecycle_ext.process_fd_ratio
+        observed = []
+        importer = SimpleNamespace(
+            task_admission=SimpleNamespace(
+                observe_resource_ratio=lambda ratio: observed.append(ratio) or 4,
+            )
+        )
+        try:
+            module._transport_lifecycle_ext.process_fd_ratio = lambda: 0.81
+            result = module._observe_runtime_fd_pressure(importer)
+        finally:
+            module._transport_lifecycle_ext.process_fd_ratio = original_ratio
+
+        self.assertEqual(result, 4)
+        self.assertEqual(observed, [0.81])
 
     def test_baseline_fallback_snapshot_bypasses_only_original_baseline_guard(self):
         module = self.module
@@ -1993,6 +2224,40 @@ class WebGuiSecurityTests(unittest.TestCase):
             [("banned", "T-fast-banned"), ("failure", "T-fast-banned")],
         )
 
+    def test_sms_rollback_guard_excludes_stopped_and_cancelled_tasks(self):
+        module = self.module
+        original_state = module._ORIGINAL_TASK_STATE
+        original_guard = module._SMS_QUALITY_GUARD
+        observed = []
+        guard = SimpleNamespace(
+            observe_task=lambda task_id, status, result: observed.append(
+                (task_id, status, result)
+            )
+        )
+        try:
+            module._ORIGINAL_TASK_STATE = lambda *_args, **_kwargs: None
+            module._SMS_QUALITY_GUARD = guard
+            for status in ("stopped", "stopped_before_start", "cancelled", "canceled"):
+                module._patched_task_state(
+                    SimpleNamespace(task_admission=None),
+                    f"T-{status}",
+                    status=status,
+                    result={"sms_cost_usd": 1.0},
+                )
+            module._patched_task_state(
+                SimpleNamespace(task_admission=None),
+                "T-completed",
+                status="failed",
+                result={"sms_cost_usd": 1.0},
+            )
+        finally:
+            module._ORIGINAL_TASK_STATE = original_state
+            module._SMS_QUALITY_GUARD = original_guard
+
+        self.assertEqual(len(observed), 1)
+        self.assertEqual(observed[0][:2], ("T-completed", "failed"))
+        self.assertEqual(observed[0][2]["sms_cost_usd"], 1.0)
+
     def test_oauth_rate_limit_is_strong_pressure_but_mailbox_failure_is_not(self):
         module = self.module
         original_state = module._ORIGINAL_TASK_STATE
@@ -2398,6 +2663,41 @@ class WebGuiSecurityTests(unittest.TestCase):
             module._TASK_PROGRESS.reset()
             module._TASK_CONTEXT.reset(token)
 
+    def test_expired_mfa_step_never_reenters_dynamic_challenge(self):
+        module = self.module
+        original_patches = module._TOTP_PATCHES
+        original_observe = module._observe_auth_step
+        challenge_calls = []
+        expired = {
+            "_status": 401,
+            "error": {"code": "mfa_authorization_step_expired"},
+            "page": {"type": "mfa_challenge"},
+        }
+        transport = SimpleNamespace(
+            send_mfa_otp=lambda *_args: challenge_calls.append("send"),
+            verify_mfa_otp=lambda *_args: challenge_calls.append("verify"),
+        )
+        module._auth_challenge_runtime_ext.bind_transport_context(
+            transport,
+            account_email="masked@example.test",
+            email_otp_provider=SimpleNamespace(),
+            config={"dynamic_auth_challenges": True},
+        )
+        try:
+            module._TOTP_PATCHES = SimpleNamespace(
+                verify_mfa_otp=lambda *_args: expired,
+            )
+            module._observe_auth_step = lambda *_args: None
+            result = module._real_verify_mfa_otp(transport, "private-code")
+        finally:
+            module._TOTP_PATCHES = original_patches
+            module._observe_auth_step = original_observe
+            module._auth_challenge_runtime_ext.clear_transport_context(transport)
+
+        self.assertIs(result, expired)
+        self.assertEqual(challenge_calls, [])
+        self.assertFalse(hasattr(transport, "_gptphone_auth_challenge_context"))
+
     def test_url_mailbox_totp_is_generated_after_slow_header_preparation(self):
         module = self.module
         secret = "JBSWY3DPEHPK3PXP"
@@ -2497,6 +2797,44 @@ class WebGuiSecurityTests(unittest.TestCase):
 
         self.assertEqual(observed, ["", ""])
         self.assertEqual(module._MAILBOX_TOTP_SECRET_CONTEXT.get(""), "")
+
+    def test_legacy_run_one_call_generates_cleanup_visible_task_id(self):
+        module = self.module
+        original_run_one = module._ORIGINAL_IMPORTER_RUN_ONE
+        observed = {}
+
+        class Session:
+            close_calls = 0
+
+            def close(self):
+                self.close_calls += 1
+                if self.close_calls == 1:
+                    raise OSError("temporary close failure")
+
+        def run_one(_self, _settings, _ordinal, _entry, task_id):
+            observed["task_id"] = task_id
+            observed["session"] = Session()
+            transport = SimpleNamespace(
+                config={"sms_task_id": task_id},
+                session=observed["session"],
+            )
+            module._register_sms_transport(task_id, transport)
+            return task_id
+
+        try:
+            module._ORIGINAL_IMPORTER_RUN_ONE = run_one
+            result = module._patched_importer_run_one(object(), {}, 7)
+        finally:
+            module._ORIGINAL_IMPORTER_RUN_ONE = original_run_one
+
+        self.assertRegex(result, r"^T007-[0-9a-f]{6}$")
+        self.assertEqual(observed["task_id"], result)
+        self.assertEqual(observed["session"].close_calls, 2)
+        self.assertIsNone(module._transport_for_task(result))
+        self.assertEqual(
+            module._SMS_TRANSPORT_REGISTRY.snapshot()["pending_cleanup"],
+            0,
+        )
 
     def test_sentinel_emit_formats_internal_failure_as_non_terminal_retry(self):
         module = self.module
@@ -3137,6 +3475,51 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(payload["batch_started_at"], settings["batch_started_at"])
         self.assertEqual(payload["result"]["batch_id"], settings["batch_id"])
         self.assertEqual(payload["result"]["batch_started_at"], settings["batch_started_at"])
+
+    def test_relative_result_directory_is_resolved_from_importer_data_dir(self):
+        module = self.module
+        original_persist = module._ORIGINAL_PERSIST_RESULT
+        with tempfile.TemporaryDirectory() as temporary:
+            data_dir = Path(temporary) / "runtime-data"
+            entry = SimpleNamespace(email="relative@example.test")
+            observed = {}
+
+            def persist(fake_self, settings, task_id, value, result, *, error="", status="failed"):
+                observed["results_dir"] = settings["results_dir"]
+                target = Path(settings["results_dir"]) / (
+                    f"{task_id}_{value.email.replace('@', '_at_')}.json"
+                )
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(
+                    json.dumps({"task_id": task_id, "status": status, "result": result}),
+                    encoding="utf-8",
+                )
+
+            fake_self = SimpleNamespace(
+                data_dir=data_dir,
+                _source_row=lambda _entry: "relative@example.test----private-password",
+                _log=lambda *_args, **_kwargs: None,
+            )
+            try:
+                module._ORIGINAL_PERSIST_RESULT = persist
+                module._TASK_PROGRESS.reset()
+                module._patched_persist_result(
+                    fake_self,
+                    {"results_dir": "relative-results"},
+                    "T-relative",
+                    entry,
+                    {},
+                    status="success",
+                )
+            finally:
+                module._ORIGINAL_PERSIST_RESULT = original_persist
+                module._TASK_PROGRESS.reset()
+
+            expected_dir = (data_dir / "relative-results").resolve()
+            self.assertEqual(Path(observed["results_dir"]), expected_dir)
+            self.assertTrue(
+                (expected_dir / "T-relative_relative_at_example.test.json").is_file()
+            )
 
     def test_persisted_result_keeps_safe_phone_risk_retry_fields(self):
         module = self.module

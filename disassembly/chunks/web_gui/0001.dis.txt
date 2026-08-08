@@ -1,0 +1,800 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          web_gui.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        5
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1
+# Constants:
+#    0: 'Local WebUI for the standalone email-first authorization importer.'
+#    1: 0
+#    2: ('annotations',)
+#    3: None
+#    4: ('Any',)
+#    5: ('Flask', 'Response', 'jsonify', 'request')
+#    6: ('BaseWSGIServer', 'WSGIRequestHandler', 'make_server')
+#    7: 1
+#    8: ('DEFAULT_DATA_DIR', 'EmailAuthImporter', 'ImporterConfigStore', 'MailboxPool', 'MailboxPoolError', '_friendly_log_message')
+#    9: 240
+#   10: <Code311 code object _clean at 0x1060e2b20, file web_gui.py>, line 27
+#   11: <Code311 code object _safe at 0x1060e2a60, file web_gui.py>, line 31
+#   12: <Code311 code object GuiLog at 0x1060b1400, file web_gui.py>, line 35
+#   13: 'GuiLog'
+#   14: <Code311 code object create_app at 0x1060b1940, file web_gui.py>, line 50
+#   15: <Code311 code object _QuietRequestHandler at 0x1060b1370, file web_gui.py>, line 213
+#   16: '_QuietRequestHandler'
+#   17: '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>plus绑号码脚本</title><style>\n:root{color-scheme:dark;font-family:Arial,"Microsoft YaHei",sans-serif;background:#0e1521;color:#edf4ff}*{box-sizing:border-box}body{margin:0}.top{height:64px;padding:0 28px;display:flex;gap:15px;align-items:center;border-bottom:1px solid #26364c;background:#111b2a}.top h1{margin:0;font-size:20px}.top span{font-size:12px;color:#93a8c2}.shell{max-width:1500px;margin:22px auto;padding:0 22px;display:grid;grid-template-columns:430px 1fr;gap:16px}.panel{border:1px solid #2b3c55;border-radius:8px;background:#151f2e;padding:17px}.panel h2{font-size:15px;margin:0 0 13px}.section{border-top:1px solid #27384f;margin-top:18px;padding-top:16px}.field{margin-bottom:10px}.field label{display:block;color:#9eb1c8;font-size:12px;margin-bottom:5px}input,select,textarea{width:100%;border:1px solid #354b67;border-radius:6px;background:#0d1521;color:#eff7ff;font-size:13px;padding:8px}input,select{height:35px}textarea{resize:vertical;min-height:110px;font-family:Consolas,monospace;line-height:1.45}.row{display:flex;gap:8px}.row>.field{flex:1;min-width:0}.checks{display:flex;gap:12px;flex-wrap:wrap;margin:7px 0 11px}.checks label{font-size:12px;color:#b7c8d9}input[type=checkbox]{width:auto;height:auto;margin-right:5px}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}button{height:34px;padding:0 12px;color:#edf6ff;border:1px solid #3c5879;border-radius:6px;background:#1b2b42;font-weight:600;cursor:pointer}button.primary{background:#217acd;border-color:#409be8}button.warn{background:#5a3c23;border-color:#af7947}button:disabled{opacity:.5;cursor:wait}.hint{font-size:11px;color:#8da2bb;line-height:1.5;margin:6px 0}.main{display:grid;grid-template-rows:auto auto 1fr;gap:16px}.metrics{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}.metric{border:1px solid #2a3b53;border-radius:7px;background:#111a28;padding:12px}.metric span{display:block;font-size:11px;color:#9badc2}.metric b{display:block;font-size:23px;margin-top:5px}.tasks{min-height:180px;max-height:310px;overflow:auto;border:1px solid #2a3b53;border-radius:7px;background:#0c131d}.task{display:grid;grid-template-columns:100px 1fr 160px;gap:10px;border-bottom:1px solid #1d2b3c;padding:10px;font-size:12px}.ok{color:#59d99f}.failed,.error{color:#ff7484}.repair_pending,.warn{color:#f2bf67}.info{color:#c7d9ea}.log{height:420px;overflow:auto;border:1px solid #2a3b53;border-radius:7px;background:#090f17;padding:10px;font-family:Consolas,monospace;font-size:12px;line-height:1.65}.line{border-bottom:1px solid #152131;padding:2px 0}.time{color:#7895b7}.status{font-size:12px;color:#a8b9cb;margin:8px 0 0}.wide{grid-column:1/-1}@media(max-width:980px){.shell{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(3,1fr)}}\n</style></head><body><header class="top"><h1>plus绑号码脚本</h1><span>独立运行 · 邮箱优先 Auth · SMS 智能选号 · SUB2 严格分组</span></header><main class="shell"><section class="panel"><h2>自建邮箱池</h2><div class="field"><label>批量粘贴（每行：邮箱----邮箱取码地址）</label><textarea id="pool_content" placeholder="user@example.test----https://mail.example.test/show/opaque"></textarea></div><div class="actions"><button onclick="importPool()">导入邮箱池</button></div><div class="hint">池文件、接口地址和状态均仅保存在本工具的 data 目录，不写入主项目配置。</div><div class="section"><h2>SMS 接码</h2><div class="row"><div class="field"><label>平台</label><select id="sms_provider"><option value="smsbower">SMSBower</option><option value="herosms">HeroSMS</option><option value="5sim">5sim</option><option value="grizzlysms">GrizzlySMS</option><option value="smsvirtual">SMSVirtual</option><option value="localpool">本地号码池</option></select></div><div class="field"><label>服务</label><input id="service" value="dr"></div></div><div class="field"><label>SMS API Key / 本地号码池文件路径</label><input id="sms_api_key" type="password"></div><div class="row"><div class="field"><label>国家</label><input id="country" placeholder="151"></div><div class="field"><label>运营商</label><input id="provider_ids" placeholder="可选"></div><div class="field"><label>最高价格</label><input id="max_price" placeholder="0.04"></div></div><div class="row"><div class="field"><label>短信超时（秒）</label><input id="sms_timeout" type="number" value="30"></div><div class="field"><label>每号最大尝试</label><input id="phone_max_attempts" type="number" value="40"></div></div><div class="checks"><label><input id="sms_smart_enabled" type="checkbox" checked>智能选号</label></div></div><div class="section"><h2>SUB2 上传</h2><div class="field"><label>SUB2 地址</label><input id="sub2_url"></div><div class="row"><div class="field"><label>管理账号</label><input id="sub2_email"></div><div class="field"><label>管理密码</label><input id="sub2_password" type="password"></div></div><div class="field"><label>目标分组</label><input id="sub2_group"></div></div><div class="section"><h2>网络与运行</h2><div class="field"><label>OpenAI 主代理（为空直连）</label><input id="proxy" placeholder="http://127.0.0.1:7890"></div><div class="checks"><label><input id="proxy_sms" type="checkbox">SMS 走代理</label><label><input id="proxy_email" type="checkbox">邮箱取码走代理</label><label><input id="proxy_upload" type="checkbox">SUB2 走代理</label></div><div class="row"><div class="field"><label>目标数</label><input id="target_count" type="number" value="1"></div><div class="field"><label>并发</label><input id="concurrency" type="number" value="1"></div></div><div class="field"><label>账号密码（留空由邮箱优先链路生成）</label><input id="password" type="password"></div><div class="field"><label>Node SentinelRunner</label><input id="node_runner"></div><div class="actions"><button onclick="saveConfig()">保存配置</button><button onclick="preflight()">真实链路预检</button><button class="primary" onclick="startRun()">开始导入</button><button class="warn" onclick="stopRun()">安全停止</button></div><div class="hint">开始前会先登录 SUB2 并验证你填写的分组。SMS、邮箱和 SUB2 是否走代理只由上面的勾选控制。</div></div></section><section class="main"><section class="panel"><h2>队列状态</h2><div class="metrics"><div class="metric"><span>池总数</span><b id="total">0</b></div><div class="metric"><span>可领取</span><b id="available">0</b></div><div class="metric"><span>已领取</span><b id="leased">0</b></div><div class="metric"><span>已消耗</span><b id="consumed">0</b></div><div class="metric"><span>损坏</span><b id="damaged">0</b></div><div class="metric"><span>任务数</span><b id="task_count">0</b></div></div><div id="run_state" class="status">未运行</div></section><section class="panel"><h2>任务结果</h2><div id="tasks" class="tasks"></div></section><section class="panel"><h2>日志</h2><div id="logs" class="log"></div></section></section></main><script>\nconst g=id=>document.getElementById(id),v=id=>g(id).value.trim(),checked=id=>g(id).checked;function cfg(){return{password:v(\'password\'),target_count:v(\'target_count\'),concurrency:v(\'concurrency\'),proxy:v(\'proxy\'),proxy_scope:{sms:checked(\'proxy_sms\'),email:checked(\'proxy_email\'),upload:checked(\'proxy_upload\')},sms_provider:v(\'sms_provider\'),sms_api_key:v(\'sms_api_key\'),service:v(\'service\'),country:v(\'country\'),provider_ids:v(\'provider_ids\'),max_price:v(\'max_price\'),sms_timeout:v(\'sms_timeout\'),phone_max_attempts:v(\'phone_max_attempts\'),sms_smart:{enabled:checked(\'sms_smart_enabled\'),refresh_seconds:6,attempts_per_round:5},sub2api:{url:v(\'sub2_url\'),email:v(\'sub2_email\'),password:v(\'sub2_password\'),group:v(\'sub2_group\')},node_runner:v(\'node_runner\')}}async function req(path,body={}){let r=await fetch(path,{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify(body)}),j=await r.json();if(j.state)render(j.state);if(!r.ok||!j.ok)throw Error(j.error||\'操作失败\');return j}function set(id,x){if(x!==undefined&&x!==null)g(id).value=x}function load(c){if(!c)return;set(\'password\',c.password);set(\'target_count\',c.target_count);set(\'concurrency\',c.concurrency);set(\'proxy\',c.proxy);let p=c.proxy_scope||{};g(\'proxy_sms\').checked=!!p.sms;g(\'proxy_email\').checked=!!p.email;g(\'proxy_upload\').checked=!!p.upload;set(\'sms_provider\',c.sms_provider);set(\'sms_api_key\',c.sms_api_key);set(\'service\',c.service);set(\'country\',c.country);set(\'provider_ids\',c.provider_ids);set(\'max_price\',c.max_price);set(\'sms_timeout\',c.sms_timeout);set(\'phone_max_attempts\',c.phone_max_attempts);g(\'sms_smart_enabled\').checked=!!((c.sms_smart||{}).enabled);let s=c.sub2api||{};set(\'sub2_url\',s.url);set(\'sub2_email\',s.email);set(\'sub2_password\',s.password);set(\'sub2_group\',s.group);set(\'node_runner\',c.node_runner)}function esc(x){let d=document.createElement(\'div\');d.textContent=x||\'\';return d.innerHTML}function render(s){load(s.settings);let p=(s.runtime||{}).pool||{};[\'total\',\'available\',\'leased\',\'consumed\',\'damaged\'].forEach(k=>g(k).textContent=p[k]??0);let r=s.runtime||{},ts=r.tasks||[];g(\'task_count\').textContent=ts.length;g(\'run_state\').textContent=r.running?\'运行中\':(r.stop_requested?\'已请求安全停止\':\'未运行\');g(\'tasks\').innerHTML=ts.map(t=>`<div class="task ${esc(t.status)}"><b>${esc(t.task_id)}</b><span>${esc(t.email||\'-\')}</span><span>${esc(t.status||\'-\')} ${esc(t.error||\'\')}</span></div>`).join(\'\')||\'<div class="task"><span>-</span><span>尚无任务</span><span>-</span></div>\';let log=g(\'logs\');log.innerHTML=(s.logs||[]).map(x=>`<div class="line ${esc(x.level)}"><span class="time">${esc(x.time)}</span> ${esc(x.message)}</div>`).join(\'\');log.scrollTop=log.scrollHeight}function msg(e){alert(e.message||String(e))}async function importPool(){try{await req(\'/api/pool/import\',{pool_content:v(\'pool_content\')});g(\'pool_content\').value=\'\'}catch(e){msg(e)}}async function saveConfig(){try{await req(\'/api/config\',cfg())}catch(e){msg(e)}}async function preflight(){try{await req(\'/api/preflight\',cfg());alert(\'预检通过\')}catch(e){msg(e)}}async function startRun(){try{await req(\'/api/start\',cfg())}catch(e){msg(e)}}async function stopRun(){try{await req(\'/api/stop\')}catch(e){msg(e)}}async function refresh(){try{let j=await (await fetch(\'/api/state\')).json();if(j.ok)render(j.state)}catch(_){}}refresh();setInterval(refresh,1200);\n</script></body></html>'
+#   18: '\n<style>\n:root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;background:#0a0f1a;color:#e8eef7;--bg:#0a0f1a;--panel:#111a29;--panel-2:#0d1522;--line:#263650;--line-soft:#1b2940;--muted:#91a2b9;--text:#e8eef7;--blue:#5aa8ff;--green:#54d69b;--amber:#f4b65f;--red:#ff7c88;--control:#0b1320}\n*{box-sizing:border-box}body{margin:0;min-width:320px;background:var(--bg);color:var(--text);font-size:13px}button,input,select,textarea{font:inherit}button{transition:background .15s ease,border-color .15s ease,box-shadow .15s ease,transform .15s ease}button:hover:not(:disabled){border-color:#6096ca;background:#203451}button:active:not(:disabled){transform:translateY(1px)}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid rgba(90,168,255,.65);outline-offset:2px}\n.top{height:72px;padding:0 clamp(16px,3vw,38px);display:flex;gap:16px;align-items:center;border-bottom:1px solid var(--line);background:#0d1625;box-shadow:0 1px 0 rgba(255,255,255,.02)}.top h1{margin:0;font-size:19px;letter-spacing:.01em}.top span{font-size:12px;color:var(--muted);border-left:1px solid var(--line);padding-left:16px}.shell{width:min(1600px,100%);margin:0 auto;padding:22px clamp(14px,2.6vw,34px) 34px;display:grid;grid-template-columns:minmax(360px,420px) minmax(0,1fr);gap:18px;align-items:start}.panel{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:18px;box-shadow:0 10px 28px rgba(0,0,0,.12)}.panel h2{font-size:14px;line-height:1.3;margin:0 0 14px;color:#f2f6fb;letter-spacing:.01em}.section{border-top:1px solid var(--line-soft);margin-top:20px;padding-top:18px}.field{margin:0 0 13px;min-width:0}.field label{display:flex;align-items:center;min-height:18px;color:#a9b9ce;font-size:12px;line-height:1.35;margin-bottom:6px}.field input,.field select,.field textarea,input,select,textarea{width:100%;border:1px solid #334965;border-radius:6px;background:var(--control);color:var(--text);font-size:13px;padding:0 11px;box-shadow:inset 0 1px 1px rgba(0,0,0,.18)}input,select{height:40px}textarea{min-height:132px;padding:11px;resize:vertical;line-height:1.5}input::placeholder,textarea::placeholder{color:#64758c}.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:11px}.row>.field{min-width:0}.checks{display:flex;gap:14px;flex-wrap:wrap;margin:3px 0 14px}.checks label{display:inline-flex;align-items:center;min-height:28px;font-size:12px;color:#b5c3d4}.checks input[type=checkbox]{width:15px;height:15px;margin:0 7px 0 0;accent-color:var(--blue)}.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:11px}.actions button{height:38px;min-width:118px;padding:0 14px;color:#eaf3ff;border:1px solid #3b5879;border-radius:6px;background:#18283f;font-weight:650}.actions button.primary{background:#1d70c6;border-color:#4e9be3}.actions button.warn{background:#5e3828;border-color:#bd7457}.actions button:disabled{opacity:.5;cursor:not-allowed}.hint,.sms-mode-hint,.automatic-count-hint{font-size:11px;color:#8294ad;line-height:1.55;margin:7px 0}.main{display:grid;grid-template-rows:auto auto 1fr;gap:18px;min-width:0}.metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:9px}.metric{min-width:0;border:1px solid var(--line);border-radius:7px;background:var(--panel-2);padding:12px 13px}.metric span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--muted)}.metric b{display:block;font-size:22px;line-height:1.1;margin-top:7px;color:#f4f8fc}.status{font-size:12px;color:#aebed0;line-height:1.5;margin:11px 0 0}.tasks{min-height:180px;max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:7px;background:#0b131f;user-select:text}.task{display:grid;grid-template-columns:105px minmax(180px,1fr) minmax(220px,1fr) auto;align-items:center;gap:12px;border-bottom:1px solid var(--line-soft);padding:11px 12px;font-size:12px;min-height:55px}.task:last-child{border-bottom:0}.task>*{min-width:0;overflow-wrap:anywhere}.task b{color:#83bfff;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px}.task-account{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:#dbe7f5}.task button{height:30px;padding:0 10px;color:#d8eaff;border:1px solid #3d5a7d;border-radius:5px;background:#16263c;cursor:pointer}.task-summary{display:flex;gap:14px;flex-wrap:wrap;margin:0 0 10px;font-size:12px}.task-export{margin:0 0 11px}.task-export textarea{height:78px;min-height:78px;font-size:11px}.task-export-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.task-export-actions button{height:32px;padding:0 11px;color:#dcecff;border:1px solid #3b5879;border-radius:5px;background:#17283e}.log{height:430px;overflow:auto;border:1px solid var(--line);border-radius:7px;background:#080e17;padding:11px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;line-height:1.6;user-select:text}.line{border-bottom:1px solid #142239;padding:3px 0;overflow-wrap:anywhere}.time{color:#7897bb}.log-toolbar{display:flex;gap:8px;align-items:center;margin:-3px 0 9px}.log-toolbar button{height:30px;padding:0 10px;color:#dcecff;border:1px solid #3b5879;border-radius:5px;background:#17283e}.ok,.success{color:var(--green)}.failed,.error{color:var(--red)}.repair_pending,.warn{color:var(--amber)}.info{color:#bed1e6}.manual-code-panel{border-radius:7px!important;background:#1b1713!important;border-color:#94663d!important}.manual-code-row input{height:40px}.manual-code-row button{height:40px}.wide{grid-column:1/-1}\n@media(max-width:1120px){.shell{grid-template-columns:minmax(320px,380px) minmax(0,1fr)}.metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}\n@media(max-width:820px){.top{height:auto;min-height:68px;padding:14px 16px;align-items:flex-start;flex-direction:column;gap:6px}.top span{border:0;padding:0}.shell{grid-template-columns:minmax(0,1fr);padding:14px 12px 26px;gap:13px}.panel{padding:14px}.main{gap:13px}.log{height:360px}}\n@media(max-width:560px){.row{grid-template-columns:minmax(0,1fr)}.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.metric{padding:10px}.metric b{font-size:20px}.task{grid-template-columns:minmax(0,1fr);gap:6px}.task button{justify-self:start}.actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.actions button{width:100%;min-width:0}.task-export-actions button{flex:1 1 140px}.field textarea{min-height:118px}}\n</style>\n'
+#   19: '\n<style>\n.sms-mode-switch{display:flex;gap:6px}.sms-mode-switch button{flex:1}.sms-mode-switch button.active{background:#217acd;border-color:#409be8}.sms-mode-hint{margin:7px 0 0;font-size:11px;color:#8da2bb}.sms-mode-extra{margin-top:2px}.fixed-country-select{margin-bottom:6px}\n</style>\n<script>\n(()=>{\n  const checkbox=g(\'sms_smart_enabled\');\n  if(!checkbox)return;\n  const host=checkbox.closest(\'.checks\');\n  host.innerHTML=\'<input id="sms_smart_enabled" type="checkbox" style="display:none"><input id="sms_mode" type="hidden" value="smart"><div class="sms-mode-switch"><button type="button" id="sms_mode_fixed">固定模式</button><button type="button" id="sms_mode_smart">智能模式</button></div><div class="sms-mode-hint" id="sms_mode_hint"></div>\';\n  const fixed=g(\'sms_mode_fixed\'),smart=g(\'sms_mode_smart\'),modeField=g(\'sms_mode\'),hidden=g(\'sms_smart_enabled\');\n  const countryField=g(\'country\').closest(\'.field\');\n  const providerField=g(\'provider_ids\').closest(\'.field\');\n  const priceField=g(\'max_price\').closest(\'.field\');\n  const extra=document.createElement(\'div\');\n  extra.className=\'sms-mode-extra\';\n  host.parentNode.insertBefore(extra,host.nextElementSibling);\n  const countryChoices=[[\'151\',\'智利 (151)\'],[\'33\',\'哥伦比亚 (33)\'],[\'91\',\'印度 (91)\'],[\'62\',\'印度尼西亚 (62)\'],[\'7\',\'俄罗斯 (7)\'],[\'1\',\'美国 (1)\'],[\'52\',\'墨西哥 (52)\'],[\'55\',\'巴西 (55)\'],[\'84\',\'越南 (84)\'],[\'63\',\'菲律宾 (63)\'],[\'234\',\'尼日利亚 (234)\'],[\'27\',\'南非 (27)\'],[\'380\',\'乌克兰 (380)\'],[\'48\',\'波兰 (48)\'],[\'44\',\'英国 (44)\']];\n  const attr=value=>String(value||\'\').replace(/&/g,\'&amp;\').replace(/"/g,\'&quot;\').replace(/</g,\'&lt;\').replace(/>/g,\'&gt;\');\n  function values(data){const supplied=!!data&&typeof data===\'object\',smartCfg=supplied&&data.sms_smart&&typeof data.sms_smart===\'object\'?data.sms_smart:{};return{country:String(supplied&&data.country!==undefined?data.country:(g(\'country\')||{}).value||\'\'),provider:String(supplied&&data.provider_ids!==undefined?data.provider_ids:(g(\'provider_ids\')||{}).value||\'\'),price:String(supplied&&data.max_price!==undefined?data.max_price:(g(\'max_price\')||{}).value||\'\'),refresh:String(smartCfg.refresh_seconds!==undefined?smartCfg.refresh_seconds:(g(\'sms_smart_refresh\')||{}).value||6),attempts:String(smartCfg.attempts_per_round!==undefined?smartCfg.attempts_per_round:(g(\'sms_smart_attempts\')||{}).value||5)}}\n  function setMode(mode,persist=false,data=null){\n    mode=(mode===\'fixed\')?\'fixed\':\'smart\';\n    const current=values(data);\n    modeField.value=mode;hidden.checked=(mode===\'smart\');\n    fixed.classList.toggle(\'active\',mode===\'fixed\');smart.classList.toggle(\'active\',mode===\'smart\');\n    if(mode===\'fixed\'){\n      countryField.style.display=\'\';\n      providerField.style.display=\'\';\n      priceField.style.display=\'\';\n      const options=countryChoices.map(([id,name])=>\'<option value="\'+id+\'" \'+(current.country===id?\'selected\':\'\')+\'>\'+name+\'</option>\').join(\'\');\n      const selected=countryChoices.some(([id])=>id===current.country)?current.country:\'\';\n      countryField.innerHTML=\'<label>固定国家</label><select id="fixed_country_choice" class="fixed-country-select"><option value="">自定义国家 ID</option>\'+options+\'</select><input id="country" inputmode="numeric" placeholder="国家 ID" value="\'+attr(current.country)+\'">\';\n      providerField.innerHTML=\'<label>固定运营商 ID（留空=任意）</label><input id="provider_ids" placeholder="例如：1" value="\'+attr(current.provider)+\'">\';\n      priceField.innerHTML=\'<label>固定最高价格（留空=不限制）</label><input id="max_price" inputmode="decimal" placeholder="0.04" value="\'+attr(current.price)+\'">\';\n      g(\'fixed_country_choice\').value=selected;\n      g(\'fixed_country_choice\').addEventListener(\'change\',()=>{if(g(\'fixed_country_choice\').value){g(\'country\').value=g(\'fixed_country_choice\').value}req(\'/api/config\',cfg()).catch(msg)});\n      extra.innerHTML=\'<div class="hint">固定模式始终使用这一条国家、运营商和价格规则，不读取智能库存候选。</div>\';\n      g(\'sms_mode_hint\').textContent=\'固定取号规则已启用。\';\n    }else{\n      countryField.style.display=\'none\';\n      providerField.style.display=\'none\';\n      priceField.style.display=\'\';\n      countryField.innerHTML=\'<input id="country" type="hidden" value="">\';\n      providerField.innerHTML=\'<input id="provider_ids" type="hidden" value="">\';\n      priceField.innerHTML=\'<label>最高价格</label><input id="max_price" inputmode="decimal" placeholder="0.04" value="\'+attr(current.price)+\'">\';\n      extra.innerHTML=\'<div class="hint">智能模式只读取平台实时库存和价格，自动选择可用国家/线路；不继承固定国家或运营商。</div>\';\n      g(\'sms_mode_hint\').textContent=\'智能选号已启用。\';\n    }\n    if(persist)req(\'/api/config\',cfg()).catch(msg);\n  }\n  fixed.addEventListener(\'click\',()=>setMode(\'fixed\',true));\n  smart.addEventListener(\'click\',()=>setMode(\'smart\',true));\n  const baseCfg=cfg,baseLoad=load;\n  cfg=function(){const data=baseCfg();data.sms_mode=modeField.value;data.sms_smart.enabled=(modeField.value===\'smart\');if(g(\'sms_smart_refresh\'))data.sms_smart.refresh_seconds=v(\'sms_smart_refresh\');if(g(\'sms_smart_attempts\'))data.sms_smart.attempts_per_round=v(\'sms_smart_attempts\');return data};\n  load=function(data){baseLoad(data);setMode((data&&data.sms_mode)||((data&&data.sms_smart&&data.sms_smart.enabled)?\'smart\':\'fixed\'),false,data)};\n  setMode(hidden.checked?\'smart\':\'fixed\');\n})();\n</script>\n'
+#   20: '\n<style>\n.email-mode-switch{display:flex;gap:6px;margin:0 0 11px}.email-mode-switch button{flex:1}.email-mode-switch button.active{background:#217acd;border-color:#409be8}.manual-code-panel{display:none;border:1px solid #af7947;background:#2c2118;padding:13px;margin-bottom:0}.manual-code-panel.show{display:block}.manual-code-title{font-size:13px;font-weight:700;color:#f2bf67;margin-bottom:5px}.manual-code-email{font-family:Consolas,monospace;color:#edf6ff;word-break:break-all;margin:4px 0 9px}.manual-code-meta{font-size:11px;color:#bda67f;margin-bottom:9px}.manual-code-row{display:grid;grid-template-columns:1fr auto;gap:8px}.manual-code-row input{font-family:Consolas,monospace;letter-spacing:2px}.manual-queue{font-size:11px;color:#9badc2;margin-top:8px}\n</style>\n<script>\n(()=>{\n  const autoInput=g(\'pool_content\');\n  if(!autoInput)return;\n  const autoField=autoInput.closest(\'.field\');\n  const autoActions=autoField.nextElementSibling;\n  const autoHint=autoActions&&autoActions.nextElementSibling;\n  const modeHost=document.createElement(\'div\');\n  modeHost.className=\'email-mode-switch\';\n  modeHost.innerHTML=\'<button type="button" id="email_mode_auto">自动邮箱接码</button><button type="button" id="email_mode_manual">手动邮箱验证码</button>\';\n  autoField.parentNode.insertBefore(modeHost,autoField);\n  const manualField=document.createElement(\'div\');\n  manualField.className=\'field\';\n  manualField.style.display=\'none\';\n  manualField.innerHTML=\'<label>批量粘贴（每行：邮箱 或 邮箱--密码；连续连字符均可，后续字段忽略）</label><textarea id="manual_pool_content" placeholder="user@example.test---password"></textarea><div class="actions"><button type="button" onclick="importManualPool()">应用当前邮箱</button></div><div class="hint">点击开始会以这里当前内容完整覆盖本次任务池，不会使用历史邮箱。邮箱验证码按顺序人工输入；提交一个后，该任务转入短信/SUB2 自动化，下一邮箱立即建立验证码流程，所有下游任务按并发数同时运行。</div>\';\n  autoField.parentNode.insertBefore(manualField,autoField.nextElementSibling);\n  const autoLabel=autoField.querySelector(\'label\');\n  const autoButton=g(\'email_mode_auto\');\n  const manualButton=g(\'email_mode_manual\');\n  const autoImportButton=autoActions&&autoActions.querySelector(\'button\');\n  if(autoImportButton)autoImportButton.textContent=\'覆盖导入本次邮箱\';\n  let emailMode=\'auto\';\n  let manualState={};\n\n  const panel=document.createElement(\'div\');\n  panel.id=\'manual_code_panel\';\n  panel.className=\'manual-code-panel\';\n  panel.innerHTML=\'<div class="manual-code-title">当前邮箱验证码</div><div id="manual_code_email" class="manual-code-email"></div><div id="manual_code_meta" class="manual-code-meta"></div><div class="manual-code-row"><input id="manual_code_input" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="六码验证码" disabled><button type="button" id="manual_code_submit" disabled>提交</button></div><div id="manual_code_queue" class="manual-queue"></div>\';\n  manualField.parentNode.insertBefore(panel,manualField.nextElementSibling);\n\n  function setEmailMode(mode,persist=false){\n    emailMode=mode===\'manual\'?\'manual\':\'auto\';\n    const manual=emailMode===\'manual\';\n    autoField.style.display=manual?\'none\':\'\';\n    if(autoActions)autoActions.style.display=manual?\'none\':\'\';\n    if(autoHint)autoHint.style.display=manual?\'none\':\'\';\n    manualField.style.display=manual?\'\':\'none\';\n    if(!manual)panel.classList.remove(\'show\');\n    autoButton.classList.toggle(\'active\',!manual);\n    manualButton.classList.toggle(\'active\',manual);\n    if(autoLabel)autoLabel.textContent=\'批量粘贴（每行：裸邮箱（GPTMail），或 邮箱----密码/取码 URL/客户端 ID/刷新凭据）\';\n    if(manual)renderManualCode(manualState,[]);\n    if(persist)req(\'/api/config\',cfg()).catch(msg);\n  }\n  autoButton.addEventListener(\'click\',()=>setEmailMode(\'auto\',true));\n  manualButton.addEventListener(\'click\',()=>setEmailMode(\'manual\',true));\n\n  const baseCfg=cfg;\n  cfg=function(){const data=baseCfg();data.email_mode=emailMode;return data};\n  const baseLoad=load;\n  load=function(data){baseLoad(data);setEmailMode((data&&data.email_mode)||\'auto\')};\n  const baseRender=render;\n  render=function(state){const runtime=(state||{}).runtime||{};baseRender(state);renderManualCode(runtime.manual_otp||{},runtime.tasks||[])};\n\n  function renderManualCode(data,tasks){\n    manualState=data||{};\n    const active=manualState.active;\n    const slot=manualState.slot;\n    const buffered=Array.isArray(manualState.buffered)?manualState.buffered:[];\n    const bufferedCurrent=buffered[0]||null;\n    const queued=Array.isArray(manualState.queued)?manualState.queued:[];\n    const waiting=!active&&!slot&&Array.isArray(tasks)?tasks.find(task=>task&&[\'waiting_manual_login_turn\',\'waiting_manual_email_code\'].includes(task.status)):null;\n    const current=active||slot||bufferedCurrent||waiting;\n    if(!current){\n      if(emailMode!==\'manual\'){panel.classList.remove(\'show\');return}\n      panel.classList.add(\'show\');\n      g(\'manual_code_email\').textContent=\'等待开始\';\n      g(\'manual_code_meta\').textContent=\'开始后会显示当前登录邮箱；登录过程中即可提前输入六码验证码\';\n      g(\'manual_code_input\').value=\'\';g(\'manual_code_input\').disabled=true;g(\'manual_code_submit\').disabled=true;\n      g(\'manual_code_queue\').textContent=\'\';\n      return;\n    }\n    panel.classList.add(\'show\');\n    g(\'manual_code_email\').textContent=current.email||\'-\';\n    const input=g(\'manual_code_input\'),submit=g(\'manual_code_submit\');\n    const target=active||slot||bufferedCurrent;\n    if(active){\n      const remaining=Math.max(0,Number(active.deadline_at||0)-Math.floor(Date.now()/1000));\n      g(\'manual_code_meta\').textContent=(active.task_id||\'-\')+\' · 剩余 \'+remaining+\' 秒，请输入邮箱验证码\';\n      input.disabled=false;submit.disabled=false;\n    }else if(slot){\n      g(\'manual_code_meta\').textContent=(slot.task_id||\'-\')+\' · 正在建立邮箱登录会话，可提前输入验证码；提交后立即放行下一个邮箱\';\n      input.disabled=false;submit.disabled=false;\n    }else if(bufferedCurrent){\n      g(\'manual_code_meta\').textContent=(bufferedCurrent.task_id||\'-\')+\' · 已缓存验证码，可修改后重新提交；登录会话正在进入验证码页\';\n      input.value=\'\';input.disabled=false;submit.disabled=false;\n    }else{\n      g(\'manual_code_meta\').textContent=(current.task_id||\'-\')+\' · 等待前一邮箱提交验证码后开始\';\n      input.value=\'\';input.disabled=true;submit.disabled=true;\n    }\n    g(\'manual_code_queue\').textContent=queued.length?\'后续等待邮箱验证码：\'+queued.length+\' 个任务\':\'\';\n  }\n\n  window.importManualPool=async function(){\n    try{await req(\'/api/manual-pool/import\',{pool_content:v(\'manual_pool_content\')});setEmailMode(\'manual\')}catch(e){msg(e)}\n  };\n  window.importPool=async function(){\n    const content=v(\'pool_content\');\n    if(!content){msg(\'请粘贴本次要运行的邮箱\');return}\n    try{await req(\'/api/pool/import\',{pool_content:content});setEmailMode(\'auto\')}catch(e){msg(e)}\n  };\n  window.startRun=async function(){\n    const data=cfg();\n    if(emailMode===\'manual\'){\n      const content=v(\'manual_pool_content\');\n      if(!content){msg(\'手动模式请先粘贴本次要运行的邮箱\');return}\n      data.email_mode=\'manual\';\n      data.manual_pool_content=content;\n    }else{\n      const content=v(\'pool_content\');\n      if(!content){msg(\'自动模式请先粘贴本次要运行的邮箱\');return}\n      data.email_mode=\'auto\';\n      data.pool_content=content;\n    }\n    try{await req(\'/api/start\',data)}catch(e){msg(e)}\n  };\n  async function submitManualCode(){\n    const target=manualState.active||manualState.slot||(Array.isArray(manualState.buffered)?manualState.buffered[0]:null);\n    if(!target){msg(\'当前没有可输入验证码的邮箱\');return}\n    try{await req(\'/api/manual-otp/submit\',{task_id:target.task_id,code:v(\'manual_code_input\')});g(\'manual_code_input\').value=\'\'}catch(e){msg(e)}\n  }\n  g(\'manual_code_submit\').addEventListener(\'click\',submitManualCode);\n  g(\'manual_code_input\').addEventListener(\'keydown\',event=>{if(event.key===\'Enter\')submitManualCode()});\n  setEmailMode(\'auto\');\n})();\n</script>\n'
+#   21: "\n<style>\n.sms-fixed-grid{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.sms-fixed-grid>.field{margin:0}.sms-fixed-grid>.field>label{display:block;min-height:32px}.sms-runtime-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.sms-runtime-grid>.field{margin:0}.sms-mode-extra{display:none!important}\n@media(max-width:560px){.sms-fixed-grid,.sms-runtime-grid{grid-template-columns:1fr}}\n</style>\n<script>\n(()=>{\n  const modeHost=g('sms_mode')&&g('sms_mode').closest('.checks');\n  if(!modeHost)return;\n  const headerText=document.querySelector('.top span');\n  if(headerText)headerText.textContent='独立运行 · 邮箱优先 Auth · SMS 接码 · SUB2 严格分组';\n  const countryRow=g('country').closest('.field').parentElement;\n  const timeoutField=g('sms_timeout').closest('.field');\n  const maxAttemptsField=g('phone_max_attempts').closest('.field');\n  const timeoutRow=timeoutField.parentElement;\n  const concurrencyField=g('concurrency').closest('.field');\n  function arrange(){\n    countryRow.classList.add('sms-fixed-grid');\n    maxAttemptsField.style.display='none';\n    g('phone_max_attempts').value='0';\n    timeoutField.querySelector('label').textContent='短信超时（秒）';\n    timeoutRow.classList.add('sms-runtime-grid');\n    if(concurrencyField.parentElement!==timeoutRow)timeoutRow.appendChild(concurrencyField);\n    concurrencyField.querySelector('label').textContent='任务并发';\n    const oldExtra=document.querySelector('.sms-mode-extra');\n    if(oldExtra)oldExtra.style.display='none';\n  }\n  const baseLoad=load;\n  load=function(data){baseLoad(data);arrange()};\n  arrange();\n})();\n</script>\n"
+#   22: '\n<style>\n.legacy-login-field-hidden{display:none!important}.automatic-count-hint{margin:4px 0 8px;font-size:11px;color:#8da2bb}.task-summary{display:flex;gap:12px;flex-wrap:wrap;margin:0 0 9px;font-size:12px;color:#b7c8d9}.task-summary .ok{color:#59d99f}.task-summary .warn{color:#f2bf67}.task-account{font-family:Consolas,monospace;overflow-wrap:anywhere}.tasks .task{grid-template-columns:100px minmax(220px,1fr) minmax(220px,1fr) auto}.copy-account{height:27px;padding:0 8px;font-size:11px}.task-export{margin:0 0 10px}.task-export textarea{min-height:84px;height:84px;font-size:12px}.task-export-actions{display:flex;gap:8px;margin-top:6px}.log-toolbar{display:flex;gap:8px;align-items:center;margin:-4px 0 8px}.log-toolbar button{height:27px;padding:0 8px;font-size:11px}\n.shell,.main,.panel,.row,.field{min-width:0}.email-mode-switch button{min-width:0}\n@media(max-width:560px){.top{height:auto;min-height:64px;padding:12px;align-items:flex-start}.top h1{font-size:18px;line-height:1.25}.top span{line-height:1.45}.shell{width:100%;margin:12px auto;padding:0 10px;grid-template-columns:minmax(0,1fr)}.main{grid-template-columns:minmax(0,1fr)}.panel{padding:12px}.row{display:grid;grid-template-columns:minmax(0,1fr)}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.email-mode-switch button{padding:0 6px;font-size:12px}.tasks .task{grid-template-columns:minmax(0,1fr);gap:6px}.task-export-actions{flex-wrap:wrap}.copy-account{justify-self:start}.log{height:360px}}\n</style>\n<script>\n(()=>{\n  for(const id of [\'password\',\'node_runner\',\'target_count\']){\n    const input=g(id);\n    const field=input&&input.closest(\'.field\');\n    if(field)field.classList.add(\'legacy-login-field-hidden\');\n  }\n  for(const id of [\'sms_api_key\',\'sub2_password\']){\n    const input=g(id);\n    if(input){input.type=\'text\';input.autocomplete=\'off\'}\n  }\n  const startButton=document.querySelector(\'button.primary\');\n  const stopButton=document.querySelector(\'button.warn\');\n  if(startButton)startButton.textContent=\'开始\';\n  if(stopButton)stopButton.textContent=\'停止\';\n  const concurrencyField=g(\'concurrency\')&&g(\'concurrency\').closest(\'.field\');\n  if(concurrencyField){\n    concurrencyField.querySelector(\'label\').textContent=\'并发\';\n    const row=concurrencyField.parentElement;\n    const nodeField=document.createElement(\'div\');\n    nodeField.className=\'field\';\n    nodeField.innerHTML=\'<label>Node 并发</label><input id="node_concurrency" type="number" min="1" max="100" value="3">\';\n    row.appendChild(nodeField);\n    const hint=document.createElement(\'div\');\n    hint.className=\'automatic-count-hint\';\n    hint.textContent=\'任务数自动等于可用邮箱数；并发控制同时运行数，完成一个会自动开始下一个。\';\n    row.insertAdjacentElement(\'afterend\',hint);\n  }\n  const taskBox=g(\'tasks\');\n  const taskSummary=document.createElement(\'div\');\n  taskSummary.className=\'task-summary\';\n  taskBox.parentElement.insertBefore(taskSummary,taskBox);\n  const taskExport=document.createElement(\'div\');\n  taskExport.className=\'task-export\';\n  taskExport.innerHTML=\'<textarea id="task_export" readonly spellcheck="false" aria-label="任务结果预览"></textarea><div class="task-export-actions"><button type="button" id="copy_success_accounts">复制成功完整记录</button><button type="button" id="copy_failed_accounts">复制未成功完整记录</button><button type="button" id="copy_all_results">复制全部完整记录</button></div>\';\n  taskBox.parentElement.insertBefore(taskExport,taskBox);\n  const taskExportInput=g(\'task_export\');\n  const copySuccessButton=g(\'copy_success_accounts\');\n  const copyFailedButton=g(\'copy_failed_accounts\');\n  const copyAllButton=g(\'copy_all_results\');\n  const escapeHtml=value=>{const node=document.createElement(\'div\');node.textContent=value||\'\';return node.innerHTML};\n  const copyText=text=>{\n    const value=String(text||\'\');\n    if(!value)return;\n    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(value).catch(()=>{taskExportInput.value=value;taskExportInput.focus();taskExportInput.select();document.execCommand(\'copy\')});return}\n    taskExportInput.value=value;taskExportInput.focus();taskExportInput.select();document.execCommand(\'copy\');\n  };\n  const copyExport=async(kind,taskId)=>{try{const response=await fetch(\'/api/export/\'+encodeURIComponent(kind));const payload=await response.json();if(!response.ok||!payload.ok)throw Error(payload.error||\'导出失败\');let records=Array.isArray(payload.records)?payload.records:[];if(taskId)records=records.filter(item=>item.task_id===taskId);copyText(records.map(item=>JSON.stringify(item)).join(\'\\n\'))}catch(error){msg(error)}};\n  taskBox.addEventListener(\'click\',event=>{const button=event.target.closest(\'.copy-account\');if(button)copyExport(button.dataset.kind,button.dataset.taskId)});\n  let failedAccounts=[];\n  let successAccounts=[];\n  copySuccessButton.addEventListener(\'click\',()=>copyExport(\'success\'));\n  copyFailedButton.addEventListener(\'click\',()=>copyExport(\'failed\'));\n  copyAllButton.addEventListener(\'click\',()=>copyExport(\'all\'));\n  const logBox=g(\'logs\');\n  const logPanel=logBox.closest(\'.panel\');\n  const logToolbar=document.createElement(\'div\');\n  logToolbar.className=\'log-toolbar\';\n  logToolbar.innerHTML=\'<button type="button" id="toggle_log_pause">暂停日志刷新</button>\';\n  logPanel.insertBefore(logToolbar,logBox);\n  const logToggle=g(\'toggle_log_pause\');\n  let logsPaused=false;\n  const descriptorFor=(node,name)=>{let proto=node;while(proto){const descriptor=Object.getOwnPropertyDescriptor(proto,name);if(descriptor)return descriptor;proto=Object.getPrototypeOf(proto)}return null};\n  const logHtmlDescriptor=descriptorFor(logBox,\'innerHTML\');\n  const logScrollDescriptor=descriptorFor(logBox,\'scrollTop\');\n  if(logHtmlDescriptor&&logHtmlDescriptor.get&&logHtmlDescriptor.set)Object.defineProperty(logBox,\'innerHTML\',{configurable:true,get(){return logHtmlDescriptor.get.call(this)},set(value){if(!logsPaused)logHtmlDescriptor.set.call(this,value)}});\n  if(logScrollDescriptor&&logScrollDescriptor.get&&logScrollDescriptor.set)Object.defineProperty(logBox,\'scrollTop\',{configurable:true,get(){return logScrollDescriptor.get.call(this)},set(value){if(!logsPaused)logScrollDescriptor.set.call(this,value)}});\n  logToggle.addEventListener(\'click\',()=>{logsPaused=!logsPaused;logToggle.textContent=logsPaused?\'继续日志刷新\':\'暂停日志刷新\'});\n  const baseRender=render;\n  render=function(state){\n    baseRender(state);\n    const runtime=(state||{}).runtime||{};\n    const limits=runtime.concurrency||{};\n    const taskLimit=limits.task||{},nodeLimit=limits.node||{},emailLimit=limits.email||{};\n    const concurrencyText=\'任务 \'+Number(taskLimit.active||0)+\'/\'+Number(taskLimit.limit||0)+\' · Node \'+Number(nodeLimit.active||0)+\'/\'+Number(nodeLimit.limit||0)+\' · 邮箱验证码 \'+Number(emailLimit.active||0)+\'/\'+Number(emailLimit.limit||0);\n    g(\'run_state\').textContent=(runtime.stop_requested?(runtime.running?\'正在停止\':\'已停止\'):(runtime.running?\'运行中\':\'未运行\'))+\' | \'+concurrencyText;\n    const tasks=Array.isArray(runtime.tasks)?runtime.tasks:[];\n    const finalTaskByAccount=new Map();\n    tasks.forEach(task=>{\n      const account=task.account||task.email||\'-\';\n      const key=String(account).trim().toLowerCase();\n      const previous=finalTaskByAccount.get(key);\n      if(!previous||task.status===\'success\'||previous.status!==\'success\')finalTaskByAccount.set(key,task);\n    });\n    const uniqueTasks=Array.from(finalTaskByAccount.values());\n    const success=uniqueTasks.filter(task=>task.status===\'success\').length;\n    const active=uniqueTasks.filter(task=>![\'success\',\'failed\',\'stopped\',\'retryable_infra\',\'retryable_email\',\'repair_pending\',\'email_damaged\'].includes(task.status)).length;\n    const incomplete=uniqueTasks.length-success-active;\n    taskSummary.innerHTML=\'<span class="ok">成功 \'+success+\'</span><span class="warn">未成功/已停止 \'+incomplete+\'</span><span>运行中 \'+active+\'</span>\';\n    const resultLines=uniqueTasks.map(task=>{const account=task.account||task.email||\'-\';return (task.status===\'success\'?\'成功: \':\'未成功: \')+account+\' | \'+(task.status||\'-\')+(task.error||task.reason?\' | \'+(task.error||task.reason):\'\')});\n    successAccounts=uniqueTasks.filter(task=>task.status===\'success\').map(task=>task.account||task.email||\'-\');\n    failedAccounts=uniqueTasks.filter(task=>task.status!==\'success\').map(task=>task.account||task.email||\'-\');\n    copySuccessButton.disabled=!successAccounts.length;\n    copyFailedButton.disabled=!failedAccounts.length;\n    if(document.activeElement!==taskExportInput)taskExportInput.value=resultLines.join(\'\\n\');\n    taskBox.innerHTML=uniqueTasks.map(task=>{const account=task.account||task.email||\'-\';const kind=task.status===\'success\'?\'success\':\'failed\';return \'<div class="task \'+escapeHtml(task.status)+\'"><b>\'+escapeHtml(task.task_id)+\'</b><span class="task-account">\'+escapeHtml(account)+\'</span><span>\'+escapeHtml(task.status||\'-\')+\' \'+escapeHtml(task.error||task.reason||\'\')+\'</span><button type="button" class="copy-account" data-kind="\'+kind+\'" data-task-id="\'+escapeHtml(task.task_id)+\'">复制完整</button></div>\'}).join(\'\')||\'<div class="task"><span>-</span><span>尚无任务</span><span>-</span></div>\';\n  };\n  const baseCfg=cfg;\n  cfg=function(){const data=baseCfg();data.password=\'\';data.node_concurrency=v(\'node_concurrency\');return data};\n  const baseLoad=load;\n  let initialSettingsLoaded=false;\n  load=function(data){\n    if(initialSettingsLoaded)return;\n    baseLoad(data);\n    set(\'node_concurrency\',(data&&data.node_concurrency)||3);\n    initialSettingsLoaded=true;\n  };\n})();\n</script>\n'
+#   23: '\n<style>\n.gptmail-section .field{margin-bottom:11px}.gptmail-section input[readonly]{color:#aebed0;background:#101a29}.gptmail-section .gptmail-key{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}\n</style>\n<script>\n(()=>{\n  const smsTitle=[...document.querySelectorAll(\'.section h2\')].find(node=>String(node.textContent||\'\').includes(\'SMS 接码\'));\n  if(!smsTitle)return;\n  const host=smsTitle.closest(\'.section\');\n  if(!host||g(\'gptmail_enabled\'))return;\n  const section=document.createElement(\'div\');\n  section.className=\'section gptmail-section\';\n  section.innerHTML=\'<h2>邮箱验证码来源</h2><div class="checks"><label><input id="gptmail_enabled" type="checkbox">GPTMail 收码</label></div><div class="field"><label>登录方式</label><select id="email_auth_preference"><option value="auto">智能登录</option><option value="otp">验证码优先</option><option value="password">密码优先</option></select></div><div class="field"><label>GPTMail URL（固定）</label><input id="gptmail_url" value="https://gptmail.passkissyou.online" readonly></div><div class="field"><label>验证码关键词（固定）</label><input id="gptmail_keyword" value="code,验证码,verification code,OpenAI,ChatGPT,gpt" readonly></div><div class="field"><label>GPTMail API Key</label><input id="gptmail_api_key" class="gptmail-key" type="password" autocomplete="off" placeholder="填写 mak_..."></div><div class="hint">智能登录：有密码先密码，按需发送一次 MFA 验证码；无密码直接发送邮箱验证码。密码明确错误时会新建会话再走验证码。启用 GPTMail 后可一行一个裸邮箱，GPTMail 只负责按当前邮箱取码，不改变 SMS、SUB2 或并发规则。</div>\';\n  host.parentNode.insertBefore(section,host);\n  const baseCfg=cfg;\n  cfg=function(){\n    const data=baseCfg();\n    data.gptmail_enabled=checked(\'gptmail_enabled\');\n    data.email_auth_preference=v(\'email_auth_preference\');\n    data.gptmail_url=v(\'gptmail_url\');\n    data.gptmail_keyword=v(\'gptmail_keyword\');\n    data.gptmail_api_key=v(\'gptmail_api_key\');\n    return data;\n  };\n  const baseLoad=load;\n  let gptmailSettingsLoaded=false;\n  load=function(data){\n    baseLoad(data);\n    if(!data||gptmailSettingsLoaded)return;\n    g(\'gptmail_enabled\').checked=!!data.gptmail_enabled;\n    set(\'email_auth_preference\',data.email_auth_preference||\'auto\');\n    set(\'gptmail_url\',data.gptmail_url||\'https://gptmail.passkissyou.online\');\n    set(\'gptmail_keyword\',data.gptmail_keyword||\'code,验证码,verification code,OpenAI,ChatGPT,gpt\');\n    set(\'gptmail_api_key\',data.gptmail_api_key);\n    gptmailSettingsLoaded=true;\n  };\n})();\n</script>\n'
+#   24: <Code311 code object _make_local_server at 0x1060b1280, file web_gui.py>, line 636
+#   25: <Code311 code object _open_default_browser at 0x1060b1220, file web_gui.py>, line 646
+#   26: <Code311 code object main at 0x1060b1130, file web_gui.py>, line 662
+#   27: '__main__'
+#   28: ('value', 'Any', 'return', 'str')
+#   29: ('return', 'Flask')
+#   30: ('port', 'int', 'return', 'BaseWSGIServer')
+#   31: ('url', 'str', 'return', 'None')
+#   32: ('return', 'int')
+# Names:
+#    0: __doc__
+#    1: __future__
+#    2: annotations
+#    3: copy
+#    4: os
+#    5: re
+#    6: threading
+#    7: time
+#    8: webbrowser
+#    9: typing
+#   10: Any
+#   11: flask
+#   12: Flask
+#   13: Response
+#   14: jsonify
+#   15: request
+#   16: werkzeug.serving
+#   17: BaseWSGIServer
+#   18: WSGIRequestHandler
+#   19: make_server
+#   20: runtime
+#   21: DEFAULT_DATA_DIR
+#   22: EmailAuthImporter
+#   23: ImporterConfigStore
+#   24: MailboxPool
+#   25: MailboxPoolError
+#   26: _friendly_log_message
+#   27: ImportError
+#   28: DEFAULT_PORT
+#   29: MAX_LOGS
+#   30: _clean
+#   31: _safe
+#   32: GuiLog
+#   33: create_app
+#   34: _QuietRequestHandler
+#   35: _HTML
+#   36: _UI_POLISH_CSS
+#   37: _SMS_MODE_INJECT
+#   38: _MANUAL_EMAIL_INJECT
+#   39: _SMS_FIXED_ONLY_INJECT
+#   40: _LOGIN_FORM_USABILITY_INJECT
+#   41: _GPTMAIL_INJECT
+#   42: app
+#   43: _make_local_server
+#   44: _open_default_browser
+#   45: main
+#   46: __name__
+#   47: SystemExit
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ("Local WebUI for the standalone email-first authorization importer.")
+               4 STORE_NAME           (__doc__)
+
+  4:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (('annotations',))
+              10 IMPORT_NAME          (__future__)
+              12 IMPORT_FROM          (annotations)
+              14 STORE_NAME           (annotations)
+              16 POP_TOP
+
+  6:          18 LOAD_CONST           (0)
+              20 LOAD_CONST           (None)
+              22 IMPORT_NAME          (copy)
+              24 STORE_NAME           (copy)
+
+  7:          26 LOAD_CONST           (0)
+              28 LOAD_CONST           (None)
+              30 IMPORT_NAME          (os)
+              32 STORE_NAME           (os)
+
+  8:          34 LOAD_CONST           (0)
+              36 LOAD_CONST           (None)
+              38 IMPORT_NAME          (re)
+              40 STORE_NAME           (re)
+
+  9:          42 LOAD_CONST           (0)
+              44 LOAD_CONST           (None)
+              46 IMPORT_NAME          (threading)
+              48 STORE_NAME           (threading)
+
+ 10:          50 LOAD_CONST           (0)
+              52 LOAD_CONST           (None)
+              54 IMPORT_NAME          (time)
+              56 STORE_NAME           (time)
+
+ 11:          58 LOAD_CONST           (0)
+              60 LOAD_CONST           (None)
+              62 IMPORT_NAME          (webbrowser)
+              64 STORE_NAME           (webbrowser)
+
+ 12:          66 LOAD_CONST           (0)
+              68 LOAD_CONST           (('Any',))
+              70 IMPORT_NAME          (typing)
+              72 IMPORT_FROM          (Any)
+              74 STORE_NAME           (Any)
+              76 POP_TOP
+
+ 14:          78 LOAD_CONST           (0)
+              80 LOAD_CONST           (('Flask', 'Response', 'jsonify', 'request'))
+              82 IMPORT_NAME          (flask)
+              84 IMPORT_FROM          (Flask)
+              86 STORE_NAME           (Flask)
+              88 IMPORT_FROM          (Response)
+              90 STORE_NAME           (Response)
+              92 IMPORT_FROM          (jsonify)
+              94 STORE_NAME           (jsonify)
+              96 IMPORT_FROM          (request)
+              98 STORE_NAME           (request)
+             100 POP_TOP
+
+ 15:         102 LOAD_CONST           (0)
+             104 LOAD_CONST           (('BaseWSGIServer', 'WSGIRequestHandler', 'make_server'))
+             106 IMPORT_NAME          (werkzeug.serving)
+             108 IMPORT_FROM          (BaseWSGIServer)
+             110 STORE_NAME           (BaseWSGIServer)
+             112 IMPORT_FROM          (WSGIRequestHandler)
+             114 STORE_NAME           (WSGIRequestHandler)
+             116 IMPORT_FROM          (make_server)
+             118 STORE_NAME           (make_server)
+             120 POP_TOP
+
+ 17:         122 NOP
+
+ 18:         124 LOAD_CONST           (1)
+             126 LOAD_CONST           (('DEFAULT_DATA_DIR', 'EmailAuthImporter', 'ImporterConfigStore', 'MailboxPool', 'MailboxPoolError', '_friendly_log_message'))
+             128 IMPORT_NAME          (runtime)
+             130 IMPORT_FROM          (DEFAULT_DATA_DIR)
+             132 STORE_NAME           (DEFAULT_DATA_DIR)
+             134 IMPORT_FROM          (EmailAuthImporter)
+             136 STORE_NAME           (EmailAuthImporter)
+             138 IMPORT_FROM          (ImporterConfigStore)
+             140 STORE_NAME           (ImporterConfigStore)
+             142 IMPORT_FROM          (MailboxPool)
+             144 STORE_NAME           (MailboxPool)
+             146 IMPORT_FROM          (MailboxPoolError)
+             148 STORE_NAME           (MailboxPoolError)
+             150 IMPORT_FROM          (_friendly_log_message)
+             152 STORE_NAME           (_friendly_log_message)
+             154 POP_TOP
+
+ 23:         156 LOAD_CONST           (0)
+             158 STORE_NAME           (DEFAULT_PORT)
+
+ 24:         160 LOAD_CONST           (240)
+             162 STORE_NAME           (MAX_LOGS)
+
+ 27:         164 LOAD_CONST           (('value', 'Any', 'return', 'str'))
+             166 LOAD_CONST           (<Code311 code object _clean at 0x1060e2b20, file web_gui.py>, line 27)
+             168 MAKE_FUNCTION
+             170 SET_FUNCTION_ATTRIBUTE 4
+             172 STORE_NAME           (_clean)
+
+ 31:         174 LOAD_CONST           (('value', 'Any', 'return', 'str'))
+             176 LOAD_CONST           (<Code311 code object _safe at 0x1060e2a60, file web_gui.py>, line 31)
+             178 MAKE_FUNCTION
+             180 SET_FUNCTION_ATTRIBUTE 4
+             182 STORE_NAME           (_safe)
+
+ 35:         184 LOAD_BUILD_CLASS
+             186 PUSH_NULL
+             188 LOAD_CONST           (<Code311 code object GuiLog at 0x1060b1400, file web_gui.py>, line 35)
+             190 MAKE_FUNCTION
+             192 LOAD_CONST           ("GuiLog")
+             194 CALL                 (2 positional)
+             202 STORE_NAME           (GuiLog)
+
+ 50:         204 LOAD_NAME            (DEFAULT_DATA_DIR)
+             206 BUILD_TUPLE          1
+             208 LOAD_CONST           (('return', 'Flask'))
+             210 LOAD_CONST           (<Code311 code object create_app at 0x1060b1940, file web_gui.py>, line 50)
+             212 MAKE_FUNCTION
+             214 SET_FUNCTION_ATTRIBUTE 4
+             216 SET_FUNCTION_ATTRIBUTE 1
+             218 STORE_NAME           (create_app)
+
+213:         220 LOAD_BUILD_CLASS
+             222 PUSH_NULL
+             224 LOAD_CONST           (<Code311 code object _QuietRequestHandler at 0x1060b1370, file web_gui.py>, line 213)
+             226 MAKE_FUNCTION
+             228 LOAD_CONST           ("_QuietRequestHandler")
+             230 LOAD_NAME            (WSGIRequestHandler)
+             232 CALL                 (3 positional)
+             240 STORE_NAME           (_QuietRequestHandler)
+
+226:         242 LOAD_CONST           ('<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>plus绑号码脚本</title><style>\n:root{color-scheme:dark;font-family:Arial,"Microsoft YaHei",sans-serif;background:#0e1521;color:#edf4ff}*{box-sizing:border-box}body{margin:0}.top{height:64px;padding:0 28px;display:flex;gap:15px;align-items:center;border-bottom:1px solid #26364c;background:#111b2a}.top h1{margin:0;font-size:20px}.top span{font-size:12px;color:#93a8c2}.shell{max-width:1500px;margin:22px auto;padding:0 22px;display:grid;grid-template-columns:430px 1fr;gap:16px}.panel{border:1px solid #2b3c55;border-radius:8px;background:#151f2e;padding:17px}.panel h2{font-size:15px;margin:0 0 13px}.section{border-top:1px solid #27384f;margin-top:18px;padding-top:16px}.field{margin-bottom:10px}.field label{display:block;color:#9eb1c8;font-size:12px;margin-bottom:5px}input,select,textarea{width:100%;border:1px solid #354b67;border-radius:6px;background:#0d1521;color:#eff7ff;font-size:13px;padding:8px}input,select{height:35px}textarea{resize:vertical;min-height:110px;font-family:Consolas,monospace;line-height:1.45}.row{display:flex;gap:8px}.row>.field{flex:1;min-width:0}.checks{display:flex;gap:12px;flex-wrap:wrap;margin:7px 0 11px}.checks label{font-size:12px;color:#b7c8d9}input[type=checkbox]{width:auto;height:auto;margin-right:5px}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}button{height:34px;padding:0 12px;color:#edf6ff;border:1px solid #3c5879;border-radius:6px;background:#1b2b42;font-weight:600;cursor:pointer}button.primary{background:#217acd;border-color:#409be8}button.warn{background:#5a3c23;border-color:#af7947}button:disabled{opacity:.5;cursor:wait}.hint{font-size:11px;color:#8da2bb;line-height:1.5;margin:6px 0}.main{display:grid;grid-template-rows:auto auto 1fr;gap:16px}.metrics{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}.metric{border:1px solid #2a3b53;border-radius:7px;background:#111a28;padding:12px}.metric span{display:block;font-size:11px;color:#9badc2}.metric b{display:block;font-size:23px;margin-top:5px}.tasks{min-height:180px;max-height:310px;overflow:auto;border:1px solid #2a3b53;border-radius:7px;background:#0c131d}.task{display:grid;grid-template-columns:100px 1fr 160px;gap:10px;border-bottom:1px solid #1d2b3c;padding:10px;font-size:12px}.ok{color:#59d99f}.failed,.error{color:#ff7484}.repair_pending,.warn{color:#f2bf67}.info{color:#c7d9ea}.log{height:420px;overflow:auto;border:1px solid #2a3b53;border-radius:7px;background:#090f17;padding:10px;font-family:Consolas,monospace;font-size:12px;line-height:1.65}.line{border-bottom:1px solid #152131;padding:2px 0}.time{color:#7895b7}.status{font-size:12px;color:#a8b9cb;margin:8px 0 0}.wide{grid-column:1/-1}@media(max-width:980px){.shell{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(3,1fr)}}\n</style></head><body><header class="top"><h1>plus绑号码脚本</h1><span>独立运行 · 邮箱优先 Auth · SMS 智能选号 · SUB2 严格分组</span></header><main class="shell"><section class="panel"><h2>自建邮箱池</h2><div class="field"><label>批量粘贴（每行：邮箱----邮箱取码地址）</label><textarea id="pool_content" placeholder="user@example.test----https://mail.example.test/show/opaque"></textarea></div><div class="actions"><button onclick="importPool()">导入邮箱池</button></div><div class="hint">池文件、接口地址和状态均仅保存在本工具的 data 目录，不写入主项目配置。</div><div class="section"><h2>SMS 接码</h2><div class="row"><div class="field"><label>平台</label><select id="sms_provider"><option value="smsbower">SMSBower</option><option value="herosms">HeroSMS</option><option value="5sim">5sim</option><option value="grizzlysms">GrizzlySMS</option><option value="smsvirtual">SMSVirtual</option><option value="localpool">本地号码池</option></select></div><div class="field"><label>服务</label><input id="service" value="dr"></div></div><div class="field"><label>SMS API Key / 本地号码池文件路径</label><input id="sms_api_key" type="password"></div><div class="row"><div class="field"><label>国家</label><input id="country" placeholder="151"></div><div class="field"><label>运营商</label><input id="provider_ids" placeholder="可选"></div><div class="field"><label>最高价格</label><input id="max_price" placeholder="0.04"></div></div><div class="row"><div class="field"><label>短信超时（秒）</label><input id="sms_timeout" type="number" value="30"></div><div class="field"><label>每号最大尝试</label><input id="phone_max_attempts" type="number" value="40"></div></div><div class="checks"><label><input id="sms_smart_enabled" type="checkbox" checked>智能选号</label></div></div><div class="section"><h2>SUB2 上传</h2><div class="field"><label>SUB2 地址</label><input id="sub2_url"></div><div class="row"><div class="field"><label>管理账号</label><input id="sub2_email"></div><div class="field"><label>管理密码</label><input id="sub2_password" type="password"></div></div><div class="field"><label>目标分组</label><input id="sub2_group"></div></div><div class="section"><h2>网络与运行</h2><div class="field"><label>OpenAI 主代理（为空直连）</label><input id="proxy" placeholder="http://127.0.0.1:7890"></div><div class="checks"><label><input id="proxy_sms" type="checkbox">SMS 走代理</label><label><input id="proxy_email" type="checkbox">邮箱取码走代理</label><label><input id="proxy_upload" type="checkbox">SUB2 走代理</label></div><div class="row"><div class="field"><label>目标数</label><input id="target_count" type="number" value="1"></div><div class="field"><label>并发</label><input id="concurrency" type="number" value="1"></div></div><div class="field"><label>账号密码（留空由邮箱优先链路生成）</label><input id="password" type="password"></div><div class="field"><label>Node SentinelRunner</label><input id="node_runner"></div><div class="actions"><button onclick="saveConfig()">保存配置</button><button onclick="preflight()">真实链路预检</button><button class="primary" onclick="startRun()">开始导入</button><button class="warn" onclick="stopRun()">安全停止</button></div><div class="hint">开始前会先登录 SUB2 并验证你填写的分组。SMS、邮箱和 SUB2 是否走代理只由上面的勾选控制。</div></div></section><section class="main"><section class="panel"><h2>队列状态</h2><div class="metrics"><div class="metric"><span>池总数</span><b id="total">0</b></div><div class="metric"><span>可领取</span><b id="available">0</b></div><div class="metric"><span>已领取</span><b id="leased">0</b></div><div class="metric"><span>已消耗</span><b id="consumed">0</b></div><div class="metric"><span>损坏</span><b id="damaged">0</b></div><div class="metric"><span>任务数</span><b id="task_count">0</b></div></div><div id="run_state" class="status">未运行</div></section><section class="panel"><h2>任务结果</h2><div id="tasks" class="tasks"></div></section><section class="panel"><h2>日志</h2><div id="logs" class="log"></div></section></section></main><script>\nconst g=id=>document.getElementById(id),v=id=>g(id).value.trim(),checked=id=>g(id).checked;function cfg(){return{password:v(\'password\'),target_count:v(\'target_count\'),concurrency:v(\'concurrency\'),proxy:v(\'proxy\'),proxy_scope:{sms:checked(\'proxy_sms\'),email:checked(\'proxy_email\'),upload:checked(\'proxy_upload\')},sms_provider:v(\'sms_provider\'),sms_api_key:v(\'sms_api_key\'),service:v(\'service\'),country:v(\'country\'),provider_ids:v(\'provider_ids\'),max_price:v(\'max_price\'),sms_timeout:v(\'sms_timeout\'),phone_max_attempts:v(\'phone_max_attempts\'),sms_smart:{enabled:checked(\'sms_smart_enabled\'),refresh_seconds:6,attempts_per_round:5},sub2api:{url:v(\'sub2_url\'),email:v(\'sub2_email\'),password:v(\'sub2_password\'),group:v(\'sub2_group\')},node_runner:v(\'node_runner\')}}async function req(path,body={}){let r=await fetch(path,{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify(body)}),j=await r.json();if(j.state)render(j.state);if(!r.ok||!j.ok)throw Error(j.error||\'操作失败\');return j}function set(id,x){if(x!==undefined&&x!==null)g(id).value=x}function load(c){if(!c)return;set(\'password\',c.password);set(\'target_count\',c.target_count);set(\'concurrency\',c.concurrency);set(\'proxy\',c.proxy);let p=c.proxy_scope||{};g(\'proxy_sms\').checked=!!p.sms;g(\'proxy_email\').checked=!!p.email;g(\'proxy_upload\').checked=!!p.upload;set(\'sms_provider\',c.sms_provider);set(\'sms_api_key\',c.sms_api_key);set(\'service\',c.service);set(\'country\',c.country);set(\'provider_ids\',c.provider_ids);set(\'max_price\',c.max_price);set(\'sms_timeout\',c.sms_timeout);set(\'phone_max_attempts\',c.phone_max_attempts);g(\'sms_smart_enabled\').checked=!!((c.sms_smart||{}).enabled);let s=c.sub2api||{};set(\'sub2_url\',s.url);set(\'sub2_email\',s.email);set(\'sub2_password\',s.password);set(\'sub2_group\',s.group);set(\'node_runner\',c.node_runner)}function esc(x){let d=document.createElement(\'div\');d.textContent=x||\'\';return d.innerHTML}function render(s){load(s.settings);let p=(s.runtime||{}).pool||{};[\'total\',\'available\',\'leased\',\'consumed\',\'damaged\'].forEach(k=>g(k).textContent=p[k]??0);let r=s.runtime||{},ts=r.tasks||[];g(\'task_count\').textContent=ts.length;g(\'run_state\').textContent=r.running?\'运行中\':(r.stop_requested?\'已请求安全停止\':\'未运行\');g(\'tasks\').innerHTML=ts.map(t=>`<div class="task ${esc(t.status)}"><b>${esc(t.task_id)}</b><span>${esc(t.email||\'-\')}</span><span>${esc(t.status||\'-\')} ${esc(t.error||\'\')}</span></div>`).join(\'\')||\'<div class="task"><span>-</span><span>尚无任务</span><span>-</span></div>\';let log=g(\'logs\');log.innerHTML=(s.logs||[]).map(x=>`<div class="line ${esc(x.level)}"><span class="time">${esc(x.time)}</span> ${esc(x.message)}</div>`).join(\'\');log.scrollTop=log.scrollHeight}function msg(e){alert(e.message||String(e))}async function importPool(){try{await req(\'/api/pool/import\',{pool_content:v(\'pool_content\')});g(\'pool_content\').value=\'\'}catch(e){msg(e)}}async function saveConfig(){try{await req(\'/api/config\',cfg())}catch(e){msg(e)}}async function preflight(){try{await req(\'/api/preflight\',cfg());alert(\'预检通过\')}catch(e){msg(e)}}async function startRun(){try{await req(\'/api/start\',cfg())}catch(e){msg(e)}}async function stopRun(){try{await req(\'/api/stop\')}catch(e){msg(e)}}async function refresh(){try{let j=await (await fetch(\'/api/state\')).json();if(j.ok)render(j.state)}catch(_){}}refresh();setInterval(refresh,1200);\n</script></body></html>')
+             244 STORE_NAME           (_HTML)
+
+233:         246 LOAD_CONST           ('\n<style>\n:root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;background:#0a0f1a;color:#e8eef7;--bg:#0a0f1a;--panel:#111a29;--panel-2:#0d1522;--line:#263650;--line-soft:#1b2940;--muted:#91a2b9;--text:#e8eef7;--blue:#5aa8ff;--green:#54d69b;--amber:#f4b65f;--red:#ff7c88;--control:#0b1320}\n*{box-sizing:border-box}body{margin:0;min-width:320px;background:var(--bg);color:var(--text);font-size:13px}button,input,select,textarea{font:inherit}button{transition:background .15s ease,border-color .15s ease,box-shadow .15s ease,transform .15s ease}button:hover:not(:disabled){border-color:#6096ca;background:#203451}button:active:not(:disabled){transform:translateY(1px)}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid rgba(90,168,255,.65);outline-offset:2px}\n.top{height:72px;padding:0 clamp(16px,3vw,38px);display:flex;gap:16px;align-items:center;border-bottom:1px solid var(--line);background:#0d1625;box-shadow:0 1px 0 rgba(255,255,255,.02)}.top h1{margin:0;font-size:19px;letter-spacing:.01em}.top span{font-size:12px;color:var(--muted);border-left:1px solid var(--line);padding-left:16px}.shell{width:min(1600px,100%);margin:0 auto;padding:22px clamp(14px,2.6vw,34px) 34px;display:grid;grid-template-columns:minmax(360px,420px) minmax(0,1fr);gap:18px;align-items:start}.panel{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:18px;box-shadow:0 10px 28px rgba(0,0,0,.12)}.panel h2{font-size:14px;line-height:1.3;margin:0 0 14px;color:#f2f6fb;letter-spacing:.01em}.section{border-top:1px solid var(--line-soft);margin-top:20px;padding-top:18px}.field{margin:0 0 13px;min-width:0}.field label{display:flex;align-items:center;min-height:18px;color:#a9b9ce;font-size:12px;line-height:1.35;margin-bottom:6px}.field input,.field select,.field textarea,input,select,textarea{width:100%;border:1px solid #334965;border-radius:6px;background:var(--control);color:var(--text);font-size:13px;padding:0 11px;box-shadow:inset 0 1px 1px rgba(0,0,0,.18)}input,select{height:40px}textarea{min-height:132px;padding:11px;resize:vertical;line-height:1.5}input::placeholder,textarea::placeholder{color:#64758c}.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:11px}.row>.field{min-width:0}.checks{display:flex;gap:14px;flex-wrap:wrap;margin:3px 0 14px}.checks label{display:inline-flex;align-items:center;min-height:28px;font-size:12px;color:#b5c3d4}.checks input[type=checkbox]{width:15px;height:15px;margin:0 7px 0 0;accent-color:var(--blue)}.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:11px}.actions button{height:38px;min-width:118px;padding:0 14px;color:#eaf3ff;border:1px solid #3b5879;border-radius:6px;background:#18283f;font-weight:650}.actions button.primary{background:#1d70c6;border-color:#4e9be3}.actions button.warn{background:#5e3828;border-color:#bd7457}.actions button:disabled{opacity:.5;cursor:not-allowed}.hint,.sms-mode-hint,.automatic-count-hint{font-size:11px;color:#8294ad;line-height:1.55;margin:7px 0}.main{display:grid;grid-template-rows:auto auto 1fr;gap:18px;min-width:0}.metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:9px}.metric{min-width:0;border:1px solid var(--line);border-radius:7px;background:var(--panel-2);padding:12px 13px}.metric span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--muted)}.metric b{display:block;font-size:22px;line-height:1.1;margin-top:7px;color:#f4f8fc}.status{font-size:12px;color:#aebed0;line-height:1.5;margin:11px 0 0}.tasks{min-height:180px;max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:7px;background:#0b131f;user-select:text}.task{display:grid;grid-template-columns:105px minmax(180px,1fr) minmax(220px,1fr) auto;align-items:center;gap:12px;border-bottom:1px solid var(--line-soft);padding:11px 12px;font-size:12px;min-height:55px}.task:last-child{border-bottom:0}.task>*{min-width:0;overflow-wrap:anywhere}.task b{color:#83bfff;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px}.task-account{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:#dbe7f5}.task button{height:30px;padding:0 10px;color:#d8eaff;border:1px solid #3d5a7d;border-radius:5px;background:#16263c;cursor:pointer}.task-summary{display:flex;gap:14px;flex-wrap:wrap;margin:0 0 10px;font-size:12px}.task-export{margin:0 0 11px}.task-export textarea{height:78px;min-height:78px;font-size:11px}.task-export-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.task-export-actions button{height:32px;padding:0 11px;color:#dcecff;border:1px solid #3b5879;border-radius:5px;background:#17283e}.log{height:430px;overflow:auto;border:1px solid var(--line);border-radius:7px;background:#080e17;padding:11px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;line-height:1.6;user-select:text}.line{border-bottom:1px solid #142239;padding:3px 0;overflow-wrap:anywhere}.time{color:#7897bb}.log-toolbar{display:flex;gap:8px;align-items:center;margin:-3px 0 9px}.log-toolbar button{height:30px;padding:0 10px;color:#dcecff;border:1px solid #3b5879;border-radius:5px;background:#17283e}.ok,.success{color:var(--green)}.failed,.error{color:var(--red)}.repair_pending,.warn{color:var(--amber)}.info{color:#bed1e6}.manual-code-panel{border-radius:7px!important;background:#1b1713!important;border-color:#94663d!important}.manual-code-row input{height:40px}.manual-code-row button{height:40px}.wide{grid-column:1/-1}\n@media(max-width:1120px){.shell{grid-template-columns:minmax(320px,380px) minmax(0,1fr)}.metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}\n@media(max-width:820px){.top{height:auto;min-height:68px;padding:14px 16px;align-items:flex-start;flex-direction:column;gap:6px}.top span{border:0;padding:0}.shell{grid-template-columns:minmax(0,1fr);padding:14px 12px 26px;gap:13px}.panel{padding:14px}.main{gap:13px}.log{height:360px}}\n@media(max-width:560px){.row{grid-template-columns:minmax(0,1fr)}.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.metric{padding:10px}.metric b{font-size:20px}.task{grid-template-columns:minmax(0,1fr);gap:6px}.task button{justify-self:start}.actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.actions button{width:100%;min-width:0}.task-export-actions button{flex:1 1 140px}.field textarea{min-height:118px}}\n</style>\n')
+             248 STORE_NAME           (_UI_POLISH_CSS)
+
+245:         250 LOAD_CONST           ('\n<style>\n.sms-mode-switch{display:flex;gap:6px}.sms-mode-switch button{flex:1}.sms-mode-switch button.active{background:#217acd;border-color:#409be8}.sms-mode-hint{margin:7px 0 0;font-size:11px;color:#8da2bb}.sms-mode-extra{margin-top:2px}.fixed-country-select{margin-bottom:6px}\n</style>\n<script>\n(()=>{\n  const checkbox=g(\'sms_smart_enabled\');\n  if(!checkbox)return;\n  const host=checkbox.closest(\'.checks\');\n  host.innerHTML=\'<input id="sms_smart_enabled" type="checkbox" style="display:none"><input id="sms_mode" type="hidden" value="smart"><div class="sms-mode-switch"><button type="button" id="sms_mode_fixed">固定模式</button><button type="button" id="sms_mode_smart">智能模式</button></div><div class="sms-mode-hint" id="sms_mode_hint"></div>\';\n  const fixed=g(\'sms_mode_fixed\'),smart=g(\'sms_mode_smart\'),modeField=g(\'sms_mode\'),hidden=g(\'sms_smart_enabled\');\n  const countryField=g(\'country\').closest(\'.field\');\n  const providerField=g(\'provider_ids\').closest(\'.field\');\n  const priceField=g(\'max_price\').closest(\'.field\');\n  const extra=document.createElement(\'div\');\n  extra.className=\'sms-mode-extra\';\n  host.parentNode.insertBefore(extra,host.nextElementSibling);\n  const countryChoices=[[\'151\',\'智利 (151)\'],[\'33\',\'哥伦比亚 (33)\'],[\'91\',\'印度 (91)\'],[\'62\',\'印度尼西亚 (62)\'],[\'7\',\'俄罗斯 (7)\'],[\'1\',\'美国 (1)\'],[\'52\',\'墨西哥 (52)\'],[\'55\',\'巴西 (55)\'],[\'84\',\'越南 (84)\'],[\'63\',\'菲律宾 (63)\'],[\'234\',\'尼日利亚 (234)\'],[\'27\',\'南非 (27)\'],[\'380\',\'乌克兰 (380)\'],[\'48\',\'波兰 (48)\'],[\'44\',\'英国 (44)\']];\n  const attr=value=>String(value||\'\').replace(/&/g,\'&amp;\').replace(/"/g,\'&quot;\').replace(/</g,\'&lt;\').replace(/>/g,\'&gt;\');\n  function values(data){const supplied=!!data&&typeof data===\'object\',smartCfg=supplied&&data.sms_smart&&typeof data.sms_smart===\'object\'?data.sms_smart:{};return{country:String(supplied&&data.country!==undefined?data.country:(g(\'country\')||{}).value||\'\'),provider:String(supplied&&data.provider_ids!==undefined?data.provider_ids:(g(\'provider_ids\')||{}).value||\'\'),price:String(supplied&&data.max_price!==undefined?data.max_price:(g(\'max_price\')||{}).value||\'\'),refresh:String(smartCfg.refresh_seconds!==undefined?smartCfg.refresh_seconds:(g(\'sms_smart_refresh\')||{}).value||6),attempts:String(smartCfg.attempts_per_round!==undefined?smartCfg.attempts_per_round:(g(\'sms_smart_attempts\')||{}).value||5)}}\n  function setMode(mode,persist=false,data=null){\n    mode=(mode===\'fixed\')?\'fixed\':\'smart\';\n    const current=values(data);\n    modeField.value=mode;hidden.checked=(mode===\'smart\');\n    fixed.classList.toggle(\'active\',mode===\'fixed\');smart.classList.toggle(\'active\',mode===\'smart\');\n    if(mode===\'fixed\'){\n      countryField.style.display=\'\';\n      providerField.style.display=\'\';\n      priceField.style.display=\'\';\n      const options=countryChoices.map(([id,name])=>\'<option value="\'+id+\'" \'+(current.country===id?\'selected\':\'\')+\'>\'+name+\'</option>\').join(\'\');\n      const selected=countryChoices.some(([id])=>id===current.country)?current.country:\'\';\n      countryField.innerHTML=\'<label>固定国家</label><select id="fixed_country_choice" class="fixed-country-select"><option value="">自定义国家 ID</option>\'+options+\'</select><input id="country" inputmode="numeric" placeholder="国家 ID" value="\'+attr(current.country)+\'">\';\n      providerField.innerHTML=\'<label>固定运营商 ID（留空=任意）</label><input id="provider_ids" placeholder="例如：1" value="\'+attr(current.provider)+\'">\';\n      priceField.innerHTML=\'<label>固定最高价格（留空=不限制）</label><input id="max_price" inputmode="decimal" placeholder="0.04" value="\'+attr(current.price)+\'">\';\n      g(\'fixed_country_choice\').value=selected;\n      g(\'fixed_country_choice\').addEventListener(\'change\',()=>{if(g(\'fixed_country_choice\').value){g(\'country\').value=g(\'fixed_country_choice\').value}req(\'/api/config\',cfg()).catch(msg)});\n      extra.innerHTML=\'<div class="hint">固定模式始终使用这一条国家、运营商和价格规则，不读取智能库存候选。</div>\';\n      g(\'sms_mode_hint\').textContent=\'固定取号规则已启用。\';\n    }else{\n      countryField.style.display=\'none\';\n      providerField.style.display=\'none\';\n      priceField.style.display=\'\';\n      countryField.innerHTML=\'<input id="country" type="hidden" value="">\';\n      providerField.innerHTML=\'<input id="provider_ids" type="hidden" value="">\';\n      priceField.innerHTML=\'<label>最高价格</label><input id="max_price" inputmode="decimal" placeholder="0.04" value="\'+attr(current.price)+\'">\';\n      extra.innerHTML=\'<div class="hint">智能模式只读取平台实时库存和价格，自动选择可用国家/线路；不继承固定国家或运营商。</div>\';\n      g(\'sms_mode_hint\').textContent=\'智能选号已启用。\';\n    }\n    if(persist)req(\'/api/config\',cfg()).catch(msg);\n  }\n  fixed.addEventListener(\'click\',()=>setMode(\'fixed\',true));\n  smart.addEventListener(\'click\',()=>setMode(\'smart\',true));\n  const baseCfg=cfg,baseLoad=load;\n  cfg=function(){const data=baseCfg();data.sms_mode=modeField.value;data.sms_smart.enabled=(modeField.value===\'smart\');if(g(\'sms_smart_refresh\'))data.sms_smart.refresh_seconds=v(\'sms_smart_refresh\');if(g(\'sms_smart_attempts\'))data.sms_smart.attempts_per_round=v(\'sms_smart_attempts\');return data};\n  load=function(data){baseLoad(data);setMode((data&&data.sms_mode)||((data&&data.sms_smart&&data.sms_smart.enabled)?\'smart\':\'fixed\'),false,data)};\n  setMode(hidden.checked?\'smart\':\'fixed\');\n})();\n</script>\n')
+             252 STORE_NAME           (_SMS_MODE_INJECT)
+
+306:         254 LOAD_CONST           ('\n<style>\n.email-mode-switch{display:flex;gap:6px;margin:0 0 11px}.email-mode-switch button{flex:1}.email-mode-switch button.active{background:#217acd;border-color:#409be8}.manual-code-panel{display:none;border:1px solid #af7947;background:#2c2118;padding:13px;margin-bottom:0}.manual-code-panel.show{display:block}.manual-code-title{font-size:13px;font-weight:700;color:#f2bf67;margin-bottom:5px}.manual-code-email{font-family:Consolas,monospace;color:#edf6ff;word-break:break-all;margin:4px 0 9px}.manual-code-meta{font-size:11px;color:#bda67f;margin-bottom:9px}.manual-code-row{display:grid;grid-template-columns:1fr auto;gap:8px}.manual-code-row input{font-family:Consolas,monospace;letter-spacing:2px}.manual-queue{font-size:11px;color:#9badc2;margin-top:8px}\n</style>\n<script>\n(()=>{\n  const autoInput=g(\'pool_content\');\n  if(!autoInput)return;\n  const autoField=autoInput.closest(\'.field\');\n  const autoActions=autoField.nextElementSibling;\n  const autoHint=autoActions&&autoActions.nextElementSibling;\n  const modeHost=document.createElement(\'div\');\n  modeHost.className=\'email-mode-switch\';\n  modeHost.innerHTML=\'<button type="button" id="email_mode_auto">自动邮箱接码</button><button type="button" id="email_mode_manual">手动邮箱验证码</button>\';\n  autoField.parentNode.insertBefore(modeHost,autoField);\n  const manualField=document.createElement(\'div\');\n  manualField.className=\'field\';\n  manualField.style.display=\'none\';\n  manualField.innerHTML=\'<label>批量粘贴（每行：邮箱 或 邮箱--密码；连续连字符均可，后续字段忽略）</label><textarea id="manual_pool_content" placeholder="user@example.test---password"></textarea><div class="actions"><button type="button" onclick="importManualPool()">应用当前邮箱</button></div><div class="hint">点击开始会以这里当前内容完整覆盖本次任务池，不会使用历史邮箱。邮箱验证码按顺序人工输入；提交一个后，该任务转入短信/SUB2 自动化，下一邮箱立即建立验证码流程，所有下游任务按并发数同时运行。</div>\';\n  autoField.parentNode.insertBefore(manualField,autoField.nextElementSibling);\n  const autoLabel=autoField.querySelector(\'label\');\n  const autoButton=g(\'email_mode_auto\');\n  const manualButton=g(\'email_mode_manual\');\n  const autoImportButton=autoActions&&autoActions.querySelector(\'button\');\n  if(autoImportButton)autoImportButton.textContent=\'覆盖导入本次邮箱\';\n  let emailMode=\'auto\';\n  let manualState={};\n\n  const panel=document.createElement(\'div\');\n  panel.id=\'manual_code_panel\';\n  panel.className=\'manual-code-panel\';\n  panel.innerHTML=\'<div class="manual-code-title">当前邮箱验证码</div><div id="manual_code_email" class="manual-code-email"></div><div id="manual_code_meta" class="manual-code-meta"></div><div class="manual-code-row"><input id="manual_code_input" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="六码验证码" disabled><button type="button" id="manual_code_submit" disabled>提交</button></div><div id="manual_code_queue" class="manual-queue"></div>\';\n  manualField.parentNode.insertBefore(panel,manualField.nextElementSibling);\n\n  function setEmailMode(mode,persist=false){\n    emailMode=mode===\'manual\'?\'manual\':\'auto\';\n    const manual=emailMode===\'manual\';\n    autoField.style.display=manual?\'none\':\'\';\n    if(autoActions)autoActions.style.display=manual?\'none\':\'\';\n    if(autoHint)autoHint.style.display=manual?\'none\':\'\';\n    manualField.style.display=manual?\'\':\'none\';\n    if(!manual)panel.classList.remove(\'show\');\n    autoButton.classList.toggle(\'active\',!manual);\n    manualButton.classList.toggle(\'active\',manual);\n    if(autoLabel)autoLabel.textContent=\'批量粘贴（每行：裸邮箱（GPTMail），或 邮箱----密码/取码 URL/客户端 ID/刷新凭据）\';\n    if(manual)renderManualCode(manualState,[]);\n    if(persist)req(\'/api/config\',cfg()).catch(msg);\n  }\n  autoButton.addEventListener(\'click\',()=>setEmailMode(\'auto\',true));\n  manualButton.addEventListener(\'click\',()=>setEmailMode(\'manual\',true));\n\n  const baseCfg=cfg;\n  cfg=function(){const data=baseCfg();data.email_mode=emailMode;return data};\n  const baseLoad=load;\n  load=function(data){baseLoad(data);setEmailMode((data&&data.email_mode)||\'auto\')};\n  const baseRender=render;\n  render=function(state){const runtime=(state||{}).runtime||{};baseRender(state);renderManualCode(runtime.manual_otp||{},runtime.tasks||[])};\n\n  function renderManualCode(data,tasks){\n    manualState=data||{};\n    const active=manualState.active;\n    const slot=manualState.slot;\n    const buffered=Array.isArray(manualState.buffered)?manualState.buffered:[];\n    const bufferedCurrent=buffered[0]||null;\n    const queued=Array.isArray(manualState.queued)?manualState.queued:[];\n    const waiting=!active&&!slot&&Array.isArray(tasks)?tasks.find(task=>task&&[\'waiting_manual_login_turn\',\'waiting_manual_email_code\'].includes(task.status)):null;\n    const current=active||slot||bufferedCurrent||waiting;\n    if(!current){\n      if(emailMode!==\'manual\'){panel.classList.remove(\'show\');return}\n      panel.classList.add(\'show\');\n      g(\'manual_code_email\').textContent=\'等待开始\';\n      g(\'manual_code_meta\').textContent=\'开始后会显示当前登录邮箱；登录过程中即可提前输入六码验证码\';\n      g(\'manual_code_input\').value=\'\';g(\'manual_code_input\').disabled=true;g(\'manual_code_submit\').disabled=true;\n      g(\'manual_code_queue\').textContent=\'\';\n      return;\n    }\n    panel.classList.add(\'show\');\n    g(\'manual_code_email\').textContent=current.email||\'-\';\n    const input=g(\'manual_code_input\'),submit=g(\'manual_code_submit\');\n    const target=active||slot||bufferedCurrent;\n    if(active){\n      const remaining=Math.max(0,Number(active.deadline_at||0)-Math.floor(Date.now()/1000));\n      g(\'manual_code_meta\').textContent=(active.task_id||\'-\')+\' · 剩余 \'+remaining+\' 秒，请输入邮箱验证码\';\n      input.disabled=false;submit.disabled=false;\n    }else if(slot){\n      g(\'manual_code_meta\').textContent=(slot.task_id||\'-\')+\' · 正在建立邮箱登录会话，可提前输入验证码；提交后立即放行下一个邮箱\';\n      input.disabled=false;submit.disabled=false;\n    }else if(bufferedCurrent){\n      g(\'manual_code_meta\').textContent=(bufferedCurrent.task_id||\'-\')+\' · 已缓存验证码，可修改后重新提交；登录会话正在进入验证码页\';\n      input.value=\'\';input.disabled=false;submit.disabled=false;\n    }else{\n      g(\'manual_code_meta\').textContent=(current.task_id||\'-\')+\' · 等待前一邮箱提交验证码后开始\';\n      input.value=\'\';input.disabled=true;submit.disabled=true;\n    }\n    g(\'manual_code_queue\').textContent=queued.length?\'后续等待邮箱验证码：\'+queued.length+\' 个任务\':\'\';\n  }\n\n  window.importManualPool=async function(){\n    try{await req(\'/api/manual-pool/import\',{pool_content:v(\'manual_pool_content\')});setEmailMode(\'manual\')}catch(e){msg(e)}\n  };\n  window.importPool=async function(){\n    const content=v(\'pool_content\');\n    if(!content){msg(\'请粘贴本次要运行的邮箱\');return}\n    try{await req(\'/api/pool/import\',{pool_content:content});setEmailMode(\'auto\')}catch(e){msg(e)}\n  };\n  window.startRun=async function(){\n    const data=cfg();\n    if(emailMode===\'manual\'){\n      const content=v(\'manual_pool_content\');\n      if(!content){msg(\'手动模式请先粘贴本次要运行的邮箱\');return}\n      data.email_mode=\'manual\';\n      data.manual_pool_content=content;\n    }else{\n      const content=v(\'pool_content\');\n      if(!content){msg(\'自动模式请先粘贴本次要运行的邮箱\');return}\n      data.email_mode=\'auto\';\n      data.pool_content=content;\n    }\n    try{await req(\'/api/start\',data)}catch(e){msg(e)}\n  };\n  async function submitManualCode(){\n    const target=manualState.active||manualState.slot||(Array.isArray(manualState.buffered)?manualState.buffered[0]:null);\n    if(!target){msg(\'当前没有可输入验证码的邮箱\');return}\n    try{await req(\'/api/manual-otp/submit\',{task_id:target.task_id,code:v(\'manual_code_input\')});g(\'manual_code_input\').value=\'\'}catch(e){msg(e)}\n  }\n  g(\'manual_code_submit\').addEventListener(\'click\',submitManualCode);\n  g(\'manual_code_input\').addEventListener(\'keydown\',event=>{if(event.key===\'Enter\')submitManualCode()});\n  setEmailMode(\'auto\');\n})();\n</script>\n')
+             256 STORE_NAME           (_MANUAL_EMAIL_INJECT)
+
+439:         258 LOAD_CONST           ("\n<style>\n.sms-fixed-grid{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.sms-fixed-grid>.field{margin:0}.sms-fixed-grid>.field>label{display:block;min-height:32px}.sms-runtime-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.sms-runtime-grid>.field{margin:0}.sms-mode-extra{display:none!important}\n@media(max-width:560px){.sms-fixed-grid,.sms-runtime-grid{grid-template-columns:1fr}}\n</style>\n<script>\n(()=>{\n  const modeHost=g('sms_mode')&&g('sms_mode').closest('.checks');\n  if(!modeHost)return;\n  const headerText=document.querySelector('.top span');\n  if(headerText)headerText.textContent='独立运行 · 邮箱优先 Auth · SMS 接码 · SUB2 严格分组';\n  const countryRow=g('country').closest('.field').parentElement;\n  const timeoutField=g('sms_timeout').closest('.field');\n  const maxAttemptsField=g('phone_max_attempts').closest('.field');\n  const timeoutRow=timeoutField.parentElement;\n  const concurrencyField=g('concurrency').closest('.field');\n  function arrange(){\n    countryRow.classList.add('sms-fixed-grid');\n    maxAttemptsField.style.display='none';\n    g('phone_max_attempts').value='0';\n    timeoutField.querySelector('label').textContent='短信超时（秒）';\n    timeoutRow.classList.add('sms-runtime-grid');\n    if(concurrencyField.parentElement!==timeoutRow)timeoutRow.appendChild(concurrencyField);\n    concurrencyField.querySelector('label').textContent='任务并发';\n    const oldExtra=document.querySelector('.sms-mode-extra');\n    if(oldExtra)oldExtra.style.display='none';\n  }\n  const baseLoad=load;\n  load=function(data){baseLoad(data);arrange()};\n  arrange();\n})();\n</script>\n")
+             260 STORE_NAME           (_SMS_FIXED_ONLY_INJECT)
+
+474:         262 LOAD_CONST           ('\n<style>\n.legacy-login-field-hidden{display:none!important}.automatic-count-hint{margin:4px 0 8px;font-size:11px;color:#8da2bb}.task-summary{display:flex;gap:12px;flex-wrap:wrap;margin:0 0 9px;font-size:12px;color:#b7c8d9}.task-summary .ok{color:#59d99f}.task-summary .warn{color:#f2bf67}.task-account{font-family:Consolas,monospace;overflow-wrap:anywhere}.tasks .task{grid-template-columns:100px minmax(220px,1fr) minmax(220px,1fr) auto}.copy-account{height:27px;padding:0 8px;font-size:11px}.task-export{margin:0 0 10px}.task-export textarea{min-height:84px;height:84px;font-size:12px}.task-export-actions{display:flex;gap:8px;margin-top:6px}.log-toolbar{display:flex;gap:8px;align-items:center;margin:-4px 0 8px}.log-toolbar button{height:27px;padding:0 8px;font-size:11px}\n.shell,.main,.panel,.row,.field{min-width:0}.email-mode-switch button{min-width:0}\n@media(max-width:560px){.top{height:auto;min-height:64px;padding:12px;align-items:flex-start}.top h1{font-size:18px;line-height:1.25}.top span{line-height:1.45}.shell{width:100%;margin:12px auto;padding:0 10px;grid-template-columns:minmax(0,1fr)}.main{grid-template-columns:minmax(0,1fr)}.panel{padding:12px}.row{display:grid;grid-template-columns:minmax(0,1fr)}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.email-mode-switch button{padding:0 6px;font-size:12px}.tasks .task{grid-template-columns:minmax(0,1fr);gap:6px}.task-export-actions{flex-wrap:wrap}.copy-account{justify-self:start}.log{height:360px}}\n</style>\n<script>\n(()=>{\n  for(const id of [\'password\',\'node_runner\',\'target_count\']){\n    const input=g(id);\n    const field=input&&input.closest(\'.field\');\n    if(field)field.classList.add(\'legacy-login-field-hidden\');\n  }\n  for(const id of [\'sms_api_key\',\'sub2_password\']){\n    const input=g(id);\n    if(input){input.type=\'text\';input.autocomplete=\'off\'}\n  }\n  const startButton=document.querySelector(\'button.primary\');\n  const stopButton=document.querySelector(\'button.warn\');\n  if(startButton)startButton.textContent=\'开始\';\n  if(stopButton)stopButton.textContent=\'停止\';\n  const concurrencyField=g(\'concurrency\')&&g(\'concurrency\').closest(\'.field\');\n  if(concurrencyField){\n    concurrencyField.querySelector(\'label\').textContent=\'并发\';\n    const row=concurrencyField.parentElement;\n    const nodeField=document.createElement(\'div\');\n    nodeField.className=\'field\';\n    nodeField.innerHTML=\'<label>Node 并发</label><input id="node_concurrency" type="number" min="1" max="100" value="3">\';\n    row.appendChild(nodeField);\n    const hint=document.createElement(\'div\');\n    hint.className=\'automatic-count-hint\';\n    hint.textContent=\'任务数自动等于可用邮箱数；并发控制同时运行数，完成一个会自动开始下一个。\';\n    row.insertAdjacentElement(\'afterend\',hint);\n  }\n  const taskBox=g(\'tasks\');\n  const taskSummary=document.createElement(\'div\');\n  taskSummary.className=\'task-summary\';\n  taskBox.parentElement.insertBefore(taskSummary,taskBox);\n  const taskExport=document.createElement(\'div\');\n  taskExport.className=\'task-export\';\n  taskExport.innerHTML=\'<textarea id="task_export" readonly spellcheck="false" aria-label="任务结果预览"></textarea><div class="task-export-actions"><button type="button" id="copy_success_accounts">复制成功完整记录</button><button type="button" id="copy_failed_accounts">复制未成功完整记录</button><button type="button" id="copy_all_results">复制全部完整记录</button></div>\';\n  taskBox.parentElement.insertBefore(taskExport,taskBox);\n  const taskExportInput=g(\'task_export\');\n  const copySuccessButton=g(\'copy_success_accounts\');\n  const copyFailedButton=g(\'copy_failed_accounts\');\n  const copyAllButton=g(\'copy_all_results\');\n  const escapeHtml=value=>{const node=document.createElement(\'div\');node.textContent=value||\'\';return node.innerHTML};\n  const copyText=text=>{\n    const value=String(text||\'\');\n    if(!value)return;\n    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(value).catch(()=>{taskExportInput.value=value;taskExportInput.focus();taskExportInput.select();document.execCommand(\'copy\')});return}\n    taskExportInput.value=value;taskExportInput.focus();taskExportInput.select();document.execCommand(\'copy\');\n  };\n  const copyExport=async(kind,taskId)=>{try{const response=await fetch(\'/api/export/\'+encodeURIComponent(kind));const payload=await response.json();if(!response.ok||!payload.ok)throw Error(payload.error||\'导出失败\');let records=Array.isArray(payload.records)?payload.records:[];if(taskId)records=records.filter(item=>item.task_id===taskId);copyText(records.map(item=>JSON.stringify(item)).join(\'\\n\'))}catch(error){msg(error)}};\n  taskBox.addEventListener(\'click\',event=>{const button=event.target.closest(\'.copy-account\');if(button)copyExport(button.dataset.kind,button.dataset.taskId)});\n  let failedAccounts=[];\n  let successAccounts=[];\n  copySuccessButton.addEventListener(\'click\',()=>copyExport(\'success\'));\n  copyFailedButton.addEventListener(\'click\',()=>copyExport(\'failed\'));\n  copyAllButton.addEventListener(\'click\',()=>copyExport(\'all\'));\n  const logBox=g(\'logs\');\n  const logPanel=logBox.closest(\'.panel\');\n  const logToolbar=document.createElement(\'div\');\n  logToolbar.className=\'log-toolbar\';\n  logToolbar.innerHTML=\'<button type="button" id="toggle_log_pause">暂停日志刷新</button>\';\n  logPanel.insertBefore(logToolbar,logBox);\n  const logToggle=g(\'toggle_log_pause\');\n  let logsPaused=false;\n  const descriptorFor=(node,name)=>{let proto=node;while(proto){const descriptor=Object.getOwnPropertyDescriptor(proto,name);if(descriptor)return descriptor;proto=Object.getPrototypeOf(proto)}return null};\n  const logHtmlDescriptor=descriptorFor(logBox,\'innerHTML\');\n  const logScrollDescriptor=descriptorFor(logBox,\'scrollTop\');\n  if(logHtmlDescriptor&&logHtmlDescriptor.get&&logHtmlDescriptor.set)Object.defineProperty(logBox,\'innerHTML\',{configurable:true,get(){return logHtmlDescriptor.get.call(this)},set(value){if(!logsPaused)logHtmlDescriptor.set.call(this,value)}});\n  if(logScrollDescriptor&&logScrollDescriptor.get&&logScrollDescriptor.set)Object.defineProperty(logBox,\'scrollTop\',{configurable:true,get(){return logScrollDescriptor.get.call(this)},set(value){if(!logsPaused)logScrollDescriptor.set.call(this,value)}});\n  logToggle.addEventListener(\'click\',()=>{logsPaused=!logsPaused;logToggle.textContent=logsPaused?\'继续日志刷新\':\'暂停日志刷新\'});\n  const baseRender=render;\n  render=function(state){\n    baseRender(state);\n    const runtime=(state||{}).runtime||{};\n    const limits=runtime.concurrency||{};\n    const taskLimit=limits.task||{},nodeLimit=limits.node||{},emailLimit=limits.email||{};\n    const concurrencyText=\'任务 \'+Number(taskLimit.active||0)+\'/\'+Number(taskLimit.limit||0)+\' · Node \'+Number(nodeLimit.active||0)+\'/\'+Number(nodeLimit.limit||0)+\' · 邮箱验证码 \'+Number(emailLimit.active||0)+\'/\'+Number(emailLimit.limit||0);\n    g(\'run_state\').textContent=(runtime.stop_requested?(runtime.running?\'正在停止\':\'已停止\'):(runtime.running?\'运行中\':\'未运行\'))+\' | \'+concurrencyText;\n    const tasks=Array.isArray(runtime.tasks)?runtime.tasks:[];\n    const finalTaskByAccount=new Map();\n    tasks.forEach(task=>{\n      const account=task.account||task.email||\'-\';\n      const key=String(account).trim().toLowerCase();\n      const previous=finalTaskByAccount.get(key);\n      if(!previous||task.status===\'success\'||previous.status!==\'success\')finalTaskByAccount.set(key,task);\n    });\n    const uniqueTasks=Array.from(finalTaskByAccount.values());\n    const success=uniqueTasks.filter(task=>task.status===\'success\').length;\n    const active=uniqueTasks.filter(task=>![\'success\',\'failed\',\'stopped\',\'retryable_infra\',\'retryable_email\',\'repair_pending\',\'email_damaged\'].includes(task.status)).length;\n    const incomplete=uniqueTasks.length-success-active;\n    taskSummary.innerHTML=\'<span class="ok">成功 \'+success+\'</span><span class="warn">未成功/已停止 \'+incomplete+\'</span><span>运行中 \'+active+\'</span>\';\n    const resultLines=uniqueTasks.map(task=>{const account=task.account||task.email||\'-\';return (task.status===\'success\'?\'成功: \':\'未成功: \')+account+\' | \'+(task.status||\'-\')+(task.error||task.reason?\' | \'+(task.error||task.reason):\'\')});\n    successAccounts=uniqueTasks.filter(task=>task.status===\'success\').map(task=>task.account||task.email||\'-\');\n    failedAccounts=uniqueTasks.filter(task=>task.status!==\'success\').map(task=>task.account||task.email||\'-\');\n    copySuccessButton.disabled=!successAccounts.length;\n    copyFailedButton.disabled=!failedAccounts.length;\n    if(document.activeElement!==taskExportInput)taskExportInput.value=resultLines.join(\'\\n\');\n    taskBox.innerHTML=uniqueTasks.map(task=>{const account=task.account||task.email||\'-\';const kind=task.status===\'success\'?\'success\':\'failed\';return \'<div class="task \'+escapeHtml(task.status)+\'"><b>\'+escapeHtml(task.task_id)+\'</b><span class="task-account">\'+escapeHtml(account)+\'</span><span>\'+escapeHtml(task.status||\'-\')+\' \'+escapeHtml(task.error||task.reason||\'\')+\'</span><button type="button" class="copy-account" data-kind="\'+kind+\'" data-task-id="\'+escapeHtml(task.task_id)+\'">复制完整</button></div>\'}).join(\'\')||\'<div class="task"><span>-</span><span>尚无任务</span><span>-</span></div>\';\n  };\n  const baseCfg=cfg;\n  cfg=function(){const data=baseCfg();data.password=\'\';data.node_concurrency=v(\'node_concurrency\');return data};\n  const baseLoad=load;\n  let initialSettingsLoaded=false;\n  load=function(data){\n    if(initialSettingsLoaded)return;\n    baseLoad(data);\n    set(\'node_concurrency\',(data&&data.node_concurrency)||3);\n    initialSettingsLoaded=true;\n  };\n})();\n</script>\n')
+             264 STORE_NAME           (_LOGIN_FORM_USABILITY_INJECT)
+
+592:         266 LOAD_CONST           ('\n<style>\n.gptmail-section .field{margin-bottom:11px}.gptmail-section input[readonly]{color:#aebed0;background:#101a29}.gptmail-section .gptmail-key{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}\n</style>\n<script>\n(()=>{\n  const smsTitle=[...document.querySelectorAll(\'.section h2\')].find(node=>String(node.textContent||\'\').includes(\'SMS 接码\'));\n  if(!smsTitle)return;\n  const host=smsTitle.closest(\'.section\');\n  if(!host||g(\'gptmail_enabled\'))return;\n  const section=document.createElement(\'div\');\n  section.className=\'section gptmail-section\';\n  section.innerHTML=\'<h2>邮箱验证码来源</h2><div class="checks"><label><input id="gptmail_enabled" type="checkbox">GPTMail 收码</label></div><div class="field"><label>登录方式</label><select id="email_auth_preference"><option value="auto">智能登录</option><option value="otp">验证码优先</option><option value="password">密码优先</option></select></div><div class="field"><label>GPTMail URL（固定）</label><input id="gptmail_url" value="https://gptmail.passkissyou.online" readonly></div><div class="field"><label>验证码关键词（固定）</label><input id="gptmail_keyword" value="code,验证码,verification code,OpenAI,ChatGPT,gpt" readonly></div><div class="field"><label>GPTMail API Key</label><input id="gptmail_api_key" class="gptmail-key" type="password" autocomplete="off" placeholder="填写 mak_..."></div><div class="hint">智能登录：有密码先密码，按需发送一次 MFA 验证码；无密码直接发送邮箱验证码。密码明确错误时会新建会话再走验证码。启用 GPTMail 后可一行一个裸邮箱，GPTMail 只负责按当前邮箱取码，不改变 SMS、SUB2 或并发规则。</div>\';\n  host.parentNode.insertBefore(section,host);\n  const baseCfg=cfg;\n  cfg=function(){\n    const data=baseCfg();\n    data.gptmail_enabled=checked(\'gptmail_enabled\');\n    data.email_auth_preference=v(\'email_auth_preference\');\n    data.gptmail_url=v(\'gptmail_url\');\n    data.gptmail_keyword=v(\'gptmail_keyword\');\n    data.gptmail_api_key=v(\'gptmail_api_key\');\n    return data;\n  };\n  const baseLoad=load;\n  let gptmailSettingsLoaded=false;\n  load=function(data){\n    baseLoad(data);\n    if(!data||gptmailSettingsLoaded)return;\n    g(\'gptmail_enabled\').checked=!!data.gptmail_enabled;\n    set(\'email_auth_preference\',data.email_auth_preference||\'auto\');\n    set(\'gptmail_url\',data.gptmail_url||\'https://gptmail.passkissyou.online\');\n    set(\'gptmail_keyword\',data.gptmail_keyword||\'code,验证码,verification code,OpenAI,ChatGPT,gpt\');\n    set(\'gptmail_api_key\',data.gptmail_api_key);\n    gptmailSettingsLoaded=true;\n  };\n})();\n</script>\n')
+             268 STORE_NAME           (_GPTMAIL_INJECT)
+
+633:         270 LOAD_NAME            (create_app)
+             272 PUSH_NULL
+             274 CALL                 (0 positional)
+             282 STORE_NAME           (app)
+
+636:         284 LOAD_CONST           (('port', 'int', 'return', 'BaseWSGIServer'))
+             286 LOAD_CONST           (<Code311 code object _make_local_server at 0x1060b1280, file web_gui.py>, line 636)
+             288 MAKE_FUNCTION
+             290 SET_FUNCTION_ATTRIBUTE 4
+             292 STORE_NAME           (_make_local_server)
+
+646:         294 LOAD_CONST           (('url', 'str', 'return', 'None'))
+             296 LOAD_CONST           (<Code311 code object _open_default_browser at 0x1060b1220, file web_gui.py>, line 646)
+             298 MAKE_FUNCTION
+             300 SET_FUNCTION_ATTRIBUTE 4
+             302 STORE_NAME           (_open_default_browser)
+
+662:         304 LOAD_CONST           (('return', 'int'))
+             306 LOAD_CONST           (<Code311 code object main at 0x1060b1130, file web_gui.py>, line 662)
+             308 MAKE_FUNCTION
+             310 SET_FUNCTION_ATTRIBUTE 4
+             312 STORE_NAME           (main)
+
+677:         314 LOAD_NAME            (__name__)
+             316 LOAD_CONST           ("__main__")
+             318 COMPARE_OP           (==)
+             322 POP_JUMP_IF_FALSE    (to 352)
+
+678:         326 LOAD_NAME            (SystemExit)
+             328 PUSH_NULL
+             330 LOAD_NAME            (main)
+             332 PUSH_NULL
+             334 CALL                 (0 positional)
+             342 CALL                 (1 positional)
+             350 RAISE_VARARGS        (exception instance)
+
+677:     >>  352 RETURN_CONST         (None)
+         >>  354 PUSH_EXC_INFO
+
+ 19:         356 LOAD_NAME            (ImportError)
+             358 CHECK_EXC_MATCH
+             360 POP_JUMP_IF_FALSE    (to 402)
+             364 POP_TOP
+
+ 20:         366 LOAD_CONST           (0)
+             368 LOAD_CONST           (('DEFAULT_DATA_DIR', 'EmailAuthImporter', 'ImporterConfigStore', 'MailboxPool', 'MailboxPoolError', '_friendly_log_message'))
+             370 IMPORT_NAME          (runtime)
+             372 IMPORT_FROM          (DEFAULT_DATA_DIR)
+             374 STORE_NAME           (DEFAULT_DATA_DIR)
+             376 IMPORT_FROM          (EmailAuthImporter)
+             378 STORE_NAME           (EmailAuthImporter)
+             380 IMPORT_FROM          (ImporterConfigStore)
+             382 STORE_NAME           (ImporterConfigStore)
+             384 IMPORT_FROM          (MailboxPool)
+             386 STORE_NAME           (MailboxPool)
+             388 IMPORT_FROM          (MailboxPoolError)
+             390 STORE_NAME           (MailboxPoolError)
+             392 IMPORT_FROM          (_friendly_log_message)
+             394 STORE_NAME           (_friendly_log_message)
+             396 POP_TOP
+             398 POP_EXCEPT
+             400 JUMP_BACKWARD_NO_INTERRUPT (to 156)
+
+ 19:     >>  402 RERAISE              0
+         >>  404 COPY                 3
+             406 POP_EXCEPT
+             408 RERAISE              1
+
+ExceptionTable:
+  124 to 154 -> 354 [0]
+  354 to 396 -> 404 [1] lasti
+  402 to 402 -> 404 [1] lasti
+
+# Method Name:       _clean
+# Filename:          web_gui.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        27
+# Constants:
+#    0: None
+#    1: ''
+# Names:
+#    0: str
+#    1: strip
+# Varnames:
+#	value
+# Positional arguments:
+#	value
+ 27:           0 RESUME               0
+
+ 28:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (value)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + strip)
+              60 CALL                 (0 positional)
+              68 RETURN_VALUE
+
+
+# Method Name:       _safe
+# Filename:          web_gui.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        31
+# Constants:
+#    0: None
+# Names:
+#    0: _friendly_log_message
+# Varnames:
+#	value
+# Positional arguments:
+#	value
+ 31:           0 RESUME               0
+
+ 32:           2 LOAD_GLOBAL          (NULL + _friendly_log_message)
+              12 LOAD_FAST            (value)
+              14 CALL                 (1 positional)
+              22 RETURN_VALUE
+
+
+# Method Name:       GuiLog
+# Filename:          web_gui.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000000 (0x1000000)
+# First Line:        35
+# Constants:
+#    0: 'GuiLog'
+#    1: 35
+#    2: <Code311 code object __init__ at 0x1060e2a00, file web_gui.py>, line 36
+#    3: <Code311 code object add at 0x1060e2970, file web_gui.py>, line 40
+#    4: <Code311 code object snapshot at 0x1060e2940, file web_gui.py>, line 45
+#    5: ('items', 'lock')
+#    6: None
+#    7: ('return', 'None')
+#    8: ('info',)
+#    9: ('message', 'str', 'level', 'str', 'return', 'None')
+#   10: ('return', 'list[dict[str, str]]')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __init__
+#    5: add
+#    6: snapshot
+#    7: __static_attributes__
+ 35:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("GuiLog")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (35)
+              12 STORE_NAME           (__firstlineno__)
+
+ 36:          14 LOAD_CONST           (('return', 'None'))
+              16 LOAD_CONST           (<Code311 code object __init__ at 0x1060e2a00, file web_gui.py>, line 36)
+              18 MAKE_FUNCTION
+              20 SET_FUNCTION_ATTRIBUTE 4
+              22 STORE_NAME           (__init__)
+
+ 40:          24 LOAD_CONST           (('info',))
+              26 LOAD_CONST           (('message', 'str', 'level', 'str', 'return', 'None'))
+              28 LOAD_CONST           (<Code311 code object add at 0x1060e2970, file web_gui.py>, line 40)
+              30 MAKE_FUNCTION
+              32 SET_FUNCTION_ATTRIBUTE 4
+              34 SET_FUNCTION_ATTRIBUTE 1
+              36 STORE_NAME           (add)
+
+ 45:          38 LOAD_CONST           (('return', 'list[dict[str, str]]'))
+              40 LOAD_CONST           (<Code311 code object snapshot at 0x1060e2940, file web_gui.py>, line 45)
+              42 MAKE_FUNCTION
+              44 SET_FUNCTION_ATTRIBUTE 4
+              46 STORE_NAME           (snapshot)
+              48 LOAD_CONST           (('items', 'lock'))
+              50 STORE_NAME           (__static_attributes__)
+              52 RETURN_CONST         (None)
+
+
+# Method Name:       create_app
+# Filename:          web_gui.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  12
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        50
+# Constants:
+#    0: None
+#    1: ('log_fn',)
+#    2: ('IMPORTER_STORE', 'IMPORTER_LOGS', 'IMPORTER')
+#    3: <Code311 code object settings at 0x1060b14f0, file web_gui.py>, line 57
+#    4: <Code311 code object public_settings at 0x1060b1580, file web_gui.py>, line 60
+#    5: <Code311 code object state at 0x1060b1610, file web_gui.py>, line 64
+#    6: '/'
+#    7: <Code311 code object index at 0x1060b1640, file web_gui.py>, line 68
+#    8: '/api/state'
+#    9: <Code311 code object api_state at 0x1060b16a0, file web_gui.py>, line 73
+#   10: '/api/export/<kind>'
+#   11: <Code311 code object api_export at 0x1060b1700, file web_gui.py>, line 77
+#   12: '/api/config'
+#   13: <Code311 code object save_config at 0x1060b1790, file web_gui.py>, line 85
+#   14: '/api/pool/import'
+#   15: <Code311 code object import_pool at 0x1060b1820, file web_gui.py>, line 96
+#   16: '/api/manual-pool/import'
+#   17: <Code311 code object import_manual_pool at 0x1060b1880, file web_gui.py>, line 117
+#   18: '/api/manual-otp/submit'
+#   19: <Code311 code object submit_manual_otp at 0x1060b18b0, file web_gui.py>, line 138
+#   20: '/api/preflight'
+#   21: <Code311 code object preflight at 0x1060b18e0, file web_gui.py>, line 148
+#   22: '/api/start'
+#   23: <Code311 code object start at 0x1060b1910, file web_gui.py>, line 161
+#   24: '/api/stop'
+#   25: <Code311 code object stop at 0x1060b1970, file web_gui.py>, line 205
+#   26: ('return', 'dict[str, Any]')
+#   27: ('cfg', 'dict[str, Any]', 'return', 'dict[str, Any]')
+#   28: ('return', 'Response')
+#   29: ('kind', 'str')
+# Names:
+#    0: Flask
+#    1: __name__
+#    2: ImporterConfigStore
+#    3: GuiLog
+#    4: EmailAuthImporter
+#    5: add
+#    6: config
+#    7: update
+#    8: get
+#    9: post
+# Varnames:
+#	data_dir, app, index, api_state, api_export, save_config, import_pool, import_manual_pool, submit_manual_otp, preflight, start, stop
+# Positional arguments:
+#	data_dir
+# Local variables:
+#    1: app
+#    2: index
+#    3: api_state
+#    4: api_export
+#    5: save_config
+#    6: import_pool
+#    7: import_manual_pool
+#    8: submit_manual_otp
+#    9: preflight
+#   10: start
+#   11: stop
+# Cell variables:
+#    0: importer
+#    1: logs
+#    2: public_settings
+#    3: settings
+#    4: state
+#    5: store
+               0 MAKE_CELL            (importer)
+               2 MAKE_CELL            (logs)
+               4 MAKE_CELL            (public_settings)
+               6 MAKE_CELL            (settings)
+               8 MAKE_CELL            (state)
+              10 MAKE_CELL            (store)
+
+ 50:          12 RESUME               0
+
+ 51:          14 LOAD_GLOBAL          (NULL + Flask)
+              24 LOAD_GLOBAL          (__name__)
+              34 CALL                 (1 positional)
+              42 STORE_FAST           (app)
+
+ 52:          44 LOAD_GLOBAL          (NULL + ImporterConfigStore)
+              54 LOAD_FAST            (data_dir)
+              56 CALL                 (1 positional)
+              64 STORE_DEREF          (store)
+
+ 53:          66 LOAD_GLOBAL          (NULL + GuiLog)
+              76 CALL                 (0 positional)
+              84 STORE_DEREF          (logs)
+
+ 54:          86 LOAD_GLOBAL          (NULL + EmailAuthImporter)
+              96 LOAD_FAST            (data_dir)
+              98 LOAD_DEREF           (logs)
+             100 LOAD_ATTR            (add)
+             120 LOAD_CONST           (('log_fn',))
+             122 CALL_KW              2
+             124 STORE_DEREF          (importer)
+
+ 55:         126 LOAD_FAST            (app)
+             128 LOAD_ATTR            (config)
+             148 LOAD_ATTR            (NULL|self + update)
+             168 LOAD_DEREF           (store)
+             170 LOAD_DEREF           (logs)
+             172 LOAD_DEREF           (importer)
+             174 LOAD_CONST           (('IMPORTER_STORE', 'IMPORTER_LOGS', 'IMPORTER'))
+             176 CALL_KW              3
+             178 POP_TOP
+
+ 57:         180 LOAD_CONST           (('return', 'dict[str, Any]'))
+             182 LOAD_FAST            (store)
+             184 BUILD_TUPLE          1
+             186 LOAD_CONST           (<Code311 code object settings at 0x1060b14f0, file web_gui.py>, line 57)
+             188 MAKE_FUNCTION
+             190 SET_FUNCTION_ATTRIBUTE 8
+             192 SET_FUNCTION_ATTRIBUTE 4
+             194 STORE_DEREF          (settings)
+
+ 60:         196 LOAD_CONST           (('cfg', 'dict[str, Any]', 'return', 'dict[str, Any]'))
+             198 LOAD_CONST           (<Code311 code object public_settings at 0x1060b1580, file web_gui.py>, line 60)
+             200 MAKE_FUNCTION
+             202 SET_FUNCTION_ATTRIBUTE 4
+             204 STORE_DEREF          (public_settings)
+
+ 64:         206 LOAD_CONST           (('return', 'dict[str, Any]'))
+             208 LOAD_FAST            (importer)
+             210 LOAD_FAST            (logs)
+             212 LOAD_FAST            (public_settings)
+             214 LOAD_FAST            (settings)
+             216 BUILD_TUPLE          4
+             218 LOAD_CONST           (<Code311 code object state at 0x1060b1610, file web_gui.py>, line 64)
+             220 MAKE_FUNCTION
+             222 SET_FUNCTION_ATTRIBUTE 8
+             224 SET_FUNCTION_ATTRIBUTE 4
+             226 STORE_DEREF          (state)
+
+ 68:         228 LOAD_FAST            (app)
+             230 LOAD_ATTR            (NULL|self + get)
+             250 LOAD_CONST           ("/")
+             252 CALL                 (1 positional)
+
+ 69:         260 LOAD_CONST           (('return', 'Response'))
+             262 LOAD_CONST           (<Code311 code object index at 0x1060b1640, file web_gui.py>, line 68)
+             264 MAKE_FUNCTION
+             266 SET_FUNCTION_ATTRIBUTE 4
+
+ 68:         268 CALL                 (0 positional)
+
+ 69:         276 STORE_FAST           (index)
+
+ 73:         278 LOAD_FAST            (app)
+             280 LOAD_ATTR            (NULL|self + get)
+             300 LOAD_CONST           ("/api/state")
+             302 CALL                 (1 positional)
+
+ 74:         310 LOAD_FAST            (state)
+             312 BUILD_TUPLE          1
+             314 LOAD_CONST           (<Code311 code object api_state at 0x1060b16a0, file web_gui.py>, line 73)
+             316 MAKE_FUNCTION
+             318 SET_FUNCTION_ATTRIBUTE 8
+
+ 73:         320 CALL                 (0 positional)
+
+ 74:         328 STORE_FAST           (api_state)
+
+ 77:         330 LOAD_FAST            (app)
+             332 LOAD_ATTR            (NULL|self + get)
+             352 LOAD_CONST           ("/api/export/<kind>")
+             354 CALL                 (1 positional)
+
+ 78:         362 LOAD_CONST           (('kind', 'str'))
+             364 LOAD_FAST            (importer)
+             366 LOAD_FAST            (settings)
+             368 BUILD_TUPLE          2
+             370 LOAD_CONST           (<Code311 code object api_export at 0x1060b1700, file web_gui.py>, line 77)
+             372 MAKE_FUNCTION
+             374 SET_FUNCTION_ATTRIBUTE 8
+             376 SET_FUNCTION_ATTRIBUTE 4
+
+ 77:         378 CALL                 (0 positional)
+
+ 78:         386 STORE_FAST           (api_export)
+
+ 85:         388 LOAD_FAST            (app)
+             390 LOAD_ATTR            (NULL|self + post)
+             410 LOAD_CONST           ("/api/config")
+             412 CALL                 (1 positional)
+
+ 86:         420 LOAD_FAST            (importer)
+             422 LOAD_FAST            (logs)
+             424 LOAD_FAST            (settings)
+             426 LOAD_FAST            (state)
+             428 LOAD_FAST            (store)
+             430 BUILD_TUPLE          5
+             432 LOAD_CONST           (<Code311 code object save_config at 0x1060b1790, file web_gui.py>, line 85)
+             434 MAKE_FUNCTION
+             436 SET_FUNCTION_ATTRIBUTE 8
+
+ 85:         438 CALL                 (0 positional)
+
+ 86:         446 STORE_FAST           (save_config)
+
+ 96:         448 LOAD_FAST            (app)
+             450 LOAD_ATTR            (NULL|self + post)
+             470 LOAD_CONST           ("/api/pool/import")
+             472 CALL                 (1 positional)
+
+ 97:         480 LOAD_FAST            (importer)
+             482 LOAD_FAST            (logs)
+             484 LOAD_FAST            (settings)
+             486 LOAD_FAST            (state)
+             488 LOAD_FAST            (store)
+             490 BUILD_TUPLE          5
+             492 LOAD_CONST           (<Code311 code object import_pool at 0x1060b1820, file web_gui.py>, line 96)
+             494 MAKE_FUNCTION
+             496 SET_FUNCTION_ATTRIBUTE 8
+
+ 96:         498 CALL                 (0 positional)
+
+ 97:         506 STORE_FAST           (import_pool)
+
+117:         508 LOAD_FAST            (app)
+             510 LOAD_ATTR            (NULL|self + post)
+             530 LOAD_CONST           ("/api/manual-pool/import")
+             532 CALL                 (1 positional)
+
+118:         540 LOAD_FAST            (importer)
+             542 LOAD_FAST            (logs)
+             544 LOAD_FAST            (settings)
+             546 LOAD_FAST            (state)
+             548 LOAD_FAST            (store)
+             550 BUILD_TUPLE          5
+             552 LOAD_CONST           (<Code311 code object import_manual_pool at 0x1060b1880, file web_gui.py>, line 117)
+             554 MAKE_FUNCTION
+             556 SET_FUNCTION_ATTRIBUTE 8
+
+117:         558 CALL                 (0 positional)
+
+118:         566 STORE_FAST           (import_manual_pool)
+
+138:         568 LOAD_FAST            (app)
+             570 LOAD_ATTR            (NULL|self + post)
+             590 LOAD_CONST           ("/api/manual-otp/submit")
+             592 CALL                 (1 positional)
+
+139:         600 LOAD_FAST            (importer)
+             602 LOAD_FAST            (logs)
+             604 LOAD_FAST            (state)
+             606 BUILD_TUPLE          3
+             608 LOAD_CONST           (<Code311 code object submit_manual_otp at 0x1060b18b0, file web_gui.py>, line 138)
+             610 MAKE_FUNCTION
+             612 SET_FUNCTION_ATTRIBUTE 8
+
+138:         614 CALL                 (0 positional)
+
+139:         622 STORE_FAST           (submit_manual_otp)
+
+148:         624 LOAD_FAST            (app)
+             626 LOAD_ATTR            (NULL|self + post)
+             646 LOAD_CONST           ("/api/preflight")
+             648 CALL                 (1 positional)
+
+149:         656 LOAD_FAST            (importer)
+             658 LOAD_FAST            (logs)
+             660 LOAD_FAST            (settings)
+             662 LOAD_FAST            (state)
+             664 LOAD_FAST            (store)
+             666 BUILD_TUPLE          5
+             668 LOAD_CONST           (<Code311 code object preflight at 0x1060b18e0, file web_gui.py>, line 148)
+             670 MAKE_FUNCTION
+             672 SET_FUNCTION_ATTRIBUTE 8
+
+148:         674 CALL                 (0 positional)
+
+149:         682 STORE_FAST           (preflight)
+
+161:         684 LOAD_FAST            (app)
+             686 LOAD_ATTR            (NULL|self + post)
+             706 LOAD_CONST           ("/api/start")
+             708 CALL                 (1 positional)
+
+162:         716 LOAD_FAST            (importer)
+             718 LOAD_FAST            (logs)
+             720 LOAD_FAST            (settings)
+             722 LOAD_FAST            (state)
+             724 LOAD_FAST            (store)
+             726 BUILD_TUPLE          5
+             728 LOAD_CONST           (<Code311 code object start at 0x1060b1910, file web_gui.py>, line 161)
+             730 MAKE_FUNCTION
+             732 SET_FUNCTION_ATTRIBUTE 8
+
+161:         734 CALL                 (0 positional)
+
+162:         742 STORE_FAST           (start)
+
+205:         744 LOAD_FAST            (app)
+             746 LOAD_ATTR            (NULL|self + post)
+             766 LOAD_CONST           ("/api/stop")
+             768 CALL                 (1 positional)
+
+206:         776 LOAD_FAST            (importer)
+             778 LOAD_FAST            (state)
+             780 BUILD_TUPLE          2
+             782 LOAD_CONST           (<Code311 code object stop at 0x1060b1970, file web_gui.py>, line 205)
+             784 MAKE_FUNCTION
+             786 SET_FUNCTION_ATTRIBUTE 8
+
+205:         788 CALL                 (0 positional)
+
+206:         796 STORE_FAST           (stop)
+
+210:         798 LOAD_FAST            (app)
+             800 RETURN_VALUE
+
+
+# Method Name:       _QuietRequestHandler
+# Filename:          web_gui.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        2
+# Flags:             0x01000000 (0x1000000)
+# First Line:        213
+# Constants:
+#    0: '_QuietRequestHandler'
+#    1: 213
+#    2: 'Keep Werkzeug access/error lines out of the operator console.'
+#    3: <Code311 code object log_request at 0x1060b1a30, file web_gui.py>, line 216
+#    4: <Code311 code object log_error at 0x1060b13a0, file web_gui.py>, line 219
+#    5: <Code311 code object log_message at 0x1060b1340, file web_gui.py>, line 222
+#    6: ()
+#    7: None
+#    8: ('args', 'Any', 'kwargs', 'Any', 'return', 'None')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: log_request
+#    6: log_error
+#    7: log_message
+#    8: __static_attributes__
+213:           0 RESUME               0

@@ -1,0 +1,403 @@
+             260 LOAD_ATTR            (reuse_mode)
+             280 CALL                 (4 positional)
+             288 GET_ITER
+         >>  290 FOR_ITER             (to 788)
+             294 STORE_FAST           (row)
+
+1809:         296 LOAD_DEREF           (self)
+             298 LOAD_ATTR            (NULL|self + _row_matches)
+             318 LOAD_FAST            (row)
+             320 LOAD_DEREF           (country)
+             322 LOAD_DEREF           (provider_ids)
+             324 CALL                 (3 positional)
+             332 TO_BOOL
+             340 POP_JUMP_IF_TRUE     (to 348)
+
+1810:         344 JUMP_BACKWARD        (to 290)
+
+1811:     >>  348 LOAD_FAST            (items)
+             350 LOAD_ATTR            (NULL|self + get)
+             370 LOAD_FAST            (row)
+             372 LOAD_CONST           ("key")
+             374 BINARY_SUBSCR
+             378 CALL                 (1 positional)
+             386 STORE_FAST           (item)
+
+1812:         388 LOAD_GLOBAL          (NULL + isinstance)
+             398 LOAD_FAST            (item)
+             400 LOAD_GLOBAL          (dict)
+             410 CALL                 (2 positional)
+             418 TO_BOOL
+             426 POP_JUMP_IF_TRUE     (to 434)
+
+1813:         430 BUILD_MAP            0
+             432 STORE_FAST           (item)
+
+1814:     >>  434 LOAD_GLOBAL          (NULL + str)
+             444 LOAD_FAST            (item)
+             446 LOAD_ATTR            (NULL|self + get)
+             466 LOAD_CONST           ("status")
+             468 CALL                 (1 positional)
+             476 COPY                 1
+             478 TO_BOOL
+             486 POP_JUMP_IF_TRUE     (to 494)
+             490 POP_TOP
+             492 LOAD_CONST           ("")
+         >>  494 CALL                 (1 positional)
+             502 LOAD_ATTR            (NULL|self + strip)
+             522 CALL                 (0 positional)
+             530 STORE_FAST           (status)
+
+1815:         532 LOAD_DEREF           (self)
+             534 LOAD_ATTR            (reuse_mode)
+             554 LOAD_CONST           ("repeat")
+             556 COMPARE_OP           (!=)
+             560 POP_JUMP_IF_FALSE    (to 580)
+             564 LOAD_FAST            (status)
+             566 LOAD_CONST           ("used_success")
+             568 COMPARE_OP           (==)
+             572 POP_JUMP_IF_FALSE    (to 580)
+
+1816:         576 JUMP_BACKWARD        (to 290)
+
+1817:     >>  580 LOAD_GLOBAL          (NULL + float)
+             590 LOAD_FAST            (item)
+             592 LOAD_ATTR            (NULL|self + get)
+             612 LOAD_CONST           ("lease_until")
+             614 CALL                 (1 positional)
+             622 COPY                 1
+             624 TO_BOOL
+             632 POP_JUMP_IF_TRUE     (to 640)
+             636 POP_TOP
+             638 LOAD_CONST           (0)
+         >>  640 CALL                 (1 positional)
+             648 STORE_FAST           (lease_until)
+
+1818:         650 LOAD_FAST            (status)
+             652 LOAD_CONST           ("leased")
+             654 COMPARE_OP           (==)
+             658 POP_JUMP_IF_FALSE    (to 678)
+             662 LOAD_FAST            (lease_until)
+             664 LOAD_DEREF           (now)
+             666 COMPARE_OP           (>)
+             670 POP_JUMP_IF_FALSE    (to 678)
+
+1819:         674 JUMP_BACKWARD        (to 290)
+
+1820:     >>  678 LOAD_FAST            (item)
+             680 LOAD_ATTR            (NULL|self + update)
+
+1821:         700 LOAD_CONST           ("leased")
+
+1822:         702 LOAD_FAST            (row)
+             704 LOAD_CONST           ("phone")
+             706 BINARY_SUBSCR
+
+1823:         710 LOAD_FAST            (row)
+             712 LOAD_CONST           ("url")
+             714 BINARY_SUBSCR
+
+1824:         718 LOAD_DEREF           (now)
+
+1825:         720 LOAD_DEREF           (now)
+             722 LOAD_DEREF           (lease_seconds)
+             724 BINARY_OP            (+)
+
+1826:         728 LOAD_FAST            (row)
+             730 LOAD_CONST           ("line_no")
+             732 BINARY_SUBSCR
+
+1820:         736 LOAD_CONST           (('status', 'phone', 'url', 'leased_at', 'lease_until', 'line_no'))
+             738 BUILD_CONST_KEY_MAP  6
+             740 CALL                 (1 positional)
+             748 POP_TOP
+
+1828:         750 LOAD_FAST_LOAD_FAST  (item, items)
+             752 LOAD_FAST            (row)
+             754 LOAD_CONST           ("key")
+             756 BINARY_SUBSCR
+             760 STORE_SUBSCR
+
+1829:         764 LOAD_FAST            (row)
+             766 LOAD_CONST           ("key")
+             768 BINARY_SUBSCR
+             772 LOAD_FAST            (data)
+             774 LOAD_CONST           ("_selected")
+             776 STORE_SUBSCR
+
+1830:         780 LOAD_FAST            (data)
+             782 SWAP                 (TOS <-> TOS1)
+             784 POP_TOP
+             786 RETURN_VALUE
+
+1808:     >>  788 END_FOR
+             790 POP_TOP
+
+1831:         792 LOAD_CONST           ("")
+             794 LOAD_FAST            (data)
+             796 LOAD_CONST           ("_selected")
+             798 STORE_SUBSCR
+
+1832:         802 LOAD_FAST            (data)
+             804 RETURN_VALUE
+         >>  806 SWAP                 (TOS <-> TOS1)
+             808 POP_TOP
+
+1807:         810 SWAP                 (TOS <-> TOS1)
+             812 STORE_FAST           (row)
+             814 RERAISE              0
+
+ExceptionTable:
+  152 to 206 -> 806 [2]
+  216 to 226 -> 806 [2]
+
+# Method Name:       <genexpr>
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x00000033 (GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1838
+# Constants:
+#    0: 'key'
+#    1: None
+# Varnames:
+#	.0, row
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: row
+# Free variables:
+#    0: selected_key
+               0 COPY_FREE_VARS       1
+
+1838:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+              10 GET_ITER
+              12 FOR_ITER             (to 50)
+              16 STORE_FAST_LOAD_FAST (row, row)
+              18 LOAD_CONST           ("key")
+              20 BINARY_SUBSCR
+              24 LOAD_DEREF           (selected_key)
+              26 COMPARE_OP           (==)
+              30 POP_JUMP_IF_TRUE     (to 38)
+              34 JUMP_BACKWARD        (to 12)
+         >>   38 LOAD_FAST            (row)
+              40 YIELD_VALUE          0
+              42 RESUME               5
+              44 POP_TOP
+              46 JUMP_BACKWARD        (to 12)
+         >>   50 END_FOR
+              52 POP_TOP
+              54 RETURN_CONST         (None)
+         >>   56 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              58 RERAISE              1
+
+ExceptionTable:
+  6 to 28 -> 56 [0] lasti
+  38 to 54 -> 56 [0] lasti
+
+# Method Name:       _update
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        10
+# Flags:             0x00000013 (NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1938
+# Constants:
+#    0: None
+#    1: 'items'
+#    2: 'status'
+#    3: '_at'
+#    4: 'lease_until'
+#    5: 'last_released_at'
+#    6: 'fail_count'
+#    7: 0
+#    8: 1
+#    9: 'failed_at'
+#   10: 1800
+#   11: 2
+#   12: 'cooldown_until'
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: setdefault
+#    3: get
+#    4: pop
+#    5: int
+#    6: float
+#    7: min
+#    8: FAILURE_COOLDOWN_SECONDS
+#    9: max
+# Varnames:
+#	data, items, item
+# Positional arguments:
+#	data
+# Local variables:
+#    1: items
+#    2: item
+# Free variables:
+#    0: failed
+#    1: key
+#    2: now
+#    3: self
+#    4: status
+               0 COPY_FREE_VARS       5
+
+1938:           2 RESUME               0
+
+1939:           4 LOAD_GLOBAL          (NULL + isinstance)
+              14 LOAD_FAST            (data)
+              16 LOAD_GLOBAL          (dict)
+              26 CALL                 (2 positional)
+              34 TO_BOOL
+              42 POP_JUMP_IF_TRUE     (to 54)
+
+1940:          46 LOAD_CONST           ("items")
+              48 BUILD_MAP            0
+              50 BUILD_MAP            1
+              52 STORE_FAST           (data)
+
+1941:     >>   54 LOAD_FAST            (data)
+              56 LOAD_ATTR            (NULL|self + setdefault)
+              76 LOAD_CONST           ("items")
+              78 BUILD_MAP            0
+              80 CALL                 (2 positional)
+              88 STORE_FAST           (items)
+
+1942:          90 LOAD_GLOBAL          (NULL + isinstance)
+             100 LOAD_FAST            (items)
+             102 LOAD_GLOBAL          (dict)
+             112 CALL                 (2 positional)
+             120 TO_BOOL
+             128 POP_JUMP_IF_TRUE     (to 144)
+
+1943:         132 BUILD_MAP            0
+             134 STORE_FAST           (items)
+
+1944:         136 LOAD_FAST_LOAD_FAST  (items, data)
+             138 LOAD_CONST           ("items")
+             140 STORE_SUBSCR
+
+1945:     >>  144 LOAD_FAST            (items)
+             146 LOAD_ATTR            (NULL|self + get)
+             166 LOAD_DEREF           (key)
+             168 CALL                 (1 positional)
+             176 STORE_FAST           (item)
+
+1946:         178 LOAD_GLOBAL          (NULL + isinstance)
+             188 LOAD_FAST            (item)
+             190 LOAD_GLOBAL          (dict)
+             200 CALL                 (2 positional)
+             208 TO_BOOL
+             216 POP_JUMP_IF_TRUE     (to 224)
+
+1947:         220 BUILD_MAP            0
+             222 STORE_FAST           (item)
+
+1948:     >>  224 LOAD_DEREF           (status)
+             226 LOAD_FAST            (item)
+             228 LOAD_CONST           ("status")
+             230 STORE_SUBSCR
+
+1949:         234 LOAD_DEREF           (now)
+             236 LOAD_FAST            (item)
+             238 LOAD_DEREF           (status)
+             240 FORMAT_SIMPLE
+             242 LOAD_CONST           ("_at")
+             244 BUILD_STRING         2
+             246 STORE_SUBSCR
+
+1950:         250 LOAD_FAST            (item)
+             252 LOAD_ATTR            (NULL|self + pop)
+             272 LOAD_CONST           ("lease_until")
+             274 LOAD_CONST           (None)
+             276 CALL                 (2 positional)
+             284 POP_TOP
+
+1951:         286 LOAD_DEREF           (now)
+             288 LOAD_FAST            (item)
+             290 LOAD_CONST           ("last_released_at")
+             292 STORE_SUBSCR
+
+1952:         296 LOAD_DEREF           (failed)
+             298 TO_BOOL
+             306 POP_JUMP_IF_FALSE    (to 516)
+
+1953:         310 LOAD_GLOBAL          (NULL + int)
+             320 LOAD_GLOBAL          (NULL + float)
+             330 LOAD_FAST            (item)
+             332 LOAD_ATTR            (NULL|self + get)
+             352 LOAD_CONST           ("fail_count")
+             354 CALL                 (1 positional)
+             362 COPY                 1
+             364 TO_BOOL
+             372 POP_JUMP_IF_TRUE     (to 380)
+             376 POP_TOP
+             378 LOAD_CONST           (0)
+         >>  380 CALL                 (1 positional)
+             388 CALL                 (1 positional)
+             396 LOAD_CONST           (1)
+             398 BINARY_OP            (+)
+             402 LOAD_FAST            (item)
+             404 LOAD_CONST           ("fail_count")
+             406 STORE_SUBSCR
+
+1954:         410 LOAD_DEREF           (now)
+             412 LOAD_FAST            (item)
+             414 LOAD_CONST           ("failed_at")
+             416 STORE_SUBSCR
+
+1955:         420 LOAD_DEREF           (now)
+             422 LOAD_GLOBAL          (NULL + min)
+             432 LOAD_CONST           (1800)
+             434 LOAD_DEREF           (self)
+             436 LOAD_ATTR            (FAILURE_COOLDOWN_SECONDS)
+             456 LOAD_GLOBAL          (NULL + max)
+             466 LOAD_CONST           (1)
+             468 LOAD_FAST            (item)
+             470 LOAD_CONST           ("fail_count")
+             472 BINARY_SUBSCR
+             476 LOAD_CONST           (2)
+             478 BINARY_OP            (-)
+             482 CALL                 (2 positional)
+             490 BINARY_OP            (*)
+             494 CALL                 (2 positional)
+             502 BINARY_OP            (+)
+             506 LOAD_FAST            (item)
+             508 LOAD_CONST           ("cooldown_until")
+             510 STORE_SUBSCR
+             514 JUMP_FORWARD         (to 562)
+
+1957:     >>  516 LOAD_CONST           (0)
+             518 LOAD_FAST            (item)
+             520 LOAD_CONST           ("fail_count")
+             522 STORE_SUBSCR
+
+1958:         526 LOAD_FAST            (item)
+             528 LOAD_ATTR            (NULL|self + pop)
+             548 LOAD_CONST           ("cooldown_until")
+             550 LOAD_CONST           (None)
+             552 CALL                 (2 positional)
+             560 POP_TOP
+
+1959:     >>  562 LOAD_FAST            (item)
+             564 LOAD_ATTR            (NULL|self + pop)
+             584 LOAD_CONST           ("lease_until")
+             586 LOAD_CONST           (None)
+             588 CALL                 (2 positional)
+             596 POP_TOP
+
+1960:         598 LOAD_FAST_LOAD_FAST  (item, items)
+             600 LOAD_DEREF           (key)
+             602 STORE_SUBSCR
+
+1961:         606 LOAD_FAST            (data)
+             608 RETURN_VALUE
+

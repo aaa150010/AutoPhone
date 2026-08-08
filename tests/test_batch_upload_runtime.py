@@ -23,6 +23,33 @@ class FakeQueue:
         return [{"record_id": f"record-{len(self.calls)}"}]
 
 
+class PartialQueue(FakeQueue):
+    def enqueue_batch(self, batch_id, sources, **kwargs):
+        rows = [dict(item) for item in sources]
+        self.calls.append((batch_id, rows, dict(kwargs)))
+        return {"accepted": 1, "skipped": 1, "failed": 1}
+
+
+class RecordListQueue(FakeQueue):
+    def __init__(self, records):
+        super().__init__()
+        self.records = records
+
+    def enqueue_batch(self, batch_id, sources, **kwargs):
+        rows = [dict(item) for item in sources]
+        self.calls.append((batch_id, rows, dict(kwargs)))
+        return [dict(item) for item in self.records]
+
+
+class LegacyPixelQueue:
+    def __init__(self):
+        self.calls = []
+
+    def enqueue_batch(self, batch_id, sources):
+        self.calls.append((batch_id, [dict(item) for item in sources]))
+        return [{"record_id": "legacy-record"}]
+
+
 class FakeImporter:
     def status(self, _settings):
         return {"running": False}
@@ -68,11 +95,13 @@ class BatchUploadCoordinatorTests(unittest.TestCase):
                 )
             pixel = FakeQueue()
             nv = FakeQueue()
+            logs = []
             coordinator = BatchUploadCoordinator(
                 root,
                 pixel_queue=pixel,
                 nv_queue=nv,
                 recover_pending=False,
+                log_fn=lambda message, level: logs.append((message, level)),
             )
 
             coordinator.begin(FakeImporter(), {
@@ -90,6 +119,17 @@ class BatchUploadCoordinatorTests(unittest.TestCase):
             self.assertEqual(manifest["source_count"], 2)
             self.assertEqual([item["task_id"] for item in pixel.calls[0][1]], ["T001", "T003"])
             self.assertEqual([item["task_id"] for item in nv.calls[0][1]], ["T001", "T003"])
+            pixel_attempt = manifest["platforms"]["pixel"]["upload_attempt_id"]
+            nv_attempt = manifest["platforms"]["nv"]["upload_attempt_id"]
+            self.assertTrue(pixel_attempt.startswith("upload-"))
+            self.assertTrue(nv_attempt.startswith("upload-"))
+            self.assertEqual(pixel.calls[0][2]["upload_attempt_id"], pixel_attempt)
+            self.assertEqual(nv.calls[0][2]["upload_attempt_id"], nv_attempt)
+            self.assertEqual(manifest["platforms"]["pixel"]["accepted"], 2)
+            self.assertEqual(len(manifest["platforms"]["pixel"]["attempt_history"]), 1)
+            self.assertEqual([level for _message, level in logs], ["info", "info"])
+            self.assertTrue(all("仅表示已入队，远端结果尚未确认" in message for message, _level in logs))
+            self.assertTrue(all("上传确认" not in message for message, _level in logs))
             persisted = coordinator.manifest_path.read_text(encoding="utf-8")
             self.assertNotIn("private-access", persisted)
             self.assertNotIn("private-refresh", persisted)
@@ -123,6 +163,37 @@ class BatchUploadCoordinatorTests(unittest.TestCase):
             self.assertEqual(coordinator.records()[0]["source_count"], 0)
             self.assertEqual(pixel.calls, [])
             self.assertEqual(nv.calls, [])
+
+    def test_pixel_queue_without_upload_attempt_keyword_remains_compatible(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            results = root / "results"
+            results.mkdir()
+            batch_id = "batch-legacy-signature"
+            (results / "success.json").write_text(
+                json.dumps(result_document("T001", batch_id, "success")),
+                encoding="utf-8",
+            )
+            pixel = LegacyPixelQueue()
+            coordinator = BatchUploadCoordinator(
+                root,
+                pixel_queue=pixel,
+                recover_pending=False,
+            )
+
+            coordinator.begin(FakeImporter(), {
+                "batch_id": batch_id,
+                "results_dir": results,
+                "_gptphone_upload_targets": {"pixel": True, "nv": False},
+            })
+            deadline = time.time() + 2
+            while time.time() < deadline and coordinator.records()[0]["status"] != "complete":
+                time.sleep(0.01)
+
+            manifest = coordinator.records()[0]
+            self.assertEqual(pixel.calls[0][0], batch_id)
+            self.assertEqual(manifest["platforms"]["pixel"]["accepted"], 1)
+            self.assertTrue(manifest["platforms"]["pixel"]["upload_attempt_id"].startswith("upload-"))
 
     def test_status_error_or_unknown_state_never_finalizes_early(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -193,9 +264,144 @@ class BatchUploadCoordinatorTests(unittest.TestCase):
             self.assertEqual(retried["status"], "complete")
             self.assertEqual(len(pixel.calls), 2)
             self.assertEqual(pixel.calls[0][1], pixel.calls[1][1])
+            self.assertEqual(pixel.calls[0][0], pixel.calls[1][0])
+            first_attempt = pixel.calls[0][2]["upload_attempt_id"]
+            second_attempt = pixel.calls[1][2]["upload_attempt_id"]
+            self.assertNotEqual(first_attempt, second_attempt)
+            history = retried["platforms"]["pixel"]["attempt_history"]
+            self.assertEqual([item["upload_attempt_id"] for item in history], [first_attempt, second_attempt])
+            self.assertEqual([item["kind"] for item in history], ["initial", "retry"])
+            self.assertEqual([item["status"] for item in history], ["queue_failed", "queued"])
             with self.assertRaises(ValueError):
                 coordinator.retry(batch_id, "pixel")
             self.assertEqual(len(pixel.calls), 2)
+
+    def test_partial_queue_result_is_persisted_and_logged_with_structured_counts(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            results = root / "results"
+            results.mkdir()
+            batch_id = "batch-partial"
+            for index in range(3):
+                task_id = f"T{index + 1:03d}"
+                (results / f"{task_id}.json").write_text(
+                    json.dumps(result_document(task_id, batch_id, "success")),
+                    encoding="utf-8",
+                )
+            logs = []
+            pixel = PartialQueue()
+            coordinator = BatchUploadCoordinator(
+                root,
+                pixel_queue=pixel,
+                recover_pending=False,
+                log_fn=lambda message, level: logs.append((message, level)),
+            )
+
+            coordinator.begin(FakeImporter(), {
+                "batch_id": batch_id,
+                "results_dir": results,
+                "_gptphone_upload_targets": {"pixel": True, "nv": False},
+            })
+            deadline = time.time() + 2
+            while time.time() < deadline and coordinator.records()[0]["status"] != "queue_failed":
+                time.sleep(0.01)
+
+            manifest = coordinator.records()[0]
+            state = manifest["platforms"]["pixel"]
+            self.assertEqual(manifest["batch_id"], batch_id)
+            self.assertEqual(manifest["status"], "queue_failed")
+            self.assertEqual((state["accepted"], state["skipped"], state["failed"]), (1, 1, 1))
+            self.assertEqual(state["attempt_history"][0]["status"], "queue_failed")
+            self.assertEqual(pixel.calls[0][0], batch_id)
+            self.assertEqual(pixel.calls[0][2]["upload_attempt_id"], state["upload_attempt_id"])
+            self.assertIn("accepted=1", logs[-1][0])
+            self.assertIn("skipped=1", logs[-1][0])
+            self.assertIn("failed=1", logs[-1][0])
+            self.assertEqual(logs[-1][1], "error")
+
+    def test_failed_record_list_never_reports_sources_as_accepted(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            results = root / "results"
+            results.mkdir()
+            batch_id = "batch-record-failure"
+            for index in range(2):
+                task_id = f"T{index + 1:03d}"
+                (results / f"{task_id}.json").write_text(
+                    json.dumps(result_document(task_id, batch_id, "success")),
+                    encoding="utf-8",
+                )
+            pixel = RecordListQueue(
+                [
+                    {
+                        "record_id": "failed-source",
+                        "status": "source_unavailable",
+                        "source_count": 2,
+                    },
+                ]
+            )
+            coordinator = BatchUploadCoordinator(
+                root,
+                pixel_queue=pixel,
+                recover_pending=False,
+            )
+
+            coordinator.begin(FakeImporter(), {
+                "batch_id": batch_id,
+                "results_dir": results,
+                "_gptphone_upload_targets": {"pixel": True, "nv": False},
+            })
+            deadline = time.time() + 2
+            while time.time() < deadline and coordinator.records()[0]["status"] != "queue_failed":
+                time.sleep(0.01)
+
+            manifest = coordinator.records()[0]
+            state = manifest["platforms"]["pixel"]
+            self.assertEqual(manifest["status"], "queue_failed")
+            self.assertEqual((state["accepted"], state["skipped"], state["failed"]), (0, 0, 2))
+
+    def test_mixed_record_list_aggregates_each_status_by_source_count(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            results = root / "results"
+            results.mkdir()
+            batch_id = "batch-record-mixed"
+            for index in range(6):
+                task_id = f"T{index + 1:03d}"
+                (results / f"{task_id}.json").write_text(
+                    json.dumps(result_document(task_id, batch_id, "success")),
+                    encoding="utf-8",
+                )
+            nv = RecordListQueue(
+                [
+                    {"record_id": "queued", "status": "queued", "source_count": 2},
+                    {"record_id": "skipped", "status": "skipped", "source_count": 1},
+                    {
+                        "record_id": "unavailable",
+                        "status": "source_unavailable",
+                        "source_count": 1,
+                    },
+                    {"record_id": "failed", "status": "failed", "source_count": 2},
+                ]
+            )
+            coordinator = BatchUploadCoordinator(
+                root,
+                nv_queue=nv,
+                recover_pending=False,
+            )
+
+            coordinator.begin(FakeImporter(), {
+                "batch_id": batch_id,
+                "results_dir": results,
+                "_gptphone_upload_targets": {"pixel": False, "nv": True},
+            })
+            deadline = time.time() + 2
+            while time.time() < deadline and coordinator.records()[0]["status"] != "queue_failed":
+                time.sleep(0.01)
+
+            state = coordinator.records()[0]["platforms"]["nv"]
+            self.assertEqual((state["accepted"], state["skipped"], state["failed"]), (2, 1, 3))
+            self.assertEqual(state["attempt_history"][0]["status"], "queue_failed")
 
     def test_restart_recovers_selected_platforms_from_relative_result_paths(self):
         with tempfile.TemporaryDirectory() as temporary:

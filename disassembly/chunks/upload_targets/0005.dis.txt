@@ -1,0 +1,800 @@
+              92 LOAD_FAST            (match)
+              94 CALL                 (1 positional)
+             102 COPY                 1
+             104 TO_BOOL
+             112 POP_JUMP_IF_TRUE     (to 120)
+             116 POP_TOP
+             118 LOAD_FAST            (auth_file)
+
+383:     >>  120 LOAD_GLOBAL          (NULL + _cpa_file_email)
+             130 LOAD_FAST            (match)
+             132 CALL                 (1 positional)
+             140 COPY                 1
+             142 TO_BOOL
+             150 POP_JUMP_IF_TRUE     (to 158)
+             154 POP_TOP
+             156 LOAD_FAST            (email)
+
+384:     >>  158 LOAD_FAST            (match)
+
+379:         160 LOAD_CONST           (('ok', 'status', 'auth_file', 'email', 'file'))
+             162 BUILD_CONST_KEY_MAP  5
+             164 RETURN_VALUE
+
+
+# Method Name:       _cpa_auth_dir
+# Filename:          upload_targets.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        388
+# Constants:
+#    0: None
+#    1: 'auth_dir'
+#    2: ''
+#    3: 'nt'
+#    4: 'ProgramData'
+#    5: 'C:\\ProgramData'
+#    6: 'CLIProxyAPI'
+#    7: 'auths'
+#    8: 'CLIPROXYAPI_AUTH_DIR'
+#    9: '/var/lib/cliproxyapi/auths'
+# Names:
+#    0: str
+#    1: cpa_config
+#    2: get
+#    3: strip
+#    4: Path
+#    5: os
+#    6: name
+#    7: environ
+# Varnames:
+#	config, raw
+# Positional arguments:
+#	config
+# Local variables:
+#    1: raw
+388:           0 RESUME               0
+
+389:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_GLOBAL          (NULL + cpa_config)
+              22 LOAD_FAST            (config)
+              24 CALL                 (1 positional)
+              32 LOAD_ATTR            (NULL|self + get)
+              52 LOAD_CONST           ("auth_dir")
+              54 CALL                 (1 positional)
+              62 COPY                 1
+              64 TO_BOOL
+              72 POP_JUMP_IF_TRUE     (to 80)
+              76 POP_TOP
+              78 LOAD_CONST           ("")
+         >>   80 CALL                 (1 positional)
+              88 LOAD_ATTR            (NULL|self + strip)
+             108 CALL                 (0 positional)
+             116 STORE_FAST           (raw)
+
+390:         118 LOAD_FAST            (raw)
+             120 TO_BOOL
+             128 POP_JUMP_IF_FALSE    (to 154)
+
+391:         132 LOAD_GLOBAL          (NULL + Path)
+             142 LOAD_FAST            (raw)
+             144 CALL                 (1 positional)
+             152 RETURN_VALUE
+
+392:     >>  154 LOAD_GLOBAL          (os)
+             164 LOAD_ATTR            (name)
+             184 LOAD_CONST           ("nt")
+             186 COMPARE_OP           (==)
+             190 POP_JUMP_IF_FALSE    (to 288)
+
+393:         194 LOAD_GLOBAL          (NULL + Path)
+             204 LOAD_GLOBAL          (os)
+             214 LOAD_ATTR            (environ)
+             234 LOAD_ATTR            (NULL|self + get)
+             254 LOAD_CONST           ("ProgramData")
+             256 LOAD_CONST           ("C:\\ProgramData")
+             258 CALL                 (2 positional)
+             266 CALL                 (1 positional)
+             274 LOAD_CONST           ("CLIProxyAPI")
+             276 BINARY_OP            (/)
+             280 LOAD_CONST           ("auths")
+             282 BINARY_OP            (/)
+             286 RETURN_VALUE
+
+394:     >>  288 LOAD_GLOBAL          (NULL + Path)
+             298 LOAD_GLOBAL          (os)
+             308 LOAD_ATTR            (environ)
+             328 LOAD_ATTR            (NULL|self + get)
+             348 LOAD_CONST           ("CLIPROXYAPI_AUTH_DIR")
+             350 LOAD_CONST           ("/var/lib/cliproxyapi/auths")
+             352 CALL                 (2 positional)
+             360 CALL                 (1 positional)
+             368 RETURN_VALUE
+
+
+# Method Name:       _safe_cpa_name
+# Filename:          upload_targets.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        397
+# Constants:
+#    0: None
+#    1: ''
+#    2: '[^a-z0-9@._+-]+'
+#    3: '_'
+#    4: '._'
+#    5: 'unknown'
+# Names:
+#    0: str
+#    1: strip
+#    2: lower
+#    3: re
+#    4: sub
+# Varnames:
+#	value, text
+# Positional arguments:
+#	value
+# Local variables:
+#    1: text
+397:           0 RESUME               0
+
+398:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (value)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + strip)
+              60 CALL                 (0 positional)
+              68 LOAD_ATTR            (NULL|self + lower)
+              88 CALL                 (0 positional)
+              96 STORE_FAST           (text)
+
+399:          98 LOAD_GLOBAL          (re)
+             108 LOAD_ATTR            (sub)
+             128 PUSH_NULL
+             130 LOAD_CONST           ("[^a-z0-9@._+-]+")
+             132 LOAD_CONST           ("_")
+             134 LOAD_FAST            (text)
+             136 CALL                 (3 positional)
+             144 STORE_FAST           (text)
+
+400:         146 LOAD_FAST            (text)
+             148 LOAD_ATTR            (NULL|self + strip)
+             168 LOAD_CONST           ("._")
+             170 CALL                 (1 positional)
+             178 COPY                 1
+             180 TO_BOOL
+             188 POP_JUMP_IF_TRUE     (to 196)
+             192 POP_TOP
+             194 LOAD_CONST           ("unknown")
+         >>  196 RETURN_VALUE
+
+
+# Method Name:       write_cpa_auth_file_from_tokens
+# Filename:          upload_targets.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  14
+# Stack size:        16
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        403
+# Constants:
+#    0: 'Write a CLIProxyAPI Codex auth file from an already exchanged RT bundle.'
+#    1: 'email'
+#    2: 'bind_email'
+#    3: ''
+#    4: False
+#    5: 'failed'
+#    6: 'CPA auth file missing email'
+#    7: ('ok', 'status', 'error')
+#    8: ('id_token', 'access_token', 'refresh_token')
+#    9: 'CPA auth file missing: '
+#   10: ', '
+#   11: 'account_id'
+#   12: 'chatgpt_account_id'
+#   13: 'CPA auth file missing account_id'
+#   14: 'chatgpt_plan_type'
+#   15: 'plan_type'
+#   16: 'free'
+#   17: True
+#   18: ('parents', 'exist_ok')
+#   19: 'codex-'
+#   20: '-'
+#   21: '.json'
+#   22: 'access_token'
+#   23: 'id_token'
+#   24: '%Y-%m-%dT%H:%M:%S%z'
+#   25: 'refresh_token'
+#   26: 'codex'
+#   27: ('access_token', 'account_id', 'email', 'expired', 'id_token', 'last_refresh', 'refresh_token', 'type')
+#   28: '.tmp'
+#   29: 2
+#   30: ('ensure_ascii', 'indent')
+#   31: 'utf-8'
+#   32: ('encoding',)
+#   33: 'CPA auth 文件已写入: '
+#   34: ('auth_file', 'email')
+#   35: 'ok'
+#   36: 'CPA auth file written but management endpoint did not confirm'
+#   37: ('ok', 'status', 'error', 'auth_file', 'path', 'cpa_remote_verified')
+#   38: 'uploaded'
+#   39: 'auth_file'
+#   40: 'chatgpt_account_user_id'
+#   41: 'chatgpt_user_id'
+#   42: 'chatgpt_auth_user_id'
+#   43: ('ok', 'status', 'auth_file', 'email', 'path', 'cpa_ready', 'cpa_remote_verified', 'chatgpt_account_id', 'account_id', 'chatgpt_account_user_id', 'chatgpt_user_id', 'chatgpt_plan_type', 'chatgpt_auth_user_id')
+# Names:
+#    0: str
+#    1: get
+#    2: strip
+#    3: lower
+#    4: join
+#    5: _cpa_auth_dir
+#    6: mkdir
+#    7: _safe_cpa_name
+#    8: time
+#    9: strftime
+#   10: with_suffix
+#   11: suffix
+#   12: write_text
+#   13: json
+#   14: dumps
+#   15: replace
+#   16: confirm_cpa_auth_file
+# Varnames:
+#	config, credentials, log_fn, email, key, missing, account_id, plan, auth_dir, file_name, path, payload, tmp, confirmed
+# Positional arguments:
+#	config, credentials
+# Local variables:
+#    2: log_fn
+#    3: email
+#    4: key
+#    5: missing
+#    6: account_id
+#    7: plan
+#    8: auth_dir
+#    9: file_name
+#   10: path
+#   11: payload
+#   12: tmp
+#   13: confirmed
+403:           0 RESUME               0
+
+410:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (credentials)
+              14 LOAD_ATTR            (NULL|self + get)
+              34 LOAD_CONST           ("email")
+              36 CALL                 (1 positional)
+              44 COPY                 1
+              46 TO_BOOL
+              54 POP_JUMP_IF_TRUE     (to 110)
+              58 POP_TOP
+              60 LOAD_FAST            (credentials)
+              62 LOAD_ATTR            (NULL|self + get)
+              82 LOAD_CONST           ("bind_email")
+              84 CALL                 (1 positional)
+              92 COPY                 1
+              94 TO_BOOL
+             102 POP_JUMP_IF_TRUE     (to 110)
+             106 POP_TOP
+             108 LOAD_CONST           ("")
+         >>  110 CALL                 (1 positional)
+             118 LOAD_ATTR            (NULL|self + strip)
+             138 CALL                 (0 positional)
+             146 LOAD_ATTR            (NULL|self + lower)
+             166 CALL                 (0 positional)
+             174 STORE_FAST           (email)
+
+411:         176 LOAD_FAST            (email)
+             178 TO_BOOL
+             186 POP_JUMP_IF_TRUE     (to 202)
+
+412:         190 LOAD_CONST           (False)
+             192 LOAD_CONST           ("failed")
+             194 LOAD_CONST           ("CPA auth file missing email")
+             196 LOAD_CONST           (('ok', 'status', 'error'))
+             198 BUILD_CONST_KEY_MAP  3
+             200 RETURN_VALUE
+
+413:     >>  202 LOAD_CONST           (('id_token', 'access_token', 'refresh_token'))
+             204 GET_ITER
+             206 LOAD_FAST_AND_CLEAR  (key)
+             208 SWAP                 (TOS <-> TOS1)
+             210 BUILD_LIST           0
+             212 SWAP                 (TOS <-> TOS1)
+             214 GET_ITER
+             216 FOR_ITER             (to 342)
+             220 STORE_FAST           (key)
+             222 LOAD_GLOBAL          (NULL + str)
+             232 LOAD_FAST            (credentials)
+             234 LOAD_ATTR            (NULL|self + get)
+             254 LOAD_FAST            (key)
+             256 CALL                 (1 positional)
+             264 COPY                 1
+             266 TO_BOOL
+             274 POP_JUMP_IF_TRUE     (to 282)
+             278 POP_TOP
+             280 LOAD_CONST           ("")
+         >>  282 CALL                 (1 positional)
+             290 LOAD_ATTR            (NULL|self + strip)
+             310 CALL                 (0 positional)
+             318 TO_BOOL
+             326 POP_JUMP_IF_FALSE    (to 334)
+             330 JUMP_BACKWARD        (to 216)
+         >>  334 LOAD_FAST            (key)
+             336 LIST_APPEND          2
+             338 JUMP_BACKWARD        (to 216)
+         >>  342 END_FOR
+             344 POP_TOP
+             346 STORE_FAST           (missing)
+             348 STORE_FAST           (key)
+
+414:         350 LOAD_FAST            (missing)
+             352 TO_BOOL
+             360 POP_JUMP_IF_FALSE    (to 412)
+
+415:         364 LOAD_CONST           (False)
+             366 LOAD_CONST           ("failed")
+             368 LOAD_CONST           ("CPA auth file missing: ")
+             370 LOAD_CONST           (", ")
+             372 LOAD_ATTR            (NULL|self + join)
+             392 LOAD_FAST            (missing)
+             394 CALL                 (1 positional)
+             402 BINARY_OP            (+)
+             406 LOAD_CONST           (('ok', 'status', 'error'))
+             408 BUILD_CONST_KEY_MAP  3
+             410 RETURN_VALUE
+
+416:     >>  412 LOAD_GLOBAL          (NULL + str)
+
+417:         422 LOAD_FAST            (credentials)
+             424 LOAD_ATTR            (NULL|self + get)
+             444 LOAD_CONST           ("account_id")
+             446 CALL                 (1 positional)
+             454 COPY                 1
+             456 TO_BOOL
+             464 POP_JUMP_IF_TRUE     (to 520)
+         >>  468 POP_TOP
+
+418:         470 LOAD_FAST            (credentials)
+             472 LOAD_ATTR            (NULL|self + get)
+             492 LOAD_CONST           ("chatgpt_account_id")
+             494 CALL                 (1 positional)
+
+417:         502 COPY                 1
+             504 TO_BOOL
+             512 POP_JUMP_IF_TRUE     (to 520)
+             516 POP_TOP
+
+419:         518 LOAD_CONST           ("")
+
+416:     >>  520 CALL                 (1 positional)
+
+420:         528 LOAD_ATTR            (NULL|self + strip)
+             548 CALL                 (0 positional)
+
+416:         556 STORE_FAST           (account_id)
+
+421:         558 LOAD_FAST            (account_id)
+             560 TO_BOOL
+             568 POP_JUMP_IF_TRUE     (to 584)
+
+422:         572 LOAD_CONST           (False)
+             574 LOAD_CONST           ("failed")
+             576 LOAD_CONST           ("CPA auth file missing account_id")
+             578 LOAD_CONST           (('ok', 'status', 'error'))
+             580 BUILD_CONST_KEY_MAP  3
+             582 RETURN_VALUE
+
+423:     >>  584 LOAD_GLOBAL          (NULL + str)
+             594 LOAD_FAST            (credentials)
+             596 LOAD_ATTR            (NULL|self + get)
+             616 LOAD_CONST           ("chatgpt_plan_type")
+             618 CALL                 (1 positional)
+             626 COPY                 1
+             628 TO_BOOL
+             636 POP_JUMP_IF_TRUE     (to 692)
+             640 POP_TOP
+             642 LOAD_FAST            (credentials)
+             644 LOAD_ATTR            (NULL|self + get)
+             664 LOAD_CONST           ("plan_type")
+             666 CALL                 (1 positional)
+             674 COPY                 1
+             676 TO_BOOL
+             684 POP_JUMP_IF_TRUE     (to 692)
+             688 POP_TOP
+             690 LOAD_CONST           ("free")
+         >>  692 CALL                 (1 positional)
+             700 LOAD_ATTR            (NULL|self + strip)
+             720 CALL                 (0 positional)
+             728 LOAD_ATTR            (NULL|self + lower)
+             748 CALL                 (0 positional)
+             756 COPY                 1
+             758 TO_BOOL
+             766 POP_JUMP_IF_TRUE     (to 774)
+             770 POP_TOP
+             772 LOAD_CONST           ("free")
+         >>  774 STORE_FAST           (plan)
+
+424:         776 LOAD_GLOBAL          (NULL + _cpa_auth_dir)
+             786 LOAD_FAST            (config)
+             788 CALL                 (1 positional)
+             796 STORE_FAST           (auth_dir)
+
+425:         798 LOAD_FAST            (auth_dir)
+             800 LOAD_ATTR            (NULL|self + mkdir)
+             820 LOAD_CONST           (True)
+             822 LOAD_CONST           (True)
+             824 LOAD_CONST           (('parents', 'exist_ok'))
+             826 CALL_KW              2
+             828 POP_TOP
+
+426:         830 LOAD_CONST           ("codex-")
+             832 LOAD_GLOBAL          (NULL + _safe_cpa_name)
+             842 LOAD_FAST            (email)
+             844 CALL                 (1 positional)
+             852 FORMAT_SIMPLE
+             854 LOAD_CONST           ("-")
+             856 LOAD_GLOBAL          (NULL + _safe_cpa_name)
+             866 LOAD_FAST            (plan)
+             868 CALL                 (1 positional)
+             876 FORMAT_SIMPLE
+             878 LOAD_CONST           (".json")
+             880 BUILD_STRING         5
+             882 STORE_FAST           (file_name)
+
+427:         884 LOAD_FAST_LOAD_FAST  (auth_dir, file_name)
+             886 BINARY_OP            (/)
+             890 STORE_FAST           (path)
+
+429:         892 LOAD_GLOBAL          (NULL + str)
+             902 LOAD_FAST            (credentials)
+             904 LOAD_ATTR            (NULL|self + get)
+             924 LOAD_CONST           ("access_token")
+             926 CALL                 (1 positional)
+             934 COPY                 1
+             936 TO_BOOL
+             944 POP_JUMP_IF_TRUE     (to 952)
+             948 POP_TOP
+             950 LOAD_CONST           ("")
+         >>  952 CALL                 (1 positional)
+
+430:         960 LOAD_FAST            (account_id)
+
+431:         962 LOAD_FAST            (email)
+
+432:         964 LOAD_CONST           (False)
+
+433:         966 LOAD_GLOBAL          (NULL + str)
+             976 LOAD_FAST            (credentials)
+             978 LOAD_ATTR            (NULL|self + get)
+             998 LOAD_CONST           ("id_token")
+            1000 CALL                 (1 positional)
+            1008 COPY                 1
+            1010 TO_BOOL
+            1018 POP_JUMP_IF_TRUE     (to 1026)
+            1022 POP_TOP
+            1024 LOAD_CONST           ("")
+         >> 1026 CALL                 (1 positional)
+
+434:        1034 LOAD_GLOBAL          (time)
+            1044 LOAD_ATTR            (strftime)
+            1064 PUSH_NULL
+            1066 LOAD_CONST           ("%Y-%m-%dT%H:%M:%S%z")
+            1068 CALL                 (1 positional)
+
+435:        1076 LOAD_GLOBAL          (NULL + str)
+            1086 LOAD_FAST            (credentials)
+            1088 LOAD_ATTR            (NULL|self + get)
+            1108 LOAD_CONST           ("refresh_token")
+            1110 CALL                 (1 positional)
+            1118 COPY                 1
+            1120 TO_BOOL
+            1128 POP_JUMP_IF_TRUE     (to 1136)
+            1132 POP_TOP
+            1134 LOAD_CONST           ("")
+         >> 1136 CALL                 (1 positional)
+
+436:        1144 LOAD_CONST           ("codex")
+
+428:        1146 LOAD_CONST           (('access_token', 'account_id', 'email', 'expired', 'id_token', 'last_refresh', 'refresh_token', 'type'))
+            1148 BUILD_CONST_KEY_MAP  8
+            1150 STORE_FAST           (payload)
+
+438:        1152 LOAD_FAST            (path)
+            1154 LOAD_ATTR            (NULL|self + with_suffix)
+            1174 LOAD_FAST            (path)
+            1176 LOAD_ATTR            (suffix)
+            1196 LOAD_CONST           (".tmp")
+            1198 BINARY_OP            (+)
+            1202 CALL                 (1 positional)
+            1210 STORE_FAST           (tmp)
+
+439:        1212 LOAD_FAST            (tmp)
+            1214 LOAD_ATTR            (NULL|self + write_text)
+            1234 LOAD_GLOBAL          (json)
+            1244 LOAD_ATTR            (dumps)
+            1264 PUSH_NULL
+            1266 LOAD_FAST            (payload)
+            1268 LOAD_CONST           (False)
+            1270 LOAD_CONST           (2)
+            1272 LOAD_CONST           (('ensure_ascii', 'indent'))
+            1274 CALL_KW              3
+            1276 LOAD_CONST           ("utf-8")
+            1278 LOAD_CONST           (('encoding',))
+            1280 CALL_KW              2
+            1282 POP_TOP
+
+440:        1284 LOAD_FAST            (tmp)
+            1286 LOAD_ATTR            (NULL|self + replace)
+            1306 LOAD_FAST            (path)
+            1308 CALL                 (1 positional)
+            1316 POP_TOP
+
+441:        1318 LOAD_FAST            (log_fn)
+            1320 TO_BOOL
+            1328 POP_JUMP_IF_FALSE    (to 1354)
+
+442:        1332 LOAD_FAST            (log_fn)
+            1334 PUSH_NULL
+            1336 LOAD_CONST           ("CPA auth 文件已写入: ")
+            1338 LOAD_FAST            (path)
+            1340 FORMAT_SIMPLE
+            1342 BUILD_STRING         2
+            1344 CALL                 (1 positional)
+            1352 POP_TOP
+
+443:     >> 1354 LOAD_GLOBAL          (NULL + confirm_cpa_auth_file)
+            1364 LOAD_FAST_LOAD_FAST  (config, file_name)
+            1366 LOAD_FAST            (email)
+            1368 LOAD_CONST           (('auth_file', 'email'))
+            1370 CALL_KW              3
+            1372 STORE_FAST           (confirmed)
+
+444:        1374 LOAD_FAST            (confirmed)
+            1376 LOAD_ATTR            (NULL|self + get)
+            1396 LOAD_CONST           ("ok")
+            1398 CALL                 (1 positional)
+            1406 TO_BOOL
+            1414 POP_JUMP_IF_TRUE     (to 1454)
+
+446:        1418 LOAD_CONST           (False)
+
+447:        1420 LOAD_CONST           ("failed")
+
+448:        1422 LOAD_CONST           ("CPA auth file written but management endpoint did not confirm")
+
+449:        1424 LOAD_FAST            (file_name)
+
+450:        1426 LOAD_GLOBAL          (NULL + str)
+            1436 LOAD_FAST            (path)
+            1438 CALL                 (1 positional)
+
+451:        1446 LOAD_CONST           (False)
+
+445:        1448 LOAD_CONST           (('ok', 'status', 'error', 'auth_file', 'path', 'cpa_remote_verified'))
+            1450 BUILD_CONST_KEY_MAP  6
+            1452 RETURN_VALUE
+
+454:     >> 1454 LOAD_CONST           (True)
+
+455:        1456 LOAD_CONST           ("uploaded")
+
+456:        1458 LOAD_FAST            (confirmed)
+            1460 LOAD_ATTR            (NULL|self + get)
+            1480 LOAD_CONST           ("auth_file")
+            1482 CALL                 (1 positional)
+            1490 COPY                 1
+            1492 TO_BOOL
+            1500 POP_JUMP_IF_TRUE     (to 1508)
+            1504 POP_TOP
+            1506 LOAD_FAST            (file_name)
+
+457:     >> 1508 LOAD_FAST            (confirmed)
+            1510 LOAD_ATTR            (NULL|self + get)
+            1530 LOAD_CONST           ("email")
+            1532 CALL                 (1 positional)
+            1540 COPY                 1
+            1542 TO_BOOL
+            1550 POP_JUMP_IF_TRUE     (to 1558)
+            1554 POP_TOP
+            1556 LOAD_FAST            (email)
+
+458:     >> 1558 LOAD_GLOBAL          (NULL + str)
+            1568 LOAD_FAST            (path)
+            1570 CALL                 (1 positional)
+
+459:        1578 LOAD_CONST           (True)
+
+460:        1580 LOAD_CONST           (True)
+
+461:        1582 LOAD_FAST            (credentials)
+            1584 LOAD_ATTR            (NULL|self + get)
+            1604 LOAD_CONST           ("chatgpt_account_id")
+            1606 CALL                 (1 positional)
+            1614 COPY                 1
+            1616 TO_BOOL
+            1624 POP_JUMP_IF_TRUE     (to 1632)
+            1628 POP_TOP
+            1630 LOAD_CONST           ("")
+
+462:     >> 1632 LOAD_FAST            (account_id)
+
+463:        1634 LOAD_FAST            (credentials)
+            1636 LOAD_ATTR            (NULL|self + get)
+            1656 LOAD_CONST           ("chatgpt_account_user_id")
+            1658 LOAD_CONST           ("")
+            1660 CALL                 (2 positional)
+
+464:        1668 LOAD_FAST            (credentials)
+            1670 LOAD_ATTR            (NULL|self + get)
+            1690 LOAD_CONST           ("chatgpt_user_id")
+            1692 LOAD_CONST           ("")
+            1694 CALL                 (2 positional)
+
+465:        1702 LOAD_FAST            (credentials)
+            1704 LOAD_ATTR            (NULL|self + get)
+            1724 LOAD_CONST           ("chatgpt_plan_type")
+            1726 CALL                 (1 positional)
+            1734 COPY                 1
+            1736 TO_BOOL
+            1744 POP_JUMP_IF_TRUE     (to 1752)
+            1748 POP_TOP
+            1750 LOAD_FAST            (plan)
+
+466:     >> 1752 LOAD_FAST            (credentials)
+            1754 LOAD_ATTR            (NULL|self + get)
+            1774 LOAD_CONST           ("chatgpt_auth_user_id")
+            1776 LOAD_CONST           ("")
+            1778 CALL                 (2 positional)
+
+453:        1786 LOAD_CONST           (('ok', 'status', 'auth_file', 'email', 'path', 'cpa_ready', 'cpa_remote_verified', 'chatgpt_account_id', 'account_id', 'chatgpt_account_user_id', 'chatgpt_user_id', 'chatgpt_plan_type', 'chatgpt_auth_user_id'))
+            1788 BUILD_CONST_KEY_MAP  13
+            1790 RETURN_VALUE
+         >> 1792 SWAP                 (TOS <-> TOS1)
+            1794 POP_TOP
+
+413:        1796 SWAP                 (TOS <-> TOS1)
+            1798 STORE_FAST           (key)
+            1800 RERAISE              0
+
+ExceptionTable:
+  210 to 324 -> 1792 [2]
+  334 to 344 -> 1792 [2]
+
+# Method Name:       complete_cpa_upload
+# Filename:          upload_targets.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 2
+# Number of locals:  15
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        470
+# Constants:
+#    0: 'Finish CPA upload after the OAuth authorization code is captured.'
+#    1: <Code311 code object log at 0x10984e250, file upload_targets.py>, line 479
+#    2: 'name'
+#    3: 'file'
+#    4: 'filename'
+#    5: ''
+#    6: 'CPA callback: 提交授权码到 CLIProxyAPI ...'
+#    7: 'status'
+#    8: 'error'
+#    9: False
+#   10: 'failed'
+#   11: 'CPA auth import failed'
+#   12: ('ok', 'status', 'error')
+#   13: 'timeout'
+#   14: 'CPA auth import timeout'
+#   15: 0
+#   16: ('auth_file', 'email')
+#   17: 'ok'
+#   18: 'CPA auth import completed but management endpoint did not confirm auth-file'
+#   19: ('ok', 'status', 'error', 'auth_file', 'file_count', 'cpa_remote_verified')
+#   20: 'CPA auth 文件已新增: '
+#   21: True
+#   22: 'uploaded'
+#   23: 'auth_file'
+#   24: ('ok', 'status', 'auth_file', 'file_count', 'cpa_remote_verified')
+#   25: ('message', 'str', 'return', 'None')
+# Names:
+#    0: list
+#    1: list_cpa_auth_files
+#    2: str
+#    3: get
+#    4: submit_cpa_oauth_code
+#    5: poll_cpa_auth_status
+#    6: lower
+#    7: append
+#    8: confirm_cpa_auth_file
+#    9: len
+# Varnames:
+#	config, code, state, email, log_fn, log, before, item, before_names, status, after, new_files, name, auth_file, confirmed
+# Positional arguments:
+#	config, code, state
+# Local variables:
+#    3: email
+#    4: log_fn
+#    5: log
+#    6: before
+#    7: item
+#    8: before_names
+#    9: status
+#   10: after
+#   11: new_files
+#   12: name
+#   13: auth_file
+#   14: confirmed
+# Cell variables:
+#    0: log_fn
+               0 MAKE_CELL            (log_fn)
+
+470:           2 RESUME               0
+
+479:           4 LOAD_CONST           (('message', 'str', 'return', 'None'))
+               6 LOAD_FAST            (log_fn)
+               8 BUILD_TUPLE          1
+              10 LOAD_CONST           (<Code311 code object log at 0x10984e250, file upload_targets.py>, line 479)
+              12 MAKE_FUNCTION
+              14 SET_FUNCTION_ATTRIBUTE 8
+              16 SET_FUNCTION_ATTRIBUTE 4
+              18 STORE_FAST           (log)
+
+483:          20 LOAD_GLOBAL          (NULL + list)
+              30 LOAD_GLOBAL          (NULL + list_cpa_auth_files)
+              40 LOAD_FAST            (config)
+              42 CALL                 (1 positional)
+              50 CALL                 (1 positional)
+              58 STORE_FAST           (before)
+
+484:          60 LOAD_FAST            (before)
+              62 GET_ITER
+              64 LOAD_FAST_AND_CLEAR  (item)
+              66 SWAP                 (TOS <-> TOS1)
+              68 BUILD_SET            0
+              70 SWAP                 (TOS <-> TOS1)
+              72 GET_ITER
+              74 FOR_ITER             (to 250)
+              78 STORE_FAST           (item)
+              80 LOAD_GLOBAL          (NULL + str)
+              90 LOAD_FAST            (item)
+              92 LOAD_ATTR            (NULL|self + get)
+             112 LOAD_CONST           ("name")
+             114 CALL                 (1 positional)
+             122 COPY                 1
+             124 TO_BOOL
+             132 POP_JUMP_IF_TRUE     (to 236)
+             136 POP_TOP
+             138 LOAD_FAST            (item)
+             140 LOAD_ATTR            (NULL|self + get)
+             160 LOAD_CONST           ("file")
+             162 CALL                 (1 positional)
+             170 COPY                 1
+             172 TO_BOOL
+             180 POP_JUMP_IF_TRUE     (to 236)
+             184 POP_TOP
+             186 LOAD_FAST            (item)
+             188 LOAD_ATTR            (NULL|self + get)
+             208 LOAD_CONST           ("filename")
+             210 CALL                 (1 positional)
+             218 COPY                 1
+             220 TO_BOOL
+             228 POP_JUMP_IF_TRUE     (to 236)
+             232 POP_TOP
+             234 LOAD_CONST           ("")
+         >>  236 CALL                 (1 positional)
+             244 SET_ADD              2
+             246 JUMP_BACKWARD        (to 74)

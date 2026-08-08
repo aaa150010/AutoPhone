@@ -1,0 +1,800 @@
+
+1041:         394 LOAD_CONST           (False)
+
+1042:         396 LOAD_FAST            (entry)
+             398 LOAD_ATTR            (oauth_client_id)
+
+1043:         418 LOAD_FAST            (entry)
+             420 LOAD_ATTR            (oauth_refresh_token)
+
+1044:         440 LOAD_GLOBAL          (NULL + email_proxy)
+             450 LOAD_FAST            (config)
+             452 CALL                 (1 positional)
+
+1038:         460 LOAD_CONST           (('verbose', 'oauth_client_id', 'oauth_refresh_token', 'proxy'))
+             462 CALL_KW              6
+             464 LOAD_FAST            (self)
+             466 STORE_ATTR           (poller)
+             476 RETURN_CONST         (None)
+
+
+# Method Name:       acquire_login_slot
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1047
+# Constants:
+#    0: None
+#    1: 'waiting_auto_email_slot'
+#    2: ('status', 'email')
+#    3: True
+#    4: 'email_login_started'
+#    5: '已获得邮箱验证码槽，开始 Outlook 邮箱登录: '
+#    6: 'info'
+# Names:
+#    0: phase_slot_acquired
+#    1: phase_gate
+#    2: state_fn
+#    3: task_id
+#    4: entry
+#    5: email
+#    6: acquire
+#    7: stop_event
+#    8: log_fn
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+1047:           0 RESUME               0
+
+1048:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (phase_slot_acquired)
+              24 TO_BOOL
+              32 POP_JUMP_IF_TRUE     (to 70)
+              36 LOAD_FAST            (self)
+              38 LOAD_ATTR            (phase_gate)
+              58 TO_BOOL
+              66 POP_JUMP_IF_TRUE     (to 72)
+
+1049:     >>   70 RETURN_CONST         (None)
+
+1050:     >>   72 LOAD_FAST            (self)
+              74 LOAD_ATTR            (state_fn)
+              94 TO_BOOL
+             102 POP_JUMP_IF_FALSE    (to 234)
+             106 LOAD_FAST            (self)
+             108 LOAD_ATTR            (task_id)
+             128 TO_BOOL
+             136 POP_JUMP_IF_FALSE    (to 234)
+
+1051:         140 LOAD_FAST            (self)
+             142 LOAD_ATTR            (NULL|self + state_fn)
+             162 LOAD_FAST            (self)
+             164 LOAD_ATTR            (task_id)
+             184 LOAD_CONST           ("waiting_auto_email_slot")
+             186 LOAD_FAST            (self)
+             188 LOAD_ATTR            (entry)
+             208 LOAD_ATTR            (email)
+             228 LOAD_CONST           (('status', 'email'))
+             230 CALL_KW              3
+             232 POP_TOP
+
+1052:     >>  234 LOAD_FAST            (self)
+             236 LOAD_ATTR            (phase_gate)
+             256 LOAD_ATTR            (NULL|self + acquire)
+             276 LOAD_FAST            (self)
+             278 LOAD_ATTR            (stop_event)
+             298 CALL                 (1 positional)
+             306 POP_TOP
+
+1053:         308 LOAD_CONST           (True)
+             310 LOAD_FAST            (self)
+             312 STORE_ATTR           (phase_slot_acquired)
+
+1054:         322 LOAD_FAST            (self)
+             324 LOAD_ATTR            (state_fn)
+             344 TO_BOOL
+             352 POP_JUMP_IF_FALSE    (to 484)
+             356 LOAD_FAST            (self)
+             358 LOAD_ATTR            (task_id)
+             378 TO_BOOL
+             386 POP_JUMP_IF_FALSE    (to 484)
+
+1055:         390 LOAD_FAST            (self)
+             392 LOAD_ATTR            (NULL|self + state_fn)
+             412 LOAD_FAST            (self)
+             414 LOAD_ATTR            (task_id)
+             434 LOAD_CONST           ("email_login_started")
+             436 LOAD_FAST            (self)
+             438 LOAD_ATTR            (entry)
+             458 LOAD_ATTR            (email)
+             478 LOAD_CONST           (('status', 'email'))
+             480 CALL_KW              3
+             482 POP_TOP
+
+1056:     >>  484 LOAD_FAST            (self)
+             486 LOAD_ATTR            (NULL|self + log_fn)
+             506 LOAD_CONST           ("已获得邮箱验证码槽，开始 Outlook 邮箱登录: ")
+             508 LOAD_FAST            (self)
+             510 LOAD_ATTR            (entry)
+             530 LOAD_ATTR            (email)
+             550 FORMAT_SIMPLE
+             552 BUILD_STRING         2
+             554 LOAD_CONST           ("info")
+             556 CALL                 (2 positional)
+             564 POP_TOP
+             566 RETURN_CONST         (None)
+
+
+# Method Name:       _release_login_slot
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        2
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1058
+# Constants:
+#    0: None
+#    1: False
+# Names:
+#    0: phase_slot_acquired
+#    1: phase_gate
+#    2: release
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+1058:           0 RESUME               0
+
+1059:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (phase_slot_acquired)
+              24 TO_BOOL
+              32 POP_JUMP_IF_FALSE    (to 122)
+              36 LOAD_FAST            (self)
+              38 LOAD_ATTR            (phase_gate)
+              58 TO_BOOL
+              66 POP_JUMP_IF_FALSE    (to 122)
+
+1060:          70 LOAD_FAST            (self)
+              72 LOAD_ATTR            (phase_gate)
+              92 LOAD_ATTR            (NULL|self + release)
+             112 CALL                 (0 positional)
+             120 POP_TOP
+
+1061:     >>  122 LOAD_CONST           (False)
+             124 LOAD_FAST            (self)
+             126 STORE_ATTR           (phase_slot_acquired)
+             136 RETURN_CONST         (None)
+
+
+# Method Name:       mark_sent
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1063
+# Constants:
+#    0: None
+#    1: 5
+#    2: '已进入邮箱验证码页，开始自动轮询: '
+#    3: 'info'
+# Names:
+#    0: time
+#    1: sent_at
+#    2: log_fn
+#    3: entry
+#    4: email
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+1063:           0 RESUME               0
+
+1066:           2 LOAD_GLOBAL          (time)
+              12 LOAD_ATTR            (time)
+              32 PUSH_NULL
+              34 CALL                 (0 positional)
+              42 LOAD_CONST           (5)
+              44 BINARY_OP            (-)
+              48 LOAD_FAST            (self)
+              50 STORE_ATTR           (sent_at)
+
+1067:          60 LOAD_FAST            (self)
+              62 LOAD_ATTR            (NULL|self + log_fn)
+              82 LOAD_CONST           ("已进入邮箱验证码页，开始自动轮询: ")
+              84 LOAD_FAST            (self)
+              86 LOAD_ATTR            (entry)
+             106 LOAD_ATTR            (email)
+             126 FORMAT_SIMPLE
+             128 BUILD_STRING         2
+             130 LOAD_CONST           ("info")
+             132 CALL                 (2 positional)
+             140 POP_TOP
+             142 RETURN_CONST         (None)
+
+
+# Method Name:       mark_verified
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        2
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1069
+# Constants:
+#    0: None
+# Names:
+#    0: _release_login_slot
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+1069:           0 RESUME               0
+
+1070:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _release_login_slot)
+              24 CALL                 (0 positional)
+              32 POP_TOP
+              34 RETURN_CONST         (None)
+
+
+# Method Name:       wait_code
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1072
+# Constants:
+#    0: None
+#    1: '邮箱任务与 Outlook 取码账号不匹配'
+#    2: ('timeout', 'interval', 'since_ts')
+#    3: 'last_error'
+#    4: ''
+#    5: 'mailbox_imap_error: '
+#    6: 300
+#    7: 'mailbox_code_timeout: Outlook mailbox returned no new code'
+#    8: '已收到 Outlook 邮箱验证码: '
+#    9: 'success'
+# Names:
+#    0: _clean
+#    1: lower
+#    2: entry
+#    3: email
+#    4: MailboxPoolError
+#    5: poller
+#    6: poll_code
+#    7: timeout
+#    8: interval
+#    9: sent_at
+#   10: getattr
+#   11: log_fn
+# Varnames:
+#	self, email, code, imap_error
+# Positional arguments:
+#	self, email
+# Local variables:
+#    2: code
+#    3: imap_error
+1072:           0 RESUME               0
+
+1073:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (email)
+              14 CALL                 (1 positional)
+              22 LOAD_ATTR            (NULL|self + lower)
+              42 CALL                 (0 positional)
+              50 LOAD_FAST            (self)
+              52 LOAD_ATTR            (entry)
+              72 LOAD_ATTR            (email)
+              92 COMPARE_OP           (!=)
+              96 POP_JUMP_IF_FALSE    (to 122)
+
+1074:         100 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             110 LOAD_CONST           ("邮箱任务与 Outlook 取码账号不匹配")
+             112 CALL                 (1 positional)
+             120 RAISE_VARARGS        (exception instance)
+
+1075:     >>  122 LOAD_FAST            (self)
+             124 LOAD_ATTR            (poller)
+             144 LOAD_ATTR            (NULL|self + poll_code)
+
+1076:         164 LOAD_FAST            (self)
+             166 LOAD_ATTR            (timeout)
+
+1077:         186 LOAD_FAST            (self)
+             188 LOAD_ATTR            (interval)
+
+1078:         208 LOAD_FAST            (self)
+             210 LOAD_ATTR            (sent_at)
+
+1075:         230 LOAD_CONST           (('timeout', 'interval', 'since_ts'))
+             232 CALL_KW              3
+             234 STORE_FAST           (code)
+
+1080:         236 LOAD_FAST            (code)
+             238 TO_BOOL
+             246 POP_JUMP_IF_TRUE     (to 384)
+
+1081:         250 LOAD_GLOBAL          (NULL + _clean)
+             260 LOAD_GLOBAL          (NULL + getattr)
+             270 LOAD_FAST            (self)
+             272 LOAD_ATTR            (poller)
+             292 LOAD_CONST           ("last_error")
+             294 LOAD_CONST           ("")
+             296 CALL                 (3 positional)
+             304 CALL                 (1 positional)
+             312 STORE_FAST           (imap_error)
+
+1082:         314 LOAD_FAST            (imap_error)
+             316 TO_BOOL
+             324 POP_JUMP_IF_FALSE    (to 362)
+
+1083:         328 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             338 LOAD_CONST           ("mailbox_imap_error: ")
+             340 LOAD_FAST            (imap_error)
+             342 LOAD_CONST           (None)
+             344 LOAD_CONST           (300)
+             346 BINARY_SLICE
+             348 FORMAT_SIMPLE
+             350 BUILD_STRING         2
+             352 CALL                 (1 positional)
+             360 RAISE_VARARGS        (exception instance)
+
+1084:     >>  362 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             372 LOAD_CONST           ("mailbox_code_timeout: Outlook mailbox returned no new code")
+             374 CALL                 (1 positional)
+             382 RAISE_VARARGS        (exception instance)
+
+1085:     >>  384 LOAD_FAST            (self)
+             386 LOAD_ATTR            (NULL|self + log_fn)
+             406 LOAD_CONST           ("已收到 Outlook 邮箱验证码: ")
+             408 LOAD_FAST            (self)
+             410 LOAD_ATTR            (entry)
+             430 LOAD_ATTR            (email)
+             450 FORMAT_SIMPLE
+             452 BUILD_STRING         2
+             454 LOAD_CONST           ("success")
+             456 CALL                 (2 positional)
+             464 POP_TOP
+
+1086:         466 LOAD_FAST            (code)
+             468 RETURN_VALUE
+
+
+# Method Name:       close
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        2
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1088
+# Constants:
+#    0: None
+# Names:
+#    0: _release_login_slot
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+1088:           0 RESUME               0
+
+1089:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _release_login_slot)
+              24 CALL                 (0 positional)
+              32 POP_TOP
+              34 RETURN_CONST         (None)
+
+
+# Method Name:       __init__
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1095
+# Constants:
+#    0: None
+#    1: 1
+#    2: 0
+# Names:
+#    0: max
+#    1: int
+#    2: limit
+#    3: threading
+#    4: BoundedSemaphore
+#    5: semaphore
+#    6: RLock
+#    7: lock
+#    8: active
+#    9: waiting
+# Varnames:
+#	self, limit
+# Positional arguments:
+#	self, limit
+1095:           0 RESUME               0
+
+1096:           2 LOAD_GLOBAL          (NULL + max)
+              12 LOAD_CONST           (1)
+              14 LOAD_GLOBAL          (NULL + int)
+              24 LOAD_FAST            (limit)
+              26 CALL                 (1 positional)
+              34 CALL                 (2 positional)
+              42 LOAD_FAST            (self)
+              44 STORE_ATTR           (limit)
+
+1097:          54 LOAD_GLOBAL          (threading)
+              64 LOAD_ATTR            (BoundedSemaphore)
+              84 PUSH_NULL
+              86 LOAD_FAST            (self)
+              88 LOAD_ATTR            (limit)
+             108 CALL                 (1 positional)
+             116 LOAD_FAST            (self)
+             118 STORE_ATTR           (semaphore)
+
+1098:         128 LOAD_GLOBAL          (threading)
+             138 LOAD_ATTR            (RLock)
+             158 PUSH_NULL
+             160 CALL                 (0 positional)
+             168 LOAD_FAST            (self)
+             170 STORE_ATTR           (lock)
+
+1099:         180 LOAD_CONST           (0)
+             182 LOAD_FAST            (self)
+             184 STORE_ATTR           (active)
+
+1100:         194 LOAD_CONST           (0)
+             196 LOAD_FAST            (self)
+             198 STORE_ATTR           (waiting)
+             208 RETURN_CONST         (None)
+
+
+# Method Name:       acquire
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1102
+# Constants:
+#    0: None
+#    1: 1
+#    2: 0.25
+#    3: ('timeout',)
+#    4: 0
+#    5: 'task_stopped'
+# Names:
+#    0: lock
+#    1: waiting
+#    2: is_set
+#    3: semaphore
+#    4: acquire
+#    5: active
+#    6: max
+#    7: MailboxPoolError
+# Varnames:
+#	self, stop_event
+# Positional arguments:
+#	self, stop_event
+1102:           0 RESUME               0
+
+1103:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (lock)
+              24 BEFORE_WITH
+              26 POP_TOP
+
+1104:          28 LOAD_FAST            (self)
+              30 COPY                 1
+              32 LOAD_ATTR            (waiting)
+              52 LOAD_CONST           (1)
+              54 BINARY_OP            (+=)
+              58 SWAP                 (TOS <-> TOS1)
+              60 STORE_ATTR           (waiting)
+
+1103:          70 LOAD_CONST           (None)
+              72 LOAD_CONST           (None)
+              74 LOAD_CONST           (None)
+              76 CALL                 (2 positional)
+              84 POP_TOP
+
+1105:          86 NOP
+
+1106:          88 LOAD_FAST            (stop_event)
+              90 LOAD_ATTR            (NULL|self + is_set)
+             110 CALL                 (0 positional)
+             118 TO_BOOL
+             126 POP_JUMP_IF_TRUE     (to 426)
+
+1107:         130 LOAD_FAST            (self)
+             132 LOAD_ATTR            (semaphore)
+             152 LOAD_ATTR            (NULL|self + acquire)
+             172 LOAD_CONST           (0.25)
+             174 LOAD_CONST           (('timeout',))
+             176 CALL_KW              1
+             178 TO_BOOL
+             186 POP_JUMP_IF_FALSE    (to 380)
+
+1108:         190 LOAD_FAST            (self)
+             192 LOAD_ATTR            (lock)
+             212 BEFORE_WITH
+             214 POP_TOP
+
+1109:         216 LOAD_FAST            (self)
+             218 COPY                 1
+             220 LOAD_ATTR            (active)
+             240 LOAD_CONST           (1)
+             242 BINARY_OP            (+=)
+             246 SWAP                 (TOS <-> TOS1)
+             248 STORE_ATTR           (active)
+
+1108:         258 LOAD_CONST           (None)
+             260 LOAD_CONST           (None)
+             262 LOAD_CONST           (None)
+             264 CALL                 (2 positional)
+             272 POP_TOP
+
+1110:         274 NOP
+
+1113:         276 LOAD_FAST            (self)
+             278 LOAD_ATTR            (lock)
+             298 BEFORE_WITH
+             300 POP_TOP
+
+1114:         302 LOAD_GLOBAL          (NULL + max)
+             312 LOAD_CONST           (0)
+             314 LOAD_FAST            (self)
+             316 LOAD_ATTR            (waiting)
+             336 LOAD_CONST           (1)
+             338 BINARY_OP            (-)
+             342 CALL                 (2 positional)
+             350 LOAD_FAST            (self)
+             352 STORE_ATTR           (waiting)
+
+1113:         362 LOAD_CONST           (None)
+             364 LOAD_CONST           (None)
+             366 LOAD_CONST           (None)
+             368 CALL                 (2 positional)
+             376 POP_TOP
+             378 RETURN_CONST         (None)
+
+1106:     >>  380 LOAD_FAST            (stop_event)
+             382 LOAD_ATTR            (NULL|self + is_set)
+             402 CALL                 (0 positional)
+             410 TO_BOOL
+             418 POP_JUMP_IF_TRUE     (to 426)
+             422 JUMP_BACKWARD        (to 130)
+
+1111:     >>  426 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             436 LOAD_CONST           ("task_stopped")
+             438 CALL                 (1 positional)
+             446 RAISE_VARARGS        (exception instance)
+
+1103:     >>  448 PUSH_EXC_INFO
+             450 WITH_EXCEPT_START    0
+             452 TO_BOOL
+             460 POP_JUMP_IF_TRUE     (to 466)
+             464 RERAISE              2
+         >>  466 POP_TOP
+             468 POP_EXCEPT
+             470 POP_TOP
+             472 POP_TOP
+             474 JUMP_BACKWARD_NO_INTERRUPT (to 86)
+         >>  476 COPY                 3
+             478 POP_EXCEPT
+             480 RERAISE              1
+
+1108:     >>  482 PUSH_EXC_INFO
+             484 WITH_EXCEPT_START    0
+             486 TO_BOOL
+             494 POP_JUMP_IF_TRUE     (to 500)
+             498 RERAISE              2
+         >>  500 POP_TOP
+             502 POP_EXCEPT
+             504 POP_TOP
+             506 POP_TOP
+             508 JUMP_BACKWARD_NO_INTERRUPT (to 274)
+         >>  510 COPY                 3
+             512 POP_EXCEPT
+             514 RERAISE              1
+
+1113:     >>  516 PUSH_EXC_INFO
+             518 WITH_EXCEPT_START    0
+             520 TO_BOOL
+             528 POP_JUMP_IF_TRUE     (to 534)
+             532 RERAISE              2
+         >>  534 POP_TOP
+             536 POP_EXCEPT
+             538 POP_TOP
+             540 POP_TOP
+             542 RETURN_CONST         (None)
+         >>  544 COPY                 3
+             546 POP_EXCEPT
+             548 RERAISE              1
+         >>  550 PUSH_EXC_INFO
+
+1113:         552 LOAD_FAST            (self)
+             554 LOAD_ATTR            (lock)
+             574 BEFORE_WITH
+             576 POP_TOP
+
+1114:         578 LOAD_GLOBAL          (NULL + max)
+             588 LOAD_CONST           (0)
+             590 LOAD_FAST            (self)
+             592 LOAD_ATTR            (waiting)
+             612 LOAD_CONST           (1)
+             614 BINARY_OP            (-)
+             618 CALL                 (2 positional)
+             626 LOAD_FAST            (self)
+             628 STORE_ATTR           (waiting)
+
+1113:         638 LOAD_CONST           (None)
+             640 LOAD_CONST           (None)
+             642 LOAD_CONST           (None)
+             644 CALL                 (2 positional)
+             652 POP_TOP
+             654 RERAISE              0
+         >>  656 PUSH_EXC_INFO
+             658 WITH_EXCEPT_START    0
+             660 TO_BOOL
+             668 POP_JUMP_IF_TRUE     (to 674)
+             672 RERAISE              2
+         >>  674 POP_TOP
+             676 POP_EXCEPT
+             678 POP_TOP
+             680 POP_TOP
+             682 RERAISE              0
+         >>  684 COPY                 3
+             686 POP_EXCEPT
+             688 RERAISE              1
+         >>  690 COPY                 3
+             692 POP_EXCEPT
+             694 RERAISE              1
+
+ExceptionTable:
+  26 to 68 -> 448 [1] lasti
+  88 to 212 -> 550 [0]
+  214 to 256 -> 482 [1] lasti
+  258 to 272 -> 550 [0]
+  300 to 360 -> 516 [1] lasti
+  380 to 420 -> 550 [0]
+  426 to 446 -> 550 [0]
+  448 to 466 -> 476 [3] lasti
+  482 to 500 -> 510 [3] lasti
+  502 to 514 -> 550 [0]
+  516 to 534 -> 544 [3] lasti
+  550 to 574 -> 690 [1] lasti
+  576 to 636 -> 656 [3] lasti
+  638 to 654 -> 690 [1] lasti
+  656 to 674 -> 684 [5] lasti
+  676 to 688 -> 690 [1] lasti
+
+# Method Name:       release
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1116
+# Constants:
+#    0: None
+#    1: 0
+#    2: 1
+# Names:
+#    0: lock
+#    1: max
+#    2: active
+#    3: semaphore
+#    4: release
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+1116:           0 RESUME               0
+
+1117:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (lock)
+              24 BEFORE_WITH
+              26 POP_TOP
+
+1118:          28 LOAD_GLOBAL          (NULL + max)
+              38 LOAD_CONST           (0)
+              40 LOAD_FAST            (self)
+              42 LOAD_ATTR            (active)
+              62 LOAD_CONST           (1)
+              64 BINARY_OP            (-)
+              68 CALL                 (2 positional)
+              76 LOAD_FAST            (self)
+              78 STORE_ATTR           (active)
+
+1117:          88 LOAD_CONST           (None)
+              90 LOAD_CONST           (None)
+              92 LOAD_CONST           (None)
+              94 CALL                 (2 positional)
+             102 POP_TOP
+
+1119:         104 LOAD_FAST            (self)
+             106 LOAD_ATTR            (semaphore)
+             126 LOAD_ATTR            (NULL|self + release)
+             146 CALL                 (0 positional)
+             154 POP_TOP
+             156 RETURN_CONST         (None)
+
+1117:     >>  158 PUSH_EXC_INFO
+             160 WITH_EXCEPT_START    0
+             162 TO_BOOL
+             170 POP_JUMP_IF_TRUE     (to 176)
+             174 RERAISE              2
+         >>  176 POP_TOP
+             178 POP_EXCEPT
+             180 POP_TOP
+             182 POP_TOP
+             184 JUMP_BACKWARD_NO_INTERRUPT (to 104)
+         >>  186 COPY                 3
+             188 POP_EXCEPT
+             190 RERAISE              1
+
+ExceptionTable:
+  26 to 86 -> 158 [1] lasti
+  158 to 176 -> 186 [3] lasti
+
+# Method Name:       status
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1121
+# Constants:
+#    0: None
+#    1: ('limit', 'active', 'waiting')
+# Names:
+#    0: lock
+#    1: limit
+#    2: active
+#    3: waiting
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+1121:           0 RESUME               0
+
+1122:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (lock)
+              24 BEFORE_WITH
+              26 POP_TOP
+
+1123:          28 LOAD_FAST            (self)
+              30 LOAD_ATTR            (limit)
+              50 LOAD_FAST            (self)
+              52 LOAD_ATTR            (active)
+              72 LOAD_FAST            (self)
+              74 LOAD_ATTR            (waiting)
+              94 LOAD_CONST           (('limit', 'active', 'waiting'))
+              96 BUILD_CONST_KEY_MAP  3
+
+1122:          98 SWAP                 (TOS <-> TOS1)
+             100 LOAD_CONST           (None)
+             102 LOAD_CONST           (None)
+             104 LOAD_CONST           (None)
+             106 CALL                 (2 positional)

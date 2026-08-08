@@ -1,0 +1,800 @@
+             368 LOAD_FAST            (v)
+             370 TO_BOOL
+             378 POP_JUMP_IF_FALSE    (to 386)
+             382 LOAD_CONST           ("<redacted>")
+             384 JUMP_FORWARD         (to 388)
+         >>  386 LOAD_FAST            (v)
+         >>  388 MAP_ADD              2
+             390 JUMP_BACKWARD        (to 346)
+
+391:     >>  394 END_FOR
+             396 POP_TOP
+
+389:         398 SWAP                 (TOS <-> TOS2)
+             400 STORE_FAST           (v)
+             402 STORE_FAST           (k)
+             404 LOAD_FAST            (local)
+             406 LOAD_CONST           ("tokens")
+             408 STORE_SUBSCR
+
+393:     >>  412 LOAD_FAST_LOAD_FAST  (local, out)
+             414 LOAD_FAST            (key)
+             416 STORE_SUBSCR
+
+394:         420 JUMP_BACKWARD        (to 46)
+
+395:     >>  424 LOAD_FAST_LOAD_FAST  (value, out)
+             426 LOAD_FAST            (key)
+             428 STORE_SUBSCR
+             432 JUMP_BACKWARD        (to 46)
+
+379:     >>  436 END_FOR
+             438 POP_TOP
+
+396:         440 LOAD_FAST            (out)
+         >>  442 RETURN_VALUE
+         >>  444 SWAP                 (TOS <-> TOS1)
+             446 POP_TOP
+
+389:         448 SWAP                 (TOS <-> TOS2)
+             450 STORE_FAST           (v)
+             452 STORE_FAST           (k)
+             454 RERAISE              0
+
+ExceptionTable:
+  340 to 396 -> 444 [4]
+
+# Method Name:       _set_nested
+# Filename:          codex_chain_runner.py
+# Argument count:    4
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        399
+# Constants:
+#    0: None
+#    1: (None, '')
+# Names:
+#    0: setdefault
+#    1: isinstance
+#    2: dict
+# Varnames:
+#	cfg, section, key, value, target
+# Positional arguments:
+#	cfg, section, key, value
+# Local variables:
+#    4: target
+399:           0 RESUME               0
+
+400:           2 LOAD_FAST            (value)
+               4 LOAD_CONST           ((None, ''))
+               6 CONTAINS_OP          (in)
+              10 POP_JUMP_IF_FALSE    (to 16)
+
+401:          14 RETURN_CONST         (None)
+
+402:     >>   16 LOAD_FAST            (cfg)
+              18 LOAD_ATTR            (NULL|self + setdefault)
+              38 LOAD_FAST            (section)
+              40 BUILD_MAP            0
+              42 CALL                 (2 positional)
+              50 STORE_FAST           (target)
+
+403:          52 LOAD_GLOBAL          (NULL + isinstance)
+              62 LOAD_FAST            (target)
+              64 LOAD_GLOBAL          (dict)
+              74 CALL                 (2 positional)
+              82 TO_BOOL
+              90 POP_JUMP_IF_TRUE     (to 106)
+
+404:          94 BUILD_MAP            0
+              96 STORE_FAST           (target)
+
+405:          98 LOAD_FAST_LOAD_FAST  (target, cfg)
+             100 LOAD_FAST            (section)
+             102 STORE_SUBSCR
+
+406:     >>  106 LOAD_FAST_LOAD_FAST  (value, target)
+             108 LOAD_FAST            (key)
+             110 STORE_SUBSCR
+             114 RETURN_CONST         (None)
+
+
+# Method Name:       _default_openai_persona
+# Filename:          codex_chain_runner.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        12
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        409
+# Constants:
+#    0: None
+#    1: 'curl_cffi'
+#    2: 'chrome'
+#    3: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36'
+#    4: 'en-US,en;q=0.9'
+#    5: '"Google Chrome";v="145"'
+#    6: '"Windows"'
+#    7: ''
+#    8: ('http_client', 'tls_impersonate', 'user_agent', 'accept_language', 'sec_ch_ua', 'sec_ch_ua_platform', 'proxy_reused')
+# Names:
+#    0: bool
+#    1: str
+#    2: strip
+# Varnames:
+#	proxy
+# Positional arguments:
+#	proxy
+409:           0 RESUME               0
+
+411:           2 LOAD_CONST           ("curl_cffi")
+
+412:           4 LOAD_CONST           ("chrome")
+
+414:           6 LOAD_CONST           ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36")
+
+417:           8 LOAD_CONST           ("en-US,en;q=0.9")
+
+418:          10 LOAD_CONST           ('"Google Chrome";v="145"')
+
+419:          12 LOAD_CONST           ('"Windows"')
+
+420:          14 LOAD_GLOBAL          (NULL + bool)
+              24 LOAD_GLOBAL          (NULL + str)
+              34 LOAD_FAST            (proxy)
+              36 COPY                 1
+              38 TO_BOOL
+              46 POP_JUMP_IF_TRUE     (to 54)
+              50 POP_TOP
+              52 LOAD_CONST           ("")
+         >>   54 CALL                 (1 positional)
+              62 LOAD_ATTR            (NULL|self + strip)
+              82 CALL                 (0 positional)
+              90 CALL                 (1 positional)
+
+410:          98 LOAD_CONST           (('http_client', 'tls_impersonate', 'user_agent', 'accept_language', 'sec_ch_ua', 'sec_ch_ua_platform', 'proxy_reused'))
+             100 BUILD_CONST_KEY_MAP  7
+             102 RETURN_VALUE
+
+
+# Method Name:       main
+# Filename:          codex_chain_runner.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  36
+# Stack size:        11
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        424
+# Constants:
+#    0: None
+#    1: 'Run standalone Codex phase-2 mock/diagnostic/manual/replay/real chain'
+#    2: ('description',)
+#    3: '--email'
+#    4: True
+#    5: 'Account email used as the post-registration identity; real mode accepts auto/gptmail/reserve'
+#    6: ('required', 'help')
+#    7: '--password'
+#    8: ''
+#    9: 'Password placeholder kept for result-shape compatibility'
+#   10: ('default', 'help')
+#   11: '--mode'
+#   12: ('mock', 'diagnostic', 'manual', 'replay', 'real')
+#   13: 'mock'
+#   14: 'Runner mode'
+#   15: ('choices', 'default', 'help')
+#   16: '--config'
+#   17: 'Optional JSON config to merge into the mock run'
+#   18: '--fixture'
+#   19: 'Replay fixture JSON path, or manual output path'
+#   20: '--oauth-url'
+#   21: 'Use an existing OAuth URL instead of generating a new one'
+#   22: '--code-verifier'
+#   23: 'PKCE code_verifier for --oauth-url'
+#   24: '--manual-session'
+#   25: 'JSON session from manual_oauth_session.py'
+#   26: '--oauth-provider'
+#   27: 'auto'
+#   28: ('auto', 'local', 'sub2', 'cpa')
+#   29: 'Where to generate/exchange OAuth: local PKCE, SUB2, or CPA'
+#   30: ('default', 'choices', 'help')
+#   31: '--phone-rejects'
+#   32: 0
+#   33: 'Mock phone-send rejections before success'
+#   34: ('type', 'default', 'help')
+#   35: '--require-password'
+#   36: 'store_true'
+#   37: 'Mock/replay helper: simulate existing-account password page'
+#   38: ('action', 'help')
+#   39: '--email-otp'
+#   40: 'Mock email OTP value; real mode still uses configured provider/manual hooks'
+#   41: '--phone-otp'
+#   42: 'Mock phone OTP value; real mode still uses configured provider/manual hooks'
+#   43: '--manual-phone'
+#   44: 'Manual/user-supplied phone number for real/manual dry runs'
+#   45: '--interactive-otp'
+#   46: 'Real mode: prompt for email/phone OTP at runtime'
+#   47: '--email-otp-file'
+#   48: 'Real mode: wait for email OTP to be written to this file'
+#   49: '--phone-otp-file'
+#   50: 'Real mode: wait for phone OTP to be written to this file'
+#   51: '--after-password-page'
+#   52: 'Mock page.type after password verify, e.g. email_otp_verification or add_phone'
+#   53: '--after-email-page'
+#   54: 'Mock page.type after email OTP, e.g. add_phone or sign_in_with_chatgpt_codex_consent'
+#   55: '--state-mismatch'
+#   56: 'Simulate OAuth callback state mismatch'
+#   57: '--reuse-session-url'
+#   58: 'Strip forced-login params from generated OAuth URL'
+#   59: '--node-bridge'
+#   60: ('off', 'mock', 'diagnostic', 'real')
+#   61: 'Run Node bridge diagnostics; real mode uses the chain runner directly'
+#   62: '--node-runner'
+#   63: 'Real Node SentinelRunner path'
+#   64: '--node-timeout'
+#   65: 'Real Node SentinelRunner timeout seconds'
+#   66: '--node-retries'
+#   67: -1
+#   68: 'Real Node SentinelRunner retry count'
+#   69: '--node-create-account-timeout'
+#   70: 'Timeout seconds for oauth_create_account Sentinel token'
+#   71: '--device-id'
+#   72: 'Optional device_id presence/value for consistency checks'
+#   73: '--proxy'
+#   74: 'Optional main proxy label/source for consistency checks'
+#   75: '--email-proxy'
+#   76: 'Optional email proxy label/source for consistency checks'
+#   77: '--upload-proxy'
+#   78: 'Optional upload proxy label/source for consistency checks'
+#   79: '--sms-pool'
+#   80: 'Local SMS pool file for real mode'
+#   81: '--email-provider'
+#   82: 'Email provider, normally gptmail'
+#   83: '--gptmail-base-url'
+#   84: 'GPTMail base URL'
+#   85: '--gptmail-key'
+#   86: 'GPTMail API key'
+#   87: '--gptmail-keyword'
+#   88: 'GPTMail OTP keyword'
+#   89: '--sub2-url'
+#   90: 'SUB2 base URL'
+#   91: '--sub2-email'
+#   92: 'SUB2 admin email'
+#   93: '--sub2-password'
+#   94: 'SUB2 admin password'
+#   95: '--sub2-group'
+#   96: 'SUB2 group name, e.g. 5.4'
+#   97: '--sub2-proxy-id'
+#   98: 'SUB2 proxy ID'
+#   99: '--cpa-url'
+#  100: 'CPA/CLIProxyAPI base URL'
+#  101: '--cpa-key'
+#  102: 'CPA/CLIProxyAPI management key'
+#  103: '--phone-max-attempts'
+#  104: 'Real phone attempts limit'
+#  105: '--phone-channels'
+#  106: 'Comma-separated phone channels, e.g. sms,whatsapp'
+#  107: '--code-timeout'
+#  108: 'OTP timeout seconds'
+#  109: '--upload-target'
+#  110: ('', 'local', 'sub2', 'cpa')
+#  111: 'Upload target; real defaults to OAuth provider or sub2'
+#  112: '--archive-local'
+#  113: 'After success, save a local account JSON plus a SUB2 manual import JSON'
+#  114: '--archive-dir'
+#  115: 'runtime/local_archive'
+#  116: 'Directory for --archive-local output'
+#  117: '--sub2-import-out'
+#  118: 'Explicit SUB2 manual import JSON path for --archive-local'
+#  119: '--archive-group'
+#  120: 'Optional SUB2 group name/id to resolve into manual import group_ids'
+#  121: '--archive-group-id'
+#  122: 'Optional SUB2 numeric group id for manual import group_ids'
+#  123: '--archive-proxy-id'
+#  124: 'Optional SUB2 proxy_id for manual import JSON'
+#  125: '--archive-concurrency'
+#  126: 10
+#  127: ('type', 'default')
+#  128: '--archive-priority'
+#  129: 1
+#  130: '--archive-rate-multiplier'
+#  131: '--strict-context'
+#  132: 'Fail when runtime context validation has errors'
+#  133: '--prime-chatgpt-oauth-session'
+#  134: 'Real mode: create the ChatGPT NextAuth OAuth session before Codex authorize'
+#  135: '--run-chatgpt-signup-phase'
+#  136: 'Real mode: create/finish the ChatGPT free account before Codex authorize'
+#  137: '--reuse-session-on-reauthorize'
+#  138: 'Real mode: strip forced-login params only when retrying authorize after ChatGPT callback'
+#  139: '--trace-continue'
+#  140: 'Real mode: log redacted consent/continue redirect trace'
+#  141: '--json'
+#  142: 'Print redacted JSON result'
+#  143: '--json-private'
+#  144: 'Print full local JSON result for trusted adapters'
+#  145: 'manual'
+#  146: 'manual fixture saved: '
+#  147: 'replay command: python codex_chain_runner.py --email '
+#  148: ' --mode replay --fixture "'
+#  149: '"'
+#  150: 'codex_chain_mode'
+#  151: 'codex_chain_mock'
+#  152: 'phone_send_rejects'
+#  153: 'require_password'
+#  154: 'email_otp'
+#  155: 'phone_otp'
+#  156: 'password_after_verify_page'
+#  157: 'email_after_verify_page'
+#  158: 'fixture not found: '
+#  159: 'utf-8'
+#  160: ('encoding',)
+#  161: 'fixture must be a JSON object'
+#  162: 'codex_chain_replay'
+#  163: 'openai_device_id'
+#  164: 'real'
+#  165: 'proxy'
+#  166: 'email_proxy'
+#  167: 'upload_proxy'
+#  168: 'codex_node_runner'
+#  169: 'codex_node_timeout'
+#  170: 'codex_node_retries'
+#  171: 'node'
+#  172: 'flow_timeouts'
+#  173: 'oauth_create_account'
+#  174: 'localpool'
+#  175: 'sms_provider'
+#  176: 'api_key'
+#  177: 'pick_mode'
+#  178: 'middle'
+#  179: 'email_provider'
+#  180: 'gptmail'
+#  181: 'base_url'
+#  182: 'keyword'
+#  183: 'sub2api'
+#  184: 'url'
+#  185: 'email'
+#  186: 'pwd'
+#  187: 'group'
+#  188: 'proxy_id'
+#  189: 'cpa'
+#  190: 'key'
+#  191: 'phone_max_attempts'
+#  192: ','
+#  193: 'phone_channels'
+#  194: 'code_timeout'
+#  195: 'sms_timeout'
+#  196: 'prime_chatgpt_oauth_session'
+#  197: 'run_chatgpt_signup_phase'
+#  198: 'reuse_session_url_on_reauthorize'
+#  199: 'trace_continue'
+#  200: 'trace_cookies'
+#  201: 'provider'
+#  202: 'proxy_scope'
+#  203: ('sms', 'email', 'upload')
+#  204: 45
+#  205: 120
+#  206: 'codex_node_mode'
+#  207: 'browser_fingerprint'
+#  208: 'openai_persona'
+#  209: {'gptmail', 'auto', 'reserve'}
+#  210: 'email auto returned empty mailbox'
+#  211: '自动领取邮箱完成：'
+#  212: 'info'
+#  213: 'fingerprint'
+#  214: 'node-bridge-v2'
+#  215: ('ok', 'mode', 'version', 'token_generated', 'runner_configured')
+#  216: ('mode', 'device_id', 'proxy_label', 'proxy', 'fingerprint', 'script_path')
+#  217: 'manual session not found: '
+#  218: 'manual session must be a JSON object'
+#  219: 'oauth_url'
+#  220: 'code_verifier'
+#  221: 'state'
+#  222: 'session_id'
+#  223: 'sub2'
+#  224: ('upload_proxy',)
+#  225: 'local_oauth_force_login_hint'
+#  226: 'login_or_signup'
+#  227: 'login'
+#  228: 'local_oauth'
+#  229: 'client_id'
+#  230: 'redirect_uri'
+#  231: ('client_id', 'redirect_uri', 'login_hint', 'screen_hint', 'prompt')
+#  232: 'local'
+#  233: {'sub2', 'cpa'}
+#  234: 'oauth_provider'
+#  235: ('oauth_provider', 'upload_target', 'session_id', 'state')
+#  236: 'oauth_session'
+#  237: 'mock-state-mismatch'
+#  238: 'callback_state'
+#  239: ('log_fn',)
+#  240: 180
+#  241: ('timeout', 'log_fn')
+#  242: 'account_email'
+#  243: 'password'
+#  244: 'config'
+#  245: 'log_fn'
+#  246: 'mode'
+#  247: 'local_oauth_client_id'
+#  248: 'local_oauth_redirect_uri'
+#  249: 'oauth_session_id'
+#  250: 'oauth_state'
+#  251: 'upload_target_name'
+#  252: 'node_result'
+#  253: 'runtime_context_strict'
+#  254: 'email_otp_provider'
+#  255: 'phone_otp_provider'
+#  256: 'ok'
+#  257: 'local_archive'
+#  258: 'local_archive_saved'
+#  259: '本地归档已保存：'
+#  260: 'account_record'
+#  261: 'success'
+#  262: 'SUB2手动导入文件：'
+#  263: 'sub2_import_file'
+#  264: 'CPA手动导入文件：'
+#  265: 'cpa_auth_file'
+#  266: False
+#  267: 'local_archive_error'
+#  268: '本地归档失败：'
+#  269: 'error'
+#  270: 'local_archive_failed: '
+#  271: 2
+#  272: ('ensure_ascii', 'indent')
+#  273: '=== SUMMARY ==='
+#  274: 'ok='
+#  275: 'phase2_status='
+#  276: 'phase2_status'
+#  277: 'error='
+#  278: 'email='
+#  279: 'bind_email'
+#  280: 'oauth_code_received='
+#  281: 'code'
+#  282: 'local_oauth_exchange_ok='
+#  283: 'local_oauth_exchange_ok'
+#  284: 'local_archive_account='
+#  285: 'local_archive_sub2_import='
+#  286: 'local_archive_cpa_auth='
+#  287: 'runtime_context'
+#  288: 'runtime_context=ok='
+#  289: ' errors='
+#  290: 'error_count'
+#  291: ' warnings='
+#  292: 'warn_count'
+#  293: 'node_bridge'
+#  294: 'node_bridge=mode='
+#  295: ' ok='
+#  296: ' fingerprint_present='
+#  297: 'fingerprint_present'
+#  298: 'codex_chain_events'
+#  299: 'events='
+#  300: ' -> '
+#  301: <Code311 code object <genexpr> at 0x1080e21f0, file codex_chain_runner.py>, line 772
+#  302: ()
+# Names:
+#    0: argparse
+#    1: ArgumentParser
+#    2: add_argument
+#    3: int
+#    4: parse_args
+#    5: mode
+#    6: _collect_manual_fixture
+#    7: email
+#    8: fixture
+#    9: print
+#   10: _load_config
+#   11: config
+#   12: setdefault
+#   13: isinstance
+#   14: dict
+#   15: phone_rejects
+#   16: require_password
+#   17: email_otp
+#   18: phone_otp
+#   19: after_password_page
+#   20: after_email_page
+#   21: Path
+#   22: exists
+#   23: FileNotFoundError
+#   24: json
+#   25: loads
+#   26: read_text
+#   27: ValueError
+#   28: device_id
+#   29: str
+#   30: get
+#   31: strip
+#   32: uuid
+#   33: uuid4
+#   34: proxy
+#   35: email_proxy
+#   36: upload_proxy
+#   37: node_runner
+#   38: node_timeout
+#   39: node_retries
+#   40: node_create_account_timeout
+#   41: sms_pool
+#   42: _set_nested
+#   43: email_provider
+#   44: gptmail_base_url
+#   45: gptmail_key
+#   46: gptmail_keyword
+#   47: sub2_url
+#   48: sub2_email
+#   49: sub2_password
+#   50: sub2_group
+#   51: sub2_proxy_id
+#   52: cpa_url
+#   53: cpa_key
+#   54: phone_max_attempts
+#   55: phone_channels
+#   56: split
+#   57: code_timeout
+#   58: prime_chatgpt_oauth_session
+#   59: run_chatgpt_signup_phase
+#   60: reuse_session_on_reauthorize
+#   61: trace_continue
+#   62: _default_openai_persona
+#   63: lower
+#   64: _auto_email_from_provider
+#   65: RuntimeError
+#   66: _log
+#   67: bool
+#   68: run_node_bridge
+#   69: node_bridge
+#   70: proxy_label_for
+#   71: manual_session
+#   72: oauth_url
+#   73: code_verifier
+#   74: _resolve_oauth_provider
+#   75: _generate_sub2_oauth_session
+#   76: _generate_cpa_oauth_session
+#   77: build_oauth_url
+#   78: DEFAULT_CLIENT_ID
+#   79: DEFAULT_REDIRECT_URI
+#   80: state_mismatch
+#   81: reuse_session_url
+#   82: strip_oauth_login_for_session_reuse
+#   83: FixedEmailOtpProvider
+#   84: email_otp_file
+#   85: FileEmailOtpProvider
+#   86: interactive_otp
+#   87: InteractiveEmailOtpProvider
+#   88: phone_otp_file
+#   89: FilePhoneOtpProvider
+#   90: manual_phone
+#   91: FixedPhoneOtpProvider
+#   92: InteractivePhoneOtpProvider
+#   93: run_codex_after_registration
+#   94: password
+#   95: upload_target
+#   96: strict_context
+#   97: archive_local
+#   98: _archive_runner_result
+#   99: Exception
+#  100: json_private
+#  101: dumps
+#  102: _redacted_result
+#  103: list
+#  104: join
+# Varnames:
+#	argv, parser, args, output, config, run_mode, mock_cfg, fixture_path, fixture, node_cfg, flow_timeouts, item, persona, account_email, fingerprint, node_result, manual_session, session_path, loaded_session, oauth_url, verifier, oauth_state, oauth_session_id, oauth_provider, session_info, local_login_hint, local_screen_hint, local_prompt, email_otp_provider, phone_otp_provider, result, archive_summary, exc, runtime, node, events
+# Positional arguments:
+#	argv
+# Local variables:
+#    1: parser
+#    2: args
+#    3: output
+#    4: config
+#    5: run_mode
+#    6: mock_cfg
+#    7: fixture_path
+#    8: fixture
+#    9: node_cfg
+#   10: flow_timeouts
+#   11: item
+#   12: persona
+#   13: account_email
+#   14: fingerprint
+#   15: node_result
+#   16: manual_session
+#   17: session_path
+#   18: loaded_session
+#   19: oauth_url
+#   20: verifier
+#   21: oauth_state
+#   22: oauth_session_id
+#   23: oauth_provider
+#   24: session_info
+#   25: local_login_hint
+#   26: local_screen_hint
+#   27: local_prompt
+#   28: email_otp_provider
+#   29: phone_otp_provider
+#   30: result
+#   31: archive_summary
+#   32: exc
+#   33: runtime
+#   34: node
+#   35: events
+424:           0 RESUME               0
+
+425:           2 LOAD_GLOBAL          (argparse)
+              12 LOAD_ATTR            (ArgumentParser)
+              32 PUSH_NULL
+              34 LOAD_CONST           ("Run standalone Codex phase-2 mock/diagnostic/manual/replay/real chain")
+              36 LOAD_CONST           (('description',))
+              38 CALL_KW              1
+              40 STORE_FAST           (parser)
+
+426:          42 LOAD_FAST            (parser)
+              44 LOAD_ATTR            (NULL|self + add_argument)
+              64 LOAD_CONST           ("--email")
+              66 LOAD_CONST           (True)
+              68 LOAD_CONST           ("Account email used as the post-registration identity; real mode accepts auto/gptmail/reserve")
+              70 LOAD_CONST           (('required', 'help'))
+              72 CALL_KW              3
+              74 POP_TOP
+
+427:          76 LOAD_FAST            (parser)
+              78 LOAD_ATTR            (NULL|self + add_argument)
+              98 LOAD_CONST           ("--password")
+             100 LOAD_CONST           ("")
+             102 LOAD_CONST           ("Password placeholder kept for result-shape compatibility")
+             104 LOAD_CONST           (('default', 'help'))
+             106 CALL_KW              3
+             108 POP_TOP
+
+428:         110 LOAD_FAST            (parser)
+             112 LOAD_ATTR            (NULL|self + add_argument)
+             132 LOAD_CONST           ("--mode")
+             134 LOAD_CONST           (('mock', 'diagnostic', 'manual', 'replay', 'real'))
+             136 LOAD_CONST           ("mock")
+             138 LOAD_CONST           ("Runner mode")
+             140 LOAD_CONST           (('choices', 'default', 'help'))
+             142 CALL_KW              4
+             144 POP_TOP
+
+429:         146 LOAD_FAST            (parser)
+             148 LOAD_ATTR            (NULL|self + add_argument)
+             168 LOAD_CONST           ("--config")
+             170 LOAD_CONST           ("")
+             172 LOAD_CONST           ("Optional JSON config to merge into the mock run")
+             174 LOAD_CONST           (('default', 'help'))
+             176 CALL_KW              3
+             178 POP_TOP
+
+430:         180 LOAD_FAST            (parser)
+             182 LOAD_ATTR            (NULL|self + add_argument)
+             202 LOAD_CONST           ("--fixture")
+             204 LOAD_CONST           ("")
+             206 LOAD_CONST           ("Replay fixture JSON path, or manual output path")
+             208 LOAD_CONST           (('default', 'help'))
+             210 CALL_KW              3
+             212 POP_TOP
+
+431:         214 LOAD_FAST            (parser)
+             216 LOAD_ATTR            (NULL|self + add_argument)
+             236 LOAD_CONST           ("--oauth-url")
+             238 LOAD_CONST           ("")
+             240 LOAD_CONST           ("Use an existing OAuth URL instead of generating a new one")
+             242 LOAD_CONST           (('default', 'help'))
+             244 CALL_KW              3
+             246 POP_TOP
+
+432:         248 LOAD_FAST            (parser)
+             250 LOAD_ATTR            (NULL|self + add_argument)
+             270 LOAD_CONST           ("--code-verifier")
+             272 LOAD_CONST           ("")
+             274 LOAD_CONST           ("PKCE code_verifier for --oauth-url")
+             276 LOAD_CONST           (('default', 'help'))
+             278 CALL_KW              3
+             280 POP_TOP
+
+433:         282 LOAD_FAST            (parser)
+             284 LOAD_ATTR            (NULL|self + add_argument)
+             304 LOAD_CONST           ("--manual-session")
+             306 LOAD_CONST           ("")
+             308 LOAD_CONST           ("JSON session from manual_oauth_session.py")
+             310 LOAD_CONST           (('default', 'help'))
+             312 CALL_KW              3
+             314 POP_TOP
+
+434:         316 LOAD_FAST            (parser)
+             318 LOAD_ATTR            (NULL|self + add_argument)
+             338 LOAD_CONST           ("--oauth-provider")
+             340 LOAD_CONST           ("auto")
+             342 LOAD_CONST           (('auto', 'local', 'sub2', 'cpa'))
+             344 LOAD_CONST           ("Where to generate/exchange OAuth: local PKCE, SUB2, or CPA")
+             346 LOAD_CONST           (('default', 'choices', 'help'))
+             348 CALL_KW              4
+             350 POP_TOP
+
+435:         352 LOAD_FAST            (parser)
+             354 LOAD_ATTR            (NULL|self + add_argument)
+             374 LOAD_CONST           ("--phone-rejects")
+             376 LOAD_GLOBAL          (int)
+             386 LOAD_CONST           (0)
+             388 LOAD_CONST           ("Mock phone-send rejections before success")
+             390 LOAD_CONST           (('type', 'default', 'help'))
+             392 CALL_KW              4
+             394 POP_TOP
+
+436:         396 LOAD_FAST            (parser)
+             398 LOAD_ATTR            (NULL|self + add_argument)
+             418 LOAD_CONST           ("--require-password")
+             420 LOAD_CONST           ("store_true")
+             422 LOAD_CONST           ("Mock/replay helper: simulate existing-account password page")
+             424 LOAD_CONST           (('action', 'help'))
+             426 CALL_KW              3
+             428 POP_TOP
+
+437:         430 LOAD_FAST            (parser)
+             432 LOAD_ATTR            (NULL|self + add_argument)
+             452 LOAD_CONST           ("--email-otp")
+             454 LOAD_CONST           ("")
+             456 LOAD_CONST           ("Mock email OTP value; real mode still uses configured provider/manual hooks")
+             458 LOAD_CONST           (('default', 'help'))
+             460 CALL_KW              3
+             462 POP_TOP
+
+438:         464 LOAD_FAST            (parser)
+             466 LOAD_ATTR            (NULL|self + add_argument)
+             486 LOAD_CONST           ("--phone-otp")
+             488 LOAD_CONST           ("")
+             490 LOAD_CONST           ("Mock phone OTP value; real mode still uses configured provider/manual hooks")
+             492 LOAD_CONST           (('default', 'help'))
+             494 CALL_KW              3
+             496 POP_TOP
+
+439:         498 LOAD_FAST            (parser)
+             500 LOAD_ATTR            (NULL|self + add_argument)
+             520 LOAD_CONST           ("--manual-phone")
+             522 LOAD_CONST           ("")
+             524 LOAD_CONST           ("Manual/user-supplied phone number for real/manual dry runs")
+             526 LOAD_CONST           (('default', 'help'))
+             528 CALL_KW              3
+             530 POP_TOP
+
+440:         532 LOAD_FAST            (parser)
+             534 LOAD_ATTR            (NULL|self + add_argument)
+             554 LOAD_CONST           ("--interactive-otp")
+             556 LOAD_CONST           ("store_true")
+             558 LOAD_CONST           ("Real mode: prompt for email/phone OTP at runtime")
+             560 LOAD_CONST           (('action', 'help'))
+             562 CALL_KW              3
+             564 POP_TOP
+
+441:         566 LOAD_FAST            (parser)
+             568 LOAD_ATTR            (NULL|self + add_argument)
+             588 LOAD_CONST           ("--email-otp-file")
+             590 LOAD_CONST           ("")
+             592 LOAD_CONST           ("Real mode: wait for email OTP to be written to this file")
+             594 LOAD_CONST           (('default', 'help'))
+             596 CALL_KW              3
+             598 POP_TOP
+
+442:         600 LOAD_FAST            (parser)
+             602 LOAD_ATTR            (NULL|self + add_argument)
+             622 LOAD_CONST           ("--phone-otp-file")
+             624 LOAD_CONST           ("")
+             626 LOAD_CONST           ("Real mode: wait for phone OTP to be written to this file")
+             628 LOAD_CONST           (('default', 'help'))
+             630 CALL_KW              3
+             632 POP_TOP
+
+443:         634 LOAD_FAST            (parser)
+             636 LOAD_ATTR            (NULL|self + add_argument)
+             656 LOAD_CONST           ("--after-password-page")
+             658 LOAD_CONST           ("")
+             660 LOAD_CONST           ("Mock page.type after password verify, e.g. email_otp_verification or add_phone")
+             662 LOAD_CONST           (('default', 'help'))
+             664 CALL_KW              3
+             666 POP_TOP
+
+444:         668 LOAD_FAST            (parser)
+             670 LOAD_ATTR            (NULL|self + add_argument)
+             690 LOAD_CONST           ("--after-email-page")

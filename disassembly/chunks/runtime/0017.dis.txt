@@ -1,0 +1,800 @@
+             646 STORE_ATTR           (get_number)
+             656 RETURN_CONST         (None)
+
+
+# Method Name:       _configure_sentinel_python_fallback
+# Filename:          runtime.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1423
+# Constants:
+#    0: "Make the bundled Node fallback invoke the project's sentinel entrypoint."
+#    1: 'frozen'
+#    2: False
+#    3: 'plusbindtool'
+#    4: 'plus_launcher.py'
+#    5: '1'
+#    6: 'CODEX_SENTINEL_ENABLE_PY_FALLBACK'
+#    7: '--sentinel-http'
+#    8: 'CODEX_SENTINEL_PY_ARGS_PREFIX_JSON'
+#    9: 'PYTHON'
+#   10: 'CODEX_PYTHON'
+#   11: None
+# Names:
+#    0: bool
+#    1: getattr
+#    2: sys
+#    3: Path
+#    4: executable
+#    5: stem
+#    6: lower
+#    7: startswith
+#    8: TOOL_DIR
+#    9: os
+#   10: environ
+#   11: exists
+#   12: str
+#   13: json
+#   14: dumps
+# Varnames:
+#	frozen, launcher, prefix
+# Local variables:
+#    0: frozen
+#    1: launcher
+#    2: prefix
+1423:           0 RESUME               0
+
+1426:           2 LOAD_GLOBAL          (NULL + bool)
+              12 LOAD_GLOBAL          (NULL + getattr)
+              22 LOAD_GLOBAL          (sys)
+              32 LOAD_CONST           ("frozen")
+              34 LOAD_CONST           (False)
+              36 CALL                 (3 positional)
+              44 CALL                 (1 positional)
+              52 COPY                 1
+              54 TO_BOOL
+              62 POP_JUMP_IF_TRUE     (to 194)
+              66 POP_TOP
+              68 LOAD_GLOBAL          (NULL + Path)
+              78 LOAD_GLOBAL          (sys)
+              88 LOAD_ATTR            (executable)
+             108 CALL                 (1 positional)
+             116 LOAD_ATTR            (stem)
+             136 LOAD_ATTR            (NULL|self + lower)
+             156 CALL                 (0 positional)
+             164 LOAD_ATTR            (NULL|self + startswith)
+             184 LOAD_CONST           ("plusbindtool")
+             186 CALL                 (1 positional)
+         >>  194 STORE_FAST           (frozen)
+
+1427:         196 LOAD_GLOBAL          (TOOL_DIR)
+             206 LOAD_CONST           ("plus_launcher.py")
+             208 BINARY_OP            (/)
+             212 STORE_FAST           (launcher)
+
+1428:         214 LOAD_CONST           ("1")
+             216 LOAD_GLOBAL          (os)
+             226 LOAD_ATTR            (environ)
+             246 LOAD_CONST           ("CODEX_SENTINEL_ENABLE_PY_FALLBACK")
+             248 STORE_SUBSCR
+
+1429:         252 LOAD_FAST            (frozen)
+             254 TO_BOOL
+             262 POP_JUMP_IF_FALSE    (to 272)
+             266 LOAD_CONST           ("--sentinel-http")
+             268 BUILD_LIST           1
+             270 JUMP_FORWARD         (to 342)
+         >>  272 LOAD_FAST            (launcher)
+             274 LOAD_ATTR            (NULL|self + exists)
+             294 CALL                 (0 positional)
+             302 TO_BOOL
+             310 POP_JUMP_IF_FALSE    (to 340)
+             314 LOAD_GLOBAL          (NULL + str)
+             324 LOAD_FAST            (launcher)
+             326 CALL                 (1 positional)
+             334 LOAD_CONST           ("--sentinel-http")
+             336 BUILD_LIST           2
+             338 JUMP_FORWARD         (to 342)
+         >>  340 BUILD_LIST           0
+         >>  342 STORE_FAST           (prefix)
+
+1430:         344 LOAD_GLOBAL          (json)
+             354 LOAD_ATTR            (dumps)
+             374 PUSH_NULL
+             376 LOAD_FAST            (prefix)
+             378 CALL                 (1 positional)
+             386 LOAD_GLOBAL          (os)
+             396 LOAD_ATTR            (environ)
+             416 LOAD_CONST           ("CODEX_SENTINEL_PY_ARGS_PREFIX_JSON")
+             418 STORE_SUBSCR
+
+1434:         422 LOAD_GLOBAL          (sys)
+             432 LOAD_ATTR            (executable)
+             452 LOAD_GLOBAL          (os)
+             462 LOAD_ATTR            (environ)
+             482 LOAD_CONST           ("PYTHON")
+             484 STORE_SUBSCR
+
+1435:         488 LOAD_GLOBAL          (sys)
+             498 LOAD_ATTR            (executable)
+             518 LOAD_GLOBAL          (os)
+             528 LOAD_ATTR            (environ)
+             548 LOAD_CONST           ("CODEX_PYTHON")
+             550 STORE_SUBSCR
+             554 RETURN_CONST         (None)
+
+
+# Method Name:       _log
+# Filename:          runtime.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1437
+# Constants:
+#    0: None
+# Names:
+#    0: log_fn
+#    1: _friendly_log_message
+# Varnames:
+#	self, message, level
+# Positional arguments:
+#	self, message, level
+1437:           0 RESUME               0
+
+1438:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + log_fn)
+              24 LOAD_GLOBAL          (NULL + _friendly_log_message)
+              34 LOAD_FAST            (message)
+              36 CALL                 (1 positional)
+              44 LOAD_FAST            (level)
+              46 CALL                 (2 positional)
+              54 POP_TOP
+              56 RETURN_CONST         (None)
+
+
+# Method Name:       _pool
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1440
+# Constants:
+#    0: None
+#    1: 'email_mode'
+#    2: 'manual'
+#    3: 'manual_pool_path'
+#    4: 'manual_state_path'
+#    5: 'pool_path'
+#    6: 'state_path'
+# Names:
+#    0: _clean
+#    1: get
+#    2: lower
+#    3: lock
+#    4: _manual_pool_instance
+#    5: _manual_pool_key
+#    6: ManualMailboxPool
+#    7: MailboxPool
+# Varnames:
+#	self, settings, key
+# Positional arguments:
+#	self, settings
+# Local variables:
+#    2: key
+1440:           0 RESUME               0
+
+1441:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (settings)
+              14 LOAD_ATTR            (NULL|self + get)
+              34 LOAD_CONST           ("email_mode")
+              36 CALL                 (1 positional)
+              44 CALL                 (1 positional)
+              52 LOAD_ATTR            (NULL|self + lower)
+              72 CALL                 (0 positional)
+              80 LOAD_CONST           ("manual")
+              82 COMPARE_OP           (==)
+              86 POP_JUMP_IF_FALSE    (to 358)
+
+1442:          90 LOAD_GLOBAL          (NULL + _clean)
+             100 LOAD_FAST            (settings)
+             102 LOAD_ATTR            (NULL|self + get)
+             122 LOAD_CONST           ("manual_pool_path")
+             124 CALL                 (1 positional)
+             132 CALL                 (1 positional)
+             140 LOAD_GLOBAL          (NULL + _clean)
+             150 LOAD_FAST            (settings)
+             152 LOAD_ATTR            (NULL|self + get)
+             172 LOAD_CONST           ("manual_state_path")
+             174 CALL                 (1 positional)
+             182 CALL                 (1 positional)
+             190 BUILD_TUPLE          2
+             192 STORE_FAST           (key)
+
+1443:         194 LOAD_FAST            (self)
+             196 LOAD_ATTR            (lock)
+             216 BEFORE_WITH
+             218 POP_TOP
+
+1444:         220 LOAD_FAST            (self)
+             222 LOAD_ATTR            (_manual_pool_instance)
+             242 POP_JUMP_IF_NONE     (to 278)
+             246 LOAD_FAST            (self)
+             248 LOAD_ATTR            (_manual_pool_key)
+             268 LOAD_FAST            (key)
+             270 COMPARE_OP           (!=)
+             274 POP_JUMP_IF_FALSE    (to 316)
+
+1445:     >>  278 LOAD_GLOBAL          (NULL + ManualMailboxPool)
+             288 LOAD_FAST            (key)
+             290 CALL_FUNCTION_EX     (positional arguments only)
+             292 LOAD_FAST            (self)
+             294 STORE_ATTR           (_manual_pool_instance)
+
+1446:         304 LOAD_FAST_LOAD_FAST  (key, self)
+             306 STORE_ATTR           (_manual_pool_key)
+
+1447:     >>  316 LOAD_FAST            (self)
+             318 LOAD_ATTR            (_manual_pool_instance)
+
+1443:         338 SWAP                 (TOS <-> TOS1)
+             340 LOAD_CONST           (None)
+             342 LOAD_CONST           (None)
+             344 LOAD_CONST           (None)
+             346 CALL                 (2 positional)
+             354 POP_TOP
+             356 RETURN_VALUE
+
+1448:     >>  358 LOAD_GLOBAL          (NULL + MailboxPool)
+             368 LOAD_GLOBAL          (NULL + _clean)
+             378 LOAD_FAST            (settings)
+             380 LOAD_ATTR            (NULL|self + get)
+             400 LOAD_CONST           ("pool_path")
+             402 CALL                 (1 positional)
+             410 CALL                 (1 positional)
+             418 LOAD_GLOBAL          (NULL + _clean)
+             428 LOAD_FAST            (settings)
+             430 LOAD_ATTR            (NULL|self + get)
+             450 LOAD_CONST           ("state_path")
+             452 CALL                 (1 positional)
+             460 CALL                 (1 positional)
+             468 CALL                 (2 positional)
+             476 RETURN_VALUE
+
+1443:     >>  478 PUSH_EXC_INFO
+             480 WITH_EXCEPT_START    0
+             482 TO_BOOL
+             490 POP_JUMP_IF_TRUE     (to 496)
+             494 RERAISE              2
+         >>  496 POP_TOP
+             498 POP_EXCEPT
+             500 POP_TOP
+             502 POP_TOP
+             504 JUMP_BACKWARD_NO_INTERRUPT (to 358)
+         >>  506 COPY                 3
+             508 POP_EXCEPT
+             510 RERAISE              1
+
+ExceptionTable:
+  218 to 336 -> 478 [1] lasti
+  478 to 496 -> 506 [3] lasti
+
+# Method Name:       settings_validation
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  20
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1450
+# Constants:
+#    0: None
+#    1: 'ok'
+#    2: '邮箱池格式无效: '
+#    3: '; '
+#    4: 'errors'
+#    5: '邮箱池为空'
+#    6: 'gptmail_enabled'
+#    7: False
+#    8: 'email_mode'
+#    9: 'manual'
+#   10: <Code311 code object <genexpr> at 0x1055310a0, file runtime.py>, line 1458
+#   11: '裸邮箱格式需要启用 GPTMail 收码'
+#   12: 'sms_provider'
+#   13: 'sms_api_key'
+#   14: 'localpool'
+#   15: '请填写 SMS API Key'
+#   16: '本地号码池模式需要填写号码池文件路径'
+#   17: 'gptmail_url'
+#   18: 'https://gptmail.passkissyou.online'
+#   19: {'http', 'https'}
+#   20: 'GPTMail URL 格式不正确'
+#   21: 'gptmail_api_key'
+#   22: '请填写 GPTMail API Key'
+#   23: 'sub2api'
+#   24: 'SUB2 地址'
+#   25: 'url'
+#   26: 'SUB2 账号'
+#   27: 'email'
+#   28: 'SUB2 密码'
+#   29: 'password'
+#   30: 'SUB2 分组'
+#   31: 'group'
+#   32: '请填写'
+#   33: 'proxy'
+#   34: '主代理格式不正确'
+#   35: 'node_runner'
+#   36: '邮箱优先 Node SentinelRunner 不存在'
+#   37: ('pool', 'remote_checked')
+#   38: True
+#   39: ('remote_checked', 'sub2_group_id', 'sub2_group')
+# Names:
+#    0: _pool
+#    1: validate
+#    2: get
+#    3: MailboxPoolError
+#    4: join
+#    5: _as_bool
+#    6: _clean
+#    7: lower
+#    8: entries
+#    9: any
+#   10: RuntimeError
+#   11: urlsplit
+#   12: scheme
+#   13: netloc
+#   14: isinstance
+#   15: dict
+#   16: normalize_proxy_url
+#   17: Path
+#   18: expanduser
+#   19: exists
+#   20: _validate_main_proxy
+#   21: _validate_sub2
+#   22: update
+# Varnames:
+#	self, settings, remote, pool, pool_check, gptmail_enabled, entries, _errors, provider, key, gptmail_url, parsed_gptmail_url, sub, name, value, proxy, node_runner, result, group_id, group_name
+# Positional arguments:
+#	self, settings
+# Local variables:
+#    2: remote
+#    3: pool
+#    4: pool_check
+#    5: gptmail_enabled
+#    6: entries
+#    7: _errors
+#    8: provider
+#    9: key
+#   10: gptmail_url
+#   11: parsed_gptmail_url
+#   12: sub
+#   13: name
+#   14: value
+#   15: proxy
+#   16: node_runner
+#   17: result
+#   18: group_id
+#   19: group_name
+1450:           0 RESUME               0
+
+1451:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _pool)
+              24 LOAD_FAST            (settings)
+              26 CALL                 (1 positional)
+              34 STORE_FAST           (pool)
+
+1452:          36 LOAD_FAST            (pool)
+              38 LOAD_ATTR            (NULL|self + validate)
+              58 CALL                 (0 positional)
+              66 STORE_FAST           (pool_check)
+
+1453:          68 LOAD_FAST            (pool_check)
+              70 LOAD_ATTR            (NULL|self + get)
+              90 LOAD_CONST           ("ok")
+              92 CALL                 (1 positional)
+             100 TO_BOOL
+             108 POP_JUMP_IF_TRUE     (to 220)
+
+1454:         112 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             122 LOAD_CONST           ("邮箱池格式无效: ")
+             124 LOAD_CONST           ("; ")
+             126 LOAD_ATTR            (NULL|self + join)
+             146 LOAD_FAST            (pool_check)
+             148 LOAD_ATTR            (NULL|self + get)
+             168 LOAD_CONST           ("errors")
+             170 CALL                 (1 positional)
+             178 COPY                 1
+             180 TO_BOOL
+             188 POP_JUMP_IF_TRUE     (to 198)
+             192 POP_TOP
+             194 LOAD_CONST           ("邮箱池为空")
+             196 BUILD_LIST           1
+         >>  198 CALL                 (1 positional)
+             206 BINARY_OP            (+)
+             210 CALL                 (1 positional)
+             218 RAISE_VARARGS        (exception instance)
+
+1455:     >>  220 LOAD_GLOBAL          (NULL + _as_bool)
+             230 LOAD_FAST            (settings)
+             232 LOAD_ATTR            (NULL|self + get)
+             252 LOAD_CONST           ("gptmail_enabled")
+             254 CALL                 (1 positional)
+             262 LOAD_CONST           (False)
+             264 CALL                 (2 positional)
+             272 STORE_FAST           (gptmail_enabled)
+
+1456:         274 LOAD_GLOBAL          (NULL + _clean)
+             284 LOAD_FAST            (settings)
+             286 LOAD_ATTR            (NULL|self + get)
+             306 LOAD_CONST           ("email_mode")
+             308 CALL                 (1 positional)
+             316 CALL                 (1 positional)
+             324 LOAD_ATTR            (NULL|self + lower)
+             344 CALL                 (0 positional)
+             352 LOAD_CONST           ("manual")
+             354 COMPARE_OP           (!=)
+             358 POP_JUMP_IF_FALSE    (to 480)
+             362 LOAD_FAST            (gptmail_enabled)
+             364 TO_BOOL
+             372 POP_JUMP_IF_TRUE     (to 480)
+
+1457:         376 LOAD_FAST            (pool)
+             378 LOAD_ATTR            (NULL|self + entries)
+             398 CALL                 (0 positional)
+             406 UNPACK_SEQUENCE      2
+             410 STORE_FAST_STORE_FAST (entries, _errors)
+
+1458:         412 LOAD_GLOBAL          (NULL + any)
+             422 LOAD_CONST           (<Code311 code object <genexpr> at 0x1055310a0, file runtime.py>, line 1458)
+             424 MAKE_FUNCTION
+             426 LOAD_FAST            (entries)
+             428 GET_ITER
+             430 CALL                 (0 positional)
+             438 CALL                 (1 positional)
+             446 TO_BOOL
+             454 POP_JUMP_IF_FALSE    (to 480)
+
+1459:         458 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             468 LOAD_CONST           ("裸邮箱格式需要启用 GPTMail 收码")
+             470 CALL                 (1 positional)
+             478 RAISE_VARARGS        (exception instance)
+
+1460:     >>  480 LOAD_GLOBAL          (NULL + _clean)
+             490 LOAD_FAST            (settings)
+             492 LOAD_ATTR            (NULL|self + get)
+             512 LOAD_CONST           ("sms_provider")
+             514 CALL                 (1 positional)
+             522 CALL                 (1 positional)
+             530 LOAD_ATTR            (NULL|self + lower)
+             550 CALL                 (0 positional)
+             558 STORE_FAST           (provider)
+
+1461:         560 LOAD_GLOBAL          (NULL + _clean)
+             570 LOAD_FAST            (settings)
+             572 LOAD_ATTR            (NULL|self + get)
+             592 LOAD_CONST           ("sms_api_key")
+             594 CALL                 (1 positional)
+             602 CALL                 (1 positional)
+             610 STORE_FAST           (key)
+
+1462:         612 LOAD_FAST            (provider)
+             614 LOAD_CONST           ("localpool")
+             616 COMPARE_OP           (!=)
+             620 POP_JUMP_IF_FALSE    (to 660)
+             624 LOAD_FAST            (key)
+             626 TO_BOOL
+             634 POP_JUMP_IF_TRUE     (to 660)
+
+1463:         638 LOAD_GLOBAL          (NULL + RuntimeError)
+             648 LOAD_CONST           ("请填写 SMS API Key")
+             650 CALL                 (1 positional)
+             658 RAISE_VARARGS        (exception instance)
+
+1464:     >>  660 LOAD_FAST            (provider)
+             662 LOAD_CONST           ("localpool")
+             664 COMPARE_OP           (==)
+             668 POP_JUMP_IF_FALSE    (to 708)
+             672 LOAD_FAST            (key)
+             674 TO_BOOL
+             682 POP_JUMP_IF_TRUE     (to 708)
+
+1465:         686 LOAD_GLOBAL          (NULL + RuntimeError)
+             696 LOAD_CONST           ("本地号码池模式需要填写号码池文件路径")
+             698 CALL                 (1 positional)
+             706 RAISE_VARARGS        (exception instance)
+
+1466:     >>  708 LOAD_FAST            (gptmail_enabled)
+             710 TO_BOOL
+             718 POP_JUMP_IF_FALSE    (to 1074)
+             722 LOAD_GLOBAL          (NULL + _clean)
+             732 LOAD_FAST            (settings)
+             734 LOAD_ATTR            (NULL|self + get)
+             754 LOAD_CONST           ("email_mode")
+             756 CALL                 (1 positional)
+             764 CALL                 (1 positional)
+             772 LOAD_ATTR            (NULL|self + lower)
+             792 CALL                 (0 positional)
+             800 LOAD_CONST           ("manual")
+             802 COMPARE_OP           (!=)
+             806 POP_JUMP_IF_FALSE    (to 1074)
+
+1467:         810 LOAD_GLOBAL          (NULL + _clean)
+             820 LOAD_FAST            (settings)
+             822 LOAD_ATTR            (NULL|self + get)
+             842 LOAD_CONST           ("gptmail_url")
+             844 CALL                 (1 positional)
+             852 CALL                 (1 positional)
+             860 COPY                 1
+             862 TO_BOOL
+             870 POP_JUMP_IF_TRUE     (to 878)
+             874 POP_TOP
+             876 LOAD_CONST           ("https://gptmail.passkissyou.online")
+         >>  878 STORE_FAST           (gptmail_url)
+
+1468:         880 LOAD_GLOBAL          (NULL + urlsplit)
+             890 LOAD_FAST            (gptmail_url)
+             892 CALL                 (1 positional)
+             900 STORE_FAST           (parsed_gptmail_url)
+
+1469:         902 LOAD_FAST            (parsed_gptmail_url)
+             904 LOAD_ATTR            (scheme)
+             924 LOAD_CONST           ({'http', 'https'})
+             926 CONTAINS_OP          (not in)
+             930 POP_JUMP_IF_TRUE     (to 968)
+             934 LOAD_FAST            (parsed_gptmail_url)
+             936 LOAD_ATTR            (netloc)
+             956 TO_BOOL
+             964 POP_JUMP_IF_TRUE     (to 990)
+
+1470:     >>  968 LOAD_GLOBAL          (NULL + RuntimeError)
+             978 LOAD_CONST           ("GPTMail URL 格式不正确")
+             980 CALL                 (1 positional)
+             988 RAISE_VARARGS        (exception instance)
+
+1471:     >>  990 LOAD_GLOBAL          (NULL + _clean)
+            1000 LOAD_FAST            (settings)
+            1002 LOAD_ATTR            (NULL|self + get)
+            1022 LOAD_CONST           ("gptmail_api_key")
+            1024 CALL                 (1 positional)
+            1032 CALL                 (1 positional)
+            1040 TO_BOOL
+            1048 POP_JUMP_IF_TRUE     (to 1074)
+
+1472:        1052 LOAD_GLOBAL          (NULL + RuntimeError)
+            1062 LOAD_CONST           ("请填写 GPTMail API Key")
+            1064 CALL                 (1 positional)
+            1072 RAISE_VARARGS        (exception instance)
+
+1473:     >> 1074 LOAD_GLOBAL          (NULL + isinstance)
+            1084 LOAD_FAST            (settings)
+            1086 LOAD_ATTR            (NULL|self + get)
+            1106 LOAD_CONST           ("sub2api")
+            1108 CALL                 (1 positional)
+            1116 LOAD_GLOBAL          (dict)
+            1126 CALL                 (2 positional)
+            1134 TO_BOOL
+            1142 POP_JUMP_IF_FALSE    (to 1180)
+            1146 LOAD_FAST            (settings)
+            1148 LOAD_ATTR            (NULL|self + get)
+            1168 LOAD_CONST           ("sub2api")
+            1170 CALL                 (1 positional)
+            1178 JUMP_FORWARD         (to 1182)
+         >> 1180 BUILD_MAP            0
+         >> 1182 STORE_FAST           (sub)
+
+1474:        1184 LOAD_CONST           ("SUB2 地址")
+            1186 LOAD_FAST            (sub)
+            1188 LOAD_ATTR            (NULL|self + get)
+            1208 LOAD_CONST           ("url")
+            1210 CALL                 (1 positional)
+            1218 BUILD_TUPLE          2
+            1220 LOAD_CONST           ("SUB2 账号")
+            1222 LOAD_FAST            (sub)
+            1224 LOAD_ATTR            (NULL|self + get)
+            1244 LOAD_CONST           ("email")
+            1246 CALL                 (1 positional)
+            1254 BUILD_TUPLE          2
+            1256 LOAD_CONST           ("SUB2 密码")
+            1258 LOAD_FAST            (sub)
+            1260 LOAD_ATTR            (NULL|self + get)
+            1280 LOAD_CONST           ("password")
+            1282 CALL                 (1 positional)
+            1290 BUILD_TUPLE          2
+            1292 LOAD_CONST           ("SUB2 分组")
+            1294 LOAD_FAST            (sub)
+            1296 LOAD_ATTR            (NULL|self + get)
+            1316 LOAD_CONST           ("group")
+            1318 CALL                 (1 positional)
+            1326 BUILD_TUPLE          2
+            1328 BUILD_TUPLE          4
+            1330 GET_ITER
+            1332 FOR_ITER             (to 1406)
+            1336 UNPACK_SEQUENCE      2
+            1340 STORE_FAST_STORE_FAST (name, value)
+
+1475:        1342 LOAD_GLOBAL          (NULL + _clean)
+            1352 LOAD_FAST            (value)
+            1354 CALL                 (1 positional)
+            1362 TO_BOOL
+            1370 POP_JUMP_IF_FALSE    (to 1378)
+            1374 JUMP_BACKWARD        (to 1332)
+
+1476:     >> 1378 LOAD_GLOBAL          (NULL + RuntimeError)
+            1388 LOAD_CONST           ("请填写")
+            1390 LOAD_FAST            (name)
+            1392 FORMAT_SIMPLE
+            1394 BUILD_STRING         2
+            1396 CALL                 (1 positional)
+            1404 RAISE_VARARGS        (exception instance)
+
+1474:     >> 1406 END_FOR
+            1408 POP_TOP
+
+1477:        1410 LOAD_GLOBAL          (NULL + _clean)
+            1420 LOAD_FAST            (settings)
+            1422 LOAD_ATTR            (NULL|self + get)
+            1442 LOAD_CONST           ("proxy")
+            1444 CALL                 (1 positional)
+            1452 CALL                 (1 positional)
+            1460 STORE_FAST           (proxy)
+
+1478:        1462 LOAD_FAST            (proxy)
+            1464 TO_BOOL
+            1472 POP_JUMP_IF_FALSE    (to 1530)
+            1476 LOAD_GLOBAL          (NULL + normalize_proxy_url)
+            1486 LOAD_FAST            (proxy)
+            1488 CALL                 (1 positional)
+            1496 TO_BOOL
+            1504 POP_JUMP_IF_TRUE     (to 1530)
+
+1479:        1508 LOAD_GLOBAL          (NULL + RuntimeError)
+            1518 LOAD_CONST           ("主代理格式不正确")
+            1520 CALL                 (1 positional)
+            1528 RAISE_VARARGS        (exception instance)
+
+1480:     >> 1530 LOAD_GLOBAL          (NULL + Path)
+            1540 LOAD_GLOBAL          (NULL + _clean)
+            1550 LOAD_FAST            (settings)
+            1552 LOAD_ATTR            (NULL|self + get)
+            1572 LOAD_CONST           ("node_runner")
+            1574 CALL                 (1 positional)
+            1582 CALL                 (1 positional)
+            1590 CALL                 (1 positional)
+            1598 LOAD_ATTR            (NULL|self + expanduser)
+            1618 CALL                 (0 positional)
+            1626 STORE_FAST           (node_runner)
+
+1481:        1628 LOAD_FAST            (node_runner)
+            1630 LOAD_ATTR            (NULL|self + exists)
+            1650 CALL                 (0 positional)
+            1658 TO_BOOL
+            1666 POP_JUMP_IF_TRUE     (to 1692)
+
+1482:        1670 LOAD_GLOBAL          (NULL + RuntimeError)
+            1680 LOAD_CONST           ("邮箱优先 Node SentinelRunner 不存在")
+            1682 CALL                 (1 positional)
+            1690 RAISE_VARARGS        (exception instance)
+
+1483:     >> 1692 LOAD_FAST            (pool_check)
+            1694 LOAD_CONST           (False)
+            1696 LOAD_CONST           (('pool', 'remote_checked'))
+            1698 BUILD_CONST_KEY_MAP  2
+            1700 STORE_FAST           (result)
+
+1484:        1702 LOAD_FAST            (remote)
+            1704 TO_BOOL
+            1712 POP_JUMP_IF_FALSE    (to 1820)
+
+1485:        1716 LOAD_GLOBAL          (NULL + _validate_main_proxy)
+            1726 LOAD_FAST            (proxy)
+            1728 CALL                 (1 positional)
+            1736 POP_TOP
+
+1486:        1738 LOAD_FAST            (self)
+            1740 LOAD_ATTR            (NULL|self + _validate_sub2)
+            1760 LOAD_FAST            (settings)
+            1762 CALL                 (1 positional)
+            1770 UNPACK_SEQUENCE      2
+            1774 STORE_FAST           (group_id)
+            1776 STORE_FAST           (group_name)
+
+1487:        1778 LOAD_FAST            (result)
+            1780 LOAD_ATTR            (NULL|self + update)
+            1800 LOAD_CONST           (True)
+            1802 LOAD_FAST            (group_id)
+            1804 LOAD_FAST            (group_name)
+            1806 LOAD_CONST           (('remote_checked', 'sub2_group_id', 'sub2_group'))
+            1808 BUILD_CONST_KEY_MAP  3
+            1810 CALL                 (1 positional)
+            1818 POP_TOP
+
+1488:     >> 1820 LOAD_FAST            (result)
+            1822 RETURN_VALUE
+
+
+# Method Name:       _validate_sub2
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        9
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1490
+# Constants:
+#    0: None
+#    1: 'sub2api'
+#    2: 'preflight@example.test'
+#    3: 'preflight'
+#    4: 'url'
+#    5: 'email'
+#    6: 'password'
+#    7: 30
+#    8: <Code311 code object <lambda> at 0x105531100, file runtime.py>, line 1496
+#    9: ('timeout', 'proxy', 'log_fn')
+#   10: 'group'
+#   11: 20
+#   12: <Code311 code object <lambda> at 0x105531130, file runtime.py>, line 1500
+# Names:
+#    0: isinstance
+#    1: get
+#    2: dict
+#    3: _task_config
+#    4: upload_proxy
+#    5: get_admin_token
+#    6: _clean
+#    7: resolve_sub2_group_id
+# Varnames:
+#	self, settings, sub, cfg, proxy, token
+# Positional arguments:
+#	self, settings
+# Local variables:
+#    2: sub
+#    3: cfg
+#    4: proxy
+#    5: token
+# Cell variables:
+#    0: self
+               0 MAKE_CELL            (self)
+
+1490:           2 RESUME               0
+
+1491:           4 LOAD_GLOBAL          (NULL + isinstance)
+              14 LOAD_FAST            (settings)
+              16 LOAD_ATTR            (NULL|self + get)
+              36 LOAD_CONST           ("sub2api")
+              38 CALL                 (1 positional)
+              46 LOAD_GLOBAL          (dict)
+              56 CALL                 (2 positional)
+              64 TO_BOOL
+              72 POP_JUMP_IF_FALSE    (to 110)
+              76 LOAD_FAST            (settings)
+              78 LOAD_ATTR            (NULL|self + get)
+              98 LOAD_CONST           ("sub2api")
+             100 CALL                 (1 positional)
+             108 JUMP_FORWARD         (to 112)
+         >>  110 BUILD_MAP            0
+         >>  112 STORE_FAST           (sub)
+
+1492:         114 LOAD_DEREF           (self)
+             116 LOAD_ATTR            (NULL|self + _task_config)
+             136 LOAD_FAST            (settings)
+             138 LOAD_CONST           ("preflight@example.test")
+             140 LOAD_CONST           ("preflight")
+             142 CALL                 (3 positional)
+             150 STORE_FAST           (cfg)
+
+1493:         152 LOAD_GLOBAL          (NULL + upload_proxy)
+             162 LOAD_FAST            (cfg)
+             164 CALL                 (1 positional)
+             172 STORE_FAST           (proxy)

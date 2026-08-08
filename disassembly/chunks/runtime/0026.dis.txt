@@ -1,0 +1,736 @@
+             314 CALL                 (0 positional)
+             322 CALL                 (1 positional)
+
+776:         330 LOAD_CONST           (('status', 'lease_until', 'reason', 'updated_at'))
+             332 BUILD_CONST_KEY_MAP  4
+             334 CALL                 (1 positional)
+             342 POP_TOP
+
+782:         344 LOAD_DEREF           (self)
+             346 LOAD_ATTR            (NULL|self + _history)
+             366 LOAD_FAST            (item)
+             368 LOAD_CONST           ("manual_reimport_retry")
+             370 LOAD_FAST            (reason)
+             372 CALL                 (3 positional)
+             380 POP_TOP
+
+783:         382 LOAD_FAST            (restored)
+             384 LOAD_CONST           (1)
+             386 BINARY_OP            (+=)
+             390 STORE_FAST           (restored)
+             392 JUMP_BACKWARD        (to 12)
+
+768:     >>  396 END_FOR
+             398 POP_TOP
+
+784:         400 LOAD_FAST            (restored)
+             402 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1376
+# Constants:
+#    0: None
+#    1: 'info'
+# Names:
+#    0: log_fn
+# Varnames:
+#	message
+# Positional arguments:
+#	message
+# Free variables:
+#    0: self
+               0 COPY_FREE_VARS       1
+
+1376:           2 RESUME               0
+               4 LOAD_DEREF           (self)
+               6 LOAD_ATTR            (NULL|self + log_fn)
+              26 LOAD_FAST            (message)
+              28 LOAD_CONST           ("info")
+              30 CALL                 (2 positional)
+              38 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          runtime.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        4
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1377
+# Constants:
+#    0: None
+# Names:
+#    0: bool
+#    1: stop_event
+#    2: is_set
+# Free variables:
+#    0: self
+               0 COPY_FREE_VARS       1
+
+1377:           2 RESUME               0
+               4 LOAD_GLOBAL          (NULL + bool)
+              14 LOAD_DEREF           (self)
+              16 LOAD_ATTR            (stop_event)
+              36 COPY                 1
+              38 TO_BOOL
+              46 POP_JUMP_IF_FALSE    (to 102)
+              50 POP_TOP
+              52 LOAD_DEREF           (self)
+              54 LOAD_ATTR            (stop_event)
+              74 LOAD_ATTR            (NULL|self + is_set)
+              94 CALL                 (0 positional)
+         >>  102 CALL                 (1 positional)
+             110 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        1
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1397
+# Constants:
+#    0: None
+# Varnames:
+#	_message, _level
+# Positional arguments:
+#	_message, _level
+1397:           0 RESUME               0
+               2 RETURN_CONST         (None)
+
+
+# Method Name:       <genexpr>
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        8
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1458
+# Constants:
+#    0: 'mailbox_type'
+#    1: ''
+#    2: 'email_only'
+#    3: None
+# Names:
+#    0: _clean
+#    1: getattr
+# Varnames:
+#	.0, entry
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: entry
+1458:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 74)
+              14 STORE_FAST           (entry)
+              16 LOAD_GLOBAL          (NULL + _clean)
+              26 LOAD_GLOBAL          (NULL + getattr)
+              36 LOAD_FAST            (entry)
+              38 LOAD_CONST           ("mailbox_type")
+              40 LOAD_CONST           ("")
+              42 CALL                 (3 positional)
+              50 CALL                 (1 positional)
+              58 LOAD_CONST           ("email_only")
+              60 COMPARE_OP           (==)
+              64 YIELD_VALUE          0
+              66 RESUME               5
+              68 POP_TOP
+              70 JUMP_BACKWARD        (to 10)
+         >>   74 END_FOR
+              76 POP_TOP
+              78 RETURN_CONST         (None)
+         >>   80 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              82 RERAISE              1
+
+ExceptionTable:
+  4 to 78 -> 80 [0] lasti
+
+# Method Name:       <lambda>
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1496
+# Constants:
+#    0: None
+#    1: 'info'
+# Names:
+#    0: _log
+# Varnames:
+#	message
+# Positional arguments:
+#	message
+# Free variables:
+#    0: self
+               0 COPY_FREE_VARS       1
+
+1496:           2 RESUME               0
+               4 LOAD_DEREF           (self)
+               6 LOAD_ATTR            (NULL|self + _log)
+              26 LOAD_FAST            (message)
+              28 LOAD_CONST           ("info")
+              30 CALL                 (2 positional)
+              38 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1500
+# Constants:
+#    0: None
+#    1: 'info'
+# Names:
+#    0: _log
+# Varnames:
+#	message
+# Positional arguments:
+#	message
+# Free variables:
+#    0: self
+               0 COPY_FREE_VARS       1
+
+1500:           2 RESUME               0
+               4 LOAD_DEREF           (self)
+               6 LOAD_ATTR            (NULL|self + _log)
+              26 LOAD_FAST            (message)
+              28 LOAD_CONST           ("info")
+              30 CALL                 (2 positional)
+              38 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1845
+# Constants:
+#    0: None
+#    1: ' '
+# Names:
+#    0: _log
+# Varnames:
+#	message, level
+# Positional arguments:
+#	message, level
+# Free variables:
+#    0: self
+#    1: task_id
+               0 COPY_FREE_VARS       2
+
+1845:           2 RESUME               0
+               4 LOAD_DEREF           (self)
+               6 LOAD_ATTR            (NULL|self + _log)
+              26 LOAD_DEREF           (task_id)
+              28 FORMAT_SIMPLE
+              30 LOAD_CONST           (" ")
+              32 LOAD_FAST            (message)
+              34 FORMAT_SIMPLE
+              36 BUILD_STRING         3
+              38 LOAD_FAST            (level)
+              40 CALL                 (2 positional)
+              48 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1852
+# Constants:
+#    0: None
+#    1: ' '
+# Names:
+#    0: _log
+# Varnames:
+#	message, level
+# Positional arguments:
+#	message, level
+# Free variables:
+#    0: self
+#    1: task_id
+               0 COPY_FREE_VARS       2
+
+1852:           2 RESUME               0
+               4 LOAD_DEREF           (self)
+               6 LOAD_ATTR            (NULL|self + _log)
+              26 LOAD_DEREF           (task_id)
+              28 FORMAT_SIMPLE
+              30 LOAD_CONST           (" ")
+              32 LOAD_FAST            (message)
+              34 FORMAT_SIMPLE
+              36 BUILD_STRING         3
+              38 LOAD_FAST            (level)
+              40 CALL                 (2 positional)
+              48 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1862
+# Constants:
+#    0: None
+#    1: ' '
+# Names:
+#    0: _log
+# Varnames:
+#	message, level
+# Positional arguments:
+#	message, level
+# Free variables:
+#    0: self
+#    1: task_id
+               0 COPY_FREE_VARS       2
+
+1862:           2 RESUME               0
+               4 LOAD_DEREF           (self)
+               6 LOAD_ATTR            (NULL|self + _log)
+              26 LOAD_DEREF           (task_id)
+              28 FORMAT_SIMPLE
+              30 LOAD_CONST           (" ")
+              32 LOAD_FAST            (message)
+              34 FORMAT_SIMPLE
+              36 BUILD_STRING         3
+              38 LOAD_FAST            (level)
+              40 CALL                 (2 positional)
+              48 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1872
+# Constants:
+#    0: None
+#    1: ' '
+# Names:
+#    0: _log
+# Varnames:
+#	message, level
+# Positional arguments:
+#	message, level
+# Free variables:
+#    0: self
+#    1: task_id
+               0 COPY_FREE_VARS       2
+
+1872:           2 RESUME               0
+               4 LOAD_DEREF           (self)
+               6 LOAD_ATTR            (NULL|self + _log)
+              26 LOAD_DEREF           (task_id)
+              28 FORMAT_SIMPLE
+              30 LOAD_CONST           (" ")
+              32 LOAD_FAST            (message)
+              34 FORMAT_SIMPLE
+              36 BUILD_STRING         3
+              38 LOAD_FAST            (level)
+              40 CALL                 (2 positional)
+              48 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1882
+# Constants:
+#    0: None
+#    1: ' '
+# Names:
+#    0: _log
+# Varnames:
+#	message, tag
+# Positional arguments:
+#	message, tag
+# Free variables:
+#    0: self
+#    1: task_id
+               0 COPY_FREE_VARS       2
+
+1882:           2 RESUME               0
+               4 LOAD_DEREF           (self)
+               6 LOAD_ATTR            (NULL|self + _log)
+              26 LOAD_DEREF           (task_id)
+              28 FORMAT_SIMPLE
+              30 LOAD_CONST           (" ")
+              32 LOAD_FAST            (message)
+              34 FORMAT_SIMPLE
+              36 BUILD_STRING         3
+              38 LOAD_FAST            (tag)
+              40 CALL                 (2 positional)
+              48 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1888
+# Constants:
+#    0: None
+#    1: ' '
+# Names:
+#    0: _log
+# Varnames:
+#	message, tag
+# Positional arguments:
+#	message, tag
+# Free variables:
+#    0: self
+#    1: task_id
+               0 COPY_FREE_VARS       2
+
+1888:           2 RESUME               0
+               4 LOAD_DEREF           (self)
+               6 LOAD_ATTR            (NULL|self + _log)
+              26 LOAD_DEREF           (task_id)
+              28 FORMAT_SIMPLE
+              30 LOAD_CONST           (" ")
+              32 LOAD_FAST            (message)
+              34 FORMAT_SIMPLE
+              36 BUILD_STRING         3
+              38 LOAD_FAST            (tag)
+              40 CALL                 (2 positional)
+              48 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1904
+# Constants:
+#    0: None
+#    1: ' '
+# Names:
+#    0: _log
+# Varnames:
+#	message, tag
+# Positional arguments:
+#	message, tag
+# Free variables:
+#    0: self
+#    1: task_id
+               0 COPY_FREE_VARS       2
+
+1904:           2 RESUME               0
+               4 LOAD_DEREF           (self)
+               6 LOAD_ATTR            (NULL|self + _log)
+              26 LOAD_DEREF           (task_id)
+              28 FORMAT_SIMPLE
+              30 LOAD_CONST           (" ")
+              32 LOAD_FAST            (message)
+              34 FORMAT_SIMPLE
+              36 BUILD_STRING         3
+              38 LOAD_FAST            (tag)
+              40 CALL                 (2 positional)
+              48 RETURN_VALUE
+
+
+# Method Name:       <genexpr>
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1991
+# Constants:
+#    0: None
+# Varnames:
+#	.0, marker
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: marker
+# Free variables:
+#    0: error
+               0 COPY_FREE_VARS       1
+
+1991:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+              10 GET_ITER
+              12 FOR_ITER             (to 34)
+              16 STORE_FAST_LOAD_FAST (marker, marker)
+              18 LOAD_DEREF           (error)
+              20 CONTAINS_OP          (in)
+              24 YIELD_VALUE          0
+              26 RESUME               5
+              28 POP_TOP
+              30 JUMP_BACKWARD        (to 12)
+         >>   34 END_FOR
+              36 POP_TOP
+              38 RETURN_CONST         (None)
+         >>   40 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              42 RERAISE              1
+
+ExceptionTable:
+  6 to 38 -> 40 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1999
+# Constants:
+#    0: None
+# Varnames:
+#	.0, marker
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: marker
+# Free variables:
+#    0: error
+               0 COPY_FREE_VARS       1
+
+1999:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+              10 GET_ITER
+              12 FOR_ITER             (to 34)
+              16 STORE_FAST_LOAD_FAST (marker, marker)
+              18 LOAD_DEREF           (error)
+              20 CONTAINS_OP          (in)
+              24 YIELD_VALUE          0
+              26 RESUME               5
+              28 POP_TOP
+              30 JUMP_BACKWARD        (to 12)
+         >>   34 END_FOR
+              36 POP_TOP
+              38 RETURN_CONST         (None)
+         >>   40 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              42 RERAISE              1
+
+ExceptionTable:
+  6 to 38 -> 40 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        2012
+# Constants:
+#    0: None
+# Varnames:
+#	.0, token
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: token
+# Free variables:
+#    0: low
+               0 COPY_FREE_VARS       1
+
+2012:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+              10 GET_ITER
+              12 FOR_ITER             (to 34)
+              16 STORE_FAST_LOAD_FAST (token, token)
+              18 LOAD_DEREF           (low)
+              20 CONTAINS_OP          (in)
+              24 YIELD_VALUE          0
+              26 RESUME               5
+              28 POP_TOP
+              30 JUMP_BACKWARD        (to 12)
+         >>   34 END_FOR
+              36 POP_TOP
+              38 RETURN_CONST         (None)
+         >>   40 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              42 RERAISE              1
+
+ExceptionTable:
+  6 to 38 -> 40 [0] lasti
+
+# Method Name:       <lambda>
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        2
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        2112
+# Constants:
+#    0: None
+# Names:
+#    0: stat
+#    1: st_mtime
+# Varnames:
+#	path
+# Positional arguments:
+#	path
+2112:           0 RESUME               0
+               2 LOAD_FAST            (path)
+               4 LOAD_ATTR            (NULL|self + stat)
+              24 CALL                 (0 positional)
+              32 LOAD_ATTR            (st_mtime)
+              52 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        6
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        2146
+# Constants:
+#    0: None
+#    1: 'created_at'
+#    2: 0
+#    3: 'task_id'
+# Names:
+#    0: int
+#    1: get
+#    2: _clean
+# Varnames:
+#	item
+# Positional arguments:
+#	item
+2146:           0 RESUME               0
+               2 LOAD_GLOBAL          (NULL + int)
+              12 LOAD_FAST            (item)
+              14 LOAD_ATTR            (NULL|self + get)
+              34 LOAD_CONST           ("created_at")
+              36 CALL                 (1 positional)
+              44 COPY                 1
+              46 TO_BOOL
+              54 POP_JUMP_IF_TRUE     (to 62)
+              58 POP_TOP
+              60 LOAD_CONST           (0)
+         >>   62 CALL                 (1 positional)
+              70 LOAD_GLOBAL          (NULL + _clean)
+              80 LOAD_FAST            (item)
+              82 LOAD_ATTR            (NULL|self + get)
+             102 LOAD_CONST           ("task_id")
+             104 CALL                 (1 positional)
+             112 CALL                 (1 positional)
+             120 BUILD_TUPLE          2
+             122 RETURN_VALUE
+
+
+# Method Name:       <genexpr>
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        7
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        2147
+# Constants:
+#    0: False
+#    1: (',', ':')
+#    2: ('ensure_ascii', 'separators')
+#    3: None
+# Names:
+#    0: json
+#    1: dumps
+# Varnames:
+#	.0, item
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: item
+2147:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 68)
+              14 STORE_FAST           (item)
+              16 LOAD_GLOBAL          (json)
+              26 LOAD_ATTR            (dumps)
+              46 PUSH_NULL
+              48 LOAD_FAST            (item)
+              50 LOAD_CONST           (False)
+              52 LOAD_CONST           ((',', ':'))
+              54 LOAD_CONST           (('ensure_ascii', 'separators'))
+              56 CALL_KW              3
+              58 YIELD_VALUE          0
+              60 RESUME               5
+              62 POP_TOP
+              64 JUMP_BACKWARD        (to 10)
+         >>   68 END_FOR
+              70 POP_TOP
+              72 RETURN_CONST         (None)
+         >>   74 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              76 RERAISE              1
+
+ExceptionTable:
+  4 to 72 -> 74 [0] lasti

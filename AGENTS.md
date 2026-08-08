@@ -12,6 +12,16 @@ gptPhone is a macOS-local Flask application with a Vue 3 and Element Plus dashbo
 - Treat `business_pyc/` and `plus_launcher.pyc` as runtime artifacts, not editable source.
 - Treat `pycdc_attempt/` as hints only. It is incomplete and must not be used as runnable source. Use `disassembly/` to inspect recovered behavior and verify assumptions against live method signatures.
 
+## Maintainability Limits
+
+- New Python modules should target at most 800 lines and must not exceed 1,200 lines. New Vue single-file components should target at most 500 lines and must not exceed 700 lines.
+- A file already above its hard limit must not grow. Every change that touches it must extract at least one complete responsibility and leave the file with a net line-count reduction.
+- Extract cohesive provider/key policy, selection/ranking, wait orchestration, cleanup/cost, configuration, lifecycle, and public-state responsibilities instead of accumulating unrelated helpers in an entry module.
+- Preserve compatibility exports and original callable signatures while moving code. Treat mechanical extraction and behavior changes as separate stages, and run the full relevant test set after each stage.
+- Performance optimizations require a defaulted rollback switch, credential-redacted metrics, and explicit rollback conditions. Throughput must not trade away success rate, diagnostics, credential safety, cancellation behavior, or cleanup semantics.
+- For the current SMS optimization baseline, evaluate a rolling 100-task window and disable the SMS optimization if success falls more than 2 percentage points below 83.9%, two confirmed late codes are lost after early release, cancellation or duplicate-order counts rise, or cost per successful account increases by more than 10%. Protocol pressure, HTTP 429, or session invalidation must immediately return adaptive task admission to its configured baseline.
+- For recovered behavior, query `disassembly/index.json` first and read only the matching slices. Do not load an entire generated disassembly when an indexed symbol slice is available. Confirm callable signatures with Python 3.13 `inspect.signature`.
+
 ## Runtime Override Rules
 
 - Capture original methods before patching and keep patches narrowly scoped.

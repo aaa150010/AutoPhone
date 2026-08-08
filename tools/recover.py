@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""Recover readable artifacts from the extracted PyInstaller bundle."""
+"""Recover readable artifacts from an extracted PyInstaller bundle."""
 
 from __future__ import annotations
 
+import argparse
+import os
 import shutil
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
+from typing import Iterable
 
-
-ROOT = Path("/Users/lwh/Downloads/gptPhone")
-EXTRACTED = Path("/private/tmp/PlusBindTool_V1.0.3.exe_extracted")
-PYZ = EXTRACTED / "PYZ.pyz_extracted"
-PYDISASM = Path("/private/tmp/plusbind-re/bin/pydisasm")
-PYCDC = Path("/private/tmp/pycdc/pycdc")
+if __package__:
+    from .disassembly_archive import ArchiveError, DEFAULT_MAX_LINES, create_archive
+else:
+    from disassembly_archive import ArchiveError, DEFAULT_MAX_LINES, create_archive
 
 BUSINESS_MODULES = [
     "chatgpt_fields.pyc",
@@ -40,15 +43,19 @@ BUSINESS_MODULES = [
     "web_gui.pyc",
 ]
 
-ENTRY_PYCS = [
-    EXTRACTED / "plus_launcher.pyc",
-    EXTRACTED / "pyiboot01_bootstrap.pyc",
-    EXTRACTED / "pyi_rth_inspect.pyc",
-    EXTRACTED / "pyi_rth_pkgutil.pyc",
-    EXTRACTED / "pyi_rth_multiprocessing.pyc",
-    EXTRACTED / "pyi_rth_cryptography_openssl.pyc",
-    EXTRACTED / "pyi_rth_setuptools.pyc",
+ENTRY_PYC_NAMES = [
+    "plus_launcher.pyc",
+    "pyiboot01_bootstrap.pyc",
+    "pyi_rth_inspect.pyc",
+    "pyi_rth_pkgutil.pyc",
+    "pyi_rth_multiprocessing.pyc",
+    "pyi_rth_cryptography_openssl.pyc",
+    "pyi_rth_setuptools.pyc",
 ]
+
+
+class RecoveryError(RuntimeError):
+    """Raised when bytecode recovery cannot produce a valid archive."""
 
 
 def copy_with_tree(src: Path, dest_root: Path, base: Path) -> Path:
@@ -61,30 +68,61 @@ def copy_with_tree(src: Path, dest_root: Path, base: Path) -> Path:
 
 def run_to_file(args: list[str], out_file: Path) -> int:
     out_file.parent.mkdir(parents=True, exist_ok=True)
-    proc = subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    out_file.write_text(proc.stdout, encoding="utf-8", errors="replace")
+    try:
+        proc = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False)
+    except OSError as exc:
+        raise RecoveryError(f"cannot run {args[0]}: {exc}") from exc
+    out_file.write_bytes(proc.stdout)
     return proc.returncode
 
 
-def main() -> int:
-    business_dest = ROOT / "business_pyc"
-    disasm_dest = ROOT / "disassembly"
-    pycdc_dest = ROOT / "pycdc_attempt"
+def resolve_executable(value: str) -> str:
+    candidate = Path(value).expanduser()
+    if candidate.parent != Path("."):
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate.resolve())
+        raise RecoveryError(f"executable not found or not executable: {value}")
+    resolved = shutil.which(value)
+    if resolved is None:
+        raise RecoveryError(f"executable not found on PATH: {value}")
+    return resolved
+
+
+def recover(
+    *,
+    root: Path,
+    extracted: Path,
+    pydisasm: str,
+    pycdc: str | None,
+    max_lines: int,
+) -> dict[str, int]:
+    root = root.resolve()
+    extracted = extracted.resolve()
+    pyz = extracted / "PYZ.pyz_extracted"
+    if not pyz.is_dir():
+        raise RecoveryError(f"PYZ extraction directory not found: {pyz}")
+
+    business_dest = root / "business_pyc"
+    disasm_dest = root / "disassembly"
+    pycdc_dest = root / "pycdc_attempt"
 
     selected: list[tuple[Path, str]] = []
-    for entry in ENTRY_PYCS:
+    for name in ENTRY_PYC_NAMES:
+        entry = extracted / name
         if entry.exists():
             selected.append((entry, entry.name))
 
     for name in BUSINESS_MODULES:
-        src = PYZ / name
+        src = pyz / name
         if src.exists():
             selected.append((src, name))
 
-    tools_dir = PYZ / "tools"
+    tools_dir = pyz / "tools"
     if tools_dir.exists():
         for src in sorted(tools_dir.rglob("*.pyc")):
-            selected.append((src, str(src.relative_to(PYZ))))
+            selected.append((src, str(src.relative_to(pyz))))
+    if not selected:
+        raise RecoveryError(f"no selected bytecode modules found under {extracted}")
 
     manifest_lines = [
         "# Selected Business Bytecode",
@@ -93,22 +131,73 @@ def main() -> int:
         "",
     ]
 
-    for src, rel_name in selected:
-        if src.is_relative_to(PYZ):
-            copy_with_tree(src, business_dest, PYZ)
-        else:
-            shutil.copy2(src, business_dest / src.name)
+    with tempfile.TemporaryDirectory(prefix="gptphone-disassembly-") as temp_dir:
+        full_disassembly = Path(temp_dir)
+        for src, rel_name in selected:
+            if src.is_relative_to(pyz):
+                copy_with_tree(src, business_dest, pyz)
+            else:
+                business_dest.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, business_dest / src.name)
 
-        stem = rel_name[:-4] if rel_name.endswith(".pyc") else rel_name
-        disasm_file = disasm_dest / f"{stem}.dis.txt"
-        pycdc_file = pycdc_dest / f"{stem}.py"
+            stem = rel_name[:-4] if rel_name.endswith(".pyc") else rel_name
+            disasm_file = full_disassembly / f"{stem}.dis.txt"
+            return_code = run_to_file([pydisasm, str(src)], disasm_file)
+            if return_code != 0:
+                raise RecoveryError(f"pydisasm failed for {rel_name} with exit code {return_code}")
 
-        run_to_file([str(PYDISASM), str(src)], disasm_file)
-        run_to_file([str(PYCDC), str(src)], pycdc_file)
+            if pycdc is not None:
+                pycdc_file = pycdc_dest / f"{stem}.py"
+                run_to_file([pycdc, str(src)], pycdc_file)
 
-        manifest_lines.append(f"- `{rel_name}`")
+            manifest_lines.append(f"- `{rel_name}`")
 
-    (ROOT / "BUSINESS_MODULES.md").write_text("\n".join(manifest_lines) + "\n", encoding="utf-8")
+        try:
+            stats = create_archive(full_disassembly, disasm_dest, max_lines=max_lines)
+        except ArchiveError as exc:
+            raise RecoveryError(str(exc)) from exc
+
+    (root / "BUSINESS_MODULES.md").write_text("\n".join(manifest_lines) + "\n", encoding="utf-8")
+    return stats
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=Path(__file__).resolve().parents[1],
+        help="repository/output root (default: repository containing this script)",
+    )
+    parser.add_argument(
+        "--extracted",
+        type=Path,
+        required=True,
+        help="PyInstaller extraction root containing PYZ.pyz_extracted",
+    )
+    parser.add_argument("--pydisasm", default="pydisasm", help="pydisasm executable or PATH name")
+    parser.add_argument("--pycdc", default="pycdc", help="pycdc executable or PATH name")
+    parser.add_argument("--skip-pycdc", action="store_true", help="do not generate pycdc_attempt files")
+    parser.add_argument("--max-lines", type=int, default=DEFAULT_MAX_LINES)
+    return parser
+
+
+def main(argv: Iterable[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        pydisasm = resolve_executable(args.pydisasm)
+        pycdc = None if args.skip_pycdc else resolve_executable(args.pycdc)
+        stats = recover(
+            root=args.root,
+            extracted=args.extracted,
+            pydisasm=pydisasm,
+            pycdc=pycdc,
+            max_lines=args.max_lines,
+        )
+    except RecoveryError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(", ".join(f"{key}={value}" for key, value in stats.items()))
     return 0
 
 

@@ -1,0 +1,587 @@
+             504 POP_TOP
+
+ 75:     >>  506 LOAD_FAST            (last_error)
+             508 POP_JUMP_IF_NONE     (to 516)
+
+ 76:         512 LOAD_FAST            (last_error)
+             514 RAISE_VARARGS        (exception instance)
+
+ 75:     >>  516 NOP
+
+ 78:         518 NOP
+
+ 79:         520 LOAD_FAST            (tmp_path)
+             522 LOAD_ATTR            (NULL|self + exists)
+             542 CALL                 (0 positional)
+             550 TO_BOOL
+             558 POP_JUMP_IF_FALSE    (to 596)
+
+ 80:         562 LOAD_FAST            (tmp_path)
+             564 LOAD_ATTR            (NULL|self + unlink)
+             584 CALL                 (0 positional)
+             592 POP_TOP
+             594 RETURN_CONST         (None)
+
+ 79:     >>  596 RETURN_CONST         (None)
+
+ 62:     >>  598 PUSH_EXC_INFO
+             600 WITH_EXCEPT_START    0
+             602 TO_BOOL
+             610 POP_JUMP_IF_TRUE     (to 616)
+             614 RERAISE              2
+         >>  616 POP_TOP
+             618 POP_EXCEPT
+             620 POP_TOP
+             622 POP_TOP
+             624 JUMP_BACKWARD_NO_INTERRUPT (to 416)
+         >>  626 COPY                 3
+             628 POP_EXCEPT
+             630 RERAISE              1
+         >>  632 PUSH_EXC_INFO
+
+ 72:         634 LOAD_GLOBAL          (PermissionError)
+             644 CHECK_EXC_MATCH
+             646 POP_JUMP_IF_FALSE    (to 752)
+             650 STORE_FAST           (exc)
+
+ 73:         652 LOAD_FAST            (exc)
+             654 STORE_FAST           (last_error)
+
+ 74:         656 LOAD_GLOBAL          (time)
+             666 LOAD_ATTR            (sleep)
+             686 PUSH_NULL
+             688 LOAD_GLOBAL          (NULL + min)
+             698 LOAD_CONST           (0.1)
+             700 LOAD_FAST            (attempt)
+             702 LOAD_CONST           (1)
+             704 BINARY_OP            (+)
+             708 BINARY_OP            (*)
+             712 LOAD_CONST           (0.5)
+             714 CALL                 (2 positional)
+             722 CALL                 (1 positional)
+             730 POP_TOP
+             732 POP_EXCEPT
+             734 LOAD_CONST           (None)
+             736 STORE_FAST           (exc)
+             738 DELETE_FAST          (exc)
+             740 JUMP_BACKWARD        (to 442)
+         >>  744 LOAD_CONST           (None)
+             746 STORE_FAST           (exc)
+             748 DELETE_FAST          (exc)
+             750 RERAISE              1
+
+ 72:     >>  752 RERAISE              0
+         >>  754 COPY                 3
+             756 POP_EXCEPT
+             758 RERAISE              1
+         >>  760 PUSH_EXC_INFO
+
+ 81:         762 LOAD_GLOBAL          (Exception)
+             772 CHECK_EXC_MATCH
+             774 POP_JUMP_IF_FALSE    (to 784)
+             778 POP_TOP
+
+ 82:         780 POP_EXCEPT
+             782 RETURN_CONST         (None)
+
+ 81:     >>  784 RERAISE              0
+         >>  786 COPY                 3
+             788 POP_EXCEPT
+             790 RERAISE              1
+         >>  792 PUSH_EXC_INFO
+
+ 78:         794 NOP
+
+ 79:         796 LOAD_FAST            (tmp_path)
+             798 LOAD_ATTR            (NULL|self + exists)
+             818 CALL                 (0 positional)
+             826 TO_BOOL
+             834 POP_JUMP_IF_FALSE    (to 872)
+
+ 80:         838 LOAD_FAST            (tmp_path)
+             840 LOAD_ATTR            (NULL|self + unlink)
+             860 CALL                 (0 positional)
+             868 POP_TOP
+             870 RERAISE              0
+
+ 79:     >>  872 RERAISE              0
+         >>  874 PUSH_EXC_INFO
+
+ 81:         876 LOAD_GLOBAL          (Exception)
+             886 CHECK_EXC_MATCH
+             888 POP_JUMP_IF_FALSE    (to 898)
+             892 POP_TOP
+
+ 82:         894 POP_EXCEPT
+             896 RERAISE              0
+
+ 81:     >>  898 RERAISE              0
+         >>  900 COPY                 3
+             902 POP_EXCEPT
+             904 RERAISE              1
+         >>  906 COPY                 3
+             908 POP_EXCEPT
+             910 RERAISE              1
+
+ExceptionTable:
+  214 to 258 -> 792 [0]
+  260 to 398 -> 598 [1] lasti
+  400 to 446 -> 792 [0]
+  450 to 496 -> 632 [1]
+  498 to 514 -> 792 [0]
+  520 to 592 -> 760 [0]
+  598 to 616 -> 626 [3] lasti
+  618 to 630 -> 792 [0]
+  632 to 650 -> 754 [2] lasti
+  652 to 730 -> 744 [2] lasti
+  732 to 742 -> 792 [0]
+  744 to 752 -> 754 [2] lasti
+  754 to 758 -> 792 [0]
+  760 to 778 -> 786 [1] lasti
+  784 to 784 -> 786 [1] lasti
+  792 to 792 -> 906 [1] lasti
+  796 to 868 -> 874 [2]
+  870 to 872 -> 906 [1] lasti
+  874 to 892 -> 900 [3] lasti
+  894 to 896 -> 906 [1] lasti
+  898 to 898 -> 900 [3] lasti
+  900 to 904 -> 906 [1] lasti
+
+# Method Name:       read_text_retry
+# Filename:          file_safety.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 2
+# Number of locals:  7
+# Stack size:        9
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        85
+# Constants:
+#    0: 'Read a file while tolerating short Windows antivirus/indexer sharing windows.'
+#    1: 1
+#    2: None
+#    3: ('encoding',)
+#    4: 0.05
+#    5: 0.35
+#    6: 'unable to read file: '
+# Names:
+#    0: Path
+#    1: max
+#    2: int
+#    3: range
+#    4: read_text
+#    5: PermissionError
+#    6: time
+#    7: sleep
+#    8: min
+#    9: RuntimeError
+# Varnames:
+#	path, encoding, attempts, target, last_error, attempt, exc
+# Positional arguments:
+#	path
+# Local variables:
+#    1: encoding
+#    2: attempts
+#    3: target
+#    4: last_error
+#    5: attempt
+#    6: exc
+ 85:           0 RESUME               0
+
+ 92:           2 LOAD_GLOBAL          (NULL + Path)
+              12 LOAD_FAST            (path)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (target)
+
+ 93:          24 LOAD_GLOBAL          (NULL + max)
+              34 LOAD_CONST           (1)
+              36 LOAD_GLOBAL          (NULL + int)
+              46 LOAD_FAST            (attempts)
+              48 CALL                 (1 positional)
+              56 CALL                 (2 positional)
+              64 STORE_FAST           (attempts)
+
+ 94:          66 LOAD_CONST           (None)
+              68 STORE_FAST           (last_error)
+
+ 95:          70 LOAD_GLOBAL          (NULL + range)
+              80 LOAD_FAST            (attempts)
+              82 CALL                 (1 positional)
+              90 GET_ITER
+              92 FOR_ITER             (to 134)
+              96 STORE_FAST           (attempt)
+
+ 96:          98 NOP
+
+ 97:         100 LOAD_FAST            (target)
+             102 LOAD_ATTR            (NULL|self + read_text)
+             122 LOAD_FAST            (encoding)
+             124 LOAD_CONST           (('encoding',))
+             126 CALL_KW              1
+             128 SWAP                 (TOS <-> TOS1)
+             130 POP_TOP
+             132 RETURN_VALUE
+
+ 95:     >>  134 END_FOR
+             136 POP_TOP
+
+103:         138 LOAD_FAST            (last_error)
+             140 POP_JUMP_IF_NONE     (to 148)
+
+104:         144 LOAD_FAST            (last_error)
+             146 RAISE_VARARGS        (exception instance)
+
+105:     >>  148 LOAD_GLOBAL          (NULL + RuntimeError)
+             158 LOAD_CONST           ("unable to read file: ")
+             160 LOAD_FAST            (target)
+             162 FORMAT_SIMPLE
+             164 BUILD_STRING         2
+             166 CALL                 (1 positional)
+             174 RAISE_VARARGS        (exception instance)
+         >>  176 PUSH_EXC_INFO
+
+ 98:         178 LOAD_GLOBAL          (PermissionError)
+             188 CHECK_EXC_MATCH
+             190 POP_JUMP_IF_FALSE    (to 316)
+             194 STORE_FAST           (exc)
+
+ 99:         196 LOAD_FAST            (exc)
+             198 STORE_FAST           (last_error)
+
+100:         200 LOAD_FAST            (attempt)
+             202 LOAD_CONST           (1)
+             204 BINARY_OP            (+)
+             208 LOAD_FAST            (attempts)
+             210 COMPARE_OP           (>=)
+             214 POP_JUMP_IF_FALSE    (to 220)
+
+101:         218 RAISE_VARARGS        (reraise)
+
+102:     >>  220 LOAD_GLOBAL          (time)
+             230 LOAD_ATTR            (sleep)
+             250 PUSH_NULL
+             252 LOAD_GLOBAL          (NULL + min)
+             262 LOAD_CONST           (0.05)
+             264 LOAD_FAST            (attempt)
+             266 LOAD_CONST           (1)
+             268 BINARY_OP            (+)
+             272 BINARY_OP            (*)
+             276 LOAD_CONST           (0.35)
+             278 CALL                 (2 positional)
+             286 CALL                 (1 positional)
+             294 POP_TOP
+             296 POP_EXCEPT
+             298 LOAD_CONST           (None)
+             300 STORE_FAST           (exc)
+             302 DELETE_FAST          (exc)
+             304 JUMP_BACKWARD        (to 92)
+         >>  308 LOAD_CONST           (None)
+             310 STORE_FAST           (exc)
+             312 DELETE_FAST          (exc)
+             314 RERAISE              1
+
+ 98:     >>  316 RERAISE              0
+         >>  318 COPY                 3
+             320 POP_EXCEPT
+             322 RERAISE              1
+
+ExceptionTable:
+  100 to 126 -> 176 [1]
+  176 to 194 -> 318 [2] lasti
+  196 to 294 -> 308 [2] lasti
+  308 to 316 -> 318 [2] lasti
+
+# Method Name:       atomic_write_json
+# Filename:          file_safety.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  3
+# Stack size:        9
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        108
+# Constants:
+#    0: None
+#    1: False
+#    2: ('indent', 'ensure_ascii')
+#    3: '\n'
+#    4: 'utf-8'
+#    5: ('encoding',)
+# Names:
+#    0: atomic_write_text
+#    1: json
+#    2: dumps
+# Varnames:
+#	path, data, indent
+# Positional arguments:
+#	path, data
+# Local variables:
+#    2: indent
+108:           0 RESUME               0
+
+109:           2 LOAD_GLOBAL          (NULL + atomic_write_text)
+
+110:          12 LOAD_FAST            (path)
+
+111:          14 LOAD_GLOBAL          (json)
+              24 LOAD_ATTR            (dumps)
+              44 PUSH_NULL
+              46 LOAD_FAST_LOAD_FAST  (data, indent)
+              48 LOAD_CONST           (False)
+              50 LOAD_CONST           (('indent', 'ensure_ascii'))
+              52 CALL_KW              3
+              54 LOAD_CONST           ("\n")
+              56 BINARY_OP            (+)
+
+112:          60 LOAD_CONST           ("utf-8")
+
+109:          62 LOAD_CONST           (('encoding',))
+              64 CALL_KW              3
+              66 POP_TOP
+              68 RETURN_CONST         (None)
+
+
+# Method Name:       locked_update_json
+# Filename:          file_safety.py
+# Argument count:    4
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  8
+# Stack size:        10
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        116
+# Constants:
+#    0: None
+#    1: 'utf-8-sig'
+#    2: ('encoding',)
+#    3: '.corrupt.'
+# Names:
+#    0: Path
+#    1: named_file_lock
+#    2: exists
+#    3: json
+#    4: loads
+#    5: read_text_retry
+#    6: PermissionError
+#    7: Exception
+#    8: with_suffix
+#    9: suffix
+#   10: int
+#   11: time
+#   12: replace
+#   13: atomic_write_json
+# Varnames:
+#	path, lock_name, default, update_fn, target, data, backup, updated
+# Positional arguments:
+#	path, lock_name, default, update_fn
+# Local variables:
+#    4: target
+#    5: data
+#    6: backup
+#    7: updated
+116:           0 RESUME               0
+
+122:           2 LOAD_GLOBAL          (NULL + Path)
+              12 LOAD_FAST            (path)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (target)
+
+123:          24 LOAD_GLOBAL          (NULL + named_file_lock)
+              34 LOAD_FAST            (lock_name)
+              36 CALL                 (1 positional)
+              44 BEFORE_WITH
+              46 POP_TOP
+
+124:          48 LOAD_FAST            (default)
+              50 STORE_FAST           (data)
+
+125:          52 LOAD_FAST            (target)
+              54 LOAD_ATTR            (NULL|self + exists)
+              74 CALL                 (0 positional)
+              82 TO_BOOL
+              90 POP_JUMP_IF_FALSE    (to 156)
+
+126:          94 NOP
+
+127:          96 LOAD_GLOBAL          (json)
+             106 LOAD_ATTR            (loads)
+             126 PUSH_NULL
+             128 LOAD_GLOBAL          (NULL + read_text_retry)
+             138 LOAD_FAST            (target)
+             140 LOAD_CONST           ("utf-8-sig")
+             142 LOAD_CONST           (('encoding',))
+             144 CALL_KW              2
+             146 CALL                 (1 positional)
+             154 STORE_FAST           (data)
+
+137:     >>  156 LOAD_FAST            (update_fn)
+             158 PUSH_NULL
+             160 LOAD_FAST            (data)
+             162 CALL                 (1 positional)
+             170 STORE_FAST           (updated)
+
+138:         172 LOAD_FAST            (updated)
+             174 POP_JUMP_IF_NOT_NONE (to 182)
+
+139:         178 LOAD_FAST            (data)
+             180 STORE_FAST           (updated)
+
+140:     >>  182 LOAD_GLOBAL          (NULL + atomic_write_json)
+             192 LOAD_FAST_LOAD_FAST  (target, updated)
+             194 CALL                 (2 positional)
+             202 POP_TOP
+
+141:         204 LOAD_FAST            (updated)
+
+123:         206 SWAP                 (TOS <-> TOS1)
+             208 LOAD_CONST           (None)
+             210 LOAD_CONST           (None)
+             212 LOAD_CONST           (None)
+             214 CALL                 (2 positional)
+             222 POP_TOP
+             224 RETURN_VALUE
+         >>  226 PUSH_EXC_INFO
+
+128:         228 LOAD_GLOBAL          (PermissionError)
+             238 CHECK_EXC_MATCH
+             240 POP_JUMP_IF_FALSE    (to 248)
+             244 POP_TOP
+
+129:         246 RAISE_VARARGS        (reraise)
+
+130:     >>  248 LOAD_GLOBAL          (Exception)
+             258 CHECK_EXC_MATCH
+             260 POP_JUMP_IF_FALSE    (to 466)
+             264 POP_TOP
+
+131:         266 LOAD_FAST            (target)
+             268 LOAD_ATTR            (NULL|self + with_suffix)
+             288 LOAD_FAST            (target)
+             290 LOAD_ATTR            (suffix)
+             310 LOAD_CONST           (".corrupt.")
+             312 LOAD_GLOBAL          (NULL + int)
+             322 LOAD_GLOBAL          (time)
+             332 LOAD_ATTR            (time)
+             352 PUSH_NULL
+             354 CALL                 (0 positional)
+             362 CALL                 (1 positional)
+             370 FORMAT_SIMPLE
+             372 BUILD_STRING         2
+             374 BINARY_OP            (+)
+             378 CALL                 (1 positional)
+             386 STORE_FAST           (backup)
+
+132:         388 NOP
+
+133:         390 LOAD_FAST            (target)
+             392 LOAD_ATTR            (NULL|self + replace)
+             412 LOAD_FAST            (backup)
+             414 CALL                 (1 positional)
+             422 POP_TOP
+             424 JUMP_FORWARD         (to 458)
+         >>  426 PUSH_EXC_INFO
+
+134:         428 LOAD_GLOBAL          (Exception)
+             438 CHECK_EXC_MATCH
+             440 POP_JUMP_IF_FALSE    (to 450)
+             444 POP_TOP
+
+135:         446 POP_EXCEPT
+             448 JUMP_FORWARD         (to 458)
+
+134:     >>  450 RERAISE              0
+         >>  452 COPY                 3
+             454 POP_EXCEPT
+             456 RERAISE              1
+
+136:     >>  458 LOAD_FAST            (default)
+             460 STORE_FAST           (data)
+             462 POP_EXCEPT
+             464 JUMP_BACKWARD_NO_INTERRUPT (to 156)
+
+130:     >>  466 RERAISE              0
+         >>  468 COPY                 3
+             470 POP_EXCEPT
+             472 RERAISE              1
+
+123:     >>  474 PUSH_EXC_INFO
+             476 WITH_EXCEPT_START    0
+             478 TO_BOOL
+             486 POP_JUMP_IF_TRUE     (to 492)
+             490 RERAISE              2
+         >>  492 POP_TOP
+             494 POP_EXCEPT
+             496 POP_TOP
+             498 POP_TOP
+             500 RETURN_CONST         (None)
+         >>  502 COPY                 3
+             504 POP_EXCEPT
+             506 RERAISE              1
+
+ExceptionTable:
+  46 to 92 -> 474 [1] lasti
+  96 to 154 -> 226 [1]
+  156 to 204 -> 474 [1] lasti
+  226 to 386 -> 468 [2] lasti
+  390 to 422 -> 426 [2]
+  424 to 424 -> 468 [2] lasti
+  426 to 444 -> 452 [3] lasti
+  446 to 448 -> 468 [2] lasti
+  450 to 450 -> 452 [3] lasti
+  452 to 460 -> 468 [2] lasti
+  462 to 464 -> 474 [1] lasti
+  466 to 466 -> 468 [2] lasti
+  468 to 472 -> 474 [1] lasti
+  474 to 492 -> 502 [3] lasti
+
+# Method Name:       <genexpr>
+# Filename:          file_safety.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        40
+# Constants:
+#    0: '._-'
+#    1: '_'
+#    2: None
+# Names:
+#    0: isalnum
+# Varnames:
+#	.0, ch
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: ch
+ 40:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 84)
+              14 STORE_FAST_LOAD_FAST (ch, ch)
+              16 LOAD_ATTR            (NULL|self + isalnum)
+              36 CALL                 (0 positional)
+              44 TO_BOOL
+              52 POP_JUMP_IF_TRUE     (to 68)
+              56 LOAD_FAST            (ch)
+              58 LOAD_CONST           ("._-")
+              60 CONTAINS_OP          (in)
+              64 POP_JUMP_IF_FALSE    (to 72)
+         >>   68 LOAD_FAST            (ch)
+              70 JUMP_FORWARD         (to 74)
+         >>   72 LOAD_CONST           ("_")
+         >>   74 YIELD_VALUE          0
+              76 RESUME               5
+              78 POP_TOP
+              80 JUMP_BACKWARD        (to 10)
+         >>   84 END_FOR
+              86 POP_TOP
+              88 RETURN_CONST         (None)
+         >>   90 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              92 RERAISE              1
+
+ExceptionTable:
+  4 to 88 -> 90 [0] lasti

@@ -1,0 +1,27 @@
+219:           0 RESUME               0
+
+220:           2 RETURN_CONST         (None)
+
+
+# Method Name:       log_message
+# Filename:          web_gui.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        1
+# Flags:             0x0100000f (0x1000000 | VARKEYWORDS | VARARGS | NEWLOCALS | OPTIMIZED)
+# First Line:        222
+# Constants:
+#    0: None
+# Varnames:
+#	self, args, kwargs
+# Positional arguments:
+#	self
+# Local variables:
+#    1: args
+#    2: kwargs
+222:           0 RESUME               0
+
+223:           2 RETURN_CONST         (None)
+

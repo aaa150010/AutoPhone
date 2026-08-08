@@ -1,0 +1,800 @@
+             174 LOAD_FAST            (parsed)
+             176 LOAD_ATTR            (query)
+             196 CALL                 (1 positional)
+             204 STORE_FAST           (qs)
+
+747:         206 LOAD_GLOBAL          (NULL + _clean)
+             216 LOAD_FAST            (qs)
+             218 LOAD_ATTR            (NULL|self + get)
+             238 LOAD_CONST           ("code")
+             240 CALL                 (1 positional)
+             248 COPY                 1
+             250 TO_BOOL
+             258 POP_JUMP_IF_TRUE     (to 268)
+             262 POP_TOP
+             264 LOAD_CONST           ("")
+             266 BUILD_LIST           1
+         >>  268 LOAD_CONST           (0)
+             270 BINARY_SUBSCR
+             274 CALL                 (1 positional)
+             282 LOAD_GLOBAL          (NULL + _clean)
+             292 LOAD_FAST            (qs)
+             294 LOAD_ATTR            (NULL|self + get)
+             314 LOAD_CONST           ("state")
+             316 CALL                 (1 positional)
+             324 COPY                 1
+             326 TO_BOOL
+             334 POP_JUMP_IF_TRUE     (to 344)
+             338 POP_TOP
+             340 LOAD_CONST           ("")
+             342 BUILD_LIST           1
+         >>  344 LOAD_CONST           (0)
+             346 BINARY_SUBSCR
+             350 CALL                 (1 positional)
+             358 BUILD_TUPLE          2
+             360 RETURN_VALUE
+
+748:     >>  362 LOAD_FAST            (value)
+             364 LOAD_CONST           ("")
+             366 BUILD_TUPLE          2
+             368 RETURN_VALUE
+
+
+# Method Name:       _callback_url
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        751
+# Constants:
+#    0: None
+#    1: '?'
+#    2: '&'
+#    3: ('code', 'state')
+# Names:
+#    0: _clean
+#    1: DEFAULT_REDIRECT_URI
+#    2: urlencode
+# Varnames:
+#	redirect_uri, code, state, redirect, sep
+# Positional arguments:
+#	redirect_uri, code, state
+# Local variables:
+#    3: redirect
+#    4: sep
+751:           0 RESUME               0
+
+752:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (redirect_uri)
+              14 CALL                 (1 positional)
+              22 COPY                 1
+              24 TO_BOOL
+              32 POP_JUMP_IF_TRUE     (to 48)
+              36 POP_TOP
+              38 LOAD_GLOBAL          (DEFAULT_REDIRECT_URI)
+         >>   48 STORE_FAST           (redirect)
+
+753:          50 LOAD_CONST           ("?")
+              52 LOAD_FAST            (redirect)
+              54 CONTAINS_OP          (in)
+              58 POP_JUMP_IF_FALSE    (to 66)
+              62 LOAD_CONST           ("&")
+              64 JUMP_FORWARD         (to 68)
+         >>   66 LOAD_CONST           ("?")
+         >>   68 STORE_FAST           (sep)
+
+754:          70 LOAD_FAST_LOAD_FAST  (redirect, sep)
+              72 BINARY_OP            (+)
+              76 LOAD_GLOBAL          (NULL + urlencode)
+              86 LOAD_FAST_LOAD_FAST  (code, state)
+              88 LOAD_CONST           (('code', 'state'))
+              90 BUILD_CONST_KEY_MAP  2
+              92 CALL                 (1 positional)
+             100 BINARY_OP            (+)
+             104 RETURN_VALUE
+
+
+# Method Name:       PhoneLease
+# Filename:          codex_oauth_chain.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000000 (0x1000000)
+# First Line:        757
+# Constants:
+#    0: 'PhoneLease'
+#    1: 757
+#    2: 'str'
+#    3: 'activation_id'
+#    4: 'phone'
+#    5: 'mock'
+#    6: 'source'
+#    7: None
+#    8: 'Dict[str, Any] | None'
+#    9: 'meta'
+#   10: ()
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __annotations__
+#    5: source
+#    6: meta
+#    7: __static_attributes__
+757:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("PhoneLease")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (757)
+              12 STORE_NAME           (__firstlineno__)
+              14 SETUP_ANNOTATIONS
+
+759:          16 LOAD_CONST           ("str")
+              18 LOAD_NAME            (__annotations__)
+              20 LOAD_CONST           ("activation_id")
+              22 STORE_SUBSCR
+
+760:          26 LOAD_CONST           ("str")
+              28 LOAD_NAME            (__annotations__)
+              30 LOAD_CONST           ("phone")
+              32 STORE_SUBSCR
+
+761:          36 LOAD_CONST           ("mock")
+              38 STORE_NAME           (source)
+              40 LOAD_CONST           ("str")
+              42 LOAD_NAME            (__annotations__)
+              44 LOAD_CONST           ("source")
+              46 STORE_SUBSCR
+
+762:          50 LOAD_CONST           (None)
+              52 STORE_NAME           (meta)
+              54 LOAD_CONST           ("Dict[str, Any] | None")
+              56 LOAD_NAME            (__annotations__)
+              58 LOAD_CONST           ("meta")
+              60 STORE_SUBSCR
+              64 LOAD_CONST           (())
+              66 STORE_NAME           (__static_attributes__)
+              68 RETURN_CONST         (None)
+
+
+# Method Name:       MockSentinelProvider
+# Filename:          codex_oauth_chain.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        2
+# Flags:             0x01000000 (0x1000000)
+# First Line:        765
+# Constants:
+#    0: 'MockSentinelProvider'
+#    1: 765
+#    2: <Code311 code object token_for at 0x105ef4700, file codex_oauth_chain.py>, line 766
+#    3: ()
+#    4: None
+#    5: ('flow', 'str', 'context', 'Dict[str, Any]', 'return', 'Dict[str, Any]')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: token_for
+#    5: __static_attributes__
+765:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("MockSentinelProvider")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (765)
+              12 STORE_NAME           (__firstlineno__)
+
+766:          14 LOAD_CONST           (('flow', 'str', 'context', 'Dict[str, Any]', 'return', 'Dict[str, Any]'))
+              16 LOAD_CONST           (<Code311 code object token_for at 0x105ef4700, file codex_oauth_chain.py>, line 766)
+              18 MAKE_FUNCTION
+              20 SET_FUNCTION_ATTRIBUTE 4
+              22 STORE_NAME           (token_for)
+              24 LOAD_CONST           (())
+              26 STORE_NAME           (__static_attributes__)
+              28 RETURN_CONST         (None)
+
+
+# Method Name:       MockEmailOtpProvider
+# Filename:          codex_oauth_chain.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000000 (0x1000000)
+# First Line:        770
+# Constants:
+#    0: 'MockEmailOtpProvider'
+#    1: 770
+#    2: <Code311 code object __init__ at 0x105ef4790, file codex_oauth_chain.py>, line 771
+#    3: <Code311 code object wait_code at 0x105ef47f0, file codex_oauth_chain.py>, line 774
+#    4: ('code',)
+#    5: None
+#    6: ('123456',)
+#    7: ('code', 'str', 'return', 'None')
+#    8: ('email', 'str', 'return', 'str')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __init__
+#    5: wait_code
+#    6: __static_attributes__
+770:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("MockEmailOtpProvider")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (770)
+              12 STORE_NAME           (__firstlineno__)
+
+771:          14 LOAD_CONST           (('123456',))
+              16 LOAD_CONST           (('code', 'str', 'return', 'None'))
+              18 LOAD_CONST           (<Code311 code object __init__ at 0x105ef4790, file codex_oauth_chain.py>, line 771)
+              20 MAKE_FUNCTION
+              22 SET_FUNCTION_ATTRIBUTE 4
+              24 SET_FUNCTION_ATTRIBUTE 1
+              26 STORE_NAME           (__init__)
+
+774:          28 LOAD_CONST           (('email', 'str', 'return', 'str'))
+              30 LOAD_CONST           (<Code311 code object wait_code at 0x105ef47f0, file codex_oauth_chain.py>, line 774)
+              32 MAKE_FUNCTION
+              34 SET_FUNCTION_ATTRIBUTE 4
+              36 STORE_NAME           (wait_code)
+              38 LOAD_CONST           (('code',))
+              40 STORE_NAME           (__static_attributes__)
+              42 RETURN_CONST         (None)
+
+
+# Method Name:       MockPhoneOtpProvider
+# Filename:          codex_oauth_chain.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000000 (0x1000000)
+# First Line:        778
+# Constants:
+#    0: 'MockPhoneOtpProvider'
+#    1: 778
+#    2: <Code311 code object __init__ at 0x105ef4880, file codex_oauth_chain.py>, line 779
+#    3: <Code311 code object get_number at 0x105ef48b0, file codex_oauth_chain.py>, line 785
+#    4: <Code311 code object mark_ready at 0x105ef4940, file codex_oauth_chain.py>, line 789
+#    5: <Code311 code object wait_code at 0x105ef4970, file codex_oauth_chain.py>, line 792
+#    6: <Code311 code object complete at 0x105ef49a0, file codex_oauth_chain.py>, line 795
+#    7: <Code311 code object cancel at 0x105ef49d0, file codex_oauth_chain.py>, line 798
+#    8: ('cancelled', 'code', 'completed', 'counter')
+#    9: None
+#   10: ('654321',)
+#   11: ('code', 'str', 'return', 'None')
+#   12: ('_', 'Any', 'return', 'PhoneLease')
+#   13: ('lease', 'PhoneLease', 'return', 'None')
+#   14: (180,)
+#   15: ('lease', 'PhoneLease', 'timeout', 'int', 'return', 'str')
+#   16: ('',)
+#   17: ('lease', 'PhoneLease', 'reason', 'str', 'return', 'None')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __init__
+#    5: get_number
+#    6: mark_ready
+#    7: wait_code
+#    8: complete
+#    9: cancel
+#   10: __static_attributes__
+778:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("MockPhoneOtpProvider")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (778)
+              12 STORE_NAME           (__firstlineno__)
+
+779:          14 LOAD_CONST           (('654321',))
+              16 LOAD_CONST           (('code', 'str', 'return', 'None'))
+              18 LOAD_CONST           (<Code311 code object __init__ at 0x105ef4880, file codex_oauth_chain.py>, line 779)
+              20 MAKE_FUNCTION
+              22 SET_FUNCTION_ATTRIBUTE 4
+              24 SET_FUNCTION_ATTRIBUTE 1
+              26 STORE_NAME           (__init__)
+
+785:          28 LOAD_CONST           (('_', 'Any', 'return', 'PhoneLease'))
+              30 LOAD_CONST           (<Code311 code object get_number at 0x105ef48b0, file codex_oauth_chain.py>, line 785)
+              32 MAKE_FUNCTION
+              34 SET_FUNCTION_ATTRIBUTE 4
+              36 STORE_NAME           (get_number)
+
+789:          38 LOAD_CONST           (('lease', 'PhoneLease', 'return', 'None'))
+              40 LOAD_CONST           (<Code311 code object mark_ready at 0x105ef4940, file codex_oauth_chain.py>, line 789)
+              42 MAKE_FUNCTION
+              44 SET_FUNCTION_ATTRIBUTE 4
+              46 STORE_NAME           (mark_ready)
+
+792:          48 LOAD_CONST           ((180,))
+              50 LOAD_CONST           (('lease', 'PhoneLease', 'timeout', 'int', 'return', 'str'))
+              52 LOAD_CONST           (<Code311 code object wait_code at 0x105ef4970, file codex_oauth_chain.py>, line 792)
+              54 MAKE_FUNCTION
+              56 SET_FUNCTION_ATTRIBUTE 4
+              58 SET_FUNCTION_ATTRIBUTE 1
+              60 STORE_NAME           (wait_code)
+
+795:          62 LOAD_CONST           (('lease', 'PhoneLease', 'return', 'None'))
+              64 LOAD_CONST           (<Code311 code object complete at 0x105ef49a0, file codex_oauth_chain.py>, line 795)
+              66 MAKE_FUNCTION
+              68 SET_FUNCTION_ATTRIBUTE 4
+              70 STORE_NAME           (complete)
+
+798:          72 LOAD_CONST           (('',))
+              74 LOAD_CONST           (('lease', 'PhoneLease', 'reason', 'str', 'return', 'None'))
+              76 LOAD_CONST           (<Code311 code object cancel at 0x105ef49d0, file codex_oauth_chain.py>, line 798)
+              78 MAKE_FUNCTION
+              80 SET_FUNCTION_ATTRIBUTE 4
+              82 SET_FUNCTION_ATTRIBUTE 1
+              84 STORE_NAME           (cancel)
+              86 LOAD_CONST           (('cancelled', 'code', 'completed', 'counter'))
+              88 STORE_NAME           (__static_attributes__)
+              90 RETURN_CONST         (None)
+
+
+# Method Name:       SmsProviderAdapter
+# Filename:          codex_oauth_chain.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        4
+# Flags:             0x01000000 (0x1000000)
+# First Line:        802
+# Constants:
+#    0: 'SmsProviderAdapter'
+#    1: 802
+#    2: "Phone OTP adapter that follows the panel's fixed/smart SMS mode."
+#    3: 180
+#    4: None
+#    5: ('code_timeout', 'config', 'log_fn')
+#    6: <Code311 code object __init__ at 0x105ef4a60, file codex_oauth_chain.py>, line 805
+#    7: <Code311 code object _exclude_candidate at 0x105ef4a90, file codex_oauth_chain.py>, line 826
+#    8: <Code311 code object get_number at 0x105ef4ac0, file codex_oauth_chain.py>, line 834
+#    9: <Code311 code object mark_ready at 0x105ef4af0, file codex_oauth_chain.py>, line 875
+#   10: <Code311 code object wait_code at 0x105ef4b20, file codex_oauth_chain.py>, line 886
+#   11: <Code311 code object complete at 0x105ef4b50, file codex_oauth_chain.py>, line 893
+#   12: <Code311 code object cancel at 0x105ef4b80, file codex_oauth_chain.py>, line 902
+#   13: ('_session_excluded_routes', 'code_timeout', 'config', 'log_fn', 'provider', 'selector')
+#   14: ('provider', 'Any', 'code_timeout', 'int', 'config', 'Dict[str, Any] | None', 'log_fn', 'LogFn', 'return', 'None')
+#   15: ('candidate', 'Any | None', 'return', 'None')
+#   16: ('kwargs', 'Any', 'return', 'PhoneLease')
+#   17: ('lease', 'PhoneLease', 'return', 'None')
+#   18: (180,)
+#   19: ('lease', 'PhoneLease', 'timeout', 'int', 'return', 'str')
+#   20: ('',)
+#   21: ('lease', 'PhoneLease', 'reason', 'str', 'return', 'None')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: __init__
+#    6: _exclude_candidate
+#    7: get_number
+#    8: mark_ready
+#    9: wait_code
+#   10: complete
+#   11: cancel
+#   12: __static_attributes__
+802:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("SmsProviderAdapter")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (802)
+              12 STORE_NAME           (__firstlineno__)
+
+803:          14 LOAD_CONST           ("Phone OTP adapter that follows the panel's fixed/smart SMS mode.")
+              16 STORE_NAME           (__doc__)
+
+805:          18 LOAD_CONST           (180)
+              20 LOAD_CONST           (None)
+              22 LOAD_CONST           (None)
+              24 LOAD_CONST           (('code_timeout', 'config', 'log_fn'))
+              26 BUILD_CONST_KEY_MAP  3
+              28 LOAD_CONST           (('provider', 'Any', 'code_timeout', 'int', 'config', 'Dict[str, Any] | None', 'log_fn', 'LogFn', 'return', 'None'))
+              30 LOAD_CONST           (<Code311 code object __init__ at 0x105ef4a60, file codex_oauth_chain.py>, line 805)
+              32 MAKE_FUNCTION
+              34 SET_FUNCTION_ATTRIBUTE 4
+              36 SET_FUNCTION_ATTRIBUTE 2
+              38 STORE_NAME           (__init__)
+
+826:          40 LOAD_CONST           (('candidate', 'Any | None', 'return', 'None'))
+              42 LOAD_CONST           (<Code311 code object _exclude_candidate at 0x105ef4a90, file codex_oauth_chain.py>, line 826)
+              44 MAKE_FUNCTION
+              46 SET_FUNCTION_ATTRIBUTE 4
+              48 STORE_NAME           (_exclude_candidate)
+
+834:          50 LOAD_CONST           (('kwargs', 'Any', 'return', 'PhoneLease'))
+              52 LOAD_CONST           (<Code311 code object get_number at 0x105ef4ac0, file codex_oauth_chain.py>, line 834)
+              54 MAKE_FUNCTION
+              56 SET_FUNCTION_ATTRIBUTE 4
+              58 STORE_NAME           (get_number)
+
+875:          60 LOAD_CONST           (('lease', 'PhoneLease', 'return', 'None'))
+              62 LOAD_CONST           (<Code311 code object mark_ready at 0x105ef4af0, file codex_oauth_chain.py>, line 875)
+              64 MAKE_FUNCTION
+              66 SET_FUNCTION_ATTRIBUTE 4
+              68 STORE_NAME           (mark_ready)
+
+886:          70 LOAD_CONST           ((180,))
+              72 LOAD_CONST           (('lease', 'PhoneLease', 'timeout', 'int', 'return', 'str'))
+              74 LOAD_CONST           (<Code311 code object wait_code at 0x105ef4b20, file codex_oauth_chain.py>, line 886)
+              76 MAKE_FUNCTION
+              78 SET_FUNCTION_ATTRIBUTE 4
+              80 SET_FUNCTION_ATTRIBUTE 1
+              82 STORE_NAME           (wait_code)
+
+893:          84 LOAD_CONST           (('lease', 'PhoneLease', 'return', 'None'))
+              86 LOAD_CONST           (<Code311 code object complete at 0x105ef4b50, file codex_oauth_chain.py>, line 893)
+              88 MAKE_FUNCTION
+              90 SET_FUNCTION_ATTRIBUTE 4
+              92 STORE_NAME           (complete)
+
+902:          94 LOAD_CONST           (('',))
+              96 LOAD_CONST           (('lease', 'PhoneLease', 'reason', 'str', 'return', 'None'))
+              98 LOAD_CONST           (<Code311 code object cancel at 0x105ef4b80, file codex_oauth_chain.py>, line 902)
+             100 MAKE_FUNCTION
+             102 SET_FUNCTION_ATTRIBUTE 4
+             104 SET_FUNCTION_ATTRIBUTE 1
+             106 STORE_NAME           (cancel)
+             108 LOAD_CONST           (('_session_excluded_routes', 'code_timeout', 'config', 'log_fn', 'provider', 'selector'))
+             110 STORE_NAME           (__static_attributes__)
+             112 RETURN_CONST         (None)
+
+
+# Method Name:       RealEmailOtpProvider
+# Filename:          codex_oauth_chain.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000000 (0x1000000)
+# First Line:        918
+# Constants:
+#    0: 'RealEmailOtpProvider'
+#    1: 918
+#    2: 'Email OTP provider using the configured mailbox API, normally GPTMail.'
+#    3: 90
+#    4: None
+#    5: ('timeout', 'log_fn')
+#    6: <Code311 code object __init__ at 0x105ef4be0, file codex_oauth_chain.py>, line 921
+#    7: <Code311 code object mark_sent at 0x105ef4bb0, file codex_oauth_chain.py>, line 927
+#    8: <Code311 code object wait_code at 0x105ef4c70, file codex_oauth_chain.py>, line 931
+#    9: ('config', 'log_fn', 'since_ts', 'timeout')
+#   10: ('config', 'Dict[str, Any] | None', 'timeout', 'int', 'log_fn', 'LogFn', 'return', 'None')
+#   11: ('return', 'None')
+#   12: ('email', 'str', 'return', 'str')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: __init__
+#    6: mark_sent
+#    7: wait_code
+#    8: __static_attributes__
+918:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("RealEmailOtpProvider")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (918)
+              12 STORE_NAME           (__firstlineno__)
+
+919:          14 LOAD_CONST           ("Email OTP provider using the configured mailbox API, normally GPTMail.")
+              16 STORE_NAME           (__doc__)
+
+921:          18 LOAD_CONST           (90)
+              20 LOAD_CONST           (None)
+              22 LOAD_CONST           (('timeout', 'log_fn'))
+              24 BUILD_CONST_KEY_MAP  2
+              26 LOAD_CONST           (('config', 'Dict[str, Any] | None', 'timeout', 'int', 'log_fn', 'LogFn', 'return', 'None'))
+              28 LOAD_CONST           (<Code311 code object __init__ at 0x105ef4be0, file codex_oauth_chain.py>, line 921)
+              30 MAKE_FUNCTION
+              32 SET_FUNCTION_ATTRIBUTE 4
+              34 SET_FUNCTION_ATTRIBUTE 2
+              36 STORE_NAME           (__init__)
+
+927:          38 LOAD_CONST           (('return', 'None'))
+              40 LOAD_CONST           (<Code311 code object mark_sent at 0x105ef4bb0, file codex_oauth_chain.py>, line 927)
+              42 MAKE_FUNCTION
+              44 SET_FUNCTION_ATTRIBUTE 4
+              46 STORE_NAME           (mark_sent)
+
+931:          48 LOAD_CONST           (('email', 'str', 'return', 'str'))
+              50 LOAD_CONST           (<Code311 code object wait_code at 0x105ef4c70, file codex_oauth_chain.py>, line 931)
+              52 MAKE_FUNCTION
+              54 SET_FUNCTION_ATTRIBUTE 4
+              56 STORE_NAME           (wait_code)
+              58 LOAD_CONST           (('config', 'log_fn', 'since_ts', 'timeout'))
+              60 STORE_NAME           (__static_attributes__)
+              62 RETURN_CONST         (None)
+
+
+# Method Name:       FixedEmailOtpProvider
+# Filename:          codex_oauth_chain.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000000 (0x1000000)
+# First Line:        955
+# Constants:
+#    0: 'FixedEmailOtpProvider'
+#    1: 955
+#    2: 'Manual/test email OTP provider. Never polls a mailbox.'
+#    3: None
+#    4: ('log_fn',)
+#    5: <Code311 code object __init__ at 0x105ef4cd0, file codex_oauth_chain.py>, line 958
+#    6: <Code311 code object wait_code at 0x105ef4d00, file codex_oauth_chain.py>, line 962
+#    7: ('code', 'log_fn')
+#    8: ('code', 'str', 'log_fn', 'LogFn', 'return', 'None')
+#    9: ('email', 'str', 'return', 'str')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: __init__
+#    6: wait_code
+#    7: __static_attributes__
+955:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("FixedEmailOtpProvider")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (955)
+              12 STORE_NAME           (__firstlineno__)
+
+956:          14 LOAD_CONST           ("Manual/test email OTP provider. Never polls a mailbox.")
+              16 STORE_NAME           (__doc__)
+
+958:          18 LOAD_CONST           (None)
+              20 LOAD_CONST           (('log_fn',))
+              22 BUILD_CONST_KEY_MAP  1
+              24 LOAD_CONST           (('code', 'str', 'log_fn', 'LogFn', 'return', 'None'))
+              26 LOAD_CONST           (<Code311 code object __init__ at 0x105ef4cd0, file codex_oauth_chain.py>, line 958)
+              28 MAKE_FUNCTION
+              30 SET_FUNCTION_ATTRIBUTE 4
+              32 SET_FUNCTION_ATTRIBUTE 2
+              34 STORE_NAME           (__init__)
+
+962:          36 LOAD_CONST           (('email', 'str', 'return', 'str'))
+              38 LOAD_CONST           (<Code311 code object wait_code at 0x105ef4d00, file codex_oauth_chain.py>, line 962)
+              40 MAKE_FUNCTION
+              42 SET_FUNCTION_ATTRIBUTE 4
+              44 STORE_NAME           (wait_code)
+              46 LOAD_CONST           (('code', 'log_fn'))
+              48 STORE_NAME           (__static_attributes__)
+              50 RETURN_CONST         (None)
+
+
+# Method Name:       FixedPhoneOtpProvider
+# Filename:          codex_oauth_chain.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000000 (0x1000000)
+# First Line:        969
+# Constants:
+#    0: 'FixedPhoneOtpProvider'
+#    1: 969
+#    2: 'Manual/test phone OTP provider for a user-supplied phone/code pair.'
+#    3: 'manual'
+#    4: None
+#    5: ('source', 'log_fn')
+#    6: <Code311 code object __init__ at 0x105ef4d90, file codex_oauth_chain.py>, line 972
+#    7: <Code311 code object get_number at 0x105ef4dc0, file codex_oauth_chain.py>, line 980
+#    8: <Code311 code object mark_ready at 0x105ef4df0, file codex_oauth_chain.py>, line 985
+#    9: <Code311 code object wait_code at 0x105ef4e20, file codex_oauth_chain.py>, line 988
+#   10: <Code311 code object complete at 0x105ef4e50, file codex_oauth_chain.py>, line 993
+#   11: <Code311 code object cancel at 0x105ef4e80, file codex_oauth_chain.py>, line 996
+#   12: ('cancelled', 'code', 'completed', 'log_fn', 'phone', 'source')
+#   13: ('phone', 'str', 'code', 'str', 'source', 'str', 'log_fn', 'LogFn', 'return', 'None')
+#   14: ('_', 'Any', 'return', 'PhoneLease')
+#   15: ('lease', 'PhoneLease', 'return', 'None')
+#   16: (180,)
+#   17: ('lease', 'PhoneLease', 'timeout', 'int', 'return', 'str')
+#   18: ('',)
+#   19: ('lease', 'PhoneLease', 'reason', 'str', 'return', 'None')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: __init__
+#    6: get_number
+#    7: mark_ready
+#    8: wait_code
+#    9: complete
+#   10: cancel
+#   11: __static_attributes__
+969:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("FixedPhoneOtpProvider")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (969)
+              12 STORE_NAME           (__firstlineno__)
+
+970:          14 LOAD_CONST           ("Manual/test phone OTP provider for a user-supplied phone/code pair.")
+              16 STORE_NAME           (__doc__)
+
+972:          18 LOAD_CONST           ("manual")
+              20 LOAD_CONST           (None)
+              22 LOAD_CONST           (('source', 'log_fn'))
+              24 BUILD_CONST_KEY_MAP  2
+              26 LOAD_CONST           (('phone', 'str', 'code', 'str', 'source', 'str', 'log_fn', 'LogFn', 'return', 'None'))
+              28 LOAD_CONST           (<Code311 code object __init__ at 0x105ef4d90, file codex_oauth_chain.py>, line 972)
+              30 MAKE_FUNCTION
+              32 SET_FUNCTION_ATTRIBUTE 4
+              34 SET_FUNCTION_ATTRIBUTE 2
+              36 STORE_NAME           (__init__)
+
+980:          38 LOAD_CONST           (('_', 'Any', 'return', 'PhoneLease'))
+              40 LOAD_CONST           (<Code311 code object get_number at 0x105ef4dc0, file codex_oauth_chain.py>, line 980)
+              42 MAKE_FUNCTION
+              44 SET_FUNCTION_ATTRIBUTE 4
+              46 STORE_NAME           (get_number)
+
+985:          48 LOAD_CONST           (('lease', 'PhoneLease', 'return', 'None'))
+              50 LOAD_CONST           (<Code311 code object mark_ready at 0x105ef4df0, file codex_oauth_chain.py>, line 985)
+              52 MAKE_FUNCTION
+              54 SET_FUNCTION_ATTRIBUTE 4
+              56 STORE_NAME           (mark_ready)
+
+988:          58 LOAD_CONST           ((180,))
+              60 LOAD_CONST           (('lease', 'PhoneLease', 'timeout', 'int', 'return', 'str'))
+              62 LOAD_CONST           (<Code311 code object wait_code at 0x105ef4e20, file codex_oauth_chain.py>, line 988)
+              64 MAKE_FUNCTION
+              66 SET_FUNCTION_ATTRIBUTE 4
+              68 SET_FUNCTION_ATTRIBUTE 1
+              70 STORE_NAME           (wait_code)
+
+993:          72 LOAD_CONST           (('lease', 'PhoneLease', 'return', 'None'))
+              74 LOAD_CONST           (<Code311 code object complete at 0x105ef4e50, file codex_oauth_chain.py>, line 993)
+              76 MAKE_FUNCTION
+              78 SET_FUNCTION_ATTRIBUTE 4
+              80 STORE_NAME           (complete)
+
+996:          82 LOAD_CONST           (('',))
+              84 LOAD_CONST           (('lease', 'PhoneLease', 'reason', 'str', 'return', 'None'))
+              86 LOAD_CONST           (<Code311 code object cancel at 0x105ef4e80, file codex_oauth_chain.py>, line 996)
+              88 MAKE_FUNCTION
+              90 SET_FUNCTION_ATTRIBUTE 4
+              92 SET_FUNCTION_ATTRIBUTE 1
+              94 STORE_NAME           (cancel)
+              96 LOAD_CONST           (('cancelled', 'code', 'completed', 'log_fn', 'phone', 'source'))
+              98 STORE_NAME           (__static_attributes__)
+             100 RETURN_CONST         (None)
+
+
+# Method Name:       InteractiveEmailOtpProvider
+# Filename:          codex_oauth_chain.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1000
+# Constants:
+#    0: 'InteractiveEmailOtpProvider'
+#    1: 1000
+#    2: 'Prompt for the email OTP only when the flow reaches that step.'
+#    3: None
+#    4: ('log_fn',)
+#    5: <Code311 code object __init__ at 0x105ef4f10, file codex_oauth_chain.py>, line 1003
+#    6: <Code311 code object wait_code at 0x105ef4f40, file codex_oauth_chain.py>, line 1006
+#    7: ('log_fn', 'LogFn', 'return', 'None')
+#    8: ('email', 'str', 'return', 'str')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: __init__
+#    6: wait_code
+#    7: __static_attributes__
+1000:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("InteractiveEmailOtpProvider")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (1000)
+              12 STORE_NAME           (__firstlineno__)
+
+1001:          14 LOAD_CONST           ("Prompt for the email OTP only when the flow reaches that step.")
+              16 STORE_NAME           (__doc__)
+
+1003:          18 LOAD_CONST           (None)
+              20 LOAD_CONST           (('log_fn',))
+              22 BUILD_CONST_KEY_MAP  1
+              24 LOAD_CONST           (('log_fn', 'LogFn', 'return', 'None'))
+              26 LOAD_CONST           (<Code311 code object __init__ at 0x105ef4f10, file codex_oauth_chain.py>, line 1003)
+              28 MAKE_FUNCTION
+              30 SET_FUNCTION_ATTRIBUTE 4
+              32 SET_FUNCTION_ATTRIBUTE 2
+              34 STORE_NAME           (__init__)
+
+1006:          36 LOAD_CONST           (('email', 'str', 'return', 'str'))
+              38 LOAD_CONST           (<Code311 code object wait_code at 0x105ef4f40, file codex_oauth_chain.py>, line 1006)
+              40 MAKE_FUNCTION
+              42 SET_FUNCTION_ATTRIBUTE 4
+              44 STORE_NAME           (wait_code)
+              46 LOAD_CONST           (('log_fn',))
+              48 STORE_NAME           (__static_attributes__)
+              50 RETURN_CONST         (None)
+
+
+# Method Name:       InteractivePhoneOtpProvider
+# Filename:          codex_oauth_chain.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        4
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1014
+# Constants:
+#    0: 'InteractivePhoneOtpProvider'
+#    1: 1014
+#    2: 'Prompt for the phone number and OTP at the exact runtime steps.'
+#    3: None
+#    4: ('log_fn',)
+#    5: <Code311 code object __init__ at 0x105ef4fa0, file codex_oauth_chain.py>, line 1017
+#    6: <Code311 code object get_number at 0x105ef4fd0, file codex_oauth_chain.py>, line 1023
+#    7: <Code311 code object mark_ready at 0x105ef9fa0, file codex_oauth_chain.py>, line 1030
+#    8: <Code311 code object wait_code at 0x105ef9fd0, file codex_oauth_chain.py>, line 1033
+#    9: <Code311 code object complete at 0x105ef9f40, file codex_oauth_chain.py>, line 1039
+#   10: <Code311 code object cancel at 0x105ef9f70, file codex_oauth_chain.py>, line 1042
+#   11: ('cancelled', 'completed', 'log_fn', 'phone')
+#   12: ('',)
+#   13: ('phone', 'str', 'log_fn', 'LogFn', 'return', 'None')
+#   14: ('_', 'Any', 'return', 'PhoneLease')
+#   15: ('lease', 'PhoneLease', 'return', 'None')
+#   16: (180,)
+#   17: ('lease', 'PhoneLease', 'timeout', 'int', 'return', 'str')
+#   18: ('lease', 'PhoneLease', 'reason', 'str', 'return', 'None')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: __init__
+#    6: get_number
+#    7: mark_ready
+#    8: wait_code
+#    9: complete

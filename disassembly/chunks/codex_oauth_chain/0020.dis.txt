@@ -1,0 +1,800 @@
+            18310 LOAD_FAST            (node_result)
+            18312 JUMP_FORWARD         (to 18316)
+         >> 18314 BUILD_MAP            0
+
+3796:     >> 18316 LOAD_FAST            (events)
+
+3732:        18318 EXTENDED_ARG         (256)
+            18320 LOAD_CONST           (('runtime_context', 'node_bridge', 'codex_chain_events'))
+            18322 BUILD_CONST_KEY_MAP  3
+            18324 DICT_UPDATE          1
+            18326 STORE_FAST           (result)
+
+3798:        18328 EXTENDED_ARG         (256)
+            18330 LOAD_CONST           (('account_id', 'chatgpt_account_id', 'chatgpt_account_user_id', 'chatgpt_user_id', 'chatgpt_auth_user_id', 'chatgpt_plan_type', 'chatgpt_field_source', 'chatgpt_field_checked_at', 'cpa_ready', 'cpa_missing_reason'))
+            18332 GET_ITER
+            18334 FOR_ITER             (to 18418)
+            18338 STORE_FAST           (key)
+
+3810:        18340 LOAD_FAST_CHECK      (tokens)
+            18342 LOAD_ATTR            (NULL|self + get)
+            18362 LOAD_FAST            (key)
+            18364 LOAD_FAST_CHECK      (result)
+            18366 LOAD_ATTR            (NULL|self + get)
+            18386 LOAD_FAST            (key)
+            18388 LOAD_CONST           ("")
+            18390 CALL                 (2 positional)
+            18398 CALL                 (2 positional)
+            18406 LOAD_FAST            (result)
+            18408 LOAD_FAST            (key)
+            18410 STORE_SUBSCR
+            18414 JUMP_BACKWARD        (to 18334)
+
+3798:     >> 18418 END_FOR
+            18420 POP_TOP
+
+3811:        18422 LOAD_FAST_CHECK      (result)
+            18424 LOAD_ATTR            (NULL|self + update)
+            18444 LOAD_FAST_CHECK      (upload_result)
+            18446 CALL                 (1 positional)
+            18454 POP_TOP
+
+3812:        18456 LOAD_FAST            (result)
+            18458 RETURN_VALUE
+         >> 18460 PUSH_EXC_INFO
+
+3176:        18462 LOAD_GLOBAL          (Exception)
+            18472 CHECK_EXC_MATCH
+            18474 POP_JUMP_IF_FALSE    (to 18518)
+            18478 STORE_FAST           (exc)
+
+3177:        18480 LOAD_GLOBAL          (NULL + CodexChainError)
+            18490 LOAD_CONST           ("sms_provider_init_failed: ")
+            18492 LOAD_FAST            (exc)
+            18494 FORMAT_SIMPLE
+            18496 BUILD_STRING         2
+            18498 CALL                 (1 positional)
+            18506 LOAD_FAST            (exc)
+            18508 RAISE_VARARGS        (exception instance with __cause__)
+         >> 18510 LOAD_CONST           (None)
+            18512 STORE_FAST           (exc)
+            18514 DELETE_FAST          (exc)
+            18516 RERAISE              1
+
+3176:     >> 18518 RERAISE              0
+         >> 18520 COPY                 3
+            18522 POP_EXCEPT
+            18524 RERAISE              1
+         >> 18526 PUSH_EXC_INFO
+
+3270:        18528 LOAD_GLOBAL          (Exception)
+            18538 CHECK_EXC_MATCH
+            18540 POP_JUMP_IF_FALSE    (to 18584)
+            18544 STORE_FAST           (exc)
+
+3271:        18546 LOAD_GLOBAL          (NULL + CodexChainError)
+            18556 LOAD_CONST           ("phase1_session_continue_failed: ")
+            18558 LOAD_FAST            (exc)
+            18560 FORMAT_SIMPLE
+            18562 BUILD_STRING         2
+            18564 CALL                 (1 positional)
+            18572 LOAD_FAST            (exc)
+            18574 RAISE_VARARGS        (exception instance with __cause__)
+         >> 18576 LOAD_CONST           (None)
+            18578 STORE_FAST           (exc)
+            18580 DELETE_FAST          (exc)
+            18582 RERAISE              1
+
+3270:     >> 18584 RERAISE              0
+         >> 18586 COPY                 3
+            18588 POP_EXCEPT
+            18590 RERAISE              1
+         >> 18592 PUSH_EXC_INFO
+
+3315:        18594 LOAD_GLOBAL          (Exception)
+            18604 CHECK_EXC_MATCH
+            18606 POP_JUMP_IF_FALSE    (to 18672)
+            18610 STORE_FAST           (exc)
+
+3316:        18612 LOAD_CONST           (0)
+            18614 LOAD_CONST           ("email_otp_send_failed: ")
+            18616 LOAD_GLOBAL          (NULL + str)
+            18626 LOAD_FAST            (exc)
+            18628 CALL                 (1 positional)
+            18636 LOAD_CONST           (None)
+            18638 LOAD_CONST           (160)
+            18640 BINARY_SLICE
+            18642 FORMAT_SIMPLE
+            18644 BUILD_STRING         2
+            18646 LOAD_CONST           (('_status', 'error'))
+            18648 BUILD_CONST_KEY_MAP  2
+            18650 STORE_FAST           (otp_response)
+            18652 POP_EXCEPT
+            18654 LOAD_CONST           (None)
+            18656 STORE_FAST           (exc)
+            18658 DELETE_FAST          (exc)
+            18660 EXTENDED_ARG         (5632)
+            18662 JUMP_BACKWARD_NO_INTERRUPT (to 6910)
+         >> 18664 LOAD_CONST           (None)
+            18666 STORE_FAST           (exc)
+            18668 DELETE_FAST          (exc)
+            18670 RERAISE              1
+
+3315:     >> 18672 RERAISE              0
+         >> 18674 COPY                 3
+            18676 POP_EXCEPT
+            18678 RERAISE              1
+         >> 18680 PUSH_EXC_INFO
+
+3422:        18682 LOAD_GLOBAL          (Exception)
+            18692 CHECK_EXC_MATCH
+            18694 POP_JUMP_IF_FALSE    (to 18706)
+            18698 POP_TOP
+
+3423:        18700 POP_EXCEPT
+            18702 EXTENDED_ARG         (4608)
+            18704 JUMP_BACKWARD_NO_INTERRUPT (to 9294)
+
+3422:     >> 18706 RERAISE              0
+         >> 18708 COPY                 3
+            18710 POP_EXCEPT
+            18712 RERAISE              1
+         >> 18714 PUSH_EXC_INFO
+
+3441:        18716 LOAD_GLOBAL          (Exception)
+            18726 CHECK_EXC_MATCH
+            18728 POP_JUMP_IF_FALSE    (to 18740)
+            18732 POP_TOP
+
+3442:        18734 POP_EXCEPT
+            18736 EXTENDED_ARG         (4352)
+            18738 JUMP_BACKWARD_NO_INTERRUPT (to 9690)
+
+3441:     >> 18740 RERAISE              0
+         >> 18742 COPY                 3
+            18744 POP_EXCEPT
+            18746 RERAISE              1
+         >> 18748 PUSH_EXC_INFO
+
+3443:        18750 LOAD_GLOBAL          (Exception)
+            18760 CHECK_EXC_MATCH
+            18762 POP_JUMP_IF_FALSE    (to 18844)
+            18766 STORE_FAST           (exc)
+
+3444:        18768 LOAD_GLOBAL          (NULL + _emit)
+            18778 LOAD_FAST            (log_fn)
+            18780 LOAD_CONST           ("  [Codex] 邮箱 OTP 发送接口失败，继续等待 OTP: ")
+            18782 LOAD_GLOBAL          (NULL + str)
+            18792 LOAD_FAST            (exc)
+            18794 CALL                 (1 positional)
+            18802 LOAD_CONST           (None)
+            18804 LOAD_CONST           (160)
+            18806 BINARY_SLICE
+            18808 FORMAT_SIMPLE
+            18810 BUILD_STRING         2
+            18812 LOAD_CONST           ("warn")
+            18814 CALL                 (3 positional)
+            18822 POP_TOP
+            18824 POP_EXCEPT
+            18826 LOAD_CONST           (None)
+            18828 STORE_FAST           (exc)
+            18830 DELETE_FAST          (exc)
+            18832 EXTENDED_ARG         (4352)
+            18834 JUMP_BACKWARD_NO_INTERRUPT (to 9690)
+         >> 18836 LOAD_CONST           (None)
+            18838 STORE_FAST           (exc)
+            18840 DELETE_FAST          (exc)
+            18842 RERAISE              1
+
+3443:     >> 18844 RERAISE              0
+         >> 18846 COPY                 3
+            18848 POP_EXCEPT
+            18850 RERAISE              1
+         >> 18852 PUSH_EXC_INFO
+
+3481:        18854 LOAD_GLOBAL          (Exception)
+            18864 CHECK_EXC_MATCH
+            18866 POP_JUMP_IF_FALSE    (to 18900)
+            18870 POP_TOP
+
+3482:        18872 LOAD_FAST            (is_real)
+            18874 TO_BOOL
+            18882 POP_JUMP_IF_FALSE    (to 18890)
+            18886 LOAD_CONST           (1000)
+            18888 JUMP_FORWARD         (to 18892)
+         >> 18890 LOAD_CONST           (3)
+         >> 18892 STORE_FAST           (max_attempts)
+            18894 POP_EXCEPT
+            18896 EXTENDED_ARG         (4096)
+            18898 JUMP_BACKWARD_NO_INTERRUPT (to 10382)
+
+3481:     >> 18900 RERAISE              0
+         >> 18902 COPY                 3
+            18904 POP_EXCEPT
+            18906 RERAISE              1
+         >> 18908 SWAP                 (TOS <-> TOS1)
+            18910 POP_TOP
+
+3489:        18912 SWAP                 (TOS <-> TOS1)
+            18914 STORE_FAST           (ch)
+            18916 RERAISE              0
+         >> 18918 PUSH_EXC_INFO
+
+3516:        18920 LOAD_GLOBAL          (Exception)
+            18930 CHECK_EXC_MATCH
+            18932 POP_JUMP_IF_FALSE    (to 19186)
+            18936 STORE_FAST           (exc)
+
+3517:        18938 LOAD_GLOBAL          (NULL + _phone_supply_error_text)
+            18948 LOAD_FAST            (exc)
+            18950 CALL                 (1 positional)
+            18958 STORE_FAST           (last_error)
+
+3518:        18960 LOAD_GLOBAL          (NULL + _emit)
+            18970 LOAD_FAST            (log_fn)
+            18972 LOAD_CONST           ("  [Codex] 手机拿号失败 ")
+            18974 LOAD_FAST_CHECK      (_idx)
+            18976 FORMAT_SIMPLE
+            18978 LOAD_CONST           ("/")
+            18980 LOAD_FAST_CHECK      (attempt_label)
+            18982 FORMAT_SIMPLE
+            18984 LOAD_CONST           (": ")
+            18986 LOAD_FAST            (last_error)
+            18988 FORMAT_SIMPLE
+            18990 BUILD_STRING         6
+            18992 LOAD_CONST           ("warn")
+            18994 CALL                 (3 positional)
+            19002 POP_TOP
+
+3519:        19004 LOAD_GLOBAL          (NULL + _is_retryable_phone_supply_error)
+            19014 LOAD_FAST            (exc)
+            19016 CALL                 (1 positional)
+            19024 TO_BOOL
+            19032 POP_JUMP_IF_FALSE    (to 19136)
+            19036 LOAD_FAST_CHECK      (unlimited_attempts)
+            19038 TO_BOOL
+            19046 POP_JUMP_IF_TRUE     (to 19062)
+            19050 LOAD_FAST_CHECK      (_idx)
+            19052 LOAD_FAST_CHECK      (max_attempts)
+            19054 COMPARE_OP           (<)
+            19058 POP_JUMP_IF_FALSE    (to 19136)
+
+3520:     >> 19062 LOAD_GLOBAL          (NULL + _phone_retry_sleep_seconds)
+            19072 LOAD_FAST            (cfg)
+            19074 LOAD_FAST            (exc)
+            19076 CALL                 (2 positional)
+            19084 STORE_FAST           (retry_sleep)
+
+3521:        19086 LOAD_FAST            (retry_sleep)
+            19088 LOAD_CONST           (0)
+            19090 COMPARE_OP           (>)
+            19094 POP_JUMP_IF_FALSE    (to 19122)
+
+3522:        19098 LOAD_GLOBAL          (NULL + _interruptible_sleep)
+            19108 LOAD_FAST            (cfg)
+            19110 LOAD_FAST_CHECK      (retry_sleep)
+            19112 CALL                 (2 positional)
+            19120 POP_TOP
+
+3523:     >> 19122 POP_EXCEPT
+            19124 LOAD_CONST           (None)
+            19126 STORE_FAST           (exc)
+            19128 DELETE_FAST          (exc)
+            19130 EXTENDED_ARG         (4096)
+            19132 JUMP_BACKWARD        (to 10912)
+
+3524:     >> 19136 LOAD_GLOBAL          (NULL + CodexChainError)
+            19146 LOAD_FAST_CHECK      (last_error)
+            19148 COPY                 1
+            19150 TO_BOOL
+            19158 POP_JUMP_IF_TRUE     (to 19166)
+            19162 POP_TOP
+            19164 LOAD_CONST           ("phone_supply_failed")
+         >> 19166 CALL                 (1 positional)
+            19174 LOAD_FAST            (exc)
+            19176 RAISE_VARARGS        (exception instance with __cause__)
+         >> 19178 LOAD_CONST           (None)
+            19180 STORE_FAST           (exc)
+            19182 DELETE_FAST          (exc)
+            19184 RERAISE              1
+
+3516:     >> 19186 RERAISE              0
+         >> 19188 COPY                 3
+            19190 POP_EXCEPT
+            19192 RERAISE              1
+         >> 19194 PUSH_EXC_INFO
+
+3548:        19196 RERAISE              0
+         >> 19198 COPY                 3
+            19200 POP_EXCEPT
+            19202 RERAISE              1
+         >> 19204 PUSH_EXC_INFO
+
+3562:        19206 RERAISE              0
+         >> 19208 COPY                 3
+            19210 POP_EXCEPT
+            19212 RERAISE              1
+         >> 19214 PUSH_EXC_INFO
+
+3576:        19216 RERAISE              0
+         >> 19218 COPY                 3
+            19220 POP_EXCEPT
+            19222 RERAISE              1
+         >> 19224 PUSH_EXC_INFO
+
+3813:        19226 LOAD_GLOBAL          (Exception)
+            19236 CHECK_EXC_MATCH
+            19238 EXTENDED_ARG         (256)
+            19240 POP_JUMP_IF_FALSE    (to 19786)
+            19244 STORE_FAST           (exc)
+
+3814:        19246 LOAD_GLOBAL          (NULL + _event)
+            19256 LOAD_FAST            (events)
+            19258 EXTENDED_ARG         (256)
+            19260 LOAD_GLOBAL          (STATE_FAILED)
+            19270 LOAD_GLOBAL          (NULL + str)
+            19280 LOAD_FAST            (exc)
+            19282 CALL                 (1 positional)
+            19290 LOAD_FAST            (log_fn)
+            19292 LOAD_CONST           ("error")
+            19294 LOAD_CONST           (('detail', 'log_fn', 'tag'))
+            19296 CALL_KW              5
+            19298 POP_TOP
+
+3815:        19300 BUILD_MAP            0
+
+3816:        19302 LOAD_CONST           ("ok")
+            19304 LOAD_CONST           (False)
+
+3815:        19306 MAP_ADD              1
+
+3817:        19308 LOAD_CONST           ("error")
+            19310 LOAD_GLOBAL          (NULL + str)
+            19320 LOAD_FAST            (exc)
+            19322 CALL                 (1 positional)
+
+3815:        19330 MAP_ADD              1
+
+3818:        19332 LOAD_CONST           ("phase2_status")
+            19334 EXTENDED_ARG         (256)
+            19336 LOAD_CONST           ("codex_chain_failed")
+
+3815:        19338 MAP_ADD              1
+
+3819:        19340 LOAD_CONST           ("auth_page_type")
+            19342 EXTENDED_ARG         (256)
+            19344 LOAD_CONST           ("codex_chain_failed")
+
+3815:        19346 MAP_ADD              1
+
+3820:        19348 LOAD_CONST           ("email")
+            19350 LOAD_FAST            (account_email)
+
+3815:        19352 MAP_ADD              1
+
+3821:        19354 LOAD_CONST           ("bind_email")
+            19356 LOAD_FAST            (account_email)
+
+3815:        19358 MAP_ADD              1
+
+3822:        19360 LOAD_CONST           ("login_email")
+            19362 LOAD_FAST            (account_email)
+
+3815:        19364 MAP_ADD              1
+
+3823:        19366 LOAD_CONST           ("openai_device_id")
+            19368 EXTENDED_ARG         (256)
+            19370 LOAD_CONST           ("transport")
+            19372 EXTENDED_ARG         (256)
+            19374 LOAD_GLOBAL          (NULL + locals)
+            19384 CALL                 (0 positional)
+            19392 CONTAINS_OP          (in)
+            19396 POP_JUMP_IF_FALSE    (to 19492)
+            19400 LOAD_GLOBAL          (NULL + _clean)
+            19410 LOAD_GLOBAL          (NULL + getattr)
+            19420 LOAD_FAST            (transport)
+            19422 LOAD_CONST           ("device_id")
+            19424 LOAD_CONST           ("")
+            19426 CALL                 (3 positional)
+            19434 COPY                 1
+            19436 TO_BOOL
+            19444 POP_JUMP_IF_TRUE     (to 19482)
+            19448 POP_TOP
+            19450 LOAD_FAST            (cfg)
+            19452 LOAD_ATTR            (NULL|self + get)
+            19472 LOAD_CONST           ("openai_device_id")
+            19474 CALL                 (1 positional)
+         >> 19482 CALL                 (1 positional)
+            19490 JUMP_FORWARD         (to 19542)
+         >> 19492 LOAD_GLOBAL          (NULL + _clean)
+            19502 LOAD_FAST            (cfg)
+            19504 LOAD_ATTR            (NULL|self + get)
+            19524 LOAD_CONST           ("openai_device_id")
+            19526 CALL                 (1 positional)
+            19534 CALL                 (1 positional)
+
+3815:     >> 19542 MAP_ADD              1
+
+3824:        19544 EXTENDED_ARG         (256)
+            19546 LOAD_CONST           ("local_oauth_saved")
+            19548 LOAD_CONST           (False)
+
+3815:        19550 MAP_ADD              1
+
+3825:        19552 EXTENDED_ARG         (256)
+            19554 LOAD_CONST           ("local_oauth_exchange_ok")
+            19556 LOAD_CONST           (False)
+
+3815:        19558 MAP_ADD              1
+
+3826:        19560 EXTENDED_ARG         (256)
+            19562 LOAD_CONST           ("local_oauth_exchange_error")
+            19564 LOAD_GLOBAL          (NULL + str)
+            19574 LOAD_FAST            (exc)
+            19576 CALL                 (1 positional)
+
+3815:        19584 MAP_ADD              1
+
+3827:        19586 LOAD_CONST           ("attempted_phones")
+            19588 EXTENDED_ARG         (256)
+            19590 LOAD_GLOBAL          (NULL + locals)
+            19600 CALL                 (0 positional)
+            19608 LOAD_ATTR            (NULL|self + get)
+            19628 LOAD_CONST           ("attempted_phones")
+            19630 BUILD_LIST           0
+            19632 CALL                 (2 positional)
+
+3815:        19640 MAP_ADD              1
+
+3828:        19642 LOAD_CONST           ("failed_phones")
+            19644 EXTENDED_ARG         (256)
+            19646 LOAD_GLOBAL          (NULL + locals)
+            19656 CALL                 (0 positional)
+            19664 LOAD_ATTR            (NULL|self + get)
+            19684 LOAD_CONST           ("failed_phones")
+            19686 BUILD_LIST           0
+            19688 CALL                 (2 positional)
+
+3815:        19696 MAP_ADD              1
+
+3829:        19698 LOAD_CONST           ("runtime_context")
+            19700 LOAD_FAST            (runtime_validation)
+
+3815:        19702 MAP_ADD              1
+
+3830:        19704 EXTENDED_ARG         (256)
+            19706 LOAD_CONST           ("node_bridge")
+            19708 LOAD_GLOBAL          (NULL + isinstance)
+            19718 LOAD_FAST            (node_result)
+            19720 LOAD_GLOBAL          (dict)
+            19730 CALL                 (2 positional)
+            19738 TO_BOOL
+            19746 POP_JUMP_IF_FALSE    (to 19754)
+            19750 LOAD_FAST            (node_result)
+            19752 JUMP_FORWARD         (to 19756)
+         >> 19754 BUILD_MAP            0
+
+3815:     >> 19756 MAP_ADD              1
+
+3831:        19758 EXTENDED_ARG         (256)
+            19760 LOAD_CONST           ("codex_chain_events")
+            19762 LOAD_FAST            (events)
+
+3815:        19764 MAP_ADD              1
+            19766 SWAP                 (TOS <-> TOS1)
+            19768 POP_EXCEPT
+            19770 LOAD_CONST           (None)
+            19772 STORE_FAST           (exc)
+            19774 DELETE_FAST          (exc)
+            19776 RETURN_VALUE
+         >> 19778 LOAD_CONST           (None)
+            19780 STORE_FAST           (exc)
+            19782 DELETE_FAST          (exc)
+            19784 RERAISE              1
+
+3813:     >> 19786 RERAISE              0
+         >> 19788 COPY                 3
+            19790 POP_EXCEPT
+            19792 RERAISE              1
+
+ExceptionTable:
+  1954 to 2680 -> 19224 [0]
+  2684 to 2920 -> 18460 [0]
+  2922 to 5598 -> 19224 [0]
+  5602 to 5714 -> 18526 [0]
+  5716 to 6872 -> 19224 [0]
+  6876 to 6908 -> 18592 [0]
+  6910 to 9258 -> 19224 [0]
+  9262 to 9292 -> 18680 [0]
+  9294 to 9504 -> 19224 [0]
+  9508 to 9612 -> 18748 [1]
+  9614 to 9616 -> 19224 [0]
+  9618 to 9650 -> 18748 [1]
+  9654 to 9684 -> 18714 [1]
+  9686 to 10336 -> 19224 [0]
+  10340 to 10380 -> 18852 [0]
+  10382 to 10660 -> 19224 [0]
+  10662 to 10728 -> 18908 [2]
+  10738 to 10794 -> 18908 [2]
+  10796 to 11128 -> 19224 [0]
+  11132 to 11452 -> 18918 [0]
+  11454 to 12126 -> 19224 [0]
+  12130 to 12162 -> 19194 [1]
+  12164 to 12370 -> 19224 [0]
+  12374 to 12404 -> 19204 [1]
+  12406 to 12548 -> 19224 [0]
+  12552 to 12582 -> 19214 [0]
+  12584 to 12836 -> 19224 [0]
+  12844 to 12854 -> 19224 [0]
+  12862 to 15100 -> 19224 [0]
+  15104 to 18456 -> 19224 [0]
+  18460 to 18478 -> 18520 [1] lasti
+  18480 to 18508 -> 18510 [1] lasti
+  18510 to 18518 -> 18520 [1] lasti
+  18520 to 18524 -> 19224 [0]
+  18526 to 18544 -> 18586 [1] lasti
+  18546 to 18574 -> 18576 [1] lasti
+  18576 to 18584 -> 18586 [1] lasti
+  18586 to 18590 -> 19224 [0]
+  18592 to 18610 -> 18674 [1] lasti
+  18612 to 18650 -> 18664 [1] lasti
+  18652 to 18662 -> 19224 [0]
+  18664 to 18672 -> 18674 [1] lasti
+  18674 to 18678 -> 19224 [0]
+  18680 to 18698 -> 18708 [1] lasti
+  18700 to 18704 -> 19224 [0]
+  18706 to 18706 -> 18708 [1] lasti
+  18708 to 18712 -> 19224 [0]
+  18714 to 18732 -> 18742 [2] lasti
+  18734 to 18734 -> 18748 [1]
+  18736 to 18738 -> 19224 [0]
+  18740 to 18740 -> 18742 [2] lasti
+  18742 to 18746 -> 18748 [1]
+  18748 to 18766 -> 18846 [2] lasti
+  18768 to 18822 -> 18836 [2] lasti
+  18824 to 18834 -> 19224 [0]
+  18836 to 18844 -> 18846 [2] lasti
+  18846 to 18850 -> 19224 [0]
+  18852 to 18892 -> 18902 [1] lasti
+  18894 to 18898 -> 19224 [0]
+  18900 to 18900 -> 18902 [1] lasti
+  18902 to 18916 -> 19224 [0]
+  18918 to 18936 -> 19188 [1] lasti
+  18938 to 19120 -> 19178 [1] lasti
+  19122 to 19134 -> 19224 [0]
+  19136 to 19176 -> 19178 [1] lasti
+  19178 to 19186 -> 19188 [1] lasti
+  19188 to 19192 -> 19224 [0]
+  19194 to 19196 -> 19198 [2] lasti
+  19198 to 19202 -> 19224 [0]
+  19204 to 19206 -> 19208 [2] lasti
+  19208 to 19212 -> 19224 [0]
+  19214 to 19216 -> 19218 [1] lasti
+  19218 to 19222 -> 19224 [0]
+  19224 to 19244 -> 19788 [1] lasti
+  19246 to 19764 -> 19778 [1] lasti
+  19766 to 19766 -> 19788 [1] lasti
+  19778 to 19786 -> 19788 [1] lasti
+
+# Method Name:       <genexpr>
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        304
+# Constants:
+#    0: None
+# Varnames:
+#	.0, marker
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: marker
+# Free variables:
+#    0: text
+               0 COPY_FREE_VARS       1
+
+304:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+              10 GET_ITER
+              12 FOR_ITER             (to 34)
+              16 STORE_FAST_LOAD_FAST (marker, marker)
+              18 LOAD_DEREF           (text)
+              20 CONTAINS_OP          (in)
+              24 YIELD_VALUE          0
+              26 RESUME               5
+              28 POP_TOP
+              30 JUMP_BACKWARD        (to 12)
+         >>   34 END_FOR
+              36 POP_TOP
+              38 RETURN_CONST         (None)
+         >>   40 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              42 RERAISE              1
+
+ExceptionTable:
+  6 to 38 -> 40 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        319
+# Constants:
+#    0: None
+# Varnames:
+#	.0, marker
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: marker
+# Free variables:
+#    0: low
+               0 COPY_FREE_VARS       1
+
+319:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+
+321:          10 GET_ITER
+              12 FOR_ITER             (to 36)
+              16 STORE_FAST           (marker)
+
+320:          18 LOAD_FAST            (marker)
+              20 LOAD_DEREF           (low)
+              22 CONTAINS_OP          (in)
+              26 YIELD_VALUE          0
+              28 RESUME               5
+              30 POP_TOP
+              32 JUMP_BACKWARD        (to 12)
+
+321:     >>   36 END_FOR
+              38 POP_TOP
+              40 RETURN_CONST         (None)
+         >>   42 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              44 RERAISE              1
+
+ExceptionTable:
+  6 to 40 -> 42 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        416
+# Constants:
+#    0: None
+# Varnames:
+#	.0, marker
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: marker
+# Free variables:
+#    0: text
+               0 COPY_FREE_VARS       1
+
+416:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+
+418:          10 GET_ITER
+              12 FOR_ITER             (to 36)
+              16 STORE_FAST           (marker)
+
+417:          18 LOAD_FAST            (marker)
+              20 LOAD_DEREF           (text)
+              22 CONTAINS_OP          (in)
+              26 YIELD_VALUE          0
+              28 RESUME               5
+              30 POP_TOP
+              32 JUMP_BACKWARD        (to 12)
+
+418:     >>   36 END_FOR
+              38 POP_TOP
+              40 RETURN_CONST         (None)
+         >>   42 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              44 RERAISE              1
+
+ExceptionTable:
+  6 to 40 -> 42 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        433
+# Constants:
+#    0: None
+# Varnames:
+#	.0, marker
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: marker
+# Free variables:
+#    0: text
+               0 COPY_FREE_VARS       1
+
+433:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+
+435:          10 GET_ITER
+              12 FOR_ITER             (to 36)
+              16 STORE_FAST           (marker)
+
+434:          18 LOAD_FAST            (marker)
+              20 LOAD_DEREF           (text)
+              22 CONTAINS_OP          (in)
+              26 YIELD_VALUE          0
+              28 RESUME               5
+              30 POP_TOP
+              32 JUMP_BACKWARD        (to 12)
+
+435:     >>   36 END_FOR
+              38 POP_TOP
+              40 RETURN_CONST         (None)
+         >>   42 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              44 RERAISE              1
+
+ExceptionTable:
+  6 to 40 -> 42 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        479
+# Constants:
+#    0: None
+# Varnames:
+#	.0, marker
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: marker
+# Free variables:
+#    0: text
+               0 COPY_FREE_VARS       1
+
+479:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+              10 GET_ITER
+              12 FOR_ITER             (to 34)
+              16 STORE_FAST_LOAD_FAST (marker, marker)
+              18 LOAD_DEREF           (text)
+              20 CONTAINS_OP          (in)
+              24 YIELD_VALUE          0
+              26 RESUME               5
+              28 POP_TOP
+              30 JUMP_BACKWARD        (to 12)
+         >>   34 END_FOR
+              36 POP_TOP
+              38 RETURN_CONST         (None)
+         >>   40 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)

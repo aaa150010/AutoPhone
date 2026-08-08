@@ -1,0 +1,800 @@
+         >>  344 CALL                 (2 positional)
+             352 CALL                 (1 positional)
+             360 CALL                 (1 positional)
+             368 POP_TOP
+
+407:         370 LOAD_FAST            (total_count)
+             372 LOAD_GLOBAL          (NULL + int)
+             382 LOAD_FAST            (info)
+             384 LOAD_ATTR            (NULL|self + get)
+             404 LOAD_CONST           ("count")
+             406 LOAD_CONST           (0)
+             408 CALL                 (2 positional)
+             416 CALL                 (1 positional)
+             424 BINARY_OP            (+=)
+             428 STORE_FAST           (total_count)
+             430 JUMP_BACKWARD        (to 274)
+
+404:     >>  434 END_FOR
+             436 POP_TOP
+
+410:         438 LOAD_FAST            (prices)
+             440 TO_BOOL
+             448 POP_JUMP_IF_FALSE    (to 474)
+             452 LOAD_GLOBAL          (NULL + min)
+             462 LOAD_FAST            (prices)
+             464 CALL                 (1 positional)
+             472 JUMP_FORWARD         (to 476)
+         >>  474 LOAD_CONST           (999)
+         >>  476 STORE_FAST           (min_price)
+
+411:         478 LOAD_GLOBAL          (COUNTRY_NAMES)
+             488 LOAD_ATTR            (NULL|self + get)
+             508 LOAD_FAST            (cid)
+             510 LOAD_CONST           ("未知(")
+             512 LOAD_FAST            (cid)
+             514 FORMAT_SIMPLE
+             516 LOAD_CONST           (")")
+             518 BUILD_STRING         3
+             520 CALL                 (2 positional)
+             528 STORE_FAST           (name)
+
+412:         530 LOAD_FAST            (results)
+             532 LOAD_ATTR            (NULL|self + append)
+
+413:         552 LOAD_FAST            (cid)
+
+414:         554 LOAD_FAST            (name)
+
+415:         556 LOAD_FAST            (min_price)
+
+416:         558 LOAD_FAST            (total_count)
+
+412:         560 LOAD_CONST           (('id', 'name', 'price', 'count'))
+             562 BUILD_CONST_KEY_MAP  4
+             564 CALL                 (1 positional)
+             572 POP_TOP
+             574 JUMP_BACKWARD        (to 124)
+
+395:     >>  578 END_FOR
+             580 POP_TOP
+
+419:         582 LOAD_FAST            (results)
+             584 LOAD_ATTR            (NULL|self + sort)
+             604 LOAD_CONST           (<Code311 code object <lambda> at 0x1077a61f0, file sms_providers.py>, line 419)
+             606 MAKE_FUNCTION
+             608 LOAD_CONST           (('key',))
+             610 CALL_KW              1
+             612 POP_TOP
+
+420:         614 LOAD_FAST            (results)
+             616 RETURN_VALUE
+         >>  618 PUSH_EXC_INFO
+
+408:         620 LOAD_GLOBAL          (Exception)
+             630 CHECK_EXC_MATCH
+             632 POP_JUMP_IF_FALSE    (to 644)
+             636 POP_TOP
+
+409:         638 POP_EXCEPT
+             640 JUMP_BACKWARD        (to 274)
+
+408:     >>  644 RERAISE              0
+         >>  646 COPY                 3
+             648 POP_EXCEPT
+             650 RERAISE              1
+         >>  652 PUSH_EXC_INFO
+
+421:         654 LOAD_GLOBAL          (Exception)
+             664 CHECK_EXC_MATCH
+             666 POP_JUMP_IF_FALSE    (to 694)
+             670 STORE_FAST           (e)
+
+422:         672 BUILD_LIST           0
+             674 SWAP                 (TOS <-> TOS1)
+             676 POP_EXCEPT
+             678 LOAD_CONST           (None)
+             680 STORE_FAST           (e)
+             682 DELETE_FAST          (e)
+             684 RETURN_VALUE
+         >>  686 LOAD_CONST           (None)
+             688 STORE_FAST           (e)
+             690 DELETE_FAST          (e)
+             692 RERAISE              1
+
+421:     >>  694 RERAISE              0
+         >>  696 COPY                 3
+             698 POP_EXCEPT
+             700 RERAISE              1
+
+ExceptionTable:
+  4 to 282 -> 652 [0]
+  286 to 428 -> 618 [2]
+  430 to 614 -> 652 [0]
+  618 to 636 -> 646 [3] lasti
+  638 to 642 -> 652 [0]
+  644 to 644 -> 646 [3] lasti
+  646 to 650 -> 652 [0]
+  652 to 670 -> 696 [1] lasti
+  672 to 672 -> 686 [1] lasti
+  674 to 674 -> 696 [1] lasti
+  686 to 694 -> 696 [1] lasti
+
+# Method Name:       get_price_candidates
+# Filename:          sms_providers.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  17
+# Stack size:        14
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        424
+# Constants:
+#    0: 'Return per-country/per-provider stock rows for smart number selection.'
+#    1: 'getPricesV3'
+#    2: ('action', 'service')
+#    3: 1
+#    4: 0
+#    5: 'country'
+#    6: 'count'
+#    7: 'price'
+#    8: 999
+#    9: '未知('
+#   10: ')'
+#   11: ('country', 'provider_id', 'price', 'count', 'name')
+# Names:
+#    0: len
+#    1: str
+#    2: _api
+#    3: json
+#    4: loads
+#    5: strip
+#    6: items
+#    7: isinstance
+#    8: dict
+#    9: get
+#   10: _parse_count
+#   11: float
+#   12: TypeError
+#   13: ValueError
+#   14: append
+#   15: int
+#   16: COUNTRY_NAMES
+# Varnames:
+#	self, service, countries, params, text, data, x, allowed_countries, rows, cid, services, country, providers, provider_id, info, count, price
+# Positional arguments:
+#	self, service, countries
+# Local variables:
+#    3: params
+#    4: text
+#    5: data
+#    6: x
+#    7: allowed_countries
+#    8: rows
+#    9: cid
+#   10: services
+#   11: country
+#   12: providers
+#   13: provider_id
+#   14: info
+#   15: count
+#   16: price
+424:           0 RESUME               0
+
+426:           2 LOAD_CONST           ("getPricesV3")
+               4 LOAD_FAST            (service)
+               6 LOAD_CONST           (('action', 'service'))
+               8 BUILD_CONST_KEY_MAP  2
+              10 STORE_FAST           (params)
+
+427:          12 LOAD_FAST            (countries)
+              14 TO_BOOL
+              22 POP_JUMP_IF_FALSE    (to 90)
+              26 LOAD_GLOBAL          (NULL + len)
+              36 LOAD_FAST            (countries)
+              38 CALL                 (1 positional)
+              46 LOAD_CONST           (1)
+              48 COMPARE_OP           (==)
+              52 POP_JUMP_IF_FALSE    (to 90)
+
+428:          56 LOAD_GLOBAL          (NULL + str)
+              66 LOAD_FAST            (countries)
+              68 LOAD_CONST           (0)
+              70 BINARY_SUBSCR
+              74 CALL                 (1 positional)
+              82 LOAD_FAST            (params)
+              84 LOAD_CONST           ("country")
+              86 STORE_SUBSCR
+
+429:     >>   90 LOAD_FAST            (self)
+              92 LOAD_ATTR            (NULL|self + _api)
+             112 LOAD_FAST            (params)
+             114 CALL                 (1 positional)
+             122 STORE_FAST           (text)
+
+430:         124 LOAD_GLOBAL          (json)
+             134 LOAD_ATTR            (loads)
+             154 PUSH_NULL
+             156 LOAD_FAST            (text)
+             158 CALL                 (1 positional)
+             166 STORE_FAST           (data)
+
+431:         168 LOAD_FAST            (countries)
+             170 COPY                 1
+             172 TO_BOOL
+             180 POP_JUMP_IF_TRUE     (to 188)
+             184 POP_TOP
+             186 BUILD_LIST           0
+         >>  188 GET_ITER
+             190 LOAD_FAST_AND_CLEAR  (x)
+             192 SWAP                 (TOS <-> TOS1)
+             194 BUILD_SET            0
+             196 SWAP                 (TOS <-> TOS1)
+             198 GET_ITER
+             200 FOR_ITER             (to 324)
+             204 STORE_FAST           (x)
+             206 LOAD_GLOBAL          (NULL + str)
+             216 LOAD_FAST            (x)
+             218 CALL                 (1 positional)
+             226 LOAD_ATTR            (NULL|self + strip)
+             246 CALL                 (0 positional)
+             254 TO_BOOL
+             262 POP_JUMP_IF_TRUE     (to 270)
+             266 JUMP_BACKWARD        (to 200)
+         >>  270 LOAD_GLOBAL          (NULL + str)
+             280 LOAD_FAST            (x)
+             282 CALL                 (1 positional)
+             290 LOAD_ATTR            (NULL|self + strip)
+             310 CALL                 (0 positional)
+             318 SET_ADD              2
+             320 JUMP_BACKWARD        (to 200)
+         >>  324 END_FOR
+             326 POP_TOP
+             328 STORE_FAST           (allowed_countries)
+             330 STORE_FAST           (x)
+
+432:         332 BUILD_LIST           0
+             334 STORE_FAST           (rows)
+
+433:         336 LOAD_FAST            (data)
+             338 LOAD_ATTR            (NULL|self + items)
+             358 CALL                 (0 positional)
+             366 GET_ITER
+             368 EXTENDED_ARG         (256)
+             370 FOR_ITER             (to 950)
+             374 UNPACK_SEQUENCE      2
+             378 STORE_FAST_STORE_FAST (cid, services)
+
+434:         380 LOAD_GLOBAL          (NULL + str)
+             390 LOAD_FAST            (cid)
+             392 CALL                 (1 positional)
+             400 STORE_FAST           (country)
+
+435:         402 LOAD_FAST            (allowed_countries)
+             404 TO_BOOL
+             412 POP_JUMP_IF_FALSE    (to 430)
+             416 LOAD_FAST_LOAD_FAST  (country, allowed_countries)
+             418 CONTAINS_OP          (not in)
+             422 POP_JUMP_IF_FALSE    (to 430)
+
+436:         426 JUMP_BACKWARD        (to 368)
+
+437:     >>  430 LOAD_GLOBAL          (NULL + isinstance)
+             440 LOAD_FAST            (services)
+             442 LOAD_GLOBAL          (dict)
+             452 CALL                 (2 positional)
+             460 TO_BOOL
+             468 POP_JUMP_IF_TRUE     (to 476)
+
+438:         472 JUMP_BACKWARD        (to 368)
+
+439:     >>  476 LOAD_FAST            (services)
+             478 LOAD_ATTR            (NULL|self + get)
+             498 LOAD_FAST            (service)
+             500 BUILD_MAP            0
+             502 CALL                 (2 positional)
+             510 STORE_FAST           (providers)
+
+440:         512 LOAD_GLOBAL          (NULL + isinstance)
+             522 LOAD_FAST            (providers)
+             524 LOAD_GLOBAL          (dict)
+             534 CALL                 (2 positional)
+             542 TO_BOOL
+             550 POP_JUMP_IF_TRUE     (to 558)
+
+441:         554 JUMP_BACKWARD        (to 368)
+
+442:     >>  558 LOAD_FAST            (providers)
+             560 LOAD_ATTR            (NULL|self + items)
+             580 CALL                 (0 positional)
+             588 GET_ITER
+             590 FOR_ITER             (to 940)
+             594 UNPACK_SEQUENCE      2
+             598 STORE_FAST_STORE_FAST (provider_id, info)
+
+443:         600 LOAD_GLOBAL          (NULL + isinstance)
+             610 LOAD_FAST            (info)
+             612 LOAD_GLOBAL          (dict)
+             622 CALL                 (2 positional)
+             630 TO_BOOL
+             638 POP_JUMP_IF_TRUE     (to 646)
+
+444:         642 JUMP_BACKWARD        (to 590)
+
+445:     >>  646 LOAD_FAST            (self)
+             648 LOAD_ATTR            (NULL|self + _parse_count)
+             668 LOAD_FAST            (info)
+             670 LOAD_ATTR            (NULL|self + get)
+             690 LOAD_CONST           ("count")
+             692 CALL                 (1 positional)
+             700 CALL                 (1 positional)
+             708 STORE_FAST           (count)
+
+446:         710 LOAD_FAST            (count)
+             712 POP_JUMP_IF_NONE     (to 732)
+             716 LOAD_FAST            (count)
+             718 LOAD_CONST           (0)
+             720 COMPARE_OP           (<=)
+             724 POP_JUMP_IF_FALSE    (to 732)
+
+447:         728 JUMP_BACKWARD        (to 590)
+
+448:     >>  732 NOP
+
+449:         734 LOAD_GLOBAL          (NULL + float)
+             744 LOAD_FAST            (info)
+             746 LOAD_ATTR            (NULL|self + get)
+             766 LOAD_CONST           ("price")
+             768 LOAD_CONST           (999)
+             770 CALL                 (2 positional)
+             778 CALL                 (1 positional)
+             786 STORE_FAST           (price)
+
+452:         788 LOAD_FAST            (rows)
+             790 LOAD_ATTR            (NULL|self + append)
+
+453:         810 LOAD_FAST            (country)
+
+454:         812 LOAD_GLOBAL          (NULL + str)
+             822 LOAD_FAST            (provider_id)
+             824 CALL                 (1 positional)
+
+455:         832 LOAD_FAST            (price)
+
+456:         834 LOAD_GLOBAL          (NULL + int)
+             844 LOAD_FAST            (count)
+             846 COPY                 1
+             848 TO_BOOL
+             856 POP_JUMP_IF_TRUE     (to 864)
+             860 POP_TOP
+             862 LOAD_CONST           (0)
+         >>  864 CALL                 (1 positional)
+
+457:         872 LOAD_GLOBAL          (COUNTRY_NAMES)
+             882 LOAD_ATTR            (NULL|self + get)
+             902 LOAD_FAST            (country)
+             904 LOAD_CONST           ("未知(")
+             906 LOAD_FAST            (country)
+             908 FORMAT_SIMPLE
+             910 LOAD_CONST           (")")
+             912 BUILD_STRING         3
+             914 CALL                 (2 positional)
+
+452:         922 LOAD_CONST           (('country', 'provider_id', 'price', 'count', 'name'))
+             924 BUILD_CONST_KEY_MAP  5
+             926 CALL                 (1 positional)
+             934 POP_TOP
+             936 JUMP_BACKWARD        (to 590)
+
+442:     >>  940 END_FOR
+             942 POP_TOP
+             944 EXTENDED_ARG         (256)
+             946 JUMP_BACKWARD        (to 368)
+
+433:     >>  950 END_FOR
+             952 POP_TOP
+
+459:         954 LOAD_FAST            (rows)
+             956 RETURN_VALUE
+         >>  958 SWAP                 (TOS <-> TOS1)
+             960 POP_TOP
+
+431:         962 SWAP                 (TOS <-> TOS1)
+             964 STORE_FAST           (x)
+             966 RERAISE              0
+         >>  968 PUSH_EXC_INFO
+
+450:         970 LOAD_GLOBAL          (TypeError)
+             980 LOAD_GLOBAL          (ValueError)
+             990 BUILD_TUPLE          2
+             992 CHECK_EXC_MATCH
+             994 POP_JUMP_IF_FALSE    (to 1006)
+             998 POP_TOP
+
+451:        1000 POP_EXCEPT
+            1002 JUMP_BACKWARD        (to 590)
+
+450:     >> 1006 RERAISE              0
+         >> 1008 COPY                 3
+            1010 POP_EXCEPT
+            1012 RERAISE              1
+
+ExceptionTable:
+  194 to 260 -> 958 [2]
+  270 to 326 -> 958 [2]
+  734 to 786 -> 968 [2]
+  968 to 998 -> 1008 [3] lasti
+  1006 to 1006 -> 1008 [3] lasti
+
+# Method Name:       _api
+# Filename:          sms_providers.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        4
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        461
+# Constants:
+#    0: '调用 handler_api.php'
+#    1: 'api_key'
+#    2: '{'
+#    3: 'message'
+#    4: 'No access'
+#    5: ': API key invalid'
+# Names:
+#    0: dict
+#    1: api_key
+#    2: _get
+#    3: BASE_URL
+#    4: startswith
+#    5: json
+#    6: loads
+#    7: get
+#    8: RuntimeError
+#    9: __class__
+#   10: __name__
+#   11: JSONDecodeError
+# Varnames:
+#	self, params, api_params, text, data
+# Positional arguments:
+#	self, params
+# Local variables:
+#    2: api_params
+#    3: text
+#    4: data
+461:           0 RESUME               0
+
+463:           2 LOAD_GLOBAL          (NULL + dict)
+              12 LOAD_FAST            (params)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (api_params)
+
+464:          24 LOAD_FAST            (self)
+              26 LOAD_ATTR            (api_key)
+              46 LOAD_FAST            (api_params)
+              48 LOAD_CONST           ("api_key")
+              50 STORE_SUBSCR
+
+465:          54 LOAD_FAST            (self)
+              56 LOAD_ATTR            (NULL|self + _get)
+              76 LOAD_FAST            (self)
+              78 LOAD_ATTR            (BASE_URL)
+              98 LOAD_FAST            (api_params)
+             100 CALL                 (2 positional)
+             108 STORE_FAST           (text)
+
+467:         110 LOAD_FAST            (text)
+             112 LOAD_ATTR            (NULL|self + startswith)
+             132 LOAD_CONST           ("{")
+             134 CALL                 (1 positional)
+             142 TO_BOOL
+             150 POP_JUMP_IF_FALSE    (to 328)
+             154 LOAD_CONST           ("message")
+             156 LOAD_FAST            (text)
+             158 CONTAINS_OP          (in)
+             162 POP_JUMP_IF_FALSE    (to 328)
+
+468:         166 NOP
+
+469:         168 LOAD_GLOBAL          (json)
+             178 LOAD_ATTR            (loads)
+             198 PUSH_NULL
+             200 LOAD_FAST            (text)
+             202 CALL                 (1 positional)
+             210 STORE_FAST           (data)
+
+470:         212 LOAD_FAST            (data)
+             214 LOAD_ATTR            (NULL|self + get)
+             234 LOAD_CONST           ("message")
+             236 CALL                 (1 positional)
+             244 LOAD_CONST           ("No access")
+             246 COMPARE_OP           (==)
+             250 POP_JUMP_IF_FALSE    (to 322)
+
+471:         254 LOAD_GLOBAL          (NULL + RuntimeError)
+             264 LOAD_FAST            (self)
+             266 LOAD_ATTR            (__class__)
+             286 LOAD_ATTR            (__name__)
+             306 FORMAT_SIMPLE
+             308 LOAD_CONST           (": API key invalid")
+             310 BUILD_STRING         2
+             312 CALL                 (1 positional)
+             320 RAISE_VARARGS        (exception instance)
+
+470:     >>  322 NOP
+
+474:         324 LOAD_FAST            (text)
+             326 RETURN_VALUE
+         >>  328 LOAD_FAST            (text)
+             330 RETURN_VALUE
+         >>  332 PUSH_EXC_INFO
+
+472:         334 LOAD_GLOBAL          (json)
+             344 LOAD_ATTR            (JSONDecodeError)
+             364 CHECK_EXC_MATCH
+             366 POP_JUMP_IF_FALSE    (to 378)
+             370 POP_TOP
+
+473:         372 POP_EXCEPT
+
+474:         374 LOAD_FAST            (text)
+             376 RETURN_VALUE
+
+472:     >>  378 RERAISE              0
+         >>  380 COPY                 3
+             382 POP_EXCEPT
+             384 RERAISE              1
+
+ExceptionTable:
+  168 to 320 -> 332 [0]
+  332 to 370 -> 380 [1] lasti
+  378 to 378 -> 380 [1] lasti
+
+# Method Name:       _price_data
+# Filename:          sms_providers.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  7
+# Stack size:        7
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        493
+# Constants:
+#    0: None
+#    1: 'getPrices'
+#    2: ('action', 'service')
+#    3: 'country'
+#    4: 'GrizzlySmsProvider price response is not json: '
+#    5: 120
+# Names:
+#    0: _api
+#    1: json
+#    2: loads
+#    3: JSONDecodeError
+#    4: RuntimeError
+#    5: isinstance
+#    6: dict
+# Varnames:
+#	self, service, country, params, text, data, exc
+# Positional arguments:
+#	self, service, country
+# Local variables:
+#    3: params
+#    4: text
+#    5: data
+#    6: exc
+493:           0 RESUME               0
+
+494:           2 LOAD_CONST           ("getPrices")
+               4 LOAD_FAST            (service)
+               6 LOAD_CONST           (('action', 'service'))
+               8 BUILD_CONST_KEY_MAP  2
+              10 STORE_FAST           (params)
+
+495:          12 LOAD_FAST            (country)
+              14 TO_BOOL
+              22 POP_JUMP_IF_FALSE    (to 34)
+
+496:          26 LOAD_FAST_LOAD_FAST  (country, params)
+              28 LOAD_CONST           ("country")
+              30 STORE_SUBSCR
+
+497:     >>   34 LOAD_FAST            (self)
+              36 LOAD_ATTR            (NULL|self + _api)
+              56 LOAD_FAST            (params)
+              58 CALL                 (1 positional)
+              66 STORE_FAST           (text)
+
+498:          68 NOP
+
+499:          70 LOAD_GLOBAL          (json)
+              80 LOAD_ATTR            (loads)
+             100 PUSH_NULL
+             102 LOAD_FAST            (text)
+             104 CALL                 (1 positional)
+             112 STORE_FAST           (data)
+
+502:         114 LOAD_GLOBAL          (NULL + isinstance)
+             124 LOAD_FAST            (data)
+             126 LOAD_GLOBAL          (dict)
+             136 CALL                 (2 positional)
+             144 TO_BOOL
+             152 POP_JUMP_IF_FALSE    (to 160)
+             156 LOAD_FAST            (data)
+             158 RETURN_VALUE
+         >>  160 BUILD_MAP            0
+             162 RETURN_VALUE
+         >>  164 PUSH_EXC_INFO
+
+500:         166 LOAD_GLOBAL          (json)
+             176 LOAD_ATTR            (JSONDecodeError)
+             196 CHECK_EXC_MATCH
+             198 POP_JUMP_IF_FALSE    (to 248)
+             202 STORE_FAST           (exc)
+
+501:         204 LOAD_GLOBAL          (NULL + RuntimeError)
+             214 LOAD_CONST           ("GrizzlySmsProvider price response is not json: ")
+             216 LOAD_FAST            (text)
+             218 LOAD_CONST           (None)
+             220 LOAD_CONST           (120)
+             222 BINARY_SLICE
+             224 FORMAT_SIMPLE
+             226 BUILD_STRING         2
+             228 CALL                 (1 positional)
+             236 LOAD_FAST            (exc)
+             238 RAISE_VARARGS        (exception instance with __cause__)
+         >>  240 LOAD_CONST           (None)
+             242 STORE_FAST           (exc)
+             244 DELETE_FAST          (exc)
+             246 RERAISE              1
+
+500:     >>  248 RERAISE              0
+         >>  250 COPY                 3
+             252 POP_EXCEPT
+             254 RERAISE              1
+
+ExceptionTable:
+  70 to 112 -> 164 [0]
+  164 to 202 -> 250 [1] lasti
+  204 to 238 -> 240 [1] lasti
+  240 to 248 -> 250 [1] lasti
+
+# Method Name:       _provider_rows
+# Filename:          sms_providers.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  12
+# Stack size:        13
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        504
+# Constants:
+#    0: None
+#    1: <Code311 code object <genexpr> at 0x1077ac190, file sms_providers.py>, line 516
+#    2: ('count', 'cost', 'price')
+#    3: 'count'
+#    4: 0
+#    5: 'cost'
+#    6: 'price'
+#    7: 'any'
+#    8: 'GrizzlySMS '
+#    9: ' / any'
+#   10: ('country', 'provider_id', 'price', 'count', 'name')
+#   11: ' / '
+# Names:
+#    0: items
+#    1: str
+#    2: isinstance
+#    3: dict
+#    4: get
+#    5: any
+#    6: HandlerApiProvider
+#    7: _parse_count
+#    8: float
+#    9: TypeError
+#   10: ValueError
+#   11: append
+#   12: int
+#   13: COUNTRY_NAMES
+# Varnames:
+#	data, service, allowed_countries, rows, cid, services, country, count, raw_price, price, provider_id, info
+# Positional arguments:
+#	data, service, allowed_countries
+# Local variables:
+#    3: rows
+#    4: cid
+#    5: services
+#    6: country
+#    7: count
+#    8: raw_price
+#    9: price
+#   10: provider_id
+#   11: info
+# Cell variables:
+#    0: providers
+               0 MAKE_CELL            (providers)
+
+504:           2 RESUME               0
+
+506:           4 BUILD_LIST           0
+               6 STORE_FAST           (rows)
+
+507:           8 LOAD_FAST            (data)
+              10 LOAD_ATTR            (NULL|self + items)
+              30 CALL                 (0 positional)
+              38 GET_ITER
+              40 EXTENDED_ARG         (256)
+              42 FOR_ITER             (to 1036)
+              46 UNPACK_SEQUENCE      2
+              50 STORE_FAST_STORE_FAST (cid, services)
+
+508:          52 LOAD_GLOBAL          (NULL + str)
+              62 LOAD_FAST            (cid)
+              64 CALL                 (1 positional)
+              72 STORE_FAST           (country)
+
+509:          74 LOAD_FAST            (allowed_countries)
+              76 TO_BOOL
+              84 POP_JUMP_IF_FALSE    (to 102)
+              88 LOAD_FAST_LOAD_FAST  (country, allowed_countries)
+              90 CONTAINS_OP          (not in)
+              94 POP_JUMP_IF_FALSE    (to 102)
+
+510:          98 JUMP_BACKWARD        (to 40)
+
+511:     >>  102 LOAD_GLOBAL          (NULL + isinstance)
+             112 LOAD_FAST            (services)
+             114 LOAD_GLOBAL          (dict)
+             124 CALL                 (2 positional)
+             132 TO_BOOL
+             140 POP_JUMP_IF_TRUE     (to 148)
+
+512:         144 JUMP_BACKWARD        (to 40)
+
+513:     >>  148 LOAD_FAST            (services)
+             150 LOAD_ATTR            (NULL|self + get)
+             170 LOAD_FAST            (service)
+             172 BUILD_MAP            0
+             174 CALL                 (2 positional)
+             182 STORE_DEREF          (providers)
+
+514:         184 LOAD_GLOBAL          (NULL + isinstance)
+             194 LOAD_DEREF           (providers)
+             196 LOAD_GLOBAL          (dict)
+             206 CALL                 (2 positional)
+             214 TO_BOOL
+             222 POP_JUMP_IF_TRUE     (to 230)
+
+515:         226 JUMP_BACKWARD        (to 40)
+
+516:     >>  230 LOAD_GLOBAL          (NULL + any)
+             240 LOAD_FAST            (providers)
+             242 BUILD_TUPLE          1
+             244 LOAD_CONST           (<Code311 code object <genexpr> at 0x1077ac190, file sms_providers.py>, line 516)
+             246 MAKE_FUNCTION
+             248 SET_FUNCTION_ATTRIBUTE 8
+             250 LOAD_CONST           (('count', 'cost', 'price'))
+             252 GET_ITER
+             254 CALL                 (0 positional)
+             262 CALL                 (1 positional)
+             270 TO_BOOL
+             278 POP_JUMP_IF_FALSE    (to 600)
+
+517:         282 LOAD_GLOBAL          (HandlerApiProvider)
+             292 LOAD_ATTR            (NULL|self + _parse_count)
+             312 LOAD_DEREF           (providers)
+             314 LOAD_ATTR            (NULL|self + get)
+             334 LOAD_CONST           ("count")
+             336 CALL                 (1 positional)
+             344 CALL                 (1 positional)
+             352 STORE_FAST           (count)
+
+518:         354 LOAD_FAST            (count)
+             356 POP_JUMP_IF_NONE     (to 376)
+             360 LOAD_FAST            (count)
+             362 LOAD_CONST           (0)
+             364 COMPARE_OP           (<=)
+             368 POP_JUMP_IF_FALSE    (to 376)
+
+519:         372 JUMP_BACKWARD        (to 40)

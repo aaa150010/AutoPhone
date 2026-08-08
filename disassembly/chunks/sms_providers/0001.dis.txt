@@ -1,0 +1,800 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          sms_providers.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        16
+# Flags:             0x00000000 (0x0)
+# First Line:        1
+# Constants:
+#    0: '\n统一接码平台接口 — 支持 SMSBower / Hero-SMS / 5sim / SMSVirtual / GrizzlySMS / SMS-Verification-Number\n\n用法:\n    from sms_providers import create_provider\n\n    sms = create_provider("smsbower", api_key="xxx", proxy="http://127.0.0.1:7890")\n    # 或\n    sms = create_provider("herosms", api_key="xxx", proxy="...")\n    # 或\n    sms = create_provider("5sim", api_key="xxx", proxy="...")\n\n    print(sms.balance())\n    aid, phone = sms.get_number(service="dr", country="151")\n    sms.set_ready()\n    code = sms.wait_code(timeout=300)\n    sms.complete()\n'
+#    1: 0
+#    2: None
+#    3: ('Path',)
+#    4: ('urlparse', 'parse_qs')
+#    5: ('Optional', 'Tuple')
+#    6: ('atomic_write_text', 'locked_update_json', 'named_file_lock')
+#    7: ('resolve_runtime_path', 'runtime_path')
+#    8: '151'
+#    9: '智利 Chile'
+#   10: '33'
+#   11: '哥伦比亚 Colombia'
+#   12: '91'
+#   13: '印度 India'
+#   14: '62'
+#   15: '印尼 Indonesia'
+#   16: '7'
+#   17: '俄罗斯 Russia'
+#   18: '1'
+#   19: '美国 USA'
+#   20: '52'
+#   21: '墨西哥 Mexico'
+#   22: '55'
+#   23: '巴西 Brazil'
+#   24: '84'
+#   25: '越南 Vietnam'
+#   26: '63'
+#   27: '菲律宾 Philippines'
+#   28: '234'
+#   29: '尼日利亚 Nigeria'
+#   30: '27'
+#   31: '南非 South Africa'
+#   32: '380'
+#   33: '乌克兰 Ukraine'
+#   34: '48'
+#   35: '波兰 Poland'
+#   36: '44'
+#   37: '英国 England'
+#   38: '82'
+#   39: '韩国 South Korea'
+#   40: '81'
+#   41: '日本 Japan'
+#   42: '86'
+#   43: '中国 China'
+#   44: '49'
+#   45: '德国 Germany'
+#   46: '39'
+#   47: '意大利 Italy'
+#   48: '34'
+#   49: '西班牙 Spain'
+#   50: '31'
+#   51: '荷兰 Netherlands'
+#   52: '46'
+#   53: '瑞典 Sweden'
+#   54: '47'
+#   55: '挪威 Norway'
+#   56: '45'
+#   57: '丹麦 Denmark'
+#   58: '358'
+#   59: '芬兰 Finland'
+#   60: '351'
+#   61: '葡萄牙 Portugal'
+#   62: '61'
+#   63: '澳大利亚 Australia'
+#   64: '64'
+#   65: '新西兰 New Zealand'
+#   66: '65'
+#   67: '新加坡 Singapore'
+#   68: '60'
+#   69: '马来西亚 Malaysia'
+#   70: '66'
+#   71: '泰国 Thailand'
+#   72: '90'
+#   73: '土耳其 Turkey'
+#   74: '20'
+#   75: '埃及 Egypt'
+#   76: '212'
+#   77: '摩洛哥 Morocco'
+#   78: '216'
+#   79: '突尼斯 Tunisia'
+#   80: '92'
+#   81: '巴基斯坦 Pakistan'
+#   82: '880'
+#   83: '孟加拉 Bangladesh'
+#   84: '54'
+#   85: '阿根廷 Argentina'
+#   86: '56'
+#   87: '智利2 Chile2'
+#   88: '57'
+#   89: '哥伦比亚2 Colombia2'
+#   90: '58'
+#   91: '委内瑞拉 Venezuela'
+#   92: '51'
+#   93: '秘鲁 Peru'
+#   94: '593'
+#   95: '厄瓜多尔 Ecuador'
+#   96: '506'
+#   97: '哥斯达黎加 Costa Rica'
+#   98: '507'
+#   99: '巴拿马 Panama'
+#  100: '502'
+#  101: '危地马拉 Guatemala'
+#  102: '503'
+#  103: '萨尔瓦多 El Salvador'
+#  104: '504'
+#  105: '洪都拉斯 Honduras'
+#  106: '505'
+#  107: '尼加拉瓜 Nicaragua'
+#  108: '509'
+#  109: '海地 Haiti'
+#  110: '53'
+#  111: '古巴 Cuba'
+#  112: '370'
+#  113: '立陶宛 Lithuania'
+#  114: '371'
+#  115: '拉脱维亚 Latvia'
+#  116: '372'
+#  117: '爱沙尼亚 Estonia'
+#  118: '36'
+#  119: '匈牙利 Hungary'
+#  120: '40'
+#  121: '罗马尼亚 Romania'
+#  122: '41'
+#  123: '瑞士 Switzerland'
+#  124: '43'
+#  125: '奥地利 Austria'
+#  126: '420'
+#  127: '捷克 Czech'
+#  128: '421'
+#  129: '斯洛伐克 Slovakia'
+#  130: '30'
+#  131: '希腊 Greece'
+#  132: '972'
+#  133: '以色列 Israel'
+#  134: '971'
+#  135: '阿联酋 UAE'
+#  136: '966'
+#  137: '沙特 Saudi Arabia'
+#  138: '2'
+#  139: '哈萨克斯坦 Kazakhstan'
+#  140: '998'
+#  141: '乌兹别克斯坦 Uzbekistan'
+#  142: '373'
+#  143: '摩尔多瓦 Moldova'
+#  144: '995'
+#  145: '格鲁吉亚 Georgia'
+#  146: '374'
+#  147: '亚美尼亚 Armenia'
+#  148: '994'
+#  149: '阿塞拜疆 Azerbaijan'
+#  150: '375'
+#  151: '白俄罗斯 Belarus'
+#  152: '996'
+#  153: '吉尔吉斯斯坦 Kyrgyzstan'
+#  154: '992'
+#  155: '塔吉克斯坦 Tajikistan'
+#  156: '254'
+#  157: '肯尼亚 Kenya'
+#  158: '256'
+#  159: '乌干达 Uganda'
+#  160: '255'
+#  161: '坦桑尼亚 Tanzania'
+#  162: '233'
+#  163: '加纳 Ghana'
+#  164: '225'
+#  165: '科特迪瓦 Cote d Ivoire'
+#  166: '221'
+#  167: '塞内加尔 Senegal'
+#  168: '237'
+#  169: '喀麦隆 Cameroon'
+#  170: '229'
+#  171: '贝宁 Benin'
+#  172: '227'
+#  173: '尼日尔 Niger'
+#  174: '223'
+#  175: '马里 Mali'
+#  176: '226'
+#  177: '布基纳法索 Burkina Faso'
+#  178: '多哥 Togo'
+#  179: '加蓬 Gabon'
+#  180: '刚果 Congo'
+#  181: '刚果民主 Congo DR'
+#  182: '安哥拉 Angola'
+#  183: '莫桑比克 Mozambique'
+#  184: '赞比亚 Zambia'
+#  185: '津巴布韦 Zimbabwe'
+#  186: '马拉维 Malawi'
+#  187: '博茨瓦纳 Botswana'
+#  188: '纳米比亚 Namibia'
+#  189: '塞舌尔 Seychelles'
+#  190: '毛里求斯 Mauritius'
+#  191: '马达加斯加 Madagascar'
+#  192: ('228', '241', '242', '243', '244', '258', '260', '263', '265', '267', '264', '248', '230', '261')
+#  193: <Code311 code object BaseSmsProvider at 0x1077a6850, file sms_providers.py>, line 148
+#  194: 'BaseSmsProvider'
+#  195: <Code311 code object HandlerApiProvider at 0x1077a6130, file sms_providers.py>, line 239
+#  196: 'HandlerApiProvider'
+#  197: <Code311 code object SmsBowerProvider at 0x1077a60a0, file sms_providers.py>, line 481
+#  198: 'SmsBowerProvider'
+#  199: <Code311 code object GrizzlySmsProvider at 0x1077a6070, file sms_providers.py>, line 489
+#  200: 'GrizzlySmsProvider'
+#  201: <Code311 code object SmsVerificationNumberProvider at 0x1077ac3d0, file sms_providers.py>, line 592
+#  202: 'SmsVerificationNumberProvider'
+#  203: <Code311 code object HeroSmsProvider at 0x1077ac5e0, file sms_providers.py>, line 804
+#  204: 'HeroSmsProvider'
+#  205: <Code311 code object FiveSimProvider at 0x1077aca90, file sms_providers.py>, line 900
+#  206: 'FiveSimProvider'
+#  207: <Code311 code object SmsVirtualProvider at 0x1077b1eb0, file sms_providers.py>, line 1179
+#  208: 'SmsVirtualProvider'
+#  209: <Code311 code object LocalSmsPoolProvider at 0x1077b1790, file sms_providers.py>, line 1595
+#  210: 'LocalSmsPoolProvider'
+#  211: 'config'
+#  212: 'pool_path'
+#  213: 'return'
+#  214: <Code311 code object _localpool_success_file at 0x1077b17f0, file sms_providers.py>, line 1972
+#  215: 'raw'
+#  216: <Code311 code object _localpool_line_key at 0x1077b1850, file sms_providers.py>, line 1984
+#  217: ''
+#  218: ('activation_id', 'phone')
+#  219: 'activation_id'
+#  220: 'phone'
+#  221: <Code311 code object archive_localpool_success_number at 0x1077b1880, file sms_providers.py>, line 1998
+#  222: ('smsbower', 'herosms', '5sim', 'smsvirtual', 'grizzlysms', 'smsvn', 'localpool')
+#  223: 'provider_name'
+#  224: <Code311 code object apply_localpool_runtime_config at 0x1077b1910, file sms_providers.py>, line 2103
+#  225: <Code311 code object provider_api_key at 0x1077b1940, file sms_providers.py>, line 2122
+#  226: 'name'
+#  227: 'api_key'
+#  228: 'proxy'
+#  229: <Code311 code object create_provider at 0x1077b1970, file sms_providers.py>, line 2133
+#  230: '__main__'
+#  231: '统一接码平台'
+#  232: ('description',)
+#  233: '--provider'
+#  234: 'smsbower'
+#  235: ('default', 'choices')
+#  236: '--api-key'
+#  237: True
+#  238: ('required',)
+#  239: '--proxy'
+#  240: ('default',)
+#  241: '--command'
+#  242: 'balance'
+#  243: ('balance', 'get', 'wait', 'complete', 'cancel')
+#  244: '--service'
+#  245: 'dr'
+#  246: '--country'
+#  247: '--timeout'
+#  248: 60
+#  249: ('type', 'default')
+#  250: '--max-price'
+#  251: '余额: '
+#  252: 'get'
+#  253: ('max_price',)
+#  254: 'ID: '
+#  255: '号码: '
+#  256: '(set_ready 已自动调用)'
+#  257: 'wait'
+#  258: ('timeout',)
+#  259: '验证码: '
+#  260: '超时'
+#  261: (None,)
+#  262: ('',)
+# Names:
+#    0: __doc__
+#    1: abc
+#    2: hashlib
+#    3: json
+#    4: os
+#    5: random
+#    6: re
+#    7: time
+#    8: pathlib
+#    9: Path
+#   10: urllib.parse
+#   11: urlparse
+#   12: parse_qs
+#   13: typing
+#   14: Optional
+#   15: Tuple
+#   16: file_safety
+#   17: atomic_write_text
+#   18: locked_update_json
+#   19: named_file_lock
+#   20: runtime_paths
+#   21: resolve_runtime_path
+#   22: runtime_path
+#   23: COUNTRY_NAMES
+#   24: ABC
+#   25: BaseSmsProvider
+#   26: HandlerApiProvider
+#   27: SmsBowerProvider
+#   28: GrizzlySmsProvider
+#   29: SmsVerificationNumberProvider
+#   30: HeroSmsProvider
+#   31: FiveSimProvider
+#   32: SmsVirtualProvider
+#   33: LocalSmsPoolProvider
+#   34: dict
+#   35: _localpool_success_file
+#   36: str
+#   37: tuple
+#   38: _localpool_line_key
+#   39: archive_localpool_success_number
+#   40: PROVIDERS
+#   41: apply_localpool_runtime_config
+#   42: provider_api_key
+#   43: create_provider
+#   44: SmsBower
+#   45: __name__
+#   46: argparse
+#   47: ArgumentParser
+#   48: p
+#   49: add_argument
+#   50: list
+#   51: keys
+#   52: int
+#   53: parse_args
+#   54: args
+#   55: provider
+#   56: api_key
+#   57: proxy
+#   58: sms
+#   59: command
+#   60: print
+#   61: balance
+#   62: get_number
+#   63: service
+#   64: country
+#   65: max_price
+#   66: aid
+#   67: phone
+#   68: wait_code
+#   69: timeout
+#   70: code
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ('\n统一接码平台接口 — 支持 SMSBower / Hero-SMS / 5sim / SMSVirtual / GrizzlySMS / SMS-Verification-Number\n\n用法:\n    from sms_providers import create_provider\n\n    sms = create_provider("smsbower", api_key="xxx", proxy="http://127.0.0.1:7890")\n    # 或\n    sms = create_provider("herosms", api_key="xxx", proxy="...")\n    # 或\n    sms = create_provider("5sim", api_key="xxx", proxy="...")\n\n    print(sms.balance())\n    aid, phone = sms.get_number(service="dr", country="151")\n    sms.set_ready()\n    code = sms.wait_code(timeout=300)\n    sms.complete()\n')
+               4 STORE_NAME           (__doc__)
+
+ 21:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (None)
+              10 IMPORT_NAME          (abc)
+              12 STORE_NAME           (abc)
+
+ 22:          14 LOAD_CONST           (0)
+              16 LOAD_CONST           (None)
+              18 IMPORT_NAME          (hashlib)
+              20 STORE_NAME           (hashlib)
+
+ 23:          22 LOAD_CONST           (0)
+              24 LOAD_CONST           (None)
+              26 IMPORT_NAME          (json)
+              28 STORE_NAME           (json)
+
+ 24:          30 LOAD_CONST           (0)
+              32 LOAD_CONST           (None)
+              34 IMPORT_NAME          (os)
+              36 STORE_NAME           (os)
+
+ 25:          38 LOAD_CONST           (0)
+              40 LOAD_CONST           (None)
+              42 IMPORT_NAME          (random)
+              44 STORE_NAME           (random)
+
+ 26:          46 LOAD_CONST           (0)
+              48 LOAD_CONST           (None)
+              50 IMPORT_NAME          (re)
+              52 STORE_NAME           (re)
+
+ 27:          54 LOAD_CONST           (0)
+              56 LOAD_CONST           (None)
+              58 IMPORT_NAME          (time)
+              60 STORE_NAME           (time)
+
+ 28:          62 LOAD_CONST           (0)
+              64 LOAD_CONST           (('Path',))
+              66 IMPORT_NAME          (pathlib)
+              68 IMPORT_FROM          (Path)
+              70 STORE_NAME           (Path)
+              72 POP_TOP
+
+ 29:          74 LOAD_CONST           (0)
+              76 LOAD_CONST           (('urlparse', 'parse_qs'))
+              78 IMPORT_NAME          (urllib.parse)
+              80 IMPORT_FROM          (urlparse)
+              82 STORE_NAME           (urlparse)
+              84 IMPORT_FROM          (parse_qs)
+              86 STORE_NAME           (parse_qs)
+              88 POP_TOP
+
+ 30:          90 LOAD_CONST           (0)
+              92 LOAD_CONST           (('Optional', 'Tuple'))
+              94 IMPORT_NAME          (typing)
+              96 IMPORT_FROM          (Optional)
+              98 STORE_NAME           (Optional)
+             100 IMPORT_FROM          (Tuple)
+             102 STORE_NAME           (Tuple)
+             104 POP_TOP
+
+ 32:         106 LOAD_CONST           (0)
+             108 LOAD_CONST           (('atomic_write_text', 'locked_update_json', 'named_file_lock'))
+             110 IMPORT_NAME          (file_safety)
+             112 IMPORT_FROM          (atomic_write_text)
+             114 STORE_NAME           (atomic_write_text)
+             116 IMPORT_FROM          (locked_update_json)
+             118 STORE_NAME           (locked_update_json)
+             120 IMPORT_FROM          (named_file_lock)
+             122 STORE_NAME           (named_file_lock)
+             124 POP_TOP
+
+ 33:         126 LOAD_CONST           (0)
+             128 LOAD_CONST           (('resolve_runtime_path', 'runtime_path'))
+             130 IMPORT_NAME          (runtime_paths)
+             132 IMPORT_FROM          (resolve_runtime_path)
+             134 STORE_NAME           (resolve_runtime_path)
+             136 IMPORT_FROM          (runtime_path)
+             138 STORE_NAME           (runtime_path)
+             140 POP_TOP
+
+ 45:         142 BUILD_MAP            0
+
+ 47:         144 LOAD_CONST           ("151")
+             146 LOAD_CONST           ("智利 Chile")
+
+ 45:         148 MAP_ADD              1
+
+ 48:         150 LOAD_CONST           ("33")
+             152 LOAD_CONST           ("哥伦比亚 Colombia")
+
+ 45:         154 MAP_ADD              1
+
+ 49:         156 LOAD_CONST           ("91")
+             158 LOAD_CONST           ("印度 India")
+
+ 45:         160 MAP_ADD              1
+
+ 50:         162 LOAD_CONST           ("62")
+             164 LOAD_CONST           ("印尼 Indonesia")
+
+ 45:         166 MAP_ADD              1
+
+ 51:         168 LOAD_CONST           ("7")
+             170 LOAD_CONST           ("俄罗斯 Russia")
+
+ 45:         172 MAP_ADD              1
+
+ 52:         174 LOAD_CONST           ("1")
+             176 LOAD_CONST           ("美国 USA")
+
+ 45:         178 MAP_ADD              1
+
+ 53:         180 LOAD_CONST           ("52")
+             182 LOAD_CONST           ("墨西哥 Mexico")
+
+ 45:         184 MAP_ADD              1
+
+ 54:         186 LOAD_CONST           ("55")
+             188 LOAD_CONST           ("巴西 Brazil")
+
+ 45:         190 MAP_ADD              1
+
+ 55:         192 LOAD_CONST           ("84")
+             194 LOAD_CONST           ("越南 Vietnam")
+
+ 45:         196 MAP_ADD              1
+
+ 56:         198 LOAD_CONST           ("63")
+             200 LOAD_CONST           ("菲律宾 Philippines")
+
+ 45:         202 MAP_ADD              1
+
+ 57:         204 LOAD_CONST           ("234")
+             206 LOAD_CONST           ("尼日利亚 Nigeria")
+
+ 45:         208 MAP_ADD              1
+
+ 58:         210 LOAD_CONST           ("27")
+             212 LOAD_CONST           ("南非 South Africa")
+
+ 45:         214 MAP_ADD              1
+
+ 59:         216 LOAD_CONST           ("380")
+             218 LOAD_CONST           ("乌克兰 Ukraine")
+
+ 45:         220 MAP_ADD              1
+
+ 60:         222 LOAD_CONST           ("48")
+             224 LOAD_CONST           ("波兰 Poland")
+
+ 45:         226 MAP_ADD              1
+
+ 61:         228 LOAD_CONST           ("44")
+             230 LOAD_CONST           ("英国 England")
+
+ 45:         232 MAP_ADD              1
+
+ 62:         234 LOAD_CONST           ("82")
+             236 LOAD_CONST           ("韩国 South Korea")
+
+ 45:         238 MAP_ADD              1
+
+ 63:         240 LOAD_CONST           ("81")
+             242 LOAD_CONST           ("日本 Japan")
+
+ 45:         244 MAP_ADD              1
+             246 BUILD_MAP            0
+
+ 64:         248 LOAD_CONST           ("86")
+             250 LOAD_CONST           ("中国 China")
+
+ 45:         252 MAP_ADD              1
+
+ 65:         254 LOAD_CONST           ("49")
+             256 LOAD_CONST           ("德国 Germany")
+
+ 45:         258 MAP_ADD              1
+
+ 66:         260 LOAD_CONST           ("39")
+             262 LOAD_CONST           ("意大利 Italy")
+
+ 45:         264 MAP_ADD              1
+
+ 67:         266 LOAD_CONST           ("34")
+             268 LOAD_CONST           ("西班牙 Spain")
+
+ 45:         270 MAP_ADD              1
+
+ 68:         272 LOAD_CONST           ("31")
+             274 LOAD_CONST           ("荷兰 Netherlands")
+
+ 45:         276 MAP_ADD              1
+
+ 69:         278 LOAD_CONST           ("46")
+             280 LOAD_CONST           ("瑞典 Sweden")
+
+ 45:         282 MAP_ADD              1
+
+ 70:         284 LOAD_CONST           ("47")
+             286 LOAD_CONST           ("挪威 Norway")
+
+ 45:         288 MAP_ADD              1
+
+ 71:         290 LOAD_CONST           ("45")
+             292 LOAD_CONST           ("丹麦 Denmark")
+
+ 45:         294 MAP_ADD              1
+
+ 72:         296 LOAD_CONST           ("358")
+             298 LOAD_CONST           ("芬兰 Finland")
+
+ 45:         300 MAP_ADD              1
+
+ 73:         302 LOAD_CONST           ("351")
+             304 LOAD_CONST           ("葡萄牙 Portugal")
+
+ 45:         306 MAP_ADD              1
+
+ 74:         308 LOAD_CONST           ("61")
+             310 LOAD_CONST           ("澳大利亚 Australia")
+
+ 45:         312 MAP_ADD              1
+
+ 75:         314 LOAD_CONST           ("64")
+             316 LOAD_CONST           ("新西兰 New Zealand")
+
+ 45:         318 MAP_ADD              1
+
+ 76:         320 LOAD_CONST           ("65")
+             322 LOAD_CONST           ("新加坡 Singapore")
+
+ 45:         324 MAP_ADD              1
+
+ 77:         326 LOAD_CONST           ("60")
+             328 LOAD_CONST           ("马来西亚 Malaysia")
+
+ 45:         330 MAP_ADD              1
+
+ 78:         332 LOAD_CONST           ("66")
+             334 LOAD_CONST           ("泰国 Thailand")
+
+ 45:         336 MAP_ADD              1
+
+ 79:         338 LOAD_CONST           ("90")
+             340 LOAD_CONST           ("土耳其 Turkey")
+
+ 45:         342 MAP_ADD              1
+
+ 80:         344 LOAD_CONST           ("20")
+             346 LOAD_CONST           ("埃及 Egypt")
+
+ 45:         348 MAP_ADD              1
+             350 DICT_UPDATE          1
+             352 BUILD_MAP            0
+
+ 81:         354 LOAD_CONST           ("212")
+             356 LOAD_CONST           ("摩洛哥 Morocco")
+
+ 45:         358 MAP_ADD              1
+
+ 82:         360 LOAD_CONST           ("216")
+             362 LOAD_CONST           ("突尼斯 Tunisia")
+
+ 45:         364 MAP_ADD              1
+
+ 83:         366 LOAD_CONST           ("92")
+             368 LOAD_CONST           ("巴基斯坦 Pakistan")
+
+ 45:         370 MAP_ADD              1
+
+ 84:         372 LOAD_CONST           ("880")
+             374 LOAD_CONST           ("孟加拉 Bangladesh")
+
+ 45:         376 MAP_ADD              1
+
+ 85:         378 LOAD_CONST           ("54")
+             380 LOAD_CONST           ("阿根廷 Argentina")
+
+ 45:         382 MAP_ADD              1
+
+ 86:         384 LOAD_CONST           ("56")
+             386 LOAD_CONST           ("智利2 Chile2")
+
+ 45:         388 MAP_ADD              1
+
+ 87:         390 LOAD_CONST           ("57")
+             392 LOAD_CONST           ("哥伦比亚2 Colombia2")
+
+ 45:         394 MAP_ADD              1
+
+ 88:         396 LOAD_CONST           ("58")
+             398 LOAD_CONST           ("委内瑞拉 Venezuela")
+
+ 45:         400 MAP_ADD              1
+
+ 89:         402 LOAD_CONST           ("51")
+             404 LOAD_CONST           ("秘鲁 Peru")
+
+ 45:         406 MAP_ADD              1
+
+ 90:         408 LOAD_CONST           ("593")
+             410 LOAD_CONST           ("厄瓜多尔 Ecuador")
+
+ 45:         412 MAP_ADD              1
+
+ 91:         414 LOAD_CONST           ("506")
+             416 LOAD_CONST           ("哥斯达黎加 Costa Rica")
+
+ 45:         418 MAP_ADD              1
+
+ 92:         420 LOAD_CONST           ("507")
+             422 LOAD_CONST           ("巴拿马 Panama")
+
+ 45:         424 MAP_ADD              1
+
+ 93:         426 LOAD_CONST           ("502")
+             428 LOAD_CONST           ("危地马拉 Guatemala")
+
+ 45:         430 MAP_ADD              1
+
+ 94:         432 LOAD_CONST           ("503")
+             434 LOAD_CONST           ("萨尔瓦多 El Salvador")
+
+ 45:         436 MAP_ADD              1
+
+ 95:         438 LOAD_CONST           ("504")
+             440 LOAD_CONST           ("洪都拉斯 Honduras")
+
+ 45:         442 MAP_ADD              1
+
+ 96:         444 LOAD_CONST           ("505")
+             446 LOAD_CONST           ("尼加拉瓜 Nicaragua")
+
+ 45:         448 MAP_ADD              1
+
+ 97:         450 LOAD_CONST           ("509")
+             452 LOAD_CONST           ("海地 Haiti")
+
+ 45:         454 MAP_ADD              1
+             456 DICT_UPDATE          1
+             458 BUILD_MAP            0
+
+ 98:         460 LOAD_CONST           ("53")
+             462 LOAD_CONST           ("古巴 Cuba")
+
+ 45:         464 MAP_ADD              1
+
+ 99:         466 LOAD_CONST           ("370")
+             468 LOAD_CONST           ("立陶宛 Lithuania")
+
+ 45:         470 MAP_ADD              1
+
+100:         472 LOAD_CONST           ("371")
+             474 LOAD_CONST           ("拉脱维亚 Latvia")
+
+ 45:         476 MAP_ADD              1
+
+101:         478 LOAD_CONST           ("372")
+             480 LOAD_CONST           ("爱沙尼亚 Estonia")
+
+ 45:         482 MAP_ADD              1
+
+102:         484 LOAD_CONST           ("36")
+             486 LOAD_CONST           ("匈牙利 Hungary")
+
+ 45:         488 MAP_ADD              1
+
+103:         490 LOAD_CONST           ("40")
+             492 LOAD_CONST           ("罗马尼亚 Romania")
+
+ 45:         494 MAP_ADD              1
+
+104:         496 LOAD_CONST           ("41")
+             498 LOAD_CONST           ("瑞士 Switzerland")
+
+ 45:         500 MAP_ADD              1
+
+105:         502 LOAD_CONST           ("43")
+             504 LOAD_CONST           ("奥地利 Austria")
+
+ 45:         506 MAP_ADD              1
+
+106:         508 LOAD_CONST           ("420")
+             510 LOAD_CONST           ("捷克 Czech")
+
+ 45:         512 MAP_ADD              1
+
+107:         514 LOAD_CONST           ("421")
+             516 LOAD_CONST           ("斯洛伐克 Slovakia")
+
+ 45:         518 MAP_ADD              1
+
+108:         520 LOAD_CONST           ("30")
+             522 LOAD_CONST           ("希腊 Greece")
+
+ 45:         524 MAP_ADD              1
+
+109:         526 LOAD_CONST           ("972")
+             528 LOAD_CONST           ("以色列 Israel")
+
+ 45:         530 MAP_ADD              1
+
+110:         532 LOAD_CONST           ("971")
+             534 LOAD_CONST           ("阿联酋 UAE")
+
+ 45:         536 MAP_ADD              1
+
+111:         538 LOAD_CONST           ("966")
+             540 LOAD_CONST           ("沙特 Saudi Arabia")
+
+ 45:         542 MAP_ADD              1
+
+112:         544 LOAD_CONST           ("2")
+             546 LOAD_CONST           ("哈萨克斯坦 Kazakhstan")
+
+ 45:         548 MAP_ADD              1
+
+113:         550 LOAD_CONST           ("998")
+             552 LOAD_CONST           ("乌兹别克斯坦 Uzbekistan")
+
+ 45:         554 MAP_ADD              1
+
+114:         556 LOAD_CONST           ("373")
+             558 LOAD_CONST           ("摩尔多瓦 Moldova")
+
+ 45:         560 MAP_ADD              1
+             562 DICT_UPDATE          1
+             564 BUILD_MAP            0
+
+115:         566 LOAD_CONST           ("995")
+             568 LOAD_CONST           ("格鲁吉亚 Georgia")
+
+ 45:         570 MAP_ADD              1
+
+116:         572 LOAD_CONST           ("374")
+             574 LOAD_CONST           ("亚美尼亚 Armenia")
+
+ 45:         576 MAP_ADD              1
+
+117:         578 LOAD_CONST           ("994")
+             580 LOAD_CONST           ("阿塞拜疆 Azerbaijan")
+
+ 45:         582 MAP_ADD              1
+

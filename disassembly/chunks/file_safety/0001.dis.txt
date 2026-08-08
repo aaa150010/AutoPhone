@@ -1,0 +1,800 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          file_safety.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1
+# Constants:
+#    0: 'Small cross-process file helpers for high-concurrency runs.'
+#    1: 0
+#    2: ('annotations',)
+#    3: None
+#    4: ('contextmanager',)
+#    5: ('Path',)
+#    6: ('Any', 'Callable', 'Iterator')
+#    7: 'nt'
+#    8: ('runtime_path',)
+#    9: 'dict[str, threading.RLock]'
+#   10: '_PROCESS_LOCKS'
+#   11: <Code311 code object _lock_file at 0x10572fb50, file file_safety.py>, line 27
+#   12: <Code311 code object named_file_lock at 0x10572fa00, file file_safety.py>, line 35
+#   13: 'utf-8'
+#   14: ('encoding',)
+#   15: <Code311 code object atomic_write_text at 0x10572f910, file file_safety.py>, line 56
+#   16: 24
+#   17: ('encoding', 'attempts')
+#   18: <Code311 code object read_text_retry at 0x1056fe430, file file_safety.py>, line 85
+#   19: 2
+#   20: ('indent',)
+#   21: <Code311 code object atomic_write_json at 0x1056fe460, file file_safety.py>, line 108
+#   22: <Code311 code object locked_update_json at 0x1056fe4c0, file file_safety.py>, line 116
+#   23: (False,)
+#   24: ('unlock', 'bool', 'return', 'None')
+#   25: ('name', 'str', 'return', 'Iterator[None]')
+#   26: ('path', 'str | os.PathLike[str]', 'text', 'str', 'encoding', 'str', 'return', 'None')
+#   27: ('path', 'str | os.PathLike[str]', 'encoding', 'str', 'attempts', 'int', 'return', 'str')
+#   28: ('path', 'str | os.PathLike[str]', 'data', 'Any', 'indent', 'int', 'return', 'None')
+#   29: ('path', 'str | os.PathLike[str]', 'lock_name', 'str', 'default', 'Any', 'update_fn', 'Callable[[Any], Any]', 'return', 'Any')
+# Names:
+#    0: __doc__
+#    1: __future__
+#    2: annotations
+#    3: json
+#    4: hashlib
+#    5: os
+#    6: tempfile
+#    7: threading
+#    8: time
+#    9: contextlib
+#   10: contextmanager
+#   11: pathlib
+#   12: Path
+#   13: typing
+#   14: Any
+#   15: Callable
+#   16: Iterator
+#   17: name
+#   18: msvcrt
+#   19: fcntl
+#   20: runtime_paths
+#   21: runtime_path
+#   22: Lock
+#   23: _LOCKS_GUARD
+#   24: _PROCESS_LOCKS
+#   25: __annotations__
+#   26: _lock_file
+#   27: named_file_lock
+#   28: atomic_write_text
+#   29: read_text_retry
+#   30: atomic_write_json
+#   31: locked_update_json
+  0:           0 RESUME               0
+
+  2:           2 SETUP_ANNOTATIONS
+               4 LOAD_CONST           ("Small cross-process file helpers for high-concurrency runs.")
+               6 STORE_NAME           (__doc__)
+
+  4:           8 LOAD_CONST           (0)
+              10 LOAD_CONST           (('annotations',))
+              12 IMPORT_NAME          (__future__)
+              14 IMPORT_FROM          (annotations)
+              16 STORE_NAME           (annotations)
+              18 POP_TOP
+
+  6:          20 LOAD_CONST           (0)
+              22 LOAD_CONST           (None)
+              24 IMPORT_NAME          (json)
+              26 STORE_NAME           (json)
+
+  7:          28 LOAD_CONST           (0)
+              30 LOAD_CONST           (None)
+              32 IMPORT_NAME          (hashlib)
+              34 STORE_NAME           (hashlib)
+
+  8:          36 LOAD_CONST           (0)
+              38 LOAD_CONST           (None)
+              40 IMPORT_NAME          (os)
+              42 STORE_NAME           (os)
+
+  9:          44 LOAD_CONST           (0)
+              46 LOAD_CONST           (None)
+              48 IMPORT_NAME          (tempfile)
+              50 STORE_NAME           (tempfile)
+
+ 10:          52 LOAD_CONST           (0)
+              54 LOAD_CONST           (None)
+              56 IMPORT_NAME          (threading)
+              58 STORE_NAME           (threading)
+
+ 11:          60 LOAD_CONST           (0)
+              62 LOAD_CONST           (None)
+              64 IMPORT_NAME          (time)
+              66 STORE_NAME           (time)
+
+ 12:          68 LOAD_CONST           (0)
+              70 LOAD_CONST           (('contextmanager',))
+              72 IMPORT_NAME          (contextlib)
+              74 IMPORT_FROM          (contextmanager)
+              76 STORE_NAME           (contextmanager)
+              78 POP_TOP
+
+ 13:          80 LOAD_CONST           (0)
+              82 LOAD_CONST           (('Path',))
+              84 IMPORT_NAME          (pathlib)
+              86 IMPORT_FROM          (Path)
+              88 STORE_NAME           (Path)
+              90 POP_TOP
+
+ 14:          92 LOAD_CONST           (0)
+              94 LOAD_CONST           (('Any', 'Callable', 'Iterator'))
+              96 IMPORT_NAME          (typing)
+              98 IMPORT_FROM          (Any)
+             100 STORE_NAME           (Any)
+             102 IMPORT_FROM          (Callable)
+             104 STORE_NAME           (Callable)
+             106 IMPORT_FROM          (Iterator)
+             108 STORE_NAME           (Iterator)
+             110 POP_TOP
+
+ 16:         112 LOAD_NAME            (os)
+             114 LOAD_ATTR            (name)
+             134 LOAD_CONST           ("nt")
+             136 COMPARE_OP           (==)
+             140 POP_JUMP_IF_FALSE    (to 154)
+
+ 17:         144 LOAD_CONST           (0)
+             146 LOAD_CONST           (None)
+             148 IMPORT_NAME          (msvcrt)
+             150 STORE_NAME           (msvcrt)
+             152 JUMP_FORWARD         (to 162)
+
+ 19:     >>  154 LOAD_CONST           (0)
+             156 LOAD_CONST           (None)
+             158 IMPORT_NAME          (fcntl)
+             160 STORE_NAME           (fcntl)
+
+ 21:     >>  162 LOAD_CONST           (0)
+             164 LOAD_CONST           (('runtime_path',))
+             166 IMPORT_NAME          (runtime_paths)
+             168 IMPORT_FROM          (runtime_path)
+             170 STORE_NAME           (runtime_path)
+             172 POP_TOP
+
+ 23:         174 LOAD_NAME            (threading)
+             176 LOAD_ATTR            (Lock)
+             196 PUSH_NULL
+             198 CALL                 (0 positional)
+             206 STORE_NAME           (_LOCKS_GUARD)
+
+ 24:         208 BUILD_MAP            0
+             210 STORE_NAME           (_PROCESS_LOCKS)
+             212 LOAD_CONST           ("dict[str, threading.RLock]")
+             214 LOAD_NAME            (__annotations__)
+             216 LOAD_CONST           ("_PROCESS_LOCKS")
+             218 STORE_SUBSCR
+
+ 27:         222 LOAD_CONST           ((False,))
+             224 LOAD_CONST           (('unlock', 'bool', 'return', 'None'))
+             226 LOAD_CONST           (<Code311 code object _lock_file at 0x10572fb50, file file_safety.py>, line 27)
+             228 MAKE_FUNCTION
+             230 SET_FUNCTION_ATTRIBUTE 4
+             232 SET_FUNCTION_ATTRIBUTE 1
+             234 STORE_NAME           (_lock_file)
+
+ 35:         236 LOAD_NAME            (contextmanager)
+
+ 36:         238 LOAD_CONST           (('name', 'str', 'return', 'Iterator[None]'))
+             240 LOAD_CONST           (<Code311 code object named_file_lock at 0x10572fa00, file file_safety.py>, line 35)
+             242 MAKE_FUNCTION
+             244 SET_FUNCTION_ATTRIBUTE 4
+
+ 35:         246 CALL                 (0 positional)
+
+ 36:         254 STORE_NAME           (named_file_lock)
+
+ 56:         256 LOAD_CONST           ("utf-8")
+             258 LOAD_CONST           (('encoding',))
+             260 BUILD_CONST_KEY_MAP  1
+             262 LOAD_CONST           (('path', 'str | os.PathLike[str]', 'text', 'str', 'encoding', 'str', 'return', 'None'))
+             264 LOAD_CONST           (<Code311 code object atomic_write_text at 0x10572f910, file file_safety.py>, line 56)
+             266 MAKE_FUNCTION
+             268 SET_FUNCTION_ATTRIBUTE 4
+             270 SET_FUNCTION_ATTRIBUTE 2
+             272 STORE_NAME           (atomic_write_text)
+
+ 88:         274 LOAD_CONST           ("utf-8")
+
+ 89:         276 LOAD_CONST           (24)
+
+ 85:         278 LOAD_CONST           (('encoding', 'attempts'))
+             280 BUILD_CONST_KEY_MAP  2
+
+ 86:         282 NOP
+
+ 85:         284 NOP
+
+ 88:         286 NOP
+
+ 85:         288 NOP
+
+ 89:         290 NOP
+
+ 85:         292 NOP
+
+ 90:         294 NOP
+
+ 85:         296 LOAD_CONST           (('path', 'str | os.PathLike[str]', 'encoding', 'str', 'attempts', 'int', 'return', 'str'))
+             298 LOAD_CONST           (<Code311 code object read_text_retry at 0x1056fe430, file file_safety.py>, line 85)
+             300 MAKE_FUNCTION
+             302 SET_FUNCTION_ATTRIBUTE 4
+             304 SET_FUNCTION_ATTRIBUTE 2
+             306 STORE_NAME           (read_text_retry)
+
+108:         308 LOAD_CONST           (2)
+             310 LOAD_CONST           (('indent',))
+             312 BUILD_CONST_KEY_MAP  1
+             314 LOAD_CONST           (('path', 'str | os.PathLike[str]', 'data', 'Any', 'indent', 'int', 'return', 'None'))
+             316 LOAD_CONST           (<Code311 code object atomic_write_json at 0x1056fe460, file file_safety.py>, line 108)
+             318 MAKE_FUNCTION
+             320 SET_FUNCTION_ATTRIBUTE 4
+             322 SET_FUNCTION_ATTRIBUTE 2
+             324 STORE_NAME           (atomic_write_json)
+
+116:         326 NOP
+
+117:         328 NOP
+
+116:         330 NOP
+
+118:         332 NOP
+
+116:         334 NOP
+
+119:         336 NOP
+
+116:         338 NOP
+
+120:         340 NOP
+
+116:         342 NOP
+
+121:         344 NOP
+
+116:         346 LOAD_CONST           (('path', 'str | os.PathLike[str]', 'lock_name', 'str', 'default', 'Any', 'update_fn', 'Callable[[Any], Any]', 'return', 'Any'))
+             348 LOAD_CONST           (<Code311 code object locked_update_json at 0x1056fe4c0, file file_safety.py>, line 116)
+             350 MAKE_FUNCTION
+             352 SET_FUNCTION_ATTRIBUTE 4
+             354 STORE_NAME           (locked_update_json)
+             356 RETURN_CONST         (None)
+
+
+# Method Name:       _lock_file
+# Filename:          file_safety.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        27
+# Constants:
+#    0: None
+#    1: 0
+#    2: 'nt'
+#    3: 1
+# Names:
+#    0: seek
+#    1: os
+#    2: name
+#    3: msvcrt
+#    4: locking
+#    5: fileno
+#    6: LK_UNLCK
+#    7: LK_LOCK
+#    8: fcntl
+#    9: flock
+#   10: LOCK_UN
+#   11: LOCK_EX
+# Varnames:
+#	handle, unlock
+# Positional arguments:
+#	handle, unlock
+ 27:           0 RESUME               0
+
+ 28:           2 LOAD_FAST            (handle)
+               4 LOAD_ATTR            (NULL|self + seek)
+              24 LOAD_CONST           (0)
+              26 CALL                 (1 positional)
+              34 POP_TOP
+
+ 29:          36 LOAD_GLOBAL          (os)
+              46 LOAD_ATTR            (name)
+              66 LOAD_CONST           ("nt")
+              68 COMPARE_OP           (==)
+              72 POP_JUMP_IF_FALSE    (to 228)
+
+ 30:          76 LOAD_GLOBAL          (msvcrt)
+              86 LOAD_ATTR            (locking)
+             106 PUSH_NULL
+             108 LOAD_FAST            (handle)
+             110 LOAD_ATTR            (NULL|self + fileno)
+             130 CALL                 (0 positional)
+             138 LOAD_FAST            (unlock)
+             140 TO_BOOL
+             148 POP_JUMP_IF_FALSE    (to 184)
+             152 LOAD_GLOBAL          (msvcrt)
+             162 LOAD_ATTR            (LK_UNLCK)
+             182 JUMP_FORWARD         (to 214)
+         >>  184 LOAD_GLOBAL          (msvcrt)
+             194 LOAD_ATTR            (LK_LOCK)
+         >>  214 LOAD_CONST           (1)
+             216 CALL                 (3 positional)
+             224 POP_TOP
+             226 RETURN_CONST         (None)
+
+ 32:     >>  228 LOAD_GLOBAL          (fcntl)
+             238 LOAD_ATTR            (flock)
+             258 PUSH_NULL
+             260 LOAD_FAST            (handle)
+             262 LOAD_ATTR            (NULL|self + fileno)
+             282 CALL                 (0 positional)
+             290 LOAD_FAST            (unlock)
+             292 TO_BOOL
+             300 POP_JUMP_IF_FALSE    (to 336)
+             304 LOAD_GLOBAL          (fcntl)
+             314 LOAD_ATTR            (LOCK_UN)
+             334 JUMP_FORWARD         (to 366)
+         >>  336 LOAD_GLOBAL          (fcntl)
+             346 LOAD_ATTR            (LOCK_EX)
+         >>  366 CALL                 (2 positional)
+             374 POP_TOP
+             376 RETURN_CONST         (None)
+
+
+# Method Name:       named_file_lock
+# Filename:          file_safety.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  8
+# Stack size:        9
+# Flags:             0x01000023 (0x1000000 | GENERATOR | NEWLOCALS | OPTIMIZED)
+# First Line:        35
+# Constants:
+#    0: None
+#    1: 'data'
+#    2: 'locks'
+#    3: True
+#    4: ('parents', 'exist_ok')
+#    5: 'lock'
+#    6: ''
+#    7: <Code311 code object <genexpr> at 0x10572fa60, file file_safety.py>, line 40
+#    8: 120
+#    9: 'utf-8'
+#   10: 'ignore'
+#   11: ('errors',)
+#   12: 16
+#   13: 96
+#   14: '_'
+#   15: 'a+b'
+#   16: ('unlock',)
+# Names:
+#    0: runtime_path
+#    1: mkdir
+#    2: str
+#    3: join
+#    4: len
+#    5: hashlib
+#    6: sha256
+#    7: encode
+#    8: hexdigest
+#    9: _LOCKS_GUARD
+#   10: _PROCESS_LOCKS
+#   11: setdefault
+#   12: threading
+#   13: RLock
+#   14: open
+#   15: _lock_file
+# Varnames:
+#	name, lock_dir, raw_name, safe_name, digest, path, process_lock, handle
+# Positional arguments:
+#	name
+# Local variables:
+#    1: lock_dir
+#    2: raw_name
+#    3: safe_name
+#    4: digest
+#    5: path
+#    6: process_lock
+#    7: handle
+ 35:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+
+ 37:           6 LOAD_GLOBAL          (NULL + runtime_path)
+              16 LOAD_CONST           ("data")
+              18 LOAD_CONST           ("locks")
+              20 CALL                 (2 positional)
+              28 STORE_FAST           (lock_dir)
+
+ 38:          30 LOAD_FAST            (lock_dir)
+              32 LOAD_ATTR            (NULL|self + mkdir)
+              52 LOAD_CONST           (True)
+              54 LOAD_CONST           (True)
+              56 LOAD_CONST           (('parents', 'exist_ok'))
+              58 CALL_KW              2
+              60 POP_TOP
+
+ 39:          62 LOAD_GLOBAL          (NULL + str)
+              72 LOAD_FAST            (name)
+              74 COPY                 1
+              76 TO_BOOL
+              84 POP_JUMP_IF_TRUE     (to 92)
+              88 POP_TOP
+              90 LOAD_CONST           ("lock")
+         >>   92 CALL                 (1 positional)
+             100 STORE_FAST           (raw_name)
+
+ 40:         102 LOAD_CONST           ("")
+             104 LOAD_ATTR            (NULL|self + join)
+             124 LOAD_CONST           (<Code311 code object <genexpr> at 0x10572fa60, file file_safety.py>, line 40)
+             126 MAKE_FUNCTION
+             128 LOAD_FAST            (raw_name)
+             130 GET_ITER
+             132 CALL                 (0 positional)
+             140 CALL                 (1 positional)
+             148 STORE_FAST           (safe_name)
+
+ 41:         150 LOAD_GLOBAL          (NULL + len)
+             160 LOAD_FAST            (safe_name)
+             162 CALL                 (1 positional)
+             170 LOAD_CONST           (120)
+             172 COMPARE_OP           (>)
+             176 POP_JUMP_IF_FALSE    (to 306)
+
+ 42:         180 LOAD_GLOBAL          (hashlib)
+             190 LOAD_ATTR            (sha256)
+             210 PUSH_NULL
+             212 LOAD_FAST            (raw_name)
+             214 LOAD_ATTR            (NULL|self + encode)
+             234 LOAD_CONST           ("utf-8")
+             236 LOAD_CONST           ("ignore")
+             238 LOAD_CONST           (('errors',))
+             240 CALL_KW              2
+             242 CALL                 (1 positional)
+             250 LOAD_ATTR            (NULL|self + hexdigest)
+             270 CALL                 (0 positional)
+             278 LOAD_CONST           (None)
+             280 LOAD_CONST           (16)
+             282 BINARY_SLICE
+             284 STORE_FAST           (digest)
+
+ 43:         286 LOAD_FAST            (safe_name)
+             288 LOAD_CONST           (None)
+             290 LOAD_CONST           (96)
+             292 BINARY_SLICE
+             294 FORMAT_SIMPLE
+             296 LOAD_CONST           ("_")
+             298 LOAD_FAST            (digest)
+             300 FORMAT_SIMPLE
+             302 BUILD_STRING         3
+             304 STORE_FAST           (safe_name)
+
+ 44:     >>  306 LOAD_FAST_LOAD_FAST  (lock_dir, safe_name)
+             308 BINARY_OP            (/)
+             312 STORE_FAST           (path)
+
+ 45:         314 LOAD_GLOBAL          (_LOCKS_GUARD)
+             324 BEFORE_WITH
+             326 POP_TOP
+
+ 46:         328 LOAD_GLOBAL          (_PROCESS_LOCKS)
+             338 LOAD_ATTR            (NULL|self + setdefault)
+             358 LOAD_FAST            (safe_name)
+             360 LOAD_GLOBAL          (threading)
+             370 LOAD_ATTR            (RLock)
+             390 PUSH_NULL
+             392 CALL                 (0 positional)
+             400 CALL                 (2 positional)
+             408 STORE_FAST           (process_lock)
+
+ 45:         410 LOAD_CONST           (None)
+             412 LOAD_CONST           (None)
+             414 LOAD_CONST           (None)
+             416 CALL                 (2 positional)
+             424 POP_TOP
+
+ 47:         426 LOAD_FAST_CHECK      (process_lock)
+             428 BEFORE_WITH
+             430 POP_TOP
+
+ 48:         432 LOAD_FAST            (path)
+             434 LOAD_ATTR            (NULL|self + open)
+             454 LOAD_CONST           ("a+b")
+             456 CALL                 (1 positional)
+             464 BEFORE_WITH
+             466 STORE_FAST           (handle)
+
+ 49:         468 LOAD_GLOBAL          (NULL + _lock_file)
+             478 LOAD_FAST            (handle)
+             480 CALL                 (1 positional)
+             488 POP_TOP
+
+ 50:         490 NOP
+
+ 51:         492 LOAD_CONST           (None)
+             494 YIELD_VALUE          0
+             496 RESUME               1
+             498 POP_TOP
+
+ 53:         500 LOAD_GLOBAL          (NULL + _lock_file)
+             510 LOAD_FAST            (handle)
+             512 LOAD_CONST           (True)
+             514 LOAD_CONST           (('unlock',))
+             516 CALL_KW              2
+             518 POP_TOP
+             520 NOP
+
+ 48:         522 LOAD_CONST           (None)
+             524 LOAD_CONST           (None)
+             526 LOAD_CONST           (None)
+             528 CALL                 (2 positional)
+             536 POP_TOP
+
+ 47:         538 LOAD_CONST           (None)
+             540 LOAD_CONST           (None)
+             542 LOAD_CONST           (None)
+             544 CALL                 (2 positional)
+             552 POP_TOP
+             554 RETURN_CONST         (None)
+
+ 45:     >>  556 PUSH_EXC_INFO
+             558 WITH_EXCEPT_START    0
+             560 TO_BOOL
+             568 POP_JUMP_IF_TRUE     (to 574)
+             572 RERAISE              2
+         >>  574 POP_TOP
+             576 POP_EXCEPT
+             578 POP_TOP
+             580 POP_TOP
+             582 JUMP_BACKWARD_NO_INTERRUPT (to 426)
+         >>  584 COPY                 3
+             586 POP_EXCEPT
+             588 RERAISE              1
+         >>  590 PUSH_EXC_INFO
+
+ 53:         592 LOAD_GLOBAL          (NULL + _lock_file)
+             602 LOAD_FAST            (handle)
+             604 LOAD_CONST           (True)
+             606 LOAD_CONST           (('unlock',))
+             608 CALL_KW              2
+             610 POP_TOP
+             612 RERAISE              0
+         >>  614 COPY                 3
+             616 POP_EXCEPT
+             618 RERAISE              1
+
+ 48:     >>  620 PUSH_EXC_INFO
+             622 WITH_EXCEPT_START    0
+             624 TO_BOOL
+             632 POP_JUMP_IF_TRUE     (to 638)
+             636 RERAISE              2
+         >>  638 POP_TOP
+             640 POP_EXCEPT
+             642 POP_TOP
+             644 POP_TOP
+             646 JUMP_BACKWARD_NO_INTERRUPT (to 538)
+         >>  648 COPY                 3
+             650 POP_EXCEPT
+             652 RERAISE              1
+
+ 47:     >>  654 PUSH_EXC_INFO
+             656 WITH_EXCEPT_START    0
+             658 TO_BOOL
+             666 POP_JUMP_IF_TRUE     (to 672)
+             670 RERAISE              2
+         >>  672 POP_TOP
+             674 POP_EXCEPT
+             676 POP_TOP
+             678 POP_TOP
+             680 RETURN_CONST         (None)
+         >>  682 COPY                 3
+             684 POP_EXCEPT
+             686 RERAISE              1
+         >>  688 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+             690 RERAISE              1
+
+ExceptionTable:
+  4 to 324 -> 688 [0] lasti
+  326 to 408 -> 556 [1] lasti
+  410 to 428 -> 688 [0] lasti
+  430 to 464 -> 654 [1] lasti
+  466 to 488 -> 620 [2] lasti
+  492 to 498 -> 590 [2]
+  500 to 518 -> 620 [2] lasti
+  522 to 536 -> 654 [1] lasti
+  538 to 554 -> 688 [0] lasti
+  556 to 574 -> 584 [3] lasti
+  576 to 588 -> 688 [0] lasti
+  590 to 612 -> 614 [3] lasti
+  614 to 618 -> 620 [2] lasti
+  620 to 638 -> 648 [4] lasti
+  640 to 652 -> 654 [1] lasti
+  654 to 672 -> 682 [3] lasti
+  674 to 686 -> 688 [0] lasti
+
+# Method Name:       atomic_write_text
+# Filename:          file_safety.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  11
+# Stack size:        9
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        56
+# Constants:
+#    0: None
+#    1: True
+#    2: ('parents', 'exist_ok')
+#    3: '.'
+#    4: '.tmp'
+#    5: ('prefix', 'suffix', 'dir')
+#    6: 'w'
+#    7: ''
+#    8: ('encoding', 'newline')
+#    9: 24
+#   10: 0.1
+#   11: 1
+#   12: 0.5
+# Names:
+#    0: Path
+#    1: parent
+#    2: mkdir
+#    3: tempfile
+#    4: mkstemp
+#    5: name
+#    6: str
+#    7: os
+#    8: fdopen
+#    9: write
+#   10: flush
+#   11: fsync
+#   12: fileno
+#   13: range
+#   14: replace
+#   15: PermissionError
+#   16: time
+#   17: sleep
+#   18: min
+#   19: exists
+#   20: unlink
+#   21: Exception
+# Varnames:
+#	path, text, encoding, target, fd, tmp_name, tmp_path, fh, last_error, attempt, exc
+# Positional arguments:
+#	path, text
+# Local variables:
+#    2: encoding
+#    3: target
+#    4: fd
+#    5: tmp_name
+#    6: tmp_path
+#    7: fh
+#    8: last_error
+#    9: attempt
+#   10: exc
+ 56:           0 RESUME               0
+
+ 57:           2 LOAD_GLOBAL          (NULL + Path)
+              12 LOAD_FAST            (path)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (target)
+
+ 58:          24 LOAD_FAST            (target)
+              26 LOAD_ATTR            (parent)
+              46 LOAD_ATTR            (NULL|self + mkdir)
+              66 LOAD_CONST           (True)
+              68 LOAD_CONST           (True)
+              70 LOAD_CONST           (('parents', 'exist_ok'))
+              72 CALL_KW              2
+              74 POP_TOP
+
+ 59:          76 LOAD_GLOBAL          (tempfile)
+              86 LOAD_ATTR            (mkstemp)
+             106 PUSH_NULL
+             108 LOAD_CONST           (".")
+             110 LOAD_FAST            (target)
+             112 LOAD_ATTR            (name)
+             132 FORMAT_SIMPLE
+             134 LOAD_CONST           (".")
+             136 BUILD_STRING         3
+             138 LOAD_CONST           (".tmp")
+             140 LOAD_GLOBAL          (NULL + str)
+             150 LOAD_FAST            (target)
+             152 LOAD_ATTR            (parent)
+             172 CALL                 (1 positional)
+             180 LOAD_CONST           (('prefix', 'suffix', 'dir'))
+             182 CALL_KW              3
+             184 UNPACK_SEQUENCE      2
+             188 STORE_FAST_STORE_FAST (fd, tmp_name)
+
+ 60:         190 LOAD_GLOBAL          (NULL + Path)
+             200 LOAD_FAST            (tmp_name)
+             202 CALL                 (1 positional)
+             210 STORE_FAST           (tmp_path)
+
+ 61:         212 NOP
+
+ 62:         214 LOAD_GLOBAL          (os)
+             224 LOAD_ATTR            (fdopen)
+             244 PUSH_NULL
+             246 LOAD_FAST            (fd)
+             248 LOAD_CONST           ("w")
+             250 LOAD_FAST            (encoding)
+             252 LOAD_CONST           ("")
+             254 LOAD_CONST           (('encoding', 'newline'))
+             256 CALL_KW              4
+             258 BEFORE_WITH
+             260 STORE_FAST           (fh)
+
+ 63:         262 LOAD_FAST            (fh)
+             264 LOAD_ATTR            (NULL|self + write)
+             284 LOAD_FAST            (text)
+             286 CALL                 (1 positional)
+             294 POP_TOP
+
+ 64:         296 LOAD_FAST            (fh)
+             298 LOAD_ATTR            (NULL|self + flush)
+             318 CALL                 (0 positional)
+             326 POP_TOP
+
+ 65:         328 LOAD_GLOBAL          (os)
+             338 LOAD_ATTR            (fsync)
+             358 PUSH_NULL
+             360 LOAD_FAST            (fh)
+             362 LOAD_ATTR            (NULL|self + fileno)
+             382 CALL                 (0 positional)
+             390 CALL                 (1 positional)
+             398 POP_TOP
+
+ 62:         400 LOAD_CONST           (None)
+             402 LOAD_CONST           (None)
+             404 LOAD_CONST           (None)
+             406 CALL                 (2 positional)
+             414 POP_TOP
+
+ 66:         416 LOAD_CONST           (None)
+             418 STORE_FAST           (last_error)
+
+ 67:         420 LOAD_GLOBAL          (NULL + range)
+             430 LOAD_CONST           (24)
+             432 CALL                 (1 positional)
+             440 GET_ITER
+             442 FOR_ITER             (to 502)
+             446 STORE_FAST           (attempt)
+
+ 68:         448 NOP
+
+ 69:         450 LOAD_GLOBAL          (os)
+             460 LOAD_ATTR            (replace)
+             480 PUSH_NULL
+             482 LOAD_FAST_LOAD_FAST  (tmp_path, target)
+             484 CALL                 (2 positional)
+             492 POP_TOP
+
+ 70:         494 LOAD_CONST           (None)
+             496 STORE_FAST           (last_error)
+
+ 71:         498 POP_TOP
+             500 JUMP_FORWARD         (to 506)
+
+ 67:     >>  502 END_FOR

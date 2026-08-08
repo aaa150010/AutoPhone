@@ -1,0 +1,800 @@
+#    6: _get_microsoft_access_token
+#    7: email
+#    8: authenticate
+#    9: login
+#   10: password
+# Varnames:
+#	self, mail, token
+# Positional arguments:
+#	self
+# Local variables:
+#    1: mail
+#    2: token
+# Cell variables:
+#    0: auth_string
+               0 MAKE_CELL            (auth_string)
+
+191:           2 RESUME               0
+
+192:           4 LOAD_GLOBAL          (imaplib)
+              14 LOAD_ATTR            (IMAP4_SSL)
+              34 PUSH_NULL
+              36 LOAD_FAST            (self)
+              38 LOAD_ATTR            (imap_server)
+              58 LOAD_FAST            (self)
+              60 LOAD_ATTR            (imap_port)
+              80 CALL                 (2 positional)
+              88 STORE_FAST           (mail)
+
+193:          90 LOAD_FAST            (self)
+              92 LOAD_ATTR            (oauth_client_id)
+             112 TO_BOOL
+             120 POP_JUMP_IF_FALSE    (to 276)
+             124 LOAD_FAST            (self)
+             126 LOAD_ATTR            (oauth_refresh_token)
+             146 TO_BOOL
+             154 POP_JUMP_IF_FALSE    (to 276)
+
+194:         158 LOAD_FAST            (self)
+             160 LOAD_ATTR            (NULL|self + _get_microsoft_access_token)
+             180 CALL                 (0 positional)
+             188 STORE_FAST           (token)
+
+195:         190 LOAD_CONST           ("user=")
+             192 LOAD_FAST            (self)
+             194 LOAD_ATTR            (email)
+             214 FORMAT_SIMPLE
+             216 LOAD_CONST           ("\x01auth=Bearer ")
+             218 LOAD_FAST            (token)
+             220 FORMAT_SIMPLE
+             222 LOAD_CONST           ("\x01\x01")
+             224 BUILD_STRING         5
+             226 STORE_DEREF          (auth_string)
+
+196:         228 LOAD_FAST            (mail)
+             230 LOAD_ATTR            (NULL|self + authenticate)
+             250 LOAD_CONST           ("XOAUTH2")
+             252 LOAD_FAST            (auth_string)
+             254 BUILD_TUPLE          1
+             256 LOAD_CONST           (<Code311 code object <lambda> at 0x105fca5e0, file imap_poller.py>, line 196)
+             258 MAKE_FUNCTION
+             260 SET_FUNCTION_ATTRIBUTE 8
+             262 CALL                 (2 positional)
+             270 POP_TOP
+
+199:         272 LOAD_FAST            (mail)
+             274 RETURN_VALUE
+
+198:     >>  276 LOAD_FAST            (mail)
+             278 LOAD_ATTR            (NULL|self + login)
+             298 LOAD_FAST            (self)
+             300 LOAD_ATTR            (email)
+             320 LOAD_FAST            (self)
+             322 LOAD_ATTR            (password)
+             342 CALL                 (2 positional)
+             350 POP_TOP
+
+199:         352 LOAD_FAST            (mail)
+             354 RETURN_VALUE
+
+
+# Method Name:       poll_code
+# Filename:          imap_poller.py
+# Argument count:    9
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  27
+# Stack size:        9
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        203
+# Constants:
+#    0: '\n轮询邮箱，找到第一个匹配的 6 位验证码\n\nArgs:\n    sender_keywords: 发件人关键词过滤，默认 ["openai", "noreply", "verification", "no-reply"]\n    subject_keywords: 主题关键词过滤，默认 None (不过滤)\n    timeout: 总超时秒数\n    interval: 轮询间隔秒数\n    exclude_codes: 排除的验证码集合\n    since_ts: 只接受这个时间之后的验证码邮件\n    recent_scan_limit: 首轮/按时间扫描最近多少封邮件\n    include_existing: 未指定 since_ts 时是否允许扫描已有邮件\n\nReturns:\n    验证码字符串，超时返回 None\n'
+#    1: ('openai', 'noreply', 'verification', 'no-reply', 'chatgpt')
+#    2: '开始轮询 '
+#    3: ' ('
+#    4: ':'
+#    5: ')'
+#    6: '超时='
+#    7: 's  间隔='
+#    8: 's  发件人过滤='
+#    9: ''
+#   10: 'INBOX'
+#   11: 'OK'
+#   12: 'IMAP select INBOX failed: '
+#   13: None
+#   14: 'ALL'
+#   15: 'IMAP search failed: '
+#   16: 0
+#   17: -1
+#   18: 1
+#   19: 20
+#   20: '首轮扫描最近 '
+#   21: ' 封邮件'
+#   22: ('since_ts',)
+#   23: '找到验证码: '
+#   24: '基准: '
+#   25: ' 封已有邮件'
+#   26: '发现 '
+#   27: ' 封新邮件 ['
+#   28: ']'
+#   29: ': '
+#   30: '连接异常: '
+#   31: '检测到不可重试的邮箱授权错误，停止轮询'
+#   32: 's 超时'
+# Names:
+#    0: lower
+#    1: set
+#    2: _log
+#    3: email
+#    4: imap_server
+#    5: imap_port
+#    6: time
+#    7: last_error
+#    8: _connect
+#    9: select
+#   10: RuntimeError
+#   11: search
+#   12: logout
+#   13: sleep
+#   14: split
+#   15: len
+#   16: bool
+#   17: _last_count
+#   18: max
+#   19: int
+#   20: reversed
+#   21: _extract_code
+#   22: Exception
+#   23: type
+#   24: __name__
+#   25: _is_terminal_connection_error
+# Varnames:
+#	self, sender_keywords, subject_keywords, timeout, interval, exclude_codes, since_ts, recent_scan_limit, include_existing, f, sender_filters, excluded, start, mail, select_status, _select_data, status, data, msg_ids, current_count, scan_recent, recent_ids, mid, code, new_ids, delta, e
+# Positional arguments:
+#	self, sender_keywords, subject_keywords, timeout, interval, exclude_codes, since_ts, recent_scan_limit, include_existing
+# Local variables:
+#    9: f
+#   10: sender_filters
+#   11: excluded
+#   12: start
+#   13: mail
+#   14: select_status
+#   15: _select_data
+#   16: status
+#   17: data
+#   18: msg_ids
+#   19: current_count
+#   20: scan_recent
+#   21: recent_ids
+#   22: mid
+#   23: code
+#   24: new_ids
+#   25: delta
+#   26: e
+203:           0 RESUME               0
+
+230:           2 LOAD_FAST            (sender_keywords)
+               4 COPY                 1
+               6 TO_BOOL
+              14 POP_JUMP_IF_TRUE     (to 26)
+              18 POP_TOP
+              20 BUILD_LIST           0
+              22 LOAD_CONST           (('openai', 'noreply', 'verification', 'no-reply', 'chatgpt'))
+              24 LIST_EXTEND          1
+         >>   26 GET_ITER
+              28 LOAD_FAST_AND_CLEAR  (f)
+              30 SWAP                 (TOS <-> TOS1)
+              32 BUILD_LIST           0
+              34 SWAP                 (TOS <-> TOS1)
+              36 GET_ITER
+              38 FOR_ITER             (to 78)
+              42 STORE_FAST_LOAD_FAST (f, f)
+              44 LOAD_ATTR            (NULL|self + lower)
+              64 CALL                 (0 positional)
+              72 LIST_APPEND          2
+              74 JUMP_BACKWARD        (to 38)
+         >>   78 END_FOR
+              80 POP_TOP
+              82 STORE_FAST           (sender_filters)
+              84 STORE_FAST           (f)
+
+233:          86 LOAD_FAST            (exclude_codes)
+              88 COPY                 1
+              90 TO_BOOL
+              98 POP_JUMP_IF_TRUE     (to 122)
+             102 POP_TOP
+             104 LOAD_GLOBAL          (NULL + set)
+             114 CALL                 (0 positional)
+         >>  122 STORE_FAST           (excluded)
+
+235:         124 LOAD_FAST            (self)
+             126 LOAD_ATTR            (NULL|self + _log)
+             146 LOAD_CONST           ("开始轮询 ")
+             148 LOAD_FAST            (self)
+             150 LOAD_ATTR            (email)
+             170 FORMAT_SIMPLE
+             172 LOAD_CONST           (" (")
+             174 LOAD_FAST            (self)
+             176 LOAD_ATTR            (imap_server)
+             196 FORMAT_SIMPLE
+             198 LOAD_CONST           (":")
+             200 LOAD_FAST            (self)
+             202 LOAD_ATTR            (imap_port)
+             222 FORMAT_SIMPLE
+             224 LOAD_CONST           (")")
+             226 BUILD_STRING         7
+             228 CALL                 (1 positional)
+             236 POP_TOP
+
+236:         238 LOAD_FAST            (self)
+             240 LOAD_ATTR            (NULL|self + _log)
+             260 LOAD_CONST           ("超时=")
+             262 LOAD_FAST            (timeout)
+             264 FORMAT_SIMPLE
+             266 LOAD_CONST           ("s  间隔=")
+             268 LOAD_FAST            (interval)
+             270 FORMAT_SIMPLE
+             272 LOAD_CONST           ("s  发件人过滤=")
+             274 LOAD_FAST            (sender_filters)
+             276 FORMAT_SIMPLE
+             278 BUILD_STRING         6
+             280 CALL                 (1 positional)
+             288 POP_TOP
+
+237:         290 LOAD_GLOBAL          (time)
+             300 LOAD_ATTR            (time)
+             320 PUSH_NULL
+             322 CALL                 (0 positional)
+             330 STORE_FAST           (start)
+
+238:         332 LOAD_CONST           ("")
+             334 LOAD_FAST            (self)
+             336 STORE_ATTR           (last_error)
+
+240:         346 LOAD_GLOBAL          (time)
+             356 LOAD_ATTR            (time)
+             376 PUSH_NULL
+             378 CALL                 (0 positional)
+             386 LOAD_FAST            (start)
+             388 BINARY_OP            (-)
+             392 LOAD_FAST            (timeout)
+             394 COMPARE_OP           (<)
+             398 EXTENDED_ARG         (768)
+             400 POP_JUMP_IF_FALSE    (to 2018)
+
+241:         404 NOP
+
+242:         406 LOAD_FAST            (self)
+             408 LOAD_ATTR            (NULL|self + _connect)
+             428 CALL                 (0 positional)
+             436 STORE_FAST           (mail)
+
+243:         438 LOAD_FAST            (mail)
+             440 LOAD_ATTR            (NULL|self + select)
+             460 LOAD_CONST           ("INBOX")
+             462 CALL                 (1 positional)
+             470 UNPACK_SEQUENCE      2
+             474 STORE_FAST_STORE_FAST (select_status, _select_data)
+
+244:         476 LOAD_FAST            (select_status)
+             478 LOAD_CONST           ("OK")
+             480 COMPARE_OP           (!=)
+             484 POP_JUMP_IF_FALSE    (to 516)
+
+245:         488 LOAD_GLOBAL          (NULL + RuntimeError)
+             498 LOAD_CONST           ("IMAP select INBOX failed: ")
+             500 LOAD_FAST            (select_status)
+             502 FORMAT_SIMPLE
+             504 BUILD_STRING         2
+             506 CALL                 (1 positional)
+             514 RAISE_VARARGS        (exception instance)
+
+247:     >>  516 LOAD_FAST            (mail)
+             518 LOAD_ATTR            (NULL|self + search)
+             538 LOAD_CONST           (None)
+             540 LOAD_CONST           ("ALL")
+             542 CALL                 (2 positional)
+             550 UNPACK_SEQUENCE      2
+             554 STORE_FAST           (status)
+             556 STORE_FAST           (data)
+
+248:         558 LOAD_FAST            (status)
+             560 LOAD_CONST           ("OK")
+             562 COMPARE_OP           (!=)
+             566 POP_JUMP_IF_FALSE    (to 670)
+
+249:         570 LOAD_CONST           ("IMAP search failed: ")
+             572 LOAD_FAST            (status)
+             574 FORMAT_SIMPLE
+             576 BUILD_STRING         2
+             578 LOAD_FAST            (self)
+             580 STORE_ATTR           (last_error)
+
+250:         590 LOAD_FAST            (mail)
+             592 LOAD_ATTR            (NULL|self + logout)
+             612 CALL                 (0 positional)
+             620 POP_TOP
+
+251:         622 LOAD_GLOBAL          (time)
+             632 LOAD_ATTR            (sleep)
+             652 PUSH_NULL
+             654 LOAD_FAST            (interval)
+             656 CALL                 (1 positional)
+             664 POP_TOP
+
+252:         666 JUMP_BACKWARD        (to 346)
+
+253:     >>  670 LOAD_CONST           ("")
+             672 LOAD_FAST            (self)
+             674 STORE_ATTR           (last_error)
+
+255:         684 LOAD_FAST            (data)
+             686 LOAD_CONST           (0)
+             688 BINARY_SUBSCR
+             692 LOAD_ATTR            (NULL|self + split)
+             712 CALL                 (0 positional)
+             720 STORE_FAST           (msg_ids)
+
+256:         722 LOAD_GLOBAL          (NULL + len)
+             732 LOAD_FAST            (msg_ids)
+             734 CALL                 (1 positional)
+             742 STORE_FAST           (current_count)
+
+258:         744 LOAD_GLOBAL          (NULL + bool)
+             754 LOAD_FAST            (since_ts)
+             756 LOAD_CONST           (None)
+             758 IS_OP                (is not)
+             760 COPY                 1
+             762 TO_BOOL
+             770 POP_JUMP_IF_TRUE     (to 778)
+             774 POP_TOP
+             776 LOAD_FAST            (include_existing)
+         >>  778 CALL                 (1 positional)
+             786 STORE_FAST           (scan_recent)
+
+261:         788 LOAD_FAST            (self)
+             790 LOAD_ATTR            (_last_count)
+             810 LOAD_CONST           (-1)
+             812 COMPARE_OP           (==)
+             816 POP_JUMP_IF_FALSE    (to 1280)
+
+262:         820 LOAD_FAST            (current_count)
+             822 LOAD_FAST            (self)
+             824 STORE_ATTR           (_last_count)
+
+263:         834 LOAD_FAST            (scan_recent)
+             836 TO_BOOL
+             844 POP_JUMP_IF_FALSE    (to 1156)
+             848 LOAD_FAST            (msg_ids)
+             850 TO_BOOL
+             858 POP_JUMP_IF_FALSE    (to 1156)
+
+264:         862 LOAD_FAST            (msg_ids)
+             864 LOAD_GLOBAL          (NULL + max)
+             874 LOAD_CONST           (1)
+             876 LOAD_GLOBAL          (NULL + int)
+             886 LOAD_FAST            (recent_scan_limit)
+             888 COPY                 1
+             890 TO_BOOL
+             898 POP_JUMP_IF_TRUE     (to 906)
+             902 POP_TOP
+             904 LOAD_CONST           (20)
+         >>  906 CALL                 (1 positional)
+             914 CALL                 (2 positional)
+             922 UNARY_NEGATIVE
+             924 LOAD_CONST           (None)
+             926 BINARY_SLICE
+             928 STORE_FAST           (recent_ids)
+
+265:         930 LOAD_FAST            (self)
+             932 LOAD_ATTR            (NULL|self + _log)
+             952 LOAD_CONST           ("首轮扫描最近 ")
+             954 LOAD_GLOBAL          (NULL + len)
+             964 LOAD_FAST            (recent_ids)
+             966 CALL                 (1 positional)
+             974 FORMAT_SIMPLE
+             976 LOAD_CONST           (" 封邮件")
+             978 BUILD_STRING         3
+             980 CALL                 (1 positional)
+             988 POP_TOP
+
+266:         990 LOAD_GLOBAL          (NULL + reversed)
+            1000 LOAD_FAST            (recent_ids)
+            1002 CALL                 (1 positional)
+            1010 GET_ITER
+            1012 FOR_ITER             (to 1152)
+            1016 STORE_FAST           (mid)
+
+267:        1018 LOAD_FAST            (self)
+            1020 LOAD_ATTR            (NULL|self + _extract_code)
+            1040 LOAD_FAST            (mail)
+            1042 LOAD_FAST            (mid)
+            1044 LOAD_FAST_LOAD_FAST  (sender_filters, excluded)
+            1046 LOAD_FAST            (since_ts)
+            1048 LOAD_CONST           (('since_ts',))
+            1050 CALL_KW              5
+            1052 STORE_FAST           (code)
+
+268:        1054 LOAD_FAST            (code)
+            1056 TO_BOOL
+            1064 POP_JUMP_IF_TRUE     (to 1072)
+            1068 JUMP_BACKWARD        (to 1012)
+
+269:     >> 1072 LOAD_FAST            (self)
+            1074 LOAD_ATTR            (NULL|self + _log)
+            1094 LOAD_CONST           ("找到验证码: ")
+            1096 LOAD_FAST            (code)
+            1098 FORMAT_SIMPLE
+            1100 BUILD_STRING         2
+            1102 CALL                 (1 positional)
+            1110 POP_TOP
+
+270:        1112 LOAD_FAST            (mail)
+            1114 LOAD_ATTR            (NULL|self + logout)
+            1134 CALL                 (0 positional)
+            1142 POP_TOP
+
+271:        1144 LOAD_FAST            (code)
+            1146 SWAP                 (TOS <-> TOS1)
+            1148 POP_TOP
+            1150 RETURN_VALUE
+
+266:     >> 1152 END_FOR
+            1154 POP_TOP
+
+272:     >> 1156 LOAD_FAST            (self)
+            1158 LOAD_ATTR            (NULL|self + _log)
+            1178 LOAD_CONST           ("基准: ")
+            1180 LOAD_FAST            (current_count)
+            1182 FORMAT_SIMPLE
+            1184 LOAD_CONST           (" 封已有邮件")
+            1186 BUILD_STRING         3
+            1188 CALL                 (1 positional)
+            1196 POP_TOP
+
+273:        1198 LOAD_FAST            (mail)
+            1200 LOAD_ATTR            (NULL|self + logout)
+            1220 CALL                 (0 positional)
+            1228 POP_TOP
+
+274:        1230 LOAD_GLOBAL          (time)
+            1240 LOAD_ATTR            (sleep)
+            1260 PUSH_NULL
+            1262 LOAD_FAST            (interval)
+            1264 CALL                 (1 positional)
+            1272 POP_TOP
+
+275:        1274 EXTENDED_ARG         (256)
+            1276 JUMP_BACKWARD        (to 346)
+
+278:     >> 1280 LOAD_FAST            (current_count)
+            1282 LOAD_FAST            (self)
+            1284 LOAD_ATTR            (_last_count)
+            1304 COMPARE_OP           (>)
+            1308 POP_JUMP_IF_FALSE    (to 1618)
+
+279:        1312 LOAD_FAST            (msg_ids)
+            1314 LOAD_FAST            (self)
+            1316 LOAD_ATTR            (_last_count)
+            1336 LOAD_CONST           (None)
+            1338 BINARY_SLICE
+            1340 STORE_FAST           (new_ids)
+
+280:        1342 LOAD_FAST            (current_count)
+            1344 LOAD_FAST            (self)
+            1346 LOAD_ATTR            (_last_count)
+            1366 BINARY_OP            (-)
+            1370 STORE_FAST           (delta)
+
+281:        1372 LOAD_FAST            (current_count)
+            1374 LOAD_FAST            (self)
+            1376 STORE_ATTR           (_last_count)
+
+282:        1386 LOAD_FAST            (self)
+            1388 LOAD_ATTR            (NULL|self + _log)
+            1408 LOAD_CONST           ("发现 ")
+            1410 LOAD_FAST            (delta)
+            1412 FORMAT_SIMPLE
+            1414 LOAD_CONST           (" 封新邮件 [")
+            1416 LOAD_GLOBAL          (NULL + len)
+            1426 LOAD_FAST            (new_ids)
+            1428 CALL                 (1 positional)
+            1436 FORMAT_SIMPLE
+            1438 LOAD_CONST           ("]")
+            1440 BUILD_STRING         5
+            1442 CALL                 (1 positional)
+            1450 POP_TOP
+
+284:        1452 LOAD_GLOBAL          (NULL + reversed)
+            1462 LOAD_FAST            (new_ids)
+            1464 CALL                 (1 positional)
+            1472 GET_ITER
+            1474 FOR_ITER             (to 1614)
+            1478 STORE_FAST           (mid)
+
+285:        1480 LOAD_FAST            (self)
+            1482 LOAD_ATTR            (NULL|self + _extract_code)
+            1502 LOAD_FAST            (mail)
+            1504 LOAD_FAST            (mid)
+            1506 LOAD_FAST_LOAD_FAST  (sender_filters, excluded)
+            1508 LOAD_FAST            (since_ts)
+            1510 LOAD_CONST           (('since_ts',))
+            1512 CALL_KW              5
+            1514 STORE_FAST           (code)
+
+286:        1516 LOAD_FAST            (code)
+            1518 TO_BOOL
+            1526 POP_JUMP_IF_TRUE     (to 1534)
+            1530 JUMP_BACKWARD        (to 1474)
+
+287:     >> 1534 LOAD_FAST            (self)
+            1536 LOAD_ATTR            (NULL|self + _log)
+            1556 LOAD_CONST           ("找到验证码: ")
+            1558 LOAD_FAST            (code)
+            1560 FORMAT_SIMPLE
+            1562 BUILD_STRING         2
+            1564 CALL                 (1 positional)
+            1572 POP_TOP
+
+288:        1574 LOAD_FAST            (mail)
+            1576 LOAD_ATTR            (NULL|self + logout)
+            1596 CALL                 (0 positional)
+            1604 POP_TOP
+
+289:        1606 LOAD_FAST            (code)
+            1608 SWAP                 (TOS <-> TOS1)
+            1610 POP_TOP
+            1612 RETURN_VALUE
+
+284:     >> 1614 END_FOR
+            1616 POP_TOP
+
+292:     >> 1618 LOAD_FAST            (scan_recent)
+            1620 TO_BOOL
+            1628 POP_JUMP_IF_FALSE    (to 1880)
+            1632 LOAD_FAST            (msg_ids)
+            1634 TO_BOOL
+            1642 POP_JUMP_IF_FALSE    (to 1880)
+
+293:        1646 LOAD_FAST            (msg_ids)
+            1648 LOAD_GLOBAL          (NULL + max)
+            1658 LOAD_CONST           (1)
+            1660 LOAD_GLOBAL          (NULL + int)
+            1670 LOAD_FAST            (recent_scan_limit)
+            1672 COPY                 1
+            1674 TO_BOOL
+            1682 POP_JUMP_IF_TRUE     (to 1690)
+            1686 POP_TOP
+            1688 LOAD_CONST           (20)
+         >> 1690 CALL                 (1 positional)
+            1698 CALL                 (2 positional)
+            1706 UNARY_NEGATIVE
+            1708 LOAD_CONST           (None)
+            1710 BINARY_SLICE
+            1712 STORE_FAST           (recent_ids)
+
+294:        1714 LOAD_GLOBAL          (NULL + reversed)
+            1724 LOAD_FAST            (recent_ids)
+            1726 CALL                 (1 positional)
+            1734 GET_ITER
+            1736 FOR_ITER             (to 1876)
+            1740 STORE_FAST           (mid)
+
+295:        1742 LOAD_FAST            (self)
+            1744 LOAD_ATTR            (NULL|self + _extract_code)
+            1764 LOAD_FAST            (mail)
+            1766 LOAD_FAST            (mid)
+            1768 LOAD_FAST_LOAD_FAST  (sender_filters, excluded)
+            1770 LOAD_FAST            (since_ts)
+            1772 LOAD_CONST           (('since_ts',))
+            1774 CALL_KW              5
+            1776 STORE_FAST           (code)
+
+296:        1778 LOAD_FAST            (code)
+            1780 TO_BOOL
+            1788 POP_JUMP_IF_TRUE     (to 1796)
+            1792 JUMP_BACKWARD        (to 1736)
+
+297:     >> 1796 LOAD_FAST            (self)
+            1798 LOAD_ATTR            (NULL|self + _log)
+            1818 LOAD_CONST           ("找到验证码: ")
+            1820 LOAD_FAST            (code)
+            1822 FORMAT_SIMPLE
+            1824 BUILD_STRING         2
+            1826 CALL                 (1 positional)
+            1834 POP_TOP
+
+298:        1836 LOAD_FAST            (mail)
+            1838 LOAD_ATTR            (NULL|self + logout)
+            1858 CALL                 (0 positional)
+            1866 POP_TOP
+
+299:        1868 LOAD_FAST            (code)
+            1870 SWAP                 (TOS <-> TOS1)
+            1872 POP_TOP
+            1874 RETURN_VALUE
+
+294:     >> 1876 END_FOR
+            1878 POP_TOP
+
+301:     >> 1880 LOAD_FAST            (mail)
+            1882 LOAD_ATTR            (NULL|self + logout)
+            1902 CALL                 (0 positional)
+            1910 POP_TOP
+
+302:        1912 LOAD_GLOBAL          (time)
+            1922 LOAD_ATTR            (sleep)
+            1942 PUSH_NULL
+            1944 LOAD_FAST            (interval)
+            1946 CALL                 (1 positional)
+            1954 POP_TOP
+
+240:        1956 LOAD_GLOBAL          (time)
+            1966 LOAD_ATTR            (time)
+            1986 PUSH_NULL
+            1988 CALL                 (0 positional)
+            1996 LOAD_FAST            (start)
+            1998 BINARY_OP            (-)
+            2002 LOAD_FAST            (timeout)
+            2004 COMPARE_OP           (<)
+            2008 POP_JUMP_IF_FALSE    (to 2018)
+            2012 EXTENDED_ARG         (768)
+            2014 JUMP_BACKWARD        (to 404)
+
+312:     >> 2018 LOAD_FAST            (self)
+            2020 LOAD_ATTR            (NULL|self + _log)
+            2040 LOAD_FAST            (timeout)
+            2042 FORMAT_SIMPLE
+            2044 LOAD_CONST           ("s 超时")
+            2046 BUILD_STRING         2
+            2048 CALL                 (1 positional)
+            2056 POP_TOP
+
+313:        2058 RETURN_CONST         (None)
+         >> 2060 SWAP                 (TOS <-> TOS1)
+            2062 POP_TOP
+
+230:        2064 SWAP                 (TOS <-> TOS1)
+            2066 STORE_FAST           (f)
+            2068 RERAISE              0
+         >> 2070 PUSH_EXC_INFO
+
+304:        2072 LOAD_GLOBAL          (Exception)
+            2082 CHECK_EXC_MATCH
+            2084 POP_JUMP_IF_FALSE    (to 2342)
+            2088 STORE_FAST           (e)
+
+305:        2090 LOAD_GLOBAL          (NULL + type)
+            2100 LOAD_FAST            (e)
+            2102 CALL                 (1 positional)
+            2110 LOAD_ATTR            (__name__)
+            2130 FORMAT_SIMPLE
+            2132 LOAD_CONST           (": ")
+            2134 LOAD_FAST            (e)
+            2136 FORMAT_SIMPLE
+            2138 BUILD_STRING         3
+            2140 LOAD_FAST            (self)
+            2142 STORE_ATTR           (last_error)
+
+306:        2152 LOAD_FAST            (self)
+            2154 LOAD_ATTR            (NULL|self + _log)
+            2174 LOAD_CONST           ("连接异常: ")
+            2176 LOAD_FAST            (e)
+            2178 FORMAT_SIMPLE
+            2180 BUILD_STRING         2
+            2182 CALL                 (1 positional)
+            2190 POP_TOP
+
+307:        2192 LOAD_FAST            (self)
+            2194 LOAD_ATTR            (NULL|self + _is_terminal_connection_error)
+         >> 2214 LOAD_FAST            (e)
+            2216 CALL                 (1 positional)
+            2224 TO_BOOL
+            2232 POP_JUMP_IF_FALSE    (to 2280)
+
+308:        2236 LOAD_FAST            (self)
+            2238 LOAD_ATTR            (NULL|self + _log)
+            2258 LOAD_CONST           ("检测到不可重试的邮箱授权错误，停止轮询")
+            2260 CALL                 (1 positional)
+            2268 POP_TOP
+
+309:        2270 POP_EXCEPT
+            2272 LOAD_CONST           (None)
+            2274 STORE_FAST           (e)
+            2276 DELETE_FAST          (e)
+            2278 RETURN_CONST         (None)
+
+310:     >> 2280 LOAD_GLOBAL          (time)
+            2290 LOAD_ATTR            (sleep)
+            2310 PUSH_NULL
+            2312 LOAD_FAST            (interval)
+            2314 CALL                 (1 positional)
+            2322 POP_TOP
+            2324 POP_EXCEPT
+            2326 LOAD_CONST           (None)
+            2328 STORE_FAST           (e)
+            2330 DELETE_FAST          (e)
+            2332 JUMP_BACKWARD_NO_INTERRUPT (to 1956)
+         >> 2334 LOAD_CONST           (None)
+            2336 STORE_FAST           (e)
+            2338 DELETE_FAST          (e)
+            2340 RERAISE              1
+
+304:     >> 2342 RERAISE              0
+         >> 2344 COPY                 3
+            2346 POP_EXCEPT
+            2348 RERAISE              1
+
+ExceptionTable:
+  32 to 80 -> 2060 [2]
+  406 to 664 -> 2070 [0]
+  670 to 1062 -> 2070 [0]
+  1072 to 1148 -> 2070 [0]
+  1152 to 1272 -> 2070 [0]
+  1280 to 1524 -> 2070 [0]
+  1534 to 1610 -> 2070 [0]
+  1614 to 1786 -> 2070 [0]
+  1796 to 1872 -> 2070 [0]
+  1876 to 1954 -> 2070 [0]
+  2070 to 2088 -> 2344 [1] lasti
+  2090 to 2268 -> 2334 [1] lasti
+  2280 to 2322 -> 2334 [1] lasti
+  2334 to 2342 -> 2344 [1] lasti
+
+# Method Name:       _extract_code
+# Filename:          imap_poller.py
+# Argument count:    6
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  19
+# Stack size:        6
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        315
+# Constants:
+#    0: '从单封邮件中提取验证码'
+#    1: '(BODY.PEEK[])'
+#    2: 'OK'
+#    3: None
+#    4: b''
+#    5: 1
+#    6: 'Date'
+#    7: ''
+#    8: 15
+#    9: 'From'
+#   10: 'Subject'
+#   11: '\n'
+#   12: <Code311 code object <genexpr> at 0x105fca700, file imap_poller.py>, line 351
+#   13: '(?<!\\d)((?:\\d[\\s-]*){6})(?!\\d)'
+#   14: '\\D'
+# Names:
+#    0: fetch
+#    1: isinstance
+#    2: tuple
+#    3: len
+#    4: bytes
+#    5: email
+#    6: message_from_bytes
+#    7: Exception
+#    8: parsedate_to_datetime
+#    9: get
+#   10: timestamp
+#   11: float
+#   12: _decode_header_text
+#   13: _message_text
+#   14: lower
+#   15: any
+#   16: re
+#   17: findall
+#   18: sub
+# Varnames:
+#	self, mail, msg_id, sender_filters, excluded, since_ts, status, msg_data, raw, item, msg, msg_dt, from_text, subject_text, plain, code_text, candidates, candidate, code
+# Positional arguments:
+#	self, mail, msg_id, sender_filters, excluded, since_ts
+# Local variables:
+#    6: status
+#    7: msg_data
+#    8: raw
+#    9: item
+#   10: msg
+#   11: msg_dt
+#   12: from_text

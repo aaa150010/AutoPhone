@@ -1,0 +1,800 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        7
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1
+# Constants:
+#    0: 'Self-managed mailbox pool and mailbox-url OTP polling.\n\nThis module deliberately has no registration, OAuth, SMS, or upload logic.\nIt provides the reusable part of the former project bridge: a durable pool of\nbare ``email`` rows for GPTMail, ``email----mailbox_url`` rows, and Outlook\nOAuth rows in the form ``email----password----client_id----refresh_token``.\n'
+#    1: 0
+#    2: ('annotations',)
+#    3: None
+#    4: ('dataclass',)
+#    5: ('Path',)
+#    6: ('Any', 'Callable', 'Iterable')
+#    7: 2
+#    8: 'engine'
+#    9: ('atomic_write_text', 'locked_update_json', 'named_file_lock', 'read_text_retry')
+#   10: '(?<!\\d)(\\d{6})(?!\\d)'
+#   11: '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$'
+#   12: '\\b(?:temporary\\s+)?verification\\s+code\\b.{0,160}?\\b((?:\\d[\\s-]*){6})\\b'
+#   13: '\\b(?:enter|use|your|verification|security|login|sign[-\\s]?in|code|验证码)\\b.{0,160}?\\b((?:\\d[\\s-]*){6})\\b'
+#   14: '\\b((?:\\d[\\s-]*){6})\\b.{0,100}?\\b(?:verification|security|login|sign[-\\s]?in|code|验证码)\\b'
+#   15: <Code311 code object _clean at 0x105ce3bb0, file tools\self_mailbox_pool\mailbox_pool.py>, line 45
+#   16: <Code311 code object _origin at 0x105ce3a30, file tools\self_mailbox_pool\mailbox_pool.py>, line 49
+#   17: <Code311 code object _entry_key at 0x105ce39d0, file tools\self_mailbox_pool\mailbox_pool.py>, line 54
+#   18: <Code311 code object _normalize_code at 0x105ce3910, file tools\self_mailbox_pool\mailbox_pool.py>, line 59
+#   19: <Code311 code object _code_from_json at 0x105cb2430, file tools\self_mailbox_pool\mailbox_pool.py>, line 75
+#   20: <Code311 code object _received_at_from_json at 0x105cb2490, file tools\self_mailbox_pool\mailbox_pool.py>, line 101
+#   21: <Code311 code object _mailbox_dead_reason at 0x105cb2550, file tools\self_mailbox_pool\mailbox_pool.py>, line 119
+#   22: True
+#   23: ('frozen',)
+#   24: <Code311 code object PoolEntry at 0x105cb2610, file tools\self_mailbox_pool\mailbox_pool.py>, line 136
+#   25: 'PoolEntry'
+#   26: <Code311 code object MailboxSnapshot at 0x105cb2640, file tools\self_mailbox_pool\mailbox_pool.py>, line 153
+#   27: 'MailboxSnapshot'
+#   28: <Code311 code object MailboxPoolError at 0x105cb26a0, file tools\self_mailbox_pool\mailbox_pool.py>, line 160
+#   29: 'MailboxPoolError'
+#   30: <Code311 code object MailboxUrlCodeProvider at 0x105cb29a0, file tools\self_mailbox_pool\mailbox_pool.py>, line 164
+#   31: 'MailboxUrlCodeProvider'
+#   32: <Code311 code object MailboxPool at 0x105cb83a0, file tools\self_mailbox_pool\mailbox_pool.py>, line 284
+#   33: 'MailboxPool'
+#   34: <Code311 code object redact_entry at 0x105cb8400, file tools\self_mailbox_pool\mailbox_pool.py>, line 645
+#   35: <Code311 code object iter_entries at 0x105cb8460, file tools\self_mailbox_pool\mailbox_pool.py>, line 655
+#   36: ('value', 'Any', 'return', 'str')
+#   37: ('value', 'str', 'return', 'str')
+#   38: ('email', 'str', 'identity', 'str', 'return', 'str')
+#   39: ('raw', 'str', 'return', 'str')
+#   40: ('entry', 'PoolEntry', 'return', 'dict[str, Any]')
+#   41: ('pool', 'MailboxPool', 'return', 'Iterable[PoolEntry]')
+# Names:
+#    0: __doc__
+#    1: __future__
+#    2: annotations
+#    3: hashlib
+#    4: html
+#    5: json
+#    6: os
+#    7: re
+#    8: sys
+#    9: time
+#   10: urllib.error
+#   11: urllib
+#   12: urllib.parse
+#   13: urllib.request
+#   14: dataclasses
+#   15: dataclass
+#   16: pathlib
+#   17: Path
+#   18: typing
+#   19: Any
+#   20: Callable
+#   21: Iterable
+#   22: __file__
+#   23: resolve
+#   24: parents
+#   25: PROJECT_ROOT
+#   26: ENGINE_DIR
+#   27: import_path
+#   28: str
+#   29: path
+#   30: insert
+#   31: file_safety
+#   32: atomic_write_text
+#   33: locked_update_json
+#   34: named_file_lock
+#   35: read_text_retry
+#   36: compile
+#   37: CODE_RE
+#   38: EMAIL_RE
+#   39: I
+#   40: CONTEXT_CODE_PATTERNS
+#   41: _clean
+#   42: _origin
+#   43: _entry_key
+#   44: _normalize_code
+#   45: _code_from_json
+#   46: _received_at_from_json
+#   47: _mailbox_dead_reason
+#   48: PoolEntry
+#   49: MailboxSnapshot
+#   50: RuntimeError
+#   51: MailboxPoolError
+#   52: MailboxUrlCodeProvider
+#   53: MailboxPool
+#   54: redact_entry
+#   55: iter_entries
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ("Self-managed mailbox pool and mailbox-url OTP polling.\n\nThis module deliberately has no registration, OAuth, SMS, or upload logic.\nIt provides the reusable part of the former project bridge: a durable pool of\nbare ``email`` rows for GPTMail, ``email----mailbox_url`` rows, and Outlook\nOAuth rows in the form ``email----password----client_id----refresh_token``.\n")
+               4 STORE_NAME           (__doc__)
+
+ 10:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (('annotations',))
+              10 IMPORT_NAME          (__future__)
+              12 IMPORT_FROM          (annotations)
+              14 STORE_NAME           (annotations)
+              16 POP_TOP
+
+ 12:          18 LOAD_CONST           (0)
+              20 LOAD_CONST           (None)
+              22 IMPORT_NAME          (hashlib)
+              24 STORE_NAME           (hashlib)
+
+ 13:          26 LOAD_CONST           (0)
+              28 LOAD_CONST           (None)
+              30 IMPORT_NAME          (html)
+              32 STORE_NAME           (html)
+
+ 14:          34 LOAD_CONST           (0)
+              36 LOAD_CONST           (None)
+              38 IMPORT_NAME          (json)
+              40 STORE_NAME           (json)
+
+ 15:          42 LOAD_CONST           (0)
+              44 LOAD_CONST           (None)
+              46 IMPORT_NAME          (os)
+              48 STORE_NAME           (os)
+
+ 16:          50 LOAD_CONST           (0)
+              52 LOAD_CONST           (None)
+              54 IMPORT_NAME          (re)
+              56 STORE_NAME           (re)
+
+ 17:          58 LOAD_CONST           (0)
+              60 LOAD_CONST           (None)
+              62 IMPORT_NAME          (sys)
+              64 STORE_NAME           (sys)
+
+ 18:          66 LOAD_CONST           (0)
+              68 LOAD_CONST           (None)
+              70 IMPORT_NAME          (time)
+              72 STORE_NAME           (time)
+
+ 19:          74 LOAD_CONST           (0)
+              76 LOAD_CONST           (None)
+              78 IMPORT_NAME          (urllib.error)
+              80 STORE_NAME           (urllib)
+
+ 20:          82 LOAD_CONST           (0)
+              84 LOAD_CONST           (None)
+              86 IMPORT_NAME          (urllib.parse)
+              88 STORE_NAME           (urllib)
+
+ 21:          90 LOAD_CONST           (0)
+              92 LOAD_CONST           (None)
+              94 IMPORT_NAME          (urllib.request)
+              96 STORE_NAME           (urllib)
+
+ 22:          98 LOAD_CONST           (0)
+             100 LOAD_CONST           (('dataclass',))
+             102 IMPORT_NAME          (dataclasses)
+             104 IMPORT_FROM          (dataclass)
+             106 STORE_NAME           (dataclass)
+             108 POP_TOP
+
+ 23:         110 LOAD_CONST           (0)
+             112 LOAD_CONST           (('Path',))
+             114 IMPORT_NAME          (pathlib)
+             116 IMPORT_FROM          (Path)
+             118 STORE_NAME           (Path)
+             120 POP_TOP
+
+ 24:         122 LOAD_CONST           (0)
+             124 LOAD_CONST           (('Any', 'Callable', 'Iterable'))
+             126 IMPORT_NAME          (typing)
+             128 IMPORT_FROM          (Any)
+             130 STORE_NAME           (Any)
+             132 IMPORT_FROM          (Callable)
+             134 STORE_NAME           (Callable)
+             136 IMPORT_FROM          (Iterable)
+             138 STORE_NAME           (Iterable)
+             140 POP_TOP
+
+ 27:         142 LOAD_NAME            (Path)
+             144 PUSH_NULL
+             146 LOAD_NAME            (__file__)
+             148 CALL                 (1 positional)
+             156 LOAD_ATTR            (NULL|self + resolve)
+             176 CALL                 (0 positional)
+             184 LOAD_ATTR            (parents)
+             204 LOAD_CONST           (2)
+             206 BINARY_SUBSCR
+             210 STORE_NAME           (PROJECT_ROOT)
+
+ 28:         212 LOAD_NAME            (PROJECT_ROOT)
+             214 LOAD_CONST           ("engine")
+             216 BINARY_OP            (/)
+             220 STORE_NAME           (ENGINE_DIR)
+
+ 29:         222 LOAD_NAME            (PROJECT_ROOT)
+             224 LOAD_NAME            (ENGINE_DIR)
+             226 BUILD_TUPLE          2
+             228 GET_ITER
+             230 FOR_ITER             (to 356)
+             234 STORE_NAME           (import_path)
+
+ 30:         236 LOAD_NAME            (str)
+             238 PUSH_NULL
+             240 LOAD_NAME            (import_path)
+             242 CALL                 (1 positional)
+             250 LOAD_NAME            (sys)
+             252 LOAD_ATTR            (path)
+             272 CONTAINS_OP          (not in)
+             276 POP_JUMP_IF_TRUE     (to 284)
+             280 JUMP_BACKWARD        (to 230)
+
+ 31:     >>  284 LOAD_NAME            (sys)
+             286 LOAD_ATTR            (path)
+             306 LOAD_ATTR            (NULL|self + insert)
+             326 LOAD_CONST           (0)
+             328 LOAD_NAME            (str)
+             330 PUSH_NULL
+             332 LOAD_NAME            (import_path)
+             334 CALL                 (1 positional)
+             342 CALL                 (2 positional)
+             350 POP_TOP
+             352 JUMP_BACKWARD        (to 230)
+
+ 29:     >>  356 END_FOR
+             358 POP_TOP
+
+ 33:         360 LOAD_CONST           (0)
+             362 LOAD_CONST           (('atomic_write_text', 'locked_update_json', 'named_file_lock', 'read_text_retry'))
+             364 IMPORT_NAME          (file_safety)
+             366 IMPORT_FROM          (atomic_write_text)
+             368 STORE_NAME           (atomic_write_text)
+             370 IMPORT_FROM          (locked_update_json)
+             372 STORE_NAME           (locked_update_json)
+             374 IMPORT_FROM          (named_file_lock)
+             376 STORE_NAME           (named_file_lock)
+             378 IMPORT_FROM          (read_text_retry)
+             380 STORE_NAME           (read_text_retry)
+             382 POP_TOP
+
+ 36:         384 LOAD_NAME            (re)
+             386 LOAD_ATTR            (compile)
+             406 PUSH_NULL
+             408 LOAD_CONST           ("(?<!\\d)(\\d{6})(?!\\d)")
+             410 CALL                 (1 positional)
+             418 STORE_NAME           (CODE_RE)
+
+ 37:         420 LOAD_NAME            (re)
+             422 LOAD_ATTR            (compile)
+             442 PUSH_NULL
+             444 LOAD_CONST           ("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
+             446 CALL                 (1 positional)
+             454 STORE_NAME           (EMAIL_RE)
+
+ 39:         456 LOAD_NAME            (re)
+             458 LOAD_ATTR            (compile)
+             478 PUSH_NULL
+             480 LOAD_CONST           ("\\b(?:temporary\\s+)?verification\\s+code\\b.{0,160}?\\b((?:\\d[\\s-]*){6})\\b")
+         >>  482 LOAD_NAME            (re)
+             484 LOAD_ATTR            (I)
+             504 CALL                 (2 positional)
+
+ 40:         512 LOAD_NAME            (re)
+             514 LOAD_ATTR            (compile)
+             534 PUSH_NULL
+             536 LOAD_CONST           ("\\b(?:enter|use|your|verification|security|login|sign[-\\s]?in|code|验证码)\\b.{0,160}?\\b((?:\\d[\\s-]*){6})\\b")
+             538 LOAD_NAME            (re)
+             540 LOAD_ATTR            (I)
+             560 CALL                 (2 positional)
+
+ 41:         568 LOAD_NAME            (re)
+             570 LOAD_ATTR            (compile)
+             590 PUSH_NULL
+             592 LOAD_CONST           ("\\b((?:\\d[\\s-]*){6})\\b.{0,100}?\\b(?:verification|security|login|sign[-\\s]?in|code|验证码)\\b")
+             594 LOAD_NAME            (re)
+             596 LOAD_ATTR            (I)
+             616 CALL                 (2 positional)
+
+ 38:         624 BUILD_TUPLE          3
+             626 STORE_NAME           (CONTEXT_CODE_PATTERNS)
+
+ 45:         628 LOAD_CONST           (('value', 'Any', 'return', 'str'))
+             630 LOAD_CONST           (<Code311 code object _clean at 0x105ce3bb0, file tools\self_mailbox_pool\mailbox_pool.py>, line 45)
+             632 MAKE_FUNCTION
+             634 SET_FUNCTION_ATTRIBUTE 4
+             636 STORE_NAME           (_clean)
+
+ 49:         638 LOAD_CONST           (('value', 'str', 'return', 'str'))
+             640 LOAD_CONST           (<Code311 code object _origin at 0x105ce3a30, file tools\self_mailbox_pool\mailbox_pool.py>, line 49)
+             642 MAKE_FUNCTION
+             644 SET_FUNCTION_ATTRIBUTE 4
+             646 STORE_NAME           (_origin)
+
+ 54:         648 LOAD_CONST           (('email', 'str', 'identity', 'str', 'return', 'str'))
+             650 LOAD_CONST           (<Code311 code object _entry_key at 0x105ce39d0, file tools\self_mailbox_pool\mailbox_pool.py>, line 54)
+             652 MAKE_FUNCTION
+             654 SET_FUNCTION_ATTRIBUTE 4
+             656 STORE_NAME           (_entry_key)
+
+ 59:         658 LOAD_CONST           (('value', 'Any', 'return', 'str'))
+             660 LOAD_CONST           (<Code311 code object _normalize_code at 0x105ce3910, file tools\self_mailbox_pool\mailbox_pool.py>, line 59)
+             662 MAKE_FUNCTION
+             664 SET_FUNCTION_ATTRIBUTE 4
+             666 STORE_NAME           (_normalize_code)
+
+ 75:         668 LOAD_CONST           (('value', 'Any', 'return', 'str'))
+             670 LOAD_CONST           (<Code311 code object _code_from_json at 0x105cb2430, file tools\self_mailbox_pool\mailbox_pool.py>, line 75)
+             672 MAKE_FUNCTION
+             674 SET_FUNCTION_ATTRIBUTE 4
+             676 STORE_NAME           (_code_from_json)
+
+101:         678 LOAD_CONST           (('value', 'Any', 'return', 'str'))
+             680 LOAD_CONST           (<Code311 code object _received_at_from_json at 0x105cb2490, file tools\self_mailbox_pool\mailbox_pool.py>, line 101)
+             682 MAKE_FUNCTION
+             684 SET_FUNCTION_ATTRIBUTE 4
+             686 STORE_NAME           (_received_at_from_json)
+
+119:         688 LOAD_CONST           (('raw', 'str', 'return', 'str'))
+             690 LOAD_CONST           (<Code311 code object _mailbox_dead_reason at 0x105cb2550, file tools\self_mailbox_pool\mailbox_pool.py>, line 119)
+             692 MAKE_FUNCTION
+             694 SET_FUNCTION_ATTRIBUTE 4
+             696 STORE_NAME           (_mailbox_dead_reason)
+
+136:         698 LOAD_NAME            (dataclass)
+             700 PUSH_NULL
+             702 LOAD_CONST           (True)
+             704 LOAD_CONST           (('frozen',))
+             706 CALL_KW              1
+
+137:         708 LOAD_BUILD_CLASS
+             710 PUSH_NULL
+             712 LOAD_CONST           (<Code311 code object PoolEntry at 0x105cb2610, file tools\self_mailbox_pool\mailbox_pool.py>, line 136)
+             714 MAKE_FUNCTION
+             716 LOAD_CONST           ("PoolEntry")
+             718 CALL                 (2 positional)
+
+136:         726 CALL                 (0 positional)
+
+137:         734 STORE_NAME           (PoolEntry)
+
+153:         736 LOAD_NAME            (dataclass)
+             738 PUSH_NULL
+             740 LOAD_CONST           (True)
+             742 LOAD_CONST           (('frozen',))
+             744 CALL_KW              1
+
+154:         746 LOAD_BUILD_CLASS
+             748 PUSH_NULL
+             750 LOAD_CONST           (<Code311 code object MailboxSnapshot at 0x105cb2640, file tools\self_mailbox_pool\mailbox_pool.py>, line 153)
+             752 MAKE_FUNCTION
+             754 LOAD_CONST           ("MailboxSnapshot")
+             756 CALL                 (2 positional)
+
+153:         764 CALL                 (0 positional)
+
+154:         772 STORE_NAME           (MailboxSnapshot)
+
+160:         774 LOAD_BUILD_CLASS
+             776 PUSH_NULL
+             778 LOAD_CONST           (<Code311 code object MailboxPoolError at 0x105cb26a0, file tools\self_mailbox_pool\mailbox_pool.py>, line 160)
+             780 MAKE_FUNCTION
+             782 LOAD_CONST           ("MailboxPoolError")
+             784 LOAD_NAME            (RuntimeError)
+             786 CALL                 (3 positional)
+             794 STORE_NAME           (MailboxPoolError)
+
+164:         796 LOAD_BUILD_CLASS
+             798 PUSH_NULL
+             800 LOAD_CONST           (<Code311 code object MailboxUrlCodeProvider at 0x105cb29a0, file tools\self_mailbox_pool\mailbox_pool.py>, line 164)
+             802 MAKE_FUNCTION
+             804 LOAD_CONST           ("MailboxUrlCodeProvider")
+             806 CALL                 (2 positional)
+             814 STORE_NAME           (MailboxUrlCodeProvider)
+
+284:         816 LOAD_BUILD_CLASS
+             818 PUSH_NULL
+             820 LOAD_CONST           (<Code311 code object MailboxPool at 0x105cb83a0, file tools\self_mailbox_pool\mailbox_pool.py>, line 284)
+             822 MAKE_FUNCTION
+             824 LOAD_CONST           ("MailboxPool")
+             826 CALL                 (2 positional)
+             834 STORE_NAME           (MailboxPool)
+
+645:         836 LOAD_CONST           (('entry', 'PoolEntry', 'return', 'dict[str, Any]'))
+             838 LOAD_CONST           (<Code311 code object redact_entry at 0x105cb8400, file tools\self_mailbox_pool\mailbox_pool.py>, line 645)
+             840 MAKE_FUNCTION
+             842 SET_FUNCTION_ATTRIBUTE 4
+             844 STORE_NAME           (redact_entry)
+
+655:         846 LOAD_CONST           (('pool', 'MailboxPool', 'return', 'Iterable[PoolEntry]'))
+             848 LOAD_CONST           (<Code311 code object iter_entries at 0x105cb8460, file tools\self_mailbox_pool\mailbox_pool.py>, line 655)
+             850 MAKE_FUNCTION
+             852 SET_FUNCTION_ATTRIBUTE 4
+             854 STORE_NAME           (iter_entries)
+             856 RETURN_CONST         (None)
+
+
+# Method Name:       _clean
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        45
+# Constants:
+#    0: None
+#    1: ''
+# Names:
+#    0: str
+#    1: strip
+# Varnames:
+#	value
+# Positional arguments:
+#	value
+ 45:           0 RESUME               0
+
+ 46:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (value)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + strip)
+              60 CALL                 (0 positional)
+              68 RETURN_VALUE
+
+
+# Method Name:       _origin
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        49
+# Constants:
+#    0: None
+#    1: '://'
+#    2: ''
+# Names:
+#    0: urllib
+#    1: parse
+#    2: urlparse
+#    3: scheme
+#    4: netloc
+# Varnames:
+#	value, parsed
+# Positional arguments:
+#	value
+# Local variables:
+#    1: parsed
+ 49:           0 RESUME               0
+
+ 50:           2 LOAD_GLOBAL          (urllib)
+              12 LOAD_ATTR            (parse)
+              32 LOAD_ATTR            (NULL|self + urlparse)
+              52 LOAD_FAST            (value)
+              54 CALL                 (1 positional)
+              62 STORE_FAST           (parsed)
+
+ 51:          64 LOAD_FAST            (parsed)
+              66 LOAD_ATTR            (scheme)
+              86 TO_BOOL
+              94 POP_JUMP_IF_FALSE    (to 186)
+              98 LOAD_FAST            (parsed)
+             100 LOAD_ATTR            (netloc)
+             120 TO_BOOL
+             128 POP_JUMP_IF_FALSE    (to 186)
+             132 LOAD_FAST            (parsed)
+             134 LOAD_ATTR            (scheme)
+             154 FORMAT_SIMPLE
+             156 LOAD_CONST           ("://")
+             158 LOAD_FAST            (parsed)
+             160 LOAD_ATTR            (netloc)
+             180 FORMAT_SIMPLE
+             182 BUILD_STRING         3
+             184 RETURN_VALUE
+         >>  186 LOAD_CONST           ("")
+             188 RETURN_VALUE
+
+
+# Method Name:       _entry_key
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        54
+# Constants:
+#    0: None
+#    1: '\x1f'
+#    2: 'utf-8'
+#    3: 'ignore'
+#    4: ('errors',)
+# Names:
+#    0: lower
+#    1: encode
+#    2: hashlib
+#    3: sha256
+#    4: hexdigest
+# Varnames:
+#	email, identity, raw
+# Positional arguments:
+#	email, identity
+# Local variables:
+#    2: raw
+ 54:           0 RESUME               0
+
+ 55:           2 LOAD_FAST            (email)
+               4 LOAD_ATTR            (NULL|self + lower)
+              24 CALL                 (0 positional)
+              32 FORMAT_SIMPLE
+              34 LOAD_CONST           ("\x1f")
+              36 LOAD_FAST            (identity)
+              38 FORMAT_SIMPLE
+              40 BUILD_STRING         3
+              42 LOAD_ATTR            (NULL|self + encode)
+              62 LOAD_CONST           ("utf-8")
+              64 LOAD_CONST           ("ignore")
+              66 LOAD_CONST           (('errors',))
+              68 CALL_KW              2
+              70 STORE_FAST           (raw)
+
+ 56:          72 LOAD_GLOBAL          (hashlib)
+              82 LOAD_ATTR            (sha256)
+             102 PUSH_NULL
+             104 LOAD_FAST            (raw)
+             106 CALL                 (1 positional)
+             114 LOAD_ATTR            (NULL|self + hexdigest)
+             134 CALL                 (0 positional)
+             142 RETURN_VALUE
+
+
+# Method Name:       _normalize_code
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        59
+# Constants:
+#    0: None
+#    1: '<script\\b[^>]*>[\\s\\S]*?</script>'
+#    2: ' '
+#    3: ('flags',)
+#    4: '<style\\b[^>]*>[\\s\\S]*?</style>'
+#    5: '<[^>]+>'
+#    6: '\\s+'
+#    7: '\\D'
+#    8: ''
+#    9: 1
+#   10: 6
+# Names:
+#    0: html
+#    1: unescape
+#    2: _clean
+#    3: re
+#    4: sub
+#    5: I
+#    6: CONTEXT_CODE_PATTERNS
+#    7: search
+#    8: group
+#    9: len
+#   10: CODE_RE
+# Varnames:
+#	value, text, pattern, match, digits
+# Positional arguments:
+#	value
+# Local variables:
+#    1: text
+#    2: pattern
+#    3: match
+#    4: digits
+ 59:           0 RESUME               0
+
+ 60:           2 LOAD_GLOBAL          (html)
+              12 LOAD_ATTR            (unescape)
+              32 PUSH_NULL
+              34 LOAD_GLOBAL          (NULL + _clean)
+              44 LOAD_FAST            (value)
+              46 CALL                 (1 positional)
+              54 CALL                 (1 positional)
+              62 STORE_FAST           (text)
+
+ 61:          64 LOAD_GLOBAL          (re)
+              74 LOAD_ATTR            (sub)
+              94 PUSH_NULL
+              96 LOAD_CONST           ("<script\\b[^>]*>[\\s\\S]*?</script>")
+              98 LOAD_CONST           (" ")
+             100 LOAD_FAST            (text)
+             102 LOAD_GLOBAL          (re)
+             112 LOAD_ATTR            (I)
+             132 LOAD_CONST           (('flags',))
+             134 CALL_KW              4
+             136 STORE_FAST           (text)
+
+ 62:         138 LOAD_GLOBAL          (re)
+             148 LOAD_ATTR            (sub)
+             168 PUSH_NULL
+             170 LOAD_CONST           ("<style\\b[^>]*>[\\s\\S]*?</style>")
+             172 LOAD_CONST           (" ")
+             174 LOAD_FAST            (text)
+             176 LOAD_GLOBAL          (re)
+             186 LOAD_ATTR            (I)
+             206 LOAD_CONST           (('flags',))
+             208 CALL_KW              4
+             210 STORE_FAST           (text)
+
+ 63:         212 LOAD_GLOBAL          (re)
+             222 LOAD_ATTR            (sub)
+             242 PUSH_NULL
+             244 LOAD_CONST           ("<[^>]+>")
+             246 LOAD_CONST           (" ")
+             248 LOAD_FAST            (text)
+             250 CALL                 (3 positional)
+             258 STORE_FAST           (text)
+
+ 64:         260 LOAD_GLOBAL          (re)
+             270 LOAD_ATTR            (sub)
+             290 PUSH_NULL
+             292 LOAD_CONST           ("\\s+")
+             294 LOAD_CONST           (" ")
+             296 LOAD_FAST            (text)
+             298 CALL                 (3 positional)
+             306 STORE_FAST           (text)
+
+ 65:         308 LOAD_GLOBAL          (CONTEXT_CODE_PATTERNS)
+             318 GET_ITER
+             320 FOR_ITER             (to 498)
+             324 STORE_FAST           (pattern)
+
+ 66:         326 LOAD_FAST            (pattern)
+             328 LOAD_ATTR            (NULL|self + search)
+             348 LOAD_FAST            (text)
+             350 CALL                 (1 positional)
+             358 STORE_FAST           (match)
+
+ 67:         360 LOAD_FAST            (match)
+             362 TO_BOOL
+             370 POP_JUMP_IF_TRUE     (to 378)
+             374 JUMP_BACKWARD        (to 320)
+
+ 68:     >>  378 LOAD_GLOBAL          (re)
+             388 LOAD_ATTR            (sub)
+             408 PUSH_NULL
+             410 LOAD_CONST           ("\\D")
+             412 LOAD_CONST           ("")
+             414 LOAD_FAST            (match)
+             416 LOAD_ATTR            (NULL|self + group)
+         >>  436 LOAD_CONST           (1)
+             438 CALL                 (1 positional)
+             446 CALL                 (3 positional)
+             454 STORE_FAST           (digits)
+
+ 69:         456 LOAD_GLOBAL          (NULL + len)
+             466 LOAD_FAST            (digits)
+             468 CALL                 (1 positional)
+             476 LOAD_CONST           (6)
+             478 COMPARE_OP           (==)
+             482 POP_JUMP_IF_TRUE     (to 490)
+             486 JUMP_BACKWARD        (to 320)
+
+ 70:     >>  490 LOAD_FAST            (digits)
+             492 SWAP                 (TOS <-> TOS1)
+             494 POP_TOP
+             496 RETURN_VALUE
+
+ 65:     >>  498 END_FOR
+             500 POP_TOP
+
+ 71:         502 LOAD_GLOBAL          (CODE_RE)
+             512 LOAD_ATTR            (NULL|self + search)
+             532 LOAD_FAST            (text)
+             534 CALL                 (1 positional)
+             542 STORE_FAST           (match)
+
+ 72:         544 LOAD_FAST            (match)
+             546 TO_BOOL
+             554 POP_JUMP_IF_FALSE    (to 592)
+             558 LOAD_FAST            (match)
+             560 LOAD_ATTR            (NULL|self + group)
+             580 LOAD_CONST           (1)
+             582 CALL                 (1 positional)
+             590 RETURN_VALUE
+         >>  592 LOAD_CONST           ("")
+             594 RETURN_VALUE
+
+
+# Method Name:       _code_from_json
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        75
+# Constants:
+#    0: None
+#    1: ('code', 'otp', 'verification_code', 'verificationCode', 'passcode')
+#    2: {'text', 'content', 'subject', 'html', 'body', 'message'}
+#    3: ''
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: _normalize_code
+#    3: get
+#    4: items
+#    5: str
+#    6: lower
+#    7: _code_from_json
+#    8: values
+#    9: list
+#   10: tuple
+# Varnames:
+#	value, key, code, priority, child
+# Positional arguments:
+#	value
+# Local variables:
+#    1: key
+#    2: code
+#    3: priority
+#    4: child
+ 75:           0 RESUME               0
+
+ 76:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (value)
+              14 LOAD_GLOBAL          (dict)
+              24 CALL                 (2 positional)
+              32 TO_BOOL
+              40 POP_JUMP_IF_FALSE    (to 392)
+
+ 77:          44 LOAD_CONST           (('code', 'otp', 'verification_code', 'verificationCode', 'passcode'))
+              46 GET_ITER
+              48 FOR_ITER             (to 132)
+              52 STORE_FAST           (key)
+
+ 78:          54 LOAD_GLOBAL          (NULL + _normalize_code)
+              64 LOAD_FAST            (value)
+              66 LOAD_ATTR            (NULL|self + get)
+              86 LOAD_FAST            (key)
+              88 CALL                 (1 positional)
+              96 CALL                 (1 positional)
+             104 STORE_FAST           (code)
+
+ 79:         106 LOAD_FAST            (code)
+             108 TO_BOOL
+             116 POP_JUMP_IF_TRUE     (to 124)
+             120 JUMP_BACKWARD        (to 48)
+
+ 80:     >>  124 LOAD_FAST            (code)
+             126 SWAP                 (TOS <-> TOS1)
+             128 POP_TOP
+             130 RETURN_VALUE
+
+ 77:     >>  132 END_FOR
+             134 POP_TOP
+
+ 81:         136 BUILD_SET            0
+             138 LOAD_CONST           ({'text', 'content', 'subject', 'html', 'body', 'message'})
+             140 SET_UPDATE           1
+             142 STORE_FAST           (priority)
+
+ 82:         144 LOAD_FAST            (value)
+             146 LOAD_ATTR            (NULL|self + items)
+             166 CALL                 (0 positional)
+             174 GET_ITER
+             176 FOR_ITER             (to 296)
+             180 UNPACK_SEQUENCE      2

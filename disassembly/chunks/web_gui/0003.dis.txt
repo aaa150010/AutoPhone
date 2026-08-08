@@ -1,0 +1,800 @@
+  102 to 148 -> 162 [1] lasti
+  150 to 150 -> 172 [1] lasti
+  162 to 170 -> 172 [1] lasti
+
+# Method Name:       save_config
+# Filename:          web_gui.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        6
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        85
+# Constants:
+#    0: None
+#    1: 'running'
+#    2: False
+#    3: '任务运行中，停止后才能修改配置'
+#    4: ('ok', 'error', 'state')
+#    5: 409
+#    6: True
+#    7: ('silent',)
+#    8: '配置必须是 JSON 对象'
+#    9: ('ok', 'error')
+#   10: 400
+#   11: '独立导入器配置已保存到本工具 data 目录'
+#   12: 'success'
+#   13: ('ok', 'settings', 'state')
+# Names:
+#    0: status
+#    1: get
+#    2: jsonify
+#    3: request
+#    4: get_json
+#    5: isinstance
+#    6: dict
+#    7: save
+#    8: add
+# Varnames:
+#	data, saved
+# Local variables:
+#    0: data
+#    1: saved
+# Free variables:
+#    0: importer
+#    1: logs
+#    2: settings
+#    3: state
+#    4: store
+               0 COPY_FREE_VARS       5
+
+ 85:           2 RESUME               0
+
+ 87:           4 LOAD_DEREF           (importer)
+               6 LOAD_ATTR            (NULL|self + status)
+              26 LOAD_DEREF           (settings)
+              28 PUSH_NULL
+              30 CALL                 (0 positional)
+              38 CALL                 (1 positional)
+              46 LOAD_ATTR            (NULL|self + get)
+              66 LOAD_CONST           ("running")
+              68 CALL                 (1 positional)
+              76 TO_BOOL
+              84 POP_JUMP_IF_FALSE    (to 132)
+
+ 88:          88 LOAD_GLOBAL          (NULL + jsonify)
+              98 LOAD_CONST           (False)
+             100 LOAD_CONST           ("任务运行中，停止后才能修改配置")
+             102 LOAD_DEREF           (state)
+             104 PUSH_NULL
+             106 CALL                 (0 positional)
+             114 LOAD_CONST           (('ok', 'error', 'state'))
+             116 BUILD_CONST_KEY_MAP  3
+             118 CALL                 (1 positional)
+             126 LOAD_CONST           (409)
+             128 BUILD_TUPLE          2
+             130 RETURN_VALUE
+
+ 89:     >>  132 LOAD_GLOBAL          (request)
+             142 LOAD_ATTR            (get_json)
+             162 PUSH_NULL
+             164 LOAD_CONST           (True)
+             166 LOAD_CONST           (('silent',))
+             168 CALL_KW              1
+             170 COPY                 1
+             172 TO_BOOL
+             180 POP_JUMP_IF_TRUE     (to 188)
+             184 POP_TOP
+             186 BUILD_MAP            0
+         >>  188 STORE_FAST           (data)
+
+ 90:         190 LOAD_GLOBAL          (NULL + isinstance)
+             200 LOAD_FAST            (data)
+             202 LOAD_GLOBAL          (dict)
+             212 CALL                 (2 positional)
+             220 TO_BOOL
+             228 POP_JUMP_IF_TRUE     (to 264)
+
+ 91:         232 LOAD_GLOBAL          (NULL + jsonify)
+             242 LOAD_CONST           (False)
+             244 LOAD_CONST           ("配置必须是 JSON 对象")
+             246 LOAD_CONST           (('ok', 'error'))
+             248 BUILD_CONST_KEY_MAP  2
+             250 CALL                 (1 positional)
+             258 LOAD_CONST           (400)
+             260 BUILD_TUPLE          2
+             262 RETURN_VALUE
+
+ 92:     >>  264 LOAD_DEREF           (store)
+             266 LOAD_ATTR            (NULL|self + save)
+             286 LOAD_FAST            (data)
+             288 CALL                 (1 positional)
+             296 STORE_FAST           (saved)
+
+ 93:         298 LOAD_DEREF           (logs)
+             300 LOAD_ATTR            (NULL|self + add)
+             320 LOAD_CONST           ("独立导入器配置已保存到本工具 data 目录")
+             322 LOAD_CONST           ("success")
+             324 CALL                 (2 positional)
+             332 POP_TOP
+
+ 94:         334 LOAD_GLOBAL          (NULL + jsonify)
+             344 LOAD_CONST           (True)
+             346 LOAD_FAST            (saved)
+             348 LOAD_DEREF           (state)
+             350 PUSH_NULL
+             352 CALL                 (0 positional)
+             360 LOAD_CONST           (('ok', 'settings', 'state'))
+             362 BUILD_CONST_KEY_MAP  3
+             364 CALL                 (1 positional)
+             372 RETURN_VALUE
+
+
+# Method Name:       import_pool
+# Filename:          web_gui.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  8
+# Stack size:        8
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        96
+# Constants:
+#    0: None
+#    1: True
+#    2: ('silent',)
+#    3: 'pool_content'
+#    4: False
+#    5: '请粘贴邮箱池内容'
+#    6: ('ok', 'error')
+#    7: 400
+#    8: 'running'
+#    9: '任务运行中，停止后才能覆盖邮箱池'
+#   10: ('ok', 'error', 'state')
+#   11: 409
+#   12: 'pool_path'
+#   13: 'state_path'
+#   14: 'ok'
+#   15: '; '
+#   16: 'errors'
+#   17: '邮箱池为空'
+#   18: '已覆盖导入邮箱池: '
+#   19: 'entries'
+#   20: ' 条，清除旧状态 '
+#   21: ' 条'
+#   22: 'success'
+#   23: ('ok', 'entries', 'cleared', 'state')
+# Names:
+#    0: request
+#    1: get_json
+#    2: _clean
+#    3: get
+#    4: jsonify
+#    5: status
+#    6: save_pool_text
+#    7: save
+#    8: str
+#    9: MailboxPool
+#   10: validate
+#   11: join
+#   12: reset_for_pool_replacement
+#   13: add
+#   14: MailboxPoolError
+#   15: OSError
+#   16: _safe
+# Varnames:
+#	data, content, path, cfg, pool, check, cleared, exc
+# Local variables:
+#    0: data
+#    1: content
+#    2: path
+#    3: cfg
+#    4: pool
+#    5: check
+#    6: cleared
+#    7: exc
+# Free variables:
+#    0: importer
+#    1: logs
+#    2: settings
+#    3: state
+#    4: store
+               0 COPY_FREE_VARS       5
+
+ 96:           2 RESUME               0
+
+ 98:           4 LOAD_GLOBAL          (request)
+              14 LOAD_ATTR            (get_json)
+              34 PUSH_NULL
+              36 LOAD_CONST           (True)
+              38 LOAD_CONST           (('silent',))
+              40 CALL_KW              1
+              42 COPY                 1
+              44 TO_BOOL
+              52 POP_JUMP_IF_TRUE     (to 60)
+              56 POP_TOP
+              58 BUILD_MAP            0
+         >>   60 STORE_FAST           (data)
+
+ 99:          62 LOAD_GLOBAL          (NULL + _clean)
+              72 LOAD_FAST            (data)
+              74 LOAD_ATTR            (NULL|self + get)
+              94 LOAD_CONST           ("pool_content")
+              96 CALL                 (1 positional)
+             104 CALL                 (1 positional)
+             112 STORE_FAST           (content)
+
+100:         114 LOAD_FAST            (content)
+             116 TO_BOOL
+             124 POP_JUMP_IF_TRUE     (to 160)
+
+101:         128 LOAD_GLOBAL          (NULL + jsonify)
+             138 LOAD_CONST           (False)
+             140 LOAD_CONST           ("请粘贴邮箱池内容")
+             142 LOAD_CONST           (('ok', 'error'))
+             144 BUILD_CONST_KEY_MAP  2
+             146 CALL                 (1 positional)
+             154 LOAD_CONST           (400)
+             156 BUILD_TUPLE          2
+             158 RETURN_VALUE
+
+102:     >>  160 LOAD_DEREF           (importer)
+             162 LOAD_ATTR            (NULL|self + status)
+             182 LOAD_DEREF           (settings)
+             184 PUSH_NULL
+             186 CALL                 (0 positional)
+             194 CALL                 (1 positional)
+             202 LOAD_ATTR            (NULL|self + get)
+             222 LOAD_CONST           ("running")
+             224 CALL                 (1 positional)
+             232 TO_BOOL
+             240 POP_JUMP_IF_FALSE    (to 288)
+
+103:         244 LOAD_GLOBAL          (NULL + jsonify)
+             254 LOAD_CONST           (False)
+             256 LOAD_CONST           ("任务运行中，停止后才能覆盖邮箱池")
+             258 LOAD_DEREF           (state)
+             260 PUSH_NULL
+             262 CALL                 (0 positional)
+             270 LOAD_CONST           (('ok', 'error', 'state'))
+             272 BUILD_CONST_KEY_MAP  3
+             274 CALL                 (1 positional)
+             282 LOAD_CONST           (409)
+             284 BUILD_TUPLE          2
+             286 RETURN_VALUE
+
+104:     >>  288 NOP
+
+105:         290 LOAD_DEREF           (store)
+             292 LOAD_ATTR            (NULL|self + save_pool_text)
+             312 LOAD_FAST            (content)
+             314 CALL                 (1 positional)
+             322 STORE_FAST           (path)
+
+106:         324 LOAD_DEREF           (store)
+             326 LOAD_ATTR            (NULL|self + save)
+             346 LOAD_CONST           ("pool_path")
+             348 LOAD_GLOBAL          (NULL + str)
+             358 LOAD_FAST            (path)
+             360 CALL                 (1 positional)
+             368 BUILD_MAP            1
+             370 CALL                 (1 positional)
+             378 STORE_FAST           (cfg)
+
+107:         380 LOAD_GLOBAL          (NULL + MailboxPool)
+             390 LOAD_FAST            (cfg)
+             392 LOAD_CONST           ("pool_path")
+             394 BINARY_SUBSCR
+             398 LOAD_FAST            (cfg)
+             400 LOAD_CONST           ("state_path")
+             402 BINARY_SUBSCR
+             406 CALL                 (2 positional)
+             414 STORE_FAST           (pool)
+
+108:         416 LOAD_FAST            (pool)
+             418 LOAD_ATTR            (NULL|self + validate)
+             438 CALL                 (0 positional)
+             446 STORE_FAST           (check)
+
+109:         448 LOAD_FAST            (check)
+             450 LOAD_ATTR            (NULL|self + get)
+             470 LOAD_CONST           ("ok")
+             472 CALL                 (1 positional)
+             480 TO_BOOL
+             488 POP_JUMP_IF_TRUE     (to 616)
+
+110:         492 LOAD_GLOBAL          (NULL + jsonify)
+             502 LOAD_CONST           (False)
+             504 LOAD_CONST           ("; ")
+             506 LOAD_ATTR            (NULL|self + join)
+             526 LOAD_FAST            (check)
+             528 LOAD_ATTR            (NULL|self + get)
+             548 LOAD_CONST           ("errors")
+             550 CALL                 (1 positional)
+             558 COPY                 1
+             560 TO_BOOL
+             568 POP_JUMP_IF_TRUE     (to 578)
+             572 POP_TOP
+             574 LOAD_CONST           ("邮箱池为空")
+             576 BUILD_LIST           1
+         >>  578 CALL                 (1 positional)
+             586 LOAD_DEREF           (state)
+             588 PUSH_NULL
+             590 CALL                 (0 positional)
+             598 LOAD_CONST           (('ok', 'error', 'state'))
+             600 BUILD_CONST_KEY_MAP  3
+             602 CALL                 (1 positional)
+             610 LOAD_CONST           (400)
+             612 BUILD_TUPLE          2
+             614 RETURN_VALUE
+
+111:     >>  616 LOAD_FAST            (pool)
+             618 LOAD_ATTR            (NULL|self + reset_for_pool_replacement)
+             638 CALL                 (0 positional)
+             646 STORE_FAST           (cleared)
+
+112:         648 LOAD_DEREF           (logs)
+             650 LOAD_ATTR            (NULL|self + add)
+             670 LOAD_CONST           ("已覆盖导入邮箱池: ")
+             672 LOAD_FAST            (check)
+             674 LOAD_CONST           ("entries")
+             676 BINARY_SUBSCR
+             680 FORMAT_SIMPLE
+             682 LOAD_CONST           (" 条，清除旧状态 ")
+             684 LOAD_FAST            (cleared)
+             686 FORMAT_SIMPLE
+             688 LOAD_CONST           (" 条")
+             690 BUILD_STRING         5
+             692 LOAD_CONST           ("success")
+             694 CALL                 (2 positional)
+             702 POP_TOP
+
+113:         704 LOAD_GLOBAL          (NULL + jsonify)
+             714 LOAD_CONST           (True)
+             716 LOAD_FAST            (check)
+             718 LOAD_CONST           ("entries")
+             720 BINARY_SUBSCR
+             724 LOAD_FAST            (cleared)
+             726 LOAD_DEREF           (state)
+             728 PUSH_NULL
+             730 CALL                 (0 positional)
+             738 LOAD_CONST           (('ok', 'entries', 'cleared', 'state'))
+             740 BUILD_CONST_KEY_MAP  4
+             742 CALL                 (1 positional)
+             750 RETURN_VALUE
+         >>  752 PUSH_EXC_INFO
+
+114:         754 LOAD_GLOBAL          (MailboxPoolError)
+             764 LOAD_GLOBAL          (OSError)
+             774 BUILD_TUPLE          2
+             776 CHECK_EXC_MATCH
+             778 POP_JUMP_IF_FALSE    (to 852)
+             782 STORE_FAST           (exc)
+
+115:         784 LOAD_GLOBAL          (NULL + jsonify)
+             794 LOAD_CONST           (False)
+             796 LOAD_GLOBAL          (NULL + _safe)
+             806 LOAD_FAST            (exc)
+             808 CALL                 (1 positional)
+             816 LOAD_CONST           (('ok', 'error'))
+             818 BUILD_CONST_KEY_MAP  2
+             820 CALL                 (1 positional)
+             828 LOAD_CONST           (400)
+             830 BUILD_TUPLE          2
+             832 SWAP                 (TOS <-> TOS1)
+             834 POP_EXCEPT
+             836 LOAD_CONST           (None)
+             838 STORE_FAST           (exc)
+             840 DELETE_FAST          (exc)
+             842 RETURN_VALUE
+         >>  844 LOAD_CONST           (None)
+             846 STORE_FAST           (exc)
+             848 DELETE_FAST          (exc)
+             850 RERAISE              1
+
+114:     >>  852 RERAISE              0
+         >>  854 COPY                 3
+             856 POP_EXCEPT
+             858 RERAISE              1
+
+ExceptionTable:
+  290 to 612 -> 752 [0]
+  616 to 748 -> 752 [0]
+  752 to 782 -> 854 [1] lasti
+  784 to 830 -> 844 [1] lasti
+  832 to 832 -> 854 [1] lasti
+  844 to 852 -> 854 [1] lasti
+
+# Method Name:       import_manual_pool
+# Filename:          web_gui.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  8
+# Stack size:        8
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        117
+# Constants:
+#    0: None
+#    1: True
+#    2: ('silent',)
+#    3: 'running'
+#    4: False
+#    5: '任务运行中，停止后才能覆盖邮箱池'
+#    6: ('ok', 'error', 'state')
+#    7: 409
+#    8: 'pool_content'
+#    9: '请粘贴手动邮箱列表'
+#   10: ('ok', 'error')
+#   11: 400
+#   12: 'manual'
+#   13: ('email_mode', 'manual_pool_path')
+#   14: 'ok'
+#   15: '; '
+#   16: 'errors'
+#   17: '手动邮箱列表为空'
+#   18: '已导入手动邮箱列表: '
+#   19: 'entries'
+#   20: ' 条，失败重跑恢复 '
+#   21: ' 条'
+#   22: 'success'
+#   23: ('ok', 'entries', 'retry_reset', 'state')
+# Names:
+#    0: request
+#    1: get_json
+#    2: status
+#    3: get
+#    4: jsonify
+#    5: _clean
+#    6: save_manual_pool_text
+#    7: save
+#    8: str
+#    9: _pool
+#   10: reset_reimported_failures
+#   11: validate
+#   12: join
+#   13: add
+#   14: MailboxPoolError
+#   15: OSError
+#   16: _safe
+# Varnames:
+#	data, content, path, cfg, pool, retry_reset, check, exc
+# Local variables:
+#    0: data
+#    1: content
+#    2: path
+#    3: cfg
+#    4: pool
+#    5: retry_reset
+#    6: check
+#    7: exc
+# Free variables:
+#    0: importer
+#    1: logs
+#    2: settings
+#    3: state
+#    4: store
+               0 COPY_FREE_VARS       5
+
+117:           2 RESUME               0
+
+119:           4 LOAD_GLOBAL          (request)
+              14 LOAD_ATTR            (get_json)
+              34 PUSH_NULL
+              36 LOAD_CONST           (True)
+              38 LOAD_CONST           (('silent',))
+              40 CALL_KW              1
+              42 COPY                 1
+              44 TO_BOOL
+              52 POP_JUMP_IF_TRUE     (to 60)
+              56 POP_TOP
+              58 BUILD_MAP            0
+         >>   60 STORE_FAST           (data)
+
+120:          62 LOAD_DEREF           (importer)
+              64 LOAD_ATTR            (NULL|self + status)
+              84 LOAD_DEREF           (settings)
+              86 PUSH_NULL
+              88 CALL                 (0 positional)
+              96 CALL                 (1 positional)
+             104 LOAD_ATTR            (NULL|self + get)
+             124 LOAD_CONST           ("running")
+             126 CALL                 (1 positional)
+             134 TO_BOOL
+             142 POP_JUMP_IF_FALSE    (to 190)
+
+121:         146 LOAD_GLOBAL          (NULL + jsonify)
+             156 LOAD_CONST           (False)
+             158 LOAD_CONST           ("任务运行中，停止后才能覆盖邮箱池")
+             160 LOAD_DEREF           (state)
+             162 PUSH_NULL
+             164 CALL                 (0 positional)
+             172 LOAD_CONST           (('ok', 'error', 'state'))
+             174 BUILD_CONST_KEY_MAP  3
+             176 CALL                 (1 positional)
+             184 LOAD_CONST           (409)
+             186 BUILD_TUPLE          2
+             188 RETURN_VALUE
+
+122:     >>  190 LOAD_GLOBAL          (NULL + _clean)
+             200 LOAD_FAST            (data)
+             202 LOAD_ATTR            (NULL|self + get)
+             222 LOAD_CONST           ("pool_content")
+             224 CALL                 (1 positional)
+             232 CALL                 (1 positional)
+             240 STORE_FAST           (content)
+
+123:         242 LOAD_FAST            (content)
+             244 TO_BOOL
+             252 POP_JUMP_IF_TRUE     (to 288)
+
+124:         256 LOAD_GLOBAL          (NULL + jsonify)
+             266 LOAD_CONST           (False)
+             268 LOAD_CONST           ("请粘贴手动邮箱列表")
+             270 LOAD_CONST           (('ok', 'error'))
+             272 BUILD_CONST_KEY_MAP  2
+             274 CALL                 (1 positional)
+             282 LOAD_CONST           (400)
+             284 BUILD_TUPLE          2
+             286 RETURN_VALUE
+
+125:     >>  288 NOP
+
+126:         290 LOAD_DEREF           (store)
+             292 LOAD_ATTR            (NULL|self + save_manual_pool_text)
+             312 LOAD_FAST            (content)
+             314 CALL                 (1 positional)
+             322 STORE_FAST           (path)
+
+127:         324 LOAD_DEREF           (store)
+             326 LOAD_ATTR            (NULL|self + save)
+             346 LOAD_CONST           ("manual")
+             348 LOAD_GLOBAL          (NULL + str)
+             358 LOAD_FAST            (path)
+             360 CALL                 (1 positional)
+             368 LOAD_CONST           (('email_mode', 'manual_pool_path'))
+             370 BUILD_CONST_KEY_MAP  2
+             372 CALL                 (1 positional)
+             380 STORE_FAST           (cfg)
+
+128:         382 LOAD_DEREF           (importer)
+             384 LOAD_ATTR            (NULL|self + _pool)
+             404 LOAD_FAST            (cfg)
+             406 CALL                 (1 positional)
+             414 STORE_FAST           (pool)
+
+129:         416 LOAD_FAST            (pool)
+             418 LOAD_ATTR            (NULL|self + reset_reimported_failures)
+             438 CALL                 (0 positional)
+             446 STORE_FAST           (retry_reset)
+
+130:         448 LOAD_FAST            (pool)
+             450 LOAD_ATTR            (NULL|self + validate)
+             470 CALL                 (0 positional)
+             478 STORE_FAST           (check)
+
+131:         480 LOAD_FAST            (check)
+             482 LOAD_ATTR            (NULL|self + get)
+             502 LOAD_CONST           ("ok")
+             504 CALL                 (1 positional)
+             512 TO_BOOL
+             520 POP_JUMP_IF_TRUE     (to 648)
+
+132:         524 LOAD_GLOBAL          (NULL + jsonify)
+             534 LOAD_CONST           (False)
+             536 LOAD_CONST           ("; ")
+             538 LOAD_ATTR            (NULL|self + join)
+             558 LOAD_FAST            (check)
+             560 LOAD_ATTR            (NULL|self + get)
+             580 LOAD_CONST           ("errors")
+             582 CALL                 (1 positional)
+             590 COPY                 1
+             592 TO_BOOL
+             600 POP_JUMP_IF_TRUE     (to 610)
+             604 POP_TOP
+             606 LOAD_CONST           ("手动邮箱列表为空")
+             608 BUILD_LIST           1
+         >>  610 CALL                 (1 positional)
+             618 LOAD_DEREF           (state)
+             620 PUSH_NULL
+             622 CALL                 (0 positional)
+             630 LOAD_CONST           (('ok', 'error', 'state'))
+             632 BUILD_CONST_KEY_MAP  3
+             634 CALL                 (1 positional)
+             642 LOAD_CONST           (400)
+             644 BUILD_TUPLE          2
+             646 RETURN_VALUE
+
+133:     >>  648 LOAD_DEREF           (logs)
+             650 LOAD_ATTR            (NULL|self + add)
+             670 LOAD_CONST           ("已导入手动邮箱列表: ")
+             672 LOAD_FAST            (check)
+             674 LOAD_CONST           ("entries")
+             676 BINARY_SUBSCR
+             680 FORMAT_SIMPLE
+             682 LOAD_CONST           (" 条，失败重跑恢复 ")
+             684 LOAD_FAST            (retry_reset)
+             686 FORMAT_SIMPLE
+             688 LOAD_CONST           (" 条")
+             690 BUILD_STRING         5
+             692 LOAD_CONST           ("success")
+             694 CALL                 (2 positional)
+             702 POP_TOP
+
+134:         704 LOAD_GLOBAL          (NULL + jsonify)
+             714 LOAD_CONST           (True)
+             716 LOAD_FAST            (check)
+             718 LOAD_CONST           ("entries")
+             720 BINARY_SUBSCR
+             724 LOAD_FAST            (retry_reset)
+             726 LOAD_DEREF           (state)
+             728 PUSH_NULL
+             730 CALL                 (0 positional)
+             738 LOAD_CONST           (('ok', 'entries', 'retry_reset', 'state'))
+             740 BUILD_CONST_KEY_MAP  4
+             742 CALL                 (1 positional)
+             750 RETURN_VALUE
+         >>  752 PUSH_EXC_INFO
+
+135:         754 LOAD_GLOBAL          (MailboxPoolError)
+             764 LOAD_GLOBAL          (OSError)
+             774 BUILD_TUPLE          2
+             776 CHECK_EXC_MATCH
+             778 POP_JUMP_IF_FALSE    (to 864)
+             782 STORE_FAST           (exc)
+
+136:         784 LOAD_GLOBAL          (NULL + jsonify)
+             794 LOAD_CONST           (False)
+             796 LOAD_GLOBAL          (NULL + _safe)
+             806 LOAD_FAST            (exc)
+             808 CALL                 (1 positional)
+             816 LOAD_DEREF           (state)
+             818 PUSH_NULL
+             820 CALL                 (0 positional)
+             828 LOAD_CONST           (('ok', 'error', 'state'))
+             830 BUILD_CONST_KEY_MAP  3
+             832 CALL                 (1 positional)
+             840 LOAD_CONST           (400)
+             842 BUILD_TUPLE          2
+             844 SWAP                 (TOS <-> TOS1)
+             846 POP_EXCEPT
+             848 LOAD_CONST           (None)
+             850 STORE_FAST           (exc)
+             852 DELETE_FAST          (exc)
+             854 RETURN_VALUE
+         >>  856 LOAD_CONST           (None)
+             858 STORE_FAST           (exc)
+             860 DELETE_FAST          (exc)
+             862 RERAISE              1
+
+135:     >>  864 RERAISE              0
+         >>  866 COPY                 3
+             868 POP_EXCEPT
+             870 RERAISE              1
+
+ExceptionTable:
+  290 to 644 -> 752 [0]
+  648 to 748 -> 752 [0]
+  752 to 782 -> 866 [1] lasti
+  784 to 842 -> 856 [1] lasti
+  844 to 844 -> 866 [1] lasti
+  856 to 864 -> 866 [1] lasti
+
+# Method Name:       submit_manual_otp
+# Filename:          web_gui.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        8
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        138
+# Constants:
+#    0: None
+#    1: True
+#    2: ('silent',)
+#    3: 'task_id'
+#    4: 'code'
+#    5: '手动邮箱验证码已提交: '
+#    6: 'success'
+#    7: ('ok', 'state')
+#    8: False
+#    9: ('ok', 'error', 'state')
+#   10: 400
+# Names:
+#    0: request
+#    1: get_json
+#    2: submit_manual_code
+#    3: _clean
+#    4: get
+#    5: add
+#    6: jsonify
+#    7: MailboxPoolError
+#    8: _safe
+# Varnames:
+#	data, exc
+# Local variables:
+#    0: data
+#    1: exc
+# Free variables:
+#    0: importer
+#    1: logs
+#    2: state
+               0 COPY_FREE_VARS       3
+
+138:           2 RESUME               0
+
+140:           4 LOAD_GLOBAL          (request)
+              14 LOAD_ATTR            (get_json)
+              34 PUSH_NULL
+              36 LOAD_CONST           (True)
+              38 LOAD_CONST           (('silent',))
+              40 CALL_KW              1
+              42 COPY                 1
+              44 TO_BOOL
+              52 POP_JUMP_IF_TRUE     (to 60)
+              56 POP_TOP
+              58 BUILD_MAP            0
+         >>   60 STORE_FAST           (data)
+
+141:          62 NOP
+
+142:          64 LOAD_DEREF           (importer)
+              66 LOAD_ATTR            (NULL|self + submit_manual_code)
+              86 LOAD_GLOBAL          (NULL + _clean)
+              96 LOAD_FAST            (data)
+              98 LOAD_ATTR            (NULL|self + get)
+             118 LOAD_CONST           ("task_id")
+             120 CALL                 (1 positional)
+             128 CALL                 (1 positional)
+             136 LOAD_GLOBAL          (NULL + _clean)
+             146 LOAD_FAST            (data)
+             148 LOAD_ATTR            (NULL|self + get)
+             168 LOAD_CONST           ("code")
+             170 CALL                 (1 positional)
+             178 CALL                 (1 positional)
+             186 CALL                 (2 positional)
+             194 POP_TOP
+
+143:         196 LOAD_DEREF           (logs)
+             198 LOAD_ATTR            (NULL|self + add)
+             218 LOAD_CONST           ("手动邮箱验证码已提交: ")
+             220 LOAD_GLOBAL          (NULL + _clean)
+             230 LOAD_FAST            (data)
+             232 LOAD_ATTR            (NULL|self + get)
+             252 LOAD_CONST           ("task_id")
+             254 CALL                 (1 positional)
+             262 CALL                 (1 positional)
+             270 FORMAT_SIMPLE
+             272 BUILD_STRING         2
+             274 LOAD_CONST           ("success")
+             276 CALL                 (2 positional)
+             284 POP_TOP
+
+144:         286 LOAD_GLOBAL          (NULL + jsonify)
+             296 LOAD_CONST           (True)
+             298 LOAD_DEREF           (state)
+             300 PUSH_NULL
+             302 CALL                 (0 positional)
+             310 LOAD_CONST           (('ok', 'state'))
+             312 BUILD_CONST_KEY_MAP  2
+             314 CALL                 (1 positional)
+             322 RETURN_VALUE
+         >>  324 PUSH_EXC_INFO
+
+145:         326 LOAD_GLOBAL          (MailboxPoolError)
+             336 CHECK_EXC_MATCH
+             338 POP_JUMP_IF_FALSE    (to 424)
+             342 STORE_FAST           (exc)
+
+146:         344 LOAD_GLOBAL          (NULL + jsonify)
+             354 LOAD_CONST           (False)
+             356 LOAD_GLOBAL          (NULL + _safe)
+             366 LOAD_FAST            (exc)
+             368 CALL                 (1 positional)
+             376 LOAD_DEREF           (state)
+             378 PUSH_NULL
+             380 CALL                 (0 positional)
+             388 LOAD_CONST           (('ok', 'error', 'state'))
+             390 BUILD_CONST_KEY_MAP  3

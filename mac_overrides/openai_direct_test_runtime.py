@@ -27,6 +27,7 @@ try:
         OpenAIQuotaError,
         credentials_from_result,
     )
+    from .openai_row_status import row_status_key
     from .sub2_runtime import (
         MAX_BATCH_ROWS,
         Sub2SnapshotStore,
@@ -41,6 +42,7 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
         OpenAIQuotaError,
         credentials_from_result,
     )
+    from openai_row_status import row_status_key
     from sub2_runtime import (
         MAX_BATCH_ROWS,
         Sub2SnapshotStore,
@@ -409,6 +411,24 @@ class OpenAIDirectTestRuntime:
             self.snapshot_store.discard(DIRECT_TEST_FINGERPRINT, self._snapshot_key(key))
             self.snapshot_store.discard(DIRECT_TEST_FINGERPRINT, key)
 
+    def mark_credentials_refreshed(self, account_id: Any) -> None:
+        """Replace a stale failure after a verified credential update."""
+
+        key = str(account_id or "").strip()
+        if not key:
+            return
+        status = _status(
+            "untested",
+            None,
+            "凭据已更新，待复测",
+            "重登已成功并更新远端凭据，尚未重新执行 OpenAI 直连测试",
+            int(self.now_fn()),
+        )
+        self.snapshot_store.put_many(
+            DIRECT_TEST_FINGERPRINT,
+            {self._snapshot_key(key): status},
+        )
+
     def test_rows(
         self,
         rows: Sequence[Mapping[str, Any]],
@@ -436,14 +456,52 @@ class OpenAIDirectTestRuntime:
             "queued_batches": max(0, len(chunks) - 1),
             "completed_batches": 0,
         }
-        persistable: dict[str, Sub2TestStatus] = {}
         for batch_index, chunk in enumerate(chunks, start=1):
             statuses: dict[int, Sub2TestStatus] = {}
+
+            def persist_completed(row: Mapping[str, Any], status: Sub2TestStatus) -> None:
+                status_id = str(
+                    row.get("openai_status_id")
+                    or row.get("sub2api_account_id")
+                    or row_status_key(row.get("row_id"))
+                    or ""
+                ).strip()
+                if status_id:
+                    self.snapshot_store.put_many(
+                        DIRECT_TEST_FINGERPRINT,
+                        {self._snapshot_key(status_id): status},
+                    )
+                callback = row.get("_on_row_completed")
+                if callable(callback):
+                    try:
+                        callback(
+                            {
+                                "row_id": row.get("row_id"),
+                                "line_no": row.get("line_no"),
+                                "sub2_status": status.public(),
+                            }
+                        )
+                    except Exception:
+                        pass
+
             ready_rows = [
                 (index, row)
                 for index, row in enumerate(chunk)
                 if isinstance(row.get("document"), Mapping) and bool(row.get("document"))
             ]
+            ready_indexes = {index for index, _row in ready_rows}
+            for index, row in enumerate(chunk):
+                if index in ready_indexes:
+                    continue
+                status = _status(
+                    "not_ready",
+                    None,
+                    "未上传，无法直连 OpenAI",
+                    "该邮箱还没有本地成功结果或 OpenAI OAuth access token",
+                    int(self.now_fn()),
+                )
+                statuses[index] = status
+                persist_completed(row, status)
             if ready_rows:
                 client = self._client(str(proxy or "").strip())
                 with ThreadPoolExecutor(
@@ -467,25 +525,10 @@ class OpenAIDirectTestRuntime:
                                 int(self.now_fn()),
                             )
                         statuses[index] = status
-                        account_id = str(
-                            row.get("openai_status_id")
-                            or row.get("sub2api_account_id")
-                            or ""
-                        ).strip()
-                        if account_id:
-                            persistable[self._snapshot_key(account_id)] = status
+                        persist_completed(row, status)
             for index, row in enumerate(chunk):
-                if index not in statuses:
-                    status = _status(
-                        "not_ready",
-                        None,
-                        "未上传，无法直连 OpenAI",
-                        "该邮箱还没有本地成功结果或 OpenAI OAuth access token",
-                        int(self.now_fn()),
-                    )
-                else:
-                    status = statuses[index]
-                if index in statuses:
+                status = statuses[index]
+                if index in ready_indexes:
                     aggregate["tested"] += 1
                     if status.kind == "healthy":
                         aggregate["healthy"] += 1
@@ -506,8 +549,6 @@ class OpenAIDirectTestRuntime:
                     }
                 )
             aggregate["completed_batches"] = batch_index
-        if persistable:
-            self.snapshot_store.put_many(DIRECT_TEST_FINGERPRINT, persistable)
         return aggregate
 
 

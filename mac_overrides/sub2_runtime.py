@@ -713,16 +713,33 @@ class Sub2BatchService:
     def _run_chunk(
         self,
         normalized: Sequence[Mapping[str, Any]],
-    ) -> tuple[dict[str, Any], dict[str, Sub2TestStatus]]:
-        """Run one bounded chunk without persisting until the full queue succeeds."""
+    ) -> dict[str, Any]:
+        """Run one bounded chunk and persist each completed account immediately."""
         statuses: dict[int, Sub2TestStatus] = {}
-        persistable: dict[str, Sub2TestStatus] = {}
         linked = [(index, row) for index, row in enumerate(normalized) if row["account_id"]]
+
+        def publish_completed(row: Mapping[str, Any], status: Sub2TestStatus) -> None:
+            callback = row.get("_on_row_completed")
+            if not callable(callback):
+                return
+            try:
+                callback(
+                    {
+                        "row_id": row.get("row_id"),
+                        "line_no": row.get("line_no"),
+                        "sub2_status": status.public(),
+                    }
+                )
+            except Exception:
+                pass
+
         for index, row in enumerate(normalized):
             if not row["account_id"]:
                 statuses[index] = unlinked_status()
+                publish_completed(row, statuses[index])
 
         admin_error: Sub2AdminError | None = None
+        persist_error = False
         with ThreadPoolExecutor(max_workers=self.max_workers, thread_name_prefix="sub2-test") as executor:
             futures = {
                 executor.submit(self.client.test_account, row["account_id"], persist=False): (index, row)
@@ -744,14 +761,26 @@ class Sub2BatchService:
                         int(self.client.now_fn()),
                     )
                 statuses[index] = status
-                persistable[row["account_id"]] = status
+                try:
+                    self.client.persist_statuses({row["account_id"]: status})
+                except Exception:
+                    persist_error = True
+                    continue
+                publish_completed(row, status)
 
         if admin_error is not None:
             return {
                 "ok": False,
                 "code": admin_error.code,
                 "error": admin_error.public_message,
-            }, {}
+            }
+
+        if persist_error:
+            return {
+                "ok": False,
+                "code": "sub2_snapshot_persist_failed",
+                "error": "SUB2 测试结果保存失败：服务端状态未写入本地快照",
+            }
 
         linked_count = len(linked)
         result = {
@@ -775,7 +804,7 @@ class Sub2BatchService:
                 for index, row in enumerate(normalized)
             ],
         }
-        return result, persistable
+        return result
 
     def test_rows(self, rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         selected = list(rows)
@@ -798,6 +827,7 @@ class Sub2BatchService:
                     "row_id": row_id,
                     "line_no": line_no,
                     "account_id": str(row.get("sub2api_account_id") or "").strip(),
+                    "_on_row_completed": row.get("_on_row_completed"),
                 }
             )
 
@@ -819,9 +849,8 @@ class Sub2BatchService:
             "queued_batches": max(0, len(chunks) - 1),
             "completed_batches": 0,
         }
-        all_persistable: dict[str, Sub2TestStatus] = {}
         for batch_index, chunk in enumerate(chunks, start=1):
-            result, persistable = self._run_chunk(chunk)
+            result = self._run_chunk(chunk)
             if not result.get("ok"):
                 result = dict(result)
                 result.update(
@@ -836,21 +865,7 @@ class Sub2BatchService:
             for key in ("tested", "unlinked", "healthy", "rate_limited", "failed", "test_failures"):
                 aggregate[key] += int(result.get(key) or 0)
             aggregate["results"].extend(result.get("results") or [])
-            all_persistable.update(persistable)
             aggregate["completed_batches"] = batch_index
-
-        try:
-            self.client.persist_statuses(all_persistable)
-        except Exception:
-            return {
-                "ok": False,
-                "code": "sub2_snapshot_persist_failed",
-                "error": "SUB2 测试结果保存失败：服务端状态未写入本地快照",
-                "batch_limit": MAX_BATCH_ROWS,
-                "batch_count": len(chunks),
-                "queued_batches": 0,
-                "completed_batches": len(chunks),
-            }
         return aggregate
 
 

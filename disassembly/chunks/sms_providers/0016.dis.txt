@@ -1,0 +1,800 @@
+1075:     >>   44 NOP
+
+1076:          46 LOAD_FAST            (self)
+              48 LOAD_ATTR            (NULL|self + _rest_get)
+              68 LOAD_CONST           ("/guest/products/")
+              70 LOAD_FAST            (country)
+              72 FORMAT_SIMPLE
+              74 LOAD_CONST           ("/")
+              76 LOAD_FAST            (operator)
+              78 FORMAT_SIMPLE
+              80 BUILD_STRING         4
+              82 CALL                 (1 positional)
+              90 STORE_FAST           (products)
+
+1081:          92 LOAD_FAST            (self)
+              94 LOAD_ATTR            (NULL|self + _product_price)
+             114 LOAD_FAST_LOAD_FAST  (products, service)
+             116 CALL                 (2 positional)
+             124 STORE_FAST           (price)
+
+1082:         126 LOAD_FAST            (price)
+             128 POP_JUMP_IF_NOT_NONE (to 180)
+
+1083:         132 LOAD_GLOBAL          (NULL + RuntimeError)
+
+1084:         142 LOAD_CONST           ("5sim price check failed: ")
+             144 LOAD_FAST            (country)
+             146 FORMAT_SIMPLE
+             148 LOAD_CONST           ("/")
+             150 LOAD_FAST            (operator)
+             152 FORMAT_SIMPLE
+             154 LOAD_CONST           ("/")
+             156 LOAD_FAST            (service)
+             158 FORMAT_SIMPLE
+             160 LOAD_CONST           (" price unavailable, max_price=")
+             162 LOAD_FAST            (limit)
+             164 LOAD_CONST           (".4f")
+             166 FORMAT_WITH_SPEC
+             168 BUILD_STRING         8
+
+1083:         170 CALL                 (1 positional)
+             178 RAISE_VARARGS        (exception instance)
+
+1086:     >>  180 LOAD_FAST_LOAD_FAST  (price, limit)
+             182 COMPARE_OP           (>)
+             186 POP_JUMP_IF_FALSE    (to 246)
+
+1087:         190 LOAD_GLOBAL          (NULL + RuntimeError)
+
+1088:         200 LOAD_CONST           ("5sim price too high: ")
+             202 LOAD_FAST            (country)
+             204 FORMAT_SIMPLE
+             206 LOAD_CONST           ("/")
+             208 LOAD_FAST            (operator)
+             210 FORMAT_SIMPLE
+             212 LOAD_CONST           ("/")
+             214 LOAD_FAST            (service)
+             216 FORMAT_SIMPLE
+             218 LOAD_CONST           (" price=")
+             220 LOAD_FAST            (price)
+             222 LOAD_CONST           (".4f")
+             224 FORMAT_WITH_SPEC
+             226 LOAD_CONST           (" > max_price=")
+             228 LOAD_FAST            (limit)
+             230 LOAD_CONST           (".4f")
+             232 FORMAT_WITH_SPEC
+             234 BUILD_STRING         10
+
+1087:         236 CALL                 (1 positional)
+             244 RAISE_VARARGS        (exception instance)
+
+1090:     >>  246 LOAD_FAST            (price)
+             248 RETURN_VALUE
+         >>  250 PUSH_EXC_INFO
+
+1077:         252 LOAD_GLOBAL          (Exception)
+             262 CHECK_EXC_MATCH
+             264 POP_JUMP_IF_FALSE    (to 324)
+             268 STORE_FAST           (e)
+
+1078:         270 LOAD_GLOBAL          (NULL + RuntimeError)
+
+1079:         280 LOAD_CONST           ("5sim price check failed: ")
+             282 LOAD_FAST            (country)
+             284 FORMAT_SIMPLE
+             286 LOAD_CONST           ("/")
+             288 LOAD_FAST            (operator)
+             290 FORMAT_SIMPLE
+             292 LOAD_CONST           ("/")
+             294 LOAD_FAST            (service)
+             296 FORMAT_SIMPLE
+             298 LOAD_CONST           (" product lookup failed: ")
+             300 LOAD_FAST            (e)
+             302 FORMAT_SIMPLE
+             304 BUILD_STRING         8
+
+1078:         306 CALL                 (1 positional)
+             314 RAISE_VARARGS        (exception instance)
+         >>  316 LOAD_CONST           (None)
+             318 STORE_FAST           (e)
+             320 DELETE_FAST          (e)
+             322 RERAISE              1
+
+1077:     >>  324 RERAISE              0
+         >>  326 COPY                 3
+             328 POP_EXCEPT
+             330 RERAISE              1
+
+ExceptionTable:
+  46 to 90 -> 250 [0]
+  250 to 268 -> 326 [1] lasti
+  270 to 314 -> 316 [1] lasti
+  316 to 324 -> 326 [1] lasti
+
+# Method Name:       get_number
+# Filename:          sms_providers.py
+# Argument count:    5
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  16
+# Stack size:        9
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1092
+# Constants:
+#    0: None
+#    1: 'any'
+#    2: 'virtual'
+#    3: ': '
+#    4: '/user/buy/activation/'
+#    5: '/'
+#    6: ': buy failed: '
+#    7: ': buy returned invalid response'
+#    8: 'id'
+#    9: ''
+#   10: 'phone'
+#   11: ': buy returned no number: '
+#   12: '5sim buy failed: '
+#   13: '; '
+#   14: 'no operator available'
+# Names:
+#    0: COUNTRY_MAP
+#    1: get
+#    2: SERVICE_MAP
+#    3: append
+#    4: _ensure_price_allowed
+#    5: Exception
+#    6: _rest_get
+#    7: isinstance
+#    8: dict
+#    9: str
+#   10: activation_id
+#   11: phone
+#   12: price
+#   13: RuntimeError
+#   14: join
+# Varnames:
+#	self, service, country, provider_ids, max_price, c, s, operator, operators, errors, op, checked_price, e, data, order_id, phone
+# Positional arguments:
+#	self, service, country, provider_ids, max_price
+# Local variables:
+#    5: c
+#    6: s
+#    7: operator
+#    8: operators
+#    9: errors
+#   10: op
+#   11: checked_price
+#   12: e
+#   13: data
+#   14: order_id
+#   15: phone
+1092:           0 RESUME               0
+
+1097:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (COUNTRY_MAP)
+              24 LOAD_ATTR            (NULL|self + get)
+              44 LOAD_FAST_LOAD_FAST  (country, country)
+              46 CALL                 (2 positional)
+              54 STORE_FAST           (c)
+
+1098:          56 LOAD_FAST            (self)
+              58 LOAD_ATTR            (SERVICE_MAP)
+              78 LOAD_ATTR            (NULL|self + get)
+              98 LOAD_FAST_LOAD_FAST  (service, service)
+             100 CALL                 (2 positional)
+             108 STORE_FAST           (s)
+
+1099:         110 LOAD_FAST            (provider_ids)
+             112 COPY                 1
+             114 TO_BOOL
+             122 POP_JUMP_IF_TRUE     (to 130)
+             126 POP_TOP
+             128 LOAD_CONST           ("any")
+         >>  130 STORE_FAST           (operator)
+
+1100:         132 LOAD_FAST            (operator)
+             134 BUILD_LIST           1
+             136 STORE_FAST           (operators)
+
+1101:         138 LOAD_FAST            (operator)
+             140 LOAD_CONST           ("virtual")
+             142 COMPARE_OP           (!=)
+             146 POP_JUMP_IF_FALSE    (to 184)
+
+1102:         150 LOAD_FAST            (operators)
+             152 LOAD_ATTR            (NULL|self + append)
+             172 LOAD_CONST           ("virtual")
+             174 CALL                 (1 positional)
+             182 POP_TOP
+
+1104:     >>  184 BUILD_LIST           0
+             186 STORE_FAST           (errors)
+
+1105:         188 LOAD_FAST            (operators)
+             190 GET_ITER
+             192 FOR_ITER             (to 602)
+             196 STORE_FAST           (op)
+
+1106:         198 NOP
+
+1107:         200 LOAD_FAST            (self)
+             202 LOAD_ATTR            (NULL|self + _ensure_price_allowed)
+             222 LOAD_FAST_LOAD_FAST  (c, op)
+             224 LOAD_FAST_LOAD_FAST  (s, max_price)
+             226 CALL                 (4 positional)
+             234 STORE_FAST           (checked_price)
+
+1112:         236 NOP
+
+1113:         238 LOAD_FAST            (self)
+             240 LOAD_ATTR            (NULL|self + _rest_get)
+             260 LOAD_CONST           ("/user/buy/activation/")
+             262 LOAD_FAST            (c)
+             264 FORMAT_SIMPLE
+             266 LOAD_CONST           ("/")
+             268 LOAD_FAST            (op)
+             270 FORMAT_SIMPLE
+             272 LOAD_CONST           ("/")
+             274 LOAD_FAST            (s)
+             276 FORMAT_SIMPLE
+             278 BUILD_STRING         6
+             280 CALL                 (1 positional)
+             288 STORE_FAST           (data)
+
+1118:         290 LOAD_GLOBAL          (NULL + isinstance)
+             300 LOAD_FAST            (data)
+             302 LOAD_GLOBAL          (dict)
+             312 CALL                 (2 positional)
+             320 TO_BOOL
+             328 POP_JUMP_IF_TRUE     (to 376)
+
+1119:         332 LOAD_FAST            (errors)
+             334 LOAD_ATTR            (NULL|self + append)
+             354 LOAD_FAST            (op)
+             356 FORMAT_SIMPLE
+             358 LOAD_CONST           (": buy returned invalid response")
+             360 BUILD_STRING         2
+             362 CALL                 (1 positional)
+             370 POP_TOP
+
+1120:         372 JUMP_BACKWARD        (to 192)
+
+1122:     >>  376 LOAD_GLOBAL          (NULL + str)
+             386 LOAD_FAST            (data)
+             388 LOAD_ATTR            (NULL|self + get)
+             408 LOAD_CONST           ("id")
+             410 LOAD_CONST           ("")
+             412 CALL                 (2 positional)
+             420 CALL                 (1 positional)
+             428 STORE_FAST           (order_id)
+
+1123:         430 LOAD_FAST            (data)
+             432 LOAD_ATTR            (NULL|self + get)
+             452 LOAD_CONST           ("phone")
+             454 LOAD_CONST           ("")
+             456 CALL                 (2 positional)
+             464 STORE_FAST           (phone)
+
+1124:         466 LOAD_FAST            (order_id)
+             468 TO_BOOL
+             476 POP_JUMP_IF_FALSE    (to 494)
+             480 LOAD_FAST            (phone)
+             482 TO_BOOL
+             490 POP_JUMP_IF_TRUE     (to 542)
+
+1125:     >>  494 LOAD_FAST            (errors)
+             496 LOAD_ATTR            (NULL|self + append)
+             516 LOAD_FAST            (op)
+             518 FORMAT_SIMPLE
+             520 LOAD_CONST           (": buy returned no number: ")
+             522 LOAD_FAST            (data)
+             524 FORMAT_SIMPLE
+             526 BUILD_STRING         3
+             528 CALL                 (1 positional)
+             536 POP_TOP
+
+1126:         538 JUMP_BACKWARD        (to 192)
+
+1128:     >>  542 LOAD_FAST_LOAD_FAST  (order_id, self)
+             544 STORE_ATTR           (activation_id)
+
+1129:         554 LOAD_FAST_LOAD_FAST  (phone, self)
+             556 STORE_ATTR           (phone)
+
+1130:         566 LOAD_FAST            (checked_price)
+             568 TO_BOOL
+             576 POP_JUMP_IF_FALSE    (to 592)
+
+1131:         580 LOAD_FAST_LOAD_FAST  (checked_price, self)
+             582 STORE_ATTR           (price)
+
+1132:     >>  592 LOAD_FAST_LOAD_FAST  (order_id, phone)
+             594 BUILD_TUPLE          2
+             596 SWAP                 (TOS <-> TOS1)
+             598 POP_TOP
+             600 RETURN_VALUE
+
+1105:     >>  602 END_FOR
+             604 POP_TOP
+
+1134:         606 LOAD_GLOBAL          (NULL + RuntimeError)
+             616 LOAD_CONST           ("5sim buy failed: ")
+             618 LOAD_FAST            (errors)
+             620 TO_BOOL
+             628 POP_JUMP_IF_FALSE    (to 678)
+             632 LOAD_CONST           ("; ")
+             634 LOAD_ATTR            (NULL|self + join)
+             654 LOAD_FAST            (errors)
+             656 CALL                 (1 positional)
+             664 FORMAT_SIMPLE
+             666 BUILD_STRING         2
+             668 CALL                 (1 positional)
+             676 RAISE_VARARGS        (exception instance)
+         >>  678 LOAD_CONST           ("no operator available")
+             680 FORMAT_SIMPLE
+             682 BUILD_STRING         2
+             684 CALL                 (1 positional)
+             692 RAISE_VARARGS        (exception instance)
+         >>  694 PUSH_EXC_INFO
+
+1108:         696 LOAD_GLOBAL          (Exception)
+             706 CHECK_EXC_MATCH
+             708 POP_JUMP_IF_FALSE    (to 780)
+             712 STORE_FAST           (e)
+
+1109:         714 LOAD_FAST            (errors)
+             716 LOAD_ATTR            (NULL|self + append)
+             736 LOAD_FAST            (op)
+             738 FORMAT_SIMPLE
+             740 LOAD_CONST           (": ")
+             742 LOAD_FAST            (e)
+             744 FORMAT_SIMPLE
+             746 BUILD_STRING         3
+             748 CALL                 (1 positional)
+             756 POP_TOP
+
+1110:         758 POP_EXCEPT
+             760 LOAD_CONST           (None)
+             762 STORE_FAST           (e)
+             764 DELETE_FAST          (e)
+             766 EXTENDED_ARG         (256)
+             768 JUMP_BACKWARD        (to 192)
+         >>  772 LOAD_CONST           (None)
+             774 STORE_FAST           (e)
+             776 DELETE_FAST          (e)
+             778 RERAISE              1
+
+1108:     >>  780 RERAISE              0
+         >>  782 COPY                 3
+             784 POP_EXCEPT
+             786 RERAISE              1
+         >>  788 PUSH_EXC_INFO
+
+1114:         790 LOAD_GLOBAL          (Exception)
+             800 CHECK_EXC_MATCH
+             802 POP_JUMP_IF_FALSE    (to 874)
+             806 STORE_FAST           (e)
+
+1115:         808 LOAD_FAST            (errors)
+             810 LOAD_ATTR            (NULL|self + append)
+             830 LOAD_FAST            (op)
+             832 FORMAT_SIMPLE
+             834 LOAD_CONST           (": buy failed: ")
+             836 LOAD_FAST            (e)
+             838 FORMAT_SIMPLE
+             840 BUILD_STRING         3
+             842 CALL                 (1 positional)
+             850 POP_TOP
+
+1116:         852 POP_EXCEPT
+             854 LOAD_CONST           (None)
+             856 STORE_FAST           (e)
+             858 DELETE_FAST          (e)
+             860 EXTENDED_ARG         (256)
+             862 JUMP_BACKWARD        (to 192)
+         >>  866 LOAD_CONST           (None)
+             868 STORE_FAST           (e)
+             870 DELETE_FAST          (e)
+             872 RERAISE              1
+
+1114:     >>  874 RERAISE              0
+         >>  876 COPY                 3
+             878 POP_EXCEPT
+             880 RERAISE              1
+
+ExceptionTable:
+  200 to 234 -> 694 [1]
+  238 to 288 -> 788 [1]
+  694 to 712 -> 782 [2] lasti
+  714 to 756 -> 772 [2] lasti
+  772 to 780 -> 782 [2] lasti
+  788 to 806 -> 876 [2] lasti
+  808 to 850 -> 866 [2] lasti
+  866 to 874 -> 876 [2] lasti
+
+# Method Name:       set_ready
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        1
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1136
+# Constants:
+#    0: None
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+1136:           0 RESUME               0
+
+1138:           2 RETURN_CONST         (None)
+
+
+# Method Name:       wait_code
+# Filename:          sms_providers.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  8
+# Stack size:        4
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1140
+# Constants:
+#    0: None
+#    1: 'No active activation'
+#    2: '/user/check/'
+#    3: 'sms'
+#    4: 0
+#    5: 'code'
+#    6: ''
+#    7: 'status'
+#    8: ('CANCELED', 'BANNED', 'TIMEOUT')
+# Names:
+#    0: activation_id
+#    1: RuntimeError
+#    2: time
+#    3: _rest_get
+#    4: get
+#    5: str
+#    6: Exception
+#    7: sleep
+# Varnames:
+#	self, timeout, interval, started, data, sms_list, code, status
+# Positional arguments:
+#	self, timeout, interval
+# Local variables:
+#    3: started
+#    4: data
+#    5: sms_list
+#    6: code
+#    7: status
+1140:           0 RESUME               0
+
+1141:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (activation_id)
+              24 TO_BOOL
+              32 POP_JUMP_IF_TRUE     (to 58)
+
+1142:          36 LOAD_GLOBAL          (NULL + RuntimeError)
+              46 LOAD_CONST           ("No active activation")
+              48 CALL                 (1 positional)
+              56 RAISE_VARARGS        (exception instance)
+
+1143:     >>   58 LOAD_GLOBAL          (time)
+              68 LOAD_ATTR            (time)
+              88 PUSH_NULL
+              90 CALL                 (0 positional)
+              98 STORE_FAST           (started)
+
+1144:         100 LOAD_GLOBAL          (time)
+             110 LOAD_ATTR            (time)
+             130 PUSH_NULL
+             132 CALL                 (0 positional)
+             140 LOAD_FAST            (started)
+             142 BINARY_OP            (-)
+             146 LOAD_FAST            (timeout)
+             148 COMPARE_OP           (<)
+             152 POP_JUMP_IF_FALSE    (to 502)
+
+1145:         156 NOP
+
+1146:         158 LOAD_FAST            (self)
+             160 LOAD_ATTR            (NULL|self + _rest_get)
+             180 LOAD_CONST           ("/user/check/")
+             182 LOAD_FAST            (self)
+             184 LOAD_ATTR            (activation_id)
+             204 FORMAT_SIMPLE
+             206 BUILD_STRING         2
+             208 CALL                 (1 positional)
+             216 STORE_FAST           (data)
+
+1148:         218 LOAD_FAST            (data)
+             220 LOAD_ATTR            (NULL|self + get)
+             240 LOAD_CONST           ("sms")
+             242 BUILD_LIST           0
+             244 CALL                 (2 positional)
+             252 STORE_FAST           (sms_list)
+
+1149:         254 LOAD_FAST            (sms_list)
+             256 TO_BOOL
+             264 POP_JUMP_IF_FALSE    (to 346)
+
+1150:         268 LOAD_FAST            (sms_list)
+             270 LOAD_CONST           (0)
+             272 BINARY_SUBSCR
+             276 LOAD_ATTR            (NULL|self + get)
+             296 LOAD_CONST           ("code")
+             298 LOAD_CONST           ("")
+             300 CALL                 (2 positional)
+             308 STORE_FAST           (code)
+
+1151:         310 LOAD_FAST            (code)
+             312 TO_BOOL
+             320 POP_JUMP_IF_FALSE    (to 346)
+
+1152:         324 LOAD_GLOBAL          (NULL + str)
+             334 LOAD_FAST            (code)
+             336 CALL                 (1 positional)
+             344 RETURN_VALUE
+
+1154:     >>  346 LOAD_FAST            (data)
+             348 LOAD_ATTR            (NULL|self + get)
+             368 LOAD_CONST           ("status")
+             370 LOAD_CONST           ("")
+             372 CALL                 (2 positional)
+             380 STORE_FAST           (status)
+
+1155:         382 LOAD_FAST            (status)
+             384 LOAD_CONST           (('CANCELED', 'BANNED', 'TIMEOUT'))
+             386 CONTAINS_OP          (in)
+             390 POP_JUMP_IF_FALSE    (to 396)
+
+1156:         394 RETURN_CONST         (None)
+
+1155:     >>  396 NOP
+
+1159:         398 LOAD_GLOBAL          (time)
+             408 LOAD_ATTR            (sleep)
+             428 PUSH_NULL
+             430 LOAD_FAST            (interval)
+             432 CALL                 (1 positional)
+             440 POP_TOP
+
+1144:         442 LOAD_GLOBAL          (time)
+             452 LOAD_ATTR            (time)
+             472 PUSH_NULL
+             474 CALL                 (0 positional)
+             482 LOAD_FAST            (started)
+             484 BINARY_OP            (-)
+             488 LOAD_FAST            (timeout)
+             490 COMPARE_OP           (<)
+             494 POP_JUMP_IF_FALSE    (to 502)
+             498 JUMP_BACKWARD        (to 156)
+
+1160:     >>  502 RETURN_CONST         (None)
+         >>  504 PUSH_EXC_INFO
+
+1157:         506 LOAD_GLOBAL          (Exception)
+             516 CHECK_EXC_MATCH
+             518 POP_JUMP_IF_FALSE    (to 528)
+             522 POP_TOP
+
+1158:         524 POP_EXCEPT
+             526 JUMP_BACKWARD_NO_INTERRUPT (to 398)
+
+1157:     >>  528 RERAISE              0
+         >>  530 COPY                 3
+             532 POP_EXCEPT
+             534 RERAISE              1
+
+ExceptionTable:
+  158 to 342 -> 504 [0]
+  346 to 392 -> 504 [0]
+  504 to 522 -> 530 [1] lasti
+  528 to 528 -> 530 [1] lasti
+
+# Method Name:       complete
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1162
+# Constants:
+#    0: None
+#    1: '/user/finish/'
+# Names:
+#    0: _rest_get
+#    1: activation_id
+#    2: Exception
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+1162:           0 RESUME               0
+
+1163:           2 NOP
+
+1164:           4 LOAD_FAST            (self)
+               6 LOAD_ATTR            (NULL|self + _rest_get)
+              26 LOAD_CONST           ("/user/finish/")
+              28 LOAD_FAST            (self)
+              30 LOAD_ATTR            (activation_id)
+              50 FORMAT_SIMPLE
+              52 BUILD_STRING         2
+              54 CALL                 (1 positional)
+              62 POP_TOP
+              64 RETURN_CONST         (None)
+         >>   66 PUSH_EXC_INFO
+
+1165:          68 LOAD_GLOBAL          (Exception)
+              78 CHECK_EXC_MATCH
+              80 POP_JUMP_IF_FALSE    (to 90)
+              84 POP_TOP
+
+1166:          86 POP_EXCEPT
+              88 RETURN_CONST         (None)
+
+1165:     >>   90 RERAISE              0
+         >>   92 COPY                 3
+              94 POP_EXCEPT
+              96 RERAISE              1
+
+ExceptionTable:
+  4 to 62 -> 66 [0]
+  66 to 84 -> 92 [1] lasti
+  90 to 90 -> 92 [1] lasti
+
+# Method Name:       cancel
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1168
+# Constants:
+#    0: None
+#    1: '/user/cancel/'
+# Names:
+#    0: _rest_get
+#    1: activation_id
+#    2: Exception
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+1168:           0 RESUME               0
+
+1169:           2 NOP
+
+1170:           4 LOAD_FAST            (self)
+               6 LOAD_ATTR            (NULL|self + _rest_get)
+              26 LOAD_CONST           ("/user/cancel/")
+              28 LOAD_FAST            (self)
+              30 LOAD_ATTR            (activation_id)
+              50 FORMAT_SIMPLE
+              52 BUILD_STRING         2
+              54 CALL                 (1 positional)
+              62 POP_TOP
+              64 RETURN_CONST         (None)
+         >>   66 PUSH_EXC_INFO
+
+1171:          68 LOAD_GLOBAL          (Exception)
+              78 CHECK_EXC_MATCH
+              80 POP_JUMP_IF_FALSE    (to 90)
+              84 POP_TOP
+
+1172:          86 POP_EXCEPT
+              88 RETURN_CONST         (None)
+
+1171:     >>   90 RERAISE              0
+         >>   92 COPY                 3
+              94 POP_EXCEPT
+              96 RERAISE              1
+
+ExceptionTable:
+  4 to 62 -> 66 [0]
+  66 to 84 -> 92 [1] lasti
+  90 to 90 -> 92 [1] lasti
+
+# Method Name:       __init__
+# Filename:          sms_providers.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        4
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1225
+# Constants:
+#    0: None
+# Names:
+#    0: super
+#    1: __init__
+#    2: _price_cache
+# Varnames:
+#	self, api_key, proxy
+# Positional arguments:
+#	self, api_key, proxy
+# Free variables:
+#    0: __class__
+               0 COPY_FREE_VARS       1
+
+1225:           2 RESUME               0
+
+1226:           4 LOAD_GLOBAL          (super)
+              14 LOAD_DEREF           (__class__)
+              16 LOAD_FAST            (self)
+              18 LOAD_SUPER_ATTR      (NULL|self + __init__)
+              22 LOAD_FAST_LOAD_FAST  (api_key, proxy)
+              24 CALL                 (2 positional)
+              32 POP_TOP
+
+1227:          34 BUILD_MAP            0
+              36 LOAD_FAST            (self)
+              38 STORE_ATTR           (_price_cache)
+              48 RETURN_CONST         (None)
+
+
+# Method Name:       _headers
+# Filename:          sms_providers.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        3
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1229
+# Constants:
+#    0: None
+#    1: 'application/json'
+#    2: ('x-api-key', 'Accept')
+#    3: 'Content-Type'
+# Names:
+#    0: api_key
+# Varnames:
+#	self, with_content_type, headers
+# Positional arguments:
+#	self, with_content_type
+# Local variables:
+#    2: headers
+1229:           0 RESUME               0
+
+1231:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (api_key)
+
+1232:          24 LOAD_CONST           ("application/json")
+
+1230:          26 LOAD_CONST           (('x-api-key', 'Accept'))
+              28 BUILD_CONST_KEY_MAP  2
+              30 STORE_FAST           (headers)
+
+1234:          32 LOAD_FAST            (with_content_type)
+              34 TO_BOOL
+              42 POP_JUMP_IF_FALSE    (to 56)
+
+1235:          46 LOAD_CONST           ("application/json")
+              48 LOAD_FAST            (headers)
+              50 LOAD_CONST           ("Content-Type")
+              52 STORE_SUBSCR
+
+1236:     >>   56 LOAD_FAST            (headers)
+              58 RETURN_VALUE
+
+
+# Method Name:       _request
+# Filename:          sms_providers.py
+# Argument count:    5
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  12
+# Stack size:        13
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1238

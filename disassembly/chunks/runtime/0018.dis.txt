@@ -1,0 +1,800 @@
+
+1494:         174 LOAD_GLOBAL          (NULL + get_admin_token)
+
+1495:         184 LOAD_GLOBAL          (NULL + _clean)
+             194 LOAD_FAST            (sub)
+             196 LOAD_ATTR            (NULL|self + get)
+             216 LOAD_CONST           ("url")
+             218 CALL                 (1 positional)
+             226 CALL                 (1 positional)
+             234 LOAD_GLOBAL          (NULL + _clean)
+             244 LOAD_FAST            (sub)
+             246 LOAD_ATTR            (NULL|self + get)
+             266 LOAD_CONST           ("email")
+             268 CALL                 (1 positional)
+             276 CALL                 (1 positional)
+             284 LOAD_GLOBAL          (NULL + _clean)
+             294 LOAD_FAST            (sub)
+             296 LOAD_ATTR            (NULL|self + get)
+             316 LOAD_CONST           ("password")
+             318 CALL                 (1 positional)
+             326 CALL                 (1 positional)
+             334 LOAD_CONST           (30)
+             336 LOAD_FAST            (proxy)
+
+1496:         338 LOAD_FAST            (self)
+             340 BUILD_TUPLE          1
+             342 LOAD_CONST           (<Code311 code object <lambda> at 0x105531100, file runtime.py>, line 1496)
+             344 MAKE_FUNCTION
+             346 SET_FUNCTION_ATTRIBUTE 8
+
+1494:         348 LOAD_CONST           (('timeout', 'proxy', 'log_fn'))
+             350 CALL_KW              6
+             352 STORE_FAST           (token)
+
+1498:         354 LOAD_GLOBAL          (NULL + resolve_sub2_group_id)
+
+1499:         364 LOAD_GLOBAL          (NULL + _clean)
+             374 LOAD_FAST            (sub)
+             376 LOAD_ATTR            (NULL|self + get)
+             396 LOAD_CONST           ("url")
+             398 CALL                 (1 positional)
+             406 CALL                 (1 positional)
+             414 LOAD_FAST            (token)
+             416 LOAD_GLOBAL          (NULL + _clean)
+             426 LOAD_FAST            (sub)
+             428 LOAD_ATTR            (NULL|self + get)
+             448 LOAD_CONST           ("group")
+             450 CALL                 (1 positional)
+             458 CALL                 (1 positional)
+             466 LOAD_CONST           (20)
+             468 LOAD_FAST            (proxy)
+
+1500:         470 LOAD_FAST            (self)
+             472 BUILD_TUPLE          1
+             474 LOAD_CONST           (<Code311 code object <lambda> at 0x105531130, file runtime.py>, line 1500)
+             476 MAKE_FUNCTION
+             478 SET_FUNCTION_ATTRIBUTE 8
+
+1498:         480 LOAD_CONST           (('timeout', 'proxy', 'log_fn'))
+             482 CALL_KW              6
+             484 RETURN_VALUE
+
+
+# Method Name:       _task_config
+# Filename:          runtime.py
+# Argument count:    4
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  13
+# Stack size:        13
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1503
+# Constants:
+#    0: None
+#    1: 'sub2api'
+#    2: 'sms_provider'
+#    3: 'proxy'
+#    4: 'sms_mode'
+#    5: 'fixed'
+#    6: 'sms_smart'
+#    7: {'smart', 'fixed'}
+#    8: 'smart'
+#    9: 'enabled'
+#   10: 'email_auth_preference'
+#   11: {'otp', 'auto', 'password'}
+#   12: 'auto'
+#   13: 'codex_chain_mode'
+#   14: 'real'
+#   15: 'codex_node_mode'
+#   16: 'codex_node_runner'
+#   17: 'node_runner'
+#   18: 'codex_node_timeout'
+#   19: 'node_timeout'
+#   20: 45
+#   21: 5
+#   22: 600
+#   23: 'codex_node_retries'
+#   24: 1
+#   25: 'run_chatgpt_signup_phase'
+#   26: False
+#   27: 'reuse_session_url_on_reauthorize'
+#   28: True
+#   29: 'trace_continue'
+#   30: 'email_otp_verify_attempts'
+#   31: 2
+#   32: 'email_otp_resend_on_retry'
+#   33: 'email_code_timeout'
+#   34: 150
+#   35: 30
+#   36: 'email_poll_interval'
+#   37: 60
+#   38: 'email_poll_attempts'
+#   39: 1000
+#   40: 'gptmail'
+#   41: 'gptmail_enabled'
+#   42: 'gptmail_url'
+#   43: 'https://gptmail.passkissyou.online'
+#   44: 'gptmail_keyword'
+#   45: 'code,验证码,verification code,OpenAI,ChatGPT,gpt'
+#   46: 'gptmail_api_key'
+#   47: ('enabled', 'url', 'keyword', 'api_key')
+#   48: 'mailbox_baseline_timeout'
+#   49: 'mailbox_baseline_attempts'
+#   50: 3
+#   51: 'mailbox_baseline_retry_seconds'
+#   52: 0
+#   53: 15
+#   54: 'auto_email_login_concurrency'
+#   55: 20
+#   56: 'provider'
+#   57: 'service'
+#   58: 'dr'
+#   59: 'country'
+#   60: ''
+#   61: 'provider_ids'
+#   62: 'max_price'
+#   63: 'code_timeout'
+#   64: 'sms_timeout'
+#   65: 'phone_max_attempts'
+#   66: 'phone_channels'
+#   67: 'sms'
+#   68: 'phone_retry_sleep_seconds'
+#   69: 'phone_session_cycle_seconds'
+#   70: 'proxy_scope'
+#   71: 'sub2'
+#   72: ('enabled', 'target')
+#   73: 'url'
+#   74: 'email'
+#   75: 'password'
+#   76: 'group'
+#   77: 'proxy_id'
+#   78: ('url', 'email', 'pwd', 'group', 'proxy_id')
+#   79: 'email-import-'
+#   80: ('proxy_scope', 'upload', 'oauth_provider', 'sub2api', 'register', 'run_id', 'openai_device_id', 'browser_fingerprint', 'openai_persona', 'bind_email')
+#   81: 'api_key'
+#   82: 'sms_api_key'
+# Names:
+#    0: isinstance
+#    1: get
+#    2: dict
+#    3: _clean
+#    4: lower
+#    5: copy
+#    6: deepcopy
+#    7: _as_int
+#    8: _as_bool
+#    9: str
+#   10: uuid
+#   11: uuid4
+#   12: _default_openai_persona
+# Varnames:
+#	self, settings, email, task_id, password, sub, provider, proxy, sms_mode, fixed_sms_mode, smart_cfg, email_auth_preference, cfg
+# Positional arguments:
+#	self, settings, email, task_id
+# Local variables:
+#    4: password
+#    5: sub
+#    6: provider
+#    7: proxy
+#    8: sms_mode
+#    9: fixed_sms_mode
+#   10: smart_cfg
+#   11: email_auth_preference
+#   12: cfg
+1503:           0 RESUME               0
+
+1504:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (settings)
+              14 LOAD_ATTR            (NULL|self + get)
+              34 LOAD_CONST           ("sub2api")
+              36 CALL                 (1 positional)
+              44 LOAD_GLOBAL          (dict)
+              54 CALL                 (2 positional)
+              62 TO_BOOL
+              70 POP_JUMP_IF_FALSE    (to 108)
+              74 LOAD_FAST            (settings)
+              76 LOAD_ATTR            (NULL|self + get)
+              96 LOAD_CONST           ("sub2api")
+              98 CALL                 (1 positional)
+             106 JUMP_FORWARD         (to 110)
+         >>  108 BUILD_MAP            0
+         >>  110 STORE_FAST           (sub)
+
+1505:         112 LOAD_GLOBAL          (NULL + _clean)
+             122 LOAD_FAST            (settings)
+             124 LOAD_ATTR            (NULL|self + get)
+             144 LOAD_CONST           ("sms_provider")
+             146 CALL                 (1 positional)
+             154 CALL                 (1 positional)
+             162 LOAD_ATTR            (NULL|self + lower)
+             182 CALL                 (0 positional)
+             190 STORE_FAST           (provider)
+
+1506:         192 LOAD_GLOBAL          (NULL + _clean)
+             202 LOAD_FAST            (settings)
+             204 LOAD_ATTR            (NULL|self + get)
+             224 LOAD_CONST           ("proxy")
+             226 CALL                 (1 positional)
+             234 CALL                 (1 positional)
+             242 STORE_FAST           (proxy)
+
+1507:         244 LOAD_GLOBAL          (NULL + _clean)
+             254 LOAD_FAST            (settings)
+             256 LOAD_ATTR            (NULL|self + get)
+             276 LOAD_CONST           ("sms_mode")
+             278 CALL                 (1 positional)
+             286 CALL                 (1 positional)
+             294 LOAD_ATTR            (NULL|self + lower)
+             314 CALL                 (0 positional)
+             322 STORE_FAST           (sms_mode)
+
+1508:         324 LOAD_FAST            (sms_mode)
+             326 LOAD_CONST           ("fixed")
+             328 COMPARE_OP           (==)
+             332 STORE_FAST           (fixed_sms_mode)
+
+1509:         334 LOAD_GLOBAL          (copy)
+             344 LOAD_ATTR            (deepcopy)
+             364 PUSH_NULL
+             366 LOAD_GLOBAL          (NULL + isinstance)
+             376 LOAD_FAST            (settings)
+             378 LOAD_ATTR            (NULL|self + get)
+             398 LOAD_CONST           ("sms_smart")
+             400 CALL                 (1 positional)
+             408 LOAD_GLOBAL          (dict)
+             418 CALL                 (2 positional)
+             426 TO_BOOL
+             434 POP_JUMP_IF_FALSE    (to 472)
+             438 LOAD_FAST            (settings)
+             440 LOAD_ATTR            (NULL|self + get)
+             460 LOAD_CONST           ("sms_smart")
+             462 CALL                 (1 positional)
+             470 JUMP_FORWARD         (to 474)
+         >>  472 BUILD_MAP            0
+         >>  474 CALL                 (1 positional)
+             482 STORE_FAST           (smart_cfg)
+
+1510:         484 LOAD_FAST            (sms_mode)
+             486 LOAD_CONST           ({'smart', 'fixed'})
+             488 CONTAINS_OP          (in)
+             492 POP_JUMP_IF_FALSE    (to 512)
+
+1511:         496 LOAD_FAST            (sms_mode)
+             498 LOAD_CONST           ("smart")
+             500 COMPARE_OP           (==)
+             504 LOAD_FAST            (smart_cfg)
+             506 LOAD_CONST           ("enabled")
+             508 STORE_SUBSCR
+
+1512:     >>  512 LOAD_GLOBAL          (NULL + _clean)
+             522 LOAD_FAST            (settings)
+             524 LOAD_ATTR            (NULL|self + get)
+             544 LOAD_CONST           ("email_auth_preference")
+             546 CALL                 (1 positional)
+             554 CALL                 (1 positional)
+             562 LOAD_ATTR            (NULL|self + lower)
+             582 CALL                 (0 positional)
+             590 STORE_FAST           (email_auth_preference)
+
+1513:         592 LOAD_FAST            (email_auth_preference)
+             594 LOAD_CONST           ({'otp', 'auto', 'password'})
+             596 CONTAINS_OP          (not in)
+             600 POP_JUMP_IF_FALSE    (to 608)
+
+1514:         604 LOAD_CONST           ("auto")
+             606 STORE_FAST           (email_auth_preference)
+
+1515:     >>  608 BUILD_MAP            0
+
+1516:         610 LOAD_CONST           ("codex_chain_mode")
+             612 LOAD_CONST           ("real")
+
+1515:         614 MAP_ADD              1
+
+1517:         616 LOAD_CONST           ("codex_node_mode")
+             618 LOAD_CONST           ("real")
+
+1515:         620 MAP_ADD              1
+
+1518:         622 LOAD_CONST           ("codex_node_runner")
+             624 LOAD_GLOBAL          (NULL + _clean)
+             634 LOAD_FAST            (settings)
+             636 LOAD_ATTR            (NULL|self + get)
+             656 LOAD_CONST           ("node_runner")
+             658 CALL                 (1 positional)
+             666 CALL                 (1 positional)
+
+1515:         674 MAP_ADD              1
+
+1519:         676 LOAD_CONST           ("codex_node_timeout")
+             678 LOAD_GLOBAL          (NULL + _as_int)
+             688 LOAD_FAST            (settings)
+             690 LOAD_ATTR            (NULL|self + get)
+             710 LOAD_CONST           ("node_timeout")
+             712 CALL                 (1 positional)
+             720 LOAD_CONST           (45)
+             722 LOAD_CONST           (5)
+             724 LOAD_CONST           (600)
+             726 CALL                 (4 positional)
+
+1515:         734 MAP_ADD              1
+
+1520:         736 LOAD_CONST           ("codex_node_retries")
+             738 LOAD_CONST           (1)
+
+1515:         740 MAP_ADD              1
+
+1524:         742 LOAD_CONST           ("run_chatgpt_signup_phase")
+             744 LOAD_CONST           (False)
+
+1515:         746 MAP_ADD              1
+
+1525:         748 LOAD_CONST           ("reuse_session_url_on_reauthorize")
+             750 LOAD_CONST           (True)
+
+1515:         752 MAP_ADD              1
+
+1526:         754 LOAD_CONST           ("trace_continue")
+             756 LOAD_CONST           (False)
+
+1515:         758 MAP_ADD              1
+
+1530:         760 LOAD_CONST           ("email_otp_verify_attempts")
+             762 LOAD_CONST           (2)
+
+1515:         764 MAP_ADD              1
+
+1531:         766 LOAD_CONST           ("email_otp_resend_on_retry")
+             768 LOAD_CONST           (True)
+
+1515:         770 MAP_ADD              1
+
+1532:         772 LOAD_CONST           ("trace_continue")
+             774 LOAD_GLOBAL          (NULL + _as_bool)
+             784 LOAD_FAST            (settings)
+             786 LOAD_ATTR            (NULL|self + get)
+             806 LOAD_CONST           ("trace_continue")
+             808 CALL                 (1 positional)
+             816 LOAD_CONST           (False)
+             818 CALL                 (2 positional)
+
+1515:         826 MAP_ADD              1
+
+1533:         828 LOAD_CONST           ("email_code_timeout")
+             830 LOAD_GLOBAL          (NULL + _as_int)
+             840 LOAD_FAST            (settings)
+             842 LOAD_ATTR            (NULL|self + get)
+             862 LOAD_CONST           ("email_code_timeout")
+             864 CALL                 (1 positional)
+             872 LOAD_CONST           (150)
+             874 LOAD_CONST           (30)
+             876 LOAD_CONST           (600)
+             878 CALL                 (4 positional)
+
+1515:         886 MAP_ADD              1
+
+1534:         888 LOAD_CONST           ("email_poll_interval")
+             890 LOAD_GLOBAL          (NULL + _as_int)
+             900 LOAD_FAST            (settings)
+             902 LOAD_ATTR            (NULL|self + get)
+             922 LOAD_CONST           ("email_poll_interval")
+             924 CALL                 (1 positional)
+             932 LOAD_CONST           (5)
+             934 LOAD_CONST           (1)
+             936 LOAD_CONST           (60)
+             938 CALL                 (4 positional)
+
+1515:         946 MAP_ADD              1
+
+1535:         948 LOAD_CONST           ("email_poll_attempts")
+             950 LOAD_GLOBAL          (NULL + _as_int)
+             960 LOAD_FAST            (settings)
+             962 LOAD_ATTR            (NULL|self + get)
+             982 LOAD_CONST           ("email_poll_attempts")
+             984 CALL                 (1 positional)
+             992 LOAD_CONST           (30)
+             994 LOAD_CONST           (1)
+             996 LOAD_CONST           (1000)
+             998 CALL                 (4 positional)
+
+1515:        1006 MAP_ADD              1
+
+1536:        1008 LOAD_CONST           ("email_auth_preference")
+            1010 LOAD_FAST            (email_auth_preference)
+
+1515:        1012 MAP_ADD              1
+
+1537:        1014 LOAD_CONST           ("gptmail")
+
+1538:        1016 LOAD_GLOBAL          (NULL + _as_bool)
+            1026 LOAD_FAST            (settings)
+            1028 LOAD_ATTR            (NULL|self + get)
+            1048 LOAD_CONST           ("gptmail_enabled")
+            1050 CALL                 (1 positional)
+            1058 LOAD_CONST           (False)
+            1060 CALL                 (2 positional)
+
+1539:        1068 LOAD_GLOBAL          (NULL + _clean)
+            1078 LOAD_FAST            (settings)
+            1080 LOAD_ATTR            (NULL|self + get)
+            1100 LOAD_CONST           ("gptmail_url")
+            1102 CALL                 (1 positional)
+            1110 CALL                 (1 positional)
+            1118 COPY                 1
+            1120 TO_BOOL
+            1128 POP_JUMP_IF_TRUE     (to 1136)
+            1132 POP_TOP
+            1134 LOAD_CONST           ("https://gptmail.passkissyou.online")
+
+1540:     >> 1136 LOAD_GLOBAL          (NULL + _clean)
+            1146 LOAD_FAST            (settings)
+            1148 LOAD_ATTR            (NULL|self + get)
+            1168 LOAD_CONST           ("gptmail_keyword")
+            1170 CALL                 (1 positional)
+            1178 CALL                 (1 positional)
+            1186 COPY                 1
+            1188 TO_BOOL
+            1196 POP_JUMP_IF_TRUE     (to 1204)
+            1200 POP_TOP
+            1202 LOAD_CONST           ("code,验证码,verification code,OpenAI,ChatGPT,gpt")
+
+1541:     >> 1204 LOAD_GLOBAL          (NULL + _clean)
+            1214 LOAD_FAST            (settings)
+            1216 LOAD_ATTR            (NULL|self + get)
+            1236 LOAD_CONST           ("gptmail_api_key")
+            1238 CALL                 (1 positional)
+            1246 CALL                 (1 positional)
+
+1537:        1254 LOAD_CONST           (('enabled', 'url', 'keyword', 'api_key'))
+            1256 BUILD_CONST_KEY_MAP  4
+
+1515:        1258 MAP_ADD              1
+
+1543:        1260 LOAD_CONST           ("mailbox_baseline_timeout")
+            1262 LOAD_GLOBAL          (NULL + _as_int)
+            1272 LOAD_FAST            (settings)
+            1274 LOAD_ATTR            (NULL|self + get)
+            1294 LOAD_CONST           ("mailbox_baseline_timeout")
+            1296 CALL                 (1 positional)
+            1304 LOAD_CONST           (30)
+            1306 LOAD_CONST           (5)
+            1308 LOAD_CONST           (60)
+            1310 CALL                 (4 positional)
+
+1515:        1318 MAP_ADD              1
+            1320 BUILD_MAP            0
+
+1544:        1322 LOAD_CONST           ("mailbox_baseline_attempts")
+            1324 LOAD_GLOBAL          (NULL + _as_int)
+            1334 LOAD_FAST            (settings)
+            1336 LOAD_ATTR            (NULL|self + get)
+            1356 LOAD_CONST           ("mailbox_baseline_attempts")
+            1358 CALL                 (1 positional)
+            1366 LOAD_CONST           (3)
+            1368 LOAD_CONST           (1)
+            1370 LOAD_CONST           (5)
+            1372 CALL                 (4 positional)
+
+1515:        1380 MAP_ADD              1
+
+1545:        1382 LOAD_CONST           ("mailbox_baseline_retry_seconds")
+            1384 LOAD_GLOBAL          (NULL + _as_int)
+            1394 LOAD_FAST            (settings)
+            1396 LOAD_ATTR            (NULL|self + get)
+            1416 LOAD_CONST           ("mailbox_baseline_retry_seconds")
+            1418 CALL                 (1 positional)
+            1426 LOAD_CONST           (2)
+            1428 LOAD_CONST           (0)
+            1430 LOAD_CONST           (15)
+            1432 CALL                 (4 positional)
+
+1515:        1440 MAP_ADD              1
+
+1546:        1442 LOAD_CONST           ("auto_email_login_concurrency")
+            1444 LOAD_GLOBAL          (NULL + _as_int)
+            1454 LOAD_FAST            (settings)
+            1456 LOAD_ATTR            (NULL|self + get)
+            1476 LOAD_CONST           ("auto_email_login_concurrency")
+            1478 CALL                 (1 positional)
+            1486 LOAD_CONST           (1)
+            1488 LOAD_CONST           (1)
+            1490 LOAD_CONST           (20)
+            1492 CALL                 (4 positional)
+
+1515:        1500 MAP_ADD              1
+
+1547:        1502 LOAD_CONST           ("sms_provider")
+            1504 LOAD_FAST            (provider)
+
+1515:        1506 MAP_ADD              1
+
+1548:        1508 LOAD_CONST           ("provider")
+            1510 LOAD_FAST            (provider)
+
+1515:        1512 MAP_ADD              1
+
+1549:        1514 LOAD_CONST           ("sms_mode")
+            1516 LOAD_FAST            (sms_mode)
+            1518 LOAD_CONST           ("fixed")
+            1520 COMPARE_OP           (==)
+            1524 POP_JUMP_IF_FALSE    (to 1532)
+            1528 LOAD_CONST           ("fixed")
+            1530 JUMP_FORWARD         (to 1534)
+         >> 1532 LOAD_CONST           ("smart")
+
+1515:     >> 1534 MAP_ADD              1
+
+1550:        1536 LOAD_CONST           ("service")
+            1538 LOAD_GLOBAL          (NULL + _clean)
+            1548 LOAD_FAST            (settings)
+            1550 LOAD_ATTR            (NULL|self + get)
+            1570 LOAD_CONST           ("service")
+            1572 CALL                 (1 positional)
+            1580 CALL                 (1 positional)
+            1588 COPY                 1
+            1590 TO_BOOL
+            1598 POP_JUMP_IF_TRUE     (to 1606)
+            1602 POP_TOP
+            1604 LOAD_CONST           ("dr")
+
+1515:     >> 1606 MAP_ADD              1
+
+1554:        1608 LOAD_CONST           ("country")
+            1610 LOAD_FAST            (fixed_sms_mode)
+            1612 TO_BOOL
+            1620 POP_JUMP_IF_FALSE    (to 1676)
+            1624 LOAD_GLOBAL          (NULL + _clean)
+            1634 LOAD_FAST            (settings)
+            1636 LOAD_ATTR            (NULL|self + get)
+            1656 LOAD_CONST           ("country")
+            1658 CALL                 (1 positional)
+            1666 CALL                 (1 positional)
+            1674 JUMP_FORWARD         (to 1678)
+         >> 1676 LOAD_CONST           ("")
+
+1515:     >> 1678 MAP_ADD              1
+
+1555:        1680 LOAD_CONST           ("provider_ids")
+            1682 LOAD_FAST            (fixed_sms_mode)
+            1684 TO_BOOL
+            1692 POP_JUMP_IF_FALSE    (to 1748)
+            1696 LOAD_GLOBAL          (NULL + _clean)
+            1706 LOAD_FAST            (settings)
+            1708 LOAD_ATTR            (NULL|self + get)
+            1728 LOAD_CONST           ("provider_ids")
+            1730 CALL                 (1 positional)
+            1738 CALL                 (1 positional)
+            1746 JUMP_FORWARD         (to 1750)
+         >> 1748 LOAD_CONST           ("")
+
+1515:     >> 1750 MAP_ADD              1
+
+1556:        1752 LOAD_CONST           ("max_price")
+            1754 LOAD_GLOBAL          (NULL + _clean)
+            1764 LOAD_FAST            (settings)
+            1766 LOAD_ATTR            (NULL|self + get)
+            1786 LOAD_CONST           ("max_price")
+            1788 CALL                 (1 positional)
+            1796 CALL                 (1 positional)
+
+1515:        1804 MAP_ADD              1
+
+1557:        1806 LOAD_CONST           ("code_timeout")
+            1808 LOAD_GLOBAL          (NULL + _as_int)
+            1818 LOAD_FAST            (settings)
+            1820 LOAD_ATTR            (NULL|self + get)
+            1840 LOAD_CONST           ("sms_timeout")
+            1842 CALL                 (1 positional)
+            1850 LOAD_CONST           (30)
+            1852 LOAD_CONST           (5)
+            1854 LOAD_CONST           (600)
+            1856 CALL                 (4 positional)
+
+1515:        1864 MAP_ADD              1
+
+1558:        1866 LOAD_CONST           ("sms_timeout")
+            1868 LOAD_GLOBAL          (NULL + _as_int)
+            1878 LOAD_FAST            (settings)
+            1880 LOAD_ATTR            (NULL|self + get)
+            1900 LOAD_CONST           ("sms_timeout")
+            1902 CALL                 (1 positional)
+            1910 LOAD_CONST           (30)
+            1912 LOAD_CONST           (5)
+            1914 LOAD_CONST           (600)
+            1916 CALL                 (4 positional)
+
+1515:        1924 MAP_ADD              1
+
+1562:        1926 LOAD_CONST           ("phone_max_attempts")
+            1928 LOAD_CONST           (0)
+
+1515:        1930 MAP_ADD              1
+
+1563:        1932 LOAD_CONST           ("phone_channels")
+            1934 LOAD_CONST           ("sms")
+            1936 BUILD_LIST           1
+
+1515:        1938 MAP_ADD              1
+
+1564:        1940 LOAD_CONST           ("phone_retry_sleep_seconds")
+            1942 LOAD_CONST           (2)
+
+1515:        1944 MAP_ADD              1
+
+1565:        1946 LOAD_CONST           ("phone_session_cycle_seconds")
+            1948 LOAD_CONST           (0)
+
+1515:        1950 MAP_ADD              1
+
+1566:        1952 LOAD_CONST           ("proxy")
+            1954 LOAD_FAST            (proxy)
+
+1515:        1956 MAP_ADD              1
+            1958 DICT_UPDATE          1
+
+1567:        1960 LOAD_GLOBAL          (copy)
+            1970 LOAD_ATTR            (deepcopy)
+            1990 PUSH_NULL
+            1992 LOAD_GLOBAL          (NULL + isinstance)
+            2002 LOAD_FAST            (settings)
+            2004 LOAD_ATTR            (NULL|self + get)
+            2024 LOAD_CONST           ("proxy_scope")
+            2026 CALL                 (1 positional)
+            2034 LOAD_GLOBAL          (dict)
+            2044 CALL                 (2 positional)
+            2052 TO_BOOL
+            2060 POP_JUMP_IF_FALSE    (to 2098)
+            2064 LOAD_FAST            (settings)
+            2066 LOAD_ATTR            (NULL|self + get)
+            2086 LOAD_CONST           ("proxy_scope")
+            2088 CALL                 (1 positional)
+            2096 JUMP_FORWARD         (to 2100)
+         >> 2098 BUILD_MAP            0
+         >> 2100 CALL                 (1 positional)
+
+1568:        2108 LOAD_CONST           (True)
+            2110 LOAD_CONST           ("sub2")
+            2112 LOAD_CONST           (('enabled', 'target'))
+            2114 BUILD_CONST_KEY_MAP  2
+
+1569:        2116 LOAD_CONST           ("sub2")
+
+1571:        2118 LOAD_GLOBAL          (NULL + _clean)
+            2128 LOAD_FAST            (sub)
+            2130 LOAD_ATTR            (NULL|self + get)
+            2150 LOAD_CONST           ("url")
+            2152 CALL                 (1 positional)
+            2160 CALL                 (1 positional)
+            2168 LOAD_GLOBAL          (NULL + _clean)
+            2178 LOAD_FAST            (sub)
+            2180 LOAD_ATTR            (NULL|self + get)
+            2200 LOAD_CONST           ("email")
+            2202 CALL                 (1 positional)
+            2210 CALL                 (1 positional)
+            2218 LOAD_GLOBAL          (NULL + _clean)
+            2228 LOAD_FAST            (sub)
+            2230 LOAD_ATTR            (NULL|self + get)
+            2250 LOAD_CONST           ("password")
+            2252 CALL                 (1 positional)
+            2260 CALL                 (1 positional)
+
+1572:        2268 LOAD_GLOBAL          (NULL + _clean)
+            2278 LOAD_FAST            (sub)
+            2280 LOAD_ATTR            (NULL|self + get)
+            2300 LOAD_CONST           ("group")
+            2302 CALL                 (1 positional)
+            2310 CALL                 (1 positional)
+            2318 LOAD_GLOBAL          (NULL + _clean)
+            2328 LOAD_FAST            (sub)
+            2330 LOAD_ATTR            (NULL|self + get)
+            2350 LOAD_CONST           ("proxy_id")
+            2352 CALL                 (1 positional)
+            2360 CALL                 (1 positional)
+
+1570:        2368 LOAD_CONST           (('url', 'email', 'pwd', 'group', 'proxy_id'))
+            2370 BUILD_CONST_KEY_MAP  5
+
+1574:        2372 LOAD_CONST           ("password")
+            2374 LOAD_GLOBAL          (NULL + _clean)
+            2384 LOAD_FAST            (password)
+            2386 CALL                 (1 positional)
+            2394 BUILD_MAP            1
+
+1575:        2396 LOAD_CONST           ("email-import-")
+            2398 LOAD_FAST            (task_id)
+            2400 FORMAT_SIMPLE
+            2402 BUILD_STRING         2
+
+1576:        2404 LOAD_GLOBAL          (NULL + str)
+            2414 LOAD_GLOBAL          (uuid)
+            2424 LOAD_ATTR            (uuid4)
+            2444 PUSH_NULL
+            2446 CALL                 (0 positional)
+            2454 CALL                 (1 positional)
+
+1577:        2462 LOAD_GLOBAL          (NULL + _default_openai_persona)
+            2472 LOAD_FAST            (proxy)
+            2474 CALL                 (1 positional)
+
+1578:        2482 LOAD_GLOBAL          (NULL + _default_openai_persona)
+            2492 LOAD_FAST            (proxy)
+            2494 CALL                 (1 positional)
+
+1579:        2502 LOAD_FAST            (email)
+
+1515:        2504 LOAD_CONST           (('proxy_scope', 'upload', 'oauth_provider', 'sub2api', 'register', 'run_id', 'openai_device_id', 'browser_fingerprint', 'openai_persona', 'bind_email'))
+            2506 BUILD_CONST_KEY_MAP  10
+            2508 DICT_UPDATE          1
+            2510 STORE_FAST           (cfg)
+
+1581:        2512 LOAD_CONST           ("api_key")
+            2514 LOAD_GLOBAL          (NULL + _clean)
+            2524 LOAD_FAST            (settings)
+            2526 LOAD_ATTR            (NULL|self + get)
+            2546 LOAD_CONST           ("sms_api_key")
+            2548 CALL                 (1 positional)
+            2556 CALL                 (1 positional)
+            2564 BUILD_MAP            1
+            2566 LOAD_FAST_LOAD_FAST  (cfg, provider)
+            2568 STORE_SUBSCR
+
+1582:        2572 LOAD_FAST_LOAD_FAST  (smart_cfg, cfg)
+            2574 LOAD_CONST           ("sms_smart")
+            2576 STORE_SUBSCR
+
+1583:        2580 LOAD_FAST            (cfg)
+            2582 RETURN_VALUE
+
+
+# Method Name:       start
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  16
+# Stack size:        11
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1585
+# Constants:
+#    0: None
+#    1: True
+#    2: ('remote',)
+#    3: 'available'
+#    4: 0
+#    5: '没有可运行的邮箱'
+#    6: 'concurrency'
+#    7: 1
+#    8: 100
+#    9: '已有导入任务正在运行'
+#   10: 'auto_email_login_concurrency'
+#   11: 'node_concurrency'
+#   12: 3
+#   13: 3600
+#   14: ('lease_seconds',)
+#   15: 'T'
+#   16: '03d'
+#   17: '-'
+#   18: 6
+#   19: 'queued'
+#   20: ('status', 'email', 'account', 'source_row', 'ordinal')
+#   21: 'email-auth-import'
+#   22: ('max_workers', 'thread_name_prefix')
+#   23: False
+#   24: ('wait', 'cancel_futures')
+#   25: 'batch_start_failed'
+#   26: ('reason',)
+#   27: 'email-auth-watch'
+#   28: ('target', 'name', 'daemon')
+#   29: '导入任务启动: 可用邮箱 '
+#   30: '，任务并发 '
+#   31: '，Node 并发 '
+#   32: '，邮箱验证码槽 '
+#   33: '；验证码通过后立即释放，号码/SUB2 保持并发'
+#   34: 'success'
+# Names:
+#    0: settings_validation
+#    1: _pool
+#    2: summary
+#    3: int
+#    4: get

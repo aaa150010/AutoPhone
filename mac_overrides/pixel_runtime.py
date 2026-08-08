@@ -24,6 +24,11 @@ import urllib.parse
 import urllib.request
 import uuid
 
+try:
+    from .pixel_batch_summary import build_pixel_batch_summary as _build_pixel_batch_summary
+except ImportError:  # macOS launcher imports overrides as top-level modules.
+    from pixel_batch_summary import build_pixel_batch_summary as _build_pixel_batch_summary
+
 
 DEFAULT_PIXEL_PROXY_BASE_URL = "https://lynote.xyz/gpt-api"
 PIXEL_AUTO_TARGET_IDS = tuple(f"pixel-{index}" for index in range(2, 8))
@@ -1241,6 +1246,7 @@ class PixelUploadQueue:
             "source_count": source_count,
             "batch_source": _clean(record.get("batch_source")) or ("legacy" if source_count == 1 else "run_batch"),
             "batch_id": _safe_identifier(metadata.get("batch_id"), maximum=80),
+            "upload_attempt_id": _safe_identifier(record.get("upload_attempt_id"), maximum=80),
             "batch_started_at": max(_safe_int(metadata.get("batch_started_at")), 0),
             "source_email": _clean(metadata.get("source_email")).lower(),
             "credential_fingerprint": _clean(record.get("credential_fingerprint"))[:16],
@@ -1270,98 +1276,7 @@ class PixelUploadQueue:
         batch_id: str,
         records: list[Mapping[str, Any]],
     ) -> dict[str, Any]:
-        source_total = sum(max(_safe_int(record.get("source_count")), 1) for record in records)
-        source_success = 0
-        source_completed = 0
-        source_processing = 0
-        source_pending = 0
-        source_failed = 0
-        source_needs_confirmation = 0
-        deliveries = {
-            "total": source_total * len(self.target_ids),
-            "success": 0,
-            "pending": 0,
-            "processing": 0,
-            "failed": 0,
-            "needs_confirmation": 0,
-        }
-        updated_at = 0
-        started_at = 0
-
-        for record in records:
-            record_source_count = max(_safe_int(record.get("source_count")), 1)
-            updated_at = max(updated_at, _safe_int(record.get("updated_at")))
-            started_at = max(
-                started_at,
-                _safe_int(record.get("batch_started_at")),
-                _safe_int(record.get("created_at")),
-            )
-            targets = record.get("targets") if isinstance(record.get("targets"), Mapping) else {}
-            categories: list[str] = []
-            for target_id in self.target_ids:
-                target = targets.get(target_id) if isinstance(targets, Mapping) else None
-                if not isinstance(target, Mapping):
-                    category = "pending"
-                else:
-                    state = _clean(target.get("state")).lower() or "pending"
-                    if state == "success":
-                        category = "success"
-                    elif state == "needs_confirmation":
-                        category = "needs_confirmation"
-                    elif state == "importing":
-                        category = "processing"
-                    elif state == "pending" or bool(target.get("retry_requested")):
-                        category = "pending"
-                    else:
-                        category = "failed"
-                categories.append(category)
-                deliveries[category] += record_source_count
-
-            if categories and all(value == "success" for value in categories):
-                source_success += record_source_count
-                source_completed += record_source_count
-            elif "processing" in categories:
-                source_processing += record_source_count
-            elif "pending" in categories:
-                source_pending += record_source_count
-            else:
-                source_completed += record_source_count
-                source_failed += record_source_count
-            if "needs_confirmation" in categories:
-                source_needs_confirmation += record_source_count
-
-        deliveries["completed"] = (
-            deliveries["success"]
-            + deliveries["failed"]
-            + deliveries["needs_confirmation"]
-        )
-        source = {
-            "total": source_total,
-            "completed": source_completed,
-            "success": source_success,
-            "pending": source_pending,
-            "processing": source_processing,
-            "failed": source_failed,
-            "needs_confirmation": source_needs_confirmation,
-        }
-        if source_total and source_success == source_total:
-            status = "success"
-        elif source_pending or source_processing:
-            status = "processing"
-        elif source_success:
-            status = "partial"
-        elif source_total:
-            status = "failed"
-        else:
-            status = "empty"
-        return {
-            "batch_id": batch_id,
-            "batch_started_at": started_at,
-            "updated_at": updated_at,
-            "status": status,
-            "source": source,
-            "deliveries": deliveries,
-        }
+        return _build_pixel_batch_summary(batch_id, records, self.target_ids)
 
     def _batch_summaries_locked(self) -> list[dict[str, Any]]:
         grouped: dict[str, list[Mapping[str, Any]]] = {}
@@ -1531,6 +1446,7 @@ class PixelUploadQueue:
         *,
         batch_id: Any = "",
         batch_source: str = "run_batch",
+        upload_attempt_id: Any = "",
     ) -> dict[str, Any]:
         normalized: list[tuple[str, str]] = []
         for task_id, result_file in sources:
@@ -1544,6 +1460,7 @@ class PixelUploadQueue:
             raise PixelStateError("单个 Pixel 批量上传不能超过 100 个账号", 400)
         task_ids = [item[0] for item in normalized]
         result_files = [item[1] for item in normalized]
+        attempt_id = _safe_identifier(upload_attempt_id, maximum=80)
         now = self._timestamp()
         source_error = ""
         fingerprint = ""
@@ -1562,6 +1479,10 @@ class PixelUploadQueue:
             except PixelStateError:
                 existing = None
             if existing is not None:
+                if attempt_id and existing.get("upload_attempt_id") != attempt_id:
+                    existing["upload_attempt_id"] = attempt_id
+                    existing["updated_at"] = now
+                    self._save_locked()
                 return self._public_record(existing)
             targets = {target: self._initial_target(target, now) for target in self.target_ids}
             if source_error:
@@ -1581,6 +1502,7 @@ class PixelUploadQueue:
                 "source_count": len(result_files),
                 "batch_source": _clean(batch_source)[:40] or "run_batch",
                 "batch_id": _safe_identifier(batch_id, maximum=80) or source_metadata.get("batch_id") or "",
+                "upload_attempt_id": attempt_id,
                 "batch_started_at": source_metadata.get("batch_started_at") or 0,
                 "source_email": source_metadata.get("source_email") or "",
                 "result_file": result_files[0],
@@ -1610,6 +1532,8 @@ class PixelUploadQueue:
         self,
         batch_id: Any,
         sources: Iterable[Mapping[str, Any] | tuple[Any, str | Path]],
+        *,
+        upload_attempt_id: Any = "",
     ) -> list[dict[str, Any]]:
         """Group successful result files by email domain and queue 100 at a time."""
         grouped: dict[str, list[tuple[str, str]]] = {}
@@ -1639,6 +1563,7 @@ class PixelUploadQueue:
                 [source],
                 batch_id=batch_id,
                 batch_source="run_batch",
+                upload_attempt_id=upload_attempt_id,
             )
             for source in rejected
         ]
@@ -1650,6 +1575,7 @@ class PixelUploadQueue:
                         rows[offset:offset + 100],
                         batch_id=batch_id,
                         batch_source="run_batch",
+                        upload_attempt_id=upload_attempt_id,
                     )
                 )
         return records
@@ -1673,7 +1599,13 @@ class PixelUploadQueue:
         self._schedule(identifier)
         return public
 
-    def retry(self, record_id: str, target_ids: Iterable[Any] | None = None) -> dict[str, Any]:
+    def retry(
+        self,
+        record_id: str,
+        target_ids: Iterable[Any] | None = None,
+        *,
+        upload_attempt_id: Any = "",
+    ) -> dict[str, Any]:
         identifier = _clean(record_id)
         with self._lock:
             record = self._record_locked(identifier)
@@ -1703,6 +1635,8 @@ class PixelUploadQueue:
                 raise PixelStateError("所选 Pixel 目标不可重试", 409)
             record["status"] = "queued"
             record["error"] = ""
+            if upload_attempt_id:
+                record["upload_attempt_id"] = _safe_identifier(upload_attempt_id, maximum=80)
             record["updated_at"] = now
             self._save_locked()
             public = self._public_record(record)
@@ -2759,7 +2693,15 @@ class PixelUploadQueue:
             record["updated_at"] = self._timestamp()
             self._save_locked()
             status = record["status"]
-        self._emit(f"Pixel 上传记录 {record_id} 状态: {status}", "success" if status == "success" else "warn")
+            attempt_id = _safe_identifier(record.get("upload_attempt_id"), maximum=80)
+        if status == "success":
+            attempt = f"，上传尝试 {attempt_id}" if attempt_id else ""
+            self._emit(
+                f"[Pixel 上传确认/pixel_upload_confirmed] 远端导入、共享与回查已确认并持久化，记录 {record_id}{attempt}",
+                "success",
+            )
+        else:
+            self._emit(f"Pixel 上传记录 {record_id} 状态: {status}", "warn")
 
 
 __all__ = [

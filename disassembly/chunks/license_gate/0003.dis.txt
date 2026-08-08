@@ -1,0 +1,800 @@
+              66 LOAD_CONST           (<Code311 code object <genexpr> at 0x1056fe610, file license_gate.py>, line 189)
+              68 MAKE_FUNCTION
+              70 LOAD_GLOBAL          (NULL + sorted)
+              80 LOAD_FAST            (parts)
+              82 LOAD_ATTR            (NULL|self + items)
+             102 CALL                 (0 positional)
+             110 CALL                 (1 positional)
+             118 GET_ITER
+             120 CALL                 (0 positional)
+             128 CALL                 (1 positional)
+             136 STORE_FAST           (combined)
+
+190:         138 LOAD_GLOBAL          (hashlib)
+             148 LOAD_ATTR            (sha256)
+             168 PUSH_NULL
+             170 LOAD_GLOBAL          (PRODUCT)
+             180 LOAD_CONST           ("|license-v1|")
+             182 BINARY_OP            (+)
+             186 LOAD_FAST            (combined)
+             188 BINARY_OP            (+)
+             192 LOAD_ATTR            (NULL|self + encode)
+             212 LOAD_CONST           ("utf-8")
+             214 CALL                 (1 positional)
+             222 CALL                 (1 positional)
+             230 LOAD_ATTR            (NULL|self + hexdigest)
+             250 CALL                 (0 positional)
+             258 RETURN_VALUE
+
+
+# Method Name:       fingerprint_hash
+# Filename:          license_gate.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        193
+# Constants:
+#    0: None
+# Names:
+#    0: _fingerprint_hash_from_parts
+#    1: _fingerprint_parts
+193:           0 RESUME               0
+
+194:           2 LOAD_GLOBAL          (NULL + _fingerprint_hash_from_parts)
+              12 LOAD_GLOBAL          (NULL + _fingerprint_parts)
+              22 CALL                 (0 positional)
+              30 CALL                 (1 positional)
+              38 RETURN_VALUE
+
+
+# Method Name:       _candidate_fingerprint_hashes
+# Filename:          license_gate.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        197
+# Constants:
+#    0: None
+# Names:
+#    0: _fingerprint_parts
+#    1: _legacy_fingerprint_parts
+#    2: _fingerprint_hash_from_parts
+#    3: append
+# Varnames:
+#	values, parts, fp
+# Local variables:
+#    0: values
+#    1: parts
+#    2: fp
+197:           0 RESUME               0
+
+198:           2 BUILD_LIST           0
+               4 STORE_FAST           (values)
+
+199:           6 LOAD_GLOBAL          (NULL + _fingerprint_parts)
+              16 CALL                 (0 positional)
+              24 LOAD_GLOBAL          (NULL + _legacy_fingerprint_parts)
+              34 CALL                 (0 positional)
+              42 BUILD_TUPLE          2
+              44 GET_ITER
+              46 FOR_ITER             (to 126)
+              50 STORE_FAST           (parts)
+
+200:          52 LOAD_GLOBAL          (NULL + _fingerprint_hash_from_parts)
+              62 LOAD_FAST            (parts)
+              64 CALL                 (1 positional)
+              72 STORE_FAST           (fp)
+
+201:          74 LOAD_FAST_LOAD_FAST  (fp, values)
+              76 CONTAINS_OP          (not in)
+              80 POP_JUMP_IF_TRUE     (to 88)
+              84 JUMP_BACKWARD        (to 46)
+
+202:     >>   88 LOAD_FAST            (values)
+              90 LOAD_ATTR            (NULL|self + append)
+             110 LOAD_FAST            (fp)
+             112 CALL                 (1 positional)
+             120 POP_TOP
+             122 JUMP_BACKWARD        (to 46)
+
+199:     >>  126 END_FOR
+             128 POP_TOP
+
+203:     >>  130 LOAD_FAST            (values)
+             132 RETURN_VALUE
+
+
+# Method Name:       _machine_code_from_fingerprint
+# Filename:          license_gate.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        206
+# Constants:
+#    0: None
+#    1: 13
+#    2: 'ascii'
+#    3: '='
+#    4: 0
+#    5: 20
+#    6: 4
+#    7: 'NR-'
+#    8: '-'
+# Names:
+#    0: bytes
+#    1: fromhex
+#    2: base64
+#    3: b32encode
+#    4: decode
+#    5: rstrip
+#    6: range
+#    7: join
+# Varnames:
+#	fp, digest, code, i, groups
+# Positional arguments:
+#	fp
+# Local variables:
+#    1: digest
+#    2: code
+#    3: i
+#    4: groups
+206:           0 RESUME               0
+
+207:           2 LOAD_GLOBAL          (bytes)
+              12 LOAD_ATTR            (NULL|self + fromhex)
+              32 LOAD_FAST            (fp)
+              34 CALL                 (1 positional)
+              42 STORE_FAST           (digest)
+
+208:          44 LOAD_GLOBAL          (base64)
+              54 LOAD_ATTR            (b32encode)
+              74 PUSH_NULL
+              76 LOAD_FAST            (digest)
+              78 LOAD_CONST           (None)
+              80 LOAD_CONST           (13)
+              82 BINARY_SLICE
+              84 CALL                 (1 positional)
+              92 LOAD_ATTR            (NULL|self + decode)
+             112 LOAD_CONST           ("ascii")
+             114 CALL                 (1 positional)
+             122 LOAD_ATTR            (NULL|self + rstrip)
+             142 LOAD_CONST           ("=")
+             144 CALL                 (1 positional)
+             152 STORE_FAST           (code)
+
+209:         154 LOAD_GLOBAL          (NULL + range)
+             164 LOAD_CONST           (0)
+             166 LOAD_CONST           (20)
+             168 LOAD_CONST           (4)
+             170 CALL                 (3 positional)
+             178 GET_ITER
+             180 LOAD_FAST_AND_CLEAR  (i)
+             182 SWAP                 (TOS <-> TOS1)
+             184 BUILD_LIST           0
+             186 SWAP                 (TOS <-> TOS1)
+             188 GET_ITER
+             190 FOR_ITER             (to 212)
+             194 STORE_FAST_LOAD_FAST (i, code)
+             196 LOAD_FAST_LOAD_FAST  (i, i)
+             198 LOAD_CONST           (4)
+             200 BINARY_OP            (+)
+             204 BINARY_SLICE
+             206 LIST_APPEND          2
+             208 JUMP_BACKWARD        (to 190)
+         >>  212 END_FOR
+             214 POP_TOP
+             216 STORE_FAST           (groups)
+             218 STORE_FAST           (i)
+
+210:         220 LOAD_CONST           ("NR-")
+             222 LOAD_CONST           ("-")
+             224 LOAD_ATTR            (NULL|self + join)
+             244 LOAD_FAST            (groups)
+             246 CALL                 (1 positional)
+             254 BINARY_OP            (+)
+             258 RETURN_VALUE
+         >>  260 SWAP                 (TOS <-> TOS1)
+             262 POP_TOP
+
+209:         264 SWAP                 (TOS <-> TOS1)
+             266 STORE_FAST           (i)
+             268 RERAISE              0
+
+ExceptionTable:
+  184 to 214 -> 260 [2]
+
+# Method Name:       machine_code
+# Filename:          license_gate.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        213
+# Constants:
+#    0: None
+# Names:
+#    0: _machine_code_from_fingerprint
+#    1: fingerprint_hash
+213:           0 RESUME               0
+
+214:           2 LOAD_GLOBAL          (NULL + _machine_code_from_fingerprint)
+              12 LOAD_GLOBAL          (NULL + fingerprint_hash)
+              22 CALL                 (0 positional)
+              30 CALL                 (1 positional)
+              38 RETURN_VALUE
+
+
+# Method Name:       license_paths
+# Filename:          license_gate.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        217
+# Constants:
+#    0: None
+#    1: 'license.key'
+#    2: 'data'
+# Names:
+#    0: app_root
+# Varnames:
+#	root
+# Local variables:
+#    0: root
+217:           0 RESUME               0
+
+218:           2 LOAD_GLOBAL          (NULL + app_root)
+              12 CALL                 (0 positional)
+              20 STORE_FAST           (root)
+
+219:          22 LOAD_FAST            (root)
+              24 LOAD_CONST           ("license.key")
+              26 BINARY_OP            (/)
+              30 LOAD_FAST            (root)
+              32 LOAD_CONST           ("data")
+              34 BINARY_OP            (/)
+              38 LOAD_CONST           ("license.key")
+              40 BINARY_OP            (/)
+              44 BUILD_LIST           2
+              46 RETURN_VALUE
+
+
+# Method Name:       _canonical_payload
+# Filename:          license_gate.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        222
+# Constants:
+#    0: None
+#    1: 'signature'
+#    2: False
+#    3: True
+#    4: (',', ':')
+#    5: ('ensure_ascii', 'sort_keys', 'separators')
+#    6: 'utf-8'
+# Names:
+#    0: items
+#    1: json
+#    2: dumps
+#    3: encode
+# Varnames:
+#	payload, k, v, clean
+# Positional arguments:
+#	payload
+# Local variables:
+#    1: k
+#    2: v
+#    3: clean
+222:           0 RESUME               0
+
+223:           2 LOAD_FAST            (payload)
+               4 LOAD_ATTR            (NULL|self + items)
+              24 CALL                 (0 positional)
+              32 GET_ITER
+              34 LOAD_FAST_AND_CLEAR  (k)
+              36 LOAD_FAST_AND_CLEAR  (v)
+              38 SWAP                 (TOS <-> TOS2)
+              40 BUILD_MAP            0
+              42 SWAP                 (TOS <-> TOS1)
+              44 GET_ITER
+              46 FOR_ITER             (to 80)
+              50 UNPACK_SEQUENCE      2
+              54 STORE_FAST_STORE_FAST (k, v)
+              56 LOAD_FAST            (k)
+              58 LOAD_CONST           ("signature")
+              60 COMPARE_OP           (!=)
+              64 POP_JUMP_IF_TRUE     (to 72)
+              68 JUMP_BACKWARD        (to 46)
+         >>   72 LOAD_FAST_LOAD_FAST  (k, v)
+              74 MAP_ADD              2
+              76 JUMP_BACKWARD        (to 46)
+         >>   80 END_FOR
+              82 POP_TOP
+              84 STORE_FAST           (clean)
+              86 STORE_FAST           (k)
+              88 STORE_FAST           (v)
+
+224:          90 LOAD_GLOBAL          (json)
+             100 LOAD_ATTR            (dumps)
+             120 PUSH_NULL
+             122 LOAD_FAST            (clean)
+             124 LOAD_CONST           (False)
+             126 LOAD_CONST           (True)
+             128 LOAD_CONST           ((',', ':'))
+             130 LOAD_CONST           (('ensure_ascii', 'sort_keys', 'separators'))
+             132 CALL_KW              4
+             134 LOAD_ATTR            (NULL|self + encode)
+             154 LOAD_CONST           ("utf-8")
+             156 CALL                 (1 positional)
+             164 RETURN_VALUE
+         >>  166 SWAP                 (TOS <-> TOS1)
+             168 POP_TOP
+
+223:         170 SWAP                 (TOS <-> TOS2)
+             172 STORE_FAST           (v)
+             174 STORE_FAST           (k)
+             176 RERAISE              0
+
+ExceptionTable:
+  40 to 62 -> 166 [3]
+  72 to 82 -> 166 [3]
+
+# Method Name:       _read_license
+# Filename:          license_gate.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        227
+# Constants:
+#    0: None
+#    1: 'utf-8-sig'
+#    2: ('encoding',)
+#    3: ''
+#    4: 'license_parse_failed: '
+#    5: 'license_missing'
+# Names:
+#    0: license_paths
+#    1: exists
+#    2: json
+#    3: loads
+#    4: read_text
+#    5: isinstance
+#    6: dict
+#    7: Exception
+# Varnames:
+#	path, data, exc
+# Local variables:
+#    0: path
+#    1: data
+#    2: exc
+227:           0 RESUME               0
+
+228:           2 LOAD_GLOBAL          (NULL + license_paths)
+              12 CALL                 (0 positional)
+              20 GET_ITER
+              22 FOR_ITER             (to 204)
+              26 STORE_FAST           (path)
+
+229:          28 LOAD_FAST            (path)
+              30 LOAD_ATTR            (NULL|self + exists)
+              50 CALL                 (0 positional)
+              58 TO_BOOL
+              66 POP_JUMP_IF_TRUE     (to 74)
+
+230:          70 JUMP_BACKWARD        (to 22)
+
+231:     >>   74 NOP
+
+232:          76 LOAD_GLOBAL          (json)
+              86 LOAD_ATTR            (loads)
+             106 PUSH_NULL
+             108 LOAD_FAST            (path)
+             110 LOAD_ATTR            (NULL|self + read_text)
+             130 LOAD_CONST           ("utf-8-sig")
+             132 LOAD_CONST           (('encoding',))
+             134 CALL_KW              1
+             136 CALL                 (1 positional)
+             144 STORE_FAST           (data)
+
+233:         146 LOAD_GLOBAL          (NULL + isinstance)
+             156 LOAD_FAST            (data)
+             158 LOAD_GLOBAL          (dict)
+             168 CALL                 (2 positional)
+             176 TO_BOOL
+             184 POP_JUMP_IF_FALSE    (to 200)
+
+234:         188 LOAD_FAST_LOAD_FAST  (data, path)
+             190 LOAD_CONST           ("")
+             192 BUILD_TUPLE          3
+             194 SWAP                 (TOS <-> TOS1)
+             196 POP_TOP
+             198 RETURN_VALUE
+
+233:     >>  200 JUMP_BACKWARD        (to 22)
+
+228:     >>  204 END_FOR
+             206 POP_TOP
+
+237:         208 BUILD_MAP            0
+             210 LOAD_CONST           (None)
+             212 LOAD_CONST           ("license_missing")
+             214 BUILD_TUPLE          3
+             216 RETURN_VALUE
+         >>  218 PUSH_EXC_INFO
+
+235:         220 LOAD_GLOBAL          (Exception)
+             230 CHECK_EXC_MATCH
+             232 POP_JUMP_IF_FALSE    (to 276)
+             236 STORE_FAST           (exc)
+
+236:         238 BUILD_MAP            0
+             240 LOAD_FAST            (path)
+             242 LOAD_CONST           ("license_parse_failed: ")
+             244 LOAD_FAST            (exc)
+             246 FORMAT_SIMPLE
+             248 BUILD_STRING         2
+             250 BUILD_TUPLE          3
+             252 SWAP                 (TOS <-> TOS1)
+             254 POP_EXCEPT
+             256 LOAD_CONST           (None)
+             258 STORE_FAST           (exc)
+             260 DELETE_FAST          (exc)
+             262 SWAP                 (TOS <-> TOS1)
+             264 POP_TOP
+             266 RETURN_VALUE
+         >>  268 LOAD_CONST           (None)
+             270 STORE_FAST           (exc)
+             272 DELETE_FAST          (exc)
+             274 RERAISE              1
+
+235:     >>  276 RERAISE              0
+         >>  278 COPY                 3
+             280 POP_EXCEPT
+             282 RERAISE              1
+
+ExceptionTable:
+  76 to 192 -> 218 [1]
+  218 to 236 -> 278 [2] lasti
+  238 to 250 -> 268 [2] lasti
+  252 to 252 -> 278 [2] lasti
+  268 to 276 -> 278 [2] lasti
+
+# Method Name:       license_code_from_payload
+# Filename:          license_gate.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        240
+# Constants:
+#    0: None
+#    1: False
+#    2: True
+#    3: (',', ':')
+#    4: ('ensure_ascii', 'sort_keys', 'separators')
+#    5: 'utf-8'
+#    6: 'NRLIC-'
+# Names:
+#    0: json
+#    1: dumps
+#    2: encode
+#    3: _b64encode
+# Varnames:
+#	payload, raw
+# Positional arguments:
+#	payload
+# Local variables:
+#    1: raw
+240:           0 RESUME               0
+
+241:           2 LOAD_GLOBAL          (json)
+              12 LOAD_ATTR            (dumps)
+              32 PUSH_NULL
+              34 LOAD_FAST            (payload)
+              36 LOAD_CONST           (False)
+              38 LOAD_CONST           (True)
+              40 LOAD_CONST           ((',', ':'))
+              42 LOAD_CONST           (('ensure_ascii', 'sort_keys', 'separators'))
+              44 CALL_KW              4
+              46 LOAD_ATTR            (NULL|self + encode)
+              66 LOAD_CONST           ("utf-8")
+              68 CALL                 (1 positional)
+              76 STORE_FAST           (raw)
+
+242:          78 LOAD_CONST           ("NRLIC-")
+              80 LOAD_GLOBAL          (NULL + _b64encode)
+              90 LOAD_FAST            (raw)
+              92 CALL                 (1 positional)
+             100 BINARY_OP            (+)
+             104 RETURN_VALUE
+
+
+# Method Name:       payload_from_license_code
+# Filename:          license_gate.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        245
+# Constants:
+#    0: None
+#    1: ''
+#    2: 'NRLIC-'
+#    3: 6
+#    4: 'utf-8-sig'
+#    5: 'license_code_not_object'
+# Names:
+#    0: str
+#    1: strip
+#    2: upper
+#    3: startswith
+#    4: _b64decode
+#    5: json
+#    6: loads
+#    7: decode
+#    8: isinstance
+#    9: dict
+#   10: ValueError
+# Varnames:
+#	value, text, raw, data
+# Positional arguments:
+#	value
+# Local variables:
+#    1: text
+#    2: raw
+#    3: data
+245:           0 RESUME               0
+
+246:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (value)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + strip)
+              60 CALL                 (0 positional)
+              68 STORE_FAST           (text)
+
+247:          70 LOAD_FAST            (text)
+              72 LOAD_ATTR            (NULL|self + upper)
+              92 CALL                 (0 positional)
+             100 LOAD_ATTR            (NULL|self + startswith)
+             120 LOAD_CONST           ("NRLIC-")
+             122 CALL                 (1 positional)
+             130 TO_BOOL
+             138 POP_JUMP_IF_FALSE    (to 152)
+
+248:         142 LOAD_FAST            (text)
+             144 LOAD_CONST           (6)
+             146 LOAD_CONST           (None)
+             148 BINARY_SLICE
+             150 STORE_FAST           (text)
+
+249:     >>  152 LOAD_GLOBAL          (NULL + _b64decode)
+             162 LOAD_FAST            (text)
+             164 CALL                 (1 positional)
+             172 STORE_FAST           (raw)
+
+250:         174 LOAD_GLOBAL          (json)
+             184 LOAD_ATTR            (loads)
+             204 PUSH_NULL
+             206 LOAD_FAST            (raw)
+             208 LOAD_ATTR            (NULL|self + decode)
+             228 LOAD_CONST           ("utf-8-sig")
+             230 CALL                 (1 positional)
+             238 CALL                 (1 positional)
+             246 STORE_FAST           (data)
+
+251:         248 LOAD_GLOBAL          (NULL + isinstance)
+             258 LOAD_FAST            (data)
+             260 LOAD_GLOBAL          (dict)
+             270 CALL                 (2 positional)
+             278 TO_BOOL
+             286 POP_JUMP_IF_TRUE     (to 312)
+
+252:         290 LOAD_GLOBAL          (NULL + ValueError)
+             300 LOAD_CONST           ("license_code_not_object")
+             302 CALL                 (1 positional)
+             310 RAISE_VARARGS        (exception instance)
+
+253:     >>  312 LOAD_FAST            (data)
+             314 RETURN_VALUE
+
+
+# Method Name:       parse_license_input
+# Filename:          license_gate.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        256
+# Constants:
+#    0: None
+#    1: ''
+#    2: '"'
+#    3: "'"
+#    4: 'empty_license_input'
+#    5: 'utf-8-sig'
+#    6: ('encoding',)
+#    7: 'license_file_not_object'
+#    8: 'NRLIC-'
+#    9: '{'
+#   10: 'license_json_not_object'
+#   11: 'unsupported_license_input'
+# Names:
+#    0: str
+#    1: strip
+#    2: ValueError
+#    3: Path
+#    4: expanduser
+#    5: exists
+#    6: is_file
+#    7: json
+#    8: loads
+#    9: read_text
+#   10: isinstance
+#   11: dict
+#   12: upper
+#   13: startswith
+#   14: payload_from_license_code
+# Varnames:
+#	value, text, possible_path, data
+# Positional arguments:
+#	value
+# Local variables:
+#    1: text
+#    2: possible_path
+#    3: data
+256:           0 RESUME               0
+
+257:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (value)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + strip)
+              60 CALL                 (0 positional)
+              68 LOAD_ATTR            (NULL|self + strip)
+              88 LOAD_CONST           ('"')
+              90 CALL                 (1 positional)
+              98 LOAD_ATTR            (NULL|self + strip)
+             118 LOAD_CONST           ("'")
+             120 CALL                 (1 positional)
+             128 STORE_FAST           (text)
+
+258:         130 LOAD_FAST            (text)
+             132 TO_BOOL
+             140 POP_JUMP_IF_TRUE     (to 166)
+
+259:         144 LOAD_GLOBAL          (NULL + ValueError)
+             154 LOAD_CONST           ("empty_license_input")
+             156 CALL                 (1 positional)
+             164 RAISE_VARARGS        (exception instance)
+
+260:     >>  166 LOAD_GLOBAL          (NULL + Path)
+             176 LOAD_FAST            (text)
+             178 CALL                 (1 positional)
+             186 LOAD_ATTR            (NULL|self + expanduser)
+             206 CALL                 (0 positional)
+             214 STORE_FAST           (possible_path)
+
+261:         216 LOAD_FAST            (possible_path)
+             218 LOAD_ATTR            (NULL|self + exists)
+             238 CALL                 (0 positional)
+             246 TO_BOOL
+             254 POP_JUMP_IF_FALSE    (to 438)
+             258 LOAD_FAST            (possible_path)
+             260 LOAD_ATTR            (NULL|self + is_file)
+             280 CALL                 (0 positional)
+             288 TO_BOOL
+             296 POP_JUMP_IF_FALSE    (to 438)
+
+262:         300 LOAD_GLOBAL          (json)
+             310 LOAD_ATTR            (loads)
+             330 PUSH_NULL
+             332 LOAD_FAST            (possible_path)
+             334 LOAD_ATTR            (NULL|self + read_text)
+             354 LOAD_CONST           ("utf-8-sig")
+             356 LOAD_CONST           (('encoding',))
+             358 CALL_KW              1
+             360 CALL                 (1 positional)
+             368 STORE_FAST           (data)
+
+263:         370 LOAD_GLOBAL          (NULL + isinstance)
+             380 LOAD_FAST            (data)
+             382 LOAD_GLOBAL          (dict)
+             392 CALL                 (2 positional)
+             400 TO_BOOL
+             408 POP_JUMP_IF_TRUE     (to 434)
+
+264:         412 LOAD_GLOBAL          (NULL + ValueError)
+             422 LOAD_CONST           ("license_file_not_object")
+             424 CALL                 (1 positional)
+             432 RAISE_VARARGS        (exception instance)
+
+265:     >>  434 LOAD_FAST            (data)
+             436 RETURN_VALUE
+
+266:     >>  438 LOAD_FAST            (text)
+             440 LOAD_ATTR            (NULL|self + upper)
+             460 CALL                 (0 positional)
+             468 LOAD_ATTR            (NULL|self + startswith)
+             488 LOAD_CONST           ("NRLIC-")
+             490 CALL                 (1 positional)
+             498 TO_BOOL
+             506 POP_JUMP_IF_FALSE    (to 532)
+
+267:         510 LOAD_GLOBAL          (NULL + payload_from_license_code)
+             520 LOAD_FAST            (text)
+             522 CALL                 (1 positional)
+             530 RETURN_VALUE
+
+268:     >>  532 LOAD_FAST            (text)
+             534 LOAD_ATTR            (NULL|self + startswith)
+             554 LOAD_CONST           ("{")
+             556 CALL                 (1 positional)
+             564 TO_BOOL
+             572 POP_JUMP_IF_FALSE    (to 688)
+
+269:         576 LOAD_GLOBAL          (json)
+             586 LOAD_ATTR            (loads)
+             606 PUSH_NULL
+             608 LOAD_FAST            (text)
+             610 CALL                 (1 positional)
+             618 STORE_FAST           (data)
+
+270:         620 LOAD_GLOBAL          (NULL + isinstance)
+             630 LOAD_FAST            (data)
+             632 LOAD_GLOBAL          (dict)
+             642 CALL                 (2 positional)
+             650 TO_BOOL
+             658 POP_JUMP_IF_TRUE     (to 684)
+
+271:         662 LOAD_GLOBAL          (NULL + ValueError)
+             672 LOAD_CONST           ("license_json_not_object")
+             674 CALL                 (1 positional)
+             682 RAISE_VARARGS        (exception instance)
+
+272:     >>  684 LOAD_FAST            (data)
+             686 RETURN_VALUE
+
+273:     >>  688 LOAD_GLOBAL          (NULL + ValueError)
+             698 LOAD_CONST           ("unsupported_license_input")
+             700 CALL                 (1 positional)
+             708 RAISE_VARARGS        (exception instance)
+
+
+# Method Name:       verify_license
+# Filename:          license_gate.py
+# Argument count:    1

@@ -1,0 +1,800 @@
+             534 LOAD_ATTR            (NULL|self + _cfg)
+             554 CALL                 (0 positional)
+             562 STORE_FAST           (cfg)
+
+424:         564 LOAD_FAST            (self)
+             566 LOAD_ATTR            (NULL|self + _float)
+             586 LOAD_FAST            (self)
+             588 LOAD_ATTR            (config)
+             608 LOAD_ATTR            (NULL|self + get)
+             628 LOAD_CONST           ("max_price")
+             630 CALL                 (1 positional)
+             638 LOAD_CONST           (0.0)
+             640 CALL                 (2 positional)
+             648 STORE_FAST           (max_price)
+
+425:         650 LOAD_FAST            (max_price)
+             652 LOAD_CONST           (0)
+             654 COMPARE_OP           (>)
+             658 POP_JUMP_IF_FALSE    (to 674)
+             662 LOAD_FAST_LOAD_FAST  (price, max_price)
+             664 COMPARE_OP           (>)
+             668 POP_JUMP_IF_FALSE    (to 674)
+
+426:         672 RETURN_CONST         (None)
+
+428:     >>  674 LOAD_GLOBAL          (NULL + set)
+             684 LOAD_FAST            (self)
+             686 LOAD_ATTR            (NULL|self + _clean_list)
+             706 LOAD_FAST            (self)
+             708 LOAD_ATTR            (config)
+             728 LOAD_ATTR            (NULL|self + get)
+             748 LOAD_CONST           ("provider_ids")
+             750 CALL                 (1 positional)
+             758 CALL                 (1 positional)
+             766 CALL                 (1 positional)
+             774 STORE_FAST           (selected)
+
+429:         776 LOAD_FAST            (selected)
+             778 TO_BOOL
+             786 POP_JUMP_IF_FALSE    (to 802)
+             790 LOAD_FAST_LOAD_FAST  (provider_id, selected)
+             792 CONTAINS_OP          (not in)
+             796 POP_JUMP_IF_FALSE    (to 802)
+
+430:         800 RETURN_CONST         (None)
+
+432:     >>  802 LOAD_FAST_LOAD_FAST  (country, provider_id)
+             804 BUILD_TUPLE          2
+             806 STORE_FAST           (key)
+
+433:         808 LOAD_FAST            (self)
+             810 LOAD_ATTR            (stats)
+             830 LOAD_ATTR            (NULL|self + setdefault)
+             850 LOAD_FAST            (key)
+             852 LOAD_CONST           (0)
+             854 LOAD_CONST           (0)
+             856 LOAD_CONST           (0)
+             858 LOAD_CONST           (0)
+             860 LOAD_CONST           (('success', 'fail', 'timeout', 'no_numbers'))
+             862 BUILD_CONST_KEY_MAP  4
+             864 CALL                 (2 positional)
+             872 STORE_FAST           (stat)
+
+434:         874 LOAD_FAST            (self)
+             876 LOAD_ATTR            (NULL|self + _int)
+             896 LOAD_FAST            (stat)
+             898 LOAD_ATTR            (NULL|self + get)
+             918 LOAD_CONST           ("success")
+             920 CALL                 (1 positional)
+             928 LOAD_CONST           (0)
+             930 CALL                 (2 positional)
+             938 STORE_FAST           (success)
+
+435:         940 LOAD_FAST            (self)
+             942 LOAD_ATTR            (NULL|self + _int)
+             962 LOAD_FAST            (stat)
+             964 LOAD_ATTR            (NULL|self + get)
+             984 LOAD_CONST           ("fail")
+             986 CALL                 (1 positional)
+             994 LOAD_CONST           (0)
+             996 CALL                 (2 positional)
+            1004 STORE_FAST           (fail)
+
+436:        1006 LOAD_FAST            (self)
+            1008 LOAD_ATTR            (NULL|self + _int)
+            1028 LOAD_FAST            (stat)
+            1030 LOAD_ATTR            (NULL|self + get)
+            1050 LOAD_CONST           ("timeout")
+            1052 CALL                 (1 positional)
+            1060 LOAD_CONST           (0)
+            1062 CALL                 (2 positional)
+            1070 STORE_FAST           (timeout)
+
+437:        1072 LOAD_FAST            (self)
+            1074 LOAD_ATTR            (NULL|self + _int)
+            1094 LOAD_FAST            (stat)
+            1096 LOAD_ATTR            (NULL|self + get)
+            1116 LOAD_CONST           ("no_numbers")
+            1118 CALL                 (1 positional)
+            1126 LOAD_CONST           (0)
+            1128 CALL                 (2 positional)
+            1136 STORE_FAST           (no_numbers)
+
+438:        1138 LOAD_FAST            (self)
+            1140 LOAD_ATTR            (NULL|self + _int)
+            1160 LOAD_FAST            (stat)
+            1162 LOAD_ATTR            (NULL|self + get)
+            1182 LOAD_CONST           ("phone_rejected")
+            1184 CALL                 (1 positional)
+            1192 LOAD_CONST           (0)
+            1194 CALL                 (2 positional)
+            1202 STORE_FAST           (phone_rejected)
+
+439:        1204 LOAD_FAST            (self)
+            1206 LOAD_ATTR            (NULL|self + _int)
+            1226 LOAD_FAST            (stat)
+            1228 LOAD_ATTR            (NULL|self + get)
+            1248 LOAD_CONST           ("register_rejected")
+            1250 CALL                 (1 positional)
+            1258 LOAD_CONST           (0)
+            1260 CALL                 (2 positional)
+            1268 STORE_FAST           (register_rejected)
+
+440:        1270 LOAD_FAST            (self)
+            1272 LOAD_ATTR            (NULL|self + _int)
+            1292 LOAD_FAST            (stat)
+            1294 LOAD_ATTR            (NULL|self + get)
+            1314 LOAD_CONST           ("invalid_auth_step")
+            1316 CALL                 (1 positional)
+            1324 LOAD_CONST           (0)
+            1326 CALL                 (2 positional)
+            1334 STORE_FAST           (invalid_auth_step)
+
+441:        1336 LOAD_FAST            (self)
+            1338 LOAD_ATTR            (NULL|self + _int)
+            1358 LOAD_FAST            (stat)
+            1360 LOAD_ATTR            (NULL|self + get)
+            1380 LOAD_CONST           ("otp_sent")
+            1382 CALL                 (1 positional)
+            1390 LOAD_CONST           (0)
+            1392 CALL                 (2 positional)
+            1400 STORE_FAST           (otp_sent)
+
+442:        1402 LOAD_FAST            (self)
+            1404 LOAD_ATTR            (NULL|self + _int)
+            1424 LOAD_FAST            (stat)
+            1426 LOAD_ATTR            (NULL|self + get)
+            1446 LOAD_CONST           ("otp_received")
+            1448 CALL                 (1 positional)
+            1456 LOAD_CONST           (0)
+            1458 CALL                 (2 positional)
+            1466 STORE_FAST           (otp_received)
+
+443:        1468 LOAD_FAST            (self)
+            1470 LOAD_ATTR            (country_stats)
+            1490 LOAD_ATTR            (NULL|self + get)
+            1510 LOAD_FAST            (country)
+            1512 CALL                 (1 positional)
+            1520 COPY                 1
+            1522 TO_BOOL
+            1530 POP_JUMP_IF_TRUE     (to 1538)
+            1534 POP_TOP
+            1536 BUILD_MAP            0
+         >> 1538 STORE_FAST           (country_stat)
+
+444:        1540 LOAD_FAST            (self)
+            1542 LOAD_ATTR            (NULL|self + _int)
+            1562 LOAD_FAST            (country_stat)
+            1564 LOAD_ATTR            (NULL|self + get)
+            1584 LOAD_CONST           ("register_rejected")
+            1586 CALL                 (1 positional)
+            1594 LOAD_CONST           (0)
+            1596 CALL                 (2 positional)
+            1604 STORE_FAST           (country_rejected)
+
+445:        1606 LOAD_FAST            (self)
+            1608 LOAD_ATTR            (NULL|self + _int)
+            1628 LOAD_FAST            (country_stat)
+            1630 LOAD_ATTR            (NULL|self + get)
+            1650 LOAD_CONST           ("invalid_auth_step")
+            1652 CALL                 (1 positional)
+            1660 LOAD_CONST           (0)
+            1662 CALL                 (2 positional)
+            1670 STORE_FAST           (country_invalid_step)
+
+446:        1672 LOAD_FAST            (self)
+            1674 LOAD_ATTR            (NULL|self + _int)
+            1694 LOAD_FAST            (country_stat)
+            1696 LOAD_ATTR            (NULL|self + get)
+            1716 LOAD_CONST           ("timeout")
+            1718 CALL                 (1 positional)
+            1726 LOAD_CONST           (0)
+            1728 CALL                 (2 positional)
+            1736 STORE_FAST           (country_timeout)
+
+447:        1738 LOAD_FAST            (self)
+            1740 LOAD_ATTR            (NULL|self + _int)
+            1760 LOAD_FAST            (country_stat)
+            1762 LOAD_ATTR            (NULL|self + get)
+            1782 LOAD_CONST           ("success")
+            1784 CALL                 (1 positional)
+            1792 LOAD_CONST           (0)
+            1794 CALL                 (2 positional)
+            1802 STORE_FAST           (country_success)
+
+448:        1804 LOAD_FAST            (self)
+            1806 LOAD_ATTR            (NULL|self + _int)
+            1826 LOAD_FAST            (country_stat)
+            1828 LOAD_ATTR            (NULL|self + get)
+            1848 LOAD_CONST           ("fail")
+            1850 CALL                 (1 positional)
+            1858 LOAD_CONST           (0)
+            1860 CALL                 (2 positional)
+            1868 STORE_FAST           (country_fail)
+
+449:        1870 LOAD_FAST            (success)
+            1872 LOAD_FAST            (fail)
+            1874 BINARY_OP            (+)
+            1878 STORE_FAST           (total)
+
+450:        1880 LOAD_FAST            (total)
+            1882 TO_BOOL
+            1890 POP_JUMP_IF_FALSE    (to 1904)
+            1894 LOAD_FAST            (success)
+            1896 LOAD_FAST            (total)
+            1898 BINARY_OP            (/)
+            1902 JUMP_FORWARD         (to 1906)
+         >> 1904 LOAD_CONST           (0.0)
+         >> 1906 STORE_FAST           (success_rate)
+
+451:        1908 LOAD_FAST            (country_rejected)
+            1910 LOAD_GLOBAL          (NULL + max)
+            1920 LOAD_CONST           (1)
+            1922 LOAD_FAST            (country_fail)
+            1924 LOAD_FAST            (country_success)
+            1926 BINARY_OP            (+)
+            1930 CALL                 (2 positional)
+            1938 BINARY_OP            (/)
+            1942 STORE_FAST           (country_reject_rate)
+
+452:        1944 LOAD_FAST            (country_invalid_step)
+            1946 LOAD_GLOBAL          (NULL + max)
+            1956 LOAD_CONST           (1)
+            1958 LOAD_FAST            (country_fail)
+            1960 LOAD_FAST            (country_success)
+            1962 BINARY_OP            (+)
+            1966 CALL                 (2 positional)
+            1974 BINARY_OP            (/)
+            1978 STORE_FAST           (country_invalid_step_rate)
+
+454:        1980 LOAD_GLOBAL          (NULL + min)
+            1990 LOAD_FAST            (count)
+            1992 LOAD_CONST           (100)
+            1994 CALL                 (2 positional)
+            2002 LOAD_CONST           (1.2)
+            2004 BINARY_OP            (*)
+            2008 STORE_FAST           (count_score)
+
+455:        2010 LOAD_GLOBAL          (NULL + max)
+            2020 LOAD_CONST           (0.0)
+            2022 LOAD_CONST           (50.0)
+            2024 LOAD_FAST            (price)
+            2026 LOAD_CONST           (250.0)
+            2028 BINARY_OP            (*)
+            2032 BINARY_OP            (-)
+            2036 CALL                 (2 positional)
+            2044 STORE_FAST           (price_score)
+
+456:        2046 LOAD_FAST            (self)
+            2048 LOAD_ATTR            (NULL|self + _hot_bonus)
+            2068 LOAD_FAST_LOAD_FAST  (stat, now)
+            2070 CALL                 (2 positional)
+            2078 LOAD_FAST            (self)
+            2080 LOAD_ATTR            (NULL|self + _hot_bonus)
+            2100 LOAD_FAST            (country_stat)
+            2102 LOAD_FAST            (now)
+            2104 CALL                 (2 positional)
+            2112 BINARY_OP            (+)
+            2116 STORE_FAST           (hot_score)
+
+457:        2118 LOAD_FAST            (otp_sent)
+            2120 LOAD_CONST           (12.0)
+            2122 BINARY_OP            (*)
+            2126 LOAD_FAST            (otp_received)
+            2128 LOAD_CONST           (35.0)
+            2130 BINARY_OP            (*)
+            2134 BINARY_OP            (+)
+            2138 STORE_FAST           (semi_score)
+
+458:        2140 LOAD_FAST            (success_rate)
+            2142 LOAD_CONST           (80.0)
+            2144 BINARY_OP            (*)
+            2148 LOAD_FAST            (success)
+            2150 LOAD_CONST           (4.0)
+            2152 BINARY_OP            (*)
+            2156 BINARY_OP            (+)
+            2160 LOAD_FAST            (semi_score)
+            2162 BINARY_OP            (+)
+            2166 LOAD_FAST            (hot_score)
+            2168 BINARY_OP            (+)
+            2172 STORE_FAST           (history_score)
+
+459:        2174 LOAD_CONST           (0.0)
+            2176 STORE_FAST           (country_reject_penalty)
+
+460:        2178 LOAD_FAST            (country_rejected)
+            2180 LOAD_CONST           (20)
+            2182 COMPARE_OP           (>=)
+            2186 POP_JUMP_IF_FALSE    (to 2294)
+            2190 LOAD_FAST            (country_success)
+            2192 LOAD_CONST           (0)
+            2194 COMPARE_OP           (<=)
+            2198 POP_JUMP_IF_FALSE    (to 2294)
+
+461:        2202 LOAD_GLOBAL          (NULL + min)
+
+462:        2212 LOAD_FAST            (self)
+            2214 LOAD_ATTR            (NULL|self + _float)
+            2234 LOAD_FAST            (cfg)
+            2236 LOAD_ATTR            (NULL|self + get)
+            2256 LOAD_CONST           ("country_register_rejected_penalty")
+            2258 CALL                 (1 positional)
+            2266 LOAD_CONST           (90.0)
+            2268 CALL                 (2 positional)
+
+463:        2276 LOAD_FAST            (country_rejected)
+            2278 LOAD_FAST            (country_reject_rate)
+            2280 BINARY_OP            (*)
+
+461:        2284 CALL                 (2 positional)
+            2292 STORE_FAST           (country_reject_penalty)
+
+465:     >> 2294 LOAD_CONST           (0.0)
+            2296 STORE_FAST           (country_invalid_step_penalty)
+
+466:        2298 LOAD_FAST            (country_invalid_step)
+            2300 LOAD_CONST           (20)
+            2302 COMPARE_OP           (>=)
+            2306 POP_JUMP_IF_FALSE    (to 2414)
+            2310 LOAD_FAST            (country_success)
+            2312 LOAD_CONST           (0)
+            2314 COMPARE_OP           (<=)
+            2318 POP_JUMP_IF_FALSE    (to 2414)
+
+467:        2322 LOAD_GLOBAL          (NULL + min)
+
+468:        2332 LOAD_FAST            (self)
+            2334 LOAD_ATTR            (NULL|self + _float)
+            2354 LOAD_FAST            (cfg)
+            2356 LOAD_ATTR            (NULL|self + get)
+            2376 LOAD_CONST           ("country_invalid_auth_step_penalty")
+            2378 CALL                 (1 positional)
+            2386 LOAD_CONST           (90.0)
+            2388 CALL                 (2 positional)
+
+469:        2396 LOAD_FAST            (country_invalid_step)
+            2398 LOAD_FAST            (country_invalid_step_rate)
+            2400 BINARY_OP            (*)
+
+467:        2404 CALL                 (2 positional)
+            2412 STORE_FAST           (country_invalid_step_penalty)
+
+471:     >> 2414 LOAD_GLOBAL          (NULL + max)
+            2424 LOAD_CONST           (1)
+            2426 LOAD_FAST            (self)
+            2428 LOAD_ATTR            (NULL|self + _int)
+            2448 LOAD_FAST            (cfg)
+            2450 LOAD_ATTR            (NULL|self + get)
+            2470 LOAD_CONST           ("timeout_bad_threshold")
+            2472 CALL                 (1 positional)
+            2480 LOAD_CONST           (3)
+            2482 CALL                 (2 positional)
+            2490 CALL                 (2 positional)
+            2498 STORE_FAST           (timeout_bad_threshold)
+
+472:        2500 LOAD_GLOBAL          (NULL + max)
+            2510 LOAD_CONST           (0.0)
+            2512 LOAD_FAST            (self)
+            2514 LOAD_ATTR            (NULL|self + _float)
+            2534 LOAD_FAST            (cfg)
+            2536 LOAD_ATTR            (NULL|self + get)
+            2556 LOAD_CONST           ("timeout_no_success_penalty")
+            2558 CALL                 (1 positional)
+            2566 LOAD_CONST           (55.0)
+            2568 CALL                 (2 positional)
+            2576 CALL                 (2 positional)
+            2584 STORE_FAST           (timeout_no_success_penalty)
+
+473:        2586 LOAD_GLOBAL          (NULL + max)
+            2596 LOAD_CONST           (1)
+            2598 LOAD_FAST            (self)
+            2600 LOAD_ATTR            (NULL|self + _int)
+            2620 LOAD_FAST            (cfg)
+            2622 LOAD_ATTR            (NULL|self + get)
+            2642 LOAD_CONST           ("country_timeout_bad_threshold")
+            2644 CALL                 (1 positional)
+            2652 LOAD_CONST           (8)
+            2654 CALL                 (2 positional)
+            2662 CALL                 (2 positional)
+            2670 STORE_FAST           (country_timeout_bad_threshold)
+
+474:        2672 LOAD_GLOBAL          (NULL + max)
+            2682 LOAD_CONST           (0.0)
+            2684 LOAD_FAST            (self)
+            2686 LOAD_ATTR            (NULL|self + _float)
+            2706 LOAD_FAST            (cfg)
+            2708 LOAD_ATTR            (NULL|self + get)
+            2728 LOAD_CONST           ("country_timeout_no_success_penalty")
+            2730 CALL                 (1 positional)
+            2738 LOAD_CONST           (45.0)
+            2740 CALL                 (2 positional)
+            2748 CALL                 (2 positional)
+            2756 STORE_FAST           (country_timeout_no_success_penalty)
+
+475:        2758 LOAD_CONST           (0.0)
+            2760 STORE_FAST           (timeout_quality_penalty)
+
+476:        2762 LOAD_FAST            (success)
+            2764 LOAD_CONST           (0)
+            2766 COMPARE_OP           (<=)
+            2770 POP_JUMP_IF_FALSE    (to 2840)
+            2774 LOAD_FAST            (timeout)
+            2776 LOAD_FAST            (timeout_bad_threshold)
+            2778 COMPARE_OP           (>=)
+            2782 POP_JUMP_IF_FALSE    (to 2840)
+
+477:        2786 LOAD_FAST            (timeout_quality_penalty)
+            2788 LOAD_GLOBAL          (NULL + min)
+            2798 LOAD_FAST            (timeout_no_success_penalty)
+            2800 LOAD_CONST           (2.0)
+            2802 BINARY_OP            (*)
+            2806 LOAD_FAST            (timeout)
+            2808 LOAD_FAST            (timeout_bad_threshold)
+            2810 BINARY_OP            (-)
+            2814 LOAD_CONST           (1)
+            2816 BINARY_OP            (+)
+            2820 LOAD_FAST            (timeout_no_success_penalty)
+            2822 BINARY_OP            (*)
+            2826 CALL                 (2 positional)
+            2834 BINARY_OP            (+=)
+            2838 STORE_FAST           (timeout_quality_penalty)
+
+478:     >> 2840 LOAD_FAST            (country_success)
+            2842 LOAD_CONST           (0)
+            2844 COMPARE_OP           (<=)
+            2848 POP_JUMP_IF_FALSE    (to 2918)
+            2852 LOAD_FAST            (country_timeout)
+            2854 LOAD_FAST            (country_timeout_bad_threshold)
+            2856 COMPARE_OP           (>=)
+            2860 POP_JUMP_IF_FALSE    (to 2918)
+
+479:        2864 LOAD_FAST            (timeout_quality_penalty)
+            2866 LOAD_GLOBAL          (NULL + min)
+
+480:        2876 LOAD_FAST            (country_timeout_no_success_penalty)
+            2878 LOAD_CONST           (2.0)
+            2880 BINARY_OP            (*)
+
+481:        2884 LOAD_FAST            (country_timeout)
+            2886 LOAD_FAST            (country_timeout_bad_threshold)
+            2888 BINARY_OP            (-)
+            2892 LOAD_CONST           (1)
+            2894 BINARY_OP            (+)
+            2898 LOAD_FAST            (country_timeout_no_success_penalty)
+            2900 BINARY_OP            (*)
+
+479:        2904 CALL                 (2 positional)
+            2912 BINARY_OP            (+=)
+            2916 STORE_FAST           (timeout_quality_penalty)
+
+484:     >> 2918 LOAD_FAST            (fail)
+            2920 LOAD_CONST           (8.0)
+            2922 BINARY_OP            (*)
+
+485:        2926 LOAD_FAST            (timeout)
+            2928 LOAD_CONST           (14.0)
+            2930 BINARY_OP            (*)
+
+484:        2934 BINARY_OP            (+)
+
+486:        2938 LOAD_FAST            (no_numbers)
+            2940 LOAD_CONST           (20.0)
+            2942 BINARY_OP            (*)
+
+484:        2946 BINARY_OP            (+)
+
+487:        2950 LOAD_FAST            (phone_rejected)
+            2952 LOAD_CONST           (5.0)
+            2954 BINARY_OP            (*)
+
+484:        2958 BINARY_OP            (+)
+
+488:        2962 LOAD_FAST            (register_rejected)
+            2964 LOAD_CONST           (16.0)
+            2966 BINARY_OP            (*)
+
+484:        2970 BINARY_OP            (+)
+
+489:        2974 LOAD_FAST            (invalid_auth_step)
+            2976 LOAD_CONST           (18.0)
+            2978 BINARY_OP            (*)
+
+484:        2982 BINARY_OP            (+)
+
+490:        2986 LOAD_FAST            (country_reject_penalty)
+
+484:        2988 BINARY_OP            (+)
+
+491:        2992 LOAD_FAST            (country_invalid_step_penalty)
+
+484:        2994 BINARY_OP            (+)
+
+492:        2998 LOAD_FAST            (timeout_quality_penalty)
+
+484:        3000 BINARY_OP            (+)
+
+483:        3004 STORE_FAST           (penalty)
+
+494:        3006 LOAD_FAST            (self)
+            3008 LOAD_ATTR            (NULL|self + _float)
+            3028 LOAD_FAST            (cfg)
+            3030 LOAD_ATTR            (NULL|self + get)
+            3050 LOAD_CONST           ("provider_interval")
+            3052 CALL                 (1 positional)
+            3060 LOAD_CONST           (0.3)
+            3062 CALL                 (2 positional)
+            3070 STORE_FAST           (spacing)
+
+495:        3072 LOAD_FAST            (self)
+            3074 LOAD_ATTR            (NULL|self + _float)
+            3094 LOAD_FAST            (stat)
+            3096 LOAD_ATTR            (NULL|self + get)
+            3116 LOAD_CONST           ("last_pick_at")
+            3118 CALL                 (1 positional)
+            3126 LOAD_CONST           (0.0)
+            3128 CALL                 (2 positional)
+            3136 STORE_FAST           (shared_last_pick)
+
+496:        3138 LOAD_FAST            (self)
+            3140 LOAD_ATTR            (NULL|self + _float)
+            3160 LOAD_FAST            (self)
+            3162 LOAD_ATTR            (last_pick_at)
+            3182 LOAD_ATTR            (NULL|self + get)
+            3202 LOAD_FAST            (key)
+            3204 CALL                 (1 positional)
+            3212 LOAD_CONST           (0.0)
+            3214 CALL                 (2 positional)
+            3222 STORE_FAST           (local_last_pick)
+
+497:        3224 LOAD_FAST            (now)
+            3226 LOAD_GLOBAL          (NULL + max)
+            3236 LOAD_FAST            (shared_last_pick)
+            3238 LOAD_FAST            (local_last_pick)
+            3240 CALL                 (2 positional)
+            3248 BINARY_OP            (-)
+            3252 STORE_FAST           (since_last)
+
+498:        3254 LOAD_FAST            (since_last)
+            3256 LOAD_FAST            (spacing)
+            3258 COMPARE_OP           (<)
+            3262 POP_JUMP_IF_FALSE    (to 3288)
+
+499:        3266 LOAD_FAST            (penalty)
+            3268 LOAD_FAST            (spacing)
+            3270 LOAD_FAST            (since_last)
+            3272 BINARY_OP            (-)
+            3276 LOAD_CONST           (30.0)
+            3278 BINARY_OP            (*)
+            3282 BINARY_OP            (+=)
+            3286 STORE_FAST           (penalty)
+
+500:     >> 3288 LOAD_FAST            (self)
+            3290 LOAD_ATTR            (NULL|self + _route_inflight)
+            3310 LOAD_FAST_LOAD_FAST  (stat, now)
+            3312 CALL                 (2 positional)
+            3320 STORE_FAST           (inflight)
+
+501:        3322 LOAD_FAST            (inflight)
+            3324 LOAD_CONST           (0)
+            3326 COMPARE_OP           (>)
+            3330 POP_JUMP_IF_FALSE    (to 3350)
+
+502:        3334 LOAD_FAST            (penalty)
+            3336 LOAD_FAST            (inflight)
+            3338 LOAD_CONST           (12.0)
+            3340 BINARY_OP            (*)
+            3344 BINARY_OP            (+=)
+            3348 STORE_FAST           (penalty)
+
+504:     >> 3350 LOAD_FAST            (count_score)
+            3352 LOAD_FAST            (price_score)
+            3354 BINARY_OP            (+)
+            3358 LOAD_FAST            (history_score)
+            3360 BINARY_OP            (+)
+            3364 LOAD_FAST            (penalty)
+            3366 BINARY_OP            (-)
+            3370 STORE_FAST           (score)
+
+505:        3372 LOAD_GLOBAL          (NULL + SmsCandidate)
+
+506:        3382 LOAD_FAST            (country)
+
+507:        3384 LOAD_FAST            (provider_id)
+
+508:        3386 LOAD_FAST            (price)
+
+509:        3388 LOAD_FAST            (count)
+
+510:        3390 LOAD_FAST            (score)
+
+511:        3392 LOAD_GLOBAL          (NULL + str)
+            3402 LOAD_FAST            (row)
+            3404 LOAD_ATTR            (NULL|self + get)
+            3424 LOAD_CONST           ("name")
+            3426 CALL                 (1 positional)
+            3434 COPY                 1
+            3436 TO_BOOL
+            3444 POP_JUMP_IF_TRUE     (to 3452)
+            3448 POP_TOP
+            3450 LOAD_CONST           ("")
+         >> 3452 CALL                 (1 positional)
+
+512:        3460 LOAD_FAST            (self)
+            3462 LOAD_ATTR            (NULL|self + _cooldown_until)
+            3482 LOAD_FAST            (key)
+            3484 CALL                 (1 positional)
+
+513:        3492 LOAD_FAST            (self)
+            3494 LOAD_ATTR            (NULL|self + _pool_for_candidate)
+            3514 LOAD_FAST_LOAD_FAST  (key, stat)
+            3516 LOAD_FAST            (self)
+            3518 LOAD_ATTR            (NULL|self + _preferred_countries)
+            3538 CALL                 (0 positional)
+            3546 LOAD_FAST            (now)
+            3548 CALL                 (4 positional)
+
+505:        3556 LOAD_CONST           (('country', 'provider_id', 'price', 'count', 'score', 'name', 'cooldown_until', 'pool'))
+            3558 CALL_KW              8
+            3560 RETURN_VALUE
+         >> 3562 PUSH_EXC_INFO
+
+417:        3564 LOAD_GLOBAL          (Exception)
+            3574 CHECK_EXC_MATCH
+            3576 POP_JUMP_IF_FALSE    (to 3586)
+            3580 POP_TOP
+
+418:        3582 POP_EXCEPT
+            3584 RETURN_CONST         (None)
+
+417:     >> 3586 RERAISE              0
+         >> 3588 COPY                 3
+            3590 POP_EXCEPT
+            3592 RERAISE              1
+
+ExceptionTable:
+  328 to 450 -> 3562 [0]
+  3562 to 3580 -> 3588 [1] lasti
+  3586 to 3586 -> 3588 [1] lasti
+
+# Method Name:       _build_candidates_locked
+# Filename:          sms_selector.py
+# Argument count:    5
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  17
+# Stack size:        15
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        516
+# Constants:
+#    0: None
+#    1: 0
+#    2: 'fallback_max_remaining_cooldown'
+#    3: 30
+#    4: 'no_numbers_soft_window'
+#    5: 120
+#    6: 'last_kind'
+#    7: ''
+#    8: 'no_numbers'
+#    9: 10.0
+#   10: True
+#   11: ('country', 'provider_id', 'price', 'count', 'score', 'name', 'cooldown_until', 'fallback', 'pool')
+#   12: <Code311 code object <lambda> at 0x1060220a0, file sms_selector.py>, line 567
+#   13: ('key', 'reverse')
+#   14: <Code311 code object _fallback_key at 0x106022040, file sms_selector.py>, line 571
+#   15: ('key',)
+#   16: ('item', 'SmsCandidate', 'return', 'tuple[float, int, float]')
+# Names:
+#    0: _cfg
+#    1: max
+#    2: _int
+#    3: get
+#    4: _score_row
+#    5: cooldown_until
+#    6: country
+#    7: provider_id
+#    8: stats
+#    9: str
+#   10: append
+#   11: SmsCandidate
+#   12: price
+#   13: count
+#   14: score
+#   15: min
+#   16: name
+#   17: pool
+#   18: _allow_fallback
+#   19: sort
+# Varnames:
+#	self, raw_rows, now, allowed_countries, blocked_countries, cfg, rows, fallback_rows, fallback_window, no_numbers_window, row, candidate, remaining, key, stat, last_kind, _fallback_key
+# Positional arguments:
+#	self, raw_rows, now, allowed_countries, blocked_countries
+# Local variables:
+#    5: cfg
+#    6: rows
+#    7: fallback_rows
+#    8: fallback_window
+#    9: no_numbers_window
+#   10: row
+#   11: candidate
+#   12: remaining
+#   13: key
+#   14: stat
+#   15: last_kind
+#   16: _fallback_key
+# Cell variables:
+#    0: self
+#    1: now
+               0 MAKE_CELL            (self)
+               2 MAKE_CELL            (now)
+
+516:           4 RESUME               0
+
+523:           6 LOAD_DEREF           (self)
+               8 LOAD_ATTR            (NULL|self + _cfg)
+              28 CALL                 (0 positional)
+              36 STORE_FAST           (cfg)
+
+524:          38 BUILD_LIST           0
+              40 STORE_FAST           (rows)
+
+525:          42 BUILD_LIST           0
+              44 STORE_FAST           (fallback_rows)
+
+526:          46 LOAD_GLOBAL          (NULL + max)
+              56 LOAD_CONST           (0)
+              58 LOAD_DEREF           (self)
+              60 LOAD_ATTR            (NULL|self + _int)
+              80 LOAD_FAST            (cfg)
+              82 LOAD_ATTR            (NULL|self + get)
+             102 LOAD_CONST           ("fallback_max_remaining_cooldown")
+             104 CALL                 (1 positional)
+             112 LOAD_CONST           (30)
+             114 CALL                 (2 positional)
+             122 CALL                 (2 positional)
+             130 STORE_FAST           (fallback_window)
+
+527:         132 LOAD_GLOBAL          (NULL + max)
+             142 LOAD_CONST           (0)
+             144 LOAD_DEREF           (self)
+             146 LOAD_ATTR            (NULL|self + _int)
+             166 LOAD_FAST            (cfg)
+             168 LOAD_ATTR            (NULL|self + get)
+             188 LOAD_CONST           ("no_numbers_soft_window")
+             190 CALL                 (1 positional)
+             198 LOAD_CONST           (120)
+             200 CALL                 (2 positional)
+             208 CALL                 (2 positional)
+             216 STORE_FAST           (no_numbers_window)
+
+528:         218 LOAD_FAST            (raw_rows)
+             220 COPY                 1
+             222 TO_BOOL
+             230 POP_JUMP_IF_TRUE     (to 238)
+             234 POP_TOP
+             236 BUILD_LIST           0
+         >>  238 GET_ITER
+             240 EXTENDED_ARG         (256)
+             242 FOR_ITER             (to 1180)
+             246 STORE_FAST           (row)
+
+529:         248 LOAD_DEREF           (self)
+             250 LOAD_ATTR            (NULL|self + _score_row)
+             270 LOAD_FAST            (row)
+             272 LOAD_DEREF           (now)
+             274 LOAD_FAST_LOAD_FAST  (allowed_countries, blocked_countries)
+             276 CALL                 (4 positional)
+             284 STORE_FAST           (candidate)
+
+530:         286 LOAD_FAST            (candidate)
+             288 TO_BOOL
+             296 POP_JUMP_IF_TRUE     (to 304)
+
+531:         300 JUMP_BACKWARD        (to 240)
+
+532:     >>  304 LOAD_FAST            (candidate)
+             306 LOAD_ATTR            (cooldown_until)
+             326 LOAD_DEREF           (now)
+             328 COMPARE_OP           (>)
+             332 EXTENDED_ARG         (256)
+             334 POP_JUMP_IF_FALSE    (to 1140)

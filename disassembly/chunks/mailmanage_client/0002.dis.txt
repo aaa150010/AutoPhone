@@ -1,0 +1,800 @@
+              54 COPY                 1
+              56 STORE_NAME           (__classcell__)
+              58 RETURN_VALUE
+
+
+# Method Name:       MailManageClient
+# Filename:          mailmanage_client.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        24
+# Flags:             0x00000000 (0x0)
+# First Line:        79
+# Constants:
+#    0: 'MailManageClient'
+#    1: 79
+#    2: 'MailManage 邮箱管理平台客户端'
+#    3: False
+#    4: True
+#    5: 1800
+#    6: 5
+#    7: 'MailManage'
+#    8: ''
+#    9: 'api_key'
+#   10: 'base_url'
+#   11: 'used_file'
+#   12: 'verbose'
+#   13: 'safe_reserve'
+#   14: 'consume_on_reserve'
+#   15: 'lease_seconds'
+#   16: 'verify_reserved'
+#   17: 'reserve_attempts'
+#   18: 'label'
+#   19: 'proxy'
+#   20: <Code311 code object __init__ at 0x107746490, file mailmanage_client.py>, line 82
+#   21: 'msg'
+#   22: <Code311 code object _log at 0x1077464c0, file mailmanage_client.py>, line 115
+#   23: 'return'
+#   24: <Code311 code object _headers at 0x1077464f0, file mailmanage_client.py>, line 119
+#   25: <Code311 code object _request_kwargs at 0x107746520, file mailmanage_client.py>, line 126
+#   26: <Code311 code object _is_gptmail_openai_pool at 0x1077465b0, file mailmanage_client.py>, line 129
+#   27: 'code'
+#   28: <Code311 code object _valid_openai_otp at 0x1077465e0, file mailmanage_client.py>, line 133
+#   29: 'message'
+#   30: 'keys'
+#   31: <Code311 code object _message_field at 0x107746670, file mailmanage_client.py>, line 137
+#   32: <Code311 code object _message_search_text at 0x107746700, file mailmanage_client.py>, line 150
+#   33: 'text'
+#   34: <Code311 code object _compact_text at 0x107746730, file mailmanage_client.py>, line 161
+#   35: <Code311 code object _looks_like_openai_otp_message at 0x1077467f0, file mailmanage_client.py>, line 165
+#   36: 'backend_code'
+#   37: <Code311 code object _extract_openai_otp_from_message at 0x1077468e0, file mailmanage_client.py>, line 179
+#   38: <Code311 code object _message_timestamp at 0x1077463d0, file mailmanage_client.py>, line 221
+#   39: 'keyword'
+#   40: <Code311 code object _code_keywords at 0x107746340, file mailmanage_client.py>, line 254
+#   41: 'email'
+#   42: 'poll_keyword'
+#   43: 'limit'
+#   44: 'since_ts'
+#   45: None
+#   46: <Code311 code object _message_list_urls at 0x1077462e0, file mailmanage_client.py>, line 276
+#   47: 'data'
+#   48: <Code311 code object _extract_messages at 0x1077462b0, file mailmanage_client.py>, line 290
+#   49: 'messages'
+#   50: <Code311 code object _find_code_from_messages at 0x107746280, file mailmanage_client.py>, line 307
+#   51: 'scope'
+#   52: <Code311 code object new_reserve_request_id at 0x1077461c0, file mailmanage_client.py>, line 332
+#   53: 'request_id'
+#   54: <Code311 code object _clean_request_id at 0x107746190, file mailmanage_client.py>, line 339
+#   55: 'base_request_id'
+#   56: 'attempt'
+#   57: <Code311 code object _request_id_for_reserve_attempt at 0x107746160, file mailmanage_client.py>, line 344
+#   58: <Code311 code object _load_used at 0x107746130, file mailmanage_client.py>, line 355
+#   59: <Code311 code object _save_used at 0x107746100, file mailmanage_client.py>, line 367
+#   60: <Code311 code object mark_used at 0x1077460a0, file mailmanage_client.py>, line 376
+#   61: <Code311 code object _mark_used_remote at 0x107746070, file mailmanage_client.py>, line 389
+#   62: 'emails'
+#   63: <Code311 code object skip_used at 0x10774c160, file mailmanage_client.py>, line 410
+#   64: <Code311 code object used_count at 0x107746250, file mailmanage_client.py>, line 418
+#   65: 'category'
+#   66: 'status'
+#   67: <Code311 code object list_mailboxes at 0x10774c1c0, file mailmanage_client.py>, line 424
+#   68: <Code311 code object _extract_mailboxes at 0x10774c1f0, file mailmanage_client.py>, line 453
+#   69: 'mailbox'
+#   70: 'expected_category'
+#   71: <Code311 code object _mailbox_is_usable at 0x10774c220, file mailmanage_client.py>, line 469
+#   72: 'require_usable'
+#   73: <Code311 code object mailbox_exists at 0x10774c250, file mailmanage_client.py>, line 495
+#   74: <Code311 code object _verify_reserved_email at 0x10774c280, file mailmanage_client.py>, line 568
+#   75: <Code311 code object _reserve_email_remote at 0x10774c2b0, file mailmanage_client.py>, line 581
+#   76: <Code311 code object release_email at 0x10774c2e0, file mailmanage_client.py>, line 659
+#   77: 'result'
+#   78: 'detail'
+#   79: 'threshold'
+#   80: <Code311 code object report_code_result at 0x10774c310, file mailmanage_client.py>, line 679
+#   81: <Code311 code object get_available_email at 0x10774c3a0, file mailmanage_client.py>, line 709
+#   82: 'timeout'
+#   83: 'interval'
+#   84: 'report_health'
+#   85: 'pending_threshold'
+#   86: 'timeout_threshold'
+#   87: 'old_code_fast_fail'
+#   88: <Code311 code object get_code at 0x10774c190, file mailmanage_client.py>, line 765
+#   89: ('_leases', '_lock', '_reserve_request_ids', '_used', 'api_key', 'base_url', 'consume_on_reserve', 'label', 'lease_seconds', 'proxy', 'reserve_attempts', 'safe_reserve', 'used_file', 'verbose', 'verify_reserved')
+#   90: ('',)
+#   91: (None,)
+#   92: ('reserve',)
+#   93: ('', '')
+#   94: ('', '', True)
+#   95: ('free', '', '')
+#   96: ('', 1)
+#   97: ('gpt', 10, 60, 5, True, 6, 1, None, 0)
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: DEFAULT_BASE_URL
+#    6: DEFAULT_USED_FILE
+#    7: str
+#    8: bool
+#    9: int
+#   10: __init__
+#   11: _log
+#   12: Dict
+#   13: _headers
+#   14: Any
+#   15: _request_kwargs
+#   16: _is_gptmail_openai_pool
+#   17: staticmethod
+#   18: _valid_openai_otp
+#   19: _message_field
+#   20: classmethod
+#   21: _message_search_text
+#   22: _compact_text
+#   23: _looks_like_openai_otp_message
+#   24: _extract_openai_otp_from_message
+#   25: float
+#   26: _message_timestamp
+#   27: List
+#   28: _code_keywords
+#   29: _message_list_urls
+#   30: _extract_messages
+#   31: Optional
+#   32: _find_code_from_messages
+#   33: new_reserve_request_id
+#   34: _clean_request_id
+#   35: _request_id_for_reserve_attempt
+#   36: set
+#   37: _load_used
+#   38: _save_used
+#   39: mark_used
+#   40: _mark_used_remote
+#   41: skip_used
+#   42: property
+#   43: used_count
+#   44: list_mailboxes
+#   45: _extract_mailboxes
+#   46: _mailbox_is_usable
+#   47: mailbox_exists
+#   48: _verify_reserved_email
+#   49: _reserve_email_remote
+#   50: release_email
+#   51: report_code_result
+#   52: get_available_email
+#   53: get_code
+#   54: __static_attributes__
+ 79:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("MailManageClient")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (79)
+              12 STORE_NAME           (__firstlineno__)
+
+ 80:          14 LOAD_CONST           ("MailManage 邮箱管理平台客户端")
+              16 STORE_NAME           (__doc__)
+
+ 85:          18 LOAD_NAME            (DEFAULT_BASE_URL)
+
+ 86:          20 LOAD_NAME            (DEFAULT_USED_FILE)
+
+ 87:          22 LOAD_CONST           (False)
+
+ 88:          24 LOAD_CONST           (True)
+
+ 89:          26 LOAD_CONST           (True)
+
+ 90:          28 LOAD_CONST           (1800)
+
+ 91:          30 LOAD_CONST           (True)
+
+ 92:          32 LOAD_CONST           (5)
+
+ 93:          34 LOAD_CONST           ("MailManage")
+
+ 94:          36 LOAD_CONST           ("")
+
+ 82:          38 BUILD_TUPLE          10
+              40 LOAD_CONST           ("api_key")
+
+ 84:          42 LOAD_NAME            (str)
+
+ 82:          44 LOAD_CONST           ("base_url")
+
+ 85:          46 LOAD_NAME            (str)
+
+ 82:          48 LOAD_CONST           ("used_file")
+
+ 86:          50 LOAD_NAME            (str)
+
+ 82:          52 LOAD_CONST           ("verbose")
+
+ 87:          54 LOAD_NAME            (bool)
+
+ 82:          56 LOAD_CONST           ("safe_reserve")
+
+ 88:          58 LOAD_NAME            (bool)
+
+ 82:          60 LOAD_CONST           ("consume_on_reserve")
+
+ 89:          62 LOAD_NAME            (bool)
+
+ 82:          64 LOAD_CONST           ("lease_seconds")
+
+ 90:          66 LOAD_NAME            (int)
+
+ 82:          68 LOAD_CONST           ("verify_reserved")
+
+ 91:          70 LOAD_NAME            (bool)
+
+ 82:          72 LOAD_CONST           ("reserve_attempts")
+
+ 92:          74 LOAD_NAME            (int)
+
+ 82:          76 LOAD_CONST           ("label")
+
+ 93:          78 LOAD_NAME            (str)
+
+ 82:          80 LOAD_CONST           ("proxy")
+
+ 94:          82 LOAD_NAME            (str)
+
+ 82:          84 BUILD_TUPLE          22
+              86 LOAD_CONST           (<Code311 code object __init__ at 0x107746490, file mailmanage_client.py>, line 82)
+              88 MAKE_FUNCTION
+              90 SET_FUNCTION_ATTRIBUTE 4
+              92 SET_FUNCTION_ATTRIBUTE 1
+              94 STORE_NAME           (__init__)
+
+115:          96 LOAD_CONST           ("msg")
+              98 LOAD_NAME            (str)
+             100 BUILD_TUPLE          2
+             102 LOAD_CONST           (<Code311 code object _log at 0x1077464c0, file mailmanage_client.py>, line 115)
+             104 MAKE_FUNCTION
+             106 SET_FUNCTION_ATTRIBUTE 4
+             108 STORE_NAME           (_log)
+
+119:         110 LOAD_CONST           ("return")
+             112 LOAD_NAME            (Dict)
+             114 LOAD_NAME            (str)
+             116 LOAD_NAME            (str)
+             118 BUILD_TUPLE          2
+             120 BINARY_SUBSCR
+             124 BUILD_TUPLE          2
+             126 LOAD_CONST           (<Code311 code object _headers at 0x1077464f0, file mailmanage_client.py>, line 119)
+             128 MAKE_FUNCTION
+             130 SET_FUNCTION_ATTRIBUTE 4
+             132 STORE_NAME           (_headers)
+
+126:         134 LOAD_CONST           ("return")
+             136 LOAD_NAME            (Dict)
+             138 LOAD_NAME            (str)
+             140 LOAD_NAME            (Any)
+             142 BUILD_TUPLE          2
+             144 BINARY_SUBSCR
+             148 BUILD_TUPLE          2
+             150 LOAD_CONST           (<Code311 code object _request_kwargs at 0x107746520, file mailmanage_client.py>, line 126)
+             152 MAKE_FUNCTION
+             154 SET_FUNCTION_ATTRIBUTE 4
+             156 STORE_NAME           (_request_kwargs)
+
+129:         158 LOAD_CONST           ("return")
+             160 LOAD_NAME            (bool)
+             162 BUILD_TUPLE          2
+             164 LOAD_CONST           (<Code311 code object _is_gptmail_openai_pool at 0x1077465b0, file mailmanage_client.py>, line 129)
+             166 MAKE_FUNCTION
+             168 SET_FUNCTION_ATTRIBUTE 4
+             170 STORE_NAME           (_is_gptmail_openai_pool)
+
+133:         172 LOAD_NAME            (staticmethod)
+
+134:         174 LOAD_CONST           ("code")
+             176 LOAD_NAME            (Any)
+             178 LOAD_CONST           ("return")
+             180 LOAD_NAME            (bool)
+             182 BUILD_TUPLE          4
+             184 LOAD_CONST           (<Code311 code object _valid_openai_otp at 0x1077465e0, file mailmanage_client.py>, line 133)
+             186 MAKE_FUNCTION
+             188 SET_FUNCTION_ATTRIBUTE 4
+
+133:         190 CALL                 (0 positional)
+
+134:         198 STORE_NAME           (_valid_openai_otp)
+
+137:         200 LOAD_NAME            (staticmethod)
+
+138:         202 LOAD_CONST           ("message")
+             204 LOAD_NAME            (Dict)
+             206 LOAD_NAME            (str)
+             208 LOAD_NAME            (Any)
+             210 BUILD_TUPLE          2
+             212 BINARY_SUBSCR
+             216 LOAD_CONST           ("keys")
+             218 LOAD_NAME            (str)
+             220 LOAD_CONST           ("return")
+             222 LOAD_NAME            (str)
+             224 BUILD_TUPLE          6
+             226 LOAD_CONST           (<Code311 code object _message_field at 0x107746670, file mailmanage_client.py>, line 137)
+             228 MAKE_FUNCTION
+             230 SET_FUNCTION_ATTRIBUTE 4
+
+137:         232 CALL                 (0 positional)
+
+138:         240 STORE_NAME           (_message_field)
+
+150:         242 LOAD_NAME            (classmethod)
+
+151:         244 LOAD_CONST           ("message")
+             246 LOAD_NAME            (Dict)
+             248 LOAD_NAME            (str)
+             250 LOAD_NAME            (Any)
+             252 BUILD_TUPLE          2
+             254 BINARY_SUBSCR
+             258 LOAD_CONST           ("return")
+             260 LOAD_NAME            (str)
+             262 BUILD_TUPLE          4
+             264 LOAD_CONST           (<Code311 code object _message_search_text at 0x107746700, file mailmanage_client.py>, line 150)
+             266 MAKE_FUNCTION
+             268 SET_FUNCTION_ATTRIBUTE 4
+
+150:         270 CALL                 (0 positional)
+
+151:         278 STORE_NAME           (_message_search_text)
+
+161:         280 LOAD_NAME            (staticmethod)
+
+162:         282 LOAD_CONST           ("text")
+             284 LOAD_NAME            (str)
+             286 LOAD_CONST           ("return")
+             288 LOAD_NAME            (str)
+             290 BUILD_TUPLE          4
+             292 LOAD_CONST           (<Code311 code object _compact_text at 0x107746730, file mailmanage_client.py>, line 161)
+             294 MAKE_FUNCTION
+             296 SET_FUNCTION_ATTRIBUTE 4
+
+161:         298 CALL                 (0 positional)
+
+162:         306 STORE_NAME           (_compact_text)
+
+165:         308 LOAD_NAME            (classmethod)
+
+166:         310 LOAD_CONST           ("message")
+             312 LOAD_NAME            (Dict)
+             314 LOAD_NAME            (str)
+             316 LOAD_NAME            (Any)
+             318 BUILD_TUPLE          2
+             320 BINARY_SUBSCR
+             324 LOAD_CONST           ("return")
+             326 LOAD_NAME            (bool)
+             328 BUILD_TUPLE          4
+             330 LOAD_CONST           (<Code311 code object _looks_like_openai_otp_message at 0x1077467f0, file mailmanage_client.py>, line 165)
+             332 MAKE_FUNCTION
+             334 SET_FUNCTION_ATTRIBUTE 4
+
+165:         336 CALL                 (0 positional)
+
+166:         344 STORE_NAME           (_looks_like_openai_otp_message)
+
+179:         346 LOAD_NAME            (classmethod)
+
+180:         348 LOAD_CONST           (('',))
+             350 LOAD_CONST           ("message")
+             352 LOAD_NAME            (Dict)
+             354 LOAD_NAME            (str)
+             356 LOAD_NAME            (Any)
+             358 BUILD_TUPLE          2
+             360 BINARY_SUBSCR
+             364 LOAD_CONST           ("backend_code")
+             366 LOAD_NAME            (Any)
+             368 LOAD_CONST           ("return")
+             370 LOAD_NAME            (str)
+             372 BUILD_TUPLE          6
+             374 LOAD_CONST           (<Code311 code object _extract_openai_otp_from_message at 0x1077468e0, file mailmanage_client.py>, line 179)
+             376 MAKE_FUNCTION
+             378 SET_FUNCTION_ATTRIBUTE 4
+             380 SET_FUNCTION_ATTRIBUTE 1
+
+179:         382 CALL                 (0 positional)
+
+180:         390 STORE_NAME           (_extract_openai_otp_from_message)
+
+221:         392 LOAD_NAME            (staticmethod)
+
+222:         394 LOAD_CONST           ("message")
+             396 LOAD_NAME            (Dict)
+             398 LOAD_NAME            (str)
+             400 LOAD_NAME            (Any)
+             402 BUILD_TUPLE          2
+             404 BINARY_SUBSCR
+             408 LOAD_CONST           ("return")
+             410 LOAD_NAME            (float)
+             412 BUILD_TUPLE          4
+             414 LOAD_CONST           (<Code311 code object _message_timestamp at 0x1077463d0, file mailmanage_client.py>, line 221)
+             416 MAKE_FUNCTION
+             418 SET_FUNCTION_ATTRIBUTE 4
+
+221:         420 CALL                 (0 positional)
+
+222:         428 STORE_NAME           (_message_timestamp)
+
+254:         430 LOAD_CONST           ("keyword")
+             432 LOAD_NAME            (str)
+             434 LOAD_CONST           ("return")
+             436 LOAD_NAME            (List)
+             438 LOAD_NAME            (str)
+             440 BINARY_SUBSCR
+             444 BUILD_TUPLE          4
+             446 LOAD_CONST           (<Code311 code object _code_keywords at 0x107746340, file mailmanage_client.py>, line 254)
+             448 MAKE_FUNCTION
+             450 SET_FUNCTION_ATTRIBUTE 4
+             452 STORE_NAME           (_code_keywords)
+
+276:         454 LOAD_CONST           ("email")
+             456 LOAD_NAME            (str)
+             458 LOAD_CONST           ("poll_keyword")
+             460 LOAD_NAME            (str)
+             462 LOAD_CONST           ("limit")
+             464 LOAD_NAME            (int)
+             466 LOAD_CONST           ("since_ts")
+             468 LOAD_NAME            (float)
+             470 LOAD_CONST           (None)
+             472 BINARY_OP            (|)
+             476 LOAD_CONST           ("return")
+             478 LOAD_NAME            (List)
+             480 LOAD_NAME            (str)
+             482 BINARY_SUBSCR
+             486 BUILD_TUPLE          10
+             488 LOAD_CONST           (<Code311 code object _message_list_urls at 0x1077462e0, file mailmanage_client.py>, line 276)
+             490 MAKE_FUNCTION
+             492 SET_FUNCTION_ATTRIBUTE 4
+             494 STORE_NAME           (_message_list_urls)
+
+290:         496 LOAD_CONST           ("data")
+             498 LOAD_NAME            (Any)
+             500 LOAD_CONST           ("return")
+             502 LOAD_NAME            (List)
+             504 LOAD_NAME            (Dict)
+             506 LOAD_NAME            (str)
+             508 LOAD_NAME            (Any)
+             510 BUILD_TUPLE          2
+             512 BINARY_SUBSCR
+             516 BINARY_SUBSCR
+             520 BUILD_TUPLE          4
+             522 LOAD_CONST           (<Code311 code object _extract_messages at 0x1077462b0, file mailmanage_client.py>, line 290)
+             524 MAKE_FUNCTION
+             526 SET_FUNCTION_ATTRIBUTE 4
+             528 STORE_NAME           (_extract_messages)
+
+307:         530 LOAD_CONST           ((None,))
+             532 LOAD_CONST           ("messages")
+             534 LOAD_NAME            (List)
+             536 LOAD_NAME            (Dict)
+             538 LOAD_NAME            (str)
+             540 LOAD_NAME            (Any)
+             542 BUILD_TUPLE          2
+             544 BINARY_SUBSCR
+             548 BINARY_SUBSCR
+             552 LOAD_CONST           ("since_ts")
+             554 LOAD_NAME            (float)
+             556 LOAD_CONST           (None)
+             558 BINARY_OP            (|)
+             562 LOAD_CONST           ("return")
+             564 LOAD_NAME            (Optional)
+             566 LOAD_NAME            (Dict)
+             568 LOAD_NAME            (str)
+             570 LOAD_NAME            (Any)
+             572 BUILD_TUPLE          2
+             574 BINARY_SUBSCR
+             578 BINARY_SUBSCR
+             582 BUILD_TUPLE          6
+             584 LOAD_CONST           (<Code311 code object _find_code_from_messages at 0x107746280, file mailmanage_client.py>, line 307)
+             586 MAKE_FUNCTION
+             588 SET_FUNCTION_ATTRIBUTE 4
+             590 SET_FUNCTION_ATTRIBUTE 1
+             592 STORE_NAME           (_find_code_from_messages)
+
+332:         594 LOAD_NAME            (staticmethod)
+
+333:         596 LOAD_CONST           (('reserve',))
+             598 LOAD_CONST           ("scope")
+             600 LOAD_NAME            (str)
+             602 LOAD_CONST           ("return")
+             604 LOAD_NAME            (str)
+             606 BUILD_TUPLE          4
+             608 LOAD_CONST           (<Code311 code object new_reserve_request_id at 0x1077461c0, file mailmanage_client.py>, line 332)
+             610 MAKE_FUNCTION
+             612 SET_FUNCTION_ATTRIBUTE 4
+             614 SET_FUNCTION_ATTRIBUTE 1
+
+332:         616 CALL                 (0 positional)
+
+333:         624 STORE_NAME           (new_reserve_request_id)
+
+339:         626 LOAD_NAME            (staticmethod)
+
+340:         628 LOAD_CONST           (('',))
+             630 LOAD_CONST           ("request_id")
+             632 LOAD_NAME            (str)
+             634 LOAD_CONST           ("return")
+             636 LOAD_NAME            (str)
+             638 BUILD_TUPLE          4
+             640 LOAD_CONST           (<Code311 code object _clean_request_id at 0x107746190, file mailmanage_client.py>, line 339)
+             642 MAKE_FUNCTION
+             644 SET_FUNCTION_ATTRIBUTE 4
+             646 SET_FUNCTION_ATTRIBUTE 1
+
+339:         648 CALL                 (0 positional)
+
+340:         656 STORE_NAME           (_clean_request_id)
+
+344:         658 LOAD_CONST           ("base_request_id")
+             660 LOAD_NAME            (str)
+             662 LOAD_CONST           ("attempt")
+             664 LOAD_NAME            (int)
+             666 LOAD_CONST           ("return")
+             668 LOAD_NAME            (str)
+             670 BUILD_TUPLE          6
+             672 LOAD_CONST           (<Code311 code object _request_id_for_reserve_attempt at 0x107746160, file mailmanage_client.py>, line 344)
+             674 MAKE_FUNCTION
+             676 SET_FUNCTION_ATTRIBUTE 4
+             678 STORE_NAME           (_request_id_for_reserve_attempt)
+
+355:         680 LOAD_CONST           ("return")
+             682 LOAD_NAME            (set)
+             684 BUILD_TUPLE          2
+             686 LOAD_CONST           (<Code311 code object _load_used at 0x107746130, file mailmanage_client.py>, line 355)
+             688 MAKE_FUNCTION
+             690 SET_FUNCTION_ATTRIBUTE 4
+             692 STORE_NAME           (_load_used)
+
+367:         694 LOAD_CONST           (<Code311 code object _save_used at 0x107746100, file mailmanage_client.py>, line 367)
+             696 MAKE_FUNCTION
+             698 STORE_NAME           (_save_used)
+
+376:         700 LOAD_CONST           ("email")
+             702 LOAD_NAME            (str)
+             704 BUILD_TUPLE          2
+             706 LOAD_CONST           (<Code311 code object mark_used at 0x1077460a0, file mailmanage_client.py>, line 376)
+             708 MAKE_FUNCTION
+             710 SET_FUNCTION_ATTRIBUTE 4
+             712 STORE_NAME           (mark_used)
+
+389:         714 LOAD_CONST           ("email")
+             716 LOAD_NAME            (str)
+             718 BUILD_TUPLE          2
+             720 LOAD_CONST           (<Code311 code object _mark_used_remote at 0x107746070, file mailmanage_client.py>, line 389)
+             722 MAKE_FUNCTION
+             724 SET_FUNCTION_ATTRIBUTE 4
+             726 STORE_NAME           (_mark_used_remote)
+
+410:         728 LOAD_CONST           ("emails")
+             730 LOAD_NAME            (List)
+             732 LOAD_NAME            (str)
+             734 BINARY_SUBSCR
+             738 LOAD_CONST           ("return")
+             740 LOAD_NAME            (List)
+             742 LOAD_NAME            (str)
+             744 BINARY_SUBSCR
+             748 BUILD_TUPLE          4
+             750 LOAD_CONST           (<Code311 code object skip_used at 0x10774c160, file mailmanage_client.py>, line 410)
+             752 MAKE_FUNCTION
+             754 SET_FUNCTION_ATTRIBUTE 4
+             756 STORE_NAME           (skip_used)
+
+418:         758 LOAD_NAME            (property)
+
+419:         760 LOAD_CONST           ("return")
+             762 LOAD_NAME            (int)
+             764 BUILD_TUPLE          2
+             766 LOAD_CONST           (<Code311 code object used_count at 0x107746250, file mailmanage_client.py>, line 418)
+             768 MAKE_FUNCTION
+             770 SET_FUNCTION_ATTRIBUTE 4
+
+418:         772 CALL                 (0 positional)
+
+419:         780 STORE_NAME           (used_count)
+
+426:         782 NOP
+
+427:         784 NOP
+
+424:         786 LOAD_CONST           (('', ''))
+             788 LOAD_CONST           ("category")
+
+426:         790 LOAD_NAME            (str)
+
+424:         792 LOAD_CONST           ("status")
+
+427:         794 LOAD_NAME            (str)
+
+424:         796 LOAD_CONST           ("return")
+
+428:         798 LOAD_NAME            (List)
+             800 LOAD_NAME            (Dict)
+             802 BINARY_SUBSCR
+
+424:         806 BUILD_TUPLE          6
+             808 LOAD_CONST           (<Code311 code object list_mailboxes at 0x10774c1c0, file mailmanage_client.py>, line 424)
+             810 MAKE_FUNCTION
+             812 SET_FUNCTION_ATTRIBUTE 4
+             814 SET_FUNCTION_ATTRIBUTE 1
+             816 STORE_NAME           (list_mailboxes)
+
+453:         818 LOAD_CONST           ("data")
+             820 LOAD_NAME            (Any)
+             822 LOAD_CONST           ("return")
+             824 LOAD_NAME            (List)
+             826 LOAD_NAME            (Dict)
+             828 BINARY_SUBSCR
+             832 BUILD_TUPLE          4
+             834 LOAD_CONST           (<Code311 code object _extract_mailboxes at 0x10774c1f0, file mailmanage_client.py>, line 453)
+             836 MAKE_FUNCTION
+             838 SET_FUNCTION_ATTRIBUTE 4
+             840 STORE_NAME           (_extract_mailboxes)
+
+469:         842 LOAD_CONST           (('',))
+             844 LOAD_CONST           ("mailbox")
+             846 LOAD_NAME            (Dict)
+             848 LOAD_CONST           ("expected_category")
+             850 LOAD_NAME            (str)
+             852 LOAD_CONST           ("return")
+             854 LOAD_NAME            (bool)
+             856 BUILD_TUPLE          6
+             858 LOAD_CONST           (<Code311 code object _mailbox_is_usable at 0x10774c220, file mailmanage_client.py>, line 469)
+             860 MAKE_FUNCTION
+             862 SET_FUNCTION_ATTRIBUTE 4
+             864 SET_FUNCTION_ATTRIBUTE 1
+             866 STORE_NAME           (_mailbox_is_usable)
+
+495:         868 LOAD_CONST           (('', '', True))
+             870 LOAD_CONST           ("email")
+             872 LOAD_NAME            (str)
+             874 LOAD_CONST           ("category")
+             876 LOAD_NAME            (str)
+             878 LOAD_CONST           ("status")
+             880 LOAD_NAME            (str)
+             882 LOAD_CONST           ("require_usable")
+             884 LOAD_NAME            (bool)
+             886 LOAD_CONST           ("return")
+             888 LOAD_NAME            (bool)
+             890 BUILD_TUPLE          10
+             892 LOAD_CONST           (<Code311 code object mailbox_exists at 0x10774c250, file mailmanage_client.py>, line 495)
+             894 MAKE_FUNCTION
+             896 SET_FUNCTION_ATTRIBUTE 4
+             898 SET_FUNCTION_ATTRIBUTE 1
+             900 STORE_NAME           (mailbox_exists)
+
+568:         902 LOAD_CONST           (('', ''))
+             904 LOAD_CONST           ("email")
+             906 LOAD_NAME            (str)
+             908 LOAD_CONST           ("category")
+             910 LOAD_NAME            (str)
+             912 LOAD_CONST           ("status")
+             914 LOAD_NAME            (str)
+             916 LOAD_CONST           ("return")
+             918 LOAD_NAME            (bool)
+             920 BUILD_TUPLE          8
+             922 LOAD_CONST           (<Code311 code object _verify_reserved_email at 0x10774c280, file mailmanage_client.py>, line 568)
+             924 MAKE_FUNCTION
+             926 SET_FUNCTION_ATTRIBUTE 4
+             928 SET_FUNCTION_ATTRIBUTE 1
+             930 STORE_NAME           (_verify_reserved_email)
+
+583:         932 NOP
+
+584:         934 NOP
+
+585:         936 NOP
+
+581:         938 LOAD_CONST           (('free', '', ''))
+             940 LOAD_CONST           ("category")
+
+583:         942 LOAD_NAME            (str)
+
+581:         944 LOAD_CONST           ("status")
+
+584:         946 LOAD_NAME            (str)
+
+581:         948 LOAD_CONST           ("request_id")
+
+585:         950 LOAD_NAME            (str)
+
+581:         952 LOAD_CONST           ("return")
+
+586:         954 LOAD_NAME            (Optional)
+             956 LOAD_NAME            (str)
+             958 BINARY_SUBSCR
+
+581:         962 BUILD_TUPLE          8
+             964 LOAD_CONST           (<Code311 code object _reserve_email_remote at 0x10774c2b0, file mailmanage_client.py>, line 581)
+             966 MAKE_FUNCTION
+             968 SET_FUNCTION_ATTRIBUTE 4
+             970 SET_FUNCTION_ATTRIBUTE 1
+             972 STORE_NAME           (_reserve_email_remote)
+
+659:         974 LOAD_CONST           ("email")
+             976 LOAD_NAME            (str)
+             978 BUILD_TUPLE          2
+             980 LOAD_CONST           (<Code311 code object release_email at 0x10774c2e0, file mailmanage_client.py>, line 659)
+             982 MAKE_FUNCTION
+             984 SET_FUNCTION_ATTRIBUTE 4
+             986 STORE_NAME           (release_email)
+
+679:         988 LOAD_CONST           (('', 1))
+             990 LOAD_CONST           ("email")
+             992 LOAD_NAME            (str)
+             994 LOAD_CONST           ("result")
+             996 LOAD_NAME            (str)
+             998 LOAD_CONST           ("detail")
+            1000 LOAD_NAME            (str)
+            1002 LOAD_CONST           ("threshold")
+            1004 LOAD_NAME            (int)
+            1006 BUILD_TUPLE          8
+            1008 LOAD_CONST           (<Code311 code object report_code_result at 0x10774c310, file mailmanage_client.py>, line 679)
+            1010 MAKE_FUNCTION
+            1012 SET_FUNCTION_ATTRIBUTE 4
+            1014 SET_FUNCTION_ATTRIBUTE 1
+            1016 STORE_NAME           (report_code_result)
+
+711:        1018 NOP
+
+712:        1020 NOP
+
+713:        1022 NOP
+
+709:        1024 LOAD_CONST           (('free', '', ''))
+            1026 LOAD_CONST           ("category")
+
+711:        1028 LOAD_NAME            (str)
+
+709:        1030 LOAD_CONST           ("status")
+
+712:        1032 LOAD_NAME            (str)
+
+709:        1034 LOAD_CONST           ("request_id")
+
+713:        1036 LOAD_NAME            (str)
+
+709:        1038 LOAD_CONST           ("return")
+
+714:        1040 LOAD_NAME            (Optional)
+            1042 LOAD_NAME            (str)
+            1044 BINARY_SUBSCR
+
+709:        1048 BUILD_TUPLE          8
+            1050 LOAD_CONST           (<Code311 code object get_available_email at 0x10774c3a0, file mailmanage_client.py>, line 709)
+            1052 MAKE_FUNCTION
+            1054 SET_FUNCTION_ATTRIBUTE 4
+            1056 SET_FUNCTION_ATTRIBUTE 1
+            1058 STORE_NAME           (get_available_email)
+
+768:        1060 NOP
+
+769:        1062 NOP
+
+770:        1064 NOP
+
+771:        1066 NOP
+
+772:        1068 NOP
+
+773:        1070 NOP
+
+774:        1072 NOP
+
+775:        1074 NOP
+
+776:        1076 NOP
+
+765:        1078 LOAD_CONST           (('gpt', 10, 60, 5, True, 6, 1, None, 0))
+            1080 LOAD_CONST           ("email")
+
+767:        1082 LOAD_NAME            (str)
+
+765:        1084 LOAD_CONST           ("keyword")
+
+768:        1086 LOAD_NAME            (str)

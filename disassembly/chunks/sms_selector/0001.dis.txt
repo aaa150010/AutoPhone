@@ -1,0 +1,800 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          sms_selector.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        5
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1
+# Constants:
+#    0: 'Thread-safe smart SMS number route selector.\n\nThe selector only picks country/provider routes. Each worker still calls\ngetNumber on its own SMS provider instance, so activation_id and phone ownership\nstay local to the thread that bought the number.\n'
+#    1: 0
+#    2: ('annotations',)
+#    3: None
+#    4: ('dataclass',)
+#    5: ('Any', 'Callable')
+#    6: ('locked_update_json',)
+#    7: ('runtime_path',)
+#    8: 'dict[tuple[str, str, str, str, tuple[str, ...]], tuple[float, list[dict[str, Any]]]]'
+#    9: '_DISCOVERY_CACHE'
+#   10: True
+#   11: ('frozen',)
+#   12: <Code311 code object SmsCandidate at 0x106053a60, file sms_selector.py>, line 31
+#   13: 'SmsCandidate'
+#   14: <Code311 code object SmartSmsSelector at 0x106029310, file sms_selector.py>, line 44
+#   15: 'SmartSmsSelector'
+#   16: 'dict[tuple[int, int], SmartSmsSelector]'
+#   17: '_SELECTORS'
+#   18: <Code311 code object get_selector at 0x1060293d0, file sms_selector.py>, line 861
+#   19: (None,)
+#   20: ('sms', 'Any', 'config', 'dict', 'log_fn', 'LogFn | None', 'return', 'SmartSmsSelector')
+# Names:
+#    0: __doc__
+#    1: __future__
+#    2: annotations
+#    3: threading
+#    4: time
+#    5: random
+#    6: dataclasses
+#    7: dataclass
+#    8: typing
+#    9: Any
+#   10: Callable
+#   11: file_safety
+#   12: locked_update_json
+#   13: runtime_paths
+#   14: runtime_path
+#   15: str
+#   16: LogFn
+#   17: _DISCOVERY_CACHE
+#   18: __annotations__
+#   19: Lock
+#   20: _DISCOVERY_CACHE_LOCK
+#   21: SmsCandidate
+#   22: SmartSmsSelector
+#   23: _SELECTORS
+#   24: _SELECTORS_LOCK
+#   25: get_selector
+  0:           0 RESUME               0
+
+  2:           2 SETUP_ANNOTATIONS
+               4 LOAD_CONST           ("Thread-safe smart SMS number route selector.\n\nThe selector only picks country/provider routes. Each worker still calls\ngetNumber on its own SMS provider instance, so activation_id and phone ownership\nstay local to the thread that bought the number.\n")
+               6 STORE_NAME           (__doc__)
+
+  9:           8 LOAD_CONST           (0)
+              10 LOAD_CONST           (('annotations',))
+              12 IMPORT_NAME          (__future__)
+              14 IMPORT_FROM          (annotations)
+              16 STORE_NAME           (annotations)
+              18 POP_TOP
+
+ 11:          20 LOAD_CONST           (0)
+              22 LOAD_CONST           (None)
+              24 IMPORT_NAME          (threading)
+              26 STORE_NAME           (threading)
+
+ 12:          28 LOAD_CONST           (0)
+              30 LOAD_CONST           (None)
+              32 IMPORT_NAME          (time)
+              34 STORE_NAME           (time)
+
+ 13:          36 LOAD_CONST           (0)
+              38 LOAD_CONST           (None)
+              40 IMPORT_NAME          (random)
+              42 STORE_NAME           (random)
+
+ 14:          44 LOAD_CONST           (0)
+              46 LOAD_CONST           (('dataclass',))
+              48 IMPORT_NAME          (dataclasses)
+              50 IMPORT_FROM          (dataclass)
+              52 STORE_NAME           (dataclass)
+              54 POP_TOP
+
+ 15:          56 LOAD_CONST           (0)
+              58 LOAD_CONST           (('Any', 'Callable'))
+              60 IMPORT_NAME          (typing)
+              62 IMPORT_FROM          (Any)
+              64 STORE_NAME           (Any)
+              66 IMPORT_FROM          (Callable)
+              68 STORE_NAME           (Callable)
+              70 POP_TOP
+
+ 17:          72 LOAD_CONST           (0)
+              74 LOAD_CONST           (('locked_update_json',))
+              76 IMPORT_NAME          (file_safety)
+              78 IMPORT_FROM          (locked_update_json)
+              80 STORE_NAME           (locked_update_json)
+              82 POP_TOP
+
+ 18:          84 LOAD_CONST           (0)
+              86 LOAD_CONST           (('runtime_path',))
+              88 IMPORT_NAME          (runtime_paths)
+              90 IMPORT_FROM          (runtime_path)
+              92 STORE_NAME           (runtime_path)
+              94 POP_TOP
+
+ 21:          96 LOAD_NAME            (Callable)
+              98 LOAD_NAME            (str)
+             100 BUILD_LIST           1
+             102 LOAD_CONST           (None)
+             104 BUILD_TUPLE          2
+             106 BINARY_SUBSCR
+             110 STORE_NAME           (LogFn)
+
+ 27:         112 BUILD_MAP            0
+             114 STORE_NAME           (_DISCOVERY_CACHE)
+             116 LOAD_CONST           ("dict[tuple[str, str, str, str, tuple[str, ...]], tuple[float, list[dict[str, Any]]]]")
+             118 LOAD_NAME            (__annotations__)
+             120 LOAD_CONST           ("_DISCOVERY_CACHE")
+             122 STORE_SUBSCR
+
+ 28:         126 LOAD_NAME            (threading)
+             128 LOAD_ATTR            (Lock)
+             148 PUSH_NULL
+             150 CALL                 (0 positional)
+             158 STORE_NAME           (_DISCOVERY_CACHE_LOCK)
+
+ 31:         160 LOAD_NAME            (dataclass)
+             162 PUSH_NULL
+             164 LOAD_CONST           (True)
+             166 LOAD_CONST           (('frozen',))
+             168 CALL_KW              1
+
+ 32:         170 LOAD_BUILD_CLASS
+             172 PUSH_NULL
+             174 LOAD_CONST           (<Code311 code object SmsCandidate at 0x106053a60, file sms_selector.py>, line 31)
+             176 MAKE_FUNCTION
+             178 LOAD_CONST           ("SmsCandidate")
+             180 CALL                 (2 positional)
+
+ 31:         188 CALL                 (0 positional)
+
+ 32:         196 STORE_NAME           (SmsCandidate)
+
+ 44:         198 LOAD_BUILD_CLASS
+             200 PUSH_NULL
+             202 LOAD_CONST           (<Code311 code object SmartSmsSelector at 0x106029310, file sms_selector.py>, line 44)
+             204 MAKE_FUNCTION
+             206 LOAD_CONST           ("SmartSmsSelector")
+             208 CALL                 (2 positional)
+             216 STORE_NAME           (SmartSmsSelector)
+
+857:         218 BUILD_MAP            0
+             220 STORE_NAME           (_SELECTORS)
+             222 LOAD_CONST           ("dict[tuple[int, int], SmartSmsSelector]")
+             224 LOAD_NAME            (__annotations__)
+             226 LOAD_CONST           ("_SELECTORS")
+             228 STORE_SUBSCR
+
+858:         232 LOAD_NAME            (threading)
+             234 LOAD_ATTR            (Lock)
+             254 PUSH_NULL
+             256 CALL                 (0 positional)
+             264 STORE_NAME           (_SELECTORS_LOCK)
+
+861:         266 LOAD_CONST           ((None,))
+             268 LOAD_CONST           (('sms', 'Any', 'config', 'dict', 'log_fn', 'LogFn | None', 'return', 'SmartSmsSelector'))
+             270 LOAD_CONST           (<Code311 code object get_selector at 0x1060293d0, file sms_selector.py>, line 861)
+             272 MAKE_FUNCTION
+             274 SET_FUNCTION_ATTRIBUTE 4
+             276 SET_FUNCTION_ATTRIBUTE 1
+             278 STORE_NAME           (get_selector)
+             280 RETURN_CONST         (None)
+
+
+# Method Name:       SmsCandidate
+# Filename:          sms_selector.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000000 (0x1000000)
+# First Line:        31
+# Constants:
+#    0: 'SmsCandidate'
+#    1: 31
+#    2: 'str'
+#    3: 'country'
+#    4: 'provider_id'
+#    5: 'float'
+#    6: 'price'
+#    7: 'int'
+#    8: 'count'
+#    9: 'score'
+#   10: ''
+#   11: 'name'
+#   12: 0.0
+#   13: 'cooldown_until'
+#   14: False
+#   15: 'bool'
+#   16: 'fallback'
+#   17: 'main'
+#   18: 'pool'
+#   19: ()
+#   20: None
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __annotations__
+#    5: name
+#    6: cooldown_until
+#    7: fallback
+#    8: pool
+#    9: __static_attributes__
+ 31:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("SmsCandidate")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (31)
+              12 STORE_NAME           (__firstlineno__)
+              14 SETUP_ANNOTATIONS
+
+ 33:          16 LOAD_CONST           ("str")
+              18 LOAD_NAME            (__annotations__)
+              20 LOAD_CONST           ("country")
+              22 STORE_SUBSCR
+
+ 34:          26 LOAD_CONST           ("str")
+              28 LOAD_NAME            (__annotations__)
+              30 LOAD_CONST           ("provider_id")
+              32 STORE_SUBSCR
+
+ 35:          36 LOAD_CONST           ("float")
+              38 LOAD_NAME            (__annotations__)
+              40 LOAD_CONST           ("price")
+              42 STORE_SUBSCR
+
+ 36:          46 LOAD_CONST           ("int")
+              48 LOAD_NAME            (__annotations__)
+              50 LOAD_CONST           ("count")
+              52 STORE_SUBSCR
+
+ 37:          56 LOAD_CONST           ("float")
+              58 LOAD_NAME            (__annotations__)
+              60 LOAD_CONST           ("score")
+              62 STORE_SUBSCR
+
+ 38:          66 LOAD_CONST           ("")
+              68 STORE_NAME           (name)
+              70 LOAD_CONST           ("str")
+              72 LOAD_NAME            (__annotations__)
+              74 LOAD_CONST           ("name")
+              76 STORE_SUBSCR
+
+ 39:          80 LOAD_CONST           (0.0)
+              82 STORE_NAME           (cooldown_until)
+              84 LOAD_CONST           ("float")
+              86 LOAD_NAME            (__annotations__)
+              88 LOAD_CONST           ("cooldown_until")
+              90 STORE_SUBSCR
+
+ 40:          94 LOAD_CONST           (False)
+              96 STORE_NAME           (fallback)
+              98 LOAD_CONST           ("bool")
+             100 LOAD_NAME            (__annotations__)
+             102 LOAD_CONST           ("fallback")
+             104 STORE_SUBSCR
+
+ 41:         108 LOAD_CONST           ("main")
+             110 STORE_NAME           (pool)
+             112 LOAD_CONST           ("str")
+             114 LOAD_NAME            (__annotations__)
+             116 LOAD_CONST           ("pool")
+             118 STORE_SUBSCR
+             122 LOAD_CONST           (())
+             124 STORE_NAME           (__static_attributes__)
+             126 RETURN_CONST         (None)
+
+
+# Method Name:       SmartSmsSelector
+# Filename:          sms_selector.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000000 (0x1000000)
+# First Line:        44
+# Constants:
+#    0: 'SmartSmsSelector'
+#    1: 44
+#    2: None
+#    3: <Code311 code object __init__ at 0x1060539a0, file sms_selector.py>, line 45
+#    4: <Code311 code object enabled at 0x106053940, file sms_selector.py>, line 59
+#    5: <Code311 code object _clean_list at 0x106022400, file sms_selector.py>, line 64
+#    6: <Code311 code object _float at 0x106022490, file sms_selector.py>, line 68
+#    7: <Code311 code object _int at 0x1060224c0, file sms_selector.py>, line 75
+#    8: <Code311 code object _cfg at 0x1060224f0, file sms_selector.py>, line 82
+#    9: <Code311 code object _refresh_countries at 0x106022580, file sms_selector.py>, line 85
+#   10: <Code311 code object _preferred_countries at 0x106022640, file sms_selector.py>, line 93
+#   11: <Code311 code object _key_text at 0x106022670, file sms_selector.py>, line 100
+#   12: <Code311 code object _parse_key at 0x106022700, file sms_selector.py>, line 104
+#   13: <Code311 code object _load_shared_stats_locked at 0x106022730, file sms_selector.py>, line 115
+#   14: <Code311 code object _update_shared_stats at 0x106022790, file sms_selector.py>, line 137
+#   15: <Code311 code object _update_shared_route_and_country at 0x1060227f0, file sms_selector.py>, line 159
+#   16: <Code311 code object _log at 0x106022820, file sms_selector.py>, line 203
+#   17: <Code311 code object _cooldown_until at 0x106022850, file sms_selector.py>, line 207
+#   18: <Code311 code object _is_cooled at 0x106022880, file sms_selector.py>, line 211
+#   19: <Code311 code object _route_inflight at 0x1060228b0, file sms_selector.py>, line 214
+#   20: <Code311 code object _route_limit at 0x106022940, file sms_selector.py>, line 220
+#   21: <Code311 code object _route_spacing at 0x1060229a0, file sms_selector.py>, line 234
+#   22: <Code311 code object _has_route_capacity at 0x106022a00, file sms_selector.py>, line 242
+#   23: <Code311 code object _hot_bonus at 0x106022a30, file sms_selector.py>, line 252
+#   24: <Code311 code object _pool_for_candidate at 0x1060223d0, file sms_selector.py>, line 262
+#   25: <Code311 code object _allow_fallback at 0x106022370, file sms_selector.py>, line 271
+#   26: <Code311 code object country_quality_block_reason at 0x1060222e0, file sms_selector.py>, line 283
+#   27: <Code311 code object _target_pool at 0x106022250, file sms_selector.py>, line 314
+#   28: <Code311 code object _pool_order at 0x1060221f0, file sms_selector.py>, line 333
+#   29: <Code311 code object _try_reserve at 0x106022190, file sms_selector.py>, line 340
+#   30: <Code311 code object cached_country_price_state at 0x106022160, file sms_selector.py>, line 368
+#   31: <Code311 code object _score_row at 0x106022100, file sms_selector.py>, line 397
+#   32: <Code311 code object _build_candidates_locked at 0x106022070, file sms_selector.py>, line 516
+#   33: <Code311 code object refresh at 0x106029160, file sms_selector.py>, line 581
+#   34: <Code311 code object pick at 0x106029220, file sms_selector.py>, line 652
+#   35: <Code311 code object classify_error at 0x106029250, file sms_selector.py>, line 707
+#   36: <Code311 code object record_result at 0x1060292e0, file sms_selector.py>, line 733
+#   37: ('candidates', 'config', 'country_stats', 'last_error', 'last_pick_at', 'last_refresh', 'lock', 'log_fn', 'raw_rows', 'sms', 'stats', 'stats_path')
+#   38: (None,)
+#   39: ('sms', 'Any', 'config', 'dict', 'log_fn', 'LogFn | None')
+#   40: ('config', 'dict', 'return', 'bool')
+#   41: ('value', 'Any', 'return', 'list[str]')
+#   42: ('value', 'Any', 'default', 'float', 'return', 'float')
+#   43: ('value', 'Any', 'default', 'int', 'return', 'int')
+#   44: ('return', 'dict')
+#   45: ('return', 'list[str]')
+#   46: ('return', 'set[str]')
+#   47: ('key', 'tuple[str, str]', 'return', 'str')
+#   48: ('value', 'str', 'return', 'tuple[str, str] | None')
+#   49: ('return', 'None')
+#   50: ('key', 'tuple[str, str]', 'update_fn', 'Callable[[dict], dict]', 'return', 'dict')
+#   51: ('key', 'tuple[str, str]', 'route_update_fn', 'Callable[[dict], dict]', 'country_update_fn', 'Callable[[dict], dict]', 'return', 'tuple[dict[str, Any], dict[str, Any]]')
+#   52: ('message', 'str', 'return', 'None')
+#   53: ('key', 'tuple[str, str]', 'return', 'float')
+#   54: ('key', 'tuple[str, str]', 'now', 'float', 'return', 'bool')
+#   55: ('stat', 'dict[str, Any]', 'now', 'float', 'return', 'int')
+#   56: ('candidate', 'SmsCandidate', 'stat', 'dict[str, Any]', 'now', 'float', 'return', 'int')
+#   57: ('candidate', 'SmsCandidate', 'stat', 'dict[str, Any]', 'now', 'float', 'return', 'float')
+#   58: ('candidate', 'SmsCandidate', 'stat', 'dict[str, Any]', 'now', 'float', 'return', 'bool')
+#   59: ('row', 'dict[str, Any]', 'now', 'float', 'return', 'float')
+#   60: ('key', 'tuple[str, str]', 'stat', 'dict[str, Any]', 'preferred', 'set[str]', 'now', 'float', 'return', 'str')
+#   61: ('stat', 'dict[str, Any]', 'now', 'float', 'return', 'bool')
+#   62: ('country', 'str', 'return', 'str')
+#   63: ('return', 'str')
+#   64: ('target', 'str', 'return', 'list[str]')
+#   65: ('candidate', 'SmsCandidate', 'return', 'bool')
+#   66: ('',)
+#   67: ('country', 'str', 'max_price', 'str', 'return', 'tuple[bool | None, float | None, int]')
+#   68: (None, None)
+#   69: ('row', 'dict', 'now', 'float', 'allowed_countries', 'set[str] | None', 'blocked_countries', 'set[str] | None', 'return', 'SmsCandidate | None')
+#   70: ('raw_rows', 'list[dict[str, Any]]', 'now', 'float', 'allowed_countries', 'set[str] | None', 'blocked_countries', 'set[str] | None', 'return', 'list[SmsCandidate]')
+#   71: (False,)
+#   72: ('force', 'bool', 'return', 'list[SmsCandidate]')
+#   73: ('exclude_routes', 'set[tuple[str, str]] | None', 'return', 'SmsCandidate | None')
+#   74: ('error', 'Any', 'return', 'str')
+#   75: ('candidate', 'SmsCandidate | None', 'ok', 'bool', 'error', 'Any', 'return', 'None')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __init__
+#    5: staticmethod
+#    6: enabled
+#    7: _clean_list
+#    8: _float
+#    9: _int
+#   10: _cfg
+#   11: _refresh_countries
+#   12: _preferred_countries
+#   13: _key_text
+#   14: _parse_key
+#   15: _load_shared_stats_locked
+#   16: _update_shared_stats
+#   17: _update_shared_route_and_country
+#   18: _log
+#   19: _cooldown_until
+#   20: _is_cooled
+#   21: _route_inflight
+#   22: _route_limit
+#   23: _route_spacing
+#   24: _has_route_capacity
+#   25: _hot_bonus
+#   26: _pool_for_candidate
+#   27: _allow_fallback
+#   28: country_quality_block_reason
+#   29: _target_pool
+#   30: _pool_order
+#   31: _try_reserve
+#   32: cached_country_price_state
+#   33: _score_row
+#   34: _build_candidates_locked
+#   35: refresh
+#   36: pick
+#   37: classify_error
+#   38: record_result
+#   39: __static_attributes__
+ 44:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("SmartSmsSelector")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (44)
+              12 STORE_NAME           (__firstlineno__)
+
+ 45:          14 LOAD_CONST           ((None,))
+              16 LOAD_CONST           (('sms', 'Any', 'config', 'dict', 'log_fn', 'LogFn | None'))
+              18 LOAD_CONST           (<Code311 code object __init__ at 0x1060539a0, file sms_selector.py>, line 45)
+              20 MAKE_FUNCTION
+              22 SET_FUNCTION_ATTRIBUTE 4
+              24 SET_FUNCTION_ATTRIBUTE 1
+              26 STORE_NAME           (__init__)
+
+ 59:          28 LOAD_NAME            (staticmethod)
+
+ 60:          30 LOAD_CONST           (('config', 'dict', 'return', 'bool'))
+              32 LOAD_CONST           (<Code311 code object enabled at 0x106053940, file sms_selector.py>, line 59)
+              34 MAKE_FUNCTION
+              36 SET_FUNCTION_ATTRIBUTE 4
+
+ 59:          38 CALL                 (0 positional)
+
+ 60:          46 STORE_NAME           (enabled)
+
+ 64:          48 LOAD_NAME            (staticmethod)
+
+ 65:          50 LOAD_CONST           (('value', 'Any', 'return', 'list[str]'))
+              52 LOAD_CONST           (<Code311 code object _clean_list at 0x106022400, file sms_selector.py>, line 64)
+              54 MAKE_FUNCTION
+              56 SET_FUNCTION_ATTRIBUTE 4
+
+ 64:          58 CALL                 (0 positional)
+
+ 65:          66 STORE_NAME           (_clean_list)
+
+ 68:          68 LOAD_NAME            (staticmethod)
+
+ 69:          70 LOAD_CONST           (('value', 'Any', 'default', 'float', 'return', 'float'))
+              72 LOAD_CONST           (<Code311 code object _float at 0x106022490, file sms_selector.py>, line 68)
+              74 MAKE_FUNCTION
+              76 SET_FUNCTION_ATTRIBUTE 4
+
+ 68:          78 CALL                 (0 positional)
+
+ 69:          86 STORE_NAME           (_float)
+
+ 75:          88 LOAD_NAME            (staticmethod)
+
+ 76:          90 LOAD_CONST           (('value', 'Any', 'default', 'int', 'return', 'int'))
+              92 LOAD_CONST           (<Code311 code object _int at 0x1060224c0, file sms_selector.py>, line 75)
+              94 MAKE_FUNCTION
+              96 SET_FUNCTION_ATTRIBUTE 4
+
+ 75:          98 CALL                 (0 positional)
+
+ 76:         106 STORE_NAME           (_int)
+
+ 82:         108 LOAD_CONST           (('return', 'dict'))
+             110 LOAD_CONST           (<Code311 code object _cfg at 0x1060224f0, file sms_selector.py>, line 82)
+             112 MAKE_FUNCTION
+             114 SET_FUNCTION_ATTRIBUTE 4
+             116 STORE_NAME           (_cfg)
+
+ 85:         118 LOAD_CONST           (('return', 'list[str]'))
+             120 LOAD_CONST           (<Code311 code object _refresh_countries at 0x106022580, file sms_selector.py>, line 85)
+             122 MAKE_FUNCTION
+             124 SET_FUNCTION_ATTRIBUTE 4
+             126 STORE_NAME           (_refresh_countries)
+
+ 93:         128 LOAD_CONST           (('return', 'set[str]'))
+             130 LOAD_CONST           (<Code311 code object _preferred_countries at 0x106022640, file sms_selector.py>, line 93)
+             132 MAKE_FUNCTION
+             134 SET_FUNCTION_ATTRIBUTE 4
+             136 STORE_NAME           (_preferred_countries)
+
+100:         138 LOAD_NAME            (staticmethod)
+
+101:         140 LOAD_CONST           (('key', 'tuple[str, str]', 'return', 'str'))
+             142 LOAD_CONST           (<Code311 code object _key_text at 0x106022670, file sms_selector.py>, line 100)
+             144 MAKE_FUNCTION
+             146 SET_FUNCTION_ATTRIBUTE 4
+
+100:         148 CALL                 (0 positional)
+
+101:         156 STORE_NAME           (_key_text)
+
+104:         158 LOAD_NAME            (staticmethod)
+
+105:         160 LOAD_CONST           (('value', 'str', 'return', 'tuple[str, str] | None'))
+             162 LOAD_CONST           (<Code311 code object _parse_key at 0x106022700, file sms_selector.py>, line 104)
+             164 MAKE_FUNCTION
+             166 SET_FUNCTION_ATTRIBUTE 4
+
+104:         168 CALL                 (0 positional)
+
+105:         176 STORE_NAME           (_parse_key)
+
+115:         178 LOAD_CONST           (('return', 'None'))
+             180 LOAD_CONST           (<Code311 code object _load_shared_stats_locked at 0x106022730, file sms_selector.py>, line 115)
+             182 MAKE_FUNCTION
+             184 SET_FUNCTION_ATTRIBUTE 4
+             186 STORE_NAME           (_load_shared_stats_locked)
+
+137:         188 LOAD_CONST           (('key', 'tuple[str, str]', 'update_fn', 'Callable[[dict], dict]', 'return', 'dict'))
+             190 LOAD_CONST           (<Code311 code object _update_shared_stats at 0x106022790, file sms_selector.py>, line 137)
+             192 MAKE_FUNCTION
+             194 SET_FUNCTION_ATTRIBUTE 4
+             196 STORE_NAME           (_update_shared_stats)
+
+159:         198 NOP
+
+161:         200 NOP
+
+159:         202 NOP
+
+162:         204 NOP
+
+159:         206 NOP
+
+163:         208 NOP
+
+159:         210 NOP
+
+164:         212 NOP
+
+159:         214 LOAD_CONST           (('key', 'tuple[str, str]', 'route_update_fn', 'Callable[[dict], dict]', 'country_update_fn', 'Callable[[dict], dict]', 'return', 'tuple[dict[str, Any], dict[str, Any]]'))
+             216 LOAD_CONST           (<Code311 code object _update_shared_route_and_country at 0x1060227f0, file sms_selector.py>, line 159)
+             218 MAKE_FUNCTION
+             220 SET_FUNCTION_ATTRIBUTE 4
+             222 STORE_NAME           (_update_shared_route_and_country)
+
+203:         224 LOAD_CONST           (('message', 'str', 'return', 'None'))
+             226 LOAD_CONST           (<Code311 code object _log at 0x106022820, file sms_selector.py>, line 203)
+             228 MAKE_FUNCTION
+             230 SET_FUNCTION_ATTRIBUTE 4
+             232 STORE_NAME           (_log)
+
+207:         234 LOAD_CONST           (('key', 'tuple[str, str]', 'return', 'float'))
+             236 LOAD_CONST           (<Code311 code object _cooldown_until at 0x106022850, file sms_selector.py>, line 207)
+             238 MAKE_FUNCTION
+             240 SET_FUNCTION_ATTRIBUTE 4
+             242 STORE_NAME           (_cooldown_until)
+
+211:         244 LOAD_CONST           (('key', 'tuple[str, str]', 'now', 'float', 'return', 'bool'))
+             246 LOAD_CONST           (<Code311 code object _is_cooled at 0x106022880, file sms_selector.py>, line 211)
+             248 MAKE_FUNCTION
+             250 SET_FUNCTION_ATTRIBUTE 4
+             252 STORE_NAME           (_is_cooled)
+
+214:         254 LOAD_CONST           (('stat', 'dict[str, Any]', 'now', 'float', 'return', 'int'))
+             256 LOAD_CONST           (<Code311 code object _route_inflight at 0x1060228b0, file sms_selector.py>, line 214)
+             258 MAKE_FUNCTION
+             260 SET_FUNCTION_ATTRIBUTE 4
+             262 STORE_NAME           (_route_inflight)
+
+220:         264 LOAD_CONST           (('candidate', 'SmsCandidate', 'stat', 'dict[str, Any]', 'now', 'float', 'return', 'int'))
+             266 LOAD_CONST           (<Code311 code object _route_limit at 0x106022940, file sms_selector.py>, line 220)
+             268 MAKE_FUNCTION
+             270 SET_FUNCTION_ATTRIBUTE 4
+             272 STORE_NAME           (_route_limit)
+
+234:         274 LOAD_CONST           (('candidate', 'SmsCandidate', 'stat', 'dict[str, Any]', 'now', 'float', 'return', 'float'))
+             276 LOAD_CONST           (<Code311 code object _route_spacing at 0x1060229a0, file sms_selector.py>, line 234)
+             278 MAKE_FUNCTION
+             280 SET_FUNCTION_ATTRIBUTE 4
+             282 STORE_NAME           (_route_spacing)
+
+242:         284 LOAD_CONST           (('candidate', 'SmsCandidate', 'stat', 'dict[str, Any]', 'now', 'float', 'return', 'bool'))
+             286 LOAD_CONST           (<Code311 code object _has_route_capacity at 0x106022a00, file sms_selector.py>, line 242)
+             288 MAKE_FUNCTION
+             290 SET_FUNCTION_ATTRIBUTE 4
+             292 STORE_NAME           (_has_route_capacity)
+
+252:         294 LOAD_CONST           (('row', 'dict[str, Any]', 'now', 'float', 'return', 'float'))
+             296 LOAD_CONST           (<Code311 code object _hot_bonus at 0x106022a30, file sms_selector.py>, line 252)
+             298 MAKE_FUNCTION
+             300 SET_FUNCTION_ATTRIBUTE 4
+             302 STORE_NAME           (_hot_bonus)
+
+262:         304 LOAD_CONST           (('key', 'tuple[str, str]', 'stat', 'dict[str, Any]', 'preferred', 'set[str]', 'now', 'float', 'return', 'str'))
+             306 LOAD_CONST           (<Code311 code object _pool_for_candidate at 0x1060223d0, file sms_selector.py>, line 262)
+             308 MAKE_FUNCTION
+             310 SET_FUNCTION_ATTRIBUTE 4
+             312 STORE_NAME           (_pool_for_candidate)
+
+271:         314 LOAD_CONST           (('stat', 'dict[str, Any]', 'now', 'float', 'return', 'bool'))
+             316 LOAD_CONST           (<Code311 code object _allow_fallback at 0x106022370, file sms_selector.py>, line 271)
+             318 MAKE_FUNCTION
+             320 SET_FUNCTION_ATTRIBUTE 4
+             322 STORE_NAME           (_allow_fallback)
+
+283:         324 LOAD_CONST           (('country', 'str', 'return', 'str'))
+             326 LOAD_CONST           (<Code311 code object country_quality_block_reason at 0x1060222e0, file sms_selector.py>, line 283)
+             328 MAKE_FUNCTION
+             330 SET_FUNCTION_ATTRIBUTE 4
+             332 STORE_NAME           (country_quality_block_reason)
+
+314:         334 LOAD_CONST           (('return', 'str'))
+             336 LOAD_CONST           (<Code311 code object _target_pool at 0x106022250, file sms_selector.py>, line 314)
+             338 MAKE_FUNCTION
+             340 SET_FUNCTION_ATTRIBUTE 4
+             342 STORE_NAME           (_target_pool)
+
+333:         344 LOAD_NAME            (staticmethod)
+
+334:         346 LOAD_CONST           (('target', 'str', 'return', 'list[str]'))
+             348 LOAD_CONST           (<Code311 code object _pool_order at 0x1060221f0, file sms_selector.py>, line 333)
+             350 MAKE_FUNCTION
+             352 SET_FUNCTION_ATTRIBUTE 4
+
+333:         354 CALL                 (0 positional)
+
+334:         362 STORE_NAME           (_pool_order)
+
+340:         364 LOAD_CONST           (('candidate', 'SmsCandidate', 'return', 'bool'))
+             366 LOAD_CONST           (<Code311 code object _try_reserve at 0x106022190, file sms_selector.py>, line 340)
+             368 MAKE_FUNCTION
+             370 SET_FUNCTION_ATTRIBUTE 4
+             372 STORE_NAME           (_try_reserve)
+
+368:         374 LOAD_CONST           (('',))
+             376 LOAD_CONST           (('country', 'str', 'max_price', 'str', 'return', 'tuple[bool | None, float | None, int]'))
+             378 LOAD_CONST           (<Code311 code object cached_country_price_state at 0x106022160, file sms_selector.py>, line 368)
+             380 MAKE_FUNCTION
+             382 SET_FUNCTION_ATTRIBUTE 4
+             384 SET_FUNCTION_ATTRIBUTE 1
+             386 STORE_NAME           (cached_country_price_state)
+
+401:         388 NOP
+
+402:         390 NOP
+
+397:         392 LOAD_CONST           ((None, None))
+
+399:         394 NOP
+
+397:         396 NOP
+
+400:         398 NOP
+
+397:         400 NOP
+
+401:         402 NOP
+
+397:         404 NOP
+
+402:         406 NOP
+
+397:         408 NOP
+
+403:         410 NOP
+
+397:         412 LOAD_CONST           (('row', 'dict', 'now', 'float', 'allowed_countries', 'set[str] | None', 'blocked_countries', 'set[str] | None', 'return', 'SmsCandidate | None'))
+             414 LOAD_CONST           (<Code311 code object _score_row at 0x106022100, file sms_selector.py>, line 397)
+             416 MAKE_FUNCTION
+             418 SET_FUNCTION_ATTRIBUTE 4
+             420 SET_FUNCTION_ATTRIBUTE 1
+             422 STORE_NAME           (_score_row)
+
+516:         424 NOP
+
+518:         426 NOP
+
+516:         428 NOP
+
+519:         430 NOP
+
+516:         432 NOP
+
+520:         434 NOP
+
+516:         436 NOP
+
+521:         438 NOP
+
+516:         440 NOP
+
+522:         442 NOP
+
+516:         444 LOAD_CONST           (('raw_rows', 'list[dict[str, Any]]', 'now', 'float', 'allowed_countries', 'set[str] | None', 'blocked_countries', 'set[str] | None', 'return', 'list[SmsCandidate]'))
+             446 LOAD_CONST           (<Code311 code object _build_candidates_locked at 0x106022070, file sms_selector.py>, line 516)
+             448 MAKE_FUNCTION
+             450 SET_FUNCTION_ATTRIBUTE 4
+             452 STORE_NAME           (_build_candidates_locked)
+
+581:         454 LOAD_CONST           ((False,))
+             456 LOAD_CONST           (('force', 'bool', 'return', 'list[SmsCandidate]'))
+             458 LOAD_CONST           (<Code311 code object refresh at 0x106029160, file sms_selector.py>, line 581)
+             460 MAKE_FUNCTION
+             462 SET_FUNCTION_ATTRIBUTE 4
+             464 SET_FUNCTION_ATTRIBUTE 1
+             466 STORE_NAME           (refresh)
+
+652:         468 LOAD_CONST           ((None,))
+             470 LOAD_CONST           (('exclude_routes', 'set[tuple[str, str]] | None', 'return', 'SmsCandidate | None'))
+             472 LOAD_CONST           (<Code311 code object pick at 0x106029220, file sms_selector.py>, line 652)
+             474 MAKE_FUNCTION
+             476 SET_FUNCTION_ATTRIBUTE 4
+             478 SET_FUNCTION_ATTRIBUTE 1
+             480 STORE_NAME           (pick)
+
+707:         482 LOAD_NAME            (staticmethod)
+
+708:         484 LOAD_CONST           (('error', 'Any', 'return', 'str'))
+             486 LOAD_CONST           (<Code311 code object classify_error at 0x106029250, file sms_selector.py>, line 707)
+             488 MAKE_FUNCTION
+             490 SET_FUNCTION_ATTRIBUTE 4
+
+707:         492 CALL                 (0 positional)
+
+708:         500 STORE_NAME           (classify_error)
+
+733:         502 LOAD_CONST           (('',))
+             504 LOAD_CONST           (('candidate', 'SmsCandidate | None', 'ok', 'bool', 'error', 'Any', 'return', 'None'))
+             506 LOAD_CONST           (<Code311 code object record_result at 0x1060292e0, file sms_selector.py>, line 733)
+             508 MAKE_FUNCTION
+             510 SET_FUNCTION_ATTRIBUTE 4
+             512 SET_FUNCTION_ATTRIBUTE 1
+             514 STORE_NAME           (record_result)
+             516 LOAD_CONST           (('candidates', 'config', 'country_stats', 'last_error', 'last_pick_at', 'last_refresh', 'lock', 'log_fn', 'raw_rows', 'sms', 'stats', 'stats_path'))
+             518 STORE_NAME           (__static_attributes__)
+             520 RETURN_CONST         (None)
+
+
+# Method Name:       get_selector
+# Filename:          sms_selector.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        861
+# Constants:
+#    0: None
+#    1: ('log_fn',)
+# Names:
+#    0: id
+#    1: _SELECTORS_LOCK
+#    2: _SELECTORS
+#    3: get
+#    4: SmartSmsSelector
+#    5: log_fn
+# Varnames:
+#	sms, config, log_fn, key, selector
+# Positional arguments:
+#	sms, config, log_fn
+# Local variables:
+#    3: key
+#    4: selector
+861:           0 RESUME               0
+
+862:           2 LOAD_GLOBAL          (NULL + id)
+              12 LOAD_FAST            (sms)
+              14 CALL                 (1 positional)
+              22 LOAD_GLOBAL          (NULL + id)
+              32 LOAD_FAST            (config)
+              34 CALL                 (1 positional)
+              42 BUILD_TUPLE          2
+              44 STORE_FAST           (key)
+
+863:          46 LOAD_GLOBAL          (_SELECTORS_LOCK)
+              56 BEFORE_WITH
+              58 POP_TOP
+
+864:          60 LOAD_GLOBAL          (_SELECTORS)
+              70 LOAD_ATTR            (NULL|self + get)
+              90 LOAD_FAST            (key)
+              92 CALL                 (1 positional)
+             100 STORE_FAST           (selector)
+

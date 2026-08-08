@@ -1,0 +1,186 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+import {
+  ArrowDown,
+  CircleCloseFilled,
+  Delete,
+  Download,
+  Loading,
+  MoreFilled,
+  RefreshLeft,
+  RefreshRight,
+  Tools,
+  UploadFilled,
+} from '@element-plus/icons-vue'
+
+const props = defineProps<{
+  reloginDisabled: boolean
+  restoreDisabled: boolean
+  unavailableDisabled: boolean
+  pixelDisabled: boolean
+  exportDisabled: boolean
+  websiteDisabled: boolean
+  deleteDisabled: boolean
+  reloginLoading?: boolean
+  pixelLoading?: boolean
+  exportLoading?: boolean
+  websiteLoading?: boolean
+  unavailableLoading?: boolean
+}>()
+
+const emit = defineEmits<{
+  (event: 'relogin'): void
+  (event: 'restore'): void
+  (event: 'unavailable'): void
+  (event: 'pixel'): void
+  (event: 'export'): void
+  (event: 'website'): void
+  (event: 'delete'): void
+}>()
+
+const accountDisabled = computed(() => (
+  props.reloginDisabled && props.restoreDisabled && props.unavailableDisabled
+))
+const transferDisabled = computed(() => props.pixelDisabled && props.exportDisabled && props.websiteDisabled)
+const accountLoading = computed(() => Boolean(props.reloginLoading || props.unavailableLoading))
+const transferLoading = computed(() => Boolean(
+  props.pixelLoading || props.exportLoading || props.websiteLoading,
+))
+
+function handleAccountCommand(command: string) {
+  if (command === 'relogin' && !props.reloginDisabled) emit('relogin')
+  if (command === 'restore' && !props.restoreDisabled) emit('restore')
+  if (command === 'unavailable' && !props.unavailableDisabled) emit('unavailable')
+}
+
+function handleTransferCommand(command: string) {
+  if (command === 'pixel' && !props.pixelDisabled) emit('pixel')
+  if (command === 'export' && !props.exportDisabled) emit('export')
+  if (command === 'website' && !props.websiteDisabled) emit('website')
+}
+
+function handleMoreCommand(command: string) {
+  if (command === 'delete' && !props.deleteDisabled) emit('delete')
+}
+</script>
+
+<template>
+  <div class="mailbox-action-menus">
+    <el-dropdown
+      trigger="click"
+      :disabled="accountDisabled"
+      @command="handleAccountCommand"
+    >
+      <el-button :disabled="accountDisabled">
+        <el-icon v-if="accountLoading" class="is-loading"><Loading /></el-icon>
+        <el-icon v-else><Tools /></el-icon>
+        账号维护
+        <el-icon class="menu-chevron"><ArrowDown /></el-icon>
+      </el-button>
+      <template #dropdown>
+        <el-dropdown-menu>
+          <el-dropdown-item command="relogin" :disabled="reloginDisabled || reloginLoading">
+            <el-icon :class="{ 'is-loading': reloginLoading }">
+              <Loading v-if="reloginLoading" />
+              <RefreshRight v-else />
+            </el-icon>
+            重登并更新 SUB2
+          </el-dropdown-item>
+          <el-dropdown-item command="restore" :disabled="restoreDisabled">
+            <el-icon><RefreshLeft /></el-icon>
+            恢复可用
+          </el-dropdown-item>
+          <el-dropdown-item command="unavailable" :disabled="unavailableDisabled || unavailableLoading">
+            <el-icon :class="{ 'is-loading': unavailableLoading }">
+              <Loading v-if="unavailableLoading" />
+              <CircleCloseFilled v-else />
+            </el-icon>
+            设置为不可用
+          </el-dropdown-item>
+        </el-dropdown-menu>
+      </template>
+    </el-dropdown>
+
+    <el-dropdown
+      trigger="click"
+      :disabled="transferDisabled"
+      @command="handleTransferCommand"
+    >
+      <el-button :disabled="transferDisabled">
+        <el-icon v-if="transferLoading" class="is-loading"><Loading /></el-icon>
+        <el-icon v-else><UploadFilled /></el-icon>
+        上传与导出
+        <el-icon class="menu-chevron"><ArrowDown /></el-icon>
+      </el-button>
+      <template #dropdown>
+        <el-dropdown-menu>
+          <el-dropdown-item command="pixel" :disabled="pixelDisabled || pixelLoading">
+            <el-icon :class="{ 'is-loading': pixelLoading }">
+              <Loading v-if="pixelLoading" />
+              <UploadFilled v-else />
+            </el-icon>
+            重传 Pixel
+          </el-dropdown-item>
+          <el-dropdown-item command="export" :disabled="exportDisabled || exportLoading">
+            <el-icon :class="{ 'is-loading': exportLoading }">
+              <Loading v-if="exportLoading" />
+              <Download v-else />
+            </el-icon>
+            导出 SUB2API
+          </el-dropdown-item>
+          <el-dropdown-item command="website" :disabled="websiteDisabled || websiteLoading">
+            <el-icon :class="{ 'is-loading': websiteLoading }">
+              <Loading v-if="websiteLoading" />
+              <UploadFilled v-else />
+            </el-icon>
+            导入网站邮箱
+          </el-dropdown-item>
+        </el-dropdown-menu>
+      </template>
+    </el-dropdown>
+
+    <el-dropdown
+      trigger="click"
+      :disabled="deleteDisabled"
+      @command="handleMoreCommand"
+    >
+      <el-button :disabled="deleteDisabled">
+        <el-icon><MoreFilled /></el-icon>
+        更多操作
+        <el-icon class="menu-chevron"><ArrowDown /></el-icon>
+      </el-button>
+      <template #dropdown>
+        <el-dropdown-menu>
+          <el-dropdown-item command="delete" :disabled="deleteDisabled">
+            <el-icon class="danger-icon"><Delete /></el-icon>
+            <span class="danger-label">删除</span>
+          </el-dropdown-item>
+        </el-dropdown-menu>
+      </template>
+    </el-dropdown>
+  </div>
+</template>
+
+<style scoped>
+.mailbox-action-menus {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.mailbox-action-menus .el-button {
+  margin-left: 0;
+  white-space: nowrap;
+}
+
+.menu-chevron {
+  margin-left: 2px;
+  font-size: 11px;
+}
+
+.danger-icon,
+.danger-label {
+  color: var(--el-color-danger);
+}
+</style>

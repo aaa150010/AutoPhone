@@ -1,0 +1,274 @@
+            4246 POP_TOP
+
+913:        4248 RAISE_VARARGS        (reraise)
+
+914:     >> 4250 LOAD_GLOBAL          (Exception)
+            4260 CHECK_EXC_MATCH
+            4262 POP_JUMP_IF_FALSE    (to 4330)
+            4266 STORE_FAST           (e)
+
+915:        4268 LOAD_FAST            (self)
+            4270 LOAD_ATTR            (NULL|self + _log)
+            4290 LOAD_CONST           ("请求异常: ")
+            4292 LOAD_FAST            (e)
+            4294 FORMAT_SIMPLE
+            4296 BUILD_STRING         2
+            4298 CALL                 (1 positional)
+            4306 POP_TOP
+            4308 POP_EXCEPT
+            4310 LOAD_CONST           (None)
+            4312 STORE_FAST           (e)
+            4314 DELETE_FAST          (e)
+            4316 EXTENDED_ARG         (1792)
+            4318 JUMP_BACKWARD        (to 258)
+         >> 4322 LOAD_CONST           (None)
+            4324 STORE_FAST           (e)
+            4326 DELETE_FAST          (e)
+            4328 RERAISE              1
+
+914:     >> 4330 RERAISE              0
+         >> 4332 COPY                 3
+            4334 POP_EXCEPT
+            4336 RERAISE              1
+
+ExceptionTable:
+  474 to 918 -> 4228 [1]
+  920 to 968 -> 4182 [3]
+  978 to 1020 -> 4182 [3]
+  1022 to 1556 -> 4228 [1]
+  1564 to 1858 -> 4228 [1]
+  1866 to 1928 -> 4228 [1]
+  1936 to 2298 -> 4228 [1]
+  2306 to 2530 -> 4228 [1]
+  2534 to 2672 -> 4192 [2]
+  2674 to 2766 -> 4228 [1]
+  2776 to 2814 -> 4228 [1]
+  2824 to 3746 -> 4228 [1]
+  3754 to 3834 -> 4228 [1]
+  4182 to 4190 -> 4228 [1]
+  4192 to 4210 -> 4222 [3] lasti
+  4212 to 4218 -> 4228 [1]
+  4220 to 4220 -> 4222 [3] lasti
+  4222 to 4226 -> 4228 [1]
+  4228 to 4266 -> 4332 [2] lasti
+  4268 to 4306 -> 4322 [2] lasti
+  4322 to 4330 -> 4332 [2] lasti
+
+# Method Name:       <genexpr>
+# Filename:          mailmanage_client.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        2
+# Flags:             0x00000033 (GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        159
+# Constants:
+#    0: None
+# Varnames:
+#	.0, part
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: part
+159:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 44)
+              14 STORE_FAST_LOAD_FAST (part, part)
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 JUMP_BACKWARD        (to 10)
+         >>   32 LOAD_FAST            (part)
+              34 YIELD_VALUE          0
+              36 RESUME               5
+              38 POP_TOP
+              40 JUMP_BACKWARD        (to 10)
+         >>   44 END_FOR
+              46 POP_TOP
+              48 RETURN_CONST         (None)
+         >>   50 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              52 RERAISE              1
+
+ExceptionTable:
+  4 to 22 -> 50 [0] lasti
+  32 to 48 -> 50 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          mailmanage_client.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x00000033 (GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        170
+# Constants:
+#    0: None
+# Varnames:
+#	.0, anchor
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: anchor
+# Free variables:
+#    0: text
+               0 COPY_FREE_VARS       1
+
+170:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+              10 GET_ITER
+              12 FOR_ITER             (to 34)
+              16 STORE_FAST_LOAD_FAST (anchor, anchor)
+              18 LOAD_DEREF           (text)
+              20 CONTAINS_OP          (in)
+              24 YIELD_VALUE          0
+              26 RESUME               5
+              28 POP_TOP
+              30 JUMP_BACKWARD        (to 12)
+         >>   34 END_FOR
+              36 POP_TOP
+              38 RETURN_CONST         (None)
+         >>   40 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              42 RERAISE              1
+
+ExceptionTable:
+  6 to 38 -> 40 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          mailmanage_client.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x00000033 (GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        187
+# Constants:
+#    0: None
+# Varnames:
+#	.0, marker
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: marker
+# Free variables:
+#    0: text_low
+               0 COPY_FREE_VARS       1
+
+187:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+              10 GET_ITER
+              12 FOR_ITER             (to 34)
+              16 STORE_FAST_LOAD_FAST (marker, marker)
+              18 LOAD_DEREF           (text_low)
+              20 CONTAINS_OP          (in)
+              24 YIELD_VALUE          0
+              26 RESUME               5
+              28 POP_TOP
+              30 JUMP_BACKWARD        (to 12)
+         >>   34 END_FOR
+              36 POP_TOP
+              38 RETURN_CONST         (None)
+         >>   40 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              42 RERAISE              1
+
+ExceptionTable:
+  6 to 38 -> 40 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          mailmanage_client.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x00000033 (GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        217
+# Constants:
+#    0: None
+# Varnames:
+#	.0, anchor
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: anchor
+# Free variables:
+#    0: window
+               0 COPY_FREE_VARS       1
+
+217:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+              10 GET_ITER
+              12 FOR_ITER             (to 34)
+              16 STORE_FAST_LOAD_FAST (anchor, anchor)
+              18 LOAD_DEREF           (window)
+              20 CONTAINS_OP          (in)
+              24 YIELD_VALUE          0
+              26 RESUME               5
+              28 POP_TOP
+              30 JUMP_BACKWARD        (to 12)
+         >>   34 END_FOR
+              36 POP_TOP
+              38 RETURN_CONST         (None)
+         >>   40 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              42 RERAISE              1
+
+ExceptionTable:
+  6 to 38 -> 40 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          mailmanage_client.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x00000033 (GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        335
+# Constants:
+#    0: '-'
+#    1: None
+# Varnames:
+#	.0, ch
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: ch
+# Free variables:
+#    0: allowed
+               0 COPY_FREE_VARS       1
+
+335:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+              10 GET_ITER
+              12 FOR_ITER             (to 44)
+              16 STORE_FAST_LOAD_FAST (ch, ch)
+              18 LOAD_DEREF           (allowed)
+              20 CONTAINS_OP          (in)
+              24 POP_JUMP_IF_FALSE    (to 32)
+              28 LOAD_FAST            (ch)
+              30 JUMP_FORWARD         (to 34)
+         >>   32 LOAD_CONST           ("-")
+         >>   34 YIELD_VALUE          0
+              36 RESUME               5
+              38 POP_TOP
+              40 JUMP_BACKWARD        (to 12)
+         >>   44 END_FOR
+              46 POP_TOP
+              48 RETURN_CONST         (None)
+         >>   50 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              52 RERAISE              1
+
+ExceptionTable:
+  6 to 48 -> 50 [0] lasti

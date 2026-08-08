@@ -1,0 +1,800 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          license_gate.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        7
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1
+# Constants:
+#    0: 'Offline machine-bound license gate for protected releases.'
+#    1: 0
+#    2: ('annotations',)
+#    3: None
+#    4: ('Path',)
+#    5: ('Any',)
+#    6: ('InvalidSignature',)
+#    7: ('Ed25519PublicKey',)
+#    8: ('app_root', 'is_frozen')
+#    9: 'engine'
+#   10: 'PlusBindTool'
+#   11: 1
+#   12: 'frozen'
+#   13: False
+#   14: 'E6U3zYb-C_BBbm2u9FM-m1-3lIvfwwATWXzn9XokjC0'
+#   15: <Code311 code object _b64decode at 0x10572feb0, file license_gate.py>, line 42
+#   16: <Code311 code object _b64encode at 0x10572fb80, file license_gate.py>, line 47
+#   17: <Code311 code object _hash_text at 0x10572fbb0, file license_gate.py>, line 51
+#   18: <Code311 code object _read_windows_machine_guid at 0x10572f9d0, file license_gate.py>, line 55
+#   19: <Code311 code object _run_short at 0x10572f9a0, file license_gate.py>, line 68
+#   20: <Code311 code object _read_windows_product_uuid at 0x10572f8e0, file license_gate.py>, line 83
+#   21: <Code311 code object _read_macos_ioplatform_uuid at 0x1056fe460, file license_gate.py>, line 100
+#   22: <Code311 code object _read_macos_hardware_info at 0x1056fe4c0, file license_gate.py>, line 110
+#   23: <Code311 code object _fingerprint_parts at 0x1056fe550, file license_gate.py>, line 126
+#   24: <Code311 code object _legacy_fingerprint_parts at 0x1056fe5b0, file license_gate.py>, line 160
+#   25: <Code311 code object _fingerprint_hash_from_parts at 0x1056fe670, file license_gate.py>, line 186
+#   26: <Code311 code object fingerprint_hash at 0x1056fe580, file license_gate.py>, line 193
+#   27: <Code311 code object _candidate_fingerprint_hashes at 0x1056fe700, file license_gate.py>, line 197
+#   28: <Code311 code object _machine_code_from_fingerprint at 0x1056fe790, file license_gate.py>, line 206
+#   29: <Code311 code object machine_code at 0x1056fe6a0, file license_gate.py>, line 213
+#   30: <Code311 code object license_paths at 0x1056fe7c0, file license_gate.py>, line 217
+#   31: <Code311 code object _canonical_payload at 0x1056fe850, file license_gate.py>, line 222
+#   32: <Code311 code object _read_license at 0x1056fe880, file license_gate.py>, line 227
+#   33: <Code311 code object license_code_from_payload at 0x1056fe8b0, file license_gate.py>, line 240
+#   34: <Code311 code object payload_from_license_code at 0x1056fe910, file license_gate.py>, line 245
+#   35: <Code311 code object parse_license_input at 0x1056fe9a0, file license_gate.py>, line 256
+#   36: <Code311 code object verify_license at 0x1056fe340, file license_gate.py>, line 276
+#   37: <Code311 code object license_required at 0x1056fe310, file license_gate.py>, line 312
+#   38: <Code311 code object _stdin_interactive at 0x1056fe2e0, file license_gate.py>, line 323
+#   39: <Code311 code object license_info at 0x1056fe250, file license_gate.py>, line 335
+#   40: <Code311 code object _write_license_payload at 0x1056fe220, file license_gate.py>, line 349
+#   41: <Code311 code object prompt_for_license_install at 0x1056fe190, file license_gate.py>, line 356
+#   42: <Code311 code object require_license_or_exit at 0x1056fe160, file license_gate.py>, line 401
+#   43: <Code311 code object main at 0x1056fe130, file license_gate.py>, line 417
+#   44: '__main__'
+#   45: ('value', 'str', 'return', 'bytes')
+#   46: ('raw', 'bytes', 'return', 'str')
+#   47: ('value', 'str', 'return', 'str')
+#   48: ('return', 'str')
+#   49: (3,)
+#   50: ('cmd', 'list[str]', 'timeout', 'int', 'return', 'str')
+#   51: ('return', 'dict[str, str]')
+#   52: ('parts', 'dict[str, str]', 'return', 'str')
+#   53: ('return', 'list[str]')
+#   54: ('fp', 'str', 'return', 'str')
+#   55: ('return', 'list[Path]')
+#   56: ('payload', 'dict[str, Any]', 'return', 'bytes')
+#   57: ('return', 'tuple[dict[str, Any], Path | None, str]')
+#   58: ('payload', 'dict[str, Any]', 'return', 'str')
+#   59: ('value', 'str', 'return', 'dict[str, Any]')
+#   60: (None,)
+#   61: ('payload', 'dict[str, Any] | None', 'return', 'tuple[bool, str, Path | None]')
+#   62: ('return', 'bool')
+#   63: ('return', 'dict[str, Any]')
+#   64: ('payload', 'dict[str, Any]', 'return', 'Path')
+#   65: ('',)
+#   66: ('reason', 'str', 'return', 'bool')
+#   67: ('return', 'None')
+#   68: ('argv', 'list[str] | None', 'return', 'int')
+# Names:
+#    0: __doc__
+#    1: __future__
+#    2: annotations
+#    3: argparse
+#    4: base64
+#    5: hashlib
+#    6: hmac
+#    7: json
+#    8: os
+#    9: re
+#   10: socket
+#   11: subprocess
+#   12: sys
+#   13: time
+#   14: uuid
+#   15: pathlib
+#   16: Path
+#   17: typing
+#   18: Any
+#   19: cryptography.exceptions
+#   20: InvalidSignature
+#   21: cryptography.hazmat.primitives.asymmetric.ed25519
+#   22: Ed25519PublicKey
+#   23: runtime_paths
+#   24: app_root
+#   25: is_frozen
+#   26: ModuleNotFoundError
+#   27: __file__
+#   28: resolve
+#   29: parent
+#   30: _ENGINE_DIR
+#   31: path
+#   32: insert
+#   33: str
+#   34: PRODUCT
+#   35: LICENSE_VERSION
+#   36: bool
+#   37: getattr
+#   38: PROTECTED_BUILD
+#   39: PUBLIC_KEY_B64
+#   40: _b64decode
+#   41: _b64encode
+#   42: _hash_text
+#   43: _read_windows_machine_guid
+#   44: _run_short
+#   45: _read_windows_product_uuid
+#   46: _read_macos_ioplatform_uuid
+#   47: _read_macos_hardware_info
+#   48: _fingerprint_parts
+#   49: _legacy_fingerprint_parts
+#   50: _fingerprint_hash_from_parts
+#   51: fingerprint_hash
+#   52: _candidate_fingerprint_hashes
+#   53: _machine_code_from_fingerprint
+#   54: machine_code
+#   55: license_paths
+#   56: _canonical_payload
+#   57: _read_license
+#   58: license_code_from_payload
+#   59: payload_from_license_code
+#   60: parse_license_input
+#   61: verify_license
+#   62: license_required
+#   63: _stdin_interactive
+#   64: license_info
+#   65: _write_license_payload
+#   66: prompt_for_license_install
+#   67: require_license_or_exit
+#   68: main
+#   69: __name__
+#   70: SystemExit
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ("Offline machine-bound license gate for protected releases.")
+               4 STORE_NAME           (__doc__)
+
+  4:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (('annotations',))
+              10 IMPORT_NAME          (__future__)
+              12 IMPORT_FROM          (annotations)
+              14 STORE_NAME           (annotations)
+              16 POP_TOP
+
+  6:          18 LOAD_CONST           (0)
+              20 LOAD_CONST           (None)
+              22 IMPORT_NAME          (argparse)
+              24 STORE_NAME           (argparse)
+
+  7:          26 LOAD_CONST           (0)
+              28 LOAD_CONST           (None)
+              30 IMPORT_NAME          (base64)
+              32 STORE_NAME           (base64)
+
+  8:          34 LOAD_CONST           (0)
+              36 LOAD_CONST           (None)
+              38 IMPORT_NAME          (hashlib)
+              40 STORE_NAME           (hashlib)
+
+  9:          42 LOAD_CONST           (0)
+              44 LOAD_CONST           (None)
+              46 IMPORT_NAME          (hmac)
+              48 STORE_NAME           (hmac)
+
+ 10:          50 LOAD_CONST           (0)
+              52 LOAD_CONST           (None)
+              54 IMPORT_NAME          (json)
+              56 STORE_NAME           (json)
+
+ 11:          58 LOAD_CONST           (0)
+              60 LOAD_CONST           (None)
+              62 IMPORT_NAME          (os)
+              64 STORE_NAME           (os)
+
+ 12:          66 LOAD_CONST           (0)
+              68 LOAD_CONST           (None)
+              70 IMPORT_NAME          (re)
+              72 STORE_NAME           (re)
+
+ 13:          74 LOAD_CONST           (0)
+              76 LOAD_CONST           (None)
+              78 IMPORT_NAME          (socket)
+              80 STORE_NAME           (socket)
+
+ 14:          82 LOAD_CONST           (0)
+              84 LOAD_CONST           (None)
+              86 IMPORT_NAME          (subprocess)
+              88 STORE_NAME           (subprocess)
+
+ 15:          90 LOAD_CONST           (0)
+              92 LOAD_CONST           (None)
+              94 IMPORT_NAME          (sys)
+              96 STORE_NAME           (sys)
+
+ 16:          98 LOAD_CONST           (0)
+             100 LOAD_CONST           (None)
+             102 IMPORT_NAME          (time)
+             104 STORE_NAME           (time)
+
+ 17:         106 LOAD_CONST           (0)
+             108 LOAD_CONST           (None)
+             110 IMPORT_NAME          (uuid)
+             112 STORE_NAME           (uuid)
+
+ 18:         114 LOAD_CONST           (0)
+             116 LOAD_CONST           (('Path',))
+             118 IMPORT_NAME          (pathlib)
+             120 IMPORT_FROM          (Path)
+             122 STORE_NAME           (Path)
+             124 POP_TOP
+
+ 19:         126 LOAD_CONST           (0)
+             128 LOAD_CONST           (('Any',))
+             130 IMPORT_NAME          (typing)
+             132 IMPORT_FROM          (Any)
+             134 STORE_NAME           (Any)
+             136 POP_TOP
+
+ 21:         138 LOAD_CONST           (0)
+             140 LOAD_CONST           (('InvalidSignature',))
+             142 IMPORT_NAME          (cryptography.exceptions)
+             144 IMPORT_FROM          (InvalidSignature)
+             146 STORE_NAME           (InvalidSignature)
+             148 POP_TOP
+
+ 22:         150 LOAD_CONST           (0)
+             152 LOAD_CONST           (('Ed25519PublicKey',))
+             154 IMPORT_NAME          (cryptography.hazmat.primitives.asymmetric.ed25519)
+             156 IMPORT_FROM          (Ed25519PublicKey)
+             158 STORE_NAME           (Ed25519PublicKey)
+             160 POP_TOP
+
+ 26:         162 NOP
+
+ 27:         164 LOAD_CONST           (0)
+             166 LOAD_CONST           (('app_root', 'is_frozen'))
+             168 IMPORT_NAME          (runtime_paths)
+             170 IMPORT_FROM          (app_root)
+             172 STORE_NAME           (app_root)
+             174 IMPORT_FROM          (is_frozen)
+             176 STORE_NAME           (is_frozen)
+             178 POP_TOP
+
+ 34:         180 LOAD_CONST           ("PlusBindTool")
+             182 STORE_NAME           (PRODUCT)
+
+ 35:         184 LOAD_CONST           (1)
+             186 STORE_NAME           (LICENSE_VERSION)
+
+ 38:         188 LOAD_NAME            (bool)
+             190 PUSH_NULL
+             192 LOAD_NAME            (getattr)
+             194 PUSH_NULL
+             196 LOAD_NAME            (sys)
+             198 LOAD_CONST           ("frozen")
+             200 LOAD_CONST           (False)
+             202 CALL                 (3 positional)
+             210 CALL                 (1 positional)
+             218 STORE_NAME           (PROTECTED_BUILD)
+
+ 39:         220 LOAD_CONST           ("E6U3zYb-C_BBbm2u9FM-m1-3lIvfwwATWXzn9XokjC0")
+             222 STORE_NAME           (PUBLIC_KEY_B64)
+
+ 42:         224 LOAD_CONST           (('value', 'str', 'return', 'bytes'))
+             226 LOAD_CONST           (<Code311 code object _b64decode at 0x10572feb0, file license_gate.py>, line 42)
+             228 MAKE_FUNCTION
+             230 SET_FUNCTION_ATTRIBUTE 4
+             232 STORE_NAME           (_b64decode)
+
+ 47:         234 LOAD_CONST           (('raw', 'bytes', 'return', 'str'))
+             236 LOAD_CONST           (<Code311 code object _b64encode at 0x10572fb80, file license_gate.py>, line 47)
+             238 MAKE_FUNCTION
+             240 SET_FUNCTION_ATTRIBUTE 4
+             242 STORE_NAME           (_b64encode)
+
+ 51:         244 LOAD_CONST           (('value', 'str', 'return', 'str'))
+             246 LOAD_CONST           (<Code311 code object _hash_text at 0x10572fbb0, file license_gate.py>, line 51)
+             248 MAKE_FUNCTION
+             250 SET_FUNCTION_ATTRIBUTE 4
+             252 STORE_NAME           (_hash_text)
+
+ 55:         254 LOAD_CONST           (('return', 'str'))
+             256 LOAD_CONST           (<Code311 code object _read_windows_machine_guid at 0x10572f9d0, file license_gate.py>, line 55)
+             258 MAKE_FUNCTION
+             260 SET_FUNCTION_ATTRIBUTE 4
+             262 STORE_NAME           (_read_windows_machine_guid)
+
+ 68:         264 LOAD_CONST           ((3,))
+             266 LOAD_CONST           (('cmd', 'list[str]', 'timeout', 'int', 'return', 'str'))
+             268 LOAD_CONST           (<Code311 code object _run_short at 0x10572f9a0, file license_gate.py>, line 68)
+             270 MAKE_FUNCTION
+             272 SET_FUNCTION_ATTRIBUTE 4
+             274 SET_FUNCTION_ATTRIBUTE 1
+             276 STORE_NAME           (_run_short)
+
+ 83:         278 LOAD_CONST           (('return', 'str'))
+             280 LOAD_CONST           (<Code311 code object _read_windows_product_uuid at 0x10572f8e0, file license_gate.py>, line 83)
+             282 MAKE_FUNCTION
+             284 SET_FUNCTION_ATTRIBUTE 4
+             286 STORE_NAME           (_read_windows_product_uuid)
+
+100:         288 LOAD_CONST           (('return', 'str'))
+             290 LOAD_CONST           (<Code311 code object _read_macos_ioplatform_uuid at 0x1056fe460, file license_gate.py>, line 100)
+             292 MAKE_FUNCTION
+             294 SET_FUNCTION_ATTRIBUTE 4
+             296 STORE_NAME           (_read_macos_ioplatform_uuid)
+
+110:         298 LOAD_CONST           (('return', 'dict[str, str]'))
+             300 LOAD_CONST           (<Code311 code object _read_macos_hardware_info at 0x1056fe4c0, file license_gate.py>, line 110)
+             302 MAKE_FUNCTION
+             304 SET_FUNCTION_ATTRIBUTE 4
+             306 STORE_NAME           (_read_macos_hardware_info)
+
+126:         308 LOAD_CONST           (('return', 'dict[str, str]'))
+             310 LOAD_CONST           (<Code311 code object _fingerprint_parts at 0x1056fe550, file license_gate.py>, line 126)
+             312 MAKE_FUNCTION
+             314 SET_FUNCTION_ATTRIBUTE 4
+             316 STORE_NAME           (_fingerprint_parts)
+
+160:         318 LOAD_CONST           (('return', 'dict[str, str]'))
+             320 LOAD_CONST           (<Code311 code object _legacy_fingerprint_parts at 0x1056fe5b0, file license_gate.py>, line 160)
+             322 MAKE_FUNCTION
+             324 SET_FUNCTION_ATTRIBUTE 4
+             326 STORE_NAME           (_legacy_fingerprint_parts)
+
+186:         328 LOAD_CONST           (('parts', 'dict[str, str]', 'return', 'str'))
+             330 LOAD_CONST           (<Code311 code object _fingerprint_hash_from_parts at 0x1056fe670, file license_gate.py>, line 186)
+             332 MAKE_FUNCTION
+             334 SET_FUNCTION_ATTRIBUTE 4
+             336 STORE_NAME           (_fingerprint_hash_from_parts)
+
+193:         338 LOAD_CONST           (('return', 'str'))
+             340 LOAD_CONST           (<Code311 code object fingerprint_hash at 0x1056fe580, file license_gate.py>, line 193)
+             342 MAKE_FUNCTION
+             344 SET_FUNCTION_ATTRIBUTE 4
+             346 STORE_NAME           (fingerprint_hash)
+
+197:         348 LOAD_CONST           (('return', 'list[str]'))
+             350 LOAD_CONST           (<Code311 code object _candidate_fingerprint_hashes at 0x1056fe700, file license_gate.py>, line 197)
+             352 MAKE_FUNCTION
+             354 SET_FUNCTION_ATTRIBUTE 4
+             356 STORE_NAME           (_candidate_fingerprint_hashes)
+
+206:         358 LOAD_CONST           (('fp', 'str', 'return', 'str'))
+             360 LOAD_CONST           (<Code311 code object _machine_code_from_fingerprint at 0x1056fe790, file license_gate.py>, line 206)
+             362 MAKE_FUNCTION
+             364 SET_FUNCTION_ATTRIBUTE 4
+             366 STORE_NAME           (_machine_code_from_fingerprint)
+
+213:         368 LOAD_CONST           (('return', 'str'))
+             370 LOAD_CONST           (<Code311 code object machine_code at 0x1056fe6a0, file license_gate.py>, line 213)
+             372 MAKE_FUNCTION
+             374 SET_FUNCTION_ATTRIBUTE 4
+             376 STORE_NAME           (machine_code)
+
+217:         378 LOAD_CONST           (('return', 'list[Path]'))
+             380 LOAD_CONST           (<Code311 code object license_paths at 0x1056fe7c0, file license_gate.py>, line 217)
+             382 MAKE_FUNCTION
+             384 SET_FUNCTION_ATTRIBUTE 4
+             386 STORE_NAME           (license_paths)
+
+222:         388 LOAD_CONST           (('payload', 'dict[str, Any]', 'return', 'bytes'))
+             390 LOAD_CONST           (<Code311 code object _canonical_payload at 0x1056fe850, file license_gate.py>, line 222)
+             392 MAKE_FUNCTION
+             394 SET_FUNCTION_ATTRIBUTE 4
+             396 STORE_NAME           (_canonical_payload)
+
+227:         398 LOAD_CONST           (('return', 'tuple[dict[str, Any], Path | None, str]'))
+             400 LOAD_CONST           (<Code311 code object _read_license at 0x1056fe880, file license_gate.py>, line 227)
+             402 MAKE_FUNCTION
+             404 SET_FUNCTION_ATTRIBUTE 4
+             406 STORE_NAME           (_read_license)
+
+240:         408 LOAD_CONST           (('payload', 'dict[str, Any]', 'return', 'str'))
+             410 LOAD_CONST           (<Code311 code object license_code_from_payload at 0x1056fe8b0, file license_gate.py>, line 240)
+             412 MAKE_FUNCTION
+             414 SET_FUNCTION_ATTRIBUTE 4
+             416 STORE_NAME           (license_code_from_payload)
+
+245:         418 LOAD_CONST           (('value', 'str', 'return', 'dict[str, Any]'))
+             420 LOAD_CONST           (<Code311 code object payload_from_license_code at 0x1056fe910, file license_gate.py>, line 245)
+             422 MAKE_FUNCTION
+             424 SET_FUNCTION_ATTRIBUTE 4
+             426 STORE_NAME           (payload_from_license_code)
+
+256:         428 LOAD_CONST           (('value', 'str', 'return', 'dict[str, Any]'))
+             430 LOAD_CONST           (<Code311 code object parse_license_input at 0x1056fe9a0, file license_gate.py>, line 256)
+             432 MAKE_FUNCTION
+             434 SET_FUNCTION_ATTRIBUTE 4
+             436 STORE_NAME           (parse_license_input)
+
+276:         438 LOAD_CONST           ((None,))
+             440 LOAD_CONST           (('payload', 'dict[str, Any] | None', 'return', 'tuple[bool, str, Path | None]'))
+             442 LOAD_CONST           (<Code311 code object verify_license at 0x1056fe340, file license_gate.py>, line 276)
+             444 MAKE_FUNCTION
+             446 SET_FUNCTION_ATTRIBUTE 4
+             448 SET_FUNCTION_ATTRIBUTE 1
+             450 STORE_NAME           (verify_license)
+
+312:         452 LOAD_CONST           (('return', 'bool'))
+             454 LOAD_CONST           (<Code311 code object license_required at 0x1056fe310, file license_gate.py>, line 312)
+             456 MAKE_FUNCTION
+             458 SET_FUNCTION_ATTRIBUTE 4
+             460 STORE_NAME           (license_required)
+
+323:         462 LOAD_CONST           (('return', 'bool'))
+             464 LOAD_CONST           (<Code311 code object _stdin_interactive at 0x1056fe2e0, file license_gate.py>, line 323)
+             466 MAKE_FUNCTION
+             468 SET_FUNCTION_ATTRIBUTE 4
+             470 STORE_NAME           (_stdin_interactive)
+
+335:         472 LOAD_CONST           (('return', 'dict[str, Any]'))
+             474 LOAD_CONST           (<Code311 code object license_info at 0x1056fe250, file license_gate.py>, line 335)
+             476 MAKE_FUNCTION
+             478 SET_FUNCTION_ATTRIBUTE 4
+             480 STORE_NAME           (license_info)
+
+349:         482 LOAD_CONST           (('payload', 'dict[str, Any]', 'return', 'Path'))
+             484 LOAD_CONST           (<Code311 code object _write_license_payload at 0x1056fe220, file license_gate.py>, line 349)
+             486 MAKE_FUNCTION
+             488 SET_FUNCTION_ATTRIBUTE 4
+             490 STORE_NAME           (_write_license_payload)
+
+356:         492 LOAD_CONST           (('',))
+             494 LOAD_CONST           (('reason', 'str', 'return', 'bool'))
+             496 LOAD_CONST           (<Code311 code object prompt_for_license_install at 0x1056fe190, file license_gate.py>, line 356)
+             498 MAKE_FUNCTION
+             500 SET_FUNCTION_ATTRIBUTE 4
+             502 SET_FUNCTION_ATTRIBUTE 1
+             504 STORE_NAME           (prompt_for_license_install)
+
+401:         506 LOAD_CONST           (('return', 'None'))
+             508 LOAD_CONST           (<Code311 code object require_license_or_exit at 0x1056fe160, file license_gate.py>, line 401)
+             510 MAKE_FUNCTION
+             512 SET_FUNCTION_ATTRIBUTE 4
+             514 STORE_NAME           (require_license_or_exit)
+
+417:         516 LOAD_CONST           ((None,))
+             518 LOAD_CONST           (('argv', 'list[str] | None', 'return', 'int'))
+             520 LOAD_CONST           (<Code311 code object main at 0x1056fe130, file license_gate.py>, line 417)
+             522 MAKE_FUNCTION
+             524 SET_FUNCTION_ATTRIBUTE 4
+             526 SET_FUNCTION_ATTRIBUTE 1
+             528 STORE_NAME           (main)
+
+432:         530 LOAD_NAME            (__name__)
+             532 LOAD_CONST           ("__main__")
+             534 COMPARE_OP           (==)
+             538 POP_JUMP_IF_FALSE    (to 568)
+
+433:         542 LOAD_NAME            (SystemExit)
+             544 PUSH_NULL
+             546 LOAD_NAME            (main)
+             548 PUSH_NULL
+             550 CALL                 (0 positional)
+             558 CALL                 (1 positional)
+             566 RAISE_VARARGS        (exception instance)
+
+432:     >>  568 RETURN_CONST         (None)
+         >>  570 PUSH_EXC_INFO
+
+ 28:         572 LOAD_NAME            (ModuleNotFoundError)
+             574 CHECK_EXC_MATCH
+             576 POP_JUMP_IF_FALSE    (to 742)
+             580 POP_TOP
+
+ 29:         582 LOAD_NAME            (Path)
+             584 PUSH_NULL
+             586 LOAD_NAME            (__file__)
+             588 CALL                 (1 positional)
+             596 LOAD_ATTR            (NULL|self + resolve)
+             616 CALL                 (0 positional)
+             624 LOAD_ATTR            (parent)
+             644 LOAD_CONST           ("engine")
+             646 BINARY_OP            (/)
+             650 STORE_NAME           (_ENGINE_DIR)
+
+ 30:         652 LOAD_NAME            (sys)
+             654 LOAD_ATTR            (path)
+             674 LOAD_ATTR            (NULL|self + insert)
+             694 LOAD_CONST           (0)
+             696 LOAD_NAME            (str)
+             698 PUSH_NULL
+             700 LOAD_NAME            (_ENGINE_DIR)
+             702 CALL                 (1 positional)
+             710 CALL                 (2 positional)
+             718 POP_TOP
+
+ 31:         720 LOAD_CONST           (0)
+             722 LOAD_CONST           (('app_root', 'is_frozen'))
+             724 IMPORT_NAME          (runtime_paths)
+             726 IMPORT_FROM          (app_root)
+             728 STORE_NAME           (app_root)
+             730 IMPORT_FROM          (is_frozen)
+             732 STORE_NAME           (is_frozen)
+             734 POP_TOP
+             736 POP_EXCEPT
+             738 EXTENDED_ARG         (256)
+             740 JUMP_BACKWARD_NO_INTERRUPT (to 180)
+
+ 28:     >>  742 RERAISE              0
+         >>  744 COPY                 3
+             746 POP_EXCEPT
+             748 RERAISE              1
+
+ExceptionTable:
+  164 to 178 -> 570 [0]
+  570 to 734 -> 744 [1] lasti
+  742 to 742 -> 744 [1] lasti
+
+# Method Name:       _b64decode
+# Filename:          license_gate.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        42
+# Constants:
+#    0: None
+#    1: ''
+#    2: '='
+#    3: 4
+# Names:
+#    0: str
+#    1: strip
+#    2: base64
+#    3: urlsafe_b64decode
+#    4: len
+# Varnames:
+#	value
+# Positional arguments:
+#	value
+ 42:           0 RESUME               0
+
+ 43:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (value)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + strip)
+              60 CALL                 (0 positional)
+              68 STORE_FAST           (value)
+
+ 44:          70 LOAD_GLOBAL          (base64)
+              80 LOAD_ATTR            (urlsafe_b64decode)
+             100 PUSH_NULL
+             102 LOAD_FAST            (value)
+             104 LOAD_CONST           ("=")
+             106 LOAD_GLOBAL          (NULL + len)
+             116 LOAD_FAST            (value)
+             118 CALL                 (1 positional)
+             126 UNARY_NEGATIVE
+             128 LOAD_CONST           (4)
+             130 BINARY_OP            (%)
+             134 BINARY_OP            (*)
+             138 BINARY_OP            (+)
+             142 CALL                 (1 positional)
+             150 RETURN_VALUE
+
+
+# Method Name:       _b64encode
+# Filename:          license_gate.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        47
+# Constants:
+#    0: None
+#    1: 'ascii'
+#    2: '='
+# Names:
+#    0: base64
+#    1: urlsafe_b64encode
+#    2: decode
+#    3: rstrip
+# Varnames:
+#	raw
+# Positional arguments:
+#	raw
+ 47:           0 RESUME               0
+
+ 48:           2 LOAD_GLOBAL          (base64)
+              12 LOAD_ATTR            (urlsafe_b64encode)
+              32 PUSH_NULL
+              34 LOAD_FAST            (raw)
+              36 CALL                 (1 positional)
+              44 LOAD_ATTR            (NULL|self + decode)
+              64 LOAD_CONST           ("ascii")
+              66 CALL                 (1 positional)
+              74 LOAD_ATTR            (NULL|self + rstrip)
+              94 LOAD_CONST           ("=")
+              96 CALL                 (1 positional)
+             104 RETURN_VALUE
+
+
+# Method Name:       _hash_text
+# Filename:          license_gate.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        51
+# Constants:
+#    0: None
+#    1: ''
+#    2: 'utf-8'
+#    3: 'ignore'
+# Names:
+#    0: hashlib
+#    1: sha256
+#    2: str
+#    3: strip
+#    4: encode
+#    5: hexdigest
+# Varnames:
+#	value
+# Positional arguments:
+#	value
+ 51:           0 RESUME               0
+
+ 52:           2 LOAD_GLOBAL          (hashlib)
+              12 LOAD_ATTR            (sha256)
+              32 PUSH_NULL
+              34 LOAD_GLOBAL          (NULL + str)
+              44 LOAD_FAST            (value)
+              46 COPY                 1
+              48 TO_BOOL
+              56 POP_JUMP_IF_TRUE     (to 64)
+              60 POP_TOP
+              62 LOAD_CONST           ("")
+         >>   64 CALL                 (1 positional)
+              72 LOAD_ATTR            (NULL|self + strip)
+              92 CALL                 (0 positional)
+             100 LOAD_ATTR            (NULL|self + encode)
+             120 LOAD_CONST           ("utf-8")
+             122 LOAD_CONST           ("ignore")
+             124 CALL                 (2 positional)
+             132 CALL                 (1 positional)
+             140 LOAD_ATTR            (NULL|self + hexdigest)
+             160 CALL                 (0 positional)
+             168 RETURN_VALUE
+
+
+# Method Name:       _read_windows_machine_guid
+# Filename:          license_gate.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        55
+# Constants:
+#    0: None
+#    1: 'nt'
+#    2: ''
+#    3: 0
+#    4: 'SOFTWARE\\Microsoft\\Cryptography'
+#    5: 'MachineGuid'
+# Names:
+#    0: os
+#    1: name
+#    2: winreg
+#    3: OpenKey
+#    4: HKEY_LOCAL_MACHINE
+#    5: QueryValueEx
+#    6: str
+#    7: strip
+#    8: Exception
+# Varnames:
+#	winreg, key, value, _
+# Local variables:
+#    0: winreg
+#    1: key
+#    2: value
+#    3: _
+ 55:           0 RESUME               0
+
+ 56:           2 LOAD_GLOBAL          (os)
+              12 LOAD_ATTR            (name)
+              32 LOAD_CONST           ("nt")
+              34 COMPARE_OP           (!=)
+              38 POP_JUMP_IF_FALSE    (to 44)
+
+ 57:          42 RETURN_CONST         ("")
+
+ 58:     >>   44 NOP
+
+ 59:          46 LOAD_CONST           (0)
+              48 LOAD_CONST           (None)
+              50 IMPORT_NAME          (winreg)
+              52 STORE_FAST           (winreg)
+
+ 61:          54 LOAD_FAST            (winreg)
+              56 LOAD_ATTR            (NULL|self + OpenKey)
+              76 LOAD_FAST            (winreg)
+              78 LOAD_ATTR            (HKEY_LOCAL_MACHINE)
+              98 LOAD_CONST           ("SOFTWARE\\Microsoft\\Cryptography")
+             100 CALL                 (2 positional)
+             108 BEFORE_WITH
+             110 STORE_FAST           (key)
+
+ 62:         112 LOAD_FAST            (winreg)
+             114 LOAD_ATTR            (NULL|self + QueryValueEx)
+             134 LOAD_FAST            (key)
+             136 LOAD_CONST           ("MachineGuid")
+             138 CALL                 (2 positional)
+             146 UNPACK_SEQUENCE      2
+             150 STORE_FAST_STORE_FAST (value, _)
+
+ 63:         152 LOAD_GLOBAL          (NULL + str)
+             162 LOAD_FAST            (value)
+             164 COPY                 1
+             166 TO_BOOL
+             174 POP_JUMP_IF_TRUE     (to 182)
+             178 POP_TOP
+             180 LOAD_CONST           ("")
+         >>  182 CALL                 (1 positional)
+             190 LOAD_ATTR            (NULL|self + strip)
+             210 CALL                 (0 positional)
+
+ 61:         218 SWAP                 (TOS <-> TOS1)
+             220 LOAD_CONST           (None)
+             222 LOAD_CONST           (None)
+             224 LOAD_CONST           (None)
+             226 CALL                 (2 positional)
+             234 POP_TOP
+             236 RETURN_VALUE
+         >>  238 PUSH_EXC_INFO
+             240 WITH_EXCEPT_START    0
+             242 TO_BOOL
+             250 POP_JUMP_IF_TRUE     (to 256)
+             254 RERAISE              2
+         >>  256 POP_TOP
+             258 POP_EXCEPT
+             260 POP_TOP
+             262 POP_TOP
+             264 RETURN_CONST         (None)
+         >>  266 COPY                 3
+             268 POP_EXCEPT
+             270 RERAISE              1
+         >>  272 PUSH_EXC_INFO
+
+ 64:         274 LOAD_GLOBAL          (Exception)
+             284 CHECK_EXC_MATCH
+             286 POP_JUMP_IF_FALSE    (to 296)
+             290 POP_TOP
+
+ 65:         292 POP_EXCEPT
+             294 RETURN_CONST         ("")
+
+ 64:     >>  296 RERAISE              0
+         >>  298 COPY                 3
+             300 POP_EXCEPT
+             302 RERAISE              1
+
+ExceptionTable:
+  46 to 108 -> 272 [0]
+  110 to 216 -> 238 [1] lasti
+  218 to 234 -> 272 [0]
+  238 to 256 -> 266 [3] lasti
+  258 to 262 -> 272 [0]
+  266 to 270 -> 272 [0]
+  272 to 290 -> 298 [1] lasti
+  296 to 296 -> 298 [1] lasti

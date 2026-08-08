@@ -1,0 +1,800 @@
+              42 RERAISE              1
+
+ExceptionTable:
+  6 to 38 -> 40 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        491
+# Constants:
+#    0: None
+# Varnames:
+#	.0, marker
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: marker
+# Free variables:
+#    0: text
+               0 COPY_FREE_VARS       1
+
+491:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+
+493:          10 GET_ITER
+              12 FOR_ITER             (to 36)
+              16 STORE_FAST           (marker)
+
+492:          18 LOAD_FAST            (marker)
+              20 LOAD_DEREF           (text)
+              22 CONTAINS_OP          (in)
+              26 YIELD_VALUE          0
+              28 RESUME               5
+              30 POP_TOP
+              32 JUMP_BACKWARD        (to 12)
+
+493:     >>   36 END_FOR
+              38 POP_TOP
+              40 RETURN_CONST         (None)
+         >>   42 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              44 RERAISE              1
+
+ExceptionTable:
+  6 to 40 -> 42 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        581
+# Constants:
+#    0: None
+# Varnames:
+#	.0, marker
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: marker
+# Free variables:
+#    0: low
+               0 COPY_FREE_VARS       1
+
+581:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+              10 GET_ITER
+              12 FOR_ITER             (to 34)
+              16 STORE_FAST_LOAD_FAST (marker, marker)
+              18 LOAD_DEREF           (low)
+              20 CONTAINS_OP          (in)
+              24 YIELD_VALUE          0
+              26 RESUME               5
+              28 POP_TOP
+              30 JUMP_BACKWARD        (to 12)
+         >>   34 END_FOR
+              36 POP_TOP
+              38 RETURN_CONST         (None)
+         >>   40 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              42 RERAISE              1
+
+ExceptionTable:
+  6 to 38 -> 40 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        647
+# Constants:
+#    0: None
+# Varnames:
+#	.0, marker
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: marker
+# Free variables:
+#    0: text
+               0 COPY_FREE_VARS       1
+
+647:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+              10 GET_ITER
+              12 FOR_ITER             (to 34)
+              16 STORE_FAST_LOAD_FAST (marker, marker)
+              18 LOAD_DEREF           (text)
+              20 CONTAINS_OP          (in)
+              24 YIELD_VALUE          0
+              26 RESUME               5
+              28 POP_TOP
+              30 JUMP_BACKWARD        (to 12)
+         >>   34 END_FOR
+              36 POP_TOP
+              38 RETURN_CONST         (None)
+         >>   40 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              42 RERAISE              1
+
+ExceptionTable:
+  6 to 38 -> 40 [0] lasti
+
+# Method Name:       token_for
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        766
+# Constants:
+#    0: None
+#    1: 'mock'
+#    2: 'device_id'
+#    3: ('provider', 'flow', 'device_id_present')
+# Names:
+#    0: bool
+#    1: get
+# Varnames:
+#	self, flow, context
+# Positional arguments:
+#	self, flow, context
+766:           0 RESUME               0
+
+767:           2 LOAD_CONST           ("mock")
+               4 LOAD_FAST            (flow)
+               6 LOAD_GLOBAL          (NULL + bool)
+              16 LOAD_FAST            (context)
+              18 LOAD_ATTR            (NULL|self + get)
+              38 LOAD_CONST           ("device_id")
+              40 CALL                 (1 positional)
+              48 CALL                 (1 positional)
+              56 LOAD_CONST           (('provider', 'flow', 'device_id_present'))
+              58 BUILD_CONST_KEY_MAP  3
+              60 RETURN_VALUE
+
+
+# Method Name:       __init__
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        771
+# Constants:
+#    0: None
+#    1: '123456'
+# Names:
+#    0: _clean
+#    1: code
+# Varnames:
+#	self, code
+# Positional arguments:
+#	self, code
+771:           0 RESUME               0
+
+772:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (code)
+              14 CALL                 (1 positional)
+              22 COPY                 1
+              24 TO_BOOL
+              32 POP_JUMP_IF_TRUE     (to 40)
+              36 POP_TOP
+              38 LOAD_CONST           ("123456")
+         >>   40 LOAD_FAST            (self)
+              42 STORE_ATTR           (code)
+              52 RETURN_CONST         (None)
+
+
+# Method Name:       wait_code
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        1
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        774
+# Constants:
+#    0: None
+# Names:
+#    0: code
+# Varnames:
+#	self, email
+# Positional arguments:
+#	self, email
+774:           0 RESUME               0
+
+775:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (code)
+              24 RETURN_VALUE
+
+
+# Method Name:       __init__
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        779
+# Constants:
+#    0: None
+#    1: '654321'
+#    2: 0
+# Names:
+#    0: _clean
+#    1: code
+#    2: counter
+#    3: completed
+#    4: cancelled
+# Varnames:
+#	self, code
+# Positional arguments:
+#	self, code
+779:           0 RESUME               0
+
+780:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (code)
+              14 CALL                 (1 positional)
+              22 COPY                 1
+              24 TO_BOOL
+              32 POP_JUMP_IF_TRUE     (to 40)
+              36 POP_TOP
+              38 LOAD_CONST           ("654321")
+         >>   40 LOAD_FAST            (self)
+              42 STORE_ATTR           (code)
+
+781:          52 LOAD_CONST           (0)
+              54 LOAD_FAST            (self)
+              56 STORE_ATTR           (counter)
+
+782:          66 BUILD_LIST           0
+              68 LOAD_FAST            (self)
+              70 STORE_ATTR           (completed)
+
+783:          80 BUILD_LIST           0
+              82 LOAD_FAST            (self)
+              84 STORE_ATTR           (cancelled)
+              94 RETURN_CONST         (None)
+
+
+# Method Name:       get_number
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x0100000b (0x1000000 | VARKEYWORDS | NEWLOCALS | OPTIMIZED)
+# First Line:        785
+# Constants:
+#    0: None
+#    1: 1
+#    2: 'mock-act-'
+#    3: '+1000000000'
+#    4: 'mock'
+# Names:
+#    0: counter
+#    1: PhoneLease
+# Varnames:
+#	self, _
+# Positional arguments:
+#	self
+# Local variables:
+#    1: _
+785:           0 RESUME               0
+
+786:           2 LOAD_FAST            (self)
+               4 COPY                 1
+               6 LOAD_ATTR            (counter)
+              26 LOAD_CONST           (1)
+              28 BINARY_OP            (+=)
+              32 SWAP                 (TOS <-> TOS1)
+              34 STORE_ATTR           (counter)
+
+787:          44 LOAD_GLOBAL          (NULL + PhoneLease)
+              54 LOAD_CONST           ("mock-act-")
+              56 LOAD_FAST            (self)
+              58 LOAD_ATTR            (counter)
+              78 FORMAT_SIMPLE
+              80 BUILD_STRING         2
+              82 LOAD_CONST           ("+1000000000")
+              84 LOAD_FAST            (self)
+              86 LOAD_ATTR            (counter)
+             106 FORMAT_SIMPLE
+             108 BUILD_STRING         2
+             110 LOAD_CONST           ("mock")
+             112 CALL                 (3 positional)
+             120 RETURN_VALUE
+
+
+# Method Name:       mark_ready
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        1
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        789
+# Constants:
+#    0: None
+# Varnames:
+#	self, lease
+# Positional arguments:
+#	self, lease
+789:           0 RESUME               0
+
+790:           2 RETURN_CONST         (None)
+
+
+# Method Name:       wait_code
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        1
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        792
+# Constants:
+#    0: None
+# Names:
+#    0: code
+# Varnames:
+#	self, lease, timeout
+# Positional arguments:
+#	self, lease, timeout
+792:           0 RESUME               0
+
+793:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (code)
+              24 RETURN_VALUE
+
+
+# Method Name:       complete
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        795
+# Constants:
+#    0: None
+# Names:
+#    0: completed
+#    1: append
+#    2: activation_id
+# Varnames:
+#	self, lease
+# Positional arguments:
+#	self, lease
+795:           0 RESUME               0
+
+796:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (completed)
+              24 LOAD_ATTR            (NULL|self + append)
+              44 LOAD_FAST            (lease)
+              46 LOAD_ATTR            (activation_id)
+              66 CALL                 (1 positional)
+              74 POP_TOP
+              76 RETURN_CONST         (None)
+
+
+# Method Name:       cancel
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        798
+# Constants:
+#    0: None
+# Names:
+#    0: cancelled
+#    1: append
+#    2: activation_id
+# Varnames:
+#	self, lease, reason
+# Positional arguments:
+#	self, lease, reason
+798:           0 RESUME               0
+
+799:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (cancelled)
+              24 LOAD_ATTR            (NULL|self + append)
+              44 LOAD_FAST            (lease)
+              46 LOAD_ATTR            (activation_id)
+              66 CALL                 (1 positional)
+              74 POP_TOP
+              76 RETURN_CONST         (None)
+
+
+# Method Name:       __init__
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 3
+# Number of locals:  10
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        805
+# Constants:
+#    0: None
+#    1: 'sms_provider'
+#    2: 'provider'
+#    3: 'sms_smart'
+#    4: 'enabled'
+#    5: False
+#    6: 'localpool'
+#    7: 0
+#    8: ('get_selector',)
+#    9: <Code311 code object <lambda> at 0x105ef4a30, file codex_oauth_chain.py>, line 818
+#   10: ('log_fn',)
+#   11: 'fixed_country_fallback'
+#   12: '  [SMS智能] 初始化失败，按面板配置回退固定线路: '
+#   13: 'warn'
+#   14: 'sms_smart_init_failed: '
+# Names:
+#    0: provider
+#    1: code_timeout
+#    2: config
+#    3: log_fn
+#    4: selector
+#    5: set
+#    6: _session_excluded_routes
+#    7: _clean
+#    8: get
+#    9: lower
+#   10: isinstance
+#   11: dict
+#   12: _as_bool
+#   13: sms_selector
+#   14: get_selector
+#   15: Exception
+#   16: _emit
+#   17: CodexChainError
+# Varnames:
+#	self, provider, code_timeout, config, log_fn, provider_name, smart_cfg, get_selector, exc, fixed_fallback
+# Positional arguments:
+#	self, provider
+# Local variables:
+#    2: code_timeout
+#    3: config
+#    4: log_fn
+#    5: provider_name
+#    6: smart_cfg
+#    7: get_selector
+#    8: exc
+#    9: fixed_fallback
+# Cell variables:
+#    0: self
+               0 MAKE_CELL            (self)
+
+805:           2 RESUME               0
+
+806:           4 LOAD_FAST            (provider)
+               6 LOAD_DEREF           (self)
+               8 STORE_ATTR           (provider)
+
+807:          18 LOAD_FAST            (code_timeout)
+              20 LOAD_DEREF           (self)
+              22 STORE_ATTR           (code_timeout)
+
+808:          32 LOAD_FAST            (config)
+              34 COPY                 1
+              36 TO_BOOL
+              44 POP_JUMP_IF_TRUE     (to 52)
+              48 POP_TOP
+              50 BUILD_MAP            0
+         >>   52 LOAD_DEREF           (self)
+              54 STORE_ATTR           (config)
+
+809:          64 LOAD_FAST            (log_fn)
+              66 LOAD_DEREF           (self)
+              68 STORE_ATTR           (log_fn)
+
+810:          78 LOAD_CONST           (None)
+              80 LOAD_DEREF           (self)
+              82 STORE_ATTR           (selector)
+
+811:          92 LOAD_GLOBAL          (NULL + set)
+             102 CALL                 (0 positional)
+             110 LOAD_DEREF           (self)
+             112 STORE_ATTR           (_session_excluded_routes)
+
+812:         122 LOAD_GLOBAL          (NULL + _clean)
+             132 LOAD_DEREF           (self)
+             134 LOAD_ATTR            (config)
+             154 LOAD_ATTR            (NULL|self + get)
+             174 LOAD_CONST           ("sms_provider")
+             176 CALL                 (1 positional)
+             184 COPY                 1
+             186 TO_BOOL
+             194 POP_JUMP_IF_TRUE     (to 252)
+             198 POP_TOP
+             200 LOAD_DEREF           (self)
+             202 LOAD_ATTR            (config)
+             222 LOAD_ATTR            (NULL|self + get)
+             242 LOAD_CONST           ("provider")
+             244 CALL                 (1 positional)
+         >>  252 CALL                 (1 positional)
+             260 LOAD_ATTR            (NULL|self + lower)
+             280 CALL                 (0 positional)
+             288 STORE_FAST           (provider_name)
+
+813:         290 LOAD_GLOBAL          (NULL + isinstance)
+             300 LOAD_DEREF           (self)
+             302 LOAD_ATTR            (config)
+             322 LOAD_ATTR            (NULL|self + get)
+             342 LOAD_CONST           ("sms_smart")
+             344 CALL                 (1 positional)
+             352 LOAD_GLOBAL          (dict)
+             362 CALL                 (2 positional)
+             370 TO_BOOL
+             378 POP_JUMP_IF_FALSE    (to 436)
+             382 LOAD_DEREF           (self)
+             384 LOAD_ATTR            (config)
+             404 LOAD_ATTR            (NULL|self + get)
+             424 LOAD_CONST           ("sms_smart")
+             426 CALL                 (1 positional)
+             434 JUMP_FORWARD         (to 438)
+         >>  436 BUILD_MAP            0
+         >>  438 STORE_FAST           (smart_cfg)
+
+814:         440 LOAD_GLOBAL          (NULL + _as_bool)
+             450 LOAD_FAST            (smart_cfg)
+             452 LOAD_ATTR            (NULL|self + get)
+             472 LOAD_CONST           ("enabled")
+             474 CALL                 (1 positional)
+             482 LOAD_CONST           (False)
+             484 CALL                 (2 positional)
+             492 TO_BOOL
+             500 POP_JUMP_IF_FALSE    (to 588)
+             504 LOAD_FAST            (provider_name)
+             506 LOAD_CONST           ("localpool")
+             508 COMPARE_OP           (!=)
+             512 POP_JUMP_IF_FALSE    (to 586)
+
+815:         516 NOP
+
+816:         518 LOAD_CONST           (0)
+             520 LOAD_CONST           (('get_selector',))
+             522 IMPORT_NAME          (sms_selector)
+             524 IMPORT_FROM          (get_selector)
+             526 STORE_FAST           (get_selector)
+             528 POP_TOP
+
+818:         530 LOAD_FAST            (get_selector)
+             532 PUSH_NULL
+             534 LOAD_FAST            (provider)
+             536 LOAD_DEREF           (self)
+             538 LOAD_ATTR            (config)
+             558 LOAD_FAST            (self)
+             560 BUILD_TUPLE          1
+             562 LOAD_CONST           (<Code311 code object <lambda> at 0x105ef4a30, file codex_oauth_chain.py>, line 818)
+             564 MAKE_FUNCTION
+             566 SET_FUNCTION_ATTRIBUTE 8
+             568 LOAD_CONST           (('log_fn',))
+             570 CALL_KW              3
+             572 LOAD_DEREF           (self)
+             574 STORE_ATTR           (selector)
+             584 RETURN_CONST         (None)
+
+814:     >>  586 RETURN_CONST         (None)
+         >>  588 RETURN_CONST         (None)
+         >>  590 PUSH_EXC_INFO
+
+819:         592 LOAD_GLOBAL          (Exception)
+             602 CHECK_EXC_MATCH
+             604 POP_JUMP_IF_FALSE    (to 778)
+             608 STORE_FAST           (exc)
+
+820:         610 LOAD_GLOBAL          (NULL + _as_bool)
+             620 LOAD_FAST            (smart_cfg)
+             622 LOAD_ATTR            (NULL|self + get)
+             642 LOAD_CONST           ("fixed_country_fallback")
+             644 CALL                 (1 positional)
+             652 LOAD_CONST           (False)
+             654 CALL                 (2 positional)
+             662 STORE_FAST           (fixed_fallback)
+
+821:         664 LOAD_FAST            (fixed_fallback)
+             666 TO_BOOL
+             674 POP_JUMP_IF_FALSE    (to 740)
+
+822:         678 LOAD_GLOBAL          (NULL + _emit)
+             688 LOAD_DEREF           (self)
+             690 LOAD_ATTR            (log_fn)
+             710 LOAD_CONST           ("  [SMS智能] 初始化失败，按面板配置回退固定线路: ")
+             712 LOAD_FAST            (exc)
+             714 FORMAT_SIMPLE
+             716 BUILD_STRING         2
+             718 LOAD_CONST           ("warn")
+             720 CALL                 (3 positional)
+             728 POP_TOP
+             730 POP_EXCEPT
+             732 LOAD_CONST           (None)
+             734 STORE_FAST           (exc)
+             736 DELETE_FAST          (exc)
+             738 RETURN_CONST         (None)
+
+824:     >>  740 LOAD_GLOBAL          (NULL + CodexChainError)
+             750 LOAD_CONST           ("sms_smart_init_failed: ")
+             752 LOAD_FAST            (exc)
+             754 FORMAT_SIMPLE
+             756 BUILD_STRING         2
+             758 CALL                 (1 positional)
+             766 LOAD_FAST            (exc)
+             768 RAISE_VARARGS        (exception instance with __cause__)
+         >>  770 LOAD_CONST           (None)
+             772 STORE_FAST           (exc)
+             774 DELETE_FAST          (exc)
+             776 RERAISE              1
+
+819:     >>  778 RERAISE              0
+         >>  780 COPY                 3
+             782 POP_EXCEPT
+             784 RERAISE              1
+
+ExceptionTable:
+  518 to 582 -> 590 [0]
+  590 to 608 -> 780 [1] lasti
+  610 to 728 -> 770 [1] lasti
+  740 to 768 -> 770 [1] lasti
+  770 to 778 -> 780 [1] lasti
+
+# Method Name:       _exclude_candidate
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        826
+# Constants:
+#    0: None
+#    1: 'country'
+#    2: ''
+#    3: 'provider_id'
+# Names:
+#    0: _clean
+#    1: getattr
+#    2: _session_excluded_routes
+#    3: add
+# Varnames:
+#	self, candidate, country, provider_id
+# Positional arguments:
+#	self, candidate
+# Local variables:
+#    2: country
+#    3: provider_id
+826:           0 RESUME               0
+
+827:           2 LOAD_FAST            (candidate)
+               4 POP_JUMP_IF_NOT_NONE (to 10)
+
+828:           8 RETURN_CONST         (None)
+
+829:     >>   10 LOAD_GLOBAL          (NULL + _clean)
+              20 LOAD_GLOBAL          (NULL + getattr)
+              30 LOAD_FAST            (candidate)
+              32 LOAD_CONST           ("country")
+              34 LOAD_CONST           ("")
+              36 CALL                 (3 positional)
+              44 CALL                 (1 positional)
+              52 STORE_FAST           (country)
+
+830:          54 LOAD_GLOBAL          (NULL + _clean)
+              64 LOAD_GLOBAL          (NULL + getattr)
+              74 LOAD_FAST            (candidate)
+              76 LOAD_CONST           ("provider_id")
+              78 LOAD_CONST           ("")
+              80 CALL                 (3 positional)
+              88 CALL                 (1 positional)
+              96 STORE_FAST           (provider_id)
+
+831:          98 LOAD_FAST            (country)
+             100 TO_BOOL
+             108 POP_JUMP_IF_TRUE     (to 126)
+             112 LOAD_FAST            (provider_id)
+             114 TO_BOOL
+             122 POP_JUMP_IF_FALSE    (to 184)
+
+832:     >>  126 LOAD_FAST            (self)
+             128 LOAD_ATTR            (_session_excluded_routes)
+             148 LOAD_ATTR            (NULL|self + add)
+             168 LOAD_FAST_LOAD_FAST  (country, provider_id)
+             170 BUILD_TUPLE          2
+             172 CALL                 (1 positional)
+             180 POP_TOP
+             182 RETURN_CONST         (None)
+
+831:     >>  184 RETURN_CONST         (None)
+
+
+# Method Name:       get_number
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  8
+# Stack size:        12
+# Flags:             0x0100000b (0x1000000 | VARKEYWORDS | NEWLOCALS | OPTIMIZED)
+# First Line:        834
+# Constants:
+#    0: None
+#    1: ('exclude_routes',)
+#    2: 'sms_smart_no_candidate'
+#    3: '  [SMS智能] 选择线路: 国家 '
+#    4: ' 运营商 '
+#    5: ' 库存 '
+#    6: ' 价格 '
+#    7: '.4f'
+#    8: 'info'
+#    9: 'service'
+#   10: 'dr'
+#   11: 'max_price'
+#   12: ''
+#   13: 'get_number_from_candidate'
+#   14: ('service', 'country', 'provider_ids', 'max_price', 'candidate_price')
+#   15: ('service', 'country', 'provider_ids', 'max_price')
+#   16: 'smart:'
+#   17: '/'
+#   18: False
+#   19: ('candidate', 'ready_recorded', 'complete_recorded')
+#   20: 'fixed'
+#   21: ()
+# Names:
+#    0: selector
+#    1: pick
+#    2: set
+#    3: _session_excluded_routes
+#    4: CodexChainError
+#    5: _emit
+#    6: log_fn
+#    7: country
+#    8: provider_id
+#    9: count
+#   10: price
+#   11: _clean
+#   12: get
+#   13: config
+#   14: hasattr
+#   15: provider
+#   16: get_number_from_candidate
+#   17: get_number
+#   18: PhoneLease
+#   19: Exception
+#   20: record_result
+#   21: str
+#   22: _exclude_candidate
+# Varnames:
+#	self, kwargs, candidate, service, max_price, activation_id, phone, exc

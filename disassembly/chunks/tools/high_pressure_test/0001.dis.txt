@@ -1,0 +1,800 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          tools\high_pressure_test.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        9
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1
+# Constants:
+#    0: 'Offline scheduler pressure gate for the independent importer.\n\nThis test deliberately replaces only the external authorization worker.  The\nreal queue, pool leases, result persistence, exports, stop handling, and\nconcurrency gates remain the production implementations, so no mailbox, SMS,\nSUB2, or network credentials are needed for a repeatable 1000-row run.\n'
+#    1: 0
+#    2: ('annotations',)
+#    3: None
+#    4: ('Path',)
+#    5: 1
+#    6: 'engine'
+#    7: 'frozen'
+#    8: False
+#    9: 'CHATGPT_AR_APP_ROOT'
+#   10: 'PlusBindPressureLocks'
+#   11: ('EmailAuthImporter', 'default_settings')
+#   12: ('MailboxPool',)
+#   13: ('ManualMailboxPool',)
+#   14: 180.0
+#   15: <Code311 code object _wait_finished at 0x109446a30, file tools\high_pressure_test.py>, line 41
+#   16: 'auto'
+#   17: ('mode', 'manual_pool_path', 'manual_state_path')
+#   18: <Code311 code object _settings at 0x1094469a0, file tools\high_pressure_test.py>, line 56
+#   19: <Code311 code object _new_importer at 0x109415430, file tools\high_pressure_test.py>, line 77
+#   20: ('mode',)
+#   21: <Code311 code object run_success_failure at 0x1094155b0, file tools\high_pressure_test.py>, line 83
+#   22: <Code311 code object run_stop at 0x1094157c0, file tools\high_pressure_test.py>, line 153
+#   23: <Code311 code object run_release_pressure at 0x1094157f0, file tools\high_pressure_test.py>, line 186
+#   24: <Code311 code object main at 0x109415820, file tools\high_pressure_test.py>, line 199
+#   25: '__main__'
+#   26: ('importer', 'EmailAuthImporter', 'settings', 'dict', 'timeout', 'float', 'return', 'dict')
+#   27: ('root', 'Path', 'pool_path', 'Path', 'state_path', 'Path', 'results_dir', 'Path', 'concurrency', 'int', 'mode', 'str', 'manual_pool_path', 'Path | None', 'manual_state_path', 'Path | None', 'return', 'dict')
+#   28: (None,)
+#   29: ('root', 'Path', 'logs', 'list[str] | None', 'return', 'EmailAuthImporter')
+#   30: ('targets', 'int', 'concurrency', 'int', 'mode', 'str', 'return', 'dict')
+#   31: ('targets', 'int', 'concurrency', 'int', 'return', 'dict')
+#   32: (1000, 50)
+#   33: ('argv', 'list[str] | None', 'return', 'int')
+# Names:
+#    0: __doc__
+#    1: __future__
+#    2: annotations
+#    3: argparse
+#    4: json
+#    5: os
+#    6: sys
+#    7: tempfile
+#    8: threading
+#    9: time
+#   10: pathlib
+#   11: Path
+#   12: __file__
+#   13: resolve
+#   14: parents
+#   15: PROJECT_ROOT
+#   16: ENGINE_DIR
+#   17: import_path
+#   18: str
+#   19: path
+#   20: insert
+#   21: bool
+#   22: getattr
+#   23: environ
+#   24: setdefault
+#   25: gettempdir
+#   26: runtime
+#   27: EmailAuthImporter
+#   28: default_settings
+#   29: tools.self_mailbox_pool.mailbox_pool
+#   30: MailboxPool
+#   31: ManualMailboxPool
+#   32: PRESSURE_BATCH_TIMEOUT_SECONDS
+#   33: _wait_finished
+#   34: _settings
+#   35: _new_importer
+#   36: run_success_failure
+#   37: run_stop
+#   38: run_release_pressure
+#   39: main
+#   40: __name__
+#   41: SystemExit
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ("Offline scheduler pressure gate for the independent importer.\n\nThis test deliberately replaces only the external authorization worker.  The\nreal queue, pool leases, result persistence, exports, stop handling, and\nconcurrency gates remain the production implementations, so no mailbox, SMS,\nSUB2, or network credentials are needed for a repeatable 1000-row run.\n")
+               4 STORE_NAME           (__doc__)
+
+ 10:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (('annotations',))
+              10 IMPORT_NAME          (__future__)
+              12 IMPORT_FROM          (annotations)
+              14 STORE_NAME           (annotations)
+              16 POP_TOP
+
+ 12:          18 LOAD_CONST           (0)
+              20 LOAD_CONST           (None)
+              22 IMPORT_NAME          (argparse)
+              24 STORE_NAME           (argparse)
+
+ 13:          26 LOAD_CONST           (0)
+              28 LOAD_CONST           (None)
+              30 IMPORT_NAME          (json)
+              32 STORE_NAME           (json)
+
+ 14:          34 LOAD_CONST           (0)
+              36 LOAD_CONST           (None)
+              38 IMPORT_NAME          (os)
+              40 STORE_NAME           (os)
+
+ 15:          42 LOAD_CONST           (0)
+              44 LOAD_CONST           (None)
+              46 IMPORT_NAME          (sys)
+              48 STORE_NAME           (sys)
+
+ 16:          50 LOAD_CONST           (0)
+              52 LOAD_CONST           (None)
+              54 IMPORT_NAME          (tempfile)
+              56 STORE_NAME           (tempfile)
+
+ 17:          58 LOAD_CONST           (0)
+              60 LOAD_CONST           (None)
+              62 IMPORT_NAME          (threading)
+              64 STORE_NAME           (threading)
+
+ 18:          66 LOAD_CONST           (0)
+              68 LOAD_CONST           (None)
+              70 IMPORT_NAME          (time)
+              72 STORE_NAME           (time)
+
+ 19:          74 LOAD_CONST           (0)
+              76 LOAD_CONST           (('Path',))
+              78 IMPORT_NAME          (pathlib)
+              80 IMPORT_FROM          (Path)
+              82 STORE_NAME           (Path)
+              84 POP_TOP
+
+ 21:          86 LOAD_NAME            (Path)
+              88 PUSH_NULL
+              90 LOAD_NAME            (__file__)
+              92 CALL                 (1 positional)
+             100 LOAD_ATTR            (NULL|self + resolve)
+             120 CALL                 (0 positional)
+             128 LOAD_ATTR            (parents)
+             148 LOAD_CONST           (1)
+             150 BINARY_SUBSCR
+             154 STORE_NAME           (PROJECT_ROOT)
+
+ 22:         156 LOAD_NAME            (PROJECT_ROOT)
+             158 LOAD_CONST           ("engine")
+             160 BINARY_OP            (/)
+             164 STORE_NAME           (ENGINE_DIR)
+
+ 23:         166 LOAD_NAME            (PROJECT_ROOT)
+             168 LOAD_NAME            (ENGINE_DIR)
+             170 BUILD_TUPLE          2
+             172 GET_ITER
+             174 FOR_ITER             (to 300)
+             178 STORE_NAME           (import_path)
+
+ 24:         180 LOAD_NAME            (str)
+             182 PUSH_NULL
+             184 LOAD_NAME            (import_path)
+             186 CALL                 (1 positional)
+             194 LOAD_NAME            (sys)
+             196 LOAD_ATTR            (path)
+             216 CONTAINS_OP          (not in)
+             220 POP_JUMP_IF_TRUE     (to 228)
+             224 JUMP_BACKWARD        (to 174)
+
+ 25:     >>  228 LOAD_NAME            (sys)
+             230 LOAD_ATTR            (path)
+             250 LOAD_ATTR            (NULL|self + insert)
+             270 LOAD_CONST           (0)
+             272 LOAD_NAME            (str)
+             274 PUSH_NULL
+             276 LOAD_NAME            (import_path)
+             278 CALL                 (1 positional)
+             286 CALL                 (2 positional)
+             294 POP_TOP
+             296 JUMP_BACKWARD        (to 174)
+
+ 23:     >>  300 END_FOR
+             302 POP_TOP
+
+ 30:         304 LOAD_NAME            (bool)
+             306 PUSH_NULL
+             308 LOAD_NAME            (getattr)
+             310 PUSH_NULL
+             312 LOAD_NAME            (sys)
+             314 LOAD_CONST           ("frozen")
+             316 LOAD_CONST           (False)
+             318 CALL                 (3 positional)
+             326 CALL                 (1 positional)
+             334 TO_BOOL
+             342 POP_JUMP_IF_TRUE     (to 462)
+
+ 31:         346 LOAD_NAME            (os)
+             348 LOAD_ATTR            (environ)
+             368 LOAD_ATTR            (NULL|self + setdefault)
+             388 LOAD_CONST           ("CHATGPT_AR_APP_ROOT")
+             390 LOAD_NAME            (str)
+             392 PUSH_NULL
+             394 LOAD_NAME            (Path)
+             396 PUSH_NULL
+             398 LOAD_NAME            (tempfile)
+             400 LOAD_ATTR            (gettempdir)
+             420 PUSH_NULL
+             422 CALL                 (0 positional)
+             430 CALL                 (1 positional)
+             438 LOAD_CONST           ("PlusBindPressureLocks")
+             440 BINARY_OP            (/)
+             444 CALL                 (1 positional)
+             452 CALL                 (2 positional)
+             460 POP_TOP
+
+ 33:     >>  462 LOAD_CONST           (0)
+             464 LOAD_CONST           (('EmailAuthImporter', 'default_settings'))
+             466 IMPORT_NAME          (runtime)
+             468 IMPORT_FROM          (EmailAuthImporter)
+             470 STORE_NAME           (EmailAuthImporter)
+             472 IMPORT_FROM          (default_settings)
+             474 STORE_NAME           (default_settings)
+             476 POP_TOP
+
+ 34:         478 LOAD_CONST           (0)
+             480 LOAD_CONST           (('MailboxPool',))
+             482 IMPORT_NAME          (tools.self_mailbox_pool.mailbox_pool)
+             484 IMPORT_FROM          (MailboxPool)
+             486 STORE_NAME           (MailboxPool)
+             488 POP_TOP
+
+ 35:         490 LOAD_CONST           (0)
+             492 LOAD_CONST           (('ManualMailboxPool',))
+             494 IMPORT_NAME          (runtime)
+             496 IMPORT_FROM          (ManualMailboxPool)
+             498 STORE_NAME           (ManualMailboxPool)
+             500 POP_TOP
+
+ 38:         502 LOAD_CONST           (180.0)
+             504 STORE_NAME           (PRESSURE_BATCH_TIMEOUT_SECONDS)
+
+ 44:         506 LOAD_NAME            (PRESSURE_BATCH_TIMEOUT_SECONDS)
+
+ 41:         508 BUILD_TUPLE          1
+
+ 42:         510 NOP
+
+ 41:         512 NOP
+
+ 43:         514 NOP
+
+ 41:         516 NOP
+
+ 44:         518 NOP
+
+ 41:         520 NOP
+
+ 45:         522 NOP
+
+ 41:         524 LOAD_CONST           (('importer', 'EmailAuthImporter', 'settings', 'dict', 'timeout', 'float', 'return', 'dict'))
+             526 LOAD_CONST           (<Code311 code object _wait_finished at 0x109446a30, file tools\high_pressure_test.py>, line 41)
+             528 MAKE_FUNCTION
+             530 SET_FUNCTION_ATTRIBUTE 4
+             532 SET_FUNCTION_ATTRIBUTE 1
+             534 STORE_NAME           (_wait_finished)
+
+ 56:         536 LOAD_CONST           ("auto")
+             538 LOAD_CONST           (None)
+             540 LOAD_CONST           (None)
+             542 LOAD_CONST           (('mode', 'manual_pool_path', 'manual_state_path'))
+             544 BUILD_CONST_KEY_MAP  3
+             546 LOAD_CONST           (('root', 'Path', 'pool_path', 'Path', 'state_path', 'Path', 'results_dir', 'Path', 'concurrency', 'int', 'mode', 'str', 'manual_pool_path', 'Path | None', 'manual_state_path', 'Path | None', 'return', 'dict'))
+             548 LOAD_CONST           (<Code311 code object _settings at 0x1094469a0, file tools\high_pressure_test.py>, line 56)
+             550 MAKE_FUNCTION
+             552 SET_FUNCTION_ATTRIBUTE 4
+             554 SET_FUNCTION_ATTRIBUTE 2
+             556 STORE_NAME           (_settings)
+
+ 77:         558 LOAD_CONST           ((None,))
+             560 LOAD_CONST           (('root', 'Path', 'logs', 'list[str] | None', 'return', 'EmailAuthImporter'))
+             562 LOAD_CONST           (<Code311 code object _new_importer at 0x109415430, file tools\high_pressure_test.py>, line 77)
+             564 MAKE_FUNCTION
+             566 SET_FUNCTION_ATTRIBUTE 4
+             568 SET_FUNCTION_ATTRIBUTE 1
+             570 STORE_NAME           (_new_importer)
+
+ 83:         572 LOAD_CONST           ("auto")
+             574 LOAD_CONST           (('mode',))
+             576 BUILD_CONST_KEY_MAP  1
+             578 LOAD_CONST           (('targets', 'int', 'concurrency', 'int', 'mode', 'str', 'return', 'dict'))
+             580 LOAD_CONST           (<Code311 code object run_success_failure at 0x1094155b0, file tools\high_pressure_test.py>, line 83)
+             582 MAKE_FUNCTION
+             584 SET_FUNCTION_ATTRIBUTE 4
+             586 SET_FUNCTION_ATTRIBUTE 2
+             588 STORE_NAME           (run_success_failure)
+
+153:         590 LOAD_CONST           (('targets', 'int', 'concurrency', 'int', 'return', 'dict'))
+             592 LOAD_CONST           (<Code311 code object run_stop at 0x1094157c0, file tools\high_pressure_test.py>, line 153)
+             594 MAKE_FUNCTION
+             596 SET_FUNCTION_ATTRIBUTE 4
+             598 STORE_NAME           (run_stop)
+
+186:         600 LOAD_CONST           ((1000, 50))
+             602 LOAD_CONST           (('targets', 'int', 'concurrency', 'int', 'return', 'dict'))
+             604 LOAD_CONST           (<Code311 code object run_release_pressure at 0x1094157f0, file tools\high_pressure_test.py>, line 186)
+             606 MAKE_FUNCTION
+             608 SET_FUNCTION_ATTRIBUTE 4
+             610 SET_FUNCTION_ATTRIBUTE 1
+             612 STORE_NAME           (run_release_pressure)
+
+199:         614 LOAD_CONST           ((None,))
+             616 LOAD_CONST           (('argv', 'list[str] | None', 'return', 'int'))
+             618 LOAD_CONST           (<Code311 code object main at 0x109415820, file tools\high_pressure_test.py>, line 199)
+             620 MAKE_FUNCTION
+             622 SET_FUNCTION_ATTRIBUTE 4
+             624 SET_FUNCTION_ATTRIBUTE 1
+             626 STORE_NAME           (main)
+
+212:         628 LOAD_NAME            (__name__)
+             630 LOAD_CONST           ("__main__")
+             632 COMPARE_OP           (==)
+             636 POP_JUMP_IF_FALSE    (to 666)
+
+213:         640 LOAD_NAME            (SystemExit)
+             642 PUSH_NULL
+             644 LOAD_NAME            (main)
+             646 PUSH_NULL
+             648 CALL                 (0 positional)
+             656 CALL                 (1 positional)
+             664 RAISE_VARARGS        (exception instance)
+
+212:     >>  666 RETURN_CONST         (None)
+
+
+# Method Name:       _wait_finished
+# Filename:          tools\high_pressure_test.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        41
+# Constants:
+#    0: None
+#    1: 'running'
+#    2: 0.02
+#    3: 'pressure batch did not finish before timeout'
+# Names:
+#    0: time
+#    1: monotonic
+#    2: status
+#    3: get
+#    4: sleep
+#    5: stop
+#    6: RuntimeError
+# Varnames:
+#	importer, settings, timeout, deadline, status
+# Positional arguments:
+#	importer, settings, timeout
+# Local variables:
+#    3: deadline
+#    4: status
+ 41:           0 RESUME               0
+
+ 46:           2 LOAD_GLOBAL          (time)
+              12 LOAD_ATTR            (monotonic)
+              32 PUSH_NULL
+              34 CALL                 (0 positional)
+              42 LOAD_FAST            (timeout)
+              44 BINARY_OP            (+)
+              48 STORE_FAST           (deadline)
+
+ 47:          50 LOAD_FAST            (importer)
+              52 LOAD_ATTR            (NULL|self + status)
+              72 LOAD_FAST            (settings)
+              74 CALL                 (1 positional)
+              82 LOAD_ATTR            (NULL|self + get)
+             102 LOAD_CONST           ("running")
+             104 CALL                 (1 positional)
+             112 TO_BOOL
+             120 POP_JUMP_IF_FALSE    (to 346)
+             124 LOAD_GLOBAL          (time)
+             134 LOAD_ATTR            (monotonic)
+             154 PUSH_NULL
+             156 CALL                 (0 positional)
+             164 LOAD_FAST            (deadline)
+             166 COMPARE_OP           (<)
+             170 POP_JUMP_IF_FALSE    (to 346)
+
+ 48:         174 LOAD_GLOBAL          (time)
+             184 LOAD_ATTR            (sleep)
+             204 PUSH_NULL
+             206 LOAD_CONST           (0.02)
+             208 CALL                 (1 positional)
+             216 POP_TOP
+
+ 47:         218 LOAD_FAST            (importer)
+             220 LOAD_ATTR            (NULL|self + status)
+             240 LOAD_FAST            (settings)
+             242 CALL                 (1 positional)
+             250 LOAD_ATTR            (NULL|self + get)
+             270 LOAD_CONST           ("running")
+             272 CALL                 (1 positional)
+             280 TO_BOOL
+             288 POP_JUMP_IF_FALSE    (to 346)
+             292 LOAD_GLOBAL          (time)
+             302 LOAD_ATTR            (monotonic)
+             322 PUSH_NULL
+             324 CALL                 (0 positional)
+             332 LOAD_FAST            (deadline)
+             334 COMPARE_OP           (<)
+             338 POP_JUMP_IF_FALSE    (to 346)
+             342 JUMP_BACKWARD        (to 174)
+
+ 49:     >>  346 LOAD_FAST            (importer)
+             348 LOAD_ATTR            (NULL|self + status)
+             368 LOAD_FAST            (settings)
+             370 CALL                 (1 positional)
+             378 STORE_FAST           (status)
+
+ 50:         380 LOAD_FAST            (status)
+             382 LOAD_ATTR            (NULL|self + get)
+             402 LOAD_CONST           ("running")
+             404 CALL                 (1 positional)
+             412 TO_BOOL
+             420 POP_JUMP_IF_FALSE    (to 478)
+
+ 51:         424 LOAD_FAST            (importer)
+             426 LOAD_ATTR            (NULL|self + stop)
+             446 CALL                 (0 positional)
+             454 POP_TOP
+
+ 52:         456 LOAD_GLOBAL          (NULL + RuntimeError)
+             466 LOAD_CONST           ("pressure batch did not finish before timeout")
+             468 CALL                 (1 positional)
+             476 RAISE_VARARGS        (exception instance)
+
+ 53:     >>  478 LOAD_FAST            (status)
+             480 RETURN_VALUE
+
+
+# Method Name:       _settings
+# Filename:          tools\high_pressure_test.py
+# Argument count:    5
+# Position-only argument count: 0
+# Keyword-only arguments: 3
+# Number of locals:  9
+# Stack size:        16
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        56
+# Constants:
+#    0: None
+#    1: 40
+#    2: 1
+#    3: 'localpool'
+#    4: 'offline-pressure-pool'
+#    5: 'runner.js'
+#    6: 'https://sub2.example.test'
+#    7: 'pressure@example.test'
+#    8: 'offline'
+#    9: 'pressure'
+#   10: ('url', 'email', 'password', 'group')
+#   11: ('pool_path', 'state_path', 'results_dir', 'concurrency', 'node_concurrency', 'auto_email_login_concurrency', 'sms_provider', 'sms_api_key', 'node_runner', 'sub2api')
+#   12: 'manual'
+#   13: ('email_mode', 'manual_pool_path', 'manual_state_path')
+# Names:
+#    0: default_settings
+#    1: update
+#    2: str
+#    3: min
+# Varnames:
+#	root, pool_path, state_path, results_dir, concurrency, mode, manual_pool_path, manual_state_path, values
+# Positional arguments:
+#	root, pool_path, state_path, results_dir, concurrency
+# Local variables:
+#    5: mode
+#    6: manual_pool_path
+#    7: manual_state_path
+#    8: values
+ 56:           0 RESUME               0
+
+ 57:           2 LOAD_GLOBAL          (NULL + default_settings)
+              12 LOAD_FAST            (root)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (values)
+
+ 58:          24 LOAD_FAST            (values)
+              26 LOAD_ATTR            (NULL|self + update)
+
+ 60:          46 LOAD_GLOBAL          (NULL + str)
+              56 LOAD_FAST            (pool_path)
+              58 CALL                 (1 positional)
+
+ 61:          66 LOAD_GLOBAL          (NULL + str)
+              76 LOAD_FAST            (state_path)
+              78 CALL                 (1 positional)
+
+ 62:          86 LOAD_GLOBAL          (NULL + str)
+              96 LOAD_FAST            (results_dir)
+              98 CALL                 (1 positional)
+
+ 63:         106 LOAD_FAST            (concurrency)
+
+ 64:         108 LOAD_GLOBAL          (NULL + min)
+             118 LOAD_CONST           (40)
+             120 LOAD_FAST            (concurrency)
+             122 CALL                 (2 positional)
+
+ 65:         130 LOAD_CONST           (1)
+
+ 66:         132 LOAD_CONST           ("localpool")
+
+ 67:         134 LOAD_CONST           ("offline-pressure-pool")
+
+ 68:         136 LOAD_GLOBAL          (NULL + str)
+             146 LOAD_FAST            (root)
+             148 LOAD_CONST           ("runner.js")
+             150 BINARY_OP            (/)
+             154 CALL                 (1 positional)
+
+ 69:         162 LOAD_CONST           ("https://sub2.example.test")
+             164 LOAD_CONST           ("pressure@example.test")
+             166 LOAD_CONST           ("offline")
+             168 LOAD_CONST           ("pressure")
+             170 LOAD_CONST           (('url', 'email', 'password', 'group'))
+             172 BUILD_CONST_KEY_MAP  4
+
+ 59:         174 LOAD_CONST           (('pool_path', 'state_path', 'results_dir', 'concurrency', 'node_concurrency', 'auto_email_login_concurrency', 'sms_provider', 'sms_api_key', 'node_runner', 'sub2api'))
+             176 BUILD_CONST_KEY_MAP  10
+
+ 58:         178 CALL                 (1 positional)
+             186 POP_TOP
+
+ 72:         188 LOAD_FAST            (mode)
+             190 LOAD_CONST           ("manual")
+             192 COMPARE_OP           (==)
+             196 POP_JUMP_IF_FALSE    (to 278)
+
+ 73:         200 LOAD_FAST            (values)
+             202 LOAD_ATTR            (NULL|self + update)
+             222 LOAD_CONST           ("manual")
+             224 LOAD_GLOBAL          (NULL + str)
+             234 LOAD_FAST            (manual_pool_path)
+             236 CALL                 (1 positional)
+             244 LOAD_GLOBAL          (NULL + str)
+             254 LOAD_FAST            (manual_state_path)
+             256 CALL                 (1 positional)
+             264 LOAD_CONST           (('email_mode', 'manual_pool_path', 'manual_state_path'))
+             266 BUILD_CONST_KEY_MAP  3
+             268 CALL                 (1 positional)
+             276 POP_TOP
+
+ 74:     >>  278 LOAD_FAST            (values)
+             280 RETURN_VALUE
+
+
+# Method Name:       _new_importer
+# Filename:          tools\high_pressure_test.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        77
+# Constants:
+#    0: None
+#    1: <Code311 code object <lambda> at 0x109446940, file tools\high_pressure_test.py>, line 78
+#    2: ('log_fn',)
+#    3: <Code311 code object <lambda> at 0x109415400, file tools\high_pressure_test.py>, line 79
+#    4: ('info',)
+#    5: (False,)
+# Names:
+#    0: EmailAuthImporter
+#    1: settings_validation
+# Varnames:
+#	root, logs, importer
+# Positional arguments:
+#	root, logs
+# Local variables:
+#    2: importer
+# Cell variables:
+#    0: logs
+               0 MAKE_CELL            (logs)
+
+ 77:           2 RESUME               0
+
+ 78:           4 LOAD_GLOBAL          (NULL + EmailAuthImporter)
+              14 LOAD_FAST            (root)
+              16 LOAD_CONST           (('info',))
+              18 LOAD_FAST            (logs)
+              20 BUILD_TUPLE          1
+              22 LOAD_CONST           (<Code311 code object <lambda> at 0x109446940, file tools\high_pressure_test.py>, line 78)
+              24 MAKE_FUNCTION
+              26 SET_FUNCTION_ATTRIBUTE 8
+              28 SET_FUNCTION_ATTRIBUTE 1
+              30 LOAD_CONST           (('log_fn',))
+              32 CALL_KW              2
+              34 STORE_FAST           (importer)
+
+ 79:          36 LOAD_CONST           ((False,))
+              38 LOAD_CONST           (<Code311 code object <lambda> at 0x109415400, file tools\high_pressure_test.py>, line 79)
+              40 MAKE_FUNCTION
+              42 SET_FUNCTION_ATTRIBUTE 1
+              44 LOAD_FAST            (importer)
+              46 STORE_ATTR           (settings_validation)
+
+ 80:          56 LOAD_FAST            (importer)
+              58 RETURN_VALUE
+
+
+# Method Name:       run_success_failure
+# Filename:          tools\high_pressure_test.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  28
+# Stack size:        17
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        83
+# Constants:
+#    0: None
+#    1: 'plus-pressure-'
+#    2: ('prefix',)
+#    3: 'manual'
+#    4: 'manual_pool.txt'
+#    5: 'pool.txt'
+#    6: 'pressure'
+#    7: '04d'
+#    8: '@example.test----password-'
+#    9: '--opaque'
+#   10: '@example.test----https://mailbox.example.test/'
+#   11: '\n'
+#   12: 'utf-8'
+#   13: ('encoding',)
+#   14: 'state.json'
+#   15: 'results'
+#   16: ('mode', 'manual_pool_path', 'manual_state_path')
+#   17: 'runner.js'
+#   18: '// offline pressure placeholder\n'
+#   19: 0
+#   20: <Code311 code object fake_run at 0x1094154f0, file tools\high_pressure_test.py>, line 102
+#   21: 'tasks'
+#   22: 'status'
+#   23: 'success'
+#   24: 'failed'
+#   25: 'missing'
+#   26: 1
+#   27: 'error:'
+#   28: 'queued'
+#   29: 'account'
+#   30: 'task accounting mismatch: len(tasks)='
+#   31: ' len(success)='
+#   32: ' len(failed)='
+#   33: ' counts='
+#   34: ' queued='
+#   35: ' errors='
+#   36: -10
+#   37: 40
+#   38: 'concurrency peak too low: '
+#   39: 'available'
+#   40: 'total'
+#   41: 'pool retention mismatch: '
+#   42: ' failed='
+#   43: 'count'
+#   44: 'export count mismatch'
+#   45: 'records'
+#   46: 'source_row'
+#   47: 'failed export contains duplicate source rows'
+#   48: '_success_failure'
+#   49: ('batch', 'targets', 'configured_concurrency', 'peak_active', 'success', 'failed', 'pool_available_after', 'export_failed', 'export_success')
+#   50: (None, '')
+# Names:
+#    0: tempfile
+#    1: TemporaryDirectory
+#    2: Path
+#    3: range
+#    4: write_text
+#    5: join
+#    6: _settings
+#    7: _new_importer
+#    8: threading
+#    9: Lock
+#   10: _run_one
+#   11: start
+#   12: _wait_finished
+#   13: get
+#   14: ManualMailboxPool
+#   15: MailboxPool
+#   16: summary
+#   17: export_records
+#   18: len
+#   19: str
+#   20: startswith
+#   21: AssertionError
+#   22: min
+# Varnames:
+#	targets, concurrency, mode, raw_root, root, pool_path, index, rows, state_path, results_dir, settings, logs, fake_run, status, tasks, task, success, failed, pool, summary, exported_failed, exported_success, counts, status_name, line, error_logs, queued_accounts, record
+# Positional arguments:
+#	targets, concurrency
+# Local variables:
+#    2: mode
+#    3: raw_root
+#    4: root
+#    5: pool_path
+#    6: index
+#    7: rows
+#    8: state_path
+#    9: results_dir
+#   10: settings
+#   11: logs
+#   12: fake_run
+#   13: status
+#   14: tasks
+#   15: task
+#   16: success
+#   17: failed
+#   18: pool
+#   19: summary
+#   20: exported_failed
+#   21: exported_success
+#   22: counts
+#   23: status_name
+#   24: line
+#   25: error_logs
+#   26: queued_accounts
+#   27: record
+# Cell variables:
+#    0: active
+#    1: active_lock
+#    2: importer
+#    3: peak
+               0 MAKE_CELL            (active)
+               2 MAKE_CELL            (active_lock)
+               4 MAKE_CELL            (importer)
+               6 MAKE_CELL            (peak)
+
+ 83:           8 RESUME               0
+
+ 84:          10 LOAD_GLOBAL          (tempfile)
+              20 LOAD_ATTR            (TemporaryDirectory)
+              40 PUSH_NULL
+              42 LOAD_CONST           ("plus-pressure-")
+              44 LOAD_CONST           (('prefix',))
+              46 CALL_KW              1
+              48 BEFORE_WITH
+              50 STORE_FAST           (raw_root)
+
+ 85:          52 LOAD_GLOBAL          (NULL + Path)
+              62 LOAD_FAST            (raw_root)
+              64 CALL                 (1 positional)
+              72 STORE_FAST           (root)
+
+ 86:          74 LOAD_FAST_LOAD_FAST  (root, mode)
+              76 LOAD_CONST           ("manual")
+              78 COMPARE_OP           (==)
+              82 POP_JUMP_IF_FALSE    (to 90)
+              86 LOAD_CONST           ("manual_pool.txt")
+              88 JUMP_FORWARD         (to 92)
+         >>   90 LOAD_CONST           ("pool.txt")
+         >>   92 BINARY_OP            (/)
+              96 STORE_FAST           (pool_path)
+
+ 89:          98 LOAD_GLOBAL          (NULL + range)
+             108 LOAD_FAST            (targets)
+             110 CALL                 (1 positional)
+             118 GET_ITER
+
+ 87:         120 LOAD_FAST_AND_CLEAR  (index)
+             122 SWAP                 (TOS <-> TOS1)
+             124 BUILD_LIST           0
+             126 SWAP                 (TOS <-> TOS1)
+
+ 89:         128 GET_ITER
+             130 FOR_ITER             (to 194)
+             134 STORE_FAST           (index)
+
+ 88:         136 LOAD_FAST            (mode)
+             138 LOAD_CONST           ("manual")
+             140 COMPARE_OP           (==)
+             144 POP_JUMP_IF_FALSE    (to 170)
+             148 LOAD_CONST           ("pressure")
+             150 LOAD_FAST            (index)
+             152 LOAD_CONST           ("04d")
+             154 FORMAT_WITH_SPEC
+             156 LOAD_CONST           ("@example.test----password-")
+             158 LOAD_FAST            (index)
+             160 LOAD_CONST           ("04d")

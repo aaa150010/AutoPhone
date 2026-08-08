@@ -1,0 +1,800 @@
+#    5: MailboxPoolError
+#    6: _as_int
+#    7: lock
+#    8: running
+#    9: RuntimeError
+#   10: stop_event
+#   11: clear
+#   12: ManualCodeCoordinator
+#   13: manual_codes
+#   14: AutoEmailPhaseGate
+#   15: auto_email_phase_gate
+#   16: min
+#   17: node_gate
+#   18: task_concurrency
+#   19: tasks
+#   20: cancelled_waiting
+#   21: futures
+#   22: future_assignments
+#   23: set
+#   24: active_task_ids
+#   25: range
+#   26: lease
+#   27: uuid
+#   28: uuid4
+#   29: hex
+#   30: append
+#   31: _task_state
+#   32: email
+#   33: _account_label
+#   34: _source_row
+#   35: ThreadPoolExecutor
+#   36: executor
+#   37: submit
+#   38: _run_one
+#   39: copy
+#   40: deepcopy
+#   41: Exception
+#   42: cancel
+#   43: shutdown
+#   44: restore_entry
+#   45: threading
+#   46: Thread
+#   47: _watch
+#   48: start
+#   49: _log
+# Varnames:
+#	self, settings, pool, pool_summary, target, concurrency, reserved, email_login_concurrency, node_concurrency, index, entry, task_id, ordinal, future, _task_id, _ordinal
+# Positional arguments:
+#	self, settings
+# Local variables:
+#    2: pool
+#    3: pool_summary
+#    4: target
+#    5: concurrency
+#    6: reserved
+#    7: email_login_concurrency
+#    8: node_concurrency
+#    9: index
+#   10: entry
+#   11: task_id
+#   12: ordinal
+#   13: future
+#   14: _task_id
+#   15: _ordinal
+1585:           0 RESUME               0
+
+1586:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + settings_validation)
+              24 LOAD_FAST            (settings)
+              26 LOAD_CONST           (True)
+              28 LOAD_CONST           (('remote',))
+              30 CALL_KW              2
+              32 POP_TOP
+
+1587:          34 LOAD_FAST            (self)
+              36 LOAD_ATTR            (NULL|self + _pool)
+              56 LOAD_FAST            (settings)
+              58 CALL                 (1 positional)
+              66 STORE_FAST           (pool)
+
+1588:          68 LOAD_FAST            (pool)
+              70 LOAD_ATTR            (NULL|self + summary)
+              90 CALL                 (0 positional)
+              98 STORE_FAST           (pool_summary)
+
+1589:         100 LOAD_GLOBAL          (NULL + int)
+             110 LOAD_FAST            (pool_summary)
+             112 LOAD_ATTR            (NULL|self + get)
+             132 LOAD_CONST           ("available")
+             134 CALL                 (1 positional)
+             142 COPY                 1
+             144 TO_BOOL
+             152 POP_JUMP_IF_TRUE     (to 160)
+             156 POP_TOP
+             158 LOAD_CONST           (0)
+         >>  160 CALL                 (1 positional)
+             168 STORE_FAST           (target)
+
+1590:         170 LOAD_FAST            (target)
+             172 LOAD_CONST           (0)
+             174 COMPARE_OP           (<=)
+             178 POP_JUMP_IF_FALSE    (to 204)
+
+1591:         182 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             192 LOAD_CONST           ("没有可运行的邮箱")
+             194 CALL                 (1 positional)
+             202 RAISE_VARARGS        (exception instance)
+
+1592:     >>  204 LOAD_GLOBAL          (NULL + _as_int)
+             214 LOAD_FAST            (settings)
+             216 LOAD_ATTR            (NULL|self + get)
+             236 LOAD_CONST           ("concurrency")
+             238 CALL                 (1 positional)
+             246 LOAD_CONST           (1)
+             248 LOAD_CONST           (1)
+             250 LOAD_CONST           (100)
+             252 CALL                 (4 positional)
+             260 STORE_FAST           (concurrency)
+
+1593:         262 BUILD_LIST           0
+             264 STORE_FAST           (reserved)
+
+1594:         266 LOAD_FAST            (self)
+             268 LOAD_ATTR            (lock)
+             288 BEFORE_WITH
+             290 POP_TOP
+
+1595:         292 LOAD_FAST            (self)
+             294 LOAD_ATTR            (running)
+             314 TO_BOOL
+             322 POP_JUMP_IF_FALSE    (to 348)
+
+1596:         326 LOAD_GLOBAL          (NULL + RuntimeError)
+             336 LOAD_CONST           ("已有导入任务正在运行")
+             338 CALL                 (1 positional)
+             346 RAISE_VARARGS        (exception instance)
+
+1597:     >>  348 LOAD_FAST            (self)
+             350 LOAD_ATTR            (stop_event)
+             370 LOAD_ATTR            (NULL|self + clear)
+             390 CALL                 (0 positional)
+             398 POP_TOP
+
+1598:         400 LOAD_GLOBAL          (NULL + ManualCodeCoordinator)
+             410 CALL                 (0 positional)
+             418 LOAD_FAST            (self)
+             420 STORE_ATTR           (manual_codes)
+
+1599:         430 LOAD_GLOBAL          (NULL + _as_int)
+             440 LOAD_FAST            (settings)
+             442 LOAD_ATTR            (NULL|self + get)
+             462 LOAD_CONST           ("auto_email_login_concurrency")
+             464 CALL                 (1 positional)
+             472 LOAD_CONST           (1)
+             474 LOAD_CONST           (1)
+             476 LOAD_FAST            (concurrency)
+             478 CALL                 (4 positional)
+             486 STORE_FAST           (email_login_concurrency)
+
+1600:         488 LOAD_GLOBAL          (NULL + AutoEmailPhaseGate)
+             498 LOAD_FAST            (email_login_concurrency)
+             500 CALL                 (1 positional)
+             508 LOAD_FAST            (self)
+             510 STORE_ATTR           (auto_email_phase_gate)
+
+1601:         520 LOAD_GLOBAL          (NULL + _as_int)
+             530 LOAD_FAST            (settings)
+             532 LOAD_ATTR            (NULL|self + get)
+             552 LOAD_CONST           ("node_concurrency")
+             554 CALL                 (1 positional)
+             562 LOAD_GLOBAL          (NULL + min)
+             572 LOAD_CONST           (3)
+             574 LOAD_FAST            (concurrency)
+             576 CALL                 (2 positional)
+             584 LOAD_CONST           (1)
+             586 LOAD_FAST            (concurrency)
+             588 CALL                 (4 positional)
+             596 STORE_FAST           (node_concurrency)
+
+1602:         598 LOAD_GLOBAL          (NULL + AutoEmailPhaseGate)
+             608 LOAD_FAST            (node_concurrency)
+             610 CALL                 (1 positional)
+             618 LOAD_FAST            (self)
+             620 STORE_ATTR           (node_gate)
+
+1603:         630 LOAD_FAST_LOAD_FAST  (concurrency, self)
+             632 STORE_ATTR           (task_concurrency)
+
+1604:         642 LOAD_CONST           (True)
+             644 LOAD_FAST            (self)
+             646 STORE_ATTR           (running)
+
+1605:         656 BUILD_MAP            0
+             658 LOAD_FAST            (self)
+             660 STORE_ATTR           (tasks)
+
+1606:         670 LOAD_CONST           (0)
+             672 LOAD_FAST            (self)
+             674 STORE_ATTR           (cancelled_waiting)
+
+1607:         684 BUILD_LIST           0
+             686 LOAD_FAST            (self)
+             688 STORE_ATTR           (futures)
+
+1608:         698 BUILD_MAP            0
+             700 LOAD_FAST            (self)
+             702 STORE_ATTR           (future_assignments)
+
+1609:         712 LOAD_GLOBAL          (NULL + set)
+             722 CALL                 (0 positional)
+             730 LOAD_FAST            (self)
+             732 STORE_ATTR           (active_task_ids)
+
+1610:         742 NOP
+
+1614:         744 LOAD_GLOBAL          (NULL + range)
+             754 LOAD_FAST            (target)
+             756 CALL                 (1 positional)
+             764 GET_ITER
+             766 FOR_ITER             (to 1064)
+             770 STORE_FAST           (index)
+
+1615:         772 LOAD_FAST            (pool)
+             774 LOAD_ATTR            (NULL|self + lease)
+             794 LOAD_CONST           (3600)
+             796 LOAD_CONST           (('lease_seconds',))
+             798 CALL_KW              1
+             800 STORE_FAST           (entry)
+
+1616:         802 LOAD_CONST           ("T")
+             804 LOAD_FAST            (index)
+             806 LOAD_CONST           (1)
+             808 BINARY_OP            (+)
+             812 LOAD_CONST           ("03d")
+             814 FORMAT_WITH_SPEC
+             816 LOAD_CONST           ("-")
+             818 LOAD_GLOBAL          (uuid)
+             828 LOAD_ATTR            (uuid4)
+             848 PUSH_NULL
+             850 CALL                 (0 positional)
+             858 LOAD_ATTR            (hex)
+             878 LOAD_CONST           (None)
+             880 LOAD_CONST           (6)
+             882 BINARY_SLICE
+             884 FORMAT_SIMPLE
+             886 BUILD_STRING         4
+             888 STORE_FAST           (task_id)
+
+1617:         890 LOAD_FAST            (reserved)
+             892 LOAD_ATTR            (NULL|self + append)
+             912 LOAD_FAST_LOAD_FAST  (task_id, index)
+             914 LOAD_CONST           (1)
+             916 BINARY_OP            (+)
+             920 LOAD_FAST            (entry)
+             922 BUILD_TUPLE          3
+             924 CALL                 (1 positional)
+             932 POP_TOP
+
+1618:         934 LOAD_FAST            (self)
+             936 LOAD_ATTR            (NULL|self + _task_state)
+
+1619:         956 LOAD_FAST            (task_id)
+
+1620:         958 LOAD_CONST           ("queued")
+
+1621:         960 LOAD_FAST            (entry)
+             962 LOAD_ATTR            (email)
+
+1622:         982 LOAD_FAST            (self)
+             984 LOAD_ATTR            (NULL|self + _account_label)
+            1004 LOAD_FAST            (entry)
+            1006 CALL                 (1 positional)
+
+1623:        1014 LOAD_FAST            (self)
+            1016 LOAD_ATTR            (NULL|self + _source_row)
+            1036 LOAD_FAST            (entry)
+            1038 CALL                 (1 positional)
+
+1624:        1046 LOAD_FAST            (index)
+            1048 LOAD_CONST           (1)
+            1050 BINARY_OP            (+)
+
+1618:        1054 LOAD_CONST           (('status', 'email', 'account', 'source_row', 'ordinal'))
+            1056 CALL_KW              6
+            1058 POP_TOP
+            1060 JUMP_BACKWARD        (to 766)
+
+1614:     >> 1064 END_FOR
+            1066 POP_TOP
+
+1626:        1068 LOAD_GLOBAL          (NULL + ThreadPoolExecutor)
+            1078 LOAD_FAST            (concurrency)
+            1080 LOAD_CONST           ("email-auth-import")
+            1082 LOAD_CONST           (('max_workers', 'thread_name_prefix'))
+            1084 CALL_KW              2
+            1086 LOAD_FAST            (self)
+            1088 STORE_ATTR           (executor)
+
+1627:        1098 LOAD_FAST            (reserved)
+            1100 GET_ITER
+            1102 FOR_ITER             (to 1328)
+            1106 UNPACK_SEQUENCE      3
+            1110 STORE_FAST_STORE_FAST (task_id, ordinal)
+            1112 STORE_FAST           (entry)
+
+1628:        1114 LOAD_FAST            (self)
+            1116 LOAD_ATTR            (executor)
+            1136 LOAD_ATTR            (NULL|self + submit)
+
+1629:        1156 LOAD_FAST            (self)
+            1158 LOAD_ATTR            (_run_one)
+
+1630:        1178 LOAD_GLOBAL          (copy)
+            1188 LOAD_ATTR            (deepcopy)
+            1208 PUSH_NULL
+            1210 LOAD_FAST            (settings)
+            1212 CALL                 (1 positional)
+
+1631:        1220 LOAD_FAST            (ordinal)
+
+1632:        1222 LOAD_FAST            (entry)
+
+1633:        1224 LOAD_FAST            (task_id)
+
+1628:        1226 CALL                 (5 positional)
+            1234 STORE_FAST           (future)
+
+1635:        1236 LOAD_FAST            (self)
+            1238 LOAD_ATTR            (futures)
+            1258 LOAD_ATTR            (NULL|self + append)
+            1278 LOAD_FAST            (future)
+            1280 CALL                 (1 positional)
+            1288 POP_TOP
+
+1636:        1290 LOAD_FAST_LOAD_FAST  (pool, entry)
+            1292 LOAD_FAST            (task_id)
+            1294 BUILD_TUPLE          3
+            1296 LOAD_FAST            (self)
+            1298 LOAD_ATTR            (future_assignments)
+            1318 LOAD_FAST            (future)
+            1320 STORE_SUBSCR
+            1324 JUMP_BACKWARD        (to 1102)
+
+1627:     >> 1328 END_FOR
+            1330 POP_TOP
+            1332 NOP
+
+1594:        1334 LOAD_CONST           (None)
+            1336 LOAD_CONST           (None)
+            1338 LOAD_CONST           (None)
+            1340 CALL                 (2 positional)
+            1348 POP_TOP
+
+1651:        1350 LOAD_GLOBAL          (threading)
+            1360 LOAD_ATTR            (Thread)
+            1380 PUSH_NULL
+            1382 LOAD_FAST            (self)
+            1384 LOAD_ATTR            (_watch)
+            1404 LOAD_CONST           ("email-auth-watch")
+            1406 LOAD_CONST           (True)
+            1408 LOAD_CONST           (('target', 'name', 'daemon'))
+            1410 CALL_KW              3
+            1412 LOAD_ATTR            (NULL|self + start)
+            1432 CALL                 (0 positional)
+            1440 POP_TOP
+
+1652:        1442 LOAD_FAST            (self)
+            1444 LOAD_ATTR            (NULL|self + _log)
+
+1653:        1464 LOAD_CONST           ("导入任务启动: 可用邮箱 ")
+            1466 LOAD_FAST            (target)
+            1468 FORMAT_SIMPLE
+            1470 LOAD_CONST           ("，任务并发 ")
+            1472 LOAD_FAST            (concurrency)
+            1474 FORMAT_SIMPLE
+            1476 LOAD_CONST           ("，Node 并发 ")
+            1478 LOAD_FAST_CHECK      (node_concurrency)
+            1480 FORMAT_SIMPLE
+            1482 LOAD_CONST           ("，邮箱验证码槽 ")
+            1484 LOAD_FAST_CHECK      (email_login_concurrency)
+            1486 FORMAT_SIMPLE
+            1488 LOAD_CONST           ("；验证码通过后立即释放，号码/SUB2 保持并发")
+            1490 BUILD_STRING         9
+
+1654:        1492 LOAD_CONST           ("success")
+
+1652:        1494 CALL                 (2 positional)
+            1502 POP_TOP
+            1504 RETURN_CONST         (None)
+         >> 1506 PUSH_EXC_INFO
+
+1637:        1508 LOAD_GLOBAL          (Exception)
+            1518 CHECK_EXC_MATCH
+            1520 POP_JUMP_IF_FALSE    (to 1862)
+            1524 POP_TOP
+
+1638:        1526 LOAD_FAST            (self)
+            1528 LOAD_ATTR            (stop_event)
+            1548 LOAD_ATTR            (NULL|self + set)
+            1568 CALL                 (0 positional)
+            1576 POP_TOP
+
+1639:        1578 LOAD_FAST            (self)
+            1580 LOAD_ATTR            (futures)
+            1600 GET_ITER
+            1602 FOR_ITER             (to 1644)
+            1606 STORE_FAST           (future)
+
+1640:        1608 LOAD_FAST            (future)
+            1610 LOAD_ATTR            (NULL|self + cancel)
+            1630 CALL                 (0 positional)
+            1638 POP_TOP
+            1640 JUMP_BACKWARD        (to 1602)
+
+1639:     >> 1644 END_FOR
+            1646 POP_TOP
+
+1641:        1648 LOAD_FAST            (self)
+            1650 LOAD_ATTR            (executor)
+            1670 TO_BOOL
+            1678 POP_JUMP_IF_FALSE    (to 1734)
+
+1642:        1682 LOAD_FAST            (self)
+            1684 LOAD_ATTR            (executor)
+            1704 LOAD_ATTR            (NULL|self + shutdown)
+            1724 LOAD_CONST           (False)
+            1726 LOAD_CONST           (True)
+            1728 LOAD_CONST           (('wait', 'cancel_futures'))
+            1730 CALL_KW              2
+            1732 POP_TOP
+
+1643:     >> 1734 LOAD_FAST            (reserved)
+            1736 GET_ITER
+            1738 FOR_ITER             (to 1786)
+            1742 UNPACK_SEQUENCE      3
+            1746 STORE_FAST_STORE_FAST (_task_id, _ordinal)
+            1748 STORE_FAST           (entry)
+
+1644:        1750 LOAD_FAST            (pool)
+            1752 LOAD_ATTR            (NULL|self + restore_entry)
+            1772 LOAD_FAST            (entry)
+            1774 LOAD_CONST           ("batch_start_failed")
+            1776 LOAD_CONST           (('reason',))
+            1778 CALL_KW              2
+            1780 POP_TOP
+            1782 JUMP_BACKWARD        (to 1738)
+
+1643:     >> 1786 END_FOR
+            1788 POP_TOP
+
+1645:        1790 LOAD_CONST           (None)
+            1792 LOAD_FAST            (self)
+            1794 STORE_ATTR           (executor)
+
+1646:        1804 BUILD_LIST           0
+            1806 LOAD_FAST            (self)
+            1808 STORE_ATTR           (futures)
+
+1647:        1818 BUILD_MAP            0
+            1820 LOAD_FAST            (self)
+            1822 STORE_ATTR           (future_assignments)
+
+1648:        1832 BUILD_MAP            0
+         >> 1834 LOAD_FAST            (self)
+            1836 STORE_ATTR           (tasks)
+
+1649:        1846 LOAD_CONST           (False)
+            1848 LOAD_FAST            (self)
+            1850 STORE_ATTR           (running)
+
+1650:        1860 RAISE_VARARGS        (reraise)
+
+1637:     >> 1862 RERAISE              0
+         >> 1864 COPY                 3
+            1866 POP_EXCEPT
+            1868 RERAISE              1
+
+1594:     >> 1870 PUSH_EXC_INFO
+            1872 WITH_EXCEPT_START    0
+            1874 TO_BOOL
+            1882 POP_JUMP_IF_TRUE     (to 1888)
+            1886 RERAISE              2
+         >> 1888 POP_TOP
+            1890 POP_EXCEPT
+            1892 POP_TOP
+            1894 POP_TOP
+            1896 EXTENDED_ARG         (256)
+            1898 JUMP_BACKWARD_NO_INTERRUPT (to 1350)
+         >> 1900 COPY                 3
+            1902 POP_EXCEPT
+            1904 RERAISE              1
+
+ExceptionTable:
+  290 to 740 -> 1870 [1] lasti
+  744 to 1330 -> 1506 [1]
+  1506 to 1862 -> 1864 [2] lasti
+  1864 to 1868 -> 1870 [1] lasti
+  1870 to 1888 -> 1900 [3] lasti
+
+# Method Name:       stop
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  9
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1657
+# Constants:
+#    0: None
+#    1: 0
+#    2: 'stopped_before_start'
+#    3: ('reason',)
+#    4: 'stopped'
+#    5: '未启动，已停止'
+#    6: ('status', 'error')
+#    7: 1
+#    8: False
+#    9: True
+#   10: ('wait', 'cancel_futures')
+#   11: '已停止：取消 '
+#   12: ' 个等待任务，正在运行任务立即中断并归还邮箱'
+#   13: 'warn'
+# Names:
+#    0: stop_event
+#    1: set
+#    2: manual_codes
+#    3: cancel_all
+#    4: lock
+#    5: list
+#    6: futures
+#    7: executor
+#    8: cancel
+#    9: future_assignments
+#   10: pop
+#   11: restore_entry
+#   12: _task_state
+#   13: cancelled_waiting
+#   14: shutdown
+#   15: _log
+# Varnames:
+#	self, futures, executor, cancelled, future, assignment, pool, entry, task_id
+# Positional arguments:
+#	self
+# Local variables:
+#    1: futures
+#    2: executor
+#    3: cancelled
+#    4: future
+#    5: assignment
+#    6: pool
+#    7: entry
+#    8: task_id
+1657:           0 RESUME               0
+
+1658:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (stop_event)
+              24 LOAD_ATTR            (NULL|self + set)
+              44 CALL                 (0 positional)
+              52 POP_TOP
+
+1659:          54 LOAD_FAST            (self)
+              56 LOAD_ATTR            (manual_codes)
+              76 LOAD_ATTR            (NULL|self + cancel_all)
+              96 CALL                 (0 positional)
+             104 POP_TOP
+
+1660:         106 LOAD_FAST            (self)
+             108 LOAD_ATTR            (lock)
+             128 BEFORE_WITH
+             130 POP_TOP
+
+1661:         132 LOAD_GLOBAL          (NULL + list)
+             142 LOAD_FAST            (self)
+             144 LOAD_ATTR            (futures)
+             164 CALL                 (1 positional)
+             172 STORE_FAST           (futures)
+
+1662:         174 LOAD_FAST            (self)
+             176 LOAD_ATTR            (executor)
+             196 STORE_FAST           (executor)
+
+1660:         198 LOAD_CONST           (None)
+             200 LOAD_CONST           (None)
+             202 LOAD_CONST           (None)
+             204 CALL                 (2 positional)
+             212 POP_TOP
+
+1663:         214 LOAD_CONST           (0)
+             216 STORE_FAST           (cancelled)
+
+1664:         218 LOAD_FAST_CHECK      (futures)
+             220 GET_ITER
+             222 FOR_ITER             (to 480)
+             226 STORE_FAST           (future)
+
+1665:         228 LOAD_FAST            (future)
+             230 LOAD_ATTR            (NULL|self + cancel)
+             250 CALL                 (0 positional)
+             258 TO_BOOL
+             266 POP_JUMP_IF_TRUE     (to 274)
+
+1666:         270 JUMP_BACKWARD        (to 222)
+
+1667:     >>  274 LOAD_FAST            (self)
+             276 LOAD_ATTR            (lock)
+             296 BEFORE_WITH
+             298 POP_TOP
+
+1668:         300 LOAD_FAST            (self)
+             302 LOAD_ATTR            (future_assignments)
+             322 LOAD_ATTR            (NULL|self + pop)
+             342 LOAD_FAST            (future)
+             344 LOAD_CONST           (None)
+             346 CALL                 (2 positional)
+             354 STORE_FAST           (assignment)
+
+1667:         356 LOAD_CONST           (None)
+             358 LOAD_CONST           (None)
+             360 LOAD_CONST           (None)
+             362 CALL                 (2 positional)
+             370 POP_TOP
+
+1669:         372 LOAD_FAST_CHECK      (assignment)
+             374 TO_BOOL
+             382 POP_JUMP_IF_TRUE     (to 390)
+
+1670:         386 JUMP_BACKWARD        (to 222)
+
+1671:     >>  390 LOAD_FAST            (assignment)
+             392 UNPACK_SEQUENCE      3
+             396 STORE_FAST_STORE_FAST (pool, entry)
+             398 STORE_FAST           (task_id)
+
+1672:         400 LOAD_FAST            (pool)
+             402 LOAD_ATTR            (NULL|self + restore_entry)
+             422 LOAD_FAST            (entry)
+             424 LOAD_CONST           ("stopped_before_start")
+             426 LOAD_CONST           (('reason',))
+             428 CALL_KW              2
+             430 POP_TOP
+
+1673:         432 LOAD_FAST            (self)
+             434 LOAD_ATTR            (NULL|self + _task_state)
+             454 LOAD_FAST            (task_id)
+             456 LOAD_CONST           ("stopped")
+             458 LOAD_CONST           ("未启动，已停止")
+             460 LOAD_CONST           (('status', 'error'))
+             462 CALL_KW              3
+             464 POP_TOP
+
+1674:         466 LOAD_FAST            (cancelled)
+             468 LOAD_CONST           (1)
+             470 BINARY_OP            (+=)
+             474 STORE_FAST           (cancelled)
+             476 JUMP_BACKWARD        (to 222)
+
+1664:     >>  480 END_FOR
+             482 POP_TOP
+
+1675:         484 LOAD_FAST            (self)
+             486 LOAD_ATTR            (lock)
+             506 BEFORE_WITH
+             508 POP_TOP
+
+1676:         510 LOAD_FAST            (self)
+             512 COPY                 1
+             514 LOAD_ATTR            (cancelled_waiting)
+             534 LOAD_FAST            (cancelled)
+             536 BINARY_OP            (+=)
+             540 SWAP                 (TOS <-> TOS1)
+             542 STORE_ATTR           (cancelled_waiting)
+
+1675:         552 LOAD_CONST           (None)
+             554 LOAD_CONST           (None)
+             556 LOAD_CONST           (None)
+         >>  558 CALL                 (2 positional)
+             566 POP_TOP
+
+1677:         568 LOAD_FAST_CHECK      (executor)
+             570 TO_BOOL
+             578 POP_JUMP_IF_FALSE    (to 614)
+
+1678:         582 LOAD_FAST            (executor)
+             584 LOAD_ATTR            (NULL|self + shutdown)
+             604 LOAD_CONST           (False)
+             606 LOAD_CONST           (True)
+             608 LOAD_CONST           (('wait', 'cancel_futures'))
+             610 CALL_KW              2
+             612 POP_TOP
+
+1679:     >>  614 LOAD_FAST            (self)
+             616 LOAD_ATTR            (NULL|self + _log)
+             636 LOAD_CONST           ("已停止：取消 ")
+             638 LOAD_FAST            (cancelled)
+             640 FORMAT_SIMPLE
+             642 LOAD_CONST           (" 个等待任务，正在运行任务立即中断并归还邮箱")
+             644 BUILD_STRING         3
+             646 LOAD_CONST           ("warn")
+             648 CALL                 (2 positional)
+             656 POP_TOP
+             658 RETURN_CONST         (None)
+
+1660:     >>  660 PUSH_EXC_INFO
+             662 WITH_EXCEPT_START    0
+             664 TO_BOOL
+             672 POP_JUMP_IF_TRUE     (to 678)
+             676 RERAISE              2
+         >>  678 POP_TOP
+             680 POP_EXCEPT
+             682 POP_TOP
+             684 POP_TOP
+             686 JUMP_BACKWARD_NO_INTERRUPT (to 214)
+         >>  688 COPY                 3
+             690 POP_EXCEPT
+             692 RERAISE              1
+
+1667:     >>  694 PUSH_EXC_INFO
+             696 WITH_EXCEPT_START    0
+             698 TO_BOOL
+             706 POP_JUMP_IF_TRUE     (to 712)
+             710 RERAISE              2
+         >>  712 POP_TOP
+             714 POP_EXCEPT
+             716 POP_TOP
+             718 POP_TOP
+             720 JUMP_BACKWARD_NO_INTERRUPT (to 372)
+         >>  722 COPY                 3
+             724 POP_EXCEPT
+             726 RERAISE              1
+
+1675:     >>  728 PUSH_EXC_INFO
+             730 WITH_EXCEPT_START    0
+             732 TO_BOOL
+             740 POP_JUMP_IF_TRUE     (to 746)
+             744 RERAISE              2
+         >>  746 POP_TOP
+             748 POP_EXCEPT
+             750 POP_TOP
+             752 POP_TOP
+             754 JUMP_BACKWARD_NO_INTERRUPT (to 568)
+         >>  756 COPY                 3
+             758 POP_EXCEPT
+             760 RERAISE              1
+
+ExceptionTable:
+  130 to 196 -> 660 [1] lasti
+  298 to 354 -> 694 [2] lasti
+  508 to 550 -> 728 [1] lasti
+  660 to 678 -> 688 [3] lasti
+  694 to 712 -> 722 [4] lasti
+  728 to 746 -> 756 [3] lasti
+
+# Method Name:       _watch
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1681
+# Constants:
+#    0: None
+#    1: '任务线程异常: '
+#    2: 'error'
+#    3: False
+#    4: True
+#    5: ('wait', 'cancel_futures')
+#    6: '导入任务已结束'
+#    7: 'info'
+# Names:
+#    0: list
+#    1: futures
+#    2: result
+#    3: Exception
+#    4: cancelled
+#    5: _log
+#    6: lock
+#    7: running
+#    8: executor
+#    9: future_assignments
+#   10: shutdown
+#   11: _log_final_summary
+# Varnames:
+#	self, futures, future, exc, executor
+# Positional arguments:
+#	self
+# Local variables:
+#    1: futures
+#    2: future
+#    3: exc
+#    4: executor
+1681:           0 RESUME               0
+
+1682:           2 LOAD_GLOBAL          (NULL + list)
+              12 LOAD_FAST            (self)
+              14 LOAD_ATTR            (futures)
+              34 CALL                 (1 positional)
+              42 STORE_FAST           (futures)

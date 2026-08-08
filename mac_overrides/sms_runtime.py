@@ -9,392 +9,110 @@ from dataclasses import dataclass, field
 import hashlib
 import json
 import math
-from pathlib import Path
 import re
 import threading
 import time
 from typing import Any, Callable, Iterator
 import urllib.parse
-import urllib.request
 import uuid
-import xml.etree.ElementTree as ET
+
+try:
+    from .performance_runtime import (
+        PERFORMANCE_DEFAULTS,
+        PERFORMANCE_POLICY_VERSION,
+        PHONE_MAX_ATTEMPTS_LIMIT,
+        migrate_performance_config,
+    )
+    from .sms_order_runtime import (
+        ECB_DAILY_URL,
+        ExchangeRateCache,
+        HeroSmsCancellationDeferred,
+        SmsCleanupQueue,
+        SmsCostLedger,
+        _herosms_min_cancel_seconds,
+        _provider_exception_text,
+        _safe_provider_token,
+        confirm_herosms_cancellation,
+        herosms_cancel_delay_seconds,
+        safe_cancel_receipt,
+    )
+    from .sms_provider_runtime import (
+        SECRET_MASK,
+        SMS_PROVIDER_ALIASES,
+        SMS_PROVIDER_DEFAULT_SERVICES,
+        SmsProviderBatchHealth,
+        flatten_sms_provider_keys,
+        legacy_sms_provider_keys,
+        normalize_sms_keys,
+        normalize_sms_provider_name,
+        normalize_sms_provider_pools,
+    )
+    from .sms_route_runtime import (
+        SmsRoutePolicy,
+        SmsWaitPlan,
+        _candidate_value as _route_candidate_value,
+        build_sms_wait_plan,
+        candidate_route,
+        delivery_quality,
+        has_better_mature_alternative,
+        is_degraded_route,
+        is_mature_delivery_route,
+        rank_sms_candidates,
+        route_stat as _route_stat_value,
+        wilson_lower_bound,
+    )
+except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
+    from performance_runtime import (  # type: ignore[no-redef]
+        PERFORMANCE_DEFAULTS,
+        PERFORMANCE_POLICY_VERSION,
+        PHONE_MAX_ATTEMPTS_LIMIT,
+        migrate_performance_config,
+    )
+    from sms_order_runtime import (  # type: ignore[no-redef]
+        ECB_DAILY_URL,
+        ExchangeRateCache,
+        HeroSmsCancellationDeferred,
+        SmsCleanupQueue,
+        SmsCostLedger,
+        _herosms_min_cancel_seconds,
+        _provider_exception_text,
+        _safe_provider_token,
+        confirm_herosms_cancellation,
+        herosms_cancel_delay_seconds,
+        safe_cancel_receipt,
+    )
+    from sms_provider_runtime import (  # type: ignore[no-redef]
+        SECRET_MASK,
+        SMS_PROVIDER_ALIASES,
+        SMS_PROVIDER_DEFAULT_SERVICES,
+        SmsProviderBatchHealth,
+        flatten_sms_provider_keys,
+        legacy_sms_provider_keys,
+        normalize_sms_keys,
+        normalize_sms_provider_name,
+        normalize_sms_provider_pools,
+    )
+    from sms_route_runtime import (  # type: ignore[no-redef]
+        SmsRoutePolicy,
+        SmsWaitPlan,
+        _candidate_value as _route_candidate_value,
+        build_sms_wait_plan,
+        candidate_route,
+        delivery_quality,
+        has_better_mature_alternative,
+        is_degraded_route,
+        is_mature_delivery_route,
+        rank_sms_candidates,
+        route_stat as _route_stat_value,
+        wilson_lower_bound,
+    )
 
 
-SECRET_MASK = "********"
-ECB_DAILY_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
 SMS_PREFLIGHT_MAX_WORKERS = 8
-SMS_PROVIDER_DEFAULT_SERVICES = {
-    "smsbower": "dr",
-    "herosms": "dr",
-    "5sim": "openai",
-}
-SMS_PROVIDER_ALIASES = {
-    "hero-sms": "herosms",
-    "hero_sms": "herosms",
-    "fivesim": "5sim",
-    "five_sim": "5sim",
-}
-PERFORMANCE_POLICY_VERSION = 11
-PHONE_MAX_ATTEMPTS_LIMIT = 45
-PERFORMANCE_DEFAULTS = {
-    "auto_email_login_concurrency": 5,
-    "phone_submission_concurrency": 2,
-    "pixel_upload_concurrency": 2,
-    "phone_max_attempts": PHONE_MAX_ATTEMPTS_LIMIT,
-    "phone_attempts_per_provider": 15,
-    "phone_session_cycle_seconds": 1800,
-    "auth_session_retries": 1,
-}
 SMS_NETWORK_ATTEMPTS = 3
 SMS_FIRST_WAIT_SECONDS = 30
 SMS_SECOND_WAIT_SECONDS = 30
 SMS_POLL_INTERVAL_SECONDS = 3
-_CANCEL_RECEIPT_KEYS = frozenset(
-    {"cancel_state", "provider_response", "provider_status", "refund_status"}
-)
-
-
-def normalize_sms_keys(value: Any = None, legacy: Any = "") -> list[str]:
-    """Normalize the canonical key list without interpreting key punctuation."""
-    if isinstance(value, (list, tuple)):
-        candidates = value
-    elif isinstance(value, str) and value.strip():
-        candidates = [value]
-    elif legacy is not None:
-        candidates = [legacy]
-    else:
-        candidates = []
-
-    result: list[str] = []
-    seen: set[str] = set()
-    for candidate in candidates:
-        key = str(candidate or "").strip()
-        if not key or key == SECRET_MASK or key in seen:
-            continue
-        seen.add(key)
-        result.append(key)
-    return result
-
-
-def normalize_sms_provider_name(value: Any) -> str:
-    name = str(value or "").strip().lower()
-    return SMS_PROVIDER_ALIASES.get(name, name)
-
-
-def _safe_provider_token(value: Any) -> str:
-    if isinstance(value, dict):
-        value = next(
-            (
-                value.get(key)
-                for key in ("status", "response", "result", "message", "error", "title", "code")
-                if value.get(key) not in (None, "")
-            ),
-            "",
-        )
-    if isinstance(value, (bytes, bytearray)):
-        value = value.decode("utf-8", "replace")
-    text = str(value or "").strip()
-    if text.startswith("{") or "{" in text:
-        candidate = text[text.find("{") :]
-        try:
-            parsed = json.loads(candidate)
-        except (TypeError, ValueError, json.JSONDecodeError):
-            parsed = None
-        if isinstance(parsed, dict):
-            return _safe_provider_token(parsed)
-    text = text.upper()
-    return re.sub(r"[^A-Z0-9_.:-]+", "_", text)[:80]
-
-
-def _provider_exception_text(error: BaseException) -> str:
-    parts = [str(error or "")]
-    reader = getattr(error, "read", None)
-    if callable(reader):
-        try:
-            body = reader()
-            if isinstance(body, bytes):
-                body = body.decode("utf-8", "replace")
-            parts.append(str(body or ""))
-        except Exception:
-            pass
-    return " ".join(part for part in parts if part)
-
-
-def _herosms_min_cancel_seconds(value: Any, default: int = 120) -> int:
-    if isinstance(value, dict):
-        info = value.get("info")
-        if isinstance(info, dict):
-            value = info.get("minActivationTime") or info.get("min_activation_time")
-        else:
-            value = value.get("minActivationTime") or value.get("min_activation_time")
-    try:
-        return max(1, min(600, int(value)))
-    except (TypeError, ValueError):
-        return int(default)
-
-
-class HeroSmsCancellationDeferred(RuntimeError):
-    """Signal that provider cancellation must resume after its protection window."""
-
-    def __init__(self, retry_after_seconds: float, minimum_seconds: int) -> None:
-        self.retry_after_seconds = max(1.0, float(retry_after_seconds))
-        self.minimum_seconds = max(1, int(minimum_seconds))
-        super().__init__(
-            f"herosms_cancel_deferred:retry_after={int(self.retry_after_seconds)}"
-        )
-
-
-def herosms_cancel_delay_seconds(
-    leased_at: Any,
-    minimum_seconds: Any = 120,
-    *,
-    now_fn: Callable[[], float] = time.time,
-) -> float:
-    try:
-        started = float(leased_at)
-    except (TypeError, ValueError):
-        started = float(now_fn())
-    minimum = _herosms_min_cancel_seconds(minimum_seconds)
-    elapsed = max(0.0, float(now_fn()) - started)
-    return max(1.0, float(minimum) - elapsed + 1.0)
-
-
-def safe_cancel_receipt(value: Any) -> dict[str, str]:
-    if not isinstance(value, dict):
-        return {}
-    result: dict[str, str] = {}
-    for key in _CANCEL_RECEIPT_KEYS:
-        token = _safe_provider_token(value.get(key))
-        if token:
-            result[key] = token.lower() if key in {"cancel_state", "refund_status"} else token
-    return result
-
-
-def confirm_herosms_cancellation(
-    provider: Any,
-    activation_id: Any,
-    *,
-    now_fn: Callable[[], float] = time.time,
-    sleep_fn: Callable[[float], None] = time.sleep,
-    on_wait: Callable[[float], None] | None = None,
-    leased_at: float | None = None,
-    defer_early: bool = False,
-) -> dict[str, str]:
-    """Cancel one HeroSMS activation using its documented refund contract."""
-    api = getattr(provider, "_api", None)
-    activation = str(activation_id or "").strip()
-    if not callable(api) or not activation:
-        raise RuntimeError("herosms_cancel_confirmation_unavailable")
-    started = float(leased_at) if leased_at is not None else float(now_fn())
-    response = ""
-    minimum_seconds = 120
-    for attempt in range(3):
-        try:
-            raw_response = api({"action": "setStatus", "status": "8", "id": activation})
-            response = _safe_provider_token(raw_response)
-            minimum_seconds = _herosms_min_cancel_seconds(raw_response, minimum_seconds)
-        except Exception as exc:
-            raw_response = _provider_exception_text(exc)
-            response = _safe_provider_token(raw_response)
-            if response != "EARLY_CANCEL_DENIED":
-                raise RuntimeError(
-                    f"herosms_cancel_request_failed:{type(exc).__name__}"
-                ) from exc
-
-        if response == "ACCESS_CANCEL":
-            break
-        if response != "EARLY_CANCEL_DENIED":
-            raise RuntimeError(f"herosms_cancel_rejected:{response or 'EMPTY_RESPONSE'}")
-        if attempt >= 2:
-            raise RuntimeError("herosms_cancel_early_denied_after_retry")
-        wait_seconds = herosms_cancel_delay_seconds(
-            started,
-            minimum_seconds,
-            now_fn=now_fn,
-        )
-        if callable(on_wait):
-            try:
-                on_wait(wait_seconds)
-            except Exception:
-                pass
-        if defer_early:
-            raise HeroSmsCancellationDeferred(wait_seconds, minimum_seconds)
-        sleep_fn(wait_seconds)
-
-    # HeroSMS documents ACCESS_CANCEL from setStatus=8 as the successful
-    # "cancel activation (return funds)" response. A follow-up getStatus is
-    # useful for diagnosis, but it can race activation cleanup or fail after
-    # the cancellation has already been accepted; it must not negate that
-    # authoritative acknowledgement.
-    try:
-        provider_status = _safe_provider_token(
-            api({"action": "getStatus", "id": activation})
-        )
-    except Exception:
-        provider_status = "STATUS_CHECK_UNAVAILABLE"
-    return {
-        "cancel_state": "confirmed",
-        "provider_response": response,
-        "provider_status": provider_status or "STATUS_CHECK_EMPTY",
-        "refund_status": "provider_refund_accepted",
-    }
-
-
-def normalize_sms_provider_pools(
-    value: Any = None,
-    *,
-    legacy_provider: Any = "smsbower",
-    legacy_keys: Any = None,
-    legacy_key: Any = "",
-) -> list[dict[str, Any]]:
-    """Normalize platform pools while accepting the pre-pool SMS settings."""
-    rows = value if isinstance(value, (list, tuple)) else []
-    pools: list[dict[str, Any]] = []
-    by_provider: dict[str, dict[str, Any]] = {}
-    for raw in rows:
-        if not isinstance(raw, dict):
-            continue
-        provider = normalize_sms_provider_name(raw.get("provider"))
-        if not provider:
-            continue
-        service = str(
-            raw.get("service") or SMS_PROVIDER_DEFAULT_SERVICES.get(provider, "dr")
-        ).strip() or SMS_PROVIDER_DEFAULT_SERVICES.get(provider, "dr")
-        keys = normalize_sms_keys(raw.get("api_keys"))
-        existing = by_provider.get(provider)
-        if existing is not None:
-            existing["enabled"] = bool(existing.get("enabled")) or bool(raw.get("enabled", True))
-            existing["api_keys"] = normalize_sms_keys(
-                [*(existing.get("api_keys") or []), *keys]
-            )
-            if not existing.get("service"):
-                existing["service"] = service
-            continue
-        pool = {
-            "provider": provider,
-            "enabled": bool(raw.get("enabled", True)),
-            "api_keys": keys,
-            "service": service,
-        }
-        by_provider[provider] = pool
-        pools.append(pool)
-    if pools:
-        return pools
-
-    provider = normalize_sms_provider_name(legacy_provider) or "smsbower"
-    service = SMS_PROVIDER_DEFAULT_SERVICES.get(provider, "dr")
-    return [
-        {
-            "provider": provider,
-            "enabled": True,
-            "api_keys": normalize_sms_keys(legacy_keys, legacy_key),
-            "service": service,
-        }
-    ]
-
-
-def flatten_sms_provider_keys(pools: Any) -> list[str]:
-    result: list[str] = []
-    seen: set[str] = set()
-    for pool in pools if isinstance(pools, (list, tuple)) else []:
-        if not isinstance(pool, dict):
-            continue
-        for key in normalize_sms_keys(pool.get("api_keys")):
-            if key not in seen:
-                seen.add(key)
-                result.append(key)
-    return result
-
-
-def legacy_sms_provider_keys(pools: Any, provider: Any = "") -> list[str]:
-    """Return one platform's keys for recovered single-provider call sites."""
-
-    rows = normalize_sms_provider_pools(pools)
-    wanted = normalize_sms_provider_name(provider)
-    if wanted:
-        for row in rows:
-            if str(row.get("provider") or "") == wanted:
-                return normalize_sms_keys(row.get("api_keys"))
-    for row in rows:
-        keys = normalize_sms_keys(row.get("api_keys"))
-        if bool(row.get("enabled", True)) and keys:
-            return keys
-    return normalize_sms_keys(rows[0].get("api_keys")) if rows else []
-
-
-def migrate_performance_config(value: Any) -> tuple[dict[str, Any], bool]:
-    """Apply the one-time performance defaults while preserving later user choices."""
-    config = dict(value or {}) if isinstance(value, dict) else {}
-    try:
-        version = int(config.get("performance_policy_version") or 0)
-    except (TypeError, ValueError):
-        version = 0
-    migrated = version < PERFORMANCE_POLICY_VERSION
-    if migrated:
-        for key, default in PERFORMANCE_DEFAULTS.items():
-            try:
-                current = int(config.get(key) or 0)
-            except (TypeError, ValueError):
-                current = 0
-            if current <= 0 or (
-                version < PERFORMANCE_POLICY_VERSION
-                and (
-                    (key == "auto_email_login_concurrency" and current == 1)
-                    or
-                    (key == "phone_max_attempts" and current in {9, 15})
-                    or (key == "phone_session_cycle_seconds" and current == 480)
-                )
-            ):
-                config[key] = default
-        config["performance_policy_version"] = PERFORMANCE_POLICY_VERSION
-    else:
-        for key, default in PERFORMANCE_DEFAULTS.items():
-            if key not in config:
-                config[key] = default
-
-    try:
-        phone_max_attempts = int(config.get("phone_max_attempts") or 0)
-    except (TypeError, ValueError):
-        phone_max_attempts = 0
-    if phone_max_attempts > PHONE_MAX_ATTEMPTS_LIMIT:
-        config["phone_max_attempts"] = PHONE_MAX_ATTEMPTS_LIMIT
-
-    try:
-        task_concurrency = max(1, min(8, int(config.get("concurrency") or 5)))
-    except (TypeError, ValueError):
-        task_concurrency = 5
-    config["concurrency"] = task_concurrency
-    try:
-        email_concurrency = int(
-            config.get("auto_email_login_concurrency")
-            or PERFORMANCE_DEFAULTS["auto_email_login_concurrency"]
-        )
-    except (TypeError, ValueError):
-        email_concurrency = PERFORMANCE_DEFAULTS["auto_email_login_concurrency"]
-    config["auto_email_login_concurrency"] = max(
-        1,
-        min(task_concurrency, email_concurrency),
-    )
-    for key in ("phone_submission_concurrency", "pixel_upload_concurrency"):
-        try:
-            parsed = int(config.get(key) or PERFORMANCE_DEFAULTS[key])
-        except (TypeError, ValueError):
-            parsed = PERFORMANCE_DEFAULTS[key]
-        maximum = 5 if key == "phone_submission_concurrency" else 3
-        config[key] = max(1, min(maximum, parsed))
-
-    pools = normalize_sms_provider_pools(
-        config.get("sms_provider_pools"),
-        legacy_provider=config.get("sms_provider") or "smsbower",
-        legacy_keys=config.get("sms_api_keys"),
-        legacy_key=config.get("sms_api_key"),
-    )
-    config["sms_provider_pools"] = pools
-    config["sms_provider"] = str(pools[0].get("provider") or "smsbower")
-    keys = legacy_sms_provider_keys(pools, config["sms_provider"])
-    config["sms_api_keys"] = keys
-    config["sms_api_key"] = keys[0] if keys else ""
-    return config, migrated
 
 
 def key_fingerprint(key: str) -> str:
@@ -479,162 +197,18 @@ class _StaleSmsPreflight(RuntimeError):
     """Stop obsolete preflight work before it uses superseded credentials."""
 
 
-def _candidate_value(candidate: Any, name: str, default: Any = None) -> Any:
-    if isinstance(candidate, dict):
-        return candidate.get(name, default)
-    return getattr(candidate, name, default)
-
-
 def _candidate_route(candidate: Any) -> tuple[str, str]:
-    """Return the recovered selector's persisted route identity.
+    return candidate_route(candidate)
 
-    ``SmsCandidate.pool`` describes the selector quality bucket (for example
-    ``main`` or ``explore``), not an SMS platform.  The recovered selector
-    persists routes strictly as ``country::provider_id`` and shares their
-    history across those transient buckets.
-    """
-    country = str(_candidate_value(candidate, "country", "") or "")
-    provider_id = str(_candidate_value(candidate, "provider_id", "") or "")
-    return country, provider_id
+
+def _candidate_value(candidate: Any, name: str, default: Any = None) -> Any:
+    """Compatibility export retained for runtime monkeypatch consumers."""
+    return _route_candidate_value(candidate, name, default)
 
 
 def _route_stat(route_stats: Any, route: tuple[str, str]) -> dict[str, Any]:
-    if not isinstance(route_stats, dict):
-        return {}
-    value = route_stats.get(route)
-    if not isinstance(value, dict):
-        value = route_stats.get("::".join(route))
-    return value if isinstance(value, dict) else {}
-
-
-def rank_sms_candidates(
-    candidates: list[Any],
-    route_stats: Any,
-    *,
-    priority_routes: tuple[tuple[str, ...], ...] = (),
-    priority_countries: tuple[str, ...] = (),
-    minimum_proven_rate: float = 0.10,
-    now: float | None = None,
-    recent_success_window_seconds: float = 600.0,
-    reliability_mode: bool = False,
-) -> list[Any]:
-    """Rank routes normally, or put mature delivery routes first for risk retries."""
-    route_priority = {route: index for index, route in enumerate(priority_routes)}
-    country_priority = {country: index for index, country in enumerate(priority_countries)}
-    default_route_priority = len(route_priority)
-    default_country_priority = len(country_priority)
-    current = time.time() if now is None else float(now)
-    recent_window = max(0.0, float(recent_success_window_seconds))
-
-    def metrics(candidate: Any) -> dict[str, Any]:
-        route = _candidate_route(candidate)
-        legacy_route = route[-2:]
-        stat = _route_stat(route_stats, route)
-        if not stat and route != legacy_route:
-            stat = _route_stat(route_stats, legacy_route)
-        final_success = max(0, int(_as_float(stat.get("success"), 0)))
-        otp_received = max(0, int(_as_float(stat.get("otp_received"), 0)))
-        failures = max(0, int(_as_float(stat.get("fail"), 0)))
-        no_numbers = max(0, int(_as_float(stat.get("no_numbers"), 0)))
-        classified_failures = sum(
-            max(0, int(_as_float(stat.get(name), 0)))
-            for name in ("phone_rejected", "register_rejected", "invalid_auth_step", "timeout")
-        )
-        rejected = max(0, failures - no_numbers, classified_failures)
-        acceptance_success = max(final_success, otp_received)
-        observations = acceptance_success + rejected + no_numbers
-        acceptance_rate = acceptance_success / observations if observations else 0.0
-        final_attempts = final_success + rejected
-        final_success_rate = final_success / final_attempts if final_attempts else 0.0
-        delivery_failures = max(
-            int(_as_float(stat.get("timeout"), 0)),
-            int(_as_float(stat.get("otp_sent"), 0)),
-        )
-        delivery_attempts = otp_received + max(0, delivery_failures)
-        delivery_rate = otp_received / delivery_attempts if delivery_attempts else 0.0
-        last_success_at = max(
-            _as_float(stat.get("last_success_at"), 0.0),
-            _as_float(stat.get("last_delivery_at"), 0.0),
-        )
-        recently_successful = bool(
-            last_success_at > 0
-            and recent_window > 0
-            and 0 <= current - last_success_at <= recent_window
-        )
-        preferred = route in route_priority or legacy_route in route_priority
-
-        return {
-            "route": route,
-            "legacy_route": legacy_route,
-            "final_success": final_success,
-            "otp_received": otp_received,
-            "observations": observations,
-            "acceptance_rate": acceptance_rate,
-            "final_success_rate": final_success_rate,
-            "delivery_rate": delivery_rate,
-            "last_success_at": last_success_at,
-            "recently_successful": recently_successful,
-            "preferred": preferred,
-        }
-
-    def normal_key(candidate: Any) -> tuple[Any, ...]:
-        values = metrics(candidate)
-        route = values["route"]
-        legacy_route = values["legacy_route"]
-        success = max(values["final_success"], values["otp_received"])
-        observations = values["observations"]
-        acceptance_rate = values["acceptance_rate"]
-
-        if success > 0 and acceptance_rate >= minimum_proven_rate:
-            tier = 0
-        elif observations == 0 and values["preferred"]:
-            tier = 1
-        elif success > 0:
-            tier = 2
-        elif observations == 0:
-            tier = 3
-        else:
-            tier = 4
-
-        return (
-            tier,
-            not values["recently_successful"],
-            -acceptance_rate,
-            -success,
-            route_priority.get(route, route_priority.get(legacy_route, default_route_priority)),
-            country_priority.get(route[-2], default_country_priority),
-            -_as_float(_candidate_value(candidate, "score", 0.0), 0.0),
-            _as_float(_candidate_value(candidate, "price", 999.0), 999.0),
-            -int(_as_float(_candidate_value(candidate, "count", 0), 0)),
-        )
-
-    if not reliability_mode:
-        return sorted(candidates, key=normal_key)
-
-    def reliability_key(candidate: Any) -> tuple[Any, ...]:
-        values = metrics(candidate)
-        qualified = (
-            values["final_success"] > 0
-            and values["final_success_rate"] >= minimum_proven_rate
-        )
-        if values["otp_received"] > 0 and qualified:
-            tier = 0
-        elif values["otp_received"] == 0 and qualified:
-            tier = 1
-        else:
-            return (2, *normal_key(candidate))
-        return (
-            tier,
-            not values["recently_successful"],
-            -values["last_success_at"],
-            -values["delivery_rate"],
-            -values["final_success_rate"],
-            -values["final_success"],
-            _as_float(_candidate_value(candidate, "price", 999.0), 999.0),
-            -int(_as_float(_candidate_value(candidate, "count", 0), 0)),
-        )
-
-    return sorted(candidates, key=reliability_key)
+    """Compatibility export retained for runtime monkeypatch consumers."""
+    return _route_stat_value(route_stats, route)
 
 
 def parse_sms_balance(value: Any) -> float:
@@ -948,6 +522,27 @@ class ProxyProtocolGate:
             self.condition.notify_all()
         return ceiling
 
+    def synchronize_capacity(self, limit: Any) -> int:
+        """Follow the task gate without erasing protocol-local pressure state."""
+        target = max(1, int(limit))
+        with self.condition:
+            self.default_limit = target
+            for state in self.states.values():
+                previous_ceiling = state.ceiling
+                state.ceiling = target
+                if target <= previous_ceiling:
+                    state.limit = min(state.limit, target)
+                    state.success_streak = 0
+                elif state.limit >= previous_ceiling:
+                    # Promote only states that were healthy at their previous
+                    # ceiling. A protocol-local degradation must recover via
+                    # its own success streak instead of being overwritten.
+                    state.limit = target
+                else:
+                    state.limit = min(state.limit, target)
+            self.condition.notify_all()
+        return target
+
     @staticmethod
     def _stopped(stop_event: Any) -> bool:
         if stop_event is None:
@@ -1187,6 +782,18 @@ class SmsKeyPool:
             for state in self.states:
                 state.in_flight = 0
             self.alerted.clear()
+            self.exhaustion_reported = False
+
+    def reset_terminal_states(self) -> None:
+        """Allow one fresh health check when a new registry batch is configured."""
+        with self.lock:
+            for state in self.states:
+                if state.status not in {"insufficient_balance", "invalid"}:
+                    continue
+                state.status = "unchecked"
+                state.message = "待检查"
+                state.cooldown_until = 0.0
+                state.health_revision += 1
             self.exhaustion_reported = False
 
     def has_keys(self) -> bool:
@@ -1800,6 +1407,7 @@ class SmsProviderRegistry:
         self.candidates: list[dict[str, Any]] = []
         self._task_attempt_counts: dict[str, dict[str, int]] = {}
         self.inventory: dict[str, list[dict[str, Any]]] = {}
+        self.batch_health = SmsProviderBatchHealth()
         self.cursor = 0
         self.logger: Callable[[str, str], None] | None = None
         self.alert_fn: Callable[[dict[str, Any]], None] | None = None
@@ -1865,12 +1473,14 @@ class SmsProviderRegistry:
             legacy_key=value.get("sms_api_key"),
         )
         with self.lock:
+            self.batch_health.reset()
             self.specs = specs
             self.logger = logger
             self.alert_fn = alert_fn
             self.exhausted_fn = exhausted_fn
             self.candidates = []
             self.inventory = {}
+            self.cursor = 0
             for spec in specs:
                 provider = str(spec["provider"])
                 pool = self._pool_for(provider)
@@ -1886,6 +1496,7 @@ class SmsProviderRegistry:
                     ),
                     exhausted_fn=lambda _provider=provider: self._platform_exhausted(_provider),
                 )
+                pool.reset_terminal_states()
 
     def _platform_alert(self, provider: str, payload: Any) -> None:
         value = dict(payload or {})
@@ -1897,6 +1508,16 @@ class SmsProviderRegistry:
                 pass
 
     def _platform_exhausted(self, _provider: str) -> None:
+        provider = _provider
+        added = self.batch_health.mark_exhausted(provider)
+        if added and callable(self.logger):
+            try:
+                self.logger(
+                    f"SMS 平台 {provider} 的全部 Key 本批次均不可用，后续任务将直接跳过该平台",
+                    "warn",
+                )
+            except Exception:
+                pass
         if self.is_exhausted() and callable(self.exhausted_fn):
             try:
                 self.exhausted_fn()
@@ -1985,13 +1606,21 @@ class SmsProviderRegistry:
 
     def _active_specs(self) -> list[dict[str, Any]]:
         with self.lock:
-            return [
-                dict(spec)
-                for spec in self.specs
-                if bool(spec.get("enabled", True))
-                and self.pools.get(str(spec.get("provider"))) is not None
-                and self.pools[str(spec.get("provider"))].has_keys()
-            ]
+            specs = [dict(spec) for spec in self.specs]
+            pools = dict(self.pools)
+        active: list[dict[str, Any]] = []
+        for spec in specs:
+            provider = str(spec.get("provider") or "")
+            pool = pools.get(provider)
+            if not bool(spec.get("enabled", True)) or pool is None or not pool.has_keys():
+                continue
+            if self.batch_health.is_exhausted(provider):
+                continue
+            if pool.is_exhausted():
+                self._platform_exhausted(provider)
+                continue
+            active.append(spec)
+        return active
 
     @staticmethod
     def _row_match(
@@ -2252,6 +1881,8 @@ class SmsProviderRegistry:
                 return provider, pool, state, activation, meta
             except Exception as exc:
                 errors.append(self.safe_error(f"{provider_name}: {exc}"))
+                if pool.is_exhausted():
+                    self._platform_exhausted(provider_name)
                 continue
         detail = "; ".join(errors) or "所有启用 SMS 平台均已达到单平台尝试上限"
         raise RuntimeError(f"sms_provider_pool_unavailable: {detail}")
@@ -2282,6 +1913,7 @@ class PooledSmsProvider:
         self.max_attempts_per_platform = 15
         self._platform_attempts: dict[str, int] = {}
         self._task_id = ""
+        self._early_switch_check: Callable[[], bool] | None = None
         self.current_order_meta: dict[str, Any] = {}
         self.last_finish_receipt: dict[str, str] = {}
 
@@ -2291,6 +1923,40 @@ class PooledSmsProvider:
             return
         self._task_id = key
         self._platform_attempts = self.registry.task_attempt_counts(key)
+
+    def configure_wait_plan(self, plan: Any) -> None:
+        """Attach a route decision without changing the recovered wait signature."""
+        if isinstance(plan, SmsWaitPlan):
+            value = {
+                "first_seconds": plan.first_seconds,
+                "second_seconds": plan.second_seconds,
+                "early_switch": plan.early_switch,
+                "degraded": plan.degraded,
+            }
+        elif isinstance(plan, dict):
+            value = dict(plan)
+        else:
+            value = {}
+        self.current_order_meta["adaptive_wait_plan"] = {
+            "first_seconds": max(1, min(60, int(value.get("first_seconds") or 30))),
+            "second_seconds": max(1, min(60, int(value.get("second_seconds") or 30))),
+            "early_switch": bool(value.get("early_switch")),
+            "degraded": bool(value.get("degraded")),
+        }
+
+    def configure_early_switch_check(self, check: Any) -> None:
+        self._early_switch_check = check if callable(check) else None
+
+    def can_cancel_immediately(self) -> bool:
+        platform = normalize_sms_provider_name(
+            self.current_order_meta.get("platform")
+            or self.current_order_meta.get("provider")
+        )
+        if platform == "herosms":
+            leased_at = _as_float(self.current_order_meta.get("leased_at"), time.time())
+            if time.time() - leased_at < 120:
+                return False
+        return callable(getattr(self._provider, "cancel", None))
 
     def balance(self) -> str:
         total = sum(
@@ -2343,6 +2009,7 @@ class PooledSmsProvider:
         self._resend_attempted = False
         self._reject_requested = False
         self._cancel_attempted = False
+        self._early_switch_check = None
         self.last_finish_receipt = {}
         self.activation_id = activation_text
         self.phone = phone_text
@@ -2448,7 +2115,14 @@ class PooledSmsProvider:
         self._poll_generation += 1
         generation = self._poll_generation
         activation_id = str(self.activation_id or "")
-        round_timeout = min(SMS_FIRST_WAIT_SECONDS, max(1, int(timeout)))
+        configured_plan = self.current_order_meta.get("adaptive_wait_plan")
+        wait_plan = configured_plan if isinstance(configured_plan, dict) else {}
+        if wait_plan:
+            round_timeout = max(1, int(wait_plan.get("first_seconds") or SMS_FIRST_WAIT_SECONDS))
+            second_timeout = max(1, int(wait_plan.get("second_seconds") or SMS_SECOND_WAIT_SECONDS))
+        else:
+            round_timeout = min(SMS_FIRST_WAIT_SECONDS, max(1, int(timeout)))
+            second_timeout = min(SMS_SECOND_WAIT_SECONDS, max(1, int(timeout)))
         del interval
         poll_interval = SMS_POLL_INTERVAL_SECONDS
         self.current_order_meta["order_state"] = "waiting"
@@ -2462,6 +2136,24 @@ class PooledSmsProvider:
             if code:
                 self.current_order_meta["order_state"] = "code_received"
                 return code
+            # An early release is only safe after the selector re-confirms a
+            # better mature route.  A missing or failed callback must retain
+            # the current order for its second wait round.
+            still_has_alternative = False
+            if bool(wait_plan.get("early_switch")) and callable(self._early_switch_check):
+                try:
+                    still_has_alternative = bool(self._early_switch_check())
+                except Exception:
+                    still_has_alternative = False
+            if (
+                bool(wait_plan.get("early_switch"))
+                and still_has_alternative
+                and self.can_cancel_immediately()
+            ):
+                self.current_order_meta["order_state"] = "switch_requested"
+                raise RuntimeError(
+                    "sms_timeout_early_switch: 退化线路等待 40 秒仍无验证码，已有更优成熟线路可用"
+                )
             self._resend_attempted = True
             platform = normalize_sms_provider_name(
                 self.current_order_meta.get("platform")
@@ -2480,7 +2172,7 @@ class PooledSmsProvider:
             code = self._wait_round(
                 activation_id,
                 generation,
-                timeout=min(SMS_SECOND_WAIT_SECONDS, max(1, int(timeout))),
+                timeout=second_timeout,
                 interval=poll_interval,
             )
             if code:
@@ -2967,155 +2659,6 @@ def is_transient_openai_error(value: Any) -> bool:
     )
 
 
-class SmsRoutePolicy:
-    """Keeps unavailable and non-delivering routes away from concurrent workers."""
-
-    def __init__(
-        self,
-        *,
-        now_fn: Callable[[], float] = time.time,
-        streak_window_seconds: float = 1800.0,
-    ) -> None:
-        self.lock = threading.Lock()
-        self.now_fn = now_fn
-        self.streak_window_seconds = max(0.0, float(streak_window_seconds))
-        # Kept for callers that introspect the pre-override policy.  Actual
-        # streak state now lives in the persisted route row with timestamps.
-        self.no_code_streaks: dict[tuple[str, ...], int] = {}
-
-    @staticmethod
-    def key(candidate: Any) -> tuple[str, ...]:
-        return _candidate_route(candidate)
-
-    @staticmethod
-    def route_limit(stat: Any) -> int:
-        row = stat if isinstance(stat, dict) else {}
-        proven = any(
-            int(_as_float(row.get(name), 0)) > 0
-            for name in ("otp_received", "success")
-        )
-        return 2 if proven else 1
-
-    def reset(self) -> None:
-        with self.lock:
-            self.no_code_streaks.clear()
-
-    def update_stat_for_outcome(
-        self,
-        stat: Any,
-        *,
-        ok: bool,
-        kind: str,
-        now: float | None = None,
-    ) -> dict[str, Any]:
-        """Persist bounded consecutive-failure state alongside recovered route stats."""
-        row = dict(stat or {}) if isinstance(stat, dict) else {}
-        current = self.now_fn() if now is None else float(now)
-        if ok:
-            for streak_name, timestamp_name in (
-                ("no_numbers_streak", "last_no_numbers_at"),
-                ("no_code_streak", "last_no_code_at"),
-                ("generic_failure_streak", "last_generic_failure_at"),
-            ):
-                failure_at = _as_float(row.get(timestamp_name), 0.0)
-                if timestamp_name not in row or failure_at <= current:
-                    row.pop(streak_name, None)
-                    row.pop(timestamp_name, None)
-            return row
-
-        latest_success_at = max(
-            _as_float(row.get("last_success_at"), 0.0),
-            _as_float(row.get("last_delivery_at"), 0.0),
-        )
-        if latest_success_at > current:
-            return row
-
-        def record_failure(streak_name: str, timestamp_name: str) -> dict[str, Any]:
-            has_previous = timestamp_name in row
-            previous_at = _as_float(row.get(timestamp_name), 0.0)
-            delta = current - previous_at
-            if has_previous and delta < -self.streak_window_seconds:
-                return row
-            within_window = bool(
-                has_previous
-                and self.streak_window_seconds > 0
-                and abs(delta) <= self.streak_window_seconds
-            )
-            previous = max(0, int(_as_float(row.get(streak_name), 0)))
-            row[streak_name] = previous + 1 if within_window else 1
-            row[timestamp_name] = max(previous_at, current) if has_previous else current
-            return row
-
-        if kind == "no_numbers":
-            return record_failure(
-                "no_numbers_streak",
-                "last_no_numbers_at",
-            )
-        if kind in {"timeout", "no_code"}:
-            return record_failure(
-                "no_code_streak",
-                "last_no_code_at",
-            )
-        return record_failure(
-            "generic_failure_streak",
-            "last_generic_failure_at",
-        )
-
-    def record_delivery(self, stat: Any, *, now: float | None = None) -> dict[str, Any]:
-        """Record one real SMS delivery and make that route immediately reusable."""
-        current = self.now_fn() if now is None else float(now)
-        row = self.update_stat_for_outcome(stat, ok=True, kind="success", now=current)
-        row["otp_received"] = max(0, int(_as_float(row.get("otp_received"), 0))) + 1
-        row["last_delivery_at"] = max(
-            _as_float(row.get("last_delivery_at"), 0.0),
-            current,
-        )
-        row["last_kind"] = "otp_received"
-        row.pop("cooldown_until", None)
-        return row
-
-    def cooldown_for(
-        self,
-        candidate: Any,
-        *,
-        ok: bool,
-        kind: str,
-        error: Any = "",
-        stat: Any = None,
-    ) -> int:
-        route = self.key(candidate)
-        text = str(error or "").lower()
-        if not all(route):
-            return 0
-        with self.lock:
-            if ok:
-                return 0
-            if kind == "transient_server":
-                return 0
-            if kind == "no_numbers":
-                row = stat if isinstance(stat, dict) else {}
-                streak = max(1, int(_as_float(row.get("no_numbers_streak"), 1)))
-                return 180 if streak >= 3 else 60
-            if kind in {"timeout", "no_code"}:
-                return 180
-            if kind in {"invalid_auth_step", "auth_session", "auth_context"}:
-                return 600
-            if kind in {"unsupported", "unsupported_route"} or any(
-                marker in text for marker in ("unsupported", "not supported")
-            ):
-                return 900
-            if any(marker in text for marker in ("similar", "suspicious", "try another number", "too many accounts")):
-                return 180
-            if kind == "phone_rejected" or any(
-                marker in text for marker in ("already been used", "number is already used", "used too many times")
-            ):
-                return 180
-            row = stat if isinstance(stat, dict) else {}
-            if int(_as_float(row.get("generic_failure_streak"), 0)) >= 3:
-                return 180
-            return 0
-
-
 class RuntimeAlertBuffer:
     def __init__(self, limit: int = 100) -> None:
         self.limit = max(1, int(limit))
@@ -3163,437 +2706,3 @@ class RuntimeAlertBuffer:
     def snapshot(self) -> list[dict[str, Any]]:
         with self.lock:
             return [dict(item) for item in self.items]
-
-
-class SmsCleanupQueue:
-    """Persist failed activation cancellations without exposing them publicly."""
-
-    def __init__(
-        self,
-        path: Path,
-        *,
-        now_fn: Callable[[], float] = time.time,
-    ) -> None:
-        self.path = Path(path)
-        self.now_fn = now_fn
-        self.lock = threading.RLock()
-        self.condition = threading.Condition(self.lock)
-        self.process_lock = threading.Lock()
-        self.worker: threading.Thread | None = None
-        self.worker_stop = threading.Event()
-        self.worker_handler: Callable[[dict[str, Any]], bool] | None = None
-
-    @staticmethod
-    def _entry_id(platform: Any, activation_id: Any) -> str:
-        value = f"{normalize_sms_provider_name(platform)}:{activation_id}"
-        return hashlib.sha256(value.encode("utf-8", "replace")).hexdigest()[:20]
-
-    def _read_payload_locked(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        try:
-            value = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError, json.JSONDecodeError):
-            return [], []
-        if isinstance(value, dict):
-            rows = value.get("pending")
-            if not isinstance(rows, list):
-                rows = value.get("items")
-            confirmed = value.get("confirmed")
-        else:
-            rows = value
-            confirmed = []
-        return (
-            [dict(row) for row in rows or [] if isinstance(row, dict)],
-            [dict(row) for row in confirmed or [] if isinstance(row, dict)],
-        )
-
-    def _read_locked(self) -> list[dict[str, Any]]:
-        rows, _confirmed = self._read_payload_locked()
-        return rows
-
-    def _write_locked(
-        self,
-        rows: list[dict[str, Any]],
-        confirmed: list[dict[str, Any]] | None = None,
-    ) -> None:
-        if confirmed is None:
-            _pending, confirmed = self._read_payload_locked()
-        confirmed = list(confirmed or [])[-500:]
-        if not rows and not confirmed and not self.path.exists():
-            return
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_suffix(self.path.suffix + ".tmp")
-        temporary.write_text(
-            json.dumps(
-                {
-                    "version": 3,
-                    "items": rows,
-                    "pending": rows,
-                    "confirmed": confirmed,
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
-        temporary.replace(self.path)
-
-    def enqueue(
-        self,
-        *,
-        platform: Any,
-        key_fingerprint: Any,
-        activation_id: Any,
-        delay_seconds: float = 15.0,
-        error_code: Any = "provider_cancel_failed",
-        leased_at: Any = None,
-        task_id: Any = "",
-    ) -> str:
-        platform_name = normalize_sms_provider_name(platform)
-        activation = str(activation_id or "").strip()
-        fingerprint = str(key_fingerprint or "").strip()[:20]
-        if not platform_name or not activation or not fingerprint:
-            return ""
-        entry_id = self._entry_id(platform_name, activation)
-        now = float(self.now_fn())
-        with self.lock:
-            rows, confirmed = self._read_payload_locked()
-            if any(row.get("id") == entry_id for row in confirmed):
-                return entry_id
-            existing = next((row for row in rows if row.get("id") == entry_id), None)
-            if existing is None:
-                rows.append(
-                    {
-                        "id": entry_id,
-                        "platform": platform_name,
-                        "key_fingerprint": fingerprint,
-                        "activation_id": activation,
-                        "due_at": now + max(0.0, float(delay_seconds)),
-                        "leased_at": float(leased_at or now),
-                        "task_id": str(task_id or "").strip()[:80],
-                        "attempts": 0,
-                        "error_code": _safe_provider_token(error_code).lower(),
-                    }
-                )
-            else:
-                existing["due_at"] = min(
-                    float(existing.get("due_at") or now),
-                    now + max(0.0, float(delay_seconds)),
-                )
-                if not existing.get("task_id") and task_id:
-                    existing["task_id"] = str(task_id).strip()[:80]
-                if not existing.get("leased_at") and leased_at:
-                    existing["leased_at"] = float(leased_at)
-            self._write_locked(rows, confirmed)
-            self.condition.notify_all()
-        return entry_id
-
-    def process(
-        self,
-        handler: Callable[[dict[str, Any]], bool],
-        *,
-        limit: int = 20,
-    ) -> dict[str, int]:
-        with self.process_lock:
-            current = float(self.now_fn())
-            with self.lock:
-                rows = self._read_locked()
-                due = [row for row in rows if float(row.get("due_at") or 0) <= current][
-                    : max(1, int(limit))
-                ]
-            completed: set[str] = set()
-            updates: dict[str, dict[str, Any]] = {}
-            for row in due:
-                entry_id = str(row.get("id") or "")
-                try:
-                    confirmed = bool(handler(dict(row)))
-                except Exception as exc:
-                    confirmed = False
-                    error_code = type(exc).__name__.lower()
-                    raw_retry_after = float(
-                        getattr(exc, "retry_after_seconds", 0) or 0
-                    )
-                    retry_after = max(1.0, raw_retry_after) if raw_retry_after else 0.0
-                else:
-                    error_code = "provider_cancel_unconfirmed"
-                    retry_after = 0.0
-                if confirmed:
-                    completed.add(entry_id)
-                    continue
-                attempt = max(0, int(row.get("attempts") or 0)) + 1
-                retry_delay = retry_after or min(1800, 30 * (2 ** min(attempt, 5)))
-                updates[entry_id] = {
-                    "attempts": attempt,
-                    "due_at": current + retry_delay,
-                    "error_code": _safe_provider_token(error_code).lower(),
-                }
-            with self.lock:
-                rows, confirmed_rows = self._read_payload_locked()
-                confirmed_by_id = {
-                    str(row.get("id") or ""): dict(row)
-                    for row in confirmed_rows
-                    if str(row.get("id") or "")
-                }
-                kept: list[dict[str, Any]] = []
-                for row in rows:
-                    entry_id = str(row.get("id") or "")
-                    if entry_id in completed:
-                        confirmed_by_id[entry_id] = {
-                            "id": entry_id,
-                            "platform": normalize_sms_provider_name(row.get("platform")),
-                            "key_fingerprint": str(row.get("key_fingerprint") or "")[:20],
-                            "task_id": str(row.get("task_id") or "")[:80],
-                            "attempts": max(0, int(row.get("attempts") or 0)) + 1,
-                            "confirmed_at": int(current),
-                            "cancel_state": "confirmed",
-                            "refund_status": "provider_refund_accepted",
-                        }
-                        continue
-                    if entry_id in updates:
-                        row.update(updates[entry_id])
-                    kept.append(row)
-                confirmed_rows = list(confirmed_by_id.values())[-500:]
-                self._write_locked(kept, confirmed_rows)
-                self.condition.notify_all()
-        return {
-            "processed": len(due),
-            "completed": len(completed),
-            "remaining": len(kept),
-            "confirmed": len(confirmed_rows),
-        }
-
-    def start_worker(self, handler: Callable[[dict[str, Any]], bool]) -> None:
-        with self.condition:
-            self.worker_handler = handler
-            if self.worker is not None and self.worker.is_alive():
-                self.condition.notify_all()
-                return
-            self.worker_stop.clear()
-            self.worker = threading.Thread(
-                target=self._worker_loop,
-                name="sms-cancel-cleanup",
-                daemon=True,
-            )
-            self.worker.start()
-
-    def _worker_loop(self) -> None:
-        while not self.worker_stop.is_set():
-            handler = self.worker_handler
-            if callable(handler):
-                try:
-                    self.process(handler)
-                except Exception:
-                    pass
-            with self.condition:
-                if self.worker_stop.is_set():
-                    return
-                rows = self._read_locked()
-                now = float(self.now_fn())
-                due_times = [float(row.get("due_at") or now) for row in rows]
-                wait_seconds = max(0.1, min(60.0, min(due_times) - now)) if due_times else 60.0
-                self.condition.wait(timeout=wait_seconds)
-
-    def stop_worker(self) -> None:
-        self.worker_stop.set()
-        with self.condition:
-            self.condition.notify_all()
-
-
-class ExchangeRateCache:
-    def __init__(
-        self,
-        path: Path,
-        *,
-        fetcher: Callable[[], bytes] | None = None,
-        now_fn: Callable[[], float] = time.time,
-        ttl_seconds: int = 86400,
-        fallback_rate: float = 7.20,
-    ) -> None:
-        self.path = Path(path)
-        self.fetcher = fetcher or self._fetch_ecb
-        self.now_fn = now_fn
-        self.ttl_seconds = ttl_seconds
-        self.fallback_rate = fallback_rate
-        self.lock = threading.Lock()
-
-    @staticmethod
-    def _fetch_ecb() -> bytes:
-        with urllib.request.urlopen(ECB_DAILY_URL, timeout=5) as response:
-            return response.read(262144)
-
-    @staticmethod
-    def parse_ecb(payload: bytes) -> tuple[float, str]:
-        root = ET.fromstring(payload)
-        usd = None
-        cny = None
-        rate_date = ""
-        for element in root.iter():
-            if element.attrib.get("time"):
-                rate_date = element.attrib["time"]
-            currency = element.attrib.get("currency")
-            if currency == "USD":
-                usd = _as_float(element.attrib.get("rate"), 0)
-            elif currency == "CNY":
-                cny = _as_float(element.attrib.get("rate"), 0)
-        if not usd or not cny:
-            raise ValueError("ECB 汇率响应缺少 USD 或 CNY")
-        return cny / usd, rate_date
-
-    def _read(self) -> dict[str, Any]:
-        try:
-            value = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
-        return value if isinstance(value, dict) else {}
-
-    def _write(self, value: dict[str, Any]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_suffix(self.path.suffix + ".tmp")
-        temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-        temporary.replace(self.path)
-
-    def get_rate(self) -> dict[str, Any]:
-        with self.lock:
-            now = self.now_fn()
-            cached = self._read()
-            fetched_at = _as_float(cached.get("fetched_at"), 0)
-            cached_rate = _as_float(cached.get("rate"), 0)
-            if cached_rate > 0 and now - fetched_at < self.ttl_seconds:
-                return {**cached, "source": "cache"}
-            try:
-                rate, rate_date = self.parse_ecb(self.fetcher())
-                value = {
-                    "rate": round(rate, 6),
-                    "date": rate_date,
-                    "fetched_at": int(now),
-                    "source": "ecb",
-                }
-                self._write(value)
-                return value
-            except Exception:
-                if cached_rate > 0:
-                    return {**cached, "source": "stale_cache"}
-                return {
-                    "rate": self.fallback_rate,
-                    "date": time.strftime("%Y-%m-%d", time.localtime(now)),
-                    "fetched_at": int(now),
-                    "source": "fallback",
-                }
-
-
-class SmsCostLedger:
-    def __init__(self) -> None:
-        self.lock = threading.RLock()
-        self.orders: dict[str, dict[str, dict[str, Any]]] = {}
-
-    def clear(self) -> None:
-        with self.lock:
-            self.orders.clear()
-
-    @staticmethod
-    def _activation_key(activation_id: Any) -> str:
-        return hashlib.sha256(str(activation_id or "").encode("utf-8")).hexdigest()[:12]
-
-    @staticmethod
-    def _candidate_value(candidate: Any, name: str, default: Any = None) -> Any:
-        if isinstance(candidate, dict):
-            return candidate.get(name, default)
-        return getattr(candidate, name, default)
-
-    def record_lease(self, task_id: str, lease: Any) -> None:
-        meta = lease.meta if isinstance(getattr(lease, "meta", None), dict) else {}
-        candidate = meta.get("candidate")
-        price = meta.get("price_usd")
-        if price is None:
-            price = self._candidate_value(candidate, "price")
-        activation_key = self._activation_key(getattr(lease, "activation_id", ""))
-        order = {
-            "activation": activation_key,
-            "platform": meta.get("platform") or meta.get("provider") or self._candidate_value(candidate, "pool", ""),
-            "key_index": meta.get("key_index"),
-            "key_fingerprint": meta.get("key_fingerprint") or "",
-            "country": self._candidate_value(candidate, "country", ""),
-            "provider_id": self._candidate_value(candidate, "provider_id", ""),
-            "price_usd": None if price is None else round(_as_float(price), 4),
-            "status": "leased",
-            "code_received": False,
-            "leased_at": int(time.time()),
-        }
-        with self.lock:
-            self.orders.setdefault(task_id, {})[activation_key] = order
-
-    def mark_code_received(self, task_id: str, activation_id: Any) -> None:
-        activation_key = self._activation_key(activation_id)
-        with self.lock:
-            order = self.orders.get(task_id, {}).get(activation_key)
-            if order is not None:
-                order["code_received"] = True
-                order["status"] = "code_received"
-                order["code_received_at"] = int(time.time())
-
-    def mark_state(self, task_id: str, activation_id: Any, state: str) -> None:
-        allowed = {
-            "leased",
-            "submitted",
-            "ready",
-            "waiting",
-            "code_received",
-            "completed",
-            "cancel_pending",
-            "cancelled",
-            "cancel_failed",
-        }
-        value = str(state or "").strip()
-        if value not in allowed:
-            return
-        activation_key = self._activation_key(activation_id)
-        with self.lock:
-            order = self.orders.get(task_id, {}).get(activation_key)
-            if order is not None:
-                order["status"] = value
-                order[f"{value}_at"] = int(time.time())
-
-    def mark_finished(
-        self,
-        task_id: str,
-        activation_id: Any,
-        status: str,
-        reason: str = "",
-        *,
-        details: dict[str, Any] | None = None,
-    ) -> None:
-        activation_key = self._activation_key(activation_id)
-        with self.lock:
-            order = self.orders.get(task_id, {}).get(activation_key)
-            if order is not None:
-                order["status"] = status
-                if reason:
-                    order["reason"] = reason
-                safe_details = safe_cancel_receipt(details)
-                if safe_details:
-                    order["cancel_receipt"] = safe_details
-                order["finished_at"] = int(time.time())
-
-    def summary(self, task_id: str, exchange: ExchangeRateCache, *, pop: bool = True) -> dict[str, Any]:
-        with self.lock:
-            task_orders = self.orders.pop(task_id, {}) if pop else dict(self.orders.get(task_id, {}))
-            outcomes = [dict(order) for order in task_orders.values()]
-        paid = [order for order in outcomes if order.get("code_received") and order.get("price_usd") is not None]
-        if not paid:
-            return {
-                "sms_cost_usd": None,
-                "sms_cost_cny": None,
-                "sms_exchange_rate": None,
-                "sms_exchange_date": "",
-                "sms_order_outcomes": outcomes,
-            }
-        usd = round(sum(float(order["price_usd"]) for order in paid), 4)
-        rate_info = exchange.get_rate()
-        rate = float(rate_info["rate"])
-        return {
-            "sms_cost_usd": usd,
-            "sms_cost_cny": round(usd * rate, 2),
-            "sms_exchange_rate": round(rate, 6),
-            "sms_exchange_date": str(rate_info.get("date") or ""),
-            "sms_exchange_source": str(rate_info.get("source") or ""),
-            "sms_order_outcomes": outcomes,
-        }

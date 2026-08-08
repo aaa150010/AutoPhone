@@ -1,0 +1,800 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          codex_chain_runner.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        5
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1
+# Constants:
+#    0: 'Standalone runner for the Codex phase-2 chain.\n\nUsage examples:\n  python codex_chain_runner.py --email test@example.com --mode mock\n  python codex_chain_runner.py --email test@example.com --mode diagnostic\n  python codex_chain_runner.py --email test@example.com --mode manual --fixture fixtures/manual.json\n  python codex_chain_runner.py --email test@example.com --mode replay --fixture fixtures/manual.json\n  python codex_chain_runner.py --email auto --mode real --config real_config.json\n  python codex_chain_runner.py --email test@example.com --phone-rejects 1 --json\n'
+#    1: 0
+#    2: ('annotations',)
+#    3: None
+#    4: ('Path',)
+#    5: ('Any', 'Dict')
+#    6: ('parse_qs', 'urlparse')
+#    7: ('run_node_bridge',)
+#    8: ('FixedEmailOtpProvider', 'FixedPhoneOtpProvider', 'FileEmailOtpProvider', 'FilePhoneOtpProvider', 'InteractiveEmailOtpProvider', 'InteractivePhoneOtpProvider', 'run_codex_after_registration')
+#    9: ('proxy_label_for',)
+#   10: ('DEFAULT_CLIENT_ID', 'DEFAULT_REDIRECT_URI', 'build_oauth_url', 'strip_oauth_login_for_session_reuse')
+#   11: 2
+#   12: <Code311 code object _load_config at 0x108113a90, file codex_chain_runner.py>, line 44
+#   13: <Code311 code object _clean at 0x108113a00, file codex_chain_runner.py>, line 54
+#   14: <Code311 code object _base_url at 0x1081139d0, file codex_chain_runner.py>, line 58
+#   15: <Code311 code object _state_from_url at 0x1081139a0, file codex_chain_runner.py>, line 62
+#   16: <Code311 code object _resolve_oauth_provider at 0x1080e2400, file codex_chain_runner.py>, line 66
+#   17: ''
+#   18: ('upload_proxy', 'log_fn')
+#   19: <Code311 code object _generate_sub2_oauth_session at 0x1080e2430, file codex_chain_runner.py>, line 86
+#   20: <Code311 code object _generate_cpa_oauth_session at 0x1080e2520, file codex_chain_runner.py>, line 127
+#   21: <Code311 code object _log at 0x1080e2550, file codex_chain_runner.py>, line 138
+#   22: <Code311 code object _ask at 0x1080e2580, file codex_chain_runner.py>, line 142
+#   23: 200
+#   24: <Code311 code object _ask_int at 0x1080e2610, file codex_chain_runner.py>, line 148
+#   25: <Code311 code object _ask_bool at 0x1080e2640, file codex_chain_runner.py>, line 157
+#   26: <Code311 code object _auto_email_from_provider at 0x1080e2730, file codex_chain_runner.py>, line 168
+#   27: ('status', 'page_type', 'continue_url', 'error')
+#   28: <Code311 code object _step at 0x1080e2760, file codex_chain_runner.py>, line 198
+#   29: <Code311 code object _default_manual_output at 0x1080e2790, file codex_chain_runner.py>, line 212
+#   30: ('group_id', 'group_name', 'upload_proxy')
+#   31: <Code311 code object _resolve_archive_group_id at 0x1080e2850, file codex_chain_runner.py>, line 217
+#   32: <Code311 code object _archive_runner_result at 0x1080e2880, file codex_chain_runner.py>, line 250
+#   33: <Code311 code object _collect_manual_fixture at 0x1080e2940, file codex_chain_runner.py>, line 285
+#   34: <Code311 code object _redacted_result at 0x1080e29a0, file codex_chain_runner.py>, line 375
+#   35: <Code311 code object _set_nested at 0x1080e29d0, file codex_chain_runner.py>, line 399
+#   36: <Code311 code object _default_openai_persona at 0x1080e2910, file codex_chain_runner.py>, line 409
+#   37: <Code311 code object main at 0x1080e2250, file codex_chain_runner.py>, line 424
+#   38: '__main__'
+#   39: ('path', 'str', 'return', 'Dict[str, Any]')
+#   40: ('value', 'Any', 'return', 'str')
+#   41: ('oauth_url', 'str', 'return', 'str')
+#   42: ('args', 'argparse.Namespace', 'config', 'Dict[str, Any]', 'manual_session', 'Dict[str, Any]', 'return', 'str')
+#   43: ('config', 'Dict[str, Any]', 'upload_proxy', 'str', 'return', 'Dict[str, str]')
+#   44: ('config', 'Dict[str, Any]', 'return', 'Dict[str, str]')
+#   45: ('info',)
+#   46: ('message', 'str', 'tag', 'str', 'return', 'None')
+#   47: ('',)
+#   48: ('prompt', 'str', 'default', 'str', 'return', 'str')
+#   49: (200,)
+#   50: ('prompt', 'str', 'default', 'int', 'return', 'int')
+#   51: (False,)
+#   52: ('prompt', 'str', 'default', 'bool', 'return', 'bool')
+#   53: ('config', 'Dict[str, Any]', 'return', 'str')
+#   54: ('step', 'str', 'status', 'int', 'page_type', 'str', 'continue_url', 'str', 'error', 'str', 'extra', 'Any', 'return', 'Dict[str, Any]')
+#   55: ('return', 'Path')
+#   56: ('config', 'Dict[str, Any]', 'group_id', 'int', 'group_name', 'str', 'upload_proxy', 'str', 'return', 'int')
+#   57: ('result', 'Dict[str, Any]', 'manual_session', 'Dict[str, Any]', 'args', 'argparse.Namespace', 'config', 'Dict[str, Any]', 'return', 'Dict[str, Any]')
+#   58: ('email', 'str', 'output_path', 'str', 'return', 'Path')
+#   59: ('result', 'Dict[str, Any]', 'return', 'Dict[str, Any]')
+#   60: ('cfg', 'Dict[str, Any]', 'section', 'str', 'key', 'str', 'value', 'Any', 'return', 'None')
+#   61: ('proxy', 'str', 'return', 'Dict[str, Any]')
+#   62: (None,)
+#   63: ('argv', 'list[str] | None', 'return', 'int')
+# Names:
+#    0: __doc__
+#    1: __future__
+#    2: annotations
+#    3: argparse
+#    4: json
+#    5: sys
+#    6: tempfile
+#    7: time
+#    8: uuid
+#    9: pathlib
+#   10: Path
+#   11: typing
+#   12: Any
+#   13: Dict
+#   14: urllib.parse
+#   15: parse_qs
+#   16: urlparse
+#   17: codex_node_bridge
+#   18: run_node_bridge
+#   19: codex_oauth_chain
+#   20: FixedEmailOtpProvider
+#   21: FixedPhoneOtpProvider
+#   22: FileEmailOtpProvider
+#   23: FilePhoneOtpProvider
+#   24: InteractiveEmailOtpProvider
+#   25: InteractivePhoneOtpProvider
+#   26: run_codex_after_registration
+#   27: codex_runtime_context
+#   28: proxy_label_for
+#   29: openai_oauth
+#   30: DEFAULT_CLIENT_ID
+#   31: DEFAULT_REDIRECT_URI
+#   32: build_oauth_url
+#   33: strip_oauth_login_for_session_reuse
+#   34: __file__
+#   35: resolve
+#   36: parents
+#   37: PROJECT_ROOT
+#   38: str
+#   39: path
+#   40: append
+#   41: _load_config
+#   42: _clean
+#   43: _base_url
+#   44: _state_from_url
+#   45: _resolve_oauth_provider
+#   46: _generate_sub2_oauth_session
+#   47: _generate_cpa_oauth_session
+#   48: _log
+#   49: _ask
+#   50: _ask_int
+#   51: _ask_bool
+#   52: _auto_email_from_provider
+#   53: _step
+#   54: _default_manual_output
+#   55: _resolve_archive_group_id
+#   56: _archive_runner_result
+#   57: _collect_manual_fixture
+#   58: _redacted_result
+#   59: _set_nested
+#   60: _default_openai_persona
+#   61: main
+#   62: __name__
+#   63: SystemExit
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ("Standalone runner for the Codex phase-2 chain.\n\nUsage examples:\n  python codex_chain_runner.py --email test@example.com --mode mock\n  python codex_chain_runner.py --email test@example.com --mode diagnostic\n  python codex_chain_runner.py --email test@example.com --mode manual --fixture fixtures/manual.json\n  python codex_chain_runner.py --email test@example.com --mode replay --fixture fixtures/manual.json\n  python codex_chain_runner.py --email auto --mode real --config real_config.json\n  python codex_chain_runner.py --email test@example.com --phone-rejects 1 --json\n")
+               4 STORE_NAME           (__doc__)
+
+ 13:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (('annotations',))
+              10 IMPORT_NAME          (__future__)
+              12 IMPORT_FROM          (annotations)
+              14 STORE_NAME           (annotations)
+              16 POP_TOP
+
+ 15:          18 LOAD_CONST           (0)
+              20 LOAD_CONST           (None)
+              22 IMPORT_NAME          (argparse)
+              24 STORE_NAME           (argparse)
+
+ 16:          26 LOAD_CONST           (0)
+              28 LOAD_CONST           (None)
+              30 IMPORT_NAME          (json)
+              32 STORE_NAME           (json)
+
+ 17:          34 LOAD_CONST           (0)
+              36 LOAD_CONST           (None)
+              38 IMPORT_NAME          (sys)
+              40 STORE_NAME           (sys)
+
+ 18:          42 LOAD_CONST           (0)
+              44 LOAD_CONST           (None)
+              46 IMPORT_NAME          (tempfile)
+              48 STORE_NAME           (tempfile)
+
+ 19:          50 LOAD_CONST           (0)
+              52 LOAD_CONST           (None)
+              54 IMPORT_NAME          (time)
+              56 STORE_NAME           (time)
+
+ 20:          58 LOAD_CONST           (0)
+              60 LOAD_CONST           (None)
+              62 IMPORT_NAME          (uuid)
+              64 STORE_NAME           (uuid)
+
+ 21:          66 LOAD_CONST           (0)
+              68 LOAD_CONST           (('Path',))
+              70 IMPORT_NAME          (pathlib)
+              72 IMPORT_FROM          (Path)
+              74 STORE_NAME           (Path)
+              76 POP_TOP
+
+ 22:          78 LOAD_CONST           (0)
+              80 LOAD_CONST           (('Any', 'Dict'))
+              82 IMPORT_NAME          (typing)
+              84 IMPORT_FROM          (Any)
+              86 STORE_NAME           (Any)
+              88 IMPORT_FROM          (Dict)
+              90 STORE_NAME           (Dict)
+              92 POP_TOP
+
+ 23:          94 LOAD_CONST           (0)
+              96 LOAD_CONST           (('parse_qs', 'urlparse'))
+              98 IMPORT_NAME          (urllib.parse)
+             100 IMPORT_FROM          (parse_qs)
+             102 STORE_NAME           (parse_qs)
+             104 IMPORT_FROM          (urlparse)
+             106 STORE_NAME           (urlparse)
+             108 POP_TOP
+
+ 25:         110 LOAD_CONST           (0)
+             112 LOAD_CONST           (('run_node_bridge',))
+             114 IMPORT_NAME          (codex_node_bridge)
+             116 IMPORT_FROM          (run_node_bridge)
+             118 STORE_NAME           (run_node_bridge)
+             120 POP_TOP
+
+ 26:         122 LOAD_CONST           (0)
+             124 LOAD_CONST           (('FixedEmailOtpProvider', 'FixedPhoneOtpProvider', 'FileEmailOtpProvider', 'FilePhoneOtpProvider', 'InteractiveEmailOtpProvider', 'InteractivePhoneOtpProvider', 'run_codex_after_registration'))
+             126 IMPORT_NAME          (codex_oauth_chain)
+             128 IMPORT_FROM          (FixedEmailOtpProvider)
+             130 STORE_NAME           (FixedEmailOtpProvider)
+             132 IMPORT_FROM          (FixedPhoneOtpProvider)
+             134 STORE_NAME           (FixedPhoneOtpProvider)
+             136 IMPORT_FROM          (FileEmailOtpProvider)
+             138 STORE_NAME           (FileEmailOtpProvider)
+             140 IMPORT_FROM          (FilePhoneOtpProvider)
+             142 STORE_NAME           (FilePhoneOtpProvider)
+             144 IMPORT_FROM          (InteractiveEmailOtpProvider)
+             146 STORE_NAME           (InteractiveEmailOtpProvider)
+             148 IMPORT_FROM          (InteractivePhoneOtpProvider)
+             150 STORE_NAME           (InteractivePhoneOtpProvider)
+             152 IMPORT_FROM          (run_codex_after_registration)
+             154 STORE_NAME           (run_codex_after_registration)
+             156 POP_TOP
+
+ 35:         158 LOAD_CONST           (0)
+             160 LOAD_CONST           (('proxy_label_for',))
+             162 IMPORT_NAME          (codex_runtime_context)
+             164 IMPORT_FROM          (proxy_label_for)
+             166 STORE_NAME           (proxy_label_for)
+             168 POP_TOP
+
+ 36:         170 LOAD_CONST           (0)
+             172 LOAD_CONST           (('DEFAULT_CLIENT_ID', 'DEFAULT_REDIRECT_URI', 'build_oauth_url', 'strip_oauth_login_for_session_reuse'))
+             174 IMPORT_NAME          (openai_oauth)
+             176 IMPORT_FROM          (DEFAULT_CLIENT_ID)
+             178 STORE_NAME           (DEFAULT_CLIENT_ID)
+             180 IMPORT_FROM          (DEFAULT_REDIRECT_URI)
+             182 STORE_NAME           (DEFAULT_REDIRECT_URI)
+             184 IMPORT_FROM          (build_oauth_url)
+             186 STORE_NAME           (build_oauth_url)
+             188 IMPORT_FROM          (strip_oauth_login_for_session_reuse)
+             190 STORE_NAME           (strip_oauth_login_for_session_reuse)
+             192 POP_TOP
+
+ 39:         194 LOAD_NAME            (Path)
+             196 PUSH_NULL
+             198 LOAD_NAME            (__file__)
+             200 CALL                 (1 positional)
+             208 LOAD_ATTR            (NULL|self + resolve)
+             228 CALL                 (0 positional)
+             236 LOAD_ATTR            (parents)
+             256 LOAD_CONST           (2)
+             258 BINARY_SUBSCR
+             262 STORE_NAME           (PROJECT_ROOT)
+
+ 40:         264 LOAD_NAME            (str)
+             266 PUSH_NULL
+             268 LOAD_NAME            (PROJECT_ROOT)
+             270 CALL                 (1 positional)
+             278 LOAD_NAME            (sys)
+             280 LOAD_ATTR            (path)
+             300 CONTAINS_OP          (not in)
+             304 POP_JUMP_IF_FALSE    (to 374)
+
+ 41:         308 LOAD_NAME            (sys)
+             310 LOAD_ATTR            (path)
+             330 LOAD_ATTR            (NULL|self + append)
+             350 LOAD_NAME            (str)
+             352 PUSH_NULL
+             354 LOAD_NAME            (PROJECT_ROOT)
+             356 CALL                 (1 positional)
+             364 CALL                 (1 positional)
+             372 POP_TOP
+
+ 44:     >>  374 LOAD_CONST           (('path', 'str', 'return', 'Dict[str, Any]'))
+             376 LOAD_CONST           (<Code311 code object _load_config at 0x108113a90, file codex_chain_runner.py>, line 44)
+             378 MAKE_FUNCTION
+             380 SET_FUNCTION_ATTRIBUTE 4
+             382 STORE_NAME           (_load_config)
+
+ 54:         384 LOAD_CONST           (('value', 'Any', 'return', 'str'))
+             386 LOAD_CONST           (<Code311 code object _clean at 0x108113a00, file codex_chain_runner.py>, line 54)
+             388 MAKE_FUNCTION
+             390 SET_FUNCTION_ATTRIBUTE 4
+             392 STORE_NAME           (_clean)
+
+ 58:         394 LOAD_CONST           (('value', 'Any', 'return', 'str'))
+             396 LOAD_CONST           (<Code311 code object _base_url at 0x1081139d0, file codex_chain_runner.py>, line 58)
+             398 MAKE_FUNCTION
+             400 SET_FUNCTION_ATTRIBUTE 4
+             402 STORE_NAME           (_base_url)
+
+ 62:         404 LOAD_CONST           (('oauth_url', 'str', 'return', 'str'))
+             406 LOAD_CONST           (<Code311 code object _state_from_url at 0x1081139a0, file codex_chain_runner.py>, line 62)
+             408 MAKE_FUNCTION
+             410 SET_FUNCTION_ATTRIBUTE 4
+             412 STORE_NAME           (_state_from_url)
+
+ 66:         414 LOAD_CONST           (('args', 'argparse.Namespace', 'config', 'Dict[str, Any]', 'manual_session', 'Dict[str, Any]', 'return', 'str'))
+             416 LOAD_CONST           (<Code311 code object _resolve_oauth_provider at 0x1080e2400, file codex_chain_runner.py>, line 66)
+             418 MAKE_FUNCTION
+             420 SET_FUNCTION_ATTRIBUTE 4
+             422 STORE_NAME           (_resolve_oauth_provider)
+
+ 86:         424 LOAD_CONST           ("")
+             426 LOAD_CONST           (None)
+             428 LOAD_CONST           (('upload_proxy', 'log_fn'))
+             430 BUILD_CONST_KEY_MAP  2
+             432 LOAD_CONST           (('config', 'Dict[str, Any]', 'upload_proxy', 'str', 'return', 'Dict[str, str]'))
+             434 LOAD_CONST           (<Code311 code object _generate_sub2_oauth_session at 0x1080e2430, file codex_chain_runner.py>, line 86)
+             436 MAKE_FUNCTION
+             438 SET_FUNCTION_ATTRIBUTE 4
+             440 SET_FUNCTION_ATTRIBUTE 2
+             442 STORE_NAME           (_generate_sub2_oauth_session)
+
+127:         444 LOAD_CONST           (('config', 'Dict[str, Any]', 'return', 'Dict[str, str]'))
+             446 LOAD_CONST           (<Code311 code object _generate_cpa_oauth_session at 0x1080e2520, file codex_chain_runner.py>, line 127)
+             448 MAKE_FUNCTION
+             450 SET_FUNCTION_ATTRIBUTE 4
+             452 STORE_NAME           (_generate_cpa_oauth_session)
+
+138:         454 LOAD_CONST           (('info',))
+             456 LOAD_CONST           (('message', 'str', 'tag', 'str', 'return', 'None'))
+             458 LOAD_CONST           (<Code311 code object _log at 0x1080e2550, file codex_chain_runner.py>, line 138)
+             460 MAKE_FUNCTION
+             462 SET_FUNCTION_ATTRIBUTE 4
+             464 SET_FUNCTION_ATTRIBUTE 1
+             466 STORE_NAME           (_log)
+
+142:         468 LOAD_CONST           (('',))
+             470 LOAD_CONST           (('prompt', 'str', 'default', 'str', 'return', 'str'))
+             472 LOAD_CONST           (<Code311 code object _ask at 0x1080e2580, file codex_chain_runner.py>, line 142)
+             474 MAKE_FUNCTION
+             476 SET_FUNCTION_ATTRIBUTE 4
+             478 SET_FUNCTION_ATTRIBUTE 1
+             480 STORE_NAME           (_ask)
+
+148:         482 LOAD_CONST           ((200,))
+             484 LOAD_CONST           (('prompt', 'str', 'default', 'int', 'return', 'int'))
+             486 LOAD_CONST           (<Code311 code object _ask_int at 0x1080e2610, file codex_chain_runner.py>, line 148)
+             488 MAKE_FUNCTION
+             490 SET_FUNCTION_ATTRIBUTE 4
+             492 SET_FUNCTION_ATTRIBUTE 1
+             494 STORE_NAME           (_ask_int)
+
+157:         496 LOAD_CONST           ((False,))
+             498 LOAD_CONST           (('prompt', 'str', 'default', 'bool', 'return', 'bool'))
+             500 LOAD_CONST           (<Code311 code object _ask_bool at 0x1080e2640, file codex_chain_runner.py>, line 157)
+             502 MAKE_FUNCTION
+             504 SET_FUNCTION_ATTRIBUTE 4
+             506 SET_FUNCTION_ATTRIBUTE 1
+             508 STORE_NAME           (_ask_bool)
+
+168:         510 LOAD_CONST           (('config', 'Dict[str, Any]', 'return', 'str'))
+             512 LOAD_CONST           (<Code311 code object _auto_email_from_provider at 0x1080e2730, file codex_chain_runner.py>, line 168)
+             514 MAKE_FUNCTION
+             516 SET_FUNCTION_ATTRIBUTE 4
+             518 STORE_NAME           (_auto_email_from_provider)
+
+198:         520 LOAD_CONST           (200)
+             522 LOAD_CONST           ("")
+             524 LOAD_CONST           ("")
+             526 LOAD_CONST           ("")
+             528 LOAD_CONST           (('status', 'page_type', 'continue_url', 'error'))
+             530 BUILD_CONST_KEY_MAP  4
+             532 LOAD_CONST           (('step', 'str', 'status', 'int', 'page_type', 'str', 'continue_url', 'str', 'error', 'str', 'extra', 'Any', 'return', 'Dict[str, Any]'))
+             534 LOAD_CONST           (<Code311 code object _step at 0x1080e2760, file codex_chain_runner.py>, line 198)
+             536 MAKE_FUNCTION
+             538 SET_FUNCTION_ATTRIBUTE 4
+             540 SET_FUNCTION_ATTRIBUTE 2
+             542 STORE_NAME           (_step)
+
+212:         544 LOAD_CONST           (('return', 'Path'))
+             546 LOAD_CONST           (<Code311 code object _default_manual_output at 0x1080e2790, file codex_chain_runner.py>, line 212)
+             548 MAKE_FUNCTION
+             550 SET_FUNCTION_ATTRIBUTE 4
+             552 STORE_NAME           (_default_manual_output)
+
+217:         554 LOAD_CONST           (0)
+             556 LOAD_CONST           ("")
+             558 LOAD_CONST           ("")
+             560 LOAD_CONST           (('group_id', 'group_name', 'upload_proxy'))
+             562 BUILD_CONST_KEY_MAP  3
+             564 LOAD_CONST           (('config', 'Dict[str, Any]', 'group_id', 'int', 'group_name', 'str', 'upload_proxy', 'str', 'return', 'int'))
+             566 LOAD_CONST           (<Code311 code object _resolve_archive_group_id at 0x1080e2850, file codex_chain_runner.py>, line 217)
+             568 MAKE_FUNCTION
+             570 SET_FUNCTION_ATTRIBUTE 4
+             572 SET_FUNCTION_ATTRIBUTE 2
+             574 STORE_NAME           (_resolve_archive_group_id)
+
+250:         576 LOAD_CONST           (('result', 'Dict[str, Any]', 'manual_session', 'Dict[str, Any]', 'args', 'argparse.Namespace', 'config', 'Dict[str, Any]', 'return', 'Dict[str, Any]'))
+             578 LOAD_CONST           (<Code311 code object _archive_runner_result at 0x1080e2880, file codex_chain_runner.py>, line 250)
+             580 MAKE_FUNCTION
+             582 SET_FUNCTION_ATTRIBUTE 4
+             584 STORE_NAME           (_archive_runner_result)
+
+285:         586 LOAD_CONST           (('',))
+             588 LOAD_CONST           (('email', 'str', 'output_path', 'str', 'return', 'Path'))
+             590 LOAD_CONST           (<Code311 code object _collect_manual_fixture at 0x1080e2940, file codex_chain_runner.py>, line 285)
+             592 MAKE_FUNCTION
+             594 SET_FUNCTION_ATTRIBUTE 4
+             596 SET_FUNCTION_ATTRIBUTE 1
+             598 STORE_NAME           (_collect_manual_fixture)
+
+375:         600 LOAD_CONST           (('result', 'Dict[str, Any]', 'return', 'Dict[str, Any]'))
+             602 LOAD_CONST           (<Code311 code object _redacted_result at 0x1080e29a0, file codex_chain_runner.py>, line 375)
+             604 MAKE_FUNCTION
+             606 SET_FUNCTION_ATTRIBUTE 4
+             608 STORE_NAME           (_redacted_result)
+
+399:         610 LOAD_CONST           (('cfg', 'Dict[str, Any]', 'section', 'str', 'key', 'str', 'value', 'Any', 'return', 'None'))
+             612 LOAD_CONST           (<Code311 code object _set_nested at 0x1080e29d0, file codex_chain_runner.py>, line 399)
+             614 MAKE_FUNCTION
+             616 SET_FUNCTION_ATTRIBUTE 4
+             618 STORE_NAME           (_set_nested)
+
+409:         620 LOAD_CONST           (('',))
+             622 LOAD_CONST           (('proxy', 'str', 'return', 'Dict[str, Any]'))
+             624 LOAD_CONST           (<Code311 code object _default_openai_persona at 0x1080e2910, file codex_chain_runner.py>, line 409)
+             626 MAKE_FUNCTION
+             628 SET_FUNCTION_ATTRIBUTE 4
+             630 SET_FUNCTION_ATTRIBUTE 1
+             632 STORE_NAME           (_default_openai_persona)
+
+424:         634 LOAD_CONST           ((None,))
+             636 LOAD_CONST           (('argv', 'list[str] | None', 'return', 'int'))
+             638 LOAD_CONST           (<Code311 code object main at 0x1080e2250, file codex_chain_runner.py>, line 424)
+             640 MAKE_FUNCTION
+             642 SET_FUNCTION_ATTRIBUTE 4
+             644 SET_FUNCTION_ATTRIBUTE 1
+             646 STORE_NAME           (main)
+
+777:         648 LOAD_NAME            (__name__)
+             650 LOAD_CONST           ("__main__")
+             652 COMPARE_OP           (==)
+             656 POP_JUMP_IF_FALSE    (to 686)
+
+778:         660 LOAD_NAME            (SystemExit)
+             662 PUSH_NULL
+             664 LOAD_NAME            (main)
+             666 PUSH_NULL
+             668 CALL                 (0 positional)
+             676 CALL                 (1 positional)
+             684 RAISE_VARARGS        (exception instance)
+
+777:     >>  686 RETURN_CONST         (None)
+
+
+# Method Name:       _load_config
+# Filename:          codex_chain_runner.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        44
+# Constants:
+#    0: None
+#    1: 'config not found: '
+#    2: 'utf-8'
+#    3: ('encoding',)
+# Names:
+#    0: Path
+#    1: exists
+#    2: FileNotFoundError
+#    3: json
+#    4: loads
+#    5: read_text
+#    6: isinstance
+#    7: dict
+# Varnames:
+#	path, cfg_path, data
+# Positional arguments:
+#	path
+# Local variables:
+#    1: cfg_path
+#    2: data
+ 44:           0 RESUME               0
+
+ 45:           2 LOAD_FAST            (path)
+               4 TO_BOOL
+              12 POP_JUMP_IF_TRUE     (to 20)
+
+ 46:          16 BUILD_MAP            0
+              18 RETURN_VALUE
+
+ 47:     >>   20 LOAD_GLOBAL          (NULL + Path)
+              30 LOAD_FAST            (path)
+              32 CALL                 (1 positional)
+              40 STORE_FAST           (cfg_path)
+
+ 48:          42 LOAD_FAST            (cfg_path)
+              44 LOAD_ATTR            (NULL|self + exists)
+              64 CALL                 (0 positional)
+              72 TO_BOOL
+              80 POP_JUMP_IF_TRUE     (to 112)
+
+ 49:          84 LOAD_GLOBAL          (NULL + FileNotFoundError)
+              94 LOAD_CONST           ("config not found: ")
+              96 LOAD_FAST            (cfg_path)
+              98 FORMAT_SIMPLE
+             100 BUILD_STRING         2
+             102 CALL                 (1 positional)
+             110 RAISE_VARARGS        (exception instance)
+
+ 50:     >>  112 LOAD_GLOBAL          (json)
+             122 LOAD_ATTR            (loads)
+             142 PUSH_NULL
+             144 LOAD_FAST            (cfg_path)
+             146 LOAD_ATTR            (NULL|self + read_text)
+             166 LOAD_CONST           ("utf-8")
+             168 LOAD_CONST           (('encoding',))
+             170 CALL_KW              1
+             172 CALL                 (1 positional)
+             180 STORE_FAST           (data)
+
+ 51:         182 LOAD_GLOBAL          (NULL + isinstance)
+             192 LOAD_FAST            (data)
+             194 LOAD_GLOBAL          (dict)
+             204 CALL                 (2 positional)
+             212 TO_BOOL
+             220 POP_JUMP_IF_FALSE    (to 228)
+             224 LOAD_FAST            (data)
+             226 RETURN_VALUE
+         >>  228 BUILD_MAP            0
+             230 RETURN_VALUE
+
+
+# Method Name:       _clean
+# Filename:          codex_chain_runner.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        54
+# Constants:
+#    0: None
+#    1: ''
+# Names:
+#    0: str
+#    1: strip
+# Varnames:
+#	value
+# Positional arguments:
+#	value
+ 54:           0 RESUME               0
+
+ 55:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (value)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + strip)
+              60 CALL                 (0 positional)
+              68 RETURN_VALUE
+
+
+# Method Name:       _base_url
+# Filename:          codex_chain_runner.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        58
+# Constants:
+#    0: None
+#    1: '/'
+# Names:
+#    0: _clean
+#    1: rstrip
+# Varnames:
+#	value
+# Positional arguments:
+#	value
+ 58:           0 RESUME               0
+
+ 59:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (value)
+              14 CALL                 (1 positional)
+              22 LOAD_ATTR            (NULL|self + rstrip)
+              42 LOAD_CONST           ("/")
+              44 CALL                 (1 positional)
+              52 RETURN_VALUE
+
+
+# Method Name:       _state_from_url
+# Filename:          codex_chain_runner.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        62
+# Constants:
+#    0: None
+#    1: 'state'
+#    2: ''
+#    3: 0
+# Names:
+#    0: parse_qs
+#    1: urlparse
+#    2: query
+#    3: get
+# Varnames:
+#	oauth_url
+# Positional arguments:
+#	oauth_url
+ 62:           0 RESUME               0
+
+ 63:           2 LOAD_GLOBAL          (NULL + parse_qs)
+              12 LOAD_GLOBAL          (NULL + urlparse)
+              22 LOAD_FAST            (oauth_url)
+              24 CALL                 (1 positional)
+              32 LOAD_ATTR            (query)
+              52 CALL                 (1 positional)
+              60 LOAD_ATTR            (NULL|self + get)
+              80 LOAD_CONST           ("state")
+              82 LOAD_CONST           ("")
+              84 BUILD_LIST           1
+              86 CALL                 (2 positional)
+              94 LOAD_CONST           (0)
+              96 BINARY_SUBSCR
+             100 RETURN_VALUE
+
+
+# Method Name:       _resolve_oauth_provider
+# Filename:          codex_chain_runner.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  8
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        66
+# Constants:
+#    0: None
+#    1: 'auto'
+#    2: 'upload_target'
+#    3: 'oauth_provider'
+#    4: 'codex_oauth_provider'
+#    5: {'sub2', 'cpa', 'local'}
+#    6: 'upload'
+#    7: 'target'
+#    8: 'real'
+#    9: {'sub2', 'cpa'}
+#   10: 'local'
+# Names:
+#    0: _clean
+#    1: oauth_provider
+#    2: lower
+#    3: get
+#    4: isinstance
+#    5: dict
+#    6: mode
+# Varnames:
+#	args, config, manual_session, raw, value, text, upload, target
+# Positional arguments:
+#	args, config, manual_session
+# Local variables:
+#    3: raw
+#    4: value
+#    5: text
+#    6: upload
+#    7: target
+ 66:           0 RESUME               0
+
+ 67:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (args)
+              14 LOAD_ATTR            (oauth_provider)
+              34 CALL                 (1 positional)
+              42 LOAD_ATTR            (NULL|self + lower)
+              62 CALL                 (0 positional)
+              70 STORE_FAST           (raw)
+
+ 68:          72 LOAD_FAST            (raw)
+              74 TO_BOOL
+              82 POP_JUMP_IF_FALSE    (to 102)
+              86 LOAD_FAST            (raw)
+              88 LOAD_CONST           ("auto")
+              90 COMPARE_OP           (!=)
+              94 POP_JUMP_IF_FALSE    (to 102)
+
+ 69:          98 LOAD_FAST            (raw)
+             100 RETURN_VALUE
+
+ 71:     >>  102 LOAD_FAST            (manual_session)
+             104 LOAD_ATTR            (NULL|self + get)
+             124 LOAD_CONST           ("upload_target")
+             126 CALL                 (1 positional)
+
+ 72:         134 LOAD_FAST            (manual_session)
+             136 LOAD_ATTR            (NULL|self + get)
+             156 LOAD_CONST           ("oauth_provider")
+             158 CALL                 (1 positional)
+
+ 73:         166 LOAD_FAST            (config)
+             168 LOAD_ATTR            (NULL|self + get)
+             188 LOAD_CONST           ("oauth_provider")
+             190 CALL                 (1 positional)
+
+ 74:         198 LOAD_FAST            (config)
+             200 LOAD_ATTR            (NULL|self + get)
+             220 LOAD_CONST           ("codex_oauth_provider")
+             222 CALL                 (1 positional)
+
+ 70:         230 BUILD_TUPLE          4
+             232 GET_ITER
+             234 FOR_ITER             (to 314)
+             238 STORE_FAST           (value)
+
+ 76:         240 LOAD_GLOBAL          (NULL + _clean)
+             250 LOAD_FAST            (value)
+             252 CALL                 (1 positional)
+             260 LOAD_ATTR            (NULL|self + lower)
+             280 CALL                 (0 positional)
+             288 STORE_FAST           (text)
+
+ 77:         290 LOAD_FAST            (text)
+             292 LOAD_CONST           ({'sub2', 'cpa', 'local'})
+             294 CONTAINS_OP          (in)
+             298 POP_JUMP_IF_TRUE     (to 306)
+             302 JUMP_BACKWARD        (to 234)
+
+ 78:     >>  306 LOAD_FAST            (text)
+             308 SWAP                 (TOS <-> TOS1)
+             310 POP_TOP
+             312 RETURN_VALUE
+
+ 70:     >>  314 END_FOR
+             316 POP_TOP
+
+ 79:         318 LOAD_GLOBAL          (NULL + isinstance)
+             328 LOAD_FAST            (config)
+             330 LOAD_ATTR            (NULL|self + get)
+             350 LOAD_CONST           ("upload")
+             352 CALL                 (1 positional)
+             360 LOAD_GLOBAL          (dict)
+             370 CALL                 (2 positional)
+         >>  378 TO_BOOL
+             386 POP_JUMP_IF_FALSE    (to 424)
+             390 LOAD_FAST            (config)
+             392 LOAD_ATTR            (NULL|self + get)
+             412 LOAD_CONST           ("upload")
+             414 CALL                 (1 positional)
+             422 JUMP_FORWARD         (to 426)
+         >>  424 BUILD_MAP            0
+         >>  426 STORE_FAST           (upload)
+
+ 80:         428 LOAD_GLOBAL          (NULL + _clean)
+             438 LOAD_FAST            (upload)
+             440 LOAD_ATTR            (NULL|self + get)
+             460 LOAD_CONST           ("target")
+             462 CALL                 (1 positional)
+             470 CALL                 (1 positional)
+             478 LOAD_ATTR            (NULL|self + lower)
+             498 CALL                 (0 positional)
+             506 STORE_FAST           (target)
+
+ 81:         508 LOAD_FAST            (args)
+             510 LOAD_ATTR            (mode)
+             530 LOAD_CONST           ("real")
+             532 COMPARE_OP           (==)
+             536 POP_JUMP_IF_FALSE    (to 556)
+             540 LOAD_FAST            (target)
+             542 LOAD_CONST           ({'sub2', 'cpa'})
+             544 CONTAINS_OP          (in)
+             548 POP_JUMP_IF_FALSE    (to 556)
+
+ 82:         552 LOAD_FAST            (target)
+             554 RETURN_VALUE
+
+ 83:     >>  556 RETURN_CONST         ("local")
+
+
+# Method Name:       _generate_sub2_oauth_session
+# Filename:          codex_chain_runner.py
+# Argument count:    1

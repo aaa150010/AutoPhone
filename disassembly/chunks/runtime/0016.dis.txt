@@ -1,0 +1,800 @@
+
+# Method Name:       _acquire_phase_slot
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1328
+# Constants:
+#    0: None
+#    1: 'waiting_auto_email_slot'
+#    2: ('status', 'email')
+#    3: True
+#    4: 'email_login_started'
+#    5: '已获得邮箱验证码槽，开始邮箱登录: '
+#    6: 'info'
+# Names:
+#    0: phase_slot_acquired
+#    1: phase_gate
+#    2: state_fn
+#    3: task_id
+#    4: entry
+#    5: email
+#    6: acquire
+#    7: stop_event
+#    8: threading
+#    9: Event
+#   10: log_fn
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+1328:           0 RESUME               0
+
+1329:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (phase_slot_acquired)
+              24 TO_BOOL
+              32 POP_JUMP_IF_TRUE     (to 70)
+              36 LOAD_FAST            (self)
+              38 LOAD_ATTR            (phase_gate)
+              58 TO_BOOL
+              66 POP_JUMP_IF_TRUE     (to 72)
+
+1330:     >>   70 RETURN_CONST         (None)
+
+1331:     >>   72 LOAD_FAST            (self)
+              74 LOAD_ATTR            (state_fn)
+              94 TO_BOOL
+             102 POP_JUMP_IF_FALSE    (to 234)
+             106 LOAD_FAST            (self)
+             108 LOAD_ATTR            (task_id)
+             128 TO_BOOL
+             136 POP_JUMP_IF_FALSE    (to 234)
+
+1332:         140 LOAD_FAST            (self)
+             142 LOAD_ATTR            (NULL|self + state_fn)
+             162 LOAD_FAST            (self)
+             164 LOAD_ATTR            (task_id)
+             184 LOAD_CONST           ("waiting_auto_email_slot")
+             186 LOAD_FAST            (self)
+             188 LOAD_ATTR            (entry)
+             208 LOAD_ATTR            (email)
+             228 LOAD_CONST           (('status', 'email'))
+             230 CALL_KW              3
+             232 POP_TOP
+
+1333:     >>  234 LOAD_FAST            (self)
+             236 LOAD_ATTR            (phase_gate)
+             256 LOAD_ATTR            (NULL|self + acquire)
+             276 LOAD_FAST            (self)
+             278 LOAD_ATTR            (stop_event)
+             298 COPY                 1
+             300 TO_BOOL
+             308 POP_JUMP_IF_TRUE     (to 354)
+             312 POP_TOP
+             314 LOAD_GLOBAL          (threading)
+             324 LOAD_ATTR            (Event)
+             344 PUSH_NULL
+             346 CALL                 (0 positional)
+         >>  354 CALL                 (1 positional)
+             362 POP_TOP
+
+1334:         364 LOAD_CONST           (True)
+             366 LOAD_FAST            (self)
+             368 STORE_ATTR           (phase_slot_acquired)
+
+1335:         378 LOAD_FAST            (self)
+             380 LOAD_ATTR            (state_fn)
+             400 TO_BOOL
+             408 POP_JUMP_IF_FALSE    (to 540)
+             412 LOAD_FAST            (self)
+             414 LOAD_ATTR            (task_id)
+             434 TO_BOOL
+             442 POP_JUMP_IF_FALSE    (to 540)
+
+1336:         446 LOAD_FAST            (self)
+             448 LOAD_ATTR            (NULL|self + state_fn)
+             468 LOAD_FAST            (self)
+             470 LOAD_ATTR            (task_id)
+             490 LOAD_CONST           ("email_login_started")
+             492 LOAD_FAST            (self)
+             494 LOAD_ATTR            (entry)
+             514 LOAD_ATTR            (email)
+             534 LOAD_CONST           (('status', 'email'))
+             536 CALL_KW              3
+             538 POP_TOP
+
+1337:     >>  540 LOAD_FAST            (self)
+             542 LOAD_ATTR            (NULL|self + log_fn)
+             562 LOAD_CONST           ("已获得邮箱验证码槽，开始邮箱登录: ")
+             564 LOAD_FAST            (self)
+             566 LOAD_ATTR            (entry)
+             586 LOAD_ATTR            (email)
+             606 FORMAT_SIMPLE
+             608 BUILD_STRING         2
+             610 LOAD_CONST           ("info")
+             612 CALL                 (2 positional)
+             620 POP_TOP
+             622 RETURN_CONST         (None)
+
+
+# Method Name:       _release_phase_slot
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        2
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1339
+# Constants:
+#    0: None
+#    1: False
+# Names:
+#    0: phase_slot_acquired
+#    1: phase_gate
+#    2: release
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+1339:           0 RESUME               0
+
+1340:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (phase_slot_acquired)
+              24 TO_BOOL
+              32 POP_JUMP_IF_FALSE    (to 122)
+              36 LOAD_FAST            (self)
+              38 LOAD_ATTR            (phase_gate)
+              58 TO_BOOL
+              66 POP_JUMP_IF_FALSE    (to 122)
+
+1341:          70 LOAD_FAST            (self)
+              72 LOAD_ATTR            (phase_gate)
+              92 LOAD_ATTR            (NULL|self + release)
+             112 CALL                 (0 positional)
+             120 POP_TOP
+
+1342:     >>  122 LOAD_CONST           (False)
+             124 LOAD_FAST            (self)
+             126 STORE_ATTR           (phase_slot_acquired)
+             136 RETURN_CONST         (None)
+
+
+# Method Name:       _read_baseline
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  8
+# Stack size:        10
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1344
+# Constants:
+#    0: None
+#    1: 'mailbox_baseline_attempts'
+#    2: 3
+#    3: 1
+#    4: 5
+#    5: 'mailbox_baseline_retry_seconds'
+#    6: 2
+#    7: 0
+#    8: 15
+#    9: 'mailbox_dead'
+#   10: 'must be a complete'
+#   11: '邮箱基线读取超时，重试 '
+#   12: '/'
+#   13: ': '
+#   14: 'warn'
+#   15: 'mailbox baseline unavailable'
+# Names:
+#    0: _as_int
+#    1: config
+#    2: get
+#    3: range
+#    4: provider
+#    5: snapshot
+#    6: MailboxPoolError
+#    7: _clean
+#    8: lower
+#    9: log_fn
+#   10: entry
+#   11: email
+#   12: time
+#   13: sleep
+# Varnames:
+#	self, attempts, retry_seconds, last_error, attempt, exc, text, terminal
+# Positional arguments:
+#	self
+# Local variables:
+#    1: attempts
+#    2: retry_seconds
+#    3: last_error
+#    4: attempt
+#    5: exc
+#    6: text
+#    7: terminal
+1344:           0 RESUME               0
+
+1345:           2 LOAD_GLOBAL          (NULL + _as_int)
+              12 LOAD_FAST            (self)
+              14 LOAD_ATTR            (config)
+              34 LOAD_ATTR            (NULL|self + get)
+              54 LOAD_CONST           ("mailbox_baseline_attempts")
+              56 CALL                 (1 positional)
+              64 LOAD_CONST           (3)
+              66 LOAD_CONST           (1)
+              68 LOAD_CONST           (5)
+              70 CALL                 (4 positional)
+              78 STORE_FAST           (attempts)
+
+1346:          80 LOAD_GLOBAL          (NULL + _as_int)
+              90 LOAD_FAST            (self)
+              92 LOAD_ATTR            (config)
+             112 LOAD_ATTR            (NULL|self + get)
+             132 LOAD_CONST           ("mailbox_baseline_retry_seconds")
+             134 CALL                 (1 positional)
+             142 LOAD_CONST           (2)
+             144 LOAD_CONST           (0)
+             146 LOAD_CONST           (15)
+             148 CALL                 (4 positional)
+             156 STORE_FAST           (retry_seconds)
+
+1347:         158 LOAD_CONST           (None)
+             160 STORE_FAST           (last_error)
+
+1348:         162 LOAD_GLOBAL          (NULL + range)
+             172 LOAD_CONST           (1)
+             174 LOAD_FAST            (attempts)
+             176 LOAD_CONST           (1)
+             178 BINARY_OP            (+)
+             182 CALL                 (2 positional)
+             190 GET_ITER
+             192 FOR_ITER             (to 256)
+             196 STORE_FAST           (attempt)
+
+1349:         198 NOP
+
+1350:         200 LOAD_FAST            (self)
+             202 LOAD_ATTR            (provider)
+             222 LOAD_ATTR            (NULL|self + snapshot)
+             242 CALL                 (0 positional)
+             250 SWAP                 (TOS <-> TOS1)
+             252 POP_TOP
+             254 RETURN_VALUE
+
+1348:     >>  256 END_FOR
+             258 POP_TOP
+
+1360:         260 LOAD_FAST            (last_error)
+             262 COPY                 1
+             264 TO_BOOL
+             272 POP_JUMP_IF_TRUE     (to 298)
+             276 POP_TOP
+             278 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             288 LOAD_CONST           ("mailbox baseline unavailable")
+             290 CALL                 (1 positional)
+         >>  298 RAISE_VARARGS        (exception instance)
+         >>  300 PUSH_EXC_INFO
+
+1351:         302 LOAD_GLOBAL          (MailboxPoolError)
+             312 CHECK_EXC_MATCH
+             314 POP_JUMP_IF_FALSE    (to 624)
+             318 STORE_FAST           (exc)
+
+1352:         320 LOAD_FAST            (exc)
+             322 STORE_FAST           (last_error)
+
+1353:         324 LOAD_GLOBAL          (NULL + _clean)
+             334 LOAD_FAST            (exc)
+             336 CALL                 (1 positional)
+             344 LOAD_ATTR            (NULL|self + lower)
+             364 CALL                 (0 positional)
+             372 STORE_FAST           (text)
+
+1354:         374 LOAD_CONST           ("mailbox_dead")
+             376 LOAD_FAST            (text)
+             378 CONTAINS_OP          (in)
+             382 COPY                 1
+             384 TO_BOOL
+             392 POP_JUMP_IF_TRUE     (to 406)
+             396 POP_TOP
+             398 LOAD_CONST           ("must be a complete")
+             400 LOAD_FAST            (text)
+             402 CONTAINS_OP          (in)
+         >>  406 STORE_FAST           (terminal)
+
+1355:         408 LOAD_FAST            (terminal)
+             410 TO_BOOL
+             418 POP_JUMP_IF_TRUE     (to 432)
+             422 LOAD_FAST_LOAD_FAST  (attempt, attempts)
+             424 COMPARE_OP           (>=)
+             428 POP_JUMP_IF_FALSE    (to 434)
+
+1356:     >>  432 RAISE_VARARGS        (reraise)
+
+1357:     >>  434 LOAD_FAST            (self)
+             436 LOAD_ATTR            (NULL|self + log_fn)
+             456 LOAD_CONST           ("邮箱基线读取超时，重试 ")
+             458 LOAD_FAST            (attempt)
+             460 LOAD_CONST           (1)
+             462 BINARY_OP            (+)
+             466 FORMAT_SIMPLE
+             468 LOAD_CONST           ("/")
+             470 LOAD_FAST            (attempts)
+             472 FORMAT_SIMPLE
+             474 LOAD_CONST           (": ")
+             476 LOAD_FAST            (self)
+             478 LOAD_ATTR            (entry)
+             498 LOAD_ATTR            (email)
+             518 FORMAT_SIMPLE
+             520 BUILD_STRING         6
+             522 LOAD_CONST           ("warn")
+             524 CALL                 (2 positional)
+             532 POP_TOP
+
+1358:         534 LOAD_FAST            (retry_seconds)
+             536 TO_BOOL
+             544 POP_JUMP_IF_FALSE    (to 604)
+
+1359:         548 LOAD_GLOBAL          (time)
+             558 LOAD_ATTR            (sleep)
+             578 PUSH_NULL
+             580 LOAD_FAST            (retry_seconds)
+             582 CALL                 (1 positional)
+             590 POP_TOP
+             592 POP_EXCEPT
+             594 LOAD_CONST           (None)
+             596 STORE_FAST           (exc)
+             598 DELETE_FAST          (exc)
+             600 JUMP_BACKWARD        (to 192)
+
+1358:     >>  604 POP_EXCEPT
+             606 LOAD_CONST           (None)
+             608 STORE_FAST           (exc)
+             610 DELETE_FAST          (exc)
+             612 JUMP_BACKWARD        (to 192)
+         >>  616 LOAD_CONST           (None)
+             618 STORE_FAST           (exc)
+             620 DELETE_FAST          (exc)
+             622 RERAISE              1
+
+1351:     >>  624 RERAISE              0
+         >>  626 COPY                 3
+             628 POP_EXCEPT
+             630 RERAISE              1
+
+ExceptionTable:
+  200 to 248 -> 300 [1]
+  300 to 318 -> 626 [2] lasti
+  320 to 590 -> 616 [2] lasti
+  616 to 624 -> 626 [2] lasti
+
+# Method Name:       mark_sent
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1362
+# Constants:
+#    0: None
+#    1: 'waiting_auto_email_code'
+#    2: ('status', 'email')
+#    3: '已进入邮箱验证码页，开始等待: '
+#    4: 'info'
+# Names:
+#    0: _acquire_phase_slot
+#    1: state_fn
+#    2: task_id
+#    3: entry
+#    4: email
+#    5: log_fn
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+1362:           0 RESUME               0
+
+1363:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _acquire_phase_slot)
+              24 CALL                 (0 positional)
+              32 POP_TOP
+
+1364:          34 LOAD_FAST            (self)
+              36 LOAD_ATTR            (state_fn)
+              56 TO_BOOL
+              64 POP_JUMP_IF_FALSE    (to 196)
+              68 LOAD_FAST            (self)
+              70 LOAD_ATTR            (task_id)
+              90 TO_BOOL
+              98 POP_JUMP_IF_FALSE    (to 196)
+
+1365:         102 LOAD_FAST            (self)
+             104 LOAD_ATTR            (NULL|self + state_fn)
+             124 LOAD_FAST            (self)
+             126 LOAD_ATTR            (task_id)
+             146 LOAD_CONST           ("waiting_auto_email_code")
+             148 LOAD_FAST            (self)
+             150 LOAD_ATTR            (entry)
+             170 LOAD_ATTR            (email)
+             190 LOAD_CONST           (('status', 'email'))
+             192 CALL_KW              3
+             194 POP_TOP
+
+1366:     >>  196 LOAD_FAST            (self)
+             198 LOAD_ATTR            (NULL|self + log_fn)
+             218 LOAD_CONST           ("已进入邮箱验证码页，开始等待: ")
+             220 LOAD_FAST            (self)
+             222 LOAD_ATTR            (entry)
+             242 LOAD_ATTR            (email)
+             262 FORMAT_SIMPLE
+             264 BUILD_STRING         2
+             266 LOAD_CONST           ("info")
+             268 CALL                 (2 positional)
+             276 POP_TOP
+             278 RETURN_CONST         (None)
+
+
+# Method Name:       wait_code
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        10
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1368
+# Constants:
+#    0: None
+#    1: '邮箱任务与取码地址不匹配'
+#    2: 'max_attempts'
+#    3: 30
+#    4: <Code311 code object <lambda> at 0x10552cf10, file runtime.py>, line 1376
+#    5: <Code311 code object <lambda> at 0x10552cf40, file runtime.py>, line 1377
+#    6: ('baseline', 'timeout_seconds', 'interval_seconds', 'max_attempts', 'on_wait', 'stop_requested')
+#    7: '已收到邮箱验证码: '
+#    8: 'success'
+# Names:
+#    0: _clean
+#    1: lower
+#    2: entry
+#    3: email
+#    4: MailboxPoolError
+#    5: provider
+#    6: wait_for_code
+#    7: baseline
+#    8: timeout
+#    9: interval
+#   10: getattr
+#   11: last_snapshot
+#   12: log_fn
+# Varnames:
+#	self, email, code
+# Positional arguments:
+#	self, email
+# Local variables:
+#    2: code
+# Cell variables:
+#    0: self
+               0 MAKE_CELL            (self)
+
+1368:           2 RESUME               0
+
+1369:           4 LOAD_GLOBAL          (NULL + _clean)
+              14 LOAD_FAST            (email)
+              16 CALL                 (1 positional)
+              24 LOAD_ATTR            (NULL|self + lower)
+              44 CALL                 (0 positional)
+              52 LOAD_DEREF           (self)
+              54 LOAD_ATTR            (entry)
+              74 LOAD_ATTR            (email)
+              94 COMPARE_OP           (!=)
+              98 POP_JUMP_IF_FALSE    (to 124)
+
+1370:         102 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             112 LOAD_CONST           ("邮箱任务与取码地址不匹配")
+             114 CALL                 (1 positional)
+             122 RAISE_VARARGS        (exception instance)
+
+1371:     >>  124 LOAD_DEREF           (self)
+             126 LOAD_ATTR            (provider)
+             146 LOAD_ATTR            (NULL|self + wait_for_code)
+
+1372:         166 LOAD_DEREF           (self)
+             168 LOAD_ATTR            (baseline)
+
+1373:         188 LOAD_DEREF           (self)
+             190 LOAD_ATTR            (timeout)
+
+1374:         210 LOAD_DEREF           (self)
+             212 LOAD_ATTR            (interval)
+
+1375:         232 LOAD_GLOBAL          (NULL + getattr)
+             242 LOAD_DEREF           (self)
+             244 LOAD_CONST           ("max_attempts")
+             246 LOAD_CONST           (30)
+             248 CALL                 (3 positional)
+
+1376:         256 LOAD_FAST            (self)
+             258 BUILD_TUPLE          1
+             260 LOAD_CONST           (<Code311 code object <lambda> at 0x10552cf10, file runtime.py>, line 1376)
+             262 MAKE_FUNCTION
+             264 SET_FUNCTION_ATTRIBUTE 8
+
+1377:         266 LOAD_FAST            (self)
+             268 BUILD_TUPLE          1
+             270 LOAD_CONST           (<Code311 code object <lambda> at 0x10552cf40, file runtime.py>, line 1377)
+             272 MAKE_FUNCTION
+             274 SET_FUNCTION_ATTRIBUTE 8
+
+1371:         276 LOAD_CONST           (('baseline', 'timeout_seconds', 'interval_seconds', 'max_attempts', 'on_wait', 'stop_requested'))
+             278 CALL_KW              6
+             280 STORE_FAST           (code)
+
+1379:         282 LOAD_DEREF           (self)
+             284 LOAD_ATTR            (provider)
+             304 LOAD_ATTR            (last_snapshot)
+             324 TO_BOOL
+             332 POP_JUMP_IF_FALSE    (to 390)
+
+1380:         336 LOAD_DEREF           (self)
+             338 LOAD_ATTR            (provider)
+             358 LOAD_ATTR            (last_snapshot)
+             378 LOAD_DEREF           (self)
+             380 STORE_ATTR           (baseline)
+
+1381:     >>  390 LOAD_DEREF           (self)
+             392 LOAD_ATTR            (NULL|self + log_fn)
+             412 LOAD_CONST           ("已收到邮箱验证码: ")
+             414 LOAD_DEREF           (self)
+             416 LOAD_ATTR            (entry)
+             436 LOAD_ATTR            (email)
+             456 FORMAT_SIMPLE
+             458 BUILD_STRING         2
+             460 LOAD_CONST           ("success")
+             462 CALL                 (2 positional)
+             470 POP_TOP
+
+1382:         472 LOAD_FAST            (code)
+             474 RETURN_VALUE
+
+
+# Method Name:       mark_verified
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        2
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1384
+# Constants:
+#    0: None
+# Names:
+#    0: _release_phase_slot
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+1384:           0 RESUME               0
+
+1385:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _release_phase_slot)
+              24 CALL                 (0 positional)
+              32 POP_TOP
+              34 RETURN_CONST         (None)
+
+
+# Method Name:       close
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        2
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1387
+# Constants:
+#    0: None
+# Names:
+#    0: _release_phase_slot
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+1387:           0 RESUME               0
+
+1388:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _release_phase_slot)
+              24 CALL                 (0 positional)
+              32 POP_TOP
+              34 RETURN_CONST         (None)
+
+
+# Method Name:       __init__
+# Filename:          runtime.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1394
+# Constants:
+#    0: None
+#    1: True
+#    2: ('parents', 'exist_ok')
+#    3: <Code311 code object <lambda> at 0x105531ee0, file runtime.py>, line 1397
+#    4: False
+#    5: 0
+#    6: 1
+#    7: ('info',)
+# Names:
+#    0: Path
+#    1: expanduser
+#    2: resolve
+#    3: data_dir
+#    4: mkdir
+#    5: log_fn
+#    6: threading
+#    7: RLock
+#    8: lock
+#    9: Event
+#   10: stop_event
+#   11: executor
+#   12: futures
+#   13: future_assignments
+#   14: tasks
+#   15: set
+#   16: active_task_ids
+#   17: running
+#   18: cancelled_waiting
+#   19: ManualCodeCoordinator
+#   20: manual_codes
+#   21: AutoEmailPhaseGate
+#   22: auto_email_phase_gate
+#   23: node_gate
+#   24: task_concurrency
+#   25: _manual_pool_instance
+#   26: _manual_pool_key
+#   27: _configure_sentinel_python_fallback
+#   28: _standalone_node_bridge
+#   29: _codex_node_bridge
+#   30: run_node_bridge
+#   31: _standalone_phone_supply_retryable
+#   32: _codex_oauth_chain
+#   33: _is_retryable_phone_supply_error
+#   34: _standalone_sms_adapter_get_number
+#   35: SmsProviderAdapter
+#   36: get_number
+# Varnames:
+#	self, data_dir, log_fn
+# Positional arguments:
+#	self, data_dir, log_fn
+1394:           0 RESUME               0
+
+1395:           2 LOAD_GLOBAL          (NULL + Path)
+              12 LOAD_FAST            (data_dir)
+              14 CALL                 (1 positional)
+              22 LOAD_ATTR            (NULL|self + expanduser)
+              42 CALL                 (0 positional)
+              50 LOAD_ATTR            (NULL|self + resolve)
+              70 CALL                 (0 positional)
+              78 LOAD_FAST            (self)
+              80 STORE_ATTR           (data_dir)
+
+1396:          90 LOAD_FAST            (self)
+              92 LOAD_ATTR            (data_dir)
+             112 LOAD_ATTR            (NULL|self + mkdir)
+             132 LOAD_CONST           (True)
+             134 LOAD_CONST           (True)
+             136 LOAD_CONST           (('parents', 'exist_ok'))
+             138 CALL_KW              2
+             140 POP_TOP
+
+1397:         142 LOAD_FAST            (log_fn)
+             144 COPY                 1
+             146 TO_BOOL
+             154 POP_JUMP_IF_TRUE     (to 168)
+             158 POP_TOP
+             160 LOAD_CONST           (('info',))
+             162 LOAD_CONST           (<Code311 code object <lambda> at 0x105531ee0, file runtime.py>, line 1397)
+             164 MAKE_FUNCTION
+             166 SET_FUNCTION_ATTRIBUTE 1
+         >>  168 LOAD_FAST            (self)
+             170 STORE_ATTR           (log_fn)
+
+1398:         180 LOAD_GLOBAL          (threading)
+             190 LOAD_ATTR            (RLock)
+             210 PUSH_NULL
+             212 CALL                 (0 positional)
+             220 LOAD_FAST            (self)
+             222 STORE_ATTR           (lock)
+
+1399:         232 LOAD_GLOBAL          (threading)
+             242 LOAD_ATTR            (Event)
+             262 PUSH_NULL
+             264 CALL                 (0 positional)
+             272 LOAD_FAST            (self)
+             274 STORE_ATTR           (stop_event)
+
+1400:         284 LOAD_CONST           (None)
+             286 LOAD_FAST            (self)
+             288 STORE_ATTR           (executor)
+
+1401:         298 BUILD_LIST           0
+             300 LOAD_FAST            (self)
+             302 STORE_ATTR           (futures)
+
+1405:         312 BUILD_MAP            0
+
+1402:         314 LOAD_FAST            (self)
+             316 STORE_ATTR           (future_assignments)
+
+1406:         326 BUILD_MAP            0
+             328 LOAD_FAST            (self)
+             330 STORE_ATTR           (tasks)
+
+1407:         340 LOAD_GLOBAL          (NULL + set)
+             350 CALL                 (0 positional)
+             358 LOAD_FAST            (self)
+             360 STORE_ATTR           (active_task_ids)
+
+1408:         370 LOAD_CONST           (False)
+             372 LOAD_FAST            (self)
+             374 STORE_ATTR           (running)
+
+1409:         384 LOAD_CONST           (0)
+             386 LOAD_FAST            (self)
+             388 STORE_ATTR           (cancelled_waiting)
+
+1410:         398 LOAD_GLOBAL          (NULL + ManualCodeCoordinator)
+             408 CALL                 (0 positional)
+             416 LOAD_FAST            (self)
+             418 STORE_ATTR           (manual_codes)
+
+1411:         428 LOAD_GLOBAL          (NULL + AutoEmailPhaseGate)
+             438 LOAD_CONST           (1)
+             440 CALL                 (1 positional)
+             448 LOAD_FAST            (self)
+             450 STORE_ATTR           (auto_email_phase_gate)
+
+1412:         460 LOAD_GLOBAL          (NULL + AutoEmailPhaseGate)
+             470 LOAD_CONST           (1)
+             472 CALL                 (1 positional)
+             480 LOAD_FAST            (self)
+             482 STORE_ATTR           (node_gate)
+
+1413:         492 LOAD_CONST           (1)
+             494 LOAD_FAST            (self)
+             496 STORE_ATTR           (task_concurrency)
+
+1414:         506 LOAD_CONST           (None)
+             508 LOAD_FAST            (self)
+             510 STORE_ATTR           (_manual_pool_instance)
+
+1415:         520 LOAD_CONST           (None)
+             522 LOAD_FAST            (self)
+             524 STORE_ATTR           (_manual_pool_key)
+
+1416:         534 LOAD_FAST            (self)
+             536 LOAD_ATTR            (NULL|self + _configure_sentinel_python_fallback)
+             556 CALL                 (0 positional)
+             564 POP_TOP
+
+1419:         566 LOAD_GLOBAL          (_standalone_node_bridge)
+             576 LOAD_GLOBAL          (_codex_node_bridge)
+             586 STORE_ATTR           (run_node_bridge)
+
+1420:         596 LOAD_GLOBAL          (_standalone_phone_supply_retryable)
+             606 LOAD_GLOBAL          (_codex_oauth_chain)
+             616 STORE_ATTR           (_is_retryable_phone_supply_error)
+
+1421:         626 LOAD_GLOBAL          (_standalone_sms_adapter_get_number)
+             636 LOAD_GLOBAL          (SmsProviderAdapter)

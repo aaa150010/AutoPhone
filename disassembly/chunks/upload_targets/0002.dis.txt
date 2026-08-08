@@ -1,0 +1,800 @@
+             330 CALL                 (1 positional)
+             338 LOAD_CONST           (False)
+             340 CALL                 (2 positional)
+             348 TO_BOOL
+             356 POP_JUMP_IF_FALSE    (to 380)
+
+ 65:         360 LOAD_GLOBAL          (UPLOAD_TARGET_CPA)
+             370 LOAD_FAST            (upload)
+             372 LOAD_CONST           ("target")
+             374 STORE_SUBSCR
+             378 JUMP_FORWARD         (to 462)
+
+ 66:     >>  380 LOAD_GLOBAL          (NULL + _as_bool)
+             390 LOAD_FAST            (legacy_uploads)
+             392 LOAD_ATTR            (NULL|self + get)
+             412 LOAD_CONST           ("sub2_enabled")
+             414 CALL                 (1 positional)
+             422 LOAD_CONST           (True)
+             424 CALL                 (2 positional)
+             432 TO_BOOL
+             440 POP_JUMP_IF_FALSE    (to 462)
+
+ 67:         444 LOAD_GLOBAL          (UPLOAD_TARGET_SUB2)
+             454 LOAD_FAST            (upload)
+             456 LOAD_CONST           ("target")
+             458 STORE_SUBSCR
+
+ 69:     >>  462 LOAD_GLOBAL          (NULL + str)
+             472 LOAD_FAST            (upload)
+             474 LOAD_ATTR            (NULL|self + get)
+             494 LOAD_CONST           ("target")
+             496 CALL                 (1 positional)
+             504 COPY                 1
+             506 TO_BOOL
+             514 POP_JUMP_IF_TRUE     (to 530)
+             518 POP_TOP
+             520 LOAD_GLOBAL          (UPLOAD_TARGET_SUB2)
+         >>  530 CALL                 (1 positional)
+             538 LOAD_ATTR            (NULL|self + strip)
+             558 CALL                 (0 positional)
+             566 LOAD_ATTR            (NULL|self + lower)
+             586 CALL                 (0 positional)
+             594 STORE_FAST           (target)
+
+ 70:         596 LOAD_FAST            (target)
+             598 LOAD_CONST           ({'false', 'disabled', 'none', 'no', 'off'})
+             600 CONTAINS_OP          (in)
+             604 POP_JUMP_IF_FALSE    (to 632)
+
+ 71:         608 LOAD_GLOBAL          (UPLOAD_TARGET_LOCAL)
+             618 STORE_FAST           (target)
+
+ 72:         620 LOAD_CONST           (False)
+             622 LOAD_FAST            (upload)
+             624 LOAD_CONST           ("enabled")
+             626 STORE_SUBSCR
+             630 JUMP_FORWARD         (to 692)
+
+ 74:     >>  632 LOAD_GLOBAL          (NULL + _as_bool)
+             642 LOAD_FAST            (upload)
+             644 LOAD_ATTR            (NULL|self + get)
+             664 LOAD_CONST           ("enabled")
+             666 CALL                 (1 positional)
+             674 LOAD_CONST           (True)
+             676 CALL                 (2 positional)
+             684 LOAD_FAST            (upload)
+             686 LOAD_CONST           ("enabled")
+             688 STORE_SUBSCR
+
+ 75:     >>  692 LOAD_FAST            (upload)
+             694 LOAD_CONST           ("enabled")
+             696 BINARY_SUBSCR
+             700 TO_BOOL
+             708 POP_JUMP_IF_TRUE     (to 724)
+
+ 76:         712 LOAD_GLOBAL          (UPLOAD_TARGET_LOCAL)
+             722 STORE_FAST           (target)
+
+ 77:     >>  724 LOAD_FAST            (target)
+             726 LOAD_GLOBAL          (VALID_UPLOAD_TARGETS)
+             736 CONTAINS_OP          (not in)
+             740 POP_JUMP_IF_FALSE    (to 756)
+
+ 78:         744 LOAD_GLOBAL          (UPLOAD_TARGET_SUB2)
+             754 STORE_FAST           (target)
+
+ 79:     >>  756 LOAD_FAST            (target)
+             758 LOAD_GLOBAL          (UPLOAD_TARGET_LOCAL)
+             768 COMPARE_OP           (==)
+             772 POP_JUMP_IF_FALSE    (to 786)
+
+ 80:         776 LOAD_CONST           (False)
+             778 LOAD_FAST            (upload)
+             780 LOAD_CONST           ("enabled")
+             782 STORE_SUBSCR
+
+ 81:     >>  786 LOAD_FAST_LOAD_FAST  (target, upload)
+             788 LOAD_CONST           ("target")
+             790 STORE_SUBSCR
+
+ 83:         794 LOAD_FAST            (config)
+             796 LOAD_ATTR            (NULL|self + get)
+             816 LOAD_CONST           ("cpa")
+             818 CALL                 (1 positional)
+             826 STORE_FAST           (cpa)
+
+ 84:         828 LOAD_GLOBAL          (NULL + isinstance)
+             838 LOAD_FAST            (cpa)
+             840 LOAD_GLOBAL          (dict)
+             850 CALL                 (2 positional)
+             858 TO_BOOL
+             866 POP_JUMP_IF_TRUE     (to 882)
+
+ 85:         870 BUILD_MAP            0
+             872 STORE_FAST           (cpa)
+
+ 86:         874 LOAD_FAST_LOAD_FAST  (cpa, config)
+             876 LOAD_CONST           ("cpa")
+             878 STORE_SUBSCR
+
+ 87:     >>  882 LOAD_FAST            (cpa)
+             884 LOAD_ATTR            (NULL|self + setdefault)
+             904 LOAD_CONST           ("url")
+             906 LOAD_CONST           ("http://127.0.0.1:48317")
+             908 CALL                 (2 positional)
+             916 POP_TOP
+
+ 88:         918 LOAD_FAST            (cpa)
+             920 LOAD_ATTR            (NULL|self + setdefault)
+             940 LOAD_CONST           ("key")
+             942 LOAD_CONST           ("")
+             944 CALL                 (2 positional)
+             952 POP_TOP
+
+ 89:         954 LOAD_FAST            (cpa)
+             956 LOAD_ATTR            (NULL|self + setdefault)
+             976 LOAD_CONST           ("timeout")
+             978 LOAD_CONST           (15)
+             980 CALL                 (2 positional)
+             988 POP_TOP
+
+ 90:         990 LOAD_FAST            (upload)
+             992 RETURN_VALUE
+
+
+# Method Name:       is_upload_enabled
+# Filename:          upload_targets.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        93
+# Constants:
+#    0: None
+#    1: 'enabled'
+#    2: True
+# Names:
+#    0: bool
+#    1: ensure_upload_config
+#    2: get
+# Varnames:
+#	config
+# Positional arguments:
+#	config
+ 93:           0 RESUME               0
+
+ 94:           2 LOAD_GLOBAL          (NULL + bool)
+              12 LOAD_GLOBAL          (NULL + ensure_upload_config)
+              22 LOAD_FAST            (config)
+              24 CALL                 (1 positional)
+              32 LOAD_ATTR            (NULL|self + get)
+              52 LOAD_CONST           ("enabled")
+              54 LOAD_CONST           (True)
+              56 CALL                 (2 positional)
+              64 CALL                 (1 positional)
+              72 RETURN_VALUE
+
+
+# Method Name:       upload_target
+# Filename:          upload_targets.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        97
+# Constants:
+#    0: None
+#    1: 'target'
+# Names:
+#    0: str
+#    1: ensure_upload_config
+#    2: get
+#    3: UPLOAD_TARGET_SUB2
+# Varnames:
+#	config
+# Positional arguments:
+#	config
+ 97:           0 RESUME               0
+
+ 98:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_GLOBAL          (NULL + ensure_upload_config)
+              22 LOAD_FAST            (config)
+              24 CALL                 (1 positional)
+              32 LOAD_ATTR            (NULL|self + get)
+              52 LOAD_CONST           ("target")
+              54 CALL                 (1 positional)
+              62 COPY                 1
+              64 TO_BOOL
+              72 POP_JUMP_IF_TRUE     (to 88)
+              76 POP_TOP
+              78 LOAD_GLOBAL          (UPLOAD_TARGET_SUB2)
+         >>   88 CALL                 (1 positional)
+              96 RETURN_VALUE
+
+
+# Method Name:       selected_upload_target
+# Filename:          upload_targets.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        101
+# Constants:
+#    0: 'Return the operator-selected target, including local/no-upload.'
+# Names:
+#    0: upload_target
+# Varnames:
+#	config
+# Positional arguments:
+#	config
+101:           0 RESUME               0
+
+103:           2 LOAD_GLOBAL          (NULL + upload_target)
+              12 LOAD_FAST            (config)
+              14 CALL                 (1 positional)
+              22 RETURN_VALUE
+
+
+# Method Name:       is_sub2_upload_selected
+# Filename:          upload_targets.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        106
+# Constants:
+#    0: None
+# Names:
+#    0: is_upload_enabled
+#    1: upload_target
+#    2: UPLOAD_TARGET_SUB2
+# Varnames:
+#	config
+# Positional arguments:
+#	config
+106:           0 RESUME               0
+
+107:           2 LOAD_GLOBAL          (NULL + is_upload_enabled)
+              12 LOAD_FAST            (config)
+              14 CALL                 (1 positional)
+              22 COPY                 1
+              24 TO_BOOL
+              32 POP_JUMP_IF_FALSE    (to 72)
+              36 POP_TOP
+              38 LOAD_GLOBAL          (NULL + upload_target)
+              48 LOAD_FAST            (config)
+              50 CALL                 (1 positional)
+              58 LOAD_GLOBAL          (UPLOAD_TARGET_SUB2)
+              68 COMPARE_OP           (==)
+         >>   72 RETURN_VALUE
+
+
+# Method Name:       is_cpa_upload_selected
+# Filename:          upload_targets.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        110
+# Constants:
+#    0: None
+# Names:
+#    0: is_upload_enabled
+#    1: upload_target
+#    2: UPLOAD_TARGET_CPA
+# Varnames:
+#	config
+# Positional arguments:
+#	config
+110:           0 RESUME               0
+
+111:           2 LOAD_GLOBAL          (NULL + is_upload_enabled)
+              12 LOAD_FAST            (config)
+              14 CALL                 (1 positional)
+              22 COPY                 1
+              24 TO_BOOL
+              32 POP_JUMP_IF_FALSE    (to 72)
+              36 POP_TOP
+              38 LOAD_GLOBAL          (NULL + upload_target)
+              48 LOAD_FAST            (config)
+              50 CALL                 (1 positional)
+              58 LOAD_GLOBAL          (UPLOAD_TARGET_CPA)
+              68 COMPARE_OP           (==)
+         >>   72 RETURN_VALUE
+
+
+# Method Name:       cpa_config
+# Filename:          upload_targets.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        114
+# Constants:
+#    0: None
+#    1: 'cpa'
+# Names:
+#    0: ensure_upload_config
+#    1: get
+#    2: isinstance
+#    3: dict
+# Varnames:
+#	config, cpa
+# Positional arguments:
+#	config
+# Local variables:
+#    1: cpa
+114:           0 RESUME               0
+
+115:           2 LOAD_GLOBAL          (NULL + ensure_upload_config)
+              12 LOAD_FAST            (config)
+              14 CALL                 (1 positional)
+              22 POP_TOP
+
+116:          24 LOAD_FAST            (config)
+              26 LOAD_ATTR            (NULL|self + get)
+              46 LOAD_CONST           ("cpa")
+              48 CALL                 (1 positional)
+              56 COPY                 1
+              58 TO_BOOL
+              66 POP_JUMP_IF_TRUE     (to 74)
+              70 POP_TOP
+              72 BUILD_MAP            0
+         >>   74 STORE_FAST           (cpa)
+
+117:          76 LOAD_GLOBAL          (NULL + isinstance)
+              86 LOAD_FAST            (cpa)
+              88 LOAD_GLOBAL          (dict)
+              98 CALL                 (2 positional)
+             106 TO_BOOL
+             114 POP_JUMP_IF_FALSE    (to 122)
+             118 LOAD_FAST            (cpa)
+             120 RETURN_VALUE
+         >>  122 BUILD_MAP            0
+             124 RETURN_VALUE
+
+
+# Method Name:       cpa_headers
+# Filename:          upload_targets.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        120
+# Constants:
+#    0: None
+#    1: 'key'
+#    2: ''
+#    3: 'Accept'
+#    4: 'application/json'
+#    5: 'Bearer '
+#    6: 'Authorization'
+#    7: 'X-Management-Key'
+# Names:
+#    0: str
+#    1: cpa_config
+#    2: get
+#    3: strip
+# Varnames:
+#	config, key, headers
+# Positional arguments:
+#	config
+# Local variables:
+#    1: key
+#    2: headers
+120:           0 RESUME               0
+
+121:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_GLOBAL          (NULL + cpa_config)
+              22 LOAD_FAST            (config)
+              24 CALL                 (1 positional)
+              32 LOAD_ATTR            (NULL|self + get)
+              52 LOAD_CONST           ("key")
+              54 CALL                 (1 positional)
+              62 COPY                 1
+              64 TO_BOOL
+              72 POP_JUMP_IF_TRUE     (to 80)
+              76 POP_TOP
+              78 LOAD_CONST           ("")
+         >>   80 CALL                 (1 positional)
+              88 LOAD_ATTR            (NULL|self + strip)
+             108 CALL                 (0 positional)
+             116 STORE_FAST           (key)
+
+122:         118 LOAD_CONST           ("Accept")
+             120 LOAD_CONST           ("application/json")
+             122 BUILD_MAP            1
+             124 STORE_FAST           (headers)
+
+123:         126 LOAD_FAST            (key)
+             128 TO_BOOL
+             136 POP_JUMP_IF_FALSE    (to 164)
+
+124:         140 LOAD_CONST           ("Bearer ")
+             142 LOAD_FAST            (key)
+             144 FORMAT_SIMPLE
+             146 BUILD_STRING         2
+             148 LOAD_FAST            (headers)
+             150 LOAD_CONST           ("Authorization")
+             152 STORE_SUBSCR
+
+125:         156 LOAD_FAST_LOAD_FAST  (key, headers)
+             158 LOAD_CONST           ("X-Management-Key")
+             160 STORE_SUBSCR
+
+126:     >>  164 LOAD_FAST            (headers)
+             166 RETURN_VALUE
+
+
+# Method Name:       cpa_base_url
+# Filename:          upload_targets.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        129
+# Constants:
+#    0: None
+#    1: 'url'
+#    2: 'http://127.0.0.1:48317'
+#    3: '/'
+# Names:
+#    0: str
+#    1: cpa_config
+#    2: get
+#    3: strip
+#    4: rstrip
+# Varnames:
+#	config, base
+# Positional arguments:
+#	config
+# Local variables:
+#    1: base
+129:           0 RESUME               0
+
+130:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_GLOBAL          (NULL + cpa_config)
+              22 LOAD_FAST            (config)
+              24 CALL                 (1 positional)
+              32 LOAD_ATTR            (NULL|self + get)
+              52 LOAD_CONST           ("url")
+              54 CALL                 (1 positional)
+              62 COPY                 1
+              64 TO_BOOL
+              72 POP_JUMP_IF_TRUE     (to 80)
+              76 POP_TOP
+              78 LOAD_CONST           ("http://127.0.0.1:48317")
+         >>   80 CALL                 (1 positional)
+              88 LOAD_ATTR            (NULL|self + strip)
+             108 CALL                 (0 positional)
+             116 STORE_FAST           (base)
+
+131:         118 LOAD_FAST            (base)
+             120 LOAD_ATTR            (NULL|self + rstrip)
+             140 LOAD_CONST           ("/")
+             142 CALL                 (1 positional)
+             150 RETURN_VALUE
+
+
+# Method Name:       cpa_oauth_lock
+# Filename:          upload_targets.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  11
+# Stack size:        8
+# Flags:             0x01000023 (0x1000000 | GENERATOR | NEWLOCALS | OPTIMIZED)
+# First Line:        134
+# Constants:
+#    0: "Serialize CPA Codex OAuth sessions across worker processes.\n\nCLIProxyAPI completes all pending Codex sessions after one auth succeeds,\nso concurrent Codex OAuth imports can invalidate each other's state.\n"
+#    1: 'lock_timeout'
+#    2: 900
+#    3: 'lock_poll'
+#    4: 1.0
+#    5: 'data'
+#    6: True
+#    7: ('parents', 'exist_ok')
+#    8: 'cpa_oauth.lock'
+#    9: 'a+b'
+#   10: 1
+#   11: False
+#   12: 0
+#   13: 'nt'
+#   14: 'timeout waiting for CPA OAuth lock: '
+#   15: 'CPA 上传正在等待其他线程完成 OAuth ...'
+#   16: 'pid='
+#   17: ' acquired_at='
+#   18: '%Y-%m-%d %H:%M:%S'
+#   19: '\n'
+#   20: 'utf-8'
+#   21: 'CPA OAuth 锁已获取，继续上传'
+#   22: None
+# Names:
+#    0: cpa_config
+#    1: int
+#    2: get
+#    3: float
+#    4: ROOT
+#    5: mkdir
+#    6: open
+#    7: time
+#    8: max
+#    9: seek
+#   10: os
+#   11: name
+#   12: msvcrt
+#   13: locking
+#   14: fileno
+#   15: LK_NBLCK
+#   16: fcntl
+#   17: flock
+#   18: LOCK_EX
+#   19: LOCK_NB
+#   20: OSError
+#   21: TimeoutError
+#   22: sleep
+#   23: truncate
+#   24: write
+#   25: getpid
+#   26: strftime
+#   27: encode
+#   28: flush
+#   29: Exception
+#   30: LK_UNLCK
+#   31: LOCK_UN
+#   32: close
+# Varnames:
+#	config, log_fn, cfg, timeout, poll, lock_dir, lock_path, fh, deadline, acquired, logged_wait
+# Positional arguments:
+#	config
+# Local variables:
+#    1: log_fn
+#    2: cfg
+#    3: timeout
+#    4: poll
+#    5: lock_dir
+#    6: lock_path
+#    7: fh
+#    8: deadline
+#    9: acquired
+#   10: logged_wait
+134:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+
+145:           6 LOAD_GLOBAL          (NULL + cpa_config)
+              16 LOAD_FAST            (config)
+              18 CALL                 (1 positional)
+              26 STORE_FAST           (cfg)
+
+146:          28 LOAD_GLOBAL          (NULL + int)
+              38 LOAD_FAST            (cfg)
+              40 LOAD_ATTR            (NULL|self + get)
+              60 LOAD_CONST           ("lock_timeout")
+              62 CALL                 (1 positional)
+              70 COPY                 1
+              72 TO_BOOL
+              80 POP_JUMP_IF_TRUE     (to 88)
+              84 POP_TOP
+              86 LOAD_CONST           (900)
+         >>   88 CALL                 (1 positional)
+              96 STORE_FAST           (timeout)
+
+147:          98 LOAD_GLOBAL          (NULL + float)
+             108 LOAD_FAST            (cfg)
+             110 LOAD_ATTR            (NULL|self + get)
+             130 LOAD_CONST           ("lock_poll")
+             132 CALL                 (1 positional)
+             140 COPY                 1
+             142 TO_BOOL
+             150 POP_JUMP_IF_TRUE     (to 158)
+             154 POP_TOP
+             156 LOAD_CONST           (1.0)
+         >>  158 CALL                 (1 positional)
+             166 STORE_FAST           (poll)
+
+148:         168 LOAD_GLOBAL          (ROOT)
+             178 LOAD_CONST           ("data")
+             180 BINARY_OP            (/)
+             184 STORE_FAST           (lock_dir)
+
+149:         186 LOAD_FAST            (lock_dir)
+             188 LOAD_ATTR            (NULL|self + mkdir)
+             208 LOAD_CONST           (True)
+             210 LOAD_CONST           (True)
+             212 LOAD_CONST           (('parents', 'exist_ok'))
+             214 CALL_KW              2
+             216 POP_TOP
+
+150:         218 LOAD_FAST            (lock_dir)
+             220 LOAD_CONST           ("cpa_oauth.lock")
+             222 BINARY_OP            (/)
+             226 STORE_FAST           (lock_path)
+
+151:         228 LOAD_FAST            (lock_path)
+             230 LOAD_ATTR            (NULL|self + open)
+             250 LOAD_CONST           ("a+b")
+             252 CALL                 (1 positional)
+             260 STORE_FAST           (fh)
+
+152:         262 LOAD_GLOBAL          (time)
+             272 LOAD_ATTR            (time)
+             292 PUSH_NULL
+             294 CALL                 (0 positional)
+             302 LOAD_GLOBAL          (NULL + max)
+             312 LOAD_CONST           (1)
+             314 LOAD_FAST            (timeout)
+             316 CALL                 (2 positional)
+             324 BINARY_OP            (+)
+             328 STORE_FAST           (deadline)
+
+153:         330 LOAD_CONST           (False)
+             332 STORE_FAST           (acquired)
+
+154:         334 LOAD_CONST           (False)
+             336 STORE_FAST           (logged_wait)
+
+155:         338 NOP
+
+156:         340 LOAD_FAST            (acquired)
+             342 TO_BOOL
+             350 POP_JUMP_IF_TRUE     (to 694)
+
+157:         354 NOP
+
+158:         356 LOAD_FAST            (fh)
+             358 LOAD_ATTR            (NULL|self + seek)
+             378 LOAD_CONST           (0)
+             380 CALL                 (1 positional)
+             388 POP_TOP
+
+159:         390 LOAD_GLOBAL          (os)
+             400 LOAD_ATTR            (name)
+             420 LOAD_CONST           ("nt")
+             422 COMPARE_OP           (==)
+             426 POP_JUMP_IF_FALSE    (to 536)
+
+160:         430 LOAD_GLOBAL          (msvcrt)
+             440 LOAD_ATTR            (locking)
+             460 PUSH_NULL
+             462 LOAD_FAST            (fh)
+             464 LOAD_ATTR            (NULL|self + fileno)
+             484 CALL                 (0 positional)
+             492 LOAD_GLOBAL          (msvcrt)
+             502 LOAD_ATTR            (LK_NBLCK)
+             522 LOAD_CONST           (1)
+             524 CALL                 (3 positional)
+             532 POP_TOP
+             534 JUMP_FORWARD         (to 672)
+
+162:     >>  536 LOAD_GLOBAL          (fcntl)
+             546 LOAD_ATTR            (flock)
+             566 PUSH_NULL
+             568 LOAD_FAST            (fh)
+             570 LOAD_ATTR            (NULL|self + fileno)
+             590 CALL                 (0 positional)
+             598 LOAD_GLOBAL          (fcntl)
+             608 LOAD_ATTR            (LOCK_EX)
+             628 LOAD_GLOBAL          (fcntl)
+             638 LOAD_ATTR            (LOCK_NB)
+             658 BINARY_OP            (|)
+             662 CALL                 (2 positional)
+             670 POP_TOP
+
+163:     >>  672 LOAD_CONST           (True)
+             674 STORE_FAST           (acquired)
+
+156:         676 LOAD_FAST            (acquired)
+             678 TO_BOOL
+             686 POP_JUMP_IF_TRUE     (to 694)
+             690 JUMP_BACKWARD        (to 354)
+
+171:     >>  694 NOP
+
+172:         696 LOAD_FAST            (fh)
+             698 LOAD_ATTR            (NULL|self + seek)
+             718 LOAD_CONST           (0)
+             720 CALL                 (1 positional)
+             728 POP_TOP
+
+173:         730 LOAD_FAST            (fh)
+             732 LOAD_ATTR            (NULL|self + truncate)
+             752 CALL                 (0 positional)
+             760 POP_TOP
+
+174:         762 LOAD_FAST            (fh)
+             764 LOAD_ATTR            (NULL|self + write)
+             784 LOAD_CONST           ("pid=")
+             786 LOAD_GLOBAL          (os)
+             796 LOAD_ATTR            (getpid)
+             816 PUSH_NULL
+             818 CALL                 (0 positional)
+             826 FORMAT_SIMPLE
+             828 LOAD_CONST           (" acquired_at=")
+             830 LOAD_GLOBAL          (time)
+             840 LOAD_ATTR            (strftime)
+             860 PUSH_NULL
+             862 LOAD_CONST           ("%Y-%m-%d %H:%M:%S")
+             864 CALL                 (1 positional)
+             872 FORMAT_SIMPLE
+             874 LOAD_CONST           ("\n")
+             876 BUILD_STRING         5
+             878 LOAD_ATTR            (NULL|self + encode)
+             898 LOAD_CONST           ("utf-8")
+             900 CALL                 (1 positional)
+             908 CALL                 (1 positional)
+             916 POP_TOP
+
+175:         918 LOAD_FAST            (fh)
+             920 LOAD_ATTR            (NULL|self + flush)
+             940 CALL                 (0 positional)
+             948 POP_TOP
+
+178:         950 LOAD_FAST            (log_fn)
+             952 TO_BOOL
+             960 POP_JUMP_IF_FALSE    (to 994)
+             964 LOAD_FAST            (logged_wait)
+             966 TO_BOOL
+             974 POP_JUMP_IF_FALSE    (to 994)
+
+179:         978 LOAD_FAST            (log_fn)
+             980 PUSH_NULL
+             982 LOAD_CONST           ("CPA OAuth 锁已获取，继续上传")
+             984 CALL                 (1 positional)
+             992 POP_TOP
+
+180:     >>  994 LOAD_CONST           (None)
+             996 YIELD_VALUE          0
+             998 RESUME               1
+            1000 POP_TOP
+
+182:        1002 LOAD_FAST            (acquired)
+            1004 TO_BOOL
+            1012 POP_JUMP_IF_FALSE    (to 1368)
+
+183:        1016 NOP
+
+184:        1018 LOAD_FAST            (fh)
+            1020 LOAD_ATTR            (NULL|self + seek)
+            1040 LOAD_CONST           (0)
+            1042 CALL                 (1 positional)
+            1050 POP_TOP
+
+185:        1052 LOAD_FAST            (fh)
+            1054 LOAD_ATTR            (NULL|self + truncate)
+            1074 CALL                 (0 positional)
+            1082 POP_TOP
+
+186:        1084 LOAD_GLOBAL          (os)
+            1094 LOAD_ATTR            (name)
+            1114 LOAD_CONST           ("nt")
+            1116 COMPARE_OP           (==)
+            1120 POP_JUMP_IF_FALSE    (to 1264)
+
+187:        1124 LOAD_FAST            (fh)
+            1126 LOAD_ATTR            (NULL|self + seek)
+            1146 LOAD_CONST           (0)
+            1148 CALL                 (1 positional)
+            1156 POP_TOP
+
+188:        1158 LOAD_GLOBAL          (msvcrt)
+            1168 LOAD_ATTR            (locking)
+            1188 PUSH_NULL
+            1190 LOAD_FAST            (fh)

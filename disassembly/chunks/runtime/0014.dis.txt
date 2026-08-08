@@ -1,0 +1,800 @@
+             114 POP_TOP
+             116 RETURN_VALUE
+         >>  118 PUSH_EXC_INFO
+             120 WITH_EXCEPT_START    0
+             122 TO_BOOL
+             130 POP_JUMP_IF_TRUE     (to 136)
+             134 RERAISE              2
+         >>  136 POP_TOP
+             138 POP_EXCEPT
+             140 POP_TOP
+             142 POP_TOP
+             144 RETURN_CONST         (None)
+         >>  146 COPY                 3
+             148 POP_EXCEPT
+             150 RERAISE              1
+
+ExceptionTable:
+  26 to 96 -> 118 [1] lasti
+  118 to 136 -> 146 [3] lasti
+
+# Method Name:       __init__
+# Filename:          runtime.py
+# Argument count:    4
+# Position-only argument count: 0
+# Keyword-only arguments: 4
+# Number of locals:  9
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1134
+# Constants:
+#    0: None
+#    1: 'gptmail'
+#    2: 'url'
+#    3: '/'
+#    4: 'keyword'
+#    5: 'api_key'
+#    6: 'email_code_timeout'
+#    7: 150
+#    8: 30
+#    9: 600
+#   10: 'email_poll_interval'
+#   11: 5
+#   12: 1
+#   13: 60
+#   14: 'email_poll_attempts'
+#   15: 1000
+#   16: False
+# Names:
+#    0: isinstance
+#    1: get
+#    2: dict
+#    3: entry
+#    4: config
+#    5: _clean
+#    6: rstrip
+#    7: base_url
+#    8: keyword
+#    9: api_key
+#   10: log_fn
+#   11: _as_int
+#   12: timeout
+#   13: interval
+#   14: max_attempts
+#   15: phase_gate
+#   16: threading
+#   17: Event
+#   18: stop_event
+#   19: task_id
+#   20: state_fn
+#   21: phase_slot_acquired
+# Varnames:
+#	self, entry, config, log_fn, phase_gate, stop_event, task_id, state_fn, gptmail
+# Positional arguments:
+#	self, entry, config, log_fn
+# Local variables:
+#    4: phase_gate
+#    5: stop_event
+#    6: task_id
+#    7: state_fn
+#    8: gptmail
+1134:           0 RESUME               0
+
+1145:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (config)
+              14 LOAD_ATTR            (NULL|self + get)
+              34 LOAD_CONST           ("gptmail")
+              36 CALL                 (1 positional)
+              44 LOAD_GLOBAL          (dict)
+              54 CALL                 (2 positional)
+              62 TO_BOOL
+              70 POP_JUMP_IF_FALSE    (to 108)
+              74 LOAD_FAST            (config)
+              76 LOAD_ATTR            (NULL|self + get)
+              96 LOAD_CONST           ("gptmail")
+              98 CALL                 (1 positional)
+             106 JUMP_FORWARD         (to 110)
+         >>  108 BUILD_MAP            0
+         >>  110 STORE_FAST           (gptmail)
+
+1146:         112 LOAD_FAST_LOAD_FAST  (entry, self)
+             114 STORE_ATTR           (entry)
+
+1147:         124 LOAD_FAST_LOAD_FAST  (config, self)
+             126 STORE_ATTR           (config)
+
+1148:         136 LOAD_GLOBAL          (NULL + _clean)
+             146 LOAD_FAST            (gptmail)
+             148 LOAD_ATTR            (NULL|self + get)
+             168 LOAD_CONST           ("url")
+             170 CALL                 (1 positional)
+             178 CALL                 (1 positional)
+             186 LOAD_ATTR            (NULL|self + rstrip)
+             206 LOAD_CONST           ("/")
+             208 CALL                 (1 positional)
+             216 LOAD_FAST            (self)
+             218 STORE_ATTR           (base_url)
+
+1149:         228 LOAD_GLOBAL          (NULL + _clean)
+             238 LOAD_FAST            (gptmail)
+             240 LOAD_ATTR            (NULL|self + get)
+             260 LOAD_CONST           ("keyword")
+             262 CALL                 (1 positional)
+             270 CALL                 (1 positional)
+             278 LOAD_FAST            (self)
+             280 STORE_ATTR           (keyword)
+
+1150:         290 LOAD_GLOBAL          (NULL + _clean)
+             300 LOAD_FAST            (gptmail)
+             302 LOAD_ATTR            (NULL|self + get)
+             322 LOAD_CONST           ("api_key")
+             324 CALL                 (1 positional)
+             332 CALL                 (1 positional)
+             340 LOAD_FAST            (self)
+             342 STORE_ATTR           (api_key)
+
+1151:         352 LOAD_FAST_LOAD_FAST  (log_fn, self)
+             354 STORE_ATTR           (log_fn)
+
+1152:         364 LOAD_GLOBAL          (NULL + _as_int)
+             374 LOAD_FAST            (config)
+             376 LOAD_ATTR            (NULL|self + get)
+             396 LOAD_CONST           ("email_code_timeout")
+             398 CALL                 (1 positional)
+             406 LOAD_CONST           (150)
+             408 LOAD_CONST           (30)
+             410 LOAD_CONST           (600)
+             412 CALL                 (4 positional)
+             420 LOAD_FAST            (self)
+             422 STORE_ATTR           (timeout)
+
+1153:         432 LOAD_GLOBAL          (NULL + _as_int)
+             442 LOAD_FAST            (config)
+             444 LOAD_ATTR            (NULL|self + get)
+             464 LOAD_CONST           ("email_poll_interval")
+             466 CALL                 (1 positional)
+             474 LOAD_CONST           (5)
+             476 LOAD_CONST           (1)
+             478 LOAD_CONST           (60)
+             480 CALL                 (4 positional)
+             488 LOAD_FAST            (self)
+             490 STORE_ATTR           (interval)
+
+1154:         500 LOAD_GLOBAL          (NULL + _as_int)
+             510 LOAD_FAST            (config)
+             512 LOAD_ATTR            (NULL|self + get)
+             532 LOAD_CONST           ("email_poll_attempts")
+             534 CALL                 (1 positional)
+             542 LOAD_CONST           (30)
+             544 LOAD_CONST           (1)
+             546 LOAD_CONST           (1000)
+             548 CALL                 (4 positional)
+             556 LOAD_FAST            (self)
+             558 STORE_ATTR           (max_attempts)
+
+1155:         568 LOAD_FAST_LOAD_FAST  (phase_gate, self)
+             570 STORE_ATTR           (phase_gate)
+
+1156:         580 LOAD_FAST            (stop_event)
+             582 COPY                 1
+             584 TO_BOOL
+             592 POP_JUMP_IF_TRUE     (to 638)
+             596 POP_TOP
+             598 LOAD_GLOBAL          (threading)
+             608 LOAD_ATTR            (Event)
+             628 PUSH_NULL
+             630 CALL                 (0 positional)
+         >>  638 LOAD_FAST            (self)
+             640 STORE_ATTR           (stop_event)
+
+1157:         650 LOAD_FAST_LOAD_FAST  (task_id, self)
+             652 STORE_ATTR           (task_id)
+
+1158:         662 LOAD_FAST_LOAD_FAST  (state_fn, self)
+             664 STORE_ATTR           (state_fn)
+
+1159:         674 LOAD_CONST           (False)
+             676 LOAD_FAST            (self)
+             678 STORE_ATTR           (phase_slot_acquired)
+             688 RETURN_CONST         (None)
+
+
+# Method Name:       _headers
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1161
+# Constants:
+#    0: None
+#    1: 'Bearer '
+#    2: 'application/json'
+#    3: ('Authorization', 'Content-Type', 'Accept')
+# Names:
+#    0: api_key
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+1161:           0 RESUME               0
+
+1164:           2 LOAD_CONST           ("Bearer ")
+               4 LOAD_FAST            (self)
+               6 LOAD_ATTR            (api_key)
+              26 FORMAT_SIMPLE
+              28 BUILD_STRING         2
+
+1165:          30 LOAD_CONST           ("application/json")
+
+1166:          32 LOAD_CONST           ("application/json")
+
+1163:          34 LOAD_CONST           (('Authorization', 'Content-Type', 'Accept'))
+              36 BUILD_CONST_KEY_MAP  3
+              38 RETURN_VALUE
+
+
+# Method Name:       acquire_login_slot
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1169
+# Constants:
+#    0: None
+#    1: 'waiting_auto_email_slot'
+#    2: ('status', 'email')
+#    3: True
+#    4: 'email_login_started'
+#    5: '已获得邮箱验证码槽，开始 GPTMail 邮箱登录: '
+#    6: 'info'
+# Names:
+#    0: phase_slot_acquired
+#    1: phase_gate
+#    2: state_fn
+#    3: task_id
+#    4: entry
+#    5: email
+#    6: acquire
+#    7: stop_event
+#    8: log_fn
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+1169:           0 RESUME               0
+
+1170:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (phase_slot_acquired)
+              24 TO_BOOL
+              32 POP_JUMP_IF_TRUE     (to 70)
+              36 LOAD_FAST            (self)
+              38 LOAD_ATTR            (phase_gate)
+              58 TO_BOOL
+              66 POP_JUMP_IF_TRUE     (to 72)
+
+1171:     >>   70 RETURN_CONST         (None)
+
+1172:     >>   72 LOAD_FAST            (self)
+              74 LOAD_ATTR            (state_fn)
+              94 TO_BOOL
+             102 POP_JUMP_IF_FALSE    (to 234)
+             106 LOAD_FAST            (self)
+             108 LOAD_ATTR            (task_id)
+             128 TO_BOOL
+             136 POP_JUMP_IF_FALSE    (to 234)
+
+1173:         140 LOAD_FAST            (self)
+             142 LOAD_ATTR            (NULL|self + state_fn)
+             162 LOAD_FAST            (self)
+             164 LOAD_ATTR            (task_id)
+             184 LOAD_CONST           ("waiting_auto_email_slot")
+             186 LOAD_FAST            (self)
+             188 LOAD_ATTR            (entry)
+             208 LOAD_ATTR            (email)
+             228 LOAD_CONST           (('status', 'email'))
+             230 CALL_KW              3
+             232 POP_TOP
+
+1174:     >>  234 LOAD_FAST            (self)
+             236 LOAD_ATTR            (phase_gate)
+             256 LOAD_ATTR            (NULL|self + acquire)
+             276 LOAD_FAST            (self)
+             278 LOAD_ATTR            (stop_event)
+             298 CALL                 (1 positional)
+             306 POP_TOP
+
+1175:         308 LOAD_CONST           (True)
+             310 LOAD_FAST            (self)
+             312 STORE_ATTR           (phase_slot_acquired)
+
+1176:         322 LOAD_FAST            (self)
+             324 LOAD_ATTR            (state_fn)
+             344 TO_BOOL
+             352 POP_JUMP_IF_FALSE    (to 484)
+             356 LOAD_FAST            (self)
+             358 LOAD_ATTR            (task_id)
+             378 TO_BOOL
+             386 POP_JUMP_IF_FALSE    (to 484)
+
+1177:         390 LOAD_FAST            (self)
+             392 LOAD_ATTR            (NULL|self + state_fn)
+             412 LOAD_FAST            (self)
+             414 LOAD_ATTR            (task_id)
+             434 LOAD_CONST           ("email_login_started")
+             436 LOAD_FAST            (self)
+             438 LOAD_ATTR            (entry)
+             458 LOAD_ATTR            (email)
+             478 LOAD_CONST           (('status', 'email'))
+             480 CALL_KW              3
+             482 POP_TOP
+
+1178:     >>  484 LOAD_FAST            (self)
+             486 LOAD_ATTR            (NULL|self + log_fn)
+             506 LOAD_CONST           ("已获得邮箱验证码槽，开始 GPTMail 邮箱登录: ")
+             508 LOAD_FAST            (self)
+             510 LOAD_ATTR            (entry)
+             530 LOAD_ATTR            (email)
+             550 FORMAT_SIMPLE
+             552 BUILD_STRING         2
+             554 LOAD_CONST           ("info")
+             556 CALL                 (2 positional)
+             564 POP_TOP
+             566 RETURN_CONST         (None)
+
+
+# Method Name:       _release_login_slot
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        2
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1180
+# Constants:
+#    0: None
+#    1: False
+# Names:
+#    0: phase_slot_acquired
+#    1: phase_gate
+#    2: release
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+1180:           0 RESUME               0
+
+1181:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (phase_slot_acquired)
+              24 TO_BOOL
+              32 POP_JUMP_IF_FALSE    (to 122)
+              36 LOAD_FAST            (self)
+              38 LOAD_ATTR            (phase_gate)
+              58 TO_BOOL
+              66 POP_JUMP_IF_FALSE    (to 122)
+
+1182:          70 LOAD_FAST            (self)
+              72 LOAD_ATTR            (phase_gate)
+              92 LOAD_ATTR            (NULL|self + release)
+             112 CALL                 (0 positional)
+             120 POP_TOP
+
+1183:     >>  122 LOAD_CONST           (False)
+             124 LOAD_FAST            (self)
+             126 STORE_ATTR           (phase_slot_acquired)
+             136 RETURN_CONST         (None)
+
+
+# Method Name:       mark_sent
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1185
+# Constants:
+#    0: None
+#    1: 'waiting_gptmail_email_code'
+#    2: ('status', 'email')
+#    3: '已进入邮箱验证码页，开始 GPTMail 轮询: '
+#    4: 'info'
+# Names:
+#    0: acquire_login_slot
+#    1: state_fn
+#    2: task_id
+#    3: entry
+#    4: email
+#    5: log_fn
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+1185:           0 RESUME               0
+
+1186:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + acquire_login_slot)
+              24 CALL                 (0 positional)
+              32 POP_TOP
+
+1187:          34 LOAD_FAST            (self)
+              36 LOAD_ATTR            (state_fn)
+              56 TO_BOOL
+              64 POP_JUMP_IF_FALSE    (to 196)
+              68 LOAD_FAST            (self)
+              70 LOAD_ATTR            (task_id)
+              90 TO_BOOL
+              98 POP_JUMP_IF_FALSE    (to 196)
+
+1188:         102 LOAD_FAST            (self)
+             104 LOAD_ATTR            (NULL|self + state_fn)
+             124 LOAD_FAST            (self)
+             126 LOAD_ATTR            (task_id)
+             146 LOAD_CONST           ("waiting_gptmail_email_code")
+             148 LOAD_FAST            (self)
+             150 LOAD_ATTR            (entry)
+             170 LOAD_ATTR            (email)
+             190 LOAD_CONST           (('status', 'email'))
+             192 CALL_KW              3
+             194 POP_TOP
+
+1189:     >>  196 LOAD_FAST            (self)
+             198 LOAD_ATTR            (NULL|self + log_fn)
+             218 LOAD_CONST           ("已进入邮箱验证码页，开始 GPTMail 轮询: ")
+             220 LOAD_FAST            (self)
+             222 LOAD_ATTR            (entry)
+             242 LOAD_ATTR            (email)
+             262 FORMAT_SIMPLE
+             264 BUILD_STRING         2
+             266 LOAD_CONST           ("info")
+             268 CALL                 (2 positional)
+             276 POP_TOP
+             278 RETURN_CONST         (None)
+
+
+# Method Name:       _report_timeout
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        9
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1191
+# Constants:
+#    0: None
+#    1: '/api/mailboxes/report-code'
+#    2: 'timeout'
+#    3: 's no verification code'
+#    4: ('email', 'result', 'detail')
+#    5: 15
+#    6: ('headers', 'json', 'timeout')
+#    7: 200
+#    8: 300
+#    9: 'GPTMail 超时上报未接受: HTTP '
+#   10: ' ('
+#   11: ')'
+#   12: 'warn'
+#   13: 'GPTMail 超时上报失败（不影响任务结果）: '
+# Names:
+#    0: requests
+#    1: post
+#    2: base_url
+#    3: _headers
+#    4: entry
+#    5: email
+#    6: timeout
+#    7: requests_kwargs
+#    8: email_proxy
+#    9: config
+#   10: int
+#   11: status_code
+#   12: log_fn
+#   13: RequestException
+#   14: _redact_text
+# Varnames:
+#	self, response, exc
+# Positional arguments:
+#	self
+# Local variables:
+#    1: response
+#    2: exc
+1191:           0 RESUME               0
+
+1192:           2 NOP
+
+1193:           4 LOAD_GLOBAL          (requests)
+              14 LOAD_ATTR            (post)
+              34 PUSH_NULL
+
+1194:          36 LOAD_FAST            (self)
+              38 LOAD_ATTR            (base_url)
+              58 FORMAT_SIMPLE
+              60 LOAD_CONST           ("/api/mailboxes/report-code")
+              62 BUILD_STRING         2
+
+1193:          64 BUILD_TUPLE          1
+
+1195:          66 LOAD_FAST            (self)
+              68 LOAD_ATTR            (_headers)
+
+1196:          88 LOAD_FAST            (self)
+              90 LOAD_ATTR            (entry)
+             110 LOAD_ATTR            (email)
+             130 LOAD_CONST           ("timeout")
+             132 LOAD_FAST            (self)
+             134 LOAD_ATTR            (timeout)
+             154 FORMAT_SIMPLE
+             156 LOAD_CONST           ("s no verification code")
+             158 BUILD_STRING         2
+             160 LOAD_CONST           (('email', 'result', 'detail'))
+             162 BUILD_CONST_KEY_MAP  3
+
+1197:         164 LOAD_CONST           (15)
+
+1193:         166 LOAD_CONST           (('headers', 'json', 'timeout'))
+             168 BUILD_CONST_KEY_MAP  3
+
+1198:         170 LOAD_GLOBAL          (NULL + requests_kwargs)
+             180 LOAD_GLOBAL          (NULL + email_proxy)
+             190 LOAD_FAST            (self)
+             192 LOAD_ATTR            (config)
+             212 CALL                 (1 positional)
+             220 CALL                 (1 positional)
+
+1193:         228 DICT_MERGE           1
+             230 CALL_FUNCTION_EX     (keyword and positional arguments)
+             232 STORE_FAST           (response)
+
+1200:         234 LOAD_CONST           (200)
+             236 LOAD_GLOBAL          (NULL + int)
+             246 LOAD_FAST            (response)
+             248 LOAD_ATTR            (status_code)
+             268 CALL                 (1 positional)
+             276 SWAP                 (TOS <-> TOS1)
+             278 COPY                 2
+             280 COMPARE_OP           (<=)
+             284 POP_JUMP_IF_FALSE    (to 300)
+             288 LOAD_CONST           (300)
+             290 COMPARE_OP           (<)
+             294 POP_JUMP_IF_TRUE     (to 414)
+             298 JUMP_FORWARD         (to 302)
+         >>  300 POP_TOP
+
+1201:     >>  302 LOAD_FAST            (self)
+             304 LOAD_ATTR            (NULL|self + log_fn)
+             324 LOAD_CONST           ("GPTMail 超时上报未接受: HTTP ")
+             326 LOAD_FAST            (response)
+             328 LOAD_ATTR            (status_code)
+             348 FORMAT_SIMPLE
+             350 LOAD_CONST           (" (")
+             352 LOAD_FAST            (self)
+             354 LOAD_ATTR            (entry)
+             374 LOAD_ATTR            (email)
+             394 FORMAT_SIMPLE
+             396 LOAD_CONST           (")")
+             398 BUILD_STRING         5
+             400 LOAD_CONST           ("warn")
+             402 CALL                 (2 positional)
+             410 POP_TOP
+             412 RETURN_CONST         (None)
+
+1200:     >>  414 RETURN_CONST         (None)
+         >>  416 PUSH_EXC_INFO
+
+1202:         418 LOAD_GLOBAL          (requests)
+             428 LOAD_ATTR            (RequestException)
+             448 CHECK_EXC_MATCH
+             450 POP_JUMP_IF_FALSE    (to 534)
+             454 STORE_FAST           (exc)
+
+1203:         456 LOAD_FAST            (self)
+             458 LOAD_ATTR            (NULL|self + log_fn)
+             478 LOAD_CONST           ("GPTMail 超时上报失败（不影响任务结果）: ")
+             480 LOAD_GLOBAL          (NULL + _redact_text)
+             490 LOAD_FAST            (exc)
+             492 CALL                 (1 positional)
+             500 FORMAT_SIMPLE
+             502 BUILD_STRING         2
+             504 LOAD_CONST           ("warn")
+             506 CALL                 (2 positional)
+             514 POP_TOP
+             516 POP_EXCEPT
+             518 LOAD_CONST           (None)
+             520 STORE_FAST           (exc)
+             522 DELETE_FAST          (exc)
+             524 RETURN_CONST         (None)
+         >>  526 LOAD_CONST           (None)
+             528 STORE_FAST           (exc)
+             530 DELETE_FAST          (exc)
+             532 RERAISE              1
+
+1202:     >>  534 RERAISE              0
+         >>  536 COPY                 3
+             538 POP_EXCEPT
+             540 RERAISE              1
+
+ExceptionTable:
+  4 to 410 -> 416 [0]
+  416 to 454 -> 536 [1] lasti
+  456 to 514 -> 526 [1] lasti
+  526 to 534 -> 536 [1] lasti
+
+# Method Name:       wait_code
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  14
+# Stack size:        11
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1205
+# Constants:
+#    0: None
+#    1: '邮箱任务与 GPTMail 取码地址不匹配'
+#    2: 'gptmail_auth_failed: GPTMail URL 或 API Key 未配置'
+#    3: 0
+#    4: '/api/mail/code'
+#    5: 10
+#    6: 'inbox,junk'
+#    7: ('email', 'keyword', 'limit', 'folders')
+#    8: 'task_stopped'
+#    9: 1
+#   10: 1.0
+#   11: 30.0
+#   12: ('headers', 'params', 'timeout')
+#   13: {401, 403}
+#   14: 'gptmail_auth_failed: GPTMail API Key 无效或无权限'
+#   15: 429
+#   16: 500
+#   17: 'GPTMail 暂时不可用，继续轮询 '
+#   18: '/'
+#   19: ': HTTP '
+#   20: 'warn'
+#   21: 200
+#   22: 300
+#   23: 'found'
+#   24: 'email'
+#   25: 'GPTMail 返回邮箱不匹配，忽略本次结果: '
+#   26: ''
+#   27: 'code'
+#   28: '\\d{6}'
+#   29: '已收到 GPTMail 邮箱验证码: '
+#   30: 'success'
+#   31: 'GPTMail 返回的验证码格式无效，继续轮询: '
+#   32: 'GPTMail 查询失败，继续轮询 '
+#   33: 'GPTMail 网络暂时不可用，继续轮询 '
+#   34: ': '
+#   35: 0.0
+#   36: 'gptmail_code_timeout: '
+#   37: ' 在 '
+#   38: 's 内未收到新验证码'
+# Names:
+#    0: _clean
+#    1: lower
+#    2: entry
+#    3: email
+#    4: MailboxPoolError
+#    5: base_url
+#    6: api_key
+#    7: acquire_login_slot
+#    8: time
+#    9: monotonic
+#   10: timeout
+#   11: keyword
+#   12: max_attempts
+#   13: stop_event
+#   14: is_set
+#   15: max
+#   16: requests
+#   17: get
+#   18: _headers
+#   19: min
+#   20: requests_kwargs
+#   21: email_proxy
+#   22: config
+#   23: int
+#   24: status_code
+#   25: log_fn
+#   26: json
+#   27: TypeError
+#   28: ValueError
+#   29: isinstance
+#   30: dict
+#   31: re
+#   32: fullmatch
+#   33: _release_login_slot
+#   34: RequestException
+#   35: _redact_text
+#   36: float
+#   37: interval
+#   38: wait
+#   39: _report_timeout
+# Varnames:
+#	self, email, deadline, attempts, endpoint, params, remaining, response, status, payload, returned_email, code, exc, wait_seconds
+# Positional arguments:
+#	self, email
+# Local variables:
+#    2: deadline
+#    3: attempts
+#    4: endpoint
+#    5: params
+#    6: remaining
+#    7: response
+#    8: status
+#    9: payload
+#   10: returned_email
+#   11: code
+#   12: exc
+#   13: wait_seconds
+1205:           0 RESUME               0
+
+1206:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (email)
+              14 CALL                 (1 positional)
+              22 LOAD_ATTR            (NULL|self + lower)
+              42 CALL                 (0 positional)
+              50 LOAD_FAST            (self)
+              52 LOAD_ATTR            (entry)
+              72 LOAD_ATTR            (email)
+              92 LOAD_ATTR            (NULL|self + lower)
+             112 CALL                 (0 positional)
+             120 COMPARE_OP           (!=)
+             124 POP_JUMP_IF_FALSE    (to 150)
+
+1207:         128 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             138 LOAD_CONST           ("邮箱任务与 GPTMail 取码地址不匹配")
+             140 CALL                 (1 positional)
+             148 RAISE_VARARGS        (exception instance)
+
+1208:     >>  150 LOAD_FAST            (self)
+             152 LOAD_ATTR            (base_url)
+             172 TO_BOOL
+             180 POP_JUMP_IF_FALSE    (to 218)
+             184 LOAD_FAST            (self)
+             186 LOAD_ATTR            (api_key)
+             206 TO_BOOL
+             214 POP_JUMP_IF_TRUE     (to 240)
+
+1209:     >>  218 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             228 LOAD_CONST           ("gptmail_auth_failed: GPTMail URL 或 API Key 未配置")
+             230 CALL                 (1 positional)
+             238 RAISE_VARARGS        (exception instance)
+
+1210:     >>  240 LOAD_FAST            (self)
+             242 LOAD_ATTR            (NULL|self + acquire_login_slot)
+             262 CALL                 (0 positional)
+             270 POP_TOP
+
+1211:         272 LOAD_GLOBAL          (time)
+             282 LOAD_ATTR            (monotonic)
+             302 PUSH_NULL
+             304 CALL                 (0 positional)
+             312 LOAD_FAST            (self)
+             314 LOAD_ATTR            (timeout)
+             334 BINARY_OP            (+)
+             338 STORE_FAST           (deadline)
+
+1212:         340 LOAD_CONST           (0)
+             342 STORE_FAST           (attempts)
+
+1213:         344 LOAD_FAST            (self)
+             346 LOAD_ATTR            (base_url)
+             366 FORMAT_SIMPLE
+             368 LOAD_CONST           ("/api/mail/code")
+             370 BUILD_STRING         2
+             372 STORE_FAST           (endpoint)
+
+1215:         374 LOAD_FAST            (self)
+             376 LOAD_ATTR            (entry)
+             396 LOAD_ATTR            (email)
+
+1216:         416 LOAD_FAST            (self)
+             418 LOAD_ATTR            (keyword)

@@ -1,0 +1,800 @@
+
+533:         338 LOAD_FAST            (candidate)
+             340 LOAD_ATTR            (cooldown_until)
+             360 LOAD_DEREF           (now)
+             362 BINARY_OP            (-)
+             366 STORE_FAST           (remaining)
+
+534:     >>  368 LOAD_FAST            (candidate)
+             370 LOAD_ATTR            (country)
+             390 LOAD_FAST            (candidate)
+             392 LOAD_ATTR            (provider_id)
+             412 BUILD_TUPLE          2
+             414 STORE_FAST           (key)
+
+535:         416 LOAD_DEREF           (self)
+             418 LOAD_ATTR            (stats)
+             438 LOAD_ATTR            (NULL|self + get)
+             458 LOAD_FAST            (key)
+             460 CALL                 (1 positional)
+             468 COPY                 1
+             470 TO_BOOL
+             478 POP_JUMP_IF_TRUE     (to 486)
+             482 POP_TOP
+             484 BUILD_MAP            0
+         >>  486 STORE_FAST           (stat)
+
+536:         488 LOAD_GLOBAL          (NULL + str)
+             498 LOAD_FAST            (stat)
+             500 LOAD_ATTR            (NULL|self + get)
+             520 LOAD_CONST           ("last_kind")
+             522 CALL                 (1 positional)
+             530 COPY                 1
+             532 TO_BOOL
+             540 POP_JUMP_IF_TRUE     (to 548)
+             544 POP_TOP
+             546 LOAD_CONST           ("")
+         >>  548 CALL                 (1 positional)
+             556 STORE_FAST           (last_kind)
+
+537:         558 LOAD_FAST            (last_kind)
+             560 LOAD_CONST           ("no_numbers")
+             562 COMPARE_OP           (==)
+             566 POP_JUMP_IF_FALSE    (to 836)
+             570 LOAD_FAST_LOAD_FAST  (remaining, no_numbers_window)
+             572 COMPARE_OP           (<=)
+             576 POP_JUMP_IF_FALSE    (to 836)
+
+538:         580 LOAD_FAST            (rows)
+             582 LOAD_ATTR            (NULL|self + append)
+
+539:         602 LOAD_GLOBAL          (NULL + SmsCandidate)
+
+540:         612 LOAD_FAST            (candidate)
+             614 LOAD_ATTR            (country)
+
+541:         634 LOAD_FAST            (candidate)
+             636 LOAD_ATTR            (provider_id)
+
+542:         656 LOAD_FAST            (candidate)
+             658 LOAD_ATTR            (price)
+
+543:         678 LOAD_FAST            (candidate)
+             680 LOAD_ATTR            (count)
+
+544:         700 LOAD_FAST            (candidate)
+             702 LOAD_ATTR            (score)
+             722 LOAD_GLOBAL          (NULL + min)
+             732 LOAD_FAST            (remaining)
+             734 LOAD_CONST           (10.0)
+             736 CALL                 (2 positional)
+             744 BINARY_OP            (-)
+
+545:         748 LOAD_FAST            (candidate)
+             750 LOAD_ATTR            (name)
+
+546:         770 LOAD_FAST            (candidate)
+             772 LOAD_ATTR            (cooldown_until)
+
+547:         792 LOAD_CONST           (True)
+
+548:         794 LOAD_FAST            (candidate)
+             796 LOAD_ATTR            (pool)
+
+539:         816 LOAD_CONST           (('country', 'provider_id', 'price', 'count', 'score', 'name', 'cooldown_until', 'fallback', 'pool'))
+             818 CALL_KW              9
+
+538:         820 CALL                 (1 positional)
+             828 POP_TOP
+             830 EXTENDED_ARG         (256)
+             832 JUMP_BACKWARD        (to 240)
+
+551:     >>  836 LOAD_FAST_LOAD_FAST  (remaining, fallback_window)
+             838 COMPARE_OP           (<=)
+             842 POP_JUMP_IF_FALSE    (to 1134)
+             846 LOAD_DEREF           (self)
+             848 LOAD_ATTR            (NULL|self + _allow_fallback)
+             868 LOAD_FAST            (stat)
+             870 LOAD_DEREF           (now)
+             872 CALL                 (2 positional)
+             880 TO_BOOL
+             888 POP_JUMP_IF_FALSE    (to 1128)
+
+552:         892 LOAD_FAST            (fallback_rows)
+             894 LOAD_ATTR            (NULL|self + append)
+
+553:         914 LOAD_GLOBAL          (NULL + SmsCandidate)
+
+554:         924 LOAD_FAST            (candidate)
+             926 LOAD_ATTR            (country)
+
+555:         946 LOAD_FAST            (candidate)
+             948 LOAD_ATTR            (provider_id)
+
+556:         968 LOAD_FAST            (candidate)
+             970 LOAD_ATTR            (price)
+
+557:         990 LOAD_FAST            (candidate)
+             992 LOAD_ATTR            (count)
+
+558:        1012 LOAD_FAST            (candidate)
+            1014 LOAD_ATTR            (score)
+            1034 LOAD_FAST            (remaining)
+            1036 BINARY_OP            (-)
+
+559:        1040 LOAD_FAST            (candidate)
+            1042 LOAD_ATTR            (name)
+
+560:        1062 LOAD_FAST            (candidate)
+            1064 LOAD_ATTR            (cooldown_until)
+
+561:        1084 LOAD_CONST           (True)
+
+562:        1086 LOAD_FAST            (candidate)
+            1088 LOAD_ATTR            (pool)
+
+553:        1108 LOAD_CONST           (('country', 'provider_id', 'price', 'count', 'score', 'name', 'cooldown_until', 'fallback', 'pool'))
+            1110 CALL_KW              9
+
+552:        1112 CALL                 (1 positional)
+            1120 POP_TOP
+            1122 EXTENDED_ARG         (256)
+            1124 JUMP_BACKWARD        (to 240)
+
+551:     >> 1128 EXTENDED_ARG         (256)
+            1130 JUMP_BACKWARD        (to 240)
+         >> 1134 EXTENDED_ARG         (256)
+            1136 JUMP_BACKWARD        (to 240)
+
+566:     >> 1140 LOAD_FAST            (rows)
+            1142 LOAD_ATTR            (NULL|self + append)
+            1162 LOAD_FAST            (candidate)
+            1164 CALL                 (1 positional)
+            1172 POP_TOP
+            1174 EXTENDED_ARG         (256)
+            1176 JUMP_BACKWARD        (to 240)
+
+528:     >> 1180 END_FOR
+            1182 POP_TOP
+
+567:        1184 LOAD_FAST            (rows)
+            1186 LOAD_ATTR            (NULL|self + sort)
+            1206 LOAD_CONST           (<Code311 code object <lambda> at 0x1060220a0, file sms_selector.py>, line 567)
+            1208 MAKE_FUNCTION
+            1210 LOAD_CONST           (True)
+            1212 LOAD_CONST           (('key', 'reverse'))
+            1214 CALL_KW              2
+            1216 POP_TOP
+
+568:        1218 LOAD_FAST            (rows)
+            1220 TO_BOOL
+            1228 POP_JUMP_IF_FALSE    (to 1236)
+
+569:        1232 LOAD_FAST            (rows)
+            1234 RETURN_VALUE
+
+571:     >> 1236 LOAD_CONST           (('item', 'SmsCandidate', 'return', 'tuple[float, int, float]'))
+            1238 LOAD_FAST            (now)
+            1240 LOAD_FAST            (self)
+            1242 BUILD_TUPLE          2
+            1244 LOAD_CONST           (<Code311 code object _fallback_key at 0x106022040, file sms_selector.py>, line 571)
+            1246 MAKE_FUNCTION
+            1248 SET_FUNCTION_ATTRIBUTE 8
+            1250 SET_FUNCTION_ATTRIBUTE 4
+            1252 STORE_FAST           (_fallback_key)
+
+578:        1254 LOAD_FAST            (fallback_rows)
+            1256 LOAD_ATTR            (NULL|self + sort)
+            1276 LOAD_FAST            (_fallback_key)
+            1278 LOAD_CONST           (('key',))
+            1280 CALL_KW              1
+            1282 POP_TOP
+
+579:        1284 LOAD_FAST            (fallback_rows)
+            1286 RETURN_VALUE
+
+
+# Method Name:       refresh
+# Filename:          sms_selector.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  23
+# Stack size:        15
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        581
+# Constants:
+#    0: None
+#    1: 5
+#    2: 'refresh_seconds'
+#    3: 12
+#    4: 'SMART_COUNTRY_SCOPE_FILTER'
+#    5: True
+#    6: 'blocked_countries'
+#    7: '12'
+#    8: 3
+#    9: 'pressure_refresh_seconds'
+#   10: 0
+#   11: 'pressure_min_candidates'
+#   12: 10
+#   13: 'get_price_candidates'
+#   14: 'provider does not support price candidates'
+#   15: 'service'
+#   16: 'dr'
+#   17: 'api_key'
+#   18: ''
+#   19: 'proxy'
+#   20: <Code311 code object <genexpr> at 0x1060291c0, file sms_selector.py>, line 610
+#   21: 'discovery_cache_seconds'
+#   22: 1
+#   23: ('countries',)
+#   24: '智能选号刷新失败: '
+#   25: '智能选号兜底候选'
+#   26: '智能选号候选'
+#   27: ' 冷却剩余'
+#   28: '秒'
+#   29: ' '
+#   30: ' 个，当前最优: '
+#   31: '/'
+#   32: ' 库存'
+#   33: ' 价格'
+#   34: '.4f'
+#   35: '智能选号暂无可用候选，可能是库存为0、最高价格过低或候选处于冷却'
+# Names:
+#    0: _cfg
+#    1: max
+#    2: _int
+#    3: get
+#    4: time
+#    5: _refresh_countries
+#    6: bool
+#    7: getattr
+#    8: sms
+#    9: set
+#   10: _clean_list
+#   11: lock
+#   12: len
+#   13: candidates
+#   14: last_refresh
+#   15: _load_shared_stats_locked
+#   16: raw_rows
+#   17: _build_candidates_locked
+#   18: list
+#   19: hasattr
+#   20: last_error
+#   21: str
+#   22: config
+#   23: strip
+#   24: __class__
+#   25: __name__
+#   26: tuple
+#   27: sorted
+#   28: _DISCOVERY_CACHE_LOCK
+#   29: _DISCOVERY_CACHE
+#   30: dict
+#   31: get_price_candidates
+#   32: isinstance
+#   33: Exception
+#   34: _log
+#   35: fallback
+#   36: int
+#   37: cooldown_until
+#   38: country
+#   39: provider_id
+#   40: count
+#   41: price
+# Varnames:
+#	self, force, cfg, interval, now, countries, filter_countries, allowed_countries, blocked_countries, pressure_interval, pressure_min, effective_interval, service, provider_key, cache_seconds, raw_rows, cached, row, fetched, exc, best, prefix, extra
+# Positional arguments:
+#	self, force
+# Local variables:
+#    2: cfg
+#    3: interval
+#    4: now
+#    5: countries
+#    6: filter_countries
+#    7: allowed_countries
+#    8: blocked_countries
+#    9: pressure_interval
+#   10: pressure_min
+#   11: effective_interval
+#   12: service
+#   13: provider_key
+#   14: cache_seconds
+#   15: raw_rows
+#   16: cached
+#   17: row
+#   18: fetched
+#   19: exc
+#   20: best
+#   21: prefix
+#   22: extra
+581:           0 RESUME               0
+
+582:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _cfg)
+              24 CALL                 (0 positional)
+              32 STORE_FAST           (cfg)
+
+583:          34 LOAD_GLOBAL          (NULL + max)
+              44 LOAD_CONST           (5)
+              46 LOAD_FAST            (self)
+              48 LOAD_ATTR            (NULL|self + _int)
+              68 LOAD_FAST            (cfg)
+              70 LOAD_ATTR            (NULL|self + get)
+              90 LOAD_CONST           ("refresh_seconds")
+              92 CALL                 (1 positional)
+             100 LOAD_CONST           (12)
+             102 CALL                 (2 positional)
+             110 CALL                 (2 positional)
+             118 STORE_FAST           (interval)
+
+584:         120 LOAD_GLOBAL          (time)
+             130 LOAD_ATTR            (time)
+             150 PUSH_NULL
+             152 CALL                 (0 positional)
+             160 STORE_FAST           (now)
+
+585:         162 LOAD_FAST            (self)
+             164 LOAD_ATTR            (NULL|self + _refresh_countries)
+             184 CALL                 (0 positional)
+             192 STORE_FAST           (countries)
+
+586:         194 LOAD_GLOBAL          (NULL + bool)
+             204 LOAD_GLOBAL          (NULL + getattr)
+             214 LOAD_FAST            (self)
+             216 LOAD_ATTR            (sms)
+             236 LOAD_CONST           ("SMART_COUNTRY_SCOPE_FILTER")
+             238 LOAD_CONST           (True)
+             240 CALL                 (3 positional)
+             248 CALL                 (1 positional)
+             256 STORE_FAST           (filter_countries)
+
+587:         258 LOAD_FAST            (filter_countries)
+             260 TO_BOOL
+             268 POP_JUMP_IF_FALSE    (to 294)
+             272 LOAD_GLOBAL          (NULL + set)
+             282 LOAD_FAST            (countries)
+             284 CALL                 (1 positional)
+             292 JUMP_FORWARD         (to 312)
+         >>  294 LOAD_GLOBAL          (NULL + set)
+             304 CALL                 (0 positional)
+         >>  312 STORE_FAST           (allowed_countries)
+
+588:         314 LOAD_GLOBAL          (NULL + set)
+             324 LOAD_FAST            (self)
+             326 LOAD_ATTR            (NULL|self + _clean_list)
+             346 LOAD_FAST            (cfg)
+             348 LOAD_ATTR            (NULL|self + get)
+             368 LOAD_CONST           ("blocked_countries")
+             370 CALL                 (1 positional)
+             378 COPY                 1
+             380 TO_BOOL
+             388 POP_JUMP_IF_TRUE     (to 396)
+             392 POP_TOP
+             394 LOAD_CONST           ("12")
+         >>  396 CALL                 (1 positional)
+             404 CALL                 (1 positional)
+             412 STORE_FAST           (blocked_countries)
+
+589:         414 LOAD_FAST            (self)
+             416 LOAD_ATTR            (lock)
+             436 BEFORE_WITH
+             438 POP_TOP
+
+590:         440 LOAD_GLOBAL          (NULL + max)
+             450 LOAD_CONST           (3)
+             452 LOAD_FAST            (self)
+             454 LOAD_ATTR            (NULL|self + _int)
+             474 LOAD_FAST            (cfg)
+             476 LOAD_ATTR            (NULL|self + get)
+             496 LOAD_CONST           ("pressure_refresh_seconds")
+             498 CALL                 (1 positional)
+             506 LOAD_CONST           (5)
+             508 CALL                 (2 positional)
+             516 CALL                 (2 positional)
+             524 STORE_FAST           (pressure_interval)
+
+591:         526 LOAD_GLOBAL          (NULL + max)
+             536 LOAD_CONST           (0)
+             538 LOAD_FAST            (self)
+             540 LOAD_ATTR            (NULL|self + _int)
+             560 LOAD_FAST            (cfg)
+             562 LOAD_ATTR            (NULL|self + get)
+             582 LOAD_CONST           ("pressure_min_candidates")
+             584 CALL                 (1 positional)
+             592 LOAD_CONST           (10)
+             594 CALL                 (2 positional)
+             602 CALL                 (2 positional)
+             610 STORE_FAST           (pressure_min)
+
+592:         612 LOAD_GLOBAL          (NULL + len)
+             622 LOAD_FAST            (self)
+             624 LOAD_ATTR            (candidates)
+             644 CALL                 (1 positional)
+             652 LOAD_FAST            (pressure_min)
+             654 COMPARE_OP           (<)
+             658 POP_JUMP_IF_FALSE    (to 666)
+             662 LOAD_FAST            (pressure_interval)
+             664 JUMP_FORWARD         (to 668)
+         >>  666 LOAD_FAST            (interval)
+         >>  668 STORE_FAST           (effective_interval)
+
+593:         670 LOAD_FAST            (force)
+             672 TO_BOOL
+             680 POP_JUMP_IF_TRUE     (to 948)
+             684 LOAD_FAST            (self)
+             686 LOAD_ATTR            (candidates)
+             706 TO_BOOL
+             714 POP_JUMP_IF_FALSE    (to 948)
+             718 LOAD_FAST_LOAD_FAST  (now, self)
+             720 LOAD_ATTR            (last_refresh)
+             740 BINARY_OP            (-)
+             744 LOAD_FAST            (effective_interval)
+             746 COMPARE_OP           (<)
+             750 POP_JUMP_IF_FALSE    (to 948)
+
+594:         754 LOAD_FAST            (self)
+             756 LOAD_ATTR            (NULL|self + _load_shared_stats_locked)
+             776 CALL                 (0 positional)
+             784 POP_TOP
+
+595:         786 LOAD_FAST            (self)
+             788 LOAD_ATTR            (raw_rows)
+             808 TO_BOOL
+             816 POP_JUMP_IF_FALSE    (to 888)
+
+596:         820 LOAD_FAST            (self)
+             822 LOAD_ATTR            (NULL|self + _build_candidates_locked)
+             842 LOAD_FAST            (self)
+             844 LOAD_ATTR            (raw_rows)
+             864 LOAD_FAST_LOAD_FAST  (now, allowed_countries)
+             866 LOAD_FAST            (blocked_countries)
+             868 CALL                 (4 positional)
+             876 LOAD_FAST            (self)
+             878 STORE_ATTR           (candidates)
+
+597:     >>  888 LOAD_GLOBAL          (NULL + list)
+             898 LOAD_FAST            (self)
+             900 LOAD_ATTR            (candidates)
+             920 CALL                 (1 positional)
+
+589:         928 SWAP                 (TOS <-> TOS1)
+             930 LOAD_CONST           (None)
+             932 LOAD_CONST           (None)
+             934 LOAD_CONST           (None)
+             936 CALL                 (2 positional)
+             944 POP_TOP
+             946 RETURN_VALUE
+
+598:     >>  948 LOAD_FAST            (self)
+             950 LOAD_ATTR            (NULL|self + _load_shared_stats_locked)
+             970 CALL                 (0 positional)
+             978 POP_TOP
+
+589:         980 LOAD_CONST           (None)
+             982 LOAD_CONST           (None)
+             984 LOAD_CONST           (None)
+             986 CALL                 (2 positional)
+             994 POP_TOP
+
+600:         996 LOAD_GLOBAL          (NULL + hasattr)
+            1006 LOAD_FAST            (self)
+            1008 LOAD_ATTR            (sms)
+            1028 LOAD_CONST           ("get_price_candidates")
+            1030 CALL                 (2 positional)
+            1038 TO_BOOL
+            1046 POP_JUMP_IF_TRUE     (to 1068)
+
+601:        1050 LOAD_CONST           ("provider does not support price candidates")
+            1052 LOAD_FAST            (self)
+            1054 STORE_ATTR           (last_error)
+
+602:        1064 BUILD_LIST           0
+            1066 RETURN_VALUE
+
+604:     >> 1068 LOAD_GLOBAL          (NULL + str)
+            1078 LOAD_FAST            (self)
+            1080 LOAD_ATTR            (config)
+            1100 LOAD_ATTR            (NULL|self + get)
+            1120 LOAD_CONST           ("service")
+            1122 LOAD_CONST           ("dr")
+            1124 CALL                 (2 positional)
+            1132 COPY                 1
+            1134 TO_BOOL
+            1142 POP_JUMP_IF_TRUE     (to 1150)
+            1146 POP_TOP
+            1148 LOAD_CONST           ("dr")
+         >> 1150 CALL                 (1 positional)
+            1158 LOAD_ATTR            (NULL|self + strip)
+            1178 CALL                 (0 positional)
+            1186 STORE_FAST           (service)
+
+606:        1188 LOAD_FAST            (self)
+            1190 LOAD_ATTR            (sms)
+            1210 LOAD_ATTR            (__class__)
+            1230 LOAD_ATTR            (__name__)
+
+607:        1250 LOAD_GLOBAL          (NULL + str)
+            1260 LOAD_GLOBAL          (NULL + getattr)
+            1270 LOAD_FAST            (self)
+            1272 LOAD_ATTR            (sms)
+            1292 LOAD_CONST           ("api_key")
+            1294 LOAD_CONST           ("")
+            1296 CALL                 (3 positional)
+            1304 COPY                 1
+            1306 TO_BOOL
+            1314 POP_JUMP_IF_TRUE     (to 1322)
+            1318 POP_TOP
+            1320 LOAD_CONST           ("")
+         >> 1322 CALL                 (1 positional)
+
+608:        1330 LOAD_GLOBAL          (NULL + str)
+            1340 LOAD_GLOBAL          (NULL + getattr)
+            1350 LOAD_FAST            (self)
+            1352 LOAD_ATTR            (sms)
+            1372 LOAD_CONST           ("proxy")
+            1374 LOAD_CONST           ("")
+            1376 CALL                 (3 positional)
+            1384 COPY                 1
+            1386 TO_BOOL
+            1394 POP_JUMP_IF_TRUE     (to 1402)
+            1398 POP_TOP
+            1400 LOAD_CONST           ("")
+         >> 1402 CALL                 (1 positional)
+
+609:        1410 LOAD_FAST            (service)
+
+610:        1412 LOAD_GLOBAL          (NULL + tuple)
+            1422 LOAD_GLOBAL          (NULL + sorted)
+            1432 LOAD_CONST           (<Code311 code object <genexpr> at 0x1060291c0, file sms_selector.py>, line 610)
+            1434 MAKE_FUNCTION
+            1436 LOAD_FAST            (countries)
+            1438 GET_ITER
+            1440 CALL                 (0 positional)
+            1448 CALL                 (1 positional)
+            1456 CALL                 (1 positional)
+
+605:        1464 BUILD_TUPLE          5
+            1466 STORE_FAST           (provider_key)
+
+612:        1468 LOAD_GLOBAL          (NULL + max)
+            1478 LOAD_CONST           (3)
+            1480 LOAD_FAST            (self)
+            1482 LOAD_ATTR            (NULL|self + _int)
+            1502 LOAD_FAST            (cfg)
+            1504 LOAD_ATTR            (NULL|self + get)
+            1524 LOAD_CONST           ("discovery_cache_seconds")
+            1526 CALL                 (1 positional)
+            1534 LOAD_CONST           (12)
+            1536 CALL                 (2 positional)
+            1544 CALL                 (2 positional)
+            1552 STORE_FAST           (cache_seconds)
+
+613:        1554 LOAD_GLOBAL          (time)
+            1564 LOAD_ATTR            (time)
+            1584 PUSH_NULL
+            1586 CALL                 (0 positional)
+            1594 STORE_FAST           (now)
+
+614:        1596 LOAD_CONST           (None)
+            1598 STORE_FAST           (raw_rows)
+
+615:        1600 LOAD_GLOBAL          (_DISCOVERY_CACHE_LOCK)
+            1610 BEFORE_WITH
+            1612 POP_TOP
+
+616:        1614 LOAD_GLOBAL          (_DISCOVERY_CACHE)
+            1624 LOAD_ATTR            (NULL|self + get)
+            1644 LOAD_FAST            (provider_key)
+            1646 CALL                 (1 positional)
+            1654 STORE_FAST           (cached)
+
+617:        1656 LOAD_FAST            (cached)
+            1658 TO_BOOL
+            1666 POP_JUMP_IF_FALSE    (to 1756)
+            1670 LOAD_FAST            (now)
+            1672 LOAD_FAST            (cached)
+            1674 LOAD_CONST           (0)
+            1676 BINARY_SUBSCR
+            1680 BINARY_OP            (-)
+            1684 LOAD_FAST            (cache_seconds)
+            1686 COMPARE_OP           (<)
+            1690 POP_JUMP_IF_FALSE    (to 1756)
+
+618:        1694 LOAD_FAST            (cached)
+            1696 LOAD_CONST           (1)
+            1698 BINARY_SUBSCR
+            1702 GET_ITER
+            1704 LOAD_FAST_AND_CLEAR  (row)
+            1706 SWAP                 (TOS <-> TOS1)
+            1708 BUILD_LIST           0
+            1710 SWAP                 (TOS <-> TOS1)
+            1712 GET_ITER
+            1714 FOR_ITER             (to 1746)
+            1718 STORE_FAST           (row)
+            1720 LOAD_GLOBAL          (NULL + dict)
+            1730 LOAD_FAST            (row)
+            1732 CALL                 (1 positional)
+            1740 LIST_APPEND          2
+            1742 JUMP_BACKWARD        (to 1714)
+         >> 1746 END_FOR
+            1748 POP_TOP
+            1750 STORE_FAST           (raw_rows)
+            1752 STORE_FAST           (row)
+            1754 JUMP_FORWARD         (to 1946)
+
+623:     >> 1756 NOP
+
+624:        1758 LOAD_FAST            (self)
+            1760 LOAD_ATTR            (sms)
+            1780 LOAD_ATTR            (NULL|self + get_price_candidates)
+            1800 LOAD_FAST_LOAD_FAST  (service, countries)
+            1802 LOAD_CONST           (('countries',))
+            1804 CALL_KW              2
+            1806 STORE_FAST           (fetched)
+
+625:        1808 LOAD_FAST            (fetched)
+            1810 COPY                 1
+            1812 TO_BOOL
+            1820 POP_JUMP_IF_TRUE     (to 1828)
+            1824 POP_TOP
+            1826 BUILD_LIST           0
+         >> 1828 GET_ITER
+            1830 LOAD_FAST_AND_CLEAR  (row)
+            1832 SWAP                 (TOS <-> TOS1)
+            1834 BUILD_LIST           0
+            1836 SWAP                 (TOS <-> TOS1)
+            1838 GET_ITER
+            1840 FOR_ITER             (to 1918)
+            1844 STORE_FAST           (row)
+            1846 LOAD_GLOBAL          (NULL + isinstance)
+            1856 LOAD_FAST            (row)
+            1858 LOAD_GLOBAL          (dict)
+            1868 CALL                 (2 positional)
+            1876 TO_BOOL
+            1884 POP_JUMP_IF_TRUE     (to 1892)
+            1888 JUMP_BACKWARD        (to 1840)
+         >> 1892 LOAD_GLOBAL          (NULL + dict)
+            1902 LOAD_FAST            (row)
+            1904 CALL                 (1 positional)
+            1912 LIST_APPEND          2
+            1914 JUMP_BACKWARD        (to 1840)
+         >> 1918 END_FOR
+            1920 POP_TOP
+            1922 STORE_FAST           (raw_rows)
+            1924 STORE_FAST           (row)
+
+626:        1926 LOAD_FAST_LOAD_FAST  (now, raw_rows)
+            1928 BUILD_TUPLE          2
+            1930 LOAD_GLOBAL          (_DISCOVERY_CACHE)
+            1940 LOAD_FAST            (provider_key)
+            1942 STORE_SUBSCR
+
+615:     >> 1946 LOAD_CONST           (None)
+            1948 LOAD_CONST           (None)
+            1950 LOAD_CONST           (None)
+            1952 CALL                 (2 positional)
+            1960 POP_TOP
+
+632:        1962 LOAD_GLOBAL          (time)
+            1972 LOAD_ATTR            (time)
+            1992 PUSH_NULL
+            1994 CALL                 (0 positional)
+            2002 STORE_FAST           (now)
+
+633:        2004 LOAD_FAST            (self)
+            2006 LOAD_ATTR            (lock)
+            2026 BEFORE_WITH
+            2028 POP_TOP
+
+634:        2030 LOAD_FAST            (self)
+            2032 LOAD_ATTR            (NULL|self + _load_shared_stats_locked)
+            2052 CALL                 (0 positional)
+            2060 POP_TOP
+
+635:        2062 LOAD_FAST            (raw_rows)
+            2064 COPY                 1
+            2066 TO_BOOL
+            2074 POP_JUMP_IF_TRUE     (to 2082)
+            2078 POP_TOP
+            2080 BUILD_LIST           0
+         >> 2082 GET_ITER
+            2084 LOAD_FAST_AND_CLEAR  (row)
+            2086 SWAP                 (TOS <-> TOS1)
+            2088 BUILD_LIST           0
+            2090 SWAP                 (TOS <-> TOS1)
+            2092 GET_ITER
+            2094 FOR_ITER             (to 2172)
+            2098 STORE_FAST           (row)
+            2100 LOAD_GLOBAL          (NULL + isinstance)
+            2110 LOAD_FAST            (row)
+            2112 LOAD_GLOBAL          (dict)
+            2122 CALL                 (2 positional)
+            2130 TO_BOOL
+            2138 POP_JUMP_IF_TRUE     (to 2146)
+            2142 JUMP_BACKWARD        (to 2094)
+         >> 2146 LOAD_GLOBAL          (NULL + dict)
+            2156 LOAD_FAST            (row)
+            2158 CALL                 (1 positional)
+            2166 LIST_APPEND          2
+            2168 JUMP_BACKWARD        (to 2094)
+         >> 2172 END_FOR
+            2174 POP_TOP
+            2176 SWAP                 (TOS <-> TOS1)
+            2178 STORE_FAST           (row)
+            2180 LOAD_FAST            (self)
+            2182 STORE_ATTR           (raw_rows)
+
+636:        2192 LOAD_FAST            (self)
+            2194 LOAD_ATTR            (NULL|self + _build_candidates_locked)
+            2214 LOAD_FAST            (self)
+            2216 LOAD_ATTR            (raw_rows)
+            2236 LOAD_FAST_LOAD_FAST  (now, allowed_countries)
+            2238 LOAD_FAST            (blocked_countries)
+            2240 CALL                 (4 positional)
+            2248 LOAD_FAST            (self)
+         >> 2250 STORE_ATTR           (candidates)
+
+637:        2260 LOAD_FAST_LOAD_FAST  (now, self)
+            2262 STORE_ATTR           (last_refresh)
+
+638:        2272 LOAD_FAST            (self)
+            2274 LOAD_ATTR            (candidates)
+            2294 TO_BOOL
+            2302 POP_JUMP_IF_FALSE    (to 2686)
+
+639:        2306 LOAD_FAST            (self)
+            2308 LOAD_ATTR            (candidates)
+            2328 LOAD_CONST           (0)
+            2330 BINARY_SUBSCR
+            2334 STORE_FAST           (best)
+
+640:        2336 LOAD_FAST            (best)
+            2338 LOAD_ATTR            (fallback)
+            2358 TO_BOOL
+            2366 POP_JUMP_IF_FALSE    (to 2374)
+            2370 LOAD_CONST           ("智能选号兜底候选")
+            2372 JUMP_FORWARD         (to 2376)
+         >> 2374 LOAD_CONST           ("智能选号候选")
+         >> 2376 STORE_FAST           (prefix)
+
+641:        2378 LOAD_CONST           ("")
+            2380 STORE_FAST           (extra)
+
+642:        2382 LOAD_FAST            (best)
+            2384 LOAD_ATTR            (fallback)
+            2404 TO_BOOL
+            2412 POP_JUMP_IF_FALSE    (to 2492)
+
+643:        2416 LOAD_CONST           (" 冷却剩余")
+            2418 LOAD_GLOBAL          (NULL + max)
+            2428 LOAD_CONST           (0)
+            2430 LOAD_GLOBAL          (NULL + int)
+            2440 LOAD_FAST            (best)
+            2442 LOAD_ATTR            (cooldown_until)
+            2462 LOAD_FAST            (now)
+            2464 BINARY_OP            (-)
+            2468 CALL                 (1 positional)
+            2476 CALL                 (2 positional)
+            2484 FORMAT_SIMPLE
+            2486 LOAD_CONST           ("秒")
+            2488 BUILD_STRING         3
+            2490 STORE_FAST           (extra)
+
+644:     >> 2492 LOAD_FAST            (self)
+            2494 LOAD_ATTR            (NULL|self + _log)
+
+645:        2514 LOAD_FAST            (prefix)
+            2516 FORMAT_SIMPLE
+            2518 LOAD_CONST           (" ")
+            2520 LOAD_GLOBAL          (NULL + len)
+            2530 LOAD_FAST            (self)
+            2532 LOAD_ATTR            (candidates)
+            2552 CALL                 (1 positional)
+            2560 FORMAT_SIMPLE
+            2562 LOAD_CONST           (" 个，当前最优: ")
+            2564 LOAD_FAST            (best)
+            2566 LOAD_ATTR            (country)
+            2586 FORMAT_SIMPLE
+            2588 LOAD_CONST           ("/")

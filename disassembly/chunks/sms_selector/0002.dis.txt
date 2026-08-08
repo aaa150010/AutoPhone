@@ -1,0 +1,800 @@
+865:         102 LOAD_FAST            (selector)
+             104 POP_JUMP_IF_NOT_NONE (to 148)
+
+866:         108 LOAD_GLOBAL          (NULL + SmartSmsSelector)
+             118 LOAD_FAST_LOAD_FAST  (sms, config)
+             120 LOAD_FAST            (log_fn)
+             122 LOAD_CONST           (('log_fn',))
+             124 CALL_KW              3
+             126 STORE_FAST           (selector)
+
+867:         128 LOAD_FAST            (selector)
+             130 LOAD_GLOBAL          (_SELECTORS)
+             140 LOAD_FAST            (key)
+             142 STORE_SUBSCR
+             146 JUMP_FORWARD         (to 174)
+
+868:     >>  148 LOAD_FAST            (log_fn)
+             150 TO_BOOL
+             158 POP_JUMP_IF_FALSE    (to 174)
+
+869:         162 LOAD_FAST_LOAD_FAST  (log_fn, selector)
+             164 STORE_ATTR           (log_fn)
+
+870:     >>  174 LOAD_FAST            (selector)
+
+863:         176 SWAP                 (TOS <-> TOS1)
+             178 LOAD_CONST           (None)
+             180 LOAD_CONST           (None)
+             182 LOAD_CONST           (None)
+             184 CALL                 (2 positional)
+             192 POP_TOP
+             194 RETURN_VALUE
+         >>  196 PUSH_EXC_INFO
+             198 WITH_EXCEPT_START    0
+             200 TO_BOOL
+             208 POP_JUMP_IF_TRUE     (to 214)
+             212 RERAISE              2
+         >>  214 POP_TOP
+             216 POP_EXCEPT
+             218 POP_TOP
+             220 POP_TOP
+             222 RETURN_CONST         (None)
+         >>  224 COPY                 3
+             226 POP_EXCEPT
+             228 RERAISE              1
+
+ExceptionTable:
+  58 to 174 -> 196 [1] lasti
+  196 to 214 -> 224 [3] lasti
+
+# Method Name:       __init__
+# Filename:          sms_selector.py
+# Argument count:    4
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        45
+# Constants:
+#    0: None
+#    1: 0.0
+#    2: ''
+#    3: 'data'
+#    4: 'sms_smart_stats.json'
+# Names:
+#    0: sms
+#    1: config
+#    2: log_fn
+#    3: threading
+#    4: Lock
+#    5: lock
+#    6: candidates
+#    7: stats
+#    8: country_stats
+#    9: raw_rows
+#   10: last_refresh
+#   11: last_pick_at
+#   12: last_error
+#   13: runtime_path
+#   14: stats_path
+# Varnames:
+#	self, sms, config, log_fn
+# Positional arguments:
+#	self, sms, config, log_fn
+ 45:           0 RESUME               0
+
+ 46:           2 LOAD_FAST_LOAD_FAST  (sms, self)
+               4 STORE_ATTR           (sms)
+
+ 47:          14 LOAD_FAST            (config)
+              16 COPY                 1
+              18 TO_BOOL
+              26 POP_JUMP_IF_TRUE     (to 34)
+              30 POP_TOP
+              32 BUILD_MAP            0
+         >>   34 LOAD_FAST            (self)
+              36 STORE_ATTR           (config)
+
+ 48:          46 LOAD_FAST_LOAD_FAST  (log_fn, self)
+              48 STORE_ATTR           (log_fn)
+
+ 49:          58 LOAD_GLOBAL          (threading)
+              68 LOAD_ATTR            (Lock)
+              88 PUSH_NULL
+              90 CALL                 (0 positional)
+              98 LOAD_FAST            (self)
+             100 STORE_ATTR           (lock)
+
+ 50:         110 BUILD_LIST           0
+             112 LOAD_FAST            (self)
+             114 STORE_ATTR           (candidates)
+
+ 51:         124 BUILD_MAP            0
+             126 LOAD_FAST            (self)
+             128 STORE_ATTR           (stats)
+
+ 52:         138 BUILD_MAP            0
+             140 LOAD_FAST            (self)
+             142 STORE_ATTR           (country_stats)
+
+ 53:         152 BUILD_LIST           0
+             154 LOAD_FAST            (self)
+             156 STORE_ATTR           (raw_rows)
+
+ 54:         166 LOAD_CONST           (0.0)
+             168 LOAD_FAST            (self)
+             170 STORE_ATTR           (last_refresh)
+
+ 55:         180 BUILD_MAP            0
+             182 LOAD_FAST            (self)
+             184 STORE_ATTR           (last_pick_at)
+
+ 56:         194 LOAD_CONST           ("")
+             196 LOAD_FAST            (self)
+             198 STORE_ATTR           (last_error)
+
+ 57:         208 LOAD_GLOBAL          (NULL + runtime_path)
+             218 LOAD_CONST           ("data")
+             220 LOAD_CONST           ("sms_smart_stats.json")
+             222 CALL                 (2 positional)
+             230 LOAD_FAST            (self)
+             232 STORE_ATTR           (stats_path)
+             242 RETURN_CONST         (None)
+
+
+# Method Name:       enabled
+# Filename:          sms_selector.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        59
+# Constants:
+#    0: None
+#    1: 'sms_smart'
+#    2: 'enabled'
+# Names:
+#    0: isinstance
+#    1: get
+#    2: dict
+#    3: bool
+# Varnames:
+#	config, cfg
+# Positional arguments:
+#	config
+# Local variables:
+#    1: cfg
+ 59:           0 RESUME               0
+
+ 61:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (config)
+              14 LOAD_ATTR            (NULL|self + get)
+              34 LOAD_CONST           ("sms_smart")
+              36 CALL                 (1 positional)
+              44 LOAD_GLOBAL          (dict)
+              54 CALL                 (2 positional)
+              62 TO_BOOL
+              70 POP_JUMP_IF_FALSE    (to 108)
+              74 LOAD_FAST            (config)
+              76 LOAD_ATTR            (NULL|self + get)
+              96 LOAD_CONST           ("sms_smart")
+              98 CALL                 (1 positional)
+             106 JUMP_FORWARD         (to 110)
+         >>  108 BUILD_MAP            0
+         >>  110 STORE_FAST           (cfg)
+
+ 62:         112 LOAD_GLOBAL          (NULL + bool)
+             122 LOAD_FAST            (cfg)
+             124 LOAD_ATTR            (NULL|self + get)
+             144 LOAD_CONST           ("enabled")
+             146 CALL                 (1 positional)
+             154 CALL                 (1 positional)
+             162 RETURN_VALUE
+
+
+# Method Name:       _clean_list
+# Filename:          sms_selector.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        64
+# Constants:
+#    0: None
+#    1: ''
+#    2: ','
+# Names:
+#    0: str
+#    1: split
+#    2: strip
+# Varnames:
+#	value, x
+# Positional arguments:
+#	value
+# Local variables:
+#    1: x
+ 64:           0 RESUME               0
+
+ 66:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (value)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + split)
+              60 LOAD_CONST           (",")
+              62 CALL                 (1 positional)
+              70 GET_ITER
+              72 LOAD_FAST_AND_CLEAR  (x)
+              74 SWAP                 (TOS <-> TOS1)
+              76 BUILD_LIST           0
+              78 SWAP                 (TOS <-> TOS1)
+              80 GET_ITER
+              82 FOR_ITER             (to 168)
+              86 STORE_FAST_LOAD_FAST (x, x)
+              88 LOAD_ATTR            (NULL|self + strip)
+             108 CALL                 (0 positional)
+             116 TO_BOOL
+             124 POP_JUMP_IF_TRUE     (to 132)
+             128 JUMP_BACKWARD        (to 82)
+         >>  132 LOAD_FAST            (x)
+             134 LOAD_ATTR            (NULL|self + strip)
+             154 CALL                 (0 positional)
+             162 LIST_APPEND          2
+             164 JUMP_BACKWARD        (to 82)
+         >>  168 END_FOR
+             170 POP_TOP
+             172 SWAP                 (TOS <-> TOS1)
+             174 STORE_FAST           (x)
+             176 RETURN_VALUE
+         >>  178 SWAP                 (TOS <-> TOS1)
+             180 POP_TOP
+
+ 66:     >>  182 SWAP                 (TOS <-> TOS1)
+             184 STORE_FAST           (x)
+             186 RERAISE              0
+
+ExceptionTable:
+  76 to 122 -> 178 [2]
+  132 to 170 -> 178 [2]
+
+# Method Name:       _float
+# Filename:          sms_selector.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        68
+# Constants:
+#    0: None
+# Names:
+#    0: float
+#    1: Exception
+# Varnames:
+#	value, default
+# Positional arguments:
+#	value, default
+ 68:           0 RESUME               0
+
+ 70:           2 NOP
+
+ 71:           4 LOAD_GLOBAL          (NULL + float)
+              14 LOAD_FAST            (value)
+              16 CALL                 (1 positional)
+              24 RETURN_VALUE
+         >>   26 PUSH_EXC_INFO
+
+ 72:          28 LOAD_GLOBAL          (Exception)
+              38 CHECK_EXC_MATCH
+              40 POP_JUMP_IF_FALSE    (to 54)
+              44 POP_TOP
+
+ 73:          46 LOAD_FAST            (default)
+              48 SWAP                 (TOS <-> TOS1)
+              50 POP_EXCEPT
+              52 RETURN_VALUE
+
+ 72:     >>   54 RERAISE              0
+         >>   56 COPY                 3
+              58 POP_EXCEPT
+              60 RERAISE              1
+
+ExceptionTable:
+  4 to 22 -> 26 [0]
+  26 to 48 -> 56 [1] lasti
+  54 to 54 -> 56 [1] lasti
+
+# Method Name:       _int
+# Filename:          sms_selector.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        75
+# Constants:
+#    0: None
+# Names:
+#    0: int
+#    1: Exception
+# Varnames:
+#	value, default
+# Positional arguments:
+#	value, default
+ 75:           0 RESUME               0
+
+ 77:           2 NOP
+
+ 78:           4 LOAD_GLOBAL          (NULL + int)
+              14 LOAD_FAST            (value)
+              16 CALL                 (1 positional)
+              24 RETURN_VALUE
+         >>   26 PUSH_EXC_INFO
+
+ 79:          28 LOAD_GLOBAL          (Exception)
+              38 CHECK_EXC_MATCH
+              40 POP_JUMP_IF_FALSE    (to 54)
+              44 POP_TOP
+
+ 80:          46 LOAD_FAST            (default)
+              48 SWAP                 (TOS <-> TOS1)
+              50 POP_EXCEPT
+              52 RETURN_VALUE
+
+ 79:     >>   54 RERAISE              0
+         >>   56 COPY                 3
+              58 POP_EXCEPT
+              60 RERAISE              1
+
+ExceptionTable:
+  4 to 22 -> 26 [0]
+  26 to 48 -> 56 [1] lasti
+  54 to 54 -> 56 [1] lasti
+
+# Method Name:       _cfg
+# Filename:          sms_selector.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        82
+# Constants:
+#    0: None
+#    1: 'sms_smart'
+# Names:
+#    0: isinstance
+#    1: config
+#    2: get
+#    3: dict
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+ 82:           0 RESUME               0
+
+ 83:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (self)
+              14 LOAD_ATTR            (config)
+              34 LOAD_ATTR            (NULL|self + get)
+              54 LOAD_CONST           ("sms_smart")
+              56 CALL                 (1 positional)
+              64 LOAD_GLOBAL          (dict)
+              74 CALL                 (2 positional)
+              82 TO_BOOL
+              90 POP_JUMP_IF_FALSE    (to 148)
+              94 LOAD_FAST            (self)
+              96 LOAD_ATTR            (config)
+             116 LOAD_ATTR            (NULL|self + get)
+             136 LOAD_CONST           ("sms_smart")
+             138 CALL                 (1 positional)
+             146 RETURN_VALUE
+         >>  148 BUILD_MAP            0
+             150 RETURN_VALUE
+
+
+# Method Name:       _refresh_countries
+# Filename:          sms_selector.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        85
+# Constants:
+#    0: None
+#    1: 'countries'
+#    2: ''
+# Names:
+#    0: _cfg
+#    1: _clean_list
+#    2: get
+# Varnames:
+#	self, cfg, explicit
+# Positional arguments:
+#	self
+# Local variables:
+#    1: cfg
+#    2: explicit
+ 85:           0 RESUME               0
+
+ 86:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _cfg)
+              24 CALL                 (0 positional)
+              32 STORE_FAST           (cfg)
+
+ 87:          34 LOAD_FAST            (self)
+              36 LOAD_ATTR            (NULL|self + _clean_list)
+              56 LOAD_FAST            (cfg)
+              58 LOAD_ATTR            (NULL|self + get)
+              78 LOAD_CONST           ("countries")
+              80 CALL                 (1 positional)
+              88 COPY                 1
+              90 TO_BOOL
+              98 POP_JUMP_IF_TRUE     (to 106)
+             102 POP_TOP
+             104 LOAD_CONST           ("")
+         >>  106 CALL                 (1 positional)
+             114 STORE_FAST           (explicit)
+
+ 91:         116 LOAD_FAST            (explicit)
+             118 RETURN_VALUE
+
+
+# Method Name:       _preferred_countries
+# Filename:          sms_selector.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        93
+# Constants:
+#    0: None
+#    1: 'preferred_countries'
+#    2: ''
+#    3: 'blocked_countries'
+#    4: '12'
+# Names:
+#    0: _cfg
+#    1: extend
+#    2: _clean_list
+#    3: get
+#    4: set
+# Varnames:
+#	self, cfg, values, blocked, item
+# Positional arguments:
+#	self
+# Local variables:
+#    1: cfg
+#    2: values
+#    3: blocked
+#    4: item
+ 93:           0 RESUME               0
+
+ 94:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _cfg)
+              24 CALL                 (0 positional)
+              32 STORE_FAST           (cfg)
+
+ 95:          34 BUILD_LIST           0
+              36 STORE_FAST           (values)
+
+ 96:          38 LOAD_FAST            (values)
+              40 LOAD_ATTR            (NULL|self + extend)
+              60 LOAD_FAST            (self)
+              62 LOAD_ATTR            (NULL|self + _clean_list)
+              82 LOAD_FAST            (cfg)
+              84 LOAD_ATTR            (NULL|self + get)
+             104 LOAD_CONST           ("preferred_countries")
+             106 CALL                 (1 positional)
+             114 COPY                 1
+             116 TO_BOOL
+             124 POP_JUMP_IF_TRUE     (to 132)
+             128 POP_TOP
+             130 LOAD_CONST           ("")
+         >>  132 CALL                 (1 positional)
+             140 CALL                 (1 positional)
+             148 POP_TOP
+
+ 97:         150 LOAD_GLOBAL          (NULL + set)
+             160 LOAD_FAST            (self)
+             162 LOAD_ATTR            (NULL|self + _clean_list)
+             182 LOAD_FAST            (cfg)
+             184 LOAD_ATTR            (NULL|self + get)
+             204 LOAD_CONST           ("blocked_countries")
+             206 CALL                 (1 positional)
+             214 COPY                 1
+             216 TO_BOOL
+             224 POP_JUMP_IF_TRUE     (to 232)
+             228 POP_TOP
+             230 LOAD_CONST           ("12")
+         >>  232 CALL                 (1 positional)
+             240 CALL                 (1 positional)
+             248 STORE_FAST           (blocked)
+
+ 98:         250 LOAD_FAST            (values)
+             252 GET_ITER
+             254 LOAD_FAST_AND_CLEAR  (item)
+             256 SWAP                 (TOS <-> TOS1)
+             258 BUILD_SET            0
+             260 SWAP                 (TOS <-> TOS1)
+             262 GET_ITER
+             264 FOR_ITER             (to 292)
+             268 STORE_FAST_LOAD_FAST (item, item)
+             270 LOAD_FAST            (blocked)
+             272 CONTAINS_OP          (not in)
+             276 POP_JUMP_IF_TRUE     (to 284)
+             280 JUMP_BACKWARD        (to 264)
+         >>  284 LOAD_FAST            (item)
+             286 SET_ADD              2
+             288 JUMP_BACKWARD        (to 264)
+         >>  292 END_FOR
+             294 POP_TOP
+             296 SWAP                 (TOS <-> TOS1)
+             298 STORE_FAST           (item)
+             300 RETURN_VALUE
+         >>  302 SWAP                 (TOS <-> TOS1)
+         >>  304 POP_TOP
+
+ 98:         306 SWAP                 (TOS <-> TOS1)
+             308 STORE_FAST           (item)
+             310 RERAISE              0
+
+ExceptionTable:
+  258 to 274 -> 302 [2]
+  284 to 294 -> 302 [2]
+
+# Method Name:       _key_text
+# Filename:          sms_selector.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        100
+# Constants:
+#    0: None
+#    1: 0
+#    2: '::'
+#    3: 1
+# Varnames:
+#	key
+# Positional arguments:
+#	key
+100:           0 RESUME               0
+
+102:           2 LOAD_FAST            (key)
+               4 LOAD_CONST           (0)
+               6 BINARY_SUBSCR
+              10 FORMAT_SIMPLE
+              12 LOAD_CONST           ("::")
+              14 LOAD_FAST            (key)
+              16 LOAD_CONST           (1)
+              18 BINARY_SUBSCR
+              22 FORMAT_SIMPLE
+              24 BUILD_STRING         3
+              26 RETURN_VALUE
+
+
+# Method Name:       _parse_key
+# Filename:          sms_selector.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        104
+# Constants:
+#    0: None
+#    1: '::'
+#    2: 1
+# Names:
+#    0: split
+#    1: strip
+# Varnames:
+#	value, country, provider_id
+# Positional arguments:
+#	value
+# Local variables:
+#    1: country
+#    2: provider_id
+104:           0 RESUME               0
+
+106:           2 LOAD_CONST           ("::")
+               4 LOAD_FAST            (value)
+               6 CONTAINS_OP          (not in)
+              10 POP_JUMP_IF_FALSE    (to 16)
+
+107:          14 RETURN_CONST         (None)
+
+108:     >>   16 LOAD_FAST            (value)
+              18 LOAD_ATTR            (NULL|self + split)
+              38 LOAD_CONST           ("::")
+              40 LOAD_CONST           (1)
+              42 CALL                 (2 positional)
+              50 UNPACK_SEQUENCE      2
+              54 STORE_FAST_STORE_FAST (country, provider_id)
+
+109:          56 LOAD_FAST            (country)
+              58 LOAD_ATTR            (NULL|self + strip)
+              78 CALL                 (0 positional)
+              86 STORE_FAST           (country)
+
+110:          88 LOAD_FAST            (provider_id)
+              90 LOAD_ATTR            (NULL|self + strip)
+             110 CALL                 (0 positional)
+             118 STORE_FAST           (provider_id)
+
+111:         120 LOAD_FAST            (country)
+             122 TO_BOOL
+             130 POP_JUMP_IF_FALSE    (to 148)
+             134 LOAD_FAST            (provider_id)
+             136 TO_BOOL
+             144 POP_JUMP_IF_TRUE     (to 150)
+
+112:     >>  148 RETURN_CONST         (None)
+
+113:     >>  150 LOAD_FAST_LOAD_FAST  (country, provider_id)
+             152 BUILD_TUPLE          2
+             154 RETURN_VALUE
+
+
+# Method Name:       _load_shared_stats_locked
+# Filename:          sms_selector.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  9
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        115
+# Constants:
+#    0: None
+#    1: 0
+#    2: 'utf-8-sig'
+#    3: ('encoding',)
+#    4: 'routes'
+#    5: 'countries'
+#    6: ''
+# Names:
+#    0: stats_path
+#    1: exists
+#    2: json
+#    3: loads
+#    4: read_text
+#    5: Exception
+#    6: isinstance
+#    7: dict
+#    8: get
+#    9: items
+#   10: _parse_key
+#   11: str
+#   12: stats
+#   13: strip
+#   14: country_stats
+# Varnames:
+#	self, json, data, routes, raw_key, row, key, countries, country
+# Positional arguments:
+#	self
+# Local variables:
+#    1: json
+#    2: data
+#    3: routes
+#    4: raw_key
+#    5: row
+#    6: key
+#    7: countries
+#    8: country
+115:           0 RESUME               0
+
+116:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (stats_path)
+              24 LOAD_ATTR            (NULL|self + exists)
+              44 CALL                 (0 positional)
+              52 TO_BOOL
+              60 POP_JUMP_IF_TRUE     (to 66)
+
+117:          64 RETURN_CONST         (None)
+
+118:     >>   66 NOP
+
+119:          68 LOAD_CONST           (0)
+              70 LOAD_CONST           (None)
+              72 IMPORT_NAME          (json)
+              74 STORE_FAST           (json)
+
+121:          76 LOAD_FAST            (json)
+              78 LOAD_ATTR            (NULL|self + loads)
+              98 LOAD_FAST            (self)
+             100 LOAD_ATTR            (stats_path)
+             120 LOAD_ATTR            (NULL|self + read_text)
+             140 LOAD_CONST           ("utf-8-sig")
+             142 LOAD_CONST           (('encoding',))
+             144 CALL_KW              1
+             146 CALL                 (1 positional)
+             154 STORE_FAST           (data)
+
+124:         156 LOAD_GLOBAL          (NULL + isinstance)
+             166 LOAD_FAST            (data)
+             168 LOAD_GLOBAL          (dict)
+             178 CALL                 (2 positional)
+             186 TO_BOOL
+             194 POP_JUMP_IF_FALSE    (to 232)
+             198 LOAD_FAST            (data)
+             200 LOAD_ATTR            (NULL|self + get)
+             220 LOAD_CONST           ("routes")
+             222 CALL                 (1 positional)
+             230 JUMP_FORWARD         (to 234)
+         >>  232 BUILD_MAP            0
+         >>  234 STORE_FAST           (routes)
+
+125:         236 LOAD_GLOBAL          (NULL + isinstance)
+             246 LOAD_FAST            (routes)
+             248 LOAD_GLOBAL          (dict)
+             258 CALL                 (2 positional)
+             266 TO_BOOL
+             274 POP_JUMP_IF_FALSE    (to 492)
+
+126:         278 LOAD_FAST            (routes)
+             280 LOAD_ATTR            (NULL|self + items)
+             300 CALL                 (0 positional)
+             308 GET_ITER
+             310 FOR_ITER             (to 488)
+             314 UNPACK_SEQUENCE      2
+             318 STORE_FAST_STORE_FAST (raw_key, row)
+
+127:         320 LOAD_FAST            (self)
+             322 LOAD_ATTR            (NULL|self + _parse_key)
+             342 LOAD_GLOBAL          (NULL + str)
+             352 LOAD_FAST            (raw_key)
+             354 CALL                 (1 positional)
+             362 CALL                 (1 positional)
+             370 STORE_FAST           (key)
+
+128:         372 LOAD_FAST            (key)
+             374 TO_BOOL
+             382 POP_JUMP_IF_TRUE     (to 390)
+             386 JUMP_BACKWARD        (to 310)
+         >>  390 LOAD_GLOBAL          (NULL + isinstance)
+             400 LOAD_FAST            (row)
+             402 LOAD_GLOBAL          (dict)
+             412 CALL                 (2 positional)
+             420 TO_BOOL
+             428 POP_JUMP_IF_TRUE     (to 436)
+             432 JUMP_BACKWARD        (to 310)
+
+129:     >>  436 LOAD_GLOBAL          (NULL + dict)
+             446 LOAD_FAST            (row)
+             448 CALL                 (1 positional)
+             456 LOAD_FAST            (self)
+             458 LOAD_ATTR            (stats)
+             478 LOAD_FAST            (key)
+             480 STORE_SUBSCR
+             484 JUMP_BACKWARD        (to 310)
+
+126:     >>  488 END_FOR
+             490 POP_TOP
+
+130:     >>  492 LOAD_GLOBAL          (NULL + isinstance)
+             502 LOAD_FAST            (data)
+             504 LOAD_GLOBAL          (dict)
+             514 CALL                 (2 positional)
+             522 TO_BOOL
+             530 POP_JUMP_IF_FALSE    (to 568)

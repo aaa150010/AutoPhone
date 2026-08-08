@@ -1,0 +1,800 @@
+
+733:         272 LOAD_CONST           ("sub2_uploaded")
+             274 LOAD_CONST           (('reason',))
+             276 BUILD_CONST_KEY_MAP  1
+             278 LOAD_CONST           (('entry', 'ManualMailboxEntry', 'reason', 'str', 'return', 'bool'))
+             280 LOAD_CONST           (<Code311 code object remove_entry at 0x10552c3a0, file runtime.py>, line 733)
+             282 MAKE_FUNCTION
+             284 SET_FUNCTION_ATTRIBUTE 4
+             286 SET_FUNCTION_ATTRIBUTE 2
+             288 STORE_NAME           (remove_entry)
+
+763:         290 LOAD_CONST           (('return', 'int'))
+             292 LOAD_CONST           (<Code311 code object reset_reimported_failures at 0x10552c430, file runtime.py>, line 763)
+             294 MAKE_FUNCTION
+             296 SET_FUNCTION_ATTRIBUTE 4
+             298 STORE_NAME           (reset_reimported_failures)
+
+788:         300 LOAD_CONST           (('return', 'dict[str, int]'))
+             302 LOAD_CONST           (<Code311 code object summary at 0x10552c460, file runtime.py>, line 788)
+             304 MAKE_FUNCTION
+             306 SET_FUNCTION_ATTRIBUTE 4
+             308 STORE_NAME           (summary)
+             310 LOAD_CONST           (('lock', 'pool_lock_name', 'pool_path', 'state_path'))
+             312 STORE_NAME           (__static_attributes__)
+             314 RETURN_CONST         (None)
+
+
+# Method Name:       ManualCodeCoordinator
+# Filename:          runtime.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000000 (0x1000000)
+# First Line:        817
+# Constants:
+#    0: 'ManualCodeCoordinator'
+#    1: 817
+#    2: 'Serializes manual email logins while keeping downstream work concurrent.'
+#    3: <Code311 code object __init__ at 0x10552c4c0, file runtime.py>, line 820
+#    4: <Code311 code object acquire_login_slot at 0x10552c520, file runtime.py>, line 830
+#    5: True
+#    6: ('discard_buffered',)
+#    7: <Code311 code object release_login_slot at 0x10552c550, file runtime.py>, line 846
+#    8: <Code311 code object wait_for_code at 0x10552c580, file runtime.py>, line 857
+#    9: <Code311 code object submit at 0x10552c5e0, file runtime.py>, line 898
+#   10: <Code311 code object cancel_all at 0x10552c610, file runtime.py>, line 931
+#   11: <Code311 code object status at 0x10552c640, file runtime.py>, line 944
+#   12: ('active_email', 'active_task_id', 'buffered', 'condition', 'login_queue', 'pending')
+#   13: None
+#   14: ('return', 'None')
+#   15: ('task_id', 'str', 'email', 'str', 'stop_event', 'threading.Event', 'return', 'None')
+#   16: ('task_id', 'str', 'discard_buffered', 'bool', 'return', 'None')
+#   17: ('task_id', 'str', 'email', 'str', 'timeout', 'int', 'stop_event', 'threading.Event', 'return', 'str')
+#   18: ('task_id', 'str', 'code', 'str', 'return', 'int')
+#   19: ('return', 'dict[str, Any]')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: __init__
+#    6: acquire_login_slot
+#    7: release_login_slot
+#    8: wait_for_code
+#    9: submit
+#   10: cancel_all
+#   11: status
+#   12: __static_attributes__
+817:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("ManualCodeCoordinator")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (817)
+              12 STORE_NAME           (__firstlineno__)
+
+818:          14 LOAD_CONST           ("Serializes manual email logins while keeping downstream work concurrent.")
+              16 STORE_NAME           (__doc__)
+
+820:          18 LOAD_CONST           (('return', 'None'))
+              20 LOAD_CONST           (<Code311 code object __init__ at 0x10552c4c0, file runtime.py>, line 820)
+              22 MAKE_FUNCTION
+              24 SET_FUNCTION_ATTRIBUTE 4
+              26 STORE_NAME           (__init__)
+
+830:          28 LOAD_CONST           (('task_id', 'str', 'email', 'str', 'stop_event', 'threading.Event', 'return', 'None'))
+              30 LOAD_CONST           (<Code311 code object acquire_login_slot at 0x10552c520, file runtime.py>, line 830)
+              32 MAKE_FUNCTION
+              34 SET_FUNCTION_ATTRIBUTE 4
+              36 STORE_NAME           (acquire_login_slot)
+
+846:          38 LOAD_CONST           (True)
+              40 LOAD_CONST           (('discard_buffered',))
+              42 BUILD_CONST_KEY_MAP  1
+              44 LOAD_CONST           (('task_id', 'str', 'discard_buffered', 'bool', 'return', 'None'))
+              46 LOAD_CONST           (<Code311 code object release_login_slot at 0x10552c550, file runtime.py>, line 846)
+              48 MAKE_FUNCTION
+              50 SET_FUNCTION_ATTRIBUTE 4
+              52 SET_FUNCTION_ATTRIBUTE 2
+              54 STORE_NAME           (release_login_slot)
+
+857:          56 LOAD_CONST           (('task_id', 'str', 'email', 'str', 'timeout', 'int', 'stop_event', 'threading.Event', 'return', 'str'))
+              58 LOAD_CONST           (<Code311 code object wait_for_code at 0x10552c580, file runtime.py>, line 857)
+              60 MAKE_FUNCTION
+              62 SET_FUNCTION_ATTRIBUTE 4
+              64 STORE_NAME           (wait_for_code)
+
+898:          66 LOAD_CONST           (('task_id', 'str', 'code', 'str', 'return', 'int'))
+              68 LOAD_CONST           (<Code311 code object submit at 0x10552c5e0, file runtime.py>, line 898)
+              70 MAKE_FUNCTION
+              72 SET_FUNCTION_ATTRIBUTE 4
+              74 STORE_NAME           (submit)
+
+931:          76 LOAD_CONST           (('return', 'None'))
+              78 LOAD_CONST           (<Code311 code object cancel_all at 0x10552c610, file runtime.py>, line 931)
+              80 MAKE_FUNCTION
+              82 SET_FUNCTION_ATTRIBUTE 4
+              84 STORE_NAME           (cancel_all)
+
+944:          86 LOAD_CONST           (('return', 'dict[str, Any]'))
+              88 LOAD_CONST           (<Code311 code object status at 0x10552c640, file runtime.py>, line 944)
+              90 MAKE_FUNCTION
+              92 SET_FUNCTION_ATTRIBUTE 4
+              94 STORE_NAME           (status)
+              96 LOAD_CONST           (('active_email', 'active_task_id', 'buffered', 'condition', 'login_queue', 'pending'))
+              98 STORE_NAME           (__static_attributes__)
+             100 RETURN_CONST         (None)
+
+
+# Method Name:       ManualEmailOtpProvider
+# Filename:          runtime.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        2
+# Flags:             0x01000000 (0x1000000)
+# First Line:        974
+# Constants:
+#    0: 'ManualEmailOtpProvider'
+#    1: 974
+#    2: "Expose one task's manually entered email OTP to the existing state machine."
+#    3: <Code311 code object __init__ at 0x10552c6a0, file runtime.py>, line 977
+#    4: <Code311 code object acquire_login_slot at 0x10552c670, file runtime.py>, line 987
+#    5: <Code311 code object mark_sent at 0x10552c6d0, file runtime.py>, line 992
+#    6: <Code311 code object mark_verified at 0x10552c700, file runtime.py>, line 995
+#    7: <Code311 code object wait_code at 0x10552c790, file runtime.py>, line 1002
+#    8: <Code311 code object close at 0x10552c730, file runtime.py>, line 1015
+#    9: ('coordinator', 'entry', 'log_fn', 'slot_acquired', 'state_fn', 'stop_event', 'task_id', 'timeout')
+#   10: None
+#   11: ('entry', 'ManualMailboxEntry', 'task_id', 'str', 'coordinator', 'ManualCodeCoordinator', 'config', 'dict[str, Any]', 'stop_event', 'threading.Event', 'state_fn', 'Callable[..., None]', 'log_fn', 'LogFn', 'return', 'None')
+#   12: ('return', 'None')
+#   13: ('email', 'str', 'return', 'str')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: __init__
+#    6: acquire_login_slot
+#    7: mark_sent
+#    8: mark_verified
+#    9: wait_code
+#   10: close
+#   11: __static_attributes__
+974:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("ManualEmailOtpProvider")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (974)
+              12 STORE_NAME           (__firstlineno__)
+
+975:          14 LOAD_CONST           ("Expose one task's manually entered email OTP to the existing state machine.")
+              16 STORE_NAME           (__doc__)
+
+977:          18 LOAD_CONST           (('entry', 'ManualMailboxEntry', 'task_id', 'str', 'coordinator', 'ManualCodeCoordinator', 'config', 'dict[str, Any]', 'stop_event', 'threading.Event', 'state_fn', 'Callable[..., None]', 'log_fn', 'LogFn', 'return', 'None'))
+              20 LOAD_CONST           (<Code311 code object __init__ at 0x10552c6a0, file runtime.py>, line 977)
+              22 MAKE_FUNCTION
+              24 SET_FUNCTION_ATTRIBUTE 4
+              26 STORE_NAME           (__init__)
+
+987:          28 LOAD_CONST           (('return', 'None'))
+              30 LOAD_CONST           (<Code311 code object acquire_login_slot at 0x10552c670, file runtime.py>, line 987)
+              32 MAKE_FUNCTION
+              34 SET_FUNCTION_ATTRIBUTE 4
+              36 STORE_NAME           (acquire_login_slot)
+
+992:          38 LOAD_CONST           (('return', 'None'))
+              40 LOAD_CONST           (<Code311 code object mark_sent at 0x10552c6d0, file runtime.py>, line 992)
+              42 MAKE_FUNCTION
+              44 SET_FUNCTION_ATTRIBUTE 4
+              46 STORE_NAME           (mark_sent)
+
+995:          48 LOAD_CONST           (('return', 'None'))
+              50 LOAD_CONST           (<Code311 code object mark_verified at 0x10552c700, file runtime.py>, line 995)
+              52 MAKE_FUNCTION
+              54 SET_FUNCTION_ATTRIBUTE 4
+              56 STORE_NAME           (mark_verified)
+
+1002:          58 LOAD_CONST           (('email', 'str', 'return', 'str'))
+              60 LOAD_CONST           (<Code311 code object wait_code at 0x10552c790, file runtime.py>, line 1002)
+              62 MAKE_FUNCTION
+              64 SET_FUNCTION_ATTRIBUTE 4
+              66 STORE_NAME           (wait_code)
+
+1015:          68 LOAD_CONST           (('return', 'None'))
+              70 LOAD_CONST           (<Code311 code object close at 0x10552c730, file runtime.py>, line 1015)
+              72 MAKE_FUNCTION
+              74 SET_FUNCTION_ATTRIBUTE 4
+              76 STORE_NAME           (close)
+              78 LOAD_CONST           (('coordinator', 'entry', 'log_fn', 'slot_acquired', 'state_fn', 'stop_event', 'task_id', 'timeout'))
+              80 STORE_NAME           (__static_attributes__)
+              82 RETURN_CONST         (None)
+
+
+# Method Name:       OutlookMailboxOtpProvider
+# Filename:          runtime.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        5
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1022
+# Constants:
+#    0: 'OutlookMailboxOtpProvider'
+#    1: 1022
+#    2: 'Read fresh Outlook codes with the OAuth credentials stored on a pool row.'
+#    3: None
+#    4: ''
+#    5: ('phase_gate', 'stop_event', 'task_id', 'state_fn')
+#    6: <Code311 code object __init__ at 0x10552c850, file runtime.py>, line 1025
+#    7: <Code311 code object acquire_login_slot at 0x10552c820, file runtime.py>, line 1047
+#    8: <Code311 code object _release_login_slot at 0x10552c880, file runtime.py>, line 1058
+#    9: <Code311 code object mark_sent at 0x10552c8b0, file runtime.py>, line 1063
+#   10: <Code311 code object mark_verified at 0x10552c940, file runtime.py>, line 1069
+#   11: <Code311 code object wait_code at 0x10552c9a0, file runtime.py>, line 1072
+#   12: <Code311 code object close at 0x10552c970, file runtime.py>, line 1088
+#   13: ('entry', 'interval', 'log_fn', 'phase_gate', 'phase_slot_acquired', 'poller', 'sent_at', 'state_fn', 'stop_event', 'task_id', 'timeout')
+#   14: ('entry', 'PoolEntry', 'config', 'dict[str, Any]', 'log_fn', 'LogFn', 'phase_gate', 'AutoEmailPhaseGate | None', 'stop_event', 'threading.Event | None', 'task_id', 'str', 'state_fn', 'Callable[..., None] | None', 'return', 'None')
+#   15: ('return', 'None')
+#   16: ('email', 'str', 'return', 'str')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: __init__
+#    6: acquire_login_slot
+#    7: _release_login_slot
+#    8: mark_sent
+#    9: mark_verified
+#   10: wait_code
+#   11: close
+#   12: __static_attributes__
+1022:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("OutlookMailboxOtpProvider")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (1022)
+              12 STORE_NAME           (__firstlineno__)
+
+1023:          14 LOAD_CONST           ("Read fresh Outlook codes with the OAuth credentials stored on a pool row.")
+              16 STORE_NAME           (__doc__)
+
+1025:          18 LOAD_CONST           (None)
+              20 LOAD_CONST           (None)
+              22 LOAD_CONST           ("")
+              24 LOAD_CONST           (None)
+              26 LOAD_CONST           (('phase_gate', 'stop_event', 'task_id', 'state_fn'))
+              28 BUILD_CONST_KEY_MAP  4
+              30 LOAD_CONST           (('entry', 'PoolEntry', 'config', 'dict[str, Any]', 'log_fn', 'LogFn', 'phase_gate', 'AutoEmailPhaseGate | None', 'stop_event', 'threading.Event | None', 'task_id', 'str', 'state_fn', 'Callable[..., None] | None', 'return', 'None'))
+              32 LOAD_CONST           (<Code311 code object __init__ at 0x10552c850, file runtime.py>, line 1025)
+              34 MAKE_FUNCTION
+              36 SET_FUNCTION_ATTRIBUTE 4
+              38 SET_FUNCTION_ATTRIBUTE 2
+              40 STORE_NAME           (__init__)
+
+1047:          42 LOAD_CONST           (('return', 'None'))
+              44 LOAD_CONST           (<Code311 code object acquire_login_slot at 0x10552c820, file runtime.py>, line 1047)
+              46 MAKE_FUNCTION
+              48 SET_FUNCTION_ATTRIBUTE 4
+              50 STORE_NAME           (acquire_login_slot)
+
+1058:          52 LOAD_CONST           (('return', 'None'))
+              54 LOAD_CONST           (<Code311 code object _release_login_slot at 0x10552c880, file runtime.py>, line 1058)
+              56 MAKE_FUNCTION
+              58 SET_FUNCTION_ATTRIBUTE 4
+              60 STORE_NAME           (_release_login_slot)
+
+1063:          62 LOAD_CONST           (('return', 'None'))
+              64 LOAD_CONST           (<Code311 code object mark_sent at 0x10552c8b0, file runtime.py>, line 1063)
+              66 MAKE_FUNCTION
+              68 SET_FUNCTION_ATTRIBUTE 4
+              70 STORE_NAME           (mark_sent)
+
+1069:          72 LOAD_CONST           (('return', 'None'))
+              74 LOAD_CONST           (<Code311 code object mark_verified at 0x10552c940, file runtime.py>, line 1069)
+              76 MAKE_FUNCTION
+              78 SET_FUNCTION_ATTRIBUTE 4
+              80 STORE_NAME           (mark_verified)
+
+1072:          82 LOAD_CONST           (('email', 'str', 'return', 'str'))
+              84 LOAD_CONST           (<Code311 code object wait_code at 0x10552c9a0, file runtime.py>, line 1072)
+              86 MAKE_FUNCTION
+              88 SET_FUNCTION_ATTRIBUTE 4
+              90 STORE_NAME           (wait_code)
+
+1088:          92 LOAD_CONST           (('return', 'None'))
+              94 LOAD_CONST           (<Code311 code object close at 0x10552c970, file runtime.py>, line 1088)
+              96 MAKE_FUNCTION
+              98 SET_FUNCTION_ATTRIBUTE 4
+             100 STORE_NAME           (close)
+             102 LOAD_CONST           (('entry', 'interval', 'log_fn', 'phase_gate', 'phase_slot_acquired', 'poller', 'sent_at', 'state_fn', 'stop_event', 'task_id', 'timeout'))
+             104 STORE_NAME           (__static_attributes__)
+             106 RETURN_CONST         (None)
+
+
+# Method Name:       AutoEmailPhaseGate
+# Filename:          runtime.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1092
+# Constants:
+#    0: 'AutoEmailPhaseGate'
+#    1: 1092
+#    2: 'Reserve one worker slot for automatic email login while phone work continues.'
+#    3: <Code311 code object __init__ at 0x10552ca60, file runtime.py>, line 1095
+#    4: <Code311 code object acquire at 0x10552ca90, file runtime.py>, line 1102
+#    5: <Code311 code object release at 0x10552cac0, file runtime.py>, line 1116
+#    6: <Code311 code object status at 0x10552cb20, file runtime.py>, line 1121
+#    7: ('active', 'limit', 'lock', 'semaphore', 'waiting')
+#    8: None
+#    9: (1,)
+#   10: ('limit', 'int', 'return', 'None')
+#   11: ('stop_event', 'threading.Event', 'return', 'None')
+#   12: ('return', 'None')
+#   13: ('return', 'dict[str, int]')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: __init__
+#    6: acquire
+#    7: release
+#    8: status
+#    9: __static_attributes__
+1092:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("AutoEmailPhaseGate")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (1092)
+              12 STORE_NAME           (__firstlineno__)
+
+1093:          14 LOAD_CONST           ("Reserve one worker slot for automatic email login while phone work continues.")
+              16 STORE_NAME           (__doc__)
+
+1095:          18 LOAD_CONST           ((1,))
+              20 LOAD_CONST           (('limit', 'int', 'return', 'None'))
+              22 LOAD_CONST           (<Code311 code object __init__ at 0x10552ca60, file runtime.py>, line 1095)
+              24 MAKE_FUNCTION
+              26 SET_FUNCTION_ATTRIBUTE 4
+              28 SET_FUNCTION_ATTRIBUTE 1
+              30 STORE_NAME           (__init__)
+
+1102:          32 LOAD_CONST           (('stop_event', 'threading.Event', 'return', 'None'))
+              34 LOAD_CONST           (<Code311 code object acquire at 0x10552ca90, file runtime.py>, line 1102)
+              36 MAKE_FUNCTION
+              38 SET_FUNCTION_ATTRIBUTE 4
+              40 STORE_NAME           (acquire)
+
+1116:          42 LOAD_CONST           (('return', 'None'))
+              44 LOAD_CONST           (<Code311 code object release at 0x10552cac0, file runtime.py>, line 1116)
+              46 MAKE_FUNCTION
+              48 SET_FUNCTION_ATTRIBUTE 4
+              50 STORE_NAME           (release)
+
+1121:          52 LOAD_CONST           (('return', 'dict[str, int]'))
+              54 LOAD_CONST           (<Code311 code object status at 0x10552cb20, file runtime.py>, line 1121)
+              56 MAKE_FUNCTION
+              58 SET_FUNCTION_ATTRIBUTE 4
+              60 STORE_NAME           (status)
+              62 LOAD_CONST           (('active', 'limit', 'lock', 'semaphore', 'waiting'))
+              64 STORE_NAME           (__static_attributes__)
+              66 RETURN_CONST         (None)
+
+
+# Method Name:       GptMailOtpProvider
+# Filename:          runtime.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        5
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1126
+# Constants:
+#    0: 'GptMailOtpProvider'
+#    1: 1126
+#    2: "Read the current task email's code from the optional GPTMail API.\n\nThis provider deliberately does not reserve or mutate a GPTMail mailbox:\nthe local pool already owns task assignment. Each poll is scoped to the\nexact task email and therefore cannot consume another pool row.\n"
+#    3: None
+#    4: ''
+#    5: ('phase_gate', 'stop_event', 'task_id', 'state_fn')
+#    6: <Code311 code object __init__ at 0x10552cbb0, file runtime.py>, line 1134
+#    7: <Code311 code object _headers at 0x10552cb80, file runtime.py>, line 1161
+#    8: <Code311 code object acquire_login_slot at 0x10552cbe0, file runtime.py>, line 1169
+#    9: <Code311 code object _release_login_slot at 0x10552cc10, file runtime.py>, line 1180
+#   10: <Code311 code object mark_sent at 0x10552cc40, file runtime.py>, line 1185
+#   11: <Code311 code object _report_timeout at 0x10552cca0, file runtime.py>, line 1191
+#   12: <Code311 code object wait_code at 0x10552ccd0, file runtime.py>, line 1205
+#   13: <Code311 code object mark_verified at 0x10552cc70, file runtime.py>, line 1277
+#   14: <Code311 code object close at 0x10552cd00, file runtime.py>, line 1280
+#   15: ('api_key', 'base_url', 'config', 'entry', 'interval', 'keyword', 'log_fn', 'max_attempts', 'phase_gate', 'phase_slot_acquired', 'state_fn', 'stop_event', 'task_id', 'timeout')
+#   16: ('entry', 'PoolEntry', 'config', 'dict[str, Any]', 'log_fn', 'LogFn', 'phase_gate', 'AutoEmailPhaseGate | None', 'stop_event', 'threading.Event | None', 'task_id', 'str', 'state_fn', 'Callable[..., None] | None', 'return', 'None')
+#   17: ('return', 'dict[str, str]')
+#   18: ('return', 'None')
+#   19: ('email', 'str', 'return', 'str')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: __init__
+#    6: property
+#    7: _headers
+#    8: acquire_login_slot
+#    9: _release_login_slot
+#   10: mark_sent
+#   11: _report_timeout
+#   12: wait_code
+#   13: mark_verified
+#   14: close
+#   15: __static_attributes__
+1126:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("GptMailOtpProvider")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (1126)
+              12 STORE_NAME           (__firstlineno__)
+
+1127:          14 LOAD_CONST           ("Read the current task email's code from the optional GPTMail API.\n\nThis provider deliberately does not reserve or mutate a GPTMail mailbox:\nthe local pool already owns task assignment. Each poll is scoped to the\nexact task email and therefore cannot consume another pool row.\n")
+              16 STORE_NAME           (__doc__)
+
+1140:          18 LOAD_CONST           (None)
+
+1141:          20 LOAD_CONST           (None)
+
+1142:          22 LOAD_CONST           ("")
+
+1143:          24 LOAD_CONST           (None)
+
+1134:          26 LOAD_CONST           (('phase_gate', 'stop_event', 'task_id', 'state_fn'))
+              28 BUILD_CONST_KEY_MAP  4
+
+1136:          30 NOP
+
+1134:          32 NOP
+
+1137:          34 NOP
+
+1134:          36 NOP
+
+1138:          38 NOP
+
+1134:          40 NOP
+
+1140:          42 NOP
+
+1134:          44 NOP
+
+1141:          46 NOP
+
+1134:          48 NOP
+
+1142:          50 NOP
+
+1134:          52 NOP
+
+1143:          54 NOP
+
+1134:          56 NOP
+
+1144:          58 NOP
+
+1134:          60 LOAD_CONST           (('entry', 'PoolEntry', 'config', 'dict[str, Any]', 'log_fn', 'LogFn', 'phase_gate', 'AutoEmailPhaseGate | None', 'stop_event', 'threading.Event | None', 'task_id', 'str', 'state_fn', 'Callable[..., None] | None', 'return', 'None'))
+              62 LOAD_CONST           (<Code311 code object __init__ at 0x10552cbb0, file runtime.py>, line 1134)
+              64 MAKE_FUNCTION
+              66 SET_FUNCTION_ATTRIBUTE 4
+              68 SET_FUNCTION_ATTRIBUTE 2
+              70 STORE_NAME           (__init__)
+
+1161:          72 LOAD_NAME            (property)
+
+1162:          74 LOAD_CONST           (('return', 'dict[str, str]'))
+              76 LOAD_CONST           (<Code311 code object _headers at 0x10552cb80, file runtime.py>, line 1161)
+              78 MAKE_FUNCTION
+              80 SET_FUNCTION_ATTRIBUTE 4
+
+1161:          82 CALL                 (0 positional)
+
+1162:          90 STORE_NAME           (_headers)
+
+1169:          92 LOAD_CONST           (('return', 'None'))
+              94 LOAD_CONST           (<Code311 code object acquire_login_slot at 0x10552cbe0, file runtime.py>, line 1169)
+              96 MAKE_FUNCTION
+              98 SET_FUNCTION_ATTRIBUTE 4
+             100 STORE_NAME           (acquire_login_slot)
+
+1180:         102 LOAD_CONST           (('return', 'None'))
+             104 LOAD_CONST           (<Code311 code object _release_login_slot at 0x10552cc10, file runtime.py>, line 1180)
+             106 MAKE_FUNCTION
+             108 SET_FUNCTION_ATTRIBUTE 4
+             110 STORE_NAME           (_release_login_slot)
+
+1185:         112 LOAD_CONST           (('return', 'None'))
+             114 LOAD_CONST           (<Code311 code object mark_sent at 0x10552cc40, file runtime.py>, line 1185)
+             116 MAKE_FUNCTION
+             118 SET_FUNCTION_ATTRIBUTE 4
+             120 STORE_NAME           (mark_sent)
+
+1191:         122 LOAD_CONST           (('return', 'None'))
+             124 LOAD_CONST           (<Code311 code object _report_timeout at 0x10552cca0, file runtime.py>, line 1191)
+             126 MAKE_FUNCTION
+             128 SET_FUNCTION_ATTRIBUTE 4
+             130 STORE_NAME           (_report_timeout)
+
+1205:         132 LOAD_CONST           (('email', 'str', 'return', 'str'))
+             134 LOAD_CONST           (<Code311 code object wait_code at 0x10552ccd0, file runtime.py>, line 1205)
+             136 MAKE_FUNCTION
+             138 SET_FUNCTION_ATTRIBUTE 4
+             140 STORE_NAME           (wait_code)
+
+1277:         142 LOAD_CONST           (('return', 'None'))
+             144 LOAD_CONST           (<Code311 code object mark_verified at 0x10552cc70, file runtime.py>, line 1277)
+             146 MAKE_FUNCTION
+             148 SET_FUNCTION_ATTRIBUTE 4
+             150 STORE_NAME           (mark_verified)
+
+1280:         152 LOAD_CONST           (('return', 'None'))
+             154 LOAD_CONST           (<Code311 code object close at 0x10552cd00, file runtime.py>, line 1280)
+             156 MAKE_FUNCTION
+             158 SET_FUNCTION_ATTRIBUTE 4
+             160 STORE_NAME           (close)
+             162 LOAD_CONST           (('api_key', 'base_url', 'config', 'entry', 'interval', 'keyword', 'log_fn', 'max_attempts', 'phase_gate', 'phase_slot_acquired', 'state_fn', 'stop_event', 'task_id', 'timeout'))
+             164 STORE_NAME           (__static_attributes__)
+             166 RETURN_CONST         (None)
+
+
+# Method Name:       UrlMailboxOtpProvider
+# Filename:          runtime.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        5
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1284
+# Constants:
+#    0: 'UrlMailboxOtpProvider'
+#    1: 1284
+#    2: 'Adapter consumed by the existing email-first Node state machine.'
+#    3: None
+#    4: ''
+#    5: ('phase_gate', 'stop_event', 'task_id', 'state_fn')
+#    6: <Code311 code object __init__ at 0x10552cdc0, file runtime.py>, line 1287
+#    7: <Code311 code object acquire_login_slot at 0x10552cdf0, file runtime.py>, line 1324
+#    8: <Code311 code object _acquire_phase_slot at 0x10552ce20, file runtime.py>, line 1328
+#    9: <Code311 code object _release_phase_slot at 0x10552ce50, file runtime.py>, line 1339
+#   10: <Code311 code object _read_baseline at 0x10552ceb0, file runtime.py>, line 1344
+#   11: <Code311 code object mark_sent at 0x10552ce80, file runtime.py>, line 1362
+#   12: <Code311 code object wait_code at 0x10552cfa0, file runtime.py>, line 1368
+#   13: <Code311 code object mark_verified at 0x10552cf70, file runtime.py>, line 1384
+#   14: <Code311 code object close at 0x10552cfd0, file runtime.py>, line 1387
+#   15: ('baseline', 'config', 'entry', 'interval', 'log_fn', 'max_attempts', 'phase_gate', 'phase_slot_acquired', 'provider', 'state_fn', 'stop_event', 'task_id', 'timeout')
+#   16: ('entry', 'PoolEntry', 'config', 'dict[str, Any]', 'log_fn', 'LogFn', 'phase_gate', 'AutoEmailPhaseGate | None', 'stop_event', 'threading.Event | None', 'task_id', 'str', 'state_fn', 'Callable[..., None] | None', 'return', 'None')
+#   17: ('return', 'None')
+#   18: ('return', 'MailboxSnapshot')
+#   19: ('email', 'str', 'return', 'str')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: __init__
+#    6: acquire_login_slot
+#    7: _acquire_phase_slot
+#    8: _release_phase_slot
+#    9: _read_baseline
+#   10: mark_sent
+#   11: wait_code
+#   12: mark_verified
+#   13: close
+#   14: __static_attributes__
+1284:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("UrlMailboxOtpProvider")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (1284)
+              12 STORE_NAME           (__firstlineno__)
+
+1285:          14 LOAD_CONST           ("Adapter consumed by the existing email-first Node state machine.")
+              16 STORE_NAME           (__doc__)
+
+1293:          18 LOAD_CONST           (None)
+
+1294:          20 LOAD_CONST           (None)
+
+1295:          22 LOAD_CONST           ("")
+
+1296:          24 LOAD_CONST           (None)
+
+1287:          26 LOAD_CONST           (('phase_gate', 'stop_event', 'task_id', 'state_fn'))
+              28 BUILD_CONST_KEY_MAP  4
+
+1289:          30 NOP
+
+1287:          32 NOP
+
+1290:          34 NOP
+
+1287:          36 NOP
+
+1291:          38 NOP
+
+1287:          40 NOP
+
+1293:          42 NOP
+
+1287:          44 NOP
+
+1294:          46 NOP
+
+1287:          48 NOP
+
+1295:          50 NOP
+
+1287:          52 NOP
+
+1296:          54 NOP
+
+1287:          56 NOP
+
+1297:          58 NOP
+
+1287:          60 LOAD_CONST           (('entry', 'PoolEntry', 'config', 'dict[str, Any]', 'log_fn', 'LogFn', 'phase_gate', 'AutoEmailPhaseGate | None', 'stop_event', 'threading.Event | None', 'task_id', 'str', 'state_fn', 'Callable[..., None] | None', 'return', 'None'))
+              62 LOAD_CONST           (<Code311 code object __init__ at 0x10552cdc0, file runtime.py>, line 1287)
+              64 MAKE_FUNCTION
+              66 SET_FUNCTION_ATTRIBUTE 4
+              68 SET_FUNCTION_ATTRIBUTE 2
+              70 STORE_NAME           (__init__)
+
+1324:          72 LOAD_CONST           (('return', 'None'))
+              74 LOAD_CONST           (<Code311 code object acquire_login_slot at 0x10552cdf0, file runtime.py>, line 1324)
+              76 MAKE_FUNCTION
+              78 SET_FUNCTION_ATTRIBUTE 4
+              80 STORE_NAME           (acquire_login_slot)
+
+1328:          82 LOAD_CONST           (('return', 'None'))
+              84 LOAD_CONST           (<Code311 code object _acquire_phase_slot at 0x10552ce20, file runtime.py>, line 1328)
+              86 MAKE_FUNCTION
+              88 SET_FUNCTION_ATTRIBUTE 4
+              90 STORE_NAME           (_acquire_phase_slot)
+
+1339:          92 LOAD_CONST           (('return', 'None'))
+              94 LOAD_CONST           (<Code311 code object _release_phase_slot at 0x10552ce50, file runtime.py>, line 1339)
+              96 MAKE_FUNCTION
+              98 SET_FUNCTION_ATTRIBUTE 4
+             100 STORE_NAME           (_release_phase_slot)
+
+1344:         102 LOAD_CONST           (('return', 'MailboxSnapshot'))
+             104 LOAD_CONST           (<Code311 code object _read_baseline at 0x10552ceb0, file runtime.py>, line 1344)
+             106 MAKE_FUNCTION
+             108 SET_FUNCTION_ATTRIBUTE 4
+             110 STORE_NAME           (_read_baseline)
+
+1362:         112 LOAD_CONST           (('return', 'None'))
+             114 LOAD_CONST           (<Code311 code object mark_sent at 0x10552ce80, file runtime.py>, line 1362)
+             116 MAKE_FUNCTION
+             118 SET_FUNCTION_ATTRIBUTE 4
+             120 STORE_NAME           (mark_sent)
+
+1368:         122 LOAD_CONST           (('email', 'str', 'return', 'str'))
+             124 LOAD_CONST           (<Code311 code object wait_code at 0x10552cfa0, file runtime.py>, line 1368)
+             126 MAKE_FUNCTION
+             128 SET_FUNCTION_ATTRIBUTE 4
+             130 STORE_NAME           (wait_code)
+
+1384:         132 LOAD_CONST           (('return', 'None'))
+             134 LOAD_CONST           (<Code311 code object mark_verified at 0x10552cf70, file runtime.py>, line 1384)
+             136 MAKE_FUNCTION
+             138 SET_FUNCTION_ATTRIBUTE 4
+             140 STORE_NAME           (mark_verified)
+
+1387:         142 LOAD_CONST           (('return', 'None'))
+             144 LOAD_CONST           (<Code311 code object close at 0x10552cfd0, file runtime.py>, line 1387)
+             146 MAKE_FUNCTION
+             148 SET_FUNCTION_ATTRIBUTE 4
+             150 STORE_NAME           (close)
+             152 LOAD_CONST           (('baseline', 'config', 'entry', 'interval', 'log_fn', 'max_attempts', 'phase_gate', 'phase_slot_acquired', 'provider', 'state_fn', 'stop_event', 'task_id', 'timeout'))
+             154 STORE_NAME           (__static_attributes__)
+             156 RETURN_CONST         (None)
+
+
+# Method Name:       EmailAuthImporter
+# Filename:          runtime.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1391
+# Constants:
+#    0: 'EmailAuthImporter'
+#    1: 1391
+#    2: "Runs a standalone batch while preserving one task's identity context."
+#    3: None
+#    4: <Code311 code object __init__ at 0x105531f10, file runtime.py>, line 1394
+#    5: <Code311 code object _configure_sentinel_python_fallback at 0x105531e80, file runtime.py>, line 1423
+#    6: <Code311 code object _log at 0x105531eb0, file runtime.py>, line 1437
+#    7: <Code311 code object _pool at 0x105531040, file runtime.py>, line 1440
+#    8: False
+#    9: ('remote',)
+#   10: <Code311 code object settings_validation at 0x105531f40, file runtime.py>, line 1450
+#   11: <Code311 code object _validate_sub2 at 0x105531160, file runtime.py>, line 1490
+#   12: ''
+#   13: ('password',)
+#   14: <Code311 code object _task_config at 0x1055311c0, file runtime.py>, line 1503
+#   15: <Code311 code object start at 0x105531190, file runtime.py>, line 1585
+#   16: <Code311 code object stop at 0x105531220, file runtime.py>, line 1657
+#   17: <Code311 code object _watch at 0x105531250, file runtime.py>, line 1681
+#   18: <Code311 code object _log_final_summary at 0x105531280, file runtime.py>, line 1699
+#   19: <Code311 code object _task_state at 0x1055312e0, file runtime.py>, line 1717
+#   20: <Code311 code object _account_label at 0x105531310, file runtime.py>, line 1723
+#   21: <Code311 code object _source_row at 0x105531340, file runtime.py>, line 1728
+#   22: <Code311 code object _run_one at 0x105531370, file runtime.py>, line 1736
+#   23: <Code311 code object _run_one_impl at 0x1055311f0, file runtime.py>, line 1752
+#   24: <Code311 code object _pre_auth_session_retryable at 0x105531580, file runtime.py>, line 1976
+#   25: <Code311 code object _password_credentials_rejected at 0x1055315e0, file runtime.py>, line 1993
+#   26: <Code311 code object _retire_after_failure at 0x105531640, file runtime.py>, line 2001
+#   27: 'failed'
+#   28: ('error', 'status')
+#   29: <Code311 code object _persist_result at 0x1055316a0, file runtime.py>, line 2045
+#   30: <Code311 code object status at 0x1055316d0, file runtime.py>, line 2076
+#   31: <Code311 code object export_records at 0x1055317c0, file runtime.py>, line 2099
+#   32: <Code311 code object submit_manual_code at 0x1055318b0, file runtime.py>, line 2152
+#   33: ('_manual_pool_instance', '_manual_pool_key', 'active_task_ids', 'auto_email_phase_gate', 'cancelled_waiting', 'data_dir', 'executor', 'future_assignments', 'futures', 'lock', 'log_fn', 'manual_codes', 'node_gate', 'running', 'stop_event', 'task_concurrency', 'tasks')
+#   34: ('data_dir', 'str | os.PathLike[str]', 'log_fn', 'LogFn | None', 'return', 'None')
+#   35: ('return', 'None')
+#   36: ('info',)
+#   37: ('message', 'str', 'level', 'str', 'return', 'None')
+#   38: ('settings', 'dict[str, Any]', 'return', 'MailboxPool | ManualMailboxPool')
+#   39: ('settings', 'dict[str, Any]', 'remote', 'bool', 'return', 'dict[str, Any]')
+#   40: ('settings', 'dict[str, Any]', 'return', 'tuple[int, str]')
+#   41: ('settings', 'dict[str, Any]', 'email', 'str', 'task_id', 'str', 'password', 'str', 'return', 'dict[str, Any]')
+#   42: ('settings', 'dict[str, Any]', 'return', 'None')
+#   43: ('task_id', 'str', 'values', 'Any', 'return', 'None')
+#   44: ('entry', 'PoolEntry | ManualMailboxEntry', 'return', 'str')
+#   45: (None, '')
+#   46: ('settings', 'dict[str, Any]', 'ordinal', 'int', 'assigned_entry', 'PoolEntry | ManualMailboxEntry | None', 'assigned_task_id', 'str', 'return', 'None')
+#   47: ('result', 'dict[str, Any]', 'return', 'bool')
+#   48: ('settings', 'dict[str, Any]', 'pool', 'MailboxPool | ManualMailboxPool', 'entry', 'PoolEntry | ManualMailboxEntry', 'task_id', 'str', 'result', 'dict[str, Any]', 'error', 'str', 'return', 'None')
+#   49: ('settings', 'dict[str, Any]', 'task_id', 'str', 'entry', 'PoolEntry | ManualMailboxEntry', 'result', 'dict[str, Any]', 'error', 'str', 'status', 'str', 'return', 'None')
+#   50: (None,)
+#   51: ('settings', 'dict[str, Any] | None', 'return', 'dict[str, Any]')
+#   52: ('failed',)
+#   53: ('settings', 'dict[str, Any]', 'kind', 'str', 'return', 'dict[str, Any]')
+#   54: ('task_id', 'str', 'code', 'str', 'return', 'None')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: DEFAULT_DATA_DIR
+#    6: __init__
+#    7: staticmethod
+#    8: _configure_sentinel_python_fallback
+#    9: _log
+#   10: _pool
+#   11: settings_validation
+#   12: _validate_sub2

@@ -405,9 +405,11 @@ iCloud IMAP 服务器是 `imap.mail.me.com:993`，通常不能用普通 Apple ID
 - `data/`: 运行数据、配置、邮箱池状态
 - `engine/`: 运行时准备出的引擎目录
 - `external_assets/node_chain.dat`: 原包里的外部数据
-- `disassembly/`: 反汇编结果，排查逻辑时参考
+- `disassembly/`: 反汇编索引与最多 800 行的无损分片，排查恢复逻辑时参考
 - `pycdc_attempt/`: best-effort 反编译结果，只能当提示看
-- `tools/recover.py`: 恢复脚本
+- `tools/recover.py`: 从命令行指定提取目录和反汇编工具的恢复脚本
+- `tools/disassembly_archive.py`: 反汇编分片、原始 SHA-256 校验与整文件恢复工具
+- `tools/disassembly_query.py`: 按模块、符号和源码首行查询反汇编的工具
 
 ## 已知限制
 
@@ -416,3 +418,32 @@ iCloud IMAP 服务器是 `imap.mail.me.com:993`，通常不能用普通 Apple ID
 邮件通知由 WebUI Python 进程内的后台 worker 发送，因此无法覆盖 Mac 关机、整机断网或 Python 进程直接退出等场景。这些场景需要独立的外部监控；进程仍在但 SMTP 暂时不可用时，本次发送会标记失败且不会自动重试，也不会影响批次任务状态。
 
 另外，项目里的 `.pyc` 是 Python 3.13 字节码。当前常见反编译器对 Python 3.13 支持不完整，所以 `pycdc_attempt/` 不是可直接运行源码，最可靠的逻辑参考是 `disassembly/`。需要修改恢复业务逻辑时，应在 `mac_overrides/` 通过小范围运行时覆盖完成，并用测试验证原方法签名。
+
+`disassembly/index.json` 保存每个原始 `.dis.txt` 的字节数、行数和 SHA-256，也保存所有分片的行范围及每个代码对象的 `Method Name`、源码文件、`First Line` 和反汇编范围。仓库不再保存重复的整文件；`disassembly/chunks/` 中每片最多 800 行，按索引顺序拼接后必须与原始字节完全一致。索引和分片均由工具生成，不应手工修改。
+
+常用只读查询和校验命令：
+
+```sh
+mac_runtime/.venv/bin/python tools/disassembly_query.py modules
+mac_runtime/.venv/bin/python tools/disassembly_query.py find --module codex_oauth_chain --symbol _phone_for_openai
+mac_runtime/.venv/bin/python tools/disassembly_query.py find --module codex_oauth_chain --first-line 451
+mac_runtime/.venv/bin/python tools/disassembly_query.py show --module codex_oauth_chain --symbol _phone_for_openai --first-line 451
+mac_runtime/.venv/bin/python tools/disassembly_archive.py verify --root disassembly
+```
+
+需要逐字节恢复原整文件时，应输出到临时或空目录，不要写回 `disassembly/`：
+
+```sh
+mac_runtime/.venv/bin/python tools/disassembly_archive.py restore \
+  --root disassembly \
+  --output /tmp/gptphone-disassembly-full
+```
+
+重新从 PyInstaller 提取物生成业务字节码、反编译提示和反汇编索引时，所有机器相关路径均通过 CLI 传入。`pydisasm` 和 `pycdc` 已在 `PATH` 时可省略对应参数：
+
+```sh
+mac_runtime/.venv/bin/python tools/recover.py \
+  --extracted /path/to/application.exe_extracted \
+  --pydisasm /path/to/pydisasm \
+  --pycdc /path/to/pycdc
+```

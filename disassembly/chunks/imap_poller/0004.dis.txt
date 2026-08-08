@@ -1,0 +1,627 @@
+#   13: subject_text
+#   14: plain
+#   15: code_text
+#   16: candidates
+#   17: candidate
+#   18: code
+# Cell variables:
+#    0: lower
+               0 MAKE_CELL            (lower)
+
+315:           2 RESUME               0
+
+319:           4 NOP
+
+320:           6 LOAD_FAST            (mail)
+               8 LOAD_ATTR            (NULL|self + fetch)
+              28 LOAD_FAST            (msg_id)
+              30 LOAD_CONST           ("(BODY.PEEK[])")
+              32 CALL                 (2 positional)
+              40 UNPACK_SEQUENCE      2
+              44 STORE_FAST_STORE_FAST (status, msg_data)
+
+321:          46 LOAD_FAST            (status)
+              48 LOAD_CONST           ("OK")
+              50 COMPARE_OP           (!=)
+              54 POP_JUMP_IF_FALSE    (to 60)
+
+322:          58 RETURN_CONST         (None)
+
+324:     >>   60 LOAD_CONST           (b'')
+              62 STORE_FAST           (raw)
+
+325:          64 LOAD_FAST            (msg_data)
+              66 GET_ITER
+              68 FOR_ITER             (to 220)
+              72 STORE_FAST           (item)
+
+326:          74 LOAD_GLOBAL          (NULL + isinstance)
+              84 LOAD_FAST            (item)
+              86 LOAD_GLOBAL          (tuple)
+              96 CALL                 (2 positional)
+             104 TO_BOOL
+             112 POP_JUMP_IF_TRUE     (to 120)
+             116 JUMP_BACKWARD        (to 68)
+         >>  120 LOAD_GLOBAL          (NULL + len)
+             130 LOAD_FAST            (item)
+             132 CALL                 (1 positional)
+             140 LOAD_CONST           (1)
+             142 COMPARE_OP           (>)
+             146 POP_JUMP_IF_TRUE     (to 154)
+             150 JUMP_BACKWARD        (to 68)
+
+327:     >>  154 LOAD_GLOBAL          (NULL + isinstance)
+             164 LOAD_FAST            (item)
+             166 LOAD_CONST           (1)
+             168 BINARY_SUBSCR
+         >>  172 LOAD_GLOBAL          (bytes)
+             182 CALL                 (2 positional)
+             190 TO_BOOL
+             198 POP_JUMP_IF_FALSE    (to 212)
+             202 LOAD_FAST            (item)
+             204 LOAD_CONST           (1)
+             206 BINARY_SUBSCR
+             210 JUMP_FORWARD         (to 214)
+         >>  212 LOAD_FAST            (raw)
+         >>  214 STORE_FAST           (raw)
+
+328:         216 POP_TOP
+             218 JUMP_FORWARD         (to 224)
+
+325:     >>  220 END_FOR
+             222 POP_TOP
+
+330:     >>  224 LOAD_FAST            (raw)
+             226 TO_BOOL
+             234 POP_JUMP_IF_TRUE     (to 240)
+
+331:         238 RETURN_CONST         (None)
+
+333:     >>  240 NOP
+
+334:         242 LOAD_GLOBAL          (email)
+             252 LOAD_ATTR            (message_from_bytes)
+             272 PUSH_NULL
+             274 LOAD_FAST            (raw)
+             276 CALL                 (1 positional)
+             284 STORE_FAST           (msg)
+
+338:         286 LOAD_FAST            (since_ts)
+             288 POP_JUMP_IF_NONE     (to 428)
+
+339:         292 NOP
+
+340:         294 LOAD_GLOBAL          (NULL + parsedate_to_datetime)
+             304 LOAD_FAST            (msg)
+             306 LOAD_ATTR            (NULL|self + get)
+             326 LOAD_CONST           ("Date")
+             328 LOAD_CONST           ("")
+             330 CALL                 (2 positional)
+             338 CALL                 (1 positional)
+             346 STORE_FAST           (msg_dt)
+
+341:         348 LOAD_FAST            (msg_dt)
+             350 TO_BOOL
+             358 POP_JUMP_IF_FALSE    (to 428)
+             362 LOAD_FAST            (msg_dt)
+             364 LOAD_ATTR            (NULL|self + timestamp)
+             384 CALL                 (0 positional)
+             392 LOAD_GLOBAL          (NULL + float)
+             402 LOAD_FAST            (since_ts)
+             404 CALL                 (1 positional)
+             412 LOAD_CONST           (15)
+             414 BINARY_OP            (-)
+             418 COMPARE_OP           (<)
+             422 POP_JUMP_IF_FALSE    (to 428)
+
+342:         426 RETURN_CONST         (None)
+
+346:     >>  428 LOAD_GLOBAL          (NULL + _decode_header_text)
+             438 LOAD_FAST            (msg)
+             440 LOAD_ATTR            (NULL|self + get)
+             460 LOAD_CONST           ("From")
+             462 LOAD_CONST           ("")
+             464 CALL                 (2 positional)
+             472 CALL                 (1 positional)
+             480 STORE_FAST           (from_text)
+
+347:         482 LOAD_GLOBAL          (NULL + _decode_header_text)
+             492 LOAD_FAST            (msg)
+             494 LOAD_ATTR            (NULL|self + get)
+             514 LOAD_CONST           ("Subject")
+             516 LOAD_CONST           ("")
+             518 CALL                 (2 positional)
+             526 CALL                 (1 positional)
+             534 STORE_FAST           (subject_text)
+
+348:         536 LOAD_FAST            (self)
+             538 LOAD_ATTR            (NULL|self + _message_text)
+             558 LOAD_FAST            (msg)
+             560 CALL                 (1 positional)
+             568 STORE_FAST           (plain)
+
+350:         570 LOAD_FAST            (from_text)
+             572 FORMAT_SIMPLE
+             574 LOAD_CONST           ("\n")
+             576 LOAD_FAST            (subject_text)
+             578 FORMAT_SIMPLE
+             580 LOAD_CONST           ("\n")
+             582 LOAD_FAST            (plain)
+             584 FORMAT_SIMPLE
+             586 BUILD_STRING         5
+             588 LOAD_ATTR            (NULL|self + lower)
+             608 CALL                 (0 positional)
+             616 STORE_DEREF          (lower)
+
+351:         618 LOAD_GLOBAL          (NULL + any)
+             628 LOAD_FAST            (lower)
+             630 BUILD_TUPLE          1
+             632 LOAD_CONST           (<Code311 code object <genexpr> at 0x105fca700, file imap_poller.py>, line 351)
+             634 MAKE_FUNCTION
+             636 SET_FUNCTION_ATTRIBUTE 8
+             638 LOAD_FAST            (sender_filters)
+             640 GET_ITER
+             642 CALL                 (0 positional)
+             650 CALL                 (1 positional)
+             658 TO_BOOL
+             666 POP_JUMP_IF_TRUE     (to 672)
+
+352:         670 RETURN_CONST         (None)
+
+356:     >>  672 LOAD_FAST            (subject_text)
+             674 FORMAT_SIMPLE
+             676 LOAD_CONST           ("\n")
+             678 LOAD_FAST            (plain)
+             680 FORMAT_SIMPLE
+             682 BUILD_STRING         3
+             684 STORE_FAST           (code_text)
+
+357:         686 LOAD_GLOBAL          (re)
+             696 LOAD_ATTR            (findall)
+             716 PUSH_NULL
+             718 LOAD_CONST           ("(?<!\\d)((?:\\d[\\s-]*){6})(?!\\d)")
+             720 LOAD_FAST            (code_text)
+             722 CALL                 (2 positional)
+             730 STORE_FAST           (candidates)
+
+358:         732 LOAD_FAST            (candidates)
+             734 GET_ITER
+             736 FOR_ITER             (to 814)
+             740 STORE_FAST           (candidate)
+
+359:         742 LOAD_GLOBAL          (re)
+             752 LOAD_ATTR            (sub)
+             772 PUSH_NULL
+             774 LOAD_CONST           ("\\D")
+             776 LOAD_CONST           ("")
+             778 LOAD_FAST            (candidate)
+             780 CALL                 (3 positional)
+             788 STORE_FAST           (code)
+
+360:         790 LOAD_FAST            (code)
+             792 LOAD_FAST            (excluded)
+             794 CONTAINS_OP          (not in)
+             798 POP_JUMP_IF_TRUE     (to 806)
+             802 JUMP_BACKWARD        (to 736)
+
+361:     >>  806 LOAD_FAST            (code)
+             808 SWAP                 (TOS <-> TOS1)
+             810 POP_TOP
+             812 RETURN_VALUE
+
+358:     >>  814 END_FOR
+             816 POP_TOP
+
+366:         818 RETURN_CONST         (None)
+         >>  820 PUSH_EXC_INFO
+
+335:         822 LOAD_GLOBAL          (Exception)
+             832 CHECK_EXC_MATCH
+             834 POP_JUMP_IF_FALSE    (to 844)
+             838 POP_TOP
+
+336:         840 POP_EXCEPT
+             842 RETURN_CONST         (None)
+
+335:     >>  844 RERAISE              0
+         >>  846 COPY                 3
+             848 POP_EXCEPT
+             850 RERAISE              1
+         >>  852 PUSH_EXC_INFO
+
+343:         854 LOAD_GLOBAL          (Exception)
+             864 CHECK_EXC_MATCH
+             866 POP_JUMP_IF_FALSE    (to 876)
+             870 POP_TOP
+
+344:         872 POP_EXCEPT
+             874 JUMP_BACKWARD_NO_INTERRUPT (to 428)
+
+343:     >>  876 RERAISE              0
+         >>  878 COPY                 3
+             880 POP_EXCEPT
+             882 RERAISE              1
+         >>  884 PUSH_EXC_INFO
+
+363:         886 LOAD_GLOBAL          (Exception)
+             896 CHECK_EXC_MATCH
+             898 POP_JUMP_IF_FALSE    (to 908)
+             902 POP_TOP
+
+364:         904 POP_EXCEPT
+
+366:         906 RETURN_CONST         (None)
+
+363:     >>  908 RERAISE              0
+         >>  910 COPY                 3
+             912 POP_EXCEPT
+             914 RERAISE              1
+
+ExceptionTable:
+  6 to 56 -> 884 [0]
+  60 to 110 -> 884 [0]
+  120 to 144 -> 884 [0]
+  154 to 236 -> 884 [0]
+  242 to 284 -> 820 [0]
+  286 to 290 -> 884 [0]
+  294 to 424 -> 852 [0]
+  428 to 668 -> 884 [0]
+  672 to 796 -> 884 [0]
+  806 to 810 -> 884 [0]
+  814 to 816 -> 884 [0]
+  820 to 838 -> 846 [1] lasti
+  840 to 840 -> 884 [0]
+  844 to 844 -> 846 [1] lasti
+  846 to 850 -> 884 [0]
+  852 to 870 -> 878 [1] lasti
+  872 to 874 -> 884 [0]
+  876 to 876 -> 878 [1] lasti
+  878 to 882 -> 884 [0]
+  884 to 902 -> 910 [1] lasti
+  908 to 908 -> 910 [1] lasti
+
+# Method Name:       _message_text
+# Filename:          imap_poller.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  9
+# Stack size:        6
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        368
+# Constants:
+#    0: None
+#    1: ''
+#    2: ('text/plain', 'text/html')
+#    3: True
+#    4: ('decode',)
+#    5: 'utf-8'
+#    6: 'ignore'
+#    7: ('errors',)
+#    8: 'text/html'
+#    9: '\n'
+# Names:
+#    0: is_multipart
+#    1: walk
+#    2: get_content_type
+#    3: lower
+#    4: get_payload
+#    5: str
+#    6: get_content_charset
+#    7: decode
+#    8: Exception
+#    9: _StripHTML
+#   10: feed
+#   11: text
+#   12: append
+#   13: join
+# Varnames:
+#	msg, parts, payloads, part, ctype, body, text, charset, parser
+# Positional arguments:
+#	msg
+# Local variables:
+#    1: parts
+#    2: payloads
+#    3: part
+#    4: ctype
+#    5: body
+#    6: text
+#    7: charset
+#    8: parser
+368:           0 RESUME               0
+
+370:           2 BUILD_LIST           0
+               4 STORE_FAST           (parts)
+
+371:           6 LOAD_FAST            (msg)
+               8 LOAD_ATTR            (NULL|self + is_multipart)
+              28 CALL                 (0 positional)
+              36 TO_BOOL
+              44 POP_JUMP_IF_FALSE    (to 82)
+
+372:          48 LOAD_FAST            (msg)
+              50 LOAD_ATTR            (NULL|self + walk)
+              70 CALL                 (0 positional)
+              78 STORE_FAST           (payloads)
+              80 JUMP_FORWARD         (to 88)
+
+374:     >>   82 LOAD_FAST            (msg)
+              84 BUILD_LIST           1
+              86 STORE_FAST           (payloads)
+
+375:     >>   88 LOAD_FAST            (payloads)
+              90 GET_ITER
+              92 FOR_ITER             (to 558)
+              96 STORE_FAST           (part)
+
+376:          98 LOAD_FAST            (part)
+             100 LOAD_ATTR            (NULL|self + is_multipart)
+             120 CALL                 (0 positional)
+             128 TO_BOOL
+             136 POP_JUMP_IF_FALSE    (to 144)
+
+377:         140 JUMP_BACKWARD        (to 92)
+
+378:     >>  144 LOAD_FAST            (part)
+             146 LOAD_ATTR            (NULL|self + get_content_type)
+             166 CALL                 (0 positional)
+             174 COPY                 1
+             176 TO_BOOL
+             184 POP_JUMP_IF_TRUE     (to 192)
+             188 POP_TOP
+             190 LOAD_CONST           ("")
+         >>  192 LOAD_ATTR            (NULL|self + lower)
+             212 CALL                 (0 positional)
+             220 STORE_FAST           (ctype)
+
+379:         222 LOAD_FAST            (ctype)
+             224 LOAD_CONST           (('text/plain', 'text/html'))
+             226 CONTAINS_OP          (not in)
+             230 POP_JUMP_IF_FALSE    (to 238)
+
+380:         234 JUMP_BACKWARD        (to 92)
+
+381:     >>  238 NOP
+
+382:         240 LOAD_FAST            (part)
+             242 LOAD_ATTR            (NULL|self + get_payload)
+             262 LOAD_CONST           (True)
+             264 LOAD_CONST           (('decode',))
+             266 CALL_KW              1
+             268 STORE_FAST           (body)
+
+383:         270 LOAD_FAST            (body)
+             272 POP_JUMP_IF_NOT_NONE (to 346)
+
+384:         276 LOAD_GLOBAL          (NULL + str)
+             286 LOAD_FAST            (part)
+             288 LOAD_ATTR            (NULL|self + get_payload)
+             308 CALL                 (0 positional)
+             316 COPY                 1
+             318 TO_BOOL
+             326 POP_JUMP_IF_TRUE     (to 334)
+             330 POP_TOP
+             332 LOAD_CONST           ("")
+         >>  334 CALL                 (1 positional)
+             342 STORE_FAST           (text)
+             344 JUMP_FORWARD         (to 430)
+
+386:     >>  346 LOAD_FAST            (part)
+             348 LOAD_ATTR            (NULL|self + get_content_charset)
+             368 CALL                 (0 positional)
+             376 COPY                 1
+             378 TO_BOOL
+             386 POP_JUMP_IF_TRUE     (to 394)
+             390 POP_TOP
+             392 LOAD_CONST           ("utf-8")
+         >>  394 STORE_FAST           (charset)
+
+387:         396 LOAD_FAST            (body)
+             398 LOAD_ATTR            (NULL|self + decode)
+             418 LOAD_FAST            (charset)
+             420 LOAD_CONST           ("ignore")
+             422 LOAD_CONST           (('errors',))
+             424 CALL_KW              2
+             426 STORE_FAST           (text)
+             428 NOP
+
+390:     >>  430 LOAD_FAST            (ctype)
+             432 LOAD_CONST           ("text/html")
+             434 COMPARE_OP           (==)
+             438 POP_JUMP_IF_FALSE    (to 520)
+
+391:         442 LOAD_GLOBAL          (NULL + _StripHTML)
+             452 CALL                 (0 positional)
+             460 STORE_FAST           (parser)
+
+392:         462 LOAD_FAST            (parser)
+             464 LOAD_ATTR            (NULL|self + feed)
+             484 LOAD_FAST            (text)
+             486 CALL                 (1 positional)
+             494 POP_TOP
+
+393:         496 LOAD_FAST            (parser)
+             498 LOAD_ATTR            (text)
+             518 STORE_FAST           (text)
+
+394:     >>  520 LOAD_FAST            (parts)
+             522 LOAD_ATTR            (NULL|self + append)
+             542 LOAD_FAST            (text)
+             544 CALL                 (1 positional)
+             552 POP_TOP
+             554 JUMP_BACKWARD        (to 92)
+
+375:     >>  558 END_FOR
+             560 POP_TOP
+
+395:         562 LOAD_CONST           ("\n")
+             564 LOAD_ATTR            (NULL|self + join)
+             584 LOAD_FAST            (parts)
+             586 CALL                 (1 positional)
+             594 RETURN_VALUE
+         >>  596 PUSH_EXC_INFO
+
+388:         598 LOAD_GLOBAL          (Exception)
+             608 CHECK_EXC_MATCH
+             610 POP_JUMP_IF_FALSE    (to 624)
+             614 POP_TOP
+
+389:         616 POP_EXCEPT
+             618 EXTENDED_ARG         (256)
+             620 JUMP_BACKWARD        (to 92)
+
+388:     >>  624 RERAISE              0
+         >>  626 COPY                 3
+             628 POP_EXCEPT
+             630 RERAISE              1
+
+ExceptionTable:
+  240 to 342 -> 596 [1]
+  346 to 426 -> 596 [1]
+  596 to 614 -> 626 [2] lasti
+  624 to 624 -> 626 [2] lasti
+
+# Method Name:       reset_baseline
+# Filename:          imap_poller.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        2
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        399
+# Constants:
+#    0: '重置基准邮件数，下次 poll 会重新记录'
+#    1: -1
+#    2: None
+# Names:
+#    0: _last_count
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+399:           0 RESUME               0
+
+401:           2 LOAD_CONST           (-1)
+               4 LOAD_FAST            (self)
+               6 STORE_ATTR           (_last_count)
+              16 RETURN_CONST         (None)
+
+
+# Method Name:       <genexpr>
+# Filename:          imap_poller.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x00000033 (GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        140
+# Constants:
+#    0: None
+# Varnames:
+#	.0, marker
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: marker
+# Free variables:
+#    0: text
+               0 COPY_FREE_VARS       1
+
+140:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+
+142:          10 GET_ITER
+              12 FOR_ITER             (to 36)
+              16 STORE_FAST           (marker)
+
+141:          18 LOAD_FAST            (marker)
+              20 LOAD_DEREF           (text)
+              22 CONTAINS_OP          (in)
+              26 YIELD_VALUE          0
+              28 RESUME               5
+              30 POP_TOP
+              32 JUMP_BACKWARD        (to 12)
+
+142:     >>   36 END_FOR
+              38 POP_TOP
+              40 RETURN_CONST         (None)
+         >>   42 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              44 RERAISE              1
+
+ExceptionTable:
+  6 to 40 -> 42 [0] lasti
+
+# Method Name:       <lambda>
+# Filename:          imap_poller.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        2
+# Flags:             0x00000013 (NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        196
+# Constants:
+#    0: None
+# Names:
+#    0: encode
+# Varnames:
+#	_challenge
+# Positional arguments:
+#	_challenge
+# Free variables:
+#    0: auth_string
+               0 COPY_FREE_VARS       1
+
+196:           2 RESUME               0
+               4 LOAD_DEREF           (auth_string)
+               6 LOAD_ATTR            (NULL|self + encode)
+              26 CALL                 (0 positional)
+              34 RETURN_VALUE
+
+
+# Method Name:       <genexpr>
+# Filename:          imap_poller.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x00000033 (GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        351
+# Constants:
+#    0: None
+# Varnames:
+#	.0, f
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: f
+# Free variables:
+#    0: lower
+               0 COPY_FREE_VARS       1
+
+351:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+              10 GET_ITER
+              12 FOR_ITER             (to 34)
+              16 STORE_FAST_LOAD_FAST (f, f)
+              18 LOAD_DEREF           (lower)
+              20 CONTAINS_OP          (in)
+              24 YIELD_VALUE          0
+              26 RESUME               5
+              28 POP_TOP
+              30 JUMP_BACKWARD        (to 12)
+         >>   34 END_FOR
+              36 POP_TOP
+              38 RETURN_CONST         (None)
+         >>   40 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              42 RERAISE              1
+
+ExceptionTable:
+  6 to 38 -> 40 [0] lasti

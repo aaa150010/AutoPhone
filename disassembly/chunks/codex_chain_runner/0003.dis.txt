@@ -1,0 +1,800 @@
+170:           2 LOAD_CONST           (0)
+               4 LOAD_CONST           (('get_mail_api_config', 'is_mailmanage_compatible'))
+               6 IMPORT_NAME          (email_provider_branch)
+               8 IMPORT_FROM          (get_mail_api_config)
+              10 STORE_FAST           (get_mail_api_config)
+              12 IMPORT_FROM          (is_mailmanage_compatible)
+              14 STORE_FAST           (is_mailmanage_compatible)
+              16 POP_TOP
+
+171:          18 LOAD_CONST           (0)
+              20 LOAD_CONST           (('email_proxy',))
+              22 IMPORT_NAME          (proxy_scope)
+              24 IMPORT_FROM          (email_proxy)
+              26 STORE_FAST           (email_proxy)
+              28 POP_TOP
+
+173:          30 LOAD_FAST            (is_mailmanage_compatible)
+              32 PUSH_NULL
+              34 LOAD_FAST            (config)
+              36 CALL                 (1 positional)
+              44 TO_BOOL
+              52 POP_JUMP_IF_TRUE     (to 78)
+
+174:          56 LOAD_GLOBAL          (NULL + RuntimeError)
+              66 LOAD_CONST           ("email auto requires email_provider=gptmail or mailmanage")
+              68 CALL                 (1 positional)
+              76 RAISE_VARARGS        (exception instance)
+
+175:     >>   78 LOAD_FAST            (get_mail_api_config)
+              80 PUSH_NULL
+              82 LOAD_FAST            (config)
+              84 CALL                 (1 positional)
+              92 UNPACK_SEQUENCE      2
+              96 STORE_FAST_STORE_FAST (mail_cfg, label)
+
+176:          98 LOAD_GLOBAL          (NULL + str)
+             108 LOAD_FAST            (mail_cfg)
+             110 LOAD_ATTR            (NULL|self + get)
+             130 LOAD_CONST           ("api_key")
+             132 CALL                 (1 positional)
+             140 COPY                 1
+             142 TO_BOOL
+             150 POP_JUMP_IF_TRUE     (to 158)
+             154 POP_TOP
+             156 LOAD_CONST           ("")
+         >>  158 CALL                 (1 positional)
+             166 LOAD_ATTR            (NULL|self + strip)
+             186 CALL                 (0 positional)
+             194 TO_BOOL
+             202 POP_JUMP_IF_TRUE     (to 234)
+
+177:         206 LOAD_GLOBAL          (NULL + RuntimeError)
+             216 LOAD_FAST            (label)
+             218 FORMAT_SIMPLE
+             220 LOAD_CONST           (" api_key missing")
+             222 BUILD_STRING         2
+             224 CALL                 (1 positional)
+             232 RAISE_VARARGS        (exception instance)
+
+178:     >>  234 LOAD_CONST           (0)
+             236 LOAD_CONST           (('MailManageClient',))
+             238 IMPORT_NAME          (mailmanage_client)
+             240 IMPORT_FROM          (MailManageClient)
+             242 STORE_FAST           (MailManageClient)
+             244 POP_TOP
+
+180:         246 LOAD_FAST            (MailManageClient)
+             248 PUSH_NULL
+
+181:         250 LOAD_GLOBAL          (NULL + str)
+             260 LOAD_FAST            (mail_cfg)
+             262 LOAD_ATTR            (NULL|self + get)
+             282 LOAD_CONST           ("api_key")
+             284 CALL                 (1 positional)
+             292 COPY                 1
+             294 TO_BOOL
+             302 POP_JUMP_IF_TRUE     (to 310)
+             306 POP_TOP
+             308 LOAD_CONST           ("")
+         >>  310 CALL                 (1 positional)
+
+182:         318 LOAD_GLOBAL          (NULL + str)
+             328 LOAD_FAST            (mail_cfg)
+             330 LOAD_ATTR            (NULL|self + get)
+             350 LOAD_CONST           ("base_url")
+             352 CALL                 (1 positional)
+             360 COPY                 1
+             362 TO_BOOL
+             370 POP_JUMP_IF_TRUE     (to 378)
+             374 POP_TOP
+             376 LOAD_CONST           ("https://mailmanage.lizaliza.top")
+         >>  378 CALL                 (1 positional)
+
+183:         386 LOAD_GLOBAL          (NULL + bool)
+             396 LOAD_FAST            (mail_cfg)
+             398 LOAD_ATTR            (NULL|self + get)
+             418 LOAD_CONST           ("safe_reserve")
+             420 LOAD_CONST           (True)
+             422 CALL                 (2 positional)
+             430 CALL                 (1 positional)
+
+184:         438 LOAD_GLOBAL          (NULL + bool)
+             448 LOAD_FAST            (mail_cfg)
+             450 LOAD_ATTR            (NULL|self + get)
+             470 LOAD_CONST           ("recycle_failed")
+             472 LOAD_CONST           (False)
+             474 CALL                 (2 positional)
+             482 CALL                 (1 positional)
+             490 TO_BOOL
+             498 UNARY_NOT
+
+185:         500 LOAD_GLOBAL          (NULL + int)
+             510 LOAD_FAST            (mail_cfg)
+             512 LOAD_ATTR            (NULL|self + get)
+             532 LOAD_CONST           ("lease_seconds")
+             534 LOAD_CONST           (1800)
+             536 CALL                 (2 positional)
+             544 COPY                 1
+             546 TO_BOOL
+             554 POP_JUMP_IF_TRUE     (to 562)
+             558 POP_TOP
+             560 LOAD_CONST           (1800)
+         >>  562 CALL                 (1 positional)
+
+186:         570 LOAD_GLOBAL          (NULL + bool)
+             580 LOAD_FAST            (mail_cfg)
+             582 LOAD_ATTR            (NULL|self + get)
+             602 LOAD_CONST           ("verify_reserved")
+             604 LOAD_CONST           (True)
+             606 CALL                 (2 positional)
+             614 CALL                 (1 positional)
+
+187:         622 LOAD_GLOBAL          (NULL + int)
+             632 LOAD_FAST            (mail_cfg)
+             634 LOAD_ATTR            (NULL|self + get)
+             654 LOAD_CONST           ("reserve_attempts")
+             656 LOAD_CONST           (5)
+             658 CALL                 (2 positional)
+             666 COPY                 1
+             668 TO_BOOL
+             676 POP_JUMP_IF_TRUE     (to 684)
+             680 POP_TOP
+             682 LOAD_CONST           (5)
+         >>  684 CALL                 (1 positional)
+
+188:         692 LOAD_FAST            (label)
+
+189:         694 LOAD_CONST           (True)
+
+190:         696 LOAD_FAST            (email_proxy)
+             698 PUSH_NULL
+             700 LOAD_FAST            (config)
+             702 CALL                 (1 positional)
+
+180:         710 LOAD_CONST           (('api_key', 'base_url', 'safe_reserve', 'consume_on_reserve', 'lease_seconds', 'verify_reserved', 'reserve_attempts', 'label', 'verbose', 'proxy'))
+             712 CALL_KW              10
+             714 STORE_FAST           (client)
+
+192:         716 LOAD_FAST            (client)
+             718 LOAD_ATTR            (NULL|self + get_available_email)
+             738 LOAD_GLOBAL          (NULL + str)
+             748 LOAD_FAST            (mail_cfg)
+             750 LOAD_ATTR            (NULL|self + get)
+             770 LOAD_CONST           ("category")
+             772 CALL                 (1 positional)
+             780 COPY                 1
+             782 TO_BOOL
+             790 POP_JUMP_IF_TRUE     (to 798)
+             794 POP_TOP
+             796 LOAD_CONST           ("safe")
+         >>  798 CALL                 (1 positional)
+             806 LOAD_CONST           (('category',))
+             808 CALL_KW              1
+             810 STORE_FAST           (email)
+
+193:         812 LOAD_FAST            (email)
+             814 TO_BOOL
+             822 POP_JUMP_IF_TRUE     (to 854)
+
+194:         826 LOAD_GLOBAL          (NULL + RuntimeError)
+             836 LOAD_FAST            (label)
+             838 FORMAT_SIMPLE
+             840 LOAD_CONST           (" no available email")
+             842 BUILD_STRING         2
+             844 CALL                 (1 positional)
+             852 RAISE_VARARGS        (exception instance)
+
+195:     >>  854 LOAD_GLOBAL          (NULL + str)
+             864 LOAD_FAST            (email)
+             866 CALL                 (1 positional)
+             874 LOAD_ATTR            (NULL|self + strip)
+             894 CALL                 (0 positional)
+             902 RETURN_VALUE
+
+
+# Method Name:       _step
+# Filename:          codex_chain_runner.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 4
+# Number of locals:  9
+# Stack size:        4
+# Flags:             0x0100000b (0x1000000 | VARKEYWORDS | NEWLOCALS | OPTIMIZED)
+# First Line:        198
+# Constants:
+#    0: None
+#    1: ('step', 'status')
+#    2: 'page_type'
+#    3: 'continue_url'
+#    4: 'error'
+#    5: (None, '')
+# Names:
+#    0: int
+#    1: items
+# Varnames:
+#	step, status, page_type, continue_url, error, extra, item, key, value
+# Positional arguments:
+#	step
+# Local variables:
+#    1: status
+#    2: page_type
+#    3: continue_url
+#    4: error
+#    5: extra
+#    6: item
+#    7: key
+#    8: value
+198:           0 RESUME               0
+
+199:           2 LOAD_FAST            (step)
+               4 LOAD_GLOBAL          (NULL + int)
+              14 LOAD_FAST            (status)
+              16 CALL                 (1 positional)
+              24 LOAD_CONST           (('step', 'status'))
+              26 BUILD_CONST_KEY_MAP  2
+              28 STORE_FAST           (item)
+
+200:          30 LOAD_FAST            (page_type)
+              32 TO_BOOL
+              40 POP_JUMP_IF_FALSE    (to 52)
+
+201:          44 LOAD_FAST_LOAD_FAST  (page_type, item)
+              46 LOAD_CONST           ("page_type")
+              48 STORE_SUBSCR
+
+202:     >>   52 LOAD_FAST            (continue_url)
+              54 TO_BOOL
+              62 POP_JUMP_IF_FALSE    (to 74)
+
+203:          66 LOAD_FAST_LOAD_FAST  (continue_url, item)
+              68 LOAD_CONST           ("continue_url")
+              70 STORE_SUBSCR
+
+204:     >>   74 LOAD_FAST            (error)
+              76 TO_BOOL
+              84 POP_JUMP_IF_FALSE    (to 96)
+
+205:          88 LOAD_FAST_LOAD_FAST  (error, item)
+              90 LOAD_CONST           ("error")
+              92 STORE_SUBSCR
+
+206:     >>   96 LOAD_FAST            (extra)
+              98 LOAD_ATTR            (NULL|self + items)
+             118 CALL                 (0 positional)
+             126 GET_ITER
+             128 FOR_ITER             (to 166)
+             132 UNPACK_SEQUENCE      2
+             136 STORE_FAST_STORE_FAST (key, value)
+
+207:         138 LOAD_FAST            (value)
+             140 LOAD_CONST           ((None, ''))
+             142 CONTAINS_OP          (not in)
+             146 POP_JUMP_IF_TRUE     (to 154)
+             150 JUMP_BACKWARD        (to 128)
+
+208:     >>  154 LOAD_FAST_LOAD_FAST  (value, item)
+             156 LOAD_FAST            (key)
+             158 STORE_SUBSCR
+             162 JUMP_BACKWARD        (to 128)
+
+206:     >>  166 END_FOR
+             168 POP_TOP
+
+209:         170 LOAD_FAST            (item)
+             172 RETURN_VALUE
+
+
+# Method Name:       _default_manual_output
+# Filename:          codex_chain_runner.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        212
+# Constants:
+#    0: None
+#    1: '%Y%m%d-%H%M%S'
+#    2: 'fixtures'
+#    3: 'codex_manual_session_'
+#    4: '.json'
+# Names:
+#    0: time
+#    1: strftime
+#    2: Path
+# Varnames:
+#	stamp
+# Local variables:
+#    0: stamp
+212:           0 RESUME               0
+
+213:           2 LOAD_GLOBAL          (time)
+              12 LOAD_ATTR            (strftime)
+              32 PUSH_NULL
+              34 LOAD_CONST           ("%Y%m%d-%H%M%S")
+              36 CALL                 (1 positional)
+              44 STORE_FAST           (stamp)
+
+214:          46 LOAD_GLOBAL          (NULL + Path)
+              56 LOAD_CONST           ("fixtures")
+              58 CALL                 (1 positional)
+              66 LOAD_CONST           ("codex_manual_session_")
+              68 LOAD_FAST            (stamp)
+              70 FORMAT_SIMPLE
+              72 LOAD_CONST           (".json")
+              74 BUILD_STRING         3
+              76 BINARY_OP            (/)
+              80 RETURN_VALUE
+
+
+# Method Name:       _resolve_archive_group_id
+# Filename:          codex_chain_runner.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 3
+# Number of locals:  14
+# Stack size:        10
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        217
+# Constants:
+#    0: None
+#    1: 0
+#    2: 'sub2api'
+#    3: 'url'
+#    4: 'email'
+#    5: 'pwd'
+#    6: 'password'
+#    7: ('resolve_sub2_group_id',)
+#    8: ('get_admin_token',)
+#    9: 30
+#   10: <Code311 code object <lambda> at 0x1080e27c0, file codex_chain_runner.py>, line 233
+#   11: ('timeout', 'proxy', 'log_fn')
+#   12: 3
+#   13: 15
+#   14: <Code311 code object <lambda> at 0x1080e27f0, file codex_chain_runner.py>, line 241
+#   15: ('attempts', 'timeout', 'proxy', 'log_fn')
+#   16: '本地归档 SUB2 分组：'
+#   17: ' -> '
+#   18: 'info'
+#   19: '本地归档分组解析失败，导入文件不写 group_ids：'
+#   20: 'warn'
+# Names:
+#    0: int
+#    1: _clean
+#    2: isinstance
+#    3: get
+#    4: dict
+#    5: _base_url
+#    6: sub2_groups
+#    7: resolve_sub2_group_id
+#    8: sub2_session
+#    9: get_admin_token
+#   10: _log
+#   11: Exception
+# Varnames:
+#	config, group_id, group_name, upload_proxy, sub, base, email, password, resolve_sub2_group_id, get_admin_token, admin_token, resolved_id, resolved_name, exc
+# Positional arguments:
+#	config
+# Local variables:
+#    1: group_id
+#    2: group_name
+#    3: upload_proxy
+#    4: sub
+#    5: base
+#    6: email
+#    7: password
+#    8: resolve_sub2_group_id
+#    9: get_admin_token
+#   10: admin_token
+#   11: resolved_id
+#   12: resolved_name
+#   13: exc
+217:           0 RESUME               0
+
+218:           2 LOAD_FAST            (group_id)
+               4 TO_BOOL
+              12 POP_JUMP_IF_FALSE    (to 38)
+
+219:          16 LOAD_GLOBAL          (NULL + int)
+              26 LOAD_FAST            (group_id)
+              28 CALL                 (1 positional)
+              36 RETURN_VALUE
+
+220:     >>   38 LOAD_GLOBAL          (NULL + _clean)
+              48 LOAD_FAST            (group_name)
+              50 CALL                 (1 positional)
+              58 STORE_FAST           (group_name)
+
+221:          60 LOAD_FAST            (group_name)
+              62 TO_BOOL
+              70 POP_JUMP_IF_TRUE     (to 76)
+
+222:          74 RETURN_CONST         (0)
+
+223:     >>   76 LOAD_GLOBAL          (NULL + isinstance)
+              86 LOAD_FAST            (config)
+              88 LOAD_ATTR            (NULL|self + get)
+             108 LOAD_CONST           ("sub2api")
+             110 CALL                 (1 positional)
+             118 LOAD_GLOBAL          (dict)
+             128 CALL                 (2 positional)
+             136 TO_BOOL
+             144 POP_JUMP_IF_FALSE    (to 182)
+             148 LOAD_FAST            (config)
+             150 LOAD_ATTR            (NULL|self + get)
+             170 LOAD_CONST           ("sub2api")
+             172 CALL                 (1 positional)
+             180 JUMP_FORWARD         (to 184)
+         >>  182 BUILD_MAP            0
+         >>  184 STORE_FAST           (sub)
+
+224:         186 LOAD_GLOBAL          (NULL + _base_url)
+             196 LOAD_FAST            (sub)
+             198 LOAD_ATTR            (NULL|self + get)
+             218 LOAD_CONST           ("url")
+             220 CALL                 (1 positional)
+             228 CALL                 (1 positional)
+             236 STORE_FAST           (base)
+
+225:         238 LOAD_GLOBAL          (NULL + _clean)
+             248 LOAD_FAST            (sub)
+             250 LOAD_ATTR            (NULL|self + get)
+             270 LOAD_CONST           ("email")
+             272 CALL                 (1 positional)
+             280 CALL                 (1 positional)
+             288 STORE_FAST           (email)
+
+226:         290 LOAD_GLOBAL          (NULL + _clean)
+             300 LOAD_FAST            (sub)
+             302 LOAD_ATTR            (NULL|self + get)
+             322 LOAD_CONST           ("pwd")
+             324 CALL                 (1 positional)
+             332 COPY                 1
+             334 TO_BOOL
+             342 POP_JUMP_IF_TRUE     (to 380)
+             346 POP_TOP
+             348 LOAD_FAST            (sub)
+             350 LOAD_ATTR            (NULL|self + get)
+             370 LOAD_CONST           ("password")
+             372 CALL                 (1 positional)
+         >>  380 CALL                 (1 positional)
+             388 STORE_FAST           (password)
+
+227:         390 LOAD_FAST            (base)
+             392 TO_BOOL
+             400 POP_JUMP_IF_FALSE    (to 418)
+             404 LOAD_FAST            (email)
+             406 TO_BOOL
+             414 POP_JUMP_IF_TRUE     (to 420)
+
+228:     >>  418 RETURN_CONST         (0)
+
+229:     >>  420 NOP
+
+230:         422 LOAD_CONST           (0)
+             424 LOAD_CONST           (('resolve_sub2_group_id',))
+             426 IMPORT_NAME          (sub2_groups)
+             428 IMPORT_FROM          (resolve_sub2_group_id)
+             430 STORE_FAST           (resolve_sub2_group_id)
+             432 POP_TOP
+
+231:         434 LOAD_CONST           (0)
+             436 LOAD_CONST           (('get_admin_token',))
+             438 IMPORT_NAME          (sub2_session)
+             440 IMPORT_FROM          (get_admin_token)
+             442 STORE_FAST           (get_admin_token)
+             444 POP_TOP
+
+233:         446 LOAD_FAST            (get_admin_token)
+             448 PUSH_NULL
+             450 LOAD_FAST_LOAD_FAST  (base, email)
+             452 LOAD_FAST            (password)
+             454 LOAD_CONST           (30)
+             456 LOAD_FAST            (upload_proxy)
+             458 LOAD_CONST           (<Code311 code object <lambda> at 0x1080e27c0, file codex_chain_runner.py>, line 233)
+             460 MAKE_FUNCTION
+             462 LOAD_CONST           (('timeout', 'proxy', 'log_fn'))
+             464 CALL_KW              6
+             466 STORE_FAST           (admin_token)
+
+234:         468 LOAD_FAST            (resolve_sub2_group_id)
+             470 PUSH_NULL
+
+235:         472 LOAD_FAST            (base)
+
+236:         474 LOAD_FAST            (admin_token)
+
+237:         476 LOAD_FAST            (group_name)
+
+238:         478 LOAD_CONST           (3)
+
+239:         480 LOAD_CONST           (15)
+
+240:         482 LOAD_FAST            (upload_proxy)
+
+241:         484 LOAD_CONST           (<Code311 code object <lambda> at 0x1080e27f0, file codex_chain_runner.py>, line 241)
+             486 MAKE_FUNCTION
+
+234:         488 LOAD_CONST           (('attempts', 'timeout', 'proxy', 'log_fn'))
+             490 CALL_KW              7
+             492 UNPACK_SEQUENCE      2
+             496 STORE_FAST_STORE_FAST (resolved_id, resolved_name)
+
+243:         498 LOAD_GLOBAL          (NULL + _log)
+             508 LOAD_CONST           ("本地归档 SUB2 分组：")
+             510 LOAD_FAST            (resolved_name)
+             512 FORMAT_SIMPLE
+             514 LOAD_CONST           (" -> ")
+             516 LOAD_FAST            (resolved_id)
+             518 FORMAT_SIMPLE
+             520 BUILD_STRING         4
+             522 LOAD_CONST           ("info")
+             524 CALL                 (2 positional)
+             532 POP_TOP
+
+244:         534 LOAD_GLOBAL          (NULL + int)
+             544 LOAD_FAST            (resolved_id)
+             546 CALL                 (1 positional)
+             554 RETURN_VALUE
+         >>  556 PUSH_EXC_INFO
+
+245:         558 LOAD_GLOBAL          (Exception)
+             568 CHECK_EXC_MATCH
+             570 POP_JUMP_IF_FALSE    (to 624)
+             574 STORE_FAST           (exc)
+
+246:         576 LOAD_GLOBAL          (NULL + _log)
+             586 LOAD_CONST           ("本地归档分组解析失败，导入文件不写 group_ids：")
+             588 LOAD_FAST            (exc)
+             590 FORMAT_SIMPLE
+             592 BUILD_STRING         2
+             594 LOAD_CONST           ("warn")
+             596 CALL                 (2 positional)
+             604 POP_TOP
+
+247:         606 POP_EXCEPT
+             608 LOAD_CONST           (None)
+             610 STORE_FAST           (exc)
+             612 DELETE_FAST          (exc)
+             614 RETURN_CONST         (0)
+         >>  616 LOAD_CONST           (None)
+             618 STORE_FAST           (exc)
+             620 DELETE_FAST          (exc)
+             622 RERAISE              1
+
+245:     >>  624 RERAISE              0
+         >>  626 COPY                 3
+             628 POP_EXCEPT
+             630 RERAISE              1
+
+ExceptionTable:
+  422 to 552 -> 556 [0]
+  556 to 574 -> 626 [1] lasti
+  576 to 604 -> 616 [1] lasti
+  616 to 624 -> 626 [1] lasti
+
+# Method Name:       _archive_runner_result
+# Filename:          codex_chain_runner.py
+# Argument count:    4
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  8
+# Stack size:        16
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        250
+# Constants:
+#    0: None
+#    1: 0
+#    2: ('archive_oauth_account',)
+#    3: ''
+#    4: 'upload_proxy'
+#    5: ('group_id', 'group_name', 'upload_proxy')
+#    6: 'sub2api'
+#    7: 'proxy_id'
+#    8: 'sub2api_proxy_id'
+#    9: 'oauth_provider'
+#   10: 'local'
+#   11: 'local_oauth'
+#   12: 'redirect_uri'
+#   13: ('upload_target', 'oauth_provider', 'redirect_uri')
+#   14: 'email'
+#   15: 'bind_email'
+#   16: 'codex_chain_runner'
+#   17: 10
+#   18: 1
+#   19: ('session', 'token_payload', 'out_dir', 'sub2_import_out', 'name', 'source', 'group_id', 'proxy_id', 'concurrency', 'priority', 'rate_multiplier')
+# Names:
+#    0: oauth_local_archive
+#    1: archive_oauth_account
+#    2: _resolve_archive_group_id
+#    3: int
+#    4: archive_group_id
+#    5: str
+#    6: archive_group
+#    7: sub2_group
+#    8: get
+#    9: archive_proxy_id
+#   10: isinstance
+#   11: dict
+#   12: Exception
+#   13: DEFAULT_REDIRECT_URI
+#   14: archive_dir
+#   15: sub2_import_out
+#   16: email
+#   17: archive_concurrency
+#   18: archive_priority
+#   19: archive_rate_multiplier
+# Varnames:
+#	result, manual_session, args, config, archive_oauth_account, group_id, proxy_id, sub
+# Positional arguments:
+#	result, manual_session, args, config
+# Local variables:
+#    4: archive_oauth_account
+#    5: group_id
+#    6: proxy_id
+#    7: sub
+250:           0 RESUME               0
+
+251:           2 LOAD_CONST           (0)
+               4 LOAD_CONST           (('archive_oauth_account',))
+               6 IMPORT_NAME          (oauth_local_archive)
+               8 IMPORT_FROM          (archive_oauth_account)
+              10 STORE_FAST           (archive_oauth_account)
+              12 POP_TOP
+
+253:          14 LOAD_GLOBAL          (NULL + _resolve_archive_group_id)
+
+254:          24 LOAD_FAST            (config)
+
+255:          26 LOAD_GLOBAL          (NULL + int)
+              36 LOAD_FAST            (args)
+              38 LOAD_ATTR            (archive_group_id)
+              58 COPY                 1
+              60 TO_BOOL
+              68 POP_JUMP_IF_TRUE     (to 76)
+              72 POP_TOP
+              74 LOAD_CONST           (0)
+         >>   76 CALL                 (1 positional)
+
+256:          84 LOAD_GLOBAL          (NULL + str)
+              94 LOAD_FAST            (args)
+              96 LOAD_ATTR            (archive_group)
+             116 COPY                 1
+             118 TO_BOOL
+             126 POP_JUMP_IF_TRUE     (to 172)
+             130 POP_TOP
+             132 LOAD_FAST            (args)
+             134 LOAD_ATTR            (sub2_group)
+             154 COPY                 1
+             156 TO_BOOL
+             164 POP_JUMP_IF_TRUE     (to 172)
+             168 POP_TOP
+             170 LOAD_CONST           ("")
+         >>  172 CALL                 (1 positional)
+
+257:         180 LOAD_GLOBAL          (NULL + str)
+             190 LOAD_FAST            (config)
+             192 LOAD_ATTR            (NULL|self + get)
+             212 LOAD_CONST           ("upload_proxy")
+             214 CALL                 (1 positional)
+             222 COPY                 1
+             224 TO_BOOL
+             232 POP_JUMP_IF_TRUE     (to 240)
+             236 POP_TOP
+             238 LOAD_CONST           ("")
+         >>  240 CALL                 (1 positional)
+
+253:         248 LOAD_CONST           (('group_id', 'group_name', 'upload_proxy'))
+             250 CALL_KW              4
+             252 STORE_FAST           (group_id)
+
+259:         254 LOAD_GLOBAL          (NULL + int)
+             264 LOAD_FAST            (args)
+             266 LOAD_ATTR            (archive_proxy_id)
+             286 POP_JUMP_IF_NONE     (to 314)
+             290 LOAD_FAST            (args)
+             292 LOAD_ATTR            (archive_proxy_id)
+             312 JUMP_FORWARD         (to 316)
+         >>  314 LOAD_CONST           (0)
+         >>  316 CALL                 (1 positional)
+             324 STORE_FAST           (proxy_id)
+
+260:         326 LOAD_FAST            (proxy_id)
+             328 LOAD_CONST           (0)
+             330 COMPARE_OP           (<=)
+             334 POP_JUMP_IF_FALSE    (to 568)
+
+261:         338 LOAD_GLOBAL          (NULL + isinstance)
+             348 LOAD_FAST            (config)
+             350 LOAD_ATTR            (NULL|self + get)
+             370 LOAD_CONST           ("sub2api")
+             372 CALL                 (1 positional)
+             380 LOAD_GLOBAL          (dict)
+             390 CALL                 (2 positional)
+             398 TO_BOOL
+             406 POP_JUMP_IF_FALSE    (to 444)
+             410 LOAD_FAST            (config)
+             412 LOAD_ATTR            (NULL|self + get)
+             432 LOAD_CONST           ("sub2api")
+             434 CALL                 (1 positional)
+             442 JUMP_FORWARD         (to 446)
+         >>  444 BUILD_MAP            0
+         >>  446 STORE_FAST           (sub)
+
+262:         448 NOP
+
+263:         450 LOAD_GLOBAL          (NULL + int)
+             460 LOAD_FAST            (sub)
+             462 LOAD_ATTR            (NULL|self + get)
+             482 LOAD_CONST           ("proxy_id")
+             484 CALL                 (1 positional)
+             492 COPY                 1
+             494 TO_BOOL
+             502 POP_JUMP_IF_TRUE     (to 558)
+             506 POP_TOP
+             508 LOAD_FAST            (manual_session)
+             510 LOAD_ATTR            (NULL|self + get)
+             530 LOAD_CONST           ("sub2api_proxy_id")
+             532 CALL                 (1 positional)
+             540 COPY                 1
+             542 TO_BOOL
+             550 POP_JUMP_IF_TRUE     (to 558)
+             554 POP_TOP
+             556 LOAD_CONST           (0)
+         >>  558 CALL                 (1 positional)
+             566 STORE_FAST           (proxy_id)
+
+266:     >>  568 LOAD_FAST            (archive_oauth_account)
+             570 PUSH_NULL
+
+267:         572 LOAD_FAST            (manual_session)
+             574 COPY                 1
+             576 TO_BOOL
+             584 POP_JUMP_IF_TRUE     (to 818)
+             588 POP_TOP
+
+268:         590 LOAD_FAST            (result)
+             592 LOAD_ATTR            (NULL|self + get)
+             612 LOAD_CONST           ("oauth_provider")
+             614 CALL                 (1 positional)
+             622 COPY                 1
+             624 TO_BOOL
+             632 POP_JUMP_IF_TRUE     (to 640)
+             636 POP_TOP
+             638 LOAD_CONST           ("local")
+
+269:     >>  640 LOAD_FAST            (result)
+             642 LOAD_ATTR            (NULL|self + get)
+             662 LOAD_CONST           ("oauth_provider")
+             664 CALL                 (1 positional)
+             672 COPY                 1
+             674 TO_BOOL
+             682 POP_JUMP_IF_TRUE     (to 690)
+             686 POP_TOP
+             688 LOAD_CONST           ("local")
+
+270:     >>  690 LOAD_GLOBAL          (NULL + str)
+             700 LOAD_FAST            (config)
+             702 LOAD_ATTR            (NULL|self + get)
+             722 LOAD_CONST           ("local_oauth")
+             724 CALL                 (1 positional)
+             732 COPY                 1
+             734 TO_BOOL
+             742 POP_JUMP_IF_TRUE     (to 750)
+             746 POP_TOP
+             748 BUILD_MAP            0
+         >>  750 LOAD_ATTR            (NULL|self + get)
+             770 LOAD_CONST           ("redirect_uri")
+             772 CALL                 (1 positional)
+             780 COPY                 1
+             782 TO_BOOL
+             790 POP_JUMP_IF_TRUE     (to 806)
+             794 POP_TOP
+             796 LOAD_GLOBAL          (DEFAULT_REDIRECT_URI)
+         >>  806 CALL                 (1 positional)
+
+267:         814 LOAD_CONST           (('upload_target', 'oauth_provider', 'redirect_uri'))
+             816 BUILD_CONST_KEY_MAP  3
+

@@ -1,0 +1,800 @@
+
+# Method Name:       _is_success_response
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        205
+# Constants:
+#    0: None
+#    1: False
+#    2: '_status'
+#    3: 200
+#    4: 300
+#    5: 'error'
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: int
+#    3: get
+# Varnames:
+#	response, status
+# Positional arguments:
+#	response
+# Local variables:
+#    1: status
+205:           0 RESUME               0
+
+206:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (response)
+              14 LOAD_GLOBAL          (dict)
+              24 CALL                 (2 positional)
+              32 TO_BOOL
+              40 POP_JUMP_IF_TRUE     (to 46)
+
+207:          44 RETURN_CONST         (False)
+
+208:     >>   46 LOAD_GLOBAL          (NULL + int)
+              56 LOAD_FAST            (response)
+              58 LOAD_ATTR            (NULL|self + get)
+              78 LOAD_CONST           ("_status")
+              80 CALL                 (1 positional)
+              88 COPY                 1
+              90 TO_BOOL
+              98 POP_JUMP_IF_TRUE     (to 106)
+             102 POP_TOP
+             104 LOAD_CONST           (200)
+         >>  106 CALL                 (1 positional)
+             114 STORE_FAST           (status)
+
+209:         116 LOAD_CONST           (200)
+             118 LOAD_FAST            (status)
+             120 SWAP                 (TOS <-> TOS1)
+             122 COPY                 2
+             124 COMPARE_OP           (<=)
+             128 COPY                 1
+             130 TO_BOOL
+             138 POP_JUMP_IF_FALSE    (to 152)
+             142 POP_TOP
+             144 LOAD_CONST           (300)
+             146 COMPARE_OP           (<)
+             150 JUMP_FORWARD         (to 156)
+         >>  152 SWAP                 (TOS <-> TOS1)
+             154 POP_TOP
+         >>  156 COPY                 1
+             158 TO_BOOL
+             166 POP_JUMP_IF_FALSE    (to 214)
+             170 POP_TOP
+             172 LOAD_FAST            (response)
+             174 LOAD_ATTR            (NULL|self + get)
+             194 LOAD_CONST           ("error")
+             196 CALL                 (1 positional)
+             204 TO_BOOL
+             212 UNARY_NOT
+         >>  214 RETURN_VALUE
+
+
+# Method Name:       _normalize_mode
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        212
+# Constants:
+#    0: None
+#    1: 'upload'
+#    2: 'codex_chain_mode'
+#    3: 'phase2_codex_chain_mode'
+#    4: ''
+#    5: '-'
+#    6: '_'
+#    7: {'replay', 'diagnostic', 'real', 'mock'}
+#    8: 'off'
+# Names:
+#    0: isinstance
+#    1: get
+#    2: dict
+#    3: _clean
+#    4: lower
+#    5: replace
+# Varnames:
+#	config, mode, cfg, upload_cfg, raw, normalized
+# Positional arguments:
+#	config, mode
+# Local variables:
+#    2: cfg
+#    3: upload_cfg
+#    4: raw
+#    5: normalized
+212:           0 RESUME               0
+
+213:           2 LOAD_FAST            (config)
+               4 COPY                 1
+               6 TO_BOOL
+              14 POP_JUMP_IF_TRUE     (to 22)
+              18 POP_TOP
+              20 BUILD_MAP            0
+         >>   22 STORE_FAST           (cfg)
+
+214:          24 LOAD_GLOBAL          (NULL + isinstance)
+              34 LOAD_FAST            (cfg)
+              36 LOAD_ATTR            (NULL|self + get)
+              56 LOAD_CONST           ("upload")
+              58 CALL                 (1 positional)
+              66 LOAD_GLOBAL          (dict)
+              76 CALL                 (2 positional)
+              84 TO_BOOL
+              92 POP_JUMP_IF_FALSE    (to 130)
+              96 LOAD_FAST            (cfg)
+              98 LOAD_ATTR            (NULL|self + get)
+             118 LOAD_CONST           ("upload")
+             120 CALL                 (1 positional)
+             128 JUMP_FORWARD         (to 132)
+         >>  130 BUILD_MAP            0
+         >>  132 STORE_FAST           (upload_cfg)
+
+216:         134 LOAD_FAST            (mode)
+             136 COPY                 1
+             138 TO_BOOL
+             146 POP_JUMP_IF_TRUE     (to 298)
+             150 POP_TOP
+
+217:         152 LOAD_FAST            (cfg)
+             154 LOAD_ATTR            (NULL|self + get)
+             174 LOAD_CONST           ("codex_chain_mode")
+             176 CALL                 (1 positional)
+
+216:         184 COPY                 1
+             186 TO_BOOL
+             194 POP_JUMP_IF_TRUE     (to 298)
+             198 POP_TOP
+
+218:         200 LOAD_FAST            (cfg)
+             202 LOAD_ATTR            (NULL|self + get)
+             222 LOAD_CONST           ("phase2_codex_chain_mode")
+             224 CALL                 (1 positional)
+
+216:         232 COPY                 1
+             234 TO_BOOL
+             242 POP_JUMP_IF_TRUE     (to 298)
+             246 POP_TOP
+
+219:         248 LOAD_FAST            (upload_cfg)
+             250 LOAD_ATTR            (NULL|self + get)
+             270 LOAD_CONST           ("codex_chain_mode")
+             272 CALL                 (1 positional)
+
+216:         280 COPY                 1
+             282 TO_BOOL
+             290 POP_JUMP_IF_TRUE     (to 298)
+             294 POP_TOP
+
+220:         296 LOAD_CONST           ("")
+
+215:     >>  298 STORE_FAST           (raw)
+
+222:         300 LOAD_GLOBAL          (NULL + _clean)
+             310 LOAD_FAST            (raw)
+             312 CALL                 (1 positional)
+             320 LOAD_ATTR            (NULL|self + lower)
+             340 CALL                 (0 positional)
+             348 LOAD_ATTR            (NULL|self + replace)
+             368 LOAD_CONST           ("-")
+             370 LOAD_CONST           ("_")
+             372 CALL                 (2 positional)
+             380 STORE_FAST           (normalized)
+
+223:         382 LOAD_FAST            (normalized)
+             384 LOAD_CONST           ({'replay', 'diagnostic', 'real', 'mock'})
+             386 CONTAINS_OP          (in)
+             390 POP_JUMP_IF_FALSE    (to 398)
+
+224:         394 LOAD_FAST            (normalized)
+             396 RETURN_VALUE
+
+225:     >>  398 RETURN_CONST         ("off")
+
+
+# Method Name:       _mock_cfg
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        228
+# Constants:
+#    0: None
+#    1: 'codex_chain_mock'
+# Names:
+#    0: get
+#    1: isinstance
+#    2: dict
+# Varnames:
+#	config, cfg, value
+# Positional arguments:
+#	config
+# Local variables:
+#    1: cfg
+#    2: value
+228:           0 RESUME               0
+
+229:           2 LOAD_FAST            (config)
+               4 COPY                 1
+               6 TO_BOOL
+              14 POP_JUMP_IF_TRUE     (to 22)
+              18 POP_TOP
+              20 BUILD_MAP            0
+         >>   22 STORE_FAST           (cfg)
+
+230:          24 LOAD_FAST            (cfg)
+              26 LOAD_ATTR            (NULL|self + get)
+              46 LOAD_CONST           ("codex_chain_mock")
+              48 CALL                 (1 positional)
+              56 STORE_FAST           (value)
+
+231:          58 LOAD_GLOBAL          (NULL + isinstance)
+              68 LOAD_FAST            (value)
+              70 LOAD_GLOBAL          (dict)
+              80 CALL                 (2 positional)
+              88 TO_BOOL
+              96 POP_JUMP_IF_FALSE    (to 104)
+             100 LOAD_FAST            (value)
+             102 RETURN_VALUE
+         >>  104 BUILD_MAP            0
+             106 RETURN_VALUE
+
+
+# Method Name:       _replay_cfg
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        234
+# Constants:
+#    0: None
+#    1: 'codex_chain_replay'
+#    2: 'replay_fixture'
+# Names:
+#    0: get
+#    1: isinstance
+#    2: dict
+# Varnames:
+#	config, cfg, value
+# Positional arguments:
+#	config
+# Local variables:
+#    1: cfg
+#    2: value
+234:           0 RESUME               0
+
+235:           2 LOAD_FAST            (config)
+               4 COPY                 1
+               6 TO_BOOL
+              14 POP_JUMP_IF_TRUE     (to 22)
+              18 POP_TOP
+              20 BUILD_MAP            0
+         >>   22 STORE_FAST           (cfg)
+
+236:          24 LOAD_FAST            (cfg)
+              26 LOAD_ATTR            (NULL|self + get)
+              46 LOAD_CONST           ("codex_chain_replay")
+              48 CALL                 (1 positional)
+              56 COPY                 1
+              58 TO_BOOL
+              66 POP_JUMP_IF_TRUE     (to 104)
+              70 POP_TOP
+              72 LOAD_FAST            (cfg)
+              74 LOAD_ATTR            (NULL|self + get)
+              94 LOAD_CONST           ("replay_fixture")
+              96 CALL                 (1 positional)
+         >>  104 STORE_FAST           (value)
+
+237:         106 LOAD_GLOBAL          (NULL + isinstance)
+             116 LOAD_FAST            (value)
+             118 LOAD_GLOBAL          (dict)
+             128 CALL                 (2 positional)
+             136 TO_BOOL
+             144 POP_JUMP_IF_FALSE    (to 152)
+             148 LOAD_FAST            (value)
+             150 RETURN_VALUE
+         >>  152 BUILD_MAP            0
+             154 RETURN_VALUE
+
+
+# Method Name:       _as_bool
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        240
+# Constants:
+#    0: None
+#    1: {'on', '有', '是', 'true', 'y', '1', 'yes'}
+#    2: True
+#    3: {'0', 'false', 'off', '无', 'n', 'no', '否'}
+#    4: False
+# Names:
+#    0: isinstance
+#    1: bool
+#    2: _clean
+#    3: lower
+# Varnames:
+#	value, default, text
+# Positional arguments:
+#	value, default
+# Local variables:
+#    2: text
+240:           0 RESUME               0
+
+241:           2 LOAD_FAST            (value)
+               4 POP_JUMP_IF_NOT_NONE (to 12)
+
+242:           8 LOAD_FAST            (default)
+              10 RETURN_VALUE
+
+243:     >>   12 LOAD_GLOBAL          (NULL + isinstance)
+              22 LOAD_FAST            (value)
+              24 LOAD_GLOBAL          (bool)
+              34 CALL                 (2 positional)
+              42 TO_BOOL
+              50 POP_JUMP_IF_FALSE    (to 58)
+
+244:          54 LOAD_FAST            (value)
+              56 RETURN_VALUE
+
+245:     >>   58 LOAD_GLOBAL          (NULL + _clean)
+              68 LOAD_FAST            (value)
+              70 CALL                 (1 positional)
+              78 LOAD_ATTR            (NULL|self + lower)
+              98 CALL                 (0 positional)
+             106 STORE_FAST           (text)
+
+246:         108 LOAD_FAST            (text)
+             110 LOAD_CONST           ({'on', '有', '是', 'true', 'y', '1', 'yes'})
+             112 CONTAINS_OP          (in)
+             116 POP_JUMP_IF_FALSE    (to 122)
+
+247:         120 RETURN_CONST         (True)
+
+248:     >>  122 LOAD_FAST            (text)
+             124 LOAD_CONST           ({'0', 'false', 'off', '无', 'n', 'no', '否'})
+             126 CONTAINS_OP          (in)
+             130 POP_JUMP_IF_FALSE    (to 136)
+
+249:         134 RETURN_CONST         (False)
+
+250:     >>  136 LOAD_FAST            (default)
+             138 RETURN_VALUE
+
+
+# Method Name:       _as_int
+# Filename:          codex_oauth_chain.py
+# Argument count:    4
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        253
+# Constants:
+#    0: None
+# Names:
+#    0: int
+#    1: Exception
+#    2: max
+#    3: min
+# Varnames:
+#	value, default, minimum, maximum, parsed
+# Positional arguments:
+#	value, default, minimum, maximum
+# Local variables:
+#    4: parsed
+253:           0 RESUME               0
+
+254:           2 NOP
+
+255:           4 LOAD_GLOBAL          (NULL + int)
+              14 LOAD_FAST            (value)
+              16 CALL                 (1 positional)
+              24 STORE_FAST           (parsed)
+
+258:          26 LOAD_GLOBAL          (NULL + max)
+              36 LOAD_FAST            (minimum)
+              38 LOAD_GLOBAL          (NULL + min)
+              48 LOAD_FAST_LOAD_FAST  (maximum, parsed)
+              50 CALL                 (2 positional)
+              58 CALL                 (2 positional)
+              66 RETURN_VALUE
+         >>   68 PUSH_EXC_INFO
+
+256:          70 LOAD_GLOBAL          (Exception)
+              80 CHECK_EXC_MATCH
+              82 POP_JUMP_IF_FALSE    (to 96)
+              86 POP_TOP
+
+257:          88 LOAD_FAST            (default)
+              90 STORE_FAST           (parsed)
+              92 POP_EXCEPT
+              94 JUMP_BACKWARD_NO_INTERRUPT (to 26)
+
+256:     >>   96 RERAISE              0
+         >>   98 COPY                 3
+             100 POP_EXCEPT
+             102 RERAISE              1
+
+ExceptionTable:
+  4 to 24 -> 68 [0]
+  68 to 90 -> 98 [1] lasti
+  96 to 96 -> 98 [1] lasti
+
+# Method Name:       _phone_supply_error_text
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        261
+# Constants:
+#    0: None
+# Names:
+#    0: isinstance
+#    1: BaseException
+#    2: _clean
+#    3: str
+# Varnames:
+#	error
+# Positional arguments:
+#	error
+261:           0 RESUME               0
+
+262:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (error)
+              14 LOAD_GLOBAL          (BaseException)
+              24 CALL                 (2 positional)
+              32 TO_BOOL
+              40 POP_JUMP_IF_FALSE    (to 84)
+
+263:          44 LOAD_GLOBAL          (NULL + _clean)
+              54 LOAD_GLOBAL          (NULL + str)
+              64 LOAD_FAST            (error)
+              66 CALL                 (1 positional)
+              74 CALL                 (1 positional)
+              82 RETURN_VALUE
+
+264:     >>   84 LOAD_GLOBAL          (NULL + _clean)
+              94 LOAD_FAST            (error)
+              96 CALL                 (1 positional)
+             104 RETURN_VALUE
+
+
+# Method Name:       _is_retryable_phone_supply_error
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        267
+# Constants:
+#    0: None
+#    1: ('no_numbers', 'no numbers', 'no_number', 'sms_smart_no_candidate', 'invalid phone number', 'please try again', 'phone rejected', 'price unavailable', 'price check failed', 'price too high', 'out of stock', '库存为0', '暂无可用候选', '最高价格过低', 'all proxies failed', 'httpsconnectionpool', 'max retries exceeded', 'sslerror', 'ssleoferror', 'unexpected_eof', 'eof occurred in violation of protocol', 'connection reset', 'connection aborted', 'connection timed out', 'connect timeout', 'read timed out', 'remote end closed', 'failed to establish a new connection', 'temporarily unavailable', 'network is unreachable', 'tls connect error', 'curl: (28)', 'failed to perform, curl')
+#    2: <Code311 code object <genexpr> at 0x105eed910, file codex_oauth_chain.py>, line 304
+# Names:
+#    0: _phone_supply_error_text
+#    1: lower
+#    2: any
+# Varnames:
+#	error, markers
+# Positional arguments:
+#	error
+# Local variables:
+#    1: markers
+# Cell variables:
+#    0: text
+               0 MAKE_CELL            (text)
+
+267:           2 RESUME               0
+
+268:           4 LOAD_GLOBAL          (NULL + _phone_supply_error_text)
+              14 LOAD_FAST            (error)
+              16 CALL                 (1 positional)
+              24 LOAD_ATTR            (NULL|self + lower)
+              44 CALL                 (0 positional)
+              52 STORE_DEREF          (text)
+
+269:          54 LOAD_CONST           (('no_numbers', 'no numbers', 'no_number', 'sms_smart_no_candidate', 'invalid phone number', 'please try again', 'phone rejected', 'price unavailable', 'price check failed', 'price too high', 'out of stock', '库存为0', '暂无可用候选', '最高价格过低', 'all proxies failed', 'httpsconnectionpool', 'max retries exceeded', 'sslerror', 'ssleoferror', 'unexpected_eof', 'eof occurred in violation of protocol', 'connection reset', 'connection aborted', 'connection timed out', 'connect timeout', 'read timed out', 'remote end closed', 'failed to establish a new connection', 'temporarily unavailable', 'network is unreachable', 'tls connect error', 'curl: (28)', 'failed to perform, curl'))
+              56 STORE_FAST           (markers)
+
+304:          58 LOAD_GLOBAL          (NULL + any)
+              68 LOAD_FAST            (text)
+              70 BUILD_TUPLE          1
+              72 LOAD_CONST           (<Code311 code object <genexpr> at 0x105eed910, file codex_oauth_chain.py>, line 304)
+              74 MAKE_FUNCTION
+              76 SET_FUNCTION_ATTRIBUTE 8
+              78 LOAD_FAST            (markers)
+              80 GET_ITER
+              82 CALL                 (0 positional)
+              90 CALL                 (1 positional)
+              98 RETURN_VALUE
+
+
+# Method Name:       _phone_retry_sleep_seconds
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        10
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        307
+# Constants:
+#    0: None
+#    1: 'sms_smart'
+#    2: 'phone_retry_sleep_seconds'
+#    3: 'retry_sleep_seconds'
+#    4: 'empty_candidate_sleep_seconds'
+#    5: (None, '')
+#    6: 0.0
+#    7: 60.0
+#    8: <Code311 code object <genexpr> at 0x105eed3d0, file codex_oauth_chain.py>, line 319
+#    9: ('invalid phone', 'phone rejected', 'number you provided is not valid')
+#   10: 0.25
+# Names:
+#    0: isinstance
+#    1: get
+#    2: dict
+#    3: max
+#    4: min
+#    5: float
+#    6: _phone_supply_error_text
+#    7: lower
+#    8: any
+#    9: Exception
+# Varnames:
+#	config, error, cfg, smart, value, delay
+# Positional arguments:
+#	config, error
+# Local variables:
+#    2: cfg
+#    3: smart
+#    4: value
+#    5: delay
+# Cell variables:
+#    0: low
+               0 MAKE_CELL            (low)
+
+307:           2 RESUME               0
+
+308:           4 LOAD_FAST            (config)
+               6 COPY                 1
+               8 TO_BOOL
+              16 POP_JUMP_IF_TRUE     (to 24)
+              20 POP_TOP
+              22 BUILD_MAP            0
+         >>   24 STORE_FAST           (cfg)
+
+309:          26 LOAD_GLOBAL          (NULL + isinstance)
+              36 LOAD_FAST            (cfg)
+              38 LOAD_ATTR            (NULL|self + get)
+              58 LOAD_CONST           ("sms_smart")
+              60 CALL                 (1 positional)
+              68 LOAD_GLOBAL          (dict)
+              78 CALL                 (2 positional)
+              86 TO_BOOL
+              94 POP_JUMP_IF_FALSE    (to 132)
+              98 LOAD_FAST            (cfg)
+             100 LOAD_ATTR            (NULL|self + get)
+             120 LOAD_CONST           ("sms_smart")
+             122 CALL                 (1 positional)
+             130 JUMP_FORWARD         (to 134)
+         >>  132 BUILD_MAP            0
+         >>  134 STORE_FAST           (smart)
+
+311:         136 LOAD_FAST            (cfg)
+             138 LOAD_ATTR            (NULL|self + get)
+             158 LOAD_CONST           ("phone_retry_sleep_seconds")
+             160 CALL                 (1 positional)
+
+312:         168 LOAD_FAST            (smart)
+             170 LOAD_ATTR            (NULL|self + get)
+             190 LOAD_CONST           ("retry_sleep_seconds")
+             192 CALL                 (1 positional)
+
+313:         200 LOAD_FAST            (smart)
+             202 LOAD_ATTR            (NULL|self + get)
+             222 LOAD_CONST           ("empty_candidate_sleep_seconds")
+             224 CALL                 (1 positional)
+
+310:         232 BUILD_TUPLE          3
+             234 GET_ITER
+             236 FOR_ITER             (to 460)
+             240 STORE_FAST           (value)
+
+315:         242 LOAD_FAST            (value)
+             244 LOAD_CONST           ((None, ''))
+             246 CONTAINS_OP          (not in)
+             250 POP_JUMP_IF_TRUE     (to 258)
+             254 JUMP_BACKWARD        (to 236)
+
+316:     >>  258 NOP
+
+317:         260 LOAD_GLOBAL          (NULL + max)
+             270 LOAD_CONST           (0.0)
+             272 LOAD_GLOBAL          (NULL + min)
+             282 LOAD_CONST           (60.0)
+             284 LOAD_GLOBAL          (NULL + float)
+             294 LOAD_FAST            (value)
+             296 CALL                 (1 positional)
+             304 CALL                 (2 positional)
+             312 CALL                 (2 positional)
+             320 STORE_FAST           (delay)
+
+318:         322 LOAD_GLOBAL          (NULL + _phone_supply_error_text)
+             332 LOAD_FAST            (error)
+             334 CALL                 (1 positional)
+             342 LOAD_ATTR            (NULL|self + lower)
+             362 CALL                 (0 positional)
+             370 STORE_DEREF          (low)
+
+319:         372 LOAD_GLOBAL          (NULL + any)
+             382 LOAD_FAST            (low)
+             384 BUILD_TUPLE          1
+             386 LOAD_CONST           (<Code311 code object <genexpr> at 0x105eed3d0, file codex_oauth_chain.py>, line 319)
+             388 MAKE_FUNCTION
+             390 SET_FUNCTION_ATTRIBUTE 8
+
+321:         392 LOAD_CONST           (('invalid phone', 'phone rejected', 'number you provided is not valid'))
+             394 GET_ITER
+
+319:         396 CALL                 (0 positional)
+             404 CALL                 (1 positional)
+             412 TO_BOOL
+             420 POP_JUMP_IF_FALSE    (to 452)
+
+327:         424 LOAD_GLOBAL          (NULL + min)
+             434 LOAD_FAST            (delay)
+             436 LOAD_CONST           (0.25)
+             438 CALL                 (2 positional)
+             446 SWAP                 (TOS <-> TOS1)
+             448 POP_TOP
+             450 RETURN_VALUE
+
+328:     >>  452 LOAD_FAST            (delay)
+             454 SWAP                 (TOS <-> TOS1)
+             456 POP_TOP
+             458 RETURN_VALUE
+
+310:     >>  460 END_FOR
+             462 POP_TOP
+
+331:         464 RETURN_CONST         (0.0)
+         >>  466 PUSH_EXC_INFO
+
+329:         468 LOAD_GLOBAL          (Exception)
+             478 CHECK_EXC_MATCH
+             480 POP_JUMP_IF_FALSE    (to 492)
+             484 POP_TOP
+
+330:         486 POP_EXCEPT
+             488 POP_TOP
+             490 RETURN_CONST         (0.0)
+
+329:     >>  492 RERAISE              0
+         >>  494 COPY                 3
+             496 POP_EXCEPT
+             498 RERAISE              1
+
+ExceptionTable:
+  260 to 444 -> 466 [1]
+  452 to 452 -> 466 [1]
+  466 to 484 -> 494 [2] lasti
+  492 to 492 -> 494 [2] lasti
+
+# Method Name:       _phone_session_cycle_seconds
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        334
+# Constants:
+#    0: None
+#    1: 'phone_session_cycle_seconds'
+#    2: 'oauth_session_cycle_seconds'
+#    3: 'phone_session_max_seconds'
+#    4: (None, '')
+#    5: 0
+#    6: 0.0
+#    7: 'allow_short_session_cycle_for_test'
+#    8: False
+#    9: 1.0
+#   10: 60.0
+#   11: 1800.0
+#   12: 720.0
+# Names:
+#    0: get
+#    1: float
+#    2: _as_bool
+#    3: max
+#    4: min
+#    5: Exception
+# Varnames:
+#	config, cfg, value, seconds, minimum
+# Positional arguments:
+#	config
+# Local variables:
+#    1: cfg
+#    2: value
+#    3: seconds
+#    4: minimum
+334:           0 RESUME               0
+
+335:           2 LOAD_FAST            (config)
+               4 COPY                 1
+               6 TO_BOOL
+              14 POP_JUMP_IF_TRUE     (to 22)
+              18 POP_TOP
+              20 BUILD_MAP            0
+         >>   22 STORE_FAST           (cfg)
+
+337:          24 LOAD_FAST            (cfg)
+              26 LOAD_ATTR            (NULL|self + get)
+              46 LOAD_CONST           ("phone_session_cycle_seconds")
+              48 CALL                 (1 positional)
+
+338:          56 LOAD_FAST            (cfg)
+              58 LOAD_ATTR            (NULL|self + get)
+              78 LOAD_CONST           ("oauth_session_cycle_seconds")
+              80 CALL                 (1 positional)
+
+339:          88 LOAD_FAST            (cfg)
+              90 LOAD_ATTR            (NULL|self + get)
+             110 LOAD_CONST           ("phone_session_max_seconds")
+             112 CALL                 (1 positional)
+
+336:         120 BUILD_TUPLE          3
+             122 GET_ITER
+             124 FOR_ITER             (to 306)
+             128 STORE_FAST           (value)
+
+341:         130 LOAD_FAST            (value)
+             132 LOAD_CONST           ((None, ''))
+             134 CONTAINS_OP          (not in)
+             138 POP_JUMP_IF_TRUE     (to 146)
+             142 JUMP_BACKWARD        (to 124)
+
+342:     >>  146 NOP
+
+343:         148 LOAD_GLOBAL          (NULL + float)
+             158 LOAD_FAST            (value)
+             160 CALL                 (1 positional)
+         >>  168 STORE_FAST           (seconds)
+
+346:         170 LOAD_FAST            (seconds)
+             172 LOAD_CONST           (0)
+             174 COMPARE_OP           (<=)
+             178 POP_JUMP_IF_FALSE    (to 186)
+
+347:         182 POP_TOP
+             184 RETURN_CONST         (0.0)
+
+348:     >>  186 LOAD_GLOBAL          (NULL + _as_bool)

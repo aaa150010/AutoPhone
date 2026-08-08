@@ -15,6 +15,7 @@ from mac_overrides.openai_quota_runtime import (
     credentials_from_result,
     normalize_quota_headers,
     normalize_quota_payload,
+    persist_quota_snapshot,
 )
 
 
@@ -56,6 +57,23 @@ def success_document():
 
 
 class OpenAIQuotaRuntimeTests(unittest.TestCase):
+    def test_snapshot_persist_failure_is_not_reported_as_a_success(self):
+        snapshot = persist_quota_snapshot(
+            lambda _account_id, _value: (_ for _ in ()).throw(OSError("private path")),
+            "private-account-id",
+            {
+                "status": "ok",
+                "quota_5h": {"remaining_percent": 81},
+                "quota_7d": {"remaining_percent": 42},
+            },
+        )
+
+        self.assertEqual(snapshot["status"], "error")
+        self.assertEqual(snapshot["code"], "openai_quota_snapshot_persist_failed")
+        self.assertEqual(snapshot["quota_5h"]["remaining_percent"], 81)
+        self.assertEqual(snapshot["quota_7d"]["remaining_percent"], 42)
+        self.assertNotIn("private", json.dumps(snapshot))
+
     def test_snapshot_preserves_last_percentages_after_failure_without_account_secrets(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "quota-snapshots.json"

@@ -7,13 +7,10 @@ import {
   Collection,
   Connection,
   DataAnalysis,
-  Download,
   Message,
   MessageBox,
-  RefreshRight,
   Search,
   VideoPlay,
-  UploadFilled,
 } from '@element-plus/icons-vue'
 import {
   api,
@@ -26,14 +23,27 @@ import {
   queryMailboxQuotas,
   reloginMailboxRows,
   retryMailboxPixel,
+  setMailboxRowsUnavailable,
 } from '../api/client'
 import DashboardMetricCard from '../components/DashboardMetricCard.vue'
+import MailboxActionMenus from '../components/MailboxActionMenus.vue'
 import MailboxImportDialog from '../components/MailboxImportDialog.vue'
 import MailboxTable from '../components/MailboxTable.vue'
 import PageToolbar from '../components/PageToolbar.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useAppController } from '../composables/useAppController'
+import { useMailboxBatchOperations } from '../composables/useMailboxBatchOperations'
 import type { MailboxPayload, MailboxRow } from '../types/api'
+import {
+  isLatestMailboxBatchFailure,
+  isMailboxNetworkDisconnected,
+  latestMailboxBatchId,
+} from '../utils/mailboxFilters'
+import {
+  canSetMailboxRowsUnavailable,
+  mergeMailboxOperationUpdates,
+  mergeMailboxQuotaResults,
+} from '../utils/mailboxRows'
 
 const controller = useAppController()
 const data = ref<MailboxPayload>({ counts: {}, rows: [] })
@@ -47,16 +57,13 @@ const mailboxTable = ref<{ clearSelection: () => void } | null>(null)
 const loadingPasswords = ref<string[]>([])
 const loadingTotp = ref<string[]>([])
 const currentPage = ref(1)
-const pageSize = ref(50)
+const pageSize = ref(100)
 const mutating = ref(false)
-const testingSub2 = ref(false)
 const reloginStarting = ref(false)
 const retryingPixel = ref(false)
 const exportingSub2 = ref(false)
-const queryingQuota = ref(false)
 const uploadingWebsite = ref(false)
-const quotaProgress = ref('')
-const openaiTestProgress = ref('')
+const settingUnavailable = ref(false)
 const retryingQuotaRows = ref<string[]>([])
 let timer = 0
 let pollingStopped = false
@@ -93,13 +100,19 @@ function needsSub2Rerun(status: any) {
   return Boolean(status?.needs_rerun) || code === 401 || code === 404
 }
 
+const latestBatchId = computed(() => latestMailboxBatchId(data.value.rows))
+
 const rows = computed(() => data.value.rows.filter((row) => {
+  const inLatestBatch = Boolean(latestBatchId.value && row.batch_id === latestBatchId.value)
   const matchesFilter = filter.value === 'all'
+    || (filter.value === 'latest_batch' && inLatestBatch)
+    || (filter.value === 'latest_batch_failed' && inLatestBatch && isLatestMailboxBatchFailure(row))
     || (filter.value === 'not_consumed' ? row.status !== 'consumed' : row.status === filter.value)
   const sub2Status = row.sub2_status || (row as any).sub2
   const matchesSub2 = sub2Filter.value === 'all'
     || (sub2Filter.value === 'test_failure' && isSub2TestFailure(sub2Status))
     || (sub2Filter.value === 'needs_rerun' && needsSub2Rerun(sub2Status))
+    || (sub2Filter.value === 'network_disconnected' && isMailboxNetworkDisconnected(row))
   const hasRemainingQuota = [row.quota_5h, row.quota_7d].some((window) => (
     window?.remaining_percent != null && Number(window.remaining_percent) > 0
   ))
@@ -136,91 +149,65 @@ watch(() => rows.value.length, (total) => {
 })
 
 function applyMailboxPayload(payload: any) {
+  mailboxBatch.sync(payload)
   const next = payload?.mailboxes || payload
   if (next && Array.isArray(next.rows)) {
-    const previous = new Map(data.value.rows.map(row => [row.row_id, row]))
     data.value = {
       ok: next.ok,
       counts: next.counts || {},
-      rows: next.rows.map((row: MailboxRow) => {
-        const old = previous.get(row.row_id)
-        const hasPersistedQuota = row.quota_status != null
-          || row.quota_5h != null
-          || row.quota_7d != null
-        return old && !hasPersistedQuota
-          ? { ...row, quota_status: old.quota_status, quota_error: old.quota_error, quota_queried_at: old.quota_queried_at, quota_5h: old.quota_5h, quota_7d: old.quota_7d }
-          : row
-      }),
+      rows: mergeMailboxOperationUpdates(
+        next.rows,
+        mailboxBatch.operation.value?.row_updates || [],
+      ),
     }
   }
   if (payload?.state) controller.syncState(payload.state)
-}
-
-function applyQuotaResults(results: any[]) {
-  const byRow = new Map(results.map(item => [String(item.row_id), item]))
-  data.value = {
-    ...data.value,
-    rows: data.value.rows.map(row => {
-      const result = byRow.get(row.row_id)
-      if (!result) return row
-      return {
-        ...row,
-        quota_status: result.status,
-        quota_error: result.error || '',
-        quota_queried_at: result.queried_at || Math.floor(Date.now() / 1000),
-        quota_5h: result.quota_5h ?? null,
-        quota_7d: result.quota_7d ?? null,
-      }
-    }),
-  }
 }
 
 function queryableRows() {
   return data.value.rows.filter(row => row.status === 'consumed' && row.task_id)
 }
 
-async function queryQuotas() {
-  const candidates = queryableRows()
-  if (!candidates.length) {
-    ElMessage.warning('当前没有可查询 OpenAI 额度的成功账号')
-    return
-  }
-  queryingQuota.value = true
-  mutating.value = true
-  dataVersion += 1
-  latestRefresh += 1
-  let completed = 0
-  let failed = 0
-  try {
-    quotaProgress.value = `0/${candidates.length}`
-    for (let index = 0; index < candidates.length; index += 5) {
-      const chunk = candidates.slice(index, index + 5)
-      const result = await queryMailboxQuotas(chunk.map(row => ({ row_id: row.row_id, line_no: row.line_no })))
-      applyQuotaResults(result.results || [])
-      completed += Number(result.queried || 0)
-      failed += Number(result.failed || 0)
-      quotaProgress.value = `${Math.min(index + chunk.length, candidates.length)}/${candidates.length}`
-    }
-    const details = failed ? `，失败 ${failed} 条` : ''
-    ElMessage.success(`已查询 OpenAI 额度 ${completed} 条${details}`)
-  } catch (error: any) {
-    ElMessage.error(error?.message || '批量查询 OpenAI 额度失败')
-  } finally {
-    queryingQuota.value = false
-    quotaProgress.value = ''
-    mutating.value = false
-  }
+function scheduleMailboxPoll(delay: number) {
+  if (pollingStopped) return
+  window.clearTimeout(timer)
+  timer = window.setTimeout(poll, delay)
 }
 
+const mailboxBatch = useMailboxBatchOperations({
+  candidates: queryableRows,
+  clearSelection: () => {
+    mailboxTable.value?.clearSelection()
+    selectedRows.value = []
+  },
+  onStarted: () => {
+    dataVersion += 1
+    latestRefresh += 1
+    scheduleMailboxPoll(0)
+  },
+})
+const {
+  busy: batchBusy,
+  queryingQuota,
+  testingOpenAI: testingSub2,
+  quotaProgress,
+  openaiTestProgress,
+  queryQuotas,
+  testOpenAI: testSub2,
+} = mailboxBatch
+
 async function retryQuota(row: MailboxRow) {
-  if (row.quota_status !== 'error' || mutating.value || retryingQuotaRows.value.includes(row.row_id)) return
+  if (row.quota_status !== 'error' || mutating.value || batchBusy.value || retryingQuotaRows.value.includes(row.row_id)) return
   retryingQuotaRows.value = [...retryingQuotaRows.value, row.row_id]
   mutating.value = true
   dataVersion += 1
   latestRefresh += 1
   try {
     const result = await queryMailboxQuotas([{ row_id: row.row_id, line_no: row.line_no }])
-    applyQuotaResults(result.results || [])
+    data.value = {
+      ...data.value,
+      rows: mergeMailboxQuotaResults(data.value.rows, result.results || []),
+    }
     const status = result.results?.[0]
     if (status?.status === 'ok') ElMessage.success('OpenAI 额度已更新')
     else ElMessage.error(status?.error || '查询 OpenAI 额度失败')
@@ -240,7 +227,6 @@ async function retryQuota(row: MailboxRow) {
 }
 
 async function refresh() {
-  if (mutating.value) return
   const request = ++latestRefresh
   const version = dataVersion
   try {
@@ -264,7 +250,12 @@ function applyImportedMailboxes(result: any) {
   currentPage.value = 1
 }
 
-async function mutate(path: string, message: string) {
+async function mutate(
+  path: string,
+  message: string,
+  action?: (rows: Array<{ row_id: string; line_no: number }>) => Promise<any>,
+  successMessage: string | ((result: any) => string) = '操作完成',
+) {
   if (!selectedRows.value.length) {
     ElMessage.warning('请先选择邮箱')
     return
@@ -283,15 +274,31 @@ async function mutate(path: string, message: string) {
   try {
     mailboxTable.value?.clearSelection()
     selectedRows.value = []
-    const result: any = await api(path, { line_nos: lineNumbers, rows: selected })
+    const result: any = action
+      ? await action(selected)
+      : await api(path, { line_nos: lineNumbers, rows: selected })
     applyMailboxPayload(result)
     await nextTick()
     mailboxTable.value?.clearSelection()
-    ElMessage.success('操作完成')
+    ElMessage.success(typeof successMessage === 'function' ? successMessage(result) : successMessage)
   } catch (error: any) {
     ElMessage.error(error?.message || '操作失败')
   } finally {
     mutating.value = false
+  }
+}
+
+async function setUnavailable() {
+  settingUnavailable.value = true
+  try {
+    await mutate(
+      '',
+      '将选中的邮箱设置为不可用？源邮箱行和历史结果会保留。',
+      setMailboxRowsUnavailable,
+      result => `已设置为不可用 ${Number(result?.unavailable || 0)} 条`,
+    )
+  } finally {
+    settingUnavailable.value = false
   }
 }
 
@@ -334,78 +341,6 @@ async function uploadWebsiteMailboxes() {
     ElMessage.error(error?.message || '网站邮箱上传失败')
   } finally {
     uploadingWebsite.value = false
-    mutating.value = false
-  }
-}
-
-async function testSub2() {
-  const candidates = queryableRows()
-  if (!candidates.length) {
-    ElMessage.warning('当前没有可测试的 OpenAI 成功账号')
-    return
-  }
-  testingSub2.value = true
-  mutating.value = true
-  dataVersion += 1
-  latestRefresh += 1
-  let tested = 0
-  let failed = 0
-  let rateLimited = 0
-  let notReady = 0
-  try {
-    mailboxTable.value?.clearSelection()
-    selectedRows.value = []
-    openaiTestProgress.value = `0/${candidates.length}`
-    for (let index = 0; index < candidates.length; index += 5) {
-      const chunk = candidates.slice(index, index + 5)
-      const result: any = await api('/api/mailboxes/openai-test', {
-        rows: chunk.map(row => ({ row_id: row.row_id, line_no: row.line_no })),
-      })
-      applyMailboxPayload(result)
-      const resultStatuses = (result?.results || []).map((item: any) => item?.sub2_status).filter(Boolean)
-      if (resultStatuses.length) {
-        const statuses = new Map<string, MailboxRow['sub2_status']>(
-          result.results.map((item: any) => [String(item.row_id), item.sub2_status]),
-        )
-        data.value = {
-          ...data.value,
-          rows: data.value.rows.map(row => statuses.has(row.row_id)
-            ? { ...row, sub2_status: statuses.get(row.row_id) }
-            : row),
-        }
-      }
-      tested += Number(result?.tested ?? resultStatuses.length)
-      failed += Number(resultStatuses.length
-        ? resultStatuses.filter(isSub2TestFailure).length
-        : result?.test_failures ?? result?.test_failed ?? result?.failed ?? 0)
-      rateLimited += Number(resultStatuses.length
-        ? resultStatuses.filter((status: any) => sub2StatusCode(status) === 429).length
-        : result?.rate_limited ?? 0)
-      notReady += Number(result?.not_ready ?? 0)
-      openaiTestProgress.value = `${Math.min(index + chunk.length, candidates.length)}/${candidates.length}`
-    }
-    await nextTick()
-    mailboxTable.value?.clearSelection()
-    const details = [
-      failed ? `测试失败 ${failed} 条` : '',
-      rateLimited ? `额度受限 ${rateLimited} 条` : '',
-      notReady ? `未上传 ${notReady} 条` : '',
-    ].filter(Boolean).join('，')
-    const message = `已测试 ${tested} 条${details ? `，${details}` : ''}`
-    if (failed || rateLimited || notReady) ElMessage.warning(message)
-    else ElMessage.success(message)
-  } catch (error: any) {
-    if (error instanceof ApiError && error.status === 409) {
-      try {
-        applyMailboxPayload(await getMailboxes())
-      } catch {
-        // Keep the stale selection cleared; normal polling will retry the refresh.
-      }
-    }
-    ElMessage.error(error?.message || '本机 OpenAI 连接测试失败')
-  } finally {
-    testingSub2.value = false
-    openaiTestProgress.value = ''
     mutating.value = false
   }
 }
@@ -603,14 +538,17 @@ async function openMailboxUrl(row: MailboxRow) {
 async function poll() {
   await refresh()
   if (pollingStopped) return
-  const active = data.value.rows.some(row => row.progress && row.progress.finished_at == null)
-  timer = window.setTimeout(poll, active ? 1000 : 3000)
+  const active = mailboxBatch.running.value
+    || data.value.rows.some(row => row.progress && row.progress.finished_at == null)
+  scheduleMailboxPoll(active ? 1000 : 3000)
 }
 
 onMounted(async () => {
   pollingStopped = false
   await refresh()
-  if (!pollingStopped) timer = window.setTimeout(poll, 3000)
+  const active = mailboxBatch.running.value
+    || data.value.rows.some(row => row.progress && row.progress.finished_at == null)
+  scheduleMailboxPoll(active ? 1000 : 3000)
 })
 
 onUnmounted(() => {
@@ -622,7 +560,7 @@ onUnmounted(() => {
 <template>
   <div class="mailbox-page">
     <PageToolbar title="邮箱管理" status="邮箱池" tone="info">
-      <el-button type="primary" :disabled="mutating" @click="mailboxImportDialog?.open()"><el-icon><Upload /></el-icon>导入邮箱</el-button>
+      <el-button type="primary" :disabled="mutating || batchBusy" @click="mailboxImportDialog?.open()"><el-icon><Upload /></el-icon>导入邮箱</el-button>
     </PageToolbar>
 
     <div class="metric-grid">
@@ -643,6 +581,8 @@ onUnmounted(() => {
         <el-input v-model="searchText" class="search-input" clearable placeholder="搜索邮箱、状态、说明" :prefix-icon="Search" />
         <el-select v-model="filter" class="filter-select">
           <el-option label="全部" value="all" />
+          <el-option label="最近运行批次" value="latest_batch" />
+          <el-option label="最近运行批次失败" value="latest_batch_failed" />
           <el-option label="未使用" value="not_consumed" />
           <el-option label="可用" value="available" />
           <el-option label="运行中" value="running" />
@@ -653,42 +593,40 @@ onUnmounted(() => {
           <el-option label="全部 OpenAI" value="all" />
           <el-option label="OpenAI 测试失败" value="test_failure" />
           <el-option label="OpenAI 401/404（需重试）" value="needs_rerun" />
+          <el-option label="网络断开" value="network_disconnected" />
         </el-select>
         <el-select v-model="quotaFilter" class="quota-filter-select">
           <el-option label="全部额度" value="all" />
           <el-option label="有剩余额度" value="remaining" />
           <el-option label="已查询额度" value="queried" />
         </el-select>
-        <el-button :loading="queryingQuota" :disabled="mutating" @click="queryQuotas">
+        <el-button :loading="queryingQuota" :disabled="mutating || batchBusy" @click="queryQuotas">
           <el-icon><DataAnalysis /></el-icon>{{ queryingQuota && quotaProgress ? `查询额度 ${quotaProgress}` : '批量查询额度' }}
         </el-button>
-        <el-button :loading="testingSub2" :disabled="mutating" @click="testSub2">
+        <el-button :loading="testingSub2" :disabled="mutating || batchBusy" @click="testSub2">
           <el-icon><Connection /></el-icon>{{ testingSub2 && openaiTestProgress ? `测试 OpenAI ${openaiTestProgress}` : '批量测试 OpenAI' }}
         </el-button>
-        <el-button
-          type="warning"
-          plain
-          :loading="reloginStarting"
-          :disabled="mutating || controller.runtime.value.running || !selectedRows.length || selectedRows.some(row => !needsSub2Rerun(row.sub2_status))"
-          @click="startRelogin"
-        >
-          <el-icon><RefreshRight /></el-icon>重登并更新 SUB2
-        </el-button>
-        <el-button :loading="retryingPixel" :disabled="mutating || !selectedRows.length" @click="retryPixel">
-          <el-icon><UploadFilled /></el-icon>重传 Pixel
-        </el-button>
-        <el-button :loading="exportingSub2" :disabled="mutating || !selectedRows.length" @click="exportSub2">
-          <el-icon><Download /></el-icon>导出 SUB2API
-        </el-button>
-        <el-button :disabled="mutating || !selectedRows.length" @click="mutate('/api/mailboxes/restore', '将选中邮箱恢复为可用状态？')">
-          <el-icon><RefreshLeft /></el-icon>恢复可用
-        </el-button>
-        <el-button :loading="uploadingWebsite" :disabled="mutating" @click="uploadWebsiteMailboxes">
-          <el-icon><UploadFilled /></el-icon>导入网站邮箱
-        </el-button>
-        <el-button type="danger" plain :disabled="mutating || !selectedRows.length" @click="mutate('/api/mailboxes/delete', '确定删除选中的邮箱？')">
-          <el-icon><Delete /></el-icon>删除
-        </el-button>
+        <MailboxActionMenus
+          :relogin-disabled="mutating || batchBusy || controller.runtime.value.running || !selectedRows.length || selectedRows.some(row => !needsSub2Rerun(row.sub2_status))"
+          :restore-disabled="mutating || batchBusy || !selectedRows.length"
+          :unavailable-disabled="mutating || batchBusy || !canSetMailboxRowsUnavailable(selectedRows)"
+          :pixel-disabled="mutating || batchBusy || !selectedRows.length"
+          :export-disabled="mutating || batchBusy || exportingSub2 || !selectedRows.length"
+          :website-disabled="mutating || batchBusy"
+          :delete-disabled="mutating || batchBusy || !selectedRows.length"
+          :relogin-loading="reloginStarting"
+          :pixel-loading="retryingPixel"
+          :export-loading="exportingSub2"
+          :website-loading="uploadingWebsite"
+          :unavailable-loading="settingUnavailable"
+          @relogin="startRelogin"
+          @restore="mutate('/api/mailboxes/restore', '将选中邮箱恢复为可用状态？')"
+          @unavailable="setUnavailable"
+          @pixel="retryPixel"
+          @export="exportSub2"
+          @website="uploadWebsiteMailboxes"
+          @delete="mutate('/api/mailboxes/delete', '确定删除选中的邮箱？')"
+        />
       </template>
 
       <div class="table-region">
@@ -698,7 +636,7 @@ onUnmounted(() => {
           :loading-passwords="loadingPasswords"
           :loading-totp="loadingTotp"
           :loading-quotas="retryingQuotaRows"
-          :quota-retry-disabled="mutating"
+          :quota-retry-disabled="mutating || batchBusy"
           @select="selectedRows = $event"
           @email="copyEmail"
           @password="copyPassword"

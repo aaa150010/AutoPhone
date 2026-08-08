@@ -1,0 +1,800 @@
+#    2: len
+# Varnames:
+#	self, entries, errors
+# Positional arguments:
+#	self
+# Local variables:
+#    1: entries
+#    2: errors
+421:           0 RESUME               0
+
+422:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + entries)
+              24 CALL                 (0 positional)
+              32 UNPACK_SEQUENCE      2
+              36 STORE_FAST_STORE_FAST (entries, errors)
+
+423:          38 LOAD_FAST            (errors)
+              40 TO_BOOL
+              48 UNARY_NOT
+              50 COPY                 1
+              52 TO_BOOL
+              60 POP_JUMP_IF_FALSE    (to 86)
+              64 POP_TOP
+              66 LOAD_GLOBAL          (NULL + bool)
+              76 LOAD_FAST            (entries)
+              78 CALL                 (1 positional)
+         >>   86 LOAD_GLOBAL          (NULL + len)
+              96 LOAD_FAST            (entries)
+              98 CALL                 (1 positional)
+             106 LOAD_FAST            (errors)
+             108 LOAD_CONST           (('ok', 'entries', 'errors'))
+             110 BUILD_CONST_KEY_MAP  3
+             112 RETURN_VALUE
+
+
+# Method Name:       reset_for_pool_replacement
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        425
+# Constants:
+#    0: 'Drop all lease history after the operator replaces the pool file.'
+#    1: <Code311 code object reset at 0x105cb21c0, file tools\self_mailbox_pool\mailbox_pool.py>, line 428
+#    2: 0
+#    3: ('state', 'dict[str, Any]', '_entries', 'list[PoolEntry]', 'return', 'int')
+# Names:
+#    0: int
+#    1: _update
+# Varnames:
+#	self, reset
+# Positional arguments:
+#	self
+# Local variables:
+#    1: reset
+425:           0 RESUME               0
+
+428:           2 LOAD_CONST           (('state', 'dict[str, Any]', '_entries', 'list[PoolEntry]', 'return', 'int'))
+               4 LOAD_CONST           (<Code311 code object reset at 0x105cb21c0, file tools\self_mailbox_pool\mailbox_pool.py>, line 428)
+               6 MAKE_FUNCTION
+               8 SET_FUNCTION_ATTRIBUTE 4
+              10 STORE_FAST           (reset)
+
+434:          12 LOAD_GLOBAL          (NULL + int)
+              22 LOAD_FAST            (self)
+              24 LOAD_ATTR            (NULL|self + _update)
+              44 LOAD_FAST            (reset)
+              46 CALL                 (1 positional)
+              54 COPY                 1
+              56 TO_BOOL
+              64 POP_JUMP_IF_TRUE     (to 72)
+              68 POP_TOP
+              70 LOAD_CONST           (0)
+         >>   72 CALL                 (1 positional)
+              80 RETURN_VALUE
+
+
+# Method Name:       lease
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  4
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        436
+# Constants:
+#    0: None
+#    1: 60
+#    2: 86400
+#    3: <Code311 code object allocate at 0x105cb2160, file tools\self_mailbox_pool\mailbox_pool.py>, line 439
+#    4: 'mailbox_pool_empty: no available mailbox'
+#    5: ('state', 'dict[str, Any]', 'entries', 'list[PoolEntry]', 'return', 'PoolEntry | None')
+# Names:
+#    0: max
+#    1: min
+#    2: int
+#    3: _update
+#    4: isinstance
+#    5: PoolEntry
+#    6: MailboxPoolError
+# Varnames:
+#	self, lease_seconds, allocate, entry
+# Positional arguments:
+#	self
+# Local variables:
+#    1: lease_seconds
+#    2: allocate
+#    3: entry
+# Cell variables:
+#    0: self
+#    1: lease_seconds
+               0 MAKE_CELL            (self)
+               2 MAKE_CELL            (lease_seconds)
+
+436:           4 RESUME               0
+
+437:           6 LOAD_GLOBAL          (NULL + max)
+              16 LOAD_CONST           (60)
+              18 LOAD_GLOBAL          (NULL + min)
+              28 LOAD_GLOBAL          (NULL + int)
+              38 LOAD_DEREF           (lease_seconds)
+              40 CALL                 (1 positional)
+              48 LOAD_CONST           (86400)
+              50 CALL                 (2 positional)
+              58 CALL                 (2 positional)
+              66 STORE_DEREF          (lease_seconds)
+
+439:          68 LOAD_CONST           (('state', 'dict[str, Any]', 'entries', 'list[PoolEntry]', 'return', 'PoolEntry | None'))
+              70 LOAD_FAST            (lease_seconds)
+              72 LOAD_FAST            (self)
+              74 BUILD_TUPLE          2
+              76 LOAD_CONST           (<Code311 code object allocate at 0x105cb2160, file tools\self_mailbox_pool\mailbox_pool.py>, line 439)
+              78 MAKE_FUNCTION
+              80 SET_FUNCTION_ATTRIBUTE 8
+              82 SET_FUNCTION_ATTRIBUTE 4
+              84 STORE_FAST           (allocate)
+
+454:          86 LOAD_DEREF           (self)
+              88 LOAD_ATTR            (NULL|self + _update)
+             108 LOAD_FAST            (allocate)
+             110 CALL                 (1 positional)
+             118 STORE_FAST           (entry)
+
+455:         120 LOAD_GLOBAL          (NULL + isinstance)
+             130 LOAD_FAST            (entry)
+             132 LOAD_GLOBAL          (PoolEntry)
+             142 CALL                 (2 positional)
+             150 TO_BOOL
+             158 POP_JUMP_IF_TRUE     (to 184)
+
+456:         162 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             172 LOAD_CONST           ("mailbox_pool_empty: no available mailbox")
+             174 CALL                 (1 positional)
+             182 RAISE_VARARGS        (exception instance)
+
+457:     >>  184 LOAD_FAST            (entry)
+             186 RETURN_VALUE
+
+
+# Method Name:       release
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  4
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        459
+# Constants:
+#    0: None
+#    1: <Code311 code object release_item at 0x105cb2100, file tools\self_mailbox_pool\mailbox_pool.py>, line 462
+#    2: ('state', 'dict[str, Any]', 'entries', 'list[PoolEntry]', 'return', 'bool')
+# Names:
+#    0: _clean
+#    1: lower
+#    2: bool
+#    3: _update
+# Varnames:
+#	self, email, reason, release_item
+# Positional arguments:
+#	self, email
+# Local variables:
+#    2: reason
+#    3: release_item
+# Cell variables:
+#    0: self
+#    1: reason
+#    2: wanted
+               0 MAKE_CELL            (self)
+               2 MAKE_CELL            (reason)
+               4 MAKE_CELL            (wanted)
+
+459:           6 RESUME               0
+
+460:           8 LOAD_GLOBAL          (NULL + _clean)
+              18 LOAD_FAST            (email)
+              20 CALL                 (1 positional)
+              28 LOAD_ATTR            (NULL|self + lower)
+              48 CALL                 (0 positional)
+              56 STORE_DEREF          (wanted)
+
+462:          58 LOAD_CONST           (('state', 'dict[str, Any]', 'entries', 'list[PoolEntry]', 'return', 'bool'))
+              60 LOAD_FAST            (reason)
+              62 LOAD_FAST            (self)
+              64 LOAD_FAST            (wanted)
+              66 BUILD_TUPLE          3
+              68 LOAD_CONST           (<Code311 code object release_item at 0x105cb2100, file tools\self_mailbox_pool\mailbox_pool.py>, line 462)
+              70 MAKE_FUNCTION
+              72 SET_FUNCTION_ATTRIBUTE 8
+              74 SET_FUNCTION_ATTRIBUTE 4
+              76 STORE_FAST           (release_item)
+
+474:          78 LOAD_GLOBAL          (NULL + bool)
+              88 LOAD_DEREF           (self)
+              90 LOAD_ATTR            (NULL|self + _update)
+             110 LOAD_FAST            (release_item)
+             112 CALL                 (1 positional)
+             120 CALL                 (1 positional)
+             128 RETURN_VALUE
+
+
+# Method Name:       mark_damaged
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  4
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        476
+# Constants:
+#    0: None
+#    1: <Code311 code object damage_item at 0x105cb20a0, file tools\self_mailbox_pool\mailbox_pool.py>, line 479
+#    2: ('state', 'dict[str, Any]', 'entries', 'list[PoolEntry]', 'return', 'bool')
+# Names:
+#    0: _clean
+#    1: lower
+#    2: bool
+#    3: _update
+# Varnames:
+#	self, email, reason, damage_item
+# Positional arguments:
+#	self, email
+# Local variables:
+#    2: reason
+#    3: damage_item
+# Cell variables:
+#    0: self
+#    1: reason
+#    2: wanted
+               0 MAKE_CELL            (self)
+               2 MAKE_CELL            (reason)
+               4 MAKE_CELL            (wanted)
+
+476:           6 RESUME               0
+
+477:           8 LOAD_GLOBAL          (NULL + _clean)
+              18 LOAD_FAST            (email)
+              20 CALL                 (1 positional)
+              28 LOAD_ATTR            (NULL|self + lower)
+              48 CALL                 (0 positional)
+              56 STORE_DEREF          (wanted)
+
+479:          58 LOAD_CONST           (('state', 'dict[str, Any]', 'entries', 'list[PoolEntry]', 'return', 'bool'))
+              60 LOAD_FAST            (reason)
+              62 LOAD_FAST            (self)
+              64 LOAD_FAST            (wanted)
+              66 BUILD_TUPLE          3
+              68 LOAD_CONST           (<Code311 code object damage_item at 0x105cb20a0, file tools\self_mailbox_pool\mailbox_pool.py>, line 479)
+              70 MAKE_FUNCTION
+              72 SET_FUNCTION_ATTRIBUTE 8
+              74 SET_FUNCTION_ATTRIBUTE 4
+              76 STORE_FAST           (damage_item)
+
+489:          78 LOAD_GLOBAL          (NULL + bool)
+              88 LOAD_DEREF           (self)
+              90 LOAD_ATTR            (NULL|self + _update)
+             110 LOAD_FAST            (damage_item)
+             112 CALL                 (1 positional)
+             120 CALL                 (1 positional)
+             128 RETURN_VALUE
+
+
+# Method Name:       mark_damaged_entry
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  4
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        491
+# Constants:
+#    0: 'Mark exactly the leased source row as damaged.\n\nEmail addresses are not unique in imported pools.  Lifecycle updates\ntherefore use the stable source-row key whenever the caller still has\nthe leased entry, preventing a duplicate address from being mutated.\n'
+#    1: <Code311 code object damage_item at 0x105cb2040, file tools\self_mailbox_pool\mailbox_pool.py>, line 500
+#    2: ('state', 'dict[str, Any]', 'entries', 'list[PoolEntry]', 'return', 'bool')
+# Names:
+#    0: _clean
+#    1: key
+#    2: bool
+#    3: _update
+# Varnames:
+#	self, entry, reason, damage_item
+# Positional arguments:
+#	self, entry
+# Local variables:
+#    2: reason
+#    3: damage_item
+# Cell variables:
+#    0: self
+#    1: reason
+#    2: wanted_key
+               0 MAKE_CELL            (self)
+               2 MAKE_CELL            (reason)
+               4 MAKE_CELL            (wanted_key)
+
+491:           6 RESUME               0
+
+498:           8 LOAD_GLOBAL          (NULL + _clean)
+              18 LOAD_FAST            (entry)
+              20 LOAD_ATTR            (key)
+              40 CALL                 (1 positional)
+              48 STORE_DEREF          (wanted_key)
+
+500:          50 LOAD_CONST           (('state', 'dict[str, Any]', 'entries', 'list[PoolEntry]', 'return', 'bool'))
+              52 LOAD_FAST            (reason)
+              54 LOAD_FAST            (self)
+              56 LOAD_FAST            (wanted_key)
+              58 BUILD_TUPLE          3
+              60 LOAD_CONST           (<Code311 code object damage_item at 0x105cb2040, file tools\self_mailbox_pool\mailbox_pool.py>, line 500)
+              62 MAKE_FUNCTION
+              64 SET_FUNCTION_ATTRIBUTE 8
+              66 SET_FUNCTION_ATTRIBUTE 4
+              68 STORE_FAST           (damage_item)
+
+510:          70 LOAD_GLOBAL          (NULL + bool)
+              80 LOAD_DEREF           (self)
+              82 LOAD_ATTR            (NULL|self + _update)
+             102 LOAD_FAST            (damage_item)
+             104 CALL                 (1 positional)
+             112 CALL                 (1 positional)
+             120 RETURN_VALUE
+
+
+# Method Name:       mark_consumed
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  4
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        512
+# Constants:
+#    0: 'Retire an address that has entered an authorization flow.'
+#    1: <Code311 code object consume_item at 0x105cb8190, file tools\self_mailbox_pool\mailbox_pool.py>, line 516
+#    2: ('state', 'dict[str, Any]', 'entries', 'list[PoolEntry]', 'return', 'bool')
+# Names:
+#    0: _clean
+#    1: lower
+#    2: bool
+#    3: _update
+# Varnames:
+#	self, email, reason, consume_item
+# Positional arguments:
+#	self, email
+# Local variables:
+#    2: reason
+#    3: consume_item
+# Cell variables:
+#    0: self
+#    1: reason
+#    2: wanted
+               0 MAKE_CELL            (self)
+               2 MAKE_CELL            (reason)
+               4 MAKE_CELL            (wanted)
+
+512:           6 RESUME               0
+
+514:           8 LOAD_GLOBAL          (NULL + _clean)
+              18 LOAD_FAST            (email)
+              20 CALL                 (1 positional)
+              28 LOAD_ATTR            (NULL|self + lower)
+              48 CALL                 (0 positional)
+              56 STORE_DEREF          (wanted)
+
+516:          58 LOAD_CONST           (('state', 'dict[str, Any]', 'entries', 'list[PoolEntry]', 'return', 'bool'))
+              60 LOAD_FAST            (reason)
+              62 LOAD_FAST            (self)
+              64 LOAD_FAST            (wanted)
+              66 BUILD_TUPLE          3
+              68 LOAD_CONST           (<Code311 code object consume_item at 0x105cb8190, file tools\self_mailbox_pool\mailbox_pool.py>, line 516)
+              70 MAKE_FUNCTION
+              72 SET_FUNCTION_ATTRIBUTE 8
+              74 SET_FUNCTION_ATTRIBUTE 4
+              76 STORE_FAST           (consume_item)
+
+526:          78 LOAD_GLOBAL          (NULL + bool)
+              88 LOAD_DEREF           (self)
+              90 LOAD_ATTR            (NULL|self + _update)
+             110 LOAD_FAST            (consume_item)
+             112 CALL                 (1 positional)
+             120 CALL                 (1 positional)
+             128 RETURN_VALUE
+
+
+# Method Name:       remove_entry
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  4
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        528
+# Constants:
+#    0: 'Atomically remove a successful source row and its state item.'
+#    1: <Code311 code object remove_item at 0x105cb2310, file tools\self_mailbox_pool\mailbox_pool.py>, line 532
+#    2: ('state', 'dict[str, Any]', 'entries', 'list[PoolEntry]', 'return', 'bool')
+# Names:
+#    0: _clean
+#    1: key
+#    2: bool
+#    3: _update
+# Varnames:
+#	self, entry, reason, remove_item
+# Positional arguments:
+#	self, entry
+# Local variables:
+#    2: reason
+#    3: remove_item
+# Cell variables:
+#    0: self
+#    1: wanted_key
+               0 MAKE_CELL            (self)
+               2 MAKE_CELL            (wanted_key)
+
+528:           4 RESUME               0
+
+530:           6 LOAD_GLOBAL          (NULL + _clean)
+              16 LOAD_FAST            (entry)
+              18 LOAD_ATTR            (key)
+              38 CALL                 (1 positional)
+              46 STORE_DEREF          (wanted_key)
+
+532:          48 LOAD_CONST           (('state', 'dict[str, Any]', 'entries', 'list[PoolEntry]', 'return', 'bool'))
+              50 LOAD_FAST            (self)
+              52 LOAD_FAST            (wanted_key)
+              54 BUILD_TUPLE          2
+              56 LOAD_CONST           (<Code311 code object remove_item at 0x105cb2310, file tools\self_mailbox_pool\mailbox_pool.py>, line 532)
+              58 MAKE_FUNCTION
+              60 SET_FUNCTION_ATTRIBUTE 8
+              62 SET_FUNCTION_ATTRIBUTE 4
+              64 STORE_FAST           (remove_item)
+
+556:          66 LOAD_GLOBAL          (NULL + bool)
+              76 LOAD_DEREF           (self)
+              78 LOAD_ATTR            (NULL|self + _update)
+              98 LOAD_FAST            (remove_item)
+             100 CALL                 (1 positional)
+             108 CALL                 (1 positional)
+             116 RETURN_VALUE
+
+
+# Method Name:       restore_available
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  4
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        558
+# Constants:
+#    0: 'Return a row to the pool after a confirmed pre-auth infrastructure failure.'
+#    1: <Code311 code object restore_item at 0x105cb8280, file tools\self_mailbox_pool\mailbox_pool.py>, line 562
+#    2: ('state', 'dict[str, Any]', 'entries', 'list[PoolEntry]', 'return', 'bool')
+# Names:
+#    0: _clean
+#    1: lower
+#    2: bool
+#    3: _update
+# Varnames:
+#	self, email, reason, restore_item
+# Positional arguments:
+#	self, email
+# Local variables:
+#    2: reason
+#    3: restore_item
+# Cell variables:
+#    0: self
+#    1: reason
+#    2: wanted
+               0 MAKE_CELL            (self)
+               2 MAKE_CELL            (reason)
+               4 MAKE_CELL            (wanted)
+
+558:           6 RESUME               0
+
+560:           8 LOAD_GLOBAL          (NULL + _clean)
+              18 LOAD_FAST            (email)
+              20 CALL                 (1 positional)
+              28 LOAD_ATTR            (NULL|self + lower)
+              48 CALL                 (0 positional)
+              56 STORE_DEREF          (wanted)
+
+562:          58 LOAD_CONST           (('state', 'dict[str, Any]', 'entries', 'list[PoolEntry]', 'return', 'bool'))
+              60 LOAD_FAST            (reason)
+              62 LOAD_FAST            (self)
+              64 LOAD_FAST            (wanted)
+              66 BUILD_TUPLE          3
+              68 LOAD_CONST           (<Code311 code object restore_item at 0x105cb8280, file tools\self_mailbox_pool\mailbox_pool.py>, line 562)
+              70 MAKE_FUNCTION
+              72 SET_FUNCTION_ATTRIBUTE 8
+              74 SET_FUNCTION_ATTRIBUTE 4
+              76 STORE_FAST           (restore_item)
+
+572:          78 LOAD_GLOBAL          (NULL + bool)
+              88 LOAD_DEREF           (self)
+              90 LOAD_ATTR            (NULL|self + _update)
+             110 LOAD_FAST            (restore_item)
+             112 CALL                 (1 positional)
+             120 CALL                 (1 positional)
+             128 RETURN_VALUE
+
+
+# Method Name:       restore_entry
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  4
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        574
+# Constants:
+#    0: 'Restore exactly one source row, even when its email is duplicated.'
+#    1: <Code311 code object restore_item at 0x105cb82e0, file tools\self_mailbox_pool\mailbox_pool.py>, line 578
+#    2: ('state', 'dict[str, Any]', 'entries', 'list[PoolEntry]', 'return', 'bool')
+# Names:
+#    0: _clean
+#    1: key
+#    2: bool
+#    3: _update
+# Varnames:
+#	self, entry, reason, restore_item
+# Positional arguments:
+#	self, entry
+# Local variables:
+#    2: reason
+#    3: restore_item
+# Cell variables:
+#    0: self
+#    1: reason
+#    2: wanted_key
+               0 MAKE_CELL            (self)
+               2 MAKE_CELL            (reason)
+               4 MAKE_CELL            (wanted_key)
+
+574:           6 RESUME               0
+
+576:           8 LOAD_GLOBAL          (NULL + _clean)
+              18 LOAD_FAST            (entry)
+              20 LOAD_ATTR            (key)
+              40 CALL                 (1 positional)
+              48 STORE_DEREF          (wanted_key)
+
+578:          50 LOAD_CONST           (('state', 'dict[str, Any]', 'entries', 'list[PoolEntry]', 'return', 'bool'))
+              52 LOAD_FAST            (reason)
+              54 LOAD_FAST            (self)
+              56 LOAD_FAST            (wanted_key)
+              58 BUILD_TUPLE          3
+              60 LOAD_CONST           (<Code311 code object restore_item at 0x105cb82e0, file tools\self_mailbox_pool\mailbox_pool.py>, line 578)
+              62 MAKE_FUNCTION
+              64 SET_FUNCTION_ATTRIBUTE 8
+              66 SET_FUNCTION_ATTRIBUTE 4
+              68 STORE_FAST           (restore_item)
+
+590:          70 LOAD_GLOBAL          (NULL + bool)
+              80 LOAD_DEREF           (self)
+              82 LOAD_ATTR            (NULL|self + _update)
+             102 LOAD_FAST            (restore_item)
+             104 CALL                 (1 positional)
+             112 CALL                 (1 positional)
+             120 RETURN_VALUE
+
+
+# Method Name:       get_entry
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  11
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        592
+# Constants:
+#    0: None
+#    1: 'pool contains invalid rows: '
+#    2: '; '
+#    3: 3
+#    4: 'utf-8-sig'
+#    5: ('encoding',)
+#    6: 'items'
+#    7: 'status'
+#    8: {'damaged', 'consumed'}
+#    9: 'leased'
+#   10: 'lease_until'
+#   11: 0
+# Names:
+#    0: _clean
+#    1: lower
+#    2: entries
+#    3: MailboxPoolError
+#    4: join
+#    5: _empty_state
+#    6: state_path
+#    7: exists
+#    8: json
+#    9: loads
+#   10: read_text
+#   11: OSError
+#   12: ValueError
+#   13: isinstance
+#   14: dict
+#   15: get
+#   16: time
+#   17: email
+#   18: key
+#   19: float
+# Varnames:
+#	self, email, require_active_lease, wanted, entries, errors, state, items, now, entry, item
+# Positional arguments:
+#	self, email
+# Local variables:
+#    2: require_active_lease
+#    3: wanted
+#    4: entries
+#    5: errors
+#    6: state
+#    7: items
+#    8: now
+#    9: entry
+#   10: item
+592:           0 RESUME               0
+
+593:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (email)
+              14 CALL                 (1 positional)
+              22 LOAD_ATTR            (NULL|self + lower)
+              42 CALL                 (0 positional)
+              50 STORE_FAST           (wanted)
+
+594:          52 LOAD_FAST            (self)
+              54 LOAD_ATTR            (NULL|self + entries)
+              74 CALL                 (0 positional)
+              82 UNPACK_SEQUENCE      2
+              86 STORE_FAST_STORE_FAST (entries, errors)
+
+595:          88 LOAD_FAST            (errors)
+              90 TO_BOOL
+              98 POP_JUMP_IF_FALSE    (to 166)
+
+596:         102 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             112 LOAD_CONST           ("pool contains invalid rows: ")
+             114 LOAD_CONST           ("; ")
+             116 LOAD_ATTR            (NULL|self + join)
+             136 LOAD_FAST            (errors)
+             138 LOAD_CONST           (None)
+             140 LOAD_CONST           (3)
+             142 BINARY_SLICE
+             144 CALL                 (1 positional)
+             152 BINARY_OP            (+)
+             156 CALL                 (1 positional)
+             164 RAISE_VARARGS        (exception instance)
+
+597:     >>  166 LOAD_FAST            (self)
+             168 LOAD_ATTR            (NULL|self + _empty_state)
+             188 CALL                 (0 positional)
+             196 STORE_FAST           (state)
+
+598:         198 LOAD_FAST            (self)
+             200 LOAD_ATTR            (state_path)
+             220 LOAD_ATTR            (NULL|self + exists)
+             240 CALL                 (0 positional)
+             248 TO_BOOL
+             256 POP_JUMP_IF_FALSE    (to 352)
+
+599:         260 NOP
+
+600:         262 LOAD_GLOBAL          (json)
+             272 LOAD_ATTR            (loads)
+             292 PUSH_NULL
+             294 LOAD_FAST            (self)
+             296 LOAD_ATTR            (state_path)
+             316 LOAD_ATTR            (NULL|self + read_text)
+             336 LOAD_CONST           ("utf-8-sig")
+             338 LOAD_CONST           (('encoding',))
+             340 CALL_KW              1
+             342 CALL                 (1 positional)
+             350 STORE_FAST           (state)
+
+603:     >>  352 LOAD_GLOBAL          (NULL + isinstance)
+             362 LOAD_FAST            (state)
+             364 LOAD_GLOBAL          (dict)
+             374 CALL                 (2 positional)
+             382 TO_BOOL
+             390 POP_JUMP_IF_FALSE    (to 428)
+             394 LOAD_FAST            (state)
+             396 LOAD_ATTR            (NULL|self + get)
+             416 LOAD_CONST           ("items")
+             418 CALL                 (1 positional)
+             426 JUMP_FORWARD         (to 430)
+         >>  428 BUILD_MAP            0
+         >>  430 STORE_FAST           (items)
+
+604:         432 LOAD_GLOBAL          (NULL + isinstance)
+             442 LOAD_FAST            (items)
+             444 LOAD_GLOBAL          (dict)
+             454 CALL                 (2 positional)
+             462 TO_BOOL
+             470 POP_JUMP_IF_FALSE    (to 478)
+             474 LOAD_FAST            (items)
+             476 JUMP_FORWARD         (to 480)
+         >>  478 BUILD_MAP            0
+         >>  480 STORE_FAST           (items)
+
+605:         482 LOAD_GLOBAL          (time)
+             492 LOAD_ATTR            (time)
+             512 PUSH_NULL
+             514 CALL                 (0 positional)
+             522 STORE_FAST           (now)
+
+606:         524 LOAD_FAST            (entries)
+             526 GET_ITER
+             528 FOR_ITER             (to 948)
+             532 STORE_FAST           (entry)
+
+607:         534 LOAD_FAST            (entry)
+             536 LOAD_ATTR            (email)
+             556 LOAD_FAST            (wanted)
+             558 COMPARE_OP           (!=)
+             562 POP_JUMP_IF_FALSE    (to 570)
+
+608:         566 JUMP_BACKWARD        (to 528)
+
+609:     >>  570 LOAD_GLOBAL          (NULL + isinstance)
+             580 LOAD_FAST            (items)
+             582 LOAD_ATTR            (NULL|self + get)
+             602 LOAD_FAST            (entry)
+             604 LOAD_ATTR            (key)
+             624 CALL                 (1 positional)
+             632 LOAD_GLOBAL          (dict)
+             642 CALL                 (2 positional)
+             650 TO_BOOL
+             658 POP_JUMP_IF_FALSE    (to 716)
+             662 LOAD_FAST            (items)
+             664 LOAD_ATTR            (NULL|self + get)
+             684 LOAD_FAST            (entry)
+             686 LOAD_ATTR            (key)
+             706 CALL                 (1 positional)
+             714 JUMP_FORWARD         (to 718)
+         >>  716 BUILD_MAP            0
+         >>  718 STORE_FAST           (item)
+
+610:         720 LOAD_GLOBAL          (NULL + _clean)
+             730 LOAD_FAST            (item)
+             732 LOAD_ATTR            (NULL|self + get)
+             752 LOAD_CONST           ("status")
+             754 CALL                 (1 positional)
+             762 CALL                 (1 positional)
+             770 LOAD_CONST           ({'damaged', 'consumed'})
+             772 CONTAINS_OP          (in)
+             776 POP_JUMP_IF_FALSE    (to 784)
+
+611:         780 POP_TOP
+             782 RETURN_CONST         (None)
+
+612:     >>  784 LOAD_FAST            (require_active_lease)
+             786 TO_BOOL
+             794 POP_JUMP_IF_FALSE    (to 940)
+             798 LOAD_GLOBAL          (NULL + _clean)
+             808 LOAD_FAST            (item)
+             810 LOAD_ATTR            (NULL|self + get)
+             830 LOAD_CONST           ("status")
+             832 CALL                 (1 positional)
+             840 CALL                 (1 positional)
+             848 LOAD_CONST           ("leased")
+             850 COMPARE_OP           (==)
+             854 POP_JUMP_IF_FALSE    (to 936)
+             858 LOAD_GLOBAL          (NULL + float)
+             868 LOAD_FAST            (item)
+             870 LOAD_ATTR            (NULL|self + get)
+             890 LOAD_CONST           ("lease_until")
+             892 CALL                 (1 positional)
+             900 COPY                 1

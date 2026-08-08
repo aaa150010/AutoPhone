@@ -10,9 +10,11 @@ import {
   FirstAidKit,
   Message,
   Monitor,
+  Tickets,
   Upload,
   VideoPause,
 } from '@element-plus/icons-vue'
+import { getRuntimeTaskMailboxUrl } from '../api/client'
 import LogPanel from '../components/LogPanel.vue'
 import MailboxImportDialog from '../components/MailboxImportDialog.vue'
 import PageToolbar from '../components/PageToolbar.vue'
@@ -29,6 +31,7 @@ const emit = defineEmits<{ navigate: [string] }>()
 const controller = useAppController()
 const mailboxImportDialog = ref<InstanceType<typeof MailboxImportDialog>>()
 const uploadDialog = ref<InstanceType<typeof RunUploadDialog>>()
+const openingMailboxUrlTaskIds = ref<string[]>([])
 
 const terminalStatuses = new Set([
   'success', 'failed', 'stopped', 'stopped_before_start', 'retryable_infra',
@@ -48,6 +51,31 @@ const summary = computed(() => {
   )
   return { ...current, success, stopped, active, failed, sms_cost_cny: smsCostCny }
 })
+
+const batchId = computed(() => {
+  const summarized = String(summary.value.batch_id || '').trim()
+  if (summarized) return summarized
+  return String(tasks.value.find(task => task.batch_id)?.batch_id || '').trim()
+})
+
+const batchTarget = computed(() => {
+  const summarized = Math.floor(Number(summary.value.target || 0))
+  if (Number.isFinite(summarized) && summarized > 0) return summarized
+  return tasks.value.reduce(
+    (target, task) => Math.max(target, Math.floor(Number(task.ordinal || 0))),
+    tasks.value.length,
+  )
+})
+
+const batchCompleted = computed(() => Math.min(
+  batchTarget.value,
+  Math.max(
+    0,
+    Number(summary.value.success || 0)
+      + Number(summary.value.failed || 0)
+      + Number(summary.value.stopped || 0),
+  ),
+))
 
 const metrics = computed(() => [
   { title: '可用邮箱', value: Number(controller.runtime.value.pool?.available || 0), icon: Message, tone: 'primary' },
@@ -122,6 +150,30 @@ async function copyTaskAccount(task: RuntimeTask) {
     ElMessage.error('复制账号或邮箱失败')
   }
 }
+
+async function openTaskMailboxUrl(task: RuntimeTask) {
+  const taskId = String(task.task_id || '').trim()
+  if (!task.has_mailbox_url || !taskId || openingMailboxUrlTaskIds.value.includes(taskId)) return
+  const target = window.open('', '_blank')
+  if (!target) {
+    ElMessage.error('浏览器阻止了新窗口，请允许弹出窗口后重试')
+    return
+  }
+  target.opener = null
+  openingMailboxUrlTaskIds.value = [...openingMailboxUrlTaskIds.value, taskId]
+  try {
+    const result = await getRuntimeTaskMailboxUrl(taskId)
+    const value = String(result.mailbox_url || '').trim()
+    const destination = new URL(value)
+    if (!['http:', 'https:'].includes(destination.protocol)) throw new Error('取件 URL 协议不安全')
+    target.location.replace(destination.href)
+  } catch (error: any) {
+    target.close()
+    ElMessage.error(error?.message || '打开取件 URL 失败')
+  } finally {
+    openingMailboxUrlTaskIds.value = openingMailboxUrlTaskIds.value.filter(id => id !== taskId)
+  }
+}
 </script>
 
 <template>
@@ -169,8 +221,20 @@ async function copyTaskAccount(task: RuntimeTask) {
         </WorkspacePanel>
       </div>
 
-      <WorkspacePanel class="task-workspace" fill body-padding="none">
-        <TaskResultsPanel :tasks="tasks as RuntimeTask[]" @copy-account="copyTaskAccount" />
+      <WorkspacePanel class="task-workspace" title="任务结果" :icon="Tickets" fill body-padding="none">
+        <template #actions>
+          <div v-if="batchId" class="batch-identity">
+            <span>运行批次</span>
+            <strong>{{ batchId }}</strong>
+            <b>已完成 {{ batchCompleted }}/{{ batchTarget }}</b>
+          </div>
+        </template>
+        <TaskResultsPanel
+          :tasks="tasks as RuntimeTask[]"
+          :opening-mailbox-urls="openingMailboxUrlTaskIds"
+          @copy-account="copyTaskAccount"
+          @mailbox-url="openTaskMailboxUrl"
+        />
       </WorkspacePanel>
 
       <WorkspacePanel class="log-workspace" fill body-padding="none">
@@ -214,6 +278,27 @@ async function copyTaskAccount(task: RuntimeTask) {
 .pipeline-live i { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--run-blue); box-shadow: 0 0 0 3px rgba(40, 127, 216, .1); }
 .pipeline-live.idle { color: var(--el-text-color-secondary); }
 .pipeline-live.idle i { background: #a5afbd; box-shadow: none; }
+.batch-identity { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.batch-identity span { color: var(--el-text-color-secondary); font-size: 11px; white-space: nowrap; }
+.batch-identity strong {
+  max-width: 260px;
+  overflow: hidden;
+  color: var(--run-blue);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.batch-identity b {
+  padding-left: 8px;
+  border-left: 1px solid #d5e0ec;
+  color: #344055;
+  font-size: 12px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 
 .run-page :deep(.page-toolbar) {
   padding: 0 10px;

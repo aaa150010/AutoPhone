@@ -1,0 +1,125 @@
+
+106:        1972 LOAD_CONST           (5)
+
+107:        1974 LOAD_FAST            (since_ts)
+
+103:        1976 LOAD_CONST           (('sender_keywords', 'timeout', 'interval', 'since_ts'))
+            1978 CALL_KW              4
+            1980 RETURN_VALUE
+
+110:     >> 1982 LOAD_FAST            (provider)
+            1984 LOAD_CONST           (('', 'icloud'))
+            1986 CONTAINS_OP          (in)
+            1990 POP_JUMP_IF_FALSE    (to 2228)
+
+111:        1994 LOAD_FAST            (config)
+            1996 LOAD_ATTR            (NULL|self + get)
+            2016 LOAD_CONST           ("icloud_cookies")
+            2018 CALL                 (1 positional)
+            2026 COPY                 1
+            2028 TO_BOOL
+            2036 POP_JUMP_IF_TRUE     (to 2044)
+            2040 POP_TOP
+            2042 BUILD_MAP            0
+         >> 2044 STORE_FAST           (cookies)
+
+112:        2046 LOAD_GLOBAL          (NULL + isinstance)
+            2056 LOAD_FAST            (cookies)
+            2058 LOAD_GLOBAL          (str)
+            2068 CALL                 (2 positional)
+            2076 TO_BOOL
+            2084 POP_JUMP_IF_FALSE    (to 2092)
+
+113:        2088 BUILD_MAP            0
+            2090 STORE_FAST           (cookies)
+
+114:     >> 2092 LOAD_GLOBAL          (NULL + _log)
+            2102 LOAD_FAST            (log_fn)
+            2104 LOAD_CONST           ("[MailOTP] iCloud 轮询验证码: ")
+            2106 LOAD_FAST            (email)
+            2108 FORMAT_SIMPLE
+            2110 BUILD_STRING         2
+            2112 CALL                 (2 positional)
+            2120 POP_TOP
+
+115:        2122 LOAD_CONST           (0)
+            2124 LOAD_CONST           (('ICloudHME',))
+            2126 IMPORT_NAME          (icloud_hme)
+            2128 IMPORT_FROM          (ICloudHME)
+            2130 STORE_FAST           (ICloudHME)
+            2132 POP_TOP
+
+117:        2134 LOAD_FAST            (ICloudHME)
+            2136 PUSH_NULL
+            2138 LOAD_FAST            (cookies)
+            2140 COPY                 1
+            2142 TO_BOOL
+            2150 POP_JUMP_IF_TRUE     (to 2158)
+            2154 POP_TOP
+            2156 BUILD_MAP            0
+         >> 2158 LOAD_FAST            (verbose)
+            2160 LOAD_GLOBAL          (NULL + email_proxy)
+            2170 LOAD_FAST            (config)
+            2172 CALL                 (1 positional)
+            2180 LOAD_CONST           (('verbose', 'proxy'))
+            2182 CALL_KW              3
+            2184 STORE_FAST           (icloud)
+
+118:        2186 LOAD_FAST            (icloud)
+            2188 LOAD_ATTR            (NULL|self + poll_mail_for_code)
+
+119:        2208 LOAD_FAST            (email)
+
+120:        2210 BUILD_LIST           0
+            2212 LOAD_CONST           (('openai', 'noreply', 'verification', 'no-reply'))
+            2214 LIST_EXTEND          1
+
+121:        2216 LOAD_FAST            (timeout)
+
+122:        2218 LOAD_FAST            (imap_user)
+
+123:        2220 LOAD_FAST            (imap_password)
+
+118:        2222 LOAD_CONST           (('target_email', 'sender_filters', 'timeout', 'imap_user', 'imap_password'))
+            2224 CALL_KW              5
+            2226 RETURN_VALUE
+
+126:     >> 2228 RETURN_CONST         (None)
+         >> 2230 PUSH_EXC_INFO
+
+ 80:        2232 LOAD_FAST            (MailCodePollError)
+            2234 CHECK_EXC_MATCH
+            2236 POP_JUMP_IF_FALSE    (to 2316)
+            2240 STORE_FAST           (exc)
+
+ 81:        2242 LOAD_CONST           ("MAIL_CODE_ERROR:")
+            2244 LOAD_FAST            (exc)
+            2246 LOAD_ATTR            (reason)
+            2266 FORMAT_SIMPLE
+            2268 LOAD_CONST           (":")
+            2270 LOAD_FAST            (exc)
+            2272 LOAD_ATTR            (detail)
+            2292 FORMAT_SIMPLE
+            2294 BUILD_STRING         4
+            2296 SWAP                 (TOS <-> TOS1)
+            2298 POP_EXCEPT
+            2300 LOAD_CONST           (None)
+            2302 STORE_FAST           (exc)
+            2304 DELETE_FAST          (exc)
+            2306 RETURN_VALUE
+         >> 2308 LOAD_CONST           (None)
+            2310 STORE_FAST           (exc)
+            2312 DELETE_FAST          (exc)
+            2314 RERAISE              1
+
+ 80:     >> 2316 RERAISE              0
+         >> 2318 COPY                 3
+            2320 POP_EXCEPT
+            2322 RERAISE              1
+
+ExceptionTable:
+  1040 to 1126 -> 2230 [0]
+  2230 to 2240 -> 2318 [1] lasti
+  2242 to 2294 -> 2308 [1] lasti
+  2296 to 2296 -> 2318 [1] lasti
+  2308 to 2316 -> 2318 [1] lasti

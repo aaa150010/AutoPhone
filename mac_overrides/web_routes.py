@@ -13,6 +13,26 @@ from typing import Any, Callable
 import urllib.parse
 import uuid
 
+try:
+    from . import pixel_route_runtime as _pixel_route_runtime_ext
+except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
+    import pixel_route_runtime as _pixel_route_runtime_ext
+
+try:
+    from .mailbox_batch_operations import MailboxBatchRouteController
+except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
+    from mailbox_batch_operations import MailboxBatchRouteController
+
+try:
+    from .mailbox_state_runtime import mark_mailboxes_unavailable
+except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
+    from mailbox_state_runtime import mark_mailboxes_unavailable
+
+try:
+    from .runtime_info_routes import RuntimeInfoRouteController
+except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
+    from runtime_info_routes import RuntimeInfoRouteController
+
 _PIXEL_AUTO_TARGET_IDS = tuple(f"pixel-{index}" for index in range(2, 8))
 _SHA256_HEX_CHARACTERS = frozenset("0123456789abcdef")
 _SMS_BALANCE_CONFIG_KEYS = (
@@ -126,6 +146,7 @@ class WebRouteContext:
     pixel_upload_queue: Any | None = None
     nv_upload_queue: Any | None = None
     batch_upload_coordinator: Any | None = None
+    run_batch_manifest: Any | None = None
     pixel_payload_builder: Callable[[Mapping[str, Any]], dict[str, Any]] | None = None
     mailbox_url_test_factory: Callable[[], Any] | None = None
     query_sms_balances: Callable[[dict[str, Any]], list[dict[str, Any]]] | None = None
@@ -154,6 +175,8 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         context.nv_upload_queue.log_fn = logs.add
     if context.batch_upload_coordinator is not None:
         context.batch_upload_coordinator.log_fn = logs.add
+    if context.run_batch_manifest is not None:
+        context.run_batch_manifest.log_fn = logs.add
     pixel_target_cache: dict[str, Any] = {
         "expires_at": 0.0,
         "targets": [],
@@ -458,7 +481,18 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                         f"{context.safe_runtime_error(exc)}；注册任务继续运行",
                         "error",
                     )
-            return module.jsonify(ok=True, upload_targets=upload_targets, state=public_state())
+            batch = (
+                context.run_batch_manifest.get(run_config["batch_id"])
+                if context.run_batch_manifest is not None
+                else None
+            )
+            return module.jsonify(
+                ok=True,
+                batch_id=run_config["batch_id"],
+                batch=batch,
+                upload_targets=upload_targets,
+                state=public_state(),
+            )
         except ValueError as exc:
             safe = context.safe_runtime_error(exc)
             return module.jsonify(ok=False, error=safe, state=public_state()), 400
@@ -490,44 +524,33 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             return spa_index()
         return module.Response(context.mailbox_manager_html, mimetype="text/html")
 
-    def api_mailbox_url_test():
-        factory = context.mailbox_url_test_factory
-        if factory is None:
-            return module.jsonify(ok=False, error="URL 取件测试尚未启用"), 503
-        try:
-            data = module.request.get_json(silent=True) or {}
-            if not isinstance(data, dict):
-                return module.jsonify(ok=False, error="请求必须是 JSON 对象"), 400
-            value = data.get("value") or data.get("url") or ""
-            local = context.read_local_config()
-            proxy_scope = local.get("proxy_scope") if isinstance(local.get("proxy_scope"), Mapping) else {}
-            proxy = str(local.get("proxy") or "") if bool(proxy_scope.get("email")) else ""
-            result = factory().test(
-                value,
-                timeout_seconds=60,
-                interval_seconds=5,
-                resend_after_seconds=15,
-                proxy=proxy,
-            )
-            status = 400 if result.get("code") == "mailbox_url_invalid" else 200
-            return module.jsonify(result), status
-        except Exception:
-            logs.add("URL 取件测试失败 [测试取件地址/mailbox_url_test]：未返回可用诊断", "error")
-            return module.jsonify(
-                ok=False,
-                code="mailbox_url_test_failed",
-                error="URL 取件测试失败：未返回可用诊断",
-            ), 500
+    runtime_info_routes = RuntimeInfoRouteController(
+        module=module,
+        context=context,
+        mailbox_admin=mailbox_admin,
+        importer=importer,
+        logs=logs,
+    )
+    api_mailbox_url_test = runtime_info_routes.mailbox_url_test
 
-    def api_mailboxes():
-        return module.jsonify(mailbox_admin.list_mailboxes())
+    mailbox_batch_routes = MailboxBatchRouteController(
+        module=module,
+        mailbox_admin=mailbox_admin,
+        public_state=public_state,
+        logs=logs,
+    )
+    app.extensions["gptphone_mailbox_batch_operations"] = mailbox_batch_routes.manager
+    api_mailboxes = mailbox_batch_routes.mailboxes
 
     def mailbox_mutation(operation: str, action: Callable[[dict[str, Any]], dict[str, Any]]):
         try:
             data = module.request.get_json(silent=True) or {}
             result = action(data)
             if not result.get("ok"):
-                status = 409 if result.get("code") == "mailbox_rows_stale" else 400
+                status = 409 if result.get("code") in {
+                    "mailbox_rows_stale",
+                    "mailbox_rows_running",
+                } else 400
                 return module.jsonify(result), status
             result["mailboxes"] = mailbox_admin.list_mailboxes()
             result["state"] = public_state()
@@ -548,6 +571,12 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
 
     def api_mailboxes_restore():
         return mailbox_mutation("放回可领取", mailbox_admin.restore_mailboxes)
+
+    def api_mailboxes_unavailable():
+        return mailbox_mutation(
+            "设置不可用",
+            lambda data: mark_mailboxes_unavailable(mailbox_admin, data),
+        )
 
     def api_mailboxes_website_import():
         node_code = "online_mailbox_upload"
@@ -663,18 +692,8 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         except Exception:
             return module.jsonify(ok=False, error="读取临时 2FA 验证码失败"), 500
 
-    def api_mailboxes_url():
-        try:
-            data = module.request.get_json(silent=True) or {}
-            if not isinstance(data, dict):
-                return module.jsonify(ok=False, error="请求必须是 JSON 对象"), 400
-            result = mailbox_admin.reveal_mailbox_url(data.get("row_id"), data.get("line_no"))
-            if result.get("ok"):
-                return module.jsonify(result)
-            status = 409 if result.get("code") == "mailbox_row_stale" else 400
-            return module.jsonify(result), status
-        except Exception:
-            return module.jsonify(ok=False, error="读取取件 URL 失败"), 500
+    api_mailboxes_url = runtime_info_routes.mailbox_url
+    api_runtime_task_mailbox_url = runtime_info_routes.runtime_task_mailbox_url
 
     def api_mailboxes_relogin():
         if not context.lifecycle_lock.acquire(blocking=False):
@@ -742,6 +761,12 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             return module.jsonify(
                 ok=True,
                 run_mode="relogin",
+                batch_id=run_config["batch_id"],
+                batch=(
+                    context.run_batch_manifest.get(run_config["batch_id"])
+                    if context.run_batch_manifest is not None
+                    else None
+                ),
                 started=len(rows),
                 mailboxes=mailbox_admin.list_mailboxes(),
                 state=public_state(),
@@ -761,63 +786,10 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         finally:
             context.lifecycle_lock.release()
 
-    def api_mailboxes_openai_test():
-        try:
-            data = module.request.get_json(silent=True) or {}
-            if not isinstance(data, dict):
-                return module.jsonify(ok=False, error="请求必须是 JSON 对象"), 400
-            tester = getattr(mailbox_admin, "openai_test", None)
-            result = tester(data) if callable(tester) else mailbox_admin.sub2_test(data)
-            if not isinstance(result, Mapping):
-                return module.jsonify(ok=False, error="本机 OpenAI 批量连接测试失败"), 502
-            response = dict(result)
-            if response.get("ok"):
-                response["mailboxes"] = mailbox_admin.list_mailboxes()
-                response["state"] = public_state()
-                return module.jsonify(response)
-            code = str(response.get("code") or "")
-            if code == "mailbox_rows_stale":
-                status = 409
-            elif code.startswith("sub2_admin_") or code in {
-                "sub2_batch_failed",
-                "openai_test_batch_failed",
-            }:
-                status = 502
-            elif code in {"sub2_not_configured", "openai_test_not_configured"}:
-                status = 503
-            else:
-                status = 400
-            return module.jsonify(response), status
-        except Exception:
-            logs.add("本机 OpenAI 批量连接测试失败", "error")
-            return module.jsonify(ok=False, error="本机 OpenAI 批量连接测试失败"), 502
-
-    def api_mailboxes_sub2_test():
-        # Keep the original URL as a compatibility alias for existing clients.
-        return api_mailboxes_openai_test()
-
-    def api_mailboxes_quota():
-        try:
-            data = module.request.get_json(silent=True) or {}
-            if not isinstance(data, dict):
-                return module.jsonify(ok=False, error="请求必须是 JSON 对象"), 400
-            result = mailbox_admin.query_openai_quotas(data)
-            if not isinstance(result, Mapping):
-                return module.jsonify(ok=False, error="OpenAI 额度查询失败"), 502
-            if result.get("ok"):
-                return module.jsonify(result)
-            code = str(result.get("code") or "")
-            status = 409 if code == "mailbox_rows_stale" else 400
-            if code.startswith("openai_quota_"):
-                status = 503
-            return module.jsonify(dict(result)), status
-        except Exception:
-            logs.add("邮箱管理 OpenAI 额度查询失败", "error")
-            return module.jsonify(
-                ok=False,
-                code="openai_quota_failed",
-                error="查询 OpenAI 额度失败：未返回可用诊断",
-            ), 502
+    api_mailboxes_openai_test = mailbox_batch_routes.openai_test
+    # Keep the original URL as a compatibility alias for existing clients.
+    api_mailboxes_sub2_test = mailbox_batch_routes.openai_test
+    api_mailboxes_quota = mailbox_batch_routes.quota
 
     def mailbox_selection_error(result: Mapping[str, Any]):
         code = str(result.get("code") or "")
@@ -971,37 +943,8 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         value = module.request.get_json(silent=True) or {}
         return dict(value) if isinstance(value, Mapping) else {}
 
-    def account_ids_from(data: Mapping[str, Any]) -> list[Any]:
-        values = data.get("account_ids")
-        if values is None:
-            values = data.get("accountIds")
-        if not isinstance(values, Sequence) or isinstance(values, (str, bytes)):
-            return []
-        return list(values)
-
-    def target_ids_from(data: Mapping[str, Any]) -> list[str] | None:
-        values: Any = None
-        for key in ("target_ids", "targetIds"):
-            if key in data:
-                values = data.get(key)
-                break
-        if values is None:
-            for key in ("target_id", "targetId"):
-                if key in data:
-                    values = [data.get(key)]
-                    break
-        if values is None:
-            return None
-        if isinstance(values, (str, bytes)):
-            values = [values]
-        if not isinstance(values, Sequence):
-            return []
-        result: list[str] = []
-        for value in values:
-            target_id = str(value or "").strip()
-            if target_id and target_id not in result:
-                result.append(target_id)
-        return result
+    account_ids_from = _pixel_route_runtime_ext.account_ids_from
+    target_ids_from = _pixel_route_runtime_ext.target_ids_from
 
     def pixel_target_rejected(target_id: Any):
         normalized = str(target_id or "").strip()
@@ -1223,6 +1166,23 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         except Exception as exc:
             return pixel_error_response(exc)
 
+    def api_pixel_batch_retry(batch_id: str):
+        if context.pixel_upload_queue is None:
+            return pixel_unavailable(queue=True)
+        try:
+            summary = _pixel_route_runtime_ext.retry_batch_targets(
+                context.pixel_upload_queue,
+                batch_id,
+                target_ids_from(request_json_object()),
+                allowed_targets=_PIXEL_AUTO_TARGET_IDS,
+                log_fn=logs.add,
+            )
+            return module.jsonify(ok=True, **summary)
+        except Exception as exc:
+            payload, status = _pixel_route_runtime_ext.batch_retry_failure(exc)
+            logs.add(f"[{payload['node_label']}/{payload['node_code']}] {payload['code']}", "error")
+            return module.jsonify(**payload), status
+
     def api_pixel_upload_retry(record_id: str):
         if context.pixel_upload_queue is None:
             return pixel_unavailable(queue=True)
@@ -1312,6 +1272,9 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         except Exception as exc:
             logs.add("批次上传清单查询失败 [批次上传协调/batch_upload_manifest]", "error")
             return module.jsonify(ok=False, error=context.safe_runtime_error(exc)), 500
+
+    api_run_batches = runtime_info_routes.run_batches
+    api_run_batch = runtime_info_routes.run_batch
 
     def api_batch_upload_manifest_retry(batch_id: str):
         if context.batch_upload_coordinator is None:
@@ -1497,16 +1460,30 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/mailboxes/import", "api_mailboxes_import", api_mailboxes_import, ["POST"]),
         ("/api/mailboxes/delete", "api_mailboxes_delete", api_mailboxes_delete, ["POST"]),
         ("/api/mailboxes/restore", "api_mailboxes_restore", api_mailboxes_restore, ["POST"]),
+        ("/api/mailboxes/unavailable", "api_mailboxes_unavailable", api_mailboxes_unavailable, ["POST"]),
         ("/api/mailboxes/website-import", "api_mailboxes_website_import", api_mailboxes_website_import, ["POST"]),
         ("/api/mailboxes/latest-code", "api_mailboxes_latest_code", api_mailboxes_latest_code, ["POST"]),
         ("/api/mailboxes/password", "api_mailboxes_password", api_mailboxes_password, ["POST"]),
         ("/api/mailboxes/totp", "api_mailboxes_totp", api_mailboxes_totp, ["POST"]),
         ("/api/mailboxes/url", "api_mailboxes_url", api_mailboxes_url, ["POST"]),
+        (
+            "/api/runtime/tasks/mailbox-url",
+            "api_runtime_task_mailbox_url",
+            api_runtime_task_mailbox_url,
+            ["POST"],
+        ),
         ("/api/mailboxes/relogin", "api_mailboxes_relogin", api_mailboxes_relogin, ["POST"]),
         ("/api/mailbox-url-test", "api_mailbox_url_test", api_mailbox_url_test, ["POST"]),
         ("/api/mailboxes/sub2-test", "api_mailboxes_sub2_test", api_mailboxes_sub2_test, ["POST"]),
         ("/api/mailboxes/openai-test", "api_mailboxes_openai_test", api_mailboxes_openai_test, ["POST"]),
         ("/api/mailboxes/quota", "api_mailboxes_quota", api_mailboxes_quota, ["POST"]),
+        ("/api/run-batches", "api_run_batches", api_run_batches, ["GET"]),
+        (
+            "/api/run-batches/<batch_id>",
+            "api_run_batch",
+            api_run_batch,
+            ["GET"],
+        ),
         ("/api/mailboxes/pixel-retry", "api_mailboxes_pixel_retry", api_mailboxes_pixel_retry, ["POST"]),
         ("/api/mailboxes/sub2-export", "api_mailboxes_sub2_export", api_mailboxes_sub2_export, ["POST"]),
         ("/api/pixel/targets", "api_pixel_targets", api_pixel_targets, ["GET"]),
@@ -1542,6 +1519,12 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             "api_pixel_batch_records",
             api_pixel_batch_records,
             ["GET"],
+        ),
+        (
+            "/api/pixel/upload-batches/<batch_id>/retry",
+            "api_pixel_batch_retry",
+            api_pixel_batch_retry,
+            ["POST"],
         ),
         ("/api/pixel/upload-records", "api_pixel_upload_records", api_pixel_upload_records, ["GET"]),
         (

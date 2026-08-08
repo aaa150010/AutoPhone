@@ -1,0 +1,800 @@
+#  108: 'mock'
+#  109: ('flow', 'token_generated')
+#  110: 'acquire_login_slot'
+#  111: 'email_identifier_failed: '
+#  112: {'password_verification', 'password', 'login_password'}
+#  113: 'email_auth_preference'
+#  114: 'auto'
+#  115: 'otp'
+#  116: 'password'
+#  117: 'send_email_otp'
+#  118: '  [Codex] 当前登录页支持密码/验证码选择，优先请求邮箱验证码'
+#  119: 'email_otp_send_failed: '
+#  120: 160
+#  121: ('_status', 'error')
+#  122: 'email_otp_verification'
+#  123: '  [Codex] 已切换到邮箱验证码登录，等待验证码'
+#  124: '验证码入口不可用'
+#  125: '  [Codex] 验证码入口不可用，回退账号密码登录'
+#  126: 'password_required'
+#  127: 'password_verify_failed: '
+#  128: {'mfa_otp', 'mfa_challenge', 'mfa_otp_verification'}
+#  129: '_status'
+#  130: ('response_status', 'continue_url_present')
+#  131: 1
+#  132: 'mark_sent'
+#  133: 'send_mfa_otp'
+#  134: 'mfa_otp_send_failed: '
+#  135: '  [Codex] MFA 验证码校验失败，仅重发一次并重取 ('
+#  136: '/'
+#  137: ')'
+#  138: 'mfa_otp_resend_failed'
+#  139: 'mfa_otp_empty'
+#  140: 'verify_failed'
+#  141: 2
+#  142: 'mfa_otp_failed: '
+#  143: 'mark_verified'
+#  144: '  [Codex] 邮箱验证码校验失败，重新发送并重取验证码 ('
+#  145: 'email_otp_resend_failed'
+#  146: '  [Codex] 邮箱 OTP 发送接口失败，继续等待 OTP: '
+#  147: 'email_otp_empty'
+#  148: 'email_otp_failed: '
+#  149: {'add_phone', 'contact_verification', 'phone_number_collection'}
+#  150: 'phone_max_attempts'
+#  151: (None, '')
+#  152: 1000
+#  153: 3
+#  154: '不限'
+#  155: 0.0
+#  156: 'phone_channels'
+#  157: ('sms', 'whatsapp')
+#  158: 'sms'
+#  159: 'session_cycle='
+#  160: 's attempts='
+#  161: 'task_stopped'
+#  162: 'phone step'
+#  163: 'service'
+#  164: 'dr'
+#  165: 'country'
+#  166: 'provider_ids'
+#  167: 'max_price'
+#  168: ('service', 'country', 'provider_ids', 'max_price')
+#  169: '  [Codex] 手机拿号失败 '
+#  170: ': '
+#  171: 'phone_supply_failed'
+#  172: '  [Codex] 手机验证尝试 '
+#  173: '，号码='
+#  174: ('channel',)
+#  175: ' via '
+#  176: ('timeout',)
+#  177: 'phone_otp_empty'
+#  178: 'phone_otp_failed: '
+#  179: ('reason',)
+#  180: 'oauth_session_invalid: '
+#  181: ('detail', 'log_fn', 'tag')
+#  182: 'phone_verification_failed'
+#  183: '/contact-verification'
+#  184: 'register'
+#  185: 'name'
+#  186: 'birthdate'
+#  187: 'create_account_profile_failed: '
+#  188: 'profile_complete'
+#  189: {'sign_in_with_chatgpt_codex_consent', 'consent'}
+#  190: 'consent_accepted'
+#  191: {'sign_in_with_chatgpt_codex_consent', 'workspace_select', 'consent'}
+#  192: 'oauth_callback_missing_code'
+#  193: 'oauth_callback_state_mismatch'
+#  194: 'code captured'
+#  195: 'state_checked'
+#  196: '  [Codex] 提交 authorization code 到 CPA/CLIProxyAPI...'
+#  197: ('log_fn',)
+#  198: ('code', 'state')
+#  199: 'cpa_upload_failed: '
+#  200: 'cpa:'
+#  201: 'auth_file'
+#  202: 'status'
+#  203: ' chain complete'
+#  204: 'success'
+#  205: 'email'
+#  206: 'bind_email'
+#  207: 'login_email'
+#  208: 'email_bound_ok'
+#  209: 'local_bind_ok'
+#  210: 'phone'
+#  211: 'new_account_phone'
+#  212: 'activation_id'
+#  213: 'new_account_phone_activation_id'
+#  214: 'phone_verified'
+#  215: 'attempted_phones'
+#  216: 'failed_phones'
+#  217: 'upload_skipped'
+#  218: 'upload_skip_reason'
+#  219: 'upload_status'
+#  220: 'upload_complete'
+#  221: 'phase2_status'
+#  222: 'uploaded'
+#  223: 'oauth_code'
+#  224: 'cpa_callback'
+#  225: ('phase2_ok', 'auth_page_type', 'oauth_provider', 'oauth_session_id_present', 'openai_device_id', 'code', 'oauth_code_received', 'oauth_code_received_at', 'local_oauth_exchange_ok', 'local_oauth_exchange_source', 'local_oauth_saved', 'local_token_ready', 'runtime_context', 'node_bridge', 'codex_chain_events')
+#  226: '  [Codex] 用 SUB2 exchange-code 换 token...'
+#  227: ('session_id', 'state', 'upload_proxy', 'log_fn')
+#  228: ('code', 'account_email')
+#  229: 'sub2_exchange_failed: '
+#  230: 'tokens'
+#  231: 'exchange_data'
+#  232: '  [Codex] 用 authorization code 换 token...'
+#  233: 'access_token'
+#  234: 'token_exchange_failed'
+#  235: 'refresh_token'
+#  236: 'id_token'
+#  237: 'token_exchange_incomplete'
+#  238: ('exchange_data',)
+#  239: ' tokens ready'
+#  240: 'cpa_upload_requires_cpa_oauth_provider'
+#  241: ('credentials', 'email')
+#  242: 'cpa_token_upload_failed: '
+#  243: ('upload_proxy', 'log_fn')
+#  244: 'sub2_chatgpt_account_id_verified'
+#  245: 'sub2_upload_failed: '
+#  246: 'sub2:'
+#  247: 'sub2api_account_id'
+#  248: 'target='
+#  249: 'codex_chain_'
+#  250: '_done'
+#  251: 'phase2_ok'
+#  252: 'auth_page_type'
+#  253: 'oauth_token'
+#  254: 'oauth_session_id_present'
+#  255: 'oauth_code_received'
+#  256: 'oauth_code_received_at'
+#  257: 'expires_at'
+#  258: 'local_oauth_exchange_ok'
+#  259: 'local_oauth_exchange_source'
+#  260: 'local_oauth_saved'
+#  261: 'local_token_ready'
+#  262: 'local_oauth'
+#  263: 'token_type'
+#  264: 'Bearer'
+#  265: 'scope'
+#  266: 'account_id'
+#  267: 'chatgpt_account_id'
+#  268: 'chatgpt_account_user_id'
+#  269: 'chatgpt_user_id'
+#  270: 'chatgpt_auth_user_id'
+#  271: 'chatgpt_plan_type'
+#  272: 'cpa_ready'
+#  273: 'cpa_missing_reason'
+#  274: ('id_token', 'access_token', 'refresh_token', 'expires_at', 'token_type', 'scope', 'email', 'account_id', 'chatgpt_account_id', 'chatgpt_account_user_id', 'chatgpt_user_id', 'chatgpt_auth_user_id', 'chatgpt_plan_type', 'cpa_ready', 'cpa_missing_reason')
+#  275: ('source', 'client_id', 'redirect_uri', 'code', 'code_verifier_present', 'oauth_provider', 'oauth_session_id_present', 'exchange_ok', 'exchange_data_present', 'tokens')
+#  276: ('runtime_context', 'node_bridge', 'codex_chain_events')
+#  277: ('account_id', 'chatgpt_account_id', 'chatgpt_account_user_id', 'chatgpt_user_id', 'chatgpt_auth_user_id', 'chatgpt_plan_type', 'chatgpt_field_source', 'chatgpt_field_checked_at', 'cpa_ready', 'cpa_missing_reason')
+#  278: 'codex_chain_failed'
+#  279: 'transport'
+#  280: 'local_oauth_exchange_error'
+#  281: 'node_bridge'
+#  282: 'codex_chain_events'
+# Names:
+#    0: _normalize_mode
+#    1: _clean
+#    2: _diagnostic_result
+#    3: parse_oauth_url
+#    4: get
+#    5: DEFAULT_CLIENT_ID
+#    6: DEFAULT_REDIRECT_URI
+#    7: isinstance
+#    8: dict
+#    9: lower
+#   10: _mock_cfg
+#   11: int
+#   12: _replay_cfg
+#   13: runtime_context_from_inputs
+#   14: validate_runtime_context
+#   15: getattr
+#   16: bool
+#   17: _event
+#   18: STATE_START
+#   19: CodexChainError
+#   20: proxy_scope
+#   21: sms_proxy
+#   22: sms_providers
+#   23: apply_localpool_runtime_config
+#   24: create_provider
+#   25: provider_api_key
+#   26: Exception
+#   27: RealNodeSentinelProvider
+#   28: str
+#   29: uuid
+#   30: uuid4
+#   31: mode
+#   32: script_path
+#   33: os
+#   34: path
+#   35: exists
+#   36: RealCodexTransport
+#   37: import_phase1_session
+#   38: _emit
+#   39: len
+#   40: RealEmailOtpProvider
+#   41: min
+#   42: SmsProviderAdapter
+#   43: token_for
+#   44: STATE_CHAT_REQUIREMENTS_READY
+#   45: _as_bool
+#   46: _run_chatgpt_signup_phase
+#   47: strip_oauth_login_for_session_reuse
+#   48: ReplayCodexTransport
+#   49: MockCodexTransport
+#   50: MockSentinelProvider
+#   51: MockEmailOtpProvider
+#   52: _phone_provider
+#   53: original_oauth_url
+#   54: _abs_url
+#   55: AUTH
+#   56: last_oauth_url
+#   57: _page_type
+#   58: visit_continue
+#   59: STATE_OAUTH_STARTED
+#   60: STATE_EMAIL_OTP_VERIFIED
+#   61: initiate_oauth
+#   62: _is_success_response
+#   63: _error_text
+#   64: STATE_SENTINEL_READY
+#   65: hasattr
+#   66: acquire_login_slot
+#   67: _raise_if_task_stopped
+#   68: submit_email_identifier
+#   69: send_email_otp
+#   70: STATE_PASSWORD_REQUIRED
+#   71: _mask
+#   72: verify_password
+#   73: STATE_PASSWORD_VERIFIED
+#   74: _continue_url
+#   75: STATE_MFA_OTP_REQUIRED
+#   76: _email_otp_resend_on_retry
+#   77: _email_otp_verify_attempts
+#   78: mark_sent
+#   79: send_mfa_otp
+#   80: range
+#   81: wait_code
+#   82: verify_mfa_otp
+#   83: _is_email_otp_retryable_error
+#   84: _interruptible_sleep
+#   85: mark_verified
+#   86: STATE_MFA_OTP_VERIFIED
+#   87: STATE_EMAIL_OTP_REQUIRED
+#   88: verify_email_otp
+#   89: max
+#   90: _phone_session_cycle_seconds
+#   91: time
+#   92: strip
+#   93: STATE_PHONE_REQUIRED
+#   94: _task_stop_requested
+#   95: _session_cycle_expired_error
+#   96: get_number
+#   97: _phone_supply_error_text
+#   98: _is_retryable_phone_supply_error
+#   99: _phone_retry_sleep_seconds
+#  100: phone
+#  101: append
+#  102: send_phone_number_otp
+#  103: mark_ready
+#  104: STATE_PHONE_OTP_SENT
+#  105: verify_phone_otp
+#  106: complete
+#  107: STATE_PHONE_OTP_VERIFIED
+#  108: activation_id
+#  109: _is_session_invalid_error
+#  110: cancel
+#  111: STATE_PHONE_SEND_REJECTED
+#  112: _looks_profile_state
+#  113: _random_name
+#  114: _random_birthdate
+#  115: create_account_profile
+#  116: STATE_CONSENT_REQUIRED
+#  117: accept_consent
+#  118: follow_continue_until_code
+#  119: _extract_code_and_state
+#  120: STATE_CALLBACK_RECEIVED
+#  121: RealCpaUploader
+#  122: upload_code
+#  123: STATE_UPLOADED
+#  124: STATE_DONE
+#  125: update
+#  126: Sub2SessionExchanger
+#  127: exchange
+#  128: exchange_code
+#  129: _merge_real_chatgpt_fields
+#  130: STATE_TOKEN_EXCHANGED
+#  131: RealCpaTokenUploader
+#  132: upload_tokens
+#  133: RealSub2Uploader
+#  134: upload
+#  135: STATE_UPLOAD_SKIPPED
+#  136: STATE_FAILED
+#  137: locals
+# Varnames:
+#	oauth_url, code_verifier, account_email, password, phase1_register, phase1_response, phase1_continue_url, sms_provider, config, proxy, email_proxy, upload_proxy, log_fn, mode, local_oauth_client_id, local_oauth_redirect_uri, oauth_provider, oauth_session_id, oauth_state, upload_target_name, node_result, runtime_context_expected, runtime_context_strict, transport, sentinel_provider, email_otp_provider, phone_otp_provider, cfg, resolved_mode, events, oauth_params, expected_state, client_id, redirect_uri, oauth_session, target_name, provider, session_id, provider_state, mock, code_timeout, fixture_expected, expected_context, runtime_ctx, runtime_validation, context, phase1_snapshot, issue, is_real, fingerprint, sms_proxy, apply_localpool_runtime_config, create_provider, provider_api_key, provider_name, exc, phase1_snapshot_ready, chat_req, signup_result, active_response, active_continue, email_response, start_response, sentinel, requested_auth_preference, auth_preference, otp_response, password_response, mfa_continue_url, resend_on_retry, verify_attempts, last_mfa_error, initial_send, mfa_attempt, resend_response, mfa_code, email_continue_url, last_email_otp_error, email_otp_attempt, email_code, page, continue_url, verified_phone, verified_activation_id, attempted_phones, failed_phones, raw_attempts, max_attempts, unlimited_attempts, attempt_label, session_cycle_seconds, session_cycle_started, channels, ch, verified, last_error, _idx, lease, retry_sleep, channel, send_response, phone_code, verify_response, reg_cfg, name, birthdate, profile, consent_response, callback, code, callback_state, upload_result, target, tokens, exchange_data, result, exchange_result, email_for_upload, email, key
+# Local variables:
+#    0: oauth_url
+#    1: code_verifier
+#    2: account_email
+#    3: password
+#    4: phase1_register
+#    5: phase1_response
+#    6: phase1_continue_url
+#    7: sms_provider
+#    8: config
+#    9: proxy
+#   10: email_proxy
+#   11: upload_proxy
+#   12: log_fn
+#   13: mode
+#   14: local_oauth_client_id
+#   15: local_oauth_redirect_uri
+#   16: oauth_provider
+#   17: oauth_session_id
+#   18: oauth_state
+#   19: upload_target_name
+#   20: node_result
+#   21: runtime_context_expected
+#   22: runtime_context_strict
+#   23: transport
+#   24: sentinel_provider
+#   25: email_otp_provider
+#   26: phone_otp_provider
+#   27: cfg
+#   28: resolved_mode
+#   29: events
+#   30: oauth_params
+#   31: expected_state
+#   32: client_id
+#   33: redirect_uri
+#   34: oauth_session
+#   35: target_name
+#   36: provider
+#   37: session_id
+#   38: provider_state
+#   39: mock
+#   40: code_timeout
+#   41: fixture_expected
+#   42: expected_context
+#   43: runtime_ctx
+#   44: runtime_validation
+#   45: context
+#   46: phase1_snapshot
+#   47: issue
+#   48: is_real
+#   49: fingerprint
+#   50: sms_proxy
+#   51: apply_localpool_runtime_config
+#   52: create_provider
+#   53: provider_api_key
+#   54: provider_name
+#   55: exc
+#   56: phase1_snapshot_ready
+#   57: chat_req
+#   58: signup_result
+#   59: active_response
+#   60: active_continue
+#   61: email_response
+#   62: start_response
+#   63: sentinel
+#   64: requested_auth_preference
+#   65: auth_preference
+#   66: otp_response
+#   67: password_response
+#   68: mfa_continue_url
+#   69: resend_on_retry
+#   70: verify_attempts
+#   71: last_mfa_error
+#   72: initial_send
+#   73: mfa_attempt
+#   74: resend_response
+#   75: mfa_code
+#   76: email_continue_url
+#   77: last_email_otp_error
+#   78: email_otp_attempt
+#   79: email_code
+#   80: page
+#   81: continue_url
+#   82: verified_phone
+#   83: verified_activation_id
+#   84: attempted_phones
+#   85: failed_phones
+#   86: raw_attempts
+#   87: max_attempts
+#   88: unlimited_attempts
+#   89: attempt_label
+#   90: session_cycle_seconds
+#   91: session_cycle_started
+#   92: channels
+#   93: ch
+#   94: verified
+#   95: last_error
+#   96: _idx
+#   97: lease
+#   98: retry_sleep
+#   99: channel
+#  100: send_response
+#  101: phone_code
+#  102: verify_response
+#  103: reg_cfg
+#  104: name
+#  105: birthdate
+#  106: profile
+#  107: consent_response
+#  108: callback
+#  109: code
+#  110: callback_state
+#  111: upload_result
+#  112: target
+#  113: tokens
+#  114: exchange_data
+#  115: result
+#  116: exchange_result
+#  117: email_for_upload
+#  118: email
+#  119: key
+3032:           0 RESUME               0
+
+3069:           2 LOAD_FAST            (config)
+               4 COPY                 1
+               6 TO_BOOL
+              14 POP_JUMP_IF_TRUE     (to 22)
+              18 POP_TOP
+              20 BUILD_MAP            0
+         >>   22 STORE_FAST           (cfg)
+
+3070:          24 LOAD_GLOBAL          (NULL + _normalize_mode)
+              34 LOAD_FAST            (cfg)
+              36 LOAD_FAST            (mode)
+              38 CALL                 (2 positional)
+              46 STORE_FAST           (resolved_mode)
+
+3071:          48 LOAD_GLOBAL          (NULL + _clean)
+              58 LOAD_FAST            (account_email)
+              60 CALL                 (1 positional)
+              68 STORE_FAST           (account_email)
+
+3072:          70 LOAD_FAST            (account_email)
+              72 TO_BOOL
+              80 POP_JUMP_IF_TRUE     (to 96)
+
+3073:          84 LOAD_CONST           (False)
+              86 LOAD_CONST           ("account_email missing")
+              88 LOAD_CONST           ("codex_chain_config_error")
+              90 LOAD_CONST           (('ok', 'error', 'phase2_status'))
+              92 BUILD_CONST_KEY_MAP  3
+              94 RETURN_VALUE
+
+3074:     >>   96 LOAD_FAST            (resolved_mode)
+              98 LOAD_CONST           ("diagnostic")
+             100 COMPARE_OP           (==)
+             104 POP_JUMP_IF_FALSE    (to 134)
+
+3075:         108 LOAD_GLOBAL          (NULL + _diagnostic_result)
+
+3076:         118 LOAD_FAST            (oauth_url)
+
+3077:         120 LOAD_FAST            (account_email)
+
+3078:         122 LOAD_FAST            (resolved_mode)
+
+3079:         124 LOAD_FAST            (cfg)
+
+3080:         126 LOAD_FAST            (log_fn)
+
+3075:         128 LOAD_CONST           (('oauth_url', 'account_email', 'mode', 'config', 'log_fn'))
+             130 CALL_KW              5
+             132 RETURN_VALUE
+
+3082:     >>  134 LOAD_FAST            (resolved_mode)
+             136 LOAD_CONST           ({'replay', 'real', 'mock'})
+             138 CONTAINS_OP          (not in)
+             142 POP_JUMP_IF_FALSE    (to 158)
+
+3083:         146 LOAD_CONST           (False)
+             148 LOAD_CONST           ("codex_chain_mode must be mock, replay, diagnostic, or real")
+             150 LOAD_CONST           ("codex_chain_disabled")
+             152 LOAD_CONST           (('ok', 'error', 'phase2_status'))
+             154 BUILD_CONST_KEY_MAP  3
+             156 RETURN_VALUE
+
+3085:     >>  158 BUILD_LIST           0
+             160 STORE_FAST           (events)
+
+3086:         162 LOAD_GLOBAL          (NULL + parse_oauth_url)
+             172 LOAD_FAST            (oauth_url)
+             174 CALL                 (1 positional)
+             182 STORE_FAST           (oauth_params)
+
+3087:         184 LOAD_GLOBAL          (NULL + _clean)
+             194 LOAD_FAST            (oauth_params)
+             196 LOAD_ATTR            (NULL|self + get)
+             216 LOAD_CONST           ("state")
+             218 CALL                 (1 positional)
+             226 CALL                 (1 positional)
+             234 STORE_FAST           (expected_state)
+
+3088:         236 LOAD_GLOBAL          (NULL + _clean)
+             246 LOAD_FAST            (local_oauth_client_id)
+             248 CALL                 (1 positional)
+             256 COPY                 1
+             258 TO_BOOL
+             266 POP_JUMP_IF_TRUE     (to 330)
+             270 POP_TOP
+             272 LOAD_FAST            (oauth_params)
+             274 LOAD_ATTR            (NULL|self + get)
+             294 LOAD_CONST           ("client_id")
+             296 CALL                 (1 positional)
+             304 COPY                 1
+             306 TO_BOOL
+             314 POP_JUMP_IF_TRUE     (to 330)
+             318 POP_TOP
+             320 LOAD_GLOBAL          (DEFAULT_CLIENT_ID)
+         >>  330 STORE_FAST           (client_id)
+
+3089:         332 LOAD_GLOBAL          (NULL + _clean)
+             342 LOAD_FAST            (local_oauth_redirect_uri)
+             344 CALL                 (1 positional)
+             352 COPY                 1
+             354 TO_BOOL
+             362 POP_JUMP_IF_TRUE     (to 426)
+             366 POP_TOP
+             368 LOAD_FAST            (oauth_params)
+             370 LOAD_ATTR            (NULL|self + get)
+             390 LOAD_CONST           ("redirect_uri")
+             392 CALL                 (1 positional)
+             400 COPY                 1
+             402 TO_BOOL
+             410 POP_JUMP_IF_TRUE     (to 426)
+             414 POP_TOP
+             416 LOAD_GLOBAL          (DEFAULT_REDIRECT_URI)
+         >>  426 STORE_FAST           (redirect_uri)
+
+3090:         428 LOAD_GLOBAL          (NULL + isinstance)
+             438 LOAD_FAST            (cfg)
+             440 LOAD_ATTR            (NULL|self + get)
+             460 LOAD_CONST           ("oauth_session")
+             462 CALL                 (1 positional)
+             470 LOAD_GLOBAL          (dict)
+             480 CALL                 (2 positional)
+             488 TO_BOOL
+             496 POP_JUMP_IF_FALSE    (to 534)
+             500 LOAD_FAST            (cfg)
+             502 LOAD_ATTR            (NULL|self + get)
+             522 LOAD_CONST           ("oauth_session")
+             524 CALL                 (1 positional)
+             532 JUMP_FORWARD         (to 536)
+         >>  534 BUILD_MAP            0
+         >>  536 STORE_FAST           (oauth_session)
+
+3091:         538 LOAD_GLOBAL          (NULL + _clean)
+             548 LOAD_FAST            (upload_target_name)
+             550 CALL                 (1 positional)
+             558 LOAD_ATTR            (NULL|self + lower)
+             578 CALL                 (0 positional)
+             586 STORE_FAST           (target_name)
+
+3092:         588 LOAD_GLOBAL          (NULL + _clean)
+
+3093:         598 LOAD_FAST            (oauth_provider)
+             600 COPY                 1
+             602 TO_BOOL
+             610 POP_JUMP_IF_TRUE     (to 792)
+             614 POP_TOP
+
+3094:         616 LOAD_FAST            (cfg)
+             618 LOAD_ATTR            (NULL|self + get)
+             638 LOAD_CONST           ("oauth_provider")
+             640 CALL                 (1 positional)
+
+3093:         648 COPY                 1
+             650 TO_BOOL
+             658 POP_JUMP_IF_TRUE     (to 792)
+             662 POP_TOP
+
+3095:         664 LOAD_FAST            (cfg)
+             666 LOAD_ATTR            (NULL|self + get)
+             686 LOAD_CONST           ("codex_oauth_provider")
+             688 CALL                 (1 positional)
+
+3093:         696 COPY                 1
+             698 TO_BOOL
+             706 POP_JUMP_IF_TRUE     (to 792)
+             710 POP_TOP
+
+3096:         712 LOAD_FAST            (oauth_session)
+             714 LOAD_ATTR            (NULL|self + get)
+             734 LOAD_CONST           ("oauth_provider")
+             736 CALL                 (1 positional)
+
+3093:         744 COPY                 1
+             746 TO_BOOL
+             754 POP_JUMP_IF_TRUE     (to 792)
+             758 POP_TOP
+
+3097:         760 LOAD_FAST            (oauth_session)
+             762 LOAD_ATTR            (NULL|self + get)
+             782 LOAD_CONST           ("upload_target")
+             784 CALL                 (1 positional)
+
+3092:     >>  792 CALL                 (1 positional)
+
+3098:         800 LOAD_ATTR            (NULL|self + lower)
+             820 CALL                 (0 positional)
+
+3092:         828 STORE_FAST           (provider)
+
+3099:         830 LOAD_GLOBAL          (NULL + _clean)
+             840 LOAD_FAST            (oauth_session_id)
+             842 COPY                 1
+             844 TO_BOOL
+             852 POP_JUMP_IF_TRUE     (to 890)
+             856 POP_TOP
+             858 LOAD_FAST            (oauth_session)
+             860 LOAD_ATTR            (NULL|self + get)
+             880 LOAD_CONST           ("session_id")
+             882 CALL                 (1 positional)
+         >>  890 CALL                 (1 positional)
+             898 STORE_FAST           (session_id)
+
+3100:         900 LOAD_GLOBAL          (NULL + _clean)
+             910 LOAD_FAST            (oauth_state)
+             912 COPY                 1
+             914 TO_BOOL
+             922 POP_JUMP_IF_TRUE     (to 978)
+             926 POP_TOP
+             928 LOAD_FAST            (oauth_session)
+             930 LOAD_ATTR            (NULL|self + get)
+             950 LOAD_CONST           ("state")
+             952 CALL                 (1 positional)
+             960 COPY                 1
+             962 TO_BOOL
+             970 POP_JUMP_IF_TRUE     (to 978)
+             974 POP_TOP
+             976 LOAD_FAST            (expected_state)
+         >>  978 CALL                 (1 positional)
+             986 STORE_FAST           (provider_state)
+
+3101:         988 LOAD_FAST            (provider)
+             990 LOAD_CONST           ({'local', 'sub2', 'cpa'})
+             992 CONTAINS_OP          (not in)
+             996 POP_JUMP_IF_FALSE    (to 1080)
+
+3102:        1000 LOAD_GLOBAL          (NULL + _clean)
+            1010 LOAD_FAST            (code_verifier)
+            1012 CALL                 (1 positional)
+            1020 TO_BOOL
+            1028 POP_JUMP_IF_FALSE    (to 1038)
+
+3103:        1032 LOAD_CONST           ("local")
+            1034 STORE_FAST           (provider)
+            1036 JUMP_FORWARD         (to 1080)
+
+3104:     >> 1038 LOAD_FAST            (session_id)
+            1040 TO_BOOL
+            1048 POP_JUMP_IF_FALSE    (to 1058)
+
+3105:        1052 LOAD_CONST           ("sub2")
+            1054 STORE_FAST           (provider)
+            1056 JUMP_FORWARD         (to 1080)
+
+3106:     >> 1058 LOAD_FAST            (target_name)
+            1060 LOAD_CONST           ("cpa")
+            1062 COMPARE_OP           (==)
+            1066 POP_JUMP_IF_FALSE    (to 1076)
+
+3107:        1070 LOAD_CONST           ("cpa")
+            1072 STORE_FAST           (provider)
+            1074 JUMP_FORWARD         (to 1080)
+
+3109:     >> 1076 LOAD_CONST           ("local")
+            1078 STORE_FAST           (provider)
+
+3110:     >> 1080 LOAD_GLOBAL          (NULL + _mock_cfg)
+            1090 LOAD_FAST            (cfg)
+            1092 CALL                 (1 positional)
+            1100 STORE_FAST           (mock)
+
+3111:        1102 LOAD_GLOBAL          (NULL + int)
+            1112 LOAD_FAST            (cfg)
+            1114 LOAD_ATTR            (NULL|self + get)
+            1134 LOAD_CONST           ("code_timeout")
+            1136 CALL                 (1 positional)
+            1144 COPY                 1
+            1146 TO_BOOL
+            1154 POP_JUMP_IF_TRUE     (to 1258)
+            1158 POP_TOP
+            1160 LOAD_FAST            (cfg)
+            1162 LOAD_ATTR            (NULL|self + get)
+            1182 LOAD_CONST           ("sms_timeout")
+            1184 CALL                 (1 positional)
+            1192 COPY                 1
+            1194 TO_BOOL
+            1202 POP_JUMP_IF_TRUE     (to 1258)
+            1206 POP_TOP
+            1208 LOAD_FAST            (mock)
+            1210 LOAD_ATTR            (NULL|self + get)
+            1230 LOAD_CONST           ("code_timeout")
+            1232 CALL                 (1 positional)
+            1240 COPY                 1
+            1242 TO_BOOL
+            1250 POP_JUMP_IF_TRUE     (to 1258)
+            1254 POP_TOP
+            1256 LOAD_CONST           (180)
+         >> 1258 CALL                 (1 positional)
+            1266 STORE_FAST           (code_timeout)
+
+3112:        1268 LOAD_GLOBAL          (NULL + isinstance)
+            1278 LOAD_GLOBAL          (NULL + _replay_cfg)
+            1288 LOAD_FAST            (cfg)
+            1290 CALL                 (1 positional)
+            1298 LOAD_GLOBAL          (dict)
+            1308 CALL                 (2 positional)
+            1316 TO_BOOL
+            1324 POP_JUMP_IF_FALSE    (to 1380)
+            1328 LOAD_GLOBAL          (NULL + _replay_cfg)
+            1338 LOAD_FAST            (cfg)
+            1340 CALL                 (1 positional)
+            1348 LOAD_ATTR            (NULL|self + get)
+            1368 LOAD_CONST           ("runtime_context")
+            1370 CALL                 (1 positional)
+            1378 JUMP_FORWARD         (to 1382)
+         >> 1380 BUILD_MAP            0
+         >> 1382 STORE_FAST           (fixture_expected)
+
+3113:        1384 LOAD_GLOBAL          (NULL + isinstance)
+            1394 LOAD_FAST            (runtime_context_expected)
+            1396 LOAD_GLOBAL          (dict)
+            1406 CALL                 (2 positional)
+            1414 TO_BOOL
+            1422 POP_JUMP_IF_FALSE    (to 1430)
+            1426 LOAD_FAST            (runtime_context_expected)
+            1428 JUMP_FORWARD         (to 1432)
+         >> 1430 LOAD_FAST            (fixture_expected)
+         >> 1432 STORE_FAST           (expected_context)
+
+3114:        1434 LOAD_GLOBAL          (NULL + runtime_context_from_inputs)
+
+3115:        1444 LOAD_FAST            (account_email)
+
+3116:        1446 LOAD_FAST            (oauth_url)
+
+3117:        1448 LOAD_FAST            (code_verifier)
+
+3118:        1450 LOAD_FAST            (proxy)
+
+3119:        1452 LOAD_FAST            (email_proxy)
+
+3120:        1454 LOAD_FAST            (upload_proxy)
+
+3121:        1456 LOAD_FAST            (cfg)
+
+3122:        1458 LOAD_FAST            (phase1_register)
+
+3123:        1460 LOAD_FAST            (node_result)
+
+3114:        1462 LOAD_CONST           (('account_email', 'oauth_url', 'code_verifier', 'proxy', 'email_proxy', 'upload_proxy', 'config', 'phase1_register', 'node_result'))
+            1464 CALL_KW              9
+            1466 STORE_FAST           (runtime_ctx)
+
+3125:        1468 LOAD_GLOBAL          (NULL + validate_runtime_context)
+
+3126:        1478 LOAD_FAST            (runtime_ctx)
+
+3127:        1480 LOAD_GLOBAL          (NULL + isinstance)
+            1490 LOAD_FAST            (expected_context)
+            1492 LOAD_GLOBAL          (dict)
+            1502 CALL                 (2 positional)
+            1510 TO_BOOL
+            1518 POP_JUMP_IF_FALSE    (to 1526)
+            1522 LOAD_FAST            (expected_context)
+            1524 JUMP_FORWARD         (to 1528)
+         >> 1526 BUILD_MAP            0
+
+3128:     >> 1528 LOAD_FAST            (runtime_context_strict)
+
+3125:        1530 LOAD_CONST           (('expected', 'strict'))
+            1532 CALL_KW              3
+            1534 STORE_FAST           (runtime_validation)

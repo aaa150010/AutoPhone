@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager, nullcontext
 import hashlib
 import hmac
 import json
@@ -13,7 +14,13 @@ import time
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
 try:
+    from file_safety import named_file_lock as _named_file_lock
+except ImportError:  # Unit tests do not load recovered runtime dependencies.
+    _named_file_lock = None
+
+try:
     from .chatgpt_totp import (
+        mailbox_credential_identity,
         masked_chatgpt_totp_row,
         parse_chatgpt_totp_row,
         parse_mailbox_url_totp_row,
@@ -21,6 +28,7 @@ try:
     )
 except ImportError:  # Loaded as a top-level override module by the Mac launcher.
     from chatgpt_totp import (
+        mailbox_credential_identity,
         masked_chatgpt_totp_row,
         parse_chatgpt_totp_row,
         parse_mailbox_url_totp_row,
@@ -51,6 +59,33 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
     from mailbox_redaction import redact_mailbox_credentials, url_credential_secrets
 
 try:
+    from .mailbox_state_runtime import (
+        friendly_mailbox_error,
+        human_mailbox_status,
+        indexed_mailbox_state,
+        index_mailbox_states,
+        latest_batch_members_by_row,
+        pool_count_status,
+        public_mailbox_reason,
+        restore_mailbox_rows,
+        rewrite_state_after_delete,
+        selected_line_numbers,
+    )
+except ImportError:  # Loaded as a top-level override module by the Mac launcher.
+    from mailbox_state_runtime import (
+        friendly_mailbox_error,
+        human_mailbox_status,
+        indexed_mailbox_state,
+        index_mailbox_states,
+        latest_batch_members_by_row,
+        pool_count_status,
+        public_mailbox_reason,
+        restore_mailbox_rows,
+        rewrite_state_after_delete,
+        selected_line_numbers,
+    )
+
+try:
     from .openai_quota_runtime import (
         OpenAIQuotaError,
         credentials_from_result,
@@ -61,6 +96,21 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
         OpenAIQuotaError,
         credentials_from_result,
         public_quota_snapshot,
+    )
+
+try:
+    from .openai_row_status import (
+        persist_quota_row_status,
+        public_sub2_status,
+        resolve_openai_status,
+        resolve_quota_status,
+    )
+except ImportError:  # Loaded as a top-level override module by the Mac launcher.
+    from openai_row_status import (
+        persist_quota_row_status,
+        public_sub2_status,
+        resolve_openai_status,
+        resolve_quota_status,
     )
 
 try:
@@ -82,25 +132,6 @@ _PROGRESS_FIELDS = ("code", "label", "group", "entered_at", "finished_at", "timi
 _SECRET_MASK = "********"
 _IMPORT_ORDER_VERSION = 1
 _IMPORT_ORDER_FILE_NAME = "mailbox_import_order.json"
-_SUB2_BATCH_LIMIT = 20
-_INTERNAL_MAILBOX_REASONS = frozenset(
-    {
-        "manual_reimport_retry",
-        "manual_restore",
-        "sub2_uploaded",
-    }
-)
-_SUB2_STATUS_FIELDS = (
-    "kind",
-    "status_code",
-    "label",
-    "summary",
-    "tested_at",
-    "is_error",
-    "is_abnormal",
-    "is_test_failure",
-    "needs_rerun",
-)
 
 
 class ConfigStore(Protocol):
@@ -217,65 +248,6 @@ def masked_source_row(row: Any) -> str:
     return email
 
 
-def selected_line_numbers(payload: Any) -> list[int]:
-    value = payload if isinstance(payload, Mapping) else {}
-    result = []
-    for item in value.get("line_nos") or []:
-        try:
-            number = int(item)
-        except (TypeError, ValueError):
-            continue
-        if number > 0:
-            result.append(number)
-    return sorted(set(result))
-
-
-def pool_count_status(state_item: Any, now: float | int | None = None) -> str:
-    item = state_item if isinstance(state_item, Mapping) else {}
-    status = str(item.get("status") or "").lower()
-    if status in {"damaged", "consumed"}:
-        return status
-    if status == "leased":
-        try:
-            lease_until = float(item.get("lease_until") or 0)
-        except (TypeError, ValueError):
-            lease_until = 0
-        if lease_until > (time.time() if now is None else now):
-            return "running"
-    return "available"
-
-
-def human_mailbox_status(state_item: Any, now: float | int | None = None) -> tuple[str, str]:
-    status = pool_count_status(state_item, now)
-    if status == "running":
-        return "running", "运行中"
-    if status == "consumed":
-        return "consumed", "已使用"
-    if status == "damaged":
-        return "failed", "失败"
-    return "available", "可用"
-
-
-def public_mailbox_reason(reason: Any) -> str:
-    value = str(reason or "")
-    return "" if value.strip().lower() in _INTERNAL_MAILBOX_REASONS else value
-
-
-def friendly_mailbox_error(error: Any) -> str:
-    value = public_mailbox_reason(error)
-    status_messages = {
-        "stopped": "任务已停止",
-        "stopped_before_start": "任务开始前已停止",
-    }
-    if value in status_messages:
-        return status_messages[value]
-    if "deleted or deactivated" in value or "You do not have an account" in value:
-        return "邮箱对应的 OpenAI 账号不可用（已删除或停用）"
-    if "email_otp_failed" in value:
-        return "邮箱验证码提交后被 OpenAI 拒绝，请确认该邮箱对应的 OpenAI 账号是否可用"
-    return value
-
-
 def resolve_config_path(store: ConfigStore, value: Any) -> Path:
     target = Path(value or "")
     if not target.is_absolute():
@@ -331,77 +303,6 @@ def latest_sub2_accounts_by_email(results_dir: str | Path) -> dict[str, dict[str
     return latest
 
 
-def _sub2_status_flags(kind: Any, status_code: int | None) -> tuple[bool, bool, bool]:
-    normalized_kind = str(kind or "").strip().lower()
-    is_abnormal = status_code == 401 or normalized_kind == "unauthorized"
-    is_rate_limited = status_code == 429 or normalized_kind == "rate_limited"
-    is_test_failure = (
-        not is_abnormal
-        and not is_rate_limited
-        and normalized_kind not in {"healthy", "unlinked", "not_linked", "not_ready", "untested"}
-    )
-    return is_abnormal or is_test_failure, is_abnormal, is_test_failure
-
-
-def _sub2_needs_rerun(kind: Any, status_code: int | None) -> bool:
-    normalized_kind = str(kind or "").strip().lower()
-    return status_code in {401, 404} or normalized_kind in {"unauthorized", "not_found"}
-
-
-def public_sub2_status(
-    value: Any,
-    *,
-    linked: bool,
-    unuploaded: bool = False,
-) -> dict[str, Any]:
-    if not linked:
-        return {
-            "kind": "not_ready" if unuploaded else "unlinked",
-            "status_code": None,
-            "label": "未上传" if unuploaded else "未关联",
-            "summary": "该邮箱尚未上传到远端账号服务" if unuploaded else "",
-            "tested_at": None,
-            "is_error": False,
-            "is_abnormal": False,
-            "is_test_failure": False,
-            "needs_rerun": False,
-        }
-    item = value if isinstance(value, Mapping) else {}
-    if not item:
-        return {
-            "kind": "untested",
-            "status_code": None,
-            "label": "未测试",
-            "summary": "",
-            "tested_at": None,
-            "is_error": False,
-            "is_abnormal": False,
-            "is_test_failure": False,
-            "needs_rerun": False,
-        }
-    result = {field: item.get(field) for field in _SUB2_STATUS_FIELDS}
-    result["kind"] = str(result.get("kind") or "untested")[:40]
-    result["label"] = str(result.get("label") or "未测试")[:80]
-    result["summary"] = str(result.get("summary") or "")[:240]
-    try:
-        result["status_code"] = int(result["status_code"]) if result.get("status_code") is not None else None
-    except (TypeError, ValueError):
-        result["status_code"] = None
-    try:
-        result["tested_at"] = int(result["tested_at"]) if result.get("tested_at") is not None else None
-    except (TypeError, ValueError):
-        result["tested_at"] = None
-    is_error, is_abnormal, is_test_failure = _sub2_status_flags(
-        result["kind"],
-        result["status_code"],
-    )
-    result["is_error"] = is_error
-    result["is_abnormal"] = is_abnormal
-    result["is_test_failure"] = is_test_failure
-    result["needs_rerun"] = _sub2_needs_rerun(result["kind"], result["status_code"])
-    return result
-
-
 class MailboxAdminService:
     """Mailbox operations with recovered-runtime dependencies supplied as callables."""
 
@@ -426,6 +327,8 @@ class MailboxAdminService:
         openai_quota_status_lookup: Callable[[str], Mapping[str, Any] | None] | None = None,
         openai_quota_status_store: Callable[[str, Mapping[str, Any]], Mapping[str, Any] | None] | None = None,
         phone_risk_lookup: Callable[[str], Mapping[str, Any] | None] | None = None,
+        next_batch_priority: Any = None,
+        run_batch_membership: Callable[..., Sequence[Mapping[str, Any]]] | None = None,
     ) -> None:
         self.store = store
         self.validate_pool = validate_pool
@@ -445,6 +348,8 @@ class MailboxAdminService:
         self.openai_quota_status_lookup = openai_quota_status_lookup
         self.openai_quota_status_store = openai_quota_status_store
         self.phone_risk_lookup = phone_risk_lookup
+        self.next_batch_priority = next_batch_priority
+        self.run_batch_membership = run_batch_membership
         self._lock = RLock()
 
     def _config(self) -> dict[str, Any]:
@@ -453,6 +358,20 @@ class MailboxAdminService:
 
     def _path(self, config: Mapping[str, Any], name: str) -> Path:
         return resolve_config_path(self.store, config.get(name))
+
+    def _pool_source_lock(self, config: Mapping[str, Any]):
+        if _named_file_lock is None:
+            return nullcontext()
+        pool_path = self._path(config, "pool_path").resolve()
+        digest = hashlib.sha256(str(pool_path).encode("utf-8")).hexdigest()[:16]
+        return _named_file_lock(f"self_mailbox_source_{digest}.lock")
+
+    @contextmanager
+    def _locked_pool_config(self):
+        with self._lock:
+            config = self._config()
+            with self._pool_source_lock(config):
+                yield config
 
     @staticmethod
     def _read_json_file(path: Path) -> dict[str, Any]:
@@ -924,21 +843,9 @@ class MailboxAdminService:
             import_order = self._reconcile_import_order(lines)
             state = self._read_json_file(state_path)
 
-        state_by_line: dict[int, Mapping[str, Any]] = {}
-        state_by_email: dict[str, Mapping[str, Any]] = {}
+        latest_batch_by_row = latest_batch_members_by_row(self.run_batch_membership)
         items = state.get("items") if isinstance(state.get("items"), Mapping) else {}
-        for item in items.values():
-            if not isinstance(item, Mapping):
-                continue
-            email = email_from_row(item.get("email") or "")
-            try:
-                line_no = int(item.get("line_no") or 0)
-            except (TypeError, ValueError):
-                line_no = 0
-            if line_no > 0:
-                state_by_line[line_no] = item
-            if email:
-                state_by_email[email] = item
+        state_by_line, state_by_email, state_by_row_id = index_mailbox_states(items)
 
         latest_results = self._latest_results_by_email(results_dir)
         latest_sub2_accounts = self._latest_sub2_accounts_by_email(results_dir)
@@ -948,7 +855,16 @@ class MailboxAdminService:
         now = self.now_fn()
         for index, row in enumerate(lines, start=1):
             email = email_from_row(row)
-            state_item = state_by_line.get(index) or state_by_email.get(email) or {}
+            source_row_id = row_id_from_source(row)
+            batch_member = latest_batch_by_row.get(source_row_id) or {}
+            state_item = indexed_mailbox_state(
+                state_by_line,
+                state_by_email,
+                state_by_row_id,
+                row_id=source_row_id,
+                email=email,
+                line_no=index,
+            )
             row_secrets = self._row_secrets(row)
             result = latest_results.get(email) or {}
             sub2_account = latest_sub2_accounts.get(email) or {}
@@ -1033,7 +949,11 @@ class MailboxAdminService:
                     else result_payload.get("timing")
                 )
             timing = dict(timing) if isinstance(timing, Mapping) else None
-            task_status = live_task.get("task_status")
+            task_status = (
+                live_task.get("task_status")
+                or batch_member.get("status")
+                or result_status
+            )
             try:
                 live_active = self.is_active_progress(progress, task_status)
             except Exception:
@@ -1044,40 +964,30 @@ class MailboxAdminService:
             count_status = "running" if live_active else pool_count_status(state_item, now)
             if count_status == "consumed":
                 count_status = "success"
+            elif count_status == "damaged":
+                count_status = "failed"
             counts[count_status] = counts.get(count_status, 0) + 1
             if self.openai_status_lookup is not None:
-                status_lookup_id = openai_account_id or sub2_account_id
-                if not status_lookup_id:
-                    sub2_status = public_sub2_status(None, linked=False, unuploaded=True)
-                else:
-                    try:
-                        raw_openai_status = self.openai_status_lookup(status_lookup_id)
-                        if (
-                            openai_account_id
-                            and sub2_account_id
-                            and openai_account_id != sub2_account_id
-                            and str((raw_openai_status or {}).get("kind") or "untested") == "untested"
-                        ):
-                            legacy_status = self.openai_status_lookup(sub2_account_id)
-                            if str((legacy_status or {}).get("kind") or "untested") != "untested":
-                                raw_openai_status = legacy_status
-                        sub2_status = public_sub2_status(raw_openai_status, linked=True)
-                    except Exception:
-                        sub2_status = public_sub2_status(None, linked=True)
+                sub2_status = resolve_openai_status(
+                    self.openai_status_lookup,
+                    openai_account_id=openai_account_id,
+                    sub2_account_id=sub2_account_id,
+                    row_id=source_row_id,
+                    allow_row_fallback=not manually_restored and (succeeded or status_key == "consumed"),
+                )
             else:
                 sub2_status = self._sub2_status_for(sub2_account_id)
             sub2_status["summary"] = self._format_error(sub2_status.get("summary") or "", row_secrets)
-            quota_status: dict[str, Any] = {}
-            if openai_account_id and self.openai_quota_status_lookup is not None:
-                try:
-                    quota_status = public_quota_snapshot(
-                        self.openai_quota_status_lookup(openai_account_id)
-                    )
-                except Exception:
-                    quota_status = {}
+            quota_status = resolve_quota_status(
+                self.openai_quota_status_lookup,
+                account_id=openai_account_id,
+                row_id=source_row_id,
+                allow_row_fallback=not manually_restored and (succeeded or status_key == "consumed"),
+            )
             quota_error = self._format_error(quota_status.get("error") or "", row_secrets)
             batch_id = str(
                 live_task.get("batch_id")
+                or batch_member.get("batch_id")
                 or result.get("batch_id")
                 or result_payload.get("batch_id")
                 or ""
@@ -1085,6 +995,7 @@ class MailboxAdminService:
             try:
                 batch_started_at = int(
                     live_task.get("batch_started_at")
+                    or batch_member.get("batch_started_at")
                     or result.get("batch_started_at")
                     or result_payload.get("batch_started_at")
                     or 0
@@ -1102,7 +1013,7 @@ class MailboxAdminService:
             rows.append(
                 {
                     "line_no": index,
-                    "row_id": row_id_from_source(row),
+                    "row_id": source_row_id,
                     "email": email,
                     "password": _SECRET_MASK if password_from_row(row) else "",
                     "has_totp": bool(totp_secret_from_row(row)),
@@ -1116,7 +1027,12 @@ class MailboxAdminService:
                     "error": friendly_error,
                     "technical_error": detail_error,
                     "failure": failure,
-                    "task_id": live_task.get("task_id") or result.get("task_id") or "",
+                    "task_id": (
+                        live_task.get("task_id")
+                        or batch_member.get("task_id")
+                        or result.get("task_id")
+                        or ""
+                    ),
                     "task_status": task_status or result_status,
                     "progress": progress,
                     "timing": timing,
@@ -1188,23 +1104,37 @@ class MailboxAdminService:
         if not new_lines:
             return {"ok": False, "error": "请粘贴要导入的邮箱"}
 
-        with self._lock:
-            config = self._config()
+        with self._locked_pool_config() as config:
+            run_active = False
+            if callable(self.runtime_status):
+                try:
+                    runtime = self.runtime_status(config)
+                    run_active = bool(
+                        runtime.get("running") if isinstance(runtime, Mapping) else False
+                    )
+                except Exception:
+                    run_active = False
             old_lines = self._read_pool_lines(config)
             import_order = self._reconcile_import_order(old_lines)
-            seen = {line.lower() for line in old_lines}
+            seen = {
+                mailbox_credential_identity(line, parse_oauth_mailbox_row)
+                for line in old_lines
+            }
             appended = []
             skipped = 0
             for line in new_lines:
-                if line.lower() in seen:
+                identity = mailbox_credential_identity(line, parse_oauth_mailbox_row)
+                if identity in seen:
                     skipped += 1
                     continue
-                seen.add(line.lower())
+                seen.add(identity)
                 appended.append(line)
             if not appended:
                 return {"ok": False, "error": "没有新增邮箱，可能都是重复行"}
             self._write_pool_lines(old_lines + appended, config)
             self._append_import_order_batch(import_order, appended)
+            if run_active and self.next_batch_priority is not None:
+                self.next_batch_priority.mark_imported(appended)
             check = self._validate_pool()
 
         self._log(f"邮箱管理追加导入: 新增 {len(appended)} 条，跳过重复 {skipped} 条", "success")
@@ -1217,32 +1147,7 @@ class MailboxAdminService:
         deleted_emails: set[str],
         config: Mapping[str, Any],
     ) -> None:
-        state_path = self._path(config, "state_path")
-        state = self._read_json_file(state_path)
-        items = state.get("items") if isinstance(state.get("items"), Mapping) else {}
-        kept_email_to_line = {
-            email_from_row(row): index
-            for index, row in enumerate(kept_lines, start=1)
-            if email_from_row(row)
-        }
-        new_items = {}
-        for key, raw_item in items.items():
-            if not isinstance(raw_item, Mapping):
-                continue
-            item = dict(raw_item)
-            email = email_from_row(item.get("email") or "")
-            try:
-                line_no = int(item.get("line_no") or 0)
-            except (TypeError, ValueError):
-                line_no = 0
-            if line_no in deleted_line_nos or email in deleted_emails:
-                continue
-            if email in kept_email_to_line:
-                item["line_no"] = kept_email_to_line[email]
-                new_items[key] = item
-        state["items"] = new_items
-        state["updated_at"] = int(self.now_fn())
-        self._write_json_file(state_path, state)
+        rewrite_state_after_delete(self, kept_lines, deleted_line_nos, deleted_emails, config)
 
     def delete_mailboxes(self, payload: Any) -> dict[str, Any]:
         selected = selected_line_numbers(payload)
@@ -1276,8 +1181,7 @@ class MailboxAdminService:
             if {line_no for line_no, _row_id in bindings} != set(selected):
                 return {"ok": False, "code": "mailbox_rows_invalid", "error": "删除参数无效"}
 
-        with self._lock:
-            config = self._config()
+        with self._locked_pool_config() as config:
             lines = self._read_pool_lines(config)
             self._reconcile_import_order(lines)
             for line_no, expected_row_id in bindings:
@@ -1297,53 +1201,21 @@ class MailboxAdminService:
                 return {"ok": False, "error": "选中的邮箱不存在或已经删除"}
             self._write_pool_lines(kept_lines, config)
             self._reconcile_import_order(kept_lines, external_as_new=False)
-            deleted_emails = {email_from_row(line) for line in deleted_lines if email_from_row(line)}
-            self._rewrite_state_after_delete(kept_lines, selected_set, deleted_emails, config)
+            if self.next_batch_priority is not None:
+                self.next_batch_priority.prune(kept_lines)
+            deleted_rows = {
+                index: (row_id_from_source(line), email_from_row(line))
+                for index, line in enumerate(lines, start=1)
+                if index in selected_set
+            }
+            self._rewrite_state_after_delete(kept_lines, selected_set, deleted_rows, config)
             self._validate_pool()
 
         self._log(f"邮箱管理删除: {len(deleted_lines)} 条", "warn")
         return {"ok": True, "deleted": len(deleted_lines)}
 
     def restore_mailboxes(self, payload: Any) -> dict[str, Any]:
-        selected = selected_line_numbers(payload)
-        if not selected:
-            return {"ok": False, "error": "请先勾选要放回可领取的邮箱"}
-
-        with self._lock:
-            config = self._config()
-            lines = self._read_pool_lines(config)
-            selected_set = set(selected)
-            selected_emails = {
-                email_from_row(line)
-                for index, line in enumerate(lines, start=1)
-                if index in selected_set and email_from_row(line)
-            }
-            if not selected_emails:
-                return {"ok": False, "error": "选中的邮箱不存在"}
-            self._validate_pool()
-            state_path = self._path(config, "state_path")
-            state = self._read_json_file(state_path)
-            items = state.get("items") if isinstance(state.get("items"), Mapping) else {}
-            restored = 0
-            now = int(self.now_fn())
-            for item in items.values():
-                if not isinstance(item, dict):
-                    continue
-                email = email_from_row(item.get("email") or "")
-                if email not in selected_emails:
-                    continue
-                item.update({"status": "available", "lease_until": 0, "reason": "manual_restore", "updated_at": now})
-                history = item.setdefault("history", [])
-                if isinstance(history, list):
-                    history.append({"event": "restored", "reason": "manual_restore", "at": now})
-                restored += 1
-            if restored == 0:
-                restored = len(selected_emails)
-            state["updated_at"] = now
-            self._write_json_file(state_path, state)
-
-        self._log(f"邮箱管理放回可领取: {restored} 条", "success")
-        return {"ok": True, "restored": restored}
+        return restore_mailbox_rows(self, payload)
 
     def resolve_relogin_rows(self, payload: Any) -> dict[str, Any]:
         """Resolve stable 401/404 rows without exposing mailbox credentials."""
@@ -1378,8 +1250,7 @@ class MailboxAdminService:
             seen.add(binding)
             bindings.append(binding)
 
-        with self._lock:
-            config = self._config()
+        with self._locked_pool_config() as config:
             lines = self._read_pool_lines(config)
             accounts_by_email = self._latest_sub2_accounts_by_email(
                 self._path(config, "results_dir")
@@ -1451,6 +1322,9 @@ class MailboxAdminService:
 
     def sub2_test(self, payload: Any) -> dict[str, Any]:
         value = payload if isinstance(payload, Mapping) else {}
+        row_completed = value.get("_on_row_completed")
+        if not callable(row_completed):
+            row_completed = None
         requested = value.get("rows")
         if not isinstance(requested, Sequence) or isinstance(requested, (str, bytes)) or not requested:
             return {"ok": False, "code": "sub2_rows_required", "error": "请先勾选要测试的邮箱"}
@@ -1500,6 +1374,8 @@ class MailboxAdminService:
             for item in resolved:
                 account = accounts_by_email.get(item["email"]) or {}
                 item["sub2api_account_id"] = str(account.get("account_id") or "")
+                if row_completed is not None:
+                    item["_on_row_completed"] = row_completed
 
         if self.sub2_batch_tester is None:
             return {"ok": False, "code": "sub2_not_configured", "error": "SUB2 连接测试尚未配置"}
@@ -1516,6 +1392,9 @@ class MailboxAdminService:
     def openai_test(self, payload: Any) -> dict[str, Any]:
         """Test successful local OAuth results directly against OpenAI."""
         value = payload if isinstance(payload, Mapping) else {}
+        row_completed = value.get("_on_row_completed")
+        if not callable(row_completed):
+            row_completed = None
         requested = value.get("rows")
         if not isinstance(requested, Sequence) or isinstance(requested, (str, bytes)) or not requested:
             return {"ok": False, "code": "openai_test_rows_required", "error": "请先勾选要测试的邮箱"}
@@ -1541,7 +1420,7 @@ class MailboxAdminService:
             results_dir = self._path(config, "results_dir")
             latest = self._latest_results_by_email(results_dir)
             state = self._read_json_file(self._path(config, "state_path"))
-            state_items = state.get("items") if isinstance(state.get("items"), Mapping) else {}
+            state_by_line, state_by_email, state_by_row_id = index_mailbox_states(state.get("items"))
             accounts_by_email = self._latest_sub2_accounts_by_email(results_dir)
             resolved: list[dict[str, Any]] = []
             for line_no, expected_row_id in bindings:
@@ -1561,9 +1440,14 @@ class MailboxAdminService:
                 email = email_from_row(row)
                 document = latest.get(email) or {}
                 result_status = str(document.get("status") or "").strip().lower()
-                state_item = state_items.get(str(line_no)) or {}
-                if not isinstance(state_item, Mapping):
-                    state_item = {}
+                state_item = indexed_mailbox_state(
+                    state_by_line,
+                    state_by_email,
+                    state_by_row_id,
+                    row_id=expected_row_id,
+                    email=email,
+                    line_no=line_no,
+                )
                 if str(state_item.get("status") or "").lower() == "available" and str(
                     state_item.get("reason") or ""
                 ) == "manual_restore":
@@ -1586,6 +1470,8 @@ class MailboxAdminService:
                         "document": document,
                     }
                 )
+                if row_completed is not None:
+                    resolved[-1]["_on_row_completed"] = row_completed
 
         if self.openai_direct_batch_tester is None:
             return {
@@ -1641,7 +1527,7 @@ class MailboxAdminService:
             lines = self._read_pool_lines(config)
             latest = self._latest_results_by_email(self._path(config, "results_dir"))
             items: list[dict[str, Any]] = []
-            skipped = 0
+            skipped_items: list[dict[str, Any]] = []
             for line_no, expected_row_id in bindings:
                 if line_no > len(lines):
                     return {
@@ -1662,7 +1548,7 @@ class MailboxAdminService:
                 result_file = Path(str(document.get("_result_file") or ""))
                 task_id = str(document.get("task_id") or "").strip()
                 if status not in {"success", "ok", "uploaded"} or not task_id or not result_file.is_file():
-                    skipped += 1
+                    skipped_items.append({"row_id": expected_row_id, "line_no": line_no})
                     continue
                 items.append(
                     {
@@ -1674,13 +1560,18 @@ class MailboxAdminService:
                         "document": document,
                     }
                 )
-        if not items:
+        if not items and not (value.get("_include_skipped") is True and skipped_items):
             return {
                 "ok": False,
                 "code": "mailbox_success_results_required",
                 "error": "所选邮箱没有可处理的成功结果",
             }
-        return {"ok": True, "items": items, "skipped": skipped}
+        return {
+            "ok": True,
+            "items": items,
+            "skipped": len(skipped_items),
+            "skipped_items": skipped_items,
+        }
 
     def query_openai_quotas(self, payload: Any) -> dict[str, Any]:
         """Query a bounded batch without changing mailbox or task state."""
@@ -1698,7 +1589,10 @@ class MailboxAdminService:
                 "code": "mailbox_quota_batch_too_large",
                 "error": "单批最多查询 20 个邮箱额度",
             }
-        selected = self.selected_success_results({"rows": requested})
+        row_completed = value.get("_on_row_completed")
+        if not callable(row_completed):
+            row_completed = None
+        selected = self.selected_success_results({"rows": requested, "_include_skipped": True})
         if not selected.get("ok"):
             return selected
         if not callable(self.openai_quota_query):
@@ -1708,6 +1602,14 @@ class MailboxAdminService:
                 "error": "OpenAI 额度查询尚未配置",
             }
         proxy = str(self._config().get("proxy") or "")
+
+        def publish_completed(item: Mapping[str, Any]) -> None:
+            if row_completed is None:
+                return
+            try:
+                row_completed(dict(item))
+            except Exception:
+                pass
 
         def query_one(item: Mapping[str, Any]) -> dict[str, Any]:
             public_item = {
@@ -1742,13 +1644,12 @@ class MailboxAdminService:
                 quota,
                 queried_at=int(self.now_fn()),
             )
-            if quota_account_id and self.openai_quota_status_store is not None:
-                try:
-                    stored = self.openai_quota_status_store(quota_account_id, public_quota)
-                    if isinstance(stored, Mapping):
-                        public_quota = public_quota_snapshot(stored)
-                except Exception:
-                    pass
+            public_quota = persist_quota_row_status(
+                self.openai_quota_status_store,
+                account_id=quota_account_id,
+                row_id=public_item["row_id"],
+                value=public_quota,
+            )
             if not public_quota:
                 public_quota = {
                     "status": "error",
@@ -1757,18 +1658,51 @@ class MailboxAdminService:
                     "code": "openai_quota_failed",
                     "error": "查询 OpenAI 额度失败：未返回可用诊断",
                 }
-            return {**public_item, **public_quota}
+            completed = {**public_item, **public_quota}
+            publish_completed(completed)
+            return completed
 
-        results: list[dict[str, Any] | None] = [None] * len(selected["items"])
-        workers = min(3, len(selected["items"]))
-        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="openai-quota") as executor:
-            futures = {
-                executor.submit(query_one, item): index
-                for index, item in enumerate(selected["items"])
+        finished: list[dict[str, Any]] = []
+        for item in selected.get("skipped_items") or []:
+            public_item = {
+                "row_id": str(item.get("row_id") or ""),
+                "line_no": int(item.get("line_no") or 0),
             }
-            for future in as_completed(futures):
-                results[futures[future]] = future.result()
-        finished = [item for item in results if isinstance(item, dict)]
+            snapshot = persist_quota_row_status(
+                self.openai_quota_status_store,
+                account_id="",
+                row_id=public_item["row_id"],
+                value={
+                    "status": "error",
+                    "node_code": "openai_quota",
+                    "node_label": "查询 OpenAI 额度",
+                    "code": "openai_quota_result_missing",
+                    "error": "查询 OpenAI 额度失败：本地成功结果缺失或不可读取，请重新登录后重试",
+                    "queried_at": int(self.now_fn()),
+                },
+            )
+            completed = {**public_item, **snapshot}
+            finished.append(completed)
+            publish_completed(completed)
+
+        selected_items = selected.get("items") or []
+        results: list[dict[str, Any] | None] = [None] * len(selected_items)
+        if selected_items:
+            workers = min(3, len(selected_items))
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="openai-quota") as executor:
+                futures = {
+                    executor.submit(query_one, item): index
+                    for index, item in enumerate(selected_items)
+                }
+                for future in as_completed(futures):
+                    results[futures[future]] = future.result()
+        finished.extend(item for item in results if isinstance(item, dict))
+        requested_order = {
+            (str(item.get("row_id") or ""), int(item.get("line_no") or 0)): index
+            for index, item in enumerate(requested)
+            if isinstance(item, Mapping)
+        }
+        finished.sort(key=lambda item: requested_order.get((item["row_id"], item["line_no"]), len(requested)))
         return {
             "ok": True,
             "results": finished,

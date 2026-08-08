@@ -1,0 +1,800 @@
+            8524 LOAD_CONST           ("local_oauth_force_login_hint")
+            8526 CALL                 (1 positional)
+            8534 TO_BOOL
+            8542 POP_JUMP_IF_FALSE    (to 8550)
+            8546 LOAD_CONST           ("login")
+            8548 JUMP_FORWARD         (to 8552)
+         >> 8550 LOAD_CONST           ("")
+         >> 8552 STORE_FAST           (local_prompt)
+
+666:        8554 LOAD_GLOBAL          (NULL + build_oauth_url)
+
+667:        8564 LOAD_GLOBAL          (NULL + str)
+            8574 LOAD_FAST            (config)
+            8576 LOAD_ATTR            (NULL|self + get)
+            8596 LOAD_CONST           ("local_oauth")
+            8598 CALL                 (1 positional)
+            8606 COPY                 1
+            8608 TO_BOOL
+            8616 POP_JUMP_IF_TRUE     (to 8624)
+            8620 POP_TOP
+            8622 BUILD_MAP            0
+         >> 8624 LOAD_ATTR            (NULL|self + get)
+            8644 LOAD_CONST           ("client_id")
+            8646 CALL                 (1 positional)
+            8654 COPY                 1
+            8656 TO_BOOL
+            8664 POP_JUMP_IF_TRUE     (to 8680)
+            8668 POP_TOP
+            8670 LOAD_GLOBAL          (DEFAULT_CLIENT_ID)
+         >> 8680 CALL                 (1 positional)
+            8688 LOAD_ATTR            (NULL|self + strip)
+            8708 CALL                 (0 positional)
+
+668:        8716 LOAD_GLOBAL          (NULL + str)
+            8726 LOAD_FAST            (config)
+            8728 LOAD_ATTR            (NULL|self + get)
+            8748 LOAD_CONST           ("local_oauth")
+            8750 CALL                 (1 positional)
+            8758 COPY                 1
+            8760 TO_BOOL
+            8768 POP_JUMP_IF_TRUE     (to 8776)
+            8772 POP_TOP
+            8774 BUILD_MAP            0
+         >> 8776 LOAD_ATTR            (NULL|self + get)
+            8796 LOAD_CONST           ("redirect_uri")
+            8798 CALL                 (1 positional)
+            8806 COPY                 1
+            8808 TO_BOOL
+            8816 POP_JUMP_IF_TRUE     (to 8832)
+            8820 POP_TOP
+            8822 LOAD_GLOBAL          (DEFAULT_REDIRECT_URI)
+         >> 8832 CALL                 (1 positional)
+            8840 LOAD_ATTR            (NULL|self + strip)
+            8860 CALL                 (0 positional)
+
+669:        8868 LOAD_FAST            (local_login_hint)
+            8870 COPY                 1
+            8872 TO_BOOL
+            8880 POP_JUMP_IF_TRUE     (to 8888)
+            8884 POP_TOP
+            8886 LOAD_CONST           (None)
+
+670:     >> 8888 LOAD_FAST            (local_screen_hint)
+            8890 COPY                 1
+            8892 TO_BOOL
+            8900 POP_JUMP_IF_TRUE     (to 8908)
+            8904 POP_TOP
+            8906 LOAD_CONST           (None)
+
+671:     >> 8908 LOAD_FAST            (local_prompt)
+            8910 COPY                 1
+            8912 TO_BOOL
+            8920 POP_JUMP_IF_TRUE     (to 8928)
+            8924 POP_TOP
+            8926 LOAD_CONST           (None)
+
+666:     >> 8928 LOAD_CONST           (('client_id', 'redirect_uri', 'login_hint', 'screen_hint', 'prompt'))
+            8930 CALL_KW              5
+            8932 UNPACK_SEQUENCE      3
+            8936 STORE_FAST           (oauth_url)
+            8938 STORE_FAST           (oauth_state)
+            8940 STORE_FAST           (verifier)
+
+673:        8942 LOAD_CONST           ("local")
+            8944 STORE_FAST           (oauth_provider)
+
+674:     >> 8946 LOAD_FAST            (oauth_provider)
+            8948 LOAD_CONST           ({'sub2', 'cpa'})
+            8950 CONTAINS_OP          (in)
+            8954 POP_JUMP_IF_FALSE    (to 8988)
+
+675:        8958 LOAD_FAST            (oauth_provider)
+            8960 LOAD_FAST            (config)
+            8962 LOAD_CONST           ("oauth_provider")
+            8964 STORE_SUBSCR
+
+677:        8968 LOAD_FAST            (oauth_provider)
+
+678:        8970 LOAD_FAST            (oauth_provider)
+
+679:        8972 LOAD_FAST            (oauth_session_id)
+
+680:        8974 LOAD_FAST            (oauth_state)
+
+676:        8976 LOAD_CONST           (('oauth_provider', 'upload_target', 'session_id', 'state'))
+            8978 BUILD_CONST_KEY_MAP  4
+            8980 LOAD_FAST            (config)
+            8982 LOAD_CONST           ("oauth_session")
+            8984 STORE_SUBSCR
+
+682:     >> 8988 LOAD_FAST            (args)
+            8990 LOAD_ATTR            (state_mismatch)
+            9010 TO_BOOL
+            9018 POP_JUMP_IF_FALSE    (to 9032)
+
+683:        9022 LOAD_CONST           ("mock-state-mismatch")
+            9024 LOAD_FAST            (mock_cfg)
+            9026 LOAD_CONST           ("callback_state")
+            9028 STORE_SUBSCR
+
+684:     >> 9032 LOAD_FAST            (args)
+            9034 LOAD_ATTR            (reuse_session_url)
+            9054 TO_BOOL
+            9062 POP_JUMP_IF_FALSE    (to 9088)
+
+685:        9066 LOAD_GLOBAL          (NULL + strip_oauth_login_for_session_reuse)
+            9076 LOAD_FAST            (oauth_url)
+            9078 CALL                 (1 positional)
+            9086 STORE_FAST           (oauth_url)
+
+687:     >> 9088 LOAD_CONST           (None)
+            9090 STORE_FAST           (email_otp_provider)
+
+688:        9092 LOAD_CONST           (None)
+            9094 STORE_FAST           (phone_otp_provider)
+
+689:        9096 LOAD_FAST            (run_mode)
+            9098 LOAD_CONST           ("real")
+            9100 COMPARE_OP           (==)
+            9104 POP_JUMP_IF_FALSE    (to 9192)
+            9108 LOAD_FAST            (args)
+            9110 LOAD_ATTR            (email_otp)
+            9130 TO_BOOL
+            9138 POP_JUMP_IF_FALSE    (to 9192)
+
+690:        9142 LOAD_GLOBAL          (NULL + FixedEmailOtpProvider)
+            9152 LOAD_FAST            (args)
+            9154 LOAD_ATTR            (email_otp)
+            9174 LOAD_GLOBAL          (_log)
+            9184 LOAD_CONST           (('log_fn',))
+            9186 CALL_KW              2
+            9188 STORE_FAST           (email_otp_provider)
+            9190 JUMP_FORWARD         (to 9400)
+
+691:     >> 9192 LOAD_FAST            (run_mode)
+            9194 LOAD_CONST           ("real")
+            9196 COMPARE_OP           (==)
+            9200 POP_JUMP_IF_FALSE    (to 9328)
+            9204 LOAD_FAST            (args)
+            9206 LOAD_ATTR            (email_otp_file)
+            9226 TO_BOOL
+            9234 POP_JUMP_IF_FALSE    (to 9328)
+
+692:        9238 LOAD_GLOBAL          (NULL + FileEmailOtpProvider)
+            9248 LOAD_FAST            (args)
+            9250 LOAD_ATTR            (email_otp_file)
+            9270 LOAD_FAST            (args)
+            9272 LOAD_ATTR            (code_timeout)
+            9292 COPY                 1
+            9294 TO_BOOL
+            9302 POP_JUMP_IF_TRUE     (to 9310)
+            9306 POP_TOP
+            9308 LOAD_CONST           (180)
+         >> 9310 LOAD_GLOBAL          (_log)
+            9320 LOAD_CONST           (('timeout', 'log_fn'))
+            9322 CALL_KW              3
+            9324 STORE_FAST           (email_otp_provider)
+            9326 JUMP_FORWARD         (to 9400)
+
+693:     >> 9328 LOAD_FAST            (run_mode)
+            9330 LOAD_CONST           ("real")
+            9332 COMPARE_OP           (==)
+            9336 POP_JUMP_IF_FALSE    (to 9400)
+            9340 LOAD_FAST            (args)
+            9342 LOAD_ATTR            (interactive_otp)
+            9362 TO_BOOL
+            9370 POP_JUMP_IF_FALSE    (to 9400)
+
+694:        9374 LOAD_GLOBAL          (NULL + InteractiveEmailOtpProvider)
+            9384 LOAD_GLOBAL          (_log)
+            9394 LOAD_CONST           (('log_fn',))
+            9396 CALL_KW              1
+            9398 STORE_FAST           (email_otp_provider)
+
+695:     >> 9400 LOAD_FAST            (run_mode)
+            9402 LOAD_CONST           ("real")
+            9404 COMPARE_OP           (==)
+            9408 POP_JUMP_IF_FALSE    (to 9558)
+            9412 LOAD_FAST            (args)
+            9414 LOAD_ATTR            (phone_otp_file)
+            9434 TO_BOOL
+            9442 POP_JUMP_IF_FALSE    (to 9558)
+
+696:        9446 LOAD_GLOBAL          (NULL + FilePhoneOtpProvider)
+            9456 LOAD_FAST            (args)
+            9458 LOAD_ATTR            (manual_phone)
+            9478 LOAD_FAST            (args)
+            9480 LOAD_ATTR            (phone_otp_file)
+            9500 LOAD_FAST            (args)
+            9502 LOAD_ATTR            (code_timeout)
+            9522 COPY                 1
+            9524 TO_BOOL
+            9532 POP_JUMP_IF_TRUE     (to 9540)
+            9536 POP_TOP
+            9538 LOAD_CONST           (180)
+         >> 9540 LOAD_GLOBAL          (_log)
+            9550 LOAD_CONST           (('timeout', 'log_fn'))
+            9552 CALL_KW              4
+            9554 STORE_FAST           (phone_otp_provider)
+            9556 JUMP_FORWARD         (to 9804)
+
+697:     >> 9558 LOAD_FAST            (run_mode)
+            9560 LOAD_CONST           ("real")
+            9562 COMPARE_OP           (==)
+            9566 POP_JUMP_IF_FALSE    (to 9710)
+            9570 LOAD_FAST            (args)
+            9572 LOAD_ATTR            (manual_phone)
+            9592 TO_BOOL
+            9600 POP_JUMP_IF_TRUE     (to 9638)
+            9604 LOAD_FAST            (args)
+            9606 LOAD_ATTR            (phone_otp)
+            9626 TO_BOOL
+            9634 POP_JUMP_IF_FALSE    (to 9710)
+
+698:     >> 9638 LOAD_GLOBAL          (NULL + FixedPhoneOtpProvider)
+            9648 LOAD_FAST            (args)
+            9650 LOAD_ATTR            (manual_phone)
+            9670 LOAD_FAST            (args)
+            9672 LOAD_ATTR            (phone_otp)
+            9692 LOAD_GLOBAL          (_log)
+            9702 LOAD_CONST           (('log_fn',))
+            9704 CALL_KW              3
+            9706 STORE_FAST           (phone_otp_provider)
+            9708 JUMP_FORWARD         (to 9804)
+
+699:     >> 9710 LOAD_FAST            (run_mode)
+            9712 LOAD_CONST           ("real")
+            9714 COMPARE_OP           (==)
+            9718 POP_JUMP_IF_FALSE    (to 9804)
+            9722 LOAD_FAST            (args)
+            9724 LOAD_ATTR            (interactive_otp)
+            9744 TO_BOOL
+            9752 POP_JUMP_IF_FALSE    (to 9804)
+
+700:        9756 LOAD_GLOBAL          (NULL + InteractivePhoneOtpProvider)
+            9766 LOAD_FAST            (args)
+            9768 LOAD_ATTR            (manual_phone)
+            9788 LOAD_GLOBAL          (_log)
+            9798 LOAD_CONST           (('log_fn',))
+            9800 CALL_KW              2
+            9802 STORE_FAST           (phone_otp_provider)
+
+702:     >> 9804 LOAD_GLOBAL          (NULL + run_codex_after_registration)
+            9814 EXTENDED_ARG         (256)
+            9816 LOAD_CONST           (())
+            9818 BUILD_MAP            0
+            9820 LOAD_CONST           ("oauth_url")
+
+703:        9822 LOAD_FAST            (oauth_url)
+            9824 MAP_ADD              1
+
+702:        9826 LOAD_CONST           ("code_verifier")
+
+704:        9828 LOAD_FAST            (verifier)
+            9830 MAP_ADD              1
+
+702:        9832 LOAD_CONST           ("account_email")
+
+705:        9834 LOAD_FAST            (account_email)
+            9836 MAP_ADD              1
+
+702:        9838 LOAD_CONST           ("password")
+
+706:        9840 LOAD_FAST            (args)
+            9842 LOAD_ATTR            (password)
+            9862 MAP_ADD              1
+
+702:        9864 LOAD_CONST           ("config")
+
+707:        9866 LOAD_FAST            (config)
+            9868 MAP_ADD              1
+
+702:        9870 LOAD_CONST           ("proxy")
+
+708:        9872 LOAD_GLOBAL          (NULL + str)
+            9882 LOAD_FAST            (config)
+            9884 LOAD_ATTR            (NULL|self + get)
+            9904 LOAD_CONST           ("proxy")
+            9906 CALL                 (1 positional)
+            9914 COPY                 1
+            9916 TO_BOOL
+            9924 POP_JUMP_IF_TRUE     (to 9932)
+            9928 POP_TOP
+            9930 LOAD_CONST           ("")
+         >> 9932 CALL                 (1 positional)
+            9940 MAP_ADD              1
+
+702:        9942 LOAD_CONST           ("email_proxy")
+
+709:        9944 LOAD_GLOBAL          (NULL + str)
+            9954 LOAD_FAST            (config)
+            9956 LOAD_ATTR            (NULL|self + get)
+            9976 LOAD_CONST           ("email_proxy")
+            9978 CALL                 (1 positional)
+            9986 COPY                 1
+            9988 TO_BOOL
+            9996 POP_JUMP_IF_TRUE     (to 10004)
+            10000 POP_TOP
+            10002 LOAD_CONST           ("")
+         >> 10004 CALL                 (1 positional)
+            10012 MAP_ADD              1
+
+702:        10014 LOAD_CONST           ("upload_proxy")
+
+710:        10016 LOAD_GLOBAL          (NULL + str)
+            10026 LOAD_FAST            (config)
+            10028 LOAD_ATTR            (NULL|self + get)
+            10048 LOAD_CONST           ("upload_proxy")
+            10050 CALL                 (1 positional)
+            10058 COPY                 1
+            10060 TO_BOOL
+            10068 POP_JUMP_IF_TRUE     (to 10076)
+            10072 POP_TOP
+            10074 LOAD_CONST           ("")
+         >> 10076 CALL                 (1 positional)
+            10084 MAP_ADD              1
+
+702:        10086 LOAD_CONST           ("log_fn")
+
+711:        10088 LOAD_GLOBAL          (_log)
+            10098 MAP_ADD              1
+
+702:        10100 LOAD_CONST           ("mode")
+
+712:        10102 LOAD_FAST            (run_mode)
+            10104 MAP_ADD              1
+
+702:        10106 LOAD_CONST           ("local_oauth_client_id")
+
+713:        10108 LOAD_GLOBAL          (NULL + str)
+            10118 LOAD_FAST            (config)
+            10120 LOAD_ATTR            (NULL|self + get)
+            10140 LOAD_CONST           ("local_oauth")
+            10142 CALL                 (1 positional)
+            10150 COPY                 1
+            10152 TO_BOOL
+            10160 POP_JUMP_IF_TRUE     (to 10168)
+            10164 POP_TOP
+            10166 BUILD_MAP            0
+         >> 10168 LOAD_ATTR            (NULL|self + get)
+            10188 LOAD_CONST           ("client_id")
+            10190 CALL                 (1 positional)
+            10198 COPY                 1
+            10200 TO_BOOL
+            10208 POP_JUMP_IF_TRUE     (to 10224)
+            10212 POP_TOP
+            10214 LOAD_GLOBAL          (DEFAULT_CLIENT_ID)
+         >> 10224 CALL                 (1 positional)
+            10232 LOAD_ATTR            (NULL|self + strip)
+            10252 CALL                 (0 positional)
+            10260 MAP_ADD              1
+
+702:        10262 LOAD_CONST           ("local_oauth_redirect_uri")
+
+714:        10264 LOAD_GLOBAL          (NULL + str)
+            10274 LOAD_FAST            (config)
+            10276 LOAD_ATTR            (NULL|self + get)
+            10296 LOAD_CONST           ("local_oauth")
+            10298 CALL                 (1 positional)
+            10306 COPY                 1
+            10308 TO_BOOL
+            10316 POP_JUMP_IF_TRUE     (to 10324)
+            10320 POP_TOP
+            10322 BUILD_MAP            0
+         >> 10324 LOAD_ATTR            (NULL|self + get)
+            10344 LOAD_CONST           ("redirect_uri")
+            10346 CALL                 (1 positional)
+            10354 COPY                 1
+            10356 TO_BOOL
+            10364 POP_JUMP_IF_TRUE     (to 10380)
+            10368 POP_TOP
+            10370 LOAD_GLOBAL          (DEFAULT_REDIRECT_URI)
+         >> 10380 CALL                 (1 positional)
+            10388 LOAD_ATTR            (NULL|self + strip)
+            10408 CALL                 (0 positional)
+            10416 MAP_ADD              1
+
+702:        10418 LOAD_CONST           ("oauth_provider")
+
+715:        10420 LOAD_FAST            (oauth_provider)
+            10422 MAP_ADD              1
+
+702:        10424 LOAD_CONST           ("oauth_session_id")
+
+716:        10426 LOAD_FAST            (oauth_session_id)
+            10428 MAP_ADD              1
+
+702:        10430 LOAD_CONST           ("oauth_state")
+
+717:        10432 LOAD_FAST            (oauth_state)
+            10434 MAP_ADD              1
+
+702:        10436 LOAD_CONST           ("upload_target_name")
+
+718:        10438 LOAD_FAST            (args)
+            10440 LOAD_ATTR            (upload_target)
+            10460 COPY                 1
+            10462 TO_BOOL
+            10470 POP_JUMP_IF_TRUE     (to 10510)
+            10474 POP_TOP
+            10476 LOAD_FAST            (oauth_provider)
+            10478 LOAD_CONST           ({'sub2', 'cpa'})
+            10480 CONTAINS_OP          (in)
+            10484 POP_JUMP_IF_FALSE    (to 10492)
+            10488 LOAD_FAST            (oauth_provider)
+            10490 JUMP_FORWARD         (to 10510)
+         >> 10492 LOAD_FAST            (run_mode)
+            10494 LOAD_CONST           ("real")
+            10496 COMPARE_OP           (==)
+            10500 POP_JUMP_IF_FALSE    (to 10508)
+            10504 LOAD_CONST           ("sub2")
+            10506 JUMP_FORWARD         (to 10510)
+         >> 10508 LOAD_CONST           ("local")
+         >> 10510 MAP_ADD              1
+
+702:        10512 LOAD_CONST           ("node_result")
+
+719:        10514 LOAD_FAST            (node_result)
+            10516 MAP_ADD              1
+
+702:        10518 LOAD_CONST           ("runtime_context_strict")
+
+720:        10520 LOAD_GLOBAL          (NULL + bool)
+            10530 LOAD_FAST            (args)
+            10532 LOAD_ATTR            (strict_context)
+            10552 CALL                 (1 positional)
+            10560 MAP_ADD              1
+
+702:        10562 LOAD_CONST           ("email_otp_provider")
+
+721:        10564 LOAD_FAST            (email_otp_provider)
+            10566 MAP_ADD              1
+
+702:        10568 LOAD_CONST           ("phone_otp_provider")
+
+722:        10570 LOAD_FAST            (phone_otp_provider)
+            10572 MAP_ADD              1
+
+702:        10574 CALL_FUNCTION_EX     (keyword and positional arguments)
+            10576 STORE_FAST           (result)
+
+725:        10578 BUILD_MAP            0
+            10580 STORE_FAST           (archive_summary)
+
+726:        10582 LOAD_FAST            (args)
+            10584 LOAD_ATTR            (archive_local)
+            10604 TO_BOOL
+            10612 POP_JUMP_IF_FALSE    (to 10912)
+            10616 LOAD_FAST            (result)
+            10618 LOAD_ATTR            (NULL|self + get)
+            10638 EXTENDED_ARG         (256)
+            10640 LOAD_CONST           ("ok")
+            10642 CALL                 (1 positional)
+            10650 TO_BOOL
+            10658 POP_JUMP_IF_FALSE    (to 10912)
+
+727:        10662 NOP
+
+728:        10664 LOAD_GLOBAL          (NULL + _archive_runner_result)
+            10674 LOAD_FAST            (result)
+            10676 LOAD_FAST            (manual_session)
+            10678 LOAD_FAST_LOAD_FAST  (args, config)
+            10680 CALL                 (4 positional)
+            10688 STORE_FAST           (archive_summary)
+
+729:        10690 LOAD_FAST            (archive_summary)
+            10692 LOAD_FAST            (result)
+            10694 EXTENDED_ARG         (256)
+            10696 LOAD_CONST           ("local_archive")
+            10698 STORE_SUBSCR
+
+730:        10702 LOAD_CONST           (True)
+            10704 LOAD_FAST            (result)
+            10706 EXTENDED_ARG         (256)
+            10708 LOAD_CONST           ("local_archive_saved")
+            10710 STORE_SUBSCR
+
+731:        10714 LOAD_GLOBAL          (NULL + _log)
+            10724 EXTENDED_ARG         (256)
+            10726 LOAD_CONST           ("本地归档已保存：")
+            10728 LOAD_FAST            (archive_summary)
+            10730 LOAD_ATTR            (NULL|self + get)
+            10750 EXTENDED_ARG         (256)
+            10752 LOAD_CONST           ("account_record")
+            10754 CALL                 (1 positional)
+            10762 FORMAT_SIMPLE
+            10764 BUILD_STRING         2
+            10766 EXTENDED_ARG         (256)
+            10768 LOAD_CONST           ("success")
+            10770 CALL                 (2 positional)
+            10778 POP_TOP
+
+732:        10780 LOAD_GLOBAL          (NULL + _log)
+            10790 EXTENDED_ARG         (256)
+            10792 LOAD_CONST           ("SUB2手动导入文件：")
+            10794 LOAD_FAST            (archive_summary)
+            10796 LOAD_ATTR            (NULL|self + get)
+            10816 EXTENDED_ARG         (256)
+            10818 LOAD_CONST           ("sub2_import_file")
+            10820 CALL                 (1 positional)
+            10828 FORMAT_SIMPLE
+            10830 BUILD_STRING         2
+            10832 EXTENDED_ARG         (256)
+            10834 LOAD_CONST           ("success")
+            10836 CALL                 (2 positional)
+            10844 POP_TOP
+
+733:        10846 LOAD_GLOBAL          (NULL + _log)
+            10856 EXTENDED_ARG         (256)
+            10858 LOAD_CONST           ("CPA手动导入文件：")
+            10860 LOAD_FAST            (archive_summary)
+            10862 LOAD_ATTR            (NULL|self + get)
+            10882 EXTENDED_ARG         (256)
+            10884 LOAD_CONST           ("cpa_auth_file")
+            10886 CALL                 (1 positional)
+            10894 FORMAT_SIMPLE
+            10896 BUILD_STRING         2
+            10898 EXTENDED_ARG         (256)
+            10900 LOAD_CONST           ("success")
+            10902 CALL                 (2 positional)
+            10910 POP_TOP
+
+742:     >> 10912 LOAD_FAST            (args)
+            10914 LOAD_ATTR            (json_private)
+            10934 TO_BOOL
+            10942 POP_JUMP_IF_FALSE    (to 11018)
+
+743:        10946 LOAD_GLOBAL          (NULL + print)
+            10956 LOAD_GLOBAL          (json)
+            10966 LOAD_ATTR            (dumps)
+            10986 PUSH_NULL
+            10988 LOAD_FAST            (result)
+            10990 EXTENDED_ARG         (256)
+            10992 LOAD_CONST           (False)
+            10994 EXTENDED_ARG         (256)
+            10996 LOAD_CONST           (2)
+            10998 EXTENDED_ARG         (256)
+            11000 LOAD_CONST           (('ensure_ascii', 'indent'))
+            11002 CALL_KW              3
+            11004 CALL                 (1 positional)
+            11012 POP_TOP
+            11014 EXTENDED_ARG         (768)
+            11016 JUMP_FORWARD         (to 12574)
+
+744:     >> 11018 LOAD_FAST            (args)
+            11020 LOAD_ATTR            (json)
+            11040 TO_BOOL
+            11048 POP_JUMP_IF_FALSE    (to 11142)
+
+745:        11052 LOAD_GLOBAL          (NULL + print)
+            11062 LOAD_GLOBAL          (json)
+            11072 LOAD_ATTR            (dumps)
+            11092 PUSH_NULL
+            11094 LOAD_GLOBAL          (NULL + _redacted_result)
+            11104 LOAD_FAST            (result)
+            11106 CALL                 (1 positional)
+            11114 EXTENDED_ARG         (256)
+            11116 LOAD_CONST           (False)
+            11118 EXTENDED_ARG         (256)
+            11120 LOAD_CONST           (2)
+            11122 EXTENDED_ARG         (256)
+            11124 LOAD_CONST           (('ensure_ascii', 'indent'))
+            11126 CALL_KW              3
+            11128 CALL                 (1 positional)
+            11136 POP_TOP
+            11138 EXTENDED_ARG         (512)
+            11140 JUMP_FORWARD         (to 12574)
+
+747:     >> 11142 LOAD_GLOBAL          (NULL + print)
+            11152 CALL                 (0 positional)
+            11160 POP_TOP
+
+748:        11162 LOAD_GLOBAL          (NULL + print)
+            11172 EXTENDED_ARG         (256)
+            11174 LOAD_CONST           ("=== SUMMARY ===")
+            11176 CALL                 (1 positional)
+            11184 POP_TOP
+
+749:        11186 LOAD_GLOBAL          (NULL + print)
+            11196 EXTENDED_ARG         (256)
+            11198 LOAD_CONST           ("ok=")
+            11200 LOAD_FAST            (result)
+            11202 LOAD_ATTR            (NULL|self + get)
+            11222 EXTENDED_ARG         (256)
+            11224 LOAD_CONST           ("ok")
+            11226 CALL                 (1 positional)
+            11234 FORMAT_SIMPLE
+            11236 BUILD_STRING         2
+            11238 CALL                 (1 positional)
+            11246 POP_TOP
+
+750:        11248 LOAD_GLOBAL          (NULL + print)
+            11258 EXTENDED_ARG         (256)
+            11260 LOAD_CONST           ("phase2_status=")
+            11262 LOAD_FAST            (result)
+            11264 LOAD_ATTR            (NULL|self + get)
+            11284 EXTENDED_ARG         (256)
+            11286 LOAD_CONST           ("phase2_status")
+            11288 CALL                 (1 positional)
+            11296 FORMAT_SIMPLE
+            11298 BUILD_STRING         2
+            11300 CALL                 (1 positional)
+            11308 POP_TOP
+
+751:        11310 LOAD_GLOBAL          (NULL + print)
+            11320 EXTENDED_ARG         (256)
+            11322 LOAD_CONST           ("error=")
+            11324 LOAD_FAST            (result)
+            11326 LOAD_ATTR            (NULL|self + get)
+            11346 EXTENDED_ARG         (256)
+            11348 LOAD_CONST           ("error")
+            11350 LOAD_CONST           ("")
+            11352 CALL                 (2 positional)
+            11360 FORMAT_SIMPLE
+            11362 BUILD_STRING         2
+            11364 CALL                 (1 positional)
+            11372 POP_TOP
+
+752:        11374 LOAD_GLOBAL          (NULL + print)
+            11384 EXTENDED_ARG         (256)
+            11386 LOAD_CONST           ("email=")
+            11388 LOAD_FAST            (result)
+            11390 LOAD_ATTR            (NULL|self + get)
+            11410 LOAD_CONST           ("email")
+            11412 CALL                 (1 positional)
+            11420 COPY                 1
+            11422 TO_BOOL
+            11430 POP_JUMP_IF_TRUE     (to 11488)
+            11434 POP_TOP
+            11436 LOAD_FAST            (result)
+            11438 LOAD_ATTR            (NULL|self + get)
+            11458 EXTENDED_ARG         (256)
+            11460 LOAD_CONST           ("bind_email")
+            11462 CALL                 (1 positional)
+            11470 COPY                 1
+            11472 TO_BOOL
+            11480 POP_JUMP_IF_TRUE     (to 11488)
+            11484 POP_TOP
+            11486 LOAD_FAST            (account_email)
+         >> 11488 FORMAT_SIMPLE
+            11490 BUILD_STRING         2
+            11492 CALL                 (1 positional)
+            11500 POP_TOP
+
+753:        11502 LOAD_GLOBAL          (NULL + print)
+            11512 EXTENDED_ARG         (256)
+            11514 LOAD_CONST           ("oauth_code_received=")
+            11516 LOAD_GLOBAL          (NULL + bool)
+            11526 LOAD_FAST            (result)
+            11528 LOAD_ATTR            (NULL|self + get)
+            11548 EXTENDED_ARG         (256)
+            11550 LOAD_CONST           ("code")
+            11552 CALL                 (1 positional)
+            11560 CALL                 (1 positional)
+            11568 FORMAT_SIMPLE
+            11570 BUILD_STRING         2
+            11572 CALL                 (1 positional)
+            11580 POP_TOP
+
+754:        11582 LOAD_GLOBAL          (NULL + print)
+            11592 EXTENDED_ARG         (256)
+            11594 LOAD_CONST           ("local_oauth_exchange_ok=")
+            11596 LOAD_FAST            (result)
+            11598 LOAD_ATTR            (NULL|self + get)
+            11618 EXTENDED_ARG         (256)
+            11620 LOAD_CONST           ("local_oauth_exchange_ok")
+            11622 CALL                 (1 positional)
+            11630 FORMAT_SIMPLE
+            11632 BUILD_STRING         2
+            11634 CALL                 (1 positional)
+            11642 POP_TOP
+
+755:        11644 LOAD_FAST            (archive_summary)
+            11646 TO_BOOL
+            11654 POP_JUMP_IF_FALSE    (to 11844)
+
+756:        11658 LOAD_GLOBAL          (NULL + print)
+            11668 EXTENDED_ARG         (256)
+            11670 LOAD_CONST           ("local_archive_account=")
+            11672 LOAD_FAST            (archive_summary)
+            11674 LOAD_ATTR            (NULL|self + get)
+            11694 EXTENDED_ARG         (256)
+            11696 LOAD_CONST           ("account_record")
+            11698 CALL                 (1 positional)
+            11706 FORMAT_SIMPLE
+            11708 BUILD_STRING         2
+            11710 CALL                 (1 positional)
+            11718 POP_TOP
+
+757:        11720 LOAD_GLOBAL          (NULL + print)
+            11730 EXTENDED_ARG         (256)
+            11732 LOAD_CONST           ("local_archive_sub2_import=")
+            11734 LOAD_FAST            (archive_summary)
+            11736 LOAD_ATTR            (NULL|self + get)
+            11756 EXTENDED_ARG         (256)
+            11758 LOAD_CONST           ("sub2_import_file")
+            11760 CALL                 (1 positional)
+            11768 FORMAT_SIMPLE
+            11770 BUILD_STRING         2
+            11772 CALL                 (1 positional)
+            11780 POP_TOP
+
+758:        11782 LOAD_GLOBAL          (NULL + print)
+            11792 EXTENDED_ARG         (256)
+            11794 LOAD_CONST           ("local_archive_cpa_auth=")
+            11796 LOAD_FAST            (archive_summary)
+            11798 LOAD_ATTR            (NULL|self + get)
+            11818 EXTENDED_ARG         (256)
+            11820 LOAD_CONST           ("cpa_auth_file")
+            11822 CALL                 (1 positional)
+            11830 FORMAT_SIMPLE
+            11832 BUILD_STRING         2
+            11834 CALL                 (1 positional)
+            11842 POP_TOP
+
+759:     >> 11844 LOAD_GLOBAL          (NULL + isinstance)
+            11854 LOAD_FAST            (result)
+            11856 LOAD_ATTR            (NULL|self + get)
+            11876 EXTENDED_ARG         (256)
+            11878 LOAD_CONST           ("runtime_context")
+            11880 CALL                 (1 positional)
+            11888 LOAD_GLOBAL          (dict)
+            11898 CALL                 (2 positional)
+            11906 TO_BOOL
+            11914 POP_JUMP_IF_FALSE    (to 11954)
+            11918 LOAD_FAST            (result)
+            11920 LOAD_ATTR            (NULL|self + get)
+            11940 EXTENDED_ARG         (256)
+            11942 LOAD_CONST           ("runtime_context")
+            11944 CALL                 (1 positional)
+            11952 JUMP_FORWARD         (to 11956)
+         >> 11954 BUILD_MAP            0
+         >> 11956 STORE_FAST           (runtime)
+
+760:        11958 LOAD_FAST            (runtime)
+            11960 TO_BOOL
+            11968 POP_JUMP_IF_FALSE    (to 12114)
+
+761:        11972 LOAD_GLOBAL          (NULL + print)
+
+762:        11982 EXTENDED_ARG         (256)
+            11984 LOAD_CONST           ("runtime_context=ok=")
+
+763:        11986 LOAD_FAST            (runtime)
+            11988 LOAD_ATTR            (NULL|self + get)
+            12008 EXTENDED_ARG         (256)
+            12010 LOAD_CONST           ("ok")
+            12012 CALL                 (1 positional)
+            12020 FORMAT_SIMPLE
+            12022 EXTENDED_ARG         (256)
+            12024 LOAD_CONST           (" errors=")
+            12026 LOAD_FAST            (runtime)
+            12028 LOAD_ATTR            (NULL|self + get)
+            12048 EXTENDED_ARG         (256)
+            12050 LOAD_CONST           ("error_count")
+            12052 CALL                 (1 positional)
+            12060 FORMAT_SIMPLE
+            12062 EXTENDED_ARG         (256)
+            12064 LOAD_CONST           (" warnings=")
+            12066 LOAD_FAST            (runtime)
+            12068 LOAD_ATTR            (NULL|self + get)
+            12088 EXTENDED_ARG         (256)
+            12090 LOAD_CONST           ("warn_count")
+            12092 CALL                 (1 positional)
+            12100 FORMAT_SIMPLE
+
+762:        12102 BUILD_STRING         6
+
+761:        12104 CALL                 (1 positional)
+            12112 POP_TOP
+
+765:     >> 12114 LOAD_GLOBAL          (NULL + isinstance)
+            12124 LOAD_FAST            (result)
+            12126 LOAD_ATTR            (NULL|self + get)
+            12146 EXTENDED_ARG         (256)
+            12148 LOAD_CONST           ("node_bridge")
+            12150 CALL                 (1 positional)
+            12158 LOAD_GLOBAL          (dict)
+            12168 CALL                 (2 positional)
+            12176 TO_BOOL

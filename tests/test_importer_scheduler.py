@@ -53,6 +53,43 @@ class FakePhaseGate:
         self.concurrency = concurrency
 
 
+class FakeBatchManifest:
+    def __init__(self) -> None:
+        self.begun = None
+        self.reserved = []
+        self.started = []
+        self.observed = []
+        self.finalized = None
+        self.finalized_event = threading.Event()
+        self.committed = []
+        self.rolled_back = []
+
+    def begin(self, settings, *, target, members):
+        self.begun = (dict(settings), target, [dict(item) for item in members])
+
+    def prepare(self, settings, *, target, members):
+        self.begin(settings, target=target, members=members)
+
+    def commit_prepared(self, batch_id):
+        self.committed.append(batch_id)
+
+    def rollback_prepared(self, batch_id):
+        self.rolled_back.append(batch_id)
+
+    def reserve(self, batch_id, task_id, **values):
+        self.reserved.append((batch_id, task_id, dict(values)))
+
+    def mark_started(self, task_id):
+        self.started.append(task_id)
+
+    def observe_task(self, task_id, status):
+        self.observed.append((task_id, status))
+
+    def finalize(self, batch_id, *, tasks, reason):
+        self.finalized = (batch_id, dict(tasks), reason)
+        self.finalized_event.set()
+
+
 class FakeImporter:
     def __init__(
         self,
@@ -256,6 +293,133 @@ class ImporterSchedulerTests(unittest.TestCase):
             {task["batch_started_at"] for task in importer.tasks.values()},
             {1_785_824_800},
         )
+
+    def test_batch_manifest_freezes_all_members_before_reservation_and_reconciles(self):
+        importer = FakeImporter(available=9)
+        manifest = FakeBatchManifest()
+        config = {
+            "target_count": 4,
+            "concurrency": 2,
+            "batch_id": "batch-shared-four",
+            "batch_started_at": 1_785_824_800,
+        }
+
+        start(importer, config, batch_manifest=manifest)
+        self.assertTrue(manifest.finalized_event.wait(2))
+
+        begun_settings, target, planned = manifest.begun
+        self.assertEqual(begun_settings["batch_id"], "batch-shared-four")
+        self.assertEqual(target, 4)
+        self.assertEqual([item["ordinal"] for item in planned], [1, 2, 3, 4])
+        self.assertEqual(len({item["task_id"] for item in planned}), 4)
+        self.assertEqual(
+            [task_id for _batch_id, task_id, _values in manifest.reserved],
+            [item["task_id"] for item in planned],
+        )
+        self.assertEqual(
+            {batch_id for batch_id, _task_id, _values in manifest.reserved},
+            {"batch-shared-four"},
+        )
+        self.assertEqual(set(manifest.started), {item["task_id"] for item in planned})
+        self.assertEqual(manifest.committed, ["batch-shared-four"])
+        self.assertEqual(manifest.rolled_back, [])
+        self.assertEqual(manifest.finalized[0], "batch-shared-four")
+        self.assertEqual(manifest.finalized[2], "batch_finished")
+
+    def test_pool_commit_failure_rolls_back_prepared_manifest_before_workers_start(self):
+        importer = FakeImporter(available=3)
+        manifest = FakeBatchManifest()
+
+        def failing_reserve(pool, target, *, before_reserve, on_reserve_failed, **_kwargs):
+            chosen = pool._entries_unlocked()[0][:target]
+            before_reserve(chosen)
+            error = OSError("pool state fsync failed")
+            on_reserve_failed(chosen, error)
+            raise error
+
+        with self.assertRaisesRegex(OSError, "pool state fsync failed"):
+            start(
+                importer,
+                {
+                    "target_count": 2,
+                    "concurrency": 2,
+                    "batch_id": "batch-pool-write-failed",
+                },
+                batch_manifest=manifest,
+                batch_reserve=failing_reserve,
+            )
+
+        self.assertEqual(manifest.rolled_back, ["batch-pool-write-failed"])
+        self.assertEqual(manifest.committed, [])
+        self.assertIsNone(manifest.finalized)
+        self.assertEqual(importer.ordinals, [])
+        self.assertFalse(importer.running)
+
+    def test_manifest_commit_failure_restores_reservations_from_legacy_batch_wrapper(self):
+        importer = FakeImporter(available=2)
+
+        class FailingCommitManifest(FakeBatchManifest):
+            def commit_prepared(self, batch_id):
+                raise OSError("manifest fsync failed")
+
+        manifest = FailingCommitManifest()
+
+        def legacy_reserve(pool, target, *, before_reserve, **_kwargs):
+            chosen = pool._entries_unlocked()[0][:target]
+            before_reserve(chosen)
+            return chosen
+
+        with self.assertRaisesRegex(OSError, "manifest fsync failed"):
+            start(
+                importer,
+                {
+                    "target_count": 2,
+                    "concurrency": 2,
+                    "batch_id": "batch-manifest-write-failed",
+                },
+                batch_manifest=manifest,
+                batch_reserve=legacy_reserve,
+            )
+
+        self.assertEqual(sorted(importer.pool.restored), [1, 2])
+        self.assertEqual(manifest.rolled_back, ["batch-manifest-write-failed"])
+        self.assertIsNone(manifest.finalized)
+        self.assertEqual(importer.ordinals, [])
+        self.assertFalse(importer.running)
+
+    def test_unsafe_reservation_cleanup_keeps_prepared_manifest_for_restart(self):
+        importer = FakeImporter(available=2)
+        manifest = FakeBatchManifest()
+
+        def reserve_with_failed_cleanup(
+            pool,
+            target,
+            *,
+            before_reserve,
+            on_reserve_failed,
+            **_kwargs,
+        ):
+            del on_reserve_failed
+            before_reserve(pool._entries_unlocked()[0][:target])
+            raise OSError("lease rollback failed")
+
+        with self.assertRaisesRegex(OSError, "lease rollback failed"):
+            start(
+                importer,
+                {
+                    "target_count": 2,
+                    "concurrency": 2,
+                    "batch_id": "batch-unsafe-cleanup",
+                },
+                batch_manifest=manifest,
+                batch_reserve=reserve_with_failed_cleanup,
+            )
+
+        self.assertEqual(manifest.rolled_back, [])
+        self.assertEqual(manifest.committed, [])
+        self.assertIsNone(manifest.finalized)
+        self.assertEqual(importer.ordinals, [])
+        self.assertFalse(importer.running)
 
     def test_target_count_reserves_unique_pool_entries_and_bounds_active_workers(self):
         importer = FakeImporter(available=20, blocked=True)

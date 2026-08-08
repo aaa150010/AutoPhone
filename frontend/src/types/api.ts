@@ -89,6 +89,9 @@ export interface RuntimeTask {
   account?: string
   email?: string
   ordinal?: number
+  batch_id?: string
+  batch_started_at?: number
+  has_mailbox_url?: boolean
   status?: string
   error?: string
   reason?: string
@@ -102,11 +105,15 @@ export interface RuntimeTask {
     sms_cost_cny?: number | null
     timing?: TaskTiming
     run_mode?: 'relogin' | string
+    batch_id?: string
+    batch_started_at?: number
   }
 }
 
 export interface RuntimeSummary {
   run_id?: string
+  batch_id?: string
+  batch_started_at?: number | null
   target?: number
   total?: number
   active?: number
@@ -213,10 +220,48 @@ export interface Sub2MailboxStatus {
   remote_account_id?: number | string | null
 }
 
+export type MailboxOperationKind = 'quota' | 'openai_test'
+export type MailboxOperationStatus = 'running' | 'completed' | 'failed'
+
+export interface MailboxOperationRowUpdate {
+  row_id: string
+  line_no: number
+  quota_status?: 'ok' | 'error'
+  quota_error?: string
+  quota_error_code?: string
+  quota_queried_at?: number | null
+  quota_5h?: OpenAIQuotaWindow | null
+  quota_7d?: OpenAIQuotaWindow | null
+  sub2_status?: Sub2MailboxStatus | null
+}
+
+export interface MailboxBatchOperation {
+  job_id: string
+  kind: MailboxOperationKind
+  status: MailboxOperationStatus
+  total: number
+  completed: number
+  succeeded: number
+  failed: number
+  skipped: number
+  tested: number
+  rate_limited: number
+  not_ready: number
+  created_at: number
+  updated_at: number
+  row_updates: MailboxOperationRowUpdate[]
+  finished_at?: number | null
+  node_code?: string
+  node_label?: string
+  error_code?: string
+  error?: string
+}
+
 export interface MailboxPayload {
   ok?: boolean
   counts: Record<string, number>
   rows: MailboxRow[]
+  operation?: MailboxBatchOperation | null
 }
 
 export interface MailboxUrlTestDiagnostics {

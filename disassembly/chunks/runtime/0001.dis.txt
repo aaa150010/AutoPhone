@@ -1,0 +1,800 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          runtime.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        7
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1
+# Constants:
+#    0: "Independent queue runner for self-managed mailbox URLs and SUB2 upload.\n\nThe runner does not modify the registration application. It imports the\nexisting email-first Node state machine and its SMS selector as libraries,\nwhile keeping its own config, pool, results, and logs below this tool's data\ndirectory.\n"
+#    1: 0
+#    2: ('annotations',)
+#    3: None
+#    4: ('Future', 'ThreadPoolExecutor')
+#    5: ('dataclass',)
+#    6: ('Path',)
+#    7: ('Any', 'Callable')
+#    8: ('urlsplit',)
+#    9: ('requests',)
+#   10: 'engine'
+#   11: 'frozen'
+#   12: False
+#   13: ('resolve_node_chain_dir',)
+#   14: 'node_chain'
+#   15: ('atomic_write_json', 'atomic_write_text', 'locked_update_json', 'named_file_lock', 'read_text_retry')
+#   16: ('email_proxy', 'normalize_proxy_url', 'requests_kwargs', 'sms_proxy', 'upload_proxy')
+#   17: ('apply_localpool_runtime_config', 'create_provider', 'provider_api_key')
+#   18: ('resolve_sub2_group_id',)
+#   19: ('get_admin_token',)
+#   20: ('MailboxPool', 'MailboxPoolError', 'MailboxSnapshot', 'MailboxUrlCodeProvider', 'PoolEntry', 'redact_entry')
+#   21: ('_default_openai_persona', '_generate_sub2_oauth_session')
+#   22: ('RealCodexTransport', 'SmsProviderAdapter', 'run_codex_after_registration')
+#   23: 'data'
+#   24: {'id_token', 'api_key', 'pwd', 'access_token', 'password', 'code', 'refresh_token', 'token'}
+#   25: <Code311 code object _clean at 0x1055579d0, file runtime.py>, line 79
+#   26: <Code311 code object _as_bool at 0x105557940, file runtime.py>, line 83
+#   27: <Code311 code object _as_int at 0x1055578e0, file runtime.py>, line 94
+#   28: <Code311 code object _redact_text at 0x105526430, file runtime.py>, line 102
+#   29: <Code311 code object _summarize_error at 0x1055266a0, file runtime.py>, line 109
+#   30: <Code311 code object _friendly_log_message at 0x105526730, file runtime.py>, line 137
+#   31: 10.0
+#   32: ('timeout',)
+#   33: <Code311 code object _validate_main_proxy at 0x105526820, file runtime.py>, line 148
+#   34: <Code311 code object _public_result at 0x105526880, file runtime.py>, line 192
+#   35: <Code311 code object _node_stop_requested at 0x1055267f0, file runtime.py>, line 209
+#   36: <Code311 code object _terminate_process_tree at 0x1055268b0, file runtime.py>, line 214
+#   37: <Code311 code object _standalone_node_bridge_process at 0x105526940, file runtime.py>, line 238
+#   38: <Code311 code object _standalone_node_bridge at 0x1055269a0, file runtime.py>, line 329
+#   39: <Code311 code object _standalone_phone_supply_retryable at 0x1055269d0, file runtime.py>, line 346
+#   40: <Code311 code object _standalone_sms_adapter_get_number at 0x105526a00, file runtime.py>, line 354
+#   41: <Code311 code object default_settings at 0x1055263d0, file runtime.py>, line 371
+#   42: <Code311 code object ImporterConfigStore at 0x105526a30, file runtime.py>, line 421
+#   43: 'ImporterConfigStore'
+#   44: <Code311 code object _merge at 0x105526250, file runtime.py>, line 531
+#   45: True
+#   46: ('frozen',)
+#   47: <Code311 code object ManualMailboxEntry at 0x105526280, file runtime.py>, line 541
+#   48: 'ManualMailboxEntry'
+#   49: <Code311 code object ManualMailboxPool at 0x10552c3d0, file runtime.py>, line 550
+#   50: 'ManualMailboxPool'
+#   51: <Code311 code object ManualCodeCoordinator at 0x10552c4f0, file runtime.py>, line 817
+#   52: 'ManualCodeCoordinator'
+#   53: <Code311 code object ManualEmailOtpProvider at 0x10552c7c0, file runtime.py>, line 974
+#   54: 'ManualEmailOtpProvider'
+#   55: <Code311 code object OutlookMailboxOtpProvider at 0x10552c9d0, file runtime.py>, line 1022
+#   56: 'OutlookMailboxOtpProvider'
+#   57: <Code311 code object AutoEmailPhaseGate at 0x10552cb50, file runtime.py>, line 1092
+#   58: 'AutoEmailPhaseGate'
+#   59: <Code311 code object GptMailOtpProvider at 0x10552cd30, file runtime.py>, line 1126
+#   60: 'GptMailOtpProvider'
+#   61: <Code311 code object UrlMailboxOtpProvider at 0x105531fa0, file runtime.py>, line 1284
+#   62: 'UrlMailboxOtpProvider'
+#   63: <Code311 code object EmailAuthImporter at 0x105531880, file runtime.py>, line 1391
+#   64: 'EmailAuthImporter'
+#   65: ('value', 'Any', 'return', 'str')
+#   66: (False,)
+#   67: ('value', 'Any', 'default', 'bool', 'return', 'bool')
+#   68: ('value', 'Any', 'default', 'int', 'low', 'int', 'high', 'int', 'return', 'int')
+#   69: ('proxy', 'Any', 'timeout', 'float', 'return', 'None')
+#   70: ('value', 'Any', 'return', 'Any')
+#   71: ('return', 'bool')
+#   72: ('proc', 'subprocess.Popen[str]', 'return', 'None')
+#   73: ('kwargs', 'Any', 'return', 'dict[str, Any]')
+#   74: ('error', 'Any', 'return', 'bool')
+#   75: ('self', 'Any', 'kwargs', 'Any', 'return', 'Any')
+#   76: ('data_dir', 'Path', 'return', 'dict[str, Any]')
+#   77: ('base', 'dict[str, Any]', 'update', 'dict[str, Any]', 'return', 'dict[str, Any]')
+# Names:
+#    0: __doc__
+#    1: __future__
+#    2: annotations
+#    3: copy
+#    4: hashlib
+#    5: json
+#    6: os
+#    7: re
+#    8: shutil
+#    9: socket
+#   10: subprocess
+#   11: sys
+#   12: threading
+#   13: time
+#   14: uuid
+#   15: concurrent.futures
+#   16: Future
+#   17: ThreadPoolExecutor
+#   18: dataclasses
+#   19: dataclass
+#   20: pathlib
+#   21: Path
+#   22: typing
+#   23: Any
+#   24: Callable
+#   25: urllib.parse
+#   26: urlsplit
+#   27: requests
+#   28: curl_cffi
+#   29: _curl_requests
+#   30: Exception
+#   31: __file__
+#   32: resolve
+#   33: parent
+#   34: TOOL_DIR
+#   35: ENGINE_DIR
+#   36: getattr
+#   37: resource_runtime
+#   38: resolve_node_chain_dir
+#   39: NODE_DIR
+#   40: path
+#   41: str
+#   42: insert
+#   43: file_safety
+#   44: atomic_write_json
+#   45: atomic_write_text
+#   46: locked_update_json
+#   47: named_file_lock
+#   48: read_text_retry
+#   49: proxy_scope
+#   50: email_proxy
+#   51: normalize_proxy_url
+#   52: requests_kwargs
+#   53: sms_proxy
+#   54: upload_proxy
+#   55: sms_providers
+#   56: apply_localpool_runtime_config
+#   57: create_provider
+#   58: provider_api_key
+#   59: sub2_groups
+#   60: resolve_sub2_group_id
+#   61: sub2_session
+#   62: get_admin_token
+#   63: tools.self_mailbox_pool.mailbox_pool
+#   64: MailboxPool
+#   65: MailboxPoolError
+#   66: MailboxSnapshot
+#   67: MailboxUrlCodeProvider
+#   68: PoolEntry
+#   69: redact_entry
+#   70: codex_chain_runner
+#   71: _default_openai_persona
+#   72: _generate_sub2_oauth_session
+#   73: codex_oauth_chain
+#   74: RealCodexTransport
+#   75: SmsProviderAdapter
+#   76: run_codex_after_registration
+#   77: _codex_oauth_chain
+#   78: codex_node_bridge
+#   79: _codex_node_bridge
+#   80: LogFn
+#   81: executable
+#   82: DEFAULT_DATA_DIR
+#   83: SENSITIVE_KEYS
+#   84: run_node_bridge
+#   85: _ORIGINAL_RUN_NODE_BRIDGE
+#   86: _is_retryable_phone_supply_error
+#   87: _ORIGINAL_PHONE_SUPPLY_RETRYABLE
+#   88: get_number
+#   89: _ORIGINAL_SMS_ADAPTER_GET_NUMBER
+#   90: local
+#   91: _NODE_BRIDGE_CONTEXT
+#   92: _clean
+#   93: _as_bool
+#   94: _as_int
+#   95: _redact_text
+#   96: _summarize_error
+#   97: _friendly_log_message
+#   98: _validate_main_proxy
+#   99: _public_result
+#  100: _node_stop_requested
+#  101: _terminate_process_tree
+#  102: _standalone_node_bridge_process
+#  103: _standalone_node_bridge
+#  104: _standalone_phone_supply_retryable
+#  105: _standalone_sms_adapter_get_number
+#  106: default_settings
+#  107: ImporterConfigStore
+#  108: _merge
+#  109: ManualMailboxEntry
+#  110: ManualMailboxPool
+#  111: ManualCodeCoordinator
+#  112: ManualEmailOtpProvider
+#  113: OutlookMailboxOtpProvider
+#  114: AutoEmailPhaseGate
+#  115: GptMailOtpProvider
+#  116: UrlMailboxOtpProvider
+#  117: EmailAuthImporter
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ("Independent queue runner for self-managed mailbox URLs and SUB2 upload.\n\nThe runner does not modify the registration application. It imports the\nexisting email-first Node state machine and its SMS selector as libraries,\nwhile keeping its own config, pool, results, and logs below this tool's data\ndirectory.\n")
+               4 STORE_NAME           (__doc__)
+
+ 10:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (('annotations',))
+              10 IMPORT_NAME          (__future__)
+              12 IMPORT_FROM          (annotations)
+              14 STORE_NAME           (annotations)
+              16 POP_TOP
+
+ 12:          18 LOAD_CONST           (0)
+              20 LOAD_CONST           (None)
+              22 IMPORT_NAME          (copy)
+              24 STORE_NAME           (copy)
+
+ 13:          26 LOAD_CONST           (0)
+              28 LOAD_CONST           (None)
+              30 IMPORT_NAME          (hashlib)
+              32 STORE_NAME           (hashlib)
+
+ 14:          34 LOAD_CONST           (0)
+              36 LOAD_CONST           (None)
+              38 IMPORT_NAME          (json)
+              40 STORE_NAME           (json)
+
+ 15:          42 LOAD_CONST           (0)
+              44 LOAD_CONST           (None)
+              46 IMPORT_NAME          (os)
+              48 STORE_NAME           (os)
+
+ 16:          50 LOAD_CONST           (0)
+              52 LOAD_CONST           (None)
+              54 IMPORT_NAME          (re)
+              56 STORE_NAME           (re)
+
+ 17:          58 LOAD_CONST           (0)
+              60 LOAD_CONST           (None)
+              62 IMPORT_NAME          (shutil)
+              64 STORE_NAME           (shutil)
+
+ 18:          66 LOAD_CONST           (0)
+              68 LOAD_CONST           (None)
+              70 IMPORT_NAME          (socket)
+              72 STORE_NAME           (socket)
+
+ 19:          74 LOAD_CONST           (0)
+              76 LOAD_CONST           (None)
+              78 IMPORT_NAME          (subprocess)
+              80 STORE_NAME           (subprocess)
+
+ 20:          82 LOAD_CONST           (0)
+              84 LOAD_CONST           (None)
+              86 IMPORT_NAME          (sys)
+              88 STORE_NAME           (sys)
+
+ 21:          90 LOAD_CONST           (0)
+              92 LOAD_CONST           (None)
+              94 IMPORT_NAME          (threading)
+              96 STORE_NAME           (threading)
+
+ 22:          98 LOAD_CONST           (0)
+             100 LOAD_CONST           (None)
+             102 IMPORT_NAME          (time)
+             104 STORE_NAME           (time)
+
+ 23:         106 LOAD_CONST           (0)
+             108 LOAD_CONST           (None)
+             110 IMPORT_NAME          (uuid)
+             112 STORE_NAME           (uuid)
+
+ 24:         114 LOAD_CONST           (0)
+             116 LOAD_CONST           (('Future', 'ThreadPoolExecutor'))
+             118 IMPORT_NAME          (concurrent.futures)
+             120 IMPORT_FROM          (Future)
+             122 STORE_NAME           (Future)
+             124 IMPORT_FROM          (ThreadPoolExecutor)
+             126 STORE_NAME           (ThreadPoolExecutor)
+             128 POP_TOP
+
+ 25:         130 LOAD_CONST           (0)
+             132 LOAD_CONST           (('dataclass',))
+             134 IMPORT_NAME          (dataclasses)
+             136 IMPORT_FROM          (dataclass)
+             138 STORE_NAME           (dataclass)
+             140 POP_TOP
+
+ 26:         142 LOAD_CONST           (0)
+             144 LOAD_CONST           (('Path',))
+             146 IMPORT_NAME          (pathlib)
+             148 IMPORT_FROM          (Path)
+             150 STORE_NAME           (Path)
+             152 POP_TOP
+
+ 27:         154 LOAD_CONST           (0)
+             156 LOAD_CONST           (('Any', 'Callable'))
+             158 IMPORT_NAME          (typing)
+             160 IMPORT_FROM          (Any)
+             162 STORE_NAME           (Any)
+             164 IMPORT_FROM          (Callable)
+             166 STORE_NAME           (Callable)
+             168 POP_TOP
+
+ 28:         170 LOAD_CONST           (0)
+             172 LOAD_CONST           (('urlsplit',))
+             174 IMPORT_NAME          (urllib.parse)
+             176 IMPORT_FROM          (urlsplit)
+             178 STORE_NAME           (urlsplit)
+             180 POP_TOP
+
+ 30:         182 LOAD_CONST           (0)
+             184 LOAD_CONST           (None)
+             186 IMPORT_NAME          (requests)
+             188 STORE_NAME           (requests)
+
+ 32:         190 NOP
+
+ 33:         192 LOAD_CONST           (0)
+             194 LOAD_CONST           (('requests',))
+             196 IMPORT_NAME          (curl_cffi)
+             198 IMPORT_FROM          (requests)
+             200 STORE_NAME           (_curl_requests)
+             202 POP_TOP
+
+ 38:         204 LOAD_NAME            (Path)
+             206 PUSH_NULL
+             208 LOAD_NAME            (__file__)
+             210 CALL                 (1 positional)
+             218 LOAD_ATTR            (NULL|self + resolve)
+             238 CALL                 (0 positional)
+             246 LOAD_ATTR            (parent)
+             266 STORE_NAME           (TOOL_DIR)
+
+ 39:         268 LOAD_NAME            (TOOL_DIR)
+             270 LOAD_CONST           ("engine")
+             272 BINARY_OP            (/)
+             276 STORE_NAME           (ENGINE_DIR)
+
+ 40:         278 LOAD_NAME            (getattr)
+             280 PUSH_NULL
+             282 LOAD_NAME            (sys)
+             284 LOAD_CONST           ("frozen")
+             286 LOAD_CONST           (False)
+             288 CALL                 (3 positional)
+             296 TO_BOOL
+             304 POP_JUMP_IF_FALSE    (to 336)
+
+ 41:         308 LOAD_CONST           (0)
+             310 LOAD_CONST           (('resolve_node_chain_dir',))
+             312 IMPORT_NAME          (resource_runtime)
+             314 IMPORT_FROM          (resolve_node_chain_dir)
+             316 STORE_NAME           (resolve_node_chain_dir)
+             318 POP_TOP
+
+ 43:         320 LOAD_NAME            (resolve_node_chain_dir)
+             322 PUSH_NULL
+             324 CALL                 (0 positional)
+             332 STORE_NAME           (NODE_DIR)
+             334 JUMP_FORWARD         (to 346)
+
+ 45:     >>  336 LOAD_NAME            (ENGINE_DIR)
+             338 LOAD_CONST           ("node_chain")
+             340 BINARY_OP            (/)
+             344 STORE_NAME           (NODE_DIR)
+
+ 46:     >>  346 LOAD_NAME            (TOOL_DIR)
+             348 LOAD_NAME            (ENGINE_DIR)
+             350 LOAD_NAME            (NODE_DIR)
+             352 BUILD_TUPLE          3
+             354 GET_ITER
+             356 FOR_ITER             (to 482)
+             360 STORE_NAME           (path)
+
+ 47:         362 LOAD_NAME            (str)
+             364 PUSH_NULL
+             366 LOAD_NAME            (path)
+             368 CALL                 (1 positional)
+             376 LOAD_NAME            (sys)
+             378 LOAD_ATTR            (path)
+             398 CONTAINS_OP          (not in)
+             402 POP_JUMP_IF_TRUE     (to 410)
+             406 JUMP_BACKWARD        (to 356)
+
+ 48:     >>  410 LOAD_NAME            (sys)
+             412 LOAD_ATTR            (path)
+             432 LOAD_ATTR            (NULL|self + insert)
+             452 LOAD_CONST           (0)
+             454 LOAD_NAME            (str)
+             456 PUSH_NULL
+             458 LOAD_NAME            (path)
+             460 CALL                 (1 positional)
+             468 CALL                 (2 positional)
+             476 POP_TOP
+             478 JUMP_BACKWARD        (to 356)
+
+ 46:     >>  482 END_FOR
+             484 POP_TOP
+
+ 50:         486 LOAD_CONST           (0)
+             488 LOAD_CONST           (('atomic_write_json', 'atomic_write_text', 'locked_update_json', 'named_file_lock', 'read_text_retry'))
+             490 IMPORT_NAME          (file_safety)
+             492 IMPORT_FROM          (atomic_write_json)
+             494 STORE_NAME           (atomic_write_json)
+             496 IMPORT_FROM          (atomic_write_text)
+             498 STORE_NAME           (atomic_write_text)
+             500 IMPORT_FROM          (locked_update_json)
+             502 STORE_NAME           (locked_update_json)
+             504 IMPORT_FROM          (named_file_lock)
+             506 STORE_NAME           (named_file_lock)
+             508 IMPORT_FROM          (read_text_retry)
+             510 STORE_NAME           (read_text_retry)
+             512 POP_TOP
+
+ 51:         514 LOAD_CONST           (0)
+             516 LOAD_CONST           (('email_proxy', 'normalize_proxy_url', 'requests_kwargs', 'sms_proxy', 'upload_proxy'))
+             518 IMPORT_NAME          (proxy_scope)
+             520 IMPORT_FROM          (email_proxy)
+             522 STORE_NAME           (email_proxy)
+             524 IMPORT_FROM          (normalize_proxy_url)
+             526 STORE_NAME           (normalize_proxy_url)
+             528 IMPORT_FROM          (requests_kwargs)
+             530 STORE_NAME           (requests_kwargs)
+             532 IMPORT_FROM          (sms_proxy)
+             534 STORE_NAME           (sms_proxy)
+             536 IMPORT_FROM          (upload_proxy)
+             538 STORE_NAME           (upload_proxy)
+             540 POP_TOP
+
+ 52:         542 LOAD_CONST           (0)
+             544 LOAD_CONST           (('apply_localpool_runtime_config', 'create_provider', 'provider_api_key'))
+             546 IMPORT_NAME          (sms_providers)
+             548 IMPORT_FROM          (apply_localpool_runtime_config)
+             550 STORE_NAME           (apply_localpool_runtime_config)
+             552 IMPORT_FROM          (create_provider)
+             554 STORE_NAME           (create_provider)
+             556 IMPORT_FROM          (provider_api_key)
+             558 STORE_NAME           (provider_api_key)
+             560 POP_TOP
+
+ 53:         562 LOAD_CONST           (0)
+             564 LOAD_CONST           (('resolve_sub2_group_id',))
+             566 IMPORT_NAME          (sub2_groups)
+             568 IMPORT_FROM          (resolve_sub2_group_id)
+             570 STORE_NAME           (resolve_sub2_group_id)
+             572 POP_TOP
+
+ 54:         574 LOAD_CONST           (0)
+             576 LOAD_CONST           (('get_admin_token',))
+             578 IMPORT_NAME          (sub2_session)
+             580 IMPORT_FROM          (get_admin_token)
+             582 STORE_NAME           (get_admin_token)
+             584 POP_TOP
+
+ 55:         586 LOAD_CONST           (0)
+             588 LOAD_CONST           (('MailboxPool', 'MailboxPoolError', 'MailboxSnapshot', 'MailboxUrlCodeProvider', 'PoolEntry', 'redact_entry'))
+             590 IMPORT_NAME          (tools.self_mailbox_pool.mailbox_pool)
+             592 IMPORT_FROM          (MailboxPool)
+             594 STORE_NAME           (MailboxPool)
+             596 IMPORT_FROM          (MailboxPoolError)
+             598 STORE_NAME           (MailboxPoolError)
+             600 IMPORT_FROM          (MailboxSnapshot)
+             602 STORE_NAME           (MailboxSnapshot)
+             604 IMPORT_FROM          (MailboxUrlCodeProvider)
+             606 STORE_NAME           (MailboxUrlCodeProvider)
+         >>  608 IMPORT_FROM          (PoolEntry)
+             610 STORE_NAME           (PoolEntry)
+             612 IMPORT_FROM          (redact_entry)
+             614 STORE_NAME           (redact_entry)
+             616 POP_TOP
+
+ 64:         618 LOAD_CONST           (0)
+             620 LOAD_CONST           (('_default_openai_persona', '_generate_sub2_oauth_session'))
+             622 IMPORT_NAME          (codex_chain_runner)
+             624 IMPORT_FROM          (_default_openai_persona)
+             626 STORE_NAME           (_default_openai_persona)
+             628 IMPORT_FROM          (_generate_sub2_oauth_session)
+             630 STORE_NAME           (_generate_sub2_oauth_session)
+             632 POP_TOP
+
+ 65:         634 LOAD_CONST           (0)
+             636 LOAD_CONST           (('RealCodexTransport', 'SmsProviderAdapter', 'run_codex_after_registration'))
+             638 IMPORT_NAME          (codex_oauth_chain)
+             640 IMPORT_FROM          (RealCodexTransport)
+             642 STORE_NAME           (RealCodexTransport)
+             644 IMPORT_FROM          (SmsProviderAdapter)
+             646 STORE_NAME           (SmsProviderAdapter)
+             648 IMPORT_FROM          (run_codex_after_registration)
+             650 STORE_NAME           (run_codex_after_registration)
+             652 POP_TOP
+
+ 66:         654 LOAD_CONST           (0)
+             656 LOAD_CONST           (None)
+             658 IMPORT_NAME          (codex_oauth_chain)
+             660 STORE_NAME           (_codex_oauth_chain)
+
+ 67:         662 LOAD_CONST           (0)
+             664 LOAD_CONST           (None)
+             666 IMPORT_NAME          (codex_node_bridge)
+             668 STORE_NAME           (_codex_node_bridge)
+
+ 70:         670 LOAD_NAME            (Callable)
+             672 LOAD_NAME            (str)
+             674 LOAD_NAME            (str)
+             676 BUILD_LIST           2
+             678 LOAD_CONST           (None)
+             680 BUILD_TUPLE          2
+             682 BINARY_SUBSCR
+             686 STORE_NAME           (LogFn)
+
+ 71:         688 LOAD_NAME            (getattr)
+             690 PUSH_NULL
+             692 LOAD_NAME            (sys)
+             694 LOAD_CONST           ("frozen")
+             696 LOAD_CONST           (False)
+             698 CALL                 (3 positional)
+             706 TO_BOOL
+             714 POP_JUMP_IF_FALSE    (to 802)
+             718 LOAD_NAME            (Path)
+             720 PUSH_NULL
+             722 LOAD_NAME            (sys)
+             724 LOAD_ATTR            (executable)
+             744 CALL                 (1 positional)
+             752 LOAD_ATTR            (NULL|self + resolve)
+             772 CALL                 (0 positional)
+             780 LOAD_ATTR            (parent)
+             800 JUMP_FORWARD         (to 804)
+         >>  802 LOAD_NAME            (TOOL_DIR)
+         >>  804 LOAD_CONST           ("data")
+             806 BINARY_OP            (/)
+             810 STORE_NAME           (DEFAULT_DATA_DIR)
+
+ 72:         812 BUILD_SET            0
+             814 LOAD_CONST           ({'id_token', 'api_key', 'pwd', 'access_token', 'password', 'code', 'refresh_token', 'token'})
+             816 SET_UPDATE           1
+             818 STORE_NAME           (SENSITIVE_KEYS)
+
+ 73:         820 LOAD_NAME            (_codex_node_bridge)
+             822 LOAD_ATTR            (run_node_bridge)
+             842 STORE_NAME           (_ORIGINAL_RUN_NODE_BRIDGE)
+
+ 74:         844 LOAD_NAME            (_codex_oauth_chain)
+             846 LOAD_ATTR            (_is_retryable_phone_supply_error)
+             866 STORE_NAME           (_ORIGINAL_PHONE_SUPPLY_RETRYABLE)
+
+ 75:         868 LOAD_NAME            (SmsProviderAdapter)
+             870 LOAD_ATTR            (get_number)
+             890 STORE_NAME           (_ORIGINAL_SMS_ADAPTER_GET_NUMBER)
+
+ 76:         892 LOAD_NAME            (threading)
+             894 LOAD_ATTR            (local)
+             914 PUSH_NULL
+             916 CALL                 (0 positional)
+             924 STORE_NAME           (_NODE_BRIDGE_CONTEXT)
+
+ 79:         926 LOAD_CONST           (('value', 'Any', 'return', 'str'))
+             928 LOAD_CONST           (<Code311 code object _clean at 0x1055579d0, file runtime.py>, line 79)
+             930 MAKE_FUNCTION
+             932 SET_FUNCTION_ATTRIBUTE 4
+             934 STORE_NAME           (_clean)
+
+ 83:         936 LOAD_CONST           ((False,))
+             938 LOAD_CONST           (('value', 'Any', 'default', 'bool', 'return', 'bool'))
+             940 LOAD_CONST           (<Code311 code object _as_bool at 0x105557940, file runtime.py>, line 83)
+             942 MAKE_FUNCTION
+             944 SET_FUNCTION_ATTRIBUTE 4
+             946 SET_FUNCTION_ATTRIBUTE 1
+             948 STORE_NAME           (_as_bool)
+
+ 94:         950 LOAD_CONST           (('value', 'Any', 'default', 'int', 'low', 'int', 'high', 'int', 'return', 'int'))
+             952 LOAD_CONST           (<Code311 code object _as_int at 0x1055578e0, file runtime.py>, line 94)
+             954 MAKE_FUNCTION
+             956 SET_FUNCTION_ATTRIBUTE 4
+             958 STORE_NAME           (_as_int)
+
+102:         960 LOAD_CONST           (('value', 'Any', 'return', 'str'))
+             962 LOAD_CONST           (<Code311 code object _redact_text at 0x105526430, file runtime.py>, line 102)
+             964 MAKE_FUNCTION
+             966 SET_FUNCTION_ATTRIBUTE 4
+             968 STORE_NAME           (_redact_text)
+
+109:         970 LOAD_CONST           (('value', 'Any', 'return', 'str'))
+             972 LOAD_CONST           (<Code311 code object _summarize_error at 0x1055266a0, file runtime.py>, line 109)
+             974 MAKE_FUNCTION
+             976 SET_FUNCTION_ATTRIBUTE 4
+             978 STORE_NAME           (_summarize_error)
+
+137:         980 LOAD_CONST           (('value', 'Any', 'return', 'str'))
+             982 LOAD_CONST           (<Code311 code object _friendly_log_message at 0x105526730, file runtime.py>, line 137)
+             984 MAKE_FUNCTION
+             986 SET_FUNCTION_ATTRIBUTE 4
+             988 STORE_NAME           (_friendly_log_message)
+
+148:         990 LOAD_CONST           (10.0)
+             992 LOAD_CONST           (('timeout',))
+             994 BUILD_CONST_KEY_MAP  1
+             996 LOAD_CONST           (('proxy', 'Any', 'timeout', 'float', 'return', 'None'))
+             998 LOAD_CONST           (<Code311 code object _validate_main_proxy at 0x105526820, file runtime.py>, line 148)
+            1000 MAKE_FUNCTION
+            1002 SET_FUNCTION_ATTRIBUTE 4
+            1004 SET_FUNCTION_ATTRIBUTE 2
+            1006 STORE_NAME           (_validate_main_proxy)
+
+192:        1008 LOAD_CONST           (('value', 'Any', 'return', 'Any'))
+            1010 LOAD_CONST           (<Code311 code object _public_result at 0x105526880, file runtime.py>, line 192)
+            1012 MAKE_FUNCTION
+            1014 SET_FUNCTION_ATTRIBUTE 4
+            1016 STORE_NAME           (_public_result)
+
+209:        1018 LOAD_CONST           (('return', 'bool'))
+            1020 LOAD_CONST           (<Code311 code object _node_stop_requested at 0x1055267f0, file runtime.py>, line 209)
+            1022 MAKE_FUNCTION
+            1024 SET_FUNCTION_ATTRIBUTE 4
+            1026 STORE_NAME           (_node_stop_requested)
+
+214:        1028 LOAD_CONST           (('proc', 'subprocess.Popen[str]', 'return', 'None'))
+            1030 LOAD_CONST           (<Code311 code object _terminate_process_tree at 0x1055268b0, file runtime.py>, line 214)
+            1032 MAKE_FUNCTION
+            1034 SET_FUNCTION_ATTRIBUTE 4
+            1036 STORE_NAME           (_terminate_process_tree)
+
+238:        1038 LOAD_CONST           (('kwargs', 'Any', 'return', 'dict[str, Any]'))
+            1040 LOAD_CONST           (<Code311 code object _standalone_node_bridge_process at 0x105526940, file runtime.py>, line 238)
+            1042 MAKE_FUNCTION
+            1044 SET_FUNCTION_ATTRIBUTE 4
+            1046 STORE_NAME           (_standalone_node_bridge_process)
+
+329:        1048 LOAD_CONST           (('kwargs', 'Any', 'return', 'dict[str, Any]'))
+            1050 LOAD_CONST           (<Code311 code object _standalone_node_bridge at 0x1055269a0, file runtime.py>, line 329)
+            1052 MAKE_FUNCTION
+            1054 SET_FUNCTION_ATTRIBUTE 4
+            1056 STORE_NAME           (_standalone_node_bridge)
+
+346:        1058 LOAD_CONST           (('error', 'Any', 'return', 'bool'))
+            1060 LOAD_CONST           (<Code311 code object _standalone_phone_supply_retryable at 0x1055269d0, file runtime.py>, line 346)
+            1062 MAKE_FUNCTION
+            1064 SET_FUNCTION_ATTRIBUTE 4
+            1066 STORE_NAME           (_standalone_phone_supply_retryable)
+
+354:        1068 LOAD_CONST           (('self', 'Any', 'kwargs', 'Any', 'return', 'Any'))
+            1070 LOAD_CONST           (<Code311 code object _standalone_sms_adapter_get_number at 0x105526a00, file runtime.py>, line 354)
+            1072 MAKE_FUNCTION
+            1074 SET_FUNCTION_ATTRIBUTE 4
+            1076 STORE_NAME           (_standalone_sms_adapter_get_number)
+
+371:        1078 LOAD_NAME            (DEFAULT_DATA_DIR)
+            1080 BUILD_TUPLE          1
+            1082 LOAD_CONST           (('data_dir', 'Path', 'return', 'dict[str, Any]'))
+            1084 LOAD_CONST           (<Code311 code object default_settings at 0x1055263d0, file runtime.py>, line 371)
+            1086 MAKE_FUNCTION
+            1088 SET_FUNCTION_ATTRIBUTE 4
+            1090 SET_FUNCTION_ATTRIBUTE 1
+            1092 STORE_NAME           (default_settings)
+
+421:        1094 LOAD_BUILD_CLASS
+            1096 PUSH_NULL
+            1098 LOAD_CONST           (<Code311 code object ImporterConfigStore at 0x105526a30, file runtime.py>, line 421)
+            1100 MAKE_FUNCTION
+            1102 LOAD_CONST           ("ImporterConfigStore")
+            1104 CALL                 (2 positional)
+            1112 STORE_NAME           (ImporterConfigStore)
+
+531:        1114 LOAD_CONST           (('base', 'dict[str, Any]', 'update', 'dict[str, Any]', 'return', 'dict[str, Any]'))
+            1116 LOAD_CONST           (<Code311 code object _merge at 0x105526250, file runtime.py>, line 531)
+            1118 MAKE_FUNCTION
+            1120 SET_FUNCTION_ATTRIBUTE 4
+            1122 STORE_NAME           (_merge)
+
+541:        1124 LOAD_NAME            (dataclass)
+            1126 PUSH_NULL
+            1128 LOAD_CONST           (True)
+            1130 LOAD_CONST           (('frozen',))
+            1132 CALL_KW              1
+
+542:        1134 LOAD_BUILD_CLASS
+            1136 PUSH_NULL
+            1138 LOAD_CONST           (<Code311 code object ManualMailboxEntry at 0x105526280, file runtime.py>, line 541)
+            1140 MAKE_FUNCTION
+            1142 LOAD_CONST           ("ManualMailboxEntry")
+            1144 CALL                 (2 positional)
+
+541:        1152 CALL                 (0 positional)
+
+542:        1160 STORE_NAME           (ManualMailboxEntry)
+
+550:        1162 LOAD_BUILD_CLASS
+            1164 PUSH_NULL
+            1166 LOAD_CONST           (<Code311 code object ManualMailboxPool at 0x10552c3d0, file runtime.py>, line 550)
+            1168 MAKE_FUNCTION
+            1170 LOAD_CONST           ("ManualMailboxPool")
+            1172 CALL                 (2 positional)
+            1180 STORE_NAME           (ManualMailboxPool)
+
+817:        1182 LOAD_BUILD_CLASS
+            1184 PUSH_NULL
+            1186 LOAD_CONST           (<Code311 code object ManualCodeCoordinator at 0x10552c4f0, file runtime.py>, line 817)
+            1188 MAKE_FUNCTION
+            1190 LOAD_CONST           ("ManualCodeCoordinator")
+            1192 CALL                 (2 positional)
+            1200 STORE_NAME           (ManualCodeCoordinator)
+
+974:        1202 LOAD_BUILD_CLASS
+            1204 PUSH_NULL
+            1206 LOAD_CONST           (<Code311 code object ManualEmailOtpProvider at 0x10552c7c0, file runtime.py>, line 974)
+            1208 MAKE_FUNCTION
+            1210 LOAD_CONST           ("ManualEmailOtpProvider")
+            1212 CALL                 (2 positional)
+            1220 STORE_NAME           (ManualEmailOtpProvider)
+
+1022:        1222 LOAD_BUILD_CLASS
+            1224 PUSH_NULL
+            1226 LOAD_CONST           (<Code311 code object OutlookMailboxOtpProvider at 0x10552c9d0, file runtime.py>, line 1022)
+            1228 MAKE_FUNCTION
+            1230 LOAD_CONST           ("OutlookMailboxOtpProvider")
+            1232 CALL                 (2 positional)
+            1240 STORE_NAME           (OutlookMailboxOtpProvider)
+
+1092:        1242 LOAD_BUILD_CLASS
+            1244 PUSH_NULL
+            1246 LOAD_CONST           (<Code311 code object AutoEmailPhaseGate at 0x10552cb50, file runtime.py>, line 1092)
+            1248 MAKE_FUNCTION
+            1250 LOAD_CONST           ("AutoEmailPhaseGate")
+            1252 CALL                 (2 positional)
+            1260 STORE_NAME           (AutoEmailPhaseGate)
+
+1126:        1262 LOAD_BUILD_CLASS
+            1264 PUSH_NULL
+            1266 LOAD_CONST           (<Code311 code object GptMailOtpProvider at 0x10552cd30, file runtime.py>, line 1126)
+            1268 MAKE_FUNCTION
+            1270 LOAD_CONST           ("GptMailOtpProvider")
+            1272 CALL                 (2 positional)
+            1280 STORE_NAME           (GptMailOtpProvider)
+
+1284:        1282 LOAD_BUILD_CLASS
+            1284 PUSH_NULL
+            1286 LOAD_CONST           (<Code311 code object UrlMailboxOtpProvider at 0x105531fa0, file runtime.py>, line 1284)
+            1288 MAKE_FUNCTION
+            1290 LOAD_CONST           ("UrlMailboxOtpProvider")
+            1292 CALL                 (2 positional)
+            1300 STORE_NAME           (UrlMailboxOtpProvider)
+
+1391:        1302 LOAD_BUILD_CLASS
+            1304 PUSH_NULL
+            1306 LOAD_CONST           (<Code311 code object EmailAuthImporter at 0x105531880, file runtime.py>, line 1391)
+            1308 MAKE_FUNCTION
+            1310 LOAD_CONST           ("EmailAuthImporter")
+            1312 CALL                 (2 positional)
+            1320 STORE_NAME           (EmailAuthImporter)
+            1322 RETURN_CONST         (None)
+         >> 1324 PUSH_EXC_INFO
+
+ 34:        1326 LOAD_NAME            (Exception)
+            1328 CHECK_EXC_MATCH
+            1330 POP_JUMP_IF_FALSE    (to 1346)
+            1334 POP_TOP
+
+ 35:        1336 LOAD_CONST           (None)
+            1338 STORE_NAME           (_curl_requests)
+            1340 POP_EXCEPT
+            1342 EXTENDED_ARG         (512)
+            1344 JUMP_BACKWARD_NO_INTERRUPT (to 204)
+
+ 34:     >> 1346 RERAISE              0
+         >> 1348 COPY                 3
+            1350 POP_EXCEPT
+            1352 RERAISE              1
+
+ExceptionTable:
+  192 to 202 -> 1324 [0]
+  1324 to 1338 -> 1348 [1] lasti
+  1346 to 1346 -> 1348 [1] lasti
+
+# Method Name:       _clean
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        79
+# Constants:
+#    0: None
+#    1: ''
+# Names:
+#    0: str
+#    1: strip

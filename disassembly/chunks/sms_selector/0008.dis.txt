@@ -1,0 +1,800 @@
+            2590 LOAD_FAST            (best)
+            2592 LOAD_ATTR            (provider_id)
+            2612 FORMAT_SIMPLE
+            2614 LOAD_CONST           (" 库存")
+
+646:        2616 LOAD_FAST            (best)
+            2618 LOAD_ATTR            (count)
+            2638 FORMAT_SIMPLE
+            2640 LOAD_CONST           (" 价格")
+            2642 LOAD_FAST            (best)
+            2644 LOAD_ATTR            (price)
+            2664 LOAD_CONST           (".4f")
+            2666 FORMAT_WITH_SPEC
+            2668 LOAD_FAST            (extra)
+            2670 FORMAT_SIMPLE
+
+645:        2672 BUILD_STRING         12
+
+644:        2674 CALL                 (1 positional)
+            2682 POP_TOP
+            2684 JUMP_FORWARD         (to 2720)
+
+649:     >> 2686 LOAD_FAST            (self)
+            2688 LOAD_ATTR            (NULL|self + _log)
+            2708 LOAD_CONST           ("智能选号暂无可用候选，可能是库存为0、最高价格过低或候选处于冷却")
+            2710 CALL                 (1 positional)
+            2718 POP_TOP
+
+633:     >> 2720 LOAD_CONST           (None)
+            2722 LOAD_CONST           (None)
+            2724 LOAD_CONST           (None)
+            2726 CALL                 (2 positional)
+            2734 POP_TOP
+
+650:        2736 LOAD_GLOBAL          (NULL + list)
+            2746 LOAD_FAST            (self)
+            2748 LOAD_ATTR            (candidates)
+            2768 CALL                 (1 positional)
+            2776 RETURN_VALUE
+
+589:     >> 2778 PUSH_EXC_INFO
+            2780 WITH_EXCEPT_START    0
+            2782 TO_BOOL
+            2790 POP_JUMP_IF_TRUE     (to 2796)
+            2794 RERAISE              2
+         >> 2796 POP_TOP
+            2798 POP_EXCEPT
+            2800 POP_TOP
+            2802 POP_TOP
+            2804 EXTENDED_ARG         (768)
+            2806 JUMP_BACKWARD_NO_INTERRUPT (to 996)
+         >> 2808 COPY                 3
+            2810 POP_EXCEPT
+            2812 RERAISE              1
+         >> 2814 SWAP                 (TOS <-> TOS1)
+            2816 POP_TOP
+
+618:        2818 SWAP                 (TOS <-> TOS1)
+            2820 STORE_FAST           (row)
+            2822 RERAISE              0
+         >> 2824 SWAP                 (TOS <-> TOS1)
+            2826 POP_TOP
+
+625:        2828 SWAP                 (TOS <-> TOS1)
+            2830 STORE_FAST           (row)
+            2832 RERAISE              0
+         >> 2834 PUSH_EXC_INFO
+
+627:        2836 LOAD_GLOBAL          (Exception)
+            2846 CHECK_EXC_MATCH
+            2848 POP_JUMP_IF_FALSE    (to 2966)
+            2852 STORE_FAST           (exc)
+
+628:        2854 LOAD_GLOBAL          (NULL + str)
+            2864 LOAD_FAST            (exc)
+            2866 CALL                 (1 positional)
+            2874 LOAD_FAST            (self)
+            2876 STORE_ATTR           (last_error)
+
+629:        2886 LOAD_FAST            (self)
+            2888 LOAD_ATTR            (NULL|self + _log)
+            2908 LOAD_CONST           ("智能选号刷新失败: ")
+            2910 LOAD_FAST            (exc)
+            2912 FORMAT_SIMPLE
+            2914 BUILD_STRING         2
+            2916 CALL                 (1 positional)
+            2924 POP_TOP
+
+630:        2926 BUILD_LIST           0
+            2928 SWAP                 (TOS <-> TOS1)
+            2930 POP_EXCEPT
+            2932 LOAD_CONST           (None)
+            2934 STORE_FAST           (exc)
+            2936 DELETE_FAST          (exc)
+
+615:        2938 SWAP                 (TOS <-> TOS1)
+            2940 LOAD_CONST           (None)
+            2942 LOAD_CONST           (None)
+            2944 LOAD_CONST           (None)
+            2946 CALL                 (2 positional)
+            2954 POP_TOP
+            2956 RETURN_VALUE
+         >> 2958 LOAD_CONST           (None)
+            2960 STORE_FAST           (exc)
+            2962 DELETE_FAST          (exc)
+            2964 RERAISE              1
+
+627:     >> 2966 RERAISE              0
+         >> 2968 COPY                 3
+            2970 POP_EXCEPT
+            2972 RERAISE              1
+
+615:     >> 2974 PUSH_EXC_INFO
+            2976 WITH_EXCEPT_START    0
+            2978 TO_BOOL
+            2986 POP_JUMP_IF_TRUE     (to 2992)
+            2990 RERAISE              2
+         >> 2992 POP_TOP
+            2994 POP_EXCEPT
+            2996 POP_TOP
+            2998 POP_TOP
+            3000 EXTENDED_ARG         (512)
+            3002 JUMP_BACKWARD_NO_INTERRUPT (to 1962)
+         >> 3004 COPY                 3
+            3006 POP_EXCEPT
+            3008 RERAISE              1
+         >> 3010 SWAP                 (TOS <-> TOS1)
+            3012 POP_TOP
+
+635:        3014 SWAP                 (TOS <-> TOS1)
+            3016 STORE_FAST           (row)
+            3018 RERAISE              0
+
+633:     >> 3020 PUSH_EXC_INFO
+            3022 WITH_EXCEPT_START    0
+            3024 TO_BOOL
+            3032 POP_JUMP_IF_TRUE     (to 3038)
+            3036 RERAISE              2
+         >> 3038 POP_TOP
+            3040 POP_EXCEPT
+            3042 POP_TOP
+            3044 POP_TOP
+            3046 JUMP_BACKWARD_NO_INTERRUPT (to 2736)
+         >> 3048 COPY                 3
+            3050 POP_EXCEPT
+            3052 RERAISE              1
+
+ExceptionTable:
+  438 to 926 -> 2778 [1] lasti
+  948 to 978 -> 2778 [1] lasti
+  1612 to 1706 -> 2974 [1] lasti
+  1708 to 1748 -> 2814 [3]
+  1750 to 1754 -> 2974 [1] lasti
+  1758 to 1832 -> 2834 [1]
+  1834 to 1882 -> 2824 [3]
+  1892 to 1920 -> 2824 [3]
+  1922 to 1944 -> 2834 [1]
+  2028 to 2086 -> 3020 [1] lasti
+  2088 to 2136 -> 3010 [3]
+  2146 to 2174 -> 3010 [3]
+  2176 to 2718 -> 3020 [1] lasti
+  2778 to 2796 -> 2808 [3] lasti
+  2814 to 2822 -> 2974 [1] lasti
+  2824 to 2832 -> 2834 [1]
+  2834 to 2852 -> 2968 [2] lasti
+  2854 to 2926 -> 2958 [2] lasti
+  2928 to 2928 -> 2968 [2] lasti
+  2930 to 2936 -> 2974 [1] lasti
+  2958 to 2966 -> 2968 [2] lasti
+  2968 to 2972 -> 2974 [1] lasti
+  2974 to 2992 -> 3004 [3] lasti
+  3010 to 3018 -> 3020 [1] lasti
+  3020 to 3038 -> 3048 [3] lasti
+
+# Method Name:       pick
+# Filename:          sms_selector.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  14
+# Stack size:        16
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        652
+# Constants:
+#    0: None
+#    1: 'last_kind'
+#    2: ''
+#    3: 'no_numbers'
+#    4: '智能选号兜底放宽: '
+#    5: '/'
+#    6: ' 冷却剩余'
+#    7: 0
+#    8: '秒'
+#    9: '智能选号容量兜底: '
+# Names:
+#    0: set
+#    1: refresh
+#    2: time
+#    3: lock
+#    4: _load_shared_stats_locked
+#    5: _target_pool
+#    6: _pool_order
+#    7: country
+#    8: provider_id
+#    9: stats
+#   10: get
+#   11: _is_cooled
+#   12: fallback
+#   13: str
+#   14: append
+#   15: setdefault
+#   16: pool
+#   17: extend
+#   18: _has_route_capacity
+#   19: _try_reserve
+#   20: _log
+#   21: max
+#   22: int
+#   23: cooldown_until
+# Varnames:
+#	self, exclude_routes, rows, now, target_pool, pool_order, name, available_by_pool, fallback_available, candidate, key, stat, ordered, pool
+# Positional arguments:
+#	self, exclude_routes
+# Local variables:
+#    2: rows
+#    3: now
+#    4: target_pool
+#    5: pool_order
+#    6: name
+#    7: available_by_pool
+#    8: fallback_available
+#    9: candidate
+#   10: key
+#   11: stat
+#   12: ordered
+#   13: pool
+652:           0 RESUME               0
+
+653:           2 LOAD_FAST            (exclude_routes)
+               4 COPY                 1
+               6 TO_BOOL
+              14 POP_JUMP_IF_TRUE     (to 38)
+              18 POP_TOP
+              20 LOAD_GLOBAL          (NULL + set)
+              30 CALL                 (0 positional)
+         >>   38 STORE_FAST           (exclude_routes)
+
+654:          40 LOAD_FAST            (self)
+              42 LOAD_ATTR            (NULL|self + refresh)
+              62 CALL                 (0 positional)
+              70 STORE_FAST           (rows)
+
+655:          72 LOAD_FAST            (rows)
+              74 TO_BOOL
+              82 POP_JUMP_IF_TRUE     (to 88)
+
+656:          86 RETURN_CONST         (None)
+
+657:     >>   88 LOAD_GLOBAL          (time)
+              98 LOAD_ATTR            (time)
+             118 PUSH_NULL
+             120 CALL                 (0 positional)
+             128 STORE_FAST           (now)
+
+658:         130 LOAD_FAST            (self)
+             132 LOAD_ATTR            (lock)
+             152 BEFORE_WITH
+             154 POP_TOP
+
+659:         156 LOAD_FAST            (self)
+             158 LOAD_ATTR            (NULL|self + _load_shared_stats_locked)
+             178 CALL                 (0 positional)
+             186 POP_TOP
+
+660:         188 LOAD_FAST            (self)
+             190 LOAD_ATTR            (NULL|self + _target_pool)
+             210 CALL                 (0 positional)
+             218 STORE_FAST           (target_pool)
+
+661:         220 LOAD_FAST            (self)
+             222 LOAD_ATTR            (NULL|self + _pool_order)
+             242 LOAD_FAST            (target_pool)
+             244 CALL                 (1 positional)
+             252 STORE_FAST           (pool_order)
+
+662:         254 LOAD_FAST            (pool_order)
+             256 GET_ITER
+             258 LOAD_FAST_AND_CLEAR  (name)
+             260 SWAP                 (TOS <-> TOS1)
+             262 BUILD_MAP            0
+             264 SWAP                 (TOS <-> TOS1)
+             266 GET_ITER
+             268 FOR_ITER             (to 282)
+             272 STORE_FAST_LOAD_FAST (name, name)
+             274 BUILD_LIST           0
+             276 MAP_ADD              2
+             278 JUMP_BACKWARD        (to 268)
+         >>  282 END_FOR
+             284 POP_TOP
+             286 STORE_FAST           (available_by_pool)
+             288 STORE_FAST           (name)
+
+663:         290 BUILD_LIST           0
+             292 STORE_FAST           (fallback_available)
+
+664:         294 LOAD_FAST            (rows)
+         >>  296 GET_ITER
+             298 FOR_ITER             (to 756)
+             302 STORE_FAST           (candidate)
+
+665:         304 LOAD_FAST            (candidate)
+             306 LOAD_ATTR            (country)
+             326 LOAD_FAST            (candidate)
+             328 LOAD_ATTR            (provider_id)
+             348 BUILD_TUPLE          2
+             350 STORE_FAST           (key)
+
+666:         352 LOAD_FAST_LOAD_FAST  (key, exclude_routes)
+             354 CONTAINS_OP          (in)
+             358 POP_JUMP_IF_FALSE    (to 366)
+
+667:         362 JUMP_BACKWARD        (to 298)
+
+668:     >>  366 LOAD_FAST            (self)
+             368 LOAD_ATTR            (stats)
+             388 LOAD_ATTR            (NULL|self + get)
+             408 LOAD_FAST            (key)
+             410 CALL                 (1 positional)
+             418 COPY                 1
+             420 TO_BOOL
+             428 POP_JUMP_IF_TRUE     (to 436)
+             432 POP_TOP
+         >>  434 BUILD_MAP            0
+         >>  436 STORE_FAST           (stat)
+
+669:         438 LOAD_FAST            (self)
+             440 LOAD_ATTR            (NULL|self + _is_cooled)
+             460 LOAD_FAST_LOAD_FAST  (key, now)
+             462 CALL                 (2 positional)
+             470 TO_BOOL
+             478 POP_JUMP_IF_FALSE    (to 598)
+             482 LOAD_FAST            (candidate)
+             484 LOAD_ATTR            (fallback)
+             504 TO_BOOL
+             512 POP_JUMP_IF_TRUE     (to 598)
+             516 LOAD_GLOBAL          (NULL + str)
+             526 LOAD_FAST            (stat)
+             528 LOAD_ATTR            (NULL|self + get)
+             548 LOAD_CONST           ("last_kind")
+             550 CALL                 (1 positional)
+             558 COPY                 1
+             560 TO_BOOL
+             568 POP_JUMP_IF_TRUE     (to 576)
+             572 POP_TOP
+             574 LOAD_CONST           ("")
+         >>  576 CALL                 (1 positional)
+             584 LOAD_CONST           ("no_numbers")
+             586 COMPARE_OP           (!=)
+             590 POP_JUMP_IF_FALSE    (to 598)
+
+670:         594 JUMP_BACKWARD        (to 298)
+
+671:     >>  598 LOAD_FAST            (candidate)
+             600 LOAD_ATTR            (fallback)
+             620 TO_BOOL
+             628 POP_JUMP_IF_FALSE    (to 666)
+
+672:         632 LOAD_FAST            (fallback_available)
+             634 LOAD_ATTR            (NULL|self + append)
+             654 LOAD_FAST            (candidate)
+             656 CALL                 (1 positional)
+             664 POP_TOP
+
+673:     >>  666 LOAD_FAST            (available_by_pool)
+             668 LOAD_ATTR            (NULL|self + setdefault)
+             688 LOAD_FAST            (candidate)
+             690 LOAD_ATTR            (pool)
+             710 BUILD_LIST           0
+             712 CALL                 (2 positional)
+             720 LOAD_ATTR            (NULL|self + append)
+             740 LOAD_FAST            (candidate)
+             742 CALL                 (1 positional)
+             750 POP_TOP
+             752 JUMP_BACKWARD        (to 298)
+
+664:     >>  756 END_FOR
+             758 POP_TOP
+
+674:         760 BUILD_LIST           0
+             762 STORE_FAST           (ordered)
+
+675:         764 LOAD_FAST            (pool_order)
+             766 GET_ITER
+             768 FOR_ITER             (to 860)
+             772 STORE_FAST           (pool)
+
+676:         774 LOAD_FAST            (ordered)
+             776 LOAD_ATTR            (NULL|self + extend)
+             796 LOAD_FAST            (available_by_pool)
+             798 LOAD_ATTR            (NULL|self + get)
+             818 LOAD_FAST            (pool)
+             820 CALL                 (1 positional)
+             828 COPY                 1
+             830 TO_BOOL
+             838 POP_JUMP_IF_TRUE     (to 846)
+             842 POP_TOP
+             844 BUILD_LIST           0
+         >>  846 CALL                 (1 positional)
+             854 POP_TOP
+             856 JUMP_BACKWARD        (to 768)
+
+675:     >>  860 END_FOR
+             862 POP_TOP
+
+677:         864 LOAD_FAST            (ordered)
+             866 TO_BOOL
+             874 POP_JUMP_IF_TRUE     (to 896)
+             878 LOAD_FAST            (fallback_available)
+             880 TO_BOOL
+             888 POP_JUMP_IF_FALSE    (to 896)
+
+678:         892 LOAD_FAST            (fallback_available)
+             894 STORE_FAST           (ordered)
+
+679:     >>  896 LOAD_FAST            (ordered)
+         >>  898 GET_ITER
+             900 FOR_ITER             (to 1342)
+             904 STORE_FAST           (candidate)
+
+680:         906 LOAD_FAST            (candidate)
+             908 LOAD_ATTR            (country)
+             928 LOAD_FAST            (candidate)
+             930 LOAD_ATTR            (provider_id)
+             950 BUILD_TUPLE          2
+         >>  952 STORE_FAST           (key)
+
+681:         954 LOAD_FAST            (self)
+             956 LOAD_ATTR            (stats)
+             976 LOAD_ATTR            (NULL|self + get)
+             996 LOAD_FAST            (key)
+             998 CALL                 (1 positional)
+            1006 COPY                 1
+            1008 TO_BOOL
+            1016 POP_JUMP_IF_TRUE     (to 1024)
+            1020 POP_TOP
+            1022 BUILD_MAP            0
+         >> 1024 STORE_FAST           (stat)
+
+682:        1026 LOAD_FAST            (self)
+            1028 LOAD_ATTR            (NULL|self + _has_route_capacity)
+            1048 LOAD_FAST_LOAD_FAST  (candidate, stat)
+            1050 LOAD_FAST            (now)
+            1052 CALL                 (3 positional)
+            1060 TO_BOOL
+            1068 POP_JUMP_IF_TRUE     (to 1076)
+
+683:        1072 JUMP_BACKWARD        (to 900)
+
+684:     >> 1076 LOAD_FAST            (self)
+            1078 LOAD_ATTR            (NULL|self + _try_reserve)
+            1098 LOAD_FAST            (candidate)
+            1100 CALL                 (1 positional)
+            1108 TO_BOOL
+            1116 POP_JUMP_IF_TRUE     (to 1124)
+
+685:        1120 JUMP_BACKWARD        (to 900)
+
+686:     >> 1124 LOAD_FAST            (candidate)
+            1126 LOAD_ATTR            (fallback)
+            1146 TO_BOOL
+            1154 POP_JUMP_IF_FALSE    (to 1316)
+
+687:        1158 LOAD_FAST            (self)
+            1160 LOAD_ATTR            (NULL|self + _log)
+
+688:        1180 LOAD_CONST           ("智能选号兜底放宽: ")
+            1182 LOAD_FAST            (candidate)
+            1184 LOAD_ATTR            (country)
+            1204 FORMAT_SIMPLE
+            1206 LOAD_CONST           ("/")
+            1208 LOAD_FAST            (candidate)
+            1210 LOAD_ATTR            (provider_id)
+            1230 FORMAT_SIMPLE
+            1232 LOAD_CONST           (" 冷却剩余")
+
+689:        1234 LOAD_GLOBAL          (NULL + max)
+            1244 LOAD_CONST           (0)
+            1246 LOAD_GLOBAL          (NULL + int)
+            1256 LOAD_FAST            (candidate)
+            1258 LOAD_ATTR            (cooldown_until)
+            1278 LOAD_FAST            (now)
+            1280 BINARY_OP            (-)
+            1284 CALL                 (1 positional)
+            1292 CALL                 (2 positional)
+            1300 FORMAT_SIMPLE
+            1302 LOAD_CONST           ("秒")
+
+688:        1304 BUILD_STRING         7
+
+687:        1306 CALL                 (1 positional)
+            1314 POP_TOP
+
+691:     >> 1316 LOAD_FAST            (candidate)
+            1318 SWAP                 (TOS <-> TOS1)
+            1320 POP_TOP
+
+658:        1322 SWAP                 (TOS <-> TOS1)
+            1324 LOAD_CONST           (None)
+            1326 LOAD_CONST           (None)
+            1328 LOAD_CONST           (None)
+            1330 CALL                 (2 positional)
+            1338 POP_TOP
+            1340 RETURN_VALUE
+
+679:     >> 1342 END_FOR
+            1344 POP_TOP
+
+692:        1346 LOAD_FAST            (rows)
+         >> 1348 GET_ITER
+            1350 FOR_ITER             (to 1776)
+            1354 STORE_FAST           (candidate)
+
+693:        1356 LOAD_FAST            (candidate)
+            1358 LOAD_ATTR            (country)
+            1378 LOAD_FAST            (candidate)
+            1380 LOAD_ATTR            (provider_id)
+            1400 BUILD_TUPLE          2
+            1402 STORE_FAST           (key)
+
+694:        1404 LOAD_FAST_LOAD_FAST  (key, exclude_routes)
+            1406 CONTAINS_OP          (in)
+            1410 POP_JUMP_IF_FALSE    (to 1418)
+
+695:        1414 JUMP_BACKWARD        (to 1350)
+
+696:     >> 1418 LOAD_FAST            (self)
+            1420 LOAD_ATTR            (stats)
+            1440 LOAD_ATTR            (NULL|self + get)
+            1460 LOAD_FAST            (key)
+            1462 CALL                 (1 positional)
+            1470 COPY                 1
+            1472 TO_BOOL
+            1480 POP_JUMP_IF_TRUE     (to 1488)
+            1484 POP_TOP
+         >> 1486 BUILD_MAP            0
+         >> 1488 STORE_FAST           (stat)
+
+697:        1490 LOAD_FAST            (self)
+            1492 LOAD_ATTR            (NULL|self + _is_cooled)
+            1512 LOAD_FAST_LOAD_FAST  (key, now)
+            1514 CALL                 (2 positional)
+            1522 TO_BOOL
+            1530 POP_JUMP_IF_FALSE    (to 1616)
+            1534 LOAD_GLOBAL          (NULL + str)
+            1544 LOAD_FAST            (stat)
+            1546 LOAD_ATTR            (NULL|self + get)
+            1566 LOAD_CONST           ("last_kind")
+            1568 CALL                 (1 positional)
+            1576 COPY                 1
+            1578 TO_BOOL
+            1586 POP_JUMP_IF_TRUE     (to 1594)
+            1590 POP_TOP
+            1592 LOAD_CONST           ("")
+         >> 1594 CALL                 (1 positional)
+            1602 LOAD_CONST           ("no_numbers")
+            1604 COMPARE_OP           (!=)
+            1608 POP_JUMP_IF_FALSE    (to 1616)
+
+698:        1612 JUMP_BACKWARD        (to 1350)
+
+699:     >> 1616 LOAD_FAST            (self)
+            1618 LOAD_ATTR            (NULL|self + _try_reserve)
+            1638 LOAD_FAST            (candidate)
+            1640 CALL                 (1 positional)
+            1648 TO_BOOL
+            1656 POP_JUMP_IF_TRUE     (to 1664)
+
+700:        1660 JUMP_BACKWARD        (to 1350)
+
+701:     >> 1664 LOAD_FAST            (self)
+            1666 LOAD_ATTR            (NULL|self + _log)
+            1686 LOAD_CONST           ("智能选号容量兜底: ")
+            1688 LOAD_FAST            (candidate)
+            1690 LOAD_ATTR            (country)
+            1710 FORMAT_SIMPLE
+            1712 LOAD_CONST           ("/")
+            1714 LOAD_FAST            (candidate)
+            1716 LOAD_ATTR            (provider_id)
+            1736 FORMAT_SIMPLE
+            1738 BUILD_STRING         4
+            1740 CALL                 (1 positional)
+            1748 POP_TOP
+
+702:        1750 LOAD_FAST            (candidate)
+            1752 SWAP                 (TOS <-> TOS1)
+            1754 POP_TOP
+
+658:        1756 SWAP                 (TOS <-> TOS1)
+            1758 LOAD_CONST           (None)
+            1760 LOAD_CONST           (None)
+            1762 LOAD_CONST           (None)
+            1764 CALL                 (2 positional)
+            1772 POP_TOP
+            1774 RETURN_VALUE
+
+692:     >> 1776 END_FOR
+            1778 POP_TOP
+
+703:        1780 LOAD_FAST            (ordered)
+            1782 TO_BOOL
+            1790 POP_JUMP_IF_TRUE     (to 1814)
+
+704:        1794 NOP
+
+658:        1796 LOAD_CONST           (None)
+            1798 LOAD_CONST           (None)
+            1800 LOAD_CONST           (None)
+            1802 CALL                 (2 positional)
+            1810 POP_TOP
+            1812 RETURN_CONST         (None)
+
+705:     >> 1814 NOP
+
+658:        1816 LOAD_CONST           (None)
+            1818 LOAD_CONST           (None)
+            1820 LOAD_CONST           (None)
+            1822 CALL                 (2 positional)
+            1830 POP_TOP
+            1832 RETURN_CONST         (None)
+         >> 1834 SWAP                 (TOS <-> TOS1)
+            1836 POP_TOP
+
+662:        1838 SWAP                 (TOS <-> TOS1)
+            1840 STORE_FAST           (name)
+            1842 RERAISE              0
+
+658:     >> 1844 PUSH_EXC_INFO
+            1846 WITH_EXCEPT_START    0
+            1848 TO_BOOL
+            1856 POP_JUMP_IF_TRUE     (to 1862)
+            1860 RERAISE              2
+         >> 1862 POP_TOP
+            1864 POP_EXCEPT
+            1866 POP_TOP
+            1868 POP_TOP
+            1870 RETURN_CONST         (None)
+         >> 1872 COPY                 3
+            1874 POP_EXCEPT
+            1876 RERAISE              1
+
+ExceptionTable:
+  154 to 260 -> 1844 [1] lasti
+  262 to 284 -> 1834 [3]
+  286 to 1320 -> 1844 [1] lasti
+  1342 to 1754 -> 1844 [1] lasti
+  1776 to 1794 -> 1844 [1] lasti
+  1814 to 1814 -> 1844 [1] lasti
+  1834 to 1842 -> 1844 [1] lasti
+  1844 to 1862 -> 1872 [3] lasti
+
+# Method Name:       classify_error
+# Filename:          sms_selector.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        707
+# Constants:
+#    0: None
+#    1: ''
+#    2: 'no_numbers'
+#    3: 'no numbers'
+#    4: 'no_number'
+#    5: '验证码超时'
+#    6: 'timeout'
+#    7: 'no_code'
+#    8: 'status=429'
+#    9: 'too many requests'
+#   10: 'rate limit'
+#   11: '注册接口限流'
+#   12: 'register_rate_limited'
+#   13: 'invalid_auth_step'
+#   14: 'invalid authorization step'
+#   15: '注册流程状态失效'
+#   16: 'invalid phone'
+#   17: 'phone rejected'
+#   18: 'phone_send_rejected'
+#   19: 'number you provided is not valid'
+#   20: 'phone_rejected'
+#   21: '注册被拒'
+#   22: 'status=400'
+#   23: 'register rejected'
+#   24: 'register_rejected'
+#   25: 'unsupported_country_region_territory'
+#   26: 'country, region'
+#   27: 'unsupported'
+#   28: 'price'
+#   29: 'too high'
+#   30: 'fail'
+# Names:
+#    0: str
+#    1: lower
+# Varnames:
+#	error, text
+# Positional arguments:
+#	error
+# Local variables:
+#    1: text
+707:           0 RESUME               0
+
+709:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (error)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + lower)
+              60 CALL                 (0 positional)
+              68 STORE_FAST           (text)
+
+710:          70 LOAD_CONST           ("no_numbers")
+              72 LOAD_FAST            (text)
+              74 CONTAINS_OP          (in)
+              78 POP_JUMP_IF_TRUE     (to 106)
+              82 LOAD_CONST           ("no numbers")
+              84 LOAD_FAST            (text)
+              86 CONTAINS_OP          (in)
+              90 POP_JUMP_IF_TRUE     (to 106)
+              94 LOAD_CONST           ("no_number")
+              96 LOAD_FAST            (text)
+              98 CONTAINS_OP          (in)
+             102 POP_JUMP_IF_FALSE    (to 108)
+
+711:     >>  106 RETURN_CONST         ("no_numbers")
+
+712:     >>  108 LOAD_CONST           ("验证码超时")
+             110 LOAD_FAST            (text)
+             112 CONTAINS_OP          (in)
+             116 POP_JUMP_IF_TRUE     (to 144)
+             120 LOAD_CONST           ("timeout")
+             122 LOAD_FAST            (text)
+             124 CONTAINS_OP          (in)
+             128 POP_JUMP_IF_TRUE     (to 144)
+             132 LOAD_CONST           ("no_code")
+             134 LOAD_FAST            (text)
+             136 CONTAINS_OP          (in)
+             140 POP_JUMP_IF_FALSE    (to 146)
+
+713:     >>  144 RETURN_CONST         ("timeout")
+
+714:     >>  146 LOAD_CONST           ("status=429")
+             148 LOAD_FAST            (text)
+             150 CONTAINS_OP          (in)
+             154 POP_JUMP_IF_TRUE     (to 194)
+             158 LOAD_CONST           ("too many requests")
+             160 LOAD_FAST            (text)
+             162 CONTAINS_OP          (in)
+             166 POP_JUMP_IF_TRUE     (to 194)
+             170 LOAD_CONST           ("rate limit")
+             172 LOAD_FAST            (text)
+             174 CONTAINS_OP          (in)
+             178 POP_JUMP_IF_TRUE     (to 194)
+             182 LOAD_CONST           ("注册接口限流")
+             184 LOAD_FAST            (text)
+             186 CONTAINS_OP          (in)
+             190 POP_JUMP_IF_FALSE    (to 196)
+
+715:     >>  194 RETURN_CONST         ("register_rate_limited")
+
+716:     >>  196 LOAD_CONST           ("invalid_auth_step")
+             198 LOAD_FAST            (text)
+             200 CONTAINS_OP          (in)
+             204 POP_JUMP_IF_TRUE     (to 232)
+             208 LOAD_CONST           ("invalid authorization step")
+             210 LOAD_FAST            (text)
+             212 CONTAINS_OP          (in)
+             216 POP_JUMP_IF_TRUE     (to 232)
+             220 LOAD_CONST           ("注册流程状态失效")
+             222 LOAD_FAST            (text)
+             224 CONTAINS_OP          (in)
+             228 POP_JUMP_IF_FALSE    (to 234)
+
+717:     >>  232 RETURN_CONST         ("invalid_auth_step")
+
+719:     >>  234 LOAD_CONST           ("invalid phone")
+             236 LOAD_FAST            (text)
+             238 CONTAINS_OP          (in)
+             242 POP_JUMP_IF_TRUE     (to 282)
+
+720:         246 LOAD_CONST           ("phone rejected")
+             248 LOAD_FAST            (text)
+             250 CONTAINS_OP          (in)
+             254 POP_JUMP_IF_TRUE     (to 282)
+
+721:         258 LOAD_CONST           ("phone_send_rejected")
+             260 LOAD_FAST            (text)

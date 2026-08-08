@@ -1,0 +1,800 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          plus_launcher.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        6
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1
+# Constants:
+#    0: 'Standalone entry point for the plus tool and its Node Sentinel fallback.'
+#    1: 0
+#    2: ('annotations',)
+#    3: None
+#    4: ('Path',)
+#    5: ('Any',)
+#    6: 'engine'
+#    7: <Code311 code object _run_sentinel_http_helper at 0x109567a00, file plus_launcher.py>, line 20
+#    8: <Code311 code object _smoke_test at 0x109536430, file plus_launcher.py>, line 52
+#    9: <Code311 code object _parity_info at 0x109536550, file plus_launcher.py>, line 103
+#   10: <Code311 code object _pressure_test at 0x109536580, file plus_launcher.py>, line 156
+#   11: <Code311 code object _read_version at 0x1095365b0, file plus_launcher.py>, line 172
+#   12: <Code311 code object main at 0x1095365e0, file plus_launcher.py>, line 184
+#   13: '__main__'
+#   14: ('args', 'list[str]', 'return', 'int')
+#   15: ('return', 'int')
+#   16: ('return', 'str')
+#   17: (None,)
+#   18: ('argv', 'list[str] | None', 'return', 'int')
+# Names:
+#    0: __doc__
+#    1: __future__
+#    2: annotations
+#    3: json
+#    4: hashlib
+#    5: os
+#    6: sys
+#    7: pathlib
+#    8: Path
+#    9: typing
+#   10: Any
+#   11: __file__
+#   12: resolve
+#   13: parent
+#   14: TOOL_DIR
+#   15: ENGINE_DIR
+#   16: str
+#   17: path
+#   18: insert
+#   19: _run_sentinel_http_helper
+#   20: _smoke_test
+#   21: _parity_info
+#   22: _pressure_test
+#   23: _read_version
+#   24: main
+#   25: __name__
+#   26: SystemExit
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ("Standalone entry point for the plus tool and its Node Sentinel fallback.")
+               4 STORE_NAME           (__doc__)
+
+  4:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (('annotations',))
+              10 IMPORT_NAME          (__future__)
+              12 IMPORT_FROM          (annotations)
+              14 STORE_NAME           (annotations)
+              16 POP_TOP
+
+  6:          18 LOAD_CONST           (0)
+              20 LOAD_CONST           (None)
+              22 IMPORT_NAME          (json)
+              24 STORE_NAME           (json)
+
+  7:          26 LOAD_CONST           (0)
+              28 LOAD_CONST           (None)
+              30 IMPORT_NAME          (hashlib)
+              32 STORE_NAME           (hashlib)
+
+  8:          34 LOAD_CONST           (0)
+              36 LOAD_CONST           (None)
+              38 IMPORT_NAME          (os)
+              40 STORE_NAME           (os)
+
+  9:          42 LOAD_CONST           (0)
+              44 LOAD_CONST           (None)
+              46 IMPORT_NAME          (sys)
+              48 STORE_NAME           (sys)
+
+ 10:          50 LOAD_CONST           (0)
+              52 LOAD_CONST           (('Path',))
+              54 IMPORT_NAME          (pathlib)
+              56 IMPORT_FROM          (Path)
+              58 STORE_NAME           (Path)
+              60 POP_TOP
+
+ 11:          62 LOAD_CONST           (0)
+              64 LOAD_CONST           (('Any',))
+              66 IMPORT_NAME          (typing)
+              68 IMPORT_FROM          (Any)
+              70 STORE_NAME           (Any)
+              72 POP_TOP
+
+ 14:          74 LOAD_NAME            (Path)
+              76 PUSH_NULL
+              78 LOAD_NAME            (__file__)
+              80 CALL                 (1 positional)
+              88 LOAD_ATTR            (NULL|self + resolve)
+             108 CALL                 (0 positional)
+             116 LOAD_ATTR            (parent)
+             136 STORE_NAME           (TOOL_DIR)
+
+ 15:         138 LOAD_NAME            (TOOL_DIR)
+             140 LOAD_CONST           ("engine")
+             142 BINARY_OP            (/)
+             146 STORE_NAME           (ENGINE_DIR)
+
+ 16:         148 LOAD_NAME            (str)
+             150 PUSH_NULL
+             152 LOAD_NAME            (ENGINE_DIR)
+             154 CALL                 (1 positional)
+             162 LOAD_NAME            (sys)
+             164 LOAD_ATTR            (path)
+             184 CONTAINS_OP          (not in)
+             188 POP_JUMP_IF_FALSE    (to 260)
+
+ 17:         192 LOAD_NAME            (sys)
+             194 LOAD_ATTR            (path)
+             214 LOAD_ATTR            (NULL|self + insert)
+             234 LOAD_CONST           (0)
+             236 LOAD_NAME            (str)
+             238 PUSH_NULL
+             240 LOAD_NAME            (ENGINE_DIR)
+             242 CALL                 (1 positional)
+             250 CALL                 (2 positional)
+             258 POP_TOP
+
+ 20:     >>  260 LOAD_CONST           (('args', 'list[str]', 'return', 'int'))
+             262 LOAD_CONST           (<Code311 code object _run_sentinel_http_helper at 0x109567a00, file plus_launcher.py>, line 20)
+             264 MAKE_FUNCTION
+             266 SET_FUNCTION_ATTRIBUTE 4
+             268 STORE_NAME           (_run_sentinel_http_helper)
+
+ 52:         270 LOAD_CONST           (('return', 'int'))
+             272 LOAD_CONST           (<Code311 code object _smoke_test at 0x109536430, file plus_launcher.py>, line 52)
+             274 MAKE_FUNCTION
+             276 SET_FUNCTION_ATTRIBUTE 4
+             278 STORE_NAME           (_smoke_test)
+
+103:         280 LOAD_CONST           (('return', 'int'))
+             282 LOAD_CONST           (<Code311 code object _parity_info at 0x109536550, file plus_launcher.py>, line 103)
+             284 MAKE_FUNCTION
+             286 SET_FUNCTION_ATTRIBUTE 4
+             288 STORE_NAME           (_parity_info)
+
+156:         290 LOAD_CONST           (('return', 'int'))
+             292 LOAD_CONST           (<Code311 code object _pressure_test at 0x109536580, file plus_launcher.py>, line 156)
+             294 MAKE_FUNCTION
+             296 SET_FUNCTION_ATTRIBUTE 4
+             298 STORE_NAME           (_pressure_test)
+
+172:         300 LOAD_CONST           (('return', 'str'))
+             302 LOAD_CONST           (<Code311 code object _read_version at 0x1095365b0, file plus_launcher.py>, line 172)
+             304 MAKE_FUNCTION
+             306 SET_FUNCTION_ATTRIBUTE 4
+             308 STORE_NAME           (_read_version)
+
+184:         310 LOAD_CONST           ((None,))
+             312 LOAD_CONST           (('argv', 'list[str] | None', 'return', 'int'))
+             314 LOAD_CONST           (<Code311 code object main at 0x1095365e0, file plus_launcher.py>, line 184)
+             316 MAKE_FUNCTION
+             318 SET_FUNCTION_ATTRIBUTE 4
+             320 SET_FUNCTION_ATTRIBUTE 1
+             322 STORE_NAME           (main)
+
+213:         324 LOAD_NAME            (__name__)
+             326 LOAD_CONST           ("__main__")
+             328 COMPARE_OP           (==)
+             332 POP_JUMP_IF_FALSE    (to 362)
+
+214:         336 LOAD_NAME            (SystemExit)
+             338 PUSH_NULL
+             340 LOAD_NAME            (main)
+             342 PUSH_NULL
+             344 CALL                 (0 positional)
+             352 CALL                 (1 positional)
+             360 RAISE_VARARGS        (exception instance)
+
+213:     >>  362 RETURN_CONST         (None)
+
+
+# Method Name:       _run_sentinel_http_helper
+# Filename:          plus_launcher.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  13
+# Stack size:        9
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        20
+# Constants:
+#    0: None
+#    1: 2
+#    2: 0
+#    3: '-c'
+#    4: 'sentinel_http_helper_bad_args'
+#    5: True
+#    6: ('file', 'flush')
+#    7: 5
+#    8: 'sentinel_http_helper_missing_args'
+#    9: '{}'
+#   10: 1.0
+#   11: 45000
+#   12: 1000.0
+#   13: 'sentinel_http_helper_bad_payload: '
+#   14: ''
+#   15: 'utf-8'
+#   16: False
+#   17: ('data', 'headers', 'timeout', 'verify')
+#   18: ('http', 'https')
+#   19: 'proxies'
+#   20: 200
+#   21: 300
+#   22: 'replace'
+#   23: 'requests_http_'
+#   24: ': '
+#   25: 180
+#   26: 1
+# Names:
+#    0: len
+#    1: print
+#    2: sys
+#    3: stderr
+#    4: json
+#    5: loads
+#    6: max
+#    7: float
+#    8: Exception
+#    9: requests
+#   10: str
+#   11: encode
+#   12: post
+#   13: int
+#   14: status_code
+#   15: stdout
+#   16: buffer
+#   17: write
+#   18: text
+# Varnames:
+#	args, script_args, url, body, proxy, timeout_ms, headers_json, headers, timeout, exc, requests, kwargs, response
+# Positional arguments:
+#	args
+# Local variables:
+#    1: script_args
+#    2: url
+#    3: body
+#    4: proxy
+#    5: timeout_ms
+#    6: headers_json
+#    7: headers
+#    8: timeout
+#    9: exc
+#   10: requests
+#   11: kwargs
+#   12: response
+ 20:           0 RESUME               0
+
+ 21:           2 LOAD_GLOBAL          (NULL + len)
+              12 LOAD_FAST            (args)
+              14 CALL                 (1 positional)
+              22 LOAD_CONST           (2)
+              24 COMPARE_OP           (<)
+              28 POP_JUMP_IF_TRUE     (to 50)
+              32 LOAD_FAST            (args)
+              34 LOAD_CONST           (0)
+              36 BINARY_SUBSCR
+              40 LOAD_CONST           ("-c")
+              42 COMPARE_OP           (!=)
+              46 POP_JUMP_IF_FALSE    (to 102)
+
+ 22:     >>   50 LOAD_GLOBAL          (NULL + print)
+              60 LOAD_CONST           ("sentinel_http_helper_bad_args")
+              62 LOAD_GLOBAL          (sys)
+              72 LOAD_ATTR            (stderr)
+              92 LOAD_CONST           (True)
+              94 LOAD_CONST           (('file', 'flush'))
+              96 CALL_KW              3
+              98 POP_TOP
+
+ 23:         100 RETURN_CONST         (2)
+
+ 24:     >>  102 LOAD_FAST            (args)
+             104 LOAD_CONST           (2)
+             106 LOAD_CONST           (None)
+             108 BINARY_SLICE
+             110 STORE_FAST           (script_args)
+
+ 25:         112 LOAD_GLOBAL          (NULL + len)
+             122 LOAD_FAST            (script_args)
+             124 CALL                 (1 positional)
+             132 LOAD_CONST           (5)
+             134 COMPARE_OP           (<)
+             138 POP_JUMP_IF_FALSE    (to 194)
+
+ 26:         142 LOAD_GLOBAL          (NULL + print)
+             152 LOAD_CONST           ("sentinel_http_helper_missing_args")
+             154 LOAD_GLOBAL          (sys)
+             164 LOAD_ATTR            (stderr)
+             184 LOAD_CONST           (True)
+             186 LOAD_CONST           (('file', 'flush'))
+             188 CALL_KW              3
+             190 POP_TOP
+
+ 27:         192 RETURN_CONST         (2)
+
+ 28:     >>  194 LOAD_FAST            (script_args)
+             196 LOAD_CONST           (None)
+             198 LOAD_CONST           (5)
+             200 BINARY_SLICE
+             202 UNPACK_SEQUENCE      5
+             206 STORE_FAST_STORE_FAST (url, body)
+             208 STORE_FAST_STORE_FAST (proxy, timeout_ms)
+             210 STORE_FAST           (headers_json)
+
+ 29:         212 NOP
+
+ 30:         214 LOAD_GLOBAL          (json)
+             224 LOAD_ATTR            (loads)
+             244 PUSH_NULL
+             246 LOAD_FAST            (headers_json)
+             248 COPY                 1
+             250 TO_BOOL
+             258 POP_JUMP_IF_TRUE     (to 266)
+             262 POP_TOP
+             264 LOAD_CONST           ("{}")
+         >>  266 CALL                 (1 positional)
+             274 STORE_FAST           (headers)
+
+ 31:         276 LOAD_GLOBAL          (NULL + max)
+             286 LOAD_CONST           (1.0)
+             288 LOAD_GLOBAL          (NULL + float)
+             298 LOAD_FAST            (timeout_ms)
+             300 COPY                 1
+             302 TO_BOOL
+             310 POP_JUMP_IF_TRUE     (to 318)
+             314 POP_TOP
+             316 LOAD_CONST           (45000)
+         >>  318 CALL                 (1 positional)
+             326 LOAD_CONST           (1000.0)
+             328 BINARY_OP            (/)
+             332 CALL                 (2 positional)
+             340 STORE_FAST           (timeout)
+
+ 35:         342 NOP
+
+ 36:         344 LOAD_CONST           (0)
+             346 LOAD_CONST           (None)
+             348 IMPORT_NAME          (requests)
+             350 STORE_FAST           (requests)
+
+ 38:         352 LOAD_GLOBAL          (NULL + str)
+             362 LOAD_FAST            (body)
+             364 COPY                 1
+             366 TO_BOOL
+             374 POP_JUMP_IF_TRUE     (to 382)
+             378 POP_TOP
+             380 LOAD_CONST           ("")
+         >>  382 CALL                 (1 positional)
+             390 LOAD_ATTR            (NULL|self + encode)
+             410 LOAD_CONST           ("utf-8")
+             412 CALL                 (1 positional)
+             420 LOAD_FAST_LOAD_FAST  (headers, timeout)
+             422 LOAD_CONST           (False)
+             424 LOAD_CONST           (('data', 'headers', 'timeout', 'verify'))
+             426 BUILD_CONST_KEY_MAP  4
+             428 STORE_FAST           (kwargs)
+
+ 39:         430 LOAD_FAST            (proxy)
+             432 TO_BOOL
+             440 POP_JUMP_IF_FALSE    (to 458)
+
+ 40:         444 LOAD_FAST_LOAD_FAST  (proxy, proxy)
+             446 LOAD_CONST           (('http', 'https'))
+             448 BUILD_CONST_KEY_MAP  2
+             450 LOAD_FAST            (kwargs)
+             452 LOAD_CONST           ("proxies")
+             454 STORE_SUBSCR
+
+ 41:     >>  458 LOAD_FAST            (requests)
+             460 LOAD_ATTR            (post)
+             480 PUSH_NULL
+             482 LOAD_FAST            (url)
+             484 BUILD_TUPLE          1
+             486 BUILD_MAP            0
+             488 LOAD_FAST            (kwargs)
+             490 DICT_MERGE           1
+             492 CALL_FUNCTION_EX     (keyword and positional arguments)
+             494 STORE_FAST           (response)
+
+ 42:         496 LOAD_CONST           (200)
+             498 LOAD_GLOBAL          (NULL + int)
+             508 LOAD_FAST            (response)
+             510 LOAD_ATTR            (status_code)
+             530 CALL                 (1 positional)
+             538 SWAP                 (TOS <-> TOS1)
+             540 COPY                 2
+             542 COMPARE_OP           (<=)
+             546 POP_JUMP_IF_FALSE    (to 562)
+             550 LOAD_CONST           (300)
+             552 COMPARE_OP           (<)
+             556 POP_JUMP_IF_FALSE    (to 738)
+             560 JUMP_FORWARD         (to 566)
+         >>  562 POP_TOP
+             564 JUMP_FORWARD         (to 738)
+
+ 43:     >>  566 LOAD_GLOBAL          (sys)
+             576 LOAD_ATTR            (stdout)
+             596 LOAD_ATTR            (buffer)
+             616 LOAD_ATTR            (NULL|self + write)
+             636 LOAD_GLOBAL          (NULL + str)
+             646 LOAD_FAST            (response)
+             648 LOAD_ATTR            (text)
+             668 COPY                 1
+             670 TO_BOOL
+             678 POP_JUMP_IF_TRUE     (to 686)
+             682 POP_TOP
+             684 LOAD_CONST           ("")
+         >>  686 CALL                 (1 positional)
+             694 LOAD_ATTR            (NULL|self + encode)
+             714 LOAD_CONST           ("utf-8")
+             716 LOAD_CONST           ("replace")
+             718 CALL                 (2 positional)
+             726 CALL                 (1 positional)
+             734 POP_TOP
+
+ 44:         736 RETURN_CONST         (0)
+
+ 45:     >>  738 LOAD_GLOBAL          (NULL + print)
+             748 LOAD_CONST           ("requests_http_")
+             750 LOAD_FAST            (response)
+             752 LOAD_ATTR            (status_code)
+             772 FORMAT_SIMPLE
+             774 LOAD_CONST           (": ")
+             776 LOAD_GLOBAL          (NULL + str)
+             786 LOAD_FAST            (response)
+             788 LOAD_ATTR            (text)
+             808 COPY                 1
+             810 TO_BOOL
+             818 POP_JUMP_IF_TRUE     (to 826)
+             822 POP_TOP
+             824 LOAD_CONST           ("")
+         >>  826 CALL                 (1 positional)
+             834 LOAD_CONST           (None)
+             836 LOAD_CONST           (180)
+             838 BINARY_SLICE
+             840 FORMAT_SIMPLE
+             842 BUILD_STRING         4
+             844 LOAD_GLOBAL          (sys)
+             854 LOAD_ATTR            (stderr)
+             874 LOAD_CONST           (True)
+             876 LOAD_CONST           (('file', 'flush'))
+             878 CALL_KW              3
+             880 POP_TOP
+
+ 46:         882 RETURN_CONST         (1)
+         >>  884 PUSH_EXC_INFO
+
+ 32:         886 LOAD_GLOBAL          (Exception)
+             896 CHECK_EXC_MATCH
+             898 POP_JUMP_IF_FALSE    (to 978)
+             902 STORE_FAST           (exc)
+
+ 33:         904 LOAD_GLOBAL          (NULL + print)
+             914 LOAD_CONST           ("sentinel_http_helper_bad_payload: ")
+             916 LOAD_FAST            (exc)
+             918 FORMAT_SIMPLE
+             920 BUILD_STRING         2
+             922 LOAD_GLOBAL          (sys)
+             932 LOAD_ATTR            (stderr)
+             952 LOAD_CONST           (True)
+             954 LOAD_CONST           (('file', 'flush'))
+             956 CALL_KW              3
+             958 POP_TOP
+
+ 34:         960 POP_EXCEPT
+             962 LOAD_CONST           (None)
+             964 STORE_FAST           (exc)
+             966 DELETE_FAST          (exc)
+             968 RETURN_CONST         (2)
+         >>  970 LOAD_CONST           (None)
+             972 STORE_FAST           (exc)
+             974 DELETE_FAST          (exc)
+             976 RERAISE              1
+
+ 32:     >>  978 RERAISE              0
+         >>  980 COPY                 3
+             982 POP_EXCEPT
+             984 RERAISE              1
+         >>  986 PUSH_EXC_INFO
+
+ 47:         988 LOAD_GLOBAL          (Exception)
+             998 CHECK_EXC_MATCH
+            1000 POP_JUMP_IF_FALSE    (to 1092)
+            1004 STORE_FAST           (exc)
+
+ 48:        1006 LOAD_GLOBAL          (NULL + print)
+            1016 LOAD_GLOBAL          (NULL + str)
+            1026 LOAD_FAST            (exc)
+            1028 CALL                 (1 positional)
+            1036 LOAD_GLOBAL          (sys)
+            1046 LOAD_ATTR            (stderr)
+            1066 LOAD_CONST           (True)
+            1068 LOAD_CONST           (('file', 'flush'))
+            1070 CALL_KW              3
+            1072 POP_TOP
+
+ 49:        1074 POP_EXCEPT
+            1076 LOAD_CONST           (None)
+            1078 STORE_FAST           (exc)
+            1080 DELETE_FAST          (exc)
+            1082 RETURN_CONST         (1)
+         >> 1084 LOAD_CONST           (None)
+            1086 STORE_FAST           (exc)
+            1088 DELETE_FAST          (exc)
+            1090 RERAISE              1
+
+ 47:     >> 1092 RERAISE              0
+         >> 1094 COPY                 3
+            1096 POP_EXCEPT
+            1098 RERAISE              1
+
+ExceptionTable:
+  214 to 340 -> 884 [0]
+  344 to 734 -> 986 [0]
+  738 to 880 -> 986 [0]
+  884 to 902 -> 980 [1] lasti
+  904 to 958 -> 970 [1] lasti
+  970 to 978 -> 980 [1] lasti
+  986 to 1004 -> 1094 [1] lasti
+  1006 to 1072 -> 1084 [1] lasti
+  1084 to 1092 -> 1094 [1] lasti
+
+# Method Name:       _smoke_test
+# Filename:          plus_launcher.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  13
+# Stack size:        14
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        52
+# Constants:
+#    0: None
+#    1: 0
+#    2: ('license_info',)
+#    3: ('validate_node_chain_manifest',)
+#    4: ('ImapPoller',)
+#    5: 'frozen'
+#    6: False
+#    7: 'node.exe'
+#    8: 'real_sentinel_runner.js'
+#    9: '.cache/sentinel-*.js'
+#   10: True
+#   11: 'User is authenticated but not connected'
+#   12: 'connection reset'
+#   13: 'valid'
+#   14: 'node_timeout'
+#   15: 45
+#   16: 'contract'
+#   17: ''
+#   18: 'country'
+#   19: ('ok', 'version', 'license', 'node', 'node_exists', 'node_runner', 'node_runner_exists', 'node_sentinel_sdk_cache', 'node_chain_contract', 'curl_cffi_available', 'default_country', 'default_node_timeout', 'terminal_imap_fail_fast')
+#   20: ('ensure_ascii',)
+#   21: ('flush',)
+#   22: 'ok'
+#   23: 3
+# Names:
+#    0: license_gate
+#    1: license_info
+#    2: resource_runtime
+#    3: validate_node_chain_manifest
+#    4: runtime
+#    5: imap_poller
+#    6: ImapPoller
+#    7: getattr
+#    8: sys
+#    9: Path
+#   10: executable
+#   11: resolve
+#   12: parent
+#   13: TOOL_DIR
+#   14: NODE_DIR
+#   15: next
+#   16: glob
+#   17: Exception
+#   18: curl_cffi
+#   19: default_settings
+#   20: bool
+#   21: _is_terminal_connection_error
+#   22: is_file
+#   23: _read_version
+#   24: str
+#   25: get
+#   26: print
+#   27: json
+#   28: dumps
+# Varnames:
+#	license_info, validate_node_chain_manifest, runtime, ImapPoller, node, runner, cache, node_chain_manifest, curl_cffi, curl_cffi_available, defaults, terminal_imap_fail_fast, report
+# Local variables:
+#    0: license_info
+#    1: validate_node_chain_manifest
+#    2: runtime
+#    3: ImapPoller
+#    4: node
+#    5: runner
+#    6: cache
+#    7: node_chain_manifest
+#    8: curl_cffi
+#    9: curl_cffi_available
+#   10: defaults
+#   11: terminal_imap_fail_fast
+#   12: report
+ 52:           0 RESUME               0
+
+ 53:           2 LOAD_CONST           (0)
+               4 LOAD_CONST           (('license_info',))
+               6 IMPORT_NAME          (license_gate)
+               8 IMPORT_FROM          (license_info)
+              10 STORE_FAST           (license_info)
+              12 POP_TOP
+
+ 54:          14 LOAD_CONST           (0)
+              16 LOAD_CONST           (('validate_node_chain_manifest',))
+              18 IMPORT_NAME          (resource_runtime)
+              20 IMPORT_FROM          (validate_node_chain_manifest)
+              22 STORE_FAST           (validate_node_chain_manifest)
+              24 POP_TOP
+
+ 55:          26 LOAD_CONST           (0)
+              28 LOAD_CONST           (None)
+              30 IMPORT_NAME          (runtime)
+              32 STORE_FAST           (runtime)
+
+ 56:          34 LOAD_CONST           (0)
+              36 LOAD_CONST           (('ImapPoller',))
+              38 IMPORT_NAME          (imap_poller)
+              40 IMPORT_FROM          (ImapPoller)
+              42 STORE_FAST           (ImapPoller)
+              44 POP_TOP
+
+ 58:          46 LOAD_GLOBAL          (NULL + getattr)
+              56 LOAD_GLOBAL          (sys)
+              66 LOAD_CONST           ("frozen")
+              68 LOAD_CONST           (False)
+              70 CALL                 (3 positional)
+              78 TO_BOOL
+              86 POP_JUMP_IF_FALSE    (to 188)
+              90 LOAD_GLOBAL          (NULL + Path)
+             100 LOAD_GLOBAL          (sys)
+             110 LOAD_ATTR            (executable)
+             130 CALL                 (1 positional)
+             138 LOAD_ATTR            (NULL|self + resolve)
+             158 CALL                 (0 positional)
+             166 LOAD_ATTR            (parent)
+             186 JUMP_FORWARD         (to 198)
+         >>  188 LOAD_GLOBAL          (TOOL_DIR)
+         >>  198 LOAD_CONST           ("node.exe")
+             200 BINARY_OP            (/)
+             204 STORE_FAST           (node)
+
+ 59:         206 LOAD_FAST            (runtime)
+             208 LOAD_ATTR            (NODE_DIR)
+             228 LOAD_CONST           ("real_sentinel_runner.js")
+             230 BINARY_OP            (/)
+             234 STORE_FAST           (runner)
+
+ 60:         236 LOAD_GLOBAL          (NULL + next)
+             246 LOAD_FAST            (runtime)
+             248 LOAD_ATTR            (NODE_DIR)
+             268 LOAD_ATTR            (NULL|self + glob)
+             288 LOAD_CONST           (".cache/sentinel-*.js")
+             290 CALL                 (1 positional)
+             298 LOAD_CONST           (None)
+             300 CALL                 (2 positional)
+             308 STORE_FAST           (cache)
+
+ 61:         310 NOP
+
+ 62:         312 LOAD_FAST            (validate_node_chain_manifest)
+             314 PUSH_NULL
+             316 LOAD_FAST            (runtime)
+             318 LOAD_ATTR            (NODE_DIR)
+             338 CALL                 (1 positional)
+             346 STORE_FAST           (node_chain_manifest)
+
+ 65:         348 NOP
+
+ 66:         350 LOAD_CONST           (0)
+             352 LOAD_CONST           (None)
+             354 IMPORT_NAME          (curl_cffi)
+             356 STORE_FAST           (curl_cffi)
+
+ 67:         358 LOAD_CONST           (True)
+             360 STORE_FAST           (curl_cffi_available)
+
+ 70:         362 LOAD_FAST            (runtime)
+             364 LOAD_ATTR            (NULL|self + default_settings)
+             384 CALL                 (0 positional)
+             392 STORE_FAST           (defaults)
+
+ 71:         394 LOAD_GLOBAL          (NULL + bool)
+
+ 72:         404 LOAD_FAST            (ImapPoller)
+             406 LOAD_ATTR            (NULL|self + _is_terminal_connection_error)
+             426 LOAD_CONST           ("User is authenticated but not connected")
+             428 CALL                 (1 positional)
+             436 COPY                 1
+             438 TO_BOOL
+             446 POP_JUMP_IF_FALSE    (to 494)
+             450 POP_TOP
+
+ 73:         452 LOAD_FAST            (ImapPoller)
+             454 LOAD_ATTR            (NULL|self + _is_terminal_connection_error)
+             474 LOAD_CONST           ("connection reset")
+             476 CALL                 (1 positional)
+             484 TO_BOOL
+             492 UNARY_NOT
+
+ 71:     >>  494 CALL                 (1 positional)
+             502 STORE_FAST           (terminal_imap_fail_fast)
+
+ 76:         504 LOAD_GLOBAL          (NULL + bool)
+
+ 77:         514 LOAD_FAST            (license_info)
+             516 PUSH_NULL
+             518 CALL                 (0 positional)
+             526 LOAD_CONST           ("valid")
+             528 BINARY_SUBSCR
+             532 COPY                 1
+             534 TO_BOOL
+             542 POP_JUMP_IF_FALSE    (to 726)
+             546 POP_TOP
+
+ 78:         548 LOAD_FAST            (node)
+             550 LOAD_ATTR            (NULL|self + is_file)
+             570 CALL                 (0 positional)
+
+ 77:         578 COPY                 1
+             580 TO_BOOL
+             588 POP_JUMP_IF_FALSE    (to 726)
+             592 POP_TOP
+
+ 79:         594 LOAD_FAST            (runner)
+             596 LOAD_ATTR            (NULL|self + is_file)
+             616 CALL                 (0 positional)
+
+ 77:         624 COPY                 1
+             626 TO_BOOL
+             634 POP_JUMP_IF_FALSE    (to 726)
+             638 POP_TOP
+
+ 80:         640 LOAD_FAST            (cache)
+
+ 77:         642 COPY                 1
+             644 TO_BOOL
+             652 POP_JUMP_IF_FALSE    (to 726)
+             656 POP_TOP
+
+ 81:         658 LOAD_FAST            (curl_cffi_available)
+
+ 77:         660 COPY                 1
+             662 TO_BOOL
+             670 POP_JUMP_IF_FALSE    (to 726)
+             674 POP_TOP
+
+ 82:         676 LOAD_FAST            (node_chain_manifest)
+
+ 77:         678 COPY                 1
+             680 TO_BOOL
+             688 POP_JUMP_IF_FALSE    (to 726)
+             692 POP_TOP
+
+ 83:         694 LOAD_FAST            (defaults)
+             696 LOAD_CONST           ("node_timeout")
+             698 BINARY_SUBSCR
+             702 LOAD_CONST           (45)
+             704 COMPARE_OP           (==)
+
+ 77:         708 COPY                 1
+             710 TO_BOOL
+             718 POP_JUMP_IF_FALSE    (to 726)
+             722 POP_TOP
+
+ 84:         724 LOAD_FAST            (terminal_imap_fail_fast)

@@ -12,7 +12,6 @@ import {
   getPixelUploadBatches,
   retryBatchUploadManifest,
   retryNvUpload,
-  retryPixelUpload,
 } from '../api/client'
 import DashboardMetricCard from '../components/DashboardMetricCard.vue'
 import BatchUploadManifests from '../components/BatchUploadManifests.vue'
@@ -23,6 +22,7 @@ import PixelBatchOverview from '../components/PixelBatchOverview.vue'
 import PixelUploadBatchList from '../components/PixelUploadBatchList.vue'
 import PixelUploadRecords from '../components/PixelUploadRecords.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
+import { usePixelUploadRetry } from '../composables/usePixelUploadRetry'
 import type {
   BatchUploadManifest,
   NvOverview,
@@ -62,7 +62,6 @@ const recordPage = ref(1)
 const recordPageSize = ref(25)
 const recordTotal = ref(0)
 const recordStatus = ref('')
-const retryingKeys = ref<string[]>([])
 const nvOverview = ref<NvOverview>({
   revision: 0,
   configured: false,
@@ -98,6 +97,7 @@ let lastRevision = -1
 let batchRequest = 0
 let recordRequest = 0
 let lastNvRevision = -1
+let pendingOverviewRefresh = false
 
 const pixelQueueActive = computed(() => (
   overview.value.current_batch?.status === 'processing'
@@ -357,7 +357,10 @@ async function refreshPagedData(silent = false) {
 }
 
 async function loadOverview(silent = false, force = false) {
-  if (overviewLoading.value) return
+  if (overviewLoading.value) {
+    pendingOverviewRefresh ||= force
+    return
+  }
   overviewLoading.value = true
   try {
     const [payload, manifestPayload] = await Promise.all([
@@ -376,6 +379,11 @@ async function loadOverview(silent = false, force = false) {
     if (!silent) ElMessage.error(messageFor(error, 'Pixel 运行概览读取失败'))
   } finally {
     overviewLoading.value = false
+    if (pendingOverviewRefresh && !destroyed) {
+      pendingOverviewRefresh = false
+      void loadOverview(true, true)
+      return
+    }
     scheduleOverviewRefresh()
   }
 }
@@ -418,20 +426,9 @@ async function changeRecordStatus(status: string) {
   await loadRecords()
 }
 
-async function retryRecord(recordId: string, targetId?: string) {
-  const key = `${recordId}:${targetId || '*'}`
-  if (retryingKeys.value.includes(key)) return
-  retryingKeys.value = [...retryingKeys.value, key]
-  try {
-    await retryPixelUpload(recordId, targetId)
-    ElMessage.success(targetId ? `${targetId} 已加入重传队列` : '失败目标已加入重传队列')
-    await loadOverview(true, true)
-  } catch (error: any) {
-    ElMessage.error(messageFor(error, '加入重传队列失败'))
-  } finally {
-    retryingKeys.value = retryingKeys.value.filter(value => value !== key)
-  }
-}
+const { retryingKeys, retryRecord, retryBatchTarget } = usePixelUploadRetry(
+  () => loadOverview(true, true),
+)
 
 async function retryNvRecord(recordId: string) {
   if (nvRetryingIds.value.includes(recordId)) return
@@ -583,7 +580,7 @@ onUnmounted(() => {
             :records="records"
             :loading="recordsLoading"
             :retrying-keys="retryingKeys"
-            @retry="retryRecord"
+            @retry-batch="retryBatchTarget"
             @retry-all="retryRecord"
           />
           <el-pagination

@@ -1,0 +1,19 @@
+              10 FOR_ITER             (to 62)
+              14 STORE_FAST_LOAD_FAST (task, task)
+              16 LOAD_ATTR            (NULL|self + get)
+              36 LOAD_CONST           ("status")
+              38 CALL                 (1 positional)
+              46 LOAD_CONST           ({'stopped'})
+              48 CONTAINS_OP          (not in)
+              52 YIELD_VALUE          0
+              54 RESUME               5
+              56 POP_TOP
+              58 JUMP_BACKWARD        (to 10)
+         >>   62 END_FOR
+              64 POP_TOP
+              66 RETURN_CONST         (None)
+         >>   68 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              70 RERAISE              1
+
+ExceptionTable:
+  4 to 66 -> 68 [0] lasti

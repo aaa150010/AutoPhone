@@ -1,0 +1,800 @@
+# Constants:
+#    0: None
+#    1: ('with_content_type',)
+#    2: 0
+#    3: ('requests',)
+#    4: 'chrome'
+#    5: False
+#    6: ('headers', 'json', 'timeout', 'proxy', 'impersonate', 'verify')
+#    7: ('headers', 'json', 'timeout')
+#    8: 'text'
+#    9: ''
+#   10: 'SMSVirtual '
+#   11: ' '
+#   12: ' returned non-json HTTP '
+#   13: ': '
+#   14: 200
+#   15: 400
+#   16: ' HTTP '
+#   17: 'status'
+#   18: ' failed: '
+#   19: 'data'
+# Names:
+#    0: BASE_URL
+#    1: _headers
+#    2: proxy
+#    3: curl_cffi
+#    4: requests
+#    5: request
+#    6: json
+#    7: Exception
+#    8: getattr
+#    9: RuntimeError
+#   10: status_code
+#   11: _message
+#   12: isinstance
+#   13: dict
+#   14: get
+# Varnames:
+#	self, method, path, json_body, timeout, url, headers, curl_requests, resp, requests, data, text
+# Positional arguments:
+#	self, method, path, json_body, timeout
+# Local variables:
+#    5: url
+#    6: headers
+#    7: curl_requests
+#    8: resp
+#    9: requests
+#   10: data
+#   11: text
+1238:           0 RESUME               0
+
+1239:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (BASE_URL)
+              24 FORMAT_SIMPLE
+              26 LOAD_FAST            (path)
+              28 FORMAT_SIMPLE
+              30 BUILD_STRING         2
+              32 STORE_FAST           (url)
+
+1240:          34 LOAD_FAST            (self)
+              36 LOAD_ATTR            (NULL|self + _headers)
+              56 LOAD_FAST            (json_body)
+              58 LOAD_CONST           (None)
+              60 IS_OP                (is not)
+              62 LOAD_CONST           (('with_content_type',))
+              64 CALL_KW              1
+              66 STORE_FAST           (headers)
+
+1241:          68 LOAD_FAST            (self)
+              70 LOAD_ATTR            (proxy)
+              90 TO_BOOL
+              98 POP_JUMP_IF_FALSE    (to 180)
+
+1242:         102 LOAD_CONST           (0)
+             104 LOAD_CONST           (('requests',))
+             106 IMPORT_NAME          (curl_cffi)
+             108 IMPORT_FROM          (requests)
+             110 STORE_FAST           (curl_requests)
+             112 POP_TOP
+
+1243:         114 LOAD_FAST            (curl_requests)
+             116 LOAD_ATTR            (NULL|self + request)
+
+1244:         136 LOAD_FAST            (method)
+
+1245:         138 LOAD_FAST            (url)
+
+1246:         140 LOAD_FAST            (headers)
+
+1247:         142 LOAD_FAST            (json_body)
+
+1248:         144 LOAD_FAST            (timeout)
+
+1249:         146 LOAD_FAST            (self)
+             148 LOAD_ATTR            (proxy)
+
+1250:         168 LOAD_CONST           ("chrome")
+
+1251:         170 LOAD_CONST           (False)
+
+1243:         172 LOAD_CONST           (('headers', 'json', 'timeout', 'proxy', 'impersonate', 'verify'))
+             174 CALL_KW              8
+             176 STORE_FAST           (resp)
+             178 JUMP_FORWARD         (to 222)
+
+1254:     >>  180 LOAD_CONST           (0)
+             182 LOAD_CONST           (None)
+             184 IMPORT_NAME          (requests)
+             186 STORE_FAST           (requests)
+
+1255:         188 LOAD_FAST            (requests)
+             190 LOAD_ATTR            (NULL|self + request)
+             210 LOAD_FAST_LOAD_FAST  (method, url)
+             212 LOAD_FAST_LOAD_FAST  (headers, json_body)
+             214 LOAD_FAST            (timeout)
+             216 LOAD_CONST           (('headers', 'json', 'timeout'))
+             218 CALL_KW              5
+             220 STORE_FAST           (resp)
+
+1257:     >>  222 NOP
+
+1258:         224 LOAD_FAST            (resp)
+             226 LOAD_ATTR            (NULL|self + json)
+             246 CALL                 (0 positional)
+             254 STORE_FAST           (data)
+
+1263:         256 LOAD_FAST            (resp)
+             258 LOAD_ATTR            (status_code)
+             278 LOAD_CONST           (400)
+             280 COMPARE_OP           (>=)
+             284 POP_JUMP_IF_FALSE    (to 384)
+
+1264:         288 LOAD_GLOBAL          (NULL + RuntimeError)
+             298 LOAD_CONST           ("SMSVirtual ")
+             300 LOAD_FAST            (method)
+             302 FORMAT_SIMPLE
+             304 LOAD_CONST           (" ")
+             306 LOAD_FAST            (path)
+             308 FORMAT_SIMPLE
+             310 LOAD_CONST           (" HTTP ")
+             312 LOAD_FAST            (resp)
+             314 LOAD_ATTR            (status_code)
+             334 FORMAT_SIMPLE
+             336 LOAD_CONST           (": ")
+             338 LOAD_FAST            (self)
+             340 LOAD_ATTR            (NULL|self + _message)
+             360 LOAD_FAST            (data)
+             362 CALL                 (1 positional)
+             370 FORMAT_SIMPLE
+             372 BUILD_STRING         8
+             374 CALL                 (1 positional)
+             382 RAISE_VARARGS        (exception instance)
+
+1266:     >>  384 LOAD_GLOBAL          (NULL + isinstance)
+             394 LOAD_FAST            (data)
+             396 LOAD_GLOBAL          (dict)
+             406 CALL                 (2 positional)
+             414 TO_BOOL
+             422 POP_JUMP_IF_FALSE    (to 536)
+             426 LOAD_FAST            (data)
+             428 LOAD_ATTR            (NULL|self + get)
+             448 LOAD_CONST           ("status")
+             450 CALL                 (1 positional)
+             458 LOAD_CONST           (False)
+             460 IS_OP                (is)
+             462 POP_JUMP_IF_FALSE    (to 536)
+
+1267:         466 LOAD_GLOBAL          (NULL + RuntimeError)
+             476 LOAD_CONST           ("SMSVirtual ")
+             478 LOAD_FAST            (method)
+             480 FORMAT_SIMPLE
+             482 LOAD_CONST           (" ")
+             484 LOAD_FAST            (path)
+             486 FORMAT_SIMPLE
+             488 LOAD_CONST           (" failed: ")
+             490 LOAD_FAST            (self)
+             492 LOAD_ATTR            (NULL|self + _message)
+             512 LOAD_FAST            (data)
+             514 CALL                 (1 positional)
+             522 FORMAT_SIMPLE
+             524 BUILD_STRING         6
+             526 CALL                 (1 positional)
+             534 RAISE_VARARGS        (exception instance)
+
+1269:     >>  536 LOAD_GLOBAL          (NULL + isinstance)
+             546 LOAD_FAST            (data)
+             548 LOAD_GLOBAL          (dict)
+             558 CALL                 (2 positional)
+             566 TO_BOOL
+             574 POP_JUMP_IF_FALSE    (to 582)
+             578 LOAD_FAST            (data)
+             580 RETURN_VALUE
+         >>  582 LOAD_CONST           ("data")
+             584 LOAD_FAST            (data)
+             586 BUILD_MAP            1
+             588 RETURN_VALUE
+         >>  590 PUSH_EXC_INFO
+
+1259:         592 LOAD_GLOBAL          (Exception)
+             602 CHECK_EXC_MATCH
+             604 POP_JUMP_IF_FALSE    (to 708)
+             608 POP_TOP
+
+1260:         610 LOAD_GLOBAL          (NULL + getattr)
+             620 LOAD_FAST            (resp)
+             622 LOAD_CONST           ("text")
+             624 LOAD_CONST           ("")
+             626 CALL                 (3 positional)
+             634 STORE_FAST           (text)
+
+1261:         636 LOAD_GLOBAL          (NULL + RuntimeError)
+             646 LOAD_CONST           ("SMSVirtual ")
+             648 LOAD_FAST            (method)
+             650 FORMAT_SIMPLE
+             652 LOAD_CONST           (" ")
+             654 LOAD_FAST            (path)
+             656 FORMAT_SIMPLE
+             658 LOAD_CONST           (" returned non-json HTTP ")
+             660 LOAD_FAST            (resp)
+             662 LOAD_ATTR            (status_code)
+             682 FORMAT_SIMPLE
+             684 LOAD_CONST           (": ")
+             686 LOAD_FAST            (text)
+             688 LOAD_CONST           (None)
+             690 LOAD_CONST           (200)
+             692 BINARY_SLICE
+             694 FORMAT_SIMPLE
+             696 BUILD_STRING         8
+             698 CALL                 (1 positional)
+             706 RAISE_VARARGS        (exception instance)
+
+1259:     >>  708 RERAISE              0
+         >>  710 COPY                 3
+             712 POP_EXCEPT
+             714 RERAISE              1
+
+ExceptionTable:
+  224 to 254 -> 590 [0]
+  590 to 708 -> 710 [1] lasti
+
+# Method Name:       _message
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        4
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1271
+# Constants:
+#    0: None
+#    1: ('message', 'error', 'msg')
+#    2: 300
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: get
+#    3: str
+# Varnames:
+#	data, key, value
+# Positional arguments:
+#	data
+# Local variables:
+#    1: key
+#    2: value
+1271:           0 RESUME               0
+
+1273:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (data)
+              14 LOAD_GLOBAL          (dict)
+              24 CALL                 (2 positional)
+              32 TO_BOOL
+              40 POP_JUMP_IF_FALSE    (to 136)
+
+1274:          44 LOAD_CONST           (('message', 'error', 'msg'))
+              46 GET_ITER
+              48 FOR_ITER             (to 132)
+              52 STORE_FAST           (key)
+
+1275:          54 LOAD_FAST            (data)
+              56 LOAD_ATTR            (NULL|self + get)
+              76 LOAD_FAST            (key)
+              78 CALL                 (1 positional)
+              86 STORE_FAST           (value)
+
+1276:          88 LOAD_FAST            (value)
+              90 TO_BOOL
+              98 POP_JUMP_IF_TRUE     (to 106)
+             102 JUMP_BACKWARD        (to 48)
+
+1277:     >>  106 LOAD_GLOBAL          (NULL + str)
+             116 LOAD_FAST            (value)
+             118 CALL                 (1 positional)
+             126 SWAP                 (TOS <-> TOS1)
+             128 POP_TOP
+             130 RETURN_VALUE
+
+1274:     >>  132 END_FOR
+             134 POP_TOP
+
+1278:     >>  136 LOAD_GLOBAL          (NULL + str)
+             146 LOAD_FAST            (data)
+             148 CALL                 (1 positional)
+             156 LOAD_CONST           (None)
+             158 LOAD_CONST           (300)
+             160 BINARY_SLICE
+             162 RETURN_VALUE
+
+
+# Method Name:       _data
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1280
+# Constants:
+#    0: None
+#    1: 'data'
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: get
+# Varnames:
+#	data
+# Positional arguments:
+#	data
+1280:           0 RESUME               0
+
+1282:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (data)
+              14 LOAD_GLOBAL          (dict)
+              24 CALL                 (2 positional)
+              32 TO_BOOL
+              40 POP_JUMP_IF_FALSE    (to 90)
+              44 LOAD_CONST           ("data")
+              46 LOAD_FAST            (data)
+              48 CONTAINS_OP          (in)
+              52 POP_JUMP_IF_FALSE    (to 90)
+              56 LOAD_FAST            (data)
+              58 LOAD_ATTR            (NULL|self + get)
+              78 LOAD_CONST           ("data")
+              80 CALL                 (1 positional)
+              88 RETURN_VALUE
+         >>   90 LOAD_FAST            (data)
+              92 RETURN_VALUE
+
+
+# Method Name:       _parse_max_price
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1284
+# Constants:
+#    0: None
+#    1: ''
+#    2: '最高价格格式错误: '
+# Names:
+#    0: str
+#    1: strip
+#    2: float
+#    3: ValueError
+#    4: RuntimeError
+# Varnames:
+#	max_price, text
+# Positional arguments:
+#	max_price
+# Local variables:
+#    1: text
+1284:           0 RESUME               0
+
+1286:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (max_price)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + strip)
+              60 CALL                 (0 positional)
+              68 STORE_FAST           (text)
+
+1287:          70 LOAD_FAST            (text)
+              72 TO_BOOL
+              80 POP_JUMP_IF_TRUE     (to 86)
+
+1288:          84 RETURN_CONST         (None)
+
+1289:     >>   86 NOP
+
+1290:          88 LOAD_GLOBAL          (NULL + float)
+              98 LOAD_FAST            (text)
+             100 CALL                 (1 positional)
+             108 RETURN_VALUE
+         >>  110 PUSH_EXC_INFO
+
+1291:         112 LOAD_GLOBAL          (ValueError)
+             122 CHECK_EXC_MATCH
+             124 POP_JUMP_IF_FALSE    (to 158)
+             128 POP_TOP
+
+1292:         130 LOAD_GLOBAL          (NULL + RuntimeError)
+             140 LOAD_CONST           ("最高价格格式错误: ")
+             142 LOAD_FAST            (max_price)
+             144 FORMAT_SIMPLE
+             146 BUILD_STRING         2
+             148 CALL                 (1 positional)
+             156 RAISE_VARARGS        (exception instance)
+
+1291:     >>  158 RERAISE              0
+         >>  160 COPY                 3
+             162 POP_EXCEPT
+             164 RERAISE              1
+
+ExceptionTable:
+  88 to 106 -> 110 [0]
+  110 to 158 -> 160 [1] lasti
+
+# Method Name:       _extract_code
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        7
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1294
+# Constants:
+#    0: None
+#    1: '(?<!\\d)(\\d{4,8})(?!\\d)'
+#    2: ''
+#    3: 1
+# Names:
+#    0: re
+#    1: search
+#    2: str
+#    3: group
+# Varnames:
+#	text, match
+# Positional arguments:
+#	text
+# Local variables:
+#    1: match
+1294:           0 RESUME               0
+
+1296:           2 LOAD_GLOBAL          (re)
+              12 LOAD_ATTR            (search)
+              32 PUSH_NULL
+              34 LOAD_CONST           ("(?<!\\d)(\\d{4,8})(?!\\d)")
+              36 LOAD_GLOBAL          (NULL + str)
+              46 LOAD_FAST            (text)
+              48 COPY                 1
+              50 TO_BOOL
+              58 POP_JUMP_IF_TRUE     (to 66)
+              62 POP_TOP
+              64 LOAD_CONST           ("")
+         >>   66 CALL                 (1 positional)
+              74 CALL                 (2 positional)
+              82 STORE_FAST           (match)
+
+1297:          84 LOAD_FAST            (match)
+              86 TO_BOOL
+              94 POP_JUMP_IF_FALSE    (to 132)
+              98 LOAD_FAST            (match)
+             100 LOAD_ATTR            (NULL|self + group)
+             120 LOAD_CONST           (1)
+             122 CALL                 (1 positional)
+             130 RETURN_VALUE
+         >>  132 LOAD_CONST           ("")
+             134 RETURN_VALUE
+
+
+# Method Name:       _norm
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        8
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1299
+# Constants:
+#    0: None
+#    1: '[^a-z0-9]+'
+#    2: ' '
+#    3: ''
+# Names:
+#    0: re
+#    1: sub
+#    2: str
+#    3: lower
+#    4: strip
+# Varnames:
+#	text
+# Positional arguments:
+#	text
+1299:           0 RESUME               0
+
+1301:           2 LOAD_GLOBAL          (re)
+              12 LOAD_ATTR            (sub)
+              32 PUSH_NULL
+              34 LOAD_CONST           ("[^a-z0-9]+")
+              36 LOAD_CONST           (" ")
+              38 LOAD_GLOBAL          (NULL + str)
+              48 LOAD_FAST            (text)
+              50 COPY                 1
+              52 TO_BOOL
+              60 POP_JUMP_IF_TRUE     (to 68)
+              64 POP_TOP
+              66 LOAD_CONST           ("")
+         >>   68 CALL                 (1 positional)
+              76 LOAD_ATTR            (NULL|self + lower)
+              96 CALL                 (0 positional)
+             104 CALL                 (3 positional)
+             112 LOAD_ATTR            (NULL|self + strip)
+             132 CALL                 (0 positional)
+             140 RETURN_VALUE
+
+
+# Method Name:       balance
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        8
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1303
+# Constants:
+#    0: None
+#    1: 'GET'
+#    2: '/v1/profile/'
+#    3: 15
+#    4: ('timeout',)
+#    5: 'SMSVirtual profile returned invalid response: '
+#    6: 'balance'
+#    7: 0
+#    8: '.3f'
+#    9: '0'
+# Names:
+#    0: _data
+#    1: _request
+#    2: isinstance
+#    3: dict
+#    4: RuntimeError
+#    5: float
+#    6: get
+#    7: TypeError
+#    8: ValueError
+#    9: str
+# Varnames:
+#	self, data
+# Positional arguments:
+#	self
+# Local variables:
+#    1: data
+1303:           0 RESUME               0
+
+1304:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _data)
+              24 LOAD_FAST            (self)
+              26 LOAD_ATTR            (NULL|self + _request)
+              46 LOAD_CONST           ("GET")
+              48 LOAD_CONST           ("/v1/profile/")
+              50 LOAD_CONST           (15)
+              52 LOAD_CONST           (('timeout',))
+              54 CALL_KW              3
+              56 CALL                 (1 positional)
+              64 STORE_FAST           (data)
+
+1305:          66 LOAD_GLOBAL          (NULL + isinstance)
+              76 LOAD_FAST            (data)
+              78 LOAD_GLOBAL          (dict)
+              88 CALL                 (2 positional)
+              96 TO_BOOL
+             104 POP_JUMP_IF_TRUE     (to 136)
+
+1306:         108 LOAD_GLOBAL          (NULL + RuntimeError)
+             118 LOAD_CONST           ("SMSVirtual profile returned invalid response: ")
+             120 LOAD_FAST            (data)
+             122 FORMAT_SIMPLE
+             124 BUILD_STRING         2
+             126 CALL                 (1 positional)
+             134 RAISE_VARARGS        (exception instance)
+
+1307:     >>  136 NOP
+
+1308:         138 LOAD_GLOBAL          (NULL + float)
+             148 LOAD_FAST            (data)
+             150 LOAD_ATTR            (NULL|self + get)
+             170 LOAD_CONST           ("balance")
+             172 LOAD_CONST           (0)
+             174 CALL                 (2 positional)
+             182 CALL                 (1 positional)
+             190 LOAD_CONST           (".3f")
+             192 FORMAT_WITH_SPEC
+             194 RETURN_VALUE
+         >>  196 PUSH_EXC_INFO
+
+1309:         198 LOAD_GLOBAL          (TypeError)
+             208 LOAD_GLOBAL          (ValueError)
+             218 BUILD_TUPLE          2
+             220 CHECK_EXC_MATCH
+             222 POP_JUMP_IF_FALSE    (to 286)
+             226 POP_TOP
+
+1310:         228 LOAD_GLOBAL          (NULL + str)
+             238 LOAD_FAST            (data)
+             240 LOAD_ATTR            (NULL|self + get)
+             260 LOAD_CONST           ("balance")
+             262 LOAD_CONST           ("0")
+             264 CALL                 (2 positional)
+             272 CALL                 (1 positional)
+             280 SWAP                 (TOS <-> TOS1)
+             282 POP_EXCEPT
+             284 RETURN_VALUE
+
+1309:     >>  286 RERAISE              0
+         >>  288 COPY                 3
+             290 POP_EXCEPT
+             292 RERAISE              1
+
+ExceptionTable:
+  138 to 192 -> 196 [0]
+  196 to 280 -> 288 [1] lasti
+  286 to 286 -> 288 [1] lasti
+
+# Method Name:       _services
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        8
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1312
+# Constants:
+#    0: None
+#    1: 'GET'
+#    2: '/v1/services/'
+#    3: 30
+#    4: ('timeout',)
+# Names:
+#    0: _services_cache
+#    1: _data
+#    2: _request
+#    3: isinstance
+#    4: list
+# Varnames:
+#	self, data
+# Positional arguments:
+#	self
+# Local variables:
+#    1: data
+1312:           0 RESUME               0
+
+1313:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (_services_cache)
+              24 POP_JUMP_IF_NOT_NONE (to 152)
+
+1314:          28 LOAD_FAST            (self)
+              30 LOAD_ATTR            (NULL|self + _data)
+              50 LOAD_FAST            (self)
+              52 LOAD_ATTR            (NULL|self + _request)
+              72 LOAD_CONST           ("GET")
+              74 LOAD_CONST           ("/v1/services/")
+              76 LOAD_CONST           (30)
+              78 LOAD_CONST           (('timeout',))
+              80 CALL_KW              3
+              82 CALL                 (1 positional)
+              90 STORE_FAST           (data)
+
+1315:          92 LOAD_GLOBAL          (NULL + isinstance)
+             102 LOAD_FAST            (data)
+             104 LOAD_GLOBAL          (list)
+             114 CALL                 (2 positional)
+             122 TO_BOOL
+             130 POP_JUMP_IF_FALSE    (to 138)
+             134 LOAD_FAST            (data)
+             136 JUMP_FORWARD         (to 140)
+         >>  138 BUILD_LIST           0
+         >>  140 LOAD_FAST            (self)
+             142 STORE_ATTR           (_services_cache)
+
+1316:     >>  152 LOAD_FAST            (self)
+             154 LOAD_ATTR            (_services_cache)
+             174 RETURN_VALUE
+
+
+# Method Name:       _countries
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        8
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1318
+# Constants:
+#    0: None
+#    1: 'GET'
+#    2: '/v1/country/'
+#    3: 30
+#    4: ('timeout',)
+# Names:
+#    0: _countries_cache
+#    1: _data
+#    2: _request
+#    3: isinstance
+#    4: list
+# Varnames:
+#	self, data
+# Positional arguments:
+#	self
+# Local variables:
+#    1: data
+1318:           0 RESUME               0
+
+1319:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (_countries_cache)
+              24 POP_JUMP_IF_NOT_NONE (to 152)
+
+1320:          28 LOAD_FAST            (self)
+              30 LOAD_ATTR            (NULL|self + _data)
+              50 LOAD_FAST            (self)
+              52 LOAD_ATTR            (NULL|self + _request)
+              72 LOAD_CONST           ("GET")
+              74 LOAD_CONST           ("/v1/country/")
+              76 LOAD_CONST           (30)
+              78 LOAD_CONST           (('timeout',))
+              80 CALL_KW              3
+              82 CALL                 (1 positional)
+              90 STORE_FAST           (data)
+
+1321:          92 LOAD_GLOBAL          (NULL + isinstance)
+             102 LOAD_FAST            (data)
+             104 LOAD_GLOBAL          (list)
+             114 CALL                 (2 positional)
+             122 TO_BOOL
+             130 POP_JUMP_IF_FALSE    (to 138)
+             134 LOAD_FAST            (data)
+             136 JUMP_FORWARD         (to 140)
+         >>  138 BUILD_LIST           0
+         >>  140 LOAD_FAST            (self)
+             142 STORE_ATTR           (_countries_cache)
+
+1322:     >>  152 LOAD_FAST            (self)
+             154 LOAD_ATTR            (_countries_cache)
+             174 RETURN_VALUE
+
+
+# Method Name:       _service_id
+# Filename:          sms_providers.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  7
+# Stack size:        7
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1324
+# Constants:
+#    0: None
+#    1: ''
+#    2: 'serviceName'
+#    3: ' '
+#    4: <Code311 code object <genexpr> at 0x1077acd60, file sms_providers.py>, line 1337
+#    5: 'SMSVirtual service not found for '
+#    6: 0
+#    7: 'id'
+# Names:
+#    0: str
+#    1: strip
+#    2: isdigit
+#    3: int
+#    4: SERVICE_KEYWORDS
+#    5: get
+#    6: lower
+#    7: _services
+#    8: isinstance
+#    9: dict
+#   10: _norm
+#   11: replace
+#   12: any
+#   13: append
+#   14: RuntimeError
+# Varnames:
+#	self, service, raw, keywords, services, matches, item
+# Positional arguments:
+#	self, service
+# Local variables:
+#    2: raw
+#    3: keywords
+#    4: services

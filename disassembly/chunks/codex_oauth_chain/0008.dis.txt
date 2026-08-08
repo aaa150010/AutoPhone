@@ -1,0 +1,800 @@
+             252 LOAD_CONST           ("_url")
+             254 CALL                 (1 positional)
+             262 CALL                 (1 positional)
+
+636:         270 LOAD_GLOBAL          (NULL + _clean)
+             280 LOAD_FAST            (response)
+             282 LOAD_ATTR            (NULL|self + get)
+             302 LOAD_CONST           ("_location")
+             304 CALL                 (1 positional)
+             312 CALL                 (1 positional)
+
+631:         320 BUILD_TUPLE          5
+
+630:         322 CALL                 (1 positional)
+
+638:         330 LOAD_ATTR            (NULL|self + lower)
+             350 CALL                 (0 positional)
+
+630:         358 STORE_DEREF          (text)
+
+639:         360 LOAD_CONST           (('just a moment', 'challenge-platform', 'cf-chl', '_cf_chl_opt', 'cloudflare', 'verify you are human'))
+             362 STORE_FAST           (markers)
+
+647:         364 LOAD_GLOBAL          (NULL + any)
+             374 LOAD_FAST            (text)
+             376 BUILD_TUPLE          1
+             378 LOAD_CONST           (<Code311 code object <genexpr> at 0x105ef4460, file codex_oauth_chain.py>, line 647)
+             380 MAKE_FUNCTION
+             382 SET_FUNCTION_ATTRIBUTE 8
+             384 LOAD_FAST            (markers)
+             386 GET_ITER
+             388 CALL                 (0 positional)
+             396 CALL                 (1 positional)
+             404 RETURN_VALUE
+
+
+# Method Name:       _abs_url
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 2
+# Number of locals:  5
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        650
+# Constants:
+#    0: None
+#    1: ''
+#    2: 'http://'
+#    3: 'https://'
+#    4: '//'
+#    5: 'https'
+#    6: ':'
+# Names:
+#    0: _clean
+#    1: startswith
+#    2: urlparse
+#    3: scheme
+#    4: urljoin
+# Varnames:
+#	url, base_url, default_base, text, scheme
+# Positional arguments:
+#	url
+# Local variables:
+#    1: base_url
+#    2: default_base
+#    3: text
+#    4: scheme
+650:           0 RESUME               0
+
+651:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (url)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (text)
+
+652:          24 LOAD_FAST            (text)
+              26 TO_BOOL
+              34 POP_JUMP_IF_TRUE     (to 40)
+
+653:          38 RETURN_CONST         ("")
+
+654:     >>   40 LOAD_FAST            (text)
+              42 LOAD_ATTR            (NULL|self + startswith)
+              62 LOAD_CONST           ("http://")
+              64 CALL                 (1 positional)
+              72 TO_BOOL
+              80 POP_JUMP_IF_TRUE     (to 128)
+              84 LOAD_FAST            (text)
+              86 LOAD_ATTR            (NULL|self + startswith)
+             106 LOAD_CONST           ("https://")
+             108 CALL                 (1 positional)
+             116 TO_BOOL
+             124 POP_JUMP_IF_FALSE    (to 132)
+
+655:     >>  128 LOAD_FAST            (text)
+             130 RETURN_VALUE
+
+656:     >>  132 LOAD_FAST            (text)
+             134 LOAD_ATTR            (NULL|self + startswith)
+             154 LOAD_CONST           ("//")
+             156 CALL                 (1 positional)
+             164 TO_BOOL
+             172 POP_JUMP_IF_FALSE    (to 268)
+
+657:         176 LOAD_GLOBAL          (NULL + urlparse)
+             186 LOAD_FAST            (base_url)
+             188 COPY                 1
+             190 TO_BOOL
+             198 POP_JUMP_IF_TRUE     (to 206)
+             202 POP_TOP
+             204 LOAD_FAST            (default_base)
+         >>  206 CALL                 (1 positional)
+             214 LOAD_ATTR            (scheme)
+             234 COPY                 1
+             236 TO_BOOL
+             244 POP_JUMP_IF_TRUE     (to 252)
+             248 POP_TOP
+             250 LOAD_CONST           ("https")
+         >>  252 STORE_FAST           (scheme)
+
+658:         254 LOAD_FAST            (scheme)
+             256 FORMAT_SIMPLE
+             258 LOAD_CONST           (":")
+             260 LOAD_FAST            (text)
+             262 FORMAT_SIMPLE
+             264 BUILD_STRING         3
+             266 RETURN_VALUE
+
+659:     >>  268 LOAD_GLOBAL          (NULL + urljoin)
+             278 LOAD_FAST            (base_url)
+             280 COPY                 1
+             282 TO_BOOL
+             290 POP_JUMP_IF_TRUE     (to 298)
+             294 POP_TOP
+             296 LOAD_FAST            (default_base)
+         >>  298 LOAD_FAST            (text)
+             300 CALL                 (2 positional)
+             308 RETURN_VALUE
+
+
+# Method Name:       _abs_auth
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        662
+# Constants:
+#    0: None
+#    1: ('default_base',)
+# Names:
+#    0: _abs_url
+#    1: AUTH
+# Varnames:
+#	url
+# Positional arguments:
+#	url
+662:           0 RESUME               0
+
+663:           2 LOAD_GLOBAL          (NULL + _abs_url)
+              12 LOAD_FAST            (url)
+              14 LOAD_GLOBAL          (AUTH)
+              24 LOAD_CONST           (('default_base',))
+              26 CALL_KW              2
+              28 RETURN_VALUE
+
+
+# Method Name:       _url_origin
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        666
+# Constants:
+#    0: None
+#    1: ''
+#    2: '://'
+# Names:
+#    0: urlparse
+#    1: _clean
+#    2: scheme
+#    3: netloc
+# Varnames:
+#	url, parsed
+# Positional arguments:
+#	url
+# Local variables:
+#    1: parsed
+666:           0 RESUME               0
+
+667:           2 LOAD_GLOBAL          (NULL + urlparse)
+              12 LOAD_GLOBAL          (NULL + _clean)
+              22 LOAD_FAST            (url)
+              24 CALL                 (1 positional)
+              32 CALL                 (1 positional)
+              40 STORE_FAST           (parsed)
+
+668:          42 LOAD_FAST            (parsed)
+              44 LOAD_ATTR            (scheme)
+              64 TO_BOOL
+              72 POP_JUMP_IF_FALSE    (to 110)
+              76 LOAD_FAST            (parsed)
+              78 LOAD_ATTR            (netloc)
+              98 TO_BOOL
+             106 POP_JUMP_IF_TRUE     (to 112)
+
+669:     >>  110 RETURN_CONST         ("")
+
+670:     >>  112 LOAD_FAST            (parsed)
+             114 LOAD_ATTR            (scheme)
+             134 FORMAT_SIMPLE
+             136 LOAD_CONST           ("://")
+             138 LOAD_FAST            (parsed)
+             140 LOAD_ATTR            (netloc)
+             160 FORMAT_SIMPLE
+             162 BUILD_STRING         3
+             164 RETURN_VALUE
+
+
+# Method Name:       _short_hash
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        673
+# Constants:
+#    0: None
+#    1: ''
+#    2: 'utf-8'
+#    3: 'ignore'
+#    4: ('errors',)
+# Names:
+#    0: _clean
+#    1: hashlib
+#    2: sha256
+#    3: encode
+#    4: hexdigest
+# Varnames:
+#	value, length, text
+# Positional arguments:
+#	value, length
+# Local variables:
+#    2: text
+673:           0 RESUME               0
+
+674:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (value)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (text)
+
+675:          24 LOAD_FAST            (text)
+              26 TO_BOOL
+              34 POP_JUMP_IF_TRUE     (to 40)
+
+676:          38 RETURN_CONST         ("")
+
+677:     >>   40 LOAD_GLOBAL          (hashlib)
+              50 LOAD_ATTR            (sha256)
+              70 PUSH_NULL
+              72 LOAD_FAST            (text)
+              74 LOAD_ATTR            (NULL|self + encode)
+              94 LOAD_CONST           ("utf-8")
+              96 LOAD_CONST           ("ignore")
+              98 LOAD_CONST           (('errors',))
+             100 CALL_KW              2
+             102 CALL                 (1 positional)
+             110 LOAD_ATTR            (NULL|self + hexdigest)
+             130 CALL                 (0 positional)
+             138 LOAD_CONST           (None)
+             140 LOAD_FAST            (length)
+             142 BINARY_SLICE
+             144 RETURN_VALUE
+
+
+# Method Name:       _url_shape
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  10
+# Stack size:        10
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        680
+# Constants:
+#    0: 'Return a URL shape safe for logs: host/path and query key names only.'
+#    1: '<empty>'
+#    2: ''
+#    3: '/'
+#    4: 48
+#    5: '<seg:'
+#    6: ':'
+#    7: 8
+#    8: '>'
+#    9: 'relative'
+#   10: '://'
+#   11: True
+#   12: ('keep_blank_values',)
+#   13: ','
+#   14: None
+#   15: 12
+#   16: ',...'
+#   17: '?keys='
+# Names:
+#    0: _clean
+#    1: urlparse
+#    2: path
+#    3: split
+#    4: len
+#    5: append
+#    6: _short_hash
+#    7: join
+#    8: scheme
+#    9: netloc
+#   10: sorted
+#   11: parse_qs
+#   12: query
+#   13: keys
+# Varnames:
+#	url, text, parsed, path, safe_segments, segment, safe_path, base, keys, shown
+# Positional arguments:
+#	url
+# Local variables:
+#    1: text
+#    2: parsed
+#    3: path
+#    4: safe_segments
+#    5: segment
+#    6: safe_path
+#    7: base
+#    8: keys
+#    9: shown
+680:           0 RESUME               0
+
+682:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (url)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (text)
+
+683:          24 LOAD_FAST            (text)
+              26 TO_BOOL
+              34 POP_JUMP_IF_TRUE     (to 40)
+
+684:          38 RETURN_CONST         ("<empty>")
+
+685:     >>   40 LOAD_GLOBAL          (NULL + urlparse)
+              50 LOAD_FAST            (text)
+              52 CALL                 (1 positional)
+              60 STORE_FAST           (parsed)
+
+686:          62 LOAD_FAST            (parsed)
+              64 LOAD_ATTR            (path)
+              84 COPY                 1
+              86 TO_BOOL
+              94 POP_JUMP_IF_TRUE     (to 102)
+              98 POP_TOP
+             100 LOAD_CONST           ("")
+         >>  102 STORE_FAST           (path)
+
+687:         104 BUILD_LIST           0
+             106 STORE_FAST           (safe_segments)
+
+688:         108 LOAD_FAST            (path)
+             110 LOAD_ATTR            (NULL|self + split)
+             130 LOAD_CONST           ("/")
+             132 CALL                 (1 positional)
+             140 GET_ITER
+             142 FOR_ITER             (to 306)
+             146 STORE_FAST           (segment)
+
+689:         148 LOAD_GLOBAL          (NULL + len)
+             158 LOAD_FAST            (segment)
+             160 CALL                 (1 positional)
+             168 LOAD_CONST           (48)
+             170 COMPARE_OP           (>)
+             174 POP_JUMP_IF_FALSE    (to 268)
+
+690:         178 LOAD_FAST            (safe_segments)
+             180 LOAD_ATTR            (NULL|self + append)
+             200 LOAD_CONST           ("<seg:")
+             202 LOAD_GLOBAL          (NULL + len)
+             212 LOAD_FAST            (segment)
+             214 CALL                 (1 positional)
+             222 FORMAT_SIMPLE
+             224 LOAD_CONST           (":")
+             226 LOAD_GLOBAL          (NULL + _short_hash)
+             236 LOAD_FAST            (segment)
+             238 LOAD_CONST           (8)
+             240 CALL                 (2 positional)
+             248 FORMAT_SIMPLE
+             250 LOAD_CONST           (">")
+             252 BUILD_STRING         5
+             254 CALL                 (1 positional)
+             262 POP_TOP
+             264 JUMP_BACKWARD        (to 142)
+
+692:     >>  268 LOAD_FAST            (safe_segments)
+             270 LOAD_ATTR            (NULL|self + append)
+             290 LOAD_FAST            (segment)
+             292 CALL                 (1 positional)
+             300 POP_TOP
+             302 JUMP_BACKWARD        (to 142)
+
+688:     >>  306 END_FOR
+             308 POP_TOP
+
+693:         310 LOAD_CONST           ("/")
+             312 LOAD_ATTR            (NULL|self + join)
+             332 LOAD_FAST            (safe_segments)
+             334 CALL                 (1 positional)
+             342 COPY                 1
+             344 TO_BOOL
+             352 POP_JUMP_IF_TRUE     (to 360)
+             356 POP_TOP
+             358 LOAD_CONST           ("/")
+         >>  360 STORE_FAST           (safe_path)
+
+694:         362 LOAD_FAST            (parsed)
+             364 LOAD_ATTR            (scheme)
+             384 TO_BOOL
+             392 POP_JUMP_IF_TRUE     (to 430)
+             396 LOAD_FAST            (parsed)
+             398 LOAD_ATTR            (netloc)
+             418 TO_BOOL
+             426 POP_JUMP_IF_FALSE    (to 508)
+
+695:     >>  430 LOAD_FAST            (parsed)
+             432 LOAD_ATTR            (scheme)
+             452 COPY                 1
+             454 TO_BOOL
+             462 POP_JUMP_IF_TRUE     (to 470)
+             466 POP_TOP
+             468 LOAD_CONST           ("relative")
+         >>  470 FORMAT_SIMPLE
+             472 LOAD_CONST           ("://")
+             474 LOAD_FAST            (parsed)
+             476 LOAD_ATTR            (netloc)
+             496 FORMAT_SIMPLE
+             498 LOAD_FAST            (safe_path)
+             500 FORMAT_SIMPLE
+             502 BUILD_STRING         4
+             504 STORE_FAST           (base)
+             506 JUMP_FORWARD         (to 512)
+
+697:     >>  508 LOAD_FAST            (safe_path)
+             510 STORE_FAST           (base)
+
+698:     >>  512 LOAD_GLOBAL          (NULL + sorted)
+             522 LOAD_GLOBAL          (NULL + parse_qs)
+             532 LOAD_FAST            (parsed)
+             534 LOAD_ATTR            (query)
+             554 LOAD_CONST           (True)
+             556 LOAD_CONST           (('keep_blank_values',))
+             558 CALL_KW              2
+             560 LOAD_ATTR            (NULL|self + keys)
+             580 CALL                 (0 positional)
+             588 CALL                 (1 positional)
+             596 STORE_FAST           (keys)
+
+699:         598 LOAD_FAST            (keys)
+             600 TO_BOOL
+             608 POP_JUMP_IF_FALSE    (to 706)
+
+700:         612 LOAD_CONST           (",")
+             614 LOAD_ATTR            (NULL|self + join)
+             634 LOAD_FAST            (keys)
+             636 LOAD_CONST           (None)
+             638 LOAD_CONST           (12)
+             640 BINARY_SLICE
+             642 CALL                 (1 positional)
+             650 STORE_FAST           (shown)
+
+701:         652 LOAD_GLOBAL          (NULL + len)
+             662 LOAD_FAST            (keys)
+             664 CALL                 (1 positional)
+             672 LOAD_CONST           (12)
+             674 COMPARE_OP           (>)
+             678 POP_JUMP_IF_FALSE    (to 692)
+
+702:         682 LOAD_FAST            (shown)
+             684 LOAD_CONST           (",...")
+             686 BINARY_OP            (+=)
+             690 STORE_FAST           (shown)
+
+703:     >>  692 LOAD_FAST            (base)
+             694 FORMAT_SIMPLE
+             696 LOAD_CONST           ("?keys=")
+             698 LOAD_FAST            (shown)
+             700 FORMAT_SIMPLE
+             702 BUILD_STRING         3
+             704 RETURN_VALUE
+
+704:     >>  706 LOAD_FAST            (base)
+             708 RETURN_VALUE
+
+
+# Method Name:       _jwt_payload
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        707
+# Constants:
+#    0: None
+#    1: ''
+#    2: '.'
+#    3: 3
+#    4: 0
+#    5: 1
+#    6: '='
+#    7: 4
+#    8: 'ascii'
+# Names:
+#    0: str
+#    1: split
+#    2: len
+#    3: base64
+#    4: json
+#    5: loads
+#    6: urlsafe_b64decode
+#    7: encode
+#    8: isinstance
+#    9: dict
+#   10: Exception
+# Varnames:
+#	token, parts, base64, payload, data
+# Positional arguments:
+#	token
+# Local variables:
+#    1: parts
+#    2: base64
+#    3: payload
+#    4: data
+707:           0 RESUME               0
+
+708:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (token)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + split)
+              60 LOAD_CONST           (".")
+              62 CALL                 (1 positional)
+              70 STORE_FAST           (parts)
+
+709:          72 LOAD_GLOBAL          (NULL + len)
+              82 LOAD_FAST            (parts)
+              84 CALL                 (1 positional)
+              92 LOAD_CONST           (3)
+              94 COMPARE_OP           (!=)
+              98 POP_JUMP_IF_FALSE    (to 106)
+
+710:         102 BUILD_MAP            0
+             104 RETURN_VALUE
+
+711:     >>  106 LOAD_CONST           (0)
+             108 LOAD_CONST           (None)
+             110 IMPORT_NAME          (base64)
+             112 STORE_FAST           (base64)
+
+713:         114 LOAD_FAST            (parts)
+             116 LOAD_CONST           (1)
+             118 BINARY_SUBSCR
+             122 LOAD_CONST           ("=")
+             124 LOAD_CONST           (4)
+             126 LOAD_GLOBAL          (NULL + len)
+             136 LOAD_FAST            (parts)
+             138 LOAD_CONST           (1)
+             140 BINARY_SUBSCR
+             144 CALL                 (1 positional)
+             152 LOAD_CONST           (4)
+             154 BINARY_OP            (%)
+             158 BINARY_OP            (-)
+             162 LOAD_CONST           (4)
+             164 BINARY_OP            (%)
+             168 BINARY_OP            (*)
+             172 BINARY_OP            (+)
+             176 STORE_FAST           (payload)
+
+714:         178 NOP
+
+715:         180 LOAD_GLOBAL          (json)
+             190 LOAD_ATTR            (loads)
+             210 PUSH_NULL
+             212 LOAD_FAST            (base64)
+             214 LOAD_ATTR            (urlsafe_b64decode)
+             234 PUSH_NULL
+             236 LOAD_FAST            (payload)
+             238 LOAD_ATTR            (NULL|self + encode)
+             258 LOAD_CONST           ("ascii")
+             260 CALL                 (1 positional)
+             268 CALL                 (1 positional)
+             276 CALL                 (1 positional)
+             284 STORE_FAST           (data)
+
+716:         286 LOAD_GLOBAL          (NULL + isinstance)
+             296 LOAD_FAST            (data)
+             298 LOAD_GLOBAL          (dict)
+             308 CALL                 (2 positional)
+             316 TO_BOOL
+             324 POP_JUMP_IF_FALSE    (to 332)
+             328 LOAD_FAST            (data)
+             330 RETURN_VALUE
+         >>  332 BUILD_MAP            0
+             334 RETURN_VALUE
+         >>  336 PUSH_EXC_INFO
+
+717:         338 LOAD_GLOBAL          (Exception)
+             348 CHECK_EXC_MATCH
+             350 POP_JUMP_IF_FALSE    (to 364)
+             354 POP_TOP
+
+718:         356 BUILD_MAP            0
+             358 SWAP                 (TOS <-> TOS1)
+             360 POP_EXCEPT
+             362 RETURN_VALUE
+
+717:     >>  364 RERAISE              0
+         >>  366 COPY                 3
+             368 POP_EXCEPT
+             370 RERAISE              1
+
+ExceptionTable:
+  180 to 328 -> 336 [0]
+  332 to 332 -> 336 [0]
+  336 to 358 -> 366 [1] lasti
+  364 to 364 -> 366 [1] lasti
+
+# Method Name:       _event
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 4
+# Number of locals:  8
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        721
+# Constants:
+#    0: None
+#    1: ('state', 'ts')
+#    2: 'detail'
+#    3: ': '
+#    4: ''
+#    5: '  [CodexChain] '
+# Names:
+#    0: int
+#    1: time
+#    2: update
+#    3: append
+#    4: _emit
+# Varnames:
+#	events, state, detail, extra, log_fn, tag, item, suffix
+# Positional arguments:
+#	events, state
+# Local variables:
+#    2: detail
+#    3: extra
+#    4: log_fn
+#    5: tag
+#    6: item
+#    7: suffix
+721:           0 RESUME               0
+
+730:           2 LOAD_FAST            (state)
+               4 LOAD_GLOBAL          (NULL + int)
+              14 LOAD_GLOBAL          (time)
+              24 LOAD_ATTR            (time)
+              44 PUSH_NULL
+              46 CALL                 (0 positional)
+              54 CALL                 (1 positional)
+              62 LOAD_CONST           (('state', 'ts'))
+              64 BUILD_CONST_KEY_MAP  2
+              66 STORE_FAST           (item)
+
+731:          68 LOAD_FAST            (detail)
+              70 TO_BOOL
+              78 POP_JUMP_IF_FALSE    (to 90)
+
+732:          82 LOAD_FAST_LOAD_FAST  (detail, item)
+              84 LOAD_CONST           ("detail")
+              86 STORE_SUBSCR
+
+733:     >>   90 LOAD_FAST            (extra)
+              92 TO_BOOL
+             100 POP_JUMP_IF_FALSE    (to 138)
+
+734:         104 LOAD_FAST            (item)
+             106 LOAD_ATTR            (NULL|self + update)
+             126 LOAD_FAST            (extra)
+             128 CALL                 (1 positional)
+             136 POP_TOP
+
+735:     >>  138 LOAD_FAST            (events)
+             140 LOAD_ATTR            (NULL|self + append)
+             160 LOAD_FAST            (item)
+             162 CALL                 (1 positional)
+             170 POP_TOP
+
+736:         172 LOAD_FAST            (detail)
+             174 TO_BOOL
+             182 POP_JUMP_IF_FALSE    (to 196)
+             186 LOAD_CONST           (": ")
+             188 LOAD_FAST            (detail)
+             190 FORMAT_SIMPLE
+             192 BUILD_STRING         2
+             194 JUMP_FORWARD         (to 198)
+         >>  196 LOAD_CONST           ("")
+         >>  198 STORE_FAST           (suffix)
+
+737:         200 LOAD_GLOBAL          (NULL + _emit)
+             210 LOAD_FAST            (log_fn)
+             212 LOAD_CONST           ("  [CodexChain] ")
+             214 LOAD_FAST            (state)
+             216 FORMAT_SIMPLE
+             218 LOAD_FAST            (suffix)
+             220 FORMAT_SIMPLE
+             222 BUILD_STRING         3
+             224 LOAD_FAST            (tag)
+             226 CALL                 (3 positional)
+             234 POP_TOP
+             236 RETURN_CONST         (None)
+
+
+# Method Name:       _extract_code_and_state
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        740
+# Constants:
+#    0: None
+#    1: ('', '')
+#    2: 'code'
+#    3: ''
+#    4: 0
+#    5: 'state'
+# Names:
+#    0: _clean
+#    1: urlparse
+#    2: scheme
+#    3: netloc
+#    4: query
+#    5: parse_qs
+#    6: get
+# Varnames:
+#	callback_or_code, value, parsed, qs
+# Positional arguments:
+#	callback_or_code
+# Local variables:
+#    1: value
+#    2: parsed
+#    3: qs
+740:           0 RESUME               0
+
+741:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (callback_or_code)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (value)
+
+742:          24 LOAD_FAST            (value)
+              26 TO_BOOL
+              34 POP_JUMP_IF_TRUE     (to 40)
+
+743:          38 RETURN_CONST         (('', ''))
+
+744:     >>   40 LOAD_GLOBAL          (NULL + urlparse)
+              50 LOAD_FAST            (value)
+              52 CALL                 (1 positional)
+              60 STORE_FAST           (parsed)
+
+745:          62 LOAD_FAST            (parsed)
+              64 LOAD_ATTR            (scheme)
+              84 TO_BOOL
+              92 POP_JUMP_IF_TRUE     (to 164)
+              96 LOAD_FAST            (parsed)
+              98 LOAD_ATTR            (netloc)
+             118 TO_BOOL
+             126 POP_JUMP_IF_TRUE     (to 164)
+             130 LOAD_FAST            (parsed)
+             132 LOAD_ATTR            (query)
+             152 TO_BOOL
+             160 POP_JUMP_IF_FALSE    (to 362)
+
+746:     >>  164 LOAD_GLOBAL          (NULL + parse_qs)

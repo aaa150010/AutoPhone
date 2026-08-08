@@ -25,6 +25,8 @@ from mac_overrides.sms_runtime import (
     SmsKeyPool,
     SmsProviderRegistry,
     SmsRoutePolicy,
+    SmsWaitPlan,
+    build_sms_wait_plan,
     confirm_herosms_cancellation,
     isolated_sms_get,
     is_protocol_pressure_error,
@@ -35,6 +37,7 @@ from mac_overrides.sms_runtime import (
     normalize_sms_provider_pools,
     rank_sms_candidates,
     redact_sms_secrets,
+    wilson_lower_bound,
 )
 
 
@@ -205,6 +208,13 @@ class FakeExchange:
 
 
 class SmsRuntimeTests(unittest.TestCase):
+    def test_provider_registry_preserves_platform_exhausted_keyword_signature(self):
+        registry = SmsProviderRegistry(lambda *_args, **_kwargs: None)
+
+        registry._platform_exhausted(_provider="smsbower")
+
+        self.assertTrue(registry.batch_health.is_exhausted("smsbower"))
+
     def test_normalizes_legacy_key_without_hyphen_splitting(self):
         self.assertEqual(normalize_sms_keys(None, "  abc-def  "), ["abc-def"])
         self.assertEqual(normalize_sms_keys([" a ", "", "a", "b"]), ["a", "b"])
@@ -228,7 +238,7 @@ class SmsRuntimeTests(unittest.TestCase):
         })
         self.assertTrue(changed)
         self.assertEqual(upgraded["phone_max_attempts"], 45)
-        self.assertEqual(upgraded["auth_session_retries"], 1)
+        self.assertEqual(upgraded["auth_session_retries"], 0)
         self.assertEqual(upgraded["performance_policy_version"], PERFORMANCE_POLICY_VERSION)
 
         saved, changed = migrate_performance_config({
@@ -393,6 +403,64 @@ class SmsRuntimeTests(unittest.TestCase):
             [0, 0],
         )
 
+    def test_registry_skips_hard_exhausted_platform_until_next_configure(self):
+        secret_a = "hero-secret-a"
+        secret_b = "hero-secret-b"
+        factory = FakeMultiPlatformFactory({
+            ("herosms", secret_a): {
+                "activations": [RuntimeError(f"NO_BALANCE {secret_a}")],
+            },
+            ("herosms", secret_b): {
+                "activations": [RuntimeError(f"NO_BALANCE {secret_b}")],
+            },
+            ("smsbower", "bower-a"): {},
+        })
+        config = {
+            "sms_provider_pools": [
+                {
+                    "provider": "herosms",
+                    "enabled": True,
+                    "api_keys": [secret_a, secret_b],
+                },
+                {
+                    "provider": "smsbower",
+                    "enabled": True,
+                    "api_keys": ["bower-a"],
+                },
+            ]
+        }
+        registry = SmsProviderRegistry(factory)
+        registry.configure(config)
+
+        first = PooledSmsProvider(registry)
+        first.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+        self.assertEqual(first.current_order_meta["platform"], "smsbower")
+        first.cancel()
+
+        second = PooledSmsProvider(registry)
+        second.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+        second.cancel()
+        hero_calls = [
+            call for call in factory.calls
+            if call[0] == "activate" and call[1] == "herosms"
+        ]
+        self.assertEqual(len(hero_calls), 2)
+        self.assertNotIn(secret_a, registry.safe_error(f"failed {secret_a}"))
+        self.assertNotIn(secret_b, registry.safe_error(f"failed {secret_b}"))
+
+        registry.configure(config)
+        retried = PooledSmsProvider(registry)
+        retried.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+        self.assertEqual(retried.current_order_meta["platform"], "herosms")
+        retried.complete()
+        self.assertEqual(
+            len([
+                call for call in factory.calls
+                if call[0] == "activate" and call[1] == "herosms"
+            ]),
+            3,
+        )
+
     def test_multi_platform_balancing_and_same_order_resend(self):
         factory = FakeMultiPlatformFactory({
             ("smsbower", "bower-a"): {"balance": 1.0, "codes": [None, "654321"]},
@@ -445,6 +513,132 @@ class SmsRuntimeTests(unittest.TestCase):
         waits = [call for call in factory.calls if call[0] == "wait"]
         self.assertEqual([call[4:] for call in waits], [(30, 3), (30, 3)])
         self.assertEqual(len({call[3] for call in waits}), 1)
+
+    def test_degraded_wait_uses_forty_then_twenty_without_alternative(self):
+        factory = FakeMultiPlatformFactory({
+            ("smsbower", "bower-a"): {"codes": [None, None]},
+        })
+        registry = SmsProviderRegistry(factory)
+        registry.configure({
+            "sms_provider_pools": [
+                {"provider": "smsbower", "enabled": True, "api_keys": ["bower-a"]},
+            ]
+        })
+        provider = PooledSmsProvider(registry)
+        provider.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+        provider.configure_wait_plan(
+            SmsWaitPlan(first_seconds=40, second_seconds=20, degraded=True)
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "sms_timeout"):
+            provider.wait_code(timeout=180)
+
+        waits = [call for call in factory.calls if call[0] == "wait"]
+        self.assertEqual([call[4:] for call in waits], [(40, 3), (20, 3)])
+
+    def test_degraded_wait_switches_after_forty_only_when_cancellable(self):
+        factory = FakeMultiPlatformFactory({
+            ("smsbower", "bower-a"): {"codes": [None, "late-code"]},
+        })
+        registry = SmsProviderRegistry(factory)
+        registry.configure({
+            "sms_provider_pools": [
+                {"provider": "smsbower", "enabled": True, "api_keys": ["bower-a"]},
+            ]
+        })
+        provider = PooledSmsProvider(registry)
+        provider.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+        provider.configure_wait_plan(
+            SmsWaitPlan(
+                first_seconds=40,
+                second_seconds=20,
+                early_switch=True,
+                degraded=True,
+            )
+        )
+        provider.configure_early_switch_check(lambda: True)
+
+        with self.assertRaisesRegex(RuntimeError, "sms_timeout_early_switch"):
+            provider.wait_code(timeout=180)
+
+        waits = [call for call in factory.calls if call[0] == "wait"]
+        self.assertEqual([call[4:] for call in waits], [(40, 3)])
+
+    def test_degraded_wait_without_alternative_recheck_keeps_second_round(self):
+        factory = FakeMultiPlatformFactory({
+            ("smsbower", "bower-a"): {"codes": [None, "late-code"]},
+        })
+        registry = SmsProviderRegistry(factory)
+        registry.configure({
+            "sms_provider_pools": [
+                {"provider": "smsbower", "enabled": True, "api_keys": ["bower-a"]},
+            ]
+        })
+        provider = PooledSmsProvider(registry)
+        provider.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+        provider.configure_wait_plan(
+            SmsWaitPlan(
+                first_seconds=40,
+                second_seconds=20,
+                early_switch=True,
+                degraded=True,
+            )
+        )
+
+        self.assertEqual(provider.wait_code(timeout=180), "late-code")
+
+        waits = [call for call in factory.calls if call[0] == "wait"]
+        self.assertEqual([call[4:] for call in waits], [(40, 3), (20, 3)])
+
+    def test_degraded_wait_rechecks_alternative_after_first_round(self):
+        factory = FakeMultiPlatformFactory({
+            ("smsbower", "bower-a"): {"codes": [None, None]},
+        })
+        registry = SmsProviderRegistry(factory)
+        registry.configure({
+            "sms_provider_pools": [
+                {"provider": "smsbower", "enabled": True, "api_keys": ["bower-a"]},
+            ]
+        })
+        provider = PooledSmsProvider(registry)
+        provider.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+        provider.configure_wait_plan(
+            SmsWaitPlan(40, 20, early_switch=True, degraded=True)
+        )
+        provider.configure_early_switch_check(lambda: False)
+
+        with self.assertRaisesRegex(RuntimeError, "sms_timeout"):
+            provider.wait_code(timeout=180)
+
+        waits = [call for call in factory.calls if call[0] == "wait"]
+        self.assertEqual([call[4:] for call in waits], [(40, 3), (20, 3)])
+
+    def test_herosms_protection_window_keeps_second_wait_round(self):
+        factory = FakeMultiPlatformFactory({
+            ("herosms", "hero-a"): {"codes": [None, None]},
+        })
+        registry = SmsProviderRegistry(factory)
+        registry.configure({
+            "sms_provider_pools": [
+                {"provider": "herosms", "enabled": True, "api_keys": ["hero-a"]},
+            ]
+        })
+        provider = PooledSmsProvider(registry)
+        provider.get_number_from_candidate("dr", "151", "any", "0.1", 0.04)
+        provider.configure_wait_plan(
+            SmsWaitPlan(
+                first_seconds=40,
+                second_seconds=20,
+                early_switch=True,
+                degraded=True,
+            )
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "sms_timeout"):
+            provider.wait_code(timeout=180)
+
+        waits = [call for call in factory.calls if call[0] == "wait"]
+        self.assertEqual([call[4:] for call in waits], [(40, 3), (20, 3)])
 
     def test_herosms_cancel_uses_documented_access_cancel_refund_ack(self):
         factory = FakeMultiPlatformFactory({
@@ -1695,6 +1889,92 @@ class SmsRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(ranked, [recent, historical])
 
+    def test_country_wilson_quality_precedes_price_and_static_score(self):
+        @dataclass
+        class Candidate:
+            country: str
+            provider_id: str
+            score: float
+            price: float
+            count: int = 10
+
+        proven_country = Candidate("1", "proven", score=1.0, price=0.10)
+        cheap_unknown = Candidate("2", "cheap", score=999.0, price=0.01)
+
+        ranked = rank_sms_candidates(
+            [cheap_unknown, proven_country],
+            {},
+            country_stats={"1": {"success": 8, "fail": 2}},
+        )
+
+        self.assertEqual(ranked, [proven_country, cheap_unknown])
+
+    def test_country_no_numbers_do_not_reduce_quality_observations(self):
+        @dataclass
+        class Candidate:
+            country: str
+            provider_id: str
+
+        inventory_noise = Candidate("1", "route-a")
+        real_failure = Candidate("2", "route-b")
+
+        ranked = rank_sms_candidates(
+            [real_failure, inventory_noise],
+            {},
+            country_stats={
+                "1": {"success": 5, "fail": 0, "no_numbers": 100},
+                "2": {"success": 5, "fail": 1},
+            },
+        )
+
+        self.assertEqual(ranked, [inventory_noise, real_failure])
+
+    def test_candidate_score_and_inventory_precede_price_tie_breaker(self):
+        @dataclass
+        class Candidate:
+            country: str
+            provider_id: str
+            score: float
+            price: float
+            count: int
+
+        quality = Candidate("1", "quality", score=10.0, price=0.10, count=5)
+        cheap = Candidate("2", "cheap", score=1.0, price=0.01, count=100)
+
+        ranked = rank_sms_candidates([cheap, quality], {})
+
+        self.assertEqual(ranked, [quality, cheap])
+
+    def test_wait_plan_requires_route_degradation(self):
+        self.assertEqual(build_sms_wait_plan({}), SmsWaitPlan())
+        self.assertEqual(
+            build_sms_wait_plan({"no_code_streak": 2}),
+            SmsWaitPlan(first_seconds=40, second_seconds=20, degraded=True),
+        )
+        self.assertEqual(
+            build_sms_wait_plan(
+                {"otp_received": 2, "timeout": 4},
+                better_mature_alternative=True,
+            ),
+            SmsWaitPlan(
+                first_seconds=40,
+                second_seconds=20,
+                early_switch=True,
+                degraded=True,
+            ),
+        )
+        self.assertEqual(
+            build_sms_wait_plan(
+                {"no_code_streak": 3},
+                optimization_enabled=False,
+                better_mature_alternative=True,
+            ),
+            SmsWaitPlan(),
+        )
+
+    def test_wilson_quality_requires_sample_size_not_raw_success_rate(self):
+        self.assertGreater(wilson_lower_bound(8, 10), wilson_lower_bound(1, 1))
+
     def test_risk_retry_ranking_prefers_real_receipt_then_legacy_mature_routes(self):
         @dataclass
         class Candidate:
@@ -2302,6 +2582,30 @@ class SmsRuntimeTests(unittest.TestCase):
             [("degraded", 3, 2), ("restored", 2, 3)],
         )
         self.assertNotIn("http://proxy-a:7897", str(events))
+
+    def test_protocol_gate_follows_task_capacity_without_erasing_local_pressure(self):
+        healthy = ProxyProtocolGate(default_limit=8, launch_interval_seconds=0)
+        with healthy.acquire("proxy-healthy"):
+            pass
+        self.assertEqual(healthy.synchronize_capacity(9), 9)
+        self.assertEqual(
+            healthy.snapshot("proxy-healthy"),
+            {"active": 0, "limit": 9, "ceiling": 9, "waiting": 0},
+        )
+        self.assertEqual(healthy.synchronize_capacity(4), 4)
+        self.assertEqual(healthy.snapshot("proxy-healthy")["limit"], 4)
+        self.assertEqual(healthy.synchronize_capacity(8), 8)
+        self.assertEqual(healthy.snapshot("proxy-healthy")["limit"], 8)
+
+        degraded = ProxyProtocolGate(default_limit=8, launch_interval_seconds=0)
+        degraded.report("proxy-degraded", "TLS connection reset")
+        degraded.report("proxy-degraded", "HTTP 429")
+        self.assertEqual(degraded.snapshot("proxy-degraded")["limit"], 7)
+
+        degraded.synchronize_capacity(9)
+        snapshot = degraded.snapshot("proxy-degraded")
+        self.assertEqual(snapshot["ceiling"], 9)
+        self.assertEqual(snapshot["limit"], 7)
 
     def test_protocol_gate_observer_failures_do_not_change_limits_or_leak_slots(self):
         gate = ProxyProtocolGate(default_limit=5, launch_interval_seconds=0)

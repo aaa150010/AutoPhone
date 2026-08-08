@@ -1,0 +1,224 @@
+
+ 91:        1148 LOAD_GLOBAL          (zipfile)
+            1158 LOAD_ATTR            (ZipFile)
+            1178 PUSH_NULL
+            1180 LOAD_GLOBAL          (io)
+            1190 LOAD_ATTR            (BytesIO)
+            1210 PUSH_NULL
+            1212 LOAD_FAST            (plaintext)
+            1214 CALL                 (1 positional)
+            1222 LOAD_CONST           ("r")
+            1224 CALL                 (2 positional)
+            1232 BEFORE_WITH
+            1234 STORE_FAST           (archive)
+
+ 92:        1236 LOAD_FAST            (archive)
+            1238 LOAD_ATTR            (NULL|self + infolist)
+            1258 CALL                 (0 positional)
+            1266 GET_ITER
+            1268 FOR_ITER             (to 1480)
+            1272 STORE_FAST           (info)
+
+ 93:        1274 LOAD_FAST            (info)
+            1276 LOAD_ATTR            (filename)
+            1296 LOAD_ATTR            (NULL|self + replace)
+            1316 LOAD_CONST           ("\\")
+            1318 LOAD_CONST           ("/")
+            1320 CALL                 (2 positional)
+            1328 STORE_FAST           (name)
+
+ 94:        1330 LOAD_FAST            (name)
+            1332 TO_BOOL
+            1340 POP_JUMP_IF_FALSE    (to 1438)
+            1344 LOAD_FAST            (name)
+            1346 LOAD_ATTR            (NULL|self + startswith)
+            1366 LOAD_CONST           ("/")
+            1368 CALL                 (1 positional)
+            1376 TO_BOOL
+            1384 POP_JUMP_IF_TRUE     (to 1438)
+            1388 LOAD_CONST           ("..")
+            1390 LOAD_GLOBAL          (NULL + Path)
+            1400 LOAD_FAST            (name)
+            1402 CALL                 (1 positional)
+            1410 LOAD_ATTR            (parts)
+            1430 CONTAINS_OP          (in)
+            1434 POP_JUMP_IF_FALSE    (to 1442)
+
+ 95:     >> 1438 JUMP_BACKWARD        (to 1268)
+
+ 96:     >> 1442 LOAD_FAST            (archive)
+            1444 LOAD_ATTR            (NULL|self + extract)
+            1464 LOAD_FAST_LOAD_FAST  (info, temporary)
+            1466 CALL                 (2 positional)
+            1474 POP_TOP
+            1476 JUMP_BACKWARD        (to 1268)
+
+ 92:     >> 1480 END_FOR
+            1482 POP_TOP
+
+ 91:        1484 LOAD_CONST           (None)
+            1486 LOAD_CONST           (None)
+            1488 LOAD_CONST           (None)
+            1490 CALL                 (2 positional)
+            1498 POP_TOP
+
+ 97:        1500 LOAD_FAST            (target)
+            1502 LOAD_ATTR            (NULL|self + exists)
+            1522 CALL                 (0 positional)
+            1530 TO_BOOL
+            1538 POP_JUMP_IF_FALSE    (to 1672)
+
+ 98:        1542 LOAD_FAST            (runner)
+            1544 LOAD_ATTR            (NULL|self + is_file)
+            1564 CALL                 (0 positional)
+            1572 TO_BOOL
+            1580 POP_JUMP_IF_FALSE    (to 1630)
+
+ 99:        1584 LOAD_GLOBAL          (shutil)
+            1594 LOAD_ATTR            (rmtree)
+            1614 PUSH_NULL
+         >> 1616 LOAD_FAST            (temporary)
+            1618 LOAD_CONST           (True)
+            1620 LOAD_CONST           (('ignore_errors',))
+            1622 CALL_KW              2
+            1624 POP_TOP
+
+100:        1626 LOAD_FAST            (target)
+            1628 RETURN_VALUE
+
+101:     >> 1630 LOAD_GLOBAL          (shutil)
+            1640 LOAD_ATTR            (rmtree)
+            1660 PUSH_NULL
+            1662 LOAD_FAST            (target)
+            1664 LOAD_CONST           (True)
+            1666 LOAD_CONST           (('ignore_errors',))
+            1668 CALL_KW              2
+            1670 POP_TOP
+
+102:     >> 1672 NOP
+
+103:        1674 LOAD_FAST            (temporary)
+            1676 LOAD_ATTR            (NULL|self + rename)
+            1696 LOAD_FAST            (target)
+            1698 CALL                 (1 positional)
+            1706 POP_TOP
+
+108:        1708 LOAD_FAST            (runner)
+            1710 LOAD_ATTR            (NULL|self + is_file)
+            1730 CALL                 (0 positional)
+            1738 TO_BOOL
+            1746 POP_JUMP_IF_TRUE     (to 1772)
+
+109:        1750 LOAD_GLOBAL          (NULL + RuntimeError)
+            1760 LOAD_CONST           ("node_chain.dat missing Sentinel runner")
+            1762 CALL                 (1 positional)
+            1770 RAISE_VARARGS        (exception instance)
+
+110:     >> 1772 LOAD_GLOBAL          (NULL + validate_node_chain_manifest)
+            1782 LOAD_FAST            (target)
+            1784 CALL                 (1 positional)
+            1792 POP_TOP
+
+111:        1794 LOAD_FAST            (target)
+            1796 RETURN_VALUE
+
+ 91:     >> 1798 PUSH_EXC_INFO
+            1800 WITH_EXCEPT_START    0
+            1802 TO_BOOL
+            1810 POP_JUMP_IF_TRUE     (to 1816)
+            1814 RERAISE              2
+         >> 1816 POP_TOP
+            1818 POP_EXCEPT
+            1820 POP_TOP
+            1822 POP_TOP
+            1824 JUMP_BACKWARD_NO_INTERRUPT (to 1500)
+         >> 1826 COPY                 3
+            1828 POP_EXCEPT
+            1830 RERAISE              1
+         >> 1832 PUSH_EXC_INFO
+
+104:        1834 LOAD_GLOBAL          (FileExistsError)
+            1844 CHECK_EXC_MATCH
+            1846 POP_JUMP_IF_FALSE    (to 1962)
+            1850 POP_TOP
+
+105:        1852 LOAD_GLOBAL          (shutil)
+            1862 LOAD_ATTR            (rmtree)
+            1882 PUSH_NULL
+            1884 LOAD_FAST            (temporary)
+            1886 LOAD_CONST           (True)
+            1888 LOAD_CONST           (('ignore_errors',))
+            1890 CALL_KW              2
+            1892 POP_TOP
+
+106:        1894 LOAD_FAST            (runner)
+            1896 LOAD_ATTR            (NULL|self + is_file)
+            1916 CALL                 (0 positional)
+            1924 TO_BOOL
+            1932 POP_JUMP_IF_TRUE     (to 1958)
+
+107:        1936 LOAD_GLOBAL          (NULL + RuntimeError)
+            1946 LOAD_CONST           ("node_chain extraction raced with an incomplete cache")
+            1948 CALL                 (1 positional)
+            1956 RAISE_VARARGS        (exception instance)
+
+106:     >> 1958 POP_EXCEPT
+            1960 JUMP_BACKWARD_NO_INTERRUPT (to 1708)
+
+104:     >> 1962 RERAISE              0
+         >> 1964 COPY                 3
+            1966 POP_EXCEPT
+            1968 RERAISE              1
+
+ExceptionTable:
+  1234 to 1482 -> 1798 [1] lasti
+  1674 to 1706 -> 1832 [0]
+  1798 to 1816 -> 1826 [3] lasti
+  1832 to 1956 -> 1964 [1] lasti
+  1962 to 1962 -> 1964 [1] lasti
+
+# Method Name:       <genexpr>
+# Filename:          resource_runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        69
+# Constants:
+#    0: None
+# Names:
+#    0: is_file
+# Varnames:
+#	.0, candidate
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: candidate
+ 69:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 72)
+              14 STORE_FAST_LOAD_FAST (candidate, candidate)
+              16 LOAD_ATTR            (NULL|self + is_file)
+              36 CALL                 (0 positional)
+              44 TO_BOOL
+              52 POP_JUMP_IF_TRUE     (to 60)
+              56 JUMP_BACKWARD        (to 10)
+         >>   60 LOAD_FAST            (candidate)
+              62 YIELD_VALUE          0
+              64 RESUME               5
+              66 POP_TOP
+              68 JUMP_BACKWARD        (to 10)
+         >>   72 END_FOR
+              74 POP_TOP
+              76 RETURN_CONST         (None)
+         >>   78 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              80 RERAISE              1
+
+ExceptionTable:
+  4 to 50 -> 78 [0] lasti
+  60 to 76 -> 78 [0] lasti

@@ -1,0 +1,800 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          codex_runtime_context.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        8
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1
+# Constants:
+#    0: 'Runtime context consistency checks for the standalone Codex chain.\n\nThis module does not generate browser fingerprints or Sentinel tokens. It only\nnormalizes observable runtime facts and checks whether the same values are being\ncarried across the local state machine, replay fixtures, and optional Node\ndiagnostics.\n'
+#    1: 0
+#    2: ('annotations',)
+#    3: None
+#    4: ('dataclass', 'field')
+#    5: ('Any', 'Dict', 'List')
+#    6: ('parse_qs', 'urlparse')
+#    7: <Code311 code object _clean at 0x10965bbe0, file codex_runtime_context.py>, line 20
+#    8: <Code311 code object _bool at 0x10965beb0, file codex_runtime_context.py>, line 24
+#    9: <Code311 code object _short_hash at 0x10965bb20, file codex_runtime_context.py>, line 31
+#   10: <Code311 code object _proxy_label at 0x10965ba90, file codex_runtime_context.py>, line 38
+#   11: <Code311 code object proxy_label_for at 0x10965ba00, file codex_runtime_context.py>, line 51
+#   12: <Code311 code object ConsistencyIssue at 0x10965b910, file codex_runtime_context.py>, line 55
+#   13: 'ConsistencyIssue'
+#   14: <Code311 code object RuntimeContext at 0x10962a550, file codex_runtime_context.py>, line 65
+#   15: 'RuntimeContext'
+#   16: <Code311 code object oauth_state_from_url at 0x10962a5e0, file codex_runtime_context.py>, line 107
+#   17: ''
+#   18: ('code_verifier', 'proxy', 'email_proxy', 'upload_proxy', 'config', 'phase1_register', 'node_result')
+#   19: <Code311 code object runtime_context_from_inputs at 0x10962a640, file codex_runtime_context.py>, line 112
+#   20: <Code311 code object _expected_bool at 0x10962a670, file codex_runtime_context.py>, line 161
+#   21: False
+#   22: ('expected', 'strict')
+#   23: <Code311 code object validate_runtime_context at 0x10962a7c0, file codex_runtime_context.py>, line 167
+#   24: ('value', 'Any', 'return', 'str')
+#   25: ('value', 'Any', 'return', 'bool')
+#   26: ('value', 'str', 'return', 'str')
+#   27: ('proxy', 'str', 'return', 'str')
+#   28: ('oauth_url', 'str', 'return', 'str')
+#   29: ('account_email', 'str', 'oauth_url', 'str', 'code_verifier', 'str', 'proxy', 'str', 'email_proxy', 'str', 'upload_proxy', 'str', 'config', 'Dict[str, Any] | None', 'phase1_register', 'Any', 'node_result', 'Dict[str, Any] | None', 'return', 'RuntimeContext')
+#   30: ('expected', 'Dict[str, Any]', 'key', 'str', 'return', 'bool | None')
+#   31: ('context', 'RuntimeContext', 'expected', 'Dict[str, Any] | None', 'strict', 'bool', 'return', 'Dict[str, Any]')
+# Names:
+#    0: __doc__
+#    1: __future__
+#    2: annotations
+#    3: hashlib
+#    4: platform
+#    5: sys
+#    6: dataclasses
+#    7: dataclass
+#    8: field
+#    9: typing
+#   10: Any
+#   11: Dict
+#   12: List
+#   13: urllib.parse
+#   14: parse_qs
+#   15: urlparse
+#   16: _clean
+#   17: _bool
+#   18: _short_hash
+#   19: _proxy_label
+#   20: proxy_label_for
+#   21: ConsistencyIssue
+#   22: RuntimeContext
+#   23: oauth_state_from_url
+#   24: runtime_context_from_inputs
+#   25: _expected_bool
+#   26: validate_runtime_context
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ("Runtime context consistency checks for the standalone Codex chain.\n\nThis module does not generate browser fingerprints or Sentinel tokens. It only\nnormalizes observable runtime facts and checks whether the same values are being\ncarried across the local state machine, replay fixtures, and optional Node\ndiagnostics.\n")
+               4 STORE_NAME           (__doc__)
+
+ 10:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (('annotations',))
+              10 IMPORT_NAME          (__future__)
+              12 IMPORT_FROM          (annotations)
+              14 STORE_NAME           (annotations)
+              16 POP_TOP
+
+ 12:          18 LOAD_CONST           (0)
+              20 LOAD_CONST           (None)
+              22 IMPORT_NAME          (hashlib)
+              24 STORE_NAME           (hashlib)
+
+ 13:          26 LOAD_CONST           (0)
+              28 LOAD_CONST           (None)
+              30 IMPORT_NAME          (platform)
+              32 STORE_NAME           (platform)
+
+ 14:          34 LOAD_CONST           (0)
+              36 LOAD_CONST           (None)
+              38 IMPORT_NAME          (sys)
+              40 STORE_NAME           (sys)
+
+ 15:          42 LOAD_CONST           (0)
+              44 LOAD_CONST           (('dataclass', 'field'))
+              46 IMPORT_NAME          (dataclasses)
+              48 IMPORT_FROM          (dataclass)
+              50 STORE_NAME           (dataclass)
+              52 IMPORT_FROM          (field)
+              54 STORE_NAME           (field)
+              56 POP_TOP
+
+ 16:          58 LOAD_CONST           (0)
+              60 LOAD_CONST           (('Any', 'Dict', 'List'))
+              62 IMPORT_NAME          (typing)
+              64 IMPORT_FROM          (Any)
+              66 STORE_NAME           (Any)
+              68 IMPORT_FROM          (Dict)
+              70 STORE_NAME           (Dict)
+              72 IMPORT_FROM          (List)
+              74 STORE_NAME           (List)
+              76 POP_TOP
+
+ 17:          78 LOAD_CONST           (0)
+              80 LOAD_CONST           (('parse_qs', 'urlparse'))
+              82 IMPORT_NAME          (urllib.parse)
+              84 IMPORT_FROM          (parse_qs)
+              86 STORE_NAME           (parse_qs)
+              88 IMPORT_FROM          (urlparse)
+              90 STORE_NAME           (urlparse)
+              92 POP_TOP
+
+ 20:          94 LOAD_CONST           (('value', 'Any', 'return', 'str'))
+              96 LOAD_CONST           (<Code311 code object _clean at 0x10965bbe0, file codex_runtime_context.py>, line 20)
+              98 MAKE_FUNCTION
+             100 SET_FUNCTION_ATTRIBUTE 4
+             102 STORE_NAME           (_clean)
+
+ 24:         104 LOAD_CONST           (('value', 'Any', 'return', 'bool'))
+             106 LOAD_CONST           (<Code311 code object _bool at 0x10965beb0, file codex_runtime_context.py>, line 24)
+             108 MAKE_FUNCTION
+             110 SET_FUNCTION_ATTRIBUTE 4
+             112 STORE_NAME           (_bool)
+
+ 31:         114 LOAD_CONST           (('value', 'str', 'return', 'str'))
+             116 LOAD_CONST           (<Code311 code object _short_hash at 0x10965bb20, file codex_runtime_context.py>, line 31)
+             118 MAKE_FUNCTION
+             120 SET_FUNCTION_ATTRIBUTE 4
+             122 STORE_NAME           (_short_hash)
+
+ 38:         124 LOAD_CONST           (('proxy', 'str', 'return', 'str'))
+             126 LOAD_CONST           (<Code311 code object _proxy_label at 0x10965ba90, file codex_runtime_context.py>, line 38)
+             128 MAKE_FUNCTION
+             130 SET_FUNCTION_ATTRIBUTE 4
+             132 STORE_NAME           (_proxy_label)
+
+ 51:         134 LOAD_CONST           (('proxy', 'str', 'return', 'str'))
+             136 LOAD_CONST           (<Code311 code object proxy_label_for at 0x10965ba00, file codex_runtime_context.py>, line 51)
+             138 MAKE_FUNCTION
+             140 SET_FUNCTION_ATTRIBUTE 4
+             142 STORE_NAME           (proxy_label_for)
+
+ 55:         144 LOAD_NAME            (dataclass)
+
+ 56:         146 LOAD_BUILD_CLASS
+             148 PUSH_NULL
+             150 LOAD_CONST           (<Code311 code object ConsistencyIssue at 0x10965b910, file codex_runtime_context.py>, line 55)
+             152 MAKE_FUNCTION
+             154 LOAD_CONST           ("ConsistencyIssue")
+             156 CALL                 (2 positional)
+
+ 55:         164 CALL                 (0 positional)
+
+ 56:         172 STORE_NAME           (ConsistencyIssue)
+
+ 65:         174 LOAD_NAME            (dataclass)
+
+ 66:         176 LOAD_BUILD_CLASS
+             178 PUSH_NULL
+             180 LOAD_CONST           (<Code311 code object RuntimeContext at 0x10962a550, file codex_runtime_context.py>, line 65)
+             182 MAKE_FUNCTION
+             184 LOAD_CONST           ("RuntimeContext")
+             186 CALL                 (2 positional)
+
+ 65:         194 CALL                 (0 positional)
+
+ 66:         202 STORE_NAME           (RuntimeContext)
+
+107:         204 LOAD_CONST           (('oauth_url', 'str', 'return', 'str'))
+             206 LOAD_CONST           (<Code311 code object oauth_state_from_url at 0x10962a5e0, file codex_runtime_context.py>, line 107)
+             208 MAKE_FUNCTION
+             210 SET_FUNCTION_ATTRIBUTE 4
+             212 STORE_NAME           (oauth_state_from_url)
+
+116:         214 LOAD_CONST           ("")
+
+117:         216 LOAD_CONST           ("")
+
+118:         218 LOAD_CONST           ("")
+
+119:         220 LOAD_CONST           ("")
+
+120:         222 LOAD_CONST           (None)
+
+121:         224 LOAD_CONST           (None)
+
+122:         226 LOAD_CONST           (None)
+
+112:         228 LOAD_CONST           (('code_verifier', 'proxy', 'email_proxy', 'upload_proxy', 'config', 'phase1_register', 'node_result'))
+             230 BUILD_CONST_KEY_MAP  7
+
+114:         232 NOP
+
+112:         234 NOP
+
+115:         236 NOP
+
+112:         238 NOP
+
+116:         240 NOP
+
+112:         242 NOP
+
+117:         244 NOP
+
+112:         246 NOP
+
+118:         248 NOP
+
+112:         250 NOP
+
+119:         252 NOP
+
+112:         254 NOP
+
+120:         256 NOP
+
+112:         258 NOP
+
+121:         260 NOP
+
+112:         262 NOP
+
+122:         264 NOP
+
+112:         266 NOP
+
+123:         268 NOP
+
+112:         270 LOAD_CONST           (('account_email', 'str', 'oauth_url', 'str', 'code_verifier', 'str', 'proxy', 'str', 'email_proxy', 'str', 'upload_proxy', 'str', 'config', 'Dict[str, Any] | None', 'phase1_register', 'Any', 'node_result', 'Dict[str, Any] | None', 'return', 'RuntimeContext'))
+             272 LOAD_CONST           (<Code311 code object runtime_context_from_inputs at 0x10962a640, file codex_runtime_context.py>, line 112)
+             274 MAKE_FUNCTION
+             276 SET_FUNCTION_ATTRIBUTE 4
+             278 SET_FUNCTION_ATTRIBUTE 2
+             280 STORE_NAME           (runtime_context_from_inputs)
+
+161:         282 LOAD_CONST           (('expected', 'Dict[str, Any]', 'key', 'str', 'return', 'bool | None'))
+             284 LOAD_CONST           (<Code311 code object _expected_bool at 0x10962a670, file codex_runtime_context.py>, line 161)
+             286 MAKE_FUNCTION
+             288 SET_FUNCTION_ATTRIBUTE 4
+             290 STORE_NAME           (_expected_bool)
+
+170:         292 LOAD_CONST           (None)
+
+171:         294 LOAD_CONST           (False)
+
+167:         296 LOAD_CONST           (('expected', 'strict'))
+             298 BUILD_CONST_KEY_MAP  2
+
+168:         300 NOP
+
+167:         302 NOP
+
+170:         304 NOP
+
+167:         306 NOP
+
+171:         308 NOP
+
+167:         310 NOP
+
+172:         312 NOP
+
+167:         314 LOAD_CONST           (('context', 'RuntimeContext', 'expected', 'Dict[str, Any] | None', 'strict', 'bool', 'return', 'Dict[str, Any]'))
+             316 LOAD_CONST           (<Code311 code object validate_runtime_context at 0x10962a7c0, file codex_runtime_context.py>, line 167)
+             318 MAKE_FUNCTION
+             320 SET_FUNCTION_ATTRIBUTE 4
+             322 SET_FUNCTION_ATTRIBUTE 2
+             324 STORE_NAME           (validate_runtime_context)
+             326 RETURN_CONST         (None)
+
+
+# Method Name:       _clean
+# Filename:          codex_runtime_context.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        20
+# Constants:
+#    0: None
+#    1: ''
+# Names:
+#    0: str
+#    1: strip
+# Varnames:
+#	value
+# Positional arguments:
+#	value
+ 20:           0 RESUME               0
+
+ 21:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (value)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + strip)
+              60 CALL                 (0 positional)
+              68 RETURN_VALUE
+
+
+# Method Name:       _bool
+# Filename:          codex_runtime_context.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        24
+# Constants:
+#    0: None
+#    1: {'on', '是', 'yes', '有', 'y', 'true', '1'}
+# Names:
+#    0: isinstance
+#    1: bool
+#    2: _clean
+#    3: lower
+# Varnames:
+#	value, text
+# Positional arguments:
+#	value
+# Local variables:
+#    1: text
+ 24:           0 RESUME               0
+
+ 25:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (value)
+              14 LOAD_GLOBAL          (bool)
+              24 CALL                 (2 positional)
+              32 TO_BOOL
+              40 POP_JUMP_IF_FALSE    (to 48)
+
+ 26:          44 LOAD_FAST            (value)
+              46 RETURN_VALUE
+
+ 27:     >>   48 LOAD_GLOBAL          (NULL + _clean)
+              58 LOAD_FAST            (value)
+              60 CALL                 (1 positional)
+              68 LOAD_ATTR            (NULL|self + lower)
+              88 CALL                 (0 positional)
+              96 STORE_FAST           (text)
+
+ 28:          98 LOAD_FAST            (text)
+             100 LOAD_CONST           ({'on', '是', 'yes', '有', 'y', 'true', '1'})
+             102 CONTAINS_OP          (in)
+             106 RETURN_VALUE
+
+
+# Method Name:       _short_hash
+# Filename:          codex_runtime_context.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        31
+# Constants:
+#    0: None
+#    1: ''
+#    2: 'utf-8'
+#    3: 'ignore'
+#    4: ('errors',)
+#    5: 12
+# Names:
+#    0: _clean
+#    1: hashlib
+#    2: sha256
+#    3: encode
+#    4: hexdigest
+# Varnames:
+#	value
+# Positional arguments:
+#	value
+ 31:           0 RESUME               0
+
+ 32:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (value)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (value)
+
+ 33:          24 LOAD_FAST            (value)
+              26 TO_BOOL
+              34 POP_JUMP_IF_TRUE     (to 40)
+
+ 34:          38 RETURN_CONST         ("")
+
+ 35:     >>   40 LOAD_GLOBAL          (hashlib)
+              50 LOAD_ATTR            (sha256)
+              70 PUSH_NULL
+              72 LOAD_FAST            (value)
+              74 LOAD_ATTR            (NULL|self + encode)
+              94 LOAD_CONST           ("utf-8")
+              96 LOAD_CONST           ("ignore")
+              98 LOAD_CONST           (('errors',))
+             100 CALL_KW              2
+             102 CALL                 (1 positional)
+             110 LOAD_ATTR            (NULL|self + hexdigest)
+             130 CALL                 (0 positional)
+             138 LOAD_CONST           (None)
+             140 LOAD_CONST           (12)
+             142 BINARY_SLICE
+             144 RETURN_VALUE
+
+
+# Method Name:       _proxy_label
+# Filename:          codex_runtime_context.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        38
+# Constants:
+#    0: None
+#    1: ''
+#    2: '://'
+#    3: 'http://'
+#    4: 'http'
+#    5: ':'
+# Names:
+#    0: _clean
+#    1: urlparse
+#    2: hostname
+#    3: port
+#    4: scheme
+#    5: _short_hash
+# Varnames:
+#	proxy, value, parsed, host, port, scheme
+# Positional arguments:
+#	proxy
+# Local variables:
+#    1: value
+#    2: parsed
+#    3: host
+#    4: port
+#    5: scheme
+ 38:           0 RESUME               0
+
+ 39:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (proxy)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (value)
+
+ 40:          24 LOAD_FAST            (value)
+              26 TO_BOOL
+              34 POP_JUMP_IF_TRUE     (to 40)
+
+ 41:          38 RETURN_CONST         ("")
+
+ 42:     >>   40 LOAD_GLOBAL          (NULL + urlparse)
+              50 LOAD_CONST           ("://")
+              52 LOAD_FAST            (value)
+              54 CONTAINS_OP          (in)
+              58 POP_JUMP_IF_FALSE    (to 66)
+              62 LOAD_FAST            (value)
+              64 JUMP_FORWARD         (to 74)
+         >>   66 LOAD_CONST           ("http://")
+              68 LOAD_FAST            (value)
+              70 BINARY_OP            (+)
+         >>   74 CALL                 (1 positional)
+              82 STORE_FAST           (parsed)
+
+ 43:          84 LOAD_FAST            (parsed)
+              86 LOAD_ATTR            (hostname)
+             106 COPY                 1
+             108 TO_BOOL
+             116 POP_JUMP_IF_TRUE     (to 124)
+             120 POP_TOP
+             122 LOAD_CONST           ("")
+         >>  124 STORE_FAST           (host)
+
+ 44:         126 LOAD_FAST            (parsed)
+             128 LOAD_ATTR            (port)
+             148 COPY                 1
+             150 TO_BOOL
+             158 POP_JUMP_IF_TRUE     (to 166)
+             162 POP_TOP
+             164 LOAD_CONST           ("")
+         >>  166 STORE_FAST           (port)
+
+ 45:         168 LOAD_FAST            (parsed)
+             170 LOAD_ATTR            (scheme)
+             190 COPY                 1
+             192 TO_BOOL
+             200 POP_JUMP_IF_TRUE     (to 208)
+             204 POP_TOP
+             206 LOAD_CONST           ("http")
+         >>  208 STORE_FAST           (scheme)
+
+ 46:         210 LOAD_FAST            (host)
+             212 TO_BOOL
+             220 POP_JUMP_IF_TRUE     (to 246)
+
+ 47:         224 LOAD_GLOBAL          (NULL + _short_hash)
+             234 LOAD_FAST            (value)
+             236 CALL                 (1 positional)
+             244 RETURN_VALUE
+
+ 48:     >>  246 LOAD_FAST            (port)
+             248 TO_BOOL
+             256 POP_JUMP_IF_FALSE    (to 280)
+             260 LOAD_FAST            (scheme)
+             262 FORMAT_SIMPLE
+             264 LOAD_CONST           ("://")
+             266 LOAD_FAST            (host)
+             268 FORMAT_SIMPLE
+             270 LOAD_CONST           (":")
+             272 LOAD_FAST            (port)
+             274 FORMAT_SIMPLE
+             276 BUILD_STRING         5
+             278 RETURN_VALUE
+         >>  280 LOAD_FAST            (scheme)
+             282 FORMAT_SIMPLE
+             284 LOAD_CONST           ("://")
+             286 LOAD_FAST            (host)
+             288 FORMAT_SIMPLE
+             290 BUILD_STRING         3
+             292 RETURN_VALUE
+
+
+# Method Name:       proxy_label_for
+# Filename:          codex_runtime_context.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        51
+# Constants:
+#    0: None
+# Names:
+#    0: _proxy_label
+# Varnames:
+#	proxy
+# Positional arguments:
+#	proxy
+ 51:           0 RESUME               0
+
+ 52:           2 LOAD_GLOBAL          (NULL + _proxy_label)
+              12 LOAD_FAST            (proxy)
+              14 CALL                 (1 positional)
+              22 RETURN_VALUE
+
+
+# Method Name:       ConsistencyIssue
+# Filename:          codex_runtime_context.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000000 (0x1000000)
+# First Line:        55
+# Constants:
+#    0: 'ConsistencyIssue'
+#    1: 55
+#    2: 'str'
+#    3: 'code'
+#    4: 'message'
+#    5: 'warn'
+#    6: 'severity'
+#    7: <Code311 code object to_dict at 0x10965b9a0, file codex_runtime_context.py>, line 61
+#    8: ()
+#    9: None
+#   10: ('return', 'Dict[str, str]')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __annotations__
+#    5: severity
+#    6: to_dict
+#    7: __static_attributes__
+ 55:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("ConsistencyIssue")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (55)
+              12 STORE_NAME           (__firstlineno__)
+              14 SETUP_ANNOTATIONS
+
+ 57:          16 LOAD_CONST           ("str")
+              18 LOAD_NAME            (__annotations__)
+              20 LOAD_CONST           ("code")
+              22 STORE_SUBSCR
+
+ 58:          26 LOAD_CONST           ("str")
+              28 LOAD_NAME            (__annotations__)
+              30 LOAD_CONST           ("message")
+              32 STORE_SUBSCR
+
+ 59:          36 LOAD_CONST           ("warn")
+              38 STORE_NAME           (severity)
+              40 LOAD_CONST           ("str")
+              42 LOAD_NAME            (__annotations__)
+              44 LOAD_CONST           ("severity")
+              46 STORE_SUBSCR
+
+ 61:          50 LOAD_CONST           (('return', 'Dict[str, str]'))
+              52 LOAD_CONST           (<Code311 code object to_dict at 0x10965b9a0, file codex_runtime_context.py>, line 61)
+              54 MAKE_FUNCTION
+              56 SET_FUNCTION_ATTRIBUTE 4
+              58 STORE_NAME           (to_dict)
+              60 LOAD_CONST           (())
+              62 STORE_NAME           (__static_attributes__)
+              64 RETURN_CONST         (None)
+
+
+# Method Name:       RuntimeContext
+# Filename:          codex_runtime_context.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        4
+# Flags:             0x01000000 (0x1000000)
+# First Line:        65
+# Constants:
+#    0: 'RuntimeContext'
+#    1: 65
+#    2: ''
+#    3: 'str'
+#    4: 'account_email'
+#    5: 'device_id'
+#    6: 'proxy_label'
+#    7: 'email_proxy_label'
+#    8: 'upload_proxy_label'
+#    9: 'oauth_state'
+#   10: False
+#   11: 'bool'
+#   12: 'code_verifier_present'
+#   13: 'cookie_jar_present'
+#   14: 'session_present'
+#   15: 'browser_fingerprint_present'
+#   16: 'node_fingerprint_present'
+#   17: 'node_bridge_present'
+#   18: 'node_bridge_mode'
+#   19: 'node_bridge_version'
+#   20: 'phase1_active'
+#   21: ('default_factory',)
+#   22: 'Dict[str, Any]'
+#   23: 'metadata'
+#   24: <Code311 code object to_dict at 0x10962a4f0, file codex_runtime_context.py>, line 84
+#   25: ()
+#   26: None
+#   27: ('return', 'Dict[str, Any]')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: account_email
+#    5: __annotations__
+#    6: device_id
+#    7: proxy_label
+#    8: email_proxy_label
+#    9: upload_proxy_label
+#   10: oauth_state
+#   11: code_verifier_present
+#   12: cookie_jar_present
+#   13: session_present
+#   14: browser_fingerprint_present
+#   15: node_fingerprint_present
+#   16: node_bridge_present
+#   17: node_bridge_mode
+#   18: node_bridge_version
+#   19: phase1_active
+#   20: field
+#   21: dict
+#   22: metadata
+#   23: to_dict
+#   24: __static_attributes__
+ 65:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("RuntimeContext")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (65)
+              12 STORE_NAME           (__firstlineno__)
+              14 SETUP_ANNOTATIONS
+
+ 67:          16 LOAD_CONST           ("")
+              18 STORE_NAME           (account_email)
+              20 LOAD_CONST           ("str")
+              22 LOAD_NAME            (__annotations__)
+              24 LOAD_CONST           ("account_email")
+              26 STORE_SUBSCR
+
+ 68:          30 LOAD_CONST           ("")
+              32 STORE_NAME           (device_id)
+              34 LOAD_CONST           ("str")
+              36 LOAD_NAME            (__annotations__)
+              38 LOAD_CONST           ("device_id")
+              40 STORE_SUBSCR
+
+ 69:          44 LOAD_CONST           ("")
+              46 STORE_NAME           (proxy_label)
+              48 LOAD_CONST           ("str")
+              50 LOAD_NAME            (__annotations__)
+              52 LOAD_CONST           ("proxy_label")
+              54 STORE_SUBSCR
+
+ 70:          58 LOAD_CONST           ("")
+              60 STORE_NAME           (email_proxy_label)
+              62 LOAD_CONST           ("str")
+              64 LOAD_NAME            (__annotations__)
+              66 LOAD_CONST           ("email_proxy_label")
+              68 STORE_SUBSCR
+
+ 71:          72 LOAD_CONST           ("")
+              74 STORE_NAME           (upload_proxy_label)
+              76 LOAD_CONST           ("str")
+              78 LOAD_NAME            (__annotations__)
+              80 LOAD_CONST           ("upload_proxy_label")
+              82 STORE_SUBSCR
+
+ 72:          86 LOAD_CONST           ("")
+              88 STORE_NAME           (oauth_state)
+              90 LOAD_CONST           ("str")
+              92 LOAD_NAME            (__annotations__)
+              94 LOAD_CONST           ("oauth_state")
+              96 STORE_SUBSCR
+
+ 73:         100 LOAD_CONST           (False)
+             102 STORE_NAME           (code_verifier_present)
+             104 LOAD_CONST           ("bool")
+             106 LOAD_NAME            (__annotations__)
+             108 LOAD_CONST           ("code_verifier_present")
+             110 STORE_SUBSCR
+
+ 74:         114 LOAD_CONST           (False)
+             116 STORE_NAME           (cookie_jar_present)
+             118 LOAD_CONST           ("bool")
+             120 LOAD_NAME            (__annotations__)
+             122 LOAD_CONST           ("cookie_jar_present")
+             124 STORE_SUBSCR
+
+ 75:         128 LOAD_CONST           (False)
+             130 STORE_NAME           (session_present)
+             132 LOAD_CONST           ("bool")
+             134 LOAD_NAME            (__annotations__)
+             136 LOAD_CONST           ("session_present")
+             138 STORE_SUBSCR
+
+ 76:         142 LOAD_CONST           (False)
+             144 STORE_NAME           (browser_fingerprint_present)
+             146 LOAD_CONST           ("bool")
+             148 LOAD_NAME            (__annotations__)
+             150 LOAD_CONST           ("browser_fingerprint_present")
+             152 STORE_SUBSCR
+
+ 77:         156 LOAD_CONST           (False)
+             158 STORE_NAME           (node_fingerprint_present)
+             160 LOAD_CONST           ("bool")
+             162 LOAD_NAME            (__annotations__)
+             164 LOAD_CONST           ("node_fingerprint_present")
+             166 STORE_SUBSCR
+
+ 78:         170 LOAD_CONST           (False)
+             172 STORE_NAME           (node_bridge_present)
+             174 LOAD_CONST           ("bool")
+             176 LOAD_NAME            (__annotations__)
+             178 LOAD_CONST           ("node_bridge_present")
+             180 STORE_SUBSCR
+
+ 79:         184 LOAD_CONST           ("")
+             186 STORE_NAME           (node_bridge_mode)
+             188 LOAD_CONST           ("str")
+             190 LOAD_NAME            (__annotations__)

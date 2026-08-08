@@ -1,0 +1,800 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          oauth_local_archive.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        10
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1
+# Constants:
+#    0: 'Build local, importable archives from Codex OAuth token bundles.'
+#    1: 0
+#    2: ('annotations',)
+#    3: None
+#    4: ('Path',)
+#    5: ('Any', 'Dict')
+#    6: 'runtime/local_archive'
+#    7: 2
+#    8: <Code311 code object _clean at 0x10763fee0, file oauth_local_archive.py>, line 21
+#    9: <Code311 code object _safe_name at 0x10763fac0, file oauth_local_archive.py>, line 29
+#   10: <Code311 code object _unique_path at 0x10763fbb0, file oauth_local_archive.py>, line 36
+#   11: <Code311 code object _save_json at 0x10763fa60, file oauth_local_archive.py>, line 50
+#   12: <Code311 code object _data_dict at 0x10763fa90, file oauth_local_archive.py>, line 55
+#   13: <Code311 code object token_credentials at 0x10763f940, file oauth_local_archive.py>, line 62
+#   14: <Code311 code object _merge_chatgpt_metadata at 0x10760e430, file oauth_local_archive.py>, line 99
+#   15: ''
+#   16: 'manual_oauth'
+#   17: ('name', 'source')
+#   18: <Code311 code object build_account_record at 0x10760e490, file oauth_local_archive.py>, line 112
+#   19: 10
+#   20: 1
+#   21: ('group_id', 'proxy_id', 'concurrency', 'priority', 'rate_multiplier')
+#   22: <Code311 code object build_sub2_import_payload at 0x10760e4f0, file oauth_local_archive.py>, line 194
+#   23: <Code311 code object build_cpa_auth_payload at 0x10760e520, file oauth_local_archive.py>, line 239
+#   24: ('out_dir', 'sub2_import_out', 'name', 'source', 'group_id', 'proxy_id', 'concurrency', 'priority', 'rate_multiplier')
+#   25: <Code311 code object archive_oauth_account at 0x10760e5b0, file oauth_local_archive.py>, line 251
+#   26: ('value', 'Any', 'return', 'str')
+#   27: ('folder', 'Path', 'filename', 'str', 'return', 'Path')
+#   28: ('path', 'Path', 'payload', 'Dict[str, Any]', 'return', 'None')
+#   29: ('payload', 'Dict[str, Any]', 'return', 'Dict[str, Any]')
+#   30: ('record', 'Dict[str, Any]', 'creds', 'Dict[str, Any]', 'token_payload', 'Dict[str, Any]', 'return', 'Dict[str, Any]')
+#   31: ('session', 'Dict[str, Any] | None', 'token_payload', 'Dict[str, Any]', 'name', 'str', 'source', 'str', 'return', 'Dict[str, Any]')
+#   32: ('account_record', 'Dict[str, Any]', 'group_id', 'int', 'proxy_id', 'int', 'concurrency', 'int', 'priority', 'int', 'rate_multiplier', 'int', 'return', 'Dict[str, Any]')
+#   33: ('account_record', 'Dict[str, Any]', 'return', 'Dict[str, Any]')
+#   34: ('session', 'Dict[str, Any] | None', 'token_payload', 'Dict[str, Any]', 'out_dir', 'str | Path', 'sub2_import_out', 'str | Path', 'name', 'str', 'source', 'str', 'group_id', 'int', 'proxy_id', 'int', 'concurrency', 'int', 'priority', 'int', 'rate_multiplier', 'int', 'return', 'Dict[str, Any]')
+# Names:
+#    0: __doc__
+#    1: __future__
+#    2: annotations
+#    3: json
+#    4: re
+#    5: sys
+#    6: time
+#    7: pathlib
+#    8: Path
+#    9: typing
+#   10: Any
+#   11: Dict
+#   12: DEFAULT_LOCAL_ARCHIVE_DIR
+#   13: __file__
+#   14: resolve
+#   15: parents
+#   16: PROJECT_ROOT
+#   17: str
+#   18: path
+#   19: append
+#   20: _clean
+#   21: _safe_name
+#   22: _unique_path
+#   23: _save_json
+#   24: _data_dict
+#   25: token_credentials
+#   26: _merge_chatgpt_metadata
+#   27: build_account_record
+#   28: build_sub2_import_payload
+#   29: build_cpa_auth_payload
+#   30: archive_oauth_account
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ("Build local, importable archives from Codex OAuth token bundles.")
+               4 STORE_NAME           (__doc__)
+
+  4:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (('annotations',))
+              10 IMPORT_NAME          (__future__)
+              12 IMPORT_FROM          (annotations)
+              14 STORE_NAME           (annotations)
+              16 POP_TOP
+
+  6:          18 LOAD_CONST           (0)
+              20 LOAD_CONST           (None)
+              22 IMPORT_NAME          (json)
+              24 STORE_NAME           (json)
+
+  7:          26 LOAD_CONST           (0)
+              28 LOAD_CONST           (None)
+              30 IMPORT_NAME          (re)
+              32 STORE_NAME           (re)
+
+  8:          34 LOAD_CONST           (0)
+              36 LOAD_CONST           (None)
+              38 IMPORT_NAME          (sys)
+              40 STORE_NAME           (sys)
+
+  9:          42 LOAD_CONST           (0)
+              44 LOAD_CONST           (None)
+              46 IMPORT_NAME          (time)
+              48 STORE_NAME           (time)
+
+ 10:          50 LOAD_CONST           (0)
+              52 LOAD_CONST           (('Path',))
+              54 IMPORT_NAME          (pathlib)
+              56 IMPORT_FROM          (Path)
+              58 STORE_NAME           (Path)
+              60 POP_TOP
+
+ 11:          62 LOAD_CONST           (0)
+              64 LOAD_CONST           (('Any', 'Dict'))
+              66 IMPORT_NAME          (typing)
+              68 IMPORT_FROM          (Any)
+              70 STORE_NAME           (Any)
+              72 IMPORT_FROM          (Dict)
+              74 STORE_NAME           (Dict)
+              76 POP_TOP
+
+ 14:          78 LOAD_CONST           ("runtime/local_archive")
+              80 STORE_NAME           (DEFAULT_LOCAL_ARCHIVE_DIR)
+
+ 16:          82 LOAD_NAME            (Path)
+              84 PUSH_NULL
+              86 LOAD_NAME            (__file__)
+              88 CALL                 (1 positional)
+              96 LOAD_ATTR            (NULL|self + resolve)
+             116 CALL                 (0 positional)
+             124 LOAD_ATTR            (parents)
+             144 LOAD_CONST           (2)
+             146 BINARY_SUBSCR
+             150 STORE_NAME           (PROJECT_ROOT)
+
+ 17:         152 LOAD_NAME            (str)
+             154 PUSH_NULL
+             156 LOAD_NAME            (PROJECT_ROOT)
+             158 CALL                 (1 positional)
+             166 LOAD_NAME            (sys)
+             168 LOAD_ATTR            (path)
+             188 CONTAINS_OP          (not in)
+             192 POP_JUMP_IF_FALSE    (to 262)
+
+ 18:         196 LOAD_NAME            (sys)
+             198 LOAD_ATTR            (path)
+             218 LOAD_ATTR            (NULL|self + append)
+             238 LOAD_NAME            (str)
+             240 PUSH_NULL
+             242 LOAD_NAME            (PROJECT_ROOT)
+             244 CALL                 (1 positional)
+             252 CALL                 (1 positional)
+             260 POP_TOP
+
+ 21:     >>  262 LOAD_CONST           (('value', 'Any', 'return', 'str'))
+             264 LOAD_CONST           (<Code311 code object _clean at 0x10763fee0, file oauth_local_archive.py>, line 21)
+             266 MAKE_FUNCTION
+             268 SET_FUNCTION_ATTRIBUTE 4
+             270 STORE_NAME           (_clean)
+
+ 29:         272 LOAD_CONST           (('value', 'Any', 'return', 'str'))
+             274 LOAD_CONST           (<Code311 code object _safe_name at 0x10763fac0, file oauth_local_archive.py>, line 29)
+             276 MAKE_FUNCTION
+             278 SET_FUNCTION_ATTRIBUTE 4
+             280 STORE_NAME           (_safe_name)
+
+ 36:         282 LOAD_CONST           (('folder', 'Path', 'filename', 'str', 'return', 'Path'))
+             284 LOAD_CONST           (<Code311 code object _unique_path at 0x10763fbb0, file oauth_local_archive.py>, line 36)
+             286 MAKE_FUNCTION
+             288 SET_FUNCTION_ATTRIBUTE 4
+             290 STORE_NAME           (_unique_path)
+
+ 50:         292 LOAD_CONST           (('path', 'Path', 'payload', 'Dict[str, Any]', 'return', 'None'))
+             294 LOAD_CONST           (<Code311 code object _save_json at 0x10763fa60, file oauth_local_archive.py>, line 50)
+             296 MAKE_FUNCTION
+             298 SET_FUNCTION_ATTRIBUTE 4
+             300 STORE_NAME           (_save_json)
+
+ 55:         302 LOAD_CONST           (('payload', 'Dict[str, Any]', 'return', 'Dict[str, Any]'))
+             304 LOAD_CONST           (<Code311 code object _data_dict at 0x10763fa90, file oauth_local_archive.py>, line 55)
+             306 MAKE_FUNCTION
+             308 SET_FUNCTION_ATTRIBUTE 4
+             310 STORE_NAME           (_data_dict)
+
+ 62:         312 LOAD_CONST           (('payload', 'Dict[str, Any]', 'return', 'Dict[str, Any]'))
+             314 LOAD_CONST           (<Code311 code object token_credentials at 0x10763f940, file oauth_local_archive.py>, line 62)
+             316 MAKE_FUNCTION
+             318 SET_FUNCTION_ATTRIBUTE 4
+             320 STORE_NAME           (token_credentials)
+
+ 99:         322 LOAD_CONST           (('record', 'Dict[str, Any]', 'creds', 'Dict[str, Any]', 'token_payload', 'Dict[str, Any]', 'return', 'Dict[str, Any]'))
+             324 LOAD_CONST           (<Code311 code object _merge_chatgpt_metadata at 0x10760e430, file oauth_local_archive.py>, line 99)
+             326 MAKE_FUNCTION
+             328 SET_FUNCTION_ATTRIBUTE 4
+             330 STORE_NAME           (_merge_chatgpt_metadata)
+
+116:         332 LOAD_CONST           ("")
+
+117:         334 LOAD_CONST           ("manual_oauth")
+
+112:         336 LOAD_CONST           (('name', 'source'))
+             338 BUILD_CONST_KEY_MAP  2
+
+114:         340 NOP
+
+112:         342 NOP
+
+115:         344 NOP
+
+112:         346 NOP
+
+116:         348 NOP
+
+112:         350 NOP
+
+117:         352 NOP
+
+112:         354 NOP
+
+118:         356 NOP
+
+112:         358 LOAD_CONST           (('session', 'Dict[str, Any] | None', 'token_payload', 'Dict[str, Any]', 'name', 'str', 'source', 'str', 'return', 'Dict[str, Any]'))
+             360 LOAD_CONST           (<Code311 code object build_account_record at 0x10760e490, file oauth_local_archive.py>, line 112)
+             362 MAKE_FUNCTION
+             364 SET_FUNCTION_ATTRIBUTE 4
+             366 SET_FUNCTION_ATTRIBUTE 2
+             368 STORE_NAME           (build_account_record)
+
+197:         370 LOAD_CONST           (0)
+
+198:         372 LOAD_CONST           (0)
+
+199:         374 LOAD_CONST           (10)
+
+200:         376 LOAD_CONST           (1)
+
+201:         378 LOAD_CONST           (1)
+
+194:         380 LOAD_CONST           (('group_id', 'proxy_id', 'concurrency', 'priority', 'rate_multiplier'))
+             382 BUILD_CONST_KEY_MAP  5
+
+195:         384 NOP
+
+194:         386 NOP
+
+197:         388 NOP
+
+194:         390 NOP
+
+198:         392 NOP
+
+194:         394 NOP
+
+199:         396 NOP
+
+194:         398 NOP
+
+200:         400 NOP
+
+194:         402 NOP
+
+201:         404 NOP
+
+194:         406 NOP
+
+202:         408 NOP
+
+194:         410 LOAD_CONST           (('account_record', 'Dict[str, Any]', 'group_id', 'int', 'proxy_id', 'int', 'concurrency', 'int', 'priority', 'int', 'rate_multiplier', 'int', 'return', 'Dict[str, Any]'))
+             412 LOAD_CONST           (<Code311 code object build_sub2_import_payload at 0x10760e4f0, file oauth_local_archive.py>, line 194)
+             414 MAKE_FUNCTION
+             416 SET_FUNCTION_ATTRIBUTE 4
+             418 SET_FUNCTION_ATTRIBUTE 2
+             420 STORE_NAME           (build_sub2_import_payload)
+
+239:         422 LOAD_CONST           (('account_record', 'Dict[str, Any]', 'return', 'Dict[str, Any]'))
+             424 LOAD_CONST           (<Code311 code object build_cpa_auth_payload at 0x10760e520, file oauth_local_archive.py>, line 239)
+             426 MAKE_FUNCTION
+             428 SET_FUNCTION_ATTRIBUTE 4
+             430 STORE_NAME           (build_cpa_auth_payload)
+
+255:         432 LOAD_NAME            (DEFAULT_LOCAL_ARCHIVE_DIR)
+
+256:         434 LOAD_CONST           ("")
+
+257:         436 LOAD_CONST           ("")
+
+258:         438 LOAD_CONST           ("manual_oauth")
+
+259:         440 LOAD_CONST           (0)
+
+260:         442 LOAD_CONST           (0)
+
+261:         444 LOAD_CONST           (10)
+
+262:         446 LOAD_CONST           (1)
+
+263:         448 LOAD_CONST           (1)
+
+251:         450 LOAD_CONST           (('out_dir', 'sub2_import_out', 'name', 'source', 'group_id', 'proxy_id', 'concurrency', 'priority', 'rate_multiplier'))
+             452 BUILD_CONST_KEY_MAP  9
+
+253:         454 NOP
+
+251:         456 NOP
+
+254:         458 NOP
+
+251:         460 NOP
+
+255:         462 NOP
+
+251:         464 NOP
+
+256:         466 NOP
+
+251:         468 NOP
+
+257:         470 NOP
+
+251:         472 NOP
+
+258:         474 NOP
+
+251:         476 NOP
+
+259:         478 NOP
+
+251:         480 NOP
+
+260:         482 NOP
+
+251:         484 NOP
+
+261:         486 NOP
+
+251:         488 NOP
+
+262:         490 NOP
+
+251:         492 NOP
+
+263:         494 NOP
+
+251:         496 NOP
+
+264:         498 NOP
+
+251:         500 LOAD_CONST           (('session', 'Dict[str, Any] | None', 'token_payload', 'Dict[str, Any]', 'out_dir', 'str | Path', 'sub2_import_out', 'str | Path', 'name', 'str', 'source', 'str', 'group_id', 'int', 'proxy_id', 'int', 'concurrency', 'int', 'priority', 'int', 'rate_multiplier', 'int', 'return', 'Dict[str, Any]'))
+             502 LOAD_CONST           (<Code311 code object archive_oauth_account at 0x10760e5b0, file oauth_local_archive.py>, line 251)
+             504 MAKE_FUNCTION
+             506 SET_FUNCTION_ATTRIBUTE 4
+             508 SET_FUNCTION_ATTRIBUTE 2
+             510 STORE_NAME           (archive_oauth_account)
+             512 RETURN_CONST         (None)
+
+
+# Method Name:       _clean
+# Filename:          oauth_local_archive.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        21
+# Constants:
+#    0: None
+#    1: ''
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: list
+#    3: tuple
+#    4: set
+#    5: str
+#    6: strip
+# Varnames:
+#	value
+# Positional arguments:
+#	value
+ 21:           0 RESUME               0
+
+ 22:           2 LOAD_FAST            (value)
+               4 POP_JUMP_IF_NOT_NONE (to 10)
+
+ 23:           8 RETURN_CONST         ("")
+
+ 24:     >>   10 LOAD_GLOBAL          (NULL + isinstance)
+              20 LOAD_FAST            (value)
+              22 LOAD_GLOBAL          (dict)
+              32 LOAD_GLOBAL          (list)
+              42 LOAD_GLOBAL          (tuple)
+              52 LOAD_GLOBAL          (set)
+              62 BUILD_TUPLE          4
+              64 CALL                 (2 positional)
+              72 TO_BOOL
+              80 POP_JUMP_IF_FALSE    (to 86)
+
+ 25:          84 RETURN_CONST         ("")
+
+ 26:     >>   86 LOAD_GLOBAL          (NULL + str)
+              96 LOAD_FAST            (value)
+              98 CALL                 (1 positional)
+             106 LOAD_ATTR            (NULL|self + strip)
+             126 CALL                 (0 positional)
+             134 RETURN_VALUE
+
+
+# Method Name:       _safe_name
+# Filename:          oauth_local_archive.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        29
+# Constants:
+#    0: None
+#    1: '[\\\\/:*?"<>|]+'
+#    2: '_'
+#    3: '\\s+'
+#    4: 120
+#    5: 'unknown'
+# Names:
+#    0: _clean
+#    1: re
+#    2: sub
+# Varnames:
+#	value, text
+# Positional arguments:
+#	value
+# Local variables:
+#    1: text
+ 29:           0 RESUME               0
+
+ 30:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (value)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (text)
+
+ 31:          24 LOAD_GLOBAL          (re)
+              34 LOAD_ATTR            (sub)
+              54 PUSH_NULL
+              56 LOAD_CONST           ('[\\\\/:*?"<>|]+')
+              58 LOAD_CONST           ("_")
+              60 LOAD_FAST            (text)
+              62 CALL                 (3 positional)
+              70 STORE_FAST           (text)
+
+ 32:          72 LOAD_GLOBAL          (re)
+              82 LOAD_ATTR            (sub)
+             102 PUSH_NULL
+             104 LOAD_CONST           ("\\s+")
+             106 LOAD_CONST           ("_")
+             108 LOAD_FAST            (text)
+             110 CALL                 (3 positional)
+             118 STORE_FAST           (text)
+
+ 33:         120 LOAD_FAST            (text)
+             122 LOAD_CONST           (None)
+             124 LOAD_CONST           (120)
+             126 BINARY_SLICE
+             128 COPY                 1
+             130 TO_BOOL
+             138 POP_JUMP_IF_TRUE     (to 146)
+             142 POP_TOP
+             144 LOAD_CONST           ("unknown")
+         >>  146 RETURN_VALUE
+
+
+# Method Name:       _unique_path
+# Filename:          oauth_local_archive.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  7
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        36
+# Constants:
+#    0: None
+#    1: 2
+#    2: '_'
+#    3: 1
+# Names:
+#    0: exists
+#    1: stem
+#    2: suffix
+# Varnames:
+#	folder, filename, path, stem, suffix, idx, candidate
+# Positional arguments:
+#	folder, filename
+# Local variables:
+#    2: path
+#    3: stem
+#    4: suffix
+#    5: idx
+#    6: candidate
+ 36:           0 RESUME               0
+
+ 37:           2 LOAD_FAST_LOAD_FAST  (folder, filename)
+               4 BINARY_OP            (/)
+               8 STORE_FAST           (path)
+
+ 38:          10 LOAD_FAST            (path)
+              12 LOAD_ATTR            (NULL|self + exists)
+              32 CALL                 (0 positional)
+              40 TO_BOOL
+              48 POP_JUMP_IF_TRUE     (to 56)
+
+ 39:          52 LOAD_FAST            (path)
+              54 RETURN_VALUE
+
+ 40:     >>   56 LOAD_FAST            (path)
+              58 LOAD_ATTR            (stem)
+              78 STORE_FAST           (stem)
+
+ 41:          80 LOAD_FAST            (path)
+              82 LOAD_ATTR            (suffix)
+             102 STORE_FAST           (suffix)
+
+ 42:         104 LOAD_CONST           (2)
+             106 STORE_FAST           (idx)
+
+ 43:         108 NOP
+
+ 44:         110 LOAD_FAST_LOAD_FAST  (folder, stem)
+             112 FORMAT_SIMPLE
+             114 LOAD_CONST           ("_")
+             116 LOAD_FAST            (idx)
+             118 FORMAT_SIMPLE
+             120 LOAD_FAST            (suffix)
+             122 FORMAT_SIMPLE
+             124 BUILD_STRING         4
+             126 BINARY_OP            (/)
+             130 STORE_FAST           (candidate)
+
+ 45:         132 LOAD_FAST            (candidate)
+             134 LOAD_ATTR            (NULL|self + exists)
+             154 CALL                 (0 positional)
+             162 TO_BOOL
+             170 POP_JUMP_IF_TRUE     (to 178)
+
+ 46:         174 LOAD_FAST            (candidate)
+             176 RETURN_VALUE
+
+ 47:     >>  178 LOAD_FAST            (idx)
+             180 LOAD_CONST           (1)
+             182 BINARY_OP            (+=)
+             186 STORE_FAST           (idx)
+
+ 43:         188 JUMP_BACKWARD        (to 110)
+
+
+# Method Name:       _save_json
+# Filename:          oauth_local_archive.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        50
+# Constants:
+#    0: None
+#    1: True
+#    2: ('parents', 'exist_ok')
+#    3: False
+#    4: 2
+#    5: ('ensure_ascii', 'indent')
+#    6: '\n'
+#    7: 'utf-8'
+#    8: ('encoding',)
+# Names:
+#    0: parent
+#    1: mkdir
+#    2: write_text
+#    3: json
+#    4: dumps
+# Varnames:
+#	path, payload
+# Positional arguments:
+#	path, payload
+ 50:           0 RESUME               0
+
+ 51:           2 LOAD_FAST            (path)
+               4 LOAD_ATTR            (parent)
+              24 LOAD_ATTR            (NULL|self + mkdir)
+              44 LOAD_CONST           (True)
+              46 LOAD_CONST           (True)
+              48 LOAD_CONST           (('parents', 'exist_ok'))
+              50 CALL_KW              2
+              52 POP_TOP
+
+ 52:          54 LOAD_FAST            (path)
+              56 LOAD_ATTR            (NULL|self + write_text)
+              76 LOAD_GLOBAL          (json)
+              86 LOAD_ATTR            (dumps)
+             106 PUSH_NULL
+             108 LOAD_FAST            (payload)
+             110 LOAD_CONST           (False)
+             112 LOAD_CONST           (2)
+             114 LOAD_CONST           (('ensure_ascii', 'indent'))
+             116 CALL_KW              3
+             118 LOAD_CONST           ("\n")
+             120 BINARY_OP            (+)
+             124 LOAD_CONST           ("utf-8")
+             126 LOAD_CONST           (('encoding',))
+             128 CALL_KW              2
+             130 POP_TOP
+             132 RETURN_CONST         (None)
+
+
+# Method Name:       _data_dict
+# Filename:          oauth_local_archive.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        55
+# Constants:
+#    0: None
+#    1: 'data'
+# Names:
+#    0: get
+#    1: isinstance
+#    2: dict
+# Varnames:
+#	payload, data
+# Positional arguments:
+#	payload
+# Local variables:
+#    1: data
+ 55:           0 RESUME               0
+
+ 56:           2 LOAD_FAST            (payload)
+               4 LOAD_ATTR            (NULL|self + get)
+              24 LOAD_CONST           ("data")
+              26 CALL                 (1 positional)
+              34 STORE_FAST           (data)
+
+ 57:          36 LOAD_GLOBAL          (NULL + isinstance)
+              46 LOAD_FAST            (data)
+              48 LOAD_GLOBAL          (dict)
+              58 CALL                 (2 positional)
+              66 TO_BOOL
+              74 POP_JUMP_IF_FALSE    (to 82)
+
+ 58:          78 LOAD_FAST            (data)
+              80 RETURN_VALUE
+
+ 59:     >>   82 LOAD_FAST            (payload)
+              84 RETURN_VALUE
+
+
+# Method Name:       token_credentials
+# Filename:          oauth_local_archive.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  8
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        62
+# Constants:
+#    0: 'Normalize tokens from SUB2 exchange, local exchange, or runner result.'
+#    1: 'local_oauth'
+#    2: 'tokens'
+#    3: ('id_token', 'access_token', 'refresh_token', 'expires_at', 'expires_in', 'token_type', 'scope', 'email', 'chatgpt_account_id', 'account_id', 'chatgpt_account_user_id', 'chatgpt_user_id', 'chatgpt_auth_user_id', 'chatgpt_plan_type', 'plan_type', 'organization_id', 'privacy_mode', 'client_id')
+#    4: (None, '')
+#    5: 'plan_type'
+#    6: 'chatgpt_plan_type'
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: _data_dict
+#    3: get
+# Varnames:
+#	payload, root, data, local_oauth, nested_tokens, creds, source, key
+# Positional arguments:
+#	payload
+# Local variables:
+#    1: root
+#    2: data
+#    3: local_oauth
+#    4: nested_tokens
+#    5: creds
+#    6: source
+#    7: key
+ 62:           0 RESUME               0
+
+ 64:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (payload)
+              14 LOAD_GLOBAL          (dict)
+              24 CALL                 (2 positional)
+              32 TO_BOOL
+              40 POP_JUMP_IF_FALSE    (to 48)
+              44 LOAD_FAST            (payload)
+              46 JUMP_FORWARD         (to 50)
+         >>   48 BUILD_MAP            0
+         >>   50 STORE_FAST           (root)
+
+ 65:          52 LOAD_GLOBAL          (NULL + _data_dict)
+              62 LOAD_FAST            (root)
+              64 CALL                 (1 positional)
+              72 STORE_FAST           (data)
+
+ 66:          74 LOAD_GLOBAL          (NULL + isinstance)
+              84 LOAD_FAST            (root)
+              86 LOAD_ATTR            (NULL|self + get)
+             106 LOAD_CONST           ("local_oauth")
+             108 CALL                 (1 positional)
+             116 LOAD_GLOBAL          (dict)
+             126 CALL                 (2 positional)
+             134 TO_BOOL
+             142 POP_JUMP_IF_FALSE    (to 180)
+             146 LOAD_FAST            (root)
+             148 LOAD_ATTR            (NULL|self + get)
+             168 LOAD_CONST           ("local_oauth")
+             170 CALL                 (1 positional)
+             178 JUMP_FORWARD         (to 182)
+         >>  180 BUILD_MAP            0
+         >>  182 STORE_FAST           (local_oauth)
+
+ 67:         184 LOAD_GLOBAL          (NULL + isinstance)
+             194 LOAD_FAST            (local_oauth)
+             196 LOAD_ATTR            (NULL|self + get)
+             216 LOAD_CONST           ("tokens")
+             218 CALL                 (1 positional)
+             226 LOAD_GLOBAL          (dict)
+             236 CALL                 (2 positional)
+             244 TO_BOOL
+             252 POP_JUMP_IF_FALSE    (to 290)
+             256 LOAD_FAST            (local_oauth)
+             258 LOAD_ATTR            (NULL|self + get)
+             278 LOAD_CONST           ("tokens")
+             280 CALL                 (1 positional)
+             288 JUMP_FORWARD         (to 292)
+         >>  290 BUILD_MAP            0
+         >>  292 STORE_FAST           (nested_tokens)
+
+ 68:         294 BUILD_MAP            0
+             296 STORE_FAST           (creds)
+
+ 69:         298 LOAD_FAST_LOAD_FAST  (nested_tokens, data)
+             300 LOAD_FAST            (root)
+             302 BUILD_TUPLE          3
+             304 GET_ITER
+             306 FOR_ITER             (to 510)
+             310 STORE_FAST           (source)
+
+ 70:         312 LOAD_GLOBAL          (NULL + isinstance)
+             322 LOAD_FAST            (source)
+             324 LOAD_GLOBAL          (dict)
+             334 CALL                 (2 positional)
+             342 TO_BOOL
+             350 POP_JUMP_IF_TRUE     (to 358)
+
+ 71:         354 JUMP_BACKWARD        (to 306)
+
+ 72:     >>  358 LOAD_CONST           (('id_token', 'access_token', 'refresh_token', 'expires_at', 'expires_in', 'token_type', 'scope', 'email', 'chatgpt_account_id', 'account_id', 'chatgpt_account_user_id', 'chatgpt_user_id', 'chatgpt_auth_user_id', 'chatgpt_plan_type', 'plan_type', 'organization_id', 'privacy_mode', 'client_id'))
+             360 GET_ITER
+             362 FOR_ITER             (to 502)
+             366 STORE_FAST           (key)
+
+ 92:         368 LOAD_FAST            (source)
+             370 LOAD_ATTR            (NULL|self + get)
+             390 LOAD_FAST            (key)
+             392 CALL                 (1 positional)
+             400 LOAD_CONST           ((None, ''))
+             402 CONTAINS_OP          (not in)
+             406 POP_JUMP_IF_TRUE     (to 414)
+         >>  410 JUMP_BACKWARD        (to 362)
+         >>  414 LOAD_FAST            (creds)
+             416 LOAD_ATTR            (NULL|self + get)
+             436 LOAD_FAST            (key)
+             438 CALL                 (1 positional)
+             446 LOAD_CONST           ((None, ''))
+             448 CONTAINS_OP          (in)
+             452 POP_JUMP_IF_TRUE     (to 460)
+             456 JUMP_BACKWARD        (to 362)
+
+ 93:     >>  460 LOAD_FAST            (source)
+             462 LOAD_ATTR            (NULL|self + get)
+             482 LOAD_FAST            (key)
+             484 CALL                 (1 positional)
+             492 LOAD_FAST_LOAD_FAST  (creds, key)

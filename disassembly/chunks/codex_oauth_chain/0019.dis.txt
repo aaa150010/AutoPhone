@@ -1,0 +1,800 @@
+3682:        15176 LOAD_FAST            (session_id)
+
+3683:        15178 LOAD_FAST_CHECK      (callback_state)
+            15180 COPY                 1
+            15182 TO_BOOL
+            15190 POP_JUMP_IF_TRUE     (to 15198)
+            15194 POP_TOP
+            15196 LOAD_FAST            (provider_state)
+
+3684:     >> 15198 LOAD_FAST            (upload_proxy)
+
+3685:        15200 LOAD_FAST            (log_fn)
+
+3680:        15202 LOAD_CONST           (('session_id', 'state', 'upload_proxy', 'log_fn'))
+            15204 CALL_KW              5
+
+3686:        15206 LOAD_ATTR            (NULL|self + exchange)
+            15226 LOAD_FAST_CHECK      (code)
+            15228 LOAD_FAST            (account_email)
+            15230 LOAD_CONST           (('code', 'account_email'))
+            15232 CALL_KW              2
+
+3680:        15234 STORE_FAST           (exchange_result)
+
+3687:        15236 LOAD_GLOBAL          (NULL + _raise_if_task_stopped)
+            15246 LOAD_FAST            (cfg)
+            15248 CALL                 (1 positional)
+            15256 POP_TOP
+
+3688:        15258 LOAD_FAST            (exchange_result)
+            15260 LOAD_ATTR            (NULL|self + get)
+            15280 LOAD_CONST           ("ok")
+            15282 CALL                 (1 positional)
+            15290 TO_BOOL
+            15298 POP_JUMP_IF_TRUE     (to 15378)
+
+3689:        15302 LOAD_GLOBAL          (NULL + CodexChainError)
+            15312 LOAD_CONST           ("sub2_exchange_failed: ")
+            15314 LOAD_FAST_CHECK      (exchange_result)
+            15316 LOAD_ATTR            (NULL|self + get)
+            15336 LOAD_CONST           ("error")
+            15338 CALL                 (1 positional)
+            15346 COPY                 1
+            15348 TO_BOOL
+            15356 POP_JUMP_IF_TRUE     (to 15364)
+            15360 POP_TOP
+            15362 LOAD_FAST_CHECK      (exchange_result)
+         >> 15364 FORMAT_SIMPLE
+            15366 BUILD_STRING         2
+            15368 CALL                 (1 positional)
+            15376 RAISE_VARARGS        (exception instance)
+
+3690:     >> 15378 LOAD_GLOBAL          (NULL + isinstance)
+            15388 LOAD_FAST_CHECK      (exchange_result)
+            15390 LOAD_ATTR            (NULL|self + get)
+            15410 LOAD_CONST           ("tokens")
+            15412 CALL                 (1 positional)
+            15420 LOAD_GLOBAL          (dict)
+            15430 CALL                 (2 positional)
+            15438 TO_BOOL
+            15446 POP_JUMP_IF_FALSE    (to 15484)
+            15450 LOAD_FAST_CHECK      (exchange_result)
+            15452 LOAD_ATTR            (NULL|self + get)
+            15472 LOAD_CONST           ("tokens")
+            15474 CALL                 (1 positional)
+            15482 JUMP_FORWARD         (to 15486)
+         >> 15484 BUILD_MAP            0
+         >> 15486 STORE_FAST           (tokens)
+
+3691:        15488 LOAD_GLOBAL          (NULL + isinstance)
+            15498 LOAD_FAST_CHECK      (exchange_result)
+            15500 LOAD_ATTR            (NULL|self + get)
+            15520 LOAD_CONST           ("exchange_data")
+            15522 CALL                 (1 positional)
+            15530 LOAD_GLOBAL          (dict)
+            15540 CALL                 (2 positional)
+            15548 TO_BOOL
+            15556 POP_JUMP_IF_FALSE    (to 15594)
+            15560 LOAD_FAST_CHECK      (exchange_result)
+            15562 LOAD_ATTR            (NULL|self + get)
+            15582 LOAD_CONST           ("exchange_data")
+            15584 CALL                 (1 positional)
+            15592 JUMP_FORWARD         (to 15596)
+         >> 15594 BUILD_MAP            0
+         >> 15596 STORE_FAST           (exchange_data)
+            15598 JUMP_FORWARD         (to 15714)
+
+3693:     >> 15600 LOAD_GLOBAL          (NULL + _raise_if_task_stopped)
+            15610 LOAD_FAST            (cfg)
+            15612 CALL                 (1 positional)
+            15620 POP_TOP
+
+3694:        15622 LOAD_GLOBAL          (NULL + _emit)
+            15632 LOAD_FAST            (log_fn)
+            15634 LOAD_CONST           ("  [Codex] 用 authorization code 换 token...")
+            15636 LOAD_CONST           ("info")
+            15638 CALL                 (3 positional)
+            15646 POP_TOP
+
+3695:        15648 LOAD_FAST            (transport)
+            15650 EXTENDED_ARG         (256)
+            15652 LOAD_ATTR            (NULL|self + exchange_code)
+            15672 LOAD_FAST_CHECK      (code)
+            15674 LOAD_FAST            (code_verifier)
+            15676 LOAD_FAST            (client_id)
+            15678 LOAD_FAST            (redirect_uri)
+            15680 LOAD_FAST            (account_email)
+            15682 CALL                 (5 positional)
+            15690 STORE_FAST           (tokens)
+
+3696:        15692 LOAD_GLOBAL          (NULL + _raise_if_task_stopped)
+            15702 LOAD_FAST            (cfg)
+            15704 CALL                 (1 positional)
+            15712 POP_TOP
+
+3697:     >> 15714 LOAD_GLOBAL          (NULL + isinstance)
+            15724 LOAD_FAST_CHECK      (tokens)
+            15726 LOAD_GLOBAL          (dict)
+            15736 CALL                 (2 positional)
+            15744 TO_BOOL
+            15752 POP_JUMP_IF_FALSE    (to 15800)
+            15756 LOAD_FAST_CHECK      (tokens)
+            15758 LOAD_ATTR            (NULL|self + get)
+            15778 LOAD_CONST           ("access_token")
+            15780 CALL                 (1 positional)
+            15788 TO_BOOL
+            15796 POP_JUMP_IF_TRUE     (to 15822)
+
+3698:     >> 15800 LOAD_GLOBAL          (NULL + CodexChainError)
+            15810 LOAD_CONST           ("token_exchange_failed")
+            15812 CALL                 (1 positional)
+            15820 RAISE_VARARGS        (exception instance)
+
+3699:     >> 15822 LOAD_FAST            (is_real)
+            15824 TO_BOOL
+            15832 POP_JUMP_IF_FALSE    (to 15946)
+            15836 LOAD_FAST_CHECK      (tokens)
+            15838 LOAD_ATTR            (NULL|self + get)
+            15858 LOAD_CONST           ("refresh_token")
+            15860 CALL                 (1 positional)
+            15868 TO_BOOL
+            15876 POP_JUMP_IF_FALSE    (to 15924)
+            15880 LOAD_FAST_CHECK      (tokens)
+            15882 LOAD_ATTR            (NULL|self + get)
+            15902 LOAD_CONST           ("id_token")
+            15904 CALL                 (1 positional)
+            15912 TO_BOOL
+            15920 POP_JUMP_IF_TRUE     (to 15946)
+
+3700:     >> 15924 LOAD_GLOBAL          (NULL + CodexChainError)
+            15934 LOAD_CONST           ("token_exchange_incomplete")
+            15936 CALL                 (1 positional)
+            15944 RAISE_VARARGS        (exception instance)
+
+3701:     >> 15946 EXTENDED_ARG         (256)
+            15948 LOAD_GLOBAL          (NULL + _merge_real_chatgpt_fields)
+            15958 LOAD_FAST_CHECK      (tokens)
+            15960 LOAD_FAST_CHECK      (exchange_data)
+            15962 LOAD_CONST           (('exchange_data',))
+            15964 CALL_KW              2
+            15966 POP_TOP
+
+3702:        15968 LOAD_GLOBAL          (NULL + _event)
+            15978 LOAD_FAST            (events)
+            15980 EXTENDED_ARG         (256)
+            15982 LOAD_GLOBAL          (STATE_TOKEN_EXCHANGED)
+            15992 LOAD_FAST            (provider)
+            15994 FORMAT_SIMPLE
+            15996 LOAD_CONST           (" tokens ready")
+            15998 BUILD_STRING         2
+            16000 LOAD_FAST            (log_fn)
+            16002 LOAD_CONST           (('detail', 'log_fn'))
+            16004 CALL_KW              4
+            16006 POP_TOP
+
+3704:        16008 LOAD_FAST_CHECK      (target)
+            16010 LOAD_CONST           ("cpa")
+            16012 COMPARE_OP           (==)
+            16016 POP_JUMP_IF_FALSE    (to 16434)
+
+3705:        16020 LOAD_FAST            (provider)
+            16022 LOAD_CONST           ("cpa")
+            16024 COMPARE_OP           (==)
+            16028 POP_JUMP_IF_FALSE    (to 16054)
+
+3706:        16032 LOAD_GLOBAL          (NULL + CodexChainError)
+            16042 LOAD_CONST           ("cpa_upload_requires_cpa_oauth_provider")
+            16044 CALL                 (1 positional)
+            16052 RAISE_VARARGS        (exception instance)
+
+3707:     >> 16054 LOAD_GLOBAL          (NULL + _clean)
+            16064 LOAD_FAST_CHECK      (tokens)
+            16066 LOAD_ATTR            (NULL|self + get)
+            16086 LOAD_CONST           ("email")
+            16088 CALL                 (1 positional)
+            16096 COPY                 1
+            16098 TO_BOOL
+            16106 POP_JUMP_IF_TRUE     (to 16114)
+            16110 POP_TOP
+            16112 LOAD_FAST            (account_email)
+         >> 16114 CALL                 (1 positional)
+            16122 STORE_FAST           (email_for_upload)
+
+3708:        16124 EXTENDED_ARG         (256)
+            16126 LOAD_GLOBAL          (NULL + RealCpaTokenUploader)
+            16136 LOAD_FAST            (cfg)
+            16138 LOAD_FAST            (log_fn)
+            16140 LOAD_CONST           (('log_fn',))
+            16142 CALL_KW              2
+            16144 EXTENDED_ARG         (256)
+            16146 LOAD_ATTR            (NULL|self + upload_tokens)
+
+3709:        16166 LOAD_FAST_CHECK      (tokens)
+
+3710:        16168 LOAD_FAST            (email_for_upload)
+
+3708:        16170 LOAD_CONST           (('credentials', 'email'))
+            16172 CALL_KW              2
+            16174 STORE_FAST           (upload_result)
+
+3712:        16176 LOAD_GLOBAL          (NULL + _raise_if_task_stopped)
+            16186 LOAD_FAST            (cfg)
+            16188 CALL                 (1 positional)
+            16196 POP_TOP
+
+3713:        16198 LOAD_FAST            (upload_result)
+            16200 LOAD_ATTR            (NULL|self + get)
+            16220 LOAD_CONST           ("ok")
+            16222 CALL                 (1 positional)
+            16230 TO_BOOL
+            16238 POP_JUMP_IF_TRUE     (to 16318)
+
+3714:        16242 LOAD_GLOBAL          (NULL + CodexChainError)
+            16252 LOAD_CONST           ("cpa_token_upload_failed: ")
+            16254 LOAD_FAST_CHECK      (upload_result)
+            16256 LOAD_ATTR            (NULL|self + get)
+            16276 LOAD_CONST           ("error")
+            16278 CALL                 (1 positional)
+            16286 COPY                 1
+            16288 TO_BOOL
+            16296 POP_JUMP_IF_TRUE     (to 16304)
+            16300 POP_TOP
+            16302 LOAD_FAST_CHECK      (upload_result)
+         >> 16304 FORMAT_SIMPLE
+            16306 BUILD_STRING         2
+            16308 CALL                 (1 positional)
+            16316 RAISE_VARARGS        (exception instance)
+
+3715:     >> 16318 LOAD_GLOBAL          (NULL + _event)
+            16328 LOAD_FAST            (events)
+            16330 LOAD_GLOBAL          (STATE_UPLOADED)
+            16340 LOAD_CONST           ("cpa:")
+            16342 LOAD_FAST_CHECK      (upload_result)
+            16344 LOAD_ATTR            (NULL|self + get)
+            16364 LOAD_CONST           ("auth_file")
+            16366 CALL                 (1 positional)
+            16374 COPY                 1
+            16376 TO_BOOL
+            16384 POP_JUMP_IF_TRUE     (to 16422)
+            16388 POP_TOP
+            16390 LOAD_FAST_CHECK      (upload_result)
+            16392 LOAD_ATTR            (NULL|self + get)
+            16412 LOAD_CONST           ("status")
+            16414 CALL                 (1 positional)
+         >> 16422 FORMAT_SIMPLE
+            16424 BUILD_STRING         2
+            16426 LOAD_FAST            (log_fn)
+            16428 LOAD_CONST           (('detail', 'log_fn'))
+            16430 CALL_KW              4
+            16432 POP_TOP
+
+3716:     >> 16434 LOAD_FAST            (is_real)
+            16436 TO_BOOL
+            16444 POP_JUMP_IF_FALSE    (to 16860)
+            16448 LOAD_FAST_CHECK      (target)
+            16450 LOAD_CONST           ("sub2")
+            16452 COMPARE_OP           (==)
+            16456 POP_JUMP_IF_FALSE    (to 16860)
+
+3717:        16460 LOAD_GLOBAL          (NULL + _raise_if_task_stopped)
+            16470 LOAD_FAST            (cfg)
+            16472 CALL                 (1 positional)
+            16480 POP_TOP
+
+3718:        16482 LOAD_GLOBAL          (NULL + _clean)
+            16492 LOAD_FAST_CHECK      (tokens)
+            16494 LOAD_ATTR            (NULL|self + get)
+            16514 LOAD_CONST           ("email")
+            16516 CALL                 (1 positional)
+            16524 COPY                 1
+            16526 TO_BOOL
+            16534 POP_JUMP_IF_TRUE     (to 16542)
+            16538 POP_TOP
+            16540 LOAD_FAST            (account_email)
+         >> 16542 CALL                 (1 positional)
+            16550 STORE_FAST           (email_for_upload)
+
+3719:        16552 EXTENDED_ARG         (256)
+            16554 LOAD_GLOBAL          (NULL + RealSub2Uploader)
+            16564 LOAD_FAST            (cfg)
+            16566 LOAD_FAST_LOAD_FAST  (upload_proxy, log_fn)
+            16568 LOAD_CONST           (('upload_proxy', 'log_fn'))
+            16570 CALL_KW              3
+            16572 EXTENDED_ARG         (256)
+            16574 LOAD_ATTR            (NULL|self + upload)
+
+3720:        16594 LOAD_FAST_CHECK      (tokens)
+
+3721:        16596 LOAD_FAST            (email_for_upload)
+
+3719:        16598 LOAD_CONST           (('credentials', 'email'))
+            16600 CALL_KW              2
+            16602 STORE_FAST           (upload_result)
+
+3723:        16604 LOAD_GLOBAL          (NULL + _raise_if_task_stopped)
+            16614 LOAD_FAST            (cfg)
+            16616 CALL                 (1 positional)
+            16624 POP_TOP
+
+3724:        16626 LOAD_FAST            (upload_result)
+            16628 LOAD_ATTR            (NULL|self + get)
+            16648 LOAD_CONST           ("ok")
+            16650 CALL                 (1 positional)
+            16658 TO_BOOL
+            16666 POP_JUMP_IF_FALSE    (to 16714)
+            16670 LOAD_FAST_CHECK      (upload_result)
+            16672 LOAD_ATTR            (NULL|self + get)
+            16692 LOAD_CONST           ("sub2_chatgpt_account_id_verified")
+            16694 CALL                 (1 positional)
+            16702 TO_BOOL
+            16710 POP_JUMP_IF_TRUE     (to 16790)
+
+3725:     >> 16714 LOAD_GLOBAL          (NULL + CodexChainError)
+            16724 LOAD_CONST           ("sub2_upload_failed: ")
+            16726 LOAD_FAST_CHECK      (upload_result)
+            16728 LOAD_ATTR            (NULL|self + get)
+            16748 LOAD_CONST           ("error")
+            16750 CALL                 (1 positional)
+            16758 COPY                 1
+            16760 TO_BOOL
+            16768 POP_JUMP_IF_TRUE     (to 16776)
+            16772 POP_TOP
+            16774 LOAD_FAST_CHECK      (upload_result)
+         >> 16776 FORMAT_SIMPLE
+            16778 BUILD_STRING         2
+            16780 CALL                 (1 positional)
+            16788 RAISE_VARARGS        (exception instance)
+
+3726:     >> 16790 LOAD_GLOBAL          (NULL + _event)
+            16800 LOAD_FAST            (events)
+            16802 LOAD_GLOBAL          (STATE_UPLOADED)
+            16812 LOAD_CONST           ("sub2:")
+            16814 LOAD_FAST_CHECK      (upload_result)
+            16816 LOAD_ATTR            (NULL|self + get)
+            16836 LOAD_CONST           ("sub2api_account_id")
+            16838 CALL                 (1 positional)
+            16846 FORMAT_SIMPLE
+            16848 BUILD_STRING         2
+            16850 LOAD_FAST            (log_fn)
+            16852 LOAD_CONST           (('detail', 'log_fn'))
+            16854 CALL_KW              4
+            16856 POP_TOP
+            16858 JUMP_FORWARD         (to 16912)
+
+3727:     >> 16860 LOAD_FAST_CHECK      (target)
+            16862 LOAD_CONST           ("cpa")
+            16864 COMPARE_OP           (!=)
+            16868 POP_JUMP_IF_FALSE    (to 16912)
+
+3728:        16872 LOAD_GLOBAL          (NULL + _event)
+            16882 LOAD_FAST            (events)
+            16884 EXTENDED_ARG         (256)
+            16886 LOAD_GLOBAL          (STATE_UPLOAD_SKIPPED)
+            16896 LOAD_CONST           ("target=")
+            16898 LOAD_FAST_CHECK      (target)
+            16900 FORMAT_SIMPLE
+            16902 BUILD_STRING         2
+            16904 LOAD_FAST            (log_fn)
+            16906 LOAD_CONST           (('detail', 'log_fn'))
+            16908 CALL_KW              4
+            16910 POP_TOP
+
+3729:     >> 16912 LOAD_GLOBAL          (NULL + _event)
+            16922 LOAD_FAST            (events)
+            16924 LOAD_GLOBAL          (STATE_DONE)
+            16934 LOAD_FAST            (resolved_mode)
+            16936 FORMAT_SIMPLE
+            16938 LOAD_CONST           (" chain complete")
+            16940 BUILD_STRING         2
+            16942 LOAD_FAST            (log_fn)
+            16944 LOAD_CONST           ("success")
+            16946 LOAD_CONST           (('detail', 'log_fn', 'tag'))
+            16948 CALL_KW              5
+            16950 POP_TOP
+
+3731:        16952 LOAD_GLOBAL          (NULL + _clean)
+            16962 LOAD_FAST_CHECK      (tokens)
+            16964 LOAD_ATTR            (NULL|self + get)
+            16984 LOAD_CONST           ("email")
+            16986 CALL                 (1 positional)
+            16994 COPY                 1
+            16996 TO_BOOL
+            17004 POP_JUMP_IF_TRUE     (to 17012)
+            17008 POP_TOP
+            17010 LOAD_FAST            (account_email)
+         >> 17012 CALL                 (1 positional)
+            17020 STORE_FAST           (email)
+
+3732:        17022 BUILD_MAP            0
+
+3733:        17024 LOAD_CONST           ("ok")
+            17026 LOAD_CONST           (True)
+
+3732:        17028 MAP_ADD              1
+
+3734:        17030 LOAD_CONST           ("email")
+            17032 LOAD_FAST            (email)
+
+3732:        17034 MAP_ADD              1
+
+3735:        17036 LOAD_CONST           ("bind_email")
+            17038 LOAD_FAST            (email)
+
+3732:        17040 MAP_ADD              1
+
+3736:        17042 LOAD_CONST           ("login_email")
+            17044 LOAD_FAST            (email)
+
+3732:        17046 MAP_ADD              1
+
+3737:        17048 LOAD_CONST           ("email_bound_ok")
+            17050 LOAD_CONST           (True)
+
+3732:        17052 MAP_ADD              1
+
+3738:        17054 LOAD_CONST           ("local_bind_ok")
+            17056 LOAD_CONST           (True)
+
+3732:        17058 MAP_ADD              1
+
+3739:        17060 LOAD_CONST           ("phone")
+            17062 LOAD_FAST_CHECK      (verified_phone)
+
+3732:        17064 MAP_ADD              1
+
+3740:        17066 LOAD_CONST           ("new_account_phone")
+            17068 LOAD_FAST            (verified_phone)
+
+3732:        17070 MAP_ADD              1
+
+3741:        17072 LOAD_CONST           ("activation_id")
+            17074 LOAD_FAST_CHECK      (verified_activation_id)
+
+3732:        17076 MAP_ADD              1
+
+3742:        17078 LOAD_CONST           ("new_account_phone_activation_id")
+            17080 LOAD_FAST            (verified_activation_id)
+
+3732:        17082 MAP_ADD              1
+
+3743:        17084 LOAD_CONST           ("phone_verified")
+            17086 LOAD_GLOBAL          (NULL + bool)
+            17096 LOAD_FAST            (verified_phone)
+            17098 CALL                 (1 positional)
+
+3732:        17106 MAP_ADD              1
+
+3744:        17108 LOAD_CONST           ("attempted_phones")
+            17110 LOAD_FAST_CHECK      (attempted_phones)
+
+3732:        17112 MAP_ADD              1
+
+3745:        17114 LOAD_CONST           ("failed_phones")
+            17116 LOAD_FAST_CHECK      (failed_phones)
+
+3732:        17118 MAP_ADD              1
+
+3746:        17120 LOAD_CONST           ("upload_skipped")
+            17122 LOAD_GLOBAL          (NULL + bool)
+            17132 LOAD_FAST_CHECK      (upload_result)
+            17134 CALL                 (1 positional)
+            17142 TO_BOOL
+            17150 UNARY_NOT
+
+3732:        17152 MAP_ADD              1
+
+3747:        17154 LOAD_CONST           ("upload_skip_reason")
+            17156 LOAD_FAST            (upload_result)
+            17158 TO_BOOL
+            17166 POP_JUMP_IF_FALSE    (to 17174)
+            17170 LOAD_CONST           ("")
+            17172 JUMP_FORWARD         (to 17182)
+         >> 17174 LOAD_CONST           ("codex_chain_")
+            17176 LOAD_FAST            (resolved_mode)
+            17178 FORMAT_SIMPLE
+            17180 BUILD_STRING         2
+
+3732:     >> 17182 MAP_ADD              1
+
+3748:        17184 LOAD_CONST           ("upload_status")
+            17186 LOAD_FAST_CHECK      (upload_result)
+            17188 TO_BOOL
+            17196 POP_JUMP_IF_FALSE    (to 17204)
+            17200 LOAD_CONST           ("upload_complete")
+            17202 JUMP_FORWARD         (to 17206)
+         >> 17204 LOAD_CONST           ("upload_skipped")
+
+3732:     >> 17206 MAP_ADD              1
+
+3749:        17208 LOAD_CONST           ("phase2_status")
+            17210 LOAD_FAST_CHECK      (upload_result)
+            17212 TO_BOOL
+            17220 POP_JUMP_IF_FALSE    (to 17228)
+            17224 LOAD_CONST           ("uploaded")
+            17226 JUMP_FORWARD         (to 17238)
+         >> 17228 LOAD_CONST           ("codex_chain_")
+            17230 LOAD_FAST            (resolved_mode)
+            17232 FORMAT_SIMPLE
+            17234 LOAD_CONST           ("_done")
+            17236 BUILD_STRING         3
+
+3732:     >> 17238 MAP_ADD              1
+            17240 BUILD_MAP            0
+
+3750:        17242 LOAD_CONST           ("phase2_ok")
+            17244 LOAD_CONST           (True)
+
+3732:        17246 MAP_ADD              1
+
+3751:        17248 LOAD_CONST           ("auth_page_type")
+            17250 LOAD_CONST           ("oauth_token")
+
+3732:        17252 MAP_ADD              1
+
+3752:        17254 LOAD_CONST           ("oauth_provider")
+            17256 LOAD_FAST            (provider)
+
+3732:        17258 MAP_ADD              1
+
+3753:        17260 LOAD_CONST           ("oauth_session_id_present")
+            17262 LOAD_GLOBAL          (NULL + bool)
+            17272 LOAD_FAST            (session_id)
+            17274 CALL                 (1 positional)
+
+3732:        17282 MAP_ADD              1
+
+3754:        17284 LOAD_CONST           ("openai_device_id")
+            17286 LOAD_GLOBAL          (NULL + _clean)
+            17296 LOAD_GLOBAL          (NULL + getattr)
+            17306 LOAD_FAST            (transport)
+            17308 LOAD_CONST           ("device_id")
+            17310 LOAD_CONST           ("")
+            17312 CALL                 (3 positional)
+            17320 COPY                 1
+            17322 TO_BOOL
+            17330 POP_JUMP_IF_TRUE     (to 17368)
+            17334 POP_TOP
+            17336 LOAD_FAST            (cfg)
+            17338 LOAD_ATTR            (NULL|self + get)
+            17358 LOAD_CONST           ("openai_device_id")
+            17360 CALL                 (1 positional)
+         >> 17368 CALL                 (1 positional)
+
+3732:        17376 MAP_ADD              1
+
+3755:        17378 LOAD_CONST           ("code")
+            17380 LOAD_FAST_CHECK      (code)
+
+3732:        17382 MAP_ADD              1
+
+3756:        17384 LOAD_CONST           ("oauth_code_received")
+            17386 LOAD_CONST           (True)
+
+3732:        17388 MAP_ADD              1
+
+3757:        17390 EXTENDED_ARG         (256)
+            17392 LOAD_CONST           ("oauth_code_received_at")
+            17394 LOAD_GLOBAL          (NULL + int)
+            17404 LOAD_GLOBAL          (time)
+            17414 LOAD_ATTR            (time)
+            17434 PUSH_NULL
+            17436 CALL                 (0 positional)
+            17444 CALL                 (1 positional)
+
+3732:        17452 MAP_ADD              1
+
+3758:        17454 LOAD_CONST           ("id_token")
+            17456 LOAD_FAST_CHECK      (tokens)
+            17458 LOAD_ATTR            (NULL|self + get)
+            17478 LOAD_CONST           ("id_token")
+            17480 LOAD_CONST           ("")
+            17482 CALL                 (2 positional)
+
+3732:        17490 MAP_ADD              1
+
+3759:        17492 LOAD_CONST           ("access_token")
+            17494 LOAD_FAST            (tokens)
+            17496 LOAD_ATTR            (NULL|self + get)
+            17516 LOAD_CONST           ("access_token")
+            17518 LOAD_CONST           ("")
+            17520 CALL                 (2 positional)
+
+3732:        17528 MAP_ADD              1
+
+3760:        17530 LOAD_CONST           ("refresh_token")
+            17532 LOAD_FAST            (tokens)
+            17534 LOAD_ATTR            (NULL|self + get)
+            17554 LOAD_CONST           ("refresh_token")
+            17556 LOAD_CONST           ("")
+            17558 CALL                 (2 positional)
+
+3732:        17566 MAP_ADD              1
+
+3761:        17568 EXTENDED_ARG         (256)
+            17570 LOAD_CONST           ("expires_at")
+            17572 LOAD_FAST            (tokens)
+            17574 LOAD_ATTR            (NULL|self + get)
+            17594 EXTENDED_ARG         (256)
+            17596 LOAD_CONST           ("expires_at")
+            17598 LOAD_CONST           (0)
+            17600 CALL                 (2 positional)
+
+3732:        17608 MAP_ADD              1
+
+3762:        17610 EXTENDED_ARG         (256)
+            17612 LOAD_CONST           ("local_oauth_exchange_ok")
+            17614 LOAD_CONST           (True)
+
+3732:        17616 MAP_ADD              1
+
+3763:        17618 EXTENDED_ARG         (256)
+            17620 LOAD_CONST           ("local_oauth_exchange_source")
+            17622 LOAD_CONST           ("codex_chain_")
+            17624 LOAD_FAST            (resolved_mode)
+            17626 FORMAT_SIMPLE
+            17628 BUILD_STRING         2
+
+3732:        17630 MAP_ADD              1
+
+3764:        17632 EXTENDED_ARG         (256)
+            17634 LOAD_CONST           ("local_oauth_saved")
+            17636 LOAD_CONST           (True)
+
+3732:        17638 MAP_ADD              1
+
+3765:        17640 EXTENDED_ARG         (256)
+            17642 LOAD_CONST           ("local_token_ready")
+            17644 LOAD_CONST           (True)
+
+3732:        17646 MAP_ADD              1
+
+3766:        17648 EXTENDED_ARG         (256)
+            17650 LOAD_CONST           ("local_oauth")
+
+3767:        17652 LOAD_CONST           ("codex_chain_")
+            17654 LOAD_FAST            (resolved_mode)
+            17656 FORMAT_SIMPLE
+            17658 BUILD_STRING         2
+
+3768:        17660 LOAD_FAST            (client_id)
+
+3769:        17662 LOAD_FAST            (redirect_uri)
+
+3770:        17664 LOAD_FAST            (code)
+
+3771:        17666 LOAD_GLOBAL          (NULL + bool)
+            17676 LOAD_GLOBAL          (NULL + _clean)
+            17686 LOAD_FAST            (code_verifier)
+            17688 CALL                 (1 positional)
+            17696 CALL                 (1 positional)
+
+3772:        17704 LOAD_FAST            (provider)
+
+3773:        17706 LOAD_GLOBAL          (NULL + bool)
+            17716 LOAD_FAST            (session_id)
+            17718 CALL                 (1 positional)
+
+3774:        17726 LOAD_CONST           (True)
+
+3775:        17728 LOAD_GLOBAL          (NULL + bool)
+            17738 LOAD_FAST_CHECK      (exchange_data)
+            17740 CALL                 (1 positional)
+
+3777:        17748 LOAD_FAST            (tokens)
+            17750 LOAD_ATTR            (NULL|self + get)
+            17770 LOAD_CONST           ("id_token")
+            17772 LOAD_CONST           ("")
+            17774 CALL                 (2 positional)
+
+3778:        17782 LOAD_FAST            (tokens)
+            17784 LOAD_ATTR            (NULL|self + get)
+            17804 LOAD_CONST           ("access_token")
+            17806 LOAD_CONST           ("")
+            17808 CALL                 (2 positional)
+
+3779:        17816 LOAD_FAST            (tokens)
+            17818 LOAD_ATTR            (NULL|self + get)
+            17838 LOAD_CONST           ("refresh_token")
+            17840 LOAD_CONST           ("")
+            17842 CALL                 (2 positional)
+
+3780:        17850 LOAD_FAST            (tokens)
+            17852 LOAD_ATTR            (NULL|self + get)
+            17872 EXTENDED_ARG         (256)
+            17874 LOAD_CONST           ("expires_at")
+            17876 LOAD_CONST           (0)
+            17878 CALL                 (2 positional)
+
+3781:        17886 LOAD_FAST            (tokens)
+            17888 LOAD_ATTR            (NULL|self + get)
+            17908 EXTENDED_ARG         (256)
+            17910 LOAD_CONST           ("token_type")
+            17912 EXTENDED_ARG         (256)
+            17914 LOAD_CONST           ("Bearer")
+            17916 CALL                 (2 positional)
+
+3782:        17924 LOAD_FAST            (tokens)
+            17926 LOAD_ATTR            (NULL|self + get)
+            17946 EXTENDED_ARG         (256)
+            17948 LOAD_CONST           ("scope")
+            17950 LOAD_CONST           ("")
+            17952 CALL                 (2 positional)
+
+3783:        17960 LOAD_FAST_CHECK      (email)
+
+3784:        17962 LOAD_FAST            (tokens)
+            17964 LOAD_ATTR            (NULL|self + get)
+            17984 EXTENDED_ARG         (256)
+            17986 LOAD_CONST           ("account_id")
+            17988 LOAD_CONST           ("")
+            17990 CALL                 (2 positional)
+
+3785:        17998 LOAD_FAST            (tokens)
+            18000 LOAD_ATTR            (NULL|self + get)
+            18020 EXTENDED_ARG         (256)
+            18022 LOAD_CONST           ("chatgpt_account_id")
+            18024 LOAD_CONST           ("")
+            18026 CALL                 (2 positional)
+
+3786:        18034 LOAD_FAST            (tokens)
+            18036 LOAD_ATTR            (NULL|self + get)
+            18056 EXTENDED_ARG         (256)
+            18058 LOAD_CONST           ("chatgpt_account_user_id")
+            18060 LOAD_CONST           ("")
+            18062 CALL                 (2 positional)
+
+3787:        18070 LOAD_FAST            (tokens)
+            18072 LOAD_ATTR            (NULL|self + get)
+            18092 EXTENDED_ARG         (256)
+            18094 LOAD_CONST           ("chatgpt_user_id")
+            18096 LOAD_CONST           ("")
+            18098 CALL                 (2 positional)
+
+3788:        18106 LOAD_FAST            (tokens)
+            18108 LOAD_ATTR            (NULL|self + get)
+            18128 EXTENDED_ARG         (256)
+            18130 LOAD_CONST           ("chatgpt_auth_user_id")
+            18132 LOAD_CONST           ("")
+            18134 CALL                 (2 positional)
+
+3789:        18142 LOAD_FAST            (tokens)
+            18144 LOAD_ATTR            (NULL|self + get)
+            18164 EXTENDED_ARG         (256)
+            18166 LOAD_CONST           ("chatgpt_plan_type")
+            18168 LOAD_CONST           ("")
+            18170 CALL                 (2 positional)
+
+3790:        18178 LOAD_FAST            (tokens)
+            18180 LOAD_ATTR            (NULL|self + get)
+            18200 EXTENDED_ARG         (256)
+            18202 LOAD_CONST           ("cpa_ready")
+            18204 LOAD_CONST           (False)
+            18206 CALL                 (2 positional)
+
+3791:        18214 LOAD_FAST            (tokens)
+            18216 LOAD_ATTR            (NULL|self + get)
+            18236 EXTENDED_ARG         (256)
+            18238 LOAD_CONST           ("cpa_missing_reason")
+            18240 LOAD_CONST           ("")
+            18242 CALL                 (2 positional)
+
+3776:        18250 EXTENDED_ARG         (256)
+            18252 LOAD_CONST           (('id_token', 'access_token', 'refresh_token', 'expires_at', 'token_type', 'scope', 'email', 'account_id', 'chatgpt_account_id', 'chatgpt_account_user_id', 'chatgpt_user_id', 'chatgpt_auth_user_id', 'chatgpt_plan_type', 'cpa_ready', 'cpa_missing_reason'))
+            18254 BUILD_CONST_KEY_MAP  15
+
+3766:        18256 EXTENDED_ARG         (256)
+            18258 LOAD_CONST           (('source', 'client_id', 'redirect_uri', 'code', 'code_verifier_present', 'oauth_provider', 'oauth_session_id_present', 'exchange_ok', 'exchange_data_present', 'tokens'))
+            18260 BUILD_CONST_KEY_MAP  10
+
+3732:        18262 MAP_ADD              1
+            18264 DICT_UPDATE          1
+
+3794:        18266 LOAD_FAST            (runtime_validation)
+
+3795:        18268 LOAD_GLOBAL          (NULL + isinstance)
+            18278 LOAD_FAST            (node_result)
+            18280 LOAD_GLOBAL          (dict)
+            18290 CALL                 (2 positional)
+            18298 TO_BOOL
+            18306 POP_JUMP_IF_FALSE    (to 18314)

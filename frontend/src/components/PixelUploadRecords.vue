@@ -11,7 +11,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  retry: [string, string]
+  retryBatch: [string, string]
   retryAll: [string]
 }>()
 
@@ -129,6 +129,14 @@ function isRetrying(recordId: string, targetId?: string) {
   return keys.includes(targetId ? `${recordId}:${targetId}` : `${recordId}:*`)
 }
 
+function isBatchRetrying(batchId: string, targetId: string) {
+  return (props.retryingKeys || []).includes(`batch:${batchId}:${targetId}`)
+}
+
+function hasBatchTarget(batchId: string, targetId: string) {
+  return Boolean(batchId && targetId && targetId !== '-')
+}
+
 function spanMethod({ row, column }: { row: UploadRow; column: { property?: string } }) {
   if (!['batchId', 'taskTime', 'recordStatus', 'sourceEmail'].includes(column.property || '')) return undefined
   return row.firstForRecord
@@ -176,14 +184,14 @@ function spanMethod({ row, column }: { row: UploadRow; column: { property?: stri
     </el-table-column>
     <el-table-column label="操作" width="142" fixed="right">
       <template #default="{ row }">
-        <el-tooltip content="重传当前目标" placement="top">
+        <el-tooltip content="批量重传此批次的当前目标" placement="top">
           <el-button
             circle
             :icon="RefreshRight"
-            :loading="isRetrying(row.recordId, row.targetId)"
-            :disabled="!row.retryable || isRetrying(row.recordId, '*')"
-            aria-label="重传当前目标"
-            @click="emit('retry', row.recordId, row.targetId)"
+            :loading="isBatchRetrying(row.batchId, row.targetId)"
+            :disabled="!hasBatchTarget(row.batchId, row.targetId) || isRetrying(row.recordId, '*') || isBatchRetrying(row.batchId, row.targetId)"
+            aria-label="批量重传此批次的当前目标"
+            @click="emit('retryBatch', row.batchId, row.targetId)"
           />
         </el-tooltip>
         <el-button

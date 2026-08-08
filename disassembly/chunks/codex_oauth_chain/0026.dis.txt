@@ -1,0 +1,800 @@
+
+1276:        2418 LOAD_FAST            (chatgpt_account_id)
+            2420 TO_BOOL
+            2428 POP_JUMP_IF_TRUE     (to 2524)
+            2432 LOAD_FAST            (remote_chatgpt_account_id)
+            2434 TO_BOOL
+            2442 POP_JUMP_IF_FALSE    (to 2524)
+
+1277:        2446 LOAD_FAST            (remote_chatgpt_account_id)
+            2448 STORE_FAST           (chatgpt_account_id)
+
+1278:        2450 LOAD_FAST            (chatgpt_fields)
+            2452 LOAD_ATTR            (NULL|self + update)
+            2472 LOAD_FAST            (remote_fields)
+            2474 CALL                 (1 positional)
+            2482 POP_TOP
+
+1279:        2484 LOAD_FAST            (chatgpt_account_id)
+            2486 LOAD_FAST            (credentials_payload)
+            2488 LOAD_CONST           ("chatgpt_account_id")
+            2490 STORE_SUBSCR
+
+1280:        2494 LOAD_FAST            (chatgpt_account_id)
+            2496 LOAD_FAST            (credentials_payload)
+            2498 LOAD_CONST           ("account_id")
+            2500 STORE_SUBSCR
+
+1281:        2504 LOAD_FAST            (chatgpt_account_id)
+            2506 LOAD_FAST            (extra)
+            2508 LOAD_CONST           ("chatgpt_account_id")
+            2510 STORE_SUBSCR
+
+1282:        2514 LOAD_FAST            (chatgpt_account_id)
+            2516 LOAD_FAST            (extra)
+            2518 LOAD_CONST           ("account_id")
+            2520 STORE_SUBSCR
+
+1283:     >> 2524 LOAD_GLOBAL          (NULL + bool)
+            2534 LOAD_FAST            (chatgpt_account_id)
+            2536 CALL                 (1 positional)
+            2544 COPY                 1
+            2546 TO_BOOL
+            2554 POP_JUMP_IF_FALSE    (to 2592)
+            2558 POP_TOP
+            2560 LOAD_FAST            (remote_credentials_id)
+            2562 LOAD_FAST            (chatgpt_account_id)
+            2564 COMPARE_OP           (==)
+            2568 COPY                 1
+            2570 TO_BOOL
+            2578 POP_JUMP_IF_FALSE    (to 2592)
+            2582 POP_TOP
+            2584 LOAD_FAST            (remote_extra_id)
+            2586 LOAD_FAST            (chatgpt_account_id)
+            2588 COMPARE_OP           (==)
+         >> 2592 STORE_FAST           (metadata_verified)
+
+1284:        2594 LOAD_CONST           (False)
+            2596 STORE_FAST           (metadata_backfilled)
+
+1285:        2598 LOAD_CONST           (False)
+            2600 STORE_FAST           (metadata_import_updated)
+
+1286:        2602 LOAD_FAST            (metadata_verified)
+            2604 TO_BOOL
+            2612 EXTENDED_ARG         (1024)
+            2614 POP_JUMP_IF_TRUE     (to 4950)
+
+1287:        2618 LOAD_GLOBAL          (NULL + isinstance)
+            2628 LOAD_FAST            (detail)
+            2630 LOAD_ATTR            (NULL|self + get)
+            2650 LOAD_CONST           ("data")
+            2652 CALL                 (1 positional)
+            2660 LOAD_GLOBAL          (dict)
+            2670 CALL                 (2 positional)
+            2678 TO_BOOL
+            2686 POP_JUMP_IF_FALSE    (to 2724)
+            2690 LOAD_FAST            (detail)
+            2692 LOAD_ATTR            (NULL|self + get)
+            2712 LOAD_CONST           ("data")
+            2714 CALL                 (1 positional)
+            2722 JUMP_FORWARD         (to 2726)
+         >> 2724 LOAD_FAST            (detail)
+         >> 2726 STORE_FAST           (detail_data)
+
+1288:        2728 LOAD_GLOBAL          (NULL + isinstance)
+            2738 LOAD_FAST            (detail_data)
+            2740 LOAD_GLOBAL          (dict)
+            2750 CALL                 (2 positional)
+            2758 TO_BOOL
+            2766 POP_JUMP_IF_FALSE    (to 2804)
+            2770 LOAD_FAST            (detail_data)
+            2772 LOAD_ATTR            (NULL|self + get)
+            2792 LOAD_CONST           ("extra")
+            2794 CALL                 (1 positional)
+            2802 JUMP_FORWARD         (to 2806)
+         >> 2804 BUILD_MAP            0
+         >> 2806 STORE_FAST           (current_extra)
+
+1289:        2808 LOAD_GLOBAL          (NULL + isinstance)
+            2818 LOAD_FAST            (current_extra)
+            2820 LOAD_GLOBAL          (dict)
+            2830 CALL                 (2 positional)
+            2838 TO_BOOL
+            2846 POP_JUMP_IF_FALSE    (to 2872)
+            2850 LOAD_GLOBAL          (NULL + dict)
+            2860 LOAD_FAST            (current_extra)
+            2862 CALL                 (1 positional)
+            2870 JUMP_FORWARD         (to 2874)
+         >> 2872 BUILD_MAP            0
+         >> 2874 STORE_FAST           (merged_extra)
+
+1290:        2876 LOAD_FAST            (merged_extra)
+            2878 LOAD_ATTR            (NULL|self + update)
+            2898 LOAD_FAST            (extra)
+            2900 CALL                 (1 positional)
+            2908 POP_TOP
+
+1291:        2910 LOAD_GLOBAL          (NULL + isinstance)
+            2920 LOAD_FAST            (detail_data)
+            2922 LOAD_GLOBAL          (dict)
+            2932 CALL                 (2 positional)
+            2940 TO_BOOL
+            2948 POP_JUMP_IF_FALSE    (to 2986)
+            2952 LOAD_FAST            (detail_data)
+            2954 LOAD_ATTR            (NULL|self + get)
+            2974 LOAD_CONST           ("credentials")
+            2976 CALL                 (1 positional)
+            2984 JUMP_FORWARD         (to 2988)
+         >> 2986 BUILD_MAP            0
+         >> 2988 STORE_FAST           (current_credentials)
+
+1292:        2990 LOAD_GLOBAL          (NULL + isinstance)
+            3000 LOAD_FAST            (current_credentials)
+            3002 LOAD_GLOBAL          (dict)
+            3012 CALL                 (2 positional)
+            3020 TO_BOOL
+            3028 POP_JUMP_IF_FALSE    (to 3054)
+            3032 LOAD_GLOBAL          (NULL + dict)
+            3042 LOAD_FAST            (current_credentials)
+            3044 CALL                 (1 positional)
+            3052 JUMP_FORWARD         (to 3056)
+         >> 3054 BUILD_MAP            0
+         >> 3056 STORE_FAST           (merged_credentials)
+
+1293:        3058 LOAD_FAST            (merged_credentials)
+            3060 LOAD_ATTR            (NULL|self + update)
+            3080 LOAD_FAST            (credentials_payload)
+            3082 CALL                 (1 positional)
+            3090 POP_TOP
+
+1294:        3092 LOAD_GLOBAL          (NULL + _emit)
+            3102 LOAD_DEREF           (self)
+            3104 LOAD_ATTR            (log_fn)
+            3124 LOAD_CONST           ("  [SUB2] 正在将 chatgpt_account_id 写入 credentials 和 extra 并复核")
+            3126 LOAD_CONST           ("warn")
+            3128 CALL                 (3 positional)
+            3136 POP_TOP
+
+1295:        3138 NOP
+
+1296:        3140 LOAD_FAST            (requests)
+            3142 LOAD_ATTR            (put)
+            3162 PUSH_NULL
+
+1297:        3164 LOAD_FAST            (base)
+            3166 FORMAT_SIMPLE
+            3168 LOAD_CONST           ("/api/v1/admin/accounts/")
+            3170 LOAD_FAST            (account_id)
+            3172 FORMAT_SIMPLE
+            3174 BUILD_STRING         3
+
+1296:        3176 BUILD_TUPLE          1
+
+1298:        3178 LOAD_FAST            (merged_credentials)
+            3180 LOAD_FAST            (merged_extra)
+            3182 LOAD_CONST           (('credentials', 'extra'))
+            3184 BUILD_CONST_KEY_MAP  2
+
+1299:        3186 LOAD_CONST           ("Authorization")
+            3188 LOAD_CONST           ("Bearer ")
+            3190 LOAD_FAST            (admin_token)
+            3192 FORMAT_SIMPLE
+            3194 BUILD_STRING         2
+            3196 BUILD_MAP            1
+
+1300:        3198 LOAD_CONST           (30)
+
+1296:        3200 LOAD_CONST           (('json', 'headers', 'timeout'))
+            3202 BUILD_CONST_KEY_MAP  3
+
+1301:        3204 LOAD_FAST            (requests_kwargs)
+            3206 PUSH_NULL
+            3208 LOAD_DEREF           (self)
+            3210 LOAD_ATTR            (upload_proxy)
+            3230 CALL                 (1 positional)
+
+1296:        3238 DICT_MERGE           1
+            3240 CALL_FUNCTION_EX     (keyword and positional arguments)
+            3242 STORE_FAST           (update_response)
+
+1303:        3244 LOAD_FAST            (update_response)
+            3246 LOAD_ATTR            (NULL|self + json)
+            3266 CALL                 (0 positional)
+            3274 STORE_FAST           (update_data)
+
+1307:        3276 LOAD_GLOBAL          (NULL + bool)
+
+1308:        3286 LOAD_FAST            (update_response)
+            3288 COPY                 1
+            3290 TO_BOOL
+            3298 POP_JUMP_IF_FALSE    (to 3474)
+            3302 POP_TOP
+
+1309:        3304 LOAD_CONST           (200)
+            3306 LOAD_FAST            (update_response)
+            3308 LOAD_ATTR            (status_code)
+            3328 SWAP                 (TOS <-> TOS1)
+            3330 COPY                 2
+            3332 COMPARE_OP           (<=)
+            3336 COPY                 1
+            3338 TO_BOOL
+            3346 POP_JUMP_IF_FALSE    (to 3360)
+            3350 POP_TOP
+            3352 LOAD_CONST           (300)
+            3354 COMPARE_OP           (<)
+            3358 JUMP_FORWARD         (to 3364)
+         >> 3360 SWAP                 (TOS <-> TOS1)
+            3362 POP_TOP
+
+1308:     >> 3364 COPY                 1
+            3366 TO_BOOL
+            3374 POP_JUMP_IF_FALSE    (to 3474)
+            3378 POP_TOP
+
+1310:        3380 LOAD_GLOBAL          (NULL + isinstance)
+            3390 LOAD_FAST            (update_data)
+            3392 LOAD_GLOBAL          (dict)
+            3402 CALL                 (2 positional)
+            3410 TO_BOOL
+            3418 UNARY_NOT
+            3420 COPY                 1
+            3422 TO_BOOL
+            3430 POP_JUMP_IF_TRUE     (to 3474)
+            3434 POP_TOP
+            3436 LOAD_FAST            (update_data)
+            3438 LOAD_ATTR            (NULL|self + get)
+            3458 LOAD_CONST           ("code")
+            3460 CALL                 (1 positional)
+            3468 LOAD_CONST           ((None, 0))
+            3470 CONTAINS_OP          (in)
+
+1307:     >> 3474 CALL                 (1 positional)
+            3482 STORE_FAST           (update_ok)
+
+1312:        3484 LOAD_FAST            (update_ok)
+            3486 TO_BOOL
+            3494 POP_JUMP_IF_FALSE    (to 3748)
+
+1313:        3498 LOAD_CONST           (True)
+            3500 STORE_FAST           (metadata_backfilled)
+
+1314:        3502 NOP
+
+1315:        3504 LOAD_FAST            (fetch_sub2_account_detail)
+            3506 PUSH_NULL
+
+1316:        3508 LOAD_FAST            (base)
+
+1317:        3510 LOAD_FAST            (admin_token)
+
+1318:        3512 LOAD_FAST            (account_id)
+
+1319:        3514 LOAD_FAST            (self)
+            3516 BUILD_TUPLE          1
+            3518 LOAD_CONST           (<Code311 code object <lambda> at 0x105ef9280, file codex_oauth_chain.py>, line 1319)
+            3520 MAKE_FUNCTION
+            3522 SET_FUNCTION_ATTRIBUTE 8
+
+1320:        3524 LOAD_DEREF           (self)
+            3526 LOAD_ATTR            (upload_proxy)
+
+1315:        3546 LOAD_CONST           (('log_fn', 'proxy'))
+            3548 CALL_KW              5
+            3550 STORE_FAST           (detail)
+
+1324:        3552 LOAD_FAST            (extract_chatgpt_auth_fields)
+            3554 PUSH_NULL
+            3556 BUILD_MAP            0
+            3558 LOAD_FAST            (detail)
+            3560 LOAD_CONST           (('exchange_data',))
+            3562 CALL_KW              2
+            3564 STORE_FAST           (remote_fields)
+
+1325:        3566 LOAD_GLOBAL          (NULL + _clean)
+            3576 LOAD_FAST            (remote_fields)
+            3578 LOAD_ATTR            (NULL|self + get)
+            3598 LOAD_CONST           ("chatgpt_account_id")
+            3600 CALL                 (1 positional)
+            3608 CALL                 (1 positional)
+            3616 STORE_FAST           (remote_chatgpt_account_id)
+
+1326:        3618 LOAD_GLOBAL          (NULL + _sub2_identity_locations)
+            3628 LOAD_FAST            (detail)
+            3630 CALL                 (1 positional)
+            3638 UNPACK_SEQUENCE      2
+            3642 STORE_FAST           (remote_credentials_id)
+            3644 STORE_FAST           (remote_extra_id)
+
+1327:        3646 LOAD_FAST            (chatgpt_account_id)
+            3648 TO_BOOL
+            3656 POP_JUMP_IF_TRUE     (to 3678)
+            3660 LOAD_FAST            (remote_chatgpt_account_id)
+            3662 TO_BOOL
+            3670 POP_JUMP_IF_FALSE    (to 3678)
+
+1328:        3674 LOAD_FAST            (remote_chatgpt_account_id)
+            3676 STORE_FAST           (chatgpt_account_id)
+
+1329:     >> 3678 LOAD_GLOBAL          (NULL + bool)
+            3688 LOAD_FAST            (chatgpt_account_id)
+            3690 CALL                 (1 positional)
+            3698 COPY                 1
+            3700 TO_BOOL
+            3708 POP_JUMP_IF_FALSE    (to 3746)
+            3712 POP_TOP
+            3714 LOAD_FAST            (remote_credentials_id)
+            3716 LOAD_FAST            (chatgpt_account_id)
+            3718 COMPARE_OP           (==)
+            3722 COPY                 1
+            3724 TO_BOOL
+            3732 POP_JUMP_IF_FALSE    (to 3746)
+            3736 POP_TOP
+            3738 LOAD_FAST            (remote_extra_id)
+            3740 LOAD_FAST            (chatgpt_account_id)
+            3742 COMPARE_OP           (==)
+         >> 3746 STORE_FAST           (metadata_verified)
+
+1330:     >> 3748 LOAD_FAST            (metadata_verified)
+            3750 TO_BOOL
+            3758 EXTENDED_ARG         (512)
+            3760 POP_JUMP_IF_TRUE     (to 4886)
+
+1335:        3764 LOAD_GLOBAL          (NULL + dict)
+            3774 LOAD_FAST            (credentials_payload)
+            3776 CALL                 (1 positional)
+            3784 STORE_FAST           (import_content)
+
+1336:        3786 LOAD_FAST            (chatgpt_account_id)
+            3788 TO_BOOL
+            3796 POP_JUMP_IF_FALSE    (to 3820)
+
+1337:        3800 LOAD_FAST            (chatgpt_account_id)
+            3802 LOAD_FAST            (import_content)
+            3804 LOAD_CONST           ("chatgpt_account_id")
+            3806 STORE_SUBSCR
+
+1338:        3810 LOAD_FAST            (chatgpt_account_id)
+            3812 LOAD_FAST            (import_content)
+            3814 LOAD_CONST           ("account_id")
+            3816 STORE_SUBSCR
+
+1339:     >> 3820 LOAD_CONST           (('chatgpt_account_user_id', 'chatgpt_user_id', 'chatgpt_auth_user_id', 'chatgpt_plan_type'))
+            3822 GET_ITER
+            3824 FOR_ITER             (to 3914)
+            3828 STORE_FAST           (key)
+
+1345:        3830 LOAD_GLOBAL          (NULL + _clean)
+            3840 LOAD_FAST            (chatgpt_fields)
+            3842 LOAD_ATTR            (NULL|self + get)
+            3862 LOAD_FAST            (key)
+            3864 CALL                 (1 positional)
+            3872 CALL                 (1 positional)
+            3880 STORE_FAST           (value)
+
+1346:        3882 LOAD_FAST            (value)
+            3884 TO_BOOL
+            3892 POP_JUMP_IF_TRUE     (to 3900)
+            3896 JUMP_BACKWARD        (to 3824)
+
+1347:     >> 3900 LOAD_FAST            (value)
+            3902 LOAD_FAST            (import_content)
+            3904 LOAD_FAST            (key)
+            3906 STORE_SUBSCR
+            3910 JUMP_BACKWARD        (to 3824)
+
+1339:     >> 3914 END_FOR
+            3916 POP_TOP
+
+1348:        3918 NOP
+
+1349:        3920 LOAD_FAST            (requests)
+            3922 LOAD_ATTR            (post)
+            3942 PUSH_NULL
+
+1350:        3944 LOAD_FAST            (base)
+            3946 FORMAT_SIMPLE
+            3948 LOAD_CONST           ("/api/v1/admin/accounts/import/codex-session")
+            3950 BUILD_STRING         2
+
+1349:        3952 BUILD_TUPLE          1
+
+1352:        3954 LOAD_GLOBAL          (json)
+            3964 LOAD_ATTR            (dumps)
+            3984 PUSH_NULL
+            3986 LOAD_FAST            (import_content)
+            3988 LOAD_CONST           (False)
+            3990 LOAD_CONST           (('ensure_ascii',))
+            3992 CALL_KW              2
+
+1353:        3994 LOAD_FAST            (group_id)
+            3996 BUILD_LIST           1
+
+1354:        3998 LOAD_CONST           (1)
+
+1355:        4000 LOAD_CONST           (True)
+
+1356:        4002 LOAD_CONST           (True)
+
+1357:     >> 4004 LOAD_FAST            (merged_extra)
+
+1351:        4006 LOAD_CONST           (('content', 'group_ids', 'priority', 'auto_pause_on_expired', 'update_existing', 'extra'))
+            4008 BUILD_CONST_KEY_MAP  6
+
+1359:        4010 LOAD_CONST           ("Authorization")
+            4012 LOAD_CONST           ("Bearer ")
+            4014 LOAD_FAST            (admin_token)
+            4016 FORMAT_SIMPLE
+            4018 BUILD_STRING         2
+            4020 BUILD_MAP            1
+
+1360:        4022 LOAD_CONST           (60)
+
+1349:        4024 LOAD_CONST           (('json', 'headers', 'timeout'))
+            4026 BUILD_CONST_KEY_MAP  3
+
+1361:        4028 LOAD_FAST            (requests_kwargs)
+            4030 PUSH_NULL
+            4032 LOAD_DEREF           (self)
+            4034 LOAD_ATTR            (upload_proxy)
+            4054 CALL                 (1 positional)
+
+1349:        4062 DICT_MERGE           1
+            4064 CALL_FUNCTION_EX     (keyword and positional arguments)
+            4066 STORE_FAST           (import_response)
+
+1363:        4068 LOAD_FAST            (import_response)
+            4070 LOAD_ATTR            (NULL|self + json)
+            4090 CALL                 (0 positional)
+            4098 STORE_FAST           (import_data)
+
+1367:        4100 LOAD_GLOBAL          (NULL + bool)
+
+1368:        4110 LOAD_FAST            (import_response)
+            4112 COPY                 1
+            4114 TO_BOOL
+            4122 POP_JUMP_IF_FALSE    (to 4298)
+            4126 POP_TOP
+
+1369:        4128 LOAD_CONST           (200)
+            4130 LOAD_FAST            (import_response)
+            4132 LOAD_ATTR            (status_code)
+            4152 SWAP                 (TOS <-> TOS1)
+            4154 COPY                 2
+            4156 COMPARE_OP           (<=)
+            4160 COPY                 1
+            4162 TO_BOOL
+            4170 POP_JUMP_IF_FALSE    (to 4184)
+            4174 POP_TOP
+            4176 LOAD_CONST           (300)
+            4178 COMPARE_OP           (<)
+            4182 JUMP_FORWARD         (to 4188)
+         >> 4184 SWAP                 (TOS <-> TOS1)
+            4186 POP_TOP
+
+1368:     >> 4188 COPY                 1
+            4190 TO_BOOL
+            4198 POP_JUMP_IF_FALSE    (to 4298)
+            4202 POP_TOP
+
+1370:        4204 LOAD_GLOBAL          (NULL + isinstance)
+            4214 LOAD_FAST            (import_data)
+            4216 LOAD_GLOBAL          (dict)
+            4226 CALL                 (2 positional)
+            4234 TO_BOOL
+            4242 UNARY_NOT
+            4244 COPY                 1
+            4246 TO_BOOL
+            4254 POP_JUMP_IF_TRUE     (to 4298)
+            4258 POP_TOP
+            4260 LOAD_FAST            (import_data)
+            4262 LOAD_ATTR            (NULL|self + get)
+            4282 LOAD_CONST           ("code")
+            4284 CALL                 (1 positional)
+            4292 LOAD_CONST           ((None, 0))
+            4294 CONTAINS_OP          (in)
+
+1367:     >> 4298 CALL                 (1 positional)
+            4306 STORE_FAST           (import_ok)
+
+1372:        4308 LOAD_FAST            (import_ok)
+            4310 TO_BOOL
+            4318 EXTENDED_ARG         (256)
+            4320 POP_JUMP_IF_FALSE    (to 4886)
+
+1373:        4324 LOAD_CONST           (True)
+            4326 STORE_FAST           (metadata_import_updated)
+
+1374:        4328 LOAD_GLOBAL          (NULL + _clean)
+
+1375:        4338 LOAD_GLOBAL          (NULL + isinstance)
+            4348 LOAD_FAST            (import_data)
+            4350 LOAD_GLOBAL          (dict)
+            4360 CALL                 (2 positional)
+            4368 TO_BOOL
+            4376 POP_JUMP_IF_FALSE    (to 4504)
+            4380 LOAD_GLOBAL          (NULL + isinstance)
+            4390 LOAD_FAST            (import_data)
+            4392 LOAD_ATTR            (NULL|self + get)
+            4412 LOAD_CONST           ("data")
+            4414 CALL                 (1 positional)
+            4422 LOAD_GLOBAL          (dict)
+            4432 CALL                 (2 positional)
+            4440 TO_BOOL
+            4448 POP_JUMP_IF_FALSE    (to 4504)
+            4452 LOAD_FAST            (import_data)
+            4454 LOAD_ATTR            (NULL|self + get)
+            4474 LOAD_CONST           ("data")
+            4476 CALL                 (1 positional)
+            4484 COPY                 1
+            4486 TO_BOOL
+            4494 POP_JUMP_IF_TRUE     (to 4502)
+            4498 POP_TOP
+            4500 BUILD_MAP            0
+         >> 4502 JUMP_FORWARD         (to 4506)
+
+1375:     >> 4504 BUILD_MAP            0
+         >> 4506 LOAD_ATTR            (NULL|self + get)
+            4526 LOAD_CONST           ("id")
+            4528 CALL                 (1 positional)
+
+1374:        4536 CALL                 (1 positional)
+            4544 STORE_FAST           (imported_id)
+
+1377:        4546 LOAD_FAST            (imported_id)
+            4548 TO_BOOL
+            4556 POP_JUMP_IF_FALSE    (to 4564)
+
+1378:        4560 LOAD_FAST            (imported_id)
+            4562 STORE_FAST           (account_id)
+
+1379:     >> 4564 NOP
+
+1380:        4566 LOAD_FAST            (fetch_sub2_account_detail)
+            4568 PUSH_NULL
+
+1381:        4570 LOAD_FAST            (base)
+
+1382:        4572 LOAD_FAST            (admin_token)
+
+1383:        4574 LOAD_FAST            (account_id)
+
+1384:        4576 LOAD_FAST            (self)
+            4578 BUILD_TUPLE          1
+            4580 LOAD_CONST           (<Code311 code object <lambda> at 0x105ef92b0, file codex_oauth_chain.py>, line 1384)
+            4582 MAKE_FUNCTION
+            4584 SET_FUNCTION_ATTRIBUTE 8
+
+1385:        4586 LOAD_DEREF           (self)
+            4588 LOAD_ATTR            (upload_proxy)
+
+1380:        4608 LOAD_CONST           (('log_fn', 'proxy'))
+            4610 CALL_KW              5
+            4612 STORE_FAST           (detail)
+
+1389:        4614 LOAD_FAST            (extract_chatgpt_auth_fields)
+            4616 PUSH_NULL
+            4618 BUILD_MAP            0
+            4620 LOAD_FAST            (detail)
+            4622 LOAD_CONST           (('exchange_data',))
+            4624 CALL_KW              2
+            4626 STORE_FAST           (remote_fields)
+
+1390:        4628 LOAD_GLOBAL          (NULL + _clean)
+            4638 LOAD_FAST            (remote_fields)
+            4640 LOAD_ATTR            (NULL|self + get)
+            4660 LOAD_CONST           ("chatgpt_account_id")
+            4662 CALL                 (1 positional)
+            4670 CALL                 (1 positional)
+            4678 STORE_FAST           (remote_chatgpt_account_id)
+
+1391:        4680 LOAD_GLOBAL          (NULL + _sub2_identity_locations)
+            4690 LOAD_FAST            (detail)
+            4692 CALL                 (1 positional)
+            4700 UNPACK_SEQUENCE      2
+            4704 STORE_FAST           (remote_credentials_id)
+            4706 STORE_FAST           (remote_extra_id)
+
+1392:        4708 LOAD_FAST            (chatgpt_account_id)
+            4710 TO_BOOL
+            4718 POP_JUMP_IF_TRUE     (to 4740)
+            4722 LOAD_FAST            (remote_chatgpt_account_id)
+            4724 TO_BOOL
+            4732 POP_JUMP_IF_FALSE    (to 4740)
+
+1393:        4736 LOAD_FAST            (remote_chatgpt_account_id)
+            4738 STORE_FAST           (chatgpt_account_id)
+
+1394:     >> 4740 LOAD_GLOBAL          (NULL + bool)
+            4750 LOAD_FAST            (chatgpt_account_id)
+            4752 CALL                 (1 positional)
+            4760 COPY                 1
+            4762 TO_BOOL
+            4770 POP_JUMP_IF_FALSE    (to 4808)
+            4774 POP_TOP
+            4776 LOAD_FAST            (remote_credentials_id)
+            4778 LOAD_FAST            (chatgpt_account_id)
+            4780 COMPARE_OP           (==)
+            4784 COPY                 1
+            4786 TO_BOOL
+            4794 POP_JUMP_IF_FALSE    (to 4808)
+            4798 POP_TOP
+            4800 LOAD_FAST            (remote_extra_id)
+            4802 LOAD_FAST            (chatgpt_account_id)
+            4804 COMPARE_OP           (==)
+         >> 4808 STORE_FAST           (metadata_verified)
+
+1395:        4810 NOP
+
+1396:        4812 LOAD_FAST            (assert_sub2_account_group)
+            4814 PUSH_NULL
+
+1397:        4816 LOAD_FAST            (import_data)
+            4818 LOAD_FAST            (detail)
+            4820 BUILD_LIST           2
+
+1398:        4822 LOAD_FAST            (group_id)
+
+1399:        4824 LOAD_FAST            (resolved_group_name)
+
+1400:        4826 LOAD_CONST           (False)
+
+1396:        4828 LOAD_CONST           (('allow_unknown',))
+            4830 CALL_KW              4
+            4832 UNPACK_SEQUENCE      2
+            4836 STORE_FAST           (actual_group_ids)
+            4838 STORE_FAST           (actual_group_names)
+
+1402:        4840 LOAD_GLOBAL          (NULL + bool)
+            4850 LOAD_FAST            (actual_group_ids)
+            4852 COPY                 1
+            4854 TO_BOOL
+            4862 POP_JUMP_IF_FALSE    (to 4876)
+            4866 POP_TOP
+            4868 LOAD_FAST            (group_id)
+            4870 LOAD_FAST            (actual_group_ids)
+            4872 CONTAINS_OP          (in)
+         >> 4876 CALL                 (1 positional)
+            4884 STORE_FAST           (group_verified)
+
+1405:     >> 4886 LOAD_FAST            (metadata_verified)
+            4888 TO_BOOL
+            4896 POP_JUMP_IF_TRUE     (to 4950)
+
+1407:        4900 LOAD_CONST           (False)
+
+1408:        4902 LOAD_CONST           ("SUB2 uploaded but chatgpt_account_id verification failed")
+
+1409:        4904 LOAD_FAST            (account_id)
+
+1410:        4906 LOAD_FAST            (group_id)
+
+1411:        4908 LOAD_FAST            (resolved_group_name)
+
+1412:        4910 LOAD_GLOBAL          (NULL + bool)
+            4920 LOAD_FAST            (detail)
+            4922 CALL                 (1 positional)
+
+1413:        4930 LOAD_FAST            (group_verified)
+
+1414:        4932 LOAD_FAST            (chatgpt_account_id)
+
+1415:        4934 LOAD_FAST            (chatgpt_account_id)
+
+1416:        4936 LOAD_CONST           (False)
+
+1417:        4938 LOAD_FAST            (metadata_backfilled)
+
+1418:        4940 LOAD_FAST            (metadata_import_updated)
+
+1419:        4942 LOAD_CONST           (True)
+
+1406:        4944 LOAD_CONST           (('ok', 'error', 'sub2api_account_id', 'sub2api_group_id', 'sub2api_group_name', 'sub2_remote_verified', 'sub2_group_verified', 'chatgpt_account_id', 'account_id', 'sub2_chatgpt_account_id_verified', 'sub2_chatgpt_account_id_backfilled', 'sub2_chatgpt_account_id_import_updated', 'sub2_upload_created'))
+            4946 BUILD_CONST_KEY_MAP  13
+            4948 RETURN_VALUE
+
+1421:     >> 4950 LOAD_FAST            (group_verified)
+            4952 TO_BOOL
+            4960 POP_JUMP_IF_TRUE     (to 4990)
+
+1423:        4964 LOAD_CONST           (False)
+
+1424:        4966 LOAD_CONST           ("SUB2 group verification failed after metadata update")
+
+1425:        4968 LOAD_FAST            (account_id)
+
+1426:        4970 LOAD_FAST            (group_id)
+
+1427:        4972 LOAD_FAST            (resolved_group_name)
+
+1428:        4974 LOAD_FAST            (chatgpt_account_id)
+
+1429:        4976 LOAD_FAST            (chatgpt_account_id)
+
+1430:        4978 LOAD_FAST            (metadata_verified)
+
+1431:        4980 LOAD_FAST            (metadata_backfilled)
+
+1432:        4982 LOAD_FAST            (metadata_import_updated)
+
+1422:        4984 LOAD_CONST           (('ok', 'error', 'sub2api_account_id', 'sub2api_group_id', 'sub2api_group_name', 'chatgpt_account_id', 'account_id', 'sub2_chatgpt_account_id_verified', 'sub2_chatgpt_account_id_backfilled', 'sub2_chatgpt_account_id_import_updated'))
+            4986 BUILD_CONST_KEY_MAP  10
+            4988 RETURN_VALUE
+
+1435:     >> 4990 LOAD_CONST           (True)
+
+1436:        4992 LOAD_FAST            (account_id)
+
+1437:        4994 LOAD_FAST            (group_id)
+
+1438:        4996 LOAD_FAST            (resolved_group_name)
+
+1439:        4998 LOAD_FAST            (actual_group_ids)
+
+1440:        5000 LOAD_FAST            (actual_group_names)
+
+1441:        5002 LOAD_CONST           (True)
+
+1442:        5004 LOAD_CONST           (True)
+
+1443:        5006 LOAD_FAST            (chatgpt_account_id)
+
+1444:        5008 LOAD_FAST            (chatgpt_account_id)
+
+1445:        5010 LOAD_CONST           (True)
+
+1446:        5012 LOAD_FAST            (metadata_backfilled)
+
+1447:        5014 LOAD_FAST            (metadata_import_updated)
+
+1434:        5016 LOAD_CONST           (('ok', 'sub2api_account_id', 'sub2api_group_id', 'sub2api_group_name', 'sub2api_group_ids', 'sub2api_group_names', 'sub2_remote_verified', 'sub2_group_verified', 'chatgpt_account_id', 'account_id', 'sub2_chatgpt_account_id_verified', 'sub2_chatgpt_account_id_backfilled', 'sub2_chatgpt_account_id_import_updated'))
+            5018 BUILD_CONST_KEY_MAP  13
+            5020 RETURN_VALUE
+         >> 5022 PUSH_EXC_INFO
+
+1146:        5024 LOAD_GLOBAL          (Exception)
+            5034 CHECK_EXC_MATCH
+            5036 POP_JUMP_IF_FALSE    (to 5076)
+            5040 STORE_FAST           (exc)
+
+1147:        5042 LOAD_CONST           (False)
+            5044 LOAD_CONST           ("SUB2 helper import failed: ")
+            5046 LOAD_FAST            (exc)
+            5048 FORMAT_SIMPLE
+            5050 BUILD_STRING         2
+            5052 LOAD_CONST           (('ok', 'error'))
+            5054 BUILD_CONST_KEY_MAP  2
+            5056 SWAP                 (TOS <-> TOS1)
+            5058 POP_EXCEPT
+            5060 LOAD_CONST           (None)
+            5062 STORE_FAST           (exc)
+            5064 DELETE_FAST          (exc)
+            5066 RETURN_VALUE
+         >> 5068 LOAD_CONST           (None)
+            5070 STORE_FAST           (exc)
+            5072 DELETE_FAST          (exc)
+            5074 RERAISE              1
+
+1146:     >> 5076 RERAISE              0
+         >> 5078 COPY                 3
+            5080 POP_EXCEPT
+            5082 RERAISE              1
+         >> 5084 SWAP                 (TOS <-> TOS1)
+            5086 POP_TOP
+
+1186:        5088 SWAP                 (TOS <-> TOS1)
+            5090 STORE_FAST           (key)
+            5092 RERAISE              0
+         >> 5094 PUSH_EXC_INFO
+
+1208:        5096 LOAD_GLOBAL          (Exception)
+            5106 CHECK_EXC_MATCH
+            5108 POP_JUMP_IF_FALSE    (to 5148)
+            5112 STORE_FAST           (exc)
+
+1209:        5114 LOAD_CONST           (False)
+            5116 LOAD_CONST           ("SUB2 prepare failed: ")
+            5118 LOAD_FAST            (exc)
+            5120 FORMAT_SIMPLE
+            5122 BUILD_STRING         2
+            5124 LOAD_CONST           (('ok', 'error'))

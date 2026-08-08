@@ -1,0 +1,800 @@
+            5128 CALL                 (1 positional)
+            5136 JUMP_FORWARD         (to 5140)
+         >> 5138 BUILD_MAP            0
+         >> 5140 STORE_FAST           (active_response)
+
+3258:        5142 LOAD_GLOBAL          (NULL + isinstance)
+            5152 LOAD_FAST            (phase1_snapshot)
+            5154 LOAD_GLOBAL          (dict)
+            5164 CALL                 (2 positional)
+            5172 TO_BOOL
+            5180 POP_JUMP_IF_FALSE    (to 5236)
+            5184 LOAD_GLOBAL          (NULL + _clean)
+            5194 LOAD_FAST            (phase1_snapshot)
+            5196 LOAD_ATTR            (NULL|self + get)
+            5216 LOAD_CONST           ("continue_url")
+            5218 CALL                 (1 positional)
+            5226 CALL                 (1 positional)
+            5234 JUMP_FORWARD         (to 5238)
+         >> 5236 LOAD_CONST           ("")
+         >> 5238 STORE_FAST           (active_continue)
+
+3259:        5240 LOAD_FAST            (is_real)
+            5242 TO_BOOL
+            5250 EXTENDED_ARG         (256)
+            5252 POP_JUMP_IF_FALSE    (to 5862)
+            5256 LOAD_FAST_CHECK      (phase1_snapshot_ready)
+            5258 TO_BOOL
+            5266 EXTENDED_ARG         (256)
+            5268 POP_JUMP_IF_FALSE    (to 5862)
+            5272 LOAD_GLOBAL          (NULL + isinstance)
+            5282 LOAD_FAST            (active_response)
+            5284 LOAD_GLOBAL          (dict)
+            5294 CALL                 (2 positional)
+            5302 TO_BOOL
+            5310 POP_JUMP_IF_TRUE     (to 5330)
+            5314 LOAD_FAST            (active_continue)
+            5316 TO_BOOL
+            5324 EXTENDED_ARG         (256)
+            5326 POP_JUMP_IF_FALSE    (to 5862)
+
+3260:     >> 5330 LOAD_GLOBAL          (NULL + _clean)
+            5340 LOAD_FAST            (oauth_url)
+            5342 CALL                 (1 positional)
+            5350 LOAD_FAST            (transport)
+            5352 STORE_ATTR           (original_oauth_url)
+
+3261:        5362 LOAD_FAST            (active_continue)
+            5364 TO_BOOL
+            5372 POP_JUMP_IF_FALSE    (to 5404)
+            5376 LOAD_GLOBAL          (NULL + _abs_url)
+            5386 LOAD_FAST            (active_continue)
+            5388 LOAD_GLOBAL          (AUTH)
+            5398 LOAD_CONST           (('default_base',))
+            5400 CALL_KW              2
+            5402 JUMP_FORWARD         (to 5406)
+         >> 5404 LOAD_CONST           ("")
+         >> 5406 LOAD_FAST            (transport)
+            5408 STORE_ATTR           (last_oauth_url)
+
+3262:        5418 LOAD_GLOBAL          (NULL + isinstance)
+            5428 LOAD_FAST            (active_response)
+            5430 LOAD_GLOBAL          (dict)
+            5440 CALL                 (2 positional)
+            5448 TO_BOOL
+            5456 POP_JUMP_IF_FALSE    (to 5482)
+            5460 LOAD_GLOBAL          (NULL + dict)
+            5470 LOAD_FAST            (active_response)
+            5472 CALL                 (1 positional)
+            5480 JUMP_FORWARD         (to 5484)
+         >> 5482 BUILD_MAP            0
+         >> 5484 STORE_FAST           (email_response)
+
+3263:        5486 LOAD_FAST            (active_continue)
+            5488 TO_BOOL
+            5496 POP_JUMP_IF_FALSE    (to 5554)
+            5500 LOAD_FAST            (email_response)
+            5502 LOAD_ATTR            (NULL|self + get)
+            5522 LOAD_CONST           ("continue_url")
+            5524 CALL                 (1 positional)
+            5532 TO_BOOL
+            5540 POP_JUMP_IF_TRUE     (to 5554)
+
+3264:        5544 LOAD_FAST            (active_continue)
+            5546 LOAD_FAST            (email_response)
+            5548 LOAD_CONST           ("continue_url")
+            5550 STORE_SUBSCR
+
+3265:     >> 5554 LOAD_GLOBAL          (NULL + _page_type)
+            5564 LOAD_FAST            (email_response)
+            5566 CALL                 (1 positional)
+            5574 TO_BOOL
+            5582 POP_JUMP_IF_TRUE     (to 5716)
+            5586 LOAD_FAST            (active_continue)
+            5588 TO_BOOL
+            5596 POP_JUMP_IF_FALSE    (to 5716)
+
+3266:        5600 NOP
+
+3267:        5602 LOAD_FAST            (transport)
+            5604 LOAD_ATTR            (NULL|self + visit_continue)
+            5624 LOAD_FAST            (active_continue)
+            5626 LOAD_GLOBAL          (AUTH)
+            5636 FORMAT_SIMPLE
+            5638 LOAD_CONST           ("/email-verification")
+            5640 BUILD_STRING         2
+            5642 LOAD_CONST           (('referer',))
+            5644 CALL_KW              2
+            5646 STORE_FAST           (email_response)
+
+3268:        5648 LOAD_FAST            (active_continue)
+            5650 TO_BOOL
+            5658 POP_JUMP_IF_FALSE    (to 5716)
+            5662 LOAD_FAST            (email_response)
+            5664 LOAD_ATTR            (NULL|self + get)
+            5684 LOAD_CONST           ("continue_url")
+            5686 CALL                 (1 positional)
+            5694 TO_BOOL
+            5702 POP_JUMP_IF_TRUE     (to 5716)
+
+3269:        5706 LOAD_FAST            (active_continue)
+            5708 LOAD_FAST            (email_response)
+            5710 LOAD_CONST           ("continue_url")
+            5712 STORE_SUBSCR
+
+3272:     >> 5716 LOAD_GLOBAL          (NULL + _event)
+            5726 LOAD_FAST            (events)
+            5728 LOAD_GLOBAL          (STATE_OAUTH_STARTED)
+            5738 LOAD_CONST           ("phase1_session:")
+            5740 LOAD_GLOBAL          (NULL + _page_type)
+            5750 LOAD_FAST            (email_response)
+            5752 CALL                 (1 positional)
+            5760 COPY                 1
+            5762 TO_BOOL
+            5770 POP_JUMP_IF_TRUE     (to 5778)
+            5774 POP_TOP
+            5776 LOAD_CONST           ("continue")
+         >> 5778 FORMAT_SIMPLE
+            5780 BUILD_STRING         2
+            5782 LOAD_FAST            (log_fn)
+            5784 LOAD_CONST           (('detail', 'log_fn'))
+            5786 CALL_KW              4
+            5788 POP_TOP
+
+3273:        5790 LOAD_GLOBAL          (NULL + _event)
+            5800 LOAD_FAST            (events)
+            5802 LOAD_GLOBAL          (STATE_EMAIL_OTP_VERIFIED)
+            5812 LOAD_GLOBAL          (NULL + _page_type)
+            5822 LOAD_FAST            (email_response)
+            5824 CALL                 (1 positional)
+            5832 COPY                 1
+            5834 TO_BOOL
+            5842 POP_JUMP_IF_TRUE     (to 5850)
+            5846 POP_TOP
+            5848 LOAD_CONST           ("phase1_session")
+         >> 5850 LOAD_FAST            (log_fn)
+            5852 LOAD_CONST           (('detail', 'log_fn'))
+            5854 CALL_KW              4
+            5856 POP_TOP
+            5858 EXTENDED_ARG         (256)
+            5860 JUMP_FORWARD         (to 6612)
+
+3275:     >> 5862 LOAD_FAST            (transport)
+            5864 LOAD_ATTR            (NULL|self + initiate_oauth)
+            5884 LOAD_FAST            (oauth_url)
+            5886 CALL                 (1 positional)
+            5894 STORE_FAST           (start_response)
+
+3276:        5896 LOAD_GLOBAL          (NULL + _is_success_response)
+            5906 LOAD_FAST            (start_response)
+            5908 CALL                 (1 positional)
+            5916 TO_BOOL
+            5924 POP_JUMP_IF_TRUE     (to 5974)
+
+3277:        5928 LOAD_GLOBAL          (NULL + CodexChainError)
+            5938 LOAD_CONST           ("oauth_start_failed: ")
+            5940 LOAD_GLOBAL          (NULL + _error_text)
+            5950 LOAD_FAST            (start_response)
+            5952 CALL                 (1 positional)
+            5960 FORMAT_SIMPLE
+            5962 BUILD_STRING         2
+            5964 CALL                 (1 positional)
+            5972 RAISE_VARARGS        (exception instance)
+
+3278:     >> 5974 LOAD_GLOBAL          (NULL + _event)
+            5984 LOAD_FAST            (events)
+            5986 LOAD_GLOBAL          (STATE_OAUTH_STARTED)
+            5996 LOAD_GLOBAL          (NULL + _page_type)
+            6006 LOAD_FAST            (start_response)
+            6008 CALL                 (1 positional)
+            6016 COPY                 1
+            6018 TO_BOOL
+            6026 POP_JUMP_IF_TRUE     (to 6034)
+            6030 POP_TOP
+            6032 LOAD_CONST           ("login")
+         >> 6034 LOAD_FAST            (log_fn)
+            6036 LOAD_CONST           (('detail', 'log_fn'))
+            6038 CALL_KW              4
+            6040 POP_TOP
+
+3280:        6042 LOAD_FAST            (sentinel_provider)
+            6044 LOAD_ATTR            (NULL|self + token_for)
+            6064 LOAD_CONST           ("authorize_continue")
+            6066 LOAD_FAST            (context)
+            6068 CALL                 (2 positional)
+            6076 STORE_FAST           (sentinel)
+
+3281:        6078 LOAD_GLOBAL          (NULL + _event)
+
+3282:        6088 LOAD_FAST            (events)
+
+3283:        6090 LOAD_GLOBAL          (STATE_SENTINEL_READY)
+
+3284:        6100 LOAD_GLOBAL          (NULL + _clean)
+            6110 LOAD_GLOBAL          (NULL + isinstance)
+            6120 LOAD_FAST            (sentinel)
+            6122 LOAD_GLOBAL          (dict)
+            6132 CALL                 (2 positional)
+            6140 TO_BOOL
+            6148 POP_JUMP_IF_FALSE    (to 6234)
+            6152 LOAD_FAST            (sentinel)
+            6154 LOAD_ATTR            (NULL|self + get)
+            6174 LOAD_CONST           ("provider")
+            6176 CALL                 (1 positional)
+            6184 COPY                 1
+            6186 TO_BOOL
+            6194 POP_JUMP_IF_TRUE     (to 6232)
+            6198 POP_TOP
+            6200 LOAD_FAST            (sentinel)
+            6202 LOAD_ATTR            (NULL|self + get)
+            6222 LOAD_CONST           ("mode")
+            6224 CALL                 (1 positional)
+         >> 6232 JUMP_FORWARD         (to 6236)
+
+3284:     >> 6234 LOAD_CONST           ("mock")
+         >> 6236 CALL                 (1 positional)
+            6244 COPY                 1
+            6246 TO_BOOL
+            6254 POP_JUMP_IF_TRUE     (to 6262)
+            6258 POP_TOP
+            6260 LOAD_CONST           ("mock")
+
+3285:     >> 6262 LOAD_CONST           ("authorize_continue")
+            6264 LOAD_GLOBAL          (NULL + isinstance)
+            6274 LOAD_FAST            (sentinel)
+            6276 LOAD_GLOBAL          (dict)
+            6286 CALL                 (2 positional)
+            6294 TO_BOOL
+            6302 POP_JUMP_IF_FALSE    (to 6376)
+            6306 LOAD_GLOBAL          (NULL + bool)
+            6316 LOAD_FAST            (sentinel)
+            6318 COPY                 1
+            6320 TO_BOOL
+            6328 POP_JUMP_IF_TRUE     (to 6336)
+            6332 POP_TOP
+            6334 BUILD_MAP            0
+         >> 6336 LOAD_ATTR            (NULL|self + get)
+            6356 LOAD_CONST           ("token_generated")
+            6358 CALL                 (1 positional)
+            6366 CALL                 (1 positional)
+            6374 JUMP_FORWARD         (to 6378)
+         >> 6376 LOAD_CONST           (False)
+         >> 6378 LOAD_CONST           (('flow', 'token_generated'))
+            6380 BUILD_CONST_KEY_MAP  2
+
+3286:        6382 LOAD_FAST            (log_fn)
+
+3281:        6384 LOAD_CONST           (('detail', 'extra', 'log_fn'))
+            6386 CALL_KW              5
+            6388 POP_TOP
+
+3292:        6390 LOAD_GLOBAL          (NULL + hasattr)
+            6400 LOAD_FAST            (email_otp_provider)
+            6402 LOAD_CONST           ("acquire_login_slot")
+            6404 CALL                 (2 positional)
+            6412 TO_BOOL
+            6420 POP_JUMP_IF_FALSE    (to 6456)
+
+3293:        6424 LOAD_FAST            (email_otp_provider)
+            6426 LOAD_ATTR            (NULL|self + acquire_login_slot)
+            6446 CALL                 (0 positional)
+            6454 POP_TOP
+
+3294:     >> 6456 LOAD_GLOBAL          (NULL + _raise_if_task_stopped)
+            6466 LOAD_FAST            (cfg)
+            6468 CALL                 (1 positional)
+            6476 POP_TOP
+
+3295:        6478 LOAD_FAST            (transport)
+            6480 LOAD_ATTR            (NULL|self + submit_email_identifier)
+            6500 LOAD_FAST            (account_email)
+            6502 CALL                 (1 positional)
+            6510 STORE_FAST           (email_response)
+
+3296:        6512 LOAD_GLOBAL          (NULL + _raise_if_task_stopped)
+            6522 LOAD_FAST            (cfg)
+            6524 CALL                 (1 positional)
+            6532 POP_TOP
+
+3297:        6534 LOAD_GLOBAL          (NULL + _is_success_response)
+            6544 LOAD_FAST            (email_response)
+            6546 CALL                 (1 positional)
+            6554 TO_BOOL
+            6562 POP_JUMP_IF_TRUE     (to 6612)
+
+3298:        6566 LOAD_GLOBAL          (NULL + CodexChainError)
+            6576 LOAD_CONST           ("email_identifier_failed: ")
+            6578 LOAD_GLOBAL          (NULL + _error_text)
+            6588 LOAD_FAST            (email_response)
+            6590 CALL                 (1 positional)
+            6598 FORMAT_SIMPLE
+            6600 BUILD_STRING         2
+            6602 CALL                 (1 positional)
+            6610 RAISE_VARARGS        (exception instance)
+
+3299:     >> 6612 LOAD_GLOBAL          (NULL + _page_type)
+            6622 LOAD_FAST            (email_response)
+            6624 CALL                 (1 positional)
+            6632 LOAD_CONST           ({'password_verification', 'password', 'login_password'})
+            6634 CONTAINS_OP          (in)
+            6638 EXTENDED_ARG         (256)
+            6640 POP_JUMP_IF_FALSE    (to 7470)
+
+3304:        6644 LOAD_GLOBAL          (NULL + _clean)
+            6654 LOAD_FAST            (cfg)
+            6656 LOAD_ATTR            (NULL|self + get)
+            6676 LOAD_CONST           ("email_auth_preference")
+            6678 CALL                 (1 positional)
+            6686 CALL                 (1 positional)
+            6694 LOAD_ATTR            (NULL|self + lower)
+            6714 CALL                 (0 positional)
+            6722 COPY                 1
+            6724 TO_BOOL
+            6732 POP_JUMP_IF_TRUE     (to 6740)
+            6736 POP_TOP
+            6738 LOAD_CONST           ("auto")
+         >> 6740 STORE_FAST           (requested_auth_preference)
+
+3305:        6742 LOAD_GLOBAL          (NULL + _clean)
+            6752 LOAD_FAST            (password)
+            6754 CALL                 (1 positional)
+            6762 TO_BOOL
+            6770 POP_JUMP_IF_TRUE     (to 6780)
+
+3306:        6774 LOAD_CONST           ("otp")
+            6776 STORE_FAST           (auth_preference)
+            6778 JUMP_FORWARD         (to 6802)
+
+3307:     >> 6780 LOAD_FAST_CHECK      (requested_auth_preference)
+            6782 LOAD_CONST           ("auto")
+            6784 COMPARE_OP           (==)
+            6788 POP_JUMP_IF_FALSE    (to 6798)
+
+3308:        6792 LOAD_CONST           ("password")
+            6794 STORE_FAST           (auth_preference)
+            6796 JUMP_FORWARD         (to 6802)
+
+3310:     >> 6798 LOAD_FAST_CHECK      (requested_auth_preference)
+            6800 STORE_FAST           (auth_preference)
+
+3311:     >> 6802 LOAD_FAST_CHECK      (auth_preference)
+            6804 LOAD_CONST           ("otp")
+            6806 COMPARE_OP           (==)
+            6810 POP_JUMP_IF_FALSE    (to 7126)
+            6814 LOAD_GLOBAL          (NULL + hasattr)
+            6824 LOAD_FAST            (transport)
+            6826 LOAD_CONST           ("send_email_otp")
+            6828 CALL                 (2 positional)
+            6836 TO_BOOL
+            6844 POP_JUMP_IF_FALSE    (to 7126)
+
+3312:        6848 LOAD_GLOBAL          (NULL + _emit)
+            6858 LOAD_FAST            (log_fn)
+            6860 LOAD_CONST           ("  [Codex] 当前登录页支持密码/验证码选择，优先请求邮箱验证码")
+            6862 LOAD_CONST           ("info")
+            6864 CALL                 (3 positional)
+            6872 POP_TOP
+
+3313:        6874 NOP
+
+3314:        6876 LOAD_FAST            (transport)
+            6878 LOAD_ATTR            (NULL|self + send_email_otp)
+            6898 LOAD_CONST           ("")
+            6900 CALL                 (1 positional)
+            6908 STORE_FAST           (otp_response)
+
+3317:        6910 LOAD_GLOBAL          (NULL + _is_success_response)
+            6920 LOAD_FAST_CHECK      (otp_response)
+            6922 CALL                 (1 positional)
+            6930 TO_BOOL
+            6938 POP_JUMP_IF_FALSE    (to 7004)
+            6942 LOAD_GLOBAL          (NULL + _page_type)
+            6952 LOAD_FAST_CHECK      (otp_response)
+            6954 CALL                 (1 positional)
+            6962 LOAD_CONST           ("email_otp_verification")
+            6964 COMPARE_OP           (==)
+            6968 POP_JUMP_IF_FALSE    (to 7004)
+
+3318:        6972 LOAD_FAST_CHECK      (otp_response)
+            6974 STORE_FAST           (email_response)
+
+3319:        6976 LOAD_GLOBAL          (NULL + _emit)
+            6986 LOAD_FAST            (log_fn)
+            6988 LOAD_CONST           ("  [Codex] 已切换到邮箱验证码登录，等待验证码")
+            6990 LOAD_CONST           ("info")
+            6992 CALL                 (3 positional)
+            7000 POP_TOP
+            7002 JUMP_FORWARD         (to 7126)
+
+3320:     >> 7004 LOAD_GLOBAL          (NULL + _clean)
+            7014 LOAD_FAST            (password)
+            7016 CALL                 (1 positional)
+            7024 TO_BOOL
+            7032 POP_JUMP_IF_TRUE     (to 7100)
+
+3321:        7036 LOAD_GLOBAL          (NULL + CodexChainError)
+            7046 LOAD_CONST           ("email_otp_send_failed: ")
+            7048 LOAD_GLOBAL          (NULL + _error_text)
+            7058 LOAD_FAST_CHECK      (otp_response)
+            7060 CALL                 (1 positional)
+            7068 COPY                 1
+            7070 TO_BOOL
+            7078 POP_JUMP_IF_TRUE     (to 7086)
+            7082 POP_TOP
+            7084 LOAD_CONST           ("验证码入口不可用")
+         >> 7086 FORMAT_SIMPLE
+            7088 BUILD_STRING         2
+            7090 CALL                 (1 positional)
+            7098 RAISE_VARARGS        (exception instance)
+
+3323:     >> 7100 LOAD_GLOBAL          (NULL + _emit)
+            7110 LOAD_FAST            (log_fn)
+            7112 LOAD_CONST           ("  [Codex] 验证码入口不可用，回退账号密码登录")
+            7114 LOAD_CONST           ("warn")
+            7116 CALL                 (3 positional)
+            7124 POP_TOP
+
+3324:     >> 7126 LOAD_GLOBAL          (NULL + _page_type)
+            7136 LOAD_FAST            (email_response)
+            7138 CALL                 (1 positional)
+            7146 LOAD_CONST           ({'password_verification', 'password', 'login_password'})
+            7148 CONTAINS_OP          (in)
+            7152 POP_JUMP_IF_FALSE    (to 7470)
+
+3325:        7156 LOAD_GLOBAL          (NULL + _event)
+            7166 LOAD_FAST            (events)
+            7168 LOAD_GLOBAL          (STATE_PASSWORD_REQUIRED)
+            7178 LOAD_GLOBAL          (NULL + _mask)
+            7188 LOAD_FAST            (account_email)
+            7190 CALL                 (1 positional)
+            7198 LOAD_FAST            (log_fn)
+            7200 LOAD_CONST           (('detail', 'log_fn'))
+            7202 CALL_KW              4
+            7204 POP_TOP
+
+3326:        7206 LOAD_GLOBAL          (NULL + _clean)
+            7216 LOAD_FAST            (password)
+            7218 CALL                 (1 positional)
+            7226 TO_BOOL
+            7234 POP_JUMP_IF_TRUE     (to 7260)
+
+3327:        7238 LOAD_GLOBAL          (NULL + CodexChainError)
+            7248 LOAD_CONST           ("password_required")
+            7250 CALL                 (1 positional)
+            7258 RAISE_VARARGS        (exception instance)
+
+3328:     >> 7260 LOAD_GLOBAL          (NULL + _raise_if_task_stopped)
+            7270 LOAD_FAST            (cfg)
+            7272 CALL                 (1 positional)
+            7280 POP_TOP
+
+3329:        7282 LOAD_FAST            (transport)
+            7284 LOAD_ATTR            (NULL|self + verify_password)
+            7304 LOAD_FAST            (password)
+            7306 CALL                 (1 positional)
+            7314 STORE_FAST           (password_response)
+
+3330:        7316 LOAD_GLOBAL          (NULL + _raise_if_task_stopped)
+            7326 LOAD_FAST            (cfg)
+            7328 CALL                 (1 positional)
+            7336 POP_TOP
+
+3331:        7338 LOAD_GLOBAL          (NULL + _is_success_response)
+            7348 LOAD_FAST            (password_response)
+            7350 CALL                 (1 positional)
+            7358 TO_BOOL
+            7366 POP_JUMP_IF_TRUE     (to 7416)
+
+3332:        7370 LOAD_GLOBAL          (NULL + CodexChainError)
+            7380 LOAD_CONST           ("password_verify_failed: ")
+            7382 LOAD_GLOBAL          (NULL + _error_text)
+            7392 LOAD_FAST_CHECK      (password_response)
+            7394 CALL                 (1 positional)
+            7402 FORMAT_SIMPLE
+            7404 BUILD_STRING         2
+            7406 CALL                 (1 positional)
+            7414 RAISE_VARARGS        (exception instance)
+
+3333:     >> 7416 LOAD_FAST_CHECK      (password_response)
+            7418 STORE_FAST           (email_response)
+
+3334:        7420 LOAD_GLOBAL          (NULL + _event)
+            7430 LOAD_FAST            (events)
+            7432 LOAD_GLOBAL          (STATE_PASSWORD_VERIFIED)
+            7442 LOAD_GLOBAL          (NULL + _page_type)
+            7452 LOAD_FAST            (email_response)
+            7454 CALL                 (1 positional)
+            7462 LOAD_FAST            (log_fn)
+            7464 LOAD_CONST           (('detail', 'log_fn'))
+            7466 CALL_KW              4
+            7468 POP_TOP
+
+3336:     >> 7470 LOAD_GLOBAL          (NULL + _page_type)
+            7480 LOAD_FAST            (email_response)
+            7482 CALL                 (1 positional)
+            7490 LOAD_CONST           ({'mfa_otp', 'mfa_challenge', 'mfa_otp_verification'})
+            7492 CONTAINS_OP          (in)
+            7496 EXTENDED_ARG         (512)
+            7498 POP_JUMP_IF_FALSE    (to 8898)
+
+3337:        7502 LOAD_GLOBAL          (NULL + _continue_url)
+            7512 LOAD_FAST            (email_response)
+            7514 CALL                 (1 positional)
+            7522 STORE_FAST           (mfa_continue_url)
+
+3338:        7524 LOAD_GLOBAL          (NULL + _event)
+
+3339:        7534 LOAD_FAST            (events)
+
+3340:        7536 LOAD_GLOBAL          (STATE_MFA_OTP_REQUIRED)
+
+3341:        7546 LOAD_GLOBAL          (NULL + _mask)
+            7556 LOAD_FAST            (account_email)
+            7558 CALL                 (1 positional)
+
+3343:        7566 LOAD_GLOBAL          (NULL + int)
+            7576 LOAD_FAST            (email_response)
+            7578 LOAD_ATTR            (NULL|self + get)
+            7598 LOAD_CONST           ("_status")
+            7600 CALL                 (1 positional)
+            7608 COPY                 1
+            7610 TO_BOOL
+            7618 POP_JUMP_IF_TRUE     (to 7626)
+            7622 POP_TOP
+            7624 LOAD_CONST           (0)
+         >> 7626 CALL                 (1 positional)
+
+3344:        7634 LOAD_GLOBAL          (NULL + bool)
+            7644 LOAD_FAST_CHECK      (mfa_continue_url)
+            7646 CALL                 (1 positional)
+
+3342:        7654 LOAD_CONST           (('response_status', 'continue_url_present'))
+            7656 BUILD_CONST_KEY_MAP  2
+
+3346:        7658 LOAD_FAST            (log_fn)
+
+3338:        7660 LOAD_CONST           (('detail', 'extra', 'log_fn'))
+            7662 CALL_KW              5
+            7664 POP_TOP
+
+3348:        7666 LOAD_GLOBAL          (NULL + _email_otp_resend_on_retry)
+            7676 LOAD_FAST            (cfg)
+            7678 CALL                 (1 positional)
+            7686 STORE_FAST           (resend_on_retry)
+
+3349:        7688 LOAD_FAST            (resend_on_retry)
+            7690 TO_BOOL
+            7698 POP_JUMP_IF_FALSE    (to 7724)
+            7702 LOAD_GLOBAL          (NULL + _email_otp_verify_attempts)
+            7712 LOAD_FAST            (cfg)
+            7714 CALL                 (1 positional)
+            7722 JUMP_FORWARD         (to 7726)
+         >> 7724 LOAD_CONST           (1)
+         >> 7726 STORE_FAST           (verify_attempts)
+
+3350:        7728 LOAD_CONST           ("")
+            7730 STORE_FAST           (last_mfa_error)
+
+3351:        7732 LOAD_GLOBAL          (NULL + hasattr)
+            7742 LOAD_FAST            (email_otp_provider)
+            7744 LOAD_CONST           ("mark_sent")
+            7746 CALL                 (2 positional)
+            7754 TO_BOOL
+            7762 POP_JUMP_IF_FALSE    (to 7798)
+
+3352:        7766 LOAD_FAST            (email_otp_provider)
+            7768 LOAD_ATTR            (NULL|self + mark_sent)
+            7788 CALL                 (0 positional)
+            7796 POP_TOP
+
+3357:     >> 7798 LOAD_GLOBAL          (NULL + hasattr)
+            7808 LOAD_FAST            (transport)
+            7810 LOAD_CONST           ("send_mfa_otp")
+            7812 CALL                 (2 positional)
+            7820 TO_BOOL
+            7828 POP_JUMP_IF_FALSE    (to 8050)
+
+3358:        7832 LOAD_FAST            (transport)
+            7834 LOAD_ATTR            (NULL|self + send_mfa_otp)
+            7854 LOAD_FAST_CHECK      (mfa_continue_url)
+            7856 CALL                 (1 positional)
+            7864 STORE_FAST           (initial_send)
+
+3359:        7866 LOAD_GLOBAL          (NULL + _is_success_response)
+            7876 LOAD_FAST            (initial_send)
+            7878 CALL                 (1 positional)
+            7886 TO_BOOL
+            7894 POP_JUMP_IF_TRUE     (to 7944)
+
+3360:        7898 LOAD_GLOBAL          (NULL + CodexChainError)
+            7908 LOAD_CONST           ("mfa_otp_send_failed: ")
+            7910 LOAD_GLOBAL          (NULL + _error_text)
+            7920 LOAD_FAST_CHECK      (initial_send)
+            7922 CALL                 (1 positional)
+            7930 FORMAT_SIMPLE
+            7932 BUILD_STRING         2
+            7934 CALL                 (1 positional)
+            7942 RAISE_VARARGS        (exception instance)
+
+3361:     >> 7944 LOAD_GLOBAL          (NULL + _continue_url)
+            7954 LOAD_FAST_CHECK      (initial_send)
+            7956 CALL                 (1 positional)
+            7964 COPY                 1
+            7966 TO_BOOL
+            7974 POP_JUMP_IF_TRUE     (to 7982)
+            7978 POP_TOP
+            7980 LOAD_FAST_CHECK      (mfa_continue_url)
+         >> 7982 STORE_FAST           (mfa_continue_url)
+
+3362:        7984 LOAD_GLOBAL          (NULL + hasattr)
+            7994 LOAD_FAST            (email_otp_provider)
+            7996 LOAD_CONST           ("mark_sent")
+            7998 CALL                 (2 positional)
+            8006 TO_BOOL
+            8014 POP_JUMP_IF_FALSE    (to 8050)
+
+3363:        8018 LOAD_FAST            (email_otp_provider)
+            8020 LOAD_ATTR            (NULL|self + mark_sent)
+            8040 CALL                 (0 positional)
+            8048 POP_TOP
+
+3364:     >> 8050 LOAD_GLOBAL          (NULL + range)
+            8060 LOAD_CONST           (1)
+            8062 LOAD_FAST_CHECK      (verify_attempts)
+            8064 LOAD_CONST           (1)
+            8066 BINARY_OP            (+)
+            8070 CALL                 (2 positional)
+            8078 GET_ITER
+            8080 EXTENDED_ARG         (256)
+            8082 FOR_ITER             (to 8736)
+            8086 STORE_FAST           (mfa_attempt)
+
+3365:        8088 LOAD_GLOBAL          (NULL + _raise_if_task_stopped)
+            8098 LOAD_FAST            (cfg)
+            8100 CALL                 (1 positional)
+            8108 POP_TOP
+
+3366:        8110 LOAD_FAST            (mfa_attempt)
+            8112 LOAD_CONST           (1)
+            8114 COMPARE_OP           (>)
+            8118 POP_JUMP_IF_FALSE    (to 8438)
+            8122 LOAD_GLOBAL          (NULL + hasattr)
+            8132 LOAD_FAST            (transport)
+            8134 LOAD_CONST           ("send_mfa_otp")
+            8136 CALL                 (2 positional)
+            8144 TO_BOOL
+            8152 POP_JUMP_IF_FALSE    (to 8438)
+
+3367:        8156 LOAD_GLOBAL          (NULL + hasattr)
+            8166 LOAD_FAST            (email_otp_provider)
+            8168 LOAD_CONST           ("acquire_login_slot")
+            8170 CALL                 (2 positional)
+            8178 TO_BOOL
+            8186 POP_JUMP_IF_FALSE    (to 8222)
+
+3368:        8190 LOAD_FAST            (email_otp_provider)
+            8192 LOAD_ATTR            (NULL|self + acquire_login_slot)
+            8212 CALL                 (0 positional)
+            8220 POP_TOP
+
+3369:     >> 8222 LOAD_GLOBAL          (NULL + _emit)
+
+3370:        8232 LOAD_FAST            (log_fn)
+
+3371:        8234 LOAD_CONST           ("  [Codex] MFA 验证码校验失败，仅重发一次并重取 (")
+            8236 LOAD_FAST_CHECK      (mfa_attempt)
+            8238 FORMAT_SIMPLE
+            8240 LOAD_CONST           ("/")
+            8242 LOAD_FAST_CHECK      (verify_attempts)
+            8244 FORMAT_SIMPLE
+            8246 LOAD_CONST           (")")
+            8248 BUILD_STRING         5
+
+3372:        8250 LOAD_CONST           ("warn")
+
+3369:        8252 CALL                 (3 positional)
+            8260 POP_TOP
+
+3374:        8262 LOAD_FAST            (transport)
+            8264 LOAD_ATTR            (NULL|self + send_mfa_otp)
+            8284 LOAD_FAST_CHECK      (mfa_continue_url)
+            8286 CALL                 (1 positional)
+            8294 STORE_FAST           (resend_response)
+
+3375:        8296 LOAD_GLOBAL          (NULL + _is_success_response)
+            8306 LOAD_FAST            (resend_response)
+            8308 CALL                 (1 positional)
+            8316 TO_BOOL
+            8324 POP_JUMP_IF_TRUE     (to 8372)
+
+3376:        8328 LOAD_GLOBAL          (NULL + _error_text)
+            8338 LOAD_FAST_CHECK      (resend_response)
+            8340 CALL                 (1 positional)
+            8348 COPY                 1
+            8350 TO_BOOL
+            8358 POP_JUMP_IF_TRUE     (to 8366)
+            8362 POP_TOP
+            8364 LOAD_CONST           ("mfa_otp_resend_failed")
+         >> 8366 STORE_FAST           (last_mfa_error)
+
+3377:        8368 POP_TOP
+            8370 JUMP_FORWARD         (to 8740)
+
+3378:     >> 8372 LOAD_GLOBAL          (NULL + hasattr)
+            8382 LOAD_FAST            (email_otp_provider)
+            8384 LOAD_CONST           ("mark_sent")
+            8386 CALL                 (2 positional)
+            8394 TO_BOOL
+            8402 POP_JUMP_IF_FALSE    (to 8438)
+
+3379:        8406 LOAD_FAST            (email_otp_provider)
+            8408 LOAD_ATTR            (NULL|self + mark_sent)
+            8428 CALL                 (0 positional)
+            8436 POP_TOP
+
+3380:     >> 8438 LOAD_GLOBAL          (NULL + _clean)
+            8448 LOAD_FAST            (email_otp_provider)
+            8450 LOAD_ATTR            (NULL|self + wait_code)
+            8470 LOAD_FAST            (account_email)
+            8472 CALL                 (1 positional)
+            8480 CALL                 (1 positional)
+            8488 STORE_FAST           (mfa_code)
+
+3381:        8490 LOAD_FAST            (mfa_code)
+            8492 TO_BOOL
+            8500 POP_JUMP_IF_TRUE     (to 8512)
+
+3382:        8504 LOAD_CONST           ("mfa_otp_empty")
+            8506 STORE_FAST           (last_mfa_error)
+
+3383:        8508 POP_TOP
+            8510 JUMP_FORWARD         (to 8740)
+
+3384:     >> 8512 LOAD_GLOBAL          (NULL + _raise_if_task_stopped)
+            8522 LOAD_FAST            (cfg)
+            8524 CALL                 (1 positional)
+            8532 POP_TOP
+
+3385:        8534 LOAD_FAST            (transport)
+            8536 LOAD_ATTR            (NULL|self + verify_mfa_otp)
+            8556 LOAD_FAST_CHECK      (mfa_code)
+            8558 CALL                 (1 positional)
+            8566 STORE_FAST           (email_response)
+
+3386:        8568 LOAD_GLOBAL          (NULL + _raise_if_task_stopped)
+            8578 LOAD_FAST            (cfg)
+            8580 CALL                 (1 positional)
+            8588 POP_TOP
+
+3387:        8590 LOAD_GLOBAL          (NULL + _is_success_response)
+            8600 LOAD_FAST            (email_response)
+            8602 CALL                 (1 positional)
+            8610 TO_BOOL
+            8618 POP_JUMP_IF_FALSE    (to 8630)
+
+3388:        8622 LOAD_CONST           ("")
+            8624 STORE_FAST           (last_mfa_error)
+
+3389:        8626 POP_TOP
+            8628 JUMP_FORWARD         (to 8740)
+
+3390:     >> 8630 LOAD_GLOBAL          (NULL + _error_text)
+            8640 LOAD_FAST            (email_response)
+            8642 CALL                 (1 positional)
+            8650 COPY                 1
+            8652 TO_BOOL
+            8660 POP_JUMP_IF_TRUE     (to 8668)
+            8664 POP_TOP
+            8666 LOAD_CONST           ("verify_failed")
+         >> 8668 STORE_FAST           (last_mfa_error)
+
+3391:        8670 LOAD_GLOBAL          (NULL + _is_email_otp_retryable_error)
+            8680 LOAD_FAST            (last_mfa_error)
+            8682 CALL                 (1 positional)
+            8690 TO_BOOL
+            8698 POP_JUMP_IF_TRUE     (to 8706)
+
+3392:        8702 POP_TOP
+            8704 JUMP_FORWARD         (to 8740)
+
+3393:     >> 8706 LOAD_GLOBAL          (NULL + _interruptible_sleep)

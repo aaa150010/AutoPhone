@@ -1,0 +1,800 @@
+             544 TO_BOOL
+             552 POP_JUMP_IF_FALSE    (to 720)
+
+251:         556 LOAD_CONST           (True)
+             558 STORE_FAST           (token_had_auth_user)
+
+252:         560 LOAD_FAST            (jwt_fields)
+             562 LOAD_ATTR            (NULL|self + setdefault)
+             582 LOAD_CONST           ("chatgpt_auth_user_id")
+             584 LOAD_GLOBAL          (NULL + clean_str)
+             594 LOAD_FAST            (auth)
+             596 LOAD_ATTR            (NULL|self + get)
+             616 LOAD_CONST           ("user_id")
+             618 CALL                 (1 positional)
+             626 CALL                 (1 positional)
+             634 CALL                 (2 positional)
+             642 POP_TOP
+
+253:         644 LOAD_FAST            (jwt_fields)
+             646 LOAD_ATTR            (NULL|self + setdefault)
+             666 LOAD_CONST           ("_chatgpt_field_sources")
+             668 BUILD_MAP            0
+             670 CALL                 (2 positional)
+             678 LOAD_ATTR            (NULL|self + setdefault)
+
+254:         698 LOAD_CONST           ("chatgpt_auth_user_id")
+
+255:         700 LOAD_CONST           ("jwt.")
+             702 LOAD_FAST            (token_name)
+             704 FORMAT_SIMPLE
+             706 LOAD_CONST           (".https://api.openai.com/auth.user_id")
+             708 BUILD_STRING         3
+
+253:         710 CALL                 (2 positional)
+             718 POP_TOP
+
+257:     >>  720 LOAD_FAST            (merge)
+             722 PUSH_NULL
+             724 LOAD_FAST            (jwt_fields)
+             726 CALL                 (1 positional)
+             734 POP_TOP
+             736 EXTENDED_ARG         (256)
+             738 JUMP_BACKWARD        (to 168)
+
+237:     >>  742 END_FOR
+             744 POP_TOP
+
+259:         746 LOAD_FAST            (extra_sources)
+             748 COPY                 1
+             750 TO_BOOL
+             758 POP_JUMP_IF_TRUE     (to 766)
+             762 POP_TOP
+             764 BUILD_LIST           0
+         >>  766 GET_ITER
+             768 FOR_ITER             (to 816)
+             772 UNPACK_SEQUENCE      2
+             776 STORE_FAST_STORE_FAST (name, data)
+
+260:         778 LOAD_FAST            (merge)
+             780 PUSH_NULL
+             782 LOAD_GLOBAL          (NULL + deep_find_chatgpt_fields)
+             792 LOAD_FAST_LOAD_FAST  (data, name)
+             794 CALL                 (2 positional)
+             802 CALL                 (1 positional)
+             810 POP_TOP
+             812 JUMP_BACKWARD        (to 768)
+
+259:     >>  816 END_FOR
+             818 POP_TOP
+
+262:         820 LOAD_DEREF           (sources)
+             822 TO_BOOL
+             830 POP_JUMP_IF_FALSE    (to 844)
+
+263:         834 LOAD_DEREF           (sources)
+             836 LOAD_DEREF           (fields)
+             838 LOAD_CONST           ("_chatgpt_field_sources")
+             840 STORE_SUBSCR
+
+264:     >>  844 LOAD_GLOBAL          (NULL + bool)
+             854 LOAD_FAST            (token_had_auth_user)
+             856 COPY                 1
+             858 TO_BOOL
+             866 POP_JUMP_IF_FALSE    (to 914)
+             870 POP_TOP
+             872 LOAD_DEREF           (fields)
+             874 LOAD_ATTR            (NULL|self + get)
+             894 LOAD_CONST           ("chatgpt_account_id")
+             896 CALL                 (1 positional)
+             904 TO_BOOL
+             912 UNARY_NOT
+         >>  914 CALL                 (1 positional)
+             922 LOAD_DEREF           (fields)
+             924 LOAD_CONST           ("_token_has_user_id_only")
+             926 STORE_SUBSCR
+
+265:         930 LOAD_GLOBAL          (NULL + build_chatgpt_field_status)
+             940 LOAD_DEREF           (fields)
+             942 CALL                 (1 positional)
+             950 RETURN_VALUE
+
+
+# Method Name:       build_chatgpt_field_status
+# Filename:          chatgpt_fields.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        268
+# Constants:
+#    0: None
+#    1: '_chatgpt_field_sources'
+#    2: ('chatgpt_auth_user_id',)
+#    3: 'chatgpt_account_id'
+#    4: ''
+#    5: 'account_id'
+#    6: 'chatgpt_plan_type'
+#    7: '='
+#    8: '; '
+#    9: 'chatgpt_field_source'
+#   10: 'chatgpt_field_checked_at'
+#   11: 'cpa_ready'
+#   12: 'missing_chatgpt_account_id'
+#   13: '_token_has_user_id_only'
+#   14: 'token_has_user_id_only'
+#   15: 'cpa_missing_reason'
+# Names:
+#    0: get
+#    1: CHATGPT_FIELD_KEYS
+#    2: clean_str
+#    3: lower
+#    4: isinstance
+#    5: dict
+#    6: append
+#    7: join
+#    8: now_stamp
+#    9: bool
+#   10: fromkeys
+# Varnames:
+#	fields, result, sources, key, source_parts, missing
+# Positional arguments:
+#	fields
+# Local variables:
+#    1: result
+#    2: sources
+#    3: key
+#    4: source_parts
+#    5: missing
+268:           0 RESUME               0
+
+269:           2 BUILD_MAP            0
+               4 STORE_FAST           (result)
+
+270:           6 LOAD_FAST            (fields)
+               8 LOAD_ATTR            (NULL|self + get)
+              28 LOAD_CONST           ("_chatgpt_field_sources")
+              30 CALL                 (1 positional)
+              38 COPY                 1
+              40 TO_BOOL
+              48 POP_JUMP_IF_TRUE     (to 56)
+              52 POP_TOP
+              54 BUILD_MAP            0
+         >>   56 STORE_FAST           (sources)
+
+272:          58 LOAD_GLOBAL          (CHATGPT_FIELD_KEYS)
+              68 LOAD_CONST           (('chatgpt_auth_user_id',))
+              70 BINARY_OP            (+)
+              74 GET_ITER
+              76 FOR_ITER             (to 142)
+              80 STORE_FAST           (key)
+
+273:          82 LOAD_GLOBAL          (NULL + clean_str)
+              92 LOAD_FAST            (fields)
+              94 LOAD_ATTR            (NULL|self + get)
+             114 LOAD_FAST            (key)
+             116 CALL                 (1 positional)
+             124 CALL                 (1 positional)
+             132 LOAD_FAST_LOAD_FAST  (result, key)
+             134 STORE_SUBSCR
+             138 JUMP_BACKWARD        (to 76)
+
+272:     >>  142 END_FOR
+             144 POP_TOP
+
+274:         146 LOAD_FAST            (result)
+             148 LOAD_ATTR            (NULL|self + get)
+             168 LOAD_CONST           ("chatgpt_account_id")
+             170 LOAD_CONST           ("")
+             172 CALL                 (2 positional)
+             180 LOAD_FAST            (result)
+             182 LOAD_CONST           ("account_id")
+             184 STORE_SUBSCR
+
+275:         188 LOAD_FAST            (result)
+             190 LOAD_CONST           ("chatgpt_plan_type")
+             192 BINARY_SUBSCR
+             196 TO_BOOL
+             204 POP_JUMP_IF_FALSE    (to 252)
+
+276:     >>  208 LOAD_FAST            (result)
+             210 LOAD_CONST           ("chatgpt_plan_type")
+             212 BINARY_SUBSCR
+             216 LOAD_ATTR            (NULL|self + lower)
+             236 CALL                 (0 positional)
+             244 LOAD_FAST            (result)
+             246 LOAD_CONST           ("chatgpt_plan_type")
+             248 STORE_SUBSCR
+
+278:     >>  252 BUILD_LIST           0
+             254 STORE_FAST           (source_parts)
+
+279:         256 LOAD_GLOBAL          (NULL + isinstance)
+             266 LOAD_FAST            (sources)
+             268 LOAD_GLOBAL          (dict)
+             278 CALL                 (2 positional)
+             286 TO_BOOL
+             294 POP_JUMP_IF_FALSE    (to 474)
+
+280:         298 LOAD_GLOBAL          (CHATGPT_FIELD_KEYS)
+             308 LOAD_CONST           (('chatgpt_auth_user_id',))
+             310 BINARY_OP            (+)
+             314 GET_ITER
+             316 FOR_ITER             (to 470)
+             320 STORE_FAST           (key)
+
+281:         322 LOAD_FAST            (result)
+             324 LOAD_ATTR            (NULL|self + get)
+             344 LOAD_FAST            (key)
+             346 CALL                 (1 positional)
+             354 TO_BOOL
+             362 POP_JUMP_IF_TRUE     (to 370)
+             366 JUMP_BACKWARD        (to 316)
+         >>  370 LOAD_FAST            (sources)
+             372 LOAD_ATTR            (NULL|self + get)
+             392 LOAD_FAST            (key)
+             394 CALL                 (1 positional)
+             402 TO_BOOL
+             410 POP_JUMP_IF_TRUE     (to 418)
+             414 JUMP_BACKWARD        (to 316)
+
+282:     >>  418 LOAD_FAST            (source_parts)
+             420 LOAD_ATTR            (NULL|self + append)
+             440 LOAD_FAST            (key)
+             442 FORMAT_SIMPLE
+             444 LOAD_CONST           ("=")
+             446 LOAD_FAST_LOAD_FAST  (sources, key)
+             448 BINARY_SUBSCR
+             452 FORMAT_SIMPLE
+             454 BUILD_STRING         3
+             456 CALL                 (1 positional)
+             464 POP_TOP
+             466 JUMP_BACKWARD        (to 316)
+
+280:     >>  470 END_FOR
+             472 POP_TOP
+
+283:     >>  474 LOAD_CONST           ("; ")
+             476 LOAD_ATTR            (NULL|self + join)
+             496 LOAD_FAST            (source_parts)
+             498 CALL                 (1 positional)
+             506 LOAD_FAST            (result)
+             508 LOAD_CONST           ("chatgpt_field_source")
+             510 STORE_SUBSCR
+
+284:         514 LOAD_GLOBAL          (NULL + now_stamp)
+             524 CALL                 (0 positional)
+             532 LOAD_FAST            (result)
+             534 LOAD_CONST           ("chatgpt_field_checked_at")
+             536 STORE_SUBSCR
+
+285:         540 LOAD_GLOBAL          (NULL + bool)
+             550 LOAD_FAST            (result)
+             552 LOAD_ATTR            (NULL|self + get)
+             572 LOAD_CONST           ("chatgpt_account_id")
+             574 CALL                 (1 positional)
+             582 CALL                 (1 positional)
+             590 LOAD_FAST            (result)
+             592 LOAD_CONST           ("cpa_ready")
+             594 STORE_SUBSCR
+
+287:         598 BUILD_LIST           0
+             600 STORE_FAST           (missing)
+
+288:         602 LOAD_FAST            (result)
+             604 LOAD_ATTR            (NULL|self + get)
+         >>  624 LOAD_CONST           ("chatgpt_account_id")
+             626 CALL                 (1 positional)
+             634 TO_BOOL
+             642 POP_JUMP_IF_TRUE     (to 680)
+
+289:         646 LOAD_FAST            (missing)
+             648 LOAD_ATTR            (NULL|self + append)
+             668 LOAD_CONST           ("missing_chatgpt_account_id")
+             670 CALL                 (1 positional)
+             678 POP_TOP
+
+290:     >>  680 LOAD_FAST            (fields)
+             682 LOAD_ATTR            (NULL|self + get)
+             702 LOAD_CONST           ("_token_has_user_id_only")
+             704 CALL                 (1 positional)
+             712 TO_BOOL
+             720 POP_JUMP_IF_FALSE    (to 758)
+
+291:         724 LOAD_FAST            (missing)
+             726 LOAD_ATTR            (NULL|self + append)
+             746 LOAD_CONST           ("token_has_user_id_only")
+             748 CALL                 (1 positional)
+             756 POP_TOP
+
+292:     >>  758 LOAD_FAST            (result)
+             760 LOAD_CONST           ("cpa_ready")
+             762 BINARY_SUBSCR
+             766 TO_BOOL
+             774 POP_JUMP_IF_FALSE    (to 782)
+             778 LOAD_CONST           ("")
+             780 JUMP_FORWARD         (to 852)
+         >>  782 LOAD_CONST           ("; ")
+             784 LOAD_ATTR            (NULL|self + join)
+             804 LOAD_GLOBAL          (dict)
+             814 LOAD_ATTR            (NULL|self + fromkeys)
+             834 LOAD_FAST            (missing)
+             836 CALL                 (1 positional)
+             844 CALL                 (1 positional)
+         >>  852 LOAD_FAST            (result)
+             854 LOAD_CONST           ("cpa_missing_reason")
+             856 STORE_SUBSCR
+
+293:         860 LOAD_FAST            (result)
+             862 RETURN_VALUE
+
+
+# Method Name:       normalize_chatgpt_fields
+# Filename:          chatgpt_fields.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        296
+# Constants:
+#    0: 'Ensure account metadata keys exist and status flags are consistent.'
+#    1: ('chatgpt_auth_user_id', 'chatgpt_field_source', 'cpa_missing_reason')
+#    2: 'account_id'
+#    3: 'chatgpt_account_id'
+#    4: 'chatgpt_plan_type'
+#    5: 'chatgpt_field_source'
+#    6: 'chatgpt_field_checked_at'
+#    7: ''
+#    8: 'cpa_ready'
+#    9: 'cpa_missing_reason'
+#   10: 'missing_chatgpt_account_id'
+# Names:
+#    0: CHATGPT_FIELD_KEYS
+#    1: clean_str
+#    2: get
+#    3: lower
+#    4: now_stamp
+#    5: setdefault
+#    6: bool
+# Varnames:
+#	item, mark_checked, key
+# Positional arguments:
+#	item, mark_checked
+# Local variables:
+#    2: key
+296:           0 RESUME               0
+
+298:           2 LOAD_GLOBAL          (CHATGPT_FIELD_KEYS)
+              12 LOAD_CONST           (('chatgpt_auth_user_id', 'chatgpt_field_source', 'cpa_missing_reason'))
+              14 BINARY_OP            (+)
+              18 GET_ITER
+              20 FOR_ITER             (to 86)
+              24 STORE_FAST           (key)
+
+299:          26 LOAD_GLOBAL          (NULL + clean_str)
+              36 LOAD_FAST            (item)
+              38 LOAD_ATTR            (NULL|self + get)
+              58 LOAD_FAST            (key)
+              60 CALL                 (1 positional)
+              68 CALL                 (1 positional)
+              76 LOAD_FAST_LOAD_FAST  (item, key)
+              78 STORE_SUBSCR
+              82 JUMP_BACKWARD        (to 20)
+
+298:     >>   86 END_FOR
+              88 POP_TOP
+
+300:          90 LOAD_GLOBAL          (NULL + clean_str)
+             100 LOAD_FAST            (item)
+             102 LOAD_ATTR            (NULL|self + get)
+             122 LOAD_CONST           ("account_id")
+             124 CALL                 (1 positional)
+             132 CALL                 (1 positional)
+             140 LOAD_FAST            (item)
+             142 LOAD_CONST           ("account_id")
+             144 STORE_SUBSCR
+
+301:         148 LOAD_FAST            (item)
+             150 LOAD_ATTR            (NULL|self + get)
+             170 LOAD_CONST           ("chatgpt_account_id")
+             172 CALL                 (1 positional)
+             180 TO_BOOL
+             188 POP_JUMP_IF_FALSE    (to 252)
+             192 LOAD_FAST            (item)
+             194 LOAD_ATTR            (NULL|self + get)
+             214 LOAD_CONST           ("account_id")
+             216 CALL                 (1 positional)
+             224 TO_BOOL
+             232 POP_JUMP_IF_TRUE     (to 252)
+
+302:         236 LOAD_FAST            (item)
+             238 LOAD_CONST           ("chatgpt_account_id")
+             240 BINARY_SUBSCR
+             244 LOAD_FAST            (item)
+             246 LOAD_CONST           ("account_id")
+             248 STORE_SUBSCR
+
+303:     >>  252 LOAD_FAST            (item)
+             254 LOAD_ATTR            (NULL|self + get)
+             274 LOAD_CONST           ("chatgpt_plan_type")
+             276 CALL                 (1 positional)
+             284 TO_BOOL
+             292 POP_JUMP_IF_FALSE    (to 340)
+
+304:         296 LOAD_FAST            (item)
+             298 LOAD_CONST           ("chatgpt_plan_type")
+             300 BINARY_SUBSCR
+             304 LOAD_ATTR            (NULL|self + lower)
+             324 CALL                 (0 positional)
+             332 LOAD_FAST            (item)
+             334 LOAD_CONST           ("chatgpt_plan_type")
+             336 STORE_SUBSCR
+
+305:     >>  340 LOAD_FAST            (mark_checked)
+             342 TO_BOOL
+             350 POP_JUMP_IF_TRUE     (to 398)
+             354 LOAD_FAST            (item)
+             356 LOAD_ATTR            (NULL|self + get)
+             376 LOAD_CONST           ("chatgpt_field_source")
+             378 CALL                 (1 positional)
+             386 TO_BOOL
+             394 POP_JUMP_IF_FALSE    (to 492)
+
+306:     >>  398 LOAD_GLOBAL          (NULL + clean_str)
+             408 LOAD_FAST            (item)
+             410 LOAD_ATTR            (NULL|self + get)
+             430 LOAD_CONST           ("chatgpt_field_checked_at")
+             432 CALL                 (1 positional)
+             440 CALL                 (1 positional)
+             448 COPY                 1
+             450 TO_BOOL
+             458 POP_JUMP_IF_TRUE     (to 482)
+             462 POP_TOP
+             464 LOAD_GLOBAL          (NULL + now_stamp)
+             474 CALL                 (0 positional)
+         >>  482 LOAD_FAST            (item)
+             484 LOAD_CONST           ("chatgpt_field_checked_at")
+             486 STORE_SUBSCR
+             490 JUMP_FORWARD         (to 528)
+
+308:     >>  492 LOAD_FAST            (item)
+             494 LOAD_ATTR            (NULL|self + setdefault)
+             514 LOAD_CONST           ("chatgpt_field_checked_at")
+             516 LOAD_CONST           ("")
+             518 CALL                 (2 positional)
+             526 POP_TOP
+
+309:     >>  528 LOAD_GLOBAL          (NULL + bool)
+             538 LOAD_FAST            (item)
+             540 LOAD_ATTR            (NULL|self + get)
+             560 LOAD_CONST           ("chatgpt_account_id")
+             562 CALL                 (1 positional)
+             570 CALL                 (1 positional)
+             578 LOAD_FAST            (item)
+             580 LOAD_CONST           ("cpa_ready")
+             582 STORE_SUBSCR
+
+310:         586 LOAD_FAST            (item)
+             588 LOAD_CONST           ("cpa_ready")
+             590 BINARY_SUBSCR
+             594 TO_BOOL
+             602 POP_JUMP_IF_FALSE    (to 620)
+
+311:         606 LOAD_CONST           ("")
+             608 LOAD_FAST            (item)
+             610 LOAD_CONST           ("cpa_missing_reason")
+             612 STORE_SUBSCR
+
+314:         616 LOAD_FAST            (item)
+             618 RETURN_VALUE
+
+312:     >>  620 LOAD_FAST            (item)
+             622 LOAD_ATTR            (NULL|self + get)
+             642 LOAD_CONST           ("cpa_missing_reason")
+             644 CALL                 (1 positional)
+             652 TO_BOOL
+             660 POP_JUMP_IF_TRUE     (to 674)
+
+313:         664 LOAD_CONST           ("missing_chatgpt_account_id")
+             666 LOAD_FAST            (item)
+             668 LOAD_CONST           ("cpa_missing_reason")
+             670 STORE_SUBSCR
+
+314:     >>  674 LOAD_FAST            (item)
+             676 RETURN_VALUE
+
+
+# Method Name:       merge_chatgpt_fields
+# Filename:          chatgpt_fields.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        317
+# Constants:
+#    0: 'Merge new ChatGPT fields into a result dict without erasing old values.'
+#    1: 'chatgpt_account_id'
+#    2: ('chatgpt_auth_user_id', 'account_id')
+#    3: 'account_id'
+#    4: ''
+#    5: 'chatgpt_plan_type'
+#    6: ('chatgpt_field_source', 'chatgpt_field_checked_at')
+#    7: 'cpa_missing_reason'
+#    8: 'cpa_ready'
+#    9: ('mark_checked',)
+# Names:
+#    0: clean_str
+#    1: get
+#    2: CHATGPT_FIELD_KEYS
+#    3: setdefault
+#    4: lower
+#    5: bool
+#    6: normalize_chatgpt_fields
+# Varnames:
+#	target, source, mark_checked, source_chatgpt_account_id, key, value
+# Positional arguments:
+#	target, source, mark_checked
+# Local variables:
+#    3: source_chatgpt_account_id
+#    4: key
+#    5: value
+317:           0 RESUME               0
+
+319:           2 LOAD_FAST            (source)
+               4 COPY                 1
+               6 TO_BOOL
+              14 POP_JUMP_IF_TRUE     (to 22)
+              18 POP_TOP
+              20 BUILD_MAP            0
+         >>   22 STORE_FAST           (source)
+
+320:          24 LOAD_GLOBAL          (NULL + clean_str)
+              34 LOAD_FAST            (source)
+              36 LOAD_ATTR            (NULL|self + get)
+              56 LOAD_CONST           ("chatgpt_account_id")
+              58 CALL                 (1 positional)
+              66 CALL                 (1 positional)
+              74 STORE_FAST           (source_chatgpt_account_id)
+
+321:          76 LOAD_GLOBAL          (CHATGPT_FIELD_KEYS)
+              86 LOAD_CONST           (('chatgpt_auth_user_id', 'account_id'))
+              88 BINARY_OP            (+)
+              92 GET_ITER
+              94 FOR_ITER             (to 420)
+              98 STORE_FAST           (key)
+
+322:         100 LOAD_GLOBAL          (NULL + clean_str)
+             110 LOAD_FAST            (source)
+             112 LOAD_ATTR            (NULL|self + get)
+             132 LOAD_FAST            (key)
+             134 CALL                 (1 positional)
+             142 CALL                 (1 positional)
+             150 STORE_FAST           (value)
+
+323:         152 LOAD_FAST            (key)
+             154 LOAD_CONST           ("account_id")
+             156 COMPARE_OP           (==)
+             160 POP_JUMP_IF_FALSE    (to 310)
+
+324:         164 LOAD_FAST            (source_chatgpt_account_id)
+             166 TO_BOOL
+             174 POP_JUMP_IF_FALSE    (to 208)
+
+325:         178 LOAD_FAST            (value)
+             180 COPY                 1
+             182 TO_BOOL
+             190 POP_JUMP_IF_TRUE     (to 198)
+             194 POP_TOP
+             196 LOAD_FAST            (source_chatgpt_account_id)
+         >>  198 LOAD_FAST            (target)
+             200 LOAD_CONST           ("account_id")
+             202 STORE_SUBSCR
+             206 JUMP_FORWARD         (to 306)
+
+326:     >>  208 LOAD_FAST            (target)
+             210 LOAD_ATTR            (NULL|self + get)
+             230 LOAD_CONST           ("chatgpt_account_id")
+             232 CALL                 (1 positional)
+             240 TO_BOOL
+             248 POP_JUMP_IF_FALSE    (to 270)
+
+327:         252 LOAD_FAST            (target)
+             254 LOAD_CONST           ("chatgpt_account_id")
+             256 BINARY_SUBSCR
+             260 LOAD_FAST            (target)
+             262 LOAD_CONST           ("account_id")
+             264 STORE_SUBSCR
+             268 JUMP_FORWARD         (to 306)
+
+329:     >>  270 LOAD_FAST            (target)
+             272 LOAD_ATTR            (NULL|self + setdefault)
+             292 LOAD_CONST           ("account_id")
+             294 LOAD_CONST           ("")
+             296 CALL                 (2 positional)
+             304 POP_TOP
+
+330:     >>  306 JUMP_BACKWARD        (to 94)
+
+331:     >>  310 LOAD_FAST            (value)
+             312 TO_BOOL
+             320 POP_JUMP_IF_FALSE    (to 380)
+
+332:         324 LOAD_FAST            (key)
+             326 LOAD_CONST           ("chatgpt_plan_type")
+             328 COMPARE_OP           (==)
+             332 POP_JUMP_IF_FALSE    (to 368)
+             336 LOAD_FAST            (value)
+             338 LOAD_ATTR            (NULL|self + lower)
+             358 CALL                 (0 positional)
+             366 JUMP_FORWARD         (to 370)
+         >>  368 LOAD_FAST            (value)
+         >>  370 LOAD_FAST_LOAD_FAST  (target, key)
+             372 STORE_SUBSCR
+             376 JUMP_BACKWARD        (to 94)
+
+334:     >>  380 LOAD_FAST            (target)
+             382 LOAD_ATTR            (NULL|self + setdefault)
+             402 LOAD_FAST            (key)
+             404 LOAD_CONST           ("")
+             406 CALL                 (2 positional)
+             414 POP_TOP
+             416 JUMP_BACKWARD        (to 94)
+
+321:     >>  420 END_FOR
+             422 POP_TOP
+
+336:         424 LOAD_CONST           (('chatgpt_field_source', 'chatgpt_field_checked_at'))
+             426 GET_ITER
+             428 FOR_ITER             (to 552)
+             432 STORE_FAST           (key)
+
+337:         434 LOAD_GLOBAL          (NULL + clean_str)
+             444 LOAD_FAST            (source)
+             446 LOAD_ATTR            (NULL|self + get)
+             466 LOAD_FAST            (key)
+             468 CALL                 (1 positional)
+             476 CALL                 (1 positional)
+             484 STORE_FAST           (value)
+
+338:         486 LOAD_FAST            (value)
+             488 TO_BOOL
+             496 POP_JUMP_IF_FALSE    (to 512)
+
+339:         500 LOAD_FAST_LOAD_FAST  (value, target)
+             502 LOAD_FAST            (key)
+             504 STORE_SUBSCR
+             508 JUMP_BACKWARD        (to 428)
+
+341:     >>  512 LOAD_FAST            (target)
+             514 LOAD_ATTR            (NULL|self + setdefault)
+             534 LOAD_FAST            (key)
+             536 LOAD_CONST           ("")
+             538 CALL                 (2 positional)
+             546 POP_TOP
+             548 JUMP_BACKWARD        (to 428)
+
+336:     >>  552 END_FOR
+             554 POP_TOP
+
+343:         556 LOAD_FAST            (source)
+             558 LOAD_ATTR            (NULL|self + get)
+             578 LOAD_CONST           ("cpa_missing_reason")
+             580 CALL                 (1 positional)
+             588 TO_BOOL
+         >>  596 POP_JUMP_IF_FALSE    (to 702)
+             600 LOAD_FAST            (target)
+             602 LOAD_ATTR            (NULL|self + get)
+             622 LOAD_CONST           ("chatgpt_account_id")
+             624 CALL                 (1 positional)
+             632 TO_BOOL
+             640 POP_JUMP_IF_TRUE     (to 702)
+
+344:         644 LOAD_GLOBAL          (NULL + clean_str)
+             654 LOAD_FAST            (source)
+             656 LOAD_ATTR            (NULL|self + get)
+         >>  676 LOAD_CONST           ("cpa_missing_reason")
+             678 CALL                 (1 positional)
+             686 CALL                 (1 positional)
+             694 LOAD_FAST            (target)
+             696 LOAD_CONST           ("cpa_missing_reason")
+             698 STORE_SUBSCR
+
+345:     >>  702 LOAD_GLOBAL          (NULL + bool)
+             712 LOAD_FAST            (target)
+             714 LOAD_ATTR            (NULL|self + get)
+             734 LOAD_CONST           ("chatgpt_account_id")
+             736 CALL                 (1 positional)
+             744 CALL                 (1 positional)
+             752 LOAD_FAST            (target)
+             754 LOAD_CONST           ("cpa_ready")
+             756 STORE_SUBSCR
+
+346:         760 LOAD_GLOBAL          (NULL + normalize_chatgpt_fields)
+             770 LOAD_FAST_LOAD_FAST  (target, mark_checked)
+             772 LOAD_CONST           (('mark_checked',))
+             774 CALL_KW              2
+             776 RETURN_VALUE
+
+
+# Method Name:       chatgpt_credentials_from_item
+# Filename:          chatgpt_fields.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        9
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        349
+# Constants:
+#    0: None
+#    1: 'credentials'
+#    2: 'id_token'
+#    3: 'access_token'
+#    4: 'refresh_token'
+#    5: 'expires_at'
+#    6: 0
+#    7: 'bind_email'
+#    8: 'email'
+#    9: 'login_email'
+#   10: ('id_token', 'access_token', 'refresh_token', 'expires_at', 'email')
+#   11: 'session_token'
+#   12: 'phone'
+#   13: ('chatgpt_auth_user_id',)
+# Names:
+#    0: isinstance
+#    1: get
+#    2: dict
+#    3: clean_str
+#    4: CHATGPT_FIELD_KEYS
+# Varnames:
+#	item, email, creds, result, key, value
+# Positional arguments:
+#	item, email
+# Local variables:
+#    2: creds
+#    3: result
+#    4: key
+#    5: value
+349:           0 RESUME               0
+
+350:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (item)
+              14 LOAD_ATTR            (NULL|self + get)
+              34 LOAD_CONST           ("credentials")
+              36 CALL                 (1 positional)
+              44 LOAD_GLOBAL          (dict)
+              54 CALL                 (2 positional)
+              62 TO_BOOL
+              70 POP_JUMP_IF_FALSE    (to 108)
+              74 LOAD_FAST            (item)
+              76 LOAD_ATTR            (NULL|self + get)
+              96 LOAD_CONST           ("credentials")
+              98 CALL                 (1 positional)
+             106 JUMP_FORWARD         (to 110)
+         >>  108 BUILD_MAP            0
+         >>  110 STORE_FAST           (creds)
+
+352:         112 LOAD_GLOBAL          (NULL + clean_str)
+             122 LOAD_FAST            (item)
+             124 LOAD_ATTR            (NULL|self + get)
+             144 LOAD_CONST           ("id_token")
+             146 CALL                 (1 positional)
+             154 COPY                 1
+             156 TO_BOOL
+             164 POP_JUMP_IF_TRUE     (to 202)
+             168 POP_TOP
+             170 LOAD_FAST            (creds)
+             172 LOAD_ATTR            (NULL|self + get)
+             192 LOAD_CONST           ("id_token")
+             194 CALL                 (1 positional)
+         >>  202 CALL                 (1 positional)
+
+353:         210 LOAD_GLOBAL          (NULL + clean_str)
+             220 LOAD_FAST            (item)
+             222 LOAD_ATTR            (NULL|self + get)

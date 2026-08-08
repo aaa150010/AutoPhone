@@ -37,6 +37,9 @@ class AdaptiveConcurrencyGate:
         banned_window_seconds: float = 90.0,
         burst_step: int = 2,
         burst_hold_seconds: float = 90.0,
+        immediate_reset_limit: int | None = None,
+        adaptive_enabled: bool = True,
+        require_backlog_for_restore: bool = False,
         now_fn: Callable[[], float] = time.monotonic,
         on_change: Callable[[dict[str, Any]], Any] | None = None,
     ) -> None:
@@ -62,6 +65,13 @@ class AdaptiveConcurrencyGate:
         self.banned_window_seconds = max(1.0, float(banned_window_seconds))
         self.burst_step = max(1, int(burst_step))
         self.burst_hold_seconds = max(0.0, float(burst_hold_seconds))
+        self.immediate_reset_limit = (
+            None
+            if immediate_reset_limit is None
+            else max(self.minimum, min(self.ceiling, int(immediate_reset_limit)))
+        )
+        self.adaptive_enabled = bool(adaptive_enabled)
+        self.require_backlog_for_restore = bool(require_backlog_for_restore)
         self.burst_enabled = self.ceiling > self.restore_ceiling
         self.now_fn = now_fn
         self.on_change = on_change
@@ -73,6 +83,11 @@ class AdaptiveConcurrencyGate:
         self.success_streak = 0
         self.pressure_events: list[tuple[float, str]] = []
         self.last_pressure_at: float | None = None
+        self.healthy_since = float(self.now_fn())
+        self.resource_incident_at: float | None = None
+        self.resource_incident_level = 0
+        self.resource_recovery_since: float | None = None
+        self.last_reason = "configured_baseline"
         self.seen_pressure_levels: dict[str, int] = {}
         self.banned_events: list[tuple[float, str]] = []
         self.burst_until = 0.0
@@ -270,19 +285,25 @@ class AdaptiveConcurrencyGate:
                     self.last_pressure_at is None
                     or now - self.last_pressure_at > self.pressure_window_seconds
                 )
+                queued_work = self.pending > 0 or self.waiting > 0
                 if not pressure_free:
                     self.success_streak = 0
                 else:
                     self.success_streak += 1
                     if (
-                        self.limit < self.restore_ceiling
+                        self.adaptive_enabled
+                        and self.limit < self.restore_ceiling
                         and self.success_streak >= self.restore_successes
+                        and now - self.healthy_since >= self.pressure_window_seconds
+                        and (queued_work or not self.require_backlog_for_restore)
                     ):
                         old_limit = self.limit
                         self.limit += 1
                         self.peak_limit = max(self.peak_limit, self.limit)
                         self.success_streak = 0
+                        self.healthy_since = now
                         self.restorations += 1
+                        self.last_reason = "success_streak_with_backlog"
                         self.condition.notify_all()
                         events.append({
                             "kind": "restored",
@@ -393,6 +414,8 @@ class AdaptiveConcurrencyGate:
         events: list[dict[str, Any]] = []
         with self.condition:
             now = float(self.now_fn())
+            if not self.adaptive_enabled:
+                return self.limit
             expired = self._expire_burst_locked(now)
             if expired is not None:
                 events.append(expired)
@@ -414,6 +437,7 @@ class AdaptiveConcurrencyGate:
                 self.pressure_count += 1
                 self.success_streak = 0
                 self.last_pressure_at = now
+                self.healthy_since = now
                 self._prune_pressure_locked(now)
                 if not immediate:
                     self.pressure_events.append((now, pressure_key))
@@ -428,6 +452,11 @@ class AdaptiveConcurrencyGate:
                             now + self.pause_seconds,
                         )
                         self.pressure_events.clear()
+                        self.last_reason = (
+                            "infrastructure_pressure_immediate"
+                            if immediate
+                            else "infrastructure_pressure"
+                        )
                         self.condition.notify_all()
                         events.append({
                             "kind": "burst_revoked",
@@ -442,13 +471,21 @@ class AdaptiveConcurrencyGate:
                         })
                     else:
                         degrade_from = self.limit
-                        self.limit = max(self.minimum, self.limit - 1)
+                        if immediate and self.immediate_reset_limit is not None:
+                            self.limit = min(self.limit, self.immediate_reset_limit)
+                        else:
+                            self.limit = max(self.minimum, self.limit - 1)
                         self.pause_until = max(
                             self.pause_until,
                             now + self.pause_seconds,
                         )
                         self.pressure_events.clear()
                         self.degradations += 1
+                        self.last_reason = (
+                            "infrastructure_pressure_immediate"
+                            if immediate
+                            else "infrastructure_pressure"
+                        )
                         self.condition.notify_all()
                         events.append({
                             "kind": "degraded"
@@ -472,6 +509,148 @@ class AdaptiveConcurrencyGate:
             _notify(self.on_change, event)
         return limit
 
+    def report_resource_exhaustion(self, task_id: Any, node_code: Any) -> int:
+        """Apply one emergency cap for an EMFILE incident without cascading to one."""
+        if not self.adaptive_enabled:
+            return self.limit
+        task = str(task_id or "").strip()
+        node = str(node_code or "resource_fd_exhausted").strip().lower()
+        event: dict[str, Any] | None = None
+        with self.condition:
+            now = float(self.now_fn())
+            already_severe = self.resource_incident_level >= 2
+            first_incident = self.resource_incident_level == 0
+            self.last_pressure_at = now
+            self.healthy_since = now
+            self.success_streak = 0
+            self.resource_recovery_since = None
+            self.pause_until = max(self.pause_until, now + self.pause_seconds)
+            self.resource_incident_at = self.resource_incident_at or now
+            self.resource_incident_level = 2
+            old_limit = self.limit
+            emergency_limit = max(self.minimum, min(self.base_limit, 4))
+            self.limit = min(self.limit, emergency_limit)
+            self.pressure_count += int(first_incident)
+            self.degradations += int(self.limit < old_limit)
+            self.last_reason = node or "resource_fd_exhausted"
+            self.condition.notify_all()
+            if not already_severe or self.limit < old_limit:
+                event = {
+                    "kind": "resource_exhausted",
+                    "old_limit": old_limit,
+                    "new_limit": self.limit,
+                    "ceiling": self.ceiling,
+                    "restore_ceiling": self.restore_ceiling,
+                    "reason": self.last_reason,
+                    "task_id": task,
+                    "pause_seconds": int(math.ceil(self.pause_seconds)),
+                }
+            limit = self.limit
+        if event is not None:
+            _notify(self.on_change, event)
+        return limit
+
+    def observe_resource_ratio(self, value: Any) -> int:
+        """Apply FD high-water guards and recover after 60 quiet seconds."""
+        try:
+            ratio = float(value)
+        except (TypeError, ValueError):
+            return self.limit
+        event: dict[str, Any] | None = None
+        with self.condition:
+            if not self.adaptive_enabled:
+                return self.limit
+            now = float(self.now_fn())
+            if ratio >= 0.80:
+                first_incident = self.resource_incident_level == 0
+                already_severe = self.resource_incident_level >= 2
+                self.resource_incident_at = self.resource_incident_at or now
+                self.resource_incident_level = 2
+                self.resource_recovery_since = None
+                self.last_pressure_at = now
+                self.healthy_since = now
+                self.success_streak = 0
+                self.pause_until = max(self.pause_until, now + self.pause_seconds)
+                old_limit = self.limit
+                self.limit = min(self.limit, max(self.minimum, min(self.base_limit, 4)))
+                self.pressure_count += int(first_incident)
+                self.degradations += int(self.limit < old_limit)
+                self.last_reason = "fd_usage_above_80_percent"
+                self.condition.notify_all()
+                if not already_severe or self.limit < old_limit:
+                    event = {
+                        "kind": "resource_exhausted",
+                        "old_limit": old_limit,
+                        "new_limit": self.limit,
+                        "ceiling": self.ceiling,
+                        "restore_ceiling": self.restore_ceiling,
+                        "reason": self.last_reason,
+                        "pause_seconds": int(math.ceil(self.pause_seconds)),
+                    }
+                limit = self.limit
+            elif ratio >= 0.70:
+                first_incident = self.resource_incident_level == 0
+                self.resource_incident_at = self.resource_incident_at or now
+                self.resource_incident_level = max(self.resource_incident_level, 1)
+                self.resource_recovery_since = None
+                self.last_pressure_at = now
+                self.healthy_since = now
+                self.success_streak = 0
+                old_limit = self.limit
+                self.limit = min(self.limit, self.base_limit)
+                self.pressure_count += int(first_incident)
+                self.degradations += int(self.limit < old_limit)
+                self.last_reason = "fd_usage_above_70_percent"
+                self.condition.notify_all()
+                if self.limit < old_limit:
+                    event = {
+                        "kind": "resource_guarded",
+                        "old_limit": old_limit,
+                        "new_limit": self.limit,
+                        "ceiling": self.ceiling,
+                        "restore_ceiling": self.restore_ceiling,
+                        "reason": self.last_reason,
+                        "pause_seconds": 0,
+                    }
+                limit = self.limit
+            elif ratio >= 0.60:
+                self.resource_recovery_since = None
+                return self.limit
+            elif self.resource_incident_level == 0:
+                return self.limit
+            elif self.resource_recovery_since is None:
+                self.resource_recovery_since = now
+                return self.limit
+            elif now - self.resource_recovery_since < self.pressure_window_seconds:
+                return self.limit
+            else:
+                old_limit = self.limit
+                self.limit = max(self.limit, self.base_limit)
+                self.resource_incident_at = None
+                self.resource_incident_level = 0
+                self.resource_recovery_since = None
+                self.pause_until = min(self.pause_until, now)
+                self.last_pressure_at = now
+                self.healthy_since = now
+                self.success_streak = 0
+                self.restorations += int(self.limit > old_limit)
+                self.last_reason = "fd_usage_stable_below_60_percent"
+                self.condition.notify_all()
+                if self.limit > old_limit:
+                    event = {
+                        "kind": "resource_recovered",
+                        "old_limit": old_limit,
+                        "new_limit": self.limit,
+                        "ceiling": self.ceiling,
+                        "restore_ceiling": self.restore_ceiling,
+                        "reason": self.last_reason,
+                        "pause_seconds": 0,
+                    }
+                limit = self.limit
+        if event is not None:
+            _notify(self.on_change, event)
+        return limit
+
     def snapshot(self) -> dict[str, Any]:
         event: dict[str, Any] | None = None
         with self.condition:
@@ -481,6 +660,7 @@ class AdaptiveConcurrencyGate:
             self._prune_banned_locked(now)
             value = {
                 "base": self.base_limit,
+                "adaptive_enabled": self.adaptive_enabled,
                 "limit": self.limit,
                 "ceiling": self.ceiling,
                 "restore_ceiling": self.restore_ceiling,
@@ -495,6 +675,9 @@ class AdaptiveConcurrencyGate:
                     if self.last_pressure_at is None
                     else max(0, int(math.floor(now - self.last_pressure_at)))
                 ),
+                "resource_incident": self.resource_incident_at is not None,
+                "resource_incident_level": self.resource_incident_level,
+                "last_reason": self.last_reason,
                 "peak_limit": self.peak_limit,
                 "degradations": self.degradations,
                 "restorations": self.restorations,

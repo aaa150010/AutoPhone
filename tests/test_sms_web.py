@@ -128,7 +128,9 @@ class SmsWebTests(unittest.TestCase):
     def test_clamps_sms_price_to_supported_range(self):
         self.assertEqual(self.integration.clamp_max_price("0.075"), "0.075")
         self.assertEqual(self.integration.clamp_max_price("0.11"), "0.11")
+        self.assertEqual(self.integration.clamp_max_price("0.18"), "0.18")
         self.assertEqual(self.integration.clamp_max_price("0"), "0.15")
+        self.assertEqual(self.integration.clamp_max_price("0.1801"), "0.15")
         self.assertEqual(self.integration.clamp_max_price("0.51"), "0.15")
         self.assertEqual(self.integration.clamp_max_price("bad"), "0.15")
 
@@ -147,6 +149,41 @@ class SmsWebTests(unittest.TestCase):
 
         self.assertIn(unrestricted, ranked)
         self.assertIn(old_priority, ranked)
+
+    def test_smart_candidates_pass_country_stats_and_quality_switch(self):
+        selector = SimpleNamespace(
+            config={
+                "max_price": "0.1",
+                "sms_min_price": "0.01",
+                "sms_quality_optimization": False,
+            },
+            stats={},
+            country_stats={"37": {"success": 8, "fail": 2}},
+        )
+        candidate = SimpleNamespace(
+            country="37",
+            provider_id="3237",
+            price=0.04,
+            count=10,
+            score=1.0,
+        )
+
+        with patch.object(
+            sms_runtime,
+            "rank_sms_candidates",
+            return_value=[candidate],
+        ) as rank:
+            result = self.integration.smart_build_candidates(
+                selector,
+                [candidate],
+                1000.0,
+                None,
+                None,
+            )
+
+        self.assertEqual(result, [candidate])
+        self.assertIs(rank.call_args.kwargs["country_stats"], selector.country_stats)
+        self.assertFalse(rank.call_args.kwargs["quality_optimization"])
 
     def test_recovered_no_number_fallback_is_removed_while_route_is_cooled(self):
         candidate = SimpleNamespace(
@@ -749,6 +786,109 @@ class SmsWebTests(unittest.TestCase):
         self.assertEqual(cancellations, ["sms_timeout"])
         self.assertNotEqual(first.phone, second.phone)
         self.assertEqual(first.meta["sms_wait_failure"], "sms_timeout")
+
+    def test_degraded_route_wait_plan_uses_mature_alternative(self):
+        current = SimpleNamespace(country="1", provider_id="weak")
+        alternative = SimpleNamespace(country="2", provider_id="mature")
+        configured = []
+        selector = SimpleNamespace(
+            lock=threading.RLock(),
+            config={"sms_quality_optimization": True},
+            stats={
+                ("1", "weak"): {"no_code_streak": 2, "timeout": 3},
+                ("2", "mature"): {"otp_received": 7, "timeout": 2},
+            },
+            candidates=[current, alternative],
+            raw_rows=[],
+            last_refresh=1.0,
+        )
+        adapter = SimpleNamespace(
+            config={},
+            selector=selector,
+            provider=SimpleNamespace(configure_wait_plan=configured.append),
+        )
+        lease = SimpleNamespace(
+            activation_id="order-adaptive",
+            meta={"candidate": current},
+        )
+
+        self.assertIsNone(self.integration.adapter_wait_code(adapter, lease))
+
+        self.assertEqual(len(configured), 1)
+        self.assertEqual(configured[0].first_seconds, 40)
+        self.assertEqual(configured[0].second_seconds, 20)
+        self.assertTrue(configured[0].early_switch)
+        self.assertEqual(
+            lease.meta["adaptive_wait_plan"],
+            {"first_seconds": 40, "second_seconds": 20, "early_switch": True},
+        )
+
+    def test_rollback_guard_blocks_early_switch_for_an_inflight_wait(self):
+        current = SimpleNamespace(country="1", provider_id="weak")
+        alternative = SimpleNamespace(country="2", provider_id="mature")
+        switch_checks = []
+        guard_enabled = [True]
+        self.integration.optimization_guard = SimpleNamespace(
+            is_enabled=lambda configured: configured and guard_enabled[0]
+        )
+        selector = SimpleNamespace(
+            lock=threading.RLock(),
+            config={"sms_quality_optimization": True},
+            stats={
+                ("1", "weak"): {"no_code_streak": 2, "timeout": 3},
+                ("2", "mature"): {"otp_received": 7, "timeout": 2},
+            },
+            candidates=[current, alternative],
+            raw_rows=[],
+            last_refresh=1.0,
+        )
+        adapter = SimpleNamespace(
+            config={},
+            selector=selector,
+            provider=SimpleNamespace(
+                configure_wait_plan=lambda _plan: None,
+                configure_early_switch_check=switch_checks.append,
+            ),
+        )
+        lease = SimpleNamespace(activation_id="order-inflight", meta={"candidate": current})
+
+        with patch.object(
+            sms_runtime,
+            "has_better_mature_alternative",
+            return_value=True,
+        ):
+            self.integration.adapter_wait_code(adapter, lease)
+            self.assertEqual(len(switch_checks), 1)
+            self.assertTrue(switch_checks[0]())
+
+        guard_enabled[0] = False
+        self.assertFalse(switch_checks[0]())
+
+    def test_quality_switch_disables_adaptive_wait(self):
+        current = SimpleNamespace(country="1", provider_id="weak")
+        configured = []
+        selector = SimpleNamespace(
+            lock=threading.RLock(),
+            config={"sms_quality_optimization": True},
+            stats={("1", "weak"): {"no_code_streak": 5}},
+            candidates=[current],
+            raw_rows=[],
+            last_refresh=1.0,
+        )
+        adapter = SimpleNamespace(
+            config={"sms_quality_optimization": False},
+            selector=selector,
+            provider=SimpleNamespace(configure_wait_plan=configured.append),
+        )
+        lease = SimpleNamespace(
+            activation_id="order-disabled",
+            meta={"candidate": current},
+        )
+
+        self.assertIsNone(self.integration.adapter_wait_code(adapter, lease))
+
+        self.assertEqual(configured, [])
+        self.assertNotIn("adaptive_wait_plan", lease.meta)
 
     def test_received_code_updates_route_once_and_clears_failure_streak(self):
         candidate = SimpleNamespace(

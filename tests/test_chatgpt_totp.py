@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
+import json
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from mac_overrides.chatgpt_totp import (
     build_chatgpt_totp_patches,
@@ -202,9 +205,10 @@ class ChatGptTotpTests(unittest.TestCase):
         ])
         self.assertEqual(entries[0].oauth_client_id, "chatgpt_totp")
         self.assertEqual(entries[2].oauth_client_id, "client-id")
-        self.assertNotIn("oauth-pass", entries[2].source_row)
-        self.assertNotIn("client-id", entries[2].source_row)
-        self.assertNotIn("refresh-token", entries[2].source_row)
+        self.assertEqual(
+            entries[2].source_row,
+            "oauth@example.com----oauth-pass----client-id----refresh-token",
+        )
 
     def test_plain_password_pool_rows_build_non_totp_password_entries(self):
         class PoolEntry:
@@ -241,11 +245,289 @@ class ChatGptTotpTests(unittest.TestCase):
         self.assertEqual([entry.mailbox_type for entry in entries], ["outlook_password", "outlook_password"])
         self.assertEqual([entry.oauth_client_id for entry in entries], ["", ""])
         self.assertEqual([entry.oauth_refresh_token for entry in entries], ["", ""])
-        self.assertNotIn("plain-pass", entries[0].source_row)
-        self.assertNotIn("pipe-pass", entries[1].source_row)
+        self.assertEqual(entries[0].source_row, rows[0])
+        self.assertEqual(entries[1].source_row, rows[1])
         self.assertEqual(parse_plain_password_mailbox_row(rows[0]), ("plain@example.com", "plain-pass", "--"))
 
-    def test_url_rows_with_dash_and_pipe_separators_build_masked_runtime_entries(self):
+    def test_plain_password_formats_share_one_stable_identity(self):
+        class PoolEntry:
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+
+        rows = (
+            "same@example.com----same-pass",
+            "same@example.com--same-pass",
+            "same@example.com|same-pass",
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            pool_path = Path(temp_dir) / "pool.txt"
+            pool_path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+            patches = build_chatgpt_totp_patches(
+                runtime_module=SimpleNamespace(PoolEntry=PoolEntry),
+                codex_oauth_chain=SimpleNamespace(),
+                original_entries_unlocked=lambda _pool: (
+                    [],
+                    [f"line {index}: bad" for index in range(1, 4)],
+                ),
+                original_outlook_otp_provider=lambda *args, **kwargs: None,
+                original_account_label=lambda entry: entry.email,
+                original_verify_password=lambda *args: {},
+                original_send_mfa_otp=lambda *args: {},
+                original_verify_mfa_otp=lambda *args: {},
+                parse_oauth_mailbox_row=parse_oauth_mailbox_row,
+            )
+
+            entries, errors = patches.entries_unlocked(SimpleNamespace(pool_path=pool_path))
+
+        expected_key = hashlib.sha256(
+            b"same@example.com\x1foutlook::same-pass"
+        ).hexdigest()
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].key, expected_key)
+        self.assertEqual(entries[0].source_row, rows[0])
+        self.assertEqual(errors, [
+            "line 2: duplicate mailbox row",
+            "line 3: duplicate mailbox row",
+        ])
+
+    def test_plain_password_legacy_state_key_is_still_honored(self):
+        class PoolEntry:
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+
+        row = "legacy@example.com|legacy-pass"
+        legacy_key = hashlib.sha256(f"legacy@example.com\n{row}".encode()).hexdigest()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            pool_path = root / "pool.txt"
+            state_path = root / "state.json"
+            pool_path.write_text(row + "\n", encoding="utf-8")
+            state_path.write_text(
+                json.dumps({"items": {legacy_key: {"status": "consumed"}}}),
+                encoding="utf-8",
+            )
+            patches = build_chatgpt_totp_patches(
+                runtime_module=SimpleNamespace(PoolEntry=PoolEntry),
+                codex_oauth_chain=SimpleNamespace(),
+                original_entries_unlocked=lambda _pool: ([], ["line 1: bad"]),
+                original_outlook_otp_provider=lambda *args, **kwargs: None,
+                original_account_label=lambda entry: entry.email,
+                original_verify_password=lambda *args: {},
+                original_send_mfa_otp=lambda *args: {},
+                original_verify_mfa_otp=lambda *args: {},
+                parse_oauth_mailbox_row=parse_oauth_mailbox_row,
+            )
+
+            entries, errors = patches.entries_unlocked(
+                SimpleNamespace(pool_path=pool_path, state_path=state_path)
+            )
+            migrated = json.loads(state_path.read_text(encoding="utf-8"))["items"]
+
+        canonical_key = hashlib.sha256(
+            b"legacy@example.com\x1foutlook::legacy-pass"
+        ).hexdigest()
+        self.assertEqual(errors, [])
+        self.assertEqual(entries[0].key, canonical_key)
+        self.assertEqual(set(migrated), {canonical_key})
+        self.assertEqual(migrated[canonical_key]["status"], "consumed")
+
+    def test_plain_password_state_merge_never_downgrades_terminal_to_available(self):
+        class PoolEntry:
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+
+        class MailboxPoolModule:
+            @staticmethod
+            def _entry_key(email, identity):
+                return hashlib.sha256(
+                    f"{email.lower()}\x1f{identity}".encode("utf-8", "ignore")
+                ).hexdigest()
+
+        row = "Merge@Example.com----CasePass"
+        canonical = MailboxPoolModule._entry_key(
+            "merge@example.com", "outlook::CasePass"
+        )
+        legacy = MailboxPoolModule._entry_key("merge@example.com", row)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            pool_path = root / "pool.txt"
+            state_path = root / "state.json"
+            pool_path.write_text(row + "\n", encoding="utf-8")
+            state_path.write_text(
+                json.dumps({
+                    "items": {
+                        canonical: {
+                            "email": "merge@example.com",
+                            "line_no": 1,
+                            "status": "available",
+                            "updated_at": 200,
+                        },
+                        legacy: {
+                            "email": "merge@example.com",
+                            "line_no": 1,
+                            "status": "consumed",
+                            "updated_at": 100,
+                            "history": [{"event": "consumed", "at": 100}],
+                        },
+                    }
+                }),
+                encoding="utf-8",
+            )
+            patches = build_chatgpt_totp_patches(
+                runtime_module=SimpleNamespace(
+                    PoolEntry=PoolEntry,
+                    _mailbox_pool=MailboxPoolModule,
+                ),
+                codex_oauth_chain=SimpleNamespace(),
+                original_entries_unlocked=lambda _pool: ([], ["line 1: bad"]),
+                original_outlook_otp_provider=lambda *args, **kwargs: None,
+                original_account_label=lambda entry: entry.email,
+                original_verify_password=lambda *args: {},
+                original_send_mfa_otp=lambda *args: {},
+                original_verify_mfa_otp=lambda *args: {},
+                parse_oauth_mailbox_row=parse_oauth_mailbox_row,
+            )
+
+            entries, errors = patches.entries_unlocked(
+                SimpleNamespace(pool_path=pool_path, state_path=state_path)
+            )
+            migrated = json.loads(state_path.read_text(encoding="utf-8"))["items"]
+
+        self.assertEqual(errors, [])
+        self.assertEqual(entries[0].key, canonical)
+        self.assertEqual(set(migrated), {canonical})
+        self.assertEqual(migrated[canonical]["status"], "consumed")
+        self.assertEqual(
+            migrated[canonical]["history"],
+            [{"event": "consumed", "at": 100}],
+        )
+
+    def test_plain_password_format_change_cannot_bypass_valid_legacy_lease(self):
+        class PoolEntry:
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+
+        class MailboxPoolModule:
+            @staticmethod
+            def _entry_key(email, identity):
+                return hashlib.sha256(
+                    f"{email.lower()}\x1f{identity}".encode("utf-8", "ignore")
+                ).hexdigest()
+
+        current_row = "lease@example.com|CasePass"
+        previous_row = "LEASE@EXAMPLE.COM----CasePass"
+        canonical = MailboxPoolModule._entry_key(
+            "lease@example.com", "outlook::CasePass"
+        )
+        legacy = MailboxPoolModule._entry_key("lease@example.com", previous_row)
+        lease_until = 4_102_444_800
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            pool_path = root / "pool.txt"
+            state_path = root / "state.json"
+            pool_path.write_text(current_row + "\n", encoding="utf-8")
+            state_path.write_text(
+                json.dumps({
+                    "items": {
+                        legacy: {
+                            "email": "lease@example.com",
+                            "line_no": 1,
+                            "status": "leased",
+                            "lease_until": lease_until,
+                            "updated_at": 100,
+                        }
+                    }
+                }),
+                encoding="utf-8",
+            )
+            patches = build_chatgpt_totp_patches(
+                runtime_module=SimpleNamespace(
+                    PoolEntry=PoolEntry,
+                    _mailbox_pool=MailboxPoolModule,
+                ),
+                codex_oauth_chain=SimpleNamespace(),
+                original_entries_unlocked=lambda _pool: ([], ["line 1: bad"]),
+                original_outlook_otp_provider=lambda *args, **kwargs: None,
+                original_account_label=lambda entry: entry.email,
+                original_verify_password=lambda *args: {},
+                original_send_mfa_otp=lambda *args: {},
+                original_verify_mfa_otp=lambda *args: {},
+                parse_oauth_mailbox_row=parse_oauth_mailbox_row,
+            )
+
+            entries, errors = patches.entries_unlocked(
+                SimpleNamespace(pool_path=pool_path, state_path=state_path)
+            )
+            migrated = json.loads(state_path.read_text(encoding="utf-8"))["items"]
+
+        self.assertEqual(errors, [])
+        self.assertEqual(entries[0].key, canonical)
+        self.assertEqual(set(migrated), {canonical})
+        self.assertEqual(migrated[canonical]["status"], "leased")
+        self.assertEqual(migrated[canonical]["lease_until"], lease_until)
+
+    def test_plain_password_change_does_not_inherit_same_line_legacy_state(self):
+        class PoolEntry:
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+
+        class MailboxPoolModule:
+            @staticmethod
+            def _entry_key(email, identity):
+                return hashlib.sha256(
+                    f"{email.lower()}\x1f{identity}".encode("utf-8", "ignore")
+                ).hexdigest()
+
+        current_row = "same@example.com|casepass"
+        previous_row = "SAME@EXAMPLE.COM----CasePass"
+        canonical = MailboxPoolModule._entry_key(
+            "same@example.com", "outlook::casepass"
+        )
+        legacy = MailboxPoolModule._entry_key("same@example.com", previous_row)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            pool_path = root / "pool.txt"
+            state_path = root / "state.json"
+            pool_path.write_text(current_row + "\n", encoding="utf-8")
+            state_path.write_text(
+                json.dumps({
+                    "items": {
+                        legacy: {
+                            "email": "same@example.com",
+                            "line_no": 1,
+                            "status": "consumed",
+                            "updated_at": 100,
+                        }
+                    }
+                }),
+                encoding="utf-8",
+            )
+            patches = build_chatgpt_totp_patches(
+                runtime_module=SimpleNamespace(
+                    PoolEntry=PoolEntry,
+                    _mailbox_pool=MailboxPoolModule,
+                ),
+                codex_oauth_chain=SimpleNamespace(),
+                original_entries_unlocked=lambda _pool: ([], ["line 1: bad"]),
+                original_outlook_otp_provider=lambda *args, **kwargs: None,
+                original_account_label=lambda entry: entry.email,
+                original_verify_password=lambda *args: {},
+                original_send_mfa_otp=lambda *args: {},
+                original_verify_mfa_otp=lambda *args: {},
+                parse_oauth_mailbox_row=parse_oauth_mailbox_row,
+            )
+
+            entries, errors = patches.entries_unlocked(
+                SimpleNamespace(pool_path=pool_path, state_path=state_path)
+            )
+            preserved = json.loads(state_path.read_text(encoding="utf-8"))["items"]
+
+        self.assertEqual(errors, [])
+        self.assertEqual(entries[0].key, canonical)
+        self.assertEqual(set(preserved), {legacy})
+        self.assertEqual(preserved[legacy]["status"], "consumed")
+
+    def test_url_rows_with_dash_and_pipe_separators_keep_private_source_rows(self):
         class PoolEntry:
             def __init__(self, **kwargs):
                 self.__dict__.update(kwargs)
@@ -281,8 +563,7 @@ class ChatGptTotpTests(unittest.TestCase):
             parsed = parse_mailbox_url_row(row)
             self.assertIsNotNone(parsed)
             self.assertEqual(entry.mailbox_url, parsed.mailbox_url)
-            self.assertNotIn(parsed.mailbox_url, entry.source_row)
-            self.assertIn("***", entry.source_row)
+            self.assertEqual(entry.source_row, row)
 
     def test_totp_mfa_issue_challenge_matches_browser_request(self):
         calls = []
@@ -335,6 +616,218 @@ class ChatGptTotpTests(unittest.TestCase):
             {"id": "factor-id", "type": "totp", "force_fresh_challenge": False},
         )
         self.assertEqual(calls[0][2]["referer"], "https://auth.openai.com/log-in/password")
+
+    def test_incorrect_totp_keeps_same_challenge_for_the_single_retry(self):
+        original_calls = []
+
+        class FakeTransport:
+            def __init__(self):
+                self.log_fn = None
+                self._gptphone_totp_refresh_in_headers = True
+                self.responses = [
+                    {"_status": 403, "error": {"code": "incorrect_code"}},
+                    {"_status": 200, "page": {"type": "consent"}},
+                ]
+                self.calls = []
+
+            def _post_auth_json(self, path, payload, **kwargs):
+                self.calls.append((path, dict(payload), dict(kwargs)))
+                return self.responses.pop(0)
+
+        chain = SimpleNamespace(
+            AUTH="https://auth.openai.com",
+            _page_type=lambda response: (response.get("page") or {}).get("type", ""),
+            _continue_url=lambda response: response.get("continue_url", ""),
+        )
+        patches = build_chatgpt_totp_patches(
+            runtime_module=SimpleNamespace(),
+            codex_oauth_chain=chain,
+            original_entries_unlocked=lambda _pool: ([], []),
+            original_outlook_otp_provider=lambda *args, **kwargs: None,
+            original_account_label=lambda entry: entry.email,
+            original_verify_password=lambda *_args: {
+                "_status": 200,
+                "page": {"payload": {"factor_id": "factor-id"}},
+                "continue_url": "https://auth.openai.com/mfa-challenge/factor-id",
+            },
+            original_send_mfa_otp=lambda *args: {},
+            original_verify_mfa_otp=lambda *args: original_calls.append(args),
+            parse_oauth_mailbox_row=parse_oauth_mailbox_row,
+        )
+        patches.outlook_otp_provider(
+            SimpleNamespace(
+                oauth_client_id="chatgpt_totp",
+                oauth_refresh_token="JBSWY3DPEHPK3PXP",
+            ),
+            {},
+            None,
+        )
+        transport = FakeTransport()
+        patches.verify_password(transport, "password")
+
+        rejected = patches.verify_mfa_otp(transport, "first-code")
+        self.assertEqual(rejected["_status"], 403)
+        self.assertTrue(transport._gptphone_totp_flow)
+        self.assertTrue(transport._gptphone_totp_secret)
+
+        accepted = patches.verify_mfa_otp(transport, "second-code")
+
+        self.assertEqual(accepted["_status"], 200)
+        self.assertEqual(len(transport.calls), 2)
+        self.assertEqual(original_calls, [])
+        self.assertFalse(transport._gptphone_totp_flow)
+        self.assertEqual(transport._gptphone_totp_secret, "")
+
+    def test_incorrect_totp_waits_for_a_different_time_window(self):
+        secret = "JBSWY3DPEHPK3PXP"
+
+        class Clock:
+            def __init__(self):
+                self.now = 100.0
+                self.waits = []
+
+            def time(self):
+                return self.now
+
+            def wait(self, seconds):
+                self.waits.append(seconds)
+                self.now += seconds
+                return False
+
+        class StopEvent:
+            def __init__(self, clock):
+                self.clock = clock
+
+            def is_set(self):
+                return False
+
+            def wait(self, seconds):
+                return self.clock.wait(seconds)
+
+        class FakeTransport:
+            def __init__(self, clock):
+                self.clock = clock
+                self.log_fn = None
+                self._gptphone_totp_refresh_in_headers = True
+
+            def _post_auth_json(self, _path, payload, **_kwargs):
+                # Header preparation crossed a TOTP boundary, so this is the
+                # code that actually reached the provider and was rejected.
+                self.clock.now = 120.0
+                payload["code"] = totp_code(secret, now=self.clock.now)
+                return {"_status": 403, "error": {"code": "incorrect_code"}}
+
+        clock = Clock()
+        stop_event = StopEvent(clock)
+        chain = SimpleNamespace(
+            AUTH="https://auth.openai.com",
+            _page_type=lambda response: (response.get("page") or {}).get("type", ""),
+            _continue_url=lambda response: response.get("continue_url", ""),
+        )
+        with patch("mac_overrides.chatgpt_totp.time.time", side_effect=clock.time):
+            patches = build_chatgpt_totp_patches(
+                runtime_module=SimpleNamespace(),
+                codex_oauth_chain=chain,
+                original_entries_unlocked=lambda _pool: ([], []),
+                original_outlook_otp_provider=lambda *args, **kwargs: None,
+                original_account_label=lambda entry: entry.email,
+                original_verify_password=lambda *_args: {
+                    "_status": 200,
+                    "page": {"payload": {"factor_id": "factor-id"}},
+                    "continue_url": "https://auth.openai.com/mfa-challenge/factor-id",
+                },
+                original_send_mfa_otp=lambda *args: {},
+                original_verify_mfa_otp=lambda *args: {},
+                parse_oauth_mailbox_row=parse_oauth_mailbox_row,
+            )
+            provider = patches.outlook_otp_provider(
+                SimpleNamespace(
+                    source_row=f"totp@example.com|password|{secret}",
+                    oauth_client_id="chatgpt_totp",
+                    oauth_refresh_token=secret,
+                ),
+                {},
+                None,
+                stop_event=stop_event,
+            )
+            transport = FakeTransport(clock)
+            patches.verify_password(transport, "password")
+
+            first_code = provider.wait_code("totp@example.com")
+            rejected = patches.verify_mfa_otp(transport, first_code)
+            rejected_code = totp_code(secret, now=120.0)
+            retry_code = provider.wait_code("totp@example.com")
+
+        self.assertEqual(rejected["_status"], 403)
+        self.assertEqual(len(clock.waits), 1)
+        self.assertAlmostEqual(clock.waits[0], 30.05, places=2)
+        self.assertNotEqual(retry_code, rejected_code)
+        self.assertEqual(retry_code, totp_code(secret, now=150.05))
+
+    def test_totp_retry_wait_is_interrupted_by_stop_event(self):
+        secret = "JBSWY3DPEHPK3PXP"
+
+        class StopEvent:
+            def __init__(self):
+                self.stopped = False
+                self.waits = []
+
+            def is_set(self):
+                return self.stopped
+
+            def wait(self, seconds):
+                self.waits.append(seconds)
+                self.stopped = True
+                return True
+
+        stop_event = StopEvent()
+        chain = SimpleNamespace(
+            AUTH="https://auth.openai.com",
+            _page_type=lambda response: (response.get("page") or {}).get("type", ""),
+            _continue_url=lambda response: response.get("continue_url", ""),
+        )
+        with patch("mac_overrides.chatgpt_totp.time.time", return_value=120.0):
+            patches = build_chatgpt_totp_patches(
+                runtime_module=SimpleNamespace(),
+                codex_oauth_chain=chain,
+                original_entries_unlocked=lambda _pool: ([], []),
+                original_outlook_otp_provider=lambda *args, **kwargs: None,
+                original_account_label=lambda entry: entry.email,
+                original_verify_password=lambda *_args: {
+                    "_status": 200,
+                    "page": {"payload": {"factor_id": "factor-id"}},
+                    "continue_url": "https://auth.openai.com/mfa-challenge/factor-id",
+                },
+                original_send_mfa_otp=lambda *args: {},
+                original_verify_mfa_otp=lambda *args: {},
+                parse_oauth_mailbox_row=parse_oauth_mailbox_row,
+            )
+            provider = patches.outlook_otp_provider(
+                SimpleNamespace(
+                    source_row=f"totp@example.com|password|{secret}",
+                    oauth_client_id="chatgpt_totp",
+                    oauth_refresh_token=secret,
+                ),
+                {},
+                None,
+                stop_event=stop_event,
+            )
+            transport = SimpleNamespace(
+                log_fn=None,
+                _gptphone_totp_refresh_in_headers=True,
+                _post_auth_json=lambda *_args, **_kwargs: {
+                    "_status": 403,
+                    "error": {"code": "incorrect_code"},
+                },
+            )
+            patches.verify_password(transport, "password")
+            first_code = provider.wait_code("totp@example.com")
+            patches.verify_mfa_otp(transport, first_code)
+
+            retry_code = provider.wait_code("totp@example.com")
+
+        self.assertEqual(retry_code, "")
+        self.assertEqual(len(stop_event.waits), 1)
 
     def test_totp_provider_does_not_acquire_shared_mailbox_slot(self):
         class PhaseGate:

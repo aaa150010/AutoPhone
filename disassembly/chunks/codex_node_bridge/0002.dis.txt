@@ -1,0 +1,800 @@
+#   43: 'OpenAI-Sentinel-Token'
+#   44: 'so_token'
+#   45: 'sentinel_so_token'
+#   46: 'OpenAI-Sentinel-SO-Token'
+#   47: 'ok'
+#   48: 'version'
+#   49: 'flow'
+#   50: ('ok', 'mode', 'version', 'flow', 'token', 'so_token', 'token_generated')
+#   51: 'error'
+#   52: 'Node SentinelRunner returned no token'
+#   53: 'diagnostic'
+#   54: ('mode', 'version', 'device_id', 'proxy_label', 'fingerprint')
+#   55: "\nconst fs = require('fs');\nconst input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');\nconst fp = input.fingerprint && typeof input.fingerprint === 'object' ? input.fingerprint : {};\nconst result = {\n  ok: true,\n  mode: 'diagnostic',\n  version: input.version || 'node-bridge-diagnostic-v1',\n  token_generated: false,\n  node_version: process.version,\n  device_id_present: Boolean(input.device_id),\n  proxy_label_present: Boolean(input.proxy_label),\n  fingerprint_present: Object.keys(fp).length > 0,\n  fingerprint_keys: Object.keys(fp).sort(),\n  required_fields: ['device_id', 'proxy_label', 'fingerprint'],\n  notes: 'diagnostic only; no Sentinel token generation'\n};\nprocess.stdout.write(JSON.stringify(result));\n"
+#   56: '-e'
+#   57: ('input', 'text', 'encoding', 'errors', 'capture_output', 'timeout', 'check')
+#   58: 500
+#   59: '{}'
+#   60: 'node result is not object'
+#   61: 'token_generated'
+# Names:
+#    0: _clean
+#    1: lower
+#    2: replace
+#    3: BRIDGE_VERSION
+#    4: _mock_result
+#    5: _node_binary
+#    6: _script_path
+#    7: os
+#    8: path
+#    9: exists
+#   10: isinstance
+#   11: dict
+#   12: int
+#   13: max
+#   14: environ
+#   15: copy
+#   16: sys
+#   17: executable
+#   18: Path
+#   19: __file__
+#   20: resolve
+#   21: parents
+#   22: getattr
+#   23: stem
+#   24: startswith
+#   25: json
+#   26: dumps
+#   27: str
+#   28: subprocess
+#   29: run
+#   30: Exception
+#   31: returncode
+#   32: stderr
+#   33: stdout
+#   34: strip
+#   35: _parse_node_json
+#   36: get
+#   37: update
+#   38: bool
+#   39: setdefault
+#   40: loads
+# Varnames:
+#	mode, device_id, proxy_label, proxy, fingerprint, flow, persona, script_path, context, timeout, normalized, node, runner, payload, env, launcher, helper_exe, proc, exc, data, token, so_token, script
+# Local variables:
+#    0: mode
+#    1: device_id
+#    2: proxy_label
+#    3: proxy
+#    4: fingerprint
+#    5: flow
+#    6: persona
+#    7: script_path
+#    8: context
+#    9: timeout
+#   10: normalized
+#   11: node
+#   12: runner
+#   13: payload
+#   14: env
+#   15: launcher
+#   16: helper_exe
+#   17: proc
+#   18: exc
+#   19: data
+#   20: token
+#   21: so_token
+#   22: script
+ 92:           0 RESUME               0
+
+106:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (mode)
+              14 CALL                 (1 positional)
+              22 LOAD_ATTR            (NULL|self + lower)
+              42 CALL                 (0 positional)
+              50 LOAD_ATTR            (NULL|self + replace)
+              70 LOAD_CONST           ("-")
+              72 LOAD_CONST           ("_")
+              74 CALL                 (2 positional)
+              82 COPY                 1
+              84 TO_BOOL
+              92 POP_JUMP_IF_TRUE     (to 100)
+              96 POP_TOP
+              98 LOAD_CONST           ("mock")
+         >>  100 STORE_FAST           (normalized)
+
+107:         102 LOAD_FAST            (normalized)
+             104 LOAD_CONST           ({'disabled', 'none', 'off'})
+             106 CONTAINS_OP          (in)
+             110 POP_JUMP_IF_FALSE    (to 136)
+
+108:         114 LOAD_CONST           (False)
+             116 LOAD_CONST           ("off")
+             118 LOAD_GLOBAL          (BRIDGE_VERSION)
+             128 LOAD_CONST           (False)
+             130 LOAD_CONST           (('ok', 'mode', 'version', 'token_generated'))
+             132 BUILD_CONST_KEY_MAP  4
+             134 RETURN_VALUE
+
+109:     >>  136 LOAD_FAST            (normalized)
+             138 LOAD_CONST           ("mock")
+             140 COMPARE_OP           (==)
+             144 POP_JUMP_IF_FALSE    (to 170)
+
+110:         148 LOAD_GLOBAL          (NULL + _mock_result)
+             158 LOAD_CONST           ("mock")
+             160 LOAD_FAST_LOAD_FAST  (device_id, proxy_label)
+             162 LOAD_FAST            (fingerprint)
+             164 LOAD_CONST           (('mode', 'device_id', 'proxy_label', 'fingerprint'))
+             166 CALL_KW              4
+             168 RETURN_VALUE
+
+111:     >>  170 LOAD_FAST            (normalized)
+             172 LOAD_CONST           ({'real', 'diagnostic'})
+             174 CONTAINS_OP          (not in)
+             178 POP_JUMP_IF_FALSE    (to 206)
+
+112:         182 LOAD_CONST           (False)
+             184 LOAD_FAST            (normalized)
+             186 LOAD_GLOBAL          (BRIDGE_VERSION)
+             196 LOAD_CONST           ("unsupported node bridge mode")
+             198 LOAD_CONST           (False)
+             200 LOAD_CONST           (('ok', 'mode', 'version', 'error', 'token_generated'))
+             202 BUILD_CONST_KEY_MAP  5
+             204 RETURN_VALUE
+
+114:     >>  206 LOAD_GLOBAL          (NULL + _node_binary)
+             216 CALL                 (0 positional)
+             224 STORE_FAST           (node)
+
+115:         226 LOAD_FAST            (node)
+             228 TO_BOOL
+             236 POP_JUMP_IF_TRUE     (to 264)
+
+116:         240 LOAD_CONST           (False)
+             242 LOAD_FAST            (normalized)
+             244 LOAD_GLOBAL          (BRIDGE_VERSION)
+             254 LOAD_CONST           ("node executable not found")
+             256 LOAD_CONST           (False)
+             258 LOAD_CONST           (('ok', 'mode', 'version', 'error', 'token_generated'))
+             260 BUILD_CONST_KEY_MAP  5
+             262 RETURN_VALUE
+
+118:     >>  264 LOAD_FAST            (normalized)
+             266 LOAD_CONST           ("real")
+             268 COMPARE_OP           (==)
+             272 EXTENDED_ARG         (1024)
+             274 POP_JUMP_IF_FALSE    (to 2510)
+
+119:         278 LOAD_GLOBAL          (NULL + _script_path)
+             288 LOAD_FAST            (script_path)
+             290 CALL                 (1 positional)
+             298 STORE_FAST           (runner)
+
+120:         300 LOAD_FAST            (runner)
+             302 TO_BOOL
+             310 POP_JUMP_IF_TRUE     (to 338)
+
+122:         314 LOAD_CONST           (False)
+
+123:         316 LOAD_CONST           ("real")
+
+124:         318 LOAD_GLOBAL          (BRIDGE_VERSION)
+
+125:         328 LOAD_CONST           ("real Node SentinelRunner not configured; set codex_node_runner or CODEX_NODE_RUNNER")
+
+126:         330 LOAD_CONST           (False)
+
+121:         332 LOAD_CONST           (('ok', 'mode', 'version', 'error', 'token_generated'))
+             334 BUILD_CONST_KEY_MAP  5
+             336 RETURN_VALUE
+
+128:     >>  338 LOAD_GLOBAL          (os)
+             348 LOAD_ATTR            (path)
+             368 LOAD_ATTR            (NULL|self + exists)
+             388 LOAD_FAST            (runner)
+             390 CALL                 (1 positional)
+             398 TO_BOOL
+             406 POP_JUMP_IF_TRUE     (to 440)
+
+130:         410 LOAD_CONST           (False)
+
+131:         412 LOAD_CONST           ("real")
+
+132:         414 LOAD_GLOBAL          (BRIDGE_VERSION)
+
+133:         424 LOAD_CONST           ("real Node SentinelRunner not found: ")
+             426 LOAD_FAST            (runner)
+             428 FORMAT_SIMPLE
+             430 BUILD_STRING         2
+
+134:         432 LOAD_CONST           (False)
+
+129:         434 LOAD_CONST           (('ok', 'mode', 'version', 'error', 'token_generated'))
+             436 BUILD_CONST_KEY_MAP  5
+             438 RETURN_VALUE
+
+137:     >>  440 LOAD_CONST           ("real")
+
+138:         442 LOAD_GLOBAL          (BRIDGE_VERSION)
+
+139:         452 LOAD_GLOBAL          (NULL + _clean)
+             462 LOAD_FAST            (flow)
+             464 CALL                 (1 positional)
+
+140:         472 LOAD_GLOBAL          (NULL + _clean)
+             482 LOAD_FAST            (persona)
+             484 CALL                 (1 positional)
+
+141:         492 LOAD_GLOBAL          (NULL + _clean)
+             502 LOAD_FAST            (device_id)
+             504 CALL                 (1 positional)
+
+142:         512 LOAD_GLOBAL          (NULL + _clean)
+             522 LOAD_FAST            (proxy_label)
+             524 CALL                 (1 positional)
+
+143:         532 LOAD_GLOBAL          (NULL + _clean)
+             542 LOAD_FAST            (proxy)
+             544 CALL                 (1 positional)
+
+144:         552 LOAD_GLOBAL          (NULL + isinstance)
+             562 LOAD_FAST            (fingerprint)
+             564 LOAD_GLOBAL          (dict)
+             574 CALL                 (2 positional)
+             582 TO_BOOL
+             590 POP_JUMP_IF_FALSE    (to 598)
+             594 LOAD_FAST            (fingerprint)
+             596 JUMP_FORWARD         (to 600)
+         >>  598 BUILD_MAP            0
+
+145:     >>  600 LOAD_GLOBAL          (NULL + isinstance)
+             610 LOAD_FAST            (context)
+             612 LOAD_GLOBAL          (dict)
+             622 CALL                 (2 positional)
+             630 TO_BOOL
+             638 POP_JUMP_IF_FALSE    (to 646)
+             642 LOAD_FAST            (context)
+             644 JUMP_FORWARD         (to 648)
+         >>  646 BUILD_MAP            0
+
+146:     >>  648 LOAD_GLOBAL          (NULL + int)
+             658 LOAD_GLOBAL          (NULL + max)
+             668 LOAD_CONST           (5)
+             670 LOAD_FAST            (timeout)
+             672 CALL                 (2 positional)
+             680 LOAD_CONST           (1000)
+             682 BINARY_OP            (*)
+             686 CALL                 (1 positional)
+
+136:         694 LOAD_CONST           (('mode', 'version', 'flow', 'persona', 'device_id', 'proxy_label', 'proxy', 'fingerprint', 'context', 'timeout_ms'))
+             696 BUILD_CONST_KEY_MAP  10
+             698 STORE_FAST           (payload)
+
+148:         700 NOP
+
+149:         702 LOAD_GLOBAL          (os)
+             712 LOAD_ATTR            (environ)
+             732 LOAD_ATTR            (NULL|self + copy)
+             752 CALL                 (0 positional)
+             760 STORE_FAST           (env)
+
+150:         762 LOAD_CONST           ("1")
+             764 LOAD_FAST            (env)
+             766 LOAD_CONST           ("CODEX_SENTINEL_ENABLE_PY_FALLBACK")
+             768 STORE_SUBSCR
+
+151:         772 LOAD_GLOBAL          (os)
+             782 LOAD_ATTR            (path)
+             802 LOAD_ATTR            (NULL|self + exists)
+             822 LOAD_GLOBAL          (sys)
+             832 LOAD_ATTR            (executable)
+             852 CALL                 (1 positional)
+             860 TO_BOOL
+             868 EXTENDED_ARG         (256)
+             870 POP_JUMP_IF_FALSE    (to 1450)
+
+152:         874 LOAD_GLOBAL          (sys)
+             884 LOAD_ATTR            (executable)
+             904 LOAD_FAST            (env)
+             906 LOAD_CONST           ("PYTHON")
+             908 STORE_SUBSCR
+
+153:         912 LOAD_GLOBAL          (sys)
+             922 LOAD_ATTR            (executable)
+             942 LOAD_FAST            (env)
+             944 LOAD_CONST           ("CODEX_PYTHON")
+             946 STORE_SUBSCR
+
+154:         950 LOAD_GLOBAL          (NULL + Path)
+             960 LOAD_GLOBAL          (__file__)
+             970 CALL                 (1 positional)
+             978 LOAD_ATTR            (NULL|self + resolve)
+             998 CALL                 (0 positional)
+            1006 LOAD_ATTR            (parents)
+            1026 LOAD_CONST           (2)
+            1028 BINARY_SUBSCR
+            1032 LOAD_CONST           ("plus_launcher.py")
+            1034 BINARY_OP            (/)
+            1038 STORE_FAST           (launcher)
+
+155:        1040 LOAD_GLOBAL          (NULL + getattr)
+            1050 LOAD_GLOBAL          (sys)
+            1060 LOAD_CONST           ("frozen")
+            1062 LOAD_CONST           (False)
+            1064 CALL                 (3 positional)
+            1072 COPY                 1
+            1074 TO_BOOL
+            1082 POP_JUMP_IF_TRUE     (to 1214)
+            1086 POP_TOP
+            1088 LOAD_GLOBAL          (NULL + Path)
+            1098 LOAD_GLOBAL          (sys)
+            1108 LOAD_ATTR            (executable)
+            1128 CALL                 (1 positional)
+            1136 LOAD_ATTR            (stem)
+            1156 LOAD_ATTR            (NULL|self + lower)
+            1176 CALL                 (0 positional)
+            1184 LOAD_ATTR            (NULL|self + startswith)
+            1204 LOAD_CONST           ("plusbindtool")
+            1206 CALL                 (1 positional)
+         >> 1214 STORE_FAST           (helper_exe)
+
+156:        1216 LOAD_FAST            (helper_exe)
+            1218 TO_BOOL
+            1226 POP_JUMP_IF_FALSE    (to 1284)
+
+157:        1230 LOAD_GLOBAL          (json)
+            1240 LOAD_ATTR            (dumps)
+            1260 PUSH_NULL
+            1262 LOAD_CONST           ("--sentinel-http")
+            1264 BUILD_LIST           1
+            1266 CALL                 (1 positional)
+            1274 LOAD_FAST            (env)
+            1276 LOAD_CONST           ("CODEX_SENTINEL_PY_ARGS_PREFIX_JSON")
+            1278 STORE_SUBSCR
+            1282 JUMP_FORWARD         (to 1450)
+
+158:     >> 1284 LOAD_FAST            (launcher)
+            1286 LOAD_ATTR            (NULL|self + exists)
+            1306 CALL                 (0 positional)
+            1314 TO_BOOL
+            1322 POP_JUMP_IF_FALSE    (to 1400)
+
+159:        1326 LOAD_GLOBAL          (json)
+            1336 LOAD_ATTR            (dumps)
+            1356 PUSH_NULL
+            1358 LOAD_GLOBAL          (NULL + str)
+            1368 LOAD_FAST            (launcher)
+            1370 CALL                 (1 positional)
+            1378 LOAD_CONST           ("--sentinel-http")
+            1380 BUILD_LIST           2
+            1382 CALL                 (1 positional)
+            1390 LOAD_FAST            (env)
+            1392 LOAD_CONST           ("CODEX_SENTINEL_PY_ARGS_PREFIX_JSON")
+            1394 STORE_SUBSCR
+            1398 JUMP_FORWARD         (to 1450)
+
+164:     >> 1400 LOAD_GLOBAL          (json)
+            1410 LOAD_ATTR            (dumps)
+            1430 PUSH_NULL
+            1432 BUILD_LIST           0
+            1434 CALL                 (1 positional)
+            1442 LOAD_FAST            (env)
+            1444 LOAD_CONST           ("CODEX_SENTINEL_PY_ARGS_PREFIX_JSON")
+            1446 STORE_SUBSCR
+
+165:     >> 1450 LOAD_GLOBAL          (subprocess)
+            1460 LOAD_ATTR            (run)
+            1480 PUSH_NULL
+
+166:        1482 LOAD_FAST_LOAD_FAST  (node, runner)
+            1484 BUILD_LIST           2
+
+167:        1486 LOAD_GLOBAL          (json)
+            1496 LOAD_ATTR            (dumps)
+            1516 PUSH_NULL
+            1518 LOAD_FAST            (payload)
+            1520 LOAD_CONST           (False)
+            1522 LOAD_CONST           (('ensure_ascii',))
+            1524 CALL_KW              2
+
+168:        1526 LOAD_CONST           (True)
+
+169:        1528 LOAD_CONST           ("utf-8")
+
+170:        1530 LOAD_CONST           ("replace")
+
+171:        1532 LOAD_CONST           (True)
+
+172:        1534 LOAD_GLOBAL          (NULL + max)
+            1544 LOAD_FAST            (timeout)
+            1546 LOAD_CONST           (15)
+            1548 BINARY_OP            (+)
+            1552 LOAD_FAST            (timeout)
+            1554 LOAD_CONST           (2)
+            1556 BINARY_OP            (*)
+            1560 CALL                 (2 positional)
+
+173:        1568 LOAD_FAST            (env)
+
+174:        1570 LOAD_CONST           (False)
+
+165:        1572 LOAD_CONST           (('input', 'text', 'encoding', 'errors', 'capture_output', 'timeout', 'env', 'check'))
+            1574 CALL_KW              9
+            1576 STORE_FAST           (proc)
+
+178:        1578 LOAD_FAST            (proc)
+            1580 LOAD_ATTR            (returncode)
+            1600 LOAD_CONST           (0)
+            1602 COMPARE_OP           (!=)
+            1606 POP_JUMP_IF_FALSE    (to 1744)
+
+180:        1610 LOAD_CONST           (False)
+
+181:        1612 LOAD_CONST           ("real")
+
+182:        1614 LOAD_GLOBAL          (BRIDGE_VERSION)
+
+183:        1624 LOAD_FAST            (proc)
+            1626 LOAD_ATTR            (stderr)
+            1646 COPY                 1
+            1648 TO_BOOL
+            1656 POP_JUMP_IF_TRUE     (to 1702)
+            1660 POP_TOP
+            1662 LOAD_FAST            (proc)
+            1664 LOAD_ATTR            (stdout)
+            1684 COPY                 1
+            1686 TO_BOOL
+            1694 POP_JUMP_IF_TRUE     (to 1702)
+            1698 POP_TOP
+            1700 LOAD_CONST           ("")
+         >> 1702 LOAD_ATTR            (NULL|self + strip)
+            1722 CALL                 (0 positional)
+            1730 LOAD_CONST           (None)
+            1732 LOAD_CONST           (800)
+            1734 BINARY_SLICE
+
+184:        1736 LOAD_CONST           (False)
+
+179:        1738 LOAD_CONST           (('ok', 'mode', 'version', 'error', 'token_generated'))
+            1740 BUILD_CONST_KEY_MAP  5
+            1742 RETURN_VALUE
+
+186:     >> 1744 NOP
+
+187:        1746 LOAD_GLOBAL          (NULL + _parse_node_json)
+            1756 LOAD_FAST            (proc)
+            1758 LOAD_ATTR            (stdout)
+            1778 COPY                 1
+            1780 TO_BOOL
+            1788 POP_JUMP_IF_TRUE     (to 1796)
+            1792 POP_TOP
+            1794 LOAD_CONST           ("")
+         >> 1796 CALL                 (1 positional)
+            1804 STORE_FAST           (data)
+
+190:        1806 LOAD_GLOBAL          (NULL + _clean)
+            1816 LOAD_FAST            (data)
+            1818 LOAD_ATTR            (NULL|self + get)
+            1838 LOAD_CONST           ("token")
+            1840 CALL                 (1 positional)
+            1848 COPY                 1
+            1850 TO_BOOL
+            1858 POP_JUMP_IF_TRUE     (to 1992)
+            1862 POP_TOP
+            1864 LOAD_FAST            (data)
+            1866 LOAD_ATTR            (NULL|self + get)
+            1886 LOAD_CONST           ("sentinel_token")
+            1888 CALL                 (1 positional)
+            1896 COPY                 1
+            1898 TO_BOOL
+            1906 POP_JUMP_IF_TRUE     (to 1992)
+            1910 POP_TOP
+            1912 LOAD_FAST            (data)
+            1914 LOAD_ATTR            (NULL|self + get)
+            1934 LOAD_CONST           ("headers")
+            1936 CALL                 (1 positional)
+            1944 COPY                 1
+            1946 TO_BOOL
+            1954 POP_JUMP_IF_TRUE     (to 1962)
+            1958 POP_TOP
+            1960 BUILD_MAP            0
+         >> 1962 LOAD_ATTR            (NULL|self + get)
+            1982 LOAD_CONST           ("OpenAI-Sentinel-Token")
+            1984 CALL                 (1 positional)
+         >> 1992 CALL                 (1 positional)
+            2000 STORE_FAST           (token)
+
+191:        2002 LOAD_GLOBAL          (NULL + _clean)
+            2012 LOAD_FAST            (data)
+            2014 LOAD_ATTR            (NULL|self + get)
+            2034 LOAD_CONST           ("so_token")
+            2036 CALL                 (1 positional)
+            2044 COPY                 1
+            2046 TO_BOOL
+            2054 POP_JUMP_IF_TRUE     (to 2188)
+            2058 POP_TOP
+            2060 LOAD_FAST            (data)
+            2062 LOAD_ATTR            (NULL|self + get)
+            2082 LOAD_CONST           ("sentinel_so_token")
+            2084 CALL                 (1 positional)
+            2092 COPY                 1
+            2094 TO_BOOL
+            2102 POP_JUMP_IF_TRUE     (to 2188)
+            2106 POP_TOP
+            2108 LOAD_FAST            (data)
+            2110 LOAD_ATTR            (NULL|self + get)
+            2130 LOAD_CONST           ("headers")
+            2132 CALL                 (1 positional)
+            2140 COPY                 1
+            2142 TO_BOOL
+            2150 POP_JUMP_IF_TRUE     (to 2158)
+            2154 POP_TOP
+            2156 BUILD_MAP            0
+         >> 2158 LOAD_ATTR            (NULL|self + get)
+            2178 LOAD_CONST           ("OpenAI-Sentinel-SO-Token")
+            2180 CALL                 (1 positional)
+         >> 2188 CALL                 (1 positional)
+            2196 STORE_FAST           (so_token)
+
+192:        2198 LOAD_FAST            (data)
+            2200 LOAD_ATTR            (NULL|self + update)
+
+193:        2220 LOAD_GLOBAL          (NULL + bool)
+            2230 LOAD_FAST            (data)
+            2232 LOAD_ATTR            (NULL|self + get)
+            2252 LOAD_CONST           ("ok")
+            2254 LOAD_CONST           (True)
+            2256 CALL                 (2 positional)
+            2264 COPY                 1
+            2266 TO_BOOL
+            2274 POP_JUMP_IF_FALSE    (to 2282)
+            2278 POP_TOP
+            2280 LOAD_FAST            (token)
+         >> 2282 CALL                 (1 positional)
+
+194:        2290 LOAD_CONST           ("real")
+
+195:        2292 LOAD_FAST            (data)
+            2294 LOAD_ATTR            (NULL|self + get)
+            2314 LOAD_CONST           ("version")
+            2316 CALL                 (1 positional)
+            2324 COPY                 1
+            2326 TO_BOOL
+            2334 POP_JUMP_IF_TRUE     (to 2350)
+            2338 POP_TOP
+            2340 LOAD_GLOBAL          (BRIDGE_VERSION)
+
+196:     >> 2350 LOAD_FAST            (data)
+            2352 LOAD_ATTR            (NULL|self + get)
+            2372 LOAD_CONST           ("flow")
+            2374 CALL                 (1 positional)
+            2382 COPY                 1
+            2384 TO_BOOL
+            2392 POP_JUMP_IF_TRUE     (to 2418)
+            2396 POP_TOP
+            2398 LOAD_GLOBAL          (NULL + _clean)
+            2408 LOAD_FAST            (flow)
+            2410 CALL                 (1 positional)
+
+197:     >> 2418 LOAD_FAST            (token)
+
+198:        2420 LOAD_FAST            (so_token)
+
+199:        2422 LOAD_GLOBAL          (NULL + bool)
+            2432 LOAD_FAST            (token)
+            2434 CALL                 (1 positional)
+
+192:        2442 LOAD_CONST           (('ok', 'mode', 'version', 'flow', 'token', 'so_token', 'token_generated'))
+            2444 BUILD_CONST_KEY_MAP  7
+            2446 CALL                 (1 positional)
+            2454 POP_TOP
+
+201:        2456 LOAD_FAST            (token)
+            2458 TO_BOOL
+            2466 POP_JUMP_IF_TRUE     (to 2506)
+
+202:        2470 LOAD_FAST            (data)
+            2472 LOAD_ATTR            (NULL|self + setdefault)
+            2492 LOAD_CONST           ("error")
+            2494 LOAD_CONST           ("Node SentinelRunner returned no token")
+            2496 CALL                 (2 positional)
+            2504 POP_TOP
+
+203:     >> 2506 LOAD_FAST            (data)
+            2508 RETURN_VALUE
+
+206:     >> 2510 LOAD_CONST           ("diagnostic")
+
+207:        2512 LOAD_GLOBAL          (BRIDGE_VERSION)
+
+208:        2522 LOAD_GLOBAL          (NULL + _clean)
+            2532 LOAD_FAST            (device_id)
+            2534 CALL                 (1 positional)
+
+209:        2542 LOAD_GLOBAL          (NULL + _clean)
+            2552 LOAD_FAST            (proxy_label)
+            2554 CALL                 (1 positional)
+
+210:        2562 LOAD_GLOBAL          (NULL + isinstance)
+            2572 LOAD_FAST            (fingerprint)
+            2574 LOAD_GLOBAL          (dict)
+            2584 CALL                 (2 positional)
+            2592 TO_BOOL
+            2600 POP_JUMP_IF_FALSE    (to 2608)
+            2604 LOAD_FAST            (fingerprint)
+            2606 JUMP_FORWARD         (to 2610)
+         >> 2608 BUILD_MAP            0
+
+205:     >> 2610 LOAD_CONST           (('mode', 'version', 'device_id', 'proxy_label', 'fingerprint'))
+            2612 BUILD_CONST_KEY_MAP  5
+            2614 STORE_FAST           (payload)
+
+212:        2616 LOAD_CONST           ("\nconst fs = require('fs');\nconst input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');\nconst fp = input.fingerprint && typeof input.fingerprint === 'object' ? input.fingerprint : {};\nconst result = {\n  ok: true,\n  mode: 'diagnostic',\n  version: input.version || 'node-bridge-diagnostic-v1',\n  token_generated: false,\n  node_version: process.version,\n  device_id_present: Boolean(input.device_id),\n  proxy_label_present: Boolean(input.proxy_label),\n  fingerprint_present: Object.keys(fp).length > 0,\n  fingerprint_keys: Object.keys(fp).sort(),\n  required_fields: ['device_id', 'proxy_label', 'fingerprint'],\n  notes: 'diagnostic only; no Sentinel token generation'\n};\nprocess.stdout.write(JSON.stringify(result));\n")
+            2618 STORE_FAST           (script)
+
+231:        2620 NOP
+
+232:        2622 LOAD_GLOBAL          (subprocess)
+            2632 LOAD_ATTR            (run)
+            2652 PUSH_NULL
+
+233:        2654 LOAD_FAST            (node)
+            2656 LOAD_CONST           ("-e")
+            2658 LOAD_FAST            (script)
+            2660 BUILD_LIST           3
+
+234:        2662 LOAD_GLOBAL          (json)
+            2672 LOAD_ATTR            (dumps)
+            2692 PUSH_NULL
+            2694 LOAD_FAST            (payload)
+            2696 LOAD_CONST           (False)
+            2698 LOAD_CONST           (('ensure_ascii',))
+            2700 CALL_KW              2
+
+235:        2702 LOAD_CONST           (True)
+
+236:        2704 LOAD_CONST           ("utf-8")
+
+237:        2706 LOAD_CONST           ("replace")
+
+238:        2708 LOAD_CONST           (True)
+
+239:        2710 LOAD_FAST            (timeout)
+
+240:        2712 LOAD_CONST           (False)
+
+232:        2714 LOAD_CONST           (('input', 'text', 'encoding', 'errors', 'capture_output', 'timeout', 'check'))
+            2716 CALL_KW              8
+            2718 STORE_FAST           (proc)
+
+244:        2720 LOAD_FAST            (proc)
+            2722 LOAD_ATTR            (returncode)
+            2742 LOAD_CONST           (0)
+            2744 COMPARE_OP           (!=)
+            2748 POP_JUMP_IF_FALSE    (to 2886)
+
+246:        2752 LOAD_CONST           (False)
+
+247:        2754 LOAD_CONST           ("diagnostic")
+
+248:        2756 LOAD_GLOBAL          (BRIDGE_VERSION)
+
+249:        2766 LOAD_FAST            (proc)
+            2768 LOAD_ATTR            (stderr)
+            2788 COPY                 1
+            2790 TO_BOOL
+            2798 POP_JUMP_IF_TRUE     (to 2844)
+            2802 POP_TOP
+            2804 LOAD_FAST            (proc)
+            2806 LOAD_ATTR            (stdout)
+            2826 COPY                 1
+            2828 TO_BOOL
+            2836 POP_JUMP_IF_TRUE     (to 2844)
+            2840 POP_TOP
+            2842 LOAD_CONST           ("")
+         >> 2844 LOAD_ATTR            (NULL|self + strip)
+            2864 CALL                 (0 positional)
+            2872 LOAD_CONST           (None)
+            2874 LOAD_CONST           (500)
+            2876 BINARY_SLICE
+
+250:        2878 LOAD_CONST           (False)
+
+245:        2880 LOAD_CONST           (('ok', 'mode', 'version', 'error', 'token_generated'))
+            2882 BUILD_CONST_KEY_MAP  5
+            2884 RETURN_VALUE
+
+252:     >> 2886 NOP
+
+253:        2888 LOAD_GLOBAL          (json)
+            2898 LOAD_ATTR            (loads)
+            2918 PUSH_NULL
+            2920 LOAD_FAST            (proc)
+            2922 LOAD_ATTR            (stdout)
+            2942 COPY                 1
+            2944 TO_BOOL
+            2952 POP_JUMP_IF_TRUE     (to 2960)
+            2956 POP_TOP
+            2958 LOAD_CONST           ("{}")
+         >> 2960 CALL                 (1 positional)
+            2968 STORE_FAST           (data)
+
+256:        2970 LOAD_GLOBAL          (NULL + isinstance)
+            2980 LOAD_FAST            (data)
+            2982 LOAD_GLOBAL          (dict)
+            2992 CALL                 (2 positional)
+            3000 TO_BOOL
+            3008 POP_JUMP_IF_TRUE     (to 3036)
+
+257:        3012 LOAD_CONST           (False)
+            3014 LOAD_CONST           ("diagnostic")
+            3016 LOAD_GLOBAL          (BRIDGE_VERSION)
+            3026 LOAD_CONST           ("node result is not object")
+            3028 LOAD_CONST           (False)
+            3030 LOAD_CONST           (('ok', 'mode', 'version', 'error', 'token_generated'))
+            3032 BUILD_CONST_KEY_MAP  5
+            3034 RETURN_VALUE
+
+258:     >> 3036 LOAD_CONST           (False)
+            3038 LOAD_FAST            (data)
+            3040 LOAD_CONST           ("token_generated")
+            3042 STORE_SUBSCR
+
+259:        3046 LOAD_FAST            (data)
+            3048 RETURN_VALUE
+         >> 3050 PUSH_EXC_INFO
+
+176:        3052 LOAD_GLOBAL          (Exception)
+            3062 CHECK_EXC_MATCH
+            3064 POP_JUMP_IF_FALSE    (to 3130)
+            3068 STORE_FAST           (exc)
+
+177:        3070 LOAD_CONST           (False)
+            3072 LOAD_CONST           ("real")
+            3074 LOAD_GLOBAL          (BRIDGE_VERSION)
+            3084 LOAD_GLOBAL          (NULL + str)
+            3094 LOAD_FAST            (exc)
+            3096 CALL                 (1 positional)
+            3104 LOAD_CONST           (False)
+            3106 LOAD_CONST           (('ok', 'mode', 'version', 'error', 'token_generated'))
+            3108 BUILD_CONST_KEY_MAP  5
+            3110 SWAP                 (TOS <-> TOS1)
+            3112 POP_EXCEPT
+            3114 LOAD_CONST           (None)
+            3116 STORE_FAST           (exc)
+            3118 DELETE_FAST          (exc)
+            3120 RETURN_VALUE
+         >> 3122 LOAD_CONST           (None)
+            3124 STORE_FAST           (exc)
+            3126 DELETE_FAST          (exc)
+            3128 RERAISE              1
+
+176:     >> 3130 RERAISE              0
+         >> 3132 COPY                 3
+            3134 POP_EXCEPT
+            3136 RERAISE              1
+         >> 3138 PUSH_EXC_INFO
+
+188:        3140 LOAD_GLOBAL          (Exception)
+            3150 CHECK_EXC_MATCH
+            3152 POP_JUMP_IF_FALSE    (to 3206)
+            3156 STORE_FAST           (exc)
+
+189:        3158 LOAD_CONST           (False)
+            3160 LOAD_CONST           ("real")
+            3162 LOAD_GLOBAL          (BRIDGE_VERSION)
+            3172 LOAD_CONST           ("invalid node json: ")
+            3174 LOAD_FAST            (exc)
+            3176 FORMAT_SIMPLE
+            3178 BUILD_STRING         2
+            3180 LOAD_CONST           (False)
+            3182 LOAD_CONST           (('ok', 'mode', 'version', 'error', 'token_generated'))
+            3184 BUILD_CONST_KEY_MAP  5
+            3186 SWAP                 (TOS <-> TOS1)
+            3188 POP_EXCEPT
+            3190 LOAD_CONST           (None)
+            3192 STORE_FAST           (exc)
+            3194 DELETE_FAST          (exc)
+            3196 RETURN_VALUE
+         >> 3198 LOAD_CONST           (None)

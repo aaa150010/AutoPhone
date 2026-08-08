@@ -1,0 +1,800 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          chatgpt_fields.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1
+# Constants:
+#    0: 'Shared helpers for extracting and preserving ChatGPT account metadata.\n\nThe registration flow gets credentials from several places (OpenAI JWTs,\nSUB2 exchange-code responses, local result JSON, and sometimes SUB2 account\ndetail responses).  This module keeps the field mapping conservative so we do\nnot accidentally treat a SUB2 account id as a ChatGPT account id.\n'
+#    1: 0
+#    2: ('annotations',)
+#    3: None
+#    4: ('Path',)
+#    5: ('Any', 'Callable', 'Dict', 'Iterable', 'Tuple')
+#    6: ('chatgpt_account_id', 'chatgpt_account_user_id', 'chatgpt_user_id', 'chatgpt_plan_type')
+#    7: ('account_id', 'chatgpt_auth_user_id', 'chatgpt_field_source', 'chatgpt_field_checked_at', 'cpa_ready', 'cpa_missing_reason')
+#    8: {'billing', 'groups', 'sub2', 'sub2api', 'admin', 'group', 'proxy'}
+#    9: {'openai', 'workspace', 'workspaces', 'chatgpt', 'auth'}
+#   10: {'credential', 'openai', 'profile', 'jwt', 'chatgpt', 'credentials', 'auth', 'claims'}
+#   11: <Code311 code object now_stamp at 0x10617fbb0, file chatgpt_fields.py>, line 65
+#   12: <Code311 code object clean_str at 0x10617fa90, file chatgpt_fields.py>, line 69
+#   13: <Code311 code object decode_jwt_payload at 0x10617fa00, file chatgpt_fields.py>, line 80
+#   14: <Code311 code object _iter_nodes at 0x10617f9d0, file chatgpt_fields.py>, line 93
+#   15: <Code311 code object _path_text at 0x10617f9a0, file chatgpt_fields.py>, line 103
+#   16: <Code311 code object _path_tokens at 0x10617f940, file chatgpt_fields.py>, line 107
+#   17: <Code311 code object _safe_for_account_id at 0x10617f910, file chatgpt_fields.py>, line 119
+#   18: <Code311 code object _safe_for_user_id at 0x10614e400, file chatgpt_fields.py>, line 128
+#   19: <Code311 code object _field_for_path at 0x10614e550, file chatgpt_fields.py>, line 135
+#   20: <Code311 code object _remember at 0x10614e580, file chatgpt_fields.py>, line 169
+#   21: <Code311 code object deep_find_chatgpt_fields at 0x10614e5e0, file chatgpt_fields.py>, line 179
+#   22: <Code311 code object extract_chatgpt_auth_fields at 0x10614e790, file chatgpt_fields.py>, line 213
+#   23: <Code311 code object build_chatgpt_field_status at 0x10614e7c0, file chatgpt_fields.py>, line 268
+#   24: <Code311 code object normalize_chatgpt_fields at 0x10614e820, file chatgpt_fields.py>, line 296
+#   25: <Code311 code object merge_chatgpt_fields at 0x10614e8b0, file chatgpt_fields.py>, line 317
+#   26: <Code311 code object chatgpt_credentials_from_item at 0x10614e910, file chatgpt_fields.py>, line 349
+#   27: <Code311 code object sub2_extra_from_item at 0x10614e940, file chatgpt_fields.py>, line 369
+#   28: <Code311 code object fetch_sub2_account_detail at 0x10614e970, file chatgpt_fields.py>, line 393
+#   29: <Code311 code object update_json_account_fields at 0x10614e3a0, file chatgpt_fields.py>, line 468
+#   30: ('return', 'str')
+#   31: ('value', 'Any', 'return', 'str')
+#   32: ('token', 'str', 'return', 'Dict[str, Any]')
+#   33: ((),)
+#   34: ('data', 'Any', 'path', 'Tuple[str, ...]', 'return', 'Iterable[Tuple[Tuple[str, ...], Any]]')
+#   35: ('path', 'Tuple[str, ...]', 'return', 'str')
+#   36: ('path', 'Tuple[str, ...]', 'return', 'set[str]')
+#   37: ('path', 'Tuple[str, ...]', 'key', 'str', 'return', 'bool')
+#   38: ('path', 'Tuple[str, ...]', 'return', 'bool')
+#   39: ('fields', 'Dict[str, str]', 'sources', 'Dict[str, str]', 'key', 'str', 'value', 'Any', 'source', 'str')
+#   40: ('data',)
+#   41: ('data', 'Any', 'source_name', 'str', 'return', 'Dict[str, Any]')
+#   42: (None, None)
+#   43: ('creds', 'Dict[str, Any] | None', 'exchange_data', 'Dict[str, Any] | None', 'extra_sources', 'Iterable[Tuple[str, Any]] | None', 'return', 'Dict[str, Any]')
+#   44: ('fields', 'Dict[str, Any]', 'return', 'Dict[str, Any]')
+#   45: (False,)
+#   46: ('item', 'Dict[str, Any]', 'mark_checked', 'bool', 'return', 'Dict[str, Any]')
+#   47: (True,)
+#   48: ('target', 'Dict[str, Any]', 'source', 'Dict[str, Any] | None', 'mark_checked', 'bool', 'return', 'Dict[str, Any]')
+#   49: ('',)
+#   50: ('item', 'Dict[str, Any]', 'email', 'str', 'return', 'Dict[str, Any]')
+#   51: ('item', 'Dict[str, Any]', 'return', 'Dict[str, Any]')
+#   52: (5, None, '')
+#   53: ('sub2api_url', 'str', 'admin_token', 'str', 'sub2api_account_id', 'str', 'timeout', 'int', 'log_fn', 'Callable[[str], None] | None', 'proxy', 'str', 'return', 'Dict[str, Any]')
+#   54: ('item',)
+#   55: ('data', 'Any', 'source_name', 'str', 'return', 'tuple[Any, bool]')
+# Names:
+#    0: __doc__
+#    1: __future__
+#    2: annotations
+#    3: base64
+#    4: json
+#    5: time
+#    6: pathlib
+#    7: Path
+#    8: typing
+#    9: Any
+#   10: Callable
+#   11: Dict
+#   12: Iterable
+#   13: Tuple
+#   14: CHATGPT_FIELD_KEYS
+#   15: CHATGPT_ALL_KEYS
+#   16: _BAD_ACCOUNT_PATH_HINTS
+#   17: _SAFE_ACCOUNT_PATH_HINTS
+#   18: _SAFE_USER_PATH_HINTS
+#   19: now_stamp
+#   20: clean_str
+#   21: decode_jwt_payload
+#   22: _iter_nodes
+#   23: _path_text
+#   24: _path_tokens
+#   25: _safe_for_account_id
+#   26: _safe_for_user_id
+#   27: _field_for_path
+#   28: _remember
+#   29: deep_find_chatgpt_fields
+#   30: extract_chatgpt_auth_fields
+#   31: build_chatgpt_field_status
+#   32: normalize_chatgpt_fields
+#   33: merge_chatgpt_fields
+#   34: chatgpt_credentials_from_item
+#   35: sub2_extra_from_item
+#   36: fetch_sub2_account_detail
+#   37: update_json_account_fields
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ("Shared helpers for extracting and preserving ChatGPT account metadata.\n\nThe registration flow gets credentials from several places (OpenAI JWTs,\nSUB2 exchange-code responses, local result JSON, and sometimes SUB2 account\ndetail responses).  This module keeps the field mapping conservative so we do\nnot accidentally treat a SUB2 account id as a ChatGPT account id.\n")
+               4 STORE_NAME           (__doc__)
+
+ 10:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (('annotations',))
+              10 IMPORT_NAME          (__future__)
+              12 IMPORT_FROM          (annotations)
+              14 STORE_NAME           (annotations)
+              16 POP_TOP
+
+ 12:          18 LOAD_CONST           (0)
+              20 LOAD_CONST           (None)
+              22 IMPORT_NAME          (base64)
+              24 STORE_NAME           (base64)
+
+ 13:          26 LOAD_CONST           (0)
+              28 LOAD_CONST           (None)
+              30 IMPORT_NAME          (json)
+              32 STORE_NAME           (json)
+
+ 14:          34 LOAD_CONST           (0)
+              36 LOAD_CONST           (None)
+              38 IMPORT_NAME          (time)
+              40 STORE_NAME           (time)
+
+ 15:          42 LOAD_CONST           (0)
+              44 LOAD_CONST           (('Path',))
+              46 IMPORT_NAME          (pathlib)
+              48 IMPORT_FROM          (Path)
+              50 STORE_NAME           (Path)
+              52 POP_TOP
+
+ 16:          54 LOAD_CONST           (0)
+              56 LOAD_CONST           (('Any', 'Callable', 'Dict', 'Iterable', 'Tuple'))
+              58 IMPORT_NAME          (typing)
+              60 IMPORT_FROM          (Any)
+              62 STORE_NAME           (Any)
+              64 IMPORT_FROM          (Callable)
+              66 STORE_NAME           (Callable)
+              68 IMPORT_FROM          (Dict)
+              70 STORE_NAME           (Dict)
+              72 IMPORT_FROM          (Iterable)
+              74 STORE_NAME           (Iterable)
+              76 IMPORT_FROM          (Tuple)
+              78 STORE_NAME           (Tuple)
+              80 POP_TOP
+
+ 19:          82 LOAD_CONST           (('chatgpt_account_id', 'chatgpt_account_user_id', 'chatgpt_user_id', 'chatgpt_plan_type'))
+              84 STORE_NAME           (CHATGPT_FIELD_KEYS)
+
+ 26:          86 LOAD_NAME            (CHATGPT_FIELD_KEYS)
+              88 LOAD_CONST           (('account_id', 'chatgpt_auth_user_id', 'chatgpt_field_source', 'chatgpt_field_checked_at', 'cpa_ready', 'cpa_missing_reason'))
+              90 BINARY_OP            (+)
+              94 STORE_NAME           (CHATGPT_ALL_KEYS)
+
+ 35:          96 BUILD_SET            0
+              98 LOAD_CONST           ({'billing', 'groups', 'sub2', 'sub2api', 'admin', 'group', 'proxy'})
+             100 SET_UPDATE           1
+             102 STORE_NAME           (_BAD_ACCOUNT_PATH_HINTS)
+
+ 45:         104 BUILD_SET            0
+             106 LOAD_CONST           ({'openai', 'workspace', 'workspaces', 'chatgpt', 'auth'})
+             108 SET_UPDATE           1
+             110 STORE_NAME           (_SAFE_ACCOUNT_PATH_HINTS)
+
+ 53:         112 BUILD_SET            0
+             114 LOAD_CONST           ({'credential', 'openai', 'profile', 'jwt', 'chatgpt', 'credentials', 'auth', 'claims'})
+             116 SET_UPDATE           1
+             118 STORE_NAME           (_SAFE_USER_PATH_HINTS)
+
+ 65:         120 LOAD_CONST           (('return', 'str'))
+             122 LOAD_CONST           (<Code311 code object now_stamp at 0x10617fbb0, file chatgpt_fields.py>, line 65)
+             124 MAKE_FUNCTION
+             126 SET_FUNCTION_ATTRIBUTE 4
+             128 STORE_NAME           (now_stamp)
+
+ 69:         130 LOAD_CONST           (('value', 'Any', 'return', 'str'))
+             132 LOAD_CONST           (<Code311 code object clean_str at 0x10617fa90, file chatgpt_fields.py>, line 69)
+             134 MAKE_FUNCTION
+             136 SET_FUNCTION_ATTRIBUTE 4
+             138 STORE_NAME           (clean_str)
+
+ 80:         140 LOAD_CONST           (('token', 'str', 'return', 'Dict[str, Any]'))
+             142 LOAD_CONST           (<Code311 code object decode_jwt_payload at 0x10617fa00, file chatgpt_fields.py>, line 80)
+             144 MAKE_FUNCTION
+             146 SET_FUNCTION_ATTRIBUTE 4
+             148 STORE_NAME           (decode_jwt_payload)
+
+ 93:         150 LOAD_CONST           (((),))
+             152 LOAD_CONST           (('data', 'Any', 'path', 'Tuple[str, ...]', 'return', 'Iterable[Tuple[Tuple[str, ...], Any]]'))
+             154 LOAD_CONST           (<Code311 code object _iter_nodes at 0x10617f9d0, file chatgpt_fields.py>, line 93)
+             156 MAKE_FUNCTION
+             158 SET_FUNCTION_ATTRIBUTE 4
+             160 SET_FUNCTION_ATTRIBUTE 1
+             162 STORE_NAME           (_iter_nodes)
+
+103:         164 LOAD_CONST           (('path', 'Tuple[str, ...]', 'return', 'str'))
+             166 LOAD_CONST           (<Code311 code object _path_text at 0x10617f9a0, file chatgpt_fields.py>, line 103)
+             168 MAKE_FUNCTION
+             170 SET_FUNCTION_ATTRIBUTE 4
+             172 STORE_NAME           (_path_text)
+
+107:         174 LOAD_CONST           (('path', 'Tuple[str, ...]', 'return', 'set[str]'))
+             176 LOAD_CONST           (<Code311 code object _path_tokens at 0x10617f940, file chatgpt_fields.py>, line 107)
+             178 MAKE_FUNCTION
+             180 SET_FUNCTION_ATTRIBUTE 4
+             182 STORE_NAME           (_path_tokens)
+
+119:         184 LOAD_CONST           (('path', 'Tuple[str, ...]', 'key', 'str', 'return', 'bool'))
+             186 LOAD_CONST           (<Code311 code object _safe_for_account_id at 0x10617f910, file chatgpt_fields.py>, line 119)
+             188 MAKE_FUNCTION
+             190 SET_FUNCTION_ATTRIBUTE 4
+             192 STORE_NAME           (_safe_for_account_id)
+
+128:         194 LOAD_CONST           (('path', 'Tuple[str, ...]', 'return', 'bool'))
+             196 LOAD_CONST           (<Code311 code object _safe_for_user_id at 0x10614e400, file chatgpt_fields.py>, line 128)
+             198 MAKE_FUNCTION
+             200 SET_FUNCTION_ATTRIBUTE 4
+             202 STORE_NAME           (_safe_for_user_id)
+
+135:         204 LOAD_CONST           (('path', 'Tuple[str, ...]', 'return', 'str'))
+             206 LOAD_CONST           (<Code311 code object _field_for_path at 0x10614e550, file chatgpt_fields.py>, line 135)
+             208 MAKE_FUNCTION
+             210 SET_FUNCTION_ATTRIBUTE 4
+             212 STORE_NAME           (_field_for_path)
+
+169:         214 LOAD_CONST           (('fields', 'Dict[str, str]', 'sources', 'Dict[str, str]', 'key', 'str', 'value', 'Any', 'source', 'str'))
+             216 LOAD_CONST           (<Code311 code object _remember at 0x10614e580, file chatgpt_fields.py>, line 169)
+             218 MAKE_FUNCTION
+             220 SET_FUNCTION_ATTRIBUTE 4
+             222 STORE_NAME           (_remember)
+
+179:         224 LOAD_CONST           (('data',))
+             226 LOAD_CONST           (('data', 'Any', 'source_name', 'str', 'return', 'Dict[str, Any]'))
+             228 LOAD_CONST           (<Code311 code object deep_find_chatgpt_fields at 0x10614e5e0, file chatgpt_fields.py>, line 179)
+             230 MAKE_FUNCTION
+             232 SET_FUNCTION_ATTRIBUTE 4
+             234 SET_FUNCTION_ATTRIBUTE 1
+             236 STORE_NAME           (deep_find_chatgpt_fields)
+
+215:         238 NOP
+
+216:         240 NOP
+
+213:         242 LOAD_CONST           ((None, None))
+
+214:         244 NOP
+
+213:         246 NOP
+
+215:         248 NOP
+
+213:         250 NOP
+
+216:         252 NOP
+
+213:         254 NOP
+
+217:         256 NOP
+
+213:         258 LOAD_CONST           (('creds', 'Dict[str, Any] | None', 'exchange_data', 'Dict[str, Any] | None', 'extra_sources', 'Iterable[Tuple[str, Any]] | None', 'return', 'Dict[str, Any]'))
+             260 LOAD_CONST           (<Code311 code object extract_chatgpt_auth_fields at 0x10614e790, file chatgpt_fields.py>, line 213)
+             262 MAKE_FUNCTION
+             264 SET_FUNCTION_ATTRIBUTE 4
+             266 SET_FUNCTION_ATTRIBUTE 1
+             268 STORE_NAME           (extract_chatgpt_auth_fields)
+
+268:         270 LOAD_CONST           (('fields', 'Dict[str, Any]', 'return', 'Dict[str, Any]'))
+             272 LOAD_CONST           (<Code311 code object build_chatgpt_field_status at 0x10614e7c0, file chatgpt_fields.py>, line 268)
+             274 MAKE_FUNCTION
+             276 SET_FUNCTION_ATTRIBUTE 4
+             278 STORE_NAME           (build_chatgpt_field_status)
+
+296:         280 LOAD_CONST           ((False,))
+             282 LOAD_CONST           (('item', 'Dict[str, Any]', 'mark_checked', 'bool', 'return', 'Dict[str, Any]'))
+             284 LOAD_CONST           (<Code311 code object normalize_chatgpt_fields at 0x10614e820, file chatgpt_fields.py>, line 296)
+             286 MAKE_FUNCTION
+             288 SET_FUNCTION_ATTRIBUTE 4
+             290 SET_FUNCTION_ATTRIBUTE 1
+             292 STORE_NAME           (normalize_chatgpt_fields)
+
+317:         294 LOAD_CONST           ((True,))
+             296 LOAD_CONST           (('target', 'Dict[str, Any]', 'source', 'Dict[str, Any] | None', 'mark_checked', 'bool', 'return', 'Dict[str, Any]'))
+             298 LOAD_CONST           (<Code311 code object merge_chatgpt_fields at 0x10614e8b0, file chatgpt_fields.py>, line 317)
+             300 MAKE_FUNCTION
+             302 SET_FUNCTION_ATTRIBUTE 4
+             304 SET_FUNCTION_ATTRIBUTE 1
+             306 STORE_NAME           (merge_chatgpt_fields)
+
+349:         308 LOAD_CONST           (('',))
+             310 LOAD_CONST           (('item', 'Dict[str, Any]', 'email', 'str', 'return', 'Dict[str, Any]'))
+             312 LOAD_CONST           (<Code311 code object chatgpt_credentials_from_item at 0x10614e910, file chatgpt_fields.py>, line 349)
+             314 MAKE_FUNCTION
+             316 SET_FUNCTION_ATTRIBUTE 4
+             318 SET_FUNCTION_ATTRIBUTE 1
+             320 STORE_NAME           (chatgpt_credentials_from_item)
+
+369:         322 LOAD_CONST           (('item', 'Dict[str, Any]', 'return', 'Dict[str, Any]'))
+             324 LOAD_CONST           (<Code311 code object sub2_extra_from_item at 0x10614e940, file chatgpt_fields.py>, line 369)
+             326 MAKE_FUNCTION
+             328 SET_FUNCTION_ATTRIBUTE 4
+             330 STORE_NAME           (sub2_extra_from_item)
+
+397:         332 NOP
+
+398:         334 NOP
+
+399:         336 NOP
+
+393:         338 LOAD_CONST           ((5, None, ''))
+
+394:         340 NOP
+
+393:         342 NOP
+
+395:         344 NOP
+
+393:         346 NOP
+
+396:         348 NOP
+
+393:         350 NOP
+
+397:         352 NOP
+
+393:         354 NOP
+
+398:         356 NOP
+
+393:         358 NOP
+
+399:         360 NOP
+
+393:         362 NOP
+
+400:         364 NOP
+
+393:         366 LOAD_CONST           (('sub2api_url', 'str', 'admin_token', 'str', 'sub2api_account_id', 'str', 'timeout', 'int', 'log_fn', 'Callable[[str], None] | None', 'proxy', 'str', 'return', 'Dict[str, Any]'))
+             368 LOAD_CONST           (<Code311 code object fetch_sub2_account_detail at 0x10614e970, file chatgpt_fields.py>, line 393)
+             370 MAKE_FUNCTION
+             372 SET_FUNCTION_ATTRIBUTE 4
+             374 SET_FUNCTION_ATTRIBUTE 1
+             376 STORE_NAME           (fetch_sub2_account_detail)
+
+468:         378 LOAD_CONST           (('item',))
+             380 LOAD_CONST           (('data', 'Any', 'source_name', 'str', 'return', 'tuple[Any, bool]'))
+             382 LOAD_CONST           (<Code311 code object update_json_account_fields at 0x10614e3a0, file chatgpt_fields.py>, line 468)
+             384 MAKE_FUNCTION
+             386 SET_FUNCTION_ATTRIBUTE 4
+             388 SET_FUNCTION_ATTRIBUTE 1
+             390 STORE_NAME           (update_json_account_fields)
+             392 RETURN_CONST         (None)
+
+
+# Method Name:       now_stamp
+# Filename:          chatgpt_fields.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        65
+# Constants:
+#    0: None
+#    1: '%Y-%m-%d %H:%M:%S'
+# Names:
+#    0: time
+#    1: strftime
+ 65:           0 RESUME               0
+
+ 66:           2 LOAD_GLOBAL          (time)
+              12 LOAD_ATTR            (strftime)
+              32 PUSH_NULL
+              34 LOAD_CONST           ("%Y-%m-%d %H:%M:%S")
+              36 CALL                 (1 positional)
+              44 RETURN_VALUE
+
+
+# Method Name:       clean_str
+# Filename:          chatgpt_fields.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        69
+# Constants:
+#    0: None
+#    1: ''
+#    2: 'true'
+#    3: 'false'
+# Names:
+#    0: isinstance
+#    1: bool
+#    2: dict
+#    3: list
+#    4: tuple
+#    5: set
+#    6: str
+#    7: strip
+# Varnames:
+#	value, text
+# Positional arguments:
+#	value
+# Local variables:
+#    1: text
+ 69:           0 RESUME               0
+
+ 70:           2 LOAD_FAST            (value)
+               4 POP_JUMP_IF_NOT_NONE (to 10)
+
+ 71:           8 RETURN_CONST         ("")
+
+ 72:     >>   10 LOAD_GLOBAL          (NULL + isinstance)
+              20 LOAD_FAST            (value)
+              22 LOAD_GLOBAL          (bool)
+              32 CALL                 (2 positional)
+              40 TO_BOOL
+              48 POP_JUMP_IF_FALSE    (to 74)
+
+ 73:          52 LOAD_FAST            (value)
+              54 TO_BOOL
+              62 POP_JUMP_IF_FALSE    (to 70)
+              66 LOAD_CONST           ("true")
+              68 RETURN_VALUE
+         >>   70 LOAD_CONST           ("false")
+              72 RETURN_VALUE
+
+ 74:     >>   74 LOAD_GLOBAL          (NULL + isinstance)
+              84 LOAD_FAST            (value)
+              86 LOAD_GLOBAL          (dict)
+              96 LOAD_GLOBAL          (list)
+             106 LOAD_GLOBAL          (tuple)
+             116 LOAD_GLOBAL          (set)
+             126 BUILD_TUPLE          4
+             128 CALL                 (2 positional)
+             136 TO_BOOL
+             144 POP_JUMP_IF_FALSE    (to 150)
+
+ 75:         148 RETURN_CONST         ("")
+
+ 76:     >>  150 LOAD_GLOBAL          (NULL + str)
+             160 LOAD_FAST            (value)
+             162 CALL                 (1 positional)
+             170 LOAD_ATTR            (NULL|self + strip)
+             190 CALL                 (0 positional)
+             198 STORE_FAST           (text)
+
+ 77:         200 LOAD_FAST            (text)
+             202 RETURN_VALUE
+
+
+# Method Name:       decode_jwt_payload
+# Filename:          chatgpt_fields.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        80
+# Constants:
+#    0: None
+#    1: ''
+#    2: '.'
+#    3: 2
+#    4: 1
+#    5: '='
+#    6: 4
+#    7: 'ascii'
+#    8: 'utf-8'
+# Names:
+#    0: str
+#    1: split
+#    2: len
+#    3: base64
+#    4: urlsafe_b64decode
+#    5: encode
+#    6: json
+#    7: loads
+#    8: decode
+#    9: isinstance
+#   10: dict
+#   11: Exception
+# Varnames:
+#	token, parts, payload, raw, data
+# Positional arguments:
+#	token
+# Local variables:
+#    1: parts
+#    2: payload
+#    3: raw
+#    4: data
+ 80:           0 RESUME               0
+
+ 81:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (token)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + split)
+              60 LOAD_CONST           (".")
+              62 CALL                 (1 positional)
+              70 STORE_FAST           (parts)
+
+ 82:          72 LOAD_GLOBAL          (NULL + len)
+              82 LOAD_FAST            (parts)
+              84 CALL                 (1 positional)
+              92 LOAD_CONST           (2)
+              94 COMPARE_OP           (<)
+              98 POP_JUMP_IF_FALSE    (to 106)
+
+ 83:         102 BUILD_MAP            0
+             104 RETURN_VALUE
+
+ 84:     >>  106 LOAD_FAST            (parts)
+             108 LOAD_CONST           (1)
+             110 BINARY_SUBSCR
+             114 LOAD_CONST           ("=")
+             116 LOAD_GLOBAL          (NULL + len)
+             126 LOAD_FAST            (parts)
+             128 LOAD_CONST           (1)
+             130 BINARY_SUBSCR
+             134 CALL                 (1 positional)
+             142 UNARY_NEGATIVE
+             144 LOAD_CONST           (4)
+             146 BINARY_OP            (%)
+             150 BINARY_OP            (*)
+             154 BINARY_OP            (+)
+             158 STORE_FAST           (payload)
+
+ 85:         160 NOP
+
+ 86:         162 LOAD_GLOBAL          (base64)
+             172 LOAD_ATTR            (urlsafe_b64decode)
+             192 PUSH_NULL
+             194 LOAD_FAST            (payload)
+             196 LOAD_ATTR            (NULL|self + encode)
+             216 LOAD_CONST           ("ascii")
+             218 CALL                 (1 positional)
+             226 CALL                 (1 positional)
+             234 STORE_FAST           (raw)
+
+ 87:         236 LOAD_GLOBAL          (json)
+             246 LOAD_ATTR            (loads)
+             266 PUSH_NULL
+             268 LOAD_FAST            (raw)
+             270 LOAD_ATTR            (NULL|self + decode)
+             290 LOAD_CONST           ("utf-8")
+             292 CALL                 (1 positional)
+             300 CALL                 (1 positional)
+             308 STORE_FAST           (data)
+
+ 88:         310 LOAD_GLOBAL          (NULL + isinstance)
+             320 LOAD_FAST            (data)
+             322 LOAD_GLOBAL          (dict)
+             332 CALL                 (2 positional)
+             340 TO_BOOL
+             348 POP_JUMP_IF_FALSE    (to 356)
+             352 LOAD_FAST            (data)
+             354 RETURN_VALUE
+         >>  356 BUILD_MAP            0
+             358 RETURN_VALUE
+         >>  360 PUSH_EXC_INFO
+
+ 89:         362 LOAD_GLOBAL          (Exception)
+             372 CHECK_EXC_MATCH
+             374 POP_JUMP_IF_FALSE    (to 388)
+             378 POP_TOP
+
+ 90:         380 BUILD_MAP            0
+             382 SWAP                 (TOS <-> TOS1)
+             384 POP_EXCEPT
+             386 RETURN_VALUE
+
+ 89:     >>  388 RERAISE              0
+         >>  390 COPY                 3
+             392 POP_EXCEPT
+             394 RERAISE              1
+
+ExceptionTable:
+  162 to 352 -> 360 [0]
+  356 to 356 -> 360 [0]
+  360 to 382 -> 390 [1] lasti
+  388 to 388 -> 390 [1] lasti
+
+# Method Name:       _iter_nodes
+# Filename:          chatgpt_fields.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        8
+# Flags:             0x01000023 (0x1000000 | GENERATOR | NEWLOCALS | OPTIMIZED)
+# First Line:        93
+# Constants:
+#    0: None
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: items
+#    3: _iter_nodes
+#    4: str
+#    5: list
+#    6: enumerate
+# Varnames:
+#	data, path, key, value, idx
+# Positional arguments:
+#	data, path
+# Local variables:
+#    2: key
+#    3: value
+#    4: idx
+ 93:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+
+ 94:           6 LOAD_FAST_LOAD_FAST  (path, data)
+               8 BUILD_TUPLE          2
+              10 YIELD_VALUE          0
+              12 RESUME               5
+              14 POP_TOP
+
+ 95:          16 LOAD_GLOBAL          (NULL + isinstance)
+              26 LOAD_FAST            (data)
+              28 LOAD_GLOBAL          (dict)
+              38 CALL                 (2 positional)
+              46 TO_BOOL
+              54 POP_JUMP_IF_FALSE    (to 174)
+
+ 96:          58 LOAD_FAST            (data)
+              60 LOAD_ATTR            (NULL|self + items)
+              80 CALL                 (0 positional)
+              88 GET_ITER
+              90 FOR_ITER             (to 168)
+              94 UNPACK_SEQUENCE      2
+              98 STORE_FAST_STORE_FAST (key, value)
+
+ 97:         100 LOAD_GLOBAL          (NULL + _iter_nodes)
+             110 LOAD_FAST_LOAD_FAST  (value, path)
+             112 LOAD_GLOBAL          (NULL + str)
+             122 LOAD_FAST            (key)
+             124 CALL                 (1 positional)
+             132 BUILD_TUPLE          1
+             134 BINARY_OP            (+)
+             138 CALL                 (2 positional)
+             146 GET_YIELD_FROM_ITER
+             148 LOAD_CONST           (None)
+             150 SEND                 (to 158)
+             154 YIELD_VALUE          1
+             156 RESUME               2
+             158 JUMP_BACKWARD_NO_INTERRUPT (to 150)
+         >>  160 END_SEND
+             162 POP_TOP
+             164 JUMP_BACKWARD        (to 90)
+
+ 96:     >>  168 END_FOR
+         >>  170 POP_TOP
+             172 RETURN_CONST         (None)
+
+ 98:     >>  174 LOAD_GLOBAL          (NULL + isinstance)
+             184 LOAD_FAST            (data)
+             186 LOAD_GLOBAL          (list)
+             196 CALL                 (2 positional)
+             204 TO_BOOL
+             212 POP_JUMP_IF_FALSE    (to 322)
+
+ 99:         216 LOAD_GLOBAL          (NULL + enumerate)
+             226 LOAD_FAST            (data)
+             228 CALL                 (1 positional)
+             236 GET_ITER
+             238 FOR_ITER             (to 316)
+             242 UNPACK_SEQUENCE      2
+         >>  246 STORE_FAST_STORE_FAST (idx, value)
+
+100:         248 LOAD_GLOBAL          (NULL + _iter_nodes)
+             258 LOAD_FAST_LOAD_FAST  (value, path)
+             260 LOAD_GLOBAL          (NULL + str)
+             270 LOAD_FAST            (idx)
+             272 CALL                 (1 positional)
+             280 BUILD_TUPLE          1
+             282 BINARY_OP            (+)
+             286 CALL                 (2 positional)
+             294 GET_YIELD_FROM_ITER
+             296 LOAD_CONST           (None)
+             298 SEND                 (to 306)
+             302 YIELD_VALUE          1
+             304 RESUME               2
+             306 JUMP_BACKWARD_NO_INTERRUPT (to 298)
+         >>  308 END_SEND
+             310 POP_TOP
+             312 JUMP_BACKWARD        (to 238)
+
+ 99:     >>  316 END_FOR
+         >>  318 POP_TOP
+             320 RETURN_CONST         (None)
+
+ 98:     >>  322 RETURN_CONST         (None)
+
+ 97:     >>  324 CLEANUP_THROW
+             326 JUMP_BACKWARD_NO_INTERRUPT (to 160)
+
+100:     >>  328 CLEANUP_THROW
+             330 JUMP_BACKWARD_NO_INTERRUPT (to 308)
+         >>  332 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+             334 RERAISE              1
+
+ExceptionTable:
+  4 to 152 -> 332 [0] lasti
+  154 to 154 -> 324 [3]
+  156 to 300 -> 332 [0] lasti
+  302 to 302 -> 328 [3]
+  304 to 324 -> 332 [0] lasti
+  328 to 328 -> 332 [0] lasti
+
+# Method Name:       _path_text
+# Filename:          chatgpt_fields.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        103
+# Constants:
+#    0: None
+#    1: '.'
+# Names:
+#    0: join
+# Varnames:
+#	path
+# Positional arguments:
+#	path
+103:           0 RESUME               0
+
+104:           2 LOAD_CONST           (".")
+               4 LOAD_ATTR            (NULL|self + join)
+              24 LOAD_FAST            (path)
+              26 CALL                 (1 positional)
+              34 RETURN_VALUE
+
+
+# Method Name:       _path_tokens
+# Filename:          chatgpt_fields.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        107
+# Constants:
+#    0: None
+#    1: '-'
+#    2: '_'
+# Names:
+#    0: set
+#    1: str
+#    2: replace
+#    3: split
+#    4: strip
+#    5: lower
+#    6: add
+# Varnames:
+#	path, tokens, part, piece
+# Positional arguments:
+#	path
+# Local variables:
+#    1: tokens
+#    2: part
+#    3: piece
+107:           0 RESUME               0
+
+108:           2 LOAD_GLOBAL          (NULL + set)
+              12 CALL                 (0 positional)
+              20 STORE_FAST           (tokens)
+
+109:          22 LOAD_FAST            (path)
+              24 GET_ITER
+              26 FOR_ITER             (to 372)
+              30 STORE_FAST           (part)
+

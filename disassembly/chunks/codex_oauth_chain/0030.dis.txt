@@ -1,0 +1,800 @@
+             492 LOAD_CONST           (", timeout=")
+             494 LOAD_FAST            (flow_timeout)
+             496 FORMAT_SIMPLE
+             498 LOAD_CONST           ("s")
+             500 BUILD_STRING         9
+             502 LOAD_CONST           ("info")
+             504 CALL                 (3 positional)
+             512 POP_TOP
+
+1701:         514 LOAD_FAST            (run_node_bridge)
+             516 PUSH_NULL
+
+1702:         518 LOAD_FAST            (self)
+             520 LOAD_ATTR            (mode)
+
+1703:         540 LOAD_FAST            (self)
+             542 LOAD_ATTR            (device_id)
+
+1704:         562 LOAD_FAST            (self)
+             564 LOAD_ATTR            (proxy_label)
+
+1705:         584 LOAD_FAST            (self)
+             586 LOAD_ATTR            (proxy)
+
+1706:         606 LOAD_FAST            (self)
+             608 LOAD_ATTR            (fingerprint)
+
+1707:         628 LOAD_FAST            (flow)
+
+1708:         630 LOAD_FAST            (persona)
+
+1709:         632 LOAD_FAST            (self)
+             634 LOAD_ATTR            (script_path)
+
+1710:         654 LOAD_FAST            (context)
+
+1711:         656 LOAD_FAST            (flow_timeout)
+
+1701:         658 LOAD_CONST           (('mode', 'device_id', 'proxy_label', 'proxy', 'fingerprint', 'flow', 'persona', 'script_path', 'context', 'timeout'))
+             660 CALL_KW              10
+             662 STORE_FAST           (result)
+
+1713:         664 LOAD_FAST            (result)
+             666 LOAD_ATTR            (NULL|self + get)
+             686 LOAD_CONST           ("ok")
+             688 CALL                 (1 positional)
+             696 TO_BOOL
+             704 POP_JUMP_IF_FALSE    (to 756)
+             708 LOAD_FAST            (result)
+             710 LOAD_ATTR            (NULL|self + get)
+             730 LOAD_CONST           ("token_generated")
+             732 CALL                 (1 positional)
+             740 TO_BOOL
+             748 POP_JUMP_IF_FALSE    (to 756)
+
+1714:         752 POP_TOP
+             754 JUMP_FORWARD         (to 1064)
+
+1715:     >>  756 LOAD_GLOBAL          (NULL + _clean)
+             766 LOAD_FAST            (result)
+             768 LOAD_ATTR            (NULL|self + get)
+             788 LOAD_CONST           ("error")
+             790 CALL                 (1 positional)
+             798 CALL                 (1 positional)
+             806 LOAD_ATTR            (NULL|self + lower)
+             826 CALL                 (0 positional)
+             834 LOAD_CONST           ("task_stopped")
+             836 COMPARE_OP           (==)
+             840 POP_JUMP_IF_FALSE    (to 866)
+
+1716:         844 LOAD_GLOBAL          (NULL + CodexChainError)
+             854 LOAD_CONST           ("task_stopped")
+             856 CALL                 (1 positional)
+             864 RAISE_VARARGS        (exception instance)
+
+1717:     >>  866 LOAD_FAST_LOAD_FAST  (attempt, attempts)
+             868 COMPARE_OP           (<)
+             872 POP_JUMP_IF_TRUE     (to 880)
+             876 JUMP_BACKWARD        (to 434)
+
+1718:     >>  880 LOAD_GLOBAL          (NULL + _emit)
+             890 LOAD_FAST            (self)
+             892 LOAD_ATTR            (log_fn)
+             912 LOAD_CONST           ("  [SentinelRunner] token 生成失败，重试 flow=")
+             914 LOAD_FAST            (flow)
+             916 FORMAT_SIMPLE
+             918 LOAD_CONST           (": ")
+             920 LOAD_GLOBAL          (NULL + str)
+             930 LOAD_FAST            (result)
+             932 LOAD_ATTR            (NULL|self + get)
+             952 LOAD_CONST           ("error")
+             954 CALL                 (1 positional)
+             962 COPY                 1
+             964 TO_BOOL
+             972 POP_JUMP_IF_TRUE     (to 980)
+             976 POP_TOP
+             978 LOAD_CONST           ("no token")
+         >>  980 CALL                 (1 positional)
+             988 LOAD_CONST           (None)
+             990 LOAD_CONST           (160)
+             992 BINARY_SLICE
+             994 FORMAT_SIMPLE
+             996 BUILD_STRING         4
+             998 LOAD_CONST           ("warn")
+            1000 CALL                 (3 positional)
+            1008 POP_TOP
+
+1719:        1010 LOAD_GLOBAL          (time)
+            1020 LOAD_ATTR            (sleep)
+            1040 PUSH_NULL
+            1042 LOAD_CONST           (1.0)
+            1044 CALL                 (1 positional)
+            1052 POP_TOP
+            1054 EXTENDED_ARG         (256)
+            1056 JUMP_BACKWARD        (to 434)
+
+1699:     >> 1060 END_FOR
+            1062 POP_TOP
+
+1720:     >> 1064 LOAD_FAST            (result)
+            1066 LOAD_ATTR            (NULL|self + get)
+            1086 LOAD_CONST           ("ok")
+            1088 CALL                 (1 positional)
+            1096 TO_BOOL
+            1104 POP_JUMP_IF_FALSE    (to 1152)
+            1108 LOAD_FAST            (result)
+            1110 LOAD_ATTR            (NULL|self + get)
+            1130 LOAD_CONST           ("token_generated")
+            1132 CALL                 (1 positional)
+            1140 TO_BOOL
+            1148 POP_JUMP_IF_TRUE     (to 1234)
+
+1721:     >> 1152 LOAD_GLOBAL          (NULL + CodexChainError)
+            1162 LOAD_CONST           ("node_sentinel_failed:")
+            1164 LOAD_FAST            (flow)
+            1166 FORMAT_SIMPLE
+            1168 LOAD_CONST           (": ")
+            1170 LOAD_FAST            (result)
+            1172 LOAD_ATTR            (NULL|self + get)
+            1192 LOAD_CONST           ("error")
+            1194 CALL                 (1 positional)
+            1202 COPY                 1
+            1204 TO_BOOL
+            1212 POP_JUMP_IF_TRUE     (to 1220)
+            1216 POP_TOP
+            1218 LOAD_CONST           ("no token")
+         >> 1220 FORMAT_SIMPLE
+            1222 BUILD_STRING         4
+            1224 CALL                 (1 positional)
+            1232 RAISE_VARARGS        (exception instance)
+
+1722:     >> 1234 LOAD_GLOBAL          (NULL + _emit)
+
+1723:        1244 LOAD_FAST            (self)
+            1246 LOAD_ATTR            (log_fn)
+
+1724:        1266 LOAD_CONST           ("  [SentinelRunner] token 生成成功, flow=")
+            1268 LOAD_FAST            (flow)
+            1270 FORMAT_SIMPLE
+            1272 LOAD_CONST           (", 包含 so=")
+            1274 LOAD_GLOBAL          (NULL + bool)
+            1284 LOAD_FAST            (result)
+            1286 LOAD_ATTR            (NULL|self + get)
+            1306 LOAD_CONST           ("so_token")
+            1308 CALL                 (1 positional)
+            1316 CALL                 (1 positional)
+            1324 FORMAT_SIMPLE
+         >> 1326 BUILD_STRING         4
+
+1725:        1328 LOAD_CONST           ("info")
+
+1722:        1330 CALL                 (3 positional)
+            1338 POP_TOP
+
+1727:        1340 LOAD_FAST_LOAD_FAST  (result, self)
+            1342 LOAD_ATTR            (_cache)
+            1362 LOAD_FAST            (flow)
+            1364 STORE_SUBSCR
+
+1728:        1368 LOAD_FAST            (result)
+            1370 RETURN_VALUE
+
+
+# Method Name:       __init__
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 5
+# Number of locals:  8
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1734
+# Constants:
+#    0: None
+#    1: 0
+#    2: ('requests',)
+#    3: True
+#    4: False
+#    5: 'chrome'
+#    6: ''
+# Names:
+#    0: config
+#    1: oauth_params
+#    2: _clean
+#    3: proxy
+#    4: sentinel_provider
+#    5: device_id
+#    6: str
+#    7: uuid
+#    8: uuid4
+#    9: log_fn
+#   10: _curl_requests
+#   11: curl_cffi
+#   12: requests
+#   13: _curl
+#   14: Exception
+#   15: _new_session
+#   16: session
+#   17: chatgpt_impersonate
+#   18: last_response
+#   19: selected_workspace_id
+#   20: last_oauth_url
+#   21: original_oauth_url
+#   22: chatgpt_signup_done
+# Varnames:
+#	self, config, oauth_params, proxy, sentinel_provider, device_id, log_fn, curl_requests
+# Positional arguments:
+#	self, config
+# Local variables:
+#    2: oauth_params
+#    3: proxy
+#    4: sentinel_provider
+#    5: device_id
+#    6: log_fn
+#    7: curl_requests
+1734:           0 RESUME               0
+
+1744:           2 LOAD_FAST            (config)
+               4 COPY                 1
+               6 TO_BOOL
+              14 POP_JUMP_IF_TRUE     (to 22)
+              18 POP_TOP
+              20 BUILD_MAP            0
+         >>   22 LOAD_FAST            (self)
+              24 STORE_ATTR           (config)
+
+1745:          34 LOAD_FAST_LOAD_FAST  (oauth_params, self)
+              36 STORE_ATTR           (oauth_params)
+
+1746:          46 LOAD_GLOBAL          (NULL + _clean)
+              56 LOAD_FAST            (proxy)
+              58 CALL                 (1 positional)
+              66 LOAD_FAST            (self)
+              68 STORE_ATTR           (proxy)
+
+1747:          78 LOAD_FAST_LOAD_FAST  (sentinel_provider, self)
+              80 STORE_ATTR           (sentinel_provider)
+
+1748:          90 LOAD_GLOBAL          (NULL + _clean)
+             100 LOAD_FAST            (device_id)
+             102 CALL                 (1 positional)
+             110 COPY                 1
+             112 TO_BOOL
+             120 POP_JUMP_IF_TRUE     (to 222)
+             124 POP_TOP
+             126 LOAD_FAST            (sentinel_provider)
+             128 LOAD_ATTR            (device_id)
+             148 COPY                 1
+             150 TO_BOOL
+             158 POP_JUMP_IF_TRUE     (to 222)
+             162 POP_TOP
+             164 LOAD_GLOBAL          (NULL + str)
+             174 LOAD_GLOBAL          (uuid)
+             184 LOAD_ATTR            (uuid4)
+             204 PUSH_NULL
+             206 CALL                 (0 positional)
+             214 CALL                 (1 positional)
+         >>  222 LOAD_FAST            (self)
+             224 STORE_ATTR           (device_id)
+
+1749:         234 LOAD_FAST_LOAD_FAST  (log_fn, self)
+             236 STORE_ATTR           (log_fn)
+
+1750:         246 LOAD_CONST           (None)
+             248 LOAD_FAST            (self)
+             250 STORE_ATTR           (_curl_requests)
+
+1751:         260 NOP
+
+1752:         262 LOAD_CONST           (0)
+             264 LOAD_CONST           (('requests',))
+             266 IMPORT_NAME          (curl_cffi)
+             268 IMPORT_FROM          (requests)
+             270 STORE_FAST           (curl_requests)
+             272 POP_TOP
+
+1754:         274 LOAD_FAST_LOAD_FAST  (curl_requests, self)
+             276 STORE_ATTR           (_curl_requests)
+
+1755:         286 LOAD_CONST           (True)
+             288 LOAD_FAST            (self)
+             290 STORE_ATTR           (_curl)
+
+1758:         300 LOAD_FAST            (self)
+             302 LOAD_ATTR            (NULL|self + _new_session)
+             322 LOAD_CONST           ("chrome")
+             324 CALL                 (1 positional)
+             332 LOAD_FAST            (self)
+             334 STORE_ATTR           (session)
+
+1759:         344 LOAD_CONST           ("chrome")
+             346 LOAD_FAST            (self)
+             348 STORE_ATTR           (chatgpt_impersonate)
+
+1760:         358 BUILD_MAP            0
+             360 LOAD_FAST            (self)
+             362 STORE_ATTR           (last_response)
+
+1761:         372 LOAD_CONST           ("")
+             374 LOAD_FAST            (self)
+             376 STORE_ATTR           (selected_workspace_id)
+
+1762:         386 LOAD_CONST           ("")
+             388 LOAD_FAST            (self)
+             390 STORE_ATTR           (last_oauth_url)
+
+1763:         400 LOAD_CONST           ("")
+             402 LOAD_FAST            (self)
+             404 STORE_ATTR           (original_oauth_url)
+
+1764:         414 LOAD_CONST           (False)
+             416 LOAD_FAST            (self)
+             418 STORE_ATTR           (chatgpt_signup_done)
+             428 RETURN_CONST         (None)
+         >>  430 PUSH_EXC_INFO
+
+1756:         432 LOAD_GLOBAL          (Exception)
+             442 CHECK_EXC_MATCH
+             444 POP_JUMP_IF_FALSE    (to 468)
+             448 POP_TOP
+
+1757:         450 LOAD_CONST           (False)
+             452 LOAD_FAST            (self)
+             454 STORE_ATTR           (_curl)
+             464 POP_EXCEPT
+             466 JUMP_BACKWARD_NO_INTERRUPT (to 300)
+
+1756:     >>  468 RERAISE              0
+         >>  470 COPY                 3
+             472 POP_EXCEPT
+             474 RERAISE              1
+
+ExceptionTable:
+  262 to 298 -> 430 [0]
+  430 to 462 -> 470 [1] lasti
+  468 to 468 -> 470 [1] lasti
+
+# Method Name:       import_phase1_session
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  14
+# Stack size:        9
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1766
+# Constants:
+#    0: 'Import the verified email signup auth cookies from the parent worker.'
+#    1: False
+#    2: 'cookies'
+#    3: 0
+#    4: 'name'
+#    5: 'value'
+#    6: ''
+#    7: 'domain'
+#    8: 'path'
+#    9: '/'
+#   10: ('domain', 'path')
+#   11: 1
+#   12: 'device_id'
+#   13: 'sentinel_cache'
+#   14: True
+#   15: 'token'
+#   16: 'so_token'
+#   17: 'phase1-cache'
+#   18: ('ok', 'token_generated', 'token', 'so_token', 'provider')
+#   19: 'token_generated'
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: get
+#    3: list
+#    4: _clean
+#    5: str
+#    6: _normalize_cookie_domain
+#    7: AUTH
+#    8: session
+#    9: cookies
+#   10: set
+#   11: Exception
+#   12: device_id
+#   13: sentinel_provider
+#   14: items
+#   15: bool
+#   16: _cache
+# Varnames:
+#	self, snapshot, cookies, imported, item, name, value, domain, path, device_id, sentinel_cache, flow, token, cached
+# Positional arguments:
+#	self, snapshot
+# Local variables:
+#    2: cookies
+#    3: imported
+#    4: item
+#    5: name
+#    6: value
+#    7: domain
+#    8: path
+#    9: device_id
+#   10: sentinel_cache
+#   11: flow
+#   12: token
+#   13: cached
+1766:           0 RESUME               0
+
+1768:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (snapshot)
+              14 LOAD_GLOBAL          (dict)
+              24 CALL                 (2 positional)
+              32 TO_BOOL
+              40 POP_JUMP_IF_TRUE     (to 46)
+
+1769:          44 RETURN_CONST         (False)
+
+1770:     >>   46 LOAD_FAST            (snapshot)
+              48 LOAD_ATTR            (NULL|self + get)
+              68 LOAD_CONST           ("cookies")
+              70 CALL                 (1 positional)
+              78 STORE_FAST           (cookies)
+
+1771:          80 LOAD_GLOBAL          (NULL + isinstance)
+              90 LOAD_FAST            (cookies)
+              92 LOAD_GLOBAL          (list)
+             102 CALL                 (2 positional)
+             110 TO_BOOL
+             118 POP_JUMP_IF_FALSE    (to 136)
+             122 LOAD_FAST            (cookies)
+             124 TO_BOOL
+             132 POP_JUMP_IF_TRUE     (to 138)
+
+1772:     >>  136 RETURN_CONST         (False)
+
+1773:     >>  138 LOAD_CONST           (0)
+             140 STORE_FAST           (imported)
+
+1774:         142 LOAD_FAST            (cookies)
+             144 GET_ITER
+             146 FOR_ITER             (to 570)
+             150 STORE_FAST           (item)
+
+1775:         152 LOAD_GLOBAL          (NULL + isinstance)
+             162 LOAD_FAST            (item)
+             164 LOAD_GLOBAL          (dict)
+             174 CALL                 (2 positional)
+             182 TO_BOOL
+             190 POP_JUMP_IF_TRUE     (to 198)
+
+1776:         194 JUMP_BACKWARD        (to 146)
+
+1777:     >>  198 LOAD_GLOBAL          (NULL + _clean)
+             208 LOAD_FAST            (item)
+             210 LOAD_ATTR            (NULL|self + get)
+             230 LOAD_CONST           ("name")
+             232 CALL                 (1 positional)
+             240 CALL                 (1 positional)
+             248 STORE_FAST           (name)
+
+1778:     >>  250 LOAD_GLOBAL          (NULL + str)
+             260 LOAD_FAST            (item)
+             262 LOAD_ATTR            (NULL|self + get)
+             282 LOAD_CONST           ("value")
+             284 CALL                 (1 positional)
+             292 COPY                 1
+             294 TO_BOOL
+             302 POP_JUMP_IF_TRUE     (to 310)
+             306 POP_TOP
+             308 LOAD_CONST           ("")
+         >>  310 CALL                 (1 positional)
+             318 STORE_FAST           (value)
+
+1779:         320 LOAD_FAST            (name)
+             322 TO_BOOL
+             330 POP_JUMP_IF_FALSE    (to 346)
+             334 LOAD_FAST            (value)
+             336 LOAD_CONST           ("")
+             338 COMPARE_OP           (==)
+             342 POP_JUMP_IF_FALSE    (to 350)
+
+1780:     >>  346 JUMP_BACKWARD        (to 146)
+
+1781:     >>  350 LOAD_GLOBAL          (NULL + _normalize_cookie_domain)
+             360 LOAD_FAST            (item)
+             362 LOAD_ATTR            (NULL|self + get)
+             382 LOAD_CONST           ("domain")
+             384 CALL                 (1 positional)
+             392 LOAD_GLOBAL          (AUTH)
+             402 CALL                 (2 positional)
+             410 STORE_FAST           (domain)
+
+1782:         412 LOAD_GLOBAL          (NULL + _clean)
+             422 LOAD_FAST            (item)
+             424 LOAD_ATTR            (NULL|self + get)
+             444 LOAD_CONST           ("path")
+             446 CALL                 (1 positional)
+             454 CALL                 (1 positional)
+             462 COPY                 1
+             464 TO_BOOL
+             472 POP_JUMP_IF_TRUE     (to 480)
+             476 POP_TOP
+             478 LOAD_CONST           ("/")
+         >>  480 STORE_FAST           (path)
+
+1783:         482 NOP
+
+1784:         484 LOAD_FAST            (self)
+             486 LOAD_ATTR            (session)
+             506 LOAD_ATTR            (cookies)
+             526 LOAD_ATTR            (NULL|self + set)
+             546 LOAD_FAST_LOAD_FAST  (name, value)
+             548 LOAD_FAST_LOAD_FAST  (domain, path)
+             550 LOAD_CONST           (('domain', 'path'))
+             552 CALL_KW              4
+         >>  554 POP_TOP
+
+1785:         556 LOAD_FAST            (imported)
+             558 LOAD_CONST           (1)
+             560 BINARY_OP            (+=)
+             564 STORE_FAST           (imported)
+             566 JUMP_BACKWARD        (to 146)
+
+1774:     >>  570 END_FOR
+             572 POP_TOP
+
+1792:         574 LOAD_GLOBAL          (NULL + _clean)
+             584 LOAD_FAST            (snapshot)
+             586 LOAD_ATTR            (NULL|self + get)
+             606 LOAD_CONST           ("device_id")
+             608 CALL                 (1 positional)
+             616 CALL                 (1 positional)
+             624 STORE_FAST           (device_id)
+
+1793:         626 LOAD_FAST            (device_id)
+             628 TO_BOOL
+             636 POP_JUMP_IF_FALSE    (to 712)
+
+1794:         640 LOAD_FAST_LOAD_FAST  (device_id, self)
+             642 STORE_ATTR           (device_id)
+
+1795:         652 LOAD_FAST            (self)
+             654 LOAD_ATTR            (sentinel_provider)
+             674 POP_JUMP_IF_NONE     (to 712)
+
+1796:         678 NOP
+
+1797:         680 LOAD_FAST_LOAD_FAST  (device_id, self)
+             682 LOAD_ATTR            (sentinel_provider)
+             702 STORE_ATTR           (device_id)
+
+1800:     >>  712 LOAD_FAST            (snapshot)
+             714 LOAD_ATTR            (NULL|self + get)
+             734 LOAD_CONST           ("sentinel_cache")
+             736 CALL                 (1 positional)
+             744 STORE_FAST           (sentinel_cache)
+
+1801:         746 LOAD_GLOBAL          (NULL + isinstance)
+             756 LOAD_FAST            (sentinel_cache)
+             758 LOAD_GLOBAL          (dict)
+             768 CALL                 (2 positional)
+             776 TO_BOOL
+             784 POP_JUMP_IF_FALSE    (to 1184)
+
+1802:         788 LOAD_FAST            (sentinel_cache)
+             790 LOAD_ATTR            (NULL|self + items)
+             810 CALL                 (0 positional)
+             818 GET_ITER
+             820 FOR_ITER             (to 1180)
+             824 UNPACK_SEQUENCE      2
+             828 STORE_FAST_STORE_FAST (flow, token)
+
+1803:         830 LOAD_GLOBAL          (NULL + isinstance)
+             840 LOAD_FAST            (token)
+             842 LOAD_GLOBAL          (dict)
+             852 CALL                 (2 positional)
+             860 TO_BOOL
+             868 POP_JUMP_IF_TRUE     (to 876)
+             872 JUMP_BACKWARD        (to 820)
+
+1805:     >>  876 LOAD_CONST           (True)
+
+1806:         878 LOAD_GLOBAL          (NULL + bool)
+             888 LOAD_FAST            (token)
+             890 LOAD_ATTR            (NULL|self + get)
+             910 LOAD_CONST           ("token")
+             912 CALL                 (1 positional)
+             920 COPY                 1
+             922 TO_BOOL
+             930 POP_JUMP_IF_TRUE     (to 968)
+             934 POP_TOP
+             936 LOAD_FAST            (token)
+             938 LOAD_ATTR            (NULL|self + get)
+             958 LOAD_CONST           ("so_token")
+             960 CALL                 (1 positional)
+         >>  968 CALL                 (1 positional)
+
+1807:         976 LOAD_GLOBAL          (NULL + _clean)
+             986 LOAD_FAST            (token)
+             988 LOAD_ATTR            (NULL|self + get)
+            1008 LOAD_CONST           ("token")
+            1010 CALL                 (1 positional)
+            1018 CALL                 (1 positional)
+
+1808:        1026 LOAD_GLOBAL          (NULL + _clean)
+            1036 LOAD_FAST            (token)
+            1038 LOAD_ATTR            (NULL|self + get)
+            1058 LOAD_CONST           ("so_token")
+            1060 CALL                 (1 positional)
+            1068 CALL                 (1 positional)
+
+1809:        1076 LOAD_CONST           ("phase1-cache")
+
+1804:        1078 LOAD_CONST           (('ok', 'token_generated', 'token', 'so_token', 'provider'))
+            1080 BUILD_CONST_KEY_MAP  5
+            1082 STORE_FAST           (cached)
+
+1811:        1084 LOAD_FAST            (cached)
+            1086 LOAD_CONST           ("token_generated")
+            1088 BINARY_SUBSCR
+            1092 TO_BOOL
+            1100 POP_JUMP_IF_TRUE     (to 1108)
+            1104 JUMP_BACKWARD        (to 820)
+
+1812:     >> 1108 NOP
+
+1813:        1110 LOAD_FAST_LOAD_FAST  (cached, self)
+            1112 LOAD_ATTR            (sentinel_provider)
+            1132 LOAD_ATTR            (_cache)
+            1152 LOAD_GLOBAL          (NULL + _clean)
+            1162 LOAD_FAST            (flow)
+            1164 CALL                 (1 positional)
+            1172 STORE_SUBSCR
+            1176 JUMP_BACKWARD        (to 820)
+
+1802:     >> 1180 END_FOR
+            1182 POP_TOP
+
+1816:     >> 1184 LOAD_FAST            (imported)
+            1186 LOAD_CONST           (0)
+            1188 COMPARE_OP           (>)
+            1192 RETURN_VALUE
+         >> 1194 PUSH_EXC_INFO
+
+1786:        1196 LOAD_GLOBAL          (Exception)
+            1206 CHECK_EXC_MATCH
+            1208 POP_JUMP_IF_FALSE    (to 1346)
+            1212 POP_TOP
+
+1787:        1214 NOP
+
+1788:        1216 LOAD_FAST            (self)
+            1218 LOAD_ATTR            (session)
+            1238 LOAD_ATTR            (cookies)
+            1258 LOAD_ATTR            (NULL|self + set)
+            1278 LOAD_FAST_LOAD_FAST  (name, value)
+            1280 CALL                 (2 positional)
+            1288 POP_TOP
+
+1789:        1290 LOAD_FAST            (imported)
+            1292 LOAD_CONST           (1)
+            1294 BINARY_OP            (+=)
+            1298 STORE_FAST           (imported)
+            1300 POP_EXCEPT
+            1302 EXTENDED_ARG         (512)
+            1304 JUMP_BACKWARD        (to 146)
+         >> 1308 PUSH_EXC_INFO
+
+1790:        1310 LOAD_GLOBAL          (Exception)
+            1320 CHECK_EXC_MATCH
+            1322 POP_JUMP_IF_FALSE    (to 1338)
+            1326 POP_TOP
+
+1791:        1328 POP_EXCEPT
+            1330 POP_EXCEPT
+            1332 EXTENDED_ARG         (512)
+            1334 JUMP_BACKWARD        (to 146)
+
+1790:     >> 1338 RERAISE              0
+         >> 1340 COPY                 3
+            1342 POP_EXCEPT
+            1344 RERAISE              1
+
+1786:     >> 1346 RERAISE              0
+         >> 1348 COPY                 3
+            1350 POP_EXCEPT
+            1352 RERAISE              1
+         >> 1354 PUSH_EXC_INFO
+
+1798:        1356 LOAD_GLOBAL          (Exception)
+            1366 CHECK_EXC_MATCH
+            1368 POP_JUMP_IF_FALSE    (to 1380)
+            1372 POP_TOP
+
+1799:        1374 POP_EXCEPT
+            1376 EXTENDED_ARG         (256)
+            1378 JUMP_BACKWARD_NO_INTERRUPT (to 712)
+
+1798:     >> 1380 RERAISE              0
+         >> 1382 COPY                 3
+            1384 POP_EXCEPT
+            1386 RERAISE              1
+         >> 1388 PUSH_EXC_INFO
+
+1814:        1390 LOAD_GLOBAL          (Exception)
+            1400 CHECK_EXC_MATCH
+            1402 POP_JUMP_IF_FALSE    (to 1416)
+            1406 POP_TOP
+
+1815:        1408 POP_EXCEPT
+            1410 EXTENDED_ARG         (256)
+            1412 JUMP_BACKWARD        (to 820)
+
+1814:     >> 1416 RERAISE              0
+         >> 1418 COPY                 3
+            1420 POP_EXCEPT
+            1422 RERAISE              1
+
+ExceptionTable:
+  484 to 564 -> 1194 [1]
+  680 to 710 -> 1354 [0]
+  1110 to 1174 -> 1388 [1]
+  1194 to 1212 -> 1348 [2] lasti
+  1216 to 1298 -> 1308 [2]
+  1308 to 1326 -> 1340 [3] lasti
+  1328 to 1328 -> 1348 [2] lasti
+  1338 to 1338 -> 1340 [3] lasti
+  1340 to 1346 -> 1348 [2] lasti
+  1354 to 1372 -> 1382 [1] lasti
+  1380 to 1380 -> 1382 [1] lasti
+  1388 to 1406 -> 1418 [2] lasti
+  1416 to 1416 -> 1418 [2] lasti
+
+# Method Name:       _new_session
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1818
+# Constants:
+#    0: None
+#    1: 'chrome'
+#    2: False
+#    3: ('impersonate', 'verify')
+#    4: 0
+#    5: ('http', 'https')
+# Names:
+#    0: _curl
+#    1: _curl_requests
+#    2: Session
+#    3: requests
+#    4: proxy
+#    5: proxies
+# Varnames:
+#	self, impersonate, session, requests
+# Positional arguments:
+#	self, impersonate
+# Local variables:
+#    2: session
+#    3: requests
+1818:           0 RESUME               0
+
+1819:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (_curl)
+              24 TO_BOOL
+              32 POP_JUMP_IF_FALSE    (to 134)
+              36 LOAD_FAST            (self)
+              38 LOAD_ATTR            (_curl_requests)
+              58 POP_JUMP_IF_NONE     (to 134)
+
+1820:          62 LOAD_FAST            (self)
+              64 LOAD_ATTR            (_curl_requests)
+              84 LOAD_ATTR            (NULL|self + Session)
+             104 LOAD_FAST            (impersonate)
+             106 COPY                 1
+             108 TO_BOOL
+             116 POP_JUMP_IF_TRUE     (to 124)
+             120 POP_TOP
+             122 LOAD_CONST           ("chrome")
+         >>  124 LOAD_CONST           (False)
+             126 LOAD_CONST           (('impersonate', 'verify'))

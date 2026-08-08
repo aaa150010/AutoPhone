@@ -1,0 +1,800 @@
+             818 RAISE_VARARGS        (exception instance with __cause__)
+         >>  820 LOAD_CONST           (None)
+             822 STORE_FAST           (exc)
+             824 DELETE_FAST          (exc)
+             826 RERAISE              1
+
+204:     >>  828 RERAISE              0
+         >>  830 COPY                 3
+             832 POP_EXCEPT
+             834 RERAISE              1
+
+ExceptionTable:
+  96 to 172 -> 480 [0]
+  174 to 308 -> 446 [1] lasti
+  310 to 324 -> 480 [0]
+  446 to 464 -> 474 [3] lasti
+  466 to 470 -> 480 [0]
+  474 to 478 -> 480 [0]
+  480 to 538 -> 830 [1] lasti
+  540 to 700 -> 702 [1] lasti
+  702 to 788 -> 830 [1] lasti
+  790 to 818 -> 820 [1] lasti
+  820 to 828 -> 830 [1] lasti
+
+# Method Name:       snapshot
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        9
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        213
+# Constants:
+#    0: None
+#    1: ''
+#    2: 'utf-8'
+#    3: 'replace'
+#    4: ('errors',)
+#    5: ('hash', 'code', 'received_at')
+# Names:
+#    0: fetch_raw
+#    1: json
+#    2: loads
+#    3: TypeError
+#    4: ValueError
+#    5: _code_from_json
+#    6: _normalize_code
+#    7: _received_at_from_json
+#    8: MailboxSnapshot
+#    9: hashlib
+#   10: sha256
+#   11: encode
+#   12: hexdigest
+#   13: last_snapshot
+# Varnames:
+#	self, raw, parsed, code, received_at, snapshot
+# Positional arguments:
+#	self
+# Local variables:
+#    1: raw
+#    2: parsed
+#    3: code
+#    4: received_at
+#    5: snapshot
+213:           0 RESUME               0
+
+214:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + fetch_raw)
+              24 CALL                 (0 positional)
+              32 STORE_FAST           (raw)
+
+215:          34 NOP
+
+216:          36 LOAD_GLOBAL          (json)
+              46 LOAD_ATTR            (loads)
+              66 PUSH_NULL
+              68 LOAD_FAST            (raw)
+              70 CALL                 (1 positional)
+              78 STORE_FAST           (parsed)
+
+219:          80 LOAD_FAST            (parsed)
+              82 POP_JUMP_IF_NONE     (to 108)
+              86 LOAD_GLOBAL          (NULL + _code_from_json)
+              96 LOAD_FAST            (parsed)
+              98 CALL                 (1 positional)
+             106 JUMP_FORWARD         (to 128)
+         >>  108 LOAD_GLOBAL          (NULL + _normalize_code)
+             118 LOAD_FAST            (raw)
+             120 CALL                 (1 positional)
+         >>  128 STORE_FAST           (code)
+
+220:         130 LOAD_FAST            (parsed)
+             132 POP_JUMP_IF_NONE     (to 158)
+             136 LOAD_GLOBAL          (NULL + _received_at_from_json)
+             146 LOAD_FAST            (parsed)
+             148 CALL                 (1 positional)
+             156 JUMP_FORWARD         (to 160)
+         >>  158 LOAD_CONST           ("")
+         >>  160 STORE_FAST           (received_at)
+
+221:         162 LOAD_GLOBAL          (NULL + MailboxSnapshot)
+
+222:         172 LOAD_GLOBAL          (hashlib)
+             182 LOAD_ATTR            (sha256)
+             202 PUSH_NULL
+             204 LOAD_FAST            (raw)
+             206 LOAD_ATTR            (NULL|self + encode)
+             226 LOAD_CONST           ("utf-8")
+             228 LOAD_CONST           ("replace")
+             230 LOAD_CONST           (('errors',))
+             232 CALL_KW              2
+             234 CALL                 (1 positional)
+             242 LOAD_ATTR            (NULL|self + hexdigest)
+             262 CALL                 (0 positional)
+
+223:         270 LOAD_FAST            (code)
+
+224:         272 LOAD_FAST            (received_at)
+
+221:         274 LOAD_CONST           (('hash', 'code', 'received_at'))
+             276 CALL_KW              3
+             278 STORE_FAST           (snapshot)
+
+226:         280 LOAD_FAST_LOAD_FAST  (snapshot, self)
+             282 STORE_ATTR           (last_snapshot)
+
+227:         292 LOAD_FAST            (snapshot)
+             294 RETURN_VALUE
+         >>  296 PUSH_EXC_INFO
+
+217:         298 LOAD_GLOBAL          (TypeError)
+             308 LOAD_GLOBAL          (ValueError)
+             318 BUILD_TUPLE          2
+             320 CHECK_EXC_MATCH
+             322 POP_JUMP_IF_FALSE    (to 336)
+             326 POP_TOP
+
+218:         328 LOAD_CONST           (None)
+             330 STORE_FAST           (parsed)
+             332 POP_EXCEPT
+             334 JUMP_BACKWARD_NO_INTERRUPT (to 80)
+
+217:     >>  336 RERAISE              0
+         >>  338 COPY                 3
+             340 POP_EXCEPT
+             342 RERAISE              1
+
+ExceptionTable:
+  36 to 78 -> 296 [0]
+  296 to 330 -> 338 [1] lasti
+  336 to 336 -> 338 [1] lasti
+
+# Method Name:       _same_as_baseline
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        229
+# Constants:
+#    0: None
+#    1: False
+#    2: True
+# Names:
+#    0: hash
+#    1: bool
+#    2: code
+#    3: received_at
+# Varnames:
+#	current, baseline
+# Positional arguments:
+#	current, baseline
+229:           0 RESUME               0
+
+231:           2 LOAD_FAST            (baseline)
+               4 TO_BOOL
+              12 POP_JUMP_IF_TRUE     (to 18)
+
+232:          16 RETURN_CONST         (False)
+
+233:     >>   18 LOAD_FAST            (current)
+              20 LOAD_ATTR            (hash)
+              40 TO_BOOL
+              48 POP_JUMP_IF_FALSE    (to 106)
+              52 LOAD_FAST            (current)
+              54 LOAD_ATTR            (hash)
+              74 LOAD_FAST            (baseline)
+              76 LOAD_ATTR            (hash)
+              96 COMPARE_OP           (==)
+             100 POP_JUMP_IF_FALSE    (to 106)
+
+234:         104 RETURN_CONST         (True)
+
+235:     >>  106 LOAD_GLOBAL          (NULL + bool)
+
+236:         116 LOAD_FAST            (current)
+             118 LOAD_ATTR            (code)
+             138 COPY                 1
+             140 TO_BOOL
+             148 POP_JUMP_IF_FALSE    (to 362)
+             152 POP_TOP
+
+237:         154 LOAD_FAST            (current)
+             156 LOAD_ATTR            (code)
+             176 LOAD_FAST            (baseline)
+             178 LOAD_ATTR            (code)
+             198 COMPARE_OP           (==)
+
+236:         202 COPY                 1
+             204 TO_BOOL
+             212 POP_JUMP_IF_FALSE    (to 362)
+             216 POP_TOP
+
+238:         218 LOAD_FAST            (current)
+             220 LOAD_ATTR            (received_at)
+             240 TO_BOOL
+             248 UNARY_NOT
+             250 COPY                 1
+             252 TO_BOOL
+             260 POP_JUMP_IF_TRUE     (to 362)
+             264 POP_TOP
+             266 LOAD_FAST            (baseline)
+             268 LOAD_ATTR            (received_at)
+             288 TO_BOOL
+             296 UNARY_NOT
+             298 COPY                 1
+             300 TO_BOOL
+             308 POP_JUMP_IF_TRUE     (to 362)
+             312 POP_TOP
+             314 LOAD_FAST            (current)
+             316 LOAD_ATTR            (received_at)
+             336 LOAD_FAST            (baseline)
+             338 LOAD_ATTR            (received_at)
+             358 COMPARE_OP           (==)
+
+235:     >>  362 CALL                 (1 positional)
+             370 RETURN_VALUE
+
+
+# Method Name:       wait_for_code
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 6
+# Number of locals:  16
+# Stack size:        10
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        241
+# Constants:
+#    0: None
+#    1: 5
+#    2: 3600
+#    3: 1
+#    4: 120
+#    5: 1000
+#    6: 'mailbox returned no code'
+#    7: 0
+#    8: 'mailbox_code_wait_cancelled'
+#    9: 'mailbox still returns baseline code'
+#   10: 'mailbox_dead'
+#   11: 'mailbox poll '
+#   12: '/'
+#   13: ', '
+#   14: 's remaining: '
+#   15: 0.0
+#   16: 0.25
+#   17: 'mailbox_code_timeout: attempts='
+#   18: ': '
+# Names:
+#    0: max
+#    1: min
+#    2: int
+#    3: time
+#    4: monotonic
+#    5: MailboxPoolError
+#    6: snapshot
+#    7: code
+#    8: _same_as_baseline
+#    9: str
+#   10: lower
+#   11: sleep
+# Varnames:
+#	self, baseline, timeout_seconds, interval_seconds, max_attempts, on_wait, stop_requested, deadline, last_error, attempt, attempt_started, current, exc, remaining, delay, step
+# Positional arguments:
+#	self
+# Local variables:
+#    1: baseline
+#    2: timeout_seconds
+#    3: interval_seconds
+#    4: max_attempts
+#    5: on_wait
+#    6: stop_requested
+#    7: deadline
+#    8: last_error
+#    9: attempt
+#   10: attempt_started
+#   11: current
+#   12: exc
+#   13: remaining
+#   14: delay
+#   15: step
+241:           0 RESUME               0
+
+251:           2 LOAD_GLOBAL          (NULL + max)
+              12 LOAD_CONST           (5)
+              14 LOAD_GLOBAL          (NULL + min)
+              24 LOAD_GLOBAL          (NULL + int)
+              34 LOAD_FAST            (timeout_seconds)
+              36 CALL                 (1 positional)
+              44 LOAD_CONST           (3600)
+              46 CALL                 (2 positional)
+              54 CALL                 (2 positional)
+              62 STORE_FAST           (timeout_seconds)
+
+252:          64 LOAD_GLOBAL          (NULL + max)
+              74 LOAD_CONST           (1)
+              76 LOAD_GLOBAL          (NULL + min)
+              86 LOAD_GLOBAL          (NULL + int)
+              96 LOAD_FAST            (interval_seconds)
+              98 CALL                 (1 positional)
+             106 LOAD_CONST           (120)
+             108 CALL                 (2 positional)
+             116 CALL                 (2 positional)
+             124 STORE_FAST           (interval_seconds)
+
+253:         126 LOAD_GLOBAL          (NULL + max)
+             136 LOAD_CONST           (1)
+             138 LOAD_GLOBAL          (NULL + min)
+             148 LOAD_GLOBAL          (NULL + int)
+             158 LOAD_FAST            (max_attempts)
+             160 CALL                 (1 positional)
+             168 LOAD_CONST           (1000)
+             170 CALL                 (2 positional)
+             178 CALL                 (2 positional)
+             186 STORE_FAST           (max_attempts)
+
+254:         188 LOAD_GLOBAL          (time)
+             198 LOAD_ATTR            (monotonic)
+             218 PUSH_NULL
+             220 CALL                 (0 positional)
+             228 LOAD_FAST            (timeout_seconds)
+             230 BINARY_OP            (+)
+             234 STORE_FAST           (deadline)
+
+255:         236 LOAD_CONST           ("mailbox returned no code")
+             238 STORE_FAST           (last_error)
+
+256:         240 LOAD_CONST           (0)
+             242 STORE_FAST           (attempt)
+
+257:         244 LOAD_FAST_LOAD_FAST  (attempt, max_attempts)
+             246 COMPARE_OP           (<)
+             250 EXTENDED_ARG         (256)
+             252 POP_JUMP_IF_FALSE    (to 1126)
+             256 LOAD_GLOBAL          (time)
+             266 LOAD_ATTR            (monotonic)
+             286 PUSH_NULL
+             288 CALL                 (0 positional)
+             296 LOAD_FAST            (deadline)
+             298 COMPARE_OP           (<)
+             302 EXTENDED_ARG         (256)
+             304 POP_JUMP_IF_FALSE    (to 1126)
+
+258:         308 LOAD_FAST            (stop_requested)
+             310 TO_BOOL
+             318 POP_JUMP_IF_FALSE    (to 368)
+             322 LOAD_FAST            (stop_requested)
+             324 PUSH_NULL
+             326 CALL                 (0 positional)
+             334 TO_BOOL
+             342 POP_JUMP_IF_FALSE    (to 368)
+
+259:         346 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             356 LOAD_CONST           ("mailbox_code_wait_cancelled")
+             358 CALL                 (1 positional)
+             366 RAISE_VARARGS        (exception instance)
+
+260:     >>  368 LOAD_FAST            (attempt)
+             370 LOAD_CONST           (1)
+             372 BINARY_OP            (+=)
+             376 STORE_FAST           (attempt)
+
+261:         378 LOAD_GLOBAL          (time)
+             388 LOAD_ATTR            (monotonic)
+             408 PUSH_NULL
+             410 CALL                 (0 positional)
+             418 STORE_FAST           (attempt_started)
+
+262:         420 NOP
+
+263:         422 LOAD_FAST            (self)
+             424 LOAD_ATTR            (NULL|self + snapshot)
+             444 CALL                 (0 positional)
+             452 STORE_FAST           (current)
+
+264:         454 LOAD_FAST            (current)
+             456 LOAD_ATTR            (code)
+             476 TO_BOOL
+             484 POP_JUMP_IF_FALSE    (to 556)
+             488 LOAD_FAST            (self)
+             490 LOAD_ATTR            (NULL|self + _same_as_baseline)
+             510 LOAD_FAST_LOAD_FAST  (current, baseline)
+             512 CALL                 (2 positional)
+             520 TO_BOOL
+             528 POP_JUMP_IF_TRUE     (to 556)
+
+265:         532 LOAD_FAST            (current)
+             534 LOAD_ATTR            (code)
+             554 RETURN_VALUE
+
+266:     >>  556 LOAD_FAST            (current)
+             558 LOAD_ATTR            (code)
+             578 TO_BOOL
+             586 POP_JUMP_IF_FALSE    (to 594)
+             590 LOAD_CONST           ("mailbox still returns baseline code")
+             592 JUMP_FORWARD         (to 596)
+         >>  594 LOAD_CONST           ("mailbox returned no code")
+         >>  596 STORE_FAST           (last_error)
+
+271:         598 LOAD_GLOBAL          (NULL + max)
+             608 LOAD_CONST           (0)
+             610 LOAD_GLOBAL          (NULL + int)
+             620 LOAD_FAST            (deadline)
+             622 LOAD_GLOBAL          (time)
+             632 LOAD_ATTR            (monotonic)
+             652 PUSH_NULL
+             654 CALL                 (0 positional)
+             662 BINARY_OP            (-)
+             666 CALL                 (1 positional)
+             674 CALL                 (2 positional)
+             682 STORE_FAST           (remaining)
+
+272:         684 LOAD_FAST            (on_wait)
+             686 TO_BOOL
+             694 POP_JUMP_IF_FALSE    (to 738)
+
+273:         698 LOAD_FAST            (on_wait)
+             700 PUSH_NULL
+             702 LOAD_CONST           ("mailbox poll ")
+             704 LOAD_FAST            (attempt)
+             706 FORMAT_SIMPLE
+             708 LOAD_CONST           ("/")
+             710 LOAD_FAST            (max_attempts)
+             712 FORMAT_SIMPLE
+             714 LOAD_CONST           (", ")
+             716 LOAD_FAST            (remaining)
+             718 FORMAT_SIMPLE
+             720 LOAD_CONST           ("s remaining: ")
+             722 LOAD_FAST            (last_error)
+             724 FORMAT_SIMPLE
+             726 BUILD_STRING         8
+             728 CALL                 (1 positional)
+             736 POP_TOP
+
+274:     >>  738 LOAD_GLOBAL          (NULL + min)
+             748 LOAD_GLOBAL          (NULL + max)
+             758 LOAD_CONST           (0.0)
+             760 LOAD_FAST            (interval_seconds)
+             762 LOAD_GLOBAL          (time)
+             772 LOAD_ATTR            (monotonic)
+             792 PUSH_NULL
+             794 CALL                 (0 positional)
+             802 LOAD_FAST            (attempt_started)
+             804 BINARY_OP            (-)
+             808 BINARY_OP            (-)
+             812 CALL                 (2 positional)
+             820 LOAD_GLOBAL          (NULL + max)
+             830 LOAD_CONST           (0.0)
+             832 LOAD_FAST            (deadline)
+             834 LOAD_GLOBAL          (time)
+             844 LOAD_ATTR            (monotonic)
+             864 PUSH_NULL
+             866 CALL                 (0 positional)
+             874 BINARY_OP            (-)
+             878 CALL                 (2 positional)
+             886 CALL                 (2 positional)
+             894 STORE_FAST           (delay)
+
+275:         896 LOAD_FAST            (delay)
+             898 LOAD_CONST           (0)
+             900 COMPARE_OP           (>)
+             904 POP_JUMP_IF_FALSE    (to 1060)
+
+276:         908 LOAD_FAST            (stop_requested)
+             910 TO_BOOL
+             918 POP_JUMP_IF_FALSE    (to 968)
+             922 LOAD_FAST            (stop_requested)
+             924 PUSH_NULL
+             926 CALL                 (0 positional)
+             934 TO_BOOL
+             942 POP_JUMP_IF_FALSE    (to 968)
+
+277:         946 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             956 LOAD_CONST           ("mailbox_code_wait_cancelled")
+             958 CALL                 (1 positional)
+             966 RAISE_VARARGS        (exception instance)
+
+278:     >>  968 LOAD_GLOBAL          (NULL + min)
+             978 LOAD_CONST           (0.25)
+             980 LOAD_FAST            (delay)
+             982 CALL                 (2 positional)
+             990 STORE_FAST           (step)
+
+279:         992 LOAD_GLOBAL          (time)
+            1002 LOAD_ATTR            (sleep)
+            1022 PUSH_NULL
+            1024 LOAD_FAST            (step)
+            1026 CALL                 (1 positional)
+            1034 POP_TOP
+
+280:        1036 LOAD_FAST_LOAD_FAST  (delay, step)
+            1038 BINARY_OP            (-=)
+            1042 STORE_FAST           (delay)
+
+275:        1044 LOAD_FAST            (delay)
+            1046 LOAD_CONST           (0)
+            1048 COMPARE_OP           (>)
+            1052 POP_JUMP_IF_FALSE    (to 1060)
+            1056 JUMP_BACKWARD        (to 908)
+
+257:     >> 1060 LOAD_FAST_LOAD_FAST  (attempt, max_attempts)
+            1062 COMPARE_OP           (<)
+            1066 POP_JUMP_IF_FALSE    (to 1126)
+            1070 LOAD_GLOBAL          (time)
+            1080 LOAD_ATTR            (monotonic)
+            1100 PUSH_NULL
+            1102 CALL                 (0 positional)
+            1110 LOAD_FAST            (deadline)
+            1112 COMPARE_OP           (<)
+            1116 POP_JUMP_IF_FALSE    (to 1126)
+            1120 EXTENDED_ARG         (256)
+            1122 JUMP_BACKWARD        (to 308)
+
+281:     >> 1126 LOAD_GLOBAL          (NULL + MailboxPoolError)
+            1136 LOAD_CONST           ("mailbox_code_timeout: attempts=")
+            1138 LOAD_FAST            (attempt)
+            1140 FORMAT_SIMPLE
+            1142 LOAD_CONST           ("/")
+            1144 LOAD_FAST            (max_attempts)
+            1146 FORMAT_SIMPLE
+            1148 LOAD_CONST           (": ")
+            1150 LOAD_FAST            (last_error)
+            1152 FORMAT_SIMPLE
+            1154 BUILD_STRING         6
+            1156 CALL                 (1 positional)
+            1164 RAISE_VARARGS        (exception instance)
+         >> 1166 PUSH_EXC_INFO
+
+267:        1168 LOAD_GLOBAL          (MailboxPoolError)
+            1178 CHECK_EXC_MATCH
+            1180 POP_JUMP_IF_FALSE    (to 1270)
+            1184 STORE_FAST           (exc)
+
+268:        1186 LOAD_GLOBAL          (NULL + str)
+            1196 LOAD_FAST            (exc)
+            1198 CALL                 (1 positional)
+            1206 STORE_FAST           (last_error)
+
+269:        1208 LOAD_CONST           ("mailbox_dead")
+            1210 LOAD_FAST            (last_error)
+         >> 1212 LOAD_ATTR            (NULL|self + lower)
+            1232 CALL                 (0 positional)
+            1240 CONTAINS_OP          (in)
+            1244 POP_JUMP_IF_FALSE    (to 1250)
+
+270:        1248 RAISE_VARARGS        (reraise)
+
+269:     >> 1250 POP_EXCEPT
+            1252 LOAD_CONST           (None)
+            1254 STORE_FAST           (exc)
+            1256 DELETE_FAST          (exc)
+            1258 EXTENDED_ARG         (256)
+            1260 JUMP_BACKWARD_NO_INTERRUPT (to 598)
+         >> 1262 LOAD_CONST           (None)
+            1264 STORE_FAST           (exc)
+            1266 DELETE_FAST          (exc)
+            1268 RERAISE              1
+
+267:     >> 1270 RERAISE              0
+         >> 1272 COPY                 3
+            1274 POP_EXCEPT
+            1276 RERAISE              1
+
+ExceptionTable:
+  422 to 552 -> 1166 [0]
+  556 to 596 -> 1166 [0]
+  1166 to 1184 -> 1272 [1] lasti
+  1186 to 1248 -> 1262 [1] lasti
+  1262 to 1270 -> 1272 [1] lasti
+
+# Method Name:       __init__
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        289
+# Constants:
+#    0: None
+#    1: 'self_mailbox_pool_'
+#    2: 16
+#    3: '.lock'
+#    4: 'self_mailbox_source_'
+# Names:
+#    0: Path
+#    1: expanduser
+#    2: resolve
+#    3: pool_path
+#    4: state_path
+#    5: hashlib
+#    6: sha256
+#    7: str
+#    8: encode
+#    9: hexdigest
+#   10: lock_name
+#   11: pool_lock_name
+# Varnames:
+#	self, pool_path, state_path
+# Positional arguments:
+#	self, pool_path, state_path
+289:           0 RESUME               0
+
+290:           2 LOAD_GLOBAL          (NULL + Path)
+              12 LOAD_FAST            (pool_path)
+              14 CALL                 (1 positional)
+              22 LOAD_ATTR            (NULL|self + expanduser)
+              42 CALL                 (0 positional)
+              50 LOAD_ATTR            (NULL|self + resolve)
+              70 CALL                 (0 positional)
+              78 LOAD_FAST            (self)
+              80 STORE_ATTR           (pool_path)
+
+291:          90 LOAD_GLOBAL          (NULL + Path)
+             100 LOAD_FAST            (state_path)
+             102 CALL                 (1 positional)
+             110 LOAD_ATTR            (NULL|self + expanduser)
+             130 CALL                 (0 positional)
+             138 LOAD_ATTR            (NULL|self + resolve)
+             158 CALL                 (0 positional)
+             166 LOAD_FAST            (self)
+             168 STORE_ATTR           (state_path)
+
+292:         178 LOAD_CONST           ("self_mailbox_pool_")
+             180 LOAD_GLOBAL          (hashlib)
+             190 LOAD_ATTR            (sha256)
+             210 PUSH_NULL
+             212 LOAD_GLOBAL          (NULL + str)
+             222 LOAD_FAST            (self)
+             224 LOAD_ATTR            (state_path)
+             244 CALL                 (1 positional)
+             252 LOAD_ATTR            (NULL|self + encode)
+             272 CALL                 (0 positional)
+             280 CALL                 (1 positional)
+             288 LOAD_ATTR            (NULL|self + hexdigest)
+             308 CALL                 (0 positional)
+             316 LOAD_CONST           (None)
+             318 LOAD_CONST           (16)
+             320 BINARY_SLICE
+             322 FORMAT_SIMPLE
+             324 LOAD_CONST           (".lock")
+             326 BUILD_STRING         3
+             328 LOAD_FAST            (self)
+             330 STORE_ATTR           (lock_name)
+
+293:         340 LOAD_CONST           ("self_mailbox_source_")
+             342 LOAD_GLOBAL          (hashlib)
+             352 LOAD_ATTR            (sha256)
+             372 PUSH_NULL
+             374 LOAD_GLOBAL          (NULL + str)
+             384 LOAD_FAST            (self)
+             386 LOAD_ATTR            (pool_path)
+             406 CALL                 (1 positional)
+             414 LOAD_ATTR            (NULL|self + encode)
+             434 CALL                 (0 positional)
+             442 CALL                 (1 positional)
+             450 LOAD_ATTR            (NULL|self + hexdigest)
+             470 CALL                 (0 positional)
+             478 LOAD_CONST           (None)
+             480 LOAD_CONST           (16)
+             482 BINARY_SLICE
+             484 FORMAT_SIMPLE
+             486 LOAD_CONST           (".lock")
+             488 BUILD_STRING         3
+             490 LOAD_FAST            (self)
+             492 STORE_ATTR           (pool_lock_name)
+             502 RETURN_CONST         (None)
+
+
+# Method Name:       _entries_unlocked
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  22
+# Stack size:        14
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        295
+# Constants:
+#    0: None
+#    1: 'mailbox pool file not found: '
+#    2: 'utf-8-sig'
+#    3: ('encoding',)
+#    4: 1
+#    5: ('start',)
+#    6: '#'
+#    7: '-{2,}'
+#    8: ''
+#    9: 0
+#   10: 'line '
+#   11: ': invalid email'
+#   12: {'https', 'http'}
+#   13: 'url:'
+#   14: ('email', 'mailbox_url', 'line_no', 'key', 'source_row')
+#   15: '(?P<sep>-{2,})(?P<client>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?P<sep2>-{2,})(?P<refresh>.*)$'
+#   16: 'sep'
+#   17: 'client'
+#   18: 'refresh'
+#   19: ': email password is empty'
+#   20: 'outlook:'
+#   21: ':'
+#   22: 'outlook_oauth'
+#   23: 'outlook_password'
+#   24: ('email', 'mailbox_url', 'line_no', 'key', 'mailbox_type', 'password', 'oauth_client_id', 'oauth_refresh_token', 'source_row')
+#   25: 'email-only'
+#   26: 'email_only'
+#   27: ('email', 'mailbox_url', 'line_no', 'key', 'mailbox_type', 'source_row')
+#   28: ': expected email----mailbox_url or email----password'
+#   29: ': duplicate mailbox row'
+# Names:
+#    0: pool_path
+#    1: exists
+#    2: MailboxPoolError
+#    3: set
+#    4: enumerate
+#    5: read_text_retry
+#    6: splitlines
+#    7: strip
+#    8: startswith
+#    9: re
+#   10: search
+#   11: bool
+#   12: EMAIL_RE
+#   13: fullmatch
+#   14: finditer
+#   15: _clean
+#   16: start
+#   17: end
+#   18: append
+#   19: urllib
+#   20: parse
+#   21: urlparse
+#   22: scheme
+#   23: netloc
+#   24: PoolEntry
+#   25: lower
+#   26: _entry_key
+#   27: group
+#   28: key
+#   29: add
+# Varnames:
+#	self, entries, errors, unique, line_no, raw, line, bare_email, head, separator, candidate, email, rest, second, parsed, mailbox_url, entry, password, client_id, refresh_token, uuid_match, key
+# Positional arguments:
+#	self
+# Local variables:
+#    1: entries
+#    2: errors
+#    3: unique
+#    4: line_no
+#    5: raw
+#    6: line
+#    7: bare_email
+#    8: head
+#    9: separator
+#   10: candidate
+#   11: email
+#   12: rest
+#   13: second
+#   14: parsed
+#   15: mailbox_url
+#   16: entry
+#   17: password
+#   18: client_id
+#   19: refresh_token
+#   20: uuid_match
+#   21: key
+295:           0 RESUME               0
+
+296:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (pool_path)
+              24 LOAD_ATTR            (NULL|self + exists)
+              44 CALL                 (0 positional)
+              52 TO_BOOL
+              60 POP_JUMP_IF_TRUE     (to 112)
+
+297:          64 LOAD_GLOBAL          (NULL + MailboxPoolError)

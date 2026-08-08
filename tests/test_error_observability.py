@@ -8,12 +8,27 @@ from mac_overrides.error_observability import (
     format_failure_log,
     format_node_retry_log,
     is_node_retry_log,
+    is_success_diagnostic_trace,
     public_failure,
     sanitize_failure_detail,
 )
 
 
 class ErrorObservabilityTests(unittest.TestCase):
+    def test_successful_totp_trace_is_not_a_failure_marker(self):
+        success = (
+            "T002-ab12cd [CodexTOTP] mfa_issue_challenge "
+            "_status=200 page_type=mfa_challenge error=-"
+        )
+        rejected = (
+            "T002-ab12cd [CodexTOTP] mfa_verify "
+            "_status=403 page_type=- error=incorrect_code"
+        )
+
+        self.assertTrue(is_success_diagnostic_trace(success))
+        self.assertFalse(is_success_diagnostic_trace(rejected))
+        self.assertFalse(is_success_diagnostic_trace("request error=- _status=200"))
+
     def test_sanitizer_does_not_expand_existing_mask_placeholders(self):
         self.assertEqual(
             sanitize_failure_detail(
@@ -339,6 +354,11 @@ class ErrorObservabilityTests(unittest.TestCase):
 
     def test_node_terminal_causes_remain_specific_and_redacted(self):
         cases = (
+            (
+                "node_sentinel_failed:chat-requirements: [Errno 24] Too many open files",
+                "resource_fd_exhausted",
+                "文件描述符",
+            ),
             ("node_sentinel_failed: node bridge timeout", "node_sentinel_timeout", "超时"),
             ("node_sentinel_failed: Unable to connect to proxy", "node_proxy_failed", "显式代理"),
             ("node_sentinel_failed: TLS connect error", "node_tls_failed", "TLS"),

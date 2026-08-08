@@ -171,6 +171,7 @@ const defaultForm = () => ({
   node_timeout: 45,
   email_code_timeout: 90,
   auth_session_retries: 1,
+  adaptive_task_concurrency: true,
   sms_provider: 'smsbower',
   sms_min_price: '0.01',
   max_price: '0.15',
@@ -178,6 +179,7 @@ const defaultForm = () => ({
   phone_max_attempts: 45,
   phone_attempts_per_provider: 15,
   phone_session_cycle_seconds: 1800,
+  sms_quality_optimization: true,
   sms_api_keys: [''],
   sms_provider_pools: normalizeSmsProviderPools(null),
   sub2api: {},
@@ -239,6 +241,8 @@ function normalizeImportedConfig(value: any) {
   delete config.pixel_upload_enabled
   config.phone_submission_concurrency = Math.max(1, Math.min(5, Number(config.phone_submission_concurrency) || 2))
   config.pixel_upload_concurrency = Math.max(1, Math.min(3, Number(config.pixel_upload_concurrency) || 2))
+  config.adaptive_task_concurrency = config.adaptive_task_concurrency !== false
+  config.sms_quality_optimization = config.sms_quality_optimization !== false
   config.email_notification = normalizeEmailNotificationDraft(config.email_notification)
   return config
 }
@@ -379,6 +383,8 @@ export function createAppController() {
     delete merged.pixel_upload_enabled
     merged.phone_submission_concurrency = Math.max(1, Math.min(5, Number(merged.phone_submission_concurrency) || 2))
     merged.pixel_upload_concurrency = Math.max(1, Math.min(3, Number(merged.pixel_upload_concurrency) || 2))
+    merged.adaptive_task_concurrency = merged.adaptive_task_concurrency !== false
+    merged.sms_quality_optimization = merged.sms_quality_optimization !== false
     Object.assign(form, merged)
     syncLegacySmsFields(form)
     form.email_notification = normalizeEmailNotificationDraft(form.email_notification)

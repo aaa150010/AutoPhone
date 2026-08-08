@@ -1,0 +1,800 @@
+265:         194 LOAD_GLOBAL          (NULL + _request_json)
+
+266:         204 LOAD_CONST           ("POST")
+
+267:         206 LOAD_FAST            (base)
+             208 FORMAT_SIMPLE
+             210 LOAD_CONST           ("/v0/management/oauth-callback")
+             212 BUILD_STRING         2
+
+265:         214 BUILD_TUPLE          2
+
+268:         216 BUILD_MAP            0
+             218 LOAD_GLOBAL          (NULL + cpa_headers)
+             228 LOAD_FAST            (config)
+             230 CALL                 (1 positional)
+             238 DICT_UPDATE          1
+             240 LOAD_CONST           ("Content-Type")
+             242 LOAD_CONST           ("application/json")
+             244 BUILD_MAP            1
+             246 DICT_UPDATE          1
+
+269:         248 LOAD_FAST            (timeout)
+
+270:         250 LOAD_FAST            (payload)
+
+265:         252 LOAD_CONST           (('headers', 'timeout', 'json'))
+             254 BUILD_CONST_KEY_MAP  3
+
+271:         256 LOAD_GLOBAL          (NULL + _upload_request_kwargs)
+             266 LOAD_FAST            (config)
+             268 CALL                 (1 positional)
+
+265:         276 DICT_MERGE           1
+             278 CALL_FUNCTION_EX     (keyword and positional arguments)
+             280 STORE_FAST           (data)
+
+273:         282 LOAD_FAST            (data)
+             284 RETURN_VALUE
+
+
+# Method Name:       poll_cpa_auth_status
+# Filename:          upload_targets.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 2
+# Number of locals:  11
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        276
+# Constants:
+#    0: 'Poll CLIProxyAPI until the OAuth worker leaves the wait state.'
+#    1: 'timeout'
+#    2: 15
+#    3: 'GET'
+#    4: '/v0/management/get-auth-status'
+#    5: 'state'
+#    6: ('headers', 'timeout', 'params')
+#    7: 'error'
+#    8: ('status', 'error')
+#    9: None
+#   10: 'status'
+#   11: ''
+#   12: {'error', 'ok'}
+#   13: 'timeout waiting for CPA auth import'
+#   14: ('status', 'error', 'last')
+# Names:
+#    0: cpa_base_url
+#    1: cpa_headers
+#    2: int
+#    3: cpa_config
+#    4: get
+#    5: time
+#    6: _request_json
+#    7: _upload_request_kwargs
+#    8: Exception
+#    9: str
+#   10: lower
+#   11: sleep
+# Varnames:
+#	config, state, timeout, interval, base, headers, request_timeout, deadline, last, exc, status
+# Positional arguments:
+#	config, state
+# Local variables:
+#    2: timeout
+#    3: interval
+#    4: base
+#    5: headers
+#    6: request_timeout
+#    7: deadline
+#    8: last
+#    9: exc
+#   10: status
+276:           0 RESUME               0
+
+284:           2 LOAD_GLOBAL          (NULL + cpa_base_url)
+              12 LOAD_FAST            (config)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (base)
+
+285:          24 LOAD_GLOBAL          (NULL + cpa_headers)
+              34 LOAD_FAST            (config)
+              36 CALL                 (1 positional)
+              44 STORE_FAST           (headers)
+
+286:          46 LOAD_GLOBAL          (NULL + int)
+              56 LOAD_GLOBAL          (NULL + cpa_config)
+              66 LOAD_FAST            (config)
+              68 CALL                 (1 positional)
+              76 LOAD_ATTR            (NULL|self + get)
+              96 LOAD_CONST           ("timeout")
+              98 CALL                 (1 positional)
+             106 COPY                 1
+             108 TO_BOOL
+             116 POP_JUMP_IF_TRUE     (to 124)
+             120 POP_TOP
+             122 LOAD_CONST           (15)
+         >>  124 CALL                 (1 positional)
+             132 STORE_FAST           (request_timeout)
+
+287:         134 LOAD_GLOBAL          (time)
+             144 LOAD_ATTR            (time)
+             164 PUSH_NULL
+             166 CALL                 (0 positional)
+             174 LOAD_FAST            (timeout)
+             176 BINARY_OP            (+)
+             180 STORE_FAST           (deadline)
+
+288:         182 BUILD_MAP            0
+             184 STORE_FAST           (last)
+
+289:         186 LOAD_GLOBAL          (time)
+             196 LOAD_ATTR            (time)
+             216 PUSH_NULL
+             218 CALL                 (0 positional)
+             226 LOAD_FAST            (deadline)
+             228 COMPARE_OP           (<)
+             232 POP_JUMP_IF_FALSE    (to 512)
+
+290:         236 NOP
+
+291:         238 LOAD_GLOBAL          (NULL + _request_json)
+
+292:         248 LOAD_CONST           ("GET")
+
+293:         250 LOAD_FAST            (base)
+             252 FORMAT_SIMPLE
+             254 LOAD_CONST           ("/v0/management/get-auth-status")
+             256 BUILD_STRING         2
+
+291:         258 BUILD_TUPLE          2
+
+294:         260 LOAD_FAST            (headers)
+
+295:         262 LOAD_FAST            (request_timeout)
+
+296:         264 LOAD_CONST           ("state")
+             266 LOAD_FAST            (state)
+             268 BUILD_MAP            1
+
+291:         270 LOAD_CONST           (('headers', 'timeout', 'params'))
+             272 BUILD_CONST_KEY_MAP  3
+
+297:         274 LOAD_GLOBAL          (NULL + _upload_request_kwargs)
+             284 LOAD_FAST            (config)
+             286 CALL                 (1 positional)
+
+291:         294 DICT_MERGE           1
+             296 CALL_FUNCTION_EX     (keyword and positional arguments)
+             298 STORE_FAST           (last)
+
+301:         300 LOAD_GLOBAL          (NULL + str)
+             310 LOAD_FAST            (last)
+             312 LOAD_ATTR            (NULL|self + get)
+             332 LOAD_CONST           ("status")
+             334 CALL                 (1 positional)
+             342 COPY                 1
+             344 TO_BOOL
+             352 POP_JUMP_IF_TRUE     (to 360)
+             356 POP_TOP
+             358 LOAD_CONST           ("")
+         >>  360 CALL                 (1 positional)
+             368 LOAD_ATTR            (NULL|self + lower)
+             388 CALL                 (0 positional)
+             396 STORE_FAST           (status)
+
+302:         398 LOAD_FAST            (status)
+             400 LOAD_CONST           ({'error', 'ok'})
+             402 CONTAINS_OP          (in)
+             406 POP_JUMP_IF_FALSE    (to 414)
+
+303:         410 LOAD_FAST            (last)
+             412 RETURN_VALUE
+
+304:     >>  414 LOAD_GLOBAL          (time)
+             424 LOAD_ATTR            (sleep)
+             444 PUSH_NULL
+             446 LOAD_FAST            (interval)
+             448 CALL                 (1 positional)
+             456 POP_TOP
+
+289:         458 LOAD_GLOBAL          (time)
+             468 LOAD_ATTR            (time)
+             488 PUSH_NULL
+             490 CALL                 (0 positional)
+             498 LOAD_FAST            (deadline)
+             500 COMPARE_OP           (<)
+             504 POP_JUMP_IF_FALSE    (to 512)
+             508 JUMP_BACKWARD        (to 236)
+
+305:     >>  512 LOAD_CONST           ("timeout")
+             514 LOAD_CONST           ("timeout waiting for CPA auth import")
+             516 LOAD_FAST            (last)
+             518 LOAD_CONST           (('status', 'error', 'last'))
+             520 BUILD_CONST_KEY_MAP  3
+             522 RETURN_VALUE
+         >>  524 PUSH_EXC_INFO
+
+299:         526 LOAD_GLOBAL          (Exception)
+             536 CHECK_EXC_MATCH
+             538 POP_JUMP_IF_FALSE    (to 590)
+             542 STORE_FAST           (exc)
+
+300:         544 LOAD_CONST           ("error")
+             546 LOAD_GLOBAL          (NULL + str)
+             556 LOAD_FAST            (exc)
+             558 CALL                 (1 positional)
+             566 LOAD_CONST           (('status', 'error'))
+             568 BUILD_CONST_KEY_MAP  2
+             570 STORE_FAST           (last)
+             572 POP_EXCEPT
+             574 LOAD_CONST           (None)
+             576 STORE_FAST           (exc)
+             578 DELETE_FAST          (exc)
+             580 JUMP_BACKWARD_NO_INTERRUPT (to 300)
+         >>  582 LOAD_CONST           (None)
+             584 STORE_FAST           (exc)
+             586 DELETE_FAST          (exc)
+             588 RERAISE              1
+
+299:     >>  590 RERAISE              0
+         >>  592 COPY                 3
+             594 POP_EXCEPT
+             596 RERAISE              1
+
+ExceptionTable:
+  238 to 298 -> 524 [0]
+  524 to 542 -> 592 [1] lasti
+  544 to 570 -> 582 [1] lasti
+  582 to 590 -> 592 [1] lasti
+
+# Method Name:       list_cpa_auth_files
+# Filename:          upload_targets.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        308
+# Constants:
+#    0: None
+#    1: 'timeout'
+#    2: 15
+#    3: 'GET'
+#    4: '/v0/management/auth-files'
+#    5: ('headers', 'timeout')
+#    6: 'files'
+# Names:
+#    0: cpa_base_url
+#    1: int
+#    2: cpa_config
+#    3: get
+#    4: _request_json
+#    5: cpa_headers
+#    6: _upload_request_kwargs
+#    7: isinstance
+#    8: list
+#    9: dict
+# Varnames:
+#	config, base, timeout, data, files, f
+# Positional arguments:
+#	config
+# Local variables:
+#    1: base
+#    2: timeout
+#    3: data
+#    4: files
+#    5: f
+308:           0 RESUME               0
+
+309:           2 LOAD_GLOBAL          (NULL + cpa_base_url)
+              12 LOAD_FAST            (config)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (base)
+
+310:          24 LOAD_GLOBAL          (NULL + int)
+              34 LOAD_GLOBAL          (NULL + cpa_config)
+              44 LOAD_FAST            (config)
+              46 CALL                 (1 positional)
+              54 LOAD_ATTR            (NULL|self + get)
+              74 LOAD_CONST           ("timeout")
+              76 CALL                 (1 positional)
+              84 COPY                 1
+              86 TO_BOOL
+              94 POP_JUMP_IF_TRUE     (to 102)
+              98 POP_TOP
+             100 LOAD_CONST           (15)
+         >>  102 CALL                 (1 positional)
+             110 STORE_FAST           (timeout)
+
+311:         112 LOAD_GLOBAL          (NULL + _request_json)
+
+312:         122 LOAD_CONST           ("GET")
+
+313:         124 LOAD_FAST            (base)
+             126 FORMAT_SIMPLE
+             128 LOAD_CONST           ("/v0/management/auth-files")
+             130 BUILD_STRING         2
+
+311:         132 BUILD_TUPLE          2
+
+314:         134 LOAD_GLOBAL          (NULL + cpa_headers)
+             144 LOAD_FAST            (config)
+             146 CALL                 (1 positional)
+
+315:         154 LOAD_FAST            (timeout)
+
+311:         156 LOAD_CONST           (('headers', 'timeout'))
+             158 BUILD_CONST_KEY_MAP  2
+
+316:         160 LOAD_GLOBAL          (NULL + _upload_request_kwargs)
+             170 LOAD_FAST            (config)
+             172 CALL                 (1 positional)
+
+311:         180 DICT_MERGE           1
+             182 CALL_FUNCTION_EX     (keyword and positional arguments)
+             184 STORE_FAST           (data)
+
+318:         186 LOAD_FAST            (data)
+             188 LOAD_ATTR            (NULL|self + get)
+             208 LOAD_CONST           ("files")
+             210 CALL                 (1 positional)
+             218 COPY                 1
+             220 TO_BOOL
+             228 POP_JUMP_IF_TRUE     (to 236)
+             232 POP_TOP
+             234 BUILD_LIST           0
+         >>  236 STORE_FAST           (files)
+
+319:         238 LOAD_GLOBAL          (NULL + isinstance)
+             248 LOAD_FAST            (files)
+             250 LOAD_GLOBAL          (list)
+             260 CALL                 (2 positional)
+             268 TO_BOOL
+             276 POP_JUMP_IF_TRUE     (to 284)
+
+320:         280 BUILD_LIST           0
+             282 RETURN_VALUE
+
+321:     >>  284 LOAD_FAST            (files)
+             286 GET_ITER
+             288 LOAD_FAST_AND_CLEAR  (f)
+             290 SWAP                 (TOS <-> TOS1)
+             292 BUILD_LIST           0
+             294 SWAP                 (TOS <-> TOS1)
+             296 GET_ITER
+             298 FOR_ITER             (to 358)
+             302 STORE_FAST           (f)
+             304 LOAD_GLOBAL          (NULL + isinstance)
+             314 LOAD_FAST            (f)
+             316 LOAD_GLOBAL          (dict)
+             326 CALL                 (2 positional)
+             334 TO_BOOL
+             342 POP_JUMP_IF_TRUE     (to 350)
+             346 JUMP_BACKWARD        (to 298)
+         >>  350 LOAD_FAST            (f)
+             352 LIST_APPEND          2
+             354 JUMP_BACKWARD        (to 298)
+         >>  358 END_FOR
+             360 POP_TOP
+             362 SWAP                 (TOS <-> TOS1)
+             364 STORE_FAST           (f)
+             366 RETURN_VALUE
+         >>  368 SWAP                 (TOS <-> TOS1)
+             370 POP_TOP
+
+321:         372 SWAP                 (TOS <-> TOS1)
+             374 STORE_FAST           (f)
+             376 RERAISE              0
+
+ExceptionTable:
+  292 to 340 -> 368 [2]
+  350 to 360 -> 368 [2]
+
+# Method Name:       _cpa_file_name
+# Filename:          upload_targets.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        324
+# Constants:
+#    0: None
+#    1: 'name'
+#    2: 'file'
+#    3: 'filename'
+#    4: 'path'
+#    5: ''
+# Names:
+#    0: str
+#    1: get
+#    2: strip
+# Varnames:
+#	item
+# Positional arguments:
+#	item
+324:           0 RESUME               0
+
+325:           2 LOAD_GLOBAL          (NULL + str)
+
+326:          12 LOAD_FAST            (item)
+              14 LOAD_ATTR            (NULL|self + get)
+              34 LOAD_CONST           ("name")
+              36 CALL                 (1 positional)
+              44 COPY                 1
+              46 TO_BOOL
+              54 POP_JUMP_IF_TRUE     (to 206)
+              58 POP_TOP
+
+327:          60 LOAD_FAST            (item)
+              62 LOAD_ATTR            (NULL|self + get)
+              82 LOAD_CONST           ("file")
+              84 CALL                 (1 positional)
+
+326:          92 COPY                 1
+              94 TO_BOOL
+             102 POP_JUMP_IF_TRUE     (to 206)
+             106 POP_TOP
+
+328:         108 LOAD_FAST            (item)
+             110 LOAD_ATTR            (NULL|self + get)
+             130 LOAD_CONST           ("filename")
+             132 CALL                 (1 positional)
+
+326:         140 COPY                 1
+             142 TO_BOOL
+             150 POP_JUMP_IF_TRUE     (to 206)
+             154 POP_TOP
+
+329:         156 LOAD_FAST            (item)
+             158 LOAD_ATTR            (NULL|self + get)
+             178 LOAD_CONST           ("path")
+             180 CALL                 (1 positional)
+
+326:         188 COPY                 1
+             190 TO_BOOL
+             198 POP_JUMP_IF_TRUE     (to 206)
+             202 POP_TOP
+
+330:         204 LOAD_CONST           ("")
+
+325:     >>  206 CALL                 (1 positional)
+
+331:         214 LOAD_ATTR            (NULL|self + strip)
+             234 CALL                 (0 positional)
+
+325:         242 RETURN_VALUE
+
+
+# Method Name:       _cpa_file_email
+# Filename:          upload_targets.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        334
+# Constants:
+#    0: None
+#    1: ('email', 'account', 'name', 'username')
+#    2: ''
+#    3: '@'
+#    4: 'credentials'
+#    5: 'email'
+# Names:
+#    0: str
+#    1: get
+#    2: strip
+#    3: lower
+#    4: isinstance
+#    5: dict
+# Varnames:
+#	item, key, value, credentials
+# Positional arguments:
+#	item
+# Local variables:
+#    1: key
+#    2: value
+#    3: credentials
+334:           0 RESUME               0
+
+335:           2 LOAD_CONST           (('email', 'account', 'name', 'username'))
+               4 GET_ITER
+               6 FOR_ITER             (to 162)
+              10 STORE_FAST           (key)
+
+336:          12 LOAD_GLOBAL          (NULL + str)
+              22 LOAD_FAST            (item)
+              24 LOAD_ATTR            (NULL|self + get)
+              44 LOAD_FAST            (key)
+              46 CALL                 (1 positional)
+              54 COPY                 1
+              56 TO_BOOL
+              64 POP_JUMP_IF_TRUE     (to 72)
+              68 POP_TOP
+              70 LOAD_CONST           ("")
+         >>   72 CALL                 (1 positional)
+              80 LOAD_ATTR            (NULL|self + strip)
+             100 CALL                 (0 positional)
+             108 STORE_FAST           (value)
+
+337:         110 LOAD_CONST           ("@")
+             112 LOAD_FAST            (value)
+             114 CONTAINS_OP          (in)
+             118 POP_JUMP_IF_TRUE     (to 126)
+             122 JUMP_BACKWARD        (to 6)
+
+338:     >>  126 LOAD_FAST            (value)
+             128 LOAD_ATTR            (NULL|self + lower)
+             148 CALL                 (0 positional)
+             156 SWAP                 (TOS <-> TOS1)
+             158 POP_TOP
+             160 RETURN_VALUE
+
+335:     >>  162 END_FOR
+             164 POP_TOP
+
+339:         166 LOAD_GLOBAL          (NULL + isinstance)
+             176 LOAD_FAST            (item)
+             178 LOAD_ATTR            (NULL|self + get)
+             198 LOAD_CONST           ("credentials")
+             200 CALL                 (1 positional)
+             208 LOAD_GLOBAL          (dict)
+             218 CALL                 (2 positional)
+             226 TO_BOOL
+             234 POP_JUMP_IF_FALSE    (to 272)
+             238 LOAD_FAST            (item)
+             240 LOAD_ATTR            (NULL|self + get)
+             260 LOAD_CONST           ("credentials")
+             262 CALL                 (1 positional)
+             270 JUMP_FORWARD         (to 274)
+         >>  272 BUILD_MAP            0
+         >>  274 STORE_FAST           (credentials)
+
+340:         276 LOAD_GLOBAL          (NULL + str)
+             286 LOAD_FAST            (credentials)
+             288 LOAD_ATTR            (NULL|self + get)
+             308 LOAD_CONST           ("email")
+             310 CALL                 (1 positional)
+             318 COPY                 1
+             320 TO_BOOL
+             328 POP_JUMP_IF_TRUE     (to 336)
+             332 POP_TOP
+             334 LOAD_CONST           ("")
+         >>  336 CALL                 (1 positional)
+             344 LOAD_ATTR            (NULL|self + strip)
+             364 CALL                 (0 positional)
+             372 STORE_FAST           (value)
+
+341:         374 LOAD_CONST           ("@")
+             376 LOAD_FAST            (value)
+             378 CONTAINS_OP          (in)
+             382 POP_JUMP_IF_FALSE    (to 418)
+             386 LOAD_FAST            (value)
+             388 LOAD_ATTR            (NULL|self + lower)
+             408 CALL                 (0 positional)
+             416 RETURN_VALUE
+         >>  418 LOAD_CONST           ("")
+             420 RETURN_VALUE
+
+
+# Method Name:       cpa_auth_file_matches
+# Filename:          upload_targets.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 2
+# Number of locals:  8
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        344
+# Constants:
+#    0: 'Find a matching CLIProxyAPI auth-file by saved filename or email.'
+#    1: ''
+#    2: '/'
+#    3: '\\'
+# Names:
+#    0: str
+#    1: strip
+#    2: lower
+#    3: isinstance
+#    4: dict
+#    5: _cpa_file_name
+#    6: endswith
+#    7: _cpa_file_email
+# Varnames:
+#	files, auth_file, email, wanted_file, wanted_email, item, file_name, item_email
+# Positional arguments:
+#	files
+# Local variables:
+#    1: auth_file
+#    2: email
+#    3: wanted_file
+#    4: wanted_email
+#    5: item
+#    6: file_name
+#    7: item_email
+344:           0 RESUME               0
+
+351:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (auth_file)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + strip)
+              60 CALL                 (0 positional)
+              68 LOAD_ATTR            (NULL|self + lower)
+              88 CALL                 (0 positional)
+              96 STORE_FAST           (wanted_file)
+
+352:          98 LOAD_GLOBAL          (NULL + str)
+             108 LOAD_FAST            (email)
+             110 COPY                 1
+             112 TO_BOOL
+             120 POP_JUMP_IF_TRUE     (to 128)
+             124 POP_TOP
+             126 LOAD_CONST           ("")
+         >>  128 CALL                 (1 positional)
+             136 LOAD_ATTR            (NULL|self + strip)
+             156 CALL                 (0 positional)
+             164 LOAD_ATTR            (NULL|self + lower)
+             184 CALL                 (0 positional)
+             192 STORE_FAST           (wanted_email)
+
+353:         194 LOAD_FAST            (files)
+             196 COPY                 1
+             198 TO_BOOL
+             206 POP_JUMP_IF_TRUE     (to 214)
+             210 POP_TOP
+             212 BUILD_LIST           0
+         >>  214 GET_ITER
+             216 FOR_ITER             (to 526)
+             220 STORE_FAST           (item)
+
+354:         222 LOAD_GLOBAL          (NULL + isinstance)
+             232 LOAD_FAST            (item)
+             234 LOAD_GLOBAL          (dict)
+             244 CALL                 (2 positional)
+             252 TO_BOOL
+             260 POP_JUMP_IF_TRUE     (to 268)
+
+355:         264 JUMP_BACKWARD        (to 216)
+
+356:     >>  268 LOAD_GLOBAL          (NULL + _cpa_file_name)
+             278 LOAD_FAST            (item)
+             280 CALL                 (1 positional)
+             288 LOAD_ATTR            (NULL|self + lower)
+             308 CALL                 (0 positional)
+             316 STORE_FAST           (file_name)
+
+357:         318 LOAD_FAST            (wanted_file)
+         >>  320 TO_BOOL
+             328 POP_JUMP_IF_FALSE    (to 464)
+             332 LOAD_FAST            (file_name)
+             334 TO_BOOL
+             342 POP_JUMP_IF_FALSE    (to 464)
+
+358:         346 LOAD_FAST_LOAD_FAST  (file_name, wanted_file)
+             348 COMPARE_OP           (==)
+             352 POP_JUMP_IF_TRUE     (to 456)
+             356 LOAD_FAST            (file_name)
+             358 LOAD_ATTR            (NULL|self + endswith)
+             378 LOAD_CONST           ("/")
+             380 LOAD_FAST            (wanted_file)
+             382 BINARY_OP            (+)
+             386 CALL                 (1 positional)
+             394 TO_BOOL
+             402 POP_JUMP_IF_TRUE     (to 456)
+             406 LOAD_FAST            (file_name)
+             408 LOAD_ATTR            (NULL|self + endswith)
+             428 LOAD_CONST           ("\\")
+             430 LOAD_FAST            (wanted_file)
+             432 BINARY_OP            (+)
+             436 CALL                 (1 positional)
+             444 TO_BOOL
+             452 POP_JUMP_IF_FALSE    (to 464)
+
+359:     >>  456 LOAD_FAST            (item)
+             458 SWAP                 (TOS <-> TOS1)
+             460 POP_TOP
+             462 RETURN_VALUE
+
+360:     >>  464 LOAD_GLOBAL          (NULL + _cpa_file_email)
+             474 LOAD_FAST            (item)
+             476 CALL                 (1 positional)
+             484 STORE_FAST           (item_email)
+
+361:         486 LOAD_FAST            (wanted_email)
+             488 TO_BOOL
+             496 POP_JUMP_IF_TRUE     (to 504)
+             500 JUMP_BACKWARD        (to 216)
+         >>  504 LOAD_FAST_LOAD_FAST  (item_email, wanted_email)
+             506 COMPARE_OP           (==)
+             510 POP_JUMP_IF_TRUE     (to 518)
+             514 JUMP_BACKWARD        (to 216)
+
+362:     >>  518 LOAD_FAST            (item)
+             520 SWAP                 (TOS <-> TOS1)
+             522 POP_TOP
+             524 RETURN_VALUE
+
+353:     >>  526 END_FOR
+             528 POP_TOP
+
+363:         530 BUILD_MAP            0
+             532 RETURN_VALUE
+
+
+# Method Name:       confirm_cpa_auth_file
+# Filename:          upload_targets.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 3
+# Number of locals:  5
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        366
+# Constants:
+#    0: 'Return whether a CPA auth-file/account exists on CLIProxyAPI.'
+#    1: ('auth_file', 'email')
+#    2: False
+#    3: 'missing'
+#    4: ''
+#    5: ('ok', 'status', 'auth_file', 'email')
+#    6: True
+#    7: 'uploaded'
+#    8: ('ok', 'status', 'auth_file', 'email', 'file')
+# Names:
+#    0: list_cpa_auth_files
+#    1: cpa_auth_file_matches
+#    2: _cpa_file_name
+#    3: _cpa_file_email
+# Varnames:
+#	config, auth_file, email, files, match
+# Positional arguments:
+#	config
+# Local variables:
+#    1: auth_file
+#    2: email
+#    3: files
+#    4: match
+366:           0 RESUME               0
+
+374:           2 LOAD_FAST            (files)
+               4 POP_JUMP_IF_NOT_NONE (to 30)
+
+375:           8 LOAD_GLOBAL          (NULL + list_cpa_auth_files)
+              18 LOAD_FAST            (config)
+              20 CALL                 (1 positional)
+              28 STORE_FAST           (files)
+
+376:     >>   30 LOAD_GLOBAL          (NULL + cpa_auth_file_matches)
+              40 LOAD_FAST_LOAD_FAST  (files, auth_file)
+              42 LOAD_FAST            (email)
+              44 LOAD_CONST           (('auth_file', 'email'))
+              46 CALL_KW              3
+              48 STORE_FAST           (match)
+
+377:          50 LOAD_FAST            (match)
+              52 TO_BOOL
+              60 POP_JUMP_IF_TRUE     (to 78)
+
+378:          64 LOAD_CONST           (False)
+              66 LOAD_CONST           ("missing")
+              68 LOAD_CONST           ("")
+              70 LOAD_FAST            (email)
+              72 LOAD_CONST           (('ok', 'status', 'auth_file', 'email'))
+              74 BUILD_CONST_KEY_MAP  4
+              76 RETURN_VALUE
+
+380:     >>   78 LOAD_CONST           (True)
+
+381:          80 LOAD_CONST           ("uploaded")
+
+382:          82 LOAD_GLOBAL          (NULL + _cpa_file_name)

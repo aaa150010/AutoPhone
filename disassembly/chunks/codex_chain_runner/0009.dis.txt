@@ -1,0 +1,352 @@
+            12184 POP_JUMP_IF_FALSE    (to 12224)
+            12188 LOAD_FAST            (result)
+            12190 LOAD_ATTR            (NULL|self + get)
+            12210 EXTENDED_ARG         (256)
+            12212 LOAD_CONST           ("node_bridge")
+            12214 CALL                 (1 positional)
+            12222 JUMP_FORWARD         (to 12226)
+         >> 12224 BUILD_MAP            0
+         >> 12226 STORE_FAST           (node)
+
+766:        12228 LOAD_FAST            (node)
+            12230 TO_BOOL
+            12238 POP_JUMP_IF_FALSE    (to 12382)
+
+767:        12242 LOAD_GLOBAL          (NULL + print)
+
+768:        12252 EXTENDED_ARG         (256)
+            12254 LOAD_CONST           ("node_bridge=mode=")
+
+769:        12256 LOAD_FAST            (node)
+            12258 LOAD_ATTR            (NULL|self + get)
+            12278 LOAD_CONST           ("mode")
+            12280 CALL                 (1 positional)
+            12288 FORMAT_SIMPLE
+            12290 EXTENDED_ARG         (256)
+            12292 LOAD_CONST           (" ok=")
+            12294 LOAD_FAST            (node)
+            12296 LOAD_ATTR            (NULL|self + get)
+            12316 EXTENDED_ARG         (256)
+            12318 LOAD_CONST           ("ok")
+            12320 CALL                 (1 positional)
+            12328 FORMAT_SIMPLE
+            12330 EXTENDED_ARG         (256)
+            12332 LOAD_CONST           (" fingerprint_present=")
+            12334 LOAD_FAST            (node)
+            12336 LOAD_ATTR            (NULL|self + get)
+            12356 EXTENDED_ARG         (256)
+            12358 LOAD_CONST           ("fingerprint_present")
+            12360 CALL                 (1 positional)
+            12368 FORMAT_SIMPLE
+
+768:        12370 BUILD_STRING         6
+
+767:        12372 CALL                 (1 positional)
+            12380 POP_TOP
+
+771:     >> 12382 LOAD_GLOBAL          (NULL + isinstance)
+            12392 LOAD_FAST            (result)
+            12394 LOAD_ATTR            (NULL|self + get)
+            12414 EXTENDED_ARG         (256)
+            12416 LOAD_CONST           ("codex_chain_events")
+            12418 CALL                 (1 positional)
+            12426 LOAD_GLOBAL          (list)
+            12436 CALL                 (2 positional)
+            12444 TO_BOOL
+            12452 POP_JUMP_IF_FALSE    (to 12492)
+            12456 LOAD_FAST            (result)
+            12458 LOAD_ATTR            (NULL|self + get)
+            12478 EXTENDED_ARG         (256)
+            12480 LOAD_CONST           ("codex_chain_events")
+            12482 CALL                 (1 positional)
+            12490 JUMP_FORWARD         (to 12494)
+         >> 12492 BUILD_LIST           0
+         >> 12494 STORE_FAST           (events)
+
+772:        12496 LOAD_GLOBAL          (NULL + print)
+            12506 EXTENDED_ARG         (256)
+            12508 LOAD_CONST           ("events=")
+            12510 EXTENDED_ARG         (256)
+            12512 LOAD_CONST           (" -> ")
+            12514 LOAD_ATTR            (NULL|self + join)
+            12534 EXTENDED_ARG         (256)
+            12536 LOAD_CONST           (<Code311 code object <genexpr> at 0x1080e21f0, file codex_chain_runner.py>, line 772)
+            12538 MAKE_FUNCTION
+            12540 LOAD_FAST            (events)
+            12542 GET_ITER
+            12544 CALL                 (0 positional)
+            12552 CALL                 (1 positional)
+            12560 BINARY_OP            (+)
+            12564 CALL                 (1 positional)
+            12572 POP_TOP
+
+774:     >> 12574 LOAD_FAST            (result)
+            12576 LOAD_ATTR            (NULL|self + get)
+            12596 EXTENDED_ARG         (256)
+            12598 LOAD_CONST           ("ok")
+            12600 CALL                 (1 positional)
+            12608 TO_BOOL
+            12616 POP_JUMP_IF_FALSE    (to 12624)
+            12620 LOAD_CONST           (0)
+            12622 RETURN_VALUE
+         >> 12624 EXTENDED_ARG         (256)
+            12626 LOAD_CONST           (2)
+            12628 RETURN_VALUE
+         >> 12630 SWAP                 (TOS <-> TOS1)
+            12632 POP_TOP
+
+573:        12634 SWAP                 (TOS <-> TOS1)
+            12636 STORE_FAST           (item)
+            12638 RERAISE              0
+         >> 12640 PUSH_EXC_INFO
+
+734:        12642 LOAD_GLOBAL          (Exception)
+            12652 CHECK_EXC_MATCH
+            12654 POP_JUMP_IF_FALSE    (to 12824)
+            12658 STORE_FAST           (exc)
+
+735:        12660 EXTENDED_ARG         (256)
+            12662 LOAD_CONST           (False)
+            12664 LOAD_FAST            (result)
+            12666 EXTENDED_ARG         (256)
+            12668 LOAD_CONST           ("local_archive_saved")
+            12670 STORE_SUBSCR
+
+736:        12674 LOAD_GLOBAL          (NULL + str)
+            12684 LOAD_FAST            (exc)
+            12686 CALL                 (1 positional)
+            12694 LOAD_FAST            (result)
+            12696 EXTENDED_ARG         (256)
+            12698 LOAD_CONST           ("local_archive_error")
+            12700 STORE_SUBSCR
+
+737:        12704 LOAD_GLOBAL          (NULL + _log)
+            12714 EXTENDED_ARG         (256)
+            12716 LOAD_CONST           ("本地归档失败：")
+            12718 LOAD_FAST            (exc)
+            12720 FORMAT_SIMPLE
+            12722 BUILD_STRING         2
+            12724 EXTENDED_ARG         (256)
+            12726 LOAD_CONST           ("error")
+            12728 CALL                 (2 positional)
+            12736 POP_TOP
+
+738:        12738 LOAD_FAST            (args)
+            12740 LOAD_ATTR            (upload_target)
+            12760 LOAD_CONST           ("local")
+            12762 COMPARE_OP           (==)
+            12766 POP_JUMP_IF_FALSE    (to 12804)
+
+739:        12770 EXTENDED_ARG         (256)
+            12772 LOAD_CONST           (False)
+            12774 LOAD_FAST            (result)
+            12776 EXTENDED_ARG         (256)
+            12778 LOAD_CONST           ("ok")
+            12780 STORE_SUBSCR
+
+740:        12784 EXTENDED_ARG         (256)
+            12786 LOAD_CONST           ("local_archive_failed: ")
+            12788 LOAD_FAST            (exc)
+            12790 FORMAT_SIMPLE
+            12792 BUILD_STRING         2
+            12794 LOAD_FAST            (result)
+            12796 EXTENDED_ARG         (256)
+            12798 LOAD_CONST           ("error")
+            12800 STORE_SUBSCR
+         >> 12804 POP_EXCEPT
+            12806 LOAD_CONST           (None)
+            12808 STORE_FAST           (exc)
+            12810 DELETE_FAST          (exc)
+            12812 EXTENDED_ARG         (768)
+            12814 JUMP_BACKWARD_NO_INTERRUPT (to 10912)
+         >> 12816 LOAD_CONST           (None)
+            12818 STORE_FAST           (exc)
+            12820 DELETE_FAST          (exc)
+            12822 RERAISE              1
+
+734:     >> 12824 RERAISE              0
+         >> 12826 COPY                 3
+            12828 POP_EXCEPT
+            12830 RERAISE              1
+
+ExceptionTable:
+  5390 to 5436 -> 12630 [2]
+  5446 to 5484 -> 12630 [2]
+  10664 to 10910 -> 12640 [0]
+  12640 to 12658 -> 12826 [1] lasti
+  12660 to 12802 -> 12816 [1] lasti
+  12816 to 12824 -> 12826 [1] lasti
+
+# Method Name:       <lambda>
+# Filename:          codex_chain_runner.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        97
+# Constants:
+#    0: None
+# Names:
+#    0: _log
+# Varnames:
+#	message, _tag
+# Positional arguments:
+#	message, _tag
+ 97:           0 RESUME               0
+               2 LOAD_GLOBAL          (NULL + _log)
+              12 LOAD_FAST_LOAD_FAST  (message, _tag)
+              14 CALL                 (2 positional)
+              22 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          codex_chain_runner.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        98
+# Constants:
+#    0: None
+#    1: 'SUB2 '
+#    2: 'info'
+# Varnames:
+#	msg
+# Positional arguments:
+#	msg
+# Free variables:
+#    0: logger
+               0 COPY_FREE_VARS       1
+
+ 98:           2 RESUME               0
+               4 LOAD_DEREF           (logger)
+               6 PUSH_NULL
+               8 LOAD_CONST           ("SUB2 ")
+              10 LOAD_FAST            (msg)
+              12 FORMAT_SIMPLE
+              14 BUILD_STRING         2
+              16 LOAD_CONST           ("info")
+              18 CALL                 (2 positional)
+              26 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          codex_chain_runner.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        233
+# Constants:
+#    0: None
+#    1: 'SUB2 '
+#    2: 'info'
+# Names:
+#    0: _log
+# Varnames:
+#	msg
+# Positional arguments:
+#	msg
+233:           0 RESUME               0
+               2 LOAD_GLOBAL          (NULL + _log)
+              12 LOAD_CONST           ("SUB2 ")
+              14 LOAD_FAST            (msg)
+              16 FORMAT_SIMPLE
+              18 BUILD_STRING         2
+              20 LOAD_CONST           ("info")
+              22 CALL                 (2 positional)
+              30 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          codex_chain_runner.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        241
+# Constants:
+#    0: None
+#    1: 'SUB2 '
+#    2: 'info'
+# Names:
+#    0: _log
+# Varnames:
+#	msg
+# Positional arguments:
+#	msg
+241:           0 RESUME               0
+               2 LOAD_GLOBAL          (NULL + _log)
+              12 LOAD_CONST           ("SUB2 ")
+              14 LOAD_FAST            (msg)
+              16 FORMAT_SIMPLE
+              18 BUILD_STRING         2
+              20 LOAD_CONST           ("info")
+              22 CALL                 (2 positional)
+              30 RETURN_VALUE
+
+
+# Method Name:       <genexpr>
+# Filename:          codex_chain_runner.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        6
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        772
+# Constants:
+#    0: 'state'
+#    1: None
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: str
+#    3: get
+# Varnames:
+#	.0, item
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: item
+772:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 122)
+              14 STORE_FAST           (item)
+              16 LOAD_GLOBAL          (NULL + isinstance)
+              26 LOAD_FAST            (item)
+              28 LOAD_GLOBAL          (dict)
+              38 CALL                 (2 positional)
+              46 TO_BOOL
+              54 POP_JUMP_IF_TRUE     (to 62)
+              58 JUMP_BACKWARD        (to 10)
+         >>   62 LOAD_GLOBAL          (NULL + str)
+              72 LOAD_FAST            (item)
+              74 LOAD_ATTR            (NULL|self + get)
+              94 LOAD_CONST           ("state")
+              96 CALL                 (1 positional)
+             104 CALL                 (1 positional)
+             112 YIELD_VALUE          0
+         >>  114 RESUME               5
+             116 POP_TOP
+             118 JUMP_BACKWARD        (to 10)
+         >>  122 END_FOR
+             124 POP_TOP
+             126 RETURN_CONST         (None)
+         >>  128 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+             130 RERAISE              1
+
+ExceptionTable:
+  4 to 52 -> 128 [0] lasti
+  62 to 126 -> 128 [0] lasti

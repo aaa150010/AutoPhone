@@ -1,0 +1,800 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          mailmanage_client.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        12
+# Flags:             0x00000000 (0x0)
+# First Line:        1
+# Constants:
+#    0: '\nMailManage 邮箱管理平台 API 客户端\nhttps://mailmanage.lizaliza.top\n\n功能:\n  - 按分类查询邮箱池 (GET /api/mailboxes)\n  - 原子领取邮箱，默认领取即远程消费，避免多线程/多机器重复使用 (POST /api/mailboxes/reserve)\n  - 从指定邮箱获取验证码 (GET /api/mail/<email>)\n  - 后端标记已用，本地记录作为兜底 (POST /api/mailboxes/mark-used)\n'
+#    1: 0
+#    2: None
+#    3: ('Path',)
+#    4: ('Any', 'Optional', 'Dict', 'List')
+#    5: ('quote', 'urlencode')
+#    6: ('runtime_path',)
+#    7: ('atomic_write_json', 'named_file_lock')
+#    8: ('requests_kwargs',)
+#    9: 'https://mailmanage.lizaliza.top'
+#   10: 'used_emails.json'
+#   11: 'temporary verification code,临时验证码,输入此临时验证码以继续,Enter this temporary verification code'
+#   12: 'Your temporary OpenAI verification code,Your temporary ChatGPT verification code,Your temporary ChatGPT login code,你的 OpenAI 临时验证码,你的临时 ChatGPT 登录代码,临时 ChatGPT 登录代码,OpenAI verification code,ChatGPT verification code,ChatGPT login code,OpenAI 临时验证码'
+#   13: 'OpenAI,ChatGPT,gpt'
+#   14: ('enter this temporary verification code to continue', 'temporary verification code', 'temporary chatgpt verification code', 'your temporary chatgpt verification code', 'temporary chatgpt login code', 'your temporary chatgpt login code', 'your temporary openai verification code', 'openai verification code', 'chatgpt verification code', 'chatgpt login code', '输入此临时验证码以继续', '临时验证码', 'openai 临时验证码', '临时 chatgpt 登录代码', 'chatgpt 登录代码')
+#   15: ('new sign-in', 'new sign in', 'sign-in', 'sign in', 'login', '登录', '登入', '新设备')
+#   16: <Code311 code object MailManageTemporaryError at 0x107777910, file mailmanage_client.py>, line 66
+#   17: 'MailManageTemporaryError'
+#   18: <Code311 code object MailCodePollError at 0x1077778e0, file mailmanage_client.py>, line 70
+#   19: 'MailCodePollError'
+#   20: <Code311 code object MailManageClient at 0x10774c3d0, file mailmanage_client.py>, line 79
+#   21: 'MailManageClient'
+#   22: '__main__'
+#   23: 'MailManage 邮箱管理工具'
+#   24: ('description',)
+#   25: '--api-key'
+#   26: True
+#   27: 'API Key (mak_xxx)'
+#   28: ('required', 'help')
+#   29: '--base-url'
+#   30: 'API 地址'
+#   31: ('default', 'help')
+#   32: '--command'
+#   33: 'list'
+#   34: ('list', 'get', 'clean')
+#   35: ('default', 'choices')
+#   36: '--category'
+#   37: 'free'
+#   38: '邮箱分类 (free/套餐)'
+#   39: '--email'
+#   40: ''
+#   41: '指定邮箱'
+#   42: '--keyword'
+#   43: 'gpt'
+#   44: '验证码检索关键词'
+#   45: '-v'
+#   46: '--verbose'
+#   47: 'store_true'
+#   48: ('action',)
+#   49: ('verbose',)
+#   50: '\n已用邮箱数: '
+#   51: '\n邮箱列表 ('
+#   52: '):\n'
+#   53: ('category',)
+#   54: 'email'
+#   55: '?'
+#   56: ' [已用]'
+#   57: '  '
+#   58: '  tag='
+#   59: 'tag'
+#   60: '  msgs='
+#   61: 'message_count'
+#   62: '\n推荐下一个: '
+#   63: 'get'
+#   64: '无可用邮箱'
+#   65: 1
+#   66: '轮询 '
+#   67: ' 验证码...'
+#   68: 120
+#   69: ('keyword', 'timeout')
+#   70: '\n验证码: '
+#   71: 'code'
+#   72: '发件人: '
+#   73: 'from_addr'
+#   74: '主题:   '
+#   75: 'subject'
+#   76: '超时未获取到验证码'
+#   77: 'clean'
+#   78: '.bak'
+#   79: '已清除 '
+#   80: ' (备份: .bak)'
+#   81: '无已用记录'
+# Names:
+#    0: __doc__
+#    1: datetime
+#    2: json
+#    3: os
+#    4: re
+#    5: threading
+#    6: time
+#    7: uuid
+#    8: pathlib
+#    9: Path
+#   10: typing
+#   11: Any
+#   12: Optional
+#   13: Dict
+#   14: List
+#   15: urllib.parse
+#   16: quote
+#   17: urlencode
+#   18: requests
+#   19: runtime_paths
+#   20: runtime_path
+#   21: file_safety
+#   22: atomic_write_json
+#   23: named_file_lock
+#   24: proxy_scope
+#   25: requests_kwargs
+#   26: DEFAULT_BASE_URL
+#   27: str
+#   28: DEFAULT_USED_FILE
+#   29: OPENAI_OTP_KEYWORD
+#   30: OPENAI_OTP_SUBJECT_KEYWORD
+#   31: OPENAI_OTP_BROAD_KEYWORD
+#   32: OPENAI_OTP_ANCHORS
+#   33: OPENAI_NON_OTP_MARKERS
+#   34: RuntimeError
+#   35: MailManageTemporaryError
+#   36: MailCodePollError
+#   37: MailManageClient
+#   38: __name__
+#   39: argparse
+#   40: ArgumentParser
+#   41: p
+#   42: add_argument
+#   43: parse_args
+#   44: args
+#   45: api_key
+#   46: base_url
+#   47: verbose
+#   48: client
+#   49: command
+#   50: print
+#   51: used_count
+#   52: category
+#   53: list_mailboxes
+#   54: mailboxes
+#   55: mb
+#   56: get
+#   57: email
+#   58: lower
+#   59: _used
+#   60: used
+#   61: get_available_email
+#   62: available
+#   63: exit
+#   64: get_code
+#   65: keyword
+#   66: result
+#   67: mark_used
+#   68: shutil
+#   69: path
+#   70: isfile
+#   71: copy
+#   72: remove
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ("\nMailManage 邮箱管理平台 API 客户端\nhttps://mailmanage.lizaliza.top\n\n功能:\n  - 按分类查询邮箱池 (GET /api/mailboxes)\n  - 原子领取邮箱，默认领取即远程消费，避免多线程/多机器重复使用 (POST /api/mailboxes/reserve)\n  - 从指定邮箱获取验证码 (GET /api/mail/<email>)\n  - 后端标记已用，本地记录作为兜底 (POST /api/mailboxes/mark-used)\n")
+               4 STORE_NAME           (__doc__)
+
+ 13:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (None)
+              10 IMPORT_NAME          (datetime)
+              12 STORE_NAME           (datetime)
+
+ 14:          14 LOAD_CONST           (0)
+              16 LOAD_CONST           (None)
+              18 IMPORT_NAME          (json)
+              20 STORE_NAME           (json)
+
+ 15:          22 LOAD_CONST           (0)
+              24 LOAD_CONST           (None)
+              26 IMPORT_NAME          (os)
+              28 STORE_NAME           (os)
+
+ 16:          30 LOAD_CONST           (0)
+              32 LOAD_CONST           (None)
+              34 IMPORT_NAME          (re)
+              36 STORE_NAME           (re)
+
+ 17:          38 LOAD_CONST           (0)
+              40 LOAD_CONST           (None)
+              42 IMPORT_NAME          (threading)
+              44 STORE_NAME           (threading)
+
+ 18:          46 LOAD_CONST           (0)
+              48 LOAD_CONST           (None)
+              50 IMPORT_NAME          (time)
+              52 STORE_NAME           (time)
+
+ 19:          54 LOAD_CONST           (0)
+              56 LOAD_CONST           (None)
+              58 IMPORT_NAME          (uuid)
+              60 STORE_NAME           (uuid)
+
+ 20:          62 LOAD_CONST           (0)
+              64 LOAD_CONST           (('Path',))
+              66 IMPORT_NAME          (pathlib)
+              68 IMPORT_FROM          (Path)
+              70 STORE_NAME           (Path)
+              72 POP_TOP
+
+ 21:          74 LOAD_CONST           (0)
+              76 LOAD_CONST           (('Any', 'Optional', 'Dict', 'List'))
+              78 IMPORT_NAME          (typing)
+              80 IMPORT_FROM          (Any)
+              82 STORE_NAME           (Any)
+              84 IMPORT_FROM          (Optional)
+              86 STORE_NAME           (Optional)
+              88 IMPORT_FROM          (Dict)
+              90 STORE_NAME           (Dict)
+              92 IMPORT_FROM          (List)
+              94 STORE_NAME           (List)
+              96 POP_TOP
+
+ 22:          98 LOAD_CONST           (0)
+             100 LOAD_CONST           (('quote', 'urlencode'))
+             102 IMPORT_NAME          (urllib.parse)
+             104 IMPORT_FROM          (quote)
+             106 STORE_NAME           (quote)
+             108 IMPORT_FROM          (urlencode)
+             110 STORE_NAME           (urlencode)
+             112 POP_TOP
+
+ 24:         114 LOAD_CONST           (0)
+             116 LOAD_CONST           (None)
+             118 IMPORT_NAME          (requests)
+             120 STORE_NAME           (requests)
+
+ 26:         122 LOAD_CONST           (0)
+             124 LOAD_CONST           (('runtime_path',))
+             126 IMPORT_NAME          (runtime_paths)
+             128 IMPORT_FROM          (runtime_path)
+             130 STORE_NAME           (runtime_path)
+             132 POP_TOP
+
+ 27:         134 LOAD_CONST           (0)
+             136 LOAD_CONST           (('atomic_write_json', 'named_file_lock'))
+             138 IMPORT_NAME          (file_safety)
+             140 IMPORT_FROM          (atomic_write_json)
+             142 STORE_NAME           (atomic_write_json)
+             144 IMPORT_FROM          (named_file_lock)
+             146 STORE_NAME           (named_file_lock)
+             148 POP_TOP
+
+ 28:         150 LOAD_CONST           (0)
+             152 LOAD_CONST           (('requests_kwargs',))
+             154 IMPORT_NAME          (proxy_scope)
+             156 IMPORT_FROM          (requests_kwargs)
+             158 STORE_NAME           (requests_kwargs)
+             160 POP_TOP
+
+ 30:         162 LOAD_CONST           ("https://mailmanage.lizaliza.top")
+             164 STORE_NAME           (DEFAULT_BASE_URL)
+
+ 31:         166 LOAD_NAME            (str)
+             168 PUSH_NULL
+             170 LOAD_NAME            (runtime_path)
+             172 PUSH_NULL
+             174 LOAD_CONST           ("used_emails.json")
+             176 CALL                 (1 positional)
+             184 CALL                 (1 positional)
+             192 STORE_NAME           (DEFAULT_USED_FILE)
+
+ 32:         194 LOAD_CONST           ("temporary verification code,临时验证码,输入此临时验证码以继续,Enter this temporary verification code")
+             196 STORE_NAME           (OPENAI_OTP_KEYWORD)
+
+ 33:         198 LOAD_CONST           ("Your temporary OpenAI verification code,Your temporary ChatGPT verification code,Your temporary ChatGPT login code,你的 OpenAI 临时验证码,你的临时 ChatGPT 登录代码,临时 ChatGPT 登录代码,OpenAI verification code,ChatGPT verification code,ChatGPT login code,OpenAI 临时验证码")
+             200 STORE_NAME           (OPENAI_OTP_SUBJECT_KEYWORD)
+
+ 34:         202 LOAD_CONST           ("OpenAI,ChatGPT,gpt")
+             204 STORE_NAME           (OPENAI_OTP_BROAD_KEYWORD)
+
+ 36:         206 LOAD_CONST           (('enter this temporary verification code to continue', 'temporary verification code', 'temporary chatgpt verification code', 'your temporary chatgpt verification code', 'temporary chatgpt login code', 'your temporary chatgpt login code', 'your temporary openai verification code', 'openai verification code', 'chatgpt verification code', 'chatgpt login code', '输入此临时验证码以继续', '临时验证码', 'openai 临时验证码', '临时 chatgpt 登录代码', 'chatgpt 登录代码'))
+             208 STORE_NAME           (OPENAI_OTP_ANCHORS)
+
+ 54:         210 LOAD_CONST           (('new sign-in', 'new sign in', 'sign-in', 'sign in', 'login', '登录', '登入', '新设备'))
+             212 STORE_NAME           (OPENAI_NON_OTP_MARKERS)
+
+ 66:         214 LOAD_BUILD_CLASS
+             216 PUSH_NULL
+             218 LOAD_CONST           (<Code311 code object MailManageTemporaryError at 0x107777910, file mailmanage_client.py>, line 66)
+             220 MAKE_FUNCTION
+             222 LOAD_CONST           ("MailManageTemporaryError")
+             224 LOAD_NAME            (RuntimeError)
+             226 CALL                 (3 positional)
+             234 STORE_NAME           (MailManageTemporaryError)
+
+ 70:         236 LOAD_BUILD_CLASS
+             238 PUSH_NULL
+             240 LOAD_CONST           (<Code311 code object MailCodePollError at 0x1077778e0, file mailmanage_client.py>, line 70)
+             242 MAKE_FUNCTION
+             244 LOAD_CONST           ("MailCodePollError")
+             246 LOAD_NAME            (RuntimeError)
+             248 CALL                 (3 positional)
+             256 STORE_NAME           (MailCodePollError)
+
+ 79:         258 LOAD_BUILD_CLASS
+             260 PUSH_NULL
+             262 LOAD_CONST           (<Code311 code object MailManageClient at 0x10774c3d0, file mailmanage_client.py>, line 79)
+             264 MAKE_FUNCTION
+             266 LOAD_CONST           ("MailManageClient")
+             268 CALL                 (2 positional)
+             276 STORE_NAME           (MailManageClient)
+
+932:         278 LOAD_NAME            (__name__)
+             280 LOAD_CONST           ("__main__")
+             282 COMPARE_OP           (==)
+             286 EXTENDED_ARG         (512)
+             288 POP_JUMP_IF_FALSE    (to 1790)
+
+933:         292 LOAD_CONST           (0)
+             294 LOAD_CONST           (None)
+             296 IMPORT_NAME          (argparse)
+             298 STORE_NAME           (argparse)
+
+934:         300 LOAD_NAME            (argparse)
+             302 LOAD_ATTR            (ArgumentParser)
+             322 PUSH_NULL
+             324 LOAD_CONST           ("MailManage 邮箱管理工具")
+             326 LOAD_CONST           (('description',))
+             328 CALL_KW              1
+             330 STORE_NAME           (p)
+
+935:         332 LOAD_NAME            (p)
+             334 LOAD_ATTR            (NULL|self + add_argument)
+             354 LOAD_CONST           ("--api-key")
+             356 LOAD_CONST           (True)
+             358 LOAD_CONST           ("API Key (mak_xxx)")
+             360 LOAD_CONST           (('required', 'help'))
+             362 CALL_KW              3
+             364 POP_TOP
+
+936:         366 LOAD_NAME            (p)
+             368 LOAD_ATTR            (NULL|self + add_argument)
+             388 LOAD_CONST           ("--base-url")
+             390 LOAD_NAME            (DEFAULT_BASE_URL)
+             392 LOAD_CONST           ("API 地址")
+             394 LOAD_CONST           (('default', 'help'))
+             396 CALL_KW              3
+             398 POP_TOP
+
+937:         400 LOAD_NAME            (p)
+             402 LOAD_ATTR            (NULL|self + add_argument)
+             422 LOAD_CONST           ("--command")
+             424 LOAD_CONST           ("list")
+             426 BUILD_LIST           0
+             428 LOAD_CONST           (('list', 'get', 'clean'))
+             430 LIST_EXTEND          1
+             432 LOAD_CONST           (('default', 'choices'))
+             434 CALL_KW              3
+             436 POP_TOP
+
+938:         438 LOAD_NAME            (p)
+             440 LOAD_ATTR            (NULL|self + add_argument)
+             460 LOAD_CONST           ("--category")
+             462 LOAD_CONST           ("free")
+             464 LOAD_CONST           ("邮箱分类 (free/套餐)")
+             466 LOAD_CONST           (('default', 'help'))
+             468 CALL_KW              3
+             470 POP_TOP
+
+939:         472 LOAD_NAME            (p)
+             474 LOAD_ATTR            (NULL|self + add_argument)
+             494 LOAD_CONST           ("--email")
+             496 LOAD_CONST           ("")
+             498 LOAD_CONST           ("指定邮箱")
+             500 LOAD_CONST           (('default', 'help'))
+             502 CALL_KW              3
+             504 POP_TOP
+
+940:         506 LOAD_NAME            (p)
+             508 LOAD_ATTR            (NULL|self + add_argument)
+             528 LOAD_CONST           ("--keyword")
+             530 LOAD_CONST           ("gpt")
+             532 LOAD_CONST           ("验证码检索关键词")
+             534 LOAD_CONST           (('default', 'help'))
+             536 CALL_KW              3
+             538 POP_TOP
+
+941:         540 LOAD_NAME            (p)
+             542 LOAD_ATTR            (NULL|self + add_argument)
+             562 LOAD_CONST           ("-v")
+             564 LOAD_CONST           ("--verbose")
+             566 LOAD_CONST           ("store_true")
+             568 LOAD_CONST           (('action',))
+             570 CALL_KW              3
+             572 POP_TOP
+
+942:         574 LOAD_NAME            (p)
+             576 LOAD_ATTR            (NULL|self + parse_args)
+             596 CALL                 (0 positional)
+             604 STORE_NAME           (args)
+
+944:         606 LOAD_NAME            (MailManageClient)
+             608 PUSH_NULL
+             610 LOAD_NAME            (args)
+             612 LOAD_ATTR            (api_key)
+             632 LOAD_NAME            (args)
+             634 LOAD_ATTR            (base_url)
+             654 LOAD_NAME            (args)
+             656 LOAD_ATTR            (verbose)
+             676 LOAD_CONST           (('verbose',))
+             678 CALL_KW              3
+             680 STORE_NAME           (client)
+
+946:         682 LOAD_NAME            (args)
+             684 LOAD_ATTR            (command)
+             704 LOAD_CONST           ("list")
+             706 COMPARE_OP           (==)
+             710 POP_JUMP_IF_FALSE    (to 1164)
+
+947:         714 LOAD_NAME            (print)
+             716 PUSH_NULL
+             718 LOAD_CONST           ("\n已用邮箱数: ")
+             720 LOAD_NAME            (client)
+             722 LOAD_ATTR            (used_count)
+             742 FORMAT_SIMPLE
+             744 BUILD_STRING         2
+             746 CALL                 (1 positional)
+             754 POP_TOP
+
+948:         756 LOAD_NAME            (print)
+             758 PUSH_NULL
+             760 LOAD_CONST           ("\n邮箱列表 (")
+             762 LOAD_NAME            (args)
+             764 LOAD_ATTR            (category)
+             784 FORMAT_SIMPLE
+             786 LOAD_CONST           ("):\n")
+             788 BUILD_STRING         3
+             790 CALL                 (1 positional)
+             798 POP_TOP
+
+949:         800 LOAD_NAME            (client)
+             802 LOAD_ATTR            (NULL|self + list_mailboxes)
+             822 LOAD_NAME            (args)
+             824 LOAD_ATTR            (category)
+             844 LOAD_CONST           (('category',))
+             846 CALL_KW              1
+             848 STORE_NAME           (mailboxes)
+
+950:         850 LOAD_NAME            (mailboxes)
+             852 GET_ITER
+             854 FOR_ITER             (to 1070)
+             858 STORE_NAME           (mb)
+
+951:         860 LOAD_NAME            (mb)
+             862 LOAD_ATTR            (NULL|self + get)
+             882 LOAD_CONST           ("email")
+             884 LOAD_CONST           ("?")
+             886 CALL                 (2 positional)
+             894 STORE_NAME           (email)
+
+952:         896 LOAD_NAME            (email)
+             898 LOAD_ATTR            (NULL|self + lower)
+             918 CALL                 (0 positional)
+             926 LOAD_NAME            (client)
+             928 LOAD_ATTR            (_used)
+             948 CONTAINS_OP          (in)
+             952 POP_JUMP_IF_FALSE    (to 960)
+             956 LOAD_CONST           (" [已用]")
+             958 JUMP_FORWARD         (to 962)
+         >>  960 LOAD_CONST           ("")
+         >>  962 STORE_NAME           (used)
+
+953:         964 LOAD_NAME            (print)
+             966 PUSH_NULL
+             968 LOAD_CONST           ("  ")
+             970 LOAD_NAME            (email)
+             972 FORMAT_SIMPLE
+             974 LOAD_CONST           ("  tag=")
+             976 LOAD_NAME            (mb)
+             978 LOAD_ATTR            (NULL|self + get)
+             998 LOAD_CONST           ("tag")
+            1000 LOAD_CONST           ("")
+            1002 CALL                 (2 positional)
+            1010 FORMAT_SIMPLE
+            1012 LOAD_CONST           ("  msgs=")
+            1014 LOAD_NAME            (mb)
+            1016 LOAD_ATTR            (NULL|self + get)
+            1036 LOAD_CONST           ("message_count")
+            1038 LOAD_CONST           ("?")
+            1040 CALL                 (2 positional)
+            1048 FORMAT_SIMPLE
+            1050 LOAD_NAME            (used)
+            1052 FORMAT_SIMPLE
+            1054 BUILD_STRING         7
+            1056 CALL                 (1 positional)
+            1064 POP_TOP
+            1066 JUMP_BACKWARD        (to 854)
+
+950:     >> 1070 END_FOR
+            1072 POP_TOP
+
+955:        1074 LOAD_NAME            (client)
+            1076 LOAD_ATTR            (NULL|self + get_available_email)
+            1096 LOAD_NAME            (args)
+            1098 LOAD_ATTR            (category)
+            1118 LOAD_CONST           (('category',))
+            1120 CALL_KW              1
+            1122 STORE_NAME           (available)
+
+956:        1124 LOAD_NAME            (available)
+            1126 TO_BOOL
+            1134 POP_JUMP_IF_FALSE    (to 1162)
+
+957:        1138 LOAD_NAME            (print)
+            1140 PUSH_NULL
+            1142 LOAD_CONST           ("\n推荐下一个: ")
+            1144 LOAD_NAME            (available)
+            1146 FORMAT_SIMPLE
+            1148 BUILD_STRING         2
+            1150 CALL                 (1 positional)
+            1158 POP_TOP
+            1160 RETURN_CONST         (None)
+
+956:     >> 1162 RETURN_CONST         (None)
+
+959:     >> 1164 LOAD_NAME            (args)
+            1166 LOAD_ATTR            (command)
+            1186 LOAD_CONST           ("get")
+            1188 COMPARE_OP           (==)
+            1192 POP_JUMP_IF_FALSE    (to 1560)
+
+960:        1196 LOAD_NAME            (args)
+            1198 LOAD_ATTR            (email)
+            1218 STORE_NAME           (email)
+
+961:        1220 LOAD_NAME            (email)
+            1222 TO_BOOL
+            1230 POP_JUMP_IF_TRUE     (to 1330)
+
+962:        1234 LOAD_NAME            (client)
+            1236 LOAD_ATTR            (NULL|self + get_available_email)
+            1256 LOAD_NAME            (args)
+            1258 LOAD_ATTR            (category)
+            1278 LOAD_CONST           (('category',))
+            1280 CALL_KW              1
+            1282 STORE_NAME           (email)
+
+963:        1284 LOAD_NAME            (email)
+         >> 1286 TO_BOOL
+            1294 POP_JUMP_IF_TRUE     (to 1330)
+
+964:        1298 LOAD_NAME            (print)
+            1300 PUSH_NULL
+            1302 LOAD_CONST           ("无可用邮箱")
+            1304 CALL                 (1 positional)
+            1312 POP_TOP
+
+965:        1314 LOAD_NAME            (exit)
+            1316 PUSH_NULL
+            1318 LOAD_CONST           (1)
+            1320 CALL                 (1 positional)
+            1328 POP_TOP
+
+966:     >> 1330 LOAD_NAME            (print)
+            1332 PUSH_NULL
+            1334 LOAD_CONST           ("轮询 ")
+            1336 LOAD_NAME            (email)
+            1338 FORMAT_SIMPLE
+            1340 LOAD_CONST           (" 验证码...")
+            1342 BUILD_STRING         3
+            1344 CALL                 (1 positional)
+            1352 POP_TOP
+
+967:        1354 LOAD_NAME            (client)
+            1356 LOAD_ATTR            (NULL|self + get_code)
+            1376 LOAD_NAME            (email)
+            1378 LOAD_NAME            (args)
+            1380 LOAD_ATTR            (keyword)
+            1400 LOAD_CONST           (120)
+            1402 LOAD_CONST           (('keyword', 'timeout'))
+            1404 CALL_KW              3
+            1406 STORE_NAME           (result)
+
+968:        1408 LOAD_NAME            (result)
+            1410 TO_BOOL
+            1418 POP_JUMP_IF_FALSE    (to 1542)
+
+969:        1422 LOAD_NAME            (print)
+            1424 PUSH_NULL
+            1426 LOAD_CONST           ("\n验证码: ")
+            1428 LOAD_NAME            (result)
+            1430 LOAD_CONST           ("code")
+            1432 BINARY_SUBSCR
+            1436 FORMAT_SIMPLE
+            1438 BUILD_STRING         2
+            1440 CALL                 (1 positional)
+            1448 POP_TOP
+
+970:        1450 LOAD_NAME            (print)
+            1452 PUSH_NULL
+            1454 LOAD_CONST           ("发件人: ")
+            1456 LOAD_NAME            (result)
+            1458 LOAD_CONST           ("from_addr")
+            1460 BINARY_SUBSCR
+            1464 FORMAT_SIMPLE
+            1466 BUILD_STRING         2
+            1468 CALL                 (1 positional)
+            1476 POP_TOP
+
+971:        1478 LOAD_NAME            (print)
+            1480 PUSH_NULL
+            1482 LOAD_CONST           ("主题:   ")
+            1484 LOAD_NAME            (result)
+            1486 LOAD_CONST           ("subject")
+            1488 BINARY_SUBSCR
+            1492 FORMAT_SIMPLE
+            1494 BUILD_STRING         2
+            1496 CALL                 (1 positional)
+            1504 POP_TOP
+
+972:        1506 LOAD_NAME            (client)
+            1508 LOAD_ATTR            (NULL|self + mark_used)
+            1528 LOAD_NAME            (email)
+            1530 CALL                 (1 positional)
+            1538 POP_TOP
+            1540 RETURN_CONST         (None)
+
+974:     >> 1542 LOAD_NAME            (print)
+            1544 PUSH_NULL
+            1546 LOAD_CONST           ("超时未获取到验证码")
+            1548 CALL                 (1 positional)
+            1556 POP_TOP
+            1558 RETURN_CONST         (None)
+
+976:     >> 1560 LOAD_NAME            (args)
+            1562 LOAD_ATTR            (command)
+            1582 LOAD_CONST           ("clean")
+            1584 COMPARE_OP           (==)
+            1588 POP_JUMP_IF_FALSE    (to 1788)
+
+977:        1592 LOAD_CONST           (0)
+            1594 LOAD_CONST           (None)
+            1596 IMPORT_NAME          (shutil)
+            1598 STORE_NAME           (shutil)
+
+978:        1600 LOAD_NAME            (os)
+            1602 LOAD_ATTR            (path)
+            1622 LOAD_ATTR            (NULL|self + isfile)
+            1642 LOAD_NAME            (DEFAULT_USED_FILE)
+            1644 CALL                 (1 positional)
+            1652 TO_BOOL
+            1660 POP_JUMP_IF_FALSE    (to 1770)
+
+979:        1664 LOAD_NAME            (shutil)
+            1666 LOAD_ATTR            (copy)
+            1686 PUSH_NULL
+            1688 LOAD_NAME            (DEFAULT_USED_FILE)
+            1690 LOAD_NAME            (DEFAULT_USED_FILE)
+            1692 LOAD_CONST           (".bak")
+            1694 BINARY_OP            (+)
+            1698 CALL                 (2 positional)
+            1706 POP_TOP
+
+980:        1708 LOAD_NAME            (os)
+            1710 LOAD_ATTR            (remove)
+            1730 PUSH_NULL
+            1732 LOAD_NAME            (DEFAULT_USED_FILE)
+            1734 CALL                 (1 positional)
+            1742 POP_TOP
+
+981:        1744 LOAD_NAME            (print)
+            1746 PUSH_NULL
+            1748 LOAD_CONST           ("已清除 ")
+            1750 LOAD_NAME            (DEFAULT_USED_FILE)
+            1752 FORMAT_SIMPLE
+            1754 LOAD_CONST           (" (备份: .bak)")
+            1756 BUILD_STRING         3
+            1758 CALL                 (1 positional)
+            1766 POP_TOP
+            1768 RETURN_CONST         (None)
+
+983:     >> 1770 LOAD_NAME            (print)
+            1772 PUSH_NULL
+            1774 LOAD_CONST           ("无已用记录")
+            1776 CALL                 (1 positional)
+            1784 POP_TOP
+            1786 RETURN_CONST         (None)
+
+976:     >> 1788 RETURN_CONST         (None)
+
+932:     >> 1790 RETURN_CONST         (None)
+
+
+# Method Name:       MailManageTemporaryError
+# Filename:          mailmanage_client.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        1
+# Flags:             0x00000000 (0x0)
+# First Line:        66
+# Constants:
+#    0: 'MailManageTemporaryError'
+#    1: 66
+#    2: 'Temporary network/API failure while talking to the mail service.'
+#    3: ()
+#    4: None
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: __static_attributes__
+ 66:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("MailManageTemporaryError")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (66)
+              12 STORE_NAME           (__firstlineno__)
+
+ 67:          14 LOAD_CONST           ("Temporary network/API failure while talking to the mail service.")
+              16 STORE_NAME           (__doc__)
+              18 LOAD_CONST           (())
+              20 STORE_NAME           (__static_attributes__)
+              22 RETURN_CONST         (None)
+
+
+# Method Name:       MailCodePollError
+# Filename:          mailmanage_client.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        5
+# Flags:             0x00000000 (0x0)
+# First Line:        70
+# Constants:
+#    0: 'MailCodePollError'
+#    1: 70
+#    2: 'Structured mail-code polling failure.'
+#    3: 'reason'
+#    4: 'detail'
+#    5: <Code311 code object __init__ at 0x107746430, file mailmanage_client.py>, line 73
+#    6: ('detail', 'reason')
+#    7: ('',)
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: str
+#    6: __init__
+#    7: __static_attributes__
+#    8: __classcell__
+# Cell variables:
+#    0: __class__
+               0 MAKE_CELL            (__class__)
+
+ 70:           2 RESUME               0
+               4 LOAD_NAME            (__name__)
+               6 STORE_NAME           (__module__)
+               8 LOAD_CONST           ("MailCodePollError")
+              10 STORE_NAME           (__qualname__)
+              12 LOAD_CONST           (70)
+              14 STORE_NAME           (__firstlineno__)
+
+ 71:          16 LOAD_CONST           ("Structured mail-code polling failure.")
+              18 STORE_NAME           (__doc__)
+
+ 73:          20 LOAD_CONST           (('',))
+              22 LOAD_CONST           ("reason")
+              24 LOAD_NAME            (str)
+              26 LOAD_CONST           ("detail")
+              28 LOAD_NAME            (str)
+              30 BUILD_TUPLE          4
+              32 LOAD_FAST            (__class__)
+              34 BUILD_TUPLE          1
+              36 LOAD_CONST           (<Code311 code object __init__ at 0x107746430, file mailmanage_client.py>, line 73)
+              38 MAKE_FUNCTION
+              40 SET_FUNCTION_ATTRIBUTE 8
+              42 SET_FUNCTION_ATTRIBUTE 4
+              44 SET_FUNCTION_ATTRIBUTE 1
+              46 STORE_NAME           (__init__)
+              48 LOAD_CONST           (('detail', 'reason'))
+              50 STORE_NAME           (__static_attributes__)
+              52 LOAD_FAST            (__class__)

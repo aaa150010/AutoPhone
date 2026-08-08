@@ -1,0 +1,800 @@
+#    4: item
+#    5: status
+# Free variables:
+#    0: lease_seconds
+#    1: self
+               0 COPY_FREE_VARS       2
+
+651:           2 RESUME               0
+
+652:           4 LOAD_GLOBAL          (time)
+              14 LOAD_ATTR            (time)
+              34 PUSH_NULL
+              36 CALL                 (0 positional)
+              44 STORE_FAST           (now)
+
+653:          46 LOAD_FAST            (entries)
+              48 GET_ITER
+              50 FOR_ITER             (to 362)
+              54 STORE_FAST           (entry)
+
+654:          56 LOAD_DEREF           (self)
+              58 LOAD_ATTR            (NULL|self + _item)
+              78 LOAD_FAST_LOAD_FAST  (state, entry)
+              80 CALL                 (2 positional)
+              88 STORE_FAST           (item)
+
+655:          90 LOAD_GLOBAL          (NULL + _clean)
+             100 LOAD_FAST            (item)
+             102 LOAD_ATTR            (NULL|self + get)
+             122 LOAD_CONST           ("status")
+             124 CALL                 (1 positional)
+             132 CALL                 (1 positional)
+             140 STORE_FAST           (status)
+
+656:         142 LOAD_FAST            (status)
+             144 LOAD_CONST           ({'damaged', 'consumed'})
+             146 CONTAINS_OP          (in)
+             150 POP_JUMP_IF_FALSE    (to 158)
+
+657:         154 JUMP_BACKWARD        (to 50)
+
+658:     >>  158 LOAD_FAST            (status)
+             160 LOAD_CONST           ("leased")
+             162 COMPARE_OP           (==)
+             166 POP_JUMP_IF_FALSE    (to 252)
+             170 LOAD_GLOBAL          (NULL + float)
+             180 LOAD_FAST            (item)
+             182 LOAD_ATTR            (NULL|self + get)
+             202 LOAD_CONST           ("lease_until")
+             204 CALL                 (1 positional)
+             212 COPY                 1
+             214 TO_BOOL
+             222 POP_JUMP_IF_TRUE     (to 230)
+             226 POP_TOP
+             228 LOAD_CONST           (0)
+         >>  230 CALL                 (1 positional)
+             238 LOAD_FAST            (now)
+             240 COMPARE_OP           (>)
+             244 POP_JUMP_IF_FALSE    (to 252)
+
+659:         248 JUMP_BACKWARD        (to 50)
+
+660:     >>  252 LOAD_FAST            (item)
+             254 LOAD_ATTR            (NULL|self + update)
+             274 LOAD_CONST           ("leased")
+             276 LOAD_FAST            (now)
+             278 LOAD_DEREF           (lease_seconds)
+             280 BINARY_OP            (+)
+             284 LOAD_GLOBAL          (NULL + int)
+             294 LOAD_FAST            (now)
+             296 CALL                 (1 positional)
+             304 LOAD_CONST           (('status', 'lease_until', 'updated_at'))
+             306 BUILD_CONST_KEY_MAP  3
+             308 CALL                 (1 positional)
+             316 POP_TOP
+
+661:         318 LOAD_DEREF           (self)
+             320 LOAD_ATTR            (NULL|self + _history)
+             340 LOAD_FAST            (item)
+             342 LOAD_CONST           ("leased")
+             344 CALL                 (2 positional)
+             352 POP_TOP
+
+662:         354 LOAD_FAST            (entry)
+             356 SWAP                 (TOS <-> TOS1)
+             358 POP_TOP
+             360 RETURN_VALUE
+
+653:     >>  362 END_FOR
+             364 POP_TOP
+
+663:         366 RETURN_CONST         (None)
+
+
+# Method Name:       update
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        10
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        673
+# Constants:
+#    0: None
+#    1: 'available'
+#    2: 'status'
+#    3: {'damaged', 'consumed'}
+#    4: False
+#    5: 0
+#    6: 180
+#    7: ('status', 'lease_until', 'reason', 'updated_at')
+#    8: 'restored'
+#    9: True
+# Names:
+#    0: email
+#    1: _item
+#    2: _clean
+#    3: get
+#    4: update
+#    5: int
+#    6: time
+#    7: _history
+# Varnames:
+#	state, entries, entry, item
+# Positional arguments:
+#	state, entries
+# Local variables:
+#    2: entry
+#    3: item
+# Free variables:
+#    0: reason
+#    1: self
+#    2: status
+#    3: wanted
+               0 COPY_FREE_VARS       4
+
+673:           2 RESUME               0
+
+674:           4 LOAD_FAST            (entries)
+               6 GET_ITER
+               8 FOR_ITER             (to 324)
+              12 STORE_FAST           (entry)
+
+675:          14 LOAD_FAST            (entry)
+              16 LOAD_ATTR            (email)
+              36 LOAD_DEREF           (wanted)
+              38 COMPARE_OP           (!=)
+              42 POP_JUMP_IF_FALSE    (to 50)
+
+676:          46 JUMP_BACKWARD        (to 8)
+
+677:     >>   50 LOAD_DEREF           (self)
+              52 LOAD_ATTR            (NULL|self + _item)
+              72 LOAD_FAST_LOAD_FAST  (state, entry)
+              74 CALL                 (2 positional)
+              82 STORE_FAST           (item)
+
+678:          84 LOAD_DEREF           (status)
+              86 LOAD_CONST           ("available")
+              88 COMPARE_OP           (==)
+         >>   92 POP_JUMP_IF_FALSE    (to 160)
+              96 LOAD_GLOBAL          (NULL + _clean)
+             106 LOAD_FAST            (item)
+             108 LOAD_ATTR            (NULL|self + get)
+             128 LOAD_CONST           ("status")
+             130 CALL                 (1 positional)
+             138 CALL                 (1 positional)
+             146 LOAD_CONST           ({'damaged', 'consumed'})
+             148 CONTAINS_OP          (in)
+             152 POP_JUMP_IF_FALSE    (to 160)
+
+679:         156 POP_TOP
+             158 RETURN_CONST         (False)
+
+680:     >>  160 LOAD_FAST            (item)
+             162 LOAD_ATTR            (NULL|self + update)
+             182 LOAD_DEREF           (status)
+             184 LOAD_CONST           (0)
+             186 LOAD_DEREF           (reason)
+             188 LOAD_CONST           (None)
+             190 LOAD_CONST           (180)
+             192 BINARY_SLICE
+             194 LOAD_GLOBAL          (NULL + int)
+             204 LOAD_GLOBAL          (time)
+             214 LOAD_ATTR            (time)
+             234 PUSH_NULL
+             236 CALL                 (0 positional)
+             244 CALL                 (1 positional)
+             252 LOAD_CONST           (('status', 'lease_until', 'reason', 'updated_at'))
+             254 BUILD_CONST_KEY_MAP  4
+             256 CALL                 (1 positional)
+             264 POP_TOP
+
+681:         266 LOAD_DEREF           (self)
+             268 LOAD_ATTR            (NULL|self + _history)
+             288 LOAD_FAST            (item)
+             290 LOAD_DEREF           (status)
+             292 LOAD_CONST           ("available")
+             294 COMPARE_OP           (==)
+             298 POP_JUMP_IF_FALSE    (to 306)
+             302 LOAD_CONST           ("restored")
+             304 JUMP_FORWARD         (to 308)
+         >>  306 LOAD_DEREF           (status)
+         >>  308 LOAD_DEREF           (reason)
+             310 CALL                 (3 positional)
+             318 POP_TOP
+
+682:         320 POP_TOP
+             322 RETURN_CONST         (True)
+
+674:     >>  324 END_FOR
+             326 POP_TOP
+
+683:         328 RETURN_CONST         (False)
+
+
+# Method Name:       update
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        10
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        697
+# Constants:
+#    0: None
+#    1: 'status'
+#    2: {'damaged', 'consumed'}
+#    3: False
+#    4: 'available'
+#    5: 0
+#    6: 180
+#    7: ('status', 'lease_until', 'reason', 'updated_at')
+#    8: 'restored'
+#    9: True
+# Names:
+#    0: key
+#    1: _item
+#    2: _clean
+#    3: get
+#    4: update
+#    5: int
+#    6: time
+#    7: _history
+# Varnames:
+#	state, entries, candidate, item
+# Positional arguments:
+#	state, entries
+# Local variables:
+#    2: candidate
+#    3: item
+# Free variables:
+#    0: reason
+#    1: self
+#    2: wanted_key
+               0 COPY_FREE_VARS       3
+
+697:           2 RESUME               0
+
+698:           4 LOAD_FAST            (entries)
+               6 GET_ITER
+               8 FOR_ITER             (to 296)
+              12 STORE_FAST           (candidate)
+
+699:          14 LOAD_FAST            (candidate)
+              16 LOAD_ATTR            (key)
+              36 LOAD_DEREF           (wanted_key)
+              38 COMPARE_OP           (!=)
+              42 POP_JUMP_IF_FALSE    (to 50)
+
+700:          46 JUMP_BACKWARD        (to 8)
+
+701:     >>   50 LOAD_DEREF           (self)
+              52 LOAD_ATTR            (NULL|self + _item)
+              72 LOAD_FAST_LOAD_FAST  (state, candidate)
+              74 CALL                 (2 positional)
+              82 STORE_FAST           (item)
+
+702:          84 LOAD_GLOBAL          (NULL + _clean)
+              94 LOAD_FAST            (item)
+              96 LOAD_ATTR            (NULL|self + get)
+             116 LOAD_CONST           ("status")
+             118 CALL                 (1 positional)
+             126 CALL                 (1 positional)
+             134 LOAD_CONST           ({'damaged', 'consumed'})
+             136 CONTAINS_OP          (in)
+             140 POP_JUMP_IF_FALSE    (to 148)
+
+703:         144 POP_TOP
+             146 RETURN_CONST         (False)
+
+704:     >>  148 LOAD_FAST            (item)
+             150 LOAD_ATTR            (NULL|self + update)
+             170 LOAD_CONST           ("available")
+             172 LOAD_CONST           (0)
+             174 LOAD_DEREF           (reason)
+             176 LOAD_CONST           (None)
+             178 LOAD_CONST           (180)
+             180 BINARY_SLICE
+             182 LOAD_GLOBAL          (NULL + int)
+             192 LOAD_GLOBAL          (time)
+             202 LOAD_ATTR            (time)
+             222 PUSH_NULL
+             224 CALL                 (0 positional)
+             232 CALL                 (1 positional)
+             240 LOAD_CONST           (('status', 'lease_until', 'reason', 'updated_at'))
+             242 BUILD_CONST_KEY_MAP  4
+             244 CALL                 (1 positional)
+             252 POP_TOP
+
+705:         254 LOAD_DEREF           (self)
+             256 LOAD_ATTR            (NULL|self + _history)
+             276 LOAD_FAST            (item)
+             278 LOAD_CONST           ("restored")
+             280 LOAD_DEREF           (reason)
+             282 CALL                 (3 positional)
+             290 POP_TOP
+
+706:         292 POP_TOP
+             294 RETURN_CONST         (True)
+
+698:     >>  296 END_FOR
+             298 POP_TOP
+
+707:         300 RETURN_CONST         (False)
+
+
+# Method Name:       update
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        10
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        718
+# Constants:
+#    0: None
+#    1: 'damaged'
+#    2: 0
+#    3: 180
+#    4: ('status', 'lease_until', 'reason', 'updated_at')
+#    5: True
+#    6: False
+# Names:
+#    0: key
+#    1: _item
+#    2: update
+#    3: int
+#    4: time
+#    5: _history
+# Varnames:
+#	state, entries, candidate, item
+# Positional arguments:
+#	state, entries
+# Local variables:
+#    2: candidate
+#    3: item
+# Free variables:
+#    0: reason
+#    1: self
+#    2: wanted_key
+               0 COPY_FREE_VARS       3
+
+718:           2 RESUME               0
+
+719:           4 LOAD_FAST            (entries)
+               6 GET_ITER
+               8 FOR_ITER             (to 232)
+              12 STORE_FAST           (candidate)
+
+720:          14 LOAD_FAST            (candidate)
+              16 LOAD_ATTR            (key)
+              36 LOAD_DEREF           (wanted_key)
+              38 COMPARE_OP           (!=)
+              42 POP_JUMP_IF_FALSE    (to 50)
+
+721:          46 JUMP_BACKWARD        (to 8)
+
+722:     >>   50 LOAD_DEREF           (self)
+              52 LOAD_ATTR            (NULL|self + _item)
+              72 LOAD_FAST_LOAD_FAST  (state, candidate)
+              74 CALL                 (2 positional)
+              82 STORE_FAST           (item)
+
+723:          84 LOAD_FAST            (item)
+              86 LOAD_ATTR            (NULL|self + update)
+             106 LOAD_CONST           ("damaged")
+             108 LOAD_CONST           (0)
+             110 LOAD_DEREF           (reason)
+             112 LOAD_CONST           (None)
+             114 LOAD_CONST           (180)
+             116 BINARY_SLICE
+             118 LOAD_GLOBAL          (NULL + int)
+             128 LOAD_GLOBAL          (time)
+             138 LOAD_ATTR            (time)
+             158 PUSH_NULL
+             160 CALL                 (0 positional)
+             168 CALL                 (1 positional)
+             176 LOAD_CONST           (('status', 'lease_until', 'reason', 'updated_at'))
+             178 BUILD_CONST_KEY_MAP  4
+             180 CALL                 (1 positional)
+             188 POP_TOP
+
+724:         190 LOAD_DEREF           (self)
+             192 LOAD_ATTR            (NULL|self + _history)
+             212 LOAD_FAST            (item)
+             214 LOAD_CONST           ("damaged")
+             216 LOAD_DEREF           (reason)
+             218 CALL                 (3 positional)
+             226 POP_TOP
+
+725:         228 POP_TOP
+             230 RETURN_CONST         (True)
+
+719:     >>  232 END_FOR
+             234 POP_TOP
+
+726:         236 RETURN_CONST         (False)
+
+
+# Method Name:       remove_item
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  14
+# Stack size:        8
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        737
+# Constants:
+#    0: None
+#    1: 'manual pool contains invalid rows: '
+#    2: '; '
+#    3: 3
+#    4: False
+#    5: 'utf-8-sig'
+#    6: ('encoding',)
+#    7: 1
+#    8: ('start',)
+#    9: '\n'
+#   10: ('\n', '\r')
+#   11: 'items'
+#   12: True
+# Names:
+#    0: _entries_unlocked
+#    1: MailboxPoolError
+#    2: join
+#    3: key
+#    4: line_no
+#    5: read_text_retry
+#    6: pool_path
+#    7: splitlines
+#    8: enumerate
+#    9: endswith
+#   10: atomic_write_text
+#   11: isinstance
+#   12: get
+#   13: dict
+#   14: pop
+# Varnames:
+#	state, entries, current_entries, current_errors, item, matches, drop_lines, original, lines, index, line, kept, replacement, items
+# Positional arguments:
+#	state, entries
+# Local variables:
+#    2: current_entries
+#    3: current_errors
+#    4: item
+#    5: matches
+#    6: drop_lines
+#    7: original
+#    8: lines
+#    9: index
+#   10: line
+#   11: kept
+#   12: replacement
+#   13: items
+# Free variables:
+#    0: self
+#    1: wanted_key
+               0 COPY_FREE_VARS       2
+
+737:           2 RESUME               0
+
+742:           4 LOAD_DEREF           (self)
+               6 LOAD_ATTR            (NULL|self + _entries_unlocked)
+              26 CALL                 (0 positional)
+              34 UNPACK_SEQUENCE      2
+              38 STORE_FAST_STORE_FAST (current_entries, current_errors)
+
+743:          40 LOAD_FAST            (current_errors)
+              42 TO_BOOL
+              50 POP_JUMP_IF_FALSE    (to 118)
+
+744:          54 LOAD_GLOBAL          (NULL + MailboxPoolError)
+              64 LOAD_CONST           ("manual pool contains invalid rows: ")
+              66 LOAD_CONST           ("; ")
+              68 LOAD_ATTR            (NULL|self + join)
+              88 LOAD_FAST            (current_errors)
+              90 LOAD_CONST           (None)
+              92 LOAD_CONST           (3)
+              94 BINARY_SLICE
+              96 CALL                 (1 positional)
+             104 BINARY_OP            (+)
+             108 CALL                 (1 positional)
+             116 RAISE_VARARGS        (exception instance)
+
+745:     >>  118 LOAD_FAST            (current_entries)
+             120 GET_ITER
+             122 LOAD_FAST_AND_CLEAR  (item)
+             124 SWAP                 (TOS <-> TOS1)
+             126 BUILD_LIST           0
+             128 SWAP                 (TOS <-> TOS1)
+             130 GET_ITER
+             132 FOR_ITER             (to 180)
+             136 STORE_FAST_LOAD_FAST (item, item)
+             138 LOAD_ATTR            (key)
+             158 LOAD_DEREF           (wanted_key)
+             160 COMPARE_OP           (==)
+             164 POP_JUMP_IF_TRUE     (to 172)
+             168 JUMP_BACKWARD        (to 132)
+         >>  172 LOAD_FAST            (item)
+             174 LIST_APPEND          2
+             176 JUMP_BACKWARD        (to 132)
+         >>  180 END_FOR
+             182 POP_TOP
+             184 STORE_FAST           (matches)
+             186 STORE_FAST           (item)
+
+746:         188 LOAD_FAST            (matches)
+             190 TO_BOOL
+             198 POP_JUMP_IF_TRUE     (to 204)
+
+747:         202 RETURN_CONST         (False)
+
+748:     >>  204 LOAD_FAST            (matches)
+             206 GET_ITER
+             208 LOAD_FAST_AND_CLEAR  (item)
+             210 SWAP                 (TOS <-> TOS1)
+         >>  212 BUILD_SET            0
+             214 SWAP                 (TOS <-> TOS1)
+             216 GET_ITER
+             218 FOR_ITER             (to 250)
+             222 STORE_FAST_LOAD_FAST (item, item)
+             224 LOAD_ATTR            (line_no)
+             244 SET_ADD              2
+             246 JUMP_BACKWARD        (to 218)
+         >>  250 END_FOR
+             252 POP_TOP
+             254 STORE_FAST           (drop_lines)
+             256 STORE_FAST           (item)
+
+749:         258 LOAD_GLOBAL          (NULL + read_text_retry)
+             268 LOAD_DEREF           (self)
+             270 LOAD_ATTR            (pool_path)
+             290 LOAD_CONST           ("utf-8-sig")
+             292 LOAD_CONST           (('encoding',))
+             294 CALL_KW              2
+             296 STORE_FAST           (original)
+
+750:         298 LOAD_FAST            (original)
+             300 LOAD_ATTR            (NULL|self + splitlines)
+             320 CALL                 (0 positional)
+             328 STORE_FAST           (lines)
+
+751:         330 LOAD_GLOBAL          (NULL + enumerate)
+             340 LOAD_FAST            (lines)
+             342 LOAD_CONST           (1)
+             344 LOAD_CONST           (('start',))
+             346 CALL_KW              2
+             348 GET_ITER
+             350 LOAD_FAST_AND_CLEAR  (index)
+             352 LOAD_FAST_AND_CLEAR  (line)
+             354 SWAP                 (TOS <-> TOS2)
+             356 BUILD_LIST           0
+             358 SWAP                 (TOS <-> TOS1)
+             360 GET_ITER
+             362 FOR_ITER             (to 394)
+             366 UNPACK_SEQUENCE      2
+             370 STORE_FAST_STORE_FAST (index, line)
+             372 LOAD_FAST_LOAD_FAST  (index, drop_lines)
+             374 CONTAINS_OP          (not in)
+             378 POP_JUMP_IF_TRUE     (to 386)
+             382 JUMP_BACKWARD        (to 362)
+         >>  386 LOAD_FAST            (line)
+             388 LIST_APPEND          2
+             390 JUMP_BACKWARD        (to 362)
+         >>  394 END_FOR
+             396 POP_TOP
+             398 STORE_FAST           (kept)
+             400 STORE_FAST           (index)
+             402 STORE_FAST           (line)
+
+752:         404 LOAD_CONST           ("\n")
+             406 LOAD_ATTR            (NULL|self + join)
+         >>  426 LOAD_FAST            (kept)
+             428 CALL                 (1 positional)
+             436 STORE_FAST           (replacement)
+
+753:         438 LOAD_FAST            (kept)
+             440 TO_BOOL
+             448 POP_JUMP_IF_FALSE    (to 506)
+             452 LOAD_FAST            (original)
+             454 LOAD_ATTR            (NULL|self + endswith)
+             474 LOAD_CONST           (('\n', '\r'))
+             476 CALL                 (1 positional)
+             484 TO_BOOL
+             492 POP_JUMP_IF_FALSE    (to 506)
+
+754:         496 LOAD_FAST            (replacement)
+             498 LOAD_CONST           ("\n")
+             500 BINARY_OP            (+=)
+             504 STORE_FAST           (replacement)
+
+755:     >>  506 LOAD_GLOBAL          (NULL + atomic_write_text)
+             516 LOAD_DEREF           (self)
+             518 LOAD_ATTR            (pool_path)
+             538 LOAD_FAST            (replacement)
+             540 CALL                 (2 positional)
+             548 POP_TOP
+
+756:         550 LOAD_GLOBAL          (NULL + isinstance)
+             560 LOAD_FAST            (state)
+             562 LOAD_ATTR            (NULL|self + get)
+             582 LOAD_CONST           ("items")
+             584 CALL                 (1 positional)
+             592 LOAD_GLOBAL          (dict)
+             602 CALL                 (2 positional)
+             610 TO_BOOL
+             618 POP_JUMP_IF_FALSE    (to 656)
+             622 LOAD_FAST            (state)
+             624 LOAD_ATTR            (NULL|self + get)
+             644 LOAD_CONST           ("items")
+             646 CALL                 (1 positional)
+             654 JUMP_FORWARD         (to 658)
+         >>  656 BUILD_MAP            0
+         >>  658 STORE_FAST           (items)
+
+757:         660 LOAD_FAST            (items)
+             662 LOAD_ATTR            (NULL|self + pop)
+             682 LOAD_DEREF           (wanted_key)
+             684 LOAD_CONST           (None)
+             686 CALL                 (2 positional)
+             694 POP_TOP
+
+758:         696 LOAD_FAST_LOAD_FAST  (items, state)
+             698 LOAD_CONST           ("items")
+             700 STORE_SUBSCR
+
+759:         704 RETURN_CONST         (True)
+         >>  706 SWAP                 (TOS <-> TOS1)
+             708 POP_TOP
+
+745:         710 SWAP                 (TOS <-> TOS1)
+             712 STORE_FAST           (item)
+             714 RERAISE              0
+         >>  716 SWAP                 (TOS <-> TOS1)
+             718 POP_TOP
+
+748:         720 SWAP                 (TOS <-> TOS1)
+             722 STORE_FAST           (item)
+             724 RERAISE              0
+         >>  726 SWAP                 (TOS <-> TOS1)
+             728 POP_TOP
+
+751:         730 SWAP                 (TOS <-> TOS2)
+             732 STORE_FAST           (line)
+             734 STORE_FAST           (index)
+             736 RERAISE              0
+
+ExceptionTable:
+  126 to 162 -> 706 [2]
+  172 to 182 -> 706 [2]
+  212 to 252 -> 716 [2]
+  356 to 376 -> 726 [3]
+  386 to 396 -> 726 [3]
+
+# Method Name:       reset
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  9
+# Stack size:        10
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        766
+# Constants:
+#    0: None
+#    1: 0
+#    2: 'status'
+#    3: 'reason'
+#    4: 'consumed'
+#    5: 'sub2_uploaded'
+#    6: 'leased'
+#    7: 'damaged'
+#    8: 'available'
+#    9: 'manual_reimport_retry'
+#   10: ('status', 'lease_until', 'reason', 'updated_at')
+#   11: 1
+# Names:
+#    0: _item
+#    1: _clean
+#    2: get
+#    3: update
+#    4: int
+#    5: time
+#    6: _history
+# Varnames:
+#	state, entries, restored, entry, item, status, reason, failed_consumed, abandoned_lease
+# Positional arguments:
+#	state, entries
+# Local variables:
+#    2: restored
+#    3: entry
+#    4: item
+#    5: status
+#    6: reason
+#    7: failed_consumed
+#    8: abandoned_lease
+# Free variables:
+#    0: self
+               0 COPY_FREE_VARS       1
+
+766:           2 RESUME               0
+
+767:           4 LOAD_CONST           (0)
+               6 STORE_FAST           (restored)
+
+768:           8 LOAD_FAST            (entries)
+              10 GET_ITER
+              12 FOR_ITER             (to 396)
+              16 STORE_FAST           (entry)
+
+769:          18 LOAD_DEREF           (self)
+              20 LOAD_ATTR            (NULL|self + _item)
+              40 LOAD_FAST_LOAD_FAST  (state, entry)
+              42 CALL                 (2 positional)
+              50 STORE_FAST           (item)
+
+770:          52 LOAD_GLOBAL          (NULL + _clean)
+              62 LOAD_FAST            (item)
+              64 LOAD_ATTR            (NULL|self + get)
+              84 LOAD_CONST           ("status")
+              86 CALL                 (1 positional)
+              94 CALL                 (1 positional)
+             102 STORE_FAST           (status)
+
+771:         104 LOAD_GLOBAL          (NULL + _clean)
+             114 LOAD_FAST            (item)
+             116 LOAD_ATTR            (NULL|self + get)
+             136 LOAD_CONST           ("reason")
+             138 CALL                 (1 positional)
+             146 CALL                 (1 positional)
+             154 STORE_FAST           (reason)
+
+772:         156 LOAD_FAST            (status)
+             158 LOAD_CONST           ("consumed")
+             160 COMPARE_OP           (==)
+             164 COPY                 1
+             166 TO_BOOL
+             174 POP_JUMP_IF_FALSE    (to 188)
+             178 POP_TOP
+             180 LOAD_FAST            (reason)
+             182 LOAD_CONST           ("sub2_uploaded")
+             184 COMPARE_OP           (!=)
+         >>  188 STORE_FAST           (failed_consumed)
+
+773:         190 LOAD_FAST            (status)
+             192 LOAD_CONST           ("leased")
+             194 COMPARE_OP           (==)
+             198 STORE_FAST           (abandoned_lease)
+
+774:         200 LOAD_FAST            (status)
+             202 LOAD_CONST           ("damaged")
+             204 COMPARE_OP           (!=)
+             208 POP_JUMP_IF_FALSE    (to 244)
+             212 LOAD_FAST            (failed_consumed)
+             214 TO_BOOL
+             222 POP_JUMP_IF_TRUE     (to 244)
+             226 LOAD_FAST            (abandoned_lease)
+             228 TO_BOOL
+             236 POP_JUMP_IF_TRUE     (to 244)
+
+775:         240 JUMP_BACKWARD        (to 12)
+
+776:     >>  244 LOAD_FAST            (item)
+             246 LOAD_ATTR            (NULL|self + update)
+
+777:         266 LOAD_CONST           ("available")
+
+778:         268 LOAD_CONST           (0)
+
+779:         270 LOAD_CONST           ("manual_reimport_retry")
+
+780:         272 LOAD_GLOBAL          (NULL + int)
+             282 LOAD_GLOBAL          (time)
+             292 LOAD_ATTR            (time)
+             312 PUSH_NULL

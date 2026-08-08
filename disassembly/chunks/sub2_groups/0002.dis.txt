@@ -1,0 +1,800 @@
+ 76:         354 LOAD_GLOBAL          (NULL + requests_kwargs)
+             364 LOAD_FAST            (proxy)
+             366 CALL                 (1 positional)
+
+ 72:         374 DICT_MERGE           1
+             376 CALL_FUNCTION_EX     (keyword and positional arguments)
+             378 STORE_FAST           (resp)
+
+ 78:         380 LOAD_GLOBAL          (NULL + hasattr)
+             390 LOAD_FAST            (resp)
+             392 LOAD_CONST           ("raise_for_status")
+             394 CALL                 (2 positional)
+             402 TO_BOOL
+             410 POP_JUMP_IF_FALSE    (to 446)
+
+ 79:         414 LOAD_FAST            (resp)
+             416 LOAD_ATTR            (NULL|self + raise_for_status)
+             436 CALL                 (0 positional)
+             444 POP_TOP
+
+ 80:     >>  446 LOAD_FAST            (resp)
+             448 LOAD_ATTR            (NULL|self + json)
+             468 CALL                 (0 positional)
+             476 STORE_FAST           (payload)
+
+ 81:         478 LOAD_GLOBAL          (NULL + _items_from_groups_response)
+             488 LOAD_FAST            (payload)
+             490 CALL                 (1 positional)
+             498 STORE_FAST           (groups)
+
+ 82:         500 LOAD_FAST            (groups)
+             502 GET_ITER
+             504 FOR_ITER             (to 736)
+             508 STORE_FAST           (group)
+
+ 83:         510 LOAD_GLOBAL          (NULL + _clean)
+             520 LOAD_FAST            (group)
+             522 LOAD_ATTR            (NULL|self + get)
+             542 LOAD_CONST           ("name")
+             544 CALL                 (1 positional)
+             552 CALL                 (1 positional)
+             560 LOAD_FAST            (name)
+             562 COMPARE_OP           (==)
+             566 POP_JUMP_IF_TRUE     (to 574)
+             570 JUMP_BACKWARD        (to 504)
+
+ 84:     >>  574 LOAD_GLOBAL          (NULL + int)
+             584 LOAD_FAST            (group)
+             586 LOAD_ATTR            (NULL|self + get)
+             606 LOAD_CONST           ("id")
+             608 CALL                 (1 positional)
+             616 COPY                 1
+             618 TO_BOOL
+             626 POP_JUMP_IF_TRUE     (to 634)
+             630 POP_TOP
+             632 LOAD_CONST           (0)
+         >>  634 CALL                 (1 positional)
+             642 STORE_FAST           (group_id)
+
+ 85:     >>  644 LOAD_FAST            (group_id)
+             646 LOAD_CONST           (0)
+             648 COMPARE_OP           (<=)
+             652 POP_JUMP_IF_FALSE    (to 720)
+
+ 86:         656 LOAD_GLOBAL          (NULL + Sub2GroupError)
+             666 LOAD_CONST           ("SUB2分组 ")
+             668 LOAD_FAST            (name)
+             670 FORMAT_SIMPLE
+             672 LOAD_CONST           (" ID无效: ")
+             674 LOAD_FAST            (group)
+             676 LOAD_ATTR            (NULL|self + get)
+             696 LOAD_CONST           ("id")
+             698 CALL                 (1 positional)
+             706 FORMAT_SIMPLE
+             708 BUILD_STRING         4
+             710 CALL                 (1 positional)
+             718 RAISE_VARARGS        (exception instance)
+
+ 87:     >>  720 LOAD_FAST            (group_id)
+             722 LOAD_FAST            (name)
+             724 BUILD_TUPLE          2
+             726 SWAP                 (TOS <-> TOS1)
+             728 POP_TOP
+             730 SWAP                 (TOS <-> TOS1)
+             732 POP_TOP
+             734 RETURN_VALUE
+
+ 82:     >>  736 END_FOR
+             738 POP_TOP
+
+ 88:         740 LOAD_CONST           (", ")
+             742 LOAD_ATTR            (NULL|self + join)
+             762 LOAD_CONST           (<Code311 code object <genexpr> at 0x109b0e430, file sub2_groups.py>, line 88)
+             764 MAKE_FUNCTION
+             766 LOAD_FAST            (groups)
+             768 GET_ITER
+             770 CALL                 (0 positional)
+             778 CALL                 (1 positional)
+             786 STORE_FAST           (available)
+
+ 89:         788 LOAD_GLOBAL          (NULL + Sub2GroupError)
+             798 LOAD_CONST           ("未找到SUB2分组 ")
+             800 LOAD_FAST            (name)
+             802 FORMAT_SIMPLE
+             804 LOAD_CONST           ("; 当前可用: ")
+             806 LOAD_FAST            (available)
+             808 COPY                 1
+             810 TO_BOOL
+             818 POP_JUMP_IF_TRUE     (to 826)
+             822 POP_TOP
+             824 LOAD_CONST           ("无")
+         >>  826 FORMAT_SIMPLE
+             828 BUILD_STRING         4
+             830 CALL                 (1 positional)
+             838 RAISE_VARARGS        (exception instance)
+
+ 70:     >>  840 END_FOR
+             842 POP_TOP
+
+ 99:         844 LOAD_GLOBAL          (NULL + Sub2GroupError)
+             854 LOAD_CONST           ("SUB2分组查询失败，已停止上传，避免误入 default: ")
+             856 LOAD_FAST            (last_error)
+             858 FORMAT_SIMPLE
+             860 BUILD_STRING         2
+             862 CALL                 (1 positional)
+             870 RAISE_VARARGS        (exception instance)
+         >>  872 PUSH_EXC_INFO
+
+ 90:         874 LOAD_GLOBAL          (Sub2GroupError)
+             884 CHECK_EXC_MATCH
+             886 POP_JUMP_IF_FALSE    (to 894)
+             890 POP_TOP
+
+ 91:         892 RAISE_VARARGS        (reraise)
+
+ 92:     >>  894 LOAD_GLOBAL          (Exception)
+             904 CHECK_EXC_MATCH
+             906 POP_JUMP_IF_FALSE    (to 1212)
+             910 STORE_FAST           (exc)
+
+ 93:         912 LOAD_GLOBAL          (NULL + str)
+             922 LOAD_FAST            (exc)
+             924 CALL                 (1 positional)
+             932 STORE_FAST           (last_error)
+
+ 94:         934 LOAD_FAST            (log_fn)
+             936 TO_BOOL
+             944 POP_JUMP_IF_FALSE    (to 1038)
+
+ 95:         948 LOAD_FAST            (log_fn)
+             950 PUSH_NULL
+             952 LOAD_CONST           ("SUB2分组查询失败(")
+             954 LOAD_FAST            (attempt)
+             956 FORMAT_SIMPLE
+             958 LOAD_CONST           ("/")
+             960 LOAD_GLOBAL          (NULL + max)
+             970 LOAD_CONST           (1)
+             972 LOAD_GLOBAL          (NULL + int)
+             982 LOAD_FAST            (attempts)
+             984 COPY                 1
+             986 TO_BOOL
+             994 POP_JUMP_IF_TRUE     (to 1002)
+             998 POP_TOP
+            1000 LOAD_CONST           (1)
+         >> 1002 CALL                 (1 positional)
+            1010 CALL                 (2 positional)
+            1018 FORMAT_SIMPLE
+            1020 LOAD_CONST           ("): ")
+            1022 LOAD_FAST            (exc)
+            1024 FORMAT_SIMPLE
+            1026 BUILD_STRING         6
+            1028 CALL                 (1 positional)
+            1036 POP_TOP
+
+ 96:     >> 1038 LOAD_FAST            (attempt)
+            1040 LOAD_GLOBAL          (NULL + max)
+            1050 LOAD_CONST           (1)
+            1052 LOAD_GLOBAL          (NULL + int)
+            1062 LOAD_FAST            (attempts)
+            1064 COPY                 1
+            1066 TO_BOOL
+            1074 POP_JUMP_IF_TRUE     (to 1082)
+            1078 POP_TOP
+            1080 LOAD_CONST           (1)
+         >> 1082 CALL                 (1 positional)
+            1090 CALL                 (2 positional)
+            1098 COMPARE_OP           (<)
+            1102 POP_JUMP_IF_FALSE    (to 1190)
+
+ 97:        1106 LOAD_GLOBAL          (time)
+            1116 LOAD_ATTR            (sleep)
+            1136 PUSH_NULL
+            1138 LOAD_GLOBAL          (NULL + max)
+            1148 LOAD_CONST           (0.0)
+            1150 LOAD_FAST            (sleep_seconds)
+            1152 CALL                 (2 positional)
+            1160 LOAD_FAST            (attempt)
+            1162 BINARY_OP            (*)
+            1166 CALL                 (1 positional)
+            1174 POP_TOP
+            1176 POP_EXCEPT
+            1178 LOAD_CONST           (None)
+            1180 STORE_FAST           (exc)
+            1182 DELETE_FAST          (exc)
+            1184 EXTENDED_ARG         (256)
+            1186 JUMP_BACKWARD        (to 312)
+
+ 96:     >> 1190 POP_EXCEPT
+            1192 LOAD_CONST           (None)
+            1194 STORE_FAST           (exc)
+            1196 DELETE_FAST          (exc)
+            1198 EXTENDED_ARG         (256)
+            1200 JUMP_BACKWARD        (to 312)
+         >> 1204 LOAD_CONST           (None)
+            1206 STORE_FAST           (exc)
+            1208 DELETE_FAST          (exc)
+            1210 RERAISE              1
+
+ 92:     >> 1212 RERAISE              0
+         >> 1214 COPY                 3
+            1216 POP_EXCEPT
+            1218 RERAISE              1
+
+ExceptionTable:
+  322 to 564 -> 872 [1]
+  574 to 728 -> 872 [1]
+  736 to 838 -> 872 [1]
+  872 to 910 -> 1214 [2] lasti
+  912 to 1174 -> 1204 [2] lasti
+  1204 to 1212 -> 1214 [2] lasti
+
+# Method Name:       _add_int
+# Filename:          sub2_groups.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        102
+# Constants:
+#    0: None
+# Names:
+#    0: isinstance
+#    1: bool
+#    2: int
+#    3: add
+#    4: str
+#    5: strip
+#    6: isdigit
+# Varnames:
+#	value, out
+# Positional arguments:
+#	value, out
+102:           0 RESUME               0
+
+103:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (value)
+              14 LOAD_GLOBAL          (bool)
+              24 CALL                 (2 positional)
+              32 TO_BOOL
+              40 POP_JUMP_IF_FALSE    (to 46)
+
+104:          44 RETURN_CONST         (None)
+
+105:     >>   46 LOAD_GLOBAL          (NULL + isinstance)
+              56 LOAD_FAST            (value)
+              58 LOAD_GLOBAL          (int)
+              68 CALL                 (2 positional)
+              76 TO_BOOL
+              84 POP_JUMP_IF_FALSE    (to 124)
+
+106:          88 LOAD_FAST            (out)
+              90 LOAD_ATTR            (NULL|self + add)
+             110 LOAD_FAST            (value)
+             112 CALL                 (1 positional)
+             120 POP_TOP
+
+107:         122 RETURN_CONST         (None)
+
+108:     >>  124 LOAD_GLOBAL          (NULL + isinstance)
+             134 LOAD_FAST            (value)
+             136 LOAD_GLOBAL          (str)
+             146 CALL                 (2 positional)
+             154 TO_BOOL
+             162 POP_JUMP_IF_FALSE    (to 320)
+             166 LOAD_FAST            (value)
+             168 LOAD_ATTR            (NULL|self + strip)
+             188 CALL                 (0 positional)
+             196 LOAD_ATTR            (NULL|self + isdigit)
+             216 CALL                 (0 positional)
+             224 TO_BOOL
+             232 POP_JUMP_IF_FALSE    (to 318)
+
+109:         236 LOAD_FAST            (out)
+             238 LOAD_ATTR            (NULL|self + add)
+             258 LOAD_GLOBAL          (NULL + int)
+             268 LOAD_FAST            (value)
+             270 LOAD_ATTR            (NULL|self + strip)
+             290 CALL                 (0 positional)
+             298 CALL                 (1 positional)
+             306 CALL                 (1 positional)
+             314 POP_TOP
+             316 RETURN_CONST         (None)
+
+108:     >>  318 RETURN_CONST         (None)
+         >>  320 RETURN_CONST         (None)
+
+
+# Method Name:       _collect_group_object_ids
+# Filename:          sub2_groups.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        112
+# Constants:
+#    0: None
+#    1: 'id'
+#    2: 'group_id'
+#    3: 'group'
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: _add_int
+#    3: get
+#    4: _collect_group_object_ids
+#    5: Iterable
+#    6: str
+#    7: bytes
+#    8: bytearray
+# Varnames:
+#	value, out, item
+# Positional arguments:
+#	value, out
+# Local variables:
+#    2: item
+112:           0 RESUME               0
+
+113:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (value)
+              14 LOAD_GLOBAL          (dict)
+              24 CALL                 (2 positional)
+              32 TO_BOOL
+              40 POP_JUMP_IF_FALSE    (to 220)
+
+114:          44 LOAD_GLOBAL          (NULL + _add_int)
+              54 LOAD_FAST            (value)
+              56 LOAD_ATTR            (NULL|self + get)
+              76 LOAD_CONST           ("id")
+              78 CALL                 (1 positional)
+              86 LOAD_FAST            (out)
+              88 CALL                 (2 positional)
+              96 POP_TOP
+
+115:          98 LOAD_GLOBAL          (NULL + _add_int)
+             108 LOAD_FAST            (value)
+             110 LOAD_ATTR            (NULL|self + get)
+             130 LOAD_CONST           ("group_id")
+             132 CALL                 (1 positional)
+             140 LOAD_FAST            (out)
+             142 CALL                 (2 positional)
+             150 POP_TOP
+
+116:         152 LOAD_CONST           ("group")
+             154 LOAD_FAST            (value)
+             156 CONTAINS_OP          (in)
+             160 POP_JUMP_IF_FALSE    (to 218)
+
+117:         164 LOAD_GLOBAL          (NULL + _collect_group_object_ids)
+             174 LOAD_FAST            (value)
+             176 LOAD_ATTR            (NULL|self + get)
+             196 LOAD_CONST           ("group")
+             198 CALL                 (1 positional)
+             206 LOAD_FAST            (out)
+             208 CALL                 (2 positional)
+             216 POP_TOP
+
+118:     >>  218 RETURN_CONST         (None)
+
+119:     >>  220 LOAD_GLOBAL          (NULL + isinstance)
+             230 LOAD_FAST            (value)
+             232 LOAD_GLOBAL          (Iterable)
+             242 CALL                 (2 positional)
+             250 TO_BOOL
+             258 POP_JUMP_IF_FALSE    (to 370)
+             262 LOAD_GLOBAL          (NULL + isinstance)
+             272 LOAD_FAST            (value)
+             274 LOAD_GLOBAL          (str)
+             284 LOAD_GLOBAL          (bytes)
+             294 LOAD_GLOBAL          (bytearray)
+             304 BUILD_TUPLE          3
+             306 CALL                 (2 positional)
+             314 TO_BOOL
+             322 POP_JUMP_IF_TRUE     (to 368)
+
+120:         326 LOAD_FAST            (value)
+             328 GET_ITER
+             330 FOR_ITER             (to 362)
+             334 STORE_FAST           (item)
+
+121:         336 LOAD_GLOBAL          (NULL + _collect_group_object_ids)
+             346 LOAD_FAST_LOAD_FAST  (item, out)
+             348 CALL                 (2 positional)
+             356 POP_TOP
+             358 JUMP_BACKWARD        (to 330)
+
+120:     >>  362 END_FOR
+             364 POP_TOP
+             366 RETURN_CONST         (None)
+
+119:     >>  368 RETURN_CONST         (None)
+         >>  370 RETURN_CONST         (None)
+
+
+# Method Name:       _collect_account_group_ids
+# Filename:          sub2_groups.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        124
+# Constants:
+#    0: None
+#    1: 'group_id'
+#    2: 'group'
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: _add_int
+#    3: get
+#    4: _collect_group_object_ids
+#    5: Iterable
+#    6: str
+#    7: bytes
+#    8: bytearray
+#    9: _collect_account_group_ids
+# Varnames:
+#	value, out, item
+# Positional arguments:
+#	value, out
+# Local variables:
+#    2: item
+124:           0 RESUME               0
+
+125:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (value)
+              14 LOAD_GLOBAL          (dict)
+              24 CALL                 (2 positional)
+              32 TO_BOOL
+              40 POP_JUMP_IF_FALSE    (to 166)
+
+126:          44 LOAD_GLOBAL          (NULL + _add_int)
+              54 LOAD_FAST            (value)
+              56 LOAD_ATTR            (NULL|self + get)
+              76 LOAD_CONST           ("group_id")
+              78 CALL                 (1 positional)
+              86 LOAD_FAST            (out)
+              88 CALL                 (2 positional)
+              96 POP_TOP
+
+127:          98 LOAD_CONST           ("group")
+             100 LOAD_FAST            (value)
+             102 CONTAINS_OP          (in)
+             106 POP_JUMP_IF_FALSE    (to 164)
+
+128:         110 LOAD_GLOBAL          (NULL + _collect_group_object_ids)
+             120 LOAD_FAST            (value)
+             122 LOAD_ATTR            (NULL|self + get)
+             142 LOAD_CONST           ("group")
+             144 CALL                 (1 positional)
+             152 LOAD_FAST            (out)
+             154 CALL                 (2 positional)
+             162 POP_TOP
+
+129:     >>  164 RETURN_CONST         (None)
+
+130:     >>  166 LOAD_GLOBAL          (NULL + isinstance)
+             176 LOAD_FAST            (value)
+             178 LOAD_GLOBAL          (Iterable)
+             188 CALL                 (2 positional)
+             196 TO_BOOL
+             204 POP_JUMP_IF_FALSE    (to 316)
+             208 LOAD_GLOBAL          (NULL + isinstance)
+             218 LOAD_FAST            (value)
+             220 LOAD_GLOBAL          (str)
+             230 LOAD_GLOBAL          (bytes)
+             240 LOAD_GLOBAL          (bytearray)
+             250 BUILD_TUPLE          3
+             252 CALL                 (2 positional)
+             260 TO_BOOL
+             268 POP_JUMP_IF_TRUE     (to 314)
+
+131:         272 LOAD_FAST            (value)
+             274 GET_ITER
+             276 FOR_ITER             (to 308)
+             280 STORE_FAST           (item)
+
+132:         282 LOAD_GLOBAL          (NULL + _collect_account_group_ids)
+             292 LOAD_FAST_LOAD_FAST  (item, out)
+             294 CALL                 (2 positional)
+             302 POP_TOP
+             304 JUMP_BACKWARD        (to 276)
+
+131:     >>  308 END_FOR
+             310 POP_TOP
+             312 RETURN_CONST         (None)
+
+130:     >>  314 RETURN_CONST         (None)
+         >>  316 RETURN_CONST         (None)
+
+
+# Method Name:       _collect_group_ids
+# Filename:          sub2_groups.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  4
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        135
+# Constants:
+#    0: None
+#    1: 'id'
+#    2: 'group_id'
+#    3: 'group_ids'
+#    4: True
+#    5: ('group_context',)
+#    6: 'groups'
+#    7: 'account_groups'
+#    8: 'group'
+# Names:
+#    0: isinstance
+#    1: bool
+#    2: int
+#    3: str
+#    4: _add_int
+#    5: dict
+#    6: get
+#    7: _collect_group_ids
+#    8: _collect_group_object_ids
+#    9: _collect_account_group_ids
+#   10: Iterable
+# Varnames:
+#	value, out, group_context, item
+# Positional arguments:
+#	value, out
+# Local variables:
+#    2: group_context
+#    3: item
+135:           0 RESUME               0
+
+136:           2 LOAD_FAST            (value)
+               4 POP_JUMP_IF_NOT_NONE (to 10)
+
+137:           8 RETURN_CONST         (None)
+
+138:     >>   10 LOAD_GLOBAL          (NULL + isinstance)
+              20 LOAD_FAST            (value)
+              22 LOAD_GLOBAL          (bool)
+              32 CALL                 (2 positional)
+              40 TO_BOOL
+              48 POP_JUMP_IF_FALSE    (to 54)
+
+139:          52 RETURN_CONST         (None)
+
+140:     >>   54 LOAD_GLOBAL          (NULL + isinstance)
+              64 LOAD_FAST            (value)
+              66 LOAD_GLOBAL          (int)
+              76 LOAD_GLOBAL          (str)
+              86 BUILD_TUPLE          2
+              88 CALL                 (2 positional)
+              96 TO_BOOL
+             104 POP_JUMP_IF_FALSE    (to 146)
+
+141:         108 LOAD_FAST            (group_context)
+             110 TO_BOOL
+             118 POP_JUMP_IF_FALSE    (to 144)
+
+142:         122 LOAD_GLOBAL          (NULL + _add_int)
+             132 LOAD_FAST_LOAD_FAST  (value, out)
+             134 CALL                 (2 positional)
+             142 POP_TOP
+
+143:     >>  144 RETURN_CONST         (None)
+
+144:     >>  146 LOAD_GLOBAL          (NULL + isinstance)
+             156 LOAD_FAST            (value)
+             158 LOAD_GLOBAL          (dict)
+             168 CALL                 (2 positional)
+             176 TO_BOOL
+             184 POP_JUMP_IF_FALSE    (to 628)
+
+145:         188 LOAD_FAST            (group_context)
+             190 TO_BOOL
+             198 POP_JUMP_IF_FALSE    (to 310)
+
+146:         202 LOAD_GLOBAL          (NULL + _add_int)
+             212 LOAD_FAST            (value)
+             214 LOAD_ATTR            (NULL|self + get)
+             234 LOAD_CONST           ("id")
+             236 CALL                 (1 positional)
+             244 LOAD_FAST            (out)
+             246 CALL                 (2 positional)
+             254 POP_TOP
+
+147:         256 LOAD_GLOBAL          (NULL + _add_int)
+             266 LOAD_FAST            (value)
+             268 LOAD_ATTR            (NULL|self + get)
+             288 LOAD_CONST           ("group_id")
+             290 CALL                 (1 positional)
+             298 LOAD_FAST            (out)
+             300 CALL                 (2 positional)
+             308 POP_TOP
+
+148:     >>  310 LOAD_GLOBAL          (NULL + _add_int)
+             320 LOAD_FAST            (value)
+             322 LOAD_ATTR            (NULL|self + get)
+             342 LOAD_CONST           ("group_id")
+             344 CALL                 (1 positional)
+             352 LOAD_FAST            (out)
+             354 CALL                 (2 positional)
+             362 POP_TOP
+
+149:         364 LOAD_CONST           ("group_ids")
+             366 LOAD_FAST            (value)
+             368 CONTAINS_OP          (in)
+             372 POP_JUMP_IF_FALSE    (to 428)
+
+150:         376 LOAD_GLOBAL          (NULL + _collect_group_ids)
+             386 LOAD_FAST            (value)
+             388 LOAD_ATTR            (NULL|self + get)
+             408 LOAD_CONST           ("group_ids")
+             410 CALL                 (1 positional)
+             418 LOAD_FAST            (out)
+             420 LOAD_CONST           (True)
+             422 LOAD_CONST           (('group_context',))
+             424 CALL_KW              3
+             426 POP_TOP
+
+151:     >>  428 LOAD_CONST           ("groups")
+             430 LOAD_FAST            (value)
+             432 CONTAINS_OP          (in)
+             436 POP_JUMP_IF_FALSE    (to 494)
+
+152:         440 LOAD_GLOBAL          (NULL + _collect_group_object_ids)
+             450 LOAD_FAST            (value)
+             452 LOAD_ATTR            (NULL|self + get)
+             472 LOAD_CONST           ("groups")
+             474 CALL                 (1 positional)
+             482 LOAD_FAST            (out)
+             484 CALL                 (2 positional)
+             492 POP_TOP
+
+153:     >>  494 LOAD_CONST           ("account_groups")
+             496 LOAD_FAST            (value)
+             498 CONTAINS_OP          (in)
+             502 POP_JUMP_IF_FALSE    (to 560)
+
+154:         506 LOAD_GLOBAL          (NULL + _collect_account_group_ids)
+             516 LOAD_FAST            (value)
+             518 LOAD_ATTR            (NULL|self + get)
+             538 LOAD_CONST           ("account_groups")
+             540 CALL                 (1 positional)
+             548 LOAD_FAST            (out)
+             550 CALL                 (2 positional)
+             558 POP_TOP
+
+155:     >>  560 LOAD_CONST           ("group")
+             562 LOAD_FAST            (value)
+             564 CONTAINS_OP          (in)
+             568 POP_JUMP_IF_FALSE    (to 626)
+
+156:         572 LOAD_GLOBAL          (NULL + _collect_group_object_ids)
+             582 LOAD_FAST            (value)
+             584 LOAD_ATTR            (NULL|self + get)
+             604 LOAD_CONST           ("group")
+             606 CALL                 (1 positional)
+             614 LOAD_FAST            (out)
+             616 CALL                 (2 positional)
+             624 POP_TOP
+
+157:     >>  626 RETURN_CONST         (None)
+
+158:     >>  628 LOAD_GLOBAL          (NULL + isinstance)
+             638 LOAD_FAST            (value)
+             640 LOAD_GLOBAL          (Iterable)
+             650 CALL                 (2 positional)
+             658 TO_BOOL
+             666 POP_JUMP_IF_FALSE    (to 710)
+
+159:         670 LOAD_FAST            (value)
+             672 GET_ITER
+             674 FOR_ITER             (to 704)
+             678 STORE_FAST           (item)
+
+160:         680 LOAD_GLOBAL          (NULL + _collect_group_ids)
+             690 LOAD_FAST_LOAD_FAST  (item, out)
+             692 LOAD_FAST            (group_context)
+             694 LOAD_CONST           (('group_context',))
+             696 CALL_KW              3
+             698 POP_TOP
+             700 JUMP_BACKWARD        (to 674)
+
+159:     >>  704 END_FOR
+             706 POP_TOP
+             708 RETURN_CONST         (None)
+
+158:     >>  710 RETURN_CONST         (None)
+
+
+# Method Name:       _collect_group_object_names
+# Filename:          sub2_groups.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        163
+# Constants:
+#    0: None
+#    1: ('name', 'group_name')
+#    2: 'group'
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: _clean
+#    3: get
+#    4: add
+#    5: _collect_group_object_names
+#    6: Iterable
+#    7: str
+#    8: bytes
+#    9: bytearray
+# Varnames:
+#	value, out, key, raw, item
+# Positional arguments:
+#	value, out
+# Local variables:
+#    2: key
+#    3: raw
+#    4: item
+163:           0 RESUME               0
+
+164:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (value)
+              14 LOAD_GLOBAL          (dict)
+              24 CALL                 (2 positional)
+              32 TO_BOOL
+              40 POP_JUMP_IF_FALSE    (to 234)
+
+165:          44 LOAD_CONST           (('name', 'group_name'))
+              46 GET_ITER
+              48 FOR_ITER             (to 162)
+              52 STORE_FAST           (key)
+
+166:          54 LOAD_GLOBAL          (NULL + _clean)
+              64 LOAD_FAST            (value)
+              66 LOAD_ATTR            (NULL|self + get)
+              86 LOAD_FAST            (key)
+              88 CALL                 (1 positional)
+              96 CALL                 (1 positional)
+             104 STORE_FAST           (raw)
+
+167:         106 LOAD_FAST            (raw)
+             108 TO_BOOL
+             116 POP_JUMP_IF_TRUE     (to 124)
+             120 JUMP_BACKWARD        (to 48)
+
+168:     >>  124 LOAD_FAST            (out)
+             126 LOAD_ATTR            (NULL|self + add)
+             146 LOAD_FAST            (raw)
+             148 CALL                 (1 positional)
+             156 POP_TOP
+             158 JUMP_BACKWARD        (to 48)
+
+165:     >>  162 END_FOR
+             164 POP_TOP
+
+169:         166 LOAD_CONST           ("group")
+             168 LOAD_FAST            (value)
+             170 CONTAINS_OP          (in)
+             174 POP_JUMP_IF_FALSE    (to 232)
+
+170:         178 LOAD_GLOBAL          (NULL + _collect_group_object_names)
+             188 LOAD_FAST            (value)
+             190 LOAD_ATTR            (NULL|self + get)
+             210 LOAD_CONST           ("group")
+             212 CALL                 (1 positional)
+             220 LOAD_FAST            (out)
+             222 CALL                 (2 positional)
+             230 POP_TOP
+
+171:     >>  232 RETURN_CONST         (None)
+

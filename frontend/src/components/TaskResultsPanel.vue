@@ -1,12 +1,32 @@
 <script setup lang="ts">
+import { View } from '@element-plus/icons-vue'
 import ContentEmptyState from './ContentEmptyState.vue'
 import TaskProgressCell from './TaskProgressCell.vue'
 import { useTaskProgressClock } from '../composables/useTaskProgressClock'
 import type { RuntimeTask } from '../types/api'
 
-const props = defineProps<{ tasks: RuntimeTask[] }>()
-const emit = defineEmits<{ copyAccount: [RuntimeTask] }>()
+const props = withDefaults(defineProps<{
+  tasks: RuntimeTask[]
+  openingMailboxUrls?: readonly string[]
+}>(), {
+  openingMailboxUrls: () => [],
+})
+const emit = defineEmits<{
+  copyAccount: [RuntimeTask]
+  mailboxUrl: [RuntimeTask]
+}>()
 const nowSeconds = useTaskProgressClock(() => props.tasks)
+
+function taskTooltip(row: RuntimeTask) {
+  const details = []
+  if (row.batch_id) details.push(`运行批次 ${row.batch_id}`)
+  if (Number(row.ordinal) > 0) details.push(`批内序号 ${Math.floor(Number(row.ordinal))}`)
+  return details.join(' · ') || `任务 ${row.task_id}`
+}
+
+function taskRowKey(row: RuntimeTask) {
+  return `${String(row.batch_id || 'legacy')}::${row.task_id}`
+}
 
 function statusLabel(status?: string) {
   const value = String(status || '').toLowerCase()
@@ -47,8 +67,14 @@ function failureTooltip(row: RuntimeTask) {
 </script>
 
 <template>
-  <el-table class="task-table" :data="tasks" row-key="task_id" stripe height="100%">
-    <el-table-column prop="task_id" label="任务" width="135" show-overflow-tooltip />
+  <el-table class="task-table" :data="tasks" :row-key="taskRowKey" stripe height="100%">
+    <el-table-column label="任务" width="135">
+      <template #default="{ row }">
+        <el-tooltip :content="taskTooltip(row)" placement="top">
+          <span class="task-id">{{ row.task_id }}</span>
+        </el-tooltip>
+      </template>
+    </el-table-column>
     <el-table-column label="账号" min-width="205">
       <template #default="{ row }">
         <el-tooltip v-if="row.account || row.email" content="点击复制账号或邮箱" placement="top">
@@ -60,6 +86,21 @@ function failureTooltip(row: RuntimeTask) {
           >{{ row.account || row.email }}</button>
         </el-tooltip>
         <span v-else>-</span>
+      </template>
+    </el-table-column>
+    <el-table-column label="取件 URL" width="92" align="center">
+      <template #default="{ row }">
+        <el-tooltip v-if="row.has_mailbox_url" content="打开取件网页" placement="top">
+          <el-button
+            link
+            :icon="View"
+            :loading="openingMailboxUrls.includes(row.task_id)"
+            :disabled="openingMailboxUrls.includes(row.task_id)"
+            aria-label="打开取件网页"
+            @click="emit('mailboxUrl', row)"
+          />
+        </el-tooltip>
+        <span v-else class="muted">-</span>
       </template>
     </el-table-column>
     <el-table-column label="运行状态" width="190">
@@ -89,6 +130,15 @@ function failureTooltip(row: RuntimeTask) {
 
 <style scoped>
 .task-table { height: 100%; min-height: 0; }
+.task-id {
+  display: block;
+  overflow: hidden;
+  color: var(--el-text-color-regular);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: help;
+}
 .copyable-account {
   display: block;
   max-width: 100%;
@@ -107,4 +157,5 @@ function failureTooltip(row: RuntimeTask) {
 .failure-detail { display: inline-flex; max-width: 100%; align-items: center; gap: 6px; }
 .failure-node { flex: none; color: var(--el-color-danger); font-weight: 600; }
 .failure-detail > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.muted { color: var(--el-text-color-secondary); }
 </style>

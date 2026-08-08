@@ -162,18 +162,24 @@ echo "Using fixed WebUI port: $PORT"
 OLD_PIDS="$(/usr/bin/pgrep -f "plus_launcher.pyc --no-browser --port $PORT" 2>/dev/null || true)"
 PORT_PIDS="$(/usr/sbin/lsof -ti tcp:"$PORT" 2>/dev/null || true)"
 PIDS_TO_STOP="$(printf "%s\n%s\n" "$OLD_PIDS" "$PORT_PIDS" | awk 'NF && !seen[$0]++')"
+typeset -a PIDS_TO_STOP_ARRAY
+PIDS_TO_STOP_ARRAY=()
 if [ -n "$PIDS_TO_STOP" ]; then
+  PIDS_TO_STOP_ARRAY=("${(@f)PIDS_TO_STOP}")
+fi
+if [ ${#PIDS_TO_STOP_ARRAY[@]} -gt 0 ]; then
   echo "Stopping previous WebUI on port $PORT..."
-  printf "%s\n" "$PIDS_TO_STOP" | xargs kill 2>/dev/null || true
+  kill "${PIDS_TO_STOP_ARRAY[@]}" 2>/dev/null || true
   sleep 1
-  STILL_RUNNING=""
-  for pid in $PIDS_TO_STOP; do
+  typeset -a STILL_RUNNING
+  STILL_RUNNING=()
+  for pid in "${PIDS_TO_STOP_ARRAY[@]}"; do
     if kill -0 "$pid" 2>/dev/null; then
-      STILL_RUNNING="$STILL_RUNNING $pid"
+      STILL_RUNNING+=("$pid")
     fi
   done
-  if [ -n "$STILL_RUNNING" ]; then
-    kill -9 $STILL_RUNNING 2>/dev/null || true
+  if [ ${#STILL_RUNNING[@]} -gt 0 ]; then
+    kill -9 "${STILL_RUNNING[@]}" 2>/dev/null || true
   fi
 fi
 

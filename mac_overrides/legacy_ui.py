@@ -46,12 +46,14 @@ def apply_legacy_ui_overrides(
     min_price_default: Any,
     max_price_default: Any,
     priority_countries_text: str,
+    max_price_hard_limit: Any = "0.18",
 ) -> None:
     """Apply the recovered dashboard's legacy HTML, CSS, and JavaScript patches."""
 
     _module = module
     _min_price_default = str(min_price_default)
     _max_price_default = str(max_price_default)
+    _max_price_hard_limit = str(max_price_hard_limit)
     _priority_countries = [
         country.strip()
         for country in str(priority_countries_text).split(",")
@@ -172,6 +174,7 @@ def apply_legacy_ui_overrides(
     (()=>{
       const PROXY_DEFAULT = "http://127.0.0.1:7897";
       const MAX_PRICE_DEFAULT = "0.15";
+      const MAX_PRICE_HARD_LIMIT = 0.18;
       const MIN_PRICE_DEFAULT = "0.01";
       const SMS_PRIORITY_COUNTRIES = ["151", "37", "33", "1", "91", "55"];
       let localConfig = {};
@@ -179,7 +182,7 @@ def apply_legacy_ui_overrides(
       const SECRET_MASK = "********";
       const clampMaxPrice = value => {
         const parsed = Number(String(value || "").trim());
-        if (!Number.isFinite(parsed) || parsed <= 0 || parsed > Number(MAX_PRICE_DEFAULT)) return MAX_PRICE_DEFAULT;
+        if (!Number.isFinite(parsed) || parsed <= 0 || parsed > MAX_PRICE_HARD_LIMIT) return MAX_PRICE_DEFAULT;
         return String(parsed);
       };
       const normalizeType = (type) => {
@@ -682,6 +685,10 @@ def apply_legacy_ui_overrides(
     _legacy_dashboard_inject = _legacy_dashboard_inject.replace(
         'const MAX_PRICE_DEFAULT = "0.15";',
         f"const MAX_PRICE_DEFAULT = {json.dumps(_max_price_default, ensure_ascii=False)};",
+    )
+    _legacy_dashboard_inject = _legacy_dashboard_inject.replace(
+        "const MAX_PRICE_HARD_LIMIT = 0.18;",
+        f"const MAX_PRICE_HARD_LIMIT = {json.dumps(float(_max_price_hard_limit))};",
     )
     _legacy_dashboard_inject = _legacy_dashboard_inject.replace(
         'const MIN_PRICE_DEFAULT = "0.01";',

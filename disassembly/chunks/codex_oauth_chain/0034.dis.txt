@@ -1,0 +1,800 @@
+
+2118:     >>  848 END_FOR
+             850 POP_TOP
+
+2141:         852 LOAD_FAST            (last)
+             854 RETURN_VALUE
+         >>  856 PUSH_EXC_INFO
+
+2122:         858 LOAD_GLOBAL          (Exception)
+             868 CHECK_EXC_MATCH
+             870 POP_JUMP_IF_FALSE    (to 906)
+             874 POP_TOP
+
+2123:         876 BUILD_MAP            0
+
+2124:         878 LOAD_GLOBAL          (PAGE_HEADERS)
+
+2123:         888 DICT_UPDATE          1
+
+2125:         890 LOAD_FAST            (referer)
+
+2126:         892 LOAD_CONST           ("same-origin")
+
+2123:         894 LOAD_CONST           (('referer', 'sec-fetch-site'))
+             896 BUILD_CONST_KEY_MAP  2
+             898 DICT_UPDATE          1
+             900 STORE_FAST           (headers)
+             902 POP_EXCEPT
+             904 JUMP_BACKWARD_NO_INTERRUPT (to 458)
+
+2122:     >>  906 RERAISE              0
+         >>  908 COPY                 3
+             910 POP_EXCEPT
+             912 RERAISE              1
+         >>  914 PUSH_EXC_INFO
+
+2133:         916 LOAD_GLOBAL          (Exception)
+             926 CHECK_EXC_MATCH
+             928 POP_JUMP_IF_FALSE    (to 992)
+             932 STORE_FAST           (exc)
+
+2134:         934 LOAD_CONST           (0)
+             936 LOAD_CONST           ("email_otp_send_failed: ")
+             938 LOAD_GLOBAL          (NULL + str)
+             948 LOAD_FAST            (exc)
+             950 CALL                 (1 positional)
+             958 LOAD_CONST           (None)
+             960 LOAD_CONST           (160)
+             962 BINARY_SLICE
+             964 FORMAT_SIMPLE
+             966 BUILD_STRING         2
+             968 LOAD_CONST           (('_status', 'error'))
+             970 BUILD_CONST_KEY_MAP  2
+             972 STORE_FAST           (data)
+             974 POP_EXCEPT
+             976 LOAD_CONST           (None)
+             978 STORE_FAST           (exc)
+             980 DELETE_FAST          (exc)
+             982 JUMP_BACKWARD_NO_INTERRUPT (to 604)
+         >>  984 LOAD_CONST           (None)
+             986 STORE_FAST           (exc)
+             988 DELETE_FAST          (exc)
+             990 RERAISE              1
+
+2133:     >>  992 RERAISE              0
+         >>  994 COPY                 3
+             996 POP_EXCEPT
+             998 RERAISE              1
+
+ExceptionTable:
+  422 to 456 -> 856 [1]
+  458 to 602 -> 914 [1]
+  856 to 900 -> 908 [2] lasti
+  902 to 904 -> 914 [1]
+  906 to 906 -> 908 [2] lasti
+  908 to 912 -> 914 [1]
+  914 to 932 -> 994 [2] lasti
+  934 to 972 -> 984 [2] lasti
+  984 to 992 -> 994 [2] lasti
+
+# Method Name:       visit_continue
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2143
+# Constants:
+#    0: None
+#    1: 'same-origin'
+#    2: ('referer', 'sec-fetch-site')
+#    3: True
+#    4: 30
+#    5: ('headers', 'allow_redirects', 'timeout')
+# Names:
+#    0: _abs_auth
+#    1: session
+#    2: get
+#    3: PAGE_HEADERS
+#    4: _json_response
+# Varnames:
+#	self, continue_url, referer, url, response
+# Positional arguments:
+#	self, continue_url, referer
+# Local variables:
+#    3: url
+#    4: response
+2143:           0 RESUME               0
+
+2144:           2 LOAD_GLOBAL          (NULL + _abs_auth)
+              12 LOAD_FAST            (continue_url)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (url)
+
+2145:          24 LOAD_FAST            (self)
+              26 LOAD_ATTR            (session)
+              46 LOAD_ATTR            (NULL|self + get)
+
+2146:          66 LOAD_FAST            (url)
+
+2147:          68 BUILD_MAP            0
+              70 LOAD_GLOBAL          (PAGE_HEADERS)
+              80 DICT_UPDATE          1
+              82 LOAD_FAST            (referer)
+              84 LOAD_CONST           ("same-origin")
+              86 LOAD_CONST           (('referer', 'sec-fetch-site'))
+              88 BUILD_CONST_KEY_MAP  2
+              90 DICT_UPDATE          1
+
+2148:          92 LOAD_CONST           (True)
+
+2149:          94 LOAD_CONST           (30)
+
+2145:          96 LOAD_CONST           (('headers', 'allow_redirects', 'timeout'))
+              98 CALL_KW              4
+             100 STORE_FAST           (response)
+
+2151:         102 LOAD_GLOBAL          (NULL + _json_response)
+             112 LOAD_FAST            (response)
+             114 CALL                 (1 positional)
+             122 RETURN_VALUE
+
+
+# Method Name:       create_account_profile
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2153
+# Constants:
+#    0: None
+#    1: '/api/accounts/create_account'
+#    2: ('name', 'birthdate')
+#    3: 'oauth_create_account'
+#    4: '/about-you'
+#    5: 45
+#    6: ('flow', 'referer', 'timeout')
+# Names:
+#    0: _post_auth_json
+#    1: AUTH
+# Varnames:
+#	self, name, birthdate
+# Positional arguments:
+#	self, name, birthdate
+2153:           0 RESUME               0
+
+2154:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _post_auth_json)
+
+2155:          24 LOAD_CONST           ("/api/accounts/create_account")
+
+2156:          26 LOAD_FAST_LOAD_FAST  (name, birthdate)
+              28 LOAD_CONST           (('name', 'birthdate'))
+              30 BUILD_CONST_KEY_MAP  2
+
+2157:          32 LOAD_CONST           ("oauth_create_account")
+
+2158:          34 LOAD_GLOBAL          (AUTH)
+              44 FORMAT_SIMPLE
+              46 LOAD_CONST           ("/about-you")
+              48 BUILD_STRING         2
+
+2159:          50 LOAD_CONST           (45)
+
+2154:          52 LOAD_CONST           (('flow', 'referer', 'timeout'))
+              54 CALL_KW              5
+              56 RETURN_VALUE
+
+
+# Method Name:       complete_chatgpt_callback
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2162
+# Constants:
+#    0: None
+#    1: 'cross-site'
+#    2: ('referer', 'sec-fetch-site')
+#    3: True
+#    4: 45
+#    5: ('headers', 'allow_redirects', 'timeout')
+#    6: 'url'
+#    7: ''
+#    8: '__Secure-next-auth.session-token'
+#    9: 'session_token_present'
+# Names:
+#    0: _abs_auth
+#    1: session
+#    2: get
+#    3: PAGE_HEADERS
+#    4: AUTH
+#    5: _json_response
+#    6: str
+#    7: getattr
+#    8: _clean
+#    9: cookies
+#   10: chatgpt_signup_done
+# Varnames:
+#	self, continue_url, url, response, data, token
+# Positional arguments:
+#	self, continue_url
+# Local variables:
+#    2: url
+#    3: response
+#    4: data
+#    5: token
+2162:           0 RESUME               0
+
+2163:           2 LOAD_GLOBAL          (NULL + _abs_auth)
+              12 LOAD_FAST            (continue_url)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (url)
+
+2164:          24 LOAD_FAST            (self)
+              26 LOAD_ATTR            (session)
+              46 LOAD_ATTR            (NULL|self + get)
+
+2165:          66 LOAD_FAST            (url)
+
+2166:          68 BUILD_MAP            0
+              70 LOAD_GLOBAL          (PAGE_HEADERS)
+              80 DICT_UPDATE          1
+              82 LOAD_GLOBAL          (AUTH)
+              92 LOAD_CONST           ("cross-site")
+              94 LOAD_CONST           (('referer', 'sec-fetch-site'))
+              96 BUILD_CONST_KEY_MAP  2
+              98 DICT_UPDATE          1
+
+2167:         100 LOAD_CONST           (True)
+
+2168:         102 LOAD_CONST           (45)
+
+2164:         104 LOAD_CONST           (('headers', 'allow_redirects', 'timeout'))
+             106 CALL_KW              4
+             108 STORE_FAST           (response)
+
+2170:         110 LOAD_GLOBAL          (NULL + _json_response)
+             120 LOAD_FAST            (response)
+             122 CALL                 (1 positional)
+             130 STORE_FAST           (data)
+
+2171:         132 LOAD_GLOBAL          (NULL + str)
+             142 LOAD_GLOBAL          (NULL + getattr)
+             152 LOAD_FAST            (response)
+             154 LOAD_CONST           ("url")
+             156 LOAD_CONST           ("")
+             158 CALL                 (3 positional)
+             166 COPY                 1
+             168 TO_BOOL
+             176 POP_JUMP_IF_TRUE     (to 184)
+             180 POP_TOP
+             182 LOAD_FAST            (url)
+         >>  184 CALL                 (1 positional)
+             192 LOAD_FAST            (data)
+             194 LOAD_CONST           ("url")
+             196 STORE_SUBSCR
+
+2172:         200 LOAD_GLOBAL          (NULL + _clean)
+             210 LOAD_FAST            (self)
+             212 LOAD_ATTR            (session)
+             232 LOAD_ATTR            (cookies)
+             252 LOAD_ATTR            (NULL|self + get)
+             272 LOAD_CONST           ("__Secure-next-auth.session-token")
+             274 LOAD_CONST           ("")
+             276 CALL                 (2 positional)
+             284 CALL                 (1 positional)
+             292 STORE_FAST           (token)
+
+2173:         294 LOAD_FAST            (token)
+             296 TO_BOOL
+             304 POP_JUMP_IF_FALSE    (to 332)
+
+2174:         308 LOAD_CONST           (True)
+             310 LOAD_FAST            (data)
+             312 LOAD_CONST           ("session_token_present")
+             314 STORE_SUBSCR
+
+2175:         318 LOAD_CONST           (True)
+             320 LOAD_FAST            (self)
+             322 STORE_ATTR           (chatgpt_signup_done)
+
+2176:     >>  332 LOAD_FAST            (data)
+             334 RETURN_VALUE
+
+
+# Method Name:       chatgpt_access_token
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2178
+# Constants:
+#    0: None
+#    1: '/api/auth/session'
+#    2: 'accept'
+#    3: 'application/json'
+#    4: 30
+#    5: ('headers', 'timeout')
+#    6: 'accessToken'
+# Names:
+#    0: session
+#    1: get
+#    2: CHATGPT
+#    3: _json_response
+#    4: _clean
+# Varnames:
+#	self, response, data
+# Positional arguments:
+#	self
+# Local variables:
+#    1: response
+#    2: data
+2178:           0 RESUME               0
+
+2179:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (session)
+              24 LOAD_ATTR            (NULL|self + get)
+
+2180:          44 LOAD_GLOBAL          (CHATGPT)
+              54 FORMAT_SIMPLE
+              56 LOAD_CONST           ("/api/auth/session")
+              58 BUILD_STRING         2
+
+2181:          60 LOAD_CONST           ("accept")
+              62 LOAD_CONST           ("application/json")
+              64 BUILD_MAP            1
+
+2182:          66 LOAD_CONST           (30)
+
+2179:          68 LOAD_CONST           (('headers', 'timeout'))
+              70 CALL_KW              3
+              72 STORE_FAST           (response)
+
+2184:          74 LOAD_GLOBAL          (NULL + _json_response)
+              84 LOAD_FAST            (response)
+              86 CALL                 (1 positional)
+              94 STORE_FAST           (data)
+
+2185:          96 LOAD_GLOBAL          (NULL + _clean)
+             106 LOAD_FAST            (data)
+             108 LOAD_ATTR            (NULL|self + get)
+             128 LOAD_CONST           ("accessToken")
+             130 CALL                 (1 positional)
+             138 CALL                 (1 positional)
+             146 RETURN_VALUE
+
+
+# Method Name:       verify_password
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2187
+# Constants:
+#    0: None
+#    1: '/api/accounts/password/verify'
+#    2: 'password'
+#    3: 'password_verify'
+#    4: '/log-in/password'
+#    5: 30
+#    6: ('flow', 'referer', 'timeout')
+# Names:
+#    0: _post_auth_json
+#    1: AUTH
+# Varnames:
+#	self, password
+# Positional arguments:
+#	self, password
+2187:           0 RESUME               0
+
+2188:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _post_auth_json)
+
+2189:          24 LOAD_CONST           ("/api/accounts/password/verify")
+
+2190:          26 LOAD_CONST           ("password")
+              28 LOAD_FAST            (password)
+              30 BUILD_MAP            1
+
+2191:          32 LOAD_CONST           ("password_verify")
+
+2192:          34 LOAD_GLOBAL          (AUTH)
+              44 FORMAT_SIMPLE
+              46 LOAD_CONST           ("/log-in/password")
+              48 BUILD_STRING         2
+
+2193:          50 LOAD_CONST           (30)
+
+2188:          52 LOAD_CONST           (('flow', 'referer', 'timeout'))
+              54 CALL_KW              5
+              56 RETURN_VALUE
+
+
+# Method Name:       verify_mfa_otp
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2196
+# Constants:
+#    0: None
+#    1: '/api/accounts/email-otp/validate'
+#    2: 'code'
+#    3: 'password_verify'
+#    4: '/mfa-challenge'
+#    5: 30
+#    6: ('flow', 'referer', 'timeout')
+# Names:
+#    0: _post_auth_json
+#    1: AUTH
+# Varnames:
+#	self, code
+# Positional arguments:
+#	self, code
+2196:           0 RESUME               0
+
+2201:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _post_auth_json)
+
+2202:          24 LOAD_CONST           ("/api/accounts/email-otp/validate")
+
+2203:          26 LOAD_CONST           ("code")
+              28 LOAD_FAST            (code)
+              30 BUILD_MAP            1
+
+2204:          32 LOAD_CONST           ("password_verify")
+
+2205:          34 LOAD_GLOBAL          (AUTH)
+              44 FORMAT_SIMPLE
+              46 LOAD_CONST           ("/mfa-challenge")
+              48 BUILD_STRING         2
+
+2206:          50 LOAD_CONST           (30)
+
+2201:          52 LOAD_CONST           (('flow', 'referer', 'timeout'))
+              54 CALL_KW              5
+              56 RETURN_VALUE
+
+
+# Method Name:       send_mfa_otp
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2209
+# Constants:
+#    0: None
+#    1: '/api/accounts/mfa-otp/send'
+#    2: '/mfa-challenge'
+#    3: 'same-origin'
+#    4: ('referer', 'sec-fetch-site')
+#    5: True
+#    6: 30
+#    7: ('headers', 'allow_redirects', 'timeout')
+#    8: '_status'
+#    9: 0
+#   10: {404, 405}
+#   11: ''
+#   12: 'trace_continue'
+#   13: 'mfa_otp_send'
+# Names:
+#    0: _abs_auth
+#    1: AUTH
+#    2: session
+#    3: get
+#    4: PAGE_HEADERS
+#    5: _json_response
+#    6: int
+#    7: send_email_otp
+#    8: config
+#    9: _trace_continue
+# Varnames:
+#	self, continue_url, url, response, data
+# Positional arguments:
+#	self, continue_url
+# Local variables:
+#    2: url
+#    3: response
+#    4: data
+2209:           0 RESUME               0
+
+2210:           2 LOAD_FAST            (continue_url)
+               4 TO_BOOL
+              12 POP_JUMP_IF_FALSE    (to 38)
+              16 LOAD_GLOBAL          (NULL + _abs_auth)
+              26 LOAD_FAST            (continue_url)
+              28 CALL                 (1 positional)
+              36 JUMP_FORWARD         (to 54)
+         >>   38 LOAD_GLOBAL          (AUTH)
+              48 FORMAT_SIMPLE
+              50 LOAD_CONST           ("/api/accounts/mfa-otp/send")
+              52 BUILD_STRING         2
+         >>   54 STORE_FAST           (url)
+
+2211:          56 LOAD_FAST            (self)
+              58 LOAD_ATTR            (session)
+              78 LOAD_ATTR            (NULL|self + get)
+
+2212:          98 LOAD_FAST            (url)
+
+2213:         100 BUILD_MAP            0
+             102 LOAD_GLOBAL          (PAGE_HEADERS)
+             112 DICT_UPDATE          1
+             114 LOAD_GLOBAL          (AUTH)
+             124 FORMAT_SIMPLE
+             126 LOAD_CONST           ("/mfa-challenge")
+             128 BUILD_STRING         2
+             130 LOAD_CONST           ("same-origin")
+             132 LOAD_CONST           (('referer', 'sec-fetch-site'))
+             134 BUILD_CONST_KEY_MAP  2
+             136 DICT_UPDATE          1
+
+2214:         138 LOAD_CONST           (True)
+
+2215:         140 LOAD_CONST           (30)
+
+2211:         142 LOAD_CONST           (('headers', 'allow_redirects', 'timeout'))
+             144 CALL_KW              4
+             146 STORE_FAST           (response)
+
+2217:         148 LOAD_GLOBAL          (NULL + _json_response)
+             158 LOAD_FAST            (response)
+             160 CALL                 (1 positional)
+             168 STORE_FAST           (data)
+
+2218:         170 LOAD_GLOBAL          (NULL + int)
+             180 LOAD_FAST            (data)
+             182 LOAD_ATTR            (NULL|self + get)
+             202 LOAD_CONST           ("_status")
+             204 CALL                 (1 positional)
+             212 COPY                 1
+             214 TO_BOOL
+             222 POP_JUMP_IF_TRUE     (to 230)
+             226 POP_TOP
+             228 LOAD_CONST           (0)
+         >>  230 CALL                 (1 positional)
+             238 LOAD_CONST           ({404, 405})
+             240 CONTAINS_OP          (in)
+             244 POP_JUMP_IF_FALSE    (to 296)
+             248 LOAD_FAST            (continue_url)
+             250 TO_BOOL
+             258 POP_JUMP_IF_TRUE     (to 296)
+
+2219:         262 LOAD_FAST            (self)
+             264 LOAD_ATTR            (NULL|self + send_email_otp)
+             284 LOAD_CONST           ("")
+             286 CALL                 (1 positional)
+             294 RETURN_VALUE
+
+2220:     >>  296 LOAD_FAST            (self)
+             298 LOAD_ATTR            (config)
+             318 LOAD_ATTR            (NULL|self + get)
+             338 LOAD_CONST           ("trace_continue")
+             340 CALL                 (1 positional)
+             348 TO_BOOL
+             356 POP_JUMP_IF_FALSE    (to 396)
+
+2221:         360 LOAD_FAST            (self)
+             362 LOAD_ATTR            (NULL|self + _trace_continue)
+             382 LOAD_CONST           ("mfa_otp_send")
+             384 LOAD_FAST_LOAD_FAST  (url, data)
+             386 CALL                 (3 positional)
+             394 POP_TOP
+
+2222:     >>  396 LOAD_FAST            (data)
+             398 RETURN_VALUE
+
+
+# Method Name:       send_phone_number_otp
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2224
+# Constants:
+#    0: None
+#    1: 'phone_number'
+#    2: 'channel'
+#    3: '/api/accounts/add-phone/send'
+#    4: 'authorize_continue'
+#    5: '/contact-verification'
+#    6: 30
+#    7: ('flow', 'referer', 'timeout')
+# Names:
+#    0: _phone_for_openai
+#    1: _post_auth_json
+#    2: AUTH
+# Varnames:
+#	self, phone, channel, payload
+# Positional arguments:
+#	self, phone, channel
+# Local variables:
+#    3: payload
+2224:           0 RESUME               0
+
+2225:           2 LOAD_CONST           ("phone_number")
+               4 LOAD_GLOBAL          (NULL + _phone_for_openai)
+              14 LOAD_FAST            (phone)
+              16 CALL                 (1 positional)
+              24 BUILD_MAP            1
+              26 STORE_FAST           (payload)
+
+2226:          28 LOAD_FAST            (channel)
+              30 TO_BOOL
+              38 POP_JUMP_IF_FALSE    (to 50)
+
+2227:          42 LOAD_FAST_LOAD_FAST  (channel, payload)
+              44 LOAD_CONST           ("channel")
+              46 STORE_SUBSCR
+
+2228:     >>   50 LOAD_FAST            (self)
+              52 LOAD_ATTR            (NULL|self + _post_auth_json)
+
+2229:          72 LOAD_CONST           ("/api/accounts/add-phone/send")
+
+2230:          74 LOAD_FAST            (payload)
+
+2231:          76 LOAD_CONST           ("authorize_continue")
+
+2232:          78 LOAD_GLOBAL          (AUTH)
+              88 FORMAT_SIMPLE
+              90 LOAD_CONST           ("/contact-verification")
+              92 BUILD_STRING         2
+
+2233:          94 LOAD_CONST           (30)
+
+2228:          96 LOAD_CONST           (('flow', 'referer', 'timeout'))
+              98 CALL_KW              5
+             100 RETURN_VALUE
+
+
+# Method Name:       verify_phone_otp
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2236
+# Constants:
+#    0: None
+#    1: '/api/accounts/phone-otp/validate'
+#    2: 'code'
+#    3: 'authorize_continue'
+#    4: '/contact-verification'
+#    5: 30
+#    6: ('flow', 'referer', 'timeout')
+# Names:
+#    0: _post_auth_json
+#    1: AUTH
+# Varnames:
+#	self, code
+# Positional arguments:
+#	self, code
+2236:           0 RESUME               0
+
+2237:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _post_auth_json)
+
+2238:          24 LOAD_CONST           ("/api/accounts/phone-otp/validate")
+
+2239:          26 LOAD_CONST           ("code")
+              28 LOAD_FAST            (code)
+              30 BUILD_MAP            1
+
+2240:          32 LOAD_CONST           ("authorize_continue")
+
+2241:          34 LOAD_GLOBAL          (AUTH)
+              44 FORMAT_SIMPLE
+              46 LOAD_CONST           ("/contact-verification")
+              48 BUILD_STRING         2
+
+2242:          50 LOAD_CONST           (30)
+
+2237:          52 LOAD_CONST           (('flow', 'referer', 'timeout'))
+              54 CALL_KW              5
+              56 RETURN_VALUE
+
+
+# Method Name:       accept_consent
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2245
+# Constants:
+#    0: None
+#    1: ('default_base',)
+#    2: '/sign-in-with-chatgpt/codex/consent'
+#    3: 'consent_accept'
+#    4: ('stage',)
+#    5: 200
+#    6: 'type'
+#    7: 'external_url'
+#    8: ('_status', 'page', 'continue_url')
+#    9: 'sign_in_with_chatgpt_codex_consent'
+# Names:
+#    0: _abs_url
+#    1: AUTH
+#    2: _select_workspace_and_org_from_session
+# Varnames:
+#	self, continue_url, referer, next_url
+# Positional arguments:
+#	self, continue_url
+# Local variables:
+#    2: referer
+#    3: next_url
+2245:           0 RESUME               0
+
+2246:           2 LOAD_FAST            (continue_url)
+               4 TO_BOOL
+              12 POP_JUMP_IF_FALSE    (to 44)
+              16 LOAD_GLOBAL          (NULL + _abs_url)
+              26 LOAD_FAST            (continue_url)
+              28 LOAD_GLOBAL          (AUTH)
+              38 LOAD_CONST           (('default_base',))
+              40 CALL_KW              2
+              42 JUMP_FORWARD         (to 60)
+         >>   44 LOAD_GLOBAL          (AUTH)
+              54 FORMAT_SIMPLE
+              56 LOAD_CONST           ("/sign-in-with-chatgpt/codex/consent")
+              58 BUILD_STRING         2
+         >>   60 STORE_FAST           (referer)
+
+2247:          62 LOAD_FAST            (self)
+              64 LOAD_ATTR            (NULL|self + _select_workspace_and_org_from_session)
+              84 LOAD_FAST            (referer)
+              86 LOAD_CONST           ("consent_accept")
+              88 LOAD_CONST           (('stage',))
+              90 CALL_KW              2
+              92 STORE_FAST           (next_url)
+
+2248:          94 LOAD_FAST            (next_url)
+              96 TO_BOOL
+             104 POP_JUMP_IF_FALSE    (to 124)
+
+2249:         108 LOAD_CONST           (200)
+             110 LOAD_CONST           ("type")
+             112 LOAD_CONST           ("external_url")
+             114 BUILD_MAP            1
+             116 LOAD_FAST            (next_url)
+             118 LOAD_CONST           (('_status', 'page', 'continue_url'))
+             120 BUILD_CONST_KEY_MAP  3
+             122 RETURN_VALUE
+
+2250:     >>  124 LOAD_CONST           (200)
+             126 LOAD_CONST           ("type")
+             128 LOAD_CONST           ("sign_in_with_chatgpt_codex_consent")
+             130 BUILD_MAP            1
+             132 LOAD_FAST            (continue_url)
+             134 LOAD_CONST           (('_status', 'page', 'continue_url'))
+             136 BUILD_CONST_KEY_MAP  3

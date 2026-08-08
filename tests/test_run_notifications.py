@@ -248,6 +248,53 @@ class TransportTests(unittest.TestCase):
             self.assertNotIn(value, message)
         self.assertNotIn("smtp-secret", message)
 
+    def test_unfinished_message_identifies_batch_tasks_and_safe_reason(self):
+        built = build_notification_message(
+            enabled_config(),
+            EVENT_UNEXPECTED_STOP,
+            {"total": 100, "succeeded": 53, "failed": 44, "active": 3},
+            batch_id="20260808-150600-b20be0",
+            unfinished_task_ids=("T058", "T078", "T083"),
+            termination_reason="watch_returned_with_unfinished_tasks",
+        )
+        body = built.get_content()
+
+        self.assertIn("运行异常（仍有任务未终态）", built["Subject"])
+        self.assertIn("批次 20260808-150600-b20be0", built["Subject"])
+        self.assertIn("未终态 3", built["Subject"])
+        self.assertIn("共享批次：20260808-150600-b20be0", body)
+        self.assertIn("未终态任务数：3", body)
+        self.assertIn("未终态任务：T058、T078、T083", body)
+        self.assertIn("批次监控正常返回，但仍有任务未终态", body)
+        self.assertIn("这不是批次最终结果", body)
+
+    def test_notification_metadata_rejects_credentials_and_raw_reasons(self):
+        private_values = (
+            "mailbox-private@example.test",
+            "raw provider failure: bearer-secret",
+        )
+        notification = RunNotification(
+            EVENT_UNEXPECTED_STOP,
+            RunAggregate(total=1, active=1),
+            batch_id=private_values[0],
+            unfinished_task_ids=("T058", private_values[0], "not-a-task"),
+            termination_reason=private_values[1],
+        )
+
+        self.assertEqual(notification.batch_id, "")
+        self.assertEqual(notification.unfinished_task_ids, ("T058",))
+        self.assertEqual(notification.termination_reason, "")
+        message = build_notification_message(
+            enabled_config(),
+            notification.event,
+            notification.aggregate,
+            batch_id=private_values[0],
+            unfinished_task_ids=notification.unfinished_task_ids,
+            termination_reason=private_values[1],
+        ).as_string()
+        for value in private_values:
+            self.assertNotIn(value, message)
+
     def test_explicit_test_notification_has_safe_subject_and_body(self):
         factory = FakeSmtpFactory()
 
@@ -286,15 +333,78 @@ class CoordinatorTests(unittest.TestCase):
         self.assertEqual([item.event for item in self.notifications], [EVENT_BATCH_COMPLETED])
         self.assertFalse(hasattr(self.notifications[0], "run_id"))
 
-    def test_incomplete_finalize_is_unexpected_stop(self):
-        self.coordinator.start_run("run-a", RunAggregate(total=2, active=2))
+    def test_incomplete_finalize_alerts_without_freezing_final_summary(self):
+        self.coordinator.start_run(
+            "run-a",
+            RunAggregate(total=2, active=2),
+            batch_id="20260808-150600-b20be0",
+        )
         result = self.coordinator.finalize_run(
             "run-a",
             RunAggregate(total=2, failed=1, active=1),
             completed=False,
+            unfinished_task_ids=("T058",),
+            termination_reason="watch_returned_with_unfinished_tasks",
         )
         self.assertEqual(result, (EVENT_UNEXPECTED_STOP,))
         self.assertEqual(self.notifications[0].event, EVENT_UNEXPECTED_STOP)
+        self.assertEqual(self.notifications[0].batch_id, "20260808-150600-b20be0")
+        self.assertEqual(self.notifications[0].unfinished_task_ids, ("T058",))
+        self.assertEqual(
+            self.notifications[0].termination_reason,
+            "watch_returned_with_unfinished_tasks",
+        )
+        self.assertEqual(self.coordinator.public_status()["active_runs"], 1)
+        self.assertEqual(
+            self.coordinator.finalize_run(
+                "run-a",
+                RunAggregate(total=2, failed=1, active=1),
+                completed=False,
+                unfinished_task_ids=("T058",),
+            ),
+            (),
+        )
+
+        finished = RunAggregate(total=2, succeeded=1, failed=1)
+        self.assertEqual(
+            self.coordinator.finalize_run("run-a", finished),
+            (EVENT_BATCH_COMPLETED,),
+        )
+        self.assertEqual(
+            [item.event for item in self.notifications],
+            [EVENT_UNEXPECTED_STOP, EVENT_BATCH_COMPLETED],
+        )
+        self.assertEqual(self.coordinator.public_status()["active_runs"], 0)
+
+    def test_completed_flag_cannot_finalize_an_unfinished_aggregate(self):
+        self.coordinator.start_run("run-a", RunAggregate(total=1, active=1))
+
+        result = self.coordinator.finalize_run(
+            "run-a",
+            RunAggregate(total=1, active=1),
+            completed=True,
+            unfinished_task_ids=("T001-ab12cd",),
+        )
+
+        self.assertEqual(result, (EVENT_UNEXPECTED_STOP,))
+        self.assertEqual(self.notifications[0].event, EVENT_UNEXPECTED_STOP)
+        self.assertEqual(self.coordinator.public_status()["active_runs"], 1)
+
+    def test_terminal_unexpected_stop_is_final(self):
+        self.coordinator.start_run("run-a", RunAggregate(total=1, active=1))
+        terminal = RunAggregate(total=1, failed=1)
+
+        self.assertEqual(
+            self.coordinator.finalize_run(
+                "run-a",
+                terminal,
+                completed=False,
+                termination_reason="watch_failed",
+            ),
+            (EVENT_UNEXPECTED_STOP,),
+        )
+        self.assertEqual(self.coordinator.public_status()["active_runs"], 0)
+        self.assertEqual(self.coordinator.finalize_run("run-a", terminal), ())
 
     def test_manual_stop_default_suppresses_both_manual_and_unexpected_mail(self):
         aggregate = RunAggregate(total=2, active=2)
@@ -415,13 +525,14 @@ class CoordinatorTests(unittest.TestCase):
         )
 
     def test_unknown_and_finalized_runs_ignore_observations(self):
-        aggregate = RunAggregate(active=1)
-        self.assertEqual(self.coordinator.observe_run("unknown", aggregate), ())
-        self.coordinator.start_run("run-a", aggregate)
-        self.coordinator.finalize_run("run-a", aggregate)
+        running = RunAggregate(total=1, active=1)
+        finished = RunAggregate(total=1, succeeded=1)
+        self.assertEqual(self.coordinator.observe_run("unknown", running), ())
+        self.coordinator.start_run("run-a", running)
+        self.coordinator.finalize_run("run-a", finished)
         self.notifications.clear()
         self.assertEqual(
-            self.coordinator.observe_run("run-a", aggregate, sms_exhausted=True),
+            self.coordinator.observe_run("run-a", finished, sms_exhausted=True),
             (),
         )
 

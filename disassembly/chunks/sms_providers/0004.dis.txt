@@ -1,0 +1,800 @@
+             310 SET_FUNCTION_ATTRIBUTE 4
+             312 SET_FUNCTION_ATTRIBUTE 1
+             314 STORE_NAME           (get_number)
+
+770:         316 LOAD_CONST           (('dr', None))
+             318 LOAD_CONST           ("service")
+             320 LOAD_NAME            (str)
+             322 LOAD_CONST           ("countries")
+             324 LOAD_NAME            (list)
+             326 LOAD_NAME            (str)
+             328 BINARY_SUBSCR
+             332 LOAD_CONST           (None)
+             334 BINARY_OP            (|)
+             338 LOAD_CONST           ("return")
+             340 LOAD_NAME            (list)
+             342 LOAD_NAME            (dict)
+             344 BINARY_SUBSCR
+             348 BUILD_TUPLE          6
+             350 LOAD_CONST           (<Code311 code object get_price_candidates at 0x1077ac520, file sms_providers.py>, line 770)
+             352 MAKE_FUNCTION
+             354 SET_FUNCTION_ATTRIBUTE 4
+             356 SET_FUNCTION_ATTRIBUTE 1
+             358 STORE_NAME           (get_price_candidates)
+             360 LOAD_CONST           (('activation_id', 'phone'))
+             362 STORE_NAME           (__static_attributes__)
+             364 LOAD_FAST            (__class__)
+             366 COPY                 1
+             368 STORE_NAME           (__classcell__)
+             370 RETURN_VALUE
+
+
+# Method Name:       HeroSmsProvider
+# Filename:          sms_providers.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        13
+# Flags:             0x00000000 (0x0)
+# First Line:        804
+# Constants:
+#    0: 'HeroSmsProvider'
+#    1: 804
+#    2: 'https://hero-sms.com/stubs/handler_api.php'
+#    3: True
+#    4: 'service'
+#    5: 'country'
+#    6: 'return'
+#    7: <Code311 code object _country_price at 0x1077ac580, file sms_providers.py>, line 808
+#    8: <Code311 code object _country_operators at 0x1077ac5b0, file sms_providers.py>, line 824
+#    9: 'provider_ids'
+#   10: 'max_price'
+#   11: <Code311 code object _allowed_provider_ids at 0x1077ac610, file sms_providers.py>, line 835
+#   12: <Code311 code object get_number at 0x1077ac640, file sms_providers.py>, line 858
+#   13: None
+#   14: 'countries'
+#   15: <Code311 code object get_price_candidates at 0x1077ac670, file sms_providers.py>, line 865
+#   16: ()
+#   17: ('dr', '151', '', '')
+#   18: ('dr', None)
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: BASE_URL
+#    5: SMART_COUNTRY_SCOPE_DEFAULT
+#    6: str
+#    7: tuple
+#    8: Optional
+#    9: float
+#   10: int
+#   11: _country_price
+#   12: list
+#   13: _country_operators
+#   14: _allowed_provider_ids
+#   15: Tuple
+#   16: get_number
+#   17: dict
+#   18: get_price_candidates
+#   19: __static_attributes__
+#   20: __classcell__
+# Cell variables:
+#    0: __class__
+               0 MAKE_CELL            (__class__)
+
+804:           2 RESUME               0
+               4 LOAD_NAME            (__name__)
+               6 STORE_NAME           (__module__)
+               8 LOAD_CONST           ("HeroSmsProvider")
+              10 STORE_NAME           (__qualname__)
+              12 LOAD_CONST           (804)
+              14 STORE_NAME           (__firstlineno__)
+
+805:          16 LOAD_CONST           ("https://hero-sms.com/stubs/handler_api.php")
+              18 STORE_NAME           (BASE_URL)
+
+806:          20 LOAD_CONST           (True)
+              22 STORE_NAME           (SMART_COUNTRY_SCOPE_DEFAULT)
+
+808:          24 LOAD_CONST           ("service")
+              26 LOAD_NAME            (str)
+              28 LOAD_CONST           ("country")
+              30 LOAD_NAME            (str)
+              32 LOAD_CONST           ("return")
+              34 LOAD_NAME            (tuple)
+              36 LOAD_NAME            (Optional)
+              38 LOAD_NAME            (float)
+              40 BINARY_SUBSCR
+              44 LOAD_NAME            (int)
+              46 BUILD_TUPLE          2
+              48 BINARY_SUBSCR
+              52 BUILD_TUPLE          6
+              54 LOAD_CONST           (<Code311 code object _country_price at 0x1077ac580, file sms_providers.py>, line 808)
+              56 MAKE_FUNCTION
+              58 SET_FUNCTION_ATTRIBUTE 4
+              60 STORE_NAME           (_country_price)
+
+824:          62 LOAD_CONST           ("country")
+              64 LOAD_NAME            (str)
+              66 LOAD_CONST           ("return")
+              68 LOAD_NAME            (list)
+              70 LOAD_NAME            (str)
+              72 BINARY_SUBSCR
+              76 BUILD_TUPLE          4
+              78 LOAD_CONST           (<Code311 code object _country_operators at 0x1077ac5b0, file sms_providers.py>, line 824)
+              80 MAKE_FUNCTION
+              82 SET_FUNCTION_ATTRIBUTE 4
+              84 STORE_NAME           (_country_operators)
+
+835:          86 LOAD_CONST           ("service")
+
+836:          88 LOAD_NAME            (str)
+
+835:          90 LOAD_CONST           ("country")
+
+836:          92 LOAD_NAME            (str)
+
+835:          94 LOAD_CONST           ("provider_ids")
+
+836:          96 LOAD_NAME            (str)
+
+835:          98 LOAD_CONST           ("max_price")
+
+836:         100 LOAD_NAME            (str)
+
+835:         102 LOAD_CONST           ("return")
+
+837:         104 LOAD_NAME            (str)
+
+835:         106 BUILD_TUPLE          10
+             108 LOAD_CONST           (<Code311 code object _allowed_provider_ids at 0x1077ac610, file sms_providers.py>, line 835)
+             110 MAKE_FUNCTION
+             112 SET_FUNCTION_ATTRIBUTE 4
+             114 STORE_NAME           (_allowed_provider_ids)
+
+859:         116 NOP
+
+860:         118 NOP
+
+858:         120 LOAD_CONST           (('dr', '151', '', ''))
+             122 LOAD_CONST           ("service")
+
+859:         124 LOAD_NAME            (str)
+
+858:         126 LOAD_CONST           ("country")
+
+859:         128 LOAD_NAME            (str)
+
+858:         130 LOAD_CONST           ("provider_ids")
+
+860:         132 LOAD_NAME            (str)
+
+858:         134 LOAD_CONST           ("max_price")
+
+860:         136 LOAD_NAME            (str)
+
+858:         138 LOAD_CONST           ("return")
+
+861:         140 LOAD_NAME            (Tuple)
+             142 LOAD_NAME            (str)
+             144 LOAD_NAME            (str)
+             146 BUILD_TUPLE          2
+             148 BINARY_SUBSCR
+
+858:         152 BUILD_TUPLE          10
+             154 LOAD_FAST            (__class__)
+             156 BUILD_TUPLE          1
+             158 LOAD_CONST           (<Code311 code object get_number at 0x1077ac640, file sms_providers.py>, line 858)
+             160 MAKE_FUNCTION
+             162 SET_FUNCTION_ATTRIBUTE 8
+             164 SET_FUNCTION_ATTRIBUTE 4
+             166 SET_FUNCTION_ATTRIBUTE 1
+             168 STORE_NAME           (get_number)
+
+865:         170 LOAD_CONST           (('dr', None))
+             172 LOAD_CONST           ("service")
+             174 LOAD_NAME            (str)
+             176 LOAD_CONST           ("countries")
+             178 LOAD_NAME            (list)
+             180 LOAD_NAME            (str)
+             182 BINARY_SUBSCR
+             186 LOAD_CONST           (None)
+             188 BINARY_OP            (|)
+             192 LOAD_CONST           ("return")
+             194 LOAD_NAME            (list)
+             196 LOAD_NAME            (dict)
+             198 BINARY_SUBSCR
+             202 BUILD_TUPLE          6
+             204 LOAD_CONST           (<Code311 code object get_price_candidates at 0x1077ac670, file sms_providers.py>, line 865)
+             206 MAKE_FUNCTION
+             208 SET_FUNCTION_ATTRIBUTE 4
+             210 SET_FUNCTION_ATTRIBUTE 1
+             212 STORE_NAME           (get_price_candidates)
+             214 LOAD_CONST           (())
+             216 STORE_NAME           (__static_attributes__)
+             218 LOAD_FAST            (__class__)
+             220 COPY                 1
+             222 STORE_NAME           (__classcell__)
+             224 RETURN_VALUE
+
+
+# Method Name:       FiveSimProvider
+# Filename:          sms_providers.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        16
+# Flags:             0x00000000 (0x0)
+# First Line:        900
+# Constants:
+#    0: 'FiveSimProvider'
+#    1: 900
+#    2: 'https://5sim.net/v1'
+#    3: False
+#    4: 'chile'
+#    5: 'colombia'
+#    6: 'india'
+#    7: 'indonesia'
+#    8: 'russia'
+#    9: 'usa'
+#   10: 'mexico'
+#   11: 'brazil'
+#   12: 'vietnam'
+#   13: 'philippines'
+#   14: 'nigeria'
+#   15: 'southafrica'
+#   16: 'ukraine'
+#   17: 'poland'
+#   18: 'england'
+#   19: ('151', '33', '91', '62', '7', '1', '52', '55', '84', '63', '234', '27', '380', '48', '44')
+#   20: 'openai'
+#   21: 'telegram'
+#   22: 'google'
+#   23: 'whatsapp'
+#   24: 'microsoft'
+#   25: ('dr', 'tg', 'go', 'wa', 'mm')
+#   26: 'return'
+#   27: <Code311 code object _headers at 0x1077ac6a0, file sms_providers.py>, line 933
+#   28: 'service'
+#   29: <Code311 code object get_available_countries at 0x1077ac760, file sms_providers.py>, line 939
+#   30: 'path'
+#   31: 'timeout'
+#   32: <Code311 code object _rest_get at 0x1077ac790, file sms_providers.py>, line 962
+#   33: <Code311 code object balance at 0x1077ac7c0, file sms_providers.py>, line 974
+#   34: 'max_price'
+#   35: <Code311 code object _parse_max_price at 0x1077ac7f0, file sms_providers.py>, line 979
+#   36: 'products'
+#   37: <Code311 code object _product_price at 0x1077ac820, file sms_providers.py>, line 989
+#   38: <Code311 code object _product_count at 0x1077ac850, file sms_providers.py>, line 1015
+#   39: None
+#   40: 'countries'
+#   41: <Code311 code object get_price_candidates at 0x1077ac880, file sms_providers.py>, line 1041
+#   42: 'country'
+#   43: 'operator'
+#   44: <Code311 code object _ensure_price_allowed at 0x1077ac910, file sms_providers.py>, line 1070
+#   45: 'provider_ids'
+#   46: <Code311 code object get_number at 0x1077ac8b0, file sms_providers.py>, line 1092
+#   47: <Code311 code object set_ready at 0x1077ac9a0, file sms_providers.py>, line 1136
+#   48: 'interval'
+#   49: <Code311 code object wait_code at 0x1077aca00, file sms_providers.py>, line 1140
+#   50: <Code311 code object complete at 0x1077aca30, file sms_providers.py>, line 1162
+#   51: <Code311 code object cancel at 0x1077aca60, file sms_providers.py>, line 1168
+#   52: ('activation_id', 'phone', 'price')
+#   53: ('dr',)
+#   54: (15,)
+#   55: ('dr', None)
+#   56: ('dr', '151', '', '')
+#   57: (300, 3)
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: BASE_URL
+#    5: SMART_COUNTRY_SCOPE_DEFAULT
+#    6: SMART_FIXED_COUNTRY_FALLBACK
+#    7: COUNTRY_MAP
+#    8: SERVICE_MAP
+#    9: dict
+#   10: _headers
+#   11: str
+#   12: list
+#   13: get_available_countries
+#   14: int
+#   15: _rest_get
+#   16: balance
+#   17: staticmethod
+#   18: Optional
+#   19: float
+#   20: _parse_max_price
+#   21: _product_price
+#   22: _product_count
+#   23: get_price_candidates
+#   24: _ensure_price_allowed
+#   25: Tuple
+#   26: get_number
+#   27: set_ready
+#   28: wait_code
+#   29: complete
+#   30: cancel
+#   31: __static_attributes__
+900:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("FiveSimProvider")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (900)
+              12 STORE_NAME           (__firstlineno__)
+
+901:          14 LOAD_CONST           ("https://5sim.net/v1")
+              16 STORE_NAME           (BASE_URL)
+
+902:          18 LOAD_CONST           (False)
+              20 STORE_NAME           (SMART_COUNTRY_SCOPE_DEFAULT)
+
+903:          22 LOAD_CONST           (False)
+              24 STORE_NAME           (SMART_FIXED_COUNTRY_FALLBACK)
+
+907:          26 LOAD_CONST           ("chile")
+
+908:          28 LOAD_CONST           ("colombia")
+
+909:          30 LOAD_CONST           ("india")
+
+910:          32 LOAD_CONST           ("indonesia")
+
+911:          34 LOAD_CONST           ("russia")
+
+912:          36 LOAD_CONST           ("usa")
+
+913:          38 LOAD_CONST           ("mexico")
+
+914:          40 LOAD_CONST           ("brazil")
+
+915:          42 LOAD_CONST           ("vietnam")
+
+916:          44 LOAD_CONST           ("philippines")
+
+917:          46 LOAD_CONST           ("nigeria")
+
+918:          48 LOAD_CONST           ("southafrica")
+
+919:          50 LOAD_CONST           ("ukraine")
+
+920:          52 LOAD_CONST           ("poland")
+
+921:          54 LOAD_CONST           ("england")
+
+906:          56 LOAD_CONST           (('151', '33', '91', '62', '7', '1', '52', '55', '84', '63', '234', '27', '380', '48', '44'))
+              58 BUILD_CONST_KEY_MAP  15
+              60 STORE_NAME           (COUNTRY_MAP)
+
+926:          62 LOAD_CONST           ("openai")
+
+927:          64 LOAD_CONST           ("telegram")
+
+928:          66 LOAD_CONST           ("google")
+
+929:          68 LOAD_CONST           ("whatsapp")
+
+930:          70 LOAD_CONST           ("microsoft")
+
+925:          72 LOAD_CONST           (('dr', 'tg', 'go', 'wa', 'mm'))
+              74 BUILD_CONST_KEY_MAP  5
+              76 STORE_NAME           (SERVICE_MAP)
+
+933:          78 LOAD_CONST           ("return")
+              80 LOAD_NAME            (dict)
+              82 BUILD_TUPLE          2
+              84 LOAD_CONST           (<Code311 code object _headers at 0x1077ac6a0, file sms_providers.py>, line 933)
+              86 MAKE_FUNCTION
+              88 SET_FUNCTION_ATTRIBUTE 4
+              90 STORE_NAME           (_headers)
+
+939:          92 LOAD_CONST           (('dr',))
+              94 LOAD_CONST           ("service")
+              96 LOAD_NAME            (str)
+              98 LOAD_CONST           ("return")
+             100 LOAD_NAME            (list)
+             102 BUILD_TUPLE          4
+             104 LOAD_CONST           (<Code311 code object get_available_countries at 0x1077ac760, file sms_providers.py>, line 939)
+             106 MAKE_FUNCTION
+             108 SET_FUNCTION_ATTRIBUTE 4
+             110 SET_FUNCTION_ATTRIBUTE 1
+             112 STORE_NAME           (get_available_countries)
+
+962:         114 LOAD_CONST           ((15,))
+             116 LOAD_CONST           ("path")
+             118 LOAD_NAME            (str)
+             120 LOAD_CONST           ("timeout")
+             122 LOAD_NAME            (int)
+             124 LOAD_CONST           ("return")
+             126 LOAD_NAME            (dict)
+             128 BUILD_TUPLE          6
+             130 LOAD_CONST           (<Code311 code object _rest_get at 0x1077ac790, file sms_providers.py>, line 962)
+             132 MAKE_FUNCTION
+             134 SET_FUNCTION_ATTRIBUTE 4
+             136 SET_FUNCTION_ATTRIBUTE 1
+             138 STORE_NAME           (_rest_get)
+
+974:         140 LOAD_CONST           ("return")
+             142 LOAD_NAME            (str)
+             144 BUILD_TUPLE          2
+             146 LOAD_CONST           (<Code311 code object balance at 0x1077ac7c0, file sms_providers.py>, line 974)
+             148 MAKE_FUNCTION
+             150 SET_FUNCTION_ATTRIBUTE 4
+             152 STORE_NAME           (balance)
+
+979:         154 LOAD_NAME            (staticmethod)
+
+980:         156 LOAD_CONST           ("max_price")
+             158 LOAD_NAME            (str)
+             160 LOAD_CONST           ("return")
+             162 LOAD_NAME            (Optional)
+             164 LOAD_NAME            (float)
+             166 BINARY_SUBSCR
+             170 BUILD_TUPLE          4
+             172 LOAD_CONST           (<Code311 code object _parse_max_price at 0x1077ac7f0, file sms_providers.py>, line 979)
+             174 MAKE_FUNCTION
+             176 SET_FUNCTION_ATTRIBUTE 4
+
+979:         178 CALL                 (0 positional)
+
+980:         186 STORE_NAME           (_parse_max_price)
+
+989:         188 LOAD_NAME            (staticmethod)
+
+990:         190 LOAD_CONST           ("products")
+             192 LOAD_NAME            (dict)
+             194 LOAD_CONST           ("service")
+             196 LOAD_NAME            (str)
+             198 LOAD_CONST           ("return")
+             200 LOAD_NAME            (Optional)
+             202 LOAD_NAME            (float)
+             204 BINARY_SUBSCR
+             208 BUILD_TUPLE          6
+             210 LOAD_CONST           (<Code311 code object _product_price at 0x1077ac820, file sms_providers.py>, line 989)
+             212 MAKE_FUNCTION
+             214 SET_FUNCTION_ATTRIBUTE 4
+
+989:         216 CALL                 (0 positional)
+
+990:         224 STORE_NAME           (_product_price)
+
+1015:         226 LOAD_NAME            (staticmethod)
+
+1016:         228 LOAD_CONST           ("products")
+             230 LOAD_NAME            (dict)
+             232 LOAD_CONST           ("service")
+             234 LOAD_NAME            (str)
+             236 LOAD_CONST           ("return")
+             238 LOAD_NAME            (int)
+             240 BUILD_TUPLE          6
+             242 LOAD_CONST           (<Code311 code object _product_count at 0x1077ac850, file sms_providers.py>, line 1015)
+             244 MAKE_FUNCTION
+             246 SET_FUNCTION_ATTRIBUTE 4
+
+1015:         248 CALL                 (0 positional)
+
+1016:         256 STORE_NAME           (_product_count)
+
+1041:         258 LOAD_CONST           (('dr', None))
+             260 LOAD_CONST           ("service")
+             262 LOAD_NAME            (str)
+             264 LOAD_CONST           ("countries")
+             266 LOAD_NAME            (list)
+             268 LOAD_NAME            (str)
+             270 BINARY_SUBSCR
+             274 LOAD_CONST           (None)
+             276 BINARY_OP            (|)
+             280 LOAD_CONST           ("return")
+             282 LOAD_NAME            (list)
+             284 LOAD_NAME            (dict)
+             286 BINARY_SUBSCR
+             290 BUILD_TUPLE          6
+             292 LOAD_CONST           (<Code311 code object get_price_candidates at 0x1077ac880, file sms_providers.py>, line 1041)
+             294 MAKE_FUNCTION
+             296 SET_FUNCTION_ATTRIBUTE 4
+             298 SET_FUNCTION_ATTRIBUTE 1
+             300 STORE_NAME           (get_price_candidates)
+
+1070:         302 LOAD_CONST           ("country")
+             304 LOAD_NAME            (str)
+             306 LOAD_CONST           ("operator")
+             308 LOAD_NAME            (str)
+             310 LOAD_CONST           ("service")
+             312 LOAD_NAME            (str)
+             314 LOAD_CONST           ("max_price")
+             316 LOAD_NAME            (str)
+             318 LOAD_CONST           ("return")
+             320 LOAD_NAME            (float)
+             322 BUILD_TUPLE          10
+             324 LOAD_CONST           (<Code311 code object _ensure_price_allowed at 0x1077ac910, file sms_providers.py>, line 1070)
+             326 MAKE_FUNCTION
+             328 SET_FUNCTION_ATTRIBUTE 4
+             330 STORE_NAME           (_ensure_price_allowed)
+
+1093:         332 NOP
+
+1094:         334 NOP
+
+1092:         336 LOAD_CONST           (('dr', '151', '', ''))
+             338 LOAD_CONST           ("service")
+
+1093:         340 LOAD_NAME            (str)
+
+1092:         342 LOAD_CONST           ("country")
+
+1093:         344 LOAD_NAME            (str)
+
+1092:         346 LOAD_CONST           ("provider_ids")
+
+1094:         348 LOAD_NAME            (str)
+
+1092:         350 LOAD_CONST           ("max_price")
+
+1094:         352 LOAD_NAME            (str)
+
+1092:         354 LOAD_CONST           ("return")
+
+1095:         356 LOAD_NAME            (Tuple)
+             358 LOAD_NAME            (str)
+             360 LOAD_NAME            (str)
+             362 BUILD_TUPLE          2
+             364 BINARY_SUBSCR
+
+1092:         368 BUILD_TUPLE          10
+             370 LOAD_CONST           (<Code311 code object get_number at 0x1077ac8b0, file sms_providers.py>, line 1092)
+             372 MAKE_FUNCTION
+             374 SET_FUNCTION_ATTRIBUTE 4
+             376 SET_FUNCTION_ATTRIBUTE 1
+             378 STORE_NAME           (get_number)
+
+1136:         380 LOAD_CONST           (<Code311 code object set_ready at 0x1077ac9a0, file sms_providers.py>, line 1136)
+             382 MAKE_FUNCTION
+             384 STORE_NAME           (set_ready)
+
+1140:         386 LOAD_CONST           ((300, 3))
+             388 LOAD_CONST           ("timeout")
+             390 LOAD_NAME            (int)
+             392 LOAD_CONST           ("interval")
+             394 LOAD_NAME            (int)
+             396 LOAD_CONST           ("return")
+             398 LOAD_NAME            (Optional)
+             400 LOAD_NAME            (str)
+             402 BINARY_SUBSCR
+             406 BUILD_TUPLE          6
+             408 LOAD_CONST           (<Code311 code object wait_code at 0x1077aca00, file sms_providers.py>, line 1140)
+             410 MAKE_FUNCTION
+             412 SET_FUNCTION_ATTRIBUTE 4
+             414 SET_FUNCTION_ATTRIBUTE 1
+             416 STORE_NAME           (wait_code)
+
+1162:         418 LOAD_CONST           (<Code311 code object complete at 0x1077aca30, file sms_providers.py>, line 1162)
+             420 MAKE_FUNCTION
+             422 STORE_NAME           (complete)
+
+1168:         424 LOAD_CONST           (<Code311 code object cancel at 0x1077aca60, file sms_providers.py>, line 1168)
+             426 MAKE_FUNCTION
+             428 STORE_NAME           (cancel)
+             430 LOAD_CONST           (('activation_id', 'phone', 'price'))
+             432 STORE_NAME           (__static_attributes__)
+             434 RETURN_CONST         (None)
+
+
+# Method Name:       SmsVirtualProvider
+# Filename:          sms_providers.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        13
+# Flags:             0x00000000 (0x0)
+# First Line:        1179
+# Constants:
+#    0: 'SmsVirtualProvider'
+#    1: 1179
+#    2: 'https://api.smsvirtual.co'
+#    3: ('open ai', 'openai', 'chatgpt')
+#    4: ('chatgpt', 'open ai', 'openai')
+#    5: ('telegram',)
+#    6: ('google',)
+#    7: ('whatsapp',)
+#    8: ('microsoft',)
+#    9: ('dr', 'openai', 'chatgpt', 'tg', 'go', 'wa', 'mm')
+#   10: '1'
+#   11: ('united states', 'usa', 'america')
+#   12: '7'
+#   13: ('russia',)
+#   14: '20'
+#   15: ('egypt',)
+#   16: '27'
+#   17: ('south africa', 'southafrica')
+#   18: '31'
+#   19: ('netherlands', 'holland')
+#   20: '33'
+#   21: ('colombia', 'france')
+#   22: '34'
+#   23: ('spain',)
+#   24: '39'
+#   25: ('italy',)
+#   26: '44'
+#   27: ('united kingdom', 'england', 'great britain', 'uk')
+#   28: '48'
+#   29: ('poland',)
+#   30: '49'
+#   31: ('germany',)
+#   32: '52'
+#   33: ('mexico',)
+#   34: '55'
+#   35: ('brazil',)
+#   36: '56'
+#   37: ('chile',)
+#   38: '57'
+#   39: ('colombia',)
+#   40: '62'
+#   41: ('indonesia',)
+#   42: '63'
+#   43: ('philippines',)
+#   44: ('thailand',)
+#   45: ('japan',)
+#   46: ('south korea', 'korea')
+#   47: ('vietnam',)
+#   48: ('turkey',)
+#   49: ('india',)
+#   50: ('nigeria',)
+#   51: ('ukraine',)
+#   52: ('66', '81', '82', '84', '90', '91', '151', '234', '380')
+#   53: None
+#   54: '_services_cache'
+#   55: '_countries_cache'
+#   56: '_price_cache'
+#   57: 'api_key'
+#   58: 'proxy'
+#   59: <Code311 code object __init__ at 0x1077acaf0, file sms_providers.py>, line 1225
+#   60: 'with_content_type'
+#   61: 'return'
+#   62: <Code311 code object _headers at 0x1077acb20, file sms_providers.py>, line 1229
+#   63: 'method'
+#   64: 'path'
+#   65: 'json_body'
+#   66: 'timeout'
+#   67: <Code311 code object _request at 0x1077acb80, file sms_providers.py>, line 1238
+#   68: <Code311 code object _message at 0x1077acbb0, file sms_providers.py>, line 1271
+#   69: <Code311 code object _data at 0x1077acac0, file sms_providers.py>, line 1280
+#   70: 'max_price'
+#   71: <Code311 code object _parse_max_price at 0x1077acc10, file sms_providers.py>, line 1284
+#   72: 'text'
+#   73: <Code311 code object _extract_code at 0x1077acc40, file sms_providers.py>, line 1294
+#   74: <Code311 code object _norm at 0x1077acbe0, file sms_providers.py>, line 1299
+#   75: <Code311 code object balance at 0x1077acca0, file sms_providers.py>, line 1303
+#   76: <Code311 code object _services at 0x1077accd0, file sms_providers.py>, line 1312
+#   77: <Code311 code object _countries at 0x1077acd00, file sms_providers.py>, line 1318
+#   78: 'service'
+#   79: <Code311 code object _service_id at 0x1077acd90, file sms_providers.py>, line 1324
+#   80: 'service_id'
+#   81: <Code311 code object _price_rows at 0x1077acdc0, file sms_providers.py>, line 1346
+#   82: 'country'
+#   83: <Code311 code object _country_candidates at 0x1077ace50, file sms_providers.py>, line 1352
+#   84: <Code311 code object _country_id at 0x1077ace80, file sms_providers.py>, line 1369
+#   85: <Code311 code object _parse_count at 0x1077aceb0, file sms_providers.py>, line 1399
+#   86: <Code311 code object _parse_price at 0x1077acf10, file sms_providers.py>, line 1406
+#   87: 'provider_ids'
+#   88: <Code311 code object _operator_token at 0x1077acf70, file sms_providers.py>, line 1413
+#   89: 'countries'
+#   90: <Code311 code object get_price_candidates at 0x1077acf40, file sms_providers.py>, line 1422
+#   91: 'country_id'
+#   92: 'operator'
+#   93: <Code311 code object _ensure_price_allowed at 0x1077b1fa0, file sms_providers.py>, line 1470
+#   94: <Code311 code object _first_dict at 0x1077b1fd0, file sms_providers.py>, line 1499
+#   95: <Code311 code object get_number at 0x1077b1f40, file sms_providers.py>, line 1509
+#   96: <Code311 code object set_ready at 0x1077b1ee0, file sms_providers.py>, line 1540
+#   97: 'interval'
+#   98: <Code311 code object wait_code at 0x1077b1e80, file sms_providers.py>, line 1543
+#   99: <Code311 code object complete at 0x1077b1f10, file sms_providers.py>, line 1568
+#  100: <Code311 code object cancel at 0x1077b1e20, file sms_providers.py>, line 1573
+#  101: ('_countries_cache', '_price_cache', '_services_cache', 'activation_id', 'phone')
+#  102: ('',)
+#  103: (True,)
+#  104: (None, 30)
+#  105: (None,)
+#  106: ('dr', None)
+#  107: ('dr', '151', '', '')
+#  108: (300, 3)
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: BASE_URL
+#    5: SERVICE_KEYWORDS
+#    6: COUNTRY_ALIASES
+#    7: _services_cache
+#    8: list
+#    9: dict
+#   10: __annotations__
+#   11: _countries_cache
+#   12: int
+#   13: str
+#   14: __init__
+#   15: bool
+#   16: _headers
+#   17: _request
+#   18: staticmethod
+#   19: _message
+#   20: _data
+#   21: Optional
+#   22: float
+#   23: _parse_max_price
+#   24: _extract_code
+#   25: _norm
+#   26: balance
+#   27: _services
+#   28: _countries
+#   29: _service_id
+#   30: _price_rows
+#   31: _country_candidates
+#   32: _country_id
+#   33: _parse_count
+#   34: _parse_price
+#   35: _operator_token
+#   36: get_price_candidates
+#   37: _ensure_price_allowed
+#   38: _first_dict
+#   39: Tuple
+#   40: get_number
+#   41: set_ready
+#   42: wait_code
+#   43: complete
+#   44: cancel
+#   45: __static_attributes__
+#   46: __classcell__
+# Cell variables:
+#    0: __class__
+               0 MAKE_CELL            (__class__)
+
+1179:           2 RESUME               0
+               4 LOAD_NAME            (__name__)
+               6 STORE_NAME           (__module__)
+               8 LOAD_CONST           ("SmsVirtualProvider")
+              10 STORE_NAME           (__qualname__)
+              12 LOAD_CONST           (1179)
+              14 STORE_NAME           (__firstlineno__)
+              16 SETUP_ANNOTATIONS
+
+1180:          18 LOAD_CONST           ("https://api.smsvirtual.co")
+              20 STORE_NAME           (BASE_URL)
+
+1183:          22 LOAD_CONST           (('open ai', 'openai', 'chatgpt'))
+
+1184:          24 LOAD_CONST           (('open ai', 'openai', 'chatgpt'))
+
+1185:          26 LOAD_CONST           (('chatgpt', 'open ai', 'openai'))
+
+1186:          28 LOAD_CONST           (('telegram',))
+
+1187:          30 LOAD_CONST           (('google',))
+
+1188:          32 LOAD_CONST           (('whatsapp',))
+
+1189:          34 LOAD_CONST           (('microsoft',))
+
+1182:          36 LOAD_CONST           (('dr', 'openai', 'chatgpt', 'tg', 'go', 'wa', 'mm'))
+              38 BUILD_CONST_KEY_MAP  7
+              40 STORE_NAME           (SERVICE_KEYWORDS)
+
+1192:          42 BUILD_MAP            0
+
+1193:          44 LOAD_CONST           ("1")
+              46 LOAD_CONST           (('united states', 'usa', 'america'))
+
+1192:          48 MAP_ADD              1
+
+1194:          50 LOAD_CONST           ("7")
+              52 LOAD_CONST           (('russia',))
+
+1192:          54 MAP_ADD              1
+

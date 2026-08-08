@@ -1,0 +1,800 @@
+            5126 BUILD_CONST_KEY_MAP  2
+            5128 SWAP                 (TOS <-> TOS1)
+            5130 POP_EXCEPT
+            5132 LOAD_CONST           (None)
+            5134 STORE_FAST           (exc)
+            5136 DELETE_FAST          (exc)
+            5138 RETURN_VALUE
+         >> 5140 LOAD_CONST           (None)
+            5142 STORE_FAST           (exc)
+            5144 DELETE_FAST          (exc)
+            5146 RERAISE              1
+
+1208:     >> 5148 RERAISE              0
+         >> 5150 COPY                 3
+            5152 POP_EXCEPT
+            5154 RERAISE              1
+         >> 5156 PUSH_EXC_INFO
+
+1236:        5158 LOAD_GLOBAL          (Exception)
+            5168 CHECK_EXC_MATCH
+            5170 POP_JUMP_IF_FALSE    (to 5210)
+            5174 STORE_FAST           (exc)
+
+1237:        5176 LOAD_CONST           (False)
+            5178 LOAD_CONST           ("SUB2 account create request failed: ")
+            5180 LOAD_FAST            (exc)
+            5182 FORMAT_SIMPLE
+            5184 BUILD_STRING         2
+            5186 LOAD_CONST           (('ok', 'error'))
+            5188 BUILD_CONST_KEY_MAP  2
+            5190 SWAP                 (TOS <-> TOS1)
+            5192 POP_EXCEPT
+            5194 LOAD_CONST           (None)
+            5196 STORE_FAST           (exc)
+            5198 DELETE_FAST          (exc)
+            5200 RETURN_VALUE
+         >> 5202 LOAD_CONST           (None)
+            5204 STORE_FAST           (exc)
+            5206 DELETE_FAST          (exc)
+            5208 RERAISE              1
+
+1236:     >> 5210 RERAISE              0
+         >> 5212 COPY                 3
+            5214 POP_EXCEPT
+            5216 RERAISE              1
+         >> 5218 PUSH_EXC_INFO
+
+1245:        5220 LOAD_GLOBAL          (Exception)
+            5230 CHECK_EXC_MATCH
+            5232 POP_JUMP_IF_FALSE    (to 5248)
+            5236 POP_TOP
+
+1246:        5238 BUILD_MAP            0
+            5240 STORE_FAST           (detail)
+            5242 POP_EXCEPT
+            5244 EXTENDED_ARG         (1536)
+            5246 JUMP_BACKWARD_NO_INTERRUPT (to 2172)
+
+1245:     >> 5248 RERAISE              0
+         >> 5250 COPY                 3
+            5252 POP_EXCEPT
+            5254 RERAISE              1
+         >> 5256 PUSH_EXC_INFO
+
+1254:        5258 LOAD_FAST            (Sub2GroupError)
+            5260 CHECK_EXC_MATCH
+            5262 POP_JUMP_IF_FALSE    (to 5320)
+            5266 STORE_FAST           (exc)
+
+1256:        5268 LOAD_CONST           (False)
+
+1257:        5270 LOAD_GLOBAL          (NULL + str)
+            5280 LOAD_FAST            (exc)
+            5282 CALL                 (1 positional)
+
+1258:        5290 LOAD_FAST            (account_id)
+
+1259:        5292 LOAD_FAST            (group_id)
+
+1260:        5294 LOAD_FAST            (resolved_group_name)
+
+1255:        5296 LOAD_CONST           (('ok', 'error', 'sub2api_account_id', 'sub2api_group_id', 'sub2api_group_name'))
+            5298 BUILD_CONST_KEY_MAP  5
+            5300 SWAP                 (TOS <-> TOS1)
+            5302 POP_EXCEPT
+            5304 LOAD_CONST           (None)
+            5306 STORE_FAST           (exc)
+            5308 DELETE_FAST          (exc)
+            5310 RETURN_VALUE
+         >> 5312 LOAD_CONST           (None)
+            5314 STORE_FAST           (exc)
+            5316 DELETE_FAST          (exc)
+            5318 RERAISE              1
+
+1254:     >> 5320 RERAISE              0
+         >> 5322 COPY                 3
+            5324 POP_EXCEPT
+            5326 RERAISE              1
+         >> 5328 PUSH_EXC_INFO
+
+1304:        5330 LOAD_GLOBAL          (Exception)
+            5340 CHECK_EXC_MATCH
+            5342 POP_JUMP_IF_FALSE    (to 5398)
+            5346 STORE_FAST           (exc)
+
+1305:        5348 LOAD_CONST           (None)
+            5350 STORE_FAST           (update_response)
+
+1306:        5352 LOAD_CONST           ("error")
+            5354 LOAD_GLOBAL          (NULL + str)
+            5364 LOAD_FAST            (exc)
+            5366 CALL                 (1 positional)
+            5374 BUILD_MAP            1
+            5376 STORE_FAST           (update_data)
+            5378 POP_EXCEPT
+            5380 LOAD_CONST           (None)
+            5382 STORE_FAST           (exc)
+            5384 DELETE_FAST          (exc)
+            5386 EXTENDED_ARG         (1024)
+            5388 JUMP_BACKWARD_NO_INTERRUPT (to 3276)
+         >> 5390 LOAD_CONST           (None)
+            5392 STORE_FAST           (exc)
+            5394 DELETE_FAST          (exc)
+            5396 RERAISE              1
+
+1304:     >> 5398 RERAISE              0
+         >> 5400 COPY                 3
+            5402 POP_EXCEPT
+            5404 RERAISE              1
+         >> 5406 PUSH_EXC_INFO
+
+1322:        5408 LOAD_GLOBAL          (Exception)
+            5418 CHECK_EXC_MATCH
+            5420 POP_JUMP_IF_FALSE    (to 5436)
+            5424 POP_TOP
+
+1323:        5426 BUILD_MAP            0
+            5428 STORE_FAST           (detail)
+            5430 POP_EXCEPT
+            5432 EXTENDED_ARG         (768)
+            5434 JUMP_BACKWARD_NO_INTERRUPT (to 3552)
+
+1322:     >> 5436 RERAISE              0
+         >> 5438 COPY                 3
+            5440 POP_EXCEPT
+            5442 RERAISE              1
+         >> 5444 PUSH_EXC_INFO
+
+1364:        5446 LOAD_GLOBAL          (Exception)
+            5456 CHECK_EXC_MATCH
+            5458 POP_JUMP_IF_FALSE    (to 5514)
+            5462 STORE_FAST           (exc)
+
+1365:        5464 LOAD_CONST           (None)
+            5466 STORE_FAST           (import_response)
+
+1366:        5468 LOAD_CONST           ("error")
+            5470 LOAD_GLOBAL          (NULL + str)
+            5480 LOAD_FAST            (exc)
+            5482 CALL                 (1 positional)
+            5490 BUILD_MAP            1
+            5492 STORE_FAST           (import_data)
+            5494 POP_EXCEPT
+            5496 LOAD_CONST           (None)
+            5498 STORE_FAST           (exc)
+            5500 DELETE_FAST          (exc)
+            5502 EXTENDED_ARG         (512)
+            5504 JUMP_BACKWARD_NO_INTERRUPT (to 4100)
+         >> 5506 LOAD_CONST           (None)
+            5508 STORE_FAST           (exc)
+            5510 DELETE_FAST          (exc)
+            5512 RERAISE              1
+
+1364:     >> 5514 RERAISE              0
+         >> 5516 COPY                 3
+            5518 POP_EXCEPT
+            5520 RERAISE              1
+         >> 5522 PUSH_EXC_INFO
+
+1387:        5524 LOAD_GLOBAL          (Exception)
+            5534 CHECK_EXC_MATCH
+            5536 POP_JUMP_IF_FALSE    (to 5552)
+            5540 POP_TOP
+
+1388:        5542 BUILD_MAP            0
+            5544 STORE_FAST           (detail)
+            5546 POP_EXCEPT
+            5548 EXTENDED_ARG         (256)
+            5550 JUMP_BACKWARD_NO_INTERRUPT (to 4614)
+
+1387:     >> 5552 RERAISE              0
+         >> 5554 COPY                 3
+            5556 POP_EXCEPT
+            5558 RERAISE              1
+         >> 5560 PUSH_EXC_INFO
+
+1403:        5562 LOAD_FAST            (Sub2GroupError)
+            5564 CHECK_EXC_MATCH
+            5566 POP_JUMP_IF_FALSE    (to 5582)
+            5570 POP_TOP
+
+1404:        5572 LOAD_CONST           (False)
+            5574 STORE_FAST           (group_verified)
+            5576 POP_EXCEPT
+            5578 EXTENDED_ARG         (256)
+            5580 JUMP_BACKWARD_NO_INTERRUPT (to 4886)
+
+1403:     >> 5582 RERAISE              0
+         >> 5584 COPY                 3
+            5586 POP_EXCEPT
+            5588 RERAISE              1
+
+ExceptionTable:
+  698 to 760 -> 5022 [0]
+  1302 to 1352 -> 5084 [2]
+  1362 to 1372 -> 5084 [2]
+  1440 to 1546 -> 5094 [0]
+  1676 to 1808 -> 5156 [0]
+  2124 to 2170 -> 5218 [0]
+  2174 to 2200 -> 5256 [0]
+  3140 to 3274 -> 5328 [0]
+  3504 to 3550 -> 5406 [0]
+  3920 to 4098 -> 5444 [0]
+  4566 to 4612 -> 5522 [0]
+  4812 to 4884 -> 5560 [0]
+  5022 to 5040 -> 5078 [1] lasti
+  5042 to 5054 -> 5068 [1] lasti
+  5056 to 5056 -> 5078 [1] lasti
+  5068 to 5076 -> 5078 [1] lasti
+  5094 to 5112 -> 5150 [1] lasti
+  5114 to 5126 -> 5140 [1] lasti
+  5128 to 5128 -> 5150 [1] lasti
+  5140 to 5148 -> 5150 [1] lasti
+  5156 to 5174 -> 5212 [1] lasti
+  5176 to 5188 -> 5202 [1] lasti
+  5190 to 5190 -> 5212 [1] lasti
+  5202 to 5210 -> 5212 [1] lasti
+  5218 to 5240 -> 5250 [1] lasti
+  5248 to 5248 -> 5250 [1] lasti
+  5256 to 5266 -> 5322 [1] lasti
+  5268 to 5298 -> 5312 [1] lasti
+  5300 to 5300 -> 5322 [1] lasti
+  5312 to 5320 -> 5322 [1] lasti
+  5328 to 5346 -> 5400 [1] lasti
+  5348 to 5376 -> 5390 [1] lasti
+  5390 to 5398 -> 5400 [1] lasti
+  5406 to 5428 -> 5438 [1] lasti
+  5436 to 5436 -> 5438 [1] lasti
+  5444 to 5462 -> 5516 [1] lasti
+  5464 to 5492 -> 5506 [1] lasti
+  5506 to 5514 -> 5516 [1] lasti
+  5522 to 5544 -> 5554 [1] lasti
+  5552 to 5552 -> 5554 [1] lasti
+  5560 to 5574 -> 5584 [1] lasti
+  5582 to 5582 -> 5584 [1] lasti
+
+# Method Name:       __init__
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  3
+# Stack size:        2
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1454
+# Constants:
+#    0: None
+# Names:
+#    0: config
+#    1: log_fn
+# Varnames:
+#	self, config, log_fn
+# Positional arguments:
+#	self, config
+# Local variables:
+#    2: log_fn
+1454:           0 RESUME               0
+
+1455:           2 LOAD_FAST            (config)
+               4 COPY                 1
+               6 TO_BOOL
+              14 POP_JUMP_IF_TRUE     (to 22)
+              18 POP_TOP
+              20 BUILD_MAP            0
+         >>   22 LOAD_FAST            (self)
+              24 STORE_ATTR           (config)
+
+1456:          34 LOAD_FAST_LOAD_FAST  (log_fn, self)
+              36 STORE_ATTR           (log_fn)
+              46 RETURN_CONST         (None)
+
+
+# Method Name:       upload_code
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 2
+# Number of locals:  5
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1458
+# Constants:
+#    0: None
+#    1: 0
+#    2: ('complete_cpa_upload',)
+#    3: False
+#    4: 'CPA helper import failed: '
+#    5: ('ok', 'error')
+#    6: <Code311 code object <lambda> at 0x105ef9370, file codex_oauth_chain.py>, line 1468
+#    7: ('log_fn',)
+#    8: 'CPA upload failed: '
+# Names:
+#    0: upload_targets
+#    1: complete_cpa_upload
+#    2: Exception
+#    3: config
+# Varnames:
+#	self, code, state, complete_cpa_upload, exc
+# Positional arguments:
+#	self
+# Local variables:
+#    1: code
+#    2: state
+#    3: complete_cpa_upload
+#    4: exc
+# Cell variables:
+#    0: self
+               0 MAKE_CELL            (self)
+
+1458:           2 RESUME               0
+
+1459:           4 NOP
+
+1460:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (('complete_cpa_upload',))
+              10 IMPORT_NAME          (upload_targets)
+              12 IMPORT_FROM          (complete_cpa_upload)
+              14 STORE_FAST           (complete_cpa_upload)
+              16 POP_TOP
+
+1463:          18 NOP
+
+1464:          20 LOAD_FAST            (complete_cpa_upload)
+              22 PUSH_NULL
+
+1465:          24 LOAD_DEREF           (self)
+              26 LOAD_ATTR            (config)
+
+1466:          46 LOAD_FAST            (code)
+
+1467:          48 LOAD_FAST            (state)
+
+1468:          50 LOAD_FAST            (self)
+              52 BUILD_TUPLE          1
+              54 LOAD_CONST           (<Code311 code object <lambda> at 0x105ef9370, file codex_oauth_chain.py>, line 1468)
+              56 MAKE_FUNCTION
+              58 SET_FUNCTION_ATTRIBUTE 8
+
+1464:          60 LOAD_CONST           (('log_fn',))
+              62 CALL_KW              4
+              64 RETURN_VALUE
+         >>   66 PUSH_EXC_INFO
+
+1461:          68 LOAD_GLOBAL          (Exception)
+              78 CHECK_EXC_MATCH
+              80 POP_JUMP_IF_FALSE    (to 120)
+              84 STORE_FAST           (exc)
+
+1462:          86 LOAD_CONST           (False)
+              88 LOAD_CONST           ("CPA helper import failed: ")
+              90 LOAD_FAST            (exc)
+              92 FORMAT_SIMPLE
+              94 BUILD_STRING         2
+              96 LOAD_CONST           (('ok', 'error'))
+              98 BUILD_CONST_KEY_MAP  2
+             100 SWAP                 (TOS <-> TOS1)
+             102 POP_EXCEPT
+             104 LOAD_CONST           (None)
+             106 STORE_FAST           (exc)
+             108 DELETE_FAST          (exc)
+             110 RETURN_VALUE
+         >>  112 LOAD_CONST           (None)
+             114 STORE_FAST           (exc)
+             116 DELETE_FAST          (exc)
+             118 RERAISE              1
+
+1461:     >>  120 RERAISE              0
+         >>  122 COPY                 3
+             124 POP_EXCEPT
+             126 RERAISE              1
+         >>  128 PUSH_EXC_INFO
+
+1470:         130 LOAD_GLOBAL          (Exception)
+             140 CHECK_EXC_MATCH
+             142 POP_JUMP_IF_FALSE    (to 182)
+             146 STORE_FAST           (exc)
+
+1471:         148 LOAD_CONST           (False)
+             150 LOAD_CONST           ("CPA upload failed: ")
+             152 LOAD_FAST            (exc)
+             154 FORMAT_SIMPLE
+             156 BUILD_STRING         2
+             158 LOAD_CONST           (('ok', 'error'))
+             160 BUILD_CONST_KEY_MAP  2
+             162 SWAP                 (TOS <-> TOS1)
+             164 POP_EXCEPT
+             166 LOAD_CONST           (None)
+             168 STORE_FAST           (exc)
+             170 DELETE_FAST          (exc)
+             172 RETURN_VALUE
+         >>  174 LOAD_CONST           (None)
+             176 STORE_FAST           (exc)
+             178 DELETE_FAST          (exc)
+             180 RERAISE              1
+
+1470:     >>  182 RERAISE              0
+         >>  184 COPY                 3
+             186 POP_EXCEPT
+             188 RERAISE              1
+
+ExceptionTable:
+  6 to 16 -> 66 [0]
+  20 to 62 -> 128 [0]
+  66 to 84 -> 122 [1] lasti
+  86 to 98 -> 112 [1] lasti
+  100 to 100 -> 122 [1] lasti
+  112 to 120 -> 122 [1] lasti
+  128 to 146 -> 184 [1] lasti
+  148 to 160 -> 174 [1] lasti
+  162 to 162 -> 184 [1] lasti
+  174 to 182 -> 184 [1] lasti
+
+# Method Name:       __init__
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  3
+# Stack size:        2
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1477
+# Constants:
+#    0: None
+# Names:
+#    0: config
+#    1: log_fn
+# Varnames:
+#	self, config, log_fn
+# Positional arguments:
+#	self, config
+# Local variables:
+#    2: log_fn
+1477:           0 RESUME               0
+
+1478:           2 LOAD_FAST            (config)
+               4 COPY                 1
+               6 TO_BOOL
+              14 POP_JUMP_IF_TRUE     (to 22)
+              18 POP_TOP
+              20 BUILD_MAP            0
+         >>   22 LOAD_FAST            (self)
+              24 STORE_ATTR           (config)
+
+1479:          34 LOAD_FAST_LOAD_FAST  (log_fn, self)
+              36 STORE_ATTR           (log_fn)
+              46 RETURN_CONST         (None)
+
+
+# Method Name:       upload_tokens
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 2
+# Number of locals:  6
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1481
+# Constants:
+#    0: None
+#    1: 0
+#    2: ('write_cpa_auth_file_from_tokens',)
+#    3: False
+#    4: 'CPA token helper import failed: '
+#    5: ('ok', 'error')
+#    6: 'email'
+#    7: <Code311 code object <lambda> at 0x105ef9430, file codex_oauth_chain.py>, line 1492
+#    8: ('log_fn',)
+#    9: 'CPA token upload failed: '
+# Names:
+#    0: upload_targets
+#    1: write_cpa_auth_file_from_tokens
+#    2: Exception
+#    3: dict
+#    4: setdefault
+#    5: config
+# Varnames:
+#	self, credentials, email, write_cpa_auth_file_from_tokens, exc, payload
+# Positional arguments:
+#	self
+# Local variables:
+#    1: credentials
+#    2: email
+#    3: write_cpa_auth_file_from_tokens
+#    4: exc
+#    5: payload
+# Cell variables:
+#    0: self
+               0 MAKE_CELL            (self)
+
+1481:           2 RESUME               0
+
+1482:           4 NOP
+
+1483:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (('write_cpa_auth_file_from_tokens',))
+              10 IMPORT_NAME          (upload_targets)
+              12 IMPORT_FROM          (write_cpa_auth_file_from_tokens)
+              14 STORE_FAST           (write_cpa_auth_file_from_tokens)
+              16 POP_TOP
+
+1486:          18 LOAD_GLOBAL          (NULL + dict)
+              28 LOAD_FAST            (credentials)
+              30 COPY                 1
+              32 TO_BOOL
+              40 POP_JUMP_IF_TRUE     (to 48)
+              44 POP_TOP
+              46 BUILD_MAP            0
+         >>   48 CALL                 (1 positional)
+              56 STORE_FAST           (payload)
+
+1487:          58 LOAD_FAST            (payload)
+              60 LOAD_ATTR            (NULL|self + setdefault)
+              80 LOAD_CONST           ("email")
+              82 LOAD_FAST            (email)
+              84 CALL                 (2 positional)
+              92 POP_TOP
+
+1488:          94 NOP
+
+1489:          96 LOAD_FAST            (write_cpa_auth_file_from_tokens)
+              98 PUSH_NULL
+
+1490:         100 LOAD_DEREF           (self)
+             102 LOAD_ATTR            (config)
+
+1491:         122 LOAD_FAST            (payload)
+
+1492:         124 LOAD_FAST            (self)
+             126 BUILD_TUPLE          1
+             128 LOAD_CONST           (<Code311 code object <lambda> at 0x105ef9430, file codex_oauth_chain.py>, line 1492)
+             130 MAKE_FUNCTION
+             132 SET_FUNCTION_ATTRIBUTE 8
+
+1489:         134 LOAD_CONST           (('log_fn',))
+             136 CALL_KW              3
+             138 RETURN_VALUE
+         >>  140 PUSH_EXC_INFO
+
+1484:         142 LOAD_GLOBAL          (Exception)
+             152 CHECK_EXC_MATCH
+             154 POP_JUMP_IF_FALSE    (to 194)
+             158 STORE_FAST           (exc)
+
+1485:         160 LOAD_CONST           (False)
+             162 LOAD_CONST           ("CPA token helper import failed: ")
+             164 LOAD_FAST            (exc)
+             166 FORMAT_SIMPLE
+             168 BUILD_STRING         2
+             170 LOAD_CONST           (('ok', 'error'))
+             172 BUILD_CONST_KEY_MAP  2
+             174 SWAP                 (TOS <-> TOS1)
+             176 POP_EXCEPT
+             178 LOAD_CONST           (None)
+             180 STORE_FAST           (exc)
+             182 DELETE_FAST          (exc)
+             184 RETURN_VALUE
+         >>  186 LOAD_CONST           (None)
+             188 STORE_FAST           (exc)
+             190 DELETE_FAST          (exc)
+             192 RERAISE              1
+
+1484:     >>  194 RERAISE              0
+         >>  196 COPY                 3
+             198 POP_EXCEPT
+             200 RERAISE              1
+         >>  202 PUSH_EXC_INFO
+
+1494:         204 LOAD_GLOBAL          (Exception)
+             214 CHECK_EXC_MATCH
+             216 POP_JUMP_IF_FALSE    (to 256)
+             220 STORE_FAST           (exc)
+
+1495:         222 LOAD_CONST           (False)
+             224 LOAD_CONST           ("CPA token upload failed: ")
+             226 LOAD_FAST            (exc)
+             228 FORMAT_SIMPLE
+             230 BUILD_STRING         2
+             232 LOAD_CONST           (('ok', 'error'))
+             234 BUILD_CONST_KEY_MAP  2
+             236 SWAP                 (TOS <-> TOS1)
+             238 POP_EXCEPT
+             240 LOAD_CONST           (None)
+             242 STORE_FAST           (exc)
+             244 DELETE_FAST          (exc)
+             246 RETURN_VALUE
+         >>  248 LOAD_CONST           (None)
+             250 STORE_FAST           (exc)
+             252 DELETE_FAST          (exc)
+             254 RERAISE              1
+
+1494:     >>  256 RERAISE              0
+         >>  258 COPY                 3
+             260 POP_EXCEPT
+             262 RERAISE              1
+
+ExceptionTable:
+  6 to 16 -> 140 [0]
+  96 to 136 -> 202 [0]
+  140 to 158 -> 196 [1] lasti
+  160 to 172 -> 186 [1] lasti
+  174 to 174 -> 196 [1] lasti
+  186 to 194 -> 196 [1] lasti
+  202 to 220 -> 258 [1] lasti
+  222 to 234 -> 248 [1] lasti
+  236 to 236 -> 258 [1] lasti
+  248 to 256 -> 258 [1] lasti
+
+# Method Name:       __init__
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 4
+# Number of locals:  6
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1501
+# Constants:
+#    0: None
+# Names:
+#    0: config
+#    1: _clean
+#    2: session_id
+#    3: state
+#    4: upload_proxy
+#    5: log_fn
+# Varnames:
+#	self, config, session_id, state, upload_proxy, log_fn
+# Positional arguments:
+#	self, config
+# Local variables:
+#    2: session_id
+#    3: state
+#    4: upload_proxy
+#    5: log_fn
+1501:           0 RESUME               0
+
+1502:           2 LOAD_FAST            (config)
+               4 COPY                 1
+               6 TO_BOOL
+              14 POP_JUMP_IF_TRUE     (to 22)
+              18 POP_TOP
+              20 BUILD_MAP            0
+         >>   22 LOAD_FAST            (self)
+              24 STORE_ATTR           (config)
+
+1503:          34 LOAD_GLOBAL          (NULL + _clean)
+              44 LOAD_FAST            (session_id)
+              46 CALL                 (1 positional)
+              54 LOAD_FAST            (self)
+              56 STORE_ATTR           (session_id)
+
+1504:          66 LOAD_GLOBAL          (NULL + _clean)
+              76 LOAD_FAST            (state)
+              78 CALL                 (1 positional)
+              86 LOAD_FAST            (self)
+              88 STORE_ATTR           (state)
+
+1505:          98 LOAD_FAST_LOAD_FAST  (upload_proxy, self)
+             100 STORE_ATTR           (upload_proxy)
+
+1506:         110 LOAD_FAST_LOAD_FAST  (log_fn, self)
+             112 STORE_ATTR           (log_fn)
+             122 RETURN_CONST         (None)
+
+
+# Method Name:       exchange
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 2
+# Number of locals:  17
+# Stack size:        9
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1508
+# Constants:
+#    0: None
+#    1: 'sub2api'
+#    2: 'url'
+#    3: '/'
+#    4: 'email'
+#    5: 'pwd'
+#    6: 'password'
+#    7: False
+#    8: 'SUB2 session exchange missing url/email/session_id'
+#    9: ('ok', 'error')
+#   10: 0
+#   11: ('requests_kwargs',)
+#   12: ('get_admin_token',)
+#   13: 'SUB2 helper import failed: '
+#   14: 30
+#   15: <Code311 code object <lambda> at 0x105ef9580, file codex_oauth_chain.py>, line 1528
+#   16: ('timeout', 'log_fn', 'proxy')
+#   17: '/api/v1/admin/openai/exchange-code'
+#   18: ('session_id', 'code', 'state')
+#   19: 'Authorization'
+#   20: 'Bearer '
+#   21: 300
+#   22: ('json', 'headers', 'timeout')
+#   23: 'SUB2 exchange-code request failed: '
+#   24: 'code'
+#   25: 'SUB2 exchange-code failed: '
+#   26: 'data'
+#   27: 'id_token'
+#   28: ''
+#   29: 'access_token'
+#   30: 'refresh_token'
+#   31: 'expires_at'
+#   32: 'token_type'
+#   33: 'Bearer'
+#   34: 'scope'
+#   35: ('id_token', 'access_token', 'refresh_token', 'expires_at', 'token_type', 'scope', 'email')
+#   36: ('chatgpt_account_id', 'account_id', 'chatgpt_account_user_id', 'chatgpt_user_id', 'chatgpt_plan_type', 'chatgpt_auth_user_id')
+#   37: ('exchange_data',)
+#   38: True
+#   39: ('ok', 'tokens', 'exchange_data')
+# Names:
+#    0: isinstance
+#    1: config
+#    2: get
+#    3: dict
+#    4: _clean
+#    5: rstrip
+#    6: session_id
+#    7: proxy_scope
+#    8: requests_kwargs
+#    9: sub2_session
+#   10: get_admin_token
+#   11: Exception
+#   12: requests
+#   13: upload_proxy
+#   14: post
+#   15: state
+#   16: json
+#   17: _redacted
+#   18: _merge_real_chatgpt_fields
+# Varnames:
+#	self, code, account_email, sub, base, user, password, requests_kwargs, get_admin_token, exc, requests, admin_token, response, data, creds, tokens, key
+# Positional arguments:
+#	self
+# Local variables:
+#    1: code
+#    2: account_email
+#    3: sub
+#    4: base
+#    5: user
+#    6: password
+#    7: requests_kwargs
+#    8: get_admin_token
+#    9: exc
+#   10: requests
+#   11: admin_token
+#   12: response
+#   13: data
+#   14: creds
+#   15: tokens
+#   16: key
+# Cell variables:
+#    0: self
+               0 MAKE_CELL            (self)
+
+1508:           2 RESUME               0
+
+1509:           4 LOAD_GLOBAL          (NULL + isinstance)
+              14 LOAD_DEREF           (self)
+              16 LOAD_ATTR            (config)
+              36 LOAD_ATTR            (NULL|self + get)
+              56 LOAD_CONST           ("sub2api")
+              58 CALL                 (1 positional)
+              66 LOAD_GLOBAL          (dict)
+              76 CALL                 (2 positional)
+              84 TO_BOOL
+              92 POP_JUMP_IF_FALSE    (to 150)
+              96 LOAD_DEREF           (self)
+              98 LOAD_ATTR            (config)
+             118 LOAD_ATTR            (NULL|self + get)
+             138 LOAD_CONST           ("sub2api")
+             140 CALL                 (1 positional)
+             148 JUMP_FORWARD         (to 152)
+         >>  150 BUILD_MAP            0
+         >>  152 STORE_FAST           (sub)

@@ -1,0 +1,800 @@
+#   51: <Code311 code object final_oauth at 0x105f744f0, file codex_oauth_chain.py>, line 2549
+#   52: False
+#   53: ('_reauth',)
+#   54: <Code311 code object follow_continue_until_code at 0x105f74400, file codex_oauth_chain.py>, line 2588
+#   55: <Code311 code object exchange_code at 0x105f74370, file codex_oauth_chain.py>, line 2653
+#   56: ('_curl', '_curl_requests', 'chatgpt_impersonate', 'chatgpt_signup_done', 'config', 'device_id', 'last_oauth_url', 'last_response', 'log_fn', 'oauth_params', 'original_oauth_url', 'proxy', 'selected_workspace_id', 'sentinel_provider', 'session')
+#   57: ('config', 'Dict[str, Any] | None', 'oauth_params', 'Dict[str, str]', 'proxy', 'str', 'sentinel_provider', 'RealNodeSentinelProvider', 'device_id', 'str', 'log_fn', 'LogFn', 'return', 'None')
+#   58: ('snapshot', 'Dict[str, Any] | None', 'return', 'bool')
+#   59: ('chrome',)
+#   60: ('impersonate', 'str', 'return', 'Any')
+#   61: ('auth_impersonates',)
+#   62: ('key', 'str', 'return', 'List[str]')
+#   63: ('path', 'str', 'referer', 'str', 'timeout', 'int', 'return', 'Dict[str, Any]')
+#   64: ('email', 'str', 'return', 'str')
+#   65: ('email', 'str', 'return', 'Dict[str, Any]')
+#   66: ('flow', 'str', 'referer', 'str', 'return', 'Dict[str, str]')
+#   67: ('path', 'str', 'payload', 'Dict[str, Any]', 'flow', 'str', 'referer', 'str', 'timeout', 'int', 'return', 'Dict[str, Any]')
+#   68: ('oauth_url', 'str', 'return', 'Dict[str, Any]')
+#   69: ('code', 'str', 'return', 'Dict[str, Any]')
+#   70: ('email', 'str', 'password', 'str', 'return', 'Dict[str, Any]')
+#   71: ('continue_url', 'str', 'return', 'Dict[str, Any]')
+#   72: ('continue_url', 'str', 'referer', 'str', 'return', 'Dict[str, Any]')
+#   73: ('name', 'str', 'birthdate', 'str', 'return', 'Dict[str, Any]')
+#   74: ('return', 'str')
+#   75: ('password', 'str', 'return', 'Dict[str, Any]')
+#   76: ('',)
+#   77: ('sms',)
+#   78: ('phone', 'str', 'channel', 'str', 'return', 'Dict[str, Any]')
+#   79: ('url', 'str', 'oauth_params', 'Dict[str, str]', 'return', 'Tuple[str, str]')
+#   80: ('referer', 'str', 'return', 'Dict[str, Any]')
+#   81: ('return', 'Dict[str, Any]')
+#   82: ('workspace_id', 'str', 'referer', 'str', 'return', 'Dict[str, Any]')
+#   83: ('org_id', 'str', 'project_id', 'str', 'referer', 'str', 'return', 'Dict[str, Any]')
+#   84: ('dump', 'Dict[str, Any]', 'return', 'str')
+#   85: ('sources', 'Dict[str, Any]', 'return', 'Tuple[str, str]')
+#   86: ('referer', 'str', 'stage', 'str', 'return', 'str')
+#   87: ('', None)
+#   88: ('stage', 'str', 'url', 'str', 'response', 'Dict[str, Any] | None', 'return', 'None')
+#   89: ('url', 'str', 'referer', 'str', 'return', 'Dict[str, str]')
+#   90: ('current_url', 'str', 'raw_next', 'str', 'return', 'str')
+#   91: ('url', 'str', 'referer', 'str', 'return', 'Tuple[Dict[str, Any], str, str]')
+#   92: ('start_url', 'str', 'oauth_params', 'Dict[str, str]', 'stage', 'str', 'referer', 'str', 'max_steps', 'int', 'return', 'Tuple[str, Dict[str, Any]]')
+#   93: ('oauth_params', 'Dict[str, str]', 'return', 'str')
+#   94: ('continue_url', 'str', 'oauth_params', 'Dict[str, str]', '_reauth', 'bool', 'return', 'str')
+#   95: ('code', 'str', 'code_verifier', 'str', 'client_id', 'str', 'redirect_uri', 'str', 'account_email', 'str', 'return', 'Dict[str, Any]')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: __init__
+#    6: import_phase1_session
+#    7: _new_session
+#    8: _impersonate_candidates
+#    9: _chatgpt_json_get
+#   10: _chatgpt_signin_url
+#   11: _prime_chatgpt_oauth_session
+#   12: prime_chatgpt_signup_session
+#   13: start_chatgpt_signup_authorize
+#   14: _headers
+#   15: _post_auth_json
+#   16: initiate_oauth
+#   17: submit_email_identifier
+#   18: verify_email_otp
+#   19: verify_signup_email_otp
+#   20: register_user
+#   21: send_email_otp
+#   22: AUTH
+#   23: visit_continue
+#   24: create_account_profile
+#   25: complete_chatgpt_callback
+#   26: chatgpt_access_token
+#   27: verify_password
+#   28: verify_mfa_otp
+#   29: send_mfa_otp
+#   30: send_phone_number_otp
+#   31: verify_phone_otp
+#   32: accept_consent
+#   33: _extract_target_code
+#   34: _session_dump
+#   35: _cookie_snapshot
+#   36: _select_workspace
+#   37: _select_organization
+#   38: staticmethod
+#   39: _workspace_id_from_dump
+#   40: _org_project_from_sources
+#   41: _select_workspace_and_org_from_session
+#   42: _trace_continue
+#   43: _headers_for_url
+#   44: _next_url
+#   45: _fetch_continue_step
+#   46: _follow_url_until_code
+#   47: final_oauth
+#   48: follow_continue_until_code
+#   49: exchange_code
+#   50: __static_attributes__
+1731:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("RealCodexTransport")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (1731)
+              12 STORE_NAME           (__firstlineno__)
+
+1732:          14 LOAD_CONST           ("Real Codex auth transport using auth.openai.com endpoints.")
+              16 STORE_NAME           (__doc__)
+
+1739:          18 LOAD_CONST           ("")
+
+1741:          20 LOAD_CONST           ("")
+
+1742:          22 LOAD_CONST           (None)
+
+1734:          24 LOAD_CONST           (('proxy', 'device_id', 'log_fn'))
+              26 BUILD_CONST_KEY_MAP  3
+
+1736:          28 NOP
+
+1734:          30 NOP
+
+1738:          32 NOP
+
+1734:          34 NOP
+
+1739:          36 NOP
+
+1734:          38 NOP
+
+1740:          40 NOP
+
+1734:          42 NOP
+
+1741:          44 NOP
+
+1734:          46 NOP
+
+1742:          48 NOP
+
+1734:          50 NOP
+
+1743:          52 NOP
+
+1734:          54 LOAD_CONST           (('config', 'Dict[str, Any] | None', 'oauth_params', 'Dict[str, str]', 'proxy', 'str', 'sentinel_provider', 'RealNodeSentinelProvider', 'device_id', 'str', 'log_fn', 'LogFn', 'return', 'None'))
+              56 LOAD_CONST           (<Code311 code object __init__ at 0x105ef9bb0, file codex_oauth_chain.py>, line 1734)
+              58 MAKE_FUNCTION
+              60 SET_FUNCTION_ATTRIBUTE 4
+              62 SET_FUNCTION_ATTRIBUTE 2
+              64 STORE_NAME           (__init__)
+
+1766:          66 LOAD_CONST           (('snapshot', 'Dict[str, Any] | None', 'return', 'bool'))
+              68 LOAD_CONST           (<Code311 code object import_phase1_session at 0x105ef9be0, file codex_oauth_chain.py>, line 1766)
+              70 MAKE_FUNCTION
+              72 SET_FUNCTION_ATTRIBUTE 4
+              74 STORE_NAME           (import_phase1_session)
+
+1818:          76 LOAD_CONST           (('chrome',))
+              78 LOAD_CONST           (('impersonate', 'str', 'return', 'Any'))
+              80 LOAD_CONST           (<Code311 code object _new_session at 0x105ef9c10, file codex_oauth_chain.py>, line 1818)
+              82 MAKE_FUNCTION
+              84 SET_FUNCTION_ATTRIBUTE 4
+              86 SET_FUNCTION_ATTRIBUTE 1
+              88 STORE_NAME           (_new_session)
+
+1829:          90 LOAD_CONST           (('auth_impersonates',))
+              92 LOAD_CONST           (('key', 'str', 'return', 'List[str]'))
+              94 LOAD_CONST           (<Code311 code object _impersonate_candidates at 0x105ef9c40, file codex_oauth_chain.py>, line 1829)
+              96 MAKE_FUNCTION
+              98 SET_FUNCTION_ATTRIBUTE 4
+             100 SET_FUNCTION_ATTRIBUTE 1
+             102 STORE_NAME           (_impersonate_candidates)
+
+1842:         104 LOAD_CONST           ("")
+             106 LOAD_CONST           (30)
+             108 LOAD_CONST           (('referer', 'timeout'))
+             110 BUILD_CONST_KEY_MAP  2
+             112 LOAD_CONST           (('path', 'str', 'referer', 'str', 'timeout', 'int', 'return', 'Dict[str, Any]'))
+             114 LOAD_CONST           (<Code311 code object _chatgpt_json_get at 0x105ef9c70, file codex_oauth_chain.py>, line 1842)
+             116 MAKE_FUNCTION
+             118 SET_FUNCTION_ATTRIBUTE 4
+             120 SET_FUNCTION_ATTRIBUTE 2
+             122 STORE_NAME           (_chatgpt_json_get)
+
+1852:         124 LOAD_CONST           (('email', 'str', 'return', 'str'))
+             126 LOAD_CONST           (<Code311 code object _chatgpt_signin_url at 0x105ef9cd0, file codex_oauth_chain.py>, line 1852)
+             128 MAKE_FUNCTION
+             130 SET_FUNCTION_ATTRIBUTE 4
+             132 STORE_NAME           (_chatgpt_signin_url)
+
+1882:         134 LOAD_CONST           (('email', 'str', 'return', 'Dict[str, Any]'))
+             136 LOAD_CONST           (<Code311 code object _prime_chatgpt_oauth_session at 0x105ef9d00, file codex_oauth_chain.py>, line 1882)
+             138 MAKE_FUNCTION
+             140 SET_FUNCTION_ATTRIBUTE 4
+             142 STORE_NAME           (_prime_chatgpt_oauth_session)
+
+1915:         144 LOAD_CONST           (('email', 'str', 'return', 'Dict[str, Any]'))
+             146 LOAD_CONST           (<Code311 code object prime_chatgpt_signup_session at 0x105ef9d90, file codex_oauth_chain.py>, line 1915)
+             148 MAKE_FUNCTION
+             150 SET_FUNCTION_ATTRIBUTE 4
+             152 STORE_NAME           (prime_chatgpt_signup_session)
+
+1919:         154 LOAD_CONST           (('email', 'str', 'return', 'Dict[str, Any]'))
+             156 LOAD_CONST           (<Code311 code object start_chatgpt_signup_authorize at 0x105f74e80, file codex_oauth_chain.py>, line 1919)
+             158 MAKE_FUNCTION
+             160 SET_FUNCTION_ATTRIBUTE 4
+             162 STORE_NAME           (start_chatgpt_signup_authorize)
+
+1952:         164 LOAD_CONST           (('flow', 'str', 'referer', 'str', 'return', 'Dict[str, str]'))
+             166 LOAD_CONST           (<Code311 code object _headers at 0x105f74f10, file codex_oauth_chain.py>, line 1952)
+             168 MAKE_FUNCTION
+             170 SET_FUNCTION_ATTRIBUTE 4
+             172 STORE_NAME           (_headers)
+
+1975:         174 LOAD_CONST           (30)
+             176 LOAD_CONST           (('timeout',))
+             178 BUILD_CONST_KEY_MAP  1
+             180 LOAD_CONST           (('path', 'str', 'payload', 'Dict[str, Any]', 'flow', 'str', 'referer', 'str', 'timeout', 'int', 'return', 'Dict[str, Any]'))
+             182 LOAD_CONST           (<Code311 code object _post_auth_json at 0x105f74f70, file codex_oauth_chain.py>, line 1975)
+             184 MAKE_FUNCTION
+             186 SET_FUNCTION_ATTRIBUTE 4
+             188 SET_FUNCTION_ATTRIBUTE 2
+             190 STORE_NAME           (_post_auth_json)
+
+1999:         192 LOAD_CONST           (('oauth_url', 'str', 'return', 'Dict[str, Any]'))
+             194 LOAD_CONST           (<Code311 code object initiate_oauth at 0x105f74fd0, file codex_oauth_chain.py>, line 1999)
+             196 MAKE_FUNCTION
+             198 SET_FUNCTION_ATTRIBUTE 4
+             200 STORE_NAME           (initiate_oauth)
+
+2038:         202 LOAD_CONST           (('email', 'str', 'return', 'Dict[str, Any]'))
+             204 LOAD_CONST           (<Code311 code object submit_email_identifier at 0x105f74fa0, file codex_oauth_chain.py>, line 2038)
+             206 MAKE_FUNCTION
+             208 SET_FUNCTION_ATTRIBUTE 4
+             210 STORE_NAME           (submit_email_identifier)
+
+2068:         212 LOAD_CONST           (('code', 'str', 'return', 'Dict[str, Any]'))
+             214 LOAD_CONST           (<Code311 code object verify_email_otp at 0x105f74be0, file codex_oauth_chain.py>, line 2068)
+             216 MAKE_FUNCTION
+             218 SET_FUNCTION_ATTRIBUTE 4
+             220 STORE_NAME           (verify_email_otp)
+
+2077:         222 LOAD_CONST           (('code', 'str', 'return', 'Dict[str, Any]'))
+             224 LOAD_CONST           (<Code311 code object verify_signup_email_otp at 0x105f74bb0, file codex_oauth_chain.py>, line 2077)
+             226 MAKE_FUNCTION
+             228 SET_FUNCTION_ATTRIBUTE 4
+             230 STORE_NAME           (verify_signup_email_otp)
+
+2086:         232 LOAD_CONST           (('email', 'str', 'password', 'str', 'return', 'Dict[str, Any]'))
+             234 LOAD_CONST           (<Code311 code object register_user at 0x105f74b80, file codex_oauth_chain.py>, line 2086)
+             236 MAKE_FUNCTION
+             238 SET_FUNCTION_ATTRIBUTE 4
+             240 STORE_NAME           (register_user)
+
+2095:         242 LOAD_CONST           (('continue_url', 'str', 'return', 'Dict[str, Any]'))
+             244 LOAD_CONST           (<Code311 code object send_email_otp at 0x105f74b50, file codex_oauth_chain.py>, line 2095)
+             246 MAKE_FUNCTION
+             248 SET_FUNCTION_ATTRIBUTE 4
+             250 STORE_NAME           (send_email_otp)
+
+2143:         252 LOAD_NAME            (AUTH)
+             254 BUILD_TUPLE          1
+             256 LOAD_CONST           (('continue_url', 'str', 'referer', 'str', 'return', 'Dict[str, Any]'))
+             258 LOAD_CONST           (<Code311 code object visit_continue at 0x105f74b20, file codex_oauth_chain.py>, line 2143)
+             260 MAKE_FUNCTION
+             262 SET_FUNCTION_ATTRIBUTE 4
+             264 SET_FUNCTION_ATTRIBUTE 1
+             266 STORE_NAME           (visit_continue)
+
+2153:         268 LOAD_CONST           (('name', 'str', 'birthdate', 'str', 'return', 'Dict[str, Any]'))
+             270 LOAD_CONST           (<Code311 code object create_account_profile at 0x105f74af0, file codex_oauth_chain.py>, line 2153)
+             272 MAKE_FUNCTION
+             274 SET_FUNCTION_ATTRIBUTE 4
+             276 STORE_NAME           (create_account_profile)
+
+2162:         278 LOAD_CONST           (('continue_url', 'str', 'return', 'Dict[str, Any]'))
+             280 LOAD_CONST           (<Code311 code object complete_chatgpt_callback at 0x105f74ac0, file codex_oauth_chain.py>, line 2162)
+             282 MAKE_FUNCTION
+             284 SET_FUNCTION_ATTRIBUTE 4
+             286 STORE_NAME           (complete_chatgpt_callback)
+
+2178:         288 LOAD_CONST           (('return', 'str'))
+             290 LOAD_CONST           (<Code311 code object chatgpt_access_token at 0x105f74a90, file codex_oauth_chain.py>, line 2178)
+             292 MAKE_FUNCTION
+             294 SET_FUNCTION_ATTRIBUTE 4
+             296 STORE_NAME           (chatgpt_access_token)
+
+2187:         298 LOAD_CONST           (('password', 'str', 'return', 'Dict[str, Any]'))
+             300 LOAD_CONST           (<Code311 code object verify_password at 0x105f74a60, file codex_oauth_chain.py>, line 2187)
+             302 MAKE_FUNCTION
+             304 SET_FUNCTION_ATTRIBUTE 4
+             306 STORE_NAME           (verify_password)
+
+2196:         308 LOAD_CONST           (('code', 'str', 'return', 'Dict[str, Any]'))
+             310 LOAD_CONST           (<Code311 code object verify_mfa_otp at 0x105f74a30, file codex_oauth_chain.py>, line 2196)
+             312 MAKE_FUNCTION
+             314 SET_FUNCTION_ATTRIBUTE 4
+             316 STORE_NAME           (verify_mfa_otp)
+
+2209:         318 LOAD_CONST           (('',))
+             320 LOAD_CONST           (('continue_url', 'str', 'return', 'Dict[str, Any]'))
+             322 LOAD_CONST           (<Code311 code object send_mfa_otp at 0x105f74a00, file codex_oauth_chain.py>, line 2209)
+             324 MAKE_FUNCTION
+             326 SET_FUNCTION_ATTRIBUTE 4
+             328 SET_FUNCTION_ATTRIBUTE 1
+             330 STORE_NAME           (send_mfa_otp)
+
+2224:         332 LOAD_CONST           (('sms',))
+             334 LOAD_CONST           (('phone', 'str', 'channel', 'str', 'return', 'Dict[str, Any]'))
+             336 LOAD_CONST           (<Code311 code object send_phone_number_otp at 0x105f749d0, file codex_oauth_chain.py>, line 2224)
+             338 MAKE_FUNCTION
+             340 SET_FUNCTION_ATTRIBUTE 4
+             342 SET_FUNCTION_ATTRIBUTE 1
+             344 STORE_NAME           (send_phone_number_otp)
+
+2236:         346 LOAD_CONST           (('code', 'str', 'return', 'Dict[str, Any]'))
+             348 LOAD_CONST           (<Code311 code object verify_phone_otp at 0x105f749a0, file codex_oauth_chain.py>, line 2236)
+             350 MAKE_FUNCTION
+             352 SET_FUNCTION_ATTRIBUTE 4
+             354 STORE_NAME           (verify_phone_otp)
+
+2245:         356 LOAD_CONST           (('',))
+             358 LOAD_CONST           (('continue_url', 'str', 'return', 'Dict[str, Any]'))
+             360 LOAD_CONST           (<Code311 code object accept_consent at 0x105f74940, file codex_oauth_chain.py>, line 2245)
+             362 MAKE_FUNCTION
+             364 SET_FUNCTION_ATTRIBUTE 4
+             366 SET_FUNCTION_ATTRIBUTE 1
+             368 STORE_NAME           (accept_consent)
+
+2252:         370 LOAD_CONST           (('url', 'str', 'oauth_params', 'Dict[str, str]', 'return', 'Tuple[str, str]'))
+             372 LOAD_CONST           (<Code311 code object _extract_target_code at 0x105f74910, file codex_oauth_chain.py>, line 2252)
+             374 MAKE_FUNCTION
+             376 SET_FUNCTION_ATTRIBUTE 4
+             378 STORE_NAME           (_extract_target_code)
+
+2268:         380 LOAD_NAME            (AUTH)
+             382 BUILD_TUPLE          1
+             384 LOAD_CONST           (('referer', 'str', 'return', 'Dict[str, Any]'))
+             386 LOAD_CONST           (<Code311 code object _session_dump at 0x105f748e0, file codex_oauth_chain.py>, line 2268)
+             388 MAKE_FUNCTION
+             390 SET_FUNCTION_ATTRIBUTE 4
+             392 SET_FUNCTION_ATTRIBUTE 1
+             394 STORE_NAME           (_session_dump)
+
+2276:         396 LOAD_CONST           (('return', 'Dict[str, Any]'))
+             398 LOAD_CONST           (<Code311 code object _cookie_snapshot at 0x105f748b0, file codex_oauth_chain.py>, line 2276)
+             400 MAKE_FUNCTION
+             402 SET_FUNCTION_ATTRIBUTE 4
+             404 STORE_NAME           (_cookie_snapshot)
+
+2301:         406 LOAD_NAME            (AUTH)
+             408 BUILD_TUPLE          1
+             410 LOAD_CONST           (('workspace_id', 'str', 'referer', 'str', 'return', 'Dict[str, Any]'))
+             412 LOAD_CONST           (<Code311 code object _select_workspace at 0x105f74880, file codex_oauth_chain.py>, line 2301)
+             414 MAKE_FUNCTION
+             416 SET_FUNCTION_ATTRIBUTE 4
+             418 SET_FUNCTION_ATTRIBUTE 1
+             420 STORE_NAME           (_select_workspace)
+
+2311:         422 LOAD_CONST           ("")
+             424 LOAD_NAME            (AUTH)
+             426 BUILD_TUPLE          2
+             428 LOAD_CONST           (('org_id', 'str', 'project_id', 'str', 'referer', 'str', 'return', 'Dict[str, Any]'))
+             430 LOAD_CONST           (<Code311 code object _select_organization at 0x105f74850, file codex_oauth_chain.py>, line 2311)
+             432 MAKE_FUNCTION
+             434 SET_FUNCTION_ATTRIBUTE 4
+             436 SET_FUNCTION_ATTRIBUTE 1
+             438 STORE_NAME           (_select_organization)
+
+2323:         440 LOAD_NAME            (staticmethod)
+
+2324:         442 LOAD_CONST           (('dump', 'Dict[str, Any]', 'return', 'str'))
+             444 LOAD_CONST           (<Code311 code object _workspace_id_from_dump at 0x105f74820, file codex_oauth_chain.py>, line 2323)
+             446 MAKE_FUNCTION
+             448 SET_FUNCTION_ATTRIBUTE 4
+
+2323:         450 CALL                 (0 positional)
+
+2324:         458 STORE_NAME           (_workspace_id_from_dump)
+
+2335:         460 LOAD_NAME            (staticmethod)
+
+2336:         462 LOAD_CONST           (('sources', 'Dict[str, Any]', 'return', 'Tuple[str, str]'))
+             464 LOAD_CONST           (<Code311 code object _org_project_from_sources at 0x105f747f0, file codex_oauth_chain.py>, line 2335)
+             466 MAKE_FUNCTION
+             468 SET_FUNCTION_ATTRIBUTE 4
+
+2335:         470 CALL                 (0 positional)
+
+2336:         478 STORE_NAME           (_org_project_from_sources)
+
+2368:         480 LOAD_CONST           (('referer', 'str', 'stage', 'str', 'return', 'str'))
+             482 LOAD_CONST           (<Code311 code object _select_workspace_and_org_from_session at 0x105f74790, file codex_oauth_chain.py>, line 2368)
+             484 MAKE_FUNCTION
+             486 SET_FUNCTION_ATTRIBUTE 4
+             488 STORE_NAME           (_select_workspace_and_org_from_session)
+
+2388:         490 LOAD_CONST           (('', None))
+             492 LOAD_CONST           (('stage', 'str', 'url', 'str', 'response', 'Dict[str, Any] | None', 'return', 'None'))
+             494 LOAD_CONST           (<Code311 code object _trace_continue at 0x105f74520, file codex_oauth_chain.py>, line 2388)
+             496 MAKE_FUNCTION
+             498 SET_FUNCTION_ATTRIBUTE 4
+             500 SET_FUNCTION_ATTRIBUTE 1
+             502 STORE_NAME           (_trace_continue)
+
+2477:         504 LOAD_CONST           (('',))
+             506 LOAD_CONST           (('url', 'str', 'referer', 'str', 'return', 'Dict[str, str]'))
+             508 LOAD_CONST           (<Code311 code object _headers_for_url at 0x105f744c0, file codex_oauth_chain.py>, line 2477)
+             510 MAKE_FUNCTION
+             512 SET_FUNCTION_ATTRIBUTE 4
+             514 SET_FUNCTION_ATTRIBUTE 1
+             516 STORE_NAME           (_headers_for_url)
+
+2492:         518 LOAD_CONST           (('current_url', 'str', 'raw_next', 'str', 'return', 'str'))
+             520 LOAD_CONST           (<Code311 code object _next_url at 0x105f74490, file codex_oauth_chain.py>, line 2492)
+             522 MAKE_FUNCTION
+             524 SET_FUNCTION_ATTRIBUTE 4
+             526 STORE_NAME           (_next_url)
+
+2495:         528 LOAD_CONST           (('url', 'str', 'referer', 'str', 'return', 'Tuple[Dict[str, Any], str, str]'))
+             530 LOAD_CONST           (<Code311 code object _fetch_continue_step at 0x105f74460, file codex_oauth_chain.py>, line 2495)
+             532 MAKE_FUNCTION
+             534 SET_FUNCTION_ATTRIBUTE 4
+             536 STORE_NAME           (_fetch_continue_step)
+
+2518:         538 LOAD_NAME            (AUTH)
+
+2519:         540 LOAD_CONST           (8)
+
+2512:         542 LOAD_CONST           (('referer', 'max_steps'))
+             544 BUILD_CONST_KEY_MAP  2
+
+2514:         546 NOP
+
+2512:         548 NOP
+
+2515:         550 NOP
+
+2512:         552 NOP
+
+2517:         554 NOP
+
+2512:         556 NOP
+
+2518:         558 NOP
+
+2512:         560 NOP
+
+2519:         562 NOP
+
+2512:         564 NOP
+
+2520:         566 NOP
+
+2512:         568 LOAD_CONST           (('start_url', 'str', 'oauth_params', 'Dict[str, str]', 'stage', 'str', 'referer', 'str', 'max_steps', 'int', 'return', 'Tuple[str, Dict[str, Any]]'))
+             570 LOAD_CONST           (<Code311 code object _follow_url_until_code at 0x105f74430, file codex_oauth_chain.py>, line 2512)
+             572 MAKE_FUNCTION
+             574 SET_FUNCTION_ATTRIBUTE 4
+             576 SET_FUNCTION_ATTRIBUTE 2
+             578 STORE_NAME           (_follow_url_until_code)
+
+2549:         580 LOAD_CONST           (('oauth_params', 'Dict[str, str]', 'return', 'str'))
+             582 LOAD_CONST           (<Code311 code object final_oauth at 0x105f744f0, file codex_oauth_chain.py>, line 2549)
+             584 MAKE_FUNCTION
+             586 SET_FUNCTION_ATTRIBUTE 4
+             588 STORE_NAME           (final_oauth)
+
+2588:         590 LOAD_CONST           (False)
+             592 LOAD_CONST           (('_reauth',))
+             594 BUILD_CONST_KEY_MAP  1
+             596 LOAD_CONST           (('continue_url', 'str', 'oauth_params', 'Dict[str, str]', '_reauth', 'bool', 'return', 'str'))
+             598 LOAD_CONST           (<Code311 code object follow_continue_until_code at 0x105f74400, file codex_oauth_chain.py>, line 2588)
+             600 MAKE_FUNCTION
+             602 SET_FUNCTION_ATTRIBUTE 4
+             604 SET_FUNCTION_ATTRIBUTE 2
+             606 STORE_NAME           (follow_continue_until_code)
+
+2653:         608 LOAD_CONST           (('code', 'str', 'code_verifier', 'str', 'client_id', 'str', 'redirect_uri', 'str', 'account_email', 'str', 'return', 'Dict[str, Any]'))
+             610 LOAD_CONST           (<Code311 code object exchange_code at 0x105f74370, file codex_oauth_chain.py>, line 2653)
+             612 MAKE_FUNCTION
+             614 SET_FUNCTION_ATTRIBUTE 4
+             616 STORE_NAME           (exchange_code)
+             618 LOAD_CONST           (('_curl', '_curl_requests', 'chatgpt_impersonate', 'chatgpt_signup_done', 'config', 'device_id', 'last_oauth_url', 'last_response', 'log_fn', 'oauth_params', 'original_oauth_url', 'proxy', 'selected_workspace_id', 'sentinel_provider', 'session'))
+             620 STORE_NAME           (__static_attributes__)
+             622 RETURN_CONST         (None)
+
+
+# Method Name:       ReplayCodexTransport
+# Filename:          codex_oauth_chain.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        4
+# Flags:             0x01000000 (0x1000000)
+# First Line:        2663
+# Constants:
+#    0: 'ReplayCodexTransport'
+#    1: 2663
+#    2: 'Replay transport driven by a sanitized fixture.\n\nExpected fixture shape:\n  {\n    "steps": [\n      {"step": "initiate_oauth", "status": 200, "page_type": "login"},\n      {"step": "submit_email_identifier", "status": 200, "page_type": "email_otp_verification"},\n      {"step": "verify_email_otp", "status": 200, "page_type": "add_phone", "continue_url": "/..."},\n      {"step": "send_phone_number_otp", "status": 400, "error": "phone rejected", "channel": "sms"},\n      {"step": "send_phone_number_otp", "status": 200, "page_type": "phone_otp", "channel": "whatsapp"},\n      {"step": "verify_phone_otp", "status": 200, "page_type": "sign_in_with_chatgpt_codex_consent", "continue_url": "/..."},\n      {"step": "callback", "has_code": true, "state_matches": true},\n      {"step": "exchange_code", "status": 200}\n    ]\n  }\n'
+#    3: <Code311 code object __init__ at 0x105f74280, file codex_oauth_chain.py>, line 2681
+#    4: <Code311 code object _next at 0x105f74250, file codex_oauth_chain.py>, line 2690
+#    5: <Code311 code object _response at 0x105f74220, file codex_oauth_chain.py>, line 2714
+#    6: <Code311 code object initiate_oauth at 0x105f741f0, file codex_oauth_chain.py>, line 2733
+#    7: <Code311 code object submit_email_identifier at 0x105f741c0, file codex_oauth_chain.py>, line 2736
+#    8: <Code311 code object verify_password at 0x105f74130, file codex_oauth_chain.py>, line 2739
+#    9: <Code311 code object verify_email_otp at 0x105f740d0, file codex_oauth_chain.py>, line 2742
+#   10: <Code311 code object verify_mfa_otp at 0x105f74100, file codex_oauth_chain.py>, line 2745
+#   11: <Code311 code object send_email_otp at 0x105f74160, file codex_oauth_chain.py>, line 2748
+#   12: <Code311 code object send_mfa_otp at 0x105f74190, file codex_oauth_chain.py>, line 2751
+#   13: <Code311 code object send_phone_number_otp at 0x105f740a0, file codex_oauth_chain.py>, line 2754
+#   14: <Code311 code object verify_phone_otp at 0x105f74070, file codex_oauth_chain.py>, line 2761
+#   15: <Code311 code object accept_consent at 0x105f74040, file codex_oauth_chain.py>, line 2764
+#   16: <Code311 code object follow_continue_until_code at 0x105f74c40, file codex_oauth_chain.py>, line 2771
+#   17: <Code311 code object exchange_code at 0x105f74c70, file codex_oauth_chain.py>, line 2788
+#   18: ('default_code', 'default_email', 'fixture', 'index', 'oauth_params', 'steps')
+#   19: None
+#   20: ('fixture', 'Dict[str, Any] | None', 'oauth_params', 'Dict[str, str]', 'return', 'None')
+#   21: ('expected', 'str', 'return', 'Dict[str, Any]')
+#   22: ('',)
+#   23: ('step', 'Dict[str, Any]', 'default_page', 'str', 'return', 'Dict[str, Any]')
+#   24: ('oauth_url', 'str', 'return', 'Dict[str, Any]')
+#   25: ('email', 'str', 'return', 'Dict[str, Any]')
+#   26: ('password', 'str', 'return', 'Dict[str, Any]')
+#   27: ('code', 'str', 'return', 'Dict[str, Any]')
+#   28: ('continue_url', 'str', 'return', 'Dict[str, Any]')
+#   29: ('sms',)
+#   30: ('phone', 'str', 'channel', 'str', 'return', 'Dict[str, Any]')
+#   31: ('continue_url', 'str', 'oauth_params', 'Dict[str, str]', 'return', 'str')
+#   32: ('code', 'str', 'code_verifier', 'str', 'client_id', 'str', 'redirect_uri', 'str', 'account_email', 'str', 'return', 'Dict[str, Any]')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: __init__
+#    6: _next
+#    7: staticmethod
+#    8: _response
+#    9: initiate_oauth
+#   10: submit_email_identifier
+#   11: verify_password
+#   12: verify_email_otp
+#   13: verify_mfa_otp
+#   14: send_email_otp
+#   15: send_mfa_otp
+#   16: send_phone_number_otp
+#   17: verify_phone_otp
+#   18: accept_consent
+#   19: follow_continue_until_code
+#   20: exchange_code
+#   21: __static_attributes__
+2663:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("ReplayCodexTransport")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (2663)
+              12 STORE_NAME           (__firstlineno__)
+
+2664:          14 LOAD_CONST           ('Replay transport driven by a sanitized fixture.\n\nExpected fixture shape:\n  {\n    "steps": [\n      {"step": "initiate_oauth", "status": 200, "page_type": "login"},\n      {"step": "submit_email_identifier", "status": 200, "page_type": "email_otp_verification"},\n      {"step": "verify_email_otp", "status": 200, "page_type": "add_phone", "continue_url": "/..."},\n      {"step": "send_phone_number_otp", "status": 400, "error": "phone rejected", "channel": "sms"},\n      {"step": "send_phone_number_otp", "status": 200, "page_type": "phone_otp", "channel": "whatsapp"},\n      {"step": "verify_phone_otp", "status": 200, "page_type": "sign_in_with_chatgpt_codex_consent", "continue_url": "/..."},\n      {"step": "callback", "has_code": true, "state_matches": true},\n      {"step": "exchange_code", "status": 200}\n    ]\n  }\n')
+              16 STORE_NAME           (__doc__)
+
+2681:          18 LOAD_CONST           (('fixture', 'Dict[str, Any] | None', 'oauth_params', 'Dict[str, str]', 'return', 'None'))
+              20 LOAD_CONST           (<Code311 code object __init__ at 0x105f74280, file codex_oauth_chain.py>, line 2681)
+              22 MAKE_FUNCTION
+              24 SET_FUNCTION_ATTRIBUTE 4
+              26 STORE_NAME           (__init__)
+
+2690:          28 LOAD_CONST           (('expected', 'str', 'return', 'Dict[str, Any]'))
+              30 LOAD_CONST           (<Code311 code object _next at 0x105f74250, file codex_oauth_chain.py>, line 2690)
+              32 MAKE_FUNCTION
+              34 SET_FUNCTION_ATTRIBUTE 4
+              36 STORE_NAME           (_next)
+
+2714:          38 LOAD_NAME            (staticmethod)
+
+2715:          40 LOAD_CONST           (('',))
+              42 LOAD_CONST           (('step', 'Dict[str, Any]', 'default_page', 'str', 'return', 'Dict[str, Any]'))
+              44 LOAD_CONST           (<Code311 code object _response at 0x105f74220, file codex_oauth_chain.py>, line 2714)
+              46 MAKE_FUNCTION
+              48 SET_FUNCTION_ATTRIBUTE 4
+              50 SET_FUNCTION_ATTRIBUTE 1
+
+2714:          52 CALL                 (0 positional)
+
+2715:          60 STORE_NAME           (_response)
+
+2733:          62 LOAD_CONST           (('oauth_url', 'str', 'return', 'Dict[str, Any]'))
+              64 LOAD_CONST           (<Code311 code object initiate_oauth at 0x105f741f0, file codex_oauth_chain.py>, line 2733)
+              66 MAKE_FUNCTION
+              68 SET_FUNCTION_ATTRIBUTE 4
+              70 STORE_NAME           (initiate_oauth)
+
+2736:          72 LOAD_CONST           (('email', 'str', 'return', 'Dict[str, Any]'))
+              74 LOAD_CONST           (<Code311 code object submit_email_identifier at 0x105f741c0, file codex_oauth_chain.py>, line 2736)
+              76 MAKE_FUNCTION
+              78 SET_FUNCTION_ATTRIBUTE 4
+              80 STORE_NAME           (submit_email_identifier)
+
+2739:          82 LOAD_CONST           (('password', 'str', 'return', 'Dict[str, Any]'))
+              84 LOAD_CONST           (<Code311 code object verify_password at 0x105f74130, file codex_oauth_chain.py>, line 2739)
+              86 MAKE_FUNCTION
+              88 SET_FUNCTION_ATTRIBUTE 4
+              90 STORE_NAME           (verify_password)
+
+2742:          92 LOAD_CONST           (('code', 'str', 'return', 'Dict[str, Any]'))
+              94 LOAD_CONST           (<Code311 code object verify_email_otp at 0x105f740d0, file codex_oauth_chain.py>, line 2742)
+              96 MAKE_FUNCTION
+              98 SET_FUNCTION_ATTRIBUTE 4
+             100 STORE_NAME           (verify_email_otp)
+
+2745:         102 LOAD_CONST           (('code', 'str', 'return', 'Dict[str, Any]'))
+             104 LOAD_CONST           (<Code311 code object verify_mfa_otp at 0x105f74100, file codex_oauth_chain.py>, line 2745)
+             106 MAKE_FUNCTION
+             108 SET_FUNCTION_ATTRIBUTE 4
+             110 STORE_NAME           (verify_mfa_otp)
+
+2748:         112 LOAD_CONST           (('',))
+             114 LOAD_CONST           (('continue_url', 'str', 'return', 'Dict[str, Any]'))
+             116 LOAD_CONST           (<Code311 code object send_email_otp at 0x105f74160, file codex_oauth_chain.py>, line 2748)
+             118 MAKE_FUNCTION
+             120 SET_FUNCTION_ATTRIBUTE 4
+             122 SET_FUNCTION_ATTRIBUTE 1
+             124 STORE_NAME           (send_email_otp)
+
+2751:         126 LOAD_CONST           (('',))
+             128 LOAD_CONST           (('continue_url', 'str', 'return', 'Dict[str, Any]'))
+             130 LOAD_CONST           (<Code311 code object send_mfa_otp at 0x105f74190, file codex_oauth_chain.py>, line 2751)
+             132 MAKE_FUNCTION
+             134 SET_FUNCTION_ATTRIBUTE 4
+             136 SET_FUNCTION_ATTRIBUTE 1
+             138 STORE_NAME           (send_mfa_otp)
+
+2754:         140 LOAD_CONST           (('sms',))
+             142 LOAD_CONST           (('phone', 'str', 'channel', 'str', 'return', 'Dict[str, Any]'))
+             144 LOAD_CONST           (<Code311 code object send_phone_number_otp at 0x105f740a0, file codex_oauth_chain.py>, line 2754)
+             146 MAKE_FUNCTION
+             148 SET_FUNCTION_ATTRIBUTE 4
+             150 SET_FUNCTION_ATTRIBUTE 1
+             152 STORE_NAME           (send_phone_number_otp)
+
+2761:         154 LOAD_CONST           (('code', 'str', 'return', 'Dict[str, Any]'))
+             156 LOAD_CONST           (<Code311 code object verify_phone_otp at 0x105f74070, file codex_oauth_chain.py>, line 2761)
+             158 MAKE_FUNCTION
+             160 SET_FUNCTION_ATTRIBUTE 4
+             162 STORE_NAME           (verify_phone_otp)
+
+2764:         164 LOAD_CONST           (('',))
+             166 LOAD_CONST           (('continue_url', 'str', 'return', 'Dict[str, Any]'))
+             168 LOAD_CONST           (<Code311 code object accept_consent at 0x105f74040, file codex_oauth_chain.py>, line 2764)
+             170 MAKE_FUNCTION
+             172 SET_FUNCTION_ATTRIBUTE 4
+             174 SET_FUNCTION_ATTRIBUTE 1
+             176 STORE_NAME           (accept_consent)
+
+2771:         178 LOAD_CONST           (('continue_url', 'str', 'oauth_params', 'Dict[str, str]', 'return', 'str'))
+             180 LOAD_CONST           (<Code311 code object follow_continue_until_code at 0x105f74c40, file codex_oauth_chain.py>, line 2771)
+             182 MAKE_FUNCTION
+             184 SET_FUNCTION_ATTRIBUTE 4
+             186 STORE_NAME           (follow_continue_until_code)
+
+2788:         188 LOAD_CONST           (('code', 'str', 'code_verifier', 'str', 'client_id', 'str', 'redirect_uri', 'str', 'account_email', 'str', 'return', 'Dict[str, Any]'))
+             190 LOAD_CONST           (<Code311 code object exchange_code at 0x105f74c70, file codex_oauth_chain.py>, line 2788)
+             192 MAKE_FUNCTION
+             194 SET_FUNCTION_ATTRIBUTE 4
+             196 STORE_NAME           (exchange_code)
+             198 LOAD_CONST           (('default_code', 'default_email', 'fixture', 'index', 'oauth_params', 'steps'))
+             200 STORE_NAME           (__static_attributes__)
+             202 RETURN_CONST         (None)
+
+
+# Method Name:       _diagnostic_result
+# Filename:          codex_oauth_chain.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 5
+# Number of locals:  8
+# Stack size:        18
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2809
+# Constants:
+#    0: None
+#    1: 'diagnostic only'
+#    2: ('detail', 'log_fn')
+#    3: 'planned'
+#    4: 'external actions disabled'
+#    5: 'warn'
+#    6: ('detail', 'log_fn', 'tag')
+#    7: False
+#    8: 'codex_chain_diagnostic_only'
+#    9: 'diagnostic'
+#   10: 'diagnostic mode does not exchange tokens'
+#   11: 'codex_chain_'
+#   12: 'client_id'
+#   13: 'redirect_uri'
+#   14: 'state'
+#   15: ('source', 'client_id', 'redirect_uri', 'state_present', 'code_verifier_present', 'exchange_ok')
+#   16: ('ok', 'error', 'phase2_status', 'auth_page_type', 'email', 'bind_email', 'login_email', 'local_oauth_saved', 'local_oauth_exchange_ok', 'local_oauth_exchange_error', 'local_oauth', 'codex_chain_events')
+# Names:
+#    0: parse_oauth_url
+#    1: _event
+#    2: STATE_START
+#    3: STATE_OAUTH_STARTED
+#    4: STATE_SENTINEL_READY
+#    5: STATE_EMAIL_OTP_REQUIRED
+#    6: STATE_PHONE_REQUIRED
+#    7: STATE_CONSENT_REQUIRED
+#    8: STATE_CALLBACK_RECEIVED
+#    9: STATE_TOKEN_EXCHANGED
+#   10: STATE_DIAGNOSTIC_READY
+#   11: get
+#   12: DEFAULT_CLIENT_ID
+#   13: DEFAULT_REDIRECT_URI
+#   14: bool
+# Varnames:
+#	oauth_url, account_email, mode, config, log_fn, events, params, state
+# Local variables:
+#    0: oauth_url
+#    1: account_email
+#    2: mode
+#    3: config
+#    4: log_fn
+#    5: events
+#    6: params
+#    7: state
+2809:           0 RESUME               0
+
+2817:           2 BUILD_LIST           0
+               4 STORE_FAST           (events)
+
+2818:           6 LOAD_GLOBAL          (NULL + parse_oauth_url)
+              16 LOAD_FAST            (oauth_url)
+              18 CALL                 (1 positional)
+              26 STORE_FAST           (params)
+
+2819:          28 LOAD_GLOBAL          (NULL + _event)
+              38 LOAD_FAST            (events)
+              40 LOAD_GLOBAL          (STATE_START)
+              50 LOAD_CONST           ("diagnostic only")
+              52 LOAD_FAST            (log_fn)
+              54 LOAD_CONST           (('detail', 'log_fn'))
+              56 CALL_KW              4
+              58 POP_TOP
+
+2821:          60 LOAD_GLOBAL          (STATE_OAUTH_STARTED)
+
+2822:          70 LOAD_GLOBAL          (STATE_SENTINEL_READY)
+
+2823:          80 LOAD_GLOBAL          (STATE_EMAIL_OTP_REQUIRED)
+
+2824:          90 LOAD_GLOBAL          (STATE_PHONE_REQUIRED)
+
+2825:         100 LOAD_GLOBAL          (STATE_CONSENT_REQUIRED)
+
+2826:         110 LOAD_GLOBAL          (STATE_CALLBACK_RECEIVED)
+
+2827:         120 LOAD_GLOBAL          (STATE_TOKEN_EXCHANGED)
+
+2820:         130 BUILD_TUPLE          7
+             132 GET_ITER
+             134 FOR_ITER             (to 166)
+             138 STORE_FAST           (state)
+
+2829:         140 LOAD_GLOBAL          (NULL + _event)
+             150 LOAD_FAST_LOAD_FAST  (events, state)
+             152 LOAD_CONST           ("planned")
+             154 LOAD_FAST            (log_fn)
+             156 LOAD_CONST           (('detail', 'log_fn'))
+             158 CALL_KW              4
+             160 POP_TOP
+             162 JUMP_BACKWARD        (to 134)
+
+2820:     >>  166 END_FOR
+             168 POP_TOP
+
+2830:         170 LOAD_GLOBAL          (NULL + _event)
+             180 LOAD_FAST            (events)
+             182 LOAD_GLOBAL          (STATE_DIAGNOSTIC_READY)
+             192 LOAD_CONST           ("external actions disabled")
+             194 LOAD_FAST            (log_fn)
+             196 LOAD_CONST           ("warn")
+         >>  198 LOAD_CONST           (('detail', 'log_fn', 'tag'))
+             200 CALL_KW              5
+             202 POP_TOP
+
+2832:         204 LOAD_CONST           (False)
+
+2833:         206 LOAD_CONST           ("codex_chain_diagnostic_only")
+
+2834:         208 LOAD_CONST           ("codex_chain_diagnostic_only")
+
+2835:         210 LOAD_CONST           ("diagnostic")
+
+2836:         212 LOAD_FAST            (account_email)
+
+2837:         214 LOAD_FAST            (account_email)
+
+2838:         216 LOAD_FAST            (account_email)
+

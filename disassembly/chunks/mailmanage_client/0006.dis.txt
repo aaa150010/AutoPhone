@@ -1,0 +1,800 @@
+370:     >>  212 PUSH_EXC_INFO
+             214 WITH_EXCEPT_START    0
+             216 TO_BOOL
+             224 POP_JUMP_IF_TRUE     (to 230)
+             228 RERAISE              2
+         >>  230 POP_TOP
+             232 POP_EXCEPT
+             234 POP_TOP
+             236 POP_TOP
+             238 JUMP_BACKWARD_NO_INTERRUPT (to 130)
+         >>  240 COPY                 3
+             242 POP_EXCEPT
+             244 RERAISE              1
+         >>  246 PUSH_EXC_INFO
+
+373:         248 LOAD_GLOBAL          (Exception)
+             258 CHECK_EXC_MATCH
+             260 POP_JUMP_IF_FALSE    (to 324)
+             264 STORE_FAST           (e)
+
+374:         266 LOAD_FAST            (self)
+             268 LOAD_ATTR            (NULL|self + _log)
+             288 LOAD_CONST           ("本地已用记录保存失败，继续依赖远程状态: ")
+             290 LOAD_FAST            (e)
+             292 FORMAT_SIMPLE
+             294 BUILD_STRING         2
+             296 CALL                 (1 positional)
+             304 POP_TOP
+             306 POP_EXCEPT
+             308 LOAD_CONST           (None)
+             310 STORE_FAST           (e)
+             312 DELETE_FAST          (e)
+             314 RETURN_CONST         (None)
+         >>  316 LOAD_CONST           (None)
+             318 STORE_FAST           (e)
+             320 DELETE_FAST          (e)
+             322 RERAISE              1
+
+373:     >>  324 RERAISE              0
+         >>  326 COPY                 3
+             328 POP_EXCEPT
+             330 RERAISE              1
+
+ExceptionTable:
+  4 to 24 -> 246 [0]
+  26 to 112 -> 212 [1] lasti
+  114 to 208 -> 246 [0]
+  212 to 230 -> 240 [3] lasti
+  232 to 244 -> 246 [0]
+  246 to 264 -> 326 [1] lasti
+  266 to 304 -> 316 [1] lasti
+  316 to 324 -> 326 [1] lasti
+
+# Method Name:       mark_used
+# Filename:          mailmanage_client.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        6
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        376
+# Constants:
+#    0: '标记邮箱为已使用，下次获取时跳过'
+#    1: None
+#    2: '标记已用: '
+# Names:
+#    0: strip
+#    1: lower
+#    2: _mark_used_remote
+#    3: _lock
+#    4: _used
+#    5: add
+#    6: _save_used
+#    7: _log
+# Varnames:
+#	self, email
+# Positional arguments:
+#	self, email
+376:           0 RESUME               0
+
+378:           2 LOAD_FAST            (email)
+               4 LOAD_ATTR            (NULL|self + strip)
+              24 CALL                 (0 positional)
+              32 LOAD_ATTR            (NULL|self + lower)
+              52 CALL                 (0 positional)
+              60 STORE_FAST           (email)
+
+379:          62 LOAD_FAST            (email)
+              64 TO_BOOL
+              72 POP_JUMP_IF_TRUE     (to 78)
+
+380:          76 RETURN_CONST         (None)
+
+382:     >>   78 LOAD_FAST            (self)
+              80 LOAD_ATTR            (NULL|self + _mark_used_remote)
+             100 LOAD_FAST            (email)
+             102 CALL                 (1 positional)
+             110 POP_TOP
+
+384:         112 LOAD_FAST            (self)
+             114 LOAD_ATTR            (_lock)
+             134 BEFORE_WITH
+             136 POP_TOP
+
+385:         138 LOAD_FAST            (self)
+             140 LOAD_ATTR            (_used)
+             160 LOAD_ATTR            (NULL|self + add)
+             180 LOAD_FAST            (email)
+             182 CALL                 (1 positional)
+             190 POP_TOP
+
+386:         192 LOAD_FAST            (self)
+             194 LOAD_ATTR            (NULL|self + _save_used)
+             214 CALL                 (0 positional)
+             222 POP_TOP
+
+384:         224 LOAD_CONST           (None)
+             226 LOAD_CONST           (None)
+             228 LOAD_CONST           (None)
+             230 CALL                 (2 positional)
+             238 POP_TOP
+
+387:         240 LOAD_FAST            (self)
+             242 LOAD_ATTR            (NULL|self + _log)
+             262 LOAD_CONST           ("标记已用: ")
+             264 LOAD_FAST            (email)
+             266 FORMAT_SIMPLE
+             268 BUILD_STRING         2
+             270 CALL                 (1 positional)
+             278 POP_TOP
+             280 RETURN_CONST         (None)
+
+384:     >>  282 PUSH_EXC_INFO
+             284 WITH_EXCEPT_START    0
+             286 TO_BOOL
+             294 POP_JUMP_IF_TRUE     (to 300)
+             298 RERAISE              2
+         >>  300 POP_TOP
+             302 POP_EXCEPT
+             304 POP_TOP
+             306 POP_TOP
+             308 JUMP_BACKWARD_NO_INTERRUPT (to 240)
+         >>  310 COPY                 3
+             312 POP_EXCEPT
+             314 RERAISE              1
+
+ExceptionTable:
+  136 to 222 -> 282 [1] lasti
+  282 to 300 -> 310 [3] lasti
+
+# Method Name:       _mark_used_remote
+# Filename:          mailmanage_client.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  9
+# Stack size:        7
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        389
+# Constants:
+#    0: '通知新版 MailManage 后台把邮箱从可用池移除；旧后台不支持时自动忽略。'
+#    1: '/api/mailboxes/mark-used'
+#    2: 'email'
+#    3: ''
+#    4: 'lease_token'
+#    5: 'request_id'
+#    6: 30
+#    7: ('headers', 'json', 'timeout')
+#    8: (404, 405)
+#    9: '后台不支持 mark-used 接口，仅写入本地已用记录'
+#   10: None
+#   11: 'ok'
+#   12: '后台标记已用失败: '
+#   13: '后台标记已用异常: '
+# Names:
+#    0: base_url
+#    1: _leases
+#    2: pop
+#    3: _reserve_request_ids
+#    4: requests
+#    5: post
+#    6: _headers
+#    7: _request_kwargs
+#    8: status_code
+#    9: _log
+#   10: json
+#   11: get
+#   12: Exception
+# Varnames:
+#	self, email, url, payload, lease_token, request_id, resp, data, e
+# Positional arguments:
+#	self, email
+# Local variables:
+#    2: url
+#    3: payload
+#    4: lease_token
+#    5: request_id
+#    6: resp
+#    7: data
+#    8: e
+389:           0 RESUME               0
+
+391:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (base_url)
+              24 FORMAT_SIMPLE
+              26 LOAD_CONST           ("/api/mailboxes/mark-used")
+              28 BUILD_STRING         2
+              30 STORE_FAST           (url)
+
+392:          32 LOAD_CONST           ("email")
+              34 LOAD_FAST            (email)
+              36 BUILD_MAP            1
+              38 STORE_FAST           (payload)
+
+393:          40 LOAD_FAST            (self)
+              42 LOAD_ATTR            (_leases)
+              62 LOAD_ATTR            (NULL|self + pop)
+              82 LOAD_FAST            (email)
+              84 LOAD_CONST           ("")
+              86 CALL                 (2 positional)
+              94 STORE_FAST           (lease_token)
+
+394:          96 LOAD_FAST            (lease_token)
+              98 TO_BOOL
+             106 POP_JUMP_IF_FALSE    (to 118)
+
+395:         110 LOAD_FAST_LOAD_FAST  (lease_token, payload)
+             112 LOAD_CONST           ("lease_token")
+             114 STORE_SUBSCR
+
+396:     >>  118 LOAD_FAST            (self)
+             120 LOAD_ATTR            (_reserve_request_ids)
+             140 LOAD_ATTR            (NULL|self + pop)
+             160 LOAD_FAST            (email)
+             162 LOAD_CONST           ("")
+             164 CALL                 (2 positional)
+             172 STORE_FAST           (request_id)
+
+397:         174 LOAD_FAST            (request_id)
+             176 TO_BOOL
+             184 POP_JUMP_IF_FALSE    (to 196)
+
+398:         188 LOAD_FAST_LOAD_FAST  (request_id, payload)
+             190 LOAD_CONST           ("request_id")
+             192 STORE_SUBSCR
+
+399:     >>  196 NOP
+
+400:         198 LOAD_GLOBAL          (requests)
+             208 LOAD_ATTR            (post)
+             228 PUSH_NULL
+             230 LOAD_FAST            (url)
+             232 BUILD_TUPLE          1
+             234 LOAD_FAST            (self)
+             236 LOAD_ATTR            (NULL|self + _headers)
+             256 CALL                 (0 positional)
+             264 LOAD_FAST            (payload)
+             266 LOAD_CONST           (30)
+             268 LOAD_CONST           (('headers', 'json', 'timeout'))
+             270 BUILD_CONST_KEY_MAP  3
+             272 LOAD_FAST            (self)
+             274 LOAD_ATTR            (NULL|self + _request_kwargs)
+             294 CALL                 (0 positional)
+             302 DICT_MERGE           1
+             304 CALL_FUNCTION_EX     (keyword and positional arguments)
+             306 STORE_FAST           (resp)
+
+401:         308 LOAD_FAST            (resp)
+             310 LOAD_ATTR            (status_code)
+             330 LOAD_CONST           ((404, 405))
+             332 CONTAINS_OP          (in)
+             336 POP_JUMP_IF_FALSE    (to 376)
+
+402:         340 LOAD_FAST            (self)
+             342 LOAD_ATTR            (NULL|self + _log)
+             362 LOAD_CONST           ("后台不支持 mark-used 接口，仅写入本地已用记录")
+             364 CALL                 (1 positional)
+             372 POP_TOP
+
+403:         374 RETURN_CONST         (None)
+
+404:     >>  376 LOAD_FAST            (resp)
+             378 LOAD_ATTR            (NULL|self + json)
+             398 CALL                 (0 positional)
+             406 STORE_FAST           (data)
+
+405:         408 LOAD_FAST            (data)
+             410 LOAD_ATTR            (NULL|self + get)
+             430 LOAD_CONST           ("ok")
+             432 CALL                 (1 positional)
+             440 TO_BOOL
+             448 POP_JUMP_IF_TRUE     (to 494)
+
+406:         452 LOAD_FAST            (self)
+             454 LOAD_ATTR            (NULL|self + _log)
+             474 LOAD_CONST           ("后台标记已用失败: ")
+             476 LOAD_FAST            (data)
+             478 FORMAT_SIMPLE
+             480 BUILD_STRING         2
+             482 CALL                 (1 positional)
+             490 POP_TOP
+             492 RETURN_CONST         (None)
+
+405:     >>  494 RETURN_CONST         (None)
+         >>  496 PUSH_EXC_INFO
+
+407:         498 LOAD_GLOBAL          (Exception)
+             508 CHECK_EXC_MATCH
+             510 POP_JUMP_IF_FALSE    (to 574)
+             514 STORE_FAST           (e)
+
+408:         516 LOAD_FAST            (self)
+             518 LOAD_ATTR            (NULL|self + _log)
+             538 LOAD_CONST           ("后台标记已用异常: ")
+             540 LOAD_FAST            (e)
+             542 FORMAT_SIMPLE
+             544 BUILD_STRING         2
+             546 CALL                 (1 positional)
+             554 POP_TOP
+             556 POP_EXCEPT
+             558 LOAD_CONST           (None)
+             560 STORE_FAST           (e)
+             562 DELETE_FAST          (e)
+             564 RETURN_CONST         (None)
+         >>  566 LOAD_CONST           (None)
+             568 STORE_FAST           (e)
+             570 DELETE_FAST          (e)
+             572 RERAISE              1
+
+407:     >>  574 RERAISE              0
+         >>  576 COPY                 3
+             578 POP_EXCEPT
+             580 RERAISE              1
+
+ExceptionTable:
+  198 to 372 -> 496 [0]
+  376 to 490 -> 496 [0]
+  496 to 514 -> 576 [1] lasti
+  516 to 554 -> 566 [1] lasti
+  566 to 574 -> 576 [1] lasti
+
+# Method Name:       skip_used
+# Filename:          mailmanage_client.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        5
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        410
+# Constants:
+#    0: '过滤掉已用过的邮箱'
+#    1: '跳过 '
+#    2: ' 个已用邮箱'
+# Names:
+#    0: strip
+#    1: lower
+#    2: _used
+#    3: len
+#    4: _log
+# Varnames:
+#	self, emails, e, filtered, skipped
+# Positional arguments:
+#	self, emails
+# Local variables:
+#    2: e
+#    3: filtered
+#    4: skipped
+410:           0 RESUME               0
+
+412:           2 LOAD_FAST            (emails)
+               4 GET_ITER
+               6 LOAD_FAST_AND_CLEAR  (e)
+               8 SWAP                 (TOS <-> TOS1)
+              10 BUILD_LIST           0
+              12 SWAP                 (TOS <-> TOS1)
+              14 GET_ITER
+              16 FOR_ITER             (to 120)
+              20 STORE_FAST_LOAD_FAST (e, e)
+              22 LOAD_ATTR            (NULL|self + strip)
+              42 CALL                 (0 positional)
+              50 LOAD_ATTR            (NULL|self + lower)
+              70 CALL                 (0 positional)
+              78 LOAD_FAST            (self)
+              80 LOAD_ATTR            (_used)
+             100 CONTAINS_OP          (not in)
+             104 POP_JUMP_IF_TRUE     (to 112)
+             108 JUMP_BACKWARD        (to 16)
+         >>  112 LOAD_FAST            (e)
+             114 LIST_APPEND          2
+             116 JUMP_BACKWARD        (to 16)
+         >>  120 END_FOR
+             122 POP_TOP
+             124 STORE_FAST           (filtered)
+             126 STORE_FAST           (e)
+
+413:         128 LOAD_GLOBAL          (NULL + len)
+             138 LOAD_FAST            (emails)
+             140 CALL                 (1 positional)
+             148 LOAD_GLOBAL          (NULL + len)
+             158 LOAD_FAST            (filtered)
+             160 CALL                 (1 positional)
+             168 BINARY_OP            (-)
+             172 STORE_FAST           (skipped)
+
+414:         174 LOAD_FAST            (skipped)
+             176 TO_BOOL
+             184 POP_JUMP_IF_FALSE    (to 230)
+
+415:         188 LOAD_FAST            (self)
+             190 LOAD_ATTR            (NULL|self + _log)
+             210 LOAD_CONST           ("跳过 ")
+             212 LOAD_FAST            (skipped)
+             214 FORMAT_SIMPLE
+             216 LOAD_CONST           (" 个已用邮箱")
+             218 BUILD_STRING         3
+             220 CALL                 (1 positional)
+             228 POP_TOP
+
+416:     >>  230 LOAD_FAST            (filtered)
+             232 RETURN_VALUE
+         >>  234 SWAP                 (TOS <-> TOS1)
+             236 POP_TOP
+
+412:         238 SWAP                 (TOS <-> TOS1)
+             240 STORE_FAST           (e)
+             242 RERAISE              0
+
+ExceptionTable:
+  10 to 102 -> 234 [2]
+  112 to 122 -> 234 [2]
+
+# Method Name:       used_count
+# Filename:          mailmanage_client.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        3
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        418
+# Constants:
+#    0: None
+# Names:
+#    0: len
+#    1: _used
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+418:           0 RESUME               0
+
+420:           2 LOAD_GLOBAL          (NULL + len)
+              12 LOAD_FAST            (self)
+              14 LOAD_ATTR            (_used)
+              34 CALL                 (1 positional)
+              42 RETURN_VALUE
+
+
+# Method Name:       list_mailboxes
+# Filename:          mailmanage_client.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  9
+# Stack size:        7
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        424
+# Constants:
+#    0: '\n查询邮箱列表\ncategory: free / 套餐 等\nstatus: free / invalid / used 等\n'
+#    1: 'category'
+#    2: 'status'
+#    3: '/api/mailboxes'
+#    4: '?'
+#    5: '查询邮箱列表: category='
+#    6: 'all'
+#    7: ' status='
+#    8: 30
+#    9: ('headers', 'timeout')
+#   10: 'ok'
+#   11: '查询邮箱列表失败: '
+#   12: 'mailboxes'
+#   13: '获取到 '
+#   14: ' 个邮箱'
+# Names:
+#    0: urlencode
+#    1: base_url
+#    2: _log
+#    3: requests
+#    4: get
+#    5: _headers
+#    6: _request_kwargs
+#    7: json
+#    8: RuntimeError
+#    9: len
+# Varnames:
+#	self, category, status, params, query, url, resp, data, mailboxes
+# Positional arguments:
+#	self, category, status
+# Local variables:
+#    3: params
+#    4: query
+#    5: url
+#    6: resp
+#    7: data
+#    8: mailboxes
+424:           0 RESUME               0
+
+434:           2 BUILD_MAP            0
+               4 STORE_FAST           (params)
+
+435:           6 LOAD_FAST            (category)
+               8 TO_BOOL
+              16 POP_JUMP_IF_FALSE    (to 28)
+
+436:          20 LOAD_FAST_LOAD_FAST  (category, params)
+              22 LOAD_CONST           ("category")
+              24 STORE_SUBSCR
+
+437:     >>   28 LOAD_FAST            (status)
+              30 TO_BOOL
+              38 POP_JUMP_IF_FALSE    (to 50)
+
+438:          42 LOAD_FAST_LOAD_FAST  (status, params)
+              44 LOAD_CONST           ("status")
+              46 STORE_SUBSCR
+
+439:     >>   50 LOAD_GLOBAL          (NULL + urlencode)
+              60 LOAD_FAST            (params)
+              62 CALL                 (1 positional)
+              70 STORE_FAST           (query)
+
+440:          72 LOAD_FAST            (self)
+              74 LOAD_ATTR            (base_url)
+              94 FORMAT_SIMPLE
+              96 LOAD_CONST           ("/api/mailboxes")
+              98 BUILD_STRING         2
+             100 STORE_FAST           (url)
+
+441:         102 LOAD_FAST            (query)
+             104 TO_BOOL
+             112 POP_JUMP_IF_FALSE    (to 132)
+
+442:         116 LOAD_FAST            (url)
+             118 LOAD_CONST           ("?")
+             120 LOAD_FAST            (query)
+             122 FORMAT_SIMPLE
+             124 BUILD_STRING         2
+             126 BINARY_OP            (+=)
+             130 STORE_FAST           (url)
+
+444:     >>  132 LOAD_FAST            (self)
+             134 LOAD_ATTR            (NULL|self + _log)
+             154 LOAD_CONST           ("查询邮箱列表: category=")
+             156 LOAD_FAST            (category)
+             158 COPY                 1
+             160 TO_BOOL
+             168 POP_JUMP_IF_TRUE     (to 176)
+             172 POP_TOP
+             174 LOAD_CONST           ("all")
+         >>  176 FORMAT_SIMPLE
+             178 LOAD_CONST           (" status=")
+             180 LOAD_FAST            (status)
+             182 COPY                 1
+             184 TO_BOOL
+             192 POP_JUMP_IF_TRUE     (to 200)
+             196 POP_TOP
+             198 LOAD_CONST           ("all")
+         >>  200 FORMAT_SIMPLE
+             202 BUILD_STRING         4
+             204 CALL                 (1 positional)
+             212 POP_TOP
+
+445:         214 LOAD_GLOBAL          (requests)
+             224 LOAD_ATTR            (get)
+             244 PUSH_NULL
+             246 LOAD_FAST            (url)
+             248 BUILD_TUPLE          1
+             250 LOAD_FAST            (self)
+             252 LOAD_ATTR            (NULL|self + _headers)
+             272 CALL                 (0 positional)
+             280 LOAD_CONST           (30)
+             282 LOAD_CONST           (('headers', 'timeout'))
+             284 BUILD_CONST_KEY_MAP  2
+             286 LOAD_FAST            (self)
+             288 LOAD_ATTR            (NULL|self + _request_kwargs)
+             308 CALL                 (0 positional)
+             316 DICT_MERGE           1
+             318 CALL_FUNCTION_EX     (keyword and positional arguments)
+             320 STORE_FAST           (resp)
+
+446:         322 LOAD_FAST            (resp)
+             324 LOAD_ATTR            (NULL|self + json)
+             344 CALL                 (0 positional)
+             352 STORE_FAST           (data)
+
+447:         354 LOAD_FAST            (data)
+             356 LOAD_ATTR            (NULL|self + get)
+             376 LOAD_CONST           ("ok")
+             378 CALL                 (1 positional)
+             386 TO_BOOL
+             394 POP_JUMP_IF_TRUE     (to 426)
+
+448:         398 LOAD_GLOBAL          (NULL + RuntimeError)
+             408 LOAD_CONST           ("查询邮箱列表失败: ")
+             410 LOAD_FAST            (data)
+             412 FORMAT_SIMPLE
+             414 BUILD_STRING         2
+             416 CALL                 (1 positional)
+             424 RAISE_VARARGS        (exception instance)
+
+449:     >>  426 LOAD_FAST            (data)
+             428 LOAD_ATTR            (NULL|self + get)
+             448 LOAD_CONST           ("mailboxes")
+             450 BUILD_LIST           0
+             452 CALL                 (2 positional)
+             460 STORE_FAST           (mailboxes)
+
+450:         462 LOAD_FAST            (self)
+             464 LOAD_ATTR            (NULL|self + _log)
+             484 LOAD_CONST           ("获取到 ")
+             486 LOAD_GLOBAL          (NULL + len)
+             496 LOAD_FAST            (mailboxes)
+             498 CALL                 (1 positional)
+             506 FORMAT_SIMPLE
+             508 LOAD_CONST           (" 个邮箱")
+             510 BUILD_STRING         3
+             512 CALL                 (1 positional)
+             520 POP_TOP
+
+451:         522 LOAD_FAST            (mailboxes)
+             524 RETURN_VALUE
+
+
+# Method Name:       _extract_mailboxes
+# Filename:          mailmanage_client.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        8
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        453
+# Constants:
+#    0: '兼容 MailManage/GPTMail 不同列表响应结构。'
+#    1: ('mailboxes', 'items')
+#    2: 'data'
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: get
+#    3: list
+# Varnames:
+#	self, data, key, value, item, nested
+# Positional arguments:
+#	self, data
+# Local variables:
+#    2: key
+#    3: value
+#    4: item
+#    5: nested
+453:           0 RESUME               0
+
+455:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (data)
+              14 LOAD_GLOBAL          (dict)
+              24 CALL                 (2 positional)
+              32 TO_BOOL
+              40 POP_JUMP_IF_TRUE     (to 48)
+
+456:          44 BUILD_LIST           0
+              46 RETURN_VALUE
+
+457:     >>   48 LOAD_CONST           (('mailboxes', 'items'))
+              50 GET_ITER
+              52 FOR_ITER             (to 226)
+              56 STORE_FAST           (key)
+
+458:          58 LOAD_FAST            (data)
+              60 LOAD_ATTR            (NULL|self + get)
+              80 LOAD_FAST            (key)
+              82 CALL                 (1 positional)
+              90 STORE_FAST           (value)
+
+459:          92 LOAD_GLOBAL          (NULL + isinstance)
+             102 LOAD_FAST            (value)
+             104 LOAD_GLOBAL          (list)
+             114 CALL                 (2 positional)
+             122 TO_BOOL
+             130 POP_JUMP_IF_TRUE     (to 138)
+             134 JUMP_BACKWARD        (to 52)
+
+460:     >>  138 LOAD_FAST            (value)
+             140 GET_ITER
+             142 LOAD_FAST_AND_CLEAR  (item)
+             144 SWAP                 (TOS <-> TOS1)
+             146 BUILD_LIST           0
+             148 SWAP                 (TOS <-> TOS1)
+             150 GET_ITER
+             152 FOR_ITER             (to 212)
+             156 STORE_FAST           (item)
+             158 LOAD_GLOBAL          (NULL + isinstance)
+             168 LOAD_FAST            (item)
+             170 LOAD_GLOBAL          (dict)
+             180 CALL                 (2 positional)
+             188 TO_BOOL
+             196 POP_JUMP_IF_TRUE     (to 204)
+             200 JUMP_BACKWARD        (to 152)
+         >>  204 LOAD_FAST            (item)
+             206 LIST_APPEND          2
+             208 JUMP_BACKWARD        (to 152)
+         >>  212 END_FOR
+             214 POP_TOP
+             216 SWAP                 (TOS <-> TOS1)
+             218 STORE_FAST           (item)
+             220 SWAP                 (TOS <-> TOS1)
+             222 POP_TOP
+         >>  224 RETURN_VALUE
+
+457:     >>  226 END_FOR
+             228 POP_TOP
+
+461:         230 LOAD_FAST            (data)
+             232 LOAD_ATTR            (NULL|self + get)
+             252 LOAD_CONST           ("data")
+             254 CALL                 (1 positional)
+             262 STORE_FAST           (nested)
+
+462:         264 LOAD_GLOBAL          (NULL + isinstance)
+             274 LOAD_FAST            (nested)
+             276 LOAD_GLOBAL          (dict)
+             286 CALL                 (2 positional)
+             294 TO_BOOL
+             302 POP_JUMP_IF_FALSE    (to 488)
+
+463:         306 LOAD_CONST           (('mailboxes', 'items'))
+             308 GET_ITER
+             310 FOR_ITER             (to 484)
+             314 STORE_FAST           (key)
+
+464:         316 LOAD_FAST            (nested)
+             318 LOAD_ATTR            (NULL|self + get)
+             338 LOAD_FAST            (key)
+             340 CALL                 (1 positional)
+             348 STORE_FAST           (value)
+
+465:         350 LOAD_GLOBAL          (NULL + isinstance)
+             360 LOAD_FAST            (value)
+             362 LOAD_GLOBAL          (list)
+             372 CALL                 (2 positional)
+             380 TO_BOOL
+             388 POP_JUMP_IF_TRUE     (to 396)
+             392 JUMP_BACKWARD        (to 310)
+
+466:     >>  396 LOAD_FAST            (value)
+             398 GET_ITER
+             400 LOAD_FAST_AND_CLEAR  (item)
+             402 SWAP                 (TOS <-> TOS1)
+             404 BUILD_LIST           0
+             406 SWAP                 (TOS <-> TOS1)
+             408 GET_ITER
+             410 FOR_ITER             (to 470)
+             414 STORE_FAST           (item)
+             416 LOAD_GLOBAL          (NULL + isinstance)
+             426 LOAD_FAST            (item)
+             428 LOAD_GLOBAL          (dict)
+             438 CALL                 (2 positional)
+             446 TO_BOOL
+             454 POP_JUMP_IF_TRUE     (to 462)
+             458 JUMP_BACKWARD        (to 410)
+         >>  462 LOAD_FAST            (item)
+             464 LIST_APPEND          2
+             466 JUMP_BACKWARD        (to 410)
+         >>  470 END_FOR
+             472 POP_TOP
+             474 SWAP                 (TOS <-> TOS1)
+             476 STORE_FAST           (item)
+             478 SWAP                 (TOS <-> TOS1)
+             480 POP_TOP
+         >>  482 RETURN_VALUE
+
+463:     >>  484 END_FOR
+             486 POP_TOP
+
+467:     >>  488 BUILD_LIST           0
+             490 RETURN_VALUE
+         >>  492 SWAP                 (TOS <-> TOS1)
+             494 POP_TOP
+
+460:         496 SWAP                 (TOS <-> TOS1)
+             498 STORE_FAST           (item)
+             500 RERAISE              0
+         >>  502 SWAP                 (TOS <-> TOS1)
+             504 POP_TOP
+
+466:         506 SWAP                 (TOS <-> TOS1)
+             508 STORE_FAST           (item)
+             510 RERAISE              0
+

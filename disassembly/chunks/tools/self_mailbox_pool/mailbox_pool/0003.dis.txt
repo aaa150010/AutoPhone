@@ -1,0 +1,800 @@
+#   36: ('return', 'tuple[list[PoolEntry], list[str]]')
+#   37: ('return', 'dict[str, Any]')
+#   38: ('callback', 'Callable[[dict[str, Any], list[PoolEntry]], Any]', 'return', 'Any')
+#   39: ('state', 'dict[str, Any]', 'entry', 'PoolEntry', 'return', 'dict[str, Any]')
+#   40: ('',)
+#   41: ('item', 'dict[str, Any]', 'event', 'str', 'reason', 'str', 'return', 'None')
+#   42: ('return', 'int')
+#   43: ('lease_seconds', 'int', 'return', 'PoolEntry')
+#   44: ('email', 'str', 'reason', 'str', 'return', 'bool')
+#   45: ('entry', 'PoolEntry', 'reason', 'str', 'return', 'bool')
+#   46: ('email', 'str', 'require_active_lease', 'bool', 'return', 'PoolEntry | None')
+#   47: ('return', 'dict[str, int]')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: SCHEMA
+#    6: __init__
+#    7: _entries_unlocked
+#    8: entries
+#    9: staticmethod
+#   10: _empty_state
+#   11: _update
+#   12: _item
+#   13: _history
+#   14: validate
+#   15: reset_for_pool_replacement
+#   16: lease
+#   17: release
+#   18: mark_damaged
+#   19: mark_damaged_entry
+#   20: mark_consumed
+#   21: remove_entry
+#   22: restore_available
+#   23: restore_entry
+#   24: get_entry
+#   25: summary
+#   26: __static_attributes__
+284:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("MailboxPool")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (284)
+              12 STORE_NAME           (__firstlineno__)
+
+285:          14 LOAD_CONST           ("A lease-based mailbox URL pool safe for multiple local processes.")
+              16 STORE_NAME           (__doc__)
+
+287:          18 LOAD_CONST           ("self_mailbox_pool.v1")
+              20 STORE_NAME           (SCHEMA)
+
+289:          22 LOAD_CONST           (('pool_path', 'str | os.PathLike[str]', 'state_path', 'str | os.PathLike[str]', 'return', 'None'))
+              24 LOAD_CONST           (<Code311 code object __init__ at 0x105cb2a30, file tools\self_mailbox_pool\mailbox_pool.py>, line 289)
+              26 MAKE_FUNCTION
+              28 SET_FUNCTION_ATTRIBUTE 4
+              30 STORE_NAME           (__init__)
+
+295:          32 LOAD_CONST           (('return', 'tuple[list[PoolEntry], list[str]]'))
+              34 LOAD_CONST           (<Code311 code object _entries_unlocked at 0x105cb23d0, file tools\self_mailbox_pool\mailbox_pool.py>, line 295)
+              36 MAKE_FUNCTION
+              38 SET_FUNCTION_ATTRIBUTE 4
+              40 STORE_NAME           (_entries_unlocked)
+
+373:          42 LOAD_CONST           (('return', 'tuple[list[PoolEntry], list[str]]'))
+              44 LOAD_CONST           (<Code311 code object entries at 0x105cb2370, file tools\self_mailbox_pool\mailbox_pool.py>, line 373)
+              46 MAKE_FUNCTION
+              48 SET_FUNCTION_ATTRIBUTE 4
+              50 STORE_NAME           (entries)
+
+377:          52 LOAD_NAME            (staticmethod)
+
+378:          54 LOAD_CONST           (('return', 'dict[str, Any]'))
+              56 LOAD_CONST           (<Code311 code object _empty_state at 0x105cb2340, file tools\self_mailbox_pool\mailbox_pool.py>, line 377)
+              58 MAKE_FUNCTION
+              60 SET_FUNCTION_ATTRIBUTE 4
+
+377:          62 CALL                 (0 positional)
+
+378:          70 STORE_NAME           (_empty_state)
+
+381:          72 LOAD_CONST           (('callback', 'Callable[[dict[str, Any], list[PoolEntry]], Any]', 'return', 'Any'))
+              74 LOAD_CONST           (<Code311 code object _update at 0x105cb2280, file tools\self_mailbox_pool\mailbox_pool.py>, line 381)
+              76 MAKE_FUNCTION
+              78 SET_FUNCTION_ATTRIBUTE 4
+              80 STORE_NAME           (_update)
+
+404:          82 LOAD_NAME            (staticmethod)
+
+405:          84 LOAD_CONST           (('state', 'dict[str, Any]', 'entry', 'PoolEntry', 'return', 'dict[str, Any]'))
+              86 LOAD_CONST           (<Code311 code object _item at 0x105cb2250, file tools\self_mailbox_pool\mailbox_pool.py>, line 404)
+              88 MAKE_FUNCTION
+              90 SET_FUNCTION_ATTRIBUTE 4
+
+404:          92 CALL                 (0 positional)
+
+405:         100 STORE_NAME           (_item)
+
+413:         102 LOAD_NAME            (staticmethod)
+
+414:         104 LOAD_CONST           (('',))
+             106 LOAD_CONST           (('item', 'dict[str, Any]', 'event', 'str', 'reason', 'str', 'return', 'None'))
+             108 LOAD_CONST           (<Code311 code object _history at 0x105cb2220, file tools\self_mailbox_pool\mailbox_pool.py>, line 413)
+             110 MAKE_FUNCTION
+             112 SET_FUNCTION_ATTRIBUTE 4
+             114 SET_FUNCTION_ATTRIBUTE 1
+
+413:         116 CALL                 (0 positional)
+
+414:         124 STORE_NAME           (_history)
+
+421:         126 LOAD_CONST           (('return', 'dict[str, Any]'))
+             128 LOAD_CONST           (<Code311 code object validate at 0x105cb21f0, file tools\self_mailbox_pool\mailbox_pool.py>, line 421)
+             130 MAKE_FUNCTION
+             132 SET_FUNCTION_ATTRIBUTE 4
+             134 STORE_NAME           (validate)
+
+425:         136 LOAD_CONST           (('return', 'int'))
+             138 LOAD_CONST           (<Code311 code object reset_for_pool_replacement at 0x105cb2190, file tools\self_mailbox_pool\mailbox_pool.py>, line 425)
+             140 MAKE_FUNCTION
+             142 SET_FUNCTION_ATTRIBUTE 4
+             144 STORE_NAME           (reset_for_pool_replacement)
+
+436:         146 LOAD_CONST           (1800)
+             148 LOAD_CONST           (('lease_seconds',))
+             150 BUILD_CONST_KEY_MAP  1
+             152 LOAD_CONST           (('lease_seconds', 'int', 'return', 'PoolEntry'))
+             154 LOAD_CONST           (<Code311 code object lease at 0x105cb2130, file tools\self_mailbox_pool\mailbox_pool.py>, line 436)
+             156 MAKE_FUNCTION
+             158 SET_FUNCTION_ATTRIBUTE 4
+             160 SET_FUNCTION_ATTRIBUTE 2
+             162 STORE_NAME           (lease)
+
+459:         164 LOAD_CONST           ("")
+             166 LOAD_CONST           (('reason',))
+             168 BUILD_CONST_KEY_MAP  1
+             170 LOAD_CONST           (('email', 'str', 'reason', 'str', 'return', 'bool'))
+             172 LOAD_CONST           (<Code311 code object release at 0x105cb20d0, file tools\self_mailbox_pool\mailbox_pool.py>, line 459)
+             174 MAKE_FUNCTION
+             176 SET_FUNCTION_ATTRIBUTE 4
+             178 SET_FUNCTION_ATTRIBUTE 2
+             180 STORE_NAME           (release)
+
+476:         182 LOAD_CONST           ("mailbox_code_timeout")
+             184 LOAD_CONST           (('reason',))
+             186 BUILD_CONST_KEY_MAP  1
+             188 LOAD_CONST           (('email', 'str', 'reason', 'str', 'return', 'bool'))
+             190 LOAD_CONST           (<Code311 code object mark_damaged at 0x105cb2070, file tools\self_mailbox_pool\mailbox_pool.py>, line 476)
+             192 MAKE_FUNCTION
+             194 SET_FUNCTION_ATTRIBUTE 4
+             196 SET_FUNCTION_ATTRIBUTE 2
+             198 STORE_NAME           (mark_damaged)
+
+491:         200 LOAD_CONST           ("mailbox_code_timeout")
+             202 LOAD_CONST           (('reason',))
+             204 BUILD_CONST_KEY_MAP  1
+             206 LOAD_CONST           (('entry', 'PoolEntry', 'reason', 'str', 'return', 'bool'))
+             208 LOAD_CONST           (<Code311 code object mark_damaged_entry at 0x105cb8160, file tools\self_mailbox_pool\mailbox_pool.py>, line 491)
+             210 MAKE_FUNCTION
+             212 SET_FUNCTION_ATTRIBUTE 4
+             214 SET_FUNCTION_ATTRIBUTE 2
+             216 STORE_NAME           (mark_damaged_entry)
+
+512:         218 LOAD_CONST           ("completed")
+             220 LOAD_CONST           (('reason',))
+             222 BUILD_CONST_KEY_MAP  1
+             224 LOAD_CONST           (('email', 'str', 'reason', 'str', 'return', 'bool'))
+             226 LOAD_CONST           (<Code311 code object mark_consumed at 0x105cb81c0, file tools\self_mailbox_pool\mailbox_pool.py>, line 512)
+             228 MAKE_FUNCTION
+             230 SET_FUNCTION_ATTRIBUTE 4
+             232 SET_FUNCTION_ATTRIBUTE 2
+             234 STORE_NAME           (mark_consumed)
+
+528:         236 LOAD_CONST           ("sub2_uploaded")
+             238 LOAD_CONST           (('reason',))
+             240 BUILD_CONST_KEY_MAP  1
+             242 LOAD_CONST           (('entry', 'PoolEntry', 'reason', 'str', 'return', 'bool'))
+             244 LOAD_CONST           (<Code311 code object remove_entry at 0x105cb8220, file tools\self_mailbox_pool\mailbox_pool.py>, line 528)
+             246 MAKE_FUNCTION
+             248 SET_FUNCTION_ATTRIBUTE 4
+             250 SET_FUNCTION_ATTRIBUTE 2
+             252 STORE_NAME           (remove_entry)
+
+558:         254 LOAD_CONST           ("manual_restore")
+             256 LOAD_CONST           (('reason',))
+             258 BUILD_CONST_KEY_MAP  1
+             260 LOAD_CONST           (('email', 'str', 'reason', 'str', 'return', 'bool'))
+             262 LOAD_CONST           (<Code311 code object restore_available at 0x105cb82b0, file tools\self_mailbox_pool\mailbox_pool.py>, line 558)
+             264 MAKE_FUNCTION
+             266 SET_FUNCTION_ATTRIBUTE 4
+             268 SET_FUNCTION_ATTRIBUTE 2
+             270 STORE_NAME           (restore_available)
+
+574:         272 LOAD_CONST           ("manual_restore")
+             274 LOAD_CONST           (('reason',))
+             276 BUILD_CONST_KEY_MAP  1
+             278 LOAD_CONST           (('entry', 'PoolEntry', 'reason', 'str', 'return', 'bool'))
+             280 LOAD_CONST           (<Code311 code object restore_entry at 0x105cb8310, file tools\self_mailbox_pool\mailbox_pool.py>, line 574)
+             282 MAKE_FUNCTION
+             284 SET_FUNCTION_ATTRIBUTE 4
+             286 SET_FUNCTION_ATTRIBUTE 2
+             288 STORE_NAME           (restore_entry)
+
+592:         290 LOAD_CONST           (False)
+             292 LOAD_CONST           (('require_active_lease',))
+             294 BUILD_CONST_KEY_MAP  1
+             296 LOAD_CONST           (('email', 'str', 'require_active_lease', 'bool', 'return', 'PoolEntry | None'))
+             298 LOAD_CONST           (<Code311 code object get_entry at 0x105cb8340, file tools\self_mailbox_pool\mailbox_pool.py>, line 592)
+             300 MAKE_FUNCTION
+             302 SET_FUNCTION_ATTRIBUTE 4
+             304 SET_FUNCTION_ATTRIBUTE 2
+             306 STORE_NAME           (get_entry)
+
+617:         308 LOAD_CONST           (('return', 'dict[str, int]'))
+             310 LOAD_CONST           (<Code311 code object summary at 0x105cb8370, file tools\self_mailbox_pool\mailbox_pool.py>, line 617)
+             312 MAKE_FUNCTION
+             314 SET_FUNCTION_ATTRIBUTE 4
+             316 STORE_NAME           (summary)
+             318 LOAD_CONST           (('lock_name', 'pool_lock_name', 'pool_path', 'state_path'))
+             320 STORE_NAME           (__static_attributes__)
+             322 RETURN_CONST         (None)
+
+
+# Method Name:       redact_entry
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        645
+# Constants:
+#    0: 'Return operational data without exposing mailbox credentials or URLs.'
+#    1: ('email', 'line_no', 'mailbox_type', 'mailbox_origin')
+# Names:
+#    0: email
+#    1: line_no
+#    2: mailbox_type
+#    3: mailbox_origin
+# Varnames:
+#	entry
+# Positional arguments:
+#	entry
+645:           0 RESUME               0
+
+648:           2 LOAD_FAST            (entry)
+               4 LOAD_ATTR            (email)
+
+649:          24 LOAD_FAST            (entry)
+              26 LOAD_ATTR            (line_no)
+
+650:          46 LOAD_FAST            (entry)
+              48 LOAD_ATTR            (mailbox_type)
+
+651:          68 LOAD_FAST            (entry)
+              70 LOAD_ATTR            (mailbox_origin)
+
+647:          90 LOAD_CONST           (('email', 'line_no', 'mailbox_type', 'mailbox_origin'))
+              92 BUILD_CONST_KEY_MAP  4
+              94 RETURN_VALUE
+
+
+# Method Name:       iter_entries
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        655
+# Constants:
+#    0: None
+#    1: 'pool contains invalid rows: '
+#    2: '; '
+#    3: 3
+# Names:
+#    0: entries
+#    1: MailboxPoolError
+#    2: join
+# Varnames:
+#	pool, entries, errors
+# Positional arguments:
+#	pool
+# Local variables:
+#    1: entries
+#    2: errors
+655:           0 RESUME               0
+
+656:           2 LOAD_FAST            (pool)
+               4 LOAD_ATTR            (NULL|self + entries)
+              24 CALL                 (0 positional)
+              32 UNPACK_SEQUENCE      2
+              36 STORE_FAST_STORE_FAST (entries, errors)
+
+657:          38 LOAD_FAST            (errors)
+              40 TO_BOOL
+              48 POP_JUMP_IF_FALSE    (to 116)
+
+658:          52 LOAD_GLOBAL          (NULL + MailboxPoolError)
+              62 LOAD_CONST           ("pool contains invalid rows: ")
+              64 LOAD_CONST           ("; ")
+              66 LOAD_ATTR            (NULL|self + join)
+              86 LOAD_FAST            (errors)
+              88 LOAD_CONST           (None)
+              90 LOAD_CONST           (3)
+              92 BINARY_SLICE
+              94 CALL                 (1 positional)
+             102 BINARY_OP            (+)
+             106 CALL                 (1 positional)
+             114 RAISE_VARARGS        (exception instance)
+
+659:     >>  116 LOAD_FAST            (entries)
+             118 RETURN_VALUE
+
+
+# Method Name:       <genexpr>
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        121
+# Constants:
+#    0: None
+# Varnames:
+#	.0, item
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: item
+# Free variables:
+#    0: lower
+               0 COPY_FREE_VARS       1
+
+121:           2 RETURN_GENERATOR
+               4 POP_TOP
+               6 RESUME               0
+               8 LOAD_FAST            (.0)
+              10 GET_ITER
+              12 FOR_ITER             (to 34)
+              16 STORE_FAST_LOAD_FAST (item, item)
+              18 LOAD_DEREF           (lower)
+              20 CONTAINS_OP          (in)
+              24 YIELD_VALUE          0
+              26 RESUME               5
+              28 POP_TOP
+              30 JUMP_BACKWARD        (to 12)
+         >>   34 END_FOR
+              36 POP_TOP
+              38 RETURN_CONST         (None)
+         >>   40 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              42 RERAISE              1
+
+ExceptionTable:
+  6 to 38 -> 40 [0] lasti
+
+# Method Name:       mailbox_origin
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        148
+# Constants:
+#    0: None
+# Names:
+#    0: _origin
+#    1: mailbox_url
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+148:           0 RESUME               0
+
+150:           2 LOAD_GLOBAL          (NULL + _origin)
+              12 LOAD_FAST            (self)
+              14 LOAD_ATTR            (mailbox_url)
+              34 CALL                 (1 positional)
+              42 RETURN_VALUE
+
+
+# Method Name:       __init__
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 2
+# Number of locals:  5
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        167
+# Constants:
+#    0: None
+#    1: 3
+#    2: 60
+#    3: {'https', 'http'}
+#    4: 'mailbox_url must be a complete http(s) URL'
+# Names:
+#    0: _clean
+#    1: mailbox_url
+#    2: max
+#    3: min
+#    4: int
+#    5: timeout_seconds
+#    6: proxy
+#    7: last_snapshot
+#    8: urllib
+#    9: parse
+#   10: urlparse
+#   11: scheme
+#   12: netloc
+#   13: MailboxPoolError
+# Varnames:
+#	self, mailbox_url, timeout_seconds, proxy, parsed
+# Positional arguments:
+#	self, mailbox_url
+# Local variables:
+#    2: timeout_seconds
+#    3: proxy
+#    4: parsed
+167:           0 RESUME               0
+
+168:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (mailbox_url)
+              14 CALL                 (1 positional)
+              22 LOAD_FAST            (self)
+              24 STORE_ATTR           (mailbox_url)
+
+169:          34 LOAD_GLOBAL          (NULL + max)
+              44 LOAD_CONST           (3)
+              46 LOAD_GLOBAL          (NULL + min)
+              56 LOAD_GLOBAL          (NULL + int)
+              66 LOAD_FAST            (timeout_seconds)
+              68 CALL                 (1 positional)
+              76 LOAD_CONST           (60)
+              78 CALL                 (2 positional)
+              86 CALL                 (2 positional)
+              94 LOAD_FAST            (self)
+              96 STORE_ATTR           (timeout_seconds)
+
+170:         106 LOAD_GLOBAL          (NULL + _clean)
+             116 LOAD_FAST            (proxy)
+             118 CALL                 (1 positional)
+             126 LOAD_FAST            (self)
+             128 STORE_ATTR           (proxy)
+
+171:         138 LOAD_CONST           (None)
+             140 LOAD_FAST            (self)
+             142 STORE_ATTR           (last_snapshot)
+
+172:         152 LOAD_GLOBAL          (urllib)
+             162 LOAD_ATTR            (parse)
+             182 LOAD_ATTR            (NULL|self + urlparse)
+             202 LOAD_FAST            (self)
+             204 LOAD_ATTR            (mailbox_url)
+             224 CALL                 (1 positional)
+             232 STORE_FAST           (parsed)
+
+173:         234 LOAD_FAST            (parsed)
+             236 LOAD_ATTR            (scheme)
+             256 LOAD_CONST           ({'https', 'http'})
+             258 CONTAINS_OP          (not in)
+             262 POP_JUMP_IF_TRUE     (to 300)
+             266 LOAD_FAST            (parsed)
+             268 LOAD_ATTR            (netloc)
+             288 TO_BOOL
+             296 POP_JUMP_IF_TRUE     (to 322)
+
+174:     >>  300 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             310 LOAD_CONST           ("mailbox_url must be a complete http(s) URL")
+             312 CALL                 (1 positional)
+             320 RAISE_VARARGS        (exception instance)
+
+173:     >>  322 RETURN_CONST         (None)
+
+
+# Method Name:       _opener
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        176
+# Constants:
+#    0: None
+#    1: ('http', 'https')
+# Names:
+#    0: proxy
+#    1: append
+#    2: urllib
+#    3: request
+#    4: ProxyHandler
+#    5: build_opener
+# Varnames:
+#	self, handlers
+# Positional arguments:
+#	self
+# Local variables:
+#    1: handlers
+176:           0 RESUME               0
+
+179:           2 BUILD_LIST           0
+               4 STORE_FAST           (handlers)
+
+180:           6 LOAD_FAST            (self)
+               8 LOAD_ATTR            (proxy)
+              28 TO_BOOL
+              36 POP_JUMP_IF_FALSE    (to 180)
+
+181:          40 LOAD_FAST            (handlers)
+              42 LOAD_ATTR            (NULL|self + append)
+              62 LOAD_GLOBAL          (urllib)
+              72 LOAD_ATTR            (request)
+              92 LOAD_ATTR            (NULL|self + ProxyHandler)
+             112 LOAD_FAST            (self)
+             114 LOAD_ATTR            (proxy)
+             134 LOAD_FAST            (self)
+             136 LOAD_ATTR            (proxy)
+             156 LOAD_CONST           (('http', 'https'))
+             158 BUILD_CONST_KEY_MAP  2
+             160 CALL                 (1 positional)
+             168 CALL                 (1 positional)
+             176 POP_TOP
+             178 JUMP_FORWARD         (to 272)
+
+183:     >>  180 LOAD_FAST            (handlers)
+             182 LOAD_ATTR            (NULL|self + append)
+             202 LOAD_GLOBAL          (urllib)
+             212 LOAD_ATTR            (request)
+             232 LOAD_ATTR            (NULL|self + ProxyHandler)
+             252 BUILD_MAP            0
+             254 CALL                 (1 positional)
+             262 CALL                 (1 positional)
+             270 POP_TOP
+
+184:     >>  272 LOAD_GLOBAL          (urllib)
+             282 LOAD_ATTR            (request)
+             302 LOAD_ATTR            (build_opener)
+             322 PUSH_NULL
+             324 LOAD_FAST            (handlers)
+             326 CALL_FUNCTION_EX     (positional arguments only)
+             328 RETURN_VALUE
+
+
+# Method Name:       fetch_raw
+# Filename:          tools\self_mailbox_pool\mailbox_pool.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  8
+# Stack size:        9
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        186
+# Constants:
+#    0: None
+#    1: 'application/json,text/plain,text/html,*/*'
+#    2: 'self-mailbox-pool/1.0'
+#    3: 'no-cache, no-store, max-age=0'
+#    4: 'no-cache'
+#    5: ('Accept', 'User-Agent', 'Cache-Control', 'Pragma')
+#    6: 'GET'
+#    7: ('headers', 'method')
+#    8: ('timeout',)
+#    9: 2097152
+#   10: 'utf-8'
+#   11: 'replace'
+#   12: ('errors',)
+#   13: 'status'
+#   14: 512
+#   15: ''
+#   16: 'mailbox_url HTTP '
+#   17: ': '
+#   18: 160
+#   19: 'mailbox_url request failed: '
+#   20: 200
+#   21: 300
+#   22: 'mailbox_dead: '
+# Names:
+#    0: urllib
+#    1: request
+#    2: Request
+#    3: mailbox_url
+#    4: _opener
+#    5: open
+#    6: timeout_seconds
+#    7: read
+#    8: decode
+#    9: int
+#   10: getattr
+#   11: getcode
+#   12: error
+#   13: HTTPError
+#   14: fp
+#   15: MailboxPoolError
+#   16: code
+#   17: URLError
+#   18: TimeoutError
+#   19: OSError
+#   20: _mailbox_dead_reason
+# Varnames:
+#	self, request, response, raw, status, exc, body, dead
+# Positional arguments:
+#	self
+# Local variables:
+#    1: request
+#    2: response
+#    3: raw
+#    4: status
+#    5: exc
+#    6: body
+#    7: dead
+186:           0 RESUME               0
+
+187:           2 LOAD_GLOBAL          (urllib)
+              12 LOAD_ATTR            (request)
+              32 LOAD_ATTR            (NULL|self + Request)
+
+188:          52 LOAD_FAST            (self)
+              54 LOAD_ATTR            (mailbox_url)
+
+190:          74 LOAD_CONST           ("application/json,text/plain,text/html,*/*")
+
+191:          76 LOAD_CONST           ("self-mailbox-pool/1.0")
+
+192:          78 LOAD_CONST           ("no-cache, no-store, max-age=0")
+
+193:          80 LOAD_CONST           ("no-cache")
+
+189:          82 LOAD_CONST           (('Accept', 'User-Agent', 'Cache-Control', 'Pragma'))
+              84 BUILD_CONST_KEY_MAP  4
+
+195:          86 LOAD_CONST           ("GET")
+
+187:          88 LOAD_CONST           (('headers', 'method'))
+              90 CALL_KW              3
+              92 STORE_FAST           (request)
+
+197:          94 NOP
+
+198:          96 LOAD_FAST            (self)
+              98 LOAD_ATTR            (NULL|self + _opener)
+             118 CALL                 (0 positional)
+             126 LOAD_ATTR            (NULL|self + open)
+             146 LOAD_FAST_LOAD_FAST  (request, self)
+             148 LOAD_ATTR            (timeout_seconds)
+             168 LOAD_CONST           (('timeout',))
+             170 CALL_KW              2
+             172 BEFORE_WITH
+             174 STORE_FAST           (response)
+
+199:         176 LOAD_FAST            (response)
+             178 LOAD_ATTR            (NULL|self + read)
+             198 LOAD_CONST           (2097152)
+             200 CALL                 (1 positional)
+             208 LOAD_ATTR            (NULL|self + decode)
+             228 LOAD_CONST           ("utf-8")
+             230 LOAD_CONST           ("replace")
+             232 LOAD_CONST           (('errors',))
+             234 CALL_KW              2
+             236 STORE_FAST           (raw)
+
+200:         238 LOAD_GLOBAL          (NULL + int)
+             248 LOAD_GLOBAL          (NULL + getattr)
+             258 LOAD_FAST            (response)
+             260 LOAD_CONST           ("status")
+             262 LOAD_FAST            (response)
+             264 LOAD_ATTR            (NULL|self + getcode)
+             284 CALL                 (0 positional)
+             292 CALL                 (3 positional)
+             300 CALL                 (1 positional)
+             308 STORE_FAST           (status)
+
+198:         310 LOAD_CONST           (None)
+             312 LOAD_CONST           (None)
+             314 LOAD_CONST           (None)
+             316 CALL                 (2 positional)
+             324 POP_TOP
+
+206:         326 LOAD_FAST_CHECK      (status)
+             328 LOAD_CONST           (200)
+             330 COMPARE_OP           (<)
+             334 POP_JUMP_IF_TRUE     (to 350)
+             338 LOAD_FAST            (status)
+             340 LOAD_CONST           (300)
+             342 COMPARE_OP           (>=)
+             346 POP_JUMP_IF_FALSE    (to 378)
+
+207:     >>  350 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             360 LOAD_CONST           ("mailbox_url HTTP ")
+             362 LOAD_FAST            (status)
+             364 FORMAT_SIMPLE
+             366 BUILD_STRING         2
+             368 CALL                 (1 positional)
+             376 RAISE_VARARGS        (exception instance)
+
+208:     >>  378 LOAD_GLOBAL          (NULL + _mailbox_dead_reason)
+             388 LOAD_FAST_CHECK      (raw)
+             390 CALL                 (1 positional)
+             398 STORE_FAST           (dead)
+
+209:         400 LOAD_FAST            (dead)
+             402 TO_BOOL
+             410 POP_JUMP_IF_FALSE    (to 442)
+
+210:         414 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             424 LOAD_CONST           ("mailbox_dead: ")
+             426 LOAD_FAST            (dead)
+             428 FORMAT_SIMPLE
+             430 BUILD_STRING         2
+             432 CALL                 (1 positional)
+             440 RAISE_VARARGS        (exception instance)
+
+211:     >>  442 LOAD_FAST            (raw)
+             444 RETURN_VALUE
+
+198:     >>  446 PUSH_EXC_INFO
+             448 WITH_EXCEPT_START    0
+             450 TO_BOOL
+             458 POP_JUMP_IF_TRUE     (to 464)
+             462 RERAISE              2
+         >>  464 POP_TOP
+             466 POP_EXCEPT
+             468 POP_TOP
+             470 POP_TOP
+             472 JUMP_BACKWARD_NO_INTERRUPT (to 326)
+         >>  474 COPY                 3
+             476 POP_EXCEPT
+             478 RERAISE              1
+         >>  480 PUSH_EXC_INFO
+
+201:         482 LOAD_GLOBAL          (urllib)
+             492 LOAD_ATTR            (error)
+             512 LOAD_ATTR            (HTTPError)
+             532 CHECK_EXC_MATCH
+             534 POP_JUMP_IF_FALSE    (to 710)
+             538 STORE_FAST           (exc)
+
+202:         540 LOAD_FAST            (exc)
+             542 LOAD_ATTR            (fp)
+             562 TO_BOOL
+             570 POP_JUMP_IF_FALSE    (to 636)
+             574 LOAD_FAST            (exc)
+             576 LOAD_ATTR            (NULL|self + read)
+             596 LOAD_CONST           (512)
+             598 CALL                 (1 positional)
+             606 LOAD_ATTR            (NULL|self + decode)
+             626 LOAD_CONST           ("utf-8")
+             628 LOAD_CONST           ("replace")
+             630 LOAD_CONST           (('errors',))
+             632 CALL_KW              2
+             634 JUMP_FORWARD         (to 638)
+         >>  636 LOAD_CONST           ("")
+         >>  638 STORE_FAST           (body)
+
+203:         640 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             650 LOAD_CONST           ("mailbox_url HTTP ")
+             652 LOAD_FAST            (exc)
+             654 LOAD_ATTR            (code)
+             674 FORMAT_SIMPLE
+             676 LOAD_CONST           (": ")
+             678 LOAD_FAST            (body)
+             680 LOAD_CONST           (None)
+             682 LOAD_CONST           (160)
+             684 BINARY_SLICE
+             686 FORMAT_SIMPLE
+             688 BUILD_STRING         4
+             690 CALL                 (1 positional)
+             698 LOAD_FAST            (exc)
+             700 RAISE_VARARGS        (exception instance with __cause__)
+         >>  702 LOAD_CONST           (None)
+             704 STORE_FAST           (exc)
+             706 DELETE_FAST          (exc)
+             708 RERAISE              1
+
+204:     >>  710 LOAD_GLOBAL          (urllib)
+             720 LOAD_ATTR            (error)
+             740 LOAD_ATTR            (URLError)
+             760 LOAD_GLOBAL          (TimeoutError)
+             770 LOAD_GLOBAL          (OSError)
+             780 BUILD_TUPLE          3
+             782 CHECK_EXC_MATCH
+             784 POP_JUMP_IF_FALSE    (to 828)
+             788 STORE_FAST           (exc)
+
+205:         790 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             800 LOAD_CONST           ("mailbox_url request failed: ")
+             802 LOAD_FAST            (exc)
+             804 FORMAT_SIMPLE
+             806 BUILD_STRING         2
+             808 CALL                 (1 positional)
+             816 LOAD_FAST            (exc)

@@ -50,6 +50,7 @@ class LegacyUiTests(unittest.TestCase):
         self.assertIn('id="sub2_password" type="password"', module._HTML)
         self.assertIn("input.type='password'", module._LOGIN_FORM_USABILITY_INJECT)
         self.assertIn('const MAX_PRICE_DEFAULT = "0.07";', module._LOGIN_FORM_USABILITY_INJECT)
+        self.assertIn("const MAX_PRICE_HARD_LIMIT = 0.18;", module._LOGIN_FORM_USABILITY_INJECT)
         self.assertIn('const MIN_PRICE_DEFAULT = "0.02";', module._LOGIN_FORM_USABILITY_INJECT)
         self.assertIn('const SMS_PRIORITY_COUNTRIES = ["9", "8"]', module._LOGIN_FORM_USABILITY_INJECT)
         self.assertNotIn("nvtoken", module._LOGIN_FORM_USABILITY_INJECT.lower())

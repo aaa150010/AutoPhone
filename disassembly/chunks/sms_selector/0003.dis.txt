@@ -1,0 +1,800 @@
+             534 LOAD_FAST            (data)
+             536 LOAD_ATTR            (NULL|self + get)
+             556 LOAD_CONST           ("countries")
+             558 CALL                 (1 positional)
+             566 JUMP_FORWARD         (to 570)
+         >>  568 BUILD_MAP            0
+         >>  570 STORE_FAST           (countries)
+
+131:         572 LOAD_GLOBAL          (NULL + isinstance)
+             582 LOAD_FAST            (countries)
+             584 LOAD_GLOBAL          (dict)
+             594 CALL                 (2 positional)
+             602 TO_BOOL
+             610 POP_JUMP_IF_FALSE    (to 846)
+
+132:         614 LOAD_FAST            (countries)
+             616 LOAD_ATTR            (NULL|self + items)
+             636 CALL                 (0 positional)
+             644 GET_ITER
+             646 FOR_ITER             (to 840)
+             650 UNPACK_SEQUENCE      2
+             654 STORE_FAST_STORE_FAST (country, row)
+
+133:         656 LOAD_GLOBAL          (NULL + str)
+         >>  666 LOAD_FAST            (country)
+             668 COPY                 1
+             670 TO_BOOL
+             678 POP_JUMP_IF_TRUE     (to 686)
+             682 POP_TOP
+             684 LOAD_CONST           ("")
+         >>  686 CALL                 (1 positional)
+             694 LOAD_ATTR            (NULL|self + strip)
+             714 CALL                 (0 positional)
+             722 STORE_FAST           (country)
+
+134:         724 LOAD_FAST            (country)
+             726 TO_BOOL
+             734 POP_JUMP_IF_TRUE     (to 742)
+             738 JUMP_BACKWARD        (to 646)
+         >>  742 LOAD_GLOBAL          (NULL + isinstance)
+             752 LOAD_FAST            (row)
+             754 LOAD_GLOBAL          (dict)
+             764 CALL                 (2 positional)
+             772 TO_BOOL
+             780 POP_JUMP_IF_TRUE     (to 788)
+             784 JUMP_BACKWARD        (to 646)
+
+135:     >>  788 LOAD_GLOBAL          (NULL + dict)
+             798 LOAD_FAST            (row)
+             800 CALL                 (1 positional)
+             808 LOAD_FAST            (self)
+             810 LOAD_ATTR            (country_stats)
+             830 LOAD_FAST            (country)
+             832 STORE_SUBSCR
+             836 JUMP_BACKWARD        (to 646)
+
+132:     >>  840 END_FOR
+             842 POP_TOP
+             844 RETURN_CONST         (None)
+
+131:     >>  846 RETURN_CONST         (None)
+         >>  848 PUSH_EXC_INFO
+
+122:         850 LOAD_GLOBAL          (Exception)
+             860 CHECK_EXC_MATCH
+             862 POP_JUMP_IF_FALSE    (to 872)
+             866 POP_TOP
+
+123:         868 POP_EXCEPT
+             870 RETURN_CONST         (None)
+
+122:     >>  872 RERAISE              0
+         >>  874 COPY                 3
+             876 POP_EXCEPT
+             878 RERAISE              1
+
+ExceptionTable:
+  68 to 154 -> 848 [0]
+  848 to 866 -> 874 [1] lasti
+  872 to 872 -> 874 [1] lasti
+
+# Method Name:       _update_shared_stats
+# Filename:          sms_selector.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        137
+# Constants:
+#    0: None
+#    1: <Code311 code object _update at 0x106022760, file sms_selector.py>, line 140
+#    2: 'sms_smart_stats.lock'
+#    3: 'routes'
+#    4: ('data', 'Any', 'return', 'dict')
+# Names:
+#    0: _key_text
+#    1: locked_update_json
+#    2: stats_path
+#    3: get
+#    4: isinstance
+#    5: dict
+# Varnames:
+#	self, key, update_fn, _update, updated, row
+# Positional arguments:
+#	self, key, update_fn
+# Local variables:
+#    3: _update
+#    4: updated
+#    5: row
+# Cell variables:
+#    0: update_fn
+#    1: raw_key
+               0 MAKE_CELL            (update_fn)
+               2 MAKE_CELL            (raw_key)
+
+137:           4 RESUME               0
+
+138:           6 LOAD_FAST            (self)
+               8 LOAD_ATTR            (NULL|self + _key_text)
+              28 LOAD_FAST            (key)
+              30 CALL                 (1 positional)
+              38 STORE_DEREF          (raw_key)
+
+140:          40 LOAD_CONST           (('data', 'Any', 'return', 'dict'))
+              42 LOAD_FAST            (raw_key)
+              44 LOAD_FAST            (update_fn)
+              46 BUILD_TUPLE          2
+              48 LOAD_CONST           (<Code311 code object _update at 0x106022760, file sms_selector.py>, line 140)
+              50 MAKE_FUNCTION
+              52 SET_FUNCTION_ATTRIBUTE 8
+              54 SET_FUNCTION_ATTRIBUTE 4
+              56 STORE_FAST           (_update)
+
+155:          58 LOAD_GLOBAL          (NULL + locked_update_json)
+              68 LOAD_FAST            (self)
+              70 LOAD_ATTR            (stats_path)
+              90 LOAD_CONST           ("sms_smart_stats.lock")
+              92 LOAD_CONST           ("routes")
+              94 BUILD_MAP            0
+              96 BUILD_MAP            1
+              98 LOAD_FAST            (_update)
+             100 CALL                 (4 positional)
+             108 STORE_FAST           (updated)
+
+156:         110 LOAD_FAST            (updated)
+             112 COPY                 1
+             114 TO_BOOL
+             122 POP_JUMP_IF_TRUE     (to 130)
+             126 POP_TOP
+             128 BUILD_MAP            0
+         >>  130 LOAD_ATTR            (NULL|self + get)
+             150 LOAD_CONST           ("routes")
+             152 CALL                 (1 positional)
+             160 COPY                 1
+             162 TO_BOOL
+             170 POP_JUMP_IF_TRUE     (to 178)
+             174 POP_TOP
+             176 BUILD_MAP            0
+         >>  178 LOAD_ATTR            (NULL|self + get)
+             198 LOAD_DEREF           (raw_key)
+             200 CALL                 (1 positional)
+             208 COPY                 1
+             210 TO_BOOL
+             218 POP_JUMP_IF_TRUE     (to 226)
+             222 POP_TOP
+             224 BUILD_MAP            0
+         >>  226 STORE_FAST           (row)
+
+157:         228 LOAD_GLOBAL          (NULL + isinstance)
+             238 LOAD_FAST            (row)
+             240 LOAD_GLOBAL          (dict)
+             250 CALL                 (2 positional)
+             258 TO_BOOL
+             266 POP_JUMP_IF_FALSE    (to 292)
+             270 LOAD_GLOBAL          (NULL + dict)
+             280 LOAD_FAST            (row)
+             282 CALL                 (1 positional)
+             290 RETURN_VALUE
+         >>  292 BUILD_MAP            0
+             294 RETURN_VALUE
+
+
+# Method Name:       _update_shared_route_and_country
+# Filename:          sms_selector.py
+# Argument count:    4
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  8
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        159
+# Constants:
+#    0: None
+#    1: 0
+#    2: <Code311 code object _update at 0x1060227c0, file sms_selector.py>, line 168
+#    3: 'sms_smart_stats.lock'
+#    4: ('routes', 'countries')
+#    5: 'routes'
+#    6: 'countries'
+#    7: ('data', 'Any', 'return', 'dict')
+# Names:
+#    0: _key_text
+#    1: locked_update_json
+#    2: stats_path
+#    3: get
+#    4: isinstance
+#    5: dict
+# Varnames:
+#	self, key, route_update_fn, country_update_fn, _update, updated, route, country_row
+# Positional arguments:
+#	self, key, route_update_fn, country_update_fn
+# Local variables:
+#    4: _update
+#    5: updated
+#    6: route
+#    7: country_row
+# Cell variables:
+#    0: route_update_fn
+#    1: country_update_fn
+#    2: country
+#    3: raw_key
+               0 MAKE_CELL            (route_update_fn)
+               2 MAKE_CELL            (country_update_fn)
+               4 MAKE_CELL            (country)
+               6 MAKE_CELL            (raw_key)
+
+159:           8 RESUME               0
+
+165:          10 LOAD_FAST            (self)
+              12 LOAD_ATTR            (NULL|self + _key_text)
+              32 LOAD_FAST            (key)
+              34 CALL                 (1 positional)
+              42 STORE_DEREF          (raw_key)
+
+166:          44 LOAD_FAST            (key)
+              46 LOAD_CONST           (0)
+              48 BINARY_SUBSCR
+              52 STORE_DEREF          (country)
+
+168:          54 LOAD_CONST           (('data', 'Any', 'return', 'dict'))
+              56 LOAD_FAST            (country)
+              58 LOAD_FAST            (country_update_fn)
+              60 LOAD_FAST            (raw_key)
+              62 LOAD_FAST            (route_update_fn)
+              64 BUILD_TUPLE          4
+              66 LOAD_CONST           (<Code311 code object _update at 0x1060227c0, file sms_selector.py>, line 168)
+              68 MAKE_FUNCTION
+              70 SET_FUNCTION_ATTRIBUTE 8
+              72 SET_FUNCTION_ATTRIBUTE 4
+              74 STORE_FAST           (_update)
+
+195:          76 LOAD_GLOBAL          (NULL + locked_update_json)
+              86 LOAD_FAST            (self)
+              88 LOAD_ATTR            (stats_path)
+             108 LOAD_CONST           ("sms_smart_stats.lock")
+             110 BUILD_MAP            0
+             112 BUILD_MAP            0
+             114 LOAD_CONST           (('routes', 'countries'))
+             116 BUILD_CONST_KEY_MAP  2
+             118 LOAD_FAST            (_update)
+             120 CALL                 (4 positional)
+             128 STORE_FAST           (updated)
+
+196:         130 LOAD_FAST            (updated)
+             132 COPY                 1
+             134 TO_BOOL
+             142 POP_JUMP_IF_TRUE     (to 150)
+             146 POP_TOP
+             148 BUILD_MAP            0
+         >>  150 LOAD_ATTR            (NULL|self + get)
+             170 LOAD_CONST           ("routes")
+             172 CALL                 (1 positional)
+             180 COPY                 1
+             182 TO_BOOL
+             190 POP_JUMP_IF_TRUE     (to 198)
+             194 POP_TOP
+             196 BUILD_MAP            0
+         >>  198 LOAD_ATTR            (NULL|self + get)
+             218 LOAD_DEREF           (raw_key)
+             220 CALL                 (1 positional)
+             228 COPY                 1
+             230 TO_BOOL
+             238 POP_JUMP_IF_TRUE     (to 246)
+             242 POP_TOP
+             244 BUILD_MAP            0
+         >>  246 STORE_FAST           (route)
+
+197:         248 LOAD_FAST            (updated)
+             250 COPY                 1
+             252 TO_BOOL
+             260 POP_JUMP_IF_TRUE     (to 268)
+             264 POP_TOP
+             266 BUILD_MAP            0
+         >>  268 LOAD_ATTR            (NULL|self + get)
+             288 LOAD_CONST           ("countries")
+             290 CALL                 (1 positional)
+             298 COPY                 1
+             300 TO_BOOL
+             308 POP_JUMP_IF_TRUE     (to 316)
+             312 POP_TOP
+             314 BUILD_MAP            0
+         >>  316 LOAD_ATTR            (NULL|self + get)
+             336 LOAD_DEREF           (country)
+             338 CALL                 (1 positional)
+             346 COPY                 1
+             348 TO_BOOL
+             356 POP_JUMP_IF_TRUE     (to 364)
+             360 POP_TOP
+             362 BUILD_MAP            0
+         >>  364 STORE_FAST           (country_row)
+
+199:         366 LOAD_GLOBAL          (NULL + isinstance)
+             376 LOAD_FAST            (route)
+             378 LOAD_GLOBAL          (dict)
+             388 CALL                 (2 positional)
+             396 TO_BOOL
+             404 POP_JUMP_IF_FALSE    (to 430)
+             408 LOAD_GLOBAL          (NULL + dict)
+             418 LOAD_FAST            (route)
+             420 CALL                 (1 positional)
+             428 JUMP_FORWARD         (to 432)
+         >>  430 BUILD_MAP            0
+
+200:     >>  432 LOAD_GLOBAL          (NULL + isinstance)
+             442 LOAD_FAST            (country_row)
+             444 LOAD_GLOBAL          (dict)
+             454 CALL                 (2 positional)
+             462 TO_BOOL
+             470 POP_JUMP_IF_FALSE    (to 498)
+             474 LOAD_GLOBAL          (NULL + dict)
+             484 LOAD_FAST            (country_row)
+             486 CALL                 (1 positional)
+
+198:         494 BUILD_TUPLE          2
+             496 RETURN_VALUE
+
+200:     >>  498 BUILD_MAP            0
+
+198:         500 BUILD_TUPLE          2
+             502 RETURN_VALUE
+
+
+# Method Name:       _log
+# Filename:          sms_selector.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        203
+# Constants:
+#    0: None
+# Names:
+#    0: log_fn
+# Varnames:
+#	self, message
+# Positional arguments:
+#	self, message
+203:           0 RESUME               0
+
+204:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (log_fn)
+              24 TO_BOOL
+              32 POP_JUMP_IF_FALSE    (to 72)
+
+205:          36 LOAD_FAST            (self)
+              38 LOAD_ATTR            (NULL|self + log_fn)
+              58 LOAD_FAST            (message)
+              60 CALL                 (1 positional)
+              68 POP_TOP
+              70 RETURN_CONST         (None)
+
+204:     >>   72 RETURN_CONST         (None)
+
+
+# Method Name:       _cooldown_until
+# Filename:          sms_selector.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        207
+# Constants:
+#    0: None
+#    1: 'cooldown_until'
+#    2: 0
+# Names:
+#    0: stats
+#    1: get
+#    2: float
+# Varnames:
+#	self, key, row
+# Positional arguments:
+#	self, key
+# Local variables:
+#    2: row
+207:           0 RESUME               0
+
+208:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (stats)
+              24 LOAD_ATTR            (NULL|self + get)
+              44 LOAD_FAST            (key)
+              46 CALL                 (1 positional)
+              54 COPY                 1
+              56 TO_BOOL
+              64 POP_JUMP_IF_TRUE     (to 72)
+              68 POP_TOP
+              70 BUILD_MAP            0
+         >>   72 STORE_FAST           (row)
+
+209:          74 LOAD_GLOBAL          (NULL + float)
+              84 LOAD_FAST            (row)
+              86 LOAD_ATTR            (NULL|self + get)
+             106 LOAD_CONST           ("cooldown_until")
+             108 CALL                 (1 positional)
+             116 COPY                 1
+             118 TO_BOOL
+             126 POP_JUMP_IF_TRUE     (to 134)
+             130 POP_TOP
+             132 LOAD_CONST           (0)
+         >>  134 CALL                 (1 positional)
+             142 RETURN_VALUE
+
+
+# Method Name:       _is_cooled
+# Filename:          sms_selector.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        211
+# Constants:
+#    0: None
+# Names:
+#    0: _cooldown_until
+# Varnames:
+#	self, key, now
+# Positional arguments:
+#	self, key, now
+211:           0 RESUME               0
+
+212:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _cooldown_until)
+              24 LOAD_FAST            (key)
+              26 CALL                 (1 positional)
+              34 LOAD_FAST            (now)
+              36 COMPARE_OP           (>)
+              40 RETURN_VALUE
+
+
+# Method Name:       _route_inflight
+# Filename:          sms_selector.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        214
+# Constants:
+#    0: None
+#    1: 'lease_until'
+#    2: 0.0
+#    3: 0
+#    4: 'inflight'
+# Names:
+#    0: _float
+#    1: get
+#    2: max
+#    3: _int
+# Varnames:
+#	self, stat, now, lease_until
+# Positional arguments:
+#	self, stat, now
+# Local variables:
+#    3: lease_until
+214:           0 RESUME               0
+
+215:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _float)
+              24 LOAD_FAST            (stat)
+              26 LOAD_ATTR            (NULL|self + get)
+              46 LOAD_CONST           ("lease_until")
+              48 CALL                 (1 positional)
+              56 LOAD_CONST           (0.0)
+              58 CALL                 (2 positional)
+              66 STORE_FAST           (lease_until)
+
+216:          68 LOAD_FAST_LOAD_FAST  (lease_until, now)
+              70 COMPARE_OP           (<=)
+              74 POP_JUMP_IF_FALSE    (to 80)
+
+217:          78 RETURN_CONST         (0)
+
+218:     >>   80 LOAD_GLOBAL          (NULL + max)
+              90 LOAD_CONST           (0)
+              92 LOAD_FAST            (self)
+              94 LOAD_ATTR            (NULL|self + _int)
+             114 LOAD_FAST            (stat)
+             116 LOAD_ATTR            (NULL|self + get)
+             136 LOAD_CONST           ("inflight")
+             138 CALL                 (1 positional)
+             146 LOAD_CONST           (0)
+             148 CALL                 (2 positional)
+             156 CALL                 (2 positional)
+             164 RETURN_VALUE
+
+
+# Method Name:       _route_limit
+# Filename:          sms_selector.py
+# Argument count:    4
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  7
+# Stack size:        11
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        220
+# Constants:
+#    0: None
+#    1: 'throughput_priority'
+#    2: True
+#    3: 1
+#    4: 'route_hard_max_inflight'
+#    5: 100
+#    6: 4
+#    7: 'route_max_inflight'
+#    8: 'semi'
+#    9: 'otp_sent'
+#   10: 0
+#   11: 'otp_received'
+#   12: 'route_semi_max_inflight'
+#   13: 2
+#   14: 'main'
+#   15: 'success'
+#   16: 80
+#   17: 'route_hot_max_inflight'
+#   18: 3
+# Names:
+#    0: _cfg
+#    1: get
+#    2: max
+#    3: _int
+#    4: pool
+#    5: _hot_bonus
+#    6: fallback
+#    7: min
+# Varnames:
+#	self, candidate, stat, now, cfg, hard, limit
+# Positional arguments:
+#	self, candidate, stat, now
+# Local variables:
+#    4: cfg
+#    5: hard
+#    6: limit
+220:           0 RESUME               0
+
+221:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _cfg)
+              24 CALL                 (0 positional)
+              32 STORE_FAST           (cfg)
+
+222:          34 LOAD_FAST            (cfg)
+              36 LOAD_ATTR            (NULL|self + get)
+              56 LOAD_CONST           ("throughput_priority")
+              58 LOAD_CONST           (True)
+              60 CALL                 (2 positional)
+              68 TO_BOOL
+              76 POP_JUMP_IF_FALSE    (to 166)
+
+223:          80 LOAD_GLOBAL          (NULL + max)
+              90 LOAD_CONST           (1)
+              92 LOAD_FAST            (self)
+              94 LOAD_ATTR            (NULL|self + _int)
+             114 LOAD_FAST            (cfg)
+             116 LOAD_ATTR            (NULL|self + get)
+             136 LOAD_CONST           ("route_hard_max_inflight")
+             138 CALL                 (1 positional)
+             146 LOAD_CONST           (100)
+             148 CALL                 (2 positional)
+             156 CALL                 (2 positional)
+             164 RETURN_VALUE
+
+224:     >>  166 LOAD_GLOBAL          (NULL + max)
+             176 LOAD_CONST           (1)
+             178 LOAD_FAST            (self)
+             180 LOAD_ATTR            (NULL|self + _int)
+             200 LOAD_FAST            (cfg)
+             202 LOAD_ATTR            (NULL|self + get)
+             222 LOAD_CONST           ("route_hard_max_inflight")
+             224 CALL                 (1 positional)
+             232 LOAD_CONST           (4)
+             234 CALL                 (2 positional)
+             242 CALL                 (2 positional)
+             250 STORE_FAST           (hard)
+
+225:         252 LOAD_GLOBAL          (NULL + max)
+             262 LOAD_CONST           (1)
+             264 LOAD_FAST            (self)
+             266 LOAD_ATTR            (NULL|self + _int)
+             286 LOAD_FAST            (cfg)
+             288 LOAD_ATTR            (NULL|self + get)
+             308 LOAD_CONST           ("route_max_inflight")
+             310 CALL                 (1 positional)
+             318 LOAD_CONST           (1)
+             320 CALL                 (2 positional)
+             328 CALL                 (2 positional)
+             336 STORE_FAST           (limit)
+
+226:         338 LOAD_FAST            (candidate)
+             340 LOAD_ATTR            (pool)
+             360 LOAD_CONST           ("semi")
+             362 COMPARE_OP           (==)
+             366 POP_JUMP_IF_TRUE     (to 518)
+             370 LOAD_FAST            (self)
+             372 LOAD_ATTR            (NULL|self + _int)
+             392 LOAD_FAST            (stat)
+             394 LOAD_ATTR            (NULL|self + get)
+             414 LOAD_CONST           ("otp_sent")
+             416 CALL                 (1 positional)
+             424 LOAD_CONST           (0)
+             426 CALL                 (2 positional)
+             434 LOAD_CONST           (0)
+             436 COMPARE_OP           (>)
+             440 POP_JUMP_IF_TRUE     (to 518)
+             444 LOAD_FAST            (self)
+             446 LOAD_ATTR            (NULL|self + _int)
+             466 LOAD_FAST            (stat)
+             468 LOAD_ATTR            (NULL|self + get)
+             488 LOAD_CONST           ("otp_received")
+             490 CALL                 (1 positional)
+             498 LOAD_CONST           (0)
+             500 CALL                 (2 positional)
+             508 LOAD_CONST           (0)
+             510 COMPARE_OP           (>)
+             514 POP_JUMP_IF_FALSE    (to 602)
+
+227:     >>  518 LOAD_GLOBAL          (NULL + max)
+             528 LOAD_FAST_LOAD_FAST  (limit, self)
+             530 LOAD_ATTR            (NULL|self + _int)
+             550 LOAD_FAST            (cfg)
+             552 LOAD_ATTR            (NULL|self + get)
+             572 LOAD_CONST           ("route_semi_max_inflight")
+             574 CALL                 (1 positional)
+             582 LOAD_CONST           (2)
+             584 CALL                 (2 positional)
+             592 CALL                 (2 positional)
+             600 STORE_FAST           (limit)
+
+228:     >>  602 LOAD_FAST            (candidate)
+             604 LOAD_ATTR            (pool)
+             624 LOAD_CONST           ("main")
+             626 COMPARE_OP           (==)
+             630 POP_JUMP_IF_TRUE     (to 750)
+             634 LOAD_FAST            (self)
+             636 LOAD_ATTR            (NULL|self + _int)
+             656 LOAD_FAST            (stat)
+             658 LOAD_ATTR            (NULL|self + get)
+             678 LOAD_CONST           ("success")
+             680 CALL                 (1 positional)
+             688 LOAD_CONST           (0)
+             690 CALL                 (2 positional)
+             698 LOAD_CONST           (0)
+             700 COMPARE_OP           (>)
+             704 POP_JUMP_IF_TRUE     (to 750)
+             708 LOAD_FAST            (self)
+             710 LOAD_ATTR            (NULL|self + _hot_bonus)
+             730 LOAD_FAST_LOAD_FAST  (stat, now)
+             732 CALL                 (2 positional)
+             740 LOAD_CONST           (80)
+             742 COMPARE_OP           (>=)
+             746 POP_JUMP_IF_FALSE    (to 834)
+
+229:     >>  750 LOAD_GLOBAL          (NULL + max)
+             760 LOAD_FAST_LOAD_FAST  (limit, self)
+             762 LOAD_ATTR            (NULL|self + _int)
+             782 LOAD_FAST            (cfg)
+             784 LOAD_ATTR            (NULL|self + get)
+             804 LOAD_CONST           ("route_hot_max_inflight")
+             806 CALL                 (1 positional)
+             814 LOAD_CONST           (3)
+             816 CALL                 (2 positional)
+             824 CALL                 (2 positional)
+             832 STORE_FAST           (limit)
+
+230:     >>  834 LOAD_FAST            (candidate)
+             836 LOAD_ATTR            (fallback)
+             856 TO_BOOL
+             864 POP_JUMP_IF_FALSE    (to 974)
+
+231:         868 LOAD_GLOBAL          (NULL + min)
+             878 LOAD_FAST            (limit)
+             880 LOAD_GLOBAL          (NULL + max)
+             890 LOAD_CONST           (1)
+             892 LOAD_FAST            (self)
+             894 LOAD_ATTR            (NULL|self + _int)
+             914 LOAD_FAST            (cfg)
+             916 LOAD_ATTR            (NULL|self + get)
+             936 LOAD_CONST           ("route_max_inflight")
+             938 CALL                 (1 positional)
+             946 LOAD_CONST           (1)
+             948 CALL                 (2 positional)
+             956 CALL                 (2 positional)
+             964 CALL                 (2 positional)
+             972 STORE_FAST           (limit)
+
+232:     >>  974 LOAD_GLOBAL          (NULL + min)
+             984 LOAD_FAST            (hard)
+             986 LOAD_GLOBAL          (NULL + max)
+             996 LOAD_CONST           (1)
+             998 LOAD_FAST            (limit)
+            1000 CALL                 (2 positional)
+            1008 CALL                 (2 positional)
+            1016 RETURN_VALUE
+
+
+# Method Name:       _route_spacing
+# Filename:          sms_selector.py
+# Argument count:    4
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        234
+# Constants:
+#    0: None
+#    1: 'throughput_priority'
+#    2: True
+#    3: 0.0
+#    4: 1
+#    5: 'burst_provider_interval'
+#    6: 0.08
+#    7: 'provider_interval'
+#    8: 0.3
+# Names:
+#    0: _cfg
+#    1: get
+#    2: _route_limit
+#    3: max
+#    4: _float
+# Varnames:
+#	self, candidate, stat, now, limit
+# Positional arguments:
+#	self, candidate, stat, now
+# Local variables:
+#    4: limit
+234:           0 RESUME               0
+
+235:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _cfg)
+              24 CALL                 (0 positional)
+              32 LOAD_ATTR            (NULL|self + get)
+              52 LOAD_CONST           ("throughput_priority")
+              54 LOAD_CONST           (True)
+              56 CALL                 (2 positional)
+              64 TO_BOOL
+              72 POP_JUMP_IF_FALSE    (to 78)
+
+236:          76 RETURN_CONST         (0.0)
+
+237:     >>   78 LOAD_FAST            (self)
+              80 LOAD_ATTR            (NULL|self + _route_limit)
+             100 LOAD_FAST_LOAD_FAST  (candidate, stat)
+             102 LOAD_FAST            (now)
+             104 CALL                 (3 positional)
+             112 STORE_FAST           (limit)
+
+238:         114 LOAD_FAST            (limit)
+             116 LOAD_CONST           (1)
+             118 COMPARE_OP           (>)
+             122 POP_JUMP_IF_FALSE    (to 240)
+
+239:         126 LOAD_GLOBAL          (NULL + max)
+             136 LOAD_CONST           (0.0)
+             138 LOAD_FAST            (self)
+             140 LOAD_ATTR            (NULL|self + _float)
+             160 LOAD_FAST            (self)
+             162 LOAD_ATTR            (NULL|self + _cfg)
+             182 CALL                 (0 positional)
+             190 LOAD_ATTR            (NULL|self + get)
+             210 LOAD_CONST           ("burst_provider_interval")
+             212 CALL                 (1 positional)
+             220 LOAD_CONST           (0.08)
+             222 CALL                 (2 positional)
+             230 CALL                 (2 positional)
+             238 RETURN_VALUE
+
+240:     >>  240 LOAD_GLOBAL          (NULL + max)
+             250 LOAD_CONST           (0.0)
+             252 LOAD_FAST            (self)
+             254 LOAD_ATTR            (NULL|self + _float)
+             274 LOAD_FAST            (self)
+             276 LOAD_ATTR            (NULL|self + _cfg)

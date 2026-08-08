@@ -1,0 +1,800 @@
+            8716 LOAD_FAST            (cfg)
+            8718 LOAD_CONST           (2)
+            8720 CALL                 (2 positional)
+            8728 POP_TOP
+            8730 EXTENDED_ARG         (256)
+            8732 JUMP_BACKWARD        (to 8080)
+
+3364:     >> 8736 END_FOR
+            8738 POP_TOP
+
+3394:     >> 8740 LOAD_FAST_CHECK      (last_mfa_error)
+            8742 TO_BOOL
+            8750 POP_JUMP_IF_FALSE    (to 8782)
+
+3395:        8754 LOAD_GLOBAL          (NULL + CodexChainError)
+            8764 LOAD_CONST           ("mfa_otp_failed: ")
+            8766 LOAD_FAST_CHECK      (last_mfa_error)
+            8768 FORMAT_SIMPLE
+            8770 BUILD_STRING         2
+            8772 CALL                 (1 positional)
+            8780 RAISE_VARARGS        (exception instance)
+
+3396:     >> 8782 LOAD_GLOBAL          (NULL + hasattr)
+            8792 LOAD_FAST            (email_otp_provider)
+            8794 LOAD_CONST           ("mark_verified")
+            8796 CALL                 (2 positional)
+            8804 TO_BOOL
+            8812 POP_JUMP_IF_FALSE    (to 8848)
+
+3397:        8816 LOAD_FAST            (email_otp_provider)
+            8818 LOAD_ATTR            (NULL|self + mark_verified)
+            8838 CALL                 (0 positional)
+            8846 POP_TOP
+
+3398:     >> 8848 LOAD_GLOBAL          (NULL + _event)
+            8858 LOAD_FAST            (events)
+            8860 LOAD_GLOBAL          (STATE_MFA_OTP_VERIFIED)
+            8870 LOAD_GLOBAL          (NULL + _page_type)
+            8880 LOAD_FAST            (email_response)
+            8882 CALL                 (1 positional)
+            8890 LOAD_FAST            (log_fn)
+            8892 LOAD_CONST           (('detail', 'log_fn'))
+            8894 CALL_KW              4
+            8896 POP_TOP
+
+3400:     >> 8898 LOAD_GLOBAL          (NULL + _page_type)
+            8908 LOAD_FAST            (email_response)
+            8910 CALL                 (1 positional)
+            8918 LOAD_CONST           ("email_otp_verification")
+            8920 COMPARE_OP           (==)
+            8924 EXTENDED_ARG         (512)
+            8926 POP_JUMP_IF_FALSE    (to 10150)
+
+3401:        8930 LOAD_GLOBAL          (NULL + hasattr)
+            8940 LOAD_FAST            (email_otp_provider)
+            8942 LOAD_CONST           ("acquire_login_slot")
+            8944 CALL                 (2 positional)
+            8952 TO_BOOL
+            8960 POP_JUMP_IF_FALSE    (to 8996)
+
+3402:        8964 LOAD_FAST            (email_otp_provider)
+            8966 LOAD_ATTR            (NULL|self + acquire_login_slot)
+            8986 CALL                 (0 positional)
+            8994 POP_TOP
+
+3403:     >> 8996 LOAD_GLOBAL          (NULL + _continue_url)
+            9006 LOAD_FAST            (email_response)
+            9008 CALL                 (1 positional)
+            9016 STORE_FAST           (email_continue_url)
+
+3404:        9018 LOAD_GLOBAL          (NULL + _event)
+
+3405:        9028 LOAD_FAST            (events)
+
+3406:        9030 LOAD_GLOBAL          (STATE_EMAIL_OTP_REQUIRED)
+
+3407:        9040 LOAD_GLOBAL          (NULL + _mask)
+            9050 LOAD_FAST            (account_email)
+            9052 CALL                 (1 positional)
+
+3409:        9060 LOAD_GLOBAL          (NULL + int)
+            9070 LOAD_FAST            (email_response)
+            9072 LOAD_ATTR            (NULL|self + get)
+            9092 LOAD_CONST           ("_status")
+            9094 CALL                 (1 positional)
+            9102 COPY                 1
+            9104 TO_BOOL
+            9112 POP_JUMP_IF_TRUE     (to 9120)
+            9116 POP_TOP
+            9118 LOAD_CONST           (0)
+         >> 9120 CALL                 (1 positional)
+
+3410:        9128 LOAD_GLOBAL          (NULL + bool)
+            9138 LOAD_FAST_CHECK      (email_continue_url)
+            9140 CALL                 (1 positional)
+
+3408:        9148 LOAD_CONST           (('response_status', 'continue_url_present'))
+            9150 BUILD_CONST_KEY_MAP  2
+
+3412:        9152 LOAD_FAST            (log_fn)
+
+3404:        9154 LOAD_CONST           (('detail', 'extra', 'log_fn'))
+            9156 CALL_KW              5
+            9158 POP_TOP
+
+3416:        9160 LOAD_GLOBAL          (NULL + _email_otp_resend_on_retry)
+            9170 LOAD_FAST            (cfg)
+            9172 CALL                 (1 positional)
+            9180 STORE_FAST           (resend_on_retry)
+
+3417:        9182 LOAD_FAST            (resend_on_retry)
+            9184 TO_BOOL
+            9192 POP_JUMP_IF_FALSE    (to 9218)
+            9196 LOAD_GLOBAL          (NULL + _email_otp_verify_attempts)
+            9206 LOAD_FAST            (cfg)
+            9208 CALL                 (1 positional)
+            9216 JUMP_FORWARD         (to 9220)
+         >> 9218 LOAD_CONST           (1)
+         >> 9220 STORE_FAST           (verify_attempts)
+
+3418:        9222 LOAD_CONST           ("")
+            9224 STORE_FAST           (last_email_otp_error)
+
+3419:        9226 LOAD_GLOBAL          (NULL + hasattr)
+            9236 LOAD_FAST            (email_otp_provider)
+            9238 LOAD_CONST           ("mark_sent")
+            9240 CALL                 (2 positional)
+            9248 TO_BOOL
+            9256 POP_JUMP_IF_FALSE    (to 9294)
+
+3420:        9260 NOP
+
+3421:        9262 LOAD_FAST            (email_otp_provider)
+            9264 LOAD_ATTR            (NULL|self + mark_sent)
+            9284 CALL                 (0 positional)
+            9292 POP_TOP
+
+3424:     >> 9294 LOAD_GLOBAL          (NULL + range)
+            9304 LOAD_CONST           (1)
+            9306 LOAD_FAST_CHECK      (verify_attempts)
+            9308 LOAD_CONST           (1)
+            9310 BINARY_OP            (+)
+            9314 CALL                 (2 positional)
+            9322 GET_ITER
+            9324 EXTENDED_ARG         (256)
+            9326 FOR_ITER             (to 9988)
+            9330 STORE_FAST           (email_otp_attempt)
+
+3425:        9332 LOAD_GLOBAL          (NULL + _raise_if_task_stopped)
+            9342 LOAD_FAST            (cfg)
+            9344 CALL                 (1 positional)
+            9352 POP_TOP
+
+3426:        9354 LOAD_FAST            (email_otp_attempt)
+            9356 LOAD_CONST           (1)
+            9358 COMPARE_OP           (>)
+            9362 POP_JUMP_IF_FALSE    (to 9690)
+            9366 LOAD_GLOBAL          (NULL + hasattr)
+            9376 LOAD_FAST            (transport)
+            9378 LOAD_CONST           ("send_email_otp")
+            9380 CALL                 (2 positional)
+            9388 TO_BOOL
+            9396 POP_JUMP_IF_FALSE    (to 9690)
+
+3430:        9400 LOAD_GLOBAL          (NULL + hasattr)
+            9410 LOAD_FAST            (email_otp_provider)
+            9412 LOAD_CONST           ("acquire_login_slot")
+            9414 CALL                 (2 positional)
+            9422 TO_BOOL
+            9430 POP_JUMP_IF_FALSE    (to 9466)
+
+3431:        9434 LOAD_FAST            (email_otp_provider)
+            9436 LOAD_ATTR            (NULL|self + acquire_login_slot)
+            9456 CALL                 (0 positional)
+            9464 POP_TOP
+
+3432:     >> 9466 LOAD_GLOBAL          (NULL + _emit)
+            9476 LOAD_FAST            (log_fn)
+            9478 LOAD_CONST           ("  [Codex] 邮箱验证码校验失败，重新发送并重取验证码 (")
+            9480 LOAD_FAST_CHECK      (email_otp_attempt)
+            9482 FORMAT_SIMPLE
+            9484 LOAD_CONST           ("/")
+            9486 LOAD_FAST_CHECK      (verify_attempts)
+            9488 FORMAT_SIMPLE
+            9490 LOAD_CONST           (")")
+            9492 BUILD_STRING         5
+            9494 LOAD_CONST           ("warn")
+            9496 CALL                 (3 positional)
+            9504 POP_TOP
+
+3433:        9506 NOP
+
+3434:        9508 LOAD_FAST            (transport)
+            9510 LOAD_ATTR            (NULL|self + send_email_otp)
+            9530 LOAD_FAST_CHECK      (email_continue_url)
+            9532 CALL                 (1 positional)
+            9540 STORE_FAST           (resend_response)
+
+3435:        9542 LOAD_GLOBAL          (NULL + _is_success_response)
+            9552 LOAD_FAST            (resend_response)
+            9554 CALL                 (1 positional)
+            9562 TO_BOOL
+            9570 POP_JUMP_IF_TRUE     (to 9618)
+
+3436:        9574 LOAD_GLOBAL          (NULL + _error_text)
+            9584 LOAD_FAST_CHECK      (resend_response)
+            9586 CALL                 (1 positional)
+            9594 COPY                 1
+            9596 TO_BOOL
+            9604 POP_JUMP_IF_TRUE     (to 9612)
+            9608 POP_TOP
+            9610 LOAD_CONST           ("email_otp_resend_failed")
+         >> 9612 STORE_FAST           (last_email_otp_error)
+
+3437:        9614 POP_TOP
+            9616 JUMP_FORWARD         (to 9992)
+
+3438:     >> 9618 LOAD_GLOBAL          (NULL + hasattr)
+            9628 LOAD_FAST            (email_otp_provider)
+            9630 LOAD_CONST           ("mark_sent")
+            9632 CALL                 (2 positional)
+            9640 TO_BOOL
+            9648 POP_JUMP_IF_FALSE    (to 9688)
+
+3439:        9652 NOP
+
+3440:        9654 LOAD_FAST            (email_otp_provider)
+            9656 LOAD_ATTR            (NULL|self + mark_sent)
+            9676 CALL                 (0 positional)
+            9684 POP_TOP
+            9686 JUMP_FORWARD         (to 9690)
+
+3438:     >> 9688 NOP
+
+3445:     >> 9690 LOAD_GLOBAL          (NULL + _clean)
+            9700 LOAD_FAST            (email_otp_provider)
+            9702 LOAD_ATTR            (NULL|self + wait_code)
+            9722 LOAD_FAST            (account_email)
+            9724 CALL                 (1 positional)
+            9732 CALL                 (1 positional)
+            9740 STORE_FAST           (email_code)
+
+3446:        9742 LOAD_FAST            (email_code)
+            9744 TO_BOOL
+            9752 POP_JUMP_IF_TRUE     (to 9764)
+
+3447:        9756 LOAD_CONST           ("email_otp_empty")
+            9758 STORE_FAST           (last_email_otp_error)
+
+3450:        9760 POP_TOP
+            9762 JUMP_FORWARD         (to 9992)
+
+3451:     >> 9764 LOAD_GLOBAL          (NULL + _raise_if_task_stopped)
+            9774 LOAD_FAST            (cfg)
+            9776 CALL                 (1 positional)
+            9784 POP_TOP
+
+3452:        9786 LOAD_FAST            (transport)
+            9788 LOAD_ATTR            (NULL|self + verify_email_otp)
+            9808 LOAD_FAST_CHECK      (email_code)
+            9810 CALL                 (1 positional)
+            9818 STORE_FAST           (email_response)
+
+3453:        9820 LOAD_GLOBAL          (NULL + _raise_if_task_stopped)
+            9830 LOAD_FAST            (cfg)
+            9832 CALL                 (1 positional)
+            9840 POP_TOP
+
+3454:        9842 LOAD_GLOBAL          (NULL + _is_success_response)
+            9852 LOAD_FAST            (email_response)
+            9854 CALL                 (1 positional)
+            9862 TO_BOOL
+            9870 POP_JUMP_IF_FALSE    (to 9882)
+
+3455:        9874 LOAD_CONST           ("")
+            9876 STORE_FAST           (last_email_otp_error)
+
+3456:        9878 POP_TOP
+            9880 JUMP_FORWARD         (to 9992)
+
+3457:     >> 9882 LOAD_GLOBAL          (NULL + _error_text)
+            9892 LOAD_FAST            (email_response)
+            9894 CALL                 (1 positional)
+            9902 COPY                 1
+            9904 TO_BOOL
+            9912 POP_JUMP_IF_TRUE     (to 9920)
+            9916 POP_TOP
+            9918 LOAD_CONST           ("verify_failed")
+         >> 9920 STORE_FAST           (last_email_otp_error)
+
+3458:        9922 LOAD_GLOBAL          (NULL + _is_email_otp_retryable_error)
+            9932 LOAD_FAST            (last_email_otp_error)
+            9934 CALL                 (1 positional)
+            9942 TO_BOOL
+            9950 POP_JUMP_IF_TRUE     (to 9958)
+
+3459:        9954 POP_TOP
+            9956 JUMP_FORWARD         (to 9992)
+
+3460:     >> 9958 LOAD_GLOBAL          (NULL + _interruptible_sleep)
+            9968 LOAD_FAST            (cfg)
+            9970 LOAD_CONST           (2)
+            9972 CALL                 (2 positional)
+            9980 POP_TOP
+            9982 EXTENDED_ARG         (256)
+            9984 JUMP_BACKWARD        (to 9324)
+
+3424:     >> 9988 END_FOR
+            9990 POP_TOP
+
+3461:     >> 9992 LOAD_FAST_CHECK      (last_email_otp_error)
+            9994 TO_BOOL
+            10002 POP_JUMP_IF_FALSE    (to 10034)
+
+3462:        10006 LOAD_GLOBAL          (NULL + CodexChainError)
+            10016 LOAD_CONST           ("email_otp_failed: ")
+            10018 LOAD_FAST_CHECK      (last_email_otp_error)
+            10020 FORMAT_SIMPLE
+            10022 BUILD_STRING         2
+            10024 CALL                 (1 positional)
+            10032 RAISE_VARARGS        (exception instance)
+
+3463:     >> 10034 LOAD_GLOBAL          (NULL + hasattr)
+            10044 LOAD_FAST            (email_otp_provider)
+            10046 LOAD_CONST           ("mark_verified")
+            10048 CALL                 (2 positional)
+            10056 TO_BOOL
+            10064 POP_JUMP_IF_FALSE    (to 10100)
+
+3464:        10068 LOAD_FAST            (email_otp_provider)
+            10070 LOAD_ATTR            (NULL|self + mark_verified)
+            10090 CALL                 (0 positional)
+            10098 POP_TOP
+
+3465:     >> 10100 LOAD_GLOBAL          (NULL + _event)
+            10110 LOAD_FAST            (events)
+            10112 LOAD_GLOBAL          (STATE_EMAIL_OTP_VERIFIED)
+            10122 LOAD_GLOBAL          (NULL + _page_type)
+            10132 LOAD_FAST            (email_response)
+            10134 CALL                 (1 positional)
+            10142 LOAD_FAST            (log_fn)
+            10144 LOAD_CONST           (('detail', 'log_fn'))
+            10146 CALL_KW              4
+            10148 POP_TOP
+
+3467:     >> 10150 LOAD_GLOBAL          (NULL + _page_type)
+            10160 LOAD_FAST            (email_response)
+            10162 CALL                 (1 positional)
+            10170 STORE_FAST           (page)
+
+3468:        10172 LOAD_GLOBAL          (NULL + _continue_url)
+            10182 LOAD_FAST            (email_response)
+            10184 CALL                 (1 positional)
+            10192 STORE_FAST           (continue_url)
+
+3469:        10194 LOAD_CONST           ("")
+            10196 STORE_FAST           (verified_phone)
+
+3470:        10198 LOAD_CONST           ("")
+            10200 STORE_FAST           (verified_activation_id)
+
+3471:        10202 BUILD_LIST           0
+            10204 STORE_FAST           (attempted_phones)
+
+3472:        10206 BUILD_LIST           0
+            10208 STORE_FAST           (failed_phones)
+
+3473:        10210 LOAD_FAST            (page)
+            10212 LOAD_CONST           ({'add_phone', 'contact_verification', 'phone_number_collection'})
+            10214 CONTAINS_OP          (in)
+            10218 EXTENDED_ARG         (1280)
+            10220 POP_JUMP_IF_FALSE    (to 12916)
+
+3474:        10224 LOAD_FAST            (mock)
+            10226 LOAD_ATTR            (NULL|self + get)
+            10246 LOAD_CONST           ("phone_max_attempts")
+            10248 CALL                 (1 positional)
+            10256 STORE_FAST           (raw_attempts)
+
+3475:        10258 LOAD_FAST            (raw_attempts)
+            10260 LOAD_CONST           ((None, ''))
+            10262 CONTAINS_OP          (in)
+            10266 POP_JUMP_IF_FALSE    (to 10304)
+
+3476:        10270 LOAD_FAST            (cfg)
+            10272 LOAD_ATTR            (NULL|self + get)
+            10292 LOAD_CONST           ("phone_max_attempts")
+            10294 CALL                 (1 positional)
+            10302 STORE_FAST           (raw_attempts)
+
+3477:     >> 10304 LOAD_FAST_CHECK      (raw_attempts)
+            10306 LOAD_CONST           ((None, ''))
+            10308 CONTAINS_OP          (in)
+            10312 POP_JUMP_IF_FALSE    (to 10338)
+
+3478:        10316 LOAD_FAST            (is_real)
+            10318 TO_BOOL
+            10326 POP_JUMP_IF_FALSE    (to 10334)
+            10330 LOAD_CONST           (1000)
+            10332 JUMP_FORWARD         (to 10336)
+         >> 10334 LOAD_CONST           (3)
+         >> 10336 STORE_FAST           (raw_attempts)
+
+3479:     >> 10338 NOP
+
+3480:        10340 LOAD_GLOBAL          (NULL + max)
+            10350 LOAD_CONST           (0)
+            10352 LOAD_GLOBAL          (NULL + int)
+            10362 LOAD_FAST_CHECK      (raw_attempts)
+            10364 CALL                 (1 positional)
+            10372 CALL                 (2 positional)
+            10380 STORE_FAST           (max_attempts)
+
+3483:        10382 LOAD_GLOBAL          (NULL + bool)
+            10392 LOAD_FAST            (is_real)
+            10394 COPY                 1
+            10396 TO_BOOL
+            10404 POP_JUMP_IF_FALSE    (to 10418)
+            10408 POP_TOP
+            10410 LOAD_FAST_CHECK      (max_attempts)
+            10412 LOAD_CONST           (0)
+            10414 COMPARE_OP           (==)
+         >> 10418 CALL                 (1 positional)
+            10426 STORE_FAST           (unlimited_attempts)
+
+3484:        10428 LOAD_FAST            (unlimited_attempts)
+            10430 TO_BOOL
+            10438 POP_JUMP_IF_FALSE    (to 10446)
+            10442 LOAD_CONST           ("不限")
+            10444 JUMP_FORWARD         (to 10466)
+         >> 10446 LOAD_GLOBAL          (NULL + str)
+            10456 LOAD_FAST_CHECK      (max_attempts)
+            10458 CALL                 (1 positional)
+         >> 10466 STORE_FAST           (attempt_label)
+
+3485:        10468 LOAD_FAST            (is_real)
+            10470 TO_BOOL
+            10478 POP_JUMP_IF_FALSE    (to 10504)
+            10482 LOAD_GLOBAL          (NULL + _phone_session_cycle_seconds)
+            10492 LOAD_FAST            (cfg)
+            10494 CALL                 (1 positional)
+            10502 JUMP_FORWARD         (to 10506)
+         >> 10504 LOAD_CONST           (0.0)
+         >> 10506 STORE_FAST           (session_cycle_seconds)
+
+3486:        10508 LOAD_GLOBAL          (time)
+            10518 LOAD_ATTR            (time)
+            10538 PUSH_NULL
+            10540 CALL                 (0 positional)
+            10548 STORE_FAST           (session_cycle_started)
+
+3487:        10550 LOAD_FAST            (is_real)
+            10552 TO_BOOL
+            10560 POP_JUMP_IF_FALSE    (to 10598)
+            10564 LOAD_FAST            (cfg)
+            10566 LOAD_ATTR            (NULL|self + get)
+            10586 LOAD_CONST           ("phone_channels")
+            10588 CALL                 (1 positional)
+            10596 JUMP_FORWARD         (to 10630)
+         >> 10598 LOAD_FAST            (mock)
+            10600 LOAD_ATTR            (NULL|self + get)
+            10620 LOAD_CONST           ("phone_channels")
+            10622 CALL                 (1 positional)
+         >> 10630 STORE_FAST           (channels)
+
+3488:        10632 LOAD_FAST            (channels)
+            10634 COPY                 1
+            10636 TO_BOOL
+            10644 POP_JUMP_IF_TRUE     (to 10652)
+            10648 POP_TOP
+            10650 LOAD_CONST           (('sms', 'whatsapp'))
+         >> 10652 STORE_FAST           (channels)
+
+3489:        10654 LOAD_FAST            (channels)
+            10656 GET_ITER
+            10658 LOAD_FAST_AND_CLEAR  (ch)
+            10660 SWAP                 (TOS <-> TOS1)
+            10662 BUILD_LIST           0
+            10664 SWAP                 (TOS <-> TOS1)
+            10666 GET_ITER
+            10668 FOR_ITER             (to 10792)
+            10672 STORE_FAST           (ch)
+            10674 LOAD_GLOBAL          (NULL + str)
+            10684 LOAD_FAST            (ch)
+            10686 CALL                 (1 positional)
+            10694 LOAD_ATTR            (NULL|self + strip)
+            10714 CALL                 (0 positional)
+            10722 TO_BOOL
+            10730 POP_JUMP_IF_TRUE     (to 10738)
+            10734 JUMP_BACKWARD        (to 10668)
+         >> 10738 LOAD_GLOBAL          (NULL + str)
+            10748 LOAD_FAST_CHECK      (ch)
+            10750 CALL                 (1 positional)
+            10758 LOAD_ATTR            (NULL|self + strip)
+            10778 CALL                 (0 positional)
+            10786 LIST_APPEND          2
+            10788 JUMP_BACKWARD        (to 10668)
+         >> 10792 END_FOR
+            10794 POP_TOP
+            10796 STORE_FAST           (channels)
+            10798 STORE_FAST           (ch)
+
+3490:        10800 LOAD_FAST            (channels)
+            10802 TO_BOOL
+            10810 POP_JUMP_IF_TRUE     (to 10820)
+
+3491:        10814 LOAD_CONST           ("sms")
+            10816 BUILD_LIST           1
+            10818 STORE_FAST           (channels)
+
+3492:     >> 10820 LOAD_GLOBAL          (NULL + _event)
+
+3493:        10830 LOAD_FAST            (events)
+
+3494:        10832 LOAD_GLOBAL          (STATE_PHONE_REQUIRED)
+
+3495:        10842 LOAD_CONST           ("session_cycle=")
+            10844 LOAD_GLOBAL          (NULL + int)
+            10854 LOAD_FAST_CHECK      (session_cycle_seconds)
+            10856 COPY                 1
+            10858 TO_BOOL
+            10866 POP_JUMP_IF_TRUE     (to 10874)
+            10870 POP_TOP
+            10872 LOAD_CONST           (0)
+         >> 10874 CALL                 (1 positional)
+            10882 FORMAT_SIMPLE
+            10884 LOAD_CONST           ("s attempts=")
+            10886 LOAD_FAST_CHECK      (attempt_label)
+            10888 FORMAT_SIMPLE
+            10890 BUILD_STRING         4
+
+3496:        10892 LOAD_FAST            (log_fn)
+
+3492:        10894 LOAD_CONST           (('detail', 'log_fn'))
+            10896 CALL_KW              4
+            10898 POP_TOP
+
+3499:        10900 LOAD_CONST           (False)
+            10902 STORE_FAST           (verified)
+
+3500:        10904 LOAD_CONST           ("")
+            10906 STORE_FAST           (last_error)
+
+3501:        10908 LOAD_CONST           (0)
+            10910 STORE_FAST           (_idx)
+
+3502:        10912 LOAD_FAST_CHECK      (unlimited_attempts)
+            10914 TO_BOOL
+            10922 POP_JUMP_IF_TRUE     (to 10940)
+            10926 LOAD_FAST_CHECK      (_idx)
+            10928 LOAD_FAST_CHECK      (max_attempts)
+            10930 COMPARE_OP           (<)
+            10934 EXTENDED_ARG         (768)
+            10936 POP_JUMP_IF_FALSE    (to 12862)
+
+3503:     >> 10940 LOAD_GLOBAL          (NULL + _task_stop_requested)
+            10950 LOAD_FAST            (cfg)
+            10952 CALL                 (1 positional)
+            10960 TO_BOOL
+            10968 POP_JUMP_IF_FALSE    (to 10994)
+
+3504:        10972 LOAD_GLOBAL          (NULL + CodexChainError)
+            10982 LOAD_CONST           ("task_stopped")
+            10984 CALL                 (1 positional)
+            10992 RAISE_VARARGS        (exception instance)
+
+3505:     >> 10994 LOAD_FAST            (is_real)
+            10996 TO_BOOL
+            11004 POP_JUMP_IF_FALSE    (to 11120)
+            11008 LOAD_FAST_CHECK      (session_cycle_seconds)
+            11010 TO_BOOL
+            11018 POP_JUMP_IF_FALSE    (to 11120)
+            11022 LOAD_GLOBAL          (time)
+            11032 LOAD_ATTR            (time)
+            11052 PUSH_NULL
+            11054 CALL                 (0 positional)
+            11062 LOAD_FAST_CHECK      (session_cycle_started)
+            11064 BINARY_OP            (-)
+            11068 LOAD_FAST_CHECK      (session_cycle_seconds)
+            11070 COMPARE_OP           (>=)
+            11074 POP_JUMP_IF_FALSE    (to 11120)
+
+3506:        11078 LOAD_GLOBAL          (NULL + CodexChainError)
+            11088 LOAD_GLOBAL          (NULL + _session_cycle_expired_error)
+            11098 LOAD_CONST           ("phone step")
+            11100 LOAD_FAST_CHECK      (session_cycle_seconds)
+            11102 CALL                 (2 positional)
+            11110 CALL                 (1 positional)
+            11118 RAISE_VARARGS        (exception instance)
+
+3507:     >> 11120 LOAD_FAST_CHECK      (_idx)
+            11122 LOAD_CONST           (1)
+            11124 BINARY_OP            (+=)
+            11128 STORE_FAST           (_idx)
+
+3508:        11130 NOP
+
+3509:        11132 LOAD_FAST            (phone_otp_provider)
+            11134 LOAD_ATTR            (NULL|self + get_number)
+
+3510:        11154 LOAD_GLOBAL          (NULL + _clean)
+            11164 LOAD_FAST            (cfg)
+            11166 LOAD_ATTR            (NULL|self + get)
+            11186 LOAD_CONST           ("service")
+            11188 CALL                 (1 positional)
+            11196 COPY                 1
+            11198 TO_BOOL
+            11206 POP_JUMP_IF_TRUE     (to 11214)
+            11210 POP_TOP
+            11212 LOAD_CONST           ("dr")
+         >> 11214 CALL                 (1 positional)
+
+3511:        11222 LOAD_GLOBAL          (NULL + _clean)
+            11232 LOAD_FAST            (cfg)
+            11234 LOAD_ATTR            (NULL|self + get)
+            11254 LOAD_CONST           ("country")
+            11256 CALL                 (1 positional)
+            11264 COPY                 1
+            11266 TO_BOOL
+            11274 POP_JUMP_IF_TRUE     (to 11282)
+            11278 POP_TOP
+            11280 LOAD_CONST           ("")
+         >> 11282 CALL                 (1 positional)
+
+3512:        11290 LOAD_GLOBAL          (NULL + _clean)
+            11300 LOAD_FAST            (cfg)
+            11302 LOAD_ATTR            (NULL|self + get)
+            11322 LOAD_CONST           ("provider_ids")
+            11324 CALL                 (1 positional)
+            11332 COPY                 1
+            11334 TO_BOOL
+            11342 POP_JUMP_IF_TRUE     (to 11350)
+            11346 POP_TOP
+            11348 LOAD_CONST           ("")
+         >> 11350 CALL                 (1 positional)
+
+3513:        11358 LOAD_GLOBAL          (NULL + _clean)
+            11368 LOAD_FAST            (cfg)
+            11370 LOAD_ATTR            (NULL|self + get)
+            11390 LOAD_CONST           ("max_price")
+            11392 CALL                 (1 positional)
+            11400 COPY                 1
+            11402 TO_BOOL
+            11410 POP_JUMP_IF_TRUE     (to 11418)
+            11414 POP_TOP
+            11416 LOAD_CONST           ("")
+         >> 11418 CALL                 (1 positional)
+
+3509:        11426 LOAD_CONST           (('service', 'country', 'provider_ids', 'max_price'))
+            11428 CALL_KW              4
+            11430 STORE_FAST           (lease)
+
+3515:        11432 LOAD_GLOBAL          (NULL + _raise_if_task_stopped)
+            11442 LOAD_FAST            (cfg)
+            11444 CALL                 (1 positional)
+            11452 POP_TOP
+
+3525:        11454 LOAD_GLOBAL          (NULL + _emit)
+            11464 LOAD_FAST            (log_fn)
+            11466 LOAD_CONST           ("  [Codex] 手机验证尝试 ")
+            11468 LOAD_FAST_CHECK      (_idx)
+            11470 FORMAT_SIMPLE
+            11472 LOAD_CONST           ("/")
+            11474 LOAD_FAST_CHECK      (attempt_label)
+            11476 FORMAT_SIMPLE
+            11478 LOAD_CONST           ("，号码=")
+            11480 LOAD_GLOBAL          (NULL + _mask)
+            11490 LOAD_FAST_CHECK      (lease)
+            11492 LOAD_ATTR            (phone)
+            11512 CALL                 (1 positional)
+            11520 FORMAT_SIMPLE
+            11522 BUILD_STRING         6
+            11524 LOAD_CONST           ("info")
+            11526 CALL                 (3 positional)
+            11534 POP_TOP
+
+3526:        11536 LOAD_FAST            (lease)
+            11538 LOAD_ATTR            (phone)
+            11558 TO_BOOL
+            11566 POP_JUMP_IF_FALSE    (to 11656)
+            11570 LOAD_FAST_CHECK      (lease)
+            11572 LOAD_ATTR            (phone)
+            11592 LOAD_FAST_CHECK      (attempted_phones)
+            11594 CONTAINS_OP          (not in)
+            11598 POP_JUMP_IF_FALSE    (to 11656)
+
+3527:        11602 LOAD_FAST_CHECK      (attempted_phones)
+            11604 LOAD_ATTR            (NULL|self + append)
+            11624 LOAD_FAST_CHECK      (lease)
+            11626 LOAD_ATTR            (phone)
+            11646 CALL                 (1 positional)
+            11654 POP_TOP
+
+3528:     >> 11656 LOAD_FAST_CHECK      (channels)
+            11658 GET_ITER
+            11660 EXTENDED_ARG         (256)
+            11662 FOR_ITER             (to 12530)
+            11666 STORE_FAST           (channel)
+
+3529:        11668 LOAD_GLOBAL          (NULL + _raise_if_task_stopped)
+            11678 LOAD_FAST            (cfg)
+            11680 CALL                 (1 positional)
+            11688 POP_TOP
+
+3530:        11690 LOAD_FAST            (transport)
+            11692 LOAD_ATTR            (NULL|self + send_phone_number_otp)
+            11712 LOAD_FAST_CHECK      (lease)
+            11714 LOAD_ATTR            (phone)
+            11734 LOAD_FAST            (channel)
+            11736 LOAD_CONST           (('channel',))
+            11738 CALL_KW              2
+            11740 STORE_FAST           (send_response)
+
+3531:        11742 LOAD_GLOBAL          (NULL + _raise_if_task_stopped)
+            11752 LOAD_FAST            (cfg)
+            11754 CALL                 (1 positional)
+            11762 POP_TOP
+
+3532:        11764 LOAD_GLOBAL          (NULL + _is_success_response)
+            11774 LOAD_FAST            (send_response)
+            11776 CALL                 (1 positional)
+            11784 TO_BOOL
+            11792 EXTENDED_ARG         (256)
+            11794 POP_JUMP_IF_FALSE    (to 12318)
+
+3533:        11798 LOAD_FAST            (phone_otp_provider)
+            11800 LOAD_ATTR            (NULL|self + mark_ready)
+            11820 LOAD_FAST_CHECK      (lease)
+            11822 CALL                 (1 positional)
+            11830 POP_TOP
+
+3534:        11832 LOAD_GLOBAL          (NULL + _event)
+            11842 LOAD_FAST            (events)
+            11844 LOAD_GLOBAL          (STATE_PHONE_OTP_SENT)
+            11854 LOAD_GLOBAL          (NULL + _mask)
+            11864 LOAD_FAST            (lease)
+            11866 LOAD_ATTR            (phone)
+            11886 CALL                 (1 positional)
+            11894 FORMAT_SIMPLE
+            11896 LOAD_CONST           (" via ")
+            11898 LOAD_FAST_CHECK      (channel)
+            11900 FORMAT_SIMPLE
+            11902 BUILD_STRING         3
+            11904 LOAD_FAST            (log_fn)
+            11906 LOAD_CONST           (('detail', 'log_fn'))
+            11908 CALL_KW              4
+            11910 POP_TOP
+
+3535:        11912 LOAD_GLOBAL          (NULL + _clean)
+            11922 LOAD_FAST            (phone_otp_provider)
+            11924 LOAD_ATTR            (NULL|self + wait_code)
+            11944 LOAD_FAST            (lease)
+            11946 LOAD_FAST            (code_timeout)
+            11948 LOAD_CONST           (('timeout',))
+            11950 CALL_KW              2
+            11952 CALL                 (1 positional)
+            11960 STORE_FAST           (phone_code)
+
+3536:        11962 LOAD_GLOBAL          (NULL + _raise_if_task_stopped)
+            11972 LOAD_FAST            (cfg)
+            11974 CALL                 (1 positional)
+            11982 POP_TOP
+
+3537:        11984 LOAD_FAST            (phone_code)
+            11986 TO_BOOL
+            11994 POP_JUMP_IF_TRUE     (to 12008)
+
+3538:        11998 LOAD_CONST           ("phone_otp_empty")
+            12000 STORE_FAST           (last_error)
+
+3539:        12002 POP_TOP
+            12004 EXTENDED_ARG         (256)
+            12006 JUMP_FORWARD         (to 12534)
+
+3540:     >> 12008 LOAD_FAST            (transport)
+            12010 LOAD_ATTR            (NULL|self + verify_phone_otp)
+            12030 LOAD_FAST_CHECK      (phone_code)
+            12032 CALL                 (1 positional)
+            12040 STORE_FAST           (verify_response)
+
+3541:        12042 LOAD_GLOBAL          (NULL + _raise_if_task_stopped)
+            12052 LOAD_FAST            (cfg)
+            12054 CALL                 (1 positional)
+            12062 POP_TOP
+
+3542:        12064 LOAD_GLOBAL          (NULL + _is_success_response)
+            12074 LOAD_FAST            (verify_response)
+            12076 CALL                 (1 positional)
+            12084 TO_BOOL
+            12092 POP_JUMP_IF_TRUE     (to 12128)
+
+3543:        12096 LOAD_CONST           ("phone_otp_failed: ")
+            12098 LOAD_GLOBAL          (NULL + _error_text)
+            12108 LOAD_FAST_CHECK      (verify_response)
+            12110 CALL                 (1 positional)
+            12118 FORMAT_SIMPLE
+            12120 BUILD_STRING         2
+            12122 STORE_FAST           (last_error)
+
+3544:        12124 POP_TOP

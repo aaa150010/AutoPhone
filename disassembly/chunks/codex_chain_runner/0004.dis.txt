@@ -1,0 +1,800 @@
+272:     >>  818 LOAD_FAST            (result)
+
+273:         820 LOAD_FAST            (args)
+             822 LOAD_ATTR            (archive_dir)
+
+274:         842 LOAD_FAST            (args)
+             844 LOAD_ATTR            (sub2_import_out)
+
+275:         864 LOAD_GLOBAL          (NULL + str)
+             874 LOAD_FAST            (result)
+             876 LOAD_ATTR            (NULL|self + get)
+             896 LOAD_CONST           ("email")
+             898 CALL                 (1 positional)
+             906 COPY                 1
+             908 TO_BOOL
+             916 POP_JUMP_IF_TRUE     (to 1010)
+             920 POP_TOP
+             922 LOAD_FAST            (result)
+             924 LOAD_ATTR            (NULL|self + get)
+             944 LOAD_CONST           ("bind_email")
+             946 CALL                 (1 positional)
+             954 COPY                 1
+             956 TO_BOOL
+             964 POP_JUMP_IF_TRUE     (to 1010)
+             968 POP_TOP
+             970 LOAD_FAST            (args)
+             972 LOAD_ATTR            (email)
+             992 COPY                 1
+             994 TO_BOOL
+            1002 POP_JUMP_IF_TRUE     (to 1010)
+            1006 POP_TOP
+            1008 LOAD_CONST           ("")
+         >> 1010 CALL                 (1 positional)
+
+276:        1018 LOAD_CONST           ("codex_chain_runner")
+
+277:        1020 LOAD_FAST            (group_id)
+
+278:        1022 LOAD_FAST            (proxy_id)
+
+279:        1024 LOAD_GLOBAL          (NULL + int)
+            1034 LOAD_FAST            (args)
+            1036 LOAD_ATTR            (archive_concurrency)
+            1056 COPY                 1
+            1058 TO_BOOL
+            1066 POP_JUMP_IF_TRUE     (to 1074)
+            1070 POP_TOP
+            1072 LOAD_CONST           (10)
+         >> 1074 CALL                 (1 positional)
+
+280:        1082 LOAD_GLOBAL          (NULL + int)
+            1092 LOAD_FAST            (args)
+            1094 LOAD_ATTR            (archive_priority)
+            1114 COPY                 1
+            1116 TO_BOOL
+            1124 POP_JUMP_IF_TRUE     (to 1132)
+            1128 POP_TOP
+            1130 LOAD_CONST           (1)
+         >> 1132 CALL                 (1 positional)
+
+281:        1140 LOAD_GLOBAL          (NULL + int)
+            1150 LOAD_FAST            (args)
+            1152 LOAD_ATTR            (archive_rate_multiplier)
+            1172 COPY                 1
+            1174 TO_BOOL
+            1182 POP_JUMP_IF_TRUE     (to 1190)
+            1186 POP_TOP
+            1188 LOAD_CONST           (1)
+         >> 1190 CALL                 (1 positional)
+
+266:        1198 LOAD_CONST           (('session', 'token_payload', 'out_dir', 'sub2_import_out', 'name', 'source', 'group_id', 'proxy_id', 'concurrency', 'priority', 'rate_multiplier'))
+            1200 CALL_KW              11
+            1202 RETURN_VALUE
+         >> 1204 PUSH_EXC_INFO
+
+264:        1206 LOAD_GLOBAL          (Exception)
+            1216 CHECK_EXC_MATCH
+            1218 POP_JUMP_IF_FALSE    (to 1234)
+            1222 POP_TOP
+
+265:        1224 LOAD_CONST           (0)
+            1226 STORE_FAST           (proxy_id)
+            1228 POP_EXCEPT
+            1230 EXTENDED_ARG         (256)
+            1232 JUMP_BACKWARD_NO_INTERRUPT (to 568)
+
+264:     >> 1234 RERAISE              0
+         >> 1236 COPY                 3
+            1238 POP_EXCEPT
+            1240 RERAISE              1
+
+ExceptionTable:
+  450 to 566 -> 1204 [0]
+  1204 to 1226 -> 1236 [1] lasti
+  1234 to 1234 -> 1236 [1] lasti
+
+# Method Name:       _collect_manual_fixture
+# Filename:          codex_chain_runner.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  14
+# Stack size:        10
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        285
+# Constants:
+#    0: 'Collect a sanitized fixture from user-observed page/status values.'
+#    1: 'manual 模式只记录状态，不要输入真实 OTP、OAuth code、token、cookie、代理或密钥。'
+#    2: '1) initiate_oauth HTTP status'
+#    3: 200
+#    4: '1) initiate_oauth page.type'
+#    5: 'login'
+#    6: 'initiate_oauth'
+#    7: ('status', 'page_type')
+#    8: '2) submit_email_identifier HTTP status'
+#    9: '2) submit_email_identifier page.type'
+#   10: 'email_otp_verification'
+#   11: ''
+#   12: 400
+#   13: '2) error message(脱敏)'
+#   14: 'submit_email_failed'
+#   15: 'submit_email_identifier'
+#   16: ('status', 'page_type', 'error')
+#   17: '请你自己在真实页面/脚本里完成邮箱 OTP，再把提交后的状态填到这里。'
+#   18: '3) verify_email_otp HTTP status'
+#   19: '3) verify_email_otp 后 page.type'
+#   20: 'add_phone'
+#   21: '3) 是否有 continue_url'
+#   22: True
+#   23: 'present'
+#   24: '3) error message(脱敏)'
+#   25: 'email_otp_failed'
+#   26: 'verify_email_otp'
+#   27: ('status', 'page_type', 'continue_url', 'error')
+#   28: -1
+#   29: 'page_type'
+#   30: {'contact_verification', 'phone_number_collection', 'add_phone'}
+#   31: '请你自己准备号码。这里仅记录发送结果，不输入真实号码和验证码。'
+#   32: '4) send_phone channel'
+#   33: 'sms'
+#   34: '4) send_phone HTTP status'
+#   35: '4) send_phone page.type'
+#   36: 'phone_otp'
+#   37: '4) error message(脱敏)'
+#   38: 'phone_rejected'
+#   39: 'send_phone_number_otp'
+#   40: ('status', 'page_type', 'error', 'channel')
+#   41: '4) 是否继续记录下一次 send_phone 尝试'
+#   42: 'status'
+#   43: 0
+#   44: '请你自己完成手机 OTP，再把提交后的状态填到这里。'
+#   45: '5) verify_phone_otp HTTP status'
+#   46: '5) verify_phone_otp 后 page.type'
+#   47: 'sign_in_with_chatgpt_codex_consent'
+#   48: '5) 是否有 continue_url'
+#   49: '5) error message(脱敏)'
+#   50: 'phone_otp_failed'
+#   51: 'verify_phone_otp'
+#   52: 'OAuth callback 只记录是否有 code、state 是否匹配，不输入真实 code。'
+#   53: '6) callback 是否出现 code'
+#   54: '6) callback state 是否匹配原始 state'
+#   55: 'callback'
+#   56: ('step', 'has_code', 'state_matches')
+#   57: '7) token exchange HTTP status/结果状态'
+#   58: '7) token exchange error(脱敏)'
+#   59: 'token_exchange_failed'
+#   60: 'exchange_code'
+#   61: ('status', 'error')
+#   62: '8) 是否记录运行上下文预期'
+#   63: '8) 是否有 device_id'
+#   64: '8) OAuth URL 是否有 state'
+#   65: '8) 是否有 PKCE code_verifier'
+#   66: '8) 是否复用了 cookie jar/session cookies'
+#   67: '8) 是否复用了同一个 HTTP session'
+#   68: '8) 是否有浏览器/persona 指纹元数据'
+#   69: '8) Node 侧是否报告指纹元数据'
+#   70: False
+#   71: ('device_id_present', 'oauth_state_present', 'code_verifier_present', 'cookie_jar_present', 'session_present', 'browser_fingerprint_present', 'node_fingerprint_present')
+#   72: 'codex_chain_replay.v1'
+#   73: 'Manual fixture contains only page/status/control-flow observations. No OTP/code/token/cookie values.'
+#   74: ('schema', 'sanitized', 'created_at', 'email', 'notes', 'runtime_context', 'steps')
+#   75: ('parents', 'exist_ok')
+#   76: 2
+#   77: ('ensure_ascii', 'indent')
+#   78: 'utf-8'
+#   79: ('encoding',)
+# Names:
+#    0: print
+#    1: _ask_int
+#    2: _ask
+#    3: append
+#    4: _step
+#    5: _ask_bool
+#    6: get
+#    7: int
+#    8: time
+#    9: Path
+#   10: _default_manual_output
+#   11: parent
+#   12: mkdir
+#   13: write_text
+#   14: json
+#   15: dumps
+# Varnames:
+#	email, output_path, steps, status, page, error, continue_url, current_page, channel, has_code, state_matches, runtime_context, fixture, out
+# Positional arguments:
+#	email, output_path
+# Local variables:
+#    2: steps
+#    3: status
+#    4: page
+#    5: error
+#    6: continue_url
+#    7: current_page
+#    8: channel
+#    9: has_code
+#   10: state_matches
+#   11: runtime_context
+#   12: fixture
+#   13: out
+285:           0 RESUME               0
+
+287:           2 LOAD_GLOBAL          (NULL + print)
+              12 LOAD_CONST           ("manual 模式只记录状态，不要输入真实 OTP、OAuth code、token、cookie、代理或密钥。")
+              14 CALL                 (1 positional)
+              22 POP_TOP
+
+288:          24 BUILD_LIST           0
+              26 STORE_FAST           (steps)
+
+290:          28 LOAD_GLOBAL          (NULL + _ask_int)
+              38 LOAD_CONST           ("1) initiate_oauth HTTP status")
+              40 LOAD_CONST           (200)
+              42 CALL                 (2 positional)
+              50 STORE_FAST           (status)
+
+291:          52 LOAD_GLOBAL          (NULL + _ask)
+              62 LOAD_CONST           ("1) initiate_oauth page.type")
+              64 LOAD_CONST           ("login")
+              66 CALL                 (2 positional)
+              74 STORE_FAST           (page)
+
+292:          76 LOAD_FAST            (steps)
+              78 LOAD_ATTR            (NULL|self + append)
+              98 LOAD_GLOBAL          (NULL + _step)
+             108 LOAD_CONST           ("initiate_oauth")
+             110 LOAD_FAST_LOAD_FAST  (status, page)
+             112 LOAD_CONST           (('status', 'page_type'))
+             114 CALL_KW              3
+             116 CALL                 (1 positional)
+             124 POP_TOP
+
+294:         126 LOAD_GLOBAL          (NULL + _ask_int)
+             136 LOAD_CONST           ("2) submit_email_identifier HTTP status")
+             138 LOAD_CONST           (200)
+             140 CALL                 (2 positional)
+             148 STORE_FAST           (status)
+
+295:         150 LOAD_GLOBAL          (NULL + _ask)
+             160 LOAD_CONST           ("2) submit_email_identifier page.type")
+             162 LOAD_CONST           ("email_otp_verification")
+             164 CALL                 (2 positional)
+             172 STORE_FAST           (page)
+
+296:         174 LOAD_CONST           ("")
+             176 STORE_FAST           (error)
+
+297:         178 LOAD_FAST            (status)
+             180 LOAD_CONST           (400)
+             182 COMPARE_OP           (>=)
+             186 POP_JUMP_IF_FALSE    (to 214)
+
+298:         190 LOAD_GLOBAL          (NULL + _ask)
+             200 LOAD_CONST           ("2) error message(脱敏)")
+             202 LOAD_CONST           ("submit_email_failed")
+             204 CALL                 (2 positional)
+             212 STORE_FAST           (error)
+
+299:     >>  214 LOAD_FAST            (steps)
+             216 LOAD_ATTR            (NULL|self + append)
+             236 LOAD_GLOBAL          (NULL + _step)
+             246 LOAD_CONST           ("submit_email_identifier")
+             248 LOAD_FAST_LOAD_FAST  (status, page)
+             250 LOAD_FAST            (error)
+             252 LOAD_CONST           (('status', 'page_type', 'error'))
+             254 CALL_KW              4
+             256 CALL                 (1 positional)
+             264 POP_TOP
+
+301:         266 LOAD_FAST            (status)
+             268 LOAD_CONST           (400)
+             270 COMPARE_OP           (<)
+             274 POP_JUMP_IF_FALSE    (to 494)
+             278 LOAD_FAST            (page)
+             280 LOAD_CONST           ("email_otp_verification")
+             282 COMPARE_OP           (==)
+             286 POP_JUMP_IF_FALSE    (to 494)
+
+302:         290 LOAD_GLOBAL          (NULL + print)
+             300 LOAD_CONST           ("请你自己在真实页面/脚本里完成邮箱 OTP，再把提交后的状态填到这里。")
+             302 CALL                 (1 positional)
+             310 POP_TOP
+
+303:         312 LOAD_GLOBAL          (NULL + _ask_int)
+             322 LOAD_CONST           ("3) verify_email_otp HTTP status")
+             324 LOAD_CONST           (200)
+             326 CALL                 (2 positional)
+             334 STORE_FAST           (status)
+
+304:         336 LOAD_GLOBAL          (NULL + _ask)
+             346 LOAD_CONST           ("3) verify_email_otp 后 page.type")
+             348 LOAD_CONST           ("add_phone")
+             350 CALL                 (2 positional)
+             358 STORE_FAST           (page)
+
+305:         360 LOAD_GLOBAL          (NULL + _ask_bool)
+             370 LOAD_CONST           ("3) 是否有 continue_url")
+             372 LOAD_CONST           (True)
+             374 CALL                 (2 positional)
+             382 TO_BOOL
+             390 POP_JUMP_IF_FALSE    (to 398)
+             394 LOAD_CONST           ("present")
+             396 JUMP_FORWARD         (to 400)
+         >>  398 LOAD_CONST           ("")
+         >>  400 STORE_FAST           (continue_url)
+
+306:         402 LOAD_CONST           ("")
+             404 STORE_FAST           (error)
+
+307:         406 LOAD_FAST            (status)
+             408 LOAD_CONST           (400)
+             410 COMPARE_OP           (>=)
+             414 POP_JUMP_IF_FALSE    (to 442)
+
+308:         418 LOAD_GLOBAL          (NULL + _ask)
+             428 LOAD_CONST           ("3) error message(脱敏)")
+             430 LOAD_CONST           ("email_otp_failed")
+             432 CALL                 (2 positional)
+             440 STORE_FAST           (error)
+
+309:     >>  442 LOAD_FAST            (steps)
+             444 LOAD_ATTR            (NULL|self + append)
+             464 LOAD_GLOBAL          (NULL + _step)
+             474 LOAD_CONST           ("verify_email_otp")
+             476 LOAD_FAST_LOAD_FAST  (status, page)
+             478 LOAD_FAST_LOAD_FAST  (continue_url, error)
+             480 LOAD_CONST           (('status', 'page_type', 'continue_url', 'error'))
+             482 CALL_KW              5
+             484 CALL                 (1 positional)
+             492 POP_TOP
+
+311:     >>  494 LOAD_FAST            (steps)
+             496 LOAD_CONST           (-1)
+             498 BINARY_SUBSCR
+             502 LOAD_ATTR            (NULL|self + get)
+             522 LOAD_CONST           ("page_type")
+             524 LOAD_CONST           ("")
+             526 CALL                 (2 positional)
+             534 STORE_FAST           (current_page)
+
+312:         536 LOAD_FAST            (current_page)
+             538 LOAD_CONST           ({'contact_verification', 'phone_number_collection', 'add_phone'})
+             540 CONTAINS_OP          (in)
+             544 EXTENDED_ARG         (256)
+             546 POP_JUMP_IF_FALSE    (to 1062)
+
+313:         550 LOAD_GLOBAL          (NULL + print)
+             560 LOAD_CONST           ("请你自己准备号码。这里仅记录发送结果，不输入真实号码和验证码。")
+             562 CALL                 (1 positional)
+             570 POP_TOP
+
+314:         572 NOP
+
+315:         574 LOAD_GLOBAL          (NULL + _ask)
+             584 LOAD_CONST           ("4) send_phone channel")
+             586 LOAD_CONST           ("sms")
+             588 CALL                 (2 positional)
+             596 STORE_FAST           (channel)
+
+316:         598 LOAD_GLOBAL          (NULL + _ask_int)
+             608 LOAD_CONST           ("4) send_phone HTTP status")
+             610 LOAD_CONST           (200)
+             612 CALL                 (2 positional)
+             620 STORE_FAST           (status)
+
+317:         622 LOAD_GLOBAL          (NULL + _ask)
+             632 LOAD_CONST           ("4) send_phone page.type")
+             634 LOAD_FAST            (status)
+             636 LOAD_CONST           (400)
+             638 COMPARE_OP           (<)
+             642 POP_JUMP_IF_FALSE    (to 650)
+             646 LOAD_CONST           ("phone_otp")
+             648 JUMP_FORWARD         (to 652)
+         >>  650 LOAD_CONST           ("add_phone")
+         >>  652 CALL                 (2 positional)
+             660 STORE_FAST           (page)
+
+318:         662 LOAD_CONST           ("")
+             664 STORE_FAST           (error)
+
+319:         666 LOAD_FAST            (status)
+             668 LOAD_CONST           (400)
+             670 COMPARE_OP           (>=)
+             674 POP_JUMP_IF_FALSE    (to 702)
+
+320:         678 LOAD_GLOBAL          (NULL + _ask)
+             688 LOAD_CONST           ("4) error message(脱敏)")
+             690 LOAD_CONST           ("phone_rejected")
+             692 CALL                 (2 positional)
+             700 STORE_FAST           (error)
+
+321:     >>  702 LOAD_FAST            (steps)
+             704 LOAD_ATTR            (NULL|self + append)
+             724 LOAD_GLOBAL          (NULL + _step)
+             734 LOAD_CONST           ("send_phone_number_otp")
+             736 LOAD_FAST_LOAD_FAST  (status, page)
+             738 LOAD_FAST_LOAD_FAST  (error, channel)
+             740 LOAD_CONST           (('status', 'page_type', 'error', 'channel'))
+             742 CALL_KW              5
+             744 CALL                 (1 positional)
+             752 POP_TOP
+
+322:         754 LOAD_FAST            (status)
+             756 LOAD_CONST           (400)
+             758 COMPARE_OP           (<)
+             762 POP_JUMP_IF_FALSE    (to 768)
+
+323:         766 JUMP_FORWARD         (to 808)
+
+324:     >>  768 LOAD_GLOBAL          (NULL + _ask_bool)
+             778 LOAD_CONST           ("4) 是否继续记录下一次 send_phone 尝试")
+             780 LOAD_CONST           (True)
+             782 CALL                 (2 positional)
+             790 TO_BOOL
+             798 POP_JUMP_IF_TRUE     (to 804)
+
+325:         802 JUMP_FORWARD         (to 808)
+
+314:     >>  804 JUMP_BACKWARD        (to 574)
+
+327:     >>  808 LOAD_FAST            (steps)
+             810 LOAD_CONST           (-1)
+             812 BINARY_SUBSCR
+             816 LOAD_ATTR            (NULL|self + get)
+             836 LOAD_CONST           ("status")
+             838 LOAD_CONST           (0)
+             840 CALL                 (2 positional)
+             848 LOAD_CONST           (400)
+             850 COMPARE_OP           (<)
+             854 POP_JUMP_IF_FALSE    (to 1062)
+
+328:         858 LOAD_GLOBAL          (NULL + print)
+             868 LOAD_CONST           ("请你自己完成手机 OTP，再把提交后的状态填到这里。")
+             870 CALL                 (1 positional)
+             878 POP_TOP
+
+329:         880 LOAD_GLOBAL          (NULL + _ask_int)
+             890 LOAD_CONST           ("5) verify_phone_otp HTTP status")
+             892 LOAD_CONST           (200)
+             894 CALL                 (2 positional)
+             902 STORE_FAST           (status)
+
+330:         904 LOAD_GLOBAL          (NULL + _ask)
+             914 LOAD_CONST           ("5) verify_phone_otp 后 page.type")
+             916 LOAD_CONST           ("sign_in_with_chatgpt_codex_consent")
+             918 CALL                 (2 positional)
+             926 STORE_FAST           (page)
+
+331:         928 LOAD_GLOBAL          (NULL + _ask_bool)
+             938 LOAD_CONST           ("5) 是否有 continue_url")
+             940 LOAD_CONST           (True)
+             942 CALL                 (2 positional)
+             950 TO_BOOL
+             958 POP_JUMP_IF_FALSE    (to 966)
+             962 LOAD_CONST           ("present")
+             964 JUMP_FORWARD         (to 968)
+         >>  966 LOAD_CONST           ("")
+         >>  968 STORE_FAST           (continue_url)
+
+332:         970 LOAD_CONST           ("")
+             972 STORE_FAST           (error)
+
+333:         974 LOAD_FAST            (status)
+             976 LOAD_CONST           (400)
+             978 COMPARE_OP           (>=)
+             982 POP_JUMP_IF_FALSE    (to 1010)
+
+334:         986 LOAD_GLOBAL          (NULL + _ask)
+             996 LOAD_CONST           ("5) error message(脱敏)")
+             998 LOAD_CONST           ("phone_otp_failed")
+            1000 CALL                 (2 positional)
+            1008 STORE_FAST           (error)
+
+335:     >> 1010 LOAD_FAST            (steps)
+            1012 LOAD_ATTR            (NULL|self + append)
+            1032 LOAD_GLOBAL          (NULL + _step)
+         >> 1042 LOAD_CONST           ("verify_phone_otp")
+            1044 LOAD_FAST_LOAD_FAST  (status, page)
+            1046 LOAD_FAST_LOAD_FAST  (continue_url, error)
+            1048 LOAD_CONST           (('status', 'page_type', 'continue_url', 'error'))
+            1050 CALL_KW              5
+            1052 CALL                 (1 positional)
+            1060 POP_TOP
+
+337:     >> 1062 LOAD_GLOBAL          (NULL + print)
+            1072 LOAD_CONST           ("OAuth callback 只记录是否有 code、state 是否匹配，不输入真实 code。")
+            1074 CALL                 (1 positional)
+            1082 POP_TOP
+
+338:        1084 LOAD_GLOBAL          (NULL + _ask_bool)
+            1094 LOAD_CONST           ("6) callback 是否出现 code")
+            1096 LOAD_CONST           (True)
+            1098 CALL                 (2 positional)
+            1106 STORE_FAST           (has_code)
+
+339:        1108 LOAD_GLOBAL          (NULL + _ask_bool)
+            1118 LOAD_CONST           ("6) callback state 是否匹配原始 state")
+            1120 LOAD_CONST           (True)
+            1122 CALL                 (2 positional)
+            1130 STORE_FAST           (state_matches)
+
+340:        1132 LOAD_FAST            (steps)
+            1134 LOAD_ATTR            (NULL|self + append)
+            1154 LOAD_CONST           ("callback")
+            1156 LOAD_FAST_LOAD_FAST  (has_code, state_matches)
+            1158 LOAD_CONST           (('step', 'has_code', 'state_matches'))
+            1160 BUILD_CONST_KEY_MAP  3
+            1162 CALL                 (1 positional)
+            1170 POP_TOP
+
+342:        1172 LOAD_GLOBAL          (NULL + _ask_int)
+            1182 LOAD_CONST           ("7) token exchange HTTP status/结果状态")
+            1184 LOAD_CONST           (200)
+            1186 CALL                 (2 positional)
+            1194 STORE_FAST           (status)
+
+343:        1196 LOAD_CONST           ("")
+            1198 STORE_FAST           (error)
+
+344:        1200 LOAD_FAST            (status)
+            1202 LOAD_CONST           (400)
+            1204 COMPARE_OP           (>=)
+            1208 POP_JUMP_IF_FALSE    (to 1236)
+
+345:        1212 LOAD_GLOBAL          (NULL + _ask)
+            1222 LOAD_CONST           ("7) token exchange error(脱敏)")
+            1224 LOAD_CONST           ("token_exchange_failed")
+            1226 CALL                 (2 positional)
+            1234 STORE_FAST           (error)
+
+346:     >> 1236 LOAD_FAST            (steps)
+            1238 LOAD_ATTR            (NULL|self + append)
+            1258 LOAD_GLOBAL          (NULL + _step)
+            1268 LOAD_CONST           ("exchange_code")
+            1270 LOAD_FAST_LOAD_FAST  (status, error)
+            1272 LOAD_CONST           (('status', 'error'))
+            1274 CALL_KW              3
+            1276 CALL                 (1 positional)
+            1284 POP_TOP
+
+348:        1286 BUILD_MAP            0
+            1288 STORE_FAST           (runtime_context)
+
+349:        1290 LOAD_GLOBAL          (NULL + _ask_bool)
+            1300 LOAD_CONST           ("8) 是否记录运行上下文预期")
+            1302 LOAD_CONST           (True)
+            1304 CALL                 (2 positional)
+            1312 TO_BOOL
+            1320 POP_JUMP_IF_FALSE    (to 1484)
+
+351:        1324 LOAD_GLOBAL          (NULL + _ask_bool)
+            1334 LOAD_CONST           ("8) 是否有 device_id")
+            1336 LOAD_CONST           (True)
+            1338 CALL                 (2 positional)
+
+352:        1346 LOAD_GLOBAL          (NULL + _ask_bool)
+            1356 LOAD_CONST           ("8) OAuth URL 是否有 state")
+            1358 LOAD_CONST           (True)
+            1360 CALL                 (2 positional)
+
+353:        1368 LOAD_GLOBAL          (NULL + _ask_bool)
+            1378 LOAD_CONST           ("8) 是否有 PKCE code_verifier")
+            1380 LOAD_CONST           (True)
+            1382 CALL                 (2 positional)
+
+354:        1390 LOAD_GLOBAL          (NULL + _ask_bool)
+            1400 LOAD_CONST           ("8) 是否复用了 cookie jar/session cookies")
+            1402 LOAD_CONST           (True)
+            1404 CALL                 (2 positional)
+
+355:        1412 LOAD_GLOBAL          (NULL + _ask_bool)
+            1422 LOAD_CONST           ("8) 是否复用了同一个 HTTP session")
+            1424 LOAD_CONST           (True)
+            1426 CALL                 (2 positional)
+
+356:        1434 LOAD_GLOBAL          (NULL + _ask_bool)
+            1444 LOAD_CONST           ("8) 是否有浏览器/persona 指纹元数据")
+            1446 LOAD_CONST           (True)
+            1448 CALL                 (2 positional)
+
+357:        1456 LOAD_GLOBAL          (NULL + _ask_bool)
+            1466 LOAD_CONST           ("8) Node 侧是否报告指纹元数据")
+            1468 LOAD_CONST           (False)
+            1470 CALL                 (2 positional)
+
+350:        1478 LOAD_CONST           (('device_id_present', 'oauth_state_present', 'code_verifier_present', 'cookie_jar_present', 'session_present', 'browser_fingerprint_present', 'node_fingerprint_present'))
+            1480 BUILD_CONST_KEY_MAP  7
+            1482 STORE_FAST           (runtime_context)
+
+361:     >> 1484 LOAD_CONST           ("codex_chain_replay.v1")
+
+362:        1486 LOAD_CONST           (True)
+
+363:        1488 LOAD_GLOBAL          (NULL + int)
+            1498 LOAD_GLOBAL          (time)
+            1508 LOAD_ATTR            (time)
+            1528 PUSH_NULL
+            1530 CALL                 (0 positional)
+            1538 CALL                 (1 positional)
+
+364:        1546 LOAD_FAST            (email)
+
+365:        1548 LOAD_CONST           ("Manual fixture contains only page/status/control-flow observations. No OTP/code/token/cookie values.")
+
+366:        1550 LOAD_FAST            (runtime_context)
+
+367:        1552 LOAD_FAST            (steps)
+
+360:        1554 LOAD_CONST           (('schema', 'sanitized', 'created_at', 'email', 'notes', 'runtime_context', 'steps'))
+            1556 BUILD_CONST_KEY_MAP  7
+            1558 STORE_FAST           (fixture)
+
+369:        1560 LOAD_FAST            (output_path)
+            1562 TO_BOOL
+            1570 POP_JUMP_IF_FALSE    (to 1596)
+            1574 LOAD_GLOBAL          (NULL + Path)
+            1584 LOAD_FAST            (output_path)
+            1586 CALL                 (1 positional)
+            1594 JUMP_FORWARD         (to 1614)
+         >> 1596 LOAD_GLOBAL          (NULL + _default_manual_output)
+            1606 CALL                 (0 positional)
+         >> 1614 STORE_FAST           (out)
+
+370:        1616 LOAD_FAST            (out)
+            1618 LOAD_ATTR            (parent)
+            1638 LOAD_ATTR            (NULL|self + mkdir)
+            1658 LOAD_CONST           (True)
+            1660 LOAD_CONST           (True)
+            1662 LOAD_CONST           (('parents', 'exist_ok'))
+            1664 CALL_KW              2
+            1666 POP_TOP
+
+371:        1668 LOAD_FAST            (out)
+            1670 LOAD_ATTR            (NULL|self + write_text)
+            1690 LOAD_GLOBAL          (json)
+            1700 LOAD_ATTR            (dumps)
+            1720 PUSH_NULL
+            1722 LOAD_FAST            (fixture)
+            1724 LOAD_CONST           (False)
+            1726 LOAD_CONST           (2)
+            1728 LOAD_CONST           (('ensure_ascii', 'indent'))
+            1730 CALL_KW              3
+            1732 LOAD_CONST           ("utf-8")
+            1734 LOAD_CONST           (('encoding',))
+            1736 CALL_KW              2
+            1738 POP_TOP
+
+372:        1740 LOAD_FAST            (out)
+            1742 RETURN_VALUE
+
+
+# Method Name:       _redacted_result
+# Filename:          codex_chain_runner.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  9
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        375
+# Constants:
+#    0: 'Keep runner output useful without dumping token-like values.'
+#    1: {'refresh_token', 'code', 'id_token', 'authorization_code', 'access_token', 'callback'}
+#    2: '<redacted>'
+#    3: ''
+#    4: 'local_oauth'
+#    5: 'code'
+#    6: 'tokens'
+# Names:
+#    0: items
+#    1: isinstance
+#    2: dict
+#    3: get
+# Varnames:
+#	result, hidden, out, key, value, local, tokens, k, v
+# Positional arguments:
+#	result
+# Local variables:
+#    1: hidden
+#    2: out
+#    3: key
+#    4: value
+#    5: local
+#    6: tokens
+#    7: k
+#    8: v
+375:           0 RESUME               0
+
+377:           2 BUILD_SET            0
+               4 LOAD_CONST           ({'refresh_token', 'code', 'id_token', 'authorization_code', 'access_token', 'callback'})
+               6 SET_UPDATE           1
+               8 STORE_FAST           (hidden)
+
+378:          10 BUILD_MAP            0
+              12 STORE_FAST           (out)
+
+379:          14 LOAD_FAST            (result)
+              16 LOAD_ATTR            (NULL|self + items)
+              36 CALL                 (0 positional)
+              44 GET_ITER
+              46 FOR_ITER             (to 436)
+              50 UNPACK_SEQUENCE      2
+              54 STORE_FAST_STORE_FAST (key, value)
+
+380:          56 LOAD_FAST_LOAD_FAST  (key, hidden)
+              58 CONTAINS_OP          (in)
+              62 POP_JUMP_IF_FALSE    (to 96)
+
+381:          66 LOAD_FAST            (value)
+              68 TO_BOOL
+              76 POP_JUMP_IF_FALSE    (to 84)
+              80 LOAD_CONST           ("<redacted>")
+              82 JUMP_FORWARD         (to 86)
+         >>   84 LOAD_CONST           ("")
+         >>   86 LOAD_FAST_LOAD_FAST  (out, key)
+              88 STORE_SUBSCR
+
+382:          92 JUMP_BACKWARD        (to 46)
+
+383:     >>   96 LOAD_FAST            (key)
+              98 LOAD_CONST           ("local_oauth")
+             100 COMPARE_OP           (==)
+             104 POP_JUMP_IF_FALSE    (to 424)
+             108 LOAD_GLOBAL          (NULL + isinstance)
+             118 LOAD_FAST            (value)
+             120 LOAD_GLOBAL          (dict)
+             130 CALL                 (2 positional)
+             138 TO_BOOL
+         >>  146 POP_JUMP_IF_FALSE    (to 424)
+
+384:         150 LOAD_GLOBAL          (NULL + dict)
+             160 LOAD_FAST            (value)
+             162 CALL                 (1 positional)
+             170 STORE_FAST           (local)
+
+385:         172 LOAD_FAST            (local)
+             174 LOAD_ATTR            (NULL|self + get)
+             194 LOAD_CONST           ("code")
+             196 CALL                 (1 positional)
+             204 TO_BOOL
+             212 POP_JUMP_IF_FALSE    (to 226)
+
+386:         216 LOAD_CONST           ("<redacted>")
+             218 LOAD_FAST            (local)
+             220 LOAD_CONST           ("code")
+             222 STORE_SUBSCR
+
+387:     >>  226 LOAD_FAST            (local)
+             228 LOAD_ATTR            (NULL|self + get)
+             248 LOAD_CONST           ("tokens")
+             250 CALL                 (1 positional)
+             258 STORE_FAST           (tokens)
+
+388:         260 LOAD_GLOBAL          (NULL + isinstance)
+             270 LOAD_FAST            (tokens)
+             272 LOAD_GLOBAL          (dict)
+             282 CALL                 (2 positional)
+             290 TO_BOOL
+             298 POP_JUMP_IF_FALSE    (to 412)
+
+391:         302 LOAD_FAST            (tokens)
+             304 LOAD_ATTR            (NULL|self + items)
+             324 CALL                 (0 positional)
+             332 GET_ITER
+
+389:         334 LOAD_FAST_AND_CLEAR  (k)
+             336 LOAD_FAST_AND_CLEAR  (v)
+             338 SWAP                 (TOS <-> TOS2)
+             340 BUILD_MAP            0
+             342 SWAP                 (TOS <-> TOS1)
+
+391:         344 GET_ITER
+             346 FOR_ITER             (to 394)
+             350 UNPACK_SEQUENCE      2
+             354 STORE_FAST_STORE_FAST (k, v)
+
+390:         356 LOAD_FAST_LOAD_FAST  (k, k)
+             358 LOAD_FAST            (hidden)
+             360 CONTAINS_OP          (in)
+             364 POP_JUMP_IF_FALSE    (to 386)

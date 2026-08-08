@@ -1,0 +1,237 @@
+# Local variables:
+#    1: old_hot
+#    2: new_hot
+# Free variables:
+#    0: country_hot_score
+#    1: country_hot_seconds
+#    2: country_semi_hot_score
+#    3: country_semi_hot_seconds
+#    4: failure_hot_decay
+#    5: kind
+#    6: now
+#    7: ok
+#    8: self
+               0 COPY_FREE_VARS       9
+
+822:           2 RESUME               0
+
+823:           4 LOAD_DEREF           (ok)
+               6 TO_BOOL
+              14 POP_JUMP_IF_FALSE    (to 242)
+
+824:          18 LOAD_DEREF           (self)
+              20 LOAD_ATTR            (NULL|self + _int)
+              40 LOAD_FAST            (stat)
+              42 LOAD_ATTR            (NULL|self + get)
+              62 LOAD_CONST           ("success")
+              64 CALL                 (1 positional)
+              72 LOAD_CONST           (0)
+              74 CALL                 (2 positional)
+              82 LOAD_CONST           (1)
+              84 BINARY_OP            (+)
+              88 LOAD_FAST            (stat)
+              90 LOAD_CONST           ("success")
+              92 STORE_SUBSCR
+
+825:          96 LOAD_DEREF           (country_hot_seconds)
+              98 LOAD_CONST           (0)
+             100 COMPARE_OP           (>)
+             104 POP_JUMP_IF_FALSE    (to 238)
+             108 LOAD_DEREF           (country_hot_score)
+             110 LOAD_CONST           (0)
+             112 COMPARE_OP           (>)
+             116 POP_JUMP_IF_FALSE    (to 238)
+
+826:         120 LOAD_DEREF           (now)
+             122 LOAD_FAST            (stat)
+             124 LOAD_CONST           ("hot_started_at")
+             126 STORE_SUBSCR
+
+827:         130 LOAD_DEREF           (now)
+             132 LOAD_DEREF           (country_hot_seconds)
+             134 BINARY_OP            (+)
+             138 LOAD_FAST            (stat)
+             140 LOAD_CONST           ("hot_until")
+             142 STORE_SUBSCR
+
+828:         146 LOAD_GLOBAL          (NULL + max)
+             156 LOAD_DEREF           (self)
+             158 LOAD_ATTR            (NULL|self + _float)
+             178 LOAD_FAST            (stat)
+             180 LOAD_ATTR            (NULL|self + get)
+             200 LOAD_CONST           ("hot_score")
+             202 CALL                 (1 positional)
+             210 LOAD_CONST           (0.0)
+             212 CALL                 (2 positional)
+             220 LOAD_DEREF           (country_hot_score)
+             222 CALL                 (2 positional)
+             230 LOAD_FAST            (stat)
+             232 LOAD_CONST           ("hot_score")
+             234 STORE_SUBSCR
+
+829:     >>  238 LOAD_FAST            (stat)
+             240 RETURN_VALUE
+
+831:     >>  242 LOAD_DEREF           (kind)
+             244 LOAD_CONST           ("no_numbers")
+             246 COMPARE_OP           (!=)
+             250 POP_JUMP_IF_FALSE    (to 332)
+
+832:         254 LOAD_DEREF           (self)
+             256 LOAD_ATTR            (NULL|self + _int)
+             276 LOAD_FAST            (stat)
+             278 LOAD_ATTR            (NULL|self + get)
+             298 LOAD_CONST           ("fail")
+             300 CALL                 (1 positional)
+             308 LOAD_CONST           (0)
+             310 CALL                 (2 positional)
+             318 LOAD_CONST           (1)
+             320 BINARY_OP            (+)
+             324 LOAD_FAST            (stat)
+             326 LOAD_CONST           ("fail")
+             328 STORE_SUBSCR
+
+833:     >>  332 LOAD_DEREF           (kind)
+             334 LOAD_CONST           (('timeout', 'no_numbers', 'phone_rejected', 'register_rejected', 'register_rate_limited', 'invalid_auth_step'))
+             336 CONTAINS_OP          (in)
+             340 POP_JUMP_IF_FALSE    (to 422)
+
+834:         344 LOAD_DEREF           (self)
+             346 LOAD_ATTR            (NULL|self + _int)
+             366 LOAD_FAST            (stat)
+             368 LOAD_ATTR            (NULL|self + get)
+             388 LOAD_DEREF           (kind)
+             390 CALL                 (1 positional)
+             398 LOAD_CONST           (0)
+             400 CALL                 (2 positional)
+             408 LOAD_CONST           (1)
+             410 BINARY_OP            (+)
+             414 LOAD_FAST            (stat)
+             416 LOAD_DEREF           (kind)
+             418 STORE_SUBSCR
+
+835:     >>  422 LOAD_DEREF           (kind)
+             424 LOAD_CONST           ("timeout")
+             426 COMPARE_OP           (==)
+             430 POP_JUMP_IF_FALSE    (to 736)
+
+836:         434 LOAD_DEREF           (self)
+             436 LOAD_ATTR            (NULL|self + _int)
+             456 LOAD_FAST            (stat)
+             458 LOAD_ATTR            (NULL|self + get)
+             478 LOAD_CONST           ("otp_sent")
+             480 CALL                 (1 positional)
+             488 LOAD_CONST           (0)
+             490 CALL                 (2 positional)
+             498 LOAD_CONST           (1)
+             500 BINARY_OP            (+)
+             504 LOAD_FAST            (stat)
+             506 LOAD_CONST           ("otp_sent")
+             508 STORE_SUBSCR
+
+837:         512 LOAD_DEREF           (country_semi_hot_seconds)
+             514 LOAD_CONST           (0)
+             516 COMPARE_OP           (>)
+             520 POP_JUMP_IF_FALSE    (to 736)
+             524 LOAD_DEREF           (country_semi_hot_score)
+             526 LOAD_CONST           (0)
+             528 COMPARE_OP           (>)
+             532 POP_JUMP_IF_FALSE    (to 736)
+
+838:         536 LOAD_DEREF           (now)
+             538 LOAD_FAST            (stat)
+             540 LOAD_CONST           ("hot_started_at")
+             542 STORE_SUBSCR
+
+839:         546 LOAD_GLOBAL          (NULL + max)
+             556 LOAD_DEREF           (self)
+             558 LOAD_ATTR            (NULL|self + _float)
+             578 LOAD_FAST            (stat)
+             580 LOAD_ATTR            (NULL|self + get)
+             600 LOAD_CONST           ("hot_until")
+             602 CALL                 (1 positional)
+             610 LOAD_CONST           (0.0)
+             612 CALL                 (2 positional)
+             620 LOAD_DEREF           (now)
+             622 LOAD_DEREF           (country_semi_hot_seconds)
+             624 BINARY_OP            (+)
+             628 CALL                 (2 positional)
+             636 LOAD_FAST            (stat)
+             638 LOAD_CONST           ("hot_until")
+             640 STORE_SUBSCR
+
+840:         644 LOAD_GLOBAL          (NULL + max)
+             654 LOAD_DEREF           (self)
+             656 LOAD_ATTR            (NULL|self + _float)
+             676 LOAD_FAST            (stat)
+             678 LOAD_ATTR            (NULL|self + get)
+             698 LOAD_CONST           ("hot_score")
+             700 CALL                 (1 positional)
+             708 LOAD_CONST           (0.0)
+             710 CALL                 (2 positional)
+             718 LOAD_DEREF           (country_semi_hot_score)
+             720 CALL                 (2 positional)
+             728 LOAD_FAST            (stat)
+             730 LOAD_CONST           ("hot_score")
+             732 STORE_SUBSCR
+
+841:     >>  736 LOAD_DEREF           (self)
+             738 LOAD_ATTR            (NULL|self + _float)
+             758 LOAD_FAST            (stat)
+             760 LOAD_ATTR            (NULL|self + get)
+             780 LOAD_CONST           ("hot_score")
+             782 CALL                 (1 positional)
+             790 LOAD_CONST           (0.0)
+             792 CALL                 (2 positional)
+             800 STORE_FAST           (old_hot)
+
+842:         802 LOAD_FAST            (old_hot)
+             804 LOAD_CONST           (0)
+             806 COMPARE_OP           (>)
+             810 POP_JUMP_IF_FALSE    (to 968)
+             814 LOAD_DEREF           (kind)
+             816 LOAD_CONST           (('register_rejected', 'register_rate_limited', 'invalid_auth_step', 'unsupported'))
+             818 CONTAINS_OP          (in)
+             822 POP_JUMP_IF_FALSE    (to 968)
+
+843:         826 LOAD_FAST            (old_hot)
+             828 LOAD_DEREF           (failure_hot_decay)
+             830 BINARY_OP            (*)
+             834 STORE_FAST           (new_hot)
+
+844:         836 LOAD_FAST            (new_hot)
+             838 LOAD_CONST           (5)
+             840 COMPARE_OP           (>=)
+             844 POP_JUMP_IF_FALSE    (to 860)
+
+845:         848 LOAD_FAST_LOAD_FAST  (new_hot, stat)
+             850 LOAD_CONST           ("hot_score")
+             852 STORE_SUBSCR
+
+850:         856 LOAD_FAST            (stat)
+             858 RETURN_VALUE
+
+847:     >>  860 LOAD_FAST            (stat)
+             862 LOAD_ATTR            (NULL|self + pop)
+             882 LOAD_CONST           ("hot_score")
+             884 LOAD_CONST           (None)
+             886 CALL                 (2 positional)
+             894 POP_TOP
+
+848:         896 LOAD_FAST            (stat)
+             898 LOAD_ATTR            (NULL|self + pop)
+             918 LOAD_CONST           ("hot_started_at")
+             920 LOAD_CONST           (None)
+             922 CALL                 (2 positional)
+             930 POP_TOP
+
+849:         932 LOAD_FAST            (stat)
+             934 LOAD_ATTR            (NULL|self + pop)
+             954 LOAD_CONST           ("hot_until")
+             956 LOAD_CONST           (None)
+             958 CALL                 (2 positional)
+             966 POP_TOP
+
+850:     >>  968 LOAD_FAST            (stat)
+             970 RETURN_VALUE
+

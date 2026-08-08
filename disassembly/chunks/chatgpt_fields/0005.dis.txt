@@ -1,0 +1,556 @@
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: part
+144:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 60)
+              14 STORE_FAST_LOAD_FAST (part, part)
+              16 LOAD_ATTR            (NULL|self + lower)
+              36 CALL                 (0 positional)
+              44 LOAD_CONST           ({'workspaces', 'workspace'})
+              46 CONTAINS_OP          (in)
+              50 YIELD_VALUE          0
+              52 RESUME               5
+              54 POP_TOP
+              56 JUMP_BACKWARD        (to 10)
+         >>   60 END_FOR
+              62 POP_TOP
+              64 RETURN_CONST         (None)
+         >>   66 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              68 RERAISE              1
+
+ExceptionTable:
+  4 to 64 -> 66 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          chatgpt_fields.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        156
+# Constants:
+#    0: {'claims', 'jwt', 'auth'}
+#    1: None
+# Names:
+#    0: lower
+# Varnames:
+#	.0, part
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: part
+156:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 60)
+              14 STORE_FAST_LOAD_FAST (part, part)
+              16 LOAD_ATTR            (NULL|self + lower)
+              36 CALL                 (0 positional)
+              44 LOAD_CONST           ({'claims', 'jwt', 'auth'})
+              46 CONTAINS_OP          (in)
+              50 YIELD_VALUE          0
+              52 RESUME               5
+              54 POP_TOP
+              56 JUMP_BACKWARD        (to 10)
+         >>   60 END_FOR
+              62 POP_TOP
+              64 RETURN_CONST         (None)
+         >>   66 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              68 RERAISE              1
+
+ExceptionTable:
+  4 to 64 -> 66 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          chatgpt_fields.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        158
+# Constants:
+#    0: 'user'
+#    1: None
+# Names:
+#    0: lower
+# Varnames:
+#	.0, part
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: part
+158:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 60)
+              14 STORE_FAST_LOAD_FAST (part, part)
+              16 LOAD_ATTR            (NULL|self + lower)
+              36 CALL                 (0 positional)
+              44 LOAD_CONST           ("user")
+              46 COMPARE_OP           (==)
+              50 YIELD_VALUE          0
+              52 RESUME               5
+              54 POP_TOP
+              56 JUMP_BACKWARD        (to 10)
+         >>   60 END_FOR
+              62 POP_TOP
+              64 RETURN_CONST         (None)
+         >>   66 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              68 RERAISE              1
+
+ExceptionTable:
+  4 to 64 -> 66 [0] lasti
+
+# Method Name:       merge
+# Filename:          chatgpt_fields.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        6
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        223
+# Constants:
+#    0: None
+#    1: '_chatgpt_field_sources'
+#    2: ('chatgpt_auth_user_id',)
+#    3: 'chatgpt_plan_type'
+# Names:
+#    0: get
+#    1: CHATGPT_FIELD_KEYS
+#    2: clean_str
+#    3: lower
+#    4: isinstance
+#    5: dict
+#    6: str
+# Varnames:
+#	source_fields, source_map, key, value
+# Positional arguments:
+#	source_fields
+# Local variables:
+#    1: source_map
+#    2: key
+#    3: value
+# Free variables:
+#    0: fields
+#    1: sources
+               0 COPY_FREE_VARS       2
+
+223:           2 RESUME               0
+
+224:           4 LOAD_FAST            (source_fields)
+               6 LOAD_ATTR            (NULL|self + get)
+              26 LOAD_CONST           ("_chatgpt_field_sources")
+              28 CALL                 (1 positional)
+              36 COPY                 1
+              38 TO_BOOL
+              46 POP_JUMP_IF_TRUE     (to 54)
+              50 POP_TOP
+              52 BUILD_MAP            0
+         >>   54 STORE_FAST           (source_map)
+
+225:          56 LOAD_GLOBAL          (CHATGPT_FIELD_KEYS)
+              66 LOAD_CONST           (('chatgpt_auth_user_id',))
+              68 BINARY_OP            (+)
+              72 GET_ITER
+              74 FOR_ITER             (to 382)
+              78 STORE_FAST           (key)
+
+226:          80 LOAD_GLOBAL          (NULL + clean_str)
+              90 LOAD_FAST            (source_fields)
+              92 LOAD_ATTR            (NULL|self + get)
+             112 LOAD_FAST            (key)
+             114 CALL                 (1 positional)
+             122 CALL                 (1 positional)
+             130 STORE_FAST           (value)
+
+227:         132 LOAD_FAST            (value)
+             134 TO_BOOL
+             142 POP_JUMP_IF_TRUE     (to 150)
+             146 JUMP_BACKWARD        (to 74)
+         >>  150 LOAD_DEREF           (fields)
+             152 LOAD_ATTR            (NULL|self + get)
+             172 LOAD_FAST            (key)
+             174 CALL                 (1 positional)
+             182 TO_BOOL
+             190 POP_JUMP_IF_FALSE    (to 198)
+             194 JUMP_BACKWARD        (to 74)
+
+228:     >>  198 LOAD_FAST            (key)
+             200 LOAD_CONST           ("chatgpt_plan_type")
+             202 COMPARE_OP           (==)
+             206 POP_JUMP_IF_FALSE    (to 242)
+             210 LOAD_FAST            (value)
+             212 LOAD_ATTR            (NULL|self + lower)
+             232 CALL                 (0 positional)
+             240 JUMP_FORWARD         (to 244)
+         >>  242 LOAD_FAST            (value)
+         >>  244 LOAD_DEREF           (fields)
+             246 LOAD_FAST            (key)
+             248 STORE_SUBSCR
+
+229:         252 LOAD_GLOBAL          (NULL + isinstance)
+             262 LOAD_FAST            (source_map)
+             264 LOAD_GLOBAL          (dict)
+             274 CALL                 (2 positional)
+             282 TO_BOOL
+             290 POP_JUMP_IF_TRUE     (to 298)
+             294 JUMP_BACKWARD        (to 74)
+         >>  298 LOAD_FAST            (source_map)
+             300 LOAD_ATTR            (NULL|self + get)
+             320 LOAD_FAST            (key)
+         >>  322 CALL                 (1 positional)
+             330 TO_BOOL
+             338 POP_JUMP_IF_TRUE     (to 346)
+             342 JUMP_BACKWARD        (to 74)
+
+230:     >>  346 LOAD_GLOBAL          (NULL + str)
+             356 LOAD_FAST_LOAD_FAST  (source_map, key)
+             358 BINARY_SUBSCR
+             362 CALL                 (1 positional)
+             370 LOAD_DEREF           (sources)
+             372 LOAD_FAST            (key)
+             374 STORE_SUBSCR
+             378 JUMP_BACKWARD        (to 74)
+
+225:     >>  382 END_FOR
+             384 POP_TOP
+             386 RETURN_CONST         (None)
+
+
+# Method Name:       _ids_match
+# Filename:          chatgpt_fields.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        6
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        425
+# Constants:
+#    0: None
+#    1: False
+#    2: ('id', 'account_id', 'sub2api_id', 'sub2api_account_id')
+#    3: True
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: clean_str
+#    3: get
+# Varnames:
+#	row, key
+# Positional arguments:
+#	row
+# Local variables:
+#    1: key
+# Free variables:
+#    0: account_id
+               0 COPY_FREE_VARS       1
+
+425:           2 RESUME               0
+
+426:           4 LOAD_GLOBAL          (NULL + isinstance)
+              14 LOAD_FAST            (row)
+              16 LOAD_GLOBAL          (dict)
+              26 CALL                 (2 positional)
+              34 TO_BOOL
+              42 POP_JUMP_IF_TRUE     (to 48)
+
+427:          46 RETURN_CONST         (False)
+
+428:     >>   48 LOAD_CONST           (('id', 'account_id', 'sub2api_id', 'sub2api_account_id'))
+              50 GET_ITER
+              52 FOR_ITER             (to 126)
+              56 STORE_FAST           (key)
+
+429:          58 LOAD_GLOBAL          (NULL + clean_str)
+              68 LOAD_FAST            (row)
+              70 LOAD_ATTR            (NULL|self + get)
+              90 LOAD_FAST            (key)
+              92 CALL                 (1 positional)
+             100 CALL                 (1 positional)
+             108 LOAD_DEREF           (account_id)
+             110 COMPARE_OP           (==)
+             114 POP_JUMP_IF_TRUE     (to 122)
+             118 JUMP_BACKWARD        (to 52)
+
+430:     >>  122 POP_TOP
+             124 RETURN_CONST         (True)
+
+428:     >>  126 END_FOR
+             128 POP_TOP
+
+431:         130 RETURN_CONST         (False)
+
+
+# Method Name:       _matching_payload
+# Filename:          chatgpt_fields.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        4
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        433
+# Constants:
+#    0: None
+#    1: 'data'
+#    2: 'items'
+# Names:
+#    0: get
+#    1: isinstance
+#    2: dict
+#    3: list
+# Varnames:
+#	payload, data, items, item, cloned
+# Positional arguments:
+#	payload
+# Local variables:
+#    1: data
+#    2: items
+#    3: item
+#    4: cloned
+# Free variables:
+#    0: _ids_match
+               0 COPY_FREE_VARS       1
+
+433:           2 RESUME               0
+
+434:           4 LOAD_FAST            (payload)
+               6 LOAD_ATTR            (NULL|self + get)
+              26 LOAD_CONST           ("data")
+              28 CALL                 (1 positional)
+              36 STORE_FAST           (data)
+
+435:          38 LOAD_GLOBAL          (NULL + isinstance)
+              48 LOAD_FAST            (data)
+              50 LOAD_GLOBAL          (dict)
+              60 CALL                 (2 positional)
+              68 TO_BOOL
+              76 POP_JUMP_IF_FALSE    (to 272)
+
+436:          80 LOAD_FAST            (data)
+              82 LOAD_ATTR            (NULL|self + get)
+             102 LOAD_CONST           ("items")
+             104 CALL                 (1 positional)
+             112 STORE_FAST           (items)
+
+437:         114 LOAD_GLOBAL          (NULL + isinstance)
+             124 LOAD_FAST            (items)
+             126 LOAD_GLOBAL          (list)
+             136 CALL                 (2 positional)
+             144 TO_BOOL
+             152 POP_JUMP_IF_FALSE    (to 242)
+
+438:         156 LOAD_FAST            (items)
+             158 GET_ITER
+             160 FOR_ITER             (to 234)
+             164 STORE_FAST           (item)
+
+439:         166 LOAD_DEREF           (_ids_match)
+             168 PUSH_NULL
+             170 LOAD_FAST            (item)
+             172 CALL                 (1 positional)
+             180 TO_BOOL
+             188 POP_JUMP_IF_TRUE     (to 196)
+             192 JUMP_BACKWARD        (to 160)
+
+440:     >>  196 LOAD_GLOBAL          (NULL + dict)
+             206 LOAD_FAST            (payload)
+             208 CALL                 (1 positional)
+             216 STORE_FAST           (cloned)
+
+441:         218 LOAD_FAST_LOAD_FAST  (item, cloned)
+             220 LOAD_CONST           ("data")
+             222 STORE_SUBSCR
+
+442:         226 LOAD_FAST            (cloned)
+             228 SWAP                 (TOS <-> TOS1)
+             230 POP_TOP
+         >>  232 RETURN_VALUE
+
+438:     >>  234 END_FOR
+             236 POP_TOP
+
+443:         238 BUILD_MAP            0
+             240 RETURN_VALUE
+
+444:     >>  242 LOAD_DEREF           (_ids_match)
+             244 PUSH_NULL
+             246 LOAD_FAST            (data)
+             248 CALL                 (1 positional)
+             256 TO_BOOL
+             264 POP_JUMP_IF_FALSE    (to 272)
+
+445:         268 LOAD_FAST            (payload)
+             270 RETURN_VALUE
+
+446:     >>  272 LOAD_DEREF           (_ids_match)
+             274 PUSH_NULL
+             276 LOAD_FAST            (payload)
+             278 CALL                 (1 positional)
+             286 TO_BOOL
+             294 POP_JUMP_IF_FALSE    (to 302)
+
+447:         298 LOAD_FAST            (payload)
+             300 RETURN_VALUE
+
+448:     >>  302 BUILD_MAP            0
+             304 RETURN_VALUE
+
+
+# Method Name:       update_one
+# Filename:          chatgpt_fields.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        9
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        472
+# Constants:
+#    0: None
+#    1: True
+#    2: False
+#    3: ('sort_keys', 'ensure_ascii')
+#    4: ('exchange_data', 'extra_sources')
+# Names:
+#    0: json
+#    1: dumps
+#    2: CHATGPT_ALL_KEYS
+#    3: get
+#    4: extract_chatgpt_auth_fields
+#    5: chatgpt_credentials_from_item
+#    6: merge_chatgpt_fields
+# Varnames:
+#	row, k, before, fields, after
+# Positional arguments:
+#	row
+# Local variables:
+#    1: k
+#    2: before
+#    3: fields
+#    4: after
+# Free variables:
+#    0: changed
+#    1: source_name
+               0 COPY_FREE_VARS       2
+
+472:           2 RESUME               0
+
+474:           4 LOAD_GLOBAL          (json)
+              14 LOAD_ATTR            (dumps)
+              34 PUSH_NULL
+              36 LOAD_GLOBAL          (CHATGPT_ALL_KEYS)
+              46 GET_ITER
+              48 LOAD_FAST_AND_CLEAR  (k)
+              50 SWAP                 (TOS <-> TOS1)
+              52 BUILD_MAP            0
+              54 SWAP                 (TOS <-> TOS1)
+              56 GET_ITER
+              58 FOR_ITER             (to 102)
+              62 STORE_FAST_LOAD_FAST (k, k)
+              64 LOAD_FAST            (row)
+              66 LOAD_ATTR            (NULL|self + get)
+              86 LOAD_FAST            (k)
+              88 CALL                 (1 positional)
+              96 MAP_ADD              2
+              98 JUMP_BACKWARD        (to 58)
+         >>  102 END_FOR
+             104 POP_TOP
+             106 SWAP                 (TOS <-> TOS1)
+             108 STORE_FAST           (k)
+             110 LOAD_CONST           (True)
+             112 LOAD_CONST           (False)
+             114 LOAD_CONST           (('sort_keys', 'ensure_ascii'))
+             116 CALL_KW              3
+             118 STORE_FAST           (before)
+
+475:         120 LOAD_GLOBAL          (NULL + extract_chatgpt_auth_fields)
+
+476:         130 LOAD_GLOBAL          (NULL + chatgpt_credentials_from_item)
+             140 LOAD_FAST            (row)
+             142 CALL                 (1 positional)
+
+477:         150 LOAD_FAST            (row)
+
+478:         152 LOAD_DEREF           (source_name)
+             154 LOAD_FAST            (row)
+             156 BUILD_TUPLE          2
+             158 BUILD_LIST           1
+
+475:         160 LOAD_CONST           (('exchange_data', 'extra_sources'))
+             162 CALL_KW              3
+             164 STORE_FAST           (fields)
+
+480:         166 LOAD_GLOBAL          (NULL + merge_chatgpt_fields)
+             176 LOAD_FAST_LOAD_FAST  (row, fields)
+             178 CALL                 (2 positional)
+             186 POP_TOP
+
+481:         188 LOAD_GLOBAL          (json)
+             198 LOAD_ATTR            (dumps)
+             218 PUSH_NULL
+             220 LOAD_GLOBAL          (CHATGPT_ALL_KEYS)
+             230 GET_ITER
+             232 LOAD_FAST_AND_CLEAR  (k)
+             234 SWAP                 (TOS <-> TOS1)
+             236 BUILD_MAP            0
+             238 SWAP                 (TOS <-> TOS1)
+             240 GET_ITER
+             242 FOR_ITER             (to 286)
+             246 STORE_FAST_LOAD_FAST (k, k)
+             248 LOAD_FAST            (row)
+             250 LOAD_ATTR            (NULL|self + get)
+             270 LOAD_FAST            (k)
+             272 CALL                 (1 positional)
+             280 MAP_ADD              2
+             282 JUMP_BACKWARD        (to 242)
+         >>  286 END_FOR
+             288 POP_TOP
+             290 SWAP                 (TOS <-> TOS1)
+             292 STORE_FAST           (k)
+             294 LOAD_CONST           (True)
+             296 LOAD_CONST           (False)
+             298 LOAD_CONST           (('sort_keys', 'ensure_ascii'))
+             300 CALL_KW              3
+             302 STORE_FAST           (after)
+
+482:         304 LOAD_FAST_LOAD_FAST  (before, after)
+             306 COMPARE_OP           (!=)
+             310 POP_JUMP_IF_FALSE    (to 320)
+
+483:         314 LOAD_CONST           (True)
+             316 STORE_DEREF          (changed)
+             318 RETURN_CONST         (None)
+
+482:     >>  320 RETURN_CONST         (None)
+         >>  322 SWAP                 (TOS <-> TOS1)
+             324 POP_TOP
+
+474:         326 SWAP                 (TOS <-> TOS1)
+             328 STORE_FAST           (k)
+         >>  330 RERAISE              0
+         >>  332 SWAP                 (TOS <-> TOS1)
+             334 POP_TOP
+
+481:         336 SWAP                 (TOS <-> TOS1)
+             338 STORE_FAST           (k)
+             340 RERAISE              0
+
+ExceptionTable:
+  52 to 104 -> 322 [4]
+  236 to 288 -> 332 [4]

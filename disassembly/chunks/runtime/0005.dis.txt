@@ -1,0 +1,800 @@
+#    6: 'auto'
+#    7: 'manual_pool_path'
+#    8: 'manual_mailbox_pool.txt'
+#    9: 'manual_state_path'
+#   10: 'manual_mailbox_pool_state.json'
+#   11: 'manual_code_timeout'
+#   12: 600
+#   13: 'email_code_timeout'
+#   14: 150
+#   15: 'email_poll_interval'
+#   16: 5
+#   17: 'email_poll_attempts'
+#   18: 30
+#   19: 'email_auth_preference'
+#   20: 'email_auth_strategy_version'
+#   21: 2
+#   22: 'gptmail_enabled'
+#   23: False
+#   24: 'gptmail_url'
+#   25: 'https://gptmail.passkissyou.online'
+#   26: 'gptmail_keyword'
+#   27: 'code,验证码,verification code,OpenAI,ChatGPT,gpt'
+#   28: 'gptmail_api_key'
+#   29: ''
+#   30: 'mailbox_baseline_timeout'
+#   31: 'mailbox_baseline_attempts'
+#   32: 3
+#   33: 'mailbox_baseline_retry_seconds'
+#   34: 'auto_email_login_concurrency'
+#   35: 1
+#   36: 'results_dir'
+#   37: 'results'
+#   38: 'password'
+#   39: 'target_count'
+#   40: 'concurrency'
+#   41: 'node_concurrency'
+#   42: 'node_timeout'
+#   43: 45
+#   44: 'node_timeout_strategy_version'
+#   45: 'auth_session_retries'
+#   46: 0
+#   47: 'proxy'
+#   48: 'proxy_scope'
+#   49: ('sms', 'email', 'upload')
+#   50: 'sms_provider'
+#   51: 'smsbower'
+#   52: 'sms_api_key'
+#   53: 'sms_mode'
+#   54: 'smart'
+#   55: 'service'
+#   56: 'dr'
+#   57: 'country'
+#   58: '0.04'
+#   59: True
+#   60: 6
+#   61: ('enabled', 'refresh_seconds', 'attempts_per_round')
+#   62: ('url', 'email', 'password', 'group', 'proxy_id')
+#   63: 'real_sentinel_runner.js'
+#   64: ('provider_ids', 'max_price', 'sms_timeout', 'phone_max_attempts', 'sms_smart', 'sub2api', 'node_runner')
+# Names:
+#    0: str
+#    1: NODE_DIR
+# Varnames:
+#	data_dir, pool_file
+# Positional arguments:
+#	data_dir
+# Local variables:
+#    1: pool_file
+371:           0 RESUME               0
+
+372:           2 LOAD_FAST            (data_dir)
+               4 LOAD_CONST           ("mailbox_pool.txt")
+               6 BINARY_OP            (/)
+              10 STORE_FAST           (pool_file)
+
+373:          12 BUILD_MAP            0
+
+374:          14 LOAD_CONST           ("pool_path")
+              16 LOAD_GLOBAL          (NULL + str)
+              26 LOAD_FAST            (pool_file)
+              28 CALL                 (1 positional)
+
+373:          36 MAP_ADD              1
+
+375:          38 LOAD_CONST           ("state_path")
+              40 LOAD_GLOBAL          (NULL + str)
+              50 LOAD_FAST            (data_dir)
+              52 LOAD_CONST           ("mailbox_pool_state.json")
+              54 BINARY_OP            (/)
+              58 CALL                 (1 positional)
+
+373:          66 MAP_ADD              1
+
+376:          68 LOAD_CONST           ("email_mode")
+              70 LOAD_CONST           ("auto")
+
+373:          72 MAP_ADD              1
+
+377:          74 LOAD_CONST           ("manual_pool_path")
+              76 LOAD_GLOBAL          (NULL + str)
+              86 LOAD_FAST            (data_dir)
+              88 LOAD_CONST           ("manual_mailbox_pool.txt")
+              90 BINARY_OP            (/)
+              94 CALL                 (1 positional)
+
+373:         102 MAP_ADD              1
+
+378:         104 LOAD_CONST           ("manual_state_path")
+             106 LOAD_GLOBAL          (NULL + str)
+             116 LOAD_FAST            (data_dir)
+             118 LOAD_CONST           ("manual_mailbox_pool_state.json")
+             120 BINARY_OP            (/)
+             124 CALL                 (1 positional)
+
+373:         132 MAP_ADD              1
+
+379:         134 LOAD_CONST           ("manual_code_timeout")
+             136 LOAD_CONST           (600)
+
+373:         138 MAP_ADD              1
+
+380:         140 LOAD_CONST           ("email_code_timeout")
+             142 LOAD_CONST           (150)
+
+373:         144 MAP_ADD              1
+
+381:         146 LOAD_CONST           ("email_poll_interval")
+             148 LOAD_CONST           (5)
+
+373:         150 MAP_ADD              1
+
+382:         152 LOAD_CONST           ("email_poll_attempts")
+             154 LOAD_CONST           (30)
+
+373:         156 MAP_ADD              1
+
+383:         158 LOAD_CONST           ("email_auth_preference")
+             160 LOAD_CONST           ("auto")
+
+373:         162 MAP_ADD              1
+
+384:         164 LOAD_CONST           ("email_auth_strategy_version")
+             166 LOAD_CONST           (2)
+
+373:         168 MAP_ADD              1
+
+385:         170 LOAD_CONST           ("gptmail_enabled")
+             172 LOAD_CONST           (False)
+
+373:         174 MAP_ADD              1
+
+386:         176 LOAD_CONST           ("gptmail_url")
+             178 LOAD_CONST           ("https://gptmail.passkissyou.online")
+
+373:         180 MAP_ADD              1
+
+387:         182 LOAD_CONST           ("gptmail_keyword")
+             184 LOAD_CONST           ("code,验证码,verification code,OpenAI,ChatGPT,gpt")
+
+373:         186 MAP_ADD              1
+
+388:         188 LOAD_CONST           ("gptmail_api_key")
+             190 LOAD_CONST           ("")
+
+373:         192 MAP_ADD              1
+
+389:         194 LOAD_CONST           ("mailbox_baseline_timeout")
+             196 LOAD_CONST           (30)
+
+373:         198 MAP_ADD              1
+
+390:         200 LOAD_CONST           ("mailbox_baseline_attempts")
+             202 LOAD_CONST           (3)
+
+373:         204 MAP_ADD              1
+             206 BUILD_MAP            0
+
+391:         208 LOAD_CONST           ("mailbox_baseline_retry_seconds")
+             210 LOAD_CONST           (2)
+
+373:         212 MAP_ADD              1
+
+392:         214 LOAD_CONST           ("auto_email_login_concurrency")
+             216 LOAD_CONST           (1)
+
+373:         218 MAP_ADD              1
+
+393:         220 LOAD_CONST           ("results_dir")
+             222 LOAD_GLOBAL          (NULL + str)
+             232 LOAD_FAST            (data_dir)
+             234 LOAD_CONST           ("results")
+             236 BINARY_OP            (/)
+             240 CALL                 (1 positional)
+
+373:         248 MAP_ADD              1
+
+394:         250 LOAD_CONST           ("password")
+             252 LOAD_CONST           ("")
+
+373:         254 MAP_ADD              1
+
+395:         256 LOAD_CONST           ("target_count")
+             258 LOAD_CONST           (1)
+
+373:         260 MAP_ADD              1
+
+396:         262 LOAD_CONST           ("concurrency")
+             264 LOAD_CONST           (1)
+
+373:         266 MAP_ADD              1
+
+397:         268 LOAD_CONST           ("node_concurrency")
+             270 LOAD_CONST           (3)
+
+373:         272 MAP_ADD              1
+
+398:         274 LOAD_CONST           ("node_timeout")
+             276 LOAD_CONST           (45)
+
+373:         278 MAP_ADD              1
+
+399:         280 LOAD_CONST           ("node_timeout_strategy_version")
+             282 LOAD_CONST           (1)
+
+373:         284 MAP_ADD              1
+
+401:         286 LOAD_CONST           ("auth_session_retries")
+             288 LOAD_CONST           (0)
+
+373:         290 MAP_ADD              1
+
+402:         292 LOAD_CONST           ("proxy")
+             294 LOAD_CONST           ("")
+
+373:         296 MAP_ADD              1
+
+403:         298 LOAD_CONST           ("proxy_scope")
+             300 LOAD_CONST           (False)
+             302 LOAD_CONST           (False)
+             304 LOAD_CONST           (False)
+             306 LOAD_CONST           (('sms', 'email', 'upload'))
+             308 BUILD_CONST_KEY_MAP  3
+
+373:         310 MAP_ADD              1
+
+404:         312 LOAD_CONST           ("sms_provider")
+             314 LOAD_CONST           ("smsbower")
+
+373:         316 MAP_ADD              1
+
+405:         318 LOAD_CONST           ("sms_api_key")
+             320 LOAD_CONST           ("")
+
+373:         322 MAP_ADD              1
+
+406:         324 LOAD_CONST           ("sms_mode")
+             326 LOAD_CONST           ("smart")
+
+373:         328 MAP_ADD              1
+
+407:         330 LOAD_CONST           ("service")
+             332 LOAD_CONST           ("dr")
+
+373:         334 MAP_ADD              1
+
+408:         336 LOAD_CONST           ("country")
+             338 LOAD_CONST           ("")
+
+373:         340 MAP_ADD              1
+             342 DICT_UPDATE          1
+
+409:         344 LOAD_CONST           ("")
+
+410:         346 LOAD_CONST           ("0.04")
+
+411:         348 LOAD_CONST           (30)
+
+414:         350 LOAD_CONST           (0)
+
+415:         352 LOAD_CONST           (True)
+             354 LOAD_CONST           (6)
+             356 LOAD_CONST           (5)
+             358 LOAD_CONST           (('enabled', 'refresh_seconds', 'attempts_per_round'))
+             360 BUILD_CONST_KEY_MAP  3
+
+416:         362 LOAD_CONST           ("")
+             364 LOAD_CONST           ("")
+             366 LOAD_CONST           ("")
+             368 LOAD_CONST           ("")
+             370 LOAD_CONST           ("")
+             372 LOAD_CONST           (('url', 'email', 'password', 'group', 'proxy_id'))
+             374 BUILD_CONST_KEY_MAP  5
+
+417:         376 LOAD_GLOBAL          (NULL + str)
+             386 LOAD_GLOBAL          (NODE_DIR)
+             396 LOAD_CONST           ("real_sentinel_runner.js")
+             398 BINARY_OP            (/)
+             402 CALL                 (1 positional)
+
+373:         410 LOAD_CONST           (('provider_ids', 'max_price', 'sms_timeout', 'phone_max_attempts', 'sms_smart', 'sub2api', 'node_runner'))
+             412 BUILD_CONST_KEY_MAP  7
+             414 DICT_UPDATE          1
+             416 RETURN_VALUE
+
+
+# Method Name:       ImporterConfigStore
+# Filename:          runtime.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000000 (0x1000000)
+# First Line:        421
+# Constants:
+#    0: 'ImporterConfigStore'
+#    1: 421
+#    2: "Owns only the standalone tool's private runtime settings."
+#    3: ('pool_path', 'state_path', 'manual_pool_path', 'manual_state_path', 'results_dir', 'node_runner')
+#    4: <Code311 code object __init__ at 0x1055263a0, file runtime.py>, line 433
+#    5: <Code311 code object _enforce_private_paths at 0x105526370, file runtime.py>, line 438
+#    6: <Code311 code object load at 0x105526340, file runtime.py>, line 448
+#    7: <Code311 code object save at 0x105526310, file runtime.py>, line 494
+#    8: <Code311 code object save_pool_text at 0x1055262e0, file runtime.py>, line 514
+#    9: <Code311 code object save_manual_pool_text at 0x1055262b0, file runtime.py>, line 522
+#   10: ('data_dir', 'path')
+#   11: None
+#   12: ('data_dir', 'str | os.PathLike[str]', 'return', 'None')
+#   13: ('settings', 'dict[str, Any]', 'defaults', 'dict[str, Any]', 'return', 'bool')
+#   14: ('return', 'dict[str, Any]')
+#   15: ('values', 'dict[str, Any]', 'return', 'dict[str, Any]')
+#   16: ('content', 'str', 'return', 'Path')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: _PRIVATE_PATH_KEYS
+#    6: DEFAULT_DATA_DIR
+#    7: __init__
+#    8: staticmethod
+#    9: _enforce_private_paths
+#   10: load
+#   11: save
+#   12: save_pool_text
+#   13: save_manual_pool_text
+#   14: __static_attributes__
+421:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("ImporterConfigStore")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (421)
+              12 STORE_NAME           (__firstlineno__)
+
+422:          14 LOAD_CONST           ("Owns only the standalone tool's private runtime settings.")
+              16 STORE_NAME           (__doc__)
+
+424:          18 LOAD_CONST           (('pool_path', 'state_path', 'manual_pool_path', 'manual_state_path', 'results_dir', 'node_runner'))
+              20 STORE_NAME           (_PRIVATE_PATH_KEYS)
+
+433:          22 LOAD_NAME            (DEFAULT_DATA_DIR)
+              24 BUILD_TUPLE          1
+              26 LOAD_CONST           (('data_dir', 'str | os.PathLike[str]', 'return', 'None'))
+              28 LOAD_CONST           (<Code311 code object __init__ at 0x1055263a0, file runtime.py>, line 433)
+              30 MAKE_FUNCTION
+              32 SET_FUNCTION_ATTRIBUTE 4
+              34 SET_FUNCTION_ATTRIBUTE 1
+              36 STORE_NAME           (__init__)
+
+438:          38 LOAD_NAME            (staticmethod)
+
+439:          40 LOAD_CONST           (('settings', 'dict[str, Any]', 'defaults', 'dict[str, Any]', 'return', 'bool'))
+              42 LOAD_CONST           (<Code311 code object _enforce_private_paths at 0x105526370, file runtime.py>, line 438)
+              44 MAKE_FUNCTION
+              46 SET_FUNCTION_ATTRIBUTE 4
+
+438:          48 CALL                 (0 positional)
+
+439:          56 STORE_NAME           (_enforce_private_paths)
+
+448:          58 LOAD_CONST           (('return', 'dict[str, Any]'))
+              60 LOAD_CONST           (<Code311 code object load at 0x105526340, file runtime.py>, line 448)
+              62 MAKE_FUNCTION
+              64 SET_FUNCTION_ATTRIBUTE 4
+              66 STORE_NAME           (load)
+
+494:          68 LOAD_CONST           (('values', 'dict[str, Any]', 'return', 'dict[str, Any]'))
+              70 LOAD_CONST           (<Code311 code object save at 0x105526310, file runtime.py>, line 494)
+              72 MAKE_FUNCTION
+              74 SET_FUNCTION_ATTRIBUTE 4
+              76 STORE_NAME           (save)
+
+514:          78 LOAD_CONST           (('content', 'str', 'return', 'Path'))
+              80 LOAD_CONST           (<Code311 code object save_pool_text at 0x1055262e0, file runtime.py>, line 514)
+              82 MAKE_FUNCTION
+              84 SET_FUNCTION_ATTRIBUTE 4
+              86 STORE_NAME           (save_pool_text)
+
+522:          88 LOAD_CONST           (('content', 'str', 'return', 'Path'))
+              90 LOAD_CONST           (<Code311 code object save_manual_pool_text at 0x1055262b0, file runtime.py>, line 522)
+              92 MAKE_FUNCTION
+              94 SET_FUNCTION_ATTRIBUTE 4
+              96 STORE_NAME           (save_manual_pool_text)
+              98 LOAD_CONST           (('data_dir', 'path'))
+             100 STORE_NAME           (__static_attributes__)
+             102 RETURN_CONST         (None)
+
+
+# Method Name:       _merge
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        531
+# Constants:
+#    0: None
+# Names:
+#    0: copy
+#    1: deepcopy
+#    2: items
+#    3: isinstance
+#    4: dict
+#    5: get
+#    6: _merge
+# Varnames:
+#	base, update, result, key, value
+# Positional arguments:
+#	base, update
+# Local variables:
+#    2: result
+#    3: key
+#    4: value
+531:           0 RESUME               0
+
+532:           2 LOAD_GLOBAL          (copy)
+              12 LOAD_ATTR            (deepcopy)
+              32 PUSH_NULL
+              34 LOAD_FAST            (base)
+              36 CALL                 (1 positional)
+              44 STORE_FAST           (result)
+
+533:          46 LOAD_FAST            (update)
+              48 LOAD_ATTR            (NULL|self + items)
+              68 CALL                 (0 positional)
+              76 GET_ITER
+              78 FOR_ITER             (to 250)
+              82 UNPACK_SEQUENCE      2
+              86 STORE_FAST_STORE_FAST (key, value)
+
+534:          88 LOAD_GLOBAL          (NULL + isinstance)
+              98 LOAD_FAST            (value)
+             100 LOAD_GLOBAL          (dict)
+             110 CALL                 (2 positional)
+             118 TO_BOOL
+             126 POP_JUMP_IF_FALSE    (to 238)
+             130 LOAD_GLOBAL          (NULL + isinstance)
+             140 LOAD_FAST            (result)
+             142 LOAD_ATTR            (NULL|self + get)
+             162 LOAD_FAST            (key)
+             164 CALL                 (1 positional)
+             172 LOAD_GLOBAL          (dict)
+             182 CALL                 (2 positional)
+             190 TO_BOOL
+             198 POP_JUMP_IF_FALSE    (to 238)
+
+535:         202 LOAD_GLOBAL          (NULL + _merge)
+             212 LOAD_FAST_LOAD_FAST  (result, key)
+             214 BINARY_SUBSCR
+             218 LOAD_FAST            (value)
+             220 CALL                 (2 positional)
+             228 LOAD_FAST_LOAD_FAST  (result, key)
+             230 STORE_SUBSCR
+             234 JUMP_BACKWARD        (to 78)
+
+537:     >>  238 LOAD_FAST_LOAD_FAST  (value, result)
+             240 LOAD_FAST            (key)
+             242 STORE_SUBSCR
+             246 JUMP_BACKWARD        (to 78)
+
+533:     >>  250 END_FOR
+             252 POP_TOP
+
+538:         254 LOAD_FAST            (result)
+             256 RETURN_VALUE
+
+
+# Method Name:       ManualMailboxEntry
+# Filename:          runtime.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        3
+# Flags:             0x01000000 (0x1000000)
+# First Line:        541
+# Constants:
+#    0: 'ManualMailboxEntry'
+#    1: 541
+#    2: 'str'
+#    3: 'email'
+#    4: 'password'
+#    5: 'int'
+#    6: 'line_no'
+#    7: 'key'
+#    8: ''
+#    9: 'source_row'
+#   10: ()
+#   11: None
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __annotations__
+#    5: source_row
+#    6: __static_attributes__
+541:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("ManualMailboxEntry")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (541)
+              12 STORE_NAME           (__firstlineno__)
+              14 SETUP_ANNOTATIONS
+
+543:          16 LOAD_CONST           ("str")
+              18 LOAD_NAME            (__annotations__)
+              20 LOAD_CONST           ("email")
+              22 STORE_SUBSCR
+
+544:          26 LOAD_CONST           ("str")
+              28 LOAD_NAME            (__annotations__)
+              30 LOAD_CONST           ("password")
+              32 STORE_SUBSCR
+
+545:          36 LOAD_CONST           ("int")
+              38 LOAD_NAME            (__annotations__)
+              40 LOAD_CONST           ("line_no")
+              42 STORE_SUBSCR
+
+546:          46 LOAD_CONST           ("str")
+              48 LOAD_NAME            (__annotations__)
+              50 LOAD_CONST           ("key")
+              52 STORE_SUBSCR
+
+547:          56 LOAD_CONST           ("")
+              58 STORE_NAME           (source_row)
+              60 LOAD_CONST           ("str")
+              62 LOAD_NAME            (__annotations__)
+              64 LOAD_CONST           ("source_row")
+              66 STORE_SUBSCR
+              70 LOAD_CONST           (())
+              72 STORE_NAME           (__static_attributes__)
+              74 RETURN_CONST         (None)
+
+
+# Method Name:       ManualMailboxPool
+# Filename:          runtime.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        4
+# Flags:             0x01000000 (0x1000000)
+# First Line:        550
+# Constants:
+#    0: 'ManualMailboxPool'
+#    1: 550
+#    2: 'Thread-safe local pool for email or email/password manual OTP rows.'
+#    3: 'manual_mailbox_pool.v1'
+#    4: <Code311 code object __init__ at 0x1055261f0, file runtime.py>, line 555
+#    5: <Code311 code object _entries_unlocked at 0x1055261c0, file runtime.py>, line 561
+#    6: <Code311 code object entries at 0x105526190, file runtime.py>, line 594
+#    7: <Code311 code object _empty_state at 0x105526160, file runtime.py>, line 598
+#    8: <Code311 code object _update at 0x105526100, file runtime.py>, line 602
+#    9: <Code311 code object _item at 0x1055260d0, file runtime.py>, line 627
+#   10: ''
+#   11: <Code311 code object _history at 0x1055260a0, file runtime.py>, line 636
+#   12: <Code311 code object validate at 0x105526070, file runtime.py>, line 644
+#   13: 1800
+#   14: ('lease_seconds',)
+#   15: <Code311 code object lease at 0x10552c160, file runtime.py>, line 648
+#   16: <Code311 code object _set_status at 0x10552c1c0, file runtime.py>, line 670
+#   17: ('reason',)
+#   18: <Code311 code object release at 0x10552c1f0, file runtime.py>, line 687
+#   19: 'manual_restore'
+#   20: <Code311 code object restore_available at 0x10552c220, file runtime.py>, line 690
+#   21: <Code311 code object restore_entry at 0x10552c280, file runtime.py>, line 693
+#   22: 'mailbox_code_timeout'
+#   23: <Code311 code object mark_damaged at 0x10552c2b0, file runtime.py>, line 711
+#   24: <Code311 code object mark_damaged_entry at 0x10552c310, file runtime.py>, line 714
+#   25: 'completed'
+#   26: <Code311 code object mark_consumed at 0x10552c340, file runtime.py>, line 730
+#   27: 'sub2_uploaded'
+#   28: <Code311 code object remove_entry at 0x10552c3a0, file runtime.py>, line 733
+#   29: <Code311 code object reset_reimported_failures at 0x10552c430, file runtime.py>, line 763
+#   30: <Code311 code object summary at 0x10552c460, file runtime.py>, line 788
+#   31: ('lock', 'pool_lock_name', 'pool_path', 'state_path')
+#   32: None
+#   33: ('pool_path', 'str | os.PathLike[str]', 'state_path', 'str | os.PathLike[str]', 'return', 'None')
+#   34: ('return', 'tuple[list[ManualMailboxEntry], list[str]]')
+#   35: ('return', 'dict[str, Any]')
+#   36: ('callback', 'Callable[[dict[str, Any], list[ManualMailboxEntry]], Any]', 'return', 'Any')
+#   37: ('state', 'dict[str, Any]', 'entry', 'ManualMailboxEntry', 'return', 'dict[str, Any]')
+#   38: ('',)
+#   39: ('item', 'dict[str, Any]', 'event', 'str', 'reason', 'str', 'return', 'None')
+#   40: ('lease_seconds', 'int', 'return', 'ManualMailboxEntry')
+#   41: ('email', 'str', 'status', 'str', 'reason', 'str', 'return', 'bool')
+#   42: ('email', 'str', 'reason', 'str', 'return', 'bool')
+#   43: ('entry', 'ManualMailboxEntry', 'reason', 'str', 'return', 'bool')
+#   44: ('return', 'int')
+#   45: ('return', 'dict[str, int]')
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: SCHEMA
+#    6: __init__
+#    7: _entries_unlocked
+#    8: entries
+#    9: classmethod
+#   10: _empty_state
+#   11: _update
+#   12: staticmethod
+#   13: _item
+#   14: _history
+#   15: validate
+#   16: lease
+#   17: _set_status
+#   18: release
+#   19: restore_available
+#   20: restore_entry
+#   21: mark_damaged
+#   22: mark_damaged_entry
+#   23: mark_consumed
+#   24: remove_entry
+#   25: reset_reimported_failures
+#   26: summary
+#   27: __static_attributes__
+550:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("ManualMailboxPool")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (550)
+              12 STORE_NAME           (__firstlineno__)
+
+551:          14 LOAD_CONST           ("Thread-safe local pool for email or email/password manual OTP rows.")
+              16 STORE_NAME           (__doc__)
+
+553:          18 LOAD_CONST           ("manual_mailbox_pool.v1")
+              20 STORE_NAME           (SCHEMA)
+
+555:          22 LOAD_CONST           (('pool_path', 'str | os.PathLike[str]', 'state_path', 'str | os.PathLike[str]', 'return', 'None'))
+              24 LOAD_CONST           (<Code311 code object __init__ at 0x1055261f0, file runtime.py>, line 555)
+              26 MAKE_FUNCTION
+              28 SET_FUNCTION_ATTRIBUTE 4
+              30 STORE_NAME           (__init__)
+
+561:          32 LOAD_CONST           (('return', 'tuple[list[ManualMailboxEntry], list[str]]'))
+              34 LOAD_CONST           (<Code311 code object _entries_unlocked at 0x1055261c0, file runtime.py>, line 561)
+              36 MAKE_FUNCTION
+              38 SET_FUNCTION_ATTRIBUTE 4
+              40 STORE_NAME           (_entries_unlocked)
+
+594:          42 LOAD_CONST           (('return', 'tuple[list[ManualMailboxEntry], list[str]]'))
+              44 LOAD_CONST           (<Code311 code object entries at 0x105526190, file runtime.py>, line 594)
+              46 MAKE_FUNCTION
+              48 SET_FUNCTION_ATTRIBUTE 4
+              50 STORE_NAME           (entries)
+
+598:          52 LOAD_NAME            (classmethod)
+
+599:          54 LOAD_CONST           (('return', 'dict[str, Any]'))
+              56 LOAD_CONST           (<Code311 code object _empty_state at 0x105526160, file runtime.py>, line 598)
+              58 MAKE_FUNCTION
+              60 SET_FUNCTION_ATTRIBUTE 4
+
+598:          62 CALL                 (0 positional)
+
+599:          70 STORE_NAME           (_empty_state)
+
+602:          72 LOAD_CONST           (('callback', 'Callable[[dict[str, Any], list[ManualMailboxEntry]], Any]', 'return', 'Any'))
+              74 LOAD_CONST           (<Code311 code object _update at 0x105526100, file runtime.py>, line 602)
+              76 MAKE_FUNCTION
+              78 SET_FUNCTION_ATTRIBUTE 4
+              80 STORE_NAME           (_update)
+
+627:          82 LOAD_NAME            (staticmethod)
+
+628:          84 LOAD_CONST           (('state', 'dict[str, Any]', 'entry', 'ManualMailboxEntry', 'return', 'dict[str, Any]'))
+              86 LOAD_CONST           (<Code311 code object _item at 0x1055260d0, file runtime.py>, line 627)
+              88 MAKE_FUNCTION
+              90 SET_FUNCTION_ATTRIBUTE 4
+
+627:          92 CALL                 (0 positional)
+
+628:         100 STORE_NAME           (_item)
+
+636:         102 LOAD_NAME            (staticmethod)
+
+637:         104 LOAD_CONST           (('',))
+             106 LOAD_CONST           (('item', 'dict[str, Any]', 'event', 'str', 'reason', 'str', 'return', 'None'))
+             108 LOAD_CONST           (<Code311 code object _history at 0x1055260a0, file runtime.py>, line 636)
+             110 MAKE_FUNCTION
+             112 SET_FUNCTION_ATTRIBUTE 4
+             114 SET_FUNCTION_ATTRIBUTE 1
+
+636:         116 CALL                 (0 positional)
+
+637:         124 STORE_NAME           (_history)
+
+644:         126 LOAD_CONST           (('return', 'dict[str, Any]'))
+             128 LOAD_CONST           (<Code311 code object validate at 0x105526070, file runtime.py>, line 644)
+             130 MAKE_FUNCTION
+             132 SET_FUNCTION_ATTRIBUTE 4
+             134 STORE_NAME           (validate)
+
+648:         136 LOAD_CONST           (1800)
+             138 LOAD_CONST           (('lease_seconds',))
+             140 BUILD_CONST_KEY_MAP  1
+             142 LOAD_CONST           (('lease_seconds', 'int', 'return', 'ManualMailboxEntry'))
+             144 LOAD_CONST           (<Code311 code object lease at 0x10552c160, file runtime.py>, line 648)
+             146 MAKE_FUNCTION
+             148 SET_FUNCTION_ATTRIBUTE 4
+             150 SET_FUNCTION_ATTRIBUTE 2
+             152 STORE_NAME           (lease)
+
+670:         154 LOAD_CONST           (('email', 'str', 'status', 'str', 'reason', 'str', 'return', 'bool'))
+             156 LOAD_CONST           (<Code311 code object _set_status at 0x10552c1c0, file runtime.py>, line 670)
+             158 MAKE_FUNCTION
+             160 SET_FUNCTION_ATTRIBUTE 4
+             162 STORE_NAME           (_set_status)
+
+687:         164 LOAD_CONST           ("")
+             166 LOAD_CONST           (('reason',))
+             168 BUILD_CONST_KEY_MAP  1
+             170 LOAD_CONST           (('email', 'str', 'reason', 'str', 'return', 'bool'))
+             172 LOAD_CONST           (<Code311 code object release at 0x10552c1f0, file runtime.py>, line 687)
+             174 MAKE_FUNCTION
+             176 SET_FUNCTION_ATTRIBUTE 4
+             178 SET_FUNCTION_ATTRIBUTE 2
+             180 STORE_NAME           (release)
+
+690:         182 LOAD_CONST           ("manual_restore")
+             184 LOAD_CONST           (('reason',))
+             186 BUILD_CONST_KEY_MAP  1
+             188 LOAD_CONST           (('email', 'str', 'reason', 'str', 'return', 'bool'))
+             190 LOAD_CONST           (<Code311 code object restore_available at 0x10552c220, file runtime.py>, line 690)
+             192 MAKE_FUNCTION
+             194 SET_FUNCTION_ATTRIBUTE 4
+             196 SET_FUNCTION_ATTRIBUTE 2
+             198 STORE_NAME           (restore_available)
+
+693:         200 LOAD_CONST           ("manual_restore")
+             202 LOAD_CONST           (('reason',))
+             204 BUILD_CONST_KEY_MAP  1
+             206 LOAD_CONST           (('entry', 'ManualMailboxEntry', 'reason', 'str', 'return', 'bool'))
+             208 LOAD_CONST           (<Code311 code object restore_entry at 0x10552c280, file runtime.py>, line 693)
+             210 MAKE_FUNCTION
+             212 SET_FUNCTION_ATTRIBUTE 4
+             214 SET_FUNCTION_ATTRIBUTE 2
+             216 STORE_NAME           (restore_entry)
+
+711:         218 LOAD_CONST           ("mailbox_code_timeout")
+             220 LOAD_CONST           (('reason',))
+             222 BUILD_CONST_KEY_MAP  1
+             224 LOAD_CONST           (('email', 'str', 'reason', 'str', 'return', 'bool'))
+             226 LOAD_CONST           (<Code311 code object mark_damaged at 0x10552c2b0, file runtime.py>, line 711)
+             228 MAKE_FUNCTION
+             230 SET_FUNCTION_ATTRIBUTE 4
+             232 SET_FUNCTION_ATTRIBUTE 2
+             234 STORE_NAME           (mark_damaged)
+
+714:         236 LOAD_CONST           ("mailbox_code_timeout")
+             238 LOAD_CONST           (('reason',))
+             240 BUILD_CONST_KEY_MAP  1
+             242 LOAD_CONST           (('entry', 'ManualMailboxEntry', 'reason', 'str', 'return', 'bool'))
+             244 LOAD_CONST           (<Code311 code object mark_damaged_entry at 0x10552c310, file runtime.py>, line 714)
+             246 MAKE_FUNCTION
+             248 SET_FUNCTION_ATTRIBUTE 4
+             250 SET_FUNCTION_ATTRIBUTE 2
+             252 STORE_NAME           (mark_damaged_entry)
+
+730:         254 LOAD_CONST           ("completed")
+             256 LOAD_CONST           (('reason',))
+             258 BUILD_CONST_KEY_MAP  1
+             260 LOAD_CONST           (('email', 'str', 'reason', 'str', 'return', 'bool'))
+             262 LOAD_CONST           (<Code311 code object mark_consumed at 0x10552c340, file runtime.py>, line 730)
+             264 MAKE_FUNCTION
+             266 SET_FUNCTION_ATTRIBUTE 4
+             268 SET_FUNCTION_ATTRIBUTE 2
+             270 STORE_NAME           (mark_consumed)

@@ -1,0 +1,800 @@
+             674 LOAD_FAST            (data)
+             676 LOAD_CONST           ("url")
+             678 STORE_SUBSCR
+
+2022:         682 LOAD_FAST            (data)
+             684 LOAD_CONST           ("url")
+             686 BINARY_SUBSCR
+             690 LOAD_FAST            (self)
+             692 STORE_ATTR           (last_oauth_url)
+
+2023:         702 LOAD_FAST_LOAD_FAST  (data, self)
+             704 STORE_ATTR           (last_response)
+
+2024:         714 LOAD_FAST            (data)
+             716 STORE_FAST           (last_data)
+
+2025:         718 LOAD_GLOBAL          (NULL + _as_bool)
+             728 LOAD_FAST            (self)
+             730 LOAD_ATTR            (config)
+             750 LOAD_ATTR            (NULL|self + get)
+             770 LOAD_CONST           ("trace_continue")
+             772 CALL                 (1 positional)
+             780 LOAD_CONST           (False)
+             782 CALL                 (2 positional)
+             790 TO_BOOL
+             798 POP_JUMP_IF_FALSE    (to 846)
+
+2026:         802 LOAD_FAST            (self)
+             804 LOAD_ATTR            (NULL|self + _trace_continue)
+             824 LOAD_CONST           ("oauth_start:")
+             826 LOAD_FAST            (impersonate)
+             828 FORMAT_SIMPLE
+             830 LOAD_CONST           (":response")
+             832 BUILD_STRING         3
+             834 LOAD_FAST_LOAD_FAST  (oauth_url, data)
+             836 CALL                 (3 positional)
+             844 POP_TOP
+
+2027:     >>  846 LOAD_GLOBAL          (NULL + _is_cloudflare_challenge)
+             856 LOAD_FAST            (data)
+             858 CALL                 (1 positional)
+             866 TO_BOOL
+             874 POP_JUMP_IF_FALSE    (to 966)
+
+2028:         878 LOAD_GLOBAL          (NULL + _emit)
+             888 LOAD_FAST            (self)
+             890 LOAD_ATTR            (log_fn)
+             910 LOAD_CONST           ("  [Codex] OAuth 起始页遇到 Cloudflare challenge，切换指纹重试 ")
+             912 LOAD_FAST            (idx)
+             914 FORMAT_SIMPLE
+             916 LOAD_CONST           ("/")
+             918 LOAD_GLOBAL          (NULL + len)
+             928 LOAD_FAST            (candidates)
+             930 CALL                 (1 positional)
+             938 FORMAT_SIMPLE
+             940 LOAD_CONST           (": ")
+             942 LOAD_FAST            (impersonate)
+             944 FORMAT_SIMPLE
+             946 BUILD_STRING         6
+             948 LOAD_CONST           ("warn")
+             950 CALL                 (3 positional)
+             958 POP_TOP
+
+2029:         960 EXTENDED_ARG         (256)
+             962 JUMP_BACKWARD        (to 210)
+
+2030:     >>  966 LOAD_CONST           ("/error")
+             968 LOAD_FAST            (data)
+             970 LOAD_CONST           ("url")
+             972 BINARY_SUBSCR
+             976 CONTAINS_OP          (in)
+             980 POP_JUMP_IF_FALSE    (to 1012)
+
+2031:         984 LOAD_CONST           ("oauth_error_page:")
+             986 LOAD_FAST            (data)
+             988 LOAD_CONST           ("url")
+             990 BINARY_SUBSCR
+             994 LOAD_CONST           (None)
+             996 LOAD_CONST           (160)
+             998 BINARY_SLICE
+            1000 FORMAT_SIMPLE
+            1002 BUILD_STRING         2
+            1004 LOAD_FAST            (data)
+            1006 LOAD_CONST           ("error")
+            1008 STORE_SUBSCR
+
+2032:     >> 1012 LOAD_FAST            (data)
+            1014 SWAP                 (TOS <-> TOS1)
+            1016 POP_TOP
+            1018 RETURN_VALUE
+
+2005:     >> 1020 END_FOR
+            1022 POP_TOP
+
+2033:        1024 LOAD_FAST            (last_data)
+            1026 TO_BOOL
+            1034 POP_JUMP_IF_FALSE    (to 1070)
+
+2034:        1038 LOAD_GLOBAL          (NULL + _error_text)
+            1048 LOAD_FAST            (last_data)
+            1050 CALL                 (1 positional)
+            1058 LOAD_FAST            (last_data)
+            1060 LOAD_CONST           ("error")
+            1062 STORE_SUBSCR
+
+2035:        1066 LOAD_FAST            (last_data)
+            1068 RETURN_VALUE
+
+2036:     >> 1070 LOAD_CONST           (0)
+            1072 LOAD_CONST           ("oauth_start_no_response")
+            1074 LOAD_CONST           (('_status', 'error'))
+            1076 BUILD_CONST_KEY_MAP  2
+            1078 RETURN_VALUE
+         >> 1080 PUSH_EXC_INFO
+
+2012:        1082 LOAD_GLOBAL          (Exception)
+            1092 CHECK_EXC_MATCH
+            1094 POP_JUMP_IF_FALSE    (to 1202)
+            1098 STORE_FAST           (exc)
+
+2013:        1100 LOAD_GLOBAL          (NULL + _emit)
+            1110 LOAD_FAST            (self)
+            1112 LOAD_ATTR            (log_fn)
+            1132 LOAD_CONST           ("  [Codex] ChatGPT NextAuth 前置跳过(")
+            1134 LOAD_FAST            (impersonate)
+            1136 FORMAT_SIMPLE
+            1138 LOAD_CONST           ("): ")
+            1140 LOAD_GLOBAL          (NULL + str)
+            1150 LOAD_FAST            (exc)
+            1152 CALL                 (1 positional)
+            1160 LOAD_CONST           (None)
+            1162 LOAD_CONST           (160)
+            1164 BINARY_SLICE
+            1166 FORMAT_SIMPLE
+            1168 BUILD_STRING         4
+            1170 LOAD_CONST           ("warn")
+            1172 CALL                 (3 positional)
+            1180 POP_TOP
+            1182 POP_EXCEPT
+            1184 LOAD_CONST           (None)
+            1186 STORE_FAST           (exc)
+            1188 DELETE_FAST          (exc)
+            1190 EXTENDED_ARG         (256)
+            1192 JUMP_BACKWARD_NO_INTERRUPT (to 514)
+         >> 1194 LOAD_CONST           (None)
+            1196 STORE_FAST           (exc)
+            1198 DELETE_FAST          (exc)
+            1200 RERAISE              1
+
+2012:     >> 1202 RERAISE              0
+         >> 1204 COPY                 3
+            1206 POP_EXCEPT
+            1208 RERAISE              1
+
+ExceptionTable:
+  480 to 512 -> 1080 [1]
+  1080 to 1098 -> 1204 [2] lasti
+  1100 to 1180 -> 1194 [2] lasti
+  1194 to 1202 -> 1204 [2] lasti
+
+# Method Name:       submit_email_identifier
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2038
+# Constants:
+#    0: None
+#    1: '/api/accounts/authorize/continue'
+#    2: 'username'
+#    3: 'email'
+#    4: ('kind', 'value')
+#    5: 'authorize_continue'
+#    6: '/log-in'
+#    7: 30
+#    8: ('flow', 'referer', 'timeout')
+#    9: 'sign-in session is no longer valid'
+#   10: 'operation timed out'
+#   11: 'curl: (28)'
+#   12: '  [Codex] authorize session 失效，重建 OAuth session 后重试 submit email...'
+#   13: 'warn'
+#   14: 'reset'
+#   15: '  [Codex] authorize/continue 返回 page='
+#   16: '?'
+#   17: 'info'
+# Names:
+#    0: _post_auth_json
+#    1: AUTH
+#    2: _error_text
+#    3: lower
+#    4: _is_success_response
+#    5: _emit
+#    6: log_fn
+#    7: original_oauth_url
+#    8: hasattr
+#    9: sentinel_provider
+#   10: reset
+#   11: initiate_oauth
+#   12: _page_type
+# Varnames:
+#	self, email, data, error_text, retryable
+# Positional arguments:
+#	self, email
+# Local variables:
+#    2: data
+#    3: error_text
+#    4: retryable
+2038:           0 RESUME               0
+
+2039:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _post_auth_json)
+
+2040:          24 LOAD_CONST           ("/api/accounts/authorize/continue")
+
+2041:          26 LOAD_CONST           ("username")
+              28 LOAD_CONST           ("email")
+              30 LOAD_FAST            (email)
+              32 LOAD_CONST           (('kind', 'value'))
+              34 BUILD_CONST_KEY_MAP  2
+              36 BUILD_MAP            1
+
+2042:          38 LOAD_CONST           ("authorize_continue")
+
+2043:          40 LOAD_GLOBAL          (AUTH)
+              50 FORMAT_SIMPLE
+              52 LOAD_CONST           ("/log-in")
+              54 BUILD_STRING         2
+
+2044:          56 LOAD_CONST           (30)
+
+2039:          58 LOAD_CONST           (('flow', 'referer', 'timeout'))
+              60 CALL_KW              5
+              62 STORE_FAST           (data)
+
+2046:          64 LOAD_GLOBAL          (NULL + _error_text)
+              74 LOAD_FAST            (data)
+              76 CALL                 (1 positional)
+              84 LOAD_ATTR            (NULL|self + lower)
+             104 CALL                 (0 positional)
+             112 STORE_FAST           (error_text)
+
+2048:         114 LOAD_CONST           ("sign-in session is no longer valid")
+             116 LOAD_FAST            (error_text)
+             118 CONTAINS_OP          (in)
+             122 COPY                 1
+             124 TO_BOOL
+             132 POP_JUMP_IF_TRUE     (to 170)
+             136 POP_TOP
+
+2049:         138 LOAD_CONST           ("operation timed out")
+             140 LOAD_FAST            (error_text)
+             142 CONTAINS_OP          (in)
+
+2048:         146 COPY                 1
+             148 TO_BOOL
+             156 POP_JUMP_IF_TRUE     (to 170)
+             160 POP_TOP
+
+2050:         162 LOAD_CONST           ("curl: (28)")
+             164 LOAD_FAST            (error_text)
+             166 CONTAINS_OP          (in)
+
+2047:     >>  170 STORE_FAST           (retryable)
+
+2052:         172 LOAD_GLOBAL          (NULL + _is_success_response)
+             182 LOAD_FAST            (data)
+             184 CALL                 (1 positional)
+             192 TO_BOOL
+             200 POP_JUMP_IF_TRUE     (to 522)
+             204 LOAD_FAST            (retryable)
+             206 TO_BOOL
+             214 POP_JUMP_IF_FALSE    (to 522)
+
+2053:         218 LOAD_GLOBAL          (NULL + _emit)
+             228 LOAD_FAST            (self)
+             230 LOAD_ATTR            (log_fn)
+             250 LOAD_CONST           ("  [Codex] authorize session 失效，重建 OAuth session 后重试 submit email...")
+             252 LOAD_CONST           ("warn")
+             254 CALL                 (3 positional)
+             262 POP_TOP
+
+2054:         264 LOAD_FAST            (self)
+             266 LOAD_ATTR            (original_oauth_url)
+             286 TO_BOOL
+             294 POP_JUMP_IF_FALSE    (to 522)
+
+2055:         298 LOAD_GLOBAL          (NULL + hasattr)
+             308 LOAD_FAST            (self)
+             310 LOAD_ATTR            (sentinel_provider)
+             330 LOAD_CONST           ("reset")
+             332 CALL                 (2 positional)
+             340 TO_BOOL
+             348 POP_JUMP_IF_FALSE    (to 406)
+
+2056:         352 LOAD_FAST            (self)
+             354 LOAD_ATTR            (sentinel_provider)
+             374 LOAD_ATTR            (NULL|self + reset)
+             394 LOAD_CONST           ("authorize_continue")
+             396 CALL                 (1 positional)
+             404 POP_TOP
+
+2057:     >>  406 LOAD_FAST            (self)
+             408 LOAD_ATTR            (NULL|self + initiate_oauth)
+             428 LOAD_FAST            (self)
+             430 LOAD_ATTR            (original_oauth_url)
+             450 CALL                 (1 positional)
+             458 POP_TOP
+
+2058:         460 LOAD_FAST            (self)
+             462 LOAD_ATTR            (NULL|self + _post_auth_json)
+
+2059:         482 LOAD_CONST           ("/api/accounts/authorize/continue")
+
+2060:         484 LOAD_CONST           ("username")
+             486 LOAD_CONST           ("email")
+             488 LOAD_FAST            (email)
+             490 LOAD_CONST           (('kind', 'value'))
+             492 BUILD_CONST_KEY_MAP  2
+             494 BUILD_MAP            1
+
+2061:         496 LOAD_CONST           ("authorize_continue")
+
+2062:         498 LOAD_GLOBAL          (AUTH)
+             508 FORMAT_SIMPLE
+             510 LOAD_CONST           ("/log-in")
+             512 BUILD_STRING         2
+
+2063:         514 LOAD_CONST           (30)
+
+2058:         516 LOAD_CONST           (('flow', 'referer', 'timeout'))
+             518 CALL_KW              5
+             520 STORE_FAST           (data)
+
+2065:     >>  522 LOAD_GLOBAL          (NULL + _emit)
+             532 LOAD_FAST            (self)
+             534 LOAD_ATTR            (log_fn)
+             554 LOAD_CONST           ("  [Codex] authorize/continue 返回 page=")
+             556 LOAD_GLOBAL          (NULL + _page_type)
+             566 LOAD_FAST            (data)
+             568 CALL                 (1 positional)
+             576 COPY                 1
+             578 TO_BOOL
+             586 POP_JUMP_IF_TRUE     (to 594)
+             590 POP_TOP
+             592 LOAD_CONST           ("?")
+         >>  594 FORMAT_SIMPLE
+             596 BUILD_STRING         2
+             598 LOAD_CONST           ("info")
+             600 CALL                 (3 positional)
+             608 POP_TOP
+
+2066:         610 LOAD_FAST            (data)
+             612 RETURN_VALUE
+
+
+# Method Name:       verify_email_otp
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2068
+# Constants:
+#    0: None
+#    1: '/api/accounts/email-otp/validate'
+#    2: 'code'
+#    3: 'authorize_continue'
+#    4: '/email-verification'
+#    5: 30
+#    6: ('flow', 'referer', 'timeout')
+# Names:
+#    0: _post_auth_json
+#    1: AUTH
+# Varnames:
+#	self, code
+# Positional arguments:
+#	self, code
+2068:           0 RESUME               0
+
+2069:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _post_auth_json)
+
+2070:          24 LOAD_CONST           ("/api/accounts/email-otp/validate")
+
+2071:          26 LOAD_CONST           ("code")
+              28 LOAD_FAST            (code)
+              30 BUILD_MAP            1
+
+2072:          32 LOAD_CONST           ("authorize_continue")
+
+2073:          34 LOAD_GLOBAL          (AUTH)
+              44 FORMAT_SIMPLE
+              46 LOAD_CONST           ("/email-verification")
+              48 BUILD_STRING         2
+
+2074:          50 LOAD_CONST           (30)
+
+2069:          52 LOAD_CONST           (('flow', 'referer', 'timeout'))
+              54 CALL_KW              5
+              56 RETURN_VALUE
+
+
+# Method Name:       verify_signup_email_otp
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2077
+# Constants:
+#    0: None
+#    1: '/api/accounts/email-otp/validate'
+#    2: 'code'
+#    3: 'password_verify'
+#    4: '/email-verification'
+#    5: 30
+#    6: ('flow', 'referer', 'timeout')
+# Names:
+#    0: _post_auth_json
+#    1: AUTH
+# Varnames:
+#	self, code
+# Positional arguments:
+#	self, code
+2077:           0 RESUME               0
+
+2078:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _post_auth_json)
+
+2079:          24 LOAD_CONST           ("/api/accounts/email-otp/validate")
+
+2080:          26 LOAD_CONST           ("code")
+              28 LOAD_FAST            (code)
+              30 BUILD_MAP            1
+
+2081:          32 LOAD_CONST           ("password_verify")
+
+2082:          34 LOAD_GLOBAL          (AUTH)
+              44 FORMAT_SIMPLE
+              46 LOAD_CONST           ("/email-verification")
+              48 BUILD_STRING         2
+
+2083:          50 LOAD_CONST           (30)
+
+2078:          52 LOAD_CONST           (('flow', 'referer', 'timeout'))
+              54 CALL_KW              5
+              56 RETURN_VALUE
+
+
+# Method Name:       register_user
+# Filename:          codex_oauth_chain.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2086
+# Constants:
+#    0: None
+#    1: '/api/accounts/user/register'
+#    2: ('username', 'password')
+#    3: 'username_password_create'
+#    4: '/create-account/password'
+#    5: 30
+#    6: ('flow', 'referer', 'timeout')
+# Names:
+#    0: _post_auth_json
+#    1: AUTH
+# Varnames:
+#	self, email, password
+# Positional arguments:
+#	self, email, password
+2086:           0 RESUME               0
+
+2087:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _post_auth_json)
+
+2088:          24 LOAD_CONST           ("/api/accounts/user/register")
+
+2089:          26 LOAD_FAST_LOAD_FAST  (email, password)
+              28 LOAD_CONST           (('username', 'password'))
+              30 BUILD_CONST_KEY_MAP  2
+
+2090:          32 LOAD_CONST           ("username_password_create")
+
+2091:          34 LOAD_GLOBAL          (AUTH)
+              44 FORMAT_SIMPLE
+              46 LOAD_CONST           ("/create-account/password")
+              48 BUILD_STRING         2
+
+2092:          50 LOAD_CONST           (30)
+
+2087:          52 LOAD_CONST           (('flow', 'referer', 'timeout'))
+              54 CALL_KW              5
+              56 RETURN_VALUE
+
+
+# Method Name:       send_email_otp
+# Filename:          codex_oauth_chain.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  15
+# Stack size:        9
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2095
+# Constants:
+#    0: None
+#    1: '/api/accounts/email-otp/send'
+#    2: ''
+#    3: 'GET'
+#    4: '/email-verification'
+#    5: 'POST'
+#    6: '/api/accounts/email-otp/resend'
+#    7: '/log-in/password'
+#    8: '/api/accounts/passwordless/send-otp'
+#    9: 0
+#   10: 'email_otp_send_failed: no endpoint response'
+#   11: ('_status', 'error')
+#   12: 1
+#   13: ('start',)
+#   14: 'email_verification'
+#   15: 'same-origin'
+#   16: ('referer', 'sec-fetch-site')
+#   17: True
+#   18: 30
+#   19: ('headers', 'allow_redirects', 'timeout')
+#   20: ('json', 'headers', 'allow_redirects', 'timeout')
+#   21: 'email_otp_send_failed: '
+#   22: 160
+#   23: 'trace_continue'
+#   24: 'email_otp_send:'
+#   25: '  [Codex] 邮箱验证码发送入口成功: '
+#   26: 'info'
+# Names:
+#    0: AUTH
+#    1: _abs_auth
+#    2: urlparse
+#    3: path
+#    4: enumerate
+#    5: _headers
+#    6: Exception
+#    7: PAGE_HEADERS
+#    8: session
+#    9: get
+#   10: post
+#   11: _json_response
+#   12: str
+#   13: config
+#   14: _trace_continue
+#   15: _is_success_response
+#   16: _emit
+#   17: log_fn
+# Varnames:
+#	self, continue_url, default_url, continue_abs, attempts, last, index, method, url, referer, body, headers, response, data, exc
+# Positional arguments:
+#	self, continue_url
+# Local variables:
+#    2: default_url
+#    3: continue_abs
+#    4: attempts
+#    5: last
+#    6: index
+#    7: method
+#    8: url
+#    9: referer
+#   10: body
+#   11: headers
+#   12: response
+#   13: data
+#   14: exc
+2095:           0 RESUME               0
+
+2099:           2 LOAD_GLOBAL          (AUTH)
+              12 FORMAT_SIMPLE
+              14 LOAD_CONST           ("/api/accounts/email-otp/send")
+              16 BUILD_STRING         2
+              18 STORE_FAST           (default_url)
+
+2100:          20 LOAD_FAST            (continue_url)
+              22 TO_BOOL
+              30 POP_JUMP_IF_FALSE    (to 56)
+              34 LOAD_GLOBAL          (NULL + _abs_auth)
+              44 LOAD_FAST            (continue_url)
+              46 CALL                 (1 positional)
+              54 JUMP_FORWARD         (to 58)
+         >>   56 LOAD_CONST           ("")
+         >>   58 STORE_FAST           (continue_abs)
+
+2101:          60 LOAD_FAST            (continue_abs)
+              62 TO_BOOL
+              70 POP_JUMP_IF_FALSE    (to 154)
+              74 LOAD_GLOBAL          (NULL + urlparse)
+              84 LOAD_FAST            (continue_abs)
+              86 CALL                 (1 positional)
+              94 LOAD_ATTR            (path)
+             114 LOAD_CONST           ("/api/accounts/email-otp/send")
+             116 COMPARE_OP           (==)
+             120 POP_JUMP_IF_FALSE    (to 154)
+
+2102:         124 LOAD_CONST           ("GET")
+             126 LOAD_FAST            (continue_abs)
+             128 LOAD_GLOBAL          (AUTH)
+             138 FORMAT_SIMPLE
+             140 LOAD_CONST           ("/email-verification")
+             142 BUILD_STRING         2
+             144 LOAD_CONST           (None)
+             146 BUILD_TUPLE          4
+             148 BUILD_LIST           1
+             150 STORE_FAST           (attempts)
+             152 JUMP_FORWARD         (to 370)
+
+2103:     >>  154 LOAD_FAST            (continue_abs)
+             156 TO_BOOL
+             164 POP_JUMP_IF_FALSE    (to 304)
+
+2105:         168 LOAD_CONST           ("POST")
+             170 LOAD_GLOBAL          (AUTH)
+             180 FORMAT_SIMPLE
+             182 LOAD_CONST           ("/api/accounts/email-otp/resend")
+             184 BUILD_STRING         2
+             186 LOAD_GLOBAL          (AUTH)
+             196 FORMAT_SIMPLE
+             198 LOAD_CONST           ("/email-verification")
+             200 BUILD_STRING         2
+             202 LOAD_CONST           (None)
+             204 BUILD_TUPLE          4
+
+2106:         206 LOAD_CONST           ("GET")
+             208 LOAD_FAST_LOAD_FAST  (default_url, continue_abs)
+             210 TO_BOOL
+             218 POP_JUMP_IF_TRUE     (to 240)
+             222 LOAD_GLOBAL          (AUTH)
+             232 FORMAT_SIMPLE
+             234 LOAD_CONST           ("/log-in/password")
+             236 BUILD_STRING         2
+             238 JUMP_FORWARD         (to 256)
+         >>  240 LOAD_GLOBAL          (AUTH)
+             250 FORMAT_SIMPLE
+             252 LOAD_CONST           ("/email-verification")
+             254 BUILD_STRING         2
+         >>  256 LOAD_CONST           (None)
+             258 BUILD_TUPLE          4
+
+2107:         260 LOAD_CONST           ("POST")
+             262 LOAD_GLOBAL          (AUTH)
+             272 FORMAT_SIMPLE
+             274 LOAD_CONST           ("/api/accounts/passwordless/send-otp")
+             276 BUILD_STRING         2
+             278 LOAD_GLOBAL          (AUTH)
+             288 FORMAT_SIMPLE
+             290 LOAD_CONST           ("/email-verification")
+             292 BUILD_STRING         2
+             294 BUILD_MAP            0
+             296 BUILD_TUPLE          4
+
+2104:         298 BUILD_LIST           3
+             300 STORE_FAST           (attempts)
+             302 JUMP_FORWARD         (to 370)
+
+2114:     >>  304 LOAD_CONST           ("GET")
+             306 LOAD_FAST            (default_url)
+             308 LOAD_GLOBAL          (AUTH)
+             318 FORMAT_SIMPLE
+             320 LOAD_CONST           ("/log-in/password")
+             322 BUILD_STRING         2
+             324 LOAD_CONST           (None)
+             326 BUILD_TUPLE          4
+
+2115:         328 LOAD_CONST           ("POST")
+             330 LOAD_GLOBAL          (AUTH)
+             340 FORMAT_SIMPLE
+             342 LOAD_CONST           ("/api/accounts/passwordless/send-otp")
+             344 BUILD_STRING         2
+             346 LOAD_GLOBAL          (AUTH)
+             356 FORMAT_SIMPLE
+             358 LOAD_CONST           ("/email-verification")
+             360 BUILD_STRING         2
+             362 BUILD_MAP            0
+             364 BUILD_TUPLE          4
+
+2113:         366 BUILD_LIST           2
+             368 STORE_FAST           (attempts)
+
+2117:     >>  370 LOAD_CONST           (0)
+             372 LOAD_CONST           ("email_otp_send_failed: no endpoint response")
+             374 LOAD_CONST           (('_status', 'error'))
+             376 BUILD_CONST_KEY_MAP  2
+             378 STORE_FAST           (last)
+
+2118:         380 LOAD_GLOBAL          (NULL + enumerate)
+             390 LOAD_FAST            (attempts)
+             392 LOAD_CONST           (1)
+             394 LOAD_CONST           (('start',))
+             396 CALL_KW              2
+             398 GET_ITER
+             400 FOR_ITER             (to 848)
+             404 UNPACK_SEQUENCE      2
+             408 STORE_FAST           (index)
+             410 UNPACK_SEQUENCE      4
+             414 STORE_FAST_STORE_FAST (method, url)
+             416 STORE_FAST_STORE_FAST (referer, body)
+
+2119:         418 NOP
+
+2120:         420 NOP
+
+2121:         422 LOAD_FAST            (self)
+             424 LOAD_ATTR            (NULL|self + _headers)
+             444 LOAD_CONST           ("email_verification")
+             446 LOAD_FAST            (referer)
+             448 CALL                 (2 positional)
+             456 STORE_FAST           (headers)
+
+2128:         458 LOAD_FAST            (method)
+             460 LOAD_CONST           ("GET")
+             462 COMPARE_OP           (==)
+             466 POP_JUMP_IF_FALSE    (to 526)
+
+2129:         470 LOAD_FAST            (self)
+             472 LOAD_ATTR            (session)
+             492 LOAD_ATTR            (NULL|self + get)
+             512 LOAD_FAST_LOAD_FAST  (url, headers)
+             514 LOAD_CONST           (True)
+             516 LOAD_CONST           (30)
+             518 LOAD_CONST           (('headers', 'allow_redirects', 'timeout'))
+             520 CALL_KW              4
+             522 STORE_FAST           (response)
+             524 JUMP_FORWARD         (to 582)
+
+2131:     >>  526 LOAD_FAST            (self)
+             528 LOAD_ATTR            (session)
+             548 LOAD_ATTR            (NULL|self + post)
+             568 LOAD_FAST_LOAD_FAST  (url, body)
+             570 LOAD_FAST            (headers)
+             572 LOAD_CONST           (True)
+             574 LOAD_CONST           (30)
+             576 LOAD_CONST           (('json', 'headers', 'allow_redirects', 'timeout'))
+             578 CALL_KW              5
+             580 STORE_FAST           (response)
+
+2132:     >>  582 LOAD_GLOBAL          (NULL + _json_response)
+             592 LOAD_FAST            (response)
+             594 CALL                 (1 positional)
+             602 STORE_FAST           (data)
+
+2135:         604 LOAD_FAST            (data)
+             606 STORE_FAST           (last)
+
+2136:         608 LOAD_FAST            (self)
+             610 LOAD_ATTR            (config)
+             630 LOAD_ATTR            (NULL|self + get)
+             650 LOAD_CONST           ("trace_continue")
+             652 CALL                 (1 positional)
+             660 TO_BOOL
+             668 POP_JUMP_IF_FALSE    (to 714)
+
+2137:         672 LOAD_FAST            (self)
+             674 LOAD_ATTR            (NULL|self + _trace_continue)
+             694 LOAD_CONST           ("email_otp_send:")
+             696 LOAD_FAST            (index)
+             698 FORMAT_SIMPLE
+             700 BUILD_STRING         2
+             702 LOAD_FAST_LOAD_FAST  (url, data)
+             704 CALL                 (3 positional)
+             712 POP_TOP
+
+2138:     >>  714 LOAD_GLOBAL          (NULL + _is_success_response)
+             724 LOAD_FAST            (data)
+             726 CALL                 (1 positional)
+             734 TO_BOOL
+             742 POP_JUMP_IF_TRUE     (to 750)
+             746 JUMP_BACKWARD        (to 400)
+
+2139:     >>  750 LOAD_GLOBAL          (NULL + _emit)
+             760 LOAD_FAST            (self)
+             762 LOAD_ATTR            (log_fn)
+             782 LOAD_CONST           ("  [Codex] 邮箱验证码发送入口成功: ")
+             784 LOAD_GLOBAL          (NULL + urlparse)
+             794 LOAD_FAST            (url)
+             796 CALL                 (1 positional)
+             804 LOAD_ATTR            (path)
+             824 FORMAT_SIMPLE
+             826 BUILD_STRING         2
+             828 LOAD_CONST           ("info")
+             830 CALL                 (3 positional)
+             838 POP_TOP
+
+2140:         840 LOAD_FAST            (data)
+             842 SWAP                 (TOS <-> TOS1)
+             844 POP_TOP
+             846 RETURN_VALUE

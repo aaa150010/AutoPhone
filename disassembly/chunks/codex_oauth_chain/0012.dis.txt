@@ -1,0 +1,800 @@
+2839:         218 LOAD_CONST           (False)
+
+2840:         220 LOAD_CONST           (False)
+
+2841:         222 LOAD_CONST           ("diagnostic mode does not exchange tokens")
+
+2843:         224 LOAD_CONST           ("codex_chain_")
+             226 LOAD_FAST            (mode)
+             228 FORMAT_SIMPLE
+             230 BUILD_STRING         2
+
+2844:         232 LOAD_FAST            (params)
+             234 LOAD_ATTR            (NULL|self + get)
+             254 LOAD_CONST           ("client_id")
+             256 CALL                 (1 positional)
+             264 COPY                 1
+             266 TO_BOOL
+             274 POP_JUMP_IF_TRUE     (to 290)
+             278 POP_TOP
+             280 LOAD_GLOBAL          (DEFAULT_CLIENT_ID)
+
+2845:     >>  290 LOAD_FAST            (params)
+             292 LOAD_ATTR            (NULL|self + get)
+             312 LOAD_CONST           ("redirect_uri")
+             314 CALL                 (1 positional)
+             322 COPY                 1
+             324 TO_BOOL
+             332 POP_JUMP_IF_TRUE     (to 348)
+             336 POP_TOP
+             338 LOAD_GLOBAL          (DEFAULT_REDIRECT_URI)
+
+2846:     >>  348 LOAD_GLOBAL          (NULL + bool)
+             358 LOAD_FAST            (params)
+             360 LOAD_ATTR            (NULL|self + get)
+             380 LOAD_CONST           ("state")
+             382 CALL                 (1 positional)
+             390 CALL                 (1 positional)
+
+2847:         398 LOAD_CONST           (False)
+
+2848:         400 LOAD_CONST           (False)
+
+2842:         402 LOAD_CONST           (('source', 'client_id', 'redirect_uri', 'state_present', 'code_verifier_present', 'exchange_ok'))
+             404 BUILD_CONST_KEY_MAP  6
+
+2850:         406 LOAD_FAST            (events)
+
+2831:         408 LOAD_CONST           (('ok', 'error', 'phase2_status', 'auth_page_type', 'email', 'bind_email', 'login_email', 'local_oauth_saved', 'local_oauth_exchange_ok', 'local_oauth_exchange_error', 'local_oauth', 'codex_chain_events'))
+             410 BUILD_CONST_KEY_MAP  12
+             412 RETURN_VALUE
+
+
+# Method Name:       _phone_provider
+# Filename:          codex_oauth_chain.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 3
+# Number of locals:  4
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2854
+# Constants:
+#    0: None
+#    1: 'use_passed_sms_provider'
+#    2: ('code_timeout', 'config')
+#    3: 'phone_otp'
+#    4: '654321'
+#    5: ('code',)
+# Names:
+#    0: _mock_cfg
+#    1: bool
+#    2: get
+#    3: SmsProviderAdapter
+#    4: MockPhoneOtpProvider
+#    5: _clean
+# Varnames:
+#	config, sms_provider, code_timeout, mock
+# Local variables:
+#    0: config
+#    1: sms_provider
+#    2: code_timeout
+#    3: mock
+2854:           0 RESUME               0
+
+2860:           2 LOAD_GLOBAL          (NULL + _mock_cfg)
+              12 LOAD_FAST            (config)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (mock)
+
+2861:          24 LOAD_GLOBAL          (NULL + bool)
+              34 LOAD_FAST            (mock)
+              36 LOAD_ATTR            (NULL|self + get)
+              56 LOAD_CONST           ("use_passed_sms_provider")
+              58 CALL                 (1 positional)
+              66 CALL                 (1 positional)
+              74 TO_BOOL
+              82 POP_JUMP_IF_FALSE    (to 112)
+              86 LOAD_FAST            (sms_provider)
+              88 POP_JUMP_IF_NONE     (to 112)
+
+2862:          92 LOAD_GLOBAL          (NULL + SmsProviderAdapter)
+             102 LOAD_FAST_LOAD_FAST  (sms_provider, code_timeout)
+             104 LOAD_FAST            (config)
+             106 LOAD_CONST           (('code_timeout', 'config'))
+             108 CALL_KW              3
+             110 RETURN_VALUE
+
+2863:     >>  112 LOAD_GLOBAL          (NULL + MockPhoneOtpProvider)
+             122 LOAD_GLOBAL          (NULL + _clean)
+             132 LOAD_FAST            (mock)
+             134 LOAD_ATTR            (NULL|self + get)
+             154 LOAD_CONST           ("phone_otp")
+             156 CALL                 (1 positional)
+             164 COPY                 1
+             166 TO_BOOL
+             174 POP_JUMP_IF_TRUE     (to 182)
+             178 POP_TOP
+             180 LOAD_CONST           ("654321")
+         >>  182 CALL                 (1 positional)
+             190 LOAD_CONST           (('code',))
+             192 CALL_KW              1
+             194 RETURN_VALUE
+
+
+# Method Name:       _run_chatgpt_signup_phase
+# Filename:          codex_oauth_chain.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 9
+# Number of locals:  42
+# Stack size:        11
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2866
+# Constants:
+#    0: 'Create the free ChatGPT account first, matching the log before Codex auth.'
+#    1: True
+#    2: ('ok', 'already_done')
+#    3: 'register'
+#    4: 'password'
+#    5: 0
+#    6: None
+#    7: '!@#$%'
+#    8: ''
+#    9: <Code311 code object <genexpr> at 0x105b23520, file codex_oauth_chain.py>, line 2887
+#   10: 16
+#   11: '  [ChatGPT] 开始创建 free account 前置链路'
+#   12: 'info'
+#   13: 'start_chatgpt_signup_authorize'
+#   14: 'chatgpt_register_failed: '
+#   15: 'email_otp_verification'
+#   16: ('detail', 'log_fn')
+#   17: 1
+#   18: '  [ChatGPT] 邮箱验证码校验失败，重新发送并重取验证码 ('
+#   19: '/'
+#   20: ')'
+#   21: 'warn'
+#   22: 'mark_sent'
+#   23: 'chatgpt_signup_email_otp_empty'
+#   24: 'verify_failed'
+#   25: 2
+#   26: 'chatgpt_signup_email_otp_failed: '
+#   27: 'continue_url'
+#   28: 'phone_max_attempts'
+#   29: (None, '')
+#   30: 'email_first_phone_max_attempts'
+#   31: '不限'
+#   32: 'phone_channels'
+#   33: ('sms', 'whatsapp')
+#   34: 'sms'
+#   35: 'attempts='
+#   36: False
+#   37: 'task_stopped'
+#   38: 'signup phone step'
+#   39: 'service'
+#   40: 'dr'
+#   41: 'country'
+#   42: 'provider_ids'
+#   43: 'max_price'
+#   44: ('service', 'country', 'provider_ids', 'max_price')
+#   45: '  [ChatGPT] 手机拿号失败 '
+#   46: ': '
+#   47: 'phone_supply_failed'
+#   48: '  [ChatGPT] 手机验证尝试 '
+#   49: '，号码='
+#   50: ('channel',)
+#   51: ('reason',)
+#   52: 'oauth_session_invalid: '
+#   53: ' via '
+#   54: ('detail', 'log_fn', 'tag')
+#   55: ('timeout',)
+#   56: 'phone_otp_empty'
+#   57: 'phone_otp_failed: '
+#   58: 'phone_verification_failed'
+#   59: '/contact-verification'
+#   60: ('referer',)
+#   61: 'name'
+#   62: 'birthdate'
+#   63: 'chatgpt_create_account_failed: '
+#   64: 'chatgpt_signup_missing_continue_url'
+#   65: 'chatgpt_signup_missing_access_token'
+#   66: 'chatgpt_signup_done'
+#   67: '  [ChatGPT] free account 登录态已建立'
+#   68: 'url'
+#   69: ('ok', 'password', 'access_token_present', 'callback_url')
+# Names:
+#    0: chatgpt_signup_done
+#    1: _clean
+#    2: isinstance
+#    3: get
+#    4: dict
+#    5: secrets
+#    6: string
+#    7: ascii_letters
+#    8: digits
+#    9: join
+#   10: range
+#   11: _emit
+#   12: hasattr
+#   13: start_chatgpt_signup_authorize
+#   14: prime_chatgpt_signup_session
+#   15: register_user
+#   16: _is_success_response
+#   17: CodexChainError
+#   18: _error_text
+#   19: _continue_url
+#   20: _page_type
+#   21: _event
+#   22: STATE_EMAIL_OTP_REQUIRED
+#   23: _mask
+#   24: _email_otp_resend_on_retry
+#   25: _email_otp_verify_attempts
+#   26: send_email_otp
+#   27: mark_sent
+#   28: Exception
+#   29: wait_code
+#   30: verify_signup_email_otp
+#   31: _is_email_otp_retryable_error
+#   32: time
+#   33: sleep
+#   34: STATE_EMAIL_OTP_VERIFIED
+#   35: _looks_phone_required
+#   36: max
+#   37: int
+#   38: str
+#   39: _phone_session_cycle_seconds
+#   40: strip
+#   41: STATE_PHONE_REQUIRED
+#   42: _task_stop_requested
+#   43: _session_cycle_expired_error
+#   44: get_number
+#   45: _phone_supply_error_text
+#   46: _is_retryable_phone_supply_error
+#   47: _phone_retry_sleep_seconds
+#   48: phone
+#   49: send_phone_number_otp
+#   50: _is_session_invalid_error
+#   51: cancel
+#   52: STATE_PHONE_SEND_REJECTED
+#   53: mark_ready
+#   54: STATE_PHONE_OTP_SENT
+#   55: verify_phone_otp
+#   56: complete
+#   57: STATE_PHONE_OTP_VERIFIED
+#   58: _looks_profile_state
+#   59: visit_continue
+#   60: AUTH
+#   61: _random_name
+#   62: _random_birthdate
+#   63: create_account_profile
+#   64: complete_chatgpt_callback
+#   65: chatgpt_access_token
+# Varnames:
+#	transport, account_email, password, config, email_otp_provider, phone_otp_provider, code_timeout, events, log_fn, pwd, string, register_response, current, continue_url, resend_on_retry, verify_attempts, last_email_otp_error, email_otp_attempt, email_code, raw_attempts, max_attempts, unlimited_attempts, attempt_label, session_cycle_seconds, session_cycle_started, channels, ch, verified, last_error, idx, lease, exc, retry_sleep, channel, send_response, phone_code, reg_cfg, name, birthdate, profile, callback, access_token
+# Local variables:
+#    0: transport
+#    1: account_email
+#    2: password
+#    3: config
+#    4: email_otp_provider
+#    5: phone_otp_provider
+#    6: code_timeout
+#    7: events
+#    8: log_fn
+#    9: pwd
+#   10: string
+#   11: register_response
+#   12: current
+#   13: continue_url
+#   14: resend_on_retry
+#   15: verify_attempts
+#   16: last_email_otp_error
+#   17: email_otp_attempt
+#   18: email_code
+#   19: raw_attempts
+#   20: max_attempts
+#   21: unlimited_attempts
+#   22: attempt_label
+#   23: session_cycle_seconds
+#   24: session_cycle_started
+#   25: channels
+#   26: ch
+#   27: verified
+#   28: last_error
+#   29: idx
+#   30: lease
+#   31: exc
+#   32: retry_sleep
+#   33: channel
+#   34: send_response
+#   35: phone_code
+#   36: reg_cfg
+#   37: name
+#   38: birthdate
+#   39: profile
+#   40: callback
+#   41: access_token
+# Cell variables:
+#    0: alphabet
+#    1: secrets
+               0 MAKE_CELL            (alphabet)
+               2 MAKE_CELL            (secrets)
+
+2866:           4 RESUME               0
+
+2879:           6 LOAD_FAST            (transport)
+               8 LOAD_ATTR            (chatgpt_signup_done)
+              28 TO_BOOL
+              36 POP_JUMP_IF_FALSE    (to 50)
+
+2880:          40 LOAD_CONST           (True)
+              42 LOAD_CONST           (True)
+              44 LOAD_CONST           (('ok', 'already_done'))
+              46 BUILD_CONST_KEY_MAP  2
+              48 RETURN_VALUE
+
+2881:     >>   50 LOAD_GLOBAL          (NULL + _clean)
+              60 LOAD_FAST            (password)
+              62 CALL                 (1 positional)
+              70 COPY                 1
+              72 TO_BOOL
+              80 POP_JUMP_IF_TRUE     (to 260)
+              84 POP_TOP
+              86 LOAD_GLOBAL          (NULL + _clean)
+              96 LOAD_GLOBAL          (NULL + isinstance)
+             106 LOAD_FAST            (config)
+             108 LOAD_ATTR            (NULL|self + get)
+             128 LOAD_CONST           ("register")
+             130 CALL                 (1 positional)
+             138 LOAD_GLOBAL          (dict)
+             148 CALL                 (2 positional)
+             156 TO_BOOL
+             164 POP_JUMP_IF_FALSE    (to 220)
+             168 LOAD_FAST            (config)
+             170 LOAD_ATTR            (NULL|self + get)
+             190 LOAD_CONST           ("register")
+             192 CALL                 (1 positional)
+             200 COPY                 1
+             202 TO_BOOL
+             210 POP_JUMP_IF_TRUE     (to 218)
+             214 POP_TOP
+             216 BUILD_MAP            0
+         >>  218 JUMP_FORWARD         (to 222)
+
+2881:     >>  220 BUILD_MAP            0
+         >>  222 LOAD_ATTR            (NULL|self + get)
+             242 LOAD_CONST           ("password")
+             244 CALL                 (1 positional)
+             252 CALL                 (1 positional)
+         >>  260 STORE_FAST           (pwd)
+
+2882:         262 LOAD_FAST            (pwd)
+             264 TO_BOOL
+             272 POP_JUMP_IF_TRUE     (to 422)
+
+2883:         276 LOAD_CONST           (0)
+             278 LOAD_CONST           (None)
+             280 IMPORT_NAME          (secrets)
+             282 STORE_DEREF          (secrets)
+
+2884:         284 LOAD_CONST           (0)
+             286 LOAD_CONST           (None)
+             288 IMPORT_NAME          (string)
+             290 STORE_FAST           (string)
+
+2886:         292 LOAD_FAST            (string)
+             294 LOAD_ATTR            (ascii_letters)
+             314 LOAD_FAST            (string)
+             316 LOAD_ATTR            (digits)
+             336 BINARY_OP            (+)
+             340 LOAD_CONST           ("!@#$%")
+             342 BINARY_OP            (+)
+             346 STORE_DEREF          (alphabet)
+
+2887:         348 LOAD_CONST           ("")
+             350 LOAD_ATTR            (NULL|self + join)
+             370 LOAD_FAST            (alphabet)
+             372 LOAD_FAST            (secrets)
+             374 BUILD_TUPLE          2
+             376 LOAD_CONST           (<Code311 code object <genexpr> at 0x105b23520, file codex_oauth_chain.py>, line 2887)
+             378 MAKE_FUNCTION
+             380 SET_FUNCTION_ATTRIBUTE 8
+             382 LOAD_GLOBAL          (NULL + range)
+             392 LOAD_CONST           (16)
+             394 CALL                 (1 positional)
+             402 GET_ITER
+             404 CALL                 (0 positional)
+             412 CALL                 (1 positional)
+             420 STORE_FAST           (pwd)
+
+2888:     >>  422 LOAD_GLOBAL          (NULL + _emit)
+             432 LOAD_FAST            (log_fn)
+             434 LOAD_CONST           ("  [ChatGPT] 开始创建 free account 前置链路")
+             436 LOAD_CONST           ("info")
+             438 CALL                 (3 positional)
+             446 POP_TOP
+
+2889:         448 LOAD_GLOBAL          (NULL + hasattr)
+             458 LOAD_FAST            (transport)
+             460 LOAD_CONST           ("start_chatgpt_signup_authorize")
+             462 CALL                 (2 positional)
+             470 TO_BOOL
+             478 POP_JUMP_IF_FALSE    (to 518)
+
+2890:         482 LOAD_FAST            (transport)
+             484 LOAD_ATTR            (NULL|self + start_chatgpt_signup_authorize)
+             504 LOAD_FAST            (account_email)
+             506 CALL                 (1 positional)
+             514 POP_TOP
+             516 JUMP_FORWARD         (to 552)
+
+2892:     >>  518 LOAD_FAST            (transport)
+             520 LOAD_ATTR            (NULL|self + prime_chatgpt_signup_session)
+             540 LOAD_FAST            (account_email)
+             542 CALL                 (1 positional)
+             550 POP_TOP
+
+2893:     >>  552 LOAD_FAST            (transport)
+             554 LOAD_ATTR            (NULL|self + register_user)
+             574 LOAD_FAST_LOAD_FAST  (account_email, pwd)
+             576 CALL                 (2 positional)
+             584 STORE_FAST           (register_response)
+
+2894:         586 LOAD_GLOBAL          (NULL + _is_success_response)
+             596 LOAD_FAST            (register_response)
+             598 CALL                 (1 positional)
+             606 TO_BOOL
+             614 POP_JUMP_IF_TRUE     (to 664)
+
+2895:         618 LOAD_GLOBAL          (NULL + CodexChainError)
+             628 LOAD_CONST           ("chatgpt_register_failed: ")
+             630 LOAD_GLOBAL          (NULL + _error_text)
+             640 LOAD_FAST            (register_response)
+             642 CALL                 (1 positional)
+             650 FORMAT_SIMPLE
+             652 BUILD_STRING         2
+             654 CALL                 (1 positional)
+             662 RAISE_VARARGS        (exception instance)
+
+2896:     >>  664 LOAD_FAST            (register_response)
+             666 STORE_FAST           (current)
+
+2897:         668 LOAD_GLOBAL          (NULL + _continue_url)
+             678 LOAD_FAST            (current)
+             680 CALL                 (1 positional)
+             688 STORE_FAST           (continue_url)
+
+2898:         690 LOAD_GLOBAL          (NULL + _page_type)
+             700 LOAD_FAST            (current)
+             702 CALL                 (1 positional)
+             710 LOAD_CONST           ("email_otp_verification")
+             712 COMPARE_OP           (==)
+             716 POP_JUMP_IF_TRUE     (to 736)
+             720 LOAD_FAST            (continue_url)
+             722 TO_BOOL
+             730 EXTENDED_ARG         (256)
+             732 POP_JUMP_IF_FALSE    (to 1450)
+
+2899:     >>  736 LOAD_GLOBAL          (NULL + _event)
+             746 LOAD_FAST            (events)
+             748 LOAD_GLOBAL          (STATE_EMAIL_OTP_REQUIRED)
+             758 LOAD_GLOBAL          (NULL + _mask)
+             768 LOAD_FAST            (account_email)
+             770 CALL                 (1 positional)
+             778 LOAD_FAST            (log_fn)
+             780 LOAD_CONST           (('detail', 'log_fn'))
+             782 CALL_KW              4
+             784 POP_TOP
+
+2900:         786 LOAD_GLOBAL          (NULL + _email_otp_resend_on_retry)
+             796 LOAD_FAST            (config)
+             798 CALL                 (1 positional)
+             806 STORE_FAST           (resend_on_retry)
+
+2901:         808 LOAD_FAST            (resend_on_retry)
+             810 TO_BOOL
+             818 POP_JUMP_IF_FALSE    (to 844)
+             822 LOAD_GLOBAL          (NULL + _email_otp_verify_attempts)
+             832 LOAD_FAST            (config)
+             834 CALL                 (1 positional)
+             842 JUMP_FORWARD         (to 846)
+         >>  844 LOAD_CONST           (1)
+         >>  846 STORE_FAST           (verify_attempts)
+
+2902:         848 LOAD_CONST           ("")
+             850 STORE_FAST           (last_email_otp_error)
+
+2903:         852 LOAD_GLOBAL          (NULL + range)
+             862 LOAD_CONST           (1)
+             864 LOAD_FAST            (verify_attempts)
+             866 LOAD_CONST           (1)
+             868 BINARY_OP            (+)
+             872 CALL                 (2 positional)
+             880 GET_ITER
+             882 FOR_ITER             (to 1314)
+             886 STORE_FAST           (email_otp_attempt)
+
+2904:         888 LOAD_FAST            (email_otp_attempt)
+             890 LOAD_CONST           (1)
+             892 COMPARE_OP           (>)
+             896 POP_JUMP_IF_FALSE    (to 940)
+
+2905:         900 LOAD_GLOBAL          (NULL + _emit)
+             910 LOAD_FAST            (log_fn)
+             912 LOAD_CONST           ("  [ChatGPT] 邮箱验证码校验失败，重新发送并重取验证码 (")
+             914 LOAD_FAST            (email_otp_attempt)
+             916 FORMAT_SIMPLE
+             918 LOAD_CONST           ("/")
+             920 LOAD_FAST            (verify_attempts)
+             922 FORMAT_SIMPLE
+             924 LOAD_CONST           (")")
+             926 BUILD_STRING         5
+             928 LOAD_CONST           ("warn")
+             930 CALL                 (3 positional)
+             938 POP_TOP
+
+2906:     >>  940 LOAD_FAST            (transport)
+             942 LOAD_ATTR            (NULL|self + send_email_otp)
+             962 LOAD_FAST            (continue_url)
+             964 CALL                 (1 positional)
+             972 POP_TOP
+
+2907:         974 LOAD_GLOBAL          (NULL + hasattr)
+             984 LOAD_FAST            (email_otp_provider)
+             986 LOAD_CONST           ("mark_sent")
+             988 CALL                 (2 positional)
+             996 TO_BOOL
+            1004 POP_JUMP_IF_FALSE    (to 1042)
+
+2908:        1008 NOP
+
+2909:        1010 LOAD_FAST            (email_otp_provider)
+            1012 LOAD_ATTR            (NULL|self + mark_sent)
+            1032 CALL                 (0 positional)
+            1040 POP_TOP
+
+2912:     >> 1042 LOAD_GLOBAL          (NULL + _clean)
+            1052 LOAD_FAST            (email_otp_provider)
+            1054 LOAD_ATTR            (NULL|self + wait_code)
+            1074 LOAD_FAST            (account_email)
+            1076 CALL                 (1 positional)
+            1084 CALL                 (1 positional)
+            1092 STORE_FAST           (email_code)
+
+2913:        1094 LOAD_FAST            (email_code)
+            1096 TO_BOOL
+            1104 POP_JUMP_IF_TRUE     (to 1116)
+
+2914:        1108 LOAD_CONST           ("chatgpt_signup_email_otp_empty")
+            1110 STORE_FAST           (last_email_otp_error)
+
+2915:        1112 POP_TOP
+            1114 JUMP_FORWARD         (to 1318)
+
+2916:     >> 1116 LOAD_FAST            (transport)
+            1118 LOAD_ATTR            (NULL|self + verify_signup_email_otp)
+            1138 LOAD_FAST            (email_code)
+            1140 CALL                 (1 positional)
+            1148 STORE_FAST           (current)
+
+2917:        1150 LOAD_GLOBAL          (NULL + _is_success_response)
+            1160 LOAD_FAST            (current)
+            1162 CALL                 (1 positional)
+            1170 TO_BOOL
+            1178 POP_JUMP_IF_FALSE    (to 1190)
+
+2918:        1182 LOAD_CONST           ("")
+            1184 STORE_FAST           (last_email_otp_error)
+
+2919:        1186 POP_TOP
+            1188 JUMP_FORWARD         (to 1318)
+
+2920:     >> 1190 LOAD_GLOBAL          (NULL + _error_text)
+            1200 LOAD_FAST            (current)
+            1202 CALL                 (1 positional)
+            1210 COPY                 1
+            1212 TO_BOOL
+            1220 POP_JUMP_IF_TRUE     (to 1228)
+            1224 POP_TOP
+            1226 LOAD_CONST           ("verify_failed")
+         >> 1228 STORE_FAST           (last_email_otp_error)
+
+2921:        1230 LOAD_GLOBAL          (NULL + _is_email_otp_retryable_error)
+            1240 LOAD_FAST            (last_email_otp_error)
+            1242 CALL                 (1 positional)
+            1250 TO_BOOL
+            1258 POP_JUMP_IF_TRUE     (to 1266)
+
+2922:        1262 POP_TOP
+            1264 JUMP_FORWARD         (to 1318)
+
+2923:     >> 1266 LOAD_GLOBAL          (time)
+            1276 LOAD_ATTR            (sleep)
+            1296 PUSH_NULL
+            1298 LOAD_CONST           (2)
+            1300 CALL                 (1 positional)
+            1308 POP_TOP
+            1310 JUMP_BACKWARD        (to 882)
+
+2903:     >> 1314 END_FOR
+            1316 POP_TOP
+
+2924:     >> 1318 LOAD_FAST            (last_email_otp_error)
+            1320 TO_BOOL
+            1328 POP_JUMP_IF_FALSE    (to 1360)
+
+2925:        1332 LOAD_GLOBAL          (NULL + CodexChainError)
+            1342 LOAD_CONST           ("chatgpt_signup_email_otp_failed: ")
+            1344 LOAD_FAST            (last_email_otp_error)
+            1346 FORMAT_SIMPLE
+            1348 BUILD_STRING         2
+            1350 CALL                 (1 positional)
+            1358 RAISE_VARARGS        (exception instance)
+
+2926:     >> 1360 LOAD_GLOBAL          (NULL + _event)
+            1370 LOAD_FAST            (events)
+            1372 LOAD_GLOBAL          (STATE_EMAIL_OTP_VERIFIED)
+            1382 LOAD_GLOBAL          (NULL + _page_type)
+            1392 LOAD_FAST            (current)
+            1394 CALL                 (1 positional)
+            1402 LOAD_FAST            (log_fn)
+            1404 LOAD_CONST           (('detail', 'log_fn'))
+            1406 CALL_KW              4
+            1408 POP_TOP
+
+2927:        1410 LOAD_GLOBAL          (NULL + _continue_url)
+            1420 LOAD_FAST            (current)
+            1422 CALL                 (1 positional)
+            1430 COPY                 1
+            1432 TO_BOOL
+            1440 POP_JUMP_IF_TRUE     (to 1448)
+            1444 POP_TOP
+            1446 LOAD_FAST            (continue_url)
+         >> 1448 STORE_FAST           (continue_url)
+
+2929:     >> 1450 LOAD_GLOBAL          (NULL + _looks_phone_required)
+            1460 LOAD_FAST            (current)
+            1462 CALL                 (1 positional)
+            1470 TO_BOOL
+            1478 POP_JUMP_IF_TRUE     (to 1520)
+            1482 LOAD_GLOBAL          (NULL + _looks_phone_required)
+            1492 LOAD_CONST           ("continue_url")
+            1494 LOAD_FAST            (continue_url)
+            1496 BUILD_MAP            1
+            1498 CALL                 (1 positional)
+            1506 TO_BOOL
+            1514 EXTENDED_ARG         (1024)
+            1516 POP_JUMP_IF_FALSE    (to 3656)
+
+2930:     >> 1520 LOAD_FAST            (config)
+            1522 LOAD_ATTR            (NULL|self + get)
+            1542 LOAD_CONST           ("phone_max_attempts")
+            1544 CALL                 (1 positional)
+            1552 STORE_FAST           (raw_attempts)
+
+2931:        1554 LOAD_FAST            (raw_attempts)
+            1556 LOAD_CONST           ((None, ''))
+            1558 CONTAINS_OP          (in)
+            1562 POP_JUMP_IF_FALSE    (to 1600)
+
+2932:        1566 LOAD_FAST            (config)
+            1568 LOAD_ATTR            (NULL|self + get)
+            1588 LOAD_CONST           ("email_first_phone_max_attempts")
+            1590 CALL                 (1 positional)
+            1598 STORE_FAST           (raw_attempts)
+
+2933:     >> 1600 LOAD_FAST            (raw_attempts)
+            1602 LOAD_CONST           ((None, ''))
+            1604 CONTAINS_OP          (in)
+            1608 POP_JUMP_IF_FALSE    (to 1616)
+
+2934:        1612 LOAD_CONST           (1)
+            1614 STORE_FAST           (raw_attempts)
+
+2935:     >> 1616 NOP
+
+2936:        1618 LOAD_GLOBAL          (NULL + max)
+            1628 LOAD_CONST           (0)
+            1630 LOAD_GLOBAL          (NULL + int)
+            1640 LOAD_FAST            (raw_attempts)
+            1642 CALL                 (1 positional)
+            1650 CALL                 (2 positional)
+            1658 STORE_FAST           (max_attempts)
+
+2939:        1660 LOAD_FAST            (max_attempts)
+            1662 LOAD_CONST           (0)
+            1664 COMPARE_OP           (==)
+            1668 STORE_FAST           (unlimited_attempts)
+
+2940:        1670 LOAD_FAST            (unlimited_attempts)
+            1672 TO_BOOL
+            1680 POP_JUMP_IF_FALSE    (to 1688)
+            1684 LOAD_CONST           ("不限")
+            1686 JUMP_FORWARD         (to 1708)
+         >> 1688 LOAD_GLOBAL          (NULL + str)
+            1698 LOAD_FAST            (max_attempts)
+            1700 CALL                 (1 positional)
+         >> 1708 STORE_FAST           (attempt_label)
+
+2941:        1710 LOAD_GLOBAL          (NULL + _phone_session_cycle_seconds)
+            1720 LOAD_FAST            (config)
+            1722 CALL                 (1 positional)
+            1730 STORE_FAST           (session_cycle_seconds)
+
+2942:        1732 LOAD_GLOBAL          (time)
+            1742 LOAD_ATTR            (time)
+            1762 PUSH_NULL
+            1764 CALL                 (0 positional)
+            1772 STORE_FAST           (session_cycle_started)
+
+2943:        1774 LOAD_FAST            (config)
+            1776 LOAD_ATTR            (NULL|self + get)
+            1796 LOAD_CONST           ("phone_channels")
+            1798 CALL                 (1 positional)
+            1806 COPY                 1
+            1808 TO_BOOL
+            1816 POP_JUMP_IF_TRUE     (to 1824)
+            1820 POP_TOP
+            1822 LOAD_CONST           (('sms', 'whatsapp'))
+         >> 1824 STORE_FAST           (channels)
+
+2944:        1826 LOAD_FAST            (channels)
+            1828 GET_ITER
+            1830 LOAD_FAST_AND_CLEAR  (ch)
+            1832 SWAP                 (TOS <-> TOS1)
+            1834 BUILD_LIST           0
+            1836 SWAP                 (TOS <-> TOS1)
+            1838 GET_ITER
+            1840 FOR_ITER             (to 1964)
+            1844 STORE_FAST           (ch)
+            1846 LOAD_GLOBAL          (NULL + str)
+            1856 LOAD_FAST            (ch)
+            1858 CALL                 (1 positional)
+            1866 LOAD_ATTR            (NULL|self + strip)
+            1886 CALL                 (0 positional)
+            1894 TO_BOOL
+            1902 POP_JUMP_IF_TRUE     (to 1910)
+            1906 JUMP_BACKWARD        (to 1840)
+         >> 1910 LOAD_GLOBAL          (NULL + str)
+            1920 LOAD_FAST            (ch)
+            1922 CALL                 (1 positional)
+            1930 LOAD_ATTR            (NULL|self + strip)
+            1950 CALL                 (0 positional)
+            1958 LIST_APPEND          2
+            1960 JUMP_BACKWARD        (to 1840)
+         >> 1964 END_FOR
+            1966 POP_TOP
+            1968 SWAP                 (TOS <-> TOS1)
+            1970 STORE_FAST           (ch)
+            1972 COPY                 1
+            1974 TO_BOOL
+            1982 POP_JUMP_IF_TRUE     (to 1992)
+            1986 POP_TOP
+            1988 LOAD_CONST           ("sms")
+            1990 BUILD_LIST           1
+         >> 1992 STORE_FAST           (channels)
+
+2945:        1994 LOAD_GLOBAL          (NULL + _event)
+            2004 LOAD_FAST            (events)
+            2006 LOAD_GLOBAL          (STATE_PHONE_REQUIRED)
+            2016 LOAD_CONST           ("attempts=")
+            2018 LOAD_FAST            (attempt_label)
+            2020 FORMAT_SIMPLE
+            2022 BUILD_STRING         2
+            2024 LOAD_FAST            (log_fn)
+            2026 LOAD_CONST           (('detail', 'log_fn'))
+            2028 CALL_KW              4
+            2030 POP_TOP
+
+2946:        2032 LOAD_CONST           (False)
+            2034 STORE_FAST           (verified)
+
+2947:        2036 LOAD_CONST           ("")
+            2038 STORE_FAST           (last_error)
+
+2948:        2040 LOAD_CONST           (0)
+            2042 STORE_FAST           (idx)
+
+2949:        2044 LOAD_FAST            (unlimited_attempts)
+            2046 TO_BOOL
+            2054 POP_JUMP_IF_TRUE     (to 2072)

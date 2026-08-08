@@ -1,0 +1,800 @@
+             386 STORE_FAST           (states)
+             388 STORE_FAST           (item)
+
+1981:         390 LOAD_GLOBAL          (NULL + bool)
+             400 LOAD_FAST            (states)
+             402 LOAD_ATTR            (NULL|self + intersection)
+             422 BUILD_SET            0
+             424 LOAD_CONST           ({'EMAIL_OTP_REQUIRED', 'PHONE_OTP_VERIFIED', 'PHONE_REQUIRED', 'MFA_OTP_VERIFIED', 'EMAIL_OTP_VERIFIED', 'PHONE_OTP_SENT', 'MFA_OTP_REQUIRED'})
+             426 SET_UPDATE           1
+             428 CALL                 (1 positional)
+             436 CALL                 (1 positional)
+             444 STORE_FAST           (reached_email)
+
+1985:         446 LOAD_CONST           ("oauth_session_invalid")
+             448 LOAD_DEREF           (error)
+             450 CONTAINS_OP          (in)
+             454 COPY                 1
+             456 TO_BOOL
+             464 POP_JUMP_IF_TRUE     (to 478)
+             468 POP_TOP
+             470 LOAD_CONST           ("sign-in session is no longer valid")
+             472 LOAD_DEREF           (error)
+             474 CONTAINS_OP          (in)
+         >>  478 STORE_FAST           (session_invalid)
+
+1986:         480 LOAD_FAST            (session_invalid)
+             482 TO_BOOL
+             490 POP_JUMP_IF_FALSE    (to 496)
+
+1987:         494 RETURN_CONST         (True)
+
+1988:     >>  496 LOAD_FAST            (reached_email)
+             498 TO_BOOL
+             506 POP_JUMP_IF_FALSE    (to 512)
+
+1989:         510 RETURN_CONST         (False)
+
+1990:     >>  512 LOAD_CONST           (('invalid authorization step', 'node_sentinel_failed', 'operation timed out'))
+             514 STORE_FAST           (markers)
+
+1991:         516 LOAD_GLOBAL          (NULL + any)
+             526 LOAD_FAST            (error)
+             528 BUILD_TUPLE          1
+             530 LOAD_CONST           (<Code311 code object <genexpr> at 0x105531520, file runtime.py>, line 1991)
+             532 MAKE_FUNCTION
+             534 SET_FUNCTION_ATTRIBUTE 8
+             536 LOAD_FAST            (markers)
+             538 GET_ITER
+             540 CALL                 (0 positional)
+             548 CALL                 (1 positional)
+             556 RETURN_VALUE
+         >>  558 SWAP                 (TOS <-> TOS1)
+             560 POP_TOP
+
+1980:         562 SWAP                 (TOS <-> TOS1)
+             564 STORE_FAST           (item)
+             566 RERAISE              0
+
+ExceptionTable:
+  250 to 298 -> 558 [2]
+  308 to 384 -> 558 [2]
+
+# Method Name:       _password_credentials_rejected
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1993
+# Constants:
+#    0: None
+#    1: 'error'
+#    2: 'phase2_error'
+#    3: 'password_verify_failed'
+#    4: False
+#    5: ('login failed', 'incorrect password', 'invalid password', 'wrong password', 'invalid credentials')
+#    6: <Code311 code object <genexpr> at 0x1055315b0, file runtime.py>, line 1999
+# Names:
+#    0: _clean
+#    1: get
+#    2: lower
+#    3: any
+# Varnames:
+#	result, markers
+# Positional arguments:
+#	result
+# Local variables:
+#    1: markers
+# Cell variables:
+#    0: error
+               0 MAKE_CELL            (error)
+
+1993:           2 RESUME               0
+
+1995:           4 LOAD_GLOBAL          (NULL + _clean)
+              14 LOAD_FAST            (result)
+              16 LOAD_ATTR            (NULL|self + get)
+              36 LOAD_CONST           ("error")
+              38 CALL                 (1 positional)
+              46 COPY                 1
+              48 TO_BOOL
+              56 POP_JUMP_IF_TRUE     (to 94)
+              60 POP_TOP
+              62 LOAD_FAST            (result)
+              64 LOAD_ATTR            (NULL|self + get)
+              84 LOAD_CONST           ("phase2_error")
+              86 CALL                 (1 positional)
+         >>   94 CALL                 (1 positional)
+             102 LOAD_ATTR            (NULL|self + lower)
+             122 CALL                 (0 positional)
+             130 STORE_DEREF          (error)
+
+1996:         132 LOAD_CONST           ("password_verify_failed")
+             134 LOAD_DEREF           (error)
+             136 CONTAINS_OP          (not in)
+             140 POP_JUMP_IF_FALSE    (to 146)
+
+1997:         144 RETURN_CONST         (False)
+
+1998:     >>  146 LOAD_CONST           (('login failed', 'incorrect password', 'invalid password', 'wrong password', 'invalid credentials'))
+             148 STORE_FAST           (markers)
+
+1999:         150 LOAD_GLOBAL          (NULL + any)
+             160 LOAD_FAST            (error)
+             162 BUILD_TUPLE          1
+             164 LOAD_CONST           (<Code311 code object <genexpr> at 0x1055315b0, file runtime.py>, line 1999)
+             166 MAKE_FUNCTION
+             168 SET_FUNCTION_ATTRIBUTE 8
+             170 LOAD_FAST            (markers)
+             172 GET_ITER
+             174 CALL                 (0 positional)
+             182 CALL                 (1 positional)
+             190 RETURN_VALUE
+
+
+# Method Name:       _retire_after_failure
+# Filename:          runtime.py
+# Argument count:    7
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  15
+# Stack size:        9
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2001
+# Constants:
+#    0: None
+#    1: 'mailbox_dead'
+#    2: <Code311 code object <genexpr> at 0x105531610, file runtime.py>, line 2012
+#    3: ('mailbox_code_timeout', 'gptmail_code_timeout', 'email_otp_timeout', 'email_otp_failed', 'manual_code_timeout')
+#    4: 'codex_chain_events'
+#    5: 'state'
+#    6: ''
+#    7: {'EMAIL_OTP_REQUIRED', 'PHONE_OTP_VERIFIED', 'PHONE_REQUIRED', 'MFA_OTP_VERIFIED', 'EMAIL_OTP_VERIFIED', 'PHONE_OTP_SENT', 'MFA_OTP_REQUIRED'}
+#    8: 180
+#    9: ('reason',)
+#   10: 'email_damaged'
+#   11: 'email_verification_retryable'
+#   12: 'retryable_email'
+#   13: 'pre_auth_infra_failure'
+#   14: 'retryable_infra'
+#   15: 'authorization_started_failed'
+#   16: 'phone_verified'
+#   17: 'access_token'
+#   18: 'repair_pending'
+#   19: 'failed'
+#   20: ('error', 'status')
+#   21: 'oauth_session_invalid'
+#   22: 'sign-in session is no longer valid'
+#   23: '登录会话连续失效：账号已保留，可再次运行'
+#   24: ('status', 'error', 'technical_error', 'result')
+# Names:
+#    0: lower
+#    1: any
+#    2: isinstance
+#    3: get
+#    4: list
+#    5: dict
+#    6: str
+#    7: bool
+#    8: intersection
+#    9: mark_damaged_entry
+#   10: restore_entry
+#   11: _persist_result
+#   12: _summarize_error
+#   13: _task_state
+#   14: _redact_text
+#   15: _public_result
+# Varnames:
+#	self, settings, pool, entry, task_id, result, error, mailbox_bad, email_retryable, events, item, states, entered_email_flow, status, summary
+# Positional arguments:
+#	self, settings, pool, entry, task_id, result, error
+# Local variables:
+#    7: mailbox_bad
+#    8: email_retryable
+#    9: events
+#   10: item
+#   11: states
+#   12: entered_email_flow
+#   13: status
+#   14: summary
+# Cell variables:
+#    0: low
+               0 MAKE_CELL            (low)
+
+2001:           2 RESUME               0
+
+2010:           4 LOAD_FAST            (error)
+               6 LOAD_ATTR            (NULL|self + lower)
+              26 CALL                 (0 positional)
+              34 STORE_DEREF          (low)
+
+2011:          36 LOAD_CONST           ("mailbox_dead")
+              38 LOAD_DEREF           (low)
+              40 CONTAINS_OP          (in)
+              44 STORE_FAST           (mailbox_bad)
+
+2012:          46 LOAD_GLOBAL          (NULL + any)
+              56 LOAD_FAST            (low)
+              58 BUILD_TUPLE          1
+              60 LOAD_CONST           (<Code311 code object <genexpr> at 0x105531610, file runtime.py>, line 2012)
+              62 MAKE_FUNCTION
+              64 SET_FUNCTION_ATTRIBUTE 8
+              66 LOAD_CONST           (('mailbox_code_timeout', 'gptmail_code_timeout', 'email_otp_timeout', 'email_otp_failed', 'manual_code_timeout'))
+              68 GET_ITER
+              70 CALL                 (0 positional)
+              78 CALL                 (1 positional)
+              86 STORE_FAST           (email_retryable)
+
+2013:          88 LOAD_GLOBAL          (NULL + isinstance)
+              98 LOAD_FAST            (result)
+             100 LOAD_ATTR            (NULL|self + get)
+             120 LOAD_CONST           ("codex_chain_events")
+             122 CALL                 (1 positional)
+             130 LOAD_GLOBAL          (list)
+             140 CALL                 (2 positional)
+             148 TO_BOOL
+             156 POP_JUMP_IF_FALSE    (to 194)
+             160 LOAD_FAST            (result)
+             162 LOAD_ATTR            (NULL|self + get)
+             182 LOAD_CONST           ("codex_chain_events")
+             184 CALL                 (1 positional)
+             192 JUMP_FORWARD         (to 196)
+         >>  194 BUILD_LIST           0
+         >>  196 STORE_FAST           (events)
+
+2014:         198 LOAD_FAST            (events)
+             200 GET_ITER
+             202 LOAD_FAST_AND_CLEAR  (item)
+             204 SWAP                 (TOS <-> TOS1)
+             206 BUILD_SET            0
+             208 SWAP                 (TOS <-> TOS1)
+             210 GET_ITER
+             212 FOR_ITER             (to 338)
+             216 STORE_FAST           (item)
+             218 LOAD_GLOBAL          (NULL + isinstance)
+             228 LOAD_FAST            (item)
+             230 LOAD_GLOBAL          (dict)
+             240 CALL                 (2 positional)
+             248 TO_BOOL
+             256 POP_JUMP_IF_TRUE     (to 264)
+             260 JUMP_BACKWARD        (to 212)
+         >>  264 LOAD_GLOBAL          (NULL + str)
+             274 LOAD_FAST            (item)
+             276 LOAD_ATTR            (NULL|self + get)
+             296 LOAD_CONST           ("state")
+             298 CALL                 (1 positional)
+             306 COPY                 1
+             308 TO_BOOL
+         >>  316 POP_JUMP_IF_TRUE     (to 324)
+             320 POP_TOP
+             322 LOAD_CONST           ("")
+         >>  324 CALL                 (1 positional)
+             332 SET_ADD              2
+             334 JUMP_BACKWARD        (to 212)
+         >>  338 END_FOR
+             340 POP_TOP
+             342 STORE_FAST           (states)
+             344 STORE_FAST           (item)
+
+2015:         346 LOAD_GLOBAL          (NULL + bool)
+             356 LOAD_FAST            (states)
+             358 LOAD_ATTR            (NULL|self + intersection)
+             378 BUILD_SET            0
+             380 LOAD_CONST           ({'EMAIL_OTP_REQUIRED', 'PHONE_OTP_VERIFIED', 'PHONE_REQUIRED', 'MFA_OTP_VERIFIED', 'EMAIL_OTP_VERIFIED', 'PHONE_OTP_SENT', 'MFA_OTP_REQUIRED'})
+             382 SET_UPDATE           1
+             384 CALL                 (1 positional)
+             392 CALL                 (1 positional)
+             400 STORE_FAST           (entered_email_flow)
+
+2016:         402 LOAD_FAST            (mailbox_bad)
+             404 TO_BOOL
+             412 POP_JUMP_IF_FALSE    (to 458)
+
+2017:         416 LOAD_FAST            (pool)
+             418 LOAD_ATTR            (NULL|self + mark_damaged_entry)
+             438 LOAD_FAST_LOAD_FAST  (entry, error)
+             440 LOAD_CONST           (None)
+             442 LOAD_CONST           (180)
+             444 BINARY_SLICE
+             446 LOAD_CONST           (('reason',))
+             448 CALL_KW              2
+             450 POP_TOP
+
+2018:         452 LOAD_CONST           ("email_damaged")
+             454 STORE_FAST           (status)
+             456 JUMP_FORWARD         (to 690)
+
+2019:     >>  458 LOAD_FAST            (email_retryable)
+             460 TO_BOOL
+             468 POP_JUMP_IF_FALSE    (to 510)
+
+2020:         472 LOAD_FAST            (pool)
+             474 LOAD_ATTR            (NULL|self + restore_entry)
+             494 LOAD_FAST            (entry)
+             496 LOAD_CONST           ("email_verification_retryable")
+             498 LOAD_CONST           (('reason',))
+             500 CALL_KW              2
+             502 POP_TOP
+
+2021:         504 LOAD_CONST           ("retryable_email")
+             506 STORE_FAST           (status)
+             508 JUMP_FORWARD         (to 690)
+
+2022:     >>  510 LOAD_FAST            (entered_email_flow)
+             512 TO_BOOL
+             520 POP_JUMP_IF_TRUE     (to 562)
+
+2025:         524 LOAD_FAST            (pool)
+             526 LOAD_ATTR            (NULL|self + restore_entry)
+             546 LOAD_FAST            (entry)
+             548 LOAD_CONST           ("pre_auth_infra_failure")
+             550 LOAD_CONST           (('reason',))
+             552 CALL_KW              2
+             554 POP_TOP
+
+2026:         556 LOAD_CONST           ("retryable_infra")
+             558 STORE_FAST           (status)
+             560 JUMP_FORWARD         (to 690)
+
+2031:     >>  562 LOAD_FAST            (pool)
+             564 LOAD_ATTR            (NULL|self + restore_entry)
+             584 LOAD_FAST            (entry)
+             586 LOAD_CONST           ("authorization_started_failed")
+             588 LOAD_CONST           (('reason',))
+             590 CALL_KW              2
+             592 POP_TOP
+
+2032:         594 LOAD_FAST            (result)
+             596 LOAD_ATTR            (NULL|self + get)
+             616 LOAD_CONST           ("phone_verified")
+             618 CALL                 (1 positional)
+             626 TO_BOOL
+             634 POP_JUMP_IF_TRUE     (to 682)
+             638 LOAD_FAST            (result)
+             640 LOAD_ATTR            (NULL|self + get)
+             660 LOAD_CONST           ("access_token")
+             662 CALL                 (1 positional)
+             670 TO_BOOL
+             678 POP_JUMP_IF_FALSE    (to 686)
+         >>  682 LOAD_CONST           ("repair_pending")
+             684 JUMP_FORWARD         (to 688)
+         >>  686 LOAD_CONST           ("failed")
+         >>  688 STORE_FAST           (status)
+
+2033:     >>  690 LOAD_FAST            (self)
+             692 LOAD_ATTR            (NULL|self + _persist_result)
+             712 LOAD_FAST_LOAD_FAST  (settings, task_id)
+             714 LOAD_FAST_LOAD_FAST  (entry, result)
+             716 LOAD_FAST_LOAD_FAST  (error, status)
+             718 LOAD_CONST           (('error', 'status'))
+             720 CALL_KW              6
+             722 POP_TOP
+
+2034:         724 LOAD_GLOBAL          (NULL + _summarize_error)
+             734 LOAD_FAST            (error)
+             736 CALL                 (1 positional)
+             744 STORE_FAST           (summary)
+
+2035:         746 LOAD_CONST           ("oauth_session_invalid")
+             748 LOAD_DEREF           (low)
+             750 CONTAINS_OP          (in)
+             754 POP_JUMP_IF_TRUE     (to 770)
+             758 LOAD_CONST           ("sign-in session is no longer valid")
+             760 LOAD_DEREF           (low)
+             762 CONTAINS_OP          (in)
+             766 POP_JUMP_IF_FALSE    (to 774)
+
+2036:     >>  770 LOAD_CONST           ("登录会话连续失效：账号已保留，可再次运行")
+             772 STORE_FAST           (summary)
+
+2037:     >>  774 LOAD_FAST            (self)
+             776 LOAD_ATTR            (NULL|self + _task_state)
+
+2038:         796 LOAD_FAST            (task_id)
+
+2039:         798 LOAD_FAST            (status)
+
+2040:         800 LOAD_FAST            (summary)
+
+2041:         802 LOAD_GLOBAL          (NULL + _redact_text)
+             812 LOAD_FAST            (error)
+             814 CALL                 (1 positional)
+
+2042:         822 LOAD_GLOBAL          (NULL + _public_result)
+             832 LOAD_FAST            (result)
+             834 CALL                 (1 positional)
+
+2037:         842 LOAD_CONST           (('status', 'error', 'technical_error', 'result'))
+             844 CALL_KW              5
+             846 POP_TOP
+             848 RETURN_CONST         (None)
+         >>  850 SWAP                 (TOS <-> TOS1)
+             852 POP_TOP
+
+2014:         854 SWAP                 (TOS <-> TOS1)
+             856 STORE_FAST           (item)
+             858 RERAISE              0
+
+ExceptionTable:
+  206 to 254 -> 850 [2]
+  264 to 340 -> 850 [2]
+
+# Method Name:       _persist_result
+# Filename:          runtime.py
+# Argument count:    5
+# Position-only argument count: 0
+# Keyword-only arguments: 2
+# Number of locals:  13
+# Stack size:        12
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2045
+# Constants:
+#    0: None
+#    1: 'results_dir'
+#    2: 'results'
+#    3: True
+#    4: ('parents', 'exist_ok')
+#    5: '_'
+#    6: '@'
+#    7: '_at_'
+#    8: '.json'
+#    9: ''
+#   10: 'oauth_session_invalid'
+#   11: 'sign-in session is no longer valid'
+#   12: '登录会话连续失效：账号已保留，可再次运行'
+#   13: ('task_id', 'email', 'account', 'source_row', 'status', 'error', 'technical_error', 'result', 'created_at')
+# Names:
+#    0: Path
+#    1: _clean
+#    2: get
+#    3: data_dir
+#    4: mkdir
+#    5: email
+#    6: replace
+#    7: _summarize_error
+#    8: lower
+#    9: _redact_text
+#   10: _account_label
+#   11: _source_row
+#   12: int
+#   13: time
+#   14: atomic_write_json
+# Varnames:
+#	self, settings, task_id, entry, result, error, status, root, target, summary, low, technical, payload
+# Positional arguments:
+#	self, settings, task_id, entry, result
+# Local variables:
+#    5: error
+#    6: status
+#    7: root
+#    8: target
+#    9: summary
+#   10: low
+#   11: technical
+#   12: payload
+2045:           0 RESUME               0
+
+2055:           2 LOAD_GLOBAL          (NULL + Path)
+              12 LOAD_GLOBAL          (NULL + _clean)
+              22 LOAD_FAST            (settings)
+              24 LOAD_ATTR            (NULL|self + get)
+              44 LOAD_CONST           ("results_dir")
+              46 CALL                 (1 positional)
+              54 CALL                 (1 positional)
+              62 COPY                 1
+              64 TO_BOOL
+              72 POP_JUMP_IF_TRUE     (to 106)
+              76 POP_TOP
+              78 LOAD_FAST            (self)
+              80 LOAD_ATTR            (data_dir)
+             100 LOAD_CONST           ("results")
+             102 BINARY_OP            (/)
+         >>  106 CALL                 (1 positional)
+             114 STORE_FAST           (root)
+
+2056:         116 LOAD_FAST            (root)
+             118 LOAD_ATTR            (NULL|self + mkdir)
+             138 LOAD_CONST           (True)
+             140 LOAD_CONST           (True)
+             142 LOAD_CONST           (('parents', 'exist_ok'))
+             144 CALL_KW              2
+             146 POP_TOP
+
+2057:         148 LOAD_FAST_LOAD_FAST  (root, task_id)
+             150 FORMAT_SIMPLE
+             152 LOAD_CONST           ("_")
+             154 LOAD_FAST            (entry)
+             156 LOAD_ATTR            (email)
+             176 LOAD_ATTR            (NULL|self + replace)
+             196 LOAD_CONST           ("@")
+             198 LOAD_CONST           ("_at_")
+             200 CALL                 (2 positional)
+             208 FORMAT_SIMPLE
+             210 LOAD_CONST           (".json")
+             212 BUILD_STRING         4
+             214 BINARY_OP            (/)
+             218 STORE_FAST           (target)
+
+2058:         220 LOAD_GLOBAL          (NULL + _clean)
+             230 LOAD_FAST            (error)
+             232 CALL                 (1 positional)
+             240 TO_BOOL
+             248 POP_JUMP_IF_FALSE    (to 274)
+             252 LOAD_GLOBAL          (NULL + _summarize_error)
+             262 LOAD_FAST            (error)
+             264 CALL                 (1 positional)
+             272 JUMP_FORWARD         (to 276)
+         >>  274 LOAD_CONST           ("")
+         >>  276 STORE_FAST           (summary)
+
+2059:         278 LOAD_GLOBAL          (NULL + _clean)
+             288 LOAD_FAST            (error)
+             290 CALL                 (1 positional)
+             298 LOAD_ATTR            (NULL|self + lower)
+             318 CALL                 (0 positional)
+             326 STORE_FAST           (low)
+
+2060:         328 LOAD_CONST           ("oauth_session_invalid")
+             330 LOAD_FAST            (low)
+             332 CONTAINS_OP          (in)
+             336 POP_JUMP_IF_TRUE     (to 352)
+             340 LOAD_CONST           ("sign-in session is no longer valid")
+             342 LOAD_FAST            (low)
+             344 CONTAINS_OP          (in)
+             348 POP_JUMP_IF_FALSE    (to 356)
+
+2061:     >>  352 LOAD_CONST           ("登录会话连续失效：账号已保留，可再次运行")
+             354 STORE_FAST           (summary)
+
+2062:     >>  356 LOAD_GLOBAL          (NULL + _redact_text)
+             366 LOAD_FAST            (error)
+             368 CALL                 (1 positional)
+             376 STORE_FAST           (technical)
+
+2064:         378 LOAD_FAST            (task_id)
+
+2065:         380 LOAD_FAST            (entry)
+             382 LOAD_ATTR            (email)
+
+2066:         402 LOAD_FAST            (self)
+             404 LOAD_ATTR            (NULL|self + _account_label)
+             424 LOAD_FAST            (entry)
+             426 CALL                 (1 positional)
+
+2067:         434 LOAD_FAST            (self)
+             436 LOAD_ATTR            (NULL|self + _source_row)
+             456 LOAD_FAST            (entry)
+             458 CALL                 (1 positional)
+
+2068:         466 LOAD_FAST            (status)
+
+2069:         468 LOAD_FAST            (summary)
+
+2070:         470 LOAD_FAST            (technical)
+
+2071:         472 LOAD_FAST            (result)
+
+2072:         474 LOAD_GLOBAL          (NULL + int)
+             484 LOAD_GLOBAL          (time)
+             494 LOAD_ATTR            (time)
+             514 PUSH_NULL
+             516 CALL                 (0 positional)
+             524 CALL                 (1 positional)
+
+2063:         532 LOAD_CONST           (('task_id', 'email', 'account', 'source_row', 'status', 'error', 'technical_error', 'result', 'created_at'))
+             534 BUILD_CONST_KEY_MAP  9
+             536 STORE_FAST           (payload)
+
+2074:         538 LOAD_GLOBAL          (NULL + atomic_write_json)
+             548 LOAD_FAST_LOAD_FAST  (target, payload)
+             550 CALL                 (2 positional)
+             558 POP_TOP
+             560 RETURN_CONST         (None)
+
+
+# Method Name:       status
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  7
+# Stack size:        9
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        2076
+# Constants:
+#    0: None
+#    1: 'error'
+#    2: 'email_mode'
+#    3: 'manual'
+#    4: ('limit', 'active')
+#    5: ('task', 'node', 'email')
+#    6: ('running', 'stop_requested', 'tasks', 'pool', 'manual_otp', 'concurrency')
+# Names:
+#    0: lock
+#    1: tasks
+#    2: values
+#    3: _public_result
+#    4: running
+#    5: _pool
+#    6: summary
+#    7: Exception
+#    8: _redact_text
+#    9: stop_event
+#   10: is_set
+#   11: _clean
+#   12: get
+#   13: lower
+#   14: manual_codes
+#   15: status
+#   16: task_concurrency
+#   17: len
+#   18: active_task_ids
+#   19: node_gate
+#   20: auto_email_phase_gate
+# Varnames:
+#	self, settings, item, tasks, running, summary, exc
+# Positional arguments:
+#	self, settings
+# Local variables:
+#    2: item
+#    3: tasks
+#    4: running
+#    5: summary
+#    6: exc
+2076:           0 RESUME               0
+
+2077:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (lock)
+              24 BEFORE_WITH
+              26 POP_TOP
+
+2078:          28 LOAD_FAST            (self)
+              30 LOAD_ATTR            (tasks)
+              50 LOAD_ATTR            (NULL|self + values)
+              70 CALL                 (0 positional)
+              78 GET_ITER
+              80 LOAD_FAST_AND_CLEAR  (item)
+              82 SWAP                 (TOS <-> TOS1)
+              84 BUILD_LIST           0
+              86 SWAP                 (TOS <-> TOS1)
+              88 GET_ITER
+              90 FOR_ITER             (to 122)
+              94 STORE_FAST           (item)
+              96 LOAD_GLOBAL          (NULL + _public_result)
+             106 LOAD_FAST            (item)
+             108 CALL                 (1 positional)
+             116 LIST_APPEND          2
+             118 JUMP_BACKWARD        (to 90)
+         >>  122 END_FOR
+             124 POP_TOP
+             126 STORE_FAST           (tasks)
+             128 STORE_FAST           (item)
+
+2079:         130 LOAD_FAST            (self)
+             132 LOAD_ATTR            (running)
+             152 STORE_FAST           (running)
+
+2077:     >>  154 LOAD_CONST           (None)
+             156 LOAD_CONST           (None)
+             158 LOAD_CONST           (None)
+             160 CALL                 (2 positional)
+             168 POP_TOP
+
+2080:         170 BUILD_MAP            0
+             172 STORE_FAST           (summary)
+
+2081:         174 LOAD_FAST            (settings)
+             176 TO_BOOL
+             184 POP_JUMP_IF_FALSE    (to 252)
+
+2082:         188 NOP
+
+2083:         190 LOAD_FAST            (self)
+             192 LOAD_ATTR            (NULL|self + _pool)
+             212 LOAD_FAST            (settings)
+             214 CALL                 (1 positional)
+             222 LOAD_ATTR            (NULL|self + summary)
+             242 CALL                 (0 positional)
+             250 STORE_FAST           (summary)
+
+2087:     >>  252 LOAD_FAST_CHECK      (running)
+
+2088:         254 LOAD_FAST            (self)
+             256 LOAD_ATTR            (stop_event)
+             276 LOAD_ATTR            (NULL|self + is_set)
+             296 CALL                 (0 positional)
+
+2089:         304 LOAD_FAST_CHECK      (tasks)
+
+2090:         306 LOAD_FAST            (summary)
+
+2091:         308 LOAD_FAST            (settings)
+             310 TO_BOOL
+             318 POP_JUMP_IF_FALSE    (to 462)
+             322 LOAD_GLOBAL          (NULL + _clean)
+             332 LOAD_FAST            (settings)
+             334 LOAD_ATTR            (NULL|self + get)
+             354 LOAD_CONST           ("email_mode")
+             356 CALL                 (1 positional)
+             364 CALL                 (1 positional)
+             372 LOAD_ATTR            (NULL|self + lower)
+             392 CALL                 (0 positional)
+             400 LOAD_CONST           ("manual")
+             402 COMPARE_OP           (==)
+             406 POP_JUMP_IF_FALSE    (to 462)
+             410 LOAD_FAST            (self)
+             412 LOAD_ATTR            (manual_codes)
+             432 LOAD_ATTR            (NULL|self + status)
+             452 CALL                 (0 positional)
+             460 JUMP_FORWARD         (to 464)
+         >>  462 BUILD_MAP            0
+
+2093:     >>  464 LOAD_FAST            (self)
+             466 LOAD_ATTR            (task_concurrency)
+             486 LOAD_GLOBAL          (NULL + len)
+             496 LOAD_FAST            (self)
+             498 LOAD_ATTR            (active_task_ids)
+             518 CALL                 (1 positional)
+             526 LOAD_CONST           (('limit', 'active'))
+             528 BUILD_CONST_KEY_MAP  2
+
+2094:         530 LOAD_FAST            (self)
+             532 LOAD_ATTR            (node_gate)
+             552 LOAD_ATTR            (NULL|self + status)
+             572 CALL                 (0 positional)
+
+2095:         580 LOAD_FAST            (self)
+             582 LOAD_ATTR            (auto_email_phase_gate)
+             602 LOAD_ATTR            (NULL|self + status)
+             622 CALL                 (0 positional)
+
+2092:         630 LOAD_CONST           (('task', 'node', 'email'))
+             632 BUILD_CONST_KEY_MAP  3
+
+2086:         634 LOAD_CONST           (('running', 'stop_requested', 'tasks', 'pool', 'manual_otp', 'concurrency'))
+             636 BUILD_CONST_KEY_MAP  6
+             638 RETURN_VALUE
+         >>  640 SWAP                 (TOS <-> TOS1)
+             642 POP_TOP
+
+2078:         644 SWAP                 (TOS <-> TOS1)
+             646 STORE_FAST           (item)
+             648 RERAISE              0
+
+2077:     >>  650 PUSH_EXC_INFO
+             652 WITH_EXCEPT_START    0
+             654 TO_BOOL
+             662 POP_JUMP_IF_TRUE     (to 668)
+             666 RERAISE              2
+         >>  668 POP_TOP
+             670 POP_EXCEPT
+             672 POP_TOP
+             674 POP_TOP
+             676 JUMP_BACKWARD_NO_INTERRUPT (to 170)
+         >>  678 COPY                 3
+             680 POP_EXCEPT
+             682 RERAISE              1
+         >>  684 PUSH_EXC_INFO
+
+2084:         686 LOAD_GLOBAL          (Exception)
+             696 CHECK_EXC_MATCH
+             698 POP_JUMP_IF_FALSE    (to 748)
+             702 STORE_FAST           (exc)
+
+2085:         704 LOAD_CONST           ("error")
+             706 LOAD_GLOBAL          (NULL + _redact_text)
+             716 LOAD_FAST            (exc)
+             718 CALL                 (1 positional)
+             726 BUILD_MAP            1
+             728 STORE_FAST           (summary)
+             730 POP_EXCEPT
+             732 LOAD_CONST           (None)
+             734 STORE_FAST           (exc)
+             736 DELETE_FAST          (exc)
+             738 JUMP_BACKWARD_NO_INTERRUPT (to 252)
+         >>  740 LOAD_CONST           (None)
+             742 STORE_FAST           (exc)
+             744 DELETE_FAST          (exc)

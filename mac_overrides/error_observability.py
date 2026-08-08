@@ -41,6 +41,8 @@ NODE_LABELS = {
     "finalizing_token": "交换 OAuth Token",
     "finalizing_upload": "上传 SUB2 账号",
     "finalizing_save": "保存任务结果",
+    "batch_member_missing_terminal": "运行批次对账",
+    "batch_result_missing": "运行批次对账",
     "unexpected": "运行任务",
     "account_banned": "检查 OpenAI 账号状态",
     "openai_quota": "查询 OpenAI 额度",
@@ -106,6 +108,8 @@ _HTTP_STATUS_RES = (
 _PROVIDER_CODE_RE = re.compile(
     r"(?i)\b(?:error[_-]?code|provider[_-]?code|type)\s*[:=]\s*[\"']?([A-Za-z][A-Za-z0-9_.-]{1,79})"
 )
+_CODEX_TOTP_STATUS_RE = re.compile(r"\b_status=(\d{3})\b")
+_CODEX_TOTP_ERROR_RE = re.compile(r"\berror=([^\s]+)")
 
 _NODE_FAILURE_MARKERS = (
     "node_sentinel_failed",
@@ -146,6 +150,11 @@ _RELOGIN_NON_RETRYABLE_MARKERS = (
 )
 
 _NODE_CAUSE_RULES = (
+    (
+        ("too many open files", "errno 24", "emfile"),
+        "resource_fd_exhausted",
+        "本机文件描述符已耗尽，系统已暂停新 Node 任务并清理连接",
+    ),
     (
         ("node executable not found",),
         "node_runtime_missing",
@@ -407,6 +416,8 @@ def _extract_provider_code(values: Sequence[Any]) -> str:
 
 
 _RULES = (
+    (("batch_member_missing_terminal",), "batch_member_missing_terminal", "batch_member_missing_terminal", "任务线程已结束但没有产生终态，已由批次清单补记失败", True),
+    (("batch_result_missing",), "batch_result_missing", "batch_result_missing", "任务终态存在但结果文件缺失，已由批次清单补记失败", True),
     (("account_banned", "account_deactivated", "account_suspended", ACCOUNT_BANNED_MESSAGE.lower()), "account_banned", "account_banned", "", False),
     (("invalid authorization step", "mfa_authorization_step_expired"), "mfa_otp_verifying", "mfa_authorization_step_expired", "2FA 授权步骤在动态码提交前已失效，需要重新建立 OAuth 会话", True),
     (("relogin_phone_required",), "phone_acquiring", "relogin_phone_required", "重登进入手机号验证页面，已停止且未调用接码平台", False),
@@ -677,6 +688,21 @@ def format_failure_log(task_id: Any, failure: Any) -> str:
         f"{prefix}[{public['node_label']}/{public['node_code']}] "
         f"{public['public_message']}"
     )
+
+
+def is_success_diagnostic_trace(value: Any) -> bool:
+    """Recognize a successful protocol trace that merely names an error field."""
+
+    text = str(value or "")
+    if "[CodexTOTP]" not in text:
+        return False
+    status_match = _CODEX_TOTP_STATUS_RE.search(text)
+    error_match = _CODEX_TOTP_ERROR_RE.search(text)
+    if status_match is None or error_match is None:
+        return False
+    status = int(status_match.group(1))
+    error = error_match.group(1).strip().lower()
+    return 200 <= status < 300 and error in {"-", "none", "null"}
 
 
 def format_node_retry_log(task_id: Any, detail: Any) -> str:

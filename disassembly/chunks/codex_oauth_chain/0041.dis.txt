@@ -1,0 +1,531 @@
+
+943:           2 RESUME               0
+               4 LOAD_GLOBAL          (NULL + _emit)
+              14 LOAD_DEREF           (self)
+              16 LOAD_ATTR            (log_fn)
+              36 LOAD_CONST           ("  ")
+              38 LOAD_FAST            (msg)
+              40 FORMAT_SIMPLE
+              42 BUILD_STRING         2
+              44 LOAD_CONST           ("info")
+              46 CALL                 (3 positional)
+              54 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        5
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1196
+# Constants:
+#    0: None
+#    1: '  [SUB2] '
+#    2: 'info'
+# Names:
+#    0: _emit
+#    1: log_fn
+# Varnames:
+#	msg
+# Positional arguments:
+#	msg
+# Free variables:
+#    0: self
+               0 COPY_FREE_VARS       1
+
+1196:           2 RESUME               0
+               4 LOAD_GLOBAL          (NULL + _emit)
+              14 LOAD_DEREF           (self)
+              16 LOAD_ATTR            (log_fn)
+              36 LOAD_CONST           ("  [SUB2] ")
+              38 LOAD_FAST            (msg)
+              40 FORMAT_SIMPLE
+              42 BUILD_STRING         2
+              44 LOAD_CONST           ("info")
+              46 CALL                 (3 positional)
+              54 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        5
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1205
+# Constants:
+#    0: None
+#    1: '  [SUB2] '
+#    2: 'warn'
+# Names:
+#    0: _emit
+#    1: log_fn
+# Varnames:
+#	msg
+# Positional arguments:
+#	msg
+# Free variables:
+#    0: self
+               0 COPY_FREE_VARS       1
+
+1205:           2 RESUME               0
+               4 LOAD_GLOBAL          (NULL + _emit)
+              14 LOAD_DEREF           (self)
+              16 LOAD_ATTR            (log_fn)
+              36 LOAD_CONST           ("  [SUB2] ")
+              38 LOAD_FAST            (msg)
+              40 FORMAT_SIMPLE
+              42 BUILD_STRING         2
+              44 LOAD_CONST           ("warn")
+              46 CALL                 (3 positional)
+              54 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        5
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1244
+# Constants:
+#    0: None
+#    1: '  [SUB2] '
+#    2: 'info'
+# Names:
+#    0: _emit
+#    1: log_fn
+# Varnames:
+#	msg
+# Positional arguments:
+#	msg
+# Free variables:
+#    0: self
+               0 COPY_FREE_VARS       1
+
+1244:           2 RESUME               0
+               4 LOAD_GLOBAL          (NULL + _emit)
+              14 LOAD_DEREF           (self)
+              16 LOAD_ATTR            (log_fn)
+              36 LOAD_CONST           ("  [SUB2] ")
+              38 LOAD_FAST            (msg)
+              40 FORMAT_SIMPLE
+              42 BUILD_STRING         2
+              44 LOAD_CONST           ("info")
+              46 CALL                 (3 positional)
+              54 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        5
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1319
+# Constants:
+#    0: None
+#    1: '  [SUB2] '
+#    2: 'info'
+# Names:
+#    0: _emit
+#    1: log_fn
+# Varnames:
+#	msg
+# Positional arguments:
+#	msg
+# Free variables:
+#    0: self
+               0 COPY_FREE_VARS       1
+
+1319:           2 RESUME               0
+               4 LOAD_GLOBAL          (NULL + _emit)
+              14 LOAD_DEREF           (self)
+              16 LOAD_ATTR            (log_fn)
+              36 LOAD_CONST           ("  [SUB2] ")
+              38 LOAD_FAST            (msg)
+              40 FORMAT_SIMPLE
+              42 BUILD_STRING         2
+              44 LOAD_CONST           ("info")
+              46 CALL                 (3 positional)
+              54 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        5
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1384
+# Constants:
+#    0: None
+#    1: '  [SUB2] '
+#    2: 'info'
+# Names:
+#    0: _emit
+#    1: log_fn
+# Varnames:
+#	msg
+# Positional arguments:
+#	msg
+# Free variables:
+#    0: self
+               0 COPY_FREE_VARS       1
+
+1384:           2 RESUME               0
+               4 LOAD_GLOBAL          (NULL + _emit)
+              14 LOAD_DEREF           (self)
+              16 LOAD_ATTR            (log_fn)
+              36 LOAD_CONST           ("  [SUB2] ")
+              38 LOAD_FAST            (msg)
+              40 FORMAT_SIMPLE
+              42 BUILD_STRING         2
+              44 LOAD_CONST           ("info")
+              46 CALL                 (3 positional)
+              54 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        5
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1468
+# Constants:
+#    0: None
+#    1: '  [CPA] '
+#    2: 'info'
+# Names:
+#    0: _emit
+#    1: log_fn
+# Varnames:
+#	msg
+# Positional arguments:
+#	msg
+# Free variables:
+#    0: self
+               0 COPY_FREE_VARS       1
+
+1468:           2 RESUME               0
+               4 LOAD_GLOBAL          (NULL + _emit)
+              14 LOAD_DEREF           (self)
+              16 LOAD_ATTR            (log_fn)
+              36 LOAD_CONST           ("  [CPA] ")
+              38 LOAD_FAST            (msg)
+              40 FORMAT_SIMPLE
+              42 BUILD_STRING         2
+              44 LOAD_CONST           ("info")
+              46 CALL                 (3 positional)
+              54 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        5
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1492
+# Constants:
+#    0: None
+#    1: '  [CPA] '
+#    2: 'info'
+# Names:
+#    0: _emit
+#    1: log_fn
+# Varnames:
+#	msg
+# Positional arguments:
+#	msg
+# Free variables:
+#    0: self
+               0 COPY_FREE_VARS       1
+
+1492:           2 RESUME               0
+               4 LOAD_GLOBAL          (NULL + _emit)
+              14 LOAD_DEREF           (self)
+              16 LOAD_ATTR            (log_fn)
+              36 LOAD_CONST           ("  [CPA] ")
+              38 LOAD_FAST            (msg)
+              40 FORMAT_SIMPLE
+              42 BUILD_STRING         2
+              44 LOAD_CONST           ("info")
+              46 CALL                 (3 positional)
+              54 RETURN_VALUE
+
+
+# Method Name:       <lambda>
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        5
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        1528
+# Constants:
+#    0: None
+#    1: '  [SUB2] '
+#    2: 'info'
+# Names:
+#    0: _emit
+#    1: log_fn
+# Varnames:
+#	msg
+# Positional arguments:
+#	msg
+# Free variables:
+#    0: self
+               0 COPY_FREE_VARS       1
+
+1528:           2 RESUME               0
+               4 LOAD_GLOBAL          (NULL + _emit)
+              14 LOAD_DEREF           (self)
+              16 LOAD_ATTR            (log_fn)
+              36 LOAD_CONST           ("  [SUB2] ")
+              38 LOAD_FAST            (msg)
+              40 FORMAT_SIMPLE
+              42 BUILD_STRING         2
+              44 LOAD_CONST           ("info")
+              46 CALL                 (3 positional)
+              54 RETURN_VALUE
+
+
+# Method Name:       <genexpr>
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        2409
+# Constants:
+#    0: '_'
+#    1: None
+# Names:
+#    0: str
+#    1: startswith
+# Varnames:
+#	.0, key
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: key
+2409:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 112)
+              14 STORE_FAST           (key)
+              16 LOAD_GLOBAL          (NULL + str)
+              26 LOAD_FAST            (key)
+              28 CALL                 (1 positional)
+              36 LOAD_ATTR            (NULL|self + startswith)
+              56 LOAD_CONST           ("_")
+              58 CALL                 (1 positional)
+              66 TO_BOOL
+              74 POP_JUMP_IF_FALSE    (to 82)
+              78 JUMP_BACKWARD        (to 10)
+         >>   82 LOAD_GLOBAL          (NULL + str)
+              92 LOAD_FAST            (key)
+              94 CALL                 (1 positional)
+             102 YIELD_VALUE          0
+             104 RESUME               5
+             106 POP_TOP
+             108 JUMP_BACKWARD        (to 10)
+         >>  112 END_FOR
+             114 POP_TOP
+             116 RETURN_CONST         (None)
+         >>  118 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+             120 RERAISE              1
+
+ExceptionTable:
+  4 to 72 -> 118 [0] lasti
+  82 to 116 -> 118 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        2417
+# Constants:
+#    0: None
+# Names:
+#    0: str
+# Varnames:
+#	.0, key
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: key
+2417:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 46)
+              14 STORE_FAST           (key)
+              16 LOAD_GLOBAL          (NULL + str)
+              26 LOAD_FAST            (key)
+              28 CALL                 (1 positional)
+              36 YIELD_VALUE          0
+              38 RESUME               5
+              40 POP_TOP
+              42 JUMP_BACKWARD        (to 10)
+         >>   46 END_FOR
+              48 POP_TOP
+              50 RETURN_CONST         (None)
+         >>   52 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              54 RERAISE              1
+
+ExceptionTable:
+  4 to 50 -> 52 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        2440
+# Constants:
+#    0: None
+# Names:
+#    0: str
+# Varnames:
+#	.0, name
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: name
+2440:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 46)
+              14 STORE_FAST           (name)
+              16 LOAD_GLOBAL          (NULL + str)
+              26 LOAD_FAST            (name)
+              28 CALL                 (1 positional)
+              36 YIELD_VALUE          0
+              38 RESUME               5
+              40 POP_TOP
+              42 JUMP_BACKWARD        (to 10)
+         >>   46 END_FOR
+              48 POP_TOP
+              50 RETURN_CONST         (None)
+         >>   52 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              54 RERAISE              1
+
+ExceptionTable:
+  4 to 50 -> 52 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        2472
+# Constants:
+#    0: None
+# Names:
+#    0: str
+# Varnames:
+#	.0, item
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: item
+2472:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 46)
+              14 STORE_FAST           (item)
+              16 LOAD_GLOBAL          (NULL + str)
+              26 LOAD_FAST            (item)
+              28 CALL                 (1 positional)
+              36 YIELD_VALUE          0
+              38 RESUME               5
+              40 POP_TOP
+              42 JUMP_BACKWARD        (to 10)
+         >>   46 END_FOR
+              48 POP_TOP
+              50 RETURN_CONST         (None)
+         >>   52 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              54 RERAISE              1
+
+ExceptionTable:
+  4 to 50 -> 52 [0] lasti
+
+# Method Name:       <genexpr>
+# Filename:          codex_oauth_chain.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x01000033 (0x1000000 | GENERATOR | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        2474
+# Constants:
+#    0: None
+# Names:
+#    0: str
+# Varnames:
+#	.0, item
+# Positional arguments:
+#	.0
+# Local variables:
+#    1: item
+2474:           0 RETURN_GENERATOR
+               2 POP_TOP
+               4 RESUME               0
+               6 LOAD_FAST            (.0)
+               8 GET_ITER
+              10 FOR_ITER             (to 46)
+              14 STORE_FAST           (item)
+              16 LOAD_GLOBAL          (NULL + str)
+              26 LOAD_FAST            (item)
+              28 CALL                 (1 positional)
+              36 YIELD_VALUE          0
+              38 RESUME               5
+              40 POP_TOP
+              42 JUMP_BACKWARD        (to 10)
+         >>   46 END_FOR
+              48 POP_TOP
+              50 RETURN_CONST         (None)
+         >>   52 CALL_INTRINSIC_1     (INTRINSIC_STOPITERATION_ERROR)
+              54 RERAISE              1
+
+ExceptionTable:
+  4 to 50 -> 52 [0] lasti

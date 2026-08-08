@@ -1,0 +1,800 @@
+             332 RETURN_CONST         (None)
+
+1744:     >>  334 PUSH_EXC_INFO
+             336 WITH_EXCEPT_START    0
+             338 TO_BOOL
+             346 POP_JUMP_IF_TRUE     (to 352)
+             350 RERAISE              2
+         >>  352 POP_TOP
+             354 POP_EXCEPT
+             356 POP_TOP
+             358 POP_TOP
+             360 JUMP_BACKWARD_NO_INTERRUPT (to 198)
+         >>  362 COPY                 3
+             364 POP_EXCEPT
+             366 RERAISE              1
+
+1749:     >>  368 PUSH_EXC_INFO
+             370 WITH_EXCEPT_START    0
+             372 TO_BOOL
+             380 POP_JUMP_IF_TRUE     (to 386)
+             384 RERAISE              2
+         >>  386 POP_TOP
+             388 POP_EXCEPT
+             390 POP_TOP
+             392 POP_TOP
+             394 RETURN_CONST         (None)
+         >>  396 COPY                 3
+             398 POP_EXCEPT
+             400 RERAISE              1
+         >>  402 PUSH_EXC_INFO
+
+1749:         404 LOAD_FAST            (self)
+             406 LOAD_ATTR            (lock)
+             426 BEFORE_WITH
+             428 POP_TOP
+
+1750:         430 LOAD_FAST            (self)
+             432 LOAD_ATTR            (active_task_ids)
+             452 LOAD_ATTR            (NULL|self + discard)
+             472 LOAD_FAST            (task_id)
+             474 CALL                 (1 positional)
+             482 POP_TOP
+
+1749:         484 LOAD_CONST           (None)
+             486 LOAD_CONST           (None)
+             488 LOAD_CONST           (None)
+             490 CALL                 (2 positional)
+             498 POP_TOP
+             500 RERAISE              0
+         >>  502 PUSH_EXC_INFO
+             504 WITH_EXCEPT_START    0
+             506 TO_BOOL
+             514 POP_JUMP_IF_TRUE     (to 520)
+             518 RERAISE              2
+         >>  520 POP_TOP
+             522 POP_EXCEPT
+             524 POP_TOP
+         >>  526 POP_TOP
+             528 RERAISE              0
+         >>  530 COPY                 3
+             532 POP_EXCEPT
+             534 RERAISE              1
+         >>  536 COPY                 3
+             538 POP_EXCEPT
+             540 RERAISE              1
+
+ExceptionTable:
+  126 to 180 -> 334 [1] lasti
+  200 to 234 -> 402 [0]
+  260 to 314 -> 368 [1] lasti
+  334 to 352 -> 362 [3] lasti
+  368 to 386 -> 396 [3] lasti
+  402 to 426 -> 536 [1] lasti
+  428 to 482 -> 502 [3] lasti
+  484 to 500 -> 536 [1] lasti
+  502 to 520 -> 530 [5] lasti
+  522 to 534 -> 536 [1] lasti
+
+# Method Name:       _run_one_impl
+# Filename:          runtime.py
+# Argument count:    5
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  27
+# Stack size:        18
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1752
+# Constants:
+#    0: None
+#    1: 'T'
+#    2: '03d'
+#    3: '-'
+#    4: 6
+#    5: 'stopped_before_start'
+#    6: ('reason',)
+#    7: 'stopped'
+#    8: '未启动，已停止'
+#    9: ('status', 'email', 'account', 'source_row', 'ordinal', 'error')
+#   10: 3600
+#   11: ('lease_seconds',)
+#   12: 'leased'
+#   13: ('status', 'email', 'account', 'source_row', 'ordinal')
+#   14: ' 已预留邮箱（未发验证码，等待并行前置）: '
+#   15: 'info'
+#   16: 'password'
+#   17: ''
+#   18: 'email_mode'
+#   19: 'manual'
+#   20: 'mailbox_type'
+#   21: 'url'
+#   22: {'outlook_password', 'outlook_oauth'}
+#   23: ('password',)
+#   24: '_stop_requested'
+#   25: 'auth_session_retries'
+#   26: 0
+#   27: 20
+#   28: False
+#   29: 1
+#   30: '已停止'
+#   31: ('status', 'error')
+#   32: ' 已停止，邮箱已归还可用池'
+#   33: 'authorizing'
+#   34: ('status', 'auth_session_attempt')
+#   35: '不限'
+#   36: 'password_to_otp'
+#   37: ' 密码登录明确失败，正在建立全新会话改用邮箱验证码 '
+#   38: '/'
+#   39: 'warn'
+#   40: ' 登录会话已失效，正在建立全新会话重试 '
+#   41: 12
+#   42: 2
+#   43: ('timeout',)
+#   44: 'sms_provider'
+#   45: ('proxy',)
+#   46: '手动邮箱池条目类型错误'
+#   47: <Code311 code object <lambda> at 0x1055313a0, file runtime.py>, line 1845
+#   48: 'gptmail'
+#   49: 'enabled'
+#   50: <Code311 code object <lambda> at 0x1055313d0, file runtime.py>, line 1852
+#   51: ('phase_gate', 'stop_event', 'task_id', 'state_fn')
+#   52: <Code311 code object <lambda> at 0x105531400, file runtime.py>, line 1862
+#   53: <Code311 code object <lambda> at 0x105531430, file runtime.py>, line 1872
+#   54: 'code_timeout'
+#   55: <Code311 code object <lambda> at 0x105531460, file runtime.py>, line 1882
+#   56: ('code_timeout', 'config', 'log_fn')
+#   57: <Code311 code object <lambda> at 0x105531490, file runtime.py>, line 1888
+#   58: ('upload_proxy', 'log_fn')
+#   59: 'task_stopped'
+#   60: ' SUB2 授权会话已建立，开始已有邮箱 Auth 授权'
+#   61: 'oauth_url'
+#   62: 'register'
+#   63: 'proxy'
+#   64: <Code311 code object <lambda> at 0x1055314c0, file runtime.py>, line 1904
+#   65: 'real'
+#   66: 'sub2'
+#   67: 'session_id'
+#   68: 'state'
+#   69: ('oauth_url', 'account_email', 'password', 'config', 'proxy', 'email_proxy', 'upload_proxy', 'log_fn', 'mode', 'oauth_provider', 'oauth_session_id', 'oauth_state', 'upload_target_name', 'email_otp_provider', 'phone_otp_provider')
+#   70: 'stop_event'
+#   71: 'node_gate'
+#   72: 'close'
+#   73: 'email_auth_preference'
+#   74: 'auto'
+#   75: True
+#   76: 'otp'
+#   77: 'ok'
+#   78: 'session_retry'
+#   79: ('status', 'error', 'result')
+#   80: 'sub2_remote_verified'
+#   81: 'sub2_group_verified'
+#   82: 'sub2_chatgpt_account_id_verified'
+#   83: 'success'
+#   84: ('status',)
+#   85: 'sub2_uploaded'
+#   86: ('status', 'result')
+#   87: ' 成功上传 SUB2: '
+#   88: 'error'
+#   89: 'phase2_error'
+#   90: '授权或上传未完成'
+#   91: 'failed'
+#   92: ('status', 'error', 'technical_error', 'ordinal')
+#   93: ' 失败: '
+#   94: ('info',)
+# Names:
+#    0: uuid
+#    1: uuid4
+#    2: hex
+#    3: _pool
+#    4: stop_event
+#    5: is_set
+#    6: restore_entry
+#    7: _task_state
+#    8: email
+#    9: _account_label
+#   10: _source_row
+#   11: lease
+#   12: _log
+#   13: _clean
+#   14: getattr
+#   15: get
+#   16: lower
+#   17: _task_config
+#   18: max
+#   19: min
+#   20: int
+#   21: TypeError
+#   22: ValueError
+#   23: str
+#   24: wait
+#   25: apply_localpool_runtime_config
+#   26: create_provider
+#   27: provider_api_key
+#   28: sms_proxy
+#   29: isinstance
+#   30: ManualMailboxEntry
+#   31: MailboxPoolError
+#   32: ManualEmailOtpProvider
+#   33: manual_codes
+#   34: _as_bool
+#   35: GptMailOtpProvider
+#   36: auto_email_phase_gate
+#   37: OutlookMailboxOtpProvider
+#   38: UrlMailboxOtpProvider
+#   39: SmsProviderAdapter
+#   40: _generate_sub2_oauth_session
+#   41: upload_proxy
+#   42: RuntimeError
+#   43: _NODE_BRIDGE_CONTEXT
+#   44: node_gate
+#   45: run_codex_after_registration
+#   46: email_proxy
+#   47: hasattr
+#   48: close
+#   49: _password_credentials_rejected
+#   50: _pre_auth_session_retryable
+#   51: _public_result
+#   52: _persist_result
+#   53: remove_entry
+#   54: _retire_after_failure
+#   55: Exception
+#   56: _summarize_error
+#   57: _redact_text
+# Varnames:
+#	self, settings, ordinal, assigned_entry, assigned_task_id, pool, entry, entry_password, entry_is_manual, entry_is_outlook, cfg, raw_session_limit, max_sessions, unlimited_sessions, result, session_attempt, retry_reason, smart_password_fallback_used, attempt_label, retry_delay, sms, manual_otp, email_otp, phone_otp, session, error, exc
+# Positional arguments:
+#	self, settings, ordinal, assigned_entry, assigned_task_id
+# Local variables:
+#    5: pool
+#    6: entry
+#    7: entry_password
+#    8: entry_is_manual
+#    9: entry_is_outlook
+#   10: cfg
+#   11: raw_session_limit
+#   12: max_sessions
+#   13: unlimited_sessions
+#   14: result
+#   15: session_attempt
+#   16: retry_reason
+#   17: smart_password_fallback_used
+#   18: attempt_label
+#   19: retry_delay
+#   20: sms
+#   21: manual_otp
+#   22: email_otp
+#   23: phone_otp
+#   24: session
+#   25: error
+#   26: exc
+# Cell variables:
+#    0: self
+#    1: task_id
+               0 MAKE_CELL            (self)
+               2 MAKE_CELL            (task_id)
+
+1752:           4 RESUME               0
+
+1759:           6 LOAD_FAST            (assigned_task_id)
+               8 COPY                 1
+              10 TO_BOOL
+              18 POP_JUMP_IF_TRUE     (to 104)
+              22 POP_TOP
+              24 LOAD_CONST           ("T")
+              26 LOAD_FAST            (ordinal)
+              28 LOAD_CONST           ("03d")
+              30 FORMAT_WITH_SPEC
+              32 LOAD_CONST           ("-")
+              34 LOAD_GLOBAL          (uuid)
+              44 LOAD_ATTR            (uuid4)
+              64 PUSH_NULL
+              66 CALL                 (0 positional)
+              74 LOAD_ATTR            (hex)
+              94 LOAD_CONST           (None)
+              96 LOAD_CONST           (6)
+              98 BINARY_SLICE
+             100 FORMAT_SIMPLE
+             102 BUILD_STRING         4
+         >>  104 STORE_DEREF          (task_id)
+
+1760:         106 LOAD_DEREF           (self)
+             108 LOAD_ATTR            (NULL|self + _pool)
+             128 LOAD_FAST            (settings)
+             130 CALL                 (1 positional)
+             138 STORE_FAST           (pool)
+
+1761:         140 LOAD_FAST            (assigned_entry)
+             142 STORE_FAST           (entry)
+
+1762:         144 LOAD_DEREF           (self)
+             146 LOAD_ATTR            (stop_event)
+             166 LOAD_ATTR            (NULL|self + is_set)
+             186 CALL                 (0 positional)
+             194 TO_BOOL
+             202 POP_JUMP_IF_FALSE    (to 376)
+
+1763:         206 LOAD_FAST            (entry)
+             208 TO_BOOL
+             216 POP_JUMP_IF_FALSE    (to 374)
+
+1764:         220 LOAD_FAST            (pool)
+             222 LOAD_ATTR            (NULL|self + restore_entry)
+             242 LOAD_FAST            (entry)
+             244 LOAD_CONST           ("stopped_before_start")
+             246 LOAD_CONST           (('reason',))
+             248 CALL_KW              2
+             250 POP_TOP
+
+1765:         252 LOAD_DEREF           (self)
+             254 LOAD_ATTR            (NULL|self + _task_state)
+
+1766:         274 LOAD_DEREF           (task_id)
+
+1767:         276 LOAD_CONST           ("stopped")
+
+1768:         278 LOAD_FAST            (entry)
+             280 LOAD_ATTR            (email)
+
+1769:         300 LOAD_DEREF           (self)
+             302 LOAD_ATTR            (NULL|self + _account_label)
+             322 LOAD_FAST            (entry)
+             324 CALL                 (1 positional)
+
+1770:         332 LOAD_DEREF           (self)
+             334 LOAD_ATTR            (NULL|self + _source_row)
+             354 LOAD_FAST            (entry)
+             356 CALL                 (1 positional)
+
+1771:         364 LOAD_FAST            (ordinal)
+
+1772:         366 LOAD_CONST           ("未启动，已停止")
+
+1765:         368 LOAD_CONST           (('status', 'email', 'account', 'source_row', 'ordinal', 'error'))
+             370 CALL_KW              7
+             372 POP_TOP
+
+1774:     >>  374 RETURN_CONST         (None)
+
+1775:     >>  376 NOP
+
+1776:         378 LOAD_FAST            (entry)
+             380 POP_JUMP_IF_NOT_NONE (to 414)
+
+1777:         384 LOAD_FAST            (pool)
+             386 LOAD_ATTR            (NULL|self + lease)
+             406 LOAD_CONST           (3600)
+             408 LOAD_CONST           (('lease_seconds',))
+             410 CALL_KW              1
+             412 STORE_FAST           (entry)
+
+1778:     >>  414 LOAD_DEREF           (self)
+             416 LOAD_ATTR            (NULL|self + _task_state)
+
+1779:         436 LOAD_DEREF           (task_id)
+
+1780:         438 LOAD_CONST           ("leased")
+
+1781:         440 LOAD_FAST            (entry)
+             442 LOAD_ATTR            (email)
+
+1782:         462 LOAD_DEREF           (self)
+             464 LOAD_ATTR            (NULL|self + _account_label)
+             484 LOAD_FAST            (entry)
+             486 CALL                 (1 positional)
+
+1783:         494 LOAD_DEREF           (self)
+             496 LOAD_ATTR            (NULL|self + _source_row)
+             516 LOAD_FAST            (entry)
+             518 CALL                 (1 positional)
+
+1784:         526 LOAD_FAST            (ordinal)
+
+1778:         528 LOAD_CONST           (('status', 'email', 'account', 'source_row', 'ordinal'))
+             530 CALL_KW              6
+             532 POP_TOP
+
+1786:         534 LOAD_DEREF           (self)
+             536 LOAD_ATTR            (NULL|self + _log)
+             556 LOAD_DEREF           (task_id)
+             558 FORMAT_SIMPLE
+             560 LOAD_CONST           (" 已预留邮箱（未发验证码，等待并行前置）: ")
+             562 LOAD_FAST            (entry)
+             564 LOAD_ATTR            (email)
+             584 FORMAT_SIMPLE
+             586 BUILD_STRING         3
+             588 LOAD_CONST           ("info")
+             590 CALL                 (2 positional)
+             598 POP_TOP
+
+1787:         600 LOAD_GLOBAL          (NULL + _clean)
+             610 LOAD_GLOBAL          (NULL + getattr)
+             620 LOAD_FAST            (entry)
+             622 LOAD_CONST           ("password")
+             624 LOAD_CONST           ("")
+             626 CALL                 (3 positional)
+             634 CALL                 (1 positional)
+             642 STORE_FAST           (entry_password)
+
+1788:         644 LOAD_GLOBAL          (NULL + _clean)
+             654 LOAD_FAST            (settings)
+             656 LOAD_ATTR            (NULL|self + get)
+             676 LOAD_CONST           ("email_mode")
+             678 CALL                 (1 positional)
+             686 CALL                 (1 positional)
+             694 LOAD_ATTR            (NULL|self + lower)
+             714 CALL                 (0 positional)
+             722 LOAD_CONST           ("manual")
+             724 COMPARE_OP           (==)
+             728 STORE_FAST           (entry_is_manual)
+
+1789:         730 LOAD_GLOBAL          (NULL + _clean)
+             740 LOAD_GLOBAL          (NULL + getattr)
+             750 LOAD_FAST            (entry)
+             752 LOAD_CONST           ("mailbox_type")
+             754 LOAD_CONST           ("url")
+             756 CALL                 (3 positional)
+             764 CALL                 (1 positional)
+             772 LOAD_CONST           ({'outlook_password', 'outlook_oauth'})
+             774 CONTAINS_OP          (in)
+             778 STORE_FAST           (entry_is_outlook)
+
+1790:         780 LOAD_DEREF           (self)
+             782 LOAD_ATTR            (NULL|self + _task_config)
+
+1791:         802 LOAD_FAST            (settings)
+
+1792:         804 LOAD_FAST            (entry)
+             806 LOAD_ATTR            (email)
+
+1793:         826 LOAD_DEREF           (task_id)
+
+1794:         828 LOAD_FAST            (entry_is_manual)
+             830 TO_BOOL
+             838 POP_JUMP_IF_TRUE     (to 856)
+             842 LOAD_FAST            (entry_is_outlook)
+             844 TO_BOOL
+             852 POP_JUMP_IF_FALSE    (to 860)
+         >>  856 LOAD_FAST            (entry_password)
+             858 JUMP_FORWARD         (to 862)
+         >>  860 LOAD_CONST           ("")
+
+1790:     >>  862 LOAD_CONST           (('password',))
+             864 CALL_KW              4
+             866 STORE_FAST           (cfg)
+
+1798:         868 LOAD_DEREF           (self)
+             870 LOAD_ATTR            (stop_event)
+             890 LOAD_ATTR            (is_set)
+             910 LOAD_FAST            (cfg)
+             912 LOAD_CONST           ("_stop_requested")
+             914 STORE_SUBSCR
+
+1799:         918 LOAD_FAST            (settings)
+             920 LOAD_ATTR            (NULL|self + get)
+             940 LOAD_CONST           ("auth_session_retries")
+             942 LOAD_CONST           (0)
+             944 CALL                 (2 positional)
+             952 STORE_FAST           (raw_session_limit)
+
+1800:         954 NOP
+
+1801:         956 LOAD_GLOBAL          (NULL + max)
+             966 LOAD_CONST           (0)
+             968 LOAD_GLOBAL          (NULL + min)
+             978 LOAD_GLOBAL          (NULL + int)
+             988 LOAD_FAST            (raw_session_limit)
+             990 CALL                 (1 positional)
+             998 LOAD_CONST           (20)
+            1000 CALL                 (2 positional)
+            1008 CALL                 (2 positional)
+            1016 STORE_FAST           (max_sessions)
+
+1804:        1018 LOAD_FAST            (max_sessions)
+            1020 LOAD_CONST           (0)
+            1022 COMPARE_OP           (==)
+            1026 STORE_FAST           (unlimited_sessions)
+
+1805:        1028 BUILD_MAP            0
+            1030 STORE_FAST           (result)
+
+1806:        1032 LOAD_CONST           (0)
+            1034 STORE_FAST           (session_attempt)
+
+1807:        1036 LOAD_CONST           ("")
+            1038 STORE_FAST           (retry_reason)
+
+1808:        1040 LOAD_CONST           (False)
+            1042 STORE_FAST           (smart_password_fallback_used)
+
+1809:        1044 LOAD_FAST            (unlimited_sessions)
+            1046 TO_BOOL
+            1054 POP_JUMP_IF_TRUE     (to 1070)
+            1058 LOAD_FAST_LOAD_FAST  (session_attempt, max_sessions)
+            1060 COMPARE_OP           (<)
+            1064 EXTENDED_ARG         (1024)
+            1066 POP_JUMP_IF_FALSE    (to 3574)
+
+1810:     >> 1070 LOAD_FAST            (session_attempt)
+            1072 LOAD_CONST           (1)
+            1074 BINARY_OP            (+=)
+            1078 STORE_FAST           (session_attempt)
+
+1811:        1080 LOAD_DEREF           (self)
+            1082 LOAD_ATTR            (stop_event)
+            1102 LOAD_ATTR            (NULL|self + is_set)
+            1122 CALL                 (0 positional)
+            1130 TO_BOOL
+            1138 POP_JUMP_IF_FALSE    (to 1252)
+
+1812:        1142 LOAD_FAST            (pool)
+            1144 LOAD_ATTR            (NULL|self + restore_entry)
+            1164 LOAD_FAST            (entry)
+            1166 LOAD_CONST           ("stopped")
+            1168 LOAD_CONST           (('reason',))
+            1170 CALL_KW              2
+            1172 POP_TOP
+
+1813:        1174 LOAD_DEREF           (self)
+            1176 LOAD_ATTR            (NULL|self + _task_state)
+            1196 LOAD_DEREF           (task_id)
+            1198 LOAD_CONST           ("stopped")
+            1200 LOAD_CONST           ("已停止")
+            1202 LOAD_CONST           (('status', 'error'))
+            1204 CALL_KW              3
+            1206 POP_TOP
+
+1814:        1208 LOAD_DEREF           (self)
+            1210 LOAD_ATTR            (NULL|self + _log)
+            1230 LOAD_DEREF           (task_id)
+            1232 FORMAT_SIMPLE
+            1234 LOAD_CONST           (" 已停止，邮箱已归还可用池")
+            1236 BUILD_STRING         2
+            1238 LOAD_CONST           ("info")
+            1240 CALL                 (2 positional)
+            1248 POP_TOP
+
+1815:        1250 RETURN_CONST         (None)
+
+1816:     >> 1252 LOAD_DEREF           (self)
+            1254 LOAD_ATTR            (NULL|self + _task_state)
+            1274 LOAD_DEREF           (task_id)
+            1276 LOAD_CONST           ("authorizing")
+            1278 LOAD_FAST            (session_attempt)
+            1280 LOAD_CONST           (('status', 'auth_session_attempt'))
+            1282 CALL_KW              3
+            1284 POP_TOP
+
+1817:        1286 LOAD_FAST            (session_attempt)
+            1288 LOAD_CONST           (1)
+            1290 COMPARE_OP           (>)
+            1294 POP_JUMP_IF_FALSE    (to 1664)
+
+1818:        1298 LOAD_FAST            (unlimited_sessions)
+            1300 TO_BOOL
+            1308 POP_JUMP_IF_FALSE    (to 1316)
+            1312 LOAD_CONST           ("不限")
+            1314 JUMP_FORWARD         (to 1336)
+         >> 1316 LOAD_GLOBAL          (NULL + str)
+            1326 LOAD_FAST            (max_sessions)
+            1328 CALL                 (1 positional)
+         >> 1336 STORE_FAST           (attempt_label)
+
+1819:        1338 LOAD_FAST            (retry_reason)
+            1340 LOAD_CONST           ("password_to_otp")
+            1342 COMPARE_OP           (==)
+            1346 POP_JUMP_IF_FALSE    (to 1408)
+
+1820:        1350 LOAD_DEREF           (self)
+            1352 LOAD_ATTR            (NULL|self + _log)
+            1372 LOAD_DEREF           (task_id)
+            1374 FORMAT_SIMPLE
+            1376 LOAD_CONST           (" 密码登录明确失败，正在建立全新会话改用邮箱验证码 ")
+            1378 LOAD_FAST            (session_attempt)
+            1380 FORMAT_SIMPLE
+            1382 LOAD_CONST           ("/")
+            1384 LOAD_FAST            (attempt_label)
+            1386 FORMAT_SIMPLE
+            1388 BUILD_STRING         5
+            1390 LOAD_CONST           ("warn")
+            1392 CALL                 (2 positional)
+            1400 POP_TOP
+
+1821:        1402 LOAD_CONST           (1)
+            1404 STORE_FAST           (retry_delay)
+            1406 JUMP_FORWARD         (to 1490)
+
+1823:     >> 1408 LOAD_DEREF           (self)
+            1410 LOAD_ATTR            (NULL|self + _log)
+            1430 LOAD_DEREF           (task_id)
+            1432 FORMAT_SIMPLE
+            1434 LOAD_CONST           (" 登录会话已失效，正在建立全新会话重试 ")
+            1436 LOAD_FAST            (session_attempt)
+            1438 FORMAT_SIMPLE
+            1440 LOAD_CONST           ("/")
+            1442 LOAD_FAST            (attempt_label)
+            1444 FORMAT_SIMPLE
+            1446 BUILD_STRING         5
+            1448 LOAD_CONST           ("warn")
+            1450 CALL                 (2 positional)
+            1458 POP_TOP
+
+1824:        1460 LOAD_GLOBAL          (NULL + min)
+            1470 LOAD_CONST           (12)
+            1472 LOAD_CONST           (2)
+            1474 LOAD_FAST            (session_attempt)
+            1476 BINARY_OP            (*)
+            1480 CALL                 (2 positional)
+            1488 STORE_FAST           (retry_delay)
+
+1825:     >> 1490 LOAD_CONST           ("")
+            1492 STORE_FAST           (retry_reason)
+
+1826:        1494 LOAD_DEREF           (self)
+            1496 LOAD_ATTR            (stop_event)
+            1516 LOAD_ATTR            (NULL|self + wait)
+            1536 LOAD_FAST            (retry_delay)
+            1538 LOAD_CONST           (('timeout',))
+            1540 CALL_KW              1
+            1542 TO_BOOL
+            1550 POP_JUMP_IF_FALSE    (to 1664)
+
+1827:        1554 LOAD_FAST            (pool)
+            1556 LOAD_ATTR            (NULL|self + restore_entry)
+            1576 LOAD_FAST            (entry)
+            1578 LOAD_CONST           ("stopped")
+            1580 LOAD_CONST           (('reason',))
+            1582 CALL_KW              2
+            1584 POP_TOP
+
+1828:        1586 LOAD_DEREF           (self)
+            1588 LOAD_ATTR            (NULL|self + _task_state)
+            1608 LOAD_DEREF           (task_id)
+            1610 LOAD_CONST           ("stopped")
+            1612 LOAD_CONST           ("已停止")
+            1614 LOAD_CONST           (('status', 'error'))
+            1616 CALL_KW              3
+            1618 POP_TOP
+
+1829:        1620 LOAD_DEREF           (self)
+            1622 LOAD_ATTR            (NULL|self + _log)
+            1642 LOAD_DEREF           (task_id)
+            1644 FORMAT_SIMPLE
+            1646 LOAD_CONST           (" 已停止，邮箱已归还可用池")
+            1648 BUILD_STRING         2
+            1650 LOAD_CONST           ("info")
+            1652 CALL                 (2 positional)
+            1660 POP_TOP
+
+1830:        1662 RETURN_CONST         (None)
+
+1831:     >> 1664 LOAD_GLOBAL          (NULL + apply_localpool_runtime_config)
+            1674 LOAD_FAST_LOAD_FAST  (cfg, cfg)
+            1676 LOAD_CONST           ("sms_provider")
+            1678 BINARY_SUBSCR
+            1682 CALL                 (2 positional)
+            1690 POP_TOP
+
+1832:        1692 LOAD_GLOBAL          (NULL + create_provider)
+            1702 LOAD_FAST            (cfg)
+            1704 LOAD_CONST           ("sms_provider")
+            1706 BINARY_SUBSCR
+            1710 LOAD_GLOBAL          (NULL + provider_api_key)
+            1720 LOAD_FAST_LOAD_FAST  (cfg, cfg)
+            1722 LOAD_CONST           ("sms_provider")
+            1724 BINARY_SUBSCR
+            1728 CALL                 (2 positional)
+            1736 LOAD_GLOBAL          (NULL + sms_proxy)
+            1746 LOAD_FAST            (cfg)
+            1748 CALL                 (1 positional)
+            1756 LOAD_CONST           (('proxy',))
+            1758 CALL_KW              3
+            1760 STORE_FAST           (sms)
+
+1833:        1762 LOAD_CONST           (None)
+            1764 STORE_FAST           (manual_otp)
+
+1834:        1766 LOAD_CONST           (None)
+            1768 STORE_FAST           (email_otp)
+
+1835:        1770 LOAD_GLOBAL          (NULL + _clean)
+            1780 LOAD_FAST            (settings)
+            1782 LOAD_ATTR            (NULL|self + get)
+            1802 LOAD_CONST           ("email_mode")
+            1804 CALL                 (1 positional)
+            1812 CALL                 (1 positional)
+            1820 LOAD_ATTR            (NULL|self + lower)
+            1840 CALL                 (0 positional)
+            1848 LOAD_CONST           ("manual")
+            1850 COMPARE_OP           (==)
+            1854 POP_JUMP_IF_FALSE    (to 2036)
+
+1836:        1858 LOAD_GLOBAL          (NULL + isinstance)
+            1868 LOAD_FAST            (entry)
+            1870 LOAD_GLOBAL          (ManualMailboxEntry)
+            1880 CALL                 (2 positional)
+            1888 TO_BOOL
+            1896 POP_JUMP_IF_TRUE     (to 1922)
+
+1837:        1900 LOAD_GLOBAL          (NULL + MailboxPoolError)
+            1910 LOAD_CONST           ("手动邮箱池条目类型错误")
+            1912 CALL                 (1 positional)
+            1920 RAISE_VARARGS        (exception instance)
+
+1838:     >> 1922 LOAD_GLOBAL          (NULL + ManualEmailOtpProvider)
+
+1839:        1932 LOAD_FAST            (entry)
+
+1840:        1934 LOAD_DEREF           (task_id)
+
+1841:        1936 LOAD_DEREF           (self)
+            1938 LOAD_ATTR            (manual_codes)
+
+1842:        1958 LOAD_FAST            (cfg)
+
+1843:        1960 LOAD_DEREF           (self)
+            1962 LOAD_ATTR            (stop_event)
+
+1844:        1982 LOAD_DEREF           (self)
+            1984 LOAD_ATTR            (_task_state)
+
+1845:        2004 LOAD_CONST           (('info',))
+            2006 LOAD_FAST            (self)
+            2008 LOAD_FAST            (task_id)
+            2010 BUILD_TUPLE          2
+            2012 LOAD_CONST           (<Code311 code object <lambda> at 0x1055313a0, file runtime.py>, line 1845)
+            2014 MAKE_FUNCTION
+            2016 SET_FUNCTION_ATTRIBUTE 8
+            2018 SET_FUNCTION_ATTRIBUTE 1
+
+1838:        2020 CALL                 (7 positional)
+            2028 STORE_FAST           (manual_otp)
+
+1847:        2030 LOAD_FAST            (manual_otp)
+            2032 STORE_FAST           (email_otp)
+            2034 JUMP_FORWARD         (to 2500)
+
+1848:     >> 2036 LOAD_GLOBAL          (NULL + _as_bool)
+            2046 LOAD_FAST            (cfg)
+            2048 LOAD_ATTR            (NULL|self + get)
+            2068 LOAD_CONST           ("gptmail")
+            2070 BUILD_MAP            0
+            2072 CALL                 (2 positional)
+            2080 LOAD_ATTR            (NULL|self + get)
+            2100 LOAD_CONST           ("enabled")
+            2102 CALL                 (1 positional)
+            2110 LOAD_CONST           (False)
+            2112 CALL                 (2 positional)
+            2120 TO_BOOL
+            2128 POP_JUMP_IF_FALSE    (to 2238)
+
+1849:        2132 LOAD_GLOBAL          (NULL + GptMailOtpProvider)
+
+1850:        2142 LOAD_FAST            (entry)
+
+1851:        2144 LOAD_FAST            (cfg)
+
+1852:        2146 LOAD_CONST           (('info',))
+            2148 LOAD_FAST            (self)
+            2150 LOAD_FAST            (task_id)
+            2152 BUILD_TUPLE          2
+            2154 LOAD_CONST           (<Code311 code object <lambda> at 0x1055313d0, file runtime.py>, line 1852)
+            2156 MAKE_FUNCTION
+            2158 SET_FUNCTION_ATTRIBUTE 8
+            2160 SET_FUNCTION_ATTRIBUTE 1
+
+1853:        2162 LOAD_DEREF           (self)
+            2164 LOAD_ATTR            (auto_email_phase_gate)
+
+1854:        2184 LOAD_DEREF           (self)
+            2186 LOAD_ATTR            (stop_event)
+
+1855:        2206 LOAD_DEREF           (task_id)
+
+1856:        2208 LOAD_DEREF           (self)
+            2210 LOAD_ATTR            (_task_state)
+
+1849:        2230 LOAD_CONST           (('phase_gate', 'stop_event', 'task_id', 'state_fn'))
+            2232 CALL_KW              7
+            2234 STORE_FAST           (email_otp)
+            2236 JUMP_FORWARD         (to 2500)
+

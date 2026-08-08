@@ -1,0 +1,93 @@
+            3200 STORE_FAST           (exc)
+            3202 DELETE_FAST          (exc)
+            3204 RERAISE              1
+
+188:     >> 3206 RERAISE              0
+         >> 3208 COPY                 3
+            3210 POP_EXCEPT
+            3212 RERAISE              1
+         >> 3214 PUSH_EXC_INFO
+
+242:        3216 LOAD_GLOBAL          (Exception)
+            3226 CHECK_EXC_MATCH
+            3228 POP_JUMP_IF_FALSE    (to 3294)
+            3232 STORE_FAST           (exc)
+
+243:        3234 LOAD_CONST           (False)
+            3236 LOAD_CONST           ("diagnostic")
+            3238 LOAD_GLOBAL          (BRIDGE_VERSION)
+            3248 LOAD_GLOBAL          (NULL + str)
+            3258 LOAD_FAST            (exc)
+            3260 CALL                 (1 positional)
+            3268 LOAD_CONST           (False)
+            3270 LOAD_CONST           (('ok', 'mode', 'version', 'error', 'token_generated'))
+            3272 BUILD_CONST_KEY_MAP  5
+            3274 SWAP                 (TOS <-> TOS1)
+            3276 POP_EXCEPT
+            3278 LOAD_CONST           (None)
+            3280 STORE_FAST           (exc)
+            3282 DELETE_FAST          (exc)
+            3284 RETURN_VALUE
+         >> 3286 LOAD_CONST           (None)
+            3288 STORE_FAST           (exc)
+            3290 DELETE_FAST          (exc)
+            3292 RERAISE              1
+
+242:     >> 3294 RERAISE              0
+         >> 3296 COPY                 3
+            3298 POP_EXCEPT
+            3300 RERAISE              1
+         >> 3302 PUSH_EXC_INFO
+
+254:        3304 LOAD_GLOBAL          (Exception)
+            3314 CHECK_EXC_MATCH
+            3316 POP_JUMP_IF_FALSE    (to 3370)
+            3320 STORE_FAST           (exc)
+
+255:        3322 LOAD_CONST           (False)
+            3324 LOAD_CONST           ("diagnostic")
+            3326 LOAD_GLOBAL          (BRIDGE_VERSION)
+            3336 LOAD_CONST           ("invalid node json: ")
+            3338 LOAD_FAST            (exc)
+            3340 FORMAT_SIMPLE
+            3342 BUILD_STRING         2
+            3344 LOAD_CONST           (False)
+            3346 LOAD_CONST           (('ok', 'mode', 'version', 'error', 'token_generated'))
+            3348 BUILD_CONST_KEY_MAP  5
+            3350 SWAP                 (TOS <-> TOS1)
+            3352 POP_EXCEPT
+            3354 LOAD_CONST           (None)
+            3356 STORE_FAST           (exc)
+            3358 DELETE_FAST          (exc)
+            3360 RETURN_VALUE
+         >> 3362 LOAD_CONST           (None)
+            3364 STORE_FAST           (exc)
+            3366 DELETE_FAST          (exc)
+            3368 RERAISE              1
+
+254:     >> 3370 RERAISE              0
+         >> 3372 COPY                 3
+            3374 POP_EXCEPT
+            3376 RERAISE              1
+
+ExceptionTable:
+  702 to 1576 -> 3050 [0]
+  1746 to 1804 -> 3138 [0]
+  2622 to 2718 -> 3214 [0]
+  2888 to 2968 -> 3302 [0]
+  3050 to 3068 -> 3132 [1] lasti
+  3070 to 3108 -> 3122 [1] lasti
+  3110 to 3110 -> 3132 [1] lasti
+  3122 to 3130 -> 3132 [1] lasti
+  3138 to 3156 -> 3208 [1] lasti
+  3158 to 3184 -> 3198 [1] lasti
+  3186 to 3186 -> 3208 [1] lasti
+  3198 to 3206 -> 3208 [1] lasti
+  3214 to 3232 -> 3296 [1] lasti
+  3234 to 3272 -> 3286 [1] lasti
+  3274 to 3274 -> 3296 [1] lasti
+  3286 to 3294 -> 3296 [1] lasti
+  3302 to 3320 -> 3372 [1] lasti
+  3322 to 3348 -> 3362 [1] lasti
+  3350 to 3350 -> 3372 [1] lasti
+  3362 to 3370 -> 3372 [1] lasti

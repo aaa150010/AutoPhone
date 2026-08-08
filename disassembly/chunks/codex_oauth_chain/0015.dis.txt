@@ -1,0 +1,800 @@
+
+3132:        1536 LOAD_FAST            (account_email)
+
+3133:        1538 LOAD_GLOBAL          (NULL + _clean)
+            1548 LOAD_GLOBAL          (NULL + getattr)
+            1558 LOAD_FAST            (phase1_register)
+            1560 LOAD_CONST           ("device_id")
+            1562 LOAD_CONST           ("")
+            1564 CALL                 (3 positional)
+            1572 COPY                 1
+            1574 TO_BOOL
+            1582 POP_JUMP_IF_TRUE     (to 1620)
+            1586 POP_TOP
+            1588 LOAD_FAST            (cfg)
+            1590 LOAD_ATTR            (NULL|self + get)
+            1610 LOAD_CONST           ("openai_device_id")
+            1612 CALL                 (1 positional)
+         >> 1620 CALL                 (1 positional)
+
+3134:        1628 LOAD_GLOBAL          (NULL + bool)
+            1638 LOAD_GLOBAL          (NULL + _clean)
+            1648 LOAD_FAST            (proxy)
+            1650 CALL                 (1 positional)
+            1658 CALL                 (1 positional)
+
+3135:        1666 LOAD_GLOBAL          (NULL + bool)
+            1676 LOAD_GLOBAL          (NULL + _clean)
+            1686 LOAD_FAST            (email_proxy)
+            1688 CALL                 (1 positional)
+            1696 CALL                 (1 positional)
+
+3136:        1704 LOAD_GLOBAL          (NULL + bool)
+            1714 LOAD_GLOBAL          (NULL + _clean)
+            1724 LOAD_FAST            (upload_proxy)
+            1726 CALL                 (1 positional)
+            1734 CALL                 (1 positional)
+
+3137:        1742 LOAD_FAST            (phase1_register)
+            1744 LOAD_CONST           (None)
+            1746 IS_OP                (is not)
+
+3138:        1748 LOAD_GLOBAL          (NULL + bool)
+            1758 LOAD_GLOBAL          (NULL + _clean)
+            1768 LOAD_FAST            (phase1_continue_url)
+            1770 CALL                 (1 positional)
+            1778 CALL                 (1 positional)
+
+3139:        1786 LOAD_GLOBAL          (NULL + bool)
+            1796 LOAD_FAST            (runtime_validation)
+            1798 LOAD_ATTR            (NULL|self + get)
+            1818 LOAD_CONST           ("ok")
+            1820 CALL                 (1 positional)
+            1828 CALL                 (1 positional)
+
+3131:        1836 LOAD_CONST           (('account_email', 'device_id', 'proxy_present', 'email_proxy_present', 'upload_proxy_present', 'phase1_active', 'phase1_continue_url_present', 'runtime_context_ok'))
+            1838 BUILD_CONST_KEY_MAP  8
+            1840 STORE_FAST           (context)
+
+3141:        1842 LOAD_GLOBAL          (NULL + isinstance)
+            1852 LOAD_FAST            (cfg)
+            1854 LOAD_ATTR            (NULL|self + get)
+            1874 LOAD_CONST           ("phase1_active_session")
+            1876 CALL                 (1 positional)
+            1884 LOAD_GLOBAL          (dict)
+            1894 CALL                 (2 positional)
+            1902 TO_BOOL
+            1910 POP_JUMP_IF_FALSE    (to 1948)
+            1914 LOAD_FAST            (cfg)
+            1916 LOAD_ATTR            (NULL|self + get)
+            1936 LOAD_CONST           ("phase1_active_session")
+            1938 CALL                 (1 positional)
+            1946 JUMP_FORWARD         (to 1950)
+         >> 1948 BUILD_MAP            0
+         >> 1950 STORE_FAST           (phase1_snapshot)
+
+3143:        1952 NOP
+
+3144:        1954 LOAD_GLOBAL          (NULL + _event)
+            1964 LOAD_FAST            (events)
+            1966 LOAD_GLOBAL          (STATE_START)
+            1976 LOAD_FAST            (resolved_mode)
+            1978 FORMAT_SIMPLE
+            1980 LOAD_CONST           (" chain")
+            1982 BUILD_STRING         2
+            1984 LOAD_FAST            (context)
+            1986 LOAD_FAST            (log_fn)
+            1988 LOAD_CONST           (('detail', 'extra', 'log_fn'))
+            1990 CALL_KW              5
+            1992 POP_TOP
+
+3145:        1994 LOAD_FAST            (runtime_validation)
+            1996 LOAD_ATTR            (NULL|self + get)
+            2016 LOAD_CONST           ("issues")
+            2018 BUILD_LIST           0
+            2020 CALL                 (2 positional)
+            2028 GET_ITER
+            2030 FOR_ITER             (to 2270)
+            2034 STORE_FAST           (issue)
+
+3146:        2036 LOAD_GLOBAL          (NULL + isinstance)
+            2046 LOAD_FAST            (issue)
+            2048 LOAD_GLOBAL          (dict)
+            2058 CALL                 (2 positional)
+            2066 TO_BOOL
+            2074 POP_JUMP_IF_TRUE     (to 2082)
+
+3147:        2078 JUMP_BACKWARD        (to 2030)
+
+3148:     >> 2082 LOAD_GLOBAL          (NULL + _event)
+
+3149:        2092 LOAD_FAST            (events)
+
+3150:        2094 LOAD_CONST           ("RUNTIME_CONTEXT_ISSUE")
+
+3151:        2096 LOAD_FAST            (issue)
+            2098 LOAD_ATTR            (NULL|self + get)
+            2118 LOAD_CONST           ("severity")
+            2120 LOAD_CONST           ("warn")
+            2122 CALL                 (2 positional)
+            2130 FORMAT_SIMPLE
+            2132 LOAD_CONST           (":")
+         >> 2134 LOAD_FAST            (issue)
+            2136 LOAD_ATTR            (NULL|self + get)
+            2156 LOAD_CONST           ("code")
+            2158 LOAD_CONST           ("")
+            2160 CALL                 (2 positional)
+            2168 FORMAT_SIMPLE
+            2170 BUILD_STRING         3
+
+3152:        2172 LOAD_CONST           ("message")
+            2174 LOAD_FAST            (issue)
+            2176 LOAD_ATTR            (NULL|self + get)
+            2196 LOAD_CONST           ("message")
+            2198 LOAD_CONST           ("")
+            2200 CALL                 (2 positional)
+            2208 BUILD_MAP            1
+
+3153:        2210 LOAD_FAST            (log_fn)
+
+3154:        2212 LOAD_FAST            (issue)
+            2214 LOAD_ATTR            (NULL|self + get)
+            2234 LOAD_CONST           ("severity")
+            2236 CALL                 (1 positional)
+            2244 LOAD_CONST           ("error")
+            2246 COMPARE_OP           (==)
+            2250 POP_JUMP_IF_FALSE    (to 2258)
+            2254 LOAD_CONST           ("error")
+            2256 JUMP_FORWARD         (to 2260)
+         >> 2258 LOAD_CONST           ("warn")
+
+3148:     >> 2260 LOAD_CONST           (('detail', 'extra', 'log_fn', 'tag'))
+            2262 CALL_KW              6
+            2264 POP_TOP
+            2266 JUMP_BACKWARD        (to 2030)
+
+3145:     >> 2270 END_FOR
+            2272 POP_TOP
+
+3156:        2274 LOAD_FAST            (runtime_context_strict)
+            2276 TO_BOOL
+            2284 POP_JUMP_IF_FALSE    (to 2354)
+            2288 LOAD_FAST            (runtime_validation)
+            2290 LOAD_ATTR            (NULL|self + get)
+            2310 LOAD_CONST           ("ok")
+            2312 CALL                 (1 positional)
+            2320 TO_BOOL
+            2328 POP_JUMP_IF_TRUE     (to 2354)
+
+3157:        2332 LOAD_GLOBAL          (NULL + CodexChainError)
+            2342 LOAD_CONST           ("runtime_context_validation_failed")
+            2344 CALL                 (1 positional)
+            2352 RAISE_VARARGS        (exception instance)
+
+3159:     >> 2354 LOAD_FAST            (resolved_mode)
+            2356 LOAD_CONST           ("real")
+            2358 COMPARE_OP           (==)
+            2362 STORE_FAST           (is_real)
+
+3160:        2364 LOAD_FAST            (cfg)
+            2366 LOAD_ATTR            (NULL|self + get)
+            2386 LOAD_CONST           ("browser_fingerprint")
+            2388 CALL                 (1 positional)
+            2396 COPY                 1
+            2398 TO_BOOL
+            2406 POP_JUMP_IF_TRUE     (to 2492)
+            2410 POP_TOP
+            2412 LOAD_FAST            (cfg)
+            2414 LOAD_ATTR            (NULL|self + get)
+            2434 LOAD_CONST           ("openai_persona")
+            2436 CALL                 (1 positional)
+            2444 COPY                 1
+            2446 TO_BOOL
+            2454 POP_JUMP_IF_TRUE     (to 2492)
+            2458 POP_TOP
+            2460 LOAD_FAST            (cfg)
+            2462 LOAD_ATTR            (NULL|self + get)
+            2482 LOAD_CONST           ("fingerprint")
+            2484 CALL                 (1 positional)
+         >> 2492 STORE_FAST           (fingerprint)
+
+3161:        2494 LOAD_GLOBAL          (NULL + isinstance)
+            2504 LOAD_FAST            (fingerprint)
+            2506 LOAD_GLOBAL          (dict)
+            2516 CALL                 (2 positional)
+            2524 TO_BOOL
+            2532 POP_JUMP_IF_TRUE     (to 2540)
+
+3162:        2536 BUILD_MAP            0
+            2538 STORE_FAST           (fingerprint)
+
+3163:     >> 2540 LOAD_FAST            (is_real)
+            2542 TO_BOOL
+            2550 EXTENDED_ARG         (1024)
+            2552 POP_JUMP_IF_FALSE    (to 4804)
+
+3164:        2556 LOAD_FAST            (provider)
+            2558 LOAD_CONST           ("local")
+            2560 COMPARE_OP           (==)
+            2564 POP_JUMP_IF_FALSE    (to 2622)
+            2568 LOAD_GLOBAL          (NULL + _clean)
+            2578 LOAD_FAST            (code_verifier)
+            2580 CALL                 (1 positional)
+            2588 TO_BOOL
+            2596 POP_JUMP_IF_TRUE     (to 2622)
+
+3165:        2600 LOAD_GLOBAL          (NULL + CodexChainError)
+            2610 LOAD_CONST           ("real_chain_requires_pkce_code_verifier")
+            2612 CALL                 (1 positional)
+            2620 RAISE_VARARGS        (exception instance)
+
+3166:     >> 2622 LOAD_FAST            (provider)
+            2624 LOAD_CONST           ("sub2")
+            2626 COMPARE_OP           (==)
+            2630 POP_JUMP_IF_FALSE    (to 2670)
+            2634 LOAD_FAST            (session_id)
+            2636 TO_BOOL
+            2644 POP_JUMP_IF_TRUE     (to 2670)
+
+3167:        2648 LOAD_GLOBAL          (NULL + CodexChainError)
+            2658 LOAD_CONST           ("sub2_oauth_session_id_missing")
+            2660 CALL                 (1 positional)
+            2668 RAISE_VARARGS        (exception instance)
+
+3168:     >> 2670 LOAD_FAST            (sms_provider)
+            2672 POP_JUMP_IF_NOT_NONE (to 2922)
+            2676 LOAD_FAST            (phone_otp_provider)
+            2678 POP_JUMP_IF_NOT_NONE (to 2922)
+
+3169:        2682 NOP
+
+3170:        2684 LOAD_CONST           (0)
+            2686 LOAD_CONST           (('sms_proxy',))
+            2688 IMPORT_NAME          (proxy_scope)
+            2690 IMPORT_FROM          (sms_proxy)
+            2692 STORE_FAST           (sms_proxy)
+            2694 POP_TOP
+
+3171:        2696 LOAD_CONST           (0)
+            2698 LOAD_CONST           (('apply_localpool_runtime_config', 'create_provider', 'provider_api_key'))
+            2700 IMPORT_NAME          (sms_providers)
+            2702 IMPORT_FROM          (apply_localpool_runtime_config)
+            2704 STORE_FAST           (apply_localpool_runtime_config)
+            2706 IMPORT_FROM          (create_provider)
+            2708 STORE_FAST           (create_provider)
+            2710 IMPORT_FROM          (provider_api_key)
+            2712 STORE_FAST           (provider_api_key)
+            2714 POP_TOP
+
+3173:        2716 LOAD_GLOBAL          (NULL + _clean)
+            2726 LOAD_FAST            (cfg)
+            2728 LOAD_ATTR            (NULL|self + get)
+            2748 LOAD_CONST           ("sms_provider")
+            2750 CALL                 (1 positional)
+            2758 COPY                 1
+            2760 TO_BOOL
+            2768 POP_JUMP_IF_TRUE     (to 2824)
+            2772 POP_TOP
+            2774 LOAD_FAST            (cfg)
+            2776 LOAD_ATTR            (NULL|self + get)
+            2796 LOAD_CONST           ("provider")
+            2798 CALL                 (1 positional)
+            2806 COPY                 1
+            2808 TO_BOOL
+            2816 POP_JUMP_IF_TRUE     (to 2824)
+            2820 POP_TOP
+            2822 LOAD_CONST           ("localpool")
+         >> 2824 CALL                 (1 positional)
+            2832 LOAD_ATTR            (NULL|self + lower)
+            2852 CALL                 (0 positional)
+            2860 STORE_FAST           (provider_name)
+
+3174:        2862 LOAD_FAST            (apply_localpool_runtime_config)
+            2864 PUSH_NULL
+            2866 LOAD_FAST            (cfg)
+            2868 LOAD_FAST            (provider_name)
+            2870 CALL                 (2 positional)
+            2878 POP_TOP
+
+3175:        2880 LOAD_FAST            (create_provider)
+            2882 PUSH_NULL
+            2884 LOAD_FAST            (provider_name)
+            2886 LOAD_FAST            (provider_api_key)
+            2888 PUSH_NULL
+            2890 LOAD_FAST            (cfg)
+            2892 LOAD_FAST            (provider_name)
+            2894 CALL                 (2 positional)
+            2902 LOAD_FAST            (sms_proxy)
+            2904 PUSH_NULL
+            2906 LOAD_FAST            (cfg)
+            2908 CALL                 (1 positional)
+            2916 LOAD_CONST           (('proxy',))
+            2918 CALL_KW              3
+            2920 STORE_FAST           (sms_provider)
+
+3178:     >> 2922 LOAD_FAST            (sentinel_provider)
+            2924 POP_JUMP_IF_NOT_NONE (to 3154)
+
+3179:        2928 LOAD_GLOBAL          (NULL + RealNodeSentinelProvider)
+
+3180:        2938 LOAD_FAST            (cfg)
+
+3181:        2940 LOAD_GLOBAL          (NULL + _clean)
+            2950 LOAD_FAST            (cfg)
+            2952 LOAD_ATTR            (NULL|self + get)
+            2972 LOAD_CONST           ("openai_device_id")
+            2974 CALL                 (1 positional)
+            2982 COPY                 1
+            2984 TO_BOOL
+            2992 POP_JUMP_IF_TRUE     (to 3022)
+            2996 POP_TOP
+            2998 LOAD_GLOBAL          (NULL + getattr)
+            3008 LOAD_FAST            (phase1_register)
+            3010 LOAD_CONST           ("device_id")
+            3012 LOAD_CONST           ("")
+            3014 CALL                 (3 positional)
+         >> 3022 CALL                 (1 positional)
+            3030 COPY                 1
+            3032 TO_BOOL
+            3040 POP_JUMP_IF_TRUE     (to 3104)
+            3044 POP_TOP
+            3046 LOAD_GLOBAL          (NULL + str)
+            3056 LOAD_GLOBAL          (uuid)
+            3066 LOAD_ATTR            (uuid4)
+            3086 PUSH_NULL
+            3088 CALL                 (0 positional)
+            3096 CALL                 (1 positional)
+
+3182:     >> 3104 LOAD_GLOBAL          (NULL + _clean)
+            3114 LOAD_FAST            (proxy)
+            3116 CALL                 (1 positional)
+
+3183:        3124 LOAD_GLOBAL          (NULL + _clean)
+            3134 LOAD_FAST            (proxy)
+            3136 CALL                 (1 positional)
+
+3184:        3144 LOAD_FAST            (fingerprint)
+
+3185:        3146 LOAD_FAST            (log_fn)
+
+3179:        3148 LOAD_CONST           (('config', 'device_id', 'proxy_label', 'proxy', 'fingerprint', 'log_fn'))
+            3150 CALL_KW              6
+            3152 STORE_FAST           (sentinel_provider)
+
+3187:     >> 3154 LOAD_GLOBAL          (NULL + isinstance)
+            3164 LOAD_FAST            (sentinel_provider)
+            3166 LOAD_GLOBAL          (RealNodeSentinelProvider)
+            3176 CALL                 (2 positional)
+            3184 TO_BOOL
+            3192 POP_JUMP_IF_FALSE    (to 3424)
+            3196 LOAD_FAST            (sentinel_provider)
+            3198 LOAD_ATTR            (mode)
+            3218 LOAD_CONST           ("real")
+            3220 COMPARE_OP           (==)
+            3224 POP_JUMP_IF_FALSE    (to 3424)
+
+3188:        3228 LOAD_FAST            (sentinel_provider)
+            3230 LOAD_ATTR            (script_path)
+            3250 TO_BOOL
+            3258 POP_JUMP_IF_TRUE     (to 3284)
+
+3189:        3262 LOAD_GLOBAL          (NULL + CodexChainError)
+            3272 LOAD_CONST           ("real Node SentinelRunner not configured; set codex_node_runner or CODEX_NODE_RUNNER")
+            3274 CALL                 (1 positional)
+            3282 RAISE_VARARGS        (exception instance)
+
+3190:     >> 3284 LOAD_GLOBAL          (os)
+            3294 LOAD_ATTR            (path)
+            3314 LOAD_ATTR            (NULL|self + exists)
+            3334 LOAD_FAST            (sentinel_provider)
+            3336 LOAD_ATTR            (script_path)
+            3356 CALL                 (1 positional)
+            3364 TO_BOOL
+            3372 POP_JUMP_IF_TRUE     (to 3424)
+
+3191:        3376 LOAD_GLOBAL          (NULL + CodexChainError)
+            3386 LOAD_CONST           ("real Node SentinelRunner not found: ")
+            3388 LOAD_FAST            (sentinel_provider)
+            3390 LOAD_ATTR            (script_path)
+            3410 FORMAT_SIMPLE
+            3412 BUILD_STRING         2
+            3414 CALL                 (1 positional)
+            3422 RAISE_VARARGS        (exception instance)
+
+3192:     >> 3424 LOAD_FAST            (transport)
+            3426 POP_JUMP_IF_NOT_NONE (to 3546)
+
+3193:        3430 LOAD_GLOBAL          (NULL + RealCodexTransport)
+
+3194:        3440 LOAD_FAST            (cfg)
+
+3195:        3442 LOAD_FAST            (oauth_params)
+
+3196:        3444 LOAD_FAST            (proxy)
+
+3197:        3446 LOAD_FAST            (sentinel_provider)
+
+3198:        3448 LOAD_GLOBAL          (NULL + getattr)
+            3458 LOAD_FAST            (sentinel_provider)
+            3460 LOAD_CONST           ("device_id")
+            3462 LOAD_CONST           ("")
+            3464 CALL                 (3 positional)
+            3472 COPY                 1
+            3474 TO_BOOL
+            3482 POP_JUMP_IF_TRUE     (to 3538)
+            3486 POP_TOP
+            3488 LOAD_GLOBAL          (NULL + _clean)
+            3498 LOAD_FAST            (cfg)
+            3500 LOAD_ATTR            (NULL|self + get)
+            3520 LOAD_CONST           ("openai_device_id")
+            3522 CALL                 (1 positional)
+            3530 CALL                 (1 positional)
+
+3199:     >> 3538 LOAD_FAST            (log_fn)
+
+3193:        3540 LOAD_CONST           (('oauth_params', 'proxy', 'sentinel_provider', 'device_id', 'log_fn'))
+            3542 CALL_KW              6
+            3544 STORE_FAST           (transport)
+
+3201:     >> 3546 LOAD_CONST           (False)
+            3548 STORE_FAST           (phase1_snapshot_ready)
+
+3202:        3550 LOAD_GLOBAL          (NULL + isinstance)
+            3560 LOAD_FAST            (transport)
+            3562 LOAD_GLOBAL          (RealCodexTransport)
+            3572 CALL                 (2 positional)
+            3580 TO_BOOL
+            3588 POP_JUMP_IF_FALSE    (to 3782)
+            3592 LOAD_GLOBAL          (NULL + isinstance)
+            3602 LOAD_FAST            (phase1_snapshot)
+            3604 LOAD_GLOBAL          (dict)
+            3614 CALL                 (2 positional)
+            3622 TO_BOOL
+            3630 POP_JUMP_IF_FALSE    (to 3782)
+            3634 LOAD_FAST            (phase1_snapshot)
+            3636 LOAD_ATTR            (NULL|self + get)
+            3656 LOAD_CONST           ("ready")
+            3658 CALL                 (1 positional)
+            3666 TO_BOOL
+            3674 POP_JUMP_IF_FALSE    (to 3782)
+
+3203:        3678 LOAD_FAST            (transport)
+            3680 LOAD_ATTR            (NULL|self + import_phase1_session)
+            3700 LOAD_FAST            (phase1_snapshot)
+            3702 CALL                 (1 positional)
+            3710 STORE_FAST           (phase1_snapshot_ready)
+
+3204:        3712 LOAD_FAST            (phase1_snapshot_ready)
+            3714 TO_BOOL
+            3722 POP_JUMP_IF_FALSE    (to 3754)
+
+3205:        3726 LOAD_GLOBAL          (NULL + _emit)
+            3736 LOAD_FAST            (log_fn)
+            3738 LOAD_CONST           ("  [Codex] 已导入 Phase1 邮箱注册活会话快照，跳过 submit email")
+            3740 LOAD_CONST           ("info")
+            3742 CALL                 (3 positional)
+            3750 POP_TOP
+            3752 JUMP_FORWARD         (to 3988)
+
+3207:     >> 3754 LOAD_GLOBAL          (NULL + _emit)
+            3764 LOAD_FAST            (log_fn)
+            3766 LOAD_CONST           ("  [Codex] Phase1 活会话快照存在但 cookie 导入失败，将回退普通邮箱登录")
+            3768 LOAD_CONST           ("warn")
+            3770 CALL                 (3 positional)
+            3778 POP_TOP
+            3780 JUMP_FORWARD         (to 3988)
+
+3208:     >> 3782 LOAD_GLOBAL          (NULL + isinstance)
+            3792 LOAD_FAST            (cfg)
+            3794 LOAD_ATTR            (NULL|self + get)
+            3814 LOAD_CONST           ("phase1_active_session")
+            3816 CALL                 (1 positional)
+            3824 LOAD_GLOBAL          (dict)
+            3834 CALL                 (2 positional)
+            3842 TO_BOOL
+            3850 POP_JUMP_IF_FALSE    (to 3988)
+
+3209:        3854 LOAD_GLOBAL          (NULL + _emit)
+
+3210:        3864 LOAD_FAST            (log_fn)
+
+3211:        3866 LOAD_CONST           ("  [Codex] Phase1 活会话快照未就绪: ready=")
+            3868 LOAD_FAST            (phase1_snapshot)
+            3870 LOAD_ATTR            (NULL|self + get)
+            3890 LOAD_CONST           ("ready")
+            3892 CALL                 (1 positional)
+            3900 FORMAT_SIMPLE
+            3902 LOAD_CONST           (" cookies=")
+            3904 LOAD_GLOBAL          (NULL + len)
+            3914 LOAD_FAST            (phase1_snapshot)
+            3916 LOAD_ATTR            (NULL|self + get)
+            3936 LOAD_CONST           ("cookies")
+            3938 CALL                 (1 positional)
+            3946 COPY                 1
+            3948 TO_BOOL
+            3956 POP_JUMP_IF_TRUE     (to 3964)
+            3960 POP_TOP
+            3962 BUILD_LIST           0
+         >> 3964 CALL                 (1 positional)
+            3972 FORMAT_SIMPLE
+            3974 BUILD_STRING         4
+
+3212:        3976 LOAD_CONST           ("warn")
+
+3209:        3978 CALL                 (3 positional)
+            3986 POP_TOP
+
+3214:     >> 3988 LOAD_FAST            (email_otp_provider)
+            3990 COPY                 1
+            3992 TO_BOOL
+            4000 POP_JUMP_IF_TRUE     (to 4064)
+            4004 POP_TOP
+            4006 LOAD_GLOBAL          (NULL + RealEmailOtpProvider)
+            4016 LOAD_FAST            (cfg)
+            4018 LOAD_GLOBAL          (NULL + min)
+            4028 LOAD_CONST           (180)
+            4030 LOAD_FAST            (code_timeout)
+            4032 COPY                 1
+            4034 TO_BOOL
+            4042 POP_JUMP_IF_TRUE     (to 4050)
+            4046 POP_TOP
+            4048 LOAD_CONST           (90)
+         >> 4050 CALL                 (2 positional)
+            4058 LOAD_FAST            (log_fn)
+            4060 LOAD_CONST           (('timeout', 'log_fn'))
+            4062 CALL_KW              3
+         >> 4064 STORE_FAST           (email_otp_provider)
+
+3215:        4066 LOAD_FAST            (phone_otp_provider)
+            4068 COPY                 1
+            4070 TO_BOOL
+            4078 POP_JUMP_IF_TRUE     (to 4106)
+            4082 POP_TOP
+            4084 LOAD_GLOBAL          (NULL + SmsProviderAdapter)
+            4094 LOAD_FAST            (sms_provider)
+            4096 LOAD_FAST            (code_timeout)
+            4098 LOAD_FAST            (cfg)
+            4100 LOAD_FAST            (log_fn)
+            4102 LOAD_CONST           (('code_timeout', 'config', 'log_fn'))
+            4104 CALL_KW              4
+         >> 4106 STORE_FAST           (phone_otp_provider)
+
+3216:        4108 LOAD_GLOBAL          (NULL + isinstance)
+            4118 LOAD_FAST            (node_result)
+            4120 LOAD_GLOBAL          (dict)
+            4130 CALL                 (2 positional)
+            4138 TO_BOOL
+            4146 POP_JUMP_IF_FALSE    (to 4154)
+            4150 LOAD_FAST            (node_result)
+            4152 JUMP_FORWARD         (to 4386)
+
+3217:     >> 4154 LOAD_CONST           (True)
+
+3218:        4156 LOAD_CONST           ("real")
+
+3219:        4158 LOAD_CONST           (True)
+
+3220:        4160 LOAD_GLOBAL          (NULL + _clean)
+            4170 LOAD_FAST            (cfg)
+            4172 LOAD_ATTR            (NULL|self + get)
+            4192 LOAD_CONST           ("codex_node_runner")
+            4194 CALL                 (1 positional)
+            4202 COPY                 1
+            4204 TO_BOOL
+            4212 POP_JUMP_IF_TRUE     (to 4374)
+            4216 POP_TOP
+            4218 LOAD_GLOBAL          (NULL + isinstance)
+            4228 LOAD_FAST            (cfg)
+            4230 LOAD_ATTR            (NULL|self + get)
+            4250 LOAD_CONST           ("node")
+            4252 CALL                 (1 positional)
+            4260 LOAD_GLOBAL          (dict)
+            4270 CALL                 (2 positional)
+            4278 TO_BOOL
+            4286 POP_JUMP_IF_FALSE    (to 4342)
+            4290 LOAD_FAST            (cfg)
+            4292 LOAD_ATTR            (NULL|self + get)
+            4312 LOAD_CONST           ("node")
+            4314 CALL                 (1 positional)
+            4322 COPY                 1
+            4324 TO_BOOL
+            4332 POP_JUMP_IF_TRUE     (to 4340)
+            4336 POP_TOP
+            4338 BUILD_MAP            0
+         >> 4340 JUMP_FORWARD         (to 4344)
+
+3220:     >> 4342 BUILD_MAP            0
+         >> 4344 LOAD_ATTR            (NULL|self + get)
+            4364 LOAD_CONST           ("runner")
+            4366 CALL                 (1 positional)
+         >> 4374 CALL                 (1 positional)
+
+3216:        4382 LOAD_CONST           (('ok', 'mode', 'token_generated', 'runner'))
+            4384 BUILD_CONST_KEY_MAP  4
+         >> 4386 STORE_FAST           (node_result)
+
+3222:        4388 LOAD_FAST            (sentinel_provider)
+            4390 LOAD_ATTR            (NULL|self + token_for)
+            4410 LOAD_CONST           ("chat-requirements")
+            4412 BUILD_MAP            0
+            4414 LOAD_FAST            (context)
+            4416 DICT_UPDATE          1
+            4418 LOAD_CONST           ("persona")
+            4420 LOAD_CONST           ("chatgpt-noauth")
+            4422 BUILD_MAP            1
+            4424 DICT_UPDATE          1
+            4426 CALL                 (2 positional)
+            4434 STORE_FAST           (chat_req)
+
+3223:        4436 LOAD_GLOBAL          (NULL + _event)
+
+3224:        4446 LOAD_FAST            (events)
+
+3225:        4448 LOAD_GLOBAL          (STATE_CHAT_REQUIREMENTS_READY)
+
+3226:        4458 LOAD_CONST           ("chatgpt-noauth")
+
+3227:        4460 LOAD_CONST           ("token_generated")
+            4462 LOAD_GLOBAL          (NULL + isinstance)
+            4472 LOAD_FAST            (chat_req)
+            4474 LOAD_GLOBAL          (dict)
+            4484 CALL                 (2 positional)
+            4492 TO_BOOL
+            4500 POP_JUMP_IF_FALSE    (to 4556)
+            4504 LOAD_GLOBAL          (NULL + bool)
+            4514 LOAD_FAST            (chat_req)
+            4516 LOAD_ATTR            (NULL|self + get)
+            4536 LOAD_CONST           ("token_generated")
+            4538 CALL                 (1 positional)
+            4546 CALL                 (1 positional)
+            4554 JUMP_FORWARD         (to 4558)
+         >> 4556 LOAD_CONST           (False)
+         >> 4558 BUILD_MAP            1
+
+3228:        4560 LOAD_FAST            (log_fn)
+
+3223:        4562 LOAD_CONST           (('detail', 'extra', 'log_fn'))
+            4564 CALL_KW              5
+            4566 POP_TOP
+
+3230:        4568 LOAD_GLOBAL          (NULL + _as_bool)
+            4578 LOAD_FAST            (cfg)
+            4580 LOAD_ATTR            (NULL|self + get)
+            4600 LOAD_CONST           ("run_chatgpt_signup_phase")
+            4602 CALL                 (1 positional)
+            4610 LOAD_CONST           (False)
+            4612 CALL                 (2 positional)
+            4620 TO_BOOL
+            4628 POP_JUMP_IF_FALSE    (to 4802)
+
+3231:        4632 LOAD_GLOBAL          (NULL + _run_chatgpt_signup_phase)
+
+3232:        4642 LOAD_FAST            (transport)
+
+3233:        4644 LOAD_FAST            (account_email)
+
+3234:        4646 LOAD_FAST            (password)
+
+3235:        4648 LOAD_FAST            (cfg)
+
+3236:        4650 LOAD_FAST            (email_otp_provider)
+
+3237:        4652 LOAD_FAST            (phone_otp_provider)
+
+3238:        4654 LOAD_FAST            (code_timeout)
+
+3239:        4656 LOAD_FAST            (events)
+
+3240:        4658 LOAD_FAST            (log_fn)
+
+3231:        4660 LOAD_CONST           (('transport', 'account_email', 'password', 'config', 'email_otp_provider', 'phone_otp_provider', 'code_timeout', 'events', 'log_fn'))
+            4662 CALL_KW              9
+            4664 STORE_FAST           (signup_result)
+
+3242:        4666 LOAD_FAST            (signup_result)
+            4668 LOAD_ATTR            (NULL|self + get)
+            4688 LOAD_CONST           ("ok")
+            4690 CALL                 (1 positional)
+            4698 TO_BOOL
+            4706 POP_JUMP_IF_TRUE     (to 4732)
+
+3243:        4710 LOAD_GLOBAL          (NULL + CodexChainError)
+            4720 LOAD_CONST           ("chatgpt_signup_phase_failed")
+            4722 CALL                 (1 positional)
+            4730 RAISE_VARARGS        (exception instance)
+
+3244:     >> 4732 LOAD_GLOBAL          (NULL + strip_oauth_login_for_session_reuse)
+            4742 LOAD_FAST            (oauth_url)
+            4744 CALL                 (1 positional)
+            4752 STORE_FAST           (oauth_url)
+
+3245:        4754 LOAD_GLOBAL          (NULL + parse_oauth_url)
+            4764 LOAD_FAST            (oauth_url)
+            4766 CALL                 (1 positional)
+            4774 STORE_FAST           (oauth_params)
+
+3246:        4776 LOAD_GLOBAL          (NULL + _emit)
+            4786 LOAD_FAST            (log_fn)
+            4788 LOAD_CONST           ("  [Codex] 同一 NODE 注册会话已建立，继续 Codex OAuth 授权")
+            4790 LOAD_CONST           ("info")
+            4792 CALL                 (3 positional)
+            4800 POP_TOP
+         >> 4802 JUMP_FORWARD         (to 5062)
+
+3248:     >> 4804 LOAD_FAST            (transport)
+            4806 POP_JUMP_IF_NOT_NONE (to 4882)
+
+3249:        4810 LOAD_FAST            (resolved_mode)
+            4812 LOAD_CONST           ("replay")
+            4814 COMPARE_OP           (==)
+            4818 POP_JUMP_IF_FALSE    (to 4862)
+
+3250:        4822 LOAD_GLOBAL          (NULL + ReplayCodexTransport)
+            4832 LOAD_GLOBAL          (NULL + _replay_cfg)
+            4842 LOAD_FAST            (cfg)
+            4844 CALL                 (1 positional)
+            4852 LOAD_FAST            (oauth_params)
+            4854 LOAD_CONST           (('oauth_params',))
+            4856 CALL_KW              2
+            4858 STORE_FAST           (transport)
+            4860 JUMP_FORWARD         (to 4882)
+
+3252:     >> 4862 LOAD_GLOBAL          (NULL + MockCodexTransport)
+            4872 LOAD_FAST            (cfg)
+            4874 LOAD_FAST            (oauth_params)
+            4876 LOAD_CONST           (('oauth_params',))
+            4878 CALL_KW              2
+            4880 STORE_FAST           (transport)
+
+3253:     >> 4882 LOAD_FAST            (sentinel_provider)
+            4884 COPY                 1
+            4886 TO_BOOL
+            4894 POP_JUMP_IF_TRUE     (to 4918)
+            4898 POP_TOP
+            4900 LOAD_GLOBAL          (NULL + MockSentinelProvider)
+            4910 CALL                 (0 positional)
+         >> 4918 STORE_FAST           (sentinel_provider)
+
+3254:        4920 LOAD_FAST            (email_otp_provider)
+            4922 COPY                 1
+            4924 TO_BOOL
+            4932 POP_JUMP_IF_TRUE     (to 5020)
+            4936 POP_TOP
+            4938 LOAD_GLOBAL          (NULL + MockEmailOtpProvider)
+            4948 LOAD_GLOBAL          (NULL + _clean)
+            4958 LOAD_FAST            (mock)
+            4960 LOAD_ATTR            (NULL|self + get)
+            4980 LOAD_CONST           ("email_otp")
+            4982 CALL                 (1 positional)
+            4990 COPY                 1
+            4992 TO_BOOL
+            5000 POP_JUMP_IF_TRUE     (to 5008)
+            5004 POP_TOP
+            5006 LOAD_CONST           ("123456")
+         >> 5008 CALL                 (1 positional)
+            5016 LOAD_CONST           (('code',))
+            5018 CALL_KW              1
+         >> 5020 STORE_FAST           (email_otp_provider)
+
+3255:        5022 LOAD_FAST            (phone_otp_provider)
+            5024 COPY                 1
+            5026 TO_BOOL
+            5034 POP_JUMP_IF_TRUE     (to 5060)
+            5038 POP_TOP
+            5040 LOAD_GLOBAL          (NULL + _phone_provider)
+            5050 LOAD_FAST            (cfg)
+            5052 LOAD_FAST            (sms_provider)
+            5054 LOAD_FAST            (code_timeout)
+            5056 LOAD_CONST           (('config', 'sms_provider', 'code_timeout'))
+            5058 CALL_KW              3
+         >> 5060 STORE_FAST           (phone_otp_provider)
+
+3257:     >> 5062 LOAD_GLOBAL          (NULL + isinstance)
+            5072 LOAD_FAST            (phase1_snapshot)
+            5074 LOAD_GLOBAL          (dict)
+            5084 CALL                 (2 positional)
+            5092 TO_BOOL
+            5100 POP_JUMP_IF_FALSE    (to 5138)
+            5104 LOAD_FAST            (phase1_snapshot)
+            5106 LOAD_ATTR            (NULL|self + get)
+            5126 LOAD_CONST           ("response")

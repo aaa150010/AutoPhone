@@ -1,0 +1,800 @@
+
+# Method Name:       _run_short
+# Filename:          license_gate.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        9
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        68
+# Constants:
+#    0: None
+#    1: True
+#    2: 'utf-8'
+#    3: 'replace'
+#    4: ('stderr', 'timeout', 'text', 'encoding', 'errors')
+#    5: ' '
+#    6: ''
+# Names:
+#    0: subprocess
+#    1: check_output
+#    2: DEVNULL
+#    3: join
+#    4: split
+#    5: Exception
+# Varnames:
+#	cmd, timeout, out
+# Positional arguments:
+#	cmd, timeout
+# Local variables:
+#    2: out
+ 68:           0 RESUME               0
+
+ 69:           2 NOP
+
+ 70:           4 LOAD_GLOBAL          (subprocess)
+              14 LOAD_ATTR            (check_output)
+              34 PUSH_NULL
+
+ 71:          36 LOAD_FAST            (cmd)
+
+ 72:          38 LOAD_GLOBAL          (subprocess)
+              48 LOAD_ATTR            (DEVNULL)
+
+ 73:          68 LOAD_FAST            (timeout)
+
+ 74:          70 LOAD_CONST           (True)
+
+ 75:          72 LOAD_CONST           ("utf-8")
+
+ 76:          74 LOAD_CONST           ("replace")
+
+ 70:          76 LOAD_CONST           (('stderr', 'timeout', 'text', 'encoding', 'errors'))
+              78 CALL_KW              6
+              80 STORE_FAST           (out)
+
+ 78:          82 LOAD_CONST           (" ")
+              84 LOAD_ATTR            (NULL|self + join)
+             104 LOAD_FAST            (out)
+             106 LOAD_ATTR            (NULL|self + split)
+             126 CALL                 (0 positional)
+             134 CALL                 (1 positional)
+             142 RETURN_VALUE
+         >>  144 PUSH_EXC_INFO
+
+ 79:         146 LOAD_GLOBAL          (Exception)
+             156 CHECK_EXC_MATCH
+             158 POP_JUMP_IF_FALSE    (to 168)
+             162 POP_TOP
+
+ 80:         164 POP_EXCEPT
+             166 RETURN_CONST         ("")
+
+ 79:     >>  168 RERAISE              0
+         >>  170 COPY                 3
+             172 POP_EXCEPT
+             174 RERAISE              1
+
+ExceptionTable:
+  4 to 140 -> 144 [0]
+  144 to 162 -> 170 [1] lasti
+  168 to 168 -> 170 [1] lasti
+
+# Method Name:       _read_windows_product_uuid
+# Filename:          license_gate.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        83
+# Constants:
+#    0: None
+#    1: 'nt'
+#    2: ''
+#    3: ('wmic', 'csproduct', 'get', 'uuid')
+#    4: ('C:\\Windows\\System32\\wbem\\WMIC.exe', 'csproduct', 'get', 'uuid')
+#    5: 4
+#    6: ('timeout',)
+#    7: ' '
+#    8: <Code311 code object <genexpr> at 0x10572f910, file license_gate.py>, line 94
+# Names:
+#    0: os
+#    1: name
+#    2: _run_short
+#    3: join
+#    4: split
+#    5: strip
+# Varnames:
+#	candidates, cmd, raw, cleaned
+# Local variables:
+#    0: candidates
+#    1: cmd
+#    2: raw
+#    3: cleaned
+ 83:           0 RESUME               0
+
+ 84:           2 LOAD_GLOBAL          (os)
+              12 LOAD_ATTR            (name)
+              32 LOAD_CONST           ("nt")
+              34 COMPARE_OP           (!=)
+              38 POP_JUMP_IF_FALSE    (to 44)
+
+ 85:          42 RETURN_CONST         ("")
+
+ 87:     >>   44 BUILD_LIST           0
+              46 LOAD_CONST           (('wmic', 'csproduct', 'get', 'uuid'))
+              48 LIST_EXTEND          1
+
+ 88:          50 BUILD_LIST           0
+              52 LOAD_CONST           (('C:\\Windows\\System32\\wbem\\WMIC.exe', 'csproduct', 'get', 'uuid'))
+              54 LIST_EXTEND          1
+
+ 86:          56 BUILD_LIST           2
+              58 STORE_FAST           (candidates)
+
+ 90:          60 LOAD_FAST            (candidates)
+              62 GET_ITER
+              64 FOR_ITER             (to 238)
+              68 STORE_FAST           (cmd)
+
+ 91:          70 LOAD_GLOBAL          (NULL + _run_short)
+              80 LOAD_FAST            (cmd)
+              82 LOAD_CONST           (4)
+              84 LOAD_CONST           (('timeout',))
+              86 CALL_KW              2
+              88 STORE_FAST           (raw)
+
+ 92:          90 LOAD_FAST            (raw)
+              92 TO_BOOL
+             100 POP_JUMP_IF_TRUE     (to 108)
+
+ 93:         104 JUMP_BACKWARD        (to 64)
+
+ 94:     >>  108 LOAD_CONST           (" ")
+             110 LOAD_ATTR            (NULL|self + join)
+             130 LOAD_CONST           (<Code311 code object <genexpr> at 0x10572f910, file license_gate.py>, line 94)
+             132 MAKE_FUNCTION
+             134 LOAD_FAST            (raw)
+             136 LOAD_ATTR            (NULL|self + split)
+             156 CALL                 (0 positional)
+             164 GET_ITER
+             166 CALL                 (0 positional)
+             174 CALL                 (1 positional)
+             182 LOAD_ATTR            (NULL|self + strip)
+             202 CALL                 (0 positional)
+             210 STORE_FAST           (cleaned)
+
+ 95:         212 LOAD_FAST            (cleaned)
+             214 TO_BOOL
+             222 POP_JUMP_IF_TRUE     (to 230)
+             226 JUMP_BACKWARD        (to 64)
+
+ 96:     >>  230 LOAD_FAST            (cleaned)
+             232 SWAP                 (TOS <-> TOS1)
+             234 POP_TOP
+             236 RETURN_VALUE
+
+ 90:     >>  238 END_FOR
+             240 POP_TOP
+
+ 97:         242 RETURN_CONST         ("")
+
+
+# Method Name:       _read_macos_ioplatform_uuid
+# Filename:          license_gate.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        100
+# Constants:
+#    0: None
+#    1: 'darwin'
+#    2: ''
+#    3: ('ioreg', '-rd1', '-c', 'IOPlatformExpertDevice')
+#    4: 4
+#    5: ('timeout',)
+#    6: '"IOPlatformUUID"\\s*=\\s*"([^"]+)"'
+#    7: 1
+# Names:
+#    0: sys
+#    1: platform
+#    2: _run_short
+#    3: re
+#    4: search
+#    5: group
+#    6: strip
+# Varnames:
+#	raw, match
+# Local variables:
+#    0: raw
+#    1: match
+100:           0 RESUME               0
+
+101:           2 LOAD_GLOBAL          (sys)
+              12 LOAD_ATTR            (platform)
+              32 LOAD_CONST           ("darwin")
+              34 COMPARE_OP           (!=)
+              38 POP_JUMP_IF_FALSE    (to 44)
+
+102:          42 RETURN_CONST         ("")
+
+103:     >>   44 LOAD_GLOBAL          (NULL + _run_short)
+              54 BUILD_LIST           0
+              56 LOAD_CONST           (('ioreg', '-rd1', '-c', 'IOPlatformExpertDevice'))
+              58 LIST_EXTEND          1
+              60 LOAD_CONST           (4)
+              62 LOAD_CONST           (('timeout',))
+              64 CALL_KW              2
+              66 STORE_FAST           (raw)
+
+104:          68 LOAD_FAST            (raw)
+              70 TO_BOOL
+              78 POP_JUMP_IF_TRUE     (to 84)
+
+105:          82 RETURN_CONST         ("")
+
+106:     >>   84 LOAD_GLOBAL          (re)
+              94 LOAD_ATTR            (search)
+             114 PUSH_NULL
+             116 LOAD_CONST           ('"IOPlatformUUID"\\s*=\\s*"([^"]+)"')
+             118 LOAD_FAST            (raw)
+             120 CALL                 (2 positional)
+             128 STORE_FAST           (match)
+
+107:         130 LOAD_FAST            (match)
+             132 TO_BOOL
+             140 POP_JUMP_IF_FALSE    (to 206)
+             144 LOAD_FAST            (match)
+             146 LOAD_ATTR            (NULL|self + group)
+             166 LOAD_CONST           (1)
+             168 CALL                 (1 positional)
+             176 LOAD_ATTR            (NULL|self + strip)
+             196 CALL                 (0 positional)
+             204 RETURN_VALUE
+         >>  206 LOAD_CONST           ("")
+             208 RETURN_VALUE
+
+
+# Method Name:       _read_macos_hardware_info
+# Filename:          license_gate.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        110
+# Constants:
+#    0: None
+#    1: 'darwin'
+#    2: 'system_profiler'
+#    3: 'SPHardwareDataType'
+#    4: 8
+#    5: ('timeout',)
+#    6: 'Hardware UUID:\\s*([^\\s]+)'
+#    7: '(?:Serial Number \\(system\\)|Serial Number):\\s*([^\\s]+)'
+#    8: 1
+#    9: 'mac_hardware_uuid'
+#   10: 'mac_serial'
+# Names:
+#    0: sys
+#    1: platform
+#    2: _run_short
+#    3: re
+#    4: search
+#    5: group
+#    6: strip
+# Varnames:
+#	raw, out, uuid_match, serial_match
+# Local variables:
+#    0: raw
+#    1: out
+#    2: uuid_match
+#    3: serial_match
+110:           0 RESUME               0
+
+111:           2 LOAD_GLOBAL          (sys)
+              12 LOAD_ATTR            (platform)
+              32 LOAD_CONST           ("darwin")
+              34 COMPARE_OP           (!=)
+              38 POP_JUMP_IF_FALSE    (to 46)
+
+112:          42 BUILD_MAP            0
+              44 RETURN_VALUE
+
+113:     >>   46 LOAD_GLOBAL          (NULL + _run_short)
+              56 LOAD_CONST           ("system_profiler")
+              58 LOAD_CONST           ("SPHardwareDataType")
+              60 BUILD_LIST           2
+              62 LOAD_CONST           (8)
+              64 LOAD_CONST           (('timeout',))
+              66 CALL_KW              2
+              68 STORE_FAST           (raw)
+
+114:          70 LOAD_FAST            (raw)
+              72 TO_BOOL
+              80 POP_JUMP_IF_TRUE     (to 88)
+
+115:          84 BUILD_MAP            0
+              86 RETURN_VALUE
+
+116:     >>   88 BUILD_MAP            0
+              90 STORE_FAST           (out)
+
+117:          92 LOAD_GLOBAL          (re)
+             102 LOAD_ATTR            (search)
+             122 PUSH_NULL
+             124 LOAD_CONST           ("Hardware UUID:\\s*([^\\s]+)")
+             126 LOAD_FAST            (raw)
+             128 CALL                 (2 positional)
+             136 STORE_FAST           (uuid_match)
+
+118:         138 LOAD_GLOBAL          (re)
+             148 LOAD_ATTR            (search)
+             168 PUSH_NULL
+             170 LOAD_CONST           ("(?:Serial Number \\(system\\)|Serial Number):\\s*([^\\s]+)")
+             172 LOAD_FAST            (raw)
+             174 CALL                 (2 positional)
+             182 STORE_FAST           (serial_match)
+
+119:         184 LOAD_FAST            (uuid_match)
+             186 TO_BOOL
+             194 POP_JUMP_IF_FALSE    (to 266)
+
+120:         198 LOAD_FAST            (uuid_match)
+             200 LOAD_ATTR            (NULL|self + group)
+             220 LOAD_CONST           (1)
+             222 CALL                 (1 positional)
+             230 LOAD_ATTR            (NULL|self + strip)
+             250 CALL                 (0 positional)
+             258 LOAD_FAST            (out)
+             260 LOAD_CONST           ("mac_hardware_uuid")
+             262 STORE_SUBSCR
+
+121:     >>  266 LOAD_FAST            (serial_match)
+             268 TO_BOOL
+             276 POP_JUMP_IF_FALSE    (to 348)
+
+122:         280 LOAD_FAST            (serial_match)
+             282 LOAD_ATTR            (NULL|self + group)
+             302 LOAD_CONST           (1)
+             304 CALL                 (1 positional)
+             312 LOAD_ATTR            (NULL|self + strip)
+             332 CALL                 (0 positional)
+             340 LOAD_FAST            (out)
+             342 LOAD_CONST           ("mac_serial")
+             344 STORE_SUBSCR
+
+123:     >>  348 LOAD_FAST            (out)
+             350 RETURN_VALUE
+
+
+# Method Name:       _fingerprint_parts
+# Filename:          license_gate.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  8
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        126
+# Constants:
+#    0: 'Return the stable primary machine identity.\n\nKeep the active fingerprint independent from PATH and optional tools. Older\nbuilds mixed MachineGuid, wmic UUID, MAC node, and hostname, so the same PC\ncould get a different machine code when PATH changed. New licenses are bound\nto one stable primary ID; legacy hashes are only accepted for compatibility.\n'
+#    1: 'nt'
+#    2: 'win_machine_guid'
+#    3: 'win_product_uuid'
+#    4: 'darwin'
+#    5: 'mac_ioplatform_uuid'
+#    6: 40
+#    7: 1
+#    8: 'mac_node'
+#    9: 'hostname'
+# Names:
+#    0: os
+#    1: name
+#    2: _read_windows_machine_guid
+#    3: _hash_text
+#    4: lower
+#    5: _read_windows_product_uuid
+#    6: sys
+#    7: platform
+#    8: _read_macos_ioplatform_uuid
+#    9: _read_macos_hardware_info
+#   10: items
+#   11: uuid
+#   12: getnode
+#   13: str
+#   14: socket
+#   15: gethostname
+# Varnames:
+#	parts, machine_guid, product_uuid, mac_uuid, key, value, node, host
+# Local variables:
+#    0: parts
+#    1: machine_guid
+#    2: product_uuid
+#    3: mac_uuid
+#    4: key
+#    5: value
+#    6: node
+#    7: host
+126:           0 RESUME               0
+
+134:           2 BUILD_MAP            0
+               4 STORE_FAST           (parts)
+
+135:           6 LOAD_GLOBAL          (os)
+              16 LOAD_ATTR            (name)
+              36 LOAD_CONST           ("nt")
+              38 COMPARE_OP           (==)
+              42 POP_JUMP_IF_FALSE    (to 222)
+
+136:          46 LOAD_GLOBAL          (NULL + _read_windows_machine_guid)
+              56 CALL                 (0 positional)
+              64 STORE_FAST           (machine_guid)
+
+137:          66 LOAD_FAST            (machine_guid)
+              68 TO_BOOL
+              76 POP_JUMP_IF_FALSE    (to 134)
+
+138:          80 LOAD_CONST           ("win_machine_guid")
+              82 LOAD_GLOBAL          (NULL + _hash_text)
+              92 LOAD_FAST            (machine_guid)
+              94 LOAD_ATTR            (NULL|self + lower)
+             114 CALL                 (0 positional)
+             122 CALL                 (1 positional)
+             130 BUILD_MAP            1
+             132 RETURN_VALUE
+
+139:     >>  134 LOAD_GLOBAL          (NULL + _read_windows_product_uuid)
+             144 CALL                 (0 positional)
+             152 STORE_FAST           (product_uuid)
+
+140:         154 LOAD_FAST            (product_uuid)
+             156 TO_BOOL
+             164 POP_JUMP_IF_FALSE    (to 222)
+
+141:         168 LOAD_CONST           ("win_product_uuid")
+             170 LOAD_GLOBAL          (NULL + _hash_text)
+             180 LOAD_FAST            (product_uuid)
+             182 LOAD_ATTR            (NULL|self + lower)
+             202 CALL                 (0 positional)
+             210 CALL                 (1 positional)
+             218 BUILD_MAP            1
+             220 RETURN_VALUE
+
+142:     >>  222 LOAD_GLOBAL          (sys)
+             232 LOAD_ATTR            (platform)
+             252 LOAD_CONST           ("darwin")
+             254 COMPARE_OP           (==)
+             258 POP_JUMP_IF_FALSE    (to 488)
+
+143:         262 LOAD_GLOBAL          (NULL + _read_macos_ioplatform_uuid)
+             272 CALL                 (0 positional)
+             280 STORE_FAST           (mac_uuid)
+
+144:         282 LOAD_FAST            (mac_uuid)
+             284 TO_BOOL
+             292 POP_JUMP_IF_FALSE    (to 350)
+
+145:         296 LOAD_CONST           ("mac_ioplatform_uuid")
+             298 LOAD_GLOBAL          (NULL + _hash_text)
+             308 LOAD_FAST            (mac_uuid)
+             310 LOAD_ATTR            (NULL|self + lower)
+             330 CALL                 (0 positional)
+             338 CALL                 (1 positional)
+             346 BUILD_MAP            1
+             348 RETURN_VALUE
+
+146:     >>  350 LOAD_GLOBAL          (NULL + _read_macos_hardware_info)
+             360 CALL                 (0 positional)
+             368 LOAD_ATTR            (NULL|self + items)
+             388 CALL                 (0 positional)
+             396 GET_ITER
+             398 FOR_ITER             (to 484)
+             402 UNPACK_SEQUENCE      2
+             406 STORE_FAST_STORE_FAST (key, value)
+
+147:         408 LOAD_FAST            (value)
+             410 TO_BOOL
+             418 POP_JUMP_IF_TRUE     (to 426)
+             422 JUMP_BACKWARD        (to 398)
+
+148:     >>  426 LOAD_FAST            (key)
+             428 LOAD_GLOBAL          (NULL + _hash_text)
+             438 LOAD_FAST            (value)
+             440 LOAD_ATTR            (NULL|self + lower)
+             460 CALL                 (0 positional)
+             468 CALL                 (1 positional)
+             476 BUILD_MAP            1
+             478 SWAP                 (TOS <-> TOS1)
+             480 POP_TOP
+             482 RETURN_VALUE
+
+146:     >>  484 END_FOR
+             486 POP_TOP
+
+149:     >>  488 LOAD_GLOBAL          (uuid)
+             498 LOAD_ATTR            (getnode)
+             518 PUSH_NULL
+             520 CALL                 (0 positional)
+             528 STORE_FAST           (node)
+
+152:         530 LOAD_FAST            (node)
+             532 TO_BOOL
+             540 POP_JUMP_IF_FALSE    (to 614)
+             544 LOAD_FAST            (node)
+             546 LOAD_CONST           (40)
+             548 BINARY_OP            (>>)
+             552 LOAD_CONST           (1)
+             554 BINARY_OP            (&)
+             558 TO_BOOL
+             566 POP_JUMP_IF_TRUE     (to 614)
+
+153:         570 LOAD_CONST           ("mac_node")
+             572 LOAD_GLOBAL          (NULL + _hash_text)
+             582 LOAD_GLOBAL          (NULL + str)
+             592 LOAD_FAST            (node)
+             594 CALL                 (1 positional)
+             602 CALL                 (1 positional)
+             610 BUILD_MAP            1
+             612 RETURN_VALUE
+
+154:     >>  614 LOAD_GLOBAL          (socket)
+             624 LOAD_ATTR            (gethostname)
+             644 PUSH_NULL
+             646 CALL                 (0 positional)
+             654 STORE_FAST           (host)
+
+155:         656 LOAD_FAST            (host)
+             658 TO_BOOL
+             666 POP_JUMP_IF_FALSE    (to 724)
+
+156:         670 LOAD_CONST           ("hostname")
+             672 LOAD_GLOBAL          (NULL + _hash_text)
+             682 LOAD_FAST            (host)
+             684 LOAD_ATTR            (NULL|self + lower)
+             704 CALL                 (0 positional)
+             712 CALL                 (1 positional)
+             720 BUILD_MAP            1
+             722 RETURN_VALUE
+
+157:     >>  724 LOAD_FAST            (parts)
+             726 RETURN_VALUE
+
+
+# Method Name:       _legacy_fingerprint_parts
+# Filename:          license_gate.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  8
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        160
+# Constants:
+#    0: 'Old V1 lock inputs, kept so existing local keys can still validate.'
+#    1: 'win_machine_guid'
+#    2: 'nt'
+#    3: 'win_product_uuid'
+#    4: 'darwin'
+#    5: 'mac_ioplatform_uuid'
+#    6: 'mac_node'
+#    7: 'hostname'
+# Names:
+#    0: _read_windows_machine_guid
+#    1: _hash_text
+#    2: lower
+#    3: os
+#    4: name
+#    5: _read_windows_product_uuid
+#    6: sys
+#    7: platform
+#    8: _read_macos_ioplatform_uuid
+#    9: _read_macos_hardware_info
+#   10: items
+#   11: uuid
+#   12: getnode
+#   13: str
+#   14: socket
+#   15: gethostname
+# Varnames:
+#	parts, machine_guid, product_uuid, mac_uuid, key, value, node, host
+# Local variables:
+#    0: parts
+#    1: machine_guid
+#    2: product_uuid
+#    3: mac_uuid
+#    4: key
+#    5: value
+#    6: node
+#    7: host
+160:           0 RESUME               0
+
+162:           2 BUILD_MAP            0
+               4 STORE_FAST           (parts)
+
+163:           6 LOAD_GLOBAL          (NULL + _read_windows_machine_guid)
+              16 CALL                 (0 positional)
+              24 STORE_FAST           (machine_guid)
+
+164:          26 LOAD_FAST            (machine_guid)
+              28 TO_BOOL
+              36 POP_JUMP_IF_FALSE    (to 96)
+
+165:          40 LOAD_GLOBAL          (NULL + _hash_text)
+              50 LOAD_FAST            (machine_guid)
+              52 LOAD_ATTR            (NULL|self + lower)
+              72 CALL                 (0 positional)
+              80 CALL                 (1 positional)
+              88 LOAD_FAST            (parts)
+              90 LOAD_CONST           ("win_machine_guid")
+              92 STORE_SUBSCR
+
+166:     >>   96 LOAD_GLOBAL          (os)
+             106 LOAD_ATTR            (name)
+             126 LOAD_CONST           ("nt")
+             128 COMPARE_OP           (==)
+             132 POP_JUMP_IF_FALSE    (to 226)
+
+167:         136 LOAD_GLOBAL          (NULL + _read_windows_product_uuid)
+             146 CALL                 (0 positional)
+             154 STORE_FAST           (product_uuid)
+
+168:         156 LOAD_FAST            (product_uuid)
+             158 TO_BOOL
+             166 POP_JUMP_IF_FALSE    (to 226)
+
+169:         170 LOAD_GLOBAL          (NULL + _hash_text)
+             180 LOAD_FAST            (product_uuid)
+             182 LOAD_ATTR            (NULL|self + lower)
+             202 CALL                 (0 positional)
+             210 CALL                 (1 positional)
+             218 LOAD_FAST            (parts)
+             220 LOAD_CONST           ("win_product_uuid")
+             222 STORE_SUBSCR
+
+170:     >>  226 LOAD_GLOBAL          (sys)
+             236 LOAD_ATTR            (platform)
+             256 LOAD_CONST           ("darwin")
+             258 COMPARE_OP           (==)
+             262 POP_JUMP_IF_FALSE    (to 494)
+
+171:         266 LOAD_GLOBAL          (NULL + _read_macos_ioplatform_uuid)
+             276 CALL                 (0 positional)
+             284 STORE_FAST           (mac_uuid)
+
+172:         286 LOAD_FAST            (mac_uuid)
+             288 TO_BOOL
+             296 POP_JUMP_IF_FALSE    (to 356)
+
+173:         300 LOAD_GLOBAL          (NULL + _hash_text)
+             310 LOAD_FAST            (mac_uuid)
+             312 LOAD_ATTR            (NULL|self + lower)
+             332 CALL                 (0 positional)
+             340 CALL                 (1 positional)
+             348 LOAD_FAST            (parts)
+             350 LOAD_CONST           ("mac_ioplatform_uuid")
+             352 STORE_SUBSCR
+
+174:     >>  356 LOAD_GLOBAL          (NULL + _read_macos_hardware_info)
+             366 CALL                 (0 positional)
+             374 LOAD_ATTR            (NULL|self + items)
+             394 CALL                 (0 positional)
+             402 GET_ITER
+             404 FOR_ITER             (to 490)
+             408 UNPACK_SEQUENCE      2
+             412 STORE_FAST_STORE_FAST (key, value)
+
+175:         414 LOAD_FAST            (value)
+             416 TO_BOOL
+             424 POP_JUMP_IF_TRUE     (to 432)
+             428 JUMP_BACKWARD        (to 404)
+
+176:     >>  432 LOAD_GLOBAL          (NULL + _hash_text)
+             442 LOAD_FAST            (value)
+             444 LOAD_ATTR            (NULL|self + lower)
+             464 CALL                 (0 positional)
+             472 CALL                 (1 positional)
+             480 LOAD_FAST_LOAD_FAST  (parts, key)
+             482 STORE_SUBSCR
+             486 JUMP_BACKWARD        (to 404)
+
+174:     >>  490 END_FOR
+             492 POP_TOP
+
+177:     >>  494 LOAD_GLOBAL          (uuid)
+             504 LOAD_ATTR            (getnode)
+             524 PUSH_NULL
+             526 CALL                 (0 positional)
+             534 STORE_FAST           (node)
+
+178:         536 LOAD_FAST            (node)
+             538 TO_BOOL
+             546 POP_JUMP_IF_FALSE    (to 596)
+
+179:         550 LOAD_GLOBAL          (NULL + _hash_text)
+             560 LOAD_GLOBAL          (NULL + str)
+             570 LOAD_FAST            (node)
+             572 CALL                 (1 positional)
+             580 CALL                 (1 positional)
+             588 LOAD_FAST            (parts)
+             590 LOAD_CONST           ("mac_node")
+             592 STORE_SUBSCR
+
+180:     >>  596 LOAD_GLOBAL          (socket)
+             606 LOAD_ATTR            (gethostname)
+             626 PUSH_NULL
+             628 CALL                 (0 positional)
+             636 STORE_FAST           (host)
+
+181:         638 LOAD_FAST            (host)
+             640 TO_BOOL
+             648 POP_JUMP_IF_FALSE    (to 708)
+
+182:         652 LOAD_GLOBAL          (NULL + _hash_text)
+             662 LOAD_FAST            (host)
+             664 LOAD_ATTR            (NULL|self + lower)
+             684 CALL                 (0 positional)
+             692 CALL                 (1 positional)
+             700 LOAD_FAST            (parts)
+             702 LOAD_CONST           ("hostname")
+             704 STORE_SUBSCR
+
+183:     >>  708 LOAD_FAST            (parts)
+             710 RETURN_VALUE
+
+
+# Method Name:       _fingerprint_hash_from_parts
+# Filename:          license_gate.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        186
+# Constants:
+#    0: None
+#    1: 'unknown'
+#    2: 'fallback'
+#    3: '|'
+#    4: <Code311 code object <genexpr> at 0x1056fe610, file license_gate.py>, line 189
+#    5: '|license-v1|'
+#    6: 'utf-8'
+# Names:
+#    0: _hash_text
+#    1: join
+#    2: sorted
+#    3: items
+#    4: hashlib
+#    5: sha256
+#    6: PRODUCT
+#    7: encode
+#    8: hexdigest
+# Varnames:
+#	parts, combined
+# Positional arguments:
+#	parts
+# Local variables:
+#    1: combined
+186:           0 RESUME               0
+
+187:           2 LOAD_FAST            (parts)
+               4 TO_BOOL
+              12 POP_JUMP_IF_TRUE     (to 44)
+
+188:          16 LOAD_GLOBAL          (NULL + _hash_text)
+              26 LOAD_CONST           ("unknown")
+              28 CALL                 (1 positional)
+              36 LOAD_FAST            (parts)
+              38 LOAD_CONST           ("fallback")
+              40 STORE_SUBSCR
+
+189:     >>   44 LOAD_CONST           ("|")
+              46 LOAD_ATTR            (NULL|self + join)

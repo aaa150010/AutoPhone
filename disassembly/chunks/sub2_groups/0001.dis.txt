@@ -1,0 +1,800 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          sub2_groups.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        7
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1
+# Constants:
+#    0: 'Strict SUB2 group helpers.'
+#    1: 0
+#    2: ('annotations',)
+#    3: None
+#    4: ('Iterable',)
+#    5: ('Any', 'Callable')
+#    6: ('requests_kwargs',)
+#    7: <Code311 code object Sub2GroupError at 0x109b3fac0, file sub2_groups.py>, line 13
+#    8: 'Sub2GroupError'
+#    9: <Code311 code object _clean at 0x109b3fb80, file sub2_groups.py>, line 17
+#   10: <Code311 code object _unwrap_data at 0x109b3fa60, file sub2_groups.py>, line 21
+#   11: <Code311 code object _items_from_groups_response at 0x109b3fa30, file sub2_groups.py>, line 28
+#   12: 3
+#   13: 15
+#   14: 1.0
+#   15: ''
+#   16: ('attempts', 'timeout', 'sleep_seconds', 'log_fn', 'requests_get', 'proxy')
+#   17: <Code311 code object resolve_sub2_group_id at 0x109b0e460, file sub2_groups.py>, line 42
+#   18: <Code311 code object _add_int at 0x109b0e4c0, file sub2_groups.py>, line 102
+#   19: <Code311 code object _collect_group_object_ids at 0x109b0e520, file sub2_groups.py>, line 112
+#   20: <Code311 code object _collect_account_group_ids at 0x109b0e550, file sub2_groups.py>, line 124
+#   21: False
+#   22: ('group_context',)
+#   23: <Code311 code object _collect_group_ids at 0x109b0e580, file sub2_groups.py>, line 135
+#   24: <Code311 code object _collect_group_object_names at 0x109b0e5b0, file sub2_groups.py>, line 163
+#   25: <Code311 code object _collect_account_group_names at 0x109b0e610, file sub2_groups.py>, line 177
+#   26: <Code311 code object _collect_group_names at 0x109b0e640, file sub2_groups.py>, line 190
+#   27: <Code311 code object extract_sub2_group_ids at 0x109b0e700, file sub2_groups.py>, line 219
+#   28: <Code311 code object extract_sub2_group_names at 0x109b0e760, file sub2_groups.py>, line 231
+#   29: ('allow_unknown',)
+#   30: <Code311 code object assert_sub2_account_group at 0x109b0e7f0, file sub2_groups.py>, line 243
+#   31: ('value', 'Any', 'return', 'str')
+#   32: ('payload', 'Any', 'return', 'Any')
+#   33: ('payload', 'Any', 'return', 'list[dict[str, Any]]')
+#   34: ('sub2api_url', 'str', 'admin_token', 'str', 'group_name', 'str', 'attempts', 'int', 'timeout', 'int', 'sleep_seconds', 'float', 'log_fn', 'Callable[[str], None] | None', 'requests_get', 'Callable[..., Any] | None', 'proxy', 'str', 'return', 'tuple[int, str]')
+#   35: ('value', 'Any', 'out', 'set[int]', 'return', 'None')
+#   36: ('value', 'Any', 'out', 'set[int]', 'group_context', 'bool', 'return', 'None')
+#   37: ('value', 'Any', 'out', 'set[str]', 'return', 'None')
+#   38: ('value', 'Any', 'out', 'set[str]', 'group_context', 'bool', 'return', 'None')
+#   39: ('payload', 'Any', 'return', 'list[int]')
+#   40: ('payload', 'Any', 'return', 'list[str]')
+#   41: ('',)
+#   42: ('payloads', 'list[Any]', 'expected_group_id', 'int', 'expected_group_name', 'str', 'allow_unknown', 'bool', 'return', 'tuple[list[int], list[str]]')
+# Names:
+#    0: __doc__
+#    1: __future__
+#    2: annotations
+#    3: time
+#    4: collections.abc
+#    5: Iterable
+#    6: typing
+#    7: Any
+#    8: Callable
+#    9: proxy_scope
+#   10: requests_kwargs
+#   11: RuntimeError
+#   12: Sub2GroupError
+#   13: _clean
+#   14: _unwrap_data
+#   15: _items_from_groups_response
+#   16: resolve_sub2_group_id
+#   17: _add_int
+#   18: _collect_group_object_ids
+#   19: _collect_account_group_ids
+#   20: _collect_group_ids
+#   21: _collect_group_object_names
+#   22: _collect_account_group_names
+#   23: _collect_group_names
+#   24: extract_sub2_group_ids
+#   25: extract_sub2_group_names
+#   26: assert_sub2_account_group
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ("Strict SUB2 group helpers.")
+               4 STORE_NAME           (__doc__)
+
+  4:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (('annotations',))
+              10 IMPORT_NAME          (__future__)
+              12 IMPORT_FROM          (annotations)
+              14 STORE_NAME           (annotations)
+              16 POP_TOP
+
+  6:          18 LOAD_CONST           (0)
+              20 LOAD_CONST           (None)
+              22 IMPORT_NAME          (time)
+              24 STORE_NAME           (time)
+
+  7:          26 LOAD_CONST           (0)
+              28 LOAD_CONST           (('Iterable',))
+              30 IMPORT_NAME          (collections.abc)
+              32 IMPORT_FROM          (Iterable)
+              34 STORE_NAME           (Iterable)
+              36 POP_TOP
+
+  8:          38 LOAD_CONST           (0)
+              40 LOAD_CONST           (('Any', 'Callable'))
+              42 IMPORT_NAME          (typing)
+              44 IMPORT_FROM          (Any)
+              46 STORE_NAME           (Any)
+              48 IMPORT_FROM          (Callable)
+              50 STORE_NAME           (Callable)
+              52 POP_TOP
+
+ 10:          54 LOAD_CONST           (0)
+              56 LOAD_CONST           (('requests_kwargs',))
+              58 IMPORT_NAME          (proxy_scope)
+              60 IMPORT_FROM          (requests_kwargs)
+              62 STORE_NAME           (requests_kwargs)
+              64 POP_TOP
+
+ 13:          66 LOAD_BUILD_CLASS
+              68 PUSH_NULL
+              70 LOAD_CONST           (<Code311 code object Sub2GroupError at 0x109b3fac0, file sub2_groups.py>, line 13)
+              72 MAKE_FUNCTION
+              74 LOAD_CONST           ("Sub2GroupError")
+              76 LOAD_NAME            (RuntimeError)
+              78 CALL                 (3 positional)
+              86 STORE_NAME           (Sub2GroupError)
+
+ 17:          88 LOAD_CONST           (('value', 'Any', 'return', 'str'))
+              90 LOAD_CONST           (<Code311 code object _clean at 0x109b3fb80, file sub2_groups.py>, line 17)
+              92 MAKE_FUNCTION
+              94 SET_FUNCTION_ATTRIBUTE 4
+              96 STORE_NAME           (_clean)
+
+ 21:          98 LOAD_CONST           (('payload', 'Any', 'return', 'Any'))
+             100 LOAD_CONST           (<Code311 code object _unwrap_data at 0x109b3fa60, file sub2_groups.py>, line 21)
+             102 MAKE_FUNCTION
+             104 SET_FUNCTION_ATTRIBUTE 4
+             106 STORE_NAME           (_unwrap_data)
+
+ 28:         108 LOAD_CONST           (('payload', 'Any', 'return', 'list[dict[str, Any]]'))
+             110 LOAD_CONST           (<Code311 code object _items_from_groups_response at 0x109b3fa30, file sub2_groups.py>, line 28)
+             112 MAKE_FUNCTION
+             114 SET_FUNCTION_ATTRIBUTE 4
+             116 STORE_NAME           (_items_from_groups_response)
+
+ 47:         118 LOAD_CONST           (3)
+
+ 48:         120 LOAD_CONST           (15)
+
+ 49:         122 LOAD_CONST           (1.0)
+
+ 50:         124 LOAD_CONST           (None)
+
+ 51:         126 LOAD_CONST           (None)
+
+ 52:         128 LOAD_CONST           ("")
+
+ 42:         130 LOAD_CONST           (('attempts', 'timeout', 'sleep_seconds', 'log_fn', 'requests_get', 'proxy'))
+             132 BUILD_CONST_KEY_MAP  6
+
+ 43:         134 NOP
+
+ 42:         136 NOP
+
+ 44:         138 NOP
+
+ 42:         140 NOP
+
+ 45:         142 NOP
+
+ 42:         144 NOP
+
+ 47:         146 NOP
+
+ 42:         148 NOP
+
+ 48:         150 NOP
+
+ 42:         152 NOP
+
+ 49:         154 NOP
+
+ 42:         156 NOP
+
+ 50:         158 NOP
+
+ 42:         160 NOP
+
+ 51:         162 NOP
+
+ 42:         164 NOP
+
+ 52:         166 NOP
+
+ 42:         168 NOP
+
+ 53:         170 NOP
+
+ 42:         172 LOAD_CONST           (('sub2api_url', 'str', 'admin_token', 'str', 'group_name', 'str', 'attempts', 'int', 'timeout', 'int', 'sleep_seconds', 'float', 'log_fn', 'Callable[[str], None] | None', 'requests_get', 'Callable[..., Any] | None', 'proxy', 'str', 'return', 'tuple[int, str]'))
+             174 LOAD_CONST           (<Code311 code object resolve_sub2_group_id at 0x109b0e460, file sub2_groups.py>, line 42)
+             176 MAKE_FUNCTION
+             178 SET_FUNCTION_ATTRIBUTE 4
+             180 SET_FUNCTION_ATTRIBUTE 2
+             182 STORE_NAME           (resolve_sub2_group_id)
+
+102:         184 LOAD_CONST           (('value', 'Any', 'out', 'set[int]', 'return', 'None'))
+             186 LOAD_CONST           (<Code311 code object _add_int at 0x109b0e4c0, file sub2_groups.py>, line 102)
+             188 MAKE_FUNCTION
+             190 SET_FUNCTION_ATTRIBUTE 4
+             192 STORE_NAME           (_add_int)
+
+112:         194 LOAD_CONST           (('value', 'Any', 'out', 'set[int]', 'return', 'None'))
+             196 LOAD_CONST           (<Code311 code object _collect_group_object_ids at 0x109b0e520, file sub2_groups.py>, line 112)
+             198 MAKE_FUNCTION
+             200 SET_FUNCTION_ATTRIBUTE 4
+             202 STORE_NAME           (_collect_group_object_ids)
+
+124:         204 LOAD_CONST           (('value', 'Any', 'out', 'set[int]', 'return', 'None'))
+             206 LOAD_CONST           (<Code311 code object _collect_account_group_ids at 0x109b0e550, file sub2_groups.py>, line 124)
+             208 MAKE_FUNCTION
+             210 SET_FUNCTION_ATTRIBUTE 4
+             212 STORE_NAME           (_collect_account_group_ids)
+
+135:         214 LOAD_CONST           (False)
+             216 LOAD_CONST           (('group_context',))
+             218 BUILD_CONST_KEY_MAP  1
+             220 LOAD_CONST           (('value', 'Any', 'out', 'set[int]', 'group_context', 'bool', 'return', 'None'))
+             222 LOAD_CONST           (<Code311 code object _collect_group_ids at 0x109b0e580, file sub2_groups.py>, line 135)
+             224 MAKE_FUNCTION
+             226 SET_FUNCTION_ATTRIBUTE 4
+             228 SET_FUNCTION_ATTRIBUTE 2
+             230 STORE_NAME           (_collect_group_ids)
+
+163:         232 LOAD_CONST           (('value', 'Any', 'out', 'set[str]', 'return', 'None'))
+             234 LOAD_CONST           (<Code311 code object _collect_group_object_names at 0x109b0e5b0, file sub2_groups.py>, line 163)
+             236 MAKE_FUNCTION
+             238 SET_FUNCTION_ATTRIBUTE 4
+             240 STORE_NAME           (_collect_group_object_names)
+
+177:         242 LOAD_CONST           (('value', 'Any', 'out', 'set[str]', 'return', 'None'))
+             244 LOAD_CONST           (<Code311 code object _collect_account_group_names at 0x109b0e610, file sub2_groups.py>, line 177)
+             246 MAKE_FUNCTION
+             248 SET_FUNCTION_ATTRIBUTE 4
+             250 STORE_NAME           (_collect_account_group_names)
+
+190:         252 LOAD_CONST           (False)
+             254 LOAD_CONST           (('group_context',))
+             256 BUILD_CONST_KEY_MAP  1
+             258 LOAD_CONST           (('value', 'Any', 'out', 'set[str]', 'group_context', 'bool', 'return', 'None'))
+             260 LOAD_CONST           (<Code311 code object _collect_group_names at 0x109b0e640, file sub2_groups.py>, line 190)
+             262 MAKE_FUNCTION
+             264 SET_FUNCTION_ATTRIBUTE 4
+             266 SET_FUNCTION_ATTRIBUTE 2
+             268 STORE_NAME           (_collect_group_names)
+
+219:         270 LOAD_CONST           (('payload', 'Any', 'return', 'list[int]'))
+             272 LOAD_CONST           (<Code311 code object extract_sub2_group_ids at 0x109b0e700, file sub2_groups.py>, line 219)
+             274 MAKE_FUNCTION
+             276 SET_FUNCTION_ATTRIBUTE 4
+             278 STORE_NAME           (extract_sub2_group_ids)
+
+231:         280 LOAD_CONST           (('payload', 'Any', 'return', 'list[str]'))
+             282 LOAD_CONST           (<Code311 code object extract_sub2_group_names at 0x109b0e760, file sub2_groups.py>, line 231)
+             284 MAKE_FUNCTION
+             286 SET_FUNCTION_ATTRIBUTE 4
+             288 STORE_NAME           (extract_sub2_group_names)
+
+246:         290 NOP
+
+243:         292 LOAD_CONST           (('',))
+
+248:         294 LOAD_CONST           (False)
+
+243:         296 LOAD_CONST           (('allow_unknown',))
+             298 BUILD_CONST_KEY_MAP  1
+
+244:         300 NOP
+
+243:         302 NOP
+
+245:         304 NOP
+
+243:         306 NOP
+
+246:         308 NOP
+
+243:         310 NOP
+
+248:         312 NOP
+
+243:         314 NOP
+
+249:         316 NOP
+
+243:         318 LOAD_CONST           (('payloads', 'list[Any]', 'expected_group_id', 'int', 'expected_group_name', 'str', 'allow_unknown', 'bool', 'return', 'tuple[list[int], list[str]]'))
+             320 LOAD_CONST           (<Code311 code object assert_sub2_account_group at 0x109b0e7f0, file sub2_groups.py>, line 243)
+             322 MAKE_FUNCTION
+             324 SET_FUNCTION_ATTRIBUTE 4
+             326 SET_FUNCTION_ATTRIBUTE 2
+             328 SET_FUNCTION_ATTRIBUTE 1
+             330 STORE_NAME           (assert_sub2_account_group)
+             332 RETURN_CONST         (None)
+
+
+# Method Name:       Sub2GroupError
+# Filename:          sub2_groups.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        1
+# Flags:             0x01000000 (0x1000000)
+# First Line:        13
+# Constants:
+#    0: 'Sub2GroupError'
+#    1: 13
+#    2: 'Raised when the configured SUB2 group cannot be used safely.'
+#    3: ()
+#    4: None
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __doc__
+#    5: __static_attributes__
+ 13:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("Sub2GroupError")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (13)
+              12 STORE_NAME           (__firstlineno__)
+
+ 14:          14 LOAD_CONST           ("Raised when the configured SUB2 group cannot be used safely.")
+              16 STORE_NAME           (__doc__)
+              18 LOAD_CONST           (())
+              20 STORE_NAME           (__static_attributes__)
+              22 RETURN_CONST         (None)
+
+
+# Method Name:       _clean
+# Filename:          sub2_groups.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        17
+# Constants:
+#    0: None
+#    1: ''
+# Names:
+#    0: str
+#    1: strip
+# Varnames:
+#	value
+# Positional arguments:
+#	value
+ 17:           0 RESUME               0
+
+ 18:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (value)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + strip)
+              60 CALL                 (0 positional)
+              68 RETURN_VALUE
+
+
+# Method Name:       _unwrap_data
+# Filename:          sub2_groups.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        21
+# Constants:
+#    0: None
+#    1: 'data'
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: get
+#    3: list
+# Varnames:
+#	payload, data
+# Positional arguments:
+#	payload
+# Local variables:
+#    1: data
+ 21:           0 RESUME               0
+
+ 22:           2 LOAD_FAST            (payload)
+               4 STORE_FAST           (data)
+
+ 23:           6 LOAD_GLOBAL          (NULL + isinstance)
+              16 LOAD_FAST            (data)
+              18 LOAD_GLOBAL          (dict)
+              28 CALL                 (2 positional)
+              36 TO_BOOL
+              44 POP_JUMP_IF_FALSE    (to 166)
+              48 LOAD_GLOBAL          (NULL + isinstance)
+              58 LOAD_FAST            (data)
+              60 LOAD_ATTR            (NULL|self + get)
+              80 LOAD_CONST           ("data")
+              82 CALL                 (1 positional)
+              90 LOAD_GLOBAL          (dict)
+             100 LOAD_GLOBAL          (list)
+             110 BUILD_TUPLE          2
+             112 CALL                 (2 positional)
+             120 TO_BOOL
+             128 POP_JUMP_IF_FALSE    (to 166)
+
+ 24:         132 LOAD_FAST            (data)
+             134 LOAD_ATTR            (NULL|self + get)
+             154 LOAD_CONST           ("data")
+             156 CALL                 (1 positional)
+             164 STORE_FAST           (data)
+
+ 25:     >>  166 LOAD_FAST            (data)
+             168 RETURN_VALUE
+
+
+# Method Name:       _items_from_groups_response
+# Filename:          sub2_groups.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        28
+# Constants:
+#    0: None
+#    1: 'items'
+#    2: 'groups'
+# Names:
+#    0: _unwrap_data
+#    1: isinstance
+#    2: dict
+#    3: get
+#    4: list
+# Varnames:
+#	payload, data, items, x, groups
+# Positional arguments:
+#	payload
+# Local variables:
+#    1: data
+#    2: items
+#    3: x
+#    4: groups
+ 28:           0 RESUME               0
+
+ 29:           2 LOAD_GLOBAL          (NULL + _unwrap_data)
+              12 LOAD_FAST            (payload)
+              14 CALL                 (1 positional)
+              22 STORE_FAST           (data)
+
+ 30:          24 LOAD_GLOBAL          (NULL + isinstance)
+              34 LOAD_FAST            (data)
+              36 LOAD_GLOBAL          (dict)
+              46 CALL                 (2 positional)
+              54 TO_BOOL
+              62 POP_JUMP_IF_FALSE    (to 386)
+
+ 31:          66 LOAD_FAST            (data)
+              68 LOAD_ATTR            (NULL|self + get)
+              88 LOAD_CONST           ("items")
+              90 CALL                 (1 positional)
+              98 STORE_FAST           (items)
+
+ 32:         100 LOAD_GLOBAL          (NULL + isinstance)
+             110 LOAD_FAST            (items)
+             112 LOAD_GLOBAL          (list)
+             122 CALL                 (2 positional)
+             130 TO_BOOL
+             138 POP_JUMP_IF_FALSE    (to 226)
+
+ 33:         142 LOAD_FAST            (items)
+             144 GET_ITER
+             146 LOAD_FAST_AND_CLEAR  (x)
+             148 SWAP                 (TOS <-> TOS1)
+             150 BUILD_LIST           0
+             152 SWAP                 (TOS <-> TOS1)
+             154 GET_ITER
+             156 FOR_ITER             (to 216)
+             160 STORE_FAST           (x)
+             162 LOAD_GLOBAL          (NULL + isinstance)
+             172 LOAD_FAST            (x)
+             174 LOAD_GLOBAL          (dict)
+             184 CALL                 (2 positional)
+             192 TO_BOOL
+             200 POP_JUMP_IF_TRUE     (to 208)
+             204 JUMP_BACKWARD        (to 156)
+         >>  208 LOAD_FAST            (x)
+             210 LIST_APPEND          2
+             212 JUMP_BACKWARD        (to 156)
+         >>  216 END_FOR
+             218 POP_TOP
+             220 SWAP                 (TOS <-> TOS1)
+             222 STORE_FAST           (x)
+             224 RETURN_VALUE
+
+ 34:     >>  226 LOAD_FAST            (data)
+             228 LOAD_ATTR            (NULL|self + get)
+             248 LOAD_CONST           ("groups")
+             250 CALL                 (1 positional)
+             258 STORE_FAST           (groups)
+
+ 35:     >>  260 LOAD_GLOBAL          (NULL + isinstance)
+             270 LOAD_FAST            (groups)
+             272 LOAD_GLOBAL          (list)
+             282 CALL                 (2 positional)
+             290 TO_BOOL
+             298 POP_JUMP_IF_FALSE    (to 386)
+
+ 36:         302 LOAD_FAST            (groups)
+             304 GET_ITER
+             306 LOAD_FAST_AND_CLEAR  (x)
+             308 SWAP                 (TOS <-> TOS1)
+             310 BUILD_LIST           0
+             312 SWAP                 (TOS <-> TOS1)
+             314 GET_ITER
+             316 FOR_ITER             (to 376)
+             320 STORE_FAST           (x)
+             322 LOAD_GLOBAL          (NULL + isinstance)
+             332 LOAD_FAST            (x)
+             334 LOAD_GLOBAL          (dict)
+             344 CALL                 (2 positional)
+             352 TO_BOOL
+             360 POP_JUMP_IF_TRUE     (to 368)
+             364 JUMP_BACKWARD        (to 316)
+         >>  368 LOAD_FAST            (x)
+             370 LIST_APPEND          2
+             372 JUMP_BACKWARD        (to 316)
+         >>  376 END_FOR
+             378 POP_TOP
+             380 SWAP                 (TOS <-> TOS1)
+             382 STORE_FAST           (x)
+             384 RETURN_VALUE
+
+ 37:     >>  386 LOAD_GLOBAL          (NULL + isinstance)
+             396 LOAD_FAST            (data)
+             398 LOAD_GLOBAL          (list)
+             408 CALL                 (2 positional)
+             416 TO_BOOL
+             424 POP_JUMP_IF_FALSE    (to 512)
+
+ 38:         428 LOAD_FAST            (data)
+             430 GET_ITER
+             432 LOAD_FAST_AND_CLEAR  (x)
+             434 SWAP                 (TOS <-> TOS1)
+         >>  436 BUILD_LIST           0
+             438 SWAP                 (TOS <-> TOS1)
+             440 GET_ITER
+             442 FOR_ITER             (to 502)
+             446 STORE_FAST           (x)
+             448 LOAD_GLOBAL          (NULL + isinstance)
+             458 LOAD_FAST            (x)
+             460 LOAD_GLOBAL          (dict)
+             470 CALL                 (2 positional)
+             478 TO_BOOL
+             486 POP_JUMP_IF_TRUE     (to 494)
+             490 JUMP_BACKWARD        (to 442)
+         >>  494 LOAD_FAST            (x)
+             496 LIST_APPEND          2
+             498 JUMP_BACKWARD        (to 442)
+         >>  502 END_FOR
+             504 POP_TOP
+             506 SWAP                 (TOS <-> TOS1)
+             508 STORE_FAST           (x)
+             510 RETURN_VALUE
+
+ 39:     >>  512 BUILD_LIST           0
+             514 RETURN_VALUE
+         >>  516 SWAP                 (TOS <-> TOS1)
+             518 POP_TOP
+
+ 33:         520 SWAP                 (TOS <-> TOS1)
+             522 STORE_FAST           (x)
+             524 RERAISE              0
+         >>  526 SWAP                 (TOS <-> TOS1)
+             528 POP_TOP
+
+ 36:         530 SWAP                 (TOS <-> TOS1)
+             532 STORE_FAST           (x)
+             534 RERAISE              0
+         >>  536 SWAP                 (TOS <-> TOS1)
+             538 POP_TOP
+
+ 38:         540 SWAP                 (TOS <-> TOS1)
+             542 STORE_FAST           (x)
+             544 RERAISE              0
+
+ExceptionTable:
+  150 to 198 -> 516 [2]
+  208 to 218 -> 516 [2]
+  310 to 358 -> 526 [2]
+  368 to 378 -> 526 [2]
+  436 to 484 -> 536 [2]
+  494 to 504 -> 536 [2]
+
+# Method Name:       resolve_sub2_group_id
+# Filename:          sub2_groups.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 6
+# Number of locals:  21
+# Stack size:        14
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        42
+# Constants:
+#    0: 'Return the exact configured SUB2 group id, never falling back to default.'
+#    1: '/'
+#    2: 'SUB2API URL为空，无法查询分组'
+#    3: 'SUB2API token为空，无法查询分组'
+#    4: 'SUB2API 分组未配置'
+#    5: None
+#    6: 0
+#    7: ''
+#    8: 1
+#    9: '/api/v1/admin/groups'
+#   10: 'Authorization'
+#   11: 'Bearer '
+#   12: ('headers', 'timeout')
+#   13: 'raise_for_status'
+#   14: 'name'
+#   15: 'id'
+#   16: 'SUB2分组 '
+#   17: ' ID无效: '
+#   18: ', '
+#   19: <Code311 code object <genexpr> at 0x109b0e430, file sub2_groups.py>, line 88
+#   20: '未找到SUB2分组 '
+#   21: '; 当前可用: '
+#   22: '无'
+#   23: 'SUB2分组查询失败('
+#   24: '): '
+#   25: 0.0
+#   26: 'SUB2分组查询失败，已停止上传，避免误入 default: '
+# Names:
+#    0: _clean
+#    1: rstrip
+#    2: Sub2GroupError
+#    3: requests
+#    4: get
+#    5: range
+#    6: max
+#    7: int
+#    8: requests_kwargs
+#    9: hasattr
+#   10: raise_for_status
+#   11: json
+#   12: _items_from_groups_response
+#   13: join
+#   14: Exception
+#   15: str
+#   16: time
+#   17: sleep
+# Varnames:
+#	sub2api_url, admin_token, group_name, attempts, timeout, sleep_seconds, log_fn, requests_get, proxy, base, name, requests, last_error, attempt, resp, payload, groups, group, group_id, available, exc
+# Positional arguments:
+#	sub2api_url, admin_token, group_name
+# Local variables:
+#    3: attempts
+#    4: timeout
+#    5: sleep_seconds
+#    6: log_fn
+#    7: requests_get
+#    8: proxy
+#    9: base
+#   10: name
+#   11: requests
+#   12: last_error
+#   13: attempt
+#   14: resp
+#   15: payload
+#   16: groups
+#   17: group
+#   18: group_id
+#   19: available
+#   20: exc
+ 42:           0 RESUME               0
+
+ 55:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (sub2api_url)
+              14 CALL                 (1 positional)
+              22 LOAD_ATTR            (NULL|self + rstrip)
+              42 LOAD_CONST           ("/")
+              44 CALL                 (1 positional)
+              52 STORE_FAST           (base)
+
+ 56:          54 LOAD_GLOBAL          (NULL + _clean)
+              64 LOAD_FAST            (group_name)
+              66 CALL                 (1 positional)
+              74 STORE_FAST           (name)
+
+ 57:          76 LOAD_FAST            (base)
+              78 TO_BOOL
+              86 POP_JUMP_IF_TRUE     (to 112)
+
+ 58:          90 LOAD_GLOBAL          (NULL + Sub2GroupError)
+             100 LOAD_CONST           ("SUB2API URL为空，无法查询分组")
+             102 CALL                 (1 positional)
+             110 RAISE_VARARGS        (exception instance)
+
+ 59:     >>  112 LOAD_FAST            (admin_token)
+             114 TO_BOOL
+             122 POP_JUMP_IF_TRUE     (to 148)
+
+ 60:         126 LOAD_GLOBAL          (NULL + Sub2GroupError)
+             136 LOAD_CONST           ("SUB2API token为空，无法查询分组")
+             138 CALL                 (1 positional)
+             146 RAISE_VARARGS        (exception instance)
+
+ 61:     >>  148 LOAD_FAST            (name)
+             150 TO_BOOL
+             158 POP_JUMP_IF_TRUE     (to 184)
+
+ 62:         162 LOAD_GLOBAL          (NULL + Sub2GroupError)
+             172 LOAD_CONST           ("SUB2API 分组未配置")
+             174 CALL                 (1 positional)
+             182 RAISE_VARARGS        (exception instance)
+
+ 64:     >>  184 LOAD_FAST            (requests_get)
+             186 POP_JUMP_IF_NOT_NONE (to 222)
+
+ 65:         190 LOAD_CONST           (0)
+             192 LOAD_CONST           (None)
+             194 IMPORT_NAME          (requests)
+             196 STORE_FAST           (requests)
+
+ 67:         198 LOAD_FAST            (requests)
+             200 LOAD_ATTR            (get)
+             220 STORE_FAST           (requests_get)
+
+ 69:     >>  222 LOAD_CONST           ("")
+             224 STORE_FAST           (last_error)
+
+ 70:         226 LOAD_GLOBAL          (NULL + range)
+             236 LOAD_CONST           (1)
+             238 LOAD_GLOBAL          (NULL + max)
+             248 LOAD_CONST           (1)
+             250 LOAD_GLOBAL          (NULL + int)
+             260 LOAD_FAST            (attempts)
+             262 COPY                 1
+             264 TO_BOOL
+             272 POP_JUMP_IF_TRUE     (to 280)
+             276 POP_TOP
+             278 LOAD_CONST           (1)
+         >>  280 CALL                 (1 positional)
+             288 CALL                 (2 positional)
+             296 LOAD_CONST           (1)
+             298 BINARY_OP            (+)
+             302 CALL                 (2 positional)
+             310 GET_ITER
+             312 EXTENDED_ARG         (256)
+             314 FOR_ITER             (to 840)
+             318 STORE_FAST           (attempt)
+
+ 71:         320 NOP
+
+ 72:         322 LOAD_FAST            (requests_get)
+             324 PUSH_NULL
+
+ 73:         326 LOAD_FAST            (base)
+             328 FORMAT_SIMPLE
+             330 LOAD_CONST           ("/api/v1/admin/groups")
+             332 BUILD_STRING         2
+
+ 72:         334 BUILD_TUPLE          1
+
+ 74:         336 LOAD_CONST           ("Authorization")
+             338 LOAD_CONST           ("Bearer ")
+             340 LOAD_FAST            (admin_token)
+             342 FORMAT_SIMPLE
+             344 BUILD_STRING         2
+             346 BUILD_MAP            1
+
+ 75:         348 LOAD_FAST            (timeout)
+
+ 72:         350 LOAD_CONST           (('headers', 'timeout'))
+             352 BUILD_CONST_KEY_MAP  2
+

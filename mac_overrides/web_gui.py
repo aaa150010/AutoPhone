@@ -28,24 +28,33 @@ import codex_oauth_chain as _codex_oauth_chain
 import chatgpt_totp as _chatgpt_totp_ext
 import error_observability as _error_observability_ext
 import auth_request_runtime as _auth_request_runtime_ext
+import auth_challenge_runtime as _auth_challenge_runtime_ext
 import auth_session_runtime as _auth_session_runtime_ext
 import adaptive_concurrency as _adaptive_concurrency_ext
 import batch_upload_runtime as _batch_upload_runtime_ext
 import imap_poller as _imap_poller
+import importer_watch_runtime as _importer_watch_runtime_ext
 import importer_scheduler as _importer_scheduler_ext
 import legacy_ui as _legacy_ui_ext
 import log_retention as _log_retention_ext
 import mailbox_admin as _mailbox_admin_ext
+import mailbox_priority_runtime as _mailbox_priority_runtime_ext
 import mailbox_url_runtime as _mailbox_url_runtime_ext
 import mailbox_url_test_runtime as _mailbox_url_test_runtime_ext
 import mailbox_retention as _mailbox_retention_ext
 import nv_runtime as _nv_runtime_ext
 import pixel_runtime as _pixel_runtime_ext
 import phone_risk_runtime as _phone_risk_runtime_ext
+import performance_runtime as _performance_runtime_ext
+import phase_concurrency as _phase_concurrency_ext
+import sms_optimization_guard as _sms_optimization_guard_ext
+import public_state_runtime as _public_state_runtime_ext
 import openai_quota_runtime as _openai_quota_runtime_ext
 import openai_direct_test_runtime as _openai_direct_test_runtime_ext
 import online_mailbox_runtime as _online_mailbox_runtime_ext
 import run_notifications as _run_notifications_ext
+import run_batch_runtime as _run_batch_runtime_ext
+import result_persistence_runtime as _result_persistence_runtime_ext
 import runtime as _runtime
 import runtime_policy as _runtime_policy_ext
 import network_runtime as _network_runtime_ext
@@ -53,9 +62,11 @@ import sms_providers as _sms_providers
 import sms_runtime as _sms_runtime_ext
 import sms_selector as _sms_selector
 import sms_web as _sms_web_ext
+import sub2_binding_runtime as _sub2_binding_runtime_ext
 import sub2_runtime as _sub2_runtime_ext
 import sub2_update_runtime as _sub2_update_runtime_ext
 import task_progress as _task_progress_ext
+import transport_lifecycle as _transport_lifecycle_ext
 import web_routes as _web_routes_ext
 
 
@@ -149,6 +160,7 @@ _ORIGINAL_CHAIN_EVENT = _codex_oauth_chain._event
 _SMS_PRIORITY_COUNTRIES = ()
 _SMS_MIN_PRICE_DEFAULT = 0.01
 _SMS_MAX_PRICE_DEFAULT = "0.15"
+_SMS_MAX_PRICE_HARD_LIMIT = 0.18
 _EMAIL_CODE_TIMEOUT_DEFAULT = 90
 _EMAIL_TIMEOUT_STRATEGY_VERSION = 2
 _EMAIL_OTP_VERIFY_ATTEMPTS_DEFAULT = 2
@@ -185,6 +197,9 @@ _SMS_CLEANUP_QUEUE = _sms_runtime_ext.SmsCleanupQueue(
 _SMS_EXCHANGE_RATE = _sms_runtime_ext.ExchangeRateCache(_RUNTIME_DATA_DIR / "usd_cny_rate.json")
 _SMS_PHONE_GATE = _sms_runtime_ext.PhoneSubmissionGate(concurrency=2, interval_seconds=0.75)
 _SMS_ROUTE_POLICY = _sms_runtime_ext.SmsRoutePolicy()
+_SMS_QUALITY_GUARD = _sms_optimization_guard_ext.SmsOptimizationGuard(
+    baseline_path=_RUNTIME_DATA_DIR / "sms_optimization_baseline.json"
+)
 _SMS_ALERTS = _sms_runtime_ext.RuntimeAlertBuffer()
 _GUI_LOG_RETENTION = _log_retention_ext.GuiLogRetention()
 _TASK_PROGRESS = _task_progress_ext.TaskProgressTracker()
@@ -201,8 +216,7 @@ _ACTIVE_SMS_TRANSPORT: ContextVar[object | None] = ContextVar(
     "gptphone_active_sms_transport",
     default=None,
 )
-_SMS_TRANSPORTS_BY_TASK: dict[str, object] = {}
-_SMS_TRANSPORTS_LOCK = threading.RLock()
+_SMS_TRANSPORT_REGISTRY = _transport_lifecycle_ext.TaskTransportRegistry()
 _MAILBOX_LEASE_FILTER_ACTIVE: ContextVar[bool] = ContextVar(
     "gptphone_mailbox_lease_filter_active",
     default=False,
@@ -210,6 +224,10 @@ _MAILBOX_LEASE_FILTER_ACTIVE: ContextVar[bool] = ContextVar(
 _MAILBOX_RUN_SELECTION: ContextVar[frozenset[tuple[str, int]]] = ContextVar(
     "gptphone_mailbox_run_selection",
     default=frozenset(),
+)
+_MAILBOX_NEXT_BATCH_PRIORITY_ACTIVE: ContextVar[bool] = ContextVar(
+    "gptphone_mailbox_next_batch_priority_active",
+    default=False,
 )
 _MAILBOX_TOTP_SECRET_CONTEXT: ContextVar[str] = ContextVar("gptphone_mailbox_totp_secret", default="")
 _ACCOUNT_BANNED_DETAIL_CONTEXT: ContextVar[str] = ContextVar(
@@ -309,6 +327,12 @@ def _report_task_pressure(task_id, value, *, node_code="", immediate=False):
         except Exception:
             code = "infrastructure_pressure"
     try:
+        if _transport_lifecycle_ext.is_fd_exhaustion(value):
+            gate.report_resource_exhaustion(
+                identifier,
+                "resource_fd_exhausted",
+            )
+            return
         gate.report_pressure(
             identifier,
             code or "infrastructure_pressure",
@@ -430,42 +454,15 @@ def _transport_task_id(transport) -> str:
 
 
 def _register_sms_transport(task_id, transport) -> None:
-    key = str(task_id or "").strip()
-    if not key or transport is None:
-        return
-    with _SMS_TRANSPORTS_LOCK:
-        for old_key, old_transport in tuple(_SMS_TRANSPORTS_BY_TASK.items()):
-            if old_transport is transport and old_key != key:
-                _SMS_TRANSPORTS_BY_TASK.pop(old_key, None)
-        _SMS_TRANSPORTS_BY_TASK[key] = transport
-    setattr(transport, "_gptphone_registered_task_id", key)
+    _SMS_TRANSPORT_REGISTRY.register(task_id, transport)
 
 
 def _transport_for_task(task_id):
-    key = str(task_id or "").strip()
-    if not key:
-        return None
-    with _SMS_TRANSPORTS_LOCK:
-        transport = _SMS_TRANSPORTS_BY_TASK.get(key)
-        if transport is not None and _transport_task_id(transport) != key:
-            _SMS_TRANSPORTS_BY_TASK.pop(key, None)
-            return None
-        return transport
+    return _SMS_TRANSPORT_REGISTRY.get(task_id)
 
 
 def _unregister_sms_transport(task_id, transport=None) -> None:
-    key = str(task_id or "").strip()
-    if not key:
-        return
-    with _SMS_TRANSPORTS_LOCK:
-        current = _SMS_TRANSPORTS_BY_TASK.get(key)
-        if transport is None or current is transport:
-            _SMS_TRANSPORTS_BY_TASK.pop(key, None)
-    if transport is not None and getattr(transport, "_gptphone_registered_task_id", "") == key:
-        try:
-            delattr(transport, "_gptphone_registered_task_id")
-        except AttributeError:
-            pass
+    _SMS_TRANSPORT_REGISTRY.unregister(task_id, transport)
 
 
 def _safe_runtime_error(error):
@@ -627,6 +624,8 @@ def _diagnostic_friendly_log_message(value):
         _SMS_PROVIDER_REGISTRY.safe_error(redacted),
         limit=800,
     )
+    if _error_observability_ext.is_success_diagnostic_trace(safe):
+        return safe
     if re.search(r"\[[^\]]+/[a-z0-9_]+\]", safe, re.IGNORECASE) or safe.startswith("Pixel "):
         return safe
     lower = safe.lower()
@@ -804,6 +803,10 @@ def _patched_config_load(self):
         changed = True
 
     normalized, migrated = _sms_runtime_ext.migrate_performance_config(loaded)
+    normalized = _performance_runtime_ext.normalize_feature_flags(normalized)
+    normalized["dynamic_auth_challenges"] = _as_enabled(
+        raw.get("dynamic_auth_challenges"), True
+    )
     normalized.pop("pixel_upload_enabled", None)
     policy_keys = (
         "performance_policy_version",
@@ -822,6 +825,9 @@ def _patched_config_load(self):
         "sms_provider",
         "sms_api_keys",
         "sms_api_key",
+        "sms_quality_optimization",
+        "adaptive_task_concurrency",
+        "dynamic_auth_challenges",
     )
     if migrated or any(raw.get(key) != normalized.get(key) for key in policy_keys):
         changed = True
@@ -841,6 +847,10 @@ def _patched_config_save(self, values):
         cleaned["email_otp_resend_on_retry"] = _EMAIL_OTP_RESEND_ON_RETRY_DEFAULT
     cleaned, _email_timeout_migrated = _migrate_email_timeout_config(cleaned)
     normalized, _migrated = _sms_runtime_ext.migrate_performance_config(cleaned)
+    normalized = _performance_runtime_ext.normalize_feature_flags(normalized)
+    normalized["dynamic_auth_challenges"] = _as_enabled(
+        cleaned.get("dynamic_auth_challenges"), True
+    )
     saved = dict(_ORIGINAL_CONFIG_SAVE(self, normalized) or {})
     for key in (
         "performance_policy_version",
@@ -859,6 +869,9 @@ def _patched_config_save(self, values):
         "sms_provider",
         "sms_api_keys",
         "sms_api_key",
+        "sms_quality_optimization",
+        "adaptive_task_concurrency",
+        "dynamic_auth_challenges",
     ):
         saved[key] = normalized[key]
     _write_store_config(self, saved)
@@ -915,6 +928,13 @@ def _patched_task_config(self, settings, email, task_id, *, password=""):
             "phone_retry_sleep_seconds": 1,
             "email_otp_verify_attempts": email_attempts,
             "email_otp_resend_on_retry": email_resend,
+            "sms_quality_optimization": _performance_runtime_ext.as_bool(
+                (settings or {}).get("sms_quality_optimization"),
+                True,
+            ),
+            "dynamic_auth_challenges": _as_enabled(
+                (settings or {}).get("dynamic_auth_challenges"), True
+            ),
         }
     )
     risk_status = _PHONE_RISK_STORE.status(email)
@@ -923,8 +943,15 @@ def _patched_task_config(self, settings, email, task_id, *, password=""):
         config["_phone_risk_reason_code"] = str(
             risk_status.get("reason_code") or "oauth_session_invalid"
         )
+    normalized_email = str(email or "").strip().lower()
+    results_value = str((settings or {}).get("results_dir") or "results").strip() or "results"
+    results_dir = Path(results_value)
+    if not results_dir.is_absolute():
+        results_dir = Path(getattr(self, "data_dir", _RUNTIME_DATA_DIR)) / results_dir
+    historical = _mailbox_admin_ext.latest_sub2_accounts_by_email(results_dir).get(
+        normalized_email
+    )
     if relogin:
-        normalized_email = str(email or "").strip().lower()
         binding = next(
             (
                 item
@@ -943,38 +970,24 @@ def _patched_task_config(self, settings, email, task_id, *, password=""):
         config["sms_provider"] = "smsbower"
         config["sms_api_key"] = "relogin-disabled"
         config["sms_api_keys"] = ["relogin-disabled"]
+        remote_id = str(binding.get("sub2api_account_id") or "").strip()
         config["_sub2_update_existing"] = {
-            "account_id": str(binding.get("sub2api_account_id") or "").strip(),
+            "account_id": remote_id,
+            "openai_account_id": _sub2_binding_runtime_ext.historical_openai_account_id(
+                historical, remote_id
+            ),
             "email": normalized_email,
             "status_code": binding.get("status_code"),
             "status_kind": str(binding.get("status_kind") or "").strip().lower(),
         }
-    results_value = str((settings or {}).get("results_dir") or "results").strip() or "results"
-    results_dir = Path(results_value)
-    if not results_dir.is_absolute():
-        results_dir = Path(getattr(self, "data_dir", _RUNTIME_DATA_DIR)) / results_dir
-    historical = _mailbox_admin_ext.latest_sub2_accounts_by_email(results_dir).get(
-        str(email or "").strip().lower()
-    )
-    if historical and not relogin:
-        account_id = str(historical.get("account_id") or "").strip()
-        status_lookup = globals().get("_SUB2_RUNTIME")
-        try:
-            sub2_status = status_lookup.status_for(account_id) if status_lookup is not None else {}
-        except Exception:
-            sub2_status = {}
-        try:
-            status_code = int(sub2_status.get("status_code")) if sub2_status.get("status_code") is not None else None
-        except (TypeError, ValueError):
-            status_code = None
-        status_kind = str(sub2_status.get("kind") or "").strip().lower()
-        if status_code in {401, 404} or status_kind in {"unauthorized", "not_found"}:
-            config["_sub2_update_existing"] = {
-                "account_id": account_id,
-                "email": str(email or "").strip().lower(),
-                "status_code": status_code,
-                "status_kind": status_kind,
-            }
+    elif historical:
+        update_binding = _sub2_binding_runtime_ext.resolve_existing_update_binding(
+            historical,
+            direct_status_lookup=getattr(_OPENAI_DIRECT_RUNTIME, "status_for", None),
+            sub2_status_lookup=getattr(_SUB2_RUNTIME, "status_for", None),
+        )
+        if update_binding:
+            config["_sub2_update_existing"] = {**update_binding, "email": normalized_email}
     for pool in pools:
         provider = str(pool.get("provider") or "")
         if not provider:
@@ -1178,18 +1191,21 @@ def _real_sub2_upload(self, *, credentials, email):
             log_fn=getattr(self, "log_fn", None),
             dependencies=dependencies,
         )
-        if result.get("ok"):
-            for status_lookup in (
-                globals().get("_SUB2_RUNTIME"),
-                globals().get("_OPENAI_DIRECT_RUNTIME"),
-            ):
-                if status_lookup is not None:
-                    try:
-                        status_lookup.clear_status(binding["account_id"])
-                    except Exception:
-                        pass
+        _sub2_binding_runtime_ext.clear_successful_update_statuses(
+            binding,
+            result,
+            sub2_runtime=globals().get("_SUB2_RUNTIME"),
+            direct_runtime=globals().get("_OPENAI_DIRECT_RUNTIME"),
+        )
+        confirmation = _sub2_binding_runtime_ext.confirmed_upload_log(result)
+        if confirmation:
+            _call_log(getattr(self, "log_fn", None), confirmation, "success")
         return result
-    return _ORIGINAL_REAL_SUB2_UPLOAD(self, credentials=credentials, email=email)
+    result = _ORIGINAL_REAL_SUB2_UPLOAD(self, credentials=credentials, email=email)
+    confirmation = _sub2_binding_runtime_ext.confirmed_upload_log(result)
+    if confirmation:
+        _call_log(getattr(self, "log_fn", None), confirmation, "success")
+    return result
 
 
 def _patched_task_state(self, task_id: str, **values):
@@ -1219,10 +1235,62 @@ def _patched_task_state(self, task_id: str, **values):
         if auth_sessions is not None:
             auth_sessions.clear(task_id)
     result = _ORIGINAL_TASK_STATE(self, task_id, **values)
+    batch_manifest = globals().get("_RUN_BATCH_MANIFEST")
+    if batch_manifest is not None and status:
+        try:
+            batch_manifest.observe_task(task_id, status)
+        except KeyError:
+            pass
+        except Exception as exc:
+            try:
+                self._log(
+                    "[运行批次对账/run_batch_manifest] 任务状态落盘失败"
+                    f"（{type(exc).__name__}）",
+                    "error",
+                )
+            except Exception:
+                pass
     if status == "authorizing":
         _TASK_CONTEXT.set(str(task_id or ""))
     _TASK_PROGRESS.observe_task_state(task_id, status)
     if status in _task_progress_ext.TERMINAL_TASK_STATUSES:
+        admission = getattr(self, "task_admission", None)
+        observe_resources = getattr(admission, "observe_resource_ratio", None)
+        if callable(observe_resources):
+            resource_snapshot = _transport_lifecycle_ext.process_resource_snapshot()
+            if resource_snapshot.fd_ratio is not None:
+                observe_resources(resource_snapshot.fd_ratio)
+        # The 83.9% reference is a completed-attempt baseline.  User stops
+        # and scheduler cancellations are not completed attempts and must not
+        # lower the observed success rate.
+        completed_attempt = status not in {
+            "stopped",
+            "stopped_before_start",
+            "cancelled",
+            "canceled",
+        }
+        rollback_event = (
+            _SMS_QUALITY_GUARD.observe_task(
+                task_id,
+                status,
+                values.get("result"),
+            )
+            if completed_attempt
+            else None
+        )
+        if rollback_event is not None:
+            try:
+                metrics = rollback_event.get("metrics") or {}
+                reasons = "、".join(rollback_event.get("reasons") or ())
+                self._log(
+                    "[短信质量优化/sms_quality_optimization] 已自动关闭优化："
+                    f"{reasons or 'rolling_window_regression'}；"
+                    f"窗口 {metrics.get('window_tasks', 0)}，"
+                    f"成功率 {metrics.get('success_rate', 0):.2%}",
+                    "warn",
+                )
+            except Exception:
+                pass
         progress = _TASK_PROGRESS.progress(task_id)
         admission = getattr(self, "task_admission", None)
         if admission is not None:
@@ -1424,9 +1492,26 @@ def _notification_context_for(importer=None):
         return _RUN_NOTIFICATION_CONTEXT
 
 
+def _observe_runtime_fd_pressure(importer):
+    admission = getattr(importer, "task_admission", None)
+    observer = getattr(admission, "observe_resource_ratio", None)
+    if not callable(observer):
+        return None
+    try:
+        ratio = _transport_lifecycle_ext.process_fd_ratio()
+        return observer(ratio) if ratio is not None else None
+    except Exception:
+        return None
+
+
 def _notification_watchdog(importer, context):
     stop_event = context["stop_event"]
-    while not stop_event.wait(10):
+    notification_deadline = time.monotonic() + 10.0
+    while not stop_event.wait(2):
+        _observe_runtime_fd_pressure(importer)
+        if time.monotonic() < notification_deadline:
+            continue
+        notification_deadline = time.monotonic() + 10.0
         try:
             aggregate, last_activity_at = _notification_aggregate(importer, context)
             context["last_activity_at"] = last_activity_at or context.get("last_activity_at", 0)
@@ -1461,7 +1546,11 @@ def _begin_notification_run(importer, settings):
         "target": _int_value((settings or {}).get("target_count"), 1, minimum=1),
         "stop_event": threading.Event(),
     }
-    context["service"].start_run(context["run_id"], {"total": 0, "pending": context["target"]})
+    context["service"].start_run(
+        context["run_id"],
+        {"total": 0, "pending": context["target"]},
+        batch_id=context["batch_id"],
+    )
     importer._gptphone_notification_context = context
     with _RUN_NOTIFICATION_LOCK:
         _RUN_NOTIFICATION_CONTEXT = context
@@ -1489,14 +1578,35 @@ def _patched_importer_start(self, settings):
     internal["auth_session_retries"] = additional_retries + 1
     already_running = bool(self.status(internal).get("running"))
     task_admission = getattr(self, "task_admission", None)
+    node_phase_gate = None
     if not already_running:
-        task_limit = _int_value(internal.get("concurrency"), 5, minimum=1, maximum=8)
+        _SMS_QUALITY_GUARD.begin_run(
+            _performance_runtime_ext.as_bool(
+                internal.get("sms_quality_optimization"),
+                True,
+            ),
+            baseline=internal.get("sms_optimization_baseline"),
+        )
+        admission_policy = _performance_runtime_ext.resolve_task_admission(
+            internal.get("concurrency"),
+            run_mode=internal.get("run_mode"),
+            adaptive_enabled=internal.get("adaptive_task_concurrency"),
+        )
+        task_limit = admission_policy.base_limit
         internal["concurrency"] = task_limit
         node_limit = _int_value(
             internal.get("node_concurrency"),
             task_limit,
             minimum=1,
             maximum=task_limit,
+        )
+        phase_adaptive = admission_policy.adaptive and node_limit == task_limit
+        phase_ceiling = (
+            admission_policy.restore_ceiling if phase_adaptive else node_limit
+        )
+        node_phase_gate = _phase_concurrency_ext.AdjustablePhaseGate(
+            node_limit,
+            ceiling=phase_ceiling,
         )
         _PROTOCOL_GATE.begin_run(min(task_limit, node_limit))
         _SMS_PHONE_GATE.configure(
@@ -1510,58 +1620,38 @@ def _patched_importer_start(self, settings):
         _SMS_PHONE_GATE.begin_run()
 
         def log_task_limit_change(event):
-            value = dict(event or {})
-            old_limit = _int_value(value.get("old_limit"), 0, minimum=0)
-            new_limit = _int_value(value.get("new_limit"), 0, minimum=0)
-            if old_limit <= 0 or new_limit <= 0:
+            if phase_adaptive:
+                try:
+                    phase_limit = max(
+                        1,
+                        min(phase_ceiling, int((event or {}).get("new_limit") or task_limit)),
+                    )
+                    phase_reason = str((event or {}).get("reason") or "task_admission")
+                    node_phase_gate.set_capacity(phase_limit, reason=phase_reason)
+                    _PROTOCOL_GATE.synchronize_capacity(phase_limit)
+                except Exception:
+                    # Capacity observability must not break task state updates.
+                    pass
+            formatted = _performance_runtime_ext.format_task_admission_event(event)
+            if formatted is None:
                 return
-            kind = str(value.get("kind") or "")
-            if kind == "restored":
-                message = f"[任务并发/registration_admission] 连续成功，任务并发 {old_limit} -> {new_limit}"
-                level = "info"
-            elif kind == "burst_activated":
-                hold_seconds = _int_value(value.get("hold_seconds"), 90, minimum=0)
-                message = (
-                    "[任务并发/registration_admission] 快速封禁达到阈值，"
-                    f"临时任务并发 {old_limit} -> {new_limit}，保持 {hold_seconds} 秒"
-                )
-                level = "info"
-            elif kind == "burst_expired":
-                message = (
-                    "[任务并发/registration_admission] 快速封禁升档到期，"
-                    f"任务并发 {old_limit} -> {new_limit}"
-                )
-                level = "info"
-            elif kind == "burst_revoked":
-                pause_seconds = _int_value(value.get("pause_seconds"), 15, minimum=0)
-                message = (
-                    "[任务并发/registration_admission] 基础设施强压力，撤销快速升档，"
-                    f"任务并发 {old_limit} -> {new_limit}，暂停新任务 {pause_seconds} 秒"
-                )
-                level = "warn"
-            else:
-                pause_seconds = _int_value(value.get("pause_seconds"), 15, minimum=0)
-                message = (
-                    f"[任务并发/registration_admission] 基础设施压力达到阈值，"
-                    f"任务并发 {old_limit} -> {new_limit}，暂停新任务 {pause_seconds} 秒"
-                )
-                level = "warn"
+            message, level = formatted
             try:
                 self._log(message, level)
             except Exception:
                 pass
 
-        run_mode = str(internal.get("run_mode") or "register").strip().lower()
-        restore_ceiling = task_limit if run_mode == "relogin" else 8
-        absolute_ceiling = (
-            12
-            if run_mode == "register" and task_limit == 8
-            else restore_ceiling
-        )
         task_admission = _adaptive_concurrency_ext.AdaptiveConcurrencyGate(
             task_limit,
-            ceiling=absolute_ceiling,
-            restore_ceiling=restore_ceiling,
+            ceiling=admission_policy.absolute_ceiling,
+            restore_ceiling=admission_policy.restore_ceiling,
+            # With the feature switch off this gate remains only as the
+            # scheduler's compatibility wrapper.  It may pause for pressure,
+            # but it must not alter the configured fixed task concurrency.
+            minimum=(min(4, task_limit) if admission_policy.adaptive else task_limit),
+            immediate_reset_limit=(task_limit if admission_policy.adaptive else None),
+            adaptive_enabled=admission_policy.adaptive,
+            require_backlog_for_restore=True,
             on_change=log_task_limit_change,
         )
         _CURRENT_TASK_ADMISSION = task_admission
@@ -1580,6 +1670,10 @@ def _patched_importer_start(self, settings):
         if row_id and line_no > 0:
             selection.add((row_id, line_no))
     selection_token = _MAILBOX_RUN_SELECTION.set(frozenset(selection))
+    priority_token = _MAILBOX_NEXT_BATCH_PRIORITY_ACTIVE.set(
+        not selection
+        and str(internal.get("run_mode") or "register").strip().lower() != "relogin"
+    )
     lease_filter_token = None
     if str(internal.get("run_mode") or "").strip().lower() != "relogin":
         lease_filter_token = _MAILBOX_LEASE_FILTER_ACTIVE.set(True)
@@ -1591,6 +1685,17 @@ def _patched_importer_start(self, settings):
             lambda elapsed: _record_task_segment(
                 _TASK_CONTEXT.get(),
                 segment_code,
+                elapsed,
+            ),
+        )
+
+    def observed_node_phase_gate(limit):
+        gate = node_phase_gate or _runtime.AutoEmailPhaseGate(limit)
+        return _importer_scheduler_ext.ObservedPhaseGate(
+            gate,
+            lambda elapsed: _record_task_segment(
+                _TASK_CONTEXT.get(),
+                "node_slot_waiting",
                 elapsed,
             ),
         )
@@ -1613,13 +1718,16 @@ def _patched_importer_start(self, settings):
                 limit,
                 "email_slot_waiting",
             ),
-            node_phase_gate_factory=lambda limit: observed_phase_gate(
-                limit,
-                "node_slot_waiting",
-            ),
+            node_phase_gate_factory=observed_node_phase_gate,
             on_task_started=task_started,
+            batch_manifest=_RUN_BATCH_MANIFEST,
+            batch_reserve=_reserve_mailbox_batch,
         )
         if notification_context is not None:
+            with self.lock:
+                actual_target = len(self.tasks)
+            if actual_target > 0:
+                notification_context["target"] = actual_target
             aggregate, last_activity_at = _notification_aggregate(self, notification_context)
             notification_context["last_activity_at"] = last_activity_at or notification_context["started_at"]
             notification_context["service"].observe_run(notification_context["run_id"], aggregate)
@@ -1645,6 +1753,7 @@ def _patched_importer_start(self, settings):
     finally:
         if lease_filter_token is not None:
             _MAILBOX_LEASE_FILTER_ACTIVE.reset(lease_filter_token)
+        _MAILBOX_NEXT_BATCH_PRIORITY_ACTIVE.reset(priority_token)
         _MAILBOX_RUN_SELECTION.reset(selection_token)
 
 
@@ -1656,10 +1765,13 @@ def _patched_importer_run_one(
     assigned_task_id="",
 ):
     run_mode = str((settings or {}).get("run_mode") or "register").strip().lower()
+    task_id = str(assigned_task_id or "").strip()
+    if not task_id:
+        task_id = f"T{int(ordinal):03d}-{uuid.uuid4().hex[:6]}"
     _MAILBOX_TOTP_SECRET_CONTEXT.set("")
     _TOTP_PATCHES.reset_task_state()
     token = _RUN_MODE_CONTEXT.set(run_mode)
-    task_token = _TASK_CONTEXT.set(str(assigned_task_id or ""))
+    task_token = _TASK_CONTEXT.set(task_id)
     admission_token = _TASK_ADMISSION_CONTEXT.set(getattr(self, "task_admission", None))
     try:
         return _ORIGINAL_IMPORTER_RUN_ONE(
@@ -1667,9 +1779,21 @@ def _patched_importer_run_one(
             settings,
             ordinal,
             assigned_entry,
-            assigned_task_id,
+            task_id,
         )
     finally:
+        transport = _transport_for_task(task_id)
+        challenge_runtime = globals().get("_auth_challenge_runtime_ext")
+        clear_challenge = getattr(challenge_runtime, "clear_transport_context", None)
+        if callable(clear_challenge) and transport is not None:
+            try:
+                clear_challenge(transport)
+            except Exception:
+                pass
+        if not _SMS_TRANSPORT_REGISTRY.close_task(task_id):
+            _SMS_TRANSPORT_REGISTRY.close_task(task_id)
+        _AUTH_SESSIONS.clear(task_id)
+        _SMS_PROVIDER_REGISTRY.clear_task_attempt_counts(task_id)
         _MAILBOX_TOTP_SECRET_CONTEXT.set("")
         _TOTP_PATCHES.reset_task_state()
         _TASK_ADMISSION_CONTEXT.reset(admission_token)
@@ -1688,6 +1812,69 @@ def _patched_importer_stop(self):
     return _importer_scheduler_ext.stop_bounded_importer(self)
 
 
+def _unfinished_batch_task_ids(importer):
+    terminal = set(_task_progress_ext.TERMINAL_TASK_STATUSES)
+    rows = _notification_task_snapshot(importer)
+    rows.sort(key=lambda task: _int_value(task.get("ordinal"), 0, minimum=0))
+    return tuple(
+        str(task.get("task_id") or "").strip()
+        for task in rows
+        if str(task.get("task_id") or "").strip()
+        and str(task.get("status") or "").strip().lower() not in terminal
+    )
+
+
+def _reconcile_finished_batch(importer, context):
+    manifest = getattr(importer, "_gptphone_batch_manifest", None)
+    batch_id = str((context or {}).get("batch_id") or "").strip()
+    if manifest is None or not batch_id:
+        return None
+    with importer.lock:
+        tasks = copy.deepcopy(dict(importer.tasks))
+    summary = manifest.finalize(
+        batch_id,
+        tasks=tasks,
+        reason="watch_returned_with_unfinished_tasks",
+    )
+    terminal = set(_task_progress_ext.TERMINAL_TASK_STATUSES)
+    reconciled = []
+    for member in summary.get("members") or ():
+        if not isinstance(member, dict) or not member.get("reconciled_missing"):
+            continue
+        task_id = str(member.get("task_id") or "").strip()
+        current = tasks.get(task_id) if isinstance(tasks.get(task_id), dict) else {}
+        if not task_id or str(current.get("status") or "").strip().lower() in terminal:
+            continue
+        cause = "任务未产生终态，已由批次清单补记失败"
+        failure = _run_batch_runtime_ext.reconciliation_failure(
+            "batch_member_missing_terminal",
+            cause,
+        )
+        result = dict(current.get("result") or {})
+        result.update(
+            batch_id=batch_id,
+            reconciled_by_batch_manifest=True,
+            reconcile_reason="watch_returned_with_unfinished_tasks",
+            failure=failure,
+        )
+        importer._task_state(
+            task_id,
+            status="failed",
+            error=failure["public_message"],
+            technical_error=failure["technical_summary"],
+            failure=failure,
+            result=result,
+        )
+        reconciled.append(task_id)
+    if reconciled:
+        importer._log(
+            "[运行批次对账/batch_member_missing_terminal] "
+            f"已补写 {len(reconciled)} 个缺失终态任务：{', '.join(reconciled)}",
+            "warn",
+        )
+    return summary
+
+
 def _patched_importer_watch(self):
     context = _notification_context_for(self)
     watch_failed = False
@@ -1698,24 +1885,15 @@ def _patched_importer_watch(self):
         raise
     finally:
         if isinstance(context, dict):
-            context["finished_at"] = int(time.time())
-            context["stop_event"].set()
-            try:
-                aggregate, last_activity_at = _notification_aggregate(self, context, finished=True)
-                context["last_activity_at"] = last_activity_at or context.get("last_activity_at", 0)
-                completed = not watch_failed and not aggregate.has_unfinished_work
-                context["service"].observe_run(
-                    context["run_id"],
-                    aggregate,
-                    sms_exhausted=_SMS_PROVIDER_REGISTRY.is_exhausted(),
-                )
-                context["service"].finalize_run(
-                    context["run_id"],
-                    aggregate,
-                    completed=completed,
-                )
-            except Exception:
-                pass
+            _importer_watch_runtime_ext.finalize_importer_watch(
+                self,
+                context,
+                watch_failed=watch_failed,
+                aggregate_fn=_notification_aggregate,
+                unfinished_fn=_unfinished_batch_task_ids,
+                reconcile_fn=_reconcile_finished_batch,
+                sms_exhausted_fn=_SMS_PROVIDER_REGISTRY.is_exhausted,
+            )
         admission = getattr(self, "task_admission", None)
         if admission is not None:
             try:
@@ -1732,6 +1910,25 @@ def _patched_importer_watch(self):
                 )
             except Exception:
                 pass
+        try:
+            with self.lock:
+                active_task_ids = set(getattr(self, "active_task_ids", set()) or ())
+                futures = list(getattr(self, "futures", ()) or ())
+            futures_done = all(
+                callable(getattr(future, "done", None)) and future.done()
+                for future in futures
+            )
+            if not active_task_ids and futures_done:
+                _SMS_TRANSPORT_REGISTRY.clear()
+                pending = _SMS_TRANSPORT_REGISTRY.snapshot().get("pending_cleanup", 0)
+                if pending:
+                    self._log(
+                        "[运行结束清理/transport_cleanup] "
+                        f"仍有 {pending} 个 Transport 等待下次安全重试",
+                        "warn",
+                    )
+        except Exception:
+            pass
 
 
 def _patched_pre_auth_session_retryable(result):
@@ -1765,6 +1962,10 @@ def _as_enabled(value, default=True):
 
 
 def _patched_persist_result(self, settings, task_id, entry, result, *, error="", status="failed"):
+    persisted_settings = _result_persistence_runtime_ext.settings_with_absolute_results_dir(
+        settings,
+        self.data_dir,
+    )
     if status == "success":
         _TASK_PROGRESS.set_stage(task_id, "finalizing_save")
     failure = None
@@ -1809,7 +2010,7 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
     try:
         persisted = _ORIGINAL_PERSIST_RESULT(
             self,
-            settings,
+            persisted_settings,
             task_id,
             entry,
             result,
@@ -1831,86 +2032,35 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
     if isinstance(timing_snapshot, dict):
         if isinstance(result, dict):
             result["timing"] = copy.deepcopy(timing_snapshot)
+    metadata_persisted = _result_persistence_runtime_ext.apply_result_json_metadata(
+        persisted_settings,
+        self.data_dir,
+        task_id,
+        getattr(entry, "email", ""),
+        timing=timing_snapshot if isinstance(timing_snapshot, dict) else None,
+        batch_id=batch_id,
+        batch_started_at=batch_started_at,
+        failure=failure,
+        status=status,
+        account_banned_detail=_ACCOUNT_BANNED_DETAIL_CONTEXT.get(""),
+        account_banned_message=_runtime_policy_ext.ACCOUNT_BANNED_MESSAGE,
+        secrets=secrets,
+        atomic_write_json=_runtime.atomic_write_json,
+        sanitize_failure_detail=_error_observability_ext.sanitize_failure_detail,
+        logger=getattr(self, "_log", None),
+    )
+    if batch_id and metadata_persisted:
         try:
-            root = Path(
-                str((settings or {}).get("results_dir") or "").strip()
-                or Path(self.data_dir) / "results"
-            )
-            target = root / f"{task_id}_{str(getattr(entry, 'email', '') or '').replace('@', '_at_')}.json"
-            payload = json.loads(target.read_text(encoding="utf-8"))
-            if isinstance(payload, dict):
-                payload["timing"] = copy.deepcopy(timing_snapshot)
-                payload_result = payload.get("result")
-                if isinstance(payload_result, dict):
-                    payload_result["timing"] = copy.deepcopy(timing_snapshot)
-                _runtime.atomic_write_json(target, payload)
-        except Exception:
+            _RUN_BATCH_MANIFEST.mark_persisted(batch_id, task_id, status)
+        except KeyError:
             pass
-    if batch_id:
-        try:
-            root = Path(
-                str((settings or {}).get("results_dir") or "").strip()
-                or Path(self.data_dir) / "results"
-            )
-            target = root / f"{task_id}_{str(getattr(entry, 'email', '') or '').replace('@', '_at_')}.json"
-            payload = json.loads(target.read_text(encoding="utf-8"))
-            if isinstance(payload, dict):
-                payload["batch_id"] = batch_id
-                payload["batch_started_at"] = batch_started_at
-                payload_result = payload.get("result")
-                if isinstance(payload_result, dict):
-                    payload_result["batch_id"] = batch_id
-                    payload_result["batch_started_at"] = batch_started_at
-                _runtime.atomic_write_json(target, payload)
-        except Exception:
-            pass
-    if failure is not None:
-        try:
-            root = Path(
-                str((settings or {}).get("results_dir") or "").strip()
-                or Path(self.data_dir) / "results"
-            )
-            target = root / f"{task_id}_{str(getattr(entry, 'email', '') or '').replace('@', '_at_')}.json"
-            payload = json.loads(target.read_text(encoding="utf-8"))
-            if isinstance(payload, dict):
-                payload["failure"] = failure
-                payload["error"] = failure["public_message"]
-                payload["technical_error"] = failure["technical_summary"]
-                payload_result = payload.get("result")
-                if isinstance(payload_result, dict):
-                    payload_result["failure"] = failure
-                _runtime.atomic_write_json(target, payload)
         except Exception as exc:
             try:
-                detail = _error_observability_ext.sanitize_failure_detail(exc, secrets=secrets)
                 self._log(
-                    f"{task_id} [保存任务结果/finalizing_save] 结构化诊断写入失败：{detail or '未返回错误详情'}",
+                    "[运行批次对账/run_batch_manifest] 结果持久化计数更新失败"
+                    f"（{type(exc).__name__}）",
                     "error",
                 )
-            except Exception:
-                pass
-    if status == "account_banned":
-        detail = _ACCOUNT_BANNED_DETAIL_CONTEXT.get("")
-        if detail:
-            try:
-                root = Path(
-                    str((settings or {}).get("results_dir") or "").strip()
-                    or Path(self.data_dir) / "results"
-                )
-                target = root / f"{task_id}_{str(getattr(entry, 'email', '') or '').replace('@', '_at_')}.json"
-                payload = json.loads(target.read_text(encoding="utf-8"))
-                if isinstance(payload, dict):
-                    payload["error"] = _runtime_policy_ext.ACCOUNT_BANNED_MESSAGE
-                    payload["technical_error"] = _runtime_policy_ext.ACCOUNT_BANNED_MESSAGE
-                    payload["account_banned_local_diagnostic"] = (
-                        _error_observability_ext.sanitize_failure_detail(
-                            detail,
-                            secrets=secrets,
-                            limit=1000,
-                        )
-                        or _runtime_policy_ext.ACCOUNT_BANNED_MESSAGE
-                    )
-                    _runtime.atomic_write_json(target, payload)
             except Exception:
                 pass
     return persisted
@@ -2313,12 +2463,14 @@ _SMS_WEB = _sms_web_ext.SmsWebIntegration(
     blocked_routes=_SMS_BLOCKED_ROUTES,
     min_price_default=_SMS_MIN_PRICE_DEFAULT,
     max_price_default=_SMS_MAX_PRICE_DEFAULT,
+    max_price_hard_limit=_SMS_MAX_PRICE_HARD_LIMIT,
     sms_keys_from_config=lambda value: _sms_keys_from_config(value),
     as_enabled=_as_enabled,
     safe_error=_safe_runtime_error,
     provider_registry=_SMS_PROVIDER_REGISTRY,
     phone_context_preflight=_preflight_sms_phone_context,
     cleanup_queue=_SMS_CLEANUP_QUEUE,
+    optimization_guard=_SMS_QUALITY_GUARD,
 )
 _AUTH_SESSIONS = _auth_session_runtime_ext.AuthSessionRegistry()
 _AUTH_SESSIONS.set_cancel_sms(_SMS_WEB.cancel_active_lease)
@@ -2462,11 +2614,14 @@ def _observe_auth_step(transport, response, stage):
 
 def _real_submit_email_identifier(self, email):
     response = _ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER(self, email)
+    _observe_auth_step(self, response, "email_identifier")
     if (
         not _codex_oauth_chain._is_success_response(response)
         or _codex_oauth_chain._page_type(response) != "email_otp_verification"
     ):
-        return response
+        return _auth_challenge_runtime_ext.continue_if_needed(
+            self, response, origin="submit_email"
+        )
 
     # The successful browser trace explicitly resends after reaching the OTP
     # page. Merely receiving that page does not prove that an email was sent.
@@ -2498,19 +2653,25 @@ def _real_submit_email_identifier(self, email):
         "  [邮箱验证码发送/email_code_waiting] 首次邮箱验证码发送接口已确认",
         "info",
     )
-    return response
+    return _auth_challenge_runtime_ext.continue_if_needed(
+        self, response, origin="submit_email"
+    )
 
 
 def _real_verify_password(self, password):
     response = _TOTP_PATCHES.verify_password(self, password)
     _observe_auth_step(self, response, "email_password")
-    return response
+    return _auth_challenge_runtime_ext.continue_if_needed(
+        self, response, origin="password"
+    )
 
 
 def _real_verify_mfa_otp(self, code):
     response = _TOTP_PATCHES.verify_mfa_otp(self, code)
     _observe_auth_step(self, response, "mfa_otp_verifying")
-    return response
+    return _auth_challenge_runtime_ext.continue_if_needed(
+        self, response, origin="mfa"
+    )
 
 
 class _ReloginPhoneOtpProvider:
@@ -2581,6 +2742,17 @@ def _run_codex_after_registration(
     if transport is not None:
         transport.config = runtime_config
         transport.account_email = runtime_config["_auth_account_email"]
+        _auth_challenge_runtime_ext.bind_transport_context(
+            transport,
+            account_email=account_email,
+            password=password,
+            email_otp_provider=email_otp_provider,
+            config=runtime_config,
+            log_fn=log_fn,
+            page_type_fn=_codex_oauth_chain._page_type,
+            continue_url_fn=_codex_oauth_chain._continue_url,
+            success_fn=_codex_oauth_chain._is_success_response,
+        )
         existing_context = getattr(transport, "_gptphone_request_context", None)
         expected_task_id = str(runtime_config.get("sms_task_id") or runtime_config.get("run_id") or "")
         request_context = _auth_request_runtime_ext.ensure_transport_context(
@@ -2726,11 +2898,9 @@ def _run_codex_after_registration(
                     )
     finally:
         _ACTIVE_SMS_TRANSPORT.reset(transport_token)
-        if transport is not None:
-            _unregister_sms_transport(
-                _transport_task_id(transport),
-                transport,
-            )
+        if task_id and _TASK_CONTEXT.get() != task_id:
+            _SMS_TRANSPORT_REGISTRY.close_task(task_id)
+            _AUTH_SESSIONS.clear(task_id)
     if isinstance(result, dict) and _is_auth_session_reset_failure(result):
         result = dict(result)
         result["resume_stage"] = "fresh_oauth"
@@ -2783,15 +2953,73 @@ def _mailbox_entries_for_run_selection(pool_self):
             for entry in entries
             if int(getattr(entry, "line_no", 0) or 0) in selected_physical_lines
         ]
+    elif _MAILBOX_NEXT_BATCH_PRIORITY_ACTIVE.get():
+        entries = _MAILBOX_NEXT_BATCH_PRIORITY.prioritize(entries)
     return entries, errors
 
 
 def _mailbox_lease_for_run_selection(self, *, lease_seconds=1800):
     token = _MAILBOX_LEASE_FILTER_ACTIVE.set(True)
     try:
-        return _ORIGINAL_POOL_LEASE(self, lease_seconds=lease_seconds)
+        entry = _ORIGINAL_POOL_LEASE(self, lease_seconds=lease_seconds)
+        if _MAILBOX_NEXT_BATCH_PRIORITY_ACTIVE.get():
+            _MAILBOX_NEXT_BATCH_PRIORITY.consume(getattr(entry, "source_row", ""))
+        return entry
     finally:
         _MAILBOX_LEASE_FILTER_ACTIVE.reset(token)
+
+
+def _reserve_mailbox_batch(
+    pool,
+    target,
+    *,
+    lease_seconds=3600,
+    before_reserve=None,
+    after_reserve=None,
+    on_reserve_failed=None,
+    lease_owner_batch_id="",
+):
+    def committed(entries):
+        if callable(after_reserve):
+            after_reserve(entries)
+        if _MAILBOX_NEXT_BATCH_PRIORITY_ACTIVE.get():
+            for entry in entries:
+                try:
+                    _MAILBOX_NEXT_BATCH_PRIORITY.consume(
+                        getattr(entry, "source_row", "")
+                    )
+                except Exception:
+                    pass
+
+    entries = _mailbox_priority_runtime_ext.reserve_available_batch(
+        pool,
+        target,
+        lease_seconds=lease_seconds,
+        before_reserve=before_reserve,
+        after_reserve=committed,
+        on_reserve_failed=on_reserve_failed,
+        mailbox_error_type=_runtime.MailboxPoolError,
+        lease_owner_batch_id=lease_owner_batch_id,
+    )
+    return entries
+
+
+def _release_recovered_batch_leases(
+    batch_id,
+    members,
+    *,
+    pool_path=None,
+    state_path=None,
+):
+    pool = _runtime.MailboxPool(
+        Path(pool_path) if pool_path else _RUNTIME_DATA_DIR / "mailbox_pool.txt",
+        Path(state_path) if state_path else _RUNTIME_DATA_DIR / "mailbox_pool_state.json",
+    )
+    return _mailbox_priority_runtime_ext.release_owned_batch_leases(
+        pool,
+        batch_id,
+        members,
+    )
 
 
 def _mailbox_restore_preserving_relogin(self, entry, *, reason="manual_restore"):
@@ -3151,11 +3379,15 @@ def _real_verify_email_otp(self, code):
         page_type = ""
     if page_type not in {"mfa_otp", "mfa_challenge", "mfa_otp_verification"} or not secret:
         _observe_auth_step(self, response, "email_code_verifying")
-        return response
+        return _auth_challenge_runtime_ext.continue_if_needed(
+            self, response, origin="email_otp"
+        )
     factor_id = _mfa_factor_id_from_response(response)
     if not factor_id:
         _observe_auth_step(self, response, "email_code_verifying")
-        return response
+        return _auth_challenge_runtime_ext.continue_if_needed(
+            self, response, origin="email_otp"
+        )
     _call_log(
         getattr(self, "log_fn", None),
         "  [Codex] 邮箱验证码后遇到 MFA，正在验证 2FA 动态码",
@@ -3173,7 +3405,9 @@ def _real_verify_email_otp(self, code):
             timeout=30,
         )
     _observe_auth_step(self, response, "mfa_otp_verifying")
-    return response
+    return _auth_challenge_runtime_ext.continue_if_needed(
+        self, response, origin="email_otp"
+    )
 
 
 _clamp_sms_max_price = _SMS_WEB.clamp_max_price
@@ -3252,6 +3486,7 @@ _legacy_ui_ext.apply_legacy_ui_overrides(
     _module,
     min_price_default=_SMS_MIN_PRICE_DEFAULT,
     max_price_default=_SMS_MAX_PRICE_DEFAULT,
+    max_price_hard_limit=_SMS_MAX_PRICE_HARD_LIMIT,
     priority_countries_text=_SMS_PRIORITY_COUNTRIES_TEXT,
 )
 
@@ -3318,6 +3553,14 @@ def _write_local_config(data):
 _PIXEL_CLIENT = _pixel_runtime_ext.PixelProxyClient(
     os.environ.get("GPTPHONE_PIXEL_PROXY_URL")
     or _pixel_runtime_ext.DEFAULT_PIXEL_PROXY_BASE_URL
+)
+_MAILBOX_NEXT_BATCH_PRIORITY = (
+    _mailbox_priority_runtime_ext.MailboxNextBatchPriorityStore(_RUNTIME_DATA_DIR)
+)
+_RUN_BATCH_MANIFEST = _run_batch_runtime_ext.RunBatchManifestStore(
+    _RUNTIME_DATA_DIR,
+    recover_pending=True,
+    lease_releaser=_release_recovered_batch_leases,
 )
 _PIXEL_UPLOAD_QUEUE = _pixel_runtime_ext.PixelUploadQueue(
     _RUNTIME_DATA_DIR,
@@ -3462,381 +3705,60 @@ def _resolve_sms_keys(data, existing=None, _skip_pools=False):
     return previous
 
 
+_PUBLIC_STATE = _public_state_runtime_ext.PublicStateRuntime(
+    clean=_module._clean,
+    secret_mask=_SECRET_MASK,
+    sms_runtime=_sms_runtime_ext,
+    sms_provider_pools_from_config=lambda data: _sms_provider_pools_from_config(data),
+    sms_keys_from_config=lambda data: _sms_keys_from_config(data),
+    read_local_config=lambda: _read_local_config(),
+    mailbox_admin=_mailbox_admin_ext,
+    error_observability=_error_observability_ext,
+    task_progress_runtime=_task_progress_ext,
+    sms_provider_registry_getter=lambda: globals().get("_SMS_PROVIDER_REGISTRY"),
+    sms_alerts_getter=lambda: globals().get("_SMS_ALERTS"),
+    task_progress_getter=lambda: globals().get("_TASK_PROGRESS"),
+    current_task_admission_getter=lambda: globals().get("_CURRENT_TASK_ADMISSION"),
+    protocol_gate_getter=lambda: globals().get("_PROTOCOL_GATE"),
+    sms_phone_gate_getter=lambda: globals().get("_SMS_PHONE_GATE"),
+    sms_optimization_guard_getter=lambda: globals().get("_SMS_QUALITY_GUARD"),
+    process_resource_snapshot_getter=_transport_lifecycle_ext.process_resource_snapshot,
+    transport_registry_getter=lambda: _SMS_TRANSPORT_REGISTRY,
+    notification_context_for=lambda: _notification_context_for(),
+    known_task_failure=lambda task_id: _known_task_failure(task_id),
+    historical_success_reasons=_HISTORICAL_SUCCESS_REASONS,
+    task_id_log_re=_TASK_ID_LOG_RE,
+    public_log_input_limit=_PUBLIC_LOG_INPUT_LIMIT,
+    masked_local_config_view=lambda data: _masked_local_config(data),
+    public_task_view=lambda task: _public_task(task),
+    runtime_summary_view=lambda tasks: _runtime_summary(tasks),
+    notification_public_status_view=lambda: _notification_public_status(),
+    public_logs_view=lambda logs, tasks: _public_logs(logs, tasks),
+)
+
+
 def _masked_local_config(data):
-    value = json.loads(json.dumps(data if isinstance(data, dict) else {}))
-    value.pop("nvtoken", None)
-    value.pop("nvtoken_upload", None)
-    value.pop("pixel_upload_enabled", None)
-    sub2api = dict(value.get("sub2api") or {})
-    nv_import = dict(value.get("nv_import") or {})
-    email_notification = dict(value.get("email_notification") or {})
-    online_mailbox = dict(value.get("online_mailbox") or {})
-    sms_pools = _sms_provider_pools_from_config(value)
-    sms_keys = _sms_runtime_ext.legacy_sms_provider_keys(
-        sms_pools,
-        value.get("sms_provider") or "smsbower",
-    )
-    value["sms_provider_pools"] = [
-        {
-            **pool,
-            "api_keys": [_SECRET_MASK for _key in pool.get("api_keys") or []],
-        }
-        for pool in sms_pools
-    ]
-    value["sms_api_keys"] = [_SECRET_MASK for _key in sms_keys]
-    value.pop("sms_api_key", None)
-    if "gptmail_api_key" in value:
-        value["gptmail_api_key"] = _mask_secret(value.get("gptmail_api_key"))
-    if "proxy" in value:
-        value["proxy"] = _mask_secret(value.get("proxy"))
-    if "password" in value:
-        value["password"] = _mask_secret(value.get("password"))
-    if sub2api:
-        sub2api["password"] = _mask_secret(sub2api.get("password"))
-        value["sub2api"] = sub2api
-    if nv_import:
-        nv_import["api_key"] = _mask_secret(nv_import.get("api_key"))
-        value["nv_import"] = nv_import
-    if email_notification:
-        email_notification["password"] = _mask_secret(email_notification.get("password"))
-        value["email_notification"] = email_notification
-    if online_mailbox:
-        online_mailbox["api_token"] = _mask_secret(online_mailbox.get("api_token"))
-        value["online_mailbox"] = online_mailbox
-    return value
+    return _PUBLIC_STATE.masked_local_config(data)
 
 
 def _public_task(task):
-    if not isinstance(task, dict):
-        return {}
-    source_row = str(task.get("source_row") or "")
-    try:
-        secrets = _mailbox_admin_ext.MailboxAdminService._row_secrets(source_row)
-    except Exception:
-        secrets = (source_row,) if source_row else ()
-
-    def safe_text(value):
-        redacted = _mailbox_admin_ext.redact_mailbox_credentials(value, secrets)
-        return _error_observability_ext.sanitize_failure_detail(
-            _SMS_PROVIDER_REGISTRY.safe_error(redacted),
-            secrets=secrets,
-        )
-
-    result = task.get("result") if isinstance(task.get("result"), dict) else {}
-    raw_failure = task.get("failure")
-    if not isinstance(raw_failure, dict):
-        raw_failure = result.get("failure")
-    failure = _error_observability_ext.public_failure(raw_failure)
-    task_status = str(task.get("status") or "").strip().lower()
-    if isinstance(failure, dict) and failure.get("node_code") == "oauth_create_node":
-        reclassified = _error_observability_ext.classify_failure(
-            result,
-            task.get("technical_error")
-            or task.get("error")
-            or task.get("reason")
-            or failure.get("technical_summary")
-            or "",
-            task.get("progress"),
-            status=task_status,
-            secrets=secrets,
-        )
-        if reclassified.get("node_code") != "oauth_create_node":
-            failure = reclassified
-    failure_statuses = set(_task_progress_ext.TERMINAL_TASK_STATUSES).difference(
-        {"success", "stopped", "stopped_before_start"}
-    )
-    if failure is None and task_status in failure_statuses:
-        failure = _error_observability_ext.classify_failure(
-            result,
-            safe_text(task.get("technical_error") or task.get("error") or task.get("reason") or ""),
-            task.get("progress"),
-            status=task_status,
-            secrets=secrets,
-        )
-    if failure is not None:
-        failure["public_message"] = safe_text(failure.get("public_message"))
-        failure["technical_summary"] = safe_text(failure.get("technical_summary"))
-    safe_result = {
-        key: copy.deepcopy(result[key])
-        for key in (
-            "sms_cost_usd",
-            "sms_cost_cny",
-            "sms_exchange_rate",
-            "sms_exchange_date",
-            "timing",
-            "run_mode",
-            "phone_risk_retry",
-            "phone_risk_label",
-            "phone_risk_reason_code",
-        )
-        if key in result
-    }
-    progress = task.get("progress") if isinstance(task.get("progress"), dict) else None
-    safe_progress = None
-    if progress is not None:
-        safe_progress = {
-            key: copy.deepcopy(progress[key])
-            for key in ("code", "label", "group", "entered_at", "finished_at", "timing")
-            if key in progress
-        }
-    public = {
-        key: copy.deepcopy(task[key])
-        for key in (
-            "task_id", "ordinal", "status", "created_at", "updated_at",
-            "batch_id", "batch_started_at", "run_mode",
-        )
-        if key in task
-    }
-    public_email = _mailbox_admin_ext.public_task_account(task, source_row)
-    if public_email:
-        public["email"] = public_email
-        public["account"] = public_email
-    if failure is not None:
-        public["failure"] = failure
-        public["error"] = failure["public_message"]
-    elif task.get("error"):
-        value = str(task.get("error") or "").strip().lower()
-        if value not in _HISTORICAL_SUCCESS_REASONS:
-            public["error"] = safe_text(task.get("error"))
-    if task.get("reason"):
-        value = str(task.get("reason") or "").strip().lower()
-        if value not in _HISTORICAL_SUCCESS_REASONS:
-            public["reason"] = safe_text(task.get("reason"))
-    if safe_result:
-        public["result"] = safe_result
-    if safe_progress is not None:
-        public["progress"] = safe_progress
-    return public
+    return _PUBLIC_STATE.public_task(task)
 
 
 def _runtime_summary(tasks):
-    rows = [task for task in tasks if isinstance(task, dict)]
-    context = _notification_context_for()
-    value = context if isinstance(context, dict) else {}
-    batch_id = str(value.get("batch_id") or "")
-    if batch_id:
-        rows = [task for task in rows if str(task.get("batch_id") or "") == batch_id]
-    terminal = set(_task_progress_ext.TERMINAL_TASK_STATUSES)
-    success = sum(1 for task in rows if str(task.get("status") or "").lower() == "success")
-    stopped = sum(
-        1 for task in rows
-        if str(task.get("status") or "").lower() in {"stopped", "stopped_before_start"}
-    )
-    active = sum(
-        1 for task in rows
-        if str(task.get("status") or "").lower() not in terminal
-    )
-    failed = max(0, len(rows) - success - stopped - active)
-    cost_usd = 0.0
-    cost_cny = 0.0
-    last_activity_at = 0
-    for task in rows:
-        result = task.get("result") if isinstance(task.get("result"), dict) else {}
-        try:
-            cost_usd += float(result.get("sms_cost_usd") or 0)
-            cost_cny += float(result.get("sms_cost_cny") or 0)
-        except (TypeError, ValueError):
-            pass
-        for candidate in (task.get("updated_at"), task.get("created_at")):
-            try:
-                last_activity_at = max(last_activity_at, int(candidate or 0))
-            except (TypeError, ValueError):
-                pass
-    return {
-        "run_id": value.get("run_id") or "",
-        "batch_id": batch_id,
-        "batch_started_at": int(value.get("batch_started_at") or 0) or None,
-        "target": int(value.get("target") or len(rows)),
-        "total": len(rows),
-        "active": active,
-        "success": success,
-        "failed": failed,
-        "stopped": stopped,
-        "started_at": int(value.get("started_at") or 0) or None,
-        "last_activity_at": last_activity_at or int(value.get("last_activity_at") or 0) or None,
-        "finished_at": int(value.get("finished_at") or 0) or None,
-        "sms_cost_usd": round(cost_usd, 6),
-        "sms_cost_cny": round(cost_cny, 4),
-    }
+    return _PUBLIC_STATE.runtime_summary(tasks)
 
 
 def _notification_public_status():
-    context = _notification_context_for()
-    if not isinstance(context, dict):
-        return {}
-    try:
-        status = context["service"].public_status()
-    except Exception:
-        return {}
-    result = {
-        "event": str(status.get("event") or ""),
-        "status": str(status.get("status") or ""),
-        "timestamp": int(status.get("timestamp") or 0),
-        "recipient_count": int(status.get("recipient_count") or 0),
-    }
-    if result["status"] == "failed":
-        result["error"] = "SMTP 发送失败或通知队列已满"
-    return result
+    return _PUBLIC_STATE.notification_public_status()
 
 
 def _public_logs(logs, tasks):
-    if not isinstance(logs, list):
-        return logs
-    local = _read_local_config()
-    sub2api = dict(local.get("sub2api") or {})
-    nv_import = dict(local.get("nv_import") or {})
-    notification = dict(local.get("email_notification") or {})
-    online_mailbox = dict(local.get("online_mailbox") or {})
-    secrets = [
-        *_sms_keys_from_config(local),
-        sub2api.get("password"),
-        nv_import.get("api_key"),
-        notification.get("password"),
-        online_mailbox.get("api_token"),
-        *_mailbox_admin_ext.url_credential_secrets(local.get("proxy")),
-    ]
-    task_failures = {}
-    terminal_node_failures = set()
-    terminal_statuses = set(_task_progress_ext.TERMINAL_TASK_STATUSES).difference(
-        {"success", "stopped", "stopped_before_start"}
-    )
-    for task in tasks:
-        source_row = str(task.get("source_row") or "") if isinstance(task, dict) else ""
-        if source_row:
-            try:
-                secrets.extend(_mailbox_admin_ext.MailboxAdminService._row_secrets(source_row))
-            except Exception:
-                secrets.append(source_row)
-        if not isinstance(task, dict):
-            continue
-        task_id = str(task.get("task_id") or "").strip()
-        result = task.get("result") if isinstance(task.get("result"), dict) else {}
-        structured_failure = _error_observability_ext.public_failure(
-            task.get("failure") if isinstance(task.get("failure"), dict) else result.get("failure")
-        )
-        status = str(task.get("status") or "").strip().lower()
-        if isinstance(structured_failure, dict) and structured_failure.get("node_code") == "oauth_create_node":
-            reclassified = _error_observability_ext.classify_failure(
-                result,
-                task.get("technical_error")
-                or task.get("error")
-                or task.get("reason")
-                or structured_failure.get("technical_summary")
-                or "",
-                task.get("progress"),
-                status=status,
-            )
-            if reclassified.get("node_code") != "oauth_create_node":
-                structured_failure = reclassified
-        if (
-            task_id
-            and status in terminal_statuses
-            and isinstance(structured_failure, dict)
-            and structured_failure.get("node_code") == "oauth_create_node"
-        ):
-            terminal_node_failures.add(task_id)
-        failure = structured_failure
-        if failure is None:
-            failure = _known_task_failure(task_id)
-        if task_id and failure is not None:
-            task_failures[task_id] = failure
-    public = []
-    for log in logs:
-        row = dict(log) if isinstance(log, dict) else {"message": str(log or "")}
-        for key in ("message", "text"):
-            if key in row:
-                raw_message = str(row.get(key) or "")[:_PUBLIC_LOG_INPUT_LIMIT]
-                row[key] = _error_observability_ext.sanitize_failure_detail(
-                    _SMS_PROVIDER_REGISTRY.safe_error(
-                        _mailbox_admin_ext.redact_mailbox_credentials(raw_message, secrets)
-                    ),
-                    secrets=secrets,
-                    limit=800,
-                )
-                message = str(row[key] or "")
-                node_retry = _error_observability_ext.is_node_retry_log(message)
-                task_match = _TASK_ID_LOG_RE.search(message)
-                message_task_id = task_match.group(1) if task_match else ""
-                known_failure = _known_task_failure(message_task_id)
-                known_terminal_node = bool(
-                    isinstance(known_failure, dict)
-                    and known_failure.get("node_code") == "oauth_create_node"
-                )
-                if (
-                    not node_retry
-                    and bool(message_task_id)
-                    and message_task_id not in terminal_node_failures
-                    and not known_terminal_node
-                    and _error_observability_ext.is_retryable_node_failure(message)
-                ):
-                    row[key] = _error_observability_ext.format_node_retry_log(
-                        message_task_id,
-                        message,
-                    )
-                    row["level"] = "warn"
-                    message = str(row[key] or "")
-                    node_retry = True
-                if node_retry:
-                    row["level"] = "warn"
-                explicit_node = bool(re.search(r"\[[^\]]+/[a-z0-9_]+\]", message, re.IGNORECASE))
-                level = str(row.get("level") or row.get("type") or "").strip().lower()
-                if not node_retry and not explicit_node and (
-                    level in {"error", "danger"} or "失败" in message
-                ):
-                    for task_id, failure in task_failures.items():
-                        if task_id in message:
-                            row[key] = _error_observability_ext.format_failure_log(task_id, failure)
-                            break
-        public.append(row)
-    return public
+    return _PUBLIC_STATE.public_logs(logs, tasks)
 
 
 def _masked_state(data):
-    snapshot = json.loads(json.dumps(data if isinstance(data, dict) else {}))
-    settings = snapshot.get("settings")
-    if isinstance(settings, dict):
-        snapshot["settings"] = _masked_local_config({**settings, **_read_local_config()})
-    statuses = _SMS_PROVIDER_REGISTRY.public_statuses()
-    alerts = _SMS_ALERTS.snapshot()
-    snapshot["sms_key_statuses"] = statuses
-    snapshot["sms_alerts"] = alerts
-    runtime = snapshot.get("runtime")
-    if isinstance(runtime, dict):
-        runtime["sms_key_statuses"] = statuses
-        runtime["sms_alerts"] = alerts
-        runtime["sms_safe_stop"] = _SMS_PROVIDER_REGISTRY.is_exhausted()
-        _TASK_PROGRESS.decorate_runtime(runtime)
-        concurrency = runtime.get("concurrency")
-        if not isinstance(concurrency, dict):
-            concurrency = {}
-            runtime["concurrency"] = concurrency
-        task_capacity = concurrency.get("task")
-        admission = globals().get("_CURRENT_TASK_ADMISSION")
-        if admission is not None:
-            try:
-                concurrency["task"] = admission.snapshot()
-                task_capacity = concurrency["task"]
-            except Exception:
-                pass
-        if isinstance(task_capacity, dict):
-            task_capacity["waiting"] = sum(
-                1
-                for task in runtime.get("tasks") or []
-                if isinstance(task, dict)
-                and str(task.get("status") or "").strip().lower() == "queued"
-            )
-        local_config = _read_local_config()
-        concurrency["protocol"] = _PROTOCOL_GATE.snapshot(local_config.get("proxy"))
-        concurrency["phone"] = _SMS_PHONE_GATE.status()
-        raw_tasks = runtime.get("tasks") if isinstance(runtime.get("tasks"), list) else []
-        runtime["tasks"] = [_public_task(task) for task in raw_tasks]
-        runtime["summary"] = _runtime_summary(runtime["tasks"])
-        runtime["notification"] = _notification_public_status()
-        if isinstance(runtime.get("logs"), list):
-            runtime["logs"] = _public_logs(runtime.get("logs"), raw_tasks)
-        if isinstance(snapshot.get("logs"), list):
-            snapshot["logs"] = _public_logs(snapshot.get("logs"), raw_tasks)
-    return snapshot
+    return _PUBLIC_STATE.masked_state(data)
 
 
 def _local_config_secret(secret_id):
@@ -3872,6 +3794,7 @@ def _local_config_from_runtime(data, existing=None):
     raw_data["sms_api_keys"] = sms_keys
     raw_data["sms_api_key"] = sms_keys[0] if sms_keys else ""
     data, _migrated = _sms_runtime_ext.migrate_performance_config(raw_data)
+    data = _performance_runtime_ext.normalize_feature_flags(data)
     data, _timeout_migrated = _migrate_email_timeout_config(data)
     sub2api = dict(data.get("sub2api") or {})
     existing_sub2api = dict(existing.get("sub2api") or {})
@@ -3950,6 +3873,9 @@ def _local_config_from_runtime(data, existing=None):
         "phone_max_attempts",
         "phone_attempts_per_provider",
         "phone_session_cycle_seconds",
+        "sms_quality_optimization",
+        "adaptive_task_concurrency",
+        "dynamic_auth_challenges",
     ):
         if key in data:
             result[key] = copy.deepcopy(data[key])
@@ -4013,7 +3939,11 @@ def _apply_server_defaults(data):
     patched = dict(data or {})
     patched = _merge_local_config(patched)
     patched, _migrated = _sms_runtime_ext.migrate_performance_config(patched)
+    patched = _performance_runtime_ext.normalize_feature_flags(patched)
     patched, _timeout_migrated = _migrate_email_timeout_config(patched)
+    patched["dynamic_auth_challenges"] = _as_enabled(
+        patched.get("dynamic_auth_challenges"), True
+    )
     if patched.get("sms_provider") == "localpool":
         patched["sms_provider"] = "smsbower"
     patched["email_mode"] = "auto"
@@ -4111,6 +4041,8 @@ def _mailbox_admin_factory(store, importer, logs):
         openai_quota_status_lookup=_OPENAI_QUOTA_SNAPSHOTS.status_for,
         openai_quota_status_store=_OPENAI_QUOTA_SNAPSHOTS.put,
         phone_risk_lookup=_PHONE_RISK_STORE.status,
+        next_batch_priority=_MAILBOX_NEXT_BATCH_PRIORITY,
+        run_batch_membership=_RUN_BATCH_MANIFEST.latest_row_bindings,
     )
 
 
@@ -4147,6 +4079,7 @@ _WEB_ROUTE_CONTEXT = _web_routes_ext.WebRouteContext(
     pixel_upload_queue=_PIXEL_UPLOAD_QUEUE,
     nv_upload_queue=_NV_UPLOAD_QUEUE,
     batch_upload_coordinator=_BATCH_UPLOAD_COORDINATOR,
+    run_batch_manifest=_RUN_BATCH_MANIFEST,
     pixel_payload_builder=_pixel_runtime_ext.build_pixel_import_payload,
     query_sms_balances=_SMS_WEB.query_balances,
     online_mailbox_client_factory=_online_mailbox_client_factory,

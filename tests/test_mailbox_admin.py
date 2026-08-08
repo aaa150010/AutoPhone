@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import threading
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -30,6 +31,9 @@ from mac_overrides.mailbox_admin import (
     totp_secret_from_row,
     url_credential_secrets,
 )
+from mac_overrides.mailbox_batch_operations import MailboxBatchOperationManager
+from mac_overrides.mailbox_priority_runtime import MailboxNextBatchPriorityStore
+from mac_overrides.openai_quota_runtime import OpenAIQuotaSnapshotStore
 
 
 class FakeStore:
@@ -146,10 +150,15 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertEqual(password_from_row(totp), "login-pass")
         self.assertEqual(password_from_row(dashed_totp), "login-pass-2")
         plain = "Plain@Example.com--plain-pass"
+        four_dash_plain = "Four@Example.com----four-pass"
         pipe_plain = "PipePlain@Example.com|pipe-pass"
         self.assertEqual(
             parse_plain_password_mailbox_row(plain),
             ("plain@example.com", "plain-pass", "--"),
+        )
+        self.assertEqual(
+            parse_plain_password_mailbox_row(four_dash_plain),
+            ("four@example.com", "four-pass", "----"),
         )
         self.assertEqual(
             parse_plain_password_mailbox_row(pipe_plain),
@@ -161,6 +170,7 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertTrue(is_importable_mailbox_row(totp))
         self.assertTrue(is_importable_mailbox_row(dashed_totp))
         self.assertTrue(is_importable_mailbox_row(plain))
+        self.assertTrue(is_importable_mailbox_row(four_dash_plain))
         self.assertTrue(is_importable_mailbox_row(pipe_plain))
         self.assertEqual(
             parse_mailbox_url_row(url_row).mailbox_url,
@@ -193,7 +203,7 @@ class MailboxAdminTests(unittest.TestCase):
             "mfa2@example.com--********--********",
         )
         self.assertFalse(is_importable_mailbox_row("# user@example.com----secret"))
-        self.assertFalse(is_importable_mailbox_row("user@example.com----password"))
+        self.assertTrue(is_importable_mailbox_row("user@example.com----password"))
         self.assertFalse(is_importable_mailbox_row("user@example.com|password|INVALID018"))
         self.assertIsNone(parse_plain_password_mailbox_row(url_row))
         self.assertIsNone(parse_plain_password_mailbox_row(totp))
@@ -684,6 +694,155 @@ class MailboxAdminTests(unittest.TestCase):
             ],
         )
 
+    def test_quota_without_account_id_persists_by_row_and_survives_reload(self):
+        row = "missing-id@example.com----mail-pass----client-id----refresh-token"
+        self._write_pool(row + "\n")
+        self._write_state({})
+        results = self.root / "results"
+        results.mkdir()
+        (results / "missing-id.json").write_text(
+            json.dumps({
+                "email": "missing-id@example.com",
+                "status": "success",
+                "task_id": "task-missing-id",
+                "created_at": 1,
+                "result": {"access_token": "private-access-without-account-id"},
+            }),
+            encoding="utf-8",
+        )
+        snapshot_path = self.root / "quota-snapshots.json"
+        snapshot_store = OpenAIQuotaSnapshotStore(snapshot_path)
+        self.service.openai_quota_query = lambda *_args: self.fail("query must not run")
+        self.service.openai_quota_status_store = snapshot_store.put
+        self.service.openai_quota_status_lookup = OpenAIQuotaSnapshotStore(
+            snapshot_path
+        ).status_for
+
+        result = self.service.query_openai_quotas({
+            "rows": [{"row_id": row_id_from_source(row), "line_no": 1}],
+        })
+        public = self.service.list_mailboxes()["rows"][0]
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["failed"], 1)
+        self.assertEqual(result["results"][0]["code"], "openai_quota_account_id_missing")
+        self.assertEqual(public["quota_status"], "error")
+        self.assertEqual(public["quota_error"], result["results"][0]["error"])
+        self.assertIsNone(public["quota_5h"])
+        self.assertIsNone(public["quota_7d"])
+        serialized = snapshot_path.read_text(encoding="utf-8")
+        self.assertNotIn("private-access-without-account-id", serialized)
+        self.assertNotIn("missing-id@example.com", serialized)
+
+    def test_quota_missing_result_is_saved_as_a_row_failure(self):
+        row = "missing-result@example.com----mail-pass----client-id----refresh-token"
+        row_id = row_id_from_source(row)
+        self._write_pool(row + "\n")
+        self._write_state({
+            row_id: {
+                "email": "missing-result@example.com",
+                "line_no": 1,
+                "status": "consumed",
+            },
+        })
+        snapshot_path = self.root / "quota-snapshots.json"
+        snapshot_store = OpenAIQuotaSnapshotStore(snapshot_path)
+        self.service.openai_quota_query = lambda *_args: self.fail("query must not run")
+        self.service.openai_quota_status_store = snapshot_store.put
+        self.service.openai_quota_status_lookup = OpenAIQuotaSnapshotStore(
+            snapshot_path
+        ).status_for
+
+        result = self.service.query_openai_quotas({
+            "rows": [{"row_id": row_id, "line_no": 1}],
+        })
+        public = self.service.list_mailboxes()["rows"][0]
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["skipped"], 1)
+        self.assertEqual(result["failed"], 1)
+        self.assertEqual(result["results"][0]["code"], "openai_quota_result_missing")
+        self.assertEqual(public["quota_status"], "error")
+        self.assertIn("本地成功结果缺失", public["quota_error"])
+
+    def test_background_quota_row_is_visible_before_slow_peer_finishes(self):
+        rows = [
+            "one@example.com----pass-one----client-one----refresh-one",
+            "two@example.com----pass-two----client-two----refresh-two",
+        ]
+        self._write_pool("\n".join(rows) + "\n")
+        results = self.root / "results"
+        results.mkdir()
+        for index, row in enumerate(rows, start=1):
+            (results / f"{index}.json").write_text(
+                json.dumps({
+                    "email": email_from_row(row),
+                    "status": "success",
+                    "task_id": f"task-{index}",
+                    "created_at": index,
+                    "result": {
+                        "access_token": f"private-access-{index}",
+                        "chatgpt_account_id": f"private-account-{index}",
+                    },
+                }),
+                encoding="utf-8",
+            )
+
+        second_started = threading.Event()
+        release_second = threading.Event()
+        first_persisted = threading.Event()
+        snapshot_path = self.root / "quota-snapshots.json"
+        snapshot_store = OpenAIQuotaSnapshotStore(snapshot_path)
+
+        def query(document, _proxy):
+            if document["task_id"] == "task-2":
+                second_started.set()
+                release_second.wait(2)
+            suffix = int(document["task_id"].rsplit("-", 1)[1])
+            return {
+                "status": "ok",
+                "quota_5h": {"remaining_percent": 80 + suffix},
+                "quota_7d": {"remaining_percent": 40 + suffix},
+            }
+
+        def store(account_id, value):
+            stored = snapshot_store.put(account_id, value)
+            if account_id == "private-account-1":
+                first_persisted.set()
+            return stored
+
+        self.service.openai_quota_query = query
+        self.service.openai_quota_status_store = store
+        self.service.openai_quota_status_lookup = OpenAIQuotaSnapshotStore(
+            snapshot_path
+        ).status_for
+        bindings = [
+            {"row_id": row_id_from_source(row), "line_no": index}
+            for index, row in enumerate(rows, start=1)
+        ]
+        manager = MailboxBatchOperationManager(chunk_size=5)
+        operation, _created = manager.start("quota", bindings, self.service.query_openai_quotas)
+        try:
+            self.assertTrue(second_started.wait(1))
+            self.assertTrue(first_persisted.wait(1))
+            for _attempt in range(100):
+                if manager.snapshot()["completed"] == 1:
+                    break
+                threading.Event().wait(0.01)
+            self.assertEqual(manager.snapshot()["status"], "running")
+            self.assertEqual(manager.snapshot()["completed"], 1)
+            listed = self.service.list_mailboxes()["rows"]
+            self.assertEqual(listed[0]["quota_5h"]["remaining_percent"], 81)
+            self.assertEqual(listed[0]["quota_7d"]["remaining_percent"], 41)
+            self.assertIsNone(listed[1]["quota_5h"])
+            self.assertIsNone(listed[1]["quota_7d"])
+        finally:
+            release_second.set()
+
+        completed = manager.wait(operation["job_id"], 2)
+        self.assertEqual(completed["status"], "completed")
+        self.assertEqual(completed["succeeded"], 2)
+
     def test_sub2_batch_accepts_more_than_twenty_rows_for_queued_chunk_processing(self):
         rows = [f"user{index}@example.com|pass-{index}|JBSWY3DPEHPK3PXP" for index in range(1, 22)]
         self._write_pool("\n".join(rows) + "\n")
@@ -772,6 +931,59 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertEqual(captured[1]["openai_status_id"], "")
         self.assertEqual(captured[1]["document"], {})
 
+    def test_openai_test_resolves_sha_and_legacy_line_state_keys(self):
+        rows = [
+            "sha@example.com----mail-pass----client-id----refresh-token",
+            "legacy@example.com----mail-pass-2----client-id-2----refresh-token-2",
+        ]
+        self._write_pool("\n".join(rows) + "\n")
+        self._write_state({
+            row_id_from_source(rows[0]): {
+                "email": "sha@example.com",
+                "line_no": 99,
+                "status": "available",
+                "reason": "manual_restore",
+            },
+            "legacy-state": {
+                "line_no": 2,
+                "status": "available",
+                "reason": "manual_restore",
+            },
+        })
+        results = self.root / "results"
+        results.mkdir()
+        for index, row in enumerate(rows, start=1):
+            (results / f"ready-{index}.json").write_text(
+                json.dumps({
+                    "email": email_from_row(row),
+                    "status": "success",
+                    "created_at": index,
+                    "result": {
+                        "access_token": f"private-access-{index}",
+                        "chatgpt_account_id": f"private-account-{index}",
+                    },
+                }),
+                encoding="utf-8",
+            )
+        captured = []
+        self.service.openai_direct_batch_tester = lambda selected, _proxy: captured.extend(selected) or {
+            "ok": True,
+            "tested": 0,
+            "not_ready": 2,
+            "results": [],
+        }
+
+        result = self.service.openai_test({
+            "rows": [
+                {"row_id": row_id_from_source(row), "line_no": index}
+                for index, row in enumerate(rows, start=1)
+            ]
+        })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual([item["document"] for item in captured], [{}, {}])
+        self.assertEqual([item["openai_status_id"] for item in captured], ["", ""])
+
 
     def test_list_mailboxes_combines_state_results_and_latest_live_progress(self):
         rows = [
@@ -851,6 +1063,8 @@ class MailboxAdminTests(unittest.TestCase):
                     "email": "running@example.com",
                     "status": "authorizing",
                     "updated_at": 960,
+                    "batch_id": "batch-live",
+                    "batch_started_at": 925,
                 },
             ]
         }
@@ -893,6 +1107,7 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertEqual([row["line_no"] for row in result["rows"]], [1, 2, 3])
         running, done, restored = result["rows"]
         self.assertEqual((running["status"], running["task_id"]), ("running", "T-current"))
+        self.assertEqual((running["batch_id"], running["batch_started_at"]), ("batch-live", 925))
         self.assertEqual(running["progress"]["code"], "sms_waiting")
         self.assertEqual(running["timing"], running["progress"]["timing"])
         self.assertEqual(
@@ -1124,7 +1339,7 @@ class MailboxAdminTests(unittest.TestCase):
 
     def test_plain_password_row_imports_and_exposes_only_masked_public_state(self):
         row = "plain@example.com--plain-pass"
-        result = self.service.append(f"{row}\n{row.upper()}\n")
+        result = self.service.append(f"{row}\nPLAIN@example.com----plain-pass\n")
 
         self.assertEqual(result["imported"], 1)
         self.assertEqual(result["skipped"], 1)
@@ -1139,6 +1354,25 @@ class MailboxAdminTests(unittest.TestCase):
             self.service.reveal_password(public_row["row_id"], public_row["line_no"]),
             {"ok": True, "password": "plain-pass"},
         )
+
+    def test_plain_password_import_deduplicates_formats_but_preserves_password_case(self):
+        result = self.service.append(
+            "CaseUser@Example.com----CasePass\n"
+            "caseuser@example.com--CasePass\n"
+            "CASEUSER@EXAMPLE.COM|CasePass\n"
+            "caseuser@example.com|casepass\n"
+        )
+
+        self.assertEqual(result["imported"], 2)
+        self.assertEqual(result["skipped"], 2)
+        self.assertEqual(
+            self._pool_lines(),
+            [
+                "CaseUser@Example.com----CasePass",
+                "caseuser@example.com|casepass",
+            ],
+        )
+        self.assertEqual(result["validate"], {"ok": True, "entries": 2})
 
     def test_reveal_totp_returns_only_current_temporary_code_from_one_clock_snapshot(self):
         row = "mfa@example.com|login-pass|JBSWY3DPEHPK3PXP"
@@ -1337,11 +1571,12 @@ class MailboxAdminTests(unittest.TestCase):
 
     def test_import_filters_invalid_rows_deduplicates_and_logs_counts_only(self):
         existing = "one@example.com----pass-one----client-one----refresh-one"
+        existing_email_case = "ONE@EXAMPLE.COM----pass-one----client-one----refresh-one"
         added = "two@example.com----pass-two----client-two----refresh-two"
         self._write_pool(existing + "\n")
 
         result = self.service.append(
-            f"{existing.upper()}\nnot-a-mailbox\n{added}\n{added}\n"
+            f"{existing_email_case}\nnot-a-mailbox\n{added}\n{added}\n"
         )
 
         self.assertEqual(result, {"ok": True, "imported": 1, "skipped": 2, "validate": {"ok": True, "entries": 2}})
@@ -1349,6 +1584,74 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertEqual(len(self.validations), 1)
         self.assertEqual(self.logs, [("邮箱管理追加导入: 新增 1 条，跳过重复 2 条", "success")])
         self.assertNotIn("pass-two", self.logs[0][0])
+
+    def test_import_during_active_run_marks_only_actual_new_rows_for_next_batch(self):
+        existing = "existing@example.com----pass-existing"
+        active_new = [
+            "active-one@example.com----pass-one",
+            "active-two@example.com----pass-two",
+        ]
+        idle_new = "idle@example.com----pass-idle"
+        self._write_pool(existing + "\n")
+        priority = MailboxNextBatchPriorityStore(self.root, now=lambda: self.clock)
+        self.service.next_batch_priority = priority
+        self.runtime["running"] = True
+
+        active_result = self.service.import_mailboxes("\n".join(active_new + [active_new[0]]))
+        self.runtime["running"] = False
+        idle_result = self.service.import_mailboxes(idle_new)
+
+        self.assertEqual(active_result["imported"], 2)
+        self.assertEqual(active_result["skipped"], 1)
+        self.assertEqual(idle_result["imported"], 1)
+        snapshot = priority.snapshot()
+        self.assertEqual(snapshot["pending"], 2)
+        self.assertEqual(
+            snapshot["row_ids"],
+            [row_id_from_source(row) for row in active_new],
+        )
+        persisted = priority.path.read_text(encoding="utf-8")
+        self.assertNotIn("@example.com", persisted)
+        self.assertNotIn("pass-one", persisted)
+
+    def test_latest_batch_membership_overrides_older_result_for_batch_filters(self):
+        row = "member@example.com----pass-member"
+        row_id = row_id_from_source(row)
+        self._write_pool(row + "\n")
+        self._write_state({})
+        results = self.root / "results"
+        results.mkdir()
+        (results / "older.json").write_text(
+            json.dumps(
+                {
+                    "task_id": "T-old",
+                    "email": "member@example.com",
+                    "status": "success",
+                    "batch_id": "batch-old",
+                    "batch_started_at": 100,
+                    "created_at": 101,
+                    "result": {"batch_id": "batch-old"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.service.run_batch_membership = lambda **_kwargs: [
+            {
+                "row_id": row_id,
+                "line_no": 1,
+                "task_id": "T-new",
+                "status": "retryable_infra",
+                "batch_id": "batch-new",
+                "batch_started_at": 200,
+            }
+        ]
+
+        public = self.service.list_mailboxes()["rows"][0]
+
+        self.assertEqual(public["batch_id"], "batch-new")
+        self.assertEqual(public["batch_started_at"], 200)
+        self.assertEqual(public["task_id"], "T-new")
+        self.assertEqual(public["task_status"], "retryable_infra")
 
     def test_delete_rewrites_state_line_numbers_and_drops_selected_entry(self):
         rows = [
@@ -1418,6 +1721,52 @@ class MailboxAdminTests(unittest.TestCase):
         )
         self.assertEqual(restored["history"][-1], {"event": "restored", "reason": "manual_restore", "at": 1000})
         self.assertEqual(self.logs[-1], ("邮箱管理放回可领取: 1 条", "success"))
+
+    def test_list_state_requires_email_fallback_to_match_the_current_line(self):
+        rows = [
+            "exact@example.com----exact-password",
+            "email@example.com----email-password",
+            "legacy@example.com----legacy-password",
+            "new@example.com----new-password",
+        ]
+        self._write_pool("\n".join(rows) + "\n")
+        self._write_state({
+            "stale-line": {
+                "email": "other@example.com",
+                "line_no": 1,
+                "status": "damaged",
+            },
+            row_id_from_source(rows[0]): {
+                "email": "exact@example.com",
+                "line_no": 99,
+                "status": "consumed",
+            },
+            "email-match": {
+                "email": "email@example.com",
+                "line_no": 1,
+                "status": "damaged",
+            },
+            "legacy-line": {
+                "line_no": 3,
+                "status": "damaged",
+            },
+            "stale-new-line": {
+                "email": "moved@example.com",
+                "line_no": 4,
+                "status": "damaged",
+            },
+        })
+
+        listed = self.service.list_mailboxes()
+
+        self.assertEqual(
+            [(item["status"], item["status_label"]) for item in listed["rows"]],
+            [("consumed", "已使用"), ("available", "可用"), ("failed", "失败"), ("available", "可用")],
+        )
+        self.assertEqual(
+            listed["counts"],
+            {"total": 4, "available": 2, "running": 0, "success": 1, "failed": 1},
+        )
 
     def test_totp_latest_code_uses_one_clock_snapshot_and_skips_imap(self):
         self.clock = 59.0

@@ -1,0 +1,800 @@
+
+1683:          44 LOAD_FAST            (futures)
+              46 GET_ITER
+              48 FOR_ITER             (to 92)
+              52 STORE_FAST           (future)
+
+1684:          54 NOP
+
+1685:          56 LOAD_FAST            (future)
+              58 LOAD_ATTR            (NULL|self + result)
+              78 CALL                 (0 positional)
+              86 POP_TOP
+              88 JUMP_BACKWARD        (to 48)
+
+1683:     >>   92 END_FOR
+              94 POP_TOP
+
+1690:          96 LOAD_FAST            (self)
+              98 LOAD_ATTR            (lock)
+             118 BEFORE_WITH
+             120 POP_TOP
+
+1691:         122 LOAD_CONST           (False)
+             124 LOAD_FAST            (self)
+             126 STORE_ATTR           (running)
+
+1692:     >>  136 LOAD_FAST            (self)
+             138 LOAD_ATTR            (executor)
+             158 LOAD_CONST           (None)
+             160 SWAP                 (TOS <-> TOS1)
+             162 STORE_FAST_LOAD_FAST (executor, self)
+             164 STORE_ATTR           (executor)
+
+1693:         174 BUILD_MAP            0
+             176 LOAD_FAST            (self)
+             178 STORE_ATTR           (future_assignments)
+
+1690:         188 LOAD_CONST           (None)
+             190 LOAD_CONST           (None)
+             192 LOAD_CONST           (None)
+             194 CALL                 (2 positional)
+             202 POP_TOP
+
+1694:         204 LOAD_FAST_CHECK      (executor)
+             206 TO_BOOL
+             214 POP_JUMP_IF_FALSE    (to 250)
+
+1695:         218 LOAD_FAST            (executor)
+             220 LOAD_ATTR            (NULL|self + shutdown)
+             240 LOAD_CONST           (False)
+             242 LOAD_CONST           (True)
+             244 LOAD_CONST           (('wait', 'cancel_futures'))
+             246 CALL_KW              2
+             248 POP_TOP
+
+1696:     >>  250 LOAD_FAST            (self)
+             252 LOAD_ATTR            (NULL|self + _log_final_summary)
+             272 CALL                 (0 positional)
+             280 POP_TOP
+
+1697:         282 LOAD_FAST            (self)
+             284 LOAD_ATTR            (NULL|self + _log)
+             304 LOAD_CONST           ("导入任务已结束")
+             306 LOAD_CONST           ("info")
+             308 CALL                 (2 positional)
+             316 POP_TOP
+             318 RETURN_CONST         (None)
+         >>  320 PUSH_EXC_INFO
+
+1686:         322 LOAD_GLOBAL          (Exception)
+             332 CHECK_EXC_MATCH
+             334 POP_JUMP_IF_FALSE    (to 456)
+             338 STORE_FAST           (exc)
+
+1687:         340 LOAD_FAST            (future)
+             342 LOAD_ATTR            (NULL|self + cancelled)
+             362 CALL                 (0 positional)
+             370 TO_BOOL
+             378 POP_JUMP_IF_FALSE    (to 394)
+
+1688:         382 POP_EXCEPT
+             384 LOAD_CONST           (None)
+             386 STORE_FAST           (exc)
+             388 DELETE_FAST          (exc)
+             390 JUMP_BACKWARD        (to 48)
+
+1689:     >>  394 LOAD_FAST            (self)
+             396 LOAD_ATTR            (NULL|self + _log)
+             416 LOAD_CONST           ("任务线程异常: ")
+             418 LOAD_FAST            (exc)
+             420 FORMAT_SIMPLE
+             422 BUILD_STRING         2
+             424 LOAD_CONST           ("error")
+             426 CALL                 (2 positional)
+             434 POP_TOP
+             436 POP_EXCEPT
+             438 LOAD_CONST           (None)
+             440 STORE_FAST           (exc)
+             442 DELETE_FAST          (exc)
+             444 JUMP_BACKWARD        (to 48)
+         >>  448 LOAD_CONST           (None)
+             450 STORE_FAST           (exc)
+             452 DELETE_FAST          (exc)
+             454 RERAISE              1
+
+1686:     >>  456 RERAISE              0
+         >>  458 COPY                 3
+             460 POP_EXCEPT
+             462 RERAISE              1
+
+1690:     >>  464 PUSH_EXC_INFO
+             466 WITH_EXCEPT_START    0
+             468 TO_BOOL
+             476 POP_JUMP_IF_TRUE     (to 482)
+             480 RERAISE              2
+         >>  482 POP_TOP
+             484 POP_EXCEPT
+             486 POP_TOP
+             488 POP_TOP
+             490 JUMP_BACKWARD_NO_INTERRUPT (to 204)
+         >>  492 COPY                 3
+             494 POP_EXCEPT
+             496 RERAISE              1
+
+ExceptionTable:
+  56 to 86 -> 320 [1]
+  120 to 186 -> 464 [1] lasti
+  320 to 338 -> 458 [2] lasti
+  340 to 380 -> 448 [2] lasti
+  394 to 434 -> 448 [2] lasti
+  448 to 456 -> 458 [2] lasti
+  464 to 482 -> 492 [3] lasti
+
+# Method Name:       _log_final_summary
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  8
+# Stack size:        10
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1699
+# Constants:
+#    0: None
+#    1: 'status'
+#    2: 'success'
+#    3: 'stopped'
+#    4: '未启动'
+#    5: 'error'
+#    6: '运行汇总: 成功 '
+#    7: '，未成功/已停止 '
+#    8: '，其中未启动停止 '
+#    9: 'info'
+#   10: '成功可复制: '
+#   11: 'account'
+#   12: 'email'
+#   13: '-'
+#   14: 'reason'
+#   15: '未完成'
+#   16: '未成功可复制: '
+#   17: ' | '
+#   18: 'warn'
+# Names:
+#    0: lock
+#    1: tasks
+#    2: values
+#    3: dict
+#    4: get
+#    5: _clean
+#    6: _log
+#    7: len
+# Varnames:
+#	self, task, tasks, success, unfinished, cancelled, account, reason
+# Positional arguments:
+#	self
+# Local variables:
+#    1: task
+#    2: tasks
+#    3: success
+#    4: unfinished
+#    5: cancelled
+#    6: account
+#    7: reason
+1699:           0 RESUME               0
+
+1700:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (lock)
+              24 BEFORE_WITH
+              26 POP_TOP
+
+1701:          28 LOAD_FAST            (self)
+              30 LOAD_ATTR            (tasks)
+              50 LOAD_ATTR            (NULL|self + values)
+              70 CALL                 (0 positional)
+              78 GET_ITER
+              80 LOAD_FAST_AND_CLEAR  (task)
+              82 SWAP                 (TOS <-> TOS1)
+              84 BUILD_LIST           0
+              86 SWAP                 (TOS <-> TOS1)
+              88 GET_ITER
+              90 FOR_ITER             (to 122)
+              94 STORE_FAST           (task)
+              96 LOAD_GLOBAL          (NULL + dict)
+             106 LOAD_FAST            (task)
+             108 CALL                 (1 positional)
+             116 LIST_APPEND          2
+             118 JUMP_BACKWARD        (to 90)
+         >>  122 END_FOR
+             124 POP_TOP
+             126 STORE_FAST           (tasks)
+             128 STORE_FAST           (task)
+
+1700:         130 LOAD_CONST           (None)
+             132 LOAD_CONST           (None)
+             134 LOAD_CONST           (None)
+             136 CALL                 (2 positional)
+             144 POP_TOP
+
+1702:         146 LOAD_FAST_CHECK      (tasks)
+             148 GET_ITER
+             150 LOAD_FAST_AND_CLEAR  (task)
+             152 SWAP                 (TOS <-> TOS1)
+         >>  154 BUILD_LIST           0
+             156 SWAP                 (TOS <-> TOS1)
+             158 GET_ITER
+             160 FOR_ITER             (to 218)
+             164 STORE_FAST_LOAD_FAST (task, task)
+             166 LOAD_ATTR            (NULL|self + get)
+             186 LOAD_CONST           ("status")
+             188 CALL                 (1 positional)
+             196 LOAD_CONST           ("success")
+             198 COMPARE_OP           (==)
+             202 POP_JUMP_IF_TRUE     (to 210)
+             206 JUMP_BACKWARD        (to 160)
+         >>  210 LOAD_FAST            (task)
+             212 LIST_APPEND          2
+             214 JUMP_BACKWARD        (to 160)
+         >>  218 END_FOR
+             220 POP_TOP
+             222 STORE_FAST           (success)
+             224 STORE_FAST           (task)
+
+1703:         226 LOAD_FAST            (tasks)
+             228 GET_ITER
+             230 LOAD_FAST_AND_CLEAR  (task)
+             232 SWAP                 (TOS <-> TOS1)
+             234 BUILD_LIST           0
+             236 SWAP                 (TOS <-> TOS1)
+             238 GET_ITER
+             240 FOR_ITER             (to 298)
+             244 STORE_FAST_LOAD_FAST (task, task)
+             246 LOAD_ATTR            (NULL|self + get)
+             266 LOAD_CONST           ("status")
+             268 CALL                 (1 positional)
+         >>  276 LOAD_CONST           ("success")
+             278 COMPARE_OP           (!=)
+             282 POP_JUMP_IF_TRUE     (to 290)
+             286 JUMP_BACKWARD        (to 240)
+         >>  290 LOAD_FAST            (task)
+             292 LIST_APPEND          2
+             294 JUMP_BACKWARD        (to 240)
+         >>  298 END_FOR
+             300 POP_TOP
+             302 STORE_FAST           (unfinished)
+             304 STORE_FAST           (task)
+
+1706:         306 LOAD_FAST            (unfinished)
+             308 GET_ITER
+
+1704:         310 LOAD_FAST_AND_CLEAR  (task)
+             312 SWAP                 (TOS <-> TOS1)
+             314 BUILD_LIST           0
+             316 SWAP                 (TOS <-> TOS1)
+
+1706:         318 GET_ITER
+             320 FOR_ITER             (to 444)
+             324 STORE_FAST           (task)
+
+1707:         326 LOAD_FAST            (task)
+             328 LOAD_ATTR            (NULL|self + get)
+             348 LOAD_CONST           ("status")
+             350 CALL                 (1 positional)
+             358 LOAD_CONST           ("stopped")
+             360 COMPARE_OP           (==)
+
+1705:         364 POP_JUMP_IF_TRUE     (to 372)
+             368 JUMP_BACKWARD        (to 320)
+
+1707:     >>  372 LOAD_CONST           ("未启动")
+             374 LOAD_GLOBAL          (NULL + _clean)
+             384 LOAD_FAST            (task)
+             386 LOAD_ATTR            (NULL|self + get)
+             406 LOAD_CONST           ("error")
+             408 CALL                 (1 positional)
+             416 CALL                 (1 positional)
+         >>  424 CONTAINS_OP          (in)
+
+1705:         428 POP_JUMP_IF_TRUE     (to 436)
+             432 JUMP_BACKWARD        (to 320)
+         >>  436 LOAD_FAST            (task)
+             438 LIST_APPEND          2
+             440 JUMP_BACKWARD        (to 320)
+
+1706:     >>  444 END_FOR
+             446 POP_TOP
+
+1704:         448 STORE_FAST           (cancelled)
+             450 STORE_FAST           (task)
+
+1709:         452 LOAD_FAST            (self)
+             454 LOAD_ATTR            (NULL|self + _log)
+             474 LOAD_CONST           ("运行汇总: 成功 ")
+             476 LOAD_GLOBAL          (NULL + len)
+             486 LOAD_FAST            (success)
+             488 CALL                 (1 positional)
+             496 FORMAT_SIMPLE
+             498 LOAD_CONST           ("，未成功/已停止 ")
+             500 LOAD_GLOBAL          (NULL + len)
+             510 LOAD_FAST            (unfinished)
+             512 CALL                 (1 positional)
+             520 FORMAT_SIMPLE
+             522 LOAD_CONST           ("，其中未启动停止 ")
+             524 LOAD_GLOBAL          (NULL + len)
+             534 LOAD_FAST            (cancelled)
+             536 CALL                 (1 positional)
+             544 FORMAT_SIMPLE
+             546 BUILD_STRING         6
+             548 LOAD_CONST           ("info")
+             550 CALL                 (2 positional)
+             558 POP_TOP
+
+1710:         560 LOAD_FAST            (success)
+             562 GET_ITER
+             564 FOR_ITER             (to 712)
+         >>  568 STORE_FAST           (task)
+
+1711:         570 LOAD_FAST            (self)
+             572 LOAD_ATTR            (NULL|self + _log)
+             592 LOAD_CONST           ("成功可复制: ")
+             594 LOAD_FAST            (task)
+             596 LOAD_ATTR            (NULL|self + get)
+             616 LOAD_CONST           ("account")
+             618 CALL                 (1 positional)
+             626 COPY                 1
+             628 TO_BOOL
+             636 POP_JUMP_IF_TRUE     (to 692)
+             640 POP_TOP
+             642 LOAD_FAST            (task)
+             644 LOAD_ATTR            (NULL|self + get)
+             664 LOAD_CONST           ("email")
+             666 CALL                 (1 positional)
+             674 COPY                 1
+             676 TO_BOOL
+             684 POP_JUMP_IF_TRUE     (to 692)
+             688 POP_TOP
+             690 LOAD_CONST           ("-")
+         >>  692 FORMAT_SIMPLE
+             694 BUILD_STRING         2
+             696 LOAD_CONST           ("success")
+             698 CALL                 (2 positional)
+             706 POP_TOP
+             708 JUMP_BACKWARD        (to 564)
+
+1710:     >>  712 END_FOR
+             714 POP_TOP
+
+1712:         716 LOAD_FAST            (unfinished)
+             718 GET_ITER
+             720 FOR_ITER             (to 1050)
+             724 STORE_FAST           (task)
+
+1713:         726 LOAD_FAST            (task)
+             728 LOAD_ATTR            (NULL|self + get)
+             748 LOAD_CONST           ("account")
+             750 CALL                 (1 positional)
+             758 COPY                 1
+             760 TO_BOOL
+             768 POP_JUMP_IF_TRUE     (to 824)
+             772 POP_TOP
+             774 LOAD_FAST            (task)
+             776 LOAD_ATTR            (NULL|self + get)
+             796 LOAD_CONST           ("email")
+             798 CALL                 (1 positional)
+             806 COPY                 1
+             808 TO_BOOL
+             816 POP_JUMP_IF_TRUE     (to 824)
+             820 POP_TOP
+             822 LOAD_CONST           ("-")
+         >>  824 STORE_FAST           (account)
+
+1714:         826 LOAD_GLOBAL          (NULL + _clean)
+             836 LOAD_FAST            (task)
+             838 LOAD_ATTR            (NULL|self + get)
+             858 LOAD_CONST           ("error")
+         >>  860 CALL                 (1 positional)
+             868 COPY                 1
+             870 TO_BOOL
+             878 POP_JUMP_IF_TRUE     (to 934)
+             882 POP_TOP
+             884 LOAD_FAST            (task)
+             886 LOAD_ATTR            (NULL|self + get)
+             906 LOAD_CONST           ("reason")
+             908 CALL                 (1 positional)
+             916 COPY                 1
+             918 TO_BOOL
+             926 POP_JUMP_IF_TRUE     (to 934)
+             930 POP_TOP
+             932 LOAD_CONST           ("未完成")
+         >>  934 CALL                 (1 positional)
+             942 STORE_FAST           (reason)
+
+1715:         944 LOAD_FAST            (self)
+             946 LOAD_ATTR            (NULL|self + _log)
+             966 LOAD_CONST           ("未成功可复制: ")
+             968 LOAD_FAST            (account)
+             970 FORMAT_SIMPLE
+             972 LOAD_CONST           (" | ")
+             974 LOAD_FAST            (task)
+             976 LOAD_ATTR            (NULL|self + get)
+             996 LOAD_CONST           ("status")
+             998 CALL                 (1 positional)
+            1006 COPY                 1
+            1008 TO_BOOL
+            1016 POP_JUMP_IF_TRUE     (to 1024)
+            1020 POP_TOP
+            1022 LOAD_CONST           ("-")
+         >> 1024 FORMAT_SIMPLE
+            1026 LOAD_CONST           (" | ")
+            1028 LOAD_FAST            (reason)
+            1030 FORMAT_SIMPLE
+            1032 BUILD_STRING         6
+            1034 LOAD_CONST           ("warn")
+            1036 CALL                 (2 positional)
+            1044 POP_TOP
+            1046 JUMP_BACKWARD        (to 720)
+
+1712:     >> 1050 END_FOR
+            1052 POP_TOP
+            1054 RETURN_CONST         (None)
+         >> 1056 SWAP                 (TOS <-> TOS1)
+            1058 POP_TOP
+
+1701:        1060 SWAP                 (TOS <-> TOS1)
+            1062 STORE_FAST           (task)
+            1064 RERAISE              0
+
+1700:     >> 1066 PUSH_EXC_INFO
+            1068 WITH_EXCEPT_START    0
+            1070 TO_BOOL
+            1078 POP_JUMP_IF_TRUE     (to 1084)
+            1082 RERAISE              2
+         >> 1084 POP_TOP
+            1086 POP_EXCEPT
+            1088 POP_TOP
+            1090 POP_TOP
+            1092 EXTENDED_ARG         (256)
+            1094 JUMP_BACKWARD_NO_INTERRUPT (to 146)
+         >> 1096 COPY                 3
+            1098 POP_EXCEPT
+            1100 RERAISE              1
+         >> 1102 SWAP                 (TOS <-> TOS1)
+            1104 POP_TOP
+
+1702:        1106 SWAP                 (TOS <-> TOS1)
+            1108 STORE_FAST           (task)
+            1110 RERAISE              0
+         >> 1112 SWAP                 (TOS <-> TOS1)
+            1114 POP_TOP
+
+1703:        1116 SWAP                 (TOS <-> TOS1)
+            1118 STORE_FAST           (task)
+            1120 RERAISE              0
+         >> 1122 SWAP                 (TOS <-> TOS1)
+            1124 POP_TOP
+
+1704:        1126 SWAP                 (TOS <-> TOS1)
+            1128 STORE_FAST           (task)
+            1130 RERAISE              0
+
+ExceptionTable:
+  26 to 82 -> 1066 [1] lasti
+  84 to 124 -> 1056 [3]
+  126 to 128 -> 1066 [1] lasti
+  154 to 200 -> 1102 [2]
+  210 to 220 -> 1102 [2]
+  234 to 280 -> 1112 [2]
+  290 to 300 -> 1112 [2]
+  314 to 362 -> 1122 [2]
+  372 to 426 -> 1122 [2]
+  436 to 446 -> 1122 [2]
+  1056 to 1064 -> 1066 [1] lasti
+  1066 to 1084 -> 1096 [3] lasti
+
+# Method Name:       _task_state
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        9
+# Flags:             0x0100000b (0x1000000 | VARKEYWORDS | NEWLOCALS | OPTIMIZED)
+# First Line:        1717
+# Constants:
+#    0: None
+#    1: ('task_id', 'created_at')
+#    2: 'updated_at'
+# Names:
+#    0: lock
+#    1: tasks
+#    2: setdefault
+#    3: int
+#    4: time
+#    5: update
+# Varnames:
+#	self, task_id, values, task
+# Positional arguments:
+#	self, task_id
+# Local variables:
+#    2: values
+#    3: task
+1717:           0 RESUME               0
+
+1718:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (lock)
+              24 BEFORE_WITH
+              26 POP_TOP
+
+1719:          28 LOAD_FAST            (self)
+              30 LOAD_ATTR            (tasks)
+              50 LOAD_ATTR            (NULL|self + setdefault)
+              70 LOAD_FAST_LOAD_FAST  (task_id, task_id)
+              72 LOAD_GLOBAL          (NULL + int)
+              82 LOAD_GLOBAL          (time)
+              92 LOAD_ATTR            (time)
+             112 PUSH_NULL
+             114 CALL                 (0 positional)
+             122 CALL                 (1 positional)
+             130 LOAD_CONST           (('task_id', 'created_at'))
+             132 BUILD_CONST_KEY_MAP  2
+             134 CALL                 (2 positional)
+             142 STORE_FAST           (task)
+
+1720:         144 LOAD_FAST            (task)
+             146 LOAD_ATTR            (NULL|self + update)
+             166 LOAD_FAST            (values)
+             168 CALL                 (1 positional)
+             176 POP_TOP
+
+1721:         178 LOAD_GLOBAL          (NULL + int)
+             188 LOAD_GLOBAL          (time)
+             198 LOAD_ATTR            (time)
+             218 PUSH_NULL
+             220 CALL                 (0 positional)
+             228 CALL                 (1 positional)
+             236 LOAD_FAST            (task)
+             238 LOAD_CONST           ("updated_at")
+             240 STORE_SUBSCR
+
+1718:         244 LOAD_CONST           (None)
+             246 LOAD_CONST           (None)
+             248 LOAD_CONST           (None)
+             250 CALL                 (2 positional)
+             258 POP_TOP
+             260 RETURN_CONST         (None)
+         >>  262 PUSH_EXC_INFO
+             264 WITH_EXCEPT_START    0
+             266 TO_BOOL
+             274 POP_JUMP_IF_TRUE     (to 280)
+             278 RERAISE              2
+         >>  280 POP_TOP
+             282 POP_EXCEPT
+             284 POP_TOP
+             286 POP_TOP
+             288 RETURN_CONST         (None)
+         >>  290 COPY                 3
+             292 POP_EXCEPT
+             294 RERAISE              1
+
+ExceptionTable:
+  26 to 242 -> 262 [1] lasti
+  262 to 280 -> 290 [3] lasti
+
+# Method Name:       _account_label
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1723
+# Constants:
+#    0: None
+#    1: 'password'
+#    2: ''
+#    3: '---'
+# Names:
+#    0: _clean
+#    1: getattr
+#    2: email
+# Varnames:
+#	entry, password
+# Positional arguments:
+#	entry
+# Local variables:
+#    1: password
+1723:           0 RESUME               0
+
+1725:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_GLOBAL          (NULL + getattr)
+              22 LOAD_FAST            (entry)
+              24 LOAD_CONST           ("password")
+              26 LOAD_CONST           ("")
+              28 CALL                 (3 positional)
+              36 CALL                 (1 positional)
+              44 STORE_FAST           (password)
+
+1726:          46 LOAD_FAST            (password)
+              48 TO_BOOL
+              56 POP_JUMP_IF_FALSE    (to 94)
+              60 LOAD_FAST            (entry)
+              62 LOAD_ATTR            (email)
+              82 FORMAT_SIMPLE
+              84 LOAD_CONST           ("---")
+              86 LOAD_FAST            (password)
+              88 FORMAT_SIMPLE
+              90 BUILD_STRING         3
+              92 RETURN_VALUE
+         >>   94 LOAD_FAST            (entry)
+              96 LOAD_ATTR            (email)
+             116 RETURN_VALUE
+
+
+# Method Name:       _source_row
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1728
+# Constants:
+#    0: None
+#    1: 'source_row'
+#    2: ''
+#    3: 'password'
+#    4: '---'
+# Names:
+#    0: _clean
+#    1: getattr
+#    2: email
+# Varnames:
+#	entry, source, password
+# Positional arguments:
+#	entry
+# Local variables:
+#    1: source
+#    2: password
+1728:           0 RESUME               0
+
+1730:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_GLOBAL          (NULL + getattr)
+              22 LOAD_FAST            (entry)
+              24 LOAD_CONST           ("source_row")
+              26 LOAD_CONST           ("")
+              28 CALL                 (3 positional)
+              36 CALL                 (1 positional)
+              44 STORE_FAST           (source)
+
+1731:          46 LOAD_FAST            (source)
+              48 TO_BOOL
+              56 POP_JUMP_IF_FALSE    (to 64)
+
+1732:          60 LOAD_FAST            (source)
+              62 RETURN_VALUE
+
+1733:     >>   64 LOAD_GLOBAL          (NULL + _clean)
+              74 LOAD_GLOBAL          (NULL + getattr)
+              84 LOAD_FAST            (entry)
+              86 LOAD_CONST           ("password")
+              88 LOAD_CONST           ("")
+              90 CALL                 (3 positional)
+              98 CALL                 (1 positional)
+             106 STORE_FAST           (password)
+
+1734:         108 LOAD_FAST            (password)
+             110 TO_BOOL
+             118 POP_JUMP_IF_FALSE    (to 156)
+             122 LOAD_FAST            (entry)
+             124 LOAD_ATTR            (email)
+             144 FORMAT_SIMPLE
+             146 LOAD_CONST           ("---")
+             148 LOAD_FAST            (password)
+             150 FORMAT_SIMPLE
+             152 BUILD_STRING         3
+             154 RETURN_VALUE
+         >>  156 LOAD_FAST            (entry)
+             158 LOAD_ATTR            (email)
+             178 RETURN_VALUE
+
+
+# Method Name:       _run_one
+# Filename:          runtime.py
+# Argument count:    5
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  6
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        1736
+# Constants:
+#    0: None
+#    1: 'T'
+#    2: '03d'
+#    3: '-'
+#    4: 6
+# Names:
+#    0: uuid
+#    1: uuid4
+#    2: hex
+#    3: lock
+#    4: active_task_ids
+#    5: add
+#    6: _run_one_impl
+#    7: discard
+# Varnames:
+#	self, settings, ordinal, assigned_entry, assigned_task_id, task_id
+# Positional arguments:
+#	self, settings, ordinal, assigned_entry, assigned_task_id
+# Local variables:
+#    5: task_id
+1736:           0 RESUME               0
+
+1743:           2 LOAD_FAST            (assigned_task_id)
+               4 COPY                 1
+               6 TO_BOOL
+              14 POP_JUMP_IF_TRUE     (to 100)
+              18 POP_TOP
+              20 LOAD_CONST           ("T")
+              22 LOAD_FAST            (ordinal)
+              24 LOAD_CONST           ("03d")
+              26 FORMAT_WITH_SPEC
+              28 LOAD_CONST           ("-")
+              30 LOAD_GLOBAL          (uuid)
+              40 LOAD_ATTR            (uuid4)
+              60 PUSH_NULL
+              62 CALL                 (0 positional)
+              70 LOAD_ATTR            (hex)
+              90 LOAD_CONST           (None)
+              92 LOAD_CONST           (6)
+              94 BINARY_SLICE
+              96 FORMAT_SIMPLE
+              98 BUILD_STRING         4
+         >>  100 STORE_FAST           (task_id)
+
+1744:         102 LOAD_FAST            (self)
+             104 LOAD_ATTR            (lock)
+             124 BEFORE_WITH
+             126 POP_TOP
+
+1745:         128 LOAD_FAST            (self)
+             130 LOAD_ATTR            (active_task_ids)
+             150 LOAD_ATTR            (NULL|self + add)
+             170 LOAD_FAST            (task_id)
+             172 CALL                 (1 positional)
+             180 POP_TOP
+
+1744:         182 LOAD_CONST           (None)
+             184 LOAD_CONST           (None)
+             186 LOAD_CONST           (None)
+             188 CALL                 (2 positional)
+             196 POP_TOP
+
+1746:         198 NOP
+
+1747:         200 LOAD_FAST            (self)
+             202 LOAD_ATTR            (NULL|self + _run_one_impl)
+             222 LOAD_FAST_LOAD_FAST  (settings, ordinal)
+             224 LOAD_FAST_LOAD_FAST  (assigned_entry, task_id)
+             226 CALL                 (4 positional)
+             234 POP_TOP
+
+1749:         236 LOAD_FAST            (self)
+             238 LOAD_ATTR            (lock)
+             258 BEFORE_WITH
+             260 POP_TOP
+
+1750:         262 LOAD_FAST            (self)
+             264 LOAD_ATTR            (active_task_ids)
+             284 LOAD_ATTR            (NULL|self + discard)
+             304 LOAD_FAST            (task_id)
+             306 CALL                 (1 positional)
+             314 POP_TOP
+
+1749:         316 LOAD_CONST           (None)
+             318 LOAD_CONST           (None)
+             320 LOAD_CONST           (None)
+             322 CALL                 (2 positional)
+             330 POP_TOP

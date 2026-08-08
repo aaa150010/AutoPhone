@@ -585,6 +585,7 @@ class NvUploadQueue:
         return {
             "record_id": _safe_identifier(record.get("record_id")),
             "batch_id": _safe_identifier(record.get("batch_id"), 80),
+            "upload_attempt_id": _safe_identifier(record.get("upload_attempt_id"), 80),
             "batch_started_at": max(_safe_int(record.get("batch_started_at")), 0),
             "task_ids": task_ids,
             "source_count": source_count,
@@ -667,6 +668,7 @@ class NvUploadQueue:
         rows: list[tuple[str, str]],
         *,
         batch_started_at: Any,
+        upload_attempt_id: Any = "",
         identity_rows: list[tuple[str, str]] | None = None,
         source_error: NvRuntimeError | None = None,
     ) -> dict[str, Any]:
@@ -689,6 +691,7 @@ class NvUploadQueue:
                 record = {
                     "record_id": record_id,
                     "batch_id": _safe_identifier(batch_id, 80),
+                    "upload_attempt_id": _safe_identifier(upload_attempt_id, 80),
                     "batch_started_at": max(_safe_int(batch_started_at), 0),
                     "task_ids": task_ids,
                     "result_file": result_files[0],
@@ -705,6 +708,10 @@ class NvUploadQueue:
                 }
                 self._store["records"].append(record)
                 self._save_locked()
+            if not created and upload_attempt_id:
+                record["upload_attempt_id"] = _safe_identifier(upload_attempt_id, 80)
+                record["updated_at"] = now
+                self._save_locked()
             status = _clean(record.get("status"))
             public = self._public(record)
         if source_error is None and (created or status in {"queued", "processing"}):
@@ -717,6 +724,7 @@ class NvUploadQueue:
         sources: Iterable[Mapping[str, Any] | tuple[Any, str | Path]],
         *,
         batch_started_at: Any = 0,
+        upload_attempt_id: Any = "",
     ) -> list[dict[str, Any]]:
         normalized: list[tuple[str, str]] = []
         for source in sources:
@@ -749,6 +757,7 @@ class NvUploadQueue:
                         batch_id,
                         [row],
                         batch_started_at=batch_started_at,
+                        upload_attempt_id=upload_attempt_id,
                         source_error=exc,
                     )
                 )
@@ -758,18 +767,21 @@ class NvUploadQueue:
                         batch_id,
                         valid_rows,
                         batch_started_at=batch_started_at,
+                        upload_attempt_id=upload_attempt_id,
                         identity_rows=chunk,
                     )
                 )
         return records
 
-    def retry(self, record_id: Any) -> dict[str, Any]:
+    def retry(self, record_id: Any, *, upload_attempt_id: Any = "") -> dict[str, Any]:
         identifier = _safe_identifier(record_id)
         with self._lock:
             record = self._record_locked(identifier)
             if not self._public(record)["can_retry"]:
                 raise NvRuntimeError("所选 NV 记录不可重试", error_code="nv_retry_unavailable", status_code=409)
             record.update(status="queued", error="", failure=None, needs_confirmation=False, updated_at=self._timestamp())
+            if upload_attempt_id:
+                record["upload_attempt_id"] = _safe_identifier(upload_attempt_id, 80)
             self._save_locked()
             public = self._public(record)
         self._schedule(identifier)
@@ -934,7 +946,12 @@ class NvUploadQueue:
                 updated_at=self._timestamp(),
             )
             self._save_locked()
-        self._emit(f"NV 上传记录 {record_id} 完成，共 {len(cards)} 个账号", "success")
+            attempt_id = _safe_identifier(record.get("upload_attempt_id"), 80)
+        attempt = f"，上传尝试 {attempt_id}" if attempt_id else ""
+        self._emit(
+            f"[NV 上传确认/nv_upload_confirmed] 远端已确认接收并持久化，记录 {record_id}{attempt}，共 {len(cards)} 个账号",
+            "success",
+        )
 
 
 __all__ = [

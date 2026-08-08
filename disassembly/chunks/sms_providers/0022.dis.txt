@@ -1,0 +1,800 @@
+             780 RERAISE              0
+         >>  782 SWAP                 (TOS <-> TOS1)
+             784 POP_TOP
+
+1692:         786 SWAP                 (TOS <-> TOS2)
+             788 STORE_FAST           (row)
+             790 STORE_FAST           (_)
+             792 RERAISE              0
+
+ExceptionTable:
+  686 to 712 -> 770 [3]
+  730 to 756 -> 782 [4]
+
+# Method Name:       _read_rows
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  13
+# Stack size:        10
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1694
+# Constants:
+#    0: None
+#    1: 'Local SMS pool file not found: '
+#    2: 'utf-8-sig'
+#    3: ('encoding',)
+#    4: 1
+#    5: ('start',)
+#    6: '#'
+#    7: '----'
+#    8: 2
+#    9: 0
+#   10: 3
+#   11: ''
+#   12: 4
+#   13: 'localpool'
+#   14: ('key', 'phone', 'url', 'country', 'provider_id', 'line_no')
+# Names:
+#    0: pool_path
+#    1: exists
+#    2: RuntimeError
+#    3: enumerate
+#    4: read_text
+#    5: splitlines
+#    6: strip
+#    7: startswith
+#    8: split
+#    9: len
+#   10: _normalize_phone
+#   11: _state_key
+#   12: append
+# Varnames:
+#	self, path, rows, line_no, raw, line, part, parts, phone, url, country, provider_id, key
+# Positional arguments:
+#	self
+# Local variables:
+#    1: path
+#    2: rows
+#    3: line_no
+#    4: raw
+#    5: line
+#    6: part
+#    7: parts
+#    8: phone
+#    9: url
+#   10: country
+#   11: provider_id
+#   12: key
+1694:           0 RESUME               0
+
+1695:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (pool_path)
+              24 STORE_FAST           (path)
+
+1696:          26 LOAD_FAST            (path)
+              28 LOAD_ATTR            (NULL|self + exists)
+              48 CALL                 (0 positional)
+              56 TO_BOOL
+              64 POP_JUMP_IF_TRUE     (to 96)
+
+1697:          68 LOAD_GLOBAL          (NULL + RuntimeError)
+              78 LOAD_CONST           ("Local SMS pool file not found: ")
+              80 LOAD_FAST            (path)
+              82 FORMAT_SIMPLE
+              84 BUILD_STRING         2
+              86 CALL                 (1 positional)
+              94 RAISE_VARARGS        (exception instance)
+
+1698:     >>   96 BUILD_LIST           0
+              98 STORE_FAST           (rows)
+
+1699:         100 LOAD_GLOBAL          (NULL + enumerate)
+             110 LOAD_FAST            (path)
+             112 LOAD_ATTR            (NULL|self + read_text)
+             132 LOAD_CONST           ("utf-8-sig")
+             134 LOAD_CONST           (('encoding',))
+             136 CALL_KW              1
+             138 LOAD_ATTR            (NULL|self + splitlines)
+             158 CALL                 (0 positional)
+             166 LOAD_CONST           (1)
+             168 LOAD_CONST           (('start',))
+             170 CALL_KW              2
+             172 GET_ITER
+             174 FOR_ITER             (to 678)
+             178 UNPACK_SEQUENCE      2
+             182 STORE_FAST_STORE_FAST (line_no, raw)
+
+1700:         184 LOAD_FAST            (raw)
+             186 LOAD_ATTR            (NULL|self + strip)
+             206 CALL                 (0 positional)
+             214 STORE_FAST           (line)
+
+1701:         216 LOAD_FAST            (line)
+             218 TO_BOOL
+             226 POP_JUMP_IF_FALSE    (to 274)
+             230 LOAD_FAST            (line)
+             232 LOAD_ATTR            (NULL|self + startswith)
+             252 LOAD_CONST           ("#")
+             254 CALL                 (1 positional)
+             262 TO_BOOL
+             270 POP_JUMP_IF_FALSE    (to 278)
+
+1702:     >>  274 JUMP_BACKWARD        (to 174)
+
+1703:     >>  278 LOAD_FAST            (line)
+             280 LOAD_ATTR            (NULL|self + split)
+             300 LOAD_CONST           ("----")
+             302 CALL                 (1 positional)
+             310 GET_ITER
+             312 LOAD_FAST_AND_CLEAR  (part)
+             314 SWAP                 (TOS <-> TOS1)
+             316 BUILD_LIST           0
+             318 SWAP                 (TOS <-> TOS1)
+             320 GET_ITER
+             322 FOR_ITER             (to 362)
+             326 STORE_FAST_LOAD_FAST (part, part)
+             328 LOAD_ATTR            (NULL|self + strip)
+             348 CALL                 (0 positional)
+             356 LIST_APPEND          2
+             358 JUMP_BACKWARD        (to 322)
+         >>  362 END_FOR
+             364 POP_TOP
+             366 STORE_FAST           (parts)
+             368 STORE_FAST           (part)
+
+1704:         370 LOAD_GLOBAL          (NULL + len)
+             380 LOAD_FAST            (parts)
+         >>  382 CALL                 (1 positional)
+             390 LOAD_CONST           (2)
+             392 COMPARE_OP           (<)
+             396 POP_JUMP_IF_FALSE    (to 404)
+
+1705:         400 JUMP_BACKWARD        (to 174)
+
+1706:     >>  404 LOAD_FAST            (self)
+             406 LOAD_ATTR            (NULL|self + _normalize_phone)
+             426 LOAD_FAST            (parts)
+             428 LOAD_CONST           (0)
+             430 BINARY_SUBSCR
+             434 CALL                 (1 positional)
+             442 STORE_FAST           (phone)
+
+1707:         444 LOAD_FAST            (parts)
+             446 LOAD_CONST           (1)
+             448 BINARY_SUBSCR
+             452 STORE_FAST           (url)
+
+1708:         454 LOAD_FAST            (phone)
+             456 TO_BOOL
+             464 POP_JUMP_IF_FALSE    (to 482)
+             468 LOAD_FAST            (url)
+             470 TO_BOOL
+             478 POP_JUMP_IF_TRUE     (to 486)
+
+1709:     >>  482 JUMP_BACKWARD        (to 174)
+
+1710:     >>  486 LOAD_GLOBAL          (NULL + len)
+             496 LOAD_FAST            (parts)
+             498 CALL                 (1 positional)
+             506 LOAD_CONST           (3)
+             508 COMPARE_OP           (>=)
+             512 POP_JUMP_IF_FALSE    (to 526)
+             516 LOAD_FAST            (parts)
+             518 LOAD_CONST           (2)
+             520 BINARY_SUBSCR
+             524 JUMP_FORWARD         (to 528)
+         >>  526 LOAD_CONST           ("")
+         >>  528 STORE_FAST           (country)
+
+1711:         530 LOAD_GLOBAL          (NULL + len)
+             540 LOAD_FAST            (parts)
+             542 CALL                 (1 positional)
+             550 LOAD_CONST           (4)
+             552 COMPARE_OP           (>=)
+             556 POP_JUMP_IF_FALSE    (to 570)
+             560 LOAD_FAST            (parts)
+             562 LOAD_CONST           (3)
+             564 BINARY_SUBSCR
+             568 JUMP_FORWARD         (to 572)
+         >>  570 LOAD_CONST           ("localpool")
+         >>  572 STORE_FAST           (provider_id)
+
+1712:         574 LOAD_FAST            (self)
+             576 LOAD_ATTR            (NULL|self + _state_key)
+             596 LOAD_FAST_LOAD_FAST  (phone, url)
+             598 CALL                 (2 positional)
+             606 STORE_FAST           (key)
+
+1713:         608 LOAD_FAST            (rows)
+             610 LOAD_ATTR            (NULL|self + append)
+
+1714:         630 LOAD_FAST            (key)
+
+1715:         632 LOAD_FAST            (phone)
+
+1716:     >>  634 LOAD_FAST            (url)
+
+1717:         636 LOAD_FAST            (country)
+
+1718:         638 LOAD_FAST            (provider_id)
+             640 COPY                 1
+             642 TO_BOOL
+             650 POP_JUMP_IF_TRUE     (to 658)
+             654 POP_TOP
+             656 LOAD_CONST           ("localpool")
+
+1719:     >>  658 LOAD_FAST            (line_no)
+
+1713:         660 LOAD_CONST           (('key', 'phone', 'url', 'country', 'provider_id', 'line_no'))
+             662 BUILD_CONST_KEY_MAP  6
+             664 CALL                 (1 positional)
+             672 POP_TOP
+             674 JUMP_BACKWARD        (to 174)
+
+1699:     >>  678 END_FOR
+             680 POP_TOP
+
+1721:         682 LOAD_FAST            (rows)
+             684 RETURN_VALUE
+         >>  686 SWAP                 (TOS <-> TOS1)
+             688 POP_TOP
+
+1703:         690 SWAP                 (TOS <-> TOS1)
+             692 STORE_FAST           (part)
+             694 RERAISE              0
+
+ExceptionTable:
+  316 to 364 -> 686 [3]
+
+# Method Name:       _read_state
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        6
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1723
+# Constants:
+#    0: None
+#    1: 'items'
+#    2: 'utf-8-sig'
+#    3: ('encoding',)
+# Names:
+#    0: STATE_PATH
+#    1: exists
+#    2: json
+#    3: loads
+#    4: read_text
+#    5: Exception
+#    6: isinstance
+#    7: dict
+# Varnames:
+#	self, path, data
+# Positional arguments:
+#	self
+# Local variables:
+#    1: path
+#    2: data
+1723:           0 RESUME               0
+
+1724:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (STATE_PATH)
+              24 STORE_FAST           (path)
+
+1725:          26 LOAD_FAST            (path)
+              28 LOAD_ATTR            (NULL|self + exists)
+              48 CALL                 (0 positional)
+              56 TO_BOOL
+              64 POP_JUMP_IF_TRUE     (to 76)
+
+1726:          68 LOAD_CONST           ("items")
+              70 BUILD_MAP            0
+              72 BUILD_MAP            1
+              74 RETURN_VALUE
+
+1727:     >>   76 NOP
+
+1728:          78 LOAD_GLOBAL          (json)
+              88 LOAD_ATTR            (loads)
+             108 PUSH_NULL
+             110 LOAD_FAST            (path)
+             112 LOAD_ATTR            (NULL|self + read_text)
+             132 LOAD_CONST           ("utf-8-sig")
+             134 LOAD_CONST           (('encoding',))
+             136 CALL_KW              1
+             138 CALL                 (1 positional)
+             146 STORE_FAST           (data)
+
+1731:         148 LOAD_GLOBAL          (NULL + isinstance)
+             158 LOAD_FAST            (data)
+             160 LOAD_GLOBAL          (dict)
+             170 CALL                 (2 positional)
+             178 TO_BOOL
+             186 POP_JUMP_IF_FALSE    (to 194)
+             190 LOAD_FAST            (data)
+             192 RETURN_VALUE
+         >>  194 LOAD_CONST           ("items")
+             196 BUILD_MAP            0
+             198 BUILD_MAP            1
+             200 RETURN_VALUE
+         >>  202 PUSH_EXC_INFO
+
+1729:         204 LOAD_GLOBAL          (Exception)
+             214 CHECK_EXC_MATCH
+             216 POP_JUMP_IF_FALSE    (to 234)
+             220 POP_TOP
+
+1730:         222 LOAD_CONST           ("items")
+             224 BUILD_MAP            0
+             226 BUILD_MAP            1
+             228 SWAP                 (TOS <-> TOS1)
+             230 POP_EXCEPT
+             232 RETURN_VALUE
+
+1729:     >>  234 RERAISE              0
+         >>  236 COPY                 3
+             238 POP_EXCEPT
+             240 RERAISE              1
+
+ExceptionTable:
+  78 to 146 -> 202 [0]
+  202 to 228 -> 236 [1] lasti
+  234 to 234 -> 236 [1] lasti
+
+# Method Name:       _counts
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  8
+# Stack size:        6
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1733
+# Constants:
+#    0: None
+#    1: 'items'
+#    2: 0
+#    3: 'key'
+#    4: 'repeat'
+#    5: 'status'
+#    6: ''
+#    7: 'used_success'
+#    8: 1
+# Names:
+#    0: _read_rows
+#    1: _read_state
+#    2: isinstance
+#    3: get
+#    4: dict
+#    5: time
+#    6: reuse_mode
+#    7: str
+#    8: strip
+#    9: _active_lease
+#   10: len
+# Varnames:
+#	self, rows, state, items, available, now, row, item
+# Positional arguments:
+#	self
+# Local variables:
+#    1: rows
+#    2: state
+#    3: items
+#    4: available
+#    5: now
+#    6: row
+#    7: item
+1733:           0 RESUME               0
+
+1734:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _read_rows)
+              24 CALL                 (0 positional)
+              32 STORE_FAST           (rows)
+
+1735:          34 LOAD_FAST            (self)
+              36 LOAD_ATTR            (NULL|self + _read_state)
+              56 CALL                 (0 positional)
+              64 STORE_FAST           (state)
+
+1736:          66 LOAD_GLOBAL          (NULL + isinstance)
+              76 LOAD_FAST            (state)
+              78 LOAD_ATTR            (NULL|self + get)
+              98 LOAD_CONST           ("items")
+             100 CALL                 (1 positional)
+             108 LOAD_GLOBAL          (dict)
+             118 CALL                 (2 positional)
+             126 TO_BOOL
+             134 POP_JUMP_IF_FALSE    (to 172)
+             138 LOAD_FAST            (state)
+             140 LOAD_ATTR            (NULL|self + get)
+             160 LOAD_CONST           ("items")
+             162 CALL                 (1 positional)
+             170 JUMP_FORWARD         (to 174)
+         >>  172 BUILD_MAP            0
+         >>  174 STORE_FAST           (items)
+
+1737:         176 LOAD_CONST           (0)
+             178 STORE_FAST           (available)
+
+1738:         180 LOAD_GLOBAL          (time)
+             190 LOAD_ATTR            (time)
+             210 PUSH_NULL
+             212 CALL                 (0 positional)
+             220 STORE_FAST           (now)
+
+1739:         222 LOAD_FAST            (rows)
+             224 GET_ITER
+             226 FOR_ITER             (to 606)
+             230 STORE_FAST           (row)
+
+1740:         232 LOAD_GLOBAL          (NULL + isinstance)
+             242 LOAD_FAST            (items)
+             244 LOAD_GLOBAL          (dict)
+             254 CALL                 (2 positional)
+             262 TO_BOOL
+             270 POP_JUMP_IF_FALSE    (to 314)
+             274 LOAD_FAST            (items)
+             276 LOAD_ATTR            (NULL|self + get)
+             296 LOAD_FAST            (row)
+             298 LOAD_CONST           ("key")
+             300 BINARY_SUBSCR
+             304 CALL                 (1 positional)
+             312 JUMP_FORWARD         (to 316)
+         >>  314 BUILD_MAP            0
+         >>  316 STORE_FAST           (item)
+
+1742:         318 LOAD_FAST            (self)
+             320 LOAD_ATTR            (reuse_mode)
+             340 LOAD_CONST           ("repeat")
+             342 COMPARE_OP           (!=)
+             346 POP_JUMP_IF_FALSE    (to 502)
+
+1743:         350 LOAD_GLOBAL          (NULL + isinstance)
+             360 LOAD_FAST            (item)
+             362 LOAD_GLOBAL          (dict)
+             372 CALL                 (2 positional)
+             380 TO_BOOL
+             388 POP_JUMP_IF_FALSE    (to 502)
+
+1744:         392 LOAD_GLOBAL          (NULL + str)
+             402 LOAD_FAST            (item)
+             404 LOAD_ATTR            (NULL|self + get)
+             424 LOAD_CONST           ("status")
+             426 CALL                 (1 positional)
+             434 COPY                 1
+             436 TO_BOOL
+             444 POP_JUMP_IF_TRUE     (to 452)
+             448 POP_TOP
+             450 LOAD_CONST           ("")
+         >>  452 CALL                 (1 positional)
+             460 LOAD_ATTR            (NULL|self + strip)
+             480 CALL                 (0 positional)
+             488 LOAD_CONST           ("used_success")
+             490 COMPARE_OP           (==)
+             494 POP_JUMP_IF_FALSE    (to 502)
+
+1746:         498 JUMP_BACKWARD        (to 226)
+
+1747:     >>  502 LOAD_GLOBAL          (NULL + isinstance)
+             512 LOAD_FAST            (item)
+             514 LOAD_GLOBAL          (dict)
+             524 CALL                 (2 positional)
+             532 TO_BOOL
+             540 POP_JUMP_IF_FALSE    (to 592)
+             544 LOAD_FAST            (self)
+             546 LOAD_ATTR            (NULL|self + _active_lease)
+             566 LOAD_FAST_LOAD_FAST  (item, now)
+             568 CALL                 (2 positional)
+             576 TO_BOOL
+             584 POP_JUMP_IF_FALSE    (to 592)
+
+1748:         588 JUMP_BACKWARD        (to 226)
+
+1749:     >>  592 LOAD_FAST            (available)
+             594 LOAD_CONST           (1)
+             596 BINARY_OP            (+=)
+             600 STORE_FAST           (available)
+             602 JUMP_BACKWARD        (to 226)
+
+1739:     >>  606 END_FOR
+             608 POP_TOP
+
+1750:         610 LOAD_FAST            (available)
+             612 LOAD_GLOBAL          (NULL + len)
+             622 LOAD_FAST            (rows)
+             624 CALL                 (1 positional)
+             632 BUILD_TUPLE          2
+             634 RETURN_VALUE
+
+
+# Method Name:       balance
+# Filename:          sms_providers.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        4
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1752
+# Constants:
+#    0: None
+#    1: 'POOL:'
+#    2: '/'
+# Names:
+#    0: _counts
+# Varnames:
+#	self, available, total
+# Positional arguments:
+#	self
+# Local variables:
+#    1: available
+#    2: total
+1752:           0 RESUME               0
+
+1753:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _counts)
+              24 CALL                 (0 positional)
+              32 UNPACK_SEQUENCE      2
+              36 STORE_FAST_STORE_FAST (available, total)
+
+1754:          38 LOAD_CONST           ("POOL:")
+              40 LOAD_FAST            (available)
+              42 FORMAT_SIMPLE
+              44 LOAD_CONST           ("/")
+              46 LOAD_FAST            (total)
+              48 FORMAT_SIMPLE
+              50 BUILD_STRING         4
+              52 RETURN_VALUE
+
+
+# Method Name:       get_price_candidates
+# Filename:          sms_providers.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  16
+# Stack size:        13
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        1756
+# Constants:
+#    0: None
+#    1: 'items'
+#    2: 'country'
+#    3: ''
+#    4: 'key'
+#    5: 'repeat'
+#    6: 'status'
+#    7: 'used_success'
+#    8: 'local'
+#    9: 'provider_id'
+#   10: 'localpool'
+#   11: 0
+#   12: 1
+#   13: 0.0
+#   14: 'Local Pool '
+#   15: '/'
+#   16: ('country', 'provider_id', 'price', 'count', 'name')
+# Names:
+#    0: _read_rows
+#    1: str
+#    2: strip
+#    3: _read_state
+#    4: isinstance
+#    5: get
+#    6: dict
+#    7: time
+#    8: reuse_mode
+#    9: _active_lease
+#   10: sorted
+#   11: items
+# Varnames:
+#	self, service, countries, rows, x, allowed, state, items, now, counts, row, country, item, key, provider_id, count
+# Positional arguments:
+#	self, service, countries
+# Local variables:
+#    3: rows
+#    4: x
+#    5: allowed
+#    6: state
+#    7: items
+#    8: now
+#    9: counts
+#   10: row
+#   11: country
+#   12: item
+#   13: key
+#   14: provider_id
+#   15: count
+1756:           0 RESUME               0
+
+1757:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _read_rows)
+              24 CALL                 (0 positional)
+              32 STORE_FAST           (rows)
+
+1758:          34 LOAD_FAST            (countries)
+              36 COPY                 1
+              38 TO_BOOL
+              46 POP_JUMP_IF_TRUE     (to 54)
+              50 POP_TOP
+              52 BUILD_LIST           0
+         >>   54 GET_ITER
+              56 LOAD_FAST_AND_CLEAR  (x)
+              58 SWAP                 (TOS <-> TOS1)
+              60 BUILD_SET            0
+              62 SWAP                 (TOS <-> TOS1)
+              64 GET_ITER
+              66 FOR_ITER             (to 190)
+              70 STORE_FAST           (x)
+              72 LOAD_GLOBAL          (NULL + str)
+              82 LOAD_FAST            (x)
+              84 CALL                 (1 positional)
+              92 LOAD_ATTR            (NULL|self + strip)
+             112 CALL                 (0 positional)
+             120 TO_BOOL
+             128 POP_JUMP_IF_TRUE     (to 136)
+             132 JUMP_BACKWARD        (to 66)
+         >>  136 LOAD_GLOBAL          (NULL + str)
+             146 LOAD_FAST            (x)
+             148 CALL                 (1 positional)
+             156 LOAD_ATTR            (NULL|self + strip)
+             176 CALL                 (0 positional)
+             184 SET_ADD              2
+             186 JUMP_BACKWARD        (to 66)
+         >>  190 END_FOR
+             192 POP_TOP
+             194 STORE_FAST           (allowed)
+             196 STORE_FAST           (x)
+
+1759:         198 LOAD_FAST            (self)
+             200 LOAD_ATTR            (NULL|self + _read_state)
+             220 CALL                 (0 positional)
+             228 STORE_FAST           (state)
+
+1760:         230 LOAD_GLOBAL          (NULL + isinstance)
+             240 LOAD_FAST            (state)
+             242 LOAD_ATTR            (NULL|self + get)
+             262 LOAD_CONST           ("items")
+             264 CALL                 (1 positional)
+             272 LOAD_GLOBAL          (dict)
+             282 CALL                 (2 positional)
+             290 TO_BOOL
+             298 POP_JUMP_IF_FALSE    (to 336)
+             302 LOAD_FAST            (state)
+             304 LOAD_ATTR            (NULL|self + get)
+             324 LOAD_CONST           ("items")
+             326 CALL                 (1 positional)
+             334 JUMP_FORWARD         (to 338)
+         >>  336 BUILD_MAP            0
+         >>  338 STORE_FAST           (items)
+
+1761:         340 LOAD_GLOBAL          (time)
+             350 LOAD_ATTR            (time)
+             370 PUSH_NULL
+             372 CALL                 (0 positional)
+             380 STORE_FAST           (now)
+
+1762:         382 BUILD_MAP            0
+             384 STORE_FAST           (counts)
+
+1763:         386 LOAD_FAST            (rows)
+             388 GET_ITER
+             390 EXTENDED_ARG         (256)
+             392 FOR_ITER             (to 1042)
+             396 STORE_FAST           (row)
+
+1764:         398 LOAD_GLOBAL          (NULL + str)
+             408 LOAD_FAST            (row)
+             410 LOAD_ATTR            (NULL|self + get)
+             430 LOAD_CONST           ("country")
+             432 CALL                 (1 positional)
+             440 COPY                 1
+             442 TO_BOOL
+             450 POP_JUMP_IF_TRUE     (to 458)
+             454 POP_TOP
+             456 LOAD_CONST           ("")
+         >>  458 CALL                 (1 positional)
+             466 LOAD_ATTR            (NULL|self + strip)
+             486 CALL                 (0 positional)
+             494 STORE_FAST           (country)
+
+1765:         496 LOAD_FAST            (allowed)
+             498 TO_BOOL
+             506 POP_JUMP_IF_FALSE    (to 538)
+             510 LOAD_FAST            (country)
+             512 TO_BOOL
+             520 POP_JUMP_IF_FALSE    (to 538)
+             524 LOAD_FAST_LOAD_FAST  (country, allowed)
+             526 CONTAINS_OP          (not in)
+             530 POP_JUMP_IF_FALSE    (to 538)
+
+1766:         534 JUMP_BACKWARD        (to 390)
+
+1767:     >>  538 LOAD_GLOBAL          (NULL + isinstance)
+             548 LOAD_FAST            (items)
+             550 LOAD_GLOBAL          (dict)
+             560 CALL                 (2 positional)
+             568 TO_BOOL
+             576 POP_JUMP_IF_FALSE    (to 620)
+             580 LOAD_FAST            (items)
+             582 LOAD_ATTR            (NULL|self + get)
+             602 LOAD_FAST            (row)
+             604 LOAD_CONST           ("key")
+             606 BINARY_SUBSCR
+             610 CALL                 (1 positional)
+             618 JUMP_FORWARD         (to 622)
+         >>  620 BUILD_MAP            0
+         >>  622 STORE_FAST           (item)
+
+1769:         624 LOAD_FAST            (self)
+             626 LOAD_ATTR            (reuse_mode)
+             646 LOAD_CONST           ("repeat")
+             648 COMPARE_OP           (!=)
+             652 POP_JUMP_IF_FALSE    (to 808)
+
+1770:         656 LOAD_GLOBAL          (NULL + isinstance)
+             666 LOAD_FAST            (item)
+             668 LOAD_GLOBAL          (dict)
+             678 CALL                 (2 positional)
+         >>  686 TO_BOOL
+             694 POP_JUMP_IF_FALSE    (to 808)
+
+1771:         698 LOAD_GLOBAL          (NULL + str)
+             708 LOAD_FAST            (item)
+             710 LOAD_ATTR            (NULL|self + get)
+             730 LOAD_CONST           ("status")
+             732 CALL                 (1 positional)
+             740 COPY                 1
+             742 TO_BOOL
+             750 POP_JUMP_IF_TRUE     (to 758)
+             754 POP_TOP
+             756 LOAD_CONST           ("")
+         >>  758 CALL                 (1 positional)
+             766 LOAD_ATTR            (NULL|self + strip)
+             786 CALL                 (0 positional)
+             794 LOAD_CONST           ("used_success")
+             796 COMPARE_OP           (==)
+             800 POP_JUMP_IF_FALSE    (to 808)
+
+1773:         804 JUMP_BACKWARD        (to 390)
+
+1774:     >>  808 LOAD_GLOBAL          (NULL + isinstance)
+             818 LOAD_FAST            (item)
+             820 LOAD_GLOBAL          (dict)
+             830 CALL                 (2 positional)
+             838 TO_BOOL
+             846 POP_JUMP_IF_FALSE    (to 898)
+             850 LOAD_FAST            (self)
+             852 LOAD_ATTR            (NULL|self + _active_lease)
+             872 LOAD_FAST_LOAD_FAST  (item, now)
+             874 CALL                 (2 positional)
+             882 TO_BOOL
+             890 POP_JUMP_IF_FALSE    (to 898)
+
+1775:         894 JUMP_BACKWARD        (to 390)
+
+1776:     >>  898 LOAD_FAST            (country)
+             900 COPY                 1
+             902 TO_BOOL
+             910 POP_JUMP_IF_TRUE     (to 918)
+             914 POP_TOP
+             916 LOAD_CONST           ("local")
+         >>  918 LOAD_GLOBAL          (NULL + str)
+             928 LOAD_FAST            (row)
+             930 LOAD_ATTR            (NULL|self + get)
+             950 LOAD_CONST           ("provider_id")
+             952 CALL                 (1 positional)
+             960 COPY                 1
+             962 TO_BOOL
+             970 POP_JUMP_IF_TRUE     (to 978)
+             974 POP_TOP
+             976 LOAD_CONST           ("localpool")
+         >>  978 CALL                 (1 positional)
+             986 BUILD_TUPLE          2
+             988 STORE_FAST           (key)
+
+1777:         990 LOAD_FAST            (counts)
+             992 LOAD_ATTR            (NULL|self + get)

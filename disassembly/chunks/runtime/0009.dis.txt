@@ -1,0 +1,800 @@
+              80 LOAD_CONST           (None)
+              82 LOAD_CONST           (None)
+              84 CALL                 (2 positional)
+              92 POP_TOP
+              94 RETURN_VALUE
+         >>   96 PUSH_EXC_INFO
+              98 WITH_EXCEPT_START    0
+             100 TO_BOOL
+             108 POP_JUMP_IF_TRUE     (to 114)
+             112 RERAISE              2
+         >>  114 POP_TOP
+             116 POP_EXCEPT
+             118 POP_TOP
+             120 POP_TOP
+             122 RETURN_CONST         (None)
+         >>  124 COPY                 3
+             126 POP_EXCEPT
+             128 RERAISE              1
+
+ExceptionTable:
+  44 to 74 -> 96 [1] lasti
+  96 to 114 -> 124 [3] lasti
+
+# Method Name:       _empty_state
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        598
+# Constants:
+#    0: None
+#    1: ('schema', 'updated_at', 'items')
+# Names:
+#    0: SCHEMA
+#    1: int
+#    2: time
+# Varnames:
+#	cls
+# Positional arguments:
+#	cls
+598:           0 RESUME               0
+
+600:           2 LOAD_FAST            (cls)
+               4 LOAD_ATTR            (SCHEMA)
+              24 LOAD_GLOBAL          (NULL + int)
+              34 LOAD_GLOBAL          (time)
+              44 LOAD_ATTR            (time)
+              64 PUSH_NULL
+              66 CALL                 (0 positional)
+              74 CALL                 (1 positional)
+              82 BUILD_MAP            0
+              84 LOAD_CONST           (('schema', 'updated_at', 'items'))
+              86 BUILD_CONST_KEY_MAP  3
+              88 RETURN_VALUE
+
+
+# Method Name:       _update
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  7
+# Stack size:        9
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        602
+# Constants:
+#    0: None
+#    1: 'manual pool contains invalid rows: '
+#    2: '; '
+#    3: 3
+#    4: 'utf-8-sig'
+#    5: ('encoding',)
+#    6: 'schema'
+#    7: 'items'
+#    8: 'updated_at'
+#    9: True
+#   10: ('parents', 'exist_ok')
+# Names:
+#    0: named_file_lock
+#    1: pool_lock_name
+#    2: _entries_unlocked
+#    3: MailboxPoolError
+#    4: join
+#    5: lock
+#    6: _empty_state
+#    7: state_path
+#    8: exists
+#    9: json
+#   10: loads
+#   11: read_text_retry
+#   12: isinstance
+#   13: dict
+#   14: OSError
+#   15: ValueError
+#   16: SCHEMA
+#   17: get
+#   18: int
+#   19: time
+#   20: parent
+#   21: mkdir
+#   22: atomic_write_json
+# Varnames:
+#	self, callback, entries, errors, state, saved, result
+# Positional arguments:
+#	self, callback
+# Local variables:
+#    2: entries
+#    3: errors
+#    4: state
+#    5: saved
+#    6: result
+602:           0 RESUME               0
+
+605:           2 LOAD_GLOBAL          (NULL + named_file_lock)
+              12 LOAD_FAST            (self)
+              14 LOAD_ATTR            (pool_lock_name)
+              34 CALL                 (1 positional)
+              42 BEFORE_WITH
+              44 POP_TOP
+
+606:          46 LOAD_FAST            (self)
+              48 LOAD_ATTR            (NULL|self + _entries_unlocked)
+              68 CALL                 (0 positional)
+              76 UNPACK_SEQUENCE      2
+              80 STORE_FAST_STORE_FAST (entries, errors)
+
+607:          82 LOAD_FAST            (errors)
+              84 TO_BOOL
+              92 POP_JUMP_IF_FALSE    (to 160)
+
+608:          96 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             106 LOAD_CONST           ("manual pool contains invalid rows: ")
+             108 LOAD_CONST           ("; ")
+             110 LOAD_ATTR            (NULL|self + join)
+             130 LOAD_FAST            (errors)
+             132 LOAD_CONST           (None)
+             134 LOAD_CONST           (3)
+             136 BINARY_SLICE
+             138 CALL                 (1 positional)
+             146 BINARY_OP            (+)
+             150 CALL                 (1 positional)
+             158 RAISE_VARARGS        (exception instance)
+
+609:     >>  160 LOAD_FAST            (self)
+             162 LOAD_ATTR            (lock)
+             182 BEFORE_WITH
+             184 POP_TOP
+
+610:         186 LOAD_FAST            (self)
+             188 LOAD_ATTR            (NULL|self + _empty_state)
+             208 CALL                 (0 positional)
+             216 STORE_FAST           (state)
+
+611:         218 LOAD_FAST            (self)
+             220 LOAD_ATTR            (state_path)
+             240 LOAD_ATTR            (NULL|self + exists)
+             260 CALL                 (0 positional)
+             268 TO_BOOL
+             276 POP_JUMP_IF_FALSE    (to 408)
+
+612:         280 NOP
+
+613:         282 LOAD_GLOBAL          (json)
+             292 LOAD_ATTR            (loads)
+             312 PUSH_NULL
+             314 LOAD_GLOBAL          (NULL + read_text_retry)
+             324 LOAD_FAST            (self)
+             326 LOAD_ATTR            (state_path)
+             346 LOAD_CONST           ("utf-8-sig")
+             348 LOAD_CONST           (('encoding',))
+             350 CALL_KW              2
+             352 CALL                 (1 positional)
+             360 STORE_FAST           (saved)
+
+614:         362 LOAD_GLOBAL          (NULL + isinstance)
+             372 LOAD_FAST            (saved)
+             374 LOAD_GLOBAL          (dict)
+             384 CALL                 (2 positional)
+             392 TO_BOOL
+             400 POP_JUMP_IF_FALSE    (to 408)
+
+615:         404 LOAD_FAST            (saved)
+             406 STORE_FAST           (state)
+
+618:     >>  408 LOAD_FAST            (self)
+             410 LOAD_ATTR            (SCHEMA)
+             430 LOAD_FAST            (state)
+             432 LOAD_CONST           ("schema")
+             434 STORE_SUBSCR
+
+619:         438 LOAD_GLOBAL          (NULL + isinstance)
+             448 LOAD_FAST            (state)
+             450 LOAD_ATTR            (NULL|self + get)
+             470 LOAD_CONST           ("items")
+             472 CALL                 (1 positional)
+             480 LOAD_GLOBAL          (dict)
+             490 CALL                 (2 positional)
+             498 TO_BOOL
+             506 POP_JUMP_IF_TRUE     (to 520)
+
+620:         510 BUILD_MAP            0
+             512 LOAD_FAST            (state)
+             514 LOAD_CONST           ("items")
+             516 STORE_SUBSCR
+
+621:     >>  520 LOAD_FAST            (callback)
+             522 PUSH_NULL
+             524 LOAD_FAST_LOAD_FAST  (state, entries)
+             526 CALL                 (2 positional)
+             534 STORE_FAST           (result)
+
+622:         536 LOAD_GLOBAL          (NULL + int)
+             546 LOAD_GLOBAL          (time)
+             556 LOAD_ATTR            (time)
+             576 PUSH_NULL
+             578 CALL                 (0 positional)
+             586 CALL                 (1 positional)
+             594 LOAD_FAST            (state)
+             596 LOAD_CONST           ("updated_at")
+             598 STORE_SUBSCR
+
+623:         602 LOAD_FAST            (self)
+             604 LOAD_ATTR            (state_path)
+             624 LOAD_ATTR            (parent)
+             644 LOAD_ATTR            (NULL|self + mkdir)
+             664 LOAD_CONST           (True)
+             666 LOAD_CONST           (True)
+             668 LOAD_CONST           (('parents', 'exist_ok'))
+             670 CALL_KW              2
+             672 POP_TOP
+
+624:         674 LOAD_GLOBAL          (NULL + atomic_write_json)
+             684 LOAD_FAST            (self)
+             686 LOAD_ATTR            (state_path)
+             706 LOAD_FAST            (state)
+             708 CALL                 (2 positional)
+             716 POP_TOP
+
+625:         718 LOAD_FAST            (result)
+
+609:         720 SWAP                 (TOS <-> TOS1)
+             722 LOAD_CONST           (None)
+             724 LOAD_CONST           (None)
+             726 LOAD_CONST           (None)
+             728 CALL                 (2 positional)
+             736 POP_TOP
+
+605:         738 SWAP                 (TOS <-> TOS1)
+             740 LOAD_CONST           (None)
+             742 LOAD_CONST           (None)
+             744 LOAD_CONST           (None)
+             746 CALL                 (2 positional)
+             754 POP_TOP
+             756 RETURN_VALUE
+         >>  758 PUSH_EXC_INFO
+
+616:         760 LOAD_GLOBAL          (OSError)
+             770 LOAD_GLOBAL          (ValueError)
+             780 BUILD_TUPLE          2
+             782 CHECK_EXC_MATCH
+             784 POP_JUMP_IF_FALSE    (to 794)
+             788 POP_TOP
+
+617:         790 POP_EXCEPT
+             792 JUMP_BACKWARD_NO_INTERRUPT (to 408)
+
+616:     >>  794 RERAISE              0
+         >>  796 COPY                 3
+             798 POP_EXCEPT
+             800 RERAISE              1
+
+609:     >>  802 PUSH_EXC_INFO
+             804 WITH_EXCEPT_START    0
+             806 TO_BOOL
+             814 POP_JUMP_IF_TRUE     (to 820)
+             818 RERAISE              2
+         >>  820 POP_TOP
+             822 POP_EXCEPT
+             824 POP_TOP
+             826 POP_TOP
+             828 JUMP_FORWARD         (to 836)
+         >>  830 COPY                 3
+             832 POP_EXCEPT
+             834 RERAISE              1
+
+609:     >>  836 NOP
+
+605:         838 LOAD_CONST           (None)
+             840 LOAD_CONST           (None)
+             842 LOAD_CONST           (None)
+             844 CALL                 (2 positional)
+             852 POP_TOP
+             854 RETURN_CONST         (None)
+         >>  856 PUSH_EXC_INFO
+             858 WITH_EXCEPT_START    0
+             860 TO_BOOL
+             868 POP_JUMP_IF_TRUE     (to 874)
+             872 RERAISE              2
+         >>  874 POP_TOP
+             876 POP_EXCEPT
+             878 POP_TOP
+             880 POP_TOP
+             882 RETURN_CONST         (None)
+         >>  884 COPY                 3
+             886 POP_EXCEPT
+             888 RERAISE              1
+
+ExceptionTable:
+  44 to 182 -> 856 [1] lasti
+  184 to 278 -> 802 [2] lasti
+  282 to 406 -> 758 [2]
+  408 to 718 -> 802 [2] lasti
+  720 to 736 -> 856 [1] lasti
+  758 to 788 -> 796 [3] lasti
+  790 to 792 -> 802 [2] lasti
+  794 to 794 -> 796 [3] lasti
+  796 to 800 -> 802 [2] lasti
+  802 to 820 -> 830 [4] lasti
+  822 to 834 -> 856 [1] lasti
+  856 to 874 -> 884 [3] lasti
+
+# Method Name:       _item
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        627
+# Constants:
+#    0: None
+#    1: 'items'
+#    2: 'available'
+#    3: ('email', 'line_no', 'status', 'history')
+# Names:
+#    0: setdefault
+#    1: get
+#    2: key
+#    3: isinstance
+#    4: dict
+#    5: email
+#    6: line_no
+# Varnames:
+#	state, entry, items, item
+# Positional arguments:
+#	state, entry
+# Local variables:
+#    2: items
+#    3: item
+627:           0 RESUME               0
+
+629:           2 LOAD_FAST            (state)
+               4 LOAD_ATTR            (NULL|self + setdefault)
+              24 LOAD_CONST           ("items")
+              26 BUILD_MAP            0
+              28 CALL                 (2 positional)
+              36 STORE_FAST           (items)
+
+630:          38 LOAD_FAST            (items)
+              40 LOAD_ATTR            (NULL|self + get)
+              60 LOAD_FAST            (entry)
+              62 LOAD_ATTR            (key)
+              82 CALL                 (1 positional)
+              90 STORE_FAST           (item)
+
+631:          92 LOAD_GLOBAL          (NULL + isinstance)
+             102 LOAD_FAST            (item)
+             104 LOAD_GLOBAL          (dict)
+             114 CALL                 (2 positional)
+             122 TO_BOOL
+             130 POP_JUMP_IF_TRUE     (to 216)
+
+632:         134 LOAD_FAST            (entry)
+             136 LOAD_ATTR            (email)
+             156 LOAD_FAST            (entry)
+             158 LOAD_ATTR            (line_no)
+             178 LOAD_CONST           ("available")
+             180 BUILD_LIST           0
+             182 LOAD_CONST           (('email', 'line_no', 'status', 'history'))
+             184 BUILD_CONST_KEY_MAP  4
+             186 STORE_FAST           (item)
+
+633:         188 LOAD_FAST_LOAD_FAST  (item, items)
+             190 LOAD_FAST            (entry)
+             192 LOAD_ATTR            (key)
+             212 STORE_SUBSCR
+
+634:     >>  216 LOAD_FAST            (item)
+             218 RETURN_VALUE
+
+
+# Method Name:       _history
+# Filename:          runtime.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        636
+# Constants:
+#    0: None
+#    1: 'history'
+#    2: 180
+#    3: ('event', 'reason', 'at')
+#    4: -20
+# Names:
+#    0: setdefault
+#    1: isinstance
+#    2: list
+#    3: append
+#    4: int
+#    5: time
+# Varnames:
+#	item, event, reason, history
+# Positional arguments:
+#	item, event, reason
+# Local variables:
+#    3: history
+636:           0 RESUME               0
+
+638:           2 LOAD_FAST            (item)
+               4 LOAD_ATTR            (NULL|self + setdefault)
+              24 LOAD_CONST           ("history")
+              26 BUILD_LIST           0
+              28 CALL                 (2 positional)
+              36 STORE_FAST           (history)
+
+639:          38 LOAD_GLOBAL          (NULL + isinstance)
+              48 LOAD_FAST            (history)
+              50 LOAD_GLOBAL          (list)
+              60 CALL                 (2 positional)
+              68 TO_BOOL
+              76 POP_JUMP_IF_TRUE     (to 84)
+
+640:          80 BUILD_LIST           0
+              82 STORE_FAST           (history)
+
+641:     >>   84 LOAD_FAST            (history)
+              86 LOAD_ATTR            (NULL|self + append)
+             106 LOAD_FAST_LOAD_FAST  (event, reason)
+             108 LOAD_CONST           (None)
+             110 LOAD_CONST           (180)
+             112 BINARY_SLICE
+             114 LOAD_GLOBAL          (NULL + int)
+             124 LOAD_GLOBAL          (time)
+             134 LOAD_ATTR            (time)
+             154 PUSH_NULL
+             156 CALL                 (0 positional)
+             164 CALL                 (1 positional)
+             172 LOAD_CONST           (('event', 'reason', 'at'))
+             174 BUILD_CONST_KEY_MAP  3
+             176 CALL                 (1 positional)
+             184 POP_TOP
+
+642:         186 LOAD_FAST            (history)
+             188 LOAD_CONST           (-20)
+             190 LOAD_CONST           (None)
+             192 BINARY_SLICE
+             194 LOAD_FAST            (item)
+             196 LOAD_CONST           ("history")
+             198 STORE_SUBSCR
+             202 RETURN_CONST         (None)
+
+
+# Method Name:       validate
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        4
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        644
+# Constants:
+#    0: None
+#    1: ('ok', 'entries', 'errors')
+# Names:
+#    0: entries
+#    1: bool
+#    2: len
+# Varnames:
+#	self, entries, errors
+# Positional arguments:
+#	self
+# Local variables:
+#    1: entries
+#    2: errors
+644:           0 RESUME               0
+
+645:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + entries)
+              24 CALL                 (0 positional)
+              32 UNPACK_SEQUENCE      2
+              36 STORE_FAST_STORE_FAST (entries, errors)
+
+646:          38 LOAD_FAST            (errors)
+              40 TO_BOOL
+              48 UNARY_NOT
+              50 COPY                 1
+              52 TO_BOOL
+              60 POP_JUMP_IF_FALSE    (to 86)
+              64 POP_TOP
+              66 LOAD_GLOBAL          (NULL + bool)
+              76 LOAD_FAST            (entries)
+              78 CALL                 (1 positional)
+         >>   86 LOAD_GLOBAL          (NULL + len)
+              96 LOAD_FAST            (entries)
+              98 CALL                 (1 positional)
+             106 LOAD_FAST            (errors)
+             108 LOAD_CONST           (('ok', 'entries', 'errors'))
+             110 BUILD_CONST_KEY_MAP  3
+             112 RETURN_VALUE
+
+
+# Method Name:       lease
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  4
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        648
+# Constants:
+#    0: None
+#    1: 60
+#    2: 86400
+#    3: <Code311 code object allocate at 0x105526040, file runtime.py>, line 651
+#    4: 'manual_mailbox_pool_empty: no available mailbox'
+#    5: ('state', 'dict[str, Any]', 'entries', 'list[ManualMailboxEntry]', 'return', 'ManualMailboxEntry | None')
+# Names:
+#    0: max
+#    1: min
+#    2: int
+#    3: _update
+#    4: isinstance
+#    5: ManualMailboxEntry
+#    6: MailboxPoolError
+# Varnames:
+#	self, lease_seconds, allocate, entry
+# Positional arguments:
+#	self
+# Local variables:
+#    1: lease_seconds
+#    2: allocate
+#    3: entry
+# Cell variables:
+#    0: self
+#    1: lease_seconds
+               0 MAKE_CELL            (self)
+               2 MAKE_CELL            (lease_seconds)
+
+648:           4 RESUME               0
+
+649:           6 LOAD_GLOBAL          (NULL + max)
+              16 LOAD_CONST           (60)
+              18 LOAD_GLOBAL          (NULL + min)
+              28 LOAD_GLOBAL          (NULL + int)
+              38 LOAD_DEREF           (lease_seconds)
+              40 CALL                 (1 positional)
+              48 LOAD_CONST           (86400)
+              50 CALL                 (2 positional)
+              58 CALL                 (2 positional)
+              66 STORE_DEREF          (lease_seconds)
+
+651:          68 LOAD_CONST           (('state', 'dict[str, Any]', 'entries', 'list[ManualMailboxEntry]', 'return', 'ManualMailboxEntry | None'))
+              70 LOAD_FAST            (lease_seconds)
+              72 LOAD_FAST            (self)
+              74 BUILD_TUPLE          2
+              76 LOAD_CONST           (<Code311 code object allocate at 0x105526040, file runtime.py>, line 651)
+              78 MAKE_FUNCTION
+              80 SET_FUNCTION_ATTRIBUTE 8
+              82 SET_FUNCTION_ATTRIBUTE 4
+              84 STORE_FAST           (allocate)
+
+665:          86 LOAD_DEREF           (self)
+              88 LOAD_ATTR            (NULL|self + _update)
+             108 LOAD_FAST            (allocate)
+             110 CALL                 (1 positional)
+             118 STORE_FAST           (entry)
+
+666:         120 LOAD_GLOBAL          (NULL + isinstance)
+             130 LOAD_FAST            (entry)
+             132 LOAD_GLOBAL          (ManualMailboxEntry)
+             142 CALL                 (2 positional)
+             150 TO_BOOL
+             158 POP_JUMP_IF_TRUE     (to 184)
+
+667:         162 LOAD_GLOBAL          (NULL + MailboxPoolError)
+             172 LOAD_CONST           ("manual_mailbox_pool_empty: no available mailbox")
+             174 CALL                 (1 positional)
+             182 RAISE_VARARGS        (exception instance)
+
+668:     >>  184 LOAD_FAST            (entry)
+             186 RETURN_VALUE
+
+
+# Method Name:       _set_status
+# Filename:          runtime.py
+# Argument count:    4
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        670
+# Constants:
+#    0: None
+#    1: <Code311 code object update at 0x10552c190, file runtime.py>, line 673
+#    2: ('state', 'dict[str, Any]', 'entries', 'list[ManualMailboxEntry]', 'return', 'bool')
+# Names:
+#    0: _clean
+#    1: lower
+#    2: bool
+#    3: _update
+# Varnames:
+#	self, email, status, reason, update
+# Positional arguments:
+#	self, email, status, reason
+# Local variables:
+#    4: update
+# Cell variables:
+#    0: self
+#    1: status
+#    2: reason
+#    3: wanted
+               0 MAKE_CELL            (self)
+               2 MAKE_CELL            (status)
+               4 MAKE_CELL            (reason)
+               6 MAKE_CELL            (wanted)
+
+670:           8 RESUME               0
+
+671:          10 LOAD_GLOBAL          (NULL + _clean)
+              20 LOAD_FAST            (email)
+              22 CALL                 (1 positional)
+              30 LOAD_ATTR            (NULL|self + lower)
+              50 CALL                 (0 positional)
+              58 STORE_DEREF          (wanted)
+
+673:          60 LOAD_CONST           (('state', 'dict[str, Any]', 'entries', 'list[ManualMailboxEntry]', 'return', 'bool'))
+              62 LOAD_FAST            (reason)
+              64 LOAD_FAST            (self)
+              66 LOAD_FAST            (status)
+              68 LOAD_FAST            (wanted)
+              70 BUILD_TUPLE          4
+              72 LOAD_CONST           (<Code311 code object update at 0x10552c190, file runtime.py>, line 673)
+              74 MAKE_FUNCTION
+              76 SET_FUNCTION_ATTRIBUTE 8
+              78 SET_FUNCTION_ATTRIBUTE 4
+              80 STORE_FAST           (update)
+
+685:          82 LOAD_GLOBAL          (NULL + bool)
+              92 LOAD_DEREF           (self)
+              94 LOAD_ATTR            (NULL|self + _update)
+             114 LOAD_FAST            (update)
+             116 CALL                 (1 positional)
+             124 CALL                 (1 positional)
+             132 RETURN_VALUE
+
+
+# Method Name:       release
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  3
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        687
+# Constants:
+#    0: None
+#    1: 'available'
+# Names:
+#    0: _set_status
+# Varnames:
+#	self, email, reason
+# Positional arguments:
+#	self, email
+# Local variables:
+#    2: reason
+687:           0 RESUME               0
+
+688:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _set_status)
+              24 LOAD_FAST            (email)
+              26 LOAD_CONST           ("available")
+              28 LOAD_FAST            (reason)
+              30 CALL                 (3 positional)
+              38 RETURN_VALUE
+
+
+# Method Name:       restore_available
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  3
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        690
+# Constants:
+#    0: None
+#    1: 'available'
+# Names:
+#    0: _set_status
+# Varnames:
+#	self, email, reason
+# Positional arguments:
+#	self, email
+# Local variables:
+#    2: reason
+690:           0 RESUME               0
+
+691:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _set_status)
+              24 LOAD_FAST            (email)
+              26 LOAD_CONST           ("available")
+              28 LOAD_FAST            (reason)
+              30 CALL                 (3 positional)
+              38 RETURN_VALUE
+
+
+# Method Name:       restore_entry
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  4
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        693
+# Constants:
+#    0: 'Restore exactly one imported source row, not the first same-email row.'
+#    1: <Code311 code object update at 0x10552c250, file runtime.py>, line 697
+#    2: ('state', 'dict[str, Any]', 'entries', 'list[ManualMailboxEntry]', 'return', 'bool')
+# Names:
+#    0: _clean
+#    1: key
+#    2: bool
+#    3: _update
+# Varnames:
+#	self, entry, reason, update
+# Positional arguments:
+#	self, entry
+# Local variables:
+#    2: reason
+#    3: update
+# Cell variables:
+#    0: self
+#    1: reason
+#    2: wanted_key
+               0 MAKE_CELL            (self)
+               2 MAKE_CELL            (reason)
+               4 MAKE_CELL            (wanted_key)
+
+693:           6 RESUME               0
+
+695:           8 LOAD_GLOBAL          (NULL + _clean)
+              18 LOAD_FAST            (entry)
+              20 LOAD_ATTR            (key)
+              40 CALL                 (1 positional)
+              48 STORE_DEREF          (wanted_key)
+
+697:          50 LOAD_CONST           (('state', 'dict[str, Any]', 'entries', 'list[ManualMailboxEntry]', 'return', 'bool'))
+              52 LOAD_FAST            (reason)
+              54 LOAD_FAST            (self)
+              56 LOAD_FAST            (wanted_key)
+              58 BUILD_TUPLE          3
+              60 LOAD_CONST           (<Code311 code object update at 0x10552c250, file runtime.py>, line 697)
+              62 MAKE_FUNCTION
+              64 SET_FUNCTION_ATTRIBUTE 8
+              66 SET_FUNCTION_ATTRIBUTE 4
+              68 STORE_FAST           (update)
+
+709:          70 LOAD_GLOBAL          (NULL + bool)
+              80 LOAD_DEREF           (self)
+              82 LOAD_ATTR            (NULL|self + _update)
+             102 LOAD_FAST            (update)
+             104 CALL                 (1 positional)
+             112 CALL                 (1 positional)
+             120 RETURN_VALUE
+
+
+# Method Name:       mark_damaged
+# Filename:          runtime.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 1
+# Number of locals:  3
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        711
+# Constants:
+#    0: None

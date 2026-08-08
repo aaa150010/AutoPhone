@@ -1,0 +1,800 @@
+
+805:        1022 STORE_FAST           (message)
+            1024 STORE_FAST           (key)
+
+828:     >> 1026 LOAD_FAST            (self)
+            1028 LOAD_ATTR            (NULL|self + _message_timestamp)
+            1048 LOAD_FAST            (message)
+            1050 CALL                 (1 positional)
+            1058 STORE_FAST           (msg_ts)
+
+829:        1060 LOAD_FAST            (since_ts)
+            1062 TO_BOOL
+            1070 POP_JUMP_IF_FALSE    (to 1564)
+            1074 LOAD_FAST            (msg_ts)
+            1076 TO_BOOL
+            1084 POP_JUMP_IF_FALSE    (to 1564)
+            1088 LOAD_FAST            (msg_ts)
+            1090 LOAD_CONST           (2)
+            1092 BINARY_OP            (+)
+            1096 LOAD_GLOBAL          (NULL + float)
+            1106 LOAD_FAST            (since_ts)
+            1108 CALL                 (1 positional)
+            1116 COMPARE_OP           (<)
+            1120 POP_JUMP_IF_FALSE    (to 1564)
+
+830:        1124 LOAD_FAST            (message)
+            1126 LOAD_ATTR            (NULL|self + get)
+            1146 LOAD_CONST           ("subject")
+            1148 CALL                 (1 positional)
+            1156 COPY                 1
+            1158 TO_BOOL
+            1166 POP_JUMP_IF_TRUE     (to 1174)
+            1170 POP_TOP
+            1172 LOAD_CONST           ("")
+         >> 1174 LOAD_ATTR            (NULL|self + strip)
+            1194 CALL                 (0 positional)
+            1202 STORE_FAST           (subject)
+
+831:        1204 LOAD_FAST            (self)
+            1206 LOAD_ATTR            (NULL|self + _log)
+            1226 LOAD_CONST           ("忽略发信前旧验证码: ")
+            1228 LOAD_FAST            (backend_code)
+            1230 COPY                 1
+            1232 TO_BOOL
+            1240 POP_JUMP_IF_TRUE     (to 1248)
+            1244 POP_TOP
+            1246 LOAD_CONST           ("-")
+         >> 1248 FORMAT_SIMPLE
+            1250 LOAD_CONST           (" (")
+            1252 LOAD_FAST            (subject)
+            1254 COPY                 1
+            1256 TO_BOOL
+            1264 POP_JUMP_IF_TRUE     (to 1272)
+            1268 POP_TOP
+            1270 LOAD_CONST           ("unknown subject")
+         >> 1272 FORMAT_SIMPLE
+            1274 LOAD_CONST           (")")
+            1276 BUILD_STRING         5
+            1278 CALL                 (1 positional)
+            1286 POP_TOP
+
+832:        1288 LOAD_FAST            (backend_code)
+            1290 COPY                 1
+            1292 TO_BOOL
+            1300 POP_JUMP_IF_TRUE     (to 1326)
+            1304 POP_TOP
+            1306 LOAD_FAST            (subject)
+            1308 COPY                 1
+            1310 TO_BOOL
+            1318 POP_JUMP_IF_TRUE     (to 1326)
+            1322 POP_TOP
+            1324 LOAD_CONST           ("old_message")
+         >> 1326 STORE_FAST           (old_key)
+
+833:        1328 LOAD_FAST            (old_code_hits)
+            1330 LOAD_ATTR            (NULL|self + get)
+            1350 LOAD_FAST            (old_key)
+            1352 LOAD_CONST           (0)
+            1354 CALL                 (2 positional)
+            1362 LOAD_CONST           (1)
+            1364 BINARY_OP            (+)
+            1368 LOAD_FAST            (old_code_hits)
+            1370 LOAD_FAST            (old_key)
+            1372 STORE_SUBSCR
+
+834:        1376 LOAD_FAST            (old_code_fast_fail)
+            1378 TO_BOOL
+            1386 POP_JUMP_IF_FALSE    (to 1558)
+            1390 LOAD_FAST            (old_code_hits)
+            1392 LOAD_FAST            (old_key)
+            1394 BINARY_SUBSCR
+            1398 LOAD_GLOBAL          (NULL + int)
+            1408 LOAD_FAST            (old_code_fast_fail)
+            1410 CALL                 (1 positional)
+            1418 COMPARE_OP           (>=)
+            1422 POP_JUMP_IF_FALSE    (to 1558)
+
+835:        1426 LOAD_FAST            (backend_code)
+            1428 COPY                 1
+            1430 TO_BOOL
+            1438 POP_JUMP_IF_TRUE     (to 1446)
+            1442 POP_TOP
+            1444 LOAD_CONST           ("-")
+         >> 1446 FORMAT_SIMPLE
+            1448 LOAD_CONST           (" (")
+            1450 LOAD_FAST            (subject)
+            1452 COPY                 1
+            1454 TO_BOOL
+            1462 POP_JUMP_IF_TRUE     (to 1470)
+            1466 POP_TOP
+            1468 LOAD_CONST           ("unknown subject")
+         >> 1470 FORMAT_SIMPLE
+            1472 LOAD_CONST           (")")
+            1474 BUILD_STRING         4
+            1476 STORE_FAST           (detail)
+
+836:        1478 LOAD_FAST            (report_health)
+            1480 TO_BOOL
+            1488 POP_JUMP_IF_FALSE    (to 1534)
+
+837:        1492 LOAD_FAST            (self)
+            1494 LOAD_ATTR            (NULL|self + report_code_result)
+
+838:        1514 LOAD_FAST            (email)
+
+839:        1516 LOAD_CONST           ("timeout")
+
+840:        1518 LOAD_CONST           ("连续返回发信前旧验证码: ")
+            1520 LOAD_FAST            (detail)
+            1522 FORMAT_SIMPLE
+            1524 BUILD_STRING         2
+
+841:        1526 LOAD_CONST           (1)
+
+837:        1528 LOAD_CONST           (('threshold',))
+            1530 CALL_KW              4
+            1532 POP_TOP
+
+843:     >> 1534 LOAD_GLOBAL          (NULL + MailCodePollError)
+            1544 LOAD_CONST           ("old_code_only")
+            1546 LOAD_FAST            (detail)
+            1548 CALL                 (2 positional)
+            1556 RAISE_VARARGS        (exception instance)
+
+844:     >> 1558 EXTENDED_ARG         (512)
+            1560 JUMP_BACKWARD        (to 258)
+
+845:     >> 1564 LOAD_FAST            (backend_code)
+            1566 STORE_FAST           (code)
+
+846:        1568 LOAD_FAST            (strict_openai_parse)
+            1570 TO_BOOL
+            1578 POP_JUMP_IF_FALSE    (to 1936)
+
+847:        1582 LOAD_FAST            (self)
+            1584 LOAD_ATTR            (NULL|self + _extract_openai_otp_from_message)
+            1604 LOAD_FAST            (message)
+            1606 LOAD_FAST            (backend_code)
+            1608 CALL                 (2 positional)
+            1616 STORE_FAST           (parsed)
+
+848:        1618 LOAD_FAST            (parsed)
+            1620 TO_BOOL
+            1628 POP_JUMP_IF_FALSE    (to 1638)
+
+849:        1632 LOAD_FAST            (parsed)
+            1634 STORE_FAST           (code)
+            1636 JUMP_FORWARD         (to 1936)
+
+850:     >> 1638 LOAD_FAST            (backend_code)
+            1640 TO_BOOL
+            1648 POP_JUMP_IF_FALSE    (to 1936)
+            1652 LOAD_FAST            (self)
+            1654 LOAD_ATTR            (NULL|self + _valid_openai_otp)
+            1674 LOAD_FAST            (backend_code)
+            1676 CALL                 (1 positional)
+            1684 TO_BOOL
+            1692 POP_JUMP_IF_FALSE    (to 1936)
+
+851:        1696 LOAD_FAST            (message)
+            1698 LOAD_ATTR            (NULL|self + get)
+            1718 LOAD_CONST           ("subject")
+            1720 CALL                 (1 positional)
+            1728 COPY                 1
+            1730 TO_BOOL
+            1738 POP_JUMP_IF_TRUE     (to 1746)
+            1742 POP_TOP
+            1744 LOAD_CONST           ("")
+         >> 1746 LOAD_ATTR            (NULL|self + strip)
+            1766 CALL                 (0 positional)
+            1774 STORE_FAST           (subject)
+
+852:        1776 LOAD_FAST            (message)
+            1778 TO_BOOL
+            1786 POP_JUMP_IF_FALSE    (to 1866)
+
+853:        1790 LOAD_FAST            (self)
+            1792 LOAD_ATTR            (NULL|self + _log)
+            1812 LOAD_CONST           ("忽略非OpenAI验证码模板返回: ")
+            1814 LOAD_FAST            (backend_code)
+            1816 FORMAT_SIMPLE
+            1818 LOAD_CONST           (" (")
+            1820 LOAD_FAST            (subject)
+            1822 COPY                 1
+            1824 TO_BOOL
+            1832 POP_JUMP_IF_TRUE     (to 1840)
+            1836 POP_TOP
+            1838 LOAD_CONST           ("unknown subject")
+         >> 1840 FORMAT_SIMPLE
+            1842 LOAD_CONST           (")")
+            1844 BUILD_STRING         5
+            1846 CALL                 (1 positional)
+            1854 POP_TOP
+
+854:        1856 LOAD_FAST            (backend_code)
+            1858 STORE_FAST           (invalid_code)
+
+855:        1860 EXTENDED_ARG         (768)
+            1862 JUMP_BACKWARD        (to 258)
+
+856:     >> 1866 LOAD_FAST            (poll_keyword)
+            1868 LOAD_GLOBAL          (OPENAI_OTP_BROAD_KEYWORD)
+            1878 COMPARE_OP           (==)
+            1882 POP_JUMP_IF_FALSE    (to 1936)
+
+857:        1886 LOAD_FAST            (self)
+            1888 LOAD_ATTR            (NULL|self + _log)
+            1908 LOAD_CONST           ("忽略未带邮件详情的宽关键词验证码: ")
+            1910 LOAD_FAST            (backend_code)
+            1912 FORMAT_SIMPLE
+            1914 BUILD_STRING         2
+            1916 CALL                 (1 positional)
+            1924 POP_TOP
+
+858:        1926 LOAD_FAST            (backend_code)
+            1928 STORE_FAST           (invalid_code)
+
+859:        1930 EXTENDED_ARG         (768)
+            1932 JUMP_BACKWARD        (to 258)
+
+860:     >> 1936 LOAD_FAST            (code)
+            1938 TO_BOOL
+            1946 POP_JUMP_IF_FALSE    (to 2306)
+            1950 LOAD_FAST            (self)
+            1952 LOAD_ATTR            (NULL|self + _valid_openai_otp)
+            1972 LOAD_FAST            (code)
+            1974 CALL                 (1 positional)
+            1982 TO_BOOL
+            1990 POP_JUMP_IF_FALSE    (to 2306)
+
+861:        1994 LOAD_FAST            (message)
+            1996 LOAD_ATTR            (NULL|self + get)
+            2016 LOAD_CONST           ("subject")
+            2018 CALL                 (1 positional)
+            2026 COPY                 1
+            2028 TO_BOOL
+            2036 POP_JUMP_IF_TRUE     (to 2044)
+            2040 POP_TOP
+            2042 LOAD_CONST           ("")
+         >> 2044 LOAD_ATTR            (NULL|self + strip)
+            2064 CALL                 (0 positional)
+            2072 STORE_FAST           (subject)
+
+862:        2074 LOAD_FAST            (msg_ts)
+            2076 TO_BOOL
+            2084 POP_JUMP_IF_FALSE    (to 2116)
+            2088 LOAD_CONST           (", ts=")
+            2090 LOAD_GLOBAL          (NULL + int)
+            2100 LOAD_FAST            (msg_ts)
+            2102 CALL                 (1 positional)
+            2110 FORMAT_SIMPLE
+            2112 BUILD_STRING         2
+            2114 JUMP_FORWARD         (to 2118)
+         >> 2116 LOAD_CONST           ("")
+         >> 2118 STORE_FAST           (ts_text)
+
+863:        2120 LOAD_FAST            (self)
+            2122 LOAD_ATTR            (NULL|self + _log)
+            2142 LOAD_CONST           ("获取到验证码: ")
+            2144 LOAD_FAST            (code)
+            2146 FORMAT_SIMPLE
+            2148 LOAD_CONST           (" (")
+            2150 LOAD_FAST            (subject)
+            2152 COPY                 1
+            2154 TO_BOOL
+            2162 POP_JUMP_IF_TRUE     (to 2170)
+            2166 POP_TOP
+            2168 LOAD_CONST           ("unknown subject")
+         >> 2170 FORMAT_SIMPLE
+            2172 LOAD_FAST            (ts_text)
+            2174 FORMAT_SIMPLE
+            2176 LOAD_CONST           (")")
+            2178 BUILD_STRING         6
+            2180 CALL                 (1 positional)
+            2188 POP_TOP
+
+865:        2190 LOAD_FAST            (code)
+
+866:        2192 LOAD_FAST            (data)
+            2194 LOAD_ATTR            (NULL|self + get)
+            2214 LOAD_CONST           ("email")
+            2216 LOAD_FAST            (email)
+            2218 CALL                 (2 positional)
+
+867:        2226 LOAD_FAST            (message)
+            2228 LOAD_ATTR            (NULL|self + get)
+            2248 LOAD_CONST           ("subject")
+            2250 LOAD_CONST           ("")
+            2252 CALL                 (2 positional)
+
+868:        2260 LOAD_FAST            (message)
+            2262 LOAD_ATTR            (NULL|self + get)
+            2282 LOAD_CONST           ("from_addr")
+            2284 LOAD_CONST           ("")
+            2286 CALL                 (2 positional)
+
+869:        2294 LOAD_FAST            (msg_ts)
+
+864:        2296 LOAD_CONST           (('code', 'email', 'subject', 'from_addr', 'timestamp'))
+            2298 BUILD_CONST_KEY_MAP  5
+            2300 SWAP                 (TOS <-> TOS1)
+            2302 POP_TOP
+            2304 RETURN_VALUE
+
+871:     >> 2306 LOAD_FAST            (backend_code)
+            2308 TO_BOOL
+            2316 POP_JUMP_IF_FALSE    (to 2470)
+
+872:        2320 LOAD_FAST            (backend_code)
+            2322 STORE_FAST           (invalid_code)
+
+873:        2324 LOAD_FAST            (message)
+            2326 LOAD_ATTR            (NULL|self + get)
+            2346 LOAD_CONST           ("subject")
+            2348 CALL                 (1 positional)
+            2356 COPY                 1
+            2358 TO_BOOL
+            2366 POP_JUMP_IF_TRUE     (to 2374)
+            2370 POP_TOP
+            2372 LOAD_CONST           ("")
+         >> 2374 LOAD_ATTR            (NULL|self + strip)
+            2394 CALL                 (0 positional)
+            2402 STORE_FAST           (subject)
+
+874:        2404 LOAD_FAST            (self)
+            2406 LOAD_ATTR            (NULL|self + _log)
+            2426 LOAD_CONST           ("忽略非6位验证码: ")
+            2428 LOAD_FAST            (backend_code)
+            2430 FORMAT_SIMPLE
+            2432 LOAD_CONST           (" (")
+            2434 LOAD_FAST            (subject)
+            2436 COPY                 1
+            2438 TO_BOOL
+            2446 POP_JUMP_IF_TRUE     (to 2454)
+            2450 POP_TOP
+            2452 LOAD_CONST           ("unknown subject")
+         >> 2454 FORMAT_SIMPLE
+            2456 LOAD_CONST           (")")
+            2458 BUILD_STRING         5
+            2460 CALL                 (1 positional)
+            2468 POP_TOP
+
+875:     >> 2470 LOAD_FAST            (strict_openai_parse)
+            2472 TO_BOOL
+            2480 EXTENDED_ARG         (512)
+            2482 POP_JUMP_IF_FALSE    (to 3758)
+
+876:        2486 LOAD_FAST            (self)
+            2488 LOAD_ATTR            (NULL|self + _message_list_urls)
+            2508 LOAD_FAST            (email)
+            2510 LOAD_FAST            (poll_keyword)
+            2512 LOAD_FAST_LOAD_FAST  (limit, since_ts)
+            2514 CALL                 (4 positional)
+            2522 GET_ITER
+            2524 EXTENDED_ARG         (512)
+            2526 FOR_ITER             (to 3754)
+            2530 STORE_FAST           (list_url)
+
+877:        2532 NOP
+
+878:        2534 LOAD_GLOBAL          (requests)
+            2544 LOAD_ATTR            (get)
+            2564 PUSH_NULL
+            2566 LOAD_FAST            (list_url)
+            2568 BUILD_TUPLE          1
+            2570 LOAD_FAST            (self)
+            2572 LOAD_ATTR            (NULL|self + _headers)
+            2592 CALL                 (0 positional)
+            2600 LOAD_CONST           (30)
+            2602 LOAD_CONST           (('headers', 'timeout'))
+            2604 BUILD_CONST_KEY_MAP  2
+            2606 LOAD_FAST            (self)
+            2608 LOAD_ATTR            (NULL|self + _request_kwargs)
+            2628 CALL                 (0 positional)
+            2636 DICT_MERGE           1
+            2638 CALL_FUNCTION_EX     (keyword and positional arguments)
+            2640 STORE_FAST           (list_resp)
+
+879:        2642 LOAD_FAST            (list_resp)
+            2644 LOAD_ATTR            (NULL|self + json)
+            2664 CALL                 (0 positional)
+            2672 STORE_FAST           (list_data)
+
+882:        2674 LOAD_FAST            (self)
+            2676 LOAD_ATTR            (NULL|self + _extract_messages)
+            2696 LOAD_FAST            (list_data)
+            2698 CALL                 (1 positional)
+            2706 STORE_FAST           (messages)
+
+883:        2708 LOAD_FAST            (messages)
+            2710 TO_BOOL
+            2718 POP_JUMP_IF_TRUE     (to 2726)
+
+884:        2722 JUMP_BACKWARD        (to 2524)
+
+885:     >> 2726 LOAD_FAST            (self)
+            2728 LOAD_ATTR            (NULL|self + _find_code_from_messages)
+            2748 LOAD_FAST            (messages)
+            2750 LOAD_FAST            (since_ts)
+            2752 LOAD_CONST           (('since_ts',))
+            2754 CALL_KW              2
+            2756 STORE_FAST           (result)
+
+886:        2758 LOAD_FAST            (result)
+            2760 TO_BOOL
+            2768 POP_JUMP_IF_TRUE     (to 2776)
+            2772 JUMP_BACKWARD        (to 2524)
+         >> 2776 LOAD_FAST            (result)
+            2778 LOAD_ATTR            (NULL|self + get)
+            2798 LOAD_CONST           ("code")
+            2800 CALL                 (1 positional)
+            2808 TO_BOOL
+            2816 POP_JUMP_IF_TRUE     (to 2824)
+            2820 JUMP_BACKWARD        (to 2524)
+
+887:     >> 2824 LOAD_GLOBAL          (NULL + str)
+            2834 LOAD_FAST            (result)
+            2836 LOAD_ATTR            (NULL|self + get)
+            2856 LOAD_CONST           ("subject")
+            2858 CALL                 (1 positional)
+            2866 COPY                 1
+            2868 TO_BOOL
+            2876 POP_JUMP_IF_TRUE     (to 2884)
+            2880 POP_TOP
+            2882 LOAD_CONST           ("")
+         >> 2884 CALL                 (1 positional)
+            2892 LOAD_ATTR            (NULL|self + strip)
+            2912 CALL                 (0 positional)
+            2920 STORE_FAST           (subject)
+
+888:        2922 LOAD_GLOBAL          (NULL + float)
+            2932 LOAD_FAST            (result)
+            2934 LOAD_ATTR            (NULL|self + get)
+            2954 LOAD_CONST           ("timestamp")
+            2956 CALL                 (1 positional)
+            2964 COPY                 1
+            2966 TO_BOOL
+            2974 POP_JUMP_IF_TRUE     (to 2982)
+            2978 POP_TOP
+            2980 LOAD_CONST           (0)
+         >> 2982 CALL                 (1 positional)
+            2990 STORE_FAST           (msg_ts)
+
+889:        2992 LOAD_FAST            (since_ts)
+            2994 TO_BOOL
+            3002 POP_JUMP_IF_FALSE    (to 3514)
+            3006 LOAD_FAST            (msg_ts)
+            3008 TO_BOOL
+            3016 POP_JUMP_IF_FALSE    (to 3514)
+            3020 LOAD_FAST            (msg_ts)
+            3022 LOAD_CONST           (2)
+            3024 BINARY_OP            (+)
+         >> 3028 LOAD_GLOBAL          (NULL + float)
+            3038 LOAD_FAST            (since_ts)
+            3040 CALL                 (1 positional)
+            3048 COMPARE_OP           (<)
+            3052 POP_JUMP_IF_FALSE    (to 3514)
+
+890:        3056 LOAD_GLOBAL          (NULL + str)
+            3066 LOAD_FAST            (result)
+            3068 LOAD_ATTR            (NULL|self + get)
+            3088 LOAD_CONST           ("code")
+            3090 CALL                 (1 positional)
+            3098 COPY                 1
+            3100 TO_BOOL
+            3108 POP_JUMP_IF_TRUE     (to 3116)
+            3112 POP_TOP
+            3114 LOAD_CONST           ("")
+         >> 3116 CALL                 (1 positional)
+         >> 3124 LOAD_ATTR            (NULL|self + strip)
+            3144 CALL                 (0 positional)
+            3152 STORE_FAST           (old_code)
+
+891:        3154 LOAD_FAST            (self)
+            3156 LOAD_ATTR            (NULL|self + _log)
+            3176 LOAD_CONST           ("忽略邮件列表发信前旧验证码: ")
+            3178 LOAD_FAST            (old_code)
+            3180 COPY                 1
+            3182 TO_BOOL
+            3190 POP_JUMP_IF_TRUE     (to 3198)
+            3194 POP_TOP
+            3196 LOAD_CONST           ("-")
+         >> 3198 FORMAT_SIMPLE
+            3200 LOAD_CONST           (" (")
+            3202 LOAD_FAST            (subject)
+            3204 COPY                 1
+            3206 TO_BOOL
+            3214 POP_JUMP_IF_TRUE     (to 3222)
+            3218 POP_TOP
+            3220 LOAD_CONST           ("unknown subject")
+         >> 3222 FORMAT_SIMPLE
+            3224 LOAD_CONST           (")")
+            3226 BUILD_STRING         5
+            3228 CALL                 (1 positional)
+            3236 POP_TOP
+
+892:        3238 LOAD_FAST            (old_code)
+            3240 COPY                 1
+            3242 TO_BOOL
+            3250 POP_JUMP_IF_TRUE     (to 3276)
+            3254 POP_TOP
+            3256 LOAD_FAST            (subject)
+            3258 COPY                 1
+            3260 TO_BOOL
+            3268 POP_JUMP_IF_TRUE     (to 3276)
+            3272 POP_TOP
+            3274 LOAD_CONST           ("old_list_message")
+         >> 3276 STORE_FAST           (old_key)
+
+893:        3278 LOAD_FAST            (old_code_hits)
+            3280 LOAD_ATTR            (NULL|self + get)
+            3300 LOAD_FAST            (old_key)
+            3302 LOAD_CONST           (0)
+            3304 CALL                 (2 positional)
+            3312 LOAD_CONST           (1)
+            3314 BINARY_OP            (+)
+            3318 LOAD_FAST            (old_code_hits)
+            3320 LOAD_FAST            (old_key)
+            3322 STORE_SUBSCR
+
+894:        3326 LOAD_FAST            (old_code_fast_fail)
+            3328 TO_BOOL
+            3336 POP_JUMP_IF_FALSE    (to 3508)
+            3340 LOAD_FAST            (old_code_hits)
+            3342 LOAD_FAST            (old_key)
+            3344 BINARY_SUBSCR
+            3348 LOAD_GLOBAL          (NULL + int)
+            3358 LOAD_FAST            (old_code_fast_fail)
+            3360 CALL                 (1 positional)
+            3368 COMPARE_OP           (>=)
+            3372 POP_JUMP_IF_FALSE    (to 3508)
+
+895:        3376 LOAD_FAST            (old_code)
+            3378 COPY                 1
+            3380 TO_BOOL
+            3388 POP_JUMP_IF_TRUE     (to 3396)
+            3392 POP_TOP
+            3394 LOAD_CONST           ("-")
+         >> 3396 FORMAT_SIMPLE
+            3398 LOAD_CONST           (" (")
+            3400 LOAD_FAST            (subject)
+            3402 COPY                 1
+            3404 TO_BOOL
+            3412 POP_JUMP_IF_TRUE     (to 3420)
+            3416 POP_TOP
+            3418 LOAD_CONST           ("unknown subject")
+         >> 3420 FORMAT_SIMPLE
+            3422 LOAD_CONST           (")")
+            3424 BUILD_STRING         4
+            3426 STORE_FAST           (detail)
+
+896:        3428 LOAD_FAST            (report_health)
+            3430 TO_BOOL
+            3438 POP_JUMP_IF_FALSE    (to 3484)
+
+897:        3442 LOAD_FAST            (self)
+            3444 LOAD_ATTR            (NULL|self + report_code_result)
+
+898:        3464 LOAD_FAST            (email)
+
+899:        3466 LOAD_CONST           ("timeout")
+
+900:        3468 LOAD_CONST           ("连续返回发信前旧验证码: ")
+            3470 LOAD_FAST            (detail)
+            3472 FORMAT_SIMPLE
+         >> 3474 BUILD_STRING         2
+
+901:        3476 LOAD_CONST           (1)
+
+897:        3478 LOAD_CONST           (('threshold',))
+            3480 CALL_KW              4
+            3482 POP_TOP
+
+903:     >> 3484 LOAD_GLOBAL          (NULL + MailCodePollError)
+            3494 LOAD_CONST           ("old_code_only")
+            3496 LOAD_FAST            (detail)
+            3498 CALL                 (2 positional)
+            3506 RAISE_VARARGS        (exception instance)
+
+904:     >> 3508 EXTENDED_ARG         (256)
+            3510 JUMP_BACKWARD        (to 2524)
+
+905:     >> 3514 LOAD_FAST            (msg_ts)
+            3516 TO_BOOL
+            3524 POP_JUMP_IF_FALSE    (to 3556)
+            3528 LOAD_CONST           (", ts=")
+            3530 LOAD_GLOBAL          (NULL + int)
+            3540 LOAD_FAST            (msg_ts)
+            3542 CALL                 (1 positional)
+            3550 FORMAT_SIMPLE
+            3552 BUILD_STRING         2
+            3554 JUMP_FORWARD         (to 3558)
+         >> 3556 LOAD_CONST           ("")
+         >> 3558 STORE_FAST           (ts_text)
+
+906:        3560 LOAD_FAST            (self)
+            3562 LOAD_ATTR            (NULL|self + _log)
+            3582 LOAD_CONST           ("从邮件列表解析到验证码: ")
+            3584 LOAD_FAST            (result)
+            3586 LOAD_CONST           ("code")
+            3588 BINARY_SUBSCR
+            3592 FORMAT_SIMPLE
+            3594 LOAD_CONST           (" (")
+            3596 LOAD_FAST            (subject)
+            3598 COPY                 1
+            3600 TO_BOOL
+            3608 POP_JUMP_IF_TRUE     (to 3616)
+            3612 POP_TOP
+         >> 3614 LOAD_CONST           ("unknown subject")
+         >> 3616 FORMAT_SIMPLE
+            3618 LOAD_FAST            (ts_text)
+            3620 FORMAT_SIMPLE
+            3622 LOAD_CONST           (")")
+            3624 BUILD_STRING         6
+            3626 CALL                 (1 positional)
+            3634 POP_TOP
+
+907:        3636 LOAD_FAST            (result)
+            3638 LOAD_ATTR            (NULL|self + get)
+            3658 LOAD_CONST           ("email")
+            3660 CALL                 (1 positional)
+            3668 COPY                 1
+            3670 TO_BOOL
+            3678 POP_JUMP_IF_TRUE     (to 3734)
+            3682 POP_TOP
+            3684 LOAD_FAST            (data)
+            3686 LOAD_ATTR            (NULL|self + get)
+            3706 LOAD_CONST           ("email")
+            3708 CALL                 (1 positional)
+            3716 COPY                 1
+            3718 TO_BOOL
+            3726 POP_JUMP_IF_TRUE     (to 3734)
+            3730 POP_TOP
+            3732 LOAD_FAST            (email)
+         >> 3734 LOAD_FAST            (result)
+            3736 LOAD_CONST           ("email")
+            3738 STORE_SUBSCR
+
+908:        3742 LOAD_FAST            (result)
+            3744 SWAP                 (TOS <-> TOS1)
+            3746 POP_TOP
+            3748 SWAP                 (TOS <-> TOS1)
+            3750 POP_TOP
+            3752 RETURN_VALUE
+
+876:     >> 3754 END_FOR
+            3756 POP_TOP
+
+909:     >> 3758 LOAD_FAST            (data)
+            3760 LOAD_ATTR            (NULL|self + get)
+            3780 LOAD_CONST           ("quarantined")
+            3782 CALL                 (1 positional)
+            3790 TO_BOOL
+            3798 POP_JUMP_IF_FALSE    (to 3840)
+
+910:        3802 LOAD_FAST            (self)
+            3804 LOAD_ATTR            (NULL|self + _log)
+            3824 LOAD_CONST           ("后台已判定该邮箱不收码并隔离")
+            3826 CALL                 (1 positional)
+            3834 POP_TOP
+
+911:        3836 POP_TOP
+            3838 RETURN_CONST         (None)
+
+909:     >> 3840 EXTENDED_ARG         (1792)
+            3842 JUMP_BACKWARD        (to 258)
+
+789:     >> 3846 END_FOR
+            3848 POP_TOP
+
+916:        3850 LOAD_FAST            (report_health)
+            3852 TO_BOOL
+            3860 POP_JUMP_IF_FALSE    (to 3934)
+
+917:        3864 LOAD_CONST           ("本轮轮询未收到有效6位验证码")
+            3866 LOAD_FAST            (invalid_code)
+            3868 TO_BOOL
+            3876 POP_JUMP_IF_FALSE    (to 3890)
+            3880 LOAD_CONST           (": ")
+            3882 LOAD_FAST            (invalid_code)
+            3884 BINARY_OP            (+)
+            3888 JUMP_FORWARD         (to 3892)
+         >> 3890 LOAD_CONST           ("")
+         >> 3892 FORMAT_SIMPLE
+            3894 BUILD_STRING         2
+            3896 STORE_FAST           (detail)
+
+918:        3898 LOAD_FAST            (self)
+            3900 LOAD_ATTR            (NULL|self + report_code_result)
+            3920 LOAD_FAST            (email)
+            3922 LOAD_CONST           ("pending")
+            3924 LOAD_FAST            (detail)
+            3926 LOAD_FAST            (pending_threshold)
+            3928 LOAD_CONST           (('threshold',))
+            3930 CALL_KW              4
+            3932 POP_TOP
+
+919:     >> 3934 LOAD_FAST            (self)
+            3936 LOAD_ATTR            (NULL|self + _log)
+            3956 LOAD_CONST           ("未找到有效6位验证码, ")
+            3958 LOAD_FAST            (interval)
+            3960 FORMAT_SIMPLE
+            3962 LOAD_CONST           ("s 后重试...")
+            3964 BUILD_STRING         3
+            3966 CALL                 (1 positional)
+            3974 POP_TOP
+
+920:        3976 LOAD_GLOBAL          (time)
+            3986 LOAD_ATTR            (sleep)
+            4006 PUSH_NULL
+            4008 LOAD_FAST            (interval)
+            4010 CALL                 (1 positional)
+            4018 POP_TOP
+
+787:        4020 LOAD_GLOBAL          (time)
+            4030 LOAD_ATTR            (time)
+            4050 PUSH_NULL
+            4052 CALL                 (0 positional)
+            4060 LOAD_FAST            (start)
+            4062 BINARY_OP            (-)
+            4066 LOAD_FAST            (timeout)
+            4068 COMPARE_OP           (<)
+            4072 POP_JUMP_IF_FALSE    (to 4082)
+            4076 EXTENDED_ARG         (1792)
+            4078 JUMP_BACKWARD        (to 250)
+
+922:     >> 4082 LOAD_FAST            (self)
+            4084 LOAD_ATTR            (NULL|self + _log)
+            4104 LOAD_CONST           ("获取验证码超时 (")
+            4106 LOAD_FAST            (timeout)
+            4108 FORMAT_SIMPLE
+            4110 LOAD_CONST           ("s)")
+            4112 BUILD_STRING         3
+            4114 CALL                 (1 positional)
+            4122 POP_TOP
+
+923:        4124 LOAD_FAST            (report_health)
+            4126 TO_BOOL
+            4134 POP_JUMP_IF_FALSE    (to 4180)
+
+924:        4138 LOAD_FAST            (self)
+            4140 LOAD_ATTR            (NULL|self + report_code_result)
+            4160 LOAD_FAST            (email)
+            4162 LOAD_CONST           ("timeout")
+            4164 LOAD_FAST            (timeout)
+            4166 FORMAT_SIMPLE
+            4168 LOAD_CONST           ("s 内未收到验证码")
+            4170 BUILD_STRING         2
+            4172 LOAD_FAST            (timeout_threshold)
+            4174 LOAD_CONST           (('threshold',))
+            4176 CALL_KW              4
+            4178 POP_TOP
+
+925:     >> 4180 RETURN_CONST         (None)
+         >> 4182 SWAP                 (TOS <-> TOS1)
+            4184 POP_TOP
+
+805:        4186 SWAP                 (TOS <-> TOS1)
+            4188 STORE_FAST           (key)
+            4190 RERAISE              0
+         >> 4192 PUSH_EXC_INFO
+
+880:        4194 LOAD_GLOBAL          (Exception)
+            4204 CHECK_EXC_MATCH
+            4206 POP_JUMP_IF_FALSE    (to 4220)
+            4210 POP_TOP
+
+881:        4212 POP_EXCEPT
+            4214 EXTENDED_ARG         (768)
+            4216 JUMP_BACKWARD        (to 2524)
+
+880:     >> 4220 RERAISE              0
+         >> 4222 COPY                 3
+            4224 POP_EXCEPT
+            4226 RERAISE              1
+         >> 4228 PUSH_EXC_INFO
+
+912:        4230 LOAD_GLOBAL          (MailCodePollError)
+            4240 CHECK_EXC_MATCH
+            4242 POP_JUMP_IF_FALSE    (to 4250)

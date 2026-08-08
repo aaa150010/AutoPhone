@@ -1,0 +1,800 @@
+# pydisasm version 6.1.8
+# Python bytecode 3.13.0 (3571)
+# Disassembled from Python 3.9.6 (default, May 22 2026, 11:13:45) 
+# [Clang 21.0.0 (clang-2100.1.1.101)]
+# Timestamp in code: 0 (1970-01-01 08:00:00)
+# Source code size mod 2**32: 0 bytes
+# Method Name:       <module>
+# Filename:          sub2_session.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        5
+# Flags:             0x01000000 (0x1000000)
+# First Line:        1
+# Constants:
+#    0: 'Cross-process SUB2 admin login throttling and token cache.'
+#    1: 0
+#    2: ('annotations',)
+#    3: None
+#    4: ('Path',)
+#    5: ('Any', 'Callable', 'Dict')
+#    6: ('atomic_write_json', 'named_file_lock')
+#    7: ('requests_kwargs',)
+#    8: ('runtime_path',)
+#    9: 'data'
+#   10: 'sub2_session_cache.json'
+#   11: 'sub2_admin_login.lock'
+#   12: 600
+#   13: 90
+#   14: 2
+#   15: <Code311 code object Sub2RateLimited at 0x107ba2ac0, file sub2_session.py>, line 27
+#   16: 'Sub2RateLimited'
+#   17: <Code311 code object _now at 0x107ba2b80, file sub2_session.py>, line 31
+#   18: <Code311 code object _cache_key at 0x107ba2a30, file sub2_session.py>, line 35
+#   19: <Code311 code object _load_cache at 0x107ba2a00, file sub2_session.py>, line 40
+#   20: <Code311 code object _save_cache at 0x107ba29d0, file sub2_session.py>, line 52
+#   21: <Code311 code object _is_rate_limited at 0x107ba2940, file sub2_session.py>, line 57
+#   22: 15
+#   23: False
+#   24: ''
+#   25: ('timeout', 'log_fn', 'force_refresh', 'proxy')
+#   26: <Code311 code object get_admin_token at 0x107b714f0, file sub2_session.py>, line 62
+#   27: <Code311 code object clear_cached_token at 0x107b71580, file sub2_session.py>, line 133
+#   28: ('return', 'float')
+#   29: ('base_url', 'str', 'email', 'str', 'return', 'str')
+#   30: ('return', 'Dict[str, Any]')
+#   31: ('data', 'Dict[str, Any]', 'return', 'None')
+#   32: ('data', 'Any', 'return', 'bool')
+#   33: ('base_url', 'str', 'email', 'str', 'password', 'str', 'timeout', 'int', 'log_fn', 'LogFn | None', 'force_refresh', 'bool', 'proxy', 'str', 'return', 'str')
+#   34: ('base_url', 'str', 'email', 'str', 'return', 'None')
+# Names:
+#    0: __doc__
+#    1: __future__
+#    2: annotations
+#    3: hashlib
+#    4: json
+#    5: time
+#    6: pathlib
+#    7: Path
+#    8: typing
+#    9: Any
+#   10: Callable
+#   11: Dict
+#   12: requests
+#   13: file_safety
+#   14: atomic_write_json
+#   15: named_file_lock
+#   16: proxy_scope
+#   17: requests_kwargs
+#   18: runtime_paths
+#   19: runtime_path
+#   20: str
+#   21: LogFn
+#   22: SESSION_FILE
+#   23: LOGIN_LOCK
+#   24: TOKEN_TTL_SECONDS
+#   25: RATE_LIMIT_COOLDOWN_SECONDS
+#   26: MIN_LOGIN_INTERVAL_SECONDS
+#   27: RuntimeError
+#   28: Sub2RateLimited
+#   29: _now
+#   30: _cache_key
+#   31: _load_cache
+#   32: _save_cache
+#   33: _is_rate_limited
+#   34: get_admin_token
+#   35: clear_cached_token
+  0:           0 RESUME               0
+
+  2:           2 LOAD_CONST           ("Cross-process SUB2 admin login throttling and token cache.")
+               4 STORE_NAME           (__doc__)
+
+  4:           6 LOAD_CONST           (0)
+               8 LOAD_CONST           (('annotations',))
+              10 IMPORT_NAME          (__future__)
+              12 IMPORT_FROM          (annotations)
+              14 STORE_NAME           (annotations)
+              16 POP_TOP
+
+  6:          18 LOAD_CONST           (0)
+              20 LOAD_CONST           (None)
+              22 IMPORT_NAME          (hashlib)
+              24 STORE_NAME           (hashlib)
+
+  7:          26 LOAD_CONST           (0)
+              28 LOAD_CONST           (None)
+              30 IMPORT_NAME          (json)
+              32 STORE_NAME           (json)
+
+  8:          34 LOAD_CONST           (0)
+              36 LOAD_CONST           (None)
+              38 IMPORT_NAME          (time)
+              40 STORE_NAME           (time)
+
+  9:          42 LOAD_CONST           (0)
+              44 LOAD_CONST           (('Path',))
+              46 IMPORT_NAME          (pathlib)
+              48 IMPORT_FROM          (Path)
+              50 STORE_NAME           (Path)
+              52 POP_TOP
+
+ 10:          54 LOAD_CONST           (0)
+              56 LOAD_CONST           (('Any', 'Callable', 'Dict'))
+              58 IMPORT_NAME          (typing)
+              60 IMPORT_FROM          (Any)
+              62 STORE_NAME           (Any)
+              64 IMPORT_FROM          (Callable)
+              66 STORE_NAME           (Callable)
+              68 IMPORT_FROM          (Dict)
+              70 STORE_NAME           (Dict)
+              72 POP_TOP
+
+ 12:          74 LOAD_CONST           (0)
+              76 LOAD_CONST           (None)
+              78 IMPORT_NAME          (requests)
+              80 STORE_NAME           (requests)
+
+ 14:          82 LOAD_CONST           (0)
+              84 LOAD_CONST           (('atomic_write_json', 'named_file_lock'))
+              86 IMPORT_NAME          (file_safety)
+              88 IMPORT_FROM          (atomic_write_json)
+              90 STORE_NAME           (atomic_write_json)
+              92 IMPORT_FROM          (named_file_lock)
+              94 STORE_NAME           (named_file_lock)
+              96 POP_TOP
+
+ 15:          98 LOAD_CONST           (0)
+             100 LOAD_CONST           (('requests_kwargs',))
+             102 IMPORT_NAME          (proxy_scope)
+             104 IMPORT_FROM          (requests_kwargs)
+             106 STORE_NAME           (requests_kwargs)
+             108 POP_TOP
+
+ 16:         110 LOAD_CONST           (0)
+             112 LOAD_CONST           (('runtime_path',))
+             114 IMPORT_NAME          (runtime_paths)
+             116 IMPORT_FROM          (runtime_path)
+             118 STORE_NAME           (runtime_path)
+             120 POP_TOP
+
+ 18:         122 LOAD_NAME            (Callable)
+             124 LOAD_NAME            (str)
+             126 BUILD_LIST           1
+             128 LOAD_CONST           (None)
+             130 BUILD_TUPLE          2
+             132 BINARY_SUBSCR
+             136 STORE_NAME           (LogFn)
+
+ 20:         138 LOAD_NAME            (runtime_path)
+             140 PUSH_NULL
+             142 LOAD_CONST           ("data")
+             144 LOAD_CONST           ("sub2_session_cache.json")
+             146 CALL                 (2 positional)
+             154 STORE_NAME           (SESSION_FILE)
+
+ 21:         156 LOAD_CONST           ("sub2_admin_login.lock")
+             158 STORE_NAME           (LOGIN_LOCK)
+
+ 22:         160 LOAD_CONST           (600)
+             162 STORE_NAME           (TOKEN_TTL_SECONDS)
+
+ 23:         164 LOAD_CONST           (90)
+             166 STORE_NAME           (RATE_LIMIT_COOLDOWN_SECONDS)
+
+ 24:         168 LOAD_CONST           (2)
+             170 STORE_NAME           (MIN_LOGIN_INTERVAL_SECONDS)
+
+ 27:         172 LOAD_BUILD_CLASS
+             174 PUSH_NULL
+             176 LOAD_CONST           (<Code311 code object Sub2RateLimited at 0x107ba2ac0, file sub2_session.py>, line 27)
+             178 MAKE_FUNCTION
+             180 LOAD_CONST           ("Sub2RateLimited")
+             182 LOAD_NAME            (RuntimeError)
+             184 CALL                 (3 positional)
+             192 STORE_NAME           (Sub2RateLimited)
+
+ 31:         194 LOAD_CONST           (('return', 'float'))
+             196 LOAD_CONST           (<Code311 code object _now at 0x107ba2b80, file sub2_session.py>, line 31)
+             198 MAKE_FUNCTION
+             200 SET_FUNCTION_ATTRIBUTE 4
+             202 STORE_NAME           (_now)
+
+ 35:         204 LOAD_CONST           (('base_url', 'str', 'email', 'str', 'return', 'str'))
+             206 LOAD_CONST           (<Code311 code object _cache_key at 0x107ba2a30, file sub2_session.py>, line 35)
+             208 MAKE_FUNCTION
+             210 SET_FUNCTION_ATTRIBUTE 4
+             212 STORE_NAME           (_cache_key)
+
+ 40:         214 LOAD_CONST           (('return', 'Dict[str, Any]'))
+             216 LOAD_CONST           (<Code311 code object _load_cache at 0x107ba2a00, file sub2_session.py>, line 40)
+             218 MAKE_FUNCTION
+             220 SET_FUNCTION_ATTRIBUTE 4
+             222 STORE_NAME           (_load_cache)
+
+ 52:         224 LOAD_CONST           (('data', 'Dict[str, Any]', 'return', 'None'))
+             226 LOAD_CONST           (<Code311 code object _save_cache at 0x107ba29d0, file sub2_session.py>, line 52)
+             228 MAKE_FUNCTION
+             230 SET_FUNCTION_ATTRIBUTE 4
+             232 STORE_NAME           (_save_cache)
+
+ 57:         234 LOAD_CONST           (('data', 'Any', 'return', 'bool'))
+             236 LOAD_CONST           (<Code311 code object _is_rate_limited at 0x107ba2940, file sub2_session.py>, line 57)
+             238 MAKE_FUNCTION
+             240 SET_FUNCTION_ATTRIBUTE 4
+             242 STORE_NAME           (_is_rate_limited)
+
+ 67:         244 LOAD_CONST           (15)
+
+ 68:         246 LOAD_CONST           (None)
+
+ 69:         248 LOAD_CONST           (False)
+
+ 70:         250 LOAD_CONST           ("")
+
+ 62:         252 LOAD_CONST           (('timeout', 'log_fn', 'force_refresh', 'proxy'))
+             254 BUILD_CONST_KEY_MAP  4
+
+ 63:         256 NOP
+
+ 62:         258 NOP
+
+ 64:         260 NOP
+
+ 62:         262 NOP
+
+ 65:         264 NOP
+
+ 62:         266 NOP
+
+ 67:         268 NOP
+
+ 62:         270 NOP
+
+ 68:         272 NOP
+
+ 62:         274 NOP
+
+ 69:         276 NOP
+
+ 62:         278 NOP
+
+ 70:         280 NOP
+
+ 62:         282 NOP
+
+ 71:         284 NOP
+
+ 62:         286 LOAD_CONST           (('base_url', 'str', 'email', 'str', 'password', 'str', 'timeout', 'int', 'log_fn', 'LogFn | None', 'force_refresh', 'bool', 'proxy', 'str', 'return', 'str'))
+             288 LOAD_CONST           (<Code311 code object get_admin_token at 0x107b714f0, file sub2_session.py>, line 62)
+             290 MAKE_FUNCTION
+             292 SET_FUNCTION_ATTRIBUTE 4
+             294 SET_FUNCTION_ATTRIBUTE 2
+             296 STORE_NAME           (get_admin_token)
+
+133:         298 LOAD_CONST           (('base_url', 'str', 'email', 'str', 'return', 'None'))
+             300 LOAD_CONST           (<Code311 code object clear_cached_token at 0x107b71580, file sub2_session.py>, line 133)
+             302 MAKE_FUNCTION
+             304 SET_FUNCTION_ATTRIBUTE 4
+             306 STORE_NAME           (clear_cached_token)
+             308 RETURN_CONST         (None)
+
+
+# Method Name:       Sub2RateLimited
+# Filename:          sub2_session.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        1
+# Flags:             0x01000000 (0x1000000)
+# First Line:        27
+# Constants:
+#    0: 'Sub2RateLimited'
+#    1: 27
+#    2: ()
+#    3: None
+# Names:
+#    0: __name__
+#    1: __module__
+#    2: __qualname__
+#    3: __firstlineno__
+#    4: __static_attributes__
+ 27:           0 RESUME               0
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("Sub2RateLimited")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (27)
+              12 STORE_NAME           (__firstlineno__)
+
+ 28:          14 LOAD_CONST           (())
+              16 STORE_NAME           (__static_attributes__)
+              18 RETURN_CONST         (None)
+
+
+# Method Name:       _now
+# Filename:          sub2_session.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        2
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        31
+# Constants:
+#    0: None
+# Names:
+#    0: time
+ 31:           0 RESUME               0
+
+ 32:           2 LOAD_GLOBAL          (time)
+              12 LOAD_ATTR            (time)
+              32 PUSH_NULL
+              34 CALL                 (0 positional)
+              42 RETURN_VALUE
+
+
+# Method Name:       _cache_key
+# Filename:          sub2_session.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        7
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        35
+# Constants:
+#    0: None
+#    1: ''
+#    2: '/'
+#    3: '|'
+#    4: 'utf-8'
+#    5: 'ignore'
+#    6: ('errors',)
+# Names:
+#    0: str
+#    1: rstrip
+#    2: strip
+#    3: lower
+#    4: hashlib
+#    5: sha256
+#    6: encode
+#    7: hexdigest
+# Varnames:
+#	base_url, email, raw
+# Positional arguments:
+#	base_url, email
+# Local variables:
+#    2: raw
+ 35:           0 RESUME               0
+
+ 36:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (base_url)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + rstrip)
+              60 LOAD_CONST           ("/")
+              62 CALL                 (1 positional)
+              70 FORMAT_SIMPLE
+              72 LOAD_CONST           ("|")
+              74 LOAD_GLOBAL          (NULL + str)
+              84 LOAD_FAST            (email)
+              86 COPY                 1
+              88 TO_BOOL
+              96 POP_JUMP_IF_TRUE     (to 104)
+             100 POP_TOP
+             102 LOAD_CONST           ("")
+         >>  104 CALL                 (1 positional)
+             112 LOAD_ATTR            (NULL|self + strip)
+             132 CALL                 (0 positional)
+             140 LOAD_ATTR            (NULL|self + lower)
+             160 CALL                 (0 positional)
+             168 FORMAT_SIMPLE
+             170 BUILD_STRING         3
+             172 STORE_FAST           (raw)
+
+ 37:         174 LOAD_GLOBAL          (hashlib)
+             184 LOAD_ATTR            (sha256)
+             204 PUSH_NULL
+             206 LOAD_FAST            (raw)
+             208 LOAD_ATTR            (NULL|self + encode)
+             228 LOAD_CONST           ("utf-8")
+             230 LOAD_CONST           ("ignore")
+             232 LOAD_CONST           (('errors',))
+             234 CALL_KW              2
+             236 CALL                 (1 positional)
+             244 LOAD_ATTR            (NULL|self + hexdigest)
+             264 CALL                 (0 positional)
+             272 RETURN_VALUE
+
+
+# Method Name:       _load_cache
+# Filename:          sub2_session.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        40
+# Constants:
+#    0: None
+#    1: 'sessions'
+#    2: 'utf-8-sig'
+#    3: ('encoding',)
+# Names:
+#    0: SESSION_FILE
+#    1: exists
+#    2: json
+#    3: loads
+#    4: read_text
+#    5: isinstance
+#    6: dict
+#    7: get
+#    8: Exception
+# Varnames:
+#	data
+# Local variables:
+#    0: data
+ 40:           0 RESUME               0
+
+ 41:           2 LOAD_GLOBAL          (SESSION_FILE)
+              12 LOAD_ATTR            (NULL|self + exists)
+              32 CALL                 (0 positional)
+              40 TO_BOOL
+              48 POP_JUMP_IF_TRUE     (to 60)
+
+ 42:          52 LOAD_CONST           ("sessions")
+              54 BUILD_MAP            0
+              56 BUILD_MAP            1
+              58 RETURN_VALUE
+
+ 43:     >>   60 NOP
+
+ 44:          62 LOAD_GLOBAL          (json)
+              72 LOAD_ATTR            (loads)
+              92 PUSH_NULL
+              94 LOAD_GLOBAL          (SESSION_FILE)
+             104 LOAD_ATTR            (NULL|self + read_text)
+             124 LOAD_CONST           ("utf-8-sig")
+             126 LOAD_CONST           (('encoding',))
+             128 CALL_KW              1
+             130 CALL                 (1 positional)
+             138 STORE_FAST           (data)
+
+ 45:         140 LOAD_GLOBAL          (NULL + isinstance)
+             150 LOAD_FAST            (data)
+             152 LOAD_GLOBAL          (dict)
+             162 CALL                 (2 positional)
+             170 TO_BOOL
+             178 POP_JUMP_IF_FALSE    (to 258)
+             182 LOAD_GLOBAL          (NULL + isinstance)
+             192 LOAD_FAST            (data)
+             194 LOAD_ATTR            (NULL|self + get)
+             214 LOAD_CONST           ("sessions")
+             216 CALL                 (1 positional)
+             224 LOAD_GLOBAL          (dict)
+             234 CALL                 (2 positional)
+             242 TO_BOOL
+             250 POP_JUMP_IF_FALSE    (to 258)
+
+ 46:         254 LOAD_FAST            (data)
+             256 RETURN_VALUE
+
+ 49:     >>  258 LOAD_CONST           ("sessions")
+             260 BUILD_MAP            0
+             262 BUILD_MAP            1
+             264 RETURN_VALUE
+         >>  266 PUSH_EXC_INFO
+
+ 47:         268 LOAD_GLOBAL          (Exception)
+             278 CHECK_EXC_MATCH
+             280 POP_JUMP_IF_FALSE    (to 296)
+             284 POP_TOP
+
+ 48:         286 POP_EXCEPT
+
+ 49:         288 LOAD_CONST           ("sessions")
+             290 BUILD_MAP            0
+             292 BUILD_MAP            1
+             294 RETURN_VALUE
+
+ 47:     >>  296 RERAISE              0
+         >>  298 COPY                 3
+             300 POP_EXCEPT
+             302 RERAISE              1
+
+ExceptionTable:
+  62 to 254 -> 266 [0]
+  266 to 284 -> 298 [1] lasti
+  296 to 296 -> 298 [1] lasti
+
+# Method Name:       _save_cache
+# Filename:          sub2_session.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        52
+# Constants:
+#    0: None
+#    1: True
+#    2: ('parents', 'exist_ok')
+# Names:
+#    0: SESSION_FILE
+#    1: parent
+#    2: mkdir
+#    3: atomic_write_json
+# Varnames:
+#	data
+# Positional arguments:
+#	data
+ 52:           0 RESUME               0
+
+ 53:           2 LOAD_GLOBAL          (SESSION_FILE)
+              12 LOAD_ATTR            (parent)
+              32 LOAD_ATTR            (NULL|self + mkdir)
+              52 LOAD_CONST           (True)
+              54 LOAD_CONST           (True)
+              56 LOAD_CONST           (('parents', 'exist_ok'))
+              58 CALL_KW              2
+              60 POP_TOP
+
+ 54:          62 LOAD_GLOBAL          (NULL + atomic_write_json)
+              72 LOAD_GLOBAL          (SESSION_FILE)
+              82 LOAD_FAST            (data)
+              84 CALL                 (2 positional)
+              92 POP_TOP
+              94 RETURN_CONST         (None)
+
+
+# Method Name:       _is_rate_limited
+# Filename:          sub2_session.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        57
+# Constants:
+#    0: None
+#    1: False
+#    2: ('ensure_ascii',)
+#    3: ''
+#    4: 'too many requests'
+#    5: 'rate limit'
+#    6: '429'
+# Names:
+#    0: isinstance
+#    1: dict
+#    2: list
+#    3: json
+#    4: dumps
+#    5: lower
+#    6: str
+# Varnames:
+#	data, text
+# Positional arguments:
+#	data
+# Local variables:
+#    1: text
+ 57:           0 RESUME               0
+
+ 58:           2 LOAD_GLOBAL          (NULL + isinstance)
+              12 LOAD_FAST            (data)
+              14 LOAD_GLOBAL          (dict)
+              24 LOAD_GLOBAL          (list)
+              34 BUILD_TUPLE          2
+              36 CALL                 (2 positional)
+              44 TO_BOOL
+              52 POP_JUMP_IF_FALSE    (to 126)
+              56 LOAD_GLOBAL          (json)
+              66 LOAD_ATTR            (dumps)
+              86 PUSH_NULL
+              88 LOAD_FAST            (data)
+              90 LOAD_CONST           (False)
+              92 LOAD_CONST           (('ensure_ascii',))
+              94 CALL_KW              2
+              96 LOAD_ATTR            (NULL|self + lower)
+             116 CALL                 (0 positional)
+             124 JUMP_FORWARD         (to 192)
+         >>  126 LOAD_GLOBAL          (NULL + str)
+             136 LOAD_FAST            (data)
+             138 COPY                 1
+             140 TO_BOOL
+             148 POP_JUMP_IF_TRUE     (to 156)
+             152 POP_TOP
+             154 LOAD_CONST           ("")
+         >>  156 CALL                 (1 positional)
+             164 LOAD_ATTR            (NULL|self + lower)
+             184 CALL                 (0 positional)
+         >>  192 STORE_FAST           (text)
+
+ 59:         194 LOAD_CONST           ("too many requests")
+             196 LOAD_FAST            (text)
+             198 CONTAINS_OP          (in)
+             202 COPY                 1
+             204 TO_BOOL
+             212 POP_JUMP_IF_TRUE     (to 250)
+             216 POP_TOP
+             218 LOAD_CONST           ("rate limit")
+             220 LOAD_FAST            (text)
+             222 CONTAINS_OP          (in)
+             226 COPY                 1
+             228 TO_BOOL
+             236 POP_JUMP_IF_TRUE     (to 250)
+             240 POP_TOP
+             242 LOAD_CONST           ("429")
+             244 LOAD_FAST            (text)
+             246 CONTAINS_OP          (in)
+         >>  250 RETURN_VALUE
+
+
+# Method Name:       get_admin_token
+# Filename:          sub2_session.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 4
+# Number of locals:  22
+# Stack size:        10
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        62
+# Constants:
+#    0: None
+#    1: ''
+#    2: '/'
+#    3: 'SUB2API配置不完整'
+#    4: 'sessions'
+#    5: 'cooldown_until'
+#    6: 0
+#    7: 'SUB2API登录限流冷却中，约 '
+#    8: 's 后重试'
+#    9: 'access_token'
+#   10: 'expires_at'
+#   11: 30
+#   12: 'SUB2API登录复用缓存 token'
+#   13: 'last_login_at'
+#   14: '/api/v1/auth/login'
+#   15: ('email', 'password')
+#   16: ('json', 'timeout')
+#   17: 300
+#   18: ('code', 'message')
+#   19: 429
+#   20: 'code'
+#   21: 'message'
+#   22: 'last_error'
+#   23: 'SUB2API登录失败: '
+#   24: '?'
+#   25: 'data'
+#   26: 'SUB2API登录失败: missing access_token'
+#   27: '%Y-%m-%d %H:%M:%S'
+#   28: ('access_token', 'expires_at', 'cooldown_until', 'last_error', 'updated_at')
+# Names:
+#    0: str
+#    1: rstrip
+#    2: strip
+#    3: RuntimeError
+#    4: _cache_key
+#    5: named_file_lock
+#    6: LOGIN_LOCK
+#    7: _load_cache
+#    8: setdefault
+#    9: isinstance
+#   10: get
+#   11: dict
+#   12: _now
+#   13: float
+#   14: int
+#   15: Sub2RateLimited
+#   16: MIN_LOGIN_INTERVAL_SECONDS
+#   17: time
+#   18: sleep
+#   19: _save_cache
+#   20: requests
+#   21: post
+#   22: requests_kwargs
+#   23: json
+#   24: Exception
+#   25: status_code
+#   26: text
+#   27: _is_rate_limited
+#   28: RATE_LIMIT_COOLDOWN_SECONDS
+#   29: update
+#   30: TOKEN_TTL_SECONDS
+#   31: strftime
+# Varnames:
+#	base_url, email, password, timeout, log_fn, force_refresh, proxy, base, user, key, cache, sessions, item, now, cooldown_until, remain, token, expires_at, last_login_at, wait_for, resp, data
+# Positional arguments:
+#	base_url, email, password
+# Local variables:
+#    3: timeout
+#    4: log_fn
+#    5: force_refresh
+#    6: proxy
+#    7: base
+#    8: user
+#    9: key
+#   10: cache
+#   11: sessions
+#   12: item
+#   13: now
+#   14: cooldown_until
+#   15: remain
+#   16: token
+#   17: expires_at
+#   18: last_login_at
+#   19: wait_for
+#   20: resp
+#   21: data
+ 62:           0 RESUME               0
+
+ 72:           2 LOAD_GLOBAL          (NULL + str)
+              12 LOAD_FAST            (base_url)
+              14 COPY                 1
+              16 TO_BOOL
+              24 POP_JUMP_IF_TRUE     (to 32)
+              28 POP_TOP
+              30 LOAD_CONST           ("")
+         >>   32 CALL                 (1 positional)
+              40 LOAD_ATTR            (NULL|self + rstrip)
+              60 LOAD_CONST           ("/")
+              62 CALL                 (1 positional)
+              70 STORE_FAST           (base)
+
+ 73:          72 LOAD_GLOBAL          (NULL + str)
+              82 LOAD_FAST            (email)
+              84 COPY                 1
+              86 TO_BOOL
+              94 POP_JUMP_IF_TRUE     (to 102)
+              98 POP_TOP
+             100 LOAD_CONST           ("")
+         >>  102 CALL                 (1 positional)
+             110 LOAD_ATTR            (NULL|self + strip)
+             130 CALL                 (0 positional)
+             138 STORE_FAST           (user)
+
+ 74:         140 LOAD_FAST            (base)
+             142 TO_BOOL
+             150 POP_JUMP_IF_FALSE    (to 168)
+             154 LOAD_FAST            (user)
+             156 TO_BOOL
+             164 POP_JUMP_IF_TRUE     (to 190)
+
+ 75:     >>  168 LOAD_GLOBAL          (NULL + RuntimeError)
+             178 LOAD_CONST           ("SUB2API配置不完整")
+             180 CALL                 (1 positional)
+             188 RAISE_VARARGS        (exception instance)
+
+ 76:     >>  190 LOAD_GLOBAL          (NULL + _cache_key)
+             200 LOAD_FAST_LOAD_FAST  (base, user)
+             202 CALL                 (2 positional)
+             210 STORE_FAST           (key)
+
+ 77:         212 LOAD_GLOBAL          (NULL + named_file_lock)
+             222 LOAD_GLOBAL          (LOGIN_LOCK)
+             232 CALL                 (1 positional)
+             240 BEFORE_WITH
+             242 POP_TOP
+
+ 78:         244 LOAD_GLOBAL          (NULL + _load_cache)
+             254 CALL                 (0 positional)
+             262 STORE_FAST           (cache)
+
+ 79:         264 LOAD_FAST            (cache)
+             266 LOAD_ATTR            (NULL|self + setdefault)
+             286 LOAD_CONST           ("sessions")
+             288 BUILD_MAP            0
+             290 CALL                 (2 positional)
+             298 STORE_FAST           (sessions)
+
+ 80:         300 LOAD_GLOBAL          (NULL + isinstance)
+             310 LOAD_FAST            (sessions)

@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 import hashlib
 import hmac
+import json
 import re
 import struct
 import threading
@@ -15,19 +16,19 @@ from typing import Any, Callable, Iterator
 from urllib.parse import urlsplit
 
 try:
-    from .mailbox_url_runtime import masked_mailbox_url_row, parse_mailbox_url_row
+    from .mailbox_url_runtime import parse_mailbox_url_row
 except ImportError:  # Loaded as a top-level override module by the Mac launcher.
-    from mailbox_url_runtime import masked_mailbox_url_row, parse_mailbox_url_row
+    from mailbox_url_runtime import parse_mailbox_url_row
 
 try:
     from .plain_mailbox_rows import (
-        masked_plain_password_row,
         parse_plain_password_mailbox_row,
+        plain_password_identity,
     )
 except ImportError:  # Loaded as a top-level override module by the Mac launcher.
     from plain_mailbox_rows import (
-        masked_plain_password_row,
         parse_plain_password_mailbox_row,
+        plain_password_identity,
     )
 
 
@@ -124,6 +125,35 @@ def masked_mailbox_url_totp_row(raw: Any, mask: str = "***") -> str:
         return ""
     email, _mailbox_url, _totp_secret = parsed
     return "----".join((email, mask, mask))
+
+
+def mailbox_credential_identity(
+    row: Any,
+    parse_oauth_mailbox_row: Callable[[Any], tuple[str, str, str, str] | None],
+) -> tuple[str, str]:
+    """Return the recovered pool identity without depending on row formatting."""
+
+    raw = str(row or "").strip()
+    parsed_oauth = parse_oauth_mailbox_row(raw)
+    if parsed_oauth is not None:
+        email, password, client_id, refresh_token = parsed_oauth
+        return email, f"outlook:{client_id}:{refresh_token or password}"
+    parsed_url_totp = parse_mailbox_url_totp_row(raw)
+    if parsed_url_totp is not None:
+        email, mailbox_url, secret = parsed_url_totp
+        return email, f"url:{mailbox_url}:totp:{secret}"
+    parsed_totp = parse_chatgpt_totp_row(raw)
+    if parsed_totp is not None:
+        email, _password, secret = parsed_totp
+        return email, f"outlook:chatgpt_totp:{secret}"
+    parsed_url = parse_mailbox_url_row(raw)
+    if parsed_url is not None:
+        return parsed_url.email, f"url:{parsed_url.mailbox_url}"
+    parsed_plain = parse_plain_password_mailbox_row(raw)
+    if parsed_plain is not None:
+        email, password, _delimiter = parsed_plain
+        return email, plain_password_identity(email, password)
+    return "", raw
 
 
 def totp_code(secret: Any, *, now: float | None = None, digits: int = 6, period: int = 30) -> str:
@@ -247,6 +277,7 @@ def build_chatgpt_totp_patches(
     def reset_task_state() -> None:
         active_state.until = 0.0
         active_state.totp_secret = ""
+        active_state.rejected_totp_code = ""
 
     def page_type(response: Any) -> str:
         try:
@@ -329,7 +360,9 @@ def build_chatgpt_totp_patches(
         # thread-local activation at the password boundary so another task
         # cannot inherit a previous mailbox's TOTP flow.
         active_state.until = 0.0
+        active_state.rejected_totp_code = ""
         setattr(transport, "_gptphone_totp_flow", totp_flow)
+        setattr(transport, "_gptphone_totp_incorrect_retries", 0)
         if totp_flow:
             secret = str(getattr(active_state, "totp_secret", "") or "")
             if secret:
@@ -419,10 +452,31 @@ def build_chatgpt_totp_patches(
                     referer=f"{codex_oauth_chain.AUTH}/mfa-challenge/{factor_id}",
                     timeout=30,
                 )
-        finally:
+        except BaseException:
             setattr(transport, "_gptphone_totp_flow", False)
             setattr(transport, "_gptphone_totp_secret", "")
+            setattr(transport, "_gptphone_totp_incorrect_retries", 0)
             active_state.until = 0.0
+            active_state.rejected_totp_code = ""
+            raise
+        error_code = response_error(response).strip().lower()
+        retry_count = int(
+            getattr(transport, "_gptphone_totp_incorrect_retries", 0) or 0
+        )
+        keep_challenge = error_code == "incorrect_code" and retry_count < 1
+        if keep_challenge:
+            # The recovered chain retries an incorrect TOTP once. Keep the
+            # same factor and secret, but remember the code that actually
+            # reached the provider so wait_code cannot submit it again.
+            setattr(transport, "_gptphone_totp_flow", True)
+            setattr(transport, "_gptphone_totp_incorrect_retries", retry_count + 1)
+            active_state.rejected_totp_code = str(payload.get("code") or code or "")
+        else:
+            setattr(transport, "_gptphone_totp_flow", False)
+            setattr(transport, "_gptphone_totp_secret", "")
+            setattr(transport, "_gptphone_totp_incorrect_retries", 0)
+            active_state.until = 0.0
+            active_state.rejected_totp_code = ""
         trace(
             transport,
             "mfa_verify",
@@ -440,8 +494,40 @@ def build_chatgpt_totp_patches(
         except FileNotFoundError:
             raw_lines = []
 
+        existing_by_line = {
+            int(getattr(entry, "line_no", 0) or 0): entry
+            for entry in entries
+            if int(getattr(entry, "line_no", 0) or 0) > 0
+        }
+        pool_state = _read_pool_state(pool_self)
+        state_keys = _pool_state_keys(pool_state)
+        state_changed = False
+
+        def compatible_key(
+            email: str,
+            identity: str,
+            raw: str,
+            line_no: int,
+            equivalent_rows: tuple[str, ...] = (),
+        ) -> str:
+            nonlocal state_changed, state_keys
+            canonical, changed = _migrate_entry_state(
+                runtime_module,
+                email,
+                identity,
+                raw,
+                line_no,
+                pool_state,
+                equivalent_rows,
+            )
+            state_changed = state_changed or changed
+            state_keys = _pool_state_keys(pool_state)
+            return canonical
+
         replacements = {}
+        identities: dict[int, str] = {}
         for line_no, raw in enumerate(raw_lines, start=1):
+            raw = raw.strip()
             parsed_oauth = parse_oauth_mailbox_row(raw)
             parsed_url_totp = parse_mailbox_url_totp_row(raw)
             parsed_totp = parse_chatgpt_totp_row(raw)
@@ -449,7 +535,19 @@ def build_chatgpt_totp_patches(
             parsed_plain = parse_plain_password_mailbox_row(raw)
             if parsed_oauth:
                 email, password, oauth_client_id, oauth_refresh_token = parsed_oauth
-                entry_key = _entry_key(runtime_module, email, raw)
+                identity = f"outlook:{oauth_client_id}:{oauth_refresh_token or password}"
+                entry_key = compatible_key(email, identity, raw, line_no)
+                current = existing_by_line.get(line_no)
+                if (
+                    current is not None
+                    and str(getattr(current, "oauth_client_id", "") or "") == oauth_client_id
+                    and str(getattr(current, "oauth_refresh_token", "") or "") == oauth_refresh_token
+                    and _can_reuse_entry_key(
+                        runtime_module, current, email, identity, raw, state_keys
+                    )
+                ):
+                    identities[line_no] = identity
+                    continue
                 replacements[line_no] = runtime_module.PoolEntry(
                     email=email,
                     mailbox_url="",
@@ -459,11 +557,13 @@ def build_chatgpt_totp_patches(
                     password=password,
                     oauth_client_id=oauth_client_id,
                     oauth_refresh_token=oauth_refresh_token,
-                    source_row=f"{email}----***----***----***",
+                    source_row=raw,
                 )
+                identities[line_no] = identity
             elif parsed_url_totp:
                 email, mailbox_url, totp_secret = parsed_url_totp
-                entry_key = _entry_key(runtime_module, email, raw)
+                identity = f"url:{mailbox_url}:totp:{totp_secret}"
+                entry_key = compatible_key(email, identity, raw, line_no)
                 replacements[line_no] = runtime_module.PoolEntry(
                     email=email,
                     mailbox_url=mailbox_url,
@@ -473,11 +573,13 @@ def build_chatgpt_totp_patches(
                     password="",
                     oauth_client_id="chatgpt_totp",
                     oauth_refresh_token=totp_secret,
-                    source_row=masked_mailbox_url_totp_row(raw),
+                    source_row=raw,
                 )
+                identities[line_no] = identity
             elif parsed_totp:
                 email, password, totp_secret = parsed_totp
-                entry_key = _entry_key(runtime_module, email, raw)
+                identity = f"outlook:chatgpt_totp:{totp_secret}"
+                entry_key = compatible_key(email, identity, raw, line_no)
                 replacements[line_no] = runtime_module.PoolEntry(
                     email=email,
                     mailbox_url="",
@@ -487,10 +589,30 @@ def build_chatgpt_totp_patches(
                     password=password,
                     oauth_client_id="chatgpt_totp",
                     oauth_refresh_token=totp_secret,
-                    source_row=masked_chatgpt_totp_row(raw),
+                    source_row=raw,
                 )
+                identities[line_no] = identity
             elif parsed_url:
-                entry_key = _entry_key(runtime_module, parsed_url.email, raw)
+                current = existing_by_line.get(line_no)
+                identity = f"url:{parsed_url.mailbox_url}"
+                entry_key = compatible_key(
+                    parsed_url.email, identity, raw, line_no
+                )
+                if (
+                    current is not None
+                    and str(getattr(current, "mailbox_url", "") or "")
+                    == parsed_url.mailbox_url
+                    and _can_reuse_entry_key(
+                        runtime_module,
+                        current,
+                        parsed_url.email,
+                        identity,
+                        raw,
+                        state_keys,
+                    )
+                ):
+                    identities[line_no] = identity
+                    continue
                 replacements[line_no] = runtime_module.PoolEntry(
                     email=parsed_url.email,
                     mailbox_url=parsed_url.mailbox_url,
@@ -500,11 +622,31 @@ def build_chatgpt_totp_patches(
                     password="",
                     oauth_client_id="",
                     oauth_refresh_token="",
-                    source_row=masked_mailbox_url_row(raw, "***"),
+                    source_row=raw,
                 )
+                identities[line_no] = identity
             elif parsed_plain:
                 email, password, _delimiter = parsed_plain
-                entry_key = _entry_key(runtime_module, email, raw)
+                identity = plain_password_identity(email, password)
+                entry_key = compatible_key(
+                    email,
+                    identity,
+                    raw,
+                    line_no,
+                    _plain_password_legacy_rows(raw, email, password),
+                )
+                current = existing_by_line.get(line_no)
+                if (
+                    current is not None
+                    and str(getattr(current, "email", "") or "").strip().lower() == email
+                    and str(getattr(current, "password", "") or "") == password
+                    and not str(getattr(current, "oauth_client_id", "") or "")
+                    and _can_reuse_entry_key(
+                        runtime_module, current, email, identity, raw, state_keys
+                    )
+                ):
+                    identities[line_no] = identity
+                    continue
                 replacements[line_no] = runtime_module.PoolEntry(
                     email=email,
                     mailbox_url="",
@@ -514,10 +656,9 @@ def build_chatgpt_totp_patches(
                     password=password,
                     oauth_client_id="",
                     oauth_refresh_token="",
-                    source_row=masked_plain_password_row(raw, "***"),
+                    source_row=raw,
                 )
-        if not replacements:
-            return entries, errors
+                identities[line_no] = identity
 
         replaced_lines = set(replacements)
         errors = [
@@ -529,7 +670,21 @@ def build_chatgpt_totp_patches(
         existing_lines = {getattr(entry, "line_no", 0) for entry in patched}
         patched.extend(entry for line_no, entry in replacements.items() if line_no not in existing_lines)
         patched.sort(key=lambda entry: getattr(entry, "line_no", 0))
-        return patched, errors
+        deduplicated = []
+        seen_identities: set[tuple[str, str]] = set()
+        for entry in patched:
+            line_no = int(getattr(entry, "line_no", 0) or 0)
+            identity = identities.get(line_no) or _entry_identity(entry)
+            marker = (str(getattr(entry, "email", "") or "").strip().lower(), identity)
+            if identity and marker in seen_identities:
+                errors.append(f"line {line_no}: duplicate mailbox row")
+                continue
+            if identity:
+                seen_identities.add(marker)
+            deduplicated.append(entry)
+        if state_changed and pool_state is not None:
+            _write_pool_state(pool_self, pool_state)
+        return deduplicated, errors
 
     class ChatGptTotpOtpProvider:
         def __init__(
@@ -569,7 +724,32 @@ def build_chatgpt_totp_patches(
                 return ""
             secret = getattr(self.entry, "oauth_refresh_token", "")
             remember_totp_secret(secret)
-            code = totp_code(secret)
+            waiting_logged = False
+            while True:
+                now = time.time()
+                code = totp_code(secret, now=now)
+                rejected_code = str(
+                    getattr(active_state, "rejected_totp_code", "") or ""
+                )
+                if not rejected_code or code != rejected_code:
+                    active_state.rejected_totp_code = ""
+                    break
+                if not waiting_logged:
+                    _call_log(
+                        self.log_fn,
+                        "  [Codex] 上一个 2FA 动态码已被拒绝，等待下一个时间窗口后重试",
+                        "warn",
+                    )
+                    waiting_logged = True
+                wait_seconds = 30.0 - (now % 30.0) + 0.05
+                waiter = getattr(self.stop_event, "wait", None)
+                if callable(waiter):
+                    if waiter(wait_seconds):
+                        return ""
+                else:
+                    time.sleep(wait_seconds)
+                if self.stop_event is not None and self.stop_event.is_set():
+                    return ""
             activate(120)
             _call_log(self.log_fn, "  [Codex] 已根据 2FA 密钥生成临时验证码", "info")
             return code
@@ -606,8 +786,194 @@ def build_chatgpt_totp_patches(
     )
 
 
-def _entry_key(runtime_module: Any, email: str, raw: str) -> str:
+def _entry_key(runtime_module: Any, email: str, identity: str) -> str:
     mailbox_pool = getattr(runtime_module, "_mailbox_pool", None)
     if mailbox_pool is not None:
-        return mailbox_pool._entry_key(email, raw.strip())
-    return hashlib.sha256(f"{email}\n{raw.strip()}".encode()).hexdigest()
+        return mailbox_pool._entry_key(email, identity)
+    return hashlib.sha256(
+        f"{str(email).strip().lower()}\x1f{identity}".encode("utf-8", "ignore")
+    ).hexdigest()
+
+
+def _legacy_entry_key(runtime_module: Any, email: str, raw: str) -> str:
+    return next(iter(_legacy_entry_keys(runtime_module, email, raw)))
+
+
+def _legacy_entry_keys(runtime_module: Any, email: str, raw: str) -> tuple[str, ...]:
+    account = str(email or "").strip().lower()
+    source = str(raw or "").strip()
+    recovered = hashlib.sha256(
+        f"{account}\x1f{source}".encode("utf-8", "ignore")
+    ).hexdigest()
+    fallback = hashlib.sha256(f"{account}\n{source}".encode()).hexdigest()
+    keys = [recovered, fallback]
+    mailbox_pool = getattr(runtime_module, "_mailbox_pool", None)
+    if mailbox_pool is not None:
+        keys.insert(0, mailbox_pool._entry_key(account, source))
+    return tuple(dict.fromkeys(keys))
+
+
+def _plain_password_legacy_rows(
+    raw: str,
+    email: str,
+    password: str,
+) -> tuple[str, ...]:
+    parsed = parse_plain_password_mailbox_row(raw)
+    raw_email = (
+        str(raw).split(parsed[2], 1)[0].strip()
+        if parsed is not None
+        else str(email).strip()
+    )
+    rows = [str(raw).strip()]
+    for account in dict.fromkeys((raw_email, email, str(email).upper())):
+        rows.extend(f"{account}{delimiter}{password}" for delimiter in ("----", "--", "|"))
+    return tuple(dict.fromkeys(rows))
+
+
+def _compatible_entry_key(
+    runtime_module: Any,
+    email: str,
+    identity: str,
+    raw: str,
+    state_keys: set[str],
+) -> str:
+    del raw, state_keys
+    return _entry_key(runtime_module, email, identity)
+
+
+def _can_reuse_entry_key(
+    runtime_module: Any,
+    entry: Any,
+    email: str,
+    identity: str,
+    raw: str,
+    state_keys: set[str],
+) -> bool:
+    expected = _compatible_entry_key(runtime_module, email, identity, raw, state_keys)
+    return hmac.compare_digest(str(getattr(entry, "key", "") or ""), expected)
+
+
+def _read_pool_state(pool_self: Any) -> dict[str, Any] | None:
+    state_path = getattr(pool_self, "state_path", None)
+    if state_path is None:
+        return None
+    try:
+        value = json.loads(state_path.read_text(encoding="utf-8-sig"))
+    except (AttributeError, FileNotFoundError, OSError, TypeError, ValueError):
+        return None
+    if not isinstance(value, dict) or not isinstance(value.get("items"), dict):
+        return None
+    return value
+
+
+def _pool_state_keys(state: dict[str, Any] | None) -> set[str]:
+    if state is None:
+        return set()
+    items = state.get("items")
+    if not isinstance(items, dict):
+        return set()
+    return {str(key) for key in items}
+
+
+def _state_precedence(item: dict[str, Any], now: float) -> tuple[int, float, float]:
+    status = str(item.get("status") or "").strip().lower()
+    try:
+        lease_until = float(item.get("lease_until") or 0)
+    except (TypeError, ValueError):
+        lease_until = 0.0
+    try:
+        updated_at = float(item.get("updated_at") or 0)
+    except (TypeError, ValueError):
+        updated_at = 0.0
+    if status in {"consumed", "damaged"}:
+        rank = 3
+    elif status == "leased" and lease_until > now:
+        rank = 2
+    else:
+        rank = 1
+    return rank, updated_at, lease_until
+
+
+def _migrate_entry_state(
+    runtime_module: Any,
+    email: str,
+    identity: str,
+    raw: str,
+    line_no: int,
+    state: dict[str, Any] | None,
+    equivalent_rows: tuple[str, ...] = (),
+) -> tuple[str, bool]:
+    canonical = _entry_key(runtime_module, email, identity)
+    if state is None or not isinstance(state.get("items"), dict):
+        return canonical, False
+
+    items = state["items"]
+    candidate_keys = {canonical}
+    for source in dict.fromkeys((raw, *equivalent_rows)):
+        candidate_keys.update(_legacy_entry_keys(runtime_module, email, source))
+    normalized_email = str(email or "").strip().lower()
+    candidates = [
+        (key, items[key])
+        for key in sorted(candidate_keys, key=lambda value: (value != canonical, value))
+        if key in items and isinstance(items[key], dict)
+    ]
+    if not candidates or all(key == canonical for key, _item in candidates):
+        return canonical, False
+
+    now = time.time()
+    _selected_key, selected = max(
+        candidates,
+        key=lambda candidate: _state_precedence(candidate[1], now),
+    )
+    merged = dict(selected)
+    history: list[Any] = []
+    line_numbers = [line_no]
+    for _key, item in candidates:
+        try:
+            candidate_line = int(item.get("line_no") or 0)
+        except (TypeError, ValueError):
+            candidate_line = 0
+        if candidate_line > 0:
+            line_numbers.append(candidate_line)
+        for event in item.get("history") if isinstance(item.get("history"), list) else ():
+            if event not in history:
+                history.append(event)
+    merged["email"] = normalized_email
+    merged["line_no"] = min(number for number in line_numbers if number > 0)
+    if history:
+        merged["history"] = history
+    for key, _item in candidates:
+        if key != canonical:
+            items.pop(key, None)
+    items[canonical] = merged
+    state["updated_at"] = int(now)
+    return canonical, True
+
+
+def _write_pool_state(pool_self: Any, state: dict[str, Any]) -> None:
+    state_path = getattr(pool_self, "state_path", None)
+    if state_path is None:
+        return
+    temporary = state_path.with_suffix(state_path.suffix + ".identity.tmp")
+    temporary.touch(mode=0o600, exist_ok=True)
+    temporary.chmod(0o600)
+    temporary.write_text(
+        json.dumps(state, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    temporary.replace(state_path)
+    state_path.chmod(0o600)
+
+
+def _entry_identity(entry: Any) -> str:
+    mailbox_url = str(getattr(entry, "mailbox_url", "") or "")
+    if mailbox_url:
+        return f"url:{mailbox_url}"
+    client_id = str(getattr(entry, "oauth_client_id", "") or "")
+    refresh_token = str(getattr(entry, "oauth_refresh_token", "") or "")
+    password = str(getattr(entry, "password", "") or "")
+    if client_id == "chatgpt_totp" and refresh_token:
+        return f"outlook:chatgpt_totp:{refresh_token}"
+    if client_id or refresh_token:
+        return f"outlook:{client_id}:{refresh_token or password}"
+    return plain_password_identity(getattr(entry, "email", ""), password)

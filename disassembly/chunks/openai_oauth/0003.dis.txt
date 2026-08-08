@@ -1,0 +1,800 @@
+162:          40 LOAD_FAST            (data)
+              42 LOAD_ATTR            (NULL|self + get)
+              62 LOAD_CONST           ("refresh_token")
+              64 LOAD_CONST           ("")
+              66 CALL                 (2 positional)
+
+163:          74 LOAD_FAST            (data)
+              76 LOAD_ATTR            (NULL|self + get)
+              96 LOAD_CONST           ("id_token")
+              98 LOAD_CONST           ("")
+             100 CALL                 (2 positional)
+
+164:         108 LOAD_GLOBAL          (NULL + int)
+             118 LOAD_GLOBAL          (time)
+             128 LOAD_ATTR            (time)
+             148 PUSH_NULL
+             150 CALL                 (0 positional)
+             158 CALL                 (1 positional)
+             166 LOAD_GLOBAL          (NULL + int)
+             176 LOAD_FAST            (data)
+             178 LOAD_ATTR            (NULL|self + get)
+             198 LOAD_CONST           ("expires_in")
+             200 LOAD_CONST           (3600)
+             202 CALL                 (2 positional)
+             210 CALL                 (1 positional)
+             218 BINARY_OP            (+)
+
+165:         222 LOAD_FAST            (data)
+             224 LOAD_ATTR            (NULL|self + get)
+             244 LOAD_CONST           ("token_type")
+             246 LOAD_CONST           ("Bearer")
+             248 CALL                 (2 positional)
+
+166:         256 LOAD_FAST            (data)
+             258 LOAD_ATTR            (NULL|self + get)
+             278 LOAD_CONST           ("scope")
+             280 LOAD_CONST           ("")
+             282 CALL                 (2 positional)
+
+160:         290 LOAD_CONST           (('access_token', 'refresh_token', 'id_token', 'expires_at', 'token_type', 'scope'))
+             292 CALL_KW              6
+             294 RETURN_VALUE
+
+
+# Method Name:       to_dict
+# Filename:          openai_oauth.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        8
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        169
+# Constants:
+#    0: None
+#    1: ('access_token', 'refresh_token', 'id_token', 'expires_at', 'token_type', 'email', 'scope')
+# Names:
+#    0: access_token
+#    1: refresh_token
+#    2: id_token
+#    3: expires_at
+#    4: token_type
+#    5: email
+#    6: scope
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+169:           0 RESUME               0
+
+171:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (access_token)
+
+172:          24 LOAD_FAST            (self)
+              26 LOAD_ATTR            (refresh_token)
+
+173:          46 LOAD_FAST            (self)
+              48 LOAD_ATTR            (id_token)
+
+174:          68 LOAD_FAST            (self)
+              70 LOAD_ATTR            (expires_at)
+
+175:          90 LOAD_FAST            (self)
+              92 LOAD_ATTR            (token_type)
+
+176:         112 LOAD_FAST            (self)
+             114 LOAD_ATTR            (email)
+
+177:         134 LOAD_FAST            (self)
+             136 LOAD_ATTR            (scope)
+
+170:         156 LOAD_CONST           (('access_token', 'refresh_token', 'id_token', 'expires_at', 'token_type', 'email', 'scope'))
+             158 BUILD_CONST_KEY_MAP  7
+             160 RETURN_VALUE
+
+
+# Method Name:       __init__
+# Filename:          openai_oauth.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        5
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        184
+# Constants:
+#    0: None
+#    1: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+#    2: 'application/json'
+#    3: ('User-Agent', 'Accept')
+#    4: ('http', 'https')
+# Names:
+#    0: verbose
+#    1: requests
+#    2: Session
+#    3: session
+#    4: headers
+#    5: update
+#    6: _normalize_proxy_url
+#    7: proxies
+# Varnames:
+#	self, verbose, proxy, proxy_url
+# Positional arguments:
+#	self, verbose, proxy
+# Local variables:
+#    3: proxy_url
+184:           0 RESUME               0
+
+185:           2 LOAD_FAST_LOAD_FAST  (verbose, self)
+               4 STORE_ATTR           (verbose)
+
+186:          14 LOAD_GLOBAL          (requests)
+              24 LOAD_ATTR            (Session)
+              44 PUSH_NULL
+              46 CALL                 (0 positional)
+              54 LOAD_FAST            (self)
+              56 STORE_ATTR           (session)
+
+187:          66 LOAD_FAST            (self)
+              68 LOAD_ATTR            (session)
+              88 LOAD_ATTR            (headers)
+             108 LOAD_ATTR            (NULL|self + update)
+
+188:         128 LOAD_CONST           ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+
+189:         130 LOAD_CONST           ("application/json")
+
+187:         132 LOAD_CONST           (('User-Agent', 'Accept'))
+             134 BUILD_CONST_KEY_MAP  2
+             136 CALL                 (1 positional)
+             144 POP_TOP
+
+191:         146 LOAD_GLOBAL          (NULL + _normalize_proxy_url)
+             156 LOAD_FAST            (proxy)
+             158 CALL                 (1 positional)
+             166 STORE_FAST           (proxy_url)
+
+192:         168 LOAD_FAST            (proxy_url)
+             170 TO_BOOL
+             178 POP_JUMP_IF_FALSE    (to 262)
+
+193:         182 LOAD_FAST            (self)
+             184 LOAD_ATTR            (session)
+             204 LOAD_ATTR            (proxies)
+             224 LOAD_ATTR            (NULL|self + update)
+             244 LOAD_FAST_LOAD_FAST  (proxy_url, proxy_url)
+             246 LOAD_CONST           (('http', 'https'))
+             248 BUILD_CONST_KEY_MAP  2
+             250 CALL                 (1 positional)
+             258 POP_TOP
+             260 RETURN_CONST         (None)
+
+192:     >>  262 RETURN_CONST         (None)
+
+
+# Method Name:       _log
+# Filename:          openai_oauth.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        4
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        195
+# Constants:
+#    0: None
+#    1: '[OAuth] '
+# Names:
+#    0: verbose
+#    1: print
+# Varnames:
+#	self, msg
+# Positional arguments:
+#	self, msg
+195:           0 RESUME               0
+
+196:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (verbose)
+              24 TO_BOOL
+              32 POP_JUMP_IF_FALSE    (to 66)
+
+197:          36 LOAD_GLOBAL          (NULL + print)
+              46 LOAD_CONST           ("[OAuth] ")
+              48 LOAD_FAST            (msg)
+              50 FORMAT_SIMPLE
+              52 BUILD_STRING         2
+              54 CALL                 (1 positional)
+              62 POP_TOP
+              64 RETURN_CONST         (None)
+
+196:     >>   66 RETURN_CONST         (None)
+
+
+# Method Name:       exchange_code
+# Filename:          openai_oauth.py
+# Argument count:    5
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  11
+# Stack size:        7
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        201
+# Constants:
+#    0: '用授权码交换 access_token (纯 HTTP)'
+#    1: '正在交换授权码获取 access_token...'
+#    2: 'authorization_code'
+#    3: ('grant_type', 'client_id', 'code', 'redirect_uri')
+#    4: 'code_verifier'
+#    5: 'Content-Type'
+#    6: 'application/json'
+#    7: 30
+#    8: ('json', 'headers', 'timeout')
+#    9: None
+#   10: 300
+#   11: 'Token 交换失败 ('
+#   12: '): '
+#   13: 'email'
+#   14: ''
+#   15: 'Token 获取成功: '
+#   16: '(无email)'
+#   17: ', 过期: '
+# Names:
+#    0: _log
+#    1: session
+#    2: post
+#    3: OAUTH_TOKEN_URL
+#    4: ok
+#    5: text
+#    6: RuntimeError
+#    7: status_code
+#    8: json
+#    9: OAuthTokens
+#   10: from_exchange
+#   11: id_token
+#   12: _decode_jwt
+#   13: get
+#   14: email
+#   15: Exception
+#   16: expires_at
+# Varnames:
+#	self, code, redirect_uri, code_verifier, client_id, payload, resp, text, data, tokens, claims
+# Positional arguments:
+#	self, code, redirect_uri, code_verifier, client_id
+# Local variables:
+#    5: payload
+#    6: resp
+#    7: text
+#    8: data
+#    9: tokens
+#   10: claims
+201:           0 RESUME               0
+
+209:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _log)
+              24 LOAD_CONST           ("正在交换授权码获取 access_token...")
+              26 CALL                 (1 positional)
+              34 POP_TOP
+
+212:          36 LOAD_CONST           ("authorization_code")
+
+213:          38 LOAD_FAST            (client_id)
+
+214:          40 LOAD_FAST            (code)
+
+215:          42 LOAD_FAST            (redirect_uri)
+
+211:          44 LOAD_CONST           (('grant_type', 'client_id', 'code', 'redirect_uri'))
+              46 BUILD_CONST_KEY_MAP  4
+              48 STORE_FAST           (payload)
+
+217:          50 LOAD_FAST            (code_verifier)
+              52 TO_BOOL
+              60 POP_JUMP_IF_FALSE    (to 72)
+
+218:          64 LOAD_FAST_LOAD_FAST  (code_verifier, payload)
+              66 LOAD_CONST           ("code_verifier")
+              68 STORE_SUBSCR
+
+220:     >>   72 LOAD_FAST            (self)
+              74 LOAD_ATTR            (session)
+              94 LOAD_ATTR            (NULL|self + post)
+
+221:         114 LOAD_GLOBAL          (OAUTH_TOKEN_URL)
+
+222:         124 LOAD_FAST            (payload)
+
+223:         126 LOAD_CONST           ("Content-Type")
+             128 LOAD_CONST           ("application/json")
+             130 BUILD_MAP            1
+
+224:         132 LOAD_CONST           (30)
+
+220:         134 LOAD_CONST           (('json', 'headers', 'timeout'))
+             136 CALL_KW              4
+             138 STORE_FAST           (resp)
+
+227:         140 LOAD_FAST            (resp)
+             142 LOAD_ATTR            (ok)
+             162 TO_BOOL
+             170 POP_JUMP_IF_TRUE     (to 258)
+
+228:         174 LOAD_FAST            (resp)
+             176 LOAD_ATTR            (text)
+             196 LOAD_CONST           (None)
+             198 LOAD_CONST           (300)
+             200 BINARY_SLICE
+             202 STORE_FAST           (text)
+
+229:         204 LOAD_GLOBAL          (NULL + RuntimeError)
+             214 LOAD_CONST           ("Token 交换失败 (")
+             216 LOAD_FAST            (resp)
+             218 LOAD_ATTR            (status_code)
+             238 FORMAT_SIMPLE
+             240 LOAD_CONST           ("): ")
+             242 LOAD_FAST            (text)
+             244 FORMAT_SIMPLE
+             246 BUILD_STRING         4
+             248 CALL                 (1 positional)
+             256 RAISE_VARARGS        (exception instance)
+
+231:     >>  258 LOAD_FAST            (resp)
+             260 LOAD_ATTR            (NULL|self + json)
+             280 CALL                 (0 positional)
+             288 STORE_FAST           (data)
+
+232:         290 LOAD_GLOBAL          (OAuthTokens)
+             300 LOAD_ATTR            (NULL|self + from_exchange)
+             320 LOAD_FAST            (data)
+             322 CALL                 (1 positional)
+             330 STORE_FAST           (tokens)
+
+235:         332 LOAD_FAST            (tokens)
+             334 LOAD_ATTR            (id_token)
+             354 TO_BOOL
+             362 POP_JUMP_IF_FALSE    (to 468)
+
+236:         366 NOP
+
+237:         368 LOAD_FAST            (self)
+             370 LOAD_ATTR            (NULL|self + _decode_jwt)
+             390 LOAD_FAST            (tokens)
+             392 LOAD_ATTR            (id_token)
+             412 CALL                 (1 positional)
+             420 STORE_FAST           (claims)
+
+238:         422 LOAD_FAST            (claims)
+             424 LOAD_ATTR            (NULL|self + get)
+             444 LOAD_CONST           ("email")
+             446 LOAD_CONST           ("")
+             448 CALL                 (2 positional)
+             456 LOAD_FAST            (tokens)
+             458 STORE_ATTR           (email)
+
+242:     >>  468 LOAD_FAST            (self)
+             470 LOAD_ATTR            (NULL|self + _log)
+             490 LOAD_CONST           ("Token 获取成功: ")
+             492 LOAD_FAST            (tokens)
+             494 LOAD_ATTR            (email)
+             514 COPY                 1
+             516 TO_BOOL
+             524 POP_JUMP_IF_TRUE     (to 532)
+             528 POP_TOP
+             530 LOAD_CONST           ("(无email)")
+         >>  532 FORMAT_SIMPLE
+             534 LOAD_CONST           (", 过期: ")
+
+243:         536 LOAD_FAST            (tokens)
+             538 LOAD_ATTR            (expires_at)
+             558 FORMAT_SIMPLE
+
+242:         560 BUILD_STRING         4
+             562 CALL                 (1 positional)
+             570 POP_TOP
+
+244:         572 LOAD_FAST            (tokens)
+             574 RETURN_VALUE
+         >>  576 PUSH_EXC_INFO
+
+239:         578 LOAD_GLOBAL          (Exception)
+             588 CHECK_EXC_MATCH
+             590 POP_JUMP_IF_FALSE    (to 600)
+             594 POP_TOP
+
+240:         596 POP_EXCEPT
+             598 JUMP_BACKWARD_NO_INTERRUPT (to 468)
+
+239:     >>  600 RERAISE              0
+         >>  602 COPY                 3
+             604 POP_EXCEPT
+             606 RERAISE              1
+
+ExceptionTable:
+  368 to 466 -> 576 [0]
+  576 to 594 -> 602 [1] lasti
+  600 to 600 -> 602 [1] lasti
+
+# Method Name:       refresh_token
+# Filename:          openai_oauth.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        8
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        246
+# Constants:
+#    0: '用 refresh_token 刷新 access_token'
+#    1: '正在刷新 access_token...'
+#    2: 'refresh_token'
+#    3: ('grant_type', 'client_id', 'refresh_token')
+#    4: 'Content-Type'
+#    5: 'application/json'
+#    6: 30
+#    7: ('json', 'headers', 'timeout')
+#    8: 'Token 刷新失败 ('
+#    9: '): '
+#   10: None
+#   11: 300
+# Names:
+#    0: _log
+#    1: session
+#    2: post
+#    3: OAUTH_TOKEN_URL
+#    4: ok
+#    5: RuntimeError
+#    6: status_code
+#    7: text
+#    8: OAuthTokens
+#    9: from_exchange
+#   10: json
+# Varnames:
+#	self, refresh_token, client_id, resp
+# Positional arguments:
+#	self, refresh_token, client_id
+# Local variables:
+#    3: resp
+246:           0 RESUME               0
+
+252:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (NULL|self + _log)
+              24 LOAD_CONST           ("正在刷新 access_token...")
+              26 CALL                 (1 positional)
+              34 POP_TOP
+
+254:          36 LOAD_FAST            (self)
+              38 LOAD_ATTR            (session)
+              58 LOAD_ATTR            (NULL|self + post)
+
+255:          78 LOAD_GLOBAL          (OAUTH_TOKEN_URL)
+
+257:          88 LOAD_CONST           ("refresh_token")
+
+258:          90 LOAD_FAST            (client_id)
+
+259:          92 LOAD_FAST            (refresh_token)
+
+256:          94 LOAD_CONST           (('grant_type', 'client_id', 'refresh_token'))
+              96 BUILD_CONST_KEY_MAP  3
+
+261:          98 LOAD_CONST           ("Content-Type")
+             100 LOAD_CONST           ("application/json")
+             102 BUILD_MAP            1
+
+262:         104 LOAD_CONST           (30)
+
+254:         106 LOAD_CONST           (('json', 'headers', 'timeout'))
+             108 CALL_KW              4
+             110 STORE_FAST           (resp)
+
+265:         112 LOAD_FAST            (resp)
+             114 LOAD_ATTR            (ok)
+             134 TO_BOOL
+             142 POP_JUMP_IF_TRUE     (to 226)
+
+266:         146 LOAD_GLOBAL          (NULL + RuntimeError)
+             156 LOAD_CONST           ("Token 刷新失败 (")
+             158 LOAD_FAST            (resp)
+             160 LOAD_ATTR            (status_code)
+             180 FORMAT_SIMPLE
+             182 LOAD_CONST           ("): ")
+             184 LOAD_FAST            (resp)
+             186 LOAD_ATTR            (text)
+             206 LOAD_CONST           (None)
+             208 LOAD_CONST           (300)
+             210 BINARY_SLICE
+             212 FORMAT_SIMPLE
+             214 BUILD_STRING         4
+             216 CALL                 (1 positional)
+             224 RAISE_VARARGS        (exception instance)
+
+268:     >>  226 LOAD_GLOBAL          (OAuthTokens)
+             236 LOAD_ATTR            (NULL|self + from_exchange)
+             256 LOAD_FAST            (resp)
+             258 LOAD_ATTR            (NULL|self + json)
+             278 CALL                 (0 positional)
+             286 CALL                 (1 positional)
+             294 RETURN_VALUE
+
+
+# Method Name:       get_userinfo
+# Filename:          openai_oauth.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        6
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        270
+# Constants:
+#    0: '获取用户信息'
+#    1: 'Authorization'
+#    2: 'Bearer '
+#    3: 30
+#    4: ('headers', 'timeout')
+#    5: '获取用户信息失败: '
+# Names:
+#    0: session
+#    1: get
+#    2: OAUTH_USERINFO_URL
+#    3: ok
+#    4: RuntimeError
+#    5: status_code
+#    6: json
+# Varnames:
+#	self, access_token, resp
+# Positional arguments:
+#	self, access_token
+# Local variables:
+#    2: resp
+270:           0 RESUME               0
+
+272:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (session)
+              24 LOAD_ATTR            (NULL|self + get)
+
+273:          44 LOAD_GLOBAL          (OAUTH_USERINFO_URL)
+
+274:          54 LOAD_CONST           ("Authorization")
+              56 LOAD_CONST           ("Bearer ")
+              58 LOAD_FAST            (access_token)
+              60 FORMAT_SIMPLE
+              62 BUILD_STRING         2
+              64 BUILD_MAP            1
+
+275:          66 LOAD_CONST           (30)
+
+272:          68 LOAD_CONST           (('headers', 'timeout'))
+              70 CALL_KW              3
+              72 STORE_FAST           (resp)
+
+277:          74 LOAD_FAST            (resp)
+              76 LOAD_ATTR            (ok)
+              96 TO_BOOL
+             104 POP_JUMP_IF_TRUE     (to 156)
+
+278:         108 LOAD_GLOBAL          (NULL + RuntimeError)
+             118 LOAD_CONST           ("获取用户信息失败: ")
+             120 LOAD_FAST            (resp)
+             122 LOAD_ATTR            (status_code)
+             142 FORMAT_SIMPLE
+             144 BUILD_STRING         2
+             146 CALL                 (1 positional)
+             154 RAISE_VARARGS        (exception instance)
+
+279:     >>  156 LOAD_FAST            (resp)
+             158 LOAD_ATTR            (NULL|self + json)
+             178 CALL                 (0 positional)
+             186 RETURN_VALUE
+
+
+# Method Name:       check_session
+# Filename:          openai_oauth.py
+# Argument count:    2
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        6
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        283
+# Constants:
+#    0: '检查 session 是否有效'
+#    1: 'https://chatgpt.com/backend-api/sentinel/chat-requirements'
+#    2: 'Authorization'
+#    3: 'Bearer '
+#    4: 30
+#    5: ('headers', 'timeout')
+#    6: None
+#    7: ('valid', 'status', 'data')
+# Names:
+#    0: session
+#    1: get
+#    2: ok
+#    3: status_code
+#    4: json
+# Varnames:
+#	self, access_token, resp
+# Positional arguments:
+#	self, access_token
+# Local variables:
+#    2: resp
+283:           0 RESUME               0
+
+285:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (session)
+              24 LOAD_ATTR            (NULL|self + get)
+
+286:          44 LOAD_CONST           ("https://chatgpt.com/backend-api/sentinel/chat-requirements")
+
+287:          46 LOAD_CONST           ("Authorization")
+              48 LOAD_CONST           ("Bearer ")
+              50 LOAD_FAST            (access_token)
+              52 FORMAT_SIMPLE
+              54 BUILD_STRING         2
+              56 BUILD_MAP            1
+
+288:          58 LOAD_CONST           (30)
+
+285:          60 LOAD_CONST           (('headers', 'timeout'))
+              62 CALL_KW              3
+              64 STORE_FAST           (resp)
+
+291:          66 LOAD_FAST            (resp)
+              68 LOAD_ATTR            (ok)
+
+292:          88 LOAD_FAST            (resp)
+              90 LOAD_ATTR            (status_code)
+
+293:         110 LOAD_FAST            (resp)
+             112 LOAD_ATTR            (ok)
+             132 TO_BOOL
+             140 POP_JUMP_IF_FALSE    (to 180)
+             144 LOAD_FAST            (resp)
+             146 LOAD_ATTR            (NULL|self + json)
+             166 CALL                 (0 positional)
+
+290:         174 LOAD_CONST           (('valid', 'status', 'data'))
+             176 BUILD_CONST_KEY_MAP  3
+             178 RETURN_VALUE
+
+293:     >>  180 LOAD_CONST           (None)
+
+290:         182 LOAD_CONST           (('valid', 'status', 'data'))
+             184 BUILD_CONST_KEY_MAP  3
+             186 RETURN_VALUE
+
+
+# Method Name:       _decode_jwt
+# Filename:          openai_oauth.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        6
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        298
+# Constants:
+#    0: '解码 JWT payload (不验证签名)'
+#    1: '.'
+#    2: 3
+#    3: 1
+#    4: '='
+#    5: 4
+# Names:
+#    0: split
+#    1: len
+#    2: json
+#    3: loads
+#    4: base64
+#    5: urlsafe_b64decode
+#    6: Exception
+# Varnames:
+#	token, parts, payload
+# Positional arguments:
+#	token
+# Local variables:
+#    1: parts
+#    2: payload
+298:           0 RESUME               0
+
+301:           2 LOAD_FAST            (token)
+               4 LOAD_ATTR            (NULL|self + split)
+              24 LOAD_CONST           (".")
+              26 CALL                 (1 positional)
+              34 STORE_FAST           (parts)
+
+302:          36 LOAD_GLOBAL          (NULL + len)
+              46 LOAD_FAST            (parts)
+              48 CALL                 (1 positional)
+              56 LOAD_CONST           (3)
+              58 COMPARE_OP           (!=)
+              62 POP_JUMP_IF_FALSE    (to 70)
+
+303:          66 BUILD_MAP            0
+              68 RETURN_VALUE
+
+304:     >>   70 LOAD_FAST            (parts)
+              72 LOAD_CONST           (1)
+              74 BINARY_SUBSCR
+              78 STORE_FAST           (payload)
+
+306:          80 LOAD_FAST            (payload)
+              82 LOAD_CONST           ("=")
+              84 LOAD_CONST           (4)
+              86 LOAD_GLOBAL          (NULL + len)
+              96 LOAD_FAST            (payload)
+              98 CALL                 (1 positional)
+             106 LOAD_CONST           (4)
+             108 BINARY_OP            (%)
+             112 BINARY_OP            (-)
+             116 BINARY_OP            (*)
+             120 BINARY_OP            (+=)
+             124 STORE_FAST           (payload)
+
+307:         126 NOP
+
+308:         128 LOAD_GLOBAL          (json)
+             138 LOAD_ATTR            (loads)
+             158 PUSH_NULL
+             160 LOAD_GLOBAL          (base64)
+             170 LOAD_ATTR            (urlsafe_b64decode)
+             190 PUSH_NULL
+             192 LOAD_FAST            (payload)
+             194 CALL                 (1 positional)
+             202 CALL                 (1 positional)
+             210 RETURN_VALUE
+         >>  212 PUSH_EXC_INFO
+
+309:         214 LOAD_GLOBAL          (Exception)
+             224 CHECK_EXC_MATCH
+             226 POP_JUMP_IF_FALSE    (to 240)
+             230 POP_TOP
+
+310:         232 BUILD_MAP            0
+             234 SWAP                 (TOS <-> TOS1)
+             236 POP_EXCEPT
+             238 RETURN_VALUE
+
+309:     >>  240 RERAISE              0
+         >>  242 COPY                 3
+             244 POP_EXCEPT
+             246 RERAISE              1
+
+ExceptionTable:
+  128 to 208 -> 212 [0]
+  212 to 234 -> 242 [1] lasti
+  240 to 240 -> 242 [1] lasti
+
+# Method Name:       get_oauth_url_from_sub2api
+# Filename:          openai_oauth.py
+# Argument count:    4
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  12
+# Stack size:        7
+# Flags:             0x00000003 (NEWLOCALS | OPTIMIZED)
+# First Line:        314
+# Constants:
+#    0: '\n从 SUB2API 获取 OAuth 授权 URL\n返回 (oauth_url, session_id, state)\n'
+#    1: '/api/v1/auth/login'
+#    2: ('email', 'password')
+#    3: 30
+#    4: ('json', 'timeout')
+#    5: 'code'
+#    6: 0
+#    7: 'SUB2API 登录失败: '
+#    8: 'data'
+#    9: 'access_token'
+#   10: 'redirect_uri'
+#   11: 'proxy_id'
+#   12: '/api/v1/admin/openai/generate-auth-url'
+#   13: 'Authorization'
+#   14: 'Bearer '
+#   15: ('json', 'headers', 'timeout')
+#   16: '生成 OAuth URL 失败: '
+#   17: 'auth_url'
+#   18: 'session_id'
+#   19: 'state'
+#   20: ''
+# Names:
+#    0: requests

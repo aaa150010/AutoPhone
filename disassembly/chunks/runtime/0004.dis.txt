@@ -1,0 +1,800 @@
+284:        2086 NOP
+
+285:        2088 LOAD_FAST            (proc)
+            2090 LOAD_ATTR            (NULL|self + communicate)
+
+286:        2110 LOAD_GLOBAL          (json)
+            2120 LOAD_ATTR            (dumps)
+            2140 PUSH_NULL
+            2142 LOAD_FAST            (payload)
+            2144 LOAD_CONST           (False)
+            2146 LOAD_CONST           (('ensure_ascii',))
+            2148 CALL_KW              2
+
+287:        2150 LOAD_GLOBAL          (NULL + min)
+            2160 LOAD_CONST           (0.2)
+            2162 LOAD_GLOBAL          (NULL + max)
+            2172 LOAD_CONST           (0.05)
+            2174 LOAD_FAST            (deadline)
+            2176 LOAD_GLOBAL          (time)
+            2186 LOAD_ATTR            (monotonic)
+            2206 PUSH_NULL
+            2208 CALL                 (0 positional)
+            2216 BINARY_OP            (-)
+            2220 CALL                 (2 positional)
+            2228 CALL                 (2 positional)
+
+285:        2236 LOAD_CONST           (('input', 'timeout'))
+            2238 CALL_KW              2
+            2240 UNPACK_SEQUENCE      2
+            2244 STORE_FAST_STORE_FAST (stdout, stderr)
+
+307:        2246 LOAD_FAST            (proc)
+            2248 LOAD_ATTR            (returncode)
+            2268 LOAD_CONST           (0)
+            2270 COMPARE_OP           (!=)
+            2274 POP_JUMP_IF_FALSE    (to 2480)
+
+308:        2278 LOAD_FAST            (restart_count)
+            2280 LOAD_CONST           (1)
+            2282 COMPARE_OP           (<)
+            2286 POP_JUMP_IF_FALSE    (to 2384)
+            2290 LOAD_GLOBAL          (time)
+            2300 LOAD_ATTR            (monotonic)
+            2320 PUSH_NULL
+            2322 CALL                 (0 positional)
+            2330 LOAD_FAST            (deadline)
+            2332 COMPARE_OP           (<)
+            2336 POP_JUMP_IF_FALSE    (to 2384)
+            2340 LOAD_GLOBAL          (NULL + _node_stop_requested)
+            2350 CALL                 (0 positional)
+            2358 TO_BOOL
+            2366 POP_JUMP_IF_TRUE     (to 2384)
+
+309:        2370 LOAD_FAST            (restart_count)
+            2372 LOAD_CONST           (1)
+            2374 BINARY_OP            (+=)
+            2378 STORE_FAST           (restart_count)
+
+310:        2380 JUMP_BACKWARD        (to 1918)
+
+312:     >> 2384 LOAD_CONST           (False)
+            2386 LOAD_CONST           ("real")
+            2388 LOAD_CONST           (False)
+
+313:        2390 LOAD_GLOBAL          (NULL + _redact_text)
+            2400 LOAD_FAST            (stderr)
+            2402 COPY                 1
+            2404 TO_BOOL
+            2412 POP_JUMP_IF_TRUE     (to 2464)
+            2416 POP_TOP
+            2418 LOAD_FAST            (stdout)
+            2420 COPY                 1
+            2422 TO_BOOL
+            2430 POP_JUMP_IF_TRUE     (to 2464)
+            2434 POP_TOP
+            2436 LOAD_CONST           ("exit=")
+            2438 LOAD_FAST            (proc)
+            2440 LOAD_ATTR            (returncode)
+            2460 FORMAT_SIMPLE
+            2462 BUILD_STRING         2
+         >> 2464 CALL                 (1 positional)
+
+314:        2472 LOAD_FAST            (restart_count)
+
+311:        2474 LOAD_CONST           (('ok', 'mode', 'token_generated', 'error', 'node_restart_count'))
+            2476 BUILD_CONST_KEY_MAP  5
+            2478 RETURN_VALUE
+
+316:     >> 2480 NOP
+
+317:        2482 NOP
+
+318:        2484 LOAD_GLOBAL          (_codex_node_bridge)
+            2494 LOAD_ATTR            (_parse_node_json)
+            2514 PUSH_NULL
+            2516 LOAD_FAST            (stdout)
+            2518 COPY                 1
+            2520 TO_BOOL
+            2528 POP_JUMP_IF_TRUE     (to 2536)
+            2532 POP_TOP
+            2534 LOAD_CONST           ("")
+         >> 2536 CALL                 (1 positional)
+            2544 STORE_FAST           (data)
+
+321:        2546 LOAD_GLOBAL          (NULL + _clean)
+            2556 LOAD_FAST            (data)
+            2558 LOAD_ATTR            (NULL|self + get)
+            2578 LOAD_CONST           ("token")
+            2580 CALL                 (1 positional)
+            2588 COPY                 1
+            2590 TO_BOOL
+            2598 POP_JUMP_IF_TRUE     (to 2732)
+            2602 POP_TOP
+            2604 LOAD_FAST            (data)
+            2606 LOAD_ATTR            (NULL|self + get)
+            2626 LOAD_CONST           ("sentinel_token")
+            2628 CALL                 (1 positional)
+            2636 COPY                 1
+            2638 TO_BOOL
+            2646 POP_JUMP_IF_TRUE     (to 2732)
+            2650 POP_TOP
+            2652 LOAD_FAST            (data)
+            2654 LOAD_ATTR            (NULL|self + get)
+            2674 LOAD_CONST           ("headers")
+            2676 CALL                 (1 positional)
+            2684 COPY                 1
+            2686 TO_BOOL
+            2694 POP_JUMP_IF_TRUE     (to 2702)
+            2698 POP_TOP
+            2700 BUILD_MAP            0
+         >> 2702 LOAD_ATTR            (NULL|self + get)
+            2722 LOAD_CONST           ("OpenAI-Sentinel-Token")
+            2724 CALL                 (1 positional)
+         >> 2732 CALL                 (1 positional)
+            2740 STORE_FAST           (token)
+
+322:        2742 LOAD_GLOBAL          (NULL + _clean)
+            2752 LOAD_FAST            (data)
+            2754 LOAD_ATTR            (NULL|self + get)
+            2774 LOAD_CONST           ("so_token")
+            2776 CALL                 (1 positional)
+            2784 COPY                 1
+            2786 TO_BOOL
+            2794 POP_JUMP_IF_TRUE     (to 2928)
+            2798 POP_TOP
+            2800 LOAD_FAST            (data)
+            2802 LOAD_ATTR            (NULL|self + get)
+            2822 LOAD_CONST           ("sentinel_so_token")
+            2824 CALL                 (1 positional)
+            2832 COPY                 1
+            2834 TO_BOOL
+            2842 POP_JUMP_IF_TRUE     (to 2928)
+            2846 POP_TOP
+            2848 LOAD_FAST            (data)
+         >> 2850 LOAD_ATTR            (NULL|self + get)
+            2870 LOAD_CONST           ("headers")
+            2872 CALL                 (1 positional)
+            2880 COPY                 1
+            2882 TO_BOOL
+            2890 POP_JUMP_IF_TRUE     (to 2898)
+            2894 POP_TOP
+            2896 BUILD_MAP            0
+         >> 2898 LOAD_ATTR            (NULL|self + get)
+            2918 LOAD_CONST           ("OpenAI-Sentinel-SO-Token")
+            2920 CALL                 (1 positional)
+         >> 2928 CALL                 (1 positional)
+            2936 STORE_FAST           (so_token)
+
+323:        2938 BUILD_MAP            0
+
+324:        2940 LOAD_FAST            (data)
+
+323:        2942 DICT_UPDATE          1
+
+324:        2944 LOAD_GLOBAL          (NULL + bool)
+            2954 LOAD_FAST            (data)
+            2956 LOAD_ATTR            (NULL|self + get)
+            2976 LOAD_CONST           ("ok")
+            2978 LOAD_CONST           (True)
+            2980 CALL                 (2 positional)
+            2988 COPY                 1
+            2990 TO_BOOL
+            2998 POP_JUMP_IF_FALSE    (to 3006)
+            3002 POP_TOP
+            3004 LOAD_FAST            (token)
+         >> 3006 CALL                 (1 positional)
+            3014 LOAD_CONST           ("real")
+            3016 LOAD_FAST            (data)
+            3018 LOAD_ATTR            (NULL|self + get)
+            3038 LOAD_CONST           ("flow")
+            3040 CALL                 (1 positional)
+            3048 COPY                 1
+            3050 TO_BOOL
+            3058 POP_JUMP_IF_TRUE     (to 3072)
+            3062 POP_TOP
+            3064 LOAD_FAST            (payload)
+            3066 LOAD_CONST           ("flow")
+            3068 BINARY_SUBSCR
+
+325:     >> 3072 LOAD_FAST            (token)
+            3074 LOAD_FAST            (so_token)
+            3076 LOAD_GLOBAL          (NULL + bool)
+            3086 LOAD_FAST            (token)
+            3088 CALL                 (1 positional)
+            3096 LOAD_FAST            (restart_count)
+
+323:        3098 LOAD_CONST           (('ok', 'mode', 'flow', 'token', 'so_token', 'token_generated', 'node_restart_count'))
+            3100 BUILD_CONST_KEY_MAP  7
+            3102 DICT_UPDATE          1
+            3104 RETURN_VALUE
+         >> 3106 PUSH_EXC_INFO
+
+289:        3108 LOAD_GLOBAL          (subprocess)
+            3118 LOAD_ATTR            (TimeoutExpired)
+            3138 CHECK_EXC_MATCH
+            3140 POP_JUMP_IF_FALSE    (to 3494)
+            3144 POP_TOP
+
+290:        3146 NOP
+
+291:        3148 LOAD_GLOBAL          (NULL + _node_stop_requested)
+            3158 CALL                 (0 positional)
+            3166 TO_BOOL
+            3174 POP_JUMP_IF_FALSE    (to 3220)
+
+292:        3178 LOAD_GLOBAL          (NULL + _terminate_process_tree)
+            3188 LOAD_FAST            (proc)
+            3190 CALL                 (1 positional)
+            3198 POP_TOP
+
+293:        3200 LOAD_CONST           (False)
+            3202 LOAD_CONST           ("real")
+            3204 LOAD_CONST           (False)
+            3206 LOAD_CONST           ("task_stopped")
+            3208 LOAD_FAST            (restart_count)
+            3210 LOAD_CONST           (('ok', 'mode', 'token_generated', 'error', 'node_restart_count'))
+            3212 BUILD_CONST_KEY_MAP  5
+            3214 SWAP                 (TOS <-> TOS1)
+            3216 POP_EXCEPT
+            3218 RETURN_VALUE
+
+294:     >> 3220 LOAD_GLOBAL          (time)
+            3230 LOAD_ATTR            (monotonic)
+            3250 PUSH_NULL
+            3252 CALL                 (0 positional)
+            3260 LOAD_FAST            (deadline)
+            3262 COMPARE_OP           (>=)
+            3266 POP_JUMP_IF_FALSE    (to 3312)
+
+295:        3270 LOAD_GLOBAL          (NULL + _terminate_process_tree)
+            3280 LOAD_FAST            (proc)
+            3282 CALL                 (1 positional)
+            3290 POP_TOP
+
+296:        3292 LOAD_CONST           (False)
+            3294 LOAD_CONST           ("real")
+            3296 LOAD_CONST           (False)
+            3298 LOAD_CONST           ("node_bridge_timeout")
+            3300 LOAD_FAST            (restart_count)
+            3302 LOAD_CONST           (('ok', 'mode', 'token_generated', 'error', 'node_restart_count'))
+            3304 BUILD_CONST_KEY_MAP  5
+            3306 SWAP                 (TOS <-> TOS1)
+            3308 POP_EXCEPT
+            3310 RETURN_VALUE
+
+297:     >> 3312 NOP
+
+298:        3314 LOAD_FAST            (proc)
+            3316 LOAD_ATTR            (NULL|self + communicate)
+            3336 LOAD_GLOBAL          (NULL + min)
+            3346 LOAD_CONST           (0.2)
+            3348 LOAD_GLOBAL          (NULL + max)
+            3358 LOAD_CONST           (0.05)
+            3360 LOAD_FAST            (deadline)
+            3362 LOAD_GLOBAL          (time)
+            3372 LOAD_ATTR            (monotonic)
+            3392 PUSH_NULL
+            3394 CALL                 (0 positional)
+            3402 BINARY_OP            (-)
+            3406 CALL                 (2 positional)
+            3414 CALL                 (2 positional)
+            3422 LOAD_CONST           (('timeout',))
+            3424 CALL_KW              1
+            3426 UNPACK_SEQUENCE      2
+            3430 STORE_FAST_STORE_FAST (stdout, stderr)
+
+299:        3432 POP_EXCEPT
+            3434 EXTENDED_ARG         (512)
+            3436 JUMP_BACKWARD        (to 2246)
+         >> 3440 PUSH_EXC_INFO
+
+300:        3442 LOAD_GLOBAL          (subprocess)
+            3452 LOAD_ATTR            (TimeoutExpired)
+            3472 CHECK_EXC_MATCH
+            3474 POP_JUMP_IF_FALSE    (to 3486)
+            3478 POP_TOP
+
+301:        3480 POP_EXCEPT
+            3482 JUMP_BACKWARD        (to 3146)
+
+300:     >> 3486 RERAISE              0
+         >> 3488 COPY                 3
+            3490 POP_EXCEPT
+            3492 RERAISE              1
+
+289:     >> 3494 RERAISE              0
+         >> 3496 COPY                 3
+            3498 POP_EXCEPT
+            3500 RERAISE              1
+         >> 3502 PUSH_EXC_INFO
+
+302:        3504 LOAD_GLOBAL          (Exception)
+            3514 CHECK_EXC_MATCH
+            3516 POP_JUMP_IF_FALSE    (to 3690)
+            3520 STORE_FAST           (exc)
+
+303:        3522 LOAD_FAST            (restart_count)
+            3524 LOAD_CONST           (1)
+            3526 COMPARE_OP           (<)
+            3530 POP_JUMP_IF_FALSE    (to 3638)
+            3534 LOAD_GLOBAL          (time)
+            3544 LOAD_ATTR            (monotonic)
+            3564 PUSH_NULL
+            3566 CALL                 (0 positional)
+            3574 LOAD_FAST            (deadline)
+            3576 COMPARE_OP           (<)
+            3580 POP_JUMP_IF_FALSE    (to 3638)
+            3584 LOAD_GLOBAL          (NULL + _node_stop_requested)
+            3594 CALL                 (0 positional)
+            3602 TO_BOOL
+            3610 POP_JUMP_IF_TRUE     (to 3638)
+
+304:        3614 LOAD_FAST            (restart_count)
+            3616 LOAD_CONST           (1)
+            3618 BINARY_OP            (+=)
+            3622 STORE_FAST           (restart_count)
+
+305:        3624 POP_EXCEPT
+            3626 LOAD_CONST           (None)
+            3628 STORE_FAST           (exc)
+            3630 DELETE_FAST          (exc)
+            3632 EXTENDED_ARG         (768)
+            3634 JUMP_BACKWARD        (to 1918)
+
+306:     >> 3638 LOAD_CONST           (False)
+            3640 LOAD_CONST           ("real")
+            3642 LOAD_CONST           (False)
+            3644 LOAD_GLOBAL          (NULL + _redact_text)
+            3654 LOAD_FAST            (exc)
+            3656 CALL                 (1 positional)
+            3664 LOAD_FAST            (restart_count)
+            3666 LOAD_CONST           (('ok', 'mode', 'token_generated', 'error', 'node_restart_count'))
+            3668 BUILD_CONST_KEY_MAP  5
+            3670 SWAP                 (TOS <-> TOS1)
+            3672 POP_EXCEPT
+            3674 LOAD_CONST           (None)
+            3676 STORE_FAST           (exc)
+            3678 DELETE_FAST          (exc)
+            3680 RETURN_VALUE
+         >> 3682 LOAD_CONST           (None)
+            3684 STORE_FAST           (exc)
+            3686 DELETE_FAST          (exc)
+            3688 RERAISE              1
+
+302:     >> 3690 RERAISE              0
+         >> 3692 COPY                 3
+            3694 POP_EXCEPT
+            3696 RERAISE              1
+         >> 3698 PUSH_EXC_INFO
+
+319:        3700 LOAD_GLOBAL          (Exception)
+            3710 CHECK_EXC_MATCH
+            3712 POP_JUMP_IF_FALSE    (to 3756)
+            3716 STORE_FAST           (exc)
+
+320:        3718 LOAD_CONST           (False)
+            3720 LOAD_CONST           ("real")
+            3722 LOAD_CONST           (False)
+            3724 LOAD_CONST           ("invalid Node JSON: ")
+            3726 LOAD_FAST            (exc)
+            3728 FORMAT_SIMPLE
+            3730 BUILD_STRING         2
+            3732 LOAD_CONST           (('ok', 'mode', 'token_generated', 'error'))
+            3734 BUILD_CONST_KEY_MAP  4
+            3736 SWAP                 (TOS <-> TOS1)
+            3738 POP_EXCEPT
+            3740 LOAD_CONST           (None)
+            3742 STORE_FAST           (exc)
+            3744 DELETE_FAST          (exc)
+            3746 RETURN_VALUE
+         >> 3748 LOAD_CONST           (None)
+            3750 STORE_FAST           (exc)
+            3752 DELETE_FAST          (exc)
+            3754 RERAISE              1
+
+319:     >> 3756 RERAISE              0
+         >> 3758 COPY                 3
+            3760 POP_EXCEPT
+            3762 RERAISE              1
+
+ExceptionTable:
+  1926 to 2084 -> 3502 [0]
+  2088 to 2244 -> 3106 [0]
+  2484 to 2544 -> 3698 [0]
+  3106 to 3214 -> 3496 [1] lasti
+  3216 to 3216 -> 3502 [0]
+  3220 to 3306 -> 3496 [1] lasti
+  3308 to 3308 -> 3502 [0]
+  3314 to 3430 -> 3440 [1]
+  3432 to 3432 -> 3502 [0]
+  3440 to 3478 -> 3488 [2] lasti
+  3480 to 3484 -> 3496 [1] lasti
+  3486 to 3486 -> 3488 [2] lasti
+  3488 to 3494 -> 3496 [1] lasti
+  3496 to 3500 -> 3502 [0]
+  3502 to 3520 -> 3692 [1] lasti
+  3522 to 3622 -> 3682 [1] lasti
+  3638 to 3668 -> 3682 [1] lasti
+  3670 to 3670 -> 3692 [1] lasti
+  3682 to 3690 -> 3692 [1] lasti
+  3698 to 3716 -> 3758 [1] lasti
+  3718 to 3734 -> 3748 [1] lasti
+  3736 to 3736 -> 3758 [1] lasti
+  3748 to 3756 -> 3758 [1] lasti
+
+# Method Name:       _standalone_node_bridge
+# Filename:          runtime.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        6
+# Flags:             0x0100000b (0x1000000 | VARKEYWORDS | NEWLOCALS | OPTIMIZED)
+# First Line:        329
+# Constants:
+#    0: None
+#    1: 'node_gate'
+#    2: 'stop_event'
+#    3: False
+#    4: 'mode'
+#    5: 'mock'
+#    6: '-'
+#    7: '_'
+#    8: 'real'
+#    9: True
+#   10: 'task_stopped'
+#   11: ('ok', 'mode', 'token_generated', 'error')
+#   12: ()
+# Names:
+#    0: getattr
+#    1: _NODE_BRIDGE_CONTEXT
+#    2: threading
+#    3: Event
+#    4: _clean
+#    5: get
+#    6: lower
+#    7: replace
+#    8: acquire
+#    9: Exception
+#   10: _standalone_node_bridge_process
+#   11: release
+# Varnames:
+#	kwargs, gate, stop_event, acquired
+# Local variables:
+#    0: kwargs
+#    1: gate
+#    2: stop_event
+#    3: acquired
+329:           0 RESUME               0
+
+330:           2 LOAD_GLOBAL          (NULL + getattr)
+              12 LOAD_GLOBAL          (_NODE_BRIDGE_CONTEXT)
+              22 LOAD_CONST           ("node_gate")
+              24 LOAD_CONST           (None)
+              26 CALL                 (3 positional)
+              34 STORE_FAST           (gate)
+
+331:          36 LOAD_GLOBAL          (NULL + getattr)
+              46 LOAD_GLOBAL          (_NODE_BRIDGE_CONTEXT)
+              56 LOAD_CONST           ("stop_event")
+              58 LOAD_CONST           (None)
+              60 CALL                 (3 positional)
+              68 COPY                 1
+              70 TO_BOOL
+              78 POP_JUMP_IF_TRUE     (to 124)
+              82 POP_TOP
+              84 LOAD_GLOBAL          (threading)
+              94 LOAD_ATTR            (Event)
+             114 PUSH_NULL
+             116 CALL                 (0 positional)
+         >>  124 STORE_FAST           (stop_event)
+
+332:         126 LOAD_CONST           (False)
+             128 STORE_FAST           (acquired)
+
+333:         130 LOAD_FAST            (gate)
+             132 POP_JUMP_IF_NONE     (to 314)
+             136 LOAD_GLOBAL          (NULL + _clean)
+             146 LOAD_FAST            (kwargs)
+             148 LOAD_ATTR            (NULL|self + get)
+             168 LOAD_CONST           ("mode")
+             170 CALL                 (1 positional)
+             178 COPY                 1
+             180 TO_BOOL
+             188 POP_JUMP_IF_TRUE     (to 196)
+             192 POP_TOP
+             194 LOAD_CONST           ("mock")
+         >>  196 CALL                 (1 positional)
+             204 LOAD_ATTR            (NULL|self + lower)
+             224 CALL                 (0 positional)
+             232 LOAD_ATTR            (NULL|self + replace)
+             252 LOAD_CONST           ("-")
+             254 LOAD_CONST           ("_")
+             256 CALL                 (2 positional)
+             264 LOAD_CONST           ("real")
+             266 COMPARE_OP           (==)
+             270 POP_JUMP_IF_FALSE    (to 314)
+
+334:         274 NOP
+
+335:         276 LOAD_FAST            (gate)
+             278 LOAD_ATTR            (NULL|self + acquire)
+             298 LOAD_FAST            (stop_event)
+             300 CALL                 (1 positional)
+             308 POP_TOP
+
+336:         310 LOAD_CONST           (True)
+             312 STORE_FAST           (acquired)
+
+339:     >>  314 NOP
+
+340:         316 LOAD_GLOBAL          (NULL + _standalone_node_bridge_process)
+             326 LOAD_CONST           (())
+             328 BUILD_MAP            0
+             330 LOAD_FAST            (kwargs)
+             332 DICT_MERGE           1
+             334 CALL_FUNCTION_EX     (keyword and positional arguments)
+
+342:         336 LOAD_FAST            (acquired)
+             338 TO_BOOL
+             346 POP_JUMP_IF_FALSE    (to 384)
+
+343:         350 LOAD_FAST            (gate)
+             352 LOAD_ATTR            (NULL|self + release)
+             372 CALL                 (0 positional)
+             380 POP_TOP
+             382 RETURN_VALUE
+
+342:     >>  384 RETURN_VALUE
+         >>  386 PUSH_EXC_INFO
+
+337:         388 LOAD_GLOBAL          (Exception)
+             398 CHECK_EXC_MATCH
+             400 POP_JUMP_IF_FALSE    (to 424)
+             404 POP_TOP
+
+338:         406 LOAD_CONST           (False)
+             408 LOAD_CONST           ("real")
+             410 LOAD_CONST           (False)
+             412 LOAD_CONST           ("task_stopped")
+             414 LOAD_CONST           (('ok', 'mode', 'token_generated', 'error'))
+             416 BUILD_CONST_KEY_MAP  4
+             418 SWAP                 (TOS <-> TOS1)
+             420 POP_EXCEPT
+             422 RETURN_VALUE
+
+337:     >>  424 RERAISE              0
+         >>  426 COPY                 3
+             428 POP_EXCEPT
+             430 RERAISE              1
+         >>  432 PUSH_EXC_INFO
+
+342:         434 LOAD_FAST            (acquired)
+             436 TO_BOOL
+             444 POP_JUMP_IF_FALSE    (to 482)
+
+343:         448 LOAD_FAST            (gate)
+             450 LOAD_ATTR            (NULL|self + release)
+             470 CALL                 (0 positional)
+             478 POP_TOP
+             480 RERAISE              0
+
+342:     >>  482 RERAISE              0
+         >>  484 COPY                 3
+             486 POP_EXCEPT
+             488 RERAISE              1
+
+ExceptionTable:
+  276 to 312 -> 386 [0]
+  316 to 334 -> 432 [0]
+  386 to 418 -> 426 [1] lasti
+  424 to 424 -> 426 [1] lasti
+  432 to 482 -> 484 [1] lasti
+
+# Method Name:       _standalone_phone_supply_retryable
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        3
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        346
+# Constants:
+#    0: 'A provider route ban is temporary inventory failure, not task failure.'
+#    1: 'banned'
+#    2: 'activation banned'
+#    3: True
+# Names:
+#    0: _clean
+#    1: lower
+#    2: _ORIGINAL_PHONE_SUPPLY_RETRYABLE
+# Varnames:
+#	error, text
+# Positional arguments:
+#	error
+# Local variables:
+#    1: text
+346:           0 RESUME               0
+
+348:           2 LOAD_GLOBAL          (NULL + _clean)
+              12 LOAD_FAST            (error)
+              14 CALL                 (1 positional)
+              22 LOAD_ATTR            (NULL|self + lower)
+              42 CALL                 (0 positional)
+              50 STORE_FAST           (text)
+
+349:          52 LOAD_CONST           ("banned")
+              54 LOAD_FAST            (text)
+              56 CONTAINS_OP          (in)
+              60 POP_JUMP_IF_TRUE     (to 76)
+              64 LOAD_CONST           ("activation banned")
+              66 LOAD_FAST            (text)
+              68 CONTAINS_OP          (in)
+              72 POP_JUMP_IF_FALSE    (to 78)
+
+350:     >>   76 RETURN_CONST         (True)
+
+351:     >>   78 LOAD_GLOBAL          (NULL + _ORIGINAL_PHONE_SUPPLY_RETRYABLE)
+              88 LOAD_FAST            (error)
+              90 CALL                 (1 positional)
+              98 RETURN_VALUE
+
+
+# Method Name:       _standalone_sms_adapter_get_number
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  5
+# Stack size:        6
+# Flags:             0x0100000b (0x1000000 | VARKEYWORDS | NEWLOCALS | OPTIMIZED)
+# First Line:        354
+# Constants:
+#    0: 'Refresh a smart pool after every route was temporarily excluded.'
+#    1: 'sms_smart_no_candidate'
+#    2: '_session_excluded_routes'
+#    3: None
+#    4: 'log_fn'
+#    5: '  [SMS智能] 本轮候选已耗尽，刷新库存后重新开放临时排除线路'
+#    6: 'warn'
+# Names:
+#    0: _ORIGINAL_SMS_ADAPTER_GET_NUMBER
+#    1: Exception
+#    2: _clean
+#    3: lower
+#    4: getattr
+#    5: isinstance
+#    6: set
+#    7: clear
+#    8: callable
+# Varnames:
+#	self, kwargs, exc, excluded, log_fn
+# Positional arguments:
+#	self
+# Local variables:
+#    1: kwargs
+#    2: exc
+#    3: excluded
+#    4: log_fn
+354:           0 RESUME               0
+
+356:           2 NOP
+
+357:           4 LOAD_GLOBAL          (NULL + _ORIGINAL_SMS_ADAPTER_GET_NUMBER)
+              14 LOAD_FAST            (self)
+              16 BUILD_TUPLE          1
+              18 BUILD_MAP            0
+              20 LOAD_FAST            (kwargs)
+              22 DICT_MERGE           1
+              24 CALL_FUNCTION_EX     (keyword and positional arguments)
+              26 RETURN_VALUE
+         >>   28 PUSH_EXC_INFO
+
+358:          30 LOAD_GLOBAL          (Exception)
+              40 CHECK_EXC_MATCH
+              42 POP_JUMP_IF_FALSE    (to 342)
+              46 STORE_FAST           (exc)
+
+359:          48 LOAD_CONST           ("sms_smart_no_candidate")
+              50 LOAD_GLOBAL          (NULL + _clean)
+              60 LOAD_FAST            (exc)
+              62 CALL                 (1 positional)
+              70 LOAD_ATTR            (NULL|self + lower)
+              90 CALL                 (0 positional)
+              98 CONTAINS_OP          (not in)
+             102 POP_JUMP_IF_FALSE    (to 108)
+
+360:         106 RAISE_VARARGS        (reraise)
+
+361:     >>  108 LOAD_GLOBAL          (NULL + getattr)
+             118 LOAD_FAST            (self)
+             120 LOAD_CONST           ("_session_excluded_routes")
+             122 LOAD_CONST           (None)
+             124 CALL                 (3 positional)
+             132 STORE_FAST           (excluded)
+
+362:         134 LOAD_GLOBAL          (NULL + isinstance)
+             144 LOAD_FAST            (excluded)
+             146 LOAD_GLOBAL          (set)
+             156 CALL                 (2 positional)
+             164 TO_BOOL
+             172 POP_JUMP_IF_FALSE    (to 190)
+             176 LOAD_FAST            (excluded)
+             178 TO_BOOL
+             186 POP_JUMP_IF_TRUE     (to 192)
+
+363:     >>  190 RAISE_VARARGS        (reraise)
+
+364:     >>  192 LOAD_FAST            (excluded)
+             194 LOAD_ATTR            (NULL|self + clear)
+             214 CALL                 (0 positional)
+             222 POP_TOP
+
+365:         224 LOAD_GLOBAL          (NULL + getattr)
+             234 LOAD_FAST            (self)
+             236 LOAD_CONST           ("log_fn")
+             238 LOAD_CONST           (None)
+             240 CALL                 (3 positional)
+             248 STORE_FAST           (log_fn)
+
+366:         250 LOAD_GLOBAL          (NULL + callable)
+             260 LOAD_FAST            (log_fn)
+             262 CALL                 (1 positional)
+             270 TO_BOOL
+             278 POP_JUMP_IF_FALSE    (to 300)
+
+367:         282 LOAD_FAST            (log_fn)
+             284 PUSH_NULL
+             286 LOAD_CONST           ("  [SMS智能] 本轮候选已耗尽，刷新库存后重新开放临时排除线路")
+             288 LOAD_CONST           ("warn")
+             290 CALL                 (2 positional)
+             298 POP_TOP
+
+368:     >>  300 LOAD_GLOBAL          (NULL + _ORIGINAL_SMS_ADAPTER_GET_NUMBER)
+             310 LOAD_FAST            (self)
+             312 BUILD_TUPLE          1
+             314 BUILD_MAP            0
+             316 LOAD_FAST            (kwargs)
+             318 DICT_MERGE           1
+             320 CALL_FUNCTION_EX     (keyword and positional arguments)
+             322 SWAP                 (TOS <-> TOS1)
+             324 POP_EXCEPT
+             326 LOAD_CONST           (None)
+             328 STORE_FAST           (exc)
+             330 DELETE_FAST          (exc)
+             332 RETURN_VALUE
+         >>  334 LOAD_CONST           (None)
+             336 STORE_FAST           (exc)
+             338 DELETE_FAST          (exc)
+             340 RERAISE              1
+
+358:     >>  342 RERAISE              0
+         >>  344 COPY                 3
+             346 POP_EXCEPT
+             348 RERAISE              1
+
+ExceptionTable:
+  4 to 24 -> 28 [0]
+  28 to 46 -> 344 [1] lasti
+  48 to 320 -> 334 [1] lasti
+  322 to 322 -> 344 [1] lasti
+  334 to 342 -> 344 [1] lasti
+
+# Method Name:       default_settings
+# Filename:          runtime.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  2
+# Stack size:        12
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        371
+# Constants:
+#    0: None
+#    1: 'mailbox_pool.txt'
+#    2: 'pool_path'
+#    3: 'state_path'
+#    4: 'mailbox_pool_state.json'
+#    5: 'email_mode'

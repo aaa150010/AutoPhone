@@ -1,0 +1,800 @@
+               2 LOAD_NAME            (__name__)
+               4 STORE_NAME           (__module__)
+               6 LOAD_CONST           ("_QuietRequestHandler")
+               8 STORE_NAME           (__qualname__)
+              10 LOAD_CONST           (213)
+              12 STORE_NAME           (__firstlineno__)
+
+214:          14 LOAD_CONST           ("Keep Werkzeug access/error lines out of the operator console.")
+              16 STORE_NAME           (__doc__)
+
+216:          18 LOAD_CONST           (('args', 'Any', 'kwargs', 'Any', 'return', 'None'))
+              20 LOAD_CONST           (<Code311 code object log_request at 0x1060b1a30, file web_gui.py>, line 216)
+              22 MAKE_FUNCTION
+              24 SET_FUNCTION_ATTRIBUTE 4
+              26 STORE_NAME           (log_request)
+
+219:          28 LOAD_CONST           (('args', 'Any', 'kwargs', 'Any', 'return', 'None'))
+              30 LOAD_CONST           (<Code311 code object log_error at 0x1060b13a0, file web_gui.py>, line 219)
+              32 MAKE_FUNCTION
+              34 SET_FUNCTION_ATTRIBUTE 4
+              36 STORE_NAME           (log_error)
+
+222:          38 LOAD_CONST           (('args', 'Any', 'kwargs', 'Any', 'return', 'None'))
+              40 LOAD_CONST           (<Code311 code object log_message at 0x1060b1340, file web_gui.py>, line 222)
+              42 MAKE_FUNCTION
+              44 SET_FUNCTION_ATTRIBUTE 4
+              46 STORE_NAME           (log_message)
+              48 LOAD_CONST           (())
+              50 STORE_NAME           (__static_attributes__)
+              52 RETURN_CONST         (None)
+
+
+# Method Name:       _make_local_server
+# Filename:          web_gui.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        9
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        636
+# Constants:
+#    0: 'Use a requested port when possible, otherwise let the OS choose one.'
+#    1: '127.0.0.1'
+#    2: True
+#    3: ('threaded', 'request_handler')
+#    4: 0
+# Names:
+#    0: make_server
+#    1: app
+#    2: _QuietRequestHandler
+#    3: OSError
+# Varnames:
+#	port
+# Positional arguments:
+#	port
+636:           0 RESUME               0
+
+638:           2 NOP
+
+639:           4 LOAD_GLOBAL          (NULL + make_server)
+              14 LOAD_CONST           ("127.0.0.1")
+              16 LOAD_FAST            (port)
+              18 LOAD_GLOBAL          (app)
+              28 LOAD_CONST           (True)
+              30 LOAD_GLOBAL          (_QuietRequestHandler)
+              40 LOAD_CONST           (('threaded', 'request_handler'))
+              42 CALL_KW              5
+              44 RETURN_VALUE
+         >>   46 PUSH_EXC_INFO
+
+640:          48 LOAD_GLOBAL          (OSError)
+              58 CHECK_EXC_MATCH
+              60 POP_JUMP_IF_FALSE    (to 126)
+              64 POP_TOP
+
+641:          66 LOAD_FAST            (port)
+              68 LOAD_CONST           (0)
+              70 COMPARE_OP           (==)
+              74 POP_JUMP_IF_FALSE    (to 80)
+
+642:          78 RAISE_VARARGS        (reraise)
+
+643:     >>   80 LOAD_GLOBAL          (NULL + make_server)
+              90 LOAD_CONST           ("127.0.0.1")
+              92 LOAD_CONST           (0)
+              94 LOAD_GLOBAL          (app)
+             104 LOAD_CONST           (True)
+             106 LOAD_GLOBAL          (_QuietRequestHandler)
+             116 LOAD_CONST           (('threaded', 'request_handler'))
+             118 CALL_KW              5
+             120 SWAP                 (TOS <-> TOS1)
+             122 POP_EXCEPT
+             124 RETURN_VALUE
+
+640:     >>  126 RERAISE              0
+         >>  128 COPY                 3
+             130 POP_EXCEPT
+             132 RERAISE              1
+
+ExceptionTable:
+  4 to 42 -> 46 [0]
+  46 to 120 -> 128 [1] lasti
+  126 to 126 -> 128 [1] lasti
+
+# Method Name:       _open_default_browser
+# Filename:          web_gui.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        5
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        646
+# Constants:
+#    0: 'Open the displayed local URL when the normal EXE entry point is used.'
+#    1: 'nt'
+#    2: None
+#    3: 2
+#    4: ('new',)
+# Names:
+#    0: os
+#    1: name
+#    2: startfile
+#    3: OSError
+#    4: webbrowser
+#    5: open
+#    6: Exception
+# Varnames:
+#	url
+# Positional arguments:
+#	url
+646:           0 RESUME               0
+
+648:           2 LOAD_GLOBAL          (os)
+              12 LOAD_ATTR            (name)
+              32 LOAD_CONST           ("nt")
+              34 COMPARE_OP           (==)
+              38 POP_JUMP_IF_FALSE    (to 90)
+
+649:          42 NOP
+
+652:          44 LOAD_GLOBAL          (os)
+              54 LOAD_ATTR            (startfile)
+              74 PUSH_NULL
+              76 LOAD_FAST            (url)
+              78 CALL                 (1 positional)
+              86 POP_TOP
+
+653:          88 RETURN_CONST         (None)
+
+656:     >>   90 NOP
+
+657:          92 LOAD_GLOBAL          (webbrowser)
+             102 LOAD_ATTR            (open)
+             122 PUSH_NULL
+             124 LOAD_FAST            (url)
+             126 LOAD_CONST           (2)
+             128 LOAD_CONST           (('new',))
+             130 CALL_KW              2
+             132 POP_TOP
+             134 RETURN_CONST         (None)
+         >>  136 PUSH_EXC_INFO
+
+654:         138 LOAD_GLOBAL          (OSError)
+             148 CHECK_EXC_MATCH
+             150 POP_JUMP_IF_FALSE    (to 160)
+             154 POP_TOP
+
+655:         156 POP_EXCEPT
+             158 JUMP_BACKWARD_NO_INTERRUPT (to 90)
+
+654:     >>  160 RERAISE              0
+         >>  162 COPY                 3
+             164 POP_EXCEPT
+             166 RERAISE              1
+         >>  168 PUSH_EXC_INFO
+
+658:         170 LOAD_GLOBAL          (Exception)
+             180 CHECK_EXC_MATCH
+             182 POP_JUMP_IF_FALSE    (to 192)
+             186 POP_TOP
+
+659:         188 POP_EXCEPT
+             190 RETURN_CONST         (None)
+
+658:     >>  192 RERAISE              0
+         >>  194 COPY                 3
+             196 POP_EXCEPT
+             198 RERAISE              1
+
+ExceptionTable:
+  44 to 86 -> 136 [0]
+  92 to 132 -> 168 [0]
+  136 to 154 -> 162 [1] lasti
+  160 to 160 -> 162 [1] lasti
+  168 to 186 -> 194 [1] lasti
+  192 to 192 -> 194 [1] lasti
+
+# Method Name:       main
+# Filename:          web_gui.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  4
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        662
+# Constants:
+#    0: None
+#    1: 'EMAIL_AUTH_IMPORTER_GUI_PORT'
+#    2: 0
+#    3: 'http://127.0.0.1:'
+#    4: 'Email auth importer WebUI: '
+#    5: True
+#    6: ('flush',)
+#    7: 'EMAIL_AUTH_IMPORTER_NO_BROWSER'
+#    8: '1'
+#    9: 0.6
+#   10: ('args',)
+# Names:
+#    0: int
+#    1: os
+#    2: environ
+#    3: get
+#    4: DEFAULT_PORT
+#    5: ValueError
+#    6: _make_local_server
+#    7: max
+#    8: server_port
+#    9: print
+#   10: threading
+#   11: Timer
+#   12: _open_default_browser
+#   13: start
+#   14: serve_forever
+# Varnames:
+#	requested_port, server, port, url
+# Local variables:
+#    0: requested_port
+#    1: server
+#    2: port
+#    3: url
+662:           0 RESUME               0
+
+663:           2 NOP
+
+664:           4 LOAD_GLOBAL          (NULL + int)
+              14 LOAD_GLOBAL          (os)
+              24 LOAD_ATTR            (environ)
+              44 LOAD_ATTR            (NULL|self + get)
+              64 LOAD_CONST           ("EMAIL_AUTH_IMPORTER_GUI_PORT")
+              66 CALL                 (1 positional)
+              74 COPY                 1
+              76 TO_BOOL
+              84 POP_JUMP_IF_TRUE     (to 100)
+              88 POP_TOP
+              90 LOAD_GLOBAL          (DEFAULT_PORT)
+         >>  100 CALL                 (1 positional)
+             108 STORE_FAST           (requested_port)
+
+667:         110 LOAD_GLOBAL          (NULL + _make_local_server)
+             120 LOAD_GLOBAL          (NULL + max)
+             130 LOAD_CONST           (0)
+             132 LOAD_FAST            (requested_port)
+             134 CALL                 (2 positional)
+             142 CALL                 (1 positional)
+             150 STORE_FAST           (server)
+
+668:         152 LOAD_GLOBAL          (NULL + int)
+             162 LOAD_FAST            (server)
+             164 LOAD_ATTR            (server_port)
+             184 CALL                 (1 positional)
+             192 STORE_FAST           (port)
+
+669:         194 LOAD_CONST           ("http://127.0.0.1:")
+             196 LOAD_FAST            (port)
+             198 FORMAT_SIMPLE
+             200 BUILD_STRING         2
+             202 STORE_FAST           (url)
+
+670:         204 LOAD_GLOBAL          (NULL + print)
+             214 LOAD_CONST           ("Email auth importer WebUI: ")
+             216 LOAD_FAST            (url)
+             218 FORMAT_SIMPLE
+             220 BUILD_STRING         2
+             222 LOAD_CONST           (True)
+             224 LOAD_CONST           (('flush',))
+             226 CALL_KW              2
+             228 POP_TOP
+
+671:         230 LOAD_GLOBAL          (os)
+             240 LOAD_ATTR            (environ)
+             260 LOAD_ATTR            (NULL|self + get)
+             280 LOAD_CONST           ("EMAIL_AUTH_IMPORTER_NO_BROWSER")
+             282 CALL                 (1 positional)
+             290 LOAD_CONST           ("1")
+             292 COMPARE_OP           (!=)
+             296 POP_JUMP_IF_FALSE    (to 382)
+
+672:         300 LOAD_GLOBAL          (threading)
+             310 LOAD_ATTR            (Timer)
+             330 PUSH_NULL
+             332 LOAD_CONST           (0.6)
+             334 LOAD_GLOBAL          (_open_default_browser)
+             344 LOAD_FAST            (url)
+             346 BUILD_TUPLE          1
+             348 LOAD_CONST           (('args',))
+             350 CALL_KW              3
+             352 LOAD_ATTR            (NULL|self + start)
+             372 CALL                 (0 positional)
+             380 POP_TOP
+
+673:     >>  382 LOAD_FAST            (server)
+             384 LOAD_ATTR            (NULL|self + serve_forever)
+             404 CALL                 (0 positional)
+             412 POP_TOP
+
+674:         414 RETURN_CONST         (0)
+         >>  416 PUSH_EXC_INFO
+
+665:         418 LOAD_GLOBAL          (ValueError)
+             428 CHECK_EXC_MATCH
+             430 POP_JUMP_IF_FALSE    (to 452)
+             434 POP_TOP
+
+666:         436 LOAD_GLOBAL          (DEFAULT_PORT)
+             446 STORE_FAST           (requested_port)
+             448 POP_EXCEPT
+             450 JUMP_BACKWARD_NO_INTERRUPT (to 110)
+
+665:     >>  452 RERAISE              0
+         >>  454 COPY                 3
+             456 POP_EXCEPT
+             458 RERAISE              1
+
+ExceptionTable:
+  4 to 108 -> 416 [0]
+  416 to 446 -> 454 [1] lasti
+  452 to 452 -> 454 [1] lasti
+
+# Method Name:       __init__
+# Filename:          web_gui.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        2
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        36
+# Constants:
+#    0: None
+# Names:
+#    0: threading
+#    1: RLock
+#    2: lock
+#    3: items
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+ 36:           0 RESUME               0
+
+ 37:           2 LOAD_GLOBAL          (threading)
+              12 LOAD_ATTR            (RLock)
+              32 PUSH_NULL
+              34 CALL                 (0 positional)
+              42 LOAD_FAST            (self)
+              44 STORE_ATTR           (lock)
+
+ 38:          54 BUILD_LIST           0
+              56 LOAD_FAST            (self)
+              58 STORE_ATTR           (items)
+              68 RETURN_CONST         (None)
+
+
+# Method Name:       add
+# Filename:          web_gui.py
+# Argument count:    3
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        8
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        40
+# Constants:
+#    0: None
+#    1: '%H:%M:%S'
+#    2: ('time', 'level', 'message')
+# Names:
+#    0: lock
+#    1: items
+#    2: append
+#    3: time
+#    4: strftime
+#    5: _safe
+#    6: MAX_LOGS
+# Varnames:
+#	self, message, level
+# Positional arguments:
+#	self, message, level
+ 40:           0 RESUME               0
+
+ 41:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (lock)
+              24 BEFORE_WITH
+              26 POP_TOP
+
+ 42:          28 LOAD_FAST            (self)
+              30 LOAD_ATTR            (items)
+              50 LOAD_ATTR            (NULL|self + append)
+              70 LOAD_GLOBAL          (time)
+              80 LOAD_ATTR            (strftime)
+             100 PUSH_NULL
+             102 LOAD_CONST           ("%H:%M:%S")
+             104 CALL                 (1 positional)
+             112 LOAD_FAST            (level)
+             114 LOAD_GLOBAL          (NULL + _safe)
+             124 LOAD_FAST            (message)
+             126 CALL                 (1 positional)
+             134 LOAD_CONST           (('time', 'level', 'message'))
+             136 BUILD_CONST_KEY_MAP  3
+             138 CALL                 (1 positional)
+             146 POP_TOP
+
+ 43:         148 LOAD_FAST            (self)
+             150 LOAD_ATTR            (items)
+             170 LOAD_GLOBAL          (MAX_LOGS)
+             180 UNARY_NEGATIVE
+             182 LOAD_CONST           (None)
+             184 BINARY_SLICE
+             186 LOAD_FAST            (self)
+             188 STORE_ATTR           (items)
+
+ 41:         198 LOAD_CONST           (None)
+             200 LOAD_CONST           (None)
+             202 LOAD_CONST           (None)
+             204 CALL                 (2 positional)
+             212 POP_TOP
+             214 RETURN_CONST         (None)
+         >>  216 PUSH_EXC_INFO
+             218 WITH_EXCEPT_START    0
+             220 TO_BOOL
+             228 POP_JUMP_IF_TRUE     (to 234)
+             232 RERAISE              2
+         >>  234 POP_TOP
+             236 POP_EXCEPT
+             238 POP_TOP
+             240 POP_TOP
+             242 RETURN_CONST         (None)
+         >>  244 COPY                 3
+             246 POP_EXCEPT
+             248 RERAISE              1
+
+ExceptionTable:
+  26 to 196 -> 216 [1] lasti
+  216 to 234 -> 244 [3] lasti
+
+# Method Name:       snapshot
+# Filename:          web_gui.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        6
+# Flags:             0x01000003 (0x1000000 | NEWLOCALS | OPTIMIZED)
+# First Line:        45
+# Constants:
+#    0: None
+# Names:
+#    0: lock
+#    1: list
+#    2: items
+# Varnames:
+#	self
+# Positional arguments:
+#	self
+ 45:           0 RESUME               0
+
+ 46:           2 LOAD_FAST            (self)
+               4 LOAD_ATTR            (lock)
+              24 BEFORE_WITH
+              26 POP_TOP
+
+ 47:          28 LOAD_GLOBAL          (NULL + list)
+              38 LOAD_FAST            (self)
+              40 LOAD_ATTR            (items)
+              60 CALL                 (1 positional)
+
+ 46:          68 SWAP                 (TOS <-> TOS1)
+              70 LOAD_CONST           (None)
+              72 LOAD_CONST           (None)
+              74 LOAD_CONST           (None)
+              76 CALL                 (2 positional)
+              84 POP_TOP
+              86 RETURN_VALUE
+         >>   88 PUSH_EXC_INFO
+              90 WITH_EXCEPT_START    0
+              92 TO_BOOL
+             100 POP_JUMP_IF_TRUE     (to 106)
+             104 RERAISE              2
+         >>  106 POP_TOP
+             108 POP_EXCEPT
+             110 POP_TOP
+             112 POP_TOP
+             114 RETURN_CONST         (None)
+         >>  116 COPY                 3
+             118 POP_EXCEPT
+             120 RERAISE              1
+
+ExceptionTable:
+  26 to 66 -> 88 [1] lasti
+  88 to 106 -> 116 [3] lasti
+
+# Method Name:       settings
+# Filename:          web_gui.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        2
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        57
+# Constants:
+#    0: None
+# Names:
+#    0: load
+# Free variables:
+#    0: store
+               0 COPY_FREE_VARS       1
+
+ 57:           2 RESUME               0
+
+ 58:           4 LOAD_DEREF           (store)
+               6 LOAD_ATTR            (NULL|self + load)
+              26 CALL                 (0 positional)
+              34 RETURN_VALUE
+
+
+# Method Name:       public_settings
+# Filename:          web_gui.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        3
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        60
+# Constants:
+#    0: 'The GUI is localhost-only and needs the saved values to remain editable.'
+# Names:
+#    0: copy
+#    1: deepcopy
+# Varnames:
+#	cfg
+# Positional arguments:
+#	cfg
+ 60:           0 RESUME               0
+
+ 62:           2 LOAD_GLOBAL          (copy)
+              12 LOAD_ATTR            (deepcopy)
+              32 PUSH_NULL
+              34 LOAD_FAST            (cfg)
+              36 CALL                 (1 positional)
+              44 RETURN_VALUE
+
+
+# Method Name:       state
+# Filename:          web_gui.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        4
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        64
+# Constants:
+#    0: None
+#    1: ('settings', 'runtime', 'logs')
+# Names:
+#    0: status
+#    1: snapshot
+# Varnames:
+#	cfg
+# Local variables:
+#    0: cfg
+# Free variables:
+#    0: importer
+#    1: logs
+#    2: public_settings
+#    3: settings
+               0 COPY_FREE_VARS       4
+
+ 64:           2 RESUME               0
+
+ 65:           4 LOAD_DEREF           (settings)
+               6 PUSH_NULL
+               8 CALL                 (0 positional)
+              16 STORE_FAST           (cfg)
+
+ 66:          18 LOAD_DEREF           (public_settings)
+              20 PUSH_NULL
+              22 LOAD_FAST            (cfg)
+              24 CALL                 (1 positional)
+              32 LOAD_DEREF           (importer)
+              34 LOAD_ATTR            (NULL|self + status)
+              54 LOAD_FAST            (cfg)
+              56 CALL                 (1 positional)
+              64 LOAD_DEREF           (logs)
+              66 LOAD_ATTR            (NULL|self + snapshot)
+              86 CALL                 (0 positional)
+              94 LOAD_CONST           (('settings', 'runtime', 'logs'))
+              96 BUILD_CONST_KEY_MAP  3
+              98 RETURN_VALUE
+
+
+# Method Name:       index
+# Filename:          web_gui.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  1
+# Stack size:        7
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        68
+# Constants:
+#    0: None
+#    1: '</head>'
+#    2: '</body>'
+#    3: 'text/html'
+#    4: ('mimetype',)
+# Names:
+#    0: _HTML
+#    1: replace
+#    2: _UI_POLISH_CSS
+#    3: Response
+#    4: _SMS_MODE_INJECT
+#    5: _MANUAL_EMAIL_INJECT
+#    6: _SMS_FIXED_ONLY_INJECT
+#    7: _LOGIN_FORM_USABILITY_INJECT
+#    8: _GPTMAIL_INJECT
+# Varnames:
+#	html
+# Local variables:
+#    0: html
+ 68:           0 RESUME               0
+
+ 70:           2 LOAD_GLOBAL          (_HTML)
+              12 LOAD_ATTR            (NULL|self + replace)
+              32 LOAD_CONST           ("</head>")
+              34 LOAD_GLOBAL          (_UI_POLISH_CSS)
+              44 LOAD_CONST           ("</head>")
+              46 BINARY_OP            (+)
+              50 CALL                 (2 positional)
+              58 STORE_FAST           (html)
+
+ 71:          60 LOAD_GLOBAL          (NULL + Response)
+              70 LOAD_FAST            (html)
+              72 LOAD_ATTR            (NULL|self + replace)
+              92 LOAD_CONST           ("</body>")
+              94 LOAD_GLOBAL          (_SMS_MODE_INJECT)
+             104 LOAD_GLOBAL          (_MANUAL_EMAIL_INJECT)
+             114 BINARY_OP            (+)
+             118 LOAD_GLOBAL          (_SMS_FIXED_ONLY_INJECT)
+             128 BINARY_OP            (+)
+             132 LOAD_GLOBAL          (_LOGIN_FORM_USABILITY_INJECT)
+             142 BINARY_OP            (+)
+             146 LOAD_GLOBAL          (_GPTMAIL_INJECT)
+             156 BINARY_OP            (+)
+             160 LOAD_CONST           ("</body>")
+             162 BINARY_OP            (+)
+             166 CALL                 (2 positional)
+             174 LOAD_CONST           ("text/html")
+             176 LOAD_CONST           (('mimetype',))
+             178 CALL_KW              2
+             180 RETURN_VALUE
+
+
+# Method Name:       api_state
+# Filename:          web_gui.py
+# Argument count:    0
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  0
+# Stack size:        5
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        73
+# Constants:
+#    0: None
+#    1: True
+#    2: ('ok', 'state')
+# Names:
+#    0: jsonify
+# Free variables:
+#    0: state
+               0 COPY_FREE_VARS       1
+
+ 73:           2 RESUME               0
+
+ 75:           4 LOAD_GLOBAL          (NULL + jsonify)
+              14 LOAD_CONST           (True)
+              16 LOAD_DEREF           (state)
+              18 PUSH_NULL
+              20 CALL                 (0 positional)
+              28 LOAD_CONST           (('ok', 'state'))
+              30 BUILD_CONST_KEY_MAP  2
+              32 CALL                 (1 positional)
+              40 RETURN_VALUE
+
+
+# Method Name:       api_export
+# Filename:          web_gui.py
+# Argument count:    1
+# Position-only argument count: 0
+# Keyword-only arguments: 0
+# Number of locals:  3
+# Stack size:        7
+# Flags:             0x01000013 (0x1000000 | NESTED | NEWLOCALS | OPTIMIZED)
+# First Line:        77
+# Constants:
+#    0: None
+#    1: 'ok'
+#    2: True
+#    3: False
+#    4: ('ok', 'error')
+#    5: 400
+# Names:
+#    0: export_records
+#    1: jsonify
+#    2: MailboxPoolError
+#    3: _safe
+# Varnames:
+#	kind, exported, exc
+# Positional arguments:
+#	kind
+# Local variables:
+#    1: exported
+#    2: exc
+# Free variables:
+#    0: importer
+#    1: settings
+               0 COPY_FREE_VARS       2
+
+ 77:           2 RESUME               0
+
+ 79:           4 NOP
+
+ 80:           6 LOAD_DEREF           (importer)
+               8 LOAD_ATTR            (NULL|self + export_records)
+              28 LOAD_DEREF           (settings)
+              30 PUSH_NULL
+              32 CALL                 (0 positional)
+              40 LOAD_FAST            (kind)
+              42 CALL                 (2 positional)
+              50 STORE_FAST           (exported)
+
+ 81:          52 LOAD_GLOBAL          (NULL + jsonify)
+              62 LOAD_CONST           ("ok")
+              64 LOAD_CONST           (True)
+              66 BUILD_MAP            1
+              68 LOAD_FAST            (exported)
+              70 DICT_UPDATE          1
+              72 CALL                 (1 positional)
+              80 RETURN_VALUE
+         >>   82 PUSH_EXC_INFO
+
+ 82:          84 LOAD_GLOBAL          (MailboxPoolError)
+              94 CHECK_EXC_MATCH
+              96 POP_JUMP_IF_FALSE    (to 170)
+             100 STORE_FAST           (exc)
+
+ 83:         102 LOAD_GLOBAL          (NULL + jsonify)
+             112 LOAD_CONST           (False)
+             114 LOAD_GLOBAL          (NULL + _safe)
+             124 LOAD_FAST            (exc)
+             126 CALL                 (1 positional)
+             134 LOAD_CONST           (('ok', 'error'))
+             136 BUILD_CONST_KEY_MAP  2
+             138 CALL                 (1 positional)
+             146 LOAD_CONST           (400)
+             148 BUILD_TUPLE          2
+             150 SWAP                 (TOS <-> TOS1)
+             152 POP_EXCEPT
+             154 LOAD_CONST           (None)
+             156 STORE_FAST           (exc)
+             158 DELETE_FAST          (exc)
+             160 RETURN_VALUE
+         >>  162 LOAD_CONST           (None)
+             164 STORE_FAST           (exc)
+             166 DELETE_FAST          (exc)
+             168 RERAISE              1
+
+ 82:     >>  170 RERAISE              0
+         >>  172 COPY                 3
+             174 POP_EXCEPT
+             176 RERAISE              1
+
+ExceptionTable:
+  6 to 78 -> 82 [0]
+  82 to 100 -> 172 [1] lasti
