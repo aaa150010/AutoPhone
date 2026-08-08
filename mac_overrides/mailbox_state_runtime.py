@@ -322,6 +322,9 @@ def restore_mailbox_rows(mailbox_admin: Any, payload: Any) -> dict[str, Any]:
         if not bindings or set(bindings) != set(selected):
             return {"ok": False, "code": "mailbox_rows_invalid", "error": "放回参数无效"}
 
+    # Validate before taking the source lock; the recovered validator opens the
+    # same lock again while reading pool entries and its flock is not reentrant.
+    mailbox_admin._validate_pool()
     with _locked_pool_config(mailbox_admin) as config:
         lines = mailbox_admin._read_pool_lines(config)
         known_row_ids = {_row_id_from_source(source) for source in lines}
@@ -344,7 +347,6 @@ def restore_mailbox_rows(mailbox_admin: Any, payload: Any) -> dict[str, Any]:
         if not resolved:
             return {"ok": False, "error": "选中的邮箱不存在"}
 
-        mailbox_admin._validate_pool()
         state_path = mailbox_admin._path(config, "state_path")
         state = mailbox_admin._read_json_file(state_path)
         items = state.get("items") if isinstance(state.get("items"), Mapping) else {}
@@ -429,6 +431,9 @@ def mark_mailboxes_unavailable(mailbox_admin: Any, payload: Any) -> dict[str, An
     if error is not None:
         return error
 
+    # See restore_mailbox_rows: validation must not run while this source lock
+    # is held because the recovered pool validator acquires it once more.
+    mailbox_admin._validate_pool()
     with _locked_pool_config(mailbox_admin) as config:
         lines = mailbox_admin._read_pool_lines(config)
         known_row_ids = {_row_id_from_source(source) for source in lines}
@@ -487,7 +492,6 @@ def mark_mailboxes_unavailable(mailbox_admin: Any, payload: Any) -> dict[str, An
                     }
             resolved.append((line_no, row_id, email, matching_keys or [row_id]))
 
-        mailbox_admin._validate_pool()
         for line_no, _row_id, email, matching_keys in resolved:
             for state_key in matching_keys:
                 raw_item = items.get(state_key)

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager, nullcontext
 import hashlib
 import hmac
 import json
@@ -14,9 +13,9 @@ import time
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
 try:
-    from file_safety import named_file_lock as _named_file_lock
-except ImportError:  # Unit tests do not load recovered runtime dependencies.
-    _named_file_lock = None
+    from .mailbox_source_lock import MailboxSourceLockMixin
+except ImportError:  # Loaded as a top-level override module by the Mac launcher.
+    from mailbox_source_lock import MailboxSourceLockMixin
 
 try:
     from .chatgpt_totp import (
@@ -303,7 +302,7 @@ def latest_sub2_accounts_by_email(results_dir: str | Path) -> dict[str, dict[str
     return latest
 
 
-class MailboxAdminService:
+class MailboxAdminService(MailboxSourceLockMixin):
     """Mailbox operations with recovered-runtime dependencies supplied as callables."""
 
     def __init__(
@@ -358,20 +357,6 @@ class MailboxAdminService:
 
     def _path(self, config: Mapping[str, Any], name: str) -> Path:
         return resolve_config_path(self.store, config.get(name))
-
-    def _pool_source_lock(self, config: Mapping[str, Any]):
-        if _named_file_lock is None:
-            return nullcontext()
-        pool_path = self._path(config, "pool_path").resolve()
-        digest = hashlib.sha256(str(pool_path).encode("utf-8")).hexdigest()[:16]
-        return _named_file_lock(f"self_mailbox_source_{digest}.lock")
-
-    @contextmanager
-    def _locked_pool_config(self):
-        with self._lock:
-            config = self._config()
-            with self._pool_source_lock(config):
-                yield config
 
     @staticmethod
     def _read_json_file(path: Path) -> dict[str, Any]:
@@ -503,9 +488,6 @@ class MailboxAdminService:
         content = "\n".join(lines).strip()
         pool_path.write_text(f"{content}\n" if content else "", encoding="utf-8")
         return pool_path
-
-    def _validate_pool(self) -> Any:
-        return self.validate_pool(self._config())
 
     def _log(self, message: str, level: str) -> None:
         if self.log_fn is not None:
@@ -1135,8 +1117,8 @@ class MailboxAdminService:
             self._append_import_order_batch(import_order, appended)
             if run_active and self.next_batch_priority is not None:
                 self.next_batch_priority.mark_imported(appended)
-            check = self._validate_pool()
 
+        check = self._validate_pool()
         self._log(f"邮箱管理追加导入: 新增 {len(appended)} 条，跳过重复 {skipped} 条", "success")
         return {"ok": True, "imported": len(appended), "skipped": skipped, "validate": check}
 
@@ -1209,8 +1191,8 @@ class MailboxAdminService:
                 if index in selected_set
             }
             self._rewrite_state_after_delete(kept_lines, selected_set, deleted_rows, config)
-            self._validate_pool()
 
+        self._validate_pool()
         self._log(f"邮箱管理删除: {len(deleted_lines)} 条", "warn")
         return {"ok": True, "deleted": len(deleted_lines)}
 
