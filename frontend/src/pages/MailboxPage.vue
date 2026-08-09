@@ -246,8 +246,14 @@ function setImportBusy(value: boolean) {
 }
 
 function applyImportedMailboxes(result: any) {
-  applyMailboxPayload(result)
+  const hasMailboxSnapshot = Array.isArray(result?.mailboxes?.rows)
+  if (hasMailboxSnapshot) applyMailboxPayload(result)
   currentPage.value = 1
+  if (!hasMailboxSnapshot || result?.mailboxes_refresh_required) {
+    window.setTimeout(() => {
+      if (!pollingStopped) void refresh()
+    }, 0)
+  }
 }
 
 async function mutate(

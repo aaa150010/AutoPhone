@@ -17,6 +17,8 @@ import type {
   NvUploadRecordPage,
   NvUploadRecord,
   BatchUploadManifest,
+  ManualVerificationAccepted,
+  ManualVerificationSubmission,
   SmsKeyStatus,
 } from '../types/api'
 
@@ -63,6 +65,8 @@ export const importMailboxes = (poolContent: string) => api<{
   skipped: number
   mailboxes?: MailboxPayload
   state?: AppState
+  mailboxes_refresh_required?: boolean
+  state_refresh_required?: boolean
 }>('/api/mailboxes/import', { pool_content: poolContent })
 export const queryMailboxQuotas = (rows: Array<{ row_id: string; line_no: number }>) => (
   api<{
@@ -116,6 +120,9 @@ export const getMailboxUrl = (row: { row_id: string; line_no: number }) => (
 )
 export const getRuntimeTaskMailboxUrl = (taskId: string) => (
   api<{ ok: true; mailbox_url: string }>('/api/runtime/tasks/mailbox-url', { task_id: taskId })
+)
+export const submitManualVerification = (data: ManualVerificationSubmission) => (
+  api<ManualVerificationAccepted>('/api/runtime/tasks/manual-verification', data)
 )
 export const reloginMailboxRows = (rows: Array<{ row_id: string; line_no: number }>) => (
   api<{ ok: true; run_mode: 'relogin'; started: number; mailboxes?: MailboxPayload; state?: any }>(

@@ -6,7 +6,17 @@ const props = defineProps<{
   progress?: TaskProgress | null
   timing?: TaskTiming | null
   nowSeconds: number
+  status?: string
 }>()
+
+const terminalStatuses = new Set([
+  'success', 'failed', 'stopped', 'stopped_before_start', 'retryable_infra',
+  'retryable_email', 'repair_pending', 'email_damaged', 'account_banned',
+])
+
+const normalizedStatus = computed(() => String(props.status || '').trim().toLowerCase())
+const terminal = computed(() => terminalStatuses.has(normalizedStatus.value))
+const successful = computed(() => normalizedStatus.value === 'success')
 
 const resolvedTiming = computed(() => props.progress?.timing || props.timing || null)
 
@@ -74,7 +84,9 @@ const tooltip = computed(() => {
   const segments = (timing?.segments || [])
     .map(segment => `${segment.label} ${formatSeconds(segment.elapsed_seconds)} 秒${segment.visits > 1 ? `（${segment.visits} 次）` : ''}`)
     .join(' · ')
-  const current = progress ? `进入节点 ${entered} · 当前 ${elapsedSeconds.value} 秒` : ''
+  const current = progress
+    ? `进入节点 ${entered} · ${terminal.value ? (successful.value ? '末次节点' : '停在节点') : '当前'} ${elapsedSeconds.value} 秒`
+    : ''
   return [
     current,
     `总耗时 ${totalElapsedSeconds.value} 秒`,
@@ -89,7 +101,8 @@ const tooltip = computed(() => {
   <el-tooltip v-if="progress || resolvedTiming" :content="tooltip" placement="top">
     <div class="progress-cell">
       <el-tag v-if="progress" :type="tagType" effect="light">{{ progress.label }}</el-tag>
-      <span v-if="progress">当前 {{ elapsedSeconds }} 秒 / 总 {{ totalElapsedSeconds }} 秒</span>
+      <span v-if="progress && terminal">{{ successful ? '末次节点' : '停在' }} {{ elapsedSeconds }} 秒 / 总 {{ totalElapsedSeconds }} 秒</span>
+      <span v-else-if="progress">当前 {{ elapsedSeconds }} 秒 / 总 {{ totalElapsedSeconds }} 秒</span>
       <span v-else>总 {{ totalElapsedSeconds }} 秒</span>
     </div>
   </el-tooltip>

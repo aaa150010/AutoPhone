@@ -5,22 +5,20 @@ import {
   CircleCheckFilled,
   CircleCloseFilled,
   Coin,
-  Connection,
-  DataAnalysis,
-  FirstAidKit,
+  Document,
   Message,
   Monitor,
+  Setting,
   Tickets,
   Upload,
   VideoPause,
+  VideoPlay,
 } from '@element-plus/icons-vue'
 import { getRuntimeTaskMailboxUrl } from '../api/client'
+import DashboardMetricCard from '../components/DashboardMetricCard.vue'
 import LogPanel from '../components/LogPanel.vue'
 import MailboxImportDialog from '../components/MailboxImportDialog.vue'
 import PageToolbar from '../components/PageToolbar.vue'
-import RunOverview from '../components/RunOverview.vue'
-import RunPipelineMonitor from '../components/RunPipelineMonitor.vue'
-import RunServiceHealth from '../components/RunServiceHealth.vue'
 import RunUploadDialog from '../components/RunUploadDialog.vue'
 import TaskResultsPanel from '../components/TaskResultsPanel.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
@@ -49,7 +47,19 @@ const summary = computed(() => {
     (total, task) => total + Number(task.result?.sms_cost_cny || 0),
     0,
   )
-  return { ...current, success, stopped, active, failed, sms_cost_cny: smsCostCny }
+  const smsCostUsd = current.sms_cost_usd ?? tasks.value.reduce(
+    (total, task) => total + Number(task.result?.sms_cost_usd || 0),
+    0,
+  )
+  return {
+    ...current,
+    success,
+    stopped,
+    active,
+    failed,
+    sms_cost_cny: smsCostCny,
+    sms_cost_usd: smsCostUsd,
+  }
 })
 
 const batchId = computed(() => {
@@ -78,27 +88,29 @@ const batchCompleted = computed(() => Math.min(
 ))
 
 const metrics = computed(() => [
-  { title: '可用邮箱', value: Number(controller.runtime.value.pool?.available || 0), icon: Message, tone: 'primary' },
-  { title: '运行中', value: Number(summary.value.active || 0), icon: Monitor, tone: 'warning' },
-  { title: '成功', value: Number(summary.value.success || 0), icon: CircleCheckFilled, tone: 'success' },
-  { title: '未成功', value: Number(summary.value.failed || 0) + Number(summary.value.stopped || 0), icon: CircleCloseFilled, tone: 'danger' },
-  { title: '运行成本', value: `¥${Number(summary.value.sms_cost_cny || 0).toFixed(2)}`, icon: Coin, tone: 'primary' },
+  { title: '可用邮箱', value: Number(controller.runtime.value.pool?.available || 0), detail: undefined, icon: Message, tone: 'primary' },
+  { title: '运行中', value: Number(summary.value.active || 0), detail: undefined, icon: Monitor, tone: 'warning' },
+  { title: '成功', value: Number(summary.value.success || 0), detail: undefined, icon: CircleCheckFilled, tone: 'success' },
+  { title: '未成功', value: Number(summary.value.failed || 0) + Number(summary.value.stopped || 0), detail: undefined, icon: CircleCloseFilled, tone: 'danger' },
+  {
+    title: '运行成本',
+    value: `¥${Number(summary.value.sms_cost_cny || 0).toFixed(2)}`,
+    detail: `$${Number(summary.value.sms_cost_usd || 0).toFixed(4)}`,
+    icon: Coin,
+    tone: 'primary',
+  },
 ] as const)
 
-const pipelineActiveCount = computed(() => {
-  const summarized = Number(summary.value.active)
-  if (Number.isFinite(summarized) && summarized > 0) return summarized
-  return Object.values(controller.runtime.value.stage_counts || {}).reduce(
-    (total, value) => total + Math.max(0, Number(value || 0)),
-    0,
-  )
-})
-
 const statusLabel = computed(() => {
+  if (controller.runtime.value.sms_safe_stop) return '异常停止'
   if (controller.runtime.value.stop_requested) return controller.running.value ? '正在停止' : '已停止'
   return controller.running.value ? '运行中' : '空闲'
 })
-const statusTone = computed(() => controller.runtime.value.stop_requested ? 'warning' : controller.running.value ? 'success' : 'info')
+const statusTone = computed(() => controller.runtime.value.sms_safe_stop
+  ? 'danger'
+  : controller.runtime.value.stop_requested
+    ? 'warning'
+    : controller.running.value ? 'success' : 'info')
 const nvConfigured = computed(() => Boolean(
   String(controller.form.nv_import?.endpoint || '').trim()
   && String(controller.form.nv_import?.api_key || '').trim(),
@@ -133,7 +145,8 @@ async function stop() {
 }
 
 function applyImportedMailboxes(result: any) {
-  controller.syncState(result)
+  if (result?.state) controller.syncState(result.state)
+  void controller.refresh()
 }
 
 async function copyTaskAccount(task: RuntimeTask) {
@@ -199,26 +212,17 @@ async function openTaskMailboxUrl(task: RuntimeTask) {
     </PageToolbar>
 
     <div class="console-grid">
-      <div class="dashboard-row">
-        <WorkspacePanel class="overview-workspace" title="实时概览" :icon="DataAnalysis" fill body-padding="none">
-          <RunOverview :metrics="metrics" />
-        </WorkspacePanel>
-
-        <WorkspacePanel class="pipeline-workspace" title="运行管线" :icon="Connection" fill body-padding="none">
-          <template #actions>
-            <span class="pipeline-live" :class="{ idle: !pipelineActiveCount }">
-              <i />{{ pipelineActiveCount ? `${pipelineActiveCount} 个任务处理中` : '当前无处理中任务' }}
-            </span>
-          </template>
-          <RunPipelineMonitor :runtime="controller.runtime.value" />
-        </WorkspacePanel>
-
-        <WorkspacePanel class="health-workspace" title="服务健康" :icon="FirstAidKit" fill body-padding="none">
-          <RunServiceHealth
-            :runtime="controller.runtime.value"
-            :alerts="controller.state.value.sms_alerts || controller.runtime.value.sms_alerts"
-          />
-        </WorkspacePanel>
+      <div class="metrics-row" aria-label="运行指标">
+        <DashboardMetricCard
+          v-for="metric in metrics"
+          :key="metric.title"
+          :title="metric.title"
+          :value="metric.value"
+          :detail="metric.detail"
+          :icon="metric.icon"
+          :tone="metric.tone"
+          framed
+        />
       </div>
 
       <WorkspacePanel class="task-workspace" title="任务结果" :icon="Tickets" fill body-padding="none">
@@ -237,7 +241,7 @@ async function openTaskMailboxUrl(task: RuntimeTask) {
         />
       </WorkspacePanel>
 
-      <WorkspacePanel class="log-workspace" fill body-padding="none">
+      <WorkspacePanel class="log-workspace" title="运行日志" :icon="Document" fill body-padding="none">
         <LogPanel :logs="controller.state.value.logs || []" :auto-scroll="true" />
       </WorkspacePanel>
     </div>
@@ -254,14 +258,14 @@ async function openTaskMailboxUrl(task: RuntimeTask) {
 
 <style scoped>
 .run-page {
-  --run-blue: #287fd8;
-  --run-blue-soft: #eaf4ff;
-  --run-green: #247d50;
-  --run-green-soft: #edf9f2;
-  --run-orange: #b66b00;
-  --run-orange-soft: #fff5e8;
-  --run-red: #be4545;
-  --run-red-soft: #fff0f0;
+  --run-blue: #0f6b5b;
+  --run-blue-soft: #edf7f4;
+  --run-green: #187a5f;
+  --run-green-soft: #edf8f3;
+  --run-orange: #a86513;
+  --run-orange-soft: #fff7ea;
+  --run-red: #b54949;
+  --run-red-soft: #fff3f2;
   display: grid;
   grid-template-rows: 44px minmax(0, 1fr);
   gap: 6px;
@@ -270,14 +274,19 @@ async function openTaskMailboxUrl(task: RuntimeTask) {
   min-width: 0;
   min-height: 0;
 }
-.console-grid { display: grid; grid-template-rows: 220px repeat(2, minmax(0, 1fr)); gap: 6px; min-width: 0; min-height: 0; }
-.dashboard-row { display: grid; grid-template-columns: minmax(270px, .9fr) minmax(520px, 1.8fr) minmax(270px, .9fr); gap: 6px; min-width: 0; min-height: 0; }
+.console-grid { display: grid; grid-template-rows: 88px repeat(2, minmax(0, 1fr)); gap: 6px; min-width: 0; min-height: 0; }
+.metrics-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; min-width: 0; min-height: 0; }
+.metrics-row :deep(.metric-card) { min-height: 0; height: 100%; }
+.metrics-row :deep(.tone-primary .metric-icon) { background: var(--run-blue-soft); color: var(--run-blue); }
+.metrics-row :deep(.tone-primary .metric-value) { color: var(--run-blue); }
+.metrics-row :deep(.tone-success .metric-icon) { background: var(--run-green-soft); color: var(--run-green); }
+.metrics-row :deep(.tone-success .metric-value) { color: var(--run-green); }
+.metrics-row :deep(.tone-warning .metric-icon) { background: var(--run-orange-soft); color: var(--run-orange); }
+.metrics-row :deep(.tone-warning .metric-value) { color: var(--run-orange); }
+.metrics-row :deep(.tone-danger .metric-icon) { background: var(--run-red-soft); color: var(--run-red); }
+.metrics-row :deep(.tone-danger .metric-value) { color: var(--run-red); }
 .task-workspace,
 .log-workspace { min-width: 0; min-height: 0; }
-.pipeline-live { display: flex; align-items: center; gap: 5px; color: var(--run-blue); font-size: 10px; white-space: nowrap; }
-.pipeline-live i { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--run-blue); box-shadow: 0 0 0 3px rgba(40, 127, 216, .1); }
-.pipeline-live.idle { color: var(--el-text-color-secondary); }
-.pipeline-live.idle i { background: #a5afbd; box-shadow: none; }
 .batch-identity { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .batch-identity span { color: var(--el-text-color-secondary); font-size: 11px; white-space: nowrap; }
 .batch-identity strong {
@@ -302,25 +311,31 @@ async function openTaskMailboxUrl(task: RuntimeTask) {
 
 .run-page :deep(.page-toolbar) {
   padding: 0 10px;
-  border: 1px solid #dbe5f0;
+  border: 1px solid #d9e5e1;
   border-radius: 6px;
   background: #fff;
   box-shadow: 0 1px 3px rgba(22, 34, 51, .05);
 }
 .run-page.is-running :deep(.page-toolbar .el-tag--success) {
   --el-tag-bg-color: var(--run-blue-soft);
-  --el-tag-border-color: #b7d7f6;
+  --el-tag-border-color: #b9ddd4;
   --el-tag-text-color: var(--run-blue);
 }
-.run-page :deep(.workspace-panel) { border-color: #dbe5f0; box-shadow: 0 1px 4px rgba(31, 56, 88, .05); }
-.run-page :deep(.workspace-panel > .el-card__header) { border-bottom-color: #e2eaf3; background: #f8fbff; }
+.run-page :deep(.workspace-panel) { border-color: #d9e5e1; box-shadow: 0 1px 4px rgba(25, 75, 65, .05); }
+.run-page :deep(.workspace-panel > .el-card__header) { border-bottom-color: #e1eae7; background: #fafcfb; }
 .run-page :deep(.workspace-panel .panel-title .el-icon) { color: var(--run-blue); }
-.task-workspace :deep(.el-table__header-wrapper th.el-table__cell) { background: #f4f8fc; color: #526074; }
-.task-workspace :deep(.el-table__inner-wrapper::before) { background-color: #dbe5f0; }
-.task-workspace :deep(.el-table__empty-block) { background: #fbfdff; }
+.task-workspace :deep(.el-table) { --el-table-border-color: #dce6e2; --el-table-header-bg-color: #f5f8f7; --el-table-row-hover-bg-color: #f1f8f5; --el-table-tr-bg-color: #fafcfb; --el-table-current-row-bg-color: #edf7f4; }
+.task-workspace :deep(.el-table__header-wrapper th.el-table__cell) { background: #f5f8f7; color: #435d58; border-bottom-color: #d7e2de; }
+.task-workspace :deep(.el-table__body-wrapper td.el-table__cell) { border-bottom-color: #e5ece9; }
+.task-workspace :deep(.el-table__inner-wrapper::before) { background-color: #d8e3df; }
+.task-workspace :deep(.el-table__empty-block) { background: #fcfdfc; }
+.task-workspace :deep(.copyable-account) { color: var(--run-blue); }
+.task-workspace :deep(.copyable-account:focus-visible) { outline-color: #8fcfc1; }
+.task-workspace :deep(.task-actions .el-button) { color: var(--run-blue); }
+.task-workspace :deep(.task-actions .el-button:hover) { color: #0b574b; background: #e8f4f0; }
 .task-workspace :deep(.el-tag--primary) {
   --el-tag-bg-color: var(--run-blue-soft);
-  --el-tag-border-color: #b7d7f6;
+  --el-tag-border-color: #b9ddd4;
   --el-tag-text-color: var(--run-blue);
 }
 .task-workspace :deep(.el-tag--success) {
@@ -339,19 +354,12 @@ async function openTaskMailboxUrl(task: RuntimeTask) {
   --el-tag-text-color: var(--run-red);
 }
 .task-workspace :deep(.content-empty),
-.log-workspace :deep(.content-empty) { background: #fbfdff; }
-.log-workspace :deep(.log-line) { border-bottom-color: #e7edf4; }
-.log-workspace :deep(.log-line b) { color: #3d6f9f; }
+.log-workspace :deep(.content-empty) { background: #fcfdfc; }
+.log-workspace :deep(.log-line) { border-bottom-color: #e5ece9; }
+.log-workspace :deep(.log-line b) { color: #356c61; }
 .log-workspace :deep(.log-line b.success) { color: var(--run-green); }
 .log-workspace :deep(.log-line b.warning),
 .log-workspace :deep(.log-line b.warn) { color: var(--run-orange); }
 .log-workspace :deep(.log-line b.error) { color: var(--run-red); }
 
-@media (max-height: 820px) {
-  .console-grid { grid-template-rows: 204px repeat(2, minmax(0, 1fr)); }
-}
-
-@media (max-width: 1450px) {
-  .dashboard-row { grid-template-columns: minmax(250px, .9fr) minmax(470px, 1.8fr) minmax(250px, .9fr); }
-}
 </style>

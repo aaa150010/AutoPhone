@@ -83,6 +83,52 @@ export interface TaskFailure {
   http_status?: number | null
 }
 
+export type ManualVerificationInputKind = 'email_otp' | 'sms_otp' | 'totp'
+
+export interface ManualVerificationRequest {
+  input_kind: ManualVerificationInputKind
+  generation: number
+  opened_at: number
+  deadline_at: number
+  capabilities: Array<'submit'>
+  can_submit: boolean
+  remaining_seconds: number
+}
+
+export interface ManualVerificationSubmission {
+  task_id: string
+  input_kind: ManualVerificationInputKind
+  generation: number
+  code: string
+}
+
+export interface ManualVerificationAccepted {
+  ok: true
+  accepted: true
+  task_id: string
+  input_kind: ManualVerificationInputKind
+  generation: number
+}
+
+export type TaskCheckpointState =
+  | 'saved'
+  | 'restored'
+  | 'available'
+  | 'claimed'
+  | 'disabled'
+  | 'expired'
+  | 'invalid'
+
+export interface TaskCheckpoint {
+  state: TaskCheckpointState
+  resume_stage: 'phone_acquiring' | ''
+  expires_at: number | null
+  age?: number
+  age_seconds?: number
+  remaining_seconds?: number
+  reason: string
+}
+
 export interface RuntimeTask {
   task_id: string
   run_mode?: 'register' | 'relogin' | string
@@ -100,9 +146,13 @@ export interface RuntimeTask {
   updated_at?: number
   progress?: TaskProgress | null
   timing?: TaskTiming | null
+  manual_verification?: ManualVerificationRequest | null
+  checkpoint?: TaskCheckpoint | null
   result?: {
     sms_cost_usd?: number | null
     sms_cost_cny?: number | null
+    sms_exchange_rate?: number | null
+    sms_exchange_date?: string
     timing?: TaskTiming
     run_mode?: 'relogin' | string
     batch_id?: string

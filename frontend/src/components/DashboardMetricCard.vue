@@ -9,6 +9,7 @@ const props = defineProps<{
   tone?: 'primary' | 'success' | 'danger' | 'warning'
   compact?: boolean
   framed?: boolean
+  detail?: string
 }>()
 
 const numericValue = computed(() => (
@@ -28,6 +29,7 @@ const numericValue = computed(() => (
         <RollingMetricValue v-if="numericValue !== null" :value="numericValue" />
         <template v-else>{{ value }}</template>
       </strong>
+      <small v-if="detail" class="metric-detail">{{ detail }}</small>
     </div>
   </div>
 </template>
@@ -39,6 +41,7 @@ const numericValue = computed(() => (
 .metric-copy { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
 .metric-copy > span { overflow: hidden; color: var(--el-text-color-secondary); font-size: 13px; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
 .metric-value { display: block; max-width: 100%; overflow: hidden; margin-top: 1px; color: #18212f; font-size: 22px; line-height: 26px; font-weight: 720; font-variant-numeric: tabular-nums; letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
+.metric-detail { overflow: hidden; color: var(--el-text-color-secondary); font-size: 11px; line-height: 14px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
 .metric-card.is-numeric .metric-value { font-size: 32px; line-height: 36px; }
 .metric-card.compact { min-height: 58px; padding: 5px; }
 .metric-card.compact .metric-icon { flex-basis: 30px; width: 30px; height: 30px; font-size: 16px; }
