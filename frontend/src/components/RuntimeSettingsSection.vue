@@ -133,11 +133,11 @@ function updateProxyScope(key: string, value: boolean | string | number) {
       <el-col :span="12">
         <el-form-item label="邮箱验证码等待超时（秒）">
           <el-input-number
-            :model-value="Number(modelValue.email_code_timeout ?? 90)"
+            :model-value="Number(modelValue.email_code_timeout ?? 60)"
             :min="30"
             :max="600"
             controls-position="right"
-            @update:model-value="update('email_code_timeout', Number($event ?? 90))"
+            @update:model-value="update('email_code_timeout', Number($event ?? 60))"
           />
         </el-form-item>
       </el-col>
@@ -149,6 +149,29 @@ function updateProxyScope(key: string, value: boolean | string | number) {
         @update:model-value="update('adaptive_task_concurrency', Boolean($event))"
       />
     </el-form-item>
+
+    <el-row :gutter="10">
+      <el-col :span="12">
+        <el-form-item label="20 条在途任务优化">
+          <el-switch
+            :model-value="modelValue.task_inflight_optimization !== false"
+            @update:model-value="update('task_inflight_optimization', Boolean($event))"
+          />
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
+        <el-form-item label="在途任务上限">
+          <el-input-number
+            :model-value="Number(modelValue.task_inflight_limit ?? 20)"
+            :min="1"
+            :max="20"
+            controls-position="right"
+            :disabled="modelValue.task_inflight_optimization === false"
+            @update:model-value="update('task_inflight_limit', Number($event ?? 20))"
+          />
+        </el-form-item>
+      </el-col>
+    </el-row>
 
   </div>
 </template>

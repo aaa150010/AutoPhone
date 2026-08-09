@@ -672,6 +672,60 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertFalse(disabled_eight[1]["burst_enabled"])
         self.assertTrue(all(item[2] for item in observed))
 
+    def test_inflight_gate_reuses_sms_baseline_unless_explicitly_overridden(self):
+        module = self.module
+        original_start = module._importer_scheduler_ext.start_bounded_importer
+        original_notifications = module._begin_notification_run
+        original_guard = module._SMS_QUALITY_GUARD
+        original_inflight = module._CURRENT_INFLIGHT_GATE
+        observed = []
+        importer = SimpleNamespace(status=lambda _settings: {"running": False})
+        baseline_path = Path(self.tempdir.name) / "inflight-shared-baseline.json"
+        shared = {
+            "cancellation_rate": 0.02,
+            "duplicate_order_rate": 0.01,
+            "cost_per_success_usd": 0.10,
+            "provider_key": "must-not-leak",
+        }
+        baseline_path.write_text(json.dumps(shared), encoding="utf-8")
+        try:
+            module._SMS_QUALITY_GUARD = (
+                module._sms_optimization_guard_ext.SmsOptimizationGuard(
+                    baseline_path=baseline_path,
+                )
+            )
+            module._begin_notification_run = lambda *_args: None
+            module._importer_scheduler_ext.start_bounded_importer = (
+                lambda _importer, _settings, **kwargs: observed.append(
+                    kwargs["inflight_gate"].baseline
+                )
+            )
+            module._patched_importer_start(
+                importer,
+                {"concurrency": 8},
+            )
+            module._patched_importer_start(
+                importer,
+                {
+                    "concurrency": 8,
+                    "task_inflight_baseline": {"cancellation_rate": 0.05},
+                },
+            )
+        finally:
+            module._CURRENT_INFLIGHT_GATE = original_inflight
+            module._SMS_QUALITY_GUARD = original_guard
+            module._importer_scheduler_ext.start_bounded_importer = original_start
+            module._begin_notification_run = original_notifications
+
+        fallback, explicit = observed
+        self.assertEqual(fallback.cancellation_rate, 0.02)
+        self.assertEqual(fallback.duplicate_order_rate, 0.01)
+        self.assertEqual(fallback.cost_per_success_usd, 0.10)
+        self.assertNotIn("must-not-leak", str(fallback))
+        self.assertEqual(explicit.cancellation_rate, 0.05)
+        self.assertIsNone(explicit.duplicate_order_rate)
+        self.assertIsNone(explicit.cost_per_success_usd)
+
     def test_adaptive_task_events_sync_node_and_protocol_capacity(self):
         module = self.module
         original_start = module._importer_scheduler_ext.start_bounded_importer
@@ -1229,6 +1283,44 @@ class WebGuiSecurityTests(unittest.TestCase):
                     self.assertTrue(result["ok"])
                     self.assertEqual(result["provider_kind"], provider_kind)
                     self.assertTrue(result["phone_guarded"])
+        finally:
+            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = original_run
+
+    def test_phase1_snapshot_is_removed_from_task_config_after_chain_exit(self):
+        module = self.module
+        original_run = module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION
+        try:
+            for raises in (False, True):
+                with self.subTest(raises=raises):
+                    config = {
+                        "sms_task_id": f"task-phase1-private-{int(raises)}",
+                        "phase1_active_session": {
+                            "ready": True,
+                            "cookies": [{"name": "session", "value": "private"}],
+                        },
+                    }
+
+                    def run(**kwargs):
+                        self.assertIn("phase1_active_session", kwargs["config"])
+                        if raises:
+                            raise RuntimeError("expected-chain-failure")
+                        return {"ok": True}
+
+                    module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = run
+                    if raises:
+                        with self.assertRaisesRegex(RuntimeError, "expected-chain-failure"):
+                            module._run_codex_after_registration(
+                                oauth_url="https://auth.example.test/authorize",
+                                account_email="masked@example.test",
+                                config=config,
+                            )
+                    else:
+                        module._run_codex_after_registration(
+                            oauth_url="https://auth.example.test/authorize",
+                            account_email="masked@example.test",
+                            config=config,
+                        )
+                    self.assertNotIn("phase1_active_session", config)
         finally:
             module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = original_run
 
@@ -1907,6 +1999,8 @@ class WebGuiSecurityTests(unittest.TestCase):
         task_id = "task-risk-immediate"
         email = "immediate-risk@example.test"
         sentinel_resets = []
+        checkpoint_deletes = []
+        original_checkpoint_coordinator = module._PHASE1_CHECKPOINTS_COORDINATOR
         transport = SimpleNamespace(
             config={
                 "sms_task_id": task_id,
@@ -1922,6 +2016,9 @@ class WebGuiSecurityTests(unittest.TestCase):
         module._AUTH_SESSIONS.clear(task_id)
         module._register_sms_transport(task_id, transport)
         try:
+            module._PHASE1_CHECKPOINTS_COORDINATOR = SimpleNamespace(
+                delete=lambda current: checkpoint_deletes.append(current)
+            )
             module._auth_request_runtime_ext.ensure_transport_context(
                 transport,
                 module._AUTH_SESSIONS,
@@ -1935,6 +2032,7 @@ class WebGuiSecurityTests(unittest.TestCase):
             )
             marker = module._PHONE_RISK_STORE.status(email)
         finally:
+            module._PHASE1_CHECKPOINTS_COORDINATOR = original_checkpoint_coordinator
             module._unregister_sms_transport(task_id, transport)
             module._AUTH_SESSIONS.clear(task_id)
             module._PHONE_RISK_STORE.clear(email)
@@ -1945,6 +2043,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertNotIn("phase1_active_session", transport.config)
         self.assertEqual(transport.session.cookies, {})
         self.assertEqual(sentinel_resets, [True])
+        self.assertEqual(checkpoint_deletes, [transport])
 
     def test_phone_otp_session_invalidation_aborts_before_another_number_attempt(self):
         module = self.module
@@ -2698,6 +2797,234 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(challenge_calls, [])
         self.assertFalse(hasattr(transport, "_gptphone_auth_challenge_context"))
 
+    def test_incorrect_totp_accepts_one_manual_code_without_logging_secrets(self):
+        module = self.module
+        secret = "JBSWY3DPEHPK3PXP"
+        manual_code = "654321"
+        logs = []
+        seen_codes = []
+        seen_retry_counts = []
+        originals = {
+            "patches": module._TOTP_PATCHES,
+            "wait": module._manual_verification_runtime_ext.wait_for_manual,
+            "observe": module._observe_auth_step,
+            "checkpoint": module._checkpoint_save_after_auth,
+            "continue": module._auth_challenge_runtime_ext.continue_if_needed,
+        }
+        token = module._TASK_CONTEXT.set("T-manual-totp")
+        transport = SimpleNamespace(
+            _gptphone_totp_manual_secret=secret,
+            config={"sms_task_id": "T-manual-totp"},
+            log_fn=lambda message, level="info": logs.append((message, level)),
+        )
+        try:
+            def verify(_transport, value):
+                seen_codes.append(value)
+                seen_retry_counts.append(
+                    getattr(_transport, "_gptphone_totp_incorrect_retries", None)
+                )
+                if len(seen_codes) == 1:
+                    return {"_status": 403, "error": {"code": "incorrect_code"}}
+                return {"_status": 200, "page": {"type": "add_phone"}}
+
+            module._TOTP_PATCHES = SimpleNamespace(verify_mfa_otp=verify)
+            module._manual_verification_runtime_ext.wait_for_manual = lambda **_kwargs: manual_code
+            module._observe_auth_step = lambda *_args: None
+            module._checkpoint_save_after_auth = lambda *_args: None
+            module._auth_challenge_runtime_ext.continue_if_needed = lambda _transport, response, **_kwargs: response
+
+            result = module._real_verify_mfa_otp(transport, "123456")
+        finally:
+            module._TOTP_PATCHES = originals["patches"]
+            module._manual_verification_runtime_ext.wait_for_manual = originals["wait"]
+            module._observe_auth_step = originals["observe"]
+            module._checkpoint_save_after_auth = originals["checkpoint"]
+            module._auth_challenge_runtime_ext.continue_if_needed = originals["continue"]
+            module._TASK_CONTEXT.reset(token)
+
+        self.assertEqual(result["_status"], 200)
+        self.assertEqual(seen_codes, ["123456", manual_code])
+        self.assertEqual(seen_retry_counts, [None, 1])
+        self.assertFalse(hasattr(transport, "_gptphone_totp_manual_secret"))
+        self.assertNotIn(secret, repr(logs))
+        self.assertNotIn(manual_code, repr(logs))
+
+    def test_incorrect_totp_manual_timeout_is_terminal_to_that_prompt_only(self):
+        module = self.module
+        secret = "JBSWY3DPEHPK3PXP"
+        logs = []
+        originals = {
+            "patches": module._TOTP_PATCHES,
+            "wait": module._manual_verification_runtime_ext.wait_for_manual,
+            "observe": module._observe_auth_step,
+            "checkpoint": module._checkpoint_save_after_auth,
+            "continue": module._auth_challenge_runtime_ext.continue_if_needed,
+        }
+        token = module._TASK_CONTEXT.set("T-manual-timeout")
+        transport = SimpleNamespace(
+            _gptphone_totp_manual_secret=secret,
+            config={"sms_task_id": "T-manual-timeout"},
+            log_fn=lambda message, level="info": logs.append((message, level)),
+        )
+        rejected = {"_status": 403, "error": {"code": "incorrect_code"}}
+        try:
+            module._TOTP_PATCHES = SimpleNamespace(verify_mfa_otp=lambda *_args: rejected)
+            module._manual_verification_runtime_ext.wait_for_manual = lambda **_kwargs: (_ for _ in ()).throw(
+                module._manual_verification_runtime_ext.ManualVerificationError("expired", "timeout", 410)
+            )
+            module._observe_auth_step = lambda *_args: None
+            module._checkpoint_save_after_auth = lambda *_args: None
+            module._auth_challenge_runtime_ext.continue_if_needed = lambda _transport, response, **_kwargs: response
+
+            result = module._real_verify_mfa_otp(transport, "123456")
+            repeated = module._real_verify_mfa_otp(transport, "123456")
+        finally:
+            module._TOTP_PATCHES = originals["patches"]
+            module._manual_verification_runtime_ext.wait_for_manual = originals["wait"]
+            module._observe_auth_step = originals["observe"]
+            module._checkpoint_save_after_auth = originals["checkpoint"]
+            module._auth_challenge_runtime_ext.continue_if_needed = originals["continue"]
+            module._TASK_CONTEXT.reset(token)
+
+        self.assertIs(result, rejected)
+        self.assertIs(repeated, rejected)
+        self.assertFalse(hasattr(transport, "_gptphone_totp_manual_secret"))
+        self.assertIn("人工动态码输入超时或已失效", repr(logs))
+        self.assertNotIn(secret, repr(logs))
+
+    def test_session_invalid_incorrect_totp_never_opens_manual_prompt(self):
+        module = self.module
+        secret = "JBSWY3DPEHPK3PXP"
+        originals = {
+            "patches": module._TOTP_PATCHES,
+            "wait": module._manual_verification_runtime_ext.wait_for_manual,
+            "observe": module._observe_auth_step,
+            "checkpoint": module._checkpoint_save_after_auth,
+            "continue": module._auth_challenge_runtime_ext.continue_if_needed,
+        }
+        token = module._TASK_CONTEXT.set("T-manual-invalid")
+        transport = SimpleNamespace(
+            _gptphone_totp_manual_secret=secret,
+            config={"sms_task_id": "T-manual-invalid"},
+        )
+        invalid = {
+            "_status": 401,
+            "error": {"code": "incorrect_code", "message": "oauth_session_invalid"},
+        }
+        try:
+            module._TOTP_PATCHES = SimpleNamespace(verify_mfa_otp=lambda *_args: invalid)
+            module._manual_verification_runtime_ext.wait_for_manual = lambda **_kwargs: self.fail("manual prompt must not open")
+            module._observe_auth_step = lambda *_args: None
+            module._checkpoint_save_after_auth = lambda *_args: None
+            module._auth_challenge_runtime_ext.continue_if_needed = lambda _transport, response, **_kwargs: response
+
+            result = module._real_verify_mfa_otp(transport, "123456")
+        finally:
+            module._TOTP_PATCHES = originals["patches"]
+            module._manual_verification_runtime_ext.wait_for_manual = originals["wait"]
+            module._observe_auth_step = originals["observe"]
+            module._checkpoint_save_after_auth = originals["checkpoint"]
+            module._auth_challenge_runtime_ext.continue_if_needed = originals["continue"]
+            module._TASK_CONTEXT.reset(token)
+
+        self.assertIs(result, invalid)
+        self.assertFalse(hasattr(transport, "_gptphone_totp_manual_secret"))
+
+    def test_post_auth_mfa_expiry_refreshes_once_and_returns_fresh_success(self):
+        module = self.module
+        secret = "JBSWY3DPEHPK3PXP"
+        factor = "factor-private"
+        logs = []
+        calls = []
+        originals = {
+            "post": module._ORIGINAL_REAL_POST_AUTH_JSON,
+            "begin": module._auth_request_runtime_ext.begin_request,
+            "finish": module._auth_request_runtime_ext.finish_request,
+        }
+        transport = SimpleNamespace(_gptphone_totp_secret=secret, log_fn=lambda message, level="info": logs.append((message, level)))
+        expired = {"_status": 403, "error": {"code": "mfa_authorization_step_expired"}}
+        try:
+            def post(_transport, path, payload, **_kwargs):
+                calls.append((path, dict(payload)))
+                if len(calls) == 1:
+                    return expired
+                if path.endswith("issue_challenge"):
+                    return {"_status": 200}
+                return {"_status": 200, "page": {"type": "add_phone"}}
+
+            module._ORIGINAL_REAL_POST_AUTH_JSON = post
+            module._auth_request_runtime_ext.begin_request = lambda *_args, **kwargs: {
+                "stage": kwargs["stage"], "session_generation": 5,
+            }
+            module._auth_request_runtime_ext.finish_request = lambda *_args, **_kwargs: {}
+
+            result = module._real_post_auth_json(
+                transport,
+                "/api/accounts/mfa/verify",
+                {"id": factor, "type": "totp", "code": "123456"},
+                flow="mfa_otp_verify",
+                referer="https://auth.openai.com/mfa-challenge/redacted",
+            )
+        finally:
+            module._ORIGINAL_REAL_POST_AUTH_JSON = originals["post"]
+            module._auth_request_runtime_ext.begin_request = originals["begin"]
+            module._auth_request_runtime_ext.finish_request = originals["finish"]
+
+        self.assertEqual(result["_status"], 200)
+        self.assertEqual([path for path, _payload in calls], [
+            "/api/accounts/mfa/verify",
+            "/api/accounts/mfa/issue_challenge",
+            "/api/accounts/mfa/verify",
+        ])
+        self.assertTrue(calls[1][1]["force_fresh_challenge"])
+        self.assertNotIn(secret, repr(logs))
+        self.assertNotIn(factor, repr(logs))
+
+    def test_post_auth_second_mfa_expiry_invalidates_the_session_with_safe_stage(self):
+        module = self.module
+        secret = "JBSWY3DPEHPK3PXP"
+        invalidations = []
+        originals = {
+            "post": module._ORIGINAL_REAL_POST_AUTH_JSON,
+            "begin": module._auth_request_runtime_ext.begin_request,
+            "finish": module._auth_request_runtime_ext.finish_request,
+            "invalidate": module._auth_request_runtime_ext.invalidate_auth_session,
+            "checkpoint": module._checkpoint_delete_after_auth,
+        }
+        transport = SimpleNamespace(_gptphone_totp_secret=secret)
+        expired = {"_status": 403, "error": {"code": "mfa_authorization_step_expired"}}
+        calls = []
+        try:
+            def post(_transport, path, payload, **_kwargs):
+                calls.append((path, dict(payload)))
+                return {"_status": 200} if path.endswith("issue_challenge") else expired
+
+            module._ORIGINAL_REAL_POST_AUTH_JSON = post
+            module._auth_request_runtime_ext.begin_request = lambda *_args, **kwargs: {
+                "stage": kwargs["stage"], "session_generation": 5,
+            }
+            module._auth_request_runtime_ext.finish_request = lambda *_args, **_kwargs: {}
+            module._auth_request_runtime_ext.invalidate_auth_session = lambda *_args, **kwargs: invalidations.append(kwargs)
+            module._checkpoint_delete_after_auth = lambda *_args: None
+
+            result = module._real_post_auth_json(
+                transport,
+                "/api/accounts/mfa/verify",
+                {"id": "factor-private", "type": "totp", "code": "123456"},
+                flow="mfa_otp_verify",
+                referer="https://auth.openai.com/mfa-challenge/redacted",
+            )
+        finally:
+            module._ORIGINAL_REAL_POST_AUTH_JSON = originals["post"]
+            module._auth_request_runtime_ext.begin_request = originals["begin"]
+            module._auth_request_runtime_ext.finish_request = originals["finish"]
+            module._auth_request_runtime_ext.invalidate_auth_session = originals["invalidate"]
+            module._checkpoint_delete_after_auth = originals["checkpoint"]
+
+        self.assertIs(result, expired)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(invalidations, [{"stage": "mfa_otp_verifying"}])
+
     def test_url_mailbox_totp_is_generated_after_slow_header_preparation(self):
         module = self.module
         secret = "JBSWY3DPEHPK3PXP"
@@ -3356,16 +3683,25 @@ class WebGuiSecurityTests(unittest.TestCase):
         legacy, legacy_changed = module._migrate_email_timeout_config(
             {"email_code_timeout": 150}
         )
-        custom, custom_changed = module._migrate_email_timeout_config(
+        legacy_default, legacy_default_changed = module._migrate_email_timeout_config(
             {"email_code_timeout": 90}
+        )
+        custom, custom_changed = module._migrate_email_timeout_config(
+            {
+                "email_code_timeout": 90,
+                "email_timeout_strategy_version": 3,
+            }
         )
 
         self.assertTrue(legacy_changed)
-        self.assertEqual(legacy["email_code_timeout"], 90)
-        self.assertEqual(legacy["email_timeout_strategy_version"], 2)
-        self.assertTrue(custom_changed)
+        self.assertEqual(legacy["email_code_timeout"], 60)
+        self.assertEqual(legacy["email_timeout_strategy_version"], 3)
+        self.assertTrue(legacy_default_changed)
+        self.assertEqual(legacy_default["email_code_timeout"], 60)
+        self.assertEqual(legacy_default["email_timeout_strategy_version"], 3)
+        self.assertFalse(custom_changed)
         self.assertEqual(custom["email_code_timeout"], 90)
-        self.assertEqual(custom["email_timeout_strategy_version"], 2)
+        self.assertEqual(custom["email_timeout_strategy_version"], 3)
 
     def test_config_store_persists_migrated_and_explicit_email_timeout(self):
         module = self.module
@@ -3380,21 +3716,23 @@ class WebGuiSecurityTests(unittest.TestCase):
         loaded = store.load()
         persisted = json.loads(Path(store.path).read_text(encoding="utf-8"))
 
-        self.assertEqual(loaded["email_code_timeout"], 90)
+        self.assertEqual(loaded["email_code_timeout"], 60)
         self.assertEqual(loaded["email_otp_verify_attempts"], 2)
         self.assertTrue(loaded["email_otp_resend_on_retry"])
-        self.assertEqual(persisted["email_timeout_strategy_version"], 2)
+        self.assertEqual(loaded["email_timeout_strategy_version"], 3)
+        self.assertEqual(persisted["email_timeout_strategy_version"], 3)
         self.assertEqual(Path(store.path).stat().st_mode & 0o777, 0o600)
 
         saved = store.save({
             **loaded,
             "email_code_timeout": 90,
+            "email_timeout_strategy_version": 3,
             "email_otp_verify_attempts": 3,
             "email_otp_resend_on_retry": False,
         })
 
         self.assertEqual(saved["email_code_timeout"], 90)
-        self.assertEqual(saved["email_timeout_strategy_version"], 2)
+        self.assertEqual(saved["email_timeout_strategy_version"], 3)
         self.assertEqual(saved["email_otp_verify_attempts"], 3)
         self.assertFalse(saved["email_otp_resend_on_retry"])
         self.assertEqual(Path(store.path).stat().st_mode & 0o777, 0o600)
@@ -3568,10 +3906,11 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_runtime_summary_only_counts_current_batch(self):
         module = self.module
-        previous_context = module._RUN_NOTIFICATION_CONTEXT
+        lifecycle = module._NOTIFICATION_LIFECYCLE
+        previous_context = lifecycle.context_for()
         try:
-            with module._RUN_NOTIFICATION_LOCK:
-                module._RUN_NOTIFICATION_CONTEXT = {
+            with lifecycle._lock:
+                lifecycle._context = {
                     "run_id": "batch-current",
                     "batch_id": "batch-current",
                     "batch_started_at": 200,
@@ -3593,8 +3932,8 @@ class WebGuiSecurityTests(unittest.TestCase):
                 },
             ])
         finally:
-            with module._RUN_NOTIFICATION_LOCK:
-                module._RUN_NOTIFICATION_CONTEXT = previous_context
+            with lifecycle._lock:
+                lifecycle._context = previous_context
 
         self.assertEqual(summary["total"], 1)
         self.assertEqual(summary["success"], 0)

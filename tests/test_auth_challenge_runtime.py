@@ -222,6 +222,152 @@ class AuthChallengeRuntimeTests(unittest.TestCase):
         )
         self.assertFalse(hasattr(transport, "_gptphone_auth_challenge_context"))
 
+    def test_incorrect_email_otp_retries_once_with_resend_and_new_code(self):
+        provider = FakeProvider(["first-email-code", "second-email-code"])
+        transport = FakeTransport(
+            [
+                {"_status": 403, "error": {"code": "incorrect_code"}},
+                response("add_phone", "/add-phone"),
+            ]
+        )
+        bind_transport_context(
+            transport,
+            account_email="user@example.test",
+            email_otp_provider=provider,
+            config={
+                "dynamic_auth_challenges": True,
+                "email_otp_verify_attempts": 2,
+                "email_otp_resend_on_retry": True,
+            },
+        )
+
+        result = resolve_auth_challenges(
+            transport,
+            response("email_otp_verification", "/email-verification"),
+        )
+
+        self.assertEqual(result["page"]["type"], "add_phone")
+        self.assertEqual(
+            transport.calls,
+            [
+                ("send_email", "https://auth.openai.com/email-verification"),
+                ("email_otp", "first-email-code"),
+                ("send_email", "https://auth.openai.com/email-verification"),
+                ("email_otp", "second-email-code"),
+            ],
+        )
+        self.assertEqual(
+            provider.calls,
+            [
+                "acquire",
+                "sent",
+                ("wait", "user@example.test"),
+                "sent",
+                ("wait", "user@example.test"),
+                "verified",
+            ],
+        )
+
+    def test_incorrect_email_otp_can_retry_without_resend(self):
+        provider = FakeProvider(["first-email-code", "second-email-code"])
+        transport = FakeTransport(
+            [
+                {"_status": 403, "error": {"code": "incorrect_code"}},
+                response("add_phone", "/add-phone"),
+            ]
+        )
+        bind_transport_context(
+            transport,
+            account_email="user@example.test",
+            email_otp_provider=provider,
+            config={
+                "dynamic_auth_challenges": True,
+                "email_otp_verify_attempts": 2,
+                "email_otp_resend_on_retry": False,
+            },
+        )
+
+        result = resolve_auth_challenges(
+            transport,
+            response("email_otp_verification", "/email-verification"),
+        )
+
+        self.assertEqual(result["page"]["type"], "add_phone")
+        self.assertEqual(
+            transport.calls,
+            [
+                ("send_email", "https://auth.openai.com/email-verification"),
+                ("email_otp", "first-email-code"),
+                ("email_otp", "second-email-code"),
+            ],
+        )
+
+    def test_non_incorrect_email_otp_failure_is_not_retried(self):
+        provider = FakeProvider(["first-email-code", "unused-email-code"])
+        transport = FakeTransport(
+            [{"_status": 401, "error": {"code": "session_expired"}}]
+        )
+        bind_transport_context(
+            transport,
+            account_email="user@example.test",
+            email_otp_provider=provider,
+            config={"dynamic_auth_challenges": True},
+        )
+
+        with self.assertRaises(AuthChallengeError) as caught:
+            resolve_auth_challenges(
+                transport,
+                response("email_otp_verification", "/email-verification"),
+            )
+
+        self.assertEqual(caught.exception.code, "oauth_session_invalid")
+        self.assertEqual(
+            transport.calls,
+            [
+                ("send_email", "https://auth.openai.com/email-verification"),
+                ("email_otp", "first-email-code"),
+            ],
+        )
+        self.assertEqual(provider.calls, ["acquire", "sent", ("wait", "user@example.test")])
+
+    def test_incorrect_email_otp_retry_honors_stop_before_second_wait(self):
+        stopped = [False]
+        provider = FakeProvider(["first-email-code", "unused-email-code"])
+
+        class StoppingTransport(FakeTransport):
+            def verify_email_otp(self, code):
+                result = super().verify_email_otp(code)
+                stopped[0] = True
+                return result
+
+        transport = StoppingTransport(
+            [{"_status": 403, "error": {"code": "incorrect_code"}}]
+        )
+        bind_transport_context(
+            transport,
+            account_email="user@example.test",
+            email_otp_provider=provider,
+            config={
+                "dynamic_auth_challenges": True,
+                "_stop_requested": lambda: stopped[0],
+            },
+        )
+
+        with self.assertRaises(AuthChallengeError) as caught:
+            resolve_auth_challenges(
+                transport,
+                response("email_otp_verification", "/email-verification"),
+            )
+
+        self.assertEqual(caught.exception.code, "task_stopped")
+        self.assertEqual(
+            transport.calls,
+            [
+                ("send_email", "https://auth.openai.com/email-verification"),
+                ("email_otp", "first-email-code"),
+            ],
+        )
+
     def test_incorrect_totp_retries_once_without_reissuing_challenge(self):
         provider = FakeProvider(["first-code", "next-window-code"])
         transport = FakeTransport(

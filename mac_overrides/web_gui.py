@@ -26,15 +26,22 @@ _node_runtime_ext.configure_node_runtime()
 
 import codex_oauth_chain as _codex_oauth_chain
 import chatgpt_totp as _chatgpt_totp_ext
+import configuration_runtime as _configuration_runtime_ext
 import error_observability as _error_observability_ext
 import auth_request_runtime as _auth_request_runtime_ext
 import auth_challenge_runtime as _auth_challenge_runtime_ext
 import auth_session_runtime as _auth_session_runtime_ext
+import mfa_retry_runtime as _mfa_retry_runtime_ext
+import manual_verification_runtime as _manual_verification_runtime_ext
+import manual_verification_routes as _manual_verification_routes_ext
+import phase1_checkpoint_runtime as _phase1_checkpoint_runtime_ext
+import phase1_checkpoint_hooks as _phase1_checkpoint_hooks_ext
 import adaptive_concurrency as _adaptive_concurrency_ext
 import batch_upload_runtime as _batch_upload_runtime_ext
 import imap_poller as _imap_poller
 import importer_watch_runtime as _importer_watch_runtime_ext
 import importer_scheduler as _importer_scheduler_ext
+import inflight_pipeline_runtime as _inflight_pipeline_runtime_ext
 import legacy_ui as _legacy_ui_ext
 import log_retention as _log_retention_ext
 import mailbox_admin as _mailbox_admin_ext
@@ -53,6 +60,7 @@ import openai_quota_runtime as _openai_quota_runtime_ext
 import openai_direct_test_runtime as _openai_direct_test_runtime_ext
 import online_mailbox_runtime as _online_mailbox_runtime_ext
 import run_notifications as _run_notifications_ext
+import notification_runtime as _notification_runtime_ext
 import run_batch_runtime as _run_batch_runtime_ext
 import result_persistence_runtime as _result_persistence_runtime_ext
 import runtime as _runtime
@@ -107,6 +115,7 @@ _ORIGINAL_POOL_RESTORE_ENTRY = _runtime.MailboxPool.restore_entry
 _ORIGINAL_POOL_REMOVE_ENTRY = _runtime.MailboxPool.remove_entry
 _ORIGINAL_OUTLOOK_OTP_PROVIDER = _runtime.OutlookMailboxOtpProvider
 _ORIGINAL_OUTLOOK_OTP_WAIT_CODE = _runtime.OutlookMailboxOtpProvider.wait_code
+_ORIGINAL_GPTMAIL_OTP_WAIT_CODE = _runtime.GptMailOtpProvider.wait_code
 _ORIGINAL_MAILBOX_URL_SNAPSHOT = _runtime.MailboxUrlCodeProvider.snapshot
 _ORIGINAL_MAILBOX_URL_SAME_AS_BASELINE = _runtime.MailboxUrlCodeProvider._same_as_baseline
 _ORIGINAL_URL_MAILBOX_MARK_SENT = _runtime.UrlMailboxOtpProvider.mark_sent
@@ -115,12 +124,17 @@ _ORIGINAL_ACCOUNT_LABEL = _runtime.EmailAuthImporter._account_label
 _ORIGINAL_REAL_TRANSPORT_INIT = _codex_oauth_chain.RealCodexTransport.__init__
 _ORIGINAL_REAL_HEADERS = _codex_oauth_chain.RealCodexTransport._headers
 _ORIGINAL_REAL_POST_AUTH_JSON = _codex_oauth_chain.RealCodexTransport._post_auth_json
+_ORIGINAL_REAL_SEND_EMAIL_OTP = _codex_oauth_chain.RealCodexTransport.send_email_otp
+_ORIGINAL_REAL_IMPORT_PHASE1_SESSION = _codex_oauth_chain.RealCodexTransport.import_phase1_session
 _ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = _codex_oauth_chain.RealCodexTransport.submit_email_identifier
 _ORIGINAL_REAL_VERIFY_PASSWORD = _codex_oauth_chain.RealCodexTransport.verify_password
 _ORIGINAL_REAL_VERIFY_EMAIL_OTP = _codex_oauth_chain.RealCodexTransport.verify_email_otp
 _ORIGINAL_REAL_VERIFY_MFA_OTP = _codex_oauth_chain.RealCodexTransport.verify_mfa_otp
 _ORIGINAL_REAL_SEND_MFA_OTP = _codex_oauth_chain.RealCodexTransport.send_mfa_otp
 _ORIGINAL_REAL_INITIATE_OAUTH = _codex_oauth_chain.RealCodexTransport.initiate_oauth
+_ORIGINAL_REAL_VISIT_CONTINUE = _codex_oauth_chain.RealCodexTransport.visit_continue
+_ORIGINAL_REAL_COMPLETE_CHATGPT_CALLBACK = _codex_oauth_chain.RealCodexTransport.complete_chatgpt_callback
+_ORIGINAL_REAL_CHATGPT_ACCESS_TOKEN = _codex_oauth_chain.RealCodexTransport.chatgpt_access_token
 _ORIGINAL_REAL_VERIFY_PHONE_OTP = _codex_oauth_chain.RealCodexTransport.verify_phone_otp
 _ORIGINAL_REAL_CREATE_ACCOUNT_PROFILE = _codex_oauth_chain.RealCodexTransport.create_account_profile
 _ORIGINAL_REAL_ACCEPT_CONSENT = _codex_oauth_chain.RealCodexTransport.accept_consent
@@ -161,8 +175,8 @@ _SMS_PRIORITY_COUNTRIES = ()
 _SMS_MIN_PRICE_DEFAULT = 0.01
 _SMS_MAX_PRICE_DEFAULT = "0.15"
 _SMS_MAX_PRICE_HARD_LIMIT = 0.18
-_EMAIL_CODE_TIMEOUT_DEFAULT = 90
-_EMAIL_TIMEOUT_STRATEGY_VERSION = 2
+_EMAIL_CODE_TIMEOUT_DEFAULT = 60
+_EMAIL_TIMEOUT_STRATEGY_VERSION = 3
 _EMAIL_OTP_VERIFY_ATTEMPTS_DEFAULT = 2
 _EMAIL_OTP_RESEND_ON_RETRY_DEFAULT = True
 _SMS_PRIORITY_COUNTRIES_TEXT = ",".join(_SMS_PRIORITY_COUNTRIES)
@@ -203,10 +217,32 @@ _SMS_QUALITY_GUARD = _sms_optimization_guard_ext.SmsOptimizationGuard(
 _SMS_ALERTS = _sms_runtime_ext.RuntimeAlertBuffer()
 _GUI_LOG_RETENTION = _log_retention_ext.GuiLogRetention()
 _TASK_PROGRESS = _task_progress_ext.TaskProgressTracker()
+_MANUAL_VERIFICATION = _manual_verification_runtime_ext.ManualVerificationBroker()
+_NOTIFICATION_LIFECYCLE = _notification_runtime_ext.RunNotificationLifecycle(
+    notifications=_run_notifications_ext,
+    ledger=_SMS_COST_LEDGER,
+    exchange=_SMS_EXCHANGE_RATE,
+    progress_lookup=lambda task_id: _TASK_PROGRESS.progress(task_id) or {},
+    terminal_statuses=_task_progress_ext.TERMINAL_TASK_STATUSES,
+    sms_exhausted=lambda: _SMS_PROVIDER_REGISTRY.is_exhausted(),
+    observe_resource_pressure=lambda importer: _observe_runtime_fd_pressure(importer),
+    int_value=lambda value, default=0, minimum=None, maximum=None: _int_value(
+        value, default, minimum, maximum
+    ),
+)
+_PHASE1_CHECKPOINTS = _phase1_checkpoint_runtime_ext.Phase1CheckpointStore(
+    _RUNTIME_DATA_DIR / "phase1_checkpoints",
+    enabled=True,
+    ttl_seconds=_phase1_checkpoint_runtime_ext.DEFAULT_TTL_SECONDS,
+)
 _PHONE_RISK_STORE = _phone_risk_runtime_ext.PhoneRiskStore(
     _RUNTIME_DATA_DIR / "phone_risk_markers.json"
 )
 _TASK_CONTEXT: ContextVar[str] = ContextVar("gptphone_task_id", default="")
+_CHECKPOINT_CONTEXT: ContextVar[dict[str, str] | None] = ContextVar(
+    "gptphone_checkpoint_context",
+    default=None,
+)
 _TASK_ADMISSION_CONTEXT: ContextVar[object | None] = ContextVar(
     "gptphone_task_admission",
     default=None,
@@ -215,6 +251,10 @@ _RUN_MODE_CONTEXT: ContextVar[str] = ContextVar("gptphone_run_mode", default="re
 _ACTIVE_SMS_TRANSPORT: ContextVar[object | None] = ContextVar(
     "gptphone_active_sms_transport",
     default=None,
+)
+_PROTOCOL_REQUEST_ACTIVITY: ContextVar[int] = ContextVar(
+    "gptphone_protocol_request_activity",
+    default=0,
 )
 _SMS_TRANSPORT_REGISTRY = _transport_lifecycle_ext.TaskTransportRegistry()
 _MAILBOX_LEASE_FILTER_ACTIVE: ContextVar[bool] = ContextVar(
@@ -238,10 +278,10 @@ _PASSWORD_DAMAGED_MESSAGE = "OpenAI 登录密码验证失败，请检查账号�
 _HISTORICAL_SUCCESS_REASONS = frozenset({"sub2_uploaded"})
 _TASK_FAILURES: dict[str, dict] = {}
 _TASK_FAILURES_LOCK = threading.RLock()
+_CHECKPOINT_PUBLIC_STATE = _phase1_checkpoint_hooks_ext.CheckpointPublicState()
 _RUN_LIFECYCLE_LOCK = threading.Lock()
-_RUN_NOTIFICATION_LOCK = threading.RLock()
-_RUN_NOTIFICATION_CONTEXT = None
 _CURRENT_TASK_ADMISSION = None
+_CURRENT_INFLIGHT_GATE = None
 _FAST_ACCOUNT_BANNED_MAX_EXECUTION_SECONDS = 90
 _FAST_ACCOUNT_BANNED_ALLOWED_GROUPS = frozenset({"queue", "oauth", "email"})
 _FAST_ACCOUNT_BANNED_TERMINAL_GROUPS = frozenset({"oauth", "email"})
@@ -312,7 +352,8 @@ def _report_task_pressure(task_id, value, *, node_code="", immediate=False):
     gate = _TASK_ADMISSION_CONTEXT.get()
     if gate is None:
         gate = globals().get("_CURRENT_TASK_ADMISSION")
-    if gate is None:
+    inflight_gate = globals().get("_CURRENT_INFLIGHT_GATE")
+    if gate is None and inflight_gate is None:
         return
     identifier = str(task_id or "").strip()
     code = str(node_code or "").strip().lower()
@@ -327,6 +368,10 @@ def _report_task_pressure(task_id, value, *, node_code="", immediate=False):
         except Exception:
             code = "infrastructure_pressure"
     try:
+        if inflight_gate is not None:
+            reason = code or "protocol_pressure"
+            if immediate or reason in {"http_429", "oauth_rate_limit", "session_invalid", "oauth_session_invalid"}:
+                inflight_gate.report_pressure(reason)
         if _transport_lifecycle_ext.is_fd_exhaustion(value):
             gate.report_resource_exhaustion(
                 identifier,
@@ -451,6 +496,24 @@ def _transport_task_id(transport) -> str:
     if not isinstance(config, dict):
         return ""
     return str(config.get("sms_task_id") or config.get("run_id") or "").strip()
+
+
+def _checkpoint_public_update(task_id, value) -> None:
+    _CHECKPOINT_PUBLIC_STATE.update(task_id, value)
+
+
+def _checkpoint_public_for(task_id):
+    return _CHECKPOINT_PUBLIC_STATE.get(task_id)
+
+
+def _checkpoint_context_for_entry(importer, settings, entry, task_id):
+    return _phase1_checkpoint_hooks_ext.checkpoint_context_for_entry(
+        importer,
+        settings,
+        entry,
+        task_id,
+        row_id_from_source=_mailbox_admin_ext.row_id_from_source,
+    )
 
 
 def _register_sms_transport(task_id, transport) -> None:
@@ -680,67 +743,13 @@ def _safe_response_status(value) -> int | None:
     return None
 
 
-def _migrate_email_timeout_config(value):
-    config = dict(value or {})
-    try:
-        version = int(config.get("email_timeout_strategy_version") or 0)
-    except (TypeError, ValueError):
-        version = 0
-    raw_timeout = config.get("email_code_timeout")
-    migrated = version < _EMAIL_TIMEOUT_STRATEGY_VERSION
-    if migrated and (
-        raw_timeout in (None, "")
-        or _int_value(raw_timeout, 150, minimum=30, maximum=600) in {60, 150}
-    ):
-        timeout = _EMAIL_CODE_TIMEOUT_DEFAULT
-    else:
-        timeout = _int_value(
-            raw_timeout,
-            _EMAIL_CODE_TIMEOUT_DEFAULT,
-            minimum=30,
-            maximum=600,
-        )
-    if config.get("email_code_timeout") != timeout:
-        migrated = True
-    if config.get("email_timeout_strategy_version") != _EMAIL_TIMEOUT_STRATEGY_VERSION:
-        migrated = True
-    config["email_code_timeout"] = timeout
-    config["email_timeout_strategy_version"] = _EMAIL_TIMEOUT_STRATEGY_VERSION
-    return config, migrated
-
-
-def _read_store_config(store):
-    try:
-        value = json.loads(Path(store.path).read_text(encoding="utf-8-sig"))
-    except Exception:
-        return {}
-    return value if isinstance(value, dict) else {}
-
-
-def _atomic_write_private_json(path, value):
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(value, ensure_ascii=False, indent=2)
-    temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.chmod(temporary, 0o600)
-        os.replace(temporary, target)
-        os.chmod(target, 0o600)
-    except BaseException:
-        try:
-            temporary.unlink()
-        except FileNotFoundError:
-            pass
-        raise
-
-
-def _write_store_config(store, value):
-    _atomic_write_private_json(store.path, value)
+_migrate_email_timeout_config = _configuration_runtime_ext.make_email_timeout_migrator(
+    strategy_version=_EMAIL_TIMEOUT_STRATEGY_VERSION,
+    default_timeout=_EMAIL_CODE_TIMEOUT_DEFAULT,
+)
+_read_store_config = _configuration_runtime_ext.read_store_config
+_atomic_write_private_json = _configuration_runtime_ext.atomic_write_private_json
+_write_store_config = _configuration_runtime_ext.write_store_config
 
 
 def _patched_config_load(self):
@@ -827,6 +836,8 @@ def _patched_config_load(self):
         "sms_api_key",
         "sms_quality_optimization",
         "adaptive_task_concurrency",
+        "task_inflight_optimization",
+        "task_inflight_limit",
         "dynamic_auth_challenges",
     )
     if migrated or any(raw.get(key) != normalized.get(key) for key in policy_keys):
@@ -871,6 +882,8 @@ def _patched_config_save(self, values):
         "sms_api_key",
         "sms_quality_optimization",
         "adaptive_task_concurrency",
+        "task_inflight_optimization",
+        "task_inflight_limit",
         "dynamic_auth_challenges",
     ):
         saved[key] = normalized[key]
@@ -1090,7 +1103,10 @@ def _real_initiate_oauth(self, oauth_url):
     config = getattr(self, "config", None)
     stop_requested = config.get("_stop_requested") if isinstance(config, dict) else None
     response = _runtime_policy_ext.call_with_transient_pre_auth_retry(
-        lambda: _ORIGINAL_REAL_INITIATE_OAUTH(self, oauth_url),
+        lambda: _with_transport_protocol_lease(
+            self,
+            lambda: _ORIGINAL_REAL_INITIATE_OAUTH(self, oauth_url),
+        ),
         attempts=2,
         delay_seconds=0.25,
         stop_requested=stop_requested if callable(stop_requested) else None,
@@ -1106,30 +1122,68 @@ def _real_create_account_profile(self, name, birthdate):
     return _ORIGINAL_REAL_CREATE_ACCOUNT_PROFILE(self, name, birthdate)
 
 
+def _real_send_email_otp(self, continue_url=""):
+    _set_current_task_stage("email_code_waiting")
+    return _with_transport_protocol_lease(
+        self,
+        lambda: _ORIGINAL_REAL_SEND_EMAIL_OTP(self, continue_url),
+    )
+
+
+def _real_visit_continue(self, continue_url, referer):
+    return _with_transport_protocol_lease(
+        self,
+        lambda: _ORIGINAL_REAL_VISIT_CONTINUE(self, continue_url, referer),
+    )
+
+
+def _real_complete_chatgpt_callback(self, continue_url):
+    return _with_transport_protocol_lease(
+        self,
+        lambda: _ORIGINAL_REAL_COMPLETE_CHATGPT_CALLBACK(self, continue_url),
+    )
+
+
+def _real_chatgpt_access_token(self):
+    return _with_transport_protocol_lease(
+        self,
+        lambda: _ORIGINAL_REAL_CHATGPT_ACCESS_TOKEN(self),
+    )
+
+
 def _real_accept_consent(self, continue_url=""):
     _set_current_task_stage("finalizing_callback")
-    return _ORIGINAL_REAL_ACCEPT_CONSENT(self, continue_url)
+    return _with_transport_protocol_lease(
+        self,
+        lambda: _ORIGINAL_REAL_ACCEPT_CONSENT(self, continue_url),
+    )
 
 
 def _real_follow_continue_until_code(self, continue_url, oauth_params, *, _reauth=False):
     _set_current_task_stage("finalizing_callback")
-    return _ORIGINAL_REAL_FOLLOW_CONTINUE_UNTIL_CODE(
+    return _with_transport_protocol_lease(
         self,
-        continue_url,
-        oauth_params,
-        _reauth=_reauth,
+        lambda: _ORIGINAL_REAL_FOLLOW_CONTINUE_UNTIL_CODE(
+            self,
+            continue_url,
+            oauth_params,
+            _reauth=_reauth,
+        ),
     )
 
 
 def _real_exchange_code(self, code, code_verifier, client_id, redirect_uri, account_email):
     _set_current_task_stage("finalizing_token")
-    return _ORIGINAL_REAL_EXCHANGE_CODE(
+    return _with_transport_protocol_lease(
         self,
-        code,
-        code_verifier,
-        client_id,
-        redirect_uri,
-        account_email,
+        lambda: _ORIGINAL_REAL_EXCHANGE_CODE(
+            self,
+            code,
+            code_verifier,
+            client_id,
+            redirect_uri,
+            account_email,
+        ),
     )
 
 
@@ -1415,81 +1469,9 @@ def _patched_chain_emit(log_fn, message, tag="info"):
     return _ORIGINAL_CHAIN_EMIT(log_fn, message, tag)
 
 
-def _notification_task_snapshot(importer):
-    try:
-        with importer.lock:
-            return [copy.deepcopy(dict(task)) for task in importer.tasks.values()]
-    except Exception:
-        return []
-
-
-def _notification_aggregate(importer, context=None, *, finished=False):
-    tasks = _notification_task_snapshot(importer)
-    terminal = set(_task_progress_ext.TERMINAL_TASK_STATUSES)
-    succeeded = 0
-    failed = 0
-    stopped = 0
-    active = 0
-    pending = 0
-    cost_cny = 0.0
-    last_activity_at = 0
-    for task in tasks:
-        status = str(task.get("status") or "").strip().lower()
-        if status == "success":
-            succeeded += 1
-        elif status in {"stopped", "stopped_before_start"}:
-            stopped += 1
-        elif status in terminal:
-            failed += 1
-        elif status == "queued":
-            pending += 1
-        else:
-            active += 1
-        result = task.get("result") if isinstance(task.get("result"), dict) else {}
-        try:
-            cost_cny += float(result.get("sms_cost_cny") or task.get("sms_cost_cny") or 0)
-        except (TypeError, ValueError):
-            pass
-        tracked_progress = _TASK_PROGRESS.progress(str(task.get("task_id") or "")) or {}
-        for candidate in (
-            task.get("updated_at"),
-            task.get("created_at"),
-            (task.get("progress") or {}).get("entered_at") if isinstance(task.get("progress"), dict) else 0,
-            tracked_progress.get("entered_at") if isinstance(tracked_progress, dict) else 0,
-        ):
-            try:
-                last_activity_at = max(last_activity_at, int(candidate or 0))
-            except (TypeError, ValueError):
-                pass
-
-    value = context if isinstance(context, dict) else {}
-    started_at = int(value.get("started_at") or 0)
-    finished_at = int(value.get("finished_at") or (time.time() if finished else 0))
-    duration_end = finished_at or int(time.time())
-    duration_seconds = max(0, duration_end - started_at) if started_at else 0
-    aggregate = _run_notifications_ext.RunAggregate(
-        total=len(tasks),
-        succeeded=succeeded,
-        failed=failed,
-        stopped=stopped,
-        active=active,
-        pending=pending,
-        duration_seconds=duration_seconds,
-        cost_cny=cost_cny,
-        started_at=started_at,
-        finished_at=finished_at,
-        last_activity_at=last_activity_at,
-    )
-    return aggregate, last_activity_at
-
-
-def _notification_context_for(importer=None):
-    if importer is not None:
-        value = getattr(importer, "_gptphone_notification_context", None)
-        if isinstance(value, dict):
-            return value
-    with _RUN_NOTIFICATION_LOCK:
-        return _RUN_NOTIFICATION_CONTEXT
+_notification_task_snapshot = _NOTIFICATION_LIFECYCLE.task_snapshot
+_notification_aggregate = _NOTIFICATION_LIFECYCLE.aggregate
+_notification_context_for = _NOTIFICATION_LIFECYCLE.context_for
 
 
 def _observe_runtime_fd_pressure(importer):
@@ -1504,80 +1486,20 @@ def _observe_runtime_fd_pressure(importer):
         return None
 
 
-def _notification_watchdog(importer, context):
-    stop_event = context["stop_event"]
-    notification_deadline = time.monotonic() + 10.0
-    while not stop_event.wait(2):
-        _observe_runtime_fd_pressure(importer)
-        if time.monotonic() < notification_deadline:
-            continue
-        notification_deadline = time.monotonic() + 10.0
-        try:
-            aggregate, last_activity_at = _notification_aggregate(importer, context)
-            context["last_activity_at"] = last_activity_at or context.get("last_activity_at", 0)
-            context["service"].observe_run(
-                context["run_id"],
-                aggregate,
-                sms_exhausted=_SMS_PROVIDER_REGISTRY.is_exhausted(),
-            )
-        except Exception:
-            continue
-
-
-def _begin_notification_run(importer, settings):
-    global _RUN_NOTIFICATION_CONTEXT
-    config = _run_notifications_ext.validate_email_notification(
-        (settings or {}).get("email_notification") or {}
-    )
-    previous = _notification_context_for()
-    if isinstance(previous, dict):
-        try:
-            previous["service"].close(wait=False)
-        except Exception:
-            pass
-    context = {
-        "run_id": str((settings or {}).get("batch_id") or uuid.uuid4().hex),
-        "batch_id": str((settings or {}).get("batch_id") or ""),
-        "batch_started_at": _int_value((settings or {}).get("batch_started_at"), int(time.time()), minimum=0),
-        "service": _run_notifications_ext.RunNotificationService(config),
-        "started_at": int(time.time()),
-        "finished_at": 0,
-        "last_activity_at": int(time.time()),
-        "target": _int_value((settings or {}).get("target_count"), 1, minimum=1),
-        "stop_event": threading.Event(),
-    }
-    context["service"].start_run(
-        context["run_id"],
-        {"total": 0, "pending": context["target"]},
-        batch_id=context["batch_id"],
-    )
-    importer._gptphone_notification_context = context
-    with _RUN_NOTIFICATION_LOCK:
-        _RUN_NOTIFICATION_CONTEXT = context
-    return context
-
-
-def _cancel_notification_run(importer, context):
-    global _RUN_NOTIFICATION_CONTEXT
-    context["stop_event"].set()
-    try:
-        context["service"].close(wait=False)
-    except Exception:
-        pass
-    if getattr(importer, "_gptphone_notification_context", None) is context:
-        importer._gptphone_notification_context = None
-    with _RUN_NOTIFICATION_LOCK:
-        if _RUN_NOTIFICATION_CONTEXT is context:
-            _RUN_NOTIFICATION_CONTEXT = None
+_notification_watchdog = _NOTIFICATION_LIFECYCLE.watchdog
+_begin_notification_run = _NOTIFICATION_LIFECYCLE.begin
+_cancel_notification_run = _NOTIFICATION_LIFECYCLE.cancel
 
 
 def _patched_importer_start(self, settings):
-    global _CURRENT_TASK_ADMISSION
+    global _CURRENT_TASK_ADMISSION, _CURRENT_INFLIGHT_GATE
     internal = copy.deepcopy(dict(settings or {}))
     additional_retries = _int_value(internal.get("auth_session_retries"), 1, minimum=0, maximum=4)
     internal["auth_session_retries"] = additional_retries + 1
     already_running = bool(self.status(internal).get("running"))
     task_admission = getattr(self, "task_admission", None)
+    inflight_gate = getattr(self, "inflight_gate", None)
+    staged_inflight = False
     node_phase_gate = None
     if not already_running:
         _SMS_QUALITY_GUARD.begin_run(
@@ -1654,7 +1576,29 @@ def _patched_importer_start(self, settings):
             require_backlog_for_restore=True,
             on_change=log_task_limit_change,
         )
+        inflight_gate = None
+        if str(internal.get("run_mode") or "register").strip().lower() != "relogin":
+            inflight_baseline = (
+                internal["task_inflight_baseline"]
+                if "task_inflight_baseline" in internal
+                else _SMS_QUALITY_GUARD.inflight_rollback_baseline()
+            )
+            inflight_gate = _performance_runtime_ext.InflightAdmissionGate(
+                task_limit,
+                limit=internal.get("task_inflight_limit", 20),
+                enabled=internal.get("task_inflight_optimization", True),
+                baseline=inflight_baseline,
+                on_rollback=lambda event: self._log(
+                    "[任务在途/task_inflight] 优化已自动回退到配置并发："
+                    f"{event.get('reason', 'unknown')}",
+                    "warn",
+                ),
+            )
         _CURRENT_TASK_ADMISSION = task_admission
+        _CURRENT_INFLIGHT_GATE = inflight_gate
+        staged_inflight = _inflight_pipeline_runtime_ext.optimization_active(
+            inflight_gate
+        )
         _TASK_PROGRESS.reset()
         with _TASK_FAILURES_LOCK:
             _TASK_FAILURES.clear()
@@ -1714,6 +1658,8 @@ def _patched_importer_start(self, settings):
             manual_code_factory=_runtime.ManualCodeCoordinator,
             phase_gate_factory=_runtime.AutoEmailPhaseGate,
             task_admission=task_admission,
+            inflight_gate=inflight_gate,
+            staged_inflight=staged_inflight,
             email_phase_gate_factory=lambda limit: observed_phase_gate(
                 limit,
                 "email_slot_waiting",
@@ -1746,6 +1692,8 @@ def _patched_importer_start(self, settings):
         if not already_running:
             if _CURRENT_TASK_ADMISSION is task_admission:
                 _CURRENT_TASK_ADMISSION = None
+            if _CURRENT_INFLIGHT_GATE is inflight_gate:
+                _CURRENT_INFLIGHT_GATE = None
             _TASK_PROGRESS.reset()
             with _TASK_FAILURES_LOCK:
                 _TASK_FAILURES.clear()
@@ -1770,8 +1718,12 @@ def _patched_importer_run_one(
         task_id = f"T{int(ordinal):03d}-{uuid.uuid4().hex[:6]}"
     _MAILBOX_TOTP_SECRET_CONTEXT.set("")
     _TOTP_PATCHES.reset_task_state()
+    _MANUAL_VERIFICATION.cancel_task(task_id)
     token = _RUN_MODE_CONTEXT.set(run_mode)
     task_token = _TASK_CONTEXT.set(task_id)
+    checkpoint_token = _CHECKPOINT_CONTEXT.set(
+        _checkpoint_context_for_entry(self, settings, assigned_entry, task_id)
+    )
     admission_token = _TASK_ADMISSION_CONTEXT.set(getattr(self, "task_admission", None))
     try:
         return _ORIGINAL_IMPORTER_RUN_ONE(
@@ -1796,12 +1748,21 @@ def _patched_importer_run_one(
         _SMS_PROVIDER_REGISTRY.clear_task_attempt_counts(task_id)
         _MAILBOX_TOTP_SECRET_CONTEXT.set("")
         _TOTP_PATCHES.reset_task_state()
+        _MANUAL_VERIFICATION.cancel_task(task_id)
+        if transport is not None:
+            try:
+                delattr(transport, "_gptphone_totp_manual_secret")
+            except AttributeError:
+                pass
+        _PHASE1_CHECKPOINTS_COORDINATOR.release(transport)
         _TASK_ADMISSION_CONTEXT.reset(admission_token)
+        _CHECKPOINT_CONTEXT.reset(checkpoint_token)
         _TASK_CONTEXT.reset(task_token)
         _RUN_MODE_CONTEXT.reset(token)
 
 
 def _patched_importer_stop(self):
+    _MANUAL_VERIFICATION.cancel_all()
     context = _notification_context_for(self)
     if isinstance(context, dict):
         try:
@@ -2063,6 +2024,22 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
                 )
             except Exception:
                 pass
+    terminal_text = " ".join(
+        str(value or "")
+        for value in (
+            error,
+            result.get("error") if isinstance(result, dict) else "",
+            result.get("error_code") if isinstance(result, dict) else "",
+        )
+    ).lower()
+    if _phase1_checkpoint_hooks_ext.should_delete_checkpoint(
+        status,
+        invalid_session=_is_auth_session_reset_failure(result, error),
+        values=(terminal_text,),
+    ):
+        _PHASE1_CHECKPOINTS_COORDINATOR.cleanup_terminal(
+            identity=_checkpoint_context_for_entry(self, settings, entry, task_id)
+        )
     return persisted
 
 
@@ -2488,6 +2465,9 @@ def _persist_phone_risk_marker(task_id, email, reason_code, stage):
     if not marker.get("active"):
         return
     transport = _transport_for_task(task_id)
+    checkpoint_coordinator = globals().get("_PHASE1_CHECKPOINTS_COORDINATOR")
+    if transport is not None and checkpoint_coordinator is not None:
+        checkpoint_coordinator.delete(transport)
     config = getattr(transport, "config", None)
     if isinstance(config, dict):
         config["_phone_risk_retry"] = True
@@ -2497,6 +2477,19 @@ def _persist_phone_risk_marker(task_id, email, reason_code, stage):
 
 
 _AUTH_SESSIONS.set_invalidation_callback(_persist_phone_risk_marker)
+_PHASE1_CHECKPOINTS_COORDINATOR = _phase1_checkpoint_hooks_ext.CheckpointCoordinator(
+    _PHASE1_CHECKPOINTS,
+    context_getter=lambda: _CHECKPOINT_CONTEXT.get(),
+    generation_getter=lambda task_id: _manual_task_generation(task_id),
+    public_update=_checkpoint_public_update,
+)
+_CHECKPOINT_AUTH_HOOKS = _phase1_checkpoint_hooks_ext.CheckpointAuthHooks(
+    original_import=_ORIGINAL_REAL_IMPORT_PHASE1_SESSION,
+    run_mode=_RUN_MODE_CONTEXT.get,
+    session_invalid=_auth_session_runtime_ext.is_session_invalid,
+    success=_codex_oauth_chain._is_success_response,
+    coordinator=_PHASE1_CHECKPOINTS_COORDINATOR,
+)
 _TOTP_PATCHES = _chatgpt_totp_ext.build_chatgpt_totp_patches(
     runtime_module=_runtime,
     codex_oauth_chain=_codex_oauth_chain,
@@ -2532,15 +2525,90 @@ def _real_transport_init(
     runtime_config = config if isinstance(config, dict) else {}
     self.account_email = str(runtime_config.get("_auth_account_email") or "").strip().lower()
     self._gptphone_totp_refresh_in_headers = True
+    self._gptphone_totp_manual_secret = ""
+    self._gptphone_mfa_fresh_retry_generation = None
+    self._gptphone_mfa_fresh_retry_markers = set()
+    self._gptphone_checkpoint_restored = False
     _auth_request_runtime_ext.ensure_transport_context(self, _AUTH_SESSIONS, force_new=True)
+    if _RUN_MODE_CONTEXT.get() != "relogin":
+        # Keep bounded checkpoint recovery visible as its own OAuth node.
+        _set_current_task_stage("oauth_session")
+        restored = _PHASE1_CHECKPOINTS_COORDINATOR.restore(self)
+        if not restored:
+            _set_current_task_stage("oauth_create_node")
     _register_sms_transport(_transport_task_id(self), self)
     _ACTIVE_SMS_TRANSPORT.set(self)
+
+
+_real_import_phase1_session = _CHECKPOINT_AUTH_HOOKS.import_phase1_session
 
 
 def _real_headers(self, flow, referer):
     headers = _ORIGINAL_REAL_HEADERS(self, flow, referer)
     _chatgpt_totp_ext.refresh_transport_totp_payload(self, flow)
     return _auth_request_runtime_ext.request_headers(self, headers)
+
+
+_checkpoint_save_after_auth = _CHECKPOINT_AUTH_HOOKS.save_after_auth
+_checkpoint_delete_after_auth = _CHECKPOINT_AUTH_HOOKS.delete_after_auth
+
+
+def _staged_transport_pipeline(transport):
+    config = getattr(transport, "config", None)
+    if not isinstance(config, dict) or str(config.get("run_mode") or "register").lower() == "relogin":
+        return False
+    return _inflight_pipeline_runtime_ext.optimization_active(
+        globals().get("_CURRENT_INFLIGHT_GATE")
+    )
+
+
+def _transport_protocol_proxy(transport):
+    config = getattr(transport, "config", None)
+    if isinstance(config, dict) and config.get("proxy"):
+        return config.get("proxy")
+    return getattr(transport, "proxy", "")
+
+
+def _record_transport_protocol_result(transport, value, succeeded):
+    _PROTOCOL_REQUEST_ACTIVITY.set(_PROTOCOL_REQUEST_ACTIVITY.get() + 1)
+    task_id = _transport_task_id(transport) or _TASK_CONTEXT.get()
+    main_chain, failure = _is_main_chain_pressure_source(task_id, value)
+    protocol_pressure = main_chain and (
+        _is_rate_limited_failure(failure)
+        or _sms_runtime_ext.is_protocol_pressure_error(value)
+    )
+    if protocol_pressure:
+        _report_task_pressure(
+            task_id,
+            value,
+            node_code="protocol_pressure",
+            immediate=True,
+        )
+    if succeeded or main_chain:
+        _PROTOCOL_GATE.report(
+            _transport_protocol_proxy(transport),
+            value,
+            success=bool(succeeded),
+        )
+
+
+def _with_transport_protocol_lease(transport, callback):
+    config = getattr(transport, "config", None)
+    task_id = _transport_task_id(transport) or _TASK_CONTEXT.get()
+    return _inflight_pipeline_runtime_ext.call_with_protocol_lease(
+        callback,
+        staged=_staged_transport_pipeline(transport),
+        gate=_PROTOCOL_GATE,
+        proxy=_transport_protocol_proxy(transport),
+        stop_event=(config or {}).get("_stop_requested") if isinstance(config, dict) else None,
+        on_wait=lambda elapsed: _record_task_segment(task_id, "protocol_slot_waiting", elapsed),
+        success_fn=_codex_oauth_chain._is_success_response,
+        on_result=lambda value, succeeded: _record_transport_protocol_result(
+            transport,
+            value,
+            succeeded,
+        ),
+    )
 
 
 def _real_post_auth_json(self, path, payload, *, flow, referer, timeout=30):
@@ -2557,16 +2625,20 @@ def _real_post_auth_json(self, path, payload, *, flow, referer, timeout=30):
         stage=stage,
     )
     try:
-        response = _ORIGINAL_REAL_POST_AUTH_JSON(
+        response = _with_transport_protocol_lease(
             self,
-            path,
-            payload,
-            flow=flow,
-            referer=referer,
-            timeout=timeout,
+            lambda: _ORIGINAL_REAL_POST_AUTH_JSON(
+                self,
+                path,
+                payload,
+                flow=flow,
+                referer=referer,
+                timeout=timeout,
+            ),
         )
     except Exception as exc:
         if _auth_session_runtime_ext.is_session_invalid(exc):
+            _checkpoint_delete_after_auth(self)
             _auth_request_runtime_ext.invalidate_auth_session(
                 self,
                 _AUTH_SESSIONS,
@@ -2574,6 +2646,31 @@ def _real_post_auth_json(self, path, payload, *, flow, referer, timeout=30):
                 stage=str(request_context.get("stage") or "oauth_authorize_node"),
             )
         raise
+    def _fresh_mfa_post_json(transport, fresh_path, fresh_payload, **kwargs):
+        """Keep one-time MFA recovery inside the staged protocol gate."""
+        return _with_transport_protocol_lease(
+            transport,
+            lambda: _ORIGINAL_REAL_POST_AUTH_JSON(
+                transport,
+                fresh_path,
+                fresh_payload,
+                **kwargs,
+            ),
+        )
+
+    response, _mfa_retry_attempted = _mfa_retry_runtime_ext.retry_expired_mfa_step(
+        self,
+        path=path,
+        payload=payload,
+        response=response,
+        generation=request_context.get("session_generation"),
+        post_json=_fresh_mfa_post_json,
+        pending_totp_payload=_chatgpt_totp_ext.pending_transport_totp_payload,
+        success_fn=_codex_oauth_chain._is_success_response,
+        auth_origin=_codex_oauth_chain.AUTH,
+        timeout=timeout,
+        log_fn=getattr(self, "log_fn", None),
+    )
     finished = _auth_request_runtime_ext.finish_request(
         self,
         _AUTH_SESSIONS,
@@ -2582,6 +2679,7 @@ def _real_post_auth_json(self, path, payload, *, flow, referer, timeout=30):
     )
     self._gptphone_last_request_context = finished
     if _auth_session_runtime_ext.is_session_invalid(response):
+        _checkpoint_delete_after_auth(self)
         _auth_request_runtime_ext.invalidate_auth_session(
             self,
             _AUTH_SESSIONS,
@@ -2666,11 +2764,102 @@ def _real_verify_password(self, password):
     )
 
 
+def _manual_totp_fallback(self, response):
+    error_code = _mfa_retry_runtime_ext.response_error_code(response)
+    secret = str(getattr(self, "_gptphone_totp_manual_secret", "") or "").strip()
+    task_id = _transport_task_id(self) or _TASK_CONTEXT.get()
+    manual_generation = _manual_task_generation(task_id) if task_id else -1
+    manual_attempted = (
+        getattr(self, "_gptphone_totp_manual_retry_generation", None)
+        == manual_generation
+    )
+    setattr(self, "_gptphone_totp_manual_fallback_consumed", manual_attempted)
+    session_invalid = _auth_session_runtime_ext.is_session_invalid(response)
+    if session_invalid:
+        try:
+            delattr(self, "_gptphone_totp_manual_secret")
+        except AttributeError:
+            pass
+    if (
+        error_code == "incorrect_code"
+        and secret
+        and task_id
+        and not session_invalid
+        and not manual_attempted
+    ):
+        setattr(self, "_gptphone_totp_manual_retry_generation", manual_generation)
+        setattr(self, "_gptphone_totp_manual_fallback_consumed", True)
+        try:
+            manual_code = _manual_verification_runtime_ext.wait_for_manual(
+                broker=_MANUAL_VERIFICATION,
+                task_id=task_id,
+                input_kind="totp",
+                generation=_manual_task_generation(task_id),
+                stop_event=_manual_stop_event(self),
+                timeout_seconds=_manual_verification_runtime_ext.DEFAULT_WINDOW_SECONDS,
+            )
+        except _manual_verification_runtime_ext.ManualVerificationStopped:
+            manual_code = ""
+            _call_log(
+                getattr(self, "log_fn", None),
+                "  [人工 2FA/mfa_otp_verifying] 人工动态码输入已取消，保留原验证结果",
+                "warn",
+            )
+        except _manual_verification_runtime_ext.ManualVerificationError:
+            manual_code = ""
+            _call_log(
+                getattr(self, "log_fn", None),
+                "  [人工 2FA/mfa_otp_verifying] 人工动态码输入超时或已失效，保留原验证结果",
+                "warn",
+            )
+        if manual_code:
+            setattr(self, "_gptphone_totp_flow", True)
+            setattr(self, "_gptphone_totp_secret", secret)
+            # The automatic next-window retry was already consumed before the
+            # manual fallback opened. A rejected manual code must not reopen it.
+            setattr(self, "_gptphone_totp_incorrect_retries", 1)
+            response = _TOTP_PATCHES.verify_mfa_otp(self, manual_code)
+            try:
+                delattr(self, "_gptphone_totp_manual_secret")
+            except AttributeError:
+                pass
+            _call_log(
+                getattr(self, "log_fn", None),
+                "  [人工 2FA/mfa_otp_verifying] 已接收当前任务的人工动态码",
+                "info",
+            )
+        else:
+            try:
+                delattr(self, "_gptphone_totp_manual_secret")
+            except AttributeError:
+                pass
+    elif error_code == "incorrect_code" and manual_attempted:
+        try:
+            delattr(self, "_gptphone_totp_manual_secret")
+        except AttributeError:
+            pass
+    return response
+
+
 def _real_verify_mfa_otp(self, code):
-    response = _TOTP_PATCHES.verify_mfa_otp(self, code)
+    response = _manual_totp_fallback(self, _TOTP_PATCHES.verify_mfa_otp(self, code))
+    _checkpoint_save_after_auth(self, response)
     _observe_auth_step(self, response, "mfa_otp_verifying")
+    if (
+        getattr(self, "_gptphone_totp_manual_fallback_consumed", False)
+        and _mfa_retry_runtime_ext.response_error_code(response) == "incorrect_code"
+    ):
+        return response
     return _auth_challenge_runtime_ext.continue_if_needed(
         self, response, origin="mfa"
+    )
+
+
+def _real_send_mfa_otp(self, continue_url=""):
+    _set_current_task_stage("mfa_otp_verifying")
+    return _with_transport_protocol_lease(
+        self,
+        lambda: _TOTP_PATCHES.send_mfa_otp(self, continue_url),
     )
 
 
@@ -2766,6 +2955,7 @@ def _run_codex_after_registration(
         del request_context
         _register_sms_transport(expected_task_id, transport)
     transport_token = _ACTIVE_SMS_TRANSPORT.set(transport)
+    protocol_activity_token = _PROTOCOL_REQUEST_ACTIVITY.set(0)
     task_id = str(runtime_config.get("sms_task_id") or runtime_config.get("run_id") or "")
 
     def record_protocol_wait(elapsed_seconds):
@@ -2789,9 +2979,14 @@ def _run_codex_after_registration(
             "info" if restored else "warn",
         )
 
+    staged_pipeline = _inflight_pipeline_runtime_ext.optimization_active(
+        globals().get("_CURRENT_INFLIGHT_GATE")
+    ) and str(runtime_config.get("run_mode") or "register").strip().lower() != "relogin"
     try:
-        with _PROTOCOL_GATE.acquire(
-            proxy,
+        with _inflight_pipeline_runtime_ext.protocol_session_scope(
+            staged=staged_pipeline,
+            gate=_PROTOCOL_GATE,
+            proxy=proxy,
             stop_event=runtime_config.get("_stop_requested"),
             on_wait=record_protocol_wait,
         ):
@@ -2834,7 +3029,8 @@ def _run_codex_after_registration(
                     _is_rate_limited_failure(pressure_failure)
                     or _sms_runtime_ext.is_protocol_pressure_error(exc)
                 )
-                if protocol_pressure:
+                has_request_activity = _PROTOCOL_REQUEST_ACTIVITY.get() > 0
+                if protocol_pressure and (not staged_pipeline or not has_request_activity):
                     pressure_node_code = "protocol_pressure"
                     if _error_observability_ext.is_retryable_node_failure(exc):
                         pressure_node_code = str(
@@ -2846,7 +3042,9 @@ def _run_codex_after_registration(
                         node_code=pressure_node_code,
                         immediate=True,
                     )
-                if main_chain_pressure:
+                if main_chain_pressure and (
+                    not staged_pipeline or _PROTOCOL_REQUEST_ACTIVITY.get() == 0
+                ):
                     _PROTOCOL_GATE.report(
                         proxy,
                         exc,
@@ -2872,7 +3070,8 @@ def _run_codex_after_registration(
                     _is_rate_limited_failure(pressure_failure)
                     or _sms_runtime_ext.is_protocol_pressure_error(pressure_signal_value)
                 )
-                if protocol_pressure:
+                has_request_activity = _PROTOCOL_REQUEST_ACTIVITY.get() > 0
+                if protocol_pressure and (not staged_pipeline or not has_request_activity):
                     pressure_node_code = "protocol_pressure"
                     if _error_observability_ext.is_retryable_node_failure(result):
                         pressure_node_code = str(
@@ -2884,7 +3083,9 @@ def _run_codex_after_registration(
                         node_code=pressure_node_code,
                         immediate=True,
                     )
-                if succeeded or main_chain_pressure:
+                if (succeeded or main_chain_pressure) and (
+                    not staged_pipeline or not has_request_activity
+                ):
                     protocol_report_value = failure_value
                     if protocol_pressure and _is_rate_limited_failure(pressure_failure):
                         protocol_report_value = pressure_failure
@@ -2897,6 +3098,8 @@ def _run_codex_after_registration(
                         on_limit_change=log_protocol_limit_change,
                     )
     finally:
+        runtime_config.pop("phase1_active_session", None)
+        _PROTOCOL_REQUEST_ACTIVITY.reset(protocol_activity_token)
         _ACTIVE_SMS_TRANSPORT.reset(transport_token)
         if task_id and _TASK_CONTEXT.get() != task_id:
             _SMS_TRANSPORT_REGISTRY.close_task(task_id)
@@ -3041,7 +3244,29 @@ def _sms_adapter_mark_ready(self, lease):
 
 
 def _sms_adapter_wait_code(self, lease, timeout=180):
-    return _SMS_WEB.adapter_wait_code(self, lease, timeout=timeout)
+    task_id = str(
+        _TASK_CONTEXT.get()
+        or getattr(lease, "task_id", "")
+        or getattr(self, "task_id", "")
+        or ""
+    ).strip()
+    if not task_id:
+        return _SMS_WEB.adapter_wait_code(self, lease, timeout=timeout)
+    return _manual_verification_runtime_ext.wait_with_manual_fallback(
+        lambda: _SMS_WEB.adapter_wait_code(self, lease, timeout=timeout),
+        broker=_MANUAL_VERIFICATION,
+        task_id=task_id,
+        input_kind="sms_otp",
+        generation=_manual_task_generation(task_id),
+        stop_event=_manual_stop_event(self),
+        automatic_timeout_seconds=_int_value(timeout, 180, minimum=1, maximum=900),
+        manual_timeout_seconds=_manual_verification_runtime_ext.DEFAULT_WINDOW_SECONDS,
+        on_manual_selected=lambda: _call_log(
+            getattr(self, "log_fn", None),
+            "  [人工短信验证码/sms_waiting] 已接收当前任务的人工验证码",
+            "info",
+        ),
+    )
 
 
 def _sms_adapter_complete(self, lease):
@@ -3091,6 +3316,7 @@ def _real_verify_phone_otp(self, code):
         raise
     response = _SMS_WEB.ensure_account_active(self, response)
     if _auth_session_runtime_ext.is_session_invalid(response):
+        _checkpoint_delete_after_auth(self)
         task_id = _transport_task_id(self)
         state = _AUTH_SESSIONS.get(task_id) if task_id else None
         if state is None or not state.invalid:
@@ -3115,6 +3341,7 @@ def _real_verify_phone_otp(self, code):
         if isinstance(config, dict):
             config.pop("_phone_risk_retry", None)
             config.pop("_phone_risk_reason_code", None)
+        _checkpoint_delete_after_auth(self)
     return response
 
 
@@ -3224,7 +3451,7 @@ def _log_mailbox_diagnostic(provider, log_fn):
     )
 
 
-def _url_mailbox_wait_code(self, email):
+def _automatic_url_mailbox_wait_code(self, email):
     entry = getattr(self, "entry", None)
     if (
         getattr(entry, "oauth_client_id", "") == "chatgpt_totp"
@@ -3305,7 +3532,7 @@ def _url_mailbox_wait_code(self, email):
     return code
 
 
-def _outlook_mailbox_wait_code(self, email):
+def _automatic_outlook_mailbox_wait_code(self, email):
     used_codes = set(getattr(self, "_gptphone_used_email_otp_codes", ()) or ())
     poller = getattr(self, "poller", None)
     original_poll_code = getattr(poller, "poll_code", None)
@@ -3346,33 +3573,99 @@ def _outlook_mailbox_wait_code(self, email):
     return code
 
 
+def _manual_task_generation(task_id):
+    snapshot = _AUTH_SESSIONS.public_snapshot(task_id) if task_id else {}
+    try:
+        return max(0, int(snapshot.get("generation") or 0))
+    except (AttributeError, TypeError, ValueError):
+        return 0
+
+
+def _manual_stop_event(provider):
+    stop_event = getattr(provider, "stop_event", None)
+    if stop_event is not None:
+        return stop_event
+    config = getattr(provider, "config", None)
+    return config.get("_stop_requested") if isinstance(config, dict) else None
+
+
+def _submit_manual_code(self, task_id, code):
+    task = str(task_id or "").strip()
+    prompt = _MANUAL_VERIFICATION.public(task)
+    if not isinstance(prompt, dict) or not prompt.get("input_kind"):
+        raise _runtime.MailboxPoolError("当前任务没有等待人工验证码")
+    try:
+        _MANUAL_VERIFICATION.submit(
+            task,
+            prompt.get("input_kind"),
+            prompt.get("generation"),
+            code,
+        )
+    except _manual_verification_runtime_ext.ManualVerificationError as exc:
+        raise _runtime.MailboxPoolError(str(exc)) from exc
+
+
+def _manual_email_wait(provider, email, automatic_wait):
+    task_id = str(_TASK_CONTEXT.get() or getattr(provider, "task_id", "") or "").strip()
+    if not task_id:
+        return automatic_wait()
+    timeout = _int_value(getattr(provider, "timeout", 90), 90, minimum=1, maximum=600)
+    return _manual_verification_runtime_ext.wait_with_manual_fallback(
+        automatic_wait,
+        broker=_MANUAL_VERIFICATION,
+        task_id=task_id,
+        input_kind="email_otp",
+        generation=_manual_task_generation(task_id),
+        stop_event=_manual_stop_event(provider),
+        automatic_timeout_seconds=timeout,
+        manual_timeout_seconds=_manual_verification_runtime_ext.DEFAULT_WINDOW_SECONDS,
+        on_manual_selected=lambda: _call_log(
+            getattr(provider, "log_fn", None),
+            "  [人工邮箱验证码/email_code_waiting] 已接收当前任务的人工验证码",
+            "info",
+        ),
+    )
+
+
+def _url_mailbox_wait_code(self, email):
+    return _manual_email_wait(
+        self,
+        email,
+        lambda: _automatic_url_mailbox_wait_code(self, email),
+    )
+
+
+def _outlook_mailbox_wait_code(self, email):
+    return _manual_email_wait(
+        self,
+        email,
+        lambda: _automatic_outlook_mailbox_wait_code(self, email),
+    )
+
+
+def _gptmail_mailbox_wait_code(self, email):
+    return _manual_email_wait(
+        self,
+        email,
+        lambda: _ORIGINAL_GPTMAIL_OTP_WAIT_CODE(self, email),
+    )
+
+
 def _mfa_factor_id_from_response(response):
-    value = response if isinstance(response, dict) else {}
-    page = value.get("page") if isinstance(value.get("page"), dict) else {}
-    payload = page.get("payload") if isinstance(page.get("payload"), dict) else {}
-    factor_id = str(payload.get("factor_id") or "").strip()
-    if factor_id:
-        return factor_id
-    for key in ("mfa_challenge_factors", "mfa_factors"):
-        factors = value.get(key)
-        if not isinstance(factors, list):
-            auth = value.get("oai-client-auth-session")
-            factors = auth.get(key) if isinstance(auth, dict) else None
-        if not isinstance(factors, list):
-            continue
-        for factor in factors:
-            if isinstance(factor, dict) and factor.get("factor_type") == "totp":
-                factor_id = str(factor.get("id") or "").strip()
-                if factor_id:
-                    return factor_id
-    match = re.search(r"/mfa-challenge/([^/?#]+)", _codex_oauth_chain._continue_url(value))
-    return match.group(1) if match else ""
+    return _mfa_retry_runtime_ext.mfa_factor_id_from_response(
+        response,
+        continue_url_fn=_codex_oauth_chain._continue_url,
+    )
 
 
 def _real_verify_email_otp(self, code):
     response = _ORIGINAL_REAL_VERIFY_EMAIL_OTP(self, code)
+    _checkpoint_save_after_auth(self, response)
     secret = _MAILBOX_TOTP_SECRET_CONTEXT.get("")
     _MAILBOX_TOTP_SECRET_CONTEXT.set("")
+    if _mfa_retry_runtime_ext.response_error_code(response) == "incorrect_code":
+        _observe_auth_step(self, response, "email_code_verifying")
+        return response
     try:
         page_type = _codex_oauth_chain._page_type(response)
     except Exception:
@@ -3393,18 +3686,20 @@ def _real_verify_email_otp(self, code):
         "  [Codex] 邮箱验证码后遇到 MFA，正在验证 2FA 动态码",
         "info",
     )
-    payload = {"id": factor_id, "type": "totp", "code": ""}
-    with _chatgpt_totp_ext.pending_transport_totp_payload(self, payload, secret):
-        if not getattr(self, "_gptphone_totp_refresh_in_headers", False):
-            _chatgpt_totp_ext.refresh_transport_totp_payload(self, "mfa_otp_verify")
-        response = self._post_auth_json(
-            "/api/accounts/mfa/verify",
-            payload,
-            flow="mfa_otp_verify",
-            referer=f"{_codex_oauth_chain.AUTH}/mfa-challenge/{factor_id}",
-            timeout=30,
-        )
+    response = _mfa_retry_runtime_ext.verify_email_totp_with_one_window_retry(
+        self,
+        factor_id=factor_id,
+        secret=secret,
+        verify_fn=_TOTP_PATCHES.verify_mfa_otp,
+        manual_fallback_fn=_manual_totp_fallback,
+        session_invalid_fn=_auth_session_runtime_ext.is_session_invalid,
+        stop_event=_manual_stop_event(self),
+        log_fn=getattr(self, "log_fn", None),
+    )
+    _checkpoint_save_after_auth(self, response)
     _observe_auth_step(self, response, "mfa_otp_verifying")
+    if _mfa_retry_runtime_ext.response_error_code(response) == "incorrect_code":
+        return response
     return _auth_challenge_runtime_ext.continue_if_needed(
         self, response, origin="email_otp"
     )
@@ -3420,6 +3715,7 @@ _runtime.MailboxPool.lease = _mailbox_lease_for_run_selection
 _runtime.MailboxPool.restore_entry = _mailbox_restore_preserving_relogin
 _runtime.MailboxPool.remove_entry = _mailbox_retention_ext.preserve_consumed_entry
 _runtime.ManualMailboxPool.remove_entry = _mailbox_retention_ext.preserve_consumed_entry
+_runtime.GptMailOtpProvider.wait_code = _gptmail_mailbox_wait_code
 _ORIGINAL_OUTLOOK_OTP_PROVIDER.wait_code = _outlook_mailbox_wait_code
 _runtime.OutlookMailboxOtpProvider = _TOTP_PATCHES.outlook_otp_provider
 _runtime.MailboxUrlCodeProvider.snapshot = _mailbox_url_snapshot
@@ -3434,6 +3730,7 @@ _runtime.EmailAuthImporter._task_state = _patched_task_state
 _runtime.EmailAuthImporter.start = _patched_importer_start
 _runtime.EmailAuthImporter._run_one = _patched_importer_run_one
 _runtime.EmailAuthImporter.stop = _patched_importer_stop
+_runtime.EmailAuthImporter.submit_manual_code = _submit_manual_code
 _runtime.EmailAuthImporter._watch = _patched_importer_watch
 _runtime.EmailAuthImporter._pre_auth_session_retryable = staticmethod(_patched_pre_auth_session_retryable)
 _runtime.EmailAuthImporter._password_credentials_rejected = staticmethod(
@@ -3461,14 +3758,19 @@ _codex_oauth_chain.SmsProviderAdapter.complete = _sms_adapter_complete
 _codex_oauth_chain.SmsProviderAdapter.cancel = _sms_adapter_cancel
 _codex_oauth_chain._event = _patched_chain_event
 _codex_oauth_chain.RealCodexTransport.__init__ = _real_transport_init
+_codex_oauth_chain.RealCodexTransport.import_phase1_session = _real_import_phase1_session
 _codex_oauth_chain.RealCodexTransport._headers = _real_headers
 _codex_oauth_chain.RealCodexTransport._post_auth_json = _real_post_auth_json
+_codex_oauth_chain.RealCodexTransport.send_email_otp = _real_send_email_otp
 _codex_oauth_chain.RealCodexTransport.submit_email_identifier = _real_submit_email_identifier
 _codex_oauth_chain.RealCodexTransport.verify_password = _real_verify_password
 _codex_oauth_chain.RealCodexTransport.verify_email_otp = _real_verify_email_otp
-_codex_oauth_chain.RealCodexTransport.send_mfa_otp = _TOTP_PATCHES.send_mfa_otp
+_codex_oauth_chain.RealCodexTransport.send_mfa_otp = _real_send_mfa_otp
 _codex_oauth_chain.RealCodexTransport.verify_mfa_otp = _real_verify_mfa_otp
 _codex_oauth_chain.RealCodexTransport.initiate_oauth = _real_initiate_oauth
+_codex_oauth_chain.RealCodexTransport.visit_continue = _real_visit_continue
+_codex_oauth_chain.RealCodexTransport.complete_chatgpt_callback = _real_complete_chatgpt_callback
+_codex_oauth_chain.RealCodexTransport.chatgpt_access_token = _real_chatgpt_access_token
 _codex_oauth_chain.RealCodexTransport.send_phone_number_otp = _sms_send_phone_number_otp
 _codex_oauth_chain.RealCodexTransport.verify_phone_otp = _real_verify_phone_otp
 _codex_oauth_chain.RealCodexTransport.create_account_profile = _real_create_account_profile
@@ -3600,109 +3902,36 @@ _OPENAI_QUOTA_SNAPSHOTS = _openai_quota_runtime_ext.OpenAIQuotaSnapshotStore(
 )
 
 
-def _local_secret(value, fallback=""):
-    text = str(value or "")
-    if not _module._clean(text) or text == _SECRET_MASK:
-        return str(fallback or "")
-    return text
+_LOCAL_CONFIG_RUNTIME = _configuration_runtime_ext.LocalConfigRuntime(
+    clean=_module._clean,
+    secret_mask=_SECRET_MASK,
+    sms_runtime=_sms_runtime_ext,
+    performance_runtime=_performance_runtime_ext,
+    notifications=_run_notifications_ext,
+    migrate_email_timeout=_migrate_email_timeout_config,
+    read_local_config=_read_local_config,
+    nv_default_endpoint=_nv_runtime_ext.DEFAULT_NV_ENDPOINT,
+    nv_default_schema_url=_nv_runtime_ext.DEFAULT_NV_SCHEMA_URL,
+    online_mailbox_default_url=_online_mailbox_runtime_ext.DEFAULT_ONLINE_MAILBOX_BASE_URL,
+    email_timeout_strategy_version=_EMAIL_TIMEOUT_STRATEGY_VERSION,
+    sms_min_price_default=_SMS_MIN_PRICE_DEFAULT,
+    int_value=_int_value,
+    as_enabled=_as_enabled,
+    clamp_sms_max_price=_clamp_sms_max_price,
+)
+
+
+_local_secret = _LOCAL_CONFIG_RUNTIME.local_secret
 
 
 def _mask_secret(value):
     return _SECRET_MASK if _module._clean(value) else ""
 
 
-def _sms_provider_pools_from_config(data):
-    value = data if isinstance(data, dict) else {}
-    return _sms_runtime_ext.normalize_sms_provider_pools(
-        value.get("sms_provider_pools"),
-        legacy_provider=value.get("sms_provider") or "smsbower",
-        legacy_keys=value.get("sms_api_keys"),
-        legacy_key=value.get("sms_api_key"),
-    )
-
-
-def _sms_keys_from_config(data):
-    return _sms_runtime_ext.flatten_sms_provider_keys(_sms_provider_pools_from_config(data))
-
-
-def _resolve_sms_provider_pools(data, existing=None):
-    value = data if isinstance(data, dict) else {}
-    previous = _sms_provider_pools_from_config(existing or {})
-    previous_by_provider = {
-        str(pool.get("provider") or ""): pool
-        for pool in previous
-    }
-    if "sms_provider_pools" not in value:
-        if "sms_api_keys" not in value and "sms_api_key" not in value:
-            return previous
-        keys = _resolve_sms_keys(value, existing, _skip_pools=True)
-        return _sms_runtime_ext.normalize_sms_provider_pools(
-            None,
-            legacy_provider=value.get("sms_provider") or (existing or {}).get("sms_provider") or "smsbower",
-            legacy_keys=keys,
-        )
-
-    raw_pools = value.get("sms_provider_pools")
-    rows = raw_pools if isinstance(raw_pools, (list, tuple)) else []
-    resolved = []
-    for raw in rows:
-        if not isinstance(raw, dict):
-            continue
-        provider = _sms_runtime_ext.normalize_sms_provider_name(raw.get("provider"))
-        if not provider:
-            continue
-        prior = previous_by_provider.get(provider, {})
-        prior_keys = _sms_runtime_ext.normalize_sms_keys(prior.get("api_keys"))
-        incoming_keys = raw.get("api_keys") if "api_keys" in raw else prior_keys
-        key_rows = incoming_keys if isinstance(incoming_keys, (list, tuple)) else [incoming_keys]
-        keys = []
-        for index, row in enumerate(key_rows):
-            text = str(row or "").strip()
-            if text == _SECRET_MASK:
-                text = prior_keys[index] if index < len(prior_keys) else ""
-            keys.append(text)
-        resolved.append(
-            {
-                "provider": provider,
-                "enabled": _as_enabled(raw.get("enabled"), _as_enabled(prior.get("enabled"), True)),
-                "api_keys": _sms_runtime_ext.normalize_sms_keys(keys),
-                "service": str(
-                    raw.get("service")
-                    or prior.get("service")
-                    or _sms_runtime_ext.SMS_PROVIDER_DEFAULT_SERVICES.get(provider, "dr")
-                ).strip(),
-            }
-        )
-    return _sms_runtime_ext.normalize_sms_provider_pools(resolved)
-
-
-def _resolve_sms_keys(data, existing=None, _skip_pools=False):
-    value = data if isinstance(data, dict) else {}
-    if not _skip_pools and "sms_provider_pools" in value:
-        return _sms_runtime_ext.flatten_sms_provider_keys(
-            _resolve_sms_provider_pools(value, existing)
-        )
-    previous_pools = _sms_provider_pools_from_config(existing or {})
-    previous = _sms_runtime_ext.legacy_sms_provider_keys(
-        previous_pools,
-        (existing or {}).get("sms_provider") or "smsbower",
-    )
-    if "sms_api_keys" in value:
-        raw = value.get("sms_api_keys")
-        rows = raw if isinstance(raw, (list, tuple)) else [raw]
-        resolved = []
-        for index, row in enumerate(rows):
-            text = str(row or "").strip()
-            if text == _SECRET_MASK:
-                text = previous[index] if index < len(previous) else ""
-            resolved.append(text)
-        return _sms_runtime_ext.normalize_sms_keys(resolved)
-    if "sms_api_key" in value:
-        text = str(value.get("sms_api_key") or "").strip()
-        if text == _SECRET_MASK:
-            return previous[:1]
-        return _sms_runtime_ext.normalize_sms_keys(text)
-    return previous
+_sms_provider_pools_from_config = _LOCAL_CONFIG_RUNTIME.sms_provider_pools_from_config
+_sms_keys_from_config = _LOCAL_CONFIG_RUNTIME.sms_keys_from_config
+_resolve_sms_provider_pools = _LOCAL_CONFIG_RUNTIME.resolve_sms_provider_pools
+_resolve_sms_keys = _LOCAL_CONFIG_RUNTIME.resolve_sms_keys
 
 
 _PUBLIC_STATE = _public_state_runtime_ext.PublicStateRuntime(
@@ -3719,6 +3948,7 @@ _PUBLIC_STATE = _public_state_runtime_ext.PublicStateRuntime(
     sms_alerts_getter=lambda: globals().get("_SMS_ALERTS"),
     task_progress_getter=lambda: globals().get("_TASK_PROGRESS"),
     current_task_admission_getter=lambda: globals().get("_CURRENT_TASK_ADMISSION"),
+    inflight_gate_getter=lambda: globals().get("_CURRENT_INFLIGHT_GATE"),
     protocol_gate_getter=lambda: globals().get("_PROTOCOL_GATE"),
     sms_phone_gate_getter=lambda: globals().get("_SMS_PHONE_GATE"),
     sms_optimization_guard_getter=lambda: globals().get("_SMS_QUALITY_GUARD"),
@@ -3737,286 +3967,52 @@ _PUBLIC_STATE = _public_state_runtime_ext.PublicStateRuntime(
 )
 
 
-def _masked_local_config(data):
-    return _PUBLIC_STATE.masked_local_config(data)
+_masked_local_config = _PUBLIC_STATE.masked_local_config
 
 
 def _public_task(task):
-    return _PUBLIC_STATE.public_task(task)
+    public = _PUBLIC_STATE.public_task(task)
+    task_id = str((task or {}).get("task_id") or "").strip() if isinstance(task, dict) else ""
+    prompt = _MANUAL_VERIFICATION.public(task_id) if task_id else {}
+    if isinstance(prompt, dict) and prompt:
+        public["manual_verification"] = prompt
+        public["capabilities"] = ["submit_manual_verification"]
+    checkpoint = task.get("_checkpoint_public") if isinstance(task, dict) else None
+    if not isinstance(checkpoint, dict):
+        checkpoint = _checkpoint_public_for(task_id)
+    if isinstance(checkpoint, dict):
+        public["checkpoint"] = {
+            key: copy.deepcopy(checkpoint[key])
+            for key in (
+                "state",
+                "resume_stage",
+                "expires_at",
+                "age_seconds",
+                "remaining_seconds",
+                "reason",
+            )
+            if key in checkpoint
+        }
+    return public
 
 
-def _runtime_summary(tasks):
-    return _PUBLIC_STATE.runtime_summary(tasks)
+def _task_exists(task_id):
+    importer = getattr(_module, "importer", None)
+    tasks = getattr(importer, "tasks", {}) if importer is not None else {}
+    return str(task_id or "").strip() in tasks
 
 
-def _notification_public_status():
-    return _PUBLIC_STATE.notification_public_status()
-
-
-def _public_logs(logs, tasks):
-    return _PUBLIC_STATE.public_logs(logs, tasks)
-
-
-def _masked_state(data):
-    return _PUBLIC_STATE.masked_state(data)
-
-
-def _local_config_secret(secret_id):
-    local = _read_local_config()
-    sub2api = dict(local.get("sub2api") or {})
-    nv_import = dict(local.get("nv_import") or {})
-    email_notification = dict(local.get("email_notification") or {})
-    online_mailbox = dict(local.get("online_mailbox") or {})
-    sms_keys = _sms_keys_from_config(local)
-    sms_pools = _sms_provider_pools_from_config(local)
-    values = {
-        "sms_provider_pools": sms_pools,
-        "sms_api_keys": sms_keys,
-        "sms_api_key": sms_keys[0] if sms_keys else "",
-        "sub2_password": sub2api.get("password") or "",
-        "nv_import_api_key": nv_import.get("api_key") or "",
-        "notification_email_password": email_notification.get("password") or "",
-        "online_mailbox_api_token": online_mailbox.get("api_token") or "",
-        "proxy": local.get("proxy") or "",
-    }
-    return values.get(str(secret_id or ""), "")
-
-
-def _local_config_from_runtime(data, existing=None):
-    raw_data = dict(data or {}) if isinstance(data, dict) else {}
-    existing = dict(existing or {})
-    sms_pools = _resolve_sms_provider_pools(raw_data, existing)
-    sms_keys = _sms_runtime_ext.legacy_sms_provider_keys(
-        sms_pools,
-        raw_data.get("sms_provider") or "smsbower",
-    )
-    raw_data["sms_provider_pools"] = sms_pools
-    raw_data["sms_api_keys"] = sms_keys
-    raw_data["sms_api_key"] = sms_keys[0] if sms_keys else ""
-    data, _migrated = _sms_runtime_ext.migrate_performance_config(raw_data)
-    data = _performance_runtime_ext.normalize_feature_flags(data)
-    data, _timeout_migrated = _migrate_email_timeout_config(data)
-    sub2api = dict(data.get("sub2api") or {})
-    existing_sub2api = dict(existing.get("sub2api") or {})
-    nv_import = dict(data.get("nv_import") or {})
-    existing_nv_import = dict(existing.get("nv_import") or {})
-    email_notification = dict(data.get("email_notification") or {})
-    existing_email_notification = dict(existing.get("email_notification") or {})
-    online_mailbox = dict(data.get("online_mailbox") or {})
-    existing_online_mailbox = dict(existing.get("online_mailbox") or {})
-    resolved_email_notification = _run_notifications_ext.normalize_email_notification(
-        _merge_email_notification(existing_email_notification, email_notification)
-    )
-    resolved_email_notification["password"] = _local_secret(
-        email_notification.get("password"),
-        existing_email_notification.get("password"),
-    ).strip()
-    result = {
-        "performance_policy_version": _sms_runtime_ext.PERFORMANCE_POLICY_VERSION,
-        "email_timeout_strategy_version": _EMAIL_TIMEOUT_STRATEGY_VERSION,
-        "sms_provider_pools": sms_pools,
-        "sms_provider": str(sms_pools[0].get("provider") or "smsbower") if sms_pools else "smsbower",
-        "sms_api_keys": sms_keys,
-        "sub2api": {
-            "url": str(sub2api.get("url") or "").strip(),
-            "email": str(sub2api.get("email") or "").strip(),
-            "password": _local_secret(sub2api.get("password"), existing_sub2api.get("password")),
-            "group": str(sub2api.get("group") or "").strip(),
-        },
-        "nv_import": {
-            "endpoint": str(
-                nv_import.get("endpoint")
-                or existing_nv_import.get("endpoint")
-                or _nv_runtime_ext.DEFAULT_NV_ENDPOINT
-            ).strip(),
-            "schema_url": str(
-                nv_import.get("schema_url")
-                or existing_nv_import.get("schema_url")
-                or _nv_runtime_ext.DEFAULT_NV_SCHEMA_URL
-            ).strip(),
-            "api_key": _local_secret(
-                nv_import.get("api_key"),
-                existing_nv_import.get("api_key"),
-            ).strip(),
-        },
-        "online_mailbox": {
-            "base_url": str(
-                online_mailbox.get("base_url")
-                or existing_online_mailbox.get("base_url")
-                or _online_mailbox_runtime_ext.DEFAULT_ONLINE_MAILBOX_BASE_URL
-            ).strip(),
-            "api_token": _local_secret(
-                online_mailbox.get("api_token"),
-                existing_online_mailbox.get("api_token"),
-            ).strip(),
-        },
-        "email_notification": resolved_email_notification,
-    }
-    if "proxy" in data or "proxy" in existing:
-        result["proxy"] = _local_secret(data.get("proxy"), existing.get("proxy")).strip()
-    for key in (
-        "proxy_scope",
-        "target_count",
-        "concurrency",
-        "node_concurrency",
-        "auto_email_login_concurrency",
-        "phone_submission_concurrency",
-        "pixel_upload_concurrency",
-        "node_timeout",
-        "auth_session_retries",
-        "email_code_timeout",
-        "email_otp_verify_attempts",
-        "email_otp_resend_on_retry",
-        "sms_min_price",
-        "max_price",
-        "sms_timeout",
-        "phone_max_attempts",
-        "phone_attempts_per_provider",
-        "phone_session_cycle_seconds",
-        "sms_quality_optimization",
-        "adaptive_task_concurrency",
-        "dynamic_auth_challenges",
-    ):
-        if key in data:
-            result[key] = copy.deepcopy(data[key])
-        elif key in existing:
-            result[key] = copy.deepcopy(existing[key])
-    return result
-
-
-def _merge_nonempty(base, override):
-    result = dict(base or {})
-    for key, value in dict(override or {}).items():
-        if _module._clean(value) and value != _SECRET_MASK:
-            result[key] = value
-    return result
-
-
-def _merge_email_notification(base, override):
-    previous = copy.deepcopy(dict(base or {}))
-    incoming = copy.deepcopy(dict(override or {}))
-    events = {
-        **dict(previous.get("events") or {}),
-        **dict(incoming.get("events") or {}),
-    }
-    result = {**previous, **incoming}
-    result["events"] = events
-    result["password"] = _local_secret(incoming.get("password"), previous.get("password"))
-    return result
-
-
-def _merge_local_config(data):
-    patched = dict(data or {})
-    local = _read_local_config()
-    sms_pools = _resolve_sms_provider_pools(patched, local)
-    sms_keys = _sms_runtime_ext.legacy_sms_provider_keys(
-        sms_pools,
-        patched.get("sms_provider") or "smsbower",
-    )
-    patched["sms_provider_pools"] = sms_pools
-    patched["sms_provider"] = str(sms_pools[0].get("provider") or "smsbower") if sms_pools else "smsbower"
-    patched["sms_api_keys"] = sms_keys
-    patched["sms_api_key"] = sms_keys[0] if sms_keys else ""
-    patched["proxy"] = _local_secret(patched.get("proxy"), local.get("proxy"))
-    if isinstance(local.get("sub2api"), dict):
-        patched["sub2api"] = _merge_nonempty(local.get("sub2api") or {}, patched.get("sub2api") or {})
-    if isinstance(local.get("nv_import"), dict):
-        patched["nv_import"] = _merge_nonempty(local.get("nv_import") or {}, patched.get("nv_import") or {})
-    if isinstance(local.get("email_notification"), dict):
-        patched["email_notification"] = _merge_email_notification(
-            local.get("email_notification") or {},
-            patched.get("email_notification") or {},
-        )
-    if isinstance(local.get("online_mailbox"), dict):
-        patched["online_mailbox"] = _merge_nonempty(
-            local.get("online_mailbox") or {},
-            patched.get("online_mailbox") or {},
-        )
-    return patched
-
-
-def _apply_server_defaults(data):
-    patched = dict(data or {})
-    patched = _merge_local_config(patched)
-    patched, _migrated = _sms_runtime_ext.migrate_performance_config(patched)
-    patched = _performance_runtime_ext.normalize_feature_flags(patched)
-    patched, _timeout_migrated = _migrate_email_timeout_config(patched)
-    patched["dynamic_auth_challenges"] = _as_enabled(
-        patched.get("dynamic_auth_challenges"), True
-    )
-    if patched.get("sms_provider") == "localpool":
-        patched["sms_provider"] = "smsbower"
-    patched["email_mode"] = "auto"
-    patched["sms_mode"] = "smart"
-    patched["country"] = ""
-    patched["provider_ids"] = ""
-    patched.pop("manual_pool_content", None)
-    patched.pop("nvtoken", None)
-    patched.pop("nvtoken_upload", None)
-    patched.pop("pixel_upload_enabled", None)
-    patched["sub2api"] = dict(patched.get("sub2api") or {})
-    patched["nv_import"] = {
-        "endpoint": str(
-            (patched.get("nv_import") or {}).get("endpoint")
-            or _nv_runtime_ext.DEFAULT_NV_ENDPOINT
-        ).strip(),
-        "schema_url": str(
-            (patched.get("nv_import") or {}).get("schema_url")
-            or _nv_runtime_ext.DEFAULT_NV_SCHEMA_URL
-        ).strip(),
-        "api_key": str((patched.get("nv_import") or {}).get("api_key") or "").strip(),
-    }
-    patched["email_notification"] = _run_notifications_ext.validate_email_notification(
-        patched.get("email_notification") or {}
-    )
-    if not _module._clean(patched.get("proxy")):
-        patched["proxy"] = "http://127.0.0.1:7897"
-    if not _module._clean(patched.get("concurrency")):
-        patched["concurrency"] = "5"
-    if not _module._clean(patched.get("node_concurrency")):
-        patched["node_concurrency"] = "5"
-    patched["phone_submission_concurrency"] = _int_value(
-        patched.get("phone_submission_concurrency"),
-        2,
-        minimum=1,
-        maximum=5,
-    )
-    patched["pixel_upload_concurrency"] = _int_value(
-        patched.get("pixel_upload_concurrency"),
-        2,
-        minimum=1,
-        maximum=3,
-    )
-    if not _module._clean(patched.get("sms_min_price")):
-        patched["sms_min_price"] = str(_SMS_MIN_PRICE_DEFAULT)
-    patched["max_price"] = _clamp_sms_max_price(patched.get("max_price"))
-    route_lease_seconds = (
-        2 * _int_value(patched.get("sms_timeout"), 30, minimum=5, maximum=300)
-    ) + 20
-    patched["sms_smart"] = {
-        **dict(patched.get("sms_smart") or {}),
-        "enabled": True,
-        "countries": "",
-        "preferred_countries": "",
-        "throughput_priority": False,
-        "route_hard_max_inflight": 2,
-        "route_max_inflight": 2,
-        "route_semi_max_inflight": 2,
-        "route_hot_max_inflight": 2,
-        "route_lease_seconds": route_lease_seconds,
-        "timeout_cooldown": 180,
-        "phone_rejected_cooldown": 180,
-        "register_rejected_cooldown": 60,
-        "register_rejected_min_cooldown": 180,
-    }
-    return patched
-
-
-def _test_email_notification(data):
-    local = _local_config_from_runtime(data, _read_local_config())
-    config = dict(local.get("email_notification") or {})
-    config["enabled"] = True
-    return _run_notifications_ext.send_test_notification(config)
+_runtime_summary = _PUBLIC_STATE.runtime_summary
+_notification_public_status = _PUBLIC_STATE.notification_public_status
+_public_logs = _PUBLIC_STATE.public_logs
+_masked_state = _PUBLIC_STATE.masked_state
+_local_config_secret = _LOCAL_CONFIG_RUNTIME.local_config_secret
+_local_config_from_runtime = _LOCAL_CONFIG_RUNTIME.local_config_from_runtime
+_merge_nonempty = _LOCAL_CONFIG_RUNTIME.merge_nonempty
+_merge_email_notification = _LOCAL_CONFIG_RUNTIME.merge_email_notification
+_merge_local_config = _LOCAL_CONFIG_RUNTIME.merge_local_config
+_apply_server_defaults = _LOCAL_CONFIG_RUNTIME.apply_server_defaults
+_test_email_notification = _LOCAL_CONFIG_RUNTIME.test_email_notification
 
 
 def _mailbox_admin_factory(store, importer, logs):
@@ -4087,7 +4083,13 @@ _WEB_ROUTE_CONTEXT = _web_routes_ext.WebRouteContext(
 
 
 def _patch_flask_app(app):
-    return _web_routes_ext.patch_flask_app(app, _WEB_ROUTE_CONTEXT)
+    patched = _web_routes_ext.patch_flask_app(app, _WEB_ROUTE_CONTEXT)
+    return _manual_verification_routes_ext.patch_flask_app(
+        patched,
+        broker=_MANUAL_VERIFICATION,
+        task_exists=_task_exists,
+        task_generation=_manual_task_generation,
+    )
 
 
 def create_app(data_dir=None):

@@ -169,9 +169,11 @@ const defaultForm = () => ({
   phone_submission_concurrency: 2,
   pixel_upload_concurrency: 2,
   node_timeout: 45,
-  email_code_timeout: 90,
+  email_code_timeout: 60,
   auth_session_retries: 1,
   adaptive_task_concurrency: true,
+  task_inflight_optimization: true,
+  task_inflight_limit: 20,
   sms_provider: 'smsbower',
   sms_min_price: '0.01',
   max_price: '0.15',
@@ -242,6 +244,8 @@ function normalizeImportedConfig(value: any) {
   config.phone_submission_concurrency = Math.max(1, Math.min(5, Number(config.phone_submission_concurrency) || 2))
   config.pixel_upload_concurrency = Math.max(1, Math.min(3, Number(config.pixel_upload_concurrency) || 2))
   config.adaptive_task_concurrency = config.adaptive_task_concurrency !== false
+  config.task_inflight_optimization = config.task_inflight_optimization !== false
+  config.task_inflight_limit = Math.max(1, Math.min(20, Number(config.task_inflight_limit) || 20))
   config.sms_quality_optimization = config.sms_quality_optimization !== false
   config.email_notification = normalizeEmailNotificationDraft(config.email_notification)
   return config
@@ -384,6 +388,8 @@ export function createAppController() {
     merged.phone_submission_concurrency = Math.max(1, Math.min(5, Number(merged.phone_submission_concurrency) || 2))
     merged.pixel_upload_concurrency = Math.max(1, Math.min(3, Number(merged.pixel_upload_concurrency) || 2))
     merged.adaptive_task_concurrency = merged.adaptive_task_concurrency !== false
+    merged.task_inflight_optimization = merged.task_inflight_optimization !== false
+    merged.task_inflight_limit = Math.max(1, Math.min(20, Number(merged.task_inflight_limit) || 20))
     merged.sms_quality_optimization = merged.sms_quality_optimization !== false
     Object.assign(form, merged)
     syncLegacySmsFields(form)

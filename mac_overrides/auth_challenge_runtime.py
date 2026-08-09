@@ -393,6 +393,32 @@ def _provider_call(provider: Any, name: str, *args: Any) -> Any:
     return callback(*args) if callable(callback) else None
 
 
+def _email_otp_verify_attempts(context: AuthChallengeContext) -> int:
+    raw_value = context.config.get("email_otp_verify_attempts")
+    try:
+        attempts = int(raw_value or 0)
+    except (TypeError, ValueError):
+        attempts = 0
+    return max(1, min(5, attempts or 2))
+
+
+def _email_otp_resend_on_retry(context: AuthChallengeContext) -> bool:
+    return _as_bool(context.config.get("email_otp_resend_on_retry"), True)
+
+
+def _send_email_otp(context: AuthChallengeContext, continue_url: str) -> Any:
+    sender = getattr(context.transport, "send_email_otp", None)
+    if callable(sender):
+        sent = sender(continue_url)
+        if not _is_success(context, sent):
+            raise AuthChallengeError(
+                "email_otp_send_failed", f"邮箱验证码发送失败：{_failure_detail(sent)}"
+            )
+    provider = context.email_otp_provider
+    _provider_call(provider, "mark_sent")
+    return None
+
+
 def _handle_password(context: AuthChallengeContext, _response: Any) -> Any:
     if not context.password:
         raise AuthChallengeError("password_required", "当前邮箱行没有可用密码")
@@ -405,20 +431,33 @@ def _handle_email_otp(context: AuthChallengeContext, response: Any) -> Any:
         raise AuthChallengeError("email_otp_provider_missing", "邮箱验证码处理器不可用")
     _provider_call(provider, "acquire_login_slot")
     continue_url = _continue_url(response, context.continue_url_fn)
-    sender = getattr(context.transport, "send_email_otp", None)
-    if callable(sender):
-        sent = sender(continue_url)
-        if not _is_success(context, sent):
-            raise AuthChallengeError(
-                "email_otp_send_failed", f"邮箱验证码发送失败：{_failure_detail(sent)}"
-            )
-    _provider_call(provider, "mark_sent")
-    code = str(_provider_call(provider, "wait_code", context.account_email) or "").strip()
-    if not code:
-        raise AuthChallengeError("email_otp_empty", "邮箱验证码处理器未返回验证码")
-    verified = context.transport.verify_email_otp(code)
-    if _is_success(context, verified):
-        _provider_call(provider, "mark_verified")
+    attempts = _email_otp_verify_attempts(context)
+    resend_on_retry = _email_otp_resend_on_retry(context)
+    verified: Any = None
+
+    for attempt in range(attempts):
+        if attempt == 0 or resend_on_retry:
+            _send_email_otp(context, continue_url)
+        else:
+            _provider_call(provider, "mark_sent")
+        code = str(_provider_call(provider, "wait_code", context.account_email) or "").strip()
+        if not code:
+            raise AuthChallengeError("email_otp_empty", "邮箱验证码处理器未返回验证码")
+        verified = context.transport.verify_email_otp(code)
+        if _is_success(context, verified):
+            _provider_call(provider, "mark_verified")
+            return verified
+        if _failure_code(verified).lower() != "incorrect_code":
+            return verified
+        if _stopped(context):
+            raise AuthChallengeError("task_stopped", "任务已停止")
+        if attempt + 1 >= attempts:
+            return verified
+        _log(
+            context,
+            "  [动态认证/auth_challenge] 邮箱验证码被拒绝，准备重试下一次验证码",
+            "warn",
+        )
     return verified
 
 
