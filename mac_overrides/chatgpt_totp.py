@@ -21,6 +21,11 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
     from mailbox_url_runtime import parse_mailbox_url_row
 
 try:
+    from .mailbox_password_url_rows import parse_mailbox_password_url_row
+except ImportError:  # Loaded as a top-level override module by the Mac launcher.
+    from mailbox_password_url_rows import parse_mailbox_password_url_row
+
+try:
     from .plain_mailbox_rows import (
         parse_plain_password_mailbox_row,
         plain_password_identity,
@@ -49,6 +54,24 @@ _TOTP_SEPARATOR_PATTERNS = tuple(
         r"；+",
         r"：+",
     )
+)
+_SAFE_TOTP_PROVIDER_CODES = frozenset(
+    {
+        "incorrect_code",
+        "invalid_authorization_step",
+        "mfa_authorization_step_expired",
+        "oauth_session_invalid",
+        "mfa_factor_id_missing",
+    }
+)
+_SAFE_PROVIDER_CODE = re.compile(r"^[a-z][a-z0-9_.-]{1,95}$")
+_SENSITIVE_PROVIDER_CODE_MARKERS = (
+    "token",
+    "secret",
+    "password",
+    "cookie",
+    "authorization",
+    "bearer",
 )
 
 
@@ -134,6 +157,12 @@ def mailbox_credential_identity(
     """Return the recovered pool identity without depending on row formatting."""
 
     raw = str(row or "").strip()
+    parsed_password_url = parse_mailbox_password_url_row(raw)
+    if parsed_password_url is not None:
+        return (
+            parsed_password_url.email,
+            plain_password_identity(parsed_password_url.email, parsed_password_url.password),
+        )
     parsed_oauth = parse_oauth_mailbox_row(raw)
     if parsed_oauth is not None:
         email, password, client_id, refresh_token = parsed_oauth
@@ -300,6 +329,24 @@ def build_chatgpt_totp_patches(
             return str(error.get("code") or error.get("message") or "")
         return str(error)
 
+    def safe_response_error(response: Any) -> str:
+        error = response.get("error") if isinstance(response, dict) else None
+        explicit_code = ""
+        if isinstance(error, dict):
+            explicit_code = str(error.get("code") or error.get("type") or "")
+        for candidate in (explicit_code, response_error(response)):
+            raw = candidate.strip().lower().replace(" ", "_")
+            if not raw:
+                continue
+            if raw in _SAFE_TOTP_PROVIDER_CODES:
+                return raw
+            if (
+                _SAFE_PROVIDER_CODE.fullmatch(raw)
+                and not any(marker in raw for marker in _SENSITIVE_PROVIDER_CODE_MARKERS)
+            ):
+                return raw
+        return "provider_error" if response_error(response).strip() else ""
+
     def remember_post_auth_continue(transport: Any, response: Any) -> None:
         next_url = continue_url(response)
         if not next_url:
@@ -342,7 +389,7 @@ def build_chatgpt_totp_patches(
             f"_status={int(response.get('_status') or 0) if isinstance(response, dict) else 0}",
             f"page_type={page_type(response) or '-'}",
             f"continue_path={continue_path}",
-            f"error={response_error(response) or '-'}",
+            f"error={safe_response_error(response) or '-'}",
         ]
         parts.extend(f"{key}={value if value else '-'}" for key, value in extra.items())
         _call_log(transport.log_fn, f"  [CodexTOTP] {step} " + " ".join(parts), "info")
@@ -472,6 +519,10 @@ def build_chatgpt_totp_patches(
             setattr(transport, "_gptphone_totp_incorrect_retries", retry_count + 1)
             active_state.rejected_totp_code = str(payload.get("code") or code or "")
         else:
+            if error_code == "incorrect_code" and secret:
+                # Keep a task-local copy for the explicit manual fallback;
+                # it is cleared when the task wrapper resets its state.
+                setattr(transport, "_gptphone_totp_manual_secret", secret)
             setattr(transport, "_gptphone_totp_flow", False)
             setattr(transport, "_gptphone_totp_secret", "")
             setattr(transport, "_gptphone_totp_incorrect_retries", 0)
@@ -528,12 +579,37 @@ def build_chatgpt_totp_patches(
         identities: dict[int, str] = {}
         for line_no, raw in enumerate(raw_lines, start=1):
             raw = raw.strip()
+            parsed_password_url = parse_mailbox_password_url_row(raw)
             parsed_oauth = parse_oauth_mailbox_row(raw)
             parsed_url_totp = parse_mailbox_url_totp_row(raw)
             parsed_totp = parse_chatgpt_totp_row(raw)
             parsed_url = parse_mailbox_url_row(raw)
             parsed_plain = parse_plain_password_mailbox_row(raw)
-            if parsed_oauth:
+            if parsed_password_url:
+                email = parsed_password_url.email
+                password = parsed_password_url.password
+                mailbox_url = parsed_password_url.mailbox_url
+                identity = plain_password_identity(email, password)
+                entry_key = compatible_key(
+                    email,
+                    identity,
+                    raw,
+                    line_no,
+                    _plain_password_legacy_rows(raw, email, password),
+                )
+                replacements[line_no] = runtime_module.PoolEntry(
+                    email=email,
+                    mailbox_url=mailbox_url,
+                    line_no=line_no,
+                    key=entry_key,
+                    mailbox_type="url",
+                    password=password,
+                    oauth_client_id="",
+                    oauth_refresh_token="",
+                    source_row=raw,
+                )
+                identities[line_no] = identity
+            elif parsed_oauth:
                 email, password, oauth_client_id, oauth_refresh_token = parsed_oauth
                 identity = f"outlook:{oauth_client_id}:{oauth_refresh_token or password}"
                 entry_key = compatible_key(email, identity, raw, line_no)
@@ -967,11 +1043,13 @@ def _write_pool_state(pool_self: Any, state: dict[str, Any]) -> None:
 
 def _entry_identity(entry: Any) -> str:
     mailbox_url = str(getattr(entry, "mailbox_url", "") or "")
+    password = str(getattr(entry, "password", "") or "")
+    if mailbox_url and password:
+        return plain_password_identity(getattr(entry, "email", ""), password)
     if mailbox_url:
         return f"url:{mailbox_url}"
     client_id = str(getattr(entry, "oauth_client_id", "") or "")
     refresh_token = str(getattr(entry, "oauth_refresh_token", "") or "")
-    password = str(getattr(entry, "password", "") or "")
     if client_id == "chatgpt_totp" and refresh_token:
         return f"outlook:chatgpt_totp:{refresh_token}"
     if client_id or refresh_token:

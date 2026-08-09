@@ -678,6 +678,50 @@ class ChatGptTotpTests(unittest.TestCase):
         self.assertFalse(transport._gptphone_totp_flow)
         self.assertEqual(transport._gptphone_totp_secret, "")
 
+    def test_totp_trace_redacts_unknown_provider_message(self):
+        private_message = "provider body private-token-should-not-log"
+        logs = []
+
+        class FakeTransport:
+            def __init__(self):
+                self.log_fn = lambda message, level="info": logs.append((message, level))
+                self._gptphone_totp_refresh_in_headers = True
+
+            def _post_auth_json(self, *_args, **_kwargs):
+                return {"_status": 403, "error": {"message": private_message}}
+
+        chain = SimpleNamespace(
+            AUTH="https://auth.openai.com",
+            _page_type=lambda response: (response.get("page") or {}).get("type", ""),
+            _continue_url=lambda response: response.get("continue_url", ""),
+        )
+        patches = build_chatgpt_totp_patches(
+            runtime_module=SimpleNamespace(),
+            codex_oauth_chain=chain,
+            original_entries_unlocked=lambda _pool: ([], []),
+            original_outlook_otp_provider=lambda *args, **kwargs: None,
+            original_account_label=lambda entry: entry.email,
+            original_verify_password=lambda *_args: {
+                "_status": 200,
+                "page": {"payload": {"factor_id": "factor-id"}},
+                "continue_url": "https://auth.openai.com/mfa-challenge/factor-id",
+            },
+            original_send_mfa_otp=lambda *args: {},
+            original_verify_mfa_otp=lambda *args: {},
+            parse_oauth_mailbox_row=parse_oauth_mailbox_row,
+        )
+        patches.outlook_otp_provider(
+            SimpleNamespace(oauth_client_id="chatgpt_totp", oauth_refresh_token="JBSWY3DPEHPK3PXP"),
+            {},
+            None,
+        )
+        transport = FakeTransport()
+        patches.verify_password(transport, "password")
+        patches.verify_mfa_otp(transport, "123456")
+
+        self.assertIn("error=provider_error", repr(logs))
+        self.assertNotIn(private_message, repr(logs))
+
     def test_incorrect_totp_waits_for_a_different_time_window(self):
         secret = "JBSWY3DPEHPK3PXP"
 
