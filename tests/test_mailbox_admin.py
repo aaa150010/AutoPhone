@@ -1305,6 +1305,15 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertIn("p%40ss-word", secrets)
         self.assertIn("p@ss-word", secrets)
 
+    def test_credential_redaction_covers_plus_encoded_query_fragments(self):
+        redacted = redact_mailbox_credentials(
+            "provider echoed auth_code=private+value",
+            ("private value",),
+        )
+
+        self.assertNotIn("private+value", redacted)
+        self.assertIn("********", redacted)
+
     def test_credential_redaction_uses_bounded_literal_matching(self):
         raw = "prefix SeCrEt-ToKeN suffix " + ("x" * 5000)
         with patch(

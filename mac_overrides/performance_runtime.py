@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from collections import deque
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Mapping
+import threading
+from typing import Any, Callable, Iterator, Mapping
 
 try:
     from .sms_provider_runtime import (
@@ -19,12 +22,15 @@ except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
 
 SMS_QUALITY_OPTIMIZATION = "sms_quality_optimization"
 ADAPTIVE_TASK_CONCURRENCY = "adaptive_task_concurrency"
+TASK_INFLIGHT_OPTIMIZATION = "task_inflight_optimization"
 PERFORMANCE_FEATURE_DEFAULTS = {
     SMS_QUALITY_OPTIMIZATION: True,
     ADAPTIVE_TASK_CONCURRENCY: True,
+    TASK_INFLIGHT_OPTIMIZATION: True,
 }
-PERFORMANCE_POLICY_VERSION = 11
+PERFORMANCE_POLICY_VERSION = 12
 PHONE_MAX_ATTEMPTS_LIMIT = 45
+TASK_INFLIGHT_LIMIT = 20
 PERFORMANCE_DEFAULTS = {
     "auto_email_login_concurrency": 5,
     "phone_submission_concurrency": 2,
@@ -33,7 +39,11 @@ PERFORMANCE_DEFAULTS = {
     "phone_attempts_per_provider": 15,
     "phone_session_cycle_seconds": 1800,
     "auth_session_retries": 1,
+    "task_inflight_limit": TASK_INFLIGHT_LIMIT,
 }
+
+INFLIGHT_ROLLING_WINDOW_TASKS = 100
+INFLIGHT_SUCCESS_RATE_FLOOR = 0.819
 
 _TRUE_VALUES = frozenset({"1", "true", "yes", "on", "enabled"})
 _FALSE_VALUES = frozenset({"0", "false", "no", "off", "disabled"})
@@ -77,9 +87,14 @@ def migrate_performance_config(value: Any) -> tuple[dict[str, Any], bool]:
             except (TypeError, ValueError):
                 current = 0
                 missing = True
-            invalid = current < 0 if key == "auth_session_retries" else current <= 0
+            if key == "auth_session_retries":
+                invalid = current < 0
+            elif key == "task_inflight_limit":
+                invalid = False
+            else:
+                invalid = current <= 0
             if missing or invalid or (
-                version < PERFORMANCE_POLICY_VERSION
+                version < 11
                 and (
                     (key == "auto_email_login_concurrency" and current == 1)
                     or (key == "phone_max_attempts" and current in {9, 15})
@@ -105,6 +120,16 @@ def migrate_performance_config(value: Any) -> tuple[dict[str, Any], bool]:
     except (TypeError, ValueError):
         task_concurrency = 5
     config["concurrency"] = task_concurrency
+    raw_inflight_limit = config.get("task_inflight_limit")
+    try:
+        inflight_limit = (
+            TASK_INFLIGHT_LIMIT
+            if raw_inflight_limit in (None, "")
+            else int(raw_inflight_limit)
+        )
+    except (TypeError, ValueError):
+        inflight_limit = TASK_INFLIGHT_LIMIT
+    config["task_inflight_limit"] = max(1, min(TASK_INFLIGHT_LIMIT, inflight_limit))
     try:
         email_concurrency = int(
             config.get("auto_email_login_concurrency")
@@ -146,6 +171,299 @@ class TaskAdmissionPolicy:
     restore_ceiling: int
     absolute_ceiling: int
     adaptive: bool
+
+
+def _nonnegative_number(value: Any) -> float | None:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+@dataclass(frozen=True)
+class InflightRollbackBaseline:
+    """Optional comparison rates captured before enabling in-flight expansion."""
+
+    cancellation_rate: float | None = None
+    duplicate_order_rate: float | None = None
+    cost_per_success_usd: float | None = None
+
+    @classmethod
+    def from_value(cls, value: Any) -> "InflightRollbackBaseline":
+        row = value if isinstance(value, Mapping) else {}
+        return cls(
+            cancellation_rate=_nonnegative_number(row.get("cancellation_rate")),
+            duplicate_order_rate=_nonnegative_number(row.get("duplicate_order_rate")),
+            cost_per_success_usd=_nonnegative_number(row.get("cost_per_success_usd")),
+        )
+
+
+class InflightAdmissionGate:
+    """Bound per-batch in-flight work and stick to baseline after a regression."""
+
+    _IMMEDIATE_REASONS = frozenset(
+        {"protocol_pressure", "http_429", "session_invalidation"}
+    )
+
+    def __init__(
+        self,
+        configured: Any = 5,
+        *,
+        limit: Any = TASK_INFLIGHT_LIMIT,
+        enabled: Any = True,
+        baseline: Any = None,
+        window_size: int = INFLIGHT_ROLLING_WINDOW_TASKS,
+        on_rollback: Callable[[dict[str, Any]], Any] | None = None,
+    ) -> None:
+        try:
+            configured_limit = max(1, min(8, int(configured)))
+        except (TypeError, ValueError):
+            configured_limit = 5
+        try:
+            optimized_limit = max(1, min(TASK_INFLIGHT_LIMIT, int(limit)))
+        except (TypeError, ValueError):
+            optimized_limit = TASK_INFLIGHT_LIMIT
+
+        optimization_requested = as_bool(enabled, True)
+        self.configured = configured_limit
+        self.requested_limit = optimized_limit
+        self.effective = (
+            max(configured_limit, optimized_limit)
+            if optimization_requested
+            else configured_limit
+        )
+        self.optimized = optimization_requested and self.effective > configured_limit
+        self.rolled_back = False
+        self.reason = "optimized" if self.optimized else "configured_baseline"
+        self.baseline = (
+            baseline
+            if isinstance(baseline, InflightRollbackBaseline)
+            else InflightRollbackBaseline.from_value(baseline)
+        )
+        self.window_size = max(1, int(window_size))
+        self.on_rollback = on_rollback
+        self.condition = threading.Condition()
+        self.active = 0
+        self.waiting = 0
+        self._stopped = False
+        self._samples: deque[dict[str, Any]] = deque(maxlen=self.window_size)
+
+    @staticmethod
+    def _event_is_set(stop_event: Any) -> bool:
+        if stop_event is None:
+            return False
+        checker = getattr(stop_event, "is_set", None)
+        if callable(checker):
+            return bool(checker())
+        return bool(stop_event()) if callable(stop_event) else bool(stop_event)
+
+    def snapshot(self) -> dict[str, Any]:
+        """Return the complete credential-free public state for this batch."""
+        with self.condition:
+            return {
+                "configured": self.configured,
+                "baseline_concurrency": self.configured,
+                "requested_limit": self.requested_limit,
+                "effective": self.effective,
+                "active": self.active,
+                "waiting": self.waiting,
+                "optimized": self.optimized,
+                "rolled_back": self.rolled_back,
+                "reason": self.reason,
+            }
+
+    @contextmanager
+    def acquire(self, *, stop_event: Any = None) -> Iterator[None]:
+        acquired = False
+        registered_waiter = True
+        with self.condition:
+            self.waiting += 1
+        try:
+            while not acquired:
+                with self.condition:
+                    if self._stopped or self._event_is_set(stop_event):
+                        self.waiting = max(0, self.waiting - 1)
+                        registered_waiter = False
+                        raise RuntimeError("task_stopped")
+                    if self.active < self.effective:
+                        self.active += 1
+                        self.waiting = max(0, self.waiting - 1)
+                        registered_waiter = False
+                        acquired = True
+                    else:
+                        self.condition.wait(timeout=0.25)
+        except BaseException:
+            if registered_waiter:
+                with self.condition:
+                    self.waiting = max(0, self.waiting - 1)
+            raise
+
+        try:
+            yield
+        finally:
+            if acquired:
+                with self.condition:
+                    self.active = max(0, self.active - 1)
+                    self.condition.notify_all()
+
+    def wake_all(self) -> None:
+        with self.condition:
+            self.condition.notify_all()
+
+    def stop(self) -> None:
+        with self.condition:
+            self._stopped = True
+            self.condition.notify_all()
+
+    def _rollback(self, reason: str) -> dict[str, Any] | None:
+        event: dict[str, Any] | None = None
+        with self.condition:
+            if not self.optimized or self.rolled_back:
+                return None
+            self.effective = self.configured
+            self.optimized = False
+            self.rolled_back = True
+            self.reason = reason
+            self.condition.notify_all()
+            event = {
+                "kind": "task_inflight_optimization_disabled",
+                "reason": reason,
+                "snapshot": {
+                    "configured": self.configured,
+                    "effective": self.effective,
+                    "active": self.active,
+                    "waiting": self.waiting,
+                    "optimized": self.optimized,
+                    "rolled_back": self.rolled_back,
+                    "reason": self.reason,
+                },
+            }
+        if callable(self.on_rollback):
+            try:
+                self.on_rollback(dict(event))
+            except Exception:
+                pass
+        return event
+
+    def report_pressure(self, reason: Any = "protocol_pressure") -> dict[str, Any] | None:
+        """Apply an immediate rollback using only stable, non-secret reason codes."""
+        normalized = str(reason or "").strip().lower()
+        aliases = {
+            "pressure": "protocol_pressure",
+            "resource_pressure": "protocol_pressure",
+            "infrastructure_pressure": "protocol_pressure",
+            "rate_limited": "http_429",
+            "429": "http_429",
+            "session_invalid": "session_invalidation",
+            "oauth_session_invalid": "session_invalidation",
+            "auth_session_invalid": "session_invalidation",
+        }
+        stable_reason = aliases.get(normalized, normalized)
+        if stable_reason not in self._IMMEDIATE_REASONS:
+            stable_reason = "protocol_pressure"
+        return self._rollback(stable_reason)
+
+    def report_http_429(self) -> dict[str, Any] | None:
+        return self._rollback("http_429")
+
+    def report_session_invalidation(self) -> dict[str, Any] | None:
+        return self._rollback("session_invalidation")
+
+    @staticmethod
+    def _task_sample(status: Any, result: Any) -> dict[str, Any]:
+        row = result if isinstance(result, Mapping) else {}
+        success = (
+            bool(row.get("success"))
+            if "success" in row
+            else str(status or "").strip().lower() == "success"
+        )
+        outcomes = row.get("sms_order_outcomes")
+        order_rows = outcomes if isinstance(outcomes, list) else []
+        explicit_orders = _nonnegative_number(
+            row.get("orders", row.get("order_count"))
+        )
+        orders = int(explicit_orders) if explicit_orders is not None else len(order_rows)
+        explicit_cancelled = _nonnegative_number(
+            row.get("cancelled", row.get("cancellations"))
+        )
+        cancelled = (
+            int(explicit_cancelled)
+            if explicit_cancelled is not None
+            else sum(
+                1
+                for item in order_rows
+                if isinstance(item, Mapping)
+                and str(item.get("status") or "").strip().lower() == "cancelled"
+            )
+        )
+        duplicates = int(
+            _nonnegative_number(
+                row.get("duplicates", row.get("sms_duplicate_orders"))
+            )
+            or 0
+        )
+        cost_usd = _nonnegative_number(row.get("cost_usd", row.get("sms_cost_usd")))
+        late_code_loss = bool(
+            row.get("late_code_loss") or row.get("confirmed_late_code_loss")
+        )
+        return {
+            "success": success,
+            "orders": orders,
+            "cancelled": cancelled,
+            "duplicates": duplicates,
+            "cost_usd": cost_usd,
+            "late_code_loss": late_code_loss,
+        }
+
+    def observe_task(self, status: Any, result: Any = None) -> dict[str, Any] | None:
+        """Evaluate a completed task without retaining task identity or raw errors."""
+        sample = self._task_sample(status, result)
+        with self.condition:
+            self._samples.append(sample)
+            if (
+                not self.optimized
+                or self.rolled_back
+                or len(self._samples) < self.window_size
+            ):
+                return None
+            samples = tuple(self._samples)
+            successes = sum(1 for item in samples if item["success"])
+            success_rate = successes / len(samples)
+            orders = sum(int(item["orders"]) for item in samples)
+            cancelled = sum(int(item["cancelled"]) for item in samples)
+            duplicates = sum(int(item["duplicates"]) for item in samples)
+            late_losses = sum(1 for item in samples if item["late_code_loss"])
+            known_cost = sum(
+                float(item["cost_usd"])
+                for item in samples
+                if item["cost_usd"] is not None
+            )
+
+            reason = ""
+            if success_rate < INFLIGHT_SUCCESS_RATE_FLOOR:
+                reason = "success_rate_below_819"
+            elif late_losses >= 2:
+                reason = "two_confirmed_late_code_losses"
+            elif (
+                orders
+                and self.baseline.cancellation_rate is not None
+                and cancelled / orders > self.baseline.cancellation_rate
+            ):
+                reason = "cancellation_rate_increased"
+            elif (
+                orders
+                and self.baseline.duplicate_order_rate is not None
+                and duplicates / orders > self.baseline.duplicate_order_rate
+            ):
+                reason = "duplicate_order_rate_increased"
+            elif (
+                successes
+                and self.baseline.cost_per_success_usd is not None
+                and known_cost / successes > self.baseline.cost_per_success_usd * 1.10
+            ):
+                reason = "cost_per_success_above_110_percent"
+        return self._rollback(reason) if reason else None
 
 
 def resolve_task_admission(

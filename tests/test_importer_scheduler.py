@@ -9,6 +9,7 @@ import hashlib
 
 from mac_overrides.adaptive_concurrency import AdaptiveConcurrencyGate
 from mac_overrides.importer_scheduler import start_bounded_importer, stop_bounded_importer
+from mac_overrides.performance_runtime import InflightAdmissionGate
 
 
 class FakePool:
@@ -1014,6 +1015,78 @@ class ImporterSchedulerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "没有可运行的邮箱"):
             start(importer, {"target_count": 1, "concurrency": 1})
         self.assertFalse(importer.running)
+
+    def test_inflight_gate_expands_executor_to_twenty_without_changing_core_limit(self):
+        importer = FakeImporter(available=20, blocked=True)
+        gate = InflightAdmissionGate(8, limit=20, enabled=True)
+        executor_options: list[dict] = []
+
+        def recording_executor(**kwargs):
+            executor_options.append(dict(kwargs))
+            return ThreadPoolExecutor(**kwargs)
+
+        start(
+            importer,
+            {"target_count": 20, "concurrency": 8},
+            inflight_gate=gate,
+            executor_factory=recording_executor,
+        )
+
+        self.assertTrue(self._wait_until(lambda: gate.snapshot()["active"] == 20))
+        self.assertEqual(executor_options[0]["max_workers"], 20)
+        self.assertEqual(importer.task_concurrency, 8)
+        self.assertEqual(gate.snapshot()["waiting"], 0)
+        importer.release_tasks.set()
+        self.assertTrue(importer.finished.wait(2))
+        self.assertEqual(gate.snapshot()["active"], 0)
+
+    def test_inflight_capacity_is_preserved_when_core_admission_gate_exists(self):
+        importer = FakeImporter(available=20, blocked=True)
+        gate = InflightAdmissionGate(8, limit=20, enabled=True)
+        admission = AdaptiveConcurrencyGate(8, ceiling=8)
+        executor_options: list[dict] = []
+
+        def recording_executor(**kwargs):
+            executor_options.append(dict(kwargs))
+            return ThreadPoolExecutor(**kwargs)
+
+        start(
+            importer,
+            {"target_count": 20, "concurrency": 8},
+            task_admission=admission,
+            inflight_gate=gate,
+            executor_factory=recording_executor,
+        )
+
+        self.assertTrue(self._wait_until(lambda: gate.snapshot()["active"] == 20))
+        self.assertEqual(executor_options[0]["max_workers"], 20)
+        self.assertEqual(admission.snapshot()["active"], 8)
+        importer.release_tasks.set()
+        self.assertTrue(importer.finished.wait(2))
+        self.assertEqual(gate.snapshot()["active"], 0)
+
+    def test_staged_inflight_workers_enter_pipeline_without_holding_core_gate(self):
+        importer = FakeImporter(available=20, blocked=True)
+        gate = InflightAdmissionGate(8, limit=20, enabled=True)
+        admission = AdaptiveConcurrencyGate(8, ceiling=8)
+        started: list[str] = []
+
+        start(
+            importer,
+            {"target_count": 20, "concurrency": 8},
+            task_admission=admission,
+            inflight_gate=gate,
+            staged_inflight=True,
+            on_task_started=lambda task_id, _elapsed: started.append(task_id),
+        )
+
+        self.assertTrue(self._wait_until(lambda: gate.snapshot()["active"] == 20))
+        self.assertEqual(importer.max_active, 20)
+        self.assertEqual(admission.snapshot()["active"], 0)
+        self.assertEqual(len(started), 20)
+        importer.release_tasks.set()
+        self.assertTrue(importer.finished.wait(2))
+        self.assertEqual(gate.snapshot()["active"], 0)
 
 
 if __name__ == "__main__":

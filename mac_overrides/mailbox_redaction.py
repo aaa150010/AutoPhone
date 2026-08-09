@@ -22,6 +22,14 @@ def url_credential_secrets(value: Any) -> tuple[str, ...]:
         for component in (parsed.username, parsed.password):
             if component:
                 candidates.extend((component, urllib.parse.unquote(component)))
+        for _key, component in urllib.parse.parse_qsl(
+            parsed.query,
+            keep_blank_values=False,
+        ):
+            if component:
+                candidates.extend((component, urllib.parse.unquote_plus(component)))
+        if parsed.fragment:
+            candidates.extend((parsed.fragment, urllib.parse.unquote(parsed.fragment)))
     except (TypeError, ValueError):
         pass
     return tuple(dict.fromkeys(candidate for candidate in candidates if candidate))
@@ -34,11 +42,17 @@ def redact_mailbox_credentials(error: Any, secrets: Sequence[Any]) -> str:
         for secret in secrets
         if str(secret or "") and not set(str(secret)).issubset({"*"})
     }
-    encoded = {
-        urllib.parse.quote(secret, safe="")
-        for secret in candidates
-        if urllib.parse.quote(secret, safe="") != secret
-    }
+    encoded: set[str] = set()
+    for secret in candidates:
+        # Query-string providers commonly use ``+`` for spaces while path
+        # providers use percent escapes.  Redact both spellings because an
+        # error may echo only one credential fragment rather than the URL.
+        for escaped in (
+            urllib.parse.quote(secret, safe=""),
+            urllib.parse.quote_plus(secret, safe=""),
+        ):
+            if escaped != secret:
+                encoded.add(escaped)
     for secret in sorted(candidates | encoded, key=len, reverse=True):
         if secret.isascii() and text.isascii():
             needle = secret.lower()

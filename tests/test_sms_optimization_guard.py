@@ -81,6 +81,30 @@ class SmsOptimizationGuardTests(unittest.TestCase):
             "cost_per_success_above_110_percent",
         )
 
+    def test_inflight_baseline_reuses_only_parsed_aggregate_rates(self):
+        guard = SmsOptimizationGuard()
+        guard.begin_run(
+            True,
+            baseline={
+                "cancellation_rate": "0.02",
+                "duplicate_order_rate": 0.01,
+                "cost_per_success_usd": "0.10",
+                "api_key": "private-provider-key",
+            },
+        )
+
+        baseline = guard.inflight_rollback_baseline()
+
+        self.assertEqual(
+            baseline,
+            {
+                "cancellation_rate": 0.02,
+                "duplicate_order_rate": 0.01,
+                "cost_per_success_usd": 0.10,
+            },
+        )
+        self.assertNotIn("private-provider-key", str(baseline))
+
     def test_duplicate_orders_need_explicit_provider_reconciliation_metric(self):
         guard = SmsOptimizationGuard()
         guard.begin_run(True, baseline={"duplicate_order_rate": 0.01})

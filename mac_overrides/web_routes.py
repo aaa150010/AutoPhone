@@ -24,6 +24,11 @@ except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
     from mailbox_batch_operations import MailboxBatchRouteController
 
 try:
+    from .mailbox_mutation_routes import MailboxMutationRouteController
+except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
+    from mailbox_mutation_routes import MailboxMutationRouteController
+
+try:
     from .mailbox_state_runtime import mark_mailboxes_unavailable
 except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
     from mailbox_state_runtime import mark_mailboxes_unavailable
@@ -541,42 +546,17 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     )
     app.extensions["gptphone_mailbox_batch_operations"] = mailbox_batch_routes.manager
     api_mailboxes = mailbox_batch_routes.mailboxes
-
-    def mailbox_mutation(operation: str, action: Callable[[dict[str, Any]], dict[str, Any]]):
-        try:
-            data = module.request.get_json(silent=True) or {}
-            result = action(data)
-            if not result.get("ok"):
-                status = 409 if result.get("code") in {
-                    "mailbox_rows_stale",
-                    "mailbox_rows_running",
-                } else 400
-                return module.jsonify(result), status
-            result["mailboxes"] = mailbox_admin.list_mailboxes()
-            result["state"] = public_state()
-            return module.jsonify(result)
-        except Exception as exc:
-            safe = module._safe(exc) if hasattr(module, "_safe") else str(exc)
-            logs.add(f"邮箱管理{operation}失败: {safe}", "error")
-            return module.jsonify(ok=False, error=f"邮箱管理{operation}失败: {safe}"), 500
-
-    def api_mailboxes_import():
-        def action(data):
-            return mailbox_admin.import_mailboxes(data.get("pool_content", ""))
-
-        return mailbox_mutation("导入", action)
-
-    def api_mailboxes_delete():
-        return mailbox_mutation("删除", mailbox_admin.delete_mailboxes)
-
-    def api_mailboxes_restore():
-        return mailbox_mutation("放回可领取", mailbox_admin.restore_mailboxes)
-
-    def api_mailboxes_unavailable():
-        return mailbox_mutation(
-            "设置不可用",
-            lambda data: mark_mailboxes_unavailable(mailbox_admin, data),
-        )
+    mailbox_mutation_routes = MailboxMutationRouteController(
+        module=module,
+        mailbox_admin=mailbox_admin,
+        public_state=public_state,
+        logs=logs,
+        safe_error=context.safe_runtime_error,
+        unavailable_action=lambda admin, payload: mark_mailboxes_unavailable(
+            admin,
+            payload,
+        ),
+    )
 
     def api_mailboxes_website_import():
         node_code = "online_mailbox_upload"
@@ -1457,10 +1437,10 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/accounts", "account_manager", mailbox_manager, ["GET"]),
         ("/settings", "settings_page", mailbox_manager, ["GET"]),
         ("/api/mailboxes", "api_mailboxes", api_mailboxes, ["GET"]),
-        ("/api/mailboxes/import", "api_mailboxes_import", api_mailboxes_import, ["POST"]),
-        ("/api/mailboxes/delete", "api_mailboxes_delete", api_mailboxes_delete, ["POST"]),
-        ("/api/mailboxes/restore", "api_mailboxes_restore", api_mailboxes_restore, ["POST"]),
-        ("/api/mailboxes/unavailable", "api_mailboxes_unavailable", api_mailboxes_unavailable, ["POST"]),
+        ("/api/mailboxes/import", "api_mailboxes_import", mailbox_mutation_routes.import_mailboxes, ["POST"]),
+        ("/api/mailboxes/delete", "api_mailboxes_delete", mailbox_mutation_routes.delete_mailboxes, ["POST"]),
+        ("/api/mailboxes/restore", "api_mailboxes_restore", mailbox_mutation_routes.restore_mailboxes, ["POST"]),
+        ("/api/mailboxes/unavailable", "api_mailboxes_unavailable", mailbox_mutation_routes.unavailable_mailboxes, ["POST"]),
         ("/api/mailboxes/website-import", "api_mailboxes_website_import", api_mailboxes_website_import, ["POST"]),
         ("/api/mailboxes/latest-code", "api_mailboxes_latest_code", api_mailboxes_latest_code, ["POST"]),
         ("/api/mailboxes/password", "api_mailboxes_password", api_mailboxes_password, ["POST"]),

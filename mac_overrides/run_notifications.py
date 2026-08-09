@@ -259,6 +259,11 @@ class RunAggregate:
     started_at: int = 0
     finished_at: int = 0
     last_activity_at: int = 0
+    cost_usd: float = 0.0
+    cost_exchange_rate: float = 0.0
+    cost_exchange_source: str = ""
+    cost_unknown_count: int = 0
+    cost_unsettled_count: int = 0
 
     def __post_init__(self) -> None:
         for name in (
@@ -272,6 +277,8 @@ class RunAggregate:
             "started_at",
             "finished_at",
             "last_activity_at",
+            "cost_unknown_count",
+            "cost_unsettled_count",
         ):
             object.__setattr__(
                 self,
@@ -285,6 +292,21 @@ class RunAggregate:
         if not math.isfinite(cost) or cost < 0:
             raise ValueError("cost_cny must be a non-negative number")
         object.__setattr__(self, "cost_cny", cost)
+        try:
+            usd = float(self.cost_usd)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("cost_usd must be a non-negative number") from exc
+        if not math.isfinite(usd) or usd < 0:
+            raise ValueError("cost_usd must be a non-negative number")
+        object.__setattr__(self, "cost_usd", round(usd, 4))
+        try:
+            exchange_rate = float(self.cost_exchange_rate)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("cost_exchange_rate must be a non-negative number") from exc
+        if not math.isfinite(exchange_rate) or exchange_rate < 0:
+            raise ValueError("cost_exchange_rate must be a non-negative number")
+        object.__setattr__(self, "cost_exchange_rate", round(exchange_rate, 6))
+        object.__setattr__(self, "cost_exchange_source", _text(self.cost_exchange_source)[:32])
 
     @classmethod
     def from_value(cls, value: Any = None) -> RunAggregate:
@@ -309,6 +331,21 @@ class RunAggregate:
             ),
             duration_seconds=_aggregate_value(value.get("duration_seconds", 0), "duration_seconds"),
             cost_cny=value.get("cost_cny", value.get("sms_cost_cny", 0)),
+            cost_usd=value.get("cost_usd", value.get("sms_cost_usd", 0)),
+            cost_exchange_rate=value.get(
+                "cost_exchange_rate", value.get("sms_exchange_rate", 0)
+            ),
+            cost_exchange_source=value.get(
+                "cost_exchange_source", value.get("sms_exchange_source", "")
+            ),
+            cost_unknown_count=_aggregate_value(
+                value.get("cost_unknown_count", value.get("unknown_price_count", 0)),
+                "cost_unknown_count",
+            ),
+            cost_unsettled_count=_aggregate_value(
+                value.get("cost_unsettled_count", value.get("unsettled_order_count", 0)),
+                "cost_unsettled_count",
+            ),
             started_at=_aggregate_value(value.get("started_at", 0), "started_at"),
             finished_at=_aggregate_value(value.get("finished_at", 0), "finished_at"),
             last_activity_at=_aggregate_value(value.get("last_activity_at", 0), "last_activity_at"),
@@ -418,8 +455,27 @@ def _build_message(settings: _SmtpSettings, notification: RunNotification) -> Em
     if aggregate.duration_seconds:
         minutes, seconds = divmod(aggregate.duration_seconds, 60)
         lines.append(f"运行耗时：{minutes} 分 {seconds} 秒")
-    if aggregate.cost_cny:
-        lines.append(f"运行成本：¥{aggregate.cost_cny:.2f}")
+    # Every enabled event carries a cost line, including a zero-cost batch.
+    # Unknown prices and open orders are explicitly marked so estimates are
+    # never presented as the final provider charge.
+    lines.append(
+        f"运行成本：¥{aggregate.cost_cny:.2f} / ${aggregate.cost_usd:.4f}"
+    )
+    cost_flags: list[str] = []
+    if aggregate.cost_unknown_count:
+        cost_flags.append(f"未知价格 {aggregate.cost_unknown_count} 条")
+    if aggregate.cost_unsettled_count:
+        cost_flags.append(f"未结算订单 {aggregate.cost_unsettled_count} 条")
+    if (
+        aggregate.cost_exchange_rate <= 0
+        and (aggregate.cost_usd > 0 or aggregate.cost_cny > 0)
+    ):
+        cost_flags.append("汇率未知")
+    if cost_flags:
+        lines.append("成本状态：暂估，" + "、".join(cost_flags))
+    if aggregate.cost_exchange_source in {"fallback", "stale_cache"}:
+        source_label = "备用汇率" if aggregate.cost_exchange_source == "fallback" else "过期缓存汇率"
+        lines.append(f"汇率说明：使用{source_label}，最终扣费以供应商账单为准")
     if aggregate.started_at:
         lines.append(f"开始时间：{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(aggregate.started_at))}")
     if aggregate.finished_at:
@@ -695,6 +751,11 @@ class RunNotificationCoordinator:
             aggregate.active,
             aggregate.pending,
             aggregate.cost_cny,
+            aggregate.cost_usd,
+            aggregate.cost_exchange_rate,
+            aggregate.cost_exchange_source,
+            aggregate.cost_unknown_count,
+            aggregate.cost_unsettled_count,
             aggregate.last_activity_at,
         )
 

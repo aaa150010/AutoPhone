@@ -1,8 +1,12 @@
 import unittest
+import threading
+import time
 
 from mac_overrides.performance_runtime import (
     ADAPTIVE_TASK_CONCURRENCY,
+    InflightAdmissionGate,
     SMS_QUALITY_OPTIMIZATION,
+    TASK_INFLIGHT_OPTIMIZATION,
     as_bool,
     normalize_feature_flags,
     format_task_admission_event,
@@ -16,16 +20,19 @@ class PerformanceRuntimeTests(unittest.TestCase):
         defaults = normalize_feature_flags({})
         self.assertTrue(defaults[SMS_QUALITY_OPTIMIZATION])
         self.assertTrue(defaults[ADAPTIVE_TASK_CONCURRENCY])
+        self.assertTrue(defaults[TASK_INFLIGHT_OPTIMIZATION])
 
         disabled = normalize_feature_flags(
             {
                 SMS_QUALITY_OPTIMIZATION: "false",
                 ADAPTIVE_TASK_CONCURRENCY: 0,
+                TASK_INFLIGHT_OPTIMIZATION: "off",
                 "unrelated": "kept",
             }
         )
         self.assertFalse(disabled[SMS_QUALITY_OPTIMIZATION])
         self.assertFalse(disabled[ADAPTIVE_TASK_CONCURRENCY])
+        self.assertFalse(disabled[TASK_INFLIGHT_OPTIMIZATION])
         self.assertEqual(disabled["unrelated"], "kept")
 
     def test_unknown_boolean_text_uses_the_requested_default(self):
@@ -58,6 +65,32 @@ class PerformanceRuntimeTests(unittest.TestCase):
             1,
         )
 
+    def test_inflight_limit_defaults_and_is_clamped_without_changing_concurrency(self):
+        defaulted, _changed = migrate_performance_config({"concurrency": 99})
+        self.assertEqual(defaulted["concurrency"], 8)
+        self.assertEqual(defaulted["task_inflight_limit"], 20)
+
+        low, _changed = migrate_performance_config(
+            {"performance_policy_version": 12, "task_inflight_limit": 0}
+        )
+        high, _changed = migrate_performance_config(
+            {"performance_policy_version": 12, "task_inflight_limit": 99}
+        )
+        self.assertEqual(low["task_inflight_limit"], 1)
+        self.assertEqual(high["task_inflight_limit"], 20)
+
+    def test_version_11_migration_does_not_reset_existing_concurrency_choices(self):
+        migrated, changed = migrate_performance_config(
+            {
+                "performance_policy_version": 11,
+                "auto_email_login_concurrency": 1,
+                "phone_max_attempts": 15,
+            }
+        )
+        self.assertTrue(changed)
+        self.assertEqual(migrated["auto_email_login_concurrency"], 1)
+        self.assertEqual(migrated["phone_max_attempts"], 15)
+
     def test_adaptive_admission_is_scoped_to_register_concurrency_eight(self):
         policy = resolve_task_admission(8, run_mode="register", adaptive_enabled=True)
         self.assertEqual(
@@ -88,6 +121,144 @@ class PerformanceRuntimeTests(unittest.TestCase):
         self.assertIn("8 -> 9", message)
         self.assertNotIn("do-not-log", message)
         self.assertIsNone(format_task_admission_event({"old_limit": 0, "new_limit": 8}))
+
+    def test_inflight_gate_reaches_twenty_and_reports_waiting(self):
+        gate = InflightAdmissionGate(8, limit=20, enabled=True)
+        release = threading.Event()
+        entered = threading.Event()
+
+        def worker():
+            with gate.acquire():
+                entered.wait(timeout=5)
+                release.wait(timeout=2)
+
+        threads = [threading.Thread(target=worker) for _ in range(21)]
+        for thread in threads:
+            thread.start()
+        deadline = time.monotonic() + 2
+        while gate.snapshot()["waiting"] != 1 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        snapshot = gate.snapshot()
+        self.assertEqual(snapshot["active"], 20)
+        self.assertEqual(snapshot["waiting"], 1)
+        self.assertEqual(snapshot["effective"], 20)
+        entered.set()
+        release.set()
+        for thread in threads:
+            thread.join(timeout=2)
+        self.assertEqual(gate.snapshot()["active"], 0)
+
+    def test_disabled_inflight_gate_is_the_configured_baseline(self):
+        snapshot = InflightAdmissionGate(7, limit=20, enabled=False).snapshot()
+        self.assertEqual(snapshot, {
+            "configured": 7,
+            "baseline_concurrency": 7,
+            "requested_limit": 20,
+            "effective": 7,
+            "active": 0,
+            "waiting": 0,
+            "optimized": False,
+            "rolled_back": False,
+            "reason": "configured_baseline",
+        })
+
+    def test_inflight_gate_stop_wakes_waiters(self):
+        gate = InflightAdmissionGate(1, limit=1)
+        release = threading.Event()
+        entered = threading.Event()
+        stopped: list[str] = []
+
+        def holder():
+            with gate.acquire():
+                entered.set()
+                release.wait(timeout=2)
+
+        def waiter():
+            try:
+                with gate.acquire():
+                    pass
+            except RuntimeError as exc:
+                stopped.append(str(exc))
+
+        first = threading.Thread(target=holder)
+        second = threading.Thread(target=waiter)
+        first.start()
+        entered.wait(timeout=2)
+        second.start()
+        deadline = time.monotonic() + 2
+        while gate.snapshot()["waiting"] != 1 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        gate.stop()
+        second.join(timeout=2)
+        release.set()
+        first.join(timeout=2)
+        self.assertEqual(stopped, ["task_stopped"])
+        self.assertEqual(gate.snapshot()["waiting"], 0)
+
+    def test_inflight_gate_rolls_back_immediately_and_reason_is_redacted(self):
+        gate = InflightAdmissionGate(8, limit=20)
+        event = gate.report_pressure("secret-token=raw")
+        self.assertEqual(event["reason"], "protocol_pressure")
+        snapshot = gate.snapshot()
+        self.assertEqual(snapshot["effective"], 8)
+        self.assertTrue(snapshot["rolled_back"])
+        self.assertNotIn("secret-token", str(snapshot))
+        self.assertIsNone(gate.report_http_429())
+
+        self.assertEqual(
+            InflightAdmissionGate(8).report_http_429()["reason"],
+            "http_429",
+        )
+        self.assertEqual(
+            InflightAdmissionGate(8).report_session_invalidation()["reason"],
+            "session_invalidation",
+        )
+
+    def test_inflight_gate_rolling_window_rollbacks(self):
+        success_gate = InflightAdmissionGate(8)
+        for _index in range(81):
+            success_gate.observe_task("success")
+        for _index in range(19):
+            event = success_gate.observe_task("failed")
+        self.assertEqual(event["reason"], "success_rate_below_819")
+
+        late_gate = InflightAdmissionGate(8)
+        for index in range(100):
+            event = late_gate.observe_task(
+                "success",
+                {"confirmed_late_code_loss": index in {0, 99}},
+            )
+        self.assertEqual(event["reason"], "two_confirmed_late_code_losses")
+
+        rate_gate = InflightAdmissionGate(
+            8,
+            baseline={"cancellation_rate": 0.05, "duplicate_order_rate": 0.01},
+        )
+        for index in range(100):
+            event = rate_gate.observe_task(
+                "success",
+                {"orders": 1, "cancelled": index < 6},
+            )
+        self.assertEqual(event["reason"], "cancellation_rate_increased")
+
+        duplicate_gate = InflightAdmissionGate(
+            8,
+            baseline={"duplicate_order_rate": 0.01},
+        )
+        for index in range(100):
+            event = duplicate_gate.observe_task(
+                "success",
+                {"orders": 1, "duplicates": index < 2},
+            )
+        self.assertEqual(event["reason"], "duplicate_order_rate_increased")
+
+        cost_gate = InflightAdmissionGate(
+            8,
+            baseline={"cost_per_success_usd": 1.0},
+        )
+        for _index in range(100):
+            event = cost_gate.observe_task("success", {"cost_usd": 1.11})
+        self.assertEqual(event["reason"], "cost_per_success_above_110_percent")
 
 
 if __name__ == "__main__":

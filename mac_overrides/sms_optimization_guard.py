@@ -304,6 +304,19 @@ class SmsOptimizationGuard:
         with self.lock:
             return bool(configured) and (not self.enabled or not self.disabled_reason)
 
+    def inflight_rollback_baseline(self) -> dict[str, float]:
+        """Return only parsed aggregate rates shared by in-flight admission."""
+        with self.lock:
+            return {
+                key: value
+                for key, value in (
+                    ("cancellation_rate", self.baseline.cancellation_rate),
+                    ("duplicate_order_rate", self.baseline.duplicate_order_rate),
+                    ("cost_per_success_usd", self.baseline.cost_per_success_usd),
+                )
+                if value is not None
+            }
+
     def observe_task(self, task_id: Any, status: Any, result: Any = None) -> dict[str, Any] | None:
         key = self._task_key(task_id)
         if not key:

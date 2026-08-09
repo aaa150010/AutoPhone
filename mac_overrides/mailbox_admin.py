@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import hmac
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -20,31 +19,54 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
 try:
     from .chatgpt_totp import (
         mailbox_credential_identity,
-        masked_chatgpt_totp_row,
-        parse_chatgpt_totp_row,
-        parse_mailbox_url_totp_row,
         totp_code as generate_totp_code,
     )
 except ImportError:  # Loaded as a top-level override module by the Mac launcher.
     from chatgpt_totp import (
         mailbox_credential_identity,
-        masked_chatgpt_totp_row,
-        parse_chatgpt_totp_row,
-        parse_mailbox_url_totp_row,
         totp_code as generate_totp_code,
     )
 
 try:
-    from .mailbox_url_runtime import (
-        MailboxUrlClient,
-        masked_mailbox_url_row,
+    from .mailbox_url_runtime import MailboxUrlClient
+except ImportError:  # Loaded as a top-level override module by the Mac launcher.
+    from mailbox_url_runtime import MailboxUrlClient
+
+try:
+    from .mailbox_row_formats import (
+        email_from_row,
+        is_importable_mailbox_row,
+        mailbox_url_from_row,
+        masked_source_row,
+        parse_chatgpt_totp_row,
         parse_mailbox_url_row,
+        parse_mailbox_url_totp_row,
+        parse_mailbox_password_url_row,
+        parse_oauth_mailbox_row,
+        parse_plain_password_mailbox_row,
+        password_from_row,
+        public_task_account,
+        row_id_from_source,
+        row_secrets,
+        totp_secret_from_row,
     )
 except ImportError:  # Loaded as a top-level override module by the Mac launcher.
-    from mailbox_url_runtime import (
-        MailboxUrlClient,
-        masked_mailbox_url_row,
+    from mailbox_row_formats import (
+        email_from_row,
+        is_importable_mailbox_row,
+        mailbox_url_from_row,
+        masked_source_row,
+        parse_chatgpt_totp_row,
         parse_mailbox_url_row,
+        parse_mailbox_url_totp_row,
+        parse_mailbox_password_url_row,
+        parse_oauth_mailbox_row,
+        parse_plain_password_mailbox_row,
+        password_from_row,
+        public_task_account,
+        row_id_from_source,
+        row_secrets,
+        totp_secret_from_row,
     )
 
 try:
@@ -112,21 +134,6 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
         resolve_quota_status,
     )
 
-try:
-    from .plain_mailbox_rows import (
-        masked_plain_password_row,
-        parse_plain_password_mailbox_row,
-    )
-except ImportError:  # Loaded as a top-level override module by the Mac launcher.
-    from plain_mailbox_rows import (
-        masked_plain_password_row,
-        parse_plain_password_mailbox_row,
-    )
-
-
-_EMAIL_RE = re.compile(
-    r"(?i)\b[a-z0-9][a-z0-9._%+-]*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}\b"
-)
 _PROGRESS_FIELDS = ("code", "label", "group", "entered_at", "finished_at", "timing")
 _SECRET_MASK = "********"
 _IMPORT_ORDER_VERSION = 1
@@ -137,114 +144,6 @@ class ConfigStore(Protocol):
     data_dir: str | Path
 
     def load(self) -> dict[str, Any]: ...
-
-
-def email_from_row(row: Any) -> str:
-    match = _EMAIL_RE.search(str(row or ""))
-    return match.group(0).lower() if match else ""
-
-
-def parse_oauth_mailbox_row(row: Any) -> tuple[str, str, str, str] | None:
-    raw = str(row or "").strip()
-    if "----" not in raw:
-        return None
-    parts = [part.strip() for part in raw.split("----")]
-    if len(parts) != 4:
-        return None
-    email = parts[0].lower() if _EMAIL_RE.fullmatch(parts[0]) else ""
-    password, oauth_client_id, oauth_refresh_token = parts[1], parts[2], parts[3]
-    if not email or not password or not oauth_client_id or not oauth_refresh_token:
-        return None
-    return email, password, oauth_client_id, oauth_refresh_token
-
-
-def is_importable_mailbox_row(row: Any) -> bool:
-    raw = str(row or "").strip()
-    if not raw or raw.startswith("#") or not email_from_row(raw):
-        return False
-    return (
-        parse_oauth_mailbox_row(raw) is not None
-        or parse_mailbox_url_totp_row(raw) is not None
-        or parse_chatgpt_totp_row(raw) is not None
-        or parse_mailbox_url_row(raw) is not None
-        or parse_plain_password_mailbox_row(raw) is not None
-    )
-
-
-def password_from_row(row: Any) -> str:
-    raw = str(row or "").strip()
-    if not raw:
-        return ""
-    parsed_oauth = parse_oauth_mailbox_row(raw)
-    if parsed_oauth is not None:
-        return parsed_oauth[1]
-    if parse_mailbox_url_totp_row(raw) is not None or parse_mailbox_url_row(raw) is not None:
-        return ""
-    parsed_totp = parse_chatgpt_totp_row(raw)
-    if parsed_totp is not None:
-        return parsed_totp[1]
-    parsed_plain = parse_plain_password_mailbox_row(raw)
-    if parsed_plain is not None:
-        return parsed_plain[1]
-    delimiter = "----" if "----" in raw else "|" if "|" in raw else ""
-    if not delimiter:
-        return ""
-    parts = [part.strip() for part in raw.split(delimiter)]
-    return parts[1] if len(parts) >= 2 else ""
-
-
-def totp_secret_from_row(row: Any) -> str:
-    """Return the private TOTP seed only for supported TOTP mailbox formats."""
-    parsed_url_totp = parse_mailbox_url_totp_row(row)
-    if parsed_url_totp is not None:
-        return str(parsed_url_totp[2] or "").strip()
-    parsed_totp = parse_chatgpt_totp_row(row)
-    if parsed_totp is not None:
-        return str(parsed_totp[2] or "").strip()
-    return ""
-
-
-def mailbox_url_from_row(row: Any) -> str:
-    """Return the transient mailbox page URL for a supported source row."""
-
-    parsed_url_totp = parse_mailbox_url_totp_row(row)
-    if parsed_url_totp is not None:
-        return str(parsed_url_totp[1] or "").strip()
-    parsed_url = parse_mailbox_url_row(row)
-    return str(parsed_url.mailbox_url or "").strip() if parsed_url is not None else ""
-
-
-def row_id_from_source(row: Any) -> str:
-    return hashlib.sha256(str(row or "").encode("utf-8")).hexdigest()
-
-
-def public_task_account(task: Any, source_row: Any = "") -> str:
-    """Reduce any recovered account label to its public email address."""
-    value = task if isinstance(task, Mapping) else {}
-    for candidate in (value.get("email"), value.get("account"), source_row):
-        email = email_from_row(candidate)
-        if email:
-            return email
-    return ""
-
-
-def masked_source_row(row: Any) -> str:
-    raw = str(row or "").strip()
-    email = email_from_row(raw)
-    if not email:
-        return ""
-    if parse_oauth_mailbox_row(raw) is not None:
-        return "----".join((email, _SECRET_MASK, _SECRET_MASK, _SECRET_MASK))
-    if parse_mailbox_url_totp_row(raw) is not None:
-        return "----".join((email, _SECRET_MASK, _SECRET_MASK))
-    if parse_chatgpt_totp_row(raw) is not None:
-        return masked_chatgpt_totp_row(raw, _SECRET_MASK)
-    if parse_mailbox_url_row(raw) is not None:
-        return masked_mailbox_url_row(raw, _SECRET_MASK)
-    masked_plain = masked_plain_password_row(raw, _SECRET_MASK)
-    if masked_plain:
-        return masked_plain
-    return email
 
 
 def resolve_config_path(store: ConfigStore, value: Any) -> Path:
@@ -502,24 +401,7 @@ class MailboxAdminService(MailboxSourceLockMixin):
 
     @staticmethod
     def _row_secrets(row: str) -> tuple[str, ...]:
-        values = [row, email_from_row(row), password_from_row(row)]
-        if "|" in row:
-            values.extend(part.strip() for part in row.split("|")[1:])
-        oauth = parse_oauth_mailbox_row(row)
-        if oauth is not None:
-            values.extend(oauth)
-        totp = parse_chatgpt_totp_row(row)
-        if totp is not None:
-            values.extend(totp)
-        url_totp = parse_mailbox_url_totp_row(row)
-        if url_totp is not None:
-            values.extend(url_totp)
-            values.extend(url_credential_secrets(url_totp[1]))
-        url_row = parse_mailbox_url_row(row)
-        if url_row is not None:
-            values.extend((url_row.email, url_row.mailbox_url))
-            values.extend(url_credential_secrets(url_row.mailbox_url))
-        return tuple(dict.fromkeys(value for value in values if value))
+        return row_secrets(row)
 
     def pool_row_by_line(self, line_no: Any) -> tuple[str, str]:
         try:
@@ -640,11 +522,7 @@ class MailboxAdminService(MailboxSourceLockMixin):
         if not row:
             return {"ok": False, "error": "没有找到这一行邮箱"}
 
-        parsed_url_totp = parse_mailbox_url_totp_row(row)
-        parsed_url = parse_mailbox_url_row(row)
-        mailbox_url = parsed_url_totp[1] if parsed_url_totp is not None else (
-            parsed_url.mailbox_url if parsed_url is not None else ""
-        )
+        mailbox_url = mailbox_url_from_row(row)
         if mailbox_url:
             try:
                 reader = self.mailbox_url_reader_factory(
@@ -1086,16 +964,24 @@ class MailboxAdminService(MailboxSourceLockMixin):
         if not new_lines:
             return {"ok": False, "error": "请粘贴要导入的邮箱"}
 
+        # ``runtime_status`` is backed by the importer and takes its own
+        # lock before asking the mailbox pool for a summary.  Do that lookup
+        # before taking the source flock; otherwise an importer worker that
+        # already owns its lock can wait on this flock while this request
+        # waits on the importer lock (source flock -> importer lock versus
+        # importer lock -> source flock).
+        run_active = False
+        config_for_status = self._config()
+        if callable(self.runtime_status):
+            try:
+                runtime = self.runtime_status(config_for_status)
+                run_active = bool(
+                    runtime.get("running") if isinstance(runtime, Mapping) else False
+                )
+            except Exception:
+                run_active = False
+
         with self._locked_pool_config() as config:
-            run_active = False
-            if callable(self.runtime_status):
-                try:
-                    runtime = self.runtime_status(config)
-                    run_active = bool(
-                        runtime.get("running") if isinstance(runtime, Mapping) else False
-                    )
-                except Exception:
-                    run_active = False
             old_lines = self._read_pool_lines(config)
             import_order = self._reconcile_import_order(old_lines)
             seen = {
@@ -1718,6 +1604,7 @@ __all__ = [
     "masked_source_row",
     "parse_chatgpt_totp_row",
     "parse_mailbox_url_row",
+    "parse_mailbox_password_url_row",
     "parse_oauth_mailbox_row",
     "parse_plain_password_mailbox_row",
     "password_from_row",

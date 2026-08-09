@@ -155,6 +155,8 @@ def start_bounded_importer(
     executor_factory: Callable[..., Any] = ThreadPoolExecutor,
     thread_factory: Callable[..., Any] = threading.Thread,
     task_admission: Any = None,
+    inflight_gate: Any = None,
+    staged_inflight: bool = False,
     email_phase_gate_factory: Callable[[int], Any] | None = None,
     node_phase_gate_factory: Callable[[int], Any] | None = None,
     on_task_started: Callable[[str, float], Any] | None = None,
@@ -163,6 +165,11 @@ def start_bounded_importer(
 ) -> None:
     """Start only the requested number of reserved pool entries."""
     relogin = _is_relogin(settings)
+    if relogin:
+        # Relogin retains the original scheduler path regardless of callers'
+        # optional gate arguments.
+        inflight_gate = None
+    staged_inflight = bool(staged_inflight and inflight_gate is not None)
     if relogin:
         validation_settings = dict(settings)
         validation_settings.update(
@@ -193,13 +200,36 @@ def start_bounded_importer(
     concurrency = _bounded_int(settings.get("concurrency"), 5, 1, 8)
     worker_count = min(target, concurrency)
     worker_capacity = worker_count
+    # The optional in-flight gate expands executor staging while preserving
+    # the recovered ``concurrency`` admission baseline inside each worker.
+    if inflight_gate is not None and not relogin:
+        try:
+            inflight_snapshot = inflight_gate.snapshot()
+            worker_capacity = min(
+                target,
+                max(
+                    worker_capacity,
+                    int(inflight_snapshot.get("effective") or worker_capacity),
+                ),
+            )
+        except Exception:
+            pass
     if task_admission is not None:
         try:
-            worker_capacity = min(
+            admission_capacity = min(
                 target,
                 _MAX_WORKER_CAPACITY,
                 max(worker_count, int(task_admission.snapshot().get("ceiling") or worker_count)),
             )
+            worker_capacity = admission_capacity
+            if inflight_gate is not None and not relogin:
+                worker_capacity = min(
+                    target,
+                    max(
+                        admission_capacity,
+                        int(inflight_gate.snapshot().get("effective") or admission_capacity),
+                    ),
+                )
         except Exception:
             worker_capacity = worker_count
     email_login_concurrency = _bounded_int(
@@ -352,11 +382,6 @@ def start_bounded_importer(
         startup_gate.wait()
         if not startup_ready.is_set():
             return
-        if task_admission is None:
-            record_batch("mark_started", task_id)
-            importer._run_one(task_settings, ordinal, entry, task_id)
-            return
-
         wait_seconds = 0.0
 
         def observed_wait(value: float) -> None:
@@ -364,7 +389,33 @@ def start_bounded_importer(
             wait_seconds = max(0.0, float(value))
 
         business_started = False
-        try:
+
+        def observe_inflight_result() -> None:
+            if inflight_gate is None:
+                return
+            observer = getattr(inflight_gate, "observe_task", None)
+            if not callable(observer):
+                return
+            try:
+                with importer.lock:
+                    task = copy.deepcopy(importer.tasks.get(task_id) or {})
+                observer(task.get("status"), task.get("result"))
+            except Exception:
+                # Rollback telemetry must never change task outcome semantics.
+                pass
+
+        def run_admitted() -> None:
+            nonlocal business_started
+            if task_admission is None or staged_inflight:
+                if callable(on_task_started):
+                    try:
+                        on_task_started(task_id, 0.0)
+                    except Exception:
+                        pass
+                record_batch("mark_started", task_id)
+                business_started = True
+                importer._run_one(task_settings, ordinal, entry, task_id)
+                return
             acquire_options = {
                 "stop_event": importer.stop_event,
                 "on_wait": observed_wait,
@@ -372,9 +423,7 @@ def start_bounded_importer(
             }
             if admission_tracks_pending:
                 acquire_options["registered_pending"] = True
-            with task_admission.acquire(
-                **acquire_options,
-            ):
+            with task_admission.acquire(**acquire_options):
                 if callable(on_task_started):
                     try:
                         on_task_started(task_id, wait_seconds)
@@ -383,6 +432,16 @@ def start_bounded_importer(
                 record_batch("mark_started", task_id)
                 business_started = True
                 importer._run_one(task_settings, ordinal, entry, task_id)
+
+        try:
+            if inflight_gate is None:
+                run_admitted()
+            else:
+                with inflight_gate.acquire(stop_event=importer.stop_event):
+                    try:
+                        run_admitted()
+                    finally:
+                        observe_inflight_result()
         except Exception as exc:
             if business_started:
                 raise
@@ -405,6 +464,7 @@ def start_bounded_importer(
         importer.node_gate = node_factory(node_concurrency)
         importer.task_concurrency = worker_count
         importer.task_admission = task_admission
+        importer.inflight_gate = inflight_gate
         importer.running = True
         importer.tasks = {}
         importer.cancelled_waiting = 0
@@ -492,7 +552,7 @@ def start_bounded_importer(
                 )
 
             register_pending = getattr(task_admission, "register_pending", None)
-            if callable(register_pending):
+            if callable(register_pending) and not staged_inflight:
                 register_pending(target)
                 admission_tracks_pending = True
 
@@ -669,6 +729,16 @@ def stop_bounded_importer(importer: Any) -> None:
     if task_admission is not None:
         try:
             task_admission.wake_all()
+        except Exception:
+            pass
+    inflight_gate = getattr(importer, "inflight_gate", None)
+    if inflight_gate is not None:
+        try:
+            stop = getattr(inflight_gate, "stop", None)
+            if callable(stop):
+                stop()
+            else:
+                inflight_gate.wake_all()
         except Exception:
             pass
     cleanup_failures = 0

@@ -7,9 +7,12 @@ import hashlib
 import json
 from pathlib import Path
 import tempfile
+import threading
+import time
 import unittest
 from unittest.mock import patch
 
+import mac_overrides.mailbox_source_lock as source_lock
 from mac_overrides.mailbox_admin import MailboxAdminService, row_id_from_source
 from mac_overrides.mailbox_state_runtime import mark_mailboxes_unavailable
 
@@ -121,6 +124,108 @@ class MailboxSourceLockTests(unittest.TestCase):
         self.assertTrue(imported["ok"])
         self.assertEqual(deleted, {"ok": True, "deleted": 1})
         self.assertEqual(len(self.validations), 4)
+
+    def _direct_lock_factory_marker(self):
+        """Make the source module select its bounded recovered-lock path."""
+        def marker(_name):
+            raise AssertionError("the direct timed path should be used")
+
+        marker.__module__ = "file_safety"
+        marker.__name__ = "named_file_lock"
+        marker.__wrapped__ = marker
+        return marker
+
+    def test_source_lock_timeout_releases_process_lock_and_file_handle(self):
+        lock_name = "self_mailbox_source_timeout-test.lock"
+        lock_path = self.root / "locks" / lock_name
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        holder = lock_path.open("a+b")
+        fcntl.flock(holder.fileno(), fcntl.LOCK_EX)
+        marker = self._direct_lock_factory_marker()
+
+        with patch.object(source_lock, "_named_file_lock", marker), patch.object(
+            source_lock, "_runtime_path", lambda *_parts: self.root / "locks"
+        ), patch.object(source_lock, "SOURCE_LOCK_POLL_SECONDS", 0.005):
+            started = time.monotonic()
+            with self.assertRaises(source_lock.MailboxSourceLockTimeout) as raised:
+                with source_lock._timed_source_file_lock(lock_name, 0.06):
+                    pass
+            elapsed = time.monotonic() - started
+
+            self.assertEqual(raised.exception.code, "mailbox_source_lock_timeout")
+            self.assertLess(elapsed, 0.5)
+
+            # The timeout path must release the in-process RLock and close its
+            # descriptor; after the external holder releases, acquisition works.
+            fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
+            with source_lock._timed_source_file_lock(lock_name, 0.5):
+                pass
+        holder.close()
+
+    def test_source_lock_waits_for_external_release_before_deadline(self):
+        lock_name = "self_mailbox_source_release-test.lock"
+        lock_path = self.root / "locks" / lock_name
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        holder = lock_path.open("a+b")
+        fcntl.flock(holder.fileno(), fcntl.LOCK_EX)
+        marker = self._direct_lock_factory_marker()
+        acquired = threading.Event()
+        errors: list[Exception] = []
+
+        def worker():
+            try:
+                with source_lock._timed_source_file_lock(lock_name, 0.8):
+                    acquired.set()
+            except Exception as exc:  # pragma: no cover - assertion below reports it.
+                errors.append(exc)
+
+        with patch.object(source_lock, "_named_file_lock", marker), patch.object(
+            source_lock, "_runtime_path", lambda *_parts: self.root / "locks"
+        ), patch.object(source_lock, "SOURCE_LOCK_POLL_SECONDS", 0.005):
+            thread = threading.Thread(target=worker)
+            thread.start()
+            time.sleep(0.08)
+            self.assertFalse(acquired.is_set())
+            fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
+            thread.join(1.0)
+
+        holder.close()
+        self.assertFalse(errors, errors)
+        self.assertTrue(acquired.is_set())
+
+    def test_source_lock_cleans_up_after_body_exception(self):
+        lock_name = "self_mailbox_source_exception-test.lock"
+        marker = self._direct_lock_factory_marker()
+        with patch.object(source_lock, "_named_file_lock", marker), patch.object(
+            source_lock, "_runtime_path", lambda *_parts: self.root / "locks"
+        ):
+            with self.assertRaisesRegex(RuntimeError, "body failure"):
+                with source_lock._timed_source_file_lock(lock_name, 0.5):
+                    raise RuntimeError("body failure")
+            with source_lock._timed_source_file_lock(lock_name, 0.5):
+                pass
+
+    def test_import_queries_runtime_before_taking_source_flock(self):
+        """Importer status may read the same pool lock without a lock cycle."""
+        self._write_pool(["existing@example.com----existing-password"])
+
+        def runtime_status(config):
+            pool_path = Path(config["pool_path"])
+            if not pool_path.is_absolute():
+                pool_path = self.root / pool_path
+            digest = hashlib.sha256(str(pool_path.resolve()).encode("utf-8")).hexdigest()[:16]
+            with self.lock_factory(f"self_mailbox_source_{digest}.lock"):
+                return {"running": False, "tasks": []}
+
+        self.service.runtime_status = runtime_status
+        with patch("mac_overrides.mailbox_source_lock._named_file_lock", self.lock_factory):
+            result = self.service.import_mailboxes(
+                "trilby.buskins_8l@example.test---https://mail.example.test/m/fake-token-one\n"
+                "fugues.17.brut@example.test---https://mail.example.test/pickup?key=fake-token-two"
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["imported"], 2)
 
 
 if __name__ == "__main__":
