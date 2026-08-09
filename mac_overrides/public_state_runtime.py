@@ -27,6 +27,7 @@ class PublicStateRuntime:
         sms_alerts_getter: Callable[[], Any],
         task_progress_getter: Callable[[], Any],
         current_task_admission_getter: Callable[[], Any],
+        inflight_gate_getter: Callable[[], Any] | None = None,
         protocol_gate_getter: Callable[[], Any],
         sms_phone_gate_getter: Callable[[], Any],
         notification_context_for: Callable[[], Any],
@@ -56,6 +57,7 @@ class PublicStateRuntime:
         self.sms_alerts_getter = sms_alerts_getter
         self.task_progress_getter = task_progress_getter
         self.current_task_admission_getter = current_task_admission_getter
+        self.inflight_gate_getter = inflight_gate_getter
         self.protocol_gate_getter = protocol_gate_getter
         self.sms_phone_gate_getter = sms_phone_gate_getter
         self.sms_optimization_guard_getter = sms_optimization_guard_getter
@@ -297,6 +299,20 @@ class PublicStateRuntime:
             "sms_cost_cny": round(cost_cny, 4),
         }
 
+    def mailbox_pool_summary(self) -> dict[str, Any]:
+        try:
+            result = self.mailbox_admin.list_mailboxes()
+        except Exception:
+            return {}
+        counts = result.get("counts") if isinstance(result, dict) else {}
+        if not isinstance(counts, dict):
+            return {}
+        return {
+            key: copy.deepcopy(counts[key])
+            for key in ("total", "available", "running", "success", "failed")
+            if key in counts
+        }
+
     def notification_public_status(self) -> dict[str, Any]:
         context = self.notification_context_for()
         if not isinstance(context, dict):
@@ -492,6 +508,50 @@ class PublicStateRuntime:
                     if isinstance(task, dict)
                     and str(task.get("status") or "").strip().lower() == "queued"
                 )
+                concurrency["core"] = {
+                    "baseline_concurrency": task_capacity.get(
+                        "base",
+                        task_capacity.get("limit"),
+                    ),
+                    "effective_limit": task_capacity.get("limit"),
+                    "active_count": task_capacity.get("active", 0),
+                    "waiting_count": task_capacity.get("waiting", 0),
+                }
+            inflight_getter = self.inflight_gate_getter
+            if callable(inflight_getter):
+                try:
+                    inflight = inflight_getter()
+                    inflight_snapshot = getattr(inflight, "snapshot", None)
+                    if callable(inflight_snapshot):
+                        inflight_state = copy.deepcopy(inflight_snapshot())
+                        if isinstance(inflight_state, dict):
+                            # Keep the gate's compatibility keys while exposing
+                            # the dashboard contract with explicit meanings.
+                            inflight_state.update(
+                                configured_limit=inflight_state.get(
+                                    "requested_limit",
+                                    inflight_state.get("effective"),
+                                ),
+                                baseline_concurrency=inflight_state.get(
+                                    "baseline_concurrency",
+                                    inflight_state.get("configured"),
+                                ),
+                                task_inflight_limit=inflight_state.get(
+                                    "requested_limit",
+                                    inflight_state.get("effective"),
+                                ),
+                                effective_limit=inflight_state.get("effective"),
+                                active_count=inflight_state.get("active", 0),
+                                waiting_count=inflight_state.get("waiting", 0),
+                                fallback_reason=(
+                                    inflight_state.get("reason")
+                                    if inflight_state.get("rolled_back")
+                                    else ""
+                                ),
+                            )
+                        concurrency["inflight"] = inflight_state
+                except Exception:
+                    pass
             local_config = self.read_local_config()
             concurrency["protocol"] = self.protocol_gate_getter().snapshot(
                 local_config.get("proxy")
@@ -517,6 +577,11 @@ class PublicStateRuntime:
                     pass
             if resources:
                 runtime["resources"] = resources
+            mailbox_pool = self.mailbox_pool_summary()
+            if mailbox_pool:
+                existing_pool = runtime.get("pool")
+                pool = existing_pool if isinstance(existing_pool, dict) else {}
+                runtime["pool"] = {**copy.deepcopy(pool), **mailbox_pool}
             raw_tasks = runtime.get("tasks") if isinstance(runtime.get("tasks"), list) else []
             runtime["tasks"] = [self.public_task_view(task) for task in raw_tasks]
             runtime["summary"] = self.runtime_summary_view(runtime["tasks"])

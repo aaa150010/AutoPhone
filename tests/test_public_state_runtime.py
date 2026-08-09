@@ -144,6 +144,58 @@ class PublicStateRuntimeTests(unittest.TestCase):
         self.assertEqual(summary["success"], 0)
         self.assertEqual(summary["sms_cost_cny"], 0)
 
+    def test_masked_state_uses_mailbox_admin_pool_counts(self):
+        mailbox_admin = SimpleNamespace(
+            list_mailboxes=lambda: {
+                "counts": {
+                    "total": 9,
+                    "available": 4,
+                    "running": 2,
+                    "success": 2,
+                    "failed": 1,
+                }
+            }
+        )
+        runtime = PublicStateRuntime(
+            clean=self.runtime.clean,
+            secret_mask=self.runtime.secret_mask,
+            sms_runtime=self.runtime.sms_runtime,
+            sms_provider_pools_from_config=self.runtime.sms_provider_pools_from_config,
+            sms_keys_from_config=self.runtime.sms_keys_from_config,
+            read_local_config=self.runtime.read_local_config,
+            mailbox_admin=mailbox_admin,
+            error_observability=self.runtime.error_observability,
+            task_progress_runtime=self.runtime.task_progress_runtime,
+            sms_provider_registry_getter=self.runtime.sms_provider_registry_getter,
+            sms_alerts_getter=self.runtime.sms_alerts_getter,
+            task_progress_getter=self.runtime.task_progress_getter,
+            current_task_admission_getter=self.runtime.current_task_admission_getter,
+            protocol_gate_getter=self.runtime.protocol_gate_getter,
+            sms_phone_gate_getter=self.runtime.sms_phone_gate_getter,
+            notification_context_for=self.runtime.notification_context_for,
+            known_task_failure=self.runtime.known_task_failure,
+            historical_success_reasons=self.runtime.historical_success_reasons,
+            task_id_log_re=self.runtime.task_id_log_re,
+            public_log_input_limit=self.runtime.public_log_input_limit,
+        )
+
+        masked = runtime.masked_state({
+            "runtime": {
+                "pool": {"provider": "legacy", "available": 99, "note": "keep"},
+                "tasks": [],
+            }
+        })
+
+        self.assertEqual(masked["runtime"]["pool"], {
+            "provider": "legacy",
+            "available": 4,
+            "note": "keep",
+            "total": 9,
+            "running": 2,
+            "success": 2,
+            "failed": 1,
+        })
+
     def test_public_task_exposes_only_mailbox_url_capability(self):
         source_row = "url@example.test|https://mail.example.test/inbox/private-token"
 
