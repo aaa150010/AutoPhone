@@ -8,7 +8,6 @@ import {
   Delete,
   Key,
   Link,
-  Loading,
   MoreFilled,
   RefreshLeft,
   RefreshRight,
@@ -27,7 +26,7 @@ const props = defineProps<{
   loadingTotp: string[]
   loadingQuotas: string[]
   quotaRetryDisabled: boolean
-  rowActionDisabled: boolean
+  rowMutationDisabled: boolean
   rowActionLoading: string[]
 }>()
 
@@ -315,19 +314,17 @@ defineExpose({ clearSelection })
       <template #default="{ row }">
         <el-dropdown
           trigger="click"
-          :disabled="rowActionDisabled || rowActionLoading(row)"
+          :disabled="rowActionLoading(row)"
           @command="handleDropdownCommand($event, row)"
         >
           <el-tooltip content="打开该账号的常用操作" placement="top">
             <el-button
               link
               class="row-action-button"
-              :disabled="rowActionDisabled"
               :loading="rowActionLoading(row)"
               aria-label="打开该账号的常用操作"
             >
-              <el-icon v-if="rowActionLoading(row)" class="is-loading"><Loading /></el-icon>
-              <el-icon v-else><MoreFilled /></el-icon>
+              <el-icon><MoreFilled /></el-icon>
             </el-button>
           </el-tooltip>
           <template #dropdown>
@@ -344,28 +341,49 @@ defineExpose({ clearSelection })
               <el-dropdown-item v-if="row.has_mailbox_url" command="open_url">
                 <el-icon><Link /></el-icon>打开取件 URL
               </el-dropdown-item>
-              <el-dropdown-item v-if="row.status === 'available'" command="manual_used">
+              <el-dropdown-item
+                v-if="row.status === 'available'"
+                command="manual_used"
+                :disabled="rowMutationDisabled"
+              >
                 <el-icon><CircleCheck /></el-icon>标记已手动接码
               </el-dropdown-item>
               <el-dropdown-item
                 v-if="row.status === 'consumed' && row.manual_sms_received"
                 command="manual_unused"
+                :disabled="rowMutationDisabled"
               >
                 <el-icon><RefreshLeft /></el-icon>标记未用并放回可用
               </el-dropdown-item>
-              <el-dropdown-item v-if="row.status === 'available'" command="draft">
+              <el-dropdown-item
+                v-if="row.status === 'available'"
+                command="draft"
+                :disabled="rowMutationDisabled"
+              >
                 <el-icon><Box /></el-icon>放入草稿箱
               </el-dropdown-item>
-              <el-dropdown-item v-if="row.status === 'failed'" command="restore">
+              <el-dropdown-item
+                v-if="row.status === 'failed'"
+                command="restore"
+                :disabled="rowMutationDisabled"
+              >
                 <el-icon><RefreshLeft /></el-icon>恢复可用
               </el-dropdown-item>
-              <el-dropdown-item v-if="row.status === 'available'" command="unavailable">
+              <el-dropdown-item
+                v-if="row.status === 'available'"
+                command="unavailable"
+                :disabled="rowMutationDisabled"
+              >
                 <el-icon><CircleCloseFilled /></el-icon>设置不可用
               </el-dropdown-item>
-              <el-dropdown-item v-if="needsSub2Rerun(row.sub2_status)" command="relogin">
+              <el-dropdown-item
+                v-if="needsSub2Rerun(row.sub2_status)"
+                command="relogin"
+                :disabled="rowMutationDisabled"
+              >
                 <el-icon><RefreshRight /></el-icon>重登并更新 SUB2
               </el-dropdown-item>
-              <el-dropdown-item command="delete">
+              <el-dropdown-item command="delete" :disabled="rowMutationDisabled">
                 <el-icon class="danger-icon"><Delete /></el-icon>
                 <span class="danger-label">删除</span>
               </el-dropdown-item>

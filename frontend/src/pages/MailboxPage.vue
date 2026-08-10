@@ -593,7 +593,7 @@ onUnmounted(() => {
           :loading-totp="loadingTotp"
           :loading-quotas="retryingQuotaRows"
           :quota-retry-disabled="mutating || batchBusy"
-          :row-action-disabled="mutating || batchBusy"
+          :row-mutation-disabled="mutating || batchBusy"
           :row-action-loading="rowActionLoading"
           @select="selectedRows = $event"
           @email="copyEmail"
