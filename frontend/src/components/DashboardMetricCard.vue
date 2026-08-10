@@ -10,6 +10,12 @@ const props = defineProps<{
   compact?: boolean
   framed?: boolean
   detail?: string
+  interactive?: boolean
+  active?: boolean
+}>()
+
+const emit = defineEmits<{
+  activate: []
 }>()
 
 const numericValue = computed(() => (
@@ -18,9 +24,16 @@ const numericValue = computed(() => (
 </script>
 
 <template>
-  <div
+  <component
+    :is="interactive ? 'button' : 'div'"
+    :type="interactive ? 'button' : undefined"
     class="metric-card"
-    :class="[`tone-${tone || 'primary'}`, { compact, framed, 'is-numeric': numericValue !== null }]"
+    :class="[
+      `tone-${tone || 'primary'}`,
+      { compact, framed, active, 'is-interactive': interactive, 'is-numeric': numericValue !== null },
+    ]"
+    :aria-pressed="interactive ? active : undefined"
+    @click="interactive && emit('activate')"
   >
     <el-icon class="metric-icon"><component :is="icon" /></el-icon>
     <div class="metric-copy">
@@ -31,12 +44,18 @@ const numericValue = computed(() => (
       </strong>
       <small v-if="detail" class="metric-detail">{{ detail }}</small>
     </div>
-  </div>
+  </component>
 </template>
 
 <style scoped>
-.metric-card { display: flex; align-items: center; gap: 11px; width: 100%; min-width: 0; min-height: 78px; padding: 8px 10px; text-align: left; }
+.metric-card { display: flex; align-items: center; gap: 11px; width: 100%; min-width: 0; min-height: 78px; padding: 8px 10px; border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: 0; text-align: left; }
 .metric-card.framed { height: 78px; border: 1px solid var(--workspace-border); border-radius: 6px; background: #fff; box-shadow: 0 1px 3px rgba(22, 34, 51, .07); }
+.metric-card.is-interactive { cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease, background-color .16s ease, transform .16s ease; }
+.metric-card.is-interactive:hover { transform: translateY(-1px); border-color: var(--el-color-primary-light-5); background: var(--el-color-primary-light-9); box-shadow: 0 4px 10px rgba(22, 34, 51, .13); }
+.metric-card.is-interactive:focus-visible { outline: 2px solid var(--el-color-primary-light-5); outline-offset: 2px; }
+.metric-card.is-interactive.active { border-color: var(--el-color-primary); background: var(--el-color-primary-light-9); box-shadow: 0 0 0 1px var(--el-color-primary-light-5), 0 3px 8px rgba(22, 34, 51, .1); }
+.metric-card.is-interactive:active { transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) { .metric-card.is-interactive { transition: none; } }
 .metric-icon { display: grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px; border-radius: 6px; font-size: 19px; }
 .metric-copy { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
 .metric-copy > span { overflow: hidden; color: var(--el-text-color-secondary); font-size: 13px; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }

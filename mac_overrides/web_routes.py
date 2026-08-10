@@ -29,8 +29,10 @@ except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
     from mailbox_mutation_routes import MailboxMutationRouteController
 
 try:
+    from .batch_identity import allocate_run_batch_id
     from .mailbox_state_runtime import mark_mailboxes_unavailable
 except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
+    from batch_identity import allocate_run_batch_id
     from mailbox_state_runtime import mark_mailboxes_unavailable
 
 try:
@@ -458,7 +460,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             context.sms_key_pool.begin_run()
             context.sms_phone_gate.begin_run()
             try:
-                context.preflight_sms_pool(cfg, logs=logs, importer=importer)
+                sms_statuses = context.preflight_sms_pool(cfg, logs=logs, importer=importer)
             except ValueError as exc:
                 return module.jsonify(
                     ok=False,
@@ -468,11 +470,13 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             run_config = dict(cfg)
             batch_started_at = int(time.time())
             run_config["batch_started_at"] = batch_started_at
-            run_config["batch_id"] = (
-                f"{time.strftime('%Y%m%d-%H%M%S', time.localtime(batch_started_at))}-"
-                f"{uuid.uuid4().hex[:6]}"
-            )
+            run_config["batch_id"] = allocate_run_batch_id(context, batch_started_at, logs)
             run_config["_gptphone_upload_targets"] = upload_targets
+            run_config["_gptphone_sms_preflight_statuses"] = [
+                dict(row)
+                for row in sms_statuses or ()
+                if isinstance(row, Mapping)
+            ]
             if run_mailbox_rows:
                 run_config["target_count"] = len(run_mailbox_rows)
                 run_config["_gptphone_run_mailbox_rows"] = run_mailbox_rows
@@ -721,10 +725,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 run_mode="relogin",
                 target_count=len(rows),
                 batch_started_at=batch_started_at,
-                batch_id=(
-                    f"relogin-{time.strftime('%Y%m%d-%H%M%S', time.localtime(batch_started_at))}-"
-                    f"{uuid.uuid4().hex[:6]}"
-                ),
+                batch_id=allocate_run_batch_id(context, batch_started_at, logs),
                 _gptphone_upload_targets={"pixel": False, "nv": False},
                 _gptphone_relogin_rows=rows,
                 _gptphone_run_mailbox_rows=[
@@ -1437,10 +1438,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/accounts", "account_manager", mailbox_manager, ["GET"]),
         ("/settings", "settings_page", mailbox_manager, ["GET"]),
         ("/api/mailboxes", "api_mailboxes", api_mailboxes, ["GET"]),
-        ("/api/mailboxes/import", "api_mailboxes_import", mailbox_mutation_routes.import_mailboxes, ["POST"]),
-        ("/api/mailboxes/delete", "api_mailboxes_delete", mailbox_mutation_routes.delete_mailboxes, ["POST"]),
-        ("/api/mailboxes/restore", "api_mailboxes_restore", mailbox_mutation_routes.restore_mailboxes, ["POST"]),
-        ("/api/mailboxes/unavailable", "api_mailboxes_unavailable", mailbox_mutation_routes.unavailable_mailboxes, ["POST"]),
+        *mailbox_mutation_routes.routes(),
         ("/api/mailboxes/website-import", "api_mailboxes_website_import", api_mailboxes_website_import, ["POST"]),
         ("/api/mailboxes/latest-code", "api_mailboxes_latest_code", api_mailboxes_latest_code, ["POST"]),
         ("/api/mailboxes/password", "api_mailboxes_password", api_mailboxes_password, ["POST"]),

@@ -2,53 +2,55 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  CircleCheckFilled,
-  CircleCloseFilled,
-  Collection,
   Connection,
   DataAnalysis,
-  Message,
   MessageBox,
   Search,
-  VideoPlay,
 } from '@element-plus/icons-vue'
 import {
   api,
   ApiError,
   exportMailboxSub2,
-  getMailboxUrl,
-  getMailboxTotp,
   getMailboxes,
   importWebsiteMailboxes,
+  moveMailboxRowsToDraft,
   queryMailboxQuotas,
   reloginMailboxRows,
+  restoreMailboxDraftRows,
   retryMailboxPixel,
   setMailboxRowsUnavailable,
 } from '../api/client'
-import DashboardMetricCard from '../components/DashboardMetricCard.vue'
 import MailboxActionMenus from '../components/MailboxActionMenus.vue'
+import MailboxDraftDialog from '../components/MailboxDraftDialog.vue'
 import MailboxImportDialog from '../components/MailboxImportDialog.vue'
+import MailboxMetrics from '../components/MailboxMetrics.vue'
 import MailboxTable from '../components/MailboxTable.vue'
 import PageToolbar from '../components/PageToolbar.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useAppController } from '../composables/useAppController'
 import { useMailboxBatchOperations } from '../composables/useMailboxBatchOperations'
+import { useMailboxRowActions } from '../composables/useMailboxRowActions'
 import type { MailboxPayload, MailboxRow } from '../types/api'
 import {
-  isLatestMailboxBatchFailure,
-  isMailboxNetworkDisconnected,
   latestMailboxBatchId,
+  mailboxBatchOptions,
+  matchesMailboxView,
+  needsSub2Rerun,
 } from '../utils/mailboxFilters'
 import {
+  canMoveMailboxRowsToDraft,
   canSetMailboxRowsUnavailable,
   mergeMailboxOperationUpdates,
   mergeMailboxQuotaResults,
 } from '../utils/mailboxRows'
+import { createMailboxRefreshGuard } from '../utils/mailboxRefreshGuard'
 
 const controller = useAppController()
 const data = ref<MailboxPayload>({ counts: {}, rows: [] })
 const mailboxImportDialog = ref<InstanceType<typeof MailboxImportDialog>>()
+const draftDialogOpen = ref(false)
 const filter = ref('all')
+const batchFilter = ref('all')
 const sub2Filter = ref('all')
 const quotaFilter = ref('all')
 const searchText = ref('')
@@ -64,77 +66,26 @@ const retryingPixel = ref(false)
 const exportingSub2 = ref(false)
 const uploadingWebsite = ref(false)
 const settingUnavailable = ref(false)
+const settingDraft = ref(false)
+const restoringDraft = ref(false)
 const retryingQuotaRows = ref<string[]>([])
+const rowActionLoading = ref<string[]>([])
+const refreshGuard = createMailboxRefreshGuard()
 let timer = 0
 let pollingStopped = false
-let dataVersion = 0
-let latestRefresh = 0
-
-const metricDefinitions = [
-  { key: 'total', title: '邮箱总数', icon: Collection, tone: 'primary' },
-  { key: 'available', title: '可用', icon: Message, tone: 'primary' },
-  { key: 'running', title: '运行中', icon: VideoPlay, tone: 'warning' },
-  { key: 'success', title: '已使用', icon: CircleCheckFilled, tone: 'success' },
-  { key: 'failed', title: '失败', icon: CircleCloseFilled, tone: 'danger' },
-] as const
-
-function sub2StatusCode(status: any) {
-  const code = Number(status?.status_code ?? status?.code)
-  return Number.isFinite(code) && code > 0 ? code : null
-}
-
-function isSub2TestFailure(status: any) {
-  if (!status || status.linked === false) return false
-  const code = sub2StatusCode(status)
-  if (code === 200 || code === 401 || code === 429) return false
-  if (status.is_test_failure != null) return Boolean(status.is_test_failure)
-  if (code === 404) return true
-  const kind = String(status.kind || status.status || '').toLowerCase()
-  if (['untested', 'unlinked', 'not_linked', 'not_ready', 'rate_limited', 'healthy', 'unauthorized'].includes(kind)) return false
-  return Boolean(status.is_error || code)
-}
-
-function needsSub2Rerun(status: any) {
-  const code = sub2StatusCode(status)
-  if (code === 429) return false
-  return Boolean(status?.needs_rerun) || code === 401 || code === 404
-}
 
 const latestBatchId = computed(() => latestMailboxBatchId(data.value.rows))
+const batchOptions = computed(() => mailboxBatchOptions(data.value.rows))
+const draftRows = computed(() => data.value.rows.filter(row => row.status === 'draft'))
 
-const rows = computed(() => data.value.rows.filter((row) => {
-  const inLatestBatch = Boolean(latestBatchId.value && row.batch_id === latestBatchId.value)
-  const matchesFilter = filter.value === 'all'
-    || (filter.value === 'latest_batch' && inLatestBatch)
-    || (filter.value === 'latest_batch_failed' && inLatestBatch && isLatestMailboxBatchFailure(row))
-    || (filter.value === 'not_consumed' ? row.status !== 'consumed' : row.status === filter.value)
-  const sub2Status = row.sub2_status || (row as any).sub2
-  const matchesSub2 = sub2Filter.value === 'all'
-    || (sub2Filter.value === 'test_failure' && isSub2TestFailure(sub2Status))
-    || (sub2Filter.value === 'needs_rerun' && needsSub2Rerun(sub2Status))
-    || (sub2Filter.value === 'network_disconnected' && isMailboxNetworkDisconnected(row))
-  const hasRemainingQuota = [row.quota_5h, row.quota_7d].some((window) => (
-    window?.remaining_percent != null && Number(window.remaining_percent) > 0
-  ))
-  const hasQuotaResult = row.quota_status === 'ok' || row.quota_status === 'error'
-  const matchesQuota = quotaFilter.value === 'all'
-    || (quotaFilter.value === 'remaining' && hasRemainingQuota)
-    || (quotaFilter.value === 'queried' && hasQuotaResult)
-  const query = searchText.value.trim().toLowerCase()
-  const haystack = [
-    row.email,
-    row.status,
-    row.status_label,
-    row.task_status,
-    row.progress?.label,
-    row.error,
-    row.reason,
-    sub2Status?.label,
-    sub2Status?.summary,
-    row.batch_id,
-  ].join(' ').toLowerCase()
-  return matchesFilter && matchesSub2 && matchesQuota && (!query || haystack.includes(query))
-}))
+const rows = computed(() => data.value.rows.filter(row => matchesMailboxView(row, {
+  status: filter.value,
+  batchId: batchFilter.value,
+  sub2: sub2Filter.value,
+  quota: quotaFilter.value,
+  search: searchText.value,
+  latestBatchId: latestBatchId.value,
+})))
 
 const pageRows = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
@@ -143,10 +94,37 @@ const pageRows = computed(() => {
     .map((row, index) => ({ ...row, display_index: start + index + 1 }))
 })
 
-watch([filter, sub2Filter, quotaFilter, searchText, pageSize], () => { currentPage.value = 1 })
+function clearMainSelection() {
+  mailboxTable.value?.clearSelection()
+  selectedRows.value = []
+}
+
+watch([filter, batchFilter, sub2Filter, quotaFilter], () => {
+  currentPage.value = 1
+  clearMainSelection()
+})
+watch(batchOptions, (options) => {
+  if (batchFilter.value !== 'all' && !options.some(item => item.batchId === batchFilter.value)) {
+    batchFilter.value = 'all'
+  }
+})
+watch([searchText, pageSize], () => { currentPage.value = 1 })
 watch(() => rows.value.length, (total) => {
   currentPage.value = Math.min(currentPage.value, Math.max(1, Math.ceil(total / pageSize.value)))
 })
+
+function applyMetricFilter(value: string) {
+  draftDialogOpen.value = false
+  filter.value = value
+  sub2Filter.value = 'all'
+  quotaFilter.value = 'all'
+  clearMainSelection()
+}
+
+function openDraftDialog() {
+  clearMainSelection()
+  draftDialogOpen.value = true
+}
 
 function applyMailboxPayload(payload: any) {
   mailboxBatch.sync(payload)
@@ -181,8 +159,7 @@ const mailboxBatch = useMailboxBatchOperations({
     selectedRows.value = []
   },
   onStarted: () => {
-    dataVersion += 1
-    latestRefresh += 1
+    refreshGuard.invalidate()
     scheduleMailboxPoll(0)
   },
 })
@@ -195,13 +172,29 @@ const {
   queryQuotas,
   testOpenAI: testSub2,
 } = mailboxBatch
+const {
+  copyEmail,
+  copyPassword,
+  copyTotp,
+  handleRowAction,
+  openMailboxUrl,
+} = useMailboxRowActions({
+  loadingPasswords,
+  loadingTotp,
+  rowActionLoading,
+  mutating,
+  batchBusy,
+  refreshGuard,
+  refresh,
+  applyMailboxPayload,
+  scheduleMailboxPoll,
+})
 
 async function retryQuota(row: MailboxRow) {
   if (row.quota_status !== 'error' || mutating.value || batchBusy.value || retryingQuotaRows.value.includes(row.row_id)) return
   retryingQuotaRows.value = [...retryingQuotaRows.value, row.row_id]
   mutating.value = true
-  dataVersion += 1
-  latestRefresh += 1
+  refreshGuard.invalidate()
   try {
     const result = await queryMailboxQuotas([{ row_id: row.row_id, line_no: row.line_no }])
     data.value = {
@@ -227,21 +220,18 @@ async function retryQuota(row: MailboxRow) {
 }
 
 async function refresh() {
-  const request = ++latestRefresh
-  const version = dataVersion
+  if (mutating.value) return
+  const ticket = refreshGuard.begin()
   try {
     const result = await getMailboxes()
-    if (!mutating.value && request === latestRefresh && version === dataVersion) applyMailboxPayload(result)
+    if (!mutating.value && refreshGuard.accepts(ticket)) applyMailboxPayload(result)
   } catch (error: any) {
-    if (request === latestRefresh) ElMessage.error(error?.message || '邮箱列表刷新失败')
+    if (refreshGuard.accepts(ticket)) ElMessage.error(error?.message || '邮箱列表刷新失败')
   }
 }
 
 function setImportBusy(value: boolean) {
-  if (value) {
-    dataVersion += 1
-    latestRefresh += 1
-  }
+  if (value) refreshGuard.invalidate()
   mutating.value = value
 }
 
@@ -273,8 +263,7 @@ async function mutate(
   }
 
   mutating.value = true
-  dataVersion += 1
-  latestRefresh += 1
+  refreshGuard.invalidate()
   const selected = selectedRows.value.map(row => ({ row_id: row.row_id, line_no: row.line_no }))
   const lineNumbers = selected.map(row => row.line_no)
   try {
@@ -288,6 +277,7 @@ async function mutate(
     mailboxTable.value?.clearSelection()
     ElMessage.success(typeof successMessage === 'function' ? successMessage(result) : successMessage)
   } catch (error: any) {
+    if (error instanceof ApiError && error.status === 409) window.setTimeout(() => void refresh(), 0)
     ElMessage.error(error?.message || '操作失败')
   } finally {
     mutating.value = false
@@ -305,6 +295,39 @@ async function setUnavailable() {
     )
   } finally {
     settingUnavailable.value = false
+  }
+}
+
+async function moveToDraft() {
+  settingDraft.value = true
+  try {
+    await mutate(
+      '',
+      '将选中的邮箱放入草稿箱？放入后不会参与运行。',
+      moveMailboxRowsToDraft,
+      result => `已放入草稿箱 ${Number(result?.drafted || 0)} 条`,
+    )
+  } finally {
+    settingDraft.value = false
+  }
+}
+
+async function restoreDraftRows(rows: Array<{ row_id: string; line_no: number }>) {
+  if (!rows.length || mutating.value || batchBusy.value) return
+  restoringDraft.value = true
+  mutating.value = true
+  refreshGuard.invalidate()
+  try {
+    const result = await restoreMailboxDraftRows(rows)
+    applyMailboxPayload(result)
+    await nextTick()
+    ElMessage.success(`已放回可用 ${Number(result.restored || 0)} 条`)
+  } catch (error: any) {
+    if (error instanceof ApiError && error.status === 409) window.setTimeout(() => void refresh(), 0)
+    ElMessage.error(error?.message || '草稿邮箱放回可用失败')
+  } finally {
+    restoringDraft.value = false
+    mutating.value = false
   }
 }
 
@@ -376,8 +399,7 @@ async function startRelogin() {
 
   reloginStarting.value = true
   mutating.value = true
-  dataVersion += 1
-  latestRefresh += 1
+  refreshGuard.invalidate()
   const selected = selectedBindings()
   try {
     mailboxTable.value?.clearSelection()
@@ -412,8 +434,7 @@ async function retryPixel() {
   }
   retryingPixel.value = true
   mutating.value = true
-  dataVersion += 1
-  latestRefresh += 1
+  refreshGuard.invalidate()
   const selected = selectedBindings()
   try {
     mailboxTable.value?.clearSelection()
@@ -467,80 +488,6 @@ async function exportSub2() {
   }
 }
 
-async function copyPassword(row: MailboxRow) {
-  if (loadingPasswords.value.includes(row.row_id)) return
-  if (!navigator.clipboard?.writeText) {
-    ElMessage.error('当前浏览器不支持安全剪贴板写入')
-    return
-  }
-  loadingPasswords.value = [...loadingPasswords.value, row.row_id]
-  try {
-    const result: { password: string } = await api('/api/mailboxes/password', {
-      row_id: row.row_id,
-      line_no: row.line_no,
-    })
-    await navigator.clipboard.writeText(String(result.password || ''))
-    ElMessage.success('已复制密码')
-  } catch (error: any) {
-    if (error instanceof ApiError && error.payload?.code === 'mailbox_row_stale') await refresh()
-    ElMessage.error(error?.message || '复制密码失败')
-  } finally {
-    loadingPasswords.value = loadingPasswords.value.filter(id => id !== row.row_id)
-  }
-}
-
-async function copyEmail(row: MailboxRow) {
-  const value = String(row.email || '').trim()
-  if (!value) return
-  if (!navigator.clipboard?.writeText) {
-    ElMessage.error('当前浏览器不支持安全剪贴板写入')
-    return
-  }
-  try {
-    await navigator.clipboard.writeText(value)
-    ElMessage.success('已复制邮箱')
-  } catch {
-    ElMessage.error('复制邮箱失败')
-  }
-}
-
-async function copyTotp(row: MailboxRow) {
-  if (!row.has_totp || loadingTotp.value.includes(row.row_id)) return
-  if (!navigator.clipboard?.writeText) {
-    ElMessage.error('当前浏览器不支持安全剪贴板写入')
-    return
-  }
-  loadingTotp.value = [...loadingTotp.value, row.row_id]
-  try {
-    const result = await getMailboxTotp({ row_id: row.row_id, line_no: row.line_no })
-    await navigator.clipboard.writeText(String(result.code || ''))
-    ElMessage.success(`已复制临时 2FA 验证码，约 ${result.remaining} 秒后刷新`)
-  } catch (error: any) {
-    if (error instanceof ApiError && error.payload?.code === 'mailbox_row_stale') await refresh()
-    ElMessage.error(error?.message || '复制临时 2FA 验证码失败')
-  } finally {
-    loadingTotp.value = loadingTotp.value.filter(id => id !== row.row_id)
-  }
-}
-
-async function openMailboxUrl(row: MailboxRow) {
-  if (!row.has_mailbox_url) return
-  const target = window.open('', '_blank')
-  if (!target) {
-    ElMessage.error('浏览器阻止了新窗口，请允许弹出窗口后重试')
-    return
-  }
-  try {
-    target.opener = null
-    const result = await getMailboxUrl({ row_id: row.row_id, line_no: row.line_no })
-    target.location.href = String(result.mailbox_url || '')
-  } catch (error: any) {
-    target.close()
-    if (error instanceof ApiError && error.payload?.code === 'mailbox_row_stale') await refresh()
-    ElMessage.error(error?.message || '打开取件 URL 失败')
-  }
-}
-
 async function poll() {
   await refresh()
   if (pollingStopped) return
@@ -569,23 +516,19 @@ onUnmounted(() => {
       <el-button type="primary" :disabled="mutating || batchBusy" @click="mailboxImportDialog?.open()"><el-icon><Upload /></el-icon>导入邮箱</el-button>
     </PageToolbar>
 
-    <div class="metric-grid">
-      <DashboardMetricCard
-        v-for="metric in metricDefinitions"
-        :key="metric.key"
-        :title="metric.title"
-        :value="data.counts[metric.key] || 0"
-        :icon="metric.icon"
-        :tone="metric.tone"
-        framed
-      />
-    </div>
+    <MailboxMetrics
+      :counts="data.counts"
+      :active-filter="filter"
+      :draft-open="draftDialogOpen"
+      @filter="applyMetricFilter"
+      @draft="openDraftDialog"
+    />
 
     <WorkspacePanel title="邮箱状态" :icon="MessageBox" fill body-padding="none">
       <template #actions>
         <span v-if="selectedRows.length" class="selected-count">已选 {{ selectedRows.length }}</span>
         <el-input v-model="searchText" class="search-input" clearable placeholder="搜索邮箱、状态、说明" :prefix-icon="Search" />
-        <el-select v-model="filter" class="filter-select">
+          <el-select v-model="filter" class="filter-select">
           <el-option label="全部" value="all" />
           <el-option label="最近运行批次" value="latest_batch" />
           <el-option label="最近运行批次失败" value="latest_batch_failed" />
@@ -594,6 +537,10 @@ onUnmounted(() => {
           <el-option label="运行中" value="running" />
           <el-option label="已使用" value="consumed" />
           <el-option label="失败" value="failed" />
+          </el-select>
+        <el-select v-model="batchFilter" class="batch-filter-select" filterable>
+          <el-option label="全部批次" value="all" />
+          <el-option v-for="batch in batchOptions" :key="batch.batchId" :label="batch.batchId" :value="batch.batchId" />
         </el-select>
         <el-select v-model="sub2Filter" class="sub2-filter-select">
           <el-option label="全部 OpenAI" value="all" />
@@ -615,6 +562,7 @@ onUnmounted(() => {
         <MailboxActionMenus
           :relogin-disabled="mutating || batchBusy || controller.runtime.value.running || !selectedRows.length || selectedRows.some(row => !needsSub2Rerun(row.sub2_status))"
           :restore-disabled="mutating || batchBusy || !selectedRows.length"
+          :draft-disabled="mutating || batchBusy || !canMoveMailboxRowsToDraft(selectedRows)"
           :unavailable-disabled="mutating || batchBusy || !canSetMailboxRowsUnavailable(selectedRows)"
           :pixel-disabled="mutating || batchBusy || !selectedRows.length"
           :export-disabled="mutating || batchBusy || exportingSub2 || !selectedRows.length"
@@ -625,8 +573,10 @@ onUnmounted(() => {
           :export-loading="exportingSub2"
           :website-loading="uploadingWebsite"
           :unavailable-loading="settingUnavailable"
+          :draft-loading="settingDraft"
           @relogin="startRelogin"
           @restore="mutate('/api/mailboxes/restore', '将选中邮箱恢复为可用状态？')"
+          @draft="moveToDraft"
           @unavailable="setUnavailable"
           @pixel="retryPixel"
           @export="exportSub2"
@@ -643,12 +593,15 @@ onUnmounted(() => {
           :loading-totp="loadingTotp"
           :loading-quotas="retryingQuotaRows"
           :quota-retry-disabled="mutating || batchBusy"
+          :row-action-disabled="mutating || batchBusy"
+          :row-action-loading="rowActionLoading"
           @select="selectedRows = $event"
           @email="copyEmail"
           @password="copyPassword"
           @totp="copyTotp"
           @url="openMailboxUrl"
           @quota="retryQuota"
+          @action="handleRowAction"
         />
         <el-pagination
           v-model:current-page="currentPage"
@@ -667,25 +620,25 @@ onUnmounted(() => {
       @busy-change="setImportBusy"
       @imported="applyImportedMailboxes"
     />
+    <MailboxDraftDialog
+      v-model="draftDialogOpen"
+      :rows="draftRows"
+      :disabled="mutating || batchBusy"
+      :restoring="restoringDraft"
+      @restore="restoreDraftRows"
+    />
   </div>
 </template>
 
 <style scoped>
 .mailbox-page { display: grid; grid-template-rows: 44px 78px minmax(0, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
-.metric-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; min-width: 0; }
 .selected-count { color: var(--el-color-primary); font-size: 13px; white-space: nowrap; }
 .search-input { width: 210px; }
 .filter-select { width: 110px; }
+.batch-filter-select { width: 150px; }
 .sub2-filter-select { width: 168px; }
 .quota-filter-select { width: 128px; }
 .table-region { display: grid; grid-template-rows: minmax(0, 1fr) 46px; width: 100%; height: 100%; min-height: 0; padding: 8px 10px 0; }
 .pager { justify-content: flex-end; border-top: 1px solid var(--workspace-border); }
 
-@media (max-width: 760px) {
-  .metric-grid { gap: 4px; }
-  .metric-grid :deep(.metric-card.framed) { gap: 3px; overflow: hidden; padding: 4px; }
-  .metric-grid :deep(.metric-card.framed .metric-icon) { flex-basis: 20px; width: 20px; height: 20px; font-size: 12px; }
-  .metric-grid :deep(.metric-card.framed .metric-copy span) { font-size: 10px; line-height: 14px; }
-  .metric-grid :deep(.metric-card.framed .metric-value) { font-size: 20px; line-height: 24px; }
-}
 </style>

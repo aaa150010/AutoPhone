@@ -368,6 +368,27 @@ class SmsRuntimeTests(unittest.TestCase):
         self.assertFalse(any(call[0] == "prices" for call in factory.calls))
         self.assertNotIn(secret, str(statuses))
 
+    def test_read_only_balance_query_does_not_change_pool_health_state(self):
+        factory = FakeFactory({"key-a": {"balance": 0.75}})
+        pool = SmsKeyPool(factory, now_fn=lambda: 1234.0)
+        pool.configure(["key-a"], min_price=0.01)
+        state = pool.states[0]
+        state.status = "usable"
+        state.balance_usd = 2.0
+        state.message = "可用"
+        state.health_revision = 7
+        generation = pool.preflight_generation
+
+        statuses = pool.query_balances(update_state=False)
+
+        self.assertEqual(statuses[0]["balance_usd"], 0.75)
+        self.assertEqual(statuses[0]["status"], "usable")
+        self.assertEqual(pool.preflight_generation, generation)
+        self.assertEqual(state.health_revision, 7)
+        self.assertEqual(state.status, "usable")
+        self.assertEqual(state.balance_usd, 2.0)
+        self.assertEqual(state.message, "可用")
+
     def test_multi_platform_activation_failover_binds_order_to_platform_and_key(self):
         factory = FakeMultiPlatformFactory({
             ("smsbower", "bower-a"): {

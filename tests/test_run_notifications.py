@@ -7,6 +7,7 @@ from mac_overrides.run_notifications import (
     DEFAULT_EVENT_SETTINGS,
     EVENT_BATCH_COMPLETED,
     EVENT_MANUAL_STOP,
+    EVENT_SMS_BALANCE_LOW,
     EVENT_SMS_EXHAUSTED,
     EVENT_STALLED,
     EVENT_UNEXPECTED_STOP,
@@ -17,6 +18,7 @@ from mac_overrides.run_notifications import (
     RunNotification,
     RunNotificationCoordinator,
     RunNotificationService,
+    SmsBalanceAlert,
     SmtpNotificationSender,
     build_notification_message,
     normalize_email_notification,
@@ -267,6 +269,27 @@ class TransportTests(unittest.TestCase):
         self.assertIn("未终态任务：T058、T078、T083", body)
         self.assertIn("批次监控正常返回，但仍有任务未终态", body)
         self.assertIn("这不是批次最终结果", body)
+
+    def test_low_balance_message_contains_only_safe_key_identity(self):
+        alert = SmsBalanceAlert(
+            provider="smsbower",
+            index=2,
+            fingerprint="abcdef1234",
+            balance_usd=0.42,
+        )
+        built = build_notification_message(
+            enabled_config(),
+            EVENT_SMS_BALANCE_LOW,
+            RunAggregate(total=3, active=3),
+            batch_id="20260810-1013",
+            balance_alerts=[alert],
+        )
+        body = built.get_content()
+        self.assertIn("SMS Key 余额不足", body)
+        self.assertIn("平台 smsbower / Key 2", body)
+        self.assertIn("指纹 abcdef1234", body)
+        self.assertIn("当前余额 $0.4200", body)
+        self.assertNotIn("api-secret", body)
 
     def test_notification_metadata_rejects_credentials_and_raw_reasons(self):
         private_values = (
@@ -523,6 +546,86 @@ class CoordinatorTests(unittest.TestCase):
             [item.event for item in self.notifications],
             [EVENT_SMS_EXHAUSTED, EVENT_BATCH_COMPLETED],
         )
+
+    def test_low_balance_alert_is_deduplicated_by_provider_and_fingerprint(self):
+        self.coordinator.start_run("run-a", RunAggregate(total=2, active=2))
+        statuses = [
+            {
+                "provider": "smsbower",
+                "index": 1,
+                "fingerprint": "aaaaaaaaaa",
+                "balance_usd": 0.8,
+            },
+            {
+                "provider": "smsbower",
+                "index": 1,
+                "fingerprint": "aaaaaaaaaa",
+                "balance_usd": 0.8,
+            },
+            {
+                "provider": "herosms",
+                "index": 3,
+                "fingerprint": "bbbbbbbbbb",
+                "balance_usd": 0.2,
+            },
+        ]
+        self.assertEqual(
+            self.coordinator.observe_sms_balances(
+                "run-a",
+                RunAggregate(active=2),
+                statuses,
+            ),
+            (EVENT_SMS_BALANCE_LOW,),
+        )
+        self.assertEqual(len(self.notifications), 1)
+        self.assertEqual(
+            {(item.provider, item.fingerprint) for item in self.notifications[0].balance_alerts},
+            {("smsbower", "aaaaaaaaaa"), ("herosms", "bbbbbbbbbb")},
+        )
+        self.assertEqual(
+            self.coordinator.observe_sms_balances("run-a", RunAggregate(active=2), statuses),
+            (),
+        )
+        self.assertEqual(
+            self.coordinator.public_status()["triggered_events"][EVENT_SMS_BALANCE_LOW],
+            1,
+        )
+
+    def test_low_balance_alert_ignores_disabled_and_invalid_balance_rows(self):
+        self.coordinator.start_run("run-a", RunAggregate(total=1, active=1))
+        statuses = [
+            {
+                "provider": "smsbower",
+                "index": 1,
+                "fingerprint": "aaaaaaaaaa",
+                "balance_usd": 0.2,
+                "enabled": False,
+            },
+            {
+                "provider": "herosms",
+                "index": 2,
+                "fingerprint": "bbbbbbbbbb",
+                "balance_usd": -0.1,
+                "enabled": True,
+            },
+        ]
+
+        self.assertEqual(
+            self.coordinator.observe_sms_balances(
+                "run-a",
+                RunAggregate(total=1, active=1),
+                statuses,
+            ),
+            (),
+        )
+        self.assertEqual(self.notifications, [])
+        with self.assertRaises(ValueError):
+            SmsBalanceAlert(
+                provider="smsbower",
+                index=1,
+                fingerprint="aaaaaaaaaa",
+                balance_usd=-0.1,
+            )
 
     def test_unknown_and_finalized_runs_ignore_observations(self):
         running = RunAggregate(total=1, active=1)

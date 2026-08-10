@@ -6,28 +6,33 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from email.message import EmailMessage
 import math
-import queue
 import re
 import smtplib
 import threading
 import time
 from typing import Any
 
+try:
+    from .notification_queue import NOTIFICATION_QUEUE_CAPACITY, NotificationQueue
+except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
+    from notification_queue import NOTIFICATION_QUEUE_CAPACITY, NotificationQueue
+
 
 SMTP_TIMEOUT_SECONDS = 10
-NOTIFICATION_QUEUE_CAPACITY = 16
 
 EVENT_BATCH_COMPLETED = "batch_completed"
 EVENT_UNEXPECTED_STOP = "unexpected_stop"
 EVENT_STALLED = "stalled"
 EVENT_SMS_EXHAUSTED = "sms_exhausted"
 EVENT_MANUAL_STOP = "manual_stop"
+EVENT_SMS_BALANCE_LOW = "sms_balance_low"
 NOTIFICATION_EVENTS = (
     EVENT_BATCH_COMPLETED,
     EVENT_UNEXPECTED_STOP,
     EVENT_STALLED,
     EVENT_SMS_EXHAUSTED,
     EVENT_MANUAL_STOP,
+    EVENT_SMS_BALANCE_LOW,
 )
 DEFAULT_EVENT_SETTINGS = {
     EVENT_BATCH_COMPLETED: True,
@@ -35,6 +40,7 @@ DEFAULT_EVENT_SETTINGS = {
     EVENT_STALLED: True,
     EVENT_SMS_EXHAUSTED: True,
     EVENT_MANUAL_STOP: False,
+    EVENT_SMS_BALANCE_LOW: True,
 }
 
 QQ_SMTP_HOST = "smtp.qq.com"
@@ -45,10 +51,14 @@ _EVENT_LABELS = {
     EVENT_STALLED: "运行停滞",
     EVENT_SMS_EXHAUSTED: "SMS Key 已耗尽",
     EVENT_MANUAL_STOP: "手动停止",
+    EVENT_SMS_BALANCE_LOW: "SMS Key 余额不足",
 }
 _ADDRESS_PATTERN = re.compile(r"^[^@\s<>]+@[^@\s<>]+$")
 _SAFE_BATCH_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
 _SAFE_TASK_ID_PATTERN = re.compile(r"^T\d{1,6}(?:-[A-Za-z0-9]{1,24})?$")
+_SAFE_PROVIDER_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,31}$")
+_SAFE_FINGERPRINT_PATTERN = re.compile(r"^[a-f0-9]{8,64}$")
+SMS_BALANCE_ALERT_THRESHOLD_USD = 1.0
 _TERMINATION_REASON_LABELS = {
     "unfinished_tasks": "批次监控已退出，但仍有任务未终态",
     "watch_returned_with_unfinished_tasks": "批次监控正常返回，但仍有任务未终态",
@@ -357,12 +367,89 @@ class RunAggregate:
 
 
 @dataclass(frozen=True, slots=True)
+class SmsBalanceAlert:
+    """Credential-free description of one low-balance SMS key."""
+
+    provider: str
+    index: int
+    fingerprint: str
+    balance_usd: float
+    threshold_usd: float = SMS_BALANCE_ALERT_THRESHOLD_USD
+
+    def __post_init__(self) -> None:
+        provider = _text(self.provider).lower()
+        fingerprint = _text(self.fingerprint).lower()
+        if not _SAFE_PROVIDER_PATTERN.fullmatch(provider):
+            raise ValueError("invalid SMS provider")
+        if not _SAFE_FINGERPRINT_PATTERN.fullmatch(fingerprint):
+            raise ValueError("invalid SMS key fingerprint")
+        try:
+            index = int(self.index)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("invalid SMS key index") from exc
+        if index <= 0:
+            raise ValueError("invalid SMS key index")
+        try:
+            balance = float(self.balance_usd)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("invalid SMS key balance") from exc
+        if (
+            not math.isfinite(balance)
+            or balance < 0
+            or balance >= SMS_BALANCE_ALERT_THRESHOLD_USD
+        ):
+            raise ValueError("SMS key balance is not below the alert threshold")
+        object.__setattr__(self, "provider", provider)
+        object.__setattr__(self, "index", min(index, 100000))
+        object.__setattr__(self, "fingerprint", fingerprint)
+        object.__setattr__(self, "balance_usd", round(balance, 4))
+        object.__setattr__(self, "threshold_usd", SMS_BALANCE_ALERT_THRESHOLD_USD)
+
+
+def _coerce_sms_balance_alert(value: Any) -> SmsBalanceAlert | None:
+    if isinstance(value, SmsBalanceAlert):
+        return value
+    if not isinstance(value, Mapping):
+        return None
+    if not _as_bool(value.get("enabled"), True):
+        return None
+    try:
+        return SmsBalanceAlert(
+            provider=value.get("provider", value.get("platform", "SMS")),
+            index=value.get("index"),
+            fingerprint=value.get("fingerprint"),
+            balance_usd=value.get("balance_usd"),
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_balance_alerts(value: Any) -> tuple[SmsBalanceAlert, ...]:
+    if isinstance(value, (list, tuple, set, frozenset)):
+        candidates = value
+    elif value is None:
+        candidates = ()
+    else:
+        candidates = (value,)
+    result: list[SmsBalanceAlert] = []
+    seen: set[tuple[str, str]] = set()
+    for candidate in candidates:
+        alert = _coerce_sms_balance_alert(candidate)
+        if alert is None or (alert.provider, alert.fingerprint) in seen:
+            continue
+        seen.add((alert.provider, alert.fingerprint))
+        result.append(alert)
+    return tuple(result)
+
+
+@dataclass(frozen=True, slots=True)
 class RunNotification:
     event: str
     aggregate: RunAggregate
     batch_id: str = ""
     unfinished_task_ids: tuple[str, ...] = ()
     termination_reason: str = ""
+    balance_alerts: tuple[SmsBalanceAlert, ...] = ()
 
     def __post_init__(self) -> None:
         if self.event not in NOTIFICATION_EVENTS:
@@ -378,6 +465,7 @@ class RunNotification:
             "termination_reason",
             _safe_termination_reason(self.termination_reason),
         )
+        object.__setattr__(self, "balance_alerts", _safe_balance_alerts(self.balance_alerts))
 
     @property
     def unfinished_count(self) -> int:
@@ -422,7 +510,9 @@ def _build_message(settings: _SmtpSettings, notification: RunNotification) -> Em
     subject_parts = [f"[自动接码机] {label}"]
     if notification.batch_id:
         subject_parts.append(f"批次 {notification.batch_id}")
-    if unfinished:
+    if notification.event == EVENT_SMS_BALANCE_LOW:
+        subject_parts.append(f"低余额 Key {len(notification.balance_alerts)} 个")
+    elif unfinished:
         subject_parts.append(f"未终态 {unfinished}")
     else:
         subject_parts.append(
@@ -452,6 +542,13 @@ def _build_message(settings: _SmtpSettings, notification: RunNotification) -> Em
         )
     if is_unfinished_stop:
         lines.append("状态说明：这不是批次最终结果；任务转为终态后仍会发送最终汇总。")
+    if notification.event == EVENT_SMS_BALANCE_LOW:
+        lines.append(f"余额提醒阈值：低于 ${SMS_BALANCE_ALERT_THRESHOLD_USD:.2f}")
+        for alert in notification.balance_alerts:
+            lines.append(
+                f"低余额 Key：平台 {alert.provider} / Key {alert.index} / "
+                f"指纹 {alert.fingerprint} / 当前余额 ${alert.balance_usd:.4f}"
+            )
     if aggregate.duration_seconds:
         minutes, seconds = divmod(aggregate.duration_seconds, 60)
         lines.append(f"运行耗时：{minutes} 分 {seconds} 秒")
@@ -492,6 +589,7 @@ def build_notification_message(
     batch_id: Any = "",
     unfinished_task_ids: Any = (),
     termination_reason: Any = "",
+    balance_alerts: Any = (),
 ) -> EmailMessage:
     """Build a message from aggregate counts and strictly validated run metadata."""
     notification = RunNotification(
@@ -500,6 +598,7 @@ def build_notification_message(
         batch_id=_safe_batch_id(batch_id),
         unfinished_task_ids=_safe_task_ids(unfinished_task_ids),
         termination_reason=_safe_termination_reason(termination_reason),
+        balance_alerts=_safe_balance_alerts(balance_alerts),
     )
     return _build_message(_smtp_settings(config), notification)
 
@@ -563,150 +662,6 @@ def send_test_notification(
     }
 
 
-class NotificationQueue:
-    """A bounded, single-worker daemon queue with one delivery attempt per item."""
-
-    def __init__(
-        self,
-        send_fn: Callable[[RunNotification], Any],
-        *,
-        capacity: int = NOTIFICATION_QUEUE_CAPACITY,
-        thread_factory: Callable[..., Any] = threading.Thread,
-        now_fn: Callable[[], float] = time.time,
-    ) -> None:
-        if capacity <= 0:
-            raise ValueError("notification queue capacity must be positive")
-        self._send_fn = send_fn
-        self._queue: queue.Queue[RunNotification] = queue.Queue(maxsize=capacity)
-        self._capacity = capacity
-        self._thread_factory = thread_factory
-        self._now_fn = now_fn
-        self._condition = threading.Condition()
-        self._thread: Any = None
-        self._closing = False
-        self._outstanding = 0
-        self._in_flight = 0
-        self._submitted = 0
-        self._sent = 0
-        self._failed = 0
-        self._dropped = 0
-        self._last_event = ""
-        self._last_result = ""
-        self._last_timestamp = 0
-
-    def _ensure_worker_locked(self) -> None:
-        if self._thread is not None:
-            return
-        self._thread = self._thread_factory(
-            target=self._worker,
-            name="run-notification-email",
-            daemon=True,
-        )
-        self._thread.start()
-
-    def submit(self, notification: RunNotification) -> bool:
-        if not isinstance(notification, RunNotification):
-            raise TypeError("notification must be a RunNotification")
-        with self._condition:
-            if self._closing:
-                self._dropped += 1
-                self._last_event = notification.event
-                self._last_result = "failed"
-                self._last_timestamp = int(self._now_fn())
-                return False
-            try:
-                self._queue.put_nowait(notification)
-            except queue.Full:
-                self._dropped += 1
-                self._last_event = notification.event
-                self._last_result = "failed"
-                self._last_timestamp = int(self._now_fn())
-                return False
-            self._outstanding += 1
-            self._submitted += 1
-            self._last_event = notification.event
-            self._last_result = "queued"
-            self._last_timestamp = int(self._now_fn())
-            self._ensure_worker_locked()
-            self._condition.notify_all()
-            return True
-
-    def _worker(self) -> None:
-        while True:
-            try:
-                notification = self._queue.get(timeout=0.05)
-            except queue.Empty:
-                with self._condition:
-                    if self._closing and self._outstanding == 0:
-                        self._condition.notify_all()
-                        return
-                continue
-
-            with self._condition:
-                self._in_flight += 1
-                self._last_event = notification.event
-            delivered = False
-            try:
-                self._send_fn(notification)
-                delivered = True
-            except Exception:
-                delivered = False
-            finally:
-                with self._condition:
-                    self._in_flight -= 1
-                    self._outstanding -= 1
-                    if delivered:
-                        self._sent += 1
-                        self._last_result = "sent"
-                    else:
-                        self._failed += 1
-                        self._last_result = "failed"
-                    self._last_timestamp = int(self._now_fn())
-                    self._condition.notify_all()
-                self._queue.task_done()
-
-    def wait_until_idle(self, timeout: float = 2.0) -> bool:
-        deadline = time.monotonic() + max(0.0, timeout)
-        with self._condition:
-            while self._outstanding:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    return False
-                self._condition.wait(remaining)
-            return True
-
-    def close(self, *, wait: bool = True, timeout: float = 2.0) -> None:
-        with self._condition:
-            self._closing = True
-            thread = self._thread
-            self._condition.notify_all()
-        if wait and thread is not None:
-            thread.join(timeout=max(0.0, timeout))
-
-    def public_status(self) -> dict[str, Any]:
-        with self._condition:
-            thread = self._thread
-            try:
-                worker_running = bool(thread and thread.is_alive())
-            except Exception:
-                worker_running = False
-            return {
-                "queue_capacity": self._capacity,
-                "queue_depth": self._queue.qsize(),
-                "in_flight": self._in_flight,
-                "worker_running": worker_running,
-                "submitted": self._submitted,
-                "sent": self._sent,
-                "failed": self._failed,
-                "dropped": self._dropped,
-                "last_event": self._last_event,
-                "last_result": self._last_result,
-                "event": self._last_event,
-                "status": self._last_result,
-                "timestamp": self._last_timestamp,
-            }
-
-
 @dataclass(slots=True)
 class _RunState:
     aggregate: RunAggregate
@@ -715,6 +670,7 @@ class _RunState:
     manual_stop: bool = False
     finalized: bool = False
     triggered_events: set[str] = field(default_factory=set)
+    balance_alerted_keys: set[tuple[str, str]] = field(default_factory=set)
 
 
 class RunNotificationCoordinator:
@@ -766,6 +722,7 @@ class RunNotificationCoordinator:
         *,
         unfinished_task_ids: Any = (),
         termination_reason: Any = "",
+        balance_alerts: Any = (),
     ) -> RunNotification | None:
         if event in state.triggered_events:
             return None
@@ -779,6 +736,7 @@ class RunNotificationCoordinator:
             batch_id=state.batch_id,
             unfinished_task_ids=_safe_task_ids(unfinished_task_ids),
             termination_reason=_safe_termination_reason(termination_reason),
+            balance_alerts=_safe_balance_alerts(balance_alerts),
         )
 
     def _submit(self, notifications: list[RunNotification]) -> tuple[str, ...]:
@@ -856,6 +814,48 @@ class RunNotificationCoordinator:
             sms_exhausted=True,
             now=now,
         )
+
+    def observe_sms_balances(
+        self,
+        run_id: Any,
+        aggregate: Any,
+        statuses: Any,
+        *,
+        now: float | None = None,
+    ) -> tuple[str, ...]:
+        """Send one email per newly observed low-balance key in a run."""
+        key = self._run_key(run_id)
+        summary = RunAggregate.from_value(aggregate)
+        alerts = _safe_balance_alerts(statuses)
+        if not alerts:
+            return ()
+        notifications: list[RunNotification] = []
+        with self._lock:
+            state = self._runs.get(key)
+            if state is None or state.finalized:
+                return ()
+            state.aggregate = summary
+            fresh = [
+                alert
+                for alert in alerts
+                if (alert.provider, alert.fingerprint) not in state.balance_alerted_keys
+            ]
+            if not fresh:
+                return ()
+            state.balance_alerted_keys.update(
+                (alert.provider, alert.fingerprint) for alert in fresh
+            )
+            self._triggered_counts[EVENT_SMS_BALANCE_LOW] += 1
+            if self._config["enabled"] and self._config["events"][EVENT_SMS_BALANCE_LOW]:
+                notifications.append(
+                    RunNotification(
+                        EVENT_SMS_BALANCE_LOW,
+                        state.aggregate,
+                        batch_id=state.batch_id,
+                        balance_alerts=tuple(fresh),
+                    )
+                )
+        return self._submit(notifications)
 
     def check_stall(
         self,
@@ -968,6 +968,7 @@ class RunNotificationService:
             send_fn = lambda _notification: None
         self.dispatcher = NotificationQueue(
             send_fn,
+            notification_type=RunNotification,
             capacity=NOTIFICATION_QUEUE_CAPACITY,
             thread_factory=thread_factory,
             now_fn=now_fn,
@@ -986,6 +987,9 @@ class RunNotificationService:
 
     def observe_sms_exhausted(self, *args: Any, **kwargs: Any) -> tuple[str, ...]:
         return self.coordinator.observe_sms_exhausted(*args, **kwargs)
+
+    def observe_sms_balances(self, *args: Any, **kwargs: Any) -> tuple[str, ...]:
+        return self.coordinator.observe_sms_balances(*args, **kwargs)
 
     def check_stall(self, *args: Any, **kwargs: Any) -> tuple[str, ...]:
         return self.coordinator.check_stall(*args, **kwargs)

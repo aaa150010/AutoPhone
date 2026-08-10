@@ -153,6 +153,7 @@ class PublicStateRuntimeTests(unittest.TestCase):
                     "running": 2,
                     "success": 2,
                     "failed": 1,
+                    "draft": 3,
                 }
             }
         )
@@ -194,6 +195,7 @@ class PublicStateRuntimeTests(unittest.TestCase):
             "running": 2,
             "success": 2,
             "failed": 1,
+            "draft": 3,
         })
 
     def test_public_task_exposes_only_mailbox_url_capability(self):

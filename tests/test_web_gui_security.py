@@ -468,6 +468,91 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(observed, [True, False])
         self.assertFalse(module._MAILBOX_LEASE_FILTER_ACTIVE.get())
 
+    def test_preflight_balance_notification_is_after_scheduler_and_advisory(self):
+        module = self.module
+        original_start = module._importer_scheduler_ext.start_bounded_importer
+        original_notifications = module._begin_notification_run
+        original_aggregate = module._notification_aggregate
+        original_thread = module.threading.Thread
+        original_admission = module._CURRENT_TASK_ADMISSION
+        original_inflight = module._CURRENT_INFLIGHT_GATE
+        observed = {}
+        statuses = [{
+            "provider": "smsbower",
+            "index": 1,
+            "fingerprint": "aaaaaaaaaa",
+            "balance_usd": 0.25,
+            "enabled": True,
+        }]
+        importer = SimpleNamespace(
+            status=lambda _settings: {"running": False},
+            lock=threading.RLock(),
+            tasks={},
+        )
+
+        class Service:
+            def observe_run(self, run_id, aggregate):
+                observed["run"] = (run_id, aggregate)
+
+            def observe_sms_balances(self, run_id, aggregate, rows):
+                observed["balance"] = (run_id, aggregate, list(rows))
+                raise RuntimeError("notification transport unavailable")
+
+        class DormantThread:
+            def __init__(self, **kwargs):
+                observed["thread"] = kwargs
+
+            def start(self):
+                observed["thread_started"] = True
+
+        def begin(current, settings):
+            observed["begin_settings"] = dict(settings)
+            context = {
+                "run_id": "20260810-1013",
+                "started_at": 100,
+                "last_activity_at": 100,
+                "target": 1,
+                "service": Service(),
+            }
+            current._gptphone_notification_context = context
+            return context
+
+        def start(current, settings, **_kwargs):
+            observed["scheduler_settings"] = dict(settings)
+            current.tasks = {
+                "T001": {"task_id": "T001", "status": "running"},
+            }
+            return "started"
+
+        try:
+            module._begin_notification_run = begin
+            module._notification_aggregate = lambda *_args: ("aggregate", 101)
+            module._importer_scheduler_ext.start_bounded_importer = start
+            module.threading.Thread = DormantThread
+            result = module._patched_importer_start(
+                importer,
+                {
+                    "concurrency": 2,
+                    "_gptphone_sms_preflight_statuses": statuses,
+                },
+            )
+        finally:
+            module._CURRENT_TASK_ADMISSION = original_admission
+            module._CURRENT_INFLIGHT_GATE = original_inflight
+            module._importer_scheduler_ext.start_bounded_importer = original_start
+            module._begin_notification_run = original_notifications
+            module._notification_aggregate = original_aggregate
+            module.threading.Thread = original_thread
+            importer._gptphone_notification_context = None
+
+        self.assertEqual(result, "started")
+        self.assertNotIn(
+            "_gptphone_sms_preflight_statuses",
+            observed["scheduler_settings"],
+        )
+        self.assertEqual(observed["balance"], ("20260810-1013", "aggregate", statuses))
+        self.assertTrue(observed["thread_started"])
+
     def test_run_selection_matches_raw_row_hash_and_public_line_number(self):
         module = self.module
         pool_path = Path(self.tempdir.name) / "run-selection-pool.txt"

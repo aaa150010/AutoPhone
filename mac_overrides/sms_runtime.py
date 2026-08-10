@@ -107,6 +107,17 @@ except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
         wilson_lower_bound,
     )
 
+try:
+    from .sms_balance_runtime import (
+        query_key_pool_balances,
+        query_registry_balances,
+    )
+except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
+    from sms_balance_runtime import (  # type: ignore[no-redef]
+        query_key_pool_balances,
+        query_registry_balances,
+    )
+
 
 SMS_PREFLIGHT_MAX_WORKERS = 8
 SMS_NETWORK_ATTEMPTS = 3
@@ -974,66 +985,19 @@ class SmsKeyPool:
         )
         return min_price if value is None else float(value)
 
-    def query_balances(self, *, proxy: str = "") -> list[dict[str, Any]]:
-        """Query configured keys without performing inventory discovery."""
-        with self.lock:
-            states = list(self.states)
-            self.preflight_generation += 1
-            generation = self.preflight_generation
-            revisions = {
-                id(state): state.health_revision
-                for state in states
-            }
-            minimum_balance = self.min_price
-        if not states:
-            return []
-
-        def check_balance(
-            state: SmsKeyHealth,
-        ) -> tuple[SmsKeyHealth, int, float, float | None, Exception | None]:
-            revision = revisions[id(state)]
-            now = self.now_fn()
-            try:
-                provider = self.provider_factory(state.key, proxy=proxy)
-                balance = parse_sms_balance(provider.balance())
-            except Exception as exc:
-                return state, revision, now, None, exc
-            return state, revision, now, balance, None
-
-        workers = min(SMS_PREFLIGHT_MAX_WORKERS, len(states))
-        if workers == 1:
-            results = [check_balance(states[0])]
-        else:
-            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="sms-balance") as executor:
-                results = list(executor.map(check_balance, states))
-
-        for state, revision, now, balance, error in results:
-            if error is not None:
-                self._mark_error(
-                    state,
-                    error,
-                    runtime=False,
-                    expected_revision=revision,
-                    expected_generation=generation,
-                )
-                continue
-            with self.lock:
-                if self.preflight_generation != generation:
-                    continue
-                if state.health_revision != revision:
-                    continue
-                assert balance is not None
-                state.health_revision += 1
-                state.balance_usd = balance
-                state.last_checked_at = now
-                state.cooldown_until = 0.0
-                if balance + 1e-9 < minimum_balance:
-                    state.status = "insufficient_balance"
-                    state.message = f"余额低于配置最低价格 ${minimum_balance:.4f}"
-                else:
-                    state.status = "usable"
-                    state.message = "余额查询成功"
-        return self.public_statuses()
+    def query_balances(
+        self,
+        *,
+        proxy: str = "",
+        update_state: bool = True,
+    ) -> list[dict[str, Any]]:
+        return query_key_pool_balances(
+            self,
+            proxy=proxy,
+            update_state=update_state,
+            parse_balance=parse_sms_balance,
+            max_workers=SMS_PREFLIGHT_MAX_WORKERS,
+        )
 
     def preflight(self, *, proxy: str = "") -> list[dict[str, Any]]:
         with self.lock:
@@ -1639,42 +1603,18 @@ class SmsProviderRegistry:
         row_price = _as_float(row.get("price"), -1)
         return row_price < 0 or abs(row_price - price) <= 0.000001
 
-    def query_balances(self, *, proxy: str = "") -> list[dict[str, Any]]:
-        with self.lock:
-            specs = [
-                dict(spec)
-                for spec in self.specs
-                if self.pools.get(str(spec.get("provider"))) is not None
-                and self.pools[str(spec.get("provider"))].has_keys()
-            ]
-        if not specs:
-            return []
-
-        def check(spec: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-            provider = str(spec.get("provider") or "")
-            return spec, self.pools[provider].query_balances(proxy=proxy)
-
-        workers = min(SMS_PREFLIGHT_MAX_WORKERS, len(specs))
-        if workers == 1:
-            results = [check(specs[0])]
-        else:
-            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="sms-platform-balance") as executor:
-                results = list(executor.map(check, specs))
-
-        rows: list[dict[str, Any]] = []
-        for spec, statuses in results:
-            provider = str(spec.get("provider") or "")
-            for status in statuses:
-                rows.append(
-                    {
-                        **status,
-                        "provider": provider,
-                        "platform": provider,
-                        "service": str(spec.get("service") or "dr"),
-                        "enabled": bool(spec.get("enabled", True)),
-                    }
-                )
-        return rows
+    def query_balances(
+        self,
+        *,
+        proxy: str = "",
+        update_state: bool = True,
+    ) -> list[dict[str, Any]]:
+        return query_registry_balances(
+            self,
+            proxy=proxy,
+            update_state=update_state,
+            max_workers=SMS_PREFLIGHT_MAX_WORKERS,
+        )
 
     def preflight(self, *, proxy: str = "") -> list[dict[str, Any]]:
         specs = self._active_specs()

@@ -501,7 +501,7 @@ class WebRouteTests(unittest.TestCase):
         self.assertFalse(worker.is_alive())
         self.assertEqual(start_result[0].status_code, 200)
         self.assertEqual(self.importer.started_with["sms_api_keys"], ["key-a"])
-        self.assertRegex(self.importer.started_with["batch_id"], r"^\d{8}-\d{6}-[0-9a-f]{6}$")
+        self.assertRegex(self.importer.started_with["batch_id"], r"^\d{8}-\d{4}(?:-\d{2,})?$")
         self.assertGreater(self.importer.started_with["batch_started_at"], 0)
 
     def test_failed_pool_validation_keeps_saved_config_and_key_pool_consistent(self):

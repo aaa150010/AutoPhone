@@ -86,7 +86,9 @@ try:
         indexed_mailbox_state,
         index_mailbox_states,
         latest_batch_members_by_row,
+        manual_sms_received,
         pool_count_status,
+        public_batch_metadata,
         public_mailbox_reason,
         restore_mailbox_rows,
         rewrite_state_after_delete,
@@ -99,7 +101,9 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
         indexed_mailbox_state,
         index_mailbox_states,
         latest_batch_members_by_row,
+        manual_sms_received,
         pool_count_status,
+        public_batch_metadata,
         public_mailbox_reason,
         restore_mailbox_rows,
         rewrite_state_after_delete,
@@ -845,31 +849,13 @@ class MailboxAdminService(MailboxSourceLockMixin):
                 allow_row_fallback=not manually_restored and (succeeded or status_key == "consumed"),
             )
             quota_error = self._format_error(quota_status.get("error") or "", row_secrets)
-            batch_id = str(
-                live_task.get("batch_id")
-                or batch_member.get("batch_id")
-                or result.get("batch_id")
-                or result_payload.get("batch_id")
-                or ""
+            batch_id, batch_started_at, updated_at = public_batch_metadata(
+                live_task,
+                batch_member,
+                result,
+                result_payload,
+                state_item,
             )
-            try:
-                batch_started_at = int(
-                    live_task.get("batch_started_at")
-                    or batch_member.get("batch_started_at")
-                    or result.get("batch_started_at")
-                    or result_payload.get("batch_started_at")
-                    or 0
-                )
-            except (TypeError, ValueError):
-                batch_started_at = 0
-            try:
-                updated_at = max(
-                    int(live_task.get("updated_at") or 0),
-                    int(result.get("created_at") or result.get("updated_at") or 0),
-                    int(state_item.get("updated_at") or 0),
-                )
-            except (TypeError, ValueError):
-                updated_at = 0
             rows.append(
                 {
                     "line_no": index,
@@ -883,6 +869,7 @@ class MailboxAdminService(MailboxSourceLockMixin):
                     "status": status_key,
                     "status_label": status_label,
                     "pool_status": state_item.get("status") or "available",
+                    "manual_sms_received": manual_sms_received(state_item),
                     "reason": state_reason,
                     "error": friendly_error,
                     "technical_error": detail_error,

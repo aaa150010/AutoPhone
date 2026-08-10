@@ -8,7 +8,12 @@ from mac_overrides.notification_runtime import (
     aggregate_cost,
     aggregate_tasks,
 )
-from mac_overrides.run_notifications import RunAggregate, build_notification_message
+from mac_overrides.run_notifications import (
+    DEFAULT_EVENT_SETTINGS,
+    EVENT_SMS_BALANCE_LOW,
+    RunAggregate,
+    build_notification_message,
+)
 
 
 class FakeExchange:
@@ -30,6 +35,8 @@ class FakeNotificationService:
         self.config = config
         self.started = []
         self.closed = False
+        self.balance_observations = []
+        self.run_observations = []
 
     def start_run(self, *args, **kwargs):
         self.started.append((args, kwargs))
@@ -37,8 +44,17 @@ class FakeNotificationService:
     def close(self, **_kwargs):
         self.closed = True
 
+    def observe_sms_balances(self, *args):
+        self.balance_observations.append(args)
+
+    def observe_run(self, *args, **kwargs):
+        self.run_observations.append((args, kwargs))
+
 
 class FakeNotifications:
+    EVENT_SMS_BALANCE_LOW = EVENT_SMS_BALANCE_LOW
+    DEFAULT_EVENT_SETTINGS = DEFAULT_EVENT_SETTINGS
+
     @staticmethod
     def validate_email_notification(value):
         return {"enabled": bool((value or {}).get("enabled"))}
@@ -47,6 +63,105 @@ class FakeNotifications:
 
 
 class NotificationCostTests(unittest.TestCase):
+    def test_watchdog_refreshes_balances_only_when_the_event_is_enabled(self):
+        class OneCycleStopEvent:
+            def __init__(self):
+                self.calls = 0
+
+            def wait(self, _timeout):
+                self.calls += 1
+                return self.calls > 1
+
+        class Monotonic:
+            def __init__(self):
+                self.values = iter((0.0, 0.0, 61.0))
+
+            def __call__(self):
+                return next(self.values)
+
+        for event_enabled in (True, False):
+            service = FakeNotificationService({
+                "enabled": True,
+                "events": {EVENT_SMS_BALANCE_LOW: event_enabled},
+            })
+            refreshed = []
+            lifecycle = RunNotificationLifecycle(
+                notifications=FakeNotifications,
+                ledger=None,
+                exchange=None,
+                progress_lookup=lambda _task_id: {},
+                terminal_statuses={"failed"},
+                sms_exhausted=lambda: False,
+                refresh_sms_balances=lambda: refreshed.append("refresh") or [],
+                monotonic=Monotonic(),
+            )
+            importer = type("Importer", (), {})()
+            importer.lock = threading.RLock()
+            importer.tasks = {}
+            context = {
+                "service": service,
+                "run_id": "run-a",
+                "stop_event": OneCycleStopEvent(),
+                "sms_balance_enabled": True,
+            }
+
+            lifecycle.watchdog(importer, context)
+
+            self.assertEqual(refreshed, ["refresh"] if event_enabled else [])
+
+    def test_watchdog_passes_refreshed_statuses_to_current_batch(self):
+        class OneCycleStopEvent:
+            def __init__(self):
+                self.calls = 0
+
+            def wait(self, _timeout):
+                self.calls += 1
+                return self.calls > 1
+
+        class Monotonic:
+            def __init__(self):
+                self.values = iter((0.0, 0.0, 61.0))
+
+            def __call__(self):
+                return next(self.values)
+
+        service = FakeNotificationService({
+            "enabled": True,
+            "events": {EVENT_SMS_BALANCE_LOW: True},
+        })
+        status = {
+            "provider": "smsbower",
+            "index": 1,
+            "fingerprint": "aaaaaaaaaa",
+            "balance_usd": 0.25,
+            "enabled": True,
+        }
+        lifecycle = RunNotificationLifecycle(
+            notifications=FakeNotifications,
+            ledger=None,
+            exchange=None,
+            progress_lookup=lambda _task_id: {},
+            terminal_statuses={"failed"},
+            sms_exhausted=lambda: False,
+            refresh_sms_balances=lambda: [status],
+            monotonic=Monotonic(),
+        )
+        importer = type("Importer", (), {})()
+        importer.lock = threading.RLock()
+        importer.tasks = {}
+        context = {
+            "service": service,
+            "run_id": "run-a",
+            "stop_event": OneCycleStopEvent(),
+            "sms_balance_enabled": True,
+        }
+
+        lifecycle.watchdog(importer, context)
+
+        self.assertEqual(len(service.balance_observations), 1)
+        self.assertEqual(service.balance_observations[0][0], "run-a")
+        self.assertEqual(service.balance_observations[0][2], [status])
+
     def test_lifecycle_begin_context_aggregate_and_cancel(self):
         now = [1000.0]
         lifecycle = RunNotificationLifecycle(

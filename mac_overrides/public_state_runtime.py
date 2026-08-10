@@ -309,7 +309,7 @@ class PublicStateRuntime:
             return {}
         return {
             key: copy.deepcopy(counts[key])
-            for key in ("total", "available", "running", "success", "failed")
+            for key in ("total", "available", "running", "success", "failed", "draft")
             if key in counts
         }
 

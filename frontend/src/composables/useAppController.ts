@@ -155,6 +155,7 @@ const defaultEmailNotification = () => ({
     unexpected_stop: true,
     stalled: true,
     sms_exhausted: true,
+    sms_balance_low: true,
     manual_stop: false,
   },
 })

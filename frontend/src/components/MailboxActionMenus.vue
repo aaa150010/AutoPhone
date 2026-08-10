@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import {
   ArrowDown,
+  Box,
   CircleCloseFilled,
   Delete,
   Download,
@@ -16,6 +17,7 @@ import {
 const props = defineProps<{
   reloginDisabled: boolean
   restoreDisabled: boolean
+  draftDisabled: boolean
   unavailableDisabled: boolean
   pixelDisabled: boolean
   exportDisabled: boolean
@@ -26,11 +28,13 @@ const props = defineProps<{
   exportLoading?: boolean
   websiteLoading?: boolean
   unavailableLoading?: boolean
+  draftLoading?: boolean
 }>()
 
 const emit = defineEmits<{
   (event: 'relogin'): void
   (event: 'restore'): void
+  (event: 'draft'): void
   (event: 'unavailable'): void
   (event: 'pixel'): void
   (event: 'export'): void
@@ -39,10 +43,12 @@ const emit = defineEmits<{
 }>()
 
 const accountDisabled = computed(() => (
-  props.reloginDisabled && props.restoreDisabled && props.unavailableDisabled
+  props.reloginDisabled && props.restoreDisabled && props.draftDisabled && props.unavailableDisabled
 ))
 const transferDisabled = computed(() => props.pixelDisabled && props.exportDisabled && props.websiteDisabled)
-const accountLoading = computed(() => Boolean(props.reloginLoading || props.unavailableLoading))
+const accountLoading = computed(() => Boolean(
+  props.reloginLoading || props.draftLoading || props.unavailableLoading,
+))
 const transferLoading = computed(() => Boolean(
   props.pixelLoading || props.exportLoading || props.websiteLoading,
 ))
@@ -50,6 +56,7 @@ const transferLoading = computed(() => Boolean(
 function handleAccountCommand(command: string) {
   if (command === 'relogin' && !props.reloginDisabled) emit('relogin')
   if (command === 'restore' && !props.restoreDisabled) emit('restore')
+  if (command === 'draft' && !props.draftDisabled) emit('draft')
   if (command === 'unavailable' && !props.unavailableDisabled) emit('unavailable')
 }
 
@@ -89,6 +96,13 @@ function handleMoreCommand(command: string) {
           <el-dropdown-item command="restore" :disabled="restoreDisabled">
             <el-icon><RefreshLeft /></el-icon>
             恢复可用
+          </el-dropdown-item>
+          <el-dropdown-item command="draft" :disabled="draftDisabled || draftLoading">
+            <el-icon :class="{ 'is-loading': draftLoading }">
+              <Loading v-if="draftLoading" />
+              <Box v-else />
+            </el-icon>
+            放入草稿箱
           </el-dropdown-item>
           <el-dropdown-item command="unavailable" :disabled="unavailableDisabled || unavailableLoading">
             <el-icon :class="{ 'is-loading': unavailableLoading }">

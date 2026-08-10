@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from threading import RLock
 import time
 from typing import Any, Callable
@@ -1083,6 +1084,39 @@ class SmsWebIntegration:
         if not statuses:
             raise ValueError("请至少填写一个 SMS API Key")
         return statuses
+
+    def refresh_balances(self) -> list[dict[str, Any]]:
+        """Refresh the configured runtime pool without interrupting tasks."""
+        pool = self.provider_registry or self.key_pool
+        if pool is None or not callable(getattr(pool, "has_keys", None)):
+            return []
+        try:
+            if not pool.has_keys():
+                return []
+            query = getattr(pool, "query_balances", None)
+            if not callable(query):
+                return []
+            try:
+                parameters = inspect.signature(query).parameters.values()
+                supports_read_only = any(
+                    parameter.name == "update_state"
+                    or parameter.kind is inspect.Parameter.VAR_KEYWORD
+                    for parameter in parameters
+                )
+            except (TypeError, ValueError):
+                supports_read_only = True
+            if supports_read_only:
+                statuses = pool.query_balances(
+                    proxy=self._sms_proxy,
+                    update_state=False,
+                )
+            else:
+                statuses = pool.query_balances(proxy=self._sms_proxy)
+        except Exception:
+            # Balance monitoring is advisory; a provider/network failure must
+            # not stop or alter the active registration pipeline.
+            return []
+        return [dict(row) for row in statuses or () if isinstance(row, dict)]
 
     def preflight_pool(self, config: Any, *, logs: Any = None, importer: Any = None):
         proxy = self.configure_pool(config, logs=logs, importer=importer)

@@ -27,6 +27,16 @@ export function canSetMailboxRowsUnavailable(rows: MailboxRow[]) {
   return rows.length > 0 && rows.every(row => row.status !== 'running')
 }
 
+export function canMoveMailboxRowsToDraft(rows: MailboxRow[]) {
+  return rows.length > 0 && rows.every(row => row.status === 'available')
+}
+
+export function managedMailboxCount(counts: Record<string, number>) {
+  const total = Math.max(0, Number(counts.total) || 0)
+  const draft = Math.max(0, Number(counts.draft) || 0)
+  return Math.max(0, total - draft)
+}
+
 export function mergeMailboxQuotaResults(
   rows: MailboxRow[],
   results: MailboxQuotaResult[],

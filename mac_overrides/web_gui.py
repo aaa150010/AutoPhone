@@ -73,6 +73,7 @@ import sms_web as _sms_web_ext
 import sub2_binding_runtime as _sub2_binding_runtime_ext
 import sub2_runtime as _sub2_runtime_ext
 import sub2_update_runtime as _sub2_update_runtime_ext
+import sub2_upload_override as _sub2_upload_override_ext
 import task_progress as _task_progress_ext
 import transport_lifecycle as _transport_lifecycle_ext
 import web_routes as _web_routes_ext
@@ -225,6 +226,9 @@ _NOTIFICATION_LIFECYCLE = _notification_runtime_ext.RunNotificationLifecycle(
     progress_lookup=lambda task_id: _TASK_PROGRESS.progress(task_id) or {},
     terminal_statuses=_task_progress_ext.TERMINAL_TASK_STATUSES,
     sms_exhausted=lambda: _SMS_PROVIDER_REGISTRY.is_exhausted(),
+    refresh_sms_balances=lambda: (
+        getattr(globals().get("_SMS_WEB"), "refresh_balances", lambda: [])()
+    ),
     observe_resource_pressure=lambda importer: _observe_runtime_fd_pressure(importer),
     int_value=lambda value, default=0, minimum=None, maximum=None: _int_value(
         value, default, minimum, maximum
@@ -1194,72 +1198,18 @@ def _sub2_session_exchange(self, *, code, account_email):
 
 def _real_sub2_upload(self, *, credentials, email):
     _set_current_task_stage("finalizing_upload")
-    config = getattr(self, "config", None)
-    binding = config.get("_sub2_update_existing") if isinstance(config, dict) else None
-    if (
-        isinstance(config, dict)
-        and str(config.get("run_mode") or "").strip().lower() == "relogin"
-        and not (isinstance(binding, dict) and str(binding.get("account_id") or "").strip())
-    ):
-        return {
-            "ok": False,
-            "error": "relogin_sub2_binding_missing: 重登缺少 SUB2 原账号绑定，已停止且未创建新账号",
-            "error_code": "relogin_sub2_binding_missing",
-            "sub2_update_existing": True,
-            "sub2_upload_created": False,
-        }
-    if isinstance(binding, dict) and str(binding.get("account_id") or "").strip():
-        expected_email = str(binding.get("email") or "").strip().lower()
-        if expected_email != str(email or "").strip().lower():
-            return {
-                "ok": False,
-                "error": "sub2_update_binding_mismatch: SUB2 原账号与当前邮箱不匹配",
-                "error_code": "sub2_update_binding_mismatch",
-                "sub2api_account_id": str(binding.get("account_id") or "").strip(),
-                "sub2_update_existing": True,
-                "sub2_upload_created": False,
-            }
-        import chatgpt_fields
-        import proxy_scope
-        import requests
-        import sub2_groups
-        import sub2_session
-
-        dependencies = _sub2_update_runtime_ext.Sub2UpdateDependencies(
-            get_admin_token=sub2_session.get_admin_token,
-            resolve_group=sub2_groups.resolve_sub2_group_id,
-            fetch_detail=chatgpt_fields.fetch_sub2_account_detail,
-            assert_group=sub2_groups.assert_sub2_account_group,
-            extract_fields=chatgpt_fields.extract_chatgpt_auth_fields,
-            extra_from_item=chatgpt_fields.sub2_extra_from_item,
-            identity_locations=_codex_oauth_chain._sub2_identity_locations,
-            put=requests.put,
-            requests_kwargs=proxy_scope.requests_kwargs,
-        )
-        result = _sub2_update_runtime_ext.update_existing_sub2_account(
-            config=config,
-            credentials=credentials,
-            email=email,
-            account_id=binding["account_id"],
-            upload_proxy=str(getattr(self, "upload_proxy", "") or ""),
-            log_fn=getattr(self, "log_fn", None),
-            dependencies=dependencies,
-        )
-        _sub2_binding_runtime_ext.clear_successful_update_statuses(
-            binding,
-            result,
-            sub2_runtime=globals().get("_SUB2_RUNTIME"),
-            direct_runtime=globals().get("_OPENAI_DIRECT_RUNTIME"),
-        )
-        confirmation = _sub2_binding_runtime_ext.confirmed_upload_log(result)
-        if confirmation:
-            _call_log(getattr(self, "log_fn", None), confirmation, "success")
-        return result
-    result = _ORIGINAL_REAL_SUB2_UPLOAD(self, credentials=credentials, email=email)
-    confirmation = _sub2_binding_runtime_ext.confirmed_upload_log(result)
-    if confirmation:
-        _call_log(getattr(self, "log_fn", None), confirmation, "success")
-    return result
+    return _sub2_upload_override_ext.upload_sub2_with_relogin_policy(
+        self,
+        credentials=credentials,
+        email=email,
+        original_upload=_ORIGINAL_REAL_SUB2_UPLOAD,
+        identity_locations=_codex_oauth_chain._sub2_identity_locations,
+        update_runtime=_sub2_update_runtime_ext,
+        binding_runtime=_sub2_binding_runtime_ext,
+        sub2_runtime=globals().get("_SUB2_RUNTIME"),
+        direct_runtime=globals().get("_OPENAI_DIRECT_RUNTIME"),
+        call_log=_call_log,
+    )
 
 
 def _patched_task_state(self, task_id: str, **values):
@@ -1486,6 +1436,27 @@ def _observe_runtime_fd_pressure(importer):
         return None
 
 
+def _notify_sms_balances(importer, statuses):
+    """Forward sanitized preflight balances to the active run notification."""
+    try:
+        context = _notification_context_for(importer)
+        if not isinstance(context, dict) or not statuses:
+            return ()
+        service = context.get("service")
+        observer = getattr(service, "observe_sms_balances", None)
+        if not callable(observer):
+            return ()
+        aggregate, last_activity_at = _notification_aggregate(importer, context)
+        context["last_activity_at"] = last_activity_at or context.get(
+            "last_activity_at",
+            context.get("started_at", 0),
+        )
+        return observer(context.get("run_id"), aggregate, statuses)
+    except Exception:
+        # Notification delivery is advisory and must never abort registration.
+        return ()
+
+
 _notification_watchdog = _NOTIFICATION_LIFECYCLE.watchdog
 _begin_notification_run = _NOTIFICATION_LIFECYCLE.begin
 _cancel_notification_run = _NOTIFICATION_LIFECYCLE.cancel
@@ -1497,6 +1468,10 @@ def _patched_importer_start(self, settings):
     additional_retries = _int_value(internal.get("auth_session_retries"), 1, minimum=0, maximum=4)
     internal["auth_session_retries"] = additional_retries + 1
     already_running = bool(self.status(internal).get("running"))
+    preflight_sms_statuses = internal.pop(
+        "_gptphone_sms_preflight_statuses",
+        (),
+    )
     task_admission = getattr(self, "task_admission", None)
     inflight_gate = getattr(self, "inflight_gate", None)
     staged_inflight = False
@@ -1677,6 +1652,7 @@ def _patched_importer_start(self, settings):
             aggregate, last_activity_at = _notification_aggregate(self, notification_context)
             notification_context["last_activity_at"] = last_activity_at or notification_context["started_at"]
             notification_context["service"].observe_run(notification_context["run_id"], aggregate)
+            _notify_sms_balances(self, preflight_sms_statuses)
             monitor = threading.Thread(
                 target=_notification_watchdog,
                 args=(self, notification_context),

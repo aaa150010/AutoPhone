@@ -168,6 +168,26 @@ class Sub2ExistingAccountUpdateTests(unittest.TestCase):
         self.assertTrue(result["sub2_previous_state_preserved"])
         self.assertEqual(calls.remote["credentials"]["access_token"], "old-access")
 
+    def test_update_404_reports_confirmed_missing_without_rollback(self):
+        dependencies, calls = self.dependencies(response=FakeResponse(404, {"code": 404}))
+
+        result = update_existing_sub2_account(
+            config=self.config(),
+            credentials=self.credentials(),
+            email=EMAIL,
+            account_id=ACCOUNT_ID,
+            upload_proxy="",
+            log_fn=None,
+            dependencies=dependencies,
+        )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "sub2_update_target_missing")
+        self.assertEqual(result["http_status"], 404)
+        self.assertEqual(len(calls.puts), 1)
+        self.assertEqual(calls.posts, [])
+        self.assertNotIn("sub2_rollback_attempted", result)
+
     def test_ambiguous_put_exception_restores_previous_credentials(self):
         dependencies, calls = self.dependencies()
         attempts = [0]

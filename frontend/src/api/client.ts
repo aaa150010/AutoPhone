@@ -106,6 +106,30 @@ export const setMailboxRowsUnavailable = (rows: Array<{ row_id: string; line_no:
     { rows, line_nos: rows.map(row => row.line_no) },
   )
 )
+export const moveMailboxRowsToDraft = (rows: Array<{ row_id: string; line_no: number }>) => (
+  api<{ ok: true; drafted: number; mailboxes?: MailboxPayload; state?: AppState }>(
+    '/api/mailboxes/draft',
+    { rows, line_nos: rows.map(row => row.line_no) },
+  )
+)
+export const restoreMailboxDraftRows = (rows: Array<{ row_id: string; line_no: number }>) => (
+  api<{ ok: true; restored: number; mailboxes?: MailboxPayload; state?: AppState }>(
+    '/api/mailboxes/draft/restore',
+    { rows, line_nos: rows.map(row => row.line_no) },
+  )
+)
+export const markMailboxRowsManualUsed = (rows: Array<{ row_id: string; line_no: number }>) => (
+  api<{ ok: true; used: number; mailboxes?: MailboxPayload; state?: AppState }>(
+    '/api/mailboxes/manual-used',
+    { rows, line_nos: rows.map(row => row.line_no) },
+  )
+)
+export const restoreMailboxRowsManualUsed = (rows: Array<{ row_id: string; line_no: number }>) => (
+  api<{ ok: true; restored: number; mailboxes?: MailboxPayload; state?: AppState }>(
+    '/api/mailboxes/manual-unused',
+    { rows, line_nos: rows.map(row => row.line_no) },
+  )
+)
 export const exportMailboxSub2 = (rows: Array<{ row_id: string; line_no: number }>) => (
   api<{ count: number; skipped?: number; filename: string; export: Record<string, any> }>(
     '/api/mailboxes/sub2-export',

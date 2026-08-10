@@ -343,6 +343,7 @@ class RunNotificationLifecycle:
         progress_lookup: Callable[[str], Mapping[str, Any] | None],
         terminal_statuses: Iterable[str],
         sms_exhausted: Callable[[], bool],
+        refresh_sms_balances: Callable[[], Iterable[Mapping[str, Any]]] | None = None,
         observe_resource_pressure: Callable[[Any], Any] | None = None,
         int_value: Callable[..., int] = _coerce_int,
         clock: Callable[[], float] = time.time,
@@ -355,6 +356,7 @@ class RunNotificationLifecycle:
         self.progress_lookup = progress_lookup
         self.terminal_statuses = tuple(terminal_statuses)
         self.sms_exhausted = sms_exhausted
+        self.refresh_sms_balances = refresh_sms_balances
         self.observe_resource_pressure = observe_resource_pressure
         self.int_value = int_value
         self.clock = clock
@@ -425,18 +427,54 @@ class RunNotificationLifecycle:
         with self._lock:
             return self._context
 
+    def _sms_balance_notifications_enabled(self, context: Mapping[str, Any]) -> bool:
+        if not context.get("sms_balance_enabled", True):
+            return False
+        service = context.get("service")
+        config = getattr(service, "config", {})
+        if not isinstance(config, Mapping) or not config.get("enabled"):
+            return False
+        events = config.get("events")
+        return isinstance(events, Mapping) and bool(
+            events.get(
+                self.notifications.EVENT_SMS_BALANCE_LOW,
+                self.notifications.DEFAULT_EVENT_SETTINGS[
+                    self.notifications.EVENT_SMS_BALANCE_LOW
+                ],
+            )
+        )
+
     def watchdog(self, importer: Any, context: dict[str, Any]) -> None:
         stop_event = context["stop_event"]
         notification_deadline = self.monotonic() + 10.0
+        balance_deadline = self.monotonic() + 60.0
         while not stop_event.wait(2):
             if callable(self.observe_resource_pressure):
                 try:
                     self.observe_resource_pressure(importer)
                 except Exception:
                     pass
-            if self.monotonic() < notification_deadline:
+            current = self.monotonic()
+            if (
+                current >= balance_deadline
+                and callable(self.refresh_sms_balances)
+                and self._sms_balance_notifications_enabled(context)
+            ):
+                balance_deadline = current + 60.0
+                try:
+                    statuses = list(self.refresh_sms_balances() or ())
+                    if statuses:
+                        aggregate, _ = self.aggregate(importer, context)
+                        context["service"].observe_sms_balances(
+                            context["run_id"],
+                            aggregate,
+                            statuses,
+                        )
+                except Exception:
+                    pass
+            if current < notification_deadline:
                 continue
-            notification_deadline = self.monotonic() + 10.0
+            notification_deadline = current + 10.0
             try:
                 aggregate, last_activity_at = self.aggregate(importer, context)
                 context["last_activity_at"] = (
@@ -482,6 +520,8 @@ class RunNotificationLifecycle:
             "target": self._int_setting(
                 values.get("target_count"), 1, minimum=1
             ),
+            "sms_balance_enabled": str(values.get("run_mode") or "register").strip().lower()
+            != "relogin",
             "stop_event": threading.Event(),
         }
         context["service"].start_run(

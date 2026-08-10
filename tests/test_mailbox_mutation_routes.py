@@ -53,11 +53,31 @@ class MailboxMutationRouteTests(unittest.TestCase):
             public_state=lambda: {"runtime": {"running": False}},
             logs=self.logs,
             safe_error=lambda exc: str(exc),
+            draft_action=lambda _admin, payload: {
+                "ok": True,
+                "drafted": len(payload.get("rows") or []),
+            },
+            draft_restore_action=lambda _admin, payload: {
+                "ok": True,
+                "restored": len(payload.get("rows") or []),
+            },
         )
         self.app.add_url_rule(
             "/import",
             "import_mailboxes",
             self.controller.import_mailboxes,
+            methods=["POST"],
+        )
+        self.app.add_url_rule(
+            "/draft",
+            "draft_mailboxes",
+            self.controller.draft_mailboxes,
+            methods=["POST"],
+        )
+        self.app.add_url_rule(
+            "/draft-restore",
+            "restore_draft_mailboxes",
+            self.controller.restore_draft_mailboxes,
             methods=["POST"],
         )
         self.app.add_url_rule(
@@ -113,6 +133,54 @@ class MailboxMutationRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertFalse(response.get_json()["ok"])
+
+    def test_draft_mutations_return_refreshed_mailboxes_and_state(self):
+        for path, result_key in (("/draft", "drafted"), ("/draft-restore", "restored")):
+            with self.subTest(path=path):
+                response = self.app.test_client().post(
+                    path,
+                    json={"rows": [{"row_id": "a" * 64, "line_no": 1}]},
+                )
+
+                self.assertEqual(response.status_code, 200)
+                payload = response.get_json()
+                self.assertEqual(payload[result_key], 1)
+                self.assertEqual(payload["mailboxes"]["counts"]["total"], 1)
+                self.assertFalse(payload["state"]["runtime"]["running"])
+
+    def test_routes_include_all_mailbox_mutations(self):
+        definitions = {
+            path: (endpoint, methods)
+            for path, endpoint, _view, methods in self.controller.routes()
+        }
+
+        self.assertEqual(set(definitions), {
+            "/api/mailboxes/import",
+            "/api/mailboxes/delete",
+            "/api/mailboxes/restore",
+            "/api/mailboxes/unavailable",
+            "/api/mailboxes/draft",
+            "/api/mailboxes/draft/restore",
+            "/api/mailboxes/manual-used",
+            "/api/mailboxes/manual-unused",
+        })
+        self.assertEqual(definitions["/api/mailboxes/draft"], ("api_mailboxes_draft", ["POST"]))
+        self.assertEqual(definitions["/api/mailboxes/manual-used"], ("api_mailboxes_manual_used", ["POST"]))
+
+    def test_stale_draft_restore_is_a_conflict(self):
+        self.controller.draft_restore_action = lambda _admin, _payload: {
+            "ok": False,
+            "code": "mailbox_rows_not_draft",
+            "error": "选中的邮箱已不在草稿箱，请刷新后重试",
+        }
+
+        response = self.app.test_client().post(
+            "/draft-restore",
+            json={"rows": [{"row_id": "a" * 64, "line_no": 1}]},
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.get_json()["code"], "mailbox_rows_not_draft")
 
 
 if __name__ == "__main__":

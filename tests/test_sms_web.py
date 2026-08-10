@@ -29,6 +29,10 @@ class FakeKeyPool:
         self.proxy = proxy
         return list(self.statuses)
 
+    def query_balances(self, *, proxy="", update_state=True):
+        self.query_options = {"proxy": proxy, "update_state": update_state}
+        return list(self.statuses)
+
     def safe_error(self, error):
         return str(error)
 
@@ -335,6 +339,25 @@ class SmsWebTests(unittest.TestCase):
         self.assertEqual(statuses[0]["balance_usd"], 1.75)
         self.assertEqual(statuses[0]["status"], "usable")
         self.assertNotIn(secret, str(statuses))
+
+    def test_runtime_balance_refresh_is_read_only_and_failure_is_advisory(self):
+        self.pool.configure(["key-a"])
+        self.integration._sms_proxy = "http://127.0.0.1:7897"
+
+        statuses = self.integration.refresh_balances()
+
+        self.assertEqual(statuses, self.pool.statuses)
+        self.assertEqual(
+            self.pool.query_options,
+            {
+                "proxy": "http://127.0.0.1:7897",
+                "update_state": False,
+            },
+        )
+        self.pool.query_balances = lambda **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("provider unavailable")
+        )
+        self.assertEqual(self.integration.refresh_balances(), [])
 
     def test_transient_openai_errors_bypass_route_penalty(self):
         self.assertEqual(

@@ -13,10 +13,22 @@ from typing import Any, Callable
 
 try:
     from .mailbox_source_lock import MailboxSourceLockTimeout
-    from .mailbox_state_runtime import mark_mailboxes_unavailable
+    from .mailbox_state_runtime import (
+        mark_mailboxes_draft,
+        mark_mailboxes_manual_used,
+        mark_mailboxes_unavailable,
+        restore_manual_used_mailboxes,
+        restore_draft_mailboxes,
+    )
 except ImportError:  # Loaded as top-level modules by the macOS launcher.
     from mailbox_source_lock import MailboxSourceLockTimeout
-    from mailbox_state_runtime import mark_mailboxes_unavailable
+    from mailbox_state_runtime import (
+        mark_mailboxes_draft,
+        mark_mailboxes_manual_used,
+        mark_mailboxes_unavailable,
+        restore_manual_used_mailboxes,
+        restore_draft_mailboxes,
+    )
 
 
 class MailboxMutationRouteController:
@@ -30,14 +42,22 @@ class MailboxMutationRouteController:
         public_state: Callable[[], Mapping[str, Any]],
         logs: Any,
         safe_error: Callable[[Any], str] = str,
+        draft_action: Callable[[Any, Mapping[str, Any]], Mapping[str, Any]] = mark_mailboxes_draft,
+        draft_restore_action: Callable[[Any, Mapping[str, Any]], Mapping[str, Any]] = restore_draft_mailboxes,
         unavailable_action: Callable[[Any, Mapping[str, Any]], Mapping[str, Any]] = mark_mailboxes_unavailable,
+        manual_used_action: Callable[[Any, Mapping[str, Any]], Mapping[str, Any]] = mark_mailboxes_manual_used,
+        manual_unused_action: Callable[[Any, Mapping[str, Any]], Mapping[str, Any]] = restore_manual_used_mailboxes,
     ) -> None:
         self.module = module
         self.mailbox_admin = mailbox_admin
         self.public_state = public_state
         self.logs = logs
         self.safe_error = safe_error
+        self.draft_action = draft_action
+        self.draft_restore_action = draft_restore_action
         self.unavailable_action = unavailable_action
+        self.manual_used_action = manual_used_action
+        self.manual_unused_action = manual_unused_action
 
     def import_mailboxes(self):
         data, error = self._request_data()
@@ -63,6 +83,57 @@ class MailboxMutationRouteController:
         return self._run_payload_mutation(
             "设置不可用",
             lambda payload: self.unavailable_action(self.mailbox_admin, payload),
+        )
+
+    def draft_mailboxes(self):
+        return self._run_payload_mutation(
+            "放入草稿箱",
+            lambda payload: self.draft_action(self.mailbox_admin, payload),
+        )
+
+    def restore_draft_mailboxes(self):
+        return self._run_payload_mutation(
+            "草稿放回可用",
+            lambda payload: self.draft_restore_action(self.mailbox_admin, payload),
+        )
+
+    def manual_used_mailboxes(self):
+        return self._run_payload_mutation(
+            "标记已手动接码",
+            lambda payload: self.manual_used_action(self.mailbox_admin, payload),
+        )
+
+    def manual_unused_mailboxes(self):
+        return self._run_payload_mutation(
+            "标记未用",
+            lambda payload: self.manual_unused_action(self.mailbox_admin, payload),
+        )
+
+    def routes(self) -> tuple[tuple[str, str, Callable[..., Any], list[str]], ...]:
+        return (
+            ("/api/mailboxes/import", "api_mailboxes_import", self.import_mailboxes, ["POST"]),
+            ("/api/mailboxes/delete", "api_mailboxes_delete", self.delete_mailboxes, ["POST"]),
+            ("/api/mailboxes/restore", "api_mailboxes_restore", self.restore_mailboxes, ["POST"]),
+            ("/api/mailboxes/unavailable", "api_mailboxes_unavailable", self.unavailable_mailboxes, ["POST"]),
+            ("/api/mailboxes/draft", "api_mailboxes_draft", self.draft_mailboxes, ["POST"]),
+            (
+                "/api/mailboxes/draft/restore",
+                "api_mailboxes_draft_restore",
+                self.restore_draft_mailboxes,
+                ["POST"],
+            ),
+            (
+                "/api/mailboxes/manual-used",
+                "api_mailboxes_manual_used",
+                self.manual_used_mailboxes,
+                ["POST"],
+            ),
+            (
+                "/api/mailboxes/manual-unused",
+                "api_mailboxes_manual_unused",
+                self.manual_unused_mailboxes,
+                ["POST"],
+            ),
         )
 
     def _run_payload_mutation(
@@ -157,6 +228,9 @@ class MailboxMutationRouteController:
         if code in {
             "mailbox_rows_stale",
             "mailbox_rows_running",
+            "mailbox_rows_not_available",
+            "mailbox_rows_not_draft",
+            "mailbox_rows_not_manual_used",
             "mailbox_source_lock_timeout",
         }:
             return 409

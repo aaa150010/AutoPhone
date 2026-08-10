@@ -362,6 +362,17 @@ def update_existing_sub2_account(
     update_payload = _response_json(response)
     update_ok, http_status = _response_ok(response, update_payload)
     if not update_ok:
+        try:
+            api_code = int(update_payload.get("code") or 0)
+        except (TypeError, ValueError):
+            api_code = 0
+        if http_status == 404 or api_code == 404:
+            return _failure(
+                "sub2_update_target_missing",
+                "SUB2 原账号在更新前已不存在",
+                remote_id,
+                http_status=404,
+            )
         return failure_after_update(
             "sub2_update_existing_failed",
             f"SUB2 原账号更新失败（HTTP {http_status or 'unknown'}）",

@@ -1,15 +1,21 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  isSub2TestFailure,
   isLatestMailboxBatchFailure,
   isMailboxNetworkDisconnected,
   latestMailboxBatchId,
+  matchesMailboxView,
+  needsSub2Rerun,
 } from '../src/utils/mailboxFilters.ts'
 import {
+  canMoveMailboxRowsToDraft,
   canSetMailboxRowsUnavailable,
+  managedMailboxCount,
   mergeMailboxOperationUpdates,
   mergeMailboxQuotaResults,
 } from '../src/utils/mailboxRows.ts'
+import { createMailboxRefreshGuard } from '../src/utils/mailboxRefreshGuard.ts'
 import {
   claimMailboxOperationNotification,
   shouldApplyMailboxOperationUpdate,
@@ -134,6 +140,61 @@ test('setting mailboxes unavailable requires a non-running selection', () => {
     row({ row_id: 'row-a', status: 'available' }),
     row({ row_id: 'row-b', status: 'running' }),
   ]), false)
+})
+
+test('401 and 404 SUB2 states require rerun while rate limits do not', () => {
+  assert.equal(needsSub2Rerun({ status_code: 401 }), true)
+  assert.equal(needsSub2Rerun({ status_code: 404 }), true)
+  assert.equal(needsSub2Rerun({ kind: 'not_found', needs_rerun: true }), true)
+  assert.equal(needsSub2Rerun({ status_code: 429, needs_rerun: true }), false)
+  assert.equal(isSub2TestFailure({ status_code: 404 }), true)
+  assert.equal(isSub2TestFailure({ status_code: 401 }), false)
+})
+
+test('mailbox view filters exclude drafts and preserve combined status and search filters', () => {
+  const filters = {
+    status: 'available',
+    sub2: 'all',
+    quota: 'all',
+    search: 'alpha',
+    latestBatchId: '',
+  }
+  assert.equal(matchesMailboxView(row({ email: 'alpha@example.test', status: 'available' }), filters), true)
+  assert.equal(matchesMailboxView(row({ email: 'beta@example.test', status: 'available' }), filters), false)
+  assert.equal(matchesMailboxView(row({ email: 'alpha@example.test', status: 'draft' }), filters), false)
+})
+
+test('drafting mailboxes requires every selected row to be currently available', () => {
+  assert.equal(canMoveMailboxRowsToDraft([]), false)
+  assert.equal(canMoveMailboxRowsToDraft([
+    row({ row_id: 'row-a', status: 'available' }),
+    row({ row_id: 'row-b', status: 'available' }),
+  ]), true)
+  for (const status of ['running', 'consumed', 'failed', 'draft']) {
+    assert.equal(canMoveMailboxRowsToDraft([
+      row({ row_id: 'row-a', status: 'available' }),
+      row({ row_id: 'row-b', status }),
+    ]), false)
+  }
+})
+
+test('managed mailbox metric excludes rows shown in the draft dialog', () => {
+  assert.equal(managedMailboxCount({ total: 5, draft: 2 }), 3)
+  assert.equal(managedMailboxCount({ total: 3 }), 3)
+  assert.equal(managedMailboxCount({ total: 1, draft: 4 }), 0)
+})
+
+test('mailbox refresh guard rejects requests started before a mutation', () => {
+  const guard = createMailboxRefreshGuard()
+  const beforeMutation = guard.begin()
+  guard.invalidate()
+  assert.equal(guard.accepts(beforeMutation), false)
+
+  const current = guard.begin()
+  assert.equal(guard.accepts(current), true)
+  const newer = guard.begin()
+  assert.equal(guard.accepts(current), false)
+  assert.equal(guard.accepts(newer), true)
 })
 
 test('a terminal operation is claimed only once across page refreshes', () => {

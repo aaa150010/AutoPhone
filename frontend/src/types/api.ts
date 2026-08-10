@@ -226,6 +226,7 @@ export interface MailboxRow {
   status: string
   status_label?: string
   pool_status?: string
+  manual_sms_received?: boolean
   error?: string
   reason?: string
   technical_error?: string
@@ -245,6 +246,19 @@ export interface MailboxRow {
   sub2_status?: Sub2MailboxStatus | null
   updated_at?: number
 }
+
+export type MailboxRowAction =
+  | 'copy_email'
+  | 'copy_password'
+  | 'copy_totp'
+  | 'open_url'
+  | 'manual_used'
+  | 'manual_unused'
+  | 'draft'
+  | 'restore'
+  | 'unavailable'
+  | 'relogin'
+  | 'delete'
 
 export interface OpenAIQuotaWindow {
   remaining_percent: number | null

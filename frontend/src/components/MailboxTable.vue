@@ -1,10 +1,25 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Refresh, View } from '@element-plus/icons-vue'
+import {
+  Box,
+  CircleCheck,
+  CircleCloseFilled,
+  CopyDocument,
+  Delete,
+  Key,
+  Link,
+  Loading,
+  MoreFilled,
+  RefreshLeft,
+  RefreshRight,
+  Refresh,
+  View,
+} from '@element-plus/icons-vue'
 import ContentEmptyState from './ContentEmptyState.vue'
 import TaskProgressCell from './TaskProgressCell.vue'
 import { useTaskProgressClock } from '../composables/useTaskProgressClock'
-import type { MailboxRow } from '../types/api'
+import type { MailboxRow, MailboxRowAction } from '../types/api'
+import { needsSub2Rerun } from '../utils/mailboxFilters'
 
 const props = defineProps<{
   rows: MailboxRow[]
@@ -12,6 +27,8 @@ const props = defineProps<{
   loadingTotp: string[]
   loadingQuotas: string[]
   quotaRetryDisabled: boolean
+  rowActionDisabled: boolean
+  rowActionLoading: string[]
 }>()
 
 const emit = defineEmits<{
@@ -21,6 +38,7 @@ const emit = defineEmits<{
   totp: [MailboxRow]
   url: [MailboxRow]
   quota: [MailboxRow]
+  action: [MailboxRowAction, MailboxRow]
 }>()
 
 const tableRef = ref<any>()
@@ -147,6 +165,18 @@ function quotaDetail(
 
 function quotaRetrying(row: MailboxRow) {
   return props.loadingQuotas.includes(row.row_id)
+}
+
+function rowActionLoading(row: MailboxRow) {
+  return props.rowActionLoading.includes(row.row_id)
+}
+
+function emitRowAction(command: string, row: MailboxRow) {
+  emit('action', command as MailboxRowAction, row)
+}
+
+function handleDropdownCommand(command: unknown, row: MailboxRow) {
+  emitRowAction(String(command), row)
 }
 
 defineExpose({ clearSelection })
@@ -281,6 +311,69 @@ defineExpose({ clearSelection })
     <el-table-column label="失败原因/说明" min-width="300" show-overflow-tooltip>
       <template #default="{ row }">{{ explanation(row) }}</template>
     </el-table-column>
+    <el-table-column label="操作" width="88" fixed="right" align="center">
+      <template #default="{ row }">
+        <el-dropdown
+          trigger="click"
+          :disabled="rowActionDisabled || rowActionLoading(row)"
+          @command="handleDropdownCommand($event, row)"
+        >
+          <el-tooltip content="打开该账号的常用操作" placement="top">
+            <el-button
+              link
+              class="row-action-button"
+              :disabled="rowActionDisabled"
+              :loading="rowActionLoading(row)"
+              aria-label="打开该账号的常用操作"
+            >
+              <el-icon v-if="rowActionLoading(row)" class="is-loading"><Loading /></el-icon>
+              <el-icon v-else><MoreFilled /></el-icon>
+            </el-button>
+          </el-tooltip>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="copy_email">
+                <el-icon><CopyDocument /></el-icon>复制邮箱
+              </el-dropdown-item>
+              <el-dropdown-item command="copy_password">
+                <el-icon><Key /></el-icon>复制密码
+              </el-dropdown-item>
+              <el-dropdown-item v-if="row.has_totp" command="copy_totp">
+                <el-icon><CopyDocument /></el-icon>复制 2FA
+              </el-dropdown-item>
+              <el-dropdown-item v-if="row.has_mailbox_url" command="open_url">
+                <el-icon><Link /></el-icon>打开取件 URL
+              </el-dropdown-item>
+              <el-dropdown-item v-if="row.status === 'available'" command="manual_used">
+                <el-icon><CircleCheck /></el-icon>标记已手动接码
+              </el-dropdown-item>
+              <el-dropdown-item
+                v-if="row.status === 'consumed' && row.manual_sms_received"
+                command="manual_unused"
+              >
+                <el-icon><RefreshLeft /></el-icon>标记未用并放回可用
+              </el-dropdown-item>
+              <el-dropdown-item v-if="row.status === 'available'" command="draft">
+                <el-icon><Box /></el-icon>放入草稿箱
+              </el-dropdown-item>
+              <el-dropdown-item v-if="row.status === 'failed'" command="restore">
+                <el-icon><RefreshLeft /></el-icon>恢复可用
+              </el-dropdown-item>
+              <el-dropdown-item v-if="row.status === 'available'" command="unavailable">
+                <el-icon><CircleCloseFilled /></el-icon>设置不可用
+              </el-dropdown-item>
+              <el-dropdown-item v-if="needsSub2Rerun(row.sub2_status)" command="relogin">
+                <el-icon><RefreshRight /></el-icon>重登并更新 SUB2
+              </el-dropdown-item>
+              <el-dropdown-item command="delete">
+                <el-icon class="danger-icon"><Delete /></el-icon>
+                <span class="danger-label">删除</span>
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </template>
+    </el-table-column>
     <template #empty><ContentEmptyState /></template>
   </el-table>
 </template>
@@ -324,4 +417,6 @@ defineExpose({ clearSelection })
   cursor: pointer;
 }
 .quota-retry:disabled { opacity: 0.6; cursor: not-allowed; }
+.row-action-button { min-width: 30px; padding: 4px 8px; }
+.danger-icon, .danger-label { color: var(--el-color-danger); }
 </style>
