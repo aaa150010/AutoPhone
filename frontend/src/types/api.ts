@@ -185,12 +185,79 @@ export interface NotificationRuntimeStatus {
   error?: string
 }
 
+export type OpenAIConnectivityStatus = 'unknown' | 'healthy' | 'outage' | 'recovering'
+
+export interface OpenAIAuthConnectivityState {
+  status?: OpenAIConnectivityStatus
+  runtime_epoch?: number | string
+  revision?: number | string
+  incident_id?: string
+  event_id?: string
+  reason_code?: string
+  reason_label?: string
+  enabled?: boolean
+  paused?: boolean
+  pause_reason?: string
+  node_code?: string
+  node_label?: string
+  affected_origins?: string[]
+  detected_at?: number | null
+  recovered_at?: number | null
+  updated_at?: number | null
+  failure_count?: number
+  consecutive_failures?: number
+  failure_counts?: Record<string, number>
+  probe_success_rounds?: number
+  probe_successful_rounds?: number
+  probe_required_rounds?: number
+  last_probe_at?: number | null
+  next_probe_at?: number | null
+  next_probe_in_seconds?: number
+  proxy_fingerprint?: string
+  probe?: {
+    successful_rounds?: number
+    required_rounds?: number
+    next_probe_at?: number | null
+  }
+}
+
+export interface RuntimeCapacitySnapshot {
+  active?: number
+  base?: number
+  baseline?: number
+  ceiling?: number
+  healthy_ceiling?: number
+  limit?: number
+  waiting?: number
+  paused?: boolean
+  suspended?: boolean
+  pause_reason?: string
+  last_reason?: string
+  pause_remaining_seconds?: number
+  sticky_baseline?: boolean
+  expansion_eligible?: boolean
+  recovery_eligible?: boolean
+  restore_ceiling?: number
+}
+
+export interface RuntimeConcurrencyState {
+  task?: RuntimeCapacitySnapshot
+  node?: RuntimeCapacitySnapshot
+  protocol?: RuntimeCapacitySnapshot
+  email?: RuntimeCapacitySnapshot
+  phone?: RuntimeCapacitySnapshot
+  [key: string]: RuntimeCapacitySnapshot | undefined
+}
+
 export interface RuntimeState {
   running?: boolean
   stop_requested?: boolean
   tasks?: RuntimeTask[]
   pool?: Record<string, any>
-  concurrency?: Record<string, any>
+  concurrency?: RuntimeConcurrencyState
+  connectivity?: {
+    openai_auth?: OpenAIAuthConnectivityState
+  }
   stage_counts?: Partial<TaskStageCounts>
   sms_key_statuses?: SmsKeyStatus[]
   sms_alerts?: SmsRuntimeAlert[]

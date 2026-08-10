@@ -143,6 +143,28 @@ function updateProxyScope(key: string, value: boolean | string | number) {
       </el-col>
     </el-row>
 
+    <el-row :gutter="10">
+      <el-col :span="12">
+        <el-form-item label="OpenAI 链路保护">
+          <el-switch
+            :model-value="modelValue.openai_connectivity_guard !== false"
+            @update:model-value="update('openai_connectivity_guard', Boolean($event))"
+          />
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
+        <el-form-item label="协议健康并发上限">
+          <el-input-number
+            :model-value="Number(modelValue.protocol_concurrency_ceiling ?? 12)"
+            :min="8"
+            :max="15"
+            controls-position="right"
+            @update:model-value="update('protocol_concurrency_ceiling', Number($event ?? 12))"
+          />
+        </el-form-item>
+      </el-col>
+    </el-row>
+
     <el-form-item label="保守自适应任务并发">
       <el-switch
         :model-value="modelValue.adaptive_task_concurrency !== false"

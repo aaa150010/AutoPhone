@@ -55,6 +55,12 @@ export const getState = () => api<{ state: AppState }>('/api/state')
 export const getLocalConfig = () => api<{ config: Record<string, any> }>('/api/local-config')
 export const getSecret = (id: string) => api<{ value: any }>('/api/local-config/secret', { id })
 export const saveConfig = (data: Record<string, any>) => api('/api/config', data)
+export const updateOpenAIConnectivityGuard = (enabled: boolean) => api<{
+  ok: true
+  enabled: boolean
+  settings?: Record<string, any>
+  state?: AppState
+}>('/api/openai-connectivity-guard', { enabled })
 export const preflightRun = (data: Record<string, any>) => api('/api/preflight', data)
 export const startExistingRun = (data: Record<string, any>) => api('/api/start-existing', data)
 export const stopRun = () => api('/api/stop', {})

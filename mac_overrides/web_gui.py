@@ -31,6 +31,9 @@ import error_observability as _error_observability_ext
 import auth_request_runtime as _auth_request_runtime_ext
 import auth_challenge_runtime as _auth_challenge_runtime_ext
 import auth_session_runtime as _auth_session_runtime_ext
+import auth_connectivity_runtime as _auth_connectivity_runtime_ext
+import connectivity_notifications as _connectivity_notifications_ext
+import connectivity_routes as _connectivity_routes_ext
 import mfa_retry_runtime as _mfa_retry_runtime_ext
 import manual_verification_runtime as _manual_verification_runtime_ext
 import manual_verification_routes as _manual_verification_routes_ext
@@ -289,106 +292,82 @@ _CURRENT_INFLIGHT_GATE = None
 _FAST_ACCOUNT_BANNED_MAX_EXECUTION_SECONDS = 90
 _FAST_ACCOUNT_BANNED_ALLOWED_GROUPS = frozenset({"queue", "oauth", "email"})
 _FAST_ACCOUNT_BANNED_TERMINAL_GROUPS = frozenset({"oauth", "email"})
-_MAILBOX_LOCAL_PRESSURE_CODES = frozenset(
-    {"email_code_timeout", "mailbox_login_failed", "mailbox_unavailable"}
-)
-_MAILBOX_LOCAL_PRESSURE_NODES = frozenset({"email_slot_waiting", "email_login"})
-_MAILBOX_LOCAL_PRESSURE_MARKERS = (
-    "mailbox_",
-    "gptmail_",
-    "manual_code_timeout",
-    "microsoft token refresh failed",
-    "authenticated but not connected",
-    "mailbox imap",
-    "imaplib",
-    "authenticationfailed",
-)
-_MAIN_CHAIN_PRESSURE_NODES = frozenset(
-    {
-        "oauth_create_node",
-        "oauth_session",
-        "oauth_authorize_node",
-        "email_password",
-        "email_code_waiting",
-        "email_code_verifying",
-        "mfa_otp_verifying",
-        "phone_submitting",
-        "sms_verifying",
-        "finalizing_profile",
-        "finalizing_callback",
-        "finalizing_token",
-    }
-)
-_SMS_PROVIDER_LOCAL_PRESSURE_NODES = frozenset({"phone_acquiring", "sms_waiting"})
-_SMS_PROVIDER_LOCAL_PRESSURE_CODES = frozenset(
-    {
-        "phone_acquisition_failed",
-        "sms_activation_replaced",
-        "sms_key_missing",
-        "sms_key_pool_temporarily_unavailable",
-        "sms_no_code",
-        "sms_poll_already_active",
-        "sms_provider_poll_failed",
-        "sms_provider_pool_unavailable",
-        "sms_provider_ready_failed",
-        "sms_route_pool_exhausted",
-        "sms_timeout",
-        "sms_wait_failed",
-    }
-)
-_SMS_PROVIDER_LOCAL_PRESSURE_MARKERS = (
-    "sms_provider_",
-    "sms_key_",
-    "sms_route_",
-    "sms_activation_",
-    "sms_poll_",
-    "sms_timeout",
-    "getnumber failed",
-    "no_numbers",
-)
 _PROTOCOL_GATE = _sms_runtime_ext.ProxyProtocolGate(
     default_limit=5,
     launch_interval_seconds=1.0,
 )
+_PROTOCOL_PRESSURE_POLICY = _sms_runtime_ext.ProtocolPressurePolicy(
+    progress_getter=lambda task_id: _TASK_PROGRESS.progress(task_id),
+    classify_failure=_error_observability_ext.classify_failure,
+    task_gate_getter=lambda: (
+        _TASK_ADMISSION_CONTEXT.get()
+        or globals().get("_CURRENT_TASK_ADMISSION")
+    ),
+    inflight_gate_getter=lambda: globals().get("_CURRENT_INFLIGHT_GATE"),
+    fd_exhaustion=_transport_lifecycle_ext.is_fd_exhaustion,
+)
+_report_task_pressure = _PROTOCOL_PRESSURE_POLICY.report_task_pressure
+_CONNECTIVITY_PROXY = ""
+_CONNECTIVITY_BATCH_ID = ""
+_CONNECTIVITY_NOTIFICATION_CONTEXTS = (
+    _connectivity_notifications_ext.ConnectivityIncidentContextStore()
+)
 
 
-def _report_task_pressure(task_id, value, *, node_code="", immediate=False):
-    gate = _TASK_ADMISSION_CONTEXT.get()
-    if gate is None:
-        gate = globals().get("_CURRENT_TASK_ADMISSION")
-    inflight_gate = globals().get("_CURRENT_INFLIGHT_GATE")
-    if gate is None and inflight_gate is None:
-        return
-    identifier = str(task_id or "").strip()
-    code = str(node_code or "").strip().lower()
-    if not code:
-        try:
-            failure = _error_observability_ext.classify_failure(
-                error=value,
-                progress=_TASK_PROGRESS.progress(identifier),
-                status="retryable_infra",
-            )
-            code = str(failure.get("node_code") or "").strip().lower()
-        except Exception:
-            code = "infrastructure_pressure"
+def _set_stall_notifications_suspended(suspended):
+    context_for = globals().get("_notification_context_for")
     try:
-        if inflight_gate is not None:
-            reason = code or "protocol_pressure"
-            if immediate or reason in {"http_429", "oauth_rate_limit", "session_invalid", "oauth_session_invalid"}:
-                inflight_gate.report_pressure(reason)
-        if _transport_lifecycle_ext.is_fd_exhaustion(value):
-            gate.report_resource_exhaustion(
-                identifier,
-                "resource_fd_exhausted",
-            )
-            return
-        gate.report_pressure(
-            identifier,
-            code or "infrastructure_pressure",
-            immediate=bool(immediate),
-        )
+        context = context_for() if callable(context_for) else None
+        service = context.get("service") if isinstance(context, dict) else None
+        setter = getattr(service, "set_stall_suspended", None)
+        if callable(setter):
+            setter(bool(suspended))
     except Exception:
         pass
+
+
+def _submit_connectivity_email(payload):
+    try:
+        capacity = _PROTOCOL_GATE.snapshot(_CONNECTIVITY_PROXY)
+        notification = _CONNECTIVITY_NOTIFICATION_CONTEXTS.build_notification(
+            payload,
+            batch_id=_CONNECTIVITY_BATCH_ID,
+            capacity=capacity,
+        )
+        _CONNECTIVITY_EMAILS.submit(notification)
+    except Exception:
+        pass
+
+
+def _on_connectivity_outage(payload):
+    _PROTOCOL_GATE.pause_connectivity(_CONNECTIVITY_PROXY)
+    inflight = globals().get("_CURRENT_INFLIGHT_GATE")
+    if _PROTOCOL_GATE.snapshot(_CONNECTIVITY_PROXY).get("sticky_baseline"):
+        reporter = getattr(inflight, "report_pressure", None)
+        if callable(reporter):
+            reporter("repeated_connectivity_outage")
+    else:
+        suspend = getattr(inflight, "suspend", None)
+        if callable(suspend):
+            suspend("openai_connectivity_outage")
+    _set_stall_notifications_suspended(True)
+    _submit_connectivity_email(payload)
+
+
+def _on_connectivity_recovery(payload):
+    _PROTOCOL_GATE.resume_connectivity(_CONNECTIVITY_PROXY)
+    _set_stall_notifications_suspended(False)
+    _submit_connectivity_email(payload)
+
+
+_CONNECTIVITY_EMAILS = _connectivity_notifications_ext.OpenAIConnectivityNotificationService(
+    lambda: globals().get("_read_local_config", lambda: {})()
+)
+_OPENAI_CONNECTIVITY = _auth_connectivity_runtime_ext.OpenAIAuthConnectivityRuntime(
+    state_path=_RUNTIME_DATA_DIR / "openai_auth_connectivity.json",
+    on_outage=_on_connectivity_outage,
+    on_recovery=_on_connectivity_recovery,
+)
 
 
 def _is_fast_account_banned_progress(progress) -> bool:
@@ -418,81 +397,11 @@ def _is_fast_account_banned_progress(progress) -> bool:
     )
 
 
-def _is_mailbox_local_pressure(task_id, value, *, failure=None) -> bool:
-    progress = _TASK_PROGRESS.progress(task_id)
-    progress_node = str((progress or {}).get("code") or "").strip().lower()
-    if progress_node in _MAILBOX_LOCAL_PRESSURE_NODES:
-        return True
-    classified = failure if isinstance(failure, dict) else {}
-    if not classified:
-        try:
-            classified = _error_observability_ext.classify_failure(
-                error=value,
-                progress=_TASK_PROGRESS.progress(task_id),
-                status="retryable_infra",
-            )
-        except Exception:
-            classified = {}
-    error_code = str(classified.get("error_code") or "").strip().lower()
-    if error_code in _MAILBOX_LOCAL_PRESSURE_CODES:
-        return True
-    text = str(value or "").strip().lower()
-    return any(marker in text for marker in _MAILBOX_LOCAL_PRESSURE_MARKERS)
-
-
-def _pressure_failure(task_id, value, *, failure=None) -> dict:
-    classified = failure if isinstance(failure, dict) else {}
-    if classified:
-        return classified
-    try:
-        return _error_observability_ext.classify_failure(
-            result=value if isinstance(value, dict) else None,
-            error="" if isinstance(value, dict) else value,
-            progress=_TASK_PROGRESS.progress(task_id),
-            status="retryable_infra",
-        )
-    except Exception:
-        return {}
-
-
-def _is_sms_provider_local_pressure(task_id, value, *, failure=None) -> bool:
-    classified = failure if isinstance(failure, dict) else {}
-    progress = _TASK_PROGRESS.progress(task_id)
-    progress_node = str((progress or {}).get("code") or "").strip().lower()
-    node_code = str(classified.get("node_code") or "").strip().lower()
-    error_code = str(classified.get("error_code") or "").strip().lower()
-    if progress_node in _SMS_PROVIDER_LOCAL_PRESSURE_NODES:
-        return True
-    if node_code in _SMS_PROVIDER_LOCAL_PRESSURE_NODES:
-        return True
-    if error_code in _SMS_PROVIDER_LOCAL_PRESSURE_CODES:
-        return True
-    text = str(value or "").strip().lower()
-    return any(marker in text for marker in _SMS_PROVIDER_LOCAL_PRESSURE_MARKERS)
-
-
-def _is_main_chain_pressure_source(task_id, value, *, failure=None) -> tuple[bool, dict]:
-    classified = _pressure_failure(task_id, value, failure=failure)
-    if _is_mailbox_local_pressure(task_id, value, failure=classified):
-        return False, classified
-    if _is_sms_provider_local_pressure(task_id, value, failure=classified):
-        return False, classified
-    progress = _TASK_PROGRESS.progress(task_id)
-    node_code = str(
-        (progress or {}).get("code")
-        or classified.get("node_code")
-        or ""
-    ).strip().lower()
-    return node_code in _MAIN_CHAIN_PRESSURE_NODES, classified
-
-
-def _is_rate_limited_failure(failure) -> bool:
-    if not isinstance(failure, dict):
-        return False
-    try:
-        return int(failure.get("http_status")) == 429
-    except (TypeError, ValueError):
-        return False
+_is_mailbox_local_pressure = _PROTOCOL_PRESSURE_POLICY.is_mailbox_local
+_pressure_failure = _PROTOCOL_PRESSURE_POLICY.pressure_failure
+_is_sms_provider_local_pressure = _PROTOCOL_PRESSURE_POLICY.is_sms_local
+_is_main_chain_pressure_source = _PROTOCOL_PRESSURE_POLICY.main_chain_source
+_is_rate_limited_failure = _PROTOCOL_PRESSURE_POLICY.is_rate_limited
 
 
 def _transport_task_id(transport) -> str:
@@ -842,6 +751,8 @@ def _patched_config_load(self):
         "adaptive_task_concurrency",
         "task_inflight_optimization",
         "task_inflight_limit",
+        "openai_connectivity_guard",
+        "protocol_concurrency_ceiling",
         "dynamic_auth_challenges",
     )
     if migrated or any(raw.get(key) != normalized.get(key) for key in policy_keys):
@@ -888,6 +799,8 @@ def _patched_config_save(self, values):
         "adaptive_task_concurrency",
         "task_inflight_optimization",
         "task_inflight_limit",
+        "openai_connectivity_guard",
+        "protocol_concurrency_ceiling",
         "dynamic_auth_challenges",
     ):
         saved[key] = normalized[key]
@@ -1411,11 +1324,29 @@ def _patched_chain_event(
 
 def _patched_chain_emit(log_fn, message, tag="info"):
     raw = str(message or "")
+    if "[SentinelRunner]" in raw:
+        if "token 生成成功" in raw:
+            _clear_known_node_failure(_TASK_CONTEXT.get())
+            coordinator = globals().get("_PROTOCOL_COORDINATOR")
+            if coordinator is not None:
+                coordinator.observe_connectivity_result(
+                    "sentinel.openai.com",
+                    succeeded=True,
+                    task_id=_TASK_CONTEXT.get(),
+                    proxy=_CONNECTIVITY_PROXY,
+                )
+        elif "token 生成失败" in raw:
+            coordinator = globals().get("_PROTOCOL_COORDINATOR")
+            if coordinator is not None:
+                coordinator.observe_connectivity_result(
+                    "sentinel.openai.com",
+                    raw,
+                    task_id=_TASK_CONTEXT.get(),
+                    proxy=_CONNECTIVITY_PROXY,
+                )
     if _error_observability_ext.is_node_retry_log(raw):
         retry_message = _error_observability_ext.format_node_retry_log("", raw)
         return _ORIGINAL_CHAIN_EMIT(log_fn, retry_message, "warn")
-    if "[SentinelRunner]" in raw and "token 生成成功" in raw:
-        _clear_known_node_failure(_TASK_CONTEXT.get())
     return _ORIGINAL_CHAIN_EMIT(log_fn, message, tag)
 
 
@@ -1464,6 +1395,7 @@ _cancel_notification_run = _NOTIFICATION_LIFECYCLE.cancel
 
 def _patched_importer_start(self, settings):
     global _CURRENT_TASK_ADMISSION, _CURRENT_INFLIGHT_GATE
+    global _CONNECTIVITY_PROXY, _CONNECTIVITY_BATCH_ID
     internal = copy.deepcopy(dict(settings or {}))
     additional_retries = _int_value(internal.get("auth_session_retries"), 1, minimum=0, maximum=4)
     internal["auth_session_retries"] = additional_retries + 1
@@ -1505,7 +1437,44 @@ def _patched_importer_start(self, settings):
             node_limit,
             ceiling=phase_ceiling,
         )
-        _PROTOCOL_GATE.begin_run(min(task_limit, node_limit))
+        protocol_baseline = min(task_limit, node_limit)
+        inflight_expansion = (
+            str(internal.get("run_mode") or "register").strip().lower() == "register"
+            and _performance_runtime_ext.as_bool(
+                internal.get("task_inflight_optimization"),
+                True,
+            )
+            and _int_value(
+                internal.get("task_inflight_limit"),
+                20,
+                minimum=1,
+                maximum=20,
+            ) > task_limit
+        )
+        protocol_healthy_ceiling = (
+            _int_value(
+                internal.get("protocol_concurrency_ceiling"),
+                12,
+                minimum=8,
+                maximum=15,
+            )
+            if inflight_expansion
+            else protocol_baseline
+        )
+        next_proxy = str(internal.get("proxy") or "").strip()
+        next_batch_id = str(internal.get("batch_id") or "").strip()
+        with _OPENAI_CONNECTIVITY._callback_lock:
+            _PROTOCOL_GATE.begin_run(
+                protocol_baseline,
+                healthy_ceiling=protocol_healthy_ceiling,
+            )
+            _OPENAI_CONNECTIVITY.begin_run(
+                proxy=next_proxy,
+                enabled=_performance_runtime_ext.as_bool(
+                    internal.get("openai_connectivity_guard"), True,
+                ),
+            )
+            _CONNECTIVITY_PROXY, _CONNECTIVITY_BATCH_ID = next_proxy, next_batch_id
         _SMS_PHONE_GATE.configure(
             _int_value(
                 internal.get("phone_submission_concurrency"),
@@ -1571,6 +1540,9 @@ def _patched_importer_start(self, settings):
             )
         _CURRENT_TASK_ADMISSION = task_admission
         _CURRENT_INFLIGHT_GATE = inflight_gate
+        _PROTOCOL_COORDINATOR.synchronize_connectivity_pause(
+            _CONNECTIVITY_PROXY, inflight_gate,
+        )
         staged_inflight = _inflight_pipeline_runtime_ext.optimization_active(
             inflight_gate
         )
@@ -1626,6 +1598,10 @@ def _patched_importer_start(self, settings):
     try:
         if not already_running:
             notification_context = _begin_notification_run(self, internal)
+            _PROTOCOL_COORDINATOR.synchronize_connectivity_pause(
+                _CONNECTIVITY_PROXY, inflight_gate,
+                on_paused=lambda _state: _set_stall_notifications_suspended(True),
+            )
         result = _importer_scheduler_ext.start_bounded_importer(
             self,
             internal,
@@ -1738,7 +1714,13 @@ def _patched_importer_run_one(
 
 
 def _patched_importer_stop(self):
+    stop_event = getattr(self, "stop_event", None)
+    set_stopped = getattr(stop_event, "set", None)
+    if callable(set_stopped):
+        set_stopped()
     _MANUAL_VERIFICATION.cancel_all()
+    _OPENAI_CONNECTIVITY.wake_waiters()
+    _PROTOCOL_GATE.wake_all()
     context = _notification_context_for(self)
     if isinstance(context, dict):
         try:
@@ -2282,18 +2264,21 @@ def _real_send_phone_number_otp(self, phone, channel="sms"):
     )
     request_started = time.monotonic()
     try:
-        raw_response = self.session.post(
-            f"{_codex_oauth_chain.AUTH}{endpoint}",
-            json=payload,
-            headers=headers,
-            allow_redirects=False,
-            timeout=30,
-        )
-        if isinstance(raw_response, dict):
-            response = dict(raw_response)
-        else:
-            response = dict(_codex_oauth_chain._json_response(raw_response) or {})
-            response.setdefault("_status", int(getattr(raw_response, "status_code", 0) or 0))
+        def post_phone_number():
+            raw_response = self.session.post(
+                f"{_codex_oauth_chain.AUTH}{endpoint}",
+                json=payload,
+                headers=headers,
+                allow_redirects=False,
+                timeout=30,
+            )
+            if isinstance(raw_response, dict):
+                return dict(raw_response)
+            parsed = dict(_codex_oauth_chain._json_response(raw_response) or {})
+            parsed.setdefault("_status", int(getattr(raw_response, "status_code", 0) or 0))
+            return parsed
+
+        response = _with_transport_protocol_lease(self, post_phone_number)
     except Exception as exc:
         response = {
             "_status": 0,
@@ -2346,11 +2331,20 @@ def _real_send_phone_number_otp(self, phone, channel="sms"):
     )
     sentinel_started = time.monotonic()
     try:
-        _auth_request_runtime_ext.refresh_sentinel(
+        _PROTOCOL_COORDINATOR.call_origin(
             self,
-            _AUTH_SESSIONS,
-            flow="authorize_continue",
-            referer=f"{_codex_oauth_chain.AUTH}/phone-verification",
+            "sentinel.openai.com",
+            lambda: _auth_request_runtime_ext.refresh_sentinel(
+                self,
+                _AUTH_SESSIONS,
+                flow="authorize_continue",
+                referer=f"{_codex_oauth_chain.AUTH}/phone-verification",
+            ),
+            success_fn=lambda value: bool(
+                isinstance(value, dict)
+                and (value.get("token") or value.get("so_token"))
+            ),
+            count_capacity=False,
         )
     except _auth_request_runtime_ext.AuthRequestContextError as exc:
         raise _codex_oauth_chain.CodexChainError(f"{exc.code}: {exc}") from exc
@@ -2529,62 +2523,28 @@ _checkpoint_save_after_auth = _CHECKPOINT_AUTH_HOOKS.save_after_auth
 _checkpoint_delete_after_auth = _CHECKPOINT_AUTH_HOOKS.delete_after_auth
 
 
-def _staged_transport_pipeline(transport):
-    config = getattr(transport, "config", None)
-    if not isinstance(config, dict) or str(config.get("run_mode") or "register").lower() == "relogin":
-        return False
-    return _inflight_pipeline_runtime_ext.optimization_active(
-        globals().get("_CURRENT_INFLIGHT_GATE")
-    )
-
-
-def _transport_protocol_proxy(transport):
-    config = getattr(transport, "config", None)
-    if isinstance(config, dict) and config.get("proxy"):
-        return config.get("proxy")
-    return getattr(transport, "proxy", "")
-
-
-def _record_transport_protocol_result(transport, value, succeeded):
+def _observe_protocol_request_activity():
     _PROTOCOL_REQUEST_ACTIVITY.set(_PROTOCOL_REQUEST_ACTIVITY.get() + 1)
-    task_id = _transport_task_id(transport) or _TASK_CONTEXT.get()
-    main_chain, failure = _is_main_chain_pressure_source(task_id, value)
-    protocol_pressure = main_chain and (
-        _is_rate_limited_failure(failure)
-        or _sms_runtime_ext.is_protocol_pressure_error(value)
-    )
-    if protocol_pressure:
-        _report_task_pressure(
-            task_id,
-            value,
-            node_code="protocol_pressure",
-            immediate=True,
-        )
-    if succeeded or main_chain:
-        _PROTOCOL_GATE.report(
-            _transport_protocol_proxy(transport),
-            value,
-            success=bool(succeeded),
-        )
 
 
-def _with_transport_protocol_lease(transport, callback):
-    config = getattr(transport, "config", None)
-    task_id = _transport_task_id(transport) or _TASK_CONTEXT.get()
-    return _inflight_pipeline_runtime_ext.call_with_protocol_lease(
-        callback,
-        staged=_staged_transport_pipeline(transport),
-        gate=_PROTOCOL_GATE,
-        proxy=_transport_protocol_proxy(transport),
-        stop_event=(config or {}).get("_stop_requested") if isinstance(config, dict) else None,
-        on_wait=lambda elapsed: _record_task_segment(task_id, "protocol_slot_waiting", elapsed),
-        success_fn=_codex_oauth_chain._is_success_response,
-        on_result=lambda value, succeeded: _record_transport_protocol_result(
-            transport,
-            value,
-            succeeded,
-        ),
-    )
+_PROTOCOL_COORDINATOR = _sms_runtime_ext.TransportProtocolCoordinator(
+    gate=lambda: globals().get("_PROTOCOL_GATE"),
+    inflight_pipeline=_inflight_pipeline_runtime_ext,
+    success_fn=_codex_oauth_chain._is_success_response,
+    task_id_getter=_transport_task_id,
+    task_context_getter=_TASK_CONTEXT.get,
+    main_chain_source=_is_main_chain_pressure_source,
+    rate_limited_failure=_is_rate_limited_failure,
+    report_task_pressure=_report_task_pressure,
+    connectivity_getter=lambda: _OPENAI_CONNECTIVITY,
+    inflight_gate_getter=lambda: globals().get("_CURRENT_INFLIGHT_GATE"),
+    activity_observer=_observe_protocol_request_activity,
+    segment_observer=_record_task_segment,
+)
+_staged_transport_pipeline = _PROTOCOL_COORDINATOR.staged
+_transport_protocol_proxy = _PROTOCOL_COORDINATOR.proxy
+_record_transport_protocol_result = _PROTOCOL_COORDINATOR.record_result
+_with_transport_protocol_lease = _PROTOCOL_COORDINATOR.call
 
 
 def _real_post_auth_json(self, path, payload, *, flow, referer, timeout=30):
@@ -2959,29 +2919,14 @@ def _run_codex_after_registration(
                     task_id,
                     exc,
                 )
-                protocol_pressure = main_chain_pressure and (
-                    _is_rate_limited_failure(pressure_failure)
-                    or _sms_runtime_ext.is_protocol_pressure_error(exc)
-                )
                 has_request_activity = _PROTOCOL_REQUEST_ACTIVITY.get() > 0
-                if protocol_pressure and (not staged_pipeline or not has_request_activity):
-                    pressure_node_code = "protocol_pressure"
-                    if _error_observability_ext.is_retryable_node_failure(exc):
-                        pressure_node_code = str(
-                            pressure_failure.get("node_code") or ""
-                        ).strip().lower()
-                    _report_task_pressure(
-                        task_id,
+                if main_chain_pressure and not has_request_activity:
+                    _PROTOCOL_COORDINATOR.observe_main_chain_outcome(
                         exc,
-                        node_code=pressure_node_code,
-                        immediate=True,
-                    )
-                if main_chain_pressure and (
-                    not staged_pipeline or _PROTOCOL_REQUEST_ACTIVITY.get() == 0
-                ):
-                    _PROTOCOL_GATE.report(
-                        proxy,
-                        exc,
+                        succeeded=False,
+                        task_id=task_id,
+                        proxy=proxy,
+                        failure=pressure_failure,
                         on_limit_change=log_protocol_limit_change,
                     )
                 raise
@@ -3000,35 +2945,14 @@ def _run_codex_after_registration(
                 pressure_signal_value = (
                     result if isinstance(result, dict) else failure_value
                 )
-                protocol_pressure = main_chain_pressure and (
-                    _is_rate_limited_failure(pressure_failure)
-                    or _sms_runtime_ext.is_protocol_pressure_error(pressure_signal_value)
-                )
                 has_request_activity = _PROTOCOL_REQUEST_ACTIVITY.get() > 0
-                if protocol_pressure and (not staged_pipeline or not has_request_activity):
-                    pressure_node_code = "protocol_pressure"
-                    if _error_observability_ext.is_retryable_node_failure(result):
-                        pressure_node_code = str(
-                            pressure_failure.get("node_code") or ""
-                        ).strip().lower()
-                    _report_task_pressure(
-                        task_id,
+                if (succeeded or main_chain_pressure) and not has_request_activity:
+                    _PROTOCOL_COORDINATOR.observe_main_chain_outcome(
                         pressure_signal_value,
-                        node_code=pressure_node_code,
-                        immediate=True,
-                    )
-                if (succeeded or main_chain_pressure) and (
-                    not staged_pipeline or not has_request_activity
-                ):
-                    protocol_report_value = failure_value
-                    if protocol_pressure and _is_rate_limited_failure(pressure_failure):
-                        protocol_report_value = pressure_failure
-                    elif protocol_pressure:
-                        protocol_report_value = pressure_signal_value
-                    _PROTOCOL_GATE.report(
-                        proxy,
-                        protocol_report_value,
-                        success=succeeded,
+                        succeeded=succeeded,
+                        task_id=task_id,
+                        proxy=proxy,
+                        failure=pressure_failure,
                         on_limit_change=log_protocol_limit_change,
                     )
     finally:
@@ -3761,7 +3685,37 @@ def _write_local_config(data):
             phone_gate.configure(value.get("phone_submission_concurrency", 2))
         except Exception:
             pass
+    connectivity = globals().get("_OPENAI_CONNECTIVITY")
+    if connectivity is not None:
+        try:
+            guard_enabled = _performance_runtime_ext.as_bool(
+                value.get("openai_connectivity_guard"),
+                True,
+            )
+            was_paused = bool(connectivity.snapshot().get("paused"))
+            connectivity.set_enabled(guard_enabled)
+            if was_paused and not guard_enabled:
+                _PROTOCOL_GATE.resume_connectivity(_CONNECTIVITY_PROXY)
+                resume = getattr(globals().get("_CURRENT_INFLIGHT_GATE"), "resume", None)
+                if callable(resume):
+                    resume()
+                _set_stall_notifications_suspended(False)
+            connectivity.configure_proxy(value.get("proxy") or "")
+        except Exception:
+            pass
     return value
+
+
+_initial_connectivity_config = _read_local_config()
+_OPENAI_CONNECTIVITY.set_enabled(
+    _performance_runtime_ext.as_bool(
+        _initial_connectivity_config.get("openai_connectivity_guard"),
+        True,
+    )
+)
+_OPENAI_CONNECTIVITY.configure_proxy(
+    _initial_connectivity_config.get("proxy") or ""
+)
 
 
 _PIXEL_CLIENT = _pixel_runtime_ext.PixelProxyClient(
@@ -3861,6 +3815,7 @@ _PUBLIC_STATE = _public_state_runtime_ext.PublicStateRuntime(
     task_progress_getter=lambda: globals().get("_TASK_PROGRESS"),
     current_task_admission_getter=lambda: globals().get("_CURRENT_TASK_ADMISSION"),
     inflight_gate_getter=lambda: globals().get("_CURRENT_INFLIGHT_GATE"),
+    openai_connectivity_getter=lambda: globals().get("_OPENAI_CONNECTIVITY"),
     protocol_gate_getter=lambda: globals().get("_PROTOCOL_GATE"),
     sms_phone_gate_getter=lambda: globals().get("_SMS_PHONE_GATE"),
     sms_optimization_guard_getter=lambda: globals().get("_SMS_QUALITY_GUARD"),
@@ -3995,7 +3950,21 @@ _WEB_ROUTE_CONTEXT = _web_routes_ext.WebRouteContext(
 
 
 def _patch_flask_app(app):
+    original_start = app.view_functions.get("start")
+    route_values = _closure_values(original_start) if callable(original_start) else {}
     patched = _web_routes_ext.patch_flask_app(app, _WEB_ROUTE_CONTEXT)
+    patched = _connectivity_routes_ext.patch_openai_connectivity_guard_route(
+        patched,
+        module=_module,
+        lifecycle_lock=_RUN_LIFECYCLE_LOCK,
+        store=route_values.get("store"),
+        logs=route_values.get("logs"),
+        state_getter=route_values.get("state"),
+        read_local_config=_read_local_config,
+        write_local_config=_write_local_config,
+        masked_local_config=_masked_local_config,
+        masked_state=_masked_state,
+    )
     return _manual_verification_routes_ext.patch_flask_app(
         patched,
         broker=_MANUAL_VERIFICATION,

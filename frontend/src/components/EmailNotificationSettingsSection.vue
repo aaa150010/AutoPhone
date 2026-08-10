@@ -115,6 +115,7 @@ function statusText() {
         <el-checkbox :model-value="current().events?.stalled !== false" @update:model-value="updateEvent('stalled', $event)">运行停滞</el-checkbox>
         <el-checkbox :model-value="current().events?.sms_exhausted !== false" @update:model-value="updateEvent('sms_exhausted', $event)">SMS Key 耗尽</el-checkbox>
         <el-checkbox :model-value="current().events?.sms_balance_low !== false" @update:model-value="updateEvent('sms_balance_low', $event)">SMS Key 余额低于 $1</el-checkbox>
+        <el-checkbox :model-value="current().events?.openai_auth_connectivity !== false" @update:model-value="updateEvent('openai_auth_connectivity', $event)">OpenAI 链路异常/恢复</el-checkbox>
         <el-checkbox :model-value="Boolean(current().events?.manual_stop)" @update:model-value="updateEvent('manual_stop', $event)">手动停止</el-checkbox>
       </div>
     </el-form-item>

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 import hashlib
 import json
@@ -15,6 +14,27 @@ import time
 from typing import Any, Callable, Iterator
 import urllib.parse
 import uuid
+
+try:
+    from .protocol_concurrency import (
+        ProxyProtocolGate,
+        ProtocolPressurePolicy,
+        TransportProtocolCoordinator,
+        _ProxyProtocolState,
+        _notify_observer,
+        is_http_429_error,
+        is_protocol_pressure_error,
+    )
+except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
+    from protocol_concurrency import (  # type: ignore[no-redef]
+        ProxyProtocolGate,
+        ProtocolPressurePolicy,
+        TransportProtocolCoordinator,
+        _ProxyProtocolState,
+        _notify_observer,
+        is_http_429_error,
+        is_protocol_pressure_error,
+    )
 
 try:
     from .performance_runtime import (
@@ -352,72 +372,6 @@ def isolated_sms_get(
     return str(getattr(response, "text", "") or "").strip()
 
 
-def is_protocol_pressure_error(value: Any) -> bool:
-    status_candidates = [value, getattr(value, "response", None)]
-    if isinstance(value, Mapping):
-        status_candidates.extend(
-            value.get(key)
-            for key in ("error", "response")
-            if isinstance(value.get(key), Mapping)
-        )
-    for candidate in status_candidates:
-        if candidate is None:
-            continue
-        for key in ("_status", "status", "status_code", "http_status"):
-            try:
-                raw_status = (
-                    candidate.get(key)
-                    if isinstance(candidate, Mapping)
-                    else getattr(candidate, key, None)
-                )
-                status = int(raw_status)
-            except (TypeError, ValueError):
-                continue
-            if status == 429:
-                return True
-
-    type_name = "" if value is None else type(value).__name__
-    text = f"{type_name}: {value or ''}".lower()
-    if re.search(r"\b429\b", text) and any(
-        marker in text
-        for marker in ("http", "status", "too many requests", "rate limit")
-    ):
-        return True
-    return any(
-        marker in text
-        for marker in (
-            "ssleoferror",
-            "sslerror",
-            "unexpected_eof",
-            "tls connect",
-            "tls handshake",
-            "ssl handshake",
-            "handshake failure",
-            "connection reset",
-            "connection aborted",
-            "connection closed",
-            "remote end closed connection",
-            "remote disconnected",
-            "server disconnected",
-            "proxyerror",
-            "proxy error",
-            "proxy_connect_failed",
-            "unable to connect to proxy",
-            "proxy connect aborted",
-            "failed to connect",
-            "connection refused",
-            "curl: (7)",
-            "curl: (35)",
-            "curl: (56)",
-            "status=429",
-            "http 429",
-            "too many requests",
-            "rate limit",
-            "rate_limited",
-        )
-    )
-
-
 def is_sms_route_infrastructure_error(value: Any) -> bool:
     """Return whether an SMS outcome says nothing about route quality."""
     if isinstance(value, Mapping):
@@ -462,227 +416,6 @@ def is_sms_route_infrastructure_error(value: Any) -> bool:
             "ratelimit",
         )
     )
-
-
-@dataclass
-class _ProxyProtocolState:
-    active: int = 0
-    waiting: int = 0
-    limit: int = 3
-    ceiling: int = 3
-    last_started_at: float = 0.0
-    pressure_events: list[float] = field(default_factory=list)
-    success_streak: int = 0
-
-
-def _notify_observer(observer: Any, value: Any) -> None:
-    if not callable(observer):
-        return
-    try:
-        observer(value)
-    except Exception:
-        pass
-
-
-class ProxyProtocolGate:
-    """Limit full protocol sessions independently for each configured proxy."""
-
-    def __init__(
-        self,
-        default_limit: int = 3,
-        *,
-        now_fn: Callable[[], float] = time.monotonic,
-        pressure_window_seconds: float = 60.0,
-        restore_successes: int = 6,
-        launch_interval_seconds: float = 1.0,
-    ) -> None:
-        self.default_limit = max(1, int(default_limit))
-        self.now_fn = now_fn
-        self.pressure_window_seconds = max(1.0, float(pressure_window_seconds))
-        self.restore_successes = max(1, int(restore_successes))
-        self.launch_interval_seconds = max(0.0, float(launch_interval_seconds))
-        self.condition = threading.Condition()
-        self.states: dict[str, _ProxyProtocolState] = {}
-
-    @staticmethod
-    def key(proxy: Any) -> str:
-        text = str(proxy or "").strip()
-        if not text:
-            return "direct"
-        return f"proxy:{hashlib.sha256(text.encode('utf-8', 'replace')).hexdigest()[:16]}"
-
-    def _state(self, key: str) -> _ProxyProtocolState:
-        return self.states.setdefault(
-            key,
-            _ProxyProtocolState(
-                limit=self.default_limit,
-                ceiling=self.default_limit,
-            ),
-        )
-
-    def begin_run(self, limit: Any) -> int:
-        ceiling = max(1, int(limit))
-        with self.condition:
-            self.default_limit = ceiling
-            for state in self.states.values():
-                state.ceiling = ceiling
-                state.limit = min(ceiling, max(1, state.limit)) if state.active else ceiling
-                state.pressure_events.clear()
-                state.success_streak = 0
-                state.last_started_at = 0.0
-            self.condition.notify_all()
-        return ceiling
-
-    def synchronize_capacity(self, limit: Any) -> int:
-        """Follow the task gate without erasing protocol-local pressure state."""
-        target = max(1, int(limit))
-        with self.condition:
-            self.default_limit = target
-            for state in self.states.values():
-                previous_ceiling = state.ceiling
-                state.ceiling = target
-                if target <= previous_ceiling:
-                    state.limit = min(state.limit, target)
-                    state.success_streak = 0
-                elif state.limit >= previous_ceiling:
-                    # Promote only states that were healthy at their previous
-                    # ceiling. A protocol-local degradation must recover via
-                    # its own success streak instead of being overwritten.
-                    state.limit = target
-                else:
-                    state.limit = min(state.limit, target)
-            self.condition.notify_all()
-        return target
-
-    @staticmethod
-    def _stopped(stop_event: Any) -> bool:
-        if stop_event is None:
-            return False
-        checker = getattr(stop_event, "is_set", None)
-        if callable(checker):
-            return bool(checker())
-        return bool(stop_event()) if callable(stop_event) else bool(stop_event)
-
-    @contextmanager
-    def acquire(
-        self,
-        proxy: Any,
-        *,
-        stop_event: Any = None,
-        on_wait: Callable[[float], Any] | None = None,
-    ) -> Iterator[str]:
-        key = self.key(proxy)
-        acquired = False
-        wait_started = float(self.now_fn())
-        wait_reported = False
-        try:
-            try:
-                with self.condition:
-                    state = self._state(key)
-                    state.waiting += 1
-                    try:
-                        while True:
-                            if self._stopped(stop_event):
-                                raise RuntimeError("task_stopped")
-                            now = float(self.now_fn())
-                            launch_wait = (
-                                max(
-                                    0.0,
-                                    state.last_started_at
-                                    + self.launch_interval_seconds
-                                    - now,
-                                )
-                                if state.last_started_at > 0
-                                else 0.0
-                            )
-                            if state.active < state.limit and launch_wait <= 0:
-                                state.active += 1
-                                state.last_started_at = now
-                                acquired = True
-                                break
-                            self.condition.wait(
-                                timeout=min(0.25, launch_wait) if launch_wait else 0.25
-                            )
-                    finally:
-                        state.waiting = max(0, state.waiting - 1)
-            finally:
-                waited = max(0.0, float(self.now_fn()) - wait_started)
-                _notify_observer(on_wait, waited)
-                wait_reported = True
-            yield key
-        finally:
-            if not wait_reported:
-                waited = max(0.0, float(self.now_fn()) - wait_started)
-                _notify_observer(on_wait, waited)
-            if acquired:
-                with self.condition:
-                    state.active = max(0, state.active - 1)
-                    self.condition.notify_all()
-
-    def report(
-        self,
-        proxy: Any,
-        value: Any = None,
-        *,
-        success: bool = False,
-        on_limit_change: Callable[[dict[str, Any]], Any] | None = None,
-    ) -> int:
-        key = self.key(proxy)
-        event: dict[str, Any] | None = None
-        with self.condition:
-            state = self._state(key)
-            now = float(self.now_fn())
-            old_limit = state.limit
-            if success:
-                state.pressure_events = [
-                    observed
-                    for observed in state.pressure_events
-                    if 0 <= now - observed <= self.pressure_window_seconds
-                ]
-                state.success_streak += 1
-                if state.limit < state.ceiling and state.success_streak >= self.restore_successes:
-                    state.limit += 1
-                    state.success_streak = 0
-                    self.condition.notify_all()
-            elif not is_protocol_pressure_error(value):
-                state.success_streak = 0
-            else:
-                state.success_streak = 0
-                state.pressure_events = [
-                    observed
-                    for observed in state.pressure_events
-                    if 0 <= now - observed <= self.pressure_window_seconds
-                ]
-                state.pressure_events.append(now)
-                if len(state.pressure_events) >= 2 and state.limit > 1:
-                    state.limit -= 1
-                    state.pressure_events.clear()
-            new_limit = state.limit
-            if new_limit != old_limit:
-                event = {
-                    "kind": "restored" if new_limit > old_limit else "degraded",
-                    "old_limit": old_limit,
-                    "new_limit": new_limit,
-                    "ceiling": state.ceiling,
-                    "proxy_key": key,
-                }
-        if event is not None:
-            _notify_observer(on_limit_change, event)
-        return new_limit
-
-    def snapshot(self, proxy: Any) -> dict[str, int]:
-        key = self.key(proxy)
-        with self.condition:
-            state = self.states.get(key) or _ProxyProtocolState(
-                limit=self.default_limit,
-                ceiling=self.default_limit,
-            )
-            return {
-                "active": state.active,
-                "limit": state.limit,
-                "ceiling": state.ceiling,
-                "waiting": state.waiting,
-            }
 
 
 @dataclass

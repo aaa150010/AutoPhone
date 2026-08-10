@@ -29,6 +29,16 @@ class _Gate:
             self.active -= 1
 
 
+class _PauseAwareGate(_Gate):
+    def __init__(self) -> None:
+        super().__init__()
+        self.events = []
+
+    def wait_until_resumed(self, proxy, **kwargs):
+        self.events.append(("wait", proxy, kwargs))
+        return "proxy-key"
+
+
 class InflightPipelineRuntimeTests(unittest.TestCase):
     def test_staged_session_scope_does_not_hold_protocol_lease(self):
         gate = _Gate()
@@ -70,6 +80,52 @@ class InflightPipelineRuntimeTests(unittest.TestCase):
         self.assertEqual(result, "ok")
         self.assertEqual(gate.calls, 0)
         self.assertFalse(optimization_active(None))
+
+    def test_non_staged_request_waits_without_taking_nested_capacity(self):
+        gate = _PauseAwareGate()
+        stop_event = threading.Event()
+        observed = []
+        result = call_with_protocol_lease(
+            lambda: gate.events.append(("callback",)) or "ok",
+            staged=False,
+            gate=gate,
+            proxy="proxy",
+            stop_event=stop_event,
+            success_fn=lambda value: value == "ok",
+            on_result=lambda value, succeeded: observed.append((value, succeeded)),
+        )
+
+        self.assertEqual(result, "ok")
+        self.assertEqual(gate.calls, 0)
+        self.assertEqual(gate.events[0][0:2], ("wait", "proxy"))
+        self.assertIs(gate.events[0][2]["stop_event"], stop_event)
+        self.assertEqual(gate.events[1], ("callback",))
+        self.assertEqual(observed, [("ok", True)])
+
+    def test_non_staged_request_reports_failure_before_propagating_it(self):
+        gate = _PauseAwareGate()
+        observed = []
+
+        with self.assertRaisesRegex(RuntimeError, "TLS failed"):
+            call_with_protocol_lease(
+                lambda: (_ for _ in ()).throw(RuntimeError("TLS failed")),
+                staged=False,
+                gate=gate,
+                proxy="proxy",
+                stop_event=threading.Event(),
+                on_result=lambda value, succeeded: observed.append((value, succeeded)),
+            )
+
+        self.assertEqual(len(observed), 1)
+        self.assertIsInstance(observed[0][0], RuntimeError)
+        self.assertFalse(observed[0][1])
+
+    def test_staged_request_mode_survives_capacity_suspension(self):
+        class SuspendedGate(_Gate):
+            def snapshot(self):
+                return {"optimized": False, "staged": True, "suspended": True}
+
+        self.assertTrue(optimization_active(SuspendedGate()))
 
 
 if __name__ == "__main__":

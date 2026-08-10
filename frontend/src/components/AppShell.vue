@@ -8,6 +8,7 @@ import UrlMailboxTestPage from '../pages/UrlMailboxTestPage.vue'
 import RunPage from '../pages/RunPage.vue'
 import SettingsPage from '../pages/SettingsPage.vue'
 import { appControllerKey, createAppController } from '../composables/useAppController'
+import OpenAIConnectivitySidebarStatus from './OpenAIConnectivitySidebarStatus.vue'
 
 const controller = createAppController()
 provide(appControllerKey, controller)
@@ -98,6 +99,7 @@ onUnmounted(() => {
 
         <div class="global-status">
           <div class="status-heading"><span class="status-dot" :class="statusClass" /><strong>{{ runStatus }}</strong></div>
+          <OpenAIConnectivitySidebarStatus :runtime="controller.runtime.value" />
           <div v-if="controller.runtime.value.notification?.status" class="notification-state">
             <el-icon><Bell /></el-icon>
             <span>{{ controller.runtime.value.notification.status === 'sent' ? '通知已发送' : controller.runtime.value.notification.status === 'failed' ? '通知发送失败' : '通知等待发送' }}</span>

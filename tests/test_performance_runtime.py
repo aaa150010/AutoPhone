@@ -5,6 +5,7 @@ import time
 from mac_overrides.performance_runtime import (
     ADAPTIVE_TASK_CONCURRENCY,
     InflightAdmissionGate,
+    OPENAI_CONNECTIVITY_GUARD,
     SMS_QUALITY_OPTIMIZATION,
     TASK_INFLIGHT_OPTIMIZATION,
     as_bool,
@@ -21,6 +22,7 @@ class PerformanceRuntimeTests(unittest.TestCase):
         self.assertTrue(defaults[SMS_QUALITY_OPTIMIZATION])
         self.assertTrue(defaults[ADAPTIVE_TASK_CONCURRENCY])
         self.assertTrue(defaults[TASK_INFLIGHT_OPTIMIZATION])
+        self.assertTrue(defaults[OPENAI_CONNECTIVITY_GUARD])
 
         disabled = normalize_feature_flags(
             {
@@ -34,6 +36,15 @@ class PerformanceRuntimeTests(unittest.TestCase):
         self.assertFalse(disabled[ADAPTIVE_TASK_CONCURRENCY])
         self.assertFalse(disabled[TASK_INFLIGHT_OPTIMIZATION])
         self.assertEqual(disabled["unrelated"], "kept")
+
+    def test_protocol_ceiling_defaults_to_twelve_and_is_bounded_to_eight_fifteen(self):
+        defaulted, _changed = migrate_performance_config({})
+        low, _changed = migrate_performance_config({"protocol_concurrency_ceiling": 1})
+        high, _changed = migrate_performance_config({"protocol_concurrency_ceiling": 99})
+
+        self.assertEqual(defaulted["protocol_concurrency_ceiling"], 12)
+        self.assertEqual(low["protocol_concurrency_ceiling"], 8)
+        self.assertEqual(high["protocol_concurrency_ceiling"], 15)
 
     def test_unknown_boolean_text_uses_the_requested_default(self):
         self.assertTrue(as_bool("unexpected", True))
@@ -158,7 +169,11 @@ class PerformanceRuntimeTests(unittest.TestCase):
             "active": 0,
             "waiting": 0,
             "optimized": False,
+            "staged": False,
             "rolled_back": False,
+            "suspended": False,
+            "sticky_baseline": False,
+            "resume_eligible": False,
             "reason": "configured_baseline",
         })
 
@@ -213,6 +228,31 @@ class PerformanceRuntimeTests(unittest.TestCase):
             InflightAdmissionGate(8).report_session_invalidation()["reason"],
             "session_invalidation",
         )
+
+    def test_inflight_connectivity_suspension_is_recoverable_until_sticky(self):
+        gate = InflightAdmissionGate(8, limit=20)
+
+        suspended = gate.suspend("openai_connectivity_suspected")
+        self.assertEqual(suspended["kind"], "task_inflight_optimization_suspended")
+        snapshot = gate.snapshot()
+        self.assertEqual(snapshot["effective"], 8)
+        self.assertTrue(snapshot["suspended"])
+        self.assertTrue(snapshot["resume_eligible"])
+        self.assertTrue(snapshot["staged"])
+        self.assertFalse(snapshot["rolled_back"])
+
+        restored = gate.resume()
+        self.assertEqual(restored["new_limit"], 20)
+        self.assertTrue(gate.snapshot()["optimized"])
+
+        gate.suspend("openai_connectivity_outage")
+        rollback = gate.report_http_429()
+        self.assertEqual(rollback["reason"], "http_429")
+        snapshot = gate.snapshot()
+        self.assertFalse(snapshot["suspended"])
+        self.assertTrue(snapshot["sticky_baseline"])
+        self.assertFalse(snapshot["resume_eligible"])
+        self.assertIsNone(gate.resume())
 
     def test_inflight_gate_rolling_window_rollbacks(self):
         success_gate = InflightAdmissionGate(8)

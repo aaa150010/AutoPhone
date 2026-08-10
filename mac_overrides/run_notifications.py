@@ -26,6 +26,7 @@ EVENT_STALLED = "stalled"
 EVENT_SMS_EXHAUSTED = "sms_exhausted"
 EVENT_MANUAL_STOP = "manual_stop"
 EVENT_SMS_BALANCE_LOW = "sms_balance_low"
+EVENT_OPENAI_AUTH_CONNECTIVITY = "openai_auth_connectivity"
 NOTIFICATION_EVENTS = (
     EVENT_BATCH_COMPLETED,
     EVENT_UNEXPECTED_STOP,
@@ -41,6 +42,7 @@ DEFAULT_EVENT_SETTINGS = {
     EVENT_SMS_EXHAUSTED: True,
     EVENT_MANUAL_STOP: False,
     EVENT_SMS_BALANCE_LOW: True,
+    EVENT_OPENAI_AUTH_CONNECTIVITY: True,
 }
 
 QQ_SMTP_HOST = "smtp.qq.com"
@@ -69,6 +71,13 @@ _TERMINATION_REASON_LABELS = {
     "service_replaced": "新批次启动前，上一批次仍未完成",
     "manual_stop": "用户主动停止了本批次",
     "unexpected_stop": "批次未按预期完成",
+}
+_CONNECTIVITY_REASON_LABELS = {
+    "openai_proxy_connection_failure": "OpenAI 显式代理连接失败",
+    "openai_tls_connection_failure": "OpenAI TLS 握手失败",
+    "openai_connection_timeout": "OpenAI 连接超时",
+    "openai_remote_disconnect": "OpenAI 远端连接中断",
+    "openai_connection_failure": "OpenAI 连接建立失败",
 }
 MAX_UNFINISHED_TASK_IDS = 200
 
@@ -476,6 +485,55 @@ class RunNotification:
 
 
 @dataclass(frozen=True, slots=True)
+class OpenAIConnectivityNotification:
+    """Credential-free outage or recovery event for Auth/Sentinel."""
+
+    kind: str
+    event_id: str
+    batch_id: str = ""
+    reason_code: str = "openai_auth_connectivity_outage"
+    affected_origins: tuple[str, ...] = ()
+    detected_at: int = 0
+    recovered_at: int = 0
+    duration_seconds: int = 0
+    baseline: int = 0
+    protocol_limit: int = 0
+    healthy_ceiling: int = 0
+    sticky_baseline: bool = False
+    proxy_fingerprint: str = ""
+    event: str = field(default=EVENT_OPENAI_AUTH_CONNECTIVITY, init=False)
+
+    def __post_init__(self) -> None:
+        if self.kind not in {"outage", "recovery"}:
+            raise ValueError("invalid connectivity notification kind")
+        event_id = _text(self.event_id)
+        if not event_id.isalnum() or len(event_id) > 64:
+            raise ValueError("invalid connectivity event id")
+        reason_code = _text(self.reason_code).lower()
+        if not re.fullmatch(r"[a-z0-9_]{1,100}", reason_code):
+            raise ValueError("invalid connectivity reason code")
+        origins = tuple(
+            origin
+            for origin in ("auth.openai.com", "sentinel.openai.com")
+            if origin in {_text(item).lower() for item in self.affected_origins}
+        )
+        fingerprint = _text(self.proxy_fingerprint).lower()
+        if fingerprint and not re.fullmatch(r"sha256:[a-f0-9]{16}", fingerprint):
+            raise ValueError("invalid proxy fingerprint")
+        object.__setattr__(self, "event_id", event_id)
+        object.__setattr__(self, "batch_id", _safe_batch_id(self.batch_id))
+        object.__setattr__(self, "reason_code", reason_code)
+        object.__setattr__(self, "affected_origins", origins)
+        object.__setattr__(self, "proxy_fingerprint", fingerprint)
+        object.__setattr__(self, "sticky_baseline", self.sticky_baseline is True)
+        for name in (
+            "detected_at", "recovered_at", "duration_seconds", "baseline",
+            "protocol_limit", "healthy_ceiling",
+        ):
+            object.__setattr__(self, name, max(0, int(getattr(self, name) or 0)))
+
+
+@dataclass(frozen=True, slots=True)
 class _SmtpSettings:
     host: str
     port: int
@@ -581,6 +639,57 @@ def _build_message(settings: _SmtpSettings, notification: RunNotification) -> Em
     return message
 
 
+def _build_connectivity_message(
+    settings: _SmtpSettings,
+    notification: OpenAIConnectivityNotification,
+) -> EmailMessage:
+    recovered = notification.kind == "recovery"
+    label = "OpenAI 授权链路已恢复" if recovered else "OpenAI 授权链路异常"
+    message = EmailMessage()
+    subject = f"[自动接码机] {label}"
+    if notification.batch_id:
+        subject += f"｜批次 {notification.batch_id}"
+    message["Subject"] = subject
+    message["From"] = settings.sender
+    message["To"] = ", ".join(settings.recipients)
+    lines = [
+        f"事件：{label}",
+        "节点：OpenAI 授权链路 / openai_auth_connectivity",
+        f"稳定原因码：{notification.reason_code}",
+        f"中文原因：{_CONNECTIVITY_REASON_LABELS.get(notification.reason_code, 'OpenAI 授权链路连接异常')}",
+    ]
+    if notification.batch_id:
+        lines.append(f"共享批次：{notification.batch_id}")
+    if notification.affected_origins:
+        lines.append(f"受影响来源：{'、'.join(notification.affected_origins)}")
+    if notification.detected_at:
+        lines.append(
+            "检测时间："
+            + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(notification.detected_at))
+        )
+    if notification.recovered_at:
+        lines.append(
+            "恢复时间："
+            + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(notification.recovered_at))
+        )
+    if recovered:
+        lines.append(f"故障持续：{notification.duration_seconds} 秒")
+    capacity_suffix = (
+        "本批固定基线"
+        if notification.sticky_baseline
+        else f"健康上限 {notification.healthy_ceiling}"
+    )
+    lines.append(
+        "协议容量："
+        f"基线 {notification.baseline} / 当前 {notification.protocol_limit} / "
+        f"{capacity_suffix}"
+    )
+    if notification.proxy_fingerprint:
+        lines.append(f"代理指纹：{notification.proxy_fingerprint}")
+    message.set_content("\n".join(lines))
+    return message
+
+
 def build_notification_message(
     config: Any,
     event: str,
@@ -632,6 +741,9 @@ class SmtpNotificationSender:
     def send(self, notification: RunNotification) -> None:
         self._send_message(_build_message(self._settings, notification))
 
+    def send_connectivity(self, notification: OpenAIConnectivityNotification) -> None:
+        self._send_message(_build_connectivity_message(self._settings, notification))
+
     def send_test(self) -> None:
         message = EmailMessage()
         message["Subject"] = "[自动接码机] 测试通知"
@@ -671,6 +783,7 @@ class _RunState:
     finalized: bool = False
     triggered_events: set[str] = field(default_factory=set)
     balance_alerted_keys: set[tuple[str, str]] = field(default_factory=set)
+    stall_suspended_at: float | None = None
 
 
 class RunNotificationCoordinator:
@@ -794,12 +907,31 @@ class RunNotificationCoordinator:
             stalled_for = timestamp - state.last_progress_at
             if (
                 summary.has_unfinished_work
+                and state.stall_suspended_at is None
                 and stalled_for >= self._config["stalled_minutes"] * 60
             ):
                 notification = self._reserve_locked(state, EVENT_STALLED)
                 if notification is not None:
                     notifications.append(notification)
         return self._submit(notifications)
+
+    def set_stall_suspended(
+        self,
+        suspended: bool,
+        *,
+        now: float | None = None,
+    ) -> None:
+        timestamp = float(self._clock() if now is None else now)
+        with self._lock:
+            for state in self._runs.values():
+                if state.finalized:
+                    continue
+                if suspended and state.stall_suspended_at is None:
+                    state.stall_suspended_at = timestamp
+                elif not suspended and state.stall_suspended_at is not None:
+                    frozen_since = max(state.stall_suspended_at, state.last_progress_at)
+                    state.last_progress_at += max(0.0, timestamp - frozen_since)
+                    state.stall_suspended_at = None
 
     def observe_sms_exhausted(
         self,
@@ -999,6 +1131,9 @@ class RunNotificationService:
 
     def finalize_run(self, *args: Any, **kwargs: Any) -> tuple[str, ...]:
         return self.coordinator.finalize_run(*args, **kwargs)
+
+    def set_stall_suspended(self, suspended: bool) -> None:
+        self.coordinator.set_stall_suspended(suspended)
 
     def wait_until_idle(self, timeout: float = 2.0) -> bool:
         return self.dispatcher.wait_until_idle(timeout)

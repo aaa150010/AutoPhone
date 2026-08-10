@@ -380,6 +380,8 @@ class LocalConfigRuntime:
             "adaptive_task_concurrency",
             "task_inflight_optimization",
             "task_inflight_limit",
+            "openai_connectivity_guard",
+            "protocol_concurrency_ceiling",
             "dynamic_auth_challenges",
         ):
             if key in data:
@@ -455,6 +457,15 @@ class LocalConfigRuntime:
         patched, _timeout_migrated = self.migrate_email_timeout(patched)
         patched["dynamic_auth_challenges"] = self.as_enabled(
             patched.get("dynamic_auth_challenges"), True
+        )
+        patched["openai_connectivity_guard"] = self.as_enabled(
+            patched.get("openai_connectivity_guard"), True
+        )
+        patched["protocol_concurrency_ceiling"] = self.int_value(
+            patched.get("protocol_concurrency_ceiling"),
+            12,
+            minimum=8,
+            maximum=15,
         )
         if patched.get("sms_provider") == "localpool":
             patched["sms_provider"] = "smsbower"

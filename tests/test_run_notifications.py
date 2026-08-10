@@ -7,6 +7,7 @@ from mac_overrides.run_notifications import (
     DEFAULT_EVENT_SETTINGS,
     EVENT_BATCH_COMPLETED,
     EVENT_MANUAL_STOP,
+    EVENT_OPENAI_AUTH_CONNECTIVITY,
     EVENT_SMS_BALANCE_LOW,
     EVENT_SMS_EXHAUSTED,
     EVENT_STALLED,
@@ -14,6 +15,7 @@ from mac_overrides.run_notifications import (
     NOTIFICATION_QUEUE_CAPACITY,
     NotificationConfigError,
     NotificationQueue,
+    OpenAIConnectivityNotification,
     RunAggregate,
     RunNotification,
     RunNotificationCoordinator,
@@ -25,6 +27,10 @@ from mac_overrides.run_notifications import (
     normalize_recipients,
     send_test_notification,
     validate_email_notification,
+)
+from mac_overrides.connectivity_notifications import (
+    ConnectivityIncidentContextStore,
+    OpenAIConnectivityNotificationService,
 )
 
 
@@ -47,6 +53,110 @@ class FakeClock:
 
     def __call__(self) -> float:
         return self.value
+
+
+class ConnectivityIncidentContextStoreTests(unittest.TestCase):
+    @staticmethod
+    def payload(
+        kind="outage",
+        event_id="incident123",
+        fingerprint="sha256:0123456789abcdef",
+    ):
+        return {
+            "kind": kind,
+            "event_id": event_id,
+            "reason_code": "openai_proxy_connection_failure",
+            "affected_origins": ["auth.openai.com"],
+            "proxy_fingerprint": fingerprint,
+        }
+
+    def test_recovery_reuses_only_the_matching_outage_batch_and_capacity(self):
+        store = ConnectivityIncidentContextStore()
+        outage = store.build_notification(
+            self.payload(),
+            batch_id="batch-original",
+            capacity={"baseline": 8, "limit": 8, "healthy_ceiling": 12},
+        )
+        recovery = store.build_notification(
+            self.payload(kind="recovery"),
+            batch_id="batch-new",
+            capacity={"baseline": 9, "limit": 9, "healthy_ceiling": 15},
+        )
+
+        self.assertEqual(outage.batch_id, "batch-original")
+        self.assertEqual(recovery.batch_id, "batch-original")
+        self.assertEqual(
+            (recovery.baseline, recovery.protocol_limit, recovery.healthy_ceiling),
+            (8, 8, 12),
+        )
+
+    def test_sticky_incident_reports_a_fixed_baseline_instead_of_false_ceiling(self):
+        store = ConnectivityIncidentContextStore()
+        outage = store.build_notification(
+            self.payload(),
+            batch_id="batch-sticky",
+            capacity={
+                "baseline": 8,
+                "limit": 8,
+                "healthy_ceiling": 12,
+                "sticky_baseline": True,
+            },
+        )
+
+        self.assertTrue(outage.sticky_baseline)
+        self.assertEqual(outage.healthy_ceiling, 8)
+
+    def test_recovery_without_process_context_never_uses_the_current_batch(self):
+        restarted_store = ConnectivityIncidentContextStore()
+
+        recovery = restarted_store.build_notification(
+            self.payload(kind="recovery"),
+            batch_id="batch-must-not-be-used",
+            capacity={"baseline": 8, "limit": 8, "healthy_ceiling": 12},
+        )
+
+        self.assertEqual(recovery.batch_id, "")
+        self.assertEqual(
+            (recovery.baseline, recovery.protocol_limit, recovery.healthy_ceiling),
+            (8, 8, 12),
+        )
+
+    def test_mismatched_recovery_does_not_reuse_another_incident(self):
+        store = ConnectivityIncidentContextStore()
+        store.build_notification(
+            self.payload(event_id="incidentOld"),
+            batch_id="batch-old",
+            capacity={"baseline": 8, "limit": 8, "healthy_ceiling": 12},
+        )
+
+        recovery = store.build_notification(
+            self.payload(kind="recovery", event_id="incidentNew"),
+            batch_id="batch-new",
+            capacity={"baseline": 9, "limit": 9, "healthy_ceiling": 15},
+        )
+
+        self.assertEqual(recovery.batch_id, "")
+        self.assertEqual(recovery.baseline, 9)
+
+    def test_recovery_with_same_event_but_different_proxy_does_not_match(self):
+        store = ConnectivityIncidentContextStore()
+        store.build_notification(
+            self.payload(),
+            batch_id="batch-old",
+            capacity={"baseline": 8, "limit": 8, "healthy_ceiling": 12},
+        )
+
+        recovery = store.build_notification(
+            self.payload(
+                kind="recovery",
+                fingerprint="sha256:fedcba9876543210",
+            ),
+            batch_id="batch-new",
+            capacity={"baseline": 9, "limit": 9, "healthy_ceiling": 15},
+        )
+
+        self.assertEqual(recovery.batch_id, "")
+        self.assertEqual(recovery.healthy_ceiling, 15)
 
 
 class FakeSmtpClient:
@@ -211,6 +321,54 @@ class TransportTests(unittest.TestCase):
         self.assertIn("处理总数：7", body)
         self.assertIn("成功：4", body)
         self.assertNotIn("smtp-password-never-in-mail", message.as_string())
+
+    def test_connectivity_message_contains_only_stable_safe_metadata(self):
+        ssl_factory = FakeSmtpFactory()
+        sender = SmtpNotificationSender(
+            enabled_config(password="smtp-secret-never-in-mail"),
+            smtp_ssl_factory=ssl_factory,
+        )
+        sender.send_connectivity(OpenAIConnectivityNotification(
+            kind="outage",
+            event_id="incident123",
+            batch_id="batch-safe",
+            reason_code="openai_tls_connection_failure",
+            affected_origins=("auth.openai.com",),
+            detected_at=1_700_000_000,
+            baseline=8,
+            protocol_limit=8,
+            healthy_ceiling=12,
+            proxy_fingerprint="sha256:0123456789abcdef",
+        ))
+
+        message = ssl_factory.clients[0].messages[0][0]
+        rendered = message.as_string()
+        body = message.get_content()
+        self.assertIn("OpenAI 授权链路异常", message["Subject"])
+        self.assertIn("openai_tls_connection_failure", body)
+        self.assertIn("中文原因：OpenAI TLS 握手失败", body)
+        self.assertIn("sha256:0123456789abcdef", body)
+        self.assertNotIn("smtp-secret-never-in-mail", rendered)
+        self.assertNotIn("http://", rendered)
+
+    def test_sticky_connectivity_message_names_the_fixed_batch_baseline(self):
+        ssl_factory = FakeSmtpFactory()
+        sender = SmtpNotificationSender(
+            enabled_config(),
+            smtp_ssl_factory=ssl_factory,
+        )
+        sender.send_connectivity(OpenAIConnectivityNotification(
+            kind="recovery",
+            event_id="incidentSticky",
+            baseline=8,
+            protocol_limit=8,
+            healthy_ceiling=8,
+            sticky_baseline=True,
+        ))
+
+        body = ssl_factory.clients[0].messages[0][0].get_content()
+        self.assertIn("本批固定基线", body)
+        self.assertNotIn("健康上限", body)
 
     def test_non_qq_transport_fields_cannot_change_delivery_target(self):
         ssl_factory = FakeSmtpFactory()
@@ -516,6 +674,41 @@ class CoordinatorTests(unittest.TestCase):
         self.assertEqual(result, (EVENT_STALLED,))
         self.assertEqual([item.event for item in self.notifications], [EVENT_STALLED])
 
+    def test_connectivity_outage_freezes_stall_elapsed_time(self):
+        aggregate = RunAggregate(total=1, active=1)
+        self.coordinator.start_run("run-a", aggregate)
+        self.clock.value = 590
+        self.coordinator.set_stall_suspended(True)
+        self.clock.value = 1000
+        self.assertEqual(self.coordinator.check_stall("run-a", aggregate), ())
+        self.coordinator.set_stall_suspended(False)
+        self.clock.value = 1009
+        self.assertEqual(self.coordinator.check_stall("run-a", aggregate), ())
+        self.clock.value = 1010
+        self.assertEqual(
+            self.coordinator.check_stall("run-a", aggregate),
+            (EVENT_STALLED,),
+        )
+
+    def test_progress_during_outage_restarts_stall_timer_at_recovery(self):
+        aggregate = RunAggregate(total=2, active=1, pending=1)
+        self.coordinator.start_run("run-a", aggregate)
+        self.clock.value = 10
+        self.coordinator.set_stall_suspended(True)
+        self.clock.value = 50
+        progressed = RunAggregate(total=2, succeeded=1, active=1)
+        self.coordinator.observe_run("run-a", progressed)
+        self.clock.value = 100
+        self.coordinator.set_stall_suspended(False)
+
+        self.clock.value = 699
+        self.assertEqual(self.coordinator.check_stall("run-a", progressed), ())
+        self.clock.value = 700
+        self.assertEqual(
+            self.coordinator.check_stall("run-a", progressed),
+            (EVENT_STALLED,),
+        )
+
     def test_sms_exhaustion_is_at_most_once(self):
         aggregate = RunAggregate(total=2, active=1, pending=1)
         self.coordinator.start_run("run-a", aggregate)
@@ -723,6 +916,18 @@ class QueueTests(unittest.TestCase):
 
 
 class ServiceTests(unittest.TestCase):
+    @staticmethod
+    def connectivity_notification():
+        return OpenAIConnectivityNotification(
+            kind="outage",
+            event_id="incident123",
+            reason_code="openai_proxy_connection_failure",
+            affected_origins=("auth.openai.com",),
+            baseline=8,
+            protocol_limit=8,
+            healthy_ceiling=12,
+        )
+
     def test_service_delivers_through_injected_smtp_and_exposes_safe_status(self):
         ssl_factory = FakeSmtpFactory()
         service = RunNotificationService(
@@ -756,6 +961,28 @@ class ServiceTests(unittest.TestCase):
         self.assertFalse(status["enabled"])
         self.assertFalse(status["worker_running"])
         self.assertEqual(status["submitted"], 0)
+        service.close()
+
+    def test_connectivity_event_switch_and_smtp_failure_never_escape(self):
+        disabled = OpenAIConnectivityNotificationService(
+            lambda: enabled_config(events={EVENT_OPENAI_AUTH_CONNECTIVITY: False})
+        )
+        self.assertFalse(disabled.submit(self.connectivity_notification()))
+        self.assertEqual(disabled.public_status()["submitted"], 0)
+        disabled.close()
+
+        def failing_smtp(*_args, **_kwargs):
+            raise RuntimeError("smtp private failure")
+
+        service = OpenAIConnectivityNotificationService(
+            lambda: enabled_config(),
+            smtp_ssl_factory=failing_smtp,
+        )
+        self.assertTrue(service.submit(self.connectivity_notification()))
+        self.assertTrue(service.dispatcher.wait_until_idle(1))
+        status = service.public_status()
+        self.assertEqual(status["failed"], 1)
+        self.assertNotIn("smtp private failure", str(status))
         service.close()
 
 

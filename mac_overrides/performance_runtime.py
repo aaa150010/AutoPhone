@@ -23,12 +23,14 @@ except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
 SMS_QUALITY_OPTIMIZATION = "sms_quality_optimization"
 ADAPTIVE_TASK_CONCURRENCY = "adaptive_task_concurrency"
 TASK_INFLIGHT_OPTIMIZATION = "task_inflight_optimization"
+OPENAI_CONNECTIVITY_GUARD = "openai_connectivity_guard"
 PERFORMANCE_FEATURE_DEFAULTS = {
     SMS_QUALITY_OPTIMIZATION: True,
     ADAPTIVE_TASK_CONCURRENCY: True,
     TASK_INFLIGHT_OPTIMIZATION: True,
+    OPENAI_CONNECTIVITY_GUARD: True,
 }
-PERFORMANCE_POLICY_VERSION = 12
+PERFORMANCE_POLICY_VERSION = 13
 PHONE_MAX_ATTEMPTS_LIMIT = 45
 TASK_INFLIGHT_LIMIT = 20
 PERFORMANCE_DEFAULTS = {
@@ -40,6 +42,7 @@ PERFORMANCE_DEFAULTS = {
     "phone_session_cycle_seconds": 1800,
     "auth_session_retries": 1,
     "task_inflight_limit": TASK_INFLIGHT_LIMIT,
+    "protocol_concurrency_ceiling": 12,
 }
 
 INFLIGHT_ROLLING_WINDOW_TASKS = 100
@@ -131,6 +134,11 @@ def migrate_performance_config(value: Any) -> tuple[dict[str, Any], bool]:
         inflight_limit = TASK_INFLIGHT_LIMIT
     config["task_inflight_limit"] = max(1, min(TASK_INFLIGHT_LIMIT, inflight_limit))
     try:
+        protocol_ceiling = int(config.get("protocol_concurrency_ceiling") or 12)
+    except (TypeError, ValueError):
+        protocol_ceiling = 12
+    config["protocol_concurrency_ceiling"] = max(8, min(15, protocol_ceiling))
+    try:
         email_concurrency = int(
             config.get("auto_email_login_concurrency")
             or PERFORMANCE_DEFAULTS["auto_email_login_concurrency"]
@@ -203,7 +211,12 @@ class InflightAdmissionGate:
     """Bound per-batch in-flight work and stick to baseline after a regression."""
 
     _IMMEDIATE_REASONS = frozenset(
-        {"protocol_pressure", "http_429", "session_invalidation"}
+        {
+            "protocol_pressure",
+            "http_429",
+            "session_invalidation",
+            "repeated_connectivity_outage",
+        }
     )
 
     def __init__(
@@ -226,6 +239,7 @@ class InflightAdmissionGate:
             optimized_limit = TASK_INFLIGHT_LIMIT
 
         optimization_requested = as_bool(enabled, True)
+        self.optimization_requested = optimization_requested
         self.configured = configured_limit
         self.requested_limit = optimized_limit
         self.effective = (
@@ -234,7 +248,11 @@ class InflightAdmissionGate:
             else configured_limit
         )
         self.optimized = optimization_requested and self.effective > configured_limit
+        self.staged = self.optimized
         self.rolled_back = False
+        self.suspended = False
+        self.sticky_baseline = False
+        self.resume_eligible = False
         self.reason = "optimized" if self.optimized else "configured_baseline"
         self.baseline = (
             baseline
@@ -269,7 +287,11 @@ class InflightAdmissionGate:
                 "active": self.active,
                 "waiting": self.waiting,
                 "optimized": self.optimized,
+                "staged": self.staged,
                 "rolled_back": self.rolled_back,
+                "suspended": self.suspended,
+                "sticky_baseline": self.sticky_baseline,
+                "resume_eligible": self.resume_eligible,
                 "reason": self.reason,
             }
 
@@ -316,14 +338,97 @@ class InflightAdmissionGate:
             self._stopped = True
             self.condition.notify_all()
 
+    def suspend(self, reason: Any = "openai_connectivity_suspected") -> dict[str, Any] | None:
+        """Temporarily return to baseline while preserving recovery eligibility."""
+        stable_reason = str(reason or "").strip().lower()
+        if stable_reason not in {
+            "openai_connectivity_suspected",
+            "openai_connectivity_outage",
+            "openai_connectivity_recovering",
+        }:
+            stable_reason = "openai_connectivity_suspected"
+        event: dict[str, Any] | None = None
+        with self.condition:
+            if self.rolled_back or self.sticky_baseline:
+                return None
+            old_limit = self.effective
+            already_suspended = self.suspended
+            self.effective = self.configured
+            self.optimized = False
+            self.suspended = True
+            self.resume_eligible = bool(
+                self.optimization_requested
+                and self.requested_limit > self.configured
+            )
+            self.reason = stable_reason
+            self.condition.notify_all()
+            if not already_suspended or old_limit != self.effective:
+                event = {
+                    "kind": "task_inflight_optimization_suspended",
+                    "reason": stable_reason,
+                    "snapshot": self.snapshot_unlocked(),
+                }
+        return event
+
+    def resume(self) -> dict[str, Any] | None:
+        """Restore the configured in-flight expansion after healthy recovery."""
+        event: dict[str, Any] | None = None
+        with self.condition:
+            if not self.suspended or self.rolled_back or self.sticky_baseline:
+                return None
+            old_limit = self.effective
+            self.suspended = False
+            can_expand = bool(
+                self.resume_eligible
+                and self.optimization_requested
+                and self.requested_limit > self.configured
+            )
+            self.resume_eligible = False
+            self.effective = (
+                max(self.configured, self.requested_limit)
+                if can_expand
+                else self.configured
+            )
+            self.optimized = can_expand
+            self.reason = "optimized" if can_expand else "configured_baseline"
+            self.condition.notify_all()
+            event = {
+                "kind": "task_inflight_optimization_restored",
+                "reason": "openai_connectivity_recovered",
+                "old_limit": old_limit,
+                "new_limit": self.effective,
+                "snapshot": self.snapshot_unlocked(),
+            }
+        return event
+
+    def snapshot_unlocked(self) -> dict[str, Any]:
+        return {
+            "configured": self.configured,
+            "baseline_concurrency": self.configured,
+            "requested_limit": self.requested_limit,
+            "effective": self.effective,
+            "active": self.active,
+            "waiting": self.waiting,
+            "optimized": self.optimized,
+            "staged": self.staged,
+            "rolled_back": self.rolled_back,
+            "suspended": self.suspended,
+            "sticky_baseline": self.sticky_baseline,
+            "resume_eligible": self.resume_eligible,
+            "reason": self.reason,
+        }
+
     def _rollback(self, reason: str) -> dict[str, Any] | None:
         event: dict[str, Any] | None = None
         with self.condition:
-            if not self.optimized or self.rolled_back:
+            if self.rolled_back:
                 return None
             self.effective = self.configured
             self.optimized = False
             self.rolled_back = True
+            self.suspended = False
+            self.sticky_baseline = True
+            self.resume_eligible = False
             self.reason = reason
             self.condition.notify_all()
             event = {
@@ -335,7 +440,11 @@ class InflightAdmissionGate:
                     "active": self.active,
                     "waiting": self.waiting,
                     "optimized": self.optimized,
+                    "staged": self.staged,
                     "rolled_back": self.rolled_back,
+                    "suspended": self.suspended,
+                    "sticky_baseline": self.sticky_baseline,
+                    "resume_eligible": self.resume_eligible,
                     "reason": self.reason,
                 },
             }

@@ -4,8 +4,142 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import re
 from typing import Any, Callable
+
+
+_OPENAI_CONNECTIVITY_STATUSES = frozenset(
+    {"unknown", "healthy", "outage", "recovering"}
+)
+_OPENAI_CONNECTIVITY_ORIGINS = (
+    "auth.openai.com",
+    "sentinel.openai.com",
+)
+_OPENAI_CONNECTIVITY_REASON_LABELS = {
+    "openai_auth_connectivity_outage": "OpenAI \u6388\u6743\u94fe\u8def\u8fde\u63a5\u5f02\u5e38",
+    "openai_proxy_connection_failure": "OpenAI \u663e\u5f0f\u4ee3\u7406\u8fde\u63a5\u5931\u8d25",
+    "openai_tls_connection_failure": "OpenAI TLS \u63e1\u624b\u5931\u8d25",
+    "openai_connection_timeout": "OpenAI \u8fde\u63a5\u8d85\u65f6",
+    "openai_remote_disconnect": "OpenAI \u8fdc\u7aef\u8fde\u63a5\u4e2d\u65ad",
+    "openai_connection_failure": "OpenAI \u8fde\u63a5\u5efa\u7acb\u5931\u8d25",
+}
+_OPENAI_CONNECTIVITY_PAUSE_REASONS = frozenset(
+    {"", "openai_auth_connectivity_outage"}
+)
+_OPENAI_CONNECTIVITY_FINGERPRINT_RE = re.compile(r"^sha256:[0-9a-f]{16}$")
+
+
+def _bounded_connectivity_int(value: Any, maximum: int) -> int:
+    if isinstance(value, bool):
+        return 0
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    return max(0, min(maximum, parsed))
+
+
+def _connectivity_runtime_epoch(value: Any) -> int:
+    """Keep the process epoch within JavaScript's exact integer range."""
+    return _bounded_connectivity_int(value, 9_007_199_254_740_991)
+
+
+def _bounded_connectivity_number(value: Any) -> int | float:
+    if isinstance(value, bool):
+        return 0
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    if not math.isfinite(parsed) or not 0 <= parsed <= 10_000_000_000:
+        return 0
+    return value if isinstance(value, (int, float)) else parsed
+
+
+def _connectivity_event_id(value: Any) -> str:
+    text = str(value or "")
+    return text if text.isalnum() and len(text) <= 64 else ""
+
+
+def _public_openai_connectivity(value: Any) -> dict[str, Any]:
+    """Normalize the connectivity snapshot to its credential-safe API contract."""
+
+    candidate = value if isinstance(value, dict) else {}
+    raw_status = str(candidate.get("status") or "").strip().lower()
+    status = (
+        raw_status if raw_status in _OPENAI_CONNECTIVITY_STATUSES else "unknown"
+    )
+    reason_code = str(candidate.get("reason_code") or "").strip().lower()
+    if reason_code not in _OPENAI_CONNECTIVITY_REASON_LABELS:
+        reason_code = ""
+    pause_reason = str(candidate.get("pause_reason") or "").strip().lower()
+    if pause_reason not in _OPENAI_CONNECTIVITY_PAUSE_REASONS:
+        pause_reason = ""
+    event_id = _connectivity_event_id(
+        candidate.get("event_id") or candidate.get("incident_id")
+    )
+    fingerprint = str(candidate.get("proxy_fingerprint") or "").strip().lower()
+    if not _OPENAI_CONNECTIVITY_FINGERPRINT_RE.fullmatch(fingerprint):
+        fingerprint = ""
+
+    raw_origins = candidate.get("affected_origins")
+    affected_origins = (
+        [
+            origin
+            for origin in _OPENAI_CONNECTIVITY_ORIGINS
+            if origin in {
+                str(item or "").strip().lower()
+                for item in raw_origins
+            }
+        ]
+        if isinstance(raw_origins, list)
+        else []
+    )
+    raw_counts = candidate.get("failure_counts")
+    counts = raw_counts if isinstance(raw_counts, dict) else {}
+    failure_counts = {
+        origin: _bounded_connectivity_int(counts.get(origin), 1_000_000)
+        for origin in _OPENAI_CONNECTIVITY_ORIGINS
+    }
+    required_rounds = _bounded_connectivity_int(
+        candidate.get("probe_required_rounds"), 100
+    )
+    successful_rounds = min(
+        _bounded_connectivity_int(candidate.get("probe_successful_rounds"), 100),
+        required_rounds,
+    )
+
+    return {
+        "status": status,
+        "runtime_epoch": _connectivity_runtime_epoch(
+            candidate.get("runtime_epoch")
+        ),
+        "enabled": candidate.get("enabled")
+        if isinstance(candidate.get("enabled"), bool)
+        else False,
+        "paused": candidate.get("paused")
+        if isinstance(candidate.get("paused"), bool)
+        else False,
+        "pause_reason": pause_reason,
+        "reason_code": reason_code,
+        "reason_label": _OPENAI_CONNECTIVITY_REASON_LABELS.get(reason_code, ""),
+        "affected_origins": affected_origins,
+        "event_id": event_id,
+        "incident_id": event_id,
+        "revision": _bounded_connectivity_int(candidate.get("revision"), 1_000_000_000),
+        "proxy_fingerprint": fingerprint,
+        "detected_at": _bounded_connectivity_number(candidate.get("detected_at")),
+        "recovered_at": _bounded_connectivity_number(candidate.get("recovered_at")),
+        "failure_counts": failure_counts,
+        "probe_successful_rounds": successful_rounds,
+        "probe_required_rounds": required_rounds,
+        "last_probe_at": _bounded_connectivity_number(candidate.get("last_probe_at")),
+        "next_probe_at": _bounded_connectivity_number(candidate.get("next_probe_at")),
+        "next_probe_in_seconds": _bounded_connectivity_int(
+            candidate.get("next_probe_in_seconds"), 86_400
+        ),
+    }
 
 
 class PublicStateRuntime:
@@ -28,6 +162,7 @@ class PublicStateRuntime:
         task_progress_getter: Callable[[], Any],
         current_task_admission_getter: Callable[[], Any],
         inflight_gate_getter: Callable[[], Any] | None = None,
+        openai_connectivity_getter: Callable[[], Any] | None = None,
         protocol_gate_getter: Callable[[], Any],
         sms_phone_gate_getter: Callable[[], Any],
         notification_context_for: Callable[[], Any],
@@ -58,6 +193,7 @@ class PublicStateRuntime:
         self.task_progress_getter = task_progress_getter
         self.current_task_admission_getter = current_task_admission_getter
         self.inflight_gate_getter = inflight_gate_getter
+        self.openai_connectivity_getter = openai_connectivity_getter
         self.protocol_gate_getter = protocol_gate_getter
         self.sms_phone_gate_getter = sms_phone_gate_getter
         self.sms_optimization_guard_getter = sms_optimization_guard_getter
@@ -556,6 +692,25 @@ class PublicStateRuntime:
             concurrency["protocol"] = self.protocol_gate_getter().snapshot(
                 local_config.get("proxy")
             )
+            if callable(self.openai_connectivity_getter):
+                try:
+                    connectivity_runtime = self.openai_connectivity_getter()
+                    connectivity_snapshot = getattr(connectivity_runtime, "snapshot", None)
+                    candidate = (
+                        connectivity_snapshot()
+                        if callable(connectivity_snapshot)
+                        else connectivity_runtime
+                    )
+                    if isinstance(candidate, dict):
+                        connectivity = runtime.get("connectivity")
+                        if not isinstance(connectivity, dict):
+                            connectivity = {}
+                            runtime["connectivity"] = connectivity
+                        connectivity["openai_auth"] = _public_openai_connectivity(
+                            candidate
+                        )
+                except Exception:
+                    pass
             concurrency["phone"] = self.sms_phone_gate_getter().status()
             resources: dict[str, Any] = {}
             if callable(self.process_resource_snapshot_getter):

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   CircleCheckFilled,
   CircleCloseFilled,
@@ -18,18 +18,21 @@ import { getRuntimeTaskMailboxUrl } from '../api/client'
 import DashboardMetricCard from '../components/DashboardMetricCard.vue'
 import LogPanel from '../components/LogPanel.vue'
 import MailboxImportDialog from '../components/MailboxImportDialog.vue'
+import OpenAIConnectivityBanner from '../components/OpenAIConnectivityBanner.vue'
 import PageToolbar from '../components/PageToolbar.vue'
 import RunUploadDialog from '../components/RunUploadDialog.vue'
 import TaskResultsPanel from '../components/TaskResultsPanel.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useAppController } from '../composables/useAppController'
 import type { RuntimeTask } from '../types/api'
+import { buildOpenAIConnectivityView } from '../utils/openAIConnectivity'
 
 const emit = defineEmits<{ navigate: [string] }>()
 const controller = useAppController()
 const mailboxImportDialog = ref<InstanceType<typeof MailboxImportDialog>>()
 const uploadDialog = ref<InstanceType<typeof RunUploadDialog>>()
 const openingMailboxUrlTaskIds = ref<string[]>([])
+const connectivityView = computed(() => buildOpenAIConnectivityView(controller.runtime.value))
 
 const terminalStatuses = new Set([
   'success', 'failed', 'stopped', 'stopped_before_start', 'retryable_infra',
@@ -187,6 +190,24 @@ async function openTaskMailboxUrl(task: RuntimeTask) {
     openingMailboxUrlTaskIds.value = openingMailboxUrlTaskIds.value.filter(id => id !== taskId)
   }
 }
+
+async function disableConnectivityGuard() {
+  try {
+    await ElMessageBox.confirm(
+      '关闭后将立即恢复新的 OpenAI 请求，并发将按当前运行策略恢复。',
+      '关闭 OpenAI 链路保护',
+      { type: 'warning', confirmButtonText: '关闭保护', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  try {
+    await controller.setOpenAIConnectivityGuard(false)
+    ElMessage.warning('OpenAI 链路保护已关闭')
+  } catch (error: any) {
+    ElMessage.error(error?.message || '关闭 OpenAI 链路保护失败')
+  }
+}
 </script>
 
 <template>
@@ -195,6 +216,7 @@ async function openTaskMailboxUrl(task: RuntimeTask) {
     :class="{
       'is-running': controller.running.value && !controller.runtime.value.stop_requested,
       'is-stopping': controller.runtime.value.stop_requested,
+      'has-connectivity-banner': Boolean(connectivityView.banner),
     }"
   >
     <PageToolbar title="运行中心" :status="statusLabel" :tone="statusTone">
@@ -210,6 +232,12 @@ async function openTaskMailboxUrl(task: RuntimeTask) {
         <el-icon><VideoPause /></el-icon>停止
       </el-button>
     </PageToolbar>
+
+    <OpenAIConnectivityBanner
+      :view="connectivityView"
+      :disabling-guard="controller.actions.updatingConnectivityGuard"
+      @disable-guard="disableConnectivityGuard"
+    />
 
     <div class="console-grid">
       <div class="metrics-row" aria-label="运行指标">
@@ -274,6 +302,7 @@ async function openTaskMailboxUrl(task: RuntimeTask) {
   min-width: 0;
   min-height: 0;
 }
+.run-page.has-connectivity-banner { grid-template-rows: 44px 40px minmax(0, 1fr); }
 .console-grid { display: grid; grid-template-rows: 88px repeat(2, minmax(0, 1fr)); gap: 6px; min-width: 0; min-height: 0; }
 .metrics-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; min-width: 0; min-height: 0; }
 .metrics-row :deep(.metric-card) { min-height: 0; height: 100%; }

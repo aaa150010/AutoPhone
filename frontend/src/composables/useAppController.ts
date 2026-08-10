@@ -1,5 +1,4 @@
 import { computed, inject, reactive, readonly, ref, shallowRef, type InjectionKey } from 'vue'
-import { ElNotification } from 'element-plus'
 import {
   ApiError,
   api,
@@ -12,9 +11,11 @@ import {
   startExistingRun,
   stopRun,
   testEmailNotification,
+  updateOpenAIConnectivityGuard,
 } from '../api/client'
-import type { AppState, SmsKeyStatus, SmsProviderPool, SmsRuntimeAlert } from '../types/api'
-import { createRuntimeAlertTracker, runtimeAlertDuration } from './runtimeAlerts'
+import type { AppState, SmsKeyStatus, SmsProviderPool } from '../types/api'
+import { createRuntimeNotificationObserver } from './useRuntimeNotifications'
+import { preferNewestOpenAIConnectivityState } from '../utils/openAIConnectivity'
 
 const smsProviderDefaults: Record<string, string> = {
   smsbower: 'dr',
@@ -156,6 +157,7 @@ const defaultEmailNotification = () => ({
     stalled: true,
     sms_exhausted: true,
     sms_balance_low: true,
+    openai_auth_connectivity: true,
     manual_stop: false,
   },
 })
@@ -175,6 +177,8 @@ const defaultForm = () => ({
   adaptive_task_concurrency: true,
   task_inflight_optimization: true,
   task_inflight_limit: 20,
+  openai_connectivity_guard: true,
+  protocol_concurrency_ceiling: 12,
   sms_provider: 'smsbower',
   sms_min_price: '0.01',
   max_price: '0.15',
@@ -223,6 +227,18 @@ function normalizeEmailNotificationDraft(value: any) {
   }
 }
 
+function normalizeOperationalSettings(config: Record<string, any>) {
+  config.phone_submission_concurrency = Math.max(1, Math.min(5, Number(config.phone_submission_concurrency) || 2))
+  config.pixel_upload_concurrency = Math.max(1, Math.min(3, Number(config.pixel_upload_concurrency) || 2))
+  config.adaptive_task_concurrency = config.adaptive_task_concurrency !== false
+  config.task_inflight_optimization = config.task_inflight_optimization !== false
+  config.task_inflight_limit = Math.max(1, Math.min(20, Number(config.task_inflight_limit) || 20))
+  config.openai_connectivity_guard = config.openai_connectivity_guard !== false
+  config.protocol_concurrency_ceiling = Math.max(8, Math.min(15, Number(config.protocol_concurrency_ceiling) || 12))
+  config.sms_quality_optimization = config.sms_quality_optimization !== false
+  return config
+}
+
 function stableValue(value: any): any {
   if (Array.isArray(value)) return value.map(stableValue)
   if (!value || typeof value !== 'object') return value
@@ -242,12 +258,7 @@ function normalizeImportedConfig(value: any) {
   delete config.nvtoken
   delete config.nvtoken_upload
   delete config.pixel_upload_enabled
-  config.phone_submission_concurrency = Math.max(1, Math.min(5, Number(config.phone_submission_concurrency) || 2))
-  config.pixel_upload_concurrency = Math.max(1, Math.min(3, Number(config.pixel_upload_concurrency) || 2))
-  config.adaptive_task_concurrency = config.adaptive_task_concurrency !== false
-  config.task_inflight_optimization = config.task_inflight_optimization !== false
-  config.task_inflight_limit = Math.max(1, Math.min(20, Number(config.task_inflight_limit) || 20))
-  config.sms_quality_optimization = config.sms_quality_optimization !== false
+  normalizeOperationalSettings(config)
   config.email_notification = normalizeEmailNotificationDraft(config.email_notification)
   return config
 }
@@ -267,9 +278,10 @@ export function createAppController() {
     exporting: false,
     testingNotification: false,
     queryingSmsBalances: false,
+    updatingConnectivityGuard: false,
   })
   const queriedSmsKeyStatuses = ref<SmsKeyStatus[] | null>(null)
-  const runtimeAlertTracker = createRuntimeAlertTracker()
+  const runtimeNotificationObserver = createRuntimeNotificationObserver()
   let baseline = signature(form)
   let pollTimer = 0
   let pollingStopped = true
@@ -286,27 +298,16 @@ export function createAppController() {
     || []
   ))
 
-  function showRuntimeAlerts(alerts: SmsRuntimeAlert[]) {
-    for (const alert of alerts || []) {
-      if (!runtimeAlertTracker.accept(alert)) continue
-      ElNotification({
-        title: alert.level === 'error' ? 'SMS 服务异常' : 'SMS 服务提醒',
-        message: alert.message,
-        type: alert.level || 'warning',
-        duration: runtimeAlertDuration(alert),
-      })
-    }
-  }
-
   function syncState(payload: any) {
     const next = payload?.state || payload
     if (!next || typeof next !== 'object') return
-    const nextSignature = JSON.stringify(next)
+    const accepted = preferNewestOpenAIConnectivityState(state.value, next)
+    const nextSignature = JSON.stringify(accepted)
     if (nextSignature !== stateSignature) {
       stateSignature = nextSignature
-      state.value = next
+      state.value = accepted
     }
-    showRuntimeAlerts(next.sms_alerts || next.runtime?.sms_alerts || [])
+    runtimeNotificationObserver.observe(accepted)
   }
 
   function syncError(error: unknown) {
@@ -321,6 +322,14 @@ export function createAppController() {
   function updateForm(value: Record<string, any>) {
     Object.assign(form, mergeConfig(form, value))
     queriedSmsKeyStatuses.value = []
+    dirty.value = signature(form) !== baseline
+  }
+
+  function acceptSavedField(key: string, value: any) {
+    const saved = JSON.parse(baseline)
+    saved[key] = value
+    baseline = signature(saved)
+    form[key] = value
     dirty.value = signature(form) !== baseline
   }
 
@@ -386,12 +395,7 @@ export function createAppController() {
     delete merged.nvtoken
     delete merged.nvtoken_upload
     delete merged.pixel_upload_enabled
-    merged.phone_submission_concurrency = Math.max(1, Math.min(5, Number(merged.phone_submission_concurrency) || 2))
-    merged.pixel_upload_concurrency = Math.max(1, Math.min(3, Number(merged.pixel_upload_concurrency) || 2))
-    merged.adaptive_task_concurrency = merged.adaptive_task_concurrency !== false
-    merged.task_inflight_optimization = merged.task_inflight_optimization !== false
-    merged.task_inflight_limit = Math.max(1, Math.min(20, Number(merged.task_inflight_limit) || 20))
-    merged.sms_quality_optimization = merged.sms_quality_optimization !== false
+    normalizeOperationalSettings(merged)
     Object.assign(form, merged)
     syncLegacySmsFields(form)
     form.email_notification = normalizeEmailNotificationDraft(form.email_notification)
@@ -468,6 +472,21 @@ export function createAppController() {
       throw error
     } finally {
       actions.saving = false
+    }
+  }
+
+  async function setOpenAIConnectivityGuard(enabled: boolean) {
+    actions.updatingConnectivityGuard = true
+    try {
+      const result = await updateOpenAIConnectivityGuard(enabled)
+      acceptSavedField('openai_connectivity_guard', enabled)
+      syncState(result)
+      return result
+    } catch (error) {
+      syncError(error)
+      throw error
+    } finally {
+      actions.updatingConnectivityGuard = false
     }
   }
 
@@ -602,6 +621,7 @@ export function createAppController() {
   function stopPolling() {
     pollingStopped = true
     window.clearTimeout(pollTimer)
+    runtimeNotificationObserver.dispose()
   }
 
   return {
@@ -620,6 +640,7 @@ export function createAppController() {
     syncState,
     refresh,
     save,
+    setOpenAIConnectivityGuard,
     preflight,
     start,
     stop,

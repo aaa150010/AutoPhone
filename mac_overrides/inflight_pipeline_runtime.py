@@ -24,7 +24,10 @@ def optimization_active(gate: Any) -> bool:
         state = snapshot()
     except Exception:
         return False
-    return bool(isinstance(state, dict) and state.get("optimized"))
+    return bool(
+        isinstance(state, dict)
+        and state.get("staged", state.get("optimized"))
+    )
 
 
 @contextmanager
@@ -55,18 +58,26 @@ def call_with_protocol_lease(
     success_fn: Callable[[Result], bool] | None = None,
     on_result: Callable[[Any, bool], Any] | None = None,
 ) -> Result:
-    """Run one OpenAI request under a short lease in staged mode."""
-    if not staged:
-        return callback()
-    if _PROTOCOL_LEASE_DEPTH.get() > 0:
+    """Run one OpenAI request under its staged lease or legacy pause gate."""
+    if staged and _PROTOCOL_LEASE_DEPTH.get() > 0:
         return callback()
     try:
-        with gate.acquire(proxy, stop_event=stop_event, on_wait=on_wait):
-            token = _PROTOCOL_LEASE_DEPTH.set(_PROTOCOL_LEASE_DEPTH.get() + 1)
-            try:
-                result = callback()
-            finally:
-                _PROTOCOL_LEASE_DEPTH.reset(token)
+        if staged:
+            with gate.acquire(proxy, stop_event=stop_event, on_wait=on_wait):
+                token = _PROTOCOL_LEASE_DEPTH.set(_PROTOCOL_LEASE_DEPTH.get() + 1)
+                try:
+                    result = callback()
+                finally:
+                    _PROTOCOL_LEASE_DEPTH.reset(token)
+        else:
+            wait_until_resumed = getattr(gate, "wait_until_resumed", None)
+            if callable(wait_until_resumed):
+                wait_until_resumed(
+                    proxy,
+                    stop_event=stop_event,
+                    on_wait=on_wait,
+                )
+            result = callback()
     except Exception as exc:
         if callable(on_result):
             try:

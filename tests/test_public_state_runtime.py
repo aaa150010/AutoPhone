@@ -44,6 +44,22 @@ class PublicStateRuntimeTests(unittest.TestCase):
             "context": None,
             "known_failures": {},
             "admission": _Admission(8),
+            "connectivity": {
+                "status": "outage",
+                "enabled": True,
+                "paused": True,
+                "pause_reason": "openai_auth_connectivity_outage",
+                "reason_code": "openai_tls_connection_failure",
+                "affected_origins": ["auth.openai.com"],
+                "event_id": "incident123",
+                "runtime_epoch": 1_700_000_000_123,
+                "revision": 4,
+                "proxy_fingerprint": "sha256:0123456789abcdef",
+                "failure_counts": {"auth.openai.com": 2},
+                "probe_successful_rounds": 0,
+                "probe_required_rounds": 2,
+                "next_probe_at": 1_700_000_010,
+            },
         }
         provider_registry = _ProviderRegistry()
         self.runtime = PublicStateRuntime(
@@ -72,6 +88,9 @@ class PublicStateRuntimeTests(unittest.TestCase):
             sms_alerts_getter=lambda: SimpleNamespace(snapshot=lambda: []),
             task_progress_getter=lambda: _TaskProgress(),
             current_task_admission_getter=lambda: self.state["admission"],
+            openai_connectivity_getter=lambda: SimpleNamespace(
+                snapshot=lambda: copy.deepcopy(self.state["connectivity"])
+            ),
             protocol_gate_getter=lambda: SimpleNamespace(
                 snapshot=lambda _proxy: {"limit": 5}
             ),
@@ -237,6 +256,43 @@ class PublicStateRuntimeTests(unittest.TestCase):
         self.assertFalse(public["late_code_loss_auto_detection_available"])
         self.assertEqual(masked["runtime"]["sms_quality_optimization"], public)
         self.assertNotIn("task-", str(public).lower())
+
+    def test_masked_state_exposes_safe_openai_connectivity_progress(self):
+        self.state["connectivity"].update({
+            "raw_proxy": "http://private-user:private-password@example.test:7890",
+            "token": "private-openai-token",
+            "probe": {"token": "private-probe-token"},
+            "affected_origins": [
+                "auth.openai.com",
+                "https://private-user:private-password@example.test/private",
+            ],
+            "failure_counts": {
+                "auth.openai.com": 2,
+                "private-user:private-password@example.test": 99,
+            },
+        })
+        masked = self.runtime.masked_state({"runtime": {"tasks": []}})
+
+        public = masked["runtime"]["connectivity"]["openai_auth"]
+        self.assertEqual(public["status"], "outage")
+        self.assertTrue(public["enabled"])
+        self.assertTrue(public["paused"])
+        self.assertEqual(public["pause_reason"], "openai_auth_connectivity_outage")
+        self.assertEqual(public["reason_code"], "openai_tls_connection_failure")
+        self.assertEqual(public["reason_label"], "OpenAI TLS \u63e1\u624b\u5931\u8d25")
+        self.assertEqual(public["affected_origins"], ["auth.openai.com"])
+        self.assertEqual(public["event_id"], "incident123")
+        self.assertEqual(public["runtime_epoch"], 1_700_000_000_123)
+        self.assertEqual(public["failure_counts"]["auth.openai.com"], 2)
+        self.assertEqual(public["probe_required_rounds"], 2)
+        self.assertEqual(public["proxy_fingerprint"], "sha256:0123456789abcdef")
+        serialized = json.dumps(public)
+        self.assertNotIn("private-user", serialized)
+        self.assertNotIn("private-password", serialized)
+        self.assertNotIn("private-openai-token", serialized)
+        self.assertNotIn("private-probe-token", serialized)
+        self.assertNotIn("raw_proxy", public)
+        self.assertNotIn("token", public)
 
 
 if __name__ == "__main__":

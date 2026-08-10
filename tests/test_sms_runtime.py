@@ -2553,6 +2553,7 @@ class SmsRuntimeTests(unittest.TestCase):
             restore_successes=2,
             launch_interval_seconds=0,
         )
+        gate.begin_run(3, healthy_ceiling=5)
         active = 0
         maximum = 0
         lock = threading.Lock()
@@ -2575,17 +2576,9 @@ class SmsRuntimeTests(unittest.TestCase):
         self.assertEqual(maximum, 3)
 
         events = []
-        gate.report(
-            "http://proxy-a:7897",
-            "TLS connection reset",
-            on_limit_change=events.append,
-        )
-        gate.report(
-            "http://proxy-a:7897",
-            "HTTP 429",
-            on_limit_change=events.append,
-        )
-        self.assertEqual(gate.snapshot("http://proxy-a:7897")["limit"], 2)
+        gate.report("http://proxy-a:7897", "TLS connection reset")
+        gate.report("http://proxy-a:7897", "TLS connection reset")
+        self.assertEqual(gate.snapshot("http://proxy-a:7897")["limit"], 3)
         self.assertEqual(gate.snapshot("http://proxy-b:7897")["limit"], 3)
         gate.report(
             "http://proxy-a:7897",
@@ -2597,10 +2590,13 @@ class SmsRuntimeTests(unittest.TestCase):
             success=True,
             on_limit_change=events.append,
         )
-        self.assertEqual(gate.snapshot("http://proxy-a:7897")["limit"], 3)
+        self.assertEqual(gate.snapshot("http://proxy-a:7897")["limit"], 4)
+        gate.report("http://proxy-a:7897", success=True, on_limit_change=events.append)
+        gate.report("http://proxy-a:7897", success=True, on_limit_change=events.append)
+        self.assertEqual(gate.snapshot("http://proxy-a:7897")["limit"], 5)
         self.assertEqual(
             [(row["kind"], row["old_limit"], row["new_limit"]) for row in events],
-            [("degraded", 3, 2), ("restored", 2, 3)],
+            [("restored", 3, 4), ("restored", 4, 5)],
         )
         self.assertNotIn("http://proxy-a:7897", str(events))
 
@@ -2610,7 +2606,10 @@ class SmsRuntimeTests(unittest.TestCase):
             pass
         self.assertEqual(healthy.synchronize_capacity(9), 9)
         self.assertEqual(
-            healthy.snapshot("proxy-healthy"),
+            {
+                key: healthy.snapshot("proxy-healthy")[key]
+                for key in ("active", "limit", "ceiling", "waiting")
+            },
             {"active": 0, "limit": 9, "ceiling": 9, "waiting": 0},
         )
         self.assertEqual(healthy.synchronize_capacity(4), 4)
@@ -2619,17 +2618,22 @@ class SmsRuntimeTests(unittest.TestCase):
         self.assertEqual(healthy.snapshot("proxy-healthy")["limit"], 8)
 
         degraded = ProxyProtocolGate(default_limit=8, launch_interval_seconds=0)
-        degraded.report("proxy-degraded", "TLS connection reset")
-        degraded.report("proxy-degraded", "HTTP 429")
-        self.assertEqual(degraded.snapshot("proxy-degraded")["limit"], 7)
+        degraded.begin_run(8, healthy_ceiling=12)
+        degraded.guard_expansion("proxy-degraded")
+        self.assertEqual(degraded.snapshot("proxy-degraded")["limit"], 8)
 
         degraded.synchronize_capacity(9)
         snapshot = degraded.snapshot("proxy-degraded")
-        self.assertEqual(snapshot["ceiling"], 9)
-        self.assertEqual(snapshot["limit"], 7)
+        self.assertEqual(snapshot["ceiling"], 12)
+        self.assertEqual(snapshot["limit"], 8)
 
     def test_protocol_gate_observer_failures_do_not_change_limits_or_leak_slots(self):
-        gate = ProxyProtocolGate(default_limit=5, launch_interval_seconds=0)
+        gate = ProxyProtocolGate(
+            default_limit=5,
+            restore_successes=2,
+            launch_interval_seconds=0,
+        )
+        gate.begin_run(5, healthy_ceiling=6)
         raising = lambda _value: (_ for _ in ()).throw(
             RuntimeError("telemetry unavailable")
         )
@@ -2640,31 +2644,8 @@ class SmsRuntimeTests(unittest.TestCase):
         self.assertEqual(len(waits), 1)
         self.assertEqual(gate.snapshot("private-proxy")["active"], 0)
 
-        gate.report("private-proxy", "TLS connection reset")
-        self.assertEqual(
-            gate.report(
-                "private-proxy",
-                "HTTP 429",
-                on_limit_change=raising,
-            ),
-            4,
-        )
-
-    def test_proxy_protocol_gate_keeps_pressure_events_across_success(self):
-        clock = [100.0]
-        gate = ProxyProtocolGate(
-            default_limit=5,
-            now_fn=lambda: clock[0],
-            launch_interval_seconds=0,
-        )
-
-        gate.report("proxy-a", "TLS connection reset")
-        clock[0] += 20
-        gate.report("proxy-a", success=True)
-        clock[0] += 20
-        gate.report("proxy-a", "HTTP 429")
-
-        self.assertEqual(gate.snapshot("proxy-a")["limit"], 4)
+        gate.report("private-proxy", success=True)
+        self.assertEqual(gate.report("private-proxy", success=True, on_limit_change=raising), 6)
 
     def test_protocol_pressure_classifier_covers_common_disconnect_shapes(self):
         class Response429:
@@ -2729,33 +2710,6 @@ class SmsRuntimeTests(unittest.TestCase):
                 starts.append(gate.states[gate.key("proxy-a")].last_started_at - 100.0)
 
         self.assertEqual(starts, [0.0, 1.0, 2.0, 3.0, 4.0])
-
-    def test_proxy_protocol_gate_default_restores_only_after_six_successes(self):
-        clock = [100.0]
-        gate = ProxyProtocolGate(
-            default_limit=5,
-            now_fn=lambda: clock[0],
-            launch_interval_seconds=0,
-        )
-        events = []
-        gate.report(
-            "proxy-a",
-            "TLS connection reset",
-            on_limit_change=events.append,
-        )
-        clock[0] += 30
-        gate.report("proxy-a", "HTTP 429", on_limit_change=events.append)
-        self.assertEqual(gate.snapshot("proxy-a")["limit"], 4)
-
-        for _ in range(5):
-            gate.report("proxy-a", success=True, on_limit_change=events.append)
-        self.assertEqual(gate.snapshot("proxy-a")["limit"], 4)
-        gate.report("proxy-a", success=True, on_limit_change=events.append)
-        self.assertEqual(gate.snapshot("proxy-a")["limit"], 5)
-        self.assertEqual(
-            [(row["kind"], row["old_limit"], row["new_limit"]) for row in events],
-            [("degraded", 5, 4), ("restored", 4, 5)],
-        )
 
     def test_proxy_protocol_gate_staggers_launches_and_supports_stop(self):
         gate = ProxyProtocolGate(default_limit=5, launch_interval_seconds=0.03)

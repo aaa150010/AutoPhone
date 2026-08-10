@@ -816,6 +816,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         original_start = module._importer_scheduler_ext.start_bounded_importer
         original_notifications = module._begin_notification_run
         original_admission = module._CURRENT_TASK_ADMISSION
+        original_inflight = module._CURRENT_INFLIGHT_GATE
         original_protocol = module._PROTOCOL_GATE
         observed = []
         importer = SimpleNamespace(status=lambda _settings: {"running": False})
@@ -864,6 +865,7 @@ class WebGuiSecurityTests(unittest.TestCase):
             )
         finally:
             module._CURRENT_TASK_ADMISSION = original_admission
+            module._CURRENT_INFLIGHT_GATE = original_inflight
             module._PROTOCOL_GATE = original_protocol
             module._importer_scheduler_ext.start_bounded_importer = original_start
             module._begin_notification_run = original_notifications
@@ -871,15 +873,16 @@ class WebGuiSecurityTests(unittest.TestCase):
         promoted, node_reduced, protocol_reduced = observed[0]
         promoted_node, promoted_protocol = promoted
         self.assertEqual((promoted_node["limit"], promoted_node["ceiling"]), (9, 10))
-        self.assertEqual((promoted_protocol["limit"], promoted_protocol["ceiling"]), (9, 9))
+        self.assertEqual((promoted_protocol["limit"], promoted_protocol["ceiling"]), (8, 12))
         self.assertEqual(node_reduced["limit"], 4)
-        self.assertEqual((protocol_reduced["limit"], protocol_reduced["ceiling"]), (4, 4))
+        self.assertEqual((protocol_reduced["limit"], protocol_reduced["ceiling"]), (8, 12))
 
         fixed_promoted, fixed_node, fixed_protocol = observed[1]
         self.assertEqual(fixed_promoted[0]["limit"], 7)
         self.assertEqual(fixed_promoted[1]["limit"], 7)
+        self.assertEqual(fixed_promoted[1]["healthy_ceiling"], 12)
         self.assertEqual(fixed_node["limit"], 7)
-        self.assertEqual((fixed_protocol["limit"], fixed_protocol["ceiling"]), (7, 7))
+        self.assertEqual((fixed_protocol["limit"], fixed_protocol["ceiling"]), (7, 12))
 
     def test_running_fd_sampler_feeds_current_admission_without_subprocess_snapshot(self):
         module = self.module
@@ -1413,51 +1416,48 @@ class WebGuiSecurityTests(unittest.TestCase):
         module = self.module
         original_run = module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION
         original_gate = module._PROTOCOL_GATE
-        outcomes = [
-            {"ok": False, "error": "TLS connection reset"},
-            {"ok": True},
-        ]
+        original_inflight = module._CURRENT_INFLIGHT_GATE
+        outcomes = [{"ok": False, "error": "TLS connection reset"}, {"ok": True}]
         logs = []
-
         class Lease:
             def __init__(self, on_wait):
                 self.on_wait = on_wait
 
             def __enter__(self):
                 self.on_wait(1.25)
-                return "proxy:masked"
 
             def __exit__(self, *_args):
                 return False
-
         class Gate:
-            def acquire(self, _proxy, *, stop_event=None, on_wait=None):
-                del stop_event
-                return Lease(on_wait)
+            limit = 5
 
-            def report(
-                self,
-                _proxy,
-                _value=None,
-                *,
-                success=False,
-                on_limit_change=None,
-            ):
-                event = {
-                    "kind": "restored" if success else "degraded",
-                    "old_limit": 4 if success else 5,
-                    "new_limit": 5 if success else 4,
-                    "ceiling": 5,
-                    "proxy_key": "proxy:masked",
-                }
-                on_limit_change(event)
-                return event["new_limit"]
+            def acquire(self, _proxy, **kwargs):
+                return Lease(kwargs["on_wait"])
+
+            def guard_expansion(self, _proxy):
+                self.limit = 5
+
+            def snapshot(self, _proxy):
+                return {"paused": False, "limit": self.limit}
+
+            def report(self, _proxy, _value=None, *, success=False, on_limit_change=None):
+                old_limit = self.limit
+                self.limit = 6 if success else 5
+                if old_limit != self.limit:
+                    on_limit_change({
+                        "kind": "restored",
+                        "old_limit": old_limit,
+                        "new_limit": self.limit,
+                    })
+                return self.limit
 
         module._TASK_PROGRESS.reset()
         try:
             module._PROTOCOL_GATE = Gate()
+            module._CURRENT_INFLIGHT_GATE = None
             module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = lambda **_kwargs: outcomes.pop(0)
-            for task_id in ("task-protocol-down", "task-protocol-up"):
+            task_ids = ("task-protocol-down", "task-protocol-up")
+            for task_id in task_ids:
                 module._TASK_PROGRESS.set_stage(task_id, "oauth_create_node")
                 module._run_codex_after_registration(
                     oauth_url="https://auth.example.test/authorize",
@@ -1466,22 +1466,20 @@ class WebGuiSecurityTests(unittest.TestCase):
                     config={"sms_task_id": task_id},
                     log_fn=lambda message, level="info": logs.append((message, level)),
                 )
+            segments = [
+                module._TASK_PROGRESS.progress(task_id)["timing"]["segments"]
+                for task_id in task_ids
+            ]
         finally:
-            segments = {
-                task_id: (module._TASK_PROGRESS.progress(task_id) or {}).get("timing", {}).get(
-                    "segments", []
-                )
-                for task_id in ("task-protocol-down", "task-protocol-up")
-            }
             module._TASK_PROGRESS.reset()
             module._PROTOCOL_GATE = original_gate
+            module._CURRENT_INFLIGHT_GATE = original_inflight
             module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = original_run
 
-        for rows in segments.values():
-            self.assertEqual(rows[0]["code"], "protocol_slot_waiting")
-            self.assertEqual(rows[0]["elapsed_seconds"], 1.25)
-        self.assertTrue(any("5 -> 4" in message for message, _level in logs))
-        self.assertTrue(any("4 -> 5" in message for message, _level in logs))
+        for rows in segments:
+            self.assertEqual((rows[0]["code"], rows[0]["elapsed_seconds"]),
+                             ("protocol_slot_waiting", 1.25))
+        self.assertTrue(any("5 -> 6" in message for message, _level in logs))
         self.assertNotIn("private-user", str(logs))
         self.assertNotIn("private-pass", str(logs))
 
@@ -1489,6 +1487,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         module = self.module
         original_run = module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION
         original_gate = module._PROTOCOL_GATE
+        original_connectivity = module._OPENAI_CONNECTIVITY
         reports = []
         limits = []
 
@@ -1514,6 +1513,9 @@ class WebGuiSecurityTests(unittest.TestCase):
                 default_limit=5,
                 launch_interval_seconds=0,
             )
+            module._OPENAI_CONNECTIVITY = module._auth_connectivity_runtime_ext.OpenAIAuthConnectivityRuntime(
+                proxy="", auto_start_worker=False
+            )
             module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = fail_run
             for task_id, stage in (
                 ("T-mailbox-transport-1", "email_login"),
@@ -1533,16 +1535,11 @@ class WebGuiSecurityTests(unittest.TestCase):
             module._TASK_ADMISSION_CONTEXT.reset(admission_token)
             module._TASK_PROGRESS.reset()
             module._PROTOCOL_GATE = original_gate
+            module._OPENAI_CONNECTIVITY = original_connectivity
             module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = original_run
 
-        self.assertEqual(
-            reports,
-            [
-                ("T-oauth-proxy-1", "protocol_pressure", True),
-                ("T-oauth-proxy-2", "protocol_pressure", True),
-            ],
-        )
-        self.assertEqual(limits, [5, 5, 5, 4])
+        self.assertEqual(reports, [])
+        self.assertEqual(limits, [5, 5, 5, 5])
 
     def test_sms_provider_pressure_does_not_touch_task_or_main_proxy_gates(self):
         module = self.module
@@ -1591,61 +1588,56 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(reports, [])
         self.assertEqual(protocol_limit, 5)
 
-    def test_structured_oauth_429_degrades_protocol_gate_and_success_restores_it(self):
+    def test_structured_oauth_429_cools_down_at_baseline_without_reexpansion(self):
         module = self.module
-        original_run = module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION
         original_gate = module._PROTOCOL_GATE
+        original_connectivity = module._OPENAI_CONNECTIVITY
+        original_inflight = module._CURRENT_INFLIGHT_GATE
         reports = []
+        clock = [1_000.0]
 
         class Admission:
             def report_pressure(self, task_id, node_code, *, immediate=False):
                 reports.append((task_id, node_code, immediate))
 
-        outcomes = [
-            {"ok": False, "status_code": 429},
-            {"ok": False, "status_code": 429},
-            *({"ok": True} for _index in range(6)),
-        ]
         admission_token = module._TASK_ADMISSION_CONTEXT.set(Admission())
         try:
             module._PROTOCOL_GATE = module._sms_runtime_ext.ProxyProtocolGate(
                 default_limit=5,
+                now_fn=lambda: clock[0],
                 launch_interval_seconds=0,
             )
-            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = lambda **_kwargs: outcomes.pop(0)
-            for index in range(2):
-                task_id = f"T-structured-rate-{index}"
-                module._TASK_PROGRESS.set_stage(task_id, "oauth_authorize_node")
-                module._run_codex_after_registration(
-                    oauth_url="https://auth.example.test/authorize",
-                    account_email="masked@example.test",
-                    config={"sms_task_id": task_id},
+            module._PROTOCOL_GATE.begin_run(5, healthy_ceiling=12)
+            module._OPENAI_CONNECTIVITY = (
+                module._auth_connectivity_runtime_ext.OpenAIAuthConnectivityRuntime(
+                    proxy="", auto_start_worker=False
                 )
-            degraded_limit = module._PROTOCOL_GATE.snapshot("")["limit"]
-            for index in range(6):
-                task_id = f"T-protocol-success-{index}"
-                module._TASK_PROGRESS.set_stage(task_id, "oauth_authorize_node")
-                module._run_codex_after_registration(
-                    oauth_url="https://auth.example.test/authorize",
-                    account_email="masked@example.test",
-                    config={"sms_task_id": task_id},
+            )
+            module._CURRENT_INFLIGHT_GATE = None
+            decision = module._PROTOCOL_COORDINATOR.observe_connectivity_result(
+                "auth.openai.com", {"status_code": 429}, task_id="T-rate-limit"
+            )
+            cooldown = module._PROTOCOL_GATE.snapshot("")
+            clock[0] += 30
+            for _index in range(6):
+                module._PROTOCOL_COORDINATOR.observe_connectivity_result(
+                    "auth.openai.com", succeeded=True
                 )
-            restored_limit = module._PROTOCOL_GATE.snapshot("")["limit"]
+            after_success = module._PROTOCOL_GATE.snapshot("")
         finally:
             module._TASK_ADMISSION_CONTEXT.reset(admission_token)
-            module._TASK_PROGRESS.reset()
             module._PROTOCOL_GATE = original_gate
-            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = original_run
+            module._OPENAI_CONNECTIVITY = original_connectivity
+            module._CURRENT_INFLIGHT_GATE = original_inflight
 
-        self.assertEqual(degraded_limit, 4)
-        self.assertEqual(restored_limit, 5)
-        self.assertEqual(
-            reports,
-            [
-                ("T-structured-rate-0", "protocol_pressure", True),
-                ("T-structured-rate-1", "protocol_pressure", True),
-            ],
-        )
+        self.assertEqual(decision["kind"], "rate_limited")
+        self.assertEqual((cooldown["baseline"], cooldown["limit"]), (5, 5))
+        self.assertEqual(cooldown["pause_reason"], "http_429")
+        self.assertEqual(cooldown["pause_remaining_seconds"], 30)
+        self.assertTrue(cooldown["sticky_baseline"])
+        self.assertEqual((after_success["limit"], after_success["healthy_ceiling"]), (5, 12))
+        self.assertFalse(after_success["paused"])
+        self.assertEqual(reports, [("T-rate-limit", "http_429", True)])
 
     def test_relogin_whole_chain_retry_policy_rejects_credential_and_state_failures(self):
         module = self.module
@@ -2683,6 +2675,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         original_run = module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION
         original_state = module._ORIGINAL_TASK_STATE
         original_gate = module._PROTOCOL_GATE
+        original_connectivity = module._OPENAI_CONNECTIVITY
         original_admission = module._CURRENT_TASK_ADMISSION
         cases = (
             ("node_sentinel_failed: TLS handshake failed", True),
@@ -2707,6 +2700,9 @@ class WebGuiSecurityTests(unittest.TestCase):
                 module._PROTOCOL_GATE = module._sms_runtime_ext.ProxyProtocolGate(
                     default_limit=5,
                     launch_interval_seconds=0,
+                )
+                module._OPENAI_CONNECTIVITY = module._auth_connectivity_runtime_ext.OpenAIAuthConnectivityRuntime(
+                    proxy="", auto_start_worker=False
                 )
                 if raises:
                     module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = (
@@ -2757,6 +2753,7 @@ class WebGuiSecurityTests(unittest.TestCase):
             module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = original_run
             module._ORIGINAL_TASK_STATE = original_state
             module._PROTOCOL_GATE = original_gate
+            module._OPENAI_CONNECTIVITY = original_connectivity
             module._CURRENT_TASK_ADMISSION = original_admission
 
     def test_business_terminal_failures_do_not_create_admission_pressure(self):
