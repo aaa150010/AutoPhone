@@ -21,7 +21,7 @@ const emit = defineEmits<{
 
 const nowSeconds = useTaskProgressClock(
   () => props.tasks,
-  () => props.tasks.some(task => Boolean(task.manual_verification?.can_submit)),
+  () => props.tasks.some(task => shouldShowManualVerification(task)),
 )
 const detailsOpen = ref(false)
 const selectedTaskKey = ref('')
@@ -35,6 +35,11 @@ function taskTooltip(row: RuntimeTask) {
 
 function taskRowKey(row: RuntimeTask) {
   return `${String(row.batch_id || 'legacy')}::${row.task_id}`
+}
+
+function shouldShowManualVerification(row: RuntimeTask) {
+  return row.manual_verification?.input_kind === 'email_otp'
+    && Boolean(row.manual_verification?.can_submit)
 }
 
 const selectedTask = computed(() => {
@@ -126,7 +131,7 @@ function openDetails(row: RuntimeTask) {
       <template #default="{ row }">
         <div class="task-actions">
           <TaskVerificationInput
-            v-if="row.manual_verification"
+            v-if="shouldShowManualVerification(row)"
             :task-id="row.task_id"
             :request="row.manual_verification"
             :now-seconds="nowSeconds"

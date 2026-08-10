@@ -2780,59 +2780,17 @@ def _manual_totp_fallback(self, response):
             delattr(self, "_gptphone_totp_manual_secret")
         except AttributeError:
             pass
-    if (
-        error_code == "incorrect_code"
-        and secret
-        and task_id
-        and not session_invalid
-        and not manual_attempted
-    ):
-        setattr(self, "_gptphone_totp_manual_retry_generation", manual_generation)
+    if error_code == "incorrect_code" and secret and task_id and not session_invalid:
         setattr(self, "_gptphone_totp_manual_fallback_consumed", True)
         try:
-            manual_code = _manual_verification_runtime_ext.wait_for_manual(
-                broker=_MANUAL_VERIFICATION,
-                task_id=task_id,
-                input_kind="totp",
-                generation=_manual_task_generation(task_id),
-                stop_event=_manual_stop_event(self),
-                timeout_seconds=_manual_verification_runtime_ext.DEFAULT_WINDOW_SECONDS,
-            )
-        except _manual_verification_runtime_ext.ManualVerificationStopped:
-            manual_code = ""
-            _call_log(
-                getattr(self, "log_fn", None),
-                "  [人工 2FA/mfa_otp_verifying] 人工动态码输入已取消，保留原验证结果",
-                "warn",
-            )
-        except _manual_verification_runtime_ext.ManualVerificationError:
-            manual_code = ""
-            _call_log(
-                getattr(self, "log_fn", None),
-                "  [人工 2FA/mfa_otp_verifying] 人工动态码输入超时或已失效，保留原验证结果",
-                "warn",
-            )
-        if manual_code:
-            setattr(self, "_gptphone_totp_flow", True)
-            setattr(self, "_gptphone_totp_secret", secret)
-            # The automatic next-window retry was already consumed before the
-            # manual fallback opened. A rejected manual code must not reopen it.
-            setattr(self, "_gptphone_totp_incorrect_retries", 1)
-            response = _TOTP_PATCHES.verify_mfa_otp(self, manual_code)
-            try:
-                delattr(self, "_gptphone_totp_manual_secret")
-            except AttributeError:
-                pass
-            _call_log(
-                getattr(self, "log_fn", None),
-                "  [人工 2FA/mfa_otp_verifying] 已接收当前任务的人工动态码",
-                "info",
-            )
-        else:
-            try:
-                delattr(self, "_gptphone_totp_manual_secret")
-            except AttributeError:
-                pass
+            delattr(self, "_gptphone_totp_manual_secret")
+        except AttributeError:
+            pass
+        _call_log(
+            getattr(self, "log_fn", None),
+            "  [2FA/mfa_otp_verifying] 动态码自动验证失败，不打开人工输入",
+            "warn",
+        )
     elif error_code == "incorrect_code" and manual_attempted:
         try:
             delattr(self, "_gptphone_totp_manual_secret")
@@ -3244,29 +3202,7 @@ def _sms_adapter_mark_ready(self, lease):
 
 
 def _sms_adapter_wait_code(self, lease, timeout=180):
-    task_id = str(
-        _TASK_CONTEXT.get()
-        or getattr(lease, "task_id", "")
-        or getattr(self, "task_id", "")
-        or ""
-    ).strip()
-    if not task_id:
-        return _SMS_WEB.adapter_wait_code(self, lease, timeout=timeout)
-    return _manual_verification_runtime_ext.wait_with_manual_fallback(
-        lambda: _SMS_WEB.adapter_wait_code(self, lease, timeout=timeout),
-        broker=_MANUAL_VERIFICATION,
-        task_id=task_id,
-        input_kind="sms_otp",
-        generation=_manual_task_generation(task_id),
-        stop_event=_manual_stop_event(self),
-        automatic_timeout_seconds=_int_value(timeout, 180, minimum=1, maximum=900),
-        manual_timeout_seconds=_manual_verification_runtime_ext.DEFAULT_WINDOW_SECONDS,
-        on_manual_selected=lambda: _call_log(
-            getattr(self, "log_fn", None),
-            "  [人工短信验证码/sms_waiting] 已接收当前任务的人工验证码",
-            "info",
-        ),
-    )
+    return _SMS_WEB.adapter_wait_code(self, lease, timeout=timeout)
 
 
 def _sms_adapter_complete(self, lease):
@@ -3974,7 +3910,7 @@ def _public_task(task):
     public = _PUBLIC_STATE.public_task(task)
     task_id = str((task or {}).get("task_id") or "").strip() if isinstance(task, dict) else ""
     prompt = _MANUAL_VERIFICATION.public(task_id) if task_id else {}
-    if isinstance(prompt, dict) and prompt:
+    if isinstance(prompt, dict) and prompt and prompt.get("input_kind") == "email_otp":
         public["manual_verification"] = prompt
         public["capabilities"] = ["submit_manual_verification"]
     checkpoint = task.get("_checkpoint_public") if isinstance(task, dict) else None

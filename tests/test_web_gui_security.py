@@ -2797,13 +2797,11 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(challenge_calls, [])
         self.assertFalse(hasattr(transport, "_gptphone_auth_challenge_context"))
 
-    def test_incorrect_totp_accepts_one_manual_code_without_logging_secrets(self):
+    def test_incorrect_totp_never_opens_manual_code_prompt(self):
         module = self.module
         secret = "JBSWY3DPEHPK3PXP"
-        manual_code = "654321"
         logs = []
         seen_codes = []
-        seen_retry_counts = []
         originals = {
             "patches": module._TOTP_PATCHES,
             "wait": module._manual_verification_runtime_ext.wait_for_manual,
@@ -2820,15 +2818,12 @@ class WebGuiSecurityTests(unittest.TestCase):
         try:
             def verify(_transport, value):
                 seen_codes.append(value)
-                seen_retry_counts.append(
-                    getattr(_transport, "_gptphone_totp_incorrect_retries", None)
-                )
-                if len(seen_codes) == 1:
-                    return {"_status": 403, "error": {"code": "incorrect_code"}}
-                return {"_status": 200, "page": {"type": "add_phone"}}
+                return {"_status": 403, "error": {"code": "incorrect_code"}}
 
             module._TOTP_PATCHES = SimpleNamespace(verify_mfa_otp=verify)
-            module._manual_verification_runtime_ext.wait_for_manual = lambda **_kwargs: manual_code
+            module._manual_verification_runtime_ext.wait_for_manual = (
+                lambda **_kwargs: self.fail("manual prompt must not open")
+            )
             module._observe_auth_step = lambda *_args: None
             module._checkpoint_save_after_auth = lambda *_args: None
             module._auth_challenge_runtime_ext.continue_if_needed = lambda _transport, response, **_kwargs: response
@@ -2842,14 +2837,13 @@ class WebGuiSecurityTests(unittest.TestCase):
             module._auth_challenge_runtime_ext.continue_if_needed = originals["continue"]
             module._TASK_CONTEXT.reset(token)
 
-        self.assertEqual(result["_status"], 200)
-        self.assertEqual(seen_codes, ["123456", manual_code])
-        self.assertEqual(seen_retry_counts, [None, 1])
+        self.assertEqual(result["_status"], 403)
+        self.assertEqual(seen_codes, ["123456"])
         self.assertFalse(hasattr(transport, "_gptphone_totp_manual_secret"))
         self.assertNotIn(secret, repr(logs))
-        self.assertNotIn(manual_code, repr(logs))
+        self.assertIn("不打开人工输入", repr(logs))
 
-    def test_incorrect_totp_manual_timeout_is_terminal_to_that_prompt_only(self):
+    def test_repeated_incorrect_totp_still_skips_manual_prompt(self):
         module = self.module
         secret = "JBSWY3DPEHPK3PXP"
         logs = []
@@ -2869,8 +2863,8 @@ class WebGuiSecurityTests(unittest.TestCase):
         rejected = {"_status": 403, "error": {"code": "incorrect_code"}}
         try:
             module._TOTP_PATCHES = SimpleNamespace(verify_mfa_otp=lambda *_args: rejected)
-            module._manual_verification_runtime_ext.wait_for_manual = lambda **_kwargs: (_ for _ in ()).throw(
-                module._manual_verification_runtime_ext.ManualVerificationError("expired", "timeout", 410)
+            module._manual_verification_runtime_ext.wait_for_manual = (
+                lambda **_kwargs: self.fail("manual prompt must not open")
             )
             module._observe_auth_step = lambda *_args: None
             module._checkpoint_save_after_auth = lambda *_args: None
@@ -2889,8 +2883,29 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertIs(result, rejected)
         self.assertIs(repeated, rejected)
         self.assertFalse(hasattr(transport, "_gptphone_totp_manual_secret"))
-        self.assertIn("人工动态码输入超时或已失效", repr(logs))
+        self.assertIn("不打开人工输入", repr(logs))
         self.assertNotIn(secret, repr(logs))
+
+    def test_sms_wait_code_uses_provider_only_without_manual_prompt(self):
+        module = self.module
+        originals = {
+            "adapter_wait_code": module._SMS_WEB.adapter_wait_code,
+            "fallback": module._manual_verification_runtime_ext.wait_with_manual_fallback,
+        }
+        provider = SimpleNamespace(task_id="T-sms", log_fn=lambda *_args: None)
+        lease = SimpleNamespace(task_id="T-sms")
+        try:
+            module._SMS_WEB.adapter_wait_code = lambda _provider, _lease, timeout=180: "246810"
+            module._manual_verification_runtime_ext.wait_with_manual_fallback = (
+                lambda *_args, **_kwargs: self.fail("manual prompt must not open")
+            )
+
+            result = module._sms_adapter_wait_code(provider, lease, timeout=90)
+        finally:
+            module._SMS_WEB.adapter_wait_code = originals["adapter_wait_code"]
+            module._manual_verification_runtime_ext.wait_with_manual_fallback = originals["fallback"]
+
+        self.assertEqual(result, "246810")
 
     def test_session_invalid_incorrect_totp_never_opens_manual_prompt(self):
         module = self.module
