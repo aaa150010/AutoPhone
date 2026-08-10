@@ -835,7 +835,6 @@ class MailboxAdminService(MailboxSourceLockMixin):
                 sub2_status = resolve_openai_status(
                     self.openai_status_lookup,
                     openai_account_id=openai_account_id,
-                    sub2_account_id=sub2_account_id,
                     row_id=source_row_id,
                     allow_row_fallback=not manually_restored and (succeeded or status_key == "consumed"),
                 )
@@ -1276,7 +1275,6 @@ class MailboxAdminService(MailboxSourceLockMixin):
             latest = self._latest_results_by_email(results_dir)
             state = self._read_json_file(self._path(config, "state_path"))
             state_by_line, state_by_email, state_by_row_id = index_mailbox_states(state.get("items"))
-            accounts_by_email = self._latest_sub2_accounts_by_email(results_dir)
             resolved: list[dict[str, Any]] = []
             for line_no, expected_row_id in bindings:
                 if line_no > len(lines):
@@ -1310,7 +1308,6 @@ class MailboxAdminService(MailboxSourceLockMixin):
                     result_status = ""
                 if result_status not in {"success", "ok", "uploaded"}:
                     document = {}
-                account = accounts_by_email.get(email) or {}
                 try:
                     openai_status_id = credentials_from_result(document).account_id if document else ""
                 except OpenAIQuotaError:
@@ -1320,7 +1317,6 @@ class MailboxAdminService(MailboxSourceLockMixin):
                         "row_id": expected_row_id,
                         "line_no": line_no,
                         "email": email,
-                        "sub2api_account_id": str(account.get("account_id") or ""),
                         "openai_status_id": openai_status_id,
                         "document": document,
                     }

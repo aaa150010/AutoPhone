@@ -1,6 +1,7 @@
 import type { MailboxBatchOperation } from '../types/api'
 
 export const MAILBOX_OPERATION_NOTIFICATION_KEY = 'gptphone_mailbox_operation_notified'
+export const MAILBOX_OPERATION_RETRY_PROMPT_KEY = 'gptphone_mailbox_operation_retry_prompted'
 
 export interface MailboxOperationStorage {
   getItem(key: string): string | null
@@ -19,6 +20,43 @@ export function claimMailboxOperationNotification(
   if (storage.getItem(MAILBOX_OPERATION_NOTIFICATION_KEY) === id) return false
   storage.setItem(MAILBOX_OPERATION_NOTIFICATION_KEY, id)
   return true
+}
+
+export function claimMailboxOperationRetryPrompt(
+  operation: MailboxBatchOperation,
+  storage: MailboxOperationStorage,
+) {
+  const id = mailboxOperationNotificationId(operation)
+  if (storage.getItem(MAILBOX_OPERATION_RETRY_PROMPT_KEY) === id) return false
+  storage.setItem(MAILBOX_OPERATION_RETRY_PROMPT_KEY, id)
+  return true
+}
+
+const RETRYABLE_OPENAI_TEST_KINDS = new Set([
+  'network_error',
+  'remote_disconnected',
+  'timeout',
+  'upstream_error',
+])
+
+export function retryableOpenAITestBindings(operation: MailboxBatchOperation) {
+  if (operation.kind !== 'openai_test' || operation.status === 'running') return []
+  const result: Array<{ row_id: string; line_no: number }> = []
+  const seen = new Set<string>()
+  for (const update of operation.row_updates || []) {
+    const status = update.sub2_status || {}
+    const kind = String(status.kind || '').trim().toLowerCase()
+    const parsedCode = Number(status.status_code ?? status.code)
+    const retryable = RETRYABLE_OPENAI_TEST_KINDS.has(kind)
+      || (Number.isFinite(parsedCode) && parsedCode >= 500)
+    const rowId = String(update.row_id || '').trim()
+    const lineNo = Number(update.line_no || 0)
+    const key = `${rowId}:${lineNo}`
+    if (!retryable || !rowId || lineNo <= 0 || seen.has(key)) continue
+    seen.add(key)
+    result.push({ row_id: rowId, line_no: lineNo })
+  }
+  return result
 }
 
 function operationTime(value: unknown) {

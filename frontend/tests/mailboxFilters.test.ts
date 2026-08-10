@@ -5,6 +5,7 @@ import {
   isLatestMailboxBatchFailure,
   isMailboxNetworkDisconnected,
   latestMailboxBatchId,
+  mailboxBatchCandidates,
   matchesMailboxView,
   needsSub2Rerun,
 } from '../src/utils/mailboxFilters.ts'
@@ -18,6 +19,8 @@ import {
 import { createMailboxRefreshGuard } from '../src/utils/mailboxRefreshGuard.ts'
 import {
   claimMailboxOperationNotification,
+  claimMailboxOperationRetryPrompt,
+  retryableOpenAITestBindings,
   shouldApplyMailboxOperationUpdate,
 } from '../src/utils/mailboxOperationState.ts'
 import type { MailboxBatchOperation } from '../src/types/api.ts'
@@ -64,6 +67,24 @@ test('network filter accepts explicit quota connection failures and excludes HTT
   ]) {
     assert.equal(isMailboxNetworkDisconnected(row({ quota_status: 'error', quota_error })), false)
   }
+})
+
+test('OpenAI batch tests every mailbox while quota keeps successful accounts only', () => {
+  const rows = [
+    row({ row_id: 'available', status: 'available', task_id: '' }),
+    row({ row_id: 'consumed', status: 'consumed', task_id: 'task-1' }),
+    row({ row_id: 'failed', status: 'failed', task_id: 'task-2' }),
+    row({ row_id: 'draft', status: 'draft', task_id: 'task-3' }),
+  ]
+
+  assert.deepEqual(
+    mailboxBatchCandidates(rows, 'openai_test').map(item => item.row_id),
+    ['available', 'consumed', 'failed', 'draft'],
+  )
+  assert.deepEqual(
+    mailboxBatchCandidates(rows, 'quota').map(item => item.row_id),
+    ['consumed'],
+  )
 })
 
 test('quota results merge by stable row id instead of current display order', () => {
@@ -222,6 +243,44 @@ test('a terminal operation is claimed only once across page refreshes', () => {
 
   assert.equal(claimMailboxOperationNotification(operation, storage), true)
   assert.equal(claimMailboxOperationNotification(operation, storage), false)
+  assert.equal(claimMailboxOperationRetryPrompt(operation, storage), true)
+  assert.equal(claimMailboxOperationRetryPrompt(operation, storage), false)
+})
+
+test('network-failed OpenAI rows can be retried without retrying account failures', () => {
+  const operation: MailboxBatchOperation = {
+    job_id: 'job-network-retry',
+    kind: 'openai_test',
+    status: 'completed',
+    total: 6,
+    completed: 6,
+    succeeded: 1,
+    failed: 5,
+    skipped: 0,
+    tested: 6,
+    rate_limited: 1,
+    not_ready: 0,
+    created_at: 1,
+    updated_at: 2,
+    row_updates: [
+      { row_id: 'row-network', line_no: 1, sub2_status: { kind: 'network_error' } },
+      { row_id: 'row-disconnected', line_no: 2, sub2_status: { kind: 'remote_disconnected' } },
+      { row_id: 'row-upstream', line_no: 3, sub2_status: { kind: 'http_error', status_code: 503 } },
+      { row_id: 'row-401', line_no: 4, sub2_status: { kind: 'unauthorized', status_code: 401 } },
+      { row_id: 'row-429', line_no: 5, sub2_status: { kind: 'rate_limited', status_code: 429 } },
+      { row_id: 'row-healthy', line_no: 6, sub2_status: { kind: 'healthy', status_code: 200 } },
+    ],
+  }
+
+  assert.deepEqual(retryableOpenAITestBindings(operation), [
+    { row_id: 'row-network', line_no: 1 },
+    { row_id: 'row-disconnected', line_no: 2 },
+    { row_id: 'row-upstream', line_no: 3 },
+  ])
+  assert.deepEqual(
+    retryableOpenAITestBindings({ ...operation, status: 'running' }),
+    [],
+  )
 })
 
 test('older mailbox operation polls cannot roll progress or terminal state backward', () => {

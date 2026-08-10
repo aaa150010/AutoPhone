@@ -155,10 +155,9 @@ function handleMoreCommand(command: string) {
 
     <el-dropdown
       trigger="click"
-      :disabled="deleteDisabled"
       @command="handleMoreCommand"
     >
-      <el-button :disabled="deleteDisabled">
+      <el-button>
         <el-icon><MoreFilled /></el-icon>
         更多操作
         <el-icon class="menu-chevron"><ArrowDown /></el-icon>

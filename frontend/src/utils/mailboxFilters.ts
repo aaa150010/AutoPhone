@@ -1,4 +1,4 @@
-import type { MailboxRow, Sub2MailboxStatus } from '../types/api'
+import type { MailboxOperationKind, MailboxRow, Sub2MailboxStatus } from '../types/api'
 
 const NETWORK_KINDS = new Set(['network_error', 'remote_disconnected', 'timeout'])
 const FAILED_TASK_STATUSES = new Set(['failed', 'email_damaged', 'account_banned'])
@@ -53,6 +53,11 @@ export function isMailboxNetworkDisconnected(row: MailboxRow) {
     row.quota_error,
   ].filter(Boolean).join(' ')
   return Boolean(quotaDetail && !NON_NETWORK_PATTERN.test(quotaDetail) && NETWORK_PATTERN.test(quotaDetail))
+}
+
+export function mailboxBatchCandidates(rows: MailboxRow[], kind: MailboxOperationKind) {
+  if (kind === 'openai_test') return rows
+  return rows.filter(row => row.status === 'consumed' && Boolean(row.task_id))
 }
 
 export function latestMailboxBatchId(rows: MailboxRow[]) {

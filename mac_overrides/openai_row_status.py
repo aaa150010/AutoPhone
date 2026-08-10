@@ -64,8 +64,12 @@ def public_openai_status(
         return {
             "kind": "not_ready" if unuploaded else "unlinked",
             "status_code": None,
-            "label": "未上传" if unuploaded else "未关联",
-            "summary": "该邮箱尚未上传到远端账号服务" if unuploaded else "",
+            "label": "缺少本地 OAuth 凭据" if unuploaded else "未关联",
+            "summary": (
+                "该邮箱没有可用于本机直连测试的 OpenAI OAuth 成功结果"
+                if unuploaded
+                else ""
+            ),
             "tested_at": None,
             "is_error": False,
             "is_abnormal": False,

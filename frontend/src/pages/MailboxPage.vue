@@ -30,9 +30,10 @@ import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useAppController } from '../composables/useAppController'
 import { useMailboxBatchOperations } from '../composables/useMailboxBatchOperations'
 import { useMailboxRowActions } from '../composables/useMailboxRowActions'
-import type { MailboxPayload, MailboxRow } from '../types/api'
+import type { MailboxOperationKind, MailboxPayload, MailboxRow } from '../types/api'
 import {
   latestMailboxBatchId,
+  mailboxBatchCandidates,
   mailboxBatchOptions,
   matchesMailboxView,
   needsSub2Rerun,
@@ -142,8 +143,8 @@ function applyMailboxPayload(payload: any) {
   if (payload?.state) controller.syncState(payload.state)
 }
 
-function queryableRows() {
-  return data.value.rows.filter(row => row.status === 'consumed' && row.task_id)
+function batchCandidates(kind: MailboxOperationKind) {
+  return mailboxBatchCandidates(data.value.rows, kind)
 }
 
 function scheduleMailboxPoll(delay: number) {
@@ -153,7 +154,7 @@ function scheduleMailboxPoll(delay: number) {
 }
 
 const mailboxBatch = useMailboxBatchOperations({
-  candidates: queryableRows,
+  candidates: batchCandidates,
   clearSelection: () => {
     mailboxTable.value?.clearSelection()
     selectedRows.value = []

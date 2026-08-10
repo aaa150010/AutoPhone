@@ -317,16 +317,15 @@ defineExpose({ clearSelection })
           :disabled="rowActionLoading(row)"
           @command="handleDropdownCommand($event, row)"
         >
-          <el-tooltip content="打开该账号的常用操作" placement="top">
-            <el-button
-              link
-              class="row-action-button"
-              :loading="rowActionLoading(row)"
-              aria-label="打开该账号的常用操作"
-            >
-              <el-icon><MoreFilled /></el-icon>
-            </el-button>
-          </el-tooltip>
+          <el-button
+            link
+            class="row-action-button"
+            :loading="rowActionLoading(row)"
+            aria-label="打开该账号的常用操作"
+            title="打开该账号的常用操作"
+          >
+            <el-icon><MoreFilled /></el-icon>
+          </el-button>
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item command="copy_email">

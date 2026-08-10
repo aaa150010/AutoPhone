@@ -432,7 +432,7 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertNotIn("private-access-token", serialized)
         self.assertNotIn("openai-account-501", serialized)
 
-    def test_list_mailboxes_marks_imported_without_remote_upload_as_not_ready(self):
+    def test_list_mailboxes_marks_rows_without_local_oauth_as_not_ready(self):
         row = "imported@example.com----mail-pass----client-id----refresh-token"
         self._write_pool(row + "\n")
         self._write_state({})
@@ -442,7 +442,7 @@ class MailboxAdminTests(unittest.TestCase):
         public = self.service.list_mailboxes()["rows"][0]
 
         self.assertEqual(public["sub2_status"]["kind"], "not_ready")
-        self.assertEqual(public["sub2_status"]["label"], "未上传")
+        self.assertEqual(public["sub2_status"]["label"], "缺少本地 OAuth 凭据")
         self.assertFalse(public["sub2_status"]["is_error"])
         self.assertEqual(looked_up, [])
 
@@ -481,7 +481,7 @@ class MailboxAdminTests(unittest.TestCase):
                 "label": "200 健康",
                 "tested_at": 100,
             }
-            if account_id == "legacy-sub2-id"
+            if account_id == "private-account-id"
             else {"kind": "untested", "label": "未测试"}
         )
         self.service.openai_quota_status_lookup = lambda account_id: looked_up.append(account_id) or {
@@ -495,7 +495,7 @@ class MailboxAdminTests(unittest.TestCase):
         public = self.service.list_mailboxes()["rows"][0]
 
         self.assertEqual(looked_up, ["private-account-id"])
-        self.assertEqual(openai_lookups, ["private-account-id", "legacy-sub2-id"])
+        self.assertEqual(openai_lookups, ["private-account-id"])
         self.assertEqual(public["sub2_status"]["kind"], "healthy")
         self.assertEqual(public["quota_status"], "error")
         self.assertEqual(public["quota_5h"]["remaining_percent"], 80)
@@ -924,10 +924,10 @@ class MailboxAdminTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertEqual(len(captured), 2)
-        self.assertEqual(captured[0]["sub2api_account_id"], "remote-1")
         self.assertEqual(captured[0]["openai_status_id"], "chatgpt-account-1")
         self.assertIn("private-access", json.dumps(captured[0]))
-        self.assertEqual(captured[1]["sub2api_account_id"], "")
+        self.assertNotIn("sub2api_account_id", captured[0])
+        self.assertNotIn("sub2api_account_id", captured[1])
         self.assertEqual(captured[1]["openai_status_id"], "")
         self.assertEqual(captured[1]["document"], {})
 

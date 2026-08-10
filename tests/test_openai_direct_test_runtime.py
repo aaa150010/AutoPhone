@@ -8,6 +8,8 @@ import unittest
 
 from mac_overrides.openai_direct_test_runtime import (
     DIRECT_TEST_FINGERPRINT,
+    DIRECT_TEST_OPTIMIZED_WORKERS,
+    DIRECT_TEST_WORKERS,
     OPENAI_CODEX_RESPONSES_URL,
     OpenAIDirectTestClient,
     OpenAIDirectTestRuntime,
@@ -128,7 +130,7 @@ class OpenAIDirectTestRuntimeTests(unittest.TestCase):
                 status = OpenAIDirectTestClient(transport=transport).test_document(success_document())
                 self.assertEqual(status.kind, expected_kind)
 
-    def test_runtime_marks_unuploaded_rows_without_sending_a_request(self):
+    def test_runtime_marks_rows_without_local_oauth_without_sending_a_request(self):
         with tempfile.TemporaryDirectory() as temp:
             factory_calls = []
             completed = []
@@ -160,7 +162,7 @@ class OpenAIDirectTestRuntimeTests(unittest.TestCase):
 
         self.assertEqual(result["not_ready"], 1)
         self.assertEqual(result["unlinked"], 1)
-        self.assertEqual(result["results"][0]["sub2_status"]["label"], "未上传，无法直连 OpenAI")
+        self.assertEqual(result["results"][0]["sub2_status"]["label"], "缺少本地 OAuth 凭据")
         self.assertEqual(persisted["kind"], "not_ready")
         self.assertEqual(completed, result["results"])
         self.assertEqual(len(factory_calls), 0)
@@ -223,7 +225,7 @@ class OpenAIDirectTestRuntimeTests(unittest.TestCase):
 
             self.assertFalse(worker.is_alive())
 
-    def test_not_ready_replaces_old_account_snapshot_immediately(self):
+    def test_not_ready_is_row_bound_and_does_not_depend_on_remote_account_id(self):
         with tempfile.TemporaryDirectory() as temp:
             snapshot_path = Path(temp) / "snapshots.json"
             runtime = OpenAIDirectTestRuntime(lambda: {}, snapshot_path)
@@ -244,7 +246,11 @@ class OpenAIDirectTestRuntimeTests(unittest.TestCase):
             ])
 
             reloaded = OpenAIDirectTestRuntime(lambda: {}, snapshot_path)
-            self.assertEqual(reloaded.status_for("legacy-account")["kind"], "not_ready")
+            self.assertEqual(reloaded.status_for("legacy-account")["kind"], "unauthorized")
+            self.assertEqual(
+                reloaded.status_for(row_status_key("row-not-ready"))["kind"],
+                "not_ready",
+            )
 
     def test_runtime_status_for_returns_persisted_public_status(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -370,6 +376,134 @@ class OpenAIDirectTestRuntimeTests(unittest.TestCase):
         self.assertFalse(status["needs_rerun"])
         self.assertFalse(status["is_error"])
         self.assertNotIn("openai-account-1", serialized)
+
+    def test_default_parallel_policy_runs_one_five_row_chunk_in_one_wave(self):
+        with tempfile.TemporaryDirectory() as temp:
+            active = 0
+            maximum = 0
+            lock = threading.Lock()
+            all_started = threading.Event()
+            release = threading.Event()
+
+            class BlockingTransport:
+                def post(_self, _url, *, headers, json_body, timeout):
+                    nonlocal active, maximum
+                    del headers, json_body, timeout
+                    with lock:
+                        active += 1
+                        maximum = max(maximum, active)
+                        if active >= DIRECT_TEST_OPTIMIZED_WORKERS:
+                            all_started.set()
+                    release.wait(2)
+                    with lock:
+                        active -= 1
+                    return FakeResponse(chunks=response_events({"type": "response.completed"}))
+
+            transport = BlockingTransport()
+            runtime = OpenAIDirectTestRuntime(
+                lambda: {},
+                Path(temp) / "snapshots.json",
+                client_factory=lambda **kwargs: OpenAIDirectTestClient(
+                    transport=transport,
+                    attempts=1,
+                    **kwargs,
+                ),
+            )
+            rows = [
+                {
+                    "row_id": f"row-{index}",
+                    "line_no": index,
+                    "openai_status_id": f"openai-account-{index}",
+                    "document": success_document(f"openai-account-{index}", f"private-{index}"),
+                }
+                for index in range(1, 6)
+            ]
+            completed = []
+            worker = threading.Thread(target=lambda: completed.append(runtime.test_rows(rows)))
+            worker.start()
+            try:
+                self.assertTrue(all_started.wait(1))
+                self.assertEqual(maximum, DIRECT_TEST_OPTIMIZED_WORKERS)
+            finally:
+                release.set()
+                worker.join(2)
+
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(completed[0]["metrics"]["effective_workers"], DIRECT_TEST_OPTIMIZED_WORKERS)
+        self.assertFalse(completed[0]["metrics"]["rollback_active"])
+        self.assertNotIn("private-", json.dumps(completed[0]["metrics"]))
+
+    def test_parallel_switch_and_429_pressure_fall_back_to_two_workers(self):
+        with tempfile.TemporaryDirectory() as temp:
+            snapshot_path = Path(temp) / "snapshots.json"
+            disabled_policy = OpenAIDirectTestRuntime(
+                lambda: {"openai_direct_test_parallel_enabled": False},
+                snapshot_path,
+            )._execution_policy()
+            self.assertFalse(disabled_policy["optimization_enabled"])
+            self.assertEqual(disabled_policy["effective_workers"], DIRECT_TEST_WORKERS)
+
+            first_transport = FakeTransport([FakeResponse(429) for _index in range(5)])
+            runtime = OpenAIDirectTestRuntime(
+                lambda: {},
+                snapshot_path,
+                client_factory=lambda **kwargs: OpenAIDirectTestClient(
+                    transport=first_transport,
+                    attempts=1,
+                    **kwargs,
+                ),
+            )
+            rows = [
+                {
+                    "row_id": f"row-{index}",
+                    "line_no": index,
+                    "openai_status_id": f"openai-account-{index}",
+                    "document": success_document(f"openai-account-{index}", f"private-{index}"),
+                }
+                for index in range(1, 6)
+            ]
+            pressured = runtime.test_rows(rows)
+            self.assertTrue(pressured["metrics"]["rollback_triggered"])
+            self.assertEqual(pressured["metrics"]["rollback_reason"], "http_429")
+
+            active = 0
+            maximum = 0
+            lock = threading.Lock()
+            baseline_started = threading.Event()
+            release = threading.Event()
+
+            class BaselineTransport:
+                def post(_self, _url, *, headers, json_body, timeout):
+                    nonlocal active, maximum
+                    del headers, json_body, timeout
+                    with lock:
+                        active += 1
+                        maximum = max(maximum, active)
+                        if active >= DIRECT_TEST_WORKERS:
+                            baseline_started.set()
+                    release.wait(2)
+                    with lock:
+                        active -= 1
+                    return FakeResponse(chunks=response_events({"type": "response.completed"}))
+
+            runtime.client_factory = lambda **kwargs: OpenAIDirectTestClient(
+                transport=BaselineTransport(),
+                attempts=1,
+                **kwargs,
+            )
+            completed = []
+            worker = threading.Thread(target=lambda: completed.append(runtime.test_rows(rows)))
+            worker.start()
+            try:
+                self.assertTrue(baseline_started.wait(1))
+                self.assertEqual(maximum, DIRECT_TEST_WORKERS)
+            finally:
+                release.set()
+                worker.join(2)
+
+        self.assertFalse(worker.is_alive())
+        self.assertTrue(completed[0]["metrics"]["rollback_active"])
+        self.assertEqual(completed[0]["metrics"]["effective_workers"], DIRECT_TEST_WORKERS)
 
 
 if __name__ == "__main__":

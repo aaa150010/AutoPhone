@@ -51,3 +51,10 @@ body { overflow: hidden; background: var(--workspace-page); font-size: 13px; }
 .el-table th.el-table__cell { height: 40px; color: #58667a; font-size: 12px; font-weight: 650; }
 .el-table td.el-table__cell { height: 40px; padding: 6px 0; font-size: 13px; }
 .el-dialog { border-radius: var(--workspace-radius); }
+.el-popper.is-dark {
+  max-width: 460px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.55;
+}

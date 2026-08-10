@@ -53,12 +53,41 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
 
 DIRECT_TEST_MODEL = "gpt-5.4"
 DIRECT_TEST_TIMEOUT_SECONDS = 30.0
+# Two workers is the compatibility baseline. The optimized path uses five so
+# one outer mailbox chunk can run in a single wave.
 DIRECT_TEST_WORKERS = 2
+DIRECT_TEST_OPTIMIZED_WORKERS = 5
+DIRECT_TEST_MAX_WORKERS = 8
+DIRECT_TEST_ROLLBACK_SECONDS = 5 * 60
+DIRECT_TEST_NETWORK_ROLLBACK_THRESHOLD = 2
 DIRECT_TEST_ATTEMPTS = 2
 DIRECT_TEST_RETRY_DELAY_SECONDS = 0.35
 DIRECT_TEST_INSTRUCTIONS = "You are Codex, a coding agent."
 DIRECT_TEST_FINGERPRINT = "openai-direct-codex"
 MAX_SSE_BYTES = 1024 * 1024
+_DIRECT_TEST_TRANSIENT_KINDS = frozenset(
+    {"network_error", "remote_disconnected", "timeout", "upstream_error"}
+)
+
+
+def _enabled(value: Any, default: bool = True) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"0", "false", "no", "off", "disabled"}:
+            return False
+        if normalized in {"1", "true", "yes", "on", "enabled"}:
+            return True
+    return bool(value)
+
+
+def _worker_count(value: Any, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(DIRECT_TEST_WORKERS, min(DIRECT_TEST_MAX_WORKERS, parsed))
 
 
 class DirectOpenAIRequestError(ConnectionError):
@@ -369,9 +398,68 @@ class OpenAIDirectTestRuntime:
         self.snapshot_store = Sub2SnapshotStore(snapshot_path, now_fn=now_fn)
         self.client_factory = client_factory or OpenAIDirectTestClient
         self._lock = RLock()
+        self._rollback_until = 0.0
+        self._rollback_reason = ""
 
     def _client(self, proxy: str) -> OpenAIDirectTestClient:
         return self.client_factory(proxy=proxy, now_fn=self.now_fn)
+
+    def _execution_policy(self) -> dict[str, Any]:
+        try:
+            loaded = self.config_loader()
+        except Exception:
+            loaded = {}
+        config = loaded if isinstance(loaded, Mapping) else {}
+        optimization_enabled = _enabled(
+            config.get("openai_direct_test_parallel_enabled"),
+            True,
+        )
+        configured_workers = _worker_count(
+            config.get("openai_direct_test_workers"),
+            DIRECT_TEST_OPTIMIZED_WORKERS,
+        )
+        now = float(self.now_fn())
+        with self._lock:
+            rollback_active = optimization_enabled and now < self._rollback_until
+            rollback_reason = self._rollback_reason if rollback_active else ""
+            if not rollback_active and self._rollback_until:
+                self._rollback_until = 0.0
+                self._rollback_reason = ""
+        return {
+            "optimization_enabled": optimization_enabled,
+            "configured_workers": configured_workers,
+            "effective_workers": (
+                DIRECT_TEST_WORKERS
+                if not optimization_enabled or rollback_active
+                else configured_workers
+            ),
+            "rollback_active": rollback_active,
+            "rollback_reason": rollback_reason,
+        }
+
+    @staticmethod
+    def _pressure_reason(statuses: Iterable[Sub2TestStatus]) -> str:
+        values = list(statuses)
+        if any(status.status_code == 429 or status.kind == "rate_limited" for status in values):
+            return "http_429"
+        transient = sum(
+            status.kind in _DIRECT_TEST_TRANSIENT_KINDS
+            or (status.status_code is not None and status.status_code >= 500)
+            for status in values
+        )
+        if transient >= DIRECT_TEST_NETWORK_ROLLBACK_THRESHOLD:
+            return "network_failures"
+        return ""
+
+    def _activate_rollback(self, reason: str) -> None:
+        if not reason:
+            return
+        with self._lock:
+            self._rollback_until = max(
+                self._rollback_until,
+                float(self.now_fn()) + DIRECT_TEST_ROLLBACK_SECONDS,
+            )
+            self._rollback_reason = reason
 
     @staticmethod
     def _snapshot_key(account_id: Any) -> str:
@@ -384,8 +472,8 @@ class OpenAIDirectTestRuntime:
             return {
                 "kind": "not_ready",
                 "status_code": None,
-                "label": "未上传",
-                "summary": "该邮箱尚未上传到远端账号服务",
+                "label": "缺少本地 OAuth 凭据",
+                "summary": "该邮箱没有可用于本机直连测试的 OpenAI OAuth 成功结果",
                 "tested_at": None,
                 "is_error": False,
                 "needs_rerun": False,
@@ -421,7 +509,7 @@ class OpenAIDirectTestRuntime:
             "untested",
             None,
             "凭据已更新，待复测",
-            "重登已成功并更新远端凭据，尚未重新执行 OpenAI 直连测试",
+            "重登已刷新本地 OpenAI OAuth 凭据，尚未重新执行直连测试",
             int(self.now_fn()),
         )
         self.snapshot_store.put_many(
@@ -434,9 +522,12 @@ class OpenAIDirectTestRuntime:
         rows: Sequence[Mapping[str, Any]],
         proxy: str = "",
     ) -> dict[str, Any]:
+        started_at = time.monotonic()
         selected = list(rows)
         if not selected:
             return {"ok": False, "code": "openai_test_rows_required", "error": "请先勾选要测试的邮箱"}
+        policy = self._execution_policy()
+        effective_workers = int(policy["effective_workers"])
         chunks = [
             selected[offset : offset + MAX_BATCH_ROWS]
             for offset in range(0, len(selected), MAX_BATCH_ROWS)
@@ -455,6 +546,11 @@ class OpenAIDirectTestRuntime:
             "batch_count": len(chunks),
             "queued_batches": max(0, len(chunks) - 1),
             "completed_batches": 0,
+            "metrics": {
+                **policy,
+                "rollback_triggered": False,
+                "elapsed_seconds": 0.0,
+            },
         }
         for batch_index, chunk in enumerate(chunks, start=1):
             statuses: dict[int, Sub2TestStatus] = {}
@@ -462,7 +558,6 @@ class OpenAIDirectTestRuntime:
             def persist_completed(row: Mapping[str, Any], status: Sub2TestStatus) -> None:
                 status_id = str(
                     row.get("openai_status_id")
-                    or row.get("sub2api_account_id")
                     or row_status_key(row.get("row_id"))
                     or ""
                 ).strip()
@@ -496,7 +591,7 @@ class OpenAIDirectTestRuntime:
                 status = _status(
                     "not_ready",
                     None,
-                    "未上传，无法直连 OpenAI",
+                    "缺少本地 OAuth 凭据",
                     "该邮箱还没有本地成功结果或 OpenAI OAuth access token",
                     int(self.now_fn()),
                 )
@@ -505,7 +600,7 @@ class OpenAIDirectTestRuntime:
             if ready_rows:
                 client = self._client(str(proxy or "").strip())
                 with ThreadPoolExecutor(
-                    max_workers=min(DIRECT_TEST_WORKERS, len(ready_rows)),
+                    max_workers=min(effective_workers, len(ready_rows)),
                     thread_name_prefix="openai-direct-test",
                 ) as executor:
                     futures = {
@@ -526,6 +621,22 @@ class OpenAIDirectTestRuntime:
                             )
                         statuses[index] = status
                         persist_completed(row, status)
+            pressure_reason = self._pressure_reason(statuses.values())
+            if (
+                pressure_reason
+                and bool(policy["optimization_enabled"])
+                and effective_workers > DIRECT_TEST_WORKERS
+            ):
+                self._activate_rollback(pressure_reason)
+                effective_workers = DIRECT_TEST_WORKERS
+                aggregate["metrics"].update(
+                    {
+                        "effective_workers": DIRECT_TEST_WORKERS,
+                        "rollback_active": True,
+                        "rollback_triggered": True,
+                        "rollback_reason": pressure_reason,
+                    }
+                )
             for index, row in enumerate(chunk):
                 status = statuses[index]
                 if index in ready_indexes:
@@ -549,12 +660,19 @@ class OpenAIDirectTestRuntime:
                     }
                 )
             aggregate["completed_batches"] = batch_index
+        aggregate["metrics"]["elapsed_seconds"] = round(
+            max(0.0, time.monotonic() - started_at),
+            3,
+        )
         return aggregate
 
 
 __all__ = [
     "DIRECT_TEST_MODEL",
+    "DIRECT_TEST_OPTIMIZED_WORKERS",
+    "DIRECT_TEST_ROLLBACK_SECONDS",
     "DIRECT_TEST_TIMEOUT_SECONDS",
+    "DIRECT_TEST_WORKERS",
     "CurlCffiDirectOpenAITransport",
     "OpenAIDirectTestClient",
     "OpenAIDirectTestRuntime",

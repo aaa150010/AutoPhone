@@ -23,7 +23,7 @@ class _Store:
 
 
 class MailboxStatusRefreshTests(unittest.TestCase):
-    def test_successful_update_clears_legacy_remote_401_before_list_fallback(self):
+    def test_successful_update_uses_refreshed_local_status_without_remote_fallback(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             (root / "pool.txt").write_text(
@@ -68,7 +68,7 @@ class MailboxStatusRefreshTests(unittest.TestCase):
                         "kind": "untested",
                         "status_code": None,
                         "label": "凭据已更新，待复测",
-                        "summary": "重登已成功并更新远端凭据",
+                        "summary": "重登已刷新本地 OpenAI OAuth 凭据",
                     }
 
             clear_successful_update_statuses(
@@ -89,7 +89,7 @@ class MailboxStatusRefreshTests(unittest.TestCase):
             )
             public = service.list_mailboxes()["rows"][0]
 
-        self.assertEqual(lookups, ["openai-501", "remote-501"])
+        self.assertEqual(lookups, ["openai-501"])
         self.assertEqual(public["sub2_status"]["label"], "凭据已更新，待复测")
         self.assertFalse(public["sub2_status"]["needs_rerun"])
         self.assertNotEqual(public["sub2_status"]["status_code"], 401)

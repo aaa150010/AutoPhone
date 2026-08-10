@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { ApiError, startMailboxBatchOperation } from '../api/client'
 import type {
   MailboxBatchOperation,
@@ -9,7 +9,9 @@ import type {
 } from '../types/api'
 import {
   claimMailboxOperationNotification,
+  claimMailboxOperationRetryPrompt,
   mailboxOperationNotificationId,
+  retryableOpenAITestBindings,
   shouldApplyMailboxOperationUpdate,
 } from '../utils/mailboxOperationState'
 
@@ -27,19 +29,20 @@ export function mailboxOperationMessage(operation: MailboxBatchOperation) {
   const details = [
     operation.failed ? `测试失败 ${operation.failed} 条` : '',
     operation.rate_limited ? `额度受限 ${operation.rate_limited} 条` : '',
-    operation.not_ready ? `未上传 ${operation.not_ready} 条` : '',
+    operation.not_ready ? `缺少本地 OAuth 凭据 ${operation.not_ready} 条` : '',
   ].filter(Boolean).join('，')
   return `已测试 ${operation.tested} 条${details ? `，${details}` : ''}`
 }
 
 export function useMailboxBatchOperations(options: {
-  candidates: () => MailboxRow[]
+  candidates: (kind: MailboxOperationKind) => MailboxRow[]
   clearSelection: () => void
   onStarted?: () => void
 }) {
   const operation = ref<MailboxBatchOperation | null>(null)
   const startingKind = ref<MailboxOperationKind | null>(null)
   let inMemoryNotification = ''
+  let inMemoryRetryPrompt = ''
   let clearedTerminalJob = ''
 
   const running = computed(() => operation.value?.status === 'running')
@@ -63,27 +66,61 @@ export function useMailboxBatchOperations(options: {
       : ''
   ))
 
-  function notifyTerminal(next: MailboxBatchOperation) {
-    if (next.status === 'running') return
+  async function offerNetworkRetry(next: MailboxBatchOperation) {
+    const retryRows = retryableOpenAITestBindings(next)
+    if (!retryRows.length) return
     const id = mailboxOperationNotificationId(next)
-    if (inMemoryNotification === id) return
+    if (inMemoryRetryPrompt === id) return
     try {
-      if (!claimMailboxOperationNotification(next, window.localStorage)) {
-        inMemoryNotification = id
+      if (!claimMailboxOperationRetryPrompt(next, window.localStorage)) {
+        inMemoryRetryPrompt = id
         return
       }
     } catch {
-      // A private browsing policy may disable storage; in-memory tracking still deduplicates polls.
+      // Keep one prompt per terminal job even when local storage is unavailable.
     }
-    inMemoryNotification = id
-    const message = mailboxOperationMessage(next)
-    if (next.status === 'failed') {
-      ElMessage.error(message)
-    } else if (next.failed || next.skipped || next.rate_limited || next.not_ready) {
-      ElMessage.warning(message)
-    } else {
-      ElMessage.success(message)
+    inMemoryRetryPrompt = id
+    try {
+      await ElMessageBox.confirm(
+        `${retryRows.length} 个账号因本机网络连接问题测试失败，是否只重新测试这些账号？`,
+        '重新测试网络失败项',
+        {
+          type: 'warning',
+          confirmButtonText: '重新测试',
+          cancelButtonText: '暂不测试',
+        },
+      )
+    } catch {
+      return
     }
+    await start('openai_test', retryRows)
+  }
+
+  function notifyTerminal(next: MailboxBatchOperation) {
+    if (next.status === 'running') return
+    const id = mailboxOperationNotificationId(next)
+    let showNotification = inMemoryNotification !== id
+    if (showNotification) {
+      try {
+        if (!claimMailboxOperationNotification(next, window.localStorage)) {
+          showNotification = false
+        }
+      } catch {
+        // A private browsing policy may disable storage; in-memory tracking still deduplicates polls.
+      }
+      inMemoryNotification = id
+    }
+    if (showNotification) {
+      const message = mailboxOperationMessage(next)
+      if (next.status === 'failed') {
+        ElMessage.error(message)
+      } else if (next.failed || next.skipped || next.rate_limited || next.not_ready) {
+        ElMessage.warning(message)
+      } else {
+        ElMessage.success(message)
+      }
+    }
+    void offerNetworkRetry(next)
   }
 
   function sync(
@@ -109,13 +146,19 @@ export function useMailboxBatchOperations(options: {
     }
   }
 
-  async function start(kind: MailboxOperationKind) {
-    if (busy.value) return
-    const candidates = options.candidates()
+  async function start(
+    kind: MailboxOperationKind,
+    requestedRows?: Array<{ row_id: string; line_no: number }>,
+  ) {
+    if (busy.value) {
+      if (requestedRows) ElMessage.warning('已有邮箱批量操作正在执行，请稍后重试')
+      return
+    }
+    const candidates = requestedRows || options.candidates(kind)
     if (!candidates.length) {
       ElMessage.warning(kind === 'quota'
         ? '当前没有可查询 OpenAI 额度的成功账号'
-        : '当前没有可测试的 OpenAI 成功账号')
+        : '当前没有可测试的邮箱')
       return
     }
     startingKind.value = kind
