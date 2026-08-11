@@ -178,6 +178,7 @@ const defaultForm = () => ({
   task_inflight_optimization: true,
   task_inflight_limit: 20,
   openai_connectivity_guard: true,
+  phone_binding_compatibility: true,
   protocol_concurrency_ceiling: 12,
   sms_provider: 'smsbower',
   sms_min_price: '0.01',
@@ -234,6 +235,7 @@ function normalizeOperationalSettings(config: Record<string, any>) {
   config.task_inflight_optimization = config.task_inflight_optimization !== false
   config.task_inflight_limit = Math.max(1, Math.min(20, Number(config.task_inflight_limit) || 20))
   config.openai_connectivity_guard = config.openai_connectivity_guard !== false
+  config.phone_binding_compatibility = config.phone_binding_compatibility !== false
   config.protocol_concurrency_ceiling = Math.max(8, Math.min(15, Number(config.protocol_concurrency_ceiling) || 12))
   config.sms_quality_optimization = config.sms_quality_optimization !== false
   return config

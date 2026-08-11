@@ -455,6 +455,7 @@ _RULES = (
     (("auth_context_cookies_missing",), "phone_submitting", "auth_context_cookies_missing", "手机号提交会话缺少有效 cookies，需要重新建立登录会话", True),
     (("auth_context_task_mismatch", "auth_context_generation_mismatch"), "phone_submitting", "auth_context_session_mismatch", "手机号提交会话不属于当前任务，需要重新建立登录会话", True),
     (("phone_channel_mismatch",), "phone_submitting", "phone_channel_mismatch", "OpenAI 将当前号码切换到非短信渠道，无法使用 SMS 接码", True),
+    (("phone_security_challenge_required",), "phone_submitting", "phone_security_challenge_required", "OpenAI 要求完成浏览器安全验证，当前手机号提交已停止", True),
     (("phone_send_rejected", "send_phone_number_otp", "suspicious behavior from phone numbers", "unsupported_country_region_territory", "country, region, or territory not supported"), "phone_submitting", "phone_submission_failed", "OpenAI 拒绝当前号码或号码所属地区", True),
     (("sms_provider_ready_failed",), "sms_waiting", "sms_provider_ready_failed", "接码平台确认短信订单失败", True),
     (("sms_provider_poll_failed",), "sms_waiting", "sms_provider_poll_failed", "接码平台短信状态查询失败", True),
@@ -540,9 +541,8 @@ def classify_failure(
     search_text = _combined_search_text(values)
     current_node = _current_node(result, progress)
     rule = _rule_for(search_text)
-    # Session invalidation during phone verification is both an authorization
-    # failure and an account-level phone risk signal. Keep the operation where
-    # it surfaced so persisted results and public diagnostics agree.
+    # Keep session expiry at the operation where it surfaced. It is not proof
+    # that the leased number itself was rejected or risk-controlled.
     if _is_oauth_session_invalid(search_text):
         states = _chain_states(result)
         if current_node in {"phone_submitting", "sms_verifying"}:
@@ -555,7 +555,7 @@ def classify_failure(
             session_node = "oauth_authorize_node"
         cause = "OpenAI 登录会话已失效"
         if session_node in {"phone_submitting", "sms_verifying"}:
-            cause += "，疑似手机号阶段风控"
+            cause += "（发生于手机号绑定阶段，不代表号码已被确认风控）"
         rule = (
             session_node,
             "oauth_session_invalid",

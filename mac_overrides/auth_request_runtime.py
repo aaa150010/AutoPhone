@@ -21,6 +21,7 @@ try:
         _short_fingerprint,
         _safe_path,
         invalidation_reason_code,
+        is_session_invalid,
     )
 except ImportError:  # Loaded as a top-level runtime override.
     from auth_session_runtime import (  # type: ignore[no-redef]
@@ -28,6 +29,7 @@ except ImportError:  # Loaded as a top-level runtime override.
         _short_fingerprint,
         _safe_path,
         invalidation_reason_code,
+        is_session_invalid,
     )
 
 
@@ -173,6 +175,10 @@ class TransportRequestContext:
     page_type: str = ""
     continue_path: str = ""
     phone_entry_url: str = field(default="", repr=False)
+    phone_entry_url_explicit: bool = field(default=False, repr=False)
+    phone_entry_prepare_attempted_generation: int = -1
+    phone_entry_prepared_generation: int = -1
+    phone_channel_fallback_keys: set[str] = field(default_factory=set, repr=False)
     request_count: int = 0
     last_request_id: str = ""
     last_sentinel: dict[str, bool] = field(default_factory=dict)
@@ -207,6 +213,10 @@ class TransportRequestContext:
         self.page_type = ""
         self.continue_path = ""
         self.phone_entry_url = ""
+        self.phone_entry_url_explicit = False
+        self.phone_entry_prepare_attempted_generation = -1
+        self.phone_entry_prepared_generation = -1
+        self.phone_channel_fallback_keys.clear()
         self.last_sentinel = {}
         return self.generation
 
@@ -414,6 +424,9 @@ def mark_phone_ready(
     if is_phone_entry_page_type(page_type):
         entry_url = _private_phone_entry_url(continue_url)
         if entry_url:
+            context.phone_entry_url_explicit = bool(str(continue_url or "").strip())
+            if entry_url != context.phone_entry_url:
+                context.phone_entry_prepared_generation = -1
             context.phone_entry_url = entry_url
     setattr(transport, "_gptphone_page_type", page_type)
     if registry is not None and context.task_id:
@@ -530,11 +543,86 @@ def recover_phone_entry_context(
     setattr(transport, "_gptphone_page_type", restored_page)
     if restored_page not in PHONE_ENTRY_PAGE_TYPES:
         raise _phone_page_error(restored_page, recovery=True)
+    context.phone_entry_prepared_generation = context.generation
     return validate_phone_context(
         transport,
         registry,
         expected_task_id=expected_task_id,
     )
+
+
+def prepare_phone_entry_context(
+    transport: Any,
+    registry: AuthSessionRegistry | None,
+    *,
+    expected_task_id: Any = "",
+    visit_fn: Any = None,
+) -> tuple[TransportRequestContext, str]:
+    """Best-effort initial add-phone page visit before a paid SMS allocation."""
+
+    context = ensure_transport_context(transport, registry)
+    current_page = normalize_page_type(
+        getattr(transport, "_gptphone_page_type", "") or context.page_type
+    )
+    if current_page in PHONE_OTP_PAGE_TYPES:
+        restored = recover_phone_entry_context(
+            transport,
+            registry,
+            expected_task_id=expected_task_id,
+            visit_fn=visit_fn,
+        )
+        return restored, "recovered"
+    context = validate_phone_context(
+        transport,
+        registry,
+        expected_task_id=expected_task_id,
+    )
+    if context.phone_entry_prepared_generation == context.generation:
+        return context, "already_prepared"
+    if context.phone_entry_prepare_attempted_generation == context.generation:
+        return context, "already_attempted"
+    context.phone_entry_prepare_attempted_generation = context.generation
+    if not context.phone_entry_url or not context.phone_entry_url_explicit:
+        return context, "missing_url"
+    visitor = visit_fn or getattr(transport, "visit_continue", None)
+    if not callable(visitor):
+        return context, "visitor_missing"
+    try:
+        try:
+            response = visitor(
+                context.phone_entry_url,
+                referer="https://auth.openai.com/add-phone",
+            )
+        except TypeError:
+            response = visitor(context.phone_entry_url)
+    except Exception:
+        return context, "request_failed"
+
+    try:
+        status = int(response.get("_status") or 0) if isinstance(response, Mapping) else 0
+    except (TypeError, ValueError):
+        status = 0
+    if is_session_invalid(response):
+        raise AuthRequestContextError(
+            "oauth_session_invalid",
+            "手机号录入页面准备时 OpenAI 登录会话已失效",
+        )
+    prepared_page = normalize_page_type(
+        _page_type(response) or _html_auth_page_type(response)
+    )
+    if prepared_page in LOGIN_PAGE_TYPES or prepared_page in MFA_PAGE_TYPES:
+        raise _phone_page_error(prepared_page, recovery=True)
+    if not 200 <= status < 300 or prepared_page not in PHONE_ENTRY_PAGE_TYPES:
+        return context, "response_unverified"
+
+    context.observe(response, page_type=prepared_page)
+    setattr(transport, "_gptphone_page_type", prepared_page)
+    context.phone_entry_prepared_generation = context.generation
+    return validate_phone_context(
+        transport,
+        registry,
+        expected_task_id=expected_task_id,
+    ), "prepared"
 
 
 def observe_auth_response(
@@ -569,7 +657,10 @@ def invalidate_auth_session(
     config = getattr(transport, "config", None)
     if isinstance(config, dict):
         config.pop("phase1_active_session", None)
-        if str(stage or "").strip() in {"phone_submitting", "sms_verifying"}:
+        if (
+            str(stage or "").strip() in {"phone_submitting", "sms_verifying"}
+            and reason_code not in {"oauth_session_invalid", "auth_session_invalid"}
+        ):
             config["_phone_risk_retry"] = True
             config["_phone_risk_reason_code"] = reason_code
     context.rotate()
@@ -659,6 +750,9 @@ def safe_context_snapshot(transport: Any) -> dict[str, Any]:
         "flow_invocation_id_present": bool(context.invocation_id),
         "page_type": context.page_type,
         "continue_path": context.continue_path,
+        "phone_entry_prepared": (
+            context.phone_entry_prepared_generation == context.generation
+        ),
         "cookies_present": _cookies_present(transport),
         "csrf_present": _csrf_present(transport),
         "proxy_fingerprint": _short_fingerprint(getattr(transport, "proxy", "")),
@@ -683,6 +777,7 @@ __all__ = [
     "mark_phone_ready",
     "mark_phone_otp_sent",
     "observe_auth_response",
+    "prepare_phone_entry_context",
     "recover_phone_entry_context",
     "refresh_sentinel",
     "request_headers",

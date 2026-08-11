@@ -2222,6 +2222,7 @@ class PhoneSubmissionGate:
         function: Callable[..., Any],
         *args: Any,
         is_transient: Callable[[Any], bool],
+        should_retry: Callable[[Any], bool] | None = None,
         max_attempts: int = 4,
         on_retry: Callable[[float, int], None] | None = None,
         stop_event: Any = None,
@@ -2231,12 +2232,14 @@ class PhoneSubmissionGate:
         attempts = max(1, int(max_attempts))
         last_error: Any = None
         for attempt in range(1, attempts + 1):
-            outcome = {"transient": False, "delay": 0.0}
+            outcome = {"transient": False, "retry_allowed": True, "delay": 0.0}
 
             def classify_before_release(result: Any, error: Exception | None) -> None:
                 value = error if error is not None else result
                 if is_transient(value):
                     outcome["transient"] = True
+                    if callable(should_retry):
+                        outcome["retry_allowed"] = bool(should_retry(value))
                     outcome["delay"] = self.report_transient()
                     return
                 if error is not None:
@@ -2269,6 +2272,11 @@ class PhoneSubmissionGate:
                 if not outcome["transient"]:
                     return result
                 last_error = result
+
+            if not outcome["retry_allowed"]:
+                if isinstance(last_error, Exception):
+                    raise last_error
+                return last_error
 
             delay = float(outcome["delay"])
             if attempt < attempts and callable(on_retry):

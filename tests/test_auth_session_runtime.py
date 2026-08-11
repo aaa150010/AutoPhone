@@ -9,6 +9,7 @@ from mac_overrides.auth_request_runtime import (
     finish_request,
     invalidate_auth_session,
     mark_phone_ready,
+    prepare_phone_entry_context,
     recover_phone_entry_context,
     validate_phone_context,
 )
@@ -96,6 +97,121 @@ class AuthSessionRuntimeTests(unittest.TestCase):
         self.assertEqual(context.page_type, "add_phone")
         self.assertEqual(visits, ["https://auth.openai.com/add-phone?state=private-oauth-state"])
         self.assertNotIn("private-oauth-state", repr(registry.public_snapshot("task-recover")))
+
+    def test_initial_phone_page_is_prepared_once_per_session_generation(self):
+        visits = []
+        registry = AuthSessionRegistry()
+        cookies = {"session": "present"}
+        transport = SimpleNamespace(
+            config={"sms_task_id": "task-prepare"},
+            session=SimpleNamespace(cookies=cookies),
+            _gptphone_page_type="add_phone",
+        )
+        mark_phone_ready(
+            transport,
+            registry,
+            {"_status": 200, "page": {"type": "add_phone"}},
+            continue_url="https://auth.openai.com/add-phone?state=private-state",
+        )
+
+        def visit(url, **_kwargs):
+            visits.append(url)
+            cookies["add_phone_ready"] = "1"
+            return {"_status": 200, "page": {"type": "add_phone"}}
+
+        first, first_outcome = prepare_phone_entry_context(
+            transport,
+            registry,
+            expected_task_id="task-prepare",
+            visit_fn=visit,
+        )
+        second, second_outcome = prepare_phone_entry_context(
+            transport,
+            registry,
+            expected_task_id="task-prepare",
+            visit_fn=visit,
+        )
+
+        self.assertEqual(first_outcome, "prepared")
+        self.assertEqual(second_outcome, "already_prepared")
+        self.assertIs(first, second)
+        self.assertEqual(len(visits), 1)
+        self.assertEqual(cookies["add_phone_ready"], "1")
+        self.assertNotIn("private-state", repr(registry.public_snapshot("task-prepare")))
+
+        first.rotate()
+        first.page_type = "add_phone"
+        transport._gptphone_page_type = "add_phone"
+        _third, third_outcome = prepare_phone_entry_context(
+            transport,
+            None,
+            expected_task_id="task-prepare",
+            visit_fn=visit,
+        )
+        self.assertEqual(third_outcome, "missing_url")
+
+    def test_initial_phone_page_transient_failure_keeps_legacy_context(self):
+        visits = []
+        registry = AuthSessionRegistry()
+        transport = SimpleNamespace(
+            config={"sms_task_id": "task-prepare-transient"},
+            session=SimpleNamespace(cookies={"session": "present"}),
+            _gptphone_page_type="add_phone",
+        )
+        mark_phone_ready(
+            transport,
+            registry,
+            {"_status": 200, "page": {"type": "add_phone"}},
+            continue_url="https://auth.openai.com/add-phone",
+        )
+        def visit(*_args, **_kwargs):
+            visits.append(True)
+            raise TimeoutError("private")
+
+        context, outcome = prepare_phone_entry_context(
+            transport,
+            registry,
+            expected_task_id="task-prepare-transient",
+            visit_fn=visit,
+        )
+        repeated_context, repeated_outcome = prepare_phone_entry_context(
+            transport,
+            registry,
+            expected_task_id="task-prepare-transient",
+            visit_fn=visit,
+        )
+
+        self.assertEqual(outcome, "request_failed")
+        self.assertEqual(context.page_type, "add_phone")
+        self.assertIs(repeated_context, context)
+        self.assertEqual(repeated_outcome, "already_attempted")
+        self.assertEqual(visits, [True])
+
+    def test_initial_phone_page_explicit_login_regression_is_rejected(self):
+        registry = AuthSessionRegistry()
+        transport = SimpleNamespace(
+            config={"sms_task_id": "task-prepare-login"},
+            session=SimpleNamespace(cookies={"session": "present"}),
+            _gptphone_page_type="add_phone",
+        )
+        mark_phone_ready(
+            transport,
+            registry,
+            {"_status": 200, "page": {"type": "add_phone"}},
+            continue_url="https://auth.openai.com/add-phone",
+        )
+
+        with self.assertRaises(AuthRequestContextError) as raised:
+            prepare_phone_entry_context(
+                transport,
+                registry,
+                expected_task_id="task-prepare-login",
+                visit_fn=lambda *_args, **_kwargs: {
+                    "_status": 200,
+                    "page": {"type": "password_verification"},
+                },
+            )
+        self.assertEqual(raised.exception.code, "phone_flow_login_regressed")
 
     def test_phone_otp_page_is_restored_from_real_add_phone_html(self):
         registry = AuthSessionRegistry()
@@ -233,6 +349,32 @@ class AuthSessionRuntimeTests(unittest.TestCase):
                 AuthSessionRegistry(),
                 expected_task_id="task-no-entry",
             )
+
+    def test_legacy_empty_continue_url_keeps_default_otp_recovery_entry(self):
+        registry = AuthSessionRegistry()
+        transport = SimpleNamespace(
+            config={"sms_task_id": "task-default-entry"},
+            session=SimpleNamespace(cookies={"session": "present"}),
+            _gptphone_page_type="add_phone",
+        )
+        mark_phone_ready(
+            transport,
+            registry,
+            {"_status": 200, "page": {"type": "add_phone"}},
+        )
+        transport._gptphone_page_type = "phone_otp_verification"
+        transport._gptphone_request_context.page_type = "phone_otp_verification"
+        visits = []
+        recover_phone_entry_context(
+            transport,
+            registry,
+            expected_task_id="task-default-entry",
+            visit_fn=lambda url, **_kwargs: visits.append(url) or {
+                "_status": 200,
+                "page": {"type": "add_phone"},
+            },
+        )
+        self.assertEqual(visits, ["https://auth.openai.com/add-phone"])
 
     def test_invalidation_keeps_count_across_fresh_generation_and_cancels_sms(self):
         cancellations = []

@@ -104,6 +104,15 @@ class PublicStateRuntimeTests(unittest.TestCase):
                     "late_code_loss_auto_detection_available": False,
                 }
             ),
+            phone_binding_metrics_getter=lambda: SimpleNamespace(
+                snapshot=lambda: {
+                    "page_prepare_attempted": 4,
+                    "page_prepare_succeeded": 3,
+                    "channel_fallback_succeeded": 2,
+                    "phone": "+15550001234",
+                    "token": "private-token",
+                }
+            ),
             notification_context_for=lambda: self.state["context"],
             known_task_failure=lambda task_id: self.state["known_failures"].get(task_id),
             historical_success_reasons=frozenset({"sub2_uploaded"}),
@@ -256,6 +265,18 @@ class PublicStateRuntimeTests(unittest.TestCase):
         self.assertFalse(public["late_code_loss_auto_detection_available"])
         self.assertEqual(masked["runtime"]["sms_quality_optimization"], public)
         self.assertNotIn("task-", str(public).lower())
+
+    def test_masked_state_exposes_only_safe_phone_binding_metrics(self):
+        self.state["local_config"] = {"phone_binding_compatibility": True}
+        masked = self.runtime.masked_state({"runtime": {"tasks": []}})
+
+        public = masked["runtime"]["phone_binding_compatibility"]
+        self.assertTrue(public["enabled"])
+        self.assertEqual(public["metrics"]["page_prepare_attempted"], 4)
+        self.assertEqual(public["metrics"]["page_prepare_succeeded"], 3)
+        self.assertEqual(public["metrics"]["channel_fallback_succeeded"], 2)
+        self.assertNotIn("phone", json.dumps(public))
+        self.assertNotIn("private-token", json.dumps(public))
 
     def test_masked_state_exposes_safe_openai_connectivity_progress(self):
         self.state["connectivity"].update({

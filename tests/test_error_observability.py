@@ -143,7 +143,9 @@ class ErrorObservabilityTests(unittest.TestCase):
                 self.assertEqual(failure["node_code"], expected_node)
                 self.assertEqual(failure["error_code"], "oauth_session_invalid")
                 self.assertIn("OpenAI 登录会话已失效", failure["public_message"])
-                self.assertEqual("疑似手机号阶段风控" in failure["public_message"], risk_signal)
+                self.assertNotIn("疑似手机号阶段风控", failure["public_message"])
+                if risk_signal:
+                    self.assertIn("不代表号码已被确认风控", failure["public_message"])
                 self.assertTrue(failure["retryable"])
 
         phone_failure = classify_failure(
@@ -151,6 +153,16 @@ class ErrorObservabilityTests(unittest.TestCase):
             progress={"code": "phone_submitting"},
         )
         self.assertIn("提交接码号码失败", phone_failure["public_message"])
+
+    def test_phone_security_challenge_has_distinct_failure_identity(self):
+        failure = classify_failure(
+            error="phone_security_challenge_required",
+            progress={"code": "phone_submitting"},
+        )
+
+        self.assertEqual(failure["node_code"], "phone_submitting")
+        self.assertEqual(failure["error_code"], "phone_security_challenge_required")
+        self.assertIn("浏览器安全验证", failure["public_message"])
 
     def test_relogin_phone_requirement_is_stable_and_not_retryable(self):
         failure = classify_failure(

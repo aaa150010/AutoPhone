@@ -55,6 +55,7 @@ import mailbox_retention as _mailbox_retention_ext
 import nv_runtime as _nv_runtime_ext
 import pixel_runtime as _pixel_runtime_ext
 import phone_risk_runtime as _phone_risk_runtime_ext
+import phone_binding_runtime as _phone_binding_runtime_ext
 import performance_runtime as _performance_runtime_ext
 import phase_concurrency as _phase_concurrency_ext
 import sms_optimization_guard as _sms_optimization_guard_ext
@@ -245,6 +246,18 @@ _PHASE1_CHECKPOINTS = _phase1_checkpoint_runtime_ext.Phase1CheckpointStore(
 _PHONE_RISK_STORE = _phone_risk_runtime_ext.PhoneRiskStore(
     _RUNTIME_DATA_DIR / "phone_risk_markers.json"
 )
+
+
+def _actionable_phone_risk_status(email):
+    status = _PHONE_RISK_STORE.status(email)
+    if str(status.get("reason_code") or "").strip().lower() in {
+        "oauth_session_invalid",
+        "auth_session_invalid",
+    }:
+        return {}
+    return status
+
+
 _TASK_CONTEXT: ContextVar[str] = ContextVar("gptphone_task_id", default="")
 _CHECKPOINT_CONTEXT: ContextVar[dict[str, str] | None] = ContextVar(
     "gptphone_checkpoint_context",
@@ -752,6 +765,7 @@ def _patched_config_load(self):
         "task_inflight_optimization",
         "task_inflight_limit",
         "openai_connectivity_guard",
+        "phone_binding_compatibility",
         "protocol_concurrency_ceiling",
         "dynamic_auth_challenges",
     )
@@ -800,6 +814,7 @@ def _patched_config_save(self, values):
         "task_inflight_optimization",
         "task_inflight_limit",
         "openai_connectivity_guard",
+        "phone_binding_compatibility",
         "protocol_concurrency_ceiling",
         "dynamic_auth_challenges",
     ):
@@ -865,9 +880,13 @@ def _patched_task_config(self, settings, email, task_id, *, password=""):
             "dynamic_auth_challenges": _as_enabled(
                 (settings or {}).get("dynamic_auth_challenges"), True
             ),
+            "phone_binding_compatibility": _performance_runtime_ext.as_bool(
+                (settings or {}).get("phone_binding_compatibility"),
+                True,
+            ),
         }
     )
-    risk_status = _PHONE_RISK_STORE.status(email)
+    risk_status = _actionable_phone_risk_status(email)
     if risk_status.get("active"):
         config["_phone_risk_retry"] = True
         config["_phone_risk_reason_code"] = str(
@@ -1895,7 +1914,7 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
     batch_id = str((settings or {}).get("batch_id") or "").strip()[:80]
     batch_started_at = _int_value((settings or {}).get("batch_started_at"), 0, minimum=0)
     if isinstance(result, dict):
-        risk_status = _PHONE_RISK_STORE.status(getattr(entry, "email", ""))
+        risk_status = _actionable_phone_risk_status(getattr(entry, "email", ""))
         if risk_status.get("active"):
             result["phone_risk_retry"] = True
             result["phone_risk_label"] = "手机号风控重试：已启用成熟线路优先"
@@ -2209,152 +2228,12 @@ def _reject_phone_channel_mismatch(response, requested_channel):
     }
 
 
+_AUTH_SESSIONS = _auth_session_runtime_ext.AuthSessionRegistry()
+_PHONE_BINDING_METRICS = _phone_binding_runtime_ext.PhoneBindingMetrics()
+
+
 def _real_send_phone_number_otp(self, phone, channel="sms"):
-    requested_channel = _phone_channel(channel)
-    # Lightweight fakes used by older tests do not own an HTTP session. Keep
-    # their compatibility path isolated from the real browser-contract path.
-    if not hasattr(self, "session"):
-        payload = {"phone_number": _codex_oauth_chain._phone_for_openai(phone)}
-        if requested_channel:
-            payload["channel"] = requested_channel
-        return self._post_auth_json(
-            "/api/accounts/add-phone/send",
-            payload,
-            flow="authorize_continue",
-            referer=f"{_codex_oauth_chain.AUTH}/add-phone",
-            timeout=30,
-        )
-
-    _set_current_task_stage("phone_submitting")
-    endpoint = "/api/accounts/add-phone/send"
-    referer = f"{_codex_oauth_chain.AUTH}/add-phone"
-    try:
-        _auth_request_runtime_ext.validate_phone_context(self, _AUTH_SESSIONS)
-    except _auth_request_runtime_ext.AuthRequestContextError as exc:
-        _auth_request_runtime_ext.invalidate_auth_session(
-            self,
-            _AUTH_SESSIONS,
-            f"{exc.code}: {exc}",
-            stage="phone_submitting",
-        )
-        raise _codex_oauth_chain.CodexChainError(f"{exc.code}: {exc}") from exc
-
-    request_context = _auth_request_runtime_ext.begin_request(
-        self,
-        _AUTH_SESSIONS,
-        endpoint=endpoint,
-        stage="phone_submitting",
-    )
-    payload = {"phone_number": _codex_oauth_chain._phone_for_openai(phone)}
-    if requested_channel:
-        payload["channel"] = requested_channel
-    headers = {
-        **dict(_codex_oauth_chain.JSON_HEADERS),
-        "referer": referer,
-        "oai-device-id": str(getattr(self, "device_id", "") or ""),
-        "sec-fetch-dest": "empty",
-        "sec-fetch-mode": "cors",
-        "sec-fetch-site": "same-origin",
-        "x-datadog-origin": "rum",
-    }
-    headers = _auth_request_runtime_ext.request_headers(
-        self,
-        headers,
-        include_sentinel=False,
-    )
-    request_started = time.monotonic()
-    try:
-        def post_phone_number():
-            raw_response = self.session.post(
-                f"{_codex_oauth_chain.AUTH}{endpoint}",
-                json=payload,
-                headers=headers,
-                allow_redirects=False,
-                timeout=30,
-            )
-            if isinstance(raw_response, dict):
-                return dict(raw_response)
-            parsed = dict(_codex_oauth_chain._json_response(raw_response) or {})
-            parsed.setdefault("_status", int(getattr(raw_response, "status_code", 0) or 0))
-            return parsed
-
-        response = _with_transport_protocol_lease(self, post_phone_number)
-    except Exception as exc:
-        response = {
-            "_status": 0,
-            "error": _error_observability_ext.sanitize_failure_detail(exc, limit=220)
-            or "phone_send_request_failed",
-        }
-    finally:
-        _record_task_segment(
-            _transport_task_id(self) or _TASK_CONTEXT.get(),
-            "phone_submit_http",
-            time.monotonic() - request_started,
-        )
-    response = _reject_phone_channel_mismatch(response, requested_channel)
-    self.last_response = response
-    finished = _auth_request_runtime_ext.finish_request(
-        self,
-        _AUTH_SESSIONS,
-        request_context,
-        response,
-    )
-    self._gptphone_last_request_context = finished
-    if _auth_session_runtime_ext.is_session_invalid(response):
-        _auth_request_runtime_ext.invalidate_auth_session(
-            self,
-            _AUTH_SESSIONS,
-            response,
-            stage="phone_submitting",
-        )
-        return response
-    status = int(response.get("_status") or 0)
-    if not 200 <= status < 300:
-        structured_error = response.get("error")
-        if (
-            isinstance(structured_error, dict)
-            and str(structured_error.get("code") or "").strip().lower()
-            == "phone_channel_mismatch"
-        ):
-            return response
-        response = {
-            **response,
-            "error": response.get("_body_summary")
-            or response.get("_body")
-            or response.get("error", ""),
-        }
-        return response
-    _auth_request_runtime_ext.mark_phone_otp_sent(
-        self,
-        _AUTH_SESSIONS,
-        response,
-    )
-    sentinel_started = time.monotonic()
-    try:
-        _PROTOCOL_COORDINATOR.call_origin(
-            self,
-            "sentinel.openai.com",
-            lambda: _auth_request_runtime_ext.refresh_sentinel(
-                self,
-                _AUTH_SESSIONS,
-                flow="authorize_continue",
-                referer=f"{_codex_oauth_chain.AUTH}/phone-verification",
-            ),
-            success_fn=lambda value: bool(
-                isinstance(value, dict)
-                and (value.get("token") or value.get("so_token"))
-            ),
-            count_capacity=False,
-        )
-    except _auth_request_runtime_ext.AuthRequestContextError as exc:
-        raise _codex_oauth_chain.CodexChainError(f"{exc.code}: {exc}") from exc
-    finally:
-        _record_task_segment(
-            _transport_task_id(self) or _TASK_CONTEXT.get(),
-            "sentinel_refresh",
-            time.monotonic() - sentinel_started,
-        )
-    return response
+    return _PHONE_BINDING_RUNTIME.send_phone_number_otp(self, phone, channel)
 
 
 def _preflight_sms_phone_context(_adapter, task_id):
@@ -2373,9 +2252,8 @@ def _preflight_sms_phone_context(_adapter, task_id):
         )
     _set_current_task_stage("phone_submitting")
     try:
-        return _auth_request_runtime_ext.recover_phone_entry_context(
+        return _PHONE_BINDING_RUNTIME.prepare_phone_entry(
             transport,
-            _AUTH_SESSIONS,
             expected_task_id=expected_task_id,
         )
     except _auth_request_runtime_ext.AuthRequestContextError as exc:
@@ -2419,13 +2297,21 @@ _SMS_WEB = _sms_web_ext.SmsWebIntegration(
     cleanup_queue=_SMS_CLEANUP_QUEUE,
     optimization_guard=_SMS_QUALITY_GUARD,
 )
-_AUTH_SESSIONS = _auth_session_runtime_ext.AuthSessionRegistry()
 _AUTH_SESSIONS.set_cancel_sms(_SMS_WEB.cancel_active_lease)
 
 
 def _persist_phone_risk_marker(task_id, email, reason_code, stage):
     normalized_stage = str(stage or "").strip()
     if normalized_stage not in {"phone_submitting", "sms_verifying"}:
+        return
+    transport = _transport_for_task(task_id)
+    checkpoint_coordinator = globals().get("_PHASE1_CHECKPOINTS_COORDINATOR")
+    if transport is not None and checkpoint_coordinator is not None:
+        checkpoint_coordinator.delete(transport)
+    if str(reason_code or "").strip().lower() in {
+        "oauth_session_invalid",
+        "auth_session_invalid",
+    }:
         return
     marker = _PHONE_RISK_STORE.mark(
         email,
@@ -2434,10 +2320,6 @@ def _persist_phone_risk_marker(task_id, email, reason_code, stage):
     )
     if not marker.get("active"):
         return
-    transport = _transport_for_task(task_id)
-    checkpoint_coordinator = globals().get("_PHASE1_CHECKPOINTS_COORDINATOR")
-    if transport is not None and checkpoint_coordinator is not None:
-        checkpoint_coordinator.delete(transport)
     config = getattr(transport, "config", None)
     if isinstance(config, dict):
         config["_phone_risk_retry"] = True
@@ -2545,6 +2427,26 @@ _staged_transport_pipeline = _PROTOCOL_COORDINATOR.staged
 _transport_protocol_proxy = _PROTOCOL_COORDINATOR.proxy
 _record_transport_protocol_result = _PROTOCOL_COORDINATOR.record_result
 _with_transport_protocol_lease = _PROTOCOL_COORDINATOR.call
+_PHONE_BINDING_RUNTIME = _phone_binding_runtime_ext.PhoneBindingRuntime(
+    auth_origin=_codex_oauth_chain.AUTH,
+    json_headers=_codex_oauth_chain.JSON_HEADERS,
+    phone_for_openai=_codex_oauth_chain._phone_for_openai,
+    json_response=_codex_oauth_chain._json_response,
+    codex_error=_codex_oauth_chain.CodexChainError,
+    auth_requests=_auth_request_runtime_ext,
+    auth_sessions=_auth_session_runtime_ext,
+    registry=_AUTH_SESSIONS,
+    with_protocol_lease=_with_transport_protocol_lease,
+    protocol_coordinator=_PROTOCOL_COORDINATOR,
+    record_segment=_record_task_segment,
+    task_id_for=_transport_task_id,
+    current_task_id=lambda: _TASK_CONTEXT.get(),
+    set_stage=_set_current_task_stage,
+    normalize_channel=_phone_channel,
+    reject_channel_mismatch=_reject_phone_channel_mismatch,
+    sanitize_error=_error_observability_ext.sanitize_failure_detail,
+    metrics=_PHONE_BINDING_METRICS,
+)
 
 
 def _real_post_auth_json(self, path, payload, *, flow, referer, timeout=30):
@@ -3821,6 +3723,7 @@ _PUBLIC_STATE = _public_state_runtime_ext.PublicStateRuntime(
     sms_optimization_guard_getter=lambda: globals().get("_SMS_QUALITY_GUARD"),
     process_resource_snapshot_getter=_transport_lifecycle_ext.process_resource_snapshot,
     transport_registry_getter=lambda: _SMS_TRANSPORT_REGISTRY,
+    phone_binding_metrics_getter=lambda: _PHONE_BINDING_METRICS,
     notification_context_for=lambda: _notification_context_for(),
     known_task_failure=lambda task_id: _known_task_failure(task_id),
     historical_success_reasons=_HISTORICAL_SUCCESS_REASONS,
@@ -3903,7 +3806,7 @@ def _mailbox_admin_factory(store, importer, logs):
         openai_quota_query=query_openai_quota,
         openai_quota_status_lookup=_OPENAI_QUOTA_SNAPSHOTS.status_for,
         openai_quota_status_store=_OPENAI_QUOTA_SNAPSHOTS.put,
-        phone_risk_lookup=_PHONE_RISK_STORE.status,
+        phone_risk_lookup=_actionable_phone_risk_status,
         next_batch_priority=_MAILBOX_NEXT_BATCH_PRIORITY,
         run_batch_membership=_RUN_BATCH_MANIFEST.latest_row_bindings,
     )

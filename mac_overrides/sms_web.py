@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import inspect
 from threading import RLock
 import time
@@ -942,6 +943,15 @@ class SmsWebIntegration:
     def send_phone_number_otp(self, transport: Any, phone: str, channel: str = "sms") -> Any:
         task_id = self.transport_task_id(transport)
 
+        def should_retry_send(value: Any) -> bool:
+            if isinstance(value, Mapping):
+                compatibility = value.get("_phone_binding_compatibility")
+                if isinstance(compatibility, Mapping) and compatibility.get(
+                    "fallback_attempted"
+                ):
+                    return False
+            return True
+
         def on_retry(delay: float, _attempt: int) -> None:
             log_fn = getattr(transport, "log_fn", None)
             _call_log(
@@ -964,6 +974,7 @@ class SmsWebIntegration:
                 phone,
                 channel,
                 is_transient=self.sms_runtime.is_transient_openai_error,
+                should_retry=should_retry_send,
                 max_attempts=4,
                 on_retry=on_retry,
                 on_wait=on_wait,

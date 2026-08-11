@@ -178,6 +178,7 @@ class PublicStateRuntime:
         runtime_summary_view: Callable[[Any], dict[str, Any]] | None = None,
         notification_public_status_view: Callable[[], dict[str, Any]] | None = None,
         public_logs_view: Callable[[Any, Any], Any] | None = None,
+        phone_binding_metrics_getter: Callable[[], Any] | None = None,
     ) -> None:
         self.clean = clean
         self.secret_mask = secret_mask
@@ -211,6 +212,7 @@ class PublicStateRuntime:
             notification_public_status_view or self.notification_public_status
         )
         self.public_logs_view = public_logs_view or self.public_logs
+        self.phone_binding_metrics_getter = phone_binding_metrics_getter
 
     def _mask_secret(self, value: Any) -> str:
         return self.secret_mask if self.clean(value) else ""
@@ -712,6 +714,38 @@ class PublicStateRuntime:
                 except Exception:
                     pass
             concurrency["phone"] = self.sms_phone_gate_getter().status()
+            if callable(self.phone_binding_metrics_getter):
+                try:
+                    metrics_source = self.phone_binding_metrics_getter()
+                    metrics_fn = getattr(metrics_source, "snapshot", None)
+                    raw_metrics = metrics_fn() if callable(metrics_fn) else metrics_source
+                    allowed = {
+                        "page_prepare_attempted",
+                        "page_prepare_succeeded",
+                        "page_prepare_skipped",
+                        "page_prepare_failed",
+                        "channel_fallback_attempted",
+                        "channel_fallback_succeeded",
+                        "channel_fallback_failed",
+                    }
+                    metrics = {
+                        key: max(0, int(raw_metrics.get(key) or 0))
+                        for key in allowed
+                        if isinstance(raw_metrics, dict)
+                    }
+                    raw_enabled = local_config.get("phone_binding_compatibility")
+                    enabled = not (
+                        raw_enabled is False
+                        or raw_enabled == 0
+                        or str(raw_enabled or "").strip().lower()
+                        in {"false", "off", "no", "disabled", "0"}
+                    )
+                    runtime["phone_binding_compatibility"] = {
+                        "enabled": enabled,
+                        "metrics": metrics,
+                    }
+                except Exception:
+                    pass
             resources: dict[str, Any] = {}
             if callable(self.process_resource_snapshot_getter):
                 try:

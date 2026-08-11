@@ -381,6 +381,7 @@ class LocalConfigRuntime:
             "task_inflight_optimization",
             "task_inflight_limit",
             "openai_connectivity_guard",
+            "phone_binding_compatibility",
             "protocol_concurrency_ceiling",
             "dynamic_auth_challenges",
         ):

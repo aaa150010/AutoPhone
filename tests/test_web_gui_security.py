@@ -412,7 +412,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertFalse(explicit_config["email_otp_resend_on_retry"])
         self.assertFalse(explicit_config["dynamic_auth_challenges"])
 
-    def test_phone_risk_marker_restores_reliability_mode_across_tasks(self):
+    def test_legacy_oauth_session_marker_no_longer_enables_phone_risk_mode(self):
         module = self.module
         original_task_config = module._ORIGINAL_TASK_CONFIG
         email = "persisted-risk@example.test"
@@ -440,11 +440,8 @@ class WebGuiSecurityTests(unittest.TestCase):
             module._PHONE_RISK_STORE.clear(email)
 
         for config in (first, second):
-            self.assertTrue(config["_phone_risk_retry"])
-            self.assertEqual(
-                config["_phone_risk_reason_code"],
-                "oauth_session_invalid",
-            )
+            self.assertNotIn("_phone_risk_retry", config)
+            self.assertNotIn("_phone_risk_reason_code", config)
 
     def test_register_start_applies_one_run_mailbox_selection_filter(self):
         module = self.module
@@ -2031,6 +2028,255 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertTrue(all("openai-sentinel-token" not in row for row in headers))
         self.assertEqual([item[0] for item in sentinel_calls], ["reset", "token_for"] * 2)
 
+    def test_phone_send_retries_same_number_once_without_channel(self):
+        calls = []
+        responses = [
+            {
+                "_status": 409,
+                "error": {
+                    "code": "invalid_state",
+                    "message": "Your sign-in session is no longer valid.",
+                },
+            },
+            {"_status": 200, "page": {"type": "phone_otp_verification"}},
+        ]
+
+        class FakeSession:
+            cookies = {"session": "present"}
+
+            def post(self, url, **kwargs):
+                calls.append((url, kwargs))
+                return responses.pop(0)
+
+        transport = SimpleNamespace(
+            config={
+                "sms_task_id": "task-phone-channel-fallback",
+                "phone_binding_compatibility": True,
+            },
+            session=FakeSession(),
+            sentinel_provider=SimpleNamespace(
+                reset=lambda *_args: None,
+                token_for=lambda *_args: {"token": "present"},
+            ),
+            device_id="device-1",
+            proxy="",
+            _gptphone_page_type="add_phone",
+        )
+        self.module._PHONE_BINDING_METRICS.reset()
+        self.module._AUTH_SESSIONS.clear("task-phone-channel-fallback")
+        try:
+            result = self.module._real_send_phone_number_otp(
+                transport,
+                "+15550001234",
+                "sms",
+            )
+        finally:
+            self.module._AUTH_SESSIONS.clear("task-phone-channel-fallback")
+
+        self.assertEqual(result["_status"], 200)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(
+            [call[1]["json"] for call in calls],
+            [
+                {"phone_number": "+15550001234", "channel": "sms"},
+                {"phone_number": "+15550001234"},
+            ],
+        )
+        headers = [
+            {key.lower(): value for key, value in call[1]["headers"].items()}
+            for call in calls
+        ]
+        self.assertNotEqual(
+            headers[0]["x-access-flow-invocation-id"],
+            headers[1]["x-access-flow-invocation-id"],
+        )
+        self.assertTrue(all("openai-sentinel-token" not in row for row in headers))
+        self.assertEqual(
+            self.module._PHONE_BINDING_METRICS.snapshot()["channel_fallback_succeeded"],
+            1,
+        )
+
+    def test_phone_channel_fallback_is_narrow_and_rollbackable(self):
+        cases = (
+            (
+                "disabled",
+                {"phone_binding_compatibility": False},
+                {
+                    "_status": 409,
+                    "error": {"code": "invalid_state", "message": "session invalid"},
+                },
+                "invalid_state",
+            ),
+            (
+                "cancelled",
+                {"phone_binding_compatibility": True},
+                {
+                    "_status": 400,
+                    "error": {"code": "invalid_state", "message": "session invalid"},
+                },
+                "invalid_state",
+            ),
+            (
+                "html-challenge",
+                {"phone_binding_compatibility": True},
+                {
+                    "_status": 409,
+                    "_content_type": "text/html",
+                    "_body": "<html><title>Just a moment...</title><div id='challenge-platform'></div></html>",
+                },
+                "phone_security_challenge_required",
+            ),
+            (
+                "unrelated",
+                {"phone_binding_compatibility": True},
+                {
+                    "_status": 400,
+                    "error": {"code": "unsupported_country", "message": "unsupported country"},
+                },
+                "unsupported_country",
+            ),
+        )
+        for suffix, config, response, expected_code in cases:
+            with self.subTest(suffix=suffix):
+                calls = []
+                stop_state = [False]
+
+                class FakeSession:
+                    cookies = {"session": "present"}
+
+                    def post(self, url, **kwargs):
+                        calls.append((url, kwargs))
+                        if suffix == "cancelled":
+                            stop_state[0] = True
+                        return dict(response)
+
+                task_id = f"task-phone-narrow-{suffix}"
+                transport = SimpleNamespace(
+                    config={
+                        "sms_task_id": task_id,
+                        **config,
+                        **({"_stop_requested": lambda: stop_state[0]} if suffix == "cancelled" else {}),
+                    },
+                    session=FakeSession(),
+                    sentinel_provider=SimpleNamespace(reset=lambda *_args: None),
+                    device_id="device-1",
+                    proxy="",
+                    _gptphone_page_type="add_phone",
+                )
+                self.module._AUTH_SESSIONS.clear(task_id)
+                try:
+                    result = self.module._real_send_phone_number_otp(
+                        transport,
+                        "+15550001234",
+                        "sms",
+                    )
+                finally:
+                    self.module._AUTH_SESSIONS.clear(task_id)
+                self.assertEqual(len(calls), 1)
+                self.assertIn(expected_code, json.dumps(result))
+                if suffix == "html-challenge":
+                    self.assertNotIn("_body", result)
+
+    def test_phone_channel_double_failure_keeps_only_safe_compatibility_identity(self):
+        calls = []
+        responses = [
+            {
+                "_status": 409,
+                "error": {"code": "invalid_state", "message": "session invalid"},
+            },
+            {
+                "_status": 409,
+                "error": {"code": "invalid_state", "message": "session still invalid"},
+            },
+        ]
+
+        class FakeSession:
+            cookies = {"session": "present"}
+
+            def post(self, url, **kwargs):
+                calls.append((url, kwargs))
+                return responses.pop(0)
+
+        task_id = "task-phone-double-failure"
+        transport = SimpleNamespace(
+            config={"sms_task_id": task_id, "phone_binding_compatibility": True},
+            session=FakeSession(),
+            sentinel_provider=SimpleNamespace(reset=lambda *_args: None),
+            device_id="device-1",
+            proxy="",
+            _gptphone_page_type="add_phone",
+        )
+        self.module._AUTH_SESSIONS.clear(task_id)
+        try:
+            result = self.module._real_send_phone_number_otp(
+                transport,
+                "+15550001234",
+                "sms",
+            )
+        finally:
+            self.module._AUTH_SESSIONS.clear(task_id)
+
+        identity = result["_phone_binding_compatibility"]
+        serialized = json.dumps(identity)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(identity["primary"]["error_code"], "invalid_state")
+        self.assertEqual(identity["fallback"]["error_code"], "invalid_state")
+        self.assertNotIn("+15550001234", serialized)
+        self.assertNotIn("session still invalid", serialized)
+
+    def test_phone_channel_fallback_is_claimed_once_per_number_and_generation(self):
+        calls = []
+        responses = [
+            {
+                "_status": 409,
+                "error": {"code": "invalid_state", "message": "session invalid"},
+            },
+            {"_status": 0, "error": "connection timeout"},
+            {
+                "_status": 409,
+                "error": {"code": "invalid_state", "message": "session invalid"},
+            },
+        ]
+
+        class FakeSession:
+            cookies = {"session": "present"}
+
+            def post(self, url, **kwargs):
+                calls.append((url, kwargs))
+                return responses.pop(0)
+
+        task_id = "task-phone-fallback-claim"
+        transport = SimpleNamespace(
+            config={"sms_task_id": task_id, "phone_binding_compatibility": True},
+            session=FakeSession(),
+            sentinel_provider=SimpleNamespace(reset=lambda *_args: None),
+            device_id="device-1",
+            proxy="",
+            _gptphone_page_type="add_phone",
+        )
+        self.module._AUTH_SESSIONS.clear(task_id)
+        try:
+            first = self.module._real_send_phone_number_otp(
+                transport, "+15550001234", "sms"
+            )
+            second = self.module._real_send_phone_number_otp(
+                transport, "+15550001234", "sms"
+            )
+        finally:
+            self.module._AUTH_SESSIONS.clear(task_id)
+
+        self.assertTrue(first["_phone_binding_compatibility"]["fallback_attempted"])
+        self.assertEqual(second["_status"], 409)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(
+            [call[1]["json"] for call in calls],
+            [
+                {"phone_number": "+15550001234", "channel": "sms"},
+                {"phone_number": "+15550001234"},
+                {"phone_number": "+15550001234", "channel": "sms"},
+            ],
+        )
+
     def test_real_phone_send_invalid_context_stops_before_http_and_requires_fresh_oauth(self):
         calls = []
 
@@ -2071,7 +2317,7 @@ class WebGuiSecurityTests(unittest.TestCase):
             )
         )
 
-    def test_phone_stage_invalidation_marks_current_transport_immediately(self):
+    def test_phone_stage_oauth_invalidation_does_not_mark_number_as_risky(self):
         module = self.module
         task_id = "task-risk-immediate"
         email = "immediate-risk@example.test"
@@ -2114,9 +2360,9 @@ class WebGuiSecurityTests(unittest.TestCase):
             module._AUTH_SESSIONS.clear(task_id)
             module._PHONE_RISK_STORE.clear(email)
 
-        self.assertTrue(marker["active"])
-        self.assertEqual(marker["stage"], "phone_submitting")
-        self.assertTrue(transport.config["_phone_risk_retry"])
+        self.assertEqual(marker, {})
+        self.assertNotIn("_phone_risk_retry", transport.config)
+        self.assertNotIn("_phone_risk_reason_code", transport.config)
         self.assertNotIn("phase1_active_session", transport.config)
         self.assertEqual(transport.session.cookies, {})
         self.assertEqual(sentinel_resets, [True])
@@ -2166,12 +2412,11 @@ class WebGuiSecurityTests(unittest.TestCase):
             module._AUTH_SESSIONS.clear(task_id)
             module._PHONE_RISK_STORE.clear(email)
 
-        self.assertTrue(marker["active"])
-        self.assertEqual(marker["reason_code"], "oauth_session_invalid")
-        self.assertEqual(marker["stage"], "sms_verifying")
+        self.assertEqual(marker, {})
         self.assertEqual(snapshot["invalidations"], 1)
         self.assertEqual(snapshot["current_stage"], "sms_verifying")
-        self.assertTrue(transport.config["_phone_risk_retry"])
+        self.assertNotIn("_phone_risk_retry", transport.config)
+        self.assertNotIn("_phone_risk_reason_code", transport.config)
         self.assertNotIn("phase1_active_session", transport.config)
         self.assertEqual(transport.session.cookies, {})
         self.assertEqual(sentinel_resets, [""])
@@ -3956,7 +4201,7 @@ class WebGuiSecurityTests(unittest.TestCase):
                 (expected_dir / "T-relative_relative_at_example.test.json").is_file()
             )
 
-    def test_persisted_result_keeps_safe_phone_risk_retry_fields(self):
+    def test_persisted_result_ignores_legacy_oauth_session_phone_risk_marker(self):
         module = self.module
         original_persist = module._ORIGINAL_PERSIST_RESULT
         email = "persist-risk-result@example.test"
@@ -3989,15 +4234,9 @@ class WebGuiSecurityTests(unittest.TestCase):
             module._TASK_PROGRESS.reset()
 
         self.assertEqual(returned, "persisted")
-        self.assertTrue(captured[0]["phone_risk_retry"])
-        self.assertEqual(
-            captured[0]["phone_risk_label"],
-            "手机号风控重试：已启用成熟线路优先",
-        )
-        self.assertEqual(
-            captured[0]["phone_risk_reason_code"],
-            "oauth_session_invalid",
-        )
+        self.assertNotIn("phone_risk_retry", captured[0])
+        self.assertNotIn("phone_risk_label", captured[0])
+        self.assertNotIn("phone_risk_reason_code", captured[0])
         serialized = json.dumps(captured[0], ensure_ascii=False)
         self.assertNotIn(email, serialized)
 

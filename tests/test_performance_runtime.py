@@ -6,6 +6,7 @@ from mac_overrides.performance_runtime import (
     ADAPTIVE_TASK_CONCURRENCY,
     InflightAdmissionGate,
     OPENAI_CONNECTIVITY_GUARD,
+    PHONE_BINDING_COMPATIBILITY,
     SMS_QUALITY_OPTIMIZATION,
     TASK_INFLIGHT_OPTIMIZATION,
     as_bool,
@@ -23,18 +24,21 @@ class PerformanceRuntimeTests(unittest.TestCase):
         self.assertTrue(defaults[ADAPTIVE_TASK_CONCURRENCY])
         self.assertTrue(defaults[TASK_INFLIGHT_OPTIMIZATION])
         self.assertTrue(defaults[OPENAI_CONNECTIVITY_GUARD])
+        self.assertTrue(defaults[PHONE_BINDING_COMPATIBILITY])
 
         disabled = normalize_feature_flags(
             {
                 SMS_QUALITY_OPTIMIZATION: "false",
                 ADAPTIVE_TASK_CONCURRENCY: 0,
                 TASK_INFLIGHT_OPTIMIZATION: "off",
+                PHONE_BINDING_COMPATIBILITY: "disabled",
                 "unrelated": "kept",
             }
         )
         self.assertFalse(disabled[SMS_QUALITY_OPTIMIZATION])
         self.assertFalse(disabled[ADAPTIVE_TASK_CONCURRENCY])
         self.assertFalse(disabled[TASK_INFLIGHT_OPTIMIZATION])
+        self.assertFalse(disabled[PHONE_BINDING_COMPATIBILITY])
         self.assertEqual(disabled["unrelated"], "kept")
 
     def test_protocol_ceiling_defaults_to_twelve_and_is_bounded_to_eight_fifteen(self):

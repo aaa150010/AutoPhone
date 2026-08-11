@@ -195,6 +195,13 @@ function updateProxyScope(key: string, value: boolean | string | number) {
       </el-col>
     </el-row>
 
+    <el-form-item label="手机号绑定兼容">
+      <el-switch
+        :model-value="modelValue.phone_binding_compatibility !== false"
+        @update:model-value="update('phone_binding_compatibility', Boolean($event))"
+      />
+    </el-form-item>
+
   </div>
 </template>
 

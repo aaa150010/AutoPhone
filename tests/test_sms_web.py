@@ -56,6 +56,7 @@ class FakeLogs:
 class FakePhoneGate:
     def call_with_retries(self, function, *args, **kwargs):
         kwargs.pop("is_transient", None)
+        kwargs.pop("should_retry", None)
         kwargs.pop("max_attempts", None)
         kwargs.pop("on_retry", None)
         on_wait = kwargs.pop("on_wait", None)
@@ -755,6 +756,65 @@ class SmsWebTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "ready failed"):
             self.integration.adapter_mark_ready(adapter, lease)
         self.assertEqual(progress.segments[2][0:2], ("task-timing", "sms_provider_ready"))
+
+    def test_outer_phone_gate_does_not_replay_an_ambiguous_compatibility_fallback(self):
+        clock = [0.0]
+        calls = []
+        self.integration.phone_gate = sms_runtime.PhoneSubmissionGate(
+            concurrency=1,
+            interval_seconds=0,
+            now_fn=lambda: clock[0],
+            sleep_fn=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+        )
+
+        def send(*_args):
+            calls.append(True)
+            return {
+                "_status": 0,
+                "error": "connection timeout",
+                "_phone_binding_compatibility": {
+                    "fallback_attempted": True,
+                    "primary": {"status": 409, "error_code": "invalid_state"},
+                    "fallback": {"status": 0, "error_code": ""},
+                },
+            }
+
+        self.integration.original_send_phone_otp = send
+        result = self.integration.send_phone_number_otp(
+            SimpleNamespace(config={"sms_task_id": "task-compat-timeout"}, log_fn=None),
+            "+15550001234",
+        )
+
+        self.assertEqual(result["_status"], 0)
+        self.assertEqual(calls, [True])
+        self.assertEqual(self.integration.phone_gate.transient_streak, 1)
+
+    def test_outer_phone_gate_keeps_legacy_transient_retries_without_fallback(self):
+        clock = [0.0]
+        calls = []
+        outcomes = [
+            {"_status": 0, "error": "connection timeout"},
+            {"_status": 200},
+        ]
+        self.integration.phone_gate = sms_runtime.PhoneSubmissionGate(
+            concurrency=1,
+            interval_seconds=0,
+            now_fn=lambda: clock[0],
+            sleep_fn=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+        )
+
+        def send(*_args):
+            calls.append(True)
+            return outcomes.pop(0)
+
+        self.integration.original_send_phone_otp = send
+        result = self.integration.send_phone_number_otp(
+            SimpleNamespace(config={"sms_task_id": "task-legacy-timeout"}, log_fn=None),
+            "+15550001234",
+        )
+
+        self.assertEqual(result["_status"], 200)
+        self.assertEqual(calls, [True, True])
 
     def test_segment_recorder_failure_never_masks_phone_result(self):
         self.integration.phone_gate = FakePhoneGate()
