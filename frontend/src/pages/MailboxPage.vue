@@ -10,7 +10,6 @@ import {
 import {
   api,
   ApiError,
-  exportMailboxSub2,
   getMailboxes,
   importWebsiteMailboxes,
   moveMailboxRowsToDraft,
@@ -29,6 +28,7 @@ import PageToolbar from '../components/PageToolbar.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useAppController } from '../composables/useAppController'
 import { useMailboxBatchOperations } from '../composables/useMailboxBatchOperations'
+import { useMailboxExports } from '../composables/useMailboxExports'
 import { useMailboxRowActions } from '../composables/useMailboxRowActions'
 import type { MailboxOperationKind, MailboxPayload, MailboxRow } from '../types/api'
 import {
@@ -64,7 +64,6 @@ const pageSize = ref(100)
 const mutating = ref(false)
 const reloginStarting = ref(false)
 const retryingPixel = ref(false)
-const exportingSub2 = ref(false)
 const uploadingWebsite = ref(false)
 const settingUnavailable = ref(false)
 const settingDraft = ref(false)
@@ -190,6 +189,12 @@ const {
   applyMailboxPayload,
   scheduleMailboxPoll,
 })
+const {
+  exportingSource,
+  exportingSub2,
+  exportSource,
+  exportSub2,
+} = useMailboxExports({ selectedRows, refresh })
 
 async function retryQuota(row: MailboxRow) {
   if (row.quota_status !== 'error' || mutating.value || batchBusy.value || retryingQuotaRows.value.includes(row.row_id)) return
@@ -455,40 +460,6 @@ async function retryPixel() {
   }
 }
 
-async function exportSub2() {
-  if (!selectedRows.value.length) {
-    ElMessage.warning('请先选择邮箱')
-    return
-  }
-  try {
-    await ElMessageBox.confirm(
-      '导出文件包含完整 OAuth Token，仅应保存在可信设备。',
-      '导出 SUB2API',
-      { type: 'warning', confirmButtonText: '确认导出', cancelButtonText: '取消' },
-    )
-  } catch {
-    return
-  }
-  exportingSub2.value = true
-  try {
-    const result = await exportMailboxSub2(selectedBindings())
-    const blob = new Blob([JSON.stringify(result.export, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = result.filename || 'sub2api-export.json'
-    link.click()
-    URL.revokeObjectURL(url)
-    const skipped = Number(result.skipped || 0)
-    ElMessage.success(`已导出 ${Number(result.count || 0)} 条${skipped ? `，跳过 ${skipped} 条` : ''}`)
-  } catch (error: any) {
-    if (error instanceof ApiError && error.status === 409) await refresh()
-    ElMessage.error(error?.message || 'SUB2API 导出失败')
-  } finally {
-    exportingSub2.value = false
-  }
-}
-
 async function poll() {
   await refresh()
   if (pollingStopped) return
@@ -567,11 +538,13 @@ onUnmounted(() => {
           :unavailable-disabled="mutating || batchBusy || !canSetMailboxRowsUnavailable(selectedRows)"
           :pixel-disabled="mutating || batchBusy || !selectedRows.length"
           :export-disabled="mutating || batchBusy || exportingSub2 || !selectedRows.length"
+          :source-export-disabled="mutating || batchBusy || exportingSource || !selectedRows.length"
           :website-disabled="mutating || batchBusy"
           :delete-disabled="mutating || batchBusy || !selectedRows.length"
           :relogin-loading="reloginStarting"
           :pixel-loading="retryingPixel"
           :export-loading="exportingSub2"
+          :source-export-loading="exportingSource"
           :website-loading="uploadingWebsite"
           :unavailable-loading="settingUnavailable"
           :draft-loading="settingDraft"
@@ -581,6 +554,7 @@ onUnmounted(() => {
           @unavailable="setUnavailable"
           @pixel="retryPixel"
           @export="exportSub2"
+          @source-export="exportSource"
           @website="uploadWebsiteMailboxes"
           @delete="mutate('/api/mailboxes/delete', '确定删除选中的邮箱？')"
         />

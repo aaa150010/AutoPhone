@@ -20,6 +20,11 @@ class FakeMailboxAdmin:
     def __init__(self) -> None:
         self.list_calls = 0
         self.import_error: Exception | None = None
+        self.source_result = {
+            "ok": True,
+            "count": 1,
+            "content": "user@example.test---password---TOTP",
+        }
 
     def import_mailboxes(self, content: str):
         if self.import_error is not None:
@@ -35,6 +40,9 @@ class FakeMailboxAdmin:
 
     def restore_mailboxes(self, _payload):
         return {"ok": True, "restored": 1}
+
+    def selected_source_rows(self, _payload):
+        return dict(self.source_result)
 
 
 class MailboxMutationRouteTests(unittest.TestCase):
@@ -84,6 +92,12 @@ class MailboxMutationRouteTests(unittest.TestCase):
             "/delete",
             "delete_mailboxes",
             self.controller.delete_mailboxes,
+            methods=["POST"],
+        )
+        self.app.add_url_rule(
+            "/source-export",
+            "source_export",
+            self.controller.source_export,
             methods=["POST"],
         )
 
@@ -163,9 +177,39 @@ class MailboxMutationRouteTests(unittest.TestCase):
             "/api/mailboxes/draft/restore",
             "/api/mailboxes/manual-used",
             "/api/mailboxes/manual-unused",
+            "/api/mailboxes/source-export",
         })
         self.assertEqual(definitions["/api/mailboxes/draft"], ("api_mailboxes_draft", ["POST"]))
         self.assertEqual(definitions["/api/mailboxes/manual-used"], ("api_mailboxes_manual_used", ["POST"]))
+
+    def test_source_export_returns_utf8_text_payload_and_timestamped_filename(self):
+        response = self.app.test_client().post(
+            "/source-export",
+            json={"rows": [{"row_id": "a" * 64, "line_no": 1}]},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["content"], "user@example.test---password---TOTP")
+        self.assertRegex(payload["filename"], r"^mailboxes-original-\d{8}-\d{6}\.txt$")
+
+    def test_source_export_rejects_stale_selection_without_credentials(self):
+        self.admin.source_result = {
+            "ok": False,
+            "code": "mailbox_rows_stale",
+            "error": "邮箱列表已变化，请刷新后重试",
+        }
+        response = self.app.test_client().post(
+            "/source-export",
+            json={"rows": [{"row_id": "a" * 64, "line_no": 1}]},
+        )
+
+        self.assertEqual(response.status_code, 409)
+        body = response.get_data(as_text=True)
+        self.assertEqual(response.get_json()["code"], "mailbox_rows_stale")
+        self.assertNotIn("password", body)
+        self.assertNotIn("TOTP", body)
 
     def test_stale_draft_restore_is_a_conflict(self):
         self.controller.draft_restore_action = lambda _admin, _payload: {

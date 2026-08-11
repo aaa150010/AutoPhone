@@ -9,6 +9,7 @@ operator's import dialog spinning after the write has completed.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any, Callable
 
 try:
@@ -109,6 +110,36 @@ class MailboxMutationRouteController:
             lambda payload: self.manual_unused_action(self.mailbox_admin, payload),
         )
 
+    def source_export(self):
+        data, error = self._request_data()
+        if error is not None:
+            return error
+        try:
+            result = self.mailbox_admin.selected_source_rows(data)
+            if not isinstance(result, Mapping):
+                raise TypeError("invalid source export response")
+            response = dict(result)
+            if not response.get("ok"):
+                return self.module.jsonify(response), self._result_status(response)
+            response["filename"] = f"mailboxes-original-{datetime.now().strftime('%Y%m%d-%H%M%S')}.txt"
+            return self.module.jsonify(response)
+        except MailboxSourceLockTimeout as exc:
+            return self.module.jsonify(
+                ok=False,
+                code=exc.code,
+                error_code=exc.code,
+                node_code=exc.node_code,
+                node_label=exc.node_label,
+                error=exc.public_message,
+            ), exc.status_code
+        except Exception as exc:
+            self.logs.add(f"邮箱原格式导出失败: {type(exc).__name__}", "error")
+            return self.module.jsonify(
+                ok=False,
+                code="mailbox_source_export_failed",
+                error="邮箱原格式导出失败：服务未返回有效结果",
+            ), 500
+
     def routes(self) -> tuple[tuple[str, str, Callable[..., Any], list[str]], ...]:
         return (
             ("/api/mailboxes/import", "api_mailboxes_import", self.import_mailboxes, ["POST"]),
@@ -132,6 +163,12 @@ class MailboxMutationRouteController:
                 "/api/mailboxes/manual-unused",
                 "api_mailboxes_manual_unused",
                 self.manual_unused_mailboxes,
+                ["POST"],
+            ),
+            (
+                "/api/mailboxes/source-export",
+                "api_mailboxes_source_export",
+                self.source_export,
                 ["POST"],
             ),
         )

@@ -835,6 +835,7 @@ class WebRouteTests(unittest.TestCase):
         with app.test_client() as client:
             settings_response = client.get("/settings")
             accounts_response = client.get("/accounts")
+            splitter_response = client.get("/splitter")
             notification_response = client.post(
                 "/api/notifications/email/test",
                 json={"email_notification": {"enabled": False}},
@@ -844,6 +845,8 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(settings_response.get_data(as_text=True), "fallback")
         self.assertEqual(accounts_response.status_code, 200)
         self.assertEqual(accounts_response.get_data(as_text=True), "fallback")
+        self.assertEqual(splitter_response.status_code, 200)
+        self.assertEqual(splitter_response.get_data(as_text=True), "fallback")
         self.assertEqual(notification_response.status_code, 200)
         payload = notification_response.get_json()
         self.assertTrue(payload["ok"])

@@ -375,6 +375,7 @@ export function createAppController() {
           stopped: 0,
           sms_cost_usd: 0,
           sms_cost_cny: 0,
+          sms_cost_history: current.runtime?.summary?.sms_cost_history,
         },
       },
     }

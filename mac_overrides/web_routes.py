@@ -528,11 +528,6 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             return spa_index()
         return module.Response(context.mailbox_manager_html, mimetype="text/html")
 
-    def mailbox_url_test_page():
-        if frontend_dist.exists():
-            return spa_index()
-        return module.Response(context.mailbox_manager_html, mimetype="text/html")
-
     runtime_info_routes = RuntimeInfoRouteController(
         module=module,
         context=context,
@@ -1434,7 +1429,8 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
 
     routes = (
         ("/mailboxes", "mailbox_manager", mailbox_manager, ["GET"]),
-        ("/url-test", "mailbox_url_test_page", mailbox_url_test_page, ["GET"]),
+        ("/splitter", "mailbox_splitter", mailbox_manager, ["GET"]),
+        ("/url-test", "mailbox_url_test_page", mailbox_manager, ["GET"]),
         ("/accounts", "account_manager", mailbox_manager, ["GET"]),
         ("/settings", "settings_page", mailbox_manager, ["GET"]),
         ("/api/mailboxes", "api_mailboxes", api_mailboxes, ["GET"]),

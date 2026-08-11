@@ -1280,6 +1280,28 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertTrue(all(len(row["row_id"]) == 64 for row in first))
         self.assertEqual(row_id_from_source(rows[0]), expected[0])
 
+    def test_selected_source_rows_preserve_all_formats_and_pool_order(self):
+        rows = [
+            "totp@example.com---PassWord---JBSWY3DPEHPK3PXP",
+            "url@example.com---https://mail.example.test/Inbox/AbCd",
+            "password-url@example.com---SecretPass---https://mail.example.test/token",
+            "oauth@example.com----MailPass----Client-ID----Refresh-Token",
+            "pipe@example.com|PipePass|JBSWY3DPEHPK3PXP",
+        ]
+        self._write_pool("\n".join(rows) + "\n")
+
+        result = self.service.selected_source_rows({"rows": [
+            {"row_id": row_id_from_source(rows[4]), "line_no": 5},
+            {"row_id": row_id_from_source(rows[0]), "line_no": 1},
+            {"row_id": row_id_from_source(rows[2]), "line_no": 3},
+            {"row_id": row_id_from_source(rows[1]), "line_no": 2},
+            {"row_id": row_id_from_source(rows[3]), "line_no": 4},
+        ]})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], len(rows))
+        self.assertEqual(result["content"], "\n".join(rows))
+
     def test_public_task_account_drops_recovered_composite_credentials(self):
         source_row = "user@example.test----mail-pass----client-id----refresh-token"
         account = public_task_account(

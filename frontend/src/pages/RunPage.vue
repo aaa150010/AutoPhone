@@ -102,6 +102,13 @@ const metrics = computed(() => [
     icon: Coin,
     tone: 'primary',
   },
+  {
+    title: '全部接码均成本',
+    value: `¥${Number(summary.value.sms_cost_history?.average_cny || 0).toFixed(2)}/号`,
+    detail: `${Number(summary.value.sms_cost_history?.account_count || 0)} 个账号 / ¥${Number(summary.value.sms_cost_history?.total_cny || 0).toFixed(2)}`,
+    icon: Coin,
+    tone: 'success',
+  },
 ] as const)
 
 const statusLabel = computed(() => {
@@ -304,7 +311,7 @@ async function disableConnectivityGuard() {
 }
 .run-page.has-connectivity-banner { grid-template-rows: 44px 40px minmax(0, 1fr); }
 .console-grid { display: grid; grid-template-rows: 88px repeat(2, minmax(0, 1fr)); gap: 6px; min-width: 0; min-height: 0; }
-.metrics-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; min-width: 0; min-height: 0; }
+.metrics-row { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; min-width: 0; min-height: 0; }
 .metrics-row :deep(.metric-card) { min-height: 0; height: 100%; }
 .metrics-row :deep(.tone-primary .metric-icon) { background: var(--run-blue-soft); color: var(--run-blue); }
 .metrics-row :deep(.tone-primary .metric-value) { color: var(--run-blue); }

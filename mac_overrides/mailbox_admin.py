@@ -17,6 +17,11 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
     from mailbox_source_lock import MailboxSourceLockMixin
 
 try:
+    from .mailbox_selection import resolve_source_rows
+except ImportError:  # Loaded as a top-level override module by the Mac launcher.
+    from mailbox_selection import resolve_source_rows
+
+try:
     from .chatgpt_totp import (
         mailbox_credential_identity,
         totp_code as generate_totp_code,
@@ -1350,49 +1355,19 @@ class MailboxAdminService(MailboxSourceLockMixin):
     def selected_success_results(self, payload: Any) -> dict[str, Any]:
         """Resolve stable mailbox selections to local successful result documents."""
         value = payload if isinstance(payload, Mapping) else {}
-        requested = value.get("rows")
-        if not isinstance(requested, Sequence) or isinstance(requested, (str, bytes)) or not requested:
-            return {
-                "ok": False,
-                "code": "mailbox_rows_required",
-                "error": "请先勾选要处理的邮箱",
-            }
-        bindings: list[tuple[int, str]] = []
-        seen: set[tuple[int, str]] = set()
-        for item in requested:
-            if not isinstance(item, Mapping):
-                return {"ok": False, "code": "mailbox_rows_invalid", "error": "批量操作参数无效"}
-            try:
-                line_no = int(item.get("line_no") or 0)
-            except (TypeError, ValueError):
-                line_no = 0
-            row_id = str(item.get("row_id") or "").strip()
-            binding = (line_no, row_id)
-            if line_no <= 0 or not row_id or binding in seen:
-                return {"ok": False, "code": "mailbox_rows_invalid", "error": "批量操作参数无效"}
-            seen.add(binding)
-            bindings.append(binding)
-
         with self._lock:
             config = self._config()
             lines = self._read_pool_lines(config)
+            resolved = resolve_source_rows(value, lines, row_id_from_source)
+            if not resolved.get("ok"):
+                return resolved
             latest = self._latest_results_by_email(self._path(config, "results_dir"))
             items: list[dict[str, Any]] = []
             skipped_items: list[dict[str, Any]] = []
-            for line_no, expected_row_id in bindings:
-                if line_no > len(lines):
-                    return {
-                        "ok": False,
-                        "code": "mailbox_rows_stale",
-                        "error": "邮箱列表已变化，请刷新后重试",
-                    }
-                source_row = lines[line_no - 1]
-                if not hmac.compare_digest(expected_row_id, row_id_from_source(source_row)):
-                    return {
-                        "ok": False,
-                        "code": "mailbox_rows_stale",
-                        "error": "邮箱列表已变化，请刷新后重试",
-                    }
+            for selected_row in resolved["rows"]:
+                line_no = selected_row["line_no"]
+                expected_row_id = selected_row["row_id"]
+                source_row = selected_row["source_row"]
                 email = email_from_row(source_row)
                 document = latest.get(email) or {}
                 status = str(document.get("status") or "").strip().lower()
@@ -1423,6 +1398,15 @@ class MailboxAdminService(MailboxSourceLockMixin):
             "skipped": len(skipped_items),
             "skipped_items": skipped_items,
         }
+
+    def selected_source_rows(self, payload: Any) -> dict[str, Any]:
+        """Return selected source rows only for the explicit credential export route."""
+        with self._lock:
+            resolved = resolve_source_rows(payload, self._read_pool_lines(), row_id_from_source)
+        if not resolved.get("ok"):
+            return resolved
+        rows = sorted(resolved["rows"], key=lambda item: item["line_no"])
+        return {"ok": True, "count": len(rows), "content": "\n".join(item["source_row"] for item in rows)}
 
     def query_openai_quotas(self, payload: Any) -> dict[str, Any]:
         """Query a bounded batch without changing mailbox or task state."""

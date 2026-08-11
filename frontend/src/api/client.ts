@@ -142,6 +142,12 @@ export const exportMailboxSub2 = (rows: Array<{ row_id: string; line_no: number 
     { rows },
   )
 )
+export const exportMailboxSource = (rows: Array<{ row_id: string; line_no: number }>) => (
+  api<{ ok: true; count: number; filename: string; content: string }>(
+    '/api/mailboxes/source-export',
+    { rows },
+  )
+)
 export const getMailboxTotp = (row: { row_id: string; line_no: number }) => (
   api<{ ok: true; kind: 'totp'; code: string; remaining: number }>('/api/mailboxes/totp', row)
 )

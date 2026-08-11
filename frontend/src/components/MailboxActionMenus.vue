@@ -21,11 +21,13 @@ const props = defineProps<{
   unavailableDisabled: boolean
   pixelDisabled: boolean
   exportDisabled: boolean
+  sourceExportDisabled: boolean
   websiteDisabled: boolean
   deleteDisabled: boolean
   reloginLoading?: boolean
   pixelLoading?: boolean
   exportLoading?: boolean
+  sourceExportLoading?: boolean
   websiteLoading?: boolean
   unavailableLoading?: boolean
   draftLoading?: boolean
@@ -38,6 +40,7 @@ const emit = defineEmits<{
   (event: 'unavailable'): void
   (event: 'pixel'): void
   (event: 'export'): void
+  (event: 'source-export'): void
   (event: 'website'): void
   (event: 'delete'): void
 }>()
@@ -45,12 +48,14 @@ const emit = defineEmits<{
 const accountDisabled = computed(() => (
   props.reloginDisabled && props.restoreDisabled && props.draftDisabled && props.unavailableDisabled
 ))
-const transferDisabled = computed(() => props.pixelDisabled && props.exportDisabled && props.websiteDisabled)
+const transferDisabled = computed(() => (
+  props.pixelDisabled && props.exportDisabled && props.sourceExportDisabled && props.websiteDisabled
+))
 const accountLoading = computed(() => Boolean(
   props.reloginLoading || props.draftLoading || props.unavailableLoading,
 ))
 const transferLoading = computed(() => Boolean(
-  props.pixelLoading || props.exportLoading || props.websiteLoading,
+  props.pixelLoading || props.exportLoading || props.sourceExportLoading || props.websiteLoading,
 ))
 
 function handleAccountCommand(command: string) {
@@ -63,6 +68,7 @@ function handleAccountCommand(command: string) {
 function handleTransferCommand(command: string) {
   if (command === 'pixel' && !props.pixelDisabled) emit('pixel')
   if (command === 'export' && !props.exportDisabled) emit('export')
+  if (command === 'source-export' && !props.sourceExportDisabled) emit('source-export')
   if (command === 'website' && !props.websiteDisabled) emit('website')
 }
 
@@ -141,6 +147,13 @@ function handleMoreCommand(command: string) {
               <Download v-else />
             </el-icon>
             导出 SUB2API
+          </el-dropdown-item>
+          <el-dropdown-item command="source-export" :disabled="sourceExportDisabled || sourceExportLoading">
+            <el-icon :class="{ 'is-loading': sourceExportLoading }">
+              <Loading v-if="sourceExportLoading" />
+              <Download v-else />
+            </el-icon>
+            导出原始格式
           </el-dropdown-item>
           <el-dropdown-item command="website" :disabled="websiteDisabled || websiteLoading">
             <el-icon :class="{ 'is-loading': websiteLoading }">

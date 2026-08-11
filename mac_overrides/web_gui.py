@@ -71,6 +71,7 @@ import runtime as _runtime
 import runtime_policy as _runtime_policy_ext
 import network_runtime as _network_runtime_ext
 import sms_providers as _sms_providers
+import sms_cost_history as _sms_cost_history_ext
 import sms_runtime as _sms_runtime_ext
 import sms_selector as _sms_selector
 import sms_web as _sms_web_ext
@@ -1147,9 +1148,7 @@ def _real_sub2_upload(self, *, credentials, email):
 def _patched_task_state(self, task_id: str, **values):
     values = dict(values)
     status = str(values.get("status") or "").strip().lower()
-    failure_statuses = set(_task_progress_ext.TERMINAL_TASK_STATUSES).difference(
-        {"success", "stopped", "stopped_before_start"}
-    )
+    failure_statuses = set(_task_progress_ext.TERMINAL_TASK_STATUSES).difference({"success", "stopped", "stopped_before_start"})
     if status in failure_statuses:
         task_result = values.get("result") if isinstance(values.get("result"), dict) else {}
         failure = _classify_task_failure(
@@ -1932,9 +1931,7 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
         if batch_id:
             result["batch_id"] = batch_id
             result["batch_started_at"] = batch_started_at
-        cost_summary = _SMS_COST_LEDGER.summary(str(task_id), _SMS_EXCHANGE_RATE)
-        if cost_summary.get("sms_order_outcomes") or "sms_cost_usd" not in result:
-            result.update(cost_summary)
+        _sms_cost_history_ext.attach_task_sms_cost(result, task_id, _SMS_COST_LEDGER, _SMS_EXCHANGE_RATE)
         if str(status or "").strip().lower() in failure_statuses:
             failure = _classify_task_failure(
                 task_id,
@@ -1987,6 +1984,7 @@ def _patched_persist_result(self, settings, task_id, entry, result, *, error="",
         sanitize_failure_detail=_error_observability_ext.sanitize_failure_detail,
         logger=getattr(self, "_log", None),
     )
+    _sms_cost_history_ext.note_persisted_result(self.data_dir, persisted_settings, task_id, getattr(entry, "email", ""))
     if batch_id and metadata_persisted:
         try:
             _RUN_BATCH_MANIFEST.mark_persisted(batch_id, task_id, status)
@@ -3731,7 +3729,7 @@ _PUBLIC_STATE = _public_state_runtime_ext.PublicStateRuntime(
     public_log_input_limit=_PUBLIC_LOG_INPUT_LIMIT,
     masked_local_config_view=lambda data: _masked_local_config(data),
     public_task_view=lambda task: _public_task(task),
-    runtime_summary_view=lambda tasks: _runtime_summary(tasks),
+    runtime_summary_view=lambda tasks: _sms_cost_history_ext.with_historical_sms_cost(_runtime_summary(tasks), _RUNTIME_DATA_DIR),
     notification_public_status_view=lambda: _notification_public_status(),
     public_logs_view=lambda logs, tasks: _public_logs(logs, tasks),
 )

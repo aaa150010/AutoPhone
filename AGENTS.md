@@ -65,6 +65,13 @@ gptPhone is a macOS-local Flask application with a Vue 3 and Element Plus dashbo
 - Never commit `data/`, `mac_runtime/`, `engine/`, `node_chain.dat`, `frontend/node_modules/`, caches, local exports, or secrets.
 - Do not delete or overwrite user runtime data while testing. Use a temporary data directory for Flask integration checks.
 
+## Release Notes
+
+- Keep all user-visible release copy in `frontend/src/releaseNotes.ts`; UI components may render that data but must not embed release-specific feature descriptions.
+- Any agent completing user-visible code changes must, without waiting for another user reminder, review the current code diff, add concise Chinese feature points and usage instructions to the current release record, and increment both `currentRelease.version` and `frontend/package.json` to the same version before delivery.
+- The first app launch after a version change must show the release-notes dialog for every local user, including developers. Acknowledgement may persist only the non-sensitive release version in `localStorage`; never persist mailbox, proxy, SMS, OAuth, SUB2, Pixel, or other credential data there.
+- Before final verification, compare the release-note sections against the complete user-visible diff so newly added, changed, or removed workflows are not omitted.
+
 ## Verification
 
 Run backend tests and syntax checks from the repository root:

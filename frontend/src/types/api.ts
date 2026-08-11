@@ -175,6 +175,11 @@ export interface RuntimeSummary {
   finished_at?: number | null
   sms_cost_usd?: number
   sms_cost_cny?: number
+  sms_cost_history?: {
+    account_count: number
+    total_cny: number
+    average_cny: number
+  }
 }
 
 export interface NotificationRuntimeStatus {
