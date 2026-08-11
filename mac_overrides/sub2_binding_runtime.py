@@ -148,7 +148,7 @@ def confirmed_upload_log(result: Any) -> str:
     fingerprint = hashlib.sha256(remote_id.encode("utf-8")).hexdigest()[:12]
     return (
         "  [SUB2 上传确认/sub2_upload_confirmed] 远端账号已回查并确认，"
-        f"远端标识 sha256:{fingerprint}，分组与 OpenAI 身份一致"
+        f"远端标识 sha256:{fingerprint}，保留远端当前分组且 OpenAI 身份一致"
     )
 
 

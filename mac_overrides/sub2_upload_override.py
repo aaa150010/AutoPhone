@@ -70,6 +70,8 @@ def upload_sub2_with_relogin_policy(
         identity_locations=identity_locations,
         put=requests.put,
         requests_kwargs=proxy_scope.requests_kwargs,
+        extract_group_ids=getattr(sub2_groups, "extract_sub2_group_ids", None),
+        extract_group_names=getattr(sub2_groups, "extract_sub2_group_names", None),
     )
     result = update_runtime.update_existing_sub2_account(
         config=config,

@@ -28,6 +28,8 @@ class Sub2UpdateDependencies:
     identity_locations: Callable[[Mapping[str, Any]], tuple[str, str]]
     put: Callable[..., Any]
     requests_kwargs: Callable[[str], Mapping[str, Any]]
+    extract_group_ids: Callable[[Any], list[int]] | None = None
+    extract_group_names: Callable[[Any], list[str]] | None = None
 
 
 def _clean(value: Any) -> str:
@@ -132,7 +134,6 @@ def update_existing_sub2_account(
     base = _clean(sub.get("url")).rstrip("/")
     admin_email = _clean(sub.get("email"))
     admin_password = _clean(sub.get("pwd") or sub.get("password"))
-    group_name = _clean(sub.get("group")) or "CHATGPT"
     if not remote_id or not normalized_email:
         return _failure("sub2_update_binding_missing", "SUB2 原账号绑定信息缺失", remote_id)
     if not base or not admin_email or not admin_password:
@@ -176,15 +177,6 @@ def update_existing_sub2_account(
             admin_email,
             admin_password,
             timeout=30,
-            log_fn=log_fn,
-            proxy=upload_proxy,
-        )
-        group_id, resolved_group_name = dependencies.resolve_group(
-            base,
-            admin_token,
-            group_name,
-            attempts=3,
-            timeout=15,
             log_fn=log_fn,
             proxy=upload_proxy,
         )
@@ -396,19 +388,18 @@ def update_existing_sub2_account(
             observed_detail=refreshed,
         )
 
-    try:
-        actual_group_ids, actual_group_names = dependencies.assert_group(
-            [update_payload, refreshed],
-            int(group_id),
-            str(resolved_group_name),
-            allow_unknown=False,
-        )
-    except Exception:
-        return failure_after_update(
-            "sub2_update_group_verification_failed",
-            "SUB2 原账号更新后分组校验失败",
-            observed_detail=refreshed,
-        )
+    actual_group_ids: set[int] = set()
+    actual_group_names: set[str] = set()
+    for payload in (refreshed, update_payload):
+        try:
+            if dependencies.extract_group_ids is not None:
+                actual_group_ids.update(dependencies.extract_group_ids(payload))
+            if dependencies.extract_group_names is not None:
+                actual_group_names.update(dependencies.extract_group_names(payload))
+        except Exception:
+            continue
+        if actual_group_ids or actual_group_names:
+            break
 
     try:
         remote_fields = dict(dependencies.extract_fields({}, exchange_data=refreshed) or {})
@@ -435,12 +426,14 @@ def update_existing_sub2_account(
     return {
         "ok": True,
         "sub2api_account_id": remote_id,
-        "sub2api_group_id": int(group_id),
-        "sub2api_group_name": str(resolved_group_name),
-        "sub2api_group_ids": list(actual_group_ids),
-        "sub2api_group_names": list(actual_group_names),
+        "sub2api_group_id": min(actual_group_ids) if actual_group_ids else None,
+        "sub2api_group_name": sorted(actual_group_names)[0] if actual_group_names else "",
+        "sub2api_group_ids": sorted(actual_group_ids),
+        "sub2api_group_names": sorted(actual_group_names),
         "sub2_remote_verified": True,
-        "sub2_group_verified": True,
+        "sub2_group_verified": bool(actual_group_ids or actual_group_names),
+        "sub2_group_preserved": True,
+        "sub2_group_policy": "preserve_remote",
         "chatgpt_account_id": expected_chatgpt_id,
         "account_id": expected_chatgpt_id,
         "sub2_chatgpt_account_id_verified": True,

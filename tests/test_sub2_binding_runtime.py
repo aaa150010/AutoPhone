@@ -144,6 +144,7 @@ class Sub2BindingRuntimeTests(unittest.TestCase):
 
         self.assertIn("[SUB2 上传确认/sub2_upload_confirmed]", message)
         self.assertIn("sha256:", message)
+        self.assertIn("保留远端当前分组", message)
         self.assertNotIn("remote-private-501", message)
         self.assertNotIn("private-access-token", message)
         for key in (

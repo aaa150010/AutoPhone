@@ -98,6 +98,12 @@ class Sub2ExistingAccountUpdateTests(unittest.TestCase):
             identity_locations=identity_locations,
             put=put,
             requests_kwargs=lambda _proxy: {},
+            extract_group_ids=lambda payload: list(
+                (payload.get("data") or payload).get("group_ids") or []
+            ),
+            extract_group_names=lambda payload: list(
+                (payload.get("data") or payload).get("group_names") or []
+            ),
         )
         return dependencies, calls
 
@@ -145,6 +151,36 @@ class Sub2ExistingAccountUpdateTests(unittest.TestCase):
         self.assertTrue(url.endswith(f"/api/v1/admin/accounts/{ACCOUNT_ID}"))
         self.assertEqual(kwargs["json"]["credentials"]["access_token"], "new-access")
         self.assertEqual(kwargs["json"]["credentials"]["refresh_token"], "new-refresh")
+
+    def test_existing_update_preserves_a_manually_changed_remote_group(self):
+        dependencies, calls = self.dependencies()
+        calls.remote["group_ids"] = [19]
+        calls.remote["group_names"] = ["MANUALLY-MOVED"]
+
+        result = update_existing_sub2_account(
+            config=self.config(),
+            credentials=self.credentials(),
+            email=EMAIL,
+            account_id=ACCOUNT_ID,
+            upload_proxy="",
+            log_fn=None,
+            dependencies=replace(
+                dependencies,
+                assert_group=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                    AssertionError("existing updates must not enforce the configured group")
+                ),
+                resolve_group=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                    AssertionError("existing updates must not resolve the configured group")
+                ),
+            ),
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["sub2api_group_ids"], [19])
+        self.assertEqual(result["sub2api_group_names"], ["MANUALLY-MOVED"])
+        self.assertTrue(result["sub2_group_preserved"])
+        self.assertEqual(result["sub2_group_policy"], "preserve_remote")
+        self.assertEqual(len(calls.puts), 1)
 
     def test_update_http_failure_does_not_fall_back_to_create(self):
         dependencies, calls = self.dependencies(response=FakeResponse(500, {"code": 500}))
@@ -373,22 +409,6 @@ class Sub2ExistingAccountUpdateTests(unittest.TestCase):
             dependencies=verification_dependencies,
         )
 
-        group_dependencies, group_calls = self.dependencies()
-        group = update_existing_sub2_account(
-            config=self.config(),
-            credentials=self.credentials(),
-            email=EMAIL,
-            account_id=ACCOUNT_ID,
-            upload_proxy="",
-            log_fn=None,
-            dependencies=replace(
-                group_dependencies,
-                assert_group=lambda *_args, **_kwargs: (_ for _ in ()).throw(
-                    RuntimeError("group mismatch")
-                ),
-            ),
-        )
-
         identity_dependencies, identity_calls = self.dependencies()
         identity = update_existing_sub2_account(
             config=self.config(),
@@ -404,11 +424,9 @@ class Sub2ExistingAccountUpdateTests(unittest.TestCase):
         )
 
         self.assertEqual(verification["error_code"], "sub2_update_verification_failed")
-        self.assertEqual(group["error_code"], "sub2_update_group_verification_failed")
         self.assertEqual(identity["error_code"], "sub2_update_identity_verification_failed")
         for result, branch_calls in (
             (verification, calls),
-            (group, group_calls),
             (identity, identity_calls),
         ):
             self.assertTrue(result["sub2_rollback_attempted"])

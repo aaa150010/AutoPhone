@@ -12,8 +12,8 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.2.1',
-  title: '错误节点与链路诊断修正',
+  version: '1.2.2',
+  title: 'SUB2 原账号更新修正',
   releasedAt: '2026-08-11',
   sections: [
     {
@@ -27,6 +27,10 @@ export const currentRelease: ReleaseNotes = {
     {
       title: '相关故障自动提醒',
       usage: '检测到 Node/Sentinel、OpenAI 授权链路或已确认的 Auth/Sentinel 中断时，诊断框只按当前批次自动打开一次，历史任务不会阻塞或误触发新批次；也可随时手动重新测试。',
+    },
+    {
+      title: '保留 SUB2 当前分组',
+      usage: '重登更新已有 SUB2 账号时，只原位更新 OAuth 凭据并保留远端当前分组；手动调整过分组不会再导致更新失败。新建账号仍按运行配置中的目标分组严格校验。',
     },
   ],
 }
