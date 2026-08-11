@@ -25,15 +25,18 @@ import node_runtime as _node_runtime_ext
 _node_runtime_ext.configure_node_runtime()
 
 import codex_oauth_chain as _codex_oauth_chain
+import codex_node_bridge as _codex_node_bridge
 import chatgpt_totp as _chatgpt_totp_ext
 import configuration_runtime as _configuration_runtime_ext
 import error_observability as _error_observability_ext
+import failure_secrets as _failure_secrets_ext
 import auth_request_runtime as _auth_request_runtime_ext
 import auth_challenge_runtime as _auth_challenge_runtime_ext
 import auth_session_runtime as _auth_session_runtime_ext
 import auth_connectivity_runtime as _auth_connectivity_runtime_ext
 import connectivity_notifications as _connectivity_notifications_ext
 import connectivity_routes as _connectivity_routes_ext
+import connectivity_diagnostics as _connectivity_diagnostics_ext
 import mfa_retry_runtime as _mfa_retry_runtime_ext
 import manual_verification_runtime as _manual_verification_runtime_ext
 import manual_verification_routes as _manual_verification_routes_ext
@@ -512,40 +515,13 @@ def _is_auth_session_reset_failure(result=None, error=""):
 
 
 def _failure_secrets(importer=None, entry=None, settings=None):
-    values = []
-    if importer is not None and entry is not None:
-        try:
-            source_row = str(importer._source_row(entry) or "")
-            values.extend(_mailbox_admin_ext.MailboxAdminService._row_secrets(source_row))
-        except Exception:
-            pass
-    for name in ("password", "totp_secret", "client_id", "refresh_token"):
-        value = str(getattr(entry, name, "") or "") if entry is not None else ""
-        if value:
-            values.append(value)
-    config = settings if isinstance(settings, dict) else {}
-    sub2api = config.get("sub2api") if isinstance(config.get("sub2api"), dict) else {}
-    notification = (
-        config.get("email_notification")
-        if isinstance(config.get("email_notification"), dict)
-        else {}
+    return _failure_secrets_ext.collect_failure_secrets(
+        importer,
+        entry,
+        settings,
+        mailbox_admin=_mailbox_admin_ext,
+        sms_keys_from_config=_sms_keys_from_config,
     )
-    online_mailbox = (
-        config.get("online_mailbox")
-        if isinstance(config.get("online_mailbox"), dict)
-        else {}
-    )
-    values.extend(_sms_keys_from_config(config))
-    values.extend(
-        (
-            config.get("gptmail_api_key"),
-            sub2api.get("password"),
-            notification.get("password"),
-            online_mailbox.get("api_token"),
-            *_mailbox_admin_ext.url_credential_secrets(config.get("proxy")),
-        )
-    )
-    return tuple(dict.fromkeys(str(item) for item in values if str(item or "")))
 
 
 def _remember_task_failure(task_id, failure):
@@ -3616,6 +3592,10 @@ _OPENAI_CONNECTIVITY.set_enabled(
 _OPENAI_CONNECTIVITY.configure_proxy(
     _initial_connectivity_config.get("proxy") or ""
 )
+_OPENAI_DIAGNOSTICS = _connectivity_diagnostics_ext.OpenAIConnectivityDiagnostics(
+    config_getter=_read_local_config,
+    node_bridge=_codex_node_bridge.run_node_bridge,
+)
 
 
 _PIXEL_CLIENT = _pixel_runtime_ext.PixelProxyClient(
@@ -3847,6 +3827,7 @@ _WEB_ROUTE_CONTEXT = _web_routes_ext.WebRouteContext(
     pixel_payload_builder=_pixel_runtime_ext.build_pixel_import_payload,
     query_sms_balances=_SMS_WEB.query_balances,
     online_mailbox_client_factory=_online_mailbox_client_factory,
+    failure_secrets=lambda config: _failure_secrets(settings=config),
 )
 
 
@@ -3865,6 +3846,7 @@ def _patch_flask_app(app):
         write_local_config=_write_local_config,
         masked_local_config=_masked_local_config,
         masked_state=_masked_state,
+        diagnostics=_OPENAI_DIAGNOSTICS,
     )
     return _manual_verification_routes_ext.patch_flask_app(
         patched,

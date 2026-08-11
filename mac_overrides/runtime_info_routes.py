@@ -7,6 +7,13 @@ import hashlib
 import hmac
 from typing import Any
 
+try:
+    from .mailbox_redaction import url_credential_secrets
+    from .route_failures import explicit_failure_payload
+except ImportError:  # Loaded as a top-level runtime override.
+    from mailbox_redaction import url_credential_secrets  # type: ignore[no-redef]
+    from route_failures import explicit_failure_payload  # type: ignore[no-redef]
+
 
 class RuntimeInfoRouteController:
     def __init__(
@@ -29,16 +36,19 @@ class RuntimeInfoRouteController:
         factory = self.context.mailbox_url_test_factory
         if factory is None:
             return module.jsonify(ok=False, error="URL 取件测试尚未启用"), 503
+        submitted_url = ""
+        proxy = ""
         try:
             data = module.request.get_json(silent=True) or {}
             if not isinstance(data, dict):
                 return module.jsonify(ok=False, error="请求必须是 JSON 对象"), 400
+            submitted_url = str(data.get("value") or data.get("url") or "")
             local = self.context.read_local_config()
             scope = local.get("proxy_scope")
             scope = scope if isinstance(scope, Mapping) else {}
             proxy = str(local.get("proxy") or "") if bool(scope.get("email")) else ""
             result = factory().test(
-                data.get("value") or data.get("url") or "",
+                submitted_url,
                 timeout_seconds=60,
                 interval_seconds=5,
                 resend_after_seconds=15,
@@ -46,16 +56,19 @@ class RuntimeInfoRouteController:
             )
             status = 400 if result.get("code") == "mailbox_url_invalid" else 200
             return module.jsonify(result), status
-        except Exception:
-            self.logs.add(
-                "URL 取件测试失败 [测试取件地址/mailbox_url_test]：未返回可用诊断",
-                "error",
+        except Exception as exc:
+            payload = explicit_failure_payload(
+                node_code="mailbox_url_test",
+                node_label="测试取件地址",
+                error_code="mailbox_url_test_failed",
+                cause=self.context.safe_runtime_error(exc),
+                retryable=True,
+                http_status=500,
+                action_hint="检查取件地址、邮箱代理和网络后重试。",
+                secrets=(*url_credential_secrets(submitted_url), *url_credential_secrets(proxy)),
             )
-            return module.jsonify(
-                ok=False,
-                code="mailbox_url_test_failed",
-                error="URL 取件测试失败：未返回可用诊断",
-            ), 500
+            self.logs.add(f"[{payload['node_label']}/{payload['node_code']}] {payload['error']}", "error")
+            return module.jsonify(payload), 500
 
     def mailbox_url(self):
         module = self.module
@@ -71,8 +84,12 @@ class RuntimeInfoRouteController:
                 return module.jsonify(result)
             status = 409 if result.get("code") == "mailbox_row_stale" else 400
             return module.jsonify(result), status
-        except Exception:
-            return module.jsonify(ok=False, error="读取取件 URL 失败"), 500
+        except Exception as exc:
+            payload = self._exception_payload(
+                "mailbox_url_reveal", "读取邮箱取件地址", "mailbox_url_reveal_failed", exc,
+                "邮箱取件地址读取异常", action_hint="刷新邮箱列表后重试。",
+            )
+            return module.jsonify(payload), 500
 
     def runtime_task_mailbox_url(self):
         module = self.module
@@ -128,12 +145,12 @@ class RuntimeInfoRouteController:
                 return module.jsonify(ok=True, mailbox_url=result.get("mailbox_url"))
             status = 409 if result.get("code") == "mailbox_row_stale" else 400
             return module.jsonify(dict(result)), status
-        except Exception:
-            self.logs.add(
-                "读取任务取件 URL 失败 [邮箱取件 URL/mailbox_url_reveal]",
-                "error",
+        except Exception as exc:
+            payload = self._exception_payload(
+                "mailbox_url_reveal", "读取任务取件地址", "runtime_task_mailbox_url_failed", exc,
+                "任务取件地址读取异常", action_hint="刷新任务与邮箱列表后重试。",
             )
-            return module.jsonify(ok=False, error="读取任务取件 URL 失败"), 500
+            return module.jsonify(payload), 500
 
     def run_batches(self):
         module = self.module
@@ -144,12 +161,12 @@ class RuntimeInfoRouteController:
             limit = min(max(1, _safe_int(module.request.args.get("limit"), 100)), 500)
             items = manifest.records(limit=limit, include_members=False)
             return module.jsonify(ok=True, items=items, total=len(items))
-        except Exception:
-            self.logs.add(
-                "运行批次清单查询失败 [运行批次对账/run_batch_manifest]",
-                "error",
+        except Exception as exc:
+            payload = self._exception_payload(
+                "run_batch_manifest", "查询运行批次清单", "run_batch_manifest_list_failed", exc,
+                "运行批次清单存储读取异常", retryable=True,
             )
-            return module.jsonify(ok=False, error="运行批次清单查询失败"), 500
+            return module.jsonify(payload), 500
 
     def run_batch(self, batch_id: str):
         module = self.module
@@ -163,12 +180,28 @@ class RuntimeInfoRouteController:
             )
         except KeyError:
             return module.jsonify(ok=False, error="运行批次不存在"), 404
-        except Exception:
-            self.logs.add(
-                "运行批次详情查询失败 [运行批次对账/run_batch_manifest]",
-                "error",
+        except Exception as exc:
+            payload = self._exception_payload(
+                "run_batch_manifest", "查询运行批次详情", "run_batch_manifest_detail_failed", exc,
+                "运行批次详情存储读取异常", retryable=True,
             )
-            return module.jsonify(ok=False, error="运行批次详情查询失败"), 500
+            return module.jsonify(payload), 500
+
+    def _exception_payload(
+        self, node_code: str, node_label: str, error_code: str, exc: Exception,
+        cause: str, *, retryable: bool = False, action_hint: str = "",
+    ) -> dict[str, Any]:
+        payload = explicit_failure_payload(
+            node_code=node_code,
+            node_label=node_label,
+            error_code=error_code,
+            cause=f"{cause}（{type(exc).__name__}）",
+            retryable=retryable,
+            http_status=500,
+            action_hint=action_hint,
+        )
+        self.logs.add(f"[{payload['node_label']}/{payload['node_code']}] {payload['error']}", "error")
+        return payload
 
 
 def _safe_int(value: Any, default: int) -> int:

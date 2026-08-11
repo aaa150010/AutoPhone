@@ -5,12 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import ipaddress
 from pathlib import Path
 import threading
 import time
 from typing import Any, Callable
-import urllib.parse
 import uuid
 
 try:
@@ -36,25 +34,20 @@ except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
     from mailbox_state_runtime import mark_mailboxes_unavailable
 
 try:
+    from .local_config_routes import LocalConfigRouteController
     from .runtime_info_routes import RuntimeInfoRouteController
+    from .route_failures import explicit_failure_payload
+    from .sms_balance_routes import SmsBalanceRouteController
+    from .web_route_validation import is_secure_nv_url, normalize_upload_targets
 except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
+    from local_config_routes import LocalConfigRouteController
     from runtime_info_routes import RuntimeInfoRouteController
+    from route_failures import explicit_failure_payload
+    from sms_balance_routes import SmsBalanceRouteController
+    from web_route_validation import is_secure_nv_url, normalize_upload_targets
 
 _PIXEL_AUTO_TARGET_IDS = tuple(f"pixel-{index}" for index in range(2, 8))
 _SHA256_HEX_CHARACTERS = frozenset("0123456789abcdef")
-_SMS_BALANCE_CONFIG_KEYS = (
-    "sms_provider_pools",
-    "sms_provider",
-    "sms_api_keys",
-    "sms_api_key",
-    "service",
-    "sms_min_price",
-    "max_price",
-    "proxy",
-    "proxy_scope",
-)
-
-
 def _safe_int(value: Any, default: int) -> int:
     try:
         return int(value)
@@ -87,41 +80,6 @@ def _normalize_run_mailbox_rows(value: Any) -> list[dict[str, Any]] | None:
         seen.add(binding)
         normalized.append({"row_id": row_id, "line_no": line_no})
     return normalized
-
-
-def _normalize_upload_targets(value: Any) -> dict[str, bool] | None:
-    if value is None:
-        return {"pixel": False, "nv": False}
-    if not isinstance(value, Mapping):
-        return None
-    return {
-        "pixel": value.get("pixel") is True,
-        "nv": value.get("nv") is True,
-    }
-
-
-def _is_secure_nv_url(value: Any) -> bool:
-    try:
-        parsed = urllib.parse.urlsplit(str(value or "").strip())
-        hostname = parsed.hostname
-        parsed.port
-    except ValueError:
-        return False
-    if (
-        parsed.scheme.lower() not in {"http", "https"}
-        or not hostname
-        or parsed.username is not None
-        or parsed.password is not None
-    ):
-        return False
-    normalized_host = hostname.lower().rstrip(".")
-    is_loopback = normalized_host == "localhost"
-    if not is_loopback:
-        try:
-            is_loopback = ipaddress.ip_address(normalized_host).is_loopback
-        except ValueError:
-            is_loopback = False
-    return parsed.scheme.lower() == "https" or is_loopback
 
 
 @dataclass(frozen=True)
@@ -158,6 +116,7 @@ class WebRouteContext:
     mailbox_url_test_factory: Callable[[], Any] | None = None
     query_sms_balances: Callable[[dict[str, Any]], list[dict[str, Any]]] | None = None
     online_mailbox_client_factory: Callable[[str, str], Any] | None = None
+    failure_secrets: Callable[[dict[str, Any]], Sequence[Any]] | None = None
 
 
 def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
@@ -176,6 +135,14 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     state = closure["state"]
     store = closure["store"]
     mailbox_admin = context.mailbox_admin_factory(store, importer, logs)
+
+    def route_secrets(config: Any) -> Sequence[Any]:
+        if context.failure_secrets is None or not isinstance(config, dict):
+            return ()
+        try:
+            return context.failure_secrets(config)
+        except Exception:
+            return ()
     if context.pixel_upload_queue is not None:
         context.pixel_upload_queue.log_fn = logs.add
     if context.nv_upload_queue is not None:
@@ -254,6 +221,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     def save_config():
         if not context.lifecycle_lock.acquire(blocking=False):
             return busy_response()
+        data: dict[str, Any] = {}
         try:
             if importer.status(settings()).get("running"):
                 return module.jsonify(
@@ -274,16 +242,21 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 state=public_state(),
             )
         except ValueError as exc:
-            safe = context.safe_runtime_error(exc)
-            return module.jsonify(ok=False, error=safe, state=public_state()), 400
+            payload = explicit_failure_payload(
+                node_code="config_save", node_label="保存运行配置", error_code="config_validation_failed",
+                cause=context.safe_runtime_error(exc),
+                secrets=route_secrets(data), state=public_state(), http_status=400,
+            )
+            return module.jsonify(payload), 400
         except Exception as exc:
-            safe = context.safe_runtime_error(exc)
-            logs.add(f"保存配置失败: {safe}", "error")
-            return module.jsonify(
-                ok=False,
-                error=f"保存配置失败: {safe}",
-                state=public_state(),
-            ), 500
+            payload = explicit_failure_payload(
+                node_code="config_save", node_label="保存运行配置", error_code="config_save_failed",
+                cause=context.safe_runtime_error(exc),
+                secrets=route_secrets(data), state=public_state(), http_status=500,
+                action_hint="检查配置格式和本地数据目录后重试。",
+            )
+            logs.add(f"[{payload['node_label']}/{payload['node_code']}] {payload['error']}", "error")
+            return module.jsonify(payload), 500
         finally:
             context.lifecycle_lock.release()
 
@@ -317,14 +290,17 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 statuses = context.preflight_sms_pool(config, logs=logs, importer=importer)
                 result = importer.settings_validation(config, remote=True)
             except Exception as exc:
-                safe = context.safe_runtime_error(exc)
-                logs.add(f"SMS 预检失败: {safe}", "error")
-                return module.jsonify(
-                    ok=False,
-                    error=safe,
-                    sms_key_statuses=context.sms_key_pool.public_statuses(),
-                    state=public_state(),
-                ), 400
+                status = 400 if isinstance(exc, ValueError) else 502
+                payload = explicit_failure_payload(
+                    node_code="sms_preflight", node_label="执行启动预检", error_code="sms_preflight_failed",
+                    cause=context.safe_runtime_error(exc),
+                    secrets=route_secrets(data), state=public_state(),
+                    retryable=status >= 500, http_status=status,
+                    action_hint="检查接码平台 Key、代理和邮箱池配置后重试。",
+                )
+                payload["sms_key_statuses"] = context.sms_key_pool.public_statuses()
+                logs.add(f"[{payload['node_label']}/{payload['node_code']}] {payload['error']}", "error")
+                return module.jsonify(payload), status
             logs.add(
                 f"预检通过: 邮箱池 {result['pool']['entries']} 条，"
                 f"SUB2 分组 {result['sub2_group']}#{result['sub2_group_id']}",
@@ -352,6 +328,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     def start_from_request(*, replace_pool: bool):
         if not context.lifecycle_lock.acquire(blocking=False):
             return busy_response("另一个启动请求正在处理中")
+        failure_config: dict[str, Any] = {}
         try:
             if importer.status(settings()).get("running"):
                 return module.jsonify(
@@ -363,8 +340,9 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             data = module.request.get_json(silent=True) or {}
             if not isinstance(data, dict):
                 return module.jsonify(ok=False, error="配置必须是 JSON 对象"), 400
+            failure_config = dict(data)
 
-            upload_targets = _normalize_upload_targets(data.pop("upload_targets", None))
+            upload_targets = normalize_upload_targets(data.pop("upload_targets", None))
             if upload_targets is None:
                 return module.jsonify(ok=False, error="上传目标参数必须是 JSON 对象"), 400
             if upload_targets["pixel"] and context.pixel_upload_queue is None:
@@ -385,8 +363,8 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 api_key = str(nv_import.get("api_key") or "").strip()
                 configured_from_request = bool(
                     context.nv_upload_queue is not None
-                    and _is_secure_nv_url(endpoint)
-                    and (not schema_url or _is_secure_nv_url(schema_url))
+                    and is_secure_nv_url(endpoint)
+                    and (not schema_url or is_secure_nv_url(schema_url))
                     and api_key
                     and api_key != "********"
                 )
@@ -462,11 +440,13 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             try:
                 sms_statuses = context.preflight_sms_pool(cfg, logs=logs, importer=importer)
             except ValueError as exc:
-                return module.jsonify(
-                    ok=False,
-                    error=context.safe_runtime_error(exc),
-                    state=public_state(),
-                ), 400
+                payload = explicit_failure_payload(
+                    node_code="sms_preflight", node_label="执行启动预检", error_code="sms_preflight_failed",
+                    cause=context.safe_runtime_error(exc),
+                    secrets=route_secrets(failure_config), state=public_state(), http_status=400,
+                    action_hint="检查接码平台 Key、代理和邮箱池配置后重试。",
+                )
+                return module.jsonify(payload), 400
             run_config = dict(cfg)
             batch_started_at = int(time.time())
             run_config["batch_started_at"] = batch_started_at
@@ -485,11 +465,13 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 try:
                     context.batch_upload_coordinator.begin(importer, run_config)
                 except Exception as exc:
-                    logs.add(
-                        "批次上传清单创建失败 [批次上传协调/batch_upload_manifest]："
-                        f"{context.safe_runtime_error(exc)}；注册任务继续运行",
-                        "error",
+                    payload = explicit_failure_payload(
+                        node_code="batch_upload_manifest", node_label="创建批次上传清单",
+                        error_code="batch_upload_manifest_create_failed",
+                        cause=context.safe_runtime_error(exc), secrets=route_secrets(failure_config),
+                        retryable=True,
                     )
+                    logs.add(f"[{payload['node_label']}/{payload['node_code']}] {payload['error']}；注册任务继续运行", "error")
             batch = (
                 context.run_batch_manifest.get(run_config["batch_id"])
                 if context.run_batch_manifest is not None
@@ -503,12 +485,22 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 state=public_state(),
             )
         except ValueError as exc:
-            safe = context.safe_runtime_error(exc)
-            return module.jsonify(ok=False, error=safe, state=public_state()), 400
+            payload = explicit_failure_payload(
+                node_code="run_start", node_label="启动注册任务",
+                error_code="run_start_failed", cause=context.safe_runtime_error(exc),
+                secrets=route_secrets(failure_config), state=public_state(), http_status=400,
+            )
+            return module.jsonify(payload), 400
         except Exception as exc:
-            safe = context.safe_runtime_error(exc)
-            logs.add(f"启动失败: {safe}", "error")
-            return module.jsonify(ok=False, error=f"启动失败: {safe}", state=public_state()), 500
+            payload = explicit_failure_payload(
+                node_code="run_start", node_label="启动注册任务",
+                error_code="run_start_failed",
+                cause=context.safe_runtime_error(exc), secrets=route_secrets(failure_config),
+                state=public_state(), retryable=True, http_status=500,
+                action_hint="检查运行配置和本地服务状态后重试。",
+            )
+            logs.add(f"[{payload['node_label']}/{payload['node_code']}] {payload['error']}", "error")
+            return module.jsonify(payload), 500
         finally:
             context.lifecycle_lock.release()
 
@@ -641,9 +633,14 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 return module.jsonify(result), 400
             return module.jsonify(result)
         except Exception as exc:
-            safe = module._safe(exc) if hasattr(module, "_safe") else str(exc)
-            logs.add(f"邮箱管理查码失败: {safe}", "error")
-            return module.jsonify(ok=False, error=f"邮箱管理查码失败: {safe}"), 500
+            payload = explicit_failure_payload(
+                node_code="email_code_lookup", node_label="查询邮箱验证码",
+                error_code="mailbox_latest_code_failed",
+                cause=f"邮箱验证码读取异常（{type(exc).__name__}）",
+                retryable=True, http_status=500,
+            )
+            logs.add(f"[{payload['node_label']}/{payload['node_code']}] {payload['error']}", "error")
+            return module.jsonify(payload), 500
 
     def api_mailboxes_password():
         try:
@@ -655,8 +652,13 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 return module.jsonify(result)
             status = 409 if result.get("code") == "mailbox_row_stale" else 400
             return module.jsonify(result), status
-        except Exception:
-            return module.jsonify(ok=False, error="读取邮箱密码失败"), 500
+        except Exception as exc:
+            payload = explicit_failure_payload(
+                node_code="mailbox_password_reveal", node_label="读取邮箱密码",
+                error_code="mailbox_password_reveal_failed",
+                cause=f"邮箱密码存储读取异常（{type(exc).__name__}）", http_status=500,
+            )
+            return module.jsonify(payload), 500
 
     def api_mailboxes_totp():
         try:
@@ -668,8 +670,13 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 return module.jsonify(result)
             status = 409 if result.get("code") == "mailbox_row_stale" else 400
             return module.jsonify(result), status
-        except Exception:
-            return module.jsonify(ok=False, error="读取临时 2FA 验证码失败"), 500
+        except Exception as exc:
+            payload = explicit_failure_payload(
+                node_code="mailbox_totp_reveal", node_label="读取临时 2FA 验证码",
+                error_code="mailbox_totp_reveal_failed",
+                cause=f"2FA 密钥存储读取异常（{type(exc).__name__}）", http_status=500,
+            )
+            return module.jsonify(payload), 500
 
     api_mailboxes_url = runtime_info_routes.mailbox_url
     api_runtime_task_mailbox_url = runtime_info_routes.runtime_task_mailbox_url
@@ -700,7 +707,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 return module.jsonify(
                     ok=False,
                     code="relogin_resolution_failed",
-                    error="重登邮箱校验失败：未返回可用诊断",
+                    error=f"重登邮箱校验失败：服务返回了无效的 {type(selected).__name__} 结果",
                 ), 502
             if not selected.get("ok"):
                 code = str(selected.get("code") or "")
@@ -748,17 +755,22 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 state=public_state(),
             )
         except ValueError as exc:
-            safe = context.safe_runtime_error(exc)
-            return module.jsonify(ok=False, code="relogin_start_failed", error=safe, state=public_state()), 400
+            payload = explicit_failure_payload(
+                node_code="relogin_start", node_label="启动重登任务",
+                error_code="relogin_start_failed", cause=context.safe_runtime_error(exc),
+                state=public_state(), http_status=400,
+            )
+            return module.jsonify(payload), 400
         except Exception as exc:
-            safe = context.safe_runtime_error(exc)
-            logs.add(f"无手机号重登启动失败: {safe}", "error")
-            return module.jsonify(
-                ok=False,
-                code="relogin_start_failed",
-                error=f"重登任务启动失败: {safe}",
-                state=public_state(),
-            ), 500
+            payload = explicit_failure_payload(
+                node_code="relogin_start", node_label="启动重登任务",
+                error_code="relogin_start_failed",
+                cause=f"重登任务启动异常（{type(exc).__name__}）",
+                state=public_state(), retryable=True, http_status=500,
+                action_hint="刷新邮箱状态并检查本地服务后重试。",
+            )
+            logs.add(f"[{payload['node_label']}/{payload['node_code']}] {payload['error']}", "error")
+            return module.jsonify(payload), 500
         finally:
             context.lifecycle_lock.release()
 
@@ -857,23 +869,35 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             )
         except Exception as exc:
             public_message = getattr(exc, "public_message", "")
-            if public_message:
-                return module.jsonify(ok=False, error=str(public_message)), 400
-            logs.add("邮箱管理 SUB2API 导出失败", "error")
-            return module.jsonify(ok=False, error="SUB2API 导出失败，请确认所选账号结果完整"), 400
+            payload = explicit_failure_payload(
+                node_code="sub2_export",
+                node_label="SUB2API 导出",
+                error_code="sub2_export_failed",
+                cause=public_message or context.safe_runtime_error(exc),
+                action_hint="确认所选账号结果包含完整且经过校验的 SUB2 Token。",
+            )
+            logs.add(f"[SUB2API 导出/sub2_export] {payload['error']}", "error")
+            return module.jsonify(payload), 400
 
     def pixel_error_response(exc: Exception):
         public_message = getattr(exc, "public_message", "")
-        if public_message:
-            try:
-                status = int(getattr(exc, "status_code", 500) or 500)
-            except (TypeError, ValueError):
-                status = 500
-            if status < 400 or status > 599:
-                status = 500
-            return module.jsonify(ok=False, error=str(public_message)), status
-        logs.add("Pixel 管理操作失败", "error")
-        return module.jsonify(ok=False, error="Pixel 管理操作失败"), 500
+        try:
+            status = int(getattr(exc, "status_code", 500) or 500)
+        except (TypeError, ValueError):
+            status = 500
+        if status < 400 or status > 599:
+            status = 500
+        cause = public_message or context.safe_runtime_error(exc)
+        payload = explicit_failure_payload(
+            node_code="pixel_management",
+            node_label="Pixel 管理操作",
+            error_code="pixel_management_failed",
+            cause=cause,
+            retryable=status >= 500,
+            http_status=status,
+        )
+        logs.add(f"[Pixel 管理操作/pixel_management] {payload['error']}", "error")
+        return module.jsonify(payload), status
 
     def pixel_unavailable(*, queue: bool = False):
         name = "Pixel 上传队列" if queue else "Pixel 管理服务"
@@ -900,14 +924,15 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 payload["failure"] = dict(failure)
                 payload["code"] = str(failure.get("error_code") or "nv_import_failed")
             return module.jsonify(payload), status
-        logs.add("NV 上传记录操作失败 [NV 账号导入/nv_import]：未返回可用诊断", "error")
-        return module.jsonify(
-            ok=False,
-            code="nv_import_failed",
+        payload = explicit_failure_payload(
             node_code="nv_import",
             node_label="NV 账号导入",
-            error="NV 账号导入失败：未返回可用诊断",
-        ), 500
+            error_code="nv_import_failed",
+            cause=context.safe_runtime_error(exc),
+            retryable=True,
+        )
+        logs.add(f"[NV 账号导入/nv_import] {payload['error']}", "error")
+        return module.jsonify(payload), 500
 
     def pixel_json_result(value: Any, **extra: Any):
         payload = dict(value) if isinstance(value, Mapping) else {}
@@ -1246,8 +1271,14 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             records = context.batch_upload_coordinator.records()
             return module.jsonify(ok=True, records=records[:limit], total=len(records))
         except Exception as exc:
-            logs.add("批次上传清单查询失败 [批次上传协调/batch_upload_manifest]", "error")
-            return module.jsonify(ok=False, error=context.safe_runtime_error(exc)), 500
+            payload = explicit_failure_payload(
+                node_code="batch_upload_manifest", node_label="查询批次上传清单",
+                error_code="batch_upload_manifest_list_failed",
+                cause=f"批次上传清单存储读取异常（{type(exc).__name__}）",
+                retryable=True, http_status=500,
+            )
+            logs.add(f"[{payload['node_label']}/{payload['node_code']}] {payload['error']}", "error")
+            return module.jsonify(payload), 500
 
     api_run_batches = runtime_info_routes.run_batches
     api_run_batch = runtime_info_routes.run_batch
@@ -1291,123 +1322,35 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                     f"{context.safe_runtime_error(exc)}"
                 ),
             ), 409
-        except Exception:
+        except Exception as exc:
             logs.add("批次上传重试失败 [批次上传协调/batch_upload_manifest]", "error")
-            return module.jsonify(
-                ok=False,
+            return module.jsonify(explicit_failure_payload(
                 node_code="batch_upload_manifest",
                 node_label="批次上传协调",
                 error_code="batch_upload_retry_failed",
-                error="批次上传协调 [批次上传协调/batch_upload_manifest]：未返回可用诊断",
-            ), 500
+                cause=context.safe_runtime_error(exc),
+                retryable=True,
+            )), 500
 
-    def api_local_config():
-        return module.jsonify(
-            ok=True,
-            config=context.masked_local_config(context.read_local_config()),
-        )
+    sms_balance_routes = SmsBalanceRouteController(
+        module=module,
+        context=context,
+        secrets_for=route_secrets,
+    )
+    api_sms_balances = sms_balance_routes.query
 
-    def api_sms_balances():
-        if context.query_sms_balances is None:
-            return module.jsonify(
-                ok=False,
-                node_code="sms_balance_query",
-                node_label="接码余额",
-                error_code="sms_balance_query_unavailable",
-                error="接码余额查询 [接码余额/sms_balance_query]：服务尚未启用",
-            ), 503
-        data = module.request.get_json(silent=True) or {}
-        if not isinstance(data, dict):
-            return module.jsonify(
-                ok=False,
-                node_code="sms_balance_query",
-                node_label="接码余额",
-                error_code="invalid_request",
-                error="接码余额查询 [接码余额/sms_balance_query]：配置必须是 JSON 对象",
-            ), 400
-        try:
-            local = context.read_local_config()
-            config = {
-                key: data[key] if key in data else local[key]
-                for key in _SMS_BALANCE_CONFIG_KEYS
-                if key in data or key in local
-            }
-            statuses = context.query_sms_balances(config)
-            return module.jsonify(
-                ok=True,
-                queried_at=int(time.time()),
-                sms_key_statuses=statuses,
-            )
-        except ValueError as exc:
-            safe = context.safe_runtime_error(exc)
-            return module.jsonify(
-                ok=False,
-                node_code="sms_balance_query",
-                node_label="接码余额",
-                error_code="sms_balance_query_failed",
-                error=f"接码余额查询 [接码余额/sms_balance_query]：{safe}",
-            ), 400
-        except Exception:
-            return module.jsonify(
-                ok=False,
-                node_code="sms_balance_query",
-                node_label="接码余额",
-                error_code="sms_balance_query_failed",
-                error="接码余额查询 [接码余额/sms_balance_query]：平台请求失败，请检查 Key、代理和网络",
-            ), 502
-
-    def api_local_config_export():
-        try:
-            data = module.request.get_json(silent=True) or {}
-            download = bool(data.pop("download", False)) if isinstance(data, dict) else False
-            config = context.local_config_from_runtime(data, context.read_local_config())
-            config = dict(config)
-            if isinstance(config.get("nv_import"), Mapping):
-                nv_import = dict(config["nv_import"])
-                nv_import.pop("api_key", None)
-                config["nv_import"] = nv_import
-            return module.jsonify(
-                ok=True,
-                config=config if download else context.masked_local_config(config),
-            )
-        except Exception as exc:
-            safe = module._safe(exc) if hasattr(module, "_safe") else str(exc)
-            return module.jsonify(ok=False, error=f"导出本地配置失败: {safe}"), 500
-
-    def api_local_config_import():
-        if not context.lifecycle_lock.acquire(blocking=False):
-            return busy_response()
-        try:
-            if importer.status(settings()).get("running"):
-                return module.jsonify(
-                    ok=False,
-                    error="任务运行中，停止后才能导入配置",
-                    state=public_state(),
-                ), 409
-            data = module.request.get_json(silent=True) or {}
-            config = data.get("config") if isinstance(data, dict) else {}
-            if not isinstance(config, dict):
-                return module.jsonify(ok=False, error="配置 JSON 必须是对象"), 400
-            config = context.write_local_config(
-                context.local_config_from_runtime(config, context.read_local_config())
-            )
-            return module.jsonify(ok=True, config=context.masked_local_config(config))
-        except Exception as exc:
-            safe = module._safe(exc) if hasattr(module, "_safe") else str(exc)
-            return module.jsonify(ok=False, error=f"导入本地配置失败: {safe}"), 500
-        finally:
-            context.lifecycle_lock.release()
-
-    def api_local_config_secret():
-        try:
-            data = module.request.get_json(silent=True) or {}
-            value = context.local_config_secret(data.get("id") if isinstance(data, dict) else "")
-            if not value:
-                return module.jsonify(ok=False, error="本地配置没有保存这个密钥"), 404
-            return module.jsonify(ok=True, value=value)
-        except Exception as exc:
-            safe = module._safe(exc) if hasattr(module, "_safe") else str(exc)
-            return module.jsonify(ok=False, error=f"读取本地密钥失败: {safe}"), 500
+    local_config_routes = LocalConfigRouteController(
+        module=module,
+        context=context,
+        importer=importer,
+        settings=settings,
+        public_state=public_state,
+        busy_response=busy_response,
+    )
+    api_local_config = local_config_routes.get
+    api_local_config_export = local_config_routes.export
+    api_local_config_import = local_config_routes.import_config
+    api_local_config_secret = local_config_routes.secret
 
     def api_notification_email_test():
         try:
@@ -1417,15 +1360,27 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             result = context.test_email_notification(data)
             return module.jsonify(ok=True, notification=result, state=public_state())
         except ValueError as exc:
-            safe = context.safe_runtime_error(exc)
-            return module.jsonify(ok=False, error=safe, state=public_state()), 400
-        except Exception:
-            logs.add("测试邮件通知发送失败，请检查 SMTP 配置和网络", "error")
-            return module.jsonify(
-                ok=False,
-                error="测试通知发送失败，请检查发件账号、授权码、收件地址和网络",
+            payload = explicit_failure_payload(
+                node_code="notification_test", node_label="测试邮件通知",
+                error_code="notification_test_failed", cause=context.safe_runtime_error(exc),
+                secrets=route_secrets(data), state=public_state(), http_status=400,
+                action_hint="检查 SMTP 地址、授权码和收件地址。",
+            )
+            return module.jsonify(payload), 400
+        except Exception as exc:
+            payload = explicit_failure_payload(
+                node_code="notification_test",
+                node_label="测试邮件通知",
+                error_code="notification_test_failed",
+                cause=context.safe_runtime_error(exc),
+                secrets=route_secrets(data),
                 state=public_state(),
-            ), 502
+                retryable=True,
+                http_status=502,
+                action_hint="检查 SMTP 地址、授权码、收件地址和当前网络。",
+            )
+            logs.add(f"[测试邮件通知/notification_test] {payload['error']}", "error")
+            return module.jsonify(payload), 502
 
     routes = (
         ("/mailboxes", "mailbox_manager", mailbox_manager, ["GET"]),

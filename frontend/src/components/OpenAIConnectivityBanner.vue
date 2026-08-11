@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { SwitchButton } from '@element-plus/icons-vue'
+import { Connection, SwitchButton } from '@element-plus/icons-vue'
 import type { OpenAIConnectivityView } from '../utils/openAIConnectivity'
 
 defineProps<{ view: OpenAIConnectivityView; disablingGuard?: boolean }>()
-const emit = defineEmits<{ disableGuard: [] }>()
+const emit = defineEmits<{ disableGuard: []; diagnose: [] }>()
 </script>
 
 <template>
@@ -28,6 +28,9 @@ const emit = defineEmits<{ disableGuard: [] }>()
           @click="emit('disableGuard')"
         >
           <el-icon><SwitchButton /></el-icon>关闭保护
+        </el-button>
+        <el-button class="guard-action" type="primary" plain size="small" @click="emit('diagnose')">
+          <el-icon><Connection /></el-icon>测试链路
         </el-button>
       </div>
     </template>

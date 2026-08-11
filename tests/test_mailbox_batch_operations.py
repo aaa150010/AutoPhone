@@ -85,7 +85,7 @@ class MailboxBatchOperationManagerTests(unittest.TestCase):
                 **payload["rows"][1],
                 "status": "error",
                 "code": "openai_quota_network_error",
-                "error": "private@example.test bearer-secret",
+                "error": "无法连接当前显式代理 private@example.test bearer-secret",
                 "queried_at": 102,
             })
             return {"ok": True, "queried": 2, "failed": 0, "skipped": 0}
@@ -114,10 +114,49 @@ class MailboxBatchOperationManagerTests(unittest.TestCase):
         self.assertNotIn("private@example.test", serialized)
         self.assertNotIn("bearer-secret", serialized)
         self.assertEqual(completed["row_updates"][1]["quota_status"], "error")
-        self.assertIn("网络请求失败", completed["row_updates"][1]["quota_error"])
-
+        self.assertEqual(
+            completed["row_updates"][1]["quota_error"],
+            "查询 OpenAI 额度失败：无法连接当前显式代理",
+        )
         completed["row_updates"][0]["quota_5h"]["remaining_percent"] = 1
         self.assertEqual(manager.snapshot()["row_updates"][0]["quota_5h"]["remaining_percent"], 75)
+
+    def test_quota_row_errors_keep_safe_specific_network_and_http_causes(self):
+        manager = MailboxBatchOperationManager()
+        rows = [
+            {"row_id": "row-dns", "line_no": 1},
+            {"row_id": "row-auth", "line_no": 2},
+        ]
+
+        def worker(payload):
+            callback = payload["_on_row_completed"]
+            callback({
+                **payload["rows"][0],
+                "status": "error",
+                "code": "openai_quota_network_error",
+                "error": "OpenAI 域名 DNS 解析失败 private-password",
+            })
+            callback({
+                **payload["rows"][1],
+                "status": "error",
+                "code": "openai_quota_unauthorized",
+                "error": "Bearer private-access-token",
+            })
+            return {"ok": True, "queried": 2, "failed": 2, "skipped": 0}
+
+        operation, _created = manager.start("quota", rows, worker)
+        completed = manager.wait(operation["job_id"], 2)
+
+        self.assertEqual(
+            completed["row_updates"][0]["quota_error"],
+            "查询 OpenAI 额度失败：OpenAI 域名 DNS 解析失败",
+        )
+        self.assertEqual(
+            completed["row_updates"][1]["quota_error"],
+            "查询 OpenAI 额度失败：OpenAI OAuth Token 已失效，需要重新运行账号",
+        )
+        self.assertNotIn("private-password", json.dumps(completed))
+        self.assertNotIn("private-access-token", json.dumps(completed))
 
     def test_openai_row_updates_are_redacted_and_bound_to_exact_source_row(self):
         manager = MailboxBatchOperationManager()

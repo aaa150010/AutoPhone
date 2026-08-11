@@ -81,6 +81,8 @@ export interface TaskFailure {
   technical_summary?: string
   retryable: boolean
   http_status?: number | null
+  action_hint?: string
+  diagnostic_action?: 'openai_connectivity' | string
 }
 
 export type ManualVerificationInputKind = 'email_otp' | 'sms_otp' | 'totp'
@@ -224,6 +226,37 @@ export interface OpenAIAuthConnectivityState {
     required_rounds?: number
     next_probe_at?: number | null
   }
+}
+
+export interface OpenAIConnectivityDiagnosticOrigin {
+  origin: string
+  reachable: boolean
+  service_status?: 'available' | 'rate_limited' | 'upstream_error' | 'transport_error' | string
+  service_available?: boolean
+  latency_ms?: number
+  status_code?: number | null
+  reason_code?: string
+  reason_label?: string
+  technical_summary?: string
+}
+
+export interface OpenAIConnectivityDiagnosticSentinel {
+  attempted: boolean
+  ok: boolean
+  skipped_reason?: string
+  latency_ms?: number
+  error_code?: string
+  public_message?: string
+  technical_summary?: string
+}
+
+export interface OpenAIConnectivityDiagnostic {
+  tested_at?: number
+  proxy_configured?: boolean
+  overall: 'healthy' | 'degraded' | 'failed' | string
+  network: OpenAIConnectivityDiagnosticOrigin[]
+  sentinel: OpenAIConnectivityDiagnosticSentinel
+  elapsed_ms?: number
 }
 
 export interface RuntimeCapacitySnapshot {

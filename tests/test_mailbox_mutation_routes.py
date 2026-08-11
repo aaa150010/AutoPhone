@@ -211,6 +211,30 @@ class MailboxMutationRouteTests(unittest.TestCase):
         self.assertNotIn("password", body)
         self.assertNotIn("TOTP", body)
 
+    def test_mutation_and_source_export_exceptions_are_structured_and_redacted(self):
+        self.admin.import_error = RuntimeError("mailbox-password-must-not-escape")
+        mutation = self.app.test_client().post(
+            "/import", json={"pool_content": "user@example.test---mailbox-password-must-not-escape"},
+        )
+        mutation_payload = mutation.get_json()
+        self.assertEqual(mutation.status_code, 500)
+        self.assertEqual(mutation_payload["node_code"], "mailbox_mutation")
+        self.assertEqual(mutation_payload["error_code"], "mailbox_mutation_failed")
+        self.assertNotIn("mailbox-password-must-not-escape", mutation.get_data(as_text=True))
+
+        def fail_export(_payload):
+            raise RuntimeError("totp-secret-must-not-escape")
+
+        self.admin.selected_source_rows = fail_export
+        exported = self.app.test_client().post(
+            "/source-export", json={"rows": [{"row_id": "a" * 64, "line_no": 1}]},
+        )
+        export_payload = exported.get_json()
+        self.assertEqual(exported.status_code, 500)
+        self.assertEqual(export_payload["node_code"], "mailbox_source_export")
+        self.assertEqual(export_payload["error_code"], "mailbox_source_export_failed")
+        self.assertNotIn("totp-secret-must-not-escape", exported.get_data(as_text=True))
+
     def test_stale_draft_restore_is_a_conflict(self):
         self.controller.draft_restore_action = lambda _admin, _payload: {
             "ok": False,

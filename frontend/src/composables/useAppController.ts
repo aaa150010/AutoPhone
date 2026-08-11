@@ -15,6 +15,7 @@ import {
 } from '../api/client'
 import type { AppState, SmsKeyStatus, SmsProviderPool } from '../types/api'
 import { createRuntimeNotificationObserver } from './useRuntimeNotifications'
+import { createConnectivityDiagnosticTrigger } from './useConnectivityDiagnostics'
 import { preferNewestOpenAIConnectivityState } from '../utils/openAIConnectivity'
 
 const smsProviderDefaults: Record<string, string> = {
@@ -284,6 +285,7 @@ export function createAppController() {
   })
   const queriedSmsKeyStatuses = ref<SmsKeyStatus[] | null>(null)
   const runtimeNotificationObserver = createRuntimeNotificationObserver()
+  const connectivityDiagnostics = createConnectivityDiagnosticTrigger()
   let baseline = signature(form)
   let pollTimer = 0
   let pollingStopped = true
@@ -310,10 +312,12 @@ export function createAppController() {
       state.value = accepted
     }
     runtimeNotificationObserver.observe(accepted)
+    connectivityDiagnostics.observeState(accepted)
   }
 
   function syncError(error: unknown) {
     if (error instanceof ApiError && error.payload?.state) syncState(error.payload.state)
+    connectivityDiagnostics.observeError(error)
   }
 
   function markClean() {
@@ -637,6 +641,7 @@ export function createAppController() {
     running,
     hasPool,
     smsKeyStatuses,
+    connectivityDiagnosticRequest: connectivityDiagnostics.request,
     initialize,
     ensureSecretsLoaded,
     updateForm,
@@ -644,6 +649,8 @@ export function createAppController() {
     refresh,
     save,
     setOpenAIConnectivityGuard,
+    openConnectivityDiagnostics: connectivityDiagnostics.open,
+    clearConnectivityDiagnosticRequest: connectivityDiagnostics.clear,
     preflight,
     start,
     stop,

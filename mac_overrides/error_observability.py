@@ -18,14 +18,19 @@ FAILURE_FIELDS = (
     "technical_summary",
     "retryable",
     "http_status",
+    "action_hint",
+    "diagnostic_action",
 )
 
 NODE_LABELS = {
+    "run_start": "启动注册任务",
+    "relogin_start": "启动重登任务",
     "queue_waiting": "排队等待",
     "queue_reserved": "预留邮箱",
     "oauth_create_node": "初始化 Node/Sentinel",
     "oauth_session": "建立 SUB2 OAuth 会话",
     "oauth_authorize_node": "OpenAI OAuth 授权",
+    "openai_connectivity_diagnostic": "OpenAI 链路诊断",
     "email_slot_waiting": "等待邮箱验证槽",
     "email_login": "登录邮箱",
     "email_password": "验证邮箱密码",
@@ -59,6 +64,50 @@ _GENERIC_ERRORS = frozenset(
         "operation failed",
         "操作失败",
         "授权或上传未完成",
+        "node/sentinel 授权桥接初始化失败",
+    }
+)
+
+_ACTION_HINTS = {
+    "resource_fd_exhausted": "停止继续扩容并等待现有 Node 子进程清理；若持续出现，请降低 Node 并发后重启应用。",
+    "node_runtime_missing": "检查 CODEX_NODE_BINARY 或 PATH 中的 Node.js 可执行文件。",
+    "node_runner_missing": "检查 SentinelRunner 是否已解包并且 codex_node_runner 路径有效。",
+    "node_proxy_failed": "运行 OpenAI 链路诊断并检查当前显式代理地址、认证和可用性。",
+    "node_dns_failed": "运行 OpenAI 链路诊断并检查代理或本机 DNS 是否能解析 OpenAI 域名。",
+    "node_tls_failed": "运行 OpenAI 链路诊断并检查代理 TLS 转发、证书和系统时间。",
+    "node_sentinel_timeout": "运行 OpenAI 链路诊断；若延迟持续偏高，请更换代理或降低 Node 并发。",
+    "node_sentinel_http_failed": "查看保留的 HTTP 状态；429 请等待冷却，5xx 可稍后重试或更换代理。",
+    "node_sentinel_sdk_failed": "重新准备 Sentinel SDK 缓存，并确认 Runner 与当前 SDK 版本匹配。",
+    "node_sentinel_token_missing": "运行 Sentinel 深测；网络正常时请检查 SDK 缓存和 Runner 版本。",
+    "node_bridge_invalid_response": "检查 Node 子进程输出和 Runner 版本，确保 stdout 最终返回 JSON。",
+    "node_process_failed": "检查 Node 进程退出状态、Runner 文件权限和本机资源限制。",
+    "node_sentinel_request_failed": "运行 OpenAI 链路诊断并检查代理稳定性。",
+    "node_sentinel_token_failed": "运行 Sentinel 深测以区分网络、SDK 和空 token。",
+    "proxy_connection_failed": "检查当前显式代理，确认地址、端口和认证仍然有效。",
+    "tls_connection_failed": "检查代理 TLS 转发、证书和系统时间后重试。",
+    "remote_disconnected": "更换不稳定代理或降低并发后重试。",
+    "oauth_session_invalid": "建立全新 OAuth 会话后重试当前步骤。",
+    "email_password_failed": "更新邮箱密码或授权信息后再运行。",
+    "mailbox_login_failed": "检查邮箱授权、IMAP 可用性和邮箱代理配置。",
+    "email_code_timeout": "确认邮箱可以收到新邮件，并检查取码方式和等待超时。",
+    "phone_acquisition_failed": "检查接码平台余额、地区库存和价格上限。",
+    "sms_provider_pool_unavailable": "检查已启用平台、Key 状态、余额和号码库存。",
+    "sms_timeout": "确认订单仍有效并检查接码平台短信状态。",
+    "sub2_oauth_session_failed": "检查 SUB2 管理地址、管理员凭据和上传代理。",
+    "sub2_exchange_failed": "重新建立 SUB2 OAuth 会话后再交换 Token。",
+    "sub2_upload_failed": "检查 SUB2 服务状态、分组配置和远端校验结果。",
+    "result_persistence_failed": "检查结果目录权限和磁盘剩余空间。",
+}
+
+_OPENAI_DIAGNOSTIC_CODES = frozenset(
+    {
+        "node_runtime_missing", "node_runner_missing", "node_proxy_failed",
+        "node_dns_failed", "node_tls_failed", "node_sentinel_timeout",
+        "node_sentinel_http_failed", "node_sentinel_sdk_failed",
+        "node_sentinel_token_missing", "node_bridge_invalid_response",
+        "node_process_failed", "node_sentinel_request_failed",
+        "node_sentinel_token_failed", "node_sentinel_failed",
+        "proxy_connection_failed", "tls_connection_failed", "remote_disconnected",
     }
 )
 
@@ -183,6 +232,11 @@ _NODE_CAUSE_RULES = (
         "Node/Sentinel 无法连接当前显式代理",
     ),
     (
+        ("name resolution", "could not resolve", "getaddrinfo", "nodename nor servname"),
+        "node_dns_failed",
+        "Node/Sentinel 无法解析 OpenAI 域名",
+    ),
+    (
         ("tls_connect_error", "tls_connect_timeout", "tls connection", "tls connect"),
         "node_tls_failed",
         "Node/Sentinel TLS 连接异常",
@@ -197,6 +251,11 @@ _NODE_CAUSE_RULES = (
         ),
         "node_sentinel_timeout",
         "Node/Sentinel 请求超时",
+    ),
+    (
+        ("http 429", "http 500", "http 502", "http 503", "http 504", "status_code=429", "status_code=500", "status_code=502", "status_code=503", "status_code=504"),
+        "node_sentinel_http_failed",
+        "Node/Sentinel 收到异常 HTTP 响应",
     ),
     (
         (
@@ -223,6 +282,11 @@ _NODE_CAUSE_RULES = (
         ("invalid node json", "empty node stdout", "does not contain a json object"),
         "node_bridge_invalid_response",
         "Node/Sentinel 子进程未返回有效 JSON",
+    ),
+    (
+        ("process exited", "exit code", "returncode", "terminated by signal", "subprocess failed"),
+        "node_process_failed",
+        "Node/Sentinel 子进程异常退出",
     ),
     (
         (
@@ -518,13 +582,23 @@ def is_node_retry_log(value: Any) -> bool:
 
 
 def _best_technical_summary(values: Sequence[Any], *, secrets: Sequence[Any]) -> str:
+    best = ""
+    best_score = -1
     for value in values:
         text = sanitize_failure_detail(value, secrets=secrets)
         if not text:
             continue
-        if text.strip().lower() not in _GENERIC_ERRORS:
-            return text
-    return ""
+        lowered = text.strip().lower()
+        score = 1
+        if lowered in _GENERIC_ERRORS or lowered.endswith("：操作失败"):
+            score = 0
+        if any(marker in lowered for marker in ("http", "status", "timeout", "timed out", "proxy", "tls", "errno", "exception", "error_code")):
+            score += 3
+        if len(text) > 20:
+            score += 1
+        if score > best_score:
+            best, best_score = text, score
+    return best if best_score > 0 else ""
 
 
 def classify_failure(
@@ -625,6 +699,8 @@ def classify_failure(
         public_message = ACCOUNT_BANNED_MESSAGE
         technical_summary = technical_summary or ACCOUNT_BANNED_MESSAGE
     else:
+        if cause in {"Node/Sentinel 授权桥接初始化失败", "node/sentinel 授权桥接初始化失败"}:
+            cause = technical_summary or "Node/Sentinel 未返回可识别的底层错误详情"
         cause = cause or technical_summary or "服务端未返回错误详情"
         qualifiers = []
         if http_status is not None and f"{http_status}" not in cause:
@@ -635,6 +711,8 @@ def classify_failure(
             cause = f"{cause}（{' / '.join(qualifiers)}）"
         public_message = f"{node_label}失败：{cause}"
 
+    action_hint = _ACTION_HINTS.get(error_code, "")
+    diagnostic_action = "openai_connectivity" if error_code in _OPENAI_DIAGNOSTIC_CODES else ""
     return {
         "node_code": node_code,
         "node_label": node_label,
@@ -648,6 +726,8 @@ def classify_failure(
         ),
         "retryable": bool(retryable),
         "http_status": http_status,
+        "action_hint": action_hint,
+        "diagnostic_action": diagnostic_action,
     }
 
 
@@ -668,6 +748,8 @@ def public_failure(value: Any) -> dict[str, Any] | None:
         "technical_summary": sanitize_failure_detail(value.get("technical_summary"), limit=500),
         "retryable": bool(value.get("retryable")),
         "http_status": None,
+        "action_hint": sanitize_failure_detail(value.get("action_hint"), limit=500),
+        "diagnostic_action": sanitize_failure_detail(value.get("diagnostic_action"), limit=80),
     }
     try:
         status = int(value.get("http_status"))
@@ -710,7 +792,7 @@ def format_node_retry_log(task_id: Any, detail: Any) -> str:
 
     failure = classify_failure(error=detail)
     message = str(failure.get("public_message") or "")
-    cause = message.split("失败：", 1)[-1] if "失败：" in message else message
+    cause = message.rsplit("失败：", 1)[-1] if "失败：" in message else message
     cause = sanitize_failure_detail(cause, limit=300) or "本次授权桥接未返回错误详情"
     if cause == "Node/Sentinel 授权桥接初始化失败":
         cause = "Sentinel token 生成未成功"

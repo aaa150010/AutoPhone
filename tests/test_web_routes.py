@@ -750,10 +750,49 @@ class WebRouteTests(unittest.TestCase):
             response = client.post("/api/config", json={"sms_api_keys": ["key-bad"]})
 
         self.assertEqual(response.status_code, 500)
-        self.assertFalse(response.get_json()["ok"])
+        payload = response.get_json()
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["node_code"], "config_save")
+        self.assertEqual(payload["error_code"], "config_save_failed")
+        self.assertEqual(payload["failure"]["node_label"], "保存运行配置")
         self.assertEqual(self.store.current, {"sms_api_keys": ["initial"]})
         self.assertEqual(self.active_sms_keys, ["initial"])
         self.assertEqual(self.local_config, {"sms_api_keys": ["initial"]})
+
+    def test_config_and_preflight_failures_redact_submitted_credentials(self):
+        secret = "submitted-private-key"
+
+        def fail_config(config, **_kwargs):
+            if secret in config.get("sms_api_keys", []):
+                raise RuntimeError(f"provider rejected {secret}")
+            return ""
+
+        context = replace(
+            self.context,
+            configure_sms_pool=fail_config,
+            failure_secrets=lambda config: tuple(config.get("sms_api_keys") or ()),
+        )
+        config_response = self._app(context).test_client().post(
+            "/api/config", json={"sms_api_keys": [secret]},
+        )
+        self.assertEqual(config_response.status_code, 500)
+        self.assertEqual(config_response.get_json()["node_code"], "config_save")
+        self.assertNotIn(secret, config_response.get_data(as_text=True) + str(self.logs.rows))
+
+        def fail_preflight(_config, **_kwargs):
+            raise RuntimeError(f"upstream rejected {secret}")
+
+        preflight_context = replace(
+            self.context,
+            preflight_sms_pool=fail_preflight,
+            failure_secrets=lambda config: tuple(config.get("sms_api_keys") or ()),
+        )
+        preflight_response = self._app(preflight_context).test_client().post(
+            "/api/preflight", json={"sms_api_keys": [secret]},
+        )
+        self.assertEqual(preflight_response.status_code, 502)
+        self.assertEqual(preflight_response.get_json()["node_code"], "sms_preflight")
+        self.assertNotIn(secret, preflight_response.get_data(as_text=True) + str(self.logs.rows))
 
     def test_local_config_export_does_not_mutate_active_local_config(self):
         app = self._app()
@@ -902,6 +941,173 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(calls[0][1]["interval_seconds"], 5)
         self.assertEqual(calls[0][1]["resend_after_seconds"], 15)
         self.assertEqual(calls[0][1]["proxy"], "http://127.0.0.1:7897")
+
+    def test_mailbox_url_test_redacts_isolated_url_and_proxy_credentials(self):
+        class FailingUrlTester:
+            def test(self, _value, **_kwargs):
+                raise RuntimeError(
+                    "request rejected auth_code=url-private-secret "
+                    "by proxy-user with proxy-private-password"
+                )
+
+        context = replace(
+            self.context,
+            mailbox_url_test_factory=FailingUrlTester,
+            read_local_config=lambda: {
+                "proxy": "http://proxy-user:proxy-private-password@127.0.0.1:7897",
+                "proxy_scope": {"email": True},
+            },
+        )
+        app = self._app(context)
+        submitted = "https://mail.example.test/inbox?auth_code=url-private-secret"
+
+        response = app.test_client().post("/api/mailbox-url-test", json={"value": submitted})
+
+        self.assertEqual(response.status_code, 500)
+        payload = response.get_json()
+        self.assertEqual(payload["node_code"], "mailbox_url_test")
+        self.assertEqual(payload["error_code"], "mailbox_url_test_failed")
+        serialized = response.get_data(as_text=True) + str(self.logs.rows)
+        for secret in ("url-private-secret", "proxy-user", "proxy-private-password"):
+            self.assertNotIn(secret, serialized)
+
+    def test_start_and_relogin_exceptions_keep_exact_failure_nodes(self):
+        def fail_start(_config):
+            raise OSError("marker-free startup failure")
+
+        self.importer.start = fail_start
+        context = replace(self.context, preflight_sms_pool=lambda *_args, **_kwargs: [])
+        app = self._app(context)
+
+        start_response = app.test_client().post(
+            "/api/start", json={"sms_api_keys": ["key-a"], "pool_content": ""},
+        )
+        start_payload = start_response.get_json()
+        self.assertEqual(start_response.status_code, 500)
+        self.assertEqual(start_payload["node_code"], "run_start")
+        self.assertEqual(start_payload["node_label"], "启动注册任务")
+        self.assertEqual(start_payload["error_code"], "run_start_failed")
+        self.assertEqual(start_payload["failure"]["node_code"], "run_start")
+
+        relogin_response = app.test_client().post(
+            "/api/mailboxes/relogin",
+            json={"rows": [{"row_id": "a" * 64, "line_no": 7}]},
+        )
+        relogin_payload = relogin_response.get_json()
+        self.assertEqual(relogin_response.status_code, 500)
+        self.assertEqual(relogin_payload["node_code"], "relogin_start")
+        self.assertEqual(relogin_payload["node_label"], "启动重登任务")
+        self.assertEqual(relogin_payload["error_code"], "relogin_start_failed")
+        self.assertEqual(relogin_payload["failure"]["node_code"], "relogin_start")
+
+    def test_mailbox_read_exceptions_return_exact_redacted_failures(self):
+        secret = "mailbox-read-private-secret"
+
+        def fail(*_args, **_kwargs):
+            raise RuntimeError(secret)
+
+        self.mailbox_admin.latest_code = fail
+        self.mailbox_admin.reveal_password = fail
+        self.mailbox_admin.reveal_totp = fail
+        self.mailbox_admin.reveal_mailbox_url = fail
+        app = self._app()
+        requests = (
+            ("/api/mailboxes/latest-code", {}, "email_code_lookup"),
+            ("/api/mailboxes/password", {"row_id": "a" * 64, "line_no": 1}, "mailbox_password_reveal"),
+            ("/api/mailboxes/totp", {"row_id": "a" * 64, "line_no": 1}, "mailbox_totp_reveal"),
+            ("/api/mailboxes/url", {"row_id": "a" * 64, "line_no": 1}, "mailbox_url_reveal"),
+        )
+        with app.test_client() as client:
+            for path, body, node_code in requests:
+                with self.subTest(path=path):
+                    response = client.post(path, json=body)
+                    self.assertEqual(response.status_code, 500)
+                    self.assertEqual(response.get_json()["node_code"], node_code)
+                    self.assertEqual(response.get_json()["failure"]["node_code"], node_code)
+                    self.assertNotIn(secret, response.get_data(as_text=True))
+
+    def test_manifest_and_runtime_task_read_exceptions_are_structured(self):
+        class FailingRunManifest:
+            log_fn = None
+
+            def records(self, **_kwargs):
+                raise RuntimeError("run-manifest-private-detail")
+
+            def get(self, *_args, **_kwargs):
+                raise RuntimeError("run-detail-private-detail")
+
+        class FailingUploadCoordinator:
+            def records(self):
+                raise RuntimeError("upload-manifest-private-detail")
+
+        context = replace(
+            self.context,
+            run_batch_manifest=FailingRunManifest(),
+            batch_upload_coordinator=FailingUploadCoordinator(),
+        )
+        app = self._app(context)
+        with app.test_client() as client:
+            responses = (
+                (client.get("/api/run-batches"), "run_batch_manifest"),
+                (client.get("/api/run-batches/batch-1"), "run_batch_manifest"),
+                (client.get("/api/upload-manifests"), "batch_upload_manifest"),
+            )
+        for response, node_code in responses:
+            self.assertEqual(response.status_code, 500)
+            self.assertEqual(response.get_json()["node_code"], node_code)
+            self.assertIn("failure", response.get_json())
+            self.assertNotIn("private-detail", response.get_data(as_text=True))
+
+        source_row = "user@example.test---password---refresh-token---client-id"
+        self.importer.tasks = {"task-1": {"source_row": source_row}}
+        self.importer.lock = threading.RLock()
+
+        def fail_list():
+            raise RuntimeError("runtime-task-private-detail")
+
+        self.mailbox_admin.list_mailboxes = fail_list
+        runtime_response = app.test_client().post(
+            "/api/runtime/tasks/mailbox-url", json={"task_id": "task-1"},
+        )
+        self.assertEqual(runtime_response.status_code, 500)
+        self.assertEqual(runtime_response.get_json()["error_code"], "runtime_task_mailbox_url_failed")
+        self.assertNotIn("private-detail", runtime_response.get_data(as_text=True))
+
+    def test_local_config_notification_and_balance_exceptions_are_structured(self):
+        secret = "route-private-secret"
+
+        failure_enabled = False
+
+        def fail_config(data, *_args, **_kwargs):
+            if failure_enabled:
+                raise RuntimeError(secret)
+            return dict(data)
+
+        context = replace(
+            self.context,
+            local_config_from_runtime=fail_config,
+            local_config_secret=lambda _name: (_ for _ in ()).throw(RuntimeError(secret)),
+            test_email_notification=lambda _data: (_ for _ in ()).throw(RuntimeError(secret)),
+            query_sms_balances=lambda _data: (_ for _ in ()).throw(RuntimeError(secret)),
+            failure_secrets=lambda _config: (secret,),
+        )
+        app = self._app(context)
+        failure_enabled = True
+        requests = (
+            ("/api/local-config/export", {"download": True}, "local_config_export"),
+            ("/api/local-config/import", {"config": {}}, "local_config_import"),
+            ("/api/local-config/secret", {"id": "sms_api_key"}, "local_config_secret"),
+            ("/api/notifications/email/test", {"email_notification": {"password": secret}}, "notification_test"),
+            ("/api/sms/balances", {"sms_api_keys": [secret]}, "sms_balance_query"),
+        )
+        with app.test_client() as client:
+            for path, body, node_code in requests:
+                with self.subTest(path=path):
+                    response = client.post(path, json=body)
+                    self.assertGreaterEqual(response.status_code, 500)
+                    self.assertEqual(response.get_json()["node_code"], node_code)
+                    self.assertIn("failure", response.get_json())
+                    self.assertNotIn(secret, response.get_data(as_text=True) + str(self.logs.rows))
 
     def test_mailbox_totp_route_returns_temporary_code_without_base32_secret(self):
         app = self._app()
@@ -1531,7 +1737,8 @@ class WebRouteTests(unittest.TestCase):
             ("record-a", ["pixel-4"]),
         ])
         self.assertEqual(failed.status_code, 409)
-        self.assertEqual(failed.get_json()["error"], "可以公开")
+        self.assertEqual(failed.get_json()["error"], "Pixel 管理操作失败：可以公开")
+        self.assertEqual(failed.get_json()["failure"]["node_code"], "pixel_management")
         self.assertNotIn("private-token", failed.get_data(as_text=True))
 
     def test_nv_upload_records_batches_overview_and_retry_routes(self):

@@ -184,6 +184,9 @@ function checkpointType() {
           <el-descriptions-item v-if="task.failure.technical_summary" label="技术摘要" :span="2">
             {{ task.failure.technical_summary }}
           </el-descriptions-item>
+          <el-descriptions-item v-if="task.failure.action_hint" label="处理建议" :span="2">
+            {{ task.failure.action_hint }}
+          </el-descriptions-item>
         </el-descriptions>
       </section>
     </template>

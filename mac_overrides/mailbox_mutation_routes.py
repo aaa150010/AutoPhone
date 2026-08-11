@@ -13,6 +13,11 @@ from datetime import datetime
 from typing import Any, Callable
 
 try:
+    from .route_failures import explicit_failure_payload
+except ImportError:  # Loaded as a top-level runtime override.
+    from route_failures import explicit_failure_payload  # type: ignore[no-redef]
+
+try:
     from .mailbox_source_lock import MailboxSourceLockTimeout
     from .mailbox_state_runtime import (
         mark_mailboxes_draft,
@@ -133,12 +138,13 @@ class MailboxMutationRouteController:
                 error=exc.public_message,
             ), exc.status_code
         except Exception as exc:
-            self.logs.add(f"邮箱原格式导出失败: {type(exc).__name__}", "error")
-            return self.module.jsonify(
-                ok=False,
-                code="mailbox_source_export_failed",
-                error="邮箱原格式导出失败：服务未返回有效结果",
-            ), 500
+            payload = explicit_failure_payload(
+                node_code="mailbox_source_export", node_label="导出邮箱原格式",
+                error_code="mailbox_source_export_failed",
+                cause=f"邮箱源数据导出异常（{type(exc).__name__}）", http_status=500,
+            )
+            self.logs.add(f"[{payload['node_label']}/{payload['node_code']}] {payload['error']}", "error")
+            return self.module.jsonify(payload), 500
 
     def routes(self) -> tuple[tuple[str, str, Callable[..., Any], list[str]], ...]:
         return (
@@ -244,20 +250,17 @@ class MailboxMutationRouteController:
                 error=exc.public_message,
             ), exc.status_code
         except Exception as exc:
-            safe = self.safe_error(exc)
-            self.logs.add(f"邮箱管理{operation}失败: {safe}", "error")
-            return self.module.jsonify(
-                ok=False,
-                code="mailbox_mutation_failed",
-                error=f"邮箱管理{operation}失败: {safe}",
-            ), 500
+            payload = explicit_failure_payload(
+                node_code="mailbox_mutation", node_label=f"邮箱管理{operation}",
+                error_code="mailbox_mutation_failed",
+                cause=f"邮箱数据写入异常（{type(exc).__name__}）",
+                retryable=True, http_status=500,
+            )
+            self.logs.add(f"[{payload['node_label']}/{payload['node_code']}] {payload['error']}", "error")
+            return self.module.jsonify(payload), 500
 
     def _log_refresh_failure(self, operation: str, exc: Exception) -> None:
-        try:
-            safe = self.safe_error(exc)
-        except Exception:
-            safe = type(exc).__name__
-        self.logs.add(f"邮箱管理{operation}后刷新列表失败: {safe}", "warn")
+        self.logs.add(f"邮箱管理{operation}后刷新列表失败: {type(exc).__name__}", "warn")
 
     @staticmethod
     def _result_status(result: Mapping[str, Any]) -> int:

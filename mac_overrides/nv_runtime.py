@@ -853,9 +853,9 @@ class NvUploadQueue:
     def _process_isolated(self, record_id: str) -> None:
         try:
             self._process(record_id)
-        except Exception:
+        except Exception as error:
             exc = NvRuntimeError(
-                "NV 导入失败：队列处理异常，后续记录将继续处理",
+                f"NV 导入队列处理异常（{type(error).__name__}），后续记录将继续处理",
                 error_code="nv_worker_unexpected",
                 status_code=500,
             )
@@ -921,8 +921,12 @@ class NvUploadQueue:
                 self._save_locked()
             self._emit(f"NV 上传记录 {record_id} 失败 [{NV_NODE_LABEL}/{NV_NODE_CODE}]：{exc.public_message}", "error")
             return
-        except Exception:
-            exc = NvRuntimeError("NV 导入失败：未返回可用诊断", error_code="nv_import_unexpected", status_code=500)
+        except Exception as error:
+            exc = NvRuntimeError(
+                f"NV 导入出现未处理异常（{type(error).__name__}）",
+                error_code="nv_import_unexpected",
+                status_code=500,
+            )
             with self._lock:
                 record = self._record_locked(record_id)
                 record.update(

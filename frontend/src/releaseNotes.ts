@@ -12,25 +12,21 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.1.0',
-  title: '历史成本、原格式导出与邮箱分割器',
+  version: '1.2.1',
+  title: '错误节点与链路诊断修正',
   releasedAt: '2026-08-11',
   sections: [
     {
-      title: '全部接码均成本',
-      usage: '运行中心顶部新增历史均成本卡，展示全部历史计费账号数、总金额和每号平均成本。',
+      title: '错误定位更具体',
+      usage: '启动、配置、预检、任务、邮箱、上传和通知失败会返回明确的中文节点、稳定错误码、已脱敏技术原因和处理建议；取件地址与代理凭据不会出现在错误响应或日志中。',
     },
     {
-      title: '按原始格式导出邮箱',
-      usage: '在邮箱管理勾选邮箱，打开“上传与导出”，点击“导出原始格式”，确认后下载 TXT。文件会保留导入时的字段、分隔符、大小写和顺序。',
+      title: 'OpenAI 链路诊断',
+      usage: '在左侧 OpenAI 状态或运行页异常横幅点击测试按钮。诊断会使用已保存代理检测 auth.openai.com 与 sentinel.openai.com 的延迟；HTTP 429 显示为限流，5xx 显示为服务异常，并避免继续执行 Sentinel 深测。',
     },
     {
-      title: '邮箱分割器',
-      usage: '打开左侧“邮箱分割”，粘贴原始数据并填写切出数量。右侧得到前 N 条，左侧保留剩余数据，可分别复制或下载 TXT。数据仅保存在当前页面会话内存中。',
-    },
-    {
-      title: '新版本首次使用说明',
-      usage: '以后每个新版本第一次打开都会显示本说明；确认后，同一浏览器在该版本内不再重复弹出。',
+      title: '相关故障自动提醒',
+      usage: '检测到 Node/Sentinel、OpenAI 授权链路或已确认的 Auth/Sentinel 中断时，诊断框只按当前批次自动打开一次，历史任务不会阻塞或误触发新批次；也可随时手动重新测试。',
     },
   ],
 }

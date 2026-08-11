@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, provide, ref } from 'vue'
+import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import AccountManagementPage from '../pages/AccountManagementPage.vue'
@@ -11,6 +11,7 @@ import SettingsPage from '../pages/SettingsPage.vue'
 import { appControllerKey, createAppController } from '../composables/useAppController'
 import OpenAIConnectivitySidebarStatus from './OpenAIConnectivitySidebarStatus.vue'
 import ReleaseNotesDialog from './ReleaseNotesDialog.vue'
+import OpenAIConnectivityDiagnosticDialog from './OpenAIConnectivityDiagnosticDialog.vue'
 
 const controller = createAppController()
 provide(appControllerKey, controller)
@@ -18,6 +19,7 @@ provide(appControllerKey, controller)
 const routes = new Set(['/', '/mailboxes', '/splitter', '/url-test', '/accounts', '/settings'])
 const pathFromLocation = () => routes.has(window.location.pathname) ? window.location.pathname : '/'
 const activePath = ref(pathFromLocation())
+const diagnosticDialog = ref<InstanceType<typeof OpenAIConnectivityDiagnosticDialog>>()
 
 const runStatus = computed(() => {
   const runtime = controller.runtime.value
@@ -69,6 +71,19 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
   event.returnValue = ''
 }
 
+function openConnectivityDiagnostics(reason = '手动检查当前 OpenAI 授权链路') {
+  controller.openConnectivityDiagnostics(reason)
+}
+
+watch(
+  () => controller.connectivityDiagnosticRequest.value,
+  (request) => {
+    if (!request) return
+    diagnosticDialog.value?.open(request.reason)
+    controller.clearConnectivityDiagnosticRequest()
+  },
+)
+
 onMounted(() => {
   void controller.startPolling()
   window.addEventListener('popstate', handlePopState)
@@ -102,7 +117,7 @@ onUnmounted(() => {
 
         <div class="global-status">
           <div class="status-heading"><span class="status-dot" :class="statusClass" /><strong>{{ runStatus }}</strong></div>
-          <OpenAIConnectivitySidebarStatus :runtime="controller.runtime.value" />
+          <OpenAIConnectivitySidebarStatus :runtime="controller.runtime.value" @diagnose="openConnectivityDiagnostics()" />
           <div v-if="controller.runtime.value.notification?.status" class="notification-state">
             <el-icon><Bell /></el-icon>
             <span>{{ controller.runtime.value.notification.status === 'sent' ? '通知已发送' : controller.runtime.value.notification.status === 'failed' ? '通知发送失败' : '通知等待发送' }}</span>
@@ -121,6 +136,7 @@ onUnmounted(() => {
       </el-main>
     </el-container>
     <ReleaseNotesDialog />
+    <OpenAIConnectivityDiagnosticDialog ref="diagnosticDialog" @open-settings="void navigate('/settings')" />
   </el-config-provider>
 </template>
 

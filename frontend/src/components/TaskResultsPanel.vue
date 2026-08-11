@@ -84,7 +84,8 @@ function failureTooltip(row: RuntimeTask) {
   if (!failure) return ''
   const codes = [failure.node_code, failure.error_code, failure.provider_code].filter(Boolean).join(' / ')
   const technical = String(failure.technical_summary || '').trim()
-  return technical ? `${codes} · ${technical}` : codes
+  const hint = String(failure.action_hint || '').trim()
+  return [codes, technical, hint].filter(Boolean).join(' · ')
 }
 
 function costLabel(row: RuntimeTask) {

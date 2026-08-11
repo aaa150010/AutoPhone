@@ -466,7 +466,8 @@ class PublicStateRuntime:
             "recipient_count": int(status.get("recipient_count") or 0),
         }
         if result["status"] == "failed":
-            result["error"] = "SMTP 发送失败或通知队列已满"
+            result["error_code"] = str(status.get("error_code") or "notification_delivery_failed")
+            result["error"] = str(status.get("error") or "邮件通知发送失败：服务未返回具体原因")
         return result
 
     def public_logs(self, logs: Any, tasks: Any) -> Any:

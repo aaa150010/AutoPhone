@@ -244,6 +244,7 @@ async function disableConnectivityGuard() {
       :view="connectivityView"
       :disabling-guard="controller.actions.updatingConnectivityGuard"
       @disable-guard="disableConnectivityGuard"
+      @diagnose="controller.openConnectivityDiagnostics('手动检查当前 OpenAI 授权链路')"
     />
 
     <div class="console-grid">

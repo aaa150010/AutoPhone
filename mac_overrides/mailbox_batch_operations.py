@@ -12,6 +12,11 @@ import time
 from typing import Any
 import uuid
 
+try:
+    from .route_failures import explicit_failure_payload
+except ImportError:  # Loaded as a top-level runtime override.
+    from route_failures import explicit_failure_payload  # type: ignore[no-redef]
+
 
 MAILBOX_OPERATION_KINDS = frozenset({"quota", "openai_test"})
 _COUNTER_KEYS = (
@@ -142,6 +147,37 @@ def _openai_status_label(kind: str, status_code: int | None) -> str:
     return "OpenAI 测试失败"
 
 
+def _public_quota_error(value: Mapping[str, Any], code: str) -> str:
+    detail = str(value.get("error") or "").lower()
+    if "network" in code or "timeout" in code:
+        network_causes = (
+            (("显式代理", "proxy"), "无法连接当前显式代理"),
+            (("dns", "resolve", "getaddrinfo"), "OpenAI 域名 DNS 解析失败"),
+            (("tls", "ssl", "certificate", "handshake"), "OpenAI TLS 握手失败"),
+            (("超时", "timeout", "timed out"), "OpenAI 连接或响应超时"),
+            (("远端连接中断", "connection reset", "remote disconnected", "unexpected eof"), "OpenAI 远端连接中断"),
+        )
+        for markers, cause in network_causes:
+            if any(marker in detail for marker in markers):
+                return f"查询 OpenAI 额度失败：{cause}"
+        return "查询 OpenAI 额度失败：OpenAI 网络连接异常，请检查当前显式代理"
+    known_causes = {
+        "openai_quota_credentials_missing": "缺少可用的 OpenAI OAuth 凭据",
+        "openai_quota_unauthorized": "OpenAI OAuth Token 已失效，需要重新运行账号",
+        "openai_quota_forbidden": "OpenAI 拒绝当前账号查询额度",
+        "openai_quota_rate_limited": "OpenAI 额度接口限流，请稍后重试",
+        "openai_quota_upstream_error": "OpenAI 额度服务暂时不可用",
+        "openai_quota_invalid_response": "OpenAI 额度接口返回了无法解析的数据",
+        "openai_quota_invalid_result": "额度查询未返回有效结果",
+        "openai_quota_result_missing": "本地成功结果缺失或不可读取，请重新登录后重试",
+    }
+    if code == "openai_quota_request_rejected":
+        status = _safe_number(value.get("http_status"))
+        cause = f"OpenAI 额度接口返回 HTTP {int(status)}" if status else "OpenAI 额度请求被拒绝"
+        return f"查询 OpenAI 额度失败：{cause}"
+    return f"查询 OpenAI 额度失败：{known_causes.get(code, f'错误码 {code}')}"
+
+
 def _public_row_update(kind: str, value: Any) -> dict[str, Any] | None:
     """Whitelist one completed row; never retain worker-provided free text."""
 
@@ -165,11 +201,7 @@ def _public_row_update(kind: str, value: Any) -> dict[str, Any] | None:
         if result["quota_status"] == "error":
             code = _safe_error_code(value.get("code"), "openai_quota_failed")
             result["quota_error_code"] = code
-            result["quota_error"] = (
-                "查询 OpenAI 额度失败：网络请求失败，请检查当前显式代理"
-                if "network" in code or "timeout" in code
-                else f"查询 OpenAI 额度失败（错误码 {code}）"
-            )
+            result["quota_error"] = _public_quota_error(value, code)
         else:
             result["quota_error"] = ""
         return result
@@ -520,22 +552,31 @@ class MailboxBatchRouteController:
         try:
             result = worker(data)
             if not isinstance(result, Mapping):
-                return self.module.jsonify(
-                    ok=False,
-                    error="本机 OpenAI 批量连接测试失败",
-                ), 502
+                return self.module.jsonify(explicit_failure_payload(
+                    node_code="openai_batch_test",
+                    node_label="本机 OpenAI 批量连接测试",
+                    error_code="openai_batch_test_invalid_result",
+                    cause=f"测试服务返回了无效的 {type(result).__name__} 结果",
+                    retryable=True,
+                    http_status=502,
+                )), 502
             response = dict(result)
             if response.get("ok"):
                 response["mailboxes"] = self.mailbox_payload()
                 response["state"] = self.public_state()
                 return self.module.jsonify(response)
             return self.module.jsonify(response), self._openai_error_status(response)
-        except Exception:
-            self.logs.add("本机 OpenAI 批量连接测试失败", "error")
-            return self.module.jsonify(
-                ok=False,
-                error="本机 OpenAI 批量连接测试失败",
-            ), 502
+        except Exception as exc:
+            payload = explicit_failure_payload(
+                node_code="openai_batch_test",
+                node_label="本机 OpenAI 批量连接测试",
+                error_code="openai_batch_test_failed",
+                cause=f"批量测试出现未处理异常（{type(exc).__name__}）",
+                retryable=True,
+                http_status=502,
+            )
+            self.logs.add(f"[本机 OpenAI 批量连接测试/openai_batch_test] {payload['error']}", "error")
+            return self.module.jsonify(payload), 502
 
     def quota(self):
         data, error = self._request_data()
@@ -547,7 +588,14 @@ class MailboxBatchRouteController:
         try:
             result = worker(data)
             if not isinstance(result, Mapping):
-                return self.module.jsonify(ok=False, error="OpenAI 额度查询失败"), 502
+                return self.module.jsonify(explicit_failure_payload(
+                    node_code="openai_quota",
+                    node_label="查询 OpenAI 额度",
+                    error_code="openai_quota_invalid_result",
+                    cause=f"额度服务返回了无效的 {type(result).__name__} 结果",
+                    retryable=True,
+                    http_status=502,
+                )), 502
             if result.get("ok"):
                 return self.module.jsonify(result)
             response = dict(result)
@@ -556,13 +604,17 @@ class MailboxBatchRouteController:
             if code.startswith("openai_quota_"):
                 status = 503
             return self.module.jsonify(response), status
-        except Exception:
-            self.logs.add("邮箱管理 OpenAI 额度查询失败", "error")
-            return self.module.jsonify(
-                ok=False,
-                code="openai_quota_failed",
-                error="查询 OpenAI 额度失败：未返回可用诊断",
-            ), 502
+        except Exception as exc:
+            payload = explicit_failure_payload(
+                node_code="openai_quota",
+                node_label="查询 OpenAI 额度",
+                error_code="openai_quota_failed",
+                cause=f"额度查询出现未处理异常（{type(exc).__name__}）",
+                retryable=True,
+                http_status=502,
+            )
+            self.logs.add(f"[查询 OpenAI 额度/openai_quota] {payload['error']}", "error")
+            return self.module.jsonify(payload), 502
 
     def _request_data(self) -> tuple[dict[str, Any], Any | None]:
         data = self.module.request.get_json(silent=True) or {}

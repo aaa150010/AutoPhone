@@ -384,6 +384,33 @@ class ErrorObservabilityTests(unittest.TestCase):
                 self.assertIn(phrase, failure["public_message"])
                 self.assertNotIn("access_token", failure["public_message"])
 
+    def test_node_connectivity_failures_offer_diagnostics_and_actionable_hints(self):
+        cases = (
+            ("node_sentinel_failed: could not resolve host", "node_dns_failed"),
+            ("node_sentinel_failed: process exited with exit code 9", "node_process_failed"),
+            ("node_sentinel_failed: no token", "node_sentinel_token_missing"),
+        )
+        for detail, code in cases:
+            with self.subTest(detail=detail):
+                failure = classify_failure(error=detail)
+                self.assertEqual(failure["error_code"], code)
+                self.assertEqual(failure["diagnostic_action"], "openai_connectivity")
+                self.assertTrue(failure["action_hint"])
+
+    def test_specific_root_cause_beats_existing_generic_failure(self):
+        failure = classify_failure(
+            {
+                "failure": {
+                    "technical_summary": "Node/Sentinel 授权桥接初始化失败",
+                    "public_message": "初始化 Node/Sentinel失败：Node/Sentinel 授权桥接初始化失败",
+                },
+                "technical_error": "node_sentinel_failed: node_bridge_timeout",
+            }
+        )
+
+        self.assertEqual(failure["error_code"], "node_sentinel_timeout")
+        self.assertIn("node_bridge_timeout", failure["technical_summary"])
+
     def test_node_failure_during_mfa_is_attributed_to_email_verification(self):
         failure = classify_failure(
             {

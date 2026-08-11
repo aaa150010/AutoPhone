@@ -16,12 +16,12 @@ test('each release version is shown once for the current browser', () => {
   acknowledgeReleaseNotes(storage, '1.1.0')
   assert.equal(storage.getItem(ACKNOWLEDGED_VERSION_KEY), '1.1.0')
   assert.equal(shouldShowReleaseNotes(storage, '1.1.0'), false)
-  assert.equal(shouldShowReleaseNotes(storage, '1.2.0'), true)
+  assert.equal(shouldShowReleaseNotes(storage, '1.2.1'), true)
 })
 
 test('current release documents every feature shipped in this update', () => {
   const text = currentRelease.sections.map(section => `${section.title} ${section.usage}`).join('\n')
-  for (const expected of ['全部接码均成本', '原始格式', '邮箱分割器', '第一次打开']) {
+  for (const expected of ['中文节点', '已脱敏', 'auth.openai.com', 'sentinel.openai.com', '限流', '当前批次']) {
     assert.match(text, new RegExp(expected))
   }
 })

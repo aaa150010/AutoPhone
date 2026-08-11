@@ -20,6 +20,7 @@ import type {
   ManualVerificationAccepted,
   ManualVerificationSubmission,
   SmsKeyStatus,
+  OpenAIConnectivityDiagnostic,
 } from '../types/api'
 
 export class ApiError extends Error {
@@ -61,6 +62,10 @@ export const updateOpenAIConnectivityGuard = (enabled: boolean) => api<{
   settings?: Record<string, any>
   state?: AppState
 }>('/api/openai-connectivity-guard', { enabled })
+export const runOpenAIConnectivityDiagnostics = () => api<{
+  ok: true
+  diagnostic: OpenAIConnectivityDiagnostic
+}>('/api/openai-connectivity-diagnostics', {})
 export const preflightRun = (data: Record<string, any>) => api('/api/preflight', data)
 export const startExistingRun = (data: Record<string, any>) => api('/api/start-existing', data)
 export const stopRun = () => api('/api/stop', {})

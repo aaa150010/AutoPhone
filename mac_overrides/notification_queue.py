@@ -4,12 +4,35 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import queue
+import smtplib
+import socket
+import ssl
 import threading
 import time
 from typing import Any
 
 
 NOTIFICATION_QUEUE_CAPACITY = 16
+
+
+def _delivery_failure(error: BaseException) -> tuple[str, str]:
+    if isinstance(error, smtplib.SMTPAuthenticationError):
+        return "smtp_authentication_failed", "SMTP 账号或授权码认证失败"
+    if isinstance(error, smtplib.SMTPRecipientsRefused):
+        return "smtp_recipients_refused", "SMTP 服务端拒绝收件地址"
+    if isinstance(error, smtplib.SMTPSenderRefused):
+        return "smtp_sender_refused", "SMTP 服务端拒绝发件地址"
+    if isinstance(error, (socket.gaierror,)):
+        return "smtp_dns_failed", "SMTP 域名 DNS 解析失败"
+    if isinstance(error, (TimeoutError, socket.timeout)):
+        return "smtp_timeout", "SMTP 连接或发送超时"
+    if isinstance(error, ssl.SSLError):
+        return "smtp_tls_failed", "SMTP TLS 握手失败"
+    if isinstance(error, ConnectionRefusedError):
+        return "smtp_connection_refused", "SMTP 服务器拒绝连接"
+    if isinstance(error, OSError):
+        return "smtp_network_failed", "SMTP 网络连接失败"
+    return "smtp_delivery_failed", f"SMTP 发送异常（{type(error).__name__}）"
 
 
 class NotificationQueue:
@@ -44,6 +67,8 @@ class NotificationQueue:
         self._last_event = ""
         self._last_result = ""
         self._last_timestamp = 0
+        self._last_error_code = ""
+        self._last_error = ""
 
     def _ensure_worker_locked(self) -> None:
         if self._thread is not None:
@@ -66,6 +91,8 @@ class NotificationQueue:
                 self._dropped += 1
                 self._last_event = str(getattr(notification, "event", "") or "")
                 self._last_result = "failed"
+                self._last_error_code = "notification_queue_closed"
+                self._last_error = "通知队列已关闭"
                 self._last_timestamp = int(self._now_fn())
                 return False
             try:
@@ -74,6 +101,8 @@ class NotificationQueue:
                 self._dropped += 1
                 self._last_event = str(getattr(notification, "event", "") or "")
                 self._last_result = "failed"
+                self._last_error_code = "notification_queue_full"
+                self._last_error = "通知队列已满"
                 self._last_timestamp = int(self._now_fn())
                 return False
             self._outstanding += 1
@@ -103,8 +132,9 @@ class NotificationQueue:
             try:
                 self._send_fn(notification)
                 delivered = True
-            except Exception:
+            except Exception as exc:
                 delivered = False
+                error_code, error_message = _delivery_failure(exc)
             finally:
                 with self._condition:
                     self._in_flight -= 1
@@ -112,9 +142,13 @@ class NotificationQueue:
                     if delivered:
                         self._sent += 1
                         self._last_result = "sent"
+                        self._last_error_code = ""
+                        self._last_error = ""
                     else:
                         self._failed += 1
                         self._last_result = "failed"
+                        self._last_error_code = error_code
+                        self._last_error = error_message
                     self._last_timestamp = int(self._now_fn())
                     self._condition.notify_all()
                 self._queue.task_done()
@@ -158,4 +192,6 @@ class NotificationQueue:
                 "event": self._last_event,
                 "status": self._last_result,
                 "timestamp": self._last_timestamp,
+                "error_code": self._last_error_code,
+                "error": self._last_error,
             }

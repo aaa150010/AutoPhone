@@ -28,6 +28,21 @@ OPENAI_CODEX_PROBE_USER_AGENT = (
 _QUOTA_SUMMARY_LIMIT = 240
 
 
+def _network_error_message(error: BaseException) -> str:
+    text = f"{type(error).__name__}: {error}".lower()
+    if any(marker in text for marker in ("proxyerror", "proxy connect", "unable to connect to proxy")):
+        return "无法连接当前显式代理"
+    if any(marker in text for marker in ("could not resolve", "name resolution", "getaddrinfo")):
+        return "OpenAI 域名 DNS 解析失败"
+    if any(marker in text for marker in ("tls", "ssl", "certificate", "handshake")):
+        return "OpenAI TLS 握手失败"
+    if any(marker in text for marker in ("timeout", "timed out")):
+        return "OpenAI 连接或响应超时"
+    if any(marker in text for marker in ("connection reset", "remote disconnected", "unexpected eof")):
+        return "OpenAI 远端连接中断"
+    return f"OpenAI 网络连接异常（{type(error).__name__}）"
+
+
 class QuotaResponse(Protocol):
     status_code: int
 
@@ -104,7 +119,7 @@ class CurlCffiQuotaTransport:
         except Exception as exc:
             raise OpenAIQuotaError(
                 "openai_quota_network_error",
-                "网络请求失败，请检查当前显式代理",
+                _network_error_message(exc),
             ) from exc
         finally:
             session.close()
@@ -139,7 +154,7 @@ class CurlCffiQuotaTransport:
         except Exception as exc:
             raise OpenAIQuotaError(
                 "openai_quota_probe_network_error",
-                "5 小时额度探针网络请求失败",
+                f"5 小时额度探针失败：{_network_error_message(exc)}",
             ) from exc
         finally:
             if response is not None:
@@ -256,7 +271,7 @@ def public_quota_snapshot(
         code = str(row.get("code") or old.get("code") or "openai_quota_failed").strip()
         result["code"] = code if code.startswith("openai_quota_") else "openai_quota_failed"
         result["error"] = _clean_public_text(
-            row.get("error") or old.get("error") or "查询 OpenAI 额度失败：未返回可用诊断"
+            row.get("error") or old.get("error") or "查询 OpenAI 额度失败：历史记录没有保存具体原因"
         )
         try:
             http_status = row.get("http_status") if row.get("http_status") is not None else old.get("http_status")
@@ -537,7 +552,7 @@ class OpenAIQuotaClient:
         except Exception as exc:
             raise OpenAIQuotaError(
                 "openai_quota_network_error",
-                "网络请求失败，请检查当前显式代理",
+                _network_error_message(exc),
             ) from exc
         status = int(getattr(response, "status_code", 0) or 0)
         if status < 200 or status >= 300:

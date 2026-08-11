@@ -30,6 +30,7 @@ class ConnectivityGuardRouteTests(unittest.TestCase):
         self.fail_disable_write = False
         self.app = Flask(__name__)
         module = SimpleNamespace(jsonify=jsonify, request=request)
+        self.diagnostics = SimpleNamespace(run=lambda: {"overall": "healthy"})
         patch_openai_connectivity_guard_route(
             self.app,
             module=module,
@@ -41,6 +42,7 @@ class ConnectivityGuardRouteTests(unittest.TestCase):
             write_local_config=self._write_local,
             masked_local_config=lambda value: dict(value),
             masked_state=lambda value: dict(value),
+            diagnostics=self.diagnostics,
         )
 
     def _write_local(self, value):
@@ -81,6 +83,26 @@ class ConnectivityGuardRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 500)
         self.assertTrue(self.store.current["openai_connectivity_guard"])
         self.assertTrue(self.local["openai_connectivity_guard"])
+        self.assertNotIn("private-proxy-password", response.get_data(as_text=True))
+
+    def test_manual_connectivity_diagnostics_route_returns_safe_report(self):
+        response = self.app.test_client().post("/api/openai-connectivity-diagnostics", json={})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["diagnostic"]["overall"], "healthy")
+
+    def test_diagnostic_runtime_failure_is_structured_without_exception_detail(self):
+        self.diagnostics.run = lambda: (_ for _ in ()).throw(
+            RuntimeError("http://user:private-proxy-password@127.0.0.1:7897")
+        )
+
+        response = self.app.test_client().post("/api/openai-connectivity-diagnostics", json={})
+        payload = response.get_json()
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(payload["failure"]["node_code"], "openai_connectivity_diagnostic")
+        self.assertEqual(payload["failure"]["error_code"], "openai_connectivity_diagnostic_failed")
+        self.assertIn("RuntimeError", payload["failure"]["technical_summary"])
         self.assertNotIn("private-proxy-password", response.get_data(as_text=True))
 
 

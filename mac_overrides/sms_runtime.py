@@ -632,7 +632,7 @@ class SmsKeyPool:
                 state.cooldown_until = now + 60
             elif kind == "network_error":
                 state.status = kind
-                state.message = "网络请求失败，稍后重试"
+                state.message = f"网络异常：{text[:120] or '接码平台未返回连接详情'}"
                 state.cooldown_until = now + 30
             elif runtime:
                 state.status = "usable"
