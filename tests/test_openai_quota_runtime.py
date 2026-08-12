@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from mac_overrides.openai_quota_runtime import (
     OPENAI_CODEX_RESPONSES_URL,
@@ -57,6 +58,25 @@ def success_document():
 
 
 class OpenAIQuotaRuntimeTests(unittest.TestCase):
+    def test_snapshot_store_reuses_unchanged_file_for_many_row_lookups(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "quota-snapshots.json"
+            store = OpenAIQuotaSnapshotStore(path)
+            for index in range(3):
+                store.put(f"account-{index}", {
+                    "status": "ok",
+                    "quota_5h": {"remaining_percent": 90 - index},
+                })
+            reloaded = OpenAIQuotaSnapshotStore(path)
+            with patch("mac_overrides.openai_quota_runtime.json.loads", wraps=json.loads) as loads:
+                for _round in range(10):
+                    for index in range(3):
+                        self.assertEqual(
+                            reloaded.status_for(f"account-{index}")["status"],
+                            "ok",
+                        )
+
+        self.assertEqual(loads.call_count, 1)
     def test_snapshot_persist_failure_is_not_reported_as_a_success(self):
         snapshot = persist_quota_snapshot(
             lambda _account_id, _value: (_ for _ in ()).throw(OSError("private path")),

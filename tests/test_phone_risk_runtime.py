@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from mac_overrides.phone_risk_runtime import PhoneRiskStore, account_fingerprint
 
@@ -23,6 +24,16 @@ class PhoneRiskStoreTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
+
+    def test_repeated_status_reads_reuse_unchanged_snapshot_file(self):
+        self.store.mark("private@example.test")
+        recreated = PhoneRiskStore(self.path, now_fn=lambda: self.clock)
+
+        with patch("mac_overrides.phone_risk_runtime.json.loads", wraps=json.loads) as loads:
+            for _index in range(20):
+                self.assertTrue(recreated.status("private@example.test")["active"])
+
+        self.assertEqual(loads.call_count, 1)
 
     def test_marker_persists_by_hash_across_store_recreation(self):
         email = "Risk.User@Example.test"

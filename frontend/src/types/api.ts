@@ -434,6 +434,18 @@ export interface MailboxPayload {
   counts: Record<string, number>
   rows: MailboxRow[]
   operation?: MailboxBatchOperation | null
+  performance?: {
+    result_index?: {
+      enabled: boolean
+      cache_active: boolean
+      rollback_active: boolean
+      rollback_reason: string
+      files_scanned: number
+      cache_hits: number
+      files_read: number
+      elapsed_ms: number
+    }
+  }
 }
 
 export interface MailboxUrlTestDiagnostics {

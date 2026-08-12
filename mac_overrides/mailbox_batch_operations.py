@@ -173,7 +173,7 @@ def _public_quota_error(value: Mapping[str, Any], code: str) -> str:
         "openai_quota_invalid_response": "OpenAI 额度接口返回了无法解析的数据",
         "openai_quota_invalid_result": "额度查询未返回有效结果",
         "openai_quota_result_missing": "本地成功结果缺失或不可读取，请重新登录后重试",
-        "openai_quota_deactivated_workspace": "OpenAI 工作空间已停用，本地邮箱将在批次结束后删除",
+        "openai_quota_deactivated_workspace": "OpenAI 工作空间已停用，确认后立即清理本地邮箱",
     }
     if code == "openai_quota_request_rejected":
         status = _safe_number(value.get("http_status"))
@@ -391,10 +391,8 @@ class MailboxBatchOperationManager:
         worker: Callable[[dict[str, Any]], Mapping[str, Any]],
     ) -> None:
         try:
-            pending_deactivated_rows: list[dict[str, Any]] = []
             for offset in range(0, len(operation.bindings), self._chunk_size):
                 chunk = operation.bindings[offset : offset + self._chunk_size]
-                final_chunk = offset + len(chunk) >= len(operation.bindings)
                 reported: set[tuple[str, int]] = set()
 
                 def on_row_completed(
@@ -434,9 +432,6 @@ class MailboxBatchOperationManager:
                     ],
                     "_on_row_completed": on_row_completed,
                 }
-                if operation.kind in {"quota", "openai_test"}:
-                    payload["_defer_deactivated_delete"] = not final_chunk
-                    payload["_pending_deactivated_rows"] = list(pending_deactivated_rows)
                 try:
                     result = worker(payload)
                 except Exception:
@@ -454,12 +449,6 @@ class MailboxBatchOperationManager:
                         ),
                     )
                     return
-                if operation.kind in {"quota", "openai_test"}:
-                    pending_deactivated_rows = [
-                        {"row_id": str(item.get("row_id") or ""), "line_no": int(item.get("line_no") or 0)}
-                        for item in (result.get("deactivated_rows") or ())
-                        if isinstance(item, Mapping)
-                    ]
                 counters = _chunk_counters(operation.kind, result, len(chunk))
                 if operation.kind in {"quota", "openai_test"}:
                     counters["deactivated_deleted"] = _safe_count(

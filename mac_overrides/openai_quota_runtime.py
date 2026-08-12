@@ -290,6 +290,8 @@ class OpenAIQuotaSnapshotStore:
         self.path = Path(path)
         self.now_fn = now_fn
         self._lock = RLock()
+        self._cached_signature: tuple[int, int, int, int] | None = None
+        self._cached_payload: dict[str, Any] | None = None
 
     @staticmethod
     def _key(account_id: Any) -> str:
@@ -298,11 +300,20 @@ class OpenAIQuotaSnapshotStore:
 
     def _read_unlocked(self) -> dict[str, Any]:
         try:
+            stat = self.path.stat()
+            signature = (stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size, stat.st_ino)
+        except OSError:
+            signature = None
+        if self._cached_payload is not None and signature == self._cached_signature:
+            return self._cached_payload
+        try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
         except Exception:
             payload = {"version": 1, "items": {}}
         if not isinstance(payload, dict) or not isinstance(payload.get("items"), dict):
-            return {"version": 1, "items": {}}
+            payload = {"version": 1, "items": {}}
+        self._cached_signature = signature
+        self._cached_payload = payload
         return payload
 
     def _write_unlocked(self, payload: Mapping[str, Any]) -> None:
@@ -323,6 +334,14 @@ class OpenAIQuotaSnapshotStore:
                 os.fsync(handle.fileno())
             os.chmod(temporary, 0o600)
             os.replace(temporary, self.path)
+            stat = self.path.stat()
+            self._cached_signature = (
+                stat.st_mtime_ns,
+                stat.st_ctime_ns,
+                stat.st_size,
+                stat.st_ino,
+            )
+            self._cached_payload = dict(payload)
         finally:
             if temporary and os.path.exists(temporary):
                 os.unlink(temporary)

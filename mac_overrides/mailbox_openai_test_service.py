@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hmac
 from collections.abc import Mapping, Sequence
+from threading import Lock
 from typing import Any
 
 try:
@@ -50,6 +51,27 @@ def test_openai_mailboxes(mailbox_admin: Any, payload: Any) -> dict[str, Any]:
     internal_batch = callable(row_completed)
     if not internal_batch:
         row_completed = None
+    immediate_deleted: set[str] = set()
+    immediate_deleted_count = 0
+    delete_lock = Lock()
+
+    def publish_completed(update: Any) -> None:
+        nonlocal immediate_deleted_count
+        if internal_batch and isinstance(update, Mapping):
+            confirmed = _confirmed_deactivated_rows({"results": [update]})
+            if confirmed:
+                row_id = str(confirmed[0].get("row_id") or "").strip().lower()
+                with delete_lock:
+                    if row_id and row_id not in immediate_deleted:
+                        deleted = delete_deactivated_mailboxes(mailbox_admin, confirmed)
+                        if deleted.get("ok") and int(deleted.get("deactivated_deleted") or 0) > 0:
+                            immediate_deleted.add(row_id)
+                            immediate_deleted_count += int(deleted["deactivated_deleted"])
+        if row_completed is not None:
+            try:
+                row_completed(update)
+            except Exception:
+                pass
     requested = value.get("rows")
     if not isinstance(requested, Sequence) or isinstance(requested, (str, bytes)) or not requested:
         return {"ok": False, "code": "openai_test_rows_required", "error": "请先勾选要测试的邮箱"}
@@ -76,12 +98,26 @@ def test_openai_mailboxes(mailbox_admin: Any, payload: Any) -> dict[str, Any]:
         state = mailbox_admin._read_json_file(mailbox_admin._path(config, "state_path"))
         state_by_line, state_by_email, state_by_row_id = index_mailbox_states(state.get("items"))
         resolved: list[dict[str, Any]] = []
-        for line_no, expected_row_id in bindings:
-            if line_no > len(lines):
-                return {"ok": False, "code": "mailbox_rows_stale", "error": "邮箱列表已变化，请刷新后重试"}
-            row = lines[line_no - 1]
-            if not hmac.compare_digest(expected_row_id, row_id_from_source(row)):
-                return {"ok": False, "code": "mailbox_rows_stale", "error": "邮箱列表已变化，请刷新后重试"}
+        for original_line_no, expected_row_id in bindings:
+            line_no = original_line_no
+            if internal_batch:
+                rebound = next(
+                    (
+                        (current_line, source_row)
+                        for current_line, source_row in enumerate(lines, start=1)
+                        if hmac.compare_digest(expected_row_id, row_id_from_source(source_row))
+                    ),
+                    None,
+                )
+                if rebound is None:
+                    return {"ok": False, "code": "mailbox_rows_stale", "error": "邮箱列表已变化，请刷新后重试"}
+                line_no, row = rebound
+            else:
+                if line_no > len(lines):
+                    return {"ok": False, "code": "mailbox_rows_stale", "error": "邮箱列表已变化，请刷新后重试"}
+                row = lines[line_no - 1]
+                if not hmac.compare_digest(expected_row_id, row_id_from_source(row)):
+                    return {"ok": False, "code": "mailbox_rows_stale", "error": "邮箱列表已变化，请刷新后重试"}
             email = email_from_row(row)
             document = latest.get(email) or {}
             result_status = str(document.get("status") or "").strip().lower()
@@ -107,13 +143,13 @@ def test_openai_mailboxes(mailbox_admin: Any, payload: Any) -> dict[str, Any]:
                 openai_status_id = ""
             resolved.append({
                 "row_id": expected_row_id,
-                "line_no": line_no,
+                "line_no": original_line_no,
                 "email": email,
                 "openai_status_id": openai_status_id,
                 "document": document,
             })
             if row_completed is not None:
-                resolved[-1]["_on_row_completed"] = row_completed
+                resolved[-1]["_on_row_completed"] = publish_completed
 
     if mailbox_admin.openai_direct_batch_tester is None:
         return {
@@ -143,21 +179,24 @@ def test_openai_mailboxes(mailbox_admin: Any, payload: Any) -> dict[str, Any]:
     if not result.get("ok"):
         return result
     current_deactivated_rows = _confirmed_deactivated_rows(result)
-    pending_deactivated_rows = [
-        {"row_id": str(item.get("row_id") or ""), "line_no": int(item.get("line_no") or 0)}
-        for item in ((value.get("_pending_deactivated_rows") or ()) if internal_batch else ())
-        if isinstance(item, Mapping)
-    ]
-    deactivated_rows = list({
-        item["row_id"]: item
-        for item in [*pending_deactivated_rows, *current_deactivated_rows]
-        if item["row_id"]
-    }.values())
+    deactivated_rows = current_deactivated_rows
     result["deactivated_rows"] = deactivated_rows
     result["deactivated_detected"] = len(current_deactivated_rows)
-    defer_delete = internal_batch and value.get("_defer_deactivated_delete") is True
-    if deactivated_rows and not defer_delete:
-        result.update(delete_deactivated_mailboxes(mailbox_admin, deactivated_rows))
+    if immediate_deleted_count:
+        result["deactivated_deleted"] = immediate_deleted_count
+    pending_delete = [
+        item for item in deactivated_rows
+        if str(item.get("row_id") or "").strip().lower() not in immediate_deleted
+    ]
+    if pending_delete:
+        cleanup = delete_deactivated_mailboxes(mailbox_admin, pending_delete)
+        if not cleanup.get("ok"):
+            result.update(cleanup)
+        else:
+            result["deactivated_deleted"] = int(
+                result.get("deactivated_deleted") or 0
+            ) + int(cleanup.get("deactivated_deleted") or 0)
+            result["deactivated_missing"] = int(cleanup.get("deactivated_missing") or 0)
     return result
 
 

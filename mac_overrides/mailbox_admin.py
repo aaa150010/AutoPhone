@@ -158,6 +158,11 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
         sub2_account_id_from_result,
     )
 
+try:
+    from .mailbox_result_index import MailboxResultIndex
+except ImportError:  # Loaded as a top-level override module by the Mac launcher.
+    from mailbox_result_index import MailboxResultIndex
+
 _PROGRESS_FIELDS = ("code", "label", "group", "entered_at", "finished_at", "timing")
 _SECRET_MASK = "********"
 
@@ -202,6 +207,7 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
         next_batch_priority: Any = None,
         run_batch_membership: Callable[..., Sequence[Mapping[str, Any]]] | None = None,
         current_run_append: Callable[[Sequence[str]], Mapping[str, Any]] | None = None,
+        result_index: MailboxResultIndex | None = None,
     ) -> None:
         self.store = store
         self.validate_pool = validate_pool
@@ -224,6 +230,7 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
         self.next_batch_priority = next_batch_priority
         self.run_batch_membership = run_batch_membership
         self.current_run_append = current_run_append
+        self.result_index = result_index or MailboxResultIndex(now_fn=now_fn)
         self._lock = RLock()
 
     def _config(self) -> dict[str, Any]:
@@ -487,31 +494,14 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
         }
 
     def _latest_results_by_email(self, results_dir: Path) -> dict[str, dict[str, Any]]:
-        latest: dict[str, dict[str, Any]] = {}
-        if not results_dir.exists():
-            return latest
-        for path in sorted(results_dir.glob("*.json")):
-            data = self._read_json_file(path)
-            email = email_from_row(data.get("email") or data.get("source_row") or "")
-            if not email:
-                continue
-            try:
-                fallback_created = path.stat().st_mtime
-            except OSError:
-                fallback_created = 0
-            try:
-                created = int(data.get("created_at") or data.get("updated_at") or fallback_created)
-            except (TypeError, ValueError):
-                created = int(fallback_created)
-            previous = latest.get(email)
-            if previous is None or created >= int(previous.get("_created") or 0):
-                data["_created"] = created
-                data["_result_file"] = str(path.resolve())
-                latest[email] = data
-        return latest
+        config = self._config()
+        enabled = config.get("mailbox_result_index_cache") is not False
+        return self.result_index.snapshot(results_dir, enabled=enabled).latest_results
 
     def _latest_sub2_accounts_by_email(self, results_dir: Path) -> dict[str, dict[str, Any]]:
-        return latest_sub2_accounts_by_email(results_dir)
+        config = self._config()
+        enabled = config.get("mailbox_result_index_cache") is not False
+        return self.result_index.snapshot(results_dir, enabled=enabled).latest_sub2_accounts
 
     def _sub2_status_for(self, account_id: str) -> dict[str, Any]:
         if not account_id:
@@ -584,8 +574,12 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
         items = state.get("items") if isinstance(state.get("items"), Mapping) else {}
         state_by_line, state_by_email, state_by_row_id = index_mailbox_states(items)
 
-        latest_results = self._latest_results_by_email(results_dir)
-        latest_sub2_accounts = self._latest_sub2_accounts_by_email(results_dir)
+        result_snapshot = self.result_index.snapshot(
+            results_dir,
+            enabled=config.get("mailbox_result_index_cache") is not False,
+        )
+        latest_results = result_snapshot.latest_results
+        latest_sub2_accounts = result_snapshot.latest_sub2_accounts
         live_progress = self._live_progress_by_email(config)
         rows = []
         counts = {"total": 0, "available": 0, "running": 0, "success": 0, "failed": 0}
@@ -785,7 +779,13 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
                 int(item.get("line_no") or 0),
             )
         )
-        return {"ok": True, "counts": counts, "rows": rows, "pool_path": str(pool_path)}
+        return {
+            "ok": True,
+            "counts": counts,
+            "rows": rows,
+            "pool_path": str(pool_path),
+            "performance": {"result_index": result_snapshot.metrics},
+        }
 
     def online_mailbox_snapshot(self) -> dict[str, Any]:
         """Return one latest URL mailbox per email without other credentials."""
@@ -1073,7 +1073,23 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
         with self._lock:
             config = self._config()
             lines = self._read_pool_lines(config)
-            resolved = resolve_source_rows(value, lines, row_id_from_source)
+            internal_rebind = callable(value.get("_on_row_completed")) and value.get("_allow_row_rebind") is True
+            if internal_rebind:
+                requested = value.get("rows") or ()
+                by_row_id = {
+                    row_id_from_source(source_row): (line_no, source_row)
+                    for line_no, source_row in enumerate(lines, start=1)
+                }
+                rebound_rows = []
+                for item in requested:
+                    row_id = str(item.get("row_id") or "").strip() if isinstance(item, Mapping) else ""
+                    rebound = by_row_id.get(row_id)
+                    if rebound is None:
+                        return {"ok": False, "code": "mailbox_rows_stale", "error": "邮箱列表已变化，请刷新后重试"}
+                    rebound_rows.append({"row_id": row_id, "line_no": rebound[0], "source_row": rebound[1]})
+                resolved = {"ok": True, "rows": rebound_rows}
+            else:
+                resolved = resolve_source_rows(value, lines, row_id_from_source)
             if not resolved.get("ok"):
                 return resolved
             latest = self._latest_results_by_email(self._path(config, "results_dir"))

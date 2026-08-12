@@ -248,7 +248,7 @@ def _non_success_status(response: DirectOpenAIResponse, tested_at: int) -> Sub2T
             DEACTIVATED_WORKSPACE_KIND,
             402,
             "402 工作空间已停用",
-            "OpenAI 工作空间已停用，本地邮箱将在批次结束后删除",
+            "OpenAI 工作空间已停用，确认后立即清理本地邮箱",
             tested_at,
         )
     return _status_from_direct_code(status_code, tested_at)

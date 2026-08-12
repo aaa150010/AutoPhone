@@ -5,6 +5,7 @@ import time
 from mac_overrides.performance_runtime import (
     ADAPTIVE_TASK_CONCURRENCY,
     InflightAdmissionGate,
+    MAILBOX_RESULT_INDEX_CACHE,
     OPENAI_CONNECTIVITY_GUARD,
     PHONE_BINDING_COMPATIBILITY,
     SMS_QUALITY_OPTIMIZATION,
@@ -25,6 +26,7 @@ class PerformanceRuntimeTests(unittest.TestCase):
         self.assertTrue(defaults[TASK_INFLIGHT_OPTIMIZATION])
         self.assertTrue(defaults[OPENAI_CONNECTIVITY_GUARD])
         self.assertTrue(defaults[PHONE_BINDING_COMPATIBILITY])
+        self.assertTrue(defaults[MAILBOX_RESULT_INDEX_CACHE])
 
         disabled = normalize_feature_flags(
             {
@@ -32,6 +34,7 @@ class PerformanceRuntimeTests(unittest.TestCase):
                 ADAPTIVE_TASK_CONCURRENCY: 0,
                 TASK_INFLIGHT_OPTIMIZATION: "off",
                 PHONE_BINDING_COMPATIBILITY: "disabled",
+                MAILBOX_RESULT_INDEX_CACHE: "off",
                 "unrelated": "kept",
             }
         )
@@ -39,6 +42,7 @@ class PerformanceRuntimeTests(unittest.TestCase):
         self.assertFalse(disabled[ADAPTIVE_TASK_CONCURRENCY])
         self.assertFalse(disabled[TASK_INFLIGHT_OPTIMIZATION])
         self.assertFalse(disabled[PHONE_BINDING_COMPATIBILITY])
+        self.assertFalse(disabled[MAILBOX_RESULT_INDEX_CACHE])
         self.assertEqual(disabled["unrelated"], "kept")
 
     def test_protocol_ceiling_defaults_to_twelve_and_is_bounded_to_eight_fifteen(self):

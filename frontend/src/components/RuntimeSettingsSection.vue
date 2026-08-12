@@ -202,6 +202,13 @@ function updateProxyScope(key: string, value: boolean | string | number) {
       />
     </el-form-item>
 
+    <el-form-item label="邮箱结果增量索引">
+      <el-switch
+        :model-value="modelValue.mailbox_result_index_cache !== false"
+        @update:model-value="update('mailbox_result_index_cache', Boolean($event))"
+      />
+    </el-form-item>
+
   </div>
 </template>
 

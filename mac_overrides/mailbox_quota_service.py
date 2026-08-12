@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections.abc import Mapping, Sequence
+from threading import Lock
 from typing import Any
 
 try:
@@ -93,7 +94,20 @@ def query_openai_quotas(mailbox_admin: Any, payload: Any) -> dict[str, Any]:
     internal_batch = callable(row_completed)
     if not internal_batch:
         row_completed = None
-    selected = mailbox_admin.selected_success_results({"rows": requested, "_include_skipped": True})
+    original_lines = {
+        str(item.get("row_id") or ""): int(item.get("line_no") or 0)
+        for item in requested
+        if isinstance(item, Mapping)
+    }
+    immediate_deleted: set[str] = set()
+    immediate_deleted_count = 0
+    delete_lock = Lock()
+    selected = mailbox_admin.selected_success_results({
+        "rows": requested,
+        "_include_skipped": True,
+        "_allow_row_rebind": internal_batch,
+        "_on_row_completed": row_completed,
+    })
     if not selected.get("ok"):
         return selected
     if not callable(mailbox_admin.openai_quota_query):
@@ -105,6 +119,15 @@ def query_openai_quotas(mailbox_admin: Any, payload: Any) -> dict[str, Any]:
     proxy = str(mailbox_admin._config().get("proxy") or "")
 
     def publish_completed(item: Mapping[str, Any]) -> None:
+        nonlocal immediate_deleted_count
+        if internal_batch and _is_deactivated_workspace(item):
+            row_id = str(item.get("row_id") or "").strip().lower()
+            with delete_lock:
+                if row_id and row_id not in immediate_deleted:
+                    deleted = delete_deactivated_mailboxes(mailbox_admin, [item])
+                    if deleted.get("ok") and int(deleted.get("deactivated_deleted") or 0) > 0:
+                        immediate_deleted.add(row_id)
+                        immediate_deleted_count += int(deleted["deactivated_deleted"])
         if row_completed is None:
             return
         try:
@@ -135,7 +158,10 @@ def query_openai_quotas(mailbox_admin: Any, payload: Any) -> dict[str, Any]:
     def query_one(item: Mapping[str, Any]) -> dict[str, Any]:
         public_item = {
             "row_id": str(item.get("row_id") or ""),
-            "line_no": int(item.get("line_no") or 0),
+            "line_no": original_lines.get(
+                str(item.get("row_id") or ""),
+                int(item.get("line_no") or 0),
+            ),
         }
         try:
             quota_account_id = credentials_from_result(item["document"]).account_id
@@ -164,7 +190,10 @@ def query_openai_quotas(mailbox_admin: Any, payload: Any) -> dict[str, Any]:
     for item in selected.get("skipped_items") or []:
         public_item = {
             "row_id": str(item.get("row_id") or ""),
-            "line_no": int(item.get("line_no") or 0),
+            "line_no": original_lines.get(
+                str(item.get("row_id") or ""),
+                int(item.get("line_no") or 0),
+            ),
         }
         finished.append(persist(public_item, "", {
             "status": "error",
@@ -194,16 +223,7 @@ def query_openai_quotas(mailbox_admin: Any, payload: Any) -> dict[str, Any]:
         for item in finished
         if _is_deactivated_workspace(item)
     ]
-    pending_deactivated_rows = [
-        {"row_id": str(item.get("row_id") or ""), "line_no": int(item.get("line_no") or 0)}
-        for item in ((value.get("_pending_deactivated_rows") or ()) if internal_batch else ())
-        if isinstance(item, Mapping)
-    ]
-    deactivated_rows = list({
-        item["row_id"]: item
-        for item in [*pending_deactivated_rows, *current_deactivated_rows]
-        if item["row_id"]
-    }.values())
+    deactivated_rows = current_deactivated_rows
     result = {
         "ok": True,
         "results": finished,
@@ -213,9 +233,21 @@ def query_openai_quotas(mailbox_admin: Any, payload: Any) -> dict[str, Any]:
         "deactivated_rows": deactivated_rows,
         "deactivated_detected": len(current_deactivated_rows),
     }
-    defer_delete = internal_batch and value.get("_defer_deactivated_delete") is True
-    if deactivated_rows and not defer_delete:
-        result.update(delete_deactivated_mailboxes(mailbox_admin, deactivated_rows))
+    if immediate_deleted_count:
+        result["deactivated_deleted"] = immediate_deleted_count
+    pending_delete = [
+        item for item in deactivated_rows
+        if str(item.get("row_id") or "").strip().lower() not in immediate_deleted
+    ]
+    if pending_delete:
+        cleanup = delete_deactivated_mailboxes(mailbox_admin, pending_delete)
+        if not cleanup.get("ok"):
+            result.update(cleanup)
+        else:
+            result["deactivated_deleted"] = int(
+                result.get("deactivated_deleted") or 0
+            ) + int(cleanup.get("deactivated_deleted") or 0)
+            result["deactivated_missing"] = int(cleanup.get("deactivated_missing") or 0)
     return result
 
 

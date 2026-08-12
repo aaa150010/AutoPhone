@@ -165,17 +165,18 @@ function openDetails(row: RuntimeTask) {
 
 <style scoped>
 .task-results { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
-.task-summary-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; height: 48px; padding: 0; border: 1px solid #bdcbc6; border-bottom: 2px solid #93a7a0; background: #bdcbc6; }
-.task-summary-tabs button { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 0; height: 46px; border: 0; border-top: 3px solid transparent; border-radius: 0; padding: 0 14px; background: #f5f8f7; color: #536174; font-size: 13px; font-weight: 650; cursor: pointer; transition: background-color 0.15s ease, color 0.15s ease; }
-.task-summary-tabs button:hover { background: #e6f1ed; color: #0f6b5b; }
-.task-summary-tabs button.active { border-top-color: #075e50; background: #167d6a; color: #fff; font-weight: 700; box-shadow: inset 0 -2px 0 rgb(0 0 0 / 12%); }
-.task-summary-tabs button.urgent { background: #fff0f1; color: #b42335; }
-.task-summary-tabs button.active.urgent { border-top-color: #8f1625; background: #c83f4f; color: #fff; }
-.task-summary-tabs button .el-icon { width: 17px; height: 17px; font-size: 17px; }
-.task-summary-tabs button.active b { background: #fff; color: #075e50; }
-.task-summary-tabs button.active.urgent b { color: #a51d2d; }
-.task-summary-tabs button.urgent:not(.active) b { background: #c83f4f; color: #fff; }
-.task-summary-tabs b { display: inline-grid; place-items: center; min-width: 24px; height: 20px; padding: 0 6px; border-radius: 10px; background: #dce4e1; color: #405064; font-size: 11px; }
+.task-summary-tabs { display: grid; grid-template-columns: repeat(3, 120px); align-content: center; align-self: stretch; justify-content: start; gap: 3px; height: 34px; padding: 3px 8px; border-bottom: 1px solid #dce6e2; background: #fafcfb; }
+.task-summary-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; height: 26px; border: 1px solid transparent; border-radius: 4px; padding: 0 8px; background: transparent; color: #586a67; font-size: 12px; font-weight: 600; cursor: pointer; transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease; }
+.task-summary-tabs button:hover { background: #edf4f2; color: #0f6b5b; }
+.task-summary-tabs button:focus-visible { outline: 2px solid #72b8a8; outline-offset: 1px; }
+.task-summary-tabs button.active { border-color: #83bdae; background: #e8f4f0; color: #0b6757; font-weight: 700; box-shadow: 0 1px 2px rgb(15 107 91 / 10%); }
+.task-summary-tabs button.urgent { color: #a52b3b; }
+.task-summary-tabs button.active.urgent { border-color: #df9da5; background: #fff1f2; color: #9f2435; box-shadow: 0 1px 2px rgb(165 43 59 / 10%); }
+.task-summary-tabs button .el-icon { width: 14px; height: 14px; font-size: 14px; }
+.task-summary-tabs button.active b { background: #0f6b5b; color: #fff; }
+.task-summary-tabs button.urgent b,
+.task-summary-tabs button.active.urgent b { background: #c83f4f; color: #fff; }
+.task-summary-tabs b { display: inline-grid; place-items: center; min-width: 18px; height: 16px; padding: 0 4px; border-radius: 8px; background: #e1e8e6; color: #52635f; font-size: 9px; font-variant-numeric: tabular-nums; }
 .task-table { width: 100%; flex: 1; min-height: 0; }
 .copyable-account { display: block; max-width: 100%; overflow: hidden; padding: 0; border: 0; background: transparent; color: var(--el-color-primary); font: inherit; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: copy; }
 .copyable-account:focus-visible { outline: 2px solid var(--el-color-primary-light-5); outline-offset: 2px; border-radius: 2px; }

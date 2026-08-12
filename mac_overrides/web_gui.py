@@ -743,6 +743,7 @@ def _patched_config_load(self):
         "task_inflight_limit",
         "openai_connectivity_guard",
         "phone_binding_compatibility",
+        "mailbox_result_index_cache",
         "protocol_concurrency_ceiling",
         "dynamic_auth_challenges",
     )
@@ -792,6 +793,7 @@ def _patched_config_save(self, values):
         "task_inflight_limit",
         "openai_connectivity_guard",
         "phone_binding_compatibility",
+        "mailbox_result_index_cache",
         "protocol_concurrency_ceiling",
         "dynamic_auth_challenges",
     ):

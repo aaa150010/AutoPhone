@@ -150,6 +150,8 @@ class PhoneRiskStore:
             else 0
         )
         self._lock = RLock()
+        self._cached_signature: tuple[int, int, int, int] | None = None
+        self._cached_payload: dict[str, Any] | None = None
 
     def _now(self) -> float:
         try:
@@ -214,6 +216,13 @@ class PhoneRiskStore:
 
     def _read_unlocked(self) -> dict[str, Any]:
         try:
+            stat = self.path.stat()
+            signature = (stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size, stat.st_ino)
+        except OSError:
+            signature = None
+        if self._cached_payload is not None and signature == self._cached_signature:
+            return self._cached_payload
+        try:
             value = json.loads(self.path.read_text(encoding="utf-8"))
         except Exception:
             value = {}
@@ -225,7 +234,10 @@ class PhoneRiskStore:
             for key, row in items.items()
             if _FINGERPRINT_RE.fullmatch(str(key)) and isinstance(row, Mapping)
         }
-        return {"version": 1, "items": sanitized}
+        payload = {"version": 1, "items": sanitized}
+        self._cached_signature = signature
+        self._cached_payload = payload
+        return payload
 
     def _write_unlocked(self, value: Mapping[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -235,6 +247,14 @@ class PhoneRiskStore:
             encoding="utf-8",
         )
         temporary.replace(self.path)
+        stat = self.path.stat()
+        self._cached_signature = (
+            stat.st_mtime_ns,
+            stat.st_ctime_ns,
+            stat.st_size,
+            stat.st_ino,
+        )
+        self._cached_payload = dict(value)
 
     @staticmethod
     def _public_row(value: Any) -> dict[str, Any]:

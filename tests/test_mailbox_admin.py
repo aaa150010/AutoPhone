@@ -949,6 +949,68 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertEqual(completed["status"], "completed")
         self.assertEqual(completed["succeeded"], 2)
 
+    def test_background_quota_deletes_402_row_before_slow_peer_finishes(self):
+        rows = [
+            "deactivated@example.com----pass-one----client-one----refresh-one",
+            "slow@example.com----pass-two----client-two----refresh-two",
+        ]
+        self._write_pool("\n".join(rows) + "\n")
+        results = self.root / "results"
+        results.mkdir()
+        for index, row in enumerate(rows, start=1):
+            (results / f"{index}.json").write_text(
+                json.dumps({
+                    "email": email_from_row(row),
+                    "status": "success",
+                    "task_id": f"task-{index}",
+                    "created_at": index,
+                    "result": {
+                        "access_token": f"private-access-{index}",
+                        "chatgpt_account_id": f"private-account-{index}",
+                    },
+                }),
+                encoding="utf-8",
+            )
+
+        slow_started = threading.Event()
+        release_slow = threading.Event()
+
+        def query(document, _proxy):
+            if document["task_id"] == "task-1":
+                raise OpenAIQuotaError(
+                    "openai_quota_deactivated_workspace",
+                    "OpenAI 工作空间已停用",
+                    http_status=402,
+                )
+            slow_started.set()
+            release_slow.wait(2)
+            return {"status": "ok", "quota_5h": {"remaining_percent": 50}}
+
+        self.service.openai_quota_query = query
+        self.service.openai_quota_status_store = lambda _account_id, value: value
+        bindings = [
+            {"row_id": row_id_from_source(row), "line_no": index}
+            for index, row in enumerate(rows, start=1)
+        ]
+        manager = MailboxBatchOperationManager(chunk_size=5)
+        operation, _created = manager.start("quota", bindings, self.service.query_openai_quotas)
+        try:
+            self.assertTrue(slow_started.wait(1))
+            for _attempt in range(100):
+                if self._pool_lines() == [rows[1]]:
+                    break
+                threading.Event().wait(0.01)
+            self.assertEqual(self._pool_lines(), [rows[1]])
+            self.assertEqual(manager.snapshot()["status"], "running")
+            self.assertEqual(manager.snapshot()["completed"], 1)
+        finally:
+            release_slow.set()
+
+        completed = manager.wait(operation["job_id"], 2)
+        self.assertEqual(completed["status"], "completed")
+        self.assertEqual(completed["deactivated_deleted"], 1)
+        self.assertEqual(self._pool_lines(), [rows[1]])
+
     def test_sub2_batch_accepts_more_than_twenty_rows_for_queued_chunk_processing(self):
         rows = [f"user{index}@example.com|pass-{index}|JBSWY3DPEHPK3PXP" for index in range(1, 22)]
         self._write_pool("\n".join(rows) + "\n")
@@ -1179,6 +1241,145 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertEqual(result["deactivated_detected"], 0)
         self.assertEqual(result["deactivated_rows"], [])
         self.assertEqual(self._pool_lines(), [row])
+
+    def test_background_openai_test_deletes_402_row_before_slow_peer_finishes(self):
+        rows = [
+            "direct-deactivated@example.com----pass-one----client-one----refresh-one",
+            "direct-slow@example.com----pass-two----client-two----refresh-two",
+        ]
+        self._write_pool("\n".join(rows) + "\n")
+        self._write_state({})
+        results = self.root / "results"
+        results.mkdir()
+        for index, row in enumerate(rows, start=1):
+            (results / f"direct-{index}.json").write_text(json.dumps({
+                "email": email_from_row(row),
+                "status": "success",
+                "created_at": index,
+                "result": {
+                    "access_token": f"private-access-{index}",
+                    "chatgpt_account_id": f"private-account-{index}",
+                },
+            }), encoding="utf-8")
+
+        slow_started = threading.Event()
+        release_slow = threading.Event()
+
+        def tester(selected, _proxy):
+            first = {
+                "row_id": selected[0]["row_id"],
+                "line_no": selected[0]["line_no"],
+                "sub2_status": {
+                    "kind": "deactivated_workspace",
+                    "status_code": 402,
+                },
+            }
+            selected[0]["_on_row_completed"](first)
+            slow_started.set()
+            release_slow.wait(2)
+            second = {
+                "row_id": selected[1]["row_id"],
+                "line_no": selected[1]["line_no"],
+                "sub2_status": {"kind": "healthy", "status_code": 200},
+            }
+            selected[1]["_on_row_completed"](second)
+            return {
+                "ok": True,
+                "tested": 2,
+                "healthy": 1,
+                "failed": 1,
+                "results": [first, second],
+            }
+
+        self.service.openai_direct_batch_tester = tester
+        bindings = [
+            {"row_id": row_id_from_source(row), "line_no": index}
+            for index, row in enumerate(rows, start=1)
+        ]
+        manager = MailboxBatchOperationManager(chunk_size=5)
+        operation, _created = manager.start("openai_test", bindings, self.service.openai_test)
+        try:
+            self.assertTrue(slow_started.wait(1))
+            for _attempt in range(100):
+                if self._pool_lines() == [rows[1]]:
+                    break
+                threading.Event().wait(0.01)
+            self.assertEqual(self._pool_lines(), [rows[1]])
+            self.assertEqual(manager.snapshot()["status"], "running")
+            self.assertEqual(manager.snapshot()["completed"], 1)
+        finally:
+            release_slow.set()
+
+        completed = manager.wait(operation["job_id"], 2)
+        self.assertEqual(completed["status"], "completed")
+        self.assertEqual(completed["deactivated_deleted"], 1)
+        self.assertEqual(self._pool_lines(), [rows[1]])
+
+    def test_quota_background_continues_after_immediate_402_deletion_shifts_lines(self):
+        rows = [
+            f"mail-{index}@example.com----pass-{index}----client-{index}----refresh-{index}"
+            for index in range(1, 5)
+        ]
+        self._write_pool("\n".join(rows) + "\n")
+        self._write_state({})
+        results = self.root / "results"
+        results.mkdir()
+        for index, row in enumerate(rows, start=1):
+            (results / f"result-{index}.json").write_text(json.dumps({
+                "email": email_from_row(row),
+                "status": "success",
+                "task_id": f"task-{index}",
+                "created_at": index,
+                "result": {
+                    "access_token": f"private-access-{index}",
+                    "chatgpt_account_id": f"account-{index}",
+                },
+            }), encoding="utf-8")
+
+        def query(document, _proxy):
+            if document["task_id"] == "task-1":
+                raise OpenAIQuotaError(
+                    "openai_quota_deactivated_workspace",
+                    "OpenAI 工作空间已停用",
+                    http_status=402,
+                )
+            return {"status": "ok", "quota_5h": {"remaining_percent": 50}}
+
+        self.service.openai_quota_query = query
+        self.service.openai_quota_status_store = lambda _account_id, value: value
+        manager = MailboxBatchOperationManager(chunk_size=2)
+        pool_after_chunks = []
+
+        def worker(payload):
+            result = self.service.query_openai_quotas(payload)
+            pool_after_chunks.append(self._pool_lines())
+            return result
+
+        operation, _created = manager.start(
+            "quota",
+            [
+                {"row_id": row_id_from_source(row), "line_no": index}
+                for index, row in enumerate(rows, start=1)
+            ],
+            worker,
+        )
+        completed = manager.wait(operation["job_id"], 2)
+
+        self.assertEqual(completed["status"], "completed")
+        self.assertEqual(completed["completed"], 4)
+        self.assertEqual(completed["deactivated_deleted"], 1)
+        self.assertEqual(pool_after_chunks[0], rows[1:])
+        self.assertEqual(pool_after_chunks[1], rows[1:])
+        self.assertEqual(
+            sorted(
+                (item["row_id"], item["line_no"])
+                for item in completed["row_updates"]
+            ),
+            sorted(
+                (row_id_from_source(row), index)
+                for index, row in enumerate(rows, start=1)
+            ),
+        )
 
 
     def test_list_mailboxes_combines_state_results_and_latest_live_progress(self):
