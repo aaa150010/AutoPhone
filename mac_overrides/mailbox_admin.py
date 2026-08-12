@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hmac
 import json
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import re
 from threading import RLock
@@ -84,6 +83,16 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
     from mailbox_redaction import redact_mailbox_credentials, url_credential_secrets
 
 try:
+    from .mailbox_quota_service import query_openai_quotas as run_openai_quota_query
+except ImportError:  # Loaded as a top-level override module by the Mac launcher.
+    from mailbox_quota_service import query_openai_quotas as run_openai_quota_query
+
+try:
+    from .mailbox_openai_test_service import test_openai_mailboxes as run_openai_test
+except ImportError:  # Loaded as a top-level override module by the Mac launcher.
+    from mailbox_openai_test_service import test_openai_mailboxes as run_openai_test
+
+try:
     from .mailbox_state_runtime import (
         friendly_mailbox_error,
         human_mailbox_status,
@@ -118,25 +127,21 @@ try:
     from .openai_quota_runtime import (
         OpenAIQuotaError,
         credentials_from_result,
-        public_quota_snapshot,
     )
 except ImportError:  # Loaded as a top-level override module by the Mac launcher.
     from openai_quota_runtime import (
         OpenAIQuotaError,
         credentials_from_result,
-        public_quota_snapshot,
     )
 
 try:
     from .openai_row_status import (
-        persist_quota_row_status,
         public_sub2_status,
         resolve_openai_status,
         resolve_quota_status,
     )
 except ImportError:  # Loaded as a top-level override module by the Mac launcher.
     from openai_row_status import (
-        persist_quota_row_status,
         public_sub2_status,
         resolve_openai_status,
         resolve_quota_status,
@@ -1060,107 +1065,7 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
 
     def openai_test(self, payload: Any) -> dict[str, Any]:
         """Test successful local OAuth results directly against OpenAI."""
-        value = payload if isinstance(payload, Mapping) else {}
-        row_completed = value.get("_on_row_completed")
-        if not callable(row_completed):
-            row_completed = None
-        requested = value.get("rows")
-        if not isinstance(requested, Sequence) or isinstance(requested, (str, bytes)) or not requested:
-            return {"ok": False, "code": "openai_test_rows_required", "error": "请先勾选要测试的邮箱"}
-        bindings: list[tuple[int, str]] = []
-        seen: set[tuple[int, str]] = set()
-        for item in requested:
-            if not isinstance(item, Mapping):
-                return {"ok": False, "code": "openai_test_rows_invalid", "error": "批量测试参数无效"}
-            try:
-                line_no = int(item.get("line_no") or 0)
-            except (TypeError, ValueError):
-                line_no = 0
-            row_id = str(item.get("row_id") or "").strip()
-            binding = (line_no, row_id)
-            if line_no <= 0 or not row_id or binding in seen:
-                return {"ok": False, "code": "openai_test_rows_invalid", "error": "批量测试参数无效"}
-            seen.add(binding)
-            bindings.append(binding)
-
-        with self._lock:
-            config = self._config()
-            lines = self._read_pool_lines(config)
-            results_dir = self._path(config, "results_dir")
-            latest = self._latest_results_by_email(results_dir)
-            state = self._read_json_file(self._path(config, "state_path"))
-            state_by_line, state_by_email, state_by_row_id = index_mailbox_states(state.get("items"))
-            resolved: list[dict[str, Any]] = []
-            for line_no, expected_row_id in bindings:
-                if line_no > len(lines):
-                    return {
-                        "ok": False,
-                        "code": "mailbox_rows_stale",
-                        "error": "邮箱列表已变化，请刷新后重试",
-                    }
-                row = lines[line_no - 1]
-                if not hmac.compare_digest(expected_row_id, row_id_from_source(row)):
-                    return {
-                        "ok": False,
-                        "code": "mailbox_rows_stale",
-                        "error": "邮箱列表已变化，请刷新后重试",
-                    }
-                email = email_from_row(row)
-                document = latest.get(email) or {}
-                result_status = str(document.get("status") or "").strip().lower()
-                state_item = indexed_mailbox_state(
-                    state_by_line,
-                    state_by_email,
-                    state_by_row_id,
-                    row_id=expected_row_id,
-                    email=email,
-                    line_no=line_no,
-                )
-                if str(state_item.get("status") or "").lower() == "available" and str(
-                    state_item.get("reason") or ""
-                ) == "manual_restore":
-                    document = {}
-                    result_status = ""
-                if result_status not in {"success", "ok", "uploaded"}:
-                    document = {}
-                try:
-                    openai_status_id = credentials_from_result(document).account_id if document else ""
-                except OpenAIQuotaError:
-                    openai_status_id = ""
-                resolved.append(
-                    {
-                        "row_id": expected_row_id,
-                        "line_no": line_no,
-                        "email": email,
-                        "openai_status_id": openai_status_id,
-                        "document": document,
-                    }
-                )
-                if row_completed is not None:
-                    resolved[-1]["_on_row_completed"] = row_completed
-
-        if self.openai_direct_batch_tester is None:
-            return {
-                "ok": False,
-                "code": "openai_test_not_configured",
-                "error": "本机 OpenAI 连接测试尚未配置",
-            }
-        try:
-            result = self.openai_direct_batch_tester(
-                resolved,
-                str(config.get("proxy") or "").strip(),
-            )
-        except Exception:
-            return {
-                "ok": False,
-                "code": "openai_test_batch_failed",
-                "error": "本机 OpenAI 批量连接测试失败",
-            }
-        return dict(result) if isinstance(result, Mapping) else {
-            "ok": False,
-            "code": "openai_test_batch_failed",
-            "error": "本机 OpenAI 批量连接测试失败",
-        }
+        return run_openai_test(self, payload)
 
     def selected_success_results(self, payload: Any) -> dict[str, Any]:
         """Resolve stable mailbox selections to local successful result documents."""
@@ -1219,142 +1124,8 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
         return {"ok": True, "count": len(rows), "content": "\n".join(item["source_row"] for item in rows)}
 
     def query_openai_quotas(self, payload: Any) -> dict[str, Any]:
-        """Query a bounded batch without changing mailbox or task state."""
-        value = payload if isinstance(payload, Mapping) else {}
-        requested = value.get("rows")
-        if not isinstance(requested, Sequence) or isinstance(requested, (str, bytes)) or not requested:
-            return {
-                "ok": False,
-                "code": "mailbox_rows_required",
-                "error": "请先勾选要查询额度的邮箱",
-            }
-        if len(requested) > 20:
-            return {
-                "ok": False,
-                "code": "mailbox_quota_batch_too_large",
-                "error": "单批最多查询 20 个邮箱额度",
-            }
-        row_completed = value.get("_on_row_completed")
-        if not callable(row_completed):
-            row_completed = None
-        selected = self.selected_success_results({"rows": requested, "_include_skipped": True})
-        if not selected.get("ok"):
-            return selected
-        if not callable(self.openai_quota_query):
-            return {
-                "ok": False,
-                "code": "openai_quota_not_configured",
-                "error": "OpenAI 额度查询尚未配置",
-            }
-        proxy = str(self._config().get("proxy") or "")
-
-        def publish_completed(item: Mapping[str, Any]) -> None:
-            if row_completed is None:
-                return
-            try:
-                row_completed(dict(item))
-            except Exception:
-                pass
-
-        def query_one(item: Mapping[str, Any]) -> dict[str, Any]:
-            public_item = {
-                "row_id": str(item.get("row_id") or ""),
-                "line_no": int(item.get("line_no") or 0),
-            }
-            try:
-                quota_account_id = credentials_from_result(item["document"]).account_id
-            except OpenAIQuotaError as exc:
-                quota_account_id = ""
-                quota: Mapping[str, Any] = exc.public()
-            else:
-                try:
-                    queried = self.openai_quota_query(item["document"], proxy)
-                    if not isinstance(queried, Mapping):
-                        raise OpenAIQuotaError(
-                            "openai_quota_invalid_result",
-                            "额度查询未返回有效结果",
-                        )
-                    quota = queried
-                except OpenAIQuotaError as exc:
-                    quota = exc.public()
-                except Exception as exc:
-                    quota = {
-                        "status": "error",
-                        "node_code": "openai_quota",
-                        "node_label": "查询 OpenAI 额度",
-                        "code": "openai_quota_failed",
-                        "error": f"查询 OpenAI 额度失败：未处理异常（{type(exc).__name__}）",
-                    }
-            public_quota = public_quota_snapshot(
-                quota,
-                queried_at=int(self.now_fn()),
-            )
-            public_quota = persist_quota_row_status(
-                self.openai_quota_status_store,
-                account_id=quota_account_id,
-                row_id=public_item["row_id"],
-                value=public_quota,
-            )
-            if not public_quota:
-                public_quota = {
-                    "status": "error",
-                    "node_code": "openai_quota",
-                    "node_label": "查询 OpenAI 额度",
-                    "code": "openai_quota_failed",
-                    "error": "查询 OpenAI 额度失败：额度状态持久化未返回结果",
-                }
-            completed = {**public_item, **public_quota}
-            publish_completed(completed)
-            return completed
-
-        finished: list[dict[str, Any]] = []
-        for item in selected.get("skipped_items") or []:
-            public_item = {
-                "row_id": str(item.get("row_id") or ""),
-                "line_no": int(item.get("line_no") or 0),
-            }
-            snapshot = persist_quota_row_status(
-                self.openai_quota_status_store,
-                account_id="",
-                row_id=public_item["row_id"],
-                value={
-                    "status": "error",
-                    "node_code": "openai_quota",
-                    "node_label": "查询 OpenAI 额度",
-                    "code": "openai_quota_result_missing",
-                    "error": "查询 OpenAI 额度失败：本地成功结果缺失或不可读取，请重新登录后重试",
-                    "queried_at": int(self.now_fn()),
-                },
-            )
-            completed = {**public_item, **snapshot}
-            finished.append(completed)
-            publish_completed(completed)
-
-        selected_items = selected.get("items") or []
-        results: list[dict[str, Any] | None] = [None] * len(selected_items)
-        if selected_items:
-            workers = min(3, len(selected_items))
-            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="openai-quota") as executor:
-                futures = {
-                    executor.submit(query_one, item): index
-                    for index, item in enumerate(selected_items)
-                }
-                for future in as_completed(futures):
-                    results[futures[future]] = future.result()
-        finished.extend(item for item in results if isinstance(item, dict))
-        requested_order = {
-            (str(item.get("row_id") or ""), int(item.get("line_no") or 0)): index
-            for index, item in enumerate(requested)
-            if isinstance(item, Mapping)
-        }
-        finished.sort(key=lambda item: requested_order.get((item["row_id"], item["line_no"]), len(requested)))
-        return {
-            "ok": True,
-            "results": finished,
-            "queried": sum(item.get("status") == "ok" for item in finished),
-            "failed": sum(item.get("status") == "error" for item in finished),
-            "skipped": int(selected.get("skipped") or 0),
-        }
+        """Query quota and remove only locally bound HTTP 402 deactivated workspaces."""
+        return run_openai_quota_query(self, payload)
 
     def rows(self) -> dict[str, Any]:
         return self.list_mailboxes()

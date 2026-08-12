@@ -25,6 +25,7 @@ import {
 } from '../src/utils/mailboxOperationState.ts'
 import type { MailboxBatchOperation } from '../src/types/api.ts'
 import type { MailboxRow } from '../src/types/api.ts'
+import { mailboxOperationMessage } from '../src/utils/mailboxOperationPresentation.ts'
 
 function row(overrides: Partial<MailboxRow>): MailboxRow {
   return {
@@ -36,6 +37,31 @@ function row(overrides: Partial<MailboxRow>): MailboxRow {
     ...overrides,
   }
 }
+
+test('quota completion reports only confirmed locally deleted deactivated workspaces', () => {
+  const operation = {
+    job_id: 'quota-delete',
+    kind: 'quota',
+    status: 'completed',
+    total: 3,
+    completed: 3,
+    succeeded: 1,
+    failed: 2,
+    skipped: 0,
+    tested: 0,
+    rate_limited: 0,
+    not_ready: 0,
+    deactivated_deleted: 1,
+    created_at: 1,
+    updated_at: 2,
+    row_updates: [],
+  } satisfies MailboxBatchOperation
+
+  assert.equal(
+    mailboxOperationMessage(operation),
+    '已查询 OpenAI 额度 1 条，已删除停用空间邮箱 1 条，失败 2 条',
+  )
+})
 
 test('network filter accepts only direct OpenAI disconnection kinds', () => {
   for (const kind of ['network_error', 'remote_disconnected', 'timeout']) {

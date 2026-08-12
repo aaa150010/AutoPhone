@@ -418,6 +418,7 @@ export interface MailboxBatchOperation {
   tested: number
   rate_limited: number
   not_ready: number
+  deactivated_deleted?: number
   created_at: number
   updated_at: number
   row_updates: MailboxOperationRowUpdate[]

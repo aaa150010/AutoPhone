@@ -65,6 +65,7 @@ DIRECT_TEST_RETRY_DELAY_SECONDS = 0.35
 DIRECT_TEST_INSTRUCTIONS = "You are Codex, a coding agent."
 DIRECT_TEST_FINGERPRINT = "openai-direct-codex"
 MAX_SSE_BYTES = 1024 * 1024
+DEACTIVATED_WORKSPACE_KIND = "deactivated_workspace"
 _DIRECT_TEST_TRANSIENT_KINDS = frozenset(
     {"network_error", "remote_disconnected", "timeout", "upstream_error"}
 )
@@ -219,6 +220,40 @@ def _status_from_direct_code(
     return _status("http_error", code, label, "本机直连 OpenAI 测试失败", tested_at)
 
 
+def _non_success_status(response: DirectOpenAIResponse, tested_at: int) -> Sub2TestStatus:
+    status_code = int(getattr(response, "status_code", 0) or 0)
+    received = 0
+    chunks: list[bytes] = []
+    try:
+        for chunk in response.iter_content(chunk_size=1024):
+            received += len(chunk)
+            if received > MAX_SSE_BYTES:
+                return _status_from_direct_code(status_code, tested_at)
+            chunks.append(chunk)
+    except DirectOpenAIRequestError:
+        raise
+    except Exception as exc:
+        raise DirectOpenAIRequestError("OpenAI 错误响应读取失败") from exc
+    try:
+        payload = json.loads(b"".join(chunks).decode("utf-8"))
+    except (UnicodeDecodeError, TypeError, ValueError):
+        payload = None
+    detail = payload.get("detail") if isinstance(payload, Mapping) else None
+    if (
+        status_code == 402
+        and isinstance(detail, Mapping)
+        and str(detail.get("code") or "").strip() == DEACTIVATED_WORKSPACE_KIND
+    ):
+        return _status(
+            DEACTIVATED_WORKSPACE_KIND,
+            402,
+            "402 工作空间已停用",
+            "OpenAI 工作空间已停用，本地邮箱将在批次结束后删除",
+            tested_at,
+        )
+    return _status_from_direct_code(status_code, tested_at)
+
+
 def _code_from_text(value: Any) -> int | None:
     text = str(value or "")
     match = re.search(r"\b([45]\d\d)\b", text)
@@ -362,7 +397,7 @@ class OpenAIDirectTestClient:
                     if status_code >= 500 and attempt + 1 < self.attempts:
                         retry = True
                     else:
-                        return _status_from_direct_code(status_code, tested_at)
+                        return _non_success_status(response, tested_at)
                 else:
                     stream = _stream_result(response)
                     if stream.complete:
@@ -541,6 +576,8 @@ class OpenAIDirectTestRuntime:
             "failed": 0,
             "test_failures": 0,
             "not_ready": 0,
+            "deactivated_rows": [],
+            "deactivated_detected": 0,
             "results": [],
             "batch_limit": MAX_BATCH_ROWS,
             "batch_count": len(chunks),
@@ -659,6 +696,11 @@ class OpenAIDirectTestRuntime:
                         "sub2_status": status.public(),
                     }
                 )
+                if status.status_code == 402 and status.kind == DEACTIVATED_WORKSPACE_KIND:
+                    aggregate["deactivated_rows"].append(
+                        {"row_id": row.get("row_id"), "line_no": row.get("line_no")}
+                    )
+                    aggregate["deactivated_detected"] += 1
             aggregate["completed_batches"] = batch_index
         aggregate["metrics"]["elapsed_seconds"] = round(
             max(0.0, time.monotonic() - started_at),
@@ -669,6 +711,7 @@ class OpenAIDirectTestRuntime:
 
 __all__ = [
     "DIRECT_TEST_MODEL",
+    "DEACTIVATED_WORKSPACE_KIND",
     "DIRECT_TEST_OPTIMIZED_WORKERS",
     "DIRECT_TEST_ROLLBACK_SECONDS",
     "DIRECT_TEST_TIMEOUT_SECONDS",

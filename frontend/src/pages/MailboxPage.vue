@@ -203,6 +203,11 @@ async function retryQuota(row: MailboxRow) {
   refreshGuard.invalidate()
   try {
     const result = await queryMailboxQuotas([{ row_id: row.row_id, line_no: row.line_no }])
+    if (Number(result.deactivated_deleted || 0) > 0) {
+      applyMailboxPayload(await getMailboxes())
+      ElMessage.warning('OpenAI 工作空间已停用，已删除本地邮箱')
+      return
+    }
     data.value = {
       ...data.value,
       rows: mergeMailboxQuotaResults(data.value.rows, result.results || []),

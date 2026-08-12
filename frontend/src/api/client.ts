@@ -100,6 +100,7 @@ export const queryMailboxQuotas = (rows: Array<{ row_id: string; line_no: number
     queried?: number
     failed?: number
     skipped?: number
+    deactivated_deleted?: number
   }>('/api/mailboxes/quota', { rows })
 )
 export const startMailboxBatchOperation = (

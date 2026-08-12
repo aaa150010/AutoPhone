@@ -255,6 +255,41 @@ class OpenAIQuotaRuntimeTests(unittest.TestCase):
         self.assertNotIn("account-secret", serialized)
         self.assertNotIn("upstream-body", serialized)
 
+    def test_only_exact_402_deactivated_workspace_gets_local_delete_code(self):
+        client = OpenAIQuotaClient(transport=FakeTransport(
+            {"detail": {"code": "deactivated_workspace"}},
+            status=402,
+        ))
+
+        with self.assertRaises(OpenAIQuotaError) as raised:
+            client.query(success_document())
+
+        public = raised.exception.public()
+        self.assertEqual(public["http_status"], 402)
+        self.assertEqual(public["code"], "openai_quota_deactivated_workspace")
+        self.assertNotIn("access-secret", str(public))
+
+    def test_other_402_and_other_http_statuses_never_get_local_delete_code(self):
+        cases = (
+            (402, {"detail": {"code": "billing_required"}}),
+            (402, {"code": "deactivated_workspace"}),
+            (401, {"detail": {"code": "deactivated_workspace"}}),
+            (403, {"detail": {"code": "deactivated_workspace"}}),
+            (404, {"detail": {"code": "deactivated_workspace"}}),
+            (429, {"detail": {"code": "deactivated_workspace"}}),
+            (500, {"detail": {"code": "deactivated_workspace"}}),
+        )
+        for status, payload in cases:
+            with self.subTest(status=status, payload=payload):
+                with self.assertRaises(OpenAIQuotaError) as raised:
+                    OpenAIQuotaClient(
+                        transport=FakeTransport(payload, status=status)
+                    ).query(success_document())
+                self.assertNotEqual(
+                    raised.exception.code,
+                    "openai_quota_deactivated_workspace",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

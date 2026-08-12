@@ -12,8 +12,8 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.3.2',
-  title: '任务处理表紧凑优化',
+  version: '1.3.3',
+  title: '停用空间邮箱自动清理',
   releasedAt: '2026-08-12',
   sections: [
     {
@@ -27,6 +27,10 @@ export const currentRelease: ReleaseNotes = {
     {
       title: '更紧凑的凭据操作列',
       usage: '任务表邮箱列缩窄约三成，密码和 2FA 改为图标操作；顶部页签使用更清晰的分段高亮，存在待处理任务时显示红色提醒。悬浮图标可查看用途，点击行为仍分别为复制密码和生成并复制临时验证码。',
+    },
+    {
+      title: '自动清理已停用空间邮箱',
+      usage: '查询 OpenAI 额度或执行本机 OpenAI 批量测试时，仅当接口同时返回 HTTP 402 且 detail.code 精确为 deactivated_workspace，才自动删除对应的本地邮箱。其他 402、401、403、404、429、服务异常和网络错误均不会删除，SUB2 账号不受影响。',
     },
     {
       title: '验证码提交后立即移出',

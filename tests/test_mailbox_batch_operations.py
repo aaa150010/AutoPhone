@@ -158,6 +158,43 @@ class MailboxBatchOperationManagerTests(unittest.TestCase):
         self.assertNotIn("private-password", json.dumps(completed))
         self.assertNotIn("private-access-token", json.dumps(completed))
 
+    def test_quota_chunks_defer_deactivated_cleanup_until_final_chunk(self):
+        manager = MailboxBatchOperationManager(chunk_size=2)
+        rows = [
+            {"row_id": f"row-{index}", "line_no": index + 1}
+            for index in range(5)
+        ]
+        calls = []
+
+        def worker(payload):
+            calls.append(payload)
+            detected = [payload["rows"][0]]
+            pending = list(payload.get("_pending_deactivated_rows") or [])
+            combined = [*pending, *detected]
+            return {
+                "ok": True,
+                "queried": 0,
+                "failed": len(payload["rows"]),
+                "skipped": 0,
+                "deactivated_rows": combined,
+                "deactivated_detected": len(detected),
+                "deactivated_deleted": (
+                    len(combined)
+                    if payload.get("_defer_deactivated_delete") is False
+                    else 0
+                ),
+            }
+
+        operation, _created = manager.start("quota", rows, worker)
+        completed = manager.wait(operation["job_id"], 2)
+
+        self.assertEqual(completed["deactivated_deleted"], 3)
+        self.assertEqual([call["_defer_deactivated_delete"] for call in calls], [True, True, False])
+        self.assertEqual(
+            [len(call["_pending_deactivated_rows"]) for call in calls],
+            [0, 1, 2],
+        )
+
     def test_openai_row_updates_are_redacted_and_bound_to_exact_source_row(self):
         manager = MailboxBatchOperationManager()
 
@@ -195,6 +232,41 @@ class MailboxBatchOperationManagerTests(unittest.TestCase):
         serialized = json.dumps(completed)
         self.assertNotIn("access-secret", serialized)
         self.assertNotIn("private@example.test", serialized)
+
+    def test_openai_test_chunks_defer_deactivated_cleanup_until_final_chunk(self):
+        manager = MailboxBatchOperationManager(chunk_size=2)
+        rows = [
+            {"row_id": f"row-{index}", "line_no": index + 1}
+            for index in range(5)
+        ]
+        calls = []
+
+        def worker(payload):
+            calls.append(payload)
+            detected = [payload["rows"][0]]
+            combined = [*(payload.get("_pending_deactivated_rows") or []), *detected]
+            return {
+                "ok": True,
+                "tested": len(payload["rows"]),
+                "healthy": 0,
+                "failed": len(payload["rows"]),
+                "deactivated_rows": combined,
+                "deactivated_deleted": (
+                    len(combined)
+                    if payload.get("_defer_deactivated_delete") is False
+                    else 0
+                ),
+            }
+
+        operation, _created = manager.start("openai_test", rows, worker)
+        completed = manager.wait(operation["job_id"], 2)
+
+        self.assertEqual(completed["deactivated_deleted"], 3)
+        self.assertEqual([call["_defer_deactivated_delete"] for call in calls], [True, True, False])
+        self.assertEqual(
+            [len(call["_pending_deactivated_rows"]) for call in calls],
+            [0, 1, 2],
+        )
 
     def test_openai_unauthorized_rows_are_counted_as_failures(self):
         manager = MailboxBatchOperationManager()

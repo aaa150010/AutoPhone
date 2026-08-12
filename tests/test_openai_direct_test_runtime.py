@@ -7,6 +7,7 @@ import threading
 import unittest
 
 from mac_overrides.openai_direct_test_runtime import (
+    DEACTIVATED_WORKSPACE_KIND,
     DIRECT_TEST_FINGERPRINT,
     DIRECT_TEST_OPTIMIZED_WORKERS,
     DIRECT_TEST_WORKERS,
@@ -129,6 +130,84 @@ class OpenAIDirectTestRuntimeTests(unittest.TestCase):
                 transport = FakeTransport([FakeResponse(code)])
                 status = OpenAIDirectTestClient(transport=transport).test_document(success_document())
                 self.assertEqual(status.kind, expected_kind)
+
+    def test_exact_402_deactivated_workspace_is_classified_for_local_cleanup(self):
+        body = json.dumps({"detail": {"code": "deactivated_workspace"}}).encode("utf-8")
+        response = FakeResponse(402, chunks=[body])
+        status = OpenAIDirectTestClient(
+            transport=FakeTransport([response]),
+            attempts=1,
+        ).test_document(success_document())
+
+        self.assertEqual(status.kind, DEACTIVATED_WORKSPACE_KIND)
+        self.assertEqual(status.status_code, 402)
+        self.assertEqual(status.label, "402 工作空间已停用")
+        self.assertTrue(response.closed)
+
+    def test_other_error_responses_never_claim_deactivated_workspace(self):
+        cases = (
+            (402, {"detail": {"code": "billing_required"}}),
+            (402, {"code": "deactivated_workspace"}),
+            (401, {"detail": {"code": "deactivated_workspace"}}),
+            (403, {"detail": {"code": "deactivated_workspace"}}),
+            (404, {"detail": {"code": "deactivated_workspace"}}),
+            (429, {"detail": {"code": "deactivated_workspace"}}),
+            (500, {"detail": {"code": "deactivated_workspace"}}),
+        )
+        for status_code, payload in cases:
+            with self.subTest(status_code=status_code, payload=payload):
+                status = OpenAIDirectTestClient(
+                    transport=FakeTransport([
+                        FakeResponse(status_code, chunks=[json.dumps(payload).encode("utf-8")])
+                    ]),
+                    attempts=1,
+                ).test_document(success_document())
+                self.assertNotEqual(status.kind, DEACTIVATED_WORKSPACE_KIND)
+
+    def test_runtime_returns_only_exact_deactivated_row_bindings(self):
+        with tempfile.TemporaryDirectory() as temp:
+            transport = FakeTransport([
+                FakeResponse(402, chunks=[json.dumps({
+                    "detail": {"code": "deactivated_workspace"},
+                }).encode("utf-8")]),
+                FakeResponse(402, chunks=[json.dumps({
+                    "detail": {"code": "billing_required"},
+                }).encode("utf-8")]),
+            ])
+            runtime = OpenAIDirectTestRuntime(
+                lambda: {},
+                Path(temp) / "snapshots.json",
+                client_factory=lambda **kwargs: OpenAIDirectTestClient(
+                    transport=transport,
+                    attempts=1,
+                    **kwargs,
+                ),
+            )
+            rows = [
+                {
+                    "row_id": f"row-{index}",
+                    "line_no": index,
+                    "openai_status_id": f"account-{index}",
+                    "document": success_document(f"account-{index}", f"private-{index}"),
+                }
+                for index in (1, 2)
+            ]
+
+            result = runtime.test_rows(rows)
+
+        self.assertEqual(result["deactivated_detected"], 1)
+        deactivated_result = next(
+            item for item in result["results"]
+            if item["sub2_status"]["kind"] == DEACTIVATED_WORKSPACE_KIND
+        )
+        self.assertEqual(
+            result["deactivated_rows"],
+            [{"row_id": deactivated_result["row_id"], "line_no": deactivated_result["line_no"]}],
+        )
+        self.assertEqual(
+            sorted(item["sub2_status"]["kind"] for item in result["results"]),
+            [DEACTIVATED_WORKSPACE_KIND, "http_error"],
+        )
 
     def test_runtime_marks_rows_without_local_oauth_without_sending_a_request(self):
         with tempfile.TemporaryDirectory() as temp:

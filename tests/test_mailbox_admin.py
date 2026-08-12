@@ -33,7 +33,7 @@ from mac_overrides.mailbox_admin import (
 )
 from mac_overrides.mailbox_batch_operations import MailboxBatchOperationManager
 from mac_overrides.mailbox_priority_runtime import MailboxNextBatchPriorityStore
-from mac_overrides.openai_quota_runtime import OpenAIQuotaSnapshotStore
+from mac_overrides.openai_quota_runtime import OpenAIQuotaError, OpenAIQuotaSnapshotStore
 
 
 class FakeStore:
@@ -734,6 +734,112 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertNotIn("private-access-without-account-id", serialized)
         self.assertNotIn("missing-id@example.com", serialized)
 
+    def test_quota_deactivated_workspace_deletes_only_exact_local_row(self):
+        rows = [
+            "keep@example.com----pass-keep",
+            "delete@example.com----pass-delete",
+        ]
+        self._write_pool("\n".join(rows) + "\n")
+        self._write_state({})
+        results = self.root / "results"
+        results.mkdir()
+        for index, row in enumerate(rows, start=1):
+            (results / f"{index}.json").write_text(json.dumps({
+                "email": email_from_row(row),
+                "status": "success",
+                "task_id": f"task-{index}",
+                "created_at": index,
+                "result": {
+                    "access_token": f"access-{index}",
+                    "chatgpt_account_id": f"account-{index}",
+                    "sub2api_account_id": f"sub2-{index}",
+                },
+            }), encoding="utf-8")
+
+        def query(document, _proxy):
+            if document["task_id"] == "task-2":
+                raise OpenAIQuotaError(
+                    "openai_quota_deactivated_workspace",
+                    "OpenAI 工作空间已停用，本地邮箱将自动删除",
+                    http_status=402,
+                )
+            return {
+                "status": "error",
+                "code": "openai_quota_unauthorized",
+                "error": "查询 OpenAI 额度失败：Token 失效",
+                "http_status": 401,
+            }
+
+        self.service.openai_quota_query = query
+        self.service.openai_quota_status_store = lambda _account_id, value: value
+        result = self.service.query_openai_quotas({
+            "rows": [
+                {"row_id": row_id_from_source(row), "line_no": index}
+                for index, row in enumerate(rows, start=1)
+            ]
+        })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["deactivated_detected"], 1)
+        self.assertEqual(result["deactivated_deleted"], 1)
+        self.assertEqual(self._pool_lines(), [rows[0]])
+        self.assertTrue((results / "2.json").is_file())
+        self.assertNotIn("sub2", " ".join(message for message, _level in self.logs).lower())
+
+    def test_non_deactivated_402_never_deletes_local_mailbox(self):
+        row = "keep402@example.com----pass-keep"
+        self._write_pool(row + "\n")
+        results = self.root / "results"
+        results.mkdir()
+        (results / "keep.json").write_text(json.dumps({
+            "email": "keep402@example.com",
+            "status": "success",
+            "task_id": "task-keep",
+            "result": {"access_token": "access", "chatgpt_account_id": "account"},
+        }), encoding="utf-8")
+        self.service.openai_quota_query = lambda *_args: (_ for _ in ()).throw(
+            OpenAIQuotaError(
+                "openai_quota_request_rejected",
+                "OpenAI 额度接口返回 HTTP 402",
+                http_status=402,
+            )
+        )
+        self.service.openai_quota_status_store = lambda _account_id, value: value
+
+        result = self.service.query_openai_quotas({
+            "rows": [{"row_id": row_id_from_source(row), "line_no": 1}],
+        })
+
+        self.assertEqual(result["deactivated_detected"], 0)
+        self.assertNotIn("deactivated_deleted", result)
+        self.assertEqual(self._pool_lines(), [row])
+
+    def test_quota_ignores_external_pending_delete_fields(self):
+        row = "keep-pending@example.com----pass-keep"
+        self._write_pool(row + "\n")
+        results = self.root / "results"
+        results.mkdir()
+        (results / "keep.json").write_text(json.dumps({
+            "email": "keep-pending@example.com",
+            "status": "success",
+            "result": {"access_token": "access", "chatgpt_account_id": "account"},
+        }), encoding="utf-8")
+        self.service.openai_quota_query = lambda *_args: {
+            "status": "error",
+            "code": "openai_quota_request_rejected",
+            "http_status": 402,
+        }
+        self.service.openai_quota_status_store = lambda _account_id, value: value
+
+        result = self.service.query_openai_quotas({
+            "rows": [{"row_id": row_id_from_source(row), "line_no": 1}],
+            "_pending_deactivated_rows": [{"row_id": row_id_from_source(row), "line_no": 1}],
+        })
+
+        self.assertEqual(result["deactivated_detected"], 0)
+        self.assertEqual(result["deactivated_rows"], [])
+        self.assertEqual(self._pool_lines(), [row])
+
     def test_quota_missing_result_is_saved_as_a_row_failure(self):
         row = "missing-result@example.com----mail-pass----client-id----refresh-token"
         row_id = row_id_from_source(row)
@@ -983,6 +1089,96 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual([item["document"] for item in captured], [{}, {}])
         self.assertEqual([item["openai_status_id"] for item in captured], ["", ""])
+
+    def test_openai_test_deletes_only_exact_deactivated_local_mailbox(self):
+        rows = [
+            "keep@example.com----keep-pass----client-1----refresh-1",
+            "delete@example.com----delete-pass----client-2----refresh-2",
+        ]
+        self._write_pool("\n".join(rows) + "\n")
+        self._write_state({})
+        results = self.root / "results"
+        results.mkdir()
+        for index, row in enumerate(rows, start=1):
+            (results / f"result-{index}.json").write_text(json.dumps({
+                "email": email_from_row(row),
+                "status": "success",
+                "created_at": index,
+                "result": {
+                    "access_token": f"private-access-{index}",
+                    "chatgpt_account_id": f"private-account-{index}",
+                },
+            }), encoding="utf-8")
+
+        def tester(selected, _proxy):
+            return {
+                "ok": True,
+                "tested": 2,
+                "healthy": 0,
+                "failed": 2,
+                "results": [
+                    {
+                        "row_id": selected[0]["row_id"],
+                        "line_no": selected[0]["line_no"],
+                        "sub2_status": {"kind": "http_error", "status_code": 402},
+                    },
+                    {
+                        "row_id": selected[1]["row_id"],
+                        "line_no": selected[1]["line_no"],
+                        "sub2_status": {
+                            "kind": "deactivated_workspace",
+                            "status_code": 402,
+                        },
+                    },
+                ],
+            }
+
+        self.service.openai_direct_batch_tester = tester
+        result = self.service.openai_test({
+            "rows": [
+                {"row_id": row_id_from_source(row), "line_no": index}
+                for index, row in enumerate(rows, start=1)
+            ]
+        })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["deactivated_detected"], 1)
+        self.assertEqual(result["deactivated_deleted"], 1)
+        self.assertEqual(self._pool_lines(), [rows[0]])
+        self.assertTrue((results / "result-2.json").is_file())
+        self.assertNotIn("sub2", " ".join(message for message, _level in self.logs).lower())
+
+    def test_openai_test_ignores_external_pending_delete_fields(self):
+        row = "keep-direct-pending@example.com----pass----client----refresh"
+        self._write_pool(row + "\n")
+        self._write_state({})
+        results = self.root / "results"
+        results.mkdir()
+        (results / "result.json").write_text(json.dumps({
+            "email": email_from_row(row),
+            "status": "success",
+            "result": {"access_token": "access", "chatgpt_account_id": "account"},
+        }), encoding="utf-8")
+        self.service.openai_direct_batch_tester = lambda selected, _proxy: {
+            "ok": True,
+            "tested": 1,
+            "healthy": 0,
+            "failed": 1,
+            "results": [{
+                "row_id": selected[0]["row_id"],
+                "line_no": selected[0]["line_no"],
+                "sub2_status": {"kind": "http_error", "status_code": 402},
+            }],
+        }
+
+        result = self.service.openai_test({
+            "rows": [{"row_id": row_id_from_source(row), "line_no": 1}],
+            "_pending_deactivated_rows": [{"row_id": row_id_from_source(row), "line_no": 1}],
+        })
+
+        self.assertEqual(result["deactivated_detected"], 0)
+        self.assertEqual(result["deactivated_rows"], [])
+        self.assertEqual(self._pool_lines(), [row])
 
 
     def test_list_mailboxes_combines_state_results_and_latest_live_progress(self):

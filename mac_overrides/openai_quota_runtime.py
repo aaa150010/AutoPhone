@@ -482,7 +482,19 @@ def normalize_quota_payload(payload: Any, *, queried_at: int | None = None) -> d
     }
 
 
-def _status_error(status: int) -> OpenAIQuotaError:
+def _provider_error_code(payload: Any) -> str:
+    root = _mapping(payload)
+    detail = _mapping(root.get("detail"))
+    return str(detail.get("code") or "").strip().lower()
+
+
+def _status_error(status: int, payload: Any = None) -> OpenAIQuotaError:
+    if status == 402 and _provider_error_code(payload) == "deactivated_workspace":
+        return OpenAIQuotaError(
+            "openai_quota_deactivated_workspace",
+            "OpenAI 工作空间已停用，本地邮箱将自动删除",
+            http_status=status,
+        )
     if status == 401:
         return OpenAIQuotaError(
             "openai_quota_unauthorized",
@@ -556,7 +568,11 @@ class OpenAIQuotaClient:
             ) from exc
         status = int(getattr(response, "status_code", 0) or 0)
         if status < 200 or status >= 300:
-            raise _status_error(status)
+            try:
+                error_payload = response.json()
+            except Exception:
+                error_payload = {}
+            raise _status_error(status, error_payload)
         try:
             payload = response.json()
         except Exception as exc:
