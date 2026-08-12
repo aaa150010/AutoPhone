@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { CopyDocument, Document, Key, View } from '@element-plus/icons-vue'
+import { CopyDocument, Document, Key, Tickets, VideoPlay, View, WarningFilled } from '@element-plus/icons-vue'
 import ContentEmptyState from './ContentEmptyState.vue'
 import TaskDetailsDrawer from './TaskDetailsDrawer.vue'
 import TaskProgressCell from './TaskProgressCell.vue'
@@ -129,12 +129,12 @@ function openDetails(row: RuntimeTask) {
 <template>
   <div class="task-results">
     <div class="task-summary-tabs" role="tablist" aria-label="任务结果分类">
-      <button type="button" :class="{ active: activeView === 'pending', urgent: pendingTasks.length }" @click="activeView = 'pending'">待处理 <b>{{ pendingTasks.length }}</b></button>
-      <button type="button" :class="{ active: activeView === 'running' }" @click="activeView = 'running'">运行中 <b>{{ runningTasks.length }}</b></button>
-      <button type="button" :class="{ active: activeView === 'all' }" @click="activeView = 'all'">全部 <b>{{ props.tasks.length }}</b></button>
+      <button type="button" role="tab" :aria-selected="activeView === 'pending'" :class="{ active: activeView === 'pending', urgent: pendingTasks.length }" @click="activeView = 'pending'"><el-icon><WarningFilled /></el-icon><span>待处理</span><b>{{ pendingTasks.length }}</b></button>
+      <button type="button" role="tab" :aria-selected="activeView === 'running'" :class="{ active: activeView === 'running' }" @click="activeView = 'running'"><el-icon><VideoPlay /></el-icon><span>运行中</span><b>{{ runningTasks.length }}</b></button>
+      <button type="button" role="tab" :aria-selected="activeView === 'all'" :class="{ active: activeView === 'all' }" @click="activeView = 'all'"><el-icon><Tickets /></el-icon><span>全部</span><b>{{ props.tasks.length }}</b></button>
     </div>
     <el-table class="task-table" :data="visibleTasks" :row-key="taskRowKey" stripe height="100%">
-      <el-table-column label="邮箱" min-width="220">
+      <el-table-column label="邮箱" min-width="154">
         <template #default="{ row }">
           <el-tooltip v-if="row.email || row.account" content="点击复制邮箱" placement="top"><button type="button" class="copyable-account" @click="emit('copyAccount', row)">{{ row.email || row.account }}</button></el-tooltip>
           <span v-else>-</span>
@@ -144,11 +144,11 @@ function openDetails(row: RuntimeTask) {
       <el-table-column label="取件 URL" width="92" align="center">
         <template #default="{ row }"><el-tooltip v-if="row.has_mailbox_url" content="打开取件网页" placement="top"><el-button link :icon="View" :loading="openingMailboxUrls.includes(row.task_id)" @click="emit('mailboxUrl', row)">打开</el-button></el-tooltip><span v-else class="muted">-</span></template>
       </el-table-column>
-      <el-table-column label="密码" width="92" align="center">
-        <template #default="{ row }"><el-tooltip v-if="row.has_mailbox_password" content="复制密码" placement="top"><el-button link :icon="Key" :loading="loadingMailboxPasswords.includes(row.task_id)" @click="emit('mailboxPassword', row)">*****</el-button></el-tooltip><span v-else class="muted">-</span></template>
+      <el-table-column label="密码" width="66" align="center">
+        <template #default="{ row }"><el-tooltip v-if="row.has_mailbox_password" content="复制密码" placement="top"><el-button link :icon="Key" :loading="loadingMailboxPasswords.includes(row.task_id)" aria-label="复制密码" @click="emit('mailboxPassword', row)" /></el-tooltip><span v-else class="muted">-</span></template>
       </el-table-column>
-      <el-table-column label="2FA" width="92" align="center">
-        <template #default="{ row }"><el-tooltip v-if="row.has_totp" content="复制临时 2FA 验证码" placement="top"><el-button link :icon="CopyDocument" :loading="loadingMailboxTotps.includes(row.task_id)" @click="emit('mailboxTotp', row)">*****</el-button></el-tooltip><span v-else class="muted">-</span></template>
+      <el-table-column label="2FA" width="62" align="center">
+        <template #default="{ row }"><el-tooltip v-if="row.has_totp" content="复制临时 2FA 验证码" placement="top"><el-button link :icon="CopyDocument" :loading="loadingMailboxTotps.includes(row.task_id)" aria-label="复制临时 2FA 验证码" @click="emit('mailboxTotp', row)" /></el-tooltip><span v-else class="muted">-</span></template>
       </el-table-column>
       <el-table-column label="当前阶段 / 结果" min-width="250">
         <template #default="{ row }"><TaskProgressCell :progress="row.progress" :timing="row.timing" :now-seconds="nowSeconds" :status="row.status" /><el-tag class="result-tag" :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></template>
@@ -165,11 +165,17 @@ function openDetails(row: RuntimeTask) {
 
 <style scoped>
 .task-results { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
-.task-summary-tabs { display: flex; gap: 4px; align-items: center; height: 40px; padding: 4px 8px; border-bottom: 1px solid #dce6e2; background: #f7faf8; }
-.task-summary-tabs button { border: 0; border-radius: 4px; padding: 6px 12px; background: transparent; color: #667588; font-size: 12px; cursor: pointer; }
-.task-summary-tabs button.active { background: #e7f4ef; color: #0f6b5b; font-weight: 700; }
-.task-summary-tabs button.urgent b { background: #fee2e2; color: #c23d4b; }
-.task-summary-tabs b { display: inline-grid; place-items: center; min-width: 18px; height: 17px; margin-left: 4px; padding: 0 4px; border-radius: 9px; background: #e6ebf0; color: #596579; font-size: 10px; }
+.task-summary-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; height: 48px; padding: 0; border: 1px solid #bdcbc6; border-bottom: 2px solid #93a7a0; background: #bdcbc6; }
+.task-summary-tabs button { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 0; height: 46px; border: 0; border-top: 3px solid transparent; border-radius: 0; padding: 0 14px; background: #f5f8f7; color: #536174; font-size: 13px; font-weight: 650; cursor: pointer; transition: background-color 0.15s ease, color 0.15s ease; }
+.task-summary-tabs button:hover { background: #e6f1ed; color: #0f6b5b; }
+.task-summary-tabs button.active { border-top-color: #075e50; background: #167d6a; color: #fff; font-weight: 700; box-shadow: inset 0 -2px 0 rgb(0 0 0 / 12%); }
+.task-summary-tabs button.urgent { background: #fff0f1; color: #b42335; }
+.task-summary-tabs button.active.urgent { border-top-color: #8f1625; background: #c83f4f; color: #fff; }
+.task-summary-tabs button .el-icon { width: 17px; height: 17px; font-size: 17px; }
+.task-summary-tabs button.active b { background: #fff; color: #075e50; }
+.task-summary-tabs button.active.urgent b { color: #a51d2d; }
+.task-summary-tabs button.urgent:not(.active) b { background: #c83f4f; color: #fff; }
+.task-summary-tabs b { display: inline-grid; place-items: center; min-width: 24px; height: 20px; padding: 0 6px; border-radius: 10px; background: #dce4e1; color: #405064; font-size: 11px; }
 .task-table { width: 100%; flex: 1; min-height: 0; }
 .copyable-account { display: block; max-width: 100%; overflow: hidden; padding: 0; border: 0; background: transparent; color: var(--el-color-primary); font: inherit; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: copy; }
 .copyable-account:focus-visible { outline: 2px solid var(--el-color-primary-light-5); outline-offset: 2px; border-radius: 2px; }

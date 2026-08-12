@@ -12,8 +12,8 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.3.1',
-  title: '待处理队列与追加稳定性',
+  version: '1.3.2',
+  title: '任务处理表紧凑优化',
   releasedAt: '2026-08-12',
   sections: [
     {
@@ -23,6 +23,10 @@ export const currentRelease: ReleaseNotes = {
     {
       title: '任务行快捷处理邮箱',
       usage: '待处理表中点击邮箱即可复制；密码按需读取后复制，2FA 按需生成临时验证码并复制，取件 URL 在新页面打开。源邮箱行、明文密码、2FA 密钥和 URL 不会随任务列表返回。',
+    },
+    {
+      title: '更紧凑的凭据操作列',
+      usage: '任务表邮箱列缩窄约三成，密码和 2FA 改为图标操作；顶部页签使用更清晰的分段高亮，存在待处理任务时显示红色提醒。悬浮图标可查看用途，点击行为仍分别为复制密码和生成并复制临时验证码。',
     },
     {
       title: '验证码提交后立即移出',
