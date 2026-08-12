@@ -12,25 +12,29 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.2.2',
-  title: 'SUB2 原账号更新修正',
-  releasedAt: '2026-08-11',
+  version: '1.3.1',
+  title: '待处理队列与追加稳定性',
+  releasedAt: '2026-08-12',
   sections: [
     {
-      title: '错误定位更具体',
-      usage: '启动、配置、预检、任务、邮箱、上传和通知失败会返回明确的中文节点、稳定错误码、已脱敏技术原因和处理建议；取件地址与代理凭据不会出现在错误响应或日志中。',
+      title: '优先查看待处理任务',
+      usage: '任务结果分为待处理、运行中和全部。首次出现验证码或失败任务时自动进入待处理；验证码提交后立即移出，新一代验证码会重新进入，成功和主动停止仅在全部中查看。',
     },
     {
-      title: 'OpenAI 链路诊断',
-      usage: '在左侧 OpenAI 状态或运行页异常横幅点击测试按钮。诊断会使用已保存代理检测 auth.openai.com 与 sentinel.openai.com 的延迟；HTTP 429 显示为限流，5xx 显示为服务异常，并避免继续执行 Sentinel 深测。',
+      title: '任务行快捷处理邮箱',
+      usage: '待处理表中点击邮箱即可复制；密码按需读取后复制，2FA 按需生成临时验证码并复制，取件 URL 在新页面打开。源邮箱行、明文密码、2FA 密钥和 URL 不会随任务列表返回。',
     },
     {
-      title: '相关故障自动提醒',
-      usage: '检测到 Node/Sentinel、OpenAI 授权链路或已确认的 Auth/Sentinel 中断时，诊断框只按当前批次自动打开一次，历史任务不会阻塞或误触发新批次；也可随时手动重新测试。',
+      title: '验证码提交后立即移出',
+      usage: '验证码提交成功后，该任务立即离开待处理并继续运行；同一任务出现新一代验证码请求时会重新进入待处理。待处理清空后自动返回运行中。',
     },
     {
-      title: '保留 SUB2 当前分组',
-      usage: '重登更新已有 SUB2 账号时，只原位更新 OAuth 凭据并保留远端当前分组；手动调整过分组不会再导致更新失败。新建账号仍按运行配置中的目标分组严格校验。',
+      title: '运行中稳定追加邮箱',
+      usage: '批次运行时可导入任意数量的有效邮箱。任务状态、批次清单和队列完整确认后才执行，并沿用配置并发，不受批次开始时邮箱数量限制。',
+    },
+    {
+      title: '重登与导入竞态隔离',
+      usage: '重登运行期间导入的新邮箱会进入下一批注册优先队列，不会误入重登链路；邮箱写入期间批次刚好启动或结束时也会重新确认归属。',
     },
   ],
 }

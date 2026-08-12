@@ -199,17 +199,21 @@ def start_bounded_importer(
     target = min(available, requested)
     concurrency = _bounded_int(settings.get("concurrency"), 5, 1, 8)
     worker_count = min(target, concurrency)
-    worker_capacity = worker_count
+    batch_id = str(settings.get("batch_id") or "").strip()
+    dynamic_append_enabled = bool(batch_id and not relogin)
+    scheduling_capacity = concurrency if dynamic_append_enabled else worker_count
+    dynamic_capacity = max(target, scheduling_capacity)
+    worker_capacity = scheduling_capacity
     # The optional in-flight gate expands executor staging while preserving
     # the recovered ``concurrency`` admission baseline inside each worker.
     if inflight_gate is not None and not relogin:
         try:
             inflight_snapshot = inflight_gate.snapshot()
             worker_capacity = min(
-                target,
+                dynamic_capacity,
                 max(
-                    worker_capacity,
-                    int(inflight_snapshot.get("effective") or worker_capacity),
+                    scheduling_capacity,
+                    int(inflight_snapshot.get("effective") or scheduling_capacity),
                 ),
             )
         except Exception:
@@ -217,32 +221,35 @@ def start_bounded_importer(
     if task_admission is not None:
         try:
             admission_capacity = min(
-                target,
+                dynamic_capacity,
                 _MAX_WORKER_CAPACITY,
-                max(worker_count, int(task_admission.snapshot().get("ceiling") or worker_count)),
+                max(
+                    scheduling_capacity,
+                    int(task_admission.snapshot().get("ceiling") or scheduling_capacity),
+                ),
             )
             worker_capacity = admission_capacity
             if inflight_gate is not None and not relogin:
                 worker_capacity = min(
-                    target,
+                    dynamic_capacity,
                     max(
                         admission_capacity,
                         int(inflight_gate.snapshot().get("effective") or admission_capacity),
                     ),
                 )
         except Exception:
-            worker_capacity = worker_count
+            worker_capacity = scheduling_capacity
     email_login_concurrency = _bounded_int(
         settings.get("auto_email_login_concurrency"),
-        min(5, worker_count),
+        min(5, scheduling_capacity),
         1,
-        worker_count,
+        scheduling_capacity,
     )
     node_concurrency = _bounded_int(
         settings.get("node_concurrency"),
-        min(3, worker_count),
+        min(3, scheduling_capacity),
         1,
-        worker_count,
+        scheduling_capacity,
     )
     reserved: list[tuple[str, int, Any, bool]] = []
     executor = None
@@ -250,7 +257,7 @@ def start_bounded_importer(
     admission_tracks_pending = False
     startup_gate = threading.Event()
     startup_ready = threading.Event()
-    batch_id = str(settings.get("batch_id") or "").strip()
+    append_condition = threading.Condition(importer.lock)
     batch_started_at = _bounded_int(settings.get("batch_started_at"), 0, 0, 4_102_444_800)
     task_specs = [
         (f"T{ordinal:03d}-{uuid.uuid4().hex[:6]}", ordinal)
@@ -473,6 +480,8 @@ def start_bounded_importer(
         importer.active_task_ids = set()
         importer._gptphone_preselected_task_ids = set()
         importer._gptphone_batch_manifest = batch_manifest
+        importer._gptphone_append_accepting = dynamic_append_enabled
+        importer._gptphone_run_settings = copy.deepcopy(settings)
 
         try:
             if relogin:
@@ -578,8 +587,131 @@ def start_bounded_importer(
                 importer.future_assignments[future] = (pool, entry, task_id)
             importer.futures = futures
 
+            def append_entries(entries: Sequence[Any]) -> dict[str, int]:
+                appended = list(entries)
+                if not appended:
+                    return {"joined_current_batch": 0, "queued_current_batch": 0}
+                with append_condition:
+                    if (
+                        not importer.running
+                        or importer.stop_event.is_set()
+                        or not getattr(importer, "_gptphone_append_accepting", False)
+                        or importer.executor is None
+                    ):
+                        raise RuntimeError("current_batch_closed")
+                    next_ordinal = max(
+                        (int((task or {}).get("ordinal") or 0) for task in importer.tasks.values()),
+                        default=0,
+                    )
+                    appended_specs = [
+                        (f"T{next_ordinal + index:03d}-{uuid.uuid4().hex[:6]}", next_ordinal + index, entry)
+                        for index, entry in enumerate(appended, start=1)
+                    ]
+                    staged_gate = threading.Event()
+                    staged_committed = threading.Event()
+                    staged_futures: list[tuple[Any, Any, str]] = []
+                    created_task_ids: list[str] = []
+                    pending_registered = False
+
+                    def run_staged(*args: Any) -> None:
+                        staged_gate.wait()
+                        if staged_committed.is_set():
+                            run_after_start(*args)
+
+                    try:
+                        for task_id, ordinal, entry in appended_specs:
+                            importer._task_state(
+                                task_id,
+                                status="queued",
+                                email=entry.email,
+                                account=importer._account_label(entry),
+                                source_row=importer._source_row(entry),
+                                ordinal=ordinal,
+                                batch_id=batch_id,
+                                batch_started_at=batch_started_at,
+                                run_mode="register",
+                            )
+                            created_task_ids.append(task_id)
+                            try:
+                                queued_at = (
+                                    float(task_admission.now_fn())
+                                    if task_admission is not None
+                                    else time.monotonic()
+                                )
+                            except Exception:
+                                queued_at = time.monotonic()
+                            future = importer.executor.submit(
+                                run_staged,
+                                copy.deepcopy(settings),
+                                ordinal,
+                                entry,
+                                task_id,
+                                queued_at,
+                            )
+                            staged_futures.append((future, entry, task_id))
+
+                        if callable(register_pending) and not staged_inflight:
+                            register_pending(len(appended_specs))
+                            pending_registered = True
+                        if batch_manifest is not None and batch_id:
+                            batch_manifest.append_members(
+                                batch_id,
+                                [
+                                    {
+                                        "task_id": task_id,
+                                        "ordinal": ordinal,
+                                        "row_id": str(getattr(entry, "source_row", "") or ""),
+                                        "line_no": int(getattr(entry, "line_no", 0) or 0),
+                                    }
+                                    for task_id, ordinal, entry in appended_specs
+                                ],
+                            )
+                    except Exception:
+                        if pending_registered:
+                            discard_pending = getattr(task_admission, "discard_pending", None)
+                            if callable(discard_pending):
+                                try:
+                                    discard_pending(len(appended_specs))
+                                except Exception:
+                                    pass
+                        staged_gate.set()
+                        for future, _entry, _task_id in staged_futures:
+                            try:
+                                future.cancel()
+                            except Exception:
+                                pass
+                        for task_id in created_task_ids:
+                            importer.tasks.pop(task_id, None)
+                        raise
+
+                    for future, entry, task_id in staged_futures:
+                        importer.futures.append(future)
+                        importer.future_assignments[future] = (pool, entry, task_id)
+                    staged_committed.set()
+                    staged_gate.set()
+                    append_condition.notify_all()
+                    return {
+                        "joined_current_batch": len(appended_specs),
+                        "queued_current_batch": len(appended_specs),
+                    }
+
+            importer._gptphone_append_entries = append_entries
+
             def watch_and_reconcile() -> None:
                 try:
+                    observed = 0
+                    while True:
+                        with append_condition:
+                            current = list(importer.futures)
+                            if observed >= len(current):
+                                importer._gptphone_append_accepting = False
+                                break
+                            future = current[observed]
+                            observed += 1
+                        try:
+                            future.result()
+                        except Exception:
+                            pass
                     importer._watch()
                 finally:
                     if batch_manifest is not None and batch_id:
@@ -665,6 +797,9 @@ def start_bounded_importer(
                 importer.executor = None
                 importer.futures = []
                 importer.future_assignments = {}
+                importer._gptphone_append_accepting = False
+                importer._gptphone_append_entries = None
+                importer._gptphone_run_settings = None
                 importer._gptphone_preselected_task_ids = set()
                 importer.tasks = {}
                 importer.running = False

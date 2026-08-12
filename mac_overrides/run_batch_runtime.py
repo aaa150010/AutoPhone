@@ -410,6 +410,89 @@ class RunBatchManifestStore:
             self._refresh_counts_locked(batch)
             self._save_locked()
 
+    def append_member(
+        self,
+        batch_id: Any,
+        task_id: Any,
+        ordinal: Any,
+        *,
+        row_identity: Any = "",
+        line_no: Any = 0,
+    ) -> None:
+        self.append_members(batch_id, [{
+            "task_id": task_id,
+            "ordinal": ordinal,
+            "row_id": row_identity,
+            "line_no": line_no,
+        }])
+
+    def append_members(
+        self,
+        batch_id: Any,
+        members: Iterable[Mapping[str, Any]],
+    ) -> None:
+        """Atomically add idempotent members to an active runtime batch."""
+        now = int(self.now())
+        requested = [dict(item) for item in members if isinstance(item, Mapping)]
+        if not requested:
+            return
+        with self._lock:
+            batch = self._batch_locked(batch_id)
+            if _clean(batch.get("status"), 32).lower() != "active":
+                raise ValueError("运行批次已结束，无法追加成员")
+            existing_tasks = {
+                _safe_id(item.get("task_id"))
+                for item in batch.get("members") or ()
+                if isinstance(item, Mapping)
+            }
+            existing_ordinals = {
+                _safe_int(item.get("ordinal"))
+                for item in batch.get("members") or ()
+                if isinstance(item, Mapping)
+            }
+            additions = []
+            for raw in requested:
+                identifier = _safe_id(raw.get("task_id"))
+                ordinal = _safe_int(raw.get("ordinal"))
+                if identifier in existing_tasks:
+                    continue
+                if not identifier or ordinal <= 0 or ordinal in existing_ordinals:
+                    raise ValueError("追加运行批次成员标识无效或重复")
+                existing_tasks.add(identifier)
+                existing_ordinals.add(ordinal)
+                additions.append({
+                    "task_id": identifier,
+                    "ordinal": ordinal,
+                    "row_id": _row_fingerprint(raw.get("row_id")),
+                    "line_no": max(_safe_int(raw.get("line_no")), 0),
+                    "status": "queued",
+                    "reserved_at": now,
+                    "started_at": 0,
+                    "terminal_at": 0,
+                    "persisted_at": 0,
+                    "reconciled_missing": False,
+                    "appended_at": now,
+                })
+            if not additions:
+                return
+            batch.setdefault("members", []).extend(additions)
+            batch["target"] = max(
+                _safe_int(batch.get("target")),
+                max(item["ordinal"] for item in additions),
+                len(batch["members"]),
+            )
+            batch["updated_at"] = now
+            for item in additions:
+                self._task_index[item["task_id"]] = _safe_id(batch.get("batch_id"))
+            self._refresh_counts_locked(batch)
+            try:
+                self._save_locked()
+            except Exception:
+                del batch["members"][-len(additions):]
+                self._rebuild_task_index_locked()
+                self._refresh_counts_locked(batch)
+                raise
+
     def mark_started(self, task_id: Any) -> None:
         now = int(self.now())
         with self._lock:

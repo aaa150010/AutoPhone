@@ -245,6 +245,7 @@ function applyImportedMailboxes(result: any) {
   const hasMailboxSnapshot = Array.isArray(result?.mailboxes?.rows)
   if (hasMailboxSnapshot) applyMailboxPayload(result)
   currentPage.value = 1
+  void controller.refresh()
   if (!hasMailboxSnapshot || result?.mailboxes_refresh_required) {
     window.setTimeout(() => {
       if (!pollingStopped) void refresh()

@@ -44,13 +44,13 @@ import phase1_checkpoint_runtime as _phase1_checkpoint_runtime_ext
 import phase1_checkpoint_hooks as _phase1_checkpoint_hooks_ext
 import adaptive_concurrency as _adaptive_concurrency_ext
 import batch_upload_runtime as _batch_upload_runtime_ext
-import imap_poller as _imap_poller
 import importer_watch_runtime as _importer_watch_runtime_ext
 import importer_scheduler as _importer_scheduler_ext
 import inflight_pipeline_runtime as _inflight_pipeline_runtime_ext
 import legacy_ui as _legacy_ui_ext
 import log_retention as _log_retention_ext
 import mailbox_admin as _mailbox_admin_ext
+import mailbox_admin_factory as _mailbox_admin_factory_ext
 import mailbox_priority_runtime as _mailbox_priority_runtime_ext
 import mailbox_url_runtime as _mailbox_url_runtime_ext
 import mailbox_url_test_runtime as _mailbox_url_test_runtime_ext
@@ -3722,7 +3722,7 @@ def _public_task(task):
     public = _PUBLIC_STATE.public_task(task)
     task_id = str((task or {}).get("task_id") or "").strip() if isinstance(task, dict) else ""
     prompt = _MANUAL_VERIFICATION.public(task_id) if task_id else {}
-    if isinstance(prompt, dict) and prompt and prompt.get("input_kind") == "email_otp":
+    if isinstance(prompt, dict) and prompt and prompt.get("input_kind"):
         public["manual_verification"] = prompt
         public["capabilities"] = ["submit_manual_verification"]
     checkpoint = task.get("_checkpoint_public") if isinstance(task, dict) else None
@@ -3764,29 +3764,18 @@ _test_email_notification = _LOCAL_CONFIG_RUNTIME.test_email_notification
 
 
 def _mailbox_admin_factory(store, importer, logs):
-    def query_openai_quota(document, proxy):
-        return _openai_quota_runtime_ext.OpenAIQuotaClient(proxy=proxy).query(document)
-
-    return _mailbox_admin_ext.MailboxAdminService(
-        store,
-        validate_pool=lambda config: importer._pool(config).validate(),
-        imap_poller_factory=_imap_poller.ImapPoller,
-        runtime_status=importer.status,
-        progress_lookup=_TASK_PROGRESS.progress,
-        is_active_progress=_task_progress_ext.is_active_progress,
-        log_fn=logs.add,
-        error_formatter=_module._safe if hasattr(_module, "_safe") else str,
-        sub2_status_lookup=_SUB2_RUNTIME.status_for,
-        sub2_batch_tester=_SUB2_RUNTIME.test_rows,
-        openai_status_lookup=_OPENAI_DIRECT_RUNTIME.status_for,
-        openai_direct_batch_tester=_OPENAI_DIRECT_RUNTIME.test_rows,
-        mailbox_url_reader_factory=_mailbox_url_runtime_ext.MailboxUrlClient,
-        openai_quota_query=query_openai_quota,
-        openai_quota_status_lookup=_OPENAI_QUOTA_SNAPSHOTS.status_for,
-        openai_quota_status_store=_OPENAI_QUOTA_SNAPSHOTS.put,
-        phone_risk_lookup=_actionable_phone_risk_status,
+    return _mailbox_admin_factory_ext.build_mailbox_admin(
+        store, importer, logs,
+        runtime=_runtime,
         next_batch_priority=_MAILBOX_NEXT_BATCH_PRIORITY,
-        run_batch_membership=_RUN_BATCH_MANIFEST.latest_row_bindings,
+        notification_context_for=_notification_context_for,
+        task_progress=_TASK_PROGRESS,
+        task_progress_runtime=_task_progress_ext,
+        sub2_runtime=_SUB2_RUNTIME,
+        openai_direct_runtime=_OPENAI_DIRECT_RUNTIME,
+        openai_quota_snapshots=_OPENAI_QUOTA_SNAPSHOTS,
+        actionable_phone_risk_status=_actionable_phone_risk_status,
+        run_batch_manifest=_RUN_BATCH_MANIFEST,
     )
 
 

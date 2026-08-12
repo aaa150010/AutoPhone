@@ -11,6 +11,7 @@ from mac_overrides.mailbox_priority_runtime import (
     MailboxNextBatchPriorityStore,
     release_owned_batch_leases,
     reserve_available_batch,
+    reserve_specific_available,
 )
 
 
@@ -43,6 +44,17 @@ class FailingAtomicPool(FakeAtomicPool):
 
 
 class MailboxNextBatchPriorityStoreTests(unittest.TestCase):
+    def test_specific_reservation_supports_arbitrary_requested_rows_in_requested_order(self):
+        entries = [SimpleNamespace(source_row=f"row-{index}") for index in range(1, 9)]
+        pool = FakeAtomicPool(entries)
+        wanted = [hashlib.sha256(entries[index].source_row.encode()).hexdigest() for index in (6, 1, 4)]
+
+        selected = reserve_specific_available(pool, wanted, lease_owner_batch_id="batch-dynamic")
+
+        self.assertEqual([entry.source_row for entry in selected], ["row-7", "row-2", "row-5"])
+        self.assertTrue(all(pool._item(pool.state, entry)["status"] == "leased" for entry in selected))
+        self.assertTrue(all(pool._item(pool.state, entry)[LEASE_OWNER_FIELD] == "batch-dynamic" for entry in selected))
+
     def test_active_run_imports_are_fifo_first_in_next_batch_then_consumed(self):
         with TemporaryDirectory() as temporary:
             root = Path(temporary)

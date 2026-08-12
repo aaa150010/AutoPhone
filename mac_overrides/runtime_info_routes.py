@@ -15,6 +15,14 @@ except ImportError:  # Loaded as a top-level runtime override.
     from route_failures import explicit_failure_payload  # type: ignore[no-redef]
 
 
+class _RuntimeTaskNotFound(LookupError):
+    pass
+
+
+class _RuntimeTaskMailboxStale(RuntimeError):
+    pass
+
+
 class RuntimeInfoRouteController:
     def __init__(
         self,
@@ -92,65 +100,94 @@ class RuntimeInfoRouteController:
             return module.jsonify(payload), 500
 
     def runtime_task_mailbox_url(self):
-        module = self.module
-        data = module.request.get_json(silent=True) or {}
-        if not isinstance(data, dict) or set(data) != {"task_id"}:
-            return module.jsonify(ok=False, error="请求只接受 task_id"), 400
-        task_id = str(data.get("task_id") or "").strip()
-        if not task_id or len(task_id) > 128:
-            return module.jsonify(ok=False, error="任务标识无效"), 400
         try:
-            importer_lock = getattr(self.importer, "lock", None)
-            if importer_lock is None:
-                task = dict((getattr(self.importer, "tasks", {}) or {}).get(task_id) or {})
-            else:
-                with importer_lock:
-                    task = dict((getattr(self.importer, "tasks", {}) or {}).get(task_id) or {})
-            if not task:
-                return module.jsonify(
-                    ok=False,
-                    code="runtime_task_not_found",
-                    error="任务不存在",
-                ), 404
-            source_row = str(task.get("source_row") or "")
-            if not source_row:
-                return module.jsonify(
-                    ok=False,
-                    code="mailbox_row_stale",
-                    error="任务绑定的邮箱行已失效",
-                ), 409
-            expected_row_id = hashlib.sha256(source_row.encode("utf-8")).hexdigest()
-            listed = self.mailbox_admin.list_mailboxes()
-            rows = listed.get("rows") if isinstance(listed, Mapping) else []
-            matches = [
-                row
-                for row in rows or []
-                if isinstance(row, Mapping)
-                and hmac.compare_digest(
-                    str(row.get("row_id") or "").strip().lower(),
-                    expected_row_id,
-                )
-            ]
-            if len(matches) != 1:
-                return module.jsonify(
-                    ok=False,
-                    code="mailbox_row_stale",
-                    error="任务绑定的邮箱行已变化，请刷新后重试",
-                ), 409
-            result = self.mailbox_admin.reveal_mailbox_url(
-                expected_row_id,
-                matches[0].get("line_no"),
-            )
+            data, task_id, row_id, line_no = self._runtime_task_mailbox_binding()
+            result = self.mailbox_admin.reveal_mailbox_url(row_id, line_no)
             if result.get("ok"):
-                return module.jsonify(ok=True, mailbox_url=result.get("mailbox_url"))
+                return self.module.jsonify(ok=True, mailbox_url=result.get("mailbox_url"))
             status = 409 if result.get("code") == "mailbox_row_stale" else 400
-            return module.jsonify(dict(result)), status
+            return self.module.jsonify(dict(result)), status
+        except ValueError as exc:
+            return self.module.jsonify(ok=False, code="invalid_payload", error=str(exc)), 400
+        except _RuntimeTaskNotFound as exc:
+            return self.module.jsonify(ok=False, code="runtime_task_not_found", error=str(exc)), 404
+        except _RuntimeTaskMailboxStale as exc:
+            return self.module.jsonify(ok=False, code="mailbox_row_stale", error=str(exc)), 409
         except Exception as exc:
             payload = self._exception_payload(
                 "mailbox_url_reveal", "读取任务取件地址", "runtime_task_mailbox_url_failed", exc,
                 "任务取件地址读取异常", action_hint="刷新任务与邮箱列表后重试。",
             )
-            return module.jsonify(payload), 500
+            return self.module.jsonify(payload), 500
+
+    def _runtime_task_mailbox_binding(self):
+        module = self.module
+        data = module.request.get_json(silent=True) or {}
+        if not isinstance(data, dict) or set(data) != {"task_id"}:
+            raise ValueError("请求只接受 task_id")
+        task_id = str(data.get("task_id") or "").strip()
+        if not task_id or len(task_id) > 128:
+            raise ValueError("任务标识无效")
+        importer_lock = getattr(self.importer, "lock", None)
+        if importer_lock is None:
+            task = dict((getattr(self.importer, "tasks", {}) or {}).get(task_id) or {})
+        else:
+            with importer_lock:
+                task = dict((getattr(self.importer, "tasks", {}) or {}).get(task_id) or {})
+        if not task:
+            raise _RuntimeTaskNotFound("任务不存在")
+        source_row = str(task.get("source_row") or "")
+        if not source_row:
+            raise _RuntimeTaskMailboxStale("任务绑定的邮箱行已失效")
+        expected_row_id = hashlib.sha256(source_row.encode("utf-8")).hexdigest()
+        listed = self.mailbox_admin.list_mailboxes()
+        rows = listed.get("rows") if isinstance(listed, Mapping) else []
+        matches = [
+            row for row in rows or ()
+            if isinstance(row, Mapping)
+            and hmac.compare_digest(str(row.get("row_id") or "").strip().lower(), expected_row_id)
+        ]
+        if len(matches) != 1:
+            raise _RuntimeTaskMailboxStale("任务绑定的邮箱行已变化，请刷新后重试")
+        return data, task_id, expected_row_id, matches[0].get("line_no")
+
+    def runtime_task_mailbox_password(self):
+        try:
+            _data, _task_id, row_id, line_no = self._runtime_task_mailbox_binding()
+            result = self.mailbox_admin.reveal_password(row_id, line_no)
+            status = 200 if result.get("ok") else (409 if result.get("code") == "mailbox_row_stale" else 400)
+            return self.module.jsonify(result), status
+        except ValueError as exc:
+            return self.module.jsonify(ok=False, code="invalid_payload", error=str(exc)), 400
+        except _RuntimeTaskNotFound as exc:
+            return self.module.jsonify(ok=False, code="runtime_task_not_found", error=str(exc)), 404
+        except _RuntimeTaskMailboxStale as exc:
+            return self.module.jsonify(ok=False, code="mailbox_row_stale", error=str(exc)), 409
+        except Exception as exc:
+            payload = self._exception_payload(
+                "mailbox_password_reveal", "读取任务邮箱密码", "runtime_task_mailbox_password_failed", exc,
+                "任务邮箱密码读取异常", action_hint="刷新任务与邮箱列表后重试。",
+            )
+            return self.module.jsonify(payload), 500
+
+    def runtime_task_mailbox_totp(self):
+        try:
+            _data, _task_id, row_id, line_no = self._runtime_task_mailbox_binding()
+            result = self.mailbox_admin.reveal_totp(row_id, line_no)
+            status = 200 if result.get("ok") else (409 if result.get("code") == "mailbox_row_stale" else 400)
+            return self.module.jsonify(result), status
+        except ValueError as exc:
+            return self.module.jsonify(ok=False, code="invalid_payload", error=str(exc)), 400
+        except _RuntimeTaskNotFound as exc:
+            return self.module.jsonify(ok=False, code="runtime_task_not_found", error=str(exc)), 404
+        except _RuntimeTaskMailboxStale as exc:
+            return self.module.jsonify(ok=False, code="mailbox_row_stale", error=str(exc)), 409
+        except Exception as exc:
+            payload = self._exception_payload(
+                "mailbox_totp_reveal", "读取任务临时 2FA", "runtime_task_mailbox_totp_failed", exc,
+                "任务临时 2FA 读取异常", action_hint="刷新任务与邮箱列表后重试。",
+            )
+            return self.module.jsonify(payload), 500
 
     def run_batches(self):
         module = self.module

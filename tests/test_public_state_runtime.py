@@ -226,18 +226,36 @@ class PublicStateRuntimeTests(unittest.TestCase):
             "draft": 3,
         })
 
-    def test_public_task_exposes_only_mailbox_url_capability(self):
-        source_row = "url@example.test|https://mail.example.test/inbox/private-token"
+    def test_public_task_exposes_only_mailbox_capabilities(self):
+        cases = (
+            (
+                "url@example.test|https://mail.example.test/inbox/private-token",
+                {"has_mailbox_url": True, "has_mailbox_password": False, "has_totp": False},
+                "private-token",
+            ),
+            (
+                "password@example.test----login-password",
+                {"has_mailbox_url": False, "has_mailbox_password": True, "has_totp": False},
+                "login-password",
+            ),
+            (
+                "totp@example.test|login-password|JBSWY3DPEHPK3PXP",
+                {"has_mailbox_url": False, "has_mailbox_password": True, "has_totp": True},
+                "JBSWY3DPEHPK3PXP",
+            ),
+        )
 
-        public = self.runtime.public_task({
-            "task_id": "T001",
-            "status": "running",
-            "source_row": source_row,
-        })
-
-        self.assertTrue(public["has_mailbox_url"])
-        self.assertNotIn("source_row", public)
-        self.assertNotIn("private-token", json.dumps(public))
+        for index, (source_row, expected, secret) in enumerate(cases, start=1):
+            with self.subTest(source_row=source_row):
+                public = self.runtime.public_task({
+                    "task_id": f"T{index:03d}",
+                    "status": "running",
+                    "source_row": source_row,
+                })
+                for capability, enabled in expected.items():
+                    self.assertEqual(public[capability], enabled)
+                self.assertNotIn("source_row", public)
+                self.assertNotIn(secret, json.dumps(public))
 
     def test_masked_state_reads_the_current_admission_object(self):
         state = {

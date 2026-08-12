@@ -78,6 +78,12 @@ export const importMailboxes = (poolContent: string) => api<{
   state?: AppState
   mailboxes_refresh_required?: boolean
   state_refresh_required?: boolean
+  joined_current_batch?: number
+  queued_current_batch?: number
+  next_batch?: number
+  append_node_code?: string
+  append_node_label?: string
+  append_reason?: string
 }>('/api/mailboxes/import', { pool_content: poolContent })
 export const queryMailboxQuotas = (rows: Array<{ row_id: string; line_no: number }>) => (
   api<{
@@ -161,6 +167,12 @@ export const getMailboxUrl = (row: { row_id: string; line_no: number }) => (
 )
 export const getRuntimeTaskMailboxUrl = (taskId: string) => (
   api<{ ok: true; mailbox_url: string }>('/api/runtime/tasks/mailbox-url', { task_id: taskId })
+)
+export const getRuntimeTaskMailboxPassword = (taskId: string) => (
+  api<{ ok: true; password: string }>('/api/runtime/tasks/mailbox-password', { task_id: taskId })
+)
+export const getRuntimeTaskMailboxTotp = (taskId: string) => (
+  api<{ ok: true; kind: 'totp'; code: string; remaining: number }>('/api/runtime/tasks/mailbox-totp', { task_id: taskId })
 )
 export const submitManualVerification = (data: ManualVerificationSubmission) => (
   api<ManualVerificationAccepted>('/api/runtime/tasks/manual-verification', data)

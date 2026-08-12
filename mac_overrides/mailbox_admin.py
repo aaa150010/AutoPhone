@@ -17,20 +17,19 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
     from mailbox_source_lock import MailboxSourceLockMixin
 
 try:
+    from .mailbox_import_runtime import MailboxImportMixin
+except ImportError:  # Loaded as a top-level override module by the Mac launcher.
+    from mailbox_import_runtime import MailboxImportMixin
+
+try:
     from .mailbox_selection import resolve_source_rows
 except ImportError:  # Loaded as a top-level override module by the Mac launcher.
     from mailbox_selection import resolve_source_rows
 
 try:
-    from .chatgpt_totp import (
-        mailbox_credential_identity,
-        totp_code as generate_totp_code,
-    )
+    from .chatgpt_totp import totp_code as generate_totp_code
 except ImportError:  # Loaded as a top-level override module by the Mac launcher.
-    from chatgpt_totp import (
-        mailbox_credential_identity,
-        totp_code as generate_totp_code,
-    )
+    from chatgpt_totp import totp_code as generate_totp_code
 
 try:
     from .mailbox_url_runtime import MailboxUrlClient
@@ -156,8 +155,6 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
 
 _PROGRESS_FIELDS = ("code", "label", "group", "entered_at", "finished_at", "timing")
 _SECRET_MASK = "********"
-_IMPORT_ORDER_VERSION = 1
-_IMPORT_ORDER_FILE_NAME = "mailbox_import_order.json"
 
 
 class ConfigStore(Protocol):
@@ -173,7 +170,7 @@ def resolve_config_path(store: ConfigStore, value: Any) -> Path:
     return target
 
 
-class MailboxAdminService(MailboxSourceLockMixin):
+class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
     """Mailbox operations with recovered-runtime dependencies supplied as callables."""
 
     def __init__(
@@ -199,6 +196,7 @@ class MailboxAdminService(MailboxSourceLockMixin):
         phone_risk_lookup: Callable[[str], Mapping[str, Any] | None] | None = None,
         next_batch_priority: Any = None,
         run_batch_membership: Callable[..., Sequence[Mapping[str, Any]]] | None = None,
+        current_run_append: Callable[[Sequence[str]], Mapping[str, Any]] | None = None,
     ) -> None:
         self.store = store
         self.validate_pool = validate_pool
@@ -220,6 +218,7 @@ class MailboxAdminService(MailboxSourceLockMixin):
         self.phone_risk_lookup = phone_risk_lookup
         self.next_batch_priority = next_batch_priority
         self.run_batch_membership = run_batch_membership
+        self.current_run_append = current_run_append
         self._lock = RLock()
 
     def _config(self) -> dict[str, Any]:
@@ -241,105 +240,6 @@ class MailboxAdminService(MailboxSourceLockMixin):
     def _write_json_file(path: Path, value: Mapping[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    def _import_order_path(self) -> Path:
-        return Path(self.store.data_dir).resolve() / _IMPORT_ORDER_FILE_NAME
-
-    @staticmethod
-    def _write_import_order_file(path: Path, value: Mapping[str, Any]) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(path.suffix + ".tmp")
-        temporary.write_text(
-            json.dumps(value, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        temporary.chmod(0o600)
-        temporary.replace(path)
-        path.chmod(0o600)
-
-    def _reconcile_import_order(
-        self,
-        lines: Sequence[str],
-        *,
-        external_as_new: bool = True,
-    ) -> dict[str, Any]:
-        path = self._import_order_path()
-        raw = self._read_json_file(path)
-        try:
-            version = int(raw.get("version") or 0)
-        except (TypeError, ValueError):
-            version = 0
-        valid_store = (
-            version == _IMPORT_ORDER_VERSION
-            and isinstance(raw.get("entries"), Mapping)
-        )
-        try:
-            next_batch = max(0, int(raw.get("next_batch") or 0)) if valid_store else 0
-        except (TypeError, ValueError):
-            next_batch = 0
-        entries: dict[str, dict[str, int]] = {}
-        if valid_store:
-            for raw_row_id, raw_item in raw["entries"].items():
-                row_id = str(raw_row_id or "").strip().lower()
-                if not re.fullmatch(r"[0-9a-f]{64}", row_id) or not isinstance(raw_item, Mapping):
-                    continue
-                try:
-                    batch = max(0, int(raw_item.get("batch") or 0))
-                    order = max(0, int(raw_item.get("order") or 0))
-                except (TypeError, ValueError):
-                    continue
-                entries[row_id] = {"batch": batch, "order": order}
-                next_batch = max(next_batch, batch)
-
-        row_ids = [row_id_from_source(line) for line in lines]
-        current = set(row_ids)
-        entries = {
-            row_id: item
-            for row_id, item in entries.items()
-            if row_id in current
-        }
-        missing = [row_id for row_id in row_ids if row_id not in entries]
-        if missing:
-            if valid_store and external_as_new:
-                next_batch += 1
-                batch = next_batch
-            else:
-                batch = 0
-            for order, row_id in enumerate(missing):
-                entries[row_id] = {"batch": batch, "order": order}
-
-        reconciled = {
-            "version": _IMPORT_ORDER_VERSION,
-            "next_batch": next_batch,
-            "entries": entries,
-        }
-        if reconciled != raw:
-            self._write_import_order_file(path, reconciled)
-        return reconciled
-
-    def _append_import_order_batch(
-        self,
-        state: Mapping[str, Any],
-        appended: Sequence[str],
-    ) -> dict[str, Any]:
-        next_batch = max(0, int(state.get("next_batch") or 0)) + 1
-        entries = {
-            str(row_id): dict(item)
-            for row_id, item in (state.get("entries") or {}).items()
-            if isinstance(item, Mapping)
-        }
-        for order, line in enumerate(appended):
-            entries[row_id_from_source(line)] = {
-                "batch": next_batch,
-                "order": order,
-            }
-        value = {
-            "version": _IMPORT_ORDER_VERSION,
-            "next_batch": next_batch,
-            "entries": entries,
-        }
-        self._write_import_order_file(self._import_order_path(), value)
-        return value
 
     def _read_pool_lines(self, config: Mapping[str, Any] | None = None) -> list[str]:
         cfg = config or self._config()
@@ -908,59 +808,6 @@ class MailboxAdminService(MailboxSourceLockMixin):
             "skipped": skipped,
             "local_duplicates": local_duplicates,
         }
-
-    def import_mailboxes(self, content: Any) -> dict[str, Any]:
-        new_lines = [
-            line.strip()
-            for line in str(content or "").splitlines()
-            if is_importable_mailbox_row(line)
-        ]
-        if not new_lines:
-            return {"ok": False, "error": "请粘贴要导入的邮箱"}
-
-        # ``runtime_status`` is backed by the importer and takes its own
-        # lock before asking the mailbox pool for a summary.  Do that lookup
-        # before taking the source flock; otherwise an importer worker that
-        # already owns its lock can wait on this flock while this request
-        # waits on the importer lock (source flock -> importer lock versus
-        # importer lock -> source flock).
-        run_active = False
-        config_for_status = self._config()
-        if callable(self.runtime_status):
-            try:
-                runtime = self.runtime_status(config_for_status)
-                run_active = bool(
-                    runtime.get("running") if isinstance(runtime, Mapping) else False
-                )
-            except Exception:
-                run_active = False
-
-        with self._locked_pool_config() as config:
-            old_lines = self._read_pool_lines(config)
-            import_order = self._reconcile_import_order(old_lines)
-            seen = {
-                mailbox_credential_identity(line, parse_oauth_mailbox_row)
-                for line in old_lines
-            }
-            appended = []
-            skipped = 0
-            for line in new_lines:
-                identity = mailbox_credential_identity(line, parse_oauth_mailbox_row)
-                if identity in seen:
-                    skipped += 1
-                    continue
-                seen.add(identity)
-                appended.append(line)
-            if not appended:
-                return {"ok": False, "error": "没有新增邮箱，可能都是重复行"}
-            self._write_pool_lines(old_lines + appended, config)
-            self._append_import_order_batch(import_order, appended)
-            if run_active and self.next_batch_priority is not None:
-                self.next_batch_priority.mark_imported(appended)
-
-        check = self._validate_pool()
-        self._log(f"邮箱管理追加导入: 新增 {len(appended)} 条，跳过重复 {skipped} 条", "success")
-        return {"ok": True, "imported": len(appended), "skipped": skipped, "validate": check}
 
     def _rewrite_state_after_delete(
         self,

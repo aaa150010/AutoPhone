@@ -14,7 +14,11 @@ import {
   VideoPause,
   VideoPlay,
 } from '@element-plus/icons-vue'
-import { getRuntimeTaskMailboxUrl } from '../api/client'
+import {
+  getRuntimeTaskMailboxPassword,
+  getRuntimeTaskMailboxTotp,
+  getRuntimeTaskMailboxUrl,
+} from '../api/client'
 import DashboardMetricCard from '../components/DashboardMetricCard.vue'
 import LogPanel from '../components/LogPanel.vue'
 import MailboxImportDialog from '../components/MailboxImportDialog.vue'
@@ -32,6 +36,8 @@ const controller = useAppController()
 const mailboxImportDialog = ref<InstanceType<typeof MailboxImportDialog>>()
 const uploadDialog = ref<InstanceType<typeof RunUploadDialog>>()
 const openingMailboxUrlTaskIds = ref<string[]>([])
+const loadingMailboxPasswordTaskIds = ref<string[]>([])
+const loadingMailboxTotpTaskIds = ref<string[]>([])
 const connectivityView = computed(() => buildOpenAIConnectivityView(controller.runtime.value))
 
 const terminalStatuses = new Set([
@@ -174,6 +180,44 @@ async function copyTaskAccount(task: RuntimeTask) {
   }
 }
 
+async function copyTaskPassword(task: RuntimeTask) {
+  const taskId = String(task.task_id || '').trim()
+  if (!taskId || loadingMailboxPasswordTaskIds.value.includes(taskId)) return
+  if (!navigator.clipboard?.writeText) {
+    ElMessage.error('当前浏览器不支持安全剪贴板写入')
+    return
+  }
+  loadingMailboxPasswordTaskIds.value = [...loadingMailboxPasswordTaskIds.value, taskId]
+  try {
+    const result = await getRuntimeTaskMailboxPassword(taskId)
+    await navigator.clipboard.writeText(String(result.password || ''))
+    ElMessage.success('已复制密码')
+  } catch (error: any) {
+    ElMessage.error(error?.message || '复制密码失败')
+  } finally {
+    loadingMailboxPasswordTaskIds.value = loadingMailboxPasswordTaskIds.value.filter(id => id !== taskId)
+  }
+}
+
+async function copyTaskTotp(task: RuntimeTask) {
+  const taskId = String(task.task_id || '').trim()
+  if (!taskId || loadingMailboxTotpTaskIds.value.includes(taskId)) return
+  if (!navigator.clipboard?.writeText) {
+    ElMessage.error('当前浏览器不支持安全剪贴板写入')
+    return
+  }
+  loadingMailboxTotpTaskIds.value = [...loadingMailboxTotpTaskIds.value, taskId]
+  try {
+    const result = await getRuntimeTaskMailboxTotp(taskId)
+    await navigator.clipboard.writeText(String(result.code || ''))
+    ElMessage.success(`已复制临时 2FA 验证码，约 ${Number(result.remaining || 0)} 秒后刷新`)
+  } catch (error: any) {
+    ElMessage.error(error?.message || '复制临时 2FA 验证码失败')
+  } finally {
+    loadingMailboxTotpTaskIds.value = loadingMailboxTotpTaskIds.value.filter(id => id !== taskId)
+  }
+}
+
 async function openTaskMailboxUrl(task: RuntimeTask) {
   const taskId = String(task.task_id || '').trim()
   if (!task.has_mailbox_url || !taskId || openingMailboxUrlTaskIds.value.includes(taskId)) return
@@ -272,7 +316,11 @@ async function disableConnectivityGuard() {
         <TaskResultsPanel
           :tasks="tasks as RuntimeTask[]"
           :opening-mailbox-urls="openingMailboxUrlTaskIds"
+          :loading-mailbox-passwords="loadingMailboxPasswordTaskIds"
+          :loading-mailbox-totps="loadingMailboxTotpTaskIds"
           @copy-account="copyTaskAccount"
+          @mailbox-password="copyTaskPassword"
+          @mailbox-totp="copyTaskTotp"
           @mailbox-url="openTaskMailboxUrl"
         />
       </WorkspacePanel>

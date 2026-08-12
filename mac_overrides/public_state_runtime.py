@@ -364,6 +364,18 @@ class PublicStateRuntime:
                 public["has_mailbox_url"] = bool(mailbox_url_from_row(source_row))
             except Exception:
                 public["has_mailbox_url"] = False
+        password_from_row = getattr(self.mailbox_admin, "password_from_row", None)
+        if callable(password_from_row):
+            try:
+                public["has_mailbox_password"] = bool(password_from_row(source_row))
+            except Exception:
+                public["has_mailbox_password"] = False
+        totp_secret_from_row = getattr(self.mailbox_admin, "totp_secret_from_row", None)
+        if callable(totp_secret_from_row):
+            try:
+                public["has_totp"] = bool(totp_secret_from_row(source_row))
+            except Exception:
+                public["has_totp"] = False
         if failure is not None:
             public["failure"] = failure
             public["error"] = failure["public_message"]

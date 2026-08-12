@@ -1215,6 +1215,73 @@ class WebRouteTests(unittest.TestCase):
         self.assertNotIn("password", serialized)
         self.assertNotIn("refresh", serialized)
 
+    def test_runtime_task_password_and_totp_rebind_without_exposing_source_credentials(self):
+        source_row = "private@example.test|login-password|JBSWY3DPEHPK3PXP"
+        row_id = hashlib.sha256(source_row.encode("utf-8")).hexdigest()
+        self.importer.tasks = {
+            "T003-bound": {"task_id": "T003-bound", "source_row": source_row, "status": "authorizing"}
+        }
+        self.importer.lock = threading.RLock()
+        self.mailbox_admin.list_mailboxes = lambda: {
+            "ok": True,
+            "rows": [{"row_id": row_id, "line_no": 9, "has_mailbox_password": True, "has_totp": True}],
+        }
+        password_calls = []
+        totp_calls = []
+        self.mailbox_admin.reveal_password = lambda bound, line: (
+            password_calls.append((bound, line)) or {"ok": True, "password": "login-password"}
+        )
+        self.mailbox_admin.reveal_totp = lambda bound, line: (
+            totp_calls.append((bound, line))
+            or {"ok": True, "kind": "totp", "code": "654321", "remaining": 21}
+        )
+        app = self._app()
+
+        with app.test_client() as client:
+            password = client.post(
+                "/api/runtime/tasks/mailbox-password", json={"task_id": "T003-bound"}
+            )
+            totp = client.post(
+                "/api/runtime/tasks/mailbox-totp", json={"task_id": "T003-bound"}
+            )
+
+        self.assertEqual(password.status_code, 200)
+        self.assertEqual(totp.status_code, 200)
+        self.assertEqual(password_calls, [(row_id, 9)])
+        self.assertEqual(totp_calls, [(row_id, 9)])
+        self.assertEqual(password.get_json(), {"ok": True, "password": "login-password"})
+        self.assertEqual(
+            totp.get_json(),
+            {"ok": True, "kind": "totp", "code": "654321", "remaining": 21},
+        )
+        combined = password.get_data(as_text=True) + totp.get_data(as_text=True)
+        self.assertNotIn("private@example.test", combined)
+        self.assertNotIn("JBSWY3DPEHPK3PXP", combined)
+
+    def test_runtime_task_password_and_totp_reject_stale_binding(self):
+        source_row = "stale@example.test|login-password|JBSWY3DPEHPK3PXP"
+        self.importer.tasks = {"T004-stale": {"task_id": "T004-stale", "source_row": source_row}}
+        self.importer.lock = threading.RLock()
+        self.mailbox_admin.list_mailboxes = lambda: {"ok": True, "rows": []}
+        app = self._app()
+
+        with app.test_client() as client:
+            responses = [
+                client.post(path, json={"task_id": "T004-stale"})
+                for path in (
+                    "/api/runtime/tasks/mailbox-password",
+                    "/api/runtime/tasks/mailbox-totp",
+                )
+            ]
+
+        for response in responses:
+            self.assertEqual(response.status_code, 409)
+            self.assertEqual(response.get_json()["code"], "mailbox_row_stale")
+            serialized = response.get_data(as_text=True)
+            self.assertNotIn("stale@example.test", serialized)
+            self.assertNotIn("login-password", serialized)
+            self.assertNotIn("JBSWY3DPEHPK3PXP", serialized)
+
     def test_runtime_task_mailbox_url_rejects_missing_and_stale_tasks(self):
         source_row = "stale@example.test----password----private-url"
         self.importer.tasks = {

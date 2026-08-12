@@ -1645,6 +1645,26 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertNotIn("@example.com", persisted)
         self.assertNotIn("pass-one", persisted)
 
+    def test_import_rechecks_runtime_after_source_write_before_assigning_batch(self):
+        row = "race@example.com----pass-race"
+        statuses = iter((False, False))
+        appended = []
+        self.service.runtime_status = lambda _config: {"running": next(statuses)}
+        self.service.current_run_append = lambda rows: (
+            appended.extend(rows)
+            or {
+                "joined_current_batch": len(rows),
+                "queued_current_batch": len(rows),
+                "next_batch": 0,
+            }
+        )
+
+        result = self.service.import_mailboxes(row)
+
+        self.assertEqual(result["joined_current_batch"], 1)
+        self.assertEqual(result["next_batch"], 0)
+        self.assertEqual(appended, [row])
+
     def test_latest_batch_membership_overrides_older_result_for_batch_filters(self):
         row = "member@example.com----pass-member"
         row_id = row_id_from_source(row)

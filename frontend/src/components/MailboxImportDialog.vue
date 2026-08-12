@@ -32,7 +32,12 @@ async function submit() {
     content.value = ''
     visible.value = false
     emit('imported', result)
-    ElMessage.success(`已追加 ${result.imported || 0} 条，跳过 ${result.skipped || 0} 条`)
+    const joined = Number(result.joined_current_batch || 0)
+    const nextBatch = Number(result.next_batch || 0)
+    const base = `已追加 ${result.imported || 0} 条，跳过 ${result.skipped || 0} 条`
+    if (joined > 0) ElMessage.success(`${base}；${joined} 条已加入当前批次排队`)
+    else if (nextBatch > 0) ElMessage.warning(`${base}；${nextBatch} 条进入下一批优先队列`)
+    else ElMessage.success(base)
   } catch (error: any) {
     ElMessage.error(error?.message || '导入失败')
   } finally {

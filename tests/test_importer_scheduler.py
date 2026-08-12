@@ -74,6 +74,13 @@ class FakeBatchManifest:
     def commit_prepared(self, batch_id):
         self.committed.append(batch_id)
 
+    def append_members(self, batch_id, members):
+        if self.begun is None:
+            raise RuntimeError("batch missing")
+        settings, target, existing = self.begun
+        additions = [dict(item) for item in members]
+        self.begun = (settings, target + len(additions), existing + additions)
+
     def rollback_prepared(self, batch_id):
         self.rolled_back.append(batch_id)
 
@@ -230,6 +237,122 @@ class ImporterSchedulerTests(unittest.TestCase):
         self.assertEqual(sorted(importer.entry_numbers), [1, 2, 3])
         self.assertEqual({task["run_mode"] for task in importer.tasks.values()}, {"relogin"})
         self.assertIn("跳过 SMS 预检和号码申请", importer.logs[-1][0])
+
+    def test_active_batch_accepts_any_number_of_appended_entries_without_raising_worker_limit(self):
+        importer = FakeImporter(available=8, blocked=True)
+        manifest = FakeBatchManifest()
+        start(
+            importer,
+            {"target_count": 1, "concurrency": 1, "batch_id": "batch-dynamic"},
+            batch_manifest=manifest,
+        )
+        self.assertTrue(importer.one_started.wait(1))
+
+        result = importer._gptphone_append_entries([FakeEntry(index) for index in range(2, 8)])
+        self.assertEqual(result["joined_current_batch"], 6)
+        self.assertEqual(len(importer.tasks), 7)
+        self.assertEqual([item["ordinal"] for item in manifest.begun[2]], list(range(1, 8)))
+
+        importer.release_tasks.set()
+        self.assertTrue(importer.finished.wait(3))
+        self.assertEqual(importer.ordinals, list(range(1, 8)))
+        self.assertEqual(importer.max_active, 1)
+        self.assertEqual(manifest.finalized[0], "batch-dynamic")
+
+    def test_dynamic_append_uses_configured_capacity_when_initial_target_is_one(self):
+        importer = FakeImporter(available=8, blocked=True)
+        start(
+            importer,
+            {
+                "target_count": 1,
+                "concurrency": 4,
+                "node_concurrency": 4,
+                "auto_email_login_concurrency": 4,
+                "batch_id": "batch-capacity",
+            },
+        )
+        self.assertTrue(importer.one_started.wait(1))
+
+        importer._gptphone_append_entries([FakeEntry(index) for index in range(2, 6)])
+        self.assertTrue(self._wait_until(lambda: importer.max_active == 4))
+        self.assertEqual(importer.task_concurrency, 1)
+        self.assertEqual(importer.node_gate.concurrency, 4)
+        self.assertEqual(importer.auto_email_phase_gate.concurrency, 4)
+
+        importer.release_tasks.set()
+        self.assertTrue(importer.finished.wait(3))
+
+    def test_partial_append_submission_never_releases_staged_tasks(self):
+        importer = FakeImporter(available=4, blocked=True)
+        admission = AdaptiveConcurrencyGate(2)
+
+        class FailingAppendExecutor:
+            def __init__(self, **kwargs):
+                self.delegate = ThreadPoolExecutor(**kwargs)
+                self.submits = 0
+
+            def submit(self, callback, *args, **kwargs):
+                self.submits += 1
+                if self.submits == 3:
+                    raise RuntimeError("append submit failed")
+                return self.delegate.submit(callback, *args, **kwargs)
+
+            def shutdown(self, **kwargs):
+                return self.delegate.shutdown(**kwargs)
+
+        start(
+            importer,
+            {"target_count": 1, "concurrency": 2, "batch_id": "batch-submit-failure"},
+            task_admission=admission,
+            executor_factory=FailingAppendExecutor,
+        )
+        self.assertTrue(importer.one_started.wait(1))
+
+        with self.assertRaisesRegex(RuntimeError, "append submit failed"):
+            importer._gptphone_append_entries([FakeEntry(2), FakeEntry(3)])
+
+        self.assertEqual(len(importer.tasks), 1)
+        self.assertEqual(importer.entry_numbers, [1])
+        self.assertEqual(admission.pending, 0)
+        importer.release_tasks.set()
+        self.assertTrue(importer.finished.wait(2))
+
+    def test_append_manifest_failure_discards_pending_and_staged_tasks(self):
+        importer = FakeImporter(available=3, blocked=True)
+        admission = AdaptiveConcurrencyGate(2)
+
+        class FailingAppendManifest(FakeBatchManifest):
+            def append_members(self, batch_id, members):
+                raise OSError("manifest unavailable")
+
+        start(
+            importer,
+            {"target_count": 1, "concurrency": 2, "batch_id": "batch-manifest-failure"},
+            task_admission=admission,
+            batch_manifest=FailingAppendManifest(),
+        )
+        self.assertTrue(importer.one_started.wait(1))
+
+        with self.assertRaisesRegex(OSError, "manifest unavailable"):
+            importer._gptphone_append_entries([FakeEntry(2), FakeEntry(3)])
+
+        self.assertEqual(len(importer.tasks), 1)
+        self.assertEqual(importer.entry_numbers, [1])
+        self.assertEqual(admission.pending, 0)
+        importer.release_tasks.set()
+        self.assertTrue(importer.finished.wait(2))
+
+    def test_append_is_rejected_after_stop_request(self):
+        importer = FakeImporter(available=3, blocked=True)
+        start(importer, {"target_count": 1, "concurrency": 1, "batch_id": "batch-stop"})
+        self.assertTrue(importer.one_started.wait(1))
+        importer.stop_event.set()
+
+        with self.assertRaisesRegex(RuntimeError, "current_batch_closed"):
+            importer._gptphone_append_entries([FakeEntry(2)])
+
+        importer.release_tasks.set()
+        self.assertTrue(importer.finished.wait(2))
 
     def test_stopping_relogin_does_not_restore_consumed_preselected_rows(self):
         importer = FakeImporter(available=3, blocked=True)

@@ -680,6 +680,8 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
 
     api_mailboxes_url = runtime_info_routes.mailbox_url
     api_runtime_task_mailbox_url = runtime_info_routes.runtime_task_mailbox_url
+    api_runtime_task_mailbox_password = runtime_info_routes.runtime_task_mailbox_password
+    api_runtime_task_mailbox_totp = runtime_info_routes.runtime_task_mailbox_totp
 
     def api_mailboxes_relogin():
         if not context.lifecycle_lock.acquire(blocking=False):
@@ -1399,6 +1401,18 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             "/api/runtime/tasks/mailbox-url",
             "api_runtime_task_mailbox_url",
             api_runtime_task_mailbox_url,
+            ["POST"],
+        ),
+        (
+            "/api/runtime/tasks/mailbox-password",
+            "api_runtime_task_mailbox_password",
+            api_runtime_task_mailbox_password,
+            ["POST"],
+        ),
+        (
+            "/api/runtime/tasks/mailbox-totp",
+            "api_runtime_task_mailbox_totp",
+            api_runtime_task_mailbox_totp,
             ["POST"],
         ),
         ("/api/mailboxes/relogin", "api_mailboxes_relogin", api_mailboxes_relogin, ["POST"]),

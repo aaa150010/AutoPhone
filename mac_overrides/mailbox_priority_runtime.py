@@ -296,6 +296,56 @@ def reserve_available_batch(
     return selected
 
 
+def reserve_specific_available(
+    pool: Any,
+    row_ids: Iterable[Any],
+    *,
+    lease_seconds: Any = 3600,
+    lease_owner_batch_id: Any = "",
+    mailbox_error_type: type[Exception] = RuntimeError,
+) -> list[Any]:
+    """Lease only the requested row fingerprints, preserving requested order."""
+    wanted = [str(value or "").strip().lower() for value in row_ids]
+    wanted = list(dict.fromkeys(value for value in wanted if len(value) == 64))
+    if not wanted:
+        return []
+    seconds = max(60, min(_safe_int(lease_seconds, 3600), 86400))
+    owner = _safe_batch_id(lease_owner_batch_id)
+
+    def allocate(state: dict[str, Any], entries: list[Any]) -> list[Any] | None:
+        by_id = {_fingerprint(getattr(entry, "source_row", "")): entry for entry in entries}
+        selected = []
+        now = float(time.time())
+        for row_id in wanted:
+            entry = by_id.get(row_id)
+            if entry is None:
+                return None
+            item = pool._item(state, entry)
+            status = str(item.get("status") or "").strip().lower()
+            try:
+                lease_until = float(item.get("lease_until") or 0)
+            except (TypeError, ValueError):
+                lease_until = 0.0
+            if status in {"consumed", "damaged"} or (status == "leased" and lease_until > now):
+                return None
+            selected.append((entry, item))
+        updated_at = int(now)
+        for _entry, item in selected:
+            item.update(
+                status="leased",
+                lease_until=now + seconds,
+                **{LEASE_OWNER_FIELD: owner},
+                updated_at=updated_at,
+            )
+            pool._history(item, "leased")
+        return [entry for entry, _item in selected]
+
+    selected = pool._update(allocate)
+    if not isinstance(selected, list) or len(selected) != len(wanted):
+        raise mailbox_error_type("追加邮箱已变化或不再可用")
+    return selected
+
+
 def release_owned_batch_leases(
     pool: Any,
     batch_id: Any,

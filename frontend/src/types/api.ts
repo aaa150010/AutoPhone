@@ -140,6 +140,8 @@ export interface RuntimeTask {
   batch_id?: string
   batch_started_at?: number
   has_mailbox_url?: boolean
+  has_mailbox_password?: boolean
+  has_totp?: boolean
   status?: string
   error?: string
   reason?: string

@@ -47,6 +47,21 @@ def result_file(root: Path, batch_id: str, ordinal: int, status: str = "success"
 
 
 class RunBatchManifestStoreTests(unittest.TestCase):
+    def test_active_batch_appends_arbitrary_members_and_expands_target_atomically(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            store = RunBatchManifestStore(root, recover_pending=False, now=lambda: 180)
+            store.begin(settings(root, "batch-append", target=1), target=1, members=members(1))
+
+            store.append_members("batch-append", members(5)[1:])
+            batch = store.get("batch-append")
+
+            self.assertEqual(batch["target"], 5)
+            self.assertEqual(batch["counts"]["target"], 5)
+            self.assertEqual(batch["counts"]["reserved"], 4)
+            self.assertEqual([item["ordinal"] for item in batch["members"]], [1, 2, 3, 4, 5])
+            self.assertEqual({item["status"] for item in batch["members"][1:]}, {"queued"})
+
     def test_prepared_manifest_can_be_committed_or_removed_without_fake_results(self):
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
