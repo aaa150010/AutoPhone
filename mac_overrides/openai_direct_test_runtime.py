@@ -187,6 +187,7 @@ def _status_from_direct_code(
     tested_at: int,
     *,
     retryable: bool = False,
+    detail: Any = None,
 ) -> Sub2TestStatus:
     if code == 401:
         return _status("unauthorized", 401, "401 Token失效", "OpenAI access token 已失效", tested_at)
@@ -217,7 +218,8 @@ def _status_from_direct_code(
             tested_at,
         )
     label = f"HTTP {code}" if code else "OpenAI 测试失败"
-    return _status("http_error", code, label, "本机直连 OpenAI 测试失败", tested_at)
+    summary = detail or (f"本机直连 OpenAI 返回 HTTP {code}" if code else "本机直连 OpenAI 测试失败")
+    return _status("http_error", code, label, summary, tested_at)
 
 
 def _non_success_status(response: DirectOpenAIResponse, tested_at: int) -> Sub2TestStatus:
@@ -251,7 +253,16 @@ def _non_success_status(response: DirectOpenAIResponse, tested_at: int) -> Sub2T
             "OpenAI 工作空间已停用，确认后立即清理本地邮箱",
             tested_at,
         )
-    return _status_from_direct_code(status_code, tested_at)
+    public_detail: Any = None
+    if isinstance(detail, Mapping):
+        public_detail = detail.get("message") or detail.get("detail") or detail.get("code")
+    elif detail:
+        public_detail = detail
+    if not public_detail and isinstance(payload, Mapping):
+        public_detail = payload.get("message") or payload.get("error") or payload.get("code")
+    if isinstance(public_detail, Mapping):
+        public_detail = public_detail.get("message") or public_detail.get("code") or public_detail.get("type")
+    return _status_from_direct_code(status_code, tested_at, detail=public_detail)
 
 
 def _code_from_text(value: Any) -> int | None:

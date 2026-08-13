@@ -131,6 +131,16 @@ class OpenAIDirectTestRuntimeTests(unittest.TestCase):
                 status = OpenAIDirectTestClient(transport=transport).test_document(success_document())
                 self.assertEqual(status.kind, expected_kind)
 
+    def test_http_400_includes_safe_provider_detail(self):
+        response = FakeResponse(
+            400,
+            chunks=[json.dumps({"error": {"message": "模型暂不支持 Responses"}}).encode("utf-8")],
+        )
+        status = OpenAIDirectTestClient(transport=FakeTransport([response])).test_document(success_document())
+        self.assertEqual(status.kind, "http_error")
+        self.assertEqual(status.status_code, 400)
+        self.assertIn("模型暂不支持 Responses", status.summary)
+
     def test_exact_402_deactivated_workspace_is_classified_for_local_cleanup(self):
         body = json.dumps({"detail": {"code": "deactivated_workspace"}}).encode("utf-8")
         response = FakeResponse(402, chunks=[body])

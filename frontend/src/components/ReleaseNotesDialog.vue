@@ -24,6 +24,7 @@ onMounted(() => {
     :show-close="false"
     :close-on-click-modal="false"
     :close-on-press-escape="false"
+    modal-class="release-notes-overlay"
     align-center
   >
     <template #header>
@@ -50,6 +51,14 @@ onMounted(() => {
 </template>
 
 <style scoped>
+:global(.release-notes-overlay) { overflow: hidden !important; }
+:global(.release-notes-overlay .el-dialog) { display: flex; flex-direction: column; box-sizing: border-box; height: 680px; max-height: calc(100vh - 40px); margin-top: 20px; margin-bottom: 20px; overflow: hidden; }
+:global(.release-notes-overlay .el-dialog__header),
+:global(.release-notes-overlay .el-dialog__footer) { flex: 0 0 auto; }
+:global(.release-notes-overlay .el-dialog__body) { flex: 1 1 0; box-sizing: border-box; height: 520px; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #75a9d8 #edf3f8; }
+:global(.release-notes-overlay .el-dialog__body::-webkit-scrollbar) { width: 7px; }
+:global(.release-notes-overlay .el-dialog__body::-webkit-scrollbar-thumb) { border-radius: 4px; background: #75a9d8; }
+:global(.release-notes-overlay .el-dialog__body::-webkit-scrollbar-track) { background: #edf3f8; }
 .release-header { display: flex; align-items: center; gap: 11px; }
 .release-header > .el-icon { flex: 0 0 auto; color: var(--el-color-primary); font-size: 28px; }
 .release-header div { display: flex; flex-direction: column; gap: 3px; }

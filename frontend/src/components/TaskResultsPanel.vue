@@ -33,7 +33,7 @@ const activeView = ref<ViewMode>('pending')
 const detailsOpen = ref(false)
 const selectedTaskKey = ref('')
 const acceptedVerificationKeys = ref(new Set<string>())
-const autoOpenedBatch = ref('')
+const previousPendingKeys = ref<Set<string> | null>(null)
 
 const nowSeconds = useTaskProgressClock(
   () => props.tasks,
@@ -65,24 +65,20 @@ watch(() => props.tasks, (tasks) => {
     if (acceptedVerificationKeys.value.has(verificationKey(task)) && shouldShowManualVerification(task)) current.add(verificationKey(task))
   }
   acceptedVerificationKeys.value = current
-  const batch = String(tasks.find(task => task.batch_id)?.batch_id || 'legacy')
-  if (pendingTasks.value.length > 0 && autoOpenedBatch.value !== batch) {
-    autoOpenedBatch.value = batch
-    activeView.value = 'pending'
-  }
+  const pendingKeys = new Set(pendingTasks.value.map(task => (
+    `${taskRowKey(task)}::${shouldShowManualVerification(task) ? verificationKey(task) : 'failure'}`
+  )))
+  const firstSnapshot = previousPendingKeys.value === null
+  const hasNewPending = firstSnapshot
+    || [...pendingKeys].some(key => !previousPendingKeys.value?.has(key))
+  if (pendingTasks.value.length > 0 && hasNewPending) activeView.value = 'pending'
+  previousPendingKeys.value = pendingKeys
   if (activeView.value === 'pending' && pendingTasks.value.length === 0) activeView.value = 'running'
 }, { deep: true, immediate: true })
 
 function markVerificationAccepted(row: RuntimeTask) {
   acceptedVerificationKeys.value = new Set(acceptedVerificationKeys.value).add(verificationKey(row))
   if (activeView.value === 'pending' && pendingTasks.value.length === 0) activeView.value = 'running'
-}
-
-function taskTooltip(row: RuntimeTask) {
-  const details = []
-  if (row.batch_id) details.push(`运行批次 ${row.batch_id}`)
-  if (Number(row.ordinal) > 0) details.push(`批内序号 ${Math.floor(Number(row.ordinal))}`)
-  return details.join(' · ') || `任务 ${row.task_id}`
 }
 
 function statusLabel(status?: string) {
@@ -138,7 +134,6 @@ function openDetails(row: RuntimeTask) {
         <template #default="{ row }">
           <el-tooltip v-if="row.email || row.account" content="点击复制邮箱" placement="top"><button type="button" class="copyable-account" @click="emit('copyAccount', row)">{{ row.email || row.account }}</button></el-tooltip>
           <span v-else>-</span>
-          <small class="task-id" :title="taskTooltip(row)">{{ row.task_id }}</small>
         </template>
       </el-table-column>
       <el-table-column label="取件 URL" width="92" align="center">
@@ -150,8 +145,8 @@ function openDetails(row: RuntimeTask) {
       <el-table-column label="2FA" width="62" align="center">
         <template #default="{ row }"><el-tooltip v-if="row.has_totp" content="复制临时 2FA 验证码" placement="top"><el-button link :icon="CopyDocument" :loading="loadingMailboxTotps.includes(row.task_id)" aria-label="复制临时 2FA 验证码" @click="emit('mailboxTotp', row)" /></el-tooltip><span v-else class="muted">-</span></template>
       </el-table-column>
-      <el-table-column label="当前阶段 / 结果" min-width="250">
-        <template #default="{ row }"><TaskProgressCell :progress="row.progress" :timing="row.timing" :now-seconds="nowSeconds" :status="row.status" /><el-tag class="result-tag" :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></template>
+      <el-table-column label="当前阶段 / 结果" min-width="340">
+        <template #default="{ row }"><div class="result-cell"><TaskProgressCell :progress="row.progress" :timing="row.timing" :now-seconds="nowSeconds" :status="row.status" /><el-tag class="result-tag" :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></div></template>
       </el-table-column>
       <el-table-column label="待处理事项" min-width="280" show-overflow-tooltip>
         <template #default="{ row }"><el-tooltip v-if="row.failure" :content="failureTooltip(row)" placement="top"><span class="failure-detail"><span class="failure-node">{{ row.failure.node_label }}</span>{{ failureCause(row) }}</span></el-tooltip><TaskVerificationInput v-else-if="shouldShowManualVerification(row) && !acceptedVerificationKeys.has(verificationKey(row))" :task-id="row.task_id" :request="row.manual_verification" :now-seconds="nowSeconds" @accepted="markVerificationAccepted(row)" /><span v-else class="muted">-</span></template>
@@ -164,8 +159,8 @@ function openDetails(row: RuntimeTask) {
 </template>
 
 <style scoped>
-.task-results { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
-.task-summary-tabs { display: grid; grid-template-columns: repeat(3, 120px); align-content: center; align-self: stretch; justify-content: start; gap: 3px; height: 34px; padding: 3px 8px; border-bottom: 1px solid #dce6e2; background: #fafcfb; }
+.task-results { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
+.task-summary-tabs { position: absolute; z-index: 3; top: -43px; left: 96px; display: grid; grid-template-columns: repeat(3, 120px); align-content: center; justify-content: start; gap: 3px; height: 34px; padding: 3px 0; background: transparent; }
 .task-summary-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; height: 26px; border: 1px solid transparent; border-radius: 4px; padding: 0 8px; background: transparent; color: #586a67; font-size: 12px; font-weight: 600; cursor: pointer; transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease; }
 .task-summary-tabs button:hover { background: #edf4f2; color: #0f6b5b; }
 .task-summary-tabs button:focus-visible { outline: 2px solid #72b8a8; outline-offset: 1px; }
@@ -178,10 +173,14 @@ function openDetails(row: RuntimeTask) {
 .task-summary-tabs button.active.urgent b { background: #c83f4f; color: #fff; }
 .task-summary-tabs b { display: inline-grid; place-items: center; min-width: 18px; height: 16px; padding: 0 4px; border-radius: 8px; background: #e1e8e6; color: #52635f; font-size: 9px; font-variant-numeric: tabular-nums; }
 .task-table { width: 100%; flex: 1; min-height: 0; }
+.task-table :deep(.el-table__cell) { padding-top: 4px; padding-bottom: 4px; }
 .copyable-account { display: block; max-width: 100%; overflow: hidden; padding: 0; border: 0; background: transparent; color: var(--el-color-primary); font: inherit; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: copy; }
 .copyable-account:focus-visible { outline: 2px solid var(--el-color-primary-light-5); outline-offset: 2px; border-radius: 2px; }
-.task-id { display: block; overflow: hidden; color: var(--el-text-color-secondary); font-size: 10px; line-height: 14px; text-overflow: ellipsis; white-space: nowrap; }
-.result-tag { margin-top: 3px; }
+.result-cell { display: flex; align-items: center; min-width: 0; gap: 8px; white-space: nowrap; }
+.result-cell :deep(.el-tooltip__trigger) { display: block; min-width: 0; flex: 1 1 auto; overflow: hidden; }
+.result-cell :deep(.progress-cell) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.result-cell :deep(.progress-cell span) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.result-tag { flex: 0 0 auto; margin-top: 0; }
 .failure-detail { display: inline-flex; max-width: 100%; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .failure-node { flex: none; color: var(--el-color-danger); font-weight: 600; }
 .muted { color: var(--el-text-color-secondary); }

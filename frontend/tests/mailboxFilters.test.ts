@@ -4,6 +4,7 @@ import {
   isSub2TestFailure,
   isLatestMailboxBatchFailure,
   isMailboxNetworkDisconnected,
+  isMailboxHttp400,
   latestMailboxBatchId,
   mailboxBatchCandidates,
   matchesMailboxView,
@@ -93,6 +94,13 @@ test('network filter accepts explicit quota connection failures and excludes HTT
   ]) {
     assert.equal(isMailboxNetworkDisconnected(row({ quota_status: 'error', quota_error })), false)
   }
+})
+
+test('HTTP 400 filter matches direct OpenAI test failures', () => {
+  assert.equal(isMailboxHttp400(row({ sub2_status: { kind: 'http_error', status_code: 400 } })), true)
+  assert.equal(isMailboxHttp400(row({ sub2_status: { kind: 'http_error', status_code: 401 } })), false)
+  assert.equal(isMailboxHttp400(row({ quota_status: 'error', quota_error: 'OpenAI 返回 HTTP 400' })), true)
+  assert.equal(isMailboxHttp400(row({ quota_status: 'error', quota_error: 'HTTP 429' })), false)
 })
 
 test('OpenAI batch tests every mailbox while quota keeps successful accounts only', () => {

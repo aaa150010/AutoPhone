@@ -525,6 +525,7 @@ onUnmounted(() => {
           <el-option label="OpenAI 测试失败" value="test_failure" />
           <el-option label="OpenAI 401/404（需重试）" value="needs_rerun" />
           <el-option label="网络断开" value="network_disconnected" />
+          <el-option label="HTTP 400" value="http_400" />
         </el-select>
         <el-select v-model="quotaFilter" class="quota-filter-select">
           <el-option label="全部额度" value="all" />

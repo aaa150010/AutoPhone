@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   CircleCheckFilled,
@@ -30,6 +30,12 @@ import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useAppController } from '../composables/useAppController'
 import type { RuntimeTask } from '../types/api'
 import { buildOpenAIConnectivityView } from '../utils/openAIConnectivity'
+import {
+  MAX_RUN_LOG_PANEL_WIDTH,
+  MIN_RUN_LOG_PANEL_WIDTH,
+  readRunLogPanelWidth,
+  saveRunLogPanelWidth,
+} from '../utils/runLogPanel'
 
 const emit = defineEmits<{ navigate: [string] }>()
 const controller = useAppController()
@@ -39,6 +45,48 @@ const openingMailboxUrlTaskIds = ref<string[]>([])
 const loadingMailboxPasswordTaskIds = ref<string[]>([])
 const loadingMailboxTotpTaskIds = ref<string[]>([])
 const connectivityView = computed(() => buildOpenAIConnectivityView(controller.runtime.value))
+const logPanelWidth = ref(700)
+const resizingLogPanel = ref(false)
+
+function updateLogPanelWidth(clientX: number) {
+  const next = Math.round(window.innerWidth - clientX - 5)
+  logPanelWidth.value = Math.min(MAX_RUN_LOG_PANEL_WIDTH, Math.max(MIN_RUN_LOG_PANEL_WIDTH, next))
+}
+
+function finishLogResize() {
+  if (!resizingLogPanel.value) return
+  resizingLogPanel.value = false
+  saveRunLogPanelWidth(window.localStorage, logPanelWidth.value)
+  document.body.style.cursor = ''
+  window.removeEventListener('pointermove', moveLogResize)
+  window.removeEventListener('pointerup', finishLogResize)
+}
+
+function moveLogResize(event: PointerEvent) {
+  if (resizingLogPanel.value) updateLogPanelWidth(event.clientX)
+}
+
+function startLogResize(event: PointerEvent) {
+  event.preventDefault()
+  resizingLogPanel.value = true
+  document.body.style.cursor = 'col-resize'
+  window.addEventListener('pointermove', moveLogResize)
+  window.addEventListener('pointerup', finishLogResize)
+}
+
+function adjustLogPanelWidth(event: KeyboardEvent) {
+  const delta = event.key === 'ArrowLeft' ? 20 : event.key === 'ArrowRight' ? -20 : 0
+  if (!delta) return
+  event.preventDefault()
+  logPanelWidth.value = Math.min(MAX_RUN_LOG_PANEL_WIDTH, Math.max(MIN_RUN_LOG_PANEL_WIDTH, logPanelWidth.value + delta))
+  saveRunLogPanelWidth(window.localStorage, logPanelWidth.value)
+}
+
+onMounted(() => {
+  logPanelWidth.value = readRunLogPanelWidth(window.localStorage)
+})
+
+onUnmounted(finishLogResize)
 
 const terminalStatuses = new Set([
   'success', 'failed', 'stopped', 'stopped_before_start', 'retryable_infra',
@@ -305,29 +353,33 @@ async function disableConnectivityGuard() {
         />
       </div>
 
-      <WorkspacePanel class="task-workspace" title="任务结果" :icon="Tickets" fill body-padding="none">
-        <template #actions>
-          <div v-if="batchId" class="batch-identity">
-            <span>运行批次</span>
-            <strong>{{ batchId }}</strong>
-            <b>已完成 {{ batchCompleted }}/{{ batchTarget }}</b>
-          </div>
-        </template>
-        <TaskResultsPanel
-          :tasks="tasks as RuntimeTask[]"
-          :opening-mailbox-urls="openingMailboxUrlTaskIds"
-          :loading-mailbox-passwords="loadingMailboxPasswordTaskIds"
-          :loading-mailbox-totps="loadingMailboxTotpTaskIds"
-          @copy-account="copyTaskAccount"
-          @mailbox-password="copyTaskPassword"
-          @mailbox-totp="copyTaskTotp"
-          @mailbox-url="openTaskMailboxUrl"
-        />
-      </WorkspacePanel>
-
-      <WorkspacePanel class="log-workspace" title="运行日志" :icon="Document" fill body-padding="none">
-        <LogPanel :logs="controller.state.value.logs || []" :auto-scroll="true" />
-      </WorkspacePanel>
+      <div class="run-workspace" :style="{ gridTemplateColumns: `minmax(0, 1fr) 7px ${logPanelWidth}px` }">
+        <WorkspacePanel class="task-workspace" title="任务结果" :icon="Tickets" fill body-padding="none">
+          <template #actions>
+            <div v-if="batchId" class="batch-identity">
+              <span>运行批次</span>
+              <strong>{{ batchId }}</strong>
+              <b>已完成 {{ batchCompleted }}/{{ batchTarget }}</b>
+            </div>
+          </template>
+          <TaskResultsPanel
+            :tasks="tasks as RuntimeTask[]"
+            :opening-mailbox-urls="openingMailboxUrlTaskIds"
+            :loading-mailbox-passwords="loadingMailboxPasswordTaskIds"
+            :loading-mailbox-totps="loadingMailboxTotpTaskIds"
+            @copy-account="copyTaskAccount"
+            @mailbox-password="copyTaskPassword"
+            @mailbox-totp="copyTaskTotp"
+            @mailbox-url="openTaskMailboxUrl"
+          />
+        </WorkspacePanel>
+        <el-tooltip content="拖拽调整日志宽度，方向键微调" placement="top">
+          <div class="log-resizer" role="separator" aria-label="调整运行日志宽度" aria-orientation="vertical" :aria-valuemin="MIN_RUN_LOG_PANEL_WIDTH" :aria-valuemax="MAX_RUN_LOG_PANEL_WIDTH" :aria-valuenow="logPanelWidth" tabindex="0" @pointerdown="startLogResize" @keydown="adjustLogPanelWidth" />
+        </el-tooltip>
+        <WorkspacePanel class="log-workspace" title="运行日志" :icon="Document" fill body-padding="none">
+          <LogPanel :logs="controller.state.value.logs || []" :auto-scroll="true" />
+        </WorkspacePanel>
+      </div>
     </div>
 
     <RunUploadDialog
@@ -359,7 +411,7 @@ async function disableConnectivityGuard() {
   min-height: 0;
 }
 .run-page.has-connectivity-banner { grid-template-rows: 44px 40px minmax(0, 1fr); }
-.console-grid { display: grid; grid-template-rows: 88px repeat(2, minmax(0, 1fr)); gap: 6px; min-width: 0; min-height: 0; }
+.console-grid { display: grid; grid-template-rows: 88px minmax(0, 1fr); gap: 6px; min-width: 0; min-height: 0; }
 .metrics-row { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; min-width: 0; min-height: 0; }
 .metrics-row :deep(.metric-card) { min-height: 0; height: 100%; }
 .metrics-row :deep(.tone-primary .metric-icon) { background: var(--run-blue-soft); color: var(--run-blue); }
@@ -372,6 +424,12 @@ async function disableConnectivityGuard() {
 .metrics-row :deep(.tone-danger .metric-value) { color: var(--run-red); }
 .task-workspace,
 .log-workspace { min-width: 0; min-height: 0; }
+.run-workspace { display: grid; min-width: 0; min-height: 0; gap: 0; }
+.log-resizer { position: relative; min-width: 0; cursor: col-resize; }
+.log-resizer::after { position: absolute; top: 8px; bottom: 8px; left: 3px; width: 1px; background: #c8d5e5; content: ''; transition: background-color .15s ease, width .15s ease; }
+.log-resizer:hover::after,
+.log-resizer:focus-visible::after { left: 2px; width: 3px; background: #4c7fb7; }
+.log-resizer:focus-visible { outline: none; }
 .batch-identity { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .batch-identity span { color: var(--el-text-color-secondary); font-size: 11px; white-space: nowrap; }
 .batch-identity strong {
