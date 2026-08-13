@@ -51,7 +51,7 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
     )
 
 
-DIRECT_TEST_MODEL = "gpt-5.4"
+DIRECT_TEST_MODEL = "gpt-5.5"
 DIRECT_TEST_TIMEOUT_SECONDS = 30.0
 # Two workers is the compatibility baseline. The optimized path uses five so
 # one outer mailbox chunk can run in a single wave.
@@ -359,7 +359,7 @@ class OpenAIDirectTestClient:
             "content-type": "application/json",
             "accept": "text/event-stream",
             "openai-beta": "responses=experimental",
-            "originator": "codex_cli_rs",
+            "originator": "codex-tui",
             "version": OPENAI_CODEX_PROBE_VERSION,
             "user-agent": OPENAI_CODEX_PROBE_USER_AGENT,
             "x-codex-window-id": str(uuid.uuid4()),

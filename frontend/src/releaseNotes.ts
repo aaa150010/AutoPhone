@@ -12,10 +12,14 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.5.5',
-  title: '支持单行重新查询 OpenAI 状态',
+  version: '1.5.6',
+  title: 'OpenAI 检测统一使用 gpt-5.5',
   releasedAt: '2026-08-13',
   sections: [
+    {
+      title: 'OpenAI 检测固定 gpt-5.5',
+      usage: '邮箱管理的单行重新查询和批量测试 OpenAI 统一使用 gpt-5.5，不提供手动模型选择；检测结果按服务端实际返回显示，例如额度受限会明确标记为 429。',
+    },
     {
       title: 'OpenAI 状态单行重新查询',
       usage: '点击邮箱管理中 OpenAI 状态标签或其刷新图标，即可只重新检测当前邮箱；检测期间该行显示加载，完成后直接更新状态和安全错误摘要。',

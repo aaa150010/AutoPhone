@@ -84,7 +84,10 @@ class OpenAIDirectTestRuntimeTests(unittest.TestCase):
             "Bearer private-access-token",
         )
         self.assertEqual(transport.calls[0]["headers"]["chatgpt-account-id"], "private-account-id")
-        self.assertEqual(transport.calls[0]["body"]["model"], "gpt-5.4")
+        self.assertEqual(transport.calls[0]["headers"]["originator"], "codex-tui")
+        self.assertEqual(transport.calls[0]["headers"]["version"], "0.146.0")
+        self.assertTrue(transport.calls[0]["headers"]["user-agent"].startswith("codex-tui/0.146.0 "))
+        self.assertEqual(transport.calls[0]["body"]["model"], "gpt-5.5")
         self.assertTrue(transport.calls[0]["body"]["store"] is False)
         self.assertNotIn("private-access-token", str(status))
         self.assertNotIn("private-account-id", str(status))

@@ -18,7 +18,7 @@ from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence
 import urllib.parse
 
 
-TEST_MODEL = "gpt-5.4"
+TEST_MODEL = "gpt-5.5"
 TEST_MODE = "default"
 MAX_BATCH_ROWS = 20
 MAX_BATCH_WORKERS = 3

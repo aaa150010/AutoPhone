@@ -19,10 +19,10 @@ OPENAI_CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses"
 OPENAI_QUOTA_TIMEOUT_SECONDS = 20
 OPENAI_QUOTA_NODE_CODE = "openai_quota"
 OPENAI_QUOTA_NODE_LABEL = "查询 OpenAI 额度"
-OPENAI_CODEX_PROBE_MODEL = "gpt-5.4"
+OPENAI_CODEX_PROBE_MODEL = "gpt-5.5"
 OPENAI_CODEX_PROBE_VERSION = "0.146.0"
 OPENAI_CODEX_PROBE_USER_AGENT = (
-    f"codex_cli_rs/{OPENAI_CODEX_PROBE_VERSION} "
+    f"codex-tui/{OPENAI_CODEX_PROBE_VERSION} "
     "(Ubuntu 22.4.0; x86_64) xterm-256color"
 )
 _QUOTA_SUMMARY_LIMIT = 240
@@ -614,7 +614,7 @@ class OpenAIQuotaClient:
             "content-type": "application/json",
             "accept": "text/event-stream",
             "openai-beta": "responses=experimental",
-            "originator": "codex_cli_rs",
+            "originator": "codex-tui",
             "version": OPENAI_CODEX_PROBE_VERSION,
             "user-agent": OPENAI_CODEX_PROBE_USER_AGENT,
         }

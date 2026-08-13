@@ -134,7 +134,7 @@ class Sub2RuntimeTests(unittest.TestCase):
         login_calls = [call for call in transport.calls if call["url"].endswith("/auth/login")]
         self.assertEqual(len(login_calls), 1)
         test_call = next(call for call in transport.calls if "/accounts/41/test" in call["url"])
-        self.assertEqual(test_call["json_body"], {"model_id": "gpt-5.4", "prompt": "", "mode": "default"})
+        self.assertEqual(test_call["json_body"], {"model_id": "gpt-5.5", "prompt": "", "mode": "default"})
         self.assertEqual(test_call["headers"]["X-Admin-UI-Request"], "1")
         self.assertEqual(test_call["headers"]["Authorization"], "Bearer sensitive-admin-token")
         saved = (self.root / "snapshots.json").read_text(encoding="utf-8")
