@@ -131,17 +131,17 @@ export function useMailboxBatchOperations(options: {
   async function start(
     kind: MailboxOperationKind,
     requestedRows?: Array<{ row_id: string; line_no: number }>,
-  ) {
+  ): Promise<boolean> {
     if (busy.value) {
       if (requestedRows) ElMessage.warning('已有邮箱批量操作正在执行，请稍后重试')
-      return
+      return false
     }
     const candidates = requestedRows || options.candidates(kind)
     if (!candidates.length) {
       ElMessage.warning(kind === 'quota'
         ? '当前没有可查询 OpenAI 额度的成功账号'
         : '当前没有可测试的邮箱')
-      return
+      return false
     }
     startingKind.value = kind
     if (kind === 'openai_test') options.clearSelection()
@@ -152,6 +152,7 @@ export function useMailboxBatchOperations(options: {
       )
       sync(result, result.operation.job_id)
       options.onStarted?.()
+      return true
     } catch (error: any) {
       if (error instanceof ApiError && error.payload?.operation) {
         sync(error.payload, error.payload.operation.job_id)
@@ -159,6 +160,7 @@ export function useMailboxBatchOperations(options: {
       ElMessage.error(error?.message || (kind === 'quota'
         ? '批量查询 OpenAI 额度失败'
         : '本机 OpenAI 连接测试失败'))
+      return false
     } finally {
       startingKind.value = null
     }
@@ -175,5 +177,6 @@ export function useMailboxBatchOperations(options: {
     sync,
     queryQuotas: () => start('quota'),
     testOpenAI: () => start('openai_test'),
+    testOpenAIRows: (rows: Array<{ row_id: string; line_no: number }>) => start('openai_test', rows),
   }
 }

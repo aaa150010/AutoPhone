@@ -25,7 +25,9 @@ const props = defineProps<{
   loadingPasswords: string[]
   loadingTotp: string[]
   loadingQuotas: string[]
+  loadingOpenAI: string[]
   quotaRetryDisabled: boolean
+  openaiRetryDisabled: boolean
   rowMutationDisabled: boolean
   rowActionLoading: string[]
 }>()
@@ -37,6 +39,7 @@ const emit = defineEmits<{
   totp: [MailboxRow]
   url: [MailboxRow]
   quota: [MailboxRow]
+  openai: [MailboxRow]
   action: [MailboxRowAction, MailboxRow]
 }>()
 
@@ -166,6 +169,10 @@ function quotaRetrying(row: MailboxRow) {
   return props.loadingQuotas.includes(row.row_id)
 }
 
+function openaiRetrying(row: MailboxRow) {
+  return props.loadingOpenAI.includes(row.row_id)
+}
+
 function rowActionLoading(row: MailboxRow) {
   return props.rowActionLoading.includes(row.row_id)
 }
@@ -289,10 +296,19 @@ defineExpose({ clearSelection })
         </el-tag>
       </template>
     </el-table-column>
-    <el-table-column label="OpenAI 状态" width="190">
+    <el-table-column label="OpenAI 状态" width="205">
       <template #default="{ row }">
-        <el-tooltip :content="sub2Detail(row)" placement="top">
-          <el-tag :type="sub2Tone(row)" effect="light">{{ sub2Label(row) }}</el-tag>
+        <el-tooltip :content="`点击重新查询 OpenAI 状态 · ${sub2Detail(row)}`" placement="top">
+          <button
+            type="button"
+            class="openai-status-retry"
+            :disabled="openaiRetryDisabled || openaiRetrying(row)"
+            :aria-label="`重新查询 ${row.email || '该邮箱'} 的 OpenAI 状态`"
+            @click="emit('openai', row)"
+          >
+            <el-tag :type="sub2Tone(row)" effect="light">{{ sub2Label(row) }}</el-tag>
+            <el-icon :class="{ 'is-loading': openaiRetrying(row) }"><Refresh /></el-icon>
+          </button>
         </el-tooltip>
       </template>
     </el-table-column>
@@ -434,6 +450,20 @@ defineExpose({ clearSelection })
   cursor: pointer;
 }
 .quota-retry:disabled { opacity: 0.6; cursor: not-allowed; }
+.openai-status-retry {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--el-color-primary);
+  font: inherit;
+  gap: 4px;
+  cursor: pointer;
+}
+.openai-status-retry:disabled { cursor: not-allowed; opacity: 0.7; }
+.openai-status-retry:focus-visible { outline: 2px solid var(--el-color-primary-light-5); outline-offset: 2px; border-radius: 2px; }
 .row-action-button { min-width: 30px; padding: 4px 8px; }
 .danger-icon, .danger-label { color: var(--el-color-danger); }
 </style>

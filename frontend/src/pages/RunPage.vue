@@ -13,6 +13,7 @@ import {
   Upload,
   VideoPause,
   VideoPlay,
+  WarningFilled,
 } from '@element-plus/icons-vue'
 import {
   getRuntimeTaskMailboxPassword,
@@ -44,6 +45,8 @@ const uploadDialog = ref<InstanceType<typeof RunUploadDialog>>()
 const openingMailboxUrlTaskIds = ref<string[]>([])
 const loadingMailboxPasswordTaskIds = ref<string[]>([])
 const loadingMailboxTotpTaskIds = ref<string[]>([])
+const taskView = ref<'pending' | 'running' | 'all'>('pending')
+const taskCounts = ref({ pending: 0, running: 0, all: 0 })
 const connectivityView = computed(() => buildOpenAIConnectivityView(controller.runtime.value))
 const logPanelWidth = ref(700)
 const resizingLogPanel = ref(false)
@@ -356,7 +359,11 @@ async function disableConnectivityGuard() {
       <div class="run-workspace" :style="{ gridTemplateColumns: `minmax(0, 1fr) 7px ${logPanelWidth}px` }">
         <WorkspacePanel class="task-workspace" title="任务结果" :icon="Tickets" fill body-padding="none">
           <template #actions>
-            <div id="task-summary-tabs-target" class="task-summary-tabs-target" />
+            <div class="task-summary-tabs" role="tablist" aria-label="任务结果分类">
+              <button type="button" role="tab" :aria-selected="taskView === 'pending'" :class="{ active: taskView === 'pending', urgent: taskCounts.pending }" @click="taskView = 'pending'"><el-icon><WarningFilled /></el-icon><span>待处理</span><b>{{ taskCounts.pending }}</b></button>
+              <button type="button" role="tab" :aria-selected="taskView === 'running'" :class="{ active: taskView === 'running' }" @click="taskView = 'running'"><el-icon><VideoPlay /></el-icon><span>运行中</span><b>{{ taskCounts.running }}</b></button>
+              <button type="button" role="tab" :aria-selected="taskView === 'all'" :class="{ active: taskView === 'all' }" @click="taskView = 'all'"><el-icon><Tickets /></el-icon><span>全部</span><b>{{ taskCounts.all }}</b></button>
+            </div>
             <div v-if="batchId" class="batch-identity">
               <span>运行批次</span>
               <strong>{{ batchId }}</strong>
@@ -368,10 +375,13 @@ async function disableConnectivityGuard() {
             :opening-mailbox-urls="openingMailboxUrlTaskIds"
             :loading-mailbox-passwords="loadingMailboxPasswordTaskIds"
             :loading-mailbox-totps="loadingMailboxTotpTaskIds"
+            :active-view="taskView"
             @copy-account="copyTaskAccount"
             @mailbox-password="copyTaskPassword"
             @mailbox-totp="copyTaskTotp"
             @mailbox-url="openTaskMailboxUrl"
+            @update:active-view="taskView = $event"
+            @counts="taskCounts = $event"
           />
         </WorkspacePanel>
         <el-tooltip content="拖拽调整日志宽度，方向键微调" placement="top">
@@ -432,7 +442,16 @@ async function disableConnectivityGuard() {
 .log-resizer:focus-visible::after { left: 2px; width: 3px; background: #4c7fb7; }
 .log-resizer:focus-visible { outline: none; }
 .batch-identity { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.task-summary-tabs-target { display: flex; align-items: center; min-width: 0; }
+.task-summary-tabs { display: grid; grid-template-columns: repeat(3, 120px); align-content: center; justify-content: start; gap: 3px; min-width: 0; }
+.task-summary-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; height: 26px; border: 1px solid transparent; border-radius: 4px; padding: 0 8px; background: transparent; color: #586a67; font-size: 12px; font-weight: 600; cursor: pointer; }
+.task-summary-tabs button:hover { background: #edf4f2; color: #0f6b5b; }
+.task-summary-tabs button.active { border-color: #83bdae; background: #e8f4f0; color: #0b6757; font-weight: 700; }
+.task-summary-tabs button.active.urgent { border-color: #df9da5; background: #fff1f2; color: #9f2435; }
+.task-summary-tabs button .el-icon { width: 14px; height: 14px; font-size: 14px; }
+.task-summary-tabs b { display: inline-grid; place-items: center; min-width: 18px; height: 16px; padding: 0 4px; border-radius: 8px; background: #e1e8e6; color: #52635f; font-size: 9px; }
+.task-summary-tabs button.active b { background: #0f6b5b; color: #fff; }
+.task-summary-tabs button.urgent, .task-summary-tabs button.active.urgent { color: #a52b3b; }
+.task-summary-tabs button.urgent b, .task-summary-tabs button.active.urgent b { background: #c83f4f; color: #fff; }
 .batch-identity span { color: var(--el-text-color-secondary); font-size: 11px; white-space: nowrap; }
 .batch-identity strong {
   max-width: 260px;

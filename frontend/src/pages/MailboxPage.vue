@@ -69,6 +69,7 @@ const settingUnavailable = ref(false)
 const settingDraft = ref(false)
 const restoringDraft = ref(false)
 const retryingQuotaRows = ref<string[]>([])
+const retryingOpenAIRows = ref<string[]>([])
 const rowActionLoading = ref<string[]>([])
 const refreshGuard = createMailboxRefreshGuard()
 let timer = 0
@@ -171,6 +172,7 @@ const {
   openaiTestProgress,
   queryQuotas,
   testOpenAI: testSub2,
+  testOpenAIRows,
 } = mailboxBatch
 const {
   copyEmail,
@@ -229,6 +231,21 @@ async function retryQuota(row: MailboxRow) {
     mutating.value = false
   }
 }
+
+async function retryOpenAI(row: MailboxRow) {
+  if (mutating.value || batchBusy.value || retryingOpenAIRows.value.includes(row.row_id)) return
+  retryingOpenAIRows.value = [...retryingOpenAIRows.value, row.row_id]
+  const started = await testOpenAIRows([{ row_id: row.row_id, line_no: row.line_no }])
+  if (!started) {
+    retryingOpenAIRows.value = retryingOpenAIRows.value.filter(id => id !== row.row_id)
+    return
+  }
+  ElMessage.info('已开始重新查询 OpenAI 状态')
+}
+
+watch(() => mailboxBatch.operation.value?.status, (status) => {
+  if (status && status !== 'running') retryingOpenAIRows.value = []
+})
 
 async function refresh() {
   if (mutating.value) return
@@ -574,7 +591,9 @@ onUnmounted(() => {
           :loading-passwords="loadingPasswords"
           :loading-totp="loadingTotp"
           :loading-quotas="retryingQuotaRows"
+          :loadingOpenAI="retryingOpenAIRows"
           :quota-retry-disabled="mutating || batchBusy"
+          :openaiRetryDisabled="mutating || batchBusy"
           :row-mutation-disabled="mutating || batchBusy"
           :row-action-loading="rowActionLoading"
           @select="selectedRows = $event"
@@ -583,6 +602,7 @@ onUnmounted(() => {
           @totp="copyTotp"
           @url="openMailboxUrl"
           @quota="retryQuota"
+          @openai="retryOpenAI"
           @action="handleRowAction"
         />
         <el-pagination

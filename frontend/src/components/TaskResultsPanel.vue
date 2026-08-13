@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { CopyDocument, Document, Key, Tickets, VideoPlay, View, WarningFilled } from '@element-plus/icons-vue'
+import { CopyDocument, Document, Key, View } from '@element-plus/icons-vue'
 import ContentEmptyState from './ContentEmptyState.vue'
 import TaskDetailsDrawer from './TaskDetailsDrawer.vue'
 import TaskProgressCell from './TaskProgressCell.vue'
@@ -20,16 +20,17 @@ const props = withDefaults(defineProps<{
   openingMailboxUrls?: readonly string[]
   loadingMailboxPasswords?: readonly string[]
   loadingMailboxTotps?: readonly string[]
-}>(), { openingMailboxUrls: () => [], loadingMailboxPasswords: () => [], loadingMailboxTotps: () => [] })
+  activeView?: 'pending' | 'running' | 'all'
+}>(), { openingMailboxUrls: () => [], loadingMailboxPasswords: () => [], loadingMailboxTotps: () => [], activeView: 'pending' })
 const emit = defineEmits<{
   copyAccount: [RuntimeTask]
   mailboxPassword: [RuntimeTask]
   mailboxTotp: [RuntimeTask]
   mailboxUrl: [RuntimeTask]
+  'update:activeView': ['pending' | 'running' | 'all']
+  counts: [{ pending: number; running: number; all: number }]
 }>()
 
-type ViewMode = 'pending' | 'running' | 'all'
-const activeView = ref<ViewMode>('pending')
 const detailsOpen = ref(false)
 const selectedTaskKey = ref('')
 const acceptedVerificationKeys = ref(new Set<string>())
@@ -54,9 +55,9 @@ function shouldShowManualVerification(row: RuntimeTask) {
 
 const pendingTasks = computed(() => pendingTaskRows(props.tasks, acceptedVerificationKeys.value))
 const runningTasks = computed(() => runningTaskRows(props.tasks, acceptedVerificationKeys.value))
-const visibleTasks = computed(() => activeView.value === 'pending'
+const visibleTasks = computed(() => props.activeView === 'pending'
   ? pendingTasks.value
-  : activeView.value === 'running' ? runningTasks.value : props.tasks)
+  : props.activeView === 'running' ? runningTasks.value : props.tasks)
 const selectedTask = computed(() => props.tasks.find(row => taskRowKey(row) === selectedTaskKey.value) || null)
 
 watch(() => props.tasks, (tasks) => {
@@ -71,14 +72,18 @@ watch(() => props.tasks, (tasks) => {
   const firstSnapshot = previousPendingKeys.value === null
   const hasNewPending = firstSnapshot
     || [...pendingKeys].some(key => !previousPendingKeys.value?.has(key))
-  if (pendingTasks.value.length > 0 && hasNewPending) activeView.value = 'pending'
+  if (pendingTasks.value.length > 0 && hasNewPending && props.activeView !== 'pending') emit('update:activeView', 'pending')
   previousPendingKeys.value = pendingKeys
-  if (activeView.value === 'pending' && pendingTasks.value.length === 0) activeView.value = 'running'
+  if (props.activeView === 'pending' && pendingTasks.value.length === 0) emit('update:activeView', 'running')
 }, { deep: true, immediate: true })
+
+watch([pendingTasks, runningTasks], () => {
+  emit('counts', { pending: pendingTasks.value.length, running: runningTasks.value.length, all: props.tasks.length })
+}, { immediate: true })
 
 function markVerificationAccepted(row: RuntimeTask) {
   acceptedVerificationKeys.value = new Set(acceptedVerificationKeys.value).add(verificationKey(row))
-  if (activeView.value === 'pending' && pendingTasks.value.length === 0) activeView.value = 'running'
+  if (props.activeView === 'pending' && pendingTasks.value.length === 0) emit('update:activeView', 'running')
 }
 
 function statusLabel(status?: string) {
@@ -124,13 +129,6 @@ function openDetails(row: RuntimeTask) {
 
 <template>
   <div class="task-results">
-    <Teleport to="#task-summary-tabs-target">
-      <div class="task-summary-tabs" role="tablist" aria-label="任务结果分类">
-        <button type="button" role="tab" :aria-selected="activeView === 'pending'" :class="{ active: activeView === 'pending', urgent: pendingTasks.length }" @click="activeView = 'pending'"><el-icon><WarningFilled /></el-icon><span>待处理</span><b>{{ pendingTasks.length }}</b></button>
-        <button type="button" role="tab" :aria-selected="activeView === 'running'" :class="{ active: activeView === 'running' }" @click="activeView = 'running'"><el-icon><VideoPlay /></el-icon><span>运行中</span><b>{{ runningTasks.length }}</b></button>
-        <button type="button" role="tab" :aria-selected="activeView === 'all'" :class="{ active: activeView === 'all' }" @click="activeView = 'all'"><el-icon><Tickets /></el-icon><span>全部</span><b>{{ props.tasks.length }}</b></button>
-      </div>
-    </Teleport>
     <el-table class="task-table" :data="visibleTasks" :row-key="taskRowKey" stripe height="100%">
       <el-table-column label="邮箱" min-width="154">
         <template #default="{ row }">
@@ -162,18 +160,6 @@ function openDetails(row: RuntimeTask) {
 
 <style scoped>
 .task-results { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
-.task-summary-tabs { display: grid; grid-template-columns: repeat(3, 120px); align-content: center; justify-content: start; gap: 3px; height: 34px; padding: 3px 0; background: transparent; pointer-events: auto; }
-.task-summary-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; height: 26px; border: 1px solid transparent; border-radius: 4px; padding: 0 8px; background: transparent; color: #586a67; font-size: 12px; font-weight: 600; cursor: pointer; transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease; }
-.task-summary-tabs button:hover { background: #edf4f2; color: #0f6b5b; }
-.task-summary-tabs button:focus-visible { outline: 2px solid #72b8a8; outline-offset: 1px; }
-.task-summary-tabs button.active { border-color: #83bdae; background: #e8f4f0; color: #0b6757; font-weight: 700; box-shadow: 0 1px 2px rgb(15 107 91 / 10%); }
-.task-summary-tabs button.urgent { color: #a52b3b; }
-.task-summary-tabs button.active.urgent { border-color: #df9da5; background: #fff1f2; color: #9f2435; box-shadow: 0 1px 2px rgb(165 43 59 / 10%); }
-.task-summary-tabs button .el-icon { width: 14px; height: 14px; font-size: 14px; }
-.task-summary-tabs button.active b { background: #0f6b5b; color: #fff; }
-.task-summary-tabs button.urgent b,
-.task-summary-tabs button.active.urgent b { background: #c83f4f; color: #fff; }
-.task-summary-tabs b { display: inline-grid; place-items: center; min-width: 18px; height: 16px; padding: 0 4px; border-radius: 8px; background: #e1e8e6; color: #52635f; font-size: 9px; font-variant-numeric: tabular-nums; }
 .task-table { width: 100%; flex: 1; min-height: 0; }
 .task-table :deep(.el-table__cell) { padding-top: 4px; padding-bottom: 4px; }
 .copyable-account { display: block; max-width: 100%; overflow: hidden; padding: 0; border: 0; background: transparent; color: var(--el-color-primary); font: inherit; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: copy; }

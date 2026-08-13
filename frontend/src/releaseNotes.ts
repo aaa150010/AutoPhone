@@ -12,10 +12,14 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.5.4',
-  title: '修复任务结果页签刷新丢失',
+  version: '1.5.5',
+  title: '支持单行重新查询 OpenAI 状态',
   releasedAt: '2026-08-13',
   sections: [
+    {
+      title: 'OpenAI 状态单行重新查询',
+      usage: '点击邮箱管理中 OpenAI 状态标签或其刷新图标，即可只重新检测当前邮箱；检测期间该行显示加载，完成后直接更新状态和安全错误摘要。',
+    },
     {
       title: '任务结果页签刷新后稳定显示',
       usage: '任务结果标题右侧的待处理、运行中和全部页签使用固定挂载点，刷新页面或任务数据更新后仍会正常显示。',
