@@ -356,6 +356,7 @@ async function disableConnectivityGuard() {
       <div class="run-workspace" :style="{ gridTemplateColumns: `minmax(0, 1fr) 7px ${logPanelWidth}px` }">
         <WorkspacePanel class="task-workspace" title="任务结果" :icon="Tickets" fill body-padding="none">
           <template #actions>
+            <div id="task-summary-tabs-target" class="task-summary-tabs-target" />
             <div v-if="batchId" class="batch-identity">
               <span>运行批次</span>
               <strong>{{ batchId }}</strong>
@@ -431,6 +432,7 @@ async function disableConnectivityGuard() {
 .log-resizer:focus-visible::after { left: 2px; width: 3px; background: #4c7fb7; }
 .log-resizer:focus-visible { outline: none; }
 .batch-identity { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.task-summary-tabs-target { display: flex; align-items: center; min-width: 0; }
 .batch-identity span { color: var(--el-text-color-secondary); font-size: 11px; white-space: nowrap; }
 .batch-identity strong {
   max-width: 260px;

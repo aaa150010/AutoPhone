@@ -124,7 +124,7 @@ function openDetails(row: RuntimeTask) {
 
 <template>
   <div class="task-results">
-    <Teleport to=".task-workspace .panel-actions">
+    <Teleport to="#task-summary-tabs-target">
       <div class="task-summary-tabs" role="tablist" aria-label="任务结果分类">
         <button type="button" role="tab" :aria-selected="activeView === 'pending'" :class="{ active: activeView === 'pending', urgent: pendingTasks.length }" @click="activeView = 'pending'"><el-icon><WarningFilled /></el-icon><span>待处理</span><b>{{ pendingTasks.length }}</b></button>
         <button type="button" role="tab" :aria-selected="activeView === 'running'" :class="{ active: activeView === 'running' }" @click="activeView = 'running'"><el-icon><VideoPlay /></el-icon><span>运行中</span><b>{{ runningTasks.length }}</b></button>

@@ -12,10 +12,14 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.5.3',
-  title: '恢复任务结果页签位置',
+  version: '1.5.4',
+  title: '修复任务结果页签刷新丢失',
   releasedAt: '2026-08-13',
   sections: [
+    {
+      title: '任务结果页签刷新后稳定显示',
+      usage: '任务结果标题右侧的待处理、运行中和全部页签使用固定挂载点，刷新页面或任务数据更新后仍会正常显示。',
+    },
     {
       title: '任务结果页签恢复到标题栏',
       usage: '待处理、运行中和全部页签现在直接显示在任务结果标题右侧，不会被双栏布局或表格边界遮挡。',
