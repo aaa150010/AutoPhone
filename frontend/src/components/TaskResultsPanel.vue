@@ -124,11 +124,13 @@ function openDetails(row: RuntimeTask) {
 
 <template>
   <div class="task-results">
-    <div class="task-summary-tabs" role="tablist" aria-label="任务结果分类">
-      <button type="button" role="tab" :aria-selected="activeView === 'pending'" :class="{ active: activeView === 'pending', urgent: pendingTasks.length }" @click="activeView = 'pending'"><el-icon><WarningFilled /></el-icon><span>待处理</span><b>{{ pendingTasks.length }}</b></button>
-      <button type="button" role="tab" :aria-selected="activeView === 'running'" :class="{ active: activeView === 'running' }" @click="activeView = 'running'"><el-icon><VideoPlay /></el-icon><span>运行中</span><b>{{ runningTasks.length }}</b></button>
-      <button type="button" role="tab" :aria-selected="activeView === 'all'" :class="{ active: activeView === 'all' }" @click="activeView = 'all'"><el-icon><Tickets /></el-icon><span>全部</span><b>{{ props.tasks.length }}</b></button>
-    </div>
+    <Teleport to=".task-workspace .panel-actions">
+      <div class="task-summary-tabs" role="tablist" aria-label="任务结果分类">
+        <button type="button" role="tab" :aria-selected="activeView === 'pending'" :class="{ active: activeView === 'pending', urgent: pendingTasks.length }" @click="activeView = 'pending'"><el-icon><WarningFilled /></el-icon><span>待处理</span><b>{{ pendingTasks.length }}</b></button>
+        <button type="button" role="tab" :aria-selected="activeView === 'running'" :class="{ active: activeView === 'running' }" @click="activeView = 'running'"><el-icon><VideoPlay /></el-icon><span>运行中</span><b>{{ runningTasks.length }}</b></button>
+        <button type="button" role="tab" :aria-selected="activeView === 'all'" :class="{ active: activeView === 'all' }" @click="activeView = 'all'"><el-icon><Tickets /></el-icon><span>全部</span><b>{{ props.tasks.length }}</b></button>
+      </div>
+    </Teleport>
     <el-table class="task-table" :data="visibleTasks" :row-key="taskRowKey" stripe height="100%">
       <el-table-column label="邮箱" min-width="154">
         <template #default="{ row }">
@@ -159,8 +161,8 @@ function openDetails(row: RuntimeTask) {
 </template>
 
 <style scoped>
-.task-results { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
-.task-summary-tabs { position: absolute; z-index: 3; top: -43px; left: 96px; display: grid; grid-template-columns: repeat(3, 120px); align-content: center; justify-content: start; gap: 3px; height: 34px; padding: 3px 0; background: transparent; }
+.task-results { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
+.task-summary-tabs { display: grid; grid-template-columns: repeat(3, 120px); align-content: center; justify-content: start; gap: 3px; height: 34px; padding: 3px 0; background: transparent; pointer-events: auto; }
 .task-summary-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; height: 26px; border: 1px solid transparent; border-radius: 4px; padding: 0 8px; background: transparent; color: #586a67; font-size: 12px; font-weight: 600; cursor: pointer; transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease; }
 .task-summary-tabs button:hover { background: #edf4f2; color: #0f6b5b; }
 .task-summary-tabs button:focus-visible { outline: 2px solid #72b8a8; outline-offset: 1px; }

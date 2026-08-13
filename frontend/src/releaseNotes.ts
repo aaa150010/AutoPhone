@@ -12,10 +12,14 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.5.2',
-  title: '运行日志默认宽度加大',
+  version: '1.5.3',
+  title: '恢复任务结果页签位置',
   releasedAt: '2026-08-13',
   sections: [
+    {
+      title: '任务结果页签恢复到标题栏',
+      usage: '待处理、运行中和全部页签现在直接显示在任务结果标题右侧，不会被双栏布局或表格边界遮挡。',
+    },
     {
       title: '日志栏默认更宽',
       usage: '未设置过日志栏宽度时，运行中心右侧日志默认显示为 700px，便于直接阅读较长的运行记录；已手动调整过的本机宽度会继续保留。',
