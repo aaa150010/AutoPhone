@@ -8,6 +8,7 @@ from mac_overrides.error_observability import (
     format_failure_log,
     format_node_retry_log,
     is_node_retry_log,
+    is_retryable_node_failure,
     is_success_diagnostic_trace,
     public_failure,
     sanitize_failure_detail,
@@ -15,6 +16,24 @@ from mac_overrides.error_observability import (
 
 
 class ErrorObservabilityTests(unittest.TestCase):
+    def test_sentinel_lifecycle_traces_are_not_failures_or_retries(self):
+        traces = (
+            (
+                "[SentinelRunner] 调用 Node 生成 token, "
+                "flow=chat-requirements, attempt=1/2, timeout=45s"
+            ),
+            (
+                "T001-safe [SentinelRunner] token 生成成功, "
+                "flow=chat-requirements, 包含 so=True"
+            ),
+        )
+
+        for trace in traces:
+            with self.subTest(trace=trace):
+                self.assertTrue(is_success_diagnostic_trace(trace))
+                self.assertFalse(is_retryable_node_failure(trace))
+                self.assertFalse(is_node_retry_log(trace))
+
     def test_successful_totp_trace_is_not_a_failure_marker(self):
         success = (
             "T002-ab12cd [CodexTOTP] mfa_issue_challenge "

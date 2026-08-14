@@ -12,10 +12,14 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.5.6',
-  title: 'OpenAI 检测统一使用 gpt-5.5',
-  releasedAt: '2026-08-13',
+  version: '1.5.7',
+  title: '修正 Node/Sentinel 日志误报',
+  releasedAt: '2026-08-14',
   sections: [
+    {
+      title: 'Node/Sentinel 成功日志不再误报重试',
+      usage: '运行日志中的“调用 Node 生成 token”和“token 生成成功”现在保持为普通信息；只有真实生成失败或桥接超时才显示重试警告，便于准确判断账号是否发生过失败。',
+    },
     {
       title: 'OpenAI 检测固定 gpt-5.5',
       usage: '邮箱管理的单行重新查询和批量测试 OpenAI 统一使用 gpt-5.5，不提供手动模型选择；检测结果按服务端实际返回显示，例如额度受限会明确标记为 429。',

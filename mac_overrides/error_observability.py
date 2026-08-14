@@ -169,6 +169,11 @@ _NODE_FAILURE_MARKERS = (
     "node/sentinel",
 )
 
+_SENTINEL_LIFECYCLE_MARKERS = (
+    "调用 node 生成 token",
+    "token 生成成功",
+)
+
 _NODE_OPERATION_NODES = (
     (("mfa_otp_verify", "mfa_otp_failed", "verify_mfa_otp"), "mfa_otp_verifying"),
     (("email_otp_verify", "email_otp_failed", "verify_email_otp"), "email_code_verifying"),
@@ -543,7 +548,10 @@ def _is_oauth_session_invalid(text: str) -> bool:
 
 
 def _rule_for(text: str) -> tuple[str, str, str, bool] | None:
-    if any(marker in text for marker in _NODE_FAILURE_MARKERS):
+    if (
+        not _is_sentinel_lifecycle_trace(text)
+        and any(marker in text for marker in _NODE_FAILURE_MARKERS)
+    ):
         operation_node = next(
             (
                 node_code
@@ -569,7 +577,10 @@ def _rule_for(text: str) -> tuple[str, str, str, bool] | None:
 
 def is_retryable_node_failure(value: Any) -> bool:
     text = _diagnostic_text(value).lower()
-    return any(marker in text for marker in _NODE_FAILURE_MARKERS)
+    return (
+        not _is_sentinel_lifecycle_trace(text)
+        and any(marker in text for marker in _NODE_FAILURE_MARKERS)
+    )
 
 
 def is_node_retry_log(value: Any) -> bool:
@@ -579,6 +590,15 @@ def is_node_retry_log(value: Any) -> bool:
     if not is_retryable_node_failure(text):
         return False
     return "重试" in text or bool(re.search(r"\bretr(?:y|ied|ying)\b", text))
+
+
+def _is_sentinel_lifecycle_trace(value: Any) -> bool:
+    text = _diagnostic_text(value).lower()
+    return (
+        "sentinelrunner" in text
+        and not any(marker in text for marker in ("失败", "failed", "error"))
+        and any(marker in text for marker in _SENTINEL_LIFECYCLE_MARKERS)
+    )
 
 
 def _best_technical_summary(values: Sequence[Any], *, secrets: Sequence[Any]) -> str:
@@ -776,6 +796,8 @@ def is_success_diagnostic_trace(value: Any) -> bool:
     """Recognize a successful protocol trace that merely names an error field."""
 
     text = str(value or "")
+    if _is_sentinel_lifecycle_trace(text):
+        return True
     if "[CodexTOTP]" not in text:
         return False
     status_match = _CODEX_TOTP_STATUS_RE.search(text)

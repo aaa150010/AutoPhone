@@ -32,6 +32,13 @@ gptPhone is a macOS-local Flask application with a Vue 3 and Element Plus dashbo
 - `auth_session_retries` is a UI count of additional retries: `0` means no retry after the first attempt.
 - Keep task progress events free of credentials and user data. Repeated events in the same stage must not reset elapsed time, and terminal tasks must freeze their last valid stage.
 
+## Local Network Environment
+
+- On the user's current Mac, Clash Verge exposes the configured HTTP proxy at `http://127.0.0.1:7897`. Treat this as the authoritative host proxy for OpenAI Auth, Sentinel, Node/Sentinel, and other traffic that uses the main proxy setting.
+- `http://127.0.0.1:12334` is not a configured or valid current proxy port. If it appears in a new task's effective proxy label, error detail, subprocess arguments, or environment, treat it as a defect caused by stale process state, an inherited proxy environment variable, or an unintended configuration override and trace it to the source.
+- Network diagnostics must record the effective proxy label or redacted fingerprint at the Node bridge boundary. Do not infer the effective host proxy from a sandbox-only localhost probe: the sandbox may deny or isolate loopback access. Use a host-level/approved real-network check when verifying Clash Verge connectivity.
+- High-concurrency tests must compare the configured `7897` proxy path at concurrency 1, 4, and 8, and must distinguish proxy connection failures from Sentinel or Node resource failures. Never silently fall back to `12334`.
+
 ## Diagnostic Error Contract
 
 - Every pipeline failure shown in task results, mailbox rows, upload records, or logs must include a stable node code, a Chinese node label, and a credential-redacted actionable cause. The persisted result and public API should carry the same structured failure identity.
