@@ -17,6 +17,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+try:
+    from .mail_code_envelope import parse_mail_code_envelope
+except ImportError:  # Loaded as a top-level runtime override.
+    from mail_code_envelope import parse_mail_code_envelope
+
 
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 MAX_MESSAGES = 40
@@ -833,10 +838,25 @@ def parse_mailbox_payload(
     except (TypeError, ValueError):
         parsed = None
     if parsed is not None:
-        messages, detail_urls = _messages_from_json(
-            parsed,
-            source_url,
+        envelope = (
+            parse_mail_code_envelope(
+                parsed,
+                source_url,
+                email_pattern=_EMAIL_PATTERN,
+                scalar_text=_scalar_text,
+                first=_first,
+                strict_explicit_code=_strict_explicit_code,
+                message_from_mapping=_message_from_mapping,
+                safe_identity=_safe_identity,
+                message_type=MailboxMessage,
+            )
+            if isinstance(parsed, Mapping)
+            else None
         )
+        if envelope is not None:
+            messages, detail_urls = [envelope], []
+        else:
+            messages, detail_urls = _messages_from_json(parsed, source_url)
     else:
         messages, detail_urls = _parse_html_messages(raw, source_url)
     return _merge_messages(messages), tuple(dict.fromkeys(detail_urls[:MAX_MESSAGES]))

@@ -12,10 +12,14 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.5.7',
-  title: '修正 Node/Sentinel 日志误报',
-  releasedAt: '2026-08-14',
+  version: '1.5.8',
+  title: '兼容在线邮箱取件接口',
+  releasedAt: '2026-08-17',
   sections: [
+    {
+      title: '支持 mail-code 取件格式',
+      usage: '在线邮箱取件地址返回 email、code、mail 信封时，会直接识别其中的六位验证码，并沿用原有的最新验证码筛选和安全脱敏逻辑。',
+    },
     {
       title: 'Node/Sentinel 成功日志不再误报重试',
       usage: '运行日志中的“调用 Node 生成 token”和“token 生成成功”现在保持为普通信息；只有真实生成失败或桥接超时才显示重试警告，便于准确判断账号是否发生过失败。',

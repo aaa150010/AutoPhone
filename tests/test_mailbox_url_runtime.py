@@ -125,6 +125,75 @@ class MailboxUrlRuntimeTests(unittest.TestCase):
         )
         self.assertFalse(any(message.code for message in generic_root))
 
+    def test_parses_mail_code_envelope_with_six_digit_code(self):
+        payload = {
+            "email": "user@example.test",
+            "code": "716075",
+            "mail": {
+                "id": "1786958440308838774",
+                "date": "2026-08-17T09:20:39+00:00",
+                "sender": "ChatGPT <noreply@tm.openai.com>",
+                "subject": "Your temporary ChatGPT login code",
+            },
+        }
+
+        messages, detail_urls = parse_mailbox_payload(json.dumps(payload), BASE_URL)
+
+        self.assertEqual(detail_urls, ())
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0].code, "716075")
+        self.assertTrue(messages[0].explicit_code)
+        self.assertEqual(messages[0].received_at, "2026-08-17T09:20:39+00:00")
+        self.assertIn("ChatGPT", messages[0].sender)
+
+    def test_mail_code_envelope_is_consumed_by_mailbox_url_client(self):
+        mailbox_url = "https://lynote.xyz/mail-code/code/sample-token"
+        payload = {
+            "email": "user@example.test",
+            "code": "716075",
+            "mail": {
+                "id": "1786958440308838774",
+                "date": "2026-08-17T09:20:39+00:00",
+                "sender": "ChatGPT <noreply@tm.openai.com>",
+                "subject": "Your temporary ChatGPT login code",
+            },
+        }
+        calls: list[str] = []
+
+        def fetch(url: str) -> MailboxResponse:
+            calls.append(url)
+            return json_response(url, payload)
+
+        selection = MailboxUrlClient(mailbox_url, fetcher=fetch).latest_code()
+
+        self.assertEqual(selection.code, "716075")
+        self.assertEqual(selection.reason, "code_found")
+        self.assertEqual(calls, [mailbox_url])
+        self.assertEqual(selection.scan.diagnostics.code_messages, 1)
+
+    def test_mail_code_envelope_does_not_trust_non_six_digit_or_unscoped_code(self):
+        for payload in (
+            {
+                "email": "user@example.test",
+                "code": "3243",
+                "mail": {"id": "short-code", "subject": "Login code"},
+            },
+            {
+                "email": "user@example.test",
+                "code": "716075",
+                "mail": "not-a-message",
+            },
+            {
+                "email": "user@example.test",
+                "code": "716075",
+                "error": "oauth_failed",
+                "mail": {"id": "failed", "subject": "Login code"},
+            },
+        ):
+            with self.subTest(payload=payload):
+                messages, _links = parse_mailbox_payload(json.dumps(payload), BASE_URL)
+                self.assertFalse(any(message.code for message in messages))
+
     def test_client_rendered_shell_uses_only_same_origin_cache_api(self):
         received_at = "2026-08-07T10:30:00Z"
         now = float(parse_received_timestamp(received_at) or 0) + 30
