@@ -168,6 +168,13 @@ function statusesFor(provider: string) {
       />
     </el-form-item>
 
+    <el-form-item label="允许 free 账号接码">
+      <el-switch
+        :model-value="modelValue.allow_free_plan_sms_binding === true"
+        @update:model-value="update('allow_free_plan_sms_binding', Boolean($event))"
+      />
+    </el-form-item>
+
     <el-form-item label="质量优先与自适应等待">
       <el-switch
         :model-value="modelValue.sms_quality_optimization !== false"

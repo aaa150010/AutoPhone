@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 
 from mac_overrides.error_observability import (
@@ -146,6 +147,30 @@ class ErrorObservabilityTests(unittest.TestCase):
         self.assertEqual(failure["error_code"], "auth_context_page_mismatch")
         self.assertIn("页面上下文无效", failure["public_message"])
         self.assertNotIn("OpenAI 拒绝当前号码", failure["public_message"])
+
+    def test_phone_plan_gate_has_stable_redacted_failure_identities(self):
+        secret = "access-token-secret-value"
+        free = classify_failure(error="phone_plan_free_skipped: 当前账号套餐为 free")
+        unknown = classify_failure(
+            error=(
+                "phone_plan_unknown_skipped: 套餐复核返回 HTTP 503 "
+                f"access_token={secret} cookie=session-secret phone=15512345678"
+            ),
+            secrets=(secret, "session-secret"),
+        )
+
+        self.assertEqual(free["node_code"], "phone_acquiring")
+        self.assertEqual(free["error_code"], "phone_plan_free_skipped")
+        self.assertFalse(free["retryable"])
+        self.assertIn("允许 free 账号接码", free["action_hint"])
+        self.assertEqual(unknown["node_code"], "phone_acquiring")
+        self.assertEqual(unknown["error_code"], "phone_plan_unknown_skipped")
+        self.assertEqual(unknown["http_status"], 503)
+        self.assertTrue(unknown["retryable"])
+        serialized = json.dumps(unknown, ensure_ascii=False)
+        self.assertNotIn(secret, serialized)
+        self.assertNotIn("session-secret", serialized)
+        self.assertNotIn("15512345678", serialized)
 
     def test_session_invalid_keeps_the_stage_where_it_surfaced(self):
         for stage, expected_node, risk_signal in (

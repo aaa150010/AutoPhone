@@ -26,6 +26,7 @@ _node_runtime_ext.configure_node_runtime()
 
 import codex_oauth_chain as _codex_oauth_chain
 import codex_node_bridge as _codex_node_bridge
+import chatgpt_plan_gate as _chatgpt_plan_gate_ext
 import chatgpt_totp as _chatgpt_totp_ext
 import configuration_runtime as _configuration_runtime_ext
 import error_observability as _error_observability_ext
@@ -143,7 +144,6 @@ _ORIGINAL_REAL_SEND_MFA_OTP = _codex_oauth_chain.RealCodexTransport.send_mfa_otp
 _ORIGINAL_REAL_INITIATE_OAUTH = _codex_oauth_chain.RealCodexTransport.initiate_oauth
 _ORIGINAL_REAL_VISIT_CONTINUE = _codex_oauth_chain.RealCodexTransport.visit_continue
 _ORIGINAL_REAL_COMPLETE_CHATGPT_CALLBACK = _codex_oauth_chain.RealCodexTransport.complete_chatgpt_callback
-_ORIGINAL_REAL_CHATGPT_ACCESS_TOKEN = _codex_oauth_chain.RealCodexTransport.chatgpt_access_token
 _ORIGINAL_REAL_VERIFY_PHONE_OTP = _codex_oauth_chain.RealCodexTransport.verify_phone_otp
 _ORIGINAL_REAL_CREATE_ACCOUNT_PROFILE = _codex_oauth_chain.RealCodexTransport.create_account_profile
 _ORIGINAL_REAL_ACCEPT_CONSENT = _codex_oauth_chain.RealCodexTransport.accept_consent
@@ -719,6 +719,7 @@ def _patched_config_load(self):
     normalized["dynamic_auth_challenges"] = _as_enabled(
         raw.get("dynamic_auth_challenges"), True
     )
+    normalized["allow_free_plan_sms_binding"] = _as_enabled(raw.get("allow_free_plan_sms_binding"), False)
     normalized.pop("pixel_upload_enabled", None)
     policy_keys = (
         "performance_policy_version",
@@ -746,6 +747,7 @@ def _patched_config_load(self):
         "mailbox_result_index_cache",
         "protocol_concurrency_ceiling",
         "dynamic_auth_challenges",
+        "allow_free_plan_sms_binding",
     )
     if migrated or any(raw.get(key) != normalized.get(key) for key in policy_keys):
         changed = True
@@ -769,6 +771,7 @@ def _patched_config_save(self, values):
     normalized["dynamic_auth_challenges"] = _as_enabled(
         cleaned.get("dynamic_auth_challenges"), True
     )
+    normalized["allow_free_plan_sms_binding"] = _as_enabled(cleaned.get("allow_free_plan_sms_binding"), False)
     saved = dict(_ORIGINAL_CONFIG_SAVE(self, normalized) or {})
     for key in (
         "performance_policy_version",
@@ -796,6 +799,7 @@ def _patched_config_save(self, values):
         "mailbox_result_index_cache",
         "protocol_concurrency_ceiling",
         "dynamic_auth_challenges",
+        "allow_free_plan_sms_binding",
     ):
         saved[key] = normalized[key]
     _write_store_config(self, saved)
@@ -863,6 +867,7 @@ def _patched_task_config(self, settings, email, task_id, *, password=""):
                 (settings or {}).get("phone_binding_compatibility"),
                 True,
             ),
+            "allow_free_plan_sms_binding": _as_enabled((settings or {}).get("allow_free_plan_sms_binding"), False),
         }
     )
     risk_status = _actionable_phone_risk_status(email)
@@ -1059,11 +1064,8 @@ def _real_complete_chatgpt_callback(self, continue_url):
     )
 
 
-def _real_chatgpt_access_token(self):
-    return _with_transport_protocol_lease(
-        self,
-        lambda: _ORIGINAL_REAL_CHATGPT_ACCESS_TOKEN(self),
-    )
+def _real_chatgpt_access_token(self) -> str:
+    return _CHATGPT_PLAN_GATE.capture_access_token(self)
 
 
 def _real_accept_consent(self, continue_url=""):
@@ -1847,7 +1849,10 @@ def _patched_importer_watch(self):
 
 
 def _patched_pre_auth_session_retryable(result):
-    if "relogin_phone_required" in str(result or "").lower():
+    if any(
+        marker in str(result or "").lower()
+        for marker in ("relogin_phone_required", "phone_plan_")
+    ):
         return False
     if _runtime_policy_ext.is_account_banned_failure(result):
         return False
@@ -2213,33 +2218,7 @@ def _real_send_phone_number_otp(self, phone, channel="sms"):
 
 
 def _preflight_sms_phone_context(_adapter, task_id):
-    expected_task_id = str(task_id or "").strip()
-    active_transport = _ACTIVE_SMS_TRANSPORT.get()
-    transport = active_transport
-    if transport is not None and expected_task_id:
-        if _transport_task_id(transport) != expected_task_id:
-            transport = None
-    if transport is None:
-        transport = _transport_for_task(expected_task_id)
-    if transport is None:
-        _set_current_task_stage("phone_submitting")
-        raise _codex_oauth_chain.CodexChainError(
-            "auth_context_transport_missing: 当前任务没有可用的登录 Transport，已阻止申请手机号"
-        )
-    _set_current_task_stage("phone_submitting")
-    try:
-        return _PHONE_BINDING_RUNTIME.prepare_phone_entry(
-            transport,
-            expected_task_id=expected_task_id,
-        )
-    except _auth_request_runtime_ext.AuthRequestContextError as exc:
-        _auth_request_runtime_ext.invalidate_auth_session(
-            transport,
-            _AUTH_SESSIONS,
-            f"{exc.code}: {exc}",
-            stage="phone_submitting",
-        )
-        raise _codex_oauth_chain.CodexChainError(f"{exc.code}: {exc}") from exc
+    return _CHATGPT_PLAN_GATE.preflight_sms_phone_context(_adapter, task_id)
 
 
 _SMS_WEB = _sms_web_ext.SmsWebIntegration(
@@ -2422,6 +2401,26 @@ _PHONE_BINDING_RUNTIME = _phone_binding_runtime_ext.PhoneBindingRuntime(
     reject_channel_mismatch=_reject_phone_channel_mismatch,
     sanitize_error=_error_observability_ext.sanitize_failure_detail,
     metrics=_PHONE_BINDING_METRICS,
+)
+_CHATGPT_PLAN_GATE = _chatgpt_plan_gate_ext.ChatGptPlanGate(
+    chatgpt_origin=_codex_oauth_chain.CHATGPT,
+    json_response=_codex_oauth_chain._json_response,
+    clean=_codex_oauth_chain._clean,
+    with_protocol_lease=_with_transport_protocol_lease,
+    request_headers=_auth_request_runtime_ext.request_headers,
+    active_transport=_ACTIVE_SMS_TRANSPORT.get,
+    transport_for_task=_transport_for_task,
+    transport_task_id=_transport_task_id,
+    prepare_phone_entry=_PHONE_BINDING_RUNTIME.prepare_phone_entry,
+    set_stage=_set_current_task_stage,
+    auth_context_error=_auth_request_runtime_ext.AuthRequestContextError,
+    invalidate_auth_session=lambda transport, error: _auth_request_runtime_ext.invalidate_auth_session(
+        transport,
+        _AUTH_SESSIONS,
+        f"{error.code}: {error}",
+        stage="phone_submitting",
+    ),
+    chain_error=_codex_oauth_chain.CodexChainError,
 )
 
 

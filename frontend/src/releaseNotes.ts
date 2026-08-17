@@ -12,10 +12,14 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.5.8',
-  title: '兼容在线邮箱取件接口',
+  version: '1.5.9',
+  title: 'Free 账号接码成本控制',
   releasedAt: '2026-08-17',
   sections: [
+    {
+      title: 'Free 账号默认不再付费接码',
+      usage: '只有流程进入手机号验证、准备向接码平台取号时才检查套餐：默认拦截 free 和套餐无法确认的账号，Plus、Team、K12、Pro 等非 free 套餐继续接码；无需手机号即可完成 OAuth 的 free 账号不受影响。需要忽略套餐时，可在 SMS 接码设置中开启“允许 free 账号接码”。',
+    },
     {
       title: '支持 mail-code 取件格式',
       usage: '在线邮箱取件地址返回 email、code、mail 信封时，会直接识别其中的六位验证码，并沿用原有的最新验证码筛选和安全脱敏逻辑。',
