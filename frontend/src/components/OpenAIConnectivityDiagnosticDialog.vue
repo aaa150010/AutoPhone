@@ -99,7 +99,7 @@ defineExpose({ open })
       </el-alert>
 
       <el-table :data="result.network" size="small" border class="diagnostic-table">
-        <el-table-column type="index" label="序号" width="58" align="center" />
+        <el-table-column type="index" label="序号" width="58" align="center" fixed="left" />
         <el-table-column label="目标" min-width="170">
           <template #default="{ row }">{{ originLabel(row.origin) }}<small>{{ row.origin }}</small></template>
         </el-table-column>

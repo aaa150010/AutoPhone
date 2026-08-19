@@ -288,6 +288,7 @@ class FreeMailboxPool:
                     "registration_ip": result.get("registration_ip") or current.get("registration_ip", ""),
                     "exit_ip": result.get("registration_ip") or current.get("registration_ip") or current.get("exit_ip", ""),
                     "profile_summary": result.get("profile_summary", ""),
+                    "account_flow": result.get("account_flow", ""),
                     "plan_type": result.get("plan_type", ""),
                     "subscription_plan": result.get("subscription_plan", ""),
                     "has_active_subscription": bool(result.get("has_active_subscription", False)),

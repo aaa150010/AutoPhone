@@ -84,6 +84,7 @@ class FreeAccountRouteController:
                 default_code="free_twofa_retry",
                 default_label="重试 Free 账号 2FA",
             )
+
         try:
             task = self.manager.retry_twofa(
                 str(data.get("task_id") or data.get("row_id") or ""),
@@ -96,6 +97,21 @@ class FreeAccountRouteController:
                 default_code="free_twofa_retry",
                 default_label="重试 Free 账号 2FA",
             )
+
+    def rerun(self):
+        if self.manager is None:
+            return self._unavailable()
+        data = self.module.request.get_json(silent=True) or {}
+        if not isinstance(data, Mapping):
+            return self.error_response(ValueError("请求必须是 JSON 对象"), default_code="free_rerun", default_label="重跑 Free 账号")
+        try:
+            result = self.manager.rerun(
+                str(data.get("task_id") or ""),
+                self.config_store.load() if self.config_store is not None else {},
+            )
+            return self.module.jsonify(ok=True, batch_id=result.get("batch_id"), batch={"batch_id": result.get("batch_id"), "members": result.get("tasks") or []}, state=self.free_state())
+        except Exception as exc:
+            return self.error_response(exc, default_code="free_rerun", default_label="重跑 Free 账号")
 
     def live_check(self):
         if self.manager is None:

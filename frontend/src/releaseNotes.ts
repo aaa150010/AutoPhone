@@ -12,10 +12,38 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.28',
-  title: 'Free Roxy Session Token 修复',
+  version: '1.6.29',
+  title: 'Free Roxy 注册状态机与工作台优化',
   releasedAt: '2026-08-19',
   sections: [
+    {
+      title: '已有 Free 账号自动改走邮箱验证码登录',
+      usage: 'RoxyBrowser 提交邮箱后若进入已有账号登录密码页，会按参考项目的状态机自动切换为一次性邮箱验证码，并继续使用该账号原先绑定的邮箱、代理和出口 IP。已有账号成功后不会误保存统一注册密码；可在 RoxyBrowser 专属配置中关闭此兜底。',
+    },
+    {
+      title: 'Roxy 注册后半段按页面状态继续',
+      usage: '邮箱验证码提交后会明确等待密码页、资料页、OAuth 回调、ChatGPT 首页或安全验证页；只有确认首页登录态后才读取 Session Token，不再用强制打开首页掩盖页面跳转失败。',
+    },
+    {
+      title: 'Free 账号日志可定位',
+      usage: '点击 Free 注册任务行的眼睛可按时间正序查看该账号的代理、Profile、注册页、OTP、资料、Session、套餐、2FA 和清理流水，并显示页面、HTTP 状态、尝试次数、耗时和脱敏诊断。刷新日志会保留当前账号和滚动位置。',
+    },
+    {
+      title: 'Free 注册任务快捷重跑',
+      usage: '失败或停止任务行新增重跑按钮；只有已经自动恢复为可用、尚未进入注册页的邮箱允许重跑，已进入验证码或已完成注册的账号不会被重复消耗。',
+    },
+    {
+      title: 'Free 邮箱管理快捷运行',
+      usage: 'Free 邮箱管理顶部新增“快捷运行”，直接使用已保存的 Free 链路、目标数、并发、代理分组和人工节奏开始注册，不进入普通接码运行中心。',
+    },
+    {
+      title: '菜单按工作流分组',
+      usage: '左侧菜单分为“接码工作台”“Free 注册”和“系统设置”；普通运行中心更名为“接码运行中心”，Free 运行与 Free 邮箱管理保持独立入口。',
+    },
+    {
+      title: '表格序号固定',
+      usage: '各个主要表格的序号列固定在左侧，横向查看代理、任务和邮箱详情时仍能对应当前行。',
+    },
     {
       title: '修复 Roxy 注册完成后 Token 获取',
       usage: 'Roxy 注册完成后改为直接读取 ChatGPT Session 页面并恢复主页，兼容 accessToken、access_token 和 token 字段；Session 失败日志只显示页面和字段摘要，不再写入响应内容。',

@@ -548,11 +548,21 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                     importer(proxy_content, country=proxy_country, group=proxy_group, scheme=proxy_scheme)
                 except TypeError:
                     importer(proxy_content)
-            result = free_manager.start(
-                config,
-                pool_content=mailbox_content if free_config_store is None else "",
-                proxy_content=proxy_content if free_config_store is None else "",
-            )
+            start_kwargs = {
+                "pool_content": mailbox_content if free_config_store is None else "",
+                "proxy_content": proxy_content if free_config_store is None else "",
+            }
+            if isinstance(data.get("row_ids"), list) and data.get("row_ids"):
+                start_kwargs["row_ids"] = [str(value or "") for value in data.get("row_ids")]
+            try:
+                result = free_manager.start(config, **start_kwargs)
+            except TypeError as exc:
+                # Keep old test/embedding managers working until they adopt the
+                # optional single-batch selection argument.
+                if "row_ids" not in start_kwargs:
+                    raise
+                start_kwargs.pop("row_ids", None)
+                result = free_manager.start(config, **start_kwargs)
             return module.jsonify(ok=True, batch_id=result.get("batch_id"), batch={"batch_id": result.get("batch_id"), "members": result.get("tasks") or []}, state=free_state())
         except Exception as exc:
             return free_failure_response(exc, default_code="free_run_start", default_label="启动 Free 注册")
@@ -1266,6 +1276,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/free/proxies/group/delete", "api_free_proxy_group_delete", api_free_proxy_group_delete, ["POST"]),
         ("/api/free/secrets", "api_free_secret", api_free_secret, ["POST"]),
         ("/api/free/2fa/retry", "api_free_twofa_retry", free_account_routes.retry_twofa, ["POST"]),
+        ("/api/free/rerun", "api_free_rerun", free_account_routes.rerun, ["POST"]),
         ("/api/free/live-check", "api_free_live_check", free_account_routes.live_check, ["POST"]),
         ("/api/free/live-check/state", "api_free_live_check_state", free_account_routes.live_check_state, ["GET"]),
         *mailbox_mutation_routes.routes(),

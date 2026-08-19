@@ -64,16 +64,16 @@ class MailboxUrlOtpProvider:
         if self.task_id and callable(self.stage_fn):
             self.stage_fn(self.task_id, code)
 
-    def mark_sent(self) -> None:
-        self._stage("free_email_otp_wait")
+    def mark_sent(self, stage_code: str = "free_email_otp_wait") -> None:
+        self._stage(stage_code)
         self.state.begin_request()
 
     def prepare(self) -> None:
         """Start the OTP baseline before an auth redirect can send the code."""
         self.state.begin_request()
 
-    def wait_code(self, _email: str) -> str:
-        self._stage("free_email_otp_wait")
+    def wait_code(self, _email: str, stage_code: str = "free_email_otp_wait") -> str:
+        self._stage(stage_code)
         if not self.state.active:
             self.state.begin_request()
         deadline = time.time() + self.timeout

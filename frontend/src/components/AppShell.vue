@@ -113,21 +113,30 @@ onUnmounted(() => {
 <template>
   <el-config-provider :locale="zhCn">
     <el-container class="app-shell">
-      <el-aside :width="sidebarCollapsed ? '58px' : '212px'" class="app-sidebar" :class="{ 'is-collapsed': sidebarCollapsed }">
+      <el-aside :width="sidebarCollapsed ? '54px' : '188px'" class="app-sidebar" :class="{ 'is-collapsed': sidebarCollapsed }">
         <div class="brand-block">
           <div class="brand-mark"><el-icon><Cpu /></el-icon></div>
           <div class="brand-copy"><strong>自动接码机</strong><span>GPT Phone</span></div>
           <el-tooltip :content="sidebarCollapsed ? '展开菜单' : '收缩菜单'" placement="right"><el-button class="sidebar-toggle" link :icon="sidebarCollapsed ? Expand : Fold" aria-label="收缩或展开左侧菜单" @click="toggleSidebar" /></el-tooltip>
         </div>
 
-        <el-menu :default-active="activePath" :collapse="sidebarCollapsed" :collapse-transition="false" @select="selectPage">
-          <el-tooltip content="运行中心" placement="right"><el-menu-item index="/"><el-icon><Monitor /></el-icon><span>运行中心</span></el-menu-item></el-tooltip>
-          <el-tooltip content="邮箱管理" placement="right"><el-menu-item index="/mailboxes"><el-icon><MessageBox /></el-icon><span>邮箱管理</span></el-menu-item></el-tooltip>
-          <el-tooltip content="Free 注册中心" placement="right"><el-menu-item index="/free-register"><el-icon><Setting /></el-icon><span>Free 注册中心</span></el-menu-item></el-tooltip>
-          <el-tooltip content="Free 邮箱管理" placement="right"><el-menu-item index="/free-mailboxes"><el-icon><Tickets /></el-icon><span>Free 邮箱管理</span></el-menu-item></el-tooltip>
-          <el-tooltip content="邮箱分割" placement="right"><el-menu-item index="/splitter"><el-icon><Scissor /></el-icon><span>邮箱分割</span></el-menu-item></el-tooltip>
-          <el-tooltip content="URL测试" placement="right"><el-menu-item index="/url-test"><el-icon><Link /></el-icon><span>URL测试</span></el-menu-item></el-tooltip>
-          <el-tooltip content="运行配置" placement="right"><el-menu-item index="/settings"><el-icon><Setting /></el-icon><span>运行配置</span></el-menu-item></el-tooltip>
+        <el-menu :default-active="activePath" :default-openeds="sidebarCollapsed ? [] : ['sms-workspace', 'free-workspace', 'system-settings']" :collapse="sidebarCollapsed" :collapse-transition="false" @select="selectPage">
+          <el-sub-menu index="sms-workspace">
+            <template #title><el-icon><MessageBox /></el-icon><span>接码工作台</span></template>
+            <el-menu-item index="/"><el-icon><Monitor /></el-icon><span>接码运行中心</span></el-menu-item>
+            <el-menu-item index="/mailboxes"><el-icon><Tickets /></el-icon><span>接码邮箱管理</span></el-menu-item>
+            <el-menu-item index="/splitter"><el-icon><Scissor /></el-icon><span>邮箱拆分工具</span></el-menu-item>
+            <el-menu-item index="/url-test"><el-icon><Link /></el-icon><span>邮箱 URL 测试</span></el-menu-item>
+          </el-sub-menu>
+          <el-sub-menu index="free-workspace">
+            <template #title><el-icon><Setting /></el-icon><span>Free 注册</span></template>
+            <el-menu-item index="/free-register"><el-icon><Monitor /></el-icon><span>Free 注册运行</span></el-menu-item>
+            <el-menu-item index="/free-mailboxes"><el-icon><Tickets /></el-icon><span>Free 邮箱管理</span></el-menu-item>
+          </el-sub-menu>
+          <el-sub-menu index="system-settings">
+            <template #title><el-icon><Setting /></el-icon><span>系统设置</span></template>
+            <el-menu-item index="/settings"><el-icon><Setting /></el-icon><span>运行配置</span></el-menu-item>
+          </el-sub-menu>
         </el-menu>
 
         <div class="global-status">
@@ -163,7 +172,10 @@ onUnmounted(() => {
 .brand-copy span { color: #8792a4; font-size: 10px; line-height: 14px; text-transform: uppercase; }
 .sidebar-toggle { flex: 0 0 30px; width: 30px; height: 30px; padding: 0; color: #64748b; }
 .sidebar-toggle:hover { color: #315f99; background: #e7eef8; }
-.el-menu { flex: 1; width: 100%; padding: 8px 6px; border-right: 0; background: transparent; }
+.el-menu { flex: 1; width: 100%; padding: 8px 6px; overflow-y: auto; border-right: 0; background: transparent; }
+.el-menu :deep(.el-sub-menu__title) { height: 38px; padding: 0 10px !important; color: #44556d; font-size: 12px; font-weight: 700; }
+.el-menu :deep(.el-sub-menu .el-menu) { padding: 2px 0 5px 10px; overflow: visible; }
+.el-menu :deep(.el-sub-menu .el-menu-item) { height: 36px; margin-bottom: 2px; font-size: 12px; }
 .el-menu-item { width: calc(100% - 0px); height: 42px; margin-bottom: 4px; padding: 0 12px !important; justify-content: flex-start; border-radius: 5px; color: #64748b; font-size: 13px; }
 .el-menu-item .el-icon { font-size: 18px; }
 .el-menu-item.is-active { background: #e7eef8; color: #315f99; font-weight: 650; }
@@ -182,8 +194,9 @@ onUnmounted(() => {
 .app-sidebar.is-collapsed .brand-copy { display: none; }
 .app-sidebar.is-collapsed .brand-mark { display: none; }
 .app-sidebar.is-collapsed .sidebar-toggle { flex-basis: 32px; width: 32px; }
-.app-sidebar.is-collapsed .el-menu { width: 58px; }
-.app-sidebar.is-collapsed .el-menu-item { width: 46px; padding: 0 !important; justify-content: center; }
+.app-sidebar.is-collapsed .el-menu { width: 54px; }
+.app-sidebar.is-collapsed .el-menu-item { width: 42px; padding: 0 !important; justify-content: center; }
+.app-sidebar.is-collapsed .el-menu :deep(.el-sub-menu__title) { width: 42px; padding: 0 !important; justify-content: center; }
 .app-sidebar.is-collapsed .global-status { align-items: center; margin: 8px 6px; }
 .el-main { height: 100%; min-width: 0; padding: 5px; overflow: hidden; }
 .shell-loading { display: grid; place-items: center; width: 100%; height: 100%; color: var(--el-color-primary); font-size: 22px; }

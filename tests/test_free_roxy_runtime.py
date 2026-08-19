@@ -5,9 +5,16 @@ import os
 import json
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 from mac_overrides.free_register_config import FreeConfigStore
-from mac_overrides.free_roxy_runtime import RoxyBrowserClient, RoxyRegistrationRunner, proxy_to_roxy_info
+from mac_overrides.free_roxy_runtime import RoxyBrowserClient, RoxyOpenResult, RoxyRegistrationRunner, proxy_to_roxy_info
+from mac_overrides.free_roxy_page_flow import (
+    classify_page,
+    switch_login_to_email_code,
+    wait_after_otp_submit,
+)
+from mac_overrides import free_roxy_session
 from mac_overrides.free_roxy_session import extract_session, session_token
 from mac_overrides.free_register_common import FreeRegisterError
 from mac_overrides.free_register_store import FreeProxyPool
@@ -96,6 +103,127 @@ class _SessionDriver:
         return type("Element", (), {"text": json.dumps(self.payload)})()
 
 
+class _BrowserSessionDriver:
+    def __init__(self, response):
+        self.response = response
+        self.current_url = "https://chatgpt.com/"
+        self.visits = []
+
+    def execute_async_script(self, _script, *_args):
+        return self.response
+
+    def get(self, url):
+        self.visits.append(url)
+        self.current_url = url
+
+
+class _PageDriver:
+    def __init__(self, url="https://auth.openai.com/log-in/password", *, body="", click_result=True):
+        self.current_url = url
+        self.body = body
+        self.click_result = click_result
+
+    def find_element(self, _by, _value):
+        return type("Element", (), {"text": self.body})()
+
+    def execute_script(self, script, *_args):
+        if "passwordless.*otp" in script:
+            if self.click_result:
+                self.current_url = "https://auth.openai.com/email-verification"
+            return self.click_result
+        return {"title": "Auth", "body": self.body, "inputs": []}
+
+
+class _ExistingLoginDriver(_PageDriver):
+    def __init__(self):
+        super().__init__("https://auth.openai.com/log-in")
+        self.script_timeout = 0
+        self.closed = False
+
+    def set_script_timeout(self, timeout):
+        self.script_timeout = timeout
+
+    def quit(self):
+        self.closed = True
+
+
+class _ExistingLoginClient:
+    cleaned = False
+
+    def __init__(self, _config, **_kwargs):
+        pass
+
+    def create_profile(self, _proxy):
+        return "existing-42"
+
+    def open_profile(self, profile_id):
+        return RoxyOpenResult(profile_id, {}, debugger_address="127.0.0.1:9222", created_by_run=True)
+
+    def cleanup(self, _opened):
+        self.cleaned = True
+
+
+class _ExistingOtp:
+    def __init__(self, *_args, **_kwargs):
+        self.stages = []
+
+    def prepare(self):
+        pass
+
+    def mark_sent(self, stage_code="free_email_otp_wait"):
+        self.stages.append(stage_code)
+
+    def wait_code(self, _email, stage_code="free_email_otp_wait"):
+        self.stages.append(stage_code)
+        return "123456"
+
+
+class _ExistingLoginRunner(RoxyRegistrationRunner):
+    def __init__(self, driver):
+        self.driver = driver
+
+    def _driver(self, _opened):
+        return self.driver
+
+    @staticmethod
+    def _browser_ip(_driver, _probe_url, _timeout):
+        return "203.0.113.10"
+
+    @staticmethod
+    def _open_signup_page(driver, _email, _timeout):
+        driver.current_url = "https://auth.openai.com/log-in"
+
+    @staticmethod
+    def _find(_driver, selectors, _timeout):
+        if any("signup" in selector for selector in selectors):
+            raise RuntimeError("signup control absent")
+        return object()
+
+    @staticmethod
+    def _click(_driver, _element, _human):
+        pass
+
+    @staticmethod
+    def _type(_element, _value, _human):
+        pass
+
+    @staticmethod
+    def _submit(driver, _human):
+        driver.current_url = "https://auth.openai.com/log-in/password"
+
+    @staticmethod
+    def _fill_otp(driver, _code, _human):
+        driver.current_url = "https://chatgpt.com/"
+
+    @staticmethod
+    def _session(_driver, _timeout, _log=None):
+        return {"accessToken": "EXISTING_TOKEN"}
+
+    @staticmethod
+    def _plan_details(_driver, _token):
+        return {"plan_check_status": "success", "plan_type": "free", "plus_trial_eligible": True}
+
+
 class FreeRoxyRuntimeTests(unittest.TestCase):
     def test_migration_copies_sensitive_files_with_private_permissions(self):
         with TemporaryDirectory() as legacy_directory, TemporaryDirectory() as target_directory:
@@ -117,9 +245,10 @@ class FreeRoxyRuntimeTests(unittest.TestCase):
     def test_config_is_free_only_and_masks_roxy_key(self):
         with TemporaryDirectory() as directory:
             store = FreeConfigStore(directory)
-            saved = store.save({"driver": "roxybrowser", "concurrency": 99, "roxybrowser": {"api_key": "secret", "workspace_id": "w", "project_id": "p"}})
+            saved = store.save({"driver": "roxybrowser", "concurrency": 99, "roxybrowser": {"api_key": "secret", "workspace_id": "w", "project_id": "p", "existing_account_login": False}})
             self.assertEqual(saved["concurrency"], 5)
             self.assertTrue(saved["roxybrowser"]["headless"])
+            self.assertFalse(saved["roxybrowser"]["existing_account_login"])
             self.assertEqual(store.public()["roxybrowser"]["api_key"], "********")
             self.assertNotIn("free_proxy_pool_content", store.load())
 
@@ -195,6 +324,102 @@ class FreeRoxyRuntimeTests(unittest.TestCase):
             extract_session(driver, 5)
         self.assertIn("WARNING_BANNER", str(raised.exception))
         self.assertNotIn("PRIVATE_RESPONSE_BODY", str(raised.exception))
+
+    def test_same_origin_session_fetch_accepts_nested_token_and_restores_home(self):
+        driver = _BrowserSessionDriver({
+            "ok": True,
+            "status": 200,
+            "content_type": "application/json; charset=utf-8",
+            "payload": {"data": {"access_token": "NESTED_TOKEN"}, "user": {"id": "safe-id"}},
+            "body_length": 120,
+        })
+        logs = []
+        result = extract_session(driver, 5, lambda message, level="info": logs.append((level, message)))
+        self.assertEqual(session_token(result), "NESTED_TOKEN")
+        self.assertEqual(driver.visits, ["https://chatgpt.com/"])
+        self.assertTrue(any("HTTP 200" in message and "Token=存在" in message for _level, message in logs))
+        self.assertFalse(any("NESTED_TOKEN" in message for _level, message in logs))
+
+    def test_same_origin_session_summaries_reject_http_and_non_json(self):
+        http_driver = _BrowserSessionDriver({
+            "ok": True, "status": 503, "content_type": "application/json", "payload": {}, "body_length": 2,
+        })
+        payload, summary = free_roxy_session._browser_session(http_driver)
+        self.assertEqual(payload, {})
+        self.assertEqual(summary, "HTTP 503")
+        html_driver = _BrowserSessionDriver({
+            "ok": True, "status": 200, "content_type": "text/html", "payload": {}, "body_length": 20,
+        })
+        payload, summary = free_roxy_session._browser_session(html_driver)
+        self.assertEqual(payload, {})
+        self.assertEqual(summary, "响应类型 text/html")
+
+    def test_password_page_switches_to_reference_passwordless_otp_action(self):
+        driver = _PageDriver()
+        self.assertEqual(classify_page(driver), "login_password")
+        switch_login_to_email_code(driver)
+        self.assertEqual(classify_page(driver), "otp")
+
+    def test_passwordless_action_missing_has_stable_existing_login_error(self):
+        driver = _PageDriver(click_result=False)
+        with self.assertRaises(FreeRegisterError) as raised:
+            switch_login_to_email_code(driver)
+        self.assertEqual(raised.exception.node_code, "free_existing_login")
+        self.assertEqual(raised.exception.error_code, "free_existing_passwordless_action_missing")
+        self.assertNotIn("passwordless", str(raised.exception).casefold())
+
+    def test_post_otp_classifies_signup_password_and_security(self):
+        password_driver = _PageDriver("https://auth.openai.com/sign-up/password")
+        self.assertEqual(wait_after_otp_submit(password_driver, 3), "signup_password")
+        security_driver = _PageDriver("https://auth.openai.com/authorize", body="Verify you are human")
+        self.assertEqual(wait_after_otp_submit(security_driver, 3), "security")
+
+    def test_existing_account_runner_uses_fixed_proxy_otp_and_never_saves_signup_password(self):
+        driver = _ExistingLoginDriver()
+        runner = _ExistingLoginRunner(driver)
+        task = {
+            "task_id": "free-existing-1",
+            "email": "existing@example.test",
+            "mailbox_url": "https://mail.example.test/inbox/private",
+            "proxy": "http://user:pass@proxy.example.test:8000",
+            "expected_exit_ip": "203.0.113.10",
+        }
+        config = {
+            "proxy_probe_url": "https://api.ipify.org",
+            "email_code_timeout": 30,
+            "auto_set_2fa": False,
+            "roxybrowser": {
+                "existing_account_login": True,
+                "humanize_delay": False,
+                "humanize_browser_actions": False,
+                "selenium_timeout": 30,
+                "post_registration_dwell_min": 0,
+                "post_registration_dwell_max": 0,
+            },
+        }
+        stages = []
+        logs = []
+        stop = type("Stop", (), {"is_set": staticmethod(lambda: False)})()
+        with (
+            patch("mac_overrides.free_roxy_runtime.RoxyBrowserClient", _ExistingLoginClient),
+            patch("mac_overrides.free_roxy_runtime.MailboxUrlOtpProvider", _ExistingOtp),
+            patch("mac_overrides.free_roxy_runtime.time.sleep", lambda _seconds: None),
+        ):
+            result = runner(
+                task,
+                config,
+                stop,
+                lambda task_id, code: stages.append((task_id, code)),
+                lambda message, level="info": logs.append((level, message)),
+            )
+        self.assertEqual(result["account_flow"], "existing_login")
+        self.assertEqual(result["access_token"], "EXISTING_TOKEN")
+        self.assertNotIn("password", result)
+        self.assertNotIn("credential_line", result)
+        self.assertIn(("free-existing-1", "free_existing_login"), stages)
+        self.assertIn(("free-existing-1", "free_existing_login_otp"), stages)
+        self.assertTrue(any("已有账号邮箱验证码登录" in message for _level, message in logs))
+        self.assertTrue(driver.closed)
 
     def test_proxy_import_appends_without_duplicate_credentials(self):
         with TemporaryDirectory() as directory:

@@ -74,6 +74,7 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
         "humanize_delay": True,
         "humanize_factor": 1.0,
         "humanize_browser_actions": True,
+        "existing_account_login": True,
         "post_registration_dwell_min": 18,
         "post_registration_dwell_max": 45,
     },
@@ -200,7 +201,7 @@ class FreeConfigStore:
             roxy[key] = clean(roxy.get(key), 500) or str(DEFAULT_FREE_CONFIG["roxybrowser"][key])
         for key in (
             "headless", "keep_browser_open", "one_profile_per_account", "delete_profile_after_run",
-            "random_os", "random_profile_name", "humanize_delay", "humanize_browser_actions",
+            "random_os", "random_profile_name", "humanize_delay", "humanize_browser_actions", "existing_account_login",
         ):
             roxy[key] = _as_bool(roxy.get(key), bool(DEFAULT_FREE_CONFIG["roxybrowser"][key]))
         choices = roxy.get("os_choices")

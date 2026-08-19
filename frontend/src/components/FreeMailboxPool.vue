@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { CopyDocument, Delete, Key, Lock, Plus, Refresh, RefreshRight, Tickets, Link, Download, CircleCheck, Warning, View } from '@element-plus/icons-vue'
-import { deleteFreeMailboxes, exportFreeResults, getFreeLiveCheckState, getFreeLogs, getFreeMailboxUrl, getFreeMailboxes, getFreeSecret, importFreeMailboxes, retryFreeTwofa, setFreeMailboxStatus, startFreeLiveCheck } from '../api/client'
+import { CopyDocument, Delete, Key, Lock, Plus, Refresh, RefreshRight, Tickets, Link, Download, CircleCheck, Warning, View, VideoPlay } from '@element-plus/icons-vue'
+import { deleteFreeMailboxes, exportFreeResults, getFreeLiveCheckState, getFreeLogs, getFreeMailboxUrl, getFreeMailboxes, getFreeSecret, importFreeMailboxes, retryFreeTwofa, setFreeMailboxStatus, startFree, startFreeLiveCheck } from '../api/client'
 import type { FreeLiveCheckState, FreeMailboxRow } from '../api/client'
 import ContentEmptyState from './ContentEmptyState.vue'
 import WorkspacePanel from './WorkspacePanel.vue'
@@ -20,11 +20,13 @@ const statusFilter = ref('')
 const driverFilter = ref('')
 const liveStatusFilter = ref('')
 const liveBusy = ref<'fast' | 'deep' | ''>('')
+const runBusy = ref(false)
 const liveState = ref<FreeLiveCheckState>({ running: false, workers: 3, queue_limit: 500, active: 0, jobs: [] })
 const logDialogOpen = ref(false)
 const logLoading = ref(false)
 const logRow = ref<FreeMailboxRow | null>(null)
-const liveLogs = ref<Array<{ time?: string; level?: string; message?: string; stage?: string; stage_label?: string }>>([])
+const liveLogs = ref<Array<{ time?: string; level?: string; message?: string; stage?: string; stage_label?: string; page?: string; http_status?: number | string; duration_ms?: number | string; outcome?: string }>>([])
+const logScroll = ref<HTMLElement>()
 let refreshTimer = 0
 
 const filteredRows = computed(() => rows.value.filter(row => {
@@ -64,7 +66,10 @@ async function refreshLiveState() {
     rows.value = result.rows || rows.value
     if (logRow.value?.row_id) logRow.value = rows.value.find(row => row.row_id === logRow.value?.row_id) || logRow.value
     if (logDialogOpen.value && logRow.value?.live_check_task_id) {
+      const top = logScroll.value?.scrollTop || 0
       liveLogs.value = (await getFreeLogs(logRow.value.live_check_task_id)).logs || liveLogs.value
+      await nextTick()
+      if (logScroll.value) logScroll.value.scrollTop = top
     }
   } catch (error: any) {
     if (liveState.value.running) ElMessage.error(error?.message || 'Free 测活状态刷新失败')
@@ -104,6 +109,29 @@ async function startLiveCheck(mode: 'fast' | 'deep', selection = selected.value)
     ElMessage.error(error?.message || `${mode === 'fast' ? '快速' : '深度'}测活启动失败`)
   } finally {
     liveBusy.value = ''
+  }
+}
+
+async function quickStart() {
+  if (runBusy.value) return
+  try {
+    await ElMessageBox.confirm(
+      '将按 Free 运行配置中的链路、目标数和并发直接开始注册。确定启动吗？',
+      '快捷启动 Free 注册',
+      { type: 'warning', confirmButtonText: '开始注册', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  runBusy.value = true
+  try {
+    const result = await startFree()
+    ElMessage.success(`Free 注册已启动：${result.batch_id || '新批次'}`)
+    await refresh()
+  } catch (error: any) {
+    ElMessage.error(error?.message || 'Free 注册启动失败')
+  } finally {
+    runBusy.value = false
   }
 }
 
@@ -266,6 +294,7 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
     <WorkspacePanel title="Free 注册邮箱池" :icon="Tickets" fill body-padding="none">
       <template #actions>
         <span class="pool-summary">共 {{ rows.length }} 条</span>
+        <el-button size="small" type="primary" :icon="VideoPlay" :loading="runBusy" @click="quickStart">快捷运行</el-button>
         <el-button size="small" :icon="Refresh" :loading="loading" @click="refresh">刷新</el-button>
         <el-button size="small" type="primary" :icon="Plus" @click="openImport">导入 Free 邮箱</el-button>
       </template>
@@ -283,7 +312,7 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
           @selection-change="selected = $event"
         >
           <el-table-column type="selection" width="42" reserve-selection />
-          <el-table-column type="index" label="序号" width="58" align="center" />
+          <el-table-column type="index" label="序号" width="58" align="center" fixed="left" />
           <el-table-column prop="line_no" label="原序号" width="68" align="right" />
           <el-table-column prop="email" label="邮箱" min-width="190" show-overflow-tooltip />
           <el-table-column label="链路 / 阶段" min-width="180" show-overflow-tooltip>
@@ -320,7 +349,7 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
     </el-dialog>
     <el-dialog v-model="logDialogOpen" :title="`${logRow?.email || 'Free 账号'} · ${logRow?.live_check_mode === 'deep' ? '深度测活' : '快速测活'}日志`" width="900px" destroy-on-close>
       <div class="log-dialog-meta"><span>任务 {{ logRow?.live_check_task_id || '-' }}</span><span>状态 {{ liveStatusLabel(logRow?.live_check_status) }}</span><span>测活 IP {{ logRow?.live_check_ip || '-' }}</span><el-button size="small" :icon="Refresh" :loading="logLoading" @click="logRow && openLiveLog(logRow)">刷新</el-button></div>
-      <div v-loading="logLoading" class="log-dialog-list"><div v-for="(row, index) in liveLogs.slice(-180).reverse()" :key="`${row.time}-${index}-${row.message}`" :class="`log-${row.level || 'info'}`"><small>{{ row.time || '' }}</small><span><b v-if="row.stage_label || row.stage">{{ row.stage_label || row.stage }}</b> {{ row.message || '' }}</span></div><ContentEmptyState v-if="!liveLogs.length && !logLoading" /></div>
+      <div ref="logScroll" v-loading="logLoading" class="log-dialog-list"><div v-for="(row, index) in liveLogs.slice(-180)" :key="`${row.time}-${index}-${row.message}`" :class="`log-${row.level || 'info'}`"><small>{{ row.time || '' }}</small><span><b v-if="row.stage_label || row.stage">{{ row.stage_label || row.stage }}</b> {{ row.message || '' }}<em v-if="row.duration_ms || row.page || row.http_status || row.outcome">{{ row.duration_ms ? ` · ${row.duration_ms}ms` : '' }}{{ row.page ? ` · ${row.page}` : '' }}{{ row.http_status ? ` · HTTP ${row.http_status}` : '' }}{{ row.outcome ? ` · ${row.outcome}` : '' }}</em></span></div><ContentEmptyState v-if="!liveLogs.length && !logLoading" /></div>
     </el-dialog>
   </div>
 </template>
@@ -350,4 +379,6 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
 .log-dialog-list small { color: #8ca0b5; }
 .log-error { color: #e78690; }
 .log-warn { color: #d7aa63; }
+.log-success { color: #58c69b; }
+.log-dialog-list em { display: block; color: #91a8bd; font-style: normal; font-size: 11px; }
 </style>

@@ -177,7 +177,7 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
         public["stage_label"] = FREE_STAGE_LABELS.get(str(public.get("stage") or ""), str(public.get("stage") or ""))
         public["result"] = {
             key: copy.deepcopy(result[key])
-            for key in ("plan_type", "subscription_plan", "has_active_subscription", "plus_trial_eligible", "eligible_campaign_id", "plan_check_status", "plan_checked_at", "plan_error_code", "plan_http_status", "twofa_status", "twofa_error", "has_access_token")
+            for key in ("account_flow", "plan_type", "subscription_plan", "has_active_subscription", "plus_trial_eligible", "eligible_campaign_id", "plan_check_status", "plan_checked_at", "plan_error_code", "plan_http_status", "twofa_status", "twofa_error", "has_access_token")
             if key in result
         }
         public["result"]["has_access_token"] = bool(result.get("access_token"))
@@ -345,7 +345,7 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
             ],
         }
 
-    def start(self, config: Mapping[str, Any], *, pool_content: str = "", proxy_content: str = "") -> dict[str, Any]:
+    def start(self, config: Mapping[str, Any], *, pool_content: str = "", proxy_content: str = "", row_ids: Sequence[str] = ()) -> dict[str, Any]:
         with self._lock:
             self._last_config = copy.deepcopy(dict(config))
             if self.public_state().get("running"):
@@ -363,7 +363,15 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
             if configured_free_count_value <= 0 or configured_free_count_value > available_count:
                 configured_free_count = available_count
             target_count = max(1, min(int(configured_free_count or 1), 10_000))
-            rows = self.pool.available(target_count)
+            requested_row_ids = {str(value or "").strip() for value in row_ids if str(value or "").strip()}
+            if requested_row_ids:
+                all_available = self.pool.available(10_000)
+                rows = [row for row in all_available if row.row_id in requested_row_ids]
+                if len(rows) != len(requested_row_ids):
+                    raise FreeRegisterError("free_pool_preflight", "Free 邮箱池预检", "快捷运行所选邮箱中有记录不存在或当前不可用", retryable=False)
+                target_count = len(rows)
+            else:
+                rows = self.pool.available(target_count)
             if len(rows) < target_count:
                 raise FreeRegisterError("free_pool_preflight", "Free 邮箱池预检", f"Free 邮箱数量不足：需要 {target_count} 条，当前只有 {len(rows)} 条", retryable=False)
             driver = str(config.get("driver") or "protocol").strip().lower()
@@ -471,6 +479,21 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
                     self._release_task_lease(task)
             self.task_store.save(self._tasks)
         self._log("[停止 Free 注册/free_stop] 已请求停止，运行中的账号不切换代理", "warn")
+
+    def rerun(self, task_id: str, config: Mapping[str, Any]) -> dict[str, Any]:
+        """Start a fresh batch for a failed task whose mailbox was recovered."""
+        normalized = str(task_id or "").strip()
+        with self._lock:
+            task = copy.deepcopy(self._tasks.get(normalized))
+        if not task:
+            raise FreeRegisterError("free_rerun", "重跑 Free 账号", "没有找到对应的 Free 任务", retryable=False)
+        if str(task.get("status") or "") not in {"failed", "stopped"}:
+            raise FreeRegisterError("free_rerun", "重跑 Free 账号", "只有失败或已停止的 Free 任务可以重跑", retryable=False)
+        row_id = str(task.get("row_id") or "")
+        if not row_id or not any(row.row_id == row_id for row in self.pool.available(10_000)):
+            raise FreeRegisterError("free_rerun", "重跑 Free 账号", "该账号尚未恢复为可用，不能重复注册同一个邮箱", retryable=False, error_code="free_rerun_mailbox_unavailable")
+        self._log(f"[{normalized}/重跑 Free 账号/free_rerun] 使用已恢复邮箱重新创建独立批次", "info")
+        return self.start(config, row_ids=[row_id])
 
     def retry_twofa(self, task_id: str, config: Mapping[str, Any]) -> dict[str, Any]:
         with self._lock:

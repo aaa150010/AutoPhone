@@ -102,6 +102,7 @@ export interface FreeConfig {
     humanize_delay: boolean
     humanize_factor: number
     humanize_browser_actions: boolean
+    existing_account_login: boolean
     post_registration_dwell_min: number
     post_registration_dwell_max: number
   }
@@ -151,7 +152,8 @@ export type FreeConfigSavePayload = Partial<FreeConfig> & {
 export const saveFreeConfig = (config: FreeConfigSavePayload) => api<{ ok: true; config: FreeConfig; state: FreeState; proxies?: any }>('/api/free/config', config)
 export const getFreeState = () => api<{ ok: true; state: FreeState; config: FreeConfig }>('/api/free/state')
 export const preflightFree = (config?: Partial<FreeConfig> & { proxy_content?: string }) => api<{ ok: true; result: any; state: FreeState; config: FreeConfig }>('/api/free/preflight', config || {})
-export const startFree = (config?: Partial<FreeConfig> & { proxy_content?: string }) => api<{ ok: true; batch_id: string; batch?: any; state: FreeState }>('/api/free/start', config || {})
+export const startFree = (config?: Partial<FreeConfig> & { proxy_content?: string; row_ids?: string[] }) => api<{ ok: true; batch_id: string; batch?: any; state: FreeState }>('/api/free/start', config || {})
+export const rerunFreeTask = (taskId: string) => api<{ ok: true; batch_id: string; batch?: any; state: FreeState }>('/api/free/rerun', { task_id: taskId })
 export const stopFree = () => api<{ ok: true; state: FreeState }>('/api/free/stop', {})
 export const getFreeLogs = (taskId = '') => api<{ ok: true; task_id?: string; logs: Array<{ time?: string; level?: string; message?: string; task_id?: string; stage?: string; stage_label?: string }> }>(`/api/free/logs${taskId ? `?task_id=${encodeURIComponent(taskId)}` : ''}`)
 export const getFreeRoxyWorkspaces = () => api<{ ok: true; items: Array<{ workspace_id: string; workspace_name: string; project_id: string; project_name: string; label: string }> }>('/api/free/roxy/workspaces')
