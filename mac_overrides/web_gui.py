@@ -57,6 +57,7 @@ import mailbox_url_runtime as _mailbox_url_runtime_ext
 import mailbox_url_test_runtime as _mailbox_url_test_runtime_ext
 import mailbox_retention as _mailbox_retention_ext
 import free_register_runtime as _free_register_runtime_ext
+import free_register_config as _free_register_config_ext
 import phone_risk_runtime as _phone_risk_runtime_ext
 import phone_binding_runtime as _phone_binding_runtime_ext
 import performance_runtime as _performance_runtime_ext
@@ -99,6 +100,8 @@ ORIGINAL_WEB_GUI = BUSINESS_DIR / "web_gui.pyc"
 _RUNTIME_DATA_DIR = Path(
     os.environ.get("GPTPHONE_DATA_DIR") or APP_DIR / "data"
 ).expanduser().resolve()
+_FREE_DATA_DIR = _RUNTIME_DATA_DIR / "free_register"
+_FREE_CONFIG_STORE = _free_register_config_ext.FreeConfigStore(_FREE_DATA_DIR)
 if os.environ.get("GPTPHONE_DATA_DIR"):
     _runtime.DEFAULT_DATA_DIR = _RUNTIME_DATA_DIR
 
@@ -3530,15 +3533,6 @@ def _read_local_config():
     if not isinstance(value, dict):
         value = {}
     changed = False
-    if "free_proxy_pool_content" not in value:
-        legacy_proxy_path = _RUNTIME_DATA_DIR / "free_proxy_pool.txt"
-        try:
-            legacy_proxy_content = legacy_proxy_path.read_text(encoding="utf-8").strip()
-        except (FileNotFoundError, OSError, UnicodeError):
-            legacy_proxy_content = ""
-        if legacy_proxy_content:
-            value["free_proxy_pool_content"] = legacy_proxy_content
-            changed = True
     if "nvtoken" in value or "nvtoken_upload" in value or "pixel_upload_enabled" in value:
         value.pop("nvtoken", None)
         value.pop("nvtoken_upload", None)
@@ -3553,6 +3547,7 @@ def _read_local_config():
 
 def _write_local_config(data):
     value = dict(data) if isinstance(data, dict) else {}
+    value = _free_register_config_ext.strip_legacy_free_config(value)
     value.pop("nvtoken", None)
     value.pop("nvtoken_upload", None)
     value.pop("pixel_upload_enabled", None)
@@ -3586,6 +3581,14 @@ def _write_local_config(data):
     return value
 
 
+# Copy the pre-existing Free files once, then keep the ordinary runtime config
+# free of Free mailbox, proxy, target and driver settings.
+_FREE_CONFIG_MIGRATION = _FREE_CONFIG_STORE.migrate_legacy(_read_local_config(), _RUNTIME_DATA_DIR)
+_legacy_local_config = _read_local_config()
+if any(key in _legacy_local_config for key in _free_register_config_ext.FREE_LEGACY_CONFIG_KEYS):
+    _write_local_config(_legacy_local_config)
+
+
 _initial_connectivity_config = _read_local_config()
 _OPENAI_CONNECTIVITY.set_enabled(
     _performance_runtime_ext.as_bool(
@@ -3611,8 +3614,7 @@ _RUN_BATCH_MANIFEST = _run_batch_runtime_ext.RunBatchManifestStore(
     lease_releaser=_release_recovered_batch_leases,
 )
 _FREE_REGISTER = _free_register_runtime_ext.FreeRegisterManager(
-    _RUNTIME_DATA_DIR,
-    progress=_TASK_PROGRESS,
+    _FREE_DATA_DIR,
 )
 _SUB2_RUNTIME = _sub2_runtime_ext.Sub2Runtime(
     _read_local_config,
@@ -3791,6 +3793,8 @@ _WEB_ROUTE_CONTEXT = _web_routes_ext.WebRouteContext(
     query_sms_balances=_SMS_WEB.query_balances,
     online_mailbox_client_factory=_online_mailbox_client_factory,
     failure_secrets=lambda config: _failure_secrets(settings=config),
+    free_config_store=_FREE_CONFIG_STORE,
+    free_data_dir=_FREE_DATA_DIR,
 )
 
 

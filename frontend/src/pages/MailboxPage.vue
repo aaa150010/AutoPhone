@@ -593,11 +593,11 @@ onUnmounted(() => {
 <style scoped>
 .mailbox-page { display: grid; grid-template-rows: 44px 78px minmax(0, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
 .selected-count { color: var(--el-color-primary); font-size: 13px; white-space: nowrap; }
-.search-input { width: 210px; }
-.filter-select { width: 110px; }
-.batch-filter-select { width: 150px; }
-.sub2-filter-select { width: 168px; }
-.quota-filter-select { width: 128px; }
+.search-input { width: 220px; }
+.filter-select { width: 150px; }
+.batch-filter-select { width: 180px; }
+.sub2-filter-select { width: 190px; }
+.quota-filter-select { width: 155px; }
 .table-region { display: grid; grid-template-rows: minmax(0, 1fr) 46px; width: 100%; height: 100%; min-height: 0; padding: 8px 10px 0; }
 .pager { justify-content: flex-end; border-top: 1px solid var(--workspace-border); }
 

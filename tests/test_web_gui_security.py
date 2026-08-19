@@ -217,30 +217,16 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(masked["free_proxy_pool_content"], "********")
         self.assertEqual(masked["free_register_password"], "********")
 
-    def test_free_proxy_pool_secret_round_trips_through_masked_config(self):
+    def test_free_proxy_pool_secret_stays_out_of_ordinary_config(self):
         content = "http://free-user:free-pass@proxy.example.test:8000\nsocks5h://u:p@proxy.example.test:8001"
         self.module._write_local_config({"free_proxy_pool_content": content})
 
-        masked = self.module._masked_local_config(
-            self.module._read_local_config()
-        )
-        self.assertEqual(masked["free_proxy_pool_content"], "********")
-        self.assertNotIn("free-pass", json.dumps(masked))
-        self.assertEqual(
-            self.module._local_config_secret("free_proxy_pool_content"),
-            content,
-        )
-        resolved = self.module._local_config_from_runtime(
-            masked,
-            self.module._read_local_config(),
-        )
-        self.assertEqual(resolved["free_proxy_pool_content"], content)
-        self.assertEqual(
-            self.module._merge_local_config({"free_proxy_pool_content": ""})[
-                "free_proxy_pool_content"
-            ],
-            "",
-        )
+        stored = self.module._read_local_config()
+        self.assertNotIn("free_proxy_pool_content", stored)
+        self.assertNotIn("free-pass", json.dumps(stored))
+        self.assertEqual(self.module._local_config_secret("free_proxy_pool_content"), "")
+        resolved = self.module._local_config_from_runtime(stored, stored)
+        self.assertNotIn("free_proxy_pool_content", resolved)
 
     def test_sms_transport_registry_recovers_when_contextvar_is_empty(self):
         transport = SimpleNamespace(config={"sms_task_id": "task-transport"})

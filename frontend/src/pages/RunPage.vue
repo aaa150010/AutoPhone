@@ -16,7 +16,6 @@ import {
   WarningFilled,
 } from '@element-plus/icons-vue'
 import {
-  getFreeSecret,
   getRuntimeTaskMailboxPassword,
   getRuntimeTaskMailboxTotp,
   getRuntimeTaskMailboxUrl,
@@ -152,8 +151,8 @@ const batchCompleted = computed(() => Math.min(
 const metrics = computed(() => [
   {
     title: '可用邮箱',
-    value: Number(controller.runtime.value.pool?.available || 0) + Number(controller.runtime.value.free_register?.pool?.available || 0),
-    detail: `接码 ${Number(controller.runtime.value.pool?.available || 0)} / Free ${Number(controller.runtime.value.free_register?.pool?.available || 0)}`,
+    value: Number(controller.runtime.value.pool?.available || 0),
+    detail: '接码 / OAuth 独立邮箱池',
     icon: Message,
     tone: 'primary',
   },
@@ -195,7 +194,7 @@ function openStartDialog() {
   startDialog.value?.open()
 }
 
-async function start(selection: { runMode: 'register' | 'free_register' }) {
+async function start(selection: { runMode: 'register' }) {
   try {
     const result = await controller.start(false, selection.runMode)
     if (!result) return
@@ -269,27 +268,6 @@ async function copyTaskTotp(task: RuntimeTask) {
     ElMessage.error(error?.message || '复制临时 2FA 验证码失败')
   } finally {
     loadingMailboxTotpTaskIds.value = loadingMailboxTotpTaskIds.value.filter(id => id !== taskId)
-  }
-}
-
-async function copyFreeSecret(payload: { kind: 'token' | 'password' | 'totp' | 'proxy' | 'credential'; tasks: RuntimeTask[] }) {
-  const tasks = payload.tasks || []
-  if (!tasks.length) return
-  try {
-    const result = await getFreeSecret(payload.kind, { task_ids: tasks.map(task => task.task_id) })
-    await navigator.clipboard.writeText(String(result.value || ''))
-    ElMessage.success(payload.kind === 'token' ? '已复制 Free Token' : payload.kind === 'credential' ? '已复制 Free 完整凭据' : `已复制 Free ${payload.kind === 'totp' ? '2FA 密钥' : payload.kind === 'proxy' ? '代理' : '密码'}`)
-  } catch (error: any) {
-    ElMessage.error(error?.message || 'Free 敏感字段复制失败')
-  }
-}
-
-async function retryFreeTwofa(task: RuntimeTask) {
-  try {
-    await controller.retryFreeTwofa(task.task_id)
-    ElMessage.info('已重新加入 2FA 设置任务')
-  } catch (error: any) {
-    ElMessage.error(error?.message || '2FA 重试失败')
   }
 }
 
@@ -404,8 +382,6 @@ async function disableConnectivityGuard() {
             @mailbox-password="copyTaskPassword"
             @mailbox-totp="copyTaskTotp"
             @mailbox-url="openTaskMailboxUrl"
-            @free-secret="copyFreeSecret"
-            @free-twofa-retry="retryFreeTwofa"
             @update:active-view="taskView = $event"
             @counts="taskCounts = $event"
           />

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { CopyDocument, Delete, Key, Lock, Plus, Refresh, Tickets } from '@element-plus/icons-vue'
-import { deleteFreeMailboxes, getFreeMailboxes, getFreeSecret, importFreeMailboxes, retryFreeTwofa } from '../api/client'
+import { CopyDocument, Delete, Key, Lock, Plus, Refresh, Tickets, Link, Download, CircleCheck, Warning } from '@element-plus/icons-vue'
+import { deleteFreeMailboxes, exportFreeResults, getFreeMailboxUrl, getFreeMailboxes, getFreeSecret, importFreeMailboxes, retryFreeTwofa, setFreeMailboxStatus } from '../api/client'
 import type { FreeMailboxRow } from '../api/client'
 import ContentEmptyState from './ContentEmptyState.vue'
 import WorkspacePanel from './WorkspacePanel.vue'
@@ -15,8 +15,21 @@ const mailboxText = ref('')
 const currentPage = ref(1)
 const pageSize = ref(100)
 const tableRef = ref<any>()
+const search = ref('')
+const statusFilter = ref('')
+const driverFilter = ref('')
 
-const pageRows = computed(() => rows.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value))
+const filteredRows = computed(() => rows.value.filter(row => {
+  const needle = search.value.trim().toLowerCase()
+  return (!needle || row.email.toLowerCase().includes(needle) || String(row.registration_ip || row.exit_ip || '').includes(needle))
+    && (!statusFilter.value || row.status === statusFilter.value)
+    && (!driverFilter.value || row.driver === driverFilter.value)
+}))
+const pageRows = computed(() => filteredRows.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value))
+const metrics = computed(() => {
+  const count = (status: string) => rows.value.filter(row => row.status === status).length
+  return { total: rows.value.length, available: count('available'), running: count('running'), success: count('success'), failed: count('failed'), pending: count('twofa_pending') }
+})
 function openImport() {
   mailboxText.value = ''
   importOpen.value = true
@@ -113,6 +126,44 @@ async function retryTwofa(row: FreeMailboxRow) {
   }
 }
 
+async function setStatus(status: 'available' | 'unavailable' | 'draft') {
+  const ids = selected.value.map(row => row.row_id).filter(Boolean)
+  if (!ids.length) return
+  loading.value = true
+  try {
+    await setFreeMailboxStatus(status, ids)
+    selected.value = []
+    tableRef.value?.clearSelection()
+    await refresh()
+    ElMessage.success(`已更新 ${ids.length} 条 Free 邮箱状态`)
+  } catch (error: any) {
+    ElMessage.error(error?.message || 'Free 邮箱状态更新失败')
+  } finally { loading.value = false }
+}
+
+async function openUrl(row: FreeMailboxRow) {
+  if (!row.row_id) return
+  try {
+    const value = (await getFreeMailboxUrl(row.row_id)).mailbox_url
+    const target = new URL(value)
+    if (!['http:', 'https:'].includes(target.protocol)) throw new Error('取件 URL 协议不安全')
+    window.open(target.href, '_blank', 'noopener,noreferrer')
+  } catch (error: any) { ElMessage.error(error?.message || '打开 Free 取件地址失败') }
+}
+
+async function exportResults() {
+  try {
+    const result = await exportFreeResults(selected.value.map(row => row.row_id))
+    const blob = new Blob([result.content || ''], { type: 'text/plain;charset=utf-8' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = result.filename || 'free-results.txt'
+    link.click()
+    URL.revokeObjectURL(link.href)
+    ElMessage.success(`已导出 ${Number(result.count || 0)} 条 Free 结果`)
+  } catch (error: any) { ElMessage.error(error?.message || 'Free 结果导出失败') }
+}
+
 onMounted(refresh)
 </script>
 
@@ -124,12 +175,17 @@ onMounted(refresh)
         <el-button size="small" :icon="Refresh" :loading="loading" @click="refresh">刷新</el-button>
         <el-button size="small" type="primary" :icon="Plus" @click="openImport">导入 Free 邮箱</el-button>
         <el-button size="small" type="danger" plain :icon="Delete" :disabled="!selected.length || loading" @click="deleteSelected">删除选中</el-button>
+        <el-button size="small" :icon="CircleCheck" :disabled="!selected.length || loading" @click="setStatus('available')">恢复可用</el-button>
+        <el-button size="small" :icon="Warning" :disabled="!selected.length || loading" @click="setStatus('unavailable')">标记不可用</el-button>
+        <el-button size="small" :icon="Download" :disabled="loading" @click="exportResults">导出结果</el-button>
         <el-button size="small" :icon="CopyDocument" :disabled="!selected.length" @click="copySecret('token')">复制选中 Token</el-button>
         <el-button size="small" :icon="CopyDocument" :disabled="!pageRows.some(row => row.has_access_token)" @click="copySecret('token', pageRows)">复制当前页 Token</el-button>
         <el-button size="small" :icon="CopyDocument" :disabled="!selected.some(row => row.has_credential)" @click="copySecret('credential')">复制选中凭据</el-button>
       </template>
 
       <div class="table-region">
+        <div class="metrics"><span>总数 <b>{{ metrics.total }}</b></span><span class="is-good">可用 <b>{{ metrics.available }}</b></span><span>运行中 <b>{{ metrics.running }}</b></span><span class="is-good">成功 <b>{{ metrics.success }}</b></span><span class="is-bad">失败 <b>{{ metrics.failed }}</b></span><span class="is-warn">2FA 待重试 <b>{{ metrics.pending }}</b></span></div>
+        <div class="filters"><el-input v-model="search" size="small" clearable placeholder="搜索邮箱或注册 IP" /><el-select v-model="statusFilter" size="small" clearable placeholder="状态"><el-option label="可用" value="available" /><el-option label="运行中" value="running" /><el-option label="成功" value="success" /><el-option label="失败" value="failed" /><el-option label="2FA 待重试" value="twofa_pending" /></el-select><el-select v-model="driverFilter" size="small" clearable placeholder="链路"><el-option label="全协议" value="protocol" /><el-option label="RoxyBrowser" value="roxybrowser" /></el-select></div>
         <el-table
           ref="tableRef"
           :data="pageRows"
@@ -141,11 +197,11 @@ onMounted(refresh)
           <el-table-column type="selection" width="42" reserve-selection />
           <el-table-column prop="line_no" label="#" width="52" align="right" />
           <el-table-column prop="email" label="邮箱" min-width="190" show-overflow-tooltip />
-          <el-table-column label="阶段" min-width="150" show-overflow-tooltip>
-            <template #default="{ row }"><el-tag size="small" :type="row.status === 'success' ? 'success' : row.status === 'failed' ? 'danger' : 'warning'">{{ row.stage || row.status || '可用' }}</el-tag></template>
+          <el-table-column label="链路 / 阶段" min-width="180" show-overflow-tooltip>
+            <template #default="{ row }"><el-tag size="small" effect="plain">{{ row.driver === 'roxybrowser' ? 'RoxyBrowser' : '全协议' }}</el-tag><el-tag size="small" :type="row.status === 'success' ? 'success' : row.status === 'failed' ? 'danger' : 'warning'">{{ row.stage || row.status || '可用' }}</el-tag></template>
           </el-table-column>
-          <el-table-column label="代理 / 出口 IP" min-width="190" show-overflow-tooltip>
-            <template #default="{ row }"><span>{{ row.proxy_masked || '-' }}</span><small v-if="row.exit_ip"> / {{ row.exit_ip }}</small></template>
+          <el-table-column label="代理 / 注册 IP" min-width="210" show-overflow-tooltip>
+            <template #default="{ row }"><span>{{ row.proxy_masked || '-' }}</span><small v-if="row.registration_ip || row.exit_ip"> / {{ row.registration_ip || row.exit_ip }}</small></template>
           </el-table-column>
           <el-table-column label="套餐 / Plus 试用" width="150">
             <template #default="{ row }"><span>{{ row.plan_type || '-' }}</span><el-tag v-if="row.plus_trial_eligible" size="small" type="success" class="trial-tag">可试用</el-tag></template>
@@ -153,12 +209,13 @@ onMounted(refresh)
           <el-table-column label="2FA" width="100" align="center">
             <template #default="{ row }"><el-button v-if="row.has_totp" link :icon="Key" @click="copyRow('totp', row)">已设置</el-button><el-button v-else-if="row.twofa_status === 'pending'" link type="warning" @click="retryTwofa(row)">重试</el-button><span v-else>-</span></template>
           </el-table-column>
+          <el-table-column label="取件" width="62" align="center"><template #default="{ row }"><el-button link :icon="Link" aria-label="打开取件地址" @click="openUrl(row)" /></template></el-table-column>
           <el-table-column label="Token" width="80" align="center"><template #default="{ row }"><el-button v-if="row.has_access_token" link :icon="CopyDocument" aria-label="复制 Token" @click="copyRow('token', row)" /><span v-else>-</span></template></el-table-column>
           <el-table-column label="敏感字段" width="210" align="center"><template #default="{ row }"><el-button v-if="row.has_credential" link :icon="CopyDocument" @click="copyRow('credential', row)">完整凭据</el-button><el-button v-if="row.has_password" link :icon="Lock" @click="copyRow('password', row)">密码</el-button><el-button v-if="row.proxy_masked" link :icon="CopyDocument" @click="copyRow('proxy', row)">代理</el-button></template></el-table-column>
           <el-table-column label="错误" min-width="220" show-overflow-tooltip><template #default="{ row }">{{ row.error || row.twofa_error || '-' }}</template></el-table-column>
           <template #empty><ContentEmptyState /></template>
         </el-table>
-        <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" background layout="total, sizes, prev, pager, next" :page-sizes="[25, 50, 100]" :total="rows.length" />
+        <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" background layout="total, sizes, prev, pager, next" :page-sizes="[25, 50, 100]" :total="filteredRows.length" />
       </div>
     </WorkspacePanel>
 
@@ -174,7 +231,13 @@ onMounted(refresh)
 <style scoped>
 .free-pool { width: 100%; height: 100%; min-height: 0; }
 .pool-summary { color: var(--el-text-color-secondary); font-size: 12px; }
-.table-region { display: grid; grid-template-rows: minmax(0, 1fr) 46px; width: 100%; height: 100%; min-height: 0; padding: 8px 10px 0; }
+.table-region { display: grid; grid-template-rows: 28px 38px minmax(0, 1fr) 46px; width: 100%; height: 100%; min-height: 0; padding: 8px 10px 0; }
+.metrics { display: flex; align-items: center; gap: 14px; color: var(--el-text-color-secondary); font-size: 12px; }
+.metrics b { color: var(--el-text-color-primary); font-variant-numeric: tabular-nums; }
+.metrics .is-good b { color: #168363; }
+.metrics .is-bad b { color: #c44754; }
+.metrics .is-warn b { color: #bc761c; }
+.filters { display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr)); gap: 6px; }
 .trial-tag { margin-left: 5px; }
 .table-region :deep(.el-pagination) { justify-content: flex-end; border-top: 1px solid var(--workspace-border); }
 .table-region small { color: var(--el-text-color-secondary); }

@@ -9,8 +9,6 @@ from pathlib import Path
 import uuid
 from typing import Any, Callable
 
-FREE_REGISTER_PASSWORD = "nuHf5UFg2vtCW!/"
-
 def _coerce_int(value: Any, default: int, minimum: int | None = None, maximum: int | None = None) -> int:
     try:
         parsed = int(value)
@@ -261,8 +259,6 @@ class LocalConfigRuntime:
             "sms_api_keys": sms_keys,
             "sms_api_key": sms_keys[0] if sms_keys else "",
             "sub2_password": sub2api.get("password") or "",
-            "free_register_password": FREE_REGISTER_PASSWORD,
-            "free_proxy_pool_content": local.get("free_proxy_pool_content") or "",
             "notification_email_password": email_notification.get("password") or "",
             "online_mailbox_api_token": online_mailbox.get("api_token") or "",
             "proxy": local.get("proxy") or "",
@@ -326,7 +322,6 @@ class LocalConfigRuntime:
                 ),
                 "group": str(sub2api.get("group") or "").strip(),
             },
-            "free_register_password": FREE_REGISTER_PASSWORD,
             "online_mailbox": {
                 "base_url": str(
                     online_mailbox.get("base_url")
@@ -344,13 +339,6 @@ class LocalConfigRuntime:
             result["proxy"] = self.local_secret(
                 data.get("proxy"), existing.get("proxy")
             ).strip()
-        if "free_proxy_pool_content" in data or "free_proxy_pool_content" in existing:
-            incoming_proxy_pool = data.get("free_proxy_pool_content")
-            result["free_proxy_pool_content"] = (
-                str(existing.get("free_proxy_pool_content") or "").strip()
-                if incoming_proxy_pool in (None, self.secret_mask)
-                else str(incoming_proxy_pool or "").strip()
-            )
         for key in (
             "proxy_scope",
             "target_count",
@@ -358,9 +346,6 @@ class LocalConfigRuntime:
             "node_concurrency",
             "auto_email_login_concurrency",
             "phone_submission_concurrency",
-            "free_target_count",
-            "free_concurrency",
-            "free_proxy_probe_url",
             "node_timeout",
             "auth_session_retries",
             "email_code_timeout",
@@ -428,13 +413,6 @@ class LocalConfigRuntime:
         patched["proxy"] = self.local_secret(
             patched.get("proxy"), local.get("proxy")
         )
-        if "free_proxy_pool_content" in patched or "free_proxy_pool_content" in local:
-            incoming_proxy_pool = patched.get("free_proxy_pool_content")
-            patched["free_proxy_pool_content"] = (
-                str(local.get("free_proxy_pool_content") or "").strip()
-                if incoming_proxy_pool in (None, self.secret_mask)
-                else str(incoming_proxy_pool or "").strip()
-            )
         if isinstance(local.get("sub2api"), dict):
             patched["sub2api"] = self.merge_nonempty(
                 local.get("sub2api") or {}, patched.get("sub2api") or {}
@@ -483,7 +461,6 @@ class LocalConfigRuntime:
         patched.pop("pixel_upload_enabled", None)
         patched.pop("nv_import", None)
         patched["sub2api"] = dict(patched.get("sub2api") or {})
-        patched["free_register_password"] = FREE_REGISTER_PASSWORD
         patched["email_notification"] = self.notifications.validate_email_notification(
             patched.get("email_notification") or {}
         )
@@ -498,18 +475,6 @@ class LocalConfigRuntime:
             2,
             minimum=1,
             maximum=5,
-        )
-        patched["free_concurrency"] = self.int_value(
-            patched.get("free_concurrency") or patched.get("concurrency"),
-            5,
-            minimum=1,
-            maximum=32,
-        )
-        patched["free_target_count"] = self.int_value(
-            patched.get("free_target_count"),
-            0,
-            minimum=0,
-            maximum=10_000,
         )
         if not self.clean(patched.get("sms_min_price")):
             patched["sms_min_price"] = str(self.sms_min_price_default)

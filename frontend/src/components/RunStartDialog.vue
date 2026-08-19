@@ -2,19 +2,17 @@
 import { ref } from 'vue'
 
 const props = withDefaults(defineProps<{ loading?: boolean }>(), { loading: false })
-const emit = defineEmits<{ confirm: [{ runMode: 'register' | 'free_register' }] }>()
+const emit = defineEmits<{ confirm: [{ runMode: 'register' }] }>()
 const visible = ref(false)
-const runMode = ref<'register' | 'free_register'>('register')
 
 function open() {
-  runMode.value = 'register'
   visible.value = true
 }
 
 function confirm() {
   if (props.loading) return
   visible.value = false
-  emit('confirm', { runMode: runMode.value })
+  emit('confirm', { runMode: 'register' })
 }
 
 defineExpose({ open })
@@ -23,16 +21,13 @@ defineExpose({ open })
 <template>
   <el-dialog
     v-model="visible"
-    title="选择运行模式"
+    title="启动接码 / OAuth"
     width="460px"
     :close-on-click-modal="false"
     :close-on-press-escape="!loading"
     :show-close="!loading"
   >
-    <el-radio-group v-model="runMode" class="mode-options">
-      <el-radio value="register" border>批量接码/OAuth</el-radio>
-      <el-radio value="free_register" border>批量注册 Free</el-radio>
-    </el-radio-group>
+    <p class="dialog-copy">Free 注册请进入“运行配置 &gt; Free 注册运行”选择全协议或 RoxyBrowser 链路。</p>
     <template #footer>
       <el-button :disabled="loading" @click="visible = false">取消</el-button>
       <el-button type="primary" :loading="loading" @click="confirm">确认运行</el-button>
@@ -41,6 +36,5 @@ defineExpose({ open })
 </template>
 
 <style scoped>
-.mode-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%; }
-.mode-options :deep(.el-radio) { display: flex; align-items: center; width: 100%; height: 48px; margin: 0; }
+.dialog-copy { margin: 0; color: var(--el-text-color-secondary); font-size: 13px; line-height: 20px; }
 </style>

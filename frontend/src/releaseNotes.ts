@@ -12,10 +12,34 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.14',
-  title: 'Free 邮箱池与运行配置整理',
+  version: '1.6.16',
+  title: 'Free 运行配置与代理预检',
   releasedAt: '2026-08-19',
   sections: [
+    {
+      title: 'Free 注册支持全协议与 RoxyBrowser 双链路',
+      usage: '进入“运行配置 > Free 注册运行”选择全协议或 RoxyBrowser。两种链路分别使用自己的配置、邮箱、代理、任务和日志；普通邮箱管理与运行中心不会显示或消耗 Free 数据。',
+    },
+    {
+      title: 'RoxyBrowser 一号一 Profile 与一号一 IP',
+      usage: 'RoxyBrowser 默认使用本机 127.0.0.1:50000、独立 Profile 和任务预绑定代理，启动前校验代理与出口 IP 唯一性，注册页再次确认实际注册 IP，漂移时直接失败并清理 Profile。',
+    },
+    {
+      title: 'Free 注册完成后自动设置动态口令',
+      usage: '自动 2FA 默认开启。注册完成后会额外等待一封邮箱 OTP，完成动态口令 enrollment/activation；失败会进入 2FA 待重试并保留 Token、套餐、代理和注册 IP，可在 Free 邮箱管理中重试。',
+    },
+    {
+      title: 'Free 邮箱管理中心增强',
+      usage: 'Free 邮箱页支持搜索、状态和链路筛选、批量恢复/不可用、注册 IP、代理指纹、取件地址按需打开以及当前选择结果导出；密码、TOTP、Token、完整代理和取件 URL 不随列表直接返回。',
+    },
+    {
+      title: 'Free 注册任务按账号查看日志',
+      usage: '进入 Free 注册中心的“注册任务”页，使用邮箱、状态和链路快捷筛选；每行眼睛按钮打开该账号独立日志并自动刷新。勾选成功账号后可单条或批量复制 Token，任务日志不会与其他账号混在一起。',
+    },
+    {
+      title: '筛选控件宽度统一',
+      usage: 'Free 邮箱池、Free 注册任务和普通邮箱管理的搜索框、状态筛选与链路筛选使用统一的可读宽度，长选项不会挤成小按钮。',
+    },
     {
       title: 'Free 邮箱导入改为去重追加',
       usage: '重复导入不会覆盖已有 Free 邮箱，系统会保留原顺序并只追加新行，同时显示新增和跳过的数量。',
@@ -26,7 +50,7 @@ export const currentRelease: ReleaseNotes = {
     },
     {
       title: 'Free 注册数量与并发独立可控',
-      usage: '运行配置的平台集成中新增 Free 本次注册数量和并发数；数量设为 0 时按当前可用 Free 邮箱自动运行。',
+      usage: '进入“运行配置 > Free 注册运行”设置 Free 本次注册数量和并发数；并发限制为 1-5，数量设为 0 时按当前可用 Free 邮箱自动运行，接码机的目标数和并发数不受影响。',
     },
     {
       title: '运行配置增加快捷导航树',
@@ -37,8 +61,8 @@ export const currentRelease: ReleaseNotes = {
       usage: 'Free 代理未显式写协议时按 autoRegister 规则使用 HTTP；显式填写的 HTTP、HTTPS、SOCKS4、SOCKS5 或 SOCKS5H 会原样绑定，预检失败不会偷偷切换协议，并沿用注册链路的 TLS 校验策略。',
     },
     {
-      title: 'Free 代理池可在运行配置中维护',
-      usage: '进入“运行配置”的“平台集成”，即可查看、修改并保存 Free 代理池；旧版已导入的 Free 代理会自动带入，代理凭据只在设置页按需读取，普通配置接口继续脱敏。',
+      title: 'Free 代理池独立维护',
+      usage: '进入“运行配置 > Free 注册运行”的“独立代理池”维护 Free 代理；粘贴后可单独检测出口 IP 和重复情况，再保存到 Free 池。旧版已导入的 Free 代理会自动带入，代理凭据只在按需读取接口返回。',
     },
     {
       title: 'Free 2FA 重试失败可继续恢复',
@@ -70,7 +94,7 @@ export const currentRelease: ReleaseNotes = {
     },
     {
       title: 'Free 注册邮箱池独立菜单',
-      usage: '左侧新增“Free 注册邮箱池”菜单；“邮箱管理”继续只管理接码/OAuth 池，Free 的邮箱、状态、Token 和 2FA 操作在独立页面中完成，代理池统一在“运行配置”中维护。',
+      usage: '左侧保留“Free 注册中心”和“Free 邮箱管理”；Free 的链路、目标数、并发和独立代理池统一在“运行配置 > Free 注册运行”维护，邮箱、状态、Token、2FA 和代理操作仍在独立 Free 页面完成。',
     },
     {
       title: 'Free 完整凭据按需复制与日志脱敏',
@@ -82,11 +106,11 @@ export const currentRelease: ReleaseNotes = {
     },
     {
       title: '批量注册 Free 账号',
-      usage: '启动运行中心时选择“批量注册 Free”。Free 注册沿用动态邮箱认证流程，自动兼容密码页和邮箱验证码页，统一使用固定密码完成 OAuth、access token、套餐及 Plus 试用资格查询，并按需设置 2FA。',
+      usage: '在“运行配置 > Free 注册运行”选择链路并保存，再进入 Free 注册中心开始注册。Free 注册沿用动态邮箱认证流程，自动兼容密码页和邮箱验证码页，统一使用固定密码完成 OAuth、access token、套餐及 Plus 试用资格查询，并按需设置 2FA。',
     },
     {
       title: 'Free 邮箱池与接码池隔离',
-      usage: '通过左侧“Free 注册邮箱池”菜单导入邮箱-取码 URL，并在“运行配置”的“平台集成”中维护 Free 代理池。该池使用独立文件、状态和结果存储，普通接码/OAuth 任务不会读取或消耗 Free 池。',
+      usage: '通过左侧“Free 邮箱管理”导入邮箱-取码 URL，并在“运行配置 > Free 注册运行”的“独立代理池”中维护代理。该池使用独立文件、状态和结果存储，普通接码/OAuth 任务不会读取或消耗 Free 池。',
     },
     {
       title: '一号一代理与出口复核',

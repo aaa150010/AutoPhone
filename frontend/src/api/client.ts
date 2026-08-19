@@ -58,15 +58,72 @@ export const preflightRun = (data: Record<string, any>) => api('/api/preflight',
 export const startExistingRun = (data: Record<string, any>) => api('/api/start-existing', data)
 export const stopRun = () => api('/api/stop', {})
 export const getMailboxes = () => api<MailboxPayload>('/api/mailboxes')
+export interface FreeConfig {
+  version?: number
+  driver: 'protocol' | 'roxybrowser'
+  target_count: number
+  concurrency: number
+  email_code_timeout: number
+  auto_set_2fa: boolean
+  proxy_probe_url: string
+  protocol: { node_runner: string; sentinel_timeout: number }
+  roxybrowser: {
+    api_base: string
+    api_key?: string
+    workspace_id: string
+    project_id: string
+    workspace_list_path: string
+    create_path: string
+    open_path: string
+    close_path: string
+    delete_path: string
+    headless: boolean
+    keep_browser_open: boolean
+    one_profile_per_account: boolean
+    delete_profile_after_run: boolean
+    random_os: boolean
+    os_choices: string[]
+    random_profile_name: boolean
+    profile_name_prefix: string
+    proxy_check_channel: string
+    selenium_timeout: number
+    api_retries: number
+    api_retry_delay: number
+    humanize_delay: boolean
+    humanize_factor: number
+    humanize_browser_actions: boolean
+    post_registration_dwell_min: number
+    post_registration_dwell_max: number
+  }
+}
+export interface FreeState {
+  running: boolean
+  batch_id?: string
+  driver?: 'protocol' | 'roxybrowser' | string
+  tasks?: any[]
+  pool?: { total?: number; available?: number; proxies?: number }
+  summary?: { total?: number; active?: number; success?: number; failed?: number; stopped?: number }
+}
+export const getFreeConfig = () => api<{ ok: true; config: FreeConfig; state: FreeState }>('/api/free/config')
+export const saveFreeConfig = (config: Partial<FreeConfig>) => api<{ ok: true; config: FreeConfig; state: FreeState }>('/api/free/config', config)
+export const getFreeState = () => api<{ ok: true; state: FreeState; config: FreeConfig }>('/api/free/state')
+export const preflightFree = (config?: Partial<FreeConfig> & { proxy_content?: string }) => api<{ ok: true; result: any; state: FreeState; config: FreeConfig }>('/api/free/preflight', config || {})
+export const startFree = (config?: Partial<FreeConfig> & { proxy_content?: string }) => api<{ ok: true; batch_id: string; batch?: any; state: FreeState }>('/api/free/start', config || {})
+export const stopFree = () => api<{ ok: true; state: FreeState }>('/api/free/stop', {})
+export const getFreeLogs = (taskId = '') => api<{ ok: true; task_id?: string; logs: Array<{ time?: string; level?: string; message?: string; task_id?: string; stage?: string; stage_label?: string }> }>(`/api/free/logs${taskId ? `?task_id=${encodeURIComponent(taskId)}` : ''}`)
+export const getFreeRoxyWorkspaces = () => api<{ ok: true; items: Array<{ workspace_id: string; workspace_name: string; project_id: string; project_name: string; label: string }> }>('/api/free/roxy/workspaces')
 export interface FreeMailboxRow {
   row_id: string
   line_no: number
   email: string
   status: string
   stage?: string
+  driver?: 'protocol' | 'roxybrowser' | string
   proxy_masked?: string
   proxy_fingerprint?: string
   exit_ip?: string
+  expected_exit_ip?: string
+  registration_ip?: string
   plan_type?: string
   plus_trial_eligible?: boolean
   twofa_status?: string
@@ -88,10 +145,20 @@ export const deleteFreeMailboxes = (rowIds: string[]) => api<{ ok: true; deleted
   '/api/free/mailboxes/delete',
   { row_ids: rowIds },
 )
+export const setFreeMailboxStatus = (status: 'available' | 'unavailable' | 'draft', rowIds: string[]) => api<{ ok: true; updated: number; rows: FreeMailboxRow[] }>(
+  `/api/free/mailboxes/${status === 'available' ? 'restore' : status}`,
+  { row_ids: rowIds },
+)
+export const getFreeMailboxUrl = (rowId: string) => api<{ ok: true; mailbox_url: string }>('/api/free/mailboxes/url', { row_id: rowId })
+export const exportFreeResults = (rowIds: string[] = []) => api<{ ok: true; count: number; filename: string; content: string }>('/api/free/mailboxes/export', { row_ids: rowIds })
 export const importFreeProxies = (proxyContent: string) => api<{ ok: true; imported: number }>(
   '/api/free/proxies/import',
   { proxy_content: proxyContent },
 )
+export const preflightFreeProxies = (proxyContent: string, proxyProbeUrl?: string) => api<{
+  ok: true
+  result: { proxies: number; exit_ips: number; rows: Array<{ index: number; masked: string; fingerprint: string; exit_ip: string }> }
+}>('/api/free/proxies/preflight', { proxy_content: proxyContent, proxy_probe_url: proxyProbeUrl })
 export const getFreeSecret = (kind: 'token' | 'password' | 'totp' | 'proxy' | 'credential', ids: { task_ids?: string[]; row_ids?: string[] }) => api<{ ok: true; kind: string; value: string }>(
   '/api/free/secrets',
   { kind, ...ids },

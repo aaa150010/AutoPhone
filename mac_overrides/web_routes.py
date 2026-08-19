@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 import time
+import threading
 from typing import Any, Callable
 import uuid
 
@@ -37,6 +38,11 @@ except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
     from runtime_info_routes import RuntimeInfoRouteController
     from route_failures import explicit_failure_payload
     from sms_balance_routes import SmsBalanceRouteController
+
+try:
+    from .free_register_common import safe_log_message as _safe_free_message
+except ImportError:
+    from free_register_common import safe_log_message as _safe_free_message  # type: ignore[no-redef]
 
 _SHA256_HEX_CHARACTERS = frozenset("0123456789abcdef")
 def _safe_int(value: Any, default: int) -> int:
@@ -109,6 +115,8 @@ class WebRouteContext:
     online_mailbox_client_factory: Callable[[str, str], Any] | None = None
     failure_secrets: Callable[[dict[str, Any]], Sequence[Any]] | None = None
     free_register_manager: Any | None = None
+    free_config_store: Any | None = None
+    free_data_dir: Path | None = None
 
 
 def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
@@ -129,8 +137,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     mailbox_admin = context.mailbox_admin_factory(store, importer, logs)
 
     free_manager = context.free_register_manager
-    if free_manager is not None:
-        free_manager.log_fn = logs.add
+    free_config_store = context.free_config_store
 
     def route_secrets(config: Any) -> Sequence[Any]:
         if context.failure_secrets is None or not isinstance(config, dict):
@@ -164,42 +171,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             app.add_url_rule("/assets/<path:filename>", "spa_asset", spa_asset, methods=["GET"])
 
     def public_state():
-        value = context.masked_state(state())
-        if free_manager is None:
-            return value
-        try:
-            free_state = free_manager.public_state()
-            runtime = value.setdefault("runtime", {})
-            existing_tasks = runtime.get("tasks") if isinstance(runtime.get("tasks"), list) else []
-            runtime["tasks"] = existing_tasks + list(free_state.get("tasks") or [])
-            runtime["running"] = bool(runtime.get("running") or free_state.get("running"))
-            stage_counts = runtime.get("stage_counts") if isinstance(runtime.get("stage_counts"), dict) else {}
-            free_active = sum(
-                1
-                for task in free_state.get("tasks") or []
-                if isinstance(task, Mapping)
-                and str(task.get("status") or "").lower() not in {"success", "failed", "stopped", "twofa_pending"}
-                and isinstance(task.get("progress"), Mapping)
-                and str(task["progress"].get("group") or "") == "free"
-            )
-            stage_counts["free"] = int(stage_counts.get("free") or 0) + free_active
-            runtime["stage_counts"] = stage_counts
-            runtime["free_register"] = {
-                key: free_state.get(key)
-                for key in ("running", "batch_id", "pool", "summary")
-                if key in free_state
-            }
-            summary = runtime.get("summary") if isinstance(runtime.get("summary"), dict) else {}
-            free_summary = free_state.get("summary") if isinstance(free_state.get("summary"), dict) else {}
-            for key in ("total", "active", "success", "failed", "stopped"):
-                try:
-                    summary[key] = int(summary.get(key) or 0) + int(free_summary.get(key) or 0)
-                except (TypeError, ValueError):
-                    pass
-            runtime["summary"] = summary
-        except Exception:
-            pass
-        return value
+        return context.masked_state(state())
 
     def busy_response(message="另一个配置、预检或启动请求正在处理中"):
         return module.jsonify(ok=False, error=message, state=public_state()), 409
@@ -243,9 +215,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             return busy_response()
         data: dict[str, Any] = {}
         try:
-            if importer.status(settings()).get("running") or (
-                free_manager is not None and free_manager.public_state().get("running")
-            ):
+            if importer.status(settings()).get("running"):
                 return module.jsonify(
                     ok=False,
                     error="任务运行中，停止后才能修改配置",
@@ -288,8 +258,6 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     def stop():
         with context.lifecycle_lock:
             importer.stop()
-            if free_manager is not None:
-                free_manager.stop()
         return module.jsonify(ok=True, state=public_state())
 
     if "stop" in app.view_functions:
@@ -299,9 +267,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         if not context.lifecycle_lock.acquire(blocking=False):
             return busy_response()
         try:
-            if importer.status(settings()).get("running") or (
-                free_manager is not None and free_manager.public_state().get("running")
-            ):
+            if importer.status(settings()).get("running"):
                 return module.jsonify(
                     ok=False,
                     error="任务运行中，停止后才能执行预检",
@@ -356,9 +322,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             return busy_response("另一个启动请求正在处理中")
         failure_config: dict[str, Any] = {}
         try:
-            if importer.status(settings()).get("running") or (
-                free_manager is not None and free_manager.public_state().get("running")
-            ):
+            if importer.status(settings()).get("running"):
                 return module.jsonify(
                     ok=False,
                     error="已有任务运行中，请先停止并等待任务结束",
@@ -372,44 +336,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
 
             run_mode = str(data.get("run_mode") or "register").strip().lower()
             if run_mode == "free_register":
-                if free_manager is None:
-                    return module.jsonify(
-                        ok=False,
-                        node_code="free_run_start",
-                        node_label="启动 Free 注册",
-                        error="启动 Free 注册 [启动 Free 注册/free_run_start]：Free 注册服务尚未初始化",
-                    ), 503
-                try:
-                    pool_content = str(data.pop("free_pool_content", "") or "")
-                    proxy_content = str(data.get("free_proxy_pool_content") or "")
-                    config = save_active_config(data)
-                    result = free_manager.start(
-                        config,
-                        pool_content=pool_content,
-                        proxy_content=proxy_content,
-                    )
-                except Exception as exc:
-                    code = str(getattr(exc, "node_code", "free_run_start") or "free_run_start")
-                    label = str(getattr(exc, "node_label", "启动 Free 注册") or "启动 Free 注册")
-                    detail = _free_error_detail(exc, code)
-                    payload = explicit_failure_payload(
-                        node_code=code,
-                        node_label=label,
-                        error_code=code,
-                        cause=detail,
-                        secrets=route_secrets(failure_config),
-                        state=public_state(),
-                        retryable=bool(getattr(exc, "retryable", True)),
-                        http_status=400,
-                    )
-                    logs.add(f"[{label}/{code}] {payload['error']}", "error")
-                    return module.jsonify(payload), 400
-                return module.jsonify(
-                    ok=True,
-                    batch_id=result.get("batch_id"),
-                    batch={"batch_id": result.get("batch_id"), "members": result.get("tasks") or []},
-                    state=public_state(),
-                )
+                return start_free_from_request(data, legacy=True)
 
             data.pop("upload_targets", None)
             data.pop("nv_import", None)
@@ -530,17 +457,167 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     if "start_existing" not in app.view_functions:
         app.add_url_rule("/api/start-existing", "start_existing", start_existing, methods=["POST"])
 
+    free_request_lock = threading.Lock()
+
+    def free_state():
+        return free_manager.public_state() if free_manager is not None else {"running": False, "tasks": [], "summary": {}}
+
+    def free_config_public():
+        return free_config_store.public() if free_config_store is not None else {}
+
+    def free_failure_response(exc: Exception, *, default_code: str, default_label: str, status: int = 400):
+        code = str(getattr(exc, "node_code", "") or default_code)
+        label = str(getattr(exc, "node_label", "") or default_label)
+        cause = _free_error_detail(exc, code) if hasattr(exc, "node_code") else f"服务异常（{type(exc).__name__}）"
+        payload = explicit_failure_payload(
+            node_code=code,
+            node_label=label,
+            error_code=str(getattr(exc, "error_code", "") or code),
+            cause=cause,
+            retryable=bool(getattr(exc, "retryable", status >= 500)),
+            http_status=status,
+            state=free_state(),
+        )
+        if free_manager is not None and callable(getattr(free_manager, "_log", None)):
+            free_manager._log(f"[{label}/{code}] {payload['error']}", "error")
+        return module.jsonify(payload), status
+
+    def save_free_config(data: Mapping[str, Any]) -> dict[str, Any]:
+        if free_config_store is None:
+            value = dict(data)
+            value.setdefault("driver", "protocol")
+            value.setdefault("concurrency", 3)
+            value.setdefault("target_count", 0)
+            value.setdefault("proxy_probe_url", "https://api.ipify.org")
+            value.setdefault("auto_set_2fa", True)
+            return value
+        return free_config_store.save(data)
+
+    def start_free_from_request(raw: Mapping[str, Any], *, legacy: bool = False):
+        if free_manager is None:
+            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        if not free_request_lock.acquire(blocking=False):
+            return module.jsonify(ok=False, error="Free 配置、预检或启动请求正在处理中", state=free_state()), 409
+        try:
+            data = dict(raw)
+            config_input = data.get("free_config") if isinstance(data.get("free_config"), Mapping) else data
+            config_input = dict(config_input)
+            if legacy:
+                if "driver" not in config_input and data.get("free_driver"):
+                    config_input["driver"] = data.get("free_driver")
+                if "target_count" not in config_input and "free_target_count" in data:
+                    config_input["target_count"] = data.get("free_target_count")
+                if "concurrency" not in config_input and "free_concurrency" in data:
+                    config_input["concurrency"] = data.get("free_concurrency")
+            config = dict(config_input) if free_config_store is None else save_free_config(config_input)
+            if free_config_store is None:
+                # Test/legacy route contexts predating the isolated store only
+                # have the old stub store; production never takes this branch.
+                try:
+                    store.save(dict(data))
+                except Exception:
+                    pass
+            mailbox_content = str(data.get("pool_content") or data.get("free_pool_content") or "")
+            proxy_content = str(data.get("proxy_content") or data.get("free_proxy_pool_content") or "")
+            if mailbox_content.strip() and hasattr(free_manager, "pool"):
+                free_manager.pool.import_text(mailbox_content)
+            if proxy_content.strip() and hasattr(free_manager, "proxies"):
+                free_manager.proxies.import_text(proxy_content)
+            result = free_manager.start(
+                config,
+                pool_content=mailbox_content if free_config_store is None else "",
+                proxy_content=proxy_content if free_config_store is None else "",
+            )
+            return module.jsonify(ok=True, batch_id=result.get("batch_id"), batch={"batch_id": result.get("batch_id"), "members": result.get("tasks") or []}, state=free_state())
+        except Exception as exc:
+            return free_failure_response(exc, default_code="free_run_start", default_label="启动 Free 注册")
+        finally:
+            free_request_lock.release()
+
+    def api_free_config():
+        if module.request.method == "GET":
+            return module.jsonify(ok=True, config=free_config_public(), state=free_state())
+        data = module.request.get_json(silent=True) or {}
+        if not isinstance(data, Mapping):
+            return free_failure_response(ValueError("配置必须是 JSON 对象"), default_code="free_config", default_label="保存 Free 配置")
+        if free_manager is None or not free_request_lock.acquire(blocking=False):
+            return module.jsonify(ok=False, error="Free 配置请求正在处理中", state=free_state()), 409
+        try:
+            if free_manager.public_state().get("running"):
+                return module.jsonify(ok=False, error="Free 任务运行中，停止后才能修改配置", state=free_state()), 409
+            saved = save_free_config(data)
+            return module.jsonify(ok=True, config=free_config_store.public(), state=free_state())
+        except Exception as exc:
+            return free_failure_response(exc, default_code="free_config", default_label="保存 Free 配置")
+        finally:
+            free_request_lock.release()
+
+    def api_free_state():
+        return module.jsonify(ok=True, state=free_state(), config=free_config_public())
+
+    def api_free_preflight():
+        if free_manager is None or free_config_store is None:
+            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        if not free_request_lock.acquire(blocking=False):
+            return module.jsonify(ok=False, error="Free 配置、预检或启动请求正在处理中", state=free_state()), 409
+        try:
+            data = module.request.get_json(silent=True) or {}
+            if not isinstance(data, Mapping):
+                return free_failure_response(ValueError("配置必须是 JSON 对象"), default_code="free_preflight", default_label="Free 注册预检")
+            config = save_free_config(data)
+            result = free_manager.preflight(config, proxy_content=str(data.get("proxy_content") or ""))
+            return module.jsonify(ok=True, result=result, state=free_state(), config=free_config_public())
+        except Exception as exc:
+            return free_failure_response(exc, default_code="free_preflight", default_label="Free 注册预检", status=502 if not isinstance(exc, ValueError) else 400)
+        finally:
+            free_request_lock.release()
+
+    def api_free_start():
+        data = module.request.get_json(silent=True) or {}
+        return start_free_from_request(data)
+
+    def api_free_stop():
+        if free_manager is None:
+            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        free_manager.stop()
+        return module.jsonify(ok=True, state=free_state())
+
+    def api_free_logs():
+        task_id = str(module.request.args.get("task_id") or "").strip()
+        rows = []
+        if free_manager is not None and callable(getattr(free_manager, "public_logs", None)):
+            try:
+                rows = free_manager.public_logs(task_id)
+            except TypeError:
+                rows = free_manager.public_logs()
+        return module.jsonify(ok=True, task_id=task_id, logs=rows)
+
+    def api_free_roxy_workspaces():
+        if free_config_store is None:
+            return module.jsonify(ok=False, error="Free 配置服务尚未初始化"), 503
+        try:
+            from .free_roxy_runtime import RoxyBrowserClient
+        except ImportError:
+            from free_roxy_runtime import RoxyBrowserClient  # type: ignore[no-redef]
+        try:
+            result = RoxyBrowserClient(free_config_store.load()["roxybrowser"], log_fn=free_manager._log if free_manager else None).list_workspaces()
+            return module.jsonify(ok=True, items=result)
+        except Exception as exc:
+            return free_failure_response(exc, default_code="free_roxy_workspace", default_label="读取 RoxyBrowser 工作区")
+
     def api_free_mailboxes():
         if free_manager is None:
             return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
-        return module.jsonify(ok=True, pool="free", rows=free_manager.pool.public_rows())
+        counts = free_manager.pool.counts() if callable(getattr(free_manager.pool, "counts", None)) else {}
+        proxies = free_manager.proxies.public() if callable(getattr(free_manager.proxies, "public", None)) else {}
+        return module.jsonify(ok=True, pool="free", counts=counts, proxies=proxies, rows=free_manager.pool.public_rows(), state=free_state())
 
     def _free_error_detail(exc: Exception, code: str = "") -> str:
         # The shared mapper carries the last OAuth task context. Keep an
         # isolated Free node's own diagnostic, especially proxy preflight,
         # from being rewritten as an unrelated OAuth/TLS failure.
         if str(code or getattr(exc, "node_code", "") or "").startswith("free_"):
-            return str(exc or "Free 注册失败").strip()[:500] or "Free 注册失败"
+            return _safe_free_message(exc) or "Free 注册失败"
         return context.safe_runtime_error(exc)
 
     def free_error_response(exc: Exception, *, default_code: str, default_label: str, status: int = 400):
@@ -551,13 +628,17 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         payload = explicit_failure_payload(
             node_code=code,
             node_label=label,
-            error_code=code,
+            error_code=str(getattr(exc, "error_code", "") or code),
             cause=cause,
             retryable=retryable,
             http_status=status,
-            state=public_state(),
+            state=free_state(),
         )
-        logs.add(f"[{label}/{code}] {payload['error']}", "error")
+        provider_status = getattr(exc, "provider_status", None)
+        if provider_status is not None:
+            payload["provider_status"] = provider_status
+        if free_manager is not None and callable(getattr(free_manager, "_log", None)):
+            free_manager._log(f"[{label}/{code}] {payload['error']}", "error")
         return module.jsonify(payload), status
 
     def api_free_pool_import():
@@ -609,6 +690,66 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         except Exception as exc:
             return free_error_response(exc, default_code="free_proxy_pool", default_label="Free 代理池")
 
+    def api_free_proxy_preflight():
+        if free_manager is None or free_config_store is None:
+            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        if not free_request_lock.acquire(blocking=False):
+            return module.jsonify(ok=False, error="Free 配置、预检或启动请求正在处理中", state=free_state()), 409
+        try:
+            data = module.request.get_json(silent=True) or {}
+            if not isinstance(data, Mapping):
+                return free_error_response(ValueError("请求必须是 JSON 对象"), default_code="free_proxy_preflight", default_label="Free 代理预检")
+            current = free_config_store.load()
+            probe_config = free_config_store.normalize(
+                {"proxy_probe_url": data.get("proxy_probe_url") or current.get("proxy_probe_url")},
+                previous=current,
+            )
+            result = free_manager.preflight_proxies(
+                proxy_content=str(data.get("proxy_content") or ""),
+                probe_url=str(probe_config.get("proxy_probe_url") or "https://api.ipify.org"),
+            )
+            return module.jsonify(ok=True, result=result)
+        except Exception as exc:
+            return free_failure_response(exc, default_code="free_proxy_preflight", default_label="Free 代理预检", status=502 if not isinstance(exc, ValueError) else 400)
+        finally:
+            free_request_lock.release()
+
+    def api_free_pool_status(status: str):
+        if free_manager is None:
+            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        data = module.request.get_json(silent=True) or {}
+        row_ids = data.get("row_ids") if isinstance(data, Mapping) else None
+        if not isinstance(row_ids, list):
+            return free_error_response(ValueError("请选择 Free 邮箱"), default_code="free_pool_status", default_label="更新 Free 邮箱状态")
+        try:
+            changed = free_manager.pool.set_status(row_ids, status)
+            return module.jsonify(ok=True, updated=changed, counts=free_manager.pool.counts(), rows=free_manager.pool.public_rows())
+        except Exception as exc:
+            return free_error_response(exc, default_code="free_pool_status", default_label="更新 Free 邮箱状态")
+
+    def api_free_mailbox_url():
+        if free_manager is None:
+            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        data = module.request.get_json(silent=True) or {}
+        row_id = str(data.get("row_id") or "") if isinstance(data, Mapping) else ""
+        try:
+            return module.jsonify(ok=True, mailbox_url=free_manager.pool.reveal_mailbox_url(row_id))
+        except Exception as exc:
+            return free_error_response(exc, default_code="free_mailbox_url", default_label="读取 Free 取件地址")
+
+    def api_free_export():
+        if free_manager is None:
+            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        data = module.request.get_json(silent=True) or {}
+        row_ids = data.get("row_ids") if isinstance(data, Mapping) and isinstance(data.get("row_ids"), list) else []
+        try:
+            content = free_manager.pool.export_success(row_ids)
+            response = module.Response(content, mimetype="text/plain")
+            response.headers["Content-Disposition"] = "attachment; filename=free-register-success.txt"
+            return response
+        except Exception as exc:
+            return free_error_response(exc, default_code="free_export", default_label="导出 Free 注册结果")
+
     def api_free_secret():
         if free_manager is None:
             return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
@@ -634,8 +775,8 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         if not isinstance(data, Mapping):
             return free_error_response(ValueError("请求必须是 JSON 对象"), default_code="free_twofa_retry", default_label="重试 Free 账号 2FA")
         try:
-            task = free_manager.retry_twofa(str(data.get("task_id") or ""), settings())
-            return module.jsonify(ok=True, task=task, state=public_state())
+            task = free_manager.retry_twofa(str(data.get("task_id") or data.get("row_id") or ""), free_config_store.load() if free_config_store is not None else {})
+            return module.jsonify(ok=True, task=task, state=free_state())
         except Exception as exc:
             return free_error_response(exc, default_code="free_twofa_retry", default_label="重试 Free 账号 2FA")
 
@@ -1045,10 +1186,23 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/accounts", "account_manager", mailbox_manager, ["GET"]),
         ("/settings", "settings_page", mailbox_manager, ["GET"]),
         ("/api/mailboxes", "api_mailboxes", api_mailboxes, ["GET"]),
+        ("/api/free/config", "api_free_config", api_free_config, ["GET", "POST"]),
+        ("/api/free/state", "api_free_state", api_free_state, ["GET"]),
+        ("/api/free/preflight", "api_free_preflight", api_free_preflight, ["POST"]),
+        ("/api/free/start", "api_free_start", api_free_start, ["POST"]),
+        ("/api/free/stop", "api_free_stop", api_free_stop, ["POST"]),
+        ("/api/free/logs", "api_free_logs", api_free_logs, ["GET"]),
+        ("/api/free/roxy/workspaces", "api_free_roxy_workspaces", api_free_roxy_workspaces, ["GET"]),
         ("/api/free/mailboxes", "api_free_mailboxes", api_free_mailboxes, ["GET"]),
         ("/api/free/mailboxes/import", "api_free_pool_import", api_free_pool_import, ["POST"]),
         ("/api/free/mailboxes/delete", "api_free_pool_delete", api_free_pool_delete, ["POST"]),
+        ("/api/free/mailboxes/unavailable", "api_free_pool_unavailable", lambda: api_free_pool_status("unavailable"), ["POST"]),
+        ("/api/free/mailboxes/draft", "api_free_pool_draft", lambda: api_free_pool_status("draft"), ["POST"]),
+        ("/api/free/mailboxes/restore", "api_free_pool_restore", lambda: api_free_pool_status("available"), ["POST"]),
+        ("/api/free/mailboxes/url", "api_free_mailbox_url", api_free_mailbox_url, ["POST"]),
+        ("/api/free/mailboxes/export", "api_free_export", api_free_export, ["POST"]),
         ("/api/free/proxies/import", "api_free_proxy_import", api_free_proxy_import, ["POST"]),
+        ("/api/free/proxies/preflight", "api_free_proxy_preflight", api_free_proxy_preflight, ["POST"]),
         ("/api/free/secrets", "api_free_secret", api_free_secret, ["POST"]),
         ("/api/free/2fa/retry", "api_free_twofa_retry", api_free_twofa_retry, ["POST"]),
         *mailbox_mutation_routes.routes(),

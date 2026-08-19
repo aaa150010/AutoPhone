@@ -45,6 +45,7 @@ import cryptography
 import curl_cffi
 import flask
 import requests
+import selenium
 import werkzeug
 PY
 then
@@ -55,6 +56,7 @@ then
     cryptography==46.0.5 \
     curl_cffi==0.15.0 \
     requests \
+    selenium \
     rich \
     python-dotenv \
     pysocks \

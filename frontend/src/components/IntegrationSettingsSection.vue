@@ -62,64 +62,6 @@ function updateNested(group: string, key: string, value: any) {
       </el-row>
     </div>
 
-    <div class="integration-block" data-settings-anchor="free">
-      <el-row :gutter="10">
-      <el-col :span="12">
-        <el-form-item label="Free 本次注册数量（0=自动）">
-          <el-input-number
-            :model-value="Number(modelValue.free_target_count ?? 0)"
-            :min="0"
-            :max="10000"
-            controls-position="right"
-            @update:model-value="update('free_target_count', Number($event ?? 0))"
-          />
-        </el-form-item>
-      </el-col>
-      <el-col :span="12">
-        <el-form-item label="Free 注册并发数">
-          <el-input-number
-            :model-value="Number(modelValue.free_concurrency ?? 5)"
-            :min="1"
-            :max="32"
-            controls-position="right"
-            @update:model-value="update('free_concurrency', Number($event ?? 5))"
-          />
-        </el-form-item>
-      </el-col>
-      </el-row>
-
-      <el-row :gutter="10">
-      <el-col :span="12">
-        <SecretInput
-          :model-value="modelValue.free_register_password || ''"
-          secret-id="free_register_password"
-          label="Free 注册密码（固定）"
-          disabled
-          @update:model-value="update('free_register_password', $event)"
-        />
-      </el-col>
-      </el-row>
-
-      <el-form-item label="Free 代理出口探测地址">
-      <el-input
-        :model-value="modelValue.free_proxy_probe_url"
-        placeholder="https://api.ipify.org"
-        @update:model-value="update('free_proxy_probe_url', $event)"
-      />
-      </el-form-item>
-
-      <el-form-item label="Free 代理池">
-      <el-input
-        :model-value="modelValue.free_proxy_pool_content"
-        type="textarea"
-        :rows="6"
-        placeholder="每行一个代理 URL 或 主机:端口:用户名:密码"
-        autocomplete="off"
-        @update:model-value="update('free_proxy_pool_content', $event)"
-      />
-      </el-form-item>
-    </div>
-
     <div class="integration-block" data-settings-anchor="online-mailbox">
       <el-row :gutter="10">
       <el-col :span="12">

@@ -16,6 +16,7 @@ from mac_overrides.free_register_runtime import (
     FreeRegisterManager,
     FreeTwoFaPending,
 )
+from mac_overrides.free_log_runtime import FreeLogStore
 
 
 class FakeResponse:
@@ -80,6 +81,38 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             "second@example.test",
         ])
 
+    def test_free_logs_keep_account_and_stage_identity_under_concurrency(self):
+        logs = FreeLogStore(self.data_dir)
+        logs.add(
+            "[free-batch-1-1/等待 Free 邮箱验证码/free_email_otp_wait] "
+            "账号 first@example.test code=123456 mailbox_url=https://mail.example.test/pickup",
+            "info",
+        )
+        logs.add(
+            "[free-batch-1-2/获取 Free access token/free_access_token] "
+            "账号 second@example.test access_token=private-token",
+            "info",
+        )
+
+        rows = logs.snapshot()
+        self.assertEqual([row["task_id"] for row in rows], ["free-batch-1-1", "free-batch-1-2"])
+        self.assertEqual(rows[0]["stage"], "free_email_otp_wait")
+        self.assertEqual(rows[1]["stage"], "free_access_token")
+        self.assertNotIn("123456", rows[0]["message"])
+        self.assertNotIn("mail.example.test/pickup", rows[0]["message"])
+        self.assertNotIn("private-token", rows[1]["message"])
+        self.assertEqual(len(logs.snapshot("free-batch-1-1")), 1)
+        self.assertEqual(logs.snapshot("free-batch-1-1")[0]["task_id"], "free-batch-1-1")
+
+    def test_free_logs_preserve_numeric_task_ids_while_redacting_body_codes(self):
+        logs = FreeLogStore(self.data_dir)
+        logs.add("[free-batch-bd402220-1/获取 Token/free_access_token] code=123456", "info")
+
+        row = logs.snapshot()[0]
+        self.assertEqual(row["task_id"], "free-batch-bd402220-1")
+        self.assertIn("free-batch-bd402220-1", row["message"])
+        self.assertNotIn("123456", row["message"])
+
     def test_free_pool_import_appends_and_deduplicates_existing_rows(self):
         pool = FreeMailboxPool(self.data_dir)
         pool.import_text("first@example.test----https://mail.example.test/a\n")
@@ -123,6 +156,22 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
                 2,
                 probe=lambda _proxy, _url: "203.0.113.10",
             )
+
+    def test_proxy_preflight_probes_pasted_pool_without_consuming_mailboxes(self):
+        manager = FreeRegisterManager(
+            self.data_dir,
+            proxy_probe=lambda proxy, _url: "203.0.113." + ("10" if "proxy-a" in proxy else "11"),
+        )
+        result = manager.preflight_proxies(
+            proxy_content="proxy-a.test:8000\nproxy-b.test:8000\n",
+            probe_url="https://api.ipify.org",
+        )
+
+        self.assertEqual(result["proxies"], 2)
+        self.assertEqual(result["exit_ips"], 2)
+        self.assertEqual([row["exit_ip"] for row in result["rows"]], ["203.0.113.10", "203.0.113.11"])
+        self.assertEqual(manager.pool.entries(), [])
+        self.assertNotIn("https://", str(result))
 
     def test_proxy_binding_reports_the_failed_row_without_exposing_credentials(self):
         proxies = FreeProxyPool(self.data_dir)
@@ -247,9 +296,10 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         def probe(proxy, _url):
             return "203.0.113." + ("10" if "proxy-a" in proxy else "11")
 
-        def runner(task, _config, _stop, stage, _log, *, twofa_retry=False):
+        def runner(task, _config, _stop, stage, log, *, twofa_retry=False):
             seen.append((task["ordinal"], task["email"], task["proxy"], twofa_retry))
             stage(task["task_id"], "free_access_token")
+            log("[协议内部/free_access_token] 当前账号已进入 Token 节点")
             return {
                 "access_token": f"token-{task['ordinal']}",
                 "password": FIXED_PASSWORD,
@@ -276,6 +326,9 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertTrue(all("token-" not in str(row) for row in public))
         self.assertTrue(all(FIXED_PASSWORD not in str(row) for row in public))
         self.assertEqual(manager.secret([public[0]["task_id"]], "token"), "token-1")
+        detail_logs = [row for row in manager.public_logs() if "当前账号已进入 Token 节点" in row["message"]]
+        self.assertEqual({row["task_id"] for row in detail_logs}, {row["task_id"] for row in public})
+        self.assertTrue(all(row["stage"] == "free_access_token" for row in detail_logs))
 
     def test_free_start_ignores_larger_shared_oauth_target_count(self):
         pool = FreeMailboxPool(self.data_dir)

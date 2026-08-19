@@ -4,6 +4,7 @@ import RuntimeSettingsSection from './RuntimeSettingsSection.vue'
 import SmsSettingsSection from './SmsSettingsSection.vue'
 import IntegrationSettingsSection from './IntegrationSettingsSection.vue'
 import EmailNotificationSettingsSection from './EmailNotificationSettingsSection.vue'
+import FreeRegisterSettingsSection from './FreeRegisterSettingsSection.vue'
 import type { SmsKeyStatus, NotificationRuntimeStatus } from '../types/api'
 
 interface SettingsNavNode {
@@ -28,12 +29,23 @@ const navProps = { label: 'label', children: 'children' }
 const navigation: SettingsNavNode[] = [
   {
     key: 'runtime',
-    label: '运行与代理',
+    label: '接码机运行配置',
     anchor: 'runtime',
     children: [
       { key: 'runtime-scale', label: '任务规模与并发', anchor: 'runtime' },
       { key: 'runtime-network', label: '代理与链路', anchor: 'runtime' },
       { key: 'runtime-protection', label: '性能保护', anchor: 'runtime' },
+    ],
+  },
+  {
+    key: 'free-register',
+    label: 'Free 注册运行配置',
+    anchor: 'free-register',
+    children: [
+      { key: 'free-scale', label: '目标数与并发', anchor: 'free-register' },
+      { key: 'free-driver', label: '注册链路', anchor: 'free-register' },
+      { key: 'free-roxy', label: 'RoxyBrowser 与人工节奏', anchor: 'free-register' },
+      { key: 'free-proxy', label: '独立代理池预检', anchor: 'free-register' },
     ],
   },
   {
@@ -50,7 +62,6 @@ const navigation: SettingsNavNode[] = [
     label: '平台集成',
     anchor: 'integration',
     children: [
-      { key: 'free-register', label: 'Free 注册', anchor: 'free' },
       { key: 'sub2', label: 'SUB2 API', anchor: 'sub2' },
       { key: 'online-mailbox', label: '在线邮箱', anchor: 'online-mailbox' },
     ],
@@ -94,6 +105,9 @@ function jumpTo(node: SettingsNavNode) {
             :model-value="modelValue"
             @update:model-value="emit('update:modelValue', $event)"
           />
+        </section>
+        <section data-settings-anchor="free-register" class="settings-anchor">
+          <FreeRegisterSettingsSection />
         </section>
         <section data-settings-anchor="sms" class="settings-anchor">
           <SmsSettingsSection

@@ -43,7 +43,7 @@ function openStartDialog() {
   startDialog.value?.open()
 }
 
-async function start(selection: { runMode: 'register' | 'free_register' }) {
+async function start(selection: { runMode: 'register' }) {
   try {
     const result = await controller.start(true, selection.runMode)
     if (!result) return
@@ -152,7 +152,7 @@ onMounted(async () => {
 
       <WorkspacePanel title="运行操作" :icon="Operation" body-padding="compact">
         <div class="run-snapshot">
-          <div><span>邮箱可用</span><strong>{{ Number(controller.runtime.value.pool?.available || 0) + Number(controller.runtime.value.free_register?.pool?.available || 0) }}</strong></div>
+          <div><span>邮箱可用</span><strong>{{ Number(controller.runtime.value.pool?.available || 0) }}</strong></div>
           <div><span>运行任务</span><strong>{{ controller.runtime.value.summary?.active || 0 }}</strong></div>
           <div><span>配置状态</span><strong :class="{ dirty: controller.dirty.value }">{{ controller.dirty.value ? '待保存' : '已保存' }}</strong></div>
         </div>

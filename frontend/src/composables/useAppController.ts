@@ -5,7 +5,6 @@ import {
   getLocalConfig,
   getSecret,
   getState,
-  retryFreeTwofa as retryFreeTwofaRequest,
   preflightRun,
   querySmsBalances,
   saveConfig,
@@ -172,11 +171,6 @@ const defaultForm = () => ({
   node_concurrency: '5',
   auto_email_login_concurrency: 5,
   phone_submission_concurrency: 2,
-  free_target_count: 0,
-  free_concurrency: 5,
-  free_proxy_probe_url: 'https://api.ipify.org',
-  free_proxy_pool_content: '',
-  free_register_password: '',
   node_timeout: 45,
   email_code_timeout: 60,
   auth_session_retries: 1,
@@ -233,8 +227,6 @@ function normalizeEmailNotificationDraft(value: any) {
 
 function normalizeOperationalSettings(config: Record<string, any>) {
   config.phone_submission_concurrency = Math.max(1, Math.min(5, Number(config.phone_submission_concurrency) || 2))
-  config.free_target_count = Math.max(0, Math.min(10000, Number(config.free_target_count) || 0))
-  config.free_concurrency = Math.max(1, Math.min(32, Number(config.free_concurrency) || 5))
   config.adaptive_task_concurrency = config.adaptive_task_concurrency !== false
   config.task_inflight_optimization = config.task_inflight_optimization !== false
   config.task_inflight_limit = Math.max(1, Math.min(20, Number(config.task_inflight_limit) || 20))
@@ -262,6 +254,12 @@ function normalizeImportedConfig(value: any) {
     throw new Error('配置 JSON 必须是对象')
   }
   const config = mergeConfig(value)
+  delete config.free_target_count
+  delete config.free_concurrency
+  delete config.free_proxy_probe_url
+  delete config.free_proxy_pool_content
+  delete config.free_register_password
+  delete config.free_pool_content
   syncLegacySmsFields(config)
   delete config.nvtoken
   delete config.nvtoken_upload
@@ -300,7 +298,7 @@ export function createAppController() {
 
   const runtime = computed(() => state.value.runtime || {})
   const running = computed(() => Boolean(runtime.value.running))
-  const hasPool = computed(() => Number(runtime.value.pool?.available || 0) > 0 || Number(runtime.value.free_register?.pool?.available || 0) > 0)
+  const hasPool = computed(() => Number(runtime.value.pool?.available || 0) > 0)
   const smsKeyStatuses = computed(() => (
     queriedSmsKeyStatuses.value
     || state.value.sms_key_statuses
@@ -410,6 +408,12 @@ export function createAppController() {
     delete merged.nvtoken_upload
     delete merged.pixel_upload_enabled
     delete merged.nv_import
+    delete merged.free_target_count
+    delete merged.free_concurrency
+    delete merged.free_proxy_probe_url
+    delete merged.free_proxy_pool_content
+    delete merged.free_register_password
+    delete merged.free_pool_content
     normalizeOperationalSettings(merged)
     Object.assign(form, merged)
     syncLegacySmsFields(form)
@@ -441,7 +445,6 @@ export function createAppController() {
             }).catch(() => undefined)
           : Promise.resolve(),
         loadSecret(() => form.sub2api?.password, value => { form.sub2api.password = String(value || '') }, 'sub2_password'),
-        loadSecret(() => form.free_register_password, value => { form.free_register_password = String(value || '') }, 'free_register_password'),
         loadSecret(() => form.email_notification?.password, value => {
           form.email_notification.password = String(value || '')
         }, 'notification_email_password'),
@@ -449,11 +452,6 @@ export function createAppController() {
           form.online_mailbox.api_token = String(value || '')
         }, 'online_mailbox_api_token'),
         loadSecret(() => form.proxy, value => { form.proxy = String(value || '') }, 'proxy'),
-        loadSecret(
-          () => form.free_proxy_pool_content,
-          value => { form.free_proxy_pool_content = String(value || '') },
-          'free_proxy_pool_content',
-        ),
       ])
       secretsLoaded.value = true
       if (!wasDirty && !dirty.value) markClean()
@@ -564,12 +562,6 @@ export function createAppController() {
     }
   }
 
-  async function retryFreeTwofa(taskId: string) {
-    const result = await retryFreeTwofaRequest(taskId)
-    if (result?.state) syncState(result.state)
-    return result
-  }
-
   async function importConfig(value: any) {
     actions.importing = true
     try {
@@ -670,7 +662,6 @@ export function createAppController() {
     preflight,
     start,
     stop,
-    retryFreeTwofa,
     importConfig,
     exportConfig,
     sendTestNotification,
