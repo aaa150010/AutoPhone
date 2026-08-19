@@ -12,10 +12,14 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.27',
-  title: 'Free Roxy 验证码续跑与批量删除',
+  version: '1.6.28',
+  title: 'Free Roxy Session Token 修复',
   releasedAt: '2026-08-19',
   sections: [
+    {
+      title: '修复 Roxy 注册完成后 Token 获取',
+      usage: 'Roxy 注册完成后改为直接读取 ChatGPT Session 页面并恢复主页，兼容 accessToken、access_token 和 token 字段；Session 失败日志只显示页面和字段摘要，不再写入响应内容。',
+    },
     {
       title: 'Roxy 邮箱验证码页直接续跑',
       usage: 'RoxyBrowser 注册初始化后如果已直接进入邮箱验证码页，系统会识别为邮箱已提交并立即等待 OTP，不再误等邮箱输入框或把该邮箱恢复为可用；可信认证页已完成跳转时也不会因浏览器导航回报异常而误判失败。',

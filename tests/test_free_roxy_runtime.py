@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
+import json
 from tempfile import TemporaryDirectory
 import unittest
 
 from mac_overrides.free_register_config import FreeConfigStore
 from mac_overrides.free_roxy_runtime import RoxyBrowserClient, RoxyRegistrationRunner, proxy_to_roxy_info
+from mac_overrides.free_roxy_session import extract_session, session_token
 from mac_overrides.free_register_common import FreeRegisterError
 from mac_overrides.free_register_store import FreeProxyPool
 
@@ -78,6 +80,20 @@ class _AuthNavigationErrorDriver(_SignupDriver):
             self.current_url = "https://auth.openai.com/api/accounts/authorize"
             raise RuntimeError("navigation committed")
         self.current_url = url
+
+
+class _SessionDriver:
+    def __init__(self, payload):
+        self.payload = payload
+        self.current_url = "https://chatgpt.com/"
+        self.visits = []
+
+    def get(self, url):
+        self.visits.append(url)
+        self.current_url = url
+
+    def find_element(self, _by, _value):
+        return type("Element", (), {"text": json.dumps(self.payload)})()
 
 
 class FreeRoxyRuntimeTests(unittest.TestCase):
@@ -166,6 +182,19 @@ class FreeRoxyRuntimeTests(unittest.TestCase):
         driver = _SignupDriver()
         driver.current_url = "https://auth.openai.com/email-verification"
         self.assertTrue(RoxyRegistrationRunner._is_email_verification_page(driver))
+
+    def test_session_extraction_navigates_to_endpoint_and_accepts_lowercase_token(self):
+        driver = _SessionDriver({"WARNING_BANNER": "private warning", "access_token": "TEST_TOKEN"})
+        result = extract_session(driver, 5)
+        self.assertEqual(session_token(result), "TEST_TOKEN")
+        self.assertEqual(driver.visits, ["https://chatgpt.com/api/auth/session", "https://chatgpt.com/"])
+
+    def test_session_failure_does_not_include_response_body(self):
+        driver = _SessionDriver({"WARNING_BANNER": "PRIVATE_RESPONSE_BODY"})
+        with self.assertRaises(FreeRegisterError) as raised:
+            extract_session(driver, 5)
+        self.assertIn("WARNING_BANNER", str(raised.exception))
+        self.assertNotIn("PRIVATE_RESPONSE_BODY", str(raised.exception))
 
     def test_proxy_import_appends_without_duplicate_credentials(self):
         with TemporaryDirectory() as directory:

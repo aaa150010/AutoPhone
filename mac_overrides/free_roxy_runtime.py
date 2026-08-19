@@ -28,6 +28,7 @@ try:
         safe_log_message,
     )
     from .free_roxy_signup import is_email_verification_page, open_signup_page, safe_page_location
+    from .free_roxy_session import extract_session, session_token
 except ImportError:
     from free_mailbox_otp import MailboxUrlOtpProvider  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
@@ -41,6 +42,7 @@ except ImportError:
         safe_log_message,
     )
     from free_roxy_signup import is_email_verification_page, open_signup_page, safe_page_location  # type: ignore[no-redef]
+    from free_roxy_session import extract_session, session_token  # type: ignore[no-redef]
 
 
 @dataclass(slots=True)
@@ -478,26 +480,7 @@ class RoxyRegistrationRunner:
 
     @staticmethod
     def _session(driver: Any, timeout: int) -> dict[str, Any]:
-        deadline = time.time() + timeout
-        last: Any = None
-        while time.time() < deadline:
-            try:
-                if "chatgpt.com" not in str(driver.current_url or ""):
-                    time.sleep(1)
-                    continue
-                script = """
-                const done=arguments[0]; fetch('/api/auth/session',{credentials:'include',cache:'no-store'})
-                  .then(r=>r.json()).then(v=>done({ok:true,value:v})).catch(e=>done({ok:false,error:String(e)}));
-                """
-                result = driver.execute_async_script(script) or {}
-                last = result
-                value = result.get("value") if isinstance(result, Mapping) else None
-                if isinstance(value, Mapping) and value.get("accessToken"):
-                    return dict(value)
-            except Exception as exc:
-                last = type(exc).__name__
-            time.sleep(1)
-        raise FreeRegisterError("free_access_token", "获取 Free access token", f"RoxyBrowser 等待登录态超时（{clean(last, 120)}）")
+        return extract_session(driver, timeout)
 
     @staticmethod
     def _browser_ip(driver: Any, probe_url: str, timeout: int) -> str:
@@ -725,7 +708,7 @@ class RoxyRegistrationRunner:
             if "chatgpt.com" not in str(driver.current_url or ""):
                 driver.get("https://chatgpt.com/")
             session = self._session(driver, 120)
-            token = str(session.get("accessToken") or "")
+            token = session_token(session)
             stage(task_id, "free_plan_check")
             try:
                 plan_details = self._plan_details(driver, token)
