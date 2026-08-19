@@ -13,6 +13,10 @@ const emit = defineEmits<{ navigate: [string] }>()
 const props = defineProps<{ initialAnchor?: string }>()
 const controller = useAppController()
 const startDialog = ref<InstanceType<typeof RunStartDialog>>()
+const settingsForm = ref<InstanceType<typeof SettingsForm>>()
+const freeDirty = ref(false)
+const savingAll = ref(false)
+const dirty = computed(() => controller.dirty.value || freeDirty.value)
 
 const statusLabel = computed(() => controller.running.value
   ? controller.runtime.value.stop_requested ? '正在停止' : '运行中'
@@ -23,11 +27,17 @@ function messageFor(error: any) {
 }
 
 async function save() {
+  savingAll.value = true
   try {
-    await controller.save()
+    await Promise.all([
+      controller.save(),
+      settingsForm.value?.saveFreeConfig(),
+    ])
     ElMessage.success('配置已保存')
   } catch (error) {
     ElMessage.error(messageFor(error))
+  } finally {
+    savingAll.value = false
   }
 }
 
@@ -134,12 +144,13 @@ onMounted(async () => {
 <template>
   <div class="settings-page">
     <PageToolbar title="运行配置" :status="statusLabel" :tone="statusTone">
-      <el-tag v-if="controller.dirty.value" type="warning" effect="light">有未保存修改</el-tag>
+      <el-tag v-if="dirty" type="warning" effect="light">有未保存修改</el-tag>
     </PageToolbar>
 
     <div class="settings-grid">
       <WorkspacePanel title="配置参数" :icon="Setting" fill body-padding="none">
         <SettingsForm
+          ref="settingsForm"
           :initial-anchor="props.initialAnchor"
           :model-value="controller.form"
           :sms-key-statuses="controller.smsKeyStatuses.value"
@@ -149,6 +160,7 @@ onMounted(async () => {
           @update:model-value="controller.updateForm"
           @test-notification="testNotification"
           @query-sms-balances="querySmsBalances"
+          @free-dirty-change="freeDirty = $event"
         />
       </WorkspacePanel>
 
@@ -156,12 +168,12 @@ onMounted(async () => {
         <div class="run-snapshot">
           <div><span>邮箱可用</span><strong>{{ Number(controller.runtime.value.pool?.available || 0) }}</strong></div>
           <div><span>运行任务</span><strong>{{ controller.runtime.value.summary?.active || 0 }}</strong></div>
-          <div><span>配置状态</span><strong :class="{ dirty: controller.dirty.value }">{{ controller.dirty.value ? '待保存' : '已保存' }}</strong></div>
+          <div><span>配置状态</span><strong :class="{ dirty }">{{ dirty ? '待保存' : '已保存' }}</strong></div>
         </div>
         <RunOperationBar
           :running="controller.running.value"
           :has-pool="controller.hasPool.value"
-          :saving="controller.actions.saving"
+          :saving="savingAll || controller.actions.saving"
           :preflighting="controller.actions.preflighting"
           :starting="controller.actions.starting"
           :stopping="controller.actions.stopping"

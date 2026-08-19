@@ -28,7 +28,7 @@ FREE_LEGACY_CONFIG_KEYS = frozenset({
 })
 
 DEFAULT_FREE_CONFIG: dict[str, Any] = {
-    "version": 2,
+    "version": 3,
     "driver": "protocol",
     "target_count": 0,
     "concurrency": 3,
@@ -59,7 +59,7 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
         "open_path": "/browser/open",
         "close_path": "/browser/close",
         "delete_path": "/browser/delete",
-        "headless": False,
+        "headless": True,
         "keep_browser_open": False,
         "one_profile_per_account": True,
         "delete_profile_after_run": True,
@@ -131,6 +131,17 @@ class FreeConfigStore:
     def normalize(self, value: Mapping[str, Any] | None, *, previous: Mapping[str, Any] | None = None) -> dict[str, Any]:
         incoming = {key: copy.deepcopy(item) for key, item in dict(value or {}).items() if key in DEFAULT_FREE_CONFIG}
         base = _merge(DEFAULT_FREE_CONFIG, previous or {})
+        # Version 2 used visible Roxy windows as its default. Treat that old
+        # implicit value as the new headless default once, while preserving an
+        # explicit choice after the configuration has been saved as version 3.
+        try:
+            legacy_version = int(dict(value or {}).get("version") or 0)
+        except (TypeError, ValueError):
+            legacy_version = 0
+        incoming_roxy = value.get("roxybrowser") if isinstance(value, Mapping) else None
+        if legacy_version < 3 and isinstance(incoming_roxy, Mapping) and incoming_roxy.get("headless") is not True:
+            incoming = copy.deepcopy(incoming)
+            incoming.setdefault("roxybrowser", {})["headless"] = True
         if incoming.get("roxybrowser", {}).get("api_key") == SECRET_MASK:
             incoming = copy.deepcopy(incoming)
             incoming.setdefault("roxybrowser", {})["api_key"] = str(base["roxybrowser"].get("api_key") or "")

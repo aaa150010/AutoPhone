@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 from flask import Flask, Response, jsonify, request
 
+from mac_overrides.free_register_config import FreeConfigStore
 from mac_overrides.web_routes import WebRouteContext, patch_flask_app
 
 
@@ -869,6 +870,7 @@ class WebRouteTests(unittest.TestCase):
                 self.proxies = Proxies()
                 self.secret_calls = []
                 self.retry_calls = []
+                self.deleted_tasks = []
                 self.log_fn = None
 
             def public_state(self):
@@ -888,6 +890,12 @@ class WebRouteTests(unittest.TestCase):
                 self.retry_calls.append(task_id)
                 return {"task_id": task_id, "status": "queued"}
 
+            def delete_tasks(self, task_ids):
+                if "free-running" in task_ids:
+                    raise ValueError("选中的 Free 任务仍在排队或运行")
+                self.deleted_tasks.extend(task_ids)
+                return len(task_ids)
+
         free = FreeManager()
         app = self._app(replace(self.context, free_register_manager=free))
         with app.test_client() as client:
@@ -899,6 +907,14 @@ class WebRouteTests(unittest.TestCase):
             deleted_mailbox = client.post(
                 "/api/free/mailboxes/delete",
                 json={"row_ids": ["row-free"]},
+            )
+            deleted_tasks = client.post(
+                "/api/free/tasks/delete",
+                json={"task_ids": ["free-terminal"]},
+            )
+            blocked_task_delete = client.post(
+                "/api/free/tasks/delete",
+                json={"task_ids": ["free-running"]},
             )
             imported_proxy = client.post(
                 "/api/free/proxies/import",
@@ -919,6 +935,11 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(deleted_mailbox.status_code, 200)
         self.assertEqual(deleted_mailbox.get_json()["deleted"], 1)
         self.assertEqual(free.pool.deleted, ["row-free"])
+        self.assertEqual(deleted_tasks.status_code, 200)
+        self.assertEqual(deleted_tasks.get_json()["deleted"], 1)
+        self.assertEqual(free.deleted_tasks, ["free-terminal"])
+        self.assertEqual(blocked_task_delete.status_code, 400)
+        self.assertIn("排队或运行", blocked_task_delete.get_json()["error"])
         self.assertEqual(imported_proxy.status_code, 200)
         self.assertEqual(secret.status_code, 200)
         self.assertEqual(secret.get_json()["value"], "secret-value")
@@ -945,6 +966,93 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(mailbox.status_code, 409)
         self.assertEqual(proxy.status_code, 409)
         self.assertEqual(group.status_code, 409)
+
+    def test_free_config_save_persists_roxy_driver_and_imports_proxy_draft_together(self):
+        class ProxyPool:
+            def __init__(self):
+                self.calls = []
+
+            def import_text(self, content, **kwargs):
+                self.calls.append((content, dict(kwargs)))
+                return 2
+
+            def public(self):
+                return {
+                    "count": 2,
+                    "rows": [
+                        {"proxy_id": "proxy-1", "masked": "socks5h://proxy-a.test:8000", "country": "JP", "group": "IPRoyal-JP"},
+                        {"proxy_id": "proxy-2", "masked": "socks5h://proxy-b.test:8001", "country": "JP", "group": "IPRoyal-JP"},
+                    ],
+                    "groups": [{"country": "JP", "group": "IPRoyal-JP", "total": 2, "available": 2}],
+                    "countries": [{"country": "JP", "total": 2, "available": 2}],
+                }
+
+        class FreeManager:
+            def __init__(self):
+                self.proxies = ProxyPool()
+
+            def public_state(self):
+                return {
+                    "running": False,
+                    "tasks": [],
+                    "pool": {"total": 0, "available": 0, "proxies": 2},
+                    "summary": {},
+                }
+
+        free = FreeManager()
+        config_store = FreeConfigStore(Path(self.tempdir.name) / "free_register")
+        app = self._app(replace(
+            self.context,
+            free_register_manager=free,
+            free_config_store=config_store,
+        ))
+        with app.test_client() as client:
+            response = client.post("/api/free/config", json={
+                "driver": "roxybrowser",
+                "roxybrowser": {
+                    "api_base": "http://127.0.0.1:50000",
+                    "workspace_id": "workspace-7",
+                    "project_id": "project-9",
+                    "humanize_factor": 1.5,
+                },
+                "proxy_content": "proxy-a.test:8000\nproxy-b.test:8001",
+                "proxy_country": "JP",
+                "proxy_group": "IPRoyal-JP",
+                "proxy_scheme": "socks5h",
+            })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["config"]["driver"], "roxybrowser")
+        self.assertEqual(payload["config"]["roxybrowser"]["workspace_id"], "workspace-7")
+        self.assertEqual(payload["proxy_imported"], 2)
+        self.assertEqual(payload["proxies"]["count"], 2)
+        self.assertEqual(config_store.load()["driver"], "roxybrowser")
+        self.assertEqual(config_store.load()["roxybrowser"]["workspace_id"], "workspace-7")
+        self.assertEqual(config_store.load()["roxybrowser"]["project_id"], "project-9")
+        self.assertEqual(free.proxies.calls, [(
+            "proxy-a.test:8000\nproxy-b.test:8001",
+            {"country": "JP", "group": "IPRoyal-JP", "scheme": "socks5h"},
+        )])
+
+        # A later save that only changes Roxy settings must still return the
+        # already-persisted proxy pool to the unified Free settings page.
+        with app.test_client() as client:
+            response = client.post("/api/free/config", json={
+                "driver": "roxybrowser",
+                "roxybrowser": {
+                    "workspace_id": "workspace-8",
+                    "project_id": "project-10",
+                },
+            })
+
+        self.assertEqual(response.status_code, 200)
+        second_payload = response.get_json()
+        self.assertEqual(second_payload["config"]["roxybrowser"]["workspace_id"], "workspace-8")
+        self.assertEqual(second_payload["config"]["roxybrowser"]["project_id"], "project-10")
+        self.assertEqual(second_payload["proxies"]["count"], 2)
+        self.assertEqual(len(second_payload["proxies"]["rows"]), 2)
+        self.assertEqual(second_payload["proxies"]["groups"][0]["group"], "IPRoyal-JP")
 
     def test_free_start_uses_persisted_pools_when_transient_content_is_omitted(self):
         class FreeManager:

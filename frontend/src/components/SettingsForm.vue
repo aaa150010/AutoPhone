@@ -22,7 +22,19 @@ const props = defineProps<{
   notificationStatus?: NotificationRuntimeStatus
   initialAnchor?: string
 }>()
-const emit = defineEmits<{ 'update:modelValue': [any]; testNotification: []; querySmsBalances: [] }>()
+const emit = defineEmits<{
+  'update:modelValue': [any]
+  testNotification: []
+  querySmsBalances: []
+  freeDirtyChange: [boolean]
+}>()
+const freeSettings = ref<InstanceType<typeof FreeRegisterSettingsSection>>()
+
+async function saveFreeConfig() {
+  await freeSettings.value?.save()
+}
+
+defineExpose({ saveFreeConfig })
 
 const scrollRegion = ref<HTMLElement>()
 const activeKey = ref('runtime')
@@ -120,7 +132,7 @@ watch(() => props.initialAnchor, (anchor) => {
           />
         </section>
         <section data-settings-anchor="free-register" class="settings-anchor">
-          <FreeRegisterSettingsSection />
+          <FreeRegisterSettingsSection ref="freeSettings" @dirty-change="value => emit('freeDirtyChange', value)" />
         </section>
         <section data-settings-anchor="sms" class="settings-anchor">
           <SmsSettingsSection

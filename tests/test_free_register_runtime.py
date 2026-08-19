@@ -332,6 +332,9 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
 
         self.assertTrue(callable(provider.client.fetcher))
         self.assertEqual(provider.client.proxy, "socks5h://user:pass@proxy.example.test:3000")
+        self.assertFalse(provider.state.active)
+        provider.prepare()
+        self.assertTrue(provider.state.active)
 
     def test_manager_binds_mailboxes_and_proxies_in_order_under_concurrency(self):
         pool = FreeMailboxPool(self.data_dir)
@@ -379,6 +382,100 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         detail_logs = [row for row in manager.public_logs() if "当前账号已进入 Token 节点" in row["message"]]
         self.assertEqual({row["task_id"] for row in detail_logs}, {row["task_id"] for row in public})
         self.assertTrue(all(row["stage"] == "free_access_token" for row in detail_logs))
+
+    def test_pre_registration_roxy_failure_restores_mailbox_but_keeps_failed_task(self):
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("a@example.test----https://mail.example.test/a\n")
+        FreeProxyPool(self.data_dir).import_text("http://proxy-a.test:8000\n")
+
+        def runner(_task, _config, _stop, _stage, _log, *, twofa_retry=False):
+            self.assertFalse(twofa_retry)
+            raise FreeRegisterError(
+                "free_roxy_connect", "连接 RoxyBrowser", "缺少 Selenium 连接地址"
+            )
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.20",
+        )
+        manager.start({"driver": "roxybrowser", "target_count": 1, "proxy_retry_count": 0})
+        deadline = time.time() + 3
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.01)
+
+        task = manager.public_tasks()[0]
+        mailbox = manager.pool.public_rows()[0]
+        self.assertEqual(task["status"], "failed")
+        self.assertEqual(task["failure"]["node_code"], "free_roxy_connect")
+        self.assertEqual(mailbox["status"], "available")
+        self.assertEqual(mailbox["proxy_masked"], "")
+        self.assertEqual(manager.public_state()["pool"]["available"], 1)
+        self.assertTrue(any(row["stage"] == "free_mailbox_released" for row in manager.public_logs(task["task_id"])))
+
+    def test_failure_after_email_submission_does_not_restore_mailbox(self):
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("a@example.test----https://mail.example.test/a\n")
+        FreeProxyPool(self.data_dir).import_text("http://proxy-a.test:8000\n")
+
+        def runner(_task, _config, _stop, _stage, _log, *, twofa_retry=False):
+            raise FreeRegisterError(
+                "free_roxy_signup_email_submit", "提交 Free 注册邮箱", "页面未进入下一步"
+            )
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.21",
+        )
+        manager.start({"driver": "roxybrowser", "target_count": 1})
+        deadline = time.time() + 3
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.01)
+
+        self.assertEqual(manager.public_tasks()[0]["status"], "failed")
+        self.assertEqual(manager.pool.public_rows()[0]["status"], "failed")
+        self.assertEqual(manager.public_state()["pool"]["available"], 0)
+
+    def test_public_tasks_group_newest_batch_before_older_batch(self):
+        manager = FreeRegisterManager(self.data_dir)
+        manager._tasks = {
+            "old-2": {"task_id": "old-2", "batch_id": "old", "created_at": 100, "ordinal": 2},
+            "new-2": {"task_id": "new-2", "batch_id": "new", "created_at": 200, "ordinal": 2},
+            "old-1": {"task_id": "old-1", "batch_id": "old", "created_at": 100, "ordinal": 1},
+            "new-1": {"task_id": "new-1", "batch_id": "new", "created_at": 200, "ordinal": 1},
+        }
+        self.assertEqual(
+            [task["task_id"] for task in manager.public_tasks()],
+            ["new-1", "new-2", "old-1", "old-2"],
+        )
+
+    def test_delete_terminal_task_history_preserves_mailbox_and_removes_task_log(self):
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("a@example.test----https://mail.example.test/a\n")
+        manager = FreeRegisterManager(self.data_dir)
+        manager._tasks = {
+            "free-terminal": {"task_id": "free-terminal", "status": "failed", "email": "a@example.test"},
+            "free-active": {"task_id": "free-active", "status": "running", "email": "b@example.test"},
+        }
+        manager.task_store.save(manager._tasks)
+        manager._task_log("free-terminal", "终态任务日志")
+        deleted = manager.delete_tasks(["free-terminal"])
+        self.assertEqual(deleted, 1)
+        self.assertNotIn("free-terminal", manager.task_store.load())
+        self.assertEqual(manager.public_logs("free-terminal"), [])
+        self.assertEqual(manager.pool.public_rows()[0]["email"], "a@example.test")
+
+    def test_delete_tasks_rejects_queued_or_running_history_atomically(self):
+        manager = FreeRegisterManager(self.data_dir)
+        manager._tasks = {
+            "free-done": {"task_id": "free-done", "status": "failed"},
+            "free-running": {"task_id": "free-running", "status": "running"},
+        }
+        manager.task_store.save(manager._tasks)
+        with self.assertRaises(ValueError):
+            manager.delete_tasks(["free-done", "free-running"])
+        self.assertEqual(set(manager.task_store.load()), {"free-done", "free-running"})
 
     def test_free_start_ignores_larger_shared_oauth_target_count(self):
         pool = FreeMailboxPool(self.data_dir)

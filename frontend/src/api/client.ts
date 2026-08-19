@@ -142,7 +142,13 @@ export interface FreeProxySummary {
   schemes?: string[]
 }
 export const getFreeConfig = () => api<{ ok: true; config: FreeConfig; state: FreeState }>('/api/free/config')
-export const saveFreeConfig = (config: Partial<FreeConfig>) => api<{ ok: true; config: FreeConfig; state: FreeState }>('/api/free/config', config)
+export type FreeConfigSavePayload = Partial<FreeConfig> & {
+  proxy_content?: string
+  proxy_country?: string
+  proxy_group?: string
+  proxy_scheme?: string
+}
+export const saveFreeConfig = (config: FreeConfigSavePayload) => api<{ ok: true; config: FreeConfig; state: FreeState; proxies?: any }>('/api/free/config', config)
 export const getFreeState = () => api<{ ok: true; state: FreeState; config: FreeConfig }>('/api/free/state')
 export const preflightFree = (config?: Partial<FreeConfig> & { proxy_content?: string }) => api<{ ok: true; result: any; state: FreeState; config: FreeConfig }>('/api/free/preflight', config || {})
 export const startFree = (config?: Partial<FreeConfig> & { proxy_content?: string }) => api<{ ok: true; batch_id: string; batch?: any; state: FreeState }>('/api/free/start', config || {})
@@ -201,6 +207,10 @@ export const importFreeMailboxes = (poolContent: string) => api<{ ok: true; impo
 export const deleteFreeMailboxes = (rowIds: string[]) => api<{ ok: true; deleted: number; rows: FreeMailboxRow[] }>(
   '/api/free/mailboxes/delete',
   { row_ids: rowIds },
+)
+export const deleteFreeTasks = (taskIds: string[]) => api<{ ok: true; deleted: number; state: FreeState }>(
+  '/api/free/tasks/delete',
+  { task_ids: taskIds },
 )
 export const setFreeMailboxStatus = (status: 'available' | 'unavailable' | 'draft', rowIds: string[]) => api<{ ok: true; updated: number; rows: FreeMailboxRow[] }>(
   `/api/free/mailboxes/${status === 'available' ? 'restore' : status}`,

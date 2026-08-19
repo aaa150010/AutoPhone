@@ -49,6 +49,23 @@ except ImportError:
     from free_protocol_runtime import FreeProtocolMixin  # type: ignore[no-redef]
 
 class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
+    # These nodes run before the browser reaches the registration page. A
+    # failure here did not consume the mailbox, so the row can be dispatched
+    # again while the task history remains failed for diagnosis.
+    _REUSABLE_PRE_REGISTRATION_FAILURES = frozenset({
+        "free_run_stop",
+        "free_proxy_binding",
+        "free_roxy_api",
+        "free_roxy_create",
+        "free_roxy_open",
+        "free_roxy_connect",
+        "free_roxy_ip_verify",
+        "free_roxy_signup_bootstrap",
+        "free_roxy_signup_email",
+        "free_roxy_challenge",
+        "roxy_circuit_open",
+    })
+
     def __init__(self, data_dir: str | Path, *, progress: Any = None, log_fn: Callable[[str, str], None] | None = None, runner: Callable[..., Mapping[str, Any]] | None = None, proxy_probe: Callable[[str, str], str] | None = None) -> None:
         self.data_dir = Path(data_dir).expanduser().resolve()
         self.pool = FreeMailboxPool(self.data_dir)
@@ -186,10 +203,36 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
 
     def public_tasks(self) -> list[dict[str, Any]]:
         with self._lock:
-            return [self._public_task(task) for task in sorted(self._tasks.values(), key=lambda item: int(item.get("ordinal") or 0))]
+            tasks = sorted(
+                self._tasks.values(),
+                key=lambda item: (
+                    -int(item.get("created_at") or 0),
+                    int(item.get("ordinal") or 0),
+                    str(item.get("task_id") or ""),
+                ),
+            )
+            return [self._public_task(task) for task in tasks]
 
     def public_logs(self, task_id: str = "") -> list[dict[str, Any]]:
         return self.log_store.snapshot(task_id)
+
+    def delete_tasks(self, task_ids: Sequence[str]) -> int:
+        selected = {str(task_id or "").strip() for task_id in task_ids}
+        selected.discard("")
+        if not selected:
+            raise ValueError("请选择要删除的 Free 任务")
+        with self._lock:
+            active = [task_id for task_id in selected if task_id in self._tasks and str(self._tasks[task_id].get("status") or "") not in TERMINAL_STATUSES]
+            if active:
+                raise ValueError(f"选中的 Free 任务中有 {len(active)} 条仍在排队或运行，请停止并等待任务结束后再删除")
+            existing = [task_id for task_id in selected if task_id in self._tasks]
+            for task_id in existing:
+                self._tasks.pop(task_id, None)
+            if existing:
+                self.task_store.save(self._tasks)
+        if existing:
+            self.log_store.delete_tasks(existing)
+        return len(existing)
 
     def public_state(self) -> dict[str, Any]:
         with self._lock:
@@ -548,6 +591,40 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
         if proxy_id:
             self.proxies.record_failure(proxy_id, node_code=str(getattr(exc, "node_code", "free_proxy")), message=_safe_log_message(exc))
 
+    @classmethod
+    def _can_reuse_mailbox_after_failure(cls, node_code: str) -> bool:
+        return str(node_code or "") in cls._REUSABLE_PRE_REGISTRATION_FAILURES
+
+    def _restore_mailbox_after_pre_registration_failure(self, task: Mapping[str, Any], failure: Mapping[str, Any]) -> None:
+        """Return an unconsumed mailbox to the pool without hiding task history."""
+        row_id = str(task.get("row_id") or "")
+        if not row_id:
+            return
+        self.pool.update(
+            row_id,
+            status="available",
+            batch_id="",
+            stage="",
+            proxy="",
+            proxy_masked="",
+            proxy_fingerprint="",
+            proxy_id="",
+            proxy_scheme="",
+            proxy_country="",
+            proxy_group="",
+            expected_exit_ip="",
+            registration_ip="",
+            exit_ip="",
+            error=str(failure.get("public_message") or "Free 注册前置节点失败"),
+            failure=copy.deepcopy(dict(failure)),
+            reusable_after_failure=True,
+        )
+        self._log(
+            f"[{task.get('task_id', '')}/释放 Free 邮箱/free_mailbox_released] "
+            "任务未进入注册页，邮箱已自动恢复为可用，失败日志保留",
+            "warn",
+        )
+
     def _runner_for(self, config: Mapping[str, Any]) -> Callable[..., Mapping[str, Any]]:
         if self._custom_runner:
             return self.runner
@@ -572,7 +649,7 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
                 }
                 task.update({"status": "failed", "failure": failure, "updated_at": int(time.time())})
                 self.task_store.save(self._tasks)
-                self.pool.update(task["row_id"], status="failed", stage="roxy_circuit_open", error=failure["public_message"], failure=failure)
+                self._restore_mailbox_after_pre_registration_failure(task, failure)
                 self._release_task_lease(task)
                 return
             task["status"] = "running"
@@ -653,7 +730,10 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
             circuit_failure = bool(self._roxy_circuit_open and str(getattr(exc, "node_code", "")) in {"free_roxy_api", "free_roxy_create", "free_roxy_open", "free_roxy_connect"})
             terminal_status = "failed" if circuit_failure or not self._stop.is_set() else "stopped"
             self._save_task(task_id, status=terminal_status, failure=failure)
-            self.pool.update(snapshot["row_id"], status=terminal_status, stage=exc.node_code, error=failure["public_message"], failure=failure)
+            if self._can_reuse_mailbox_after_failure(exc.node_code):
+                self._restore_mailbox_after_pre_registration_failure(snapshot, failure)
+            else:
+                self.pool.update(snapshot["row_id"], status=terminal_status, stage=exc.node_code, error=failure["public_message"], failure=failure)
             self._finish_progress(task_id)
             self._record_proxy_failure(snapshot, exc)
             self._roxy_failure(snapshot, exc)

@@ -41,6 +41,11 @@ FREE_STAGE_LABELS = {
     "free_roxy_connect": "连接 RoxyBrowser",
     "free_roxy_ip_verify": "校验 RoxyBrowser 出口 IP",
     "free_roxy_signup": "RoxyBrowser 页面注册",
+    "free_roxy_signup_bootstrap": "打开 RoxyBrowser 注册页",
+    "free_roxy_signup_email": "填写 Free 注册邮箱",
+    "free_roxy_signup_email_submit": "提交 Free 注册邮箱",
+    "free_roxy_signup_password": "提交 Free 注册密码",
+    "free_roxy_challenge": "等待注册页安全验证",
     "free_oauth_session": "Free OAuth 会话",
     "free_email_identifier": "识别 Free 注册邮箱",
     "free_email_password": "验证 Free 注册密码",
@@ -53,6 +58,7 @@ FREE_STAGE_LABELS = {
     "free_twofa_enroll": "注册 Free 账号 2FA",
     "free_twofa_activate": "激活 Free 账号 2FA",
     "free_roxy_cleanup": "清理 RoxyBrowser 环境",
+    "free_mailbox_released": "释放 Free 邮箱",
     "free_result_save": "保存 Free 注册结果",
 }
 

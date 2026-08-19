@@ -41,8 +41,10 @@ except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
 
 try:
     from .free_register_common import safe_log_message as _safe_free_message
+    from .free_config_routes import FreeControlRouteController
 except ImportError:
     from free_register_common import safe_log_message as _safe_free_message  # type: ignore[no-redef]
+    from free_config_routes import FreeControlRouteController  # type: ignore[no-redef]
 
 _SHA256_HEX_CHARACTERS = frozenset("0123456789abcdef")
 def _safe_int(value: Any, default: int) -> int:
@@ -478,7 +480,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     def free_failure_response(exc: Exception, *, default_code: str, default_label: str, status: int = 400):
         code = str(getattr(exc, "node_code", "") or default_code)
         label = str(getattr(exc, "node_label", "") or default_label)
-        cause = _free_error_detail(exc, code) if hasattr(exc, "node_code") else f"服务异常（{type(exc).__name__}）"
+        cause = _free_error_detail(exc, code)
         payload = explicit_failure_payload(
             node_code=code,
             node_label=label,
@@ -491,6 +493,12 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         if free_manager is not None and callable(getattr(free_manager, "_log", None)):
             free_manager._log(f"[{label}/{code}] {payload['error']}", "error")
         return module.jsonify(payload), status
+
+    free_control_routes = FreeControlRouteController(
+        module=module, manager=free_manager, config_store=free_config_store,
+        state=free_state, config_public=free_config_public,
+        failure_response=free_failure_response, request_lock=free_request_lock,
+    )
 
     def save_free_config(data: Mapping[str, Any]) -> dict[str, Any]:
         if free_config_store is None:
@@ -548,24 +556,6 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             return module.jsonify(ok=True, batch_id=result.get("batch_id"), batch={"batch_id": result.get("batch_id"), "members": result.get("tasks") or []}, state=free_state())
         except Exception as exc:
             return free_failure_response(exc, default_code="free_run_start", default_label="启动 Free 注册")
-        finally:
-            free_request_lock.release()
-
-    def api_free_config():
-        if module.request.method == "GET":
-            return module.jsonify(ok=True, config=free_config_public(), state=free_state())
-        data = module.request.get_json(silent=True) or {}
-        if not isinstance(data, Mapping):
-            return free_failure_response(ValueError("配置必须是 JSON 对象"), default_code="free_config", default_label="保存 Free 配置")
-        if free_manager is None or not free_request_lock.acquire(blocking=False):
-            return module.jsonify(ok=False, error="Free 配置请求正在处理中", state=free_state()), 409
-        try:
-            if free_manager.public_state().get("running"):
-                return module.jsonify(ok=False, error="Free 任务运行中，停止后才能修改配置", state=free_state()), 409
-            saved = save_free_config(data)
-            return module.jsonify(ok=True, config=free_config_store.public(), state=free_state())
-        except Exception as exc:
-            return free_failure_response(exc, default_code="free_config", default_label="保存 Free 配置")
         finally:
             free_request_lock.release()
 
@@ -631,7 +621,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         code = str(getattr(exc, "node_code", "") or default_code)
         label = str(getattr(exc, "node_label", "") or default_label)
         retryable = bool(getattr(exc, "retryable", status >= 500))
-        cause = _free_error_detail(exc, code) if hasattr(exc, "node_code") else f"服务异常（{type(exc).__name__}）"
+        cause = _free_error_detail(exc, code)
         payload = explicit_failure_payload(
             node_code=code,
             node_label=label,
@@ -1253,12 +1243,13 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/accounts", "account_manager", mailbox_manager, ["GET"]),
         ("/settings", "settings_page", mailbox_manager, ["GET"]),
         ("/api/mailboxes", "api_mailboxes", api_mailboxes, ["GET"]),
-        ("/api/free/config", "api_free_config", api_free_config, ["GET", "POST"]),
+        ("/api/free/config", "api_free_config", free_control_routes.config, ["GET", "POST"]),
         ("/api/free/state", "api_free_state", api_free_state, ["GET"]),
         ("/api/free/preflight", "api_free_preflight", api_free_preflight, ["POST"]),
         ("/api/free/start", "api_free_start", api_free_start, ["POST"]),
         ("/api/free/stop", "api_free_stop", api_free_stop, ["POST"]),
         ("/api/free/logs", "api_free_logs", api_free_logs, ["GET"]),
+        ("/api/free/tasks/delete", "api_free_tasks_delete", free_control_routes.delete_tasks, ["POST"]),
         ("/api/free/roxy/workspaces", "api_free_roxy_workspaces", free_account_routes.roxy_workspaces, ["GET"]),
         ("/api/free/mailboxes", "api_free_mailboxes", api_free_mailboxes, ["GET"]),
         ("/api/free/mailboxes/import", "api_free_pool_import", api_free_pool_import, ["POST"]),

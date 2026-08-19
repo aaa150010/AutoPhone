@@ -66,6 +66,24 @@ class FreeLogStore:
                 return [row for row in self._load(self.path) if row.get("task_id") == normalized][-self.task_limit:]
             return self._load(self.path)[-self.limit:]
 
+    def delete_tasks(self, task_ids: list[str]) -> int:
+        normalized = {str(task_id or "").strip() for task_id in task_ids}
+        normalized.discard("")
+        if not normalized:
+            return 0
+        with self._lock:
+            rows = [row for row in self._load(self.path) if str(row.get("task_id") or "") not in normalized]
+            atomic_write(self.path, rows[-self.limit:])
+            deleted = 0
+            for task_id in normalized:
+                path = self._task_path(task_id)
+                try:
+                    path.unlink()
+                    deleted += 1
+                except FileNotFoundError:
+                    continue
+        return deleted
+
     def clear(self) -> None:
         with self._lock:
             atomic_write(self.path, [])

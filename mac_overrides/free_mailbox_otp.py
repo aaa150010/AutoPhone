@@ -68,6 +68,10 @@ class MailboxUrlOtpProvider:
         self._stage("free_email_otp_wait")
         self.state.begin_request()
 
+    def prepare(self) -> None:
+        """Start the OTP baseline before an auth redirect can send the code."""
+        self.state.begin_request()
+
     def wait_code(self, _email: str) -> str:
         self._stage("free_email_otp_wait")
         if not self.state.active:

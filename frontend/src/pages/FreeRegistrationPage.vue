@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import { CircleCheck, Connection, CopyDocument, Refresh, Setting, VideoPause, VideoPlay, View } from '@element-plus/icons-vue'
-import { getFreeConfig, getFreeLogs, getFreeSecret, getFreeState, preflightFree, startFree, stopFree, type FreeConfig, type FreeState } from '../api/client'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { CircleCheck, Connection, CopyDocument, Delete, Refresh, Setting, VideoPause, VideoPlay, View } from '@element-plus/icons-vue'
+import { deleteFreeTasks, getFreeConfig, getFreeLogs, getFreeSecret, getFreeState, preflightFree, startFree, stopFree, type FreeConfig, type FreeState } from '../api/client'
 import PageToolbar from '../components/PageToolbar.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import ContentEmptyState from '../components/ContentEmptyState.vue'
@@ -14,7 +14,7 @@ const defaultConfig: FreeConfig = {
   roxybrowser: {
     api_base: 'http://127.0.0.1:50000', api_key: '', workspace_id: '', project_id: '',
     workspace_list_path: '/browser/workspace', create_path: '/browser/create', open_path: '/browser/open',
-    close_path: '/browser/close', delete_path: '/browser/delete', headless: false, keep_browser_open: false,
+    close_path: '/browser/close', delete_path: '/browser/delete', headless: true, keep_browser_open: false,
     one_profile_per_account: true, delete_profile_after_run: true, random_os: true, os_choices: ['Windows', 'macOS'],
     random_profile_name: true, profile_name_prefix: 'rb', proxy_check_channel: 'IPRust.io', selenium_timeout: 90,
     api_retries: 3, api_retry_delay: 2, humanize_delay: true, humanize_factor: 1,
@@ -41,7 +41,12 @@ const busy = ref<'preflight' | 'start' | 'stop' | ''>('')
 let timer = 0
 
 const running = computed(() => Boolean(state.value.running))
-const visibleTasks = computed(() => (state.value.tasks || []).slice().sort((a, b) => Number(a.ordinal || 0) - Number(b.ordinal || 0)))
+const visibleTasks = computed(() => (state.value.tasks || []).slice().sort((a, b) => {
+  const batchOrder = Number(b.created_at || 0) - Number(a.created_at || 0)
+  if (batchOrder) return batchOrder
+  const ordinalOrder = Number(a.ordinal || 0) - Number(b.ordinal || 0)
+  return ordinalOrder || String(a.task_id || '').localeCompare(String(b.task_id || ''))
+}))
 const filteredTasks = computed(() => {
   const query = taskSearch.value.trim().toLowerCase()
   return visibleTasks.value.filter(task => {
@@ -185,6 +190,40 @@ function handleTaskSelection(rows: any[]) {
   selectedTasks.value = rows
 }
 
+async function deleteSelectedTasks() {
+  const taskIds = selectedTasks.value.map(task => String(task?.task_id || '')).filter(Boolean)
+  if (!taskIds.length) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${taskIds.length} 条 Free 任务记录及对应账号日志吗？邮箱池和注册结果会保留。`,
+      '删除 Free 任务记录',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  loading.value = true
+  taskTable.value?.clearSelection()
+  selectedTasks.value = []
+  try {
+    const result = await deleteFreeTasks(taskIds)
+    state.value = result.state || state.value
+    if (taskIds.includes(selectedTaskId.value)) {
+      logDialogOpen.value = false
+      selectedTaskId.value = ''
+      logs.value = []
+    }
+    await refresh()
+    ElMessage.success(`已删除 ${Number(result.deleted || 0)} 条 Free 任务记录`)
+  } catch (error: any) {
+    ElMessage.error(error?.message || 'Free 任务记录删除失败')
+  } finally {
+    taskTable.value?.clearSelection()
+    selectedTasks.value = []
+    loading.value = false
+  }
+}
+
 function taskStatusLabel(status: string) {
   return ({ queued: '排队', running: '运行中', success: '成功', partial_success: '部分成功', failed: '失败', stopped: '已停止', twofa_pending: '2FA 待重试' } as Record<string, string>)[status] || status || '-'
 }
@@ -216,7 +255,7 @@ onUnmounted(() => window.clearTimeout(timer))
     <div class="task-view">
       <WorkspacePanel title="Free 注册任务" :icon="Connection" fill body-padding="none">
         <div class="task-panel">
-          <div class="run-snapshot task-summary"><div><span>任务总数</span><strong>{{ taskCounts.total }}</strong></div><div><span>排队 / 运行</span><strong>{{ taskCounts.running }}</strong></div><div><span>成功</span><strong class="is-good">{{ taskCounts.success - taskCounts.partial }}</strong></div><div><span>部分成功</span><strong class="is-warn">{{ taskCounts.partial }}</strong></div><div><span>失败</span><strong class="is-bad">{{ taskCounts.failed }}</strong></div><div><span>2FA 待重试</span><strong class="is-warn">{{ taskCounts.pending }}</strong></div></div>
+          <div class="run-snapshot task-summary"><div><span>可用 Free 邮箱</span><strong class="is-good">{{ Number(state.pool?.available || 0) }}</strong></div><div><span>任务总数</span><strong>{{ taskCounts.total }}</strong></div><div><span>排队 / 运行</span><strong>{{ taskCounts.running }}</strong></div><div><span>成功</span><strong class="is-good">{{ taskCounts.success - taskCounts.partial }}</strong></div><div><span>部分成功</span><strong class="is-warn">{{ taskCounts.partial }}</strong></div><div><span>失败</span><strong class="is-bad">{{ taskCounts.failed }}</strong></div><div><span>2FA 待重试</span><strong class="is-warn">{{ taskCounts.pending }}</strong></div></div>
           <div class="task-start-bar">
             <el-tag effect="plain">{{ config.driver === 'roxybrowser' ? 'RoxyBrowser' : '全协议' }}</el-tag>
             <span class="muted">并发 {{ config.concurrency }} · Slot {{ Number(state.scheduler?.active_slots || 0) }}/{{ Number(state.scheduler?.concurrency || config.concurrency) }} · 可用邮箱 {{ Number(state.pool?.available || 0) }} · 固定代理 {{ Number(state.pool?.proxies || 0) }}</span>
@@ -239,7 +278,7 @@ onUnmounted(() => window.clearTimeout(timer))
             <el-select v-model="taskCountryFilter" size="small" clearable filterable placeholder="国家" class="task-driver-filter"><el-option v-for="country in taskCountries" :key="country" :label="country" :value="country" /></el-select>
             <el-select v-model="taskGroupFilter" size="small" clearable filterable placeholder="代理分组" class="task-driver-filter"><el-option v-for="group in taskGroups" :key="group" :label="group" :value="group" /></el-select>
           </div>
-          <div class="task-actions"><span class="muted">已选 {{ selectedTasks.length }} 个</span><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('token', selectedTasks, 'Token')">复制 Token</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('password', selectedTasks, '密码')">复制密码</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('totp', selectedTasks, 'TOTP')">复制 TOTP</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('credential', selectedTasks, '完整凭据')">复制完整凭据</el-button><el-button size="small" :icon="CopyDocument" :disabled="!filteredTasks.some(task => task.result?.has_access_token)" @click="copyTaskTokens(filteredTasks)">复制当前筛选 Token</el-button><el-button size="small" :icon="Refresh" @click="refresh">刷新任务</el-button></div>
+          <div class="task-actions"><span class="muted">已选 {{ selectedTasks.length }} 个</span><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('token', selectedTasks, 'Token')">复制 Token</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('password', selectedTasks, '密码')">复制密码</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('totp', selectedTasks, 'TOTP')">复制 TOTP</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('credential', selectedTasks, '完整凭据')">复制完整凭据</el-button><el-button size="small" :icon="CopyDocument" :disabled="!filteredTasks.some(task => task.result?.has_access_token)" @click="copyTaskTokens(filteredTasks)">复制当前筛选 Token</el-button><el-button size="small" type="danger" plain :icon="Delete" :disabled="!selectedTasks.length || loading" @click="deleteSelectedTasks">删除选中</el-button><el-button size="small" :icon="Refresh" @click="refresh">刷新任务</el-button></div>
           <el-table ref="taskTable" :data="filteredTasks" row-key="task_id" height="100%" size="small" @selection-change="handleTaskSelection">
             <el-table-column type="selection" width="42" reserve-selection />
             <el-table-column type="index" label="序号" width="58" align="center" />
@@ -272,7 +311,7 @@ onUnmounted(() => window.clearTimeout(timer))
 .task-view { min-width: 0; min-height: 0; height: 100%; }
 .task-view :deep(.workspace-panel) { height: 100%; }
 .task-panel { display: grid; grid-template-rows: auto auto auto auto minmax(0, 1fr); gap: 8px; height: 100%; min-height: 0; padding: 10px; }
-.run-snapshot { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--workspace-border); border-radius: var(--workspace-radius); overflow: hidden; }
+.run-snapshot { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--workspace-border); border-radius: var(--workspace-radius); overflow: hidden; }
 .run-snapshot > div { display: grid; grid-template-rows: 18px 22px; align-items: center; min-height: 48px; padding: 5px 10px; background: #f8fafc; }
 .run-snapshot span { color: var(--el-text-color-secondary); font-size: 13px; }
 .run-snapshot strong { font-size: 17px; font-variant-numeric: tabular-nums; }
