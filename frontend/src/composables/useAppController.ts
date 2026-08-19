@@ -5,6 +5,7 @@ import {
   getLocalConfig,
   getSecret,
   getState,
+  retryFreeTwofa as retryFreeTwofaRequest,
   preflightRun,
   querySmsBalances,
   saveConfig,
@@ -171,7 +172,11 @@ const defaultForm = () => ({
   node_concurrency: '5',
   auto_email_login_concurrency: 5,
   phone_submission_concurrency: 2,
-  pixel_upload_concurrency: 2,
+  free_target_count: 0,
+  free_concurrency: 5,
+  free_proxy_probe_url: 'https://api.ipify.org',
+  free_proxy_pool_content: '',
+  free_register_password: '',
   node_timeout: 45,
   email_code_timeout: 60,
   auth_session_retries: 1,
@@ -194,11 +199,6 @@ const defaultForm = () => ({
   sms_api_keys: [''],
   sms_provider_pools: normalizeSmsProviderPools(null),
   sub2api: {},
-  nv_import: {
-    endpoint: 'https://nvtokens.com/api/inventory/cards/import',
-    schema_url: 'https://nvtokens.com/api/inventory/cards/import/schema',
-    api_key: '',
-  },
   online_mailbox: {
     base_url: 'https://lynote.xyz/token-tool',
     api_token: '',
@@ -233,7 +233,8 @@ function normalizeEmailNotificationDraft(value: any) {
 
 function normalizeOperationalSettings(config: Record<string, any>) {
   config.phone_submission_concurrency = Math.max(1, Math.min(5, Number(config.phone_submission_concurrency) || 2))
-  config.pixel_upload_concurrency = Math.max(1, Math.min(3, Number(config.pixel_upload_concurrency) || 2))
+  config.free_target_count = Math.max(0, Math.min(10000, Number(config.free_target_count) || 0))
+  config.free_concurrency = Math.max(1, Math.min(32, Number(config.free_concurrency) || 5))
   config.adaptive_task_concurrency = config.adaptive_task_concurrency !== false
   config.task_inflight_optimization = config.task_inflight_optimization !== false
   config.task_inflight_limit = Math.max(1, Math.min(20, Number(config.task_inflight_limit) || 20))
@@ -265,6 +266,7 @@ function normalizeImportedConfig(value: any) {
   delete config.nvtoken
   delete config.nvtoken_upload
   delete config.pixel_upload_enabled
+  delete config.nv_import
   normalizeOperationalSettings(config)
   config.email_notification = normalizeEmailNotificationDraft(config.email_notification)
   return config
@@ -298,7 +300,7 @@ export function createAppController() {
 
   const runtime = computed(() => state.value.runtime || {})
   const running = computed(() => Boolean(runtime.value.running))
-  const hasPool = computed(() => Number(runtime.value.pool?.available || 0) > 0)
+  const hasPool = computed(() => Number(runtime.value.pool?.available || 0) > 0 || Number(runtime.value.free_register?.pool?.available || 0) > 0)
   const smsKeyStatuses = computed(() => (
     queriedSmsKeyStatuses.value
     || state.value.sms_key_statuses
@@ -349,6 +351,7 @@ export function createAppController() {
     delete value.nvtoken
     delete value.nvtoken_upload
     delete value.pixel_upload_enabled
+    delete value.nv_import
     return value
   }
 
@@ -406,6 +409,7 @@ export function createAppController() {
     delete merged.nvtoken
     delete merged.nvtoken_upload
     delete merged.pixel_upload_enabled
+    delete merged.nv_import
     normalizeOperationalSettings(merged)
     Object.assign(form, merged)
     syncLegacySmsFields(form)
@@ -437,7 +441,7 @@ export function createAppController() {
             }).catch(() => undefined)
           : Promise.resolve(),
         loadSecret(() => form.sub2api?.password, value => { form.sub2api.password = String(value || '') }, 'sub2_password'),
-        loadSecret(() => form.nv_import?.api_key, value => { form.nv_import.api_key = String(value || '') }, 'nv_import_api_key'),
+        loadSecret(() => form.free_register_password, value => { form.free_register_password = String(value || '') }, 'free_register_password'),
         loadSecret(() => form.email_notification?.password, value => {
           form.email_notification.password = String(value || '')
         }, 'notification_email_password'),
@@ -445,6 +449,11 @@ export function createAppController() {
           form.online_mailbox.api_token = String(value || '')
         }, 'online_mailbox_api_token'),
         loadSecret(() => form.proxy, value => { form.proxy = String(value || '') }, 'proxy'),
+        loadSecret(
+          () => form.free_proxy_pool_content,
+          value => { form.free_proxy_pool_content = String(value || '') },
+          'free_proxy_pool_content',
+        ),
       ])
       secretsLoaded.value = true
       if (!wasDirty && !dirty.value) markClean()
@@ -520,7 +529,7 @@ export function createAppController() {
 
   async function start(
     allowDirty = false,
-    uploadTargets: { pixel: boolean; nv: boolean } = { pixel: false, nv: false },
+    runMode: 'register' | 'free_register' = 'register',
   ) {
     await ensureSecretsLoaded()
     if (dirty.value && !allowDirty) throw new Error('运行配置有未保存修改')
@@ -528,10 +537,7 @@ export function createAppController() {
     resetRunSnapshot()
     try {
       const payload = requestPayload()
-      payload.upload_targets = {
-        pixel: uploadTargets.pixel === true,
-        nv: uploadTargets.nv === true,
-      }
+      payload.run_mode = runMode
       const result = await startExistingRun(payload)
       syncState(result)
       markClean()
@@ -556,6 +562,12 @@ export function createAppController() {
     } finally {
       actions.stopping = false
     }
+  }
+
+  async function retryFreeTwofa(taskId: string) {
+    const result = await retryFreeTwofaRequest(taskId)
+    if (result?.state) syncState(result.state)
+    return result
   }
 
   async function importConfig(value: any) {
@@ -658,6 +670,7 @@ export function createAppController() {
     preflight,
     start,
     stop,
+    retryFreeTwofa,
     importConfig,
     exportConfig,
     sendTestNotification,

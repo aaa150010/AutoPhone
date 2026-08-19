@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Cellphone, ChatDotRound, Clock, Connection, Message, UploadFilled, WarningFilled } from '@element-plus/icons-vue'
+import { Cellphone, ChatDotRound, Clock, Connection, Key, Message, UploadFilled, WarningFilled } from '@element-plus/icons-vue'
 import type { RuntimeState, TaskStageGroup } from '../types/api'
 import { buildTaskCapacityView } from '../utils/runtimeCapacity'
 
@@ -9,6 +9,7 @@ const props = defineProps<{ runtime: RuntimeState }>()
 const stages: Array<{ key: TaskStageGroup; label: string; icon: any }> = [
   { key: 'queue', label: '排队', icon: Clock },
   { key: 'oauth', label: 'OAuth', icon: Connection },
+  { key: 'free', label: 'Free 注册', icon: Key },
   { key: 'email', label: '邮箱验证', icon: Message },
   { key: 'phone', label: '取号', icon: Cellphone },
   { key: 'sms', label: '接码', icon: ChatDotRound },

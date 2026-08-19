@@ -16,7 +16,6 @@ import {
   queryMailboxQuotas,
   reloginMailboxRows,
   restoreMailboxDraftRows,
-  retryMailboxPixel,
   setMailboxRowsUnavailable,
 } from '../api/client'
 import MailboxActionMenus from '../components/MailboxActionMenus.vue'
@@ -63,7 +62,6 @@ const currentPage = ref(1)
 const pageSize = ref(100)
 const mutating = ref(false)
 const reloginStarting = ref(false)
-const retryingPixel = ref(false)
 const uploadingWebsite = ref(false)
 const settingUnavailable = ref(false)
 const settingDraft = ref(false)
@@ -447,42 +445,6 @@ async function startRelogin() {
   }
 }
 
-async function retryPixel() {
-  if (!selectedRows.value.length) {
-    ElMessage.warning('请先选择邮箱')
-    return
-  }
-  try {
-    await ElMessageBox.confirm(
-      `将选中的 ${selectedRows.value.length} 个邮箱重新加入 Pixel 上传队列？`,
-      '重新上传 Pixel',
-      { type: 'warning', confirmButtonText: '确认重传', cancelButtonText: '取消' },
-    )
-  } catch {
-    return
-  }
-  retryingPixel.value = true
-  mutating.value = true
-  refreshGuard.invalidate()
-  const selected = selectedBindings()
-  try {
-    mailboxTable.value?.clearSelection()
-    selectedRows.value = []
-    const result: any = await retryMailboxPixel(selected)
-    applyMailboxPayload(result)
-    await nextTick()
-    mailboxTable.value?.clearSelection()
-    const skipped = Number(result?.skipped || 0)
-    ElMessage.success(`已加入 Pixel 队列 ${Number(result?.queued || 0)} 条${skipped ? `，跳过 ${skipped} 条` : ''}`)
-  } catch (error: any) {
-    if (error instanceof ApiError && error.status === 409) await refresh()
-    ElMessage.error(error?.message || 'Pixel 批量重传失败')
-  } finally {
-    retryingPixel.value = false
-    mutating.value = false
-  }
-}
-
 async function poll() {
   await refresh()
   if (pollingStopped) return
@@ -510,7 +472,6 @@ onUnmounted(() => {
     <PageToolbar title="邮箱管理" status="邮箱池" tone="info">
       <el-button type="primary" :disabled="mutating || batchBusy" @click="mailboxImportDialog?.open()"><el-icon><Upload /></el-icon>导入邮箱</el-button>
     </PageToolbar>
-
     <MailboxMetrics
       :counts="data.counts"
       :active-filter="filter"
@@ -560,13 +521,11 @@ onUnmounted(() => {
           :restore-disabled="mutating || batchBusy || !selectedRows.length"
           :draft-disabled="mutating || batchBusy || !canMoveMailboxRowsToDraft(selectedRows)"
           :unavailable-disabled="mutating || batchBusy || !canSetMailboxRowsUnavailable(selectedRows)"
-          :pixel-disabled="mutating || batchBusy || !selectedRows.length"
           :export-disabled="mutating || batchBusy || exportingSub2 || !selectedRows.length"
           :source-export-disabled="mutating || batchBusy || exportingSource || !selectedRows.length"
           :website-disabled="mutating || batchBusy"
           :delete-disabled="mutating || batchBusy || !selectedRows.length"
           :relogin-loading="reloginStarting"
-          :pixel-loading="retryingPixel"
           :export-loading="exportingSub2"
           :source-export-loading="exportingSource"
           :website-loading="uploadingWebsite"
@@ -576,7 +535,6 @@ onUnmounted(() => {
           @restore="mutate('/api/mailboxes/restore', '将选中邮箱恢复为可用状态？')"
           @draft="moveToDraft"
           @unavailable="setUnavailable"
-          @pixel="retryPixel"
           @export="exportSub2"
           @source-export="exportSource"
           @website="uploadWebsiteMailboxes"

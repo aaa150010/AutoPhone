@@ -39,12 +39,26 @@ def collect_failure_secrets(
     values.extend(
         (
             config.get("gptmail_api_key"),
+            config.get("free_register_password"),
             sub2api.get("password"),
             notification.get("password"),
             online_mailbox.get("api_token"),
             *mailbox_admin.url_credential_secrets(config.get("proxy")),
         )
     )
+    free_pool_content = str(config.get("free_pool_content") or "")
+    if free_pool_content:
+        for row in free_pool_content.splitlines():
+            try:
+                values.extend(mailbox_admin.MailboxAdminService._row_secrets(row))
+            except Exception:
+                continue
+    for proxy_row in str(config.get("free_proxy_pool_content") or "").splitlines():
+        values.append(proxy_row.strip())
+        try:
+            values.extend(mailbox_admin.url_credential_secrets(proxy_row))
+        except Exception:
+            pass
     return tuple(dict.fromkeys(str(item) for item in values if str(item or "")))
 
 

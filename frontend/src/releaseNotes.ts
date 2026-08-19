@@ -12,10 +12,94 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.5.9',
-  title: 'Free 账号接码成本控制',
-  releasedAt: '2026-08-17',
+  version: '1.6.14',
+  title: 'Free 邮箱池与运行配置整理',
+  releasedAt: '2026-08-19',
   sections: [
+    {
+      title: 'Free 邮箱导入改为去重追加',
+      usage: '重复导入不会覆盖已有 Free 邮箱，系统会保留原顺序并只追加新行，同时显示新增和跳过的数量。',
+    },
+    {
+      title: 'Free 邮箱池支持选中删除',
+      usage: '在 Free 邮箱池勾选行后点击“删除选中”；排队或运行中的邮箱会被保护，历史注册结果不会被删除。',
+    },
+    {
+      title: 'Free 注册数量与并发独立可控',
+      usage: '运行配置的平台集成中新增 Free 本次注册数量和并发数；数量设为 0 时按当前可用 Free 邮箱自动运行。',
+    },
+    {
+      title: '运行配置增加快捷导航树',
+      usage: '运行配置按运行与代理、SMS 接码、平台集成和通知设置分组，左侧快捷导航可直接定位到对应配置区域。',
+    },
+    {
+      title: 'Free 代理预检与 autoRegister 使用同一协议',
+      usage: 'Free 代理未显式写协议时按 autoRegister 规则使用 HTTP；显式填写的 HTTP、HTTPS、SOCKS4、SOCKS5 或 SOCKS5H 会原样绑定，预检失败不会偷偷切换协议，并沿用注册链路的 TLS 校验策略。',
+    },
+    {
+      title: 'Free 代理池可在运行配置中维护',
+      usage: '进入“运行配置”的“平台集成”，即可查看、修改并保存 Free 代理池；旧版已导入的 Free 代理会自动带入，代理凭据只在设置页按需读取，普通配置接口继续脱敏。',
+    },
+    {
+      title: 'Free 2FA 重试失败可继续恢复',
+      usage: '2FA 重试再次遇到超时或接口失败时，任务会继续保留待重试状态，并保留已取得的 Token、套餐和固定代理绑定，不会误记为普通协议失败。',
+    },
+    {
+      title: 'Free SentinelRunner 配置兼容与代理诊断',
+      usage: 'Free 注册会兼容运行中心保存的 Node Runner 配置名称；代理预检失败时显示代理池序号、错误类型和脱敏原因提示，便于区分超时、TLS 或连接问题，不泄露代理凭据。',
+    },
+    {
+      title: 'Free 代理协议按 autoRegister 规则解析',
+      usage: 'Free 代理池的“主机:端口:用户名:密码”或空格简写现在默认按 HTTP 解析，显式协议会保留；出口预检、邮箱取码、OAuth 和 Sentinel 全链路使用同一代理。',
+    },
+    {
+      title: 'Free 目标数量按独立池自动调整',
+      usage: '批量注册 Free 不再被接码/OAuth 的共享目标数量卡住；当共享目标大于 Free 池可用邮箱数时，自动按 Free 池实际数量启动，同时继续校验一号一代理。',
+    },
+    {
+      title: 'Free 独立池启动修复',
+      usage: '批量注册 Free 现在会直接使用已导入的 Free 邮箱池和代理池；启动请求未携带临时池内容时不再出现 free_pool_content 错误。',
+    },
+    {
+      title: 'Free 代理池支持账号密码简写',
+      usage: 'Free 代理池现在可直接粘贴“主机:端口:用户名:密码”，导入时自动转换并继续按一号一代理执行；界面、日志和列表不会显示代理凭据。',
+    },
+    {
+      title: 'Free 邮箱导入兼容三横杠格式',
+      usage: 'Free 注册邮箱池现在同时支持“邮箱---取码 URL”、“邮箱----取码 URL”和使用竖线分隔的导入格式，旧数据无需重新整理。',
+    },
+    {
+      title: 'Free 注册邮箱池独立菜单',
+      usage: '左侧新增“Free 注册邮箱池”菜单；“邮箱管理”继续只管理接码/OAuth 池，Free 的邮箱、状态、Token 和 2FA 操作在独立页面中完成，代理池统一在“运行配置”中维护。',
+    },
+    {
+      title: 'Free 完整凭据按需复制与日志脱敏',
+      usage: 'Free 邮箱池支持单行或勾选复制邮箱----密码----2FA 完整凭据；协议日志会移除裸取码 URL、代理认证、Bearer Token 和验证码，只保留可诊断的节点信息。',
+    },
+    {
+      title: 'Free 套餐资格与结果存储修正',
+      usage: 'Free 注册按 HAR 协议使用本机时区查询账号套餐，并从账号检查响应读取 Plus 试用资格；每条 Free 结果独立原子保存到隔离结果目录，重启后仍可继续 2FA 重试。',
+    },
+    {
+      title: '批量注册 Free 账号',
+      usage: '启动运行中心时选择“批量注册 Free”。Free 注册沿用动态邮箱认证流程，自动兼容密码页和邮箱验证码页，统一使用固定密码完成 OAuth、access token、套餐及 Plus 试用资格查询，并按需设置 2FA。',
+    },
+    {
+      title: 'Free 邮箱池与接码池隔离',
+      usage: '通过左侧“Free 注册邮箱池”菜单导入邮箱-取码 URL，并在“运行配置”的“平台集成”中维护 Free 代理池。该池使用独立文件、状态和结果存储，普通接码/OAuth 任务不会读取或消耗 Free 池。',
+    },
+    {
+      title: '一号一代理与出口复核',
+      usage: 'Free 任务启动前按邮箱顺序绑定代理并检测出口 IP；代理不足、代理重复或出口 IP 重复会在启动前拒绝。任务从 OAuth 到邮箱取码、资格查询和 2FA 重试始终使用同一代理，发生漂移会停止且不换代理。',
+    },
+    {
+      title: 'Token、密码和 2FA 按需复制',
+      usage: 'Free 结果和邮箱池支持单行、当前页或勾选复制 Token；密码、TOTP、完整代理 URL 和邮箱----密码----2FA 凭据只在点击后读取，任务列表和日志只显示掩码与存在状态。',
+    },
+    {
+      title: '移除 NV 与 Pixel 上传入口',
+      usage: '运行中心不再选择或初始化 NV、Pixel 上传队列、批次和重试；历史数据保留。账号管理菜单及对应页面已移除，原有接码/OAuth 注册、Token 保存和日志继续保留。',
+    },
     {
       title: 'Free 账号默认不再付费接码',
       usage: '只有流程进入手机号验证、准备向接码平台取号时才检查套餐：默认拦截 free 和套餐无法确认的账号，Plus、Team、K12、Pro 等非 free 套餐继续接码；无需手机号即可完成 OAuth 的 free 账号不受影响。需要忽略套餐时，可在 SMS 接码设置中开启“允许 free 账号接码”。',

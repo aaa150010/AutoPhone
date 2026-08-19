@@ -19,13 +19,11 @@ const props = defineProps<{
   restoreDisabled: boolean
   draftDisabled: boolean
   unavailableDisabled: boolean
-  pixelDisabled: boolean
   exportDisabled: boolean
   sourceExportDisabled: boolean
   websiteDisabled: boolean
   deleteDisabled: boolean
   reloginLoading?: boolean
-  pixelLoading?: boolean
   exportLoading?: boolean
   sourceExportLoading?: boolean
   websiteLoading?: boolean
@@ -38,7 +36,6 @@ const emit = defineEmits<{
   (event: 'restore'): void
   (event: 'draft'): void
   (event: 'unavailable'): void
-  (event: 'pixel'): void
   (event: 'export'): void
   (event: 'source-export'): void
   (event: 'website'): void
@@ -49,13 +46,13 @@ const accountDisabled = computed(() => (
   props.reloginDisabled && props.restoreDisabled && props.draftDisabled && props.unavailableDisabled
 ))
 const transferDisabled = computed(() => (
-  props.pixelDisabled && props.exportDisabled && props.sourceExportDisabled && props.websiteDisabled
+  props.exportDisabled && props.sourceExportDisabled && props.websiteDisabled
 ))
 const accountLoading = computed(() => Boolean(
   props.reloginLoading || props.draftLoading || props.unavailableLoading,
 ))
 const transferLoading = computed(() => Boolean(
-  props.pixelLoading || props.exportLoading || props.sourceExportLoading || props.websiteLoading,
+  props.exportLoading || props.sourceExportLoading || props.websiteLoading,
 ))
 
 function handleAccountCommand(command: string) {
@@ -66,7 +63,6 @@ function handleAccountCommand(command: string) {
 }
 
 function handleTransferCommand(command: string) {
-  if (command === 'pixel' && !props.pixelDisabled) emit('pixel')
   if (command === 'export' && !props.exportDisabled) emit('export')
   if (command === 'source-export' && !props.sourceExportDisabled) emit('source-export')
   if (command === 'website' && !props.websiteDisabled) emit('website')
@@ -129,18 +125,11 @@ function handleMoreCommand(command: string) {
       <el-button :disabled="transferDisabled">
         <el-icon v-if="transferLoading" class="is-loading"><Loading /></el-icon>
         <el-icon v-else><UploadFilled /></el-icon>
-        上传与导出
+        导出与邮箱
         <el-icon class="menu-chevron"><ArrowDown /></el-icon>
       </el-button>
       <template #dropdown>
         <el-dropdown-menu>
-          <el-dropdown-item command="pixel" :disabled="pixelDisabled || pixelLoading">
-            <el-icon :class="{ 'is-loading': pixelLoading }">
-              <Loading v-if="pixelLoading" />
-              <UploadFilled v-else />
-            </el-icon>
-            重传 Pixel
-          </el-dropdown-item>
           <el-dropdown-item command="export" :disabled="exportDisabled || exportLoading">
             <el-icon :class="{ 'is-loading': exportLoading }">
               <Loading v-if="exportLoading" />

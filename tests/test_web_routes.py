@@ -575,6 +575,7 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(self.store.current["target_count"], 1)
         self.assertNotIn("_gptphone_run_mailbox_rows", self.importer.started_with)
 
+    @unittest.skip("NV/Pixel 上传入口已按需求移除")
     def test_start_upload_targets_are_transient_and_coordinator_receives_selection(self):
         pixel = FakePixelQueue()
         nv = FakeNvQueue()
@@ -604,6 +605,7 @@ class WebRouteTests(unittest.TestCase):
             {"pixel": True, "nv": True},
         )
 
+    @unittest.skip("NV/Pixel 上传入口已按需求移除")
     def test_start_defaults_both_upload_targets_off_and_rejects_unconfigured_nv(self):
         coordinator = FakeBatchUploadCoordinator()
         app = self._app(replace(
@@ -629,6 +631,7 @@ class WebRouteTests(unittest.TestCase):
         )
         self.assertEqual(coordinator.calls, [])
 
+    @unittest.skip("NV 配置已按需求移除")
     def test_start_accepts_valid_nv_configuration_from_settings_draft(self):
         coordinator = FakeBatchUploadCoordinator()
         app = self._app(replace(
@@ -657,6 +660,7 @@ class WebRouteTests(unittest.TestCase):
             {"pixel": False, "nv": True},
         )
 
+    @unittest.skip("NV 配置已按需求移除")
     def test_start_rejects_remote_http_nv_draft_before_saving_or_starting(self):
         app = self._app(replace(
             self.context,
@@ -703,10 +707,6 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(self.preflight_configs, [])
         self.assertEqual(self.store.saved, [])
         self.assertEqual(self.importer.started_with["run_mode"], "relogin")
-        self.assertEqual(
-            self.importer.started_with["_gptphone_upload_targets"],
-            {"pixel": False, "nv": False},
-        )
         self.assertEqual(self.importer.started_with["target_count"], 1)
         self.assertEqual(
             self.importer.started_with["_gptphone_relogin_rows"][0]["sub2api_account_id"],
@@ -835,6 +835,202 @@ class WebRouteTests(unittest.TestCase):
         self.assertNotIn("api_key", exported.get_json()["config"]["nv_import"])
         self.assertNotIn(secret, exported.get_data(as_text=True))
         self.assertEqual(revealed.get_json()["value"], secret)
+
+    def test_free_pool_routes_are_isolated_and_read_secrets_on_demand(self):
+        class Pool:
+            def __init__(self):
+                self.rows = [{"row_id": "row-free", "email": "free@example.test"}]
+                self.imported = []
+                self.deleted = []
+
+            def public_rows(self):
+                return list(self.rows)
+
+            def import_text(self, value):
+                self.imported.append(value)
+                return 1
+
+            def delete(self, row_ids):
+                self.deleted.extend(row_ids)
+                self.rows = [row for row in self.rows if row["row_id"] not in row_ids]
+                return len(row_ids)
+
+        class Proxies:
+            def __init__(self):
+                self.imported = []
+
+            def import_text(self, value):
+                self.imported.append(value)
+                return 1
+
+        class FreeManager:
+            def __init__(self):
+                self.pool = Pool()
+                self.proxies = Proxies()
+                self.secret_calls = []
+                self.retry_calls = []
+                self.log_fn = None
+
+            def public_state(self):
+                return {
+                    "running": False,
+                    "batch_id": "",
+                    "tasks": [],
+                    "pool": {"total": 1, "available": 1, "proxies": 1},
+                    "summary": {"total": 0, "active": 0, "success": 0, "failed": 0, "stopped": 0},
+                }
+
+            def secret(self, task_ids, kind, *, row_ids=()):
+                self.secret_calls.append((list(task_ids), kind, list(row_ids)))
+                return "secret-value"
+
+            def retry_twofa(self, task_id, _config):
+                self.retry_calls.append(task_id)
+                return {"task_id": task_id, "status": "queued"}
+
+        free = FreeManager()
+        app = self._app(replace(self.context, free_register_manager=free))
+        with app.test_client() as client:
+            listed = client.get("/api/free/mailboxes")
+            imported_mailbox = client.post(
+                "/api/free/mailboxes/import",
+                json={"pool_content": "free@example.test----https://mail.test/x"},
+            )
+            deleted_mailbox = client.post(
+                "/api/free/mailboxes/delete",
+                json={"row_ids": ["row-free"]},
+            )
+            imported_proxy = client.post(
+                "/api/free/proxies/import",
+                json={"proxy_content": "http://proxy.test:8080"},
+            )
+            secret = client.post(
+                "/api/free/secrets",
+                json={"kind": "token", "row_ids": ["row-free"]},
+            )
+            retried = client.post("/api/free/2fa/retry", json={"task_id": "row-free"})
+            old_nv = client.get("/api/nv/overview")
+            old_pixel = client.get("/api/pixel/targets")
+
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual(listed.get_json()["pool"], "free")
+        self.assertEqual(imported_mailbox.status_code, 200)
+        self.assertEqual(imported_mailbox.get_json()["skipped"], 0)
+        self.assertEqual(deleted_mailbox.status_code, 200)
+        self.assertEqual(deleted_mailbox.get_json()["deleted"], 1)
+        self.assertEqual(free.pool.deleted, ["row-free"])
+        self.assertEqual(imported_proxy.status_code, 200)
+        self.assertEqual(secret.status_code, 200)
+        self.assertEqual(secret.get_json()["value"], "secret-value")
+        self.assertEqual(free.secret_calls, [([], "token", ["row-free"])])
+        self.assertEqual(retried.status_code, 200)
+        self.assertEqual(free.retry_calls, ["row-free"])
+        self.assertEqual(old_nv.status_code, 404)
+        self.assertEqual(old_pixel.status_code, 404)
+
+    def test_free_start_uses_persisted_pools_when_transient_content_is_omitted(self):
+        class FreeManager:
+            def __init__(self):
+                self.log_fn = None
+                self.calls = []
+
+            def public_state(self):
+                return {
+                    "running": False,
+                    "batch_id": "",
+                    "tasks": [],
+                    "pool": {"total": 8, "available": 8, "proxies": 10},
+                    "summary": {"total": 0, "active": 0, "success": 0, "failed": 0, "stopped": 0},
+                }
+
+            def start(self, config, *, pool_content="", proxy_content=""):
+                self.calls.append((dict(config), pool_content, proxy_content))
+                return {"batch_id": "free-test", "tasks": []}
+
+        free = FreeManager()
+        app = self._app(replace(self.context, free_register_manager=free))
+        with app.test_client() as client:
+            response = client.post("/api/start-existing", json={"run_mode": "free_register", "target_count": 1})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(free.calls, [({"run_mode": "free_register", "target_count": 1}, "", "")])
+
+    def test_free_start_persists_and_passes_proxy_pool_from_run_config(self):
+        class FreeManager:
+            def __init__(self):
+                self.log_fn = None
+                self.calls = []
+
+            def public_state(self):
+                return {
+                    "running": False,
+                    "batch_id": "",
+                    "tasks": [],
+                    "pool": {"total": 1, "available": 1, "proxies": 1},
+                    "summary": {"total": 0, "active": 0, "success": 0, "failed": 0, "stopped": 0},
+                }
+
+            def start(self, config, *, pool_content="", proxy_content=""):
+                self.calls.append((dict(config), pool_content, proxy_content))
+                return {"batch_id": "free-config-test", "tasks": []}
+
+        proxy_content = "http://free-user:free-pass@proxy.example.test:8000"
+        free = FreeManager()
+        app = self._app(replace(self.context, free_register_manager=free))
+        with app.test_client() as client:
+            response = client.post(
+                "/api/start-existing",
+                json={
+                    "run_mode": "free_register",
+                    "target_count": 1,
+                    "free_proxy_pool_content": proxy_content,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            free.calls,
+            [
+                (
+                    {
+                        "run_mode": "free_register",
+                        "target_count": 1,
+                        "free_proxy_pool_content": proxy_content,
+                    },
+                    "",
+                    proxy_content,
+                )
+            ],
+        )
+        self.assertEqual(self.store.current["free_proxy_pool_content"], proxy_content)
+
+    def test_free_start_keeps_proxy_preflight_diagnostic_out_of_oauth_mapper(self):
+        class FreePreflightError(RuntimeError):
+            node_code = "free_proxy_preflight"
+            node_label = "Free 代理预检"
+            retryable = True
+
+        class FreeManager:
+            def public_state(self):
+                return {
+                    "running": False,
+                    "batch_id": "",
+                    "tasks": [],
+                    "pool": {"total": 8, "available": 8, "proxies": 10},
+                    "summary": {"total": 0, "active": 0, "success": 0, "failed": 0, "stopped": 0},
+                }
+
+            def start(self, _config, *, pool_content="", proxy_content=""):
+                raise FreePreflightError("代理池第 2 条出口 IP 检测失败：Timeout")
+
+        app = self._app(replace(self.context, free_register_manager=FreeManager()))
+        with app.test_client() as client:
+            response = client.post("/api/start-existing", json={"run_mode": "free_register"})
+
+        self.assertEqual(response.status_code, 400)
+        body = response.get_json()
+        self.assertIn("第 2 条出口 IP 检测失败", body["error"])
+        self.assertNotIn("OAuth", body["error"])
 
     def test_sms_balance_query_uses_draft_config_without_exposing_or_saving_keys(self):
         secret = "draft-balance-secret"
@@ -1026,6 +1222,7 @@ class WebRouteTests(unittest.TestCase):
                     self.assertEqual(response.get_json()["failure"]["node_code"], node_code)
                     self.assertNotIn(secret, response.get_data(as_text=True))
 
+    @unittest.skip("批次上传清单接口已按需求移除")
     def test_manifest_and_runtime_task_read_exceptions_are_structured(self):
         class FailingRunManifest:
             log_fn = None
@@ -1639,6 +1836,7 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(completed["succeeded"], 11)
         self.assertEqual([len(call["rows"]) for call in calls], [5, 5, 1])
 
+    @unittest.skip("Pixel 重试入口已按需求移除；SUB2 导出由独立测试覆盖")
     def test_mailbox_pixel_requeue_and_sub2_export_use_server_side_success_result(self):
         queue = FakePixelQueue()
         result_file = Path(self.tempdir.name) / "result.json"
@@ -1692,6 +1890,7 @@ class WebRouteTests(unittest.TestCase):
         self.assertTrue(bundle["exported_at"].endswith("Z"))
         self.assertNotIn("access-secret", str(self.logs.rows))
 
+    @unittest.skip("Pixel 管理接口已按需求移除")
     def test_pixel_targets_accounts_and_random_share_routes(self):
         pixel = FakePixelClient()
         app = self._app(replace(self.context, pixel_client=pixel))
@@ -1740,6 +1939,7 @@ class WebRouteTests(unittest.TestCase):
         self.assertFalse(any("pixel-1" in call for call in pixel.calls))
         self.assertNotIn("bulk_update", [call[0] for call in pixel.calls])
 
+    @unittest.skip("Pixel 管理接口已按需求移除")
     def test_pixel_share_all_rejects_excluded_and_unknown_targets(self):
         pixel = FakePixelClient()
         app = self._app(replace(self.context, pixel_client=pixel))
@@ -1768,6 +1968,7 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(excluded_only.status_code, 400)
         self.assertEqual(invalid.status_code, 400)
 
+    @unittest.skip("Pixel 上传记录接口已按需求移除")
     def test_pixel_upload_records_retry_selectors_and_public_errors(self):
         pixel = FakePixelClient()
         queue = FakePixelQueue()
@@ -1808,6 +2009,7 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(failed.get_json()["failure"]["node_code"], "pixel_management")
         self.assertNotIn("private-token", failed.get_data(as_text=True))
 
+    @unittest.skip("NV 上传接口已按需求移除")
     def test_nv_upload_records_batches_overview_and_retry_routes(self):
         nv = FakeNvQueue()
         coordinator = FakeBatchUploadCoordinator()
@@ -1832,6 +2034,7 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(nv.calls, ["nv-record"])
         self.assertEqual(manifests.get_json()["records"][0]["batch_id"], "batch-a")
 
+    @unittest.skip("NV 上传接口已按需求移除")
     def test_nv_upload_records_and_batches_are_paginated(self):
         nv = FakeNvQueue()
         nv.records = lambda: [
@@ -1859,6 +2062,7 @@ class WebRouteTests(unittest.TestCase):
         ])
         self.assertEqual(batches.get_json()["total"], 5)
 
+    @unittest.skip("批次上传清单接口已按需求移除")
     def test_batch_upload_manifest_retry_validates_platform_and_maps_errors(self):
         coordinator = FakeBatchUploadCoordinator()
         app = self._app(replace(self.context, batch_upload_coordinator=coordinator))
@@ -1898,6 +2102,7 @@ class WebRouteTests(unittest.TestCase):
             ("batch-a", "nv"),
         ])
 
+    @unittest.skip("Pixel 批次接口已按需求移除")
     def test_pixel_overview_and_paginated_batch_routes_are_lightweight(self):
         pixel = FakePixelClient()
         queue = FakePixelQueue()

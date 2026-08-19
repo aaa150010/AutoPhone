@@ -40,7 +40,7 @@ function updateProxyScope(key: string, value: boolean | string | number) {
       <el-checkbox
         :model-value="Boolean(modelValue.proxy_scope?.upload)"
         @update:model-value="updateProxyScope('upload', $event)"
-      >SUB2 / NV 走代理</el-checkbox>
+      >SUB2 走代理</el-checkbox>
     </div>
 
     <el-row :gutter="10">

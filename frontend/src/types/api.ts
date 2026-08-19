@@ -32,7 +32,7 @@ export interface SmsRuntimeAlert {
   provider?: string
 }
 
-export type TaskStageGroup = 'queue' | 'oauth' | 'email' | 'phone' | 'sms' | 'finalizing'
+export type TaskStageGroup = 'queue' | 'oauth' | 'email' | 'phone' | 'sms' | 'free' | 'finalizing'
 
 export interface TaskStageTiming {
   code: string
@@ -133,7 +133,7 @@ export interface TaskCheckpoint {
 
 export interface RuntimeTask {
   task_id: string
-  run_mode?: 'register' | 'relogin' | string
+  run_mode?: 'register' | 'free_register' | 'relogin' | string
   account?: string
   email?: string
   ordinal?: number
@@ -152,7 +152,18 @@ export interface RuntimeTask {
   timing?: TaskTiming | null
   manual_verification?: ManualVerificationRequest | null
   checkpoint?: TaskCheckpoint | null
+  proxy_masked?: string
+  proxy_fingerprint?: string
+  exit_ip?: string
   result?: {
+    plan_type?: string
+    plus_trial_eligible?: boolean
+    twofa_status?: string
+    twofa_error?: string
+    has_access_token?: boolean
+    has_credential?: boolean
+    proxy?: string
+    exit_ip?: string
     sms_cost_usd?: number | null
     sms_cost_cny?: number | null
     sms_exchange_rate?: number | null
@@ -294,6 +305,12 @@ export interface RuntimeState {
   stop_requested?: boolean
   tasks?: RuntimeTask[]
   pool?: Record<string, any>
+  free_register?: {
+    running?: boolean
+    batch_id?: string
+    pool?: { total?: number; available?: number; proxies?: number }
+    summary?: RuntimeSummary
+  }
   concurrency?: RuntimeConcurrencyState
   connectivity?: {
     openai_auth?: OpenAIAuthConnectivityState
@@ -488,241 +505,4 @@ export interface ApiErrorPayload {
   code?: string
   state?: AppState
   [key: string]: any
-}
-
-export interface PixelTarget {
-  id: string
-  email: string
-  connected: boolean
-  accountCount: number | null
-  lastCheckedAt: string | null
-  error: string | null
-  autoUpload: boolean
-}
-
-export interface PixelAccount {
-  id: number
-  name: string
-  platform: string
-  accountLevel: string
-  type: string
-  shareMode: string
-  shareStatus: string
-  concurrency: number
-  currentConcurrency: number
-  status: string
-  schedulable: boolean
-  credentialsStatus: string
-  errorMessage: string
-  expiresAt: string | null
-  updatedAt: string | null
-}
-
-export interface PixelAccountPage {
-  items: PixelAccount[]
-  total: number
-  page: number
-  pageSize: number
-  pages: number
-  target?: PixelTarget
-}
-
-export interface PixelBulkOperationResponse {
-  ok?: boolean
-  success?: number
-  failed?: number
-  successIds?: number[]
-  failedIds?: number[]
-  message?: string
-  results?: Array<Record<string, any>>
-}
-
-export type PixelUploadTargetState =
-  | 'pending'
-  | 'uploading'
-  | 'success'
-  | 'partial'
-  | 'failed'
-  | 'retry_pending'
-  | 'needs_confirmation'
-  | 'source_unavailable'
-
-export interface PixelUploadTargetRecord {
-  targetId: string
-  status: PixelUploadTargetState | string
-  stage: string
-  generatedName: string
-  remoteAccountId: number | string | null
-  failedIds: Array<number | string>
-  concurrency: number | null
-  error: string
-  attempts: number
-  updatedAt: string | number | null
-  retryable: boolean
-}
-
-export interface PixelUploadRecord {
-  recordId: string
-  taskId: string
-  taskIds: string[]
-  sourceCount: number
-  batchId: string
-  batchStartedAt: string | number | null
-  sourceEmail: string
-  jobId: string
-  status: PixelUploadTargetState | string
-  error: string
-  sourceAvailable: boolean
-  canRetry: boolean
-  createdAt: string | number | null
-  updatedAt: string | number | null
-  targets: PixelUploadTargetRecord[]
-}
-
-export interface PixelBatchCounts {
-  total: number
-  completed: number
-  success: number
-  pending: number
-  processing: number
-  failed: number
-  needs_confirmation: number
-}
-
-export interface PixelUploadBatch {
-  batch_id: string
-  batch_started_at: number
-  updated_at: number
-  status: string
-  source: PixelBatchCounts
-  deliveries: PixelBatchCounts
-}
-
-export interface PixelQueueOverview {
-  configured_workers: number
-  alive_workers: number
-  active_workers: number
-  pending_records: number
-  running_records: number
-}
-
-export interface PixelTargetCount {
-  target_id: string
-  account_count: number | null
-}
-
-export interface PixelOverview {
-  revision: number
-  queue: PixelQueueOverview
-  current_batch: PixelUploadBatch | null
-  batch_count: number
-  targets: PixelTargetCount[]
-  target_error?: string
-}
-
-export interface PixelBatchPage {
-  items: PixelUploadBatch[]
-  total: number
-  page: number
-  page_size: number
-  pages: number
-  revision: number
-}
-
-export interface PixelBatchRecordPage {
-  batch: PixelUploadBatch
-  items: Record<string, any>[]
-  total: number
-  page: number
-  page_size: number
-  pages: number
-  revision: number
-}
-
-export interface NvUploadRecord {
-  record_id: string
-  batch_id: string
-  batch_started_at: number
-  task_ids: string[]
-  source_count: number
-  status: string
-  stage: string
-  attempts: number
-  accepted: number
-  source_available: boolean
-  can_retry: boolean
-  needs_confirmation: boolean
-  error: string
-  failure?: TaskFailure | null
-  created_at: number
-  updated_at: number
-}
-
-export interface NvUploadBatch {
-  batch_id: string
-  batch_started_at: number
-  updated_at: number
-  status: string
-  source: {
-    total: number
-    queued: number
-    processing: number
-    success: number
-    partial: number
-    failed: number
-  }
-}
-
-export interface NvOverview {
-  revision: number
-  configured: boolean
-  queue: {
-    active: number
-    pending: number
-    alive: boolean
-    configured_workers: number
-    alive_workers: number
-    active_workers: number
-    pending_records: number
-    running_records: number
-  }
-  current_batch: NvUploadBatch | null
-  batch_count: number
-}
-
-export interface NvUploadBatchPage {
-  items: NvUploadBatch[]
-  total: number
-  page: number
-  page_size: number
-  pages: number
-  revision: number
-}
-
-export interface NvUploadRecordPage {
-  records: NvUploadRecord[]
-  total: number
-  page: number
-  page_size: number
-  pages: number
-  revision: number
-}
-
-export interface BatchUploadPlatformState {
-  status: string
-  error: string
-}
-
-export interface BatchUploadManifest {
-  batch_id: string
-  batch_started_at: number
-  targets: { pixel: boolean; nv: boolean }
-  platforms: {
-    pixel?: BatchUploadPlatformState
-    nv?: BatchUploadPlatformState
-  }
-  status: string
-  source_count: number
-  created_at: number
-  updated_at: number
 }

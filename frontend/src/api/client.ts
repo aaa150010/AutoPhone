@@ -5,18 +5,6 @@ import type {
   MailboxOperationKind,
   MailboxPayload,
   MailboxUrlTestResult,
-  PixelAccountPage,
-  PixelBulkOperationResponse,
-  PixelBatchPage,
-  PixelBatchRecordPage,
-  PixelOverview,
-  PixelUploadRecord,
-  NvOverview,
-  NvUploadBatchPage,
-  NvUploadBatch,
-  NvUploadRecordPage,
-  NvUploadRecord,
-  BatchUploadManifest,
   ManualVerificationAccepted,
   ManualVerificationSubmission,
   SmsKeyStatus,
@@ -70,6 +58,48 @@ export const preflightRun = (data: Record<string, any>) => api('/api/preflight',
 export const startExistingRun = (data: Record<string, any>) => api('/api/start-existing', data)
 export const stopRun = () => api('/api/stop', {})
 export const getMailboxes = () => api<MailboxPayload>('/api/mailboxes')
+export interface FreeMailboxRow {
+  row_id: string
+  line_no: number
+  email: string
+  status: string
+  stage?: string
+  proxy_masked?: string
+  proxy_fingerprint?: string
+  exit_ip?: string
+  plan_type?: string
+  plus_trial_eligible?: boolean
+  twofa_status?: string
+  twofa_error?: string
+  has_access_token?: boolean
+  has_password?: boolean
+  has_totp?: boolean
+  has_credential?: boolean
+  credential_line?: string
+  task_id?: string
+  error?: string
+}
+export const getFreeMailboxes = () => api<{ ok: true; pool: 'free'; rows: FreeMailboxRow[] }>('/api/free/mailboxes')
+export const importFreeMailboxes = (poolContent: string) => api<{ ok: true; imported: number; skipped: number; rows: FreeMailboxRow[] }>(
+  '/api/free/mailboxes/import',
+  { pool_content: poolContent },
+)
+export const deleteFreeMailboxes = (rowIds: string[]) => api<{ ok: true; deleted: number; rows: FreeMailboxRow[] }>(
+  '/api/free/mailboxes/delete',
+  { row_ids: rowIds },
+)
+export const importFreeProxies = (proxyContent: string) => api<{ ok: true; imported: number }>(
+  '/api/free/proxies/import',
+  { proxy_content: proxyContent },
+)
+export const getFreeSecret = (kind: 'token' | 'password' | 'totp' | 'proxy' | 'credential', ids: { task_ids?: string[]; row_ids?: string[] }) => api<{ ok: true; kind: string; value: string }>(
+  '/api/free/secrets',
+  { kind, ...ids },
+)
+export const retryFreeTwofa = (id: string) => api<{ ok: true; task: any; state?: AppState }>(
+  '/api/free/2fa/retry',
+  { task_id: id, row_id: id },
+)
 export const importMailboxes = (poolContent: string) => api<{
   ok: true
   imported: number
@@ -115,9 +145,6 @@ export const startMailboxBatchOperation = (
   background: true,
   rows,
 })
-export const retryMailboxPixel = (rows: Array<{ row_id: string; line_no: number }>) => (
-  api('/api/mailboxes/pixel-retry', { rows })
-)
 export const setMailboxRowsUnavailable = (rows: Array<{ row_id: string; line_no: number }>) => (
   api<{ ok: true; unavailable: number; mailboxes?: MailboxPayload; state?: AppState }>(
     '/api/mailboxes/unavailable',
@@ -204,96 +231,4 @@ export const testMailboxUrl = (value: string) => (
 export const testEmailNotification = (data: Record<string, any>) => api('/api/notifications/email/test', data)
 export const querySmsBalances = (data: Record<string, any>) => (
   api<{ ok: true; queried_at: number; sms_key_statuses: SmsKeyStatus[] }>('/api/sms/balances', data)
-)
-
-export const getPixelTargets = () => api<Record<string, any>>('/api/pixel/targets')
-export const getPixelAccounts = (
-  targetId: string,
-  page: number,
-  pageSize: number,
-  search = '',
-  status = '',
-) => {
-  const params = new URLSearchParams({
-    page: String(page),
-    page_size: String(pageSize),
-    pageSize: String(pageSize),
-  })
-  if (search) params.set('search', search)
-  if (status) params.set('status', status)
-  return api<PixelAccountPage>(`/api/pixel/targets/${encodeURIComponent(targetId)}/accounts?${params}`)
-}
-export const testPixelAccounts = (targetId: string, accountIds: number[]) => (
-  api<PixelBulkOperationResponse>(`/api/pixel/targets/${encodeURIComponent(targetId)}/accounts/bulk-test`, {
-    account_ids: accountIds,
-    accountIds,
-  })
-)
-export const sharePixelAccounts = (targetId: string, accountIds: number[]) => (
-  api<PixelBulkOperationResponse>(`/api/pixel/targets/${encodeURIComponent(targetId)}/accounts/bulk-update`, {
-    account_ids: accountIds,
-    accountIds,
-    share_mode: 'public',
-    shareMode: 'public',
-    makePublic: true,
-  })
-)
-export const reloginPixelTarget = (targetId: string) => (
-  api(`/api/pixel/targets/${encodeURIComponent(targetId)}/relogin`, {})
-)
-export const shareAllPixelAccounts = (targetIds: string[]) => api<Record<string, any>>('/api/pixel/share-all', {
-  target_ids: targetIds,
-  targetIds,
-})
-export const getPixelUploadRecords = () => (
-  api<{ records?: PixelUploadRecord[]; items?: PixelUploadRecord[] }>('/api/pixel/upload-records')
-)
-export const getPixelOverview = () => api<PixelOverview>('/api/pixel/overview')
-export const getPixelUploadBatches = (page = 1, pageSize = 20) => {
-  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
-  return api<PixelBatchPage>(`/api/pixel/upload-batches?${params}`)
-}
-export const getPixelBatchRecords = (
-  batchId: string,
-  page = 1,
-  pageSize = 50,
-  status = '',
-) => {
-  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
-  if (status) params.set('status', status)
-  return api<PixelBatchRecordPage>(
-    `/api/pixel/upload-batches/${encodeURIComponent(batchId)}/records?${params}`,
-  )
-}
-export const retryPixelUpload = (recordId: string, targetId?: string) => (
-  api(`/api/pixel/upload-records/${encodeURIComponent(recordId)}/retry`, targetId
-    ? { target_id: targetId, targetId, target_ids: [targetId], targetIds: [targetId] }
-    : {})
-)
-export const retryPixelBatchTarget = (batchId: string, targetId: string) => (
-  api<{ queued_records: number; queued_deliveries: number; skipped_records: number }>(
-    `/api/pixel/upload-batches/${encodeURIComponent(batchId)}/retry`,
-    { target_id: targetId },
-  )
-)
-export const getNvOverview = () => api<NvOverview>('/api/nv/overview')
-export const getNvUploadBatches = (page = 1, pageSize = 20) => {
-  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
-  return api<NvUploadBatchPage>(`/api/nv/upload-batches?${params}`)
-}
-export const getNvUploadRecords = (page = 1, pageSize = 50) => {
-  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
-  return api<NvUploadRecordPage>(`/api/nv/upload-records?${params}`)
-}
-export const retryNvUpload = (recordId: string) => (
-  api(`/api/nv/upload-records/${encodeURIComponent(recordId)}/retry`, {})
-)
-export const getBatchUploadManifests = (limit = 100) => (
-  api<{ records: BatchUploadManifest[]; total: number }>(`/api/upload-manifests?limit=${limit}`)
-)
-export const retryBatchUploadManifest = (batchId: string, platform: 'pixel' | 'nv') => (
-  api<{ manifest: BatchUploadManifest }>(
-    `/api/upload-manifests/${encodeURIComponent(batchId)}/retry`,
-    { platform },
-  )
 )

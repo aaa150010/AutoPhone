@@ -109,10 +109,6 @@ class WebGuiSecurityTests(unittest.TestCase):
                 "base_url": "https://lynote.xyz/token-tool",
                 "api_token": "online-mailbox-secret",
             },
-            "nv_import": {
-                "endpoint": "https://nv.example.test/import",
-                "api_key": "nv-secret",
-            },
         }
         draft = {
             "performance_policy_version": 5,
@@ -120,7 +116,6 @@ class WebGuiSecurityTests(unittest.TestCase):
             "proxy": "********",
             "email_notification": {"password": "********"},
             "online_mailbox": {"api_token": "********"},
-            "nv_import": {"api_key": "********"},
         }
 
         resolved = self.module._local_config_from_runtime(draft, existing)
@@ -129,7 +124,6 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(resolved["proxy"], existing["proxy"])
         self.assertEqual(resolved["email_notification"]["password"], "smtp-secret")
         self.assertEqual(resolved["online_mailbox"]["api_token"], "online-mailbox-secret")
-        self.assertEqual(resolved["nv_import"]["api_key"], "nv-secret")
 
     def test_multi_platform_key_counts_survive_masked_save_and_reload(self):
         existing = {
@@ -198,10 +192,11 @@ class WebGuiSecurityTests(unittest.TestCase):
         config = {
             "sms_api_keys": ["sms-secret"],
             "proxy": "http://proxy-user:proxy-pass@127.0.0.1:7890",
+            "free_proxy_pool_content": "http://free-user:free-pass@proxy.example.test:8000",
+            "free_register_password": "free-password",
             "sub2api": {"password": "sub2-secret"},
             "email_notification": {"password": "smtp-secret"},
             "online_mailbox": {"api_token": "online-mailbox-secret"},
-            "nv_import": {"api_key": "nv-secret"},
         }
 
         masked = self.module._masked_local_config(config)
@@ -210,15 +205,42 @@ class WebGuiSecurityTests(unittest.TestCase):
         for secret in (
             "sms-secret",
             "proxy-pass",
+            "free-pass",
+            "free-password",
             "sub2-secret",
             "smtp-secret",
             "online-mailbox-secret",
-            "nv-secret",
         ):
             self.assertNotIn(secret, serialized)
         self.assertEqual(masked["email_notification"]["password"], "********")
         self.assertEqual(masked["online_mailbox"]["api_token"], "********")
-        self.assertEqual(masked["nv_import"]["api_key"], "********")
+        self.assertEqual(masked["free_proxy_pool_content"], "********")
+        self.assertEqual(masked["free_register_password"], "********")
+
+    def test_free_proxy_pool_secret_round_trips_through_masked_config(self):
+        content = "http://free-user:free-pass@proxy.example.test:8000\nsocks5h://u:p@proxy.example.test:8001"
+        self.module._write_local_config({"free_proxy_pool_content": content})
+
+        masked = self.module._masked_local_config(
+            self.module._read_local_config()
+        )
+        self.assertEqual(masked["free_proxy_pool_content"], "********")
+        self.assertNotIn("free-pass", json.dumps(masked))
+        self.assertEqual(
+            self.module._local_config_secret("free_proxy_pool_content"),
+            content,
+        )
+        resolved = self.module._local_config_from_runtime(
+            masked,
+            self.module._read_local_config(),
+        )
+        self.assertEqual(resolved["free_proxy_pool_content"], content)
+        self.assertEqual(
+            self.module._merge_local_config({"free_proxy_pool_content": ""})[
+                "free_proxy_pool_content"
+            ],
+            "",
+        )
 
     def test_sms_transport_registry_recovers_when_contextvar_is_empty(self):
         transport = SimpleNamespace(config={"sms_task_id": "task-transport"})
@@ -4276,6 +4298,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(summary["active"], 1)
         self.assertEqual(summary["sms_cost_cny"], 0)
 
+    @unittest.skip("Pixel 上传功能已按需求移除")
     def test_success_result_persistence_does_not_enqueue_pixel_before_batch_terminal(self):
         module = self.module
         original_persist = module._ORIGINAL_PERSIST_RESULT
@@ -4366,6 +4389,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(task_states[0][1]["error"], message)
         self.assertEqual(logs, [(f"task-password [验证邮箱密码/email_password] {message}", "error")])
 
+    @unittest.skip("Pixel 上传功能已按需求移除")
     def test_account_banned_failure_is_terminal_removes_pool_row_and_never_enqueues_pixel(self):
         module = self.module
         original_persist = module._ORIGINAL_PERSIST_RESULT

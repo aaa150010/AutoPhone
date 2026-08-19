@@ -10,7 +10,7 @@ import time
 from typing import Any, Callable
 
 
-STAGE_GROUPS = ("queue", "oauth", "email", "phone", "sms", "finalizing")
+STAGE_GROUPS = ("queue", "oauth", "email", "phone", "sms", "free", "finalizing")
 
 SEGMENTS = {
     "task_slot_waiting": "等待任务槽",
@@ -49,6 +49,19 @@ STAGES = {
         _stage("email_code_waiting", "等待邮箱验证码", "email"),
         _stage("email_code_verifying", "验证邮箱验证码", "email"),
         _stage("mfa_otp_verifying", "验证 2FA 动态码", "email"),
+        _stage("free_proxy_binding", "绑定 Free 注册代理", "free"),
+        _stage("free_oauth_session", "Free OAuth 会话", "free"),
+        _stage("free_email_identifier", "识别 Free 注册邮箱", "free"),
+        _stage("free_email_password", "验证 Free 注册密码", "free"),
+        _stage("free_email_otp_wait", "等待 Free 邮箱验证码", "free"),
+        _stage("free_email_otp_validate", "验证 Free 邮箱验证码", "free"),
+        _stage("free_account_create", "创建 Free 账号", "free"),
+        _stage("free_oauth_callback", "Free OAuth 回调", "free"),
+        _stage("free_access_token", "获取 Free access token", "free"),
+        _stage("free_plan_check", "查询 Free 套餐资格", "free"),
+        _stage("free_twofa_enroll", "注册 Free 账号 2FA", "free"),
+        _stage("free_twofa_activate", "激活 Free 账号 2FA", "free"),
+        _stage("free_result_save", "保存 Free 注册结果", "free"),
         _stage("phone_acquiring", "正在获取手机号", "phone"),
         _stage("phone_submitting", "正在提交手机号", "phone"),
         _stage("sms_waiting", "等待短信验证码", "sms"),
@@ -113,6 +126,7 @@ TERMINAL_TASK_STATUSES = frozenset(
         "repair_pending",
         "email_damaged",
         "account_banned",
+        "twofa_pending",
     }
 )
 

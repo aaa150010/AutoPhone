@@ -4,24 +4,19 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Operation, Setting } from '@element-plus/icons-vue'
 import PageToolbar from '../components/PageToolbar.vue'
 import RunOperationBar from '../components/RunOperationBar.vue'
-import RunUploadDialog from '../components/RunUploadDialog.vue'
+import RunStartDialog from '../components/RunStartDialog.vue'
 import SettingsForm from '../components/SettingsForm.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useAppController } from '../composables/useAppController'
 
 const emit = defineEmits<{ navigate: [string] }>()
 const controller = useAppController()
-const uploadDialog = ref<InstanceType<typeof RunUploadDialog>>()
+const startDialog = ref<InstanceType<typeof RunStartDialog>>()
 
 const statusLabel = computed(() => controller.running.value
   ? controller.runtime.value.stop_requested ? '正在停止' : '运行中'
   : '空闲')
 const statusTone = computed(() => controller.running.value ? 'success' : 'info')
-const nvConfigured = computed(() => Boolean(
-  String(controller.form.nv_import?.endpoint || '').trim()
-  && String(controller.form.nv_import?.api_key || '').trim(),
-))
-
 function messageFor(error: any) {
   return error?.message || String(error || '操作失败')
 }
@@ -45,12 +40,12 @@ async function preflight() {
 }
 
 function openStartDialog() {
-  uploadDialog.value?.open()
+  startDialog.value?.open()
 }
 
-async function start(uploadTargets: { pixel: boolean; nv: boolean }) {
+async function start(selection: { runMode: 'register' | 'free_register' }) {
   try {
-    const result = await controller.start(true, uploadTargets)
+    const result = await controller.start(true, selection.runMode)
     if (!result) return
     ElMessage.success('任务已启动')
     emit('navigate', '/')
@@ -80,7 +75,7 @@ async function importConfig(config: any) {
 async function exportConfig() {
   try {
     await ElMessageBox.confirm(
-      '导出文件包含 SMS Key、SMTP 授权码及其他可迁移密钥，但不包含 NV API Key，请仅保存在可信设备。',
+      '导出文件包含 SMS Key、SMTP 授权码及其他可迁移密钥，请仅保存在可信设备。',
       '导出敏感配置',
       { type: 'warning', confirmButtonText: '确认导出', cancelButtonText: '取消' },
     )
@@ -142,7 +137,7 @@ onMounted(async () => {
     </PageToolbar>
 
     <div class="settings-grid">
-      <WorkspacePanel title="配置参数" :icon="Setting" fill scroll body-padding="normal">
+      <WorkspacePanel title="配置参数" :icon="Setting" fill body-padding="none">
         <SettingsForm
           :model-value="controller.form"
           :sms-key-statuses="controller.smsKeyStatuses.value"
@@ -157,7 +152,7 @@ onMounted(async () => {
 
       <WorkspacePanel title="运行操作" :icon="Operation" body-padding="compact">
         <div class="run-snapshot">
-          <div><span>邮箱可用</span><strong>{{ controller.runtime.value.pool?.available || 0 }}</strong></div>
+          <div><span>邮箱可用</span><strong>{{ Number(controller.runtime.value.pool?.available || 0) + Number(controller.runtime.value.free_register?.pool?.available || 0) }}</strong></div>
           <div><span>运行任务</span><strong>{{ controller.runtime.value.summary?.active || 0 }}</strong></div>
           <div><span>配置状态</span><strong :class="{ dirty: controller.dirty.value }">{{ controller.dirty.value ? '待保存' : '已保存' }}</strong></div>
         </div>
@@ -179,9 +174,8 @@ onMounted(async () => {
         />
       </WorkspacePanel>
     </div>
-    <RunUploadDialog
-      ref="uploadDialog"
-      :nv-configured="nvConfigured"
+    <RunStartDialog
+      ref="startDialog"
       :loading="controller.actions.starting"
       @confirm="start"
     />

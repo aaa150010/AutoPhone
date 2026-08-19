@@ -9,6 +9,7 @@ from pathlib import Path
 import uuid
 from typing import Any, Callable
 
+FREE_REGISTER_PASSWORD = "nuHf5UFg2vtCW!/"
 
 def _coerce_int(value: Any, default: int, minimum: int | None = None, maximum: int | None = None) -> int:
     try:
@@ -113,8 +114,6 @@ class LocalConfigRuntime:
         notifications: Any,
         migrate_email_timeout: Callable[[Any], tuple[dict[str, Any], bool]],
         read_local_config: Callable[[], dict[str, Any]],
-        nv_default_endpoint: str,
-        nv_default_schema_url: str,
         online_mailbox_default_url: str,
         email_timeout_strategy_version: int,
         sms_min_price_default: Any,
@@ -129,8 +128,6 @@ class LocalConfigRuntime:
         self.notifications = notifications
         self.migrate_email_timeout = migrate_email_timeout
         self.read_local_config = read_local_config
-        self.nv_default_endpoint = nv_default_endpoint
-        self.nv_default_schema_url = nv_default_schema_url
         self.online_mailbox_default_url = online_mailbox_default_url
         self.email_timeout_strategy_version = int(email_timeout_strategy_version)
         self.sms_min_price_default = sms_min_price_default
@@ -255,7 +252,6 @@ class LocalConfigRuntime:
     def local_config_secret(self, secret_id: Any) -> Any:
         local = self.read_local_config()
         sub2api = dict(local.get("sub2api") or {})
-        nv_import = dict(local.get("nv_import") or {})
         email_notification = dict(local.get("email_notification") or {})
         online_mailbox = dict(local.get("online_mailbox") or {})
         sms_keys = self.sms_keys_from_config(local)
@@ -265,7 +261,8 @@ class LocalConfigRuntime:
             "sms_api_keys": sms_keys,
             "sms_api_key": sms_keys[0] if sms_keys else "",
             "sub2_password": sub2api.get("password") or "",
-            "nv_import_api_key": nv_import.get("api_key") or "",
+            "free_register_password": FREE_REGISTER_PASSWORD,
+            "free_proxy_pool_content": local.get("free_proxy_pool_content") or "",
             "notification_email_password": email_notification.get("password") or "",
             "online_mailbox_api_token": online_mailbox.get("api_token") or "",
             "proxy": local.get("proxy") or "",
@@ -292,8 +289,6 @@ class LocalConfigRuntime:
         data, _timeout_migrated = self.migrate_email_timeout(data)
         sub2api = dict(data.get("sub2api") or {})
         existing_sub2api = dict(existing.get("sub2api") or {})
-        nv_import = dict(data.get("nv_import") or {})
-        existing_nv_import = dict(existing.get("nv_import") or {})
         email_notification = dict(data.get("email_notification") or {})
         existing_email_notification = dict(existing.get("email_notification") or {})
         online_mailbox = dict(data.get("online_mailbox") or {})
@@ -331,22 +326,7 @@ class LocalConfigRuntime:
                 ),
                 "group": str(sub2api.get("group") or "").strip(),
             },
-            "nv_import": {
-                "endpoint": str(
-                    nv_import.get("endpoint")
-                    or existing_nv_import.get("endpoint")
-                    or self.nv_default_endpoint
-                ).strip(),
-                "schema_url": str(
-                    nv_import.get("schema_url")
-                    or existing_nv_import.get("schema_url")
-                    or self.nv_default_schema_url
-                ).strip(),
-                "api_key": self.local_secret(
-                    nv_import.get("api_key"),
-                    existing_nv_import.get("api_key"),
-                ).strip(),
-            },
+            "free_register_password": FREE_REGISTER_PASSWORD,
             "online_mailbox": {
                 "base_url": str(
                     online_mailbox.get("base_url")
@@ -364,6 +344,13 @@ class LocalConfigRuntime:
             result["proxy"] = self.local_secret(
                 data.get("proxy"), existing.get("proxy")
             ).strip()
+        if "free_proxy_pool_content" in data or "free_proxy_pool_content" in existing:
+            incoming_proxy_pool = data.get("free_proxy_pool_content")
+            result["free_proxy_pool_content"] = (
+                str(existing.get("free_proxy_pool_content") or "").strip()
+                if incoming_proxy_pool in (None, self.secret_mask)
+                else str(incoming_proxy_pool or "").strip()
+            )
         for key in (
             "proxy_scope",
             "target_count",
@@ -371,7 +358,9 @@ class LocalConfigRuntime:
             "node_concurrency",
             "auto_email_login_concurrency",
             "phone_submission_concurrency",
-            "pixel_upload_concurrency",
+            "free_target_count",
+            "free_concurrency",
+            "free_proxy_probe_url",
             "node_timeout",
             "auth_session_retries",
             "email_code_timeout",
@@ -439,13 +428,16 @@ class LocalConfigRuntime:
         patched["proxy"] = self.local_secret(
             patched.get("proxy"), local.get("proxy")
         )
+        if "free_proxy_pool_content" in patched or "free_proxy_pool_content" in local:
+            incoming_proxy_pool = patched.get("free_proxy_pool_content")
+            patched["free_proxy_pool_content"] = (
+                str(local.get("free_proxy_pool_content") or "").strip()
+                if incoming_proxy_pool in (None, self.secret_mask)
+                else str(incoming_proxy_pool or "").strip()
+            )
         if isinstance(local.get("sub2api"), dict):
             patched["sub2api"] = self.merge_nonempty(
                 local.get("sub2api") or {}, patched.get("sub2api") or {}
-            )
-        if isinstance(local.get("nv_import"), dict):
-            patched["nv_import"] = self.merge_nonempty(
-                local.get("nv_import") or {}, patched.get("nv_import") or {}
             )
         if isinstance(local.get("email_notification"), dict):
             patched["email_notification"] = self.merge_email_notification(
@@ -489,20 +481,9 @@ class LocalConfigRuntime:
         patched.pop("nvtoken", None)
         patched.pop("nvtoken_upload", None)
         patched.pop("pixel_upload_enabled", None)
+        patched.pop("nv_import", None)
         patched["sub2api"] = dict(patched.get("sub2api") or {})
-        patched["nv_import"] = {
-            "endpoint": str(
-                (patched.get("nv_import") or {}).get("endpoint")
-                or self.nv_default_endpoint
-            ).strip(),
-            "schema_url": str(
-                (patched.get("nv_import") or {}).get("schema_url")
-                or self.nv_default_schema_url
-            ).strip(),
-            "api_key": str(
-                (patched.get("nv_import") or {}).get("api_key") or ""
-            ).strip(),
-        }
+        patched["free_register_password"] = FREE_REGISTER_PASSWORD
         patched["email_notification"] = self.notifications.validate_email_notification(
             patched.get("email_notification") or {}
         )
@@ -518,11 +499,17 @@ class LocalConfigRuntime:
             minimum=1,
             maximum=5,
         )
-        patched["pixel_upload_concurrency"] = self.int_value(
-            patched.get("pixel_upload_concurrency"),
-            2,
+        patched["free_concurrency"] = self.int_value(
+            patched.get("free_concurrency") or patched.get("concurrency"),
+            5,
             minimum=1,
-            maximum=3,
+            maximum=32,
+        )
+        patched["free_target_count"] = self.int_value(
+            patched.get("free_target_count"),
+            0,
+            minimum=0,
+            maximum=10_000,
         )
         if not self.clean(patched.get("sms_min_price")):
             patched["sms_min_price"] = str(self.sms_min_price_default)

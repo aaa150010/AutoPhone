@@ -2,8 +2,8 @@
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
-import AccountManagementPage from '../pages/AccountManagementPage.vue'
 import MailboxPage from '../pages/MailboxPage.vue'
+import FreeMailboxPoolPage from '../pages/FreeMailboxPoolPage.vue'
 import MailboxSplitterPage from '../pages/MailboxSplitterPage.vue'
 import UrlMailboxTestPage from '../pages/UrlMailboxTestPage.vue'
 import RunPage from '../pages/RunPage.vue'
@@ -16,7 +16,7 @@ import OpenAIConnectivityDiagnosticDialog from './OpenAIConnectivityDiagnosticDi
 const controller = createAppController()
 provide(appControllerKey, controller)
 
-const routes = new Set(['/', '/mailboxes', '/splitter', '/url-test', '/accounts', '/settings'])
+const routes = new Set(['/', '/mailboxes', '/free-mailboxes', '/splitter', '/url-test', '/settings'])
 const pathFromLocation = () => routes.has(window.location.pathname) ? window.location.pathname : '/'
 const activePath = ref(pathFromLocation())
 const diagnosticDialog = ref<InstanceType<typeof OpenAIConnectivityDiagnosticDialog>>()
@@ -110,9 +110,9 @@ onUnmounted(() => {
         <el-menu :default-active="activePath" :collapse="true" :collapse-transition="false" @select="selectPage">
           <el-tooltip content="运行中心" placement="right"><el-menu-item index="/"><el-icon><Monitor /></el-icon><span>运行中心</span></el-menu-item></el-tooltip>
           <el-tooltip content="邮箱管理" placement="right"><el-menu-item index="/mailboxes"><el-icon><MessageBox /></el-icon><span>邮箱管理</span></el-menu-item></el-tooltip>
+          <el-tooltip content="Free 注册邮箱池" placement="right"><el-menu-item index="/free-mailboxes"><el-icon><Tickets /></el-icon><span>Free 注册邮箱池</span></el-menu-item></el-tooltip>
           <el-tooltip content="邮箱分割" placement="right"><el-menu-item index="/splitter"><el-icon><Scissor /></el-icon><span>邮箱分割</span></el-menu-item></el-tooltip>
           <el-tooltip content="URL测试" placement="right"><el-menu-item index="/url-test"><el-icon><Link /></el-icon><span>URL测试</span></el-menu-item></el-tooltip>
-          <el-tooltip content="账号管理" placement="right"><el-menu-item index="/accounts"><el-icon><UserFilled /></el-icon><span>账号管理</span></el-menu-item></el-tooltip>
           <el-tooltip content="运行配置" placement="right"><el-menu-item index="/settings"><el-icon><Setting /></el-icon><span>运行配置</span></el-menu-item></el-tooltip>
         </el-menu>
 
@@ -127,9 +127,9 @@ onUnmounted(() => {
         <div v-if="!controller.initialized.value" class="shell-loading"><el-icon class="is-loading"><Loading /></el-icon></div>
         <RunPage v-else-if="activePath === '/'" @navigate="navigate" />
         <MailboxPage v-else-if="activePath === '/mailboxes'" />
+        <FreeMailboxPoolPage v-else-if="activePath === '/free-mailboxes'" />
         <MailboxSplitterPage v-else-if="activePath === '/splitter'" />
         <UrlMailboxTestPage v-else-if="activePath === '/url-test'" />
-        <AccountManagementPage v-else-if="activePath === '/accounts'" />
         <SettingsPage v-else @navigate="navigate" />
       </el-main>
     </el-container>

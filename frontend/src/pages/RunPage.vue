@@ -16,6 +16,7 @@ import {
   WarningFilled,
 } from '@element-plus/icons-vue'
 import {
+  getFreeSecret,
   getRuntimeTaskMailboxPassword,
   getRuntimeTaskMailboxTotp,
   getRuntimeTaskMailboxUrl,
@@ -25,7 +26,7 @@ import LogPanel from '../components/LogPanel.vue'
 import MailboxImportDialog from '../components/MailboxImportDialog.vue'
 import OpenAIConnectivityBanner from '../components/OpenAIConnectivityBanner.vue'
 import PageToolbar from '../components/PageToolbar.vue'
-import RunUploadDialog from '../components/RunUploadDialog.vue'
+import RunStartDialog from '../components/RunStartDialog.vue'
 import TaskResultsPanel from '../components/TaskResultsPanel.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useAppController } from '../composables/useAppController'
@@ -41,7 +42,7 @@ import {
 const emit = defineEmits<{ navigate: [string] }>()
 const controller = useAppController()
 const mailboxImportDialog = ref<InstanceType<typeof MailboxImportDialog>>()
-const uploadDialog = ref<InstanceType<typeof RunUploadDialog>>()
+const startDialog = ref<InstanceType<typeof RunStartDialog>>()
 const openingMailboxUrlTaskIds = ref<string[]>([])
 const loadingMailboxPasswordTaskIds = ref<string[]>([])
 const loadingMailboxTotpTaskIds = ref<string[]>([])
@@ -94,6 +95,7 @@ onUnmounted(finishLogResize)
 const terminalStatuses = new Set([
   'success', 'failed', 'stopped', 'stopped_before_start', 'retryable_infra',
   'retryable_email', 'repair_pending', 'email_damaged', 'account_banned',
+  'twofa_pending',
 ])
 
 const tasks = computed(() => controller.runtime.value.tasks || [])
@@ -148,7 +150,13 @@ const batchCompleted = computed(() => Math.min(
 ))
 
 const metrics = computed(() => [
-  { title: '可用邮箱', value: Number(controller.runtime.value.pool?.available || 0), detail: undefined, icon: Message, tone: 'primary' },
+  {
+    title: '可用邮箱',
+    value: Number(controller.runtime.value.pool?.available || 0) + Number(controller.runtime.value.free_register?.pool?.available || 0),
+    detail: `接码 ${Number(controller.runtime.value.pool?.available || 0)} / Free ${Number(controller.runtime.value.free_register?.pool?.available || 0)}`,
+    icon: Message,
+    tone: 'primary',
+  },
   { title: '运行中', value: Number(summary.value.active || 0), detail: undefined, icon: Monitor, tone: 'warning' },
   { title: '成功', value: Number(summary.value.success || 0), detail: undefined, icon: CircleCheckFilled, tone: 'success' },
   { title: '未成功', value: Number(summary.value.failed || 0) + Number(summary.value.stopped || 0), detail: undefined, icon: CircleCloseFilled, tone: 'danger' },
@@ -178,23 +186,18 @@ const statusTone = computed(() => controller.runtime.value.sms_safe_stop
   : controller.runtime.value.stop_requested
     ? 'warning'
     : controller.running.value ? 'success' : 'info')
-const nvConfigured = computed(() => Boolean(
-  String(controller.form.nv_import?.endpoint || '').trim()
-  && String(controller.form.nv_import?.api_key || '').trim(),
-))
-
 function openStartDialog() {
   if (controller.dirty.value) {
     emit('navigate', '/settings')
     ElMessage.warning('请先保存运行配置')
     return
   }
-  uploadDialog.value?.open()
+  startDialog.value?.open()
 }
 
-async function start(uploadTargets: { pixel: boolean; nv: boolean }) {
+async function start(selection: { runMode: 'register' | 'free_register' }) {
   try {
-    const result = await controller.start(false, uploadTargets)
+    const result = await controller.start(false, selection.runMode)
     if (!result) return
     ElMessage.success('任务已启动')
   } catch (error: any) {
@@ -266,6 +269,27 @@ async function copyTaskTotp(task: RuntimeTask) {
     ElMessage.error(error?.message || '复制临时 2FA 验证码失败')
   } finally {
     loadingMailboxTotpTaskIds.value = loadingMailboxTotpTaskIds.value.filter(id => id !== taskId)
+  }
+}
+
+async function copyFreeSecret(payload: { kind: 'token' | 'password' | 'totp' | 'proxy' | 'credential'; tasks: RuntimeTask[] }) {
+  const tasks = payload.tasks || []
+  if (!tasks.length) return
+  try {
+    const result = await getFreeSecret(payload.kind, { task_ids: tasks.map(task => task.task_id) })
+    await navigator.clipboard.writeText(String(result.value || ''))
+    ElMessage.success(payload.kind === 'token' ? '已复制 Free Token' : payload.kind === 'credential' ? '已复制 Free 完整凭据' : `已复制 Free ${payload.kind === 'totp' ? '2FA 密钥' : payload.kind === 'proxy' ? '代理' : '密码'}`)
+  } catch (error: any) {
+    ElMessage.error(error?.message || 'Free 敏感字段复制失败')
+  }
+}
+
+async function retryFreeTwofa(task: RuntimeTask) {
+  try {
+    await controller.retryFreeTwofa(task.task_id)
+    ElMessage.info('已重新加入 2FA 设置任务')
+  } catch (error: any) {
+    ElMessage.error(error?.message || '2FA 重试失败')
   }
 }
 
@@ -380,6 +404,8 @@ async function disableConnectivityGuard() {
             @mailbox-password="copyTaskPassword"
             @mailbox-totp="copyTaskTotp"
             @mailbox-url="openTaskMailboxUrl"
+            @free-secret="copyFreeSecret"
+            @free-twofa-retry="retryFreeTwofa"
             @update:active-view="taskView = $event"
             @counts="taskCounts = $event"
           />
@@ -393,9 +419,8 @@ async function disableConnectivityGuard() {
       </div>
     </div>
 
-    <RunUploadDialog
-      ref="uploadDialog"
-      :nv-configured="nvConfigured"
+    <RunStartDialog
+      ref="startDialog"
       :loading="controller.actions.starting"
       @confirm="start"
     />

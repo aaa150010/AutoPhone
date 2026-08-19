@@ -3,6 +3,7 @@ import type { RuntimeTask } from '../types/api'
 export const terminalTaskStatuses = new Set([
   'success', 'failed', 'stopped', 'stopped_before_start', 'cancelled', 'canceled', 'retryable_infra',
   'retryable_email', 'repair_pending', 'email_damaged', 'account_banned',
+  'twofa_pending',
 ])
 
 export const failedTaskStatuses = new Set([
@@ -20,6 +21,7 @@ export function taskNeedsVerification(task: RuntimeTask) {
 
 export function taskNeedsAttention(task: RuntimeTask, accepted: ReadonlySet<string>) {
   return (taskNeedsVerification(task) && !accepted.has(taskVerificationKey(task)))
+    || String(task.status || '').toLowerCase() === 'twofa_pending'
     || failedTaskStatuses.has(String(task.status || '').toLowerCase())
 }
 

@@ -242,10 +242,9 @@ class PublicStateRuntime:
         value.pop("sms_api_key", None)
         if "gptmail_api_key" in value:
             value["gptmail_api_key"] = self._mask_secret(value.get("gptmail_api_key"))
-        if "proxy" in value:
-            value["proxy"] = self._mask_secret(value.get("proxy"))
-        if "password" in value:
-            value["password"] = self._mask_secret(value.get("password"))
+        for secret_key in ("proxy", "free_proxy_pool_content", "free_register_password", "password"):
+            if secret_key in value:
+                value[secret_key] = self._mask_secret(value.get(secret_key))
         if sub2api:
             sub2api["password"] = self._mask_secret(sub2api.get("password"))
             value["sub2api"] = sub2api

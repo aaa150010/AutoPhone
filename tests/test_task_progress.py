@@ -221,6 +221,7 @@ class TaskProgressTests(unittest.TestCase):
         self.assertEqual(runtime["stage_counts"], {
             "queue": 1,
             "oauth": 1,
+            "free": 0,
             "email": 0,
             "phone": 0,
             "sms": 0,

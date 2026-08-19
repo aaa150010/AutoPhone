@@ -6,15 +6,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-import threading
 import time
 from typing import Any, Callable
 import uuid
-
-try:
-    from . import pixel_route_runtime as _pixel_route_runtime_ext
-except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
-    import pixel_route_runtime as _pixel_route_runtime_ext
 
 try:
     from .mailbox_batch_operations import MailboxBatchRouteController
@@ -38,15 +32,12 @@ try:
     from .runtime_info_routes import RuntimeInfoRouteController
     from .route_failures import explicit_failure_payload
     from .sms_balance_routes import SmsBalanceRouteController
-    from .web_route_validation import is_secure_nv_url, normalize_upload_targets
 except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
     from local_config_routes import LocalConfigRouteController
     from runtime_info_routes import RuntimeInfoRouteController
     from route_failures import explicit_failure_payload
     from sms_balance_routes import SmsBalanceRouteController
-    from web_route_validation import is_secure_nv_url, normalize_upload_targets
 
-_PIXEL_AUTO_TARGET_IDS = tuple(f"pixel-{index}" for index in range(2, 8))
 _SHA256_HEX_CHARACTERS = frozenset("0123456789abcdef")
 def _safe_int(value: Any, default: int) -> int:
     try:
@@ -117,6 +108,7 @@ class WebRouteContext:
     query_sms_balances: Callable[[dict[str, Any]], list[dict[str, Any]]] | None = None
     online_mailbox_client_factory: Callable[[str, str], Any] | None = None
     failure_secrets: Callable[[dict[str, Any]], Sequence[Any]] | None = None
+    free_register_manager: Any | None = None
 
 
 def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
@@ -136,6 +128,10 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     store = closure["store"]
     mailbox_admin = context.mailbox_admin_factory(store, importer, logs)
 
+    free_manager = context.free_register_manager
+    if free_manager is not None:
+        free_manager.log_fn = logs.add
+
     def route_secrets(config: Any) -> Sequence[Any]:
         if context.failure_secrets is None or not isinstance(config, dict):
             return ()
@@ -143,19 +139,8 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             return context.failure_secrets(config)
         except Exception:
             return ()
-    if context.pixel_upload_queue is not None:
-        context.pixel_upload_queue.log_fn = logs.add
-    if context.nv_upload_queue is not None:
-        context.nv_upload_queue.log_fn = logs.add
-    if context.batch_upload_coordinator is not None:
-        context.batch_upload_coordinator.log_fn = logs.add
     if context.run_batch_manifest is not None:
         context.run_batch_manifest.log_fn = logs.add
-    pixel_target_cache: dict[str, Any] = {
-        "expires_at": 0.0,
-        "targets": [],
-    }
-    pixel_target_cache_lock = threading.Lock()
     initial_config = store.load()
     context.write_local_config(
         context.local_config_from_runtime(initial_config, context.read_local_config())
@@ -179,7 +164,42 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             app.add_url_rule("/assets/<path:filename>", "spa_asset", spa_asset, methods=["GET"])
 
     def public_state():
-        return context.masked_state(state())
+        value = context.masked_state(state())
+        if free_manager is None:
+            return value
+        try:
+            free_state = free_manager.public_state()
+            runtime = value.setdefault("runtime", {})
+            existing_tasks = runtime.get("tasks") if isinstance(runtime.get("tasks"), list) else []
+            runtime["tasks"] = existing_tasks + list(free_state.get("tasks") or [])
+            runtime["running"] = bool(runtime.get("running") or free_state.get("running"))
+            stage_counts = runtime.get("stage_counts") if isinstance(runtime.get("stage_counts"), dict) else {}
+            free_active = sum(
+                1
+                for task in free_state.get("tasks") or []
+                if isinstance(task, Mapping)
+                and str(task.get("status") or "").lower() not in {"success", "failed", "stopped", "twofa_pending"}
+                and isinstance(task.get("progress"), Mapping)
+                and str(task["progress"].get("group") or "") == "free"
+            )
+            stage_counts["free"] = int(stage_counts.get("free") or 0) + free_active
+            runtime["stage_counts"] = stage_counts
+            runtime["free_register"] = {
+                key: free_state.get(key)
+                for key in ("running", "batch_id", "pool", "summary")
+                if key in free_state
+            }
+            summary = runtime.get("summary") if isinstance(runtime.get("summary"), dict) else {}
+            free_summary = free_state.get("summary") if isinstance(free_state.get("summary"), dict) else {}
+            for key in ("total", "active", "success", "failed", "stopped"):
+                try:
+                    summary[key] = int(summary.get(key) or 0) + int(free_summary.get(key) or 0)
+                except (TypeError, ValueError):
+                    pass
+            runtime["summary"] = summary
+        except Exception:
+            pass
+        return value
 
     def busy_response(message="另一个配置、预检或启动请求正在处理中"):
         return module.jsonify(ok=False, error=message, state=public_state()), 409
@@ -223,7 +243,9 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             return busy_response()
         data: dict[str, Any] = {}
         try:
-            if importer.status(settings()).get("running"):
+            if importer.status(settings()).get("running") or (
+                free_manager is not None and free_manager.public_state().get("running")
+            ):
                 return module.jsonify(
                     ok=False,
                     error="任务运行中，停止后才能修改配置",
@@ -266,6 +288,8 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     def stop():
         with context.lifecycle_lock:
             importer.stop()
+            if free_manager is not None:
+                free_manager.stop()
         return module.jsonify(ok=True, state=public_state())
 
     if "stop" in app.view_functions:
@@ -275,7 +299,9 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         if not context.lifecycle_lock.acquire(blocking=False):
             return busy_response()
         try:
-            if importer.status(settings()).get("running"):
+            if importer.status(settings()).get("running") or (
+                free_manager is not None and free_manager.public_state().get("running")
+            ):
                 return module.jsonify(
                     ok=False,
                     error="任务运行中，停止后才能执行预检",
@@ -330,7 +356,9 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             return busy_response("另一个启动请求正在处理中")
         failure_config: dict[str, Any] = {}
         try:
-            if importer.status(settings()).get("running"):
+            if importer.status(settings()).get("running") or (
+                free_manager is not None and free_manager.public_state().get("running")
+            ):
                 return module.jsonify(
                     ok=False,
                     error="已有任务运行中，请先停止并等待任务结束",
@@ -342,49 +370,49 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 return module.jsonify(ok=False, error="配置必须是 JSON 对象"), 400
             failure_config = dict(data)
 
-            upload_targets = normalize_upload_targets(data.pop("upload_targets", None))
-            if upload_targets is None:
-                return module.jsonify(ok=False, error="上传目标参数必须是 JSON 对象"), 400
-            if upload_targets["pixel"] and context.pixel_upload_queue is None:
-                return module.jsonify(ok=False, error="Pixel 上传服务尚未启用"), 503
-            if upload_targets["nv"]:
-                request_nv_import = data.get("nv_import")
-                request_has_nv_config = isinstance(request_nv_import, Mapping) and any(
-                    key in request_nv_import for key in ("endpoint", "schema_url", "api_key")
-                )
-                prospective = context.local_config_from_runtime(
-                    data,
-                    context.read_local_config(),
-                )
-                nv_import = prospective.get("nv_import") if isinstance(prospective, Mapping) else None
-                nv_import = nv_import if isinstance(nv_import, Mapping) else {}
-                endpoint = str(nv_import.get("endpoint") or "").strip()
-                schema_url = str(nv_import.get("schema_url") or "").strip()
-                api_key = str(nv_import.get("api_key") or "").strip()
-                configured_from_request = bool(
-                    context.nv_upload_queue is not None
-                    and is_secure_nv_url(endpoint)
-                    and (not schema_url or is_secure_nv_url(schema_url))
-                    and api_key
-                    and api_key != "********"
-                )
-                nv_client = getattr(context.nv_upload_queue, "client", None)
-                configured = configured_from_request if request_has_nv_config else bool(
-                    context.nv_upload_queue is not None
-                    and callable(getattr(nv_client, "configured", None))
-                    and nv_client.configured()
-                )
-                if not configured:
+            run_mode = str(data.get("run_mode") or "register").strip().lower()
+            if run_mode == "free_register":
+                if free_manager is None:
                     return module.jsonify(
                         ok=False,
-                        code="nv_configuration_invalid",
-                        node_code="nv_import",
-                        node_label="NV 账号导入",
-                        error=(
-                            "NV 账号导入 [NV 账号导入/nv_import]：地址必须使用 HTTPS"
-                            "（仅本机回环地址可使用 HTTP），且 API Key 必须已配置"
-                        ),
-                    ), 400
+                        node_code="free_run_start",
+                        node_label="启动 Free 注册",
+                        error="启动 Free 注册 [启动 Free 注册/free_run_start]：Free 注册服务尚未初始化",
+                    ), 503
+                try:
+                    pool_content = str(data.pop("free_pool_content", "") or "")
+                    proxy_content = str(data.get("free_proxy_pool_content") or "")
+                    config = save_active_config(data)
+                    result = free_manager.start(
+                        config,
+                        pool_content=pool_content,
+                        proxy_content=proxy_content,
+                    )
+                except Exception as exc:
+                    code = str(getattr(exc, "node_code", "free_run_start") or "free_run_start")
+                    label = str(getattr(exc, "node_label", "启动 Free 注册") or "启动 Free 注册")
+                    detail = _free_error_detail(exc, code)
+                    payload = explicit_failure_payload(
+                        node_code=code,
+                        node_label=label,
+                        error_code=code,
+                        cause=detail,
+                        secrets=route_secrets(failure_config),
+                        state=public_state(),
+                        retryable=bool(getattr(exc, "retryable", True)),
+                        http_status=400,
+                    )
+                    logs.add(f"[{label}/{code}] {payload['error']}", "error")
+                    return module.jsonify(payload), 400
+                return module.jsonify(
+                    ok=True,
+                    batch_id=result.get("batch_id"),
+                    batch={"batch_id": result.get("batch_id"), "members": result.get("tasks") or []},
+                    state=public_state(),
+                )
+
+            data.pop("upload_targets", None)
+            data.pop("nv_import", None)
 
             run_mailbox_rows = _normalize_run_mailbox_rows(data.pop("run_mailbox_rows", None))
             if run_mailbox_rows is None:
@@ -451,7 +479,6 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             batch_started_at = int(time.time())
             run_config["batch_started_at"] = batch_started_at
             run_config["batch_id"] = allocate_run_batch_id(context, batch_started_at, logs)
-            run_config["_gptphone_upload_targets"] = upload_targets
             run_config["_gptphone_sms_preflight_statuses"] = [
                 dict(row)
                 for row in sms_statuses or ()
@@ -461,17 +488,6 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 run_config["target_count"] = len(run_mailbox_rows)
                 run_config["_gptphone_run_mailbox_rows"] = run_mailbox_rows
             importer.start(run_config)
-            if context.batch_upload_coordinator is not None and any(upload_targets.values()):
-                try:
-                    context.batch_upload_coordinator.begin(importer, run_config)
-                except Exception as exc:
-                    payload = explicit_failure_payload(
-                        node_code="batch_upload_manifest", node_label="创建批次上传清单",
-                        error_code="batch_upload_manifest_create_failed",
-                        cause=context.safe_runtime_error(exc), secrets=route_secrets(failure_config),
-                        retryable=True,
-                    )
-                    logs.add(f"[{payload['node_label']}/{payload['node_code']}] {payload['error']}；注册任务继续运行", "error")
             batch = (
                 context.run_batch_manifest.get(run_config["batch_id"])
                 if context.run_batch_manifest is not None
@@ -481,7 +497,6 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 ok=True,
                 batch_id=run_config["batch_id"],
                 batch=batch,
-                upload_targets=upload_targets,
                 state=public_state(),
             )
         except ValueError as exc:
@@ -514,6 +529,115 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
 
     if "start_existing" not in app.view_functions:
         app.add_url_rule("/api/start-existing", "start_existing", start_existing, methods=["POST"])
+
+    def api_free_mailboxes():
+        if free_manager is None:
+            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        return module.jsonify(ok=True, pool="free", rows=free_manager.pool.public_rows())
+
+    def _free_error_detail(exc: Exception, code: str = "") -> str:
+        # The shared mapper carries the last OAuth task context. Keep an
+        # isolated Free node's own diagnostic, especially proxy preflight,
+        # from being rewritten as an unrelated OAuth/TLS failure.
+        if str(code or getattr(exc, "node_code", "") or "").startswith("free_"):
+            return str(exc or "Free 注册失败").strip()[:500] or "Free 注册失败"
+        return context.safe_runtime_error(exc)
+
+    def free_error_response(exc: Exception, *, default_code: str, default_label: str, status: int = 400):
+        code = str(getattr(exc, "node_code", "") or default_code)
+        label = str(getattr(exc, "node_label", "") or default_label)
+        retryable = bool(getattr(exc, "retryable", status >= 500))
+        cause = _free_error_detail(exc, code) if hasattr(exc, "node_code") else f"服务异常（{type(exc).__name__}）"
+        payload = explicit_failure_payload(
+            node_code=code,
+            node_label=label,
+            error_code=code,
+            cause=cause,
+            retryable=retryable,
+            http_status=status,
+            state=public_state(),
+        )
+        logs.add(f"[{label}/{code}] {payload['error']}", "error")
+        return module.jsonify(payload), status
+
+    def api_free_pool_import():
+        if free_manager is None:
+            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        data = module.request.get_json(silent=True) or {}
+        if not isinstance(data, Mapping):
+            return free_error_response(ValueError("请求必须是 JSON 对象"), default_code="free_pool", default_label="Free 邮箱池")
+        try:
+            importer_with_stats = getattr(free_manager.pool, "import_text_with_stats", None)
+            if callable(importer_with_stats):
+                count, skipped = importer_with_stats(str(data.get("pool_content") or ""))
+            else:
+                count = free_manager.pool.import_text(str(data.get("pool_content") or ""))
+                skipped = 0
+            return module.jsonify(
+                ok=True,
+                imported=count,
+                skipped=skipped,
+                rows=free_manager.pool.public_rows(),
+            )
+        except Exception as exc:
+            return free_error_response(exc, default_code="free_pool", default_label="Free 邮箱池")
+
+    def api_free_pool_delete():
+        if free_manager is None:
+            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        data = module.request.get_json(silent=True) or {}
+        if not isinstance(data, Mapping):
+            return free_error_response(ValueError("请求必须是 JSON 对象"), default_code="free_pool_delete", default_label="删除 Free 邮箱")
+        raw_row_ids = data.get("row_ids")
+        if not isinstance(raw_row_ids, list):
+            return free_error_response(ValueError("请选择要删除的 Free 邮箱"), default_code="free_pool_delete", default_label="删除 Free 邮箱")
+        try:
+            deleted = free_manager.pool.delete([str(value or "") for value in raw_row_ids])
+            return module.jsonify(ok=True, deleted=deleted, rows=free_manager.pool.public_rows())
+        except Exception as exc:
+            return free_error_response(exc, default_code="free_pool_delete", default_label="删除 Free 邮箱")
+
+    def api_free_proxy_import():
+        if free_manager is None:
+            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        data = module.request.get_json(silent=True) or {}
+        if not isinstance(data, Mapping):
+            return free_error_response(ValueError("请求必须是 JSON 对象"), default_code="free_proxy_pool", default_label="Free 代理池")
+        try:
+            count = free_manager.proxies.import_text(str(data.get("proxy_content") or ""))
+            return module.jsonify(ok=True, imported=count)
+        except Exception as exc:
+            return free_error_response(exc, default_code="free_proxy_pool", default_label="Free 代理池")
+
+    def api_free_secret():
+        if free_manager is None:
+            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        data = module.request.get_json(silent=True) or {}
+        if not isinstance(data, Mapping):
+            return free_error_response(ValueError("请求必须是 JSON 对象"), default_code="free_secret", default_label="读取 Free 敏感字段")
+        raw_task_ids = data.get("task_ids") if isinstance(data.get("task_ids"), list) else [data.get("task_id")]
+        task_ids = [str(value).strip() for value in raw_task_ids if str(value or "").strip()]
+        kind = str(data.get("kind") or "").strip().lower()
+        if kind not in {"token", "password", "totp", "proxy", "credential"}:
+            return free_error_response(ValueError("敏感字段类型无效"), default_code="free_secret", default_label="读取 Free 敏感字段")
+        raw_row_ids = data.get("row_ids") if isinstance(data.get("row_ids"), list) else [data.get("row_id")]
+        row_ids = [str(value).strip() for value in raw_row_ids if str(value or "").strip()]
+        try:
+            return module.jsonify(ok=True, kind=kind, value=free_manager.secret(task_ids, kind, row_ids=row_ids))
+        except Exception as exc:
+            return free_error_response(exc, default_code="free_secret", default_label="读取 Free 敏感字段")
+
+    def api_free_twofa_retry():
+        if free_manager is None:
+            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        data = module.request.get_json(silent=True) or {}
+        if not isinstance(data, Mapping):
+            return free_error_response(ValueError("请求必须是 JSON 对象"), default_code="free_twofa_retry", default_label="重试 Free 账号 2FA")
+        try:
+            task = free_manager.retry_twofa(str(data.get("task_id") or ""), settings())
+            return module.jsonify(ok=True, task=task, state=public_state())
+        except Exception as exc:
+            return free_error_response(exc, default_code="free_twofa_retry", default_label="重试 Free 账号 2FA")
 
     def mailbox_manager():
         if frontend_dist.exists():
@@ -730,7 +854,6 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 target_count=len(rows),
                 batch_started_at=batch_started_at,
                 batch_id=allocate_run_batch_id(context, batch_started_at, logs),
-                _gptphone_upload_targets={"pixel": False, "nv": False},
                 _gptphone_relogin_rows=rows,
                 _gptphone_run_mailbox_rows=[
                     {"row_id": row["row_id"], "line_no": row["line_no"]}
@@ -786,29 +909,9 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         status = 409 if code == "mailbox_rows_stale" else 400
         return module.jsonify(dict(result)), status
 
-    def api_mailboxes_pixel_retry():
-        if context.pixel_upload_queue is None:
-            return pixel_unavailable(queue=True)
-        try:
-            selected = mailbox_admin.selected_success_results(request_json_object())
-            if not selected.get("ok"):
-                return mailbox_selection_error(selected)
-            records = []
-            for item in selected.get("items") or []:
-                records.append(
-                    context.pixel_upload_queue.requeue(item["task_id"], item["result_file"])
-                )
-            logs.add(f"邮箱管理已将 {len(records)} 个账号重新加入 Pixel 上传队列", "success")
-            return module.jsonify(
-                ok=True,
-                queued=len(records),
-                skipped=int(selected.get("skipped") or 0),
-                records=records,
-                mailboxes=mailbox_admin.list_mailboxes(),
-                state=public_state(),
-            )
-        except Exception as exc:
-            return pixel_error_response(exc)
+    def request_json_object() -> dict[str, Any]:
+        value = module.request.get_json(silent=True) or {}
+        return dict(value) if isinstance(value, Mapping) else {}
 
     def api_mailboxes_sub2_export():
         if context.pixel_payload_builder is None:
@@ -881,458 +984,8 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             logs.add(f"[SUB2API 导出/sub2_export] {payload['error']}", "error")
             return module.jsonify(payload), 400
 
-    def pixel_error_response(exc: Exception):
-        public_message = getattr(exc, "public_message", "")
-        try:
-            status = int(getattr(exc, "status_code", 500) or 500)
-        except (TypeError, ValueError):
-            status = 500
-        if status < 400 or status > 599:
-            status = 500
-        cause = public_message or context.safe_runtime_error(exc)
-        payload = explicit_failure_payload(
-            node_code="pixel_management",
-            node_label="Pixel 管理操作",
-            error_code="pixel_management_failed",
-            cause=cause,
-            retryable=status >= 500,
-            http_status=status,
-        )
-        logs.add(f"[Pixel 管理操作/pixel_management] {payload['error']}", "error")
-        return module.jsonify(payload), status
-
-    def pixel_unavailable(*, queue: bool = False):
-        name = "Pixel 上传队列" if queue else "Pixel 管理服务"
-        return module.jsonify(ok=False, error=f"{name}尚未配置"), 503
-
-    def nv_error_response(exc: Exception):
-        public_message = str(getattr(exc, "public_message", "") or "")
-        failure_builder = getattr(exc, "failure", None)
-        failure = failure_builder() if callable(failure_builder) else None
-        try:
-            status = int(getattr(exc, "status_code", 500) or 500)
-        except (TypeError, ValueError):
-            status = 500
-        if not 400 <= status <= 599:
-            status = 500
-        if public_message:
-            payload = {
-                "ok": False,
-                "node_code": "nv_import",
-                "node_label": "NV 账号导入",
-                "error": public_message,
-            }
-            if isinstance(failure, Mapping):
-                payload["failure"] = dict(failure)
-                payload["code"] = str(failure.get("error_code") or "nv_import_failed")
-            return module.jsonify(payload), status
-        payload = explicit_failure_payload(
-            node_code="nv_import",
-            node_label="NV 账号导入",
-            error_code="nv_import_failed",
-            cause=context.safe_runtime_error(exc),
-            retryable=True,
-        )
-        logs.add(f"[NV 账号导入/nv_import] {payload['error']}", "error")
-        return module.jsonify(payload), 500
-
-    def pixel_json_result(value: Any, **extra: Any):
-        payload = dict(value) if isinstance(value, Mapping) else {}
-        payload.update(extra)
-        payload.setdefault("ok", True)
-        return module.jsonify(payload)
-
-    def request_json_object() -> dict[str, Any]:
-        value = module.request.get_json(silent=True) or {}
-        return dict(value) if isinstance(value, Mapping) else {}
-
-    account_ids_from = _pixel_route_runtime_ext.account_ids_from
-    target_ids_from = _pixel_route_runtime_ext.target_ids_from
-
-    def pixel_target_rejected(target_id: Any):
-        normalized = str(target_id or "").strip()
-        if normalized in _PIXEL_AUTO_TARGET_IDS:
-            return None
-        return module.jsonify(
-            ok=False,
-            error="Pixel 账号管理：该目标未开放（仅支持 pixel-2 至 pixel-7）",
-        ), 404
-
-    def pixel_target_totals() -> tuple[list[dict[str, Any]], str]:
-        now = time.monotonic()
-        with pixel_target_cache_lock:
-            if pixel_target_cache["targets"] and now < float(pixel_target_cache["expires_at"]):
-                return [dict(item) for item in pixel_target_cache["targets"]], ""
-        if context.pixel_client is None:
-            return [
-                {"target_id": target_id, "account_count": None}
-                for target_id in _PIXEL_AUTO_TARGET_IDS
-            ], "Pixel 管理服务尚未配置"
-        try:
-            payload = context.pixel_client.targets()
-            source = payload.get("data") if isinstance(payload, Mapping) and isinstance(payload.get("data"), Mapping) else payload
-            raw_targets = source.get("targets") if isinstance(source, Mapping) else []
-            by_id: dict[str, Mapping[str, Any]] = {}
-            for item in raw_targets if isinstance(raw_targets, list) else []:
-                if not isinstance(item, Mapping):
-                    continue
-                target_id = str(
-                    item.get("id") or item.get("target_id") or item.get("targetId") or ""
-                ).strip()
-                if target_id in _PIXEL_AUTO_TARGET_IDS:
-                    by_id[target_id] = item
-            targets = []
-            for target_id in _PIXEL_AUTO_TARGET_IDS:
-                item = by_id.get(target_id, {})
-                raw_count = None
-                for key in ("account_count", "accountCount", "accounts_count", "accountsCount", "total"):
-                    if item.get(key) is not None:
-                        raw_count = item.get(key)
-                        break
-                if raw_count is None and isinstance(item.get("stats"), Mapping):
-                    raw_count = item["stats"].get("total")
-                count = max(0, _safe_int(raw_count, 0)) if raw_count is not None else None
-                targets.append({"target_id": target_id, "account_count": count})
-            with pixel_target_cache_lock:
-                pixel_target_cache["targets"] = [dict(item) for item in targets]
-                pixel_target_cache["expires_at"] = now + 30.0
-            return targets, ""
-        except Exception as exc:
-            public_message = str(getattr(exc, "public_message", "") or "").strip()
-            with pixel_target_cache_lock:
-                cached = [dict(item) for item in pixel_target_cache["targets"]]
-            if not cached:
-                cached = [
-                    {"target_id": target_id, "account_count": None}
-                    for target_id in _PIXEL_AUTO_TARGET_IDS
-                ]
-            return cached, public_message or "Pixel 平台账号总数暂时无法读取"
-
-    def api_pixel_targets():
-        if context.pixel_client is None:
-            return pixel_unavailable()
-        try:
-            result = context.pixel_client.targets()
-            payload = dict(result) if isinstance(result, Mapping) else {}
-            targets = payload.get("targets")
-            if isinstance(targets, list):
-                public_targets = []
-                for value in targets:
-                    if not isinstance(value, Mapping):
-                        continue
-                    item = dict(value)
-                    target_id = str(
-                        item.get("id") or item.get("target_id") or item.get("targetId") or ""
-                    ).strip()
-                    if target_id not in _PIXEL_AUTO_TARGET_IDS:
-                        continue
-                    item["autoUpload"] = target_id in _PIXEL_AUTO_TARGET_IDS
-                    item["excluded"] = False
-                    public_targets.append(item)
-                payload["targets"] = public_targets
-            return pixel_json_result(payload)
-        except Exception as exc:
-            return pixel_error_response(exc)
-
-    def api_pixel_accounts(target_id: str):
-        rejected = pixel_target_rejected(target_id)
-        if rejected is not None:
-            return rejected
-        if context.pixel_client is None:
-            return pixel_unavailable()
-        try:
-            page_size = module.request.args.get("page_size")
-            if page_size is None:
-                page_size = module.request.args.get("pageSize", 50)
-            result = context.pixel_client.accounts(
-                target_id,
-                page=module.request.args.get("page", 1),
-                page_size=page_size,
-                search=module.request.args.get("search", ""),
-                status=module.request.args.get("status", ""),
-            )
-            return pixel_json_result(result)
-        except Exception as exc:
-            return pixel_error_response(exc)
-
-    def api_pixel_accounts_bulk_test(target_id: str):
-        rejected = pixel_target_rejected(target_id)
-        if rejected is not None:
-            return rejected
-        if context.pixel_client is None:
-            return pixel_unavailable()
-        try:
-            data = request_json_object()
-            result = context.pixel_client.bulk_test(target_id, account_ids_from(data))
-            return pixel_json_result(result)
-        except Exception as exc:
-            return pixel_error_response(exc)
-
-    def api_pixel_accounts_bulk_update(target_id: str):
-        rejected = pixel_target_rejected(target_id)
-        if rejected is not None:
-            return rejected
-        if context.pixel_client is None:
-            return pixel_unavailable()
-        try:
-            data = request_json_object()
-            result = context.pixel_client.share_accounts(target_id, account_ids_from(data))
-            return pixel_json_result(result)
-        except Exception as exc:
-            return pixel_error_response(exc)
-
-    def api_pixel_relogin(target_id: str):
-        rejected = pixel_target_rejected(target_id)
-        if rejected is not None:
-            return rejected
-        if context.pixel_client is None:
-            return pixel_unavailable()
-        try:
-            return pixel_json_result(context.pixel_client.relogin(target_id))
-        except Exception as exc:
-            return pixel_error_response(exc)
-
-    def api_pixel_share_all():
-        if context.pixel_client is None:
-            return pixel_unavailable()
-        try:
-            requested = target_ids_from(request_json_object())
-            requested = list(_PIXEL_AUTO_TARGET_IDS) if requested is None else requested
-            invalid = [
-                target_id
-                for target_id in requested
-                if target_id not in _PIXEL_AUTO_TARGET_IDS
-            ]
-            if invalid:
-                return module.jsonify(
-                    ok=False,
-                    error="一键共享只能选择 pixel-2 至 pixel-7",
-                ), 400
-            targets = list(requested)
-            if not targets:
-                return module.jsonify(
-                    ok=False,
-                    error="一键共享没有可执行的自动上传目标",
-                ), 400
-            return pixel_json_result(context.pixel_client.share_all(targets))
-        except Exception as exc:
-            return pixel_error_response(exc)
-
-    def api_pixel_upload_records():
-        if context.pixel_upload_queue is None:
-            return pixel_unavailable(queue=True)
-        try:
-            return module.jsonify(
-                ok=True,
-                records=context.pixel_upload_queue.records(),
-            )
-        except Exception as exc:
-            return pixel_error_response(exc)
-
-    def api_pixel_overview():
-        if context.pixel_upload_queue is None:
-            return pixel_unavailable(queue=True)
-        try:
-            payload = dict(context.pixel_upload_queue.overview())
-            targets, target_error = pixel_target_totals()
-            payload["targets"] = targets
-            payload["target_error"] = target_error
-            return pixel_json_result(payload)
-        except Exception as exc:
-            return pixel_error_response(exc)
-
-    def api_pixel_upload_batches():
-        if context.pixel_upload_queue is None:
-            return pixel_unavailable(queue=True)
-        try:
-            return pixel_json_result(
-                context.pixel_upload_queue.batches(
-                    page=module.request.args.get("page", 1),
-                    page_size=module.request.args.get("page_size", 20),
-                )
-            )
-        except Exception as exc:
-            return pixel_error_response(exc)
-
-    def api_pixel_batch_records(batch_id: str):
-        if context.pixel_upload_queue is None:
-            return pixel_unavailable(queue=True)
-        try:
-            return pixel_json_result(
-                context.pixel_upload_queue.batch_records(
-                    batch_id,
-                    page=module.request.args.get("page", 1),
-                    page_size=module.request.args.get("page_size", 50),
-                    status=module.request.args.get("status", ""),
-                )
-            )
-        except Exception as exc:
-            return pixel_error_response(exc)
-
-    def api_pixel_batch_retry(batch_id: str):
-        if context.pixel_upload_queue is None:
-            return pixel_unavailable(queue=True)
-        try:
-            summary = _pixel_route_runtime_ext.retry_batch_targets(
-                context.pixel_upload_queue,
-                batch_id,
-                target_ids_from(request_json_object()),
-                allowed_targets=_PIXEL_AUTO_TARGET_IDS,
-                log_fn=logs.add,
-            )
-            return module.jsonify(ok=True, **summary)
-        except Exception as exc:
-            payload, status = _pixel_route_runtime_ext.batch_retry_failure(exc)
-            logs.add(f"[{payload['node_label']}/{payload['node_code']}] {payload['code']}", "error")
-            return module.jsonify(**payload), status
-
-    def api_pixel_upload_retry(record_id: str):
-        if context.pixel_upload_queue is None:
-            return pixel_unavailable(queue=True)
-        try:
-            target_ids = target_ids_from(request_json_object())
-            if target_ids is not None and any(
-                target_id not in _PIXEL_AUTO_TARGET_IDS for target_id in target_ids
-            ):
-                return module.jsonify(
-                    ok=False,
-                    error="Pixel 重传只能选择 pixel-2 至 pixel-7",
-                ), 400
-            record = context.pixel_upload_queue.retry(record_id, target_ids)
-            return module.jsonify(ok=True, record=record)
-        except Exception as exc:
-            return pixel_error_response(exc)
-
-    def api_nv_overview():
-        if context.nv_upload_queue is None:
-            return module.jsonify(ok=False, error="NV 上传队列尚未配置"), 503
-        try:
-            return module.jsonify(ok=True, **context.nv_upload_queue.overview())
-        except Exception as exc:
-            return nv_error_response(exc)
-
-    def api_nv_upload_records():
-        if context.nv_upload_queue is None:
-            return module.jsonify(ok=False, error="NV 上传队列尚未配置"), 503
-        try:
-            records = context.nv_upload_queue.records()
-            page = max(1, _safe_int(module.request.args.get("page"), 1))
-            page_size = min(max(1, _safe_int(module.request.args.get("page_size"), 50)), 100)
-            total = len(records)
-            pages = max(1, (total + page_size - 1) // page_size)
-            page = min(page, pages)
-            start = (page - 1) * page_size
-            return module.jsonify(
-                ok=True,
-                records=records[start:start + page_size],
-                total=total,
-                page=page,
-                page_size=page_size,
-                pages=pages,
-                revision=_safe_int(context.nv_upload_queue.overview().get("revision"), 0),
-            )
-        except Exception as exc:
-            return nv_error_response(exc)
-
-    def api_nv_upload_batches():
-        if context.nv_upload_queue is None:
-            return module.jsonify(ok=False, error="NV 上传队列尚未配置"), 503
-        try:
-            items = context.nv_upload_queue.batches()
-            page = max(1, _safe_int(module.request.args.get("page"), 1))
-            page_size = min(max(1, _safe_int(module.request.args.get("page_size"), 20)), 100)
-            total = len(items)
-            pages = max(1, (total + page_size - 1) // page_size)
-            page = min(page, pages)
-            start = (page - 1) * page_size
-            return module.jsonify(
-                ok=True,
-                items=items[start:start + page_size],
-                total=total,
-                page=page,
-                page_size=page_size,
-                pages=pages,
-                revision=_safe_int(context.nv_upload_queue.overview().get("revision"), 0),
-            )
-        except Exception as exc:
-            return nv_error_response(exc)
-
-    def api_nv_upload_retry(record_id: str):
-        if context.nv_upload_queue is None:
-            return module.jsonify(ok=False, error="NV 上传队列尚未配置"), 503
-        try:
-            return module.jsonify(ok=True, record=context.nv_upload_queue.retry(record_id))
-        except Exception as exc:
-            return nv_error_response(exc)
-
-    def api_batch_upload_manifests():
-        if context.batch_upload_coordinator is None:
-            return module.jsonify(ok=True, records=[])
-        try:
-            limit = min(max(1, _safe_int(module.request.args.get("limit"), 100)), 500)
-            records = context.batch_upload_coordinator.records()
-            return module.jsonify(ok=True, records=records[:limit], total=len(records))
-        except Exception as exc:
-            payload = explicit_failure_payload(
-                node_code="batch_upload_manifest", node_label="查询批次上传清单",
-                error_code="batch_upload_manifest_list_failed",
-                cause=f"批次上传清单存储读取异常（{type(exc).__name__}）",
-                retryable=True, http_status=500,
-            )
-            logs.add(f"[{payload['node_label']}/{payload['node_code']}] {payload['error']}", "error")
-            return module.jsonify(payload), 500
-
     api_run_batches = runtime_info_routes.run_batches
     api_run_batch = runtime_info_routes.run_batch
-
-    def api_batch_upload_manifest_retry(batch_id: str):
-        if context.batch_upload_coordinator is None:
-            return module.jsonify(
-                ok=False,
-                node_code="batch_upload_manifest",
-                node_label="批次上传协调",
-                error_code="batch_upload_coordinator_unavailable",
-                error="批次上传协调 [批次上传协调/batch_upload_manifest]：服务尚未启用",
-            ), 503
-        data = module.request.get_json(silent=True) or {}
-        if not isinstance(data, dict):
-            return module.jsonify(ok=False, error="批次上传重试参数必须是 JSON 对象"), 400
-        if set(data) != {"platform"}:
-            return module.jsonify(ok=False, error="批次上传重试只接受 platform 参数"), 400
-        platform = data.get("platform")
-        if platform not in {"pixel", "nv"}:
-            return module.jsonify(ok=False, error="批次上传重试平台必须是 pixel 或 nv"), 400
-        try:
-            manifest = context.batch_upload_coordinator.retry(batch_id, platform)
-            return module.jsonify(ok=True, manifest=manifest)
-        except KeyError:
-            return module.jsonify(
-                ok=False,
-                node_code="batch_upload_manifest",
-                node_label="批次上传协调",
-                error_code="batch_upload_manifest_not_found",
-                error="批次上传协调 [批次上传协调/batch_upload_manifest]：批次不存在",
-            ), 404
-        except ValueError as exc:
-            return module.jsonify(
-                ok=False,
-                node_code="batch_upload_manifest",
-                node_label="批次上传协调",
-                error_code="batch_upload_retry_unavailable",
-                error=(
-                    "批次上传协调 [批次上传协调/batch_upload_manifest]："
-                    f"{context.safe_runtime_error(exc)}"
-                ),
-            ), 409
-        except Exception as exc:
-            logs.add("批次上传重试失败 [批次上传协调/batch_upload_manifest]", "error")
-            return module.jsonify(explicit_failure_payload(
-                node_code="batch_upload_manifest",
-                node_label="批次上传协调",
-                error_code="batch_upload_retry_failed",
-                cause=context.safe_runtime_error(exc),
-                retryable=True,
-            )), 500
 
     sms_balance_routes = SmsBalanceRouteController(
         module=module,
@@ -1388,9 +1041,16 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/mailboxes", "mailbox_manager", mailbox_manager, ["GET"]),
         ("/splitter", "mailbox_splitter", mailbox_manager, ["GET"]),
         ("/url-test", "mailbox_url_test_page", mailbox_manager, ["GET"]),
+        # Legacy deep links remain harmless aliases; the account-management menu is gone.
         ("/accounts", "account_manager", mailbox_manager, ["GET"]),
         ("/settings", "settings_page", mailbox_manager, ["GET"]),
         ("/api/mailboxes", "api_mailboxes", api_mailboxes, ["GET"]),
+        ("/api/free/mailboxes", "api_free_mailboxes", api_free_mailboxes, ["GET"]),
+        ("/api/free/mailboxes/import", "api_free_pool_import", api_free_pool_import, ["POST"]),
+        ("/api/free/mailboxes/delete", "api_free_pool_delete", api_free_pool_delete, ["POST"]),
+        ("/api/free/proxies/import", "api_free_proxy_import", api_free_proxy_import, ["POST"]),
+        ("/api/free/secrets", "api_free_secret", api_free_secret, ["POST"]),
+        ("/api/free/2fa/retry", "api_free_twofa_retry", api_free_twofa_retry, ["POST"]),
         *mailbox_mutation_routes.routes(),
         ("/api/mailboxes/website-import", "api_mailboxes_website_import", api_mailboxes_website_import, ["POST"]),
         ("/api/mailboxes/latest-code", "api_mailboxes_latest_code", api_mailboxes_latest_code, ["POST"]),
@@ -1427,71 +1087,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             api_run_batch,
             ["GET"],
         ),
-        ("/api/mailboxes/pixel-retry", "api_mailboxes_pixel_retry", api_mailboxes_pixel_retry, ["POST"]),
         ("/api/mailboxes/sub2-export", "api_mailboxes_sub2_export", api_mailboxes_sub2_export, ["POST"]),
-        ("/api/pixel/targets", "api_pixel_targets", api_pixel_targets, ["GET"]),
-        (
-            "/api/pixel/targets/<target_id>/accounts",
-            "api_pixel_accounts",
-            api_pixel_accounts,
-            ["GET"],
-        ),
-        (
-            "/api/pixel/targets/<target_id>/accounts/bulk-test",
-            "api_pixel_accounts_bulk_test",
-            api_pixel_accounts_bulk_test,
-            ["POST"],
-        ),
-        (
-            "/api/pixel/targets/<target_id>/accounts/bulk-update",
-            "api_pixel_accounts_bulk_update",
-            api_pixel_accounts_bulk_update,
-            ["POST"],
-        ),
-        (
-            "/api/pixel/targets/<target_id>/relogin",
-            "api_pixel_relogin",
-            api_pixel_relogin,
-            ["POST"],
-        ),
-        ("/api/pixel/share-all", "api_pixel_share_all", api_pixel_share_all, ["POST"]),
-        ("/api/pixel/overview", "api_pixel_overview", api_pixel_overview, ["GET"]),
-        ("/api/pixel/upload-batches", "api_pixel_upload_batches", api_pixel_upload_batches, ["GET"]),
-        (
-            "/api/pixel/upload-batches/<batch_id>/records",
-            "api_pixel_batch_records",
-            api_pixel_batch_records,
-            ["GET"],
-        ),
-        (
-            "/api/pixel/upload-batches/<batch_id>/retry",
-            "api_pixel_batch_retry",
-            api_pixel_batch_retry,
-            ["POST"],
-        ),
-        ("/api/pixel/upload-records", "api_pixel_upload_records", api_pixel_upload_records, ["GET"]),
-        (
-            "/api/pixel/upload-records/<record_id>/retry",
-            "api_pixel_upload_retry",
-            api_pixel_upload_retry,
-            ["POST"],
-        ),
-        ("/api/nv/overview", "api_nv_overview", api_nv_overview, ["GET"]),
-        ("/api/nv/upload-batches", "api_nv_upload_batches", api_nv_upload_batches, ["GET"]),
-        ("/api/nv/upload-records", "api_nv_upload_records", api_nv_upload_records, ["GET"]),
-        (
-            "/api/nv/upload-records/<record_id>/retry",
-            "api_nv_upload_retry",
-            api_nv_upload_retry,
-            ["POST"],
-        ),
-        ("/api/upload-manifests", "api_batch_upload_manifests", api_batch_upload_manifests, ["GET"]),
-        (
-            "/api/upload-manifests/<batch_id>/retry",
-            "api_batch_upload_manifest_retry",
-            api_batch_upload_manifest_retry,
-            ["POST"],
-        ),
         ("/api/local-config", "api_local_config", api_local_config, ["GET"]),
         ("/api/sms/balances", "api_sms_balances", api_sms_balances, ["POST"]),
         ("/api/local-config/export", "api_local_config_export", api_local_config_export, ["POST"]),

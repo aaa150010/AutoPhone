@@ -164,32 +164,19 @@ class PixelRouteRuntimeTests(unittest.TestCase):
         self.assertEqual(payload["code"], "pixel_target_invalid")
         self.assertNotIn("token", str(payload).lower())
 
-    def test_flask_route_batches_the_selected_target(self):
+    def test_removed_pixel_upload_route_is_not_registered(self):
         from tests import test_web_routes as fixtures
-
-        class RouteQueue(fixtures.FakePixelQueue):
-            def batch_records(self, batch_id, *, page, page_size, status):
-                return {
-                    "items": [{
-                        "record_id": "record-route",
-                        "targets": [{"target_id": "pixel-2", "retryable": True}],
-                    }],
-                    "pages": 1,
-                }
 
         case = fixtures.WebRouteTests()
         case.setUp()
         try:
-            queue = RouteQueue()
-            app = case._app(replace(case.context, pixel_upload_queue=queue))
+            app = case._app()
             with app.test_client() as client:
                 response = client.post(
                     "/api/pixel/upload-batches/batch-a/retry",
                     json={"target_id": "pixel-2"},
                 )
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.get_json()["queued_records"], 1)
-            self.assertIn(("record-route", ["pixel-2"]), queue.calls)
+            self.assertEqual(response.status_code, 404)
         finally:
             case.tearDown()
 

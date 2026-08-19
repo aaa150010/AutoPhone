@@ -44,7 +44,7 @@ import manual_verification_routes as _manual_verification_routes_ext
 import phase1_checkpoint_runtime as _phase1_checkpoint_runtime_ext
 import phase1_checkpoint_hooks as _phase1_checkpoint_hooks_ext
 import adaptive_concurrency as _adaptive_concurrency_ext
-import batch_upload_runtime as _batch_upload_runtime_ext
+import pixel_runtime as _pixel_runtime_ext
 import importer_watch_runtime as _importer_watch_runtime_ext
 import importer_scheduler as _importer_scheduler_ext
 import inflight_pipeline_runtime as _inflight_pipeline_runtime_ext
@@ -56,8 +56,7 @@ import mailbox_priority_runtime as _mailbox_priority_runtime_ext
 import mailbox_url_runtime as _mailbox_url_runtime_ext
 import mailbox_url_test_runtime as _mailbox_url_test_runtime_ext
 import mailbox_retention as _mailbox_retention_ext
-import nv_runtime as _nv_runtime_ext
-import pixel_runtime as _pixel_runtime_ext
+import free_register_runtime as _free_register_runtime_ext
 import phone_risk_runtime as _phone_risk_runtime_ext
 import phone_binding_runtime as _phone_binding_runtime_ext
 import performance_runtime as _performance_runtime_ext
@@ -3521,15 +3520,25 @@ def _closure_values(fn):
 
 
 def _read_local_config():
-    if not _LOCAL_CONFIG_FILE.exists():
-        return {}
-    try:
-        value = json.loads(_LOCAL_CONFIG_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
+    if _LOCAL_CONFIG_FILE.exists():
+        try:
+            value = json.loads(_LOCAL_CONFIG_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    else:
+        value = {}
     if not isinstance(value, dict):
-        return {}
+        value = {}
     changed = False
+    if "free_proxy_pool_content" not in value:
+        legacy_proxy_path = _RUNTIME_DATA_DIR / "free_proxy_pool.txt"
+        try:
+            legacy_proxy_content = legacy_proxy_path.read_text(encoding="utf-8").strip()
+        except (FileNotFoundError, OSError, UnicodeError):
+            legacy_proxy_content = ""
+        if legacy_proxy_content:
+            value["free_proxy_pool_content"] = legacy_proxy_content
+            changed = True
     if "nvtoken" in value or "nvtoken_upload" in value or "pixel_upload_enabled" in value:
         value.pop("nvtoken", None)
         value.pop("nvtoken_upload", None)
@@ -3550,12 +3559,6 @@ def _write_local_config(data):
     value, _timeout_migrated = _migrate_email_timeout_config(value)
     value, _performance_migrated = _sms_runtime_ext.migrate_performance_config(value)
     _atomic_write_private_json(_LOCAL_CONFIG_FILE, value)
-    pixel_queue = globals().get("_PIXEL_UPLOAD_QUEUE")
-    if pixel_queue is not None:
-        try:
-            pixel_queue.configure_workers(value.get("pixel_upload_concurrency", 2))
-        except Exception:
-            pass
     phone_gate = globals().get("_SMS_PHONE_GATE")
     if phone_gate is not None:
         try:
@@ -3599,10 +3602,6 @@ _OPENAI_DIAGNOSTICS = _connectivity_diagnostics_ext.OpenAIConnectivityDiagnostic
 )
 
 
-_PIXEL_CLIENT = _pixel_runtime_ext.PixelProxyClient(
-    os.environ.get("GPTPHONE_PIXEL_PROXY_URL")
-    or _pixel_runtime_ext.DEFAULT_PIXEL_PROXY_BASE_URL
-)
 _MAILBOX_NEXT_BATCH_PRIORITY = (
     _mailbox_priority_runtime_ext.MailboxNextBatchPriorityStore(_RUNTIME_DATA_DIR)
 )
@@ -3611,30 +3610,9 @@ _RUN_BATCH_MANIFEST = _run_batch_runtime_ext.RunBatchManifestStore(
     recover_pending=True,
     lease_releaser=_release_recovered_batch_leases,
 )
-_PIXEL_UPLOAD_QUEUE = _pixel_runtime_ext.PixelUploadQueue(
+_FREE_REGISTER = _free_register_runtime_ext.FreeRegisterManager(
     _RUNTIME_DATA_DIR,
-    client=_PIXEL_CLIENT,
-    worker_count=_int_value(
-        _read_local_config().get("pixel_upload_concurrency"),
-        2,
-        minimum=1,
-        maximum=3,
-    ),
-    auto_start=True,
-    resume_pending=True,
-)
-_NV_IMPORT_CLIENT = _nv_runtime_ext.NvImportClient(_read_local_config)
-_NV_UPLOAD_QUEUE = _nv_runtime_ext.NvUploadQueue(
-    _RUNTIME_DATA_DIR,
-    _NV_IMPORT_CLIENT,
-    auto_start=True,
-    resume_pending=True,
-)
-_BATCH_UPLOAD_COORDINATOR = _batch_upload_runtime_ext.BatchUploadCoordinator(
-    _RUNTIME_DATA_DIR,
-    pixel_queue=_PIXEL_UPLOAD_QUEUE,
-    nv_queue=_NV_UPLOAD_QUEUE,
-    recover_pending=True,
+    progress=_TASK_PROGRESS,
 )
 _SUB2_RUNTIME = _sub2_runtime_ext.Sub2Runtime(
     _read_local_config,
@@ -3657,8 +3635,6 @@ _LOCAL_CONFIG_RUNTIME = _configuration_runtime_ext.LocalConfigRuntime(
     notifications=_run_notifications_ext,
     migrate_email_timeout=_migrate_email_timeout_config,
     read_local_config=_read_local_config,
-    nv_default_endpoint=_nv_runtime_ext.DEFAULT_NV_ENDPOINT,
-    nv_default_schema_url=_nv_runtime_ext.DEFAULT_NV_SCHEMA_URL,
     online_mailbox_default_url=_online_mailbox_runtime_ext.DEFAULT_ONLINE_MAILBOX_BASE_URL,
     email_timeout_strategy_version=_EMAIL_TIMEOUT_STRATEGY_VERSION,
     sms_min_price_default=_SMS_MIN_PRICE_DEFAULT,
@@ -3809,12 +3785,9 @@ _WEB_ROUTE_CONTEXT = _web_routes_ext.WebRouteContext(
     mailbox_admin_factory=_mailbox_admin_factory,
     mailbox_manager_html=_legacy_ui_ext.MAILBOX_MANAGER_HTML,
     mailbox_url_test_factory=_mailbox_url_test_runtime_ext.MailboxUrlTester,
-    pixel_client=_PIXEL_CLIENT,
-    pixel_upload_queue=_PIXEL_UPLOAD_QUEUE,
-    nv_upload_queue=_NV_UPLOAD_QUEUE,
-    batch_upload_coordinator=_BATCH_UPLOAD_COORDINATOR,
-    run_batch_manifest=_RUN_BATCH_MANIFEST,
     pixel_payload_builder=_pixel_runtime_ext.build_pixel_import_payload,
+    run_batch_manifest=_RUN_BATCH_MANIFEST,
+    free_register_manager=_FREE_REGISTER,
     query_sms_balances=_SMS_WEB.query_balances,
     online_mailbox_client_factory=_online_mailbox_client_factory,
     failure_secrets=lambda config: _failure_secrets(settings=config),

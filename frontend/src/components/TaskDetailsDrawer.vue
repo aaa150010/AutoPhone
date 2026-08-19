@@ -32,10 +32,26 @@ const standardNodes: Array<{ code: string; label: string; group: TaskStageGroup 
   { code: 'finalizing_upload', label: '上传账号凭据', group: 'finalizing' },
   { code: 'finalizing_save', label: '保存任务结果', group: 'finalizing' },
 ]
+const freeNodes: Array<{ code: string; label: string; group: TaskStageGroup }> = [
+  { code: 'free_proxy_binding', label: '绑定 Free 注册代理', group: 'free' },
+  { code: 'free_oauth_session', label: 'Free OAuth 会话', group: 'free' },
+  { code: 'free_email_identifier', label: '识别 Free 注册邮箱', group: 'free' },
+  { code: 'free_email_password', label: '验证 Free 注册密码', group: 'free' },
+  { code: 'free_email_otp_wait', label: '等待 Free 邮箱验证码', group: 'free' },
+  { code: 'free_email_otp_validate', label: '验证 Free 邮箱验证码', group: 'free' },
+  { code: 'free_account_create', label: '创建 Free 账号', group: 'free' },
+  { code: 'free_oauth_callback', label: 'Free OAuth 回调', group: 'free' },
+  { code: 'free_access_token', label: '获取 Free access token', group: 'free' },
+  { code: 'free_plan_check', label: '查询 Free 套餐资格', group: 'free' },
+  { code: 'free_twofa_enroll', label: '注册 Free 账号 2FA', group: 'free' },
+  { code: 'free_twofa_activate', label: '激活 Free 账号 2FA', group: 'free' },
+  { code: 'free_result_save', label: '保存 Free 注册结果', group: 'free' },
+]
 
 const terminalStatuses = new Set([
   'success', 'failed', 'stopped', 'stopped_before_start', 'retryable_infra',
   'retryable_email', 'repair_pending', 'email_damaged', 'account_banned',
+  'twofa_pending',
 ])
 const failureStatuses = new Set([
   'failed', 'retryable_infra', 'retryable_email', 'repair_pending',
@@ -54,6 +70,7 @@ const normalizedStatus = computed(() => String(props.task?.status || '').trim().
 const isTerminal = computed(() => terminalStatuses.has(normalizedStatus.value))
 const currentCode = computed(() => String(props.task?.progress?.code || ''))
 const failureCode = computed(() => String(props.task?.failure?.node_code || ''))
+const displayNodes = computed(() => props.task?.run_mode === 'free_register' ? freeNodes : standardNodes)
 
 function formatSeconds(value: unknown) {
   const seconds = Math.max(0, Number(value || 0))
@@ -141,7 +158,7 @@ function checkpointType() {
         <h3>完整链路</h3>
         <div class="chain-list">
           <div
-            v-for="(node, index) in standardNodes"
+            v-for="(node, index) in displayNodes"
             :key="node.code"
             class="chain-row"
             :class="nodeState(node.code).className"
