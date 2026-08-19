@@ -612,19 +612,6 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 rows = free_manager.public_logs()
         return module.jsonify(ok=True, task_id=task_id, logs=rows)
 
-    def api_free_roxy_workspaces():
-        if free_config_store is None:
-            return module.jsonify(ok=False, error="Free 配置服务尚未初始化"), 503
-        try:
-            from .free_roxy_runtime import RoxyBrowserClient
-        except ImportError:
-            from free_roxy_runtime import RoxyBrowserClient  # type: ignore[no-redef]
-        try:
-            result = RoxyBrowserClient(free_config_store.load()["roxybrowser"], log_fn=free_manager._log if free_manager else None).list_workspaces()
-            return module.jsonify(ok=True, items=result)
-        except Exception as exc:
-            return free_failure_response(exc, default_code="free_roxy_workspace", default_label="读取 RoxyBrowser 工作区")
-
     def api_free_mailboxes():
         if free_manager is None:
             return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
@@ -817,16 +804,6 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         except Exception as exc:
             return free_error_response(exc, default_code="free_pool_status", default_label="更新 Free 邮箱状态")
 
-    def api_free_mailbox_url():
-        if free_manager is None:
-            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
-        data = module.request.get_json(silent=True) or {}
-        row_id = str(data.get("row_id") or "") if isinstance(data, Mapping) else ""
-        try:
-            return module.jsonify(ok=True, mailbox_url=free_manager.pool.reveal_mailbox_url(row_id))
-        except Exception as exc:
-            return free_error_response(exc, default_code="free_mailbox_url", default_label="读取 Free 取件地址")
-
     def api_free_export():
         if free_manager is None:
             return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
@@ -857,18 +834,6 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             return module.jsonify(ok=True, kind=kind, value=free_manager.secret(task_ids, kind, row_ids=row_ids))
         except Exception as exc:
             return free_error_response(exc, default_code="free_secret", default_label="读取 Free 敏感字段")
-
-    def api_free_twofa_retry():
-        if free_manager is None:
-            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
-        data = module.request.get_json(silent=True) or {}
-        if not isinstance(data, Mapping):
-            return free_error_response(ValueError("请求必须是 JSON 对象"), default_code="free_twofa_retry", default_label="重试 Free 账号 2FA")
-        try:
-            task = free_manager.retry_twofa(str(data.get("task_id") or data.get("row_id") or ""), free_config_store.load() if free_config_store is not None else {})
-            return module.jsonify(ok=True, task=task, state=free_state())
-        except Exception as exc:
-            return free_error_response(exc, default_code="free_twofa_retry", default_label="重试 Free 账号 2FA")
 
     def mailbox_manager():
         if frontend_dist.exists():
@@ -1268,6 +1233,18 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             logs.add(f"[测试邮件通知/notification_test] {payload['error']}", "error")
             return module.jsonify(payload), 502
 
+    try:
+        from .free_account_routes import FreeAccountRouteController
+    except ImportError:
+        from free_account_routes import FreeAccountRouteController  # type: ignore[no-redef]
+    free_account_routes = FreeAccountRouteController(
+        module=module,
+        manager=free_manager,
+        config_store=free_config_store,
+        free_state=free_state,
+        error_response=free_error_response,
+    )
+
     routes = (
         ("/mailboxes", "mailbox_manager", mailbox_manager, ["GET"]),
         ("/splitter", "mailbox_splitter", mailbox_manager, ["GET"]),
@@ -1282,14 +1259,14 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/free/start", "api_free_start", api_free_start, ["POST"]),
         ("/api/free/stop", "api_free_stop", api_free_stop, ["POST"]),
         ("/api/free/logs", "api_free_logs", api_free_logs, ["GET"]),
-        ("/api/free/roxy/workspaces", "api_free_roxy_workspaces", api_free_roxy_workspaces, ["GET"]),
+        ("/api/free/roxy/workspaces", "api_free_roxy_workspaces", free_account_routes.roxy_workspaces, ["GET"]),
         ("/api/free/mailboxes", "api_free_mailboxes", api_free_mailboxes, ["GET"]),
         ("/api/free/mailboxes/import", "api_free_pool_import", api_free_pool_import, ["POST"]),
         ("/api/free/mailboxes/delete", "api_free_pool_delete", api_free_pool_delete, ["POST"]),
         ("/api/free/mailboxes/unavailable", "api_free_pool_unavailable", lambda: api_free_pool_status("unavailable"), ["POST"]),
         ("/api/free/mailboxes/draft", "api_free_pool_draft", lambda: api_free_pool_status("draft"), ["POST"]),
         ("/api/free/mailboxes/restore", "api_free_pool_restore", lambda: api_free_pool_status("available"), ["POST"]),
-        ("/api/free/mailboxes/url", "api_free_mailbox_url", api_free_mailbox_url, ["POST"]),
+        ("/api/free/mailboxes/url", "api_free_mailbox_url", free_account_routes.mailbox_url, ["POST"]),
         ("/api/free/mailboxes/export", "api_free_export", api_free_export, ["POST"]),
         ("/api/free/proxies/import", "api_free_proxy_import", api_free_proxy_import, ["POST"]),
         ("/api/free/proxies/preflight", "api_free_proxy_preflight", api_free_proxy_preflight, ["POST"]),
@@ -1297,7 +1274,9 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/free/proxies/group", "api_free_proxy_group", api_free_proxy_group, ["POST"]),
         ("/api/free/proxies/group/delete", "api_free_proxy_group_delete", api_free_proxy_group_delete, ["POST"]),
         ("/api/free/secrets", "api_free_secret", api_free_secret, ["POST"]),
-        ("/api/free/2fa/retry", "api_free_twofa_retry", api_free_twofa_retry, ["POST"]),
+        ("/api/free/2fa/retry", "api_free_twofa_retry", free_account_routes.retry_twofa, ["POST"]),
+        ("/api/free/live-check", "api_free_live_check", free_account_routes.live_check, ["POST"]),
+        ("/api/free/live-check/state", "api_free_live_check_state", free_account_routes.live_check_state, ["GET"]),
         *mailbox_mutation_routes.routes(),
         ("/api/mailboxes/website-import", "api_mailboxes_website_import", api_mailboxes_website_import, ["POST"]),
         ("/api/mailboxes/latest-code", "api_mailboxes_latest_code", api_mailboxes_latest_code, ["POST"]),

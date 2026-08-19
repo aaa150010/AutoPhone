@@ -158,11 +158,31 @@ export interface FreeMailboxRow {
   driver?: 'protocol' | 'roxybrowser' | string
   proxy_masked?: string
   proxy_fingerprint?: string
+  proxy_scheme?: string
+  proxy_country?: string
+  proxy_group?: string
   exit_ip?: string
   expected_exit_ip?: string
   registration_ip?: string
   plan_type?: string
+  subscription_plan?: string
+  plan_check_status?: string
   plus_trial_eligible?: boolean
+  live_check_status?: 'queued' | 'running' | 'live' | 'deactivated' | 'token_expired' | 'failed' | string
+  live_check_mode?: 'fast' | 'deep' | string
+  live_check_task_id?: string
+  live_checked_at?: number | string
+  live_check_ip?: string
+  live_check_token_refreshed?: boolean
+  live_check_http_status?: number | null
+  live_check_failure?: {
+    node_code?: string
+    node_label?: string
+    error_code?: string
+    public_message?: string
+    retryable?: boolean
+    http_status?: number | string | null
+  } | null
   twofa_status?: string
   twofa_error?: string
   has_access_token?: boolean
@@ -187,6 +207,33 @@ export const setFreeMailboxStatus = (status: 'available' | 'unavailable' | 'draf
   { row_ids: rowIds },
 )
 export const getFreeMailboxUrl = (rowId: string) => api<{ ok: true; mailbox_url: string }>('/api/free/mailboxes/url', { row_id: rowId })
+export interface FreeLiveCheckState {
+  running: boolean
+  workers: number
+  queue_limit: number
+  active: number
+  jobs: Array<{
+    task_id: string
+    row_id: string
+    email: string
+    mode: 'fast' | 'deep' | string
+    status: string
+    stage?: string
+    stage_label?: string
+    live_check_ip?: string
+    checked_at?: number
+    failure?: FreeMailboxRow['live_check_failure']
+  }>
+}
+export const startFreeLiveCheck = (mode: 'fast' | 'deep', rowIds: string[]) => api<{
+  ok: true
+  accepted_count: number
+  skipped_count: number
+  skipped: Array<{ row_id: string; reason: string }>
+  state: FreeLiveCheckState
+  rows: FreeMailboxRow[]
+}>('/api/free/live-check', { mode, row_ids: rowIds })
+export const getFreeLiveCheckState = () => api<{ ok: true; state: FreeLiveCheckState; rows: FreeMailboxRow[] }>('/api/free/live-check/state')
 export const exportFreeResults = (rowIds: string[] = []) => api<{ ok: true; count: number; filename: string; content: string }>('/api/free/mailboxes/export', { row_ids: rowIds })
 export const importFreeProxies = (proxyContent: string, country?: string, group?: string, scheme?: string) => api<{ ok: true; imported: number; proxies?: any }>(
   '/api/free/proxies/import',

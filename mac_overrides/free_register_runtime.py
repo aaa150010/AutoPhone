@@ -31,6 +31,7 @@ try:
     from .free_register_scheduler import FreeRegisterSchedulerMixin
     from .free_roxy_runtime import RoxyRegistrationRunner
     from .free_log_runtime import FreeLogStore
+    from .free_live_check import build_free_live_check_service
     from .free_protocol_runtime import FreeProtocolMixin
 except ImportError:
     from free_mailbox_otp import MailboxUrlOtpProvider  # type: ignore[no-redef]
@@ -44,6 +45,7 @@ except ImportError:
     from free_register_scheduler import FreeRegisterSchedulerMixin  # type: ignore[no-redef]
     from free_roxy_runtime import RoxyRegistrationRunner  # type: ignore[no-redef]
     from free_log_runtime import FreeLogStore  # type: ignore[no-redef]
+    from free_live_check import build_free_live_check_service  # type: ignore[no-redef]
     from free_protocol_runtime import FreeProtocolMixin  # type: ignore[no-redef]
 
 class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
@@ -73,6 +75,11 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
         self._heartbeat_stop = threading.Event()
         self._heartbeat_thread: threading.Thread | None = None
         self._recover_interrupted_tasks()
+        self.live_checks = build_free_live_check_service(
+            self.data_dir,
+            pool=self.pool, proxies=self.proxies, log_store=self.log_store,
+            proxy_probe=self.proxy_probe,
+        )
 
     def _log(self, message: str, level: str = "info") -> None:
         if callable(self.log_fn):

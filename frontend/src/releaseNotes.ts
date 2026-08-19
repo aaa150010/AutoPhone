@@ -12,10 +12,30 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.19',
-  title: 'Free 任务恢复与诊断修复',
+  version: '1.6.20',
+  title: 'Free 账号快速与深度测活',
   releasedAt: '2026-08-19',
   sections: [
+    {
+      title: 'Free 快速测活与深度测活',
+      usage: '在 Free 邮箱管理中心勾选账号后可执行快速测活或深度测活。快速测活复用现有 Token 查询在线状态、套餐和 Plus 资格；深度测活重新登录并收邮箱 OTP，成功后刷新 Token。两种方式都有独立状态、任务和账号日志。',
+    },
+    {
+      title: '测活固定注册代理与出口 IP',
+      usage: '每次测活只使用该账号注册时保存的代理，启动前会租用并复核出口 IP；代理连接失败或 IP 漂移会明确标记测活失败，不换代理、不直连、不回退其他链路。',
+    },
+    {
+      title: 'Token 失效不误判账号停用',
+      usage: '快速测活收到 HTTP 401 时显示 Token 失效并建议深度测活，只有服务端明确返回停用/删除才标记账号已停用；测活不会覆盖历史注册成功状态。',
+    },
+    {
+      title: '测活套餐与 Plus 资格刷新',
+      usage: '测活成功后会更新套餐、订阅状态、Plus 试用资格和实际测活 IP；深度测活成功刷新到的新 Token 会替换旧 Token，敏感值仍只能通过按需复制接口读取。',
+    },
+    {
+      title: 'Free 测活并发与账号日志',
+      usage: '测活使用独立 3 并发队列，最大 5 个工作线程，不占用 Free 注册并发。邮箱列表可以按测活状态筛选，每行支持快速测活、深度测活和眼睛按钮查看该账号专属日志。',
+    },
     {
       title: 'Free 任务重启恢复与启动回滚',
       usage: '进程异常重启后会释放未启动任务的邮箱和代理租约；批量启动中途失败也会回滚已预留资源，不会留下永久占用的账号或代理。',
