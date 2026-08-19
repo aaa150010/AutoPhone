@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import { Expand, Fold } from '@element-plus/icons-vue'
 import MailboxPage from '../pages/MailboxPage.vue'
 import FreeMailboxPoolPage from '../pages/FreeMailboxPoolPage.vue'
 import FreeRegistrationPage from '../pages/FreeRegistrationPage.vue'
@@ -18,8 +19,10 @@ const controller = createAppController()
 provide(appControllerKey, controller)
 
 const routes = new Set(['/', '/mailboxes', '/free-register', '/free-mailboxes', '/splitter', '/url-test', '/settings'])
-const pathFromLocation = () => routes.has(window.location.pathname) ? window.location.pathname : '/'
-const activePath = ref(pathFromLocation())
+const pathFromLocation = () => `${routes.has(window.location.pathname) ? window.location.pathname : '/'}${window.location.search}${window.location.hash}`
+const activePath = ref(routes.has(window.location.pathname) ? window.location.pathname : '/')
+const settingsAnchor = ref(new URLSearchParams(window.location.search).get('section') || window.location.hash.replace(/^#/, ''))
+const sidebarCollapsed = ref(window.localStorage.getItem('gptphone.sidebar.collapsed') === '1')
 const diagnosticDialog = ref<InstanceType<typeof OpenAIConnectivityDiagnosticDialog>>()
 
 const runStatus = computed(() => {
@@ -49,14 +52,17 @@ async function confirmNavigation() {
 }
 
 async function navigate(path: string, fromHistory = false) {
-  const target = routes.has(path) ? path : '/'
-  if (target === activePath.value) return
+  const parsed = new URL(path, window.location.origin)
+  const target = routes.has(parsed.pathname) ? parsed.pathname : '/'
+  const anchor = parsed.searchParams.get('section') || parsed.hash.replace(/^#/, '')
+  if (target === activePath.value && anchor === settingsAnchor.value) return
   if (!await confirmNavigation()) {
     if (fromHistory) history.pushState({}, '', activePath.value)
     return
   }
   activePath.value = target
-  if (!fromHistory) history.pushState({}, '', target)
+  settingsAnchor.value = anchor
+  if (!fromHistory) history.pushState({}, '', anchor && target === '/settings' ? `${target}#${encodeURIComponent(anchor)}` : target)
 }
 
 function selectPage(path: string) {
@@ -75,6 +81,11 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
 
 function openConnectivityDiagnostics(reason = '手动检查当前 OpenAI 授权链路') {
   controller.openConnectivityDiagnostics(reason)
+}
+
+function toggleSidebar() {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+  window.localStorage.setItem('gptphone.sidebar.collapsed', sidebarCollapsed.value ? '1' : '0')
 }
 
 watch(
@@ -102,13 +113,14 @@ onUnmounted(() => {
 <template>
   <el-config-provider :locale="zhCn">
     <el-container class="app-shell">
-      <el-aside width="58px" class="app-sidebar">
+      <el-aside :width="sidebarCollapsed ? '58px' : '212px'" class="app-sidebar" :class="{ 'is-collapsed': sidebarCollapsed }">
         <div class="brand-block">
           <div class="brand-mark"><el-icon><Cpu /></el-icon></div>
           <div class="brand-copy"><strong>自动接码机</strong><span>GPT Phone</span></div>
+          <el-tooltip :content="sidebarCollapsed ? '展开菜单' : '收缩菜单'" placement="right"><el-button class="sidebar-toggle" link :icon="sidebarCollapsed ? Expand : Fold" aria-label="收缩或展开左侧菜单" @click="toggleSidebar" /></el-tooltip>
         </div>
 
-        <el-menu :default-active="activePath" :collapse="true" :collapse-transition="false" @select="selectPage">
+        <el-menu :default-active="activePath" :collapse="sidebarCollapsed" :collapse-transition="false" @select="selectPage">
           <el-tooltip content="运行中心" placement="right"><el-menu-item index="/"><el-icon><Monitor /></el-icon><span>运行中心</span></el-menu-item></el-tooltip>
           <el-tooltip content="邮箱管理" placement="right"><el-menu-item index="/mailboxes"><el-icon><MessageBox /></el-icon><span>邮箱管理</span></el-menu-item></el-tooltip>
           <el-tooltip content="Free 注册中心" placement="right"><el-menu-item index="/free-register"><el-icon><Setting /></el-icon><span>Free 注册中心</span></el-menu-item></el-tooltip>
@@ -133,7 +145,7 @@ onUnmounted(() => {
         <FreeMailboxPoolPage v-else-if="activePath === '/free-mailboxes'" />
         <MailboxSplitterPage v-else-if="activePath === '/splitter'" />
         <UrlMailboxTestPage v-else-if="activePath === '/url-test'" />
-        <SettingsPage v-else @navigate="navigate" />
+        <SettingsPage v-else :initial-anchor="settingsAnchor" @navigate="navigate" />
       </el-main>
     </el-container>
     <ReleaseNotesDialog />
@@ -143,17 +155,19 @@ onUnmounted(() => {
 
 <style scoped>
 .app-shell { width: 100%; min-width: 1280px; height: 100vh; overflow: hidden; background: var(--workspace-page); }
-.app-sidebar { display: flex; flex-direction: column; height: 100%; overflow: hidden; border-right: 1px solid #d8e1eb; background: #f8fafc; }
-.brand-block { display: grid; place-items: center; height: 58px; padding: 0 8px; border-bottom: 1px solid #d8e1eb; }
+.app-sidebar { display: flex; flex-direction: column; height: 100%; overflow: hidden; border-right: 1px solid #d8e1eb; background: #f8fafc; transition: width 160ms ease; }
+.brand-block { display: flex; align-items: center; gap: 9px; height: 58px; padding: 0 10px; border-bottom: 1px solid #d8e1eb; }
 .brand-mark { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; border-radius: 6px; background: #2563eb; color: #fff; font-size: 18px; }
-.brand-copy { display: none; }
+.brand-copy { display: grid; min-width: 0; margin-right: auto; }
 .brand-copy strong { color: #172033; font-size: 14px; line-height: 20px; font-weight: 720; white-space: nowrap; }
 .brand-copy span { color: #8792a4; font-size: 10px; line-height: 14px; text-transform: uppercase; }
-.el-menu { flex: 1; width: 58px; padding: 8px 6px; border-right: 0; background: transparent; }
-.el-menu-item { width: 46px; height: 42px; margin-bottom: 4px; padding: 0 !important; justify-content: center; border-radius: 5px; color: #64748b; font-size: 13px; }
+.sidebar-toggle { flex: 0 0 30px; width: 30px; height: 30px; padding: 0; color: #64748b; }
+.sidebar-toggle:hover { color: #315f99; background: #e7eef8; }
+.el-menu { flex: 1; width: 100%; padding: 8px 6px; border-right: 0; background: transparent; }
+.el-menu-item { width: calc(100% - 0px); height: 42px; margin-bottom: 4px; padding: 0 12px !important; justify-content: flex-start; border-radius: 5px; color: #64748b; font-size: 13px; }
 .el-menu-item .el-icon { font-size: 18px; }
 .el-menu-item.is-active { background: #e7eef8; color: #315f99; font-weight: 650; }
-.global-status { display: flex; flex-direction: column; align-items: center; gap: 7px; margin: 8px 6px; padding: 10px 0; border-top: 1px solid #d8e1eb; }
+.global-status { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; margin: 8px 10px; padding: 10px 0; border-top: 1px solid #d8e1eb; }
 .status-button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: #64748b; cursor: pointer; }
 .status-button:hover { background: #e7eef8; color: #315f99; }
 .connectivity-button .el-icon, .notification-button .el-icon { font-size: 17px; }
@@ -164,6 +178,13 @@ onUnmounted(() => {
 .status-button.success .status-dot { background: #16a34a; box-shadow: 0 0 0 3px #dcfce7; }
 .status-button.warning .status-dot { background: #d97706; box-shadow: 0 0 0 3px #fef3c7; }
 .status-button.danger .status-dot { background: #dc2626; box-shadow: 0 0 0 3px #fee2e2; }
+.app-sidebar.is-collapsed .brand-block { justify-content: center; padding: 0 8px; }
+.app-sidebar.is-collapsed .brand-copy { display: none; }
+.app-sidebar.is-collapsed .brand-mark { display: none; }
+.app-sidebar.is-collapsed .sidebar-toggle { flex-basis: 32px; width: 32px; }
+.app-sidebar.is-collapsed .el-menu { width: 58px; }
+.app-sidebar.is-collapsed .el-menu-item { width: 46px; padding: 0 !important; justify-content: center; }
+.app-sidebar.is-collapsed .global-status { align-items: center; margin: 8px 6px; }
 .el-main { height: 100%; min-width: 0; padding: 5px; overflow: hidden; }
 .shell-loading { display: grid; place-items: center; width: 100%; height: 100%; color: var(--el-color-primary); font-size: 22px; }
 </style>

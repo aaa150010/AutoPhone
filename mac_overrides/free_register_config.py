@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 from pathlib import Path
+import re
 import shutil
 import threading
 from typing import Any, Mapping
@@ -26,13 +27,23 @@ FREE_LEGACY_CONFIG_KEYS = frozenset({
 })
 
 DEFAULT_FREE_CONFIG: dict[str, Any] = {
-    "version": 1,
+    "version": 2,
     "driver": "protocol",
     "target_count": 0,
     "concurrency": 3,
     "email_code_timeout": 90,
     "auto_set_2fa": True,
     "proxy_probe_url": "https://api.ipify.org",
+    "proxy_default_scheme": "http",
+    "proxy_failure_threshold": 2,
+    "proxy_quarantine_seconds": 600,
+    "proxy_retry_count": 1,
+    "roxy_circuit_failure_threshold": 3,
+    "roxy_circuit_recovery_seconds": 30,
+    "proxy_selection": {
+        "protocol": {"country": "", "group": ""},
+        "roxybrowser": {"country": "", "group": ""},
+    },
     "protocol": {
         "node_runner": "",
         "sentinel_timeout": 90,
@@ -131,6 +142,27 @@ class FreeConfigStore:
         result["concurrency"] = _int(result.get("concurrency"), 3, 1, 5)
         result["email_code_timeout"] = _int(result.get("email_code_timeout"), 90, 10, 600)
         result["auto_set_2fa"] = _as_bool(result.get("auto_set_2fa"), True)
+        scheme = str(result.get("proxy_default_scheme") or "http").strip().lower()
+        if scheme not in {"http", "https", "socks4", "socks5", "socks5h"}:
+            scheme = "http"
+        result["proxy_default_scheme"] = scheme
+        result["proxy_failure_threshold"] = _int(result.get("proxy_failure_threshold"), 2, 1, 10)
+        result["proxy_quarantine_seconds"] = _int(result.get("proxy_quarantine_seconds"), 600, 30, 86400)
+        result["proxy_retry_count"] = _int(result.get("proxy_retry_count"), 1, 0, 5)
+        result["roxy_circuit_failure_threshold"] = _int(result.get("roxy_circuit_failure_threshold"), 3, 1, 10)
+        result["roxy_circuit_recovery_seconds"] = _int(result.get("roxy_circuit_recovery_seconds"), 30, 0, 3600)
+        selection = result.get("proxy_selection") if isinstance(result.get("proxy_selection"), Mapping) else {}
+        normalized_selection: dict[str, dict[str, str]] = {}
+        for driver in ("protocol", "roxybrowser"):
+            item = selection.get(driver) if isinstance(selection.get(driver), Mapping) else {}
+            country = clean(item.get("country"), 2).upper()
+            if country and not re.fullmatch(r"[A-Z]{2}", country):
+                country = ""
+            normalized_selection[driver] = {
+                "country": country,
+                "group": clean(item.get("group"), 64),
+            }
+        result["proxy_selection"] = normalized_selection
         probe_url = clean(result.get("proxy_probe_url"), 500) or "https://api.ipify.org"
         parsed_probe = urlsplit(probe_url)
         if parsed_probe.scheme not in {"http", "https"} or not parsed_probe.netloc:
@@ -173,7 +205,7 @@ class FreeConfigStore:
         if not roxy["profile_name_prefix"]:
             roxy["profile_name_prefix"] = "rb"
         result["roxybrowser"] = roxy
-        result["version"] = 1
+        result["version"] = 2
         return result
 
     def load(self) -> dict[str, Any]:

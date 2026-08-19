@@ -685,8 +685,18 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         if not isinstance(data, Mapping):
             return free_error_response(ValueError("请求必须是 JSON 对象"), default_code="free_proxy_pool", default_label="Free 代理池")
         try:
-            count = free_manager.proxies.import_text(str(data.get("proxy_content") or ""))
-            return module.jsonify(ok=True, imported=count)
+            importer = free_manager.proxies.import_text
+            try:
+                count = importer(
+                    str(data.get("proxy_content") or ""),
+                    country=str(data.get("country") or "").strip().upper() or None,
+                    group=str(data.get("group") or "").strip() or None,
+                    scheme=str(data.get("scheme") or "").strip().lower() or None,
+                )
+            except TypeError:
+                count = importer(str(data.get("proxy_content") or ""))
+            public = free_manager.proxies.public() if callable(getattr(free_manager.proxies, "public", None)) else None
+            return module.jsonify(ok=True, imported=count, **({"proxies": public} if public is not None else {}))
         except Exception as exc:
             return free_error_response(exc, default_code="free_proxy_pool", default_label="Free 代理池")
 
@@ -707,12 +717,51 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             result = free_manager.preflight_proxies(
                 proxy_content=str(data.get("proxy_content") or ""),
                 probe_url=str(probe_config.get("proxy_probe_url") or "https://api.ipify.org"),
+                driver=str(data.get("driver") or "protocol"),
+                country=str(data.get("country") or "").strip().upper() or None,
+                group=str(data.get("group") or "").strip() or None,
+                scheme=str(data.get("scheme") or "").strip().lower() or None,
             )
             return module.jsonify(ok=True, result=result)
         except Exception as exc:
             return free_failure_response(exc, default_code="free_proxy_preflight", default_label="Free 代理预检", status=502 if not isinstance(exc, ValueError) else 400)
         finally:
             free_request_lock.release()
+
+    def api_free_proxies():
+        if free_manager is None:
+            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        return module.jsonify(ok=True, proxies=free_manager.proxies.public())
+
+    def api_free_proxy_group():
+        if free_manager is None:
+            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        data = module.request.get_json(silent=True) or {}
+        if not isinstance(data, Mapping):
+            return free_error_response(ValueError("请求必须是 JSON 对象"), default_code="free_proxy_group", default_label="更新 Free 代理分组")
+        try:
+            result = free_manager.proxies.update_group(
+                str(data.get("country") or ""),
+                str(data.get("group") or ""),
+                new_country=str(data.get("new_country") or "").strip().upper() or None,
+                new_group=str(data.get("new_group") or "").strip() or None,
+                enabled=data.get("enabled") if isinstance(data.get("enabled"), bool) else None,
+            )
+            return module.jsonify(ok=True, result=result, proxies=free_manager.proxies.public())
+        except Exception as exc:
+            return free_error_response(exc, default_code="free_proxy_group", default_label="更新 Free 代理分组")
+
+    def api_free_proxy_group_delete():
+        if free_manager is None:
+            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        data = module.request.get_json(silent=True) or {}
+        if not isinstance(data, Mapping):
+            return free_error_response(ValueError("请求必须是 JSON 对象"), default_code="free_proxy_group_delete", default_label="删除 Free 代理分组")
+        try:
+            deleted = free_manager.proxies.delete_group(str(data.get("country") or ""), str(data.get("group") or ""))
+            return module.jsonify(ok=True, deleted=deleted, proxies=free_manager.proxies.public())
+        except Exception as exc:
+            return free_error_response(exc, default_code="free_proxy_group_delete", default_label="删除 Free 代理分组")
 
     def api_free_pool_status(status: str):
         if free_manager is None:
@@ -1203,6 +1252,9 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/free/mailboxes/export", "api_free_export", api_free_export, ["POST"]),
         ("/api/free/proxies/import", "api_free_proxy_import", api_free_proxy_import, ["POST"]),
         ("/api/free/proxies/preflight", "api_free_proxy_preflight", api_free_proxy_preflight, ["POST"]),
+        ("/api/free/proxies", "api_free_proxies", api_free_proxies, ["GET"]),
+        ("/api/free/proxies/group", "api_free_proxy_group", api_free_proxy_group, ["POST"]),
+        ("/api/free/proxies/group/delete", "api_free_proxy_group_delete", api_free_proxy_group_delete, ["POST"]),
         ("/api/free/secrets", "api_free_secret", api_free_secret, ["POST"]),
         ("/api/free/2fa/retry", "api_free_twofa_retry", api_free_twofa_retry, ["POST"]),
         *mailbox_mutation_routes.routes(),

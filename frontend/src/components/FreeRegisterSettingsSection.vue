@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import { CircleCheck, Connection, Refresh } from '@element-plus/icons-vue'
-import { getFreeConfig, getFreeRoxyWorkspaces, importFreeProxies, preflightFree, preflightFreeProxies, saveFreeConfig, type FreeConfig, type FreeState } from '../api/client'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { CircleCheck, Connection, Delete, Edit, Refresh, SwitchButton } from '@element-plus/icons-vue'
+import { deleteFreeProxyGroup, getFreeConfig, getFreeProxies, getFreeRoxyWorkspaces, importFreeProxies, preflightFree, preflightFreeProxies, saveFreeConfig, updateFreeProxyGroup, type FreeConfig, type FreeState, type FreeProxyRow, type FreeProxySummary } from '../api/client'
 
 const defaultConfig: FreeConfig = {
   driver: 'protocol', target_count: 0, concurrency: 3, email_code_timeout: 90, auto_set_2fa: true,
   proxy_probe_url: 'https://api.ipify.org', protocol: { node_runner: '', sentinel_timeout: 90 },
+  proxy_default_scheme: 'http', proxy_failure_threshold: 2, proxy_quarantine_seconds: 600, proxy_retry_count: 1,
+  roxy_circuit_failure_threshold: 3, roxy_circuit_recovery_seconds: 30,
+  proxy_selection: { protocol: { country: '', group: '' }, roxybrowser: { country: '', group: '' } },
   roxybrowser: {
     api_base: 'http://127.0.0.1:50000', api_key: '', workspace_id: '', project_id: '',
     workspace_list_path: '/browser/workspace', create_path: '/browser/create', open_path: '/browser/open',
@@ -21,9 +24,15 @@ const defaultConfig: FreeConfig = {
 const config = reactive<FreeConfig>(structuredClone(defaultConfig))
 const state = ref<FreeState>({ running: false, tasks: [], summary: {}, pool: {} })
 const proxyText = ref('')
-const proxyCheckRows = ref<Array<{ index: number; masked: string; fingerprint: string; exit_ip: string }>>([])
+const proxyCountry = ref('')
+const proxyGroup = ref('默认组')
+const proxyScheme = ref('http')
+const proxyCheckRows = ref<Array<{ index: number; masked: string; fingerprint: string; exit_ip: string; scheme?: string; country?: string; group?: string }>>([])
+const proxyRows = ref<FreeProxyRow[]>([])
+const proxyGroups = ref<FreeProxySummary[]>([])
+const proxyCountries = ref<FreeProxySummary[]>([])
 const workspaces = ref<Array<{ workspace_id: string; workspace_name: string; project_id: string; project_name: string; label: string }>>([])
-const busy = ref<'load' | 'save' | 'preflight' | 'proxy' | 'proxy-preflight' | 'workspace' | ''>('')
+const busy = ref<'load' | 'save' | 'preflight' | 'proxy' | 'proxy-preflight' | 'workspace' | 'group' | ''>('')
 const running = computed(() => Boolean(state.value.running))
 const roxy = computed(() => config.roxybrowser)
 
@@ -32,6 +41,27 @@ function mergeConfig(value: any) {
   Object.assign(config, value)
   Object.assign(config.protocol, value.protocol || {})
   Object.assign(config.roxybrowser, value.roxybrowser || {})
+  config.proxy_selection = value.proxy_selection || config.proxy_selection || { protocol: {}, roxybrowser: {} }
+}
+
+function selection(driver: 'protocol' | 'roxybrowser') {
+  if (!config.proxy_selection) config.proxy_selection = { protocol: {}, roxybrowser: {} }
+  if (!config.proxy_selection[driver]) config.proxy_selection[driver] = {}
+  return config.proxy_selection[driver]!
+}
+
+const selectedGroups = computed(() => proxyGroups.value.filter(item => !selection(config.driver).country || item.country === selection(config.driver).country))
+const groupRowKey = (row: FreeProxySummary) => `${row.country}/${row.group || '默认组'}`
+
+async function loadProxies() {
+  try {
+    const result = await getFreeProxies()
+    proxyRows.value = result.proxies?.rows || []
+    proxyGroups.value = result.proxies?.groups || []
+    proxyCountries.value = result.proxies?.countries || []
+  } catch (error: any) {
+    ElMessage.error(error?.message || 'Free 代理池加载失败')
+  }
 }
 
 async function load() {
@@ -40,6 +70,7 @@ async function load() {
     const result = await getFreeConfig()
     mergeConfig(result.config)
     state.value = result.state || state.value
+    await loadProxies()
   } catch (error: any) {
     ElMessage.error(error?.message || 'Free 配置加载失败')
   } finally {
@@ -82,9 +113,10 @@ async function importProxyPool() {
   }
   busy.value = 'proxy'
   try {
-    const result = await importFreeProxies(proxyText.value)
+    const result = await importFreeProxies(proxyText.value, proxyCountry.value || undefined, proxyGroup.value || '默认组', proxyScheme.value)
     ElMessage.success(`已保存 ${Number(result.imported || 0)} 个 Free 代理`)
     proxyText.value = ''
+    await loadProxies()
   } catch (error: any) {
     ElMessage.error(error?.message || 'Free 代理池保存失败')
   } finally {
@@ -95,12 +127,67 @@ async function importProxyPool() {
 async function preflightProxyPool() {
   busy.value = 'proxy-preflight'
   try {
-    const result = await preflightFreeProxies(proxyText.value, config.proxy_probe_url)
+    const result = await preflightFreeProxies(proxyText.value, config.proxy_probe_url, { driver: config.driver, country: proxyCountry.value || undefined, group: proxyGroup.value || undefined, scheme: proxyScheme.value })
     proxyCheckRows.value = result.result?.rows || []
     ElMessage.success(`代理出口 IP 检测通过：${Number(result.result?.proxies || 0)} 个，${Number(result.result?.exit_ips || 0)} 个唯一出口 IP`)
   } catch (error: any) {
     proxyCheckRows.value = []
     ElMessage.error(error?.message || 'Free 代理出口 IP 检测失败')
+  } finally {
+    busy.value = ''
+  }
+}
+
+async function toggleProxyGroup(row: FreeProxySummary) {
+  busy.value = 'group'
+  try {
+    await updateFreeProxyGroup({ country: row.country, group: row.group || '默认组', enabled: Number(row.enabled || 0) < Number(row.total || 0) })
+    await loadProxies()
+    ElMessage.success(Number(row.enabled || 0) < Number(row.total || 0) ? '已启用该代理分组' : '已停用该代理分组')
+  } catch (error: any) {
+    ElMessage.error(error?.message || '代理分组状态更新失败')
+  } finally {
+    busy.value = ''
+  }
+}
+
+async function renameProxyGroup(row: FreeProxySummary) {
+  try {
+    const result = await ElMessageBox.prompt('请输入新的分组名称', '重命名代理分组', { inputValue: row.group || '默认组', inputPattern: /\\S+/, inputErrorMessage: '分组名称不能为空' })
+    busy.value = 'group'
+    await updateFreeProxyGroup({ country: row.country, group: row.group || '默认组', new_group: String(result.value || '').trim() })
+    await loadProxies()
+    ElMessage.success('代理分组已重命名')
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error(error?.message || '代理分组重命名失败')
+  } finally {
+    busy.value = ''
+  }
+}
+
+async function moveProxyGroup(row: FreeProxySummary) {
+  try {
+    const result = await ElMessageBox.prompt('请输入新的 ISO 国家代码，例如 US', '移动代理国家', { inputValue: row.country, inputPattern: /^[A-Za-z]{2}$/, inputErrorMessage: '请输入两位国家代码' })
+    busy.value = 'group'
+    await updateFreeProxyGroup({ country: row.country, group: row.group || '默认组', new_country: String(result.value || '').trim().toUpperCase() })
+    await loadProxies()
+    ElMessage.success('代理分组已移动')
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error(error?.message || '代理分组移动失败')
+  } finally {
+    busy.value = ''
+  }
+}
+
+async function removeProxyGroup(row: FreeProxySummary) {
+  try {
+    await ElMessageBox.confirm(`确认删除 ${row.country} / ${row.group || '默认组'} 中的 ${row.total} 个代理吗？运行中的租约不会被删除。`, '删除代理分组', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' })
+    busy.value = 'group'
+    await deleteFreeProxyGroup(row.country, row.group || '默认组')
+    await loadProxies()
+    ElMessage.success('代理分组已删除')
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error(error?.message || '代理分组删除失败')
   } finally {
     busy.value = ''
   }
@@ -145,6 +232,24 @@ onMounted(load)
         <el-radio value="roxybrowser" border><strong>RoxyBrowser</strong><small>独立 Profile、固定代理和 Selenium 页面注册</small></el-radio>
       </el-radio-group>
     </el-form-item>
+
+    <div class="proxy-selection-grid">
+      <el-form-item label="当前链路代理国家">
+        <el-select v-model="selection(config.driver).country" clearable filterable placeholder="不限定国家">
+          <el-option v-for="item in proxyCountries" :key="item.country" :label="item.country" :value="item.country" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="当前链路代理分组">
+        <el-select v-model="selection(config.driver).group" clearable filterable placeholder="不限定分组">
+          <el-option v-for="item in selectedGroups" :key="`${item.country}-${item.group}`" :label="`${item.country} / ${item.group}（可用 ${item.available}）`" :value="item.group" />
+        </el-select>
+      </el-form-item>
+      <div class="selection-summary">
+        <span>{{ config.driver === 'roxybrowser' ? 'RoxyBrowser' : '全协议' }}池</span>
+        <b>{{ selectedGroups.reduce((total, item) => total + item.available, 0) }}</b>
+        <small>可用代理</small>
+      </div>
+    </div>
 
     <el-row :gutter="10">
       <el-col :span="8"><el-form-item label="Free 目标数量（0=全部可用）"><el-input-number v-model="config.target_count" :min="0" :max="10000" controls-position="right" :disabled="running" /></el-form-item></el-col>
@@ -192,9 +297,16 @@ onMounted(load)
 
     <div class="subsection proxy-section">
       <div class="section-heading-row"><div><h3>Free 独立代理池</h3><p class="section-hint">粘贴后可先检测每条代理的出口 IP、重复 IP 和代理协议，再保存到 Free 池。</p></div><span class="muted">已保存 {{ Number(state.pool?.proxies || 0) }} 个</span></div>
+      <div class="proxy-import-meta">
+        <el-select v-model="proxyCountry" clearable filterable allow-create default-first-option placeholder="导入国家"><el-option label="ZZ / 未分类" value="ZZ" /><el-option v-for="item in proxyCountries" :key="`import-country-${item.country}`" :label="item.country" :value="item.country" /></el-select>
+        <el-input v-model="proxyGroup" placeholder="导入分组" />
+        <el-select v-model="proxyScheme" placeholder="无协议时默认协议"><el-option label="HTTP" value="http" /><el-option label="HTTPS" value="https" /><el-option label="SOCKS5" value="socks5" /><el-option label="SOCKS5H" value="socks5h" /></el-select>
+      </div>
       <el-input v-model="proxyText" type="textarea" :rows="5" :disabled="running" placeholder="每行一个代理 URL 或 主机:端口:用户名:密码" autocomplete="off" />
       <div class="inline-actions"><el-button size="small" :icon="CircleCheck" :loading="busy === 'proxy-preflight'" :disabled="running || !proxyText.trim()" @click="preflightProxyPool">检测出口 IP</el-button><el-button size="small" type="primary" :loading="busy === 'proxy'" :disabled="running || !proxyText.trim()" @click="importProxyPool">保存代理池</el-button><span class="muted">不会消耗邮箱，也不会启动注册</span></div>
-      <el-table v-if="proxyCheckRows.length" :data="proxyCheckRows" size="small" height="150" class="proxy-check-table"><el-table-column prop="index" label="#" width="52" /><el-table-column prop="masked" label="代理掩码" min-width="220" /><el-table-column prop="exit_ip" label="出口 IP" min-width="150" /><el-table-column prop="fingerprint" label="指纹" min-width="120" /></el-table>
+      <el-table v-if="proxyCheckRows.length" :data="proxyCheckRows" size="small" height="150" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" /><el-table-column prop="masked" label="代理掩码" min-width="220" /><el-table-column prop="scheme" label="协议" width="90" /><el-table-column prop="country" label="国家" width="90" /><el-table-column prop="group" label="分组" min-width="130" /><el-table-column prop="exit_ip" label="出口 IP" min-width="150" /><el-table-column prop="fingerprint" label="指纹" min-width="120" /></el-table>
+      <el-table v-if="proxyRows.length" :data="proxyRows" size="small" height="180" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" /><el-table-column prop="country" label="国家" width="80" /><el-table-column prop="group" label="分组" min-width="130" /><el-table-column prop="scheme" label="协议" width="85" /><el-table-column prop="masked" label="代理" min-width="210" /><el-table-column prop="status" label="状态" width="85" /><el-table-column prop="last_exit_ip" label="出口 IP" width="130" /><el-table-column prop="consecutive_failures" label="失败次数" width="85" /></el-table>
+      <el-table v-if="proxyGroups.length" :data="proxyGroups" size="small" height="190" class="proxy-check-table" :row-key="groupRowKey"><el-table-column type="index" label="序号" width="58" align="center" /><el-table-column prop="country" label="国家" width="80" /><el-table-column prop="group" label="分组" min-width="150" /><el-table-column prop="total" label="总数" width="62" /><el-table-column prop="enabled" label="启用" width="62" /><el-table-column prop="available" label="健康可用" width="82" /><el-table-column prop="leased" label="租用中" width="72" /><el-table-column prop="quarantined" label="已隔离" width="72" /><el-table-column label="协议" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ (row.schemes || []).join(' / ') || '-' }}</template></el-table-column><el-table-column label="操作" width="150" align="right"><template #default="{ row }"><el-tooltip content="启用或停用分组"><el-button link :icon="SwitchButton" :disabled="running || busy === 'group'" @click="toggleProxyGroup(row)" /></el-tooltip><el-tooltip content="重命名分组"><el-button link :icon="Edit" :disabled="running || busy === 'group'" @click="renameProxyGroup(row)" /></el-tooltip><el-tooltip content="移动国家"><el-button link :icon="Connection" :disabled="running || busy === 'group'" @click="moveProxyGroup(row)" /></el-tooltip><el-tooltip content="删除分组"><el-button link type="danger" :icon="Delete" :disabled="running || busy === 'group' || row.leased > 0" @click="removeProxyGroup(row)" /></el-tooltip></template></el-table-column></el-table>
     </div>
 
     <div class="settings-actions"><el-button size="small" :loading="busy === 'save'" :disabled="running || busy === 'load'" @click="save">保存 Free 配置</el-button><el-button size="small" :icon="CircleCheck" :loading="busy === 'preflight'" :disabled="running" @click="preflight">注册预检</el-button><el-button size="small" :icon="Refresh" :loading="busy === 'load'" :disabled="running" @click="load">刷新 Free 配置</el-button></div>
@@ -211,6 +323,10 @@ onMounted(load)
 .driver-options :deep(.el-radio) { display: grid; gap: 3px; min-height: 58px; height: auto; margin: 0; align-content: center; }
 .driver-options strong { font-size: 13px; }
 .driver-options small { color: var(--el-text-color-secondary); font-size: 11px; }
+.proxy-selection-grid { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(260px, 1fr) 150px; gap: 10px; align-items: end; margin-bottom: 4px; }
+.selection-summary { display: flex; flex-direction: column; min-height: 58px; justify-content: center; padding: 8px 12px; border: 1px solid var(--workspace-border); color: var(--el-text-color-secondary); }
+.selection-summary b { color: var(--el-text-color-primary); font-size: 19px; line-height: 22px; }
+.selection-summary small { font-size: 11px; }
 .subsection { margin-top: 10px; padding-top: 12px; border-top: 1px solid var(--workspace-border); }
 .subsection h3 { margin: 0 0 9px; font-size: 13px; line-height: 20px; }
 .subsection h4 { margin: 0; font-size: 12px; font-weight: 650; }
@@ -220,6 +336,7 @@ onMounted(load)
 .inline-actions, .settings-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .settings-actions { justify-content: flex-end; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--workspace-border); }
 .proxy-check-table { margin-top: 8px; }
+.proxy-import-meta { display: grid; grid-template-columns: 180px minmax(180px, 1fr) 180px; gap: 8px; margin-bottom: 8px; }
 .free-settings-section :deep(.el-input-number), .free-settings-section :deep(.el-select) { width: 100%; }
 .free-settings-section :deep(.el-form-item) { margin-bottom: 10px; }
 </style>

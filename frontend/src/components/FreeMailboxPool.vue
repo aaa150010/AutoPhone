@@ -195,7 +195,8 @@ onMounted(refresh)
           @selection-change="selected = $event"
         >
           <el-table-column type="selection" width="42" reserve-selection />
-          <el-table-column prop="line_no" label="#" width="52" align="right" />
+          <el-table-column type="index" label="序号" width="58" align="center" />
+          <el-table-column prop="line_no" label="原序号" width="68" align="right" />
           <el-table-column prop="email" label="邮箱" min-width="190" show-overflow-tooltip />
           <el-table-column label="链路 / 阶段" min-width="180" show-overflow-tooltip>
             <template #default="{ row }"><el-tag size="small" effect="plain">{{ row.driver === 'roxybrowser' ? 'RoxyBrowser' : '全协议' }}</el-tag><el-tag size="small" :type="row.status === 'success' ? 'success' : row.status === 'failed' ? 'danger' : 'warning'">{{ row.stage || row.status || '可用' }}</el-tag></template>

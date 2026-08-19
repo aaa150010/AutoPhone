@@ -66,6 +66,16 @@ export interface FreeConfig {
   email_code_timeout: number
   auto_set_2fa: boolean
   proxy_probe_url: string
+  proxy_default_scheme?: 'http' | 'https' | 'socks4' | 'socks5' | 'socks5h' | string
+  proxy_failure_threshold?: number
+  proxy_quarantine_seconds?: number
+  proxy_retry_count?: number
+  roxy_circuit_failure_threshold?: number
+  roxy_circuit_recovery_seconds?: number
+  proxy_selection?: {
+    protocol?: { country?: string; group?: string }
+    roxybrowser?: { country?: string; group?: string }
+  }
   protocol: { node_runner: string; sentinel_timeout: number }
   roxybrowser: {
     api_base: string
@@ -102,7 +112,34 @@ export interface FreeState {
   driver?: 'protocol' | 'roxybrowser' | string
   tasks?: any[]
   pool?: { total?: number; available?: number; proxies?: number }
+  scheduler?: { concurrency?: number; active_slots?: number; queued_slots?: number; roxy_circuit_open?: boolean; roxy_failures?: number; roxy_circuit_opened_at?: number | null }
   summary?: { total?: number; active?: number; success?: number; failed?: number; stopped?: number }
+}
+export interface FreeProxyRow {
+  proxy_id: string
+  index?: number
+  masked: string
+  fingerprint: string
+  scheme: string
+  country: string
+  group: string
+  enabled: boolean
+  status: string
+  lease_until?: number | null
+  last_checked_at?: number | null
+  last_exit_ip?: string
+  latency_ms?: number | null
+  consecutive_failures?: number
+}
+export interface FreeProxySummary {
+  country: string
+  group?: string
+  total: number
+  enabled: number
+  available: number
+  leased?: number
+  quarantined: number
+  schemes?: string[]
 }
 export const getFreeConfig = () => api<{ ok: true; config: FreeConfig; state: FreeState }>('/api/free/config')
 export const saveFreeConfig = (config: Partial<FreeConfig>) => api<{ ok: true; config: FreeConfig; state: FreeState }>('/api/free/config', config)
@@ -151,14 +188,17 @@ export const setFreeMailboxStatus = (status: 'available' | 'unavailable' | 'draf
 )
 export const getFreeMailboxUrl = (rowId: string) => api<{ ok: true; mailbox_url: string }>('/api/free/mailboxes/url', { row_id: rowId })
 export const exportFreeResults = (rowIds: string[] = []) => api<{ ok: true; count: number; filename: string; content: string }>('/api/free/mailboxes/export', { row_ids: rowIds })
-export const importFreeProxies = (proxyContent: string) => api<{ ok: true; imported: number }>(
+export const importFreeProxies = (proxyContent: string, country?: string, group?: string, scheme?: string) => api<{ ok: true; imported: number; proxies?: any }>(
   '/api/free/proxies/import',
-  { proxy_content: proxyContent },
+  { proxy_content: proxyContent, country, group, scheme },
 )
-export const preflightFreeProxies = (proxyContent: string, proxyProbeUrl?: string) => api<{
+export const preflightFreeProxies = (proxyContent: string, proxyProbeUrl?: string, options: { driver?: string; country?: string; group?: string; scheme?: string } = {}) => api<{
   ok: true
-  result: { proxies: number; exit_ips: number; rows: Array<{ index: number; masked: string; fingerprint: string; exit_ip: string }> }
-}>('/api/free/proxies/preflight', { proxy_content: proxyContent, proxy_probe_url: proxyProbeUrl })
+  result: { proxies: number; exit_ips: number; rows: Array<{ index: number; masked: string; fingerprint: string; exit_ip: string; scheme?: string; country?: string; group?: string }> }
+}>('/api/free/proxies/preflight', { proxy_content: proxyContent, proxy_probe_url: proxyProbeUrl, ...options })
+export const getFreeProxies = () => api<{ ok: true; proxies: { count: number; rows: FreeProxyRow[]; groups: FreeProxySummary[]; countries: FreeProxySummary[] } }>('/api/free/proxies')
+export const updateFreeProxyGroup = (payload: { country: string; group: string; new_country?: string; new_group?: string; enabled?: boolean }) => api<{ ok: true; result: any; proxies: any }>('/api/free/proxies/group', payload)
+export const deleteFreeProxyGroup = (country: string, group: string) => api<{ ok: true; deleted: number; proxies: any }>('/api/free/proxies/group/delete', { country, group })
 export const getFreeSecret = (kind: 'token' | 'password' | 'totp' | 'proxy' | 'credential', ids: { task_ids?: string[]; row_ids?: string[] }) => api<{ ok: true; kind: string; value: string }>(
   '/api/free/secrets',
   { kind, ...ids },

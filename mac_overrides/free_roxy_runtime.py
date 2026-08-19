@@ -191,12 +191,13 @@ class RoxyBrowserClient:
 
     def create_profile(self, proxy: str) -> str:
         choices = [str(value) for value in self.config.get("os_choices") or ["Windows", "macOS"]]
-        profile_name = f"{self.config.get('profile_name_prefix') or 'rb'}-{int(time.time() * 1000)}-{random.randrange(65536):04x}"
+        prefix = str(self.config.get("profile_name_prefix") or "rb")
+        profile_name = f"{prefix}-{int(time.time() * 1000)}-{random.randrange(65536):04x}" if bool(self.config.get("random_profile_name", True)) else prefix
         body: dict[str, Any] = {
             "workspaceId": _roxy_id(self.config.get("workspace_id")),
             "projectId": _roxy_id(self.config.get("project_id")),
             "name": profile_name,
-            "os": random.choice(choices or ["Windows", "macOS"]),
+            "os": random.choice(choices or ["Windows", "macOS"]) if bool(self.config.get("random_os", True)) else (choices[0] if choices else "Windows"),
             "proxyInfo": proxy_to_roxy_info(proxy, str(self.config.get("proxy_check_channel") or "IPRust.io")),
         }
         if not body["projectId"]:
@@ -491,6 +492,18 @@ class RoxyRegistrationRunner:
         eligible = plus_trial_from_accounts(accounts) or plus_trial_from_accounts(result.get("eligibility"))
         return plan, eligible
 
+    @staticmethod
+    def _plan_details(driver: Any, token: str) -> dict[str, Any]:
+        plan, eligible = RoxyRegistrationRunner._plan(driver, token)
+        return {
+            "plan_check_status": "success",
+            "plan_type": plan,
+            "subscription_plan": plan,
+            "has_active_subscription": plan not in {"", "free"},
+            "plus_trial_eligible": eligible,
+            "plan_checked_at": time.time(),
+        }
+
     def _setup_2fa(self, driver: Any, task: Mapping[str, Any], token: str, otp: MailboxUrlOtpProvider, human: Humanizer, stage: Callable[[str, str], None]) -> str:
         task_id = str(task.get("task_id") or "")
         stage(task_id, "free_twofa_enroll")
@@ -550,6 +563,9 @@ class RoxyRegistrationRunner:
                 raise FreeRegisterError("free_run_stop", "停止 Free 注册", "任务在创建 RoxyBrowser 环境前已停止", retryable=False)
             stage(task_id, "free_roxy_create")
             profile_id = client.create_profile(str(task.get("proxy") or ""))
+            # Keep ownership as soon as creation succeeds so an open/connect
+            # failure still closes and deletes this run's temporary Profile.
+            opened = RoxyOpenResult(profile_id, {}, created_by_run=True)
             stage(task_id, "free_roxy_open")
             opened = client.open_profile(profile_id)
             stage(task_id, "free_roxy_connect")
@@ -605,7 +621,16 @@ class RoxyRegistrationRunner:
             session = self._session(driver, 120)
             token = str(session.get("accessToken") or "")
             stage(task_id, "free_plan_check")
-            plan, eligible = self._plan(driver, token)
+            try:
+                plan_details = self._plan_details(driver, token)
+            except FreeRegisterError as exc:
+                plan_details = {
+                    "plan_check_status": "failed",
+                    "plan_error_code": str(getattr(exc, "error_code", "free_plan_check_failed")),
+                    "plan_http_status": getattr(exc, "provider_status", None),
+                    "plan_type": "",
+                    "plus_trial_eligible": False,
+                }
             twofa_status = "disabled"
             totp_secret = ""
             twofa_error = ""
@@ -622,7 +647,7 @@ class RoxyRegistrationRunner:
                 time.sleep(random.uniform(dwell_min, dwell_max))
             result = {
                 "driver": "roxybrowser", "access_token": token, "password": FIXED_PASSWORD,
-                "plan_type": plan, "plus_trial_eligible": eligible, "twofa_status": twofa_status,
+                **plan_details, "twofa_status": twofa_status,
                 "twofa_error": twofa_error, "registration_ip": registration_ip,
                 "expected_exit_ip": expected, "profile_summary": f"Roxy#{profile_id}",
             }

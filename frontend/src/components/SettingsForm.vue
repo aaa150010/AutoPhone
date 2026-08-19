@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
 import RuntimeSettingsSection from './RuntimeSettingsSection.vue'
 import SmsSettingsSection from './SmsSettingsSection.vue'
 import IntegrationSettingsSection from './IntegrationSettingsSection.vue'
@@ -14,12 +14,13 @@ interface SettingsNavNode {
   children?: SettingsNavNode[]
 }
 
-defineProps<{
+const props = defineProps<{
   modelValue: any
   smsKeyStatuses?: SmsKeyStatus[]
   queryingSmsBalances?: boolean
   testingNotification?: boolean
   notificationStatus?: NotificationRuntimeStatus
+  initialAnchor?: string
 }>()
 const emit = defineEmits<{ 'update:modelValue': [any]; testNotification: []; querySmsBalances: [] }>()
 
@@ -73,14 +74,26 @@ const navigation: SettingsNavNode[] = [
   },
 ]
 
-function jumpTo(node: SettingsNavNode) {
-  activeKey.value = node.key
-  const anchor = node.anchor || node.key
+function scrollToAnchor(anchor: string) {
+  const targetNode = navigation.find(node => node.anchor === anchor || node.key === anchor)
+  activeKey.value = targetNode?.key || anchor || 'runtime'
   nextTick(() => {
     const target = scrollRegion.value?.querySelector<HTMLElement>(`[data-settings-anchor="${anchor}"]`)
     target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   })
 }
+
+function jumpTo(node: SettingsNavNode) {
+  scrollToAnchor(node.anchor || node.key)
+}
+
+onMounted(() => {
+  if (props.initialAnchor) scrollToAnchor(props.initialAnchor)
+})
+
+watch(() => props.initialAnchor, (anchor) => {
+  if (anchor) scrollToAnchor(anchor)
+})
 </script>
 
 <template>

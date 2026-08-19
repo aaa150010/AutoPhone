@@ -17,6 +17,7 @@ from mac_overrides.free_register_runtime import (
     FreeTwoFaPending,
 )
 from mac_overrides.free_log_runtime import FreeLogStore
+from mac_overrides.free_proxy_store import FreeProxyPool as StructuredFreeProxyPool
 
 
 class FakeResponse:
@@ -270,6 +271,55 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         })
         self.assertEqual(calls["get"][1]["timeout"], 12)
         self.assertTrue(calls["closed"])
+
+    def test_structured_free_proxy_pool_tracks_country_group_scheme_and_migrates_legacy(self):
+        legacy = self.data_dir / "free_proxy_pool.txt"
+        legacy.write_text("proxy-region-US.example:3000:user:pass\n", encoding="utf-8")
+        pool = StructuredFreeProxyPool(self.data_dir)
+        self.assertEqual(pool.records()[0]["country"], "US")
+        self.assertTrue((self.data_dir / "free_proxy_pool.json").exists())
+        pool.import_text("socks5://user:pass@proxy-region-US.example:3000\n", country="US", group="住宅 A")
+        public = pool.public()
+        self.assertEqual(public["count"], 1)
+        self.assertEqual(public["rows"][0]["scheme"], "socks5")
+        self.assertEqual(public["rows"][0]["group"], "住宅 A")
+        self.assertNotIn("pass", str(public))
+
+    def test_structured_proxy_pool_filters_roxy_compatible_groups_and_quarantines_failures(self):
+        pool = StructuredFreeProxyPool(self.data_dir, failure_threshold=2, quarantine_seconds=600)
+        pool.import_text(
+            "socks4://user:pass@proxy-region-US.example:3000\n"
+            "socks5://user:pass@proxy-region-US.example:3001\n",
+            country="US", group="住宅 A",
+        )
+        self.assertEqual(len(pool.records(country="US", group="住宅 A", driver="roxybrowser")), 1)
+        proxy_id = pool.records(country="US", group="住宅 A", driver="roxybrowser")[0]["proxy_id"]
+        pool.record_failure(proxy_id, node_code="free_roxy_open", message="连接失败")
+        pool.record_failure(proxy_id, node_code="free_roxy_open", message="连接失败")
+        self.assertEqual(pool.records(country="US", group="住宅 A", driver="roxybrowser"), [])
+        self.assertEqual(pool.public()["groups"][0]["quarantined"], 1)
+
+    def test_pasted_proxy_preflight_honors_country_group_and_roxy_protocol(self):
+        manager = FreeRegisterManager(
+            self.data_dir,
+            proxy_probe=lambda proxy, _url: "203.0.113.50" if "proxy-region-US" in proxy else "203.0.113.51",
+        )
+        with self.assertRaisesRegex(FreeRegisterError, "代理数量不足"):
+            manager.preflight_proxies(
+                proxy_content="socks4://proxy-region-US.example:3000\nsocks5://proxy-region-US.example:3001\n",
+                driver="roxybrowser",
+                country="US",
+                group="住宅 A",
+            )
+        result = manager.preflight_proxies(
+            proxy_content="socks5://proxy-region-US.example:3001\n",
+            driver="roxybrowser",
+            country="US",
+            group="住宅 A",
+        )
+        self.assertEqual(result["rows"][0]["scheme"], "socks5")
+        self.assertEqual(result["rows"][0]["country"], "US")
+        self.assertEqual(result["rows"][0]["group"], "住宅 A")
 
     def test_mailbox_otp_provider_uses_proxy_aware_fetcher(self):
         from mac_overrides.free_register_runtime import MailboxUrlOtpProvider

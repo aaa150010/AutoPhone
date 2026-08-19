@@ -178,6 +178,7 @@ function checkpointType() {
       <section v-if="timing?.segments?.length" class="detail-section">
         <h3>细分耗时</h3>
         <el-table :data="timing.segments" size="small" stripe>
+          <el-table-column type="index" label="序号" width="58" align="center" />
           <el-table-column prop="label" label="细分阶段" min-width="210" />
           <el-table-column prop="code" label="代码" min-width="190" />
           <el-table-column label="访问" width="70" align="right">

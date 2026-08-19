@@ -10,6 +10,7 @@ import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useAppController } from '../composables/useAppController'
 
 const emit = defineEmits<{ navigate: [string] }>()
+const props = defineProps<{ initialAnchor?: string }>()
 const controller = useAppController()
 const startDialog = ref<InstanceType<typeof RunStartDialog>>()
 
@@ -139,6 +140,7 @@ onMounted(async () => {
     <div class="settings-grid">
       <WorkspacePanel title="配置参数" :icon="Setting" fill body-padding="none">
         <SettingsForm
+          :initial-anchor="props.initialAnchor"
           :model-value="controller.form"
           :sms-key-statuses="controller.smsKeyStatuses.value"
           :querying-sms-balances="controller.actions.queryingSmsBalances"

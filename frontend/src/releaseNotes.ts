@@ -12,10 +12,38 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.16',
-  title: 'Free 运行配置与代理预检',
+  version: '1.6.18',
+  title: 'Free 调度与工作台导航优化',
   releasedAt: '2026-08-19',
   sections: [
+    {
+      title: '左侧菜单可收缩',
+      usage: '左侧菜单默认展开，点击标题栏的收缩按钮可切换为图标栏；选择会保存在本机，下次打开继续使用。',
+    },
+    {
+      title: 'Free 配置快捷定位',
+      usage: '在 Free 注册中心点击“打开运行配置”会自动平滑滚动到 Free 独立配置，不会落到普通接码配置区域。',
+    },
+    {
+      title: '列表统一显示序号',
+      usage: '任务、邮箱、代理、诊断和阶段明细表统一增加序号列，筛选或滚动查看时更容易对应具体账号和资源。',
+    },
+    {
+      title: 'Free 并发 Slot 与分组操作',
+      usage: 'Free 任务列表显示 Slot 占用和批次并发；代理分组支持启停、重命名、移动国家和删除，临时预检严格遵守所选国家、分组与协议。',
+    },
+    {
+      title: 'Free 代理按国家和分组选择',
+      usage: 'Free 代理池现在保存协议、国家、分组、健康状态、租约和最近出口 IP；全协议与 RoxyBrowser 可以分别选择自己的国家和分组，不会读取普通接码代理池。',
+    },
+    {
+      title: 'RoxyBrowser 并发租约与故障熔断',
+      usage: '每个 Free 账号独占一个临时 Profile、一个代理和一个出口 IP；Profile 创建前可重试备用代理，进入注册页后锁定 IP。连续代理故障会隔离代理，Roxy 基础设施连续失败会暂停当前批次并保留已完成结果。',
+    },
+    {
+      title: 'Free 套餐与 Plus 资格状态',
+      usage: '注册结果会保存套餐、订阅状态、Plus 试用资格和查询时间；查询失败仍保留 Token、代理和注册 IP，并在任务列表标记为部分成功。',
+    },
     {
       title: 'Free 注册支持全协议与 RoxyBrowser 双链路',
       usage: '进入“运行配置 > Free 注册运行”选择全协议或 RoxyBrowser。两种链路分别使用自己的配置、邮箱、代理、任务和日志；普通邮箱管理与运行中心不会显示或消耗 Free 数据。',

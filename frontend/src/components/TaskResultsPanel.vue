@@ -150,6 +150,7 @@ function emitFreeSecret(kind: 'token' | 'password' | 'totp' | 'proxy' | 'credent
     </div>
     <el-table class="task-table" :data="visibleTasks" :row-key="taskRowKey" stripe height="100%" @selection-change="selectFreeTasks">
       <el-table-column type="selection" width="42" reserve-selection />
+      <el-table-column type="index" label="序号" width="58" align="center" />
       <el-table-column label="邮箱" min-width="154">
         <template #default="{ row }">
           <el-tooltip v-if="row.email || row.account" content="点击复制邮箱" placement="top"><button type="button" class="copyable-account" @click="emit('copyAccount', row)">{{ row.email || row.account }}</button></el-tooltip>

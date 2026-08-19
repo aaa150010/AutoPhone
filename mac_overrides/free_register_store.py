@@ -24,6 +24,7 @@ try:
         parse_mailbox_line,
         proxy_error_detail,
     )
+    from .free_proxy_store import FreeProxyPool as StructuredFreeProxyPool
 except ImportError:
     from free_register_common import (  # type: ignore[no-redef]
         DEFAULT_FREE_PROXY_SCHEME,
@@ -38,6 +39,7 @@ except ImportError:
         parse_mailbox_line,
         proxy_error_detail,
     )
+    from free_proxy_store import FreeProxyPool as StructuredFreeProxyPool  # type: ignore[no-redef]
 
 
 ACTIVE_POOL_STATUSES = frozenset({"reserved", "queued", "running"})
@@ -219,7 +221,7 @@ class FreeMailboxPool:
 
     def counts(self) -> dict[str, int]:
         rows = self.public_rows()
-        counts = {"total": len(rows), "available": 0, "running": 0, "success": 0, "failed": 0, "draft": 0, "unavailable": 0, "twofa_pending": 0}
+        counts = {"total": len(rows), "available": 0, "running": 0, "success": 0, "partial_success": 0, "failed": 0, "draft": 0, "unavailable": 0, "twofa_pending": 0}
         for row in rows:
             status = str(row.get("status") or "available")
             if status in ACTIVE_POOL_STATUSES:
@@ -246,12 +248,21 @@ class FreeMailboxPool:
                     "driver": result.get("driver") or current.get("driver", ""),
                     "proxy_masked": current.get("proxy_masked", ""),
                     "proxy_fingerprint": current.get("proxy_fingerprint", ""),
+                    "proxy_id": current.get("proxy_id", ""),
+                    "proxy_scheme": current.get("proxy_scheme", ""),
+                    "proxy_country": current.get("proxy_country", ""),
+                    "proxy_group": current.get("proxy_group", ""),
                     "expected_exit_ip": result.get("expected_exit_ip") or current.get("expected_exit_ip", ""),
                     "registration_ip": result.get("registration_ip") or current.get("registration_ip", ""),
                     "exit_ip": result.get("registration_ip") or current.get("registration_ip") or current.get("exit_ip", ""),
                     "profile_summary": result.get("profile_summary", ""),
                     "plan_type": result.get("plan_type", ""),
+                    "subscription_plan": result.get("subscription_plan", ""),
+                    "has_active_subscription": bool(result.get("has_active_subscription", False)),
                     "plus_trial_eligible": bool(result.get("plus_trial_eligible", False)),
+                    "eligible_campaign_id": result.get("eligible_campaign_id", ""),
+                    "plan_check_status": result.get("plan_check_status", ""),
+                    "plan_checked_at": result.get("plan_checked_at", ""),
                     "twofa_status": result.get("twofa_status", ""),
                     "twofa_error": result.get("twofa_error", ""),
                     "has_access_token": bool(result.get("access_token")),
@@ -392,5 +403,9 @@ class FreeTaskStore:
         with self._lock:
             atomic_write(self.path, {"version": 1, "tasks": copy.deepcopy(dict(tasks))})
 
+
+# Keep the historical import path while moving all runtime calls to the
+# structured Free-only resource store.
+FreeProxyPool = StructuredFreeProxyPool
 
 __all__ = ["FreeMailboxPool", "FreeProxyPool", "FreeTaskStore"]

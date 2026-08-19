@@ -86,6 +86,7 @@ watch(() => props.modelValue, async (open) => {
       @selection-change="selectedRows = $event"
     >
       <el-table-column type="selection" width="46" reserve-selection :selectable="() => !disabled && !restoring" />
+      <el-table-column type="index" label="序号" width="58" align="center" />
       <el-table-column prop="line_no" label="原序号" width="82" />
       <el-table-column prop="email" label="邮箱" min-width="270" show-overflow-tooltip />
       <el-table-column label="凭据类型" min-width="190">

@@ -10,6 +10,7 @@ import ContentEmptyState from '../components/ContentEmptyState.vue'
 const defaultConfig: FreeConfig = {
   driver: 'protocol', target_count: 0, concurrency: 3, email_code_timeout: 90, auto_set_2fa: true,
   proxy_probe_url: 'https://api.ipify.org', protocol: { node_runner: '', sentinel_timeout: 90 },
+  proxy_default_scheme: 'http', proxy_selection: { protocol: { country: '', group: '' }, roxybrowser: { country: '', group: '' } },
   roxybrowser: {
     api_base: 'http://127.0.0.1:50000', api_key: '', workspace_id: '', project_id: '',
     workspace_list_path: '/browser/workspace', create_path: '/browser/create', open_path: '/browser/open',
@@ -29,6 +30,8 @@ const selectedTaskId = ref('')
 const taskSearch = ref('')
 const taskStatusFilter = ref('all')
 const taskDriverFilter = ref('')
+const taskCountryFilter = ref('')
+const taskGroupFilter = ref('')
 const selectedTasks = ref<any[]>([])
 const taskTable = ref<any>()
 const logDialogOpen = ref(false)
@@ -46,11 +49,15 @@ const filteredTasks = computed(() => {
     return (!query || haystack.includes(query))
       && (taskStatusFilter.value === 'all' || (taskStatusFilter.value === 'active' ? ['queued', 'running'].includes(task.status) : task.status === taskStatusFilter.value))
       && (!taskDriverFilter.value || task.driver === taskDriverFilter.value)
+      && (!taskCountryFilter.value || task.proxy_country === taskCountryFilter.value)
+      && (!taskGroupFilter.value || task.proxy_group === taskGroupFilter.value)
   })
 })
+const taskCountries = computed(() => [...new Set(visibleTasks.value.map(task => task.proxy_country).filter(Boolean))])
+const taskGroups = computed(() => [...new Set(visibleTasks.value.filter(task => !taskCountryFilter.value || task.proxy_country === taskCountryFilter.value).map(task => task.proxy_group).filter(Boolean))])
 const taskCounts = computed(() => {
   const count = (status: string) => visibleTasks.value.filter(task => task.status === status).length
-  return { total: visibleTasks.value.length, running: count('running') + count('queued'), success: count('success'), failed: count('failed'), pending: count('twofa_pending'), stopped: count('stopped') }
+  return { total: visibleTasks.value.length, running: count('running') + count('queued'), success: count('success') + count('partial_success'), partial: count('partial_success'), failed: count('failed'), pending: count('twofa_pending'), stopped: count('stopped') }
 })
 const selectedTask = computed(() => visibleTasks.value.find(task => task.task_id === selectedTaskId.value))
 const selectedLogs = computed(() => {
@@ -148,23 +155,29 @@ async function openTaskLog(task: any) {
 }
 
 async function copyTaskTokens(tasks: any[]) {
+  await copyTaskSecret('token', tasks, 'Token')
+}
+
+async function copyTaskSecret(kind: 'token' | 'password' | 'totp' | 'credential', tasks: any[], label: string) {
   const ids = tasks.map(task => String(task?.task_id || '')).filter(Boolean)
   if (!ids.length) {
     ElMessage.warning('请先勾选账号')
     return
   }
-  const eligible = tasks.filter(task => task?.result?.has_access_token)
+  const eligible = kind === 'token'
+    ? tasks.filter(task => task?.result?.has_access_token)
+    : tasks.filter(task => kind === 'password' ? task?.result?.has_credential : kind === 'totp' ? task?.result?.twofa_status === 'enabled' : task?.result?.has_credential)
   if (!eligible.length) {
-    ElMessage.warning('选中的账号没有可复制 Token')
+    ElMessage.warning(`选中的账号没有可复制 ${label}`)
     return
   }
   try {
-    const value = (await getFreeSecret('token', { task_ids: eligible.map(task => String(task.task_id)) })).value
+    const value = (await getFreeSecret(kind, { task_ids: eligible.map(task => String(task.task_id)) })).value
     if (!value || !navigator.clipboard?.writeText) throw new Error('当前环境不支持复制')
     await navigator.clipboard.writeText(value)
-    ElMessage.success(`已复制 ${eligible.length} 个 Free Token`)
+    ElMessage.success(`已复制 ${eligible.length} 个 Free ${label}`)
   } catch (error: any) {
-    ElMessage.error(error?.message || 'Free Token 复制失败')
+    ElMessage.error(error?.message || `Free ${label} 复制失败`)
   }
 }
 
@@ -173,11 +186,11 @@ function handleTaskSelection(rows: any[]) {
 }
 
 function taskStatusLabel(status: string) {
-  return ({ queued: '排队', running: '运行中', success: '成功', failed: '失败', stopped: '已停止', twofa_pending: '2FA 待重试' } as Record<string, string>)[status] || status || '-'
+  return ({ queued: '排队', running: '运行中', success: '成功', partial_success: '部分成功', failed: '失败', stopped: '已停止', twofa_pending: '2FA 待重试' } as Record<string, string>)[status] || status || '-'
 }
 
 function taskStatusType(status: string) {
-  return status === 'success' ? 'success' : status === 'failed' ? 'danger' : status === 'stopped' ? 'info' : 'warning'
+  return status === 'success' ? 'success' : status === 'partial_success' ? 'warning' : status === 'failed' ? 'danger' : status === 'stopped' ? 'info' : 'warning'
 }
 
 function scheduleRefresh() {
@@ -198,15 +211,15 @@ onUnmounted(() => window.clearTimeout(timer))
   <div class="free-page">
     <PageToolbar title="Free 注册中心" :status="running ? '运行中' : '独立链路'" :tone="running ? 'success' : 'info'">
       <el-tag effect="plain">配置入口：运行配置 &gt; Free 注册运行</el-tag>
-      <el-button size="small" :icon="Setting" @click="emit('navigate', '/settings')">打开运行配置</el-button>
+      <el-button size="small" :icon="Setting" @click="emit('navigate', '/settings#free-register')">打开运行配置</el-button>
     </PageToolbar>
     <div class="task-view">
       <WorkspacePanel title="Free 注册任务" :icon="Connection" fill body-padding="none">
         <div class="task-panel">
-          <div class="run-snapshot task-summary"><div><span>任务总数</span><strong>{{ taskCounts.total }}</strong></div><div><span>排队 / 运行</span><strong>{{ taskCounts.running }}</strong></div><div><span>成功</span><strong class="is-good">{{ taskCounts.success }}</strong></div><div><span>失败</span><strong class="is-bad">{{ taskCounts.failed }}</strong></div><div><span>2FA 待重试</span><strong class="is-warn">{{ taskCounts.pending }}</strong></div></div>
+          <div class="run-snapshot task-summary"><div><span>任务总数</span><strong>{{ taskCounts.total }}</strong></div><div><span>排队 / 运行</span><strong>{{ taskCounts.running }}</strong></div><div><span>成功</span><strong class="is-good">{{ taskCounts.success - taskCounts.partial }}</strong></div><div><span>部分成功</span><strong class="is-warn">{{ taskCounts.partial }}</strong></div><div><span>失败</span><strong class="is-bad">{{ taskCounts.failed }}</strong></div><div><span>2FA 待重试</span><strong class="is-warn">{{ taskCounts.pending }}</strong></div></div>
           <div class="task-start-bar">
             <el-tag effect="plain">{{ config.driver === 'roxybrowser' ? 'RoxyBrowser' : '全协议' }}</el-tag>
-            <span class="muted">并发 {{ config.concurrency }} · 可用邮箱 {{ Number(state.pool?.available || 0) }} · 固定代理 {{ Number(state.pool?.proxies || 0) }}</span>
+            <span class="muted">并发 {{ config.concurrency }} · Slot {{ Number(state.scheduler?.active_slots || 0) }}/{{ Number(state.scheduler?.concurrency || config.concurrency) }} · 可用邮箱 {{ Number(state.pool?.available || 0) }} · 固定代理 {{ Number(state.pool?.proxies || 0) }}</span>
             <el-button size="small" :icon="CircleCheck" :loading="busy === 'preflight'" :disabled="running" @click="preflight">预检</el-button>
             <el-button size="small" type="primary" :icon="VideoPlay" :loading="busy === 'start'" :disabled="running || !Number(state.pool?.available || 0)" @click="start">开始注册</el-button>
             <el-button size="small" type="danger" plain :icon="VideoPause" :loading="busy === 'stop'" :disabled="!running" @click="stop">停止</el-button>
@@ -216,20 +229,28 @@ onUnmounted(() => window.clearTimeout(timer))
             <el-radio-group v-model="taskStatusFilter" size="small" class="task-status-filter">
               <el-radio-button value="all">全部 {{ taskCounts.total }}</el-radio-button>
               <el-radio-button value="active">排队/运行 {{ taskCounts.running }}</el-radio-button>
-              <el-radio-button value="success">成功 {{ taskCounts.success }}</el-radio-button>
+              <el-radio-button value="success">成功 {{ taskCounts.success - taskCounts.partial }}</el-radio-button>
+              <el-radio-button value="partial_success">部分成功 {{ taskCounts.partial }}</el-radio-button>
               <el-radio-button value="failed">失败 {{ taskCounts.failed }}</el-radio-button>
               <el-radio-button value="twofa_pending">2FA {{ taskCounts.pending }}</el-radio-button>
               <el-radio-button value="stopped">已停止 {{ taskCounts.stopped }}</el-radio-button>
             </el-radio-group>
             <el-select v-model="taskDriverFilter" size="small" clearable placeholder="链路" class="task-driver-filter"><el-option label="全协议" value="protocol" /><el-option label="RoxyBrowser" value="roxybrowser" /></el-select>
+            <el-select v-model="taskCountryFilter" size="small" clearable filterable placeholder="国家" class="task-driver-filter"><el-option v-for="country in taskCountries" :key="country" :label="country" :value="country" /></el-select>
+            <el-select v-model="taskGroupFilter" size="small" clearable filterable placeholder="代理分组" class="task-driver-filter"><el-option v-for="group in taskGroups" :key="group" :label="group" :value="group" /></el-select>
           </div>
-          <div class="task-actions"><span class="muted">已选 {{ selectedTasks.length }} 个</span><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskTokens(selectedTasks)">复制选中 Token</el-button><el-button size="small" :icon="CopyDocument" :disabled="!filteredTasks.some(task => task.result?.has_access_token)" @click="copyTaskTokens(filteredTasks)">复制当前筛选 Token</el-button><el-button size="small" :icon="Refresh" @click="refresh">刷新任务</el-button></div>
+          <div class="task-actions"><span class="muted">已选 {{ selectedTasks.length }} 个</span><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('token', selectedTasks, 'Token')">复制 Token</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('password', selectedTasks, '密码')">复制密码</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('totp', selectedTasks, 'TOTP')">复制 TOTP</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('credential', selectedTasks, '完整凭据')">复制完整凭据</el-button><el-button size="small" :icon="CopyDocument" :disabled="!filteredTasks.some(task => task.result?.has_access_token)" @click="copyTaskTokens(filteredTasks)">复制当前筛选 Token</el-button><el-button size="small" :icon="Refresh" @click="refresh">刷新任务</el-button></div>
           <el-table ref="taskTable" :data="filteredTasks" row-key="task_id" height="100%" size="small" @selection-change="handleTaskSelection">
             <el-table-column type="selection" width="42" reserve-selection />
+            <el-table-column type="index" label="序号" width="58" align="center" />
             <el-table-column label="账号" min-width="220" show-overflow-tooltip><template #default="{ row }"><strong>{{ row.email || '-' }}</strong><small class="task-subline">{{ row.task_id }}</small></template></el-table-column>
             <el-table-column label="链路 / 阶段" min-width="190" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" effect="plain">{{ row.driver === 'roxybrowser' ? 'RoxyBrowser' : '全协议' }}</el-tag><small class="task-subline">{{ row.stage_label || row.stage || '-' }}</small></template></el-table-column>
+            <el-table-column label="Slot" width="78" align="center"><template #default="{ row }">{{ row.slot_index || '-' }} / {{ row.concurrency_limit || config.concurrency }}</template></el-table-column>
+            <el-table-column label="代理池" min-width="150" show-overflow-tooltip><template #default="{ row }"><span>{{ row.proxy_country || '-' }} / {{ row.proxy_group || '-' }}</span><small class="task-subline">{{ row.proxy_scheme || '' }} · {{ row.proxy_masked || '' }}</small></template></el-table-column>
             <el-table-column label="状态" width="92" align="center"><template #default="{ row }"><el-tag size="small" :type="taskStatusType(row.status)">{{ taskStatusLabel(row.status) }}</el-tag></template></el-table-column>
             <el-table-column label="注册 IP" min-width="135" show-overflow-tooltip><template #default="{ row }">{{ row.registration_ip || row.expected_exit_ip || '-' }}</template></el-table-column>
+            <el-table-column label="套餐 / 2FA" min-width="130" show-overflow-tooltip><template #default="{ row }"><span>{{ row.result?.subscription_plan || row.result?.plan_type || '-' }}</span><small class="task-subline">{{ row.result?.plus_trial_eligible ? 'Plus 可试用' : '无 Plus 资格' }} · {{ row.result?.twofa_status || '-' }}</small></template></el-table-column>
+            <el-table-column label="Profile" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ row.profile_summary || '-' }}</template></el-table-column>
             <el-table-column label="Token" width="72" align="center"><template #default="{ row }"><el-button v-if="row.result?.has_access_token" link :icon="CopyDocument" aria-label="复制该账号 Token" @click.stop="copyTaskTokens([row])" /><span v-else class="muted">-</span></template></el-table-column>
             <el-table-column label="操作" width="60" align="center"><template #default="{ row }"><el-tooltip content="查看该账号日志"><el-button link :icon="View" aria-label="查看该账号日志" @click.stop="openTaskLog(row)" /></el-tooltip></template></el-table-column>
             <el-table-column label="错误节点" min-width="220" show-overflow-tooltip><template #default="{ row }">{{ row.failure?.node_label || row.failure?.public_message || row.error || row.result?.twofa_error || '-' }}</template></el-table-column>
@@ -251,7 +272,7 @@ onUnmounted(() => window.clearTimeout(timer))
 .task-view { min-width: 0; min-height: 0; height: 100%; }
 .task-view :deep(.workspace-panel) { height: 100%; }
 .task-panel { display: grid; grid-template-rows: auto auto auto auto minmax(0, 1fr); gap: 8px; height: 100%; min-height: 0; padding: 10px; }
-.run-snapshot { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--workspace-border); border-radius: var(--workspace-radius); overflow: hidden; }
+.run-snapshot { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--workspace-border); border-radius: var(--workspace-radius); overflow: hidden; }
 .run-snapshot > div { display: grid; grid-template-rows: 18px 22px; align-items: center; min-height: 48px; padding: 5px 10px; background: #f8fafc; }
 .run-snapshot span { color: var(--el-text-color-secondary); font-size: 13px; }
 .run-snapshot strong { font-size: 17px; font-variant-numeric: tabular-nums; }
@@ -261,7 +282,7 @@ onUnmounted(() => window.clearTimeout(timer))
 .task-start-bar, .task-filter-bar, .task-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .task-start-bar { min-height: 32px; }
 .task-start-bar .muted { margin-right: auto; }
-.task-filter-bar { display: grid; grid-template-columns: minmax(260px, 1.2fr) minmax(420px, 2fr) 180px; min-height: 32px; }
+.task-filter-bar { display: grid; grid-template-columns: minmax(260px, 1.2fr) minmax(420px, 2fr) repeat(3, 150px); min-height: 32px; }
 .task-filter-bar > .el-input, .task-filter-bar > .task-driver-filter { width: 100%; }
 .task-status-filter { flex: 1; min-width: 0; }
 .task-status-filter :deep(.el-radio-button__inner) { padding: 7px 10px; }

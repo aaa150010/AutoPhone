@@ -23,7 +23,7 @@ FIXED_PASSWORD = "nuHf5UFg2vtCW!/"
 FREE_PROXY_SCHEMES = frozenset({"http", "https", "socks4", "socks5", "socks5h"})
 ROXY_PROXY_SCHEMES = frozenset({"http", "https", "socks5", "socks5h"})
 DEFAULT_FREE_PROXY_SCHEME = "http"
-TERMINAL_STATUSES = frozenset({"success", "failed", "stopped", "twofa_pending"})
+TERMINAL_STATUSES = frozenset({"success", "partial_success", "failed", "stopped", "twofa_pending"})
 LOG_SECRET_RE = re.compile(
     r"(?i)(access[_ -]?token|refresh[_ -]?token|id[_ -]?token|authorization|"
     r"password|(?:totp|sms|email)[_ -]?(?:secret|code)?|proxy(?:[_ -]?url)?|"
@@ -108,6 +108,10 @@ class ProxyBinding:
     fingerprint: str
     masked: str
     exit_ip: str
+    proxy_id: str = ""
+    scheme: str = ""
+    country: str = "ZZ"
+    group: str = "默认组"
 
 
 @dataclass(frozen=True, slots=True)
