@@ -465,6 +465,16 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     def free_config_public():
         return free_config_store.public() if free_config_store is not None else {}
 
+    def free_mutation_conflict(action: str):
+        """Return a consistent conflict response while Free work owns its pools."""
+        try:
+            running = bool(free_manager is not None and free_manager.public_state().get("running"))
+        except Exception:
+            running = False
+        if running:
+            return module.jsonify(ok=False, error=f"Free 注册运行中，暂不能{action}，请停止当前批次后重试", state=free_state()), 409
+        return None
+
     def free_failure_response(exc: Exception, *, default_code: str, default_label: str, status: int = 400):
         code = str(getattr(exc, "node_code", "") or default_code)
         label = str(getattr(exc, "node_label", "") or default_label)
@@ -519,10 +529,17 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                     pass
             mailbox_content = str(data.get("pool_content") or data.get("free_pool_content") or "")
             proxy_content = str(data.get("proxy_content") or data.get("free_proxy_pool_content") or "")
+            proxy_country = str(data.get("proxy_country") or data.get("country") or "").strip().upper() or None
+            proxy_group = str(data.get("proxy_group") or data.get("group") or "").strip() or None
+            proxy_scheme = str(data.get("proxy_scheme") or data.get("scheme") or config.get("proxy_default_scheme") or "http").strip().lower() or "http"
             if mailbox_content.strip() and hasattr(free_manager, "pool"):
                 free_manager.pool.import_text(mailbox_content)
             if proxy_content.strip() and hasattr(free_manager, "proxies"):
-                free_manager.proxies.import_text(proxy_content)
+                importer = free_manager.proxies.import_text
+                try:
+                    importer(proxy_content, country=proxy_country, group=proxy_group, scheme=proxy_scheme)
+                except TypeError:
+                    importer(proxy_content)
             result = free_manager.start(
                 config,
                 pool_content=mailbox_content if free_config_store is None else "",
@@ -558,6 +575,9 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     def api_free_preflight():
         if free_manager is None or free_config_store is None:
             return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        conflict = free_mutation_conflict("执行 Free 预检")
+        if conflict is not None:
+            return conflict
         if not free_request_lock.acquire(blocking=False):
             return module.jsonify(ok=False, error="Free 配置、预检或启动请求正在处理中", state=free_state()), 409
         try:
@@ -644,6 +664,9 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     def api_free_pool_import():
         if free_manager is None:
             return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        conflict = free_mutation_conflict("导入 Free 邮箱")
+        if conflict is not None:
+            return conflict
         data = module.request.get_json(silent=True) or {}
         if not isinstance(data, Mapping):
             return free_error_response(ValueError("请求必须是 JSON 对象"), default_code="free_pool", default_label="Free 邮箱池")
@@ -666,6 +689,9 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     def api_free_pool_delete():
         if free_manager is None:
             return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        conflict = free_mutation_conflict("删除 Free 邮箱")
+        if conflict is not None:
+            return conflict
         data = module.request.get_json(silent=True) or {}
         if not isinstance(data, Mapping):
             return free_error_response(ValueError("请求必须是 JSON 对象"), default_code="free_pool_delete", default_label="删除 Free 邮箱")
@@ -681,6 +707,9 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     def api_free_proxy_import():
         if free_manager is None:
             return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        conflict = free_mutation_conflict("导入 Free 代理")
+        if conflict is not None:
+            return conflict
         data = module.request.get_json(silent=True) or {}
         if not isinstance(data, Mapping):
             return free_error_response(ValueError("请求必须是 JSON 对象"), default_code="free_proxy_pool", default_label="Free 代理池")
@@ -703,6 +732,9 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     def api_free_proxy_preflight():
         if free_manager is None or free_config_store is None:
             return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        conflict = free_mutation_conflict("执行 Free 代理预检")
+        if conflict is not None:
+            return conflict
         if not free_request_lock.acquire(blocking=False):
             return module.jsonify(ok=False, error="Free 配置、预检或启动请求正在处理中", state=free_state()), 409
         try:
@@ -736,6 +768,9 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     def api_free_proxy_group():
         if free_manager is None:
             return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        conflict = free_mutation_conflict("修改 Free 代理分组")
+        if conflict is not None:
+            return conflict
         data = module.request.get_json(silent=True) or {}
         if not isinstance(data, Mapping):
             return free_error_response(ValueError("请求必须是 JSON 对象"), default_code="free_proxy_group", default_label="更新 Free 代理分组")
@@ -754,6 +789,9 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     def api_free_proxy_group_delete():
         if free_manager is None:
             return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        conflict = free_mutation_conflict("删除 Free 代理分组")
+        if conflict is not None:
+            return conflict
         data = module.request.get_json(silent=True) or {}
         if not isinstance(data, Mapping):
             return free_error_response(ValueError("请求必须是 JSON 对象"), default_code="free_proxy_group_delete", default_label="删除 Free 代理分组")
@@ -766,6 +804,9 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     def api_free_pool_status(status: str):
         if free_manager is None:
             return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        conflict = free_mutation_conflict("修改 Free 邮箱状态")
+        if conflict is not None:
+            return conflict
         data = module.request.get_json(silent=True) or {}
         row_ids = data.get("row_ids") if isinstance(data, Mapping) else None
         if not isinstance(row_ids, list):

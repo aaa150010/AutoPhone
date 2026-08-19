@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 from tempfile import TemporaryDirectory
 import unittest
 
@@ -36,6 +37,23 @@ class _FakeSession:
 
 
 class FreeRoxyRuntimeTests(unittest.TestCase):
+    def test_migration_copies_sensitive_files_with_private_permissions(self):
+        with TemporaryDirectory() as legacy_directory, TemporaryDirectory() as target_directory:
+            legacy = Path(legacy_directory)
+            (legacy / "free_mailbox_pool.txt").write_text("account@example.test----https://mail.test/inbox\n", encoding="utf-8")
+            results = legacy / "free_register_results"
+            results.mkdir()
+            (results / "result.json").write_text("{}", encoding="utf-8")
+            os.chmod(legacy / "free_mailbox_pool.txt", 0o644)
+            os.chmod(results, 0o755)
+
+            store = FreeConfigStore(target_directory)
+            store.migrate_legacy({}, legacy)
+
+            self.assertEqual(os.stat(Path(target_directory) / "free_mailbox_pool.txt").st_mode & 0o777, 0o600)
+            self.assertEqual(os.stat(Path(target_directory) / "free_register_results").st_mode & 0o777, 0o700)
+            self.assertEqual(os.stat(Path(target_directory) / "free_register_results" / "result.json").st_mode & 0o777, 0o600)
+
     def test_config_is_free_only_and_masks_roxy_key(self):
         with TemporaryDirectory() as directory:
             store = FreeConfigStore(directory)

@@ -157,6 +157,38 @@ class FreeMailboxPool:
             row.update({key: value for key, value in values.items() if value is not None})
             atomic_write(self.state_path, state)
 
+    def recover_reserved(self) -> int:
+        """Release rows reserved before a process could create their tasks."""
+        with self._lock:
+            state = self._state()
+            changed = 0
+            for row in state["rows"].values():
+                if not isinstance(row, Mapping) or row.get("status") != "reserved":
+                    continue
+                row.update({"status": "available", "batch_id": "", "stage": ""})
+                changed += 1
+            if changed:
+                atomic_write(self.state_path, state)
+            return changed
+
+    def recover_interrupted(self, row_id: str, *, reusable: bool, failure: Mapping[str, Any] | None = None) -> None:
+        """Persist a deterministic state for a task interrupted by restart."""
+        with self._lock:
+            state = self._state()
+            row = state["rows"].setdefault(str(row_id), {})
+            if reusable:
+                row.update({
+                    "status": "available", "batch_id": "", "stage": "", "error": "",
+                    "driver": "", "proxy": "", "proxy_masked": "", "proxy_fingerprint": "",
+                    "proxy_id": "", "proxy_scheme": "", "proxy_country": "", "proxy_group": "",
+                    "expected_exit_ip": "", "registration_ip": "", "exit_ip": "",
+                })
+            else:
+                row.update({"status": "failed", "stage": "free_process_recovery", "error": "Free 进程重启，中断任务未完成"})
+                if isinstance(failure, Mapping):
+                    row["failure"] = copy.deepcopy(dict(failure))
+            atomic_write(self.state_path, state)
+
     def save_result(self, row_id: str, result: Mapping[str, Any]) -> None:
         with self._lock:
             atomic_write(self.results_dir / f"{fingerprint(row_id)}.json", copy.deepcopy(dict(result)))

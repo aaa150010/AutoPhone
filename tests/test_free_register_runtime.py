@@ -492,6 +492,45 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         row_id = manager.pool.entries()[0].row_id
         self.assertEqual(manager.secret([], "totp", row_ids=[row_id]), "JBSWY3DPEHPK3PXP")
 
+    def test_twofa_result_failure_is_persisted_as_structured_task_failure(self):
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("a@example.test----https://mail.example.test/a\n")
+        proxies = FreeProxyPool(self.data_dir)
+        proxies.import_text("http://proxy-a.test:8000\n")
+
+        def runner(_task, _config, _stop, _stage, _log, *, twofa_retry=False):
+            self.assertFalse(twofa_retry)
+            return {
+                "access_token": "token-private",
+                "password": FIXED_PASSWORD,
+                "twofa_status": "pending",
+                "twofa_error": "激活超时",
+                "twofa_failure": {
+                    "node_code": "free_twofa_activate",
+                    "node_label": "激活 Free 账号 2FA",
+                    "error_code": "free_twofa_activate_timeout",
+                    "public_message": "激活 Free 账号 2FA [激活 Free 账号 2FA/free_twofa_activate]：激活超时",
+                    "technical_summary": "激活超时",
+                    "retryable": True,
+                    "http_status": 504,
+                },
+            }
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.40",
+        )
+        manager.start({"target_count": 1})
+        deadline = time.time() + 3
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.01)
+        task = manager.public_tasks()[0]
+        self.assertEqual(task["status"], "twofa_pending")
+        self.assertEqual(task["failure"]["error_code"], "free_twofa_activate_timeout")
+        self.assertEqual(task["failure"]["http_status"], 504)
+        self.assertNotIn("token-private", str(task))
+
     def test_failed_twofa_retry_preserves_pending_state_and_token(self):
         pool = FreeMailboxPool(self.data_dir)
         pool.import_text("a@example.test----https://mail.example.test/a\n")

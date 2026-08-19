@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import shutil
 import threading
+import os
 from typing import Any, Mapping
 from urllib.parse import urlsplit
 
@@ -259,14 +260,20 @@ class FreeConfigStore:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 if source.is_dir():
                     shutil.copytree(source, target)
+                    for directory, _dirnames, filenames in os.walk(target):
+                        os.chmod(directory, 0o700)
+                        for filename in filenames:
+                            os.chmod(Path(directory) / filename, 0o600)
                 else:
                     shutil.copy2(source, target)
+                    os.chmod(target, 0o600)
                 copied.append(name)
             proxy_content = str(legacy.get("free_proxy_pool_content") or "").strip()
             proxy_path = self.data_dir / "free_proxy_pool.txt"
             if proxy_content and not proxy_path.exists():
                 proxy_path.parent.mkdir(parents=True, exist_ok=True)
                 proxy_path.write_text(proxy_content.rstrip() + "\n", encoding="utf-8")
+                os.chmod(proxy_path, 0o600)
                 copied.append("free_proxy_pool_content")
             atomic_write(self.migration_path, {"version": 1, "completed": True, "copied": copied})
             return {"migrated": True, "copied": copied}

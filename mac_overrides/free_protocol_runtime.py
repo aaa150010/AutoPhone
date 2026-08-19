@@ -153,7 +153,19 @@ class FreeProtocolMixin:
                 try:
                     twofa = self._enroll_twofa(transport, token, task, password, config, otp_provider, stage)
                 except FreeTwoFaPending as pending:
+                    pending.plan_type = str(plan_details.get("plan_type") or pending.plan_type or "free")
+                    pending.plus_trial_eligible = bool(plan_details.get("plus_trial_eligible", pending.plus_trial_eligible))
                     twofa = {"twofa_status": "pending", "twofa_error": _safe_log_message(pending)}
+                    twofa["twofa_failure"] = {
+                        "node_code": pending.node_code,
+                        "node_label": pending.node_label,
+                        "error_code": pending.error_code,
+                        "public_message": f"{pending.node_label} [{pending.node_label}/{pending.node_code}]：{_safe_log_message(pending)}",
+                        "technical_summary": _safe_log_message(pending),
+                        "retryable": bool(pending.retryable),
+                    }
+                    if pending.provider_status is not None:
+                        twofa["twofa_failure"]["http_status"] = pending.provider_status
             else:
                 twofa = {"twofa_status": "disabled"}
             twofa.update({"access_token": token, "password": password, "has_access_token": True, **plan_details})
@@ -285,7 +297,20 @@ class FreeProtocolMixin:
                 raise ValueError("2FA 激活返回 success=false")
             return {"twofa_status": "enabled", "totp_secret": secret}
         except Exception as exc:
-            raise FreeTwoFaPending(f"2FA 设置失败：{type(exc).__name__}", token=token, plan_type="free", plus_trial_eligible=False) from exc
+            if isinstance(exc, FreeRegisterError):
+                raise FreeTwoFaPending(
+                    str(exc), token=token, plan_type="free", plus_trial_eligible=False,
+                    node_code=str(exc.node_code or "free_twofa_activate"),
+                    node_label=str(exc.node_label or "激活 Free 账号 2FA"),
+                    error_code=str(exc.error_code or "free_twofa_failed"),
+                    provider_status=exc.provider_status,
+                    retryable=bool(exc.retryable),
+                ) from exc
+            raise FreeTwoFaPending(
+                f"2FA 设置失败：{type(exc).__name__}", token=token, plan_type="free", plus_trial_eligible=False,
+                node_code="free_twofa_activate", node_label="激活 Free 账号 2FA",
+                error_code="free_twofa_activate_failed", retryable=True,
+            ) from exc
 
 
 __all__ = ["FreeProtocolMixin"]

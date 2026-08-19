@@ -12,10 +12,26 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.18',
-  title: 'Free 调度与工作台导航优化',
+  version: '1.6.19',
+  title: 'Free 任务恢复与诊断修复',
   releasedAt: '2026-08-19',
   sections: [
+    {
+      title: 'Free 任务重启恢复与启动回滚',
+      usage: '进程异常重启后会释放未启动任务的邮箱和代理租约；批量启动中途失败也会回滚已预留资源，不会留下永久占用的账号或代理。',
+    },
+    {
+      title: 'Free 2FA 失败节点可追踪',
+      usage: '自动动态口令或重试失败会保留节点、错误码、可重试状态和 HTTP 状态，并同步显示在任务列表和 Free 邮箱行中；Token、套餐、代理与注册 IP 继续保留。',
+    },
+    {
+      title: 'Free 代理运行期间锁定',
+      usage: 'Free 批次运行期间不能导入、移动、启停或删除代理分组，也不能改动邮箱池状态；接口会明确提示停止当前批次后再操作。',
+    },
+    {
+      title: 'RoxyBrowser 熔断自动恢复',
+      usage: 'Roxy 基础设施连续失败触发熔断后，达到恢复时间会进入半开放探测窗口；用户主动停止不会被自动恢复覆盖。',
+    },
     {
       title: '左侧菜单可收缩',
       usage: '左侧菜单默认展开，点击标题栏的收缩按钮可切换为图标栏；选择会保存在本机，下次打开继续使用。',

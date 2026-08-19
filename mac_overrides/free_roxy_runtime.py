@@ -532,7 +532,12 @@ class RoxyRegistrationRunner:
         secret = str(data.get("secret") or "")
         session_id = str(data.get("session_id") or "")
         if not enrolled.get("ok") or not secret or not session_id:
-            raise FreeRegisterError("free_twofa_enroll", "注册 Free 账号 2FA", f"RoxyBrowser 2FA enrollment 失败（HTTP {enrolled.get('status') or '-'}）")
+            status = enrolled.get("status") or None
+            raise FreeRegisterError(
+                "free_twofa_enroll", "注册 Free 账号 2FA",
+                f"RoxyBrowser 2FA enrollment 失败（HTTP {status or '-'}）",
+                provider_status=status,
+            )
         stage(task_id, "free_twofa_activate")
         activated = driver.execute_async_script("""
         const done=arguments[0], token=arguments[1], code=arguments[2], sid=arguments[3]; fetch('https://chatgpt.com/backend-api/accounts/mfa/user/activate_enrollment',{
@@ -541,7 +546,12 @@ class RoxyRegistrationRunner:
         """, new_token, self._totp(secret), session_id) or {}
         value = activated.get("value") if isinstance(activated.get("value"), Mapping) else {}
         if not activated.get("ok") or not value.get("success"):
-            raise FreeRegisterError("free_twofa_activate", "激活 Free 账号 2FA", f"RoxyBrowser 2FA 激活失败（HTTP {activated.get('status') or '-'}）")
+            status = activated.get("status") or None
+            raise FreeRegisterError(
+                "free_twofa_activate", "激活 Free 账号 2FA",
+                f"RoxyBrowser 2FA 激活失败（HTTP {status or '-'}）",
+                provider_status=status,
+            )
         return secret
 
     def __call__(self, task: Mapping[str, Any], config: Mapping[str, Any], stop_event: Any, stage: Callable[[str, str], None], log: Callable[[str, str], None], *, twofa_retry: bool = False) -> Mapping[str, Any]:
@@ -634,13 +644,35 @@ class RoxyRegistrationRunner:
             twofa_status = "disabled"
             totp_secret = ""
             twofa_error = ""
+            twofa_failure: dict[str, Any] | None = None
             if bool(config.get("auto_set_2fa", True)):
                 try:
                     totp_secret = self._setup_2fa(driver, task, token, otp, human, stage)
                     twofa_status = "enabled"
+                except FreeRegisterError as exc:
+                    twofa_status = "pending"
+                    twofa_error = safe_log_message(exc)
+                    twofa_failure = {
+                        "node_code": str(exc.node_code or "free_twofa_activate"),
+                        "node_label": str(exc.node_label or "激活 Free 账号 2FA"),
+                        "error_code": str(exc.error_code or "free_twofa_failed"),
+                        "public_message": f"{exc.node_label} [{exc.node_label}/{exc.node_code}]：{safe_log_message(exc)}",
+                        "technical_summary": safe_log_message(exc),
+                        "retryable": bool(exc.retryable),
+                    }
+                    if exc.provider_status is not None:
+                        twofa_failure["http_status"] = exc.provider_status
                 except Exception as exc:
                     twofa_status = "pending"
                     twofa_error = f"2FA 设置失败（{type(exc).__name__}）"
+                    twofa_failure = {
+                        "node_code": "free_twofa_activate",
+                        "node_label": "激活 Free 账号 2FA",
+                        "error_code": "free_twofa_activate_failed",
+                        "public_message": f"激活 Free 账号 2FA [激活 Free 账号 2FA/free_twofa_activate]：{safe_log_message(exc)}",
+                        "technical_summary": safe_log_message(exc),
+                        "retryable": True,
+                    }
             dwell_min = int(roxy.get("post_registration_dwell_min") or 18)
             dwell_max = max(dwell_min, int(roxy.get("post_registration_dwell_max") or 45))
             if dwell_max > 0:
@@ -651,6 +683,8 @@ class RoxyRegistrationRunner:
                 "twofa_error": twofa_error, "registration_ip": registration_ip,
                 "expected_exit_ip": expected, "profile_summary": f"Roxy#{profile_id}",
             }
+            if twofa_failure:
+                result["twofa_failure"] = twofa_failure
             if totp_secret:
                 result["totp_secret"] = totp_secret
                 result["credential_line"] = f"{task.get('email')}----{FIXED_PASSWORD}----{totp_secret}"

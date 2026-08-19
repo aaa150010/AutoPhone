@@ -461,6 +461,7 @@ class FreeProxyPool:
         country: str | None = None,
         group: str | None = None,
         driver: str = "protocol",
+        exclude_proxy_ids: Iterable[str] = (),
     ) -> list[ProxyBinding]:
         with self._lock:
             if str(content or "").strip():
@@ -475,6 +476,9 @@ class FreeProxyPool:
                 ]
             else:
                 values = self._eligible(country=country, group=group, driver=driver)
+            excluded = {str(value) for value in exclude_proxy_ids if str(value)}
+            if excluded:
+                values = [row for row in values if str(row.get("proxy_id") or "") not in excluded]
             if len(values) < count:
                 raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", f"Free 代理数量不足：需要 {count} 个，当前只有 {len(values)} 个", retryable=False)
             selected = values[:max(0, int(count))]

@@ -95,11 +95,28 @@ class FreeRegisterError(RuntimeError):
 
 
 class FreeTwoFaPending(RuntimeError):
-    def __init__(self, message: str, *, token: str, plan_type: str, plus_trial_eligible: bool) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        token: str,
+        plan_type: str,
+        plus_trial_eligible: bool,
+        node_code: str = "free_twofa_activate",
+        node_label: str = "激活 Free 账号 2FA",
+        error_code: str | None = None,
+        provider_status: int | str | None = None,
+        retryable: bool = True,
+    ) -> None:
         super().__init__(message)
         self.token = token
         self.plan_type = plan_type
         self.plus_trial_eligible = plus_trial_eligible
+        self.node_code = node_code
+        self.node_label = node_label
+        self.error_code = error_code or f"{node_code}_failed"
+        self.provider_status = provider_status
+        self.retryable = retryable
 
 
 @dataclass(frozen=True, slots=True)

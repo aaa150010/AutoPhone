@@ -928,6 +928,24 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(old_nv.status_code, 404)
         self.assertEqual(old_pixel.status_code, 404)
 
+    def test_free_pool_mutations_are_rejected_while_free_batch_is_running(self):
+        class RunningFreeManager:
+            def public_state(self):
+                return {"running": True, "tasks": [], "summary": {}}
+
+            pool = SimpleNamespace()
+            proxies = SimpleNamespace()
+
+        app = self._app(replace(self.context, free_register_manager=RunningFreeManager()))
+        with app.test_client() as client:
+            mailbox = client.post("/api/free/mailboxes/import", json={"pool_content": "a@example.test----https://mail.test/a"})
+            proxy = client.post("/api/free/proxies/import", json={"proxy_content": "http://proxy.test:8080"})
+            group = client.post("/api/free/proxies/group", json={"country": "US", "group": "住宅 A", "enabled": False})
+
+        self.assertEqual(mailbox.status_code, 409)
+        self.assertEqual(proxy.status_code, 409)
+        self.assertEqual(group.status_code, 409)
+
     def test_free_start_uses_persisted_pools_when_transient_content_is_omitted(self):
         class FreeManager:
             def __init__(self):
