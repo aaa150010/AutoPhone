@@ -2,12 +2,16 @@
 
 ## Repository Overview
 
-gptPhone is a macOS-local Flask application with a Vue 3 and Element Plus dashboard. The runnable business backend was recovered as Python 3.13 bytecode. Most maintainable backend changes therefore live in runtime overrides instead of reconstructed source.
+GPT 注册中心 (gptPhone) is a macOS-local Flask application with a Vue 3 and Element Plus dashboard. It has two isolated workspaces: the recovered SMS/OAuth registration workflow and a maintained Free registration workflow with protocol and RoxyBrowser drivers. The runnable recovered backend is Python 3.13 bytecode, so maintainable backend changes live in runtime overrides instead of reconstructed source.
 
 ## Editable Boundaries
 
 - Put backend behavior changes in `mac_overrides/`. `mac_overrides/web_gui.py` loads the recovered modules and applies focused monkeypatches.
 - Put reusable backend logic that can be tested without the recovered runtime in separate modules such as `mac_overrides/sms_runtime.py` and `mac_overrides/task_progress.py`.
+- Keep Free configuration, mailbox/proxy pools, tasks, logs, locks and results under `${GPTPHONE_DATA_DIR}/free_register/`; ordinary SMS/OAuth routes must not aggregate, mutate or consume that state.
+- Route ordinary and Free URL-based email verification through `mac_overrides/mailbox_otp_service.py`. Keep source parsing, baselines, old-code exclusion and diagnostics shared while preserving each workflow's independent network configuration.
+- Keep payment-link extraction under `mac_overrides/payment_tools.py` and `mac_overrides/payment_protocol/`; its data root is `${GPTPHONE_DATA_DIR}/payment_tools/` and it must never reuse ordinary task state. Third-party modes require an explicit per-batch domain confirmation, and result links are reveal-on-demand only.
+- Keep proxy/network diagnostics under `mac_overrides/network_tools.py`, `mac_overrides/network_mihomo.py` and `mac_overrides/network_tools_routes.py`; its data root is `${GPTPHONE_DATA_DIR}/network_tools/`. A test must use the selected proxy's declared protocol, never inherit environment proxies, switch nodes, or silently fall back to Clash.
 - Put dashboard source changes in `frontend/src/`. Extract a component when a control group, card, table, operation bar, or behavior has its own responsibility.
 - Treat `business_pyc/` and `plus_launcher.pyc` as runtime artifacts, not editable source.
 - Treat `pycdc_attempt/` as hints only. It is incomplete and must not be used as runnable source. Use `disassembly/` to inspect recovered behavior and verify assumptions against live method signatures.
@@ -35,6 +39,7 @@ gptPhone is a macOS-local Flask application with a Vue 3 and Element Plus dashbo
 ## Local Network Environment
 
 - On the user's current Mac, Clash Verge exposes the configured HTTP proxy at `http://127.0.0.1:7897`. Treat this as the authoritative host proxy for OpenAI Auth, Sentinel, Node/Sentinel, and other traffic that uses the main proxy setting.
+- Free mailbox retrieval defaults to its own explicit `http://127.0.0.1:7897` setting and must never reuse the account's residential registration proxy. Direct mode and local-proxy mode both disable inherited `HTTP_PROXY`, `HTTPS_PROXY` and `ALL_PROXY` values.
 - `http://127.0.0.1:12334` is not a configured or valid current proxy port. If it appears in a new task's effective proxy label, error detail, subprocess arguments, or environment, treat it as a defect caused by stale process state, an inherited proxy environment variable, or an unintended configuration override and trace it to the source.
 - Network diagnostics must record the effective proxy label or redacted fingerprint at the Node bridge boundary. Do not infer the effective host proxy from a sandbox-only localhost probe: the sandbox may deny or isolate loopback access. Use a host-level/approved real-network check when verifying Clash Verge connectivity.
 - High-concurrency tests must compare the configured `7897` proxy path at concurrency 1, 4, and 8, and must distinguish proxy connection failures from Sentinel or Node resource failures. Never silently fall back to `12334`.
@@ -70,7 +75,17 @@ gptPhone is a macOS-local Flask application with a Vue 3 and Element Plus dashbo
 
 - `frontend/dist/` is tracked. Rebuild it after every frontend source change and commit the updated hashed assets with `frontend/dist/index.html`.
 - Never commit `data/`, `mac_runtime/`, `engine/`, `node_chain.dat`, `frontend/node_modules/`, caches, local exports, or secrets.
+- Do not delete the retained reference copies under `/Users/lwh/projects/AutoRegister`, `/private/tmp/codex-auto-register-check.d2Qxkf/repo` or `/private/tmp/grok-gpt-check.XYMs6P/repo` unless the user explicitly requests it.
 - Do not delete or overwrite user runtime data while testing. Use a temporary data directory for Flask integration checks.
+
+## Free/Roxy Reference Implementations
+
+Free 双链路和 RoxyBrowser 行为变更前，必须先对照以下两个成熟项目的对应实现：
+
+- 同级项目 `/Users/lwh/projects/AutoRegister`：重点参考 `core/roxy_registration.py`、`core/roxybrowser_client.py`、`core/otp_utils.py`、`core/humanize.py`、`core/live_check_service.py`、`config/proxy.py` 和 `config/roxybrowser.py`。
+- 开源项目 `https://github.com/maile456/codex-auto-register`：当前临时副本为 `/private/tmp/codex-auto-register-check.d2Qxkf`，重点参考 `backend/run_manager.py`、`backend/probe_store.py`、`backend/roxy_client.py`、`backend/mailbox_client.py`、`backend/browser_worker.py` 和 `backend/run_log_store.py`。
+
+只吸收页面状态机、邮箱 OTP 轮询、代理租约、并发槽位、Roxy `connection_info` 对账、失败清理和结构化日志思路；不得复制参考项目的密钥、账号、运行数据、Cookie、Token 或第三方授权信息。当前 Free 数据隔离和普通接码流程优先于参考项目，参考实现不能改变普通接码链路。参考副本不纳入 Git，也不读取其中的敏感数据；本轮按用户要求保留副本。
 
 ## Release Notes
 
@@ -103,4 +118,4 @@ npx vue-tsc --noEmit
 npm run build
 ```
 
-Then run `git diff --check`. Do not start or restart the local Flask service for verification unless the user explicitly asks. Do not use the in-app browser, browser skills, Chrome, Playwright, or computer-use for frontend verification; the user performs manual visual verification. Automated frontend verification is limited to type checks, builds, and tests. Routine frontend verification targets desktop viewports only; do not perform mobile or narrow-screen adaptation unless the user explicitly requests it. Never click real preflight, registration, SMS, SUB2, or Pixel actions during verification.
+Then run `git diff --check`. Do not start or restart the local Flask service for verification unless the user explicitly asks. Do not use the in-app browser, browser skills, Chrome, Playwright, or computer-use for frontend verification; the user performs manual visual verification. Automated frontend verification is limited to type checks, builds, and tests. Routine frontend verification targets desktop viewports only; do not perform mobile or narrow-screen adaptation unless the user explicitly requests it. Never click real preflight, registration, SMS, SUB2, Pixel, payment extraction or proxy-test actions during verification.

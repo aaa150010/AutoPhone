@@ -17,7 +17,7 @@ import time
 from typing import Any, Callable, Mapping
 
 try:
-    from .free_mailbox_otp import MailboxUrlOtpProvider
+    from .free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider
     from .free_register_common import (
         FIXED_PASSWORD,
         FreeRegisterError,
@@ -29,7 +29,7 @@ try:
         timezone_offset_minutes as _timezone_offset_minutes,
     )
 except ImportError:
-    from free_mailbox_otp import MailboxUrlOtpProvider  # type: ignore[no-redef]
+    from free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
         FIXED_PASSWORD, FreeRegisterError, FreeTwoFaPending,
         plus_trial_from_accounts as _plus_trial_from_accounts,
@@ -68,9 +68,8 @@ class FreeProtocolMixin:
         parsed = codex_oauth_chain.parse_oauth_url(oauth_url)
         device_id = str(task.get("device_id") or f"free-{secrets.token_hex(16)}")
         sentinel = codex_oauth_chain.RealNodeSentinelProvider(config=dict(config), device_id=device_id, proxy_label=str(task.get("proxy_fingerprint") or ""), proxy=proxy, log_fn=log)
-        otp_provider = MailboxUrlOtpProvider(
-            str(task["mailbox_url"]), proxy,
-            timeout=int(config.get("email_code_timeout") or 90),
+        otp_provider = build_free_mailbox_otp_provider(
+            str(task["mailbox_url"]), proxy, config,
             log_fn=log, task_id=task_id, stage_fn=stage,
         )
         chain_config = dict(config)
@@ -123,7 +122,7 @@ class FreeProtocolMixin:
             result = codex_oauth_chain.run_codex_after_registration(
                 oauth_url=oauth_url, code_verifier=code_verifier,
                 account_email=email, password=password, config=chain_config,
-                proxy=proxy, email_proxy=proxy, log_fn=log, mode="real",
+                proxy=proxy, email_proxy=otp_provider.network_policy.effective_proxy, log_fn=log, mode="real",
                 transport=transport, sentinel_provider=sentinel,
                 email_otp_provider=otp_provider, phone_otp_provider=NoPhoneProvider(),
             )
@@ -174,6 +173,9 @@ class FreeProtocolMixin:
                 twofa["credential_line"] = f"{email}----{password}----{twofa['totp_secret']}"
             return twofa
         finally:
+            otp_close = getattr(otp_provider, "close", None)
+            if callable(otp_close):
+                otp_close()
             self._close_transport(transport)
 
     @staticmethod

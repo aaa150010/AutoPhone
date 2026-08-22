@@ -10,7 +10,7 @@ import time
 from typing import Any, Callable, Mapping, Sequence
 
 try:
-    from .free_mailbox_otp import MailboxUrlOtpProvider
+    from .free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider
     from .free_register_common import (
         FreeRegisterError,
         ProxyBinding,
@@ -22,7 +22,7 @@ try:
         timezone_offset_minutes,
     )
 except ImportError:
-    from free_mailbox_otp import MailboxUrlOtpProvider  # type: ignore[no-redef]
+    from free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
         FreeRegisterError,
         ProxyBinding,
@@ -36,6 +36,7 @@ except ImportError:
 
 
 LIVE_MODES = frozenset({"fast", "deep"})
+_ORIGINAL_MAILBOX_URL_OTP_PROVIDER = MailboxUrlOtpProvider
 ACTIVE_LIVE_STATUSES = frozenset({"queued", "running"})
 TERMINAL_LIVE_STATUSES = frozenset({"live", "deactivated", "token_expired", "failed"})
 LIVE_STAGE_LABELS = {
@@ -551,7 +552,7 @@ class FreeLiveCheckService:
     def _run_fast(self, context: Mapping[str, Any], _config: Mapping[str, Any]) -> Mapping[str, Any]:
         from curl_cffi import requests as curl_requests
 
-        session = curl_requests.Session(impersonate="chrome", verify=False)
+        session = curl_requests.Session(impersonate="chrome", verify=True)
         session.trust_env = False
         session.proxies = {"http": str(context["proxy"]), "https": str(context["proxy"])}
         try:
@@ -616,14 +617,21 @@ class FreeLiveCheckService:
             device_id=device_id,
             log_fn=log_fn,
         )
-        otp = MailboxUrlOtpProvider(
-            str(context["mailbox_url"]),
-            proxy,
-            timeout=int(config.get("email_code_timeout") or 90),
-            log_fn=log_fn,
-            task_id=task_id,
-            stage_fn=lambda _task_id, code: self._set_job(task_id, stage="free_live_email" if "email" in code else "free_live_deep"),
-        )
+        stage_fn = lambda _task_id, code: self._set_job(task_id, stage="free_live_email" if "email" in code else "free_live_deep")
+        if MailboxUrlOtpProvider is _ORIGINAL_MAILBOX_URL_OTP_PROVIDER:
+            otp = build_free_mailbox_otp_provider(
+                str(context["mailbox_url"]), proxy, config,
+                log_fn=log_fn, task_id=task_id, stage_fn=stage_fn,
+            )
+        else:
+            # Preserve the historic module-level injection point used by
+            # tests and integrations while keeping production on the shared
+            # Free mailbox network policy above.
+            otp = MailboxUrlOtpProvider(
+                str(context["mailbox_url"]), proxy,
+                timeout=int(config.get("email_code_timeout") or 90),
+                log_fn=log_fn, task_id=task_id, stage_fn=stage_fn,
+            )
         try:
             response = transport.start_chatgpt_signup_authorize(email)
             if _is_deactivated(response):
@@ -688,6 +696,9 @@ class FreeLiveCheckService:
                 return self._deactivated_result(getattr(exc, "provider_status", None))
             raise FreeRegisterError("free_live_deep", "深度测活", f"重新登录异常（{type(exc).__name__}）") from exc
         finally:
+            otp_close = getattr(otp, "close", None)
+            if callable(otp_close):
+                otp_close()
             for candidate in (getattr(transport, "session", None), transport):
                 close = getattr(candidate, "close", None)
                 if callable(close):

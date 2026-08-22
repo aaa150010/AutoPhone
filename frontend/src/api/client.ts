@@ -64,6 +64,10 @@ export interface FreeConfig {
   target_count: number
   concurrency: number
   email_code_timeout: number
+  mailbox_network_mode: 'local_proxy' | 'direct'
+  mailbox_proxy_url: string
+  mailbox_request_retries: number
+  mailbox_retry_backoff_seconds: number
   auto_set_2fa: boolean
   proxy_probe_url: string
   proxy_default_scheme?: 'http' | 'https' | 'socks4' | 'socks5' | 'socks5h' | string
@@ -108,6 +112,8 @@ export interface FreeConfig {
   }
 }
 export interface FreeState {
+  runtime_version?: string
+  otp_parser_revision?: string
   running: boolean
   batch_id?: string
   driver?: 'protocol' | 'roxybrowser' | string
@@ -398,3 +404,86 @@ export const testEmailNotification = (data: Record<string, any>) => api('/api/no
 export const querySmsBalances = (data: Record<string, any>) => (
   api<{ ok: true; queried_at: number; sms_key_statuses: SmsKeyStatus[] }>('/api/sms/balances', data)
 )
+
+export interface PaymentToolConfig {
+  mode: 'local' | 'manual' | 'cdk' | 'http' | 'pay153' | string
+  workers: number
+  timeout_seconds: number
+  country: string
+  currency: string
+  plan: string
+  channel: string
+  apply_checkout_update: boolean
+  checkout_proxy: string
+  update_proxy: string
+  cdk_base_url: string
+  cdk: string
+  http_endpoint: string
+  http_api_token: string
+  pay153_url: string
+  pay153_headless: boolean
+}
+export interface PaymentTask {
+  task_id: string
+  source: string
+  row_id?: string
+  email?: string
+  mode: string
+  channel: string
+  plan: string
+  country: string
+  currency: string
+  status: string
+  stage: string
+  target_domain?: string
+  confirmed?: boolean
+  created_at?: number
+  updated_at?: number
+  retry_count?: number
+  logs_count?: number
+  result_summary?: { has_result?: boolean; result_kind?: string; result_host?: string }
+  failure?: { node_code?: string; node_label?: string; public_message?: string; retryable?: boolean } | null
+}
+export const getPaymentConfig = () => api<{ ok: true; config: PaymentToolConfig; state: { tasks: PaymentTask[]; summary: Record<string, number> } }>('/api/tools/payment/config')
+export const savePaymentConfig = (config: Partial<PaymentToolConfig>) => api<{ ok: true; config: PaymentToolConfig }>('/api/tools/payment/config', config)
+export const getPaymentTasks = () => api<{ ok: true; tasks: PaymentTask[]; summary: Record<string, number> }>('/api/tools/payment/tasks')
+export const createPaymentTasks = (payload: Record<string, any>) => api<{ ok: true; tasks: PaymentTask[]; requires_confirmation?: boolean }>('/api/tools/payment/tasks', payload)
+export const getPaymentTaskLogs = (taskId: string) => api<{ ok: true; task_id: string; logs: Array<{ time?: number; stage?: string; level?: string; message?: string }> }>(`/api/tools/payment/tasks/${encodeURIComponent(taskId)}/logs`)
+export const confirmPaymentTask = (taskId: string, targetDomain: string) => api<{ ok: true; task?: PaymentTask }>(`/api/tools/payment/tasks/${encodeURIComponent(taskId)}/confirm`, { target_domain: targetDomain })
+export const cancelPaymentTask = (taskId: string) => api<{ ok: true; task?: PaymentTask }>(`/api/tools/payment/tasks/${encodeURIComponent(taskId)}/cancel`, {})
+export const retryPaymentTask = (taskId: string) => api<{ ok: true; task?: PaymentTask }>(`/api/tools/payment/tasks/${encodeURIComponent(taskId)}/retry`, {})
+export const getPaymentSecret = (taskId: string) => api<{ ok: true; value: string }>(`/api/tools/payment/tasks/${encodeURIComponent(taskId)}/secret`)
+
+export interface NetworkProxyRow {
+  proxy_id: string
+  fingerprint?: string
+  masked: string
+  scheme: string
+  country: string
+  group: string
+  enabled: boolean
+  status: string
+  last_exit_ip?: string
+  latency_ms?: number | null
+  consecutive_failures?: number
+  last_checked_at?: number | null
+  last_failure?: string | null
+}
+export interface NetworkToolGroup {
+  country: string
+  group: string
+  total: number
+  enabled: number
+  available: number
+  leased: number
+  quarantined: number
+  schemes: string[]
+}
+export const getNetworkTools = () => api<{ ok: true; rows: NetworkProxyRow[]; groups: NetworkToolGroup[]; total: number; config: Record<string, any> }>('/api/tools/proxies')
+export const saveNetworkToolsConfig = (config: Record<string, any>) => api<{ ok: true; config: Record<string, any> }>('/api/tools/proxies/config', config)
+export const importNetworkProxies = (payload: { proxy_content: string; country?: string; group?: string; scheme?: string }) => api<{ ok: true; imported: number; skipped: number; rows: NetworkProxyRow[]; groups: NetworkToolGroup[] }>('/api/tools/proxies/import', payload)
+export const importNetworkSubscription = (payload: { subscription_url: string; content: string; country?: string; group?: string }) => api<{ ok: true; subscription_id: string; node_count: number; imported: number; rows: NetworkProxyRow[]; groups: NetworkToolGroup[] }>('/api/tools/proxies/subscriptions', payload)
+export const testNetworkSubscription = (payload: { subscription_id: string; target_url?: string; exit_url?: string }) => api<{ ok: true; tested: boolean; available: boolean; message?: string; exit_ip?: string; proxy_to_target_ms?: number }>('/api/tools/proxies/subscriptions/test', payload)
+export const testNetworkProxy = (payload: { proxy_id: string; mode: 'quick' | 'deep'; target_url?: string; exit_url?: string }) => api<{ ok: true; result?: any; proxy_id?: string; exit_ip?: string; local_to_proxy_ms?: number; proxy_to_target_ms?: number }>('/api/tools/proxies/test', payload)
+export const updateNetworkGroup = (payload: { country: string; group: string; action: string; new_group?: string; enabled?: boolean }) => api<{ ok: true; rows: NetworkProxyRow[]; groups: NetworkToolGroup[] }>('/api/tools/proxies/group', payload)
+export const deleteNetworkGroup = (country: string, group: string) => api<{ ok: true; rows: NetworkProxyRow[]; groups: NetworkToolGroup[] }>('/api/tools/proxies/group/delete', { country, group })

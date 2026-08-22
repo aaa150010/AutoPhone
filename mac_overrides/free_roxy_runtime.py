@@ -16,7 +16,7 @@ from urllib.parse import unquote, urljoin, urlsplit
 import requests
 
 try:
-    from .free_mailbox_otp import MailboxUrlOtpProvider
+    from .free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider
     from .free_register_common import (
         FIXED_PASSWORD,
         FreeRegisterError,
@@ -29,17 +29,29 @@ try:
     )
     from .free_roxy_signup import is_email_verification_page, open_signup_page, safe_page_location
     from .free_roxy_page_flow import (
+        click_resend_email_otp,
         classify_page,
+        install_password_submit_probe,
+        native_password_submit,
         page_snapshot,
+        password_form_targets,
+        read_password_submit_probe,
         switch_login_to_email_code,
         wait_after_email_submit,
         wait_after_otp_submit,
         wait_after_passwordless_switch,
+        wait_after_signup_password_submit,
         wait_for_home,
+    )
+    from .free_roxy_otp_flow import (
+        fill_otp as fill_roxy_otp,
+        reopen_email_otp_flow,
+        run_otp_attempts,
+        wait_after_otp_submit as wait_after_roxy_otp_submit,
     )
     from .free_roxy_session import extract_session, session_token
 except ImportError:
-    from free_mailbox_otp import MailboxUrlOtpProvider  # type: ignore[no-redef]
+    from free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
         FIXED_PASSWORD,
         FreeRegisterError,
@@ -52,13 +64,25 @@ except ImportError:
     )
     from free_roxy_signup import is_email_verification_page, open_signup_page, safe_page_location  # type: ignore[no-redef]
     from free_roxy_page_flow import (  # type: ignore[no-redef]
+        click_resend_email_otp,
         classify_page,
+        install_password_submit_probe,
+        native_password_submit,
         page_snapshot,
+        password_form_targets,
+        read_password_submit_probe,
         switch_login_to_email_code,
         wait_after_email_submit,
         wait_after_otp_submit,
         wait_after_passwordless_switch,
+        wait_after_signup_password_submit,
         wait_for_home,
+    )
+    from free_roxy_otp_flow import (  # type: ignore[no-redef]
+        fill_otp as fill_roxy_otp,
+        reopen_email_otp_flow,
+        run_otp_attempts,
+        wait_after_otp_submit as wait_after_roxy_otp_submit,
     )
     from free_roxy_session import extract_session, session_token  # type: ignore[no-redef]
 
@@ -238,7 +262,10 @@ class RoxyBrowserClient:
         ])
         if not profile_id:
             raise FreeRegisterError("free_roxy_create", "创建 RoxyBrowser 环境", "创建成功但未返回 Profile ID")
-        self._log(f"[创建 RoxyBrowser 环境/free_roxy_create] Profile={profile_id} proxy={mask_proxy(proxy)}")
+        self._log(
+            f"[创建 RoxyBrowser 环境/free_roxy_create] Profile={profile_id} "
+            f"proxy={mask_proxy(proxy)} launch=deferred"
+        )
         return profile_id
 
     @staticmethod
@@ -281,6 +308,20 @@ class RoxyBrowserClient:
         return self._connection_result(profile_id, payload)
 
     def open_profile(self, profile_id: str) -> RoxyOpenResult:
+        headless = bool(self.config.get("headless", False))
+        # Roxy may finish an asynchronous create/open before returning the
+        # create response.  Adopt that connection first so a second
+        # /browser/open call cannot briefly foreground another window.
+        try:
+            already_open = self.connection_info(profile_id)
+        except Exception:
+            already_open = None
+        if already_open is not None:
+            self._log(
+                f"[打开 RoxyBrowser 环境/free_roxy_open] Profile={profile_id} "
+                f"已由 connection_info 对账，跳过重复打开 headless={headless}"
+            )
+            return already_open
         body = {
             "workspaceId": _roxy_id(self.config.get("workspace_id")),
             "dirId": _roxy_id(profile_id),
@@ -288,15 +329,21 @@ class RoxyBrowserClient:
             # Roxy opens asynchronously. The connection_info reconciliation
             # below handles the short race without forcing a second window.
             "forceOpen": False,
-            "headless": bool(self.config.get("headless", False)),
+            "headless": headless,
         }
+        self._log(
+            f"[打开 RoxyBrowser 环境/free_roxy_open] Profile={profile_id} "
+            f"headless={headless} forceOpen=False"
+        )
         payload = self.request("POST", str(self.config.get("open_path") or "/browser/open"), body=body)
         opened = self._connection_result(profile_id, payload)
         if opened is not None:
             return opened
         # Some Roxy versions return success before the CDP endpoint exists;
         # reconcile the same dirId instead of creating another Profile/window.
-        for _attempt in range(3):
+        # Match the mature runner's async-open window: never call /browser/open
+        # again while the same dirId is still coming up.
+        for _attempt in range(30):
             try:
                 opened = self.connection_info(profile_id)
             except Exception:
@@ -319,18 +366,22 @@ class RoxyBrowserClient:
         body = {"workspaceId": _roxy_id(self.config.get("workspace_id")), "dirIds": [_roxy_id(profile_id)]}
         self.request("POST", str(self.config.get("delete_path") or "/browser/delete"), body=body)
 
-    def cleanup(self, opened: RoxyOpenResult | None) -> None:
+    def cleanup(self, opened: RoxyOpenResult | None) -> bool:
         if opened is None or not opened.profile_id or bool(self.config.get("keep_browser_open", False)):
-            return
+            return True
+        completed = True
         try:
             self.close_profile(opened.profile_id)
         except Exception as exc:
+            completed = False
             self._log(f"[清理 RoxyBrowser 环境/free_roxy_cleanup] 关闭失败（{type(exc).__name__}）", "warn")
         if bool(self.config.get("one_profile_per_account", True)) and bool(self.config.get("delete_profile_after_run", True)) and opened.created_by_run:
             try:
                 self.delete_profile(opened.profile_id)
             except Exception as exc:
+                completed = False
                 self._log(f"[清理 RoxyBrowser 环境/free_roxy_cleanup] 删除失败（{type(exc).__name__}）", "warn")
+        return completed
 
 
 class Humanizer:
@@ -455,28 +506,111 @@ class RoxyRegistrationRunner:
         RoxyRegistrationRunner._click(driver, button, human)
 
     @staticmethod
-    def _fill_otp(driver: Any, code: str, human: Humanizer) -> None:
-        from selenium.webdriver.common.by import By
-
-        fields = [element for element in driver.find_elements(By.CSS_SELECTOR, "input[inputmode='numeric'], input[autocomplete='one-time-code'], input[name*='code'], input[name*='otp']") if element.is_displayed()]
-        if not fields:
-            raise FreeRegisterError("free_email_otp_validate", "验证 Free 邮箱验证码", "RoxyBrowser 页面未找到验证码输入框")
-        human.delay("otp_input")
-        if len(fields) >= len(code) and all(int(element.get_attribute("maxlength") or 1) == 1 for element in fields[:len(code)]):
-            for field, character in zip(fields, code):
-                field.send_keys(character)
-                human.delay("keystroke")
-        else:
-            RoxyRegistrationRunner._type(fields[0], code, human)
-        RoxyRegistrationRunner._submit(driver, human)
+    def _fill_otp(driver: Any, code: str, human: Humanizer) -> Mapping[str, Any]:
+        # The auth form is often rendered after the mailbox code arrives.  The
+        # dedicated flow waits for the form, clears every cell and installs a
+        # safe same-origin validation probe before the single submit action.
+        return fill_roxy_otp(driver, code, human)
 
     _page_snapshot = staticmethod(page_snapshot)
     _classify_page = staticmethod(classify_page)
-    _wait_after_otp_submit = staticmethod(wait_after_otp_submit)
+    _wait_after_otp_submit = staticmethod(wait_after_roxy_otp_submit)
     _wait_for_home = staticmethod(wait_for_home)
     _switch_login_to_email_code = staticmethod(switch_login_to_email_code)
     _wait_after_email_submit = staticmethod(wait_after_email_submit)
     _wait_after_passwordless_switch = staticmethod(wait_after_passwordless_switch)
+    _password_form_targets = staticmethod(password_form_targets)
+    _install_password_submit_probe = staticmethod(install_password_submit_probe)
+    _read_password_submit_probe = staticmethod(read_password_submit_probe)
+    _native_password_submit = staticmethod(native_password_submit)
+    _wait_after_signup_password_submit = staticmethod(wait_after_signup_password_submit)
+    _click_resend_email_otp = staticmethod(click_resend_email_otp)
+
+    def _submit_signup_password(
+        self,
+        driver: Any,
+        human: Humanizer,
+        log: Callable[[str, str], None],
+    ) -> str:
+        field, button = self._password_form_targets(driver)
+        self._type(field, FIXED_PASSWORD, human)
+        if str(field.get_attribute("value") or "") != FIXED_PASSWORD:
+            raise FreeRegisterError(
+                "free_roxy_signup_password", "提交 Free 注册密码",
+                "注册密码输入框写入校验失败",
+                error_code="free_roxy_signup_password_value_mismatch",
+            )
+        before_page = self._page_snapshot(driver)
+        telemetry = self._install_password_submit_probe(driver, field, button)
+        if telemetry.get("invalid"):
+            raise FreeRegisterError(
+                "free_roxy_signup_password", "提交 Free 注册密码",
+                "注册密码表单未通过页面校验，未执行提交",
+                error_code="free_roxy_signup_password_form_invalid",
+                retryable=False,
+            )
+        if telemetry.get("button_disabled") or str(telemetry.get("aria_disabled") or "").lower() == "true":
+            raise FreeRegisterError(
+                "free_roxy_signup_password", "提交 Free 注册密码",
+                "注册密码提交按钮当前不可用，未执行重复提交",
+                error_code="free_roxy_signup_password_button_disabled",
+                retryable=False,
+            )
+        log(
+            "注册密码表单已就绪"
+            f"（password_length={len(FIXED_PASSWORD)}，button_type={telemetry.get('button_type') or 'unknown'}，"
+            f"form_valid={not bool(telemetry.get('invalid'))}）",
+            "info",
+        )
+        self._click(driver, button, human)
+        after_click = self._read_password_submit_probe(driver)
+        after_page = self._page_snapshot(driver)
+        unchanged = (
+            before_page.get("url") == after_page.get("url")
+            and before_page.get("title") == after_page.get("title")
+            and before_page.get("body") == after_page.get("body")
+        )
+        if not after_click.get("submit_observed") and unchanged:
+            if self._native_password_submit(driver, field, button):
+                log("首次点击未观察到提交事件且页面未变化，已执行一次原生表单提交兜底", "warn")
+            else:
+                raise FreeRegisterError(
+                    "free_roxy_signup_password", "提交 Free 注册密码",
+                    "首次点击未触发表单提交，原生表单提交兜底不可用",
+                    error_code="free_roxy_signup_password_submit_not_observed",
+                )
+        log(
+            "注册密码已提交一次，等待页面状态变化"
+            f"（submit_observed={bool(after_click.get('submit_observed'))}，位置={safe_page_location(driver)}）",
+            "info",
+        )
+        human.delay("navigate")
+        return self._wait_after_signup_password_submit(driver, 45, log)
+
+    def _wait_mailbox_code(
+        self,
+        otp: Any,
+        email: str,
+        stage_code: str,
+        driver: Any,
+        human: Humanizer,
+        log: Callable[[str, str], None],
+    ) -> str:
+        def resend() -> None:
+            self._click_resend_email_otp(driver, human)
+            log(f"邮箱验证码尚未到达，已在同一验证码页受控重发一次（位置={safe_page_location(driver)}）", "warn")
+
+        try:
+            return otp.wait_code(
+                email,
+                stage_code,
+                resend_fn=resend,
+                resend_after_seconds=12,
+            )
+        except TypeError as exc:
+            if "unexpected keyword" not in str(exc):
+                raise
+            return otp.wait_code(email, stage_code)
 
     @staticmethod
     def _complete_profile(driver: Any, human: Humanizer, log: Callable[[str, str], None] | None = None) -> bool:
@@ -542,18 +676,43 @@ class RoxyRegistrationRunner:
         return f"{((int.from_bytes(digest[offset:offset + 4], 'big') & 0x7fffffff) % 1_000_000):06d}"
 
     @staticmethod
-    def _plan(driver: Any, token: str) -> tuple[str, bool]:
+    def _plan(driver: Any, token: str) -> tuple[str, bool, dict[str, Any]]:
         script = """
         const token=arguments[0], done=arguments[arguments.length - 1];
+        const read=async path=>{
+          const response=await fetch(path,{credentials:'include',headers:{authorization:'Bearer '+token,accept:'application/json'}});
+          const contentType=String(response.headers.get('content-type')||'');
+          const payload=await response.json().catch(()=>null);
+          return {status:response.status||0,content_type:contentType,
+            payload:payload&&typeof payload==='object'?payload:{},json:Boolean(payload&&typeof payload==='object')};
+        };
         Promise.all([
-          fetch('/backend-api/accounts/check/v4-2023-04-27',{headers:{authorization:'Bearer '+token}}).then(r=>r.json()),
-          fetch('/backend-api/aip/first-party/eligibility',{headers:{authorization:'Bearer '+token}}).then(r=>r.json()).catch(()=>({}))
-        ]).then(v=>done({ok:true,accounts:v[0],eligibility:v[1]})).catch(e=>done({ok:false,error:String(e)}));
+          read('/backend-api/accounts/check/v4-2023-04-27'),
+          read('/backend-api/aip/first-party/eligibility')
+        ]).then(v=>done({ok:true,accounts:v[0],eligibility:v[1]})).catch(e=>done({ok:false,error:String(e).slice(0,120)}));
         """
         result = driver.execute_async_script(script, token) or {}
         if not result.get("ok"):
-            raise FreeRegisterError("free_plan_check", "查询 Free 套餐资格", "RoxyBrowser 套餐查询失败")
-        accounts = result.get("accounts") if isinstance(result.get("accounts"), Mapping) else {}
+            raise FreeRegisterError(
+                "free_plan_check", "查询 Free 套餐资格",
+                "RoxyBrowser 套餐查询网络请求失败",
+                error_code="free_plan_check_request_failed",
+            )
+        accounts_response = result.get("accounts") if isinstance(result.get("accounts"), Mapping) else {}
+        eligibility_response = result.get("eligibility") if isinstance(result.get("eligibility"), Mapping) else {}
+        accounts_status = int(accounts_response.get("status") or 0)
+        eligibility_status = int(eligibility_response.get("status") or 0)
+        accounts_type = clean(accounts_response.get("content_type"), 80)
+        eligibility_type = clean(eligibility_response.get("content_type"), 80)
+        if not 200 <= accounts_status < 300 or not accounts_response.get("json"):
+            raise FreeRegisterError(
+                "free_plan_check", "查询 Free 套餐资格",
+                f"账号套餐接口响应无效（HTTP {accounts_status or '-'}，类型 {accounts_type or '-'}）",
+                error_code="free_plan_accounts_response_invalid",
+                provider_status=accounts_status or None,
+            )
+        accounts = accounts_response.get("payload") if isinstance(accounts_response.get("payload"), Mapping) else {}
+        eligibility = eligibility_response.get("payload") if isinstance(eligibility_response.get("payload"), Mapping) else {}
         plan = "free"
         values = accounts.get("accounts") if isinstance(accounts.get("accounts"), Mapping) else {}
         for item in values.values() if isinstance(values, Mapping) else []:
@@ -563,12 +722,19 @@ class RoxyRegistrationRunner:
                 if candidate:
                     plan = candidate
                     break
-        eligible = plus_trial_from_accounts(accounts) or plus_trial_from_accounts(result.get("eligibility"))
-        return plan, eligible
+        eligibility_ok = 200 <= eligibility_status < 300 and bool(eligibility_response.get("json"))
+        eligible = plus_trial_from_accounts(accounts) or (eligibility_ok and plus_trial_from_accounts(eligibility))
+        return plan, bool(eligible), {
+            "plan_accounts_http_status": accounts_status,
+            "plan_accounts_content_type": accounts_type,
+            "plan_eligibility_http_status": eligibility_status or None,
+            "plan_eligibility_content_type": eligibility_type,
+            "plan_eligibility_status": "success" if eligibility_ok else "failed",
+        }
 
     @staticmethod
     def _plan_details(driver: Any, token: str) -> dict[str, Any]:
-        plan, eligible = RoxyRegistrationRunner._plan(driver, token)
+        plan, eligible, diagnostic = RoxyRegistrationRunner._plan(driver, token)
         return {
             "plan_check_status": "success",
             "plan_type": plan,
@@ -576,6 +742,7 @@ class RoxyRegistrationRunner:
             "has_active_subscription": plan not in {"", "free"},
             "plus_trial_eligible": eligible,
             "plan_checked_at": time.time(),
+            **diagnostic,
         }
 
     def _setup_2fa(self, driver: Any, task: Mapping[str, Any], token: str, otp: MailboxUrlOtpProvider, human: Humanizer, stage: Callable[[str, str], None]) -> str:
@@ -648,9 +815,9 @@ class RoxyRegistrationRunner:
             active_stage = code
             stage(task_id, code)
 
-        otp = MailboxUrlOtpProvider(
-            str(task.get("mailbox_url") or ""), str(task.get("proxy") or ""),
-            timeout=int(config.get("email_code_timeout") or 90), log_fn=log, task_id=task_id, stage_fn=stage,
+        otp = build_free_mailbox_otp_provider(
+            str(task.get("mailbox_url") or ""), str(task.get("proxy") or ""), config,
+            log_fn=log, task_id=task_id, stage_fn=stage,
         )
         try:
             if stop_event.is_set():
@@ -719,7 +886,6 @@ class RoxyRegistrationRunner:
                         message = "注册页出现安全验证，邮箱输入框未开放" if challenge else f"45 秒内未找到可用邮箱输入框（{self._safe_page_location(driver)}）"
                         raise FreeRegisterError(node_code, node_label, message, error_code=f"{node_code}_timeout") from exc
                 if not email_already_submitted:
-                    otp.mark_sent()
                     set_stage("free_roxy_signup_email_submit")
                     try:
                         self._submit(driver, human)
@@ -732,6 +898,8 @@ class RoxyRegistrationRunner:
                         ) from exc
                     human.delay("navigate")
                     auth_state = self._wait_after_email_submit(driver, 45, log)
+                    if auth_state == "otp":
+                        otp.mark_sent()
             if auth_state == "login_password":
                 if not bool(roxy.get("existing_account_login", True)):
                     raise FreeRegisterError(
@@ -744,9 +912,10 @@ class RoxyRegistrationRunner:
                 set_stage("free_existing_login")
                 operation_started = time.monotonic()
                 set_stage("free_existing_login_otp")
-                otp.mark_sent("free_existing_login_otp")
                 self._switch_login_to_email_code(driver, human, log)
                 auth_state = self._wait_after_passwordless_switch(driver, 45, log)
+                if auth_state == "otp":
+                    otp.mark_sent("free_existing_login_otp")
                 log(
                     f"已有账号登录已切换到邮箱验证码，下一页={auth_state}，"
                     f"duration_ms={int((time.monotonic() - operation_started) * 1000)} outcome=success",
@@ -762,13 +931,9 @@ class RoxyRegistrationRunner:
                     )
                 set_stage("free_roxy_signup_password")
                 try:
-                    password_field = self._find(driver, ["input[type='password']", "input[name='password']", "input[autocomplete='new-password']"], 15)
-                    self._type(password_field, FIXED_PASSWORD, human)
-                    otp.mark_sent()
-                    self._submit(driver, human)
-                    log(f"注册密码已提交，等待邮箱验证码页（位置={safe_page_location(driver)}）", "info")
-                    human.delay("navigate")
-                    auth_state = self._wait_after_email_submit(driver, 45, log)
+                    auth_state = self._submit_signup_password(driver, human, log)
+                    if auth_state == "otp":
+                        otp.mark_sent()
                 except FreeRegisterError:
                     raise
                 except Exception as exc:
@@ -787,16 +952,67 @@ class RoxyRegistrationRunner:
             post_otp_state = auth_state
             if auth_state == "otp":
                 otp_stage = "free_existing_login_otp" if account_flow == "existing_login" else "free_email_otp_wait"
-                set_stage(otp_stage)
-                operation_started = time.monotonic()
-                log(f"开始等待本账号的{'已有账号登录' if account_flow == 'existing_login' else '注册'}邮箱验证码", "info")
-                code = otp.wait_code(str(task.get("email") or ""), otp_stage)
-                log(f"邮箱验证码已收到，未记录验证码内容，duration_ms={int((time.monotonic() - operation_started) * 1000)} outcome=success", "success")
-                set_stage("free_existing_login_otp" if account_flow == "existing_login" else "free_email_otp_validate")
-                self._fill_otp(driver, code, human)
-                log(f"邮箱验证码已输入并提交，等待离开验证码页（位置={safe_page_location(driver)}）", "info")
-                human.delay("navigate")
-                post_otp_state = self._wait_after_otp_submit(driver, 45, log)
+                def wait_code(otp_attempt: int) -> str:
+                    set_stage(otp_stage)
+                    operation_started = time.monotonic()
+                    log(
+                        f"开始等待本账号的{'已有账号登录' if account_flow == 'existing_login' else '注册'}邮箱验证码"
+                        f"（第 {otp_attempt}/3 次）",
+                        "info",
+                    )
+                    code = self._wait_mailbox_code(
+                        otp, str(task.get("email") or ""), otp_stage, driver, human, log,
+                    )
+                    log(
+                        "邮箱验证码已收到，未记录验证码内容"
+                        f"，duration_ms={int((time.monotonic() - operation_started) * 1000)} outcome=success",
+                        "success",
+                    )
+                    return str(code or "").strip()
+
+                def submit_code(code: str, _otp_attempt: int) -> str:
+                    set_stage("free_existing_login_otp" if account_flow == "existing_login" else "free_email_otp_validate")
+                    fill_result = self._fill_otp(driver, code, human) or {}
+                    if not isinstance(fill_result, Mapping):
+                        fill_result = {}
+                    log(
+                        "邮箱验证码已输入并提交，等待离开验证码页"
+                        f"（输入框={fill_result.get('input_count') or '-'}，"
+                        f"提交动作={'已触发' if fill_result.get('submit_clicked') else '未确认'}，"
+                        f"位置={safe_page_location(driver)}）",
+                        "info",
+                    )
+                    human.delay("navigate")
+                    return self._wait_after_otp_submit(driver, 45, log)
+
+                def restart_flow(_next_attempt: int) -> str:
+                    return reopen_email_otp_flow(
+                        driver,
+                        str(task.get("email") or ""),
+                        account_flow,
+                        otp,
+                        otp_stage,
+                        human,
+                        log,
+                        int(roxy.get("selenium_timeout") or 90),
+                        open_signup_page=self._open_signup_page,
+                        classify=self._classify_page,
+                        find_element=self._find,
+                        type_element=self._type,
+                        submit=self._submit,
+                        wait_after_email_submit=self._wait_after_email_submit,
+                        switch_login_to_email_code=self._switch_login_to_email_code,
+                        wait_after_passwordless_switch=self._wait_after_passwordless_switch,
+                        submit_signup_password=self._submit_signup_password,
+                    )
+
+                post_otp_state = run_otp_attempts(
+                    wait_code=wait_code,
+                    submit_code=submit_code,
+                    restart_flow=restart_flow,
+                    log=log,
+                    max_attempts=3,
+                )
             if post_otp_state == "login_password":
                 node_code = "free_existing_login" if account_flow == "existing_login" else "free_roxy_login_password"
                 node_label = "已有 Free 账号登录" if account_flow == "existing_login" else "识别登录密码页"
@@ -817,11 +1033,7 @@ class RoxyRegistrationRunner:
                         error_code="free_existing_login_wrong_page",
                     )
                 set_stage("free_roxy_signup_password")
-                password_field = self._find(driver, ["input[type='password']", "input[name='password']", "input[autocomplete='new-password']"], 15)
-                self._type(password_field, FIXED_PASSWORD, human)
-                self._submit(driver, human)
-                log(f"OTP 后注册密码已提交（位置={safe_page_location(driver)}）", "info")
-                post_otp_state = self._wait_after_otp_submit(driver, 45, log)
+                post_otp_state = self._submit_signup_password(driver, human, log)
             if post_otp_state == "profile":
                 set_stage("free_roxy_profile")
                 self._complete_profile(driver, human, log)
@@ -924,19 +1136,33 @@ class RoxyRegistrationRunner:
             raise FreeRegisterError(node_code, node_label, detail, error_code=error_code) from exc
         finally:
             cleanup_started = time.monotonic()
+            cleanup_ok = True
+            otp_close = getattr(otp, "close", None)
+            if callable(otp_close):
+                try:
+                    otp_close()
+                except Exception as exc:
+                    cleanup_ok = False
+                    log(f"[清理 RoxyBrowser 环境/free_roxy_cleanup] 邮箱取件关闭失败（{type(exc).__name__}）", "warn")
             if driver is not None and not bool(roxy.get("keep_browser_open", False)):
                 try:
                     driver.quit()
                 except Exception as exc:
+                    cleanup_ok = False
                     log(f"[清理 RoxyBrowser 环境/free_roxy_cleanup] Selenium 关闭失败（{type(exc).__name__}）", "warn")
             # Cleanup is diagnostic only; do not overwrite the terminal stage
             # (for example free_roxy_connect) with a cleanup stage.
             log(f"[{task_id}/清理 RoxyBrowser 环境/free_roxy_cleanup] 开始", "info")
             try:
-                client.cleanup(opened)
-                log(f"[{task_id}/清理 RoxyBrowser 环境/free_roxy_cleanup] 清理完成，duration_ms={int((time.monotonic() - cleanup_started) * 1000)} outcome=success", "success")
+                cleanup_ok = client.cleanup(opened) is not False and cleanup_ok
             except Exception as exc:
+                cleanup_ok = False
                 log(f"[{task_id}/清理 RoxyBrowser 环境/free_roxy_cleanup] 清理异常（{type(exc).__name__}）", "warn")
+            duration_ms = int((time.monotonic() - cleanup_started) * 1000)
+            if cleanup_ok:
+                log(f"[{task_id}/清理 RoxyBrowser 环境/free_roxy_cleanup] 清理完成，duration_ms={duration_ms} outcome=success", "success")
+            else:
+                log(f"[{task_id}/清理 RoxyBrowser 环境/free_roxy_cleanup] 清理未完全完成，原始注册结果已保留，duration_ms={duration_ms} outcome=warning", "warn")
 
 
 __all__ = ["RoxyBrowserClient", "RoxyOpenResult", "RoxyRegistrationRunner", "proxy_to_roxy_info"]

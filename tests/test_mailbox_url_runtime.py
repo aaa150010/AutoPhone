@@ -31,6 +31,18 @@ CLIENT_SHELL_HTML = """
 </html>
 """
 
+PICKUP_SHELL_HTML = """
+<html><body>
+  <div id="address"></div>
+  <section id="list"></section>
+  <script>
+    const urlSearchParams = new URLSearchParams(location.search);
+    fetch(`/api/messages?email=${encodeURIComponent(email)}&key=${encodeURIComponent(key)}`);
+    fetch(`/api/message/${id}?email=${encodeURIComponent(email)}&key=${encodeURIComponent(key)}`);
+  </script>
+</body></html>
+"""
+
 
 def json_response(url: str, value, status: int = 200) -> MailboxResponse:
     return MailboxResponse(
@@ -57,6 +69,124 @@ def verification_body(code: str) -> str:
 
 
 class MailboxUrlRuntimeTests(unittest.TestCase):
+    def test_trusted_pickup_list_only_response_accepts_bare_code(self):
+        result, detail_urls = parse_mailbox_payload(
+            '["654321", "not-a-code"]',
+            "https://mail.example.test/pickup",
+        )
+        self.assertEqual(detail_urls, ())
+        self.assertEqual([message.code for message in result], ["654321"])
+        self.assertEqual(result[0].code_source, "bare_code")
+
+    def test_pickup_parses_japanese_message_aliases_and_latest_timestamp(self):
+        pickup_url = "https://mail.example.test/pickup?email=user@example.test&key=redacted"
+        payload = {
+            "data": {
+                "messages": [
+                    {
+                        "ID": "new-jp",
+                        "FROM": "noreply_at_tm_openai_com_b2j2rdvb5es0k1_p1fp2345@icloud.com",
+                        "TITLE": "ChatGPT の一時的な認証コード",
+                        "CONTENT_HTML": "<p>この一時検証コードを入力して続行してください: 654321</p>",
+                        "SENT_AT": "2026-08-20T09:29:00+08:00",
+                    },
+                    {
+                        "id": "old-jp",
+                        "sender_email": "noreply_at_tm_openai_com@icloud.com",
+                        "mail_title": "ChatGPT の一時的な認証コード",
+                        "content": "この一時検証コードを入力して続行してください: 123456",
+                        "sent_at": "2026-08-20T07:43:00+08:00",
+                    },
+                ],
+            },
+        }
+        messages, _links = parse_mailbox_payload(json.dumps(payload, ensure_ascii=False), pickup_url)
+        self.assertEqual([message.code for message in messages], ["654321", "123456"])
+        self.assertEqual(messages[0].received_at, "2026-08-20T09:29:00+08:00")
+        self.assertIn("body", messages[0].field_sources)
+        self.assertIn("received_at", messages[0].field_sources)
+        selection = select_latest_code(
+            MailboxUrlClient(
+                pickup_url,
+                fetcher=lambda url: json_response(url, payload),
+            ).scan(),
+        )
+        self.assertEqual(selection.code, "654321")
+
+    def test_pickup_parses_japanese_preview_when_subject_is_not_mapped(self):
+        messages, _links = parse_mailbox_payload(
+            json.dumps({
+                "messages": [{
+                    "id": "jp-preview-only",
+                    "from": "noreply_at_tm_openai_com_example@icloud.com",
+                    "preview": "この一時検証コードを入力して続行してください: 654321",
+                }],
+            }, ensure_ascii=False),
+            "https://mail.example.test/pickup",
+        )
+        self.assertEqual(messages[0].code, "654321")
+        self.assertEqual(messages[0].code_source, "openai_context")
+
+    def test_trusted_pickup_parses_scalar_serialized_japanese_mail_items(self):
+        pickup_url = "https://mail.example.test/pickup"
+        raw_item = (
+            "noreply_at_tm_openai_com@icloud.com ChatGPT の一時的な認証コード "
+            "この一時検証コードを入力して続行してください: 654321"
+        )
+        messages, _links = parse_mailbox_payload(
+            json.dumps([raw_item, "not a verification message"], ensure_ascii=False),
+            pickup_url,
+        )
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0].code, "654321")
+        self.assertEqual(messages[0].code_source, "openai_context")
+
+    def test_trusted_pickup_html_passes_source_to_code_extractor(self):
+        pickup_url = "https://mail.example.test/pickup"
+        html = (
+            "<article data-message-id='jp-html'>"
+            "<div>noreply_at_tm_openai_com@icloud.com</div>"
+            "<h2>ChatGPT の一時的な認証コード</h2>"
+            "<p>この一時検証コードを入力して続行してください: 654321</p>"
+            "<time datetime='2026-08-20T09:29:00+08:00'>09:29</time>"
+            "</article>"
+        )
+        messages, _links = parse_mailbox_payload(html, pickup_url)
+        self.assertTrue(any(message.code == "654321" for message in messages))
+
+    def test_trusted_pickup_html_visible_text_accepts_plain_six_digit_code(self):
+        messages, _links = parse_mailbox_payload(
+            "<main><div>654321</div></main>",
+            "https://mail.example.test/pickup",
+        )
+        self.assertTrue(any(message.code == "654321" for message in messages))
+
+        untrusted_messages, _links = parse_mailbox_payload(
+            "<main><div>654321</div></main>",
+            "https://mail.example.test/inbox",
+        )
+        self.assertFalse(any(message.code for message in untrusted_messages))
+
+    def test_unicode_full_width_digits_are_normalized_before_otp_matching(self):
+        messages, _links = parse_mailbox_payload(
+            json.dumps({
+                "messages": [{
+                    "id": "full-width",
+                    "subject": "ChatGPT の一時的な認証コード",
+                    "content": "認証コード：６５４３２１",
+                }],
+            }, ensure_ascii=False),
+            "https://mail.example.test/pickup",
+        )
+        self.assertEqual(messages[0].code, "654321")
+
+    def test_untrusted_list_only_response_does_not_accept_bare_code(self):
+        result, _detail_urls = parse_mailbox_payload(
+            '["654321"]',
+            "https://mail.example.test/inbox",
+        )
+        self.assertFalse(any(message.code for message in result))
+
     def test_parses_and_masks_all_supported_url_row_separators(self):
         for separator in ("---", "----", "|", "｜"):
             row = f"User@Example.test{separator}https://mail.example.test/inbox/a-b_c"
@@ -124,6 +254,34 @@ class MailboxUrlRuntimeTests(unittest.TestCase):
             BASE_URL,
         )
         self.assertFalse(any(message.code for message in generic_root))
+
+    def test_trusted_pickup_accepts_bare_and_case_insensitive_explicit_otp_codes(self):
+        pickup_url = "https://mail.example.test/pickup/session-id"
+        messages, _detail_urls = parse_mailbox_payload(
+            json.dumps({
+                "messages": [
+                    {"id": "bare", "body": "654321"},
+                    {"id": "explicit", "VerificationCode": "654321"},
+                ],
+            }),
+            pickup_url,
+        )
+
+        by_id = {message.identity: message for message in messages}
+        self.assertEqual(len(messages), 2)
+        self.assertTrue(all(message.code == "654321" for message in messages))
+        self.assertEqual(
+            {message.code_source for message in messages},
+            {"bare_code", "explicit_code"},
+        )
+        self.assertTrue(by_id)
+
+        scan = MailboxUrlClient(
+            pickup_url,
+            fetcher=lambda url: json_response(url, {"messages": [{"id": "new", "body": "654321"}]}),
+        ).scan()
+        self.assertEqual(scan.diagnostics.bare_code_messages, 1)
+        self.assertEqual(scan.diagnostics.code_messages, 1)
 
     def test_parses_mail_code_envelope_with_six_digit_code(self):
         payload = {
@@ -238,6 +396,142 @@ class MailboxUrlRuntimeTests(unittest.TestCase):
         self.assertTrue(any(message.explicit_code for message in selection.scan.messages))
         self.assertEqual(calls, [shell_url, cache_url])
         self.assertTrue(all(url.startswith("https://mail.example.test/") for url in calls))
+
+    def test_pickup_shell_uses_same_origin_messages_and_detail_api(self):
+        shell_url = (
+            "https://mail.example.test/pickup?"
+            "email=user%40example.test&key=sample%2Faccess"
+        )
+        messages_url = (
+            "https://mail.example.test/api/messages?"
+            "email=user%40example.test&key=sample%2Faccess&force=0"
+        )
+        detail_url = (
+            "https://mail.example.test/api/message/message-new?"
+            "email=user%40example.test&key=sample%2Faccess"
+        )
+        old_detail_url = (
+            "https://mail.example.test/api/message/message-old?"
+            "email=user%40example.test&key=sample%2Faccess"
+        )
+        calls: list[str] = []
+
+        def fetch(url: str) -> MailboxResponse:
+            calls.append(url)
+            if url == shell_url:
+                return html_response(url, PICKUP_SHELL_HTML)
+            if url == messages_url:
+                return json_response(url, {
+                    "success": True,
+                    "messages": [{
+                        "id": "message-new",
+                        "from": "noreply_at_tm_openai_com_example@icloud.com",
+                        "subject": "ChatGPT の一時的な認証コード",
+                        "preview": "この一時検証コードを入力して続行してください: 654321",
+                        "date": "2026-08-22T09:29:00+08:00",
+                    }, {
+                        "id": "message-old",
+                        "from": "noreply_at_tm_openai_com_example@icloud.com",
+                        "subject": "ChatGPT の一時的な認証コード",
+                        "preview": "この一時検証コードを入力して続行してください: 123456",
+                        "date": "2026-08-22T08:29:00+08:00",
+                    }],
+                })
+            if url == detail_url:
+                return json_response(url, {
+                    "success": True,
+                    "message": {
+                        "id": "message-new",
+                        "from": "noreply_at_tm_openai_com_example@icloud.com",
+                        "subject": "ChatGPT の一時的な認証コード",
+                        "body": "この一時検証コードを入力して続行してください: 654321",
+                        "codes": ["654321"],
+                        "date": "2026-08-22T09:29:00+08:00",
+                    },
+                })
+            if url == old_detail_url:
+                return json_response(url, {
+                    "success": True,
+                    "message": {
+                        "id": "message-old",
+                        "from": "noreply_at_tm_openai_com_example@icloud.com",
+                        "subject": "ChatGPT の一時的な認証コード",
+                        "body": "この一時検証コードを入力して続行してください: 123456",
+                        "codes": ["123456"],
+                        "date": "2026-08-22T08:29:00+08:00",
+                    },
+                })
+            self.fail(f"unexpected fetch path: {url}")
+
+        selection = MailboxUrlClient(shell_url, fetcher=fetch).latest_code()
+
+        self.assertEqual(selection.code, "654321")
+        self.assertEqual(selection.reason, "code_found")
+        self.assertEqual(calls, [shell_url, messages_url, detail_url, old_detail_url])
+        self.assertTrue(all(url.startswith("https://mail.example.test/") for url in calls))
+
+    def test_pickup_shell_detects_runtime_query_params_without_detail_literal(self):
+        shell_url = (
+            "https://mail.example.test/pickup?"
+            "email=user%40example.test&key=sample%2Faccess"
+        )
+        messages_url = (
+            "https://mail.example.test/api/messages?"
+            "email=user%40example.test&key=sample%2Faccess&force=0"
+        )
+        detail_url = (
+            "https://mail.example.test/api/message/runtime-id?"
+            "email=user%40example.test&key=sample%2Faccess"
+        )
+        shell = """
+        <script>
+          const params = new URLSearchParams(location.search);
+          fetch('/api/messages', { method: 'GET', params });
+        </script>
+        """
+        calls: list[str] = []
+
+        def fetch(url: str) -> MailboxResponse:
+            calls.append(url)
+            if url == shell_url:
+                return html_response(url, shell)
+            if url == messages_url:
+                return json_response(url, {
+                    "messages": [{
+                        "id": "runtime-id",
+                        "from": "noreply_at_tm_openai_com@icloud.com",
+                        "subject": "ChatGPT の一時的な認証コード",
+                        "content": "認証コード: 654321",
+                        "date": "2026-08-22T09:29:00+08:00",
+                    }],
+                })
+            if url == detail_url:
+                return json_response(url, {"message": {"id": "runtime-id", "content": "654321"}})
+            self.fail(f"unexpected fetch path: {url}")
+
+        selection = MailboxUrlClient(shell_url, fetcher=fetch).latest_code()
+
+        self.assertEqual(selection.code, "654321")
+        self.assertEqual(calls, [shell_url, messages_url, detail_url])
+
+    def test_pickup_shell_rejects_cross_origin_api_inference(self):
+        shell_url = (
+            "https://mail.example.test/pickup?"
+            "email=user%40example.test&key=sample%2Faccess"
+        )
+        # A script can mention an external API, but the adapter only derives
+        # fixed same-origin endpoints and must leave the page untouched.
+        html = PICKUP_SHELL_HTML.replace("/api/messages?", "https://outside.example/api/messages?")
+        calls: list[str] = []
+
+        def fetch(url: str) -> MailboxResponse:
+            calls.append(url)
+            return html_response(url, html)
+
+        scan = MailboxUrlClient(shell_url, fetcher=fetch).scan()
+
+        self.assertEqual(calls, [shell_url])
+        self.assertFalse(any(message.code for message in scan.messages))
 
     def test_client_shell_requires_every_marker_and_complete_query(self):
         values = (

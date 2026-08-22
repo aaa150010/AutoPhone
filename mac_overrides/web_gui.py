@@ -53,6 +53,7 @@ import log_retention as _log_retention_ext
 import mailbox_admin as _mailbox_admin_ext
 import mailbox_admin_factory as _mailbox_admin_factory_ext
 import mailbox_priority_runtime as _mailbox_priority_runtime_ext
+import mailbox_otp_service as _mailbox_otp_service_ext
 import mailbox_url_runtime as _mailbox_url_runtime_ext
 import mailbox_url_test_runtime as _mailbox_url_test_runtime_ext
 import mailbox_retention as _mailbox_retention_ext
@@ -86,6 +87,8 @@ import sub2_upload_override as _sub2_upload_override_ext
 import task_progress as _task_progress_ext
 import transport_lifecycle as _transport_lifecycle_ext
 import web_routes as _web_routes_ext
+import payment_tools_routes as _payment_tools_routes_ext
+import network_tools_routes as _network_tools_routes_ext
 
 
 # Do not allow the host shell's proxy settings to silently affect OpenAI,
@@ -190,6 +193,7 @@ _EMAIL_CODE_TIMEOUT_DEFAULT = 60
 _EMAIL_TIMEOUT_STRATEGY_VERSION = 3
 _EMAIL_OTP_VERIFY_ATTEMPTS_DEFAULT = 2
 _EMAIL_OTP_RESEND_ON_RETRY_DEFAULT = True
+_EMAIL_PROXY_SCOPE_STRATEGY_VERSION = 1
 _SMS_PRIORITY_COUNTRIES_TEXT = ",".join(_SMS_PRIORITY_COUNTRIES)
 _SMS_PRIORITY_ROUTES = ()
 _SMS_BLOCKED_ROUTES = (
@@ -652,6 +656,9 @@ _migrate_email_timeout_config = _configuration_runtime_ext.make_email_timeout_mi
     strategy_version=_EMAIL_TIMEOUT_STRATEGY_VERSION,
     default_timeout=_EMAIL_CODE_TIMEOUT_DEFAULT,
 )
+_migrate_email_proxy_scope_config = _configuration_runtime_ext.make_email_proxy_scope_migrator(
+    strategy_version=_EMAIL_PROXY_SCOPE_STRATEGY_VERSION,
+)
 _read_store_config = _configuration_runtime_ext.read_store_config
 _atomic_write_private_json = _configuration_runtime_ext.atomic_write_private_json
 _write_store_config = _configuration_runtime_ext.write_store_config
@@ -665,7 +672,13 @@ def _patched_config_load(self):
             raw.pop(key, None)
             removed_legacy_fields = True
     raw, email_timeout_migrated = _migrate_email_timeout_config(raw)
+    raw, email_proxy_scope_migrated = _migrate_email_proxy_scope_config(raw)
     defaults = _runtime.default_settings(self.data_dir)
+    defaults["proxy_scope"] = {
+        **dict(defaults.get("proxy_scope") or {}),
+        "email": True,
+    }
+    defaults["email_proxy_scope_strategy_version"] = _EMAIL_PROXY_SCOPE_STRATEGY_VERSION
     defaults["email_code_timeout"] = _EMAIL_CODE_TIMEOUT_DEFAULT
     defaults["email_timeout_strategy_version"] = _EMAIL_TIMEOUT_STRATEGY_VERSION
     if "sms_mode" not in raw:
@@ -673,7 +686,11 @@ def _patched_config_load(self):
         defaults["sms_mode"] = "smart" if _runtime._as_bool(smart.get("enabled"), True) else "fixed"
 
     loaded = _runtime._merge(defaults, raw)
-    changed = self._enforce_private_paths(loaded, defaults) or email_timeout_migrated
+    changed = (
+        self._enforce_private_paths(loaded, defaults)
+        or email_timeout_migrated
+        or email_proxy_scope_migrated
+    )
     if "email_otp_verify_attempts" not in raw or raw.get("email_otp_verify_attempts") in (None, ""):
         if loaded.get("email_otp_verify_attempts") != _EMAIL_OTP_VERIFY_ATTEMPTS_DEFAULT:
             loaded["email_otp_verify_attempts"] = _EMAIL_OTP_VERIFY_ATTEMPTS_DEFAULT
@@ -750,6 +767,8 @@ def _patched_config_load(self):
         "protocol_concurrency_ceiling",
         "dynamic_auth_challenges",
         "allow_free_plan_sms_binding",
+        "proxy_scope",
+        "email_proxy_scope_strategy_version",
     )
     if migrated or any(raw.get(key) != normalized.get(key) for key in policy_keys):
         changed = True
@@ -759,7 +778,14 @@ def _patched_config_load(self):
 
 
 def _patched_config_save(self, values):
+    previous = _read_store_config(self)
     cleaned = dict(values or {})
+    if "email_proxy_scope_strategy_version" not in cleaned:
+        prior_version = previous.get("email_proxy_scope_strategy_version")
+        if prior_version is not None:
+            cleaned["email_proxy_scope_strategy_version"] = prior_version
+    if "proxy_scope" not in cleaned and isinstance(previous.get("proxy_scope"), dict):
+        cleaned["proxy_scope"] = copy.deepcopy(previous["proxy_scope"])
     cleaned.pop("nvtoken", None)
     cleaned.pop("nvtoken_upload", None)
     cleaned.pop("pixel_upload_enabled", None)
@@ -768,6 +794,7 @@ def _patched_config_save(self, values):
     if cleaned.get("email_otp_resend_on_retry") in (None, ""):
         cleaned["email_otp_resend_on_retry"] = _EMAIL_OTP_RESEND_ON_RETRY_DEFAULT
     cleaned, _email_timeout_migrated = _migrate_email_timeout_config(cleaned)
+    cleaned, _email_proxy_scope_migrated = _migrate_email_proxy_scope_config(cleaned)
     normalized, _migrated = _sms_runtime_ext.migrate_performance_config(cleaned)
     normalized = _performance_runtime_ext.normalize_feature_flags(normalized)
     normalized["dynamic_auth_challenges"] = _as_enabled(
@@ -802,6 +829,8 @@ def _patched_config_save(self, values):
         "protocol_concurrency_ceiling",
         "dynamic_auth_challenges",
         "allow_free_plan_sms_binding",
+        "proxy_scope",
+        "email_proxy_scope_strategy_version",
     ):
         saved[key] = normalized[key]
     _write_store_config(self, saved)
@@ -3087,7 +3116,7 @@ def _retained_gui_log_snapshot(self):
 
 def _mailbox_url_snapshot(self):
     try:
-        selection = _mailbox_url_runtime_ext.runtime_snapshot(self)
+        selection = _mailbox_otp_service_ext.runtime_snapshot(self)
     except _mailbox_url_runtime_ext.MailboxUrlError as exc:
         raise _runtime.MailboxPoolError(str(exc)) from exc
     fingerprint = selection.fingerprint
@@ -3117,53 +3146,12 @@ def _url_mailbox_mark_sent(self):
         timeout = _int_value(getattr(self, "timeout", 90), 90, minimum=1, maximum=600)
         self._gptphone_email_code_deadline = time.monotonic() + timeout
     provider = self.provider
-    _mailbox_url_runtime_ext.configure_runtime_request(
+    _mailbox_otp_service_ext.configure_runtime_request(
         provider,
         max_poll_attempts=_int_value(getattr(self, "max_attempts", 30), 30, minimum=1, maximum=1000),
     )
-    _mailbox_url_runtime_ext.begin_runtime_request(provider)
+    _mailbox_otp_service_ext.begin_runtime_request(provider)
     return result
-
-
-_MAILBOX_DIAGNOSTIC_LABELS = {
-    "mailbox_empty": "邮箱入口当前没有邮件",
-    "mailbox_messages_without_openai_otp": "邮箱已有邮件，但没有识别到 OpenAI 验证邮件",
-    "mailbox_openai_message_without_otp": "已识别 OpenAI 邮件，但没有匹配到有效六位验证码",
-    "mailbox_only_baseline_code": "邮箱当前只有本次请求前的旧验证码",
-    "mailbox_baseline_code_fallback": "轮询达到兜底节点后，已尝试最近的 OpenAI 基线验证码",
-    "mailbox_final_baseline_code_fallback": "邮箱等待超时后，已最后尝试一次最新的 OpenAI 基线验证码",
-    "mailbox_candidate_too_old": "识别到的验证码邮件早于本次请求",
-    "mailbox_detail_request_failed": "部分邮件详情读取失败，未识别到新验证码",
-    "mailbox_detail_refresh_pending": "仍有缓存邮件详情等待下一轮刷新",
-    "mailbox_refresh_request_failed": "邮箱异步刷新失败，仍在按受控间隔重试",
-}
-
-
-def _log_mailbox_diagnostic(provider, log_fn):
-    diagnostic = _mailbox_url_runtime_ext.runtime_diagnostic(provider)
-    reason = str(diagnostic.get("reason") or "")
-    if not reason or reason == "code_found":
-        return
-    label = _MAILBOX_DIAGNOSTIC_LABELS.get(reason, "未识别到新的邮箱验证码")
-    counts = (
-        f"列表消息 {int(diagnostic.get('listing_messages') or 0)}，"
-        f"详情链接 {int(diagnostic.get('detail_links') or 0)}，"
-        f"本轮刷新 {int(diagnostic.get('detail_refreshed') or 0)}，"
-        f"待轮转 {int(diagnostic.get('detail_refresh_pending') or 0)}，"
-        f"详情错误 {int(diagnostic.get('detail_errors') or 0)}"
-    )
-    refresh_error_code = str(diagnostic.get("refresh_error_code") or "")
-    refresh_http_status = diagnostic.get("refresh_http_status")
-    refresh_detail = ""
-    if refresh_error_code:
-        refresh_detail = f"；刷新错误 {refresh_error_code}"
-        if isinstance(refresh_http_status, int) and not isinstance(refresh_http_status, bool):
-            refresh_detail += f"/HTTP {refresh_http_status}"
-    _call_log(
-        log_fn,
-        f"  [邮箱取码诊断/email_code_waiting] {label}（{reason}；{counts}{refresh_detail}）",
-        "warn",
-    )
 
 
 def _automatic_url_mailbox_wait_code(self, email):
@@ -3174,11 +3162,9 @@ def _automatic_url_mailbox_wait_code(self, email):
         and getattr(self, "_chatgpt_email_otp_verified", False)
     ):
         code = _chatgpt_totp_ext.totp_code(getattr(entry, "oauth_refresh_token", ""))
-        _mailbox_url_runtime_ext.finish_runtime_request(getattr(self, "provider", None))
+        _mailbox_otp_service_ext.finish_runtime_request(getattr(self, "provider", None))
         _call_log(getattr(self, "log_fn", None), "  [Codex] 已根据 2FA 密钥生成临时验证码", "info")
         return code
-    original_timeout = getattr(self, "timeout", None)
-    original_interval = getattr(self, "interval", None)
     provider = getattr(self, "provider", None)
     max_poll_attempts = _int_value(
         getattr(self, "max_attempts", 30),
@@ -3186,57 +3172,18 @@ def _automatic_url_mailbox_wait_code(self, email):
         minimum=1,
         maximum=1000,
     )
-    _mailbox_url_runtime_ext.configure_runtime_request(
-        provider,
-        max_poll_attempts=max_poll_attempts,
-    )
+    timeout_seconds = _int_value(getattr(self, "timeout", 90), 90, minimum=1, maximum=600)
+    interval_seconds = _int_value(getattr(self, "interval", 5), 5, minimum=1, maximum=60)
     deadline = getattr(self, "_gptphone_email_code_deadline", None)
-    if deadline is not None and original_timeout is not None:
-        remaining = max(1, int(float(deadline) - time.monotonic()))
-        self.timeout = min(_int_value(original_timeout, 90, minimum=1, maximum=600), remaining)
-    if original_interval is not None:
-        timeout_budget = _int_value(getattr(self, "timeout", 90), 90, minimum=1, maximum=600)
-        interval_for_budget = max(1, (timeout_budget + max_poll_attempts - 1) // max_poll_attempts)
-        self.interval = min(
-            _int_value(original_interval, 5, minimum=1, maximum=60),
-            interval_for_budget,
-        )
-    try:
-        code = _ORIGINAL_URL_MAILBOX_WAIT_CODE(self, email)
-    except Exception as exc:
-        if "mailbox_code_timeout" in str(exc).lower():
-            try:
-                fallback = _mailbox_url_runtime_ext.final_runtime_baseline_fallback(provider)
-            except _mailbox_url_runtime_ext.MailboxUrlError:
-                fallback = None
-            if fallback is not None and fallback.code:
-                code = fallback.code
-            else:
-                _log_mailbox_diagnostic(provider, getattr(self, "log_fn", None))
-                raise
-        else:
-            _log_mailbox_diagnostic(provider, getattr(self, "log_fn", None))
-            raise
-    finally:
-        if original_timeout is not None:
-            self.timeout = original_timeout
-        if original_interval is not None:
-            self.interval = original_interval
-        _mailbox_url_runtime_ext.finish_runtime_request(provider)
-    diagnostic = _mailbox_url_runtime_ext.runtime_diagnostic(provider)
-    fallback_reason = str(diagnostic.get("reason") or "")
-    if code and fallback_reason in {
-        "mailbox_baseline_code_fallback",
-        "mailbox_final_baseline_code_fallback",
-    }:
-        poll = int(diagnostic.get("baseline_fallback_poll") or 0)
-        maximum = int(diagnostic.get("max_poll_attempts") or 0)
-        phase = "最终超时回退" if fallback_reason == "mailbox_final_baseline_code_fallback" else f"轮询 {poll}/{maximum}"
-        _call_log(
-            getattr(self, "log_fn", None),
-            f"  [邮箱取码诊断/email_code_waiting] {phase}：尝试最近的 OpenAI 基线验证码（本任务最多三次）",
-            "info",
-        )
+    code = _mailbox_otp_service_ext.legacy_wait_code(
+        self,
+        email,
+        wait_fn=_ORIGINAL_URL_MAILBOX_WAIT_CODE,
+        max_poll_attempts=max_poll_attempts,
+        timeout_seconds=timeout_seconds,
+        interval_seconds=interval_seconds,
+        deadline_monotonic=float(deadline) if deadline is not None else None,
+    )
     if code:
         setattr(self, "_chatgpt_email_otp_verified", True)
         if (
@@ -3539,19 +3486,28 @@ def _read_local_config():
         value.pop("pixel_upload_enabled", None)
         changed = True
     value, timeout_migrated = _migrate_email_timeout_config(value)
+    value, email_proxy_scope_migrated = _migrate_email_proxy_scope_config(value)
     value, performance_migrated = _sms_runtime_ext.migrate_performance_config(value)
-    if changed or timeout_migrated or performance_migrated:
+    if changed or timeout_migrated or email_proxy_scope_migrated or performance_migrated:
         _write_local_config(value)
     return value
 
 
 def _write_local_config(data):
     value = dict(data) if isinstance(data, dict) else {}
+    previous = _read_store_config(_LOCAL_CONFIG_FILE)
+    if "email_proxy_scope_strategy_version" not in value:
+        prior_version = previous.get("email_proxy_scope_strategy_version")
+        if prior_version is not None:
+            value["email_proxy_scope_strategy_version"] = prior_version
+    if "proxy_scope" not in value and isinstance(previous.get("proxy_scope"), dict):
+        value["proxy_scope"] = copy.deepcopy(previous["proxy_scope"])
     value = _free_register_config_ext.strip_legacy_free_config(value)
     value.pop("nvtoken", None)
     value.pop("nvtoken_upload", None)
     value.pop("pixel_upload_enabled", None)
     value, _timeout_migrated = _migrate_email_timeout_config(value)
+    value, _email_proxy_scope_migrated = _migrate_email_proxy_scope_config(value)
     value, _performance_migrated = _sms_runtime_ext.migrate_performance_config(value)
     _atomic_write_private_json(_LOCAL_CONFIG_FILE, value)
     phone_gate = globals().get("_SMS_PHONE_GATE")
@@ -3636,6 +3592,7 @@ _LOCAL_CONFIG_RUNTIME = _configuration_runtime_ext.LocalConfigRuntime(
     performance_runtime=_performance_runtime_ext,
     notifications=_run_notifications_ext,
     migrate_email_timeout=_migrate_email_timeout_config,
+    migrate_email_proxy_scope=_migrate_email_proxy_scope_config,
     read_local_config=_read_local_config,
     online_mailbox_default_url=_online_mailbox_runtime_ext.DEFAULT_ONLINE_MAILBOX_BASE_URL,
     email_timeout_strategy_version=_EMAIL_TIMEOUT_STRATEGY_VERSION,
@@ -3802,6 +3759,15 @@ def _patch_flask_app(app):
     original_start = app.view_functions.get("start")
     route_values = _closure_values(original_start) if callable(original_start) else {}
     patched = _web_routes_ext.patch_flask_app(app, _WEB_ROUTE_CONTEXT)
+    # Payment and network tools own their stores and routes; they do not use
+    # the ordinary SMS or Free task stores beyond explicit Free Token lookup.
+    tools_root = _FREE_DATA_DIR.parent
+    _payment_tools_routes_ext.install_payment_routes(
+        patched, module=_module, data_root=tools_root, free_manager=_FREE_REGISTER,
+    )
+    _network_tools_routes_ext.install_network_routes(
+        patched, module=_module, data_root=tools_root,
+    )
     patched = _connectivity_routes_ext.patch_openai_connectivity_guard_route(
         patched,
         module=_module,

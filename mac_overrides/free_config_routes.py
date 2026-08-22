@@ -86,6 +86,14 @@ class FreeControlRouteController:
         finally:
             self.request_lock.release()
 
+    def config_secret(self):
+        data = self.module.request.get_json(silent=True) or {}
+        secret_id = str(data.get("id") or "").strip() if isinstance(data, Mapping) else ""
+        try:
+            return self.module.jsonify(ok=True, id=secret_id, value=self.config_store.secret(secret_id))
+        except Exception as exc:
+            return self.failure_response(exc, default_code="free_config_secret", default_label="读取 Free 配置密钥")
+
     def delete_tasks(self):
         if self.manager is None:
             return self.module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503

@@ -1254,6 +1254,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/settings", "settings_page", mailbox_manager, ["GET"]),
         ("/api/mailboxes", "api_mailboxes", api_mailboxes, ["GET"]),
         ("/api/free/config", "api_free_config", free_control_routes.config, ["GET", "POST"]),
+        ("/api/free/config/secret", "api_free_config_secret", free_control_routes.config_secret, ["POST"]),
         ("/api/free/state", "api_free_state", api_free_state, ["GET"]),
         ("/api/free/preflight", "api_free_preflight", api_free_preflight, ["POST"]),
         ("/api/free/start", "api_free_start", api_free_start, ["POST"]),

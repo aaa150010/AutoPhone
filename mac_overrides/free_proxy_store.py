@@ -432,7 +432,7 @@ class FreeProxyPool:
     def _probe(proxy: str, target: str) -> str:
         from curl_cffi import requests as curl_requests
 
-        session = curl_requests.Session(impersonate="chrome", verify=False)
+        session = curl_requests.Session(impersonate="chrome", verify=True)
         session.proxies = {"http": proxy, "https": proxy}
         if hasattr(session, "trust_env"):
             session.trust_env = False
@@ -462,8 +462,28 @@ class FreeProxyPool:
         group: str | None = None,
         driver: str = "protocol",
         exclude_proxy_ids: Iterable[str] = (),
+        exclude_exit_ips: Iterable[str] = (),
     ) -> list[ProxyBinding]:
         with self._lock:
+            persisted_rows = self._load()
+            now = time.time()
+            active_rows = []
+            for row in persisted_rows:
+                if not row.get("lease_owner"):
+                    continue
+                try:
+                    active = float(row.get("lease_until") or 0) > now
+                except (TypeError, ValueError):
+                    active = False
+                if active:
+                    active_rows.append(row)
+            active_proxy_ids = {str(row.get("proxy_id") or "") for row in active_rows}
+            active_identities = {str(row.get("_identity") or "") for row in active_rows}
+            active_exit_ips = {
+                str(row.get("last_exit_ip") or "").strip()
+                for row in active_rows
+                if str(row.get("last_exit_ip") or "").strip()
+            }
             if str(content or "").strip():
                 values = self._parse_lines(content, country=country or "", group=group or DEFAULT_PROXY_GROUP, scheme=self.default_scheme)
                 selected_country = normalize_country(country) if str(country or "").strip() else None
@@ -473,6 +493,8 @@ class FreeProxyPool:
                     if (not selected_country or row.get("country") == selected_country)
                     and (not selected_group or row.get("group") == selected_group)
                     and (driver != "roxybrowser" or str(row.get("scheme") or "").lower() in SUPPORTED_ROXY_SCHEMES)
+                    and str(row.get("proxy_id") or "") not in active_proxy_ids
+                    and str(row.get("_identity") or "") not in active_identities
                 ]
             else:
                 values = self._eligible(country=country, group=group, driver=driver)
@@ -481,14 +503,18 @@ class FreeProxyPool:
                 values = [row for row in values if str(row.get("proxy_id") or "") not in excluded]
             if len(values) < count:
                 raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", f"Free 代理数量不足：需要 {count} 个，当前只有 {len(values)} 个", retryable=False)
-            selected = values[:max(0, int(count))]
-            identities = [str(value.get("_identity") or value.get("proxy_id")) for value in selected]
+            identities = [str(value.get("_identity") or value.get("proxy_id")) for value in values]
             if len(set(identities)) != len(identities):
                 raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", "代理池包含重复代理，无法建立一号一代理绑定", retryable=False)
         check = probe or self._probe
         bindings: list[ProxyBinding] = []
-        exit_ips: list[str] = []
-        for index, record in enumerate(selected, 1):
+        exit_ips = {
+            str(value).strip()
+            for value in (*exclude_exit_ips, *active_exit_ips)
+            if str(value).strip()
+        }
+        conflicting_exit_ips = 0
+        for index, record in enumerate(values, 1):
             proxy = _proxy_url(record)
             started = time.monotonic()
             try:
@@ -501,12 +527,19 @@ class FreeProxyPool:
                 if not str(content or "").strip():
                     self.record_failure(str(record.get("proxy_id") or ""), node_code="free_proxy_preflight", message=proxy_error_detail(exc))
                 raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", f"代理池第 {index} 条出口 IP 检测失败：{proxy_error_detail(exc)}") from exc
-            exit_ips.append(exit_ip)
+            if exit_ip in exit_ips:
+                conflicting_exit_ips += 1
+                continue
             if not str(content or "").strip():
                 self.record_success(str(record.get("proxy_id") or ""), exit_ip=exit_ip, latency_ms=int((time.monotonic() - started) * 1000))
             bindings.append(ProxyBinding(proxy, str(record.get("proxy_id") or fingerprint(proxy)), mask_proxy(proxy), exit_ip, proxy_id=str(record.get("proxy_id") or ""), scheme=str(record.get("scheme") or self.default_scheme), country=str(record.get("country") or DEFAULT_PROXY_COUNTRY), group=str(record.get("group") or DEFAULT_PROXY_GROUP)))
-        if len(set(exit_ips)) != len(exit_ips):
-            raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", "代理出口 IP 重复，无法建立一号一 IP 绑定", retryable=False)
+            exit_ips.add(exit_ip)
+            if len(bindings) >= count:
+                return bindings
+        if conflicting_exit_ips:
+            raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", "代理出口 IP 与运行中 Free 任务重复，无法建立一号一 IP 绑定", retryable=False, error_code="free_proxy_exit_ip_conflict")
+        if len(bindings) < count:
+            raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", "可用代理不足，无法建立一号一 IP 绑定", retryable=False, error_code="free_proxy_pool_exhausted")
         return bindings
 
     def verify(self, binding: ProxyBinding, *, probe: Callable[[str, str], str] | None = None, probe_url: str = "https://api.ipify.org") -> str:
@@ -527,8 +560,27 @@ class FreeProxyPool:
             if target is None:
                 raise FreeRegisterError("free_proxy_lease", "租用 Free 代理", "固定代理已不存在", retryable=False)
             now = time.time()
-            if target.get("lease_owner") and float(target.get("lease_until") or 0) > now and target.get("lease_owner") != owner:
-                raise FreeRegisterError("free_proxy_lease", "租用 Free 代理", "代理已被其他 Free 任务租用", retryable=False)
+            active_lease = bool(target.get("lease_owner") and float(target.get("lease_until") or 0) > now)
+            if active_lease and target.get("lease_owner") != owner:
+                existing_batch = str(target.get("lease_batch_id") or "")
+                existing_task = str(target.get("lease_task_id") or "")
+                if existing_batch and existing_batch == str(batch_id) and existing_task and existing_task != str(task_id):
+                    raise FreeRegisterError(
+                        "free_proxy_lease",
+                        "租用 Free 代理",
+                        "代理已被同批次其他 Free 任务租用",
+                        retryable=False,
+                        error_code="free_proxy_batch_lease_conflict",
+                    )
+                raise FreeRegisterError("free_proxy_lease", "租用 Free 代理", "代理已被其他 Free 任务租用", retryable=False, error_code="free_proxy_lease_conflict")
+            if active_lease and target.get("lease_task_id") not in {"", str(task_id)}:
+                raise FreeRegisterError(
+                    "free_proxy_lease",
+                    "租用 Free 代理",
+                    "代理已被同批次其他 Free 任务租用",
+                    retryable=False,
+                    error_code="free_proxy_batch_lease_conflict",
+                )
             target.update({"lease_owner": owner, "lease_until": now + max(30, int(lease_seconds)), "lease_batch_id": batch_id, "lease_task_id": task_id})
             self._save(rows)
 
@@ -539,6 +591,19 @@ class FreeProxyPool:
             until = time.time() + max(30, int(lease_seconds))
             for row in rows:
                 if row.get("lease_owner") == owner:
+                    row["lease_until"] = until
+                    changed = True
+            if changed:
+                self._save(rows)
+
+    def heartbeat_batch(self, batch_id: str, *, lease_seconds: int = 180) -> None:
+        """Renew only leases belonging to one Free batch."""
+        with self._lock:
+            rows = self._load()
+            changed = False
+            until = time.time() + max(30, int(lease_seconds))
+            for row in rows:
+                if str(row.get("lease_batch_id") or "") == str(batch_id):
                     row["lease_until"] = until
                     changed = True
             if changed:

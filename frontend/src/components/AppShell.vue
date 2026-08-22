@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
-import { Expand, Fold } from '@element-plus/icons-vue'
+import { Bell, Connection, Expand, Fold, Link, Loading, MessageBox, Monitor, Scissor, Setting, Tickets, Tools, Wallet } from '@element-plus/icons-vue'
 import MailboxPage from '../pages/MailboxPage.vue'
 import FreeMailboxPoolPage from '../pages/FreeMailboxPoolPage.vue'
 import FreeRegistrationPage from '../pages/FreeRegistrationPage.vue'
@@ -10,6 +10,8 @@ import MailboxSplitterPage from '../pages/MailboxSplitterPage.vue'
 import UrlMailboxTestPage from '../pages/UrlMailboxTestPage.vue'
 import RunPage from '../pages/RunPage.vue'
 import SettingsPage from '../pages/SettingsPage.vue'
+import PaymentToolsPage from '../pages/PaymentToolsPage.vue'
+import NetworkToolsPage from '../pages/NetworkToolsPage.vue'
 import { appControllerKey, createAppController } from '../composables/useAppController'
 import { buildOpenAIConnectivityView } from '../utils/openAIConnectivity'
 import ReleaseNotesDialog from './ReleaseNotesDialog.vue'
@@ -18,7 +20,7 @@ import OpenAIConnectivityDiagnosticDialog from './OpenAIConnectivityDiagnosticDi
 const controller = createAppController()
 provide(appControllerKey, controller)
 
-const routes = new Set(['/', '/mailboxes', '/free-register', '/free-mailboxes', '/splitter', '/url-test', '/settings'])
+const routes = new Set(['/', '/mailboxes', '/free-register', '/free-mailboxes', '/splitter', '/url-test', '/settings', '/payment-tools', '/network-tools'])
 const pathFromLocation = () => `${routes.has(window.location.pathname) ? window.location.pathname : '/'}${window.location.search}${window.location.hash}`
 const activePath = ref(routes.has(window.location.pathname) ? window.location.pathname : '/')
 const settingsAnchor = ref(new URLSearchParams(window.location.search).get('section') || window.location.hash.replace(/^#/, ''))
@@ -115,12 +117,12 @@ onUnmounted(() => {
     <el-container class="app-shell">
       <el-aside :width="sidebarCollapsed ? '54px' : '188px'" class="app-sidebar" :class="{ 'is-collapsed': sidebarCollapsed }">
         <div class="brand-block">
-          <div class="brand-mark"><el-icon><Cpu /></el-icon></div>
-          <div class="brand-copy"><strong>自动接码机</strong><span>GPT Phone</span></div>
+          <div class="brand-mark"><img src="/assets/gpt-register-center-v1633.svg" alt="" /></div>
+          <div class="brand-copy"><strong>GPT 注册中心</strong><span>FREE + SMS</span></div>
           <el-tooltip :content="sidebarCollapsed ? '展开菜单' : '收缩菜单'" placement="right"><el-button class="sidebar-toggle" link :icon="sidebarCollapsed ? Expand : Fold" aria-label="收缩或展开左侧菜单" @click="toggleSidebar" /></el-tooltip>
         </div>
 
-        <el-menu :default-active="activePath" :default-openeds="sidebarCollapsed ? [] : ['sms-workspace', 'free-workspace', 'system-settings']" :collapse="sidebarCollapsed" :collapse-transition="false" @select="selectPage">
+        <el-menu :default-active="activePath" :default-openeds="sidebarCollapsed ? [] : ['sms-workspace', 'free-workspace', 'tool-workspace', 'system-settings']" :collapse="sidebarCollapsed" :collapse-transition="false" @select="selectPage">
           <el-sub-menu index="sms-workspace">
             <template #title><el-icon><MessageBox /></el-icon><span>接码工作台</span></template>
             <el-menu-item index="/"><el-icon><Monitor /></el-icon><span>接码运行中心</span></el-menu-item>
@@ -132,6 +134,11 @@ onUnmounted(() => {
             <template #title><el-icon><Setting /></el-icon><span>Free 注册</span></template>
             <el-menu-item index="/free-register"><el-icon><Monitor /></el-icon><span>Free 注册运行</span></el-menu-item>
             <el-menu-item index="/free-mailboxes"><el-icon><Tickets /></el-icon><span>Free 邮箱管理</span></el-menu-item>
+          </el-sub-menu>
+          <el-sub-menu index="tool-workspace">
+            <template #title><el-icon><Tools /></el-icon><span>支付与网络工具</span></template>
+            <el-menu-item index="/payment-tools"><el-icon><Wallet /></el-icon><span>支付链接工作台</span></el-menu-item>
+            <el-menu-item index="/network-tools"><el-icon><Connection /></el-icon><span>代理与网络工具</span></el-menu-item>
           </el-sub-menu>
           <el-sub-menu index="system-settings">
             <template #title><el-icon><Setting /></el-icon><span>系统设置</span></template>
@@ -154,6 +161,8 @@ onUnmounted(() => {
         <FreeMailboxPoolPage v-else-if="activePath === '/free-mailboxes'" />
         <MailboxSplitterPage v-else-if="activePath === '/splitter'" />
         <UrlMailboxTestPage v-else-if="activePath === '/url-test'" />
+        <PaymentToolsPage v-else-if="activePath === '/payment-tools'" />
+        <NetworkToolsPage v-else-if="activePath === '/network-tools'" />
         <SettingsPage v-else :initial-anchor="settingsAnchor" @navigate="navigate" />
       </el-main>
     </el-container>
@@ -166,7 +175,8 @@ onUnmounted(() => {
 .app-shell { width: 100%; min-width: 1280px; height: 100vh; overflow: hidden; background: var(--workspace-page); }
 .app-sidebar { display: flex; flex-direction: column; height: 100%; overflow: hidden; border-right: 1px solid #d8e1eb; background: #f8fafc; transition: width 160ms ease; }
 .brand-block { display: flex; align-items: center; gap: 9px; height: 58px; padding: 0 10px; border-bottom: 1px solid #d8e1eb; }
-.brand-mark { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; border-radius: 6px; background: #2563eb; color: #fff; font-size: 18px; }
+.brand-mark { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; overflow: hidden; border-radius: 6px; background: #0f172a; }
+.brand-mark img { display: block; width: 32px; height: 32px; }
 .brand-copy { display: grid; min-width: 0; margin-right: auto; }
 .brand-copy strong { color: #172033; font-size: 14px; line-height: 20px; font-weight: 720; white-space: nowrap; }
 .brand-copy span { color: #8792a4; font-size: 10px; line-height: 14px; text-transform: uppercase; }

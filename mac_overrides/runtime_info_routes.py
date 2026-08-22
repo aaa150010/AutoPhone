@@ -9,9 +9,11 @@ from typing import Any
 
 try:
     from .mailbox_redaction import url_credential_secrets
+    from .mailbox_otp_service import DEFAULT_FREE_MAILBOX_PROXY
     from .route_failures import explicit_failure_payload
 except ImportError:  # Loaded as a top-level runtime override.
     from mailbox_redaction import url_credential_secrets  # type: ignore[no-redef]
+    from mailbox_otp_service import DEFAULT_FREE_MAILBOX_PROXY  # type: ignore[no-redef]
     from route_failures import explicit_failure_payload  # type: ignore[no-redef]
 
 
@@ -54,7 +56,16 @@ class RuntimeInfoRouteController:
             local = self.context.read_local_config()
             scope = local.get("proxy_scope")
             scope = scope if isinstance(scope, Mapping) else {}
-            proxy = str(local.get("proxy") or "") if bool(scope.get("email")) else ""
+            # Ordinary mailbox URL tests use the same explicit local Clash
+            # default as the shared OTP service.  An explicitly persisted
+            # ``email=false`` remains an opt-out; a missing legacy key is
+            # treated as enabled and is also migrated by the config store.
+            email_proxy_enabled = bool(scope.get("email", True))
+            proxy = (
+                str(local.get("proxy") or DEFAULT_FREE_MAILBOX_PROXY).strip()
+                if email_proxy_enabled
+                else ""
+            )
             result = factory().test(
                 submitted_url,
                 timeout_seconds=60,

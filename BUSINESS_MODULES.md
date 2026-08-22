@@ -1,5 +1,7 @@
 # Selected Business Bytecode
 
+The current macOS dashboard is branded as **GPT 注册中心** and exposes two isolated workspaces: the recovered SMS/OAuth workflow and the maintained Free registration workflow. Recovered bytecode remains read-only; maintained behavior is implemented in `mac_overrides/`.
+
 These files were selected from the PyInstaller/PYZ extraction as likely first-party modules.
 
 - `plus_launcher.pyc`
@@ -36,3 +38,31 @@ These files were selected from the PyInstaller/PYZ extraction as likely first-pa
 - `tools/high_pressure_test.pyc`
 - `tools/self_mailbox_pool/__init__.pyc`
 - `tools/self_mailbox_pool/mailbox_pool.pyc`
+
+## Maintained Runtime Overrides
+
+- `mac_overrides/free_register_runtime.py`: Free controller compatibility facade and public runtime assembly.
+- `mac_overrides/free_protocol_runtime.py`: isolated Free full-protocol driver.
+- `mac_overrides/free_roxy_runtime.py`: RoxyBrowser profile lifecycle, fixed proxy/IP validation and browser registration state machine.
+- `mac_overrides/free_register_config.py`: `${GPTPHONE_DATA_DIR}/free_register/` configuration, defaults, masking and migration.
+- `mac_overrides/free_proxy_runtime.py`: structured Free proxy pool, country/group selection, leases, health and quarantine.
+- `mac_overrides/free_live_check.py`: fast and deep account liveness checks using the account's saved registration proxy.
+- `mac_overrides/mailbox_otp_service.py`: shared mailbox OTP source registry, network transport, baseline/old-code exclusion, polling and credential-safe diagnostics.
+- `mac_overrides/mailbox_code_parser.py`: shared HTML/JSON/Base64/Japanese OTP field normalization and context-aware six-digit extraction.
+- `mac_overrides/mailbox_pickup_runtime.py`: `/pickup` and `/latest` JavaScript shell discovery, same-origin `/api/messages` and detail endpoint construction.
+- `mac_overrides/mailbox_request_runtime.py`: request baseline, old-code exclusion, bounded fallback polling and mailbox diagnostics state.
+- `mac_overrides/free_mailbox_otp.py`: Free compatibility wrapper; mailbox retrieval uses Free's explicit local-proxy/direct policy and never the registration residential proxy.
+
+## 独立工具模块
+
+- `mac_overrides/payment_tools.py`: 独立支付提链任务、并发、取消、重试、第三方确认、结果按需读取和敏感值隔离。
+- `mac_overrides/payment_protocol/`: 本地支付协议提炼适配器，保留 MIT 来源许可证；只生成/提炼链接，不执行扣款。
+- `mac_overrides/payment_pay153_browser.py`: 可选的 pay.153.ink Selenium 适配器，默认无头，缺少 Selenium 时只返回结构化配置错误。
+- `mac_overrides/payment_tools_routes.py`: 支付工具 API 装配，不读取普通接码任务状态。
+- `mac_overrides/network_tools.py`: 独立代理记录、国家/分组、协议解析、快速/深度测活和出口 IP 结果。
+- `mac_overrides/network_mihomo.py`: Mihomo 隔离临时进程生命周期；不修改 Clash Verge 当前配置或系统代理。
+- `mac_overrides/network_tools_routes.py`: 代理导入、订阅解析、分组和固定代理测活 API。
+
+支付工具和网络工具的运行数据分别位于 `payment_tools/` 与 `network_tools/`，不会写入 Free 注册、普通接码或共享运行状态。支付第三方模式和任何真实节点测试都必须由用户在界面中明确发起；测试夹具只使用假服务、假代理和假响应。
+
+The default Free mailbox transport is `http://127.0.0.1:7897`. Ordinary SMS/OAuth registration and Free registration share the OTP engine but keep independent network settings and data stores.

@@ -7,7 +7,55 @@ import json
 import os
 from pathlib import Path
 import uuid
+from collections.abc import Mapping
 from typing import Any, Callable
+
+
+EMAIL_PROXY_SCOPE_STRATEGY_VERSION = 1
+
+
+def make_email_proxy_scope_migrator(
+    *,
+    strategy_version: int = EMAIL_PROXY_SCOPE_STRATEGY_VERSION,
+) -> Callable[[Any], tuple[dict[str, Any], bool]]:
+    """Migrate legacy ordinary mailbox proxy settings once.
+
+    The old dashboard defaulted ``proxy_scope.email`` to false.  A version
+    marker makes the upgrade one-shot: an unversioned false value is upgraded
+    to true, while a user who later turns it off keeps that choice.
+    """
+
+    version_target = int(strategy_version)
+
+    def migrate(value: Any) -> tuple[dict[str, Any], bool]:
+        config = dict(value or {}) if isinstance(value, Mapping) else {}
+        try:
+            version = int(config.get("email_proxy_scope_strategy_version") or 0)
+        except (TypeError, ValueError):
+            version = 0
+        raw_scope = config.get("proxy_scope")
+        scope = dict(raw_scope) if isinstance(raw_scope, Mapping) else {}
+        migrated = False
+        if version < version_target:
+            if scope.get("email") is not True:
+                scope["email"] = True
+                migrated = True
+            if config.get("email_proxy_scope_strategy_version") != version_target:
+                migrated = True
+        elif "email" not in scope:
+            # Versioned configs created by an older build may not have the
+            # nested key.  Treat that omission as the new safe default.
+            scope["email"] = True
+            migrated = True
+        if config.get("proxy_scope") != scope:
+            config["proxy_scope"] = scope
+            migrated = True
+        if config.get("email_proxy_scope_strategy_version") != version_target:
+            config["email_proxy_scope_strategy_version"] = version_target
+            migrated = True
+        return config, migrated
+
+    return migrate
 
 def _coerce_int(value: Any, default: int, minimum: int | None = None, maximum: int | None = None) -> int:
     try:
@@ -118,6 +166,7 @@ class LocalConfigRuntime:
         int_value: Callable[..., int],
         as_enabled: Callable[..., bool],
         clamp_sms_max_price: Callable[[Any], Any],
+        migrate_email_proxy_scope: Callable[[Any], tuple[dict[str, Any], bool]] | None = None,
     ) -> None:
         self.clean = clean
         self.secret_mask = str(secret_mask)
@@ -125,6 +174,7 @@ class LocalConfigRuntime:
         self.performance_runtime = performance_runtime
         self.notifications = notifications
         self.migrate_email_timeout = migrate_email_timeout
+        self.migrate_email_proxy_scope = migrate_email_proxy_scope or make_email_proxy_scope_migrator()
         self.read_local_config = read_local_config
         self.online_mailbox_default_url = online_mailbox_default_url
         self.email_timeout_strategy_version = int(email_timeout_strategy_version)
@@ -272,6 +322,15 @@ class LocalConfigRuntime:
     ) -> dict[str, Any]:
         raw_data = dict(data or {}) if isinstance(data, dict) else {}
         existing = dict(existing or {})
+        # Preserve a post-migration manual choice when a legacy client sends a
+        # partial payload without the strategy marker or proxy scope block.
+        if "email_proxy_scope_strategy_version" not in raw_data:
+            prior_version = existing.get("email_proxy_scope_strategy_version")
+            if prior_version is not None:
+                raw_data["email_proxy_scope_strategy_version"] = prior_version
+        if "proxy_scope" not in raw_data and isinstance(existing.get("proxy_scope"), dict):
+            raw_data["proxy_scope"] = copy.deepcopy(existing["proxy_scope"])
+        raw_data, _proxy_scope_migrated = self.migrate_email_proxy_scope(raw_data)
         sms_pools = self.resolve_sms_provider_pools(raw_data, existing)
         sms_keys = self.sms_runtime.legacy_sms_provider_keys(
             sms_pools,
@@ -341,6 +400,7 @@ class LocalConfigRuntime:
             ).strip()
         for key in (
             "proxy_scope",
+            "email_proxy_scope_strategy_version",
             "target_count",
             "concurrency",
             "node_concurrency",
@@ -397,6 +457,13 @@ class LocalConfigRuntime:
     def merge_local_config(self, data: Any) -> dict[str, Any]:
         patched = dict(data or {})
         local = self.read_local_config()
+        if "email_proxy_scope_strategy_version" not in patched:
+            prior_version = local.get("email_proxy_scope_strategy_version")
+            if prior_version is not None:
+                patched["email_proxy_scope_strategy_version"] = prior_version
+        if "proxy_scope" not in patched and isinstance(local.get("proxy_scope"), dict):
+            patched["proxy_scope"] = copy.deepcopy(local["proxy_scope"])
+        patched, _proxy_scope_migrated = self.migrate_email_proxy_scope(patched)
         sms_pools = self.resolve_sms_provider_pools(patched, local)
         sms_keys = self.sms_runtime.legacy_sms_provider_keys(
             sms_pools,
@@ -434,6 +501,7 @@ class LocalConfigRuntime:
         patched, _migrated = self.sms_runtime.migrate_performance_config(patched)
         patched = self.performance_runtime.normalize_feature_flags(patched)
         patched, _timeout_migrated = self.migrate_email_timeout(patched)
+        patched, _proxy_scope_migrated = self.migrate_email_proxy_scope(patched)
         patched["dynamic_auth_challenges"] = self.as_enabled(
             patched.get("dynamic_auth_challenges"), True
         )
@@ -510,8 +578,10 @@ class LocalConfigRuntime:
 
 
 __all__ = [
+    "EMAIL_PROXY_SCOPE_STRATEGY_VERSION",
     "LocalConfigRuntime",
     "atomic_write_private_json",
+    "make_email_proxy_scope_migrator",
     "make_email_timeout_migrator",
     "read_store_config",
     "write_store_config",

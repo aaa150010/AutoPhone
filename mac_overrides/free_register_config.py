@@ -14,8 +14,12 @@ from urllib.parse import urlsplit
 
 try:
     from .free_register_common import FreeRegisterError, SECRET_MASK, atomic_write, clean
+    from .mailbox_otp_service import DEFAULT_FREE_MAILBOX_PROXY, MailboxOtpError, normalize_network_policy
 except ImportError:
     from free_register_common import FreeRegisterError, SECRET_MASK, atomic_write, clean  # type: ignore[no-redef]
+    from mailbox_otp_service import (  # type: ignore[no-redef]
+        DEFAULT_FREE_MAILBOX_PROXY, MailboxOtpError, normalize_network_policy,
+    )
 
 
 FREE_LEGACY_CONFIG_KEYS = frozenset({
@@ -28,11 +32,15 @@ FREE_LEGACY_CONFIG_KEYS = frozenset({
 })
 
 DEFAULT_FREE_CONFIG: dict[str, Any] = {
-    "version": 3,
+    "version": 4,
     "driver": "protocol",
     "target_count": 0,
     "concurrency": 3,
     "email_code_timeout": 90,
+    "mailbox_network_mode": "local_proxy",
+    "mailbox_proxy_url": DEFAULT_FREE_MAILBOX_PROXY,
+    "mailbox_request_retries": 3,
+    "mailbox_retry_backoff_seconds": 1.0,
     "auto_set_2fa": True,
     "proxy_probe_url": "https://api.ipify.org",
     "proxy_default_scheme": "http",
@@ -146,6 +154,9 @@ class FreeConfigStore:
         if incoming.get("roxybrowser", {}).get("api_key") == SECRET_MASK:
             incoming = copy.deepcopy(incoming)
             incoming.setdefault("roxybrowser", {})["api_key"] = str(base["roxybrowser"].get("api_key") or "")
+        if incoming.get("mailbox_proxy_url") == SECRET_MASK:
+            incoming = copy.deepcopy(incoming)
+            incoming["mailbox_proxy_url"] = str(base.get("mailbox_proxy_url") or DEFAULT_FREE_MAILBOX_PROXY)
         result = _merge(base, incoming)
         driver = str(result.get("driver") or "protocol").strip().lower()
         if driver not in {"protocol", "roxybrowser"}:
@@ -154,6 +165,23 @@ class FreeConfigStore:
         result["target_count"] = _int(result.get("target_count"), 0, 0, 10_000)
         result["concurrency"] = _int(result.get("concurrency"), 3, 1, 5)
         result["email_code_timeout"] = _int(result.get("email_code_timeout"), 90, 10, 600)
+        try:
+            mailbox_policy = normalize_network_policy(
+                mode=result.get("mailbox_network_mode"),
+                proxy_url=result.get("mailbox_proxy_url"),
+                retries=result.get("mailbox_request_retries"),
+                backoff_seconds=result.get("mailbox_retry_backoff_seconds"),
+                request_timeout_seconds=min(15, result["email_code_timeout"]),
+            )
+        except MailboxOtpError as exc:
+            raise FreeRegisterError(
+                "free_config", "保存 Free 配置", str(exc),
+                error_code=str(exc.code or "free_mailbox_network_invalid"), retryable=False,
+            ) from exc
+        result["mailbox_network_mode"] = mailbox_policy.mode
+        result["mailbox_proxy_url"] = mailbox_policy.proxy_url
+        result["mailbox_request_retries"] = mailbox_policy.retries
+        result["mailbox_retry_backoff_seconds"] = mailbox_policy.backoff_seconds
         result["auto_set_2fa"] = _as_bool(result.get("auto_set_2fa"), True)
         scheme = str(result.get("proxy_default_scheme") or "http").strip().lower()
         if scheme not in {"http", "https", "socks4", "socks5", "socks5h"}:
@@ -218,7 +246,7 @@ class FreeConfigStore:
         if not roxy["profile_name_prefix"]:
             roxy["profile_name_prefix"] = "rb"
         result["roxybrowser"] = roxy
-        result["version"] = 2
+        result["version"] = 4
         return result
 
     def load(self) -> dict[str, Any]:
@@ -240,12 +268,22 @@ class FreeConfigStore:
         roxy = dict(value.get("roxybrowser") or {})
         roxy["api_key"] = SECRET_MASK if clean(roxy.get("api_key")) else ""
         value["roxybrowser"] = roxy
+        mailbox_proxy = str(value.get("mailbox_proxy_url") or "")
+        try:
+            parsed_mailbox_proxy = urlsplit(mailbox_proxy)
+        except ValueError:
+            parsed_mailbox_proxy = None
+        if parsed_mailbox_proxy is not None and (parsed_mailbox_proxy.username or parsed_mailbox_proxy.password):
+            value["mailbox_proxy_url"] = SECRET_MASK
         return value
 
     def secret(self, secret_id: str) -> str:
-        if secret_id != "roxy_api_key":
+        if secret_id not in {"roxy_api_key", "mailbox_proxy_url"}:
             raise FreeRegisterError("free_config_secret", "读取 Free 配置密钥", "Free 配置密钥类型无效", retryable=False)
-        return str(self.load().get("roxybrowser", {}).get("api_key") or "")
+        value = self.load()
+        if secret_id == "mailbox_proxy_url":
+            return str(value.get("mailbox_proxy_url") or "")
+        return str(value.get("roxybrowser", {}).get("api_key") or "")
 
     def migrate_legacy(self, local_config: Mapping[str, Any] | None, legacy_data_dir: str | Path) -> dict[str, Any]:
         with self._lock:

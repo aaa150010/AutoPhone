@@ -9,6 +9,8 @@ const emit = defineEmits<{ dirtyChange: [boolean] }>()
 
 const defaultConfig: FreeConfig = {
   driver: 'protocol', target_count: 0, concurrency: 3, email_code_timeout: 90, auto_set_2fa: true,
+  mailbox_network_mode: 'local_proxy', mailbox_proxy_url: 'http://127.0.0.1:7897',
+  mailbox_request_retries: 3, mailbox_retry_backoff_seconds: 1,
   proxy_probe_url: 'https://api.ipify.org', protocol: { node_runner: '', sentinel_timeout: 90 },
   proxy_default_scheme: 'http', proxy_failure_threshold: 2, proxy_quarantine_seconds: 600, proxy_retry_count: 1,
   roxy_circuit_failure_threshold: 3, roxy_circuit_recovery_seconds: 30,
@@ -297,6 +299,23 @@ defineExpose({ save })
     </el-row>
     <el-form-item><template #label><FieldHelpLabel label="出口 IP 探测地址" help="通过每条待用代理访问该地址，取得实际出口 IP。用于检查代理连通性、重复出口和任务期间 IP 漂移。" /></template><el-input v-model="config.proxy_probe_url" :disabled="running" placeholder="https://api.ipify.org" /></el-form-item>
     <el-form-item><template #label><FieldHelpLabel label="注册后安全设置" help="开启后，注册完成会再等待一封邮箱 OTP，执行 TOTP enrollment 和 activation 并保存动态口令密钥。失败时保留 Token，账号进入 2FA 待重试。" /></template><el-checkbox v-model="config.auto_set_2fa" :disabled="running">注册完成后自动设置动态口令（额外等待一封 OTP）</el-checkbox></el-form-item>
+
+    <div class="subsection mailbox-network-section">
+      <div class="humanize-heading"><h3>邮箱 OTP 取件网络</h3><FieldHelpLabel label="网络隔离说明" help="这里只控制邮箱取件 URL 的网络。它不会使用账号注册时绑定的住宅代理，也不会改变 RoxyBrowser Profile 的固定代理和注册 IP。" /><el-tag size="small" type="info" effect="plain">与注册代理分离</el-tag></div>
+      <el-form-item>
+        <template #label><FieldHelpLabel label="取件方式" help="本机代理适合通过 Clash Verge 访问邮箱服务，默认使用 127.0.0.1:7897；直连则完全不使用代理。两种方式都不会继承系统环境代理。" /></template>
+        <el-radio-group v-model="config.mailbox_network_mode" :disabled="running">
+          <el-radio value="local_proxy" border>本机代理</el-radio>
+          <el-radio value="direct" border>直连</el-radio>
+        </el-radio-group>
+      </el-form-item>
+      <el-row :gutter="10">
+        <el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="本机取件代理" help="Free 邮箱取件专用代理。默认是当前 Mac 的 Clash Verge HTTP 代理 http://127.0.0.1:7897；支持 HTTP、HTTPS、SOCKS5 和 SOCKS5H 完整地址。" /></template><el-input v-model="config.mailbox_proxy_url" :disabled="running || config.mailbox_network_mode === 'direct'" placeholder="http://127.0.0.1:7897" /></el-form-item></el-col>
+        <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="网络额外重试次数" help="邮箱取件遇到 SSL、连接超时、429 或 5xx 时的额外重试次数。401、403、404 和响应格式错误不会盲目重试。" /></template><el-input-number v-model="config.mailbox_request_retries" :min="0" :max="5" controls-position="right" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="重试退避（秒）" help="两次邮箱取件网络请求之间的基础等待时间，后续尝试会按次数递增。" /></template><el-input-number v-model="config.mailbox_retry_backoff_seconds" :min="0" :max="15" :step="0.25" controls-position="right" :disabled="running" /></el-form-item></el-col>
+      </el-row>
+      <p class="section-hint">注册页面继续固定使用账号住宅代理；邮箱取件只使用这里保存的网络方式。</p>
+    </div>
 
     <div class="subsection">
       <div class="humanize-heading"><h3>代理稳定性策略</h3><FieldHelpLabel label="规则说明" help="这些规则只作用于独立 Free 代理池：控制注册前可否更换备用代理、连续失败隔离，以及 RoxyBrowser 基础设施异常时停止新任务。" /></div>

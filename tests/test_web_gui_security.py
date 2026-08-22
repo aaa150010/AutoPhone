@@ -4053,6 +4053,28 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(custom["email_code_timeout"], 90)
         self.assertEqual(custom["email_timeout_strategy_version"], 3)
 
+    def test_legacy_config_enables_email_proxy_once_and_keeps_manual_disable(self):
+        module = self.module
+        config_dir = Path(self.tempdir.name) / "email-proxy-migration"
+        store = module._runtime.ImporterConfigStore(config_dir)
+        store.path.write_text(
+            json.dumps({"proxy_scope": {"sms": False, "email": False, "upload": False}}),
+            encoding="utf-8",
+        )
+
+        migrated = store.load()
+        persisted = json.loads(store.path.read_text(encoding="utf-8"))
+
+        for value in (migrated, persisted):
+            self.assertTrue(value["proxy_scope"]["email"])
+            self.assertEqual(value["email_proxy_scope_strategy_version"], 1)
+
+        store.save({"proxy_scope": {"sms": False, "email": False, "upload": False}})
+        manual = store.load()
+
+        self.assertFalse(manual["proxy_scope"]["email"])
+        self.assertEqual(manual["email_proxy_scope_strategy_version"], 1)
+
     def test_config_store_persists_migrated_and_explicit_email_timeout(self):
         module = self.module
         config_dir = Path(self.tempdir.name) / "email-timeout-config"

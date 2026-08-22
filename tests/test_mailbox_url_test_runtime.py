@@ -6,12 +6,119 @@ from mac_overrides.mailbox_url_runtime import (
     MailboxMessage,
     MailboxScan,
     MailboxScanDiagnostics,
+    MailboxSelection,
     MailboxUrlError,
 )
 from mac_overrides.mailbox_url_test_runtime import MailboxUrlTester, parse_test_input
 
 
 class MailboxUrlTestRuntimeTests(unittest.TestCase):
+    def test_default_path_uses_shared_service_and_displays_existing_latest_code(self):
+        captured = {}
+
+        class FakeService:
+            def __init__(self, mailbox_url, **kwargs):
+                captured["url"] = mailbox_url
+                captured["kwargs"] = kwargs
+                captured["prepared"] = False
+                captured["closed"] = False
+                captured["snapshots"] = 0
+
+            def snapshot(self):
+                captured["snapshots"] += 1
+                message = MailboxMessage(
+                    identity="latest-message",
+                    sender="noreply_at_tm_openai_com@icloud.com",
+                    subject="ChatGPT の一時的な認証コード",
+                    body="一時検証コード: 654321",
+                    code="654321",
+                )
+                return MailboxSelection(
+                    code="654321",
+                    identity=message.identity,
+                    received_at="2026-08-22T09:29:00+08:00",
+                    fingerprint="fingerprint",
+                    scan=MailboxScan(
+                        messages=(message,),
+                        page_fingerprint="page",
+                        fetched_at=1,
+                        diagnostics=MailboxScanDiagnostics(
+                            listing_messages=1,
+                            openai_messages=1,
+                            code_messages=1,
+                            explicit_code_messages=1,
+                        ),
+                    ),
+                    reason="code_found",
+                )
+
+            def diagnostic(self):
+                return {
+                    "request_attempts": 1,
+                    "secret": "should-not-be-returned",
+                }
+
+            def close(self):
+                captured["closed"] = True
+
+        def service_factory(mailbox_url, **kwargs):
+            service = FakeService(mailbox_url, **kwargs)
+            captured["service"] = service
+            return service
+
+        url = "https://mail.example.test/pickup?email=user%40example.test&key=private"
+        result = MailboxUrlTester(
+            service_factory=service_factory,
+            now_fn=lambda: 100,
+            sleep_fn=lambda _seconds: self.fail("an existing code should be shown immediately"),
+        ).test(url, proxy="http://127.0.0.1:7897")
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["verification_code"], "654321")
+        self.assertEqual(captured["url"], url)
+        policy = captured["kwargs"]["network_policy"]
+        self.assertEqual(policy.mode, "local_proxy")
+        self.assertEqual(policy.effective_proxy, "http://127.0.0.1:7897")
+        self.assertEqual(captured["snapshots"], 1)
+        self.assertTrue(captured["closed"])
+        self.assertNotIn("private", str(result))
+        self.assertNotIn("should-not-be-returned", str(result))
+
+    def test_default_path_returns_safe_shared_service_transport_diagnostic(self):
+        class FakeService:
+            def __init__(self, _mailbox_url, **_kwargs):
+                pass
+
+            def snapshot(self):
+                raise MailboxUrlError(
+                    "mailbox_http_error",
+                    "邮箱取件请求返回 HTTP 502",
+                    status=502,
+                )
+
+            def diagnostic(self):
+                return {
+                    "refresh_error_code": "mailbox_http_error",
+                    "refresh_http_status": 502,
+                    "request_attempts": 2,
+                    "mailbox_key": "private-key",
+                }
+
+            def close(self):
+                pass
+
+        result = MailboxUrlTester(
+            service_factory=FakeService,
+            now_fn=lambda: 100,
+            sleep_fn=lambda _seconds: self.fail("transport errors should return immediately"),
+        ).test("https://mail.example.test/pickup?email=user%40example.test&key=private-key")
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "mailbox_http_error")
+        self.assertEqual(result["diagnostics"]["refresh_http_status"], 502)
+        self.assertEqual(result["diagnostics"]["request_attempts"], 2)
+        self.assertNotIn("private-key", str(result))
+
     def test_query_url_and_extracted_code_are_returned_for_success_display(self):
         url = (
             "https://mail.example.test/messages/sample-access-token/"

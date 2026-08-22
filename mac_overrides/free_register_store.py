@@ -234,7 +234,7 @@ class FreeMailboxPool:
             return len(target_ids)
 
     def set_status(self, row_ids: Sequence[str], status: str) -> int:
-        allowed = {"available", "unavailable", "draft"}
+        allowed = {"available", "unavailable", "draft", "pending_rerun"}
         if status not in allowed:
             raise FreeRegisterError("free_pool_status", "更新 Free 邮箱状态", "Free 邮箱状态无效", retryable=False)
         requested = {str(value or "").strip().lower() for value in row_ids if str(value or "").strip()}
@@ -253,7 +253,7 @@ class FreeMailboxPool:
 
     def counts(self) -> dict[str, int]:
         rows = self.public_rows()
-        counts = {"total": len(rows), "available": 0, "running": 0, "success": 0, "partial_success": 0, "failed": 0, "draft": 0, "unavailable": 0, "twofa_pending": 0}
+        counts = {"total": len(rows), "available": 0, "running": 0, "success": 0, "partial_success": 0, "failed": 0, "pending_rerun": 0, "draft": 0, "unavailable": 0, "twofa_pending": 0}
         for row in rows:
             status = str(row.get("status") or "available")
             if status in ACTIVE_POOL_STATUSES:

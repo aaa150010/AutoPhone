@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 import tempfile
+import threading
 import time
 from types import ModuleType, SimpleNamespace
 import unittest
@@ -158,6 +159,48 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
                 probe=lambda _proxy, _url: "203.0.113.10",
             )
 
+    def test_proxy_lease_is_owned_by_task_and_excludes_active_exit_ips(self):
+        proxies = StructuredFreeProxyPool(self.data_dir)
+        proxies.import_text("http://proxy-a.test:8000\nhttp://proxy-b.test:8000\n")
+        bindings = proxies.bind(
+            2,
+            probe=lambda proxy, _url: "203.0.113.10" if "proxy-a" in proxy else "203.0.113.11",
+        )
+        first, second = bindings
+        proxies.lease(first, owner="task-a", batch_id="batch-a", task_id="task-a")
+        with self.assertRaisesRegex(FreeRegisterError, "同批次其他"):
+            proxies.lease(first, owner="task-b", batch_id="batch-a", task_id="task-b")
+        replacement = proxies.bind(
+            1,
+            probe=lambda proxy, _url: "203.0.113.10" if "proxy-a" in proxy else "203.0.113.11",
+            exclude_exit_ips=[first.exit_ip],
+        )
+        self.assertEqual(replacement[0].proxy_id, second.proxy_id)
+
+    def test_pasted_proxy_content_cannot_bypass_active_lease(self):
+        proxies = StructuredFreeProxyPool(self.data_dir)
+        proxies.import_text("http://proxy-a.test:8000\n")
+        binding = proxies.bind(1, probe=lambda _proxy, _url: "203.0.113.12")[0]
+        proxies.lease(binding, owner="task-a", batch_id="batch-a", task_id="task-a")
+        with self.assertRaisesRegex(FreeRegisterError, "代理数量不足"):
+            proxies.bind(
+                1,
+                content="http://proxy-a.test:8000\n",
+                probe=lambda _proxy, _url: "203.0.113.12",
+            )
+
+    def test_free_state_and_preflight_publish_runtime_and_otp_revisions(self):
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("a@example.test----https://mail.example.test/pickup\n")
+        FreeProxyPool(self.data_dir).import_text("http://proxy-a.test:8000\n")
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=lambda *_args, **_kwargs: {},
+            proxy_probe=lambda _proxy, _url: "203.0.113.20",
+        )
+        self.assertEqual(manager.public_state()["runtime_version"], "1.6.39")
+        self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v4-roxy-otp-v2")
+
     def test_proxy_preflight_probes_pasted_pool_without_consuming_mailboxes(self):
         manager = FreeRegisterManager(
             self.data_dir,
@@ -264,7 +307,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
                 "203.0.113.40",
             )
 
-        self.assertEqual(calls["init"], {"impersonate": "chrome", "verify": False})
+        self.assertEqual(calls["init"], {"impersonate": "chrome", "verify": True})
         self.assertEqual(calls["get"][2], {
             "http": "socks5h://proxy.test:8000",
             "https": "socks5h://proxy.test:8000",
@@ -321,20 +364,74 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(result["rows"][0]["country"], "US")
         self.assertEqual(result["rows"][0]["group"], "住宅 A")
 
-    def test_mailbox_otp_provider_uses_proxy_aware_fetcher(self):
+    def test_proxy_health_only_changes_for_proxy_and_exit_ip_failures(self):
+        manager = FreeRegisterManager(self.data_dir)
+        manager.proxies.import_text("http://proxy-a.test:8000\n")
+        proxy_id = manager.proxies.public()["rows"][0]["proxy_id"]
+        task = {"task_id": "free-task", "proxy_id": proxy_id}
+        manager._tasks["free-task"] = dict(task)
+
+        manager._record_proxy_failure(
+            task,
+            FreeRegisterError("free_roxy_signup_email_submit", "提交 Free 注册邮箱", "页面未进入下一步"),
+        )
+        self.assertEqual(manager.proxies.public()["rows"][0]["consecutive_failures"], 0)
+
+        manager._record_proxy_failure(
+            task,
+            FreeRegisterError("free_proxy_drift", "校验 Free 代理出口", "固定代理出口发生变化"),
+        )
+        proxy = manager.proxies.public()["rows"][0]
+        self.assertEqual(proxy["consecutive_failures"], 1)
+        self.assertEqual(proxy["status"], "unknown")
+
+    def test_start_with_pasted_proxy_persists_exit_ip_before_worker_progress(self):
+        worker_entered = threading.Event()
+        release_worker = threading.Event()
+
+        def runner(_task, _config, _stop, _stage, _log, *, twofa_retry=False):
+            worker_entered.set()
+            release_worker.wait(2)
+            return {"access_token": "token-private", "twofa_status": "enabled"}
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.76",
+        )
+        manager.start(
+            {"target_count": 1, "concurrency": 1},
+            pool_content="a@example.test----https://mail.example.test/a\n",
+            proxy_content="http://proxy-a.test:8000\n",
+        )
+        self.assertTrue(worker_entered.wait(1))
+        proxy = manager.proxies.public()["rows"][0]
+        self.assertEqual(proxy["last_exit_ip"], "203.0.113.76")
+        self.assertEqual(proxy["status"], "available")
+        release_worker.set()
+        deadline = time.time() + 3
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.01)
+        self.assertFalse(manager.public_state()["running"])
+
+    def test_mailbox_otp_provider_separates_registration_and_mailbox_proxies(self):
         from mac_overrides.free_register_runtime import MailboxUrlOtpProvider
+        from mac_overrides.mailbox_url_runtime import MailboxResponse
 
         provider = MailboxUrlOtpProvider(
             "https://mail.example.test/pickup",
             "socks5h://user:pass@proxy.example.test:3000",
             timeout=10,
+            fetcher=lambda url: MailboxResponse(url, b"[]", "application/json", 200),
         )
 
         self.assertTrue(callable(provider.client.fetcher))
-        self.assertEqual(provider.client.proxy, "socks5h://user:pass@proxy.example.test:3000")
+        self.assertEqual(provider.registration_proxy, "socks5h://user:pass@proxy.example.test:3000")
+        self.assertEqual(provider.client.proxy, "http://127.0.0.1:7897")
         self.assertFalse(provider.state.active)
         provider.prepare()
         self.assertTrue(provider.state.active)
+        provider.close()
 
     def test_manager_binds_mailboxes_and_proxies_in_order_under_concurrency(self):
         pool = FreeMailboxPool(self.data_dir)
@@ -434,8 +531,14 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             time.sleep(0.01)
 
         self.assertEqual(manager.public_tasks()[0]["status"], "failed")
-        self.assertEqual(manager.pool.public_rows()[0]["status"], "failed")
+        self.assertEqual(manager.pool.public_rows()[0]["status"], "pending_rerun")
         self.assertEqual(manager.public_state()["pool"]["available"], 0)
+        retry = manager.rerun(manager.public_tasks()[0]["task_id"], {"target_count": 1})
+        self.assertTrue(retry["batch_id"])
+        deadline = time.time() + 3
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.01)
+        self.assertFalse(manager.public_state()["running"])
 
     def test_public_tasks_group_newest_batch_before_older_batch(self):
         manager = FreeRegisterManager(self.data_dir)
@@ -501,10 +604,14 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         )
         manager.start({"target_count": 100, "free_concurrency": 2})
         deadline = time.time() + 3
-        while manager.public_state()["running"] and time.time() < deadline:
+        # A worker marks its task terminal just before its Future callback
+        # flushes the final task snapshot.  Wait for that callback too, so
+        # TemporaryDirectory cleanup cannot race an in-flight atomic write.
+        while manager._executor is not None and time.time() < deadline:
             time.sleep(0.01)
 
         self.assertCountEqual(seen, ["a@example.test", "b@example.test"])
+        self.assertIsNone(manager._executor)
 
     def test_free_start_honors_explicit_target_count_and_auto_zero(self):
         pool = FreeMailboxPool(self.data_dir)

@@ -27,6 +27,7 @@ try:
         random_display_name,
         safe_log_message as _safe_log_message,
     )
+    from .free_runtime_info import runtime_info
     from .free_register_store import FreeMailboxPool, FreeProxyPool, FreeTaskStore
     from .free_register_scheduler import FreeRegisterSchedulerMixin
     from .free_roxy_runtime import RoxyRegistrationRunner
@@ -41,6 +42,7 @@ except ImportError:
         fingerprint as _fingerprint, mask_proxy as _mask_proxy,
         random_birthdate, random_display_name, safe_log_message as _safe_log_message,
     )
+    from free_runtime_info import runtime_info  # type: ignore[no-redef]
     from free_register_store import FreeMailboxPool, FreeProxyPool, FreeTaskStore  # type: ignore[no-redef]
     from free_register_scheduler import FreeRegisterSchedulerMixin  # type: ignore[no-redef]
     from free_roxy_runtime import RoxyRegistrationRunner  # type: ignore[no-redef]
@@ -62,8 +64,17 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
         "free_roxy_ip_verify",
         "free_roxy_signup_bootstrap",
         "free_roxy_signup_email",
-        "free_roxy_challenge",
         "roxy_circuit_open",
+    })
+
+    # Keep the per-task attempt trail for every failure, but only let a
+    # transport or fixed-exit-IP failure affect reusable proxy health.
+    _PROXY_HEALTH_FAILURE_NODES = frozenset({
+        "free_proxy_binding",
+        "free_proxy_drift",
+        "free_proxy_preflight",
+        "free_proxy_lease",
+        "free_roxy_ip_verify",
     })
 
     def __init__(self, data_dir: str | Path, *, progress: Any = None, log_fn: Callable[[str, str], None] | None = None, runner: Callable[..., Mapping[str, Any]] | None = None, proxy_probe: Callable[[str, str], str] | None = None) -> None:
@@ -241,6 +252,7 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
             success = sum(1 for task in tasks if task.get("status") == "success")
             failed = sum(1 for task in tasks if task.get("status") == "failed")
             return {
+                **runtime_info(),
                 "running": bool(self._executor and active),
                 "batch_id": self._batch_id,
                 "tasks": tasks,
@@ -303,6 +315,7 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
         else:
             roxy_result = {"driver": driver}
         return {
+            **runtime_info(),
             "driver": driver,
             "target_count": target,
             "mailboxes": available,
@@ -329,6 +342,7 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
             driver=driver,
         )
         return {
+            **runtime_info(),
             "proxies": len(bindings),
             "exit_ips": len({binding.exit_ip for binding in bindings}),
             "rows": [
@@ -389,7 +403,6 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
             group = str(selected.get("group") or "").strip() or None
             bindings = self.proxies.bind(
                 target_count,
-                content=proxy_content,
                 probe=self.proxy_probe,
                 probe_url=str(config.get("proxy_probe_url") or "https://api.ipify.org"),
                 country=country,
@@ -409,15 +422,16 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
                     task_id = f"{batch_id}-{ordinal}"
                     self._tasks[task_id] = {"task_id": task_id, "ordinal": ordinal, "slot_id": f"{batch_id}-slot-{((ordinal - 1) % workers) + 1}", "slot_index": ((ordinal - 1) % workers) + 1, "concurrency_limit": workers, "status": "queued", "created_at": now, "updated_at": now, "batch_id": batch_id, "run_mode": "free_register", "driver": driver, "email": row.email, "row_id": row.row_id, "mailbox_url": row.mailbox_url, "proxy": binding.proxy, "proxy_id": binding.proxy_id, "proxy_scheme": binding.scheme, "proxy_country": binding.country, "proxy_group": binding.group, "proxy_masked": binding.masked, "proxy_fingerprint": binding.fingerprint, "expected_exit_ip": binding.exit_ip, "registration_ip": "", "exit_ip": binding.exit_ip, "proxy_attempts": [], "cleanup_status": "pending", "progress": {"stage": "free_proxy_binding", "group": "free", "started_at": now, "updated_at": now, "finished_at": None}, "result": {"twofa_status": "pending", "driver": driver, "expected_exit_ip": binding.exit_ip, "proxy_country": binding.country, "proxy_group": binding.group}}
                     created_task_ids.append(task_id)
-                    self.proxies.lease(binding, owner=batch_id, batch_id=batch_id, task_id=task_id)
+                    self.proxies.lease(binding, owner=task_id, batch_id=batch_id, task_id=task_id)
                     leased_bindings.append(binding)
                     self.pool.update(row.row_id, status="queued", batch_id=batch_id, driver=driver, proxy=binding.proxy, proxy_masked=binding.masked, proxy_fingerprint=binding.fingerprint, expected_exit_ip=binding.exit_ip, exit_ip=binding.exit_ip, proxy_id=binding.proxy_id, proxy_country=binding.country, proxy_group=binding.group)
                     self._stage(task_id, "free_proxy_binding")
                 self.task_store.save(self._tasks)
             except Exception:
-                for binding in reversed(leased_bindings):
+                for index, binding in reversed(list(enumerate(leased_bindings))):
                     try:
-                        self.proxies.release(binding, owner=batch_id)
+                        owner = created_task_ids[index] if index < len(created_task_ids) else batch_id
+                        self.proxies.release(binding, owner=owner)
                     except Exception:
                         pass
                 if reserved:
@@ -462,7 +476,11 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
     def _heartbeat_loop(self, owner: str) -> None:
         while not self._heartbeat_stop.wait(20):
             try:
-                self.proxies.heartbeat(owner, lease_seconds=180)
+                heartbeat_batch = getattr(self.proxies, "heartbeat_batch", None)
+                if callable(heartbeat_batch):
+                    heartbeat_batch(owner, lease_seconds=180)
+                else:
+                    self.proxies.heartbeat(owner, lease_seconds=180)
             except Exception:
                 self._log(f"[{owner}/Free 代理租约/free_proxy_lease] 租约续期失败，任务将依靠过期时间恢复", "warn")
 
@@ -481,7 +499,7 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
         self._log("[停止 Free 注册/free_stop] 已请求停止，运行中的账号不切换代理", "warn")
 
     def rerun(self, task_id: str, config: Mapping[str, Any]) -> dict[str, Any]:
-        """Start a fresh batch for a failed task whose mailbox was recovered."""
+        """Start a fresh batch for a failed task without losing its diagnostics."""
         normalized = str(task_id or "").strip()
         with self._lock:
             task = copy.deepcopy(self._tasks.get(normalized))
@@ -490,9 +508,17 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
         if str(task.get("status") or "") not in {"failed", "stopped"}:
             raise FreeRegisterError("free_rerun", "重跑 Free 账号", "只有失败或已停止的 Free 任务可以重跑", retryable=False)
         row_id = str(task.get("row_id") or "")
-        if not row_id or not any(row.row_id == row_id for row in self.pool.available(10_000)):
-            raise FreeRegisterError("free_rerun", "重跑 Free 账号", "该账号尚未恢复为可用，不能重复注册同一个邮箱", retryable=False, error_code="free_rerun_mailbox_unavailable")
-        self._log(f"[{normalized}/重跑 Free 账号/free_rerun] 使用已恢复邮箱重新创建独立批次", "info")
+        row_state = self.pool._row_state(row_id) if row_id else {}
+        pool_status = str(row_state.get("status") or "")
+        if pool_status == "pending_rerun":
+            self.pool.update(
+                row_id, status="available", batch_id="", stage="", error="",
+                reusable_after_failure=False,
+            )
+            pool_status = "available"
+        if not row_id or pool_status != "available" or not any(row.row_id == row_id for row in self.pool.available(10_000)):
+            raise FreeRegisterError("free_rerun", "重跑 Free 账号", "该账号当前不可重跑，请先在 Free 邮箱中心恢复为可用", retryable=False, error_code="free_rerun_mailbox_unavailable")
+        self._log(f"[{normalized}/重跑 Free 账号/free_rerun] 使用待重跑邮箱重新创建独立批次，并重新绑定代理和出口 IP", "info")
         return self.start(config, row_ids=[row_id])
 
     def retry_twofa(self, task_id: str, config: Mapping[str, Any]) -> dict[str, Any]:
@@ -581,6 +607,32 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
             probe_url=str(config.get("proxy_probe_url") or "https://api.ipify.org"),
         )
 
+    def _assert_batch_proxy_uniqueness(self, task: Mapping[str, Any]) -> None:
+        """Reject persisted or fallback bindings that collide within an active batch."""
+        batch_id = str(task.get("batch_id") or "")
+        task_id = str(task.get("task_id") or "")
+        if not batch_id or not task_id:
+            return
+        with self._lock:
+            peers = [
+                current for current in self._tasks.values()
+                if str(current.get("batch_id") or "") == batch_id
+                and str(current.get("task_id") or "") != task_id
+                and str(current.get("status") or "") in {"queued", "running"}
+            ]
+        proxy_id = str(task.get("proxy_id") or "")
+        exit_ip = str(task.get("expected_exit_ip") or task.get("exit_ip") or "")
+        duplicate_proxy = any(proxy_id and proxy_id == str(peer.get("proxy_id") or "") for peer in peers)
+        duplicate_ip = any(exit_ip and exit_ip == str(peer.get("expected_exit_ip") or peer.get("exit_ip") or "") for peer in peers)
+        if duplicate_proxy or duplicate_ip:
+            item = "代理" if duplicate_proxy else "出口 IP"
+            raise FreeRegisterError(
+                "free_proxy_binding", "绑定 Free 注册代理",
+                f"当前批次检测到重复{item}，已停止进入注册页",
+                retryable=False,
+                error_code="free_proxy_duplicate_binding",
+            )
+
     def _release_task_lease(self, task: Mapping[str, Any]) -> None:
         try:
             binding = ProxyBinding(
@@ -590,7 +642,7 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
                 str(task.get("expected_exit_ip") or task.get("exit_ip") or ""),
                 proxy_id=str(task.get("proxy_id") or ""),
             )
-            self.proxies.release(binding, owner=str(task.get("batch_id") or ""))
+            self.proxies.release(binding, owner=str(task.get("task_id") or ""))
             self._save_task(str(task.get("task_id") or ""), cleanup_status="released")
         except Exception as exc:
             self._save_task(str(task.get("task_id") or ""), cleanup_status=f"release_failed:{type(exc).__name__}")
@@ -611,8 +663,9 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
                 })
                 current["proxy_attempts"] = attempts[-10:]
                 self.task_store.save(self._tasks)
-        if proxy_id:
-            self.proxies.record_failure(proxy_id, node_code=str(getattr(exc, "node_code", "free_proxy")), message=_safe_log_message(exc))
+        node_code = str(getattr(exc, "node_code", "free_proxy"))
+        if proxy_id and node_code in self._PROXY_HEALTH_FAILURE_NODES:
+            self.proxies.record_failure(proxy_id, node_code=node_code, message=_safe_log_message(exc))
 
     @classmethod
     def _can_reuse_mailbox_after_failure(cls, node_code: str) -> bool:
@@ -684,6 +737,7 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
             if self._stop.is_set():
                 raise FreeRegisterError("free_run_stop", "停止 Free 注册", "任务在执行前已停止", retryable=False)
             self._verify_binding(snapshot, config)
+            self._assert_batch_proxy_uniqueness(snapshot)
             runner = self._runner_for(config)
             with self._lock:
                 current = self._tasks.get(task_id)
@@ -703,6 +757,7 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
                         raise
                     attempt += 1
                     switched = self._switch_pre_profile_proxy(snapshot, config)
+                    self._assert_batch_proxy_uniqueness(snapshot)
                     with self._lock:
                         current = self._tasks.get(task_id)
                         if current is not None:
@@ -756,7 +811,16 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
             if self._can_reuse_mailbox_after_failure(exc.node_code):
                 self._restore_mailbox_after_pre_registration_failure(snapshot, failure)
             else:
-                self.pool.update(snapshot["row_id"], status=terminal_status, stage=exc.node_code, error=failure["public_message"], failure=failure)
+                self.pool.update(
+                    snapshot["row_id"], status="pending_rerun", stage=exc.node_code,
+                    error=failure["public_message"], failure=failure,
+                    reusable_after_failure=False,
+                )
+                self._log(
+                    f"[{task_id}/Free 邮箱待重跑/free_mailbox_pending_rerun] "
+                    "账号已进入注册流程，邮箱未自动恢复为可用；可从任务行重跑或邮箱中心手动恢复",
+                    "warn",
+                )
             self._finish_progress(task_id)
             self._record_proxy_failure(snapshot, exc)
             self._roxy_failure(snapshot, exc)
@@ -800,7 +864,7 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
         except Exception as exc:
             failure = {"node_code": "free_protocol", "node_label": "Free 注册协议", "error_code": "free_protocol_failed", "public_message": f"Free 注册协议 [Free 注册协议/free_protocol]：{type(exc).__name__}", "technical_summary": type(exc).__name__, "retryable": True}
             self._save_task(task_id, status="failed", failure=failure)
-            self.pool.update(snapshot["row_id"], status="failed", stage="free_protocol", error=failure["public_message"], failure=failure)
+            self.pool.update(snapshot["row_id"], status="pending_rerun", stage="free_protocol", error=failure["public_message"], failure=failure, reusable_after_failure=False)
             self._finish_progress(task_id)
             self._record_proxy_failure(snapshot, exc)
             self._roxy_failure(snapshot, exc)

@@ -6,9 +6,12 @@ import { deleteFreeTasks, getFreeConfig, getFreeLogs, getFreeSecret, getFreeStat
 import PageToolbar from '../components/PageToolbar.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import ContentEmptyState from '../components/ContentEmptyState.vue'
+import { currentRelease } from '../releaseNotes'
 
 const defaultConfig: FreeConfig = {
   driver: 'protocol', target_count: 0, concurrency: 3, email_code_timeout: 90, auto_set_2fa: true,
+  mailbox_network_mode: 'local_proxy', mailbox_proxy_url: 'http://127.0.0.1:7897',
+  mailbox_request_retries: 3, mailbox_retry_backoff_seconds: 1,
   proxy_probe_url: 'https://api.ipify.org', protocol: { node_runner: '', sentinel_timeout: 90 },
   proxy_default_scheme: 'http', proxy_selection: { protocol: { country: '', group: '' }, roxybrowser: { country: '', group: '' } },
   roxybrowser: {
@@ -63,9 +66,14 @@ const taskCountries = computed(() => [...new Set(visibleTasks.value.map(task => 
 const taskGroups = computed(() => [...new Set(visibleTasks.value.filter(task => !taskCountryFilter.value || task.proxy_country === taskCountryFilter.value).map(task => task.proxy_group).filter(Boolean))])
 const taskCounts = computed(() => {
   const count = (status: string) => visibleTasks.value.filter(task => task.status === status).length
-  return { total: visibleTasks.value.length, running: count('running') + count('queued'), success: count('success') + count('partial_success'), partial: count('partial_success'), failed: count('failed'), pending: count('twofa_pending'), stopped: count('stopped') }
+  return { total: visibleTasks.value.length, running: count('running') + count('queued'), success: count('success') + count('partial_success'), partial: count('partial_success'), failed: count('failed'), pending: count('twofa_pending'), rerun: count('pending_rerun'), stopped: count('stopped') }
 })
 const selectedTask = computed(() => visibleTasks.value.find(task => task.task_id === selectedTaskId.value))
+const runtimeMismatch = computed(() => {
+  const loaded = String(state.value.runtime_version || '').trim()
+  const expected = currentRelease.freeRuntimeVersion || currentRelease.version
+  return !loaded || loaded !== expected
+})
 const selectedLogs = computed(() => {
   return logs.value.slice(-160)
 })
@@ -83,7 +91,7 @@ async function refresh() {
     mergeConfig(result.config)
     state.value = result.state || state.value
     if (logDialogOpen.value && selectedTaskId.value) {
-      logs.value = (await getFreeLogs(selectedTaskId.value)).logs || logs.value
+      await loadTaskLogs(selectedTaskId.value, { silent: true })
     }
   } catch (error: any) {
     if (!loading.value) ElMessage.error(error?.message || 'Free 状态刷新失败')
@@ -142,29 +150,74 @@ async function stop() {
   }
 }
 
-async function loadTaskLogs(taskId = selectedTaskId.value) {
+async function loadTaskLogs(
+  taskId = selectedTaskId.value,
+  options: { forceLatest?: boolean; silent?: boolean } = {},
+) {
   if (!taskId) return
-  const previousScrollTop = logScroll.value?.scrollTop || 0
-  logLoading.value = true
+  const currentScroll = logScroll.value
+  const previousScrollTop = currentScroll?.scrollTop || 0
+  const followLatest = Boolean(options.forceLatest)
+    || !currentScroll
+    || currentScroll.scrollHeight - currentScroll.scrollTop - currentScroll.clientHeight <= 48
+  if (!options.silent) logLoading.value = true
   try {
     logs.value = (await getFreeLogs(taskId)).logs || []
     await nextTick()
-    if (logScroll.value) logScroll.value.scrollTop = previousScrollTop
+    if (logScroll.value) {
+      logScroll.value.scrollTop = followLatest ? logScroll.value.scrollHeight : previousScrollTop
+    }
   } catch (error: any) {
-    ElMessage.error(error?.message || 'Free 账号日志读取失败')
+    if (!options.silent) ElMessage.error(error?.message || 'Free 账号日志读取失败')
   } finally {
-    logLoading.value = false
+    if (!options.silent) logLoading.value = false
   }
 }
 
 async function openTaskLog(task: any) {
   selectedTaskId.value = String(task?.task_id || '')
+  logs.value = []
   logDialogOpen.value = true
-  await loadTaskLogs(selectedTaskId.value)
+  await nextTick()
+  await loadTaskLogs(selectedTaskId.value, { forceLatest: true })
 }
 
 async function copyTaskTokens(tasks: any[]) {
   await copyTaskSecret('token', tasks, 'Token')
+}
+
+async function copyTaskEmail(task: any) {
+  const email = String(task?.email || '').trim()
+  if (!email) return
+  try {
+    await navigator.clipboard.writeText(email)
+    ElMessage.success('已复制邮箱')
+  } catch {
+    ElMessage.error('邮箱复制失败')
+  }
+}
+
+function taskPlanLabel(task: any) {
+  const plan = String(task?.result?.subscription_plan || task?.result?.plan_type || '').trim()
+  if (task?.result?.plus_trial_eligible) return plan && plan.toLowerCase() !== 'free' ? plan : 'Plus 可试用'
+  if (plan.toLowerCase() === 'free') return 'Free'
+  if (plan) return plan
+  return task?.result?.plan_check_status === 'failed' ? '查询失败' : '未查询'
+}
+
+function taskPlanType(task: any) {
+  const plan = String(task?.result?.subscription_plan || task?.result?.plan_type || '').toLowerCase()
+  if (task?.result?.plus_trial_eligible || plan.includes('plus') || plan.includes('pro') || plan.includes('team')) return 'success'
+  if (task?.result?.plan_check_status === 'failed') return 'warning'
+  return 'info'
+}
+
+function taskTwofaLabel(status: string) {
+  return ({ enabled: '已设置', active: '已设置', pending: '待重试', disabled: '未启用', failed: '失败' } as Record<string, string>)[status] || status
+}
+
+function taskTwofaType(status: string) {
+  return ['enabled', 'active'].includes(status) ? 'success' : ['pending', 'failed'].includes(status) ? 'warning' : 'info'
 }
 
 async function copyTaskSecret(kind: 'token' | 'password' | 'totp' | 'credential', tasks: any[], label: string) {
@@ -254,11 +307,11 @@ async function rerunTask(task: any) {
 }
 
 function taskStatusLabel(status: string) {
-  return ({ queued: '排队', running: '运行中', success: '成功', partial_success: '部分成功', failed: '失败', stopped: '已停止', twofa_pending: '2FA 待重试' } as Record<string, string>)[status] || status || '-'
+  return ({ queued: '排队', running: '运行中', success: '成功', partial_success: '部分成功', failed: '失败', pending_rerun: '待重跑', stopped: '已停止', twofa_pending: '2FA 待重试' } as Record<string, string>)[status] || status || '-'
 }
 
 function taskStatusType(status: string) {
-  return status === 'success' ? 'success' : status === 'partial_success' ? 'warning' : status === 'failed' ? 'danger' : status === 'stopped' ? 'info' : 'warning'
+  return status === 'success' ? 'success' : ['partial_success', 'pending_rerun'].includes(status) ? 'warning' : status === 'failed' ? 'danger' : status === 'stopped' ? 'info' : 'warning'
 }
 
 function scheduleRefresh() {
@@ -279,12 +332,14 @@ onUnmounted(() => window.clearTimeout(timer))
   <div class="free-page">
     <PageToolbar title="Free 注册中心" :status="running ? '运行中' : '独立链路'" :tone="running ? 'success' : 'info'">
       <el-tag effect="plain">配置入口：运行配置 &gt; Free 注册运行</el-tag>
+      <el-tag v-if="runtimeMismatch" type="warning" effect="plain">后端需要重启</el-tag>
+      <el-tag v-else type="success" effect="plain">后端 {{ state.runtime_version }} · OTP {{ state.otp_parser_revision }}</el-tag>
       <el-button size="small" :icon="Setting" @click="emit('navigate', '/settings#free-register')">打开运行配置</el-button>
     </PageToolbar>
     <div class="task-view">
       <WorkspacePanel title="Free 注册任务" :icon="Connection" fill body-padding="none">
         <div class="task-panel">
-          <div class="run-snapshot task-summary"><div><span>可用 Free 邮箱</span><strong class="is-good">{{ Number(state.pool?.available || 0) }}</strong></div><div><span>任务总数</span><strong>{{ taskCounts.total }}</strong></div><div><span>排队 / 运行</span><strong>{{ taskCounts.running }}</strong></div><div><span>成功</span><strong class="is-good">{{ taskCounts.success - taskCounts.partial }}</strong></div><div><span>部分成功</span><strong class="is-warn">{{ taskCounts.partial }}</strong></div><div><span>失败</span><strong class="is-bad">{{ taskCounts.failed }}</strong></div><div><span>2FA 待重试</span><strong class="is-warn">{{ taskCounts.pending }}</strong></div></div>
+          <div class="run-snapshot task-summary"><div><span>可用 Free 邮箱</span><strong class="is-good">{{ Number(state.pool?.available || 0) }}</strong></div><div><span>任务总数</span><strong>{{ taskCounts.total }}</strong></div><div><span>排队 / 运行</span><strong>{{ taskCounts.running }}</strong></div><div><span>成功</span><strong class="is-good">{{ taskCounts.success - taskCounts.partial }}</strong></div><div><span>部分成功</span><strong class="is-warn">{{ taskCounts.partial }}</strong></div><div><span>失败</span><strong class="is-bad">{{ taskCounts.failed }}</strong></div><div><span>待重跑</span><strong class="is-warn">{{ taskCounts.rerun }}</strong></div><div><span>2FA 待重试</span><strong class="is-warn">{{ taskCounts.pending }}</strong></div></div>
           <div class="task-start-bar">
             <el-tag effect="plain">{{ config.driver === 'roxybrowser' ? 'RoxyBrowser' : '全协议' }}</el-tag>
             <span class="muted">并发 {{ config.concurrency }} · Slot {{ Number(state.scheduler?.active_slots || 0) }}/{{ Number(state.scheduler?.concurrency || config.concurrency) }} · 可用邮箱 {{ Number(state.pool?.available || 0) }} · 固定代理 {{ Number(state.pool?.proxies || 0) }}</span>
@@ -301,6 +356,7 @@ onUnmounted(() => window.clearTimeout(timer))
               <el-radio-button value="partial_success">部分成功 {{ taskCounts.partial }}</el-radio-button>
               <el-radio-button value="failed">失败 {{ taskCounts.failed }}</el-radio-button>
               <el-radio-button value="twofa_pending">2FA {{ taskCounts.pending }}</el-radio-button>
+              <el-radio-button value="pending_rerun">待重跑 {{ taskCounts.rerun }}</el-radio-button>
               <el-radio-button value="stopped">已停止 {{ taskCounts.stopped }}</el-radio-button>
             </el-radio-group>
             <el-select v-model="taskDriverFilter" size="small" clearable placeholder="链路" class="task-driver-filter"><el-option label="全协议" value="protocol" /><el-option label="RoxyBrowser" value="roxybrowser" /></el-select>
@@ -311,13 +367,13 @@ onUnmounted(() => window.clearTimeout(timer))
           <el-table ref="taskTable" :data="filteredTasks" row-key="task_id" height="100%" size="small" @selection-change="handleTaskSelection">
             <el-table-column type="selection" width="42" reserve-selection />
             <el-table-column type="index" label="序号" width="58" align="center" fixed="left" />
-            <el-table-column label="账号" min-width="220" show-overflow-tooltip><template #default="{ row }"><strong>{{ row.email || '-' }}</strong><small class="task-subline">{{ row.task_id }}</small></template></el-table-column>
+            <el-table-column label="账号" min-width="220" show-overflow-tooltip><template #default="{ row }"><el-tooltip v-if="row.email" content="点击复制邮箱" placement="top"><el-button link class="email-copy" @click.stop="copyTaskEmail(row)"><strong>{{ row.email }}</strong><el-icon><CopyDocument /></el-icon></el-button></el-tooltip><span v-else>-</span><small class="task-subline">{{ row.task_id }}</small></template></el-table-column>
             <el-table-column label="链路 / 阶段" min-width="190" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" effect="plain">{{ row.driver === 'roxybrowser' ? 'RoxyBrowser' : '全协议' }}</el-tag><small v-if="row.result?.account_flow" class="task-subline">{{ row.result.account_flow === 'existing_login' ? '已有账号登录' : '新账号注册' }}</small><small class="task-subline">{{ row.stage_label || row.stage || '-' }}</small></template></el-table-column>
             <el-table-column label="Slot" width="78" align="center"><template #default="{ row }">{{ row.slot_index || '-' }} / {{ row.concurrency_limit || config.concurrency }}</template></el-table-column>
             <el-table-column label="代理池" min-width="150" show-overflow-tooltip><template #default="{ row }"><span>{{ row.proxy_country || '-' }} / {{ row.proxy_group || '-' }}</span><small class="task-subline">{{ row.proxy_scheme || '' }} · {{ row.proxy_masked || '' }}</small></template></el-table-column>
             <el-table-column label="状态" width="92" align="center"><template #default="{ row }"><el-tag size="small" :type="taskStatusType(row.status)">{{ taskStatusLabel(row.status) }}</el-tag></template></el-table-column>
             <el-table-column label="注册 IP" min-width="135" show-overflow-tooltip><template #default="{ row }">{{ row.registration_ip || row.expected_exit_ip || '-' }}</template></el-table-column>
-            <el-table-column label="套餐 / 2FA" min-width="130" show-overflow-tooltip><template #default="{ row }"><span>{{ row.result?.subscription_plan || row.result?.plan_type || '-' }}</span><small class="task-subline">{{ row.result?.plus_trial_eligible ? 'Plus 可试用' : '无 Plus 资格' }} · {{ row.result?.twofa_status || '-' }}</small></template></el-table-column>
+            <el-table-column label="套餐 / 2FA" min-width="150" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" :type="taskPlanType(row)" effect="light">{{ taskPlanLabel(row) }}</el-tag><el-tag v-if="row.result?.twofa_status" size="small" :type="taskTwofaType(row.result.twofa_status)" effect="plain" class="twofa-tag">2FA {{ taskTwofaLabel(row.result.twofa_status) }}</el-tag></template></el-table-column>
             <el-table-column label="Profile" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ row.profile_summary || '-' }}</template></el-table-column>
             <el-table-column label="Token" width="72" align="center"><template #default="{ row }"><el-button v-if="row.result?.has_access_token" link :icon="CopyDocument" aria-label="复制该账号 Token" @click.stop="copyTaskTokens([row])" /><span v-else class="muted">-</span></template></el-table-column>
             <el-table-column label="操作" width="92" align="center" fixed="right"><template #default="{ row }"><el-tooltip content="查看该账号日志"><el-button link :icon="View" aria-label="查看该账号日志" @click.stop="openTaskLog(row)" /></el-tooltip><el-tooltip v-if="['failed', 'stopped'].includes(String(row.status || ''))" content="重跑该账号"><el-button link :icon="Refresh" aria-label="重跑该账号" :disabled="loading" @click.stop="rerunTask(row)" /></el-tooltip></template></el-table-column>
@@ -360,6 +416,10 @@ onUnmounted(() => window.clearTimeout(timer))
 .task-panel :deep(.el-table) { min-height: 0; }
 .task-panel :deep(.el-table .cell) { line-height: 18px; }
 .task-subline { display: block; overflow: hidden; color: var(--el-text-color-secondary); font-size: 11px; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.email-copy { max-width: 100%; gap: 5px; color: var(--el-text-color-primary); }
+.email-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.email-copy .el-icon { flex: 0 0 auto; color: var(--el-color-primary); }
+.twofa-tag { margin-left: 5px; }
 .log-dialog-meta { display: flex; align-items: center; gap: 18px; margin-bottom: 8px; color: var(--el-text-color-secondary); font-size: 12px; }
 .log-dialog-meta .el-button { margin-left: auto; }
 .log-dialog-list { height: 560px; overflow: auto; padding: 9px 10px; border: 1px solid var(--workspace-border); border-radius: 4px; background: #101923; color: #dbe7f2; font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; scrollbar-width: thin; scrollbar-color: #577b9d #101923; }

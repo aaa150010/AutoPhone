@@ -1264,6 +1264,29 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(calls[0][1]["resend_after_seconds"], 15)
         self.assertEqual(calls[0][1]["proxy"], "http://127.0.0.1:7897")
 
+    def test_mailbox_url_test_defaults_to_local_proxy_when_legacy_config_has_no_proxy(self):
+        calls = []
+
+        class FakeUrlTester:
+            def test(self, value, **kwargs):
+                calls.append((value, kwargs))
+                return {"ok": True, "code_found": True, "verification_code": "654321"}
+
+        context = replace(
+            self.context,
+            mailbox_url_test_factory=FakeUrlTester,
+            read_local_config=lambda: {"proxy_scope": {"email": True}},
+        )
+        app = self._app(context)
+        with app.test_client() as client:
+            response = client.post(
+                "/api/mailbox-url-test",
+                json={"value": "https://mail.example.test/pickup?email=user%40example.test&key=private"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(calls[0][1]["proxy"], "http://127.0.0.1:7897")
+
     def test_mailbox_url_test_redacts_isolated_url_and_proxy_credentials(self):
         class FailingUrlTester:
             def test(self, _value, **_kwargs):

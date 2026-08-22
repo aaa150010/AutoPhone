@@ -50,6 +50,21 @@ class FreeRegisterSchedulerMixin:
         selection = config.get("proxy_selection") if isinstance(config.get("proxy_selection"), Mapping) else {}
         driver = str(task.get("driver") or config.get("driver") or "protocol")
         selected = selection.get(driver) if isinstance(selection.get(driver), Mapping) else {}
+        with self._lock:
+            active_tasks = [
+                value for value in self._tasks.values()
+                if str(value.get("task_id") or "") != str(task.get("task_id") or "")
+                and str(value.get("status") or "") in {"queued", "running"}
+            ]
+        excluded_proxy_ids = {
+            str(value.get("proxy_id") or "") for value in active_tasks
+            if str(value.get("proxy_id") or "")
+        }
+        excluded_proxy_ids.add(str(task.get("proxy_id") or ""))
+        excluded_exit_ips = {
+            str(value.get("expected_exit_ip") or value.get("exit_ip") or "") for value in active_tasks
+            if str(value.get("expected_exit_ip") or value.get("exit_ip") or "")
+        }
         try:
             bindings = self.proxies.bind(
                 1,
@@ -58,7 +73,8 @@ class FreeRegisterSchedulerMixin:
                 country=str(selected.get("country") or "").strip() or None,
                 group=str(selected.get("group") or "").strip() or None,
                 driver=driver,
-                exclude_proxy_ids=[str(task.get("proxy_id") or "")],
+                exclude_proxy_ids=excluded_proxy_ids,
+                exclude_exit_ips=excluded_exit_ips,
             )
         except FreeRegisterError:
             return False
@@ -70,10 +86,10 @@ class FreeRegisterSchedulerMixin:
             str(task.get("proxy_masked") or ""), str(task.get("expected_exit_ip") or task.get("exit_ip") or ""),
             proxy_id=str(task.get("proxy_id") or ""),
         )
-        owner = str(task.get("batch_id") or "")
+        owner = str(task.get("task_id") or "")
         task_id = str(task.get("task_id") or "")
         try:
-            self.proxies.lease(replacement, owner=owner, batch_id=owner, task_id=task_id)
+            self.proxies.lease(replacement, owner=owner, batch_id=str(task.get("batch_id") or ""), task_id=task_id)
             self.proxies.release(previous, owner=owner)
         except Exception:
             try:

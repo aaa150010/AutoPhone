@@ -5,6 +5,7 @@ export interface ReleaseNoteSection {
 
 export interface ReleaseNotes {
   version: string
+  freeRuntimeVersion?: string
   title: string
   releasedAt: string
   sections: ReleaseNoteSection[]
@@ -12,10 +13,91 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.29',
-  title: 'Free Roxy 注册状态机与工作台优化',
-  releasedAt: '2026-08-19',
+  version: '1.6.39',
+  freeRuntimeVersion: '1.6.39',
+  title: 'Free Roxy 无头启动稳定性修复',
+  releasedAt: '2026-08-22',
   sections: [
+    {
+      title: 'RoxyBrowser 无头启动不重复闪现',
+      usage: 'Profile 创建阶段保持延迟启动；无头设置只传给已确认支持的 /browser/open 接口，并固定使用 forceOpen=false。打开前先通过同一 Profile 的 connection_info 对账，已经异步启动的环境会直接复用，不会再次调用打开接口；连接信息最多等待 15 秒，不会重复打开窗口。日志会显示实际 headless 和 forceOpen 参数；如果本机 Roxy 版本忽略无头参数，也能从日志明确定位。',
+    },
+    {
+      title: 'Roxy 验证码页面状态机修复',
+      usage: 'Free Roxy 注册现在会等待异步渲染的验证码控件，兼容单输入框、六格输入框以及 aria-label、placeholder、inputmode、type=tel 等页面属性。输入前会清空旧值，提交前记录同源验证请求的 HTTP 状态和错误码摘要，日志不保存验证码、响应正文、Cookie 或授权信息。',
+    },
+    {
+      title: '验证码失败受控重试',
+      usage: '验证码控件未出现、验证接口拒绝或提交后页面未跳转时，最多在同一个 Roxy Profile 内重新触发 3 次邮箱验证码；已提交的验证码不会再次使用，旧的验证请求不会污染下一次尝试，自动提交页面也不会重复点击。代理、出口 IP、邮箱租约和 Profile 都保持不变。安全验证和明确的账号状态错误会直接停止并保留原始失败节点。',
+    },
+    {
+      title: '修复 pickup 动态邮箱最新验证码读取',
+      usage: 'Free、普通接码和邮箱 URL 测试现在都能识别 /pickup 与 /latest 前端壳页面，并通过同源 /api/messages 和邮件详情接口读取最新邮件。兼容日文主题、发件人别名、HTML/JSON/预览正文、全角数字和可信取件页面中的六位验证码；请求前旧码仍会排除，取件 URL、密钥、正文和验证码不会写入日志。',
+    },
+    {
+      title: '邮箱取件网络与诊断更明确',
+      usage: '普通接码邮箱取件默认开启本机代理 http://127.0.0.1:7897，Free 继续使用独立邮箱取件代理，不复用注册住宅代理或环境代理变量。HTTP 502/503/504、TLS、超时和无效响应会归到邮箱取件节点，并显示消息数、OpenAI 匹配数和解析来源等脱敏诊断。',
+    },
+    {
+      title: '修复日文邮件和 pickup 验证码识别',
+      usage: 'Free 与普通接码现在兼容日文 ChatGPT 验证邮件、全角数字、大小写变化的邮件字段、字符串列表和 pickup HTML。请求前旧验证码仍会排除；测试确认新邮件验证码会优先于旧验证码，诊断日志会显示字段映射和识别数量，但不会记录验证码或取件密钥。',
+    },
+    {
+      title: '代理健康和 Roxy 清理结果更准确',
+      usage: '密码、验证码或安全验证等业务页面失败只保留在账号诊断日志，不会再隔离健康代理；只有固定代理、出口 IP 或租约节点失败才影响代理健康。Roxy 邮箱、Selenium 或 Profile 清理失败会明确标为“清理未完全完成”，且不会覆盖原始注册失败原因。粘贴代理后启动任务会立即保存出口 IP 与健康结果；支付工具保存空闲并发数后，下一批任务立即使用新并发。',
+    },
+    {
+      title: 'Free 运行版本与失败重跑状态',
+      usage: 'Free 注册中心现在显示后端运行版本和 OTP 解析器版本；旧后端未重启时会明确提示。注册前失败的邮箱自动恢复可用，已经进入验证码或密码页的账号进入“待重跑”，避免半注册邮箱被误当成新邮箱重复使用。',
+    },
+    {
+      title: 'Roxy 密码提交和代理唯一性',
+      usage: 'Roxy 密码页只在表单范围内选择提交按钮，记录表单校验和提交事件，最多执行一次原生提交兜底。Free 并发任务按 task_id 独占代理租约，并在备用代理、注册前和进入页面前检查代理与出口 IP 不重复。',
+    },
+    {
+      title: '验证码解析兼容与网站图标更新',
+      usage: '邮箱取件现在兼容中文验证码、HTML、JSON、Base64、显式验证码字段和可信取件接口返回的纯六位验证码；继续保留旧码排除、请求前基线和一次重发机制。网站图标已更新为 GPT 注册中心专用图标，并通过版本化文件名避免旧浏览器缓存。',
+    },
+    {
+      title: '独立支付链接工作台',
+      usage: '左侧“支付与网络工具 > 支付链接工作台”支持本地协议、手动粘贴、CDK/SSE、HTTP API 和可选 pay.153.ink 浏览器提链。第三方模式会逐批显示目标域名、通道和账号数量，确认后才会发送 Token；任务支持眼睛查看日志、取消、重试和按需复制最终链接，不执行支付扣款。',
+    },
+    {
+      title: '独立代理与网络工具',
+      usage: '左侧“支付与网络工具 > 代理与网络工具”支持 HTTP/HTTPS/SOCKS4/SOCKS5/SOCKS5H、Clash/V2Ray 订阅解析、分组管理、快速测活和深度测活。测试固定使用选中代理并显示本机到代理、代理到目标和出口 IP；没有独立 Mihomo 时只展示解析结果，不伪装成可用节点。',
+    },
+    {
+      title: 'Free Roxy / OTP 稳定性收紧',
+      usage: 'Roxy 密码页改为表单范围提交并防重复点击；验证码等待增加一次受控 resend，继续排除旧码；Session 只有确认 ChatGPT 首页后才读取。邮箱取件保持 TLS、同源重定向和响应大小限制，失败日志归到邮箱节点而不是浏览器页面。',
+    },
+    {
+      title: '本地提链来源说明',
+      usage: '本地支付协议提炼复用了 MIT 授权的 codex-auto-register 提链模块，项目内保留许可证和来源说明；Grok-GPT 的 Playwright GPT 注册主链路没有并入本项目。',
+    },
+    {
+      title: '启动构建不再重复显示无害警告',
+      usage: '前端构建会将 Vue、Element Plus、图标和 VueUse 拆分为稳定依赖包，并仅过滤 VueUse 已确认由打包器安全移除的注释提示；其他真实构建警告和错误仍会正常显示。',
+    },
+    {
+      title: 'Free 邮箱取件与注册代理完全分离',
+      usage: 'Free 注册页面继续固定使用每个账号的住宅代理；邮箱 OTP 取件改用 Free 独立网络配置，默认通过本机 Clash Verge http://127.0.0.1:7897，也可明确选择直连。取件不再复用住宅代理或继承环境代理。',
+    },
+    {
+      title: '普通接码与 Free 共用 OTP 引擎',
+      usage: '两条业务链路现在共用 URL 邮箱解析、基线快照、旧验证码排除、轮询和诊断实现，但继续保存各自独立的网络配置。后续增加新取件格式或来源时只需扩展同一个适配层。',
+    },
+    {
+      title: '套餐、Plus 资格与邮箱复制更清晰',
+      usage: 'Free 注册任务和邮箱结果统一使用彩色标签展示套餐：Plus、Pro、Team 或 Plus 试用资格显示绿色，Free 显示信息色，套餐查询失败显示警告色；2FA 使用独立标签。两个表格的邮箱都可点击复制。',
+    },
+    {
+      title: '统一 GPT 注册中心品牌',
+      usage: '浏览器标题、页面图标和左侧品牌统一为“GPT 注册中心”，菜单继续按接码工作台、Free 注册和系统设置分组，原有数据与工作流不变。',
+    },
+    {
+      title: '账号日志自动滚动到最新输出',
+      usage: '首次打开 Free 注册或测活任务的小眼睛日志会定位到最新一条；停留在底部时，新日志会自动跟随。手动上滚查看历史后会保留当前位置，不会被刷新强制拉回底部。',
+    },
     {
       title: '已有 Free 账号自动改走邮箱验证码登录',
       usage: 'RoxyBrowser 提交邮箱后若进入已有账号登录密码页，会按参考项目的状态机自动切换为一次性邮箱验证码，并继续使用该账号原先绑定的邮箱、代理和出口 IP。已有账号成功后不会误保存统一注册密码；可在 RoxyBrowser 专属配置中关闭此兜底。',
