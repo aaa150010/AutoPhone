@@ -80,7 +80,7 @@ GPT 注册中心 (gptPhone) is a macOS-local Flask application with a Vue 3 and 
 
 ## Free/Roxy Reference Implementations
 
-Free 双链路和 RoxyBrowser 行为变更前，必须先对照以下两个成熟项目的对应实现：
+Free 双链路和 RoxyBrowser 行为变更前，可以先对照以下两个成熟项目的对应实现：
 
 - 同级项目 `/Users/lwh/projects/AutoRegister`：重点参考 `core/roxy_registration.py`、`core/roxybrowser_client.py`、`core/otp_utils.py`、`core/humanize.py`、`core/live_check_service.py`、`config/proxy.py` 和 `config/roxybrowser.py`。
 - 开源项目 `https://github.com/maile456/codex-auto-register`：当前临时副本为 `/private/tmp/codex-auto-register-check.d2Qxkf`，重点参考 `backend/run_manager.py`、`backend/probe_store.py`、`backend/roxy_client.py`、`backend/mailbox_client.py`、`backend/browser_worker.py` 和 `backend/run_log_store.py`。
