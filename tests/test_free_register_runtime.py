@@ -17,6 +17,8 @@ from mac_overrides.free_register_runtime import (
     FreeRegisterManager,
     FreeTwoFaPending,
 )
+from mac_overrides.free_register_config import FreeConfigStore
+from mac_overrides.free_protocol_runtime import FreeProtocolMixin
 from mac_overrides.free_log_runtime import FreeLogStore
 from mac_overrides.free_proxy_store import FreeProxyPool as StructuredFreeProxyPool
 
@@ -198,8 +200,84 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=lambda *_args, **_kwargs: {},
             proxy_probe=lambda _proxy, _url: "203.0.113.20",
         )
-        self.assertEqual(manager.public_state()["runtime_version"], "1.6.39")
+        self.assertEqual(manager.public_state()["runtime_version"], "1.6.44")
         self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v4-roxy-otp-v2")
+
+    def test_protocol_start_runs_node_preflight_before_importing_or_leasing(self):
+        manager = FreeRegisterManager(self.data_dir)
+        failure = FreeRegisterError(
+            "oauth_create_node", "初始化 Node/Sentinel",
+            "SentinelRunner 文件缺失或路径无效", retryable=False,
+            error_code="node_runner_missing",
+        )
+        with patch.object(manager, "protocol_preflight", side_effect=failure) as preflight:
+            with self.assertRaisesRegex(FreeRegisterError, "SentinelRunner 文件缺失"):
+                manager.start(
+                    {"driver": "protocol", "target_count": 1},
+                    pool_content="a@example.test----https://mail.example.test/pickup\n",
+                    proxy_content="proxy.test:8000\n",
+                )
+        preflight.assert_called_once()
+        self.assertFalse((self.data_dir / "free_mailbox_pool.txt").exists())
+        self.assertFalse((self.data_dir / "free_proxy_pool.json").exists())
+
+    def test_empty_protocol_result_stays_at_protocol_result_node(self):
+        with self.assertRaises(FreeRegisterError) as raised:
+            FreeProtocolMixin._protocol_result({})
+        self.assertEqual(raised.exception.node_code, "free_protocol_result")
+        self.assertEqual(raised.exception.error_code, "free_protocol_result_empty")
+
+    def test_protocol_result_preserves_recovered_node_failure(self):
+        with self.assertRaises(FreeRegisterError) as raised:
+            FreeProtocolMixin._protocol_result({
+                "ok": False, "node_code": "free_oauth_callback",
+                "node_label": "Free OAuth 回调", "provider_status": 504,
+                "error_code": "callback_timeout", "error": "callback failed",
+            })
+        self.assertEqual(raised.exception.node_code, "free_oauth_callback")
+        self.assertEqual(raised.exception.node_label, "Free OAuth 回调")
+        self.assertEqual(raised.exception.provider_status, 504)
+        self.assertEqual(raised.exception.error_code, "callback_timeout")
+
+    def test_protocol_result_requires_explicit_completion_before_token_fallback(self):
+        self.assertFalse(FreeProtocolMixin._registration_completion_confirmed({"ok": True}))
+        self.assertTrue(FreeProtocolMixin._registration_completion_confirmed({"ok": True, "oauth_callback_completed": True}))
+        self.assertTrue(FreeProtocolMixin._registration_completion_confirmed({"ok": True, "access_token_present": True}))
+        self.assertTrue(FreeProtocolMixin._registration_completion_confirmed({"ok": True, "phase2_status": "completed"}))
+
+    def test_protocol_result_does_not_treat_string_false_as_completion(self):
+        self.assertFalse(FreeProtocolMixin._registration_completion_confirmed({
+            "registration_completed": "false",
+            "signup_completed": "0",
+            "oauth_callback_completed": "no",
+            "status": "pending",
+        }))
+
+    def test_protocol_result_rejects_string_false_ok_marker(self):
+        with self.assertRaises(FreeRegisterError) as raised:
+            FreeProtocolMixin._protocol_result({
+                "ok": "false",
+                "error": "oauth callback was not completed",
+            })
+        self.assertEqual(raised.exception.node_code, "free_oauth_callback")
+
+    def test_protocol_result_rejects_token_without_completion_marker(self):
+        with self.assertRaises(FreeRegisterError) as raised:
+            FreeProtocolMixin._protocol_result({"ok": True, "access_token": "token-private"})
+        self.assertEqual(raised.exception.error_code, "free_registration_completion_unconfirmed")
+
+    def test_protocol_runner_explicit_invalid_path_does_not_fall_back_to_cache(self):
+        self.assertEqual(
+            FreeProtocolMixin.resolve_node_runner({"protocol": {"node_runner": "/definitely/missing/runner.js"}}),
+            "",
+        )
+
+    def test_protocol_runner_resolution_prefers_start_command_engine_path(self):
+        with patch.dict("os.environ", {"CODEX_NODE_RUNNER": ""}, clear=False):
+            resolved = FreeProtocolMixin.resolve_node_runner({})
+        expected = (Path(__file__).resolve().parent.parent / "engine" / "node_chain" / "real_sentinel_runner.js").resolve()
+        if expected.is_file():
+            self.assertEqual(Path(resolved), expected)
 
     def test_proxy_preflight_probes_pasted_pool_without_consuming_mailboxes(self):
         manager = FreeRegisterManager(
@@ -314,6 +392,143 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         })
         self.assertEqual(calls["get"][1]["timeout"], 12)
         self.assertTrue(calls["closed"])
+
+    def test_proxy_probe_retries_same_proxy_for_tls_compatibility(self):
+        calls = []
+
+        class ProxyError(RuntimeError):
+            pass
+
+        class FakeSession:
+            def __init__(self, **kwargs):
+                calls.append(("init", kwargs))
+                self.verify = kwargs.get("verify")
+                self.proxies = {}
+
+            def get(self, url, **kwargs):
+                calls.append(("get", url, kwargs, dict(self.proxies)))
+                if self.verify is not False:
+                    raise ProxyError("proxy CONNECT failed")
+                return SimpleNamespace(status_code=200, content=b"203.0.113.41")
+
+            def close(self):
+                calls.append(("close",))
+
+        curl_module = ModuleType("curl_cffi")
+        curl_module.requests = SimpleNamespace(Session=FakeSession)
+        with patch.dict(sys.modules, {"curl_cffi": curl_module}):
+            pool = StructuredFreeProxyPool(self.data_dir)
+            pool.import_text("socks5h://user:pass@proxy.example.test:8000")
+            result = pool.bind(1)
+
+        self.assertEqual(result[0].exit_ip, "203.0.113.41")
+        self.assertEqual([item[1]["verify"] for item in calls if item[0] == "init"], [True, False])
+        self.assertEqual(pool.public()["rows"][0]["last_probe_mode"], "compat")
+
+    def test_proxy_probe_retries_libcurl_97_but_not_proxy_authentication(self):
+        class ProxyError(RuntimeError):
+            pass
+
+        def run(message):
+            calls = []
+
+            class FakeSession:
+                def __init__(self, **kwargs):
+                    calls.append(("init", kwargs))
+                    self.verify = kwargs.get("verify")
+                    self.proxies = {}
+
+                def get(self, _url, **_kwargs):
+                    calls.append(("get", self.verify))
+                    raise ProxyError(message)
+
+                def close(self):
+                    calls.append(("close", self.verify))
+
+            curl_module = ModuleType("curl_cffi")
+            curl_module.requests = SimpleNamespace(Session=FakeSession)
+            with patch.dict(sys.modules, {"curl_cffi": curl_module}):
+                pool = StructuredFreeProxyPool(self.data_dir)
+                pool.import_text("socks5h://user:pass@proxy.example.test:8000")
+                with self.assertRaises(FreeRegisterError):
+                    pool.bind(1)
+            return calls
+
+        retry_calls = run("curl: (97) proxy connect failed")
+        self.assertEqual([item[1]["verify"] for item in retry_calls if item[0] == "init"], [True, False])
+
+        auth_calls = run("Proxy authentication failed (407)")
+        self.assertEqual([item[1]["verify"] for item in auth_calls if item[0] == "init"], [True])
+
+    def test_proxy_probe_accepts_legacy_ipinfo_json_response(self):
+        calls = {}
+
+        class FakeSession:
+            def __init__(self, **kwargs):
+                calls["init"] = kwargs
+                self.proxies = {}
+
+            def get(self, url, **kwargs):
+                calls["get"] = (url, kwargs, dict(self.proxies))
+                return SimpleNamespace(status_code=200, content=b'{"ip":"198.51.100.22","country":"US"}')
+
+            def close(self):
+                calls["closed"] = True
+
+        curl_module = ModuleType("curl_cffi")
+        curl_module.requests = SimpleNamespace(Session=FakeSession)
+        with patch.dict(sys.modules, {"curl_cffi": curl_module}):
+            self.assertEqual(
+                StructuredFreeProxyPool._probe("socks5h://proxy.test:8000", "https://ipinfo.io/json"),
+                "198.51.100.22",
+            )
+
+        self.assertIn("application/json", calls["get"][1]["headers"]["Accept"])
+        self.assertTrue(calls["closed"])
+
+    def test_proxy_probe_migrates_legacy_ipinfo_text_target(self):
+        calls = []
+
+        class FakeSession:
+            def __init__(self, **_kwargs):
+                self.proxies = {}
+
+            def get(self, url, **_kwargs):
+                calls.append(url)
+                return SimpleNamespace(status_code=200, content=b"203.0.113.42")
+
+            def close(self):
+                pass
+
+        curl_module = ModuleType("curl_cffi")
+        curl_module.requests = SimpleNamespace(Session=FakeSession)
+        with patch.dict(sys.modules, {"curl_cffi": curl_module}):
+            self.assertEqual(
+                StructuredFreeProxyPool._probe("socks5h://proxy.test:8000", "https://ipinfo.io/ip"),
+                "203.0.113.42",
+            )
+        self.assertEqual(calls, ["https://api.ipify.org"])
+
+    def test_legacy_ipinfo_probe_url_is_preserved_by_free_config(self):
+        store = FreeConfigStore(self.data_dir)
+        normalized = store.normalize({"proxy_probe_url": "https://ipinfo.io/json"})
+        self.assertEqual(normalized["proxy_probe_url"], "https://ipinfo.io/json")
+
+    def test_legacy_ipinfo_text_default_is_migrated_to_stable_probe(self):
+        store = FreeConfigStore(self.data_dir)
+        normalized = store.normalize({"proxy_probe_url": "https://ipinfo.io/ip"})
+        self.assertEqual(normalized["proxy_probe_url"], "https://api.ipify.org")
+
+    def test_probe_url_normalization_keeps_explicit_query_and_custom_hosts(self):
+        store = FreeConfigStore(self.data_dir)
+        self.assertEqual(
+            store.normalize({"proxy_probe_url": "https://ipinfo.io/ip?token=custom"})["proxy_probe_url"],
+            "https://ipinfo.io/ip?token=custom",
+        )
+        self.assertEqual(
+            store.normalize({"proxy_probe_url": "https://probe.example.test/ip"})["proxy_probe_url"],
+            "https://probe.example.test/ip",
+        )
 
     def test_structured_free_proxy_pool_tracks_country_group_scheme_and_migrates_legacy(self):
         legacy = self.data_dir / "free_proxy_pool.txt"

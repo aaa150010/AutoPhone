@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-from dataclasses import dataclass
 import hashlib
 import hmac
 import json
@@ -11,12 +10,18 @@ import random
 import re
 import time
 from typing import Any, Callable, Mapping
-from urllib.parse import unquote, urljoin, urlsplit
-
-import requests
 
 try:
+    from .free_roxy_client import (
+        RoxyBrowserClient,
+        RoxyOpenResult,
+        _dig,
+        _first,
+        _roxy_id,
+        proxy_to_roxy_info,
+    )
     from .free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider
+    from .free_proxy_store import _extract_probe_ip as extract_probe_ip, normalize_probe_url
     from .free_register_common import (
         FIXED_PASSWORD,
         FreeRegisterError,
@@ -45,13 +50,30 @@ try:
     )
     from .free_roxy_otp_flow import (
         fill_otp as fill_roxy_otp,
+        reload_otp_page,
         reopen_email_otp_flow,
         run_otp_attempts,
+        select_active_auth_window,
         wait_after_otp_submit as wait_after_roxy_otp_submit,
     )
     from .free_roxy_session import extract_session, session_token
+    from .free_roxy_lifecycle import (
+        MANAGED_WINDOW_PREFIX,
+        MANAGED_WINDOW_REMARK,
+        RoxyCleanupStore,
+        RoxyLifecycle,
+    )
 except ImportError:
+    from free_roxy_client import (  # type: ignore[no-redef]
+        RoxyBrowserClient,
+        RoxyOpenResult,
+        _dig,
+        _first,
+        _roxy_id,
+        proxy_to_roxy_info,
+    )
     from free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider  # type: ignore[no-redef]
+    from free_proxy_store import _extract_probe_ip as extract_probe_ip, normalize_probe_url  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
         FIXED_PASSWORD,
         FreeRegisterError,
@@ -80,308 +102,20 @@ except ImportError:
     )
     from free_roxy_otp_flow import (  # type: ignore[no-redef]
         fill_otp as fill_roxy_otp,
+        reload_otp_page,
         reopen_email_otp_flow,
         run_otp_attempts,
+        select_active_auth_window,
         wait_after_otp_submit as wait_after_roxy_otp_submit,
     )
     from free_roxy_session import extract_session, session_token  # type: ignore[no-redef]
+    from free_roxy_lifecycle import (  # type: ignore[no-redef]
+        MANAGED_WINDOW_PREFIX,
+        MANAGED_WINDOW_REMARK,
+        RoxyCleanupStore,
+        RoxyLifecycle,
+    )
 
-
-@dataclass(slots=True)
-class RoxyOpenResult:
-    profile_id: str
-    raw: dict[str, Any]
-    debugger_address: str | None = None
-    webdriver_url: str | None = None
-    ws_endpoint: str | None = None
-    created_by_run: bool = False
-
-
-def _dig(payload: Mapping[str, Any], *keys: str) -> Any:
-    current: Any = payload
-    for key in keys:
-        if not isinstance(current, Mapping):
-            return None
-        current = current.get(key)
-    return current
-
-
-def _first(payload: Mapping[str, Any], paths: list[tuple[str, ...]]) -> str:
-    for path in paths:
-        value = _dig(payload, *path)
-        if value is not None and str(value).strip():
-            return str(value).strip()
-    return ""
-
-
-def _roxy_id(value: Any) -> str | int:
-    text = str(value or "").strip()
-    return int(text) if text.isdigit() else text
-
-
-def proxy_to_roxy_info(proxy: str, check_channel: str = "IPRust.io") -> dict[str, Any]:
-    parsed = urlsplit(str(proxy or "").strip())
-    scheme = parsed.scheme.lower()
-    if scheme not in {"http", "https", "socks5", "socks5h"}:
-        raise FreeRegisterError(
-            "free_roxy_proxy", "配置 RoxyBrowser 代理",
-            f"RoxyBrowser 不支持当前代理协议：{scheme or '-'}", retryable=False,
-        )
-    if not parsed.hostname or not parsed.port:
-        raise FreeRegisterError("free_roxy_proxy", "配置 RoxyBrowser 代理", "RoxyBrowser 代理缺少主机或端口", retryable=False)
-    protocol = {"http": "HTTP", "https": "HTTPS", "socks5": "SOCKS5", "socks5h": "SOCKS5"}[scheme]
-    result: dict[str, Any] = {
-        "moduleId": 0,
-        "proxyMethod": "custom",
-        "proxyCategory": protocol,
-        "ipType": "IPV4",
-        "protocol": protocol,
-        "host": parsed.hostname,
-        "port": str(parsed.port),
-        "checkChannel": str(check_channel or "IPRust.io"),
-    }
-    if parsed.username:
-        result["proxyUserName"] = unquote(parsed.username)
-    if parsed.password:
-        result["proxyPassword"] = unquote(parsed.password)
-    return result
-
-
-class RoxyBrowserClient:
-    def __init__(self, config: Mapping[str, Any], *, session: Any | None = None, log_fn: Callable[[str, str], None] | None = None) -> None:
-        self.config = dict(config or {})
-        self.api_base = str(self.config.get("api_base") or "http://127.0.0.1:50000").rstrip("/")
-        self.http = session or requests.Session()
-        self.log_fn = log_fn
-        token = str(self.config.get("api_key") or "").strip()
-        self.http.headers.update({"Accept": "application/json", "Content-Type": "application/json"})
-        if token:
-            self.http.headers.update({"token": token, "Authorization": f"Bearer {token}"})
-
-    def _log(self, value: str, level: str = "info") -> None:
-        if callable(self.log_fn):
-            self.log_fn(safe_log_message(value), level)
-
-    @staticmethod
-    def _retryable(exc: BaseException) -> bool:
-        text = str(exc or "").lower()
-        return any(value in text for value in ("timeout", "connection", "temporarily", "http 429", "http 500", "http 502", "http 503", "http 504"))
-
-    def request(
-        self,
-        method: str,
-        path: str,
-        *,
-        body: Mapping[str, Any] | None = None,
-        params: Mapping[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        target = urljoin(self.api_base + "/", str(path or "").lstrip("/"))
-        attempts = 1 if str(path).rstrip("/").endswith("/create") else int(self.config.get("api_retries") or 3)
-        delay = float(self.config.get("api_retry_delay") or 2.0)
-        last: BaseException | None = None
-        for attempt in range(1, max(1, attempts) + 1):
-            try:
-                response = self.http.request(
-                    str(method or "POST").upper(),
-                    target,
-                    json=dict(body or {}) if body is not None else None,
-                    params=dict(params or {}) if params else None,
-                    timeout=max(5, int(self.config.get("selenium_timeout") or 90)),
-                )
-                status = int(getattr(response, "status_code", 0) or 0)
-                if not 200 <= status < 300:
-                    raise FreeRegisterError(
-                        "free_roxy_api", "调用 RoxyBrowser API", f"RoxyBrowser API 返回 HTTP {status}",
-                        retryable=status in {429, 500, 502, 503, 504}, provider_status=status,
-                    )
-                try:
-                    payload = response.json()
-                except Exception as exc:
-                    raise FreeRegisterError("free_roxy_api", "调用 RoxyBrowser API", "RoxyBrowser API 未返回 JSON") from exc
-                if not isinstance(payload, Mapping):
-                    raise FreeRegisterError("free_roxy_api", "调用 RoxyBrowser API", "RoxyBrowser API 响应格式无效")
-                code = payload.get("code")
-                if code not in (None, 0, 200, "0", "200") and payload.get("ok") is not True and payload.get("success") is not True:
-                    message = clean(payload.get("message") or payload.get("msg") or payload.get("error"), 200)
-                    raise FreeRegisterError("free_roxy_api", "调用 RoxyBrowser API", message or "RoxyBrowser API 返回失败")
-                if attempt > 1:
-                    self._log(f"[RoxyBrowser/free_roxy_api] API 第 {attempt} 次请求成功")
-                return dict(payload)
-            except Exception as exc:
-                last = exc
-                if attempt >= attempts or not self._retryable(exc):
-                    if isinstance(exc, FreeRegisterError):
-                        raise
-                    raise FreeRegisterError(
-                        "free_roxy_api", "调用 RoxyBrowser API", f"RoxyBrowser API 请求异常（{type(exc).__name__}）"
-                    ) from exc
-                time.sleep(delay * attempt)
-        raise FreeRegisterError("free_roxy_api", "调用 RoxyBrowser API", f"RoxyBrowser API 请求失败（{type(last).__name__}）")
-
-    @staticmethod
-    def _workspace_items(payload: Mapping[str, Any]) -> list[dict[str, str]]:
-        data = payload.get("data") if isinstance(payload.get("data"), Mapping) else payload
-        rows = data.get("rows") or data.get("list") or data.get("records") if isinstance(data, Mapping) else []
-        output: list[dict[str, str]] = []
-        for row in rows if isinstance(rows, list) else []:
-            if not isinstance(row, Mapping):
-                continue
-            workspace_id = str(row.get("id") or row.get("workspaceId") or "")
-            workspace_name = str(row.get("workspaceName") or row.get("name") or workspace_id)
-            projects = row.get("project_details") or row.get("projectDetails") or row.get("projects") or []
-            if isinstance(projects, list) and projects:
-                for project in projects:
-                    if not isinstance(project, Mapping):
-                        continue
-                    project_id = str(project.get("projectId") or project.get("id") or "")
-                    project_name = str(project.get("projectName") or project.get("name") or project_id)
-                    output.append({"workspace_id": workspace_id, "workspace_name": workspace_name, "project_id": project_id, "project_name": project_name, "label": f"{workspace_name} / {project_name}"})
-            elif workspace_id:
-                output.append({"workspace_id": workspace_id, "workspace_name": workspace_name, "project_id": "", "project_name": "", "label": workspace_name})
-        return output
-
-    def list_workspaces(self) -> list[dict[str, str]]:
-        return self._workspace_items(self.request("GET", str(self.config.get("workspace_list_path") or "/browser/workspace")))
-
-    def create_profile(self, proxy: str) -> str:
-        choices = [str(value) for value in self.config.get("os_choices") or ["Windows", "macOS"]]
-        prefix = str(self.config.get("profile_name_prefix") or "rb")
-        profile_name = f"{prefix}-{int(time.time() * 1000)}-{random.randrange(65536):04x}" if bool(self.config.get("random_profile_name", True)) else prefix
-        body: dict[str, Any] = {
-            "workspaceId": _roxy_id(self.config.get("workspace_id")),
-            "projectId": _roxy_id(self.config.get("project_id")),
-            "name": profile_name,
-            "os": random.choice(choices or ["Windows", "macOS"]) if bool(self.config.get("random_os", True)) else (choices[0] if choices else "Windows"),
-            "proxyInfo": proxy_to_roxy_info(proxy, str(self.config.get("proxy_check_channel") or "IPRust.io")),
-        }
-        if not body["projectId"]:
-            body.pop("projectId")
-        payload = self.request("POST", str(self.config.get("create_path") or "/browser/create"), body=body)
-        profile_id = _first(payload, [
-            ("id",), ("dirId",), ("profileId",), ("data", "id"), ("data", "dirId"), ("data", "profileId"),
-        ])
-        if not profile_id:
-            raise FreeRegisterError("free_roxy_create", "创建 RoxyBrowser 环境", "创建成功但未返回 Profile ID")
-        self._log(
-            f"[创建 RoxyBrowser 环境/free_roxy_create] Profile={profile_id} "
-            f"proxy={mask_proxy(proxy)} launch=deferred"
-        )
-        return profile_id
-
-    @staticmethod
-    def _connection_result(profile_id: str, payload: Mapping[str, Any]) -> RoxyOpenResult | None:
-        data = payload.get("data") if isinstance(payload.get("data"), (Mapping, list)) else payload
-        rows = data if isinstance(data, list) else [data]
-        for row in rows:
-            if not isinstance(row, Mapping):
-                continue
-            candidate = _first(row, [("dirId",), ("profileId",), ("id",), ("windowId",)])
-            if candidate and str(candidate) != str(profile_id):
-                continue
-            debugger = _first(row, [
-                ("debuggerAddress",), ("debuggingPortUrl",), ("http",), ("httpEndpoint",),
-            ])
-            port = _first(row, [("debuggingPort",), ("port",)])
-            if not debugger and port.isdigit():
-                debugger = f"127.0.0.1:{port}"
-            webdriver_url = _first(row, [("webdriver",), ("webdriverUrl",), ("selenium",)]) or None
-            ws_endpoint = _first(row, [("ws",), ("wsEndpoint",), ("ws_endpoint",), ("debuggerWsUrl",)]) or None
-            if not debugger and ws_endpoint:
-                parsed = urlsplit(ws_endpoint)
-                if parsed.hostname and parsed.port:
-                    debugger = f"{parsed.hostname}:{parsed.port}"
-            if not debugger and not webdriver_url and not ws_endpoint:
-                continue
-            if debugger:
-                debugger = debugger.replace("http://", "").replace("https://", "").split("/", 1)[0].strip()
-            return RoxyOpenResult(
-                str(profile_id), dict(payload), debugger or None, webdriver_url, ws_endpoint, True,
-            )
-        return None
-
-    def connection_info(self, profile_id: str) -> RoxyOpenResult | None:
-        payload = self.request(
-            "GET",
-            str(self.config.get("connection_info_path") or "/browser/connection_info"),
-            params={"dirIds": str(_roxy_id(profile_id))},
-        )
-        return self._connection_result(profile_id, payload)
-
-    def open_profile(self, profile_id: str) -> RoxyOpenResult:
-        headless = bool(self.config.get("headless", False))
-        # Roxy may finish an asynchronous create/open before returning the
-        # create response.  Adopt that connection first so a second
-        # /browser/open call cannot briefly foreground another window.
-        try:
-            already_open = self.connection_info(profile_id)
-        except Exception:
-            already_open = None
-        if already_open is not None:
-            self._log(
-                f"[打开 RoxyBrowser 环境/free_roxy_open] Profile={profile_id} "
-                f"已由 connection_info 对账，跳过重复打开 headless={headless}"
-            )
-            return already_open
-        body = {
-            "workspaceId": _roxy_id(self.config.get("workspace_id")),
-            "dirId": _roxy_id(profile_id),
-            "args": [],
-            # Roxy opens asynchronously. The connection_info reconciliation
-            # below handles the short race without forcing a second window.
-            "forceOpen": False,
-            "headless": headless,
-        }
-        self._log(
-            f"[打开 RoxyBrowser 环境/free_roxy_open] Profile={profile_id} "
-            f"headless={headless} forceOpen=False"
-        )
-        payload = self.request("POST", str(self.config.get("open_path") or "/browser/open"), body=body)
-        opened = self._connection_result(profile_id, payload)
-        if opened is not None:
-            return opened
-        # Some Roxy versions return success before the CDP endpoint exists;
-        # reconcile the same dirId instead of creating another Profile/window.
-        # Match the mature runner's async-open window: never call /browser/open
-        # again while the same dirId is still coming up.
-        for _attempt in range(30):
-            try:
-                opened = self.connection_info(profile_id)
-            except Exception:
-                opened = None
-            if opened is not None:
-                return opened
-            time.sleep(0.5)
-        raise FreeRegisterError(
-            "free_roxy_open",
-            "打开 RoxyBrowser 环境",
-            "RoxyBrowser 打开成功但未返回 Selenium/CDP 连接地址，connection_info 也未就绪",
-            retryable=True,
-        )
-
-    def close_profile(self, profile_id: str) -> None:
-        body = {"workspaceId": _roxy_id(self.config.get("workspace_id")), "dirId": _roxy_id(profile_id)}
-        self.request("POST", str(self.config.get("close_path") or "/browser/close"), body=body)
-
-    def delete_profile(self, profile_id: str) -> None:
-        body = {"workspaceId": _roxy_id(self.config.get("workspace_id")), "dirIds": [_roxy_id(profile_id)]}
-        self.request("POST", str(self.config.get("delete_path") or "/browser/delete"), body=body)
-
-    def cleanup(self, opened: RoxyOpenResult | None) -> bool:
-        if opened is None or not opened.profile_id or bool(self.config.get("keep_browser_open", False)):
-            return True
-        completed = True
-        try:
-            self.close_profile(opened.profile_id)
-        except Exception as exc:
-            completed = False
-            self._log(f"[清理 RoxyBrowser 环境/free_roxy_cleanup] 关闭失败（{type(exc).__name__}）", "warn")
-        if bool(self.config.get("one_profile_per_account", True)) and bool(self.config.get("delete_profile_after_run", True)) and opened.created_by_run:
-            try:
-                self.delete_profile(opened.profile_id)
-            except Exception as exc:
-                completed = False
-                self._log(f"[清理 RoxyBrowser 环境/free_roxy_cleanup] 删除失败（{type(exc).__name__}）", "warn")
-        return completed
 
 
 class Humanizer:
@@ -406,8 +140,14 @@ class Humanizer:
 
 
 class RoxyRegistrationRunner:
-    def __init__(self, *, registration_ip_probe: Callable[[Any, Mapping[str, Any]], str] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        registration_ip_probe: Callable[[Any, Mapping[str, Any]], str] | None = None,
+        lifecycle_store_path: str | None = None,
+    ) -> None:
         self.registration_ip_probe = registration_ip_probe
+        self.lifecycle_store_path = lifecycle_store_path or ""
 
     @staticmethod
     def preflight(config: Mapping[str, Any]) -> dict[str, Any]:
@@ -511,6 +251,8 @@ class RoxyRegistrationRunner:
         # dedicated flow waits for the form, clears every cell and installs a
         # safe same-origin validation probe before the single submit action.
         return fill_roxy_otp(driver, code, human)
+
+    _select_active_auth_window = staticmethod(select_active_auth_window)
 
     _page_snapshot = staticmethod(page_snapshot)
     _classify_page = staticmethod(classify_page)
@@ -646,12 +388,12 @@ class RoxyRegistrationRunner:
     @staticmethod
     def _browser_ip(driver: Any, probe_url: str, timeout: int) -> str:
         driver.set_page_load_timeout(timeout)
-        driver.get(probe_url)
+        driver.get(normalize_probe_url(probe_url))
         text = str(driver.find_element("tag name", "body").text or "").strip()
-        match = re.search(r"[0-9a-fA-F:.]{3,64}", text)
-        if not match:
+        try:
+            return extract_probe_ip(text)
+        except ValueError:
             raise FreeRegisterError("free_roxy_ip_verify", "校验 RoxyBrowser 出口 IP", "RoxyBrowser 出口 IP 响应格式无效")
-        return match.group(0)
 
     @staticmethod
     def _safe_page_location(driver: Any) -> str:
@@ -748,7 +490,22 @@ class RoxyRegistrationRunner:
     def _setup_2fa(self, driver: Any, task: Mapping[str, Any], token: str, otp: MailboxUrlOtpProvider, human: Humanizer, stage: Callable[[str, str], None]) -> str:
         task_id = str(task.get("task_id") or "")
         stage(task_id, "free_twofa_enroll")
-        otp.mark_sent()
+        # 2FA re-authentication is a separate mailbox phase.  Capture the
+        # request-time baseline before opening the re-auth URL; otherwise a
+        # registration OTP with the same value can satisfy this challenge.
+        prepare = getattr(otp, "prepare", None)
+        if callable(prepare):
+            try:
+                prepare("free_twofa_enroll", force_snapshot=True)
+            except TypeError as exc:
+                if "force_snapshot" not in str(exc):
+                    raise
+                try:
+                    prepare("free_twofa_enroll")
+                except TypeError as legacy_exc:
+                    if "argument" not in str(legacy_exc) and "positional" not in str(legacy_exc):
+                        raise
+                    prepare()
         signin = driver.execute_async_script("""
         const email=arguments[0], done=arguments[arguments.length - 1];
         fetch('/api/auth/csrf',{credentials:'include'}).then(r=>r.json()).then(csrf=>{
@@ -760,7 +517,30 @@ class RoxyRegistrationRunner:
         if not signin.get("ok") or not signin.get("url"):
             raise FreeRegisterError("free_twofa_enroll", "注册 Free 账号 2FA", "RoxyBrowser 未能发起 2FA 重认证")
         driver.get(str(signin["url"]))
-        code = otp.wait_code(str(task.get("email") or ""))
+        # The re-auth request has now been dispatched.  Mark the same phase
+        # explicitly, retaining compatibility with older provider wrappers.
+        mark_sent = getattr(otp, "mark_sent", None)
+        if callable(mark_sent):
+            try:
+                mark_sent("free_twofa_enroll")
+            except TypeError as exc:
+                if "argument" not in str(exc) and "positional" not in str(exc):
+                    raise
+                mark_sent()
+        try:
+            code = otp.wait_code(
+                str(task.get("email") or ""),
+                stage_code="free_twofa_enroll",
+            )
+        except TypeError as exc:
+            if "unexpected keyword" not in str(exc):
+                raise
+            try:
+                code = otp.wait_code(str(task.get("email") or ""), "free_twofa_enroll")
+            except TypeError as legacy_exc:
+                if "argument" not in str(legacy_exc) and "positional" not in str(legacy_exc):
+                    raise
+                code = otp.wait_code(str(task.get("email") or ""))
         self._fill_otp(driver, code, human)
         refreshed = self._session(driver, 90)
         new_token = str(refreshed.get("accessToken") or token)
@@ -799,9 +579,25 @@ class RoxyRegistrationRunner:
         if twofa_retry:
             raise FreeRegisterError("free_twofa_retry", "重试 Free 账号 2FA", "RoxyBrowser 2FA 重试需要重新登录，请重新运行该邮箱", retryable=False)
         roxy = dict(config.get("roxybrowser") or {})
+        lifecycle_store_path = str(getattr(self, "lifecycle_store_path", "") or "")
+        if lifecycle_store_path and "lifecycle_store_path" not in roxy:
+            roxy["lifecycle_store_path"] = lifecycle_store_path
         human = Humanizer(roxy)
         human.delay("job_stagger")
         client = RoxyBrowserClient(roxy, log_fn=log)
+        lifecycle_store = RoxyCleanupStore(str(roxy.get("lifecycle_store_path"))) if roxy.get("lifecycle_store_path") else None
+        lifecycle = RoxyLifecycle(
+            client,
+            lifecycle_store,
+            log_fn=log,
+            verify_timeout=float(roxy.get("cleanup_verify_timeout") or 8),
+            verify_interval=float(roxy.get("cleanup_verify_interval") or 0.25),
+            retries=int(roxy.get("api_retries") or 3),
+        ) if lifecycle_store is not None else None
+        # Recovery is owned by FreeRegisterManager at preflight/start and
+        # after the final Future completes. Running it inside every worker
+        # would let one concurrent account close another account's active
+        # Profile because both records are intentionally in the same journal.
         opened: RoxyOpenResult | None = None
         driver: Any | None = None
         task_id = str(task.get("task_id") or "")
@@ -824,11 +620,81 @@ class RoxyRegistrationRunner:
                 raise FreeRegisterError("free_run_stop", "停止 Free 注册", "任务在创建 RoxyBrowser 环境前已停止", retryable=False)
             set_stage("free_roxy_create")
             operation_started = time.monotonic()
-            profile_id = client.create_profile(str(task.get("proxy") or ""))
+            intent_id = f"{task.get('batch_id') or 'batch'}:{task_id or 'task'}"
+            if lifecycle_store is not None:
+                lifecycle_store.reserve_intent(
+                    intent_id,
+                    workspace_id=roxy.get("workspace_id"),
+                    batch_id=task.get("batch_id"),
+                    task_id=task_id,
+                    window_name=f"{MANAGED_WINDOW_PREFIX}{(task_id or task.get('batch_id') or '')[:48]}",
+                    window_remark=MANAGED_WINDOW_REMARK,
+                )
+            try:
+                try:
+                    profile_id = client.create_profile(
+                        str(task.get("proxy") or ""),
+                        batch_id=str(task.get("batch_id") or ""),
+                        task_id=task_id,
+                    )
+                except TypeError as create_exc:
+                    # Keep compatibility with injected test/legacy clients
+                    # that still expose create_profile(proxy) only.
+                    if "unexpected keyword argument" not in str(create_exc):
+                        raise
+                    profile_id = client.create_profile(str(task.get("proxy") or ""))
+            except Exception:
+                # A timed-out create may have allocated a managed profile.  A
+                # best-effort same-workspace scan recovers only this task's
+                # marker; foreign/user profiles are never touched.
+                if lifecycle is not None:
+                    try:
+                        for row in client.find_owned_profiles(task_id=task_id, batch_id=str(task.get("batch_id") or "")):
+                            owned_id = str(row.get("profile_id") or "")
+                            if not owned_id:
+                                continue
+                            record = lifecycle_store.upsert(
+                                owned_id,
+                                workspace_id=row.get("workspace_id") or roxy.get("workspace_id"),
+                                batch_id=task.get("batch_id"),
+                                task_id=task_id,
+                                window_name=row.get("window_name"),
+                                window_remark=row.get("window_remark"),
+                                state="orphaned",
+                            )
+                            if lifecycle.cleanup(record):
+                                lifecycle_store.clear_intent(intent_id)
+                                lifecycle_store.clear_intent(task_id)
+                    except Exception as recovery_exc:
+                        log(f"创建失败后的 Roxy 孤儿 Profile 回收失败（{type(recovery_exc).__name__}）", "warn")
+                raise
             log(f"临时 Profile 创建成功，Profile={profile_id}，duration_ms={int((time.monotonic() - operation_started) * 1000)} outcome=success", "success")
+            created_metadata = getattr(client, "last_created_metadata", {})
+            if not isinstance(created_metadata, Mapping):
+                created_metadata = {}
+            if lifecycle_store is not None:
+                lifecycle_store.clear_intent(intent_id)
+                lifecycle_store.upsert(
+                    profile_id,
+                    workspace_id=roxy.get("workspace_id"),
+                    batch_id=task.get("batch_id"),
+                    task_id=task_id,
+                    window_name=created_metadata.get("window_name"),
+                    window_remark=created_metadata.get("window_remark"),
+                    state="created",
+                )
+                if task_id:
+                    lifecycle_store.clear_intent(task_id)
             # Keep ownership as soon as creation succeeds so an open/connect
             # failure still closes and deletes this run's temporary Profile.
-            opened = RoxyOpenResult(profile_id, {}, created_by_run=True)
+            opened = RoxyOpenResult(
+                profile_id,
+                {},
+                created_by_run=True,
+                workspace_id=str(roxy.get("workspace_id") or ""),
+                window_name=str(created_metadata.get("window_name") or ""),
+                window_remark=str(created_metadata.get("window_remark") or MANAGED_WINDOW_REMARK),
+            )
             set_stage("free_roxy_open")
             operation_started = time.monotonic()
             opened = client.open_profile(profile_id)
@@ -837,6 +703,7 @@ class RoxyRegistrationRunner:
             operation_started = time.monotonic()
             driver = self._driver(opened)
             driver.set_script_timeout(max(20, int(roxy.get("selenium_timeout") or 90)))
+            self._select_active_auth_window(driver, log)
             log(f"Selenium 已连接同一 Profile，duration_ms={int((time.monotonic() - operation_started) * 1000)} outcome=success", "success")
             set_stage("free_roxy_ip_verify")
             operation_started = time.monotonic()
@@ -849,6 +716,7 @@ class RoxyRegistrationRunner:
             otp.prepare()
             operation_started = time.monotonic()
             self._open_signup_page(driver, str(task.get("email") or ""), int(roxy.get("selenium_timeout") or 90))
+            self._select_active_auth_window(driver, log)
             log(f"注册页初始化完成，页面={safe_page_location(driver)}，duration_ms={int((time.monotonic() - operation_started) * 1000)} outcome=success", "success")
             human.delay("page_warmup")
             try:
@@ -1006,10 +874,14 @@ class RoxyRegistrationRunner:
                         submit_signup_password=self._submit_signup_password,
                     )
 
+                def reload_flow(_attempt: int) -> str:
+                    return reload_otp_page(driver, 30, log)
+
                 post_otp_state = run_otp_attempts(
                     wait_code=wait_code,
                     submit_code=submit_code,
                     restart_flow=restart_flow,
+                    reload_flow=reload_flow,
                     log=log,
                     max_attempts=3,
                 )
@@ -1159,8 +1031,10 @@ class RoxyRegistrationRunner:
                 cleanup_ok = False
                 log(f"[{task_id}/清理 RoxyBrowser 环境/free_roxy_cleanup] 清理异常（{type(exc).__name__}）", "warn")
             duration_ms = int((time.monotonic() - cleanup_started) * 1000)
-            if cleanup_ok:
-                log(f"[{task_id}/清理 RoxyBrowser 环境/free_roxy_cleanup] 清理完成，duration_ms={duration_ms} outcome=success", "success")
+            if opened is None or not opened.profile_id:
+                log(f"[{task_id}/清理 RoxyBrowser 环境/free_roxy_cleanup] 未创建 Profile，无需清理，duration_ms={duration_ms} outcome=success", "info")
+            elif cleanup_ok:
+                log(f"[{task_id}/清理 RoxyBrowser 环境/free_roxy_cleanup] 清理完成并确认释放，duration_ms={duration_ms} outcome=success", "success")
             else:
                 log(f"[{task_id}/清理 RoxyBrowser 环境/free_roxy_cleanup] 清理未完全完成，原始注册结果已保留，duration_ms={duration_ms} outcome=warning", "warn")
 

@@ -14,9 +14,11 @@ from urllib.parse import urlsplit
 
 try:
     from .free_register_common import FreeRegisterError, SECRET_MASK, atomic_write, clean
+    from .free_proxy_store import DEFAULT_PROXY_PROBE_URL, normalize_probe_url
     from .mailbox_otp_service import DEFAULT_FREE_MAILBOX_PROXY, MailboxOtpError, normalize_network_policy
 except ImportError:
     from free_register_common import FreeRegisterError, SECRET_MASK, atomic_write, clean  # type: ignore[no-redef]
+    from free_proxy_store import DEFAULT_PROXY_PROBE_URL, normalize_probe_url  # type: ignore[no-redef]
     from mailbox_otp_service import (  # type: ignore[no-redef]
         DEFAULT_FREE_MAILBOX_PROXY, MailboxOtpError, normalize_network_policy,
     )
@@ -42,8 +44,10 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
     "mailbox_request_retries": 3,
     "mailbox_retry_backoff_seconds": 1.0,
     "auto_set_2fa": True,
-    "proxy_probe_url": "https://api.ipify.org",
+    "proxy_probe_url": DEFAULT_PROXY_PROBE_URL,
     "proxy_default_scheme": "http",
+    "proxy_tls_verify": True,
+    "proxy_tls_compat_fallback": True,
     "proxy_failure_threshold": 2,
     "proxy_quarantine_seconds": 600,
     "proxy_retry_count": 1,
@@ -63,6 +67,7 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
         "workspace_id": "",
         "project_id": "",
         "workspace_list_path": "/browser/workspace",
+        "list_path": "/browser/list",
         "create_path": "/browser/create",
         "open_path": "/browser/open",
         "close_path": "/browser/close",
@@ -85,6 +90,9 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
         "existing_account_login": True,
         "post_registration_dwell_min": 18,
         "post_registration_dwell_max": 45,
+        "cleanup_verify_timeout": 8,
+        "cleanup_verify_interval": 0.25,
+        "recover_cleanup_on_start": True,
     },
 }
 
@@ -187,6 +195,8 @@ class FreeConfigStore:
         if scheme not in {"http", "https", "socks4", "socks5", "socks5h"}:
             scheme = "http"
         result["proxy_default_scheme"] = scheme
+        result["proxy_tls_verify"] = _as_bool(result.get("proxy_tls_verify"), True)
+        result["proxy_tls_compat_fallback"] = _as_bool(result.get("proxy_tls_compat_fallback"), True)
         result["proxy_failure_threshold"] = _int(result.get("proxy_failure_threshold"), 2, 1, 10)
         result["proxy_quarantine_seconds"] = _int(result.get("proxy_quarantine_seconds"), 600, 30, 86400)
         result["proxy_retry_count"] = _int(result.get("proxy_retry_count"), 1, 0, 5)
@@ -204,7 +214,7 @@ class FreeConfigStore:
                 "group": clean(item.get("group"), 64),
             }
         result["proxy_selection"] = normalized_selection
-        probe_url = clean(result.get("proxy_probe_url"), 500) or "https://api.ipify.org"
+        probe_url = normalize_probe_url(clean(result.get("proxy_probe_url"), 500) or DEFAULT_PROXY_PROBE_URL)
         parsed_probe = urlsplit(probe_url)
         if parsed_probe.scheme not in {"http", "https"} or not parsed_probe.netloc:
             raise FreeRegisterError("free_config", "保存 Free 配置", "Free 代理探测地址必须是 HTTP/HTTPS URL", retryable=False)
@@ -225,7 +235,7 @@ class FreeConfigStore:
         roxy["api_base"] = api_base.rstrip("/")
         for key in ("api_key", "workspace_id", "project_id", "profile_name_prefix"):
             roxy[key] = clean(roxy.get(key), 500)
-        for key in ("workspace_list_path", "create_path", "open_path", "close_path", "delete_path", "proxy_check_channel"):
+        for key in ("workspace_list_path", "list_path", "create_path", "open_path", "close_path", "delete_path", "proxy_check_channel"):
             roxy[key] = clean(roxy.get(key), 500) or str(DEFAULT_FREE_CONFIG["roxybrowser"][key])
         for key in (
             "headless", "keep_browser_open", "one_profile_per_account", "delete_profile_after_run",
@@ -240,6 +250,9 @@ class FreeConfigStore:
         roxy["selenium_timeout"] = _int(roxy.get("selenium_timeout"), 90, 10, 300)
         roxy["api_retries"] = _int(roxy.get("api_retries"), 3, 1, 5)
         roxy["api_retry_delay"] = _float(roxy.get("api_retry_delay"), 2.0, 0.25, 15.0)
+        roxy["cleanup_verify_timeout"] = _float(roxy.get("cleanup_verify_timeout"), 8.0, 0.5, 60.0)
+        roxy["cleanup_verify_interval"] = _float(roxy.get("cleanup_verify_interval"), 0.25, 0.05, 5.0)
+        roxy["recover_cleanup_on_start"] = _as_bool(roxy.get("recover_cleanup_on_start"), True)
         roxy["humanize_factor"] = _float(roxy.get("humanize_factor"), 1.0, 0.1, 5.0)
         roxy["post_registration_dwell_min"] = _int(roxy.get("post_registration_dwell_min"), 18, 0, 300)
         roxy["post_registration_dwell_max"] = _int(roxy.get("post_registration_dwell_max"), 45, roxy["post_registration_dwell_min"], 600)
@@ -295,7 +308,7 @@ class FreeConfigStore:
                 "target_count": legacy.get("free_target_count", 0),
                 "concurrency": legacy.get("free_concurrency", 3),
                 "email_code_timeout": legacy.get("email_code_timeout", 90),
-                "proxy_probe_url": legacy.get("free_proxy_probe_url", "https://api.ipify.org"),
+                "proxy_probe_url": legacy.get("free_proxy_probe_url", DEFAULT_PROXY_PROBE_URL),
             })
             initial["protocol"]["node_runner"] = str(legacy.get("codex_node_runner") or legacy.get("node_runner") or "")
             if not self.path.exists():

@@ -361,6 +361,15 @@ class FreeRoxyRuntimeTests(unittest.TestCase):
             explicit = store.normalize({"version": 3, "roxybrowser": {"headless": False}})
             self.assertFalse(explicit["roxybrowser"]["headless"])
 
+    def test_proxy_tls_policy_is_explicit_and_compatibility_defaults_on(self):
+        with TemporaryDirectory() as directory:
+            store = FreeConfigStore(directory)
+            saved = store.save({"proxy_tls_verify": False, "proxy_tls_compat_fallback": False})
+            self.assertFalse(saved["proxy_tls_verify"])
+            self.assertFalse(saved["proxy_tls_compat_fallback"])
+            self.assertFalse(store.load()["proxy_tls_verify"])
+            self.assertFalse(store.load()["proxy_tls_compat_fallback"])
+
     def test_roxy_profile_lifecycle_uses_bound_proxy_and_deletes_after_close(self):
         session = _FakeSession()
         client = RoxyBrowserClient({"api_base": "http://127.0.0.1:50000", "workspace_id": "w", "project_id": "p", "api_retries": 1, "headless": True}, session=session)

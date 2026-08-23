@@ -478,7 +478,13 @@ class MailboxOtpService:
         self.sleep_fn = sleep_fn
         self.monotonic_fn = monotonic_fn
         self.current_stage = "email_code_waiting"
-        self.used_codes: set[str] = set()
+        # OTP usage is scoped to an authentication phase.  A provider may
+        # legitimately reuse the same code for a later re-authentication mail;
+        # a process-wide code set would incorrectly reject that new message.
+        self.used_codes_by_stage: dict[str, set[str]] = {}
+        self.used_identities_by_stage: dict[str, set[str]] = {}
+        self.used_code_identities_by_stage: dict[str, dict[str, set[str]]] = {}
+        self._last_returned_by_stage: dict[str, tuple[str, str]] = {}
         self._last_diagnostic_signature = ""
         self.client, self.transport = factory(
             mailbox_source,
@@ -502,6 +508,12 @@ class MailboxOtpService:
             if "argument" not in str(exc):
                 raise
             self.log_fn(message)
+
+    @property
+    def used_codes(self) -> set[str]:
+        """Compatibility view for callers that inspect the active phase."""
+        key = str(self.current_stage or "email_code_waiting")
+        return self.used_codes_by_stage.setdefault(key, set())
 
     def _stage(self, code: str) -> None:
         self.current_stage = str(code or self.current_stage)
@@ -554,10 +566,29 @@ class MailboxOtpService:
         self._last_diagnostic_signature = signature
         self._log(f"[邮箱取码诊断/{self.current_stage}] {diagnostic_message(diagnostic)}", "warn")
 
-    def prepare(self, stage_code: str = "email_code_waiting") -> None:
+    def prepare(
+        self,
+        stage_code: str = "email_code_waiting",
+        *,
+        force_snapshot: bool = False,
+    ) -> None:
+        """Start an OTP request, optionally taking a fresh mailbox baseline.
+
+        A rebuilt OAuth session is a new authorization attempt even though the
+        mailbox provider instance is intentionally retained.  In that case a
+        cached ``last_scan`` belongs to the previous attempt and must not be
+        used to classify the next message as new or old.
+        """
         self._stage(stage_code)
         if self.state.active:
             return
+        if force_snapshot:
+            self.state.last_scan = None
+            self.state.last_selection = None
+            self.state.baseline_identities = frozenset()
+            self.state.baseline_fallback_attempts = 0
+            self.state.baseline_fallback_identities.clear()
+            self.state.baseline_fallback_codes.clear()
         if self.state.last_scan is None:
             try:
                 self.state.snapshot()
@@ -584,6 +615,31 @@ class MailboxOtpService:
         if not self.state.active:
             self.prepare(stage_code)
 
+    def discard_code(self, stage_code: str, code: Any) -> None:
+        """Release a code reserved by ``wait_code`` when no request was sent.
+
+        A local transport exception can happen before an OTP validation request
+        leaves the process. In that case the same newly fetched message may be
+        retried; a response returned by the server remains committed.
+        """
+        key = str(stage_code or self.current_stage or "email_code_waiting")
+        value = str(code or "").strip()
+        returned = self._last_returned_by_stage.get(key)
+        if not value or not returned or returned[0] != value:
+            return
+        identity = returned[1]
+        mapping = self.used_code_identities_by_stage.setdefault(key, {})
+        identities = mapping.get(value, set())
+        identities.discard(identity or "__value__")
+        if identities:
+            mapping[value] = identities
+            return
+        mapping.pop(value, None)
+        self.used_codes_by_stage.setdefault(key, set()).discard(value)
+        if identity:
+            self.used_identities_by_stage.setdefault(key, set()).discard(identity)
+        self._last_returned_by_stage.pop(key, None)
+
     def snapshot(self) -> MailboxSelection:
         return self.state.snapshot()
 
@@ -593,8 +649,13 @@ class MailboxOtpService:
         *,
         resend_fn: Callable[[], None] | None = None,
         resend_after_seconds: float = 12.0,
+        stop_requested: Callable[[], bool] | None = None,
     ) -> str:
         self._stage(stage_code)
+        stage_key = str(stage_code or self.current_stage or "email_code_waiting")
+        used_codes = self.used_codes_by_stage.setdefault(stage_key, set())
+        used_identities = self.used_identities_by_stage.setdefault(stage_key, set())
+        code_identities = self.used_code_identities_by_stage.setdefault(stage_key, {})
         if not self.state.active:
             self.prepare(stage_code)
         maximum = max(1, int(self.timeout_seconds / self.poll_interval_seconds))
@@ -606,6 +667,13 @@ class MailboxOtpService:
         last_error: MailboxOtpError | None = None
         successful_scan = False
         while self.monotonic_fn() < deadline:
+            if callable(stop_requested) and bool(stop_requested()):
+                self.state.finish_request()
+                raise MailboxOtpError(
+                    "mailbox_wait_stopped",
+                    "邮箱验证码轮询已按任务停止请求中断",
+                    retryable=False,
+                )
             try:
                 selection = self.state.snapshot()
                 successful_scan = True
@@ -616,8 +684,13 @@ class MailboxOtpService:
                 raise last_error from exc
             if selection is not None:
                 code = str(selection.code or "").strip()
-                if code and code not in self.used_codes:
-                    self.used_codes.add(code)
+                identity = str(selection.identity or "").strip()
+                is_new_message = bool(identity and identity not in used_identities)
+                if code and (code not in used_codes or is_new_message):
+                    used_codes.add(code)
+                    used_identities.add(identity) if identity else None
+                    code_identities.setdefault(code, set()).add(identity or "__value__")
+                    self._last_returned_by_stage[stage_key] = (code, identity)
                     self.state.finish_request()
                     return code
                 if code:
@@ -647,7 +720,24 @@ class MailboxOtpService:
                     )
             remaining = deadline - self.monotonic_fn()
             if remaining > 0:
-                self.sleep_fn(min(self.poll_interval_seconds, remaining))
+                delay = min(self.poll_interval_seconds, remaining)
+                if callable(stop_requested):
+                    # Bound stop latency even when the configured poll interval
+                    # is large. Fake clocks still advance through sleep_fn.
+                    slept = 0.0
+                    while slept < delay:
+                        if bool(stop_requested()):
+                            self.state.finish_request()
+                            raise MailboxOtpError(
+                                "mailbox_wait_stopped",
+                                "邮箱验证码轮询已按任务停止请求中断",
+                                retryable=False,
+                            )
+                        chunk = min(0.25, delay - slept)
+                        self.sleep_fn(chunk)
+                        slept += chunk
+                else:
+                    self.sleep_fn(delay)
 
         try:
             fallback = self.state.final_baseline_fallback()
@@ -656,8 +746,13 @@ class MailboxOtpService:
             last_error = mailbox_error_from_url_error(exc, self.diagnostic())
         if fallback is not None:
             code = str(fallback.code or "").strip()
-            if code and code not in self.used_codes:
-                self.used_codes.add(code)
+            identity = str(fallback.identity or "").strip()
+            is_new_message = bool(identity and identity not in used_identities)
+            if code and (code not in used_codes or is_new_message):
+                used_codes.add(code)
+                used_identities.add(identity) if identity else None
+                code_identities.setdefault(code, set()).add(identity or "__value__")
+                self._last_returned_by_stage[stage_key] = (code, identity)
                 self._log_diagnostic(force=True)
                 self.state.finish_request()
                 return code
@@ -781,8 +876,10 @@ def legacy_wait_code(
     """Run the recovered URL provider through the shared state and diagnostics."""
     provider = getattr(otp_provider, "provider", None)
     service = _runtime_service(provider)
+    stage_key = str(getattr(service, "current_stage", "email_code_waiting") or "email_code_waiting")
+    stage_used_codes = getattr(service, "used_codes_by_stage", {}).setdefault(stage_key, set())
     used_codes = set(getattr(otp_provider, "_gptphone_used_email_otp_codes", ()) or ())
-    used_codes.update(service.used_codes)
+    used_codes.update(stage_used_codes)
     configure_runtime_request(provider, max_poll_attempts=max_poll_attempts)
     original_timeout = getattr(otp_provider, "timeout", None)
     original_interval = getattr(otp_provider, "interval", None)
@@ -832,7 +929,7 @@ def legacy_wait_code(
             )
         if normalized:
             used_codes.add(normalized)
-            service.used_codes.add(normalized)
+            stage_used_codes.add(normalized)
             setattr(otp_provider, "_gptphone_used_email_otp_codes", used_codes)
             code = normalized
     finally:

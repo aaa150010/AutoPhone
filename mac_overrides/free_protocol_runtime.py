@@ -10,6 +10,8 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import os
+from pathlib import Path
 import re
 import secrets
 import threading
@@ -18,6 +20,7 @@ from typing import Any, Callable, Mapping
 
 try:
     from .free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider
+    from .free_protocol_flow import run_free_protocol_flow
     from .free_register_common import (
         FIXED_PASSWORD,
         FreeRegisterError,
@@ -30,6 +33,7 @@ try:
     )
 except ImportError:
     from free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider  # type: ignore[no-redef]
+    from free_protocol_flow import run_free_protocol_flow  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
         FIXED_PASSWORD, FreeRegisterError, FreeTwoFaPending,
         plus_trial_from_accounts as _plus_trial_from_accounts,
@@ -41,6 +45,214 @@ except ImportError:
 
 class FreeProtocolMixin:
     """Protocol driver methods mixed into ``FreeRegisterManager``."""
+
+    _REGISTRATION_COMPLETION_FIELDS = frozenset({
+        "registration_completed", "signup_completed", "account_created",
+        "account_creation_completed", "oauth_callback_completed",
+        "callback_completed", "oauth_code_received", "local_oauth_exchange_ok",
+        "local_token_ready", "access_token_present", "token_present", "phase2_ok",
+    })
+
+    @staticmethod
+    def resolve_node_runner(config: Mapping[str, Any] | None = None) -> str:
+        """Resolve the explicit or bundled SentinelRunner without starting it."""
+        value = config if isinstance(config, Mapping) else {}
+        protocol = value.get("protocol") if isinstance(value.get("protocol"), Mapping) else {}
+        node_config = value.get("node") if isinstance(value.get("node"), Mapping) else {}
+        app_dir = Path(__file__).resolve().parent.parent
+        def existing(candidate: Any) -> str:
+            text = str(candidate or "").strip()
+            if not text:
+                return ""
+            path = Path(text).expanduser()
+            try:
+                if path.is_file() and path.stat().st_size > 0:
+                    return str(path.resolve())
+            except OSError:
+                return ""
+            return ""
+
+        # An explicit path is authoritative. Falling back to an unrelated
+        # cached runner when this path is stale makes the UI claim a valid
+        # configuration while the worker uses a different runtime.
+        configured = (
+            protocol.get("node_runner") or value.get("codex_node_runner")
+            or value.get("node_runner") or node_config.get("runner")
+        )
+        if str(configured or "").strip():
+            return existing(configured)
+        environment_runner = os.environ.get("CODEX_NODE_RUNNER")
+        if str(environment_runner or "").strip():
+            return existing(environment_runner)
+
+        # start.command prepares this stable symlink (or copy) before Flask
+        # starts. Keep preflight and the worker on the same path.
+        candidates = [
+            app_dir / "engine" / "node_chain" / "real_sentinel_runner.js",
+            app_dir / "data" / "cache" / "PlusBindTool" / "node_chain" / "real_sentinel_runner.js",
+            app_dir / "external_assets" / "real_sentinel_runner.js",
+        ]
+        data_root = Path(os.environ.get("GPTPHONE_DATA_DIR") or (app_dir / "data")).expanduser()
+        for chain_root in (
+            data_root / "cache" / "PlusBindTool" / "node_chain",
+            app_dir / "data" / "cache" / "PlusBindTool" / "node_chain",
+        ):
+            if chain_root.is_dir():
+                candidates.extend(sorted(chain_root.glob("*/real_sentinel_runner.js"), reverse=True))
+        for candidate in candidates:
+            resolved = existing(candidate)
+            if resolved:
+                return resolved
+        return ""
+
+    @classmethod
+    def protocol_preflight(cls, config: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        """Validate Node and SentinelRunner before any mailbox/proxy work starts."""
+        runner = cls.resolve_node_runner(config)
+        if not runner:
+            raise FreeRegisterError(
+                "oauth_create_node", "初始化 Node/Sentinel",
+                "SentinelRunner 文件缺失或路径无效，请配置 protocol.node_runner",
+                retryable=False, error_code="node_runner_missing",
+            )
+        try:
+            from .node_runtime import configure_node_runtime
+        except ImportError:
+            from node_runtime import configure_node_runtime  # type: ignore[no-redef]
+        node = configure_node_runtime()
+        if not node:
+            raise FreeRegisterError(
+                "oauth_create_node", "初始化 Node/Sentinel",
+                "未找到可执行的 Node.js，无法启动 SentinelRunner",
+                retryable=False, error_code="node_runtime_missing",
+            )
+        try:
+            import codex_node_bridge
+            protocol_config = (config or {}).get("protocol") if isinstance((config or {}).get("protocol"), Mapping) else {}
+            result = codex_node_bridge.run_node_bridge(
+                mode="diagnostic", device_id="free-preflight",
+                proxy_label="preflight", proxy="", fingerprint={},
+                flow="chat-requirements", persona="chatgpt-noauth",
+                script_path=runner, context={"free_preflight": True},
+                timeout=max(5, min(60, int(
+                    protocol_config.get("sentinel_timeout") or 30
+                ))),
+            )
+        except Exception as exc:
+            raise FreeRegisterError(
+                "oauth_create_node", "初始化 Node/Sentinel",
+                f"SentinelRunner 诊断启动失败（{type(exc).__name__}）",
+                retryable=False, error_code="node_sentinel_preflight_failed",
+            ) from exc
+        if not isinstance(result, Mapping) or not result.get("ok"):
+            detail = str(result.get("error") or "未返回诊断详情") if isinstance(result, Mapping) else "未返回有效诊断结果"
+            raise FreeRegisterError(
+                "oauth_create_node", "初始化 Node/Sentinel",
+                f"SentinelRunner 诊断失败：{_safe_log_message(detail)}",
+                retryable=False, error_code="node_sentinel_preflight_failed",
+            )
+        return {"driver": "protocol", "node": str(node), "runner": runner, "sentinel": "available"}
+
+    @staticmethod
+    def _protocol_result(raw_result: Any) -> dict[str, Any]:
+        """Validate the recovered chain result without changing its node identity."""
+        if not isinstance(raw_result, Mapping) or not raw_result:
+            raise FreeRegisterError(
+                "free_protocol_result", "读取 Free 协议注册结果",
+                "协议注册链路未返回结果，未进入 Token 节点",
+                error_code="free_protocol_result_empty",
+            )
+        result = dict(raw_result)
+        ok_marker = result.get("ok")
+        explicit_failure = (
+            isinstance(ok_marker, bool) and not ok_marker
+        ) or (
+            isinstance(ok_marker, (int, float)) and not isinstance(ok_marker, bool)
+            and ok_marker == 0
+        ) or (
+            isinstance(ok_marker, str)
+            and ok_marker.strip().casefold() in {
+                "false", "0", "no", "failed", "failure", "error",
+            }
+        )
+        if explicit_failure:
+            detail = _safe_log_message(result.get("error") or "协议注册链路返回失败")
+            node_code = str(result.get("node_code") or result.get("stage") or "")
+            if not node_code:
+                lowered = detail.casefold()
+                if any(marker in lowered for marker in ("node_sentinel", "sentinelrunner", "sentinel runner", "node bridge")):
+                    node_code = "oauth_create_node"
+                elif "callback" in lowered:
+                    node_code = "free_oauth_callback"
+                elif "otp" in lowered or "verification code" in lowered:
+                    node_code = "free_email_otp_validate"
+                elif "token" in lowered:
+                    node_code = "free_access_token"
+                else:
+                    node_code = "free_protocol_result"
+            node_label = str(result.get("node_label") or "").strip()
+            if not node_label:
+                node_label = "初始化 Node/Sentinel" if node_code == "oauth_create_node" else "Free 协议注册"
+            raise FreeRegisterError(
+                node_code, node_label, detail,
+                provider_status=result.get("provider_status") or result.get("http_status"),
+                error_code=str(result.get("error_code") or f"{node_code}_failed"),
+            )
+        token_present = bool(str(result.get("access_token") or result.get("token") or "").strip())
+        if token_present and not FreeProtocolMixin._registration_completion_confirmed(result):
+            raise FreeRegisterError(
+                "free_protocol_result", "读取 Free 协议注册结果",
+                "协议结果包含 Token，但未确认账号创建或 OAuth 回调已完成，已停止继续使用该 Token",
+                retryable=False,
+                error_code="free_registration_completion_unconfirmed",
+            )
+        return result
+
+    @classmethod
+    def _registration_completion_confirmed(cls, result: Mapping[str, Any]) -> bool:
+        """Return whether the recovered chain explicitly reached completion.
+
+        A truthy mapping is not enough: the recovered runtime can return a
+        diagnostic/error envelope with ``ok`` set while no account was ever
+        created. Token fallback is allowed only after a completion marker or
+        an already-present token.
+        """
+        def marker(value: Any) -> bool:
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, (int, float)):
+                return value != 0
+            if isinstance(value, str):
+                return value.strip().casefold() in {
+                    "1", "true", "yes", "y", "ok", "success", "completed", "complete",
+                }
+            return False
+
+        if any(marker(result.get(field)) for field in cls._REGISTRATION_COMPLETION_FIELDS):
+            return True
+        status = str(result.get("phase2_status") or result.get("status") or "").strip().lower()
+        return status in {"uploaded", "completed", "complete", "success", "succeeded", "ready"}
+
+    @staticmethod
+    def _classify_protocol_exception(exc: BaseException) -> FreeRegisterError:
+        """Preserve the first recovered protocol node in public task state."""
+        detail = _safe_log_message(exc) or type(exc).__name__
+        text = detail.lower()
+        rules = (
+            (("sentinelrunner", "node sentinel", "node_runner", "node bridge"), "oauth_create_node", "初始化 Node/Sentinel", "node_sentinel_failed"),
+            (("email otp", "signup_email_otp", "email_verification", "verification code"), "free_email_otp_validate", "验证 Free 邮箱验证码", "free_email_otp_failed"),
+            (("register_user", "register failed", "submit email", "email identifier"), "free_email_identifier", "识别 Free 注册邮箱", "free_email_identifier_failed"),
+            (("create_account", "account profile", "profile"), "free_account_create", "创建 Free 账号", "free_account_create_failed"),
+            (("oauth callback", "oauth_callback", "callback"), "free_oauth_callback", "Free OAuth 回调", "free_oauth_callback_failed"),
+            (("access token", "access_token", "token exchange"), "free_access_token", "获取 Free access token", "free_access_token_failed"),
+        )
+        for needles, node_code, node_label, error_code in rules:
+            if any(needle in text for needle in needles):
+                return FreeRegisterError(node_code, node_label, detail, error_code=error_code)
+        return FreeRegisterError(
+            "free_protocol_result", "读取 Free 协议注册结果", detail,
+            error_code="free_protocol_result_failed",
+        )
 
     @staticmethod
     def _totp_code(secret: str, now: float | None = None) -> str:
@@ -63,28 +275,44 @@ class FreeProtocolMixin:
         email = str(task["email"])
         proxy = str(task["proxy"])
         password = FIXED_PASSWORD
-        stage(task_id, "free_twofa_enroll" if twofa_retry else "free_oauth_session")
-        oauth_url, code_verifier, _state = codex_chain_runner.build_oauth_url(login_hint=email, screen_hint="signup")
-        parsed = codex_oauth_chain.parse_oauth_url(oauth_url)
+        stage(task_id, "free_twofa_enroll" if twofa_retry else "oauth_create_node")
+        resolved_runner = self.resolve_node_runner(config)
+        if not resolved_runner:
+            raise FreeRegisterError(
+                "oauth_create_node", "初始化 Node/Sentinel",
+                "SentinelRunner 文件缺失或路径无效，请配置 protocol.node_runner",
+                retryable=False, error_code="node_runner_missing",
+            )
+        def build_oauth_context() -> dict[str, Any]:
+            oauth_url, state, code_verifier = codex_chain_runner.build_oauth_url(
+                login_hint=email,
+                screen_hint="signup",
+            )
+            params = codex_oauth_chain.parse_oauth_url(oauth_url)
+            return {
+                "url": oauth_url,
+                "params": params,
+                "state": state,
+                "code_verifier": code_verifier,
+                "client_id": str(params.get("client_id") or ""),
+                "redirect_uri": str(params.get("redirect_uri") or ""),
+            }
+
+        oauth_context = build_oauth_context()
         device_id = str(task.get("device_id") or f"free-{secrets.token_hex(16)}")
-        sentinel = codex_oauth_chain.RealNodeSentinelProvider(config=dict(config), device_id=device_id, proxy_label=str(task.get("proxy_fingerprint") or ""), proxy=proxy, log_fn=log)
-        otp_provider = build_free_mailbox_otp_provider(
-            str(task["mailbox_url"]), proxy, config,
-            log_fn=log, task_id=task_id, stage_fn=stage,
-        )
         chain_config = dict(config)
-        protocol_config = config.get("protocol") if isinstance(config.get("protocol"), Mapping) else {}
-        chain_config["codex_node_runner"] = str(
-            protocol_config.get("node_runner")
-            or config.get("codex_node_runner")
-            or config.get("node_runner")
-            or (config.get("node") or {}).get("runner")
-            or ""
-        ).strip()
+        chain_config["codex_node_runner"] = resolved_runner
         chain_config.update({
             "run_mode": "free_register",
             "codex_chain_mode": "real",
-            "run_chatgpt_signup_phase": True,
+            # Free protocol uses the authorize/continue state machine below;
+            # the recovered NextAuth + user/register prelude is intentionally
+            # disabled because it can retain a stale sign-in session.
+            "run_chatgpt_signup_phase": False,
+            # Free owns session rebuild and security-page stopping. The
+            # recovered transport uses this marker to disable its hidden
+            # retry/fingerprint fallback for this workflow only.
+            "free_protocol_state_machine": True,
             "free_register_no_phone": True,
             "phone_max_attempts": 1,
             "code_timeout": int(config.get("email_code_timeout") or 90),
@@ -92,6 +320,40 @@ class FreeProtocolMixin:
             "_auth_account_email": email,
             "register": {"password": password, "name": random_display_name(), "birthdate": random_birthdate()},
         })
+        # Do not let the recovered transport silently rotate browser
+        # fingerprints after a Cloudflare/security page. Free treats that as
+        # a hard risk stop; choose only the first configured impersonation.
+        impersonates = chain_config.get("auth_impersonates")
+        if not isinstance(impersonates, list) or not impersonates:
+            impersonates = chain_config.get("chatgpt_impersonates")
+        first_impersonate = "chrome"
+        if isinstance(impersonates, list):
+            for candidate in impersonates:
+                if str(candidate or "").strip():
+                    first_impersonate = str(candidate).strip()
+                    break
+        chain_config["auth_impersonates"] = [first_impersonate]
+
+        # The recovered provider reads the runner from the top-level chain
+        # configuration. Passing only the nested Free config made a valid
+        # runner invisible once the task worker was started.
+        def make_sentinel() -> Any:
+            """Create request-scoped Sentinel state for each OAuth transport.
+
+            A Sentinel response is tied to the authorization request that
+            consumed it. Reusing the provider after an OAuth session rebuild
+            can therefore replay an expired token even though the HTTP
+            cookies and PKCE context were refreshed.
+            """
+            created = codex_oauth_chain.RealNodeSentinelProvider(
+                config=chain_config, device_id=device_id,
+                proxy_label=str(task.get("proxy_fingerprint") or ""), proxy=proxy, log_fn=log,
+            )
+            return created
+        otp_provider = build_free_mailbox_otp_provider(
+            str(task["mailbox_url"]), proxy, chain_config,
+            log_fn=log, task_id=task_id, stage_fn=stage,
+        )
 
         def reject_phone(*_args: Any, **_kwargs: Any) -> Any:
             raise FreeRegisterError("free_phone_required", "Free 注册手机号节点", "Free 注册流程要求手机号，未调用接码平台")
@@ -99,11 +361,26 @@ class FreeProtocolMixin:
         class NoPhoneProvider:
             get_number = staticmethod(reject_phone)
 
-        transport = codex_oauth_chain.RealCodexTransport(
-            chain_config, oauth_params=parsed, proxy=proxy,
-            sentinel_provider=sentinel, device_id=device_id, log_fn=log,
-        )
-        self._instrument_transport(transport, task_id, stage)
+        transport_ref: dict[str, Any] = {}
+
+        def make_transport() -> Any:
+            sentinel = make_sentinel()
+            created = codex_oauth_chain.RealCodexTransport(
+                chain_config, oauth_params=oauth_context["params"], proxy=proxy,
+                sentinel_provider=sentinel, device_id=device_id, log_fn=log,
+            )
+            setattr(created, "_gptphone_free_protocol_state_machine", True)
+            transport_ref["current"] = created
+            self._instrument_transport(created, task_id, stage)
+            return created
+
+        def rebuild_oauth_context() -> Mapping[str, Any]:
+            refreshed = build_oauth_context()
+            oauth_context.clear()
+            oauth_context.update(refreshed)
+            return dict(oauth_context)
+
+        transport = make_transport()
         try:
             if twofa_retry:
                 saved = self.pool.result(str(task["row_id"]))
@@ -118,20 +395,32 @@ class FreeProtocolMixin:
                     result["credential_line"] = f"{email}----{result['password']}----{result['totp_secret']}"
                 return result
 
-            stage(task_id, "free_email_identifier")
-            result = codex_oauth_chain.run_codex_after_registration(
-                oauth_url=oauth_url, code_verifier=code_verifier,
-                account_email=email, password=password, config=chain_config,
-                proxy=proxy, email_proxy=otp_provider.network_policy.effective_proxy, log_fn=log, mode="real",
-                transport=transport, sentinel_provider=sentinel,
-                email_otp_provider=otp_provider, phone_otp_provider=NoPhoneProvider(),
-            )
-            token = str((result or {}).get("access_token") or (result or {}).get("token") or "")
+            try:
+                raw_result, transport = run_free_protocol_flow(
+                    transport,
+                    transport_factory=make_transport,
+                    oauth_context=dict(oauth_context),
+                    oauth_context_factory=rebuild_oauth_context,
+                    email=email,
+                    password=password,
+                    otp_provider=otp_provider,
+                    task_id=task_id,
+                    stage=stage,
+                    log=log,
+                    stop_requested=stop_event.is_set,
+                )
+            except FreeRegisterError:
+                raise
+            except Exception as exc:
+                raise self._classify_protocol_exception(exc) from exc
+            result = self._protocol_result(raw_result)
+            token = str(result.get("access_token") or result.get("token") or "")
             if not token:
-                stage(task_id, "free_access_token")
-                token = str(transport.chatgpt_access_token() or "")
-            if not token:
-                raise FreeRegisterError("free_access_token", "获取 Free access token", "注册完成但未返回 access token")
+                raise FreeRegisterError(
+                    "free_access_token", "获取 Free access token",
+                    "OAuth Token 交换结果未包含 access token",
+                    error_code="free_access_token_missing",
+                )
             stage(task_id, "free_plan_check")
             try:
                 plan_type, eligible = self._plan_check(transport, token)
@@ -173,10 +462,15 @@ class FreeProtocolMixin:
                 twofa["credential_line"] = f"{email}----{password}----{twofa['totp_secret']}"
             return twofa
         finally:
-            otp_close = getattr(otp_provider, "close", None)
-            if callable(otp_close):
-                otp_close()
-            self._close_transport(transport)
+            try:
+                otp_close = getattr(otp_provider, "close", None)
+                if callable(otp_close):
+                    try:
+                        otp_close()
+                    except Exception as exc:
+                        log(f"邮箱 OTP 客户端清理失败（{type(exc).__name__}），不覆盖原任务结果", "warn")
+            finally:
+                self._close_transport(transport_ref.get("current") or transport)
 
     @staticmethod
     def _instrument_transport(transport: Any, task_id: str, stage: Callable[[str, str], None]) -> None:
@@ -185,8 +479,10 @@ class FreeProtocolMixin:
             "register_user": "free_email_identifier",
             "verify_password": "free_email_password",
             "send_email_otp": "free_email_otp_wait",
+            "send_mfa_otp": "free_existing_login_otp",
             "verify_signup_email_otp": "free_email_otp_validate",
             "verify_email_otp": "free_email_otp_validate",
+            "verify_mfa_otp": "free_email_otp_validate",
             "create_account_profile": "free_account_create",
             "complete_chatgpt_callback": "free_oauth_callback",
             "follow_continue_until_code": "free_oauth_callback",
@@ -271,13 +567,35 @@ class FreeProtocolMixin:
             send_mfa_otp = getattr(transport, "send_mfa_otp", None)
             verify_mfa_otp = getattr(transport, "verify_mfa_otp", None)
             if callable(send_mfa_otp) and callable(verify_mfa_otp):
-                stage(task_id, "free_email_otp_wait")
+                stage(task_id, "free_twofa_enroll")
+                mailbox_service = getattr(otp_provider, "service", None)
+                mailbox_state = getattr(mailbox_service, "state", None)
+                finish_mailbox_request = getattr(mailbox_state, "finish_request", None)
+                if callable(finish_mailbox_request) and bool(getattr(mailbox_state, "active", False)):
+                    finish_mailbox_request()
+                prepare_mailbox_request = getattr(otp_provider, "prepare", None)
+                if callable(prepare_mailbox_request):
+                    # 2FA enrollment is a separate mailbox phase. Force a
+                    # request-time baseline so a registration OTP with the
+                    # same value cannot satisfy the second challenge.
+                    try:
+                        prepare_mailbox_request("free_twofa_enroll", force_snapshot=True)
+                    except TypeError as exc:
+                        if "force_snapshot" not in str(exc):
+                            raise
+                        prepare_mailbox_request("free_twofa_enroll")
                 sent = send_mfa_otp("")
                 status = int((sent or {}).get("_status") or (sent or {}).get("status_code") or 0) if isinstance(sent, Mapping) else 0
                 if status >= 400:
                     raise ValueError(f"重新认证 OTP 发送返回 HTTP {status}")
-                otp_provider.mark_sent()
-                code = otp_provider.wait_code(str(task.get("email") or ""))
+                otp_provider.mark_sent("free_twofa_enroll")
+                try:
+                    code = otp_provider.wait_code(
+                        str(task.get("email") or ""),
+                        stage_code="free_twofa_enroll",
+                    )
+                except TypeError:
+                    code = otp_provider.wait_code(str(task.get("email") or ""))
                 stage(task_id, "free_email_otp_validate")
                 verified = verify_mfa_otp(code)
                 verified_status = int((verified or {}).get("_status") or (verified or {}).get("status_code") or 0) if isinstance(verified, Mapping) else 0

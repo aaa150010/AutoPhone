@@ -13,11 +13,43 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.39',
-  freeRuntimeVersion: '1.6.39',
-  title: 'Free Roxy 无头启动稳定性修复',
-  releasedAt: '2026-08-22',
+  version: '1.6.44',
+  freeRuntimeVersion: '1.6.44',
+  title: 'Free 全协议会话与验证码链路修复',
+  releasedAt: '2026-08-23',
   sections: [
+    {
+      title: 'Free 全协议会话重建',
+      usage: '全协议改为全新 OAuth 会话后再提交邮箱，按服务端页面状态处理注册、已有账号登录、邮箱验证码、资料和 OAuth 回调。登录会话失效或返回普通 HTML 时最多重建一次；安全验证会明确停止，不会误报为 Token 获取失败。',
+    },
+    {
+      title: 'OTP 阶段隔离',
+      usage: '注册邮箱验证码、已有账号登录验证码和 2FA 验证码分别维护基线与已用消息。同一个验证码值如果来自请求后的新邮件仍可使用，只有同一阶段同一封邮件才会被排除。',
+    },
+    {
+      title: '套餐复核阶段修正',
+      usage: 'Free 注册完成后会单独查询套餐、订阅状态和 Plus 试用资格；普通接码流程不再执行套餐门禁，也不会因为套餐接口不可用而阻止手机号申请。',
+    },
+    {
+      title: 'Roxy 临时窗口自动释放',
+      usage: '每个临时 Profile 会记录批次、任务和 FreeRegister 归属标记。创建超时、异步打开或删除失败时会在启动、预检和批次结束自动找回并重试关闭、连接消失确认和删除；无法确认归属的窗口不会自动删除。窗口额度不足会单独提示并停止继续创建；存在待回收 Profile 时，Free 注册中心与运行配置会显示警告数量。',
+    },
+    {
+      title: 'Free 代理探测兼容修复',
+      usage: '旧配置中的 ipinfo.io/ip 会按历史默认值迁移到更稳定的 api.ipify.org；明确填写的自定义探测地址（包括 ipinfo.io/json）保持不变。预检支持纯文本 IP、ip 字段 JSON 和嵌套结果，遇到 SOCKS5 CONNECT 错误会保留严格探测与兼容重试的完整诊断，不会换代理、切协议或直连。',
+    },
+    {
+      title: 'Free 代理预检兼容修复',
+      usage: '预检先使用严格 TLS 证书校验；遇到明确的 TLS、证书或 CONNECT 兼容错误时，会在同一代理、同一协议和同一探测地址上进行一次兼容重试，不会换代理、切协议、回退本机 Clash 或直连。错误摘要会区分代理认证、域名解析、超时和 TLS 握手，代理明细会记录本次使用的严格或兼容模式。',
+    },
+    {
+      title: '验证码页面与协议完成状态',
+      usage: 'Roxy 验证码页兼容延迟渲染、单框/六格输入和多窗口认证页；提交请求会按账号记录安全状态，控件未提交时在同一 Profile 刷新并复用验证码，实际提交后的旧码不会再次使用。全协议结果只有明确完成 OAuth/账号创建后才读取 Token，字符串 false 等诊断标记不会被误判为成功。',
+    },
+    {
+      title: '协议注册与 Roxy 验证状态修复',
+      usage: '全协议启动前会先检查 Node/SentinelRunner，缺少运行依赖时不会导入邮箱、租用代理或启动任务；协议链路未明确完成 OAuth 回调/账号创建时不会误进入 access token 阶段。Roxy 验证码页面会选择同一 Profile 的真实 OpenAI 活动窗口，兼容延迟渲染、六格输入、同源 shadow DOM 和同源 iframe；控件尚未提交时先刷新当前页面并复用已取得验证码，只有实际提交后才排除旧码。',
+    },
     {
       title: 'RoxyBrowser 无头启动不重复闪现',
       usage: 'Profile 创建阶段保持延迟启动；无头设置只传给已确认支持的 /browser/open 接口，并固定使用 forceOpen=false。打开前先通过同一 Profile 的 connection_info 对账，已经异步启动的环境会直接复用，不会再次调用打开接口；连接信息最多等待 15 秒，不会重复打开窗口。日志会显示实际 headless 和 forceOpen 参数；如果本机 Roxy 版本忽略无头参数，也能从日志明确定位。',
@@ -355,8 +387,8 @@ export const currentRelease: ReleaseNotes = {
       usage: '运行中心不再选择或初始化 NV、Pixel 上传队列、批次和重试；历史数据保留。账号管理菜单及对应页面已移除，原有接码/OAuth 注册、Token 保存和日志继续保留。',
     },
     {
-      title: 'Free 账号默认不再付费接码',
-      usage: '只有流程进入手机号验证、准备向接码平台取号时才检查套餐：默认拦截 free 和套餐无法确认的账号，Plus、Team、K12、Pro 等非 free 套餐继续接码；无需手机号即可完成 OAuth 的 free 账号不受影响。需要忽略套餐时，可在 SMS 接码设置中开启“允许 free 账号接码”。',
+      title: '普通接码恢复原有手机号流程',
+      usage: '普通接码不再在申请手机号前查询 ChatGPT 套餐，也不会因为套餐接口不可用而阻止取号；Free 注册完成后的套餐、Plus 资格和额度查询仍保持在 Free 独立链路中。',
     },
     {
       title: '支持 mail-code 取件格式',

@@ -81,18 +81,111 @@ def _element_attrs(element: Any) -> str:
     )
 
 
+def _element_identity(element: Any) -> tuple[str, str]:
+    """Return a WebDriver identity that survives JS and CSS wrapper changes."""
+    for name in ("id", "_id"):
+        try:
+            value = getattr(element, name, None)
+            if value:
+                return name, str(value)
+        except Exception:
+            pass
+    return "python", str(id(element))
+
+
 def _find_all(driver: Any, selector: str) -> list[Any]:
+    found: list[Any] = []
     try:
         # Avoid importing Selenium at module import time: the configuration and
         # preflight pages can run in environments where Selenium is absent.
         from selenium.webdriver.common.by import By
 
-        return list(driver.find_elements(By.CSS_SELECTOR, selector) or [])
+        found = list(driver.find_elements(By.CSS_SELECTOR, selector) or [])
     except Exception:
         try:
-            return list(driver.find_elements("css selector", selector) or [])
+            found = list(driver.find_elements("css selector", selector) or [])
         except Exception:
-            return []
+            found = []
+    # React auth pages have used an open shadow root and a same-origin iframe
+    # for the verification form.  Query only same-origin DOM trees; a
+    # cross-origin frame is intentionally ignored by the browser sandbox.
+    try:
+        result = driver.execute_script(
+            """
+            const selector = arguments[0];
+            const output = [];
+            const seen = new Set();
+            const visit = root => {
+              if (!root || !root.querySelectorAll) return;
+              for (const el of root.querySelectorAll(selector)) {
+                if (!seen.has(el)) { seen.add(el); output.push(el); }
+                if (el.shadowRoot) visit(el.shadowRoot);
+              }
+              for (const host of root.querySelectorAll('*')) {
+                if (host.shadowRoot) visit(host.shadowRoot);
+              }
+              for (const frame of root.querySelectorAll('iframe')) {
+                try { if (frame.contentDocument) visit(frame.contentDocument); } catch (_) {}
+              }
+            };
+            visit(document);
+            return output.slice(0, 64);
+            """,
+            selector,
+        ) or []
+        if isinstance(result, list):
+            seen_ids = {_element_identity(item) for item in found}
+            for item in result:
+                if item is None:
+                    continue
+                identity = _element_identity(item)
+                if identity not in seen_ids:
+                    seen_ids.add(identity)
+                    found.append(item)
+    except Exception:
+        pass
+    return found
+
+
+def _select_active_auth_window(driver: Any, log: LogFn | None = None) -> None:
+    """Select the OpenAI auth target among concurrently opened Roxy tabs."""
+    try:
+        handles = list(getattr(driver, "window_handles", []) or [])
+        switch = getattr(getattr(driver, "switch_to", None), "window", None)
+        if len(handles) <= 1 or not callable(switch):
+            return
+        current = str(getattr(driver, "current_window_handle", "") or "")
+        scored: list[tuple[int, str]] = []
+        for handle in handles:
+            try:
+                switch(handle)
+                url = str(getattr(driver, "current_url", "") or "").casefold()
+                score = 0
+                if "auth.openai.com" in url:
+                    score += 50
+                if any(path in url for path in ("/email-verification", "/email-otp")):
+                    score += 40
+                if any(path in url for path in ("/log-in", "/sign-up", "/authorize")):
+                    score += 15
+                if "chatgpt.com" in url:
+                    score += 5
+                if score:
+                    scored.append((score, str(handle)))
+            except Exception:
+                continue
+        if scored:
+            selected = max(scored, key=lambda item: item[0])[1]
+            switch(selected)
+            if selected != current:
+                _log(log, f"已选择 OpenAI 活动认证窗口（窗口数={len(handles)}，页面={safe_page_location(driver)}）")
+        elif current in handles:
+            switch(current)
+        elif handles:
+            # If Selenium cannot report the original handle, do not leave the
+            # driver on whichever tab happened to be visited last.
+            switch(handles[0])
+    except Exception:
+        pass
 
 
 def _is_otp_candidate(element: Any) -> bool:
@@ -122,6 +215,11 @@ def _page_state(driver: Any) -> str:
 
 def find_otp_inputs(driver: Any) -> list[Any]:
     """Return visible, editable OTP inputs in DOM order."""
+    # Roxy can leave a stale tab selected while the auth tab is rendering.
+    # Re-select the current live handle only when Selenium reports that the
+    # current handle is no longer valid; this is best-effort and side-effect
+    # free for normal single-window runs.
+    _select_active_auth_window(driver)
     fields = [element for element in _find_all(driver, "input") if _is_otp_candidate(element)]
     if len(fields) > 6:
         # Keep the most likely group and avoid unrelated numeric controls.
@@ -133,10 +231,15 @@ def find_otp_inputs(driver: Any) -> list[Any]:
 def _safe_input_summary(driver: Any) -> dict[str, Any]:
     fields = find_otp_inputs(driver)
     invalid = sum(_attr(field, "aria-invalid").casefold() == "true" for field in fields)
+    try:
+        handles = len(list(getattr(driver, "window_handles", []) or []))
+    except Exception:
+        handles = 0
     return {
         "input_count": len(fields),
         "invalid_count": invalid,
         "url": safe_page_location(driver),
+        "window_count": handles,
     }
 
 
@@ -146,6 +249,7 @@ def wait_for_otp_input(driver: Any, timeout: int = 30, log: LogFn | None = None)
     deadline = started + max(0.5, float(timeout or 30))
     last_count = -1
     while time.monotonic() < deadline:
+        _select_active_auth_window(driver, log)
         state = _page_state(driver)
         if state == "security":
             raise FreeRegisterError(
@@ -171,7 +275,8 @@ def wait_for_otp_input(driver: Any, timeout: int = 30, log: LogFn | None = None)
     elapsed = int((time.monotonic() - started) * 1000)
     raise FreeRegisterError(
         "free_email_otp_validate", "验证 Free 邮箱验证码",
-        f"等待验证码输入框超时（{elapsed}ms，inputs={summary['input_count']}，{summary['url']}）",
+        f"等待验证码输入框超时（{elapsed}ms，inputs={summary['input_count']}，"
+        f"windows={summary['window_count']}，{summary['url']}）",
         error_code="free_email_otp_input_wait_timeout",
     )
 
@@ -322,9 +427,11 @@ def install_otp_validate_probe(driver: Any) -> dict[str, Any]:
       window[key] = [];
       if (window.__gptphone_email_otp_validate_hooked) return {installed:true, submit_observed:false, generation};
       window.__gptphone_email_otp_validate_hooked = true;
-      for (const form of document.querySelectorAll('form')) {
-        form.addEventListener('submit', () => { window.__gptphone_email_otp_submit_observed = true; }, true);
-      }
+      // Delegate from document so delayed React forms and a refreshed OTP
+      // page are observed without installing duplicate listeners.
+      document.addEventListener('submit', () => {
+        window.__gptphone_email_otp_submit_observed = true;
+      }, true);
       const fetch0 = window.fetch;
       if (fetch0) window.fetch = async function(input, init) {
         const requestGeneration = Number(window.__gptphone_email_otp_probe_generation || generation);
@@ -475,7 +582,7 @@ def wait_after_otp_submit(driver: Any, timeout: int = 45, log: LogFn | None = No
                     )
                     last_probe_signature = probe_signature
                 if 400 <= status < 500 and status != 429:
-                    raise FreeRegisterError(
+                    error = FreeRegisterError(
                         "free_email_otp_validate", "验证 Free 邮箱验证码",
                         "邮箱验证码被认证接口拒绝",
                         provider_status=status or None,
@@ -484,34 +591,47 @@ def wait_after_otp_submit(driver: Any, timeout: int = 45, log: LogFn | None = No
                         retryable=True,
                         error_code="free_email_otp_invalid",
                     )
+                    error.otp_submitted = True
+                    raise error
                 if status == 429 or status >= 500:
-                    raise FreeRegisterError(
+                    error = FreeRegisterError(
                         "free_email_otp_validate", "验证 Free 邮箱验证码",
                         f"邮箱验证码认证接口暂时失败（HTTP {status}）",
                         provider_status=status,
                         retryable=True,
                         error_code="free_email_otp_validate_failed",
                     )
+                    error.otp_submitted = True
+                    raise error
             error = _page_error(driver)
             if error:
-                raise FreeRegisterError(
+                failure = FreeRegisterError(
                     "free_email_otp_validate", "验证 Free 邮箱验证码", error,
                     error_code="free_email_otp_invalid", retryable=True,
                 )
+                # A visible invalid/expired-code banner is emitted after the
+                # page processed the form, even when the fetch probe missed a
+                # framework-specific request wrapper.
+                failure.otp_submitted = True
+                raise failure
         time.sleep(0.5)
     elapsed = int((time.monotonic() - started) * 1000)
     probe = read_otp_validate_probe(driver)
     if not probe.get("submit_observed") and not probe.get("rows"):
-        raise FreeRegisterError(
+        failure = FreeRegisterError(
             "free_email_otp_validate", "验证 Free 邮箱验证码",
             f"验证码提交后未观察到认证请求（{elapsed}ms，{safe_page_location(driver)}）",
             error_code="free_email_otp_submit_not_observed",
         )
-    raise FreeRegisterError(
+        failure.otp_submitted = False
+        raise failure
+    failure = FreeRegisterError(
         "free_email_otp_validate", "验证 Free 邮箱验证码",
         f"验证码提交后仍停留在验证码页（{elapsed}ms，{safe_page_location(driver)}）",
         error_code="free_email_otp_transition_timeout",
     )
+    failure.otp_submitted = bool(probe.get("submit_observed") or probe.get("rows"))
+    raise failure
 
 
 def run_otp_attempts(
@@ -519,6 +639,7 @@ def run_otp_attempts(
     wait_code: OtpWaitFn,
     submit_code: OtpSubmitFn,
     restart_flow: OtpRestartFn,
+    reload_flow: OtpRestartFn | None = None,
     log: LogFn | None = None,
     max_attempts: int = 3,
 ) -> str:
@@ -532,26 +653,85 @@ def run_otp_attempts(
         "free_email_otp_code_reused",
     }
     used_codes: set[str] = set()
+    pending_code = ""
+    reload_used = False
+    # These failures happen before a real validation request. Reuse the same
+    # code once after an in-profile reload before asking the mailbox for a new
+    # message, preventing a delayed input from consuming a fresh OTP.
+    pre_submit_codes = {
+        "free_email_otp_input_wait_timeout", "free_email_otp_input_missing",
+        "free_email_otp_input_clear_failed", "free_email_otp_input_failed",
+        "free_email_otp_submit_not_observed",
+        "free_email_otp_reload_failed", "free_email_otp_reload_timeout",
+    }
     attempts = min(3, max(1, int(max_attempts or 3)))
     for attempt in range(1, attempts + 1):
         submitted_code = ""
         try:
-            submitted_code = str(wait_code(attempt) or "").strip()
+            # A page-rendering failure must not consume the code already read
+            # from the mailbox.  Reuse it after the controlled page reload.
+            submitted_code = pending_code or str(wait_code(attempt) or "").strip()
+            pending_code = ""
+            if not re.fullmatch(r"\d{6}", submitted_code):
+                raise FreeRegisterError(
+                    "free_email_otp_validate", "验证 Free 邮箱验证码",
+                    "邮箱取件返回的验证码格式无效",
+                    error_code="free_email_otp_code_invalid_format", retryable=True,
+                )
             if submitted_code in used_codes:
                 raise FreeRegisterError(
                     "free_email_otp_validate", "验证 Free 邮箱验证码",
                     "取件接口返回了本任务已经提交过的旧验证码",
                     error_code="free_email_otp_code_reused", retryable=True,
                 )
+            result = submit_code(submitted_code, attempt)
+            # Only a successful return from submit_code (which waits for a
+            # transition after the browser request) consumes the code.
             used_codes.add(submitted_code)
-            return submit_code(submitted_code, attempt)
+            return result
         except FreeRegisterError as exc:
             error_code = str(getattr(exc, "error_code", "") or "")
+            # Validation, transition and server errors happen after the
+            # browser submission has been attempted. Keep that code excluded
+            # even though submit_code raised; pre-submit input errors are the
+            # only cases eligible for same-page reuse.
+            submission_marker = getattr(exc, "otp_submitted", None)
+            actually_submitted = (
+                bool(submission_marker)
+                if submission_marker is not None
+                else error_code not in pre_submit_codes
+            )
+            if submitted_code and actually_submitted:
+                used_codes.add(submitted_code)
             can_retry = bool(getattr(exc, "retryable", True)) and (
                 error_code in retryable_codes or error_code.startswith("free_email_otp_wait_")
             )
             if not can_retry or attempt >= attempts:
                 raise
+            if submitted_code and not actually_submitted and callable(reload_flow) and not reload_used:
+                try:
+                    reload_used = True
+                    _log(log, "验证码控件未就绪或未触发提交，先在同一 Profile 原页刷新并重用当前验证码", "warn")
+                    same_page_state = reload_flow(attempt)
+                    if same_page_state == "otp":
+                        pending_code = submitted_code
+                        _log(log, "同一验证码页已恢复，下一次尝试继续复用已取得验证码", "info")
+                        continue
+                except FreeRegisterError as same_page_exc:
+                    same_page_code = str(getattr(same_page_exc, "error_code", "") or "")
+                    same_page_marker = getattr(same_page_exc, "otp_submitted", None)
+                    same_page_submitted = (
+                        bool(same_page_marker)
+                        if same_page_marker is not None
+                        else same_page_code not in pre_submit_codes
+                    )
+                    if same_page_submitted:
+                        raise
+            if submitted_code and not actually_submitted:
+                # Keep the code for the next bounded attempt.  The restart
+                # callback may rebuild the same OTP page, but it must not
+                # force a new mailbox request until a submit was observed.
+                pending_code = submitted_code
             _log(
                 log,
                 f"邮箱验证码阶段失败，准备在同一 Profile 重新触发第 {attempt + 1}/{attempts} 次"
@@ -650,6 +830,40 @@ def reopen_email_otp_flow(
     return state
 
 
+def reload_otp_page(driver: Any, timeout: int = 30, log: LogFn | None = None) -> str:
+    """Reload the current OTP page in the same Profile without requesting mail."""
+    started = time.monotonic()
+    try:
+        refresh = getattr(driver, "refresh", None)
+        if not callable(refresh):
+            raise RuntimeError("Selenium refresh 不可用")
+        refresh()
+    except Exception as exc:
+        raise FreeRegisterError(
+            "free_email_otp_input_missing", "验证 Free 邮箱验证码",
+            f"同 Profile 刷新验证码页失败（{type(exc).__name__}，{safe_page_location(driver)}）",
+            error_code="free_email_otp_reload_failed",
+        ) from exc
+    deadline = time.monotonic() + max(3, int(timeout or 30))
+    while time.monotonic() < deadline:
+        state = _page_state(driver)
+        if state == "security":
+            raise FreeRegisterError(
+                "free_roxy_challenge", "等待注册页安全验证",
+                f"刷新验证码页后进入安全验证页（{safe_page_location(driver)}）",
+                retryable=False, error_code="free_roxy_security_challenge",
+            )
+        if state == "otp":
+            _log(log, f"同 Profile 验证码页刷新完成，复用当前验证码（duration_ms={int((time.monotonic() - started) * 1000)}）", "info")
+            return state
+        time.sleep(0.35)
+    raise FreeRegisterError(
+        "free_email_otp_input_missing", "验证 Free 邮箱验证码",
+        f"同 Profile 刷新后未回到验证码页（{safe_page_location(driver)}）",
+        error_code="free_email_otp_reload_timeout",
+    )
+
+
 def fill_otp(driver: Any, code: str, human: Any | None = None) -> dict[str, Any]:
     """Clear, fill and submit one OTP without exposing its value."""
     normalized = str(code or "").strip()
@@ -700,6 +914,10 @@ def fill_otp(driver: Any, code: str, human: Any | None = None) -> dict[str, Any]
 
 __all__ = [
     "clear_otp_inputs", "fill_otp", "find_otp_inputs", "install_otp_validate_probe",
-    "read_otp_validate_probe", "reopen_email_otp_flow", "run_otp_attempts",
+    "read_otp_validate_probe", "reload_otp_page", "reopen_email_otp_flow", "run_otp_attempts",
+    "select_active_auth_window",
     "wait_after_otp_submit", "wait_for_otp_input",
 ]
+
+
+select_active_auth_window = _select_active_auth_window

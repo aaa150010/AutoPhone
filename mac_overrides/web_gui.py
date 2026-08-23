@@ -137,6 +137,7 @@ _ORIGINAL_URL_MAILBOX_MARK_SENT = _runtime.UrlMailboxOtpProvider.mark_sent
 _ORIGINAL_URL_MAILBOX_WAIT_CODE = _runtime.UrlMailboxOtpProvider.wait_code
 _ORIGINAL_ACCOUNT_LABEL = _runtime.EmailAuthImporter._account_label
 _ORIGINAL_REAL_TRANSPORT_INIT = _codex_oauth_chain.RealCodexTransport.__init__
+_ORIGINAL_REAL_NEW_SESSION = _codex_oauth_chain.RealCodexTransport._new_session
 _ORIGINAL_REAL_HEADERS = _codex_oauth_chain.RealCodexTransport._headers
 _ORIGINAL_REAL_POST_AUTH_JSON = _codex_oauth_chain.RealCodexTransport._post_auth_json
 _ORIGINAL_REAL_SEND_EMAIL_OTP = _codex_oauth_chain.RealCodexTransport.send_email_otp
@@ -667,7 +668,16 @@ _write_store_config = _configuration_runtime_ext.write_store_config
 def _patched_config_load(self):
     raw = _read_store_config(self)
     removed_legacy_fields = False
-    for key in ("nvtoken", "nvtoken_upload", "pixel_upload_enabled"):
+    # These fields belonged to the removed ordinary-SMS plan gate.  Drop them
+    # during the next config read so stale local settings cannot re-enable a
+    # gate that is no longer part of the SMS workflow.
+    for key in (
+        "nvtoken",
+        "nvtoken_upload",
+        "pixel_upload_enabled",
+        "allow_free_plan_sms_binding",
+        "allow_unknown_plan_sms_binding",
+    ):
         if key in raw:
             raw.pop(key, None)
             removed_legacy_fields = True
@@ -738,7 +748,8 @@ def _patched_config_load(self):
     normalized["dynamic_auth_challenges"] = _as_enabled(
         raw.get("dynamic_auth_challenges"), True
     )
-    normalized["allow_free_plan_sms_binding"] = _as_enabled(raw.get("allow_free_plan_sms_binding"), False)
+    normalized.pop("allow_free_plan_sms_binding", None)
+    normalized.pop("allow_unknown_plan_sms_binding", None)
     normalized.pop("pixel_upload_enabled", None)
     policy_keys = (
         "performance_policy_version",
@@ -766,7 +777,6 @@ def _patched_config_load(self):
         "mailbox_result_index_cache",
         "protocol_concurrency_ceiling",
         "dynamic_auth_challenges",
-        "allow_free_plan_sms_binding",
         "proxy_scope",
         "email_proxy_scope_strategy_version",
     )
@@ -789,6 +799,8 @@ def _patched_config_save(self, values):
     cleaned.pop("nvtoken", None)
     cleaned.pop("nvtoken_upload", None)
     cleaned.pop("pixel_upload_enabled", None)
+    cleaned.pop("allow_free_plan_sms_binding", None)
+    cleaned.pop("allow_unknown_plan_sms_binding", None)
     if cleaned.get("email_otp_verify_attempts") in (None, ""):
         cleaned["email_otp_verify_attempts"] = _EMAIL_OTP_VERIFY_ATTEMPTS_DEFAULT
     if cleaned.get("email_otp_resend_on_retry") in (None, ""):
@@ -800,7 +812,8 @@ def _patched_config_save(self, values):
     normalized["dynamic_auth_challenges"] = _as_enabled(
         cleaned.get("dynamic_auth_challenges"), True
     )
-    normalized["allow_free_plan_sms_binding"] = _as_enabled(cleaned.get("allow_free_plan_sms_binding"), False)
+    normalized.pop("allow_free_plan_sms_binding", None)
+    normalized.pop("allow_unknown_plan_sms_binding", None)
     saved = dict(_ORIGINAL_CONFIG_SAVE(self, normalized) or {})
     for key in (
         "performance_policy_version",
@@ -828,7 +841,6 @@ def _patched_config_save(self, values):
         "mailbox_result_index_cache",
         "protocol_concurrency_ceiling",
         "dynamic_auth_challenges",
-        "allow_free_plan_sms_binding",
         "proxy_scope",
         "email_proxy_scope_strategy_version",
     ):
@@ -898,7 +910,6 @@ def _patched_task_config(self, settings, email, task_id, *, password=""):
                 (settings or {}).get("phone_binding_compatibility"),
                 True,
             ),
-            "allow_free_plan_sms_binding": _as_enabled((settings or {}).get("allow_free_plan_sms_binding"), False),
         }
     )
     risk_status = _actionable_phone_risk_status(email)
@@ -1053,17 +1064,26 @@ def _real_initiate_oauth(self, oauth_url):
 
     config = getattr(self, "config", None)
     stop_requested = config.get("_stop_requested") if isinstance(config, dict) else None
-    response = _runtime_policy_ext.call_with_transient_pre_auth_retry(
-        lambda: _with_transport_protocol_lease(
+    if isinstance(config, dict) and config.get("free_protocol_state_machine"):
+        # Free owns session invalidation/rebuild.  The ordinary pre-auth retry
+        # can replay a stale authorize context before Free has recorded the
+        # first response, so it must perform one request only here.
+        response = _with_transport_protocol_lease(
             self,
             lambda: _ORIGINAL_REAL_INITIATE_OAUTH(self, oauth_url),
-        ),
-        attempts=2,
-        delay_seconds=0.25,
-        stop_requested=stop_requested if callable(stop_requested) else None,
-        on_retry=on_retry,
-        retry_result=True,
-    )
+        )
+    else:
+        response = _runtime_policy_ext.call_with_transient_pre_auth_retry(
+            lambda: _with_transport_protocol_lease(
+                self,
+                lambda: _ORIGINAL_REAL_INITIATE_OAUTH(self, oauth_url),
+            ),
+            attempts=2,
+            delay_seconds=0.25,
+            stop_requested=stop_requested if callable(stop_requested) else None,
+            on_retry=on_retry,
+            retry_result=True,
+        )
     _observe_auth_step(self, response, "oauth_authorize_node")
     return response
 
@@ -1075,6 +1095,11 @@ def _real_create_account_profile(self, name, birthdate):
 
 def _real_send_email_otp(self, continue_url=""):
     _set_current_task_stage("email_code_waiting")
+    if getattr(self, "_gptphone_free_protocol_state_machine", False):
+        provider = getattr(self, "sentinel_provider", None)
+        reset = getattr(provider, "reset", None)
+        if callable(reset):
+            reset("password_verify" if "password" in str(continue_url or "").lower() else "email_verification")
     return _with_transport_protocol_lease(
         self,
         lambda: _ORIGINAL_REAL_SEND_EMAIL_OTP(self, continue_url),
@@ -1882,7 +1907,7 @@ def _patched_importer_watch(self):
 def _patched_pre_auth_session_retryable(result):
     if any(
         marker in str(result or "").lower()
-        for marker in ("relogin_phone_required", "phone_plan_")
+        for marker in ("relogin_phone_required",)
     ):
         return False
     if _runtime_policy_ext.is_account_banned_failure(result):
@@ -2249,7 +2274,42 @@ def _real_send_phone_number_otp(self, phone, channel="sms"):
 
 
 def _preflight_sms_phone_context(_adapter, task_id):
-    return _CHATGPT_PLAN_GATE.preflight_sms_phone_context(_adapter, task_id)
+    """Prepare the ordinary SMS phone step without a ChatGPT plan gate.
+
+    Free registration performs its own independent plan/eligibility lookup.
+    The recovered SMS/OAuth workflow must keep the original phone allocation
+    path and must not make a second session or accounts/check request here.
+    """
+    expected_task_id = str(task_id or "").strip()
+    transport = _ACTIVE_SMS_TRANSPORT.get()
+    if transport is not None and expected_task_id:
+        if _transport_task_id(transport) != expected_task_id:
+            transport = None
+    if transport is None:
+        transport = _transport_for_task(expected_task_id)
+    if transport is None:
+        _set_current_task_stage("phone_submitting")
+        raise _codex_oauth_chain.CodexChainError(
+            "auth_context_transport_missing: 当前任务没有可用的登录 Transport，已阻止申请手机号"
+        )
+
+    _set_current_task_stage("phone_submitting")
+    try:
+        context = _PHONE_BINDING_RUNTIME.prepare_phone_entry(
+            transport,
+            expected_task_id=expected_task_id,
+        )
+    except _auth_request_runtime_ext.AuthRequestContextError as exc:
+        _auth_request_runtime_ext.invalidate_auth_session(
+            transport,
+            _AUTH_SESSIONS,
+            f"{exc.code}: {exc}",
+            stage="phone_submitting",
+        )
+        raise _codex_oauth_chain.CodexChainError(f"{exc.code}: {exc}") from exc
+
+    _set_current_task_stage("phone_acquiring")
+    return context
 
 
 _SMS_WEB = _sms_web_ext.SmsWebIntegration(
@@ -2368,14 +2428,101 @@ def _real_transport_init(
     self._gptphone_mfa_fresh_retry_markers = set()
     self._gptphone_checkpoint_restored = False
     _auth_request_runtime_ext.ensure_transport_context(self, _AUTH_SESSIONS, force_new=True)
-    if _RUN_MODE_CONTEXT.get() != "relogin":
+    # The recovered transport creates curl_cffi sessions with certificate
+    # verification disabled.  Free must not inherit that unsafe default; set
+    # the session policy after construction without touching the recovered
+    # runtime artifact.
+    session = getattr(self, "session", None)
+    if runtime_config.get("free_protocol_state_machine") and session is not None and hasattr(session, "verify"):
+        try:
+            session.verify = True
+        except Exception:
+            pass
+    # Free's protocol state machine owns a fresh OAuth session and its single
+    # controlled rebuild. Restoring a recovered Phase1 checkpoint here would
+    # reintroduce ordinary SMS cookies/CSRF and make a supposedly new Free
+    # authorization depend on another workflow's persisted state.
+    is_free_protocol = bool(runtime_config.get("free_protocol_state_machine"))
+    if _RUN_MODE_CONTEXT.get() != "relogin" and not is_free_protocol:
         # Keep bounded checkpoint recovery visible as its own OAuth node.
         _set_current_task_stage("oauth_session")
         restored = _PHASE1_CHECKPOINTS_COORDINATOR.restore(self)
         if not restored:
             _set_current_task_stage("oauth_create_node")
+    elif is_free_protocol:
+        _set_current_task_stage("oauth_create_node")
     _register_sms_transport(_transport_task_id(self), self)
     _ACTIVE_SMS_TRANSPORT.set(self)
+
+
+def _is_free_transport(self) -> bool:
+    """Return whether a recovered transport belongs to a Free workflow.
+
+    The recovered transport is shared by ordinary SMS/OAuth and Free.  Keep
+    the stricter TLS/environment policy scoped to Free so ordinary behavior is
+    not changed accidentally.
+    """
+    config = getattr(self, "config", None)
+    if not isinstance(config, dict):
+        return False
+    if config.get("free_protocol_state_machine") or config.get("free_register_no_phone"):
+        return True
+    return str(config.get("run_mode") or "").strip().lower().startswith("free_")
+
+
+def _real_new_session(self, impersonate="chrome"):
+    """Create a Free session with explicit TLS and proxy semantics.
+
+    ``RealCodexTransport.initiate_oauth`` calls this method again when it
+    rotates an impersonation or rebuilds an expired OAuth session.  The
+    recovered implementation hard-codes ``verify=False`` and leaves
+    ``trust_env`` enabled, which silently reintroduces the unsafe policy after
+    ``__init__`` has applied its one-time fix.  Ordinary transports continue
+    through the captured implementation unchanged.
+    """
+    if not _is_free_transport(self):
+        return _ORIGINAL_REAL_NEW_SESSION(self, impersonate)
+
+    session = None
+    curl_requests = getattr(self, "_curl_requests", None)
+    if bool(getattr(self, "_curl", False)) and curl_requests is not None:
+        try:
+            session = curl_requests.Session(
+                impersonate=str(impersonate or "chrome"),
+                verify=True,
+                trust_env=False,
+            )
+        except TypeError:
+            # A small number of curl_cffi-compatible test doubles do not
+            # accept constructor keyword arguments; enforce the same policy
+            # after creating the object.
+            try:
+                session = curl_requests.Session(impersonate=str(impersonate or "chrome"))
+            except TypeError:
+                session = curl_requests.Session()
+    else:
+        import requests
+
+        session = requests.Session()
+
+    try:
+        session.verify = True
+    except Exception:
+        pass
+    try:
+        session.trust_env = False
+    except Exception:
+        pass
+
+    # The registration proxy is explicit and remains fixed for this task.
+    # Never merge values from the process environment into a Free session.
+    proxy = str(getattr(self, "proxy", "") or "").strip()
+    if proxy:
+        try:
+            session.proxies = {"http": proxy, "https": proxy}
+        except Exception:
+            pass
+    return session
 
 
 _real_import_phase1_session = _CHECKPOINT_AUTH_HOOKS.import_phase1_session
@@ -2502,19 +2649,26 @@ def _real_post_auth_json(self, path, payload, *, flow, referer, timeout=30):
             ),
         )
 
-    response, _mfa_retry_attempted = _mfa_retry_runtime_ext.retry_expired_mfa_step(
-        self,
-        path=path,
-        payload=payload,
-        response=response,
-        generation=request_context.get("session_generation"),
-        post_json=_fresh_mfa_post_json,
-        pending_totp_payload=_chatgpt_totp_ext.pending_transport_totp_payload,
-        success_fn=_codex_oauth_chain._is_success_response,
-        auth_origin=_codex_oauth_chain.AUTH,
-        timeout=timeout,
-        log_fn=getattr(self, "log_fn", None),
-    )
+    if getattr(self, "_gptphone_free_protocol_state_machine", False):
+        # Free's protocol state machine owns MFA phase boundaries and allows
+        # only its own bounded resend/rebuild policy.  The ordinary SMS
+        # recovery helper may issue a hidden challenge refresh here, which can
+        # consume a second OTP before Free has recorded its baseline.
+        _mfa_retry_attempted = False
+    else:
+        response, _mfa_retry_attempted = _mfa_retry_runtime_ext.retry_expired_mfa_step(
+            self,
+            path=path,
+            payload=payload,
+            response=response,
+            generation=request_context.get("session_generation"),
+            post_json=_fresh_mfa_post_json,
+            pending_totp_payload=_chatgpt_totp_ext.pending_transport_totp_payload,
+            success_fn=_codex_oauth_chain._is_success_response,
+            auth_origin=_codex_oauth_chain.AUTH,
+            timeout=timeout,
+            log_fn=getattr(self, "log_fn", None),
+        )
     finished = _auth_request_runtime_ext.finish_request(
         self,
         _AUTH_SESSIONS,
@@ -2555,12 +2709,31 @@ def _observe_auth_step(transport, response, stage):
 
 
 def _real_submit_email_identifier(self, email):
-    response = _ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER(self, email)
+    if getattr(self, "_gptphone_free_protocol_state_machine", False):
+        # The recovered method retries an invalid authorize session internally
+        # and may switch fingerprint after a challenge. Free's state machine
+        # owns those policies, so perform exactly one POST here and let the
+        # caller classify/rebuild it.
+        response = _with_transport_protocol_lease(
+            self,
+            lambda: _ORIGINAL_REAL_POST_AUTH_JSON(
+                self,
+                "/api/accounts/authorize/continue",
+                {"username": {"kind": "email", "value": email}},
+                flow="authorize_continue",
+                referer="https://auth.openai.com/log-in",
+                timeout=30,
+            ),
+        )
+    else:
+        response = _ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER(self, email)
     _observe_auth_step(self, response, "email_identifier")
     if (
         not _codex_oauth_chain._is_success_response(response)
         or _codex_oauth_chain._page_type(response) != "email_otp_verification"
     ):
+        if getattr(self, "_gptphone_free_protocol_state_machine", False):
+            return response
         return _auth_challenge_runtime_ext.continue_if_needed(
             self, response, origin="submit_email"
         )
@@ -2595,6 +2768,8 @@ def _real_submit_email_identifier(self, email):
         "  [邮箱验证码发送/email_code_waiting] 首次邮箱验证码发送接口已确认",
         "info",
     )
+    if getattr(self, "_gptphone_free_protocol_state_machine", False):
+        return response
     return _auth_challenge_runtime_ext.continue_if_needed(
         self, response, origin="submit_email"
     )
@@ -2603,6 +2778,8 @@ def _real_submit_email_identifier(self, email):
 def _real_verify_password(self, password):
     response = _TOTP_PATCHES.verify_password(self, password)
     _observe_auth_step(self, response, "email_password")
+    if getattr(self, "_gptphone_free_protocol_state_machine", False):
+        return response
     return _auth_challenge_runtime_ext.continue_if_needed(
         self, response, origin="password"
     )
@@ -2651,6 +2828,8 @@ def _real_verify_mfa_otp(self, code):
         getattr(self, "_gptphone_totp_manual_fallback_consumed", False)
         and _mfa_retry_runtime_ext.response_error_code(response) == "incorrect_code"
     ):
+        return response
+    if getattr(self, "_gptphone_free_protocol_state_machine", False):
         return response
     return _auth_challenge_runtime_ext.continue_if_needed(
         self, response, origin="mfa"
@@ -3334,12 +3513,16 @@ def _real_verify_email_otp(self, code):
         page_type = ""
     if page_type not in {"mfa_otp", "mfa_challenge", "mfa_otp_verification"} or not secret:
         _observe_auth_step(self, response, "email_code_verifying")
+        if getattr(self, "_gptphone_free_protocol_state_machine", False):
+            return response
         return _auth_challenge_runtime_ext.continue_if_needed(
             self, response, origin="email_otp"
         )
     factor_id = _mfa_factor_id_from_response(response)
     if not factor_id:
         _observe_auth_step(self, response, "email_code_verifying")
+        if getattr(self, "_gptphone_free_protocol_state_machine", False):
+            return response
         return _auth_challenge_runtime_ext.continue_if_needed(
             self, response, origin="email_otp"
         )
@@ -3361,6 +3544,8 @@ def _real_verify_email_otp(self, code):
     _checkpoint_save_after_auth(self, response)
     _observe_auth_step(self, response, "mfa_otp_verifying")
     if _mfa_retry_runtime_ext.response_error_code(response) == "incorrect_code":
+        return response
+    if getattr(self, "_gptphone_free_protocol_state_machine", False):
         return response
     return _auth_challenge_runtime_ext.continue_if_needed(
         self, response, origin="email_otp"
@@ -3420,6 +3605,7 @@ _codex_oauth_chain.SmsProviderAdapter.complete = _sms_adapter_complete
 _codex_oauth_chain.SmsProviderAdapter.cancel = _sms_adapter_cancel
 _codex_oauth_chain._event = _patched_chain_event
 _codex_oauth_chain.RealCodexTransport.__init__ = _real_transport_init
+_codex_oauth_chain.RealCodexTransport._new_session = _real_new_session
 _codex_oauth_chain.RealCodexTransport.import_phase1_session = _real_import_phase1_session
 _codex_oauth_chain.RealCodexTransport._headers = _real_headers
 _codex_oauth_chain.RealCodexTransport._post_auth_json = _real_post_auth_json

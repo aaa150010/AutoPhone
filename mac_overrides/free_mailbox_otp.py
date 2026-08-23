@@ -95,9 +95,14 @@ class MailboxUrlOtpProvider:
     def mark_sent(self, stage_code: str = "free_email_otp_wait") -> None:
         self.service.mark_sent(stage_code)
 
-    def prepare(self, stage_code: str = "free_email_otp_wait") -> None:
+    def prepare(
+        self,
+        stage_code: str = "free_email_otp_wait",
+        *,
+        force_snapshot: bool = False,
+    ) -> None:
         """Capture the baseline before browser/protocol actions can send a code."""
-        self.service.prepare(stage_code)
+        self.service.prepare(stage_code, force_snapshot=force_snapshot)
 
     def wait_code(
         self,
@@ -106,14 +111,24 @@ class MailboxUrlOtpProvider:
         *,
         resend_fn: Callable[[], None] | None = None,
         resend_after_seconds: float = 12.0,
+        stop_requested: Callable[[], bool] | None = None,
     ) -> str:
         try:
             return self.service.wait_code(
                 stage_code,
                 resend_fn=resend_fn,
                 resend_after_seconds=resend_after_seconds,
+                stop_requested=stop_requested,
             )
         except MailboxOtpError as exc:
+            if exc.code == "mailbox_wait_stopped":
+                raise FreeRegisterError(
+                    "free_run_stop",
+                    "停止 Free 注册",
+                    "任务已请求停止，邮箱验证码轮询已中断",
+                    retryable=False,
+                    error_code="free_run_stop",
+                ) from exc
             raise FreeRegisterError(
                 stage_code,
                 self._label(stage_code),

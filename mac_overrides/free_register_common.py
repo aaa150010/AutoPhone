@@ -35,6 +35,7 @@ LOG_JWT_RE = re.compile(r"(?<![\w-])eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}(?:\.
 LOG_CODE_RE = re.compile(r"(?<!\d)\d{6}(?!\d)")
 
 FREE_STAGE_LABELS = {
+    "oauth_create_node": "初始化 Node/Sentinel",
     "free_proxy_binding": "绑定 Free 注册代理",
     "free_roxy_create": "创建 RoxyBrowser 环境",
     "free_roxy_open": "打开 RoxyBrowser 环境",
@@ -51,18 +52,25 @@ FREE_STAGE_LABELS = {
     "free_existing_login": "已有 Free 账号登录",
     "free_existing_login_otp": "已有 Free 账号邮箱验证",
     "free_roxy_challenge": "等待注册页安全验证",
+    "oauth_create_node": "初始化 Node/Sentinel",
     "free_oauth_session": "Free OAuth 会话",
+    "free_oauth_security_challenge": "等待 Free OAuth 安全验证",
+    "oauth_bootstrap_html": "识别 Free OAuth 授权页面",
     "free_email_identifier": "识别 Free 注册邮箱",
     "free_email_password": "验证 Free 注册密码",
     "free_email_otp_wait": "等待 Free 邮箱验证码",
+    "free_existing_login_otp": "等待已有 Free 账号登录验证码",
     "free_email_otp_validate": "验证 Free 邮箱验证码",
     "free_account_create": "创建 Free 账号",
     "free_oauth_callback": "Free OAuth 回调",
+    "free_protocol_result": "读取 Free 协议注册结果",
     "free_access_token": "获取 Free access token",
+    "free_phone_required": "Free 注册手机号节点",
     "free_plan_check": "查询 Free 套餐资格",
     "free_twofa_enroll": "注册 Free 账号 2FA",
     "free_twofa_activate": "激活 Free 账号 2FA",
     "free_roxy_cleanup": "清理 RoxyBrowser 环境",
+    "free_roxy_window_quota_exhausted": "RoxyBrowser 窗口额度",
     "free_mailbox_released": "释放 Free 邮箱",
     "free_result_save": "保存 Free 注册结果",
 }
@@ -186,6 +194,17 @@ def fingerprint(value: Any) -> str:
 
 def proxy_error_detail(error: BaseException) -> str:
     name = type(error).__name__
+    parts: list[str] = []
+    current: BaseException | None = error
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen and len(parts) < 3:
+        seen.add(id(current))
+        value = clean(str(current or ""), 180)
+        if value:
+            parts.append(value)
+        current = current.__cause__ or current.__context__
+    technical = " | ".join(parts)
+    lowered = technical.lower()
     hint = {
         "SSLError": "TLS/证书握手失败，请确认代理协议与端口匹配",
         "CertificateVerifyError": "TLS/证书校验失败，请确认代理协议与端口匹配",
@@ -195,6 +214,22 @@ def proxy_error_detail(error: BaseException) -> str:
         "ConnectionError": "代理连接失败，请确认地址、端口和认证信息",
         "ValueError": "出口 IP 响应无效，请确认代理能访问预检地址",
     }.get(name, "请求未建立，请检查代理可达性")
+    if any(marker in lowered for marker in ("certificate", "cert verify", "ssl", "tls", "handshake")):
+        hint = "TLS/证书握手失败，请确认代理协议、端口和证书校验设置"
+    elif "407" in lowered or "auth" in lowered or "unauthorized" in lowered:
+        hint = "代理认证被拒绝，请确认用户名、密码或白名单"
+    elif "timed out" in lowered or "timeout" in lowered:
+        hint = "连接超时，请检查代理地址、端口和可达性"
+    elif "resolve" in lowered or "name or service" in lowered:
+        hint = "代理域名解析失败，请确认主机名和本机 DNS"
+    elif "curl: (97)" in lowered or "proxy connect" in lowered or "connect tunnel" in lowered:
+        hint = "代理 CONNECT 隧道建立失败，请确认代理协议、端口和白名单"
+    # curl-cffi often hides the useful libcurl text inside ProxyError. Keep a
+    # short redacted diagnostic so users can distinguish auth, TLS and routing
+    # failures without exposing proxy credentials.
+    detail = safe_log_message(technical) if technical else "未返回底层错误详情"
+    if detail and detail.lower() not in {name.lower(), "proxy error"}:
+        return f"{name}（{hint}；底层：{detail}）"
     return f"{name}（{hint}）"
 
 

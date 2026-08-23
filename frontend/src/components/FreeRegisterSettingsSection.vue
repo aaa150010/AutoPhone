@@ -11,7 +11,7 @@ const defaultConfig: FreeConfig = {
   driver: 'protocol', target_count: 0, concurrency: 3, email_code_timeout: 90, auto_set_2fa: true,
   mailbox_network_mode: 'local_proxy', mailbox_proxy_url: 'http://127.0.0.1:7897',
   mailbox_request_retries: 3, mailbox_retry_backoff_seconds: 1,
-  proxy_probe_url: 'https://api.ipify.org', protocol: { node_runner: '', sentinel_timeout: 90 },
+  proxy_probe_url: 'https://api.ipify.org', proxy_tls_verify: true, proxy_tls_compat_fallback: true, protocol: { node_runner: '', sentinel_timeout: 90 },
   proxy_default_scheme: 'http', proxy_failure_threshold: 2, proxy_quarantine_seconds: 600, proxy_retry_count: 1,
   roxy_circuit_failure_threshold: 3, roxy_circuit_recovery_seconds: 30,
   proxy_selection: { protocol: { country: '', group: '' }, roxybrowser: { country: '', group: '' } },
@@ -41,6 +41,7 @@ const busy = ref<'load' | 'save' | 'preflight' | 'proxy-preflight' | 'workspace'
 const loaded = ref(false)
 const savedSignature = ref('')
 const running = computed(() => Boolean(state.value.running))
+const pendingRoxyCleanup = computed(() => Math.max(0, Number(state.value.roxy_cleanup?.pending || 0)))
 const roxy = computed(() => config.roxybrowser)
 
 function mergeConfig(value: any) {
@@ -145,7 +146,7 @@ async function preflight() {
 async function preflightProxyPool() {
   busy.value = 'proxy-preflight'
   try {
-    const result = await preflightFreeProxies(proxyText.value, config.proxy_probe_url, { driver: config.driver, country: proxyCountry.value || undefined, group: proxyGroup.value || undefined, scheme: proxyScheme.value })
+    const result = await preflightFreeProxies(proxyText.value, config.proxy_probe_url, { driver: config.driver, country: proxyCountry.value || undefined, group: proxyGroup.value || undefined, scheme: proxyScheme.value, proxy_tls_verify: config.proxy_tls_verify, proxy_tls_compat_fallback: config.proxy_tls_compat_fallback })
     proxyCheckRows.value = result.result?.rows || []
     ElMessage.success(`代理出口 IP 检测通过：${Number(result.result?.proxies || 0)} 个，${Number(result.result?.exit_ips || 0)} 个唯一出口 IP`)
   } catch (error: any) {
@@ -261,6 +262,7 @@ defineExpose({ save })
         <p class="section-hint">与接码机的目标数、并发、邮箱池、代理池和运行状态完全隔离。</p>
       </div>
       <el-tag v-if="running" type="success" effect="light">Free 注册运行中</el-tag>
+      <el-tag v-else-if="pendingRoxyCleanup > 0" type="warning" effect="light">待清理 Profile {{ pendingRoxyCleanup }}</el-tag>
       <el-tag v-else type="info" effect="plain">独立 Free 链路</el-tag>
     </div>
 
@@ -297,7 +299,8 @@ defineExpose({ save })
       <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="Free 并发数（1-5）" help="同时运行的 Free 注册任务数，默认 3、最大 5。每个并发任务都会独占一个邮箱和一个代理租约。" /></template><el-input-number v-model="config.concurrency" :min="1" :max="5" controls-position="right" :disabled="running" /></el-form-item></el-col>
       <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="邮箱 OTP 超时（秒）" help="注册流程等待邮箱验证码的最长时间。启用自动动态口令后，第二封 OTP 也使用这项超时。" /></template><el-input-number v-model="config.email_code_timeout" :min="10" :max="600" controls-position="right" :disabled="running" /></el-form-item></el-col>
     </el-row>
-    <el-form-item><template #label><FieldHelpLabel label="出口 IP 探测地址" help="通过每条待用代理访问该地址，取得实际出口 IP。用于检查代理连通性、重复出口和任务期间 IP 漂移。" /></template><el-input v-model="config.proxy_probe_url" :disabled="running" placeholder="https://api.ipify.org" /></el-form-item>
+    <el-form-item><template #label><FieldHelpLabel label="出口 IP 探测地址" help="通过每条待用代理访问该地址，取得实际出口 IP。用于检查代理连通性、重复出口和任务期间 IP 漂移。旧版默认的 https://ipinfo.io/ip 会自动改为 https://api.ipify.org；明确填写的 JSON 地址仍会按 ip/query 字段解析。" /></template><el-input v-model="config.proxy_probe_url" :disabled="running" placeholder="https://api.ipify.org" /></el-form-item>
+    <div class="check-row proxy-tls-options"><el-checkbox v-model="config.proxy_tls_verify" :disabled="running"><FieldHelpLabel label="严格校验探测站证书" help="默认先按标准 TLS 证书校验访问探测地址。关闭后只影响出口 IP 探测请求，不会改代理协议、不会切换节点，也不会影响 RoxyBrowser 的页面证书校验。" /></el-checkbox><el-checkbox v-model="config.proxy_tls_compat_fallback" :disabled="running || !config.proxy_tls_verify"><FieldHelpLabel label="TLS/CONNECT 兼容重试" help="严格校验遇到明确的证书、TLS 或 CONNECT 兼容错误时，用同一代理和同一协议再试一次；失败原因会标记为兼容模式，不会静默换代理或直连。" /></el-checkbox></div>
     <el-form-item><template #label><FieldHelpLabel label="注册后安全设置" help="开启后，注册完成会再等待一封邮箱 OTP，执行 TOTP enrollment 和 activation 并保存动态口令密钥。失败时保留 Token，账号进入 2FA 待重试。" /></template><el-checkbox v-model="config.auto_set_2fa" :disabled="running">注册完成后自动设置动态口令（额外等待一封 OTP）</el-checkbox></el-form-item>
 
     <div class="subsection mailbox-network-section">
@@ -381,7 +384,7 @@ defineExpose({ save })
       <el-input v-model="proxyText" type="textarea" :rows="5" :disabled="running" placeholder="每行一个代理 URL 或 主机:端口:用户名:密码" autocomplete="off" />
       <div class="inline-actions"><el-button size="small" :icon="CircleCheck" :loading="busy === 'proxy-preflight'" :disabled="running || !proxyText.trim()" @click="preflightProxyPool">检测出口 IP</el-button><span class="muted">代理内容会随右下角“保存 Free 配置”一起保存，不会消耗邮箱，也不会启动注册</span></div>
       <template v-if="proxyCheckRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="本次检测结果" help="仅展示输入框中代理本次检测得到的出口 IP，不会自动保存。确认无重复出口后，再点击右侧统一“保存配置”。" /></div><el-table :data="proxyCheckRows" size="small" height="150" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="masked" label="代理掩码" min-width="220" /><el-table-column prop="scheme" label="协议" width="90" /><el-table-column prop="country" label="国家" width="90" /><el-table-column prop="group" label="分组" min-width="130" /><el-table-column prop="exit_ip" label="出口 IP" min-width="150" /><el-table-column prop="fingerprint" label="指纹" min-width="120" /></el-table></template>
-      <template v-if="proxyRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="代理明细" help="已保存 Free 代理池的逐条记录。用于核对每条代理的协议、分类、最近实测出口 IP、健康状态和连续失败次数；认证信息始终隐藏。" /></div><el-table :data="proxyRows" size="small" height="180" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="country" label="国家" width="80" /><el-table-column prop="group" label="分组" min-width="130" /><el-table-column prop="scheme" label="协议" width="85" /><el-table-column prop="masked" label="代理" min-width="210" /><el-table-column width="85"><template #header><FieldHelpLabel label="状态" help="未检测表示尚无成功探测；可用表示最近探测成功；已隔离表示连续失败达到阈值，隔离期内不会分配。" /></template><template #default="{ row }">{{ proxyStatusLabel(row.status) }}</template></el-table-column><el-table-column prop="last_exit_ip" label="出口 IP" width="130"><template #default="{ row }">{{ row.last_exit_ip || '-' }}</template></el-table-column><el-table-column prop="consecutive_failures" label="失败次数" width="85" /></el-table></template>
+      <template v-if="proxyRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="代理明细" help="已保存 Free 代理池的逐条记录。用于核对每条代理的协议、分类、最近实测出口 IP、健康状态和连续失败次数；认证信息始终隐藏。" /></div><el-table :data="proxyRows" size="small" height="180" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="country" label="国家" width="80" /><el-table-column prop="group" label="分组" min-width="130" /><el-table-column prop="scheme" label="协议" width="85" /><el-table-column prop="masked" label="代理" min-width="210" /><el-table-column width="85"><template #header><FieldHelpLabel label="状态" help="未检测表示尚无成功探测；可用表示最近探测成功；已隔离表示连续失败达到阈值，隔离期内不会分配。" /></template><template #default="{ row }">{{ proxyStatusLabel(row.status) }}</template></el-table-column><el-table-column prop="last_probe_mode" label="探测模式" width="90"><template #default="{ row }">{{ row.last_probe_mode === 'compat' ? '兼容重试' : row.last_probe_mode === 'strict' ? '严格校验' : '-' }}</template></el-table-column><el-table-column prop="last_exit_ip" label="出口 IP" width="130"><template #default="{ row }">{{ row.last_exit_ip || '-' }}</template></el-table-column><el-table-column prop="consecutive_failures" label="失败次数" width="85" /></el-table></template>
       <template v-if="proxyGroups.length"><div class="proxy-table-heading"><FieldHelpLabel label="代理分组汇总" help="按国家和分组汇总代理资源，供全协议与 RoxyBrowser 选择。这里可以整组启停、改名、移动国家或删除未租用的代理组。" /></div><el-table :data="proxyGroups" size="small" height="190" class="proxy-check-table" :row-key="groupRowKey"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="country" label="国家" width="80" /><el-table-column prop="group" label="分组" min-width="150" /><el-table-column prop="total" label="总数" width="62" /><el-table-column prop="enabled" label="启用" width="62" /><el-table-column prop="available" width="92"><template #header><FieldHelpLabel label="健康可用" help="已启用、未被隔离且当前没有有效租约的代理数量，可以立即分配给新任务。" /></template></el-table-column><el-table-column prop="leased" width="82"><template #header><FieldHelpLabel label="租用中" help="已被运行任务独占的代理数量。租约期间不能分配给其他账号，也不能删除。" /></template></el-table-column><el-table-column prop="quarantined" width="82"><template #header><FieldHelpLabel label="已隔离" help="连续连接失败达到阈值的代理数量；隔离时间结束后可重新参与探测和分配。" /></template></el-table-column><el-table-column label="协议" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ (row.schemes || []).join(' / ') || '-' }}</template></el-table-column><el-table-column label="操作" width="150" align="right"><template #default="{ row }"><el-tooltip content="启用或停用分组"><el-button link :icon="SwitchButton" :disabled="running || busy === 'group'" @click="toggleProxyGroup(row)" /></el-tooltip><el-tooltip content="重命名分组"><el-button link :icon="Edit" :disabled="running || busy === 'group'" @click="renameProxyGroup(row)" /></el-tooltip><el-tooltip content="移动国家"><el-button link :icon="Connection" :disabled="running || busy === 'group'" @click="moveProxyGroup(row)" /></el-tooltip><el-tooltip content="删除分组"><el-button link type="danger" :icon="Delete" :disabled="running || busy === 'group' || row.leased > 0" @click="removeProxyGroup(row)" /></el-tooltip></template></el-table-column></el-table></template>
     </div>
 

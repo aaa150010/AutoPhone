@@ -730,7 +730,11 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 return free_error_response(ValueError("请求必须是 JSON 对象"), default_code="free_proxy_preflight", default_label="Free 代理预检")
             current = free_config_store.load()
             probe_config = free_config_store.normalize(
-                {"proxy_probe_url": data.get("proxy_probe_url") or current.get("proxy_probe_url")},
+                {
+                    "proxy_probe_url": data.get("proxy_probe_url") or current.get("proxy_probe_url"),
+                    "proxy_tls_verify": data.get("proxy_tls_verify", current.get("proxy_tls_verify", True)),
+                    "proxy_tls_compat_fallback": data.get("proxy_tls_compat_fallback", current.get("proxy_tls_compat_fallback", True)),
+                },
                 previous=current,
             )
             result = free_manager.preflight_proxies(
@@ -740,6 +744,8 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 country=str(data.get("country") or "").strip().upper() or None,
                 group=str(data.get("group") or "").strip() or None,
                 scheme=str(data.get("scheme") or "").strip().lower() or None,
+                tls_verify=bool(probe_config.get("proxy_tls_verify", True)),
+                tls_compat_fallback=bool(probe_config.get("proxy_tls_compat_fallback", True)),
             )
             return module.jsonify(ok=True, result=result)
         except Exception as exc:

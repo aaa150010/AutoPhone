@@ -9,6 +9,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 import copy
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -48,6 +49,7 @@ SUPPORTED_ROXY_SCHEMES = frozenset({"http", "https", "socks5", "socks5h"})
 PROXY_STATUSES = frozenset({"unknown", "available", "quarantined"})
 DEFAULT_PROXY_COUNTRY = "ZZ"
 DEFAULT_PROXY_GROUP = "默认组"
+DEFAULT_PROXY_PROBE_URL = "https://api.ipify.org"
 PROXY_COUNTRY_PATTERN = re.compile(
     r"(?:^|[-_.])(?:region|country|res|area|dc|res_sc)-([A-Za-z]{2})(?:[-_.:]|$)",
     re.IGNORECASE,
@@ -102,6 +104,123 @@ def _proxy_url(record: Mapping[str, Any]) -> str:
     password = quote(str(record.get("password") or ""), safe="")
     auth = f"{username}:{password}@" if username or password else ""
     return urlunsplit((scheme, f"{auth}{host}:{port}", "", "", ""))
+
+
+def _exception_text(error: BaseException) -> str:
+    """Collect a short, credential-free description from an exception chain."""
+    values: list[str] = []
+    current: BaseException | None = error
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen and len(values) < 4:
+        seen.add(id(current))
+        text = str(current or "").strip()
+        if text:
+            values.append(text[:240])
+        current = current.__cause__ or current.__context__
+    return " | ".join(values)
+
+
+def _is_tls_compatibility_error(error: BaseException) -> bool:
+    """Only certificate/TLS/CONNECT errors qualify for the compatibility retry."""
+    name = type(error).__name__.lower()
+    text = _exception_text(error).lower()
+    # Authentication/authorization failures are also often wrapped as a
+    # curl-cffi ProxyError.  They cannot be fixed by disabling certificate
+    # verification, so do not spend a second request on them.
+    auth_markers = (
+        "407", "proxy authentication", "authentication required",
+        "auth failed", "invalid username", "invalid password",
+        "unauthorized", "forbidden",
+    )
+    if any(marker in text for marker in auth_markers):
+        return False
+    markers = (
+        "ssl", "tls", "certificate", "cert verify", "handshake",
+        "secure transport", "curl: (35)", "curl: (51)", "curl: (60)", "curl: (77)", "curl: (97)",
+        "proxy connect", "connect tunnel",
+    )
+    # curl-cffi frequently wraps a TLS/CONNECT failure as ProxyError and only
+    # exposes the useful libcurl code on a nested cause. Retry only when that
+    # evidence is present; a bare ProxyError is not enough.
+    if name in {"sslerror", "certificateverifyerror"}:
+        return True
+    return any(marker in text for marker in markers)
+
+
+_PROBE_BODY_LIMIT = 4096
+_LEGACY_PROBE_HOST = "ipinfo.io"
+
+
+def normalize_probe_url(value: Any) -> str:
+    """Normalize the old built-in ipinfo text endpoint without touching custom URLs."""
+    candidate = str(value or "").strip()
+    if not candidate:
+        return DEFAULT_PROXY_PROBE_URL
+    try:
+        parsed = urlsplit(candidate)
+    except ValueError:
+        return candidate
+    # Older Free builds used ipinfo.io/ip as their implicit default.  That
+    # endpoint is still valid when explicitly chosen, but several residential
+    # SOCKS gateways reject its CONNECT path.  Keep ipinfo JSON and all other
+    # user-supplied URLs unchanged; only migrate this exact legacy default.
+    if (
+        parsed.scheme in {"http", "https"}
+        and str(parsed.hostname or "").lower() == _LEGACY_PROBE_HOST
+        and parsed.path.rstrip("/") == "/ip"
+        and not parsed.query
+        and not parsed.fragment
+    ):
+        return DEFAULT_PROXY_PROBE_URL
+    return candidate
+
+
+def _candidate_probe_ip(value: Any) -> str:
+    candidate = str(value or "").strip()
+    if not candidate:
+        return ""
+    try:
+        parsed = ipaddress.ip_address(candidate)
+    except ValueError:
+        return ""
+    return str(parsed)
+
+
+def _extract_probe_ip(payload: Any) -> str:
+    """Read an exit IP from plain text or a small JSON object.
+
+    ipify's text endpoint and the historical ipinfo JSON endpoint are both
+    used by existing configurations.  Keep the accepted shape deliberately
+    narrow so an arbitrary successful proxy response is not treated as an IP.
+    """
+    if isinstance(payload, (bytes, bytearray, memoryview)):
+        text = bytes(payload)[:_PROBE_BODY_LIMIT].decode("utf-8", "ignore").strip()
+    else:
+        text = str(payload or "")[:_PROBE_BODY_LIMIT].strip()
+    direct = _candidate_probe_ip(text)
+    if direct:
+        return direct
+    try:
+        parsed = json.loads(text)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        parsed = None
+    pending: list[Any] = [parsed]
+    seen: set[int] = set()
+    while pending and len(seen) < 32:
+        current = pending.pop(0)
+        if isinstance(current, Mapping):
+            identity = id(current)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            for key in ("ip", "query", "address", "client_ip"):
+                candidate = _candidate_probe_ip(current.get(key))
+                if candidate:
+                    return candidate
+            pending.extend(value for value in current.values() if isinstance(value, (Mapping, list, tuple)))
+        elif isinstance(current, (list, tuple)):
+            pending.extend(current)
+    raise ValueError("代理出口 IP 响应格式无效")
 
 
 def _record_from_url(value: str, *, country: Any, group: Any) -> dict[str, Any] | None:
@@ -180,6 +299,8 @@ class FreeProxyPool:
         self.default_scheme = scheme if scheme in FREE_PROXY_SCHEMES else DEFAULT_FREE_PROXY_SCHEME
         self.failure_threshold = max(1, int(failure_threshold))
         self.quarantine_seconds = max(1, int(quarantine_seconds))
+        self.proxy_tls_verify = True
+        self.proxy_tls_compat_fallback = True
         self._lock = threading.RLock()
 
     def _load(self) -> list[dict[str, Any]]:
@@ -239,6 +360,7 @@ class FreeProxyPool:
             "consecutive_failures": max(0, int(value.get("consecutive_failures") or 0)),
             "quarantined_until": value.get("quarantined_until"),
             "last_failure": copy.deepcopy(value.get("last_failure")) if isinstance(value.get("last_failure"), Mapping) else None,
+            "last_probe_mode": str(value.get("last_probe_mode") or ""),
             "_identity": _identity(url_parts),
             "_normalized": normalized,
         }
@@ -307,9 +429,20 @@ class FreeProxyPool:
             self._save(by_identity.values())
             return added
 
-    def configure_policy(self, *, failure_threshold: int | None = None, quarantine_seconds: int | None = None) -> None:
+    def configure_policy(
+        self,
+        *,
+        failure_threshold: int | None = None,
+        quarantine_seconds: int | None = None,
+        tls_verify: bool | None = None,
+        tls_compat_fallback: bool | None = None,
+    ) -> None:
         self.failure_threshold = max(1, int(failure_threshold or self.failure_threshold))
         self.quarantine_seconds = max(1, int(quarantine_seconds or self.quarantine_seconds))
+        if tls_verify is not None:
+            self.proxy_tls_verify = bool(tls_verify)
+        if tls_compat_fallback is not None:
+            self.proxy_tls_compat_fallback = bool(tls_compat_fallback)
 
     def _quarantine_expired(self, row: Mapping[str, Any], now: float | None = None) -> bool:
         until = row.get("quarantined_until")
@@ -388,6 +521,7 @@ class FreeProxyPool:
             "last_exit_ip": row.get("last_exit_ip", ""),
             "latency_ms": row.get("latency_ms"),
             "consecutive_failures": int(row.get("consecutive_failures") or 0),
+            "last_probe_mode": row.get("last_probe_mode", ""),
         }
         return value
 
@@ -429,16 +563,21 @@ class FreeProxyPool:
         return [{"country": country, **values} for country, values in sorted(grouped.items())]
 
     @staticmethod
-    def _probe(proxy: str, target: str) -> str:
+    def _probe(proxy: str, target: str, *, verify: bool = True) -> str:
         from curl_cffi import requests as curl_requests
 
-        session = curl_requests.Session(impersonate="chrome", verify=True)
+        target = normalize_probe_url(target)
+        session = curl_requests.Session(impersonate="chrome", verify=bool(verify))
         session.proxies = {"http": proxy, "https": proxy}
         if hasattr(session, "trust_env"):
             session.trust_env = False
         with _without_proxy_environment():
             try:
-                response = session.get(target, headers={"Accept": "text/plain", "Cache-Control": "no-cache"}, timeout=12)
+                response = session.get(
+                    target,
+                    headers={"Accept": "text/plain, application/json", "Cache-Control": "no-cache"},
+                    timeout=12,
+                )
             finally:
                 close = getattr(session, "close", None)
                 if callable(close):
@@ -446,10 +585,25 @@ class FreeProxyPool:
         status = int(getattr(response, "status_code", 0) or 0)
         if not 200 <= status < 300:
             raise ValueError(f"代理出口检测返回 HTTP {status}")
-        value = bytes(getattr(response, "content", b"") or b"")[:128].decode("utf-8", "ignore").strip()
-        if not re.fullmatch(r"[0-9a-fA-F:.]{3,64}", value):
-            raise ValueError("代理出口 IP 响应格式无效")
-        return value
+        return _extract_probe_ip(getattr(response, "content", b"") or b"")
+
+    def _probe_with_policy(self, proxy: str, target: str) -> tuple[str, str]:
+        """Probe securely first and retry only TLS/CONNECT compatibility failures."""
+        if not self.proxy_tls_verify:
+            return self._probe(proxy, target, verify=False), "compat"
+        try:
+            return self._probe(proxy, target, verify=True), "strict"
+        except Exception as first_error:
+            if not self.proxy_tls_compat_fallback or not _is_tls_compatibility_error(first_error):
+                raise
+            # Keep the exact proxy, protocol and target. This is not a node or
+            # protocol fallback; it only supports providers with broken certs.
+            try:
+                return self._probe(proxy, target, verify=False), "compat"
+            except Exception as second_error:
+                # Preserve both attempts for the structured diagnostic while
+                # keeping the original exception type and redaction rules.
+                raise second_error from first_error
 
     def bind(
         self,
@@ -506,7 +660,7 @@ class FreeProxyPool:
             identities = [str(value.get("_identity") or value.get("proxy_id")) for value in values]
             if len(set(identities)) != len(identities):
                 raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", "代理池包含重复代理，无法建立一号一代理绑定", retryable=False)
-        check = probe or self._probe
+        check = probe
         bindings: list[ProxyBinding] = []
         exit_ips = {
             str(value).strip()
@@ -518,7 +672,11 @@ class FreeProxyPool:
             proxy = _proxy_url(record)
             started = time.monotonic()
             try:
-                exit_ip = str(check(proxy, probe_url)).strip()
+                if check is None:
+                    exit_ip, probe_mode = self._probe_with_policy(proxy, probe_url)
+                else:
+                    exit_ip, probe_mode = str(check(proxy, probe_url)).strip(), "custom"
+                exit_ip = str(exit_ip).strip()
                 if not exit_ip:
                     raise ValueError("出口 IP 为空")
             except FreeRegisterError:
@@ -531,7 +689,12 @@ class FreeProxyPool:
                 conflicting_exit_ips += 1
                 continue
             if not str(content or "").strip():
-                self.record_success(str(record.get("proxy_id") or ""), exit_ip=exit_ip, latency_ms=int((time.monotonic() - started) * 1000))
+                self.record_success(
+                    str(record.get("proxy_id") or ""),
+                    exit_ip=exit_ip,
+                    latency_ms=int((time.monotonic() - started) * 1000),
+                    probe_mode=probe_mode,
+                )
             bindings.append(ProxyBinding(proxy, str(record.get("proxy_id") or fingerprint(proxy)), mask_proxy(proxy), exit_ip, proxy_id=str(record.get("proxy_id") or ""), scheme=str(record.get("scheme") or self.default_scheme), country=str(record.get("country") or DEFAULT_PROXY_COUNTRY), group=str(record.get("group") or DEFAULT_PROXY_GROUP)))
             exit_ips.add(exit_ip)
             if len(bindings) >= count:
@@ -544,13 +707,17 @@ class FreeProxyPool:
 
     def verify(self, binding: ProxyBinding, *, probe: Callable[[str, str], str] | None = None, probe_url: str = "https://api.ipify.org") -> str:
         try:
-            current = str((probe or self._probe)(binding.proxy, probe_url)).strip()
+            if probe is None:
+                current, probe_mode = self._probe_with_policy(binding.proxy, probe_url)
+            else:
+                current, probe_mode = str(probe(binding.proxy, probe_url)).strip(), "custom"
+            current = str(current).strip()
         except Exception as exc:
             raise FreeRegisterError("free_proxy_binding", "绑定 Free 注册代理", f"固定代理出口复核失败：{proxy_error_detail(exc)}") from exc
         if current != binding.exit_ip:
             raise FreeRegisterError("free_proxy_drift", "校验 Free 代理出口", "固定代理的出口 IP 在任务期间发生变化，任务已停止且未切换代理", retryable=False)
         if binding.proxy_id:
-            self.record_success(binding.proxy_id, exit_ip=current)
+            self.record_success(binding.proxy_id, exit_ip=current, probe_mode=probe_mode)
         return current
 
     def lease(self, binding: ProxyBinding, *, owner: str, batch_id: str, task_id: str, lease_seconds: int = 180) -> None:
@@ -623,13 +790,15 @@ class FreeProxyPool:
             if changed:
                 self._save(rows)
 
-    def record_success(self, proxy_id: str, *, exit_ip: str = "", latency_ms: int | None = None) -> None:
+    def record_success(self, proxy_id: str, *, exit_ip: str = "", latency_ms: int | None = None, probe_mode: str = "") -> None:
         with self._lock:
             rows = self._load()
             for row in rows:
                 if str(row.get("proxy_id")) != str(proxy_id):
                     continue
                 row.update({"status": "available", "consecutive_failures": 0, "last_checked_at": time.time(), "last_exit_ip": exit_ip or row.get("last_exit_ip", ""), "latency_ms": latency_ms if latency_ms is not None else row.get("latency_ms"), "last_failure": None})
+                if probe_mode:
+                    row["last_probe_mode"] = str(probe_mode)
                 row["quarantined_until"] = None
                 self._save(rows)
                 return
@@ -701,6 +870,7 @@ def _without_proxy_environment():
 
 
 __all__ = [
+    "DEFAULT_PROXY_PROBE_URL",
     "DEFAULT_PROXY_COUNTRY",
     "DEFAULT_PROXY_GROUP",
     "SUPPORTED_ROXY_SCHEMES",
@@ -709,4 +879,7 @@ __all__ = [
     "infer_country",
     "normalize_country",
     "normalize_group",
+    "normalize_probe_url",
+    "_extract_probe_ip",
+    "_is_tls_compatibility_error",
 ]

@@ -355,16 +355,9 @@ class LocalConfigRuntime:
             email_notification.get("password"),
             existing_email_notification.get("password"),
         ).strip()
-        allow_free_plan_sms_binding = self.as_enabled(
-            data.get("allow_free_plan_sms_binding")
-            if "allow_free_plan_sms_binding" in data
-            else existing.get("allow_free_plan_sms_binding"),
-            False,
-        )
         result = {
             "performance_policy_version": self.sms_runtime.PERFORMANCE_POLICY_VERSION,
             "email_timeout_strategy_version": self.email_timeout_strategy_version,
-            "allow_free_plan_sms_binding": allow_free_plan_sms_binding,
             "sms_provider_pools": sms_pools,
             "sms_provider": (
                 str(sms_pools[0].get("provider") or "smsbower")
@@ -508,9 +501,8 @@ class LocalConfigRuntime:
         patched["openai_connectivity_guard"] = self.as_enabled(
             patched.get("openai_connectivity_guard"), True
         )
-        patched["allow_free_plan_sms_binding"] = self.as_enabled(
-            patched.get("allow_free_plan_sms_binding"), False
-        )
+        patched.pop("allow_free_plan_sms_binding", None)
+        patched.pop("allow_unknown_plan_sms_binding", None)
         patched["protocol_concurrency_ceiling"] = self.int_value(
             patched.get("protocol_concurrency_ceiling"),
             12,

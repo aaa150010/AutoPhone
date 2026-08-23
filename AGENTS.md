@@ -80,12 +80,21 @@ GPT 注册中心 (gptPhone) is a macOS-local Flask application with a Vue 3 and 
 
 ## Free/Roxy Reference Implementations
 
-Free 双链路和 RoxyBrowser 行为变更前，可以先对照以下两个成熟项目的对应实现：
+Free 双链路和 RoxyBrowser 行为变更前，必须先对照以下两个成熟项目的对应实现：
 
-- 同级项目 `/Users/lwh/projects/AutoRegister`：重点参考 `core/roxy_registration.py`、`core/roxybrowser_client.py`、`core/otp_utils.py`、`core/humanize.py`、`core/live_check_service.py`、`config/proxy.py` 和 `config/roxybrowser.py`。
-- 开源项目 `https://github.com/maile456/codex-auto-register`：当前临时副本为 `/private/tmp/codex-auto-register-check.d2Qxkf`，重点参考 `backend/run_manager.py`、`backend/probe_store.py`、`backend/roxy_client.py`、`backend/mailbox_client.py`、`backend/browser_worker.py` 和 `backend/run_log_store.py`。
+- 同级项目 `/Users/lwh/projects/AutoRegister`：协议链路重点参考 `core/codex_oauth.py`、`core/openai_auth.py` 和 `core/sentinel_runner.py`；Roxy 链路重点参考 `core/roxy_registration.py`、`core/roxybrowser_client.py`、`core/otp_utils.py`、`core/humanize.py`、`core/live_check_service.py`、`config/proxy.py` 和 `config/roxybrowser.py`。
+- 开源项目 `https://github.com/maile456/codex-auto-register`：当前临时副本为 `/private/tmp/codex-auto-register-check.d2Qxkf/repo`，重点参考 `app/backend/run_manager.py`、`app/backend/probe_store.py`、`app/backend/roxy_client.py`、`app/backend/mailbox_client.py`、`app/backend/browser_worker.py` 和 `app/backend/run_log_store.py`。
 
 只吸收页面状态机、邮箱 OTP 轮询、代理租约、并发槽位、Roxy `connection_info` 对账、失败清理和结构化日志思路；不得复制参考项目的密钥、账号、运行数据、Cookie、Token 或第三方授权信息。当前 Free 数据隔离和普通接码流程优先于参考项目，参考实现不能改变普通接码链路。参考副本不纳入 Git，也不读取其中的敏感数据；本轮按用户要求保留副本。
+
+### Free 协议注册状态机规则
+
+- Free 全协议必须使用全新 OAuth HTTP 会话，从 `initiate_oauth` 建立授权上下文，再用 `/api/accounts/authorize/continue` 提交邮箱；不得无条件调用旧的 NextAuth `start_chatgpt_signup_authorize -> user/register` 前置链路。
+- 每个 OAuth/邮箱/验证码请求使用对应的 Sentinel flow；会话失效时最多重建一次会话，保留邮箱、任务设备标识、固定代理和出口 IP，清除旧 Cookie、CSRF、continue URL 与阶段缓存后从授权节点重新开始。
+- 只有服务端明确完成邮箱验证、账号资料、OAuth 回调后才允许读取 access token；空结果、HTML 登录页或 Sentinel 异常不得包装成 Token 缺失。
+- 普通登录密码页与注册密码页必须按页面路径和表单状态区分；已有账号优先走邮箱验证码登录兜底。Cloudflare、人机验证或安全挑战只记录并停止，禁止自动绕过。
+- OTP 基线、消息身份、邮件时间和请求时间按注册、已有账号登录、2FA enrollment 等阶段隔离；验证码值相同但属于请求后的新邮件时允许验证，同一阶段同一消息身份不得重复提交。只有实际触发验证请求后才加入该阶段的已用集合。
+- Free 协议失败必须保留首个真实节点（OAuth 会话、邮箱提交、OTP、资料、回调或 Token），记录安全的 HTTP 状态、Content-Type、页面类型、重建次数和下一步建议；不记录 HTML 正文、Cookie、Token、验证码或授权头。
 
 ## Release Notes
 

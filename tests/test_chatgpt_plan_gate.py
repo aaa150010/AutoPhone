@@ -116,6 +116,14 @@ class ChatGptPlanGateUnitTests(unittest.TestCase):
                 self.assertEqual(detected, plan)
                 self.assertEqual(source, "accounts_check.account.plan_type")
 
+    def test_accounts_check_rejects_unmatched_token_account(self):
+        token = jwt_token(account_id="token-account")
+        with self.assertRaisesRegex(ValueError, "账号.*不匹配"):
+            plan_from_accounts_check(
+                {"accounts": {"other": {"account": {"plan_type": "plus"}}}},
+                token=token,
+            )
+
     def test_inactive_non_free_entitlement_is_not_a_current_paid_plan(self):
         detected, source = plan_from_accounts_check(
             {
@@ -134,6 +142,7 @@ class ChatGptPlanGateUnitTests(unittest.TestCase):
         self.assertEqual(detected, "")
         self.assertEqual(source, "")
 
+    @unittest.skip("ordinary SMS no longer performs a plan gate")
     def test_explicit_session_plan_applies_free_only_policy(self):
         session = FakeSession()
         transport = SimpleNamespace(config={}, session=session)
@@ -164,6 +173,7 @@ class ChatGptPlanGateUnitTests(unittest.TestCase):
         self.assertEqual(decision.error_code, "phone_plan_free_skipped")
         self.assertEqual(session.calls, [])
 
+    @unittest.skip("ordinary SMS plan bypass settings were removed")
     def test_enabled_switch_bypasses_all_plan_queries(self):
         transport = SimpleNamespace(
             config={"allow_free_plan_sms_binding": True},
@@ -177,6 +187,7 @@ class ChatGptPlanGateUnitTests(unittest.TestCase):
         self.assertEqual(decision.source, "config_bypass")
         self.assertEqual(transport.session.calls, [])
 
+    @unittest.skip("ordinary SMS no longer queries ChatGPT session for plan")
     def test_missing_cache_fetches_session_before_deciding(self):
         token = jwt_token(plan="plus")
         session = FakeSession(
@@ -194,6 +205,26 @@ class ChatGptPlanGateUnitTests(unittest.TestCase):
         self.assertEqual(len(session.calls), 1)
         self.assertTrue(session.calls[0]["url"].endswith("/api/auth/session"))
 
+    @unittest.skip("ordinary SMS no longer queries accounts/check for plan")
+    def test_session_shell_refreshes_once_before_accounts_check(self):
+        token = jwt_token(account_id="wanted")
+        session = FakeSession(
+            FakeResponse(200, {"user": {"id": "user-1"}}),
+            FakeResponse(200, {"accessToken": token}),
+            FakeResponse(
+                200,
+                {"accounts": {"wanted": {"account": {"plan_type": "plus"}}}},
+            ),
+        )
+        transport = SimpleNamespace(config={"plan_check_retry_delay": 0}, session=session)
+
+        decision = make_gate(transport).evaluate_sms_binding(transport)
+
+        self.assertTrue(decision.allowed)
+        self.assertEqual(decision.plan_type, "plus")
+        self.assertEqual(len(session.calls), 3)
+
+    @unittest.skip("ordinary SMS no longer blocks on unknown plan")
     def test_session_http_failure_preserves_status_in_unknown_decision(self):
         session = FakeSession(
             FakeResponse(503, {"error": "temporarily unavailable"})
@@ -207,6 +238,7 @@ class ChatGptPlanGateUnitTests(unittest.TestCase):
         self.assertEqual(decision.http_status, 503)
         self.assertIn("ChatGPT session 查询返回 HTTP 503", decision.reason)
 
+    @unittest.skip("ordinary SMS no longer queries accounts/check for plan")
     def test_accounts_check_failure_blocks_without_exposing_credentials(self):
         secret = "access-token-secret-value"
         session = FakeSession(
@@ -232,6 +264,7 @@ class ChatGptPlanGateUnitTests(unittest.TestCase):
             )
         )
 
+    @unittest.skip("ordinary SMS no longer gates phone allocation by plan")
     def test_accounts_check_result_controls_sms_binding_when_session_has_no_plan(self):
         token = jwt_token(account_id="wanted")
         for plan, allowed in (("free", False), ("team", True)):
@@ -258,6 +291,88 @@ class ChatGptPlanGateUnitTests(unittest.TestCase):
                 self.assertEqual(decision.allowed, allowed)
                 self.assertEqual(decision.plan_type, plan)
                 self.assertEqual(len(session.calls), 1)
+
+    @unittest.skip("ordinary SMS no longer queries accounts/check for plan")
+    def test_transport_token_is_used_when_cached_session_has_no_access_token(self):
+        token = jwt_token(account_id="wanted")
+        session = FakeSession(
+            FakeResponse(
+                200,
+                {"accounts": {"wanted": {"account": {"plan_type": "plus"}}}},
+            )
+        )
+        transport = SimpleNamespace(
+            config={},
+            session=session,
+            oauth_access_token=token,
+            _gptphone_chatgpt_session={"_status": 503},
+        )
+
+        decision = make_gate(transport).evaluate_sms_binding(transport)
+
+        self.assertTrue(decision.allowed)
+        self.assertEqual(decision.plan_type, "plus")
+        self.assertEqual(len(session.calls), 1)
+        self.assertIn("accounts/check", session.calls[0]["url"])
+
+    @unittest.skip("ordinary SMS no longer queries accounts/check for plan")
+    def test_accounts_check_retries_transient_status_only(self):
+        token = jwt_token(account_id="wanted")
+        session = FakeSession(
+            FakeResponse(503, {"error": "retry"}),
+            FakeResponse(
+                200,
+                {"accounts": {"wanted": {"account": {"plan_type": "plus"}}}},
+            ),
+        )
+        transport = SimpleNamespace(
+            config={"plan_check_retry_delay": 0},
+            session=session,
+            _gptphone_chatgpt_session={"accessToken": token},
+            _gptphone_chatgpt_access_token=token,
+        )
+
+        decision = make_gate(transport).evaluate_sms_binding(transport)
+
+        self.assertTrue(decision.allowed)
+        self.assertEqual(decision.plan_type, "plus")
+        self.assertEqual(len(session.calls), 2)
+        self.assertEqual(
+            getattr(transport, "_gptphone_plan_check_attempt_count", None),
+            2,
+        )
+
+    @unittest.skip("ordinary SMS plan bypass settings were removed")
+    def test_unknown_plan_bypass_is_explicit_and_disabled_by_default(self):
+        token = jwt_token(account_id="wanted")
+        transport = SimpleNamespace(
+            config={"allow_unknown_plan_sms_binding": True},
+            session=FakeSession(),
+            _gptphone_chatgpt_session={},
+            oauth_access_token=token,
+        )
+
+        decision = make_gate(transport).evaluate_sms_binding(transport)
+
+        self.assertTrue(decision.allowed)
+        self.assertEqual(decision.source, "config_unknown_bypass")
+
+    def test_preflight_enters_phone_stages_in_submission_plan_acquisition_order(self):
+        stages = []
+        transport = SimpleNamespace(
+            config={"sms_task_id": "task-stage-order"},
+            session=FakeSession(),
+            _gptphone_chatgpt_session={"account": {"planType": "plus"}},
+        )
+        gate = make_gate(transport, stages=stages)
+
+        result = gate.preflight_sms_phone_context(object(), "task-stage-order")
+
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(
+            stages,
+            ["phone_submitting", "phone_acquiring"],
+        )
 
     def test_capture_access_token_does_not_enforce_phone_plan_gate(self):
         token = jwt_token(plan="free")
@@ -345,6 +460,7 @@ class ChatGptPlanGateIntegrationTests(unittest.TestCase):
             module._unregister_sms_transport(task_id, transport)
             module._AUTH_SESSIONS.clear(task_id)
 
+    @unittest.skip("ordinary SMS no longer blocks Free accounts by plan")
     def test_free_plan_stops_before_paid_number_allocation(self):
         calls, error, session_calls = self._run_until_allocation(
             task_id="task-free-plan",
@@ -378,6 +494,7 @@ class ChatGptPlanGateIntegrationTests(unittest.TestCase):
                 self.assertIsInstance(error, PaidAllocationReached)
                 self.assertEqual(session_calls, [])
 
+    @unittest.skip("ordinary SMS no longer blocks unknown plans")
     def test_unknown_plan_stops_before_paid_number_allocation(self):
         for plan in ("", "unknown_plan", "chatgpt_unknown_plan", "n/a"):
             with self.subTest(plan=plan):
@@ -402,21 +519,20 @@ class ChatGptPlanGateIntegrationTests(unittest.TestCase):
         self.assertIsInstance(error, PaidAllocationReached)
         self.assertEqual(session_calls, [])
 
-    def test_configuration_defaults_disabled_and_preserves_explicit_true(self):
+    def test_configuration_drops_removed_plan_gate_fields(self):
         disabled = self.module._local_config_from_runtime({}, {})
-        enabled = self.module._local_config_from_runtime(
-            {"allow_free_plan_sms_binding": True},
-            disabled,
+        self.assertNotIn("allow_free_plan_sms_binding", disabled)
+        self.assertNotIn("allow_unknown_plan_sms_binding", disabled)
+        self.assertNotIn(
+            "allow_free_plan_sms_binding",
+            self.module._apply_server_defaults({}),
         )
-        preserved = self.module._local_config_from_runtime({}, enabled)
-
-        self.assertFalse(disabled["allow_free_plan_sms_binding"])
-        self.assertTrue(enabled["allow_free_plan_sms_binding"])
-        self.assertTrue(preserved["allow_free_plan_sms_binding"])
-        self.assertFalse(
-            self.module._apply_server_defaults({})["allow_free_plan_sms_binding"]
+        self.assertNotIn(
+            "allow_unknown_plan_sms_binding",
+            self.module._apply_server_defaults({}),
         )
 
+    @unittest.skip("ordinary SMS plan gate failures were removed")
     def test_plan_gate_failures_do_not_retry_the_whole_auth_session(self):
         for code in ("phone_plan_free_skipped", "phone_plan_unknown_skipped"):
             with self.subTest(code=code):

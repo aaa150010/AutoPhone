@@ -5,6 +5,7 @@ import threading
 import unittest
 
 from mac_overrides.task_progress import (
+    STAGES,
     STAGE_GROUPS,
     TaskProgressTracker,
     is_active_progress,
@@ -56,6 +57,17 @@ class TaskProgressTests(unittest.TestCase):
             },
         )
         self.assertEqual(progress["timing"]["elapsed_seconds"], 30)
+
+    def test_phone_stage_definitions_skip_removed_plan_gate(self):
+        phone_codes = [
+            code for code, stage in STAGES.items()
+            if stage.group == "phone"
+        ]
+        self.assertEqual(
+            phone_codes,
+            ["phone_submitting", "phone_acquiring"],
+        )
+        self.assertEqual(stage_for_chain_state("PHONE_REQUIRED"), "phone_acquiring")
 
     def test_repeated_stage_does_not_reset_elapsed_time(self):
         self.tracker.set_stage("T001", "sms_waiting")

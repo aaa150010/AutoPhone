@@ -71,6 +71,8 @@ export interface FreeConfig {
   auto_set_2fa: boolean
   proxy_probe_url: string
   proxy_default_scheme?: 'http' | 'https' | 'socks4' | 'socks5' | 'socks5h' | string
+  proxy_tls_verify?: boolean
+  proxy_tls_compat_fallback?: boolean
   proxy_failure_threshold?: number
   proxy_quarantine_seconds?: number
   proxy_retry_count?: number
@@ -120,6 +122,7 @@ export interface FreeState {
   tasks?: any[]
   pool?: { total?: number; available?: number; proxies?: number }
   scheduler?: { concurrency?: number; active_slots?: number; queued_slots?: number; roxy_circuit_open?: boolean; roxy_failures?: number; roxy_circuit_opened_at?: number | null }
+  roxy_cleanup?: { pending?: number; records?: number }
   summary?: { total?: number; active?: number; success?: number; failed?: number; stopped?: number }
 }
 export interface FreeProxyRow {
@@ -135,6 +138,7 @@ export interface FreeProxyRow {
   lease_until?: number | null
   last_checked_at?: number | null
   last_exit_ip?: string
+  last_probe_mode?: 'strict' | 'compat' | string
   latency_ms?: number | null
   consecutive_failures?: number
 }
@@ -257,7 +261,7 @@ export const importFreeProxies = (proxyContent: string, country?: string, group?
   '/api/free/proxies/import',
   { proxy_content: proxyContent, country, group, scheme },
 )
-export const preflightFreeProxies = (proxyContent: string, proxyProbeUrl?: string, options: { driver?: string; country?: string; group?: string; scheme?: string } = {}) => api<{
+export const preflightFreeProxies = (proxyContent: string, proxyProbeUrl?: string, options: { driver?: string; country?: string; group?: string; scheme?: string; proxy_tls_verify?: boolean; proxy_tls_compat_fallback?: boolean } = {}) => api<{
   ok: true
   result: { proxies: number; exit_ips: number; rows: Array<{ index: number; masked: string; fingerprint: string; exit_ip: string; scheme?: string; country?: string; group?: string }> }
 }>('/api/free/proxies/preflight', { proxy_content: proxyContent, proxy_probe_url: proxyProbeUrl, ...options })

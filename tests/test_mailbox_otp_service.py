@@ -310,6 +310,24 @@ class MailboxOtpServiceTests(unittest.TestCase):
             service.wait_code()
         self.assertEqual(raised.exception.code, "mailbox_code_timeout")
 
+    def test_same_code_from_a_new_message_identity_is_allowed(self):
+        payloads = iter((
+            b'{"messages": []}',
+            b'{"messages":[{"id":"message-one","sender":"openai","subject":"verification code 241949"}]}',
+            b'{"messages":[{"id":"message-two","sender":"openai","subject":"verification code 241949"}]}',
+        ))
+        service = MailboxOtpService(
+            "https://mail.example.test/inbox",
+            timeout_seconds=5,
+            poll_interval_seconds=1,
+            fetcher=lambda url: MailboxResponse(url, next(payloads), "application/json", 200),
+        )
+        service.prepare("registration_otp")
+        self.assertEqual(service.wait_code(stage_code="registration_otp"), "241949")
+        service.mark_sent("registration_otp")
+        self.assertEqual(service.wait_code(stage_code="registration_otp"), "241949")
+        service.close()
+
     def test_wait_uses_one_resend_without_replacing_original_baseline(self):
         clock = _Clock()
         resent = []

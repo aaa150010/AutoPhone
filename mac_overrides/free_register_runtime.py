@@ -30,7 +30,8 @@ try:
     from .free_runtime_info import runtime_info
     from .free_register_store import FreeMailboxPool, FreeProxyPool, FreeTaskStore
     from .free_register_scheduler import FreeRegisterSchedulerMixin
-    from .free_roxy_runtime import RoxyRegistrationRunner
+    from .free_roxy_runtime import RoxyBrowserClient, RoxyRegistrationRunner
+    from .free_roxy_lifecycle import RoxyCleanupStore, RoxyLifecycle
     from .free_log_runtime import FreeLogStore
     from .free_live_check import build_free_live_check_service
     from .free_protocol_runtime import FreeProtocolMixin
@@ -45,7 +46,8 @@ except ImportError:
     from free_runtime_info import runtime_info  # type: ignore[no-redef]
     from free_register_store import FreeMailboxPool, FreeProxyPool, FreeTaskStore  # type: ignore[no-redef]
     from free_register_scheduler import FreeRegisterSchedulerMixin  # type: ignore[no-redef]
-    from free_roxy_runtime import RoxyRegistrationRunner  # type: ignore[no-redef]
+    from free_roxy_runtime import RoxyBrowserClient, RoxyRegistrationRunner  # type: ignore[no-redef]
+    from free_roxy_lifecycle import RoxyCleanupStore, RoxyLifecycle  # type: ignore[no-redef]
     from free_log_runtime import FreeLogStore  # type: ignore[no-redef]
     from free_live_check import build_free_live_check_service  # type: ignore[no-redef]
     from free_protocol_runtime import FreeProtocolMixin  # type: ignore[no-redef]
@@ -58,6 +60,7 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
         "free_run_stop",
         "free_proxy_binding",
         "free_roxy_api",
+        "free_roxy_window_quota_exhausted",
         "free_roxy_create",
         "free_roxy_open",
         "free_roxy_connect",
@@ -100,6 +103,7 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
         self._circuit_stop_requested = False
         self._user_stop_requested = False
         self._last_config: dict[str, Any] = {}
+        self.roxy_cleanup_store = RoxyCleanupStore(self.data_dir / "roxy_cleanup.json")
         self._heartbeat_stop = threading.Event()
         self._heartbeat_thread: threading.Thread | None = None
         self._recover_interrupted_tasks()
@@ -227,6 +231,32 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
     def public_logs(self, task_id: str = "") -> list[dict[str, Any]]:
         return self.log_store.snapshot(task_id)
 
+    def recover_roxy_cleanup(self, config: Mapping[str, Any]) -> dict[str, int]:
+        """Explicitly retry owned Roxy cleanup records.
+
+        This method performs network calls only when a caller explicitly
+        requests recovery (for example a Free preflight/cleanup button).
+        Unknown/unmarked profiles are never scanned for deletion.
+        """
+        roxy = dict(config.get("roxybrowser") or {})
+        roxy["lifecycle_store_path"] = str(self.data_dir / "roxy_cleanup.json")
+        client = RoxyBrowserClient(roxy, log_fn=self._log)
+        lifecycle = RoxyLifecycle(
+            client,
+            self.roxy_cleanup_store,
+            log_fn=self._log,
+            verify_timeout=float(roxy.get("cleanup_verify_timeout") or 8),
+            verify_interval=float(roxy.get("cleanup_verify_interval") or 0.25),
+            retries=int(roxy.get("api_retries") or 3),
+        )
+        intents = lifecycle.recover_creation_intents(limit=100)
+        pending = lifecycle.recover_pending(limit=100)
+        return {
+            "examined": int(intents.get("examined") or 0) + int(pending.get("examined") or 0),
+            "recovered": int(intents.get("recovered") or 0) + int(pending.get("recovered") or 0),
+            "failed": int(intents.get("failed") or 0) + int(pending.get("failed") or 0),
+        }
+
     def delete_tasks(self, task_ids: Sequence[str]) -> int:
         selected = {str(task_id or "").strip() for task_id in task_ids}
         selected.discard("")
@@ -253,7 +283,12 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
             failed = sum(1 for task in tasks if task.get("status") == "failed")
             return {
                 **runtime_info(),
-                "running": bool(self._executor and active),
+                # Keep the batch marked running until every Future callback
+                # has persisted its final task/log state.  Checking only
+                # terminal task statuses races teardown and can leave an
+                # atomic log temp file being written after a caller observes
+                # running=False.
+                "running": bool(self._executor and self._futures),
                 "batch_id": self._batch_id,
                 "tasks": tasks,
                 "pool": {
@@ -272,6 +307,10 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
                     "roxy_failures": int(self._roxy_failures),
                     "roxy_circuit_opened_at": self._roxy_circuit_opened_at or None,
                 },
+                "roxy_cleanup": {
+                    "pending": len(self.roxy_cleanup_store.pending()),
+                    "records": len(self.roxy_cleanup_store.records()),
+                },
                 "summary": {
                     "total": len(tasks),
                     "active": active,
@@ -285,12 +324,38 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
         return len(self.pool.available(10_000))
 
     def preflight(self, config: Mapping[str, Any], *, proxy_content: str = "") -> dict[str, Any]:
+        with self._lock:
+            if self.public_state().get("running"):
+                raise FreeRegisterError(
+                    "free_run_preflight",
+                    "预检 Free 注册",
+                    "Free 注册任务运行中，暂不能执行会回收 Roxy Profile 的批次预检",
+                    retryable=False,
+                )
         driver = str(config.get("driver") or "protocol").strip().lower()
         if driver not in {"protocol", "roxybrowser"}:
             raise FreeRegisterError("free_config", "Free 注册预检", "Free 注册链路无效", retryable=False)
+        cleanup_result = {"examined": 0, "recovered": 0, "failed": 0}
+        if driver == "roxybrowser" and not self._custom_runner:
+            # Re-check while holding the same manager lock immediately before
+            # the recovery scan; a start request cannot race this cleanup.
+            with self._lock:
+                if self.public_state().get("running"):
+                    raise FreeRegisterError(
+                        "free_run_preflight",
+                        "预检 Free 注册",
+                        "Free 注册任务运行中，暂不能执行 Roxy Profile 回收预检",
+                        retryable=False,
+                    )
+                cleanup_result = self.recover_roxy_cleanup(config)
+        protocol_result = {}
+        if driver == "protocol" and not self._custom_runner:
+            protocol_result = self.protocol_preflight(config)
         self.proxies.configure_policy(
             failure_threshold=int(config.get("proxy_failure_threshold") or 2),
             quarantine_seconds=int(config.get("proxy_quarantine_seconds") or 600),
+            tls_verify=bool(config.get("proxy_tls_verify", True)),
+            tls_compat_fallback=bool(config.get("proxy_tls_compat_fallback", True)),
         )
         selection = config.get("proxy_selection") if isinstance(config.get("proxy_selection"), Mapping) else {}
         selected = selection.get(driver) if isinstance(selection.get(driver), Mapping) else {}
@@ -321,12 +386,18 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
             "mailboxes": available,
             "proxies": len(bindings),
             "exit_ips": len({binding.exit_ip for binding in bindings}),
+            "protocol": protocol_result,
             "roxy": roxy_result,
+            "roxy_cleanup": cleanup_result,
             "proxy_selection": {"country": country or "", "group": group or ""},
         }
 
-    def preflight_proxies(self, *, proxy_content: str = "", probe_url: str = "https://api.ipify.org", driver: str = "protocol", country: str | None = None, group: str | None = None, scheme: str | None = None) -> dict[str, Any]:
+    def preflight_proxies(self, *, proxy_content: str = "", probe_url: str = "https://api.ipify.org", driver: str = "protocol", country: str | None = None, group: str | None = None, scheme: str | None = None, tls_verify: bool = True, tls_compat_fallback: bool = True) -> dict[str, Any]:
         """Probe the isolated Free proxy pool without consuming mailboxes or tasks."""
+        self.proxies.configure_policy(
+            tls_verify=tls_verify,
+            tls_compat_fallback=tls_compat_fallback,
+        )
         if proxy_content.strip() and scheme:
             self.proxies.default_scheme = str(scheme).strip().lower()
         values = self.proxies.values(proxy_content)
@@ -364,8 +435,49 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
             self._last_config = copy.deepcopy(dict(config))
             if self.public_state().get("running"):
                 raise FreeRegisterError("free_run_start", "启动 Free 注册", "已有 Free 注册任务运行中", retryable=False)
-            if pool_content.strip():
-                self.pool.import_text(pool_content)
+            return self._start_locked(
+                config,
+                pool_content=pool_content,
+                proxy_content=proxy_content,
+                row_ids=row_ids,
+            )
+
+    def _start_locked(
+        self,
+        config: Mapping[str, Any],
+        *,
+        pool_content: str,
+        proxy_content: str,
+        row_ids: Sequence[str],
+    ) -> dict[str, Any]:
+        """Start a batch while ``start`` still owns the manager lock.
+
+        Preflight can make a local Roxy API call, but the reservation and
+        executor creation remain one transaction.  Releasing the lock between
+        the running check and mailbox/proxy reservation allowed two concurrent
+        start requests to both pass the check.
+        """
+        # Validate the full-protocol bridge before importing or leasing any
+        # mailbox/proxy rows. Custom runners are test/integration adapters
+        # and intentionally retain their existing contract.
+        requested_driver = str(config.get("driver") or "protocol").strip().lower()
+        cleanup_result = {"examined": 0, "recovered": 0, "failed": 0}
+        if requested_driver == "roxybrowser" and not self._custom_runner:
+            cleanup_result = self.recover_roxy_cleanup(config)
+            if cleanup_result.get("failed"):
+                self._log(
+                    f"[RoxyBrowser/free_roxy_cleanup] 启动前仍有 {cleanup_result['failed']} 个 Profile 待清理，继续启动会保留队列",
+                    "warn",
+                )
+        if requested_driver == "protocol" and not self._custom_runner:
+            self.protocol_preflight(config)
+        if pool_content.strip():
+            self.pool.import_text(pool_content)
+        # The argument is typed as str; this guard keeps the import conditional
+        # while preserving the existing transaction body below.
+        if proxy_content is None:
+            proxy_content = ""
+        if proxy_content is not None:
             if proxy_content.strip():
                 self.proxies.import_text(proxy_content, scheme=str(config.get("proxy_default_scheme") or "http"))
             available_count = self._available_count()
@@ -396,6 +508,8 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
             self.proxies.configure_policy(
                 failure_threshold=int(config.get("proxy_failure_threshold") or 2),
                 quarantine_seconds=int(config.get("proxy_quarantine_seconds") or 600),
+                tls_verify=bool(config.get("proxy_tls_verify", True)),
+                tls_compat_fallback=bool(config.get("proxy_tls_compat_fallback", True)),
             )
             selection = config.get("proxy_selection") if isinstance(config.get("proxy_selection"), Mapping) else {}
             selected = selection.get(driver) if isinstance(selection.get(driver), Mapping) else {}
@@ -462,16 +576,49 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
                 self._futures.add(future)
                 future.add_done_callback(self._future_done)
             self._log(f"[启动 Free 注册/free_run_start] 已绑定 {target_count} 个邮箱和代理，{workers} 并发", "success")
-            return {"batch_id": batch_id, "tasks": self.public_tasks(), "state": self.public_state()}
+            return {
+                "batch_id": batch_id,
+                "tasks": self.public_tasks(),
+                "state": self.public_state(),
+                "roxy_cleanup": cleanup_result,
+            }
 
     def _future_done(self, future: Future[Any]) -> None:
+        cleanup_config: dict[str, Any] | None = None
+        executor: ThreadPoolExecutor | None = None
+        with self._lock:
+            if future not in self._futures:
+                return
+            is_last = len(self._futures) == 1
+            if is_last:
+                executor = self._executor
+                self._heartbeat_stop.set()
+                if (
+                    not self._custom_runner
+                    and str(self._last_config.get("driver") or "").strip().lower()
+                    == "roxybrowser"
+                ):
+                    cleanup_config = copy.deepcopy(self._last_config)
+            self.task_store.save(self._tasks)
+        if cleanup_config is not None:
+            try:
+                result = self.recover_roxy_cleanup(cleanup_config)
+                if result.get("examined"):
+                    self._log(
+                        f"[RoxyBrowser/free_roxy_cleanup] 批次结束回收：检查={result['examined']}，已释放={result['recovered']}，待重试={result['failed']}",
+                        "info" if not result.get("failed") else "warn",
+                    )
+            except Exception as exc:
+                self._log(
+                    f"[RoxyBrowser/free_roxy_cleanup] 批次结束回收失败（{type(exc).__name__}）",
+                    "warn",
+                )
         with self._lock:
             self._futures.discard(future)
-            self.task_store.save(self._tasks)
-            if not self._futures and self._executor is not None:
-                self._heartbeat_stop.set()
-                self._executor.shutdown(wait=False, cancel_futures=False)
+            if not self._futures and self._executor is executor and executor is not None:
+                executor.shutdown(wait=False, cancel_futures=False)
                 self._executor = None
+                self.task_store.save(self._tasks)
 
     def _heartbeat_loop(self, owner: str) -> None:
         while not self._heartbeat_stop.wait(20):
@@ -705,7 +852,11 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
         if self._custom_runner:
             return self.runner
         if str(config.get("driver") or "protocol").strip().lower() == "roxybrowser":
-            return RoxyRegistrationRunner()
+            # Keep Profile ownership outside task payloads while giving every
+            # worker the same persistent journal for restart recovery.
+            return RoxyRegistrationRunner(
+                lifecycle_store_path=str(self.data_dir / "roxy_cleanup.json"),
+            )
         return self._run_protocol
 
     def _worker(self, task_id: str, config: dict[str, Any], twofa_retry: bool = False) -> None:
@@ -805,8 +956,18 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
             }
             if getattr(exc, "provider_status", None) is not None:
                 failure["http_status"] = exc.provider_status
-            circuit_failure = bool(self._roxy_circuit_open and str(getattr(exc, "node_code", "")) in {"free_roxy_api", "free_roxy_create", "free_roxy_open", "free_roxy_connect"})
-            terminal_status = "failed" if circuit_failure or not self._stop.is_set() else "stopped"
+            error_node = str(getattr(exc, "node_code", "") or "")
+            quota_failure = error_node == "free_roxy_window_quota_exhausted"
+            if quota_failure:
+                # A server-side window quota is a resource stop, not a
+                # browser API circuit failure.  Stop admission for queued
+                # tasks while keeping their mailbox/proxy reusable.
+                with self._lock:
+                    self._stop.set()
+                    self._circuit_stop_requested = True
+                self._log(f"[{task_id}/RoxyBrowser 窗口额度/free_roxy_window_quota_exhausted] 已停止继续创建窗口，等待遗留 Profile 清理", "error")
+            circuit_failure = bool(self._roxy_circuit_open and error_node in {"free_roxy_api", "free_roxy_create", "free_roxy_open", "free_roxy_connect"})
+            terminal_status = "failed" if quota_failure or circuit_failure or not self._stop.is_set() else "stopped"
             self._save_task(task_id, status=terminal_status, failure=failure)
             if self._can_reuse_mailbox_after_failure(exc.node_code):
                 self._restore_mailbox_after_pre_registration_failure(snapshot, failure)

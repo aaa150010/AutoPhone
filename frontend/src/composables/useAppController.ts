@@ -188,7 +188,6 @@ const defaultForm = () => ({
   phone_max_attempts: 45,
   phone_attempts_per_provider: 15,
   phone_session_cycle_seconds: 1800,
-  allow_free_plan_sms_binding: false,
   sms_quality_optimization: true,
   sms_api_keys: [''],
   sms_provider_pools: normalizeSmsProviderPools(null),
@@ -234,7 +233,8 @@ function normalizeOperationalSettings(config: Record<string, any>) {
   config.phone_binding_compatibility = config.phone_binding_compatibility !== false
   config.mailbox_result_index_cache = config.mailbox_result_index_cache !== false
   config.protocol_concurrency_ceiling = Math.max(8, Math.min(15, Number(config.protocol_concurrency_ceiling) || 12))
-  config.allow_free_plan_sms_binding = config.allow_free_plan_sms_binding === true
+  delete config.allow_free_plan_sms_binding
+  delete config.allow_unknown_plan_sms_binding
   config.sms_quality_optimization = config.sms_quality_optimization !== false
   return config
 }

@@ -165,6 +165,33 @@ class FreeRoxyOtpFlowTests(unittest.TestCase):
 
         self.assertEqual(result, [fields[0]])
 
+    def test_active_auth_window_is_selected_over_unrelated_tab(self) -> None:
+        class Switch:
+            def __init__(self, driver):
+                self.driver = driver
+
+            def window(self, handle):
+                self.driver.current_window_handle = handle
+                self.driver.current_url = self.driver.urls[handle]
+
+        class WindowDriver(_FakeOtpDriver):
+            def __init__(self):
+                super().__init__([])
+                self.urls = {
+                    "tab-settings": "https://example.test/blank",
+                    "tab-auth": "https://auth.openai.com/email-verification",
+                }
+                self.window_handles = list(self.urls)
+                self.current_window_handle = "tab-settings"
+                self.current_url = self.urls[self.current_window_handle]
+                self.switch_to = Switch(self)
+
+        driver = WindowDriver()
+        self.flow.select_active_auth_window(driver)
+
+        self.assertEqual(driver.current_window_handle, "tab-auth")
+        self.assertEqual(driver.current_url, "https://auth.openai.com/email-verification")
+
     def test_wait_for_input_handles_delayed_rendering(self) -> None:
         field = _FakeOtpElement(inputmode="numeric", maxlength="6")
 
@@ -360,6 +387,61 @@ class FreeRoxyOtpFlowTests(unittest.TestCase):
         self.assertEqual(state, "home")
         self.assertEqual(submitted, ["111111", "222222"])
         self.assertEqual(restarted, [2, 3])
+
+    def test_pre_submit_failure_reloads_profile_and_reuses_code(self) -> None:
+        submitted: list[str] = []
+        reloaded: list[int] = []
+
+        def wait_code(_attempt: int) -> str:
+            return "333333"
+
+        def submit_code(code: str, attempt: int) -> str:
+            submitted.append(code)
+            if len(submitted) == 1:
+                raise FreeRegisterError(
+                    "free_email_otp_validate", "验证 Free 邮箱验证码",
+                    "控件未触发提交", error_code="free_email_otp_submit_not_observed",
+                )
+            return "home"
+
+        def reload(attempt: int) -> str:
+            reloaded.append(attempt)
+            return "otp"
+
+        state = self.flow.run_otp_attempts(
+            wait_code=wait_code, submit_code=submit_code,
+            restart_flow=lambda _attempt: "otp", reload_flow=reload,
+        )
+        self.assertEqual(state, "home")
+        self.assertEqual(submitted, ["333333", "333333"])
+        self.assertEqual(reloaded, [1])
+
+    def test_pre_submit_reload_is_limited_to_one_per_task(self) -> None:
+        submitted: list[str] = []
+        reloaded: list[int] = []
+
+        def submit_code(code: str, _attempt: int) -> str:
+            submitted.append(code)
+            raise FreeRegisterError(
+                "free_email_otp_validate", "验证 Free 邮箱验证码",
+                "验证码控件仍未触发提交", error_code="free_email_otp_input_missing",
+            )
+
+        def reload(attempt: int) -> str:
+            reloaded.append(attempt)
+            return "otp"
+
+        with self.assertRaises(FreeRegisterError):
+            self.flow.run_otp_attempts(
+                wait_code=lambda _attempt: "444444",
+                submit_code=submit_code,
+                restart_flow=lambda _attempt: "otp",
+                reload_flow=reload,
+                max_attempts=3,
+            )
+
+        self.assertEqual(reloaded, [1])
+        self.assertEqual(submitted, ["444444", "444444", "444444"])
 
 
 if __name__ == "__main__":
