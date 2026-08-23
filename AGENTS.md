@@ -75,7 +75,7 @@ GPT 注册中心 (gptPhone) is a macOS-local Flask application with a Vue 3 and 
 
 - `frontend/dist/` is tracked. Rebuild it after every frontend source change and commit the updated hashed assets with `frontend/dist/index.html`.
 - Never commit `data/`, `mac_runtime/`, `engine/`, `node_chain.dat`, `frontend/node_modules/`, caches, local exports, or secrets.
-- Do not delete the retained reference copies under `/Users/lwh/projects/AutoRegister`, `/private/tmp/codex-auto-register-check.d2Qxkf/repo` or `/private/tmp/grok-gpt-check.XYMs6P/repo` unless the user explicitly requests it.
+- Do not delete the retained reference copies under `/Users/lwh/projects/AutoRegister`, `/private/tmp/codex-auto-register-check.d2Qxkf/repo`, `/private/tmp/grok-gpt-check.XYMs6P/repo` or `/private/tmp/turb-gpt-free-register-check/repo` unless the user explicitly requests it.
 - Do not delete or overwrite user runtime data while testing. Use a temporary data directory for Flask integration checks.
 
 ## Free/Roxy Reference Implementations
@@ -84,8 +84,9 @@ Free 双链路和 RoxyBrowser 行为变更前，必须先对照以下两个成�
 
 - 同级项目 `/Users/lwh/projects/AutoRegister`：协议链路重点参考 `core/codex_oauth.py`、`core/openai_auth.py` 和 `core/sentinel_runner.py`；Roxy 链路重点参考 `core/roxy_registration.py`、`core/roxybrowser_client.py`、`core/otp_utils.py`、`core/humanize.py`、`core/live_check_service.py`、`config/proxy.py` 和 `config/roxybrowser.py`。
 - 开源项目 `https://github.com/maile456/codex-auto-register`：当前临时副本为 `/private/tmp/codex-auto-register-check.d2Qxkf/repo`，重点参考 `app/backend/run_manager.py`、`app/backend/probe_store.py`、`app/backend/roxy_client.py`、`app/backend/mailbox_client.py`、`app/backend/browser_worker.py` 和 `app/backend/run_log_store.py`。
+- 开源项目 `https://github.com/myfanhua/turb-gpt-free-register`：长期只读副本为 `/private/tmp/turb-gpt-free-register-check/repo`，重点参考 `core/roxy_registration.py`、`core/roxybrowser_client.py`、`core/account_export.py`、`core/roxy_codex_oauth.py`、`core/profile_utils.py` 和 `config/roxybrowser.py`。该项目的 OTP 页面结果必须按 `page.type` 与 `continue_url` 分支，2FA 必须跟随回调后刷新 Session；资料页覆盖 React-Aria/年龄生日/consent/受控提交重试。只吸收页面状态机、OAuth 回调、代理字段和生命周期思路，不复制账号、Cookie、Token、代理凭据或运行数据。
 
-只吸收页面状态机、邮箱 OTP 轮询、代理租约、并发槽位、Roxy `connection_info` 对账、失败清理和结构化日志思路；不得复制参考项目的密钥、账号、运行数据、Cookie、Token 或第三方授权信息。当前 Free 数据隔离和普通接码流程优先于参考项目，参考实现不能改变普通接码链路。参考副本不纳入 Git，也不读取其中的敏感数据；本轮按用户要求保留副本。
+只吸收页面状态机、邮箱 OTP 轮询、代理租约、并发槽位、Roxy `connection_info` 对账、失败清理和结构化日志思路；不得复制参考项目的密钥、账号、运行数据、Cookie、Token 或第三方授权信息。当前 Free 数据隔离和普通接码流程优先于参考项目，参考实现不能改变普通接码链路。参考副本均不纳入 Git，长期保留并只读检查；不读取其中的敏感运行数据，除非用户明确要求。
 
 ### Free 协议注册状态机规则
 

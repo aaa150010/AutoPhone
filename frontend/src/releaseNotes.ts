@@ -13,11 +13,23 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.45',
-  freeRuntimeVersion: '1.6.45',
-  title: 'Free OAuth 与 Roxy 风控处理修复',
+  version: '1.6.46',
+  freeRuntimeVersion: '1.6.46',
+  title: 'Roxy OAuth 回调与资料页修复',
   releasedAt: '2026-08-23',
   sections: [
+    {
+      title: 'Roxy OTP 回调与 2FA Session',
+      usage: 'Roxy 邮箱验证码会按服务端 page.type 和 continue_url 处理；2FA 验证后先跟随受信任 OAuth 回调并刷新登录 Session，再执行动态口令 enrollment/activation。安全挑战仍会等待后停止，不会绕过验证。',
+    },
+    {
+      title: 'Roxy 资料页控件兼容',
+      usage: '资料页兼容 React-Aria、年龄/生日及年月日控件、同意项勾选和受控提交重试；提交后仍停留 about-you 时在同一 Profile 刷新一次并等待真实跳转。',
+    },
+    {
+      title: 'Roxy 可见模式',
+      usage: '当前 Free Roxy 配置使用可见浏览器，便于观察资料页和安全挑战；窗口可能影响前台操作，任务仍通过 connection_info 对账避免重复打开。',
+    },
     {
       title: 'OAuth 起始页指纹轮换',
       usage: 'Free 全协议在 OAuth 起始页遇到 Cloudflare 或 HTML 风控响应时，会按 chrome、chrome136、chrome133a、safari15_3、safari17_0 顺序轮换新会话；邮箱、固定代理、设备和 PKCE 上下文保持不变，后续阶段安全验证仍会停止。',

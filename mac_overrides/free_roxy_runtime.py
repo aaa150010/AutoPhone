@@ -51,13 +51,17 @@ try:
     )
     from .free_roxy_otp_flow import (
         fill_otp as fill_roxy_otp,
+        follow_oauth_continue,
         reload_otp_page,
         reopen_email_otp_flow,
         run_otp_attempts,
         select_active_auth_window,
         wait_after_otp_submit as wait_after_roxy_otp_submit,
+        wait_for_continue_url,
     )
     from .free_roxy_session import extract_session, session_token
+    from .free_roxy_profile import complete_profile_page
+    from .free_roxy_twofa import setup_twofa
     from .free_roxy_lifecycle import (
         MANAGED_WINDOW_PREFIX,
         MANAGED_WINDOW_REMARK,
@@ -104,13 +108,17 @@ except ImportError:
     )
     from free_roxy_otp_flow import (  # type: ignore[no-redef]
         fill_otp as fill_roxy_otp,
+        follow_oauth_continue,
         reload_otp_page,
         reopen_email_otp_flow,
         run_otp_attempts,
         select_active_auth_window,
         wait_after_otp_submit as wait_after_roxy_otp_submit,
+        wait_for_continue_url,
     )
     from free_roxy_session import extract_session, session_token  # type: ignore[no-redef]
+    from free_roxy_profile import complete_profile_page  # type: ignore[no-redef]
+    from free_roxy_twofa import setup_twofa  # type: ignore[no-redef]
     from free_roxy_lifecycle import (  # type: ignore[no-redef]
         MANAGED_WINDOW_PREFIX,
         MANAGED_WINDOW_REMARK,
@@ -249,9 +257,6 @@ class RoxyRegistrationRunner:
 
     @staticmethod
     def _fill_otp(driver: Any, code: str, human: Humanizer) -> Mapping[str, Any]:
-        # The auth form is often rendered after the mailbox code arrives.  The
-        # dedicated flow waits for the form, clears every cell and installs a
-        # safe same-origin validation probe before the single submit action.
         return fill_roxy_otp(driver, code, human)
 
     _select_active_auth_window = staticmethod(select_active_auth_window)
@@ -364,24 +369,7 @@ class RoxyRegistrationRunner:
         birthday = random_birthdate()
         if callable(log):
             log(f"识别到资料页，填写随机姓名和生日（{safe_page_location(driver)}）", "info")
-        try:
-            field = RoxyRegistrationRunner._find(driver, ["input[name='name']", "input[name='full_name']", "input[autocomplete='name']", "input[name='first_name']"], 8)
-            RoxyRegistrationRunner._type(field, name, human)
-        except Exception as exc:
-            raise FreeRegisterError("free_roxy_profile", "填写 Free 账号资料", f"资料页未找到姓名输入框（{type(exc).__name__}，{safe_page_location(driver)}）", error_code="free_roxy_profile_name_missing") from exc
-        driver.execute_script("""
-        const birthday=String(arguments[0]), [year,month,day]=birthday.split('-');
-        const set=(el,value)=>{if(!el)return false; const p=HTMLInputElement.prototype; const s=Object.getOwnPropertyDescriptor(p,'value')?.set; if(s)s.call(el,value);else el.value=value; el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return true;};
-        set(document.querySelector('input[type=date],input[name=birthday],input[name=birthdate]'),birthday);
-        set(document.querySelector('input[name=year],input[id*=year]'),year);
-        set(document.querySelector('input[name=month],input[id*=month]'),String(Number(month)));
-        set(document.querySelector('input[name=day],input[id*=day]'),String(Number(day)));
-        """, birthday)
-        human.delay("form")
-        RoxyRegistrationRunner._submit(driver, human)
-        if callable(log):
-            log(f"资料已提交，等待注册结果（{safe_page_location(driver)}）", "info")
-        return True
+        return complete_profile_page(driver, human, name, birthday, timeout=60, log=log)
 
     @staticmethod
     def _session(driver: Any, timeout: int, log: Callable[[str, str], None] | None = None) -> dict[str, Any]:
@@ -490,93 +478,14 @@ class RoxyRegistrationRunner:
         }
 
     def _setup_2fa(self, driver: Any, task: Mapping[str, Any], token: str, otp: MailboxUrlOtpProvider, human: Humanizer, stage: Callable[[str, str], None]) -> str:
-        task_id = str(task.get("task_id") or "")
-        stage(task_id, "free_twofa_enroll")
-        # 2FA re-authentication is a separate mailbox phase.  Capture the
-        # request-time baseline before opening the re-auth URL; otherwise a
-        # registration OTP with the same value can satisfy this challenge.
-        prepare = getattr(otp, "prepare", None)
-        if callable(prepare):
-            try:
-                prepare("free_twofa_enroll", force_snapshot=True)
-            except TypeError as exc:
-                if "force_snapshot" not in str(exc):
-                    raise
-                try:
-                    prepare("free_twofa_enroll")
-                except TypeError as legacy_exc:
-                    if "argument" not in str(legacy_exc) and "positional" not in str(legacy_exc):
-                        raise
-                    prepare()
-        signin = driver.execute_async_script("""
-        const email=arguments[0], done=arguments[arguments.length - 1];
-        fetch('/api/auth/csrf',{credentials:'include'}).then(r=>r.json()).then(csrf=>{
-          const q=new URLSearchParams({connection:'password',login_hint:email,reauth:'password',max_age:'0'});
-          const body=new URLSearchParams({callbackUrl:'https://chatgpt.com/?action=enable&factor=totp',csrfToken:csrf.csrfToken,json:'true'});
-          return fetch('/api/auth/signin/openai?'+q,{method:'POST',credentials:'include',headers:{'content-type':'application/x-www-form-urlencoded'},body});
-        }).then(r=>r.json()).then(v=>done({ok:true,url:v.url})).catch(e=>done({ok:false,error:String(e)}));
-        """, str(task.get("email") or "")) or {}
-        if not signin.get("ok") or not signin.get("url"):
-            raise FreeRegisterError("free_twofa_enroll", "注册 Free 账号 2FA", "RoxyBrowser 未能发起 2FA 重认证")
-        driver.get(str(signin["url"]))
-        # The re-auth request has now been dispatched.  Mark the same phase
-        # explicitly, retaining compatibility with older provider wrappers.
-        mark_sent = getattr(otp, "mark_sent", None)
-        if callable(mark_sent):
-            try:
-                mark_sent("free_twofa_enroll")
-            except TypeError as exc:
-                if "argument" not in str(exc) and "positional" not in str(exc):
-                    raise
-                mark_sent()
-        try:
-            code = otp.wait_code(
-                str(task.get("email") or ""),
-                stage_code="free_twofa_enroll",
-            )
-        except TypeError as exc:
-            if "unexpected keyword" not in str(exc):
-                raise
-            try:
-                code = otp.wait_code(str(task.get("email") or ""), "free_twofa_enroll")
-            except TypeError as legacy_exc:
-                if "argument" not in str(legacy_exc) and "positional" not in str(legacy_exc):
-                    raise
-                code = otp.wait_code(str(task.get("email") or ""))
-        self._fill_otp(driver, code, human)
-        refreshed = self._session(driver, 90)
-        new_token = str(refreshed.get("accessToken") or token)
-        enrolled = driver.execute_async_script("""
-        const token=arguments[0], done=arguments[arguments.length - 1]; fetch('https://chatgpt.com/backend-api/accounts/mfa/enroll',{
-          method:'POST',credentials:'include',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({factor_type:'totp'})
-        }).then(async r=>done({ok:r.ok,status:r.status,value:await r.json().catch(()=>({}))})).catch(e=>done({ok:false,error:String(e)}));
-        """, new_token) or {}
-        data = enrolled.get("value") if isinstance(enrolled.get("value"), Mapping) else {}
-        secret = str(data.get("secret") or "")
-        session_id = str(data.get("session_id") or "")
-        if not enrolled.get("ok") or not secret or not session_id:
-            status = enrolled.get("status") or None
-            raise FreeRegisterError(
-                "free_twofa_enroll", "注册 Free 账号 2FA",
-                f"RoxyBrowser 2FA enrollment 失败（HTTP {status or '-'}）",
-                provider_status=status,
-            )
-        stage(task_id, "free_twofa_activate")
-        activated = driver.execute_async_script("""
-        const token=arguments[0], code=arguments[1], sid=arguments[2], done=arguments[arguments.length - 1]; fetch('https://chatgpt.com/backend-api/accounts/mfa/user/activate_enrollment',{
-          method:'POST',credentials:'include',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({code,factor_type:'totp',session_id:sid})
-        }).then(async r=>done({ok:r.ok,status:r.status,value:await r.json().catch(()=>({}))})).catch(e=>done({ok:false,error:String(e)}));
-        """, new_token, self._totp(secret), session_id) or {}
-        value = activated.get("value") if isinstance(activated.get("value"), Mapping) else {}
-        if not activated.get("ok") or not value.get("success"):
-            status = activated.get("status") or None
-            raise FreeRegisterError(
-                "free_twofa_activate", "激活 Free 账号 2FA",
-                f"RoxyBrowser 2FA 激活失败（HTTP {status or '-'}）",
-                provider_status=status,
-            )
-        return secret
-
+        return setup_twofa(
+            driver, task, token, otp, human, stage,
+            session_fn=lambda current, timeout: self._session(current, timeout),
+            fill_otp_fn=self._fill_otp,
+            wait_after_otp_fn=self._wait_after_otp_submit,
+            wait_home_fn=self._wait_for_home,
+            totp_fn=self._totp,
+        )
     def __call__(self, task: Mapping[str, Any], config: Mapping[str, Any], stop_event: Any, stage: Callable[[str, str], None], log: Callable[[str, str], None], *, twofa_retry: bool = False) -> Mapping[str, Any]:
         if twofa_retry:
             raise FreeRegisterError("free_twofa_retry", "重试 Free 账号 2FA", "RoxyBrowser 2FA 重试需要重新登录，请重新运行该邮箱", retryable=False)
@@ -596,10 +505,6 @@ class RoxyRegistrationRunner:
             verify_interval=float(roxy.get("cleanup_verify_interval") or 0.25),
             retries=int(roxy.get("api_retries") or 3),
         ) if lifecycle_store is not None else None
-        # Recovery is owned by FreeRegisterManager at preflight/start and
-        # after the final Future completes. Running it inside every worker
-        # would let one concurrent account close another account's active
-        # Profile because both records are intentionally in the same journal.
         opened: RoxyOpenResult | None = None
         driver: Any | None = None
         task_id = str(task.get("task_id") or "")
@@ -640,15 +545,10 @@ class RoxyRegistrationRunner:
                         task_id=task_id,
                     )
                 except TypeError as create_exc:
-                    # Keep compatibility with injected test/legacy clients
-                    # that still expose create_profile(proxy) only.
                     if "unexpected keyword argument" not in str(create_exc):
                         raise
                     profile_id = client.create_profile(str(task.get("proxy") or ""))
             except Exception:
-                # A timed-out create may have allocated a managed profile.  A
-                # best-effort same-workspace scan recovers only this task's
-                # marker; foreign/user profiles are never touched.
                 if lifecycle is not None:
                     try:
                         for row in client.find_owned_profiles(task_id=task_id, batch_id=str(task.get("batch_id") or "")):
@@ -687,8 +587,6 @@ class RoxyRegistrationRunner:
                 )
                 if task_id:
                     lifecycle_store.clear_intent(task_id)
-            # Keep ownership as soon as creation succeeds so an open/connect
-            # failure still closes and deletes this run's temporary Profile.
             opened = RoxyOpenResult(
                 profile_id,
                 {},
@@ -861,7 +759,11 @@ class RoxyRegistrationRunner:
                         "info",
                     )
                     human.delay("navigate")
-                    return self._wait_after_otp_submit(driver, 45, log)
+                    post_otp_state = self._wait_after_otp_submit(driver, 45, log)
+                    continue_url = wait_for_continue_url(driver, 2.0)
+                    if continue_url and post_otp_state in {"oauth_callback", "home", "profile"}:
+                        post_otp_state = follow_oauth_continue(driver, continue_url, 45, log)
+                    return post_otp_state
 
                 def restart_flow(_next_attempt: int) -> str:
                     return reopen_email_otp_flow(

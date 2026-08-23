@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 import time
 from typing import Any, Callable, Mapping
+from urllib.parse import urljoin, urlsplit
 
 try:
     from .free_register_common import FreeRegisterError, clean
@@ -411,6 +412,7 @@ def install_otp_validate_probe(driver: Any) -> dict[str, Any]:
         try {
           if (!String(url || '').includes('/api/accounts/email-otp/validate')) return;
           let code = '';
+          let continueUrl = '';
           try {
             const value = JSON.parse(String(body || '')) || {};
             const error = value.error && typeof value.error === 'object' ? value.error : {};
@@ -418,9 +420,19 @@ def install_otp_validate_probe(driver: Any) -> dict[str, Any]:
             const text = String(candidate || '').trim();
             // A numeric code may be the OTP itself. Keep only symbolic codes.
             code = /^(?!\d{4,8}$)[A-Za-z][A-Za-z0-9_.:-]{0,79}$/.test(text) ? text : '';
+            const page = value.page && typeof value.page === 'object' ? value.page : {};
+            const candidateUrl = value.continue_url || value.external_url || value.url
+              || page.continue_url || page.external_url || page.url || '';
+            try {
+              const parsed = new URL(String(candidateUrl || ''), location.origin);
+              if (parsed.protocol === 'https:' && (parsed.hostname === 'auth.openai.com' || parsed.hostname === 'chatgpt.com')) {
+                continueUrl = parsed.href;
+              }
+            } catch (_) {}
           } catch (_) {}
           (window[key] ||= []).push({status:Number(status || 0), contentType:String(contentType || '').split(';')[0],
             errorCode:code.slice(0, 80), requestGeneration:Number(requestGeneration || generation),
+            continueUrl:continueUrl.slice(0, 2048),
             ok:Number(status || 0) >= 200 && Number(status || 0) < 300, ts:Date.now()});
         } catch (_) {}
       };
@@ -454,7 +466,7 @@ def install_otp_validate_probe(driver: Any) -> dict[str, Any]:
       XMLHttpRequest.prototype.send = function() {
         try {
           if (String(this.__gptphoneOtpUrl || '').includes('/api/accounts/email-otp/validate')) window.__gptphone_email_otp_submit_observed = true;
-          this.addEventListener('loadend', () => safe(this.__gptphoneOtpUrl, this.status, this.getResponseHeader('content-type'), '', this.__gptphoneOtpGeneration));
+          this.addEventListener('loadend', () => safe(this.__gptphoneOtpUrl, this.status, this.getResponseHeader('content-type'), this.responseText || '', this.__gptphoneOtpGeneration));
         } catch (_) {}
         return send0.apply(this, arguments);
       };
@@ -489,6 +501,20 @@ def _safe_error_code(value: Any) -> str:
     return text
 
 
+def _safe_continue_url(value: Any) -> str:
+    """Keep OAuth callback URLs in memory only and restrict them to OpenAI hosts."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    candidate = urljoin("https://auth.openai.com/", text)
+    parsed = urlsplit(candidate)
+    if parsed.scheme != "https" or parsed.hostname not in {"auth.openai.com", "chatgpt.com"}:
+        return ""
+    if not parsed.path or len(candidate) > 2048:
+        return ""
+    return candidate
+
+
 def read_otp_validate_probe(driver: Any) -> dict[str, Any]:
     """Return a redacted validation summary for account-level diagnostics."""
     try:
@@ -507,11 +533,12 @@ def read_otp_validate_probe(driver: Any) -> dict[str, Any]:
         state = {}
     rows = [dict(item) for item in state.get("rows") or [] if isinstance(item, Mapping)]
     if not rows and not state.get("hooked"):
-        return {"installed": False, "submit_observed": bool(state.get("submit_observed")), "rows": []}
+        return {"installed": False, "submit_observed": bool(state.get("submit_observed")), "continue_url": "", "rows": []}
     latest = rows[-1] if rows else {}
     return {
         "installed": bool(state.get("hooked") or rows),
         "submit_observed": bool(state.get("submit_observed")),
+        "continue_url": _safe_continue_url(latest.get("continueUrl") or latest.get("continue_url")),
         "status": latest.get("status"),
         "content_type": latest.get("contentType") or latest.get("content_type") or "",
         "error_code": _safe_error_code(latest.get("errorCode") or latest.get("error_code")),
@@ -524,6 +551,41 @@ def read_otp_validate_probe(driver: Any) -> dict[str, Any]:
             for item in rows[-3:]
         ],
     }
+
+
+def follow_oauth_continue(driver: Any, continue_url: str, timeout: int = 45, log: LogFn | None = None) -> str:
+    """Navigate one trusted OAuth callback and return the resulting page state."""
+    target = _safe_continue_url(continue_url)
+    if not target:
+        raise FreeRegisterError(
+            "free_oauth_callback", "完成 Free OAuth 回调",
+            "OTP 校验返回的 OAuth 回调地址不受信任或为空",
+            error_code="free_oauth_continue_url_invalid",
+        )
+    try:
+        driver.get(target)
+    except Exception as exc:
+        current = _safe_continue_url(getattr(driver, "current_url", ""))
+        if not current:
+            raise FreeRegisterError(
+                "free_oauth_callback", "完成 Free OAuth 回调",
+                f"跟随 OAuth 回调失败（{type(exc).__name__}）",
+                error_code="free_oauth_continue_navigation_failed",
+            ) from exc
+    state = wait_after_otp_submit(driver, timeout, log)
+    _log(log, f"已跟随受信任 OAuth 回调，页面状态={state}，位置={safe_page_location(driver)}")
+    return state
+
+
+def wait_for_continue_url(driver: Any, timeout: float = 2.0) -> str:
+    """Allow the response-body observer to finish without exposing its payload."""
+    deadline = time.monotonic() + max(0.0, float(timeout or 0.0))
+    while time.monotonic() <= deadline:
+        value = read_otp_validate_probe(driver).get("continue_url")
+        if value:
+            return str(value)
+        time.sleep(0.05)
+    return ""
 
 
 def _page_error(driver: Any) -> str:
@@ -575,6 +637,10 @@ def wait_after_otp_submit(driver: Any, timeout: int = 45, log: LogFn | None = No
             if rows:
                 latest = rows[-1]
                 status = int(latest.get("status") or 0)
+                continue_url = _safe_continue_url(latest.get("continueUrl") or latest.get("continue_url"))
+                if 200 <= status < 300 and continue_url:
+                    _log(log, "邮箱验证码认证已返回 OAuth 回调，等待跟随受信任地址", "info")
+                    return "oauth_callback"
                 probe_signature = "|".join(str(latest.get(key) or "") for key in ("status", "contentType", "errorCode"))
                 if probe_signature and probe_signature != last_probe_signature:
                     _log(
@@ -920,7 +986,7 @@ def fill_otp(driver: Any, code: str, human: Any | None = None) -> dict[str, Any]
 
 __all__ = [
     "clear_otp_inputs", "fill_otp", "find_otp_inputs", "install_otp_validate_probe",
-    "read_otp_validate_probe", "reload_otp_page", "reopen_email_otp_flow", "run_otp_attempts",
+    "read_otp_validate_probe", "follow_oauth_continue", "wait_for_continue_url", "reload_otp_page", "reopen_email_otp_flow", "run_otp_attempts",
     "select_active_auth_window",
     "wait_after_otp_submit", "wait_for_otp_input",
 ]

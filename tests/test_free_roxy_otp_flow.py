@@ -246,6 +246,14 @@ class FreeRoxyOtpFlowTests(unittest.TestCase):
         self.assertNotIn("735687", repr(result))
         self.assertNotIn("cookie", repr(result).lower())
 
+    def test_continue_url_is_restricted_to_openai_hosts(self) -> None:
+        self.assertEqual(
+            self.flow._safe_continue_url("/authorize/continue?code=private"),
+            "https://auth.openai.com/authorize/continue?code=private",
+        )
+        self.assertEqual(self.flow._safe_continue_url("https://example.test/callback"), "")
+        self.assertEqual(self.flow._safe_continue_url("javascript:alert(1)"), "")
+
     def test_wait_after_submit_reports_japanese_invalid_code(self) -> None:
         driver = _FakeOtpDriver(
             [_FakeOtpElement(inputmode="numeric")],
