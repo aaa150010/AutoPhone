@@ -14,11 +14,11 @@ from typing import Any, Callable, Mapping
 
 try:
     from .free_register_common import FreeRegisterError, clean
-    from .free_roxy_page_flow import classify_page, page_snapshot
+    from .free_roxy_page_flow import classify_page, page_snapshot, wait_for_security_clear
     from .free_roxy_signup import safe_page_location
 except ImportError:
     from free_register_common import FreeRegisterError, clean  # type: ignore[no-redef]
-    from free_roxy_page_flow import classify_page, page_snapshot  # type: ignore[no-redef]
+    from free_roxy_page_flow import classify_page, page_snapshot, wait_for_security_clear  # type: ignore[no-redef]
     from free_roxy_signup import safe_page_location  # type: ignore[no-redef]
 
 
@@ -251,6 +251,8 @@ def wait_for_otp_input(driver: Any, timeout: int = 30, log: LogFn | None = None)
     while time.monotonic() < deadline:
         _select_active_auth_window(driver, log)
         state = _page_state(driver)
+        if state == "security":
+            state = wait_for_security_clear(driver, int(max(1, deadline - time.monotonic())), log)
         if state == "security":
             raise FreeRegisterError(
                 "free_roxy_challenge", "等待注册页安全验证",
@@ -561,6 +563,8 @@ def wait_after_otp_submit(driver: Any, timeout: int = 45, log: LogFn | None = No
     last_probe_signature = ""
     while time.monotonic() < deadline:
         state = classify_page(driver)
+        if state == "security":
+            state = wait_for_security_clear(driver, int(max(1, deadline - time.monotonic())), log)
         if state != last_state:
             _log(log, f"OTP 提交后页面状态：{state}，位置={safe_page_location(driver)}")
             last_state = state
@@ -783,6 +787,8 @@ def reopen_email_otp_flow(
     if callable(getattr(human, "delay", None)):
         human.delay("navigate")
     state = classify(driver)
+    if state == "security":
+        state = wait_for_security_clear(driver, timeout, log)
     if state == "security":
         raise FreeRegisterError(
             "free_roxy_challenge", "等待注册页安全验证",

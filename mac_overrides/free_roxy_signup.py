@@ -109,6 +109,20 @@ def open_signup_page(driver: Any, email: str, timeout: int) -> None:
     ):
         step = str(result.get("step") or "unknown") if isinstance(result, Mapping) else "unknown"
         status = result.get("status") if isinstance(result, Mapping) else None
+        # A challenge can turn the same-origin CSRF/signin response into a
+        # 200 HTML shell or a 403. Fall back to the normal DOM login page so
+        # the browser can complete its challenge and the existing page state
+        # machine can continue without reusing a failed response.
+        if step in {"csrf", "signin"} and status in {0, 200, 403, 429, None}:
+            try:
+                driver.get("https://chatgpt.com/auth/login")
+                return
+            except Exception as exc:
+                raise FreeRegisterError(
+                    "free_roxy_signup_bootstrap", "打开 RoxyBrowser 注册页",
+                    f"注册页挑战回退导航失败（{type(exc).__name__}，{safe_page_location(driver)}）",
+                    error_code="free_roxy_signup_bootstrap_fallback_failed",
+                ) from exc
         raise FreeRegisterError(
             "free_roxy_signup_bootstrap", "打开 RoxyBrowser 注册页",
             f"注册页初始化响应无效（步骤 {step}，HTTP {status or '-'}）",

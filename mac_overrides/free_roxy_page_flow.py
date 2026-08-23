@@ -14,6 +14,7 @@ except ImportError:
 
 
 LogFn = Callable[[str, str], None]
+SECURITY_WAIT_SECONDS = 60
 
 
 def page_snapshot(driver: Any) -> dict[str, Any]:
@@ -54,9 +55,9 @@ def classify_page(driver: Any) -> str:
     raw_url = str(getattr(driver, "current_url", "") or "").lower()
     url = raw_url.split("?", 1)[0].rstrip("/")
     body = str(snapshot.get("body") or "").lower()
-    if any(value in body for value in (
+    if "/cdn-cgi/challenge-platform" in url or any(value in body for value in (
         "cloudflare", "verify you are human", "unusual traffic", "security check",
-        "安全验证", "人机验证", "challenge",
+        "安全验证", "人机验证", "turnstile", "just a moment",
     )):
         return "security"
     if "chatgpt.com" in url and not any(value in url for value in (
@@ -91,6 +92,23 @@ def classify_page(driver: Any) -> str:
     if any(value in input_names for value in ("password", "new-password")) and "auth.openai.com" in url:
         return "signup_password"
     return "unknown"
+
+
+def wait_for_security_clear(driver: Any, timeout: int, log: LogFn | None = None) -> str:
+    """Wait for a transient browser challenge without repeating a submitted step."""
+    deadline = time.monotonic() + min(SECURITY_WAIT_SECONDS, max(1, int(timeout or 60)))
+    announced = False
+    while time.monotonic() < deadline:
+        state = classify_page(driver)
+        if state != "security":
+            if announced:
+                _log(log, f"安全验证页已离开，继续页面状态：{state}，位置={safe_page_location(driver)}")
+            return state
+        if not announced:
+            _log(log, f"检测到临时安全验证，保留当前 Profile/代理等待最多 {SECURITY_WAIT_SECONDS} 秒")
+            announced = True
+        time.sleep(0.5)
+    return "security"
 
 
 def _password_error(driver: Any) -> str:
@@ -220,6 +238,8 @@ def wait_after_signup_password_submit(
     deadline = time.monotonic() + max(3, int(timeout or 45))
     while time.monotonic() < deadline:
         state = classify_page(driver)
+        if state == "security":
+            state = wait_for_security_clear(driver, int(max(1, deadline - time.monotonic())), log)
         if state != "signup_password":
             _log(log, f"注册密码提交后页面状态：{state}，位置={safe_page_location(driver)}")
             if state in {"otp", "profile", "oauth_callback", "home", "security", "login_password"}:
@@ -296,6 +316,8 @@ def wait_after_otp_submit(driver: Any, timeout: int, log: LogFn | None = None) -
     last = "unknown"
     while time.monotonic() < deadline:
         state = classify_page(driver)
+        if state == "security":
+            state = wait_for_security_clear(driver, int(max(1, deadline - time.monotonic())), log)
         if state != last:
             last = state
             _log(log, f"OTP 提交后页面状态：{state}，位置={safe_page_location(driver)}")
@@ -325,6 +347,8 @@ def wait_after_email_submit(driver: Any, timeout: int, log: LogFn | None = None)
     last = ""
     while time.monotonic() < deadline:
         state = classify_page(driver)
+        if state == "security":
+            state = wait_for_security_clear(driver, int(max(1, deadline - time.monotonic())), log)
         if state != last:
             last = state
             _log(log, f"邮箱提交后页面状态：{state}，位置={safe_page_location(driver)}")
@@ -385,6 +409,8 @@ def wait_after_passwordless_switch(driver: Any, timeout: int, log: LogFn | None 
     last = "login_password"
     while time.monotonic() < deadline:
         state = classify_page(driver)
+        if state == "security":
+            state = wait_for_security_clear(driver, int(max(1, deadline - time.monotonic())), log)
         if state != last:
             last = state
             _log(log, f"已有账号登录切换后页面状态：{state}，位置={safe_page_location(driver)}")
@@ -408,6 +434,8 @@ def wait_for_home(driver: Any, timeout: int, log: LogFn | None = None) -> None:
             last = state
         if state == "home":
             return
+        if state == "security":
+            state = wait_for_security_clear(driver, int(max(1, deadline - time.monotonic())), log)
         if state == "security":
             raise FreeRegisterError(
                 "free_roxy_challenge", "等待注册页安全验证",
@@ -433,6 +461,7 @@ def wait_for_home(driver: Any, timeout: int, log: LogFn | None = None) -> None:
 __all__ = [
     "click_resend_email_otp",
     "classify_page",
+    "wait_for_security_clear",
     "page_snapshot",
     "password_form_targets",
     "install_password_submit_probe",

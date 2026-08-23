@@ -42,6 +42,7 @@ try:
         password_form_targets,
         read_password_submit_probe,
         switch_login_to_email_code,
+        wait_for_security_clear,
         wait_after_email_submit,
         wait_after_otp_submit,
         wait_after_passwordless_switch,
@@ -94,6 +95,7 @@ except ImportError:
         password_form_targets,
         read_password_submit_probe,
         switch_login_to_email_code,
+        wait_for_security_clear,
         wait_after_email_submit,
         wait_after_otp_submit,
         wait_after_passwordless_switch,
@@ -717,6 +719,14 @@ class RoxyRegistrationRunner:
             operation_started = time.monotonic()
             self._open_signup_page(driver, str(task.get("email") or ""), int(roxy.get("selenium_timeout") or 90))
             self._select_active_auth_window(driver, log)
+            initial_state = wait_for_security_clear(driver, int(roxy.get("selenium_timeout") or 90), log)
+            if initial_state == "security":
+                raise FreeRegisterError(
+                    "free_roxy_challenge", "等待注册页安全验证",
+                    f"注册页安全验证在限定时间内未完成（{safe_page_location(driver)}）",
+                    retryable=False,
+                    error_code="free_roxy_security_challenge",
+                )
             log(f"注册页初始化完成，页面={safe_page_location(driver)}，duration_ms={int((time.monotonic() - operation_started) * 1000)} outcome=success", "success")
             human.delay("page_warmup")
             try:
@@ -748,7 +758,7 @@ class RoxyRegistrationRunner:
                             body = str(driver.find_element("tag name", "body").text or "").lower()
                         except Exception:
                             body = ""
-                        challenge = any(token in body for token in ("cloudflare", "verify you are human", "安全验证", "challenge"))
+                        challenge = any(token in body for token in ("cloudflare", "verify you are human", "安全验证", "turnstile", "just a moment"))
                         node_code = "free_roxy_challenge" if challenge else "free_roxy_signup_email"
                         node_label = "等待注册页安全验证" if challenge else "填写 Free 注册邮箱"
                         message = "注册页出现安全验证，邮箱输入框未开放" if challenge else f"45 秒内未找到可用邮箱输入框（{self._safe_page_location(driver)}）"

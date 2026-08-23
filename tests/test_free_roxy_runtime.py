@@ -344,7 +344,7 @@ class FreeRoxyRuntimeTests(unittest.TestCase):
             self.assertEqual(saved["concurrency"], 5)
             self.assertEqual(saved["mailbox_request_retries"], 3)
             self.assertEqual(saved["mailbox_retry_backoff_seconds"], 1.0)
-            self.assertTrue(saved["roxybrowser"]["headless"])
+            self.assertFalse(saved["roxybrowser"]["headless"])
             self.assertFalse(saved["roxybrowser"]["existing_account_login"])
             self.assertEqual(store.public()["roxybrowser"]["api_key"], "********")
             self.assertEqual(store.public()["mailbox_proxy_url"], "********")
@@ -353,11 +353,11 @@ class FreeRoxyRuntimeTests(unittest.TestCase):
             self.assertEqual(store.secret("mailbox_proxy_url"), "http://mail-user:mail-pass@127.0.0.1:7897")
             self.assertNotIn("free_proxy_pool_content", store.load())
 
-    def test_legacy_visible_default_is_migrated_to_headless_once(self):
+    def test_visible_roxy_default_is_preserved_for_legacy_and_new_configs(self):
         with TemporaryDirectory() as directory:
             store = FreeConfigStore(directory)
             migrated = store.normalize({"version": 2, "roxybrowser": {"headless": False}})
-            self.assertTrue(migrated["roxybrowser"]["headless"])
+            self.assertFalse(migrated["roxybrowser"]["headless"])
             explicit = store.normalize({"version": 3, "roxybrowser": {"headless": False}})
             self.assertFalse(explicit["roxybrowser"]["headless"])
 
@@ -427,6 +427,11 @@ class FreeRoxyRuntimeTests(unittest.TestCase):
             RoxyRegistrationRunner._open_signup_page(driver, "account@example.test", 90)
         self.assertEqual(raised.exception.error_code, "free_roxy_signup_bootstrap_response_invalid")
         self.assertEqual(driver.visits, ["https://chatgpt.com/"])
+
+    def test_signup_bootstrap_falls_back_to_dom_login_after_challenge_response(self):
+        driver = _SignupDriver({"ok": False, "step": "csrf", "status": 200})
+        RoxyRegistrationRunner._open_signup_page(driver, "account@example.test", 90)
+        self.assertEqual(driver.visits, ["https://chatgpt.com/", "https://chatgpt.com/auth/login"])
 
     def test_signup_navigation_error_continues_after_trusted_auth_redirect(self):
         driver = _AuthNavigationErrorDriver()
@@ -499,6 +504,25 @@ class FreeRoxyRuntimeTests(unittest.TestCase):
         self.assertEqual(wait_after_otp_submit(password_driver, 3), "signup_password")
         security_driver = _PageDriver("https://auth.openai.com/authorize", body="Verify you are human")
         self.assertEqual(wait_after_otp_submit(security_driver, 3), "security")
+
+    def test_post_otp_waits_for_a_transient_security_page_to_clear(self):
+        class TransientChallengeDriver(_PageDriver):
+            def __init__(self):
+                super().__init__("https://auth.openai.com/authorize", body="Verify you are human")
+                self.classifications = 0
+
+            def execute_script(self, script, *args):
+                result = super().execute_script(script, *args)
+                if isinstance(result, dict) and "body" in result:
+                    self.classifications += 1
+                    if self.classifications >= 2:
+                        self.current_url = "https://auth.openai.com/sign-up/password"
+                        result["body"] = "ready"
+                return result
+
+        driver = TransientChallengeDriver()
+        with patch("mac_overrides.free_roxy_page_flow.time.sleep", return_value=None):
+            self.assertEqual(wait_after_otp_submit(driver, 3), "signup_password")
 
     def test_signup_password_uses_form_scoped_submit_once_and_verifies_value(self):
         driver = _SignupPasswordDriver()

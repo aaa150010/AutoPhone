@@ -5,6 +5,7 @@ from types import ModuleType
 import unittest
 
 from mac_overrides.free_protocol_flow import _is_security_page, run_free_protocol_flow
+from mac_overrides.free_protocol_runtime import resolve_auth_impersonates
 from mac_overrides.free_register_common import FreeRegisterError
 
 
@@ -141,6 +142,16 @@ class FreeProtocolFlowTests(unittest.TestCase):
         self.assertFalse(_is_security_page({"page": {"type": "mfa_challenge"}}))
         self.assertTrue(_is_security_page({"page": {"type": "security_challenge"}}))
         self.assertTrue(_is_security_page({"url": "https://auth.openai.com/cdn-cgi/challenge-platform/start"}))
+
+    def test_oauth_start_uses_reference_fingerprint_order_without_truncation(self):
+        self.assertEqual(
+            resolve_auth_impersonates({}),
+            ["chrome", "chrome136", "chrome133a", "safari15_3", "safari17_0"],
+        )
+        self.assertEqual(
+            resolve_auth_impersonates({"auth_impersonates": ["chrome136", "safari17_0"]}),
+            ["chrome136", "safari17_0"],
+        )
 
     def test_protocol_uses_authorize_continue_and_reaches_token_only_after_callback(self):
         transport = _Transport()

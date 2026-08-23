@@ -18,7 +18,7 @@ from mac_overrides.free_register_runtime import (
     FreeTwoFaPending,
 )
 from mac_overrides.free_register_config import FreeConfigStore
-from mac_overrides.free_protocol_runtime import FreeProtocolMixin
+from mac_overrides.free_protocol_runtime import FreeProtocolMixin, resolve_auth_impersonates
 from mac_overrides.free_log_runtime import FreeLogStore
 from mac_overrides.free_proxy_store import FreeProxyPool as StructuredFreeProxyPool
 
@@ -48,6 +48,19 @@ class FakeTransport:
 
 
 class FreeRegisterRuntimeTests(unittest.TestCase):
+    def test_protocol_uses_reference_impersonation_rotation_order(self):
+        self.assertEqual(
+            resolve_auth_impersonates({}),
+            ["chrome", "chrome136", "chrome133a", "safari15_3", "safari17_0"],
+        )
+        self.assertEqual(
+            resolve_auth_impersonates({"auth_impersonates": [" chrome", "chrome", "safari17_0"]}),
+            ["chrome", "safari17_0"],
+        )
+        self.assertEqual(
+            resolve_auth_impersonates({"chatgpt_impersonates": ["firefox"]}),
+            ["firefox"],
+        )
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory(prefix="gptphone-free-test-")
         self.data_dir = Path(self.temp_dir.name)

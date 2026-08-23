@@ -13,11 +13,19 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.44',
-  freeRuntimeVersion: '1.6.44',
-  title: 'Free 全协议会话与验证码链路修复',
+  version: '1.6.45',
+  freeRuntimeVersion: '1.6.45',
+  title: 'Free OAuth 与 Roxy 风控处理修复',
   releasedAt: '2026-08-23',
   sections: [
+    {
+      title: 'OAuth 起始页指纹轮换',
+      usage: 'Free 全协议在 OAuth 起始页遇到 Cloudflare 或 HTML 风控响应时，会按 chrome、chrome136、chrome133a、safari15_3、safari17_0 顺序轮换新会话；邮箱、固定代理、设备和 PKCE 上下文保持不变，后续阶段安全验证仍会停止。',
+    },
+    {
+      title: 'Roxy 风控等待与可见启动',
+      usage: 'Free Roxy 新配置默认使用可见浏览器；CSRF 引导被风控拦截时回退到正常登录页，并在同一 Profile/代理上等待最多 60 秒让临时挑战清除，未清除仍保留安全验证节点停止，不重复提交邮箱验证码。',
+    },
     {
       title: 'Free 全协议会话重建',
       usage: '全协议改为全新 OAuth 会话后再提交邮箱，按服务端页面状态处理注册、已有账号登录、邮箱验证码、资料和 OAuth 回调。登录会话失效或返回普通 HTML 时最多重建一次；安全验证会明确停止，不会误报为 Token 获取失败。',

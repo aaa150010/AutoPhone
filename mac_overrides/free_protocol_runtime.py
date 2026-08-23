@@ -43,6 +43,30 @@ except ImportError:
     )
 
 
+DEFAULT_AUTH_IMPERSONATES = (
+    "chrome",
+    "chrome136",
+    "chrome133a",
+    "safari15_3",
+    "safari17_0",
+)
+
+
+def resolve_auth_impersonates(config: Mapping[str, Any]) -> list[str]:
+    """Keep explicit candidates; otherwise use the recovered rotation order."""
+    for key in ("auth_impersonates", "chatgpt_impersonates"):
+        value = config.get(key)
+        if isinstance(value, list):
+            candidates: list[str] = []
+            for item in value:
+                name = str(item or "").strip()
+                if name and name not in candidates:
+                    candidates.append(name)
+            if candidates:
+                return candidates
+    return list(DEFAULT_AUTH_IMPERSONATES)
+
+
 class FreeProtocolMixin:
     """Protocol driver methods mixed into ``FreeRegisterManager``."""
 
@@ -320,19 +344,10 @@ class FreeProtocolMixin:
             "_auth_account_email": email,
             "register": {"password": password, "name": random_display_name(), "birthdate": random_birthdate()},
         })
-        # Do not let the recovered transport silently rotate browser
-        # fingerprints after a Cloudflare/security page. Free treats that as
-        # a hard risk stop; choose only the first configured impersonation.
-        impersonates = chain_config.get("auth_impersonates")
-        if not isinstance(impersonates, list) or not impersonates:
-            impersonates = chain_config.get("chatgpt_impersonates")
-        first_impersonate = "chrome"
-        if isinstance(impersonates, list):
-            for candidate in impersonates:
-                if str(candidate or "").strip():
-                    first_impersonate = str(candidate).strip()
-                    break
-        chain_config["auth_impersonates"] = [first_impersonate]
+        # The recovered initiate_oauth rotates these candidates only for an
+        # OAuth start-page Cloudflare response. Later security pages remain
+        # terminal in the Free state machine.
+        chain_config["auth_impersonates"] = resolve_auth_impersonates(chain_config)
 
         # The recovered provider reads the runner from the top-level chain
         # configuration. Passing only the nested Free config made a valid
