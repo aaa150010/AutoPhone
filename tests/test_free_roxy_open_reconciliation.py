@@ -68,7 +68,100 @@ class _StructuredOpenErrorSession:
         return _Response({"code": 0})
 
 
+class _ConnectionInfoHttpErrorSession:
+    def __init__(self, status: int = 403):
+        self.headers = {}
+        self.calls = []
+        self.status = status
+
+    def request(self, method, url, **kwargs):
+        self.calls.append((method, url, kwargs.get("json")))
+        if url.endswith("/browser/connection_info"):
+            return _ResponseWithError(
+                self.status,
+                {
+                    "error": {"code": "profile_access_denied"},
+                    "provider_code": "workspace_auth_failed",
+                    "message": "authorization detail must not be copied",
+                },
+            )
+        return _Response({"code": 0, "data": {}})
+
+
+class _ResponseWithError:
+    def __init__(self, status: int, value):
+        self.status_code = status
+        self.value = value
+        self.text = "redacted response body"
+
+    def json(self):
+        return self.value
+
+
+class _StructuredPayloadErrorSession:
+    def __init__(self):
+        self.headers = {}
+
+    def request(self, _method, _url, **_kwargs):
+        return _Response({
+            "code": 1001,
+            "error": {
+                "error_code": "profile_not_ready",
+                "message": "secret response detail must not be copied",
+            },
+            "provider_code": "profile_bootstrap_pending",
+        })
+
+
 class FreeRoxyOpenReconciliationTests(unittest.TestCase):
+    def test_http_error_keeps_provider_codes_without_response_body(self):
+        session = _ConnectionInfoHttpErrorSession()
+        client = RoxyBrowserClient({"api_base": "http://127.0.0.1:50000", "api_retries": 1}, session=session)
+
+        with self.assertRaises(FreeRegisterError) as raised:
+            client.request("GET", "/browser/connection_info", retries=1)
+
+        failure = raised.exception
+        self.assertEqual(failure.node_code, "free_roxy_api")
+        self.assertEqual(failure.error_code, "free_roxy_api_http")
+        self.assertEqual(failure.provider_status, 403)
+        self.assertEqual(failure.provider_code, "workspace_auth_failed")
+        self.assertIn("error_code=profile_access_denied", failure.diagnostic)
+        self.assertNotIn("authorization detail", failure.diagnostic)
+        self.assertNotIn("redacted response body", str(failure))
+
+    def test_connection_info_http_error_is_not_treated_as_startup_race(self):
+        session = _ConnectionInfoHttpErrorSession(429)
+        client = RoxyBrowserClient({
+            "api_base": "http://127.0.0.1:50000",
+            "api_retries": 1,
+            "open_connection_timeout": 0.1,
+        }, session=session)
+
+        with self.assertRaises(FreeRegisterError) as raised:
+            client.open_profile("42")
+
+        self.assertEqual(raised.exception.provider_status, 429)
+        self.assertEqual(
+            [url.rsplit("/", 1)[-1] for _method, url, _body in session.calls],
+            ["connection_info"],
+        )
+
+    def test_structured_api_error_keeps_codes_without_raw_payload(self):
+        client = RoxyBrowserClient(
+            {"api_base": "http://127.0.0.1:50000", "api_retries": 1},
+            session=_StructuredPayloadErrorSession(),
+        )
+
+        with self.assertRaises(FreeRegisterError) as raised:
+            client.request("GET", "/browser/connection_info", retries=1)
+
+        failure = raised.exception
+        self.assertEqual(failure.error_code, "free_roxy_api_response")
+        self.assertEqual(failure.provider_code, "profile_bootstrap_pending")
+        self.assertIn("error_code=profile_not_ready", failure.diagnostic)
+        self.assertNotIn("secret response detail", str(failure))
+
     def test_timeout_adopts_connection_without_duplicate_open(self):
         session = _OpenTimeoutSession()
         client = RoxyBrowserClient({

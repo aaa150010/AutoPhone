@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import random
+import re
 import time
 from typing import Any, Callable, Mapping
 from urllib.parse import unquote, urljoin, urlsplit
@@ -161,6 +162,91 @@ class RoxyBrowserClient:
         text = str(exc or "").lower()
         return any(value in text for value in ("timeout", "connection", "temporarily", "http 429", "http 500", "http 502", "http 503", "http 504"))
 
+    @staticmethod
+    def _safe_response_code(value: Any) -> str:
+        """Keep short provider identifiers while rejecting response text/URLs."""
+        if isinstance(value, (Mapping, list, tuple, set)):
+            return ""
+        candidate = safe_log_message(value).strip()
+        if not candidate or len(candidate) > 120 or "://" in candidate:
+            return ""
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,119}", candidate):
+            return ""
+        return candidate
+
+    @classmethod
+    def _response_error_codes(cls, payload: Any) -> tuple[str, str]:
+        """Return ``(provider_code, server_error_code)`` from a JSON error."""
+        if not isinstance(payload, Mapping):
+            return "", ""
+        sources: list[Mapping[str, Any]] = []
+
+        def add(source: Any) -> None:
+            if isinstance(source, Mapping) and source not in sources:
+                sources.append(source)
+
+        add(payload.get("error"))
+        add(payload)
+        data = payload.get("data")
+        add(data)
+        if isinstance(data, Mapping):
+            add(data.get("error"))
+
+        provider_code = ""
+        server_error_code = ""
+        for source in sources:
+            if not provider_code:
+                for key in ("provider_code", "providerCode", "provider"):
+                    provider_code = cls._safe_response_code(source.get(key))
+                    if provider_code:
+                        break
+            if not server_error_code:
+                for key in ("error_code", "errorCode", "code", "type", "reason"):
+                    candidate = cls._safe_response_code(source.get(key))
+                    # Numeric HTTP/status values do not add diagnostic value.
+                    if candidate and not (candidate.isdigit() and int(candidate) in {0, 200, 201, 202, 204}):
+                        server_error_code = candidate
+                        break
+        if not provider_code:
+            provider_code = server_error_code
+        return provider_code, server_error_code
+
+    @staticmethod
+    def _connection_info_soft_failure(exc: BaseException) -> bool:
+        """Only hide a transport race while checking an asynchronously opened Profile."""
+        transport_names = {
+            "connectionerror", "connectionrefusederror", "connectionreseterror",
+            "connecttimeout", "readtimeout", "timeout", "timeouterror",
+            "sockettimeout", "proxyerror", "sslerror", "gaierror",
+        }
+        pending: list[BaseException] = [exc]
+        seen: set[int] = set()
+        saw_transport = False
+        while pending:
+            current = pending.pop(0)
+            if id(current) in seen:
+                continue
+            seen.add(id(current))
+            status = getattr(current, "provider_status", None)
+            if status is None:
+                status = getattr(getattr(current, "response", None), "status_code", None)
+            try:
+                if status is not None and 100 <= int(status) <= 599:
+                    return False
+            except (TypeError, ValueError):
+                return False
+            if isinstance(current, (requests.exceptions.Timeout, requests.exceptions.ConnectionError, TimeoutError, ConnectionError)):
+                saw_transport = True
+            elif type(current).__name__.casefold() in transport_names:
+                saw_transport = True
+            cause = getattr(current, "__cause__", None)
+            context = getattr(current, "__context__", None)
+            if isinstance(cause, BaseException):
+                pending.append(cause)
+            if isinstance(context, BaseException):
+                pending.append(context)
+        return saw_transport
+
     @classmethod
     def _open_reconciliation_candidate(cls, exc: BaseException) -> bool:
         """Return whether an ``/browser/open`` error may have launched a window.
@@ -267,7 +353,12 @@ class RoxyBrowserClient:
         )
 
     @staticmethod
-    def _quota_failure(message: Any, *, provider_status: int | None = None) -> FreeRegisterError | None:
+    def _quota_failure(
+        message: Any,
+        *,
+        provider_status: int | None = None,
+        provider_code: str | None = None,
+    ) -> FreeRegisterError | None:
         text = clean(message, 240)
         lowered = text.casefold()
         markers = (
@@ -282,6 +373,7 @@ class RoxyBrowserClient:
                 retryable=False,
                 provider_status=provider_status,
                 error_code="roxy_window_quota_exhausted",
+                provider_code=provider_code,
             )
         return None
 
@@ -320,12 +412,26 @@ class RoxyBrowserClient:
                 )
                 status = int(getattr(response, "status_code", 0) or 0)
                 if not 200 <= status < 300:
-                    quota_error = self._quota_failure(getattr(response, "text", ""), provider_status=status)
+                    try:
+                        error_payload = response.json()
+                    except Exception:
+                        error_payload = None
+                    provider_code, server_error_code = self._response_error_codes(error_payload)
+                    quota_message = error_payload if isinstance(error_payload, Mapping) else getattr(response, "text", "")
+                    quota_error = self._quota_failure(quota_message, provider_status=status, provider_code=provider_code)
                     if quota_error is not None:
                         raise quota_error
+                    diagnostic_parts = [f"provider_status={status}"]
+                    if provider_code:
+                        diagnostic_parts.append(f"provider_code={provider_code}")
+                    if server_error_code and server_error_code != provider_code:
+                        diagnostic_parts.append(f"error_code={server_error_code}")
                     raise FreeRegisterError(
                         "free_roxy_api", "调用 RoxyBrowser API", f"RoxyBrowser API 返回 HTTP {status}",
                         retryable=status in {429, 500, 502, 503, 504}, provider_status=status,
+                        error_code="free_roxy_api_http",
+                        provider_code=provider_code,
+                        diagnostic="; ".join(diagnostic_parts),
                     )
                 try:
                     payload = response.json()
@@ -335,11 +441,25 @@ class RoxyBrowserClient:
                     raise FreeRegisterError("free_roxy_api", "调用 RoxyBrowser API", "RoxyBrowser API 响应格式无效")
                 code = payload.get("code")
                 if code not in (None, 0, 200, "0", "200") and payload.get("ok") is not True and payload.get("success") is not True:
-                    message = clean(payload.get("message") or payload.get("msg") or payload.get("error"), 200)
-                    quota_error = self._quota_failure(message)
+                    provider_code, _server_error_code = self._response_error_codes(payload)
+                    message_value = payload.get("message") or payload.get("msg")
+                    message = safe_log_message(clean(message_value, 200)) if isinstance(message_value, str) else ""
+                    quota_error = self._quota_failure(message or payload, provider_code=provider_code)
                     if quota_error is not None:
                         raise quota_error
-                    raise FreeRegisterError("free_roxy_api", "调用 RoxyBrowser API", message or "RoxyBrowser API 返回失败")
+                    diagnostic = "api_response=error"
+                    if provider_code:
+                        diagnostic += f"; provider_code={provider_code}"
+                    if _server_error_code and _server_error_code != provider_code:
+                        diagnostic += f"; error_code={_server_error_code}"
+                    raise FreeRegisterError(
+                        "free_roxy_api",
+                        "调用 RoxyBrowser API",
+                        message or "RoxyBrowser API 返回失败",
+                        error_code="free_roxy_api_response",
+                        provider_code=provider_code,
+                        diagnostic=diagnostic,
+                    )
                 if attempt > 1:
                     self._log(f"[RoxyBrowser/free_roxy_api] API 第 {attempt} 次请求成功")
                 return dict(payload)
@@ -640,7 +760,9 @@ class RoxyBrowserClient:
                 retries=1,
                 deadline=deadline,
             )
-        except Exception:
+        except Exception as exc:
+            if not self._connection_info_soft_failure(exc):
+                raise
             already_open = None
         if already_open is not None:
             already_open.connection_reused = True
@@ -709,7 +831,9 @@ class RoxyBrowserClient:
                     retries=1,
                     deadline=deadline,
                 )
-            except Exception:
+            except Exception as exc:
+                if not self._connection_info_soft_failure(exc):
+                    raise
                 opened = None
             if opened is not None:
                 opened.headless = headless

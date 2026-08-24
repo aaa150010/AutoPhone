@@ -6,6 +6,7 @@ import tempfile
 import time
 import unittest
 
+from mac_overrides.free_register_common import FreeRegisterError
 from mac_overrides.free_proxy_store import FreeProxyPool
 from mac_overrides.free_register_runtime import FreeRegisterManager
 
@@ -42,6 +43,40 @@ class FreeProxyRobustnessTests(unittest.TestCase):
         self.assertEqual(len(chatgpt_calls), 1)
         self.assertTrue(chatgpt_calls[0].startswith("socks5h://"))
         self.assertNotIn("private", str(protocol))
+
+    def test_chatgpt_page_rejection_does_not_quarantine_proxy(self) -> None:
+        pool = FreeProxyPool(self.data_dir, failure_threshold=1)
+        pool.import_text("http://proxy.example.test:8000\n")
+        with self.assertRaises(FreeRegisterError) as raised:
+            pool.bind(
+                1,
+                driver="protocol",
+                probe=lambda _proxy, _url: "203.0.113.80",
+                chatgpt_probe=lambda _proxy: 403,
+                check_chatgpt=True,
+            )
+        self.assertEqual(raised.exception.provider_status, 403)
+        row = pool.public()["rows"][0]
+        self.assertEqual(row["consecutive_failures"], 0)
+        self.assertNotEqual(row["status"], "quarantined")
+
+    def test_transport_preflight_failure_still_updates_proxy_health(self) -> None:
+        pool = FreeProxyPool(self.data_dir, failure_threshold=1)
+        pool.import_text("http://proxy.example.test:8000\n")
+
+        def fail_probe(_proxy, _url):
+            raise ConnectionError("proxy CONNECT timeout")
+
+        with self.assertRaises(FreeRegisterError):
+            pool.bind(
+                1,
+                driver="protocol",
+                probe=fail_probe,
+            )
+
+        row = pool.public()["rows"][0]
+        self.assertEqual(row["consecutive_failures"], 1)
+        self.assertEqual(row["status"], "quarantined")
 
     def test_malformed_persisted_numeric_fields_are_safely_normalized(self) -> None:
         secret_values = (

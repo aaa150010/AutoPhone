@@ -59,6 +59,11 @@ try:
 except ImportError:
     from free_proxy_numeric import safe_float as _safe_float, safe_int as _safe_int  # type: ignore[no-redef]
 
+try:
+    from .free_proxy_health import is_proxy_health_failure
+except ImportError:
+    from free_proxy_health import is_proxy_health_failure  # type: ignore[no-redef]
+
 
 SUPPORTED_ROXY_SCHEMES = frozenset({"http", "https", "socks5", "socks5h"})
 PROXY_STATUSES = frozenset({"unknown", "available", "quarantined"})
@@ -858,7 +863,7 @@ class FreeProxyPool:
                                 action_hint="更换当前代理出口后重新检测；出口 IP 可联网但被 ChatGPT 拒绝时不能用于协议注册",
                             )
                 except FreeRegisterError as exc:
-                    if not inline_content:
+                    if not inline_content and is_proxy_health_failure(exc):
                         self.record_failure(
                             str(record.get("proxy_id") or ""),
                             node_code="free_proxy_preflight",
@@ -866,9 +871,21 @@ class FreeProxyPool:
                         )
                     raise
                 except Exception as exc:
-                    if not inline_content:
-                        self.record_failure(str(record.get("proxy_id") or ""), node_code="free_proxy_preflight", message=proxy_error_detail(exc))
-                    raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", f"代理池第 {index} 条出口 IP 检测失败：{proxy_error_detail(exc)}") from exc
+                    failure = FreeRegisterError(
+                        "free_proxy_preflight",
+                        "Free 代理预检",
+                        f"代理池第 {index} 条出口 IP 检测失败：{proxy_error_detail(exc)}",
+                    )
+                    # Preserve the transport type for health classification
+                    # before the exception is raised to the caller.
+                    failure.__cause__ = exc
+                    if not inline_content and is_proxy_health_failure(failure):
+                        self.record_failure(
+                            str(record.get("proxy_id") or ""),
+                            node_code="free_proxy_preflight",
+                            message=str(failure),
+                        )
+                    raise failure from exc
                 latency_ms = int((time.monotonic() - started) * 1000)
                 checked[cache_key] = (exit_ip, probe_mode, latency_ms, chatgpt_status, chatgpt_probe_mode)
             else:
