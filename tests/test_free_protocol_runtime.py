@@ -1,0 +1,458 @@
+from __future__ import annotations
+
+import sys
+import threading
+from types import ModuleType, SimpleNamespace
+import unittest
+from unittest.mock import patch
+
+from mac_overrides import free_protocol_runtime as runtime
+
+
+class _Session:
+    next_id = 0
+
+    def __init__(self):
+        type(self).next_id += 1
+        self.identity = type(self).next_id
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
+class _Sentinel:
+    instances = []
+
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+        self.fingerprint = kwargs.get("fingerprint") if isinstance(kwargs.get("fingerprint"), dict) else {}
+        self.flows = []
+        type(self).instances.append(self)
+
+    def reset(self, flow=""):
+        self.flows.append(flow)
+
+
+class _Transport:
+    instances = []
+    phone_calls = 0
+
+    def __init__(self, config, *, oauth_params, proxy, sentinel_provider, device_id, log_fn):
+        self.config = config
+        self.oauth_params = dict(oauth_params)
+        self.proxy = proxy
+        self.sentinel_provider = sentinel_provider
+        self.device_id = device_id
+        self.log_fn = log_fn
+        self.session = _Session()
+        self.initial_session = self.session
+        self.chatgpt_signup_done = False
+        self.initiate_sessions = []
+        type(self).instances.append(self)
+
+    def initiate_oauth(self, _url):
+        before = self.session
+        if not self.chatgpt_signup_done:
+            self.session = _Session()
+        self.initiate_sessions.append((before, self.session))
+        return {"_status": 200, "page": {"type": "login"}}
+
+    def send_phone_number_otp(self, *_args, **_kwargs):
+        type(self).phone_calls += 1
+        raise AssertionError("Free protocol must not use a phone provider")
+
+
+class _Otp:
+    def __init__(self):
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
+class _Response:
+    def __init__(self, status, data=None):
+        self.status_code = status
+        self.data = data if isinstance(data, dict) else {}
+
+    def json(self):
+        return dict(self.data)
+
+
+class _Manager(runtime.FreeProtocolMixin):
+    @classmethod
+    def resolve_node_runner(cls, _config=None):
+        return "/private/tmp/fake-sentinel-runner.js"
+
+    @staticmethod
+    def _instrument_transport(_transport, _task_id, _stage):
+        return None
+
+    def _plan_check(self, _transport, _token):
+        return "free", False
+
+
+def _fake_modules(build_calls):
+    chain_runner = ModuleType("codex_chain_runner")
+
+    def build_oauth_url(**_kwargs):
+        build_calls.append(True)
+        return (
+            "https://auth.example.test/authorize?client_id=client-private&state=state-private",
+            "state-private",
+            "verifier-private",
+        )
+
+    chain_runner.build_oauth_url = build_oauth_url
+    oauth_chain = ModuleType("codex_oauth_chain")
+    oauth_chain.parse_oauth_url = lambda _url: {
+        "client_id": "client-private",
+        "state": "state-private",
+        "redirect_uri": "http://localhost:1455/auth/callback",
+    }
+    oauth_chain.RealNodeSentinelProvider = _Sentinel
+    oauth_chain.RealCodexTransport = _Transport
+    return {"codex_chain_runner": chain_runner, "codex_oauth_chain": oauth_chain}
+
+
+def _task():
+    return {
+        "task_id": "protocol-task-1",
+        "row_id": "mailbox-row-1",
+        "email": "user@example.test",
+        "mailbox_url": "https://mail.example.test/inbox?key=private",
+        "proxy": "socks5h://user:pass@proxy.example.test:1080",
+        "proxy_fingerprint": "proxy-fingerprint",
+        "proxy_country": "US",
+        "exit_ip": "198.51.100.8",
+        "device_id": "fixed-device-id",
+    }
+
+
+def _result():
+    return {
+        "ok": True,
+        "registration_completed": True,
+        "oauth_callback_completed": True,
+        "access_token": "access-token-private",
+    }
+
+
+class FreeProtocolRuntimeTests(unittest.TestCase):
+    def setUp(self):
+        _Sentinel.instances = []
+        _Transport.instances = []
+        _Transport.phone_calls = 0
+        _Session.next_id = 0
+
+    def test_reference_profile_reuses_warmed_sessions_and_rewarms_rebuild(self):
+        build_calls = []
+        preflight_sessions = []
+        warmup_sessions = []
+        authenticated_sessions = []
+        contexts = []
+        stages = []
+        otp = _Otp()
+
+        def preflight(transport, *_args, **_kwargs):
+            preflight_sessions.append(transport.session)
+            return {"checks": ["chatgpt-login", "auth-login", "sentinel-frame"]}
+
+        def anonymous(transport, *_args, **_kwargs):
+            warmup_sessions.append(transport.session)
+            return {"enabled": True}
+
+        def authenticated(transport, *_args, **_kwargs):
+            authenticated_sessions.append(transport.session)
+            return {"enabled": True, "ok": True}
+
+        def run_flow(transport, *, transport_factory, oauth_context, **_kwargs):
+            contexts.append(dict(oauth_context))
+            transport.initiate_oauth(oauth_context["url"])
+            rebuilt = transport_factory()
+            contexts.append({"params": dict(rebuilt.oauth_params)})
+            rebuilt.initiate_oauth(oauth_context["url"])
+            return _result(), rebuilt
+
+        with (
+            patch.dict(sys.modules, _fake_modules(build_calls)),
+            patch.object(runtime, "build_free_mailbox_otp_provider", return_value=otp),
+            patch.object(runtime, "_network_preflight", side_effect=preflight),
+            patch.object(runtime, "_anonymous_warmup", side_effect=anonymous),
+            patch.object(runtime, "_exit_geo_profile", return_value={"country": "JP", "timezone": "Asia/Tokyo"}),
+            patch.object(runtime, "_authenticated_warmup", side_effect=authenticated),
+            patch.object(runtime, "run_free_protocol_flow", side_effect=run_flow),
+        ):
+            result = _Manager()._run_protocol(
+                _task(),
+                {"auto_set_2fa": False, "email_code_timeout": 30},
+                threading.Event(),
+                lambda _task_id, code: stages.append(code),
+                lambda *_args, **_kwargs: None,
+            )
+
+        self.assertEqual(result["twofa_status"], "disabled")
+        self.assertEqual(len(build_calls), 1)
+        self.assertEqual(len(_Transport.instances), 2)
+        self.assertEqual(preflight_sessions, [item.initial_session for item in _Transport.instances])
+        self.assertEqual(warmup_sessions, preflight_sessions)
+        self.assertEqual(authenticated_sessions, [_Transport.instances[-1].initial_session])
+        for transport in _Transport.instances:
+            self.assertTrue(transport._gptphone_reference_session_prepared)
+            self.assertIs(transport.initiate_sessions[0][0], transport.initiate_sessions[0][1])
+            self.assertEqual(transport.oauth_params["state"], "state-private")
+            self.assertEqual(transport.device_id, "fixed-device-id")
+            self.assertEqual(transport.proxy, _task()["proxy"])
+        self.assertEqual(contexts[0]["code_verifier"], "verifier-private")
+        self.assertEqual(contexts[1]["params"]["state"], "state-private")
+        self.assertEqual(len(_Sentinel.instances), 2)
+        for sentinel in _Sentinel.instances:
+            self.assertEqual(sentinel.fingerprint["country"], "JP")
+            self.assertEqual(sentinel.fingerprint["timezone_iana"], "Asia/Tokyo")
+            self.assertEqual(sentinel.fingerprint["timezone_name"], "Asia/Tokyo")
+            self.assertEqual(sentinel.fingerprint["timezone_offset_minutes"], 540)
+        self.assertIn("free_authenticated_warmup", stages)
+        self.assertEqual(_Transport.phone_calls, 0)
+        self.assertTrue(otp.closed)
+
+    def test_invalid_geo_timezone_preserves_existing_timezone_profile(self):
+        fingerprint = {
+            "timezone_iana": "America/New_York",
+            "timezone_name": "America/New_York",
+            "timezone_offset_minutes": -300,
+        }
+        runtime._apply_geo_fingerprint(
+            fingerprint,
+            {"country": "US", "timezone": "Invalid/Timezone"},
+        )
+        self.assertEqual(fingerprint["timezone_iana"], "America/New_York")
+        self.assertEqual(fingerprint["timezone_name"], "America/New_York")
+        self.assertEqual(fingerprint["timezone_offset_minutes"], -300)
+
+    def test_legacy_profile_skips_reference_bootstrap_and_fingerprint(self):
+        build_calls = []
+        otp = _Otp()
+
+        def run_flow(transport, *, oauth_context, **_kwargs):
+            transport.initiate_oauth(oauth_context["url"])
+            return _result(), transport
+
+        with (
+            patch.dict(sys.modules, _fake_modules(build_calls)),
+            patch.object(runtime, "build_free_mailbox_otp_provider", return_value=otp),
+            patch.object(runtime, "_network_preflight", side_effect=AssertionError("legacy preflight")),
+            patch.object(runtime, "_anonymous_warmup", side_effect=AssertionError("legacy anonymous warmup")),
+            patch.object(runtime, "_exit_geo_profile", side_effect=AssertionError("legacy geo")),
+            patch.object(runtime, "_authenticated_warmup", side_effect=AssertionError("legacy auth warmup")),
+            patch.object(runtime, "run_free_protocol_flow", side_effect=run_flow),
+        ):
+            result = _Manager()._run_protocol(
+                _task(),
+                {"flow_profile": "legacy", "auto_set_2fa": False},
+                threading.Event(),
+                lambda *_args: None,
+                lambda *_args, **_kwargs: None,
+            )
+
+        self.assertEqual(result["twofa_status"], "disabled")
+        self.assertEqual(len(build_calls), 1)
+        self.assertEqual(len(_Sentinel.instances), 1)
+        self.assertNotIn("fingerprint", _Sentinel.instances[0].kwargs)
+        transport = _Transport.instances[0]
+        self.assertFalse(hasattr(transport, "_gptphone_reference_session_prepared"))
+        self.assertIsNot(transport.initiate_sessions[0][0], transport.initiate_sessions[0][1])
+        self.assertFalse(transport.config["run_chatgpt_signup_phase"])
+        self.assertEqual(_Transport.phone_calls, 0)
+
+    def test_existing_account_result_never_gets_fixed_password_or_credential(self):
+        build_calls = []
+        otp = _Otp()
+
+        def run_flow(transport, **_kwargs):
+            return {**_result(), "account_flow": "existing_login"}, transport
+
+        with (
+            patch.dict(sys.modules, _fake_modules(build_calls)),
+            patch.object(runtime, "build_free_mailbox_otp_provider", return_value=otp),
+            patch.object(runtime, "run_free_protocol_flow", side_effect=run_flow),
+        ):
+            result = _Manager()._run_protocol(
+                _task(), {"flow_profile": "legacy", "auto_set_2fa": False},
+                threading.Event(), lambda *_args: None, lambda *_args, **_kwargs: None,
+            )
+
+        self.assertEqual(result["account_flow"], "existing_login")
+        self.assertNotIn("password", result)
+        self.assertNotIn("credential_line", result)
+
+    def test_plan_failure_is_structured_and_signup_keeps_password(self):
+        class FailPlanManager(_Manager):
+            def _plan_check(self, _transport, _token):
+                raise runtime.FreeRegisterError(
+                    "free_plan_check", "查询 Free 套餐资格", "套餐接口返回 HTTP 429",
+                    provider_status=429, provider_code="rate_limit",
+                    error_code="free_plan_accounts_http_failed",
+                    action_hint="稍后重新测活",
+                )
+
+        build_calls = []
+        otp = _Otp()
+
+        def run_flow(transport, **_kwargs):
+            return {**_result(), "account_flow": "signup", "password": runtime.FIXED_PASSWORD}, transport
+
+        with (
+            patch.dict(sys.modules, _fake_modules(build_calls)),
+            patch.object(runtime, "build_free_mailbox_otp_provider", return_value=otp),
+            patch.object(runtime, "run_free_protocol_flow", side_effect=run_flow),
+        ):
+            result = FailPlanManager()._run_protocol(
+                _task(), {"flow_profile": "legacy", "auto_set_2fa": False},
+                threading.Event(), lambda *_args: None, lambda *_args, **_kwargs: None,
+            )
+
+        self.assertEqual(result["password"], runtime.FIXED_PASSWORD)
+        failure = result["plan_failure"]
+        self.assertEqual(failure["node_code"], "free_plan_check")
+        self.assertEqual(failure["error_code"], "free_plan_accounts_http_failed")
+        self.assertEqual(failure["http_status"], 429)
+        self.assertEqual(failure["provider_code"], "rate_limit")
+        self.assertEqual(failure["action_hint"], "稍后重新测活")
+
+    def test_plan_check_uses_exit_timezone_and_preserves_provider_status(self):
+        class Session:
+            def __init__(self):
+                self.urls = []
+
+            def get(self, url, **_kwargs):
+                self.urls.append(url)
+                return _Response(503, {"error": {"code": "upstream_busy"}})
+
+        session = Session()
+        transport = SimpleNamespace(
+            session=session,
+            _gptphone_timezone_offset_minutes=540,
+            sentinel_provider=SimpleNamespace(fingerprint={"timezone_offset_minutes": -300}),
+        )
+        with self.assertRaises(runtime.FreeRegisterError) as raised:
+            runtime.FreeProtocolMixin._plan_check(_Manager(), transport, "token-private")
+        self.assertIn("timezone_offset_min=540", session.urls[0])
+        self.assertEqual(raised.exception.provider_status, 503)
+        self.assertEqual(raised.exception.provider_code, "upstream_busy")
+
+    def test_twofa_failures_keep_exact_subnode_and_provider_fields(self):
+        class SendFailureTransport:
+            device_id = "device"
+            session = SimpleNamespace()
+
+            @staticmethod
+            def send_mfa_otp(_url):
+                return {"_status": 429, "error_code": "otp_rate_limit"}
+
+            @staticmethod
+            def verify_mfa_otp(_code):
+                return {"_status": 200}
+
+        with self.assertRaises(runtime.FreeTwoFaPending) as raised:
+            _Manager()._enroll_twofa(
+                SendFailureTransport(), "token-private", _task(), runtime.FIXED_PASSWORD,
+                {}, _Otp(), lambda *_args: None,
+            )
+        pending = raised.exception
+        self.assertEqual(pending.node_code, "free_twofa_otp_send")
+        self.assertEqual(pending.error_code, "free_twofa_otp_send_failed")
+        self.assertEqual(pending.provider_status, 429)
+        self.assertEqual(pending.provider_code, "otp_rate_limit")
+
+        class OtpFailure:
+            @staticmethod
+            def mark_sent(_stage):
+                return None
+
+            @staticmethod
+            def wait_code(_email, **_kwargs):
+                raise runtime.FreeRegisterError(
+                    "free_twofa_enroll", "等待 Free 账号 2FA 邮箱验证码", "邮箱等待超时",
+                    provider_status=504, error_code="mailbox_timeout",
+                )
+
+        class SentTransport(SendFailureTransport):
+            @staticmethod
+            def send_mfa_otp(_url):
+                return {"_status": 200}
+
+        with self.assertRaises(runtime.FreeTwoFaPending) as raised:
+            _Manager()._enroll_twofa(
+                SentTransport(), "token-private", _task(), runtime.FIXED_PASSWORD,
+                {}, OtpFailure(), lambda *_args: None,
+            )
+        self.assertEqual(raised.exception.node_code, "free_twofa_otp_validate")
+        self.assertEqual(raised.exception.error_code, "free_twofa_otp_validate_failed")
+        self.assertEqual(raised.exception.provider_status, 504)
+
+    def test_twofa_enroll_and_activate_failures_keep_their_own_nodes(self):
+        class Session:
+            def __init__(self, responses):
+                self.responses = list(responses)
+
+            def post(self, *_args, **_kwargs):
+                return self.responses.pop(0)
+
+        enroll_transport = SimpleNamespace(
+            session=Session([_Response(503, {"error": {"code": "enroll_busy"}})]),
+            device_id="device",
+        )
+        with self.assertRaises(runtime.FreeTwoFaPending) as raised:
+            _Manager()._enroll_twofa(
+                enroll_transport, "token-private", _task(), runtime.FIXED_PASSWORD,
+                {}, _Otp(), lambda *_args: None,
+            )
+        self.assertEqual(raised.exception.node_code, "free_twofa_enroll")
+        self.assertEqual(raised.exception.provider_status, 503)
+        self.assertEqual(raised.exception.provider_code, "enroll_busy")
+
+        activate_transport = SimpleNamespace(
+            session=Session([
+                _Response(200, {"secret": "JBSWY3DPEHPK3PXP", "session_id": "session"}),
+                _Response(409, {"error": {"code": "already_active"}}),
+            ]),
+            device_id="device",
+        )
+        with self.assertRaises(runtime.FreeTwoFaPending) as raised:
+            _Manager()._enroll_twofa(
+                activate_transport, "token-private", _task(), runtime.FIXED_PASSWORD,
+                {}, _Otp(), lambda *_args: None,
+            )
+        self.assertEqual(raised.exception.node_code, "free_twofa_activate")
+        self.assertEqual(raised.exception.provider_status, 409)
+        self.assertEqual(raised.exception.provider_code, "already_active")
+
+    def test_twofa_retry_clears_stale_failure_without_inventing_password(self):
+        build_calls = []
+        manager = _Manager()
+        manager.pool = SimpleNamespace(result=lambda _row_id: {
+            "access_token": "token-private", "account_flow": "existing_login",
+            "failure": {"node_code": "free_twofa_activate"},
+            "twofa_failure": {"node_code": "free_twofa_activate"},
+            "twofa_error": "old failure", "error": "old failure",
+        })
+        with (
+            patch.dict(sys.modules, _fake_modules(build_calls)),
+            patch.object(runtime, "build_free_mailbox_otp_provider", return_value=_Otp()),
+            patch.object(_Manager, "_enroll_twofa", return_value={
+                "twofa_status": "enabled", "totp_secret": "JBSWY3DPEHPK3PXP",
+            }),
+        ):
+            result = manager._run_protocol(
+                _task(), {"flow_profile": "legacy"}, threading.Event(),
+                lambda *_args: None, lambda *_args, **_kwargs: None, twofa_retry=True,
+            )
+
+        self.assertEqual(result["twofa_status"], "enabled")
+        for key in ("failure", "twofa_failure", "twofa_error", "error", "password", "credential_line"):
+            self.assertNotIn(key, result)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -17,6 +17,7 @@ from mac_overrides.free_roxy_page_flow import (
 )
 from mac_overrides import free_roxy_session
 from mac_overrides.free_roxy_session import extract_session, session_token
+from mac_overrides.free_roxy_otp_flow import select_active_auth_window
 from mac_overrides.free_register_common import FIXED_PASSWORD, FreeRegisterError
 from mac_overrides.free_register_store import FreeProxyPool
 
@@ -45,6 +46,12 @@ class _FakeSession:
         if url.endswith("/browser/open"):
             return _Response({"code": 0, "data": {"debuggerAddress": "127.0.0.1:9222"}})
         return _Response({"code": 0})
+
+
+class _TrustEnvSession(_FakeSession):
+    def __init__(self):
+        super().__init__()
+        self.trust_env = True
 
 
 class _ConnectionInfoSession(_FakeSession):
@@ -77,6 +84,24 @@ class _AlreadyOpenSession(_FakeSession):
                 "http": "127.0.0.1:9222",
                 "ws": "ws://127.0.0.1:9222/devtools/browser/42",
             }]})
+        return _Response({"code": 0})
+
+
+class _BudgetSession(_FakeSession):
+    def __init__(self, clock):
+        super().__init__()
+        self.clock = clock
+        self.timeouts = []
+
+    def request(self, method, url, **kwargs):
+        timeout = float(kwargs.get("timeout") or 0)
+        self.calls.append((method, url, kwargs.get("json")))
+        self.timeouts.append((url.rsplit("/", 1)[-1], timeout))
+        if url.endswith("/browser/connection_info"):
+            self.clock[0] += timeout
+            raise TimeoutError("connection_info timeout")
+        if url.endswith("/browser/open"):
+            return _Response({"code": 0, "data": {}})
         return _Response({"code": 0})
 
 
@@ -282,6 +307,9 @@ class _ExistingLoginRunner(RoxyRegistrationRunner):
     def _open_signup_page(driver, _email, _timeout):
         driver.current_url = "https://auth.openai.com/log-in"
 
+    def _submit_registration_email(self, _driver, _email, _human, _log, _timeout):
+        return "login_password"
+
     @staticmethod
     def _find(_driver, selectors, _timeout):
         if any("signup" in selector for selector in selectors):
@@ -314,6 +342,26 @@ class _ExistingLoginRunner(RoxyRegistrationRunner):
 
 
 class FreeRoxyRuntimeTests(unittest.TestCase):
+    def test_active_auth_window_rejects_lookalike_domain(self):
+        class WindowDriver:
+            def __init__(self):
+                self.window_handles = ["lookalike", "chatgpt"]
+                self.current_window_handle = "lookalike"
+                self.urls = {
+                    "lookalike": "https://auth.openai.com.attacker.test/email-verification",
+                    "chatgpt": "https://chatgpt.com/",
+                }
+                self.current_url = self.urls[self.current_window_handle]
+                self.switch_to = type("Switch", (), {"window": self.switch_window})()
+
+            def switch_window(self, handle):
+                self.current_window_handle = handle
+                self.current_url = self.urls[handle]
+
+        driver = WindowDriver()
+        select_active_auth_window(driver)
+        self.assertEqual(driver.current_window_handle, "chatgpt")
+
     def test_migration_copies_sensitive_files_with_private_permissions(self):
         with TemporaryDirectory() as legacy_directory, TemporaryDirectory() as target_directory:
             legacy = Path(legacy_directory)
@@ -341,10 +389,10 @@ class FreeRoxyRuntimeTests(unittest.TestCase):
                 "mailbox_proxy_url": "http://mail-user:mail-pass@127.0.0.1:7897",
                 "roxybrowser": {"api_key": "secret", "workspace_id": "w", "project_id": "p", "existing_account_login": False},
             })
-            self.assertEqual(saved["concurrency"], 5)
+            self.assertEqual(saved["concurrency"], 16)
             self.assertEqual(saved["mailbox_request_retries"], 3)
             self.assertEqual(saved["mailbox_retry_backoff_seconds"], 1.0)
-            self.assertFalse(saved["roxybrowser"]["headless"])
+            self.assertTrue(saved["roxybrowser"]["headless"])
             self.assertFalse(saved["roxybrowser"]["existing_account_login"])
             self.assertEqual(store.public()["roxybrowser"]["api_key"], "********")
             self.assertEqual(store.public()["mailbox_proxy_url"], "********")
@@ -353,12 +401,12 @@ class FreeRoxyRuntimeTests(unittest.TestCase):
             self.assertEqual(store.secret("mailbox_proxy_url"), "http://mail-user:mail-pass@127.0.0.1:7897")
             self.assertNotIn("free_proxy_pool_content", store.load())
 
-    def test_visible_roxy_default_is_preserved_for_legacy_and_new_configs(self):
+    def test_roxy_headless_migration_runs_once_then_preserves_user_choice(self):
         with TemporaryDirectory() as directory:
             store = FreeConfigStore(directory)
             migrated = store.normalize({"version": 2, "roxybrowser": {"headless": False}})
-            self.assertFalse(migrated["roxybrowser"]["headless"])
-            explicit = store.normalize({"version": 3, "roxybrowser": {"headless": False}})
+            self.assertTrue(migrated["roxybrowser"]["headless"])
+            explicit = store.normalize({"version": 5, "roxybrowser": {"headless": False}})
             self.assertFalse(explicit["roxybrowser"]["headless"])
 
     def test_proxy_tls_policy_is_explicit_and_compatibility_defaults_on(self):
@@ -382,12 +430,22 @@ class FreeRoxyRuntimeTests(unittest.TestCase):
         self.assertEqual(create["workspaceId"], "w")
         self.assertEqual(create["projectId"], "p")
         self.assertEqual(create["proxyInfo"]["host"], "proxy.test")
-        self.assertNotIn("headless", create)
-        self.assertNotIn("forceOpen", create)
+        for launch_key in (
+            "headless", "forceOpen", "force_open", "args", "browserArgs",
+            "browser_args", "launchArgs", "launch_args",
+        ):
+            self.assertNotIn(launch_key, create)
         opened_body = next(body for method, url, body in session.calls if url.endswith("/browser/open"))
         self.assertTrue(opened_body["headless"])
         self.assertFalse(opened_body["forceOpen"])
+        self.assertNotIn("args", opened_body)
+        self.assertEqual(sum(url.endswith("/browser/open") for _method, url, _body in session.calls), 1)
         self.assertEqual([url.rsplit("/", 1)[-1] for _method, url, _body in session.calls], ["create", "connection_info", "open", "close", "delete"])
+
+    def test_roxy_local_api_session_never_inherits_environment_proxies(self):
+        session = _TrustEnvSession()
+        RoxyBrowserClient({"api_base": "http://127.0.0.1:50000"}, session=session)
+        self.assertFalse(session.trust_env)
 
     def test_roxy_cleanup_reports_incomplete_without_skipping_delete(self):
         session = _CleanupFailureSession()
@@ -402,6 +460,8 @@ class FreeRoxyRuntimeTests(unittest.TestCase):
         opened = client.open_profile("42")
         self.assertEqual(opened.debugger_address, "127.0.0.1:9222")
         self.assertEqual(opened.ws_endpoint, "ws://127.0.0.1:9222/devtools/browser/42")
+        open_bodies = [body for _method, url, body in session.calls if url.endswith("/browser/open")]
+        self.assertEqual(open_bodies, [{"workspaceId": "w", "dirId": 42, "forceOpen": False, "headless": True}])
         self.assertEqual([url.rsplit("/", 1)[-1] for _method, url, _body in session.calls], ["connection_info", "open", "connection_info"])
 
     def test_open_profile_adopts_existing_connection_without_opening_again(self):
@@ -411,32 +471,51 @@ class FreeRoxyRuntimeTests(unittest.TestCase):
         self.assertEqual(opened.debugger_address, "127.0.0.1:9222")
         self.assertEqual([url.rsplit("/", 1)[-1] for _method, url, _body in session.calls], ["connection_info"])
 
-    def test_signup_bootstrap_uses_chatgpt_context_and_selenium_callback_last(self):
+    def test_open_profile_connection_reconciliation_has_one_fifteen_second_budget(self):
+        clock = [0.0]
+        session = _BudgetSession(clock)
+        client = RoxyBrowserClient({
+            "api_base": "http://127.0.0.1:50000",
+            "workspace_id": "w",
+            "api_retries": 5,
+            "selenium_timeout": 90,
+        }, session=session)
+        with (
+            patch("mac_overrides.free_roxy_client.time.monotonic", side_effect=lambda: clock[0]),
+            patch("mac_overrides.free_roxy_client.time.sleep", side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)),
+        ):
+            with self.assertRaises(FreeRegisterError) as raised:
+                client.open_profile("42")
+        self.assertEqual(raised.exception.node_code, "free_roxy_open")
+        self.assertEqual(raised.exception.error_code, "free_roxy_connection_timeout")
+        self.assertLessEqual(clock[0], 15.001)
+        self.assertEqual(sum(url.endswith("/browser/open") for _method, url, _body in session.calls), 1)
+        connection_timeouts = [timeout for endpoint, timeout in session.timeouts if endpoint == "connection_info"]
+        self.assertTrue(connection_timeouts)
+        self.assertLessEqual(max(connection_timeouts), 2.0)
+        self.assertNotIn(90.0, connection_timeouts)
+
+    def test_signup_bootstrap_starts_at_chatgpt_login_ui(self):
         driver = _SignupDriver()
         RoxyRegistrationRunner._open_signup_page(driver, "account@example.test", 90)
         self.assertEqual(driver.timeout, 90)
-        self.assertEqual(driver.visits, ["https://chatgpt.com/", "https://auth.openai.com/log-in"])
-        script, args = driver.scripts[0]
-        self.assertEqual(args, ("account@example.test",))
-        self.assertIn("arguments[arguments.length - 1]", script)
-        self.assertIn("screen_hint: 'signup'", script)
+        self.assertEqual(driver.visits, ["https://chatgpt.com/auth/login"])
+        self.assertEqual(driver.scripts, [])
 
-    def test_signup_bootstrap_rejects_untrusted_redirect(self):
+    def test_signup_bootstrap_does_not_follow_external_redirect(self):
         driver = _SignupDriver({"ok": True, "url": "https://example.test/collect"})
-        with self.assertRaises(FreeRegisterError) as raised:
-            RoxyRegistrationRunner._open_signup_page(driver, "account@example.test", 90)
-        self.assertEqual(raised.exception.error_code, "free_roxy_signup_bootstrap_response_invalid")
-        self.assertEqual(driver.visits, ["https://chatgpt.com/"])
+        RoxyRegistrationRunner._open_signup_page(driver, "account@example.test", 90)
+        self.assertEqual(driver.visits, ["https://chatgpt.com/auth/login"])
 
-    def test_signup_bootstrap_falls_back_to_dom_login_after_challenge_response(self):
+    def test_signup_bootstrap_uses_dom_login_during_a_challenge(self):
         driver = _SignupDriver({"ok": False, "step": "csrf", "status": 200})
         RoxyRegistrationRunner._open_signup_page(driver, "account@example.test", 90)
-        self.assertEqual(driver.visits, ["https://chatgpt.com/", "https://chatgpt.com/auth/login"])
+        self.assertEqual(driver.visits, ["https://chatgpt.com/auth/login"])
 
-    def test_signup_navigation_error_continues_after_trusted_auth_redirect(self):
+    def test_signup_navigation_uses_login_url_without_external_redirect(self):
         driver = _AuthNavigationErrorDriver()
         RoxyRegistrationRunner._open_signup_page(driver, "account@example.test", 90)
-        self.assertEqual(driver.current_url, "https://auth.openai.com/api/accounts/authorize")
+        self.assertEqual(driver.current_url, "https://chatgpt.com/auth/login")
 
     def test_email_verification_redirect_is_treated_as_submitted_signup(self):
         driver = _SignupDriver()
@@ -603,6 +682,99 @@ class FreeRoxyRuntimeTests(unittest.TestCase):
         self.assertTrue(any("已有账号邮箱验证码登录" in message for _level, message in logs))
         self.assertTrue(driver.closed)
 
+    def test_roxy_result_keeps_structured_plan_and_twofa_failures(self):
+        driver = _ExistingLoginDriver()
+        runner = _ExistingLoginRunner(driver)
+
+        def fail_plan(*_args):
+            error = FreeRegisterError(
+                "free_plan_check", "查询 Free 套餐资格", "账号套餐接口响应无效（HTTP 503）",
+                error_code="free_plan_accounts_response_invalid",
+                provider_status=503,
+                provider_code="upstream_unavailable",
+                action_hint="稍后重新查询套餐状态",
+            )
+            error.partial_plan_details = {
+                "plan_type": "free",
+                "subscription_plan": "free",
+                "has_active_subscription": False,
+            }
+            raise error
+
+        def fail_twofa(*args):
+            args[-1]("fresh-token")
+            raise FreeRegisterError(
+                "free_twofa_enroll", "注册 Free 账号 2FA", "enrollment 被拒绝",
+                error_code="free_twofa_enroll_failed",
+                provider_status=409,
+                provider_code="mfa_session_expired",
+                action_hint="刷新 Session 后重试 2FA",
+            )
+
+        runner._plan_details = fail_plan
+        runner._setup_2fa = fail_twofa
+        task = {
+            "task_id": "free-existing-diagnostics",
+            "email": "existing@example.test",
+            "mailbox_url": "https://mail.example.test/inbox/private",
+            "proxy": "http://user:pass@proxy.example.test:8000",
+            "expected_exit_ip": "203.0.113.10",
+        }
+        config = {
+            "proxy_probe_url": "https://api.ipify.org",
+            "email_code_timeout": 30,
+            "auto_set_2fa": True,
+            "roxybrowser": {
+                "existing_account_login": True,
+                "humanize_delay": False,
+                "humanize_browser_actions": False,
+                "selenium_timeout": 30,
+                "post_registration_dwell_min": 0,
+                "post_registration_dwell_max": 0,
+            },
+        }
+        stop = type("Stop", (), {"is_set": staticmethod(lambda: False)})()
+        with (
+            patch("mac_overrides.free_roxy_runtime.RoxyBrowserClient", _ExistingLoginClient),
+            patch("mac_overrides.free_roxy_runtime.build_free_mailbox_otp_provider", lambda *_args, **_kwargs: _ExistingOtp()),
+            patch("mac_overrides.free_roxy_runtime.time.sleep", lambda _seconds: None),
+        ):
+            result = runner(task, config, stop, lambda *_args: None, lambda *_args: None)
+        self.assertEqual(result["plan_type"], "free")
+        self.assertEqual(result["plan_failure"]["node_code"], "free_plan_check")
+        self.assertEqual(result["plan_failure"]["http_status"], 503)
+        self.assertEqual(result["plan_failure"]["provider_code"], "upstream_unavailable")
+        self.assertEqual(result["plan_failure"]["action_hint"], "稍后重新查询套餐状态")
+        self.assertEqual(result["twofa_failure"]["node_code"], "free_twofa_enroll")
+        self.assertEqual(result["twofa_failure"]["http_status"], 409)
+        self.assertEqual(result["twofa_failure"]["provider_code"], "mfa_session_expired")
+        self.assertEqual(result["twofa_failure"]["action_hint"], "刷新 Session 后重试 2FA")
+        self.assertEqual(result["access_token"], "fresh-token")
+
+    def test_partial_roxy_plan_keeps_accounts_result_and_eligibility_failure(self):
+        driver = _BrowserSessionDriver({
+            "ok": True,
+            "accounts": {
+                "status": 200,
+                "content_type": "application/json",
+                "json": True,
+                "payload": {"accounts": {"primary": {"account": {"plan_type": "plus"}}}},
+            },
+            "eligibility": {
+                "status": 503,
+                "content_type": "application/json",
+                "json": True,
+                "payload": {"error": {"code": "temporarily_unavailable"}},
+            },
+        })
+        details = RoxyRegistrationRunner._plan_details(driver, "TOKEN_NOT_LOGGED")
+        self.assertEqual(details["plan_check_status"], "failed")
+        self.assertEqual(details["plan_type"], "plus")
+        self.assertTrue(details["has_active_subscription"])
+        self.assertEqual(details["plan_failure"]["node_code"], "free_plan_check")
+        self.assertEqual(details["plan_failure"]["http_status"], 503)
+        self.assertEqual(details["plan_failure"]["provider_code"], "temporarily_unavailable")
+
     def test_proxy_import_appends_without_duplicate_credentials(self):
         with TemporaryDirectory() as directory:
             pool = FreeProxyPool(Path(directory))
@@ -615,6 +787,26 @@ class FreeRoxyRuntimeTests(unittest.TestCase):
         self.assertEqual(info["protocol"], "SOCKS5")
         self.assertEqual(info["proxyUserName"], "u")
         self.assertEqual(info["proxyPassword"], "p")
+
+    def test_roxy_socks4_pool_failure_is_explicit_while_protocol_still_works(self):
+        with TemporaryDirectory() as directory:
+            pool = FreeProxyPool(Path(directory))
+            pool.import_text("socks4://user:pass@proxy.test:8000\n")
+            with self.assertRaises(FreeRegisterError) as raised:
+                pool.bind(1, driver="roxybrowser", probe=lambda *_args: "203.0.113.10")
+            self.assertEqual(raised.exception.node_code, "free_roxy_proxy")
+            self.assertEqual(raised.exception.error_code, "free_roxy_socks4_unsupported")
+            self.assertEqual(raised.exception.provider_code, "unsupported_proxy_scheme")
+            self.assertIn("RoxyBrowser 不支持 SOCKS4", str(raised.exception))
+
+            seen = []
+            binding = pool.bind(
+                1,
+                driver="protocol",
+                probe=lambda proxy, _url: seen.append(proxy) or "203.0.113.10",
+            )[0]
+            self.assertEqual(binding.scheme, "socks4")
+            self.assertEqual(seen[0].split(":", 1)[0], "socks4")
 
 
 if __name__ == "__main__":

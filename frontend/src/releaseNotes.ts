@@ -13,30 +13,62 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.46',
-  freeRuntimeVersion: '1.6.46',
-  title: 'Roxy OAuth 回调与资料页修复',
-  releasedAt: '2026-08-23',
+  version: '1.6.48',
+  freeRuntimeVersion: '1.6.48',
+  title: 'Free 双链路审查修复与诊断一致性',
+  releasedAt: '2026-08-24',
   sections: [
     {
+      title: '注册结果与错误身份一致',
+      usage: '账号已取得 Token 后，套餐查询、2FA 或注册代理复核失败会保留账号结果并标记为部分成功；任务、Free 邮箱、结果文件和公开接口使用同一节点码、中文节点、HTTP 状态与处理建议。2FA 重试成功后会清除旧失败，不再显示已经解决的错误。',
+    },
+    {
+      title: '协议与 Roxy 状态机审查修复',
+      usage: '全协议会在预检、邮箱、密码和 OTP 边界识别安全挑战，已有账号直接使用独立邮箱验证码阶段，不提交统一注册密码；回调、Token 和会话重建保留首个真实节点。Roxy connection_info 与单次 open 共用 15 秒预算，仅有 SOCKS4 时会明确提示更换为支持的代理协议。',
+    },
+    {
+      title: '日志、错误列与快捷运行修复',
+      usage: '小眼睛可筛选并查看每个账号最多 5,000 条结构化日志，错误列不会重复节点文案，也不会让空白、运行中或未知测活状态覆盖注册错误。Free 注册数量和并发可在启动条快捷设置；Token、密码、TOTP、代理和完整凭据仍仅按需读取并复制。',
+    },
+    {
+      title: 'Free 双链路对齐参考流程',
+      usage: 'RoxyBrowser 与全协议注册按新的页面和 OAuth 状态机执行；全协议启动会先完成 ChatGPT/Auth/Sentinel 三段预检、匿名态预热和出口地区画像。保留现有 URL 邮箱取件、阶段基线和旧码排除。注册成功后不会重新运行 Codex OAuth 或手机号接码；升级 Plus 后仍在现有接码工作台导入邮箱处理。',
+    },
+    {
+      title: 'Free 启动数量与实际并发',
+      usage: 'Free 注册中心启动条可直接设置 1–200 个注册数量和 1–16 并发，启动时保存到同一份 Free 配置，运行期间不可修改；任务区同时显示配置值和协议压力控制或 Roxy 熔断后的实际 Slot。',
+    },
+    {
+      title: '完整账号日志与明确错误列',
+      usage: '小眼睛会读取该账号完整日志，不再只显示最后 160 条；可按级别和节点筛选、自动跟随最新输出并定位首个错误。每条日志统一显示时间、级别、任务 ID、节点码/中文节点、尝试次数、耗时、页面类型、安全页面、HTTP 状态、服务端代码、结果、诊断和下一步建议，未知字段以安全空值保留。任务错误列显示中文节点、稳定节点码和具体原因，悬浮可查看同一组诊断详情。',
+    },
+    {
+      title: '健康随机代理池与 SOCKS5H',
+      usage: 'Free 代理支持完整 URL、主机:端口:用户名:密码及两种 @ 格式，覆盖 HTTP、HTTPS、SOCKS4、SOCKS5 和 SOCKS5H。SOCKS5 在协议请求中使用远端 DNS，在 RoxyBrowser 中保持 SOCKS5 映射；健康任务可共享代理，不再强制一号一 IP。邮箱提交前遇到明确代理网络故障可随机切换备用代理，提交后保持当前代理。',
+    },
+    {
+      title: 'RoxyBrowser 后台无闪烁启动',
+      usage: 'RoxyBrowser 默认以无头模式打开，先复用同一 Profile 的 connection_info，并只调用一次打开接口；使用 Roxy 返回的专用驱动连接，不会自行拉起系统 Chrome 或激活 macOS 前台窗口。',
+    },
+    {
       title: 'Roxy OTP 回调与 2FA Session',
-      usage: 'Roxy 邮箱验证码会按服务端 page.type 和 continue_url 处理；2FA 验证后先跟随受信任 OAuth 回调并刷新登录 Session，再执行动态口令 enrollment/activation。安全挑战仍会等待后停止，不会绕过验证。',
+      usage: 'Roxy 邮箱验证码会按服务端 page.type 和 continue_url 处理；2FA 验证后先跟随受信任 OAuth 回调并刷新登录 Session，新 Token 会替换旧 Token 保存，再执行动态口令 enrollment/activation。安全挑战仍会等待后停止，不会绕过验证。',
     },
     {
       title: 'Roxy 资料页控件兼容',
       usage: '资料页兼容 React-Aria、年龄/生日及年月日控件、同意项勾选和受控提交重试；提交后仍停留 about-you 时在同一 Profile 刷新一次并等待真实跳转。',
     },
     {
-      title: 'Roxy 可见模式',
-      usage: '当前 Free Roxy 配置使用可见浏览器，便于观察资料页和安全挑战；窗口可能影响前台操作，任务仍通过 connection_info 对账避免重复打开。',
+      title: 'Roxy 无头模式',
+      usage: '当前 Free Roxy 配置默认使用无头浏览器；需要人工调试时可在高级配置中关闭无头。任务通过 connection_info 对账并复用已有连接，不重复打开窗口。',
     },
     {
       title: 'OAuth 起始页指纹轮换',
-      usage: 'Free 全协议在 OAuth 起始页遇到 Cloudflare 或 HTML 风控响应时，会按 chrome、chrome136、chrome133a、safari15_3、safari17_0 顺序轮换新会话；邮箱、固定代理、设备和 PKCE 上下文保持不变，后续阶段安全验证仍会停止。',
+      usage: 'Free 全协议先让 ChatGPT/Auth/Sentinel 预检和匿名预热复用同一 Session 进入 initiate_oauth；只有会话重建时才建立一次新 Session，并按 chrome、chrome136、chrome133a、safari15_3、safari17_0 顺序轮换指纹。邮箱、固定代理、设备标识和 PKCE 上下文保持不变，后续阶段安全验证仍会停止。',
     },
     {
-      title: 'Roxy 风控等待与可见启动',
-      usage: 'Free Roxy 新配置默认使用可见浏览器；CSRF 引导被风控拦截时回退到正常登录页，并在同一 Profile/代理上等待最多 60 秒让临时挑战清除，未清除仍保留安全验证节点停止，不重复提交邮箱验证码。',
+      title: 'Roxy 风控等待与后台启动',
+      usage: 'Free Roxy 默认后台无头启动；CSRF 引导被风控拦截时回退到正常登录页，并在同一 Profile/代理上等待最多 60 秒让临时挑战清除，未清除仍保留安全验证节点停止，不重复提交邮箱验证码。',
     },
     {
       title: 'Free 全协议会话重建',
@@ -103,8 +135,8 @@ export const currentRelease: ReleaseNotes = {
       usage: 'Free 注册中心现在显示后端运行版本和 OTP 解析器版本；旧后端未重启时会明确提示。注册前失败的邮箱自动恢复可用，已经进入验证码或密码页的账号进入“待重跑”，避免半注册邮箱被误当成新邮箱重复使用。',
     },
     {
-      title: 'Roxy 密码提交和代理唯一性',
-      usage: 'Roxy 密码页只在表单范围内选择提交按钮，记录表单校验和提交事件，最多执行一次原生提交兜底。Free 并发任务按 task_id 独占代理租约，并在备用代理、注册前和进入页面前检查代理与出口 IP 不重复。',
+      title: 'Roxy 密码提交和任务代理固定',
+      usage: 'Roxy 密码页只在表单范围内选择提交按钮，记录表单校验和提交事件，最多执行一次原生提交兜底。代理由健康池随机选择，同一任务进入注册流程后保持原代理和出口 IP。',
     },
     {
       title: '验证码解析兼容与网站图标更新',
@@ -292,7 +324,7 @@ export const currentRelease: ReleaseNotes = {
     },
     {
       title: 'RoxyBrowser 并发租约与故障熔断',
-      usage: '每个 Free 账号独占一个临时 Profile、一个代理和一个出口 IP；Profile 创建前可重试备用代理，进入注册页后锁定 IP。连续代理故障会隔离代理，Roxy 基础设施连续失败会暂停当前批次并保留已完成结果。',
+      usage: '每个 Free 账号使用独立临时 Profile，并持有任务级代理租约；健康代理允许多个任务共享，进入注册页后仍固定当前代理和出口 IP。连续代理故障会隔离代理，Roxy 基础设施连续失败会暂停当前批次并保留已完成结果。',
     },
     {
       title: 'Free 套餐与 Plus 资格状态',
@@ -303,8 +335,8 @@ export const currentRelease: ReleaseNotes = {
       usage: '进入“运行配置 > Free 注册运行”选择全协议或 RoxyBrowser。两种链路分别使用自己的配置、邮箱、代理、任务和日志；普通邮箱管理与运行中心不会显示或消耗 Free 数据。',
     },
     {
-      title: 'RoxyBrowser 一号一 Profile 与一号一 IP',
-      usage: 'RoxyBrowser 默认使用本机 127.0.0.1:50000、独立 Profile 和任务预绑定代理，启动前校验代理与出口 IP 唯一性，注册页再次确认实际注册 IP，漂移时直接失败并清理 Profile。',
+      title: 'RoxyBrowser 一号一 Profile 与任务固定代理',
+      usage: 'RoxyBrowser 默认使用本机 127.0.0.1:50000、独立 Profile 和任务预绑定代理；不强制不同账号使用唯一出口 IP，但注册页仍会确认当前任务实际注册 IP，发生漂移时停止并清理 Profile。',
     },
     {
       title: 'Free 注册完成后自动设置动态口令',
@@ -332,7 +364,7 @@ export const currentRelease: ReleaseNotes = {
     },
     {
       title: 'Free 注册数量与并发独立可控',
-      usage: '进入“运行配置 > Free 注册运行”设置 Free 本次注册数量和并发数；并发限制为 1-5，数量设为 0 时按当前可用 Free 邮箱自动运行，接码机的目标数和并发数不受影响。',
+      usage: '进入“运行配置 > Free 注册运行”设置 Free 本次注册数量和并发数；注册数量限制为 1–200，并发限制为 1–16，接码机的目标数和并发数不受影响。',
     },
     {
       title: '运行配置增加快捷导航树',
@@ -359,8 +391,8 @@ export const currentRelease: ReleaseNotes = {
       usage: 'Free 代理池的“主机:端口:用户名:密码”或空格简写现在默认按 HTTP 解析，显式协议会保留；出口预检、邮箱取码、OAuth 和 Sentinel 全链路使用同一代理。',
     },
     {
-      title: 'Free 目标数量按独立池自动调整',
-      usage: '批量注册 Free 不再被接码/OAuth 的共享目标数量卡住；当共享目标大于 Free 池可用邮箱数时，自动按 Free 池实际数量启动，同时继续校验一号一代理。',
+      title: 'Free 目标数量使用独立配置',
+      usage: '批量注册 Free 不再被接码/OAuth 的共享目标数量卡住；每批使用 Free 启动条保存的 1–200 数量，并在可用邮箱不足时明确提示。',
     },
     {
       title: 'Free 独立池启动修复',
@@ -368,7 +400,7 @@ export const currentRelease: ReleaseNotes = {
     },
     {
       title: 'Free 代理池支持账号密码简写',
-      usage: 'Free 代理池现在可直接粘贴“主机:端口:用户名:密码”，导入时自动转换并继续按一号一代理执行；界面、日志和列表不会显示代理凭据。',
+      usage: 'Free 代理池可直接粘贴“主机:端口:用户名:密码”和两种 @ 简写，导入后进入健康随机池；界面、日志和列表不会显示代理凭据。',
     },
     {
       title: 'Free 邮箱导入兼容三横杠格式',
@@ -395,8 +427,8 @@ export const currentRelease: ReleaseNotes = {
       usage: '通过左侧“Free 邮箱管理”导入邮箱-取码 URL，并在“运行配置 > Free 注册运行”的“独立代理池”中维护代理。该池使用独立文件、状态和结果存储，普通接码/OAuth 任务不会读取或消耗 Free 池。',
     },
     {
-      title: '一号一代理与出口复核',
-      usage: 'Free 任务启动前按邮箱顺序绑定代理并检测出口 IP；代理不足、代理重复或出口 IP 重复会在启动前拒绝。任务从 OAuth 到邮箱取码、资格查询和 2FA 重试始终使用同一代理，发生漂移会停止且不换代理。',
+      title: '健康随机代理与出口复核',
+      usage: 'Free 任务从健康池随机选择代理，同一代理或出口 IP 可供多个并发任务使用；任务进入注册流程后保持当前代理，发生出口漂移会停止且不换代理。邮箱 URL 取件继续使用独立网络配置。',
     },
     {
       title: 'Token、密码和 2FA 按需复制',

@@ -1,0 +1,428 @@
+"""Isolated Free mailbox and proxy pool HTTP routes."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+import inspect
+from typing import Any, Callable
+
+
+def signature_accepts_call(
+    callback: Callable[..., Any],
+    *args: Any,
+    **kwargs: Any,
+) -> bool | None:
+    """Check compatibility without invoking a potentially stateful callback."""
+    try:
+        signature = inspect.signature(callback)
+    except (TypeError, ValueError):
+        return None
+    try:
+        signature.bind(*args, **kwargs)
+    except TypeError:
+        return False
+    return True
+
+
+def import_free_proxies(
+    importer: Callable[..., Any],
+    content: str,
+    *,
+    country: str | None,
+    group: str | None,
+    scheme: str | None,
+) -> Any:
+    """Call modern or legacy proxy importers exactly once."""
+    options = {"country": country, "group": group, "scheme": scheme}
+    accepts_options = signature_accepts_call(importer, content, **options)
+    if accepts_options is False:
+        if signature_accepts_call(importer, content) is not True:
+            raise TypeError("Free 代理导入器签名不兼容")
+        return importer(content)
+    return importer(content, **options)
+
+
+class FreePoolRouteController:
+    """Routes that own the isolated Free mailbox and proxy pools."""
+
+    def __init__(
+        self,
+        *,
+        module: Any,
+        manager: Any,
+        config_store: Any,
+        state: Callable[[], Mapping[str, Any]],
+        mutation_conflict: Callable[[str], Any],
+        error_response: Callable[..., Any],
+        failure_response: Callable[..., Any],
+        request_lock: Any,
+    ) -> None:
+        self.module = module
+        self.manager = manager
+        self.config_store = config_store
+        self.state = state
+        self.mutation_conflict = mutation_conflict
+        self.error_response = error_response
+        self.failure_response = failure_response
+        self.request_lock = request_lock
+
+    def mailboxes(self):
+        if self.manager is None:
+            return self.module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        try:
+            counts = self.manager.pool.counts() if callable(getattr(self.manager.pool, "counts", None)) else {}
+            proxies = self.manager.proxies.public() if callable(getattr(self.manager.proxies, "public", None)) else {}
+            return self.module.jsonify(
+                ok=True,
+                pool="free",
+                counts=counts,
+                proxies=proxies,
+                rows=self.manager.pool.public_rows(),
+                state=self.state(),
+            )
+        except Exception as exc:
+            return self.failure_response(
+                exc,
+                default_code="free_mailboxes_read",
+                default_label="读取 Free 邮箱池",
+                status=503,
+            )
+
+    def pool_import(self):
+        if self.manager is None:
+            return self.module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        conflict = self.mutation_conflict("导入 Free 邮箱")
+        if conflict is not None:
+            return conflict
+        data = self.module.request.get_json(silent=True) or {}
+        if not isinstance(data, Mapping):
+            return self.error_response(
+                ValueError("请求必须是 JSON 对象"),
+                default_code="free_pool",
+                default_label="Free 邮箱池",
+            )
+        try:
+            importer_with_stats = getattr(self.manager.pool, "import_text_with_stats", None)
+            if callable(importer_with_stats):
+                count, skipped = importer_with_stats(str(data.get("pool_content") or ""))
+            else:
+                count = self.manager.pool.import_text(str(data.get("pool_content") or ""))
+                skipped = 0
+            return self.module.jsonify(
+                ok=True,
+                imported=count,
+                skipped=skipped,
+                rows=self.manager.pool.public_rows(),
+            )
+        except Exception as exc:
+            return self.error_response(exc, default_code="free_pool", default_label="Free 邮箱池")
+
+    def pool_delete(self):
+        if self.manager is None:
+            return self.module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        conflict = self.mutation_conflict("删除 Free 邮箱")
+        if conflict is not None:
+            return conflict
+        data = self.module.request.get_json(silent=True) or {}
+        if not isinstance(data, Mapping):
+            return self.error_response(
+                ValueError("请求必须是 JSON 对象"),
+                default_code="free_pool_delete",
+                default_label="删除 Free 邮箱",
+            )
+        row_ids = data.get("row_ids")
+        if not isinstance(row_ids, list):
+            return self.error_response(
+                ValueError("请选择要删除的 Free 邮箱"),
+                default_code="free_pool_delete",
+                default_label="删除 Free 邮箱",
+            )
+        try:
+            deleted = self.manager.pool.delete([str(value or "") for value in row_ids])
+            return self.module.jsonify(
+                ok=True,
+                deleted=deleted,
+                rows=self.manager.pool.public_rows(),
+            )
+        except Exception as exc:
+            return self.error_response(
+                exc,
+                default_code="free_pool_delete",
+                default_label="删除 Free 邮箱",
+            )
+
+    def proxy_import(self):
+        if self.manager is None:
+            return self.module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        conflict = self.mutation_conflict("导入 Free 代理")
+        if conflict is not None:
+            return conflict
+        data = self.module.request.get_json(silent=True) or {}
+        if not isinstance(data, Mapping):
+            return self.error_response(
+                ValueError("请求必须是 JSON 对象"),
+                default_code="free_proxy_pool",
+                default_label="Free 代理池",
+            )
+        try:
+            count = import_free_proxies(
+                self.manager.proxies.import_text,
+                str(data.get("proxy_content") or ""),
+                country=str(data.get("country") or "").strip().upper() or None,
+                group=str(data.get("group") or "").strip() or None,
+                scheme=str(data.get("scheme") or "").strip().lower() or None,
+            )
+            public = self.manager.proxies.public() if callable(getattr(self.manager.proxies, "public", None)) else None
+            return self.module.jsonify(
+                ok=True,
+                imported=count,
+                **({"proxies": public} if public is not None else {}),
+            )
+        except Exception as exc:
+            return self.error_response(
+                exc,
+                default_code="free_proxy_pool",
+                default_label="Free 代理池",
+            )
+
+    def proxy_preflight(self):
+        if self.manager is None or self.config_store is None:
+            return self.module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        conflict = self.mutation_conflict("执行 Free 代理预检")
+        if conflict is not None:
+            return conflict
+        if not self.request_lock.acquire(blocking=False):
+            return self.module.jsonify(
+                ok=False,
+                error="Free 配置、预检或启动请求正在处理中",
+                state=self.state(),
+            ), 409
+        try:
+            data = self.module.request.get_json(silent=True) or {}
+            if not isinstance(data, Mapping):
+                return self.error_response(
+                    ValueError("请求必须是 JSON 对象"),
+                    default_code="free_proxy_preflight",
+                    default_label="Free 代理预检",
+                )
+            current = self.config_store.load()
+            probe_config = self.config_store.normalize(
+                {
+                    "proxy_probe_url": data.get("proxy_probe_url") or current.get("proxy_probe_url"),
+                    "proxy_tls_verify": data.get("proxy_tls_verify", current.get("proxy_tls_verify", True)),
+                    "proxy_tls_compat_fallback": data.get(
+                        "proxy_tls_compat_fallback",
+                        current.get("proxy_tls_compat_fallback", True),
+                    ),
+                },
+                previous=current,
+            )
+            result = self.manager.preflight_proxies(
+                proxy_content=str(data.get("proxy_content") or ""),
+                probe_url=str(probe_config.get("proxy_probe_url") or "https://api.ipify.org"),
+                driver=str(data.get("driver") or "protocol"),
+                country=str(data.get("country") or "").strip().upper() or None,
+                group=str(data.get("group") or "").strip() or None,
+                scheme=str(data.get("scheme") or "").strip().lower() or None,
+                tls_verify=bool(probe_config.get("proxy_tls_verify", True)),
+                tls_compat_fallback=bool(probe_config.get("proxy_tls_compat_fallback", True)),
+            )
+            return self.module.jsonify(ok=True, result=result)
+        except Exception as exc:
+            return self.failure_response(
+                exc,
+                default_code="free_proxy_preflight",
+                default_label="Free 代理预检",
+                status=502 if not isinstance(exc, ValueError) else 400,
+            )
+        finally:
+            self.request_lock.release()
+
+    def proxies(self):
+        if self.manager is None:
+            return self.module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        try:
+            return self.module.jsonify(ok=True, proxies=self.manager.proxies.public())
+        except Exception as exc:
+            return self.failure_response(
+                exc,
+                default_code="free_proxies_read",
+                default_label="读取 Free 代理池",
+                status=503,
+            )
+
+    def proxy_group(self):
+        if self.manager is None:
+            return self.module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        conflict = self.mutation_conflict("修改 Free 代理分组")
+        if conflict is not None:
+            return conflict
+        data = self.module.request.get_json(silent=True) or {}
+        if not isinstance(data, Mapping):
+            return self.error_response(
+                ValueError("请求必须是 JSON 对象"),
+                default_code="free_proxy_group",
+                default_label="更新 Free 代理分组",
+            )
+        try:
+            result = self.manager.proxies.update_group(
+                str(data.get("country") or ""),
+                str(data.get("group") or ""),
+                new_country=str(data.get("new_country") or "").strip().upper() or None,
+                new_group=str(data.get("new_group") or "").strip() or None,
+                enabled=data.get("enabled") if isinstance(data.get("enabled"), bool) else None,
+            )
+            return self.module.jsonify(
+                ok=True,
+                result=result,
+                proxies=self.manager.proxies.public(),
+            )
+        except Exception as exc:
+            return self.error_response(
+                exc,
+                default_code="free_proxy_group",
+                default_label="更新 Free 代理分组",
+            )
+
+    def proxy_group_delete(self):
+        if self.manager is None:
+            return self.module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        conflict = self.mutation_conflict("删除 Free 代理分组")
+        if conflict is not None:
+            return conflict
+        data = self.module.request.get_json(silent=True) or {}
+        if not isinstance(data, Mapping):
+            return self.error_response(
+                ValueError("请求必须是 JSON 对象"),
+                default_code="free_proxy_group_delete",
+                default_label="删除 Free 代理分组",
+            )
+        try:
+            deleted = self.manager.proxies.delete_group(
+                str(data.get("country") or ""),
+                str(data.get("group") or ""),
+            )
+            return self.module.jsonify(
+                ok=True,
+                deleted=deleted,
+                proxies=self.manager.proxies.public(),
+            )
+        except Exception as exc:
+            return self.error_response(
+                exc,
+                default_code="free_proxy_group_delete",
+                default_label="删除 Free 代理分组",
+            )
+
+    def pool_status(self, status: str):
+        if self.manager is None:
+            return self.module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        conflict = self.mutation_conflict("修改 Free 邮箱状态")
+        if conflict is not None:
+            return conflict
+        data = self.module.request.get_json(silent=True) or {}
+        row_ids = data.get("row_ids") if isinstance(data, Mapping) else None
+        if not isinstance(row_ids, list):
+            return self.error_response(
+                ValueError("请选择 Free 邮箱"),
+                default_code="free_pool_status",
+                default_label="更新 Free 邮箱状态",
+            )
+        try:
+            changed = self.manager.pool.set_status(row_ids, status)
+            return self.module.jsonify(
+                ok=True,
+                updated=changed,
+                counts=self.manager.pool.counts(),
+                rows=self.manager.pool.public_rows(),
+            )
+        except Exception as exc:
+            return self.error_response(
+                exc,
+                default_code="free_pool_status",
+                default_label="更新 Free 邮箱状态",
+            )
+
+    def pool_unavailable(self):
+        return self.pool_status("unavailable")
+
+    def pool_draft(self):
+        return self.pool_status("draft")
+
+    def pool_restore(self):
+        return self.pool_status("available")
+
+    def export(self):
+        if self.manager is None:
+            return self.module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        data = self.module.request.get_json(silent=True) or {}
+        row_ids = data.get("row_ids") if isinstance(data, Mapping) and isinstance(data.get("row_ids"), list) else []
+        try:
+            content = self.manager.pool.export_success(row_ids)
+            response = self.module.Response(content, mimetype="text/plain")
+            response.headers["Content-Disposition"] = "attachment; filename=free-register-success.txt"
+            return response
+        except Exception as exc:
+            return self.failure_response(
+                exc,
+                default_code="free_export",
+                default_label="导出 Free 注册结果",
+                status=503,
+            )
+
+    def secret(self):
+        if self.manager is None:
+            return self.module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        data = self.module.request.get_json(silent=True) or {}
+        if not isinstance(data, Mapping):
+            return self.error_response(
+                ValueError("请求必须是 JSON 对象"),
+                default_code="free_secret",
+                default_label="读取 Free 敏感字段",
+            )
+        raw_task_ids = data.get("task_ids") if isinstance(data.get("task_ids"), list) else [data.get("task_id")]
+        task_ids = [str(value).strip() for value in raw_task_ids if str(value or "").strip()]
+        kind = str(data.get("kind") or "").strip().lower()
+        if kind not in {"token", "password", "totp", "proxy", "credential"}:
+            return self.error_response(
+                ValueError("敏感字段类型无效"),
+                default_code="free_secret",
+                default_label="读取 Free 敏感字段",
+            )
+        raw_row_ids = data.get("row_ids") if isinstance(data.get("row_ids"), list) else [data.get("row_id")]
+        row_ids = [str(value).strip() for value in raw_row_ids if str(value or "").strip()]
+        try:
+            value = self.manager.secret(task_ids, kind, row_ids=row_ids)
+            return self.module.jsonify(ok=True, kind=kind, value=value)
+        except Exception as exc:
+            status = 400 if isinstance(exc, ValueError) or getattr(exc, "retryable", None) is False else 503
+            return self.failure_response(
+                exc,
+                default_code="free_secret",
+                default_label="读取 Free 敏感字段",
+                status=status,
+            )
+
+    def routes(self):
+        return (
+            ("/api/free/mailboxes", "api_free_mailboxes", self.mailboxes, ["GET"]),
+            ("/api/free/mailboxes/import", "api_free_pool_import", self.pool_import, ["POST"]),
+            ("/api/free/mailboxes/delete", "api_free_pool_delete", self.pool_delete, ["POST"]),
+            ("/api/free/mailboxes/unavailable", "api_free_pool_unavailable", self.pool_unavailable, ["POST"]),
+            ("/api/free/mailboxes/draft", "api_free_pool_draft", self.pool_draft, ["POST"]),
+            ("/api/free/mailboxes/restore", "api_free_pool_restore", self.pool_restore, ["POST"]),
+            ("/api/free/mailboxes/export", "api_free_export", self.export, ["POST"]),
+            ("/api/free/proxies/import", "api_free_proxy_import", self.proxy_import, ["POST"]),
+            ("/api/free/proxies/preflight", "api_free_proxy_preflight", self.proxy_preflight, ["POST"]),
+            ("/api/free/proxies", "api_free_proxies", self.proxies, ["GET"]),
+            ("/api/free/proxies/group", "api_free_proxy_group", self.proxy_group, ["POST"]),
+            ("/api/free/proxies/group/delete", "api_free_proxy_group_delete", self.proxy_group_delete, ["POST"]),
+            ("/api/free/secrets", "api_free_secret", self.secret, ["POST"]),
+        )
+
+
+__all__ = [
+    "FreePoolRouteController",
+    "import_free_proxies",
+    "signature_accepts_call",
+]

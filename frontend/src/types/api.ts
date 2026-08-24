@@ -83,6 +83,37 @@ export interface TaskFailure {
   http_status?: number | null
   action_hint?: string
   diagnostic_action?: 'openai_connectivity' | string
+  page_type?: string
+  safe_page?: string
+  content_type?: string
+  session_rebuilds?: number
+}
+
+export interface FreeLogEntry {
+  time?: string | number
+  level?: string
+  message?: string
+  task_id?: string
+  stage?: string
+  stage_label?: string
+  node_code?: string
+  node_label?: string
+  error_code?: string
+  provider_code?: string
+  page?: string
+  safe_page?: string
+  page_type?: string
+  content_type?: string
+  session_rebuilds?: number
+  http_status?: number | string | null
+  attempt?: number | string
+  duration_ms?: number | string
+  outcome?: string
+  diagnostic?: string
+  technical_summary?: string
+  action_hint?: string
+  retryable?: boolean
+  result?: string
 }
 
 export type ManualVerificationInputKind = 'email_otp' | 'sms_otp' | 'totp'
@@ -161,6 +192,8 @@ export interface RuntimeTask {
     twofa_status?: string
     twofa_error?: string
     has_access_token?: boolean
+    has_password?: boolean
+    has_totp?: boolean
     has_credential?: boolean
     proxy?: string
     exit_ip?: string

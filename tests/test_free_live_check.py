@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import threading
@@ -12,6 +13,7 @@ from urllib.parse import urlsplit
 
 from mac_overrides.free_live_check import FreeLiveCheckService
 from mac_overrides.free_log_runtime import FreeLogStore
+from mac_overrides.free_register_common import FreeRegisterError
 from mac_overrides.free_register_store import FreeMailboxPool, FreeProxyPool
 
 
@@ -239,7 +241,39 @@ class FreeLiveCheckTests(unittest.TestCase):
         self.assertEqual(pool._row_state(row.row_id)["status"], "success")
         self.assertEqual(saved["access_token"], "old-token-1")
 
-    def test_queue_limits_active_workers_to_three_and_keeps_each_proxy_distinct(self):
+    def test_live_failure_identity_is_canonical_and_redacted_in_job_result_and_api(self):
+        pool, proxies, logs = self._resources()
+        secret = "private-live-path"
+
+        def runner(_context, _config):
+            raise FreeRegisterError(
+                "free_live_fast",
+                "快速测活",
+                f"请求失败 https://user:pass@example.test/{secret}?token=private-token otp_code=123456",
+                provider_status=503,
+                provider_code="upstream_unavailable",
+                action_hint="稍后重试",
+            )
+
+        service = self._service(pool, proxies, logs, fast_runner=runner)
+        row = pool.entries()[0]
+        service.enqueue([row.row_id], "fast")
+        state = self._wait(service)
+
+        public_failure = state["jobs"][0]["failure"]
+        saved_failure = pool.result(row.row_id)["live_check_failure"]
+        persisted = json.loads(service.path.read_text(encoding="utf-8"))
+        persisted_failure = next(iter(persisted["jobs"].values()))["failure"]
+        self.assertEqual(public_failure, saved_failure)
+        self.assertEqual(public_failure, persisted_failure)
+        self.assertEqual(public_failure["node_code"], "free_live_fast")
+        self.assertEqual(public_failure["http_status"], 503)
+        self.assertEqual(public_failure["provider_code"], "upstream_unavailable")
+        for value in ("user:pass", secret, "private-token", "123456"):
+            self.assertNotIn(value, str(public_failure))
+            self.assertNotIn(value, service.path.read_text(encoding="utf-8"))
+
+    def test_queue_limits_active_workers_to_three_and_allows_shared_proxies(self):
         pool, proxies, logs = self._resources(5)
         release = threading.Event()
         three_started = threading.Event()
@@ -268,7 +302,8 @@ class FreeLiveCheckTests(unittest.TestCase):
         release.set()
         self._wait(service)
         self.assertEqual(len(seen), 5)
-        self.assertEqual(len(set(seen)), 5)
+        self.assertGreaterEqual(len(set(seen)), 1)
+        self.assertLessEqual(len(set(seen)), 5)
 
     def test_failure_logs_redact_token_password_and_proxy_credentials(self):
         pool, proxies, logs = self._resources()

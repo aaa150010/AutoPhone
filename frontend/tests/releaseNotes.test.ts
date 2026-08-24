@@ -21,7 +21,7 @@ test('each release version is shown once for the current browser', () => {
 
 test('current release documents every feature shipped in this update', () => {
   const text = currentRelease.sections.map(section => `${section.title} ${section.usage}`).join('\n')
-  for (const expected of ['待处理', '运行中', '全部', '验证码', '密码', '2FA', '取件 URL', '批次', '任意数量', '并发', '下一批', '重登', 'HTTP 402', 'deactivated_workspace', 'SUB2', '立即删除', '增量加载', '完整扫描']) {
+  for (const expected of ['待处理', '运行中', '全部', '验证码', '密码', '2FA', '取件 URL', '批次', '任意数量', '并发', '下一批', '重登', 'HTTP 402', 'deactivated_workspace', 'SUB2', '立即删除', '增量加载', '完整扫描', 'ChatGPT/Auth/Sentinel', 'initiate_oauth', '安全页面', '会话重建', '出口地区画像']) {
     assert.match(text, new RegExp(expected))
   }
 })

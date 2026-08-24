@@ -21,6 +21,22 @@ WaitFn = Callable[..., str]
 HomeFn = Callable[..., None]
 
 
+def _provider_code(payload: Mapping[str, Any], fallback: str) -> str:
+    sources: list[Mapping[str, Any]] = [payload]
+    value = payload.get("value")
+    if isinstance(value, Mapping):
+        sources.append(value)
+        error = value.get("error")
+        if isinstance(error, Mapping):
+            sources.append(error)
+    for source in sources:
+        for key in ("provider_code", "error_code", "code", "type"):
+            candidate = source.get(key)
+            if candidate not in (None, "", 0, "0") and not isinstance(candidate, (Mapping, list, tuple)):
+                return str(candidate)[:120]
+    return fallback
+
+
 def setup_twofa(
     driver: Any,
     task: Mapping[str, Any],
@@ -34,6 +50,7 @@ def setup_twofa(
     wait_after_otp_fn: WaitFn,
     wait_home_fn: HomeFn,
     totp_fn: Callable[[str], str],
+    token_sink: Callable[[str], None] | None = None,
 ) -> str:
     """Run re-auth OTP, OAuth callback, enrollment and activation once."""
     task_id = str(task.get("task_id") or "")
@@ -64,7 +81,12 @@ def setup_twofa(
         email,
     ) or {}
     if not signin.get("ok") or not signin.get("url"):
-        raise FreeRegisterError("free_twofa_enroll", "注册 Free 账号 2FA", "RoxyBrowser 未能发起 2FA 重认证")
+        raise FreeRegisterError(
+            "free_twofa_enroll", "注册 Free 账号 2FA", "RoxyBrowser 未能发起 2FA 重认证",
+            error_code="free_twofa_reauth_start_failed",
+            provider_code="reauth_start_failed",
+            action_hint="保留已注册账号，确认登录态后重试 2FA",
+        )
     driver.get(str(signin["url"]))
     mark_sent = getattr(otp, "mark_sent", None)
     if callable(mark_sent):
@@ -96,16 +118,22 @@ def setup_twofa(
             f"2FA 邮箱验证后进入安全验证页（{safe_page_location(driver)}）",
             retryable=False,
             error_code="free_roxy_security_challenge",
+            provider_code="security_challenge",
+            action_hint="保留已注册账号，在相同 Profile 中人工确认安全验证后重试 2FA",
         )
     if state not in {"home", "oauth_callback"}:
         raise FreeRegisterError(
             "free_twofa_enroll", "注册 Free 账号 2FA",
             f"2FA 邮箱验证后未回到 ChatGPT 首页（{state}，{safe_page_location(driver)}）",
             error_code="free_twofa_callback_not_confirmed",
+            provider_code=f"callback_state_{state or 'unknown'}",
+            action_hint="保留已注册账号，检查 2FA 邮箱验证与 OAuth 回调后重试",
         )
     wait_home_fn(driver, 60)
     refreshed = session_fn(driver, 90)
     new_token = str(refreshed.get("accessToken") or token)
+    if callable(token_sink):
+        token_sink(new_token)
     enrolled = driver.execute_async_script(
         """
         const token=arguments[0], done=arguments[arguments.length - 1]; fetch('https://chatgpt.com/backend-api/accounts/mfa/enroll',{
@@ -123,6 +151,9 @@ def setup_twofa(
             "free_twofa_enroll", "注册 Free 账号 2FA",
             f"RoxyBrowser 2FA enrollment 失败（HTTP {status or '-'}）",
             provider_status=status,
+            error_code="free_twofa_enroll_failed",
+            provider_code=_provider_code(enrolled, "mfa_enroll_rejected"),
+            action_hint="保留已注册账号和 Token，稍后重试 2FA enrollment",
         )
     stage(task_id, "free_twofa_activate")
     activated = driver.execute_async_script(
@@ -142,6 +173,9 @@ def setup_twofa(
             "free_twofa_activate", "激活 Free 账号 2FA",
             f"RoxyBrowser 2FA 激活失败（HTTP {status or '-'}）",
             provider_status=status,
+            error_code="free_twofa_activate_failed",
+            provider_code=_provider_code(activated, "mfa_activate_rejected"),
+            action_hint="保留已注册账号和 Token，稍后重新激活 2FA",
         )
     return secret
 

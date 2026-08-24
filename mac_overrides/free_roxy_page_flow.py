@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from typing import Any, Callable, Mapping
+from urllib.parse import urlsplit
 
 try:
     from .free_register_common import FreeRegisterError, clean
@@ -15,6 +16,21 @@ except ImportError:
 
 LogFn = Callable[[str, str], None]
 SECURITY_WAIT_SECONDS = 60
+
+
+def is_trusted_site_url(value: Any, domain: str) -> bool:
+    """Return whether an HTTPS URL belongs to a domain or its real subdomain."""
+    try:
+        parsed = urlsplit(str(value or ""))
+    except (TypeError, ValueError):
+        return False
+    host = (parsed.hostname or "").casefold().rstrip(".")
+    expected = str(domain or "").casefold().rstrip(".")
+    return bool(
+        parsed.scheme.casefold() == "https"
+        and expected
+        and (host == expected or host.endswith(f".{expected}"))
+    )
 
 
 def page_snapshot(driver: Any) -> dict[str, Any]:
@@ -53,24 +69,31 @@ def classify_page(driver: Any) -> str:
     """Classify an auth page without treating a login password as signup."""
     snapshot = page_snapshot(driver)
     raw_url = str(getattr(driver, "current_url", "") or "").lower()
-    url = raw_url.split("?", 1)[0].rstrip("/")
+    try:
+        path = (urlsplit(raw_url).path or "/").casefold().rstrip("/")
+    except ValueError:
+        path = ""
+    auth_page = is_trusted_site_url(raw_url, "auth.openai.com")
+    chatgpt_page = is_trusted_site_url(raw_url, "chatgpt.com")
     body = str(snapshot.get("body") or "").lower()
-    if "/cdn-cgi/challenge-platform" in url or any(value in body for value in (
+    if not (auth_page or chatgpt_page):
+        return "unknown"
+    if "/cdn-cgi/challenge-platform" in path or any(value in body for value in (
         "cloudflare", "verify you are human", "unusual traffic", "security check",
         "安全验证", "人机验证", "turnstile", "just a moment",
     )):
         return "security"
-    if "chatgpt.com" in url and not any(value in url for value in (
+    if chatgpt_page and not any(value in path for value in (
         "/api/auth/session", "/auth/", "about-you", "/profile",
     )):
         return "home"
-    if "email-verification" in url or "email-otp" in url or is_email_verification_page(driver):
+    if auth_page and ("email-verification" in path or "email-otp" in path or is_email_verification_page(driver)):
         return "otp"
-    if "auth.openai.com" in url and any(value in url for value in ("/log-in/password", "/login/password")):
+    if auth_page and any(value in path for value in ("/log-in/password", "/login/password")):
         return "login_password"
-    if "auth.openai.com" in url and ("/password" in url or "new-password" in url):
+    if auth_page and ("/password" in path or "new-password" in path):
         return "signup_password"
-    if any(value in url for value in ("about-you", "/profile", "create-account/about", "signup/profile")):
+    if any(value in path for value in ("about-you", "/profile", "create-account/about", "signup/profile")):
         return "profile"
     input_names = " ".join(
         " ".join(str(item.get(key) or "") for key in ("name", "id", "autocomplete", "aria", "placeholder", "inputmode", "type", "maxlength"))
@@ -83,13 +106,13 @@ def classify_page(driver: Any) -> str:
     if any(value in input_names or value in body for value in otp_markers):
         if not any(value in input_names for value in ("password", "new-password")):
             return "otp"
-    if "auth.openai.com" in url and any(value in url for value in ("/authorize", "/callback", "/continue")):
+    if auth_page and any(value in path for value in ("/authorize", "/callback", "/continue")):
         return "oauth_callback"
     if any(value in input_names or value in body for value in (
         "birthday", "birthdate", "full_name", "about you", "年龄", "生日",
     )):
         return "profile"
-    if any(value in input_names for value in ("password", "new-password")) and "auth.openai.com" in url:
+    if any(value in input_names for value in ("password", "new-password")) and auth_page:
         return "signup_password"
     return "unknown"
 
@@ -461,6 +484,7 @@ def wait_for_home(driver: Any, timeout: int, log: LogFn | None = None) -> None:
 __all__ = [
     "click_resend_email_otp",
     "classify_page",
+    "is_trusted_site_url",
     "wait_for_security_clear",
     "page_snapshot",
     "password_form_targets",

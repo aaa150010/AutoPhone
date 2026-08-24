@@ -11,6 +11,7 @@ import threading
 from typing import Any, Callable, Mapping, Sequence
 
 try:
+    from .free_failure_runtime import canonical_failure, sanitize_failure_text
     from .free_register_common import (
         DEFAULT_FREE_PROXY_SCHEME,
         FREE_PROXY_SCHEMES,
@@ -26,6 +27,10 @@ try:
     )
     from .free_proxy_store import FreeProxyPool as StructuredFreeProxyPool
 except ImportError:
+    from free_failure_runtime import (  # type: ignore[no-redef]
+        canonical_failure,
+        sanitize_failure_text,
+    )
     from free_register_common import (  # type: ignore[no-redef]
         DEFAULT_FREE_PROXY_SCHEME,
         FREE_PROXY_SCHEMES,
@@ -147,14 +152,23 @@ class FreeMailboxPool:
                     "mailbox_url": row.mailbox_url,
                     "status": "reserved",
                     "batch_id": batch_id,
+                    "error": "",
                 })
+                current.pop("failure", None)
             atomic_write(self.state_path, state)
 
     def update(self, row_id: str, **values: Any) -> None:
         with self._lock:
             state = self._state()
             row = state["rows"].setdefault(str(row_id), {})
-            row.update({key: value for key, value in values.items() if value is not None})
+            updates = {key: value for key, value in values.items() if value is not None}
+            if "failure" in values:
+                failure = canonical_failure(values.get("failure"))
+                if failure is None:
+                    row.pop("failure", None)
+                else:
+                    updates["failure"] = failure
+            row.update(updates)
             atomic_write(self.state_path, state)
 
     def recover_reserved(self) -> int:
@@ -176,6 +190,7 @@ class FreeMailboxPool:
         with self._lock:
             state = self._state()
             row = state["rows"].setdefault(str(row_id), {})
+            normalized = canonical_failure(failure)
             if reusable:
                 row.update({
                     "status": "available", "batch_id": "", "stage": "", "error": "",
@@ -183,15 +198,25 @@ class FreeMailboxPool:
                     "proxy_id": "", "proxy_scheme": "", "proxy_country": "", "proxy_group": "",
                     "expected_exit_ip": "", "registration_ip": "", "exit_ip": "",
                 })
+                if normalized is not None:
+                    row.update({"error": normalized["public_message"], "failure": normalized})
             else:
                 row.update({"status": "failed", "stage": "free_process_recovery", "error": "Free 进程重启，中断任务未完成"})
-                if isinstance(failure, Mapping):
-                    row["failure"] = copy.deepcopy(dict(failure))
+                if normalized is not None:
+                    row.update({"error": normalized["public_message"], "failure": normalized})
             atomic_write(self.state_path, state)
 
     def save_result(self, row_id: str, result: Mapping[str, Any]) -> None:
         with self._lock:
-            atomic_write(self.results_dir / f"{fingerprint(row_id)}.json", copy.deepcopy(dict(result)))
+            payload = copy.deepcopy(dict(result))
+            for key in ("failure", "plan_failure", "twofa_failure", "live_check_failure"):
+                if key in payload:
+                    normalized = canonical_failure(payload.get(key) if isinstance(payload.get(key), Mapping) else None)
+                    if normalized is None:
+                        payload.pop(key, None)
+                    else:
+                        payload[key] = normalized
+            atomic_write(self.results_dir / f"{fingerprint(row_id)}.json", payload)
 
     def result(self, row_id: str) -> dict[str, Any]:
         try:
@@ -269,16 +294,27 @@ class FreeMailboxPool:
             for row in self.entries():
                 current = state.get(row.row_id, {})
                 result = self.result(row.row_id)
-                failure = result.get("failure") if isinstance(result.get("failure"), Mapping) else current.get("failure")
+                current_status = str(current.get("status") or "available")
+                if current_status in ACTIVE_POOL_STATUSES:
+                    failure_source = current.get("failure")
+                else:
+                    failure_source = result.get("failure") if isinstance(result.get("failure"), Mapping) else current.get("failure")
+                failure = canonical_failure(failure_source if isinstance(failure_source, Mapping) else None)
+                plan_failure = canonical_failure(
+                    result.get("plan_failure") if isinstance(result.get("plan_failure"), Mapping) else None,
+                    default_node_code="free_plan_check",
+                    default_node_label="查询 Free 套餐资格",
+                )
+                live_failure = canonical_failure(result.get("live_check_failure") if isinstance(result.get("live_check_failure"), Mapping) else None)
                 output.append({
                     "row_id": row.row_id,
                     "line_no": row.line_no,
                     "email": row.email,
-                    "status": current.get("status", "available"),
+                    "status": current_status,
                     "stage": current.get("stage", ""),
                     "batch_id": current.get("batch_id", ""),
                     "driver": result.get("driver") or current.get("driver", ""),
-                    "proxy_masked": current.get("proxy_masked", ""),
+                    "proxy_masked": sanitize_failure_text(current.get("proxy_masked", ""), 300),
                     "proxy_fingerprint": current.get("proxy_fingerprint", ""),
                     "proxy_id": current.get("proxy_id", ""),
                     "proxy_scheme": current.get("proxy_scheme", ""),
@@ -287,15 +323,18 @@ class FreeMailboxPool:
                     "expected_exit_ip": result.get("expected_exit_ip") or current.get("expected_exit_ip", ""),
                     "registration_ip": result.get("registration_ip") or current.get("registration_ip", ""),
                     "exit_ip": result.get("registration_ip") or current.get("registration_ip") or current.get("exit_ip", ""),
-                    "profile_summary": result.get("profile_summary", ""),
-                    "account_flow": result.get("account_flow", ""),
-                    "plan_type": result.get("plan_type", ""),
-                    "subscription_plan": result.get("subscription_plan", ""),
+                    "profile_summary": sanitize_failure_text(result.get("profile_summary", ""), 300),
+                    "account_flow": sanitize_failure_text(result.get("account_flow", ""), 120),
+                    "plan_type": sanitize_failure_text(result.get("plan_type", ""), 120),
+                    "subscription_plan": sanitize_failure_text(result.get("subscription_plan", ""), 120),
                     "has_active_subscription": bool(result.get("has_active_subscription", False)),
                     "plus_trial_eligible": bool(result.get("plus_trial_eligible", False)),
-                    "eligible_campaign_id": result.get("eligible_campaign_id", ""),
+                    "eligible_campaign_id": sanitize_failure_text(result.get("eligible_campaign_id", ""), 160),
                     "plan_check_status": result.get("plan_check_status", ""),
                     "plan_checked_at": result.get("plan_checked_at", ""),
+                    "plan_error_code": sanitize_failure_text(result.get("plan_error_code", ""), 160),
+                    "plan_http_status": result.get("plan_http_status"),
+                    "plan_failure": plan_failure,
                     "live_check_status": result.get("live_check_status", ""),
                     "live_check_mode": result.get("live_check_mode", ""),
                     "live_check_task_id": result.get("live_check_task_id", ""),
@@ -303,17 +342,17 @@ class FreeMailboxPool:
                     "live_check_ip": result.get("live_check_ip", ""),
                     "live_check_token_refreshed": bool(result.get("live_check_token_refreshed", False)),
                     "live_check_http_status": result.get("live_check_http_status"),
-                    "live_check_failure": copy.deepcopy(result.get("live_check_failure")) if isinstance(result.get("live_check_failure"), Mapping) else None,
+                    "live_check_failure": live_failure,
                     "twofa_status": result.get("twofa_status", ""),
-                    "twofa_error": result.get("twofa_error", ""),
+                    "twofa_error": sanitize_failure_text(result.get("twofa_error", ""), 300),
                     "has_access_token": bool(result.get("access_token")),
                     "has_password": bool(result.get("password")),
                     "has_totp": bool(result.get("totp_secret")),
                     "has_credential": bool(result.get("credential_line")),
                     "has_mailbox_url": True,
                     "task_id": result.get("task_id", ""),
-                    "error": current.get("error", ""),
-                    "failure": copy.deepcopy(failure) if isinstance(failure, Mapping) else None,
+                    "error": failure.get("public_message", "") if failure else sanitize_failure_text(current.get("error", "")),
+                    "failure": failure,
                     "progress": copy.deepcopy(current.get("progress")) if isinstance(current.get("progress"), Mapping) else None,
                 })
             return output

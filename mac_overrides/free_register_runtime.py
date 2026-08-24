@@ -12,7 +12,17 @@ import time
 from typing import Any, Callable, Mapping, Sequence
 
 try:
+    from .free_failure_runtime import (
+        FreeFailureRuntimeMixin,
+        canonical_failure,
+        completed_result_state,
+        exception_to_failure,
+        sanitize_failure_text,
+        sanitize_log_message,
+        sanitize_proxy_attempts,
+    )
     from .free_mailbox_otp import MailboxUrlOtpProvider
+    from .free_proxy_health import is_proxy_health_failure
     from .free_register_common import (
         FREE_STAGE_LABELS,
         FIXED_PASSWORD,
@@ -36,7 +46,17 @@ try:
     from .free_live_check import build_free_live_check_service
     from .free_protocol_runtime import FreeProtocolMixin
 except ImportError:
+    from free_failure_runtime import (  # type: ignore[no-redef]
+        FreeFailureRuntimeMixin,
+        canonical_failure,
+        completed_result_state,
+        exception_to_failure,
+        sanitize_failure_text,
+        sanitize_log_message,
+        sanitize_proxy_attempts,
+    )
     from free_mailbox_otp import MailboxUrlOtpProvider  # type: ignore[no-redef]
+    from free_proxy_health import is_proxy_health_failure  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
         FREE_STAGE_LABELS, FIXED_PASSWORD, FreeMailbox, FreeRegisterError, FreeTwoFaPending,
         ProxyBinding, TERMINAL_STATUSES,
@@ -52,7 +72,7 @@ except ImportError:
     from free_live_check import build_free_live_check_service  # type: ignore[no-redef]
     from free_protocol_runtime import FreeProtocolMixin  # type: ignore[no-redef]
 
-class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
+class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, FreeProtocolMixin):
     # These nodes run before the browser reaches the registration page. A
     # failure here did not consume the mailbox, so the row can be dispatched
     # again while the task history remains failed for diagnosis.
@@ -68,16 +88,6 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
         "free_roxy_signup_bootstrap",
         "free_roxy_signup_email",
         "roxy_circuit_open",
-    })
-
-    # Keep the per-task attempt trail for every failure, but only let a
-    # transport or fixed-exit-IP failure affect reusable proxy health.
-    _PROXY_HEALTH_FAILURE_NODES = frozenset({
-        "free_proxy_binding",
-        "free_proxy_drift",
-        "free_proxy_preflight",
-        "free_proxy_lease",
-        "free_roxy_ip_verify",
     })
 
     def __init__(self, data_dir: str | Path, *, progress: Any = None, log_fn: Callable[[str, str], None] | None = None, runner: Callable[..., Mapping[str, Any]] | None = None, proxy_probe: Callable[[str, str], str] | None = None) -> None:
@@ -113,29 +123,47 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
             proxy_probe=self.proxy_probe,
         )
 
-    def _log(self, message: str, level: str = "info") -> None:
+    def _log(self, message: str, level: str = "info", **fields: Any) -> None:
         if callable(self.log_fn):
             try:
-                self.log_fn(_safe_log_message(message), level)
+                self.log_fn(sanitize_log_message(message), level, **fields)
+            except TypeError:
+                # Third-party callbacks from older integrations only accept
+                # (message, level); retain compatibility while the built-in
+                # FreeLogStore receives the structured fields above.
+                try:
+                    self.log_fn(sanitize_log_message(message), level)
+                except Exception:
+                    pass
             except Exception:
                 pass
 
-    def _task_log(self, task_id: str, message: str, level: str = "info") -> None:
+    def _task_log(self, task_id: str, message: str, level: str = "info", **fields: Any) -> None:
         text = str(message or "")
         structured = re.match(r"^\[([^\]/]+)/([^\]/]+)(?:/([^\]]+))?\]\s*(.*)$", text)
         if structured:
             first, second, third, detail = structured.groups()
             if first == task_id:
-                self._log(text, level)
+                payload = dict(fields)
+                payload.setdefault("task_id", task_id)
+                self._log(text, level, **payload)
                 return
             label = first if third is None else second
             code = second if third is None else third
-            self._log(f"[{task_id}/{label}/{code}] {detail}", level)
+            payload = dict(fields)
+            payload.setdefault("task_id", task_id)
+            payload.setdefault("node_code", code)
+            payload.setdefault("node_label", label)
+            self._log(f"[{task_id}/{label}/{code}] {detail}", level, **payload)
             return
         with self._lock:
             code = str(self._tasks.get(task_id, {}).get("stage") or "free_oauth_session")
         label = FREE_STAGE_LABELS.get(code, code)
-        self._log(f"[{task_id}/{label}/{code}] {text}", level)
+        payload = dict(fields)
+        payload.setdefault("task_id", task_id)
+        payload.setdefault("node_code", code)
+        payload.setdefault("node_label", label)
+        self._log(f"[{task_id}/{label}/{code}] {text}", level, **payload)
 
     def _stage(self, task_id: str, code: str) -> None:
         changed = False
@@ -144,41 +172,83 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
                 changed = bool(self.progress.set_stage(task_id, code))
             except Exception:
                 pass
+        previous_code = ""
+        previous_started = 0
         with self._lock:
             if task_id in self._tasks:
-                changed = changed or self._tasks[task_id].get("stage") != code
+                previous_code = str(self._tasks[task_id].get("stage") or "")
+                progress_before = self._tasks[task_id].get("progress") if isinstance(self._tasks[task_id].get("progress"), Mapping) else {}
+                previous_started = int(progress_before.get("stage_started_at") or progress_before.get("started_at") or 0)
+                changed = changed or previous_code != code
                 self._tasks[task_id]["stage"] = code
                 self._tasks[task_id]["updated_at"] = int(time.time())
                 progress = self._tasks[task_id].setdefault("progress", {})
+                stage_started_at = progress.get("stage_started_at")
+                if previous_code != code or not stage_started_at:
+                    stage_started_at = int(time.time())
                 progress.update({
                     "stage": code,
                     "group": "free",
                     "started_at": progress.get("started_at") or int(time.time()),
+                    "stage_started_at": stage_started_at,
                     "updated_at": int(time.time()),
                     "finished_at": None,
                 })
                 self.task_store.save(self._tasks)
         if changed:
+            if previous_code and previous_code != code:
+                duration_ms = max(0, int(time.time() - previous_started) * 1000) if previous_started else None
+                self._log(
+                    f"[{task_id}/{FREE_STAGE_LABELS.get(previous_code, previous_code)}/{previous_code}] 完成",
+                    "success",
+                    task_id=task_id, stage=previous_code,
+                    stage_label=FREE_STAGE_LABELS.get(previous_code, previous_code),
+                    node_code=previous_code,
+                    node_label=FREE_STAGE_LABELS.get(previous_code, previous_code),
+                    outcome="success", duration_ms=duration_ms,
+                )
             label = FREE_STAGE_LABELS.get(code, code)
-            self._log(f"[{task_id}/{label}/{code}] 开始", "info")
+            self._log(
+                f"[{task_id}/{label}/{code}] 开始", "info",
+                task_id=task_id, stage=code, stage_label=label,
+                node_code=code, node_label=label, outcome="started", attempt=1,
+            )
 
     def _save_task(self, task_id: str, **values: Any) -> None:
         with self._lock:
             task = self._tasks.get(task_id)
             if task is None:
                 return
+            if "failure" in values and values.get("failure") is None:
+                task.pop("failure", None)
+                values = {key: value for key, value in values.items() if key != "failure"}
             task.update(values)
             task["updated_at"] = int(time.time())
             self.task_store.save(self._tasks)
 
-    def _finish_progress(self, task_id: str) -> None:
+    def _finish_progress(self, task_id: str, outcome: str = "success") -> None:
+        final_stage = ""
+        final_label = ""
+        duration_ms: int | None = None
         with self._lock:
             task = self._tasks.get(task_id)
             if task is not None:
                 progress = task.setdefault("progress", {})
+                final_stage = str(progress.get("stage") or task.get("stage") or "")
+                final_label = FREE_STAGE_LABELS.get(final_stage, final_stage)
+                started = int(progress.get("stage_started_at") or 0)
+                duration_ms = max(0, int(time.time() - started) * 1000) if started else None
                 progress["finished_at"] = int(time.time())
                 progress["updated_at"] = int(time.time())
                 self.task_store.save(self._tasks)
+        if final_stage:
+            self._log(
+                f"[{task_id}/{final_label}/{final_stage}] 完成",
+                "success" if outcome == "success" else "error" if outcome == "failed" else "warn",
+                task_id=task_id, stage=final_stage, stage_label=final_label,
+                node_code=final_stage, node_label=final_label,
+                outcome=outcome, duration_ms=duration_ms,
+            )
         if self.progress is not None and callable(getattr(self.progress, "finish", None)):
             try:
                 self.progress.finish(task_id)
@@ -199,6 +269,14 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
         public["result"]["has_password"] = bool(result.get("password"))
         public["result"]["has_totp"] = bool(result.get("totp_secret"))
         public["result"]["has_credential"] = bool(result.get("credential_line"))
+        for key, value in tuple(public["result"].items()):
+            if isinstance(value, str):
+                public["result"][key] = sanitize_failure_text(value, 300)
+        if "proxy_attempts" in public:
+            public["proxy_attempts"] = sanitize_proxy_attempts(public["proxy_attempts"])
+        for key in ("profile_summary", "proxy_masked", "cleanup_status"):
+            if key in public:
+                public[key] = sanitize_failure_text(public[key], 300)
         progress = None
         if self.progress is not None and callable(getattr(self.progress, "progress", None)):
             try:
@@ -212,8 +290,10 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
         elif isinstance(task.get("progress"), Mapping):
             public["progress"] = copy.deepcopy(task["progress"])
         if isinstance(task.get("failure"), Mapping):
-            public["failure"] = copy.deepcopy(task["failure"])
-            public["error"] = str(task["failure"].get("public_message") or "Free 注册失败")
+            failure = canonical_failure(task["failure"])
+            if failure is not None:
+                public["failure"] = failure
+                public["error"] = failure["public_message"]
         return public
 
     def public_tasks(self) -> list[dict[str, Any]]:
@@ -300,7 +380,7 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
                 "proxy_selection": (copy.deepcopy((self._last_config.get("proxy_selection") or {}).get(str(next((task.get("driver") for task in reversed(list(self._tasks.values())) if task.get("batch_id") == self._batch_id), "protocol")), {})) if isinstance(self._last_config.get("proxy_selection"), Mapping) else {}),
                 "driver": str(next((task.get("driver") for task in reversed(list(self._tasks.values())) if task.get("batch_id") == self._batch_id), "protocol") or "protocol"),
                 "scheduler": {
-                    "concurrency": max(1, min(int(self._last_config.get("concurrency") or self._last_config.get("free_concurrency") or 3), 5)),
+                    "concurrency": max(1, min(int(self._last_config.get("concurrency") or self._last_config.get("free_concurrency") or 3), 16)),
                     "active_slots": sum(1 for task in tasks if task.get("status") == "running"),
                     "queued_slots": sum(1 for task in tasks if task.get("status") == "queued"),
                     "roxy_circuit_open": bool(self._roxy_circuit_open),
@@ -356,14 +436,15 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
             quarantine_seconds=int(config.get("proxy_quarantine_seconds") or 600),
             tls_verify=bool(config.get("proxy_tls_verify", True)),
             tls_compat_fallback=bool(config.get("proxy_tls_compat_fallback", True)),
+            allocation_mode=str(config.get("proxy_allocation_mode") or "healthy_random"),
         )
         selection = config.get("proxy_selection") if isinstance(config.get("proxy_selection"), Mapping) else {}
         selected = selection.get(driver) if isinstance(selection.get(driver), Mapping) else {}
         country = str(selected.get("country") or "").strip() or None
         group = str(selected.get("group") or "").strip() or None
         available = self._available_count()
-        requested = int(config.get("target_count") or 0)
-        target = available if requested <= 0 or requested > available else requested
+        requested = max(1, min(int(config.get("target_count") or 1), 200))
+        target = min(requested, available)
         if target <= 0:
             raise FreeRegisterError("free_pool_preflight", "Free 邮箱池预检", "Free 邮箱池没有可用邮箱", retryable=False)
         bindings = self.proxies.bind(
@@ -485,12 +566,18 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
             try:
                 configured_free_count_value = int(configured_free_count)
             except (TypeError, ValueError):
-                configured_free_count_value = 0
-            if configured_free_count_value <= 0 or configured_free_count_value > available_count:
-                configured_free_count = available_count
-            target_count = max(1, min(int(configured_free_count or 1), 10_000))
+                configured_free_count_value = 1
+            requested_count = max(1, min(configured_free_count_value, 200))
+            target_count = max(1, min(requested_count, available_count))
             requested_row_ids = {str(value or "").strip() for value in row_ids if str(value or "").strip()}
             if requested_row_ids:
+                if len(requested_row_ids) > 200:
+                    raise FreeRegisterError(
+                        "free_pool_preflight",
+                        "Free 邮箱池预检",
+                        "单批次最多选择 200 个 Free 邮箱",
+                        retryable=False,
+                    )
                 all_available = self.pool.available(10_000)
                 rows = [row for row in all_available if row.row_id in requested_row_ids]
                 if len(rows) != len(requested_row_ids):
@@ -510,6 +597,7 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
                 quarantine_seconds=int(config.get("proxy_quarantine_seconds") or 600),
                 tls_verify=bool(config.get("proxy_tls_verify", True)),
                 tls_compat_fallback=bool(config.get("proxy_tls_compat_fallback", True)),
+                allocation_mode=str(config.get("proxy_allocation_mode") or "healthy_random"),
             )
             selection = config.get("proxy_selection") if isinstance(config.get("proxy_selection"), Mapping) else {}
             selected = selection.get(driver) if isinstance(selection.get(driver), Mapping) else {}
@@ -525,7 +613,7 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
             )
             batch_id = f"free-{int(time.time())}-{secrets.token_hex(4)}"
             now = int(time.time())
-            workers = max(1, min(int(config.get("concurrency") or config.get("free_concurrency") or 3), target_count, 5))
+            workers = max(1, min(int(config.get("concurrency") or config.get("free_concurrency") or 3), target_count, 16))
             leased_bindings: list[ProxyBinding] = []
             created_task_ids: list[str] = []
             reserved = False
@@ -534,7 +622,8 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
                 reserved = True
                 for ordinal, (row, binding) in enumerate(zip(rows, bindings), 1):
                     task_id = f"{batch_id}-{ordinal}"
-                    self._tasks[task_id] = {"task_id": task_id, "ordinal": ordinal, "slot_id": f"{batch_id}-slot-{((ordinal - 1) % workers) + 1}", "slot_index": ((ordinal - 1) % workers) + 1, "concurrency_limit": workers, "status": "queued", "created_at": now, "updated_at": now, "batch_id": batch_id, "run_mode": "free_register", "driver": driver, "email": row.email, "row_id": row.row_id, "mailbox_url": row.mailbox_url, "proxy": binding.proxy, "proxy_id": binding.proxy_id, "proxy_scheme": binding.scheme, "proxy_country": binding.country, "proxy_group": binding.group, "proxy_masked": binding.masked, "proxy_fingerprint": binding.fingerprint, "expected_exit_ip": binding.exit_ip, "registration_ip": "", "exit_ip": binding.exit_ip, "proxy_attempts": [], "cleanup_status": "pending", "progress": {"stage": "free_proxy_binding", "group": "free", "started_at": now, "updated_at": now, "finished_at": None}, "result": {"twofa_status": "pending", "driver": driver, "expected_exit_ip": binding.exit_ip, "proxy_country": binding.country, "proxy_group": binding.group}}
+                    self._tasks[task_id] = {"task_id": task_id, "ordinal": ordinal, "slot_id": f"{batch_id}-slot-{((ordinal - 1) % workers) + 1}", "slot_index": ((ordinal - 1) % workers) + 1, "concurrency_limit": workers, "status": "queued", "created_at": now, "updated_at": now, "batch_id": batch_id, "run_mode": "free_register", "driver": driver, "proxy_allocation_mode": str(config.get("proxy_allocation_mode") or "healthy_random"), "email": row.email, "row_id": row.row_id, "mailbox_url": row.mailbox_url, "proxy": binding.proxy, "proxy_id": binding.proxy_id, "proxy_scheme": binding.scheme, "proxy_country": binding.country, "proxy_group": binding.group, "proxy_masked": binding.masked, "proxy_fingerprint": binding.fingerprint, "expected_exit_ip": binding.exit_ip, "registration_ip": "", "exit_ip": binding.exit_ip, "proxy_attempts": [], "cleanup_status": "pending", "progress": {"stage": "free_proxy_binding", "group": "free", "started_at": now, "updated_at": now, "finished_at": None}, "result": {"twofa_status": "pending", "driver": driver, "expected_exit_ip": binding.exit_ip, "proxy_country": binding.country, "proxy_group": binding.group}}
+                    self._tasks[task_id]["device_id"] = f"free-{secrets.token_hex(16)}"
                     created_task_ids.append(task_id)
                     self.proxies.lease(binding, owner=task_id, batch_id=batch_id, task_id=task_id)
                     leased_bindings.append(binding)
@@ -637,10 +726,21 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
         with self._lock:
             for task_id, task in self._tasks.items():
                 if task.get("batch_id") == self._batch_id and task.get("status") == "queued":
-                    task["status"] = "stopped"
-                    task["updated_at"] = int(time.time())
-                    self.pool.update(task["row_id"], status="stopped")
-                    self._finish_progress(task_id)
+                    failure = {
+                        "node_code": "free_run_stop", "node_label": "停止 Free 注册",
+                        "error_code": "free_run_stopped",
+                        "public_message": "停止 Free 注册 [停止 Free 注册/free_run_stop]：任务在执行前被用户停止",
+                        "technical_summary": "任务在执行前被用户停止", "retryable": True,
+                        "action_hint": "可重新选择该邮箱启动 Free 注册",
+                    }
+                    failure, _ = self._persist_task_failure(
+                        task_id, task, status="stopped", failure=failure,
+                    )
+                    self.pool.update(
+                        task["row_id"], status="stopped", stage=failure["node_code"],
+                        error=failure["public_message"], failure=failure,
+                    )
+                    self._finish_progress(task_id, "stopped")
                     self._release_task_lease(task)
             self.task_store.save(self._tasks)
         self._log("[停止 Free 注册/free_stop] 已请求停止，运行中的账号不切换代理", "warn")
@@ -755,30 +855,8 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
         )
 
     def _assert_batch_proxy_uniqueness(self, task: Mapping[str, Any]) -> None:
-        """Reject persisted or fallback bindings that collide within an active batch."""
-        batch_id = str(task.get("batch_id") or "")
-        task_id = str(task.get("task_id") or "")
-        if not batch_id or not task_id:
-            return
-        with self._lock:
-            peers = [
-                current for current in self._tasks.values()
-                if str(current.get("batch_id") or "") == batch_id
-                and str(current.get("task_id") or "") != task_id
-                and str(current.get("status") or "") in {"queued", "running"}
-            ]
-        proxy_id = str(task.get("proxy_id") or "")
-        exit_ip = str(task.get("expected_exit_ip") or task.get("exit_ip") or "")
-        duplicate_proxy = any(proxy_id and proxy_id == str(peer.get("proxy_id") or "") for peer in peers)
-        duplicate_ip = any(exit_ip and exit_ip == str(peer.get("expected_exit_ip") or peer.get("exit_ip") or "") for peer in peers)
-        if duplicate_proxy or duplicate_ip:
-            item = "代理" if duplicate_proxy else "出口 IP"
-            raise FreeRegisterError(
-                "free_proxy_binding", "绑定 Free 注册代理",
-                f"当前批次检测到重复{item}，已停止进入注册页",
-                retryable=False,
-                error_code="free_proxy_duplicate_binding",
-            )
+        """Compatibility hook: shared proxy allocation permits batch collisions."""
+        _ = task
 
     def _release_task_lease(self, task: Mapping[str, Any]) -> None:
         try:
@@ -811,7 +889,7 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
                 current["proxy_attempts"] = attempts[-10:]
                 self.task_store.save(self._tasks)
         node_code = str(getattr(exc, "node_code", "free_proxy"))
-        if proxy_id and node_code in self._PROXY_HEALTH_FAILURE_NODES:
+        if proxy_id and is_proxy_health_failure(exc):
             self.proxies.record_failure(proxy_id, node_code=node_code, message=_safe_log_message(exc))
 
     @classmethod
@@ -874,20 +952,24 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
                     "technical_summary": "RoxyBrowser 基础设施连续失败",
                     "retryable": True,
                 }
-                task.update({"status": "failed", "failure": failure, "updated_at": int(time.time())})
-                self.task_store.save(self._tasks)
+                failure, _ = self._persist_task_failure(
+                    task_id, task, status="failed", failure=failure,
+                )
                 self._restore_mailbox_after_pre_registration_failure(task, failure)
                 self._release_task_lease(task)
                 return
             task["status"] = "running"
+            if twofa_retry:
+                task.pop("failure", None)
             task["updated_at"] = int(time.time())
             snapshot = dict(task)
         self._log(f"[{task_id}/free_oauth_session] Free 任务开始", "info")
-        task_log = lambda message, level="info": self._task_log(task_id, message, level)
+        task_log = lambda message, level="info", **fields: self._task_log(task_id, message, level, **fields)
         try:
             if self._stop.is_set():
                 raise FreeRegisterError("free_run_stop", "停止 Free 注册", "任务在执行前已停止", retryable=False)
-            self._verify_binding(snapshot, config)
+            retry_limit = max(0, min(5, int(config.get("proxy_retry_count") or 0)))
+            self._verify_pre_registration_proxy(snapshot, config, retry_limit)
             self._assert_batch_proxy_uniqueness(snapshot)
             runner = self._runner_for(config)
             with self._lock:
@@ -896,16 +978,20 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
                     current.setdefault("proxy_attempts", []).append({"proxy_id": snapshot.get("proxy_id", ""), "stage": "free_proxy_binding", "outcome": "bound", "at": int(time.time())})
                     current["proxy_attempts"] = current["proxy_attempts"][-10:]
                     self.task_store.save(self._tasks)
-            retry_limit = max(0, min(5, int(config.get("proxy_retry_count") or 0)))
             attempt = 0
             while True:
                 try:
                     result = dict(runner(snapshot, config, self._stop, self._stage, task_log, twofa_retry=twofa_retry))
                     break
                 except FreeRegisterError as exc:
-                    pre_profile = str(getattr(exc, "node_code", "")) in {"free_roxy_create", "free_roxy_open", "free_roxy_connect", "free_roxy_api"}
-                    if not pre_profile or attempt >= retry_limit or self._stop.is_set():
+                    error_node = str(getattr(exc, "node_code", ""))
+                    network_failure = is_proxy_health_failure(exc)
+                    pre_profile = error_node in {"free_roxy_create", "free_roxy_open", "free_roxy_connect", "free_roxy_api"}
+                    protocol_pre_email = error_node in {"free_protocol_preflight", "free_oauth_session"} and network_failure
+                    roxy_pre_email = error_node == "free_roxy_ip_verify"
+                    if not network_failure or not (pre_profile or protocol_pre_email or roxy_pre_email) or attempt >= retry_limit or self._stop.is_set():
                         raise
+                    self._record_proxy_failure(snapshot, exc)
                     attempt += 1
                     switched = self._switch_pre_profile_proxy(snapshot, config)
                     self._assert_batch_proxy_uniqueness(snapshot)
@@ -914,8 +1000,32 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
                         if current is not None:
                             current.setdefault("proxy_attempts", []).append({"proxy_id": snapshot.get("proxy_id", ""), "stage": exc.node_code, "retryable": True, "message": _safe_log_message(exc), "attempt": attempt, "switched": switched, "at": int(time.time())})
                             self.task_store.save(self._tasks)
-                    self._log(f"[{task_id}/RoxyBrowser 预注册重试/{exc.node_code}] {'切换备用代理' if switched else '继续使用原代理'}进行第 {attempt + 1} 次尝试", "warn")
-            self._verify_binding(snapshot, config)
+                    self._log(f"[{task_id}/Free 预注册重试/{exc.node_code}] {'切换备用代理' if switched else '继续使用原代理'}进行第 {attempt + 1} 次尝试", "warn")
+            post_registration_failure = None
+            try:
+                self._verify_binding(snapshot, config)
+            except FreeRegisterError as exc:
+                account_complete = bool(
+                    result.get("access_token")
+                    or result.get("credential_line")
+                    or result.get("has_access_token")
+                )
+                if not account_complete:
+                    raise
+                post_registration_failure = exception_to_failure(exc)
+                self._record_proxy_failure(snapshot, exc)
+                task_log(
+                    "账号结果已取得，但固定代理出口复核失败；保留账号并标记部分成功",
+                    "warn",
+                    node_code=post_registration_failure["node_code"],
+                    node_label=post_registration_failure["node_label"],
+                    error_code=post_registration_failure["error_code"],
+                    http_status=post_registration_failure.get("http_status"),
+                    provider_code=post_registration_failure.get("provider_code"),
+                    outcome="partial",
+                    diagnostic=post_registration_failure.get("technical_summary"),
+                    action_hint=post_registration_failure.get("action_hint"),
+                )
             result.update({
                 "task_id": task_id,
                 "batch_id": snapshot.get("batch_id", ""),
@@ -935,28 +1045,50 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
                     current.setdefault("proxy_attempts", []).append({"proxy_id": snapshot.get("proxy_id", ""), "stage": "free_result_save", "outcome": "success", "at": int(time.time())})
                     current["proxy_attempts"] = current["proxy_attempts"][-10:]
             self._save_task(task_id, profile_summary=result.get("profile_summary", ""), registration_ip=result.get("registration_ip", ""))
-            status = "twofa_pending" if result.get("twofa_status") == "pending" else ("partial_success" if result.get("plan_check_status") == "failed" else "success")
-            twofa_failure = result.get("twofa_failure") if isinstance(result.get("twofa_failure"), Mapping) else None
-            self._save_task(task_id, status=status, result=result, failure=copy.deepcopy(twofa_failure) if twofa_failure else None)
-            self.pool.save_result(snapshot["row_id"], result)
-            self.pool.update(snapshot["row_id"], status=status, stage="free_result_save", registration_ip=result.get("registration_ip", ""), error=(twofa_failure or {}).get("public_message", result.get("twofa_error", "")), failure=twofa_failure)
+            status, result, result_failure = completed_result_state(
+                result,
+                post_registration_failure=post_registration_failure,
+            )
+            if result_failure:
+                result_failure, result = self._persist_task_failure(
+                    task_id, snapshot, status=status, failure=result_failure, result=result,
+                )
+            else:
+                self._save_task(task_id, status=status, result=result, failure=None)
+                self.pool.save_result(snapshot["row_id"], result)
+            self.pool.update(
+                snapshot["row_id"], status=status, stage="free_result_save",
+                registration_ip=result.get("registration_ip", ""),
+                error=(result_failure or {}).get("public_message", ""),
+                failure=result_failure,
+            )
             self._stage(task_id, "free_result_save")
-            self._finish_progress(task_id)
+            self._finish_progress(task_id, "success" if status == "success" else "partial")
             self._release_task_lease(snapshot)
-            result_label = "完成" if status == "success" else "注册完成，2FA 待重试" if status == "twofa_pending" else "注册完成，套餐查询待处理"
+            failure_identity = f"{(result_failure or {}).get('node_label', '后置检查')}/{(result_failure or {}).get('node_code', 'unknown')}"
+            result_label = "完成" if status == "success" else f"注册完成，{failure_identity}{'待重试' if status == 'twofa_pending' else '待处理'}"
             self._log(f"[{task_id}/free_result_save] Free 任务{result_label}", "success" if status == "success" else "warn")
         except FreeRegisterError as exc:
-            failure = {
-                "node_code": exc.node_code,
-                "node_label": exc.node_label,
-                "error_code": str(getattr(exc, "error_code", "") or f"{exc.node_code}_failed"),
-                "public_message": f"{exc.node_label} [{exc.node_label}/{exc.node_code}]：{_safe_log_message(exc)}",
-                "technical_summary": _safe_log_message(exc),
-                "retryable": bool(exc.retryable),
-            }
-            if getattr(exc, "provider_status", None) is not None:
-                failure["http_status"] = exc.provider_status
-            error_node = str(getattr(exc, "node_code", "") or "")
+            node_code = str(exc.node_code or "free_protocol")
+            node_label = str(exc.node_label or FREE_STAGE_LABELS.get(node_code, node_code))
+            action_hint = str(getattr(exc, "action_hint", "") or "")
+            if not action_hint:
+                action_hint = {
+                    "oauth_create_node": "检查 Node/SentinelRunner 路径、Node 运行时和当前代理连通性",
+                    "free_proxy_binding": "检查代理格式、认证、端口和出口探测结果",
+                    "free_roxy_create": "检查 RoxyBrowser API、工作区和项目配置",
+                    "free_roxy_open": "检查 RoxyBrowser Profile 是否可打开且保持无头",
+                    "free_roxy_connect": "检查 Roxy 返回的 debugger/webdriver 地址和驱动文件",
+                    "free_oauth_security_challenge": "当前代理或会话遇到安全验证，请更换代理后重试",
+                    "free_email_otp_wait": "确认邮箱取件 URL 可用，并在服务端发送验证码后重试",
+                    "free_email_otp_validate": "确认验证码属于本次请求，必要时使用受控重发",
+                    "free_oauth_callback": "检查 OAuth 回调地址、state 和当前会话是否一致",
+                    "free_access_token": "检查 OAuth code、PKCE 和 Sentinel 会话是否过期",
+                }.get(node_code, "根据节点日志检查上游响应和当前代理")
+            failure = exception_to_failure(exc)
+            if action_hint and not failure.get("action_hint"):
+                failure["action_hint"] = action_hint
+            error_node = node_code
             quota_failure = error_node == "free_roxy_window_quota_exhausted"
             if quota_failure:
                 # A server-side window quota is a resource stop, not a
@@ -968,7 +1100,9 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
                 self._log(f"[{task_id}/RoxyBrowser 窗口额度/free_roxy_window_quota_exhausted] 已停止继续创建窗口，等待遗留 Profile 清理", "error")
             circuit_failure = bool(self._roxy_circuit_open and error_node in {"free_roxy_api", "free_roxy_create", "free_roxy_open", "free_roxy_connect"})
             terminal_status = "failed" if quota_failure or circuit_failure or not self._stop.is_set() else "stopped"
-            self._save_task(task_id, status=terminal_status, failure=failure)
+            failure, _ = self._persist_task_failure(
+                task_id, snapshot, status=terminal_status, failure=failure,
+            )
             if self._can_reuse_mailbox_after_failure(exc.node_code):
                 self._restore_mailbox_after_pre_registration_failure(snapshot, failure)
             else:
@@ -982,11 +1116,22 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
                     "账号已进入注册流程，邮箱未自动恢复为可用；可从任务行重跑或邮箱中心手动恢复",
                     "warn",
                 )
-            self._finish_progress(task_id)
+            self._finish_progress(task_id, "failed" if terminal_status == "failed" else "stopped")
             self._record_proxy_failure(snapshot, exc)
             self._roxy_failure(snapshot, exc)
             self._release_task_lease(snapshot)
-            self._log(f"[{task_id}/{exc.node_label}/{exc.node_code}] {failure['public_message']}", "error")
+            self._log(
+                f"[{task_id}/{node_label}/{node_code}] {failure['public_message']}", "error",
+                task_id=task_id, stage=node_code, stage_label=node_label,
+                node_code=node_code, node_label=node_label,
+                error_code=failure.get("error_code"), provider_code=failure.get("provider_code"),
+                http_status=failure.get("http_status"), outcome="failed",
+                diagnostic=failure.get("technical_summary"), action_hint=action_hint,
+                retryable=failure.get("retryable"),
+                page_type=failure.get("page_type"), safe_page=failure.get("safe_page"),
+                content_type=failure.get("content_type"),
+                session_rebuilds=failure.get("session_rebuilds"),
+            )
         except FreeTwoFaPending as pending:
             # A retry can fail after the account and token already exist. Keep
             # the task retryable and persist the token/plan context instead of
@@ -997,7 +1142,6 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
             result = dict(saved)
             result.update({
                 "access_token": pending.token,
-                "password": str(result.get("password") or FIXED_PASSWORD),
                 "plan_type": str(result.get("plan_type") or pending.plan_type or "free"),
                 "subscription_plan": str(result.get("subscription_plan") or result.get("plan_type") or pending.plan_type or "free"),
                 "plus_trial_eligible": bool(result.get("plus_trial_eligible", pending.plus_trial_eligible)),
@@ -1005,31 +1149,41 @@ class FreeRegisterManager(FreeRegisterSchedulerMixin, FreeProtocolMixin):
                 "twofa_error": _safe_log_message(pending),
                 "has_access_token": bool(pending.token),
             })
-            failure = {
-                "node_code": str(getattr(pending, "node_code", "free_twofa_activate") or "free_twofa_activate"),
-                "node_label": str(getattr(pending, "node_label", "激活 Free 账号 2FA") or "激活 Free 账号 2FA"),
-                "error_code": str(getattr(pending, "error_code", "free_twofa_activate_failed") or "free_twofa_activate_failed"),
-                "public_message": f"{getattr(pending, 'node_label', '激活 Free 账号 2FA')} [{getattr(pending, 'node_label', '激活 Free 账号 2FA')}/{getattr(pending, 'node_code', 'free_twofa_activate')}]：{_safe_log_message(pending)}",
-                "technical_summary": _safe_log_message(pending),
-                "retryable": bool(getattr(pending, "retryable", True)),
-            }
-            if getattr(pending, "provider_status", None) is not None:
-                failure["http_status"] = pending.provider_status
-            self._save_task(task_id, status="twofa_pending", result=result, failure=failure)
-            self.pool.save_result(snapshot["row_id"], result)
+            failure = exception_to_failure(pending)
+            result["twofa_failure"] = copy.deepcopy(failure)
+            failure, result = self._persist_task_failure(
+                task_id, snapshot, status="twofa_pending", failure=failure, result=result,
+            )
             self.pool.update(snapshot["row_id"], status="twofa_pending", stage=failure["node_code"], error=failure["public_message"], failure=failure)
             self._stage(task_id, "free_twofa_activate")
-            self._finish_progress(task_id)
+            self._finish_progress(task_id, "partial")
             self._release_task_lease(snapshot)
-            self._log(f"[{task_id}/free_twofa_activate] 2FA 重试未完成，保留待重试状态：{_safe_log_message(pending)}", "warn")
+            self._log(
+                f"[{task_id}/激活 Free 账号 2FA/free_twofa_activate] 2FA 重试未完成，保留待重试状态：{_safe_log_message(pending)}",
+                "warn", task_id=task_id, node_code=failure["node_code"],
+                node_label=failure["node_label"], error_code=failure["error_code"],
+                provider_code=failure.get("provider_code"), http_status=failure.get("http_status"),
+                outcome="partial", diagnostic=failure.get("technical_summary"),
+                action_hint=failure.get("action_hint"), retryable=failure.get("retryable"),
+                page_type=failure.get("page_type"), safe_page=failure.get("safe_page"),
+                content_type=failure.get("content_type"), session_rebuilds=failure.get("session_rebuilds"),
+            )
         except Exception as exc:
-            failure = {"node_code": "free_protocol", "node_label": "Free 注册协议", "error_code": "free_protocol_failed", "public_message": f"Free 注册协议 [Free 注册协议/free_protocol]：{type(exc).__name__}", "technical_summary": type(exc).__name__, "retryable": True}
-            self._save_task(task_id, status="failed", failure=failure)
-            self.pool.update(snapshot["row_id"], status="pending_rerun", stage="free_protocol", error=failure["public_message"], failure=failure, reusable_after_failure=False)
-            self._finish_progress(task_id)
-            self._record_proxy_failure(snapshot, exc)
-            self._roxy_failure(snapshot, exc)
+            failure, classified_exc, current_stage, current_label = (
+                self._persist_unexpected_task_failure(task_id, snapshot, exc)
+            )
+            self._finish_progress(task_id, "failed")
+            self._record_proxy_failure(snapshot, classified_exc)
+            self._roxy_failure(snapshot, classified_exc)
             self._release_task_lease(snapshot)
-            self._log(f"[{task_id}/Free 注册协议/free_protocol] {failure['public_message']}", "error")
+            self._log(
+                f"[{task_id}/{current_label}/{current_stage}] {failure['public_message']}",
+                "error", task_id=task_id, node_code=failure["node_code"],
+                node_label=failure["node_label"], error_code=failure["error_code"],
+                outcome="failed", diagnostic=failure.get("technical_summary"),
+                action_hint=failure.get("action_hint"), retryable=failure.get("retryable"),
+                page_type=failure.get("page_type"), safe_page=failure.get("safe_page"),
+                content_type=failure.get("content_type"), session_rebuilds=failure.get("session_rebuilds"),
+            )
 
 __all__ = ["FIXED_PASSWORD", "FreeMailboxPool", "FreeProxyPool", "FreeRegisterError", "FreeRegisterManager", "MailboxUrlOtpProvider", "ProxyBinding", "random_birthdate", "random_display_name"]

@@ -949,6 +949,253 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(old_nv.status_code, 404)
         self.assertEqual(old_pixel.status_code, 404)
 
+    def test_free_logs_signature_compatibility_does_not_swallow_internal_typeerror(self):
+        class LegacyManager:
+            def public_state(self):
+                return {"running": False, "tasks": [], "summary": {}}
+
+            def public_logs(self):
+                return [{"task_id": "", "message": "legacy-global"}]
+
+        legacy_app = self._app(replace(self.context, free_register_manager=LegacyManager()))
+        with legacy_app.test_client() as client:
+            legacy = client.get("/api/free/logs?task_id=free-target")
+        self.assertEqual(legacy.status_code, 200)
+        self.assertEqual(legacy.get_json()["logs"][0]["message"], "legacy-global")
+
+        secret = "private-log-reader-detail"
+
+        class FailingManager:
+            def __init__(self):
+                self.calls = []
+
+            def public_state(self):
+                return {"running": False, "tasks": [], "summary": {}}
+
+            def public_logs(self, task_id):
+                self.calls.append(task_id)
+                raise TypeError(f"reader internal failure token={secret}")
+
+        failing_manager = FailingManager()
+        failing_app = self._app(replace(self.context, free_register_manager=failing_manager))
+        with failing_app.test_client() as client:
+            failed = client.get("/api/free/logs?task_id=free-target")
+
+        payload = failed.get_json()
+        self.assertEqual(failed.status_code, 503)
+        self.assertEqual(payload["node_code"], "free_logs_read")
+        self.assertEqual(failing_manager.calls, ["free-target"])
+        self.assertNotIn(secret, str(payload))
+
+    def test_free_proxy_import_signature_compatibility_calls_each_importer_once(self):
+        class LegacyProxies:
+            def __init__(self):
+                self.calls = []
+
+            def import_text(self, content):
+                self.calls.append(content)
+                return 1
+
+            def public(self):
+                return {"count": len(self.calls), "rows": []}
+
+        class LegacyManager:
+            def __init__(self):
+                self.proxies = LegacyProxies()
+
+            def public_state(self):
+                return {"running": False, "tasks": [], "summary": {}}
+
+        legacy_manager = LegacyManager()
+        legacy_app = self._app(replace(self.context, free_register_manager=legacy_manager))
+        with legacy_app.test_client() as client:
+            legacy = client.post(
+                "/api/free/proxies/import",
+                json={
+                    "proxy_content": "proxy.test:8000",
+                    "country": "US",
+                    "group": "住宅代理",
+                    "scheme": "socks5h",
+                },
+            )
+
+        self.assertEqual(legacy.status_code, 200)
+        self.assertEqual(legacy_manager.proxies.calls, ["proxy.test:8000"])
+
+        secret = "private-importer-detail"
+
+        class FailingProxies:
+            def __init__(self):
+                self.calls = []
+
+            def import_text(self, content, *, country=None, group=None, scheme=None):
+                self.calls.append((content, country, group, scheme))
+                raise TypeError(f"importer internal failure token={secret}")
+
+            def public(self):
+                return {"count": 0, "rows": []}
+
+        class FailingManager:
+            def __init__(self):
+                self.proxies = FailingProxies()
+
+            def public_state(self):
+                return {"running": False, "tasks": [], "summary": {}}
+
+        failing_manager = FailingManager()
+        failing_app = self._app(replace(self.context, free_register_manager=failing_manager))
+        with failing_app.test_client() as client:
+            failed = client.post(
+                "/api/free/proxies/import",
+                json={
+                    "proxy_content": "proxy.test:8000",
+                    "country": "US",
+                    "group": "住宅代理",
+                    "scheme": "socks5h",
+                },
+            )
+
+        payload = failed.get_json()
+        self.assertEqual(failed.status_code, 400)
+        self.assertEqual(payload["node_code"], "free_proxy_pool")
+        self.assertIn("failure", payload)
+        self.assertEqual(
+            failing_manager.proxies.calls,
+            [("proxy.test:8000", "US", "住宅代理", "socks5h")],
+        )
+        self.assertNotIn(secret, str(payload))
+
+    def test_free_start_signature_compatibility_does_not_retry_internal_typeerror(self):
+        class LegacyManager:
+            def __init__(self):
+                self.calls = []
+
+            def public_state(self):
+                return {"running": False, "tasks": [], "summary": {}}
+
+            def start(self, config, *, pool_content="", proxy_content=""):
+                self.calls.append((dict(config), pool_content, proxy_content))
+                return {"batch_id": "free-legacy", "tasks": []}
+
+        legacy_manager = LegacyManager()
+        legacy_app = self._app(replace(self.context, free_register_manager=legacy_manager))
+        with legacy_app.test_client() as client:
+            legacy = client.post(
+                "/api/free/start",
+                json={"target_count": 1, "row_ids": ["row-selected"]},
+            )
+
+        self.assertEqual(legacy.status_code, 200)
+        self.assertEqual(len(legacy_manager.calls), 1)
+
+        secret = "private-start-detail"
+
+        class FailingManager:
+            def __init__(self):
+                self.calls = []
+
+            def public_state(self):
+                return {"running": False, "tasks": [], "summary": {}}
+
+            def start(self, config, *, pool_content="", proxy_content="", row_ids=()):
+                self.calls.append((dict(config), pool_content, proxy_content, list(row_ids)))
+                raise TypeError(f"start internal failure token={secret}")
+
+        failing_manager = FailingManager()
+        failing_app = self._app(replace(self.context, free_register_manager=failing_manager))
+        with failing_app.test_client() as client:
+            failed = client.post(
+                "/api/free/start",
+                json={"target_count": 1, "row_ids": ["row-selected"]},
+            )
+
+        payload = failed.get_json()
+        self.assertEqual(failed.status_code, 400)
+        self.assertEqual(payload["node_code"], "free_run_start")
+        self.assertIn("failure", payload)
+        self.assertEqual(len(failing_manager.calls), 1)
+        self.assertEqual(failing_manager.calls[0][3], ["row-selected"])
+        self.assertNotIn(secret, str(payload))
+
+    def test_free_state_read_failure_blocks_config_and_pool_mutations(self):
+        class RecordingPool:
+            def __init__(self):
+                self.calls = []
+
+            def import_text(self, content):
+                self.calls.append(content)
+                return 1
+
+        class RecordingProxies:
+            def __init__(self):
+                self.calls = []
+
+            def import_text(self, content, **kwargs):
+                self.calls.append((content, dict(kwargs)))
+                return 1
+
+            def public(self):
+                return {"count": 0, "rows": []}
+
+        secret = "private-state-detail"
+
+        class FailingStateManager:
+            def __init__(self):
+                self.pool = RecordingPool()
+                self.proxies = RecordingProxies()
+                self.start_calls = []
+
+            def public_state(self):
+                raise RuntimeError(f"state unavailable token={secret}")
+
+            def start(self, config, **kwargs):
+                self.start_calls.append((dict(config), dict(kwargs)))
+                return {"batch_id": "unexpected", "tasks": []}
+
+        manager = FailingStateManager()
+        config_store = FreeConfigStore(Path(self.tempdir.name) / "free-state-failure")
+        config_store.save({"target_count": 4, "concurrency": 2})
+        app = self._app(replace(
+            self.context,
+            free_register_manager=manager,
+            free_config_store=config_store,
+        ))
+
+        with app.test_client() as client:
+            start = client.post(
+                "/api/free/start",
+                json={
+                    "target_count": 9,
+                    "pool_content": "a@example.test----https://mail.test/a",
+                    "proxy_content": "proxy.test:8000",
+                },
+            )
+            mailbox = client.post(
+                "/api/free/mailboxes/import",
+                json={"pool_content": "a@example.test----https://mail.test/a"},
+            )
+            proxy = client.post(
+                "/api/free/proxies/import",
+                json={"proxy_content": "proxy.test:8000"},
+            )
+            config = client.post(
+                "/api/free/config",
+                json={"target_count": 8, "proxy_content": "proxy.test:8000"},
+            )
+
+        for response in (start, mailbox, proxy, config):
+            with self.subTest(path=response.request.path):
+                payload = response.get_json()
+                self.assertEqual(response.status_code, 503)
+                self.assertEqual(payload["node_code"], "free_state_read")
+                self.assertEqual(payload["failure"]["error_code"], "free_state_read_failed")
+                self.assertNotIn(secret, str(payload))
+        saved = config_store.load()
+        self.assertEqual((saved["target_count"], saved["concurrency"]), (4, 2))
+        self.assertEqual(manager.pool.calls, [])
+        self.assertEqual(manager.proxies.calls, [])
+        self.assertEqual(manager.start_calls, [])
+
     def test_free_pool_mutations_are_rejected_while_free_batch_is_running(self):
         class RunningFreeManager:
             def public_state(self):
@@ -1080,6 +1327,69 @@ class WebRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(free.calls, [({"run_mode": "free_register", "target_count": 1}, "", "")])
+
+    def test_free_start_normalizes_and_persists_quick_run_limits_before_dispatch(self):
+        class FreeManager:
+            def __init__(self):
+                self.calls = []
+
+            def public_state(self):
+                return {"running": False, "tasks": [], "summary": {}}
+
+            def start(self, config, *, pool_content="", proxy_content=""):
+                self.calls.append((dict(config), pool_content, proxy_content))
+                return {"batch_id": "free-limit-test", "tasks": []}
+
+        free = FreeManager()
+        config_store = FreeConfigStore(Path(self.tempdir.name) / "free-register-limits")
+        app = self._app(replace(
+            self.context,
+            free_register_manager=free,
+            free_config_store=config_store,
+        ))
+
+        with app.test_client() as client:
+            response = client.post("/api/free/start", json={
+                "target_count": 999,
+                "concurrency": 99,
+            })
+
+        self.assertEqual(response.status_code, 200)
+        saved = config_store.load()
+        self.assertEqual((saved["target_count"], saved["concurrency"]), (200, 16))
+        dispatched = free.calls[0][0]
+        self.assertEqual((dispatched["target_count"], dispatched["concurrency"]), (200, 16))
+
+    def test_free_config_and_start_are_locked_without_persisting_while_running(self):
+        class RunningFreeManager:
+            def __init__(self):
+                self.calls = []
+
+            def public_state(self):
+                return {"running": True, "tasks": [], "summary": {}}
+
+            def start(self, config, *, pool_content="", proxy_content=""):
+                self.calls.append((dict(config), pool_content, proxy_content))
+                return {"batch_id": "unexpected", "tasks": []}
+
+        free = RunningFreeManager()
+        config_store = FreeConfigStore(Path(self.tempdir.name) / "free-register-running-lock")
+        config_store.save({"target_count": 4, "concurrency": 2})
+        app = self._app(replace(
+            self.context,
+            free_register_manager=free,
+            free_config_store=config_store,
+        ))
+
+        with app.test_client() as client:
+            config_response = client.post("/api/free/config", json={"target_count": 8, "concurrency": 3})
+            start_response = client.post("/api/free/start", json={"target_count": 9, "concurrency": 4})
+
+        self.assertEqual(config_response.status_code, 409)
+        self.assertEqual(start_response.status_code, 409)
+        saved = config_store.load()
+        self.assertEqual((saved["target_count"], saved["concurrency"]), (4, 2))
+        self.assertEqual(free.calls, [])
 
     def test_free_start_persists_and_passes_proxy_pool_from_run_config(self):
         class FreeManager:

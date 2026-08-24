@@ -13,7 +13,7 @@ import re
 import secrets
 import time
 from typing import Any, Mapping
-from urllib.parse import quote, urlsplit, urlunsplit
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
@@ -25,17 +25,31 @@ ROXY_PROXY_SCHEMES = frozenset({"http", "https", "socks5", "socks5h"})
 DEFAULT_FREE_PROXY_SCHEME = "http"
 TERMINAL_STATUSES = frozenset({"success", "partial_success", "failed", "stopped", "twofa_pending"})
 LOG_SECRET_RE = re.compile(
-    r"(?i)(access[_ -]?token|refresh[_ -]?token|id[_ -]?token|authorization|"
-    r"password|(?:totp|sms|email)[_ -]?(?:secret|code)?|proxy(?:[_ -]?url)?|"
-    r"mailbox[_ -]?url|cookie|secret)\s*([=:])\s*([^\s,;]+)"
+    r"(?i)(access[_ -]?token|refresh[_ -]?token|id[_ -]?token|token|authorization|"
+    r"password|(?:totp|sms|email)[_ -]?(?:secret|code)?|csrf(?:[_ -]?token)?|"
+    r"code[_ -]?verifier|oauth[_ -]?state|state|client[_ -]?secret|api[_ -]?key|"
+    r"proxy(?:[_ -]?url)?|mailbox[_ -]?url|cookie|secret)\s*([=:])\s*([^\s,;]+)"
 )
-LOG_URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
+LOG_URL_RE = re.compile(r"(?:https?|socks4|socks5h?)://[^\s\"'<>]+", re.IGNORECASE)
+LOG_PROXY_CREDENTIAL_RE = re.compile(
+    r"(?i)(?<![\w@])(?:"
+    r"(?:\[[0-9a-f:]+\]|[a-z0-9.-]+):\d{1,5}:[^:\s,;@]+:[^\s,;@]+|"
+    r"[^:\s,;@]+:[^@\s,;]+@(?:\[[0-9a-f:]+\]|[a-z0-9.-]+):\d{1,5}|"
+    r"(?:\[[0-9a-f:]+\]|[a-z0-9.-]+):\d{1,5}@[^:\s,;@]+:[^\s,;@]+"
+    r")(?![\w@])"
+)
 LOG_BEARER_RE = re.compile(r"(?i)\bBearer\s+[^\s,;]+")
 LOG_JWT_RE = re.compile(r"(?<![\w-])eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}(?:\.[A-Za-z0-9_-]{8,})?(?![\w-])")
 LOG_CODE_RE = re.compile(r"(?<!\d)\d{6}(?!\d)")
+INVALID_PERCENT_ESCAPE_RE = re.compile(r"%(?![0-9A-Fa-f]{2})")
 
 FREE_STAGE_LABELS = {
     "oauth_create_node": "初始化 Node/Sentinel",
+    "free_protocol_preflight": "协议网络预检",
+    "free_protocol_warmup": "匿名态 ChatGPT 预热",
+    "free_authenticated_warmup": "认证态 ChatGPT 预热",
+    "free_protocol_fingerprint": "协议设备与出口画像",
+    "free_proxy_geo": "出口地区画像",
     "free_proxy_binding": "绑定 Free 注册代理",
     "free_roxy_create": "创建 RoxyBrowser 环境",
     "free_roxy_open": "打开 RoxyBrowser 环境",
@@ -104,6 +118,13 @@ class FreeRegisterError(RuntimeError):
         retryable: bool = True,
         provider_status: int | str | None = None,
         error_code: str | None = None,
+        provider_code: str | None = None,
+        action_hint: str | None = None,
+        diagnostic: str | None = None,
+        page_type: str | None = None,
+        safe_page: str | None = None,
+        content_type: str | None = None,
+        session_rebuilds: int | None = None,
     ) -> None:
         super().__init__(message)
         self.node_code = node_code
@@ -111,6 +132,13 @@ class FreeRegisterError(RuntimeError):
         self.retryable = retryable
         self.provider_status = provider_status
         self.error_code = error_code or f"{node_code}_failed"
+        self.provider_code = safe_log_message(provider_code)[:120]
+        self.action_hint = safe_log_message(action_hint)[:300]
+        self.diagnostic = safe_log_message(diagnostic)[:500]
+        self.page_type = clean(page_type, 120)
+        self.safe_page = safe_log_message(safe_page)[:500]
+        self.content_type = clean(content_type, 120)
+        self.session_rebuilds = max(0, int(session_rebuilds or 0))
 
 
 class FreeTwoFaPending(RuntimeError):
@@ -126,6 +154,8 @@ class FreeTwoFaPending(RuntimeError):
         error_code: str | None = None,
         provider_status: int | str | None = None,
         retryable: bool = True,
+        provider_code: str | None = None,
+        action_hint: str | None = None,
     ) -> None:
         super().__init__(message)
         self.token = token
@@ -136,6 +166,8 @@ class FreeTwoFaPending(RuntimeError):
         self.error_code = error_code or f"{node_code}_failed"
         self.provider_status = provider_status
         self.retryable = retryable
+        self.provider_code = safe_log_message(provider_code)[:120]
+        self.action_hint = safe_log_message(action_hint)[:300]
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,10 +204,15 @@ def safe_log_message(value: Any) -> str:
         host = parsed.hostname
         if ":" in host and not host.startswith("["):
             host = f"[{host}]"
-        netloc = host + (f":{parsed.port}" if parsed.port else "")
+        try:
+            port = parsed.port
+        except ValueError:
+            port = None
+        netloc = host + (f":{port}" if port else "")
         return urlunsplit((parsed.scheme, netloc, parsed.path, "", ""))
 
     message = LOG_URL_RE.sub(redact_url, message)
+    message = LOG_PROXY_CREDENTIAL_RE.sub("[代理凭据已隐藏]", message)
     message = LOG_SECRET_RE.sub(lambda match: f"{match.group(1)}{match.group(2)}{SECRET_MASK}", message)
     message = LOG_BEARER_RE.sub(f"Bearer {SECRET_MASK}", message)
     message = LOG_JWT_RE.sub(SECRET_MASK, message)
@@ -254,7 +291,11 @@ def mask_proxy(value: Any) -> str:
     host = parsed.hostname
     if ":" in host and not host.startswith("["):
         host = f"[{host}]"
-    return urlunsplit((parsed.scheme, host + (f":{parsed.port}" if parsed.port else ""), "", "", ""))
+    try:
+        port = parsed.port
+    except ValueError:
+        port = None
+    return urlunsplit((parsed.scheme, host + (f":{port}" if port else ""), "", "", ""))
 
 
 def parse_mailbox_line(raw: Any) -> tuple[str, str] | None:
@@ -276,6 +317,8 @@ def normalize_proxy_value(raw: Any, *, default_scheme: str = DEFAULT_FREE_PROXY_
         return ""
     if value.startswith(("'", '"')) and value.endswith(("'", '"')) and len(value) >= 2:
         value = value[1:-1].strip()
+    if INVALID_PERCENT_ESCAPE_RE.search(value):
+        return ""
     for separator in ("\t", ",", "|"):
         value = value.replace(separator, " ")
     value = " ".join(value.split())
@@ -290,21 +333,71 @@ def normalize_proxy_value(raw: Any, *, default_scheme: str = DEFAULT_FREE_PROXY_
     if "://" not in value:
         if "::" in value and "[" not in value:
             return ""
-        parts = value.split(":")
-        if len(parts) == 4 and "@" not in value and parts[1].isdigit():
-            host, port, user, password = parts
-            value = f"{default_scheme}://{quote(user, safe='')}:{quote(password, safe='')}@{host}:{port}"
+        if "@" in value:
+            left, right = value.rsplit("@", 1)
+            right_host, separator, right_port = right.rpartition(":")
+            left_host, left_separator, left_port = left.rpartition(":")
+            if separator and right_host and right_port.isdigit():
+                user, auth_separator, password = left.partition(":")
+                if not auth_separator:
+                    return ""
+                value = (
+                    f"{default_scheme}://{quote(unquote(user), safe='')}:"
+                    f"{quote(unquote(password), safe='')}@{right_host}:{right_port}"
+                )
+            elif left_separator and left_host and left_port.isdigit():
+                user, auth_separator, password = right.partition(":")
+                if not auth_separator:
+                    return ""
+                value = (
+                    f"{default_scheme}://{quote(unquote(user), safe='')}:"
+                    f"{quote(unquote(password), safe='')}@{left_host}:{left_port}"
+                )
+            else:
+                return ""
         else:
-            value = f"{default_scheme}://{value}"
+            parts = value.split(":")
+            if len(parts) == 4 and parts[1].isdigit():
+                host, port, user, password = parts
+                value = (
+                    f"{default_scheme}://{quote(unquote(user), safe='')}:"
+                    f"{quote(unquote(password), safe='')}@{host}:{port}"
+                )
+            else:
+                value = f"{default_scheme}://{value}"
     try:
         parsed = urlsplit(value)
-        if parsed.scheme not in FREE_PROXY_SCHEMES or not parsed.hostname or not parsed.port:
+        scheme = parsed.scheme.lower()
+        if scheme not in FREE_PROXY_SCHEMES or not parsed.hostname or not parsed.port:
             return ""
         if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
             return ""
     except ValueError:
         return ""
-    return value
+    host = parsed.hostname
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    username = quote(unquote(str(parsed.username or "")), safe="")
+    password = quote(unquote(str(parsed.password or "")), safe="")
+    if bool(username) != bool(password):
+        return ""
+    auth = f"{username}:{password}@" if username else ""
+    return urlunsplit((scheme, f"{auth}{host}:{parsed.port}", "", "", ""))
+
+
+def proxy_transport_value(value: Any, *, driver: str = "protocol") -> str:
+    """Return the proxy URL expected by a concrete Free transport."""
+    normalized = normalize_proxy_value(value)
+    if not normalized:
+        return ""
+    parsed = urlsplit(normalized)
+    scheme = parsed.scheme.lower()
+    selected_driver = str(driver or "protocol").strip().lower()
+    if selected_driver in {"protocol", "probe"} and scheme == "socks5":
+        scheme = "socks5h"
+    elif selected_driver == "roxybrowser" and scheme == "socks5h":
+        scheme = "socks5"
+    return urlunsplit((scheme, parsed.netloc, "", "", ""))
 
 
 def timezone_offset_minutes() -> int:
@@ -344,7 +437,7 @@ __all__ = [
     "DEFAULT_FREE_PROXY_SCHEME", "FIXED_PASSWORD", "FREE_PROXY_SCHEMES", "FREE_STAGE_LABELS",
     "FreeMailbox", "FreeRegisterError", "FreeTwoFaPending", "OTP_RE", "ProxyBinding",
     "ROXY_PROXY_SCHEMES", "SECRET_MASK", "TERMINAL_STATUSES", "atomic_write", "clean",
-    "fingerprint", "mask_proxy", "normalize_proxy_value", "parse_mailbox_line",
+    "fingerprint", "mask_proxy", "normalize_proxy_value", "parse_mailbox_line", "proxy_transport_value",
     "plus_trial_from_accounts", "proxy_error_detail", "random_birthdate", "random_display_name",
     "safe_log_message", "timezone_offset_minutes",
 ]

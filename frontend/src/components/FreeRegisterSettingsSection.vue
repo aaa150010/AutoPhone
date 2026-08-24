@@ -8,17 +8,17 @@ import FieldHelpLabel from './FieldHelpLabel.vue'
 const emit = defineEmits<{ dirtyChange: [boolean] }>()
 
 const defaultConfig: FreeConfig = {
-  driver: 'protocol', target_count: 0, concurrency: 3, email_code_timeout: 90, auto_set_2fa: true,
+  driver: 'protocol', flow_profile: 'reference_20260823', proxy_allocation_mode: 'healthy_random', target_count: 1, concurrency: 3, email_code_timeout: 90, auto_set_2fa: true,
   mailbox_network_mode: 'local_proxy', mailbox_proxy_url: 'http://127.0.0.1:7897',
   mailbox_request_retries: 3, mailbox_retry_backoff_seconds: 1,
-  proxy_probe_url: 'https://api.ipify.org', proxy_tls_verify: true, proxy_tls_compat_fallback: true, protocol: { node_runner: '', sentinel_timeout: 90 },
+  proxy_probe_url: 'https://api.ipify.org', proxy_tls_verify: true, proxy_tls_compat_fallback: true, protocol: { node_runner: '', sentinel_timeout: 90, network_timeout: 20, network_preflight_retries: 3, anonymous_warmup: true, authenticated_warmup: true, geo_probe_url: 'https://ipwho.is/' },
   proxy_default_scheme: 'http', proxy_failure_threshold: 2, proxy_quarantine_seconds: 600, proxy_retry_count: 1,
   roxy_circuit_failure_threshold: 3, roxy_circuit_recovery_seconds: 30,
   proxy_selection: { protocol: { country: '', group: '' }, roxybrowser: { country: '', group: '' } },
   roxybrowser: {
     api_base: 'http://127.0.0.1:50000', api_key: '', workspace_id: '', project_id: '',
     workspace_list_path: '/browser/workspace', create_path: '/browser/create', open_path: '/browser/open',
-    close_path: '/browser/close', delete_path: '/browser/delete', headless: true, keep_browser_open: false,
+    close_path: '/browser/close', delete_path: '/browser/delete', headless: true, force_open: false, keep_browser_open: false,
     one_profile_per_account: true, delete_profile_after_run: true, random_os: true, os_choices: ['Windows', 'macOS'],
     random_profile_name: true, profile_name_prefix: 'rb', proxy_check_channel: 'IPRust.io', selenium_timeout: 90,
     api_retries: 3, api_retry_delay: 2, humanize_delay: true, humanize_factor: 1,
@@ -50,6 +50,8 @@ function mergeConfig(value: any) {
   Object.assign(config.protocol, value.protocol || {})
   Object.assign(config.roxybrowser, value.roxybrowser || {})
   config.proxy_selection = value.proxy_selection || config.proxy_selection || { protocol: {}, roxybrowser: {} }
+  config.target_count = Math.min(200, Math.max(1, Number(config.target_count) || 1))
+  config.concurrency = Math.min(16, Math.max(1, Number(config.concurrency) || 1))
 }
 
 function selection(driver: 'protocol' | 'roxybrowser') {
@@ -135,7 +137,7 @@ async function preflight() {
     const result = await preflightFree({ ...config, proxy_content: proxyText.value })
     mergeConfig(result.config)
     state.value = result.state || state.value
-    ElMessage.success(`Free 预检通过：${Number(result.result?.target_count || 0)} 个账号，${Number(result.result?.proxies || 0)} 个固定代理`)
+    ElMessage.success(`Free 预检通过：${Number(result.result?.target_count || 0)} 个账号，${Number(result.result?.proxies || 0)} 个代理`)
   } catch (error: any) {
     ElMessage.error(error?.message || 'Free 注册预检失败')
   } finally {
@@ -295,8 +297,13 @@ defineExpose({ save })
     </div>
 
     <el-row :gutter="10">
-      <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="Free 目标数量（0=全部可用）" help="本批最多启动的 Free 账号数。填 0 时按当前可用邮箱数执行，但仍受可用代理数量限制。" /></template><el-input-number v-model="config.target_count" :min="0" :max="10000" controls-position="right" :disabled="running" /></el-form-item></el-col>
-      <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="Free 并发数（1-5）" help="同时运行的 Free 注册任务数，默认 3、最大 5。每个并发任务都会独占一个邮箱和一个代理租约。" /></template><el-input-number v-model="config.concurrency" :min="1" :max="5" controls-position="right" :disabled="running" /></el-form-item></el-col>
+      <el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="流程配置" help="默认使用参考项目 2026-08-23 的 RoxyBrowser 与全协议状态机；遇到兼容问题时可临时切回旧流程，便于回滚定位。" /></template><el-select v-model="config.flow_profile" :disabled="running"><el-option label="参考流程（推荐）" value="reference_20260823" /><el-option label="旧流程（回滚）" value="legacy" /></el-select></el-form-item></el-col>
+      <el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="代理分配方式" help="健康随机允许多个并发任务共享代理；独占模式只在需要隔离出口时使用。两种模式都在任务进入注册流程后固定当前代理。" /></template><el-select v-model="config.proxy_allocation_mode" :disabled="running"><el-option label="健康随机（推荐）" value="healthy_random" /><el-option label="独占代理（回滚）" value="exclusive" /></el-select></el-form-item></el-col>
+    </el-row>
+
+    <el-row :gutter="10">
+      <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="Free 注册数量（1-200）" help="本批最多启动的 Free 账号数。Free 注册中心启动条使用并保存同一个数值。" /></template><el-input-number v-model="config.target_count" :min="1" :max="200" controls-position="right" :disabled="running" /></el-form-item></el-col>
+      <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="Free 并发数（1-16）" help="配置允许同时运行的 Free 注册任务数；运行时可能因协议压力控制或 Roxy 熔断降低实际并发。" /></template><el-input-number v-model="config.concurrency" :min="1" :max="16" controls-position="right" :disabled="running" /></el-form-item></el-col>
       <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="邮箱 OTP 超时（秒）" help="注册流程等待邮箱验证码的最长时间。启用自动动态口令后，第二封 OTP 也使用这项超时。" /></template><el-input-number v-model="config.email_code_timeout" :min="10" :max="600" controls-position="right" :disabled="running" /></el-form-item></el-col>
     </el-row>
     <el-form-item><template #label><FieldHelpLabel label="出口 IP 探测地址" help="通过每条待用代理访问该地址，取得实际出口 IP。用于检查代理连通性、重复出口和任务期间 IP 漂移。旧版默认的 https://ipinfo.io/ip 会自动改为 https://api.ipify.org；明确填写的 JSON 地址仍会按 ip/query 字段解析。" /></template><el-input v-model="config.proxy_probe_url" :disabled="running" placeholder="https://api.ipify.org" /></el-form-item>
@@ -339,6 +346,12 @@ defineExpose({ save })
         <el-col :span="16"><el-form-item><template #label><FieldHelpLabel label="Node / Sentinel Runner" help="全协议链路使用的本地 Node/Sentinel 执行器。留空时沿用运行时默认路径，RoxyBrowser 链路不会读取这项。" /></template><el-input v-model="config.protocol.node_runner" placeholder="留空使用运行时默认配置" :disabled="running" /></el-form-item></el-col>
         <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="Sentinel 超时（秒）" help="全协议链路等待 Sentinel 初始化和响应的最长时间，超时后任务在对应节点失败。" /></template><el-input-number v-model="config.protocol.sentinel_timeout" :min="10" :max="300" controls-position="right" :disabled="running" /></el-form-item></el-col>
       </el-row>
+      <el-row :gutter="10">
+        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="网络预检重试" help="ChatGPT、Auth 和 Sentinel 预检的额外尝试次数；每次仍使用同一任务代理。" /></template><el-input-number v-model="config.protocol.network_preflight_retries" :min="1" :max="5" controls-position="right" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="网络超时（秒）" help="全协议预检和匿名预热的单次网络请求超时。" /></template><el-input-number v-model="config.protocol.network_timeout" :min="5" :max="60" controls-position="right" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="出口地区探测地址" help="用于建立协议链路的地区画像；只记录国家和脱敏结果，不会写入授权信息。" /></template><el-input v-model="config.protocol.geo_probe_url" :disabled="running" placeholder="https://ipwho.is/" /></el-form-item></el-col>
+      </el-row>
+      <div class="check-row"><el-checkbox v-model="config.protocol.anonymous_warmup" :disabled="running">匿名态预热</el-checkbox><el-checkbox v-model="config.protocol.authenticated_warmup" :disabled="running">认证态预热</el-checkbox></div>
     </div>
 
     <div v-else class="subsection">
@@ -379,13 +392,13 @@ defineExpose({ save })
       <div class="proxy-import-meta">
         <div class="proxy-import-field"><FieldHelpLabel label="导入国家" help="给这批代理添加国家分类，供全协议和 RoxyBrowser 分别筛选。ZZ 表示未分类，不代表实测出口国家。" /><el-select v-model="proxyCountry" clearable filterable allow-create default-first-option placeholder="导入国家"><el-option label="ZZ / 未分类" value="ZZ" /><el-option v-for="item in proxyCountries" :key="`import-country-${item.country}`" :label="item.country" :value="item.country" /></el-select></div>
         <div class="proxy-import-field"><FieldHelpLabel label="导入分组" help="给这批代理设置自定义资源组，例如 IPRoyal-JP。注册链路可以固定只从该组分配代理。" /><el-input v-model="proxyGroup" placeholder="导入分组" /></div>
-        <div class="proxy-import-field"><FieldHelpLabel label="无协议默认协议" help="只作用于 IP:端口 或 主机:端口:用户名:密码这类没有协议前缀的行；完整 URL 中的显式协议始终优先。" /><el-select v-model="proxyScheme" placeholder="无协议时默认协议"><el-option label="HTTP" value="http" /><el-option label="HTTPS" value="https" /><el-option label="SOCKS5" value="socks5" /><el-option label="SOCKS5H" value="socks5h" /></el-select></div>
+        <div class="proxy-import-field"><FieldHelpLabel label="无协议默认协议" help="支持 scheme://用户名:密码@主机:端口、主机:端口:用户名:密码、用户名:密码@主机:端口、主机:端口@用户名:密码；显式协议始终优先。" /><el-select v-model="proxyScheme" placeholder="无协议时默认协议"><el-option label="HTTP" value="http" /><el-option label="HTTPS" value="https" /><el-option label="SOCKS4" value="socks4" /><el-option label="SOCKS5" value="socks5" /><el-option label="SOCKS5H" value="socks5h" /></el-select></div>
       </div>
-      <el-input v-model="proxyText" type="textarea" :rows="5" :disabled="running" placeholder="每行一个代理 URL 或 主机:端口:用户名:密码" autocomplete="off" />
+      <el-input v-model="proxyText" type="textarea" :rows="5" :disabled="running" placeholder="每行一个代理，支持 URL、host:port:user:pass 和两种 @ 格式" autocomplete="off" />
       <div class="inline-actions"><el-button size="small" :icon="CircleCheck" :loading="busy === 'proxy-preflight'" :disabled="running || !proxyText.trim()" @click="preflightProxyPool">检测出口 IP</el-button><span class="muted">代理内容会随右下角“保存 Free 配置”一起保存，不会消耗邮箱，也不会启动注册</span></div>
-      <template v-if="proxyCheckRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="本次检测结果" help="仅展示输入框中代理本次检测得到的出口 IP，不会自动保存。确认无重复出口后，再点击右侧统一“保存配置”。" /></div><el-table :data="proxyCheckRows" size="small" height="150" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="masked" label="代理掩码" min-width="220" /><el-table-column prop="scheme" label="协议" width="90" /><el-table-column prop="country" label="国家" width="90" /><el-table-column prop="group" label="分组" min-width="130" /><el-table-column prop="exit_ip" label="出口 IP" min-width="150" /><el-table-column prop="fingerprint" label="指纹" min-width="120" /></el-table></template>
+      <template v-if="proxyCheckRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="本次检测结果" help="仅展示输入框中代理本次检测得到的出口 IP，不会自动保存。核对出口结果后，再点击右侧统一“保存配置”。" /></div><el-table :data="proxyCheckRows" size="small" height="150" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="masked" label="代理掩码" min-width="220" /><el-table-column prop="scheme" label="协议" width="90" /><el-table-column prop="country" label="国家" width="90" /><el-table-column prop="group" label="分组" min-width="130" /><el-table-column prop="exit_ip" label="出口 IP" min-width="150" /><el-table-column prop="fingerprint" label="指纹" min-width="120" /></el-table></template>
       <template v-if="proxyRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="代理明细" help="已保存 Free 代理池的逐条记录。用于核对每条代理的协议、分类、最近实测出口 IP、健康状态和连续失败次数；认证信息始终隐藏。" /></div><el-table :data="proxyRows" size="small" height="180" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="country" label="国家" width="80" /><el-table-column prop="group" label="分组" min-width="130" /><el-table-column prop="scheme" label="协议" width="85" /><el-table-column prop="masked" label="代理" min-width="210" /><el-table-column width="85"><template #header><FieldHelpLabel label="状态" help="未检测表示尚无成功探测；可用表示最近探测成功；已隔离表示连续失败达到阈值，隔离期内不会分配。" /></template><template #default="{ row }">{{ proxyStatusLabel(row.status) }}</template></el-table-column><el-table-column prop="last_probe_mode" label="探测模式" width="90"><template #default="{ row }">{{ row.last_probe_mode === 'compat' ? '兼容重试' : row.last_probe_mode === 'strict' ? '严格校验' : '-' }}</template></el-table-column><el-table-column prop="last_exit_ip" label="出口 IP" width="130"><template #default="{ row }">{{ row.last_exit_ip || '-' }}</template></el-table-column><el-table-column prop="consecutive_failures" label="失败次数" width="85" /></el-table></template>
-      <template v-if="proxyGroups.length"><div class="proxy-table-heading"><FieldHelpLabel label="代理分组汇总" help="按国家和分组汇总代理资源，供全协议与 RoxyBrowser 选择。这里可以整组启停、改名、移动国家或删除未租用的代理组。" /></div><el-table :data="proxyGroups" size="small" height="190" class="proxy-check-table" :row-key="groupRowKey"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="country" label="国家" width="80" /><el-table-column prop="group" label="分组" min-width="150" /><el-table-column prop="total" label="总数" width="62" /><el-table-column prop="enabled" label="启用" width="62" /><el-table-column prop="available" width="92"><template #header><FieldHelpLabel label="健康可用" help="已启用、未被隔离且当前没有有效租约的代理数量，可以立即分配给新任务。" /></template></el-table-column><el-table-column prop="leased" width="82"><template #header><FieldHelpLabel label="租用中" help="已被运行任务独占的代理数量。租约期间不能分配给其他账号，也不能删除。" /></template></el-table-column><el-table-column prop="quarantined" width="82"><template #header><FieldHelpLabel label="已隔离" help="连续连接失败达到阈值的代理数量；隔离时间结束后可重新参与探测和分配。" /></template></el-table-column><el-table-column label="协议" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ (row.schemes || []).join(' / ') || '-' }}</template></el-table-column><el-table-column label="操作" width="150" align="right"><template #default="{ row }"><el-tooltip content="启用或停用分组"><el-button link :icon="SwitchButton" :disabled="running || busy === 'group'" @click="toggleProxyGroup(row)" /></el-tooltip><el-tooltip content="重命名分组"><el-button link :icon="Edit" :disabled="running || busy === 'group'" @click="renameProxyGroup(row)" /></el-tooltip><el-tooltip content="移动国家"><el-button link :icon="Connection" :disabled="running || busy === 'group'" @click="moveProxyGroup(row)" /></el-tooltip><el-tooltip content="删除分组"><el-button link type="danger" :icon="Delete" :disabled="running || busy === 'group' || row.leased > 0" @click="removeProxyGroup(row)" /></el-tooltip></template></el-table-column></el-table></template>
+      <template v-if="proxyGroups.length"><div class="proxy-table-heading"><FieldHelpLabel label="代理分组汇总" help="按国家和分组汇总代理资源，供全协议与 RoxyBrowser 选择。这里可以整组启停、改名、移动国家或删除没有活动租约的代理组。" /></div><el-table :data="proxyGroups" size="small" height="190" class="proxy-check-table" :row-key="groupRowKey"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="country" label="国家" width="80" /><el-table-column prop="group" label="分组" min-width="150" /><el-table-column prop="total" label="总数" width="62" /><el-table-column prop="enabled" label="启用" width="62" /><el-table-column prop="available" width="92"><template #header><FieldHelpLabel label="健康可用" help="已启用且未被隔离、可以参与健康随机分配的代理数量；活动任务可共享同一代理资源。" /></template></el-table-column><el-table-column prop="leased" width="82"><template #header><FieldHelpLabel label="活动租约" help="当前运行任务持有的租约记录数量；同一代理可以有多个相互独立的任务租约。" /></template></el-table-column><el-table-column prop="quarantined" width="82"><template #header><FieldHelpLabel label="已隔离" help="连续连接失败达到阈值的代理数量；隔离时间结束后可重新参与探测和分配。" /></template></el-table-column><el-table-column label="协议" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ (row.schemes || []).join(' / ') || '-' }}</template></el-table-column><el-table-column label="操作" width="150" align="right"><template #default="{ row }"><el-tooltip content="启用或停用分组"><el-button link :icon="SwitchButton" :disabled="running || busy === 'group'" @click="toggleProxyGroup(row)" /></el-tooltip><el-tooltip content="重命名分组"><el-button link :icon="Edit" :disabled="running || busy === 'group'" @click="renameProxyGroup(row)" /></el-tooltip><el-tooltip content="移动国家"><el-button link :icon="Connection" :disabled="running || busy === 'group'" @click="moveProxyGroup(row)" /></el-tooltip><el-tooltip content="删除分组"><el-button link type="danger" :icon="Delete" :disabled="running || busy === 'group' || row.leased > 0" @click="removeProxyGroup(row)" /></el-tooltip></template></el-table-column></el-table></template>
     </div>
 
     <div class="settings-actions"><el-button size="small" :icon="CircleCheck" :loading="busy === 'preflight'" :disabled="running" @click="preflight">注册预检</el-button><el-button size="small" :icon="Refresh" :loading="busy === 'load'" :disabled="running" @click="load">刷新 Free 配置</el-button></div>

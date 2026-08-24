@@ -6,8 +6,10 @@ import time
 from typing import Any, Mapping
 
 try:
+    from .free_proxy_health import is_proxy_health_failure
     from .free_register_common import FreeRegisterError, ProxyBinding
 except ImportError:
+    from free_proxy_health import is_proxy_health_failure  # type: ignore[no-redef]
     from free_register_common import FreeRegisterError, ProxyBinding  # type: ignore[no-redef]
 
 
@@ -34,13 +36,18 @@ class FreeRegisterSchedulerMixin:
                 "retryable": previous == "queued",
             }
             reusable = previous == "queued"
+            failure, _ = self._persist_task_failure(
+                task_id,
+                task,
+                status="stopped" if reusable else "failed",
+                failure=failure,
+            )
             try:
                 self.pool.recover_interrupted(str(task.get("row_id") or ""), reusable=reusable, failure=failure)
             except Exception:
                 pass
-            task.update({"status": "stopped" if reusable else "failed", "failure": failure, "updated_at": int(time.time())})
             self._release_task_lease(task)
-            self._finish_progress(task_id)
+            self._finish_progress(task_id, "stopped" if reusable else "failed")
             changed = True
         if changed:
             self.task_store.save(self._tasks)
@@ -50,21 +57,7 @@ class FreeRegisterSchedulerMixin:
         selection = config.get("proxy_selection") if isinstance(config.get("proxy_selection"), Mapping) else {}
         driver = str(task.get("driver") or config.get("driver") or "protocol")
         selected = selection.get(driver) if isinstance(selection.get(driver), Mapping) else {}
-        with self._lock:
-            active_tasks = [
-                value for value in self._tasks.values()
-                if str(value.get("task_id") or "") != str(task.get("task_id") or "")
-                and str(value.get("status") or "") in {"queued", "running"}
-            ]
-        excluded_proxy_ids = {
-            str(value.get("proxy_id") or "") for value in active_tasks
-            if str(value.get("proxy_id") or "")
-        }
-        excluded_proxy_ids.add(str(task.get("proxy_id") or ""))
-        excluded_exit_ips = {
-            str(value.get("expected_exit_ip") or value.get("exit_ip") or "") for value in active_tasks
-            if str(value.get("expected_exit_ip") or value.get("exit_ip") or "")
-        }
+        excluded_proxy_ids = {str(task.get("proxy_id") or "")}
         try:
             bindings = self.proxies.bind(
                 1,
@@ -74,7 +67,6 @@ class FreeRegisterSchedulerMixin:
                 group=str(selected.get("group") or "").strip() or None,
                 driver=driver,
                 exclude_proxy_ids=excluded_proxy_ids,
-                exclude_exit_ips=excluded_exit_ips,
             )
         except FreeRegisterError:
             return False
@@ -120,6 +112,31 @@ class FreeRegisterSchedulerMixin:
             expected_exit_ip=replacement.exit_ip, exit_ip=replacement.exit_ip,
         )
         return True
+
+    def _verify_pre_registration_proxy(
+        self,
+        task: dict[str, Any],
+        config: Mapping[str, Any],
+        retry_limit: int,
+    ) -> None:
+        """Verify and, on explicit network failure, replace an unconsumed proxy."""
+        attempt = 0
+        while True:
+            try:
+                self._verify_binding(task, config)
+                return
+            except FreeRegisterError as exc:
+                if attempt >= retry_limit or not is_proxy_health_failure(exc):
+                    raise
+                self._record_proxy_failure(task, exc)
+                attempt += 1
+                switched = self._switch_pre_profile_proxy(task, config)
+                self._log(
+                    f"[{task.get('task_id')}/Free 预注册代理重选/free_proxy_binding] "
+                    f"固定代理验证失败，{'已切换备用代理' if switched else '没有可用备用代理，重试原代理'}"
+                    f"（第 {attempt + 1} 次）",
+                    "warn",
+                )
 
     def _roxy_failure(self, task: Mapping[str, Any], exc: BaseException) -> None:
         if str(task.get("driver") or "") != "roxybrowser":

@@ -14,6 +14,7 @@ import {
   taskNeedsVerification,
   taskVerificationKey,
 } from '../utils/taskResultViews'
+import { freeFailureCause, freeFailureDetails, freeFailureNodeIdentity } from '../utils/freeFailure'
 
 const props = withDefaults(defineProps<{
   tasks: RuntimeTask[]
@@ -113,17 +114,15 @@ function statusType(status?: string) {
 }
 
 function failureCause(row: RuntimeTask) {
-  const failure = row.failure
-  if (!failure) return String(row.error || row.reason || '').trim() || '-'
-  const message = String(failure.public_message || '').trim()
-  const prefix = `${failure.node_label}失败：`
-  return message.startsWith(prefix) ? message.slice(prefix.length) : message || '-'
+  return freeFailureCause(row.failure)
+}
+
+function failureIdentity(row: RuntimeTask) {
+  return freeFailureNodeIdentity(row.failure)
 }
 
 function failureTooltip(row: RuntimeTask) {
-  const failure = row.failure
-  if (!failure) return ''
-  return [failure.node_code, failure.error_code, failure.provider_code, failure.technical_summary, failure.action_hint].filter(Boolean).join(' · ')
+  return freeFailureDetails(row.failure, { includeNode: true }).join(' · ')
 }
 
 function openDetails(row: RuntimeTask) {
@@ -145,8 +144,8 @@ function emitFreeSecret(kind: 'token' | 'password' | 'totp' | 'proxy' | 'credent
     <div v-if="visibleFreeTasks.length" class="free-actions">
       <span>Free 记录 {{ visibleFreeTasks.length }} 条</span>
       <el-button size="small" :disabled="!visibleFreeTasks.some(row => row.result?.has_access_token)" @click="emitFreeSecret('token', visibleFreeTasks)">复制当前页 Token</el-button>
-      <el-button size="small" :disabled="!selectedFreeTasks.length" @click="emitFreeSecret('token', selectedFreeTasks)">复制选中 Token</el-button>
-      <el-button size="small" :disabled="!selectedFreeTasks.length" @click="emitFreeSecret('credential', selectedFreeTasks)">复制选中凭据</el-button>
+      <el-button size="small" :disabled="!selectedFreeTasks.some(row => row.result?.has_access_token)" @click="emitFreeSecret('token', selectedFreeTasks)">复制选中 Token</el-button>
+      <el-button size="small" :disabled="!selectedFreeTasks.some(row => row.result?.has_credential)" @click="emitFreeSecret('credential', selectedFreeTasks)">复制选中凭据</el-button>
     </div>
     <el-table class="task-table" :data="visibleTasks" :row-key="taskRowKey" stripe height="100%" @selection-change="selectFreeTasks">
       <el-table-column type="selection" width="42" reserve-selection />
@@ -161,17 +160,17 @@ function emitFreeSecret(kind: 'token' | 'password' | 'totp' | 'proxy' | 'credent
         <template #default="{ row }"><el-tooltip v-if="row.has_mailbox_url" content="打开取件网页" placement="top"><el-button link :icon="View" :loading="openingMailboxUrls.includes(row.task_id)" @click="emit('mailboxUrl', row)">打开</el-button></el-tooltip><span v-else class="muted">-</span></template>
       </el-table-column>
       <el-table-column label="密码" width="66" align="center">
-        <template #default="{ row }"><el-tooltip v-if="row.run_mode === 'free_register' && row.result?.has_credential" content="复制注册密码" placement="top"><el-button link :icon="Key" aria-label="复制注册密码" @click="emitFreeSecret('password', [row])" /></el-tooltip><el-tooltip v-else-if="row.has_mailbox_password" content="复制邮箱密码" placement="top"><el-button link :icon="Key" :loading="loadingMailboxPasswords.includes(row.task_id)" aria-label="复制邮箱密码" @click="emit('mailboxPassword', row)" /></el-tooltip><span v-else class="muted">-</span></template>
+        <template #default="{ row }"><el-tooltip v-if="row.run_mode === 'free_register' && row.result?.has_password" content="复制注册密码" placement="top"><el-button link :icon="Key" aria-label="复制注册密码" @click="emitFreeSecret('password', [row])" /></el-tooltip><el-tooltip v-else-if="row.has_mailbox_password" content="复制邮箱密码" placement="top"><el-button link :icon="Key" :loading="loadingMailboxPasswords.includes(row.task_id)" aria-label="复制邮箱密码" @click="emit('mailboxPassword', row)" /></el-tooltip><span v-else class="muted">-</span></template>
       </el-table-column>
       <el-table-column label="2FA" width="62" align="center">
-        <template #default="{ row }"><el-tooltip v-if="row.run_mode === 'free_register' && row.result?.has_credential" content="复制注册 2FA 密钥" placement="top"><el-button link :icon="CopyDocument" aria-label="复制注册 2FA 密钥" @click="emitFreeSecret('totp', [row])" /></el-tooltip><el-tooltip v-else-if="row.has_totp" content="复制临时 2FA 验证码" placement="top"><el-button link :icon="CopyDocument" :loading="loadingMailboxTotps.includes(row.task_id)" aria-label="复制临时 2FA 验证码" @click="emit('mailboxTotp', row)" /></el-tooltip><span v-else class="muted">-</span></template>
+        <template #default="{ row }"><el-tooltip v-if="row.run_mode === 'free_register' && row.result?.has_totp" content="复制注册 2FA 密钥" placement="top"><el-button link :icon="CopyDocument" aria-label="复制注册 2FA 密钥" @click="emitFreeSecret('totp', [row])" /></el-tooltip><el-tooltip v-else-if="row.has_totp" content="复制临时 2FA 验证码" placement="top"><el-button link :icon="CopyDocument" :loading="loadingMailboxTotps.includes(row.task_id)" aria-label="复制临时 2FA 验证码" @click="emit('mailboxTotp', row)" /></el-tooltip><span v-else class="muted">-</span></template>
       </el-table-column>
       <el-table-column label="Token / 代理" width="108" align="center"><template #default="{ row }"><template v-if="row.run_mode === 'free_register'"><el-button v-if="row.result?.has_access_token" link @click="emitFreeSecret('token', [row])">Token</el-button><el-button v-if="row.proxy_masked" link @click="emitFreeSecret('proxy', [row])">代理</el-button><span v-if="!row.result?.has_access_token && !row.proxy_masked" class="muted">-</span></template><span v-else class="muted">-</span></template></el-table-column>
       <el-table-column label="当前阶段 / 结果" min-width="340">
         <template #default="{ row }"><div class="result-cell"><TaskProgressCell :progress="row.progress" :timing="row.timing" :now-seconds="nowSeconds" :status="row.status" /><el-tag class="result-tag" :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></div></template>
       </el-table-column>
       <el-table-column label="待处理事项" min-width="280" show-overflow-tooltip>
-        <template #default="{ row }"><el-tooltip v-if="row.failure" :content="failureTooltip(row)" placement="top"><span class="failure-detail"><span class="failure-node">{{ row.failure.node_label }}</span>{{ failureCause(row) }}</span></el-tooltip><el-button v-else-if="row.run_mode === 'free_register' && row.status === 'twofa_pending'" link type="warning" @click="emit('freeTwofaRetry', row)">重试 2FA</el-button><TaskVerificationInput v-else-if="shouldShowManualVerification(row) && !acceptedVerificationKeys.has(verificationKey(row))" :task-id="row.task_id" :request="row.manual_verification" :now-seconds="nowSeconds" @accepted="markVerificationAccepted(row)" /><span v-else class="muted">-</span></template>
+        <template #default="{ row }"><div v-if="row.failure" class="failure-actions"><el-tooltip :content="failureTooltip(row)" placement="top"><span class="failure-detail"><span class="failure-node">{{ failureIdentity(row).label || failureIdentity(row).code }}<code v-if="failureIdentity(row).showCode">{{ failureIdentity(row).code }}</code></span>{{ failureCause(row) }}</span></el-tooltip><el-button v-if="row.run_mode === 'free_register' && row.status === 'twofa_pending'" link type="warning" @click="emit('freeTwofaRetry', row)">重试 2FA</el-button></div><el-button v-else-if="row.run_mode === 'free_register' && row.status === 'twofa_pending'" link type="warning" @click="emit('freeTwofaRetry', row)">重试 2FA</el-button><TaskVerificationInput v-else-if="shouldShowManualVerification(row) && !acceptedVerificationKeys.has(verificationKey(row))" :task-id="row.task_id" :request="row.manual_verification" :now-seconds="nowSeconds" @accepted="markVerificationAccepted(row)" /><span v-else class="muted">-</span></template>
       </el-table-column>
       <el-table-column label="操作" width="70" fixed="right" align="center"><template #default="{ row }"><el-tooltip content="查看任务链路详情" placement="top"><el-button link :icon="Document" aria-label="查看任务链路详情" @click="openDetails(row)" /></el-tooltip></template></el-table-column>
       <template #empty><ContentEmptyState /></template>
@@ -192,7 +191,9 @@ function emitFreeSecret(kind: 'token' | 'password' | 'totp' | 'proxy' | 'credent
 .result-cell :deep(.progress-cell) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .result-cell :deep(.progress-cell span) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .result-tag { flex: 0 0 auto; margin-top: 0; }
+.failure-actions { display: flex; align-items: center; min-width: 0; gap: 6px; }
 .failure-detail { display: inline-flex; max-width: 100%; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .failure-node { flex: none; color: var(--el-color-danger); font-weight: 600; }
+.failure-node code { margin-left: 4px; color: var(--el-text-color-secondary); font-size: 10px; font-weight: 500; }
 .muted { color: var(--el-text-color-secondary); }
 </style>

@@ -15,11 +15,11 @@ from urllib.parse import urljoin, urlsplit
 
 try:
     from .free_register_common import FreeRegisterError, clean
-    from .free_roxy_page_flow import classify_page, page_snapshot, wait_for_security_clear
+    from .free_roxy_page_flow import classify_page, is_trusted_site_url, page_snapshot, wait_for_security_clear
     from .free_roxy_signup import safe_page_location
 except ImportError:
     from free_register_common import FreeRegisterError, clean  # type: ignore[no-redef]
-    from free_roxy_page_flow import classify_page, page_snapshot, wait_for_security_clear  # type: ignore[no-redef]
+    from free_roxy_page_flow import classify_page, is_trusted_site_url, page_snapshot, wait_for_security_clear  # type: ignore[no-redef]
     from free_roxy_signup import safe_page_location  # type: ignore[no-redef]
 
 
@@ -162,13 +162,16 @@ def _select_active_auth_window(driver: Any, log: LogFn | None = None) -> None:
                 switch(handle)
                 url = str(getattr(driver, "current_url", "") or "").casefold()
                 score = 0
-                if "auth.openai.com" in url:
+                auth_page = is_trusted_site_url(url, "auth.openai.com")
+                chatgpt_page = is_trusted_site_url(url, "chatgpt.com")
+                path = urlsplit(url).path.casefold()
+                if auth_page:
                     score += 50
-                if any(path in url for path in ("/email-verification", "/email-otp")):
+                if auth_page and any(value in path for value in ("/email-verification", "/email-otp")):
                     score += 40
-                if any(path in url for path in ("/log-in", "/sign-up", "/authorize")):
+                if auth_page and any(value in path for value in ("/log-in", "/sign-up", "/authorize")):
                     score += 15
-                if "chatgpt.com" in url:
+                if chatgpt_page:
                     score += 5
                 if score:
                     scored.append((score, str(handle)))
@@ -846,6 +849,7 @@ def reopen_email_otp_flow(
     switch_login_to_email_code: Callable[[Any, Any, LogFn | None], None],
     wait_after_passwordless_switch: Callable[[Any, int, LogFn | None], str],
     submit_signup_password: Callable[[Any, Any, LogFn], str],
+    submit_email: Callable[[Any, str, Any, LogFn | None, int], str] | None = None,
 ) -> str:
     """Re-open the same Roxy Profile and request a new mailbox OTP."""
     started = time.monotonic()
@@ -876,16 +880,19 @@ def reopen_email_otp_flow(
         state = wait_after_passwordless_switch(driver, timeout, log)
     elif state not in {"signup_password", "profile", "home", "oauth_callback"}:
         try:
-            field = find_element(
-                driver,
-                ["input[type='email']", "input[name='email']", "input[autocomplete='email']", "input[name='username']"],
-                min(45, max(10, timeout)),
-            )
-            type_element(field, email, human)
-            submit(driver, human)
-            if callable(getattr(human, "delay", None)):
-                human.delay("navigate")
-            state = wait_after_email_submit(driver, timeout, log)
+            if submit_email is not None:
+                state = submit_email(driver, email, human, log, timeout)
+            else:
+                field = find_element(
+                    driver,
+                    ["input[type='email']", "input[name='email']", "input[autocomplete='email']", "input[name='username']"],
+                    min(45, max(10, timeout)),
+                )
+                type_element(field, email, human)
+                submit(driver, human)
+                if callable(getattr(human, "delay", None)):
+                    human.delay("navigate")
+                state = wait_after_email_submit(driver, timeout, log)
         except FreeRegisterError:
             raise
         except Exception as exc:

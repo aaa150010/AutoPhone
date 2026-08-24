@@ -16,9 +16,11 @@ import {
   WarningFilled,
 } from '@element-plus/icons-vue'
 import {
+  getFreeSecret,
   getRuntimeTaskMailboxPassword,
   getRuntimeTaskMailboxTotp,
   getRuntimeTaskMailboxUrl,
+  retryFreeTwofa,
 } from '../api/client'
 import DashboardMetricCard from '../components/DashboardMetricCard.vue'
 import LogPanel from '../components/LogPanel.vue'
@@ -233,6 +235,46 @@ async function copyTaskAccount(task: RuntimeTask) {
   }
 }
 
+async function copyFreeTaskSecret(payload: { kind: 'token' | 'password' | 'totp' | 'proxy' | 'credential'; tasks: RuntimeTask[] }) {
+  if (!navigator.clipboard?.writeText) {
+    ElMessage.error('当前浏览器不支持安全剪贴板写入')
+    return
+  }
+  const eligible = payload.tasks.filter((task) => {
+    if (payload.kind === 'token') return task.result?.has_access_token
+    if (payload.kind === 'password') return task.result?.has_password
+    if (payload.kind === 'totp') return task.result?.has_totp
+    if (payload.kind === 'proxy') return Boolean(task.proxy_masked)
+    return task.result?.has_credential
+  })
+  const taskIds = [...new Set(eligible.map(task => String(task.task_id || '').trim()).filter(Boolean))]
+  if (!taskIds.length) {
+    ElMessage.warning('选中的 Free 账号没有可复制内容')
+    return
+  }
+  try {
+    const result = await getFreeSecret(payload.kind, { task_ids: taskIds })
+    const value = String(result.value || '')
+    if (!value) throw new Error('服务端未返回可复制内容')
+    await navigator.clipboard.writeText(value)
+    ElMessage.success(`已复制 ${taskIds.length} 个 Free 账号敏感字段`)
+  } catch (error: any) {
+    ElMessage.error(error?.message || 'Free 敏感字段复制失败')
+  }
+}
+
+async function retryFreeTaskTwofa(task: RuntimeTask) {
+  const taskId = String(task.task_id || '').trim()
+  if (!taskId) return
+  try {
+    await retryFreeTwofa(taskId)
+    ElMessage.info('已重新加入 2FA 设置任务')
+    await controller.refresh()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '2FA 重试失败')
+  }
+}
+
 async function copyTaskPassword(task: RuntimeTask) {
   const taskId = String(task.task_id || '').trim()
   if (!taskId || loadingMailboxPasswordTaskIds.value.includes(taskId)) return
@@ -382,6 +424,8 @@ async function disableConnectivityGuard() {
             @mailbox-password="copyTaskPassword"
             @mailbox-totp="copyTaskTotp"
             @mailbox-url="openTaskMailboxUrl"
+            @free-secret="copyFreeTaskSecret"
+            @free-twofa-retry="retryFreeTaskTwofa"
             @update:active-view="taskView = $event"
             @counts="taskCounts = $event"
           />

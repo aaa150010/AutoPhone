@@ -58,6 +58,7 @@ class FreeAccountRouteController:
                 exc,
                 default_code="free_roxy_workspace",
                 default_label="读取 RoxyBrowser 工作区",
+                status=503,
             )
 
     def mailbox_url(self):
@@ -68,10 +69,12 @@ class FreeAccountRouteController:
         try:
             return self.module.jsonify(ok=True, mailbox_url=self.manager.pool.reveal_mailbox_url(row_id))
         except Exception as exc:
+            status = 400 if isinstance(exc, ValueError) or getattr(exc, "retryable", None) is False else 503
             return self.error_response(
                 exc,
                 default_code="free_mailbox_url",
                 default_label="读取 Free 取件地址",
+                status=status,
             )
 
     def retry_twofa(self):
@@ -162,6 +165,7 @@ class FreeAccountRouteController:
                 exc,
                 default_code="free_live_state",
                 default_label="读取 Free 账号测活状态",
+                status=503,
             )
 
 

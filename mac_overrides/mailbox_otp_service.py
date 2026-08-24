@@ -713,6 +713,15 @@ class MailboxOtpService:
                         "warn",
                     )
                 except Exception as exc:
+                    # A resend callback can be the point where the OAuth
+                    # session is discovered to be invalid.  Do not turn that
+                    # structured failure into a misleading OTP timeout: the
+                    # caller must rebuild the session or preserve its node.
+                    if (
+                        getattr(exc, "error_code", "") == "oauth_session_invalid"
+                        or bool(getattr(exc, "node_code", ""))
+                    ):
+                        raise
                     self._log(
                         f"[邮箱验证码重发/{self.current_stage}] 重发未完成"
                         f"（{type(exc).__name__}），继续等待原请求",

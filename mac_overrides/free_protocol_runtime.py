@@ -8,8 +8,10 @@ and stage callbacks through its existing methods.
 from __future__ import annotations
 
 import base64
+from datetime import datetime
 import hashlib
 import hmac
+import inspect
 import os
 from pathlib import Path
 import re
@@ -17,9 +19,16 @@ import secrets
 import threading
 import time
 from typing import Any, Callable, Mapping
+from zoneinfo import ZoneInfo
 
 try:
     from .free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider
+    from .free_protocol_bootstrap import (
+        anonymous_warmup as _anonymous_warmup,
+        authenticated_warmup as _authenticated_warmup,
+        exit_geo_profile as _exit_geo_profile,
+        network_preflight as _network_preflight,
+    )
     from .free_protocol_flow import run_free_protocol_flow
     from .free_register_common import (
         FIXED_PASSWORD,
@@ -33,6 +42,12 @@ try:
     )
 except ImportError:
     from free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider  # type: ignore[no-redef]
+    from free_protocol_bootstrap import (  # type: ignore[no-redef]
+        anonymous_warmup as _anonymous_warmup,
+        authenticated_warmup as _authenticated_warmup,
+        exit_geo_profile as _exit_geo_profile,
+        network_preflight as _network_preflight,
+    )
     from free_protocol_flow import run_free_protocol_flow  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
         FIXED_PASSWORD, FreeRegisterError, FreeTwoFaPending,
@@ -50,6 +65,73 @@ DEFAULT_AUTH_IMPERSONATES = (
     "safari15_3",
     "safari17_0",
 )
+REFERENCE_FLOW_PROFILE = "reference_20260823"
+
+
+def _response_status(response: Any) -> int | None:
+    raw = getattr(response, "status_code", None)
+    if isinstance(response, Mapping):
+        raw = response.get("_status") if "_status" in response else response.get("status_code")
+    try:
+        return int(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _response_provider_code(response: Any, data: Any = None) -> str:
+    for source in (data, response):
+        if not isinstance(source, Mapping):
+            continue
+        error = source.get("error")
+        candidates = (error, source) if isinstance(error, Mapping) else (source,)
+        for candidate in candidates:
+            for key in ("error_code", "code", "type", "reason"):
+                value = str(candidate.get(key) or "").strip()
+                if value:
+                    return _safe_log_message(value)[:120]
+    return ""
+
+
+def _explicit_false(value: Any) -> bool:
+    return value is False or (
+        isinstance(value, str)
+        and value.strip().casefold() in {"false", "0", "no", "failed", "failure", "error"}
+    )
+
+
+def _plan_failure(exc: FreeRegisterError) -> dict[str, Any]:
+    cause = _safe_log_message(exc) or "服务端未返回错误详情"
+    failure = {
+        "node_code": "free_plan_check",
+        "node_label": "查询 Free 套餐资格",
+        "error_code": str(exc.error_code or "free_plan_check_failed"),
+        "public_message": f"查询 Free 套餐资格 [查询 Free 套餐资格/free_plan_check]：{cause}",
+        "technical_summary": cause,
+        "retryable": bool(exc.retryable),
+        "action_hint": str(exc.action_hint or "账号已保存；稍后重新测活以补查套餐与试用资格"),
+    }
+    if exc.provider_status is not None:
+        failure["http_status"] = exc.provider_status
+    if exc.provider_code:
+        failure["provider_code"] = exc.provider_code
+    return failure
+
+
+def _call_otp_wait(provider: Any, email: str, **kwargs: Any) -> str:
+    waiter = getattr(provider, "wait_code", None)
+    if not callable(waiter):
+        raise FreeRegisterError(
+            "free_twofa_otp_validate", "等待 Free 账号 2FA 邮箱验证码",
+            "邮箱取件 Provider 缺少 wait_code 方法", retryable=False,
+            error_code="free_twofa_otp_waiter_missing",
+        )
+    try:
+        inspect.signature(waiter).bind(email, **kwargs)
+    except ValueError:
+        return waiter(email, **kwargs)
+    except TypeError:
+        return waiter(email)
+    return waiter(email, **kwargs)
 
 
 def resolve_auth_impersonates(config: Mapping[str, Any]) -> list[str]:
@@ -65,6 +147,59 @@ def resolve_auth_impersonates(config: Mapping[str, Any]) -> list[str]:
             if candidates:
                 return candidates
     return list(DEFAULT_AUTH_IMPERSONATES)
+
+
+def _reference_flow_enabled(config: Mapping[str, Any]) -> bool:
+    return str(config.get("flow_profile") or REFERENCE_FLOW_PROFILE).strip().lower() != "legacy"
+
+
+def _reference_fingerprint(config: Mapping[str, Any], task: Mapping[str, Any]) -> dict[str, Any]:
+    country = str(task.get("proxy_country") or "US").strip().upper()[:2]
+    language = "en-US" if country == "US" else "en-GB"
+    return {
+        "user_agent": str(config.get("user_agent") or "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/136 Safari/537.36"),
+        "navigator_language": language,
+        "navigator_languages": [language, "en"],
+        "timezone_name": "America/New_York" if country == "US" else "Europe/London",
+        "timezone_offset_minutes": -300 if country == "US" else 0,
+        "screen_width": 1440,
+        "screen_height": 900,
+        "hardware_concurrency": 8,
+        "device_memory": 8,
+        "js_heap_size_limit": 4294705152,
+        "country": country,
+    }
+
+
+def _apply_geo_fingerprint(fingerprint: dict[str, Any], geo: Mapping[str, Any]) -> None:
+    country = str(geo.get("country") or "").strip().upper()[:2]
+    timezone = str(geo.get("timezone") or "").strip()[:100]
+    if country:
+        language = "en-US" if country == "US" else "en-GB"
+        fingerprint.update({
+            "country": country,
+            "navigator_language": language,
+            "navigator_languages": [language, "en"],
+        })
+    if timezone:
+        try:
+            offset = datetime.now(ZoneInfo(timezone)).utcoffset()
+        except Exception:
+            offset = None
+        if offset is not None:
+            fingerprint.update({
+                "timezone_iana": timezone,
+                "timezone_name": timezone,
+                "timezone_offset_minutes": int(offset.total_seconds() // 60),
+            })
+
+
+def _mark_reference_session_prepared(transport: Any) -> None:
+    # Recovered ``initiate_oauth`` creates a new curl session while this flag
+    # is false. The reference bootstrap already prepared the task session, so
+    # preserving it is required for Cloudflare cookies and anonymous warmup.
+    setattr(transport, "chatgpt_signup_done", True)
+    setattr(transport, "_gptphone_reference_session_prepared", True)
 
 
 class FreeProtocolMixin:
@@ -349,6 +484,12 @@ class FreeProtocolMixin:
         # terminal in the Free state machine.
         chain_config["auth_impersonates"] = resolve_auth_impersonates(chain_config)
 
+        reference_flow = _reference_flow_enabled(config)
+        chain_config["flow_profile"] = REFERENCE_FLOW_PROFILE if reference_flow else "legacy"
+        # The reference profile keeps one anonymous browser/Sentinel image for
+        # the whole task. Legacy mode deliberately omits these added fields.
+        fingerprint = _reference_fingerprint(config, task) if reference_flow else {}
+
         # The recovered provider reads the runner from the top-level chain
         # configuration. Passing only the nested Free config made a valid
         # runner invisible once the task worker was started.
@@ -360,21 +501,23 @@ class FreeProtocolMixin:
             can therefore replay an expired token even though the HTTP
             cookies and PKCE context were refreshed.
             """
+            sentinel_kwargs: dict[str, Any] = {
+                "config": chain_config,
+                "device_id": device_id,
+                "proxy_label": str(task.get("proxy_fingerprint") or ""),
+                "proxy": proxy,
+                "log_fn": log,
+            }
+            if reference_flow:
+                sentinel_kwargs["fingerprint"] = fingerprint
             created = codex_oauth_chain.RealNodeSentinelProvider(
-                config=chain_config, device_id=device_id,
-                proxy_label=str(task.get("proxy_fingerprint") or ""), proxy=proxy, log_fn=log,
+                **sentinel_kwargs,
             )
             return created
         otp_provider = build_free_mailbox_otp_provider(
             str(task["mailbox_url"]), proxy, chain_config,
             log_fn=log, task_id=task_id, stage_fn=stage,
         )
-
-        def reject_phone(*_args: Any, **_kwargs: Any) -> Any:
-            raise FreeRegisterError("free_phone_required", "Free 注册手机号节点", "Free 注册流程要求手机号，未调用接码平台")
-
-        class NoPhoneProvider:
-            get_number = staticmethod(reject_phone)
 
         transport_ref: dict[str, Any] = {}
 
@@ -385,18 +528,51 @@ class FreeProtocolMixin:
                 sentinel_provider=sentinel, device_id=device_id, log_fn=log,
             )
             setattr(created, "_gptphone_free_protocol_state_machine", True)
+            if reference_flow:
+                setattr(created, "_gptphone_timezone_offset_minutes", fingerprint.get("timezone_offset_minutes"))
             transport_ref["current"] = created
             self._instrument_transport(created, task_id, stage)
             return created
 
-        def rebuild_oauth_context() -> Mapping[str, Any]:
-            refreshed = build_oauth_context()
-            oauth_context.clear()
-            oauth_context.update(refreshed)
-            return dict(oauth_context)
+        def prepare_reference_transport(created: Any) -> Any:
+            stage(task_id, "free_protocol_preflight")
+            preflight = _network_preflight(
+                created,
+                chain_config,
+                log=log,
+                stop_requested=stop_event.is_set,
+            )
+            geo = _exit_geo_profile(created, chain_config, log=log)
+            _apply_geo_fingerprint(fingerprint, geo)
+            setattr(created, "_gptphone_timezone_offset_minutes", fingerprint.get("timezone_offset_minutes"))
+            provider_fingerprint = getattr(getattr(created, "sentinel_provider", None), "fingerprint", None)
+            if isinstance(provider_fingerprint, dict) and provider_fingerprint is not fingerprint:
+                provider_fingerprint.update(fingerprint)
+            warmup = _anonymous_warmup(created, chain_config, log=log)
+            _mark_reference_session_prepared(created)
+            chain_config["free_protocol_preflight"] = preflight
+            chain_config["free_protocol_geo"] = geo
+            chain_config["free_protocol_warmup"] = warmup
+            log(
+                f"[{task_id}/协议画像/free_protocol_fingerprint] 设备、出口画像与预热会话已固定",
+                "info",
+            )
+            return created
+
+        def make_rebuilt_transport() -> Any:
+            created = make_transport()
+            if not reference_flow:
+                return created
+            try:
+                return prepare_reference_transport(created)
+            except Exception:
+                self._close_transport(created)
+                raise
 
         transport = make_transport()
         try:
+            if reference_flow and not twofa_retry:
+                prepare_reference_transport(transport)
             if twofa_retry:
                 saved = self.pool.result(str(task["row_id"]))
                 token = str(saved.get("access_token") or "")
@@ -404,18 +580,25 @@ class FreeProtocolMixin:
                     raise FreeRegisterError("free_twofa_retry", "重试 Free 账号 2FA", "原账号没有可用 access token", retryable=False)
                 twofa = self._enroll_twofa(transport, token, task, password, config, otp_provider, stage)
                 result = dict(saved)
+                for key in ("failure", "error", "error_code", "error_node", "twofa_failure", "twofa_error"):
+                    result.pop(key, None)
                 result.update(twofa)
-                result["password"] = str(saved.get("password") or password)
-                if result.get("totp_secret"):
+                saved_password = str(saved.get("password") or "")
+                if saved_password:
+                    result["password"] = saved_password
+                else:
+                    result.pop("password", None)
+                if result.get("totp_secret") and saved_password:
                     result["credential_line"] = f"{email}----{result['password']}----{result['totp_secret']}"
+                else:
+                    result.pop("credential_line", None)
                 return result
 
             try:
                 raw_result, transport = run_free_protocol_flow(
                     transport,
-                    transport_factory=make_transport,
+                    transport_factory=make_rebuilt_transport,
                     oauth_context=dict(oauth_context),
-                    oauth_context_factory=rebuild_oauth_context,
                     email=email,
                     password=password,
                     otp_provider=otp_provider,
@@ -429,6 +612,7 @@ class FreeProtocolMixin:
             except Exception as exc:
                 raise self._classify_protocol_exception(exc) from exc
             result = self._protocol_result(raw_result)
+            account_flow = str(result.get("account_flow") or "existing_login")
             token = str(result.get("access_token") or result.get("token") or "")
             if not token:
                 raise FreeRegisterError(
@@ -436,6 +620,14 @@ class FreeProtocolMixin:
                     "OAuth Token 交换结果未包含 access token",
                     error_code="free_access_token_missing",
                 )
+            if reference_flow:
+                try:
+                    stage(task_id, "free_authenticated_warmup")
+                    _authenticated_warmup(transport, chain_config, token, log=log)
+                except Exception as exc:
+                    # Authenticated warmup is diagnostic and must never turn a
+                    # completed registration into a failed account.
+                    log(f"[{task_id}/认证预热/free_authenticated_warmup] 跳过：{type(exc).__name__}", "warn")
             stage(task_id, "free_plan_check")
             try:
                 plan_type, eligible = self._plan_check(transport, token)
@@ -446,10 +638,12 @@ class FreeProtocolMixin:
                     "plus_trial_eligible": eligible, "plan_checked_at": time.time(),
                 }
             except FreeRegisterError as exc:
+                failure = _plan_failure(exc)
                 plan_details = {
                     "plan_check_status": "failed",
-                    "plan_error_code": str(getattr(exc, "error_code", "free_plan_check_failed")),
-                    "plan_http_status": getattr(exc, "provider_status", None),
+                    "plan_error_code": failure["error_code"],
+                    "plan_http_status": failure.get("http_status"),
+                    "plan_failure": failure,
                     "plan_type": "", "plus_trial_eligible": False,
                 }
             if bool(config.get("auto_set_2fa", True)):
@@ -469,12 +663,23 @@ class FreeProtocolMixin:
                     }
                     if pending.provider_status is not None:
                         twofa["twofa_failure"]["http_status"] = pending.provider_status
+                    if pending.provider_code:
+                        twofa["twofa_failure"]["provider_code"] = pending.provider_code
+                    if pending.action_hint:
+                        twofa["twofa_failure"]["action_hint"] = pending.action_hint
             else:
                 twofa = {"twofa_status": "disabled"}
-            twofa.update({"access_token": token, "password": password, "has_access_token": True, **plan_details})
+            twofa.update({"access_token": token, "has_access_token": True, "account_flow": account_flow, **plan_details})
+            if account_flow == "signup":
+                twofa["password"] = password
+            else:
+                twofa.pop("password", None)
             if twofa.get("totp_secret"):
                 twofa["twofa_status"] = "enabled"
-                twofa["credential_line"] = f"{email}----{password}----{twofa['totp_secret']}"
+                if account_flow == "signup":
+                    twofa["credential_line"] = f"{email}----{password}----{twofa['totp_secret']}"
+                else:
+                    twofa.pop("credential_line", None)
             return twofa
         finally:
             try:
@@ -491,13 +696,11 @@ class FreeProtocolMixin:
     def _instrument_transport(transport: Any, task_id: str, stage: Callable[[str, str], None]) -> None:
         mapping = {
             "start_chatgpt_signup_authorize": "free_oauth_session",
-            "register_user": "free_email_identifier",
+            "register_user": "free_email_password",
             "verify_password": "free_email_password",
-            "send_email_otp": "free_email_otp_wait",
             "send_mfa_otp": "free_existing_login_otp",
             "verify_signup_email_otp": "free_email_otp_validate",
-            "verify_email_otp": "free_email_otp_validate",
-            "verify_mfa_otp": "free_email_otp_validate",
+            "verify_mfa_otp": "free_existing_login_otp",
             "create_account_profile": "free_account_create",
             "complete_chatgpt_callback": "free_oauth_callback",
             "follow_continue_until_code": "free_oauth_callback",
@@ -527,19 +730,46 @@ class FreeProtocolMixin:
 
     def _plan_check(self, transport: Any, token: str) -> tuple[str, bool]:
         if transport is None:
-            raise FreeRegisterError("free_plan_check", "查询 Free 套餐资格", "认证传输会话不可用")
+            raise FreeRegisterError(
+                "free_plan_check", "查询 Free 套餐资格", "认证传输会话不可用",
+                error_code="free_plan_transport_missing",
+                action_hint="账号已保存；重建认证会话后重新测活",
+            )
         session = getattr(transport, "session", None)
         if session is None:
-            raise FreeRegisterError("free_plan_check", "查询 Free 套餐资格", "认证 HTTP 会话不可用")
+            raise FreeRegisterError(
+                "free_plan_check", "查询 Free 套餐资格", "认证 HTTP 会话不可用",
+                error_code="free_plan_session_missing",
+                action_hint="账号已保存；重建认证会话后重新测活",
+            )
         try:
+            offset = getattr(transport, "_gptphone_timezone_offset_minutes", None)
+            if offset is None:
+                provider_fingerprint = getattr(getattr(transport, "sentinel_provider", None), "fingerprint", None)
+                if isinstance(provider_fingerprint, Mapping):
+                    offset = provider_fingerprint.get("timezone_offset_minutes")
+            try:
+                offset = int(offset) if offset is not None else _timezone_offset_minutes()
+            except (TypeError, ValueError):
+                offset = _timezone_offset_minutes()
             response = session.get(
                 "https://chatgpt.com/backend-api/accounts/check/v4-2023-04-27"
-                f"?timezone_offset_min={_timezone_offset_minutes()}",
+                f"?timezone_offset_min={offset}",
                 headers={"authorization": f"Bearer {token}", "accept": "*/*"}, timeout=20,
             )
-            status = getattr(response, "status_code", None)
+            status = _response_status(response)
             if status is not None and not 200 <= int(status) < 300:
-                raise FreeRegisterError("free_plan_check", "查询 Free 套餐资格", f"套餐接口返回 HTTP {int(status)}")
+                data = {}
+                try:
+                    data = response.json() if hasattr(response, "json") else {}
+                except Exception:
+                    pass
+                raise FreeRegisterError(
+                    "free_plan_check", "查询 Free 套餐资格", f"套餐接口返回 HTTP {int(status)}",
+                    provider_status=status, provider_code=_response_provider_code(response, data),
+                    error_code="free_plan_accounts_http_failed",
+                    action_hint="账号已保存；检查认证状态或服务端限流后重新测活",
+                )
             data = response.json() if hasattr(response, "json") else {}
             try:
                 from .chatgpt_plan_gate import plan_from_accounts_check
@@ -547,29 +777,61 @@ class FreeProtocolMixin:
                 from chatgpt_plan_gate import plan_from_accounts_check
             plan, _ = plan_from_accounts_check(data, token=token)
             if not plan:
-                raise FreeRegisterError("free_plan_check", "查询 Free 套餐资格", "套餐接口未返回可识别的套餐")
+                raise FreeRegisterError(
+                    "free_plan_check", "查询 Free 套餐资格", "套餐接口未返回可识别的套餐",
+                    provider_status=status, provider_code=_response_provider_code(response, data),
+                    error_code="free_plan_accounts_unrecognized",
+                    action_hint="账号已保存；稍后重新测活以刷新套餐信息",
+                )
             eligible = _plus_trial_from_accounts(data)
             eligibility = session.get(
                 "https://chatgpt.com/backend-api/aip/first-party/eligibility",
                 headers={"authorization": f"Bearer {token}", "accept": "application/json"}, timeout=20,
             )
-            eligibility_status = getattr(eligibility, "status_code", None)
+            eligibility_status = _response_status(eligibility)
             if eligibility_status is not None and not 200 <= int(eligibility_status) < 300:
-                raise FreeRegisterError("free_plan_check", "查询 Free 套餐资格", f"试用资格接口返回 HTTP {int(eligibility_status)}")
+                eligibility_data = {}
+                try:
+                    eligibility_data = eligibility.json() if hasattr(eligibility, "json") else {}
+                except Exception:
+                    pass
+                raise FreeRegisterError(
+                    "free_plan_check", "查询 Free 套餐资格", f"试用资格接口返回 HTTP {int(eligibility_status)}",
+                    provider_status=eligibility_status,
+                    provider_code=_response_provider_code(eligibility, eligibility_data),
+                    error_code="free_plan_eligibility_http_failed",
+                    action_hint="账号已保存；稍后重新测活以补查试用资格",
+                )
             eligible_data = eligibility.json() if hasattr(eligibility, "json") else {}
             if not isinstance(eligible_data, Mapping):
-                raise FreeRegisterError("free_plan_check", "查询 Free 套餐资格", "试用资格接口响应不是 JSON 对象")
+                raise FreeRegisterError(
+                    "free_plan_check", "查询 Free 套餐资格", "试用资格接口响应不是 JSON 对象",
+                    provider_status=eligibility_status,
+                    error_code="free_plan_eligibility_invalid_json",
+                    action_hint="账号已保存；稍后重新测活以补查试用资格",
+                )
             eligible = eligible or _plus_trial_from_accounts(eligible_data)
             campaigns = eligible_data.get("eligible_promo_campaigns")
             return plan, bool(eligible or (isinstance(campaigns, Mapping) and campaigns.get("plus")))
         except FreeRegisterError:
             raise
         except Exception as exc:
-            raise FreeRegisterError("free_plan_check", "查询 Free 套餐资格", f"套餐或试用资格查询异常（{type(exc).__name__}）") from exc
+            raise FreeRegisterError(
+                "free_plan_check", "查询 Free 套餐资格",
+                f"套餐或试用资格查询异常（{type(exc).__name__}）",
+                error_code="free_plan_check_transport_failed",
+                diagnostic=f"exception={type(exc).__name__}",
+                action_hint="账号已保存；检查认证网络后重新测活",
+            ) from exc
 
     def _enroll_twofa(self, transport: Any, token: str, task: Mapping[str, Any], password: str, config: Mapping[str, Any], otp_provider: MailboxUrlOtpProvider, stage: Callable[[str, str], None]) -> dict[str, Any]:
         if transport is None or getattr(transport, "session", None) is None:
-            raise FreeTwoFaPending("2FA 会话不可用", token=token, plan_type="free", plus_trial_eligible=False)
+            raise FreeTwoFaPending(
+                "2FA 会话不可用", token=token, plan_type="free", plus_trial_eligible=False,
+                node_code="free_twofa_enroll", node_label="注册 Free 账号 2FA",
+                error_code="free_twofa_session_missing",
+                action_hint="保留账号和 Token，重建认证会话后重试 2FA",
+            )
         session = transport.session
         task_id = str(task["task_id"])
         stage(task_id, "free_twofa_enroll")
@@ -578,6 +840,19 @@ class FreeProtocolMixin:
             "authorization": f"Bearer {token}",
             "oai-device-id": str(getattr(transport, "device_id", "") or ""), "oai-language": "en-GB",
         }
+        phase = (
+            "free_twofa_enroll", "注册 Free 账号 2FA", "free_twofa_enroll_failed",
+            "保留账号和 Token，稍后重试 2FA",
+        )
+
+        def fail(message: str, response: Any = None, data: Any = None) -> None:
+            raise FreeRegisterError(
+                phase[0], phase[1], message,
+                provider_status=_response_status(response),
+                provider_code=_response_provider_code(response, data),
+                error_code=phase[2], action_hint=phase[3],
+            )
+
         try:
             send_mfa_otp = getattr(transport, "send_mfa_otp", None)
             verify_mfa_otp = getattr(transport, "verify_mfa_otp", None)
@@ -590,61 +865,90 @@ class FreeProtocolMixin:
                     finish_mailbox_request()
                 prepare_mailbox_request = getattr(otp_provider, "prepare", None)
                 if callable(prepare_mailbox_request):
-                    # 2FA enrollment is a separate mailbox phase. Force a
-                    # request-time baseline so a registration OTP with the
-                    # same value cannot satisfy the second challenge.
                     try:
+                        inspect.signature(prepare_mailbox_request).bind("free_twofa_enroll", force_snapshot=True)
+                    except ValueError:
                         prepare_mailbox_request("free_twofa_enroll", force_snapshot=True)
-                    except TypeError as exc:
-                        if "force_snapshot" not in str(exc):
-                            raise
+                    except TypeError:
                         prepare_mailbox_request("free_twofa_enroll")
+                    else:
+                        prepare_mailbox_request("free_twofa_enroll", force_snapshot=True)
+                phase = (
+                    "free_twofa_otp_send", "发送 Free 账号 2FA 邮箱验证码",
+                    "free_twofa_otp_send_failed", "保留账号和 Token，检查邮箱重认证状态后重试 2FA",
+                )
                 sent = send_mfa_otp("")
-                status = int((sent or {}).get("_status") or (sent or {}).get("status_code") or 0) if isinstance(sent, Mapping) else 0
-                if status >= 400:
-                    raise ValueError(f"重新认证 OTP 发送返回 HTTP {status}")
+                sent_status = _response_status(sent)
+                sent_ok = sent.get("ok") if isinstance(sent, Mapping) else None
+                if (sent_status is not None and not 200 <= sent_status < 300) or _explicit_false(sent_ok):
+                    fail(f"重新认证 OTP 发送失败（HTTP {sent_status if sent_status is not None else '-'}）", sent)
                 otp_provider.mark_sent("free_twofa_enroll")
-                try:
-                    code = otp_provider.wait_code(
-                        str(task.get("email") or ""),
-                        stage_code="free_twofa_enroll",
-                    )
-                except TypeError:
-                    code = otp_provider.wait_code(str(task.get("email") or ""))
+                phase = (
+                    "free_twofa_otp_validate", "验证 Free 账号 2FA 邮箱验证码",
+                    "free_twofa_otp_validate_failed", "保留账号和 Token，确认验证码属于本次 2FA 请求后重试",
+                )
+                code = _call_otp_wait(
+                    otp_provider, str(task.get("email") or ""), stage_code="free_twofa_enroll",
+                )
                 stage(task_id, "free_email_otp_validate")
                 verified = verify_mfa_otp(code)
-                verified_status = int((verified or {}).get("_status") or (verified or {}).get("status_code") or 0) if isinstance(verified, Mapping) else 0
-                if verified_status >= 400 or (isinstance(verified, Mapping) and verified.get("ok") is False):
-                    raise ValueError(f"重新认证 OTP 验证失败（HTTP {verified_status or '-'})")
+                verified_status = _response_status(verified)
+                verified_ok = verified.get("ok") if isinstance(verified, Mapping) else None
+                if (verified_status is not None and not 200 <= verified_status < 300) or _explicit_false(verified_ok):
+                    fail(f"重新认证 OTP 验证失败（HTTP {verified_status if verified_status is not None else '-'}）", verified)
+            phase = (
+                "free_twofa_enroll", "注册 Free 账号 2FA", "free_twofa_enroll_failed",
+                "保留账号和 Token，稍后重试 2FA 注册",
+            )
             enrolled = session.post("https://chatgpt.com/backend-api/accounts/mfa/enroll", headers=headers, json={"factor_type": "totp"}, timeout=20)
+            enrolled_status = _response_status(enrolled)
             data = enrolled.json() if hasattr(enrolled, "json") else {}
+            if enrolled_status is not None and not 200 <= enrolled_status < 300:
+                fail(f"2FA enroll 接口返回 HTTP {enrolled_status}", enrolled, data)
             secret = str(data.get("secret") or "")
             session_id = str(data.get("session_id") or "")
             if not secret or not session_id:
-                raise ValueError("enroll 响应缺少 TOTP 材料")
+                fail("2FA enroll 响应缺少 TOTP 材料", enrolled, data)
             stage(task_id, "free_twofa_activate")
+            phase = (
+                "free_twofa_activate", "激活 Free 账号 2FA", "free_twofa_activate_failed",
+                "保留账号和 Token，稍后重试 2FA 激活",
+            )
             activated = session.post(
                 "https://chatgpt.com/backend-api/accounts/mfa/user/activate_enrollment",
                 headers=headers, json={"code": self._totp_code(secret), "factor_type": "totp", "session_id": session_id}, timeout=20,
             )
             activated_data = activated.json() if hasattr(activated, "json") else {}
-            if not bool(activated_data.get("success")):
-                raise ValueError("2FA 激活返回 success=false")
+            activated_status = _response_status(activated)
+            success = activated_data.get("success") if isinstance(activated_data, Mapping) else None
+            if (activated_status is not None and not 200 <= activated_status < 300) or success is not True:
+                fail(
+                    f"2FA 激活失败（HTTP {activated_status if activated_status is not None else '-'}）",
+                    activated, activated_data,
+                )
             return {"twofa_status": "enabled", "totp_secret": secret}
         except Exception as exc:
             if isinstance(exc, FreeRegisterError):
+                node_code = str(exc.node_code or phase[0])
+                node_label = str(exc.node_label or phase[1])
+                error_code = str(exc.error_code or phase[2])
+                if phase[0] in {"free_twofa_otp_send", "free_twofa_otp_validate"} and node_code in {
+                    "free_twofa_enroll", "free_email_otp_wait", "free_email_otp_validate",
+                    "free_existing_login_otp",
+                }:
+                    node_code, node_label, error_code = phase[:3]
                 raise FreeTwoFaPending(
                     str(exc), token=token, plan_type="free", plus_trial_eligible=False,
-                    node_code=str(exc.node_code or "free_twofa_activate"),
-                    node_label=str(exc.node_label or "激活 Free 账号 2FA"),
-                    error_code=str(exc.error_code or "free_twofa_failed"),
+                    node_code=node_code, node_label=node_label, error_code=error_code,
                     provider_status=exc.provider_status,
                     retryable=bool(exc.retryable),
+                    provider_code=str(exc.provider_code or ""),
+                    action_hint=str(exc.action_hint or phase[3]),
                 ) from exc
             raise FreeTwoFaPending(
                 f"2FA 设置失败：{type(exc).__name__}", token=token, plan_type="free", plus_trial_eligible=False,
-                node_code="free_twofa_activate", node_label="激活 Free 账号 2FA",
-                error_code="free_twofa_activate_failed", retryable=True,
+                node_code=phase[0], node_label=phase[1], error_code=phase[2], retryable=True,
+                action_hint=phase[3],
             ) from exc
 
 

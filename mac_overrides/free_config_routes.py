@@ -5,6 +5,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+try:
+    from .free_pool_routes import import_free_proxies
+except ImportError:
+    from free_pool_routes import import_free_proxies  # type: ignore[no-redef]
+
 
 def save_free_config_bundle(
     config_store: Any,
@@ -19,19 +24,17 @@ def save_free_config_bundle(
         importer = getattr(getattr(manager, "proxies", None), "import_text", None)
         if not callable(importer):
             raise ValueError("Free 代理池尚未初始化")
-        try:
-            proxy_imported = int(importer(
-                proxy_content,
-                country=str(data.get("proxy_country") or "").strip().upper() or None,
-                group=str(data.get("proxy_group") or "").strip() or None,
-                scheme=str(
-                    data.get("proxy_scheme")
-                    or normalized.get("proxy_default_scheme")
-                    or "http"
-                ).strip().lower() or None,
-            ))
-        except TypeError:
-            proxy_imported = int(importer(proxy_content))
+        proxy_imported = int(import_free_proxies(
+            importer,
+            proxy_content,
+            country=str(data.get("proxy_country") or "").strip().upper() or None,
+            group=str(data.get("proxy_group") or "").strip() or None,
+            scheme=str(
+                data.get("proxy_scheme")
+                or normalized.get("proxy_default_scheme")
+                or "http"
+            ).strip().lower() or None,
+        ))
     config_store.save(normalized)
     payload: dict[str, Any] = {
         "config": config_store.public(),
@@ -70,7 +73,15 @@ class FreeControlRouteController:
 
     def config(self):
         if self.module.request.method == "GET":
-            return self.module.jsonify(ok=True, config=self.config_public(), state=self.state())
+            try:
+                return self.module.jsonify(ok=True, config=self.config_public(), state=self.state())
+            except Exception as exc:
+                return self.failure_response(
+                    exc,
+                    default_code="free_config_read",
+                    default_label="读取 Free 配置",
+                    status=503,
+                )
         data = self.module.request.get_json(silent=True) or {}
         if not isinstance(data, Mapping):
             return self.failure_response(ValueError("配置必须是 JSON 对象"), default_code="free_config", default_label="保存 Free 配置")
@@ -92,7 +103,13 @@ class FreeControlRouteController:
         try:
             return self.module.jsonify(ok=True, id=secret_id, value=self.config_store.secret(secret_id))
         except Exception as exc:
-            return self.failure_response(exc, default_code="free_config_secret", default_label="读取 Free 配置密钥")
+            status = 400 if isinstance(exc, ValueError) or getattr(exc, "retryable", None) is False else 503
+            return self.failure_response(
+                exc,
+                default_code="free_config_secret",
+                default_label="读取 Free 配置密钥",
+                status=status,
+            )
 
     def delete_tasks(self):
         if self.manager is None:

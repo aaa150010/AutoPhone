@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import sys
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 import unittest
 
-from mac_overrides.free_protocol_flow import _is_security_page, run_free_protocol_flow
+from mac_overrides.free_protocol_flow import (
+    _is_security_page,
+    _status,
+    _wait_and_validate_email_otp,
+    run_free_protocol_flow,
+)
 from mac_overrides.free_protocol_runtime import resolve_auth_impersonates
 from mac_overrides.free_register_common import FreeRegisterError
 
@@ -56,7 +61,12 @@ class _Transport:
         self.email_response = email or {"_status": 200, "page": {"type": "email_otp_verification"}, "continue_url": "/verify"}
         self.callback_response = callback
         self.exchange_response = exchange
-        self.sentinel_provider = type("Sentinel", (), {"reset": lambda self, *_args: None})()
+        self.sentinel_flows = []
+        self.sentinel_provider = type(
+            "Sentinel",
+            (),
+            {"reset": lambda _self, flow="": self.sentinel_flows.append(flow)},
+        )()
         self.calls = []
         self.callback_args = None
         self.exchange_args = None
@@ -72,6 +82,10 @@ class _Transport:
     def verify_email_otp(self, _code):
         self.calls.append("verify_email_otp")
         return {"_status": 200, "page": {"type": "profile"}, "continue_url": "/about-you"}
+
+    def send_email_otp(self, _url=""):
+        self.calls.append("send_email_otp")
+        return {"_status": 200, "page": {"type": "email_otp_verification"}, "continue_url": "/verify"}
 
     def create_account_profile(self, _name, _birthdate):
         self.calls.append("create_account_profile")
@@ -173,6 +187,14 @@ class FreeProtocolFlowTests(unittest.TestCase):
             "http://localhost:1455/auth/callback",
             "user@example.test",
         ))
+        self.assertEqual(transport.sentinel_flows, [
+            "oauth_authorize",
+            "authorize_continue",
+            "authorize_continue",
+            "oauth_create_account",
+            "oauth_callback",
+            "oauth_token_exchange",
+        ])
 
     def test_callback_without_code_stops_before_token_exchange(self):
         transport = _Transport(callback="http://localhost:1455/auth/callback?state=state-private")
@@ -191,6 +213,18 @@ class FreeProtocolFlowTests(unittest.TestCase):
         self.assertEqual(raised.exception.error_code, "oauth_callback_state_mismatch")
         self.assertNotIn("exchange_code", transport.calls)
 
+    def test_callback_error_and_wrong_redirect_stop_before_token_exchange(self):
+        for callback, error_code in (
+            ("http://localhost:1455/auth/callback?error=access_denied&error_description=denied", "oauth_callback_provider_error"),
+            ("https://attacker.example/callback?code=authorization-code&state=state-private", "oauth_callback_redirect_mismatch"),
+        ):
+            with self.subTest(error_code=error_code):
+                transport = _Transport(callback=callback)
+                with self.assertRaises(FreeRegisterError) as raised:
+                    _run(transport)
+                self.assertEqual(raised.exception.error_code, error_code)
+                self.assertNotIn("exchange_code", transport.calls)
+
     def test_token_exchange_failure_is_attributed_to_token_stage(self):
         transport = _Transport(exchange={"_status": 400, "error": "invalid_grant"})
         with self.assertRaises(FreeRegisterError) as raised:
@@ -199,6 +233,14 @@ class FreeProtocolFlowTests(unittest.TestCase):
         self.assertEqual(raised.exception.error_code, "token_exchange_failed")
         self.assertIn("exchange_code", transport.calls)
         self.assertEqual(raised.exception.provider_status, 400)
+
+    def test_token_exchange_string_false_and_zero_status_are_preserved(self):
+        transport = _Transport(exchange={"_status": 0, "ok": "false", "error_code": "invalid_grant"})
+        with self.assertRaises(FreeRegisterError) as raised:
+            _run(transport)
+        self.assertEqual(_status(transport.exchange_response), 0)
+        self.assertEqual(raised.exception.provider_status, 0)
+        self.assertEqual(raised.exception.provider_code, "invalid_grant")
 
     def test_access_token_only_exchange_remains_a_valid_completed_result(self):
         transport = _Transport(exchange={"_status": 200, "access_token": "access-token-private"})
@@ -220,6 +262,26 @@ class FreeProtocolFlowTests(unittest.TestCase):
         self.assertEqual(result["oauth_session_rebuilds"], 1)
         self.assertEqual(len(created), 1)
         self.assertEqual(first.calls, ["initiate_oauth", "submit_email_identifier"])
+
+    def test_session_rebuild_keeps_original_pkce_context(self):
+        first = _Transport(email={"_status": 400, "error": "Your sign-in session is no longer valid."})
+        second = _Transport()
+        context_factory_calls = []
+
+        def context_factory():
+            context_factory_calls.append(True)
+            return _oauth_context(state="new-state-must-not-be-used", code_verifier="new-verifier-must-not-be-used")
+
+        result, active = _run(
+            first,
+            transport_factory=lambda: second,
+            oauth_context_factory=context_factory,
+        )
+        self.assertIs(active, second)
+        self.assertEqual(result["oauth_session_rebuilds"], 1)
+        self.assertEqual(context_factory_calls, [])
+        self.assertEqual(second.callback_args[1]["state"], "state-private")
+        self.assertEqual(second.exchange_args[1], "verifier-private")
 
     def test_html_bootstrap_is_rebuilt_once_but_challenge_stops(self):
         html = _Transport(start={"_status": 200, "_content_type": "text/html", "_body_summary": "login"})
@@ -270,30 +332,342 @@ class FreeProtocolFlowTests(unittest.TestCase):
         self.assertIn(("free_email_otp_wait", False), otp.prepared)
         self.assertIn(("free_existing_login_otp", True), otp.prepared)
 
-    def test_password_to_otp_to_profile_is_processed_as_a_loop(self):
+    def test_otp_waits_three_rounds_and_uses_two_controlled_resends(self):
+        class ThreeRoundOtp(_ForceOtp):
+            def __init__(self):
+                super().__init__()
+                self.waits = 0
+                self.events = []
+
+                class State:
+                    active = False
+
+                    def finish_request(inner_self):
+                        self.events.append("finish")
+                        inner_self.active = False
+
+                self.service = SimpleNamespace(current_stage="", state=State())
+
+            def prepare(self, stage, *, force_snapshot=False):
+                self.prepared.append((stage, bool(force_snapshot)))
+                self.events.append(f"prepare:{bool(force_snapshot)}")
+                self.service.current_stage = stage
+                self.service.state.active = True
+
+            def mark_sent(self, stage):
+                self.sent.append(stage)
+                self.events.append("mark")
+
+            def wait_code(self, _email, stage_code=None, resend_fn=None, **_kwargs):
+                self.waits += 1
+                if self.waits < 3 and callable(resend_fn):
+                    resend_fn()
+                if self.waits < 3:
+                    raise FreeRegisterError(
+                        str(stage_code or "free_email_otp_wait"),
+                        "等待 Free 邮箱验证码",
+                        "邮箱验证码等待超时",
+                        retryable=True,
+                        error_code="free_email_otp_wait_mailbox_code_timeout",
+                    )
+                return self.code
+
+        otp = ThreeRoundOtp()
+
+        class EventTransport(_Transport):
+            def send_email_otp(self, _url=""):
+                otp.events.append("send")
+                return super().send_email_otp(_url)
+
+        transport = EventTransport()
+        result, _ = _run(transport, otp=otp)
+        self.assertTrue(result["registration_completed"])
+        self.assertEqual(otp.waits, 3)
+        self.assertEqual(transport.calls.count("send_email_otp"), 2)
+        self.assertEqual(otp.prepared.count(("free_email_otp_wait", True)), 2)
+        send_positions = [index for index, event in enumerate(otp.events) if event == "send"]
+        self.assertEqual(len(send_positions), 2)
+        for index in send_positions:
+            self.assertEqual(otp.events[index - 3:index], ["finish", "prepare:True", "mark"])
+
+    def test_otp_resend_budget_survives_oauth_session_rebuild(self):
+        class ResendThenRebuildOtp(_Otp):
+            def __init__(self):
+                super().__init__()
+                self.resend_available = []
+
+            def wait_code(self, _email, stage_code=None, resend_fn=None, **_kwargs):
+                self.resend_available.append(callable(resend_fn))
+                if callable(resend_fn):
+                    resend_fn()
+                return self.code
+
+        class InvalidDuringOtp(_Transport):
+            def verify_email_otp(self, _code):
+                self.calls.append("verify_email_otp")
+                return {"_status": 400, "error": "Your sign-in session is no longer valid."}
+
+        first = InvalidDuringOtp()
+        second = _Transport()
+        otp = ResendThenRebuildOtp()
+        result, active = _run(first, otp=otp, transport_factory=lambda: second)
+        self.assertIs(active, second)
+        self.assertEqual(result["oauth_session_rebuilds"], 1)
+        self.assertEqual(otp.resend_available, [True, True])
+        self.assertEqual(first.calls.count("send_email_otp"), 1)
+        self.assertEqual(second.calls.count("send_email_otp"), 1)
+
+    def test_phone_page_stops_without_calling_any_sms_method(self):
+        class PhoneTransport(_Transport):
+            def __init__(self):
+                super().__init__(email={"_status": 200, "page": {"type": "phone_verification"}})
+                self.phone_calls = 0
+
+            def send_phone_number_otp(self, *_args, **_kwargs):
+                self.phone_calls += 1
+                raise AssertionError("Free protocol must not consume a phone provider")
+
+        transport = PhoneTransport()
+        with self.assertRaises(FreeRegisterError) as raised:
+            _run(transport)
+        self.assertEqual(raised.exception.node_code, "free_phone_required")
+        self.assertEqual(transport.phone_calls, 0)
+
+    def test_existing_login_password_page_switches_directly_to_email_otp(self):
         class PasswordThenOtp(_Transport):
             def __init__(self):
                 super().__init__(email={"_status": 200, "page": {"type": "login_password"}, "continue_url": "/log-in/password"})
-                self._otp_count = 0
 
             def verify_password(self, _password):
-                self.calls.append("verify_password")
-                return {"_status": 200, "page": {"type": "mfa_otp"}, "continue_url": "/mfa"}
+                raise AssertionError("已有账号不应提交统一注册密码")
 
-            def send_mfa_otp(self, _url=""):
-                self.calls.append("send_mfa_otp")
-                return {"_status": 200, "page": {"type": "mfa_otp"}, "continue_url": "/mfa"}
-
-            def verify_mfa_otp(self, _code):
-                self.calls.append("verify_mfa_otp")
-                self._otp_count += 1
-                return {"_status": 200, "page": {"type": "profile"}, "continue_url": "/about-you"}
+            def verify_email_otp(self, _code):
+                self.calls.append("verify_email_otp")
+                return {"_status": 200, "page": {"type": "consent"}, "continue_url": "/callback"}
 
         transport = PasswordThenOtp()
         result, _ = _run(transport)
         self.assertTrue(result["registration_completed"])
-        self.assertIn("verify_password", transport.calls)
-        self.assertIn("verify_mfa_otp", transport.calls)
+        self.assertEqual(result["account_flow"], "existing_login")
+        self.assertNotIn("verify_password", transport.calls)
+        self.assertEqual(transport.calls.count("send_email_otp"), 1)
+        self.assertEqual(transport.calls.count("verify_email_otp"), 1)
+
+    def test_existing_account_email_login_uses_password_verify_sentinel(self):
+        class ExistingEmailFallback(_Transport):
+            def __init__(self):
+                super().__init__(email={
+                    "_status": 200,
+                    "page": {"type": "login_password"},
+                    "continue_url": "/log-in/password",
+                })
+
+            def verify_password(self, _password):
+                raise AssertionError("已有账号不应提交统一注册密码")
+
+            def verify_email_otp(self, _code):
+                self.calls.append("verify_email_otp")
+                return {"_status": 200, "page": {"type": "consent"}, "continue_url": "/callback"}
+
+        transport = ExistingEmailFallback()
+        result, _ = _run(transport)
+        self.assertTrue(result["registration_completed"])
+        self.assertEqual(result["account_flow"], "existing_login")
+        self.assertNotIn("password", result)
+        self.assertNotIn("verify_password", transport.calls)
+        self.assertEqual(transport.calls.count("send_email_otp"), 1)
+        password_flows = [
+            flow for flow in transport.sentinel_flows
+            if flow == "password_verify"
+        ]
+        self.assertEqual(len(password_flows), 2)
+
+    def test_existing_account_email_send_failure_keeps_otp_node(self):
+        class FailedEmailSend(_Transport):
+            def __init__(self):
+                super().__init__(email={
+                    "_status": 200, "page": {"type": "login_password"},
+                    "continue_url": "/log-in/password",
+                })
+
+            def verify_password(self, _password):
+                raise AssertionError("已有账号不应提交统一注册密码")
+
+            def send_email_otp(self, _url=""):
+                self.calls.append("send_email_otp")
+                return {"_status": 503, "error": "email send unavailable", "error_code": "otp_send_unavailable"}
+
+        transport = FailedEmailSend()
+        with self.assertRaises(FreeRegisterError) as raised:
+            _run(transport)
+        self.assertEqual(raised.exception.node_code, "free_existing_login_otp")
+        self.assertEqual(raised.exception.error_code, "free_existing_login_otp_send_failed")
+        self.assertEqual(raised.exception.provider_code, "otp_send_unavailable")
+        self.assertEqual(transport.calls.count("send_email_otp"), 1)
+        self.assertNotIn("verify_password", transport.calls)
+
+    def test_generic_otp_uses_existing_account_context_and_never_returns_password(self):
+        class ExistingOtp(_Transport):
+            def __init__(self):
+                super().__init__(email={
+                    "_status": 200, "page": {"type": "email_otp"},
+                    "flow": "existing_login", "continue_url": "/verify",
+                })
+
+            def verify_email_otp(self, _code):
+                self.calls.append("verify_email_otp")
+                return {"_status": 200, "page": {"type": "consent"}, "continue_url": "/callback"}
+
+        otp = _StageAwareOtp()
+        transport = ExistingOtp()
+        stages = []
+        result, _ = _run(transport, otp=otp, stage=lambda _task, code: stages.append(code))
+        self.assertEqual(result["account_flow"], "existing_login")
+        self.assertNotIn("password", result)
+        self.assertIn(("free_existing_login_otp", False), otp.prepared)
+        self.assertIn("password_verify", transport.sentinel_flows)
+        self.assertIn("free_existing_login_otp", stages)
+        self.assertNotIn("free_email_otp_validate", stages)
+
+    def test_existing_identifier_otp_keeps_the_pre_submit_mailbox_baseline(self):
+        class ActiveState:
+            def __init__(self):
+                self.active = False
+
+            def finish_request(self):
+                self.active = False
+
+        class BaselineOtp:
+            def __init__(self):
+                self.service = type(
+                    "Service",
+                    (),
+                    {"current_stage": "", "state": ActiveState()},
+                )()
+                self.mail_identity = "old-message"
+                self.baseline_identity = ""
+                self.prepared = []
+
+            def prepare(self, stage, *, force_snapshot=False):
+                self.service.current_stage = stage
+                self.prepared.append((stage, bool(force_snapshot)))
+                if self.service.state.active:
+                    return
+                self.baseline_identity = self.mail_identity
+                self.service.state.active = True
+
+            def mark_sent(self, stage):
+                self.service.current_stage = stage
+
+            def wait_code(self, _email, stage_code=None, **_kwargs):
+                if self.mail_identity == self.baseline_identity:
+                    raise AssertionError("刚到的新邮件被错误纳入第二次基线")
+                return "123456"
+
+        otp = BaselineOtp()
+
+        class ExistingOtp(_Transport):
+            def submit_email_identifier(self, _email):
+                self.calls.append("submit_email_identifier")
+                otp.mail_identity = "new-message"
+                return {
+                    "_status": 200,
+                    "page": {"type": "email_otp"},
+                    "flow": "existing_login",
+                    "continue_url": "/verify",
+                }
+
+            def verify_email_otp(self, _code):
+                self.calls.append("verify_email_otp")
+                return {"_status": 200, "page": {"type": "consent"}, "continue_url": "/callback"}
+
+        result, _ = _run(ExistingOtp(), otp=otp)
+
+        self.assertTrue(result["registration_completed"])
+        self.assertEqual(otp.baseline_identity, "old-message")
+        self.assertIn(("free_existing_login_otp", False), otp.prepared)
+
+    def test_passwordless_send_security_challenge_stops_before_mailbox_wait(self):
+        class ChallengeFallback(_Transport):
+            def __init__(self):
+                super().__init__(email={
+                    "_status": 200, "page": {"type": "login_password"},
+                    "continue_url": "/log-in/password",
+                })
+
+            def verify_password(self, _password):
+                raise AssertionError("已有账号不应提交统一注册密码")
+
+            def send_email_otp(self, _url=""):
+                self.calls.append("send_email_otp")
+                return {"_status": 200, "page": {"type": "security_challenge"}, "error_code": "risk_hold"}
+
+        with self.assertRaises(FreeRegisterError) as raised:
+            _run(ChallengeFallback())
+        self.assertEqual(raised.exception.error_code, "free_oauth_security_challenge")
+        self.assertEqual(raised.exception.provider_code, "risk_hold")
+
+    def test_failed_resend_does_not_consume_budget_and_internal_typeerror_is_not_retried(self):
+        class ResendOtp(_Otp):
+            def wait_code(self, _email, stage_code=None, resend_fn=None, **_kwargs):
+                resend_fn()
+                raise AssertionError("resend should fail first")
+
+        class FailedSend(_Transport):
+            def send_email_otp(self, _url=""):
+                raise TimeoutError("send failed")
+
+        budget = {"used": 0}
+        with self.assertRaises(FreeRegisterError):
+            _wait_and_validate_email_otp(
+                FailedSend(), ResendOtp(), "user@example.test",
+                {"_status": 200, "page": {"type": "email_otp"}, "continue_url": "/verify"},
+                task_id="test-task", stage=lambda *_args: None, log=None,
+                resend_budget=budget,
+            )
+        self.assertEqual(budget["used"], 0)
+
+        class BrokenOtp(_Otp):
+            def wait_code(self, _email, stage_code=None, resend_fn=None, stop_requested=None):
+                raise TypeError("provider internal bug")
+
+        with self.assertRaisesRegex(TypeError, "provider internal bug"):
+            _wait_and_validate_email_otp(
+                _Transport(), BrokenOtp(), "user@example.test",
+                {"_status": 200, "page": {"type": "email_otp"}, "continue_url": "/verify"},
+                task_id="test-task", stage=lambda *_args: None, log=None,
+            )
+
+        class LegacyOtp(_Otp):
+            def wait_code(self, _email):
+                return self.code
+
+        result, _ = _run(_Transport(), otp=LegacyOtp())
+        self.assertTrue(result["registration_completed"])
+
+    def test_second_session_failure_preserves_real_node_and_metadata(self):
+        first = _Transport(email={"_status": 400, "error": "Your sign-in session is no longer valid."})
+
+        class InvalidOtp(_Transport):
+            def verify_email_otp(self, _code):
+                self.calls.append("verify_email_otp")
+                return {
+                    "_status": 440, "error": "Your sign-in session is no longer valid.",
+                    "error_code": "session_expired", "page": {"type": "email_otp"},
+                    "continue_url": "https://user:pass@auth.example.test/verify?secret=value",
+                    "_content_type": "application/json",
+                }
+
+        with self.assertRaises(FreeRegisterError) as raised:
+            _run(first, transport_factory=InvalidOtp)
+        exc = raised.exception
+        self.assertEqual(exc.node_code, "free_email_otp_validate")
+        self.assertEqual(exc.error_code, "oauth_session_invalid")
+        self.assertEqual(exc.provider_status, 440)
+        self.assertEqual(exc.provider_code, "session_expired")
+        self.assertEqual(exc.page_type, "email_otp")
+        self.assertEqual(exc.safe_page, "https://auth.example.test/verify")
+        self.assertEqual(exc.session_rebuilds, 1)
 
     def test_transport_exception_keeps_the_active_node(self):
         class BrokenEmailTransport(_Transport):

@@ -10,6 +10,7 @@ import time
 from typing import Any, Callable, Mapping, Sequence
 
 try:
+    from .free_failure_runtime import canonical_failure, exception_to_failure
     from .free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider
     from .free_register_common import (
         FreeRegisterError,
@@ -18,10 +19,12 @@ try:
         fingerprint,
         mask_proxy,
         plus_trial_from_accounts,
+        proxy_transport_value,
         safe_log_message,
         timezone_offset_minutes,
     )
 except ImportError:
+    from free_failure_runtime import canonical_failure, exception_to_failure  # type: ignore[no-redef]
     from free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
         FreeRegisterError,
@@ -30,6 +33,7 @@ except ImportError:
         fingerprint,
         mask_proxy,
         plus_trial_from_accounts,
+        proxy_transport_value,
         safe_log_message,
         timezone_offset_minutes,
     )
@@ -111,21 +115,11 @@ def _is_deactivated(value: Any) -> bool:
 
 
 def _failure(exc: BaseException, *, default_code: str, default_label: str) -> dict[str, Any]:
-    code = str(getattr(exc, "node_code", "") or default_code)
-    label = str(getattr(exc, "node_label", "") or default_label)
-    message = safe_log_message(exc) or f"{label}未返回错误详情"
-    result = {
-        "node_code": code,
-        "node_label": label,
-        "error_code": str(getattr(exc, "error_code", "") or f"{code}_failed"),
-        "public_message": f"{label} [{label}/{code}]：{message}",
-        "technical_summary": message,
-        "retryable": bool(getattr(exc, "retryable", True)),
-    }
-    provider_status = getattr(exc, "provider_status", None)
-    if provider_status is not None:
-        result["http_status"] = provider_status
-    return result
+    return exception_to_failure(
+        exc,
+        node_code=str(getattr(exc, "node_code", "") or default_code),
+        node_label=str(getattr(exc, "node_label", "") or default_label),
+    )
 
 
 class FreeLiveCheckService:
@@ -173,7 +167,26 @@ class FreeLiveCheckService:
         except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError):
             value = {}
         jobs = value.get("jobs") if isinstance(value, Mapping) else {}
-        return {str(key): dict(item) for key, item in jobs.items() if isinstance(item, Mapping)} if isinstance(jobs, Mapping) else {}
+        if not isinstance(jobs, Mapping):
+            return {}
+        result: dict[str, dict[str, Any]] = {}
+        changed = False
+        for key, item in jobs.items():
+            if not isinstance(item, Mapping):
+                changed = True
+                continue
+            job = dict(item)
+            if isinstance(job.get("failure"), Mapping):
+                normalized = canonical_failure(job["failure"])
+                if normalized is None:
+                    job.pop("failure", None)
+                else:
+                    job["failure"] = normalized
+                changed = changed or job != dict(item)
+            result[str(key)] = job
+        if changed:
+            atomic_write(self.path, {"version": 1, "jobs": result})
+        return result
 
     def _save_jobs(self) -> None:
         atomic_write(self.path, {"version": 1, "jobs": self._jobs})
@@ -211,7 +224,7 @@ class FreeLiveCheckService:
         result = {key: copy.deepcopy(job[key]) for key in keys if key in job}
         result["stage_label"] = LIVE_STAGE_LABELS.get(str(result.get("stage") or ""), str(result.get("stage") or ""))
         if isinstance(job.get("failure"), Mapping):
-            result["failure"] = copy.deepcopy(job["failure"])
+            result["failure"] = canonical_failure(job["failure"])
         return result
 
     def public_state(self) -> dict[str, Any]:
@@ -554,7 +567,10 @@ class FreeLiveCheckService:
 
         session = curl_requests.Session(impersonate="chrome", verify=True)
         session.trust_env = False
-        session.proxies = {"http": str(context["proxy"]), "https": str(context["proxy"])}
+        transport_proxy = proxy_transport_value(context["proxy"], driver="protocol")
+        if not transport_proxy:
+            raise FreeRegisterError("free_live_fast", "快速测活", "测活代理格式无效", retryable=False)
+        session.proxies = {"http": transport_proxy, "https": transport_proxy}
         try:
             return self._query_account(session, str(context["access_token"]))
         except FreeRegisterError:

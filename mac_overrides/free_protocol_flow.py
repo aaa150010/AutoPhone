@@ -11,11 +11,27 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 import hmac
+import inspect
 import re
 from typing import Any
-from urllib.parse import parse_qs, urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
 try:
+    from .free_protocol_diagnostics import (
+        callback_matches_redirect as _callback_matches_redirect,
+        callback_query as _callback_query,
+        content_type as _content_type,
+        next_url as _next_url,
+        page_is_html as _page_is_html,
+        page_location as _page_location,
+        page_locations as _page_locations,
+        page_type_value as _page_type_value,
+        response_detail as _response_detail,
+        response_metadata as _response_metadata,
+        response_search_text as _response_search_text,
+        response_status as _status,
+        safe_url as _safe_callback_label,
+    )
     from .free_register_common import (
         FIXED_PASSWORD,
         FreeRegisterError,
@@ -24,6 +40,21 @@ try:
         safe_log_message,
     )
 except ImportError:  # pragma: no cover - compatibility import for recovered runtime
+    from free_protocol_diagnostics import (  # type: ignore[no-redef]
+        callback_matches_redirect as _callback_matches_redirect,
+        callback_query as _callback_query,
+        content_type as _content_type,
+        next_url as _next_url,
+        page_is_html as _page_is_html,
+        page_location as _page_location,
+        page_locations as _page_locations,
+        page_type_value as _page_type_value,
+        response_detail as _response_detail,
+        response_metadata as _response_metadata,
+        response_search_text as _response_search_text,
+        response_status as _status,
+        safe_url as _safe_callback_label,
+    )
     from free_register_common import (  # type: ignore[no-redef]
         FIXED_PASSWORD,
         FreeRegisterError,
@@ -136,114 +167,6 @@ def _contains(value: Any, markers: tuple[str, ...]) -> bool:
     return any(marker.casefold() in text for marker in markers)
 
 
-def _status(response: Any) -> int | None:
-    if isinstance(response, Mapping):
-        raw = response.get("_status") or response.get("status_code")
-    else:
-        raw = getattr(response, "status_code", None)
-    try:
-        return int(raw) if raw is not None else None
-    except (TypeError, ValueError):
-        return None
-
-
-def _content_type(response: Any) -> str:
-    if not isinstance(response, Mapping):
-        return ""
-    return str(response.get("_content_type") or response.get("content_type") or "").split(";", 1)[0].strip().lower()
-
-
-def _page_locations(response: Any) -> tuple[str, ...]:
-    if not isinstance(response, Mapping):
-        return ()
-    values: list[str] = []
-    page = response.get("page")
-    sources = (page, response) if isinstance(page, Mapping) else (response,)
-    # State classification must prefer the destination selected by the
-    # authorize API. ``_url`` is commonly just the POST endpoint itself.
-    for source in sources:
-        for key in ("continue_url", "external_url", "redirect_url", "next_url", "location", "_location", "url", "_url"):
-            value = str(source.get(key) or "").strip()
-            if value and value not in values:
-                values.append(value)
-    return tuple(values)
-
-
-def _page_location(response: Any) -> str:
-    locations = _page_locations(response)
-    return locations[0] if locations else ""
-
-
-def _next_url(response: Any) -> str:
-    """Return the server-selected next page, excluding the current API URL."""
-    if not isinstance(response, Mapping):
-        return ""
-    page = response.get("page")
-    sources = (page, response) if isinstance(page, Mapping) else (response,)
-    for source in sources:
-        for key in ("continue_url", "external_url", "redirect_url", "next_url", "location", "_location"):
-            value = str(source.get(key) or "").strip()
-            if value:
-                return value
-    return ""
-
-
-def _page_type_value(response: Any) -> str:
-    if not isinstance(response, Mapping):
-        return ""
-    page = response.get("page")
-    if isinstance(page, Mapping):
-        value = str(page.get("type") or "").strip()
-        if value:
-            return value
-    return str(response.get("page_type") or "").strip()
-
-
-def _page_is_html(response: Any) -> bool:
-    content_type = _content_type(response)
-    if content_type:
-        return "html" in content_type
-    if not isinstance(response, Mapping):
-        return False
-    if response.get("_html_title"):
-        return True
-    body = str(response.get("_body") or response.get("_body_summary") or "").lstrip().casefold()
-    return body.startswith(("<!doctype html", "<html", "<head", "<body"))
-
-
-def _response_search_text(response: Any) -> str:
-    if not isinstance(response, Mapping):
-        return str(response or "")
-    # Search a bounded body summary as well as structured fields.  The
-    # recovered response parser may retain only ``_body`` for an HTML
-    # challenge; this is used for classification only and is never logged.
-    body = str(response.get("_body") or "")[:4096]
-    return " ".join(
-        str(response.get(key) or "")
-        for key in ("_body_summary", "_html_title", "error", "_url", "_location")
-    ) + " " + body
-
-
-def _response_detail(response: Any, error: str = "") -> str:
-    """Return a bounded diagnostic without copying HTML or credentials to logs."""
-    status = _status(response)
-    page = ""
-    if isinstance(response, Mapping):
-        page_value = response.get("page")
-        if isinstance(page_value, Mapping):
-            page = str(page_value.get("type") or "")[:64]
-    parts = []
-    if status is not None:
-        parts.append(f"HTTP {status}")
-    if _content_type(response):
-        parts.append(f"Content-Type {_content_type(response)}")
-    if page:
-        parts.append(f"页面 {page}")
-    if error:
-        parts.append(safe_log_message(error)[:180])
-    return "，".join(parts) or "服务端未返回可用诊断详情"
-
-
 def _raise_response(response: Any, *, node: str, label: str, stage: str) -> None:
     """Map a transport response to a stable Free node error."""
     _ok, _page, _continue, error_text, session_invalid = _chain_helpers()
@@ -254,6 +177,7 @@ def _raise_response(response: Any, *, node: str, label: str, stage: str) -> None
             label,
             f"{_response_detail(response, error)}；OAuth 会话已失效",
             error_code="oauth_session_invalid",
+            **_response_metadata(response, action_hint="保持当前邮箱、代理和设备上下文，重建一次 OAuth 会话", diagnostic_error=error),
         )
     if _contains(error, _CHALLENGE_MARKERS) or _contains(_response_search_text(response), _CHALLENGE_MARKERS):
         raise FreeRegisterError(
@@ -262,13 +186,14 @@ def _raise_response(response: Any, *, node: str, label: str, stage: str) -> None
             f"{_response_detail(response, error)}；检测到安全验证页面，已停止自动流程",
             retryable=False,
             error_code="free_oauth_security_challenge",
+            **_response_metadata(response, action_hint="保留当前代理与 Profile，人工确认风控状态后再重试", diagnostic_error=error),
         )
     raise FreeRegisterError(
         node,
         label,
         _response_detail(response, error),
-        provider_status=_status(response),
         error_code=f"{stage}_failed",
+        **_response_metadata(response, action_hint=f"检查 {label} 的服务端状态后再重试", diagnostic_error=error),
     )
 
 
@@ -325,6 +250,30 @@ def _is_login_password(response: Any) -> bool:
     return _password_context(response) == "login"
 
 
+def _account_flow(response: Any) -> str:
+    password_flow = _password_context(response)
+    if password_flow == "signup":
+        return "signup"
+    if password_flow == "login":
+        return "existing_login"
+    page_type = _page_type_value(response).casefold().replace("-", "_")
+    if page_type in _MFA_PAGE_TYPES:
+        return "existing_login"
+    if page_type in _PROFILE_PAGE_TYPES or _is_profile(response):
+        return "signup"
+    if not isinstance(response, Mapping):
+        return ""
+    page = response.get("page") if isinstance(response.get("page"), Mapping) else {}
+    keys = ("context", "flow", "intent", "mode", "reason", "kind", "action", "account_flow")
+    text = " ".join(str(source.get(key) or "") for source in (response, page) for key in keys).casefold()
+    locations = " ".join(_page_locations(response)).casefold()
+    if any(marker in text or marker in locations for marker in ("existing", "login", "log_in", "sign_in", "/log-in/")):
+        return "existing_login"
+    if any(marker in text or marker in locations for marker in ("signup", "sign_up", "register", "create_account", "/signup/")):
+        return "signup"
+    return ""
+
+
 def _is_profile(response: Any) -> bool:
     locations = " ".join(_page_locations(response)).casefold()
     return any(marker in locations for marker in _PROFILE_MARKERS)
@@ -367,22 +316,14 @@ def _is_security_page(response: Any) -> bool:
     )
 
 
-def _safe_callback_label(callback_url: str) -> str:
-    try:
-        parsed = urlsplit(str(callback_url or ""))
-    except ValueError:
-        return "invalid"
-    path = str(parsed.path or "/")
-    return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
-
-
 def _callback_code_and_state(callback_url: str) -> tuple[str, str]:
-    try:
-        parsed = urlsplit(str(callback_url or ""))
-        values = parse_qs(parsed.query, keep_blank_values=True)
-    except (TypeError, ValueError):
-        return "", ""
-    return str((values.get("code") or [""])[0]), str((values.get("state") or [""])[0])
+    values = _callback_query(callback_url)
+    return values.get("code", ""), values.get("state", "")
+
+
+def _callback_error(callback_url: str) -> tuple[str, str]:
+    values = _callback_query(callback_url)
+    return values.get("error", ""), safe_log_message(values.get("error_description", ""))[:180]
 
 
 def _oauth_context(value: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -430,13 +371,14 @@ def _check_stopped(stop_requested: Callable[[], bool] | None) -> None:
 
 
 def _raise_security_page(response: Any) -> None:
-    if _is_security_page(response):
+    if _is_security_page(response) or _contains(_response_search_text(response), _CHALLENGE_MARKERS):
         raise FreeRegisterError(
             "free_oauth_security_challenge",
             "等待 Free OAuth 安全验证",
             f"{_response_detail(response)}；检测到安全验证页面，已停止自动流程",
             retryable=False,
             error_code="free_oauth_security_challenge",
+            **_response_metadata(response, action_hint="保留当前代理与会话，人工确认风控状态后再重试"),
         )
 
 
@@ -455,26 +397,38 @@ def _reset_otp_request(provider: Any) -> None:
         finish()
 
 
-def _prepare_otp(provider: Any, stage_code: str, *, force_snapshot: bool = False) -> None:
+def _prepare_otp(
+    provider: Any,
+    stage_code: str,
+    *,
+    force_snapshot: bool = False,
+    preserve_active_baseline: bool = False,
+) -> None:
     """Prepare a mailbox phase, refreshing its baseline after session rebuild."""
     service = getattr(provider, "service", None)
     previous_stage = str(getattr(service, "current_stage", "") or "")
     # A single provider instance is reused across registration, existing-login
     # and 2FA enrollment.  A phase transition needs a new request-time
     # baseline even when the OAuth session itself was not rebuilt.
-    if previous_stage and previous_stage != str(stage_code or ""):
+    if (
+        previous_stage
+        and previous_stage != str(stage_code or "")
+        and not preserve_active_baseline
+    ):
         force_snapshot = True
     prepare = getattr(provider, "prepare", None)
     if not callable(prepare):
         return
     try:
+        inspect.signature(prepare).bind(stage_code, force_snapshot=force_snapshot)
+    except ValueError:
         prepare(stage_code, force_snapshot=force_snapshot)
         return
-    except TypeError as exc:
-        # Older compatibility wrappers expose only ``prepare(stage_code)``;
-        # reach their shared service for the new keyword when available.
-        if "force_snapshot" not in str(exc):
-            raise
+    except TypeError:
+        pass
+    else:
+        prepare(stage_code, force_snapshot=force_snapshot)
+        return
     service_prepare = getattr(service, "prepare", None)
     if callable(service_prepare):
         service_prepare(stage_code, force_snapshot=force_snapshot)
@@ -493,6 +447,24 @@ def _log(log: Callable[..., Any] | None, message: str, level: str = "info") -> N
 
 def _stage(stage: Callable[[str, str], None], task_id: str, code: str) -> None:
     stage(task_id, code)
+
+
+def _transport_node(method: str) -> tuple[str, str]:
+    return {
+        "initiate_oauth": ("free_oauth_session", "Free OAuth 会话"),
+        "submit_email_identifier": ("free_email_identifier", "识别 Free 注册邮箱"),
+        "register_user": ("free_email_password", "提交 Free 注册密码"),
+        "verify_password": ("free_email_password", "验证 Free 登录密码"),
+        "send_email_otp": ("free_email_otp_wait", "派发 Free 邮箱验证码"),
+        "send_mfa_otp": ("free_existing_login_otp", "派发已有账号登录验证码"),
+        "verify_email_otp": ("free_email_otp_validate", "验证 Free 邮箱验证码"),
+        "verify_mfa_otp": ("free_email_otp_validate", "验证已有账号登录验证码"),
+        "visit_continue": ("free_account_create", "进入 Free 账号资料页"),
+        "create_account_profile": ("free_account_create", "创建 Free 账号"),
+        "accept_consent": ("free_oauth_callback", "确认 Free OAuth 授权"),
+        "follow_continue_until_code": ("free_oauth_callback", "Free OAuth 回调"),
+        "exchange_code": ("free_access_token", "获取 Free access token"),
+    }.get(method, ("free_protocol_result", "Free 协议注册"))
 
 
 def _call_transport(
@@ -516,39 +488,61 @@ def _call_transport(
     try:
         result = function(*args)
         _check_stopped(stop_requested)
+        node, label = _transport_node(method)
+        if flow == "password_verify" and method in {"send_email_otp", "verify_email_otp"}:
+            action = "派发" if method.startswith("send_") else "验证"
+            node, label = "free_existing_login_otp", f"{action}已有账号登录验证码"
+        _raise_security_page(result)
+        _ok, _page, _continue, error_text, session_invalid = _chain_helpers()
+        error = str(error_text(result) or "")
+        if session_invalid(result) or _contains(error, _SESSION_INVALID_MARKERS):
+            raise FreeRegisterError(
+                node, label, f"{_response_detail(result, error)}；OAuth 会话已失效",
+                error_code="oauth_session_invalid",
+                **_response_metadata(result, action_hint="保持当前邮箱、代理和设备上下文，重建一次 OAuth 会话", diagnostic_error=error),
+            )
         return result
     except FreeRegisterError:
         raise
     except Exception as exc:
+        node, label = _transport_node(method)
+        if flow == "password_verify" and method in {"send_email_otp", "verify_email_otp"}:
+            action = "派发" if method.startswith("send_") else "验证"
+            node, label = "free_existing_login_otp", f"{action}已有账号登录验证码"
         if _contains(exc, _SESSION_INVALID_MARKERS):
             raise FreeRegisterError(
-                "free_oauth_session",
-                "Free OAuth 会话",
+                node,
+                label,
                 "OAuth 会话已失效，需要重新建立会话",
-                error_code="oauth_session_invalid",
+                error_code="oauth_session_invalid", action_hint="保持当前任务上下文并重建一次 OAuth 会话",
+                diagnostic=f"transport={method}; exception={type(exc).__name__}",
             ) from exc
-        node, label = {
-            "initiate_oauth": ("free_oauth_session", "Free OAuth 会话"),
-            "submit_email_identifier": ("free_email_identifier", "识别 Free 注册邮箱"),
-            "register_user": ("free_email_password", "提交 Free 注册密码"),
-            "verify_password": ("free_email_password", "验证 Free 登录密码"),
-            "send_email_otp": ("free_email_otp_wait", "派发 Free 邮箱验证码"),
-            "send_mfa_otp": ("free_existing_login_otp", "派发已有账号登录验证码"),
-            "verify_email_otp": ("free_email_otp_validate", "验证 Free 邮箱验证码"),
-            "verify_mfa_otp": ("free_email_otp_validate", "验证已有账号登录验证码"),
-            "visit_continue": ("free_account_create", "进入 Free 账号资料页"),
-            "create_account_profile": ("free_account_create", "创建 Free 账号"),
-            "accept_consent": ("free_oauth_callback", "确认 Free OAuth 授权"),
-            "follow_continue_until_code": ("free_oauth_callback", "Free OAuth 回调"),
-            "exchange_code": ("free_access_token", "获取 Free access token"),
-        }.get(method, ("free_protocol_result", "Free 协议注册"))
         detail = safe_log_message(exc) or type(exc).__name__
         raise FreeRegisterError(
             node,
             label,
             f"{method} 请求异常（{type(exc).__name__}）：{detail}",
             error_code=f"{node}_transport_failed",
+            action_hint=f"检查 {label} 的网络与服务端状态后重试",
+            diagnostic=f"transport={method}; exception={type(exc).__name__}",
         ) from exc
+
+
+def _wait_code(otp_provider: Any, email: str, **kwargs: Any) -> str:
+    waiter = getattr(otp_provider, "wait_code", None)
+    if not callable(waiter):
+        raise FreeRegisterError(
+            str(kwargs.get("stage_code") or "free_email_otp_wait"),
+            "等待 Free 邮箱验证码", "邮箱取件 Provider 缺少 wait_code 方法",
+            retryable=False, error_code="free_otp_waiter_missing",
+        )
+    try:
+        inspect.signature(waiter).bind(email, **kwargs)
+    except ValueError:
+        return waiter(email, **kwargs)
+    except TypeError:
+        return waiter(email)
+    return waiter(email, **kwargs)
 
 
 def _wait_and_validate_email_otp(
@@ -564,62 +558,106 @@ def _wait_and_validate_email_otp(
     send_method: str = "send_email_otp",
     verify_method: str = "verify_email_otp",
     send_before_wait: bool = False,
+    resend_budget: dict[str, int] | None = None,
     stop_requested: Callable[[], bool] | None = None,
 ) -> Any:
     ok, page_type, continue_url, error_text, _session_invalid = _chain_helpers()
     current = response
     retry_count = 0
-    # One initial submission plus one controlled resend. Repeated resend
-    # requests can invalidate the code that the mailbox operator sees.
-    max_attempts = 2
+    max_attempts = 3
+    budget = resend_budget if isinstance(resend_budget, dict) else {"used": 0}
+    sentinel_flow = (
+        "password_verify"
+        if stage_code == "free_existing_login_otp"
+        or send_method == "send_mfa_otp"
+        or verify_method == "verify_mfa_otp"
+        else "authorize_continue"
+    )
+
+    def mark_request_sent() -> None:
+        marker = getattr(otp_provider, "mark_sent", None)
+        if callable(marker):
+            marker(stage_code)
+
+    def send_otp(*, controlled_resend: bool) -> bool:
+        nonlocal current
+        used_resends = max(0, int(budget.get("used") or 0))
+        if controlled_resend and used_resends >= 2:
+            return False
+        sender = getattr(transport, send_method, None)
+        if not callable(sender):
+            if controlled_resend:
+                return False
+            raise FreeRegisterError(
+                stage_code,
+                "等待 Free 邮箱验证码",
+                f"Transport 缺少 {send_method} 方法",
+                retryable=False,
+                error_code="free_otp_sender_missing",
+            )
+        if controlled_resend:
+            # Each round owns a request-time baseline. Finish the previous
+            # wait and take the next snapshot before dispatch so a message
+            # produced by this resend cannot enter its own baseline.
+            _reset_otp_request(otp_provider)
+            _prepare_otp(otp_provider, stage_code, force_snapshot=True)
+        mark_request_sent()
+        sent = _call_transport(
+            transport,
+            send_method,
+            continue_url(current) or "",
+            flow=sentinel_flow,
+            stop_requested=stop_requested,
+        )
+        if not ok(sent):
+            _raise_response(sent, node=stage_code, label="等待 Free 邮箱验证码", stage=f"{stage_code}_send")
+        if controlled_resend:
+            budget["used"] = used_resends + 1
+        current = sent
+        _log(
+            log,
+            f"邮箱验证码{'受控重发' if controlled_resend else '派发'}完成（stage={stage_code}）",
+            "warn" if controlled_resend else "info",
+        )
+        return True
+
+    if send_before_wait:
+        send_otp(controlled_resend=False)
+
     while retry_count < max_attempts:
         _check_stopped(stop_requested)
         retry_count += 1
         _stage(stage, task_id, stage_code)
-        if send_before_wait or retry_count > 1:
-            sender = getattr(transport, send_method, None)
-            if not callable(sender):
-                raise FreeRegisterError(
-                    stage_code,
-                    "等待 Free 邮箱验证码",
-                    f"Transport 缺少 {send_method} 方法",
-                    retryable=False,
-                    error_code="free_otp_sender_missing",
-                )
-            try:
-                sent = _call_transport(
-                    transport,
-                    send_method,
-                    continue_url(current) or "",
-                    flow="password_verify" if send_method == "send_mfa_otp" else "authorize_continue",
-                    stop_requested=stop_requested,
-                )
-            except Exception:
-                # A failed send did not submit a code; keep the current
-                # mailbox request available for a bounded retry.
-                raise
-            if not ok(sent):
-                _raise_response(sent, node=stage_code, label="等待 Free 邮箱验证码", stage=f"{stage_code}_send")
-            _log(log, f"邮箱验证码已派发（stage={stage_code}，attempt={retry_count}）", "info")
-            send_before_wait = False
+        mark_request_sent()
         try:
-            if hasattr(otp_provider, "mark_sent"):
-                otp_provider.mark_sent(stage_code)
-            code = otp_provider.wait_code(
+            code = _wait_code(
+                otp_provider,
                 email,
                 stage_code=stage_code,
+                resend_fn=(lambda: send_otp(controlled_resend=True))
+                if int(budget.get("used") or 0) < 2 else None,
                 stop_requested=stop_requested,
             )
-        except TypeError:
-            code = otp_provider.wait_code(email)
+        except FreeRegisterError as exc:
+            if retry_count >= max_attempts or not bool(exc.retryable):
+                raise
+            if int(budget.get("used") or 0) < 2:
+                send_otp(controlled_resend=True)
+            _log(
+                log,
+                f"邮箱验证码第 {retry_count}/{max_attempts} 轮等待未取得可用新邮件，继续沿用阶段基线",
+                "warn",
+            )
+            continue
         _check_stopped(stop_requested)
-        _stage(stage, task_id, "free_email_otp_validate")
+        validate_stage = "free_existing_login_otp" if stage_code == "free_existing_login_otp" else "free_email_otp_validate"
+        _stage(stage, task_id, validate_stage)
         try:
             current = _call_transport(
                 transport,
                 verify_method,
                 code,
-                flow="password_verify" if verify_method == "verify_mfa_otp" else "authorize_continue",
+                flow=sentinel_flow,
                 stop_requested=stop_requested,
             )
         except Exception:
@@ -657,9 +695,9 @@ def _wait_and_validate_email_otp(
                 f"验证码验证失败（attempt={retry_count}，{_response_detail(current, detail)}）",
                 error_code="free_email_otp_invalid",
             )
-        if not callable(getattr(transport, send_method, None)):
-            break
-        _log(log, f"验证码被服务端拒绝，下一次尝试仅重发一次（attempt={retry_count + 1}/{max_attempts}）", "warn")
+        if int(budget.get("used") or 0) < 2:
+            send_otp(controlled_resend=True)
+        _log(log, f"验证码被服务端拒绝，继续第 {retry_count + 1}/{max_attempts} 轮等待（全流程最多重发两次）", "warn")
     raise FreeRegisterError(stage_code, "验证 Free 邮箱验证码", "验证码尝试次数已耗尽", error_code="free_email_otp_attempts_exhausted")
 
 
@@ -674,6 +712,7 @@ def _run_once(
     stage: Callable[[str, str], None],
     log: Callable[..., Any] | None,
     force_otp_snapshot: bool = False,
+    otp_resend_budget: dict[str, int] | None = None,
     stop_requested: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     ok, page_type, continue_url, error_text, _session_invalid = _chain_helpers()
@@ -758,59 +797,47 @@ def _run_once(
             f"邮箱识别返回 HTML（{_response_detail(response)}），授权会话未建立",
             error_code="oauth_bootstrap_html",
         )
-    current_page = str(page_type(response) or _page_type_value(response) or "").strip().casefold()
+    current_page = str(page_type(response) or _page_type_value(response) or "").strip().casefold().replace("-", "_")
     _log(log, f"邮箱提交成功（页面={current_page or '-'}，continue={'yes' if _next_url(response) else 'no'}）", "info")
-    _raise_security_page(response)
-
-    if current_page in _OTP_PAGE_TYPES:
-        is_mfa = current_page in {"mfa_challenge", "mfa_otp", "mfa_otp_verification"}
-        if is_mfa:
-            _reset_otp_request(otp_provider)
-            _prepare_otp(otp_provider, "free_existing_login_otp", force_snapshot=True)
-        response = _wait_and_validate_email_otp(
-            transport, otp_provider, email, response,
-            task_id=task_id, stage=stage, log=log,
-            stage_code="free_existing_login_otp" if is_mfa else "free_email_otp_wait",
-            send_method="send_mfa_otp" if is_mfa else "send_email_otp",
-            verify_method="verify_mfa_otp" if is_mfa else "verify_email_otp",
-            send_before_wait=is_mfa,
-            stop_requested=stop_requested,
-        )
-        current_page = str(page_type(response) or _page_type_value(response) or "").strip().casefold()
 
     # Keep advancing through the finite authorization state machine. Providers
     # can return another OTP/password envelope after a successful transition;
     # never jump straight to callback/token in that case.
-    password_attempted = False
+    password_page_handled = False
     profile_submitted = False
     consent_accepted = False
+    account_flow = _account_flow(response)
     for _transition in range(_MAX_PAGE_TRANSITIONS):
-        current_page = str(page_type(response) or _page_type_value(response) or "").strip().casefold()
+        current_page = str(page_type(response) or _page_type_value(response) or "").strip().casefold().replace("-", "_")
+        account_flow = _account_flow(response) or account_flow
         if current_page in _OTP_PAGE_TYPES:
             is_mfa = current_page in _MFA_PAGE_TYPES
+            existing_login = is_mfa or account_flow == "existing_login"
+            otp_stage = "free_existing_login_otp" if existing_login else "free_email_otp_wait"
             if is_mfa:
                 _reset_otp_request(otp_provider)
-                _prepare_otp(otp_provider, "free_existing_login_otp", force_snapshot=True)
+                _prepare_otp(otp_provider, otp_stage, force_snapshot=True)
+            elif existing_login:
+                # authorize/continue may dispatch the login OTP while returning
+                # this page. Keep the baseline captured before that request and
+                # only switch the diagnostic/used-code stage identity.
+                _prepare_otp(
+                    otp_provider,
+                    otp_stage,
+                    preserve_active_baseline=True,
+                )
             response = _wait_and_validate_email_otp(
                 transport, otp_provider, email, response,
                 task_id=task_id, stage=stage, log=log,
-                stage_code="free_existing_login_otp" if is_mfa else "free_email_otp_wait",
+                stage_code=otp_stage,
                 send_method="send_mfa_otp" if is_mfa else "send_email_otp",
                 verify_method="verify_mfa_otp" if is_mfa else "verify_email_otp",
                 send_before_wait=is_mfa,
+                resend_budget=otp_resend_budget,
                 stop_requested=stop_requested,
             )
             continue
         if current_page in _PASSWORD_PAGE_TYPES:
-            if password_attempted:
-                raise FreeRegisterError(
-                    "free_email_password",
-                    "验证 Free 注册密码",
-                    f"密码页面重复返回且未进入下一阶段（页面={current_page or '-'}）",
-                    error_code="free_password_transition_loop",
-                )
-            password_attempted = True
-            _stage(stage, task_id, "free_email_password")
             password_context = _password_context(response)
             if password_context == "unknown":
                 raise FreeRegisterError(
@@ -820,7 +847,18 @@ def _run_once(
                     retryable=False,
                     error_code="free_password_context_unknown",
                 )
+            if password_page_handled:
+                existing_login = password_context == "login"
+                raise FreeRegisterError(
+                    "free_existing_login_otp" if existing_login else "free_email_password",
+                    "已有账号邮箱验证" if existing_login else "验证 Free 注册密码",
+                    f"{'邮箱验证码登录' if existing_login else '注册密码提交'}后重复返回密码页（页面={current_page or '-'}）",
+                    error_code="free_login_otp_transition_loop" if existing_login else "free_password_transition_loop",
+                )
+            password_page_handled = True
             if password_context == "signup":
+                account_flow = "signup"
+                _stage(stage, task_id, "free_email_password")
                 response = _call_transport(
                     transport,
                     "register_user",
@@ -830,35 +868,26 @@ def _run_once(
                     stop_requested=stop_requested,
                 )
             else:
-                response = _call_transport(
+                account_flow = "existing_login"
+                _reset_otp_request(otp_provider)
+                _prepare_otp(otp_provider, "free_existing_login_otp", force_snapshot=False)
+                response = _wait_and_validate_email_otp(
                     transport,
-                    "verify_password",
-                    password,
-                    flow="password_verify",
+                    otp_provider,
+                    email,
+                    response,
+                    task_id=task_id,
+                    stage=stage,
+                    log=log,
+                    stage_code="free_existing_login_otp",
+                    send_method="send_email_otp",
+                    verify_method="verify_email_otp",
+                    send_before_wait=True,
+                    resend_budget=otp_resend_budget,
                     stop_requested=stop_requested,
                 )
-                if not ok(response) and callable(getattr(transport, "send_email_otp", None)):
-                    # Existing accounts may reject the saved password while still
-                    # exposing the passwordless email-login fallback.
-                    _reset_otp_request(otp_provider)
-                    _prepare_otp(otp_provider, "free_existing_login_otp", force_snapshot=False)
-                    response = _wait_and_validate_email_otp(
-                        transport,
-                        otp_provider,
-                        email,
-                        response,
-                        task_id=task_id,
-                        stage=stage,
-                        log=log,
-                        stage_code="free_existing_login_otp",
-                        send_method="send_email_otp",
-                        verify_method="verify_email_otp",
-                        send_before_wait=True,
-                        stop_requested=stop_requested,
-                    )
-            _raise_security_page(response)
             if not ok(response):
-                _raise_response(response, node="free_email_password", label="验证 Free 注册密码", stage="free_email_password")
+                _raise_response(response, node="free_email_password", label="提交 Free 注册密码", stage="free_email_password")
             continue
         if _is_phone(response):
             raise FreeRegisterError(
@@ -870,6 +899,7 @@ def _run_once(
             )
         if (_is_profile(response) or current_page in _PROFILE_PAGE_TYPES) and not profile_submitted:
             profile_submitted = True
+            account_flow = "signup"
             _stage(stage, task_id, "free_account_create")
             next_url = _next_url(response)
             if next_url and callable(getattr(transport, "visit_continue", None)):
@@ -881,7 +911,6 @@ def _run_once(
                     flow="oauth_create_account",
                     stop_requested=stop_requested,
                 )
-                _raise_security_page(response)
                 if not ok(response):
                     _raise_response(
                         response,
@@ -967,6 +996,24 @@ def _run_once(
         flow="oauth_callback",
         stop_requested=stop_requested,
     ) or "").strip()
+    callback_error, callback_error_description = _callback_error(callback_url)
+    if callback_error:
+        raise FreeRegisterError(
+            "free_oauth_callback", "Free OAuth 回调",
+            f"OAuth 回调返回错误：{callback_error_description or safe_log_message(callback_error)}",
+            retryable=False, error_code="oauth_callback_provider_error",
+            provider_code=callback_error,
+            safe_page=_safe_callback_label(callback_url),
+            action_hint="检查授权同意状态和账号风控后重新发起 OAuth",
+        )
+    if not _callback_matches_redirect(callback_url, context["redirect_uri"]):
+        raise FreeRegisterError(
+            "free_oauth_callback", "Free OAuth 回调",
+            f"OAuth 回调落点与当前 redirect_uri 不匹配（落点={_safe_callback_label(callback_url)}）",
+            retryable=False, error_code="oauth_callback_redirect_mismatch",
+            safe_page=_safe_callback_label(callback_url),
+            action_hint="检查 OAuth 客户端 redirect_uri 配置，不要继续交换 Token",
+        )
     code, callback_state = _callback_code_and_state(callback_url)
     if not code:
         raise FreeRegisterError(
@@ -1003,7 +1050,10 @@ def _run_once(
     if isinstance(tokens, Mapping):
         token_status = _status(tokens)
         token_ok = tokens.get("ok")
-        if (token_status is not None and not 200 <= token_status < 300) or token_ok is False:
+        token_failed = token_ok is False or (
+            isinstance(token_ok, str) and token_ok.strip().casefold() in {"false", "0", "no", "failed", "failure", "error"}
+        )
+        if (token_status is not None and not 200 <= token_status < 300) or token_failed:
             _raise_response(
                 tokens,
                 node="free_access_token",
@@ -1038,8 +1088,10 @@ def _run_once(
         # Public task state only needs the callback destination. Query values
         # contain the short-lived OAuth code/state and must not be persisted.
         "callback_url": _safe_callback_label(callback_url),
-        "password": password or FIXED_PASSWORD,
+        "account_flow": account_flow or ("signup" if profile_submitted else "existing_login"),
     }
+    if result["account_flow"] == "signup":
+        result["password"] = password or FIXED_PASSWORD
     for key in ("refresh_token", "id_token", "expires_at", "token_type", "email", "scope"):
         if key in tokens:
             result[key] = tokens.get(key)
@@ -1059,10 +1111,16 @@ def run_free_protocol_flow(
     log: Callable[..., Any] | None = None,
     stop_requested: Callable[[], bool] | None = None,
 ) -> tuple[dict[str, Any], Any]:
-    """Run Free protocol registration and rebuild a stale OAuth session once."""
+    """Run Free protocol registration and rebuild a stale HTTP session once.
+
+    ``oauth_context_factory`` remains in the signature for compatibility with
+    older callers. A task's PKCE state/verifier are immutable and are never
+    regenerated when only its HTTP session is rebuilt.
+    """
     session_rebuilds = 0
     active = transport
     current_oauth_context = _oauth_context(oauth_context)
+    otp_resend_budget = {"used": 0}
     while True:
         try:
             result = _run_once(
@@ -1075,6 +1133,7 @@ def run_free_protocol_flow(
                 stage=stage,
                 log=log,
                 force_otp_snapshot=session_rebuilds > 0,
+                otp_resend_budget=otp_resend_budget,
                 stop_requested=stop_requested,
             )
             result["oauth_session_rebuilds"] = session_rebuilds
@@ -1086,18 +1145,7 @@ def run_free_protocol_flow(
                 and bool(transport_factory)
             )
             if not should_rebuild:
-                if (
-                    session_rebuilds > 0
-                    and str(exc.error_code or "") == "oauth_session_invalid"
-                    and str(exc.node_code or "") not in {"free_oauth_session", "free_email_identifier"}
-                ):
-                    raise FreeRegisterError(
-                        "free_oauth_session",
-                        "Free OAuth 会话",
-                        f"重建后的 OAuth 会话仍在 {exc.node_label} 节点失效，已停止任务",
-                        retryable=bool(exc.retryable),
-                        error_code="oauth_session_rebuild_failed",
-                    ) from exc
+                exc.session_rebuilds = session_rebuilds
                 raise
             session_rebuilds += 1
             _log(log, "OAuth 会话失效，清理旧 Cookie/CSRF 并重建一次授权会话；邮箱、代理和出口 IP 保持不变", "warn")
@@ -1119,10 +1167,6 @@ def run_free_protocol_flow(
             if callable(reset):
                 reset()
             _reset_otp_request(otp_provider)
-            if callable(oauth_context_factory):
-                refreshed = _oauth_context(oauth_context_factory())
-                if refreshed.get("url"):
-                    current_oauth_context = refreshed
             active = transport_factory()
             _log(log, "OAuth 会话重建完成，重新从授权节点开始", "info")
 

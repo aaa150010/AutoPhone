@@ -358,6 +358,30 @@ class MailboxOtpServiceTests(unittest.TestCase):
         self.assertEqual(len(resent), 1)
         self.assertIn("654321", service.used_codes)
 
+    def test_resend_preserves_any_structured_pipeline_failure(self):
+        clock = _Clock()
+        service = MailboxOtpService(
+            "https://mail.example.test/inbox",
+            timeout_seconds=5,
+            poll_interval_seconds=1,
+            fetcher=lambda url: MailboxResponse(url, b'{"messages":[]}', "application/json", 200),
+            sleep_fn=clock.sleep,
+            now_fn=clock.time,
+            monotonic_fn=clock.monotonic,
+        )
+        service.prepare()
+
+        def fail_resend():
+            raise FreeRegisterError(
+                "free_oauth_security_challenge", "等待 Free OAuth 安全验证",
+                "检测到安全验证页面", retryable=False,
+                error_code="free_oauth_security_challenge",
+            )
+
+        with self.assertRaises(FreeRegisterError) as raised:
+            service.wait_code(resend_fn=fail_resend, resend_after_seconds=0)
+        self.assertEqual(raised.exception.node_code, "free_oauth_security_challenge")
+
     def test_free_provider_maps_mailbox_ssl_failure_to_mailbox_stage(self):
         clock = _Clock()
 

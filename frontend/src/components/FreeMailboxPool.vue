@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CopyDocument, Delete, Key, Lock, Plus, Refresh, RefreshRight, Tickets, Link, Download, CircleCheck, Warning, View, VideoPlay } from '@element-plus/icons-vue'
-import { deleteFreeMailboxes, exportFreeResults, getFreeLiveCheckState, getFreeLogs, getFreeMailboxUrl, getFreeMailboxes, getFreeSecret, importFreeMailboxes, retryFreeTwofa, setFreeMailboxStatus, startFree, startFreeLiveCheck } from '../api/client'
+import { deleteFreeMailboxes, exportFreeResults, getFreeLiveCheckState, getFreeMailboxUrl, getFreeMailboxes, getFreeSecret, importFreeMailboxes, retryFreeTwofa, setFreeMailboxStatus, startFree, startFreeLiveCheck } from '../api/client'
 import type { FreeLiveCheckState, FreeMailboxRow } from '../api/client'
 import ContentEmptyState from './ContentEmptyState.vue'
+import FreeTaskLogDialog from './FreeTaskLogDialog.vue'
 import WorkspacePanel from './WorkspacePanel.vue'
+import { freeFailureCause, freeFailureDetails, freeFailureNodeIdentity, selectCurrentFreeFailure } from '../utils/freeFailure'
 
 const rows = ref<FreeMailboxRow[]>([])
 const selected = ref<FreeMailboxRow[]>([])
@@ -23,15 +25,18 @@ const liveBusy = ref<'fast' | 'deep' | ''>('')
 const runBusy = ref(false)
 const liveState = ref<FreeLiveCheckState>({ running: false, workers: 3, queue_limit: 500, active: 0, jobs: [] })
 const logDialogOpen = ref(false)
-const logLoading = ref(false)
 const logRow = ref<FreeMailboxRow | null>(null)
-const liveLogs = ref<Array<{ time?: string; level?: string; message?: string; stage?: string; stage_label?: string; page?: string; http_status?: number | string; duration_ms?: number | string; outcome?: string }>>([])
-const logScroll = ref<HTMLElement>()
+const logDialog = ref<{ refresh: (options?: { forceLatest?: boolean; silent?: boolean }) => Promise<void> }>()
 let refreshTimer = 0
 
 const filteredRows = computed(() => rows.value.filter(row => {
   const needle = search.value.trim().toLowerCase()
-  return (!needle || row.email.toLowerCase().includes(needle) || String(row.registration_ip || row.exit_ip || '').includes(needle))
+  const haystack = [
+    row.email, row.registration_ip, row.exit_ip,
+    row.live_check_failure?.node_label, row.live_check_failure?.node_code,
+    row.failure?.node_label, row.failure?.node_code,
+  ].join(' ').toLowerCase()
+  return (!needle || haystack.includes(needle))
     && (!statusFilter.value || row.status === statusFilter.value)
     && (!driverFilter.value || row.driver === driverFilter.value)
     && (!liveStatusFilter.value || (liveStatusFilter.value === 'active' ? ['queued', 'running'].includes(String(row.live_check_status || '')) : row.live_check_status === liveStatusFilter.value))
@@ -66,7 +71,7 @@ async function refreshLiveState() {
     rows.value = result.rows || rows.value
     if (logRow.value?.row_id) logRow.value = rows.value.find(row => row.row_id === logRow.value?.row_id) || logRow.value
     if (logDialogOpen.value && logRow.value?.live_check_task_id) {
-      await loadLiveLogs(logRow.value.live_check_task_id, { silent: true })
+      await logDialog.value?.refresh({ silent: true })
     }
   } catch (error: any) {
     if (liveState.value.running) ElMessage.error(error?.message || 'Free 测活状态刷新失败')
@@ -87,7 +92,7 @@ async function startLiveCheck(mode: 'fast' | 'deep', selection = selected.value)
   if (mode === 'deep') {
     try {
       await ElMessageBox.confirm(
-        `深度测活会固定使用注册代理重新登录 ${eligible.length} 个账号，并可能多收一封 OTP 邮件。确定继续吗？`,
+        `深度测活会使用注册时的代理重新登录 ${eligible.length} 个账号，并可能多收一封 OTP 邮件。确定继续吗？`,
         '深度测活',
         { type: 'warning', confirmButtonText: '开始测活', cancelButtonText: '取消' },
       )
@@ -135,33 +140,23 @@ async function quickStart() {
 async function openLiveLog(row: FreeMailboxRow) {
   if (!row.live_check_task_id) return
   logRow.value = row
-  liveLogs.value = []
   logDialogOpen.value = true
-  await nextTick()
-  await loadLiveLogs(row.live_check_task_id, { forceLatest: true })
 }
 
-async function loadLiveLogs(
-  taskId: string,
-  options: { forceLatest?: boolean; silent?: boolean } = {},
-) {
-  const currentScroll = logScroll.value
-  const previousScrollTop = currentScroll?.scrollTop || 0
-  const followLatest = Boolean(options.forceLatest)
-    || !currentScroll
-    || currentScroll.scrollHeight - currentScroll.scrollTop - currentScroll.clientHeight <= 48
-  if (!options.silent) logLoading.value = true
-  try {
-    liveLogs.value = (await getFreeLogs(taskId)).logs || []
-    await nextTick()
-    if (logScroll.value) {
-      logScroll.value.scrollTop = followLatest ? logScroll.value.scrollHeight : previousScrollTop
-    }
-  } catch (error: any) {
-    if (!options.silent) ElMessage.error(error?.message || '测活日志读取失败')
-  } finally {
-    if (!options.silent) logLoading.value = false
-  }
+function mailboxFailureCause(row: FreeMailboxRow) {
+  return freeFailureCause(mailboxFailure(row))
+}
+
+function mailboxFailureDetails(row: FreeMailboxRow) {
+  return freeFailureDetails(mailboxFailure(row), { includeNode: true })
+}
+
+function mailboxFailureNode(row: FreeMailboxRow) {
+  return freeFailureNodeIdentity(mailboxFailure(row))
+}
+
+function mailboxFailure(row: FreeMailboxRow) {
+  return selectCurrentFreeFailure(row.failure, row.live_check_failure, row.live_check_status)
 }
 
 function liveStatusLabel(status = '') {
@@ -341,7 +336,7 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
 
       <div class="table-region">
         <div class="metrics"><span>总数 <b>{{ metrics.total }}</b></span><span class="is-good">注册成功 <b>{{ metrics.success }}</b></span><span>测活中 <b>{{ metrics.checking }}</b></span><span class="is-good">账号正常 <b>{{ metrics.live }}</b></span><span class="is-bad">已停用 <b>{{ metrics.deactivated }}</b></span><span class="is-warn">待重跑 <b>{{ metrics.rerun }}</b></span><span class="is-warn">2FA 待重试 <b>{{ metrics.pending }}</b></span></div>
-        <div class="filters"><el-input v-model="search" size="small" clearable placeholder="搜索邮箱或注册 IP" /><el-select v-model="statusFilter" size="small" clearable placeholder="注册状态"><el-option label="可用" value="available" /><el-option label="运行中" value="running" /><el-option label="成功" value="success" /><el-option label="失败" value="failed" /><el-option label="待重跑" value="pending_rerun" /><el-option label="2FA 待重试" value="twofa_pending" /></el-select><el-select v-model="driverFilter" size="small" clearable placeholder="注册链路"><el-option label="全协议" value="protocol" /><el-option label="RoxyBrowser" value="roxybrowser" /></el-select><el-select v-model="liveStatusFilter" size="small" clearable placeholder="测活状态"><el-option label="排队 / 测活中" value="active" /><el-option label="正常" value="live" /><el-option label="已停用" value="deactivated" /><el-option label="Token 失效" value="token_expired" /><el-option label="测活失败" value="failed" /></el-select></div>
+        <div class="filters"><el-input v-model="search" size="small" clearable placeholder="搜索邮箱、注册 IP 或错误节点" /><el-select v-model="statusFilter" size="small" clearable placeholder="注册状态"><el-option label="可用" value="available" /><el-option label="运行中" value="running" /><el-option label="成功" value="success" /><el-option label="失败" value="failed" /><el-option label="待重跑" value="pending_rerun" /><el-option label="2FA 待重试" value="twofa_pending" /></el-select><el-select v-model="driverFilter" size="small" clearable placeholder="注册链路"><el-option label="全协议" value="protocol" /><el-option label="RoxyBrowser" value="roxybrowser" /></el-select><el-select v-model="liveStatusFilter" size="small" clearable placeholder="测活状态"><el-option label="排队 / 测活中" value="active" /><el-option label="正常" value="live" /><el-option label="已停用" value="deactivated" /><el-option label="Token 失效" value="token_expired" /><el-option label="测活失败" value="failed" /></el-select></div>
         <div class="bulk-actions"><span>已选 {{ selected.length }} 条</span><el-button size="small" type="success" plain :icon="CircleCheck" :loading="liveBusy === 'fast'" :disabled="!selected.some(canLiveCheck) || Boolean(liveBusy)" @click="startLiveCheck('fast')">快速测活</el-button><el-button size="small" type="warning" plain :icon="RefreshRight" :loading="liveBusy === 'deep'" :disabled="!selected.some(canLiveCheck) || Boolean(liveBusy)" @click="startLiveCheck('deep')">深度测活</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selected.length" @click="copySecret('token')">复制 Token</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selected.some(row => row.has_credential)" @click="copySecret('credential')">复制凭据</el-button><el-button size="small" :icon="CopyDocument" :disabled="!pageRows.some(row => row.has_access_token)" @click="copySecret('token', pageRows)">当前页 Token</el-button><el-button size="small" :icon="Download" :disabled="loading" @click="exportResults">导出</el-button><el-button size="small" :icon="CircleCheck" :disabled="!selected.length || loading" @click="setStatus('available')">恢复</el-button><el-button size="small" :icon="Warning" :disabled="!selected.length || loading" @click="setStatus('unavailable')">不可用</el-button><el-button size="small" type="danger" plain :icon="Delete" :disabled="!selected.length || loading" @click="deleteSelected">删除选中</el-button></div>
         <el-table
           ref="tableRef"
@@ -374,7 +369,14 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
           <el-table-column label="Token" width="80" align="center"><template #default="{ row }"><el-button v-if="row.has_access_token" link :icon="CopyDocument" aria-label="复制 Token" @click="copyRow('token', row)" /><span v-else>-</span></template></el-table-column>
           <el-table-column label="测活操作" width="118" align="center"><template #default="{ row }"><el-tooltip content="快速测活"><el-button link type="success" :icon="CircleCheck" :disabled="!canLiveCheck(row) || Boolean(liveBusy)" aria-label="快速测活" @click.stop="startLiveCheck('fast', [row])" /></el-tooltip><el-tooltip content="深度测活"><el-button link type="warning" :icon="RefreshRight" :disabled="!canLiveCheck(row) || Boolean(liveBusy)" aria-label="深度测活" @click.stop="startLiveCheck('deep', [row])" /></el-tooltip><el-tooltip content="查看测活日志"><el-button link :icon="View" :disabled="!row.live_check_task_id" aria-label="查看测活日志" @click.stop="openLiveLog(row)" /></el-tooltip></template></el-table-column>
           <el-table-column label="敏感字段" width="210" align="center"><template #default="{ row }"><el-button v-if="row.has_credential" link :icon="CopyDocument" @click="copyRow('credential', row)">完整凭据</el-button><el-button v-if="row.has_password" link :icon="Lock" @click="copyRow('password', row)">密码</el-button><el-button v-if="row.proxy_masked" link :icon="CopyDocument" @click="copyRow('proxy', row)">代理</el-button></template></el-table-column>
-          <el-table-column label="错误" min-width="240" show-overflow-tooltip><template #default="{ row }">{{ row.live_check_failure?.public_message || row.error || row.twofa_error || '-' }}</template></el-table-column>
+          <el-table-column label="错误" min-width="280">
+            <template #default="{ row }">
+              <el-tooltip placement="top" :disabled="!mailboxFailureDetails(row).length">
+                <template #content><div class="failure-tooltip"><span v-for="item in mailboxFailureDetails(row)" :key="item">{{ item }}</span></div></template>
+                <div class="failure-cell"><strong v-if="mailboxFailureNode(row).label || mailboxFailureNode(row).code">{{ mailboxFailureNode(row).label || mailboxFailureNode(row).code }}<code v-if="mailboxFailureNode(row).showCode">{{ mailboxFailureNode(row).code }}</code></strong><span>{{ mailboxFailureCause(row) }}</span></div>
+              </el-tooltip>
+            </template>
+          </el-table-column>
           <template #empty><ContentEmptyState /></template>
         </el-table>
         <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" background layout="total, sizes, prev, pager, next" :page-sizes="[25, 50, 100]" :total="filteredRows.length" />
@@ -387,10 +389,7 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
       </el-form>
       <template #footer><el-button @click="importOpen = false">取消</el-button><el-button type="primary" :loading="loading" @click="importPools">导入</el-button></template>
     </el-dialog>
-    <el-dialog v-model="logDialogOpen" :title="`${logRow?.email || 'Free 账号'} · ${logRow?.live_check_mode === 'deep' ? '深度测活' : '快速测活'}日志`" width="900px" destroy-on-close>
-      <div class="log-dialog-meta"><span>任务 {{ logRow?.live_check_task_id || '-' }}</span><span>状态 {{ liveStatusLabel(logRow?.live_check_status) }}</span><span>测活 IP {{ logRow?.live_check_ip || '-' }}</span><el-button size="small" :icon="Refresh" :loading="logLoading" @click="logRow && openLiveLog(logRow)">刷新</el-button></div>
-      <div ref="logScroll" v-loading="logLoading" class="log-dialog-list"><div v-for="(row, index) in liveLogs.slice(-180)" :key="`${row.time}-${index}-${row.message}`" :class="`log-${row.level || 'info'}`"><small>{{ row.time || '' }}</small><span><b v-if="row.stage_label || row.stage">{{ row.stage_label || row.stage }}</b> {{ row.message || '' }}<em v-if="row.duration_ms || row.page || row.http_status || row.outcome">{{ row.duration_ms ? ` · ${row.duration_ms}ms` : '' }}{{ row.page ? ` · ${row.page}` : '' }}{{ row.http_status ? ` · HTTP ${row.http_status}` : '' }}{{ row.outcome ? ` · ${row.outcome}` : '' }}</em></span></div><ContentEmptyState v-if="!liveLogs.length && !logLoading" /></div>
-    </el-dialog>
+    <FreeTaskLogDialog ref="logDialog" v-model="logDialogOpen" :task="logRow ? { task_id: logRow.live_check_task_id, email: logRow.email, driver: logRow.live_check_mode === 'deep' ? '深度测活' : '快速测活', stage: liveStatusLabel(logRow.live_check_status), ip_label: '测活 IP', registration_ip: logRow.live_check_ip } : undefined" />
   </div>
 </template>
 
@@ -415,13 +414,10 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
 .table-region :deep(.el-pagination) { justify-content: flex-end; border-top: 1px solid var(--workspace-border); }
 .table-region small { color: var(--el-text-color-secondary); }
 .table-region small { display: block; overflow: hidden; margin-top: 2px; text-overflow: ellipsis; white-space: nowrap; }
-.log-dialog-meta { display: flex; align-items: center; gap: 18px; margin-bottom: 8px; color: var(--el-text-color-secondary); font-size: 12px; }
-.log-dialog-meta .el-button { margin-left: auto; }
-.log-dialog-list { height: 520px; overflow: auto; padding: 9px 10px; border: 1px solid var(--workspace-border); border-radius: 4px; background: #101923; color: #dbe7f2; font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; scrollbar-width: thin; scrollbar-color: #577b9d #101923; }
-.log-dialog-list > div { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 10px; padding: 2px 0; white-space: pre-wrap; word-break: break-word; }
-.log-dialog-list small { color: #8ca0b5; }
-.log-error { color: #e78690; }
-.log-warn { color: #d7aa63; }
-.log-success { color: #58c69b; }
-.log-dialog-list em { display: block; color: #91a8bd; font-style: normal; font-size: 11px; }
+.failure-cell { display: grid; min-width: 0; line-height: 16px; }
+.failure-cell strong, .failure-cell span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.failure-cell strong { color: var(--el-color-danger); font-size: 12px; font-weight: 650; }
+.failure-cell code { margin-left: 5px; color: var(--el-text-color-secondary); font-size: 10px; }
+.failure-cell span { color: var(--el-text-color-regular); font-size: 11px; }
+.failure-tooltip { display: grid; max-width: 520px; gap: 4px; line-height: 18px; }
 </style>

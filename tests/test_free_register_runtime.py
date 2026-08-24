@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -130,6 +131,79 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertIn("free-batch-bd402220-1", row["message"])
         self.assertNotIn("123456", row["message"])
 
+    def test_free_logs_backfill_node_label_for_two_part_prefix(self):
+        logs = FreeLogStore(self.data_dir)
+        logs.add("[free-batch-1/free_oauth_session] 开始", "info")
+
+        row = logs.snapshot("free-batch-1")[0]
+        self.assertEqual(row["node_code"], "free_oauth_session")
+        self.assertEqual(row["node_label"], "Free OAuth 会话")
+        self.assertEqual(row["stage_label"], "Free OAuth 会话")
+
+    def test_free_logs_write_uniform_context_defaults(self):
+        logs = FreeLogStore(self.data_dir)
+        logs.add("普通阶段日志", "info")
+
+        row = logs.snapshot()[0]
+        for field in FreeLogStore.REQUIRED_FIELDS:
+            self.assertIn(field, row)
+        self.assertTrue(row["time"])
+        self.assertEqual(row["level"], "info")
+        self.assertEqual(row["task_id"], "")
+        self.assertEqual(row["node_code"], "")
+        self.assertEqual(row["node_label"], "")
+        self.assertIsNone(row["attempt"])
+        self.assertIsNone(row["duration_ms"])
+        self.assertEqual(row["page_type"], "")
+        self.assertEqual(row["safe_page"], "")
+        self.assertIsNone(row["http_status"])
+        self.assertEqual(row["provider_code"], "")
+        self.assertEqual(row["outcome"], "")
+        self.assertEqual(row["diagnostic"], "")
+        self.assertEqual(row["action_hint"], "")
+        self.assertEqual(row["result"], "")
+
+    def test_free_logs_migrate_legacy_rows_and_drop_unknown_secrets(self):
+        logs = FreeLogStore(self.data_dir)
+        logs.path.parent.mkdir(parents=True, exist_ok=True)
+        logs.path.write_text(
+            json.dumps([{
+                "time": "2026-08-24T01:02:03+00:00",
+                "level": "error",
+                "message": "password=legacy-password token=legacy-token",
+                "task_id": "free-legacy-1",
+                "stage": "free_oauth_session",
+                "stage_label": "Free OAuth 会话",
+                "page": "https://auth.openai.com/login?state=private",
+                "http_status": "502",
+                "token": "unknown-secret-must-drop",
+                "time": "password=legacy-time-secret",
+            }], ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        rows = logs.snapshot("free-legacy-1")
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        for field in FreeLogStore.REQUIRED_FIELDS:
+            self.assertIn(field, row)
+        self.assertEqual(row["node_code"], "free_oauth_session")
+        self.assertEqual(row["node_label"], "Free OAuth 会话")
+        self.assertEqual(row["safe_page"], "https://auth.openai.com/login")
+        self.assertEqual(row["http_status"], 502)
+        self.assertIsNone(row["attempt"])
+        self.assertNotIn("legacy-password", str(row))
+        self.assertNotIn("legacy-token", str(row))
+        self.assertNotIn("unknown-secret-must-drop", str(row))
+        self.assertNotIn("legacy-time-secret", str(row))
+
+        persisted = json.loads(logs.path.read_text(encoding="utf-8"))
+        self.assertEqual(len(persisted), 1)
+        for field in FreeLogStore.REQUIRED_FIELDS:
+            self.assertIn(field, persisted[0])
+        self.assertNotIn("token", persisted[0])
+        self.assertNotIn("legacy-password", logs.path.read_text(encoding="utf-8"))
+
     def test_free_pool_import_appends_and_deduplicates_existing_rows(self):
         pool = FreeMailboxPool(self.data_dir)
         pool.import_text("first@example.test----https://mail.example.test/a\n")
@@ -164,45 +238,78 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual([row.email for row in pool.entries()], ["second@example.test"])
         self.assertTrue(pool.result(first.row_id))
 
-    def test_proxy_binding_rejects_duplicate_exit_ip_before_tasks_start(self):
+    def test_proxy_binding_allows_shared_exit_ip_before_tasks_start(self):
         proxies = FreeProxyPool(self.data_dir)
         proxies.import_text("http://proxy-a.test:8000\nhttp://proxy-b.test:8000\n")
 
-        with self.assertRaisesRegex(FreeRegisterError, "一号一 IP"):
+        bindings = proxies.bind(2, probe=lambda _proxy, _url: "203.0.113.10")
+        self.assertEqual(len(bindings), 2)
+        self.assertEqual({binding.exit_ip for binding in bindings}, {"203.0.113.10"})
+
+    def test_proxy_lease_supports_multiple_tasks_and_independent_release(self):
+        proxies = StructuredFreeProxyPool(self.data_dir)
+        proxies.import_text("http://proxy-a.test:8000\n")
+        first, second = proxies.bind(2, probe=lambda _proxy, _url: "203.0.113.10")
+        proxies.lease(first, owner="task-a", batch_id="batch-a", task_id="task-a")
+        proxies.lease(second, owner="task-b", batch_id="batch-a", task_id="task-b")
+        self.assertEqual(proxies.public()["rows"][0]["active_lease_count"], 2)
+        self.assertEqual(proxies.public()["groups"][0]["leased"], 2)
+        self.assertEqual(proxies.public()["groups"][0]["available"], 1)
+        proxies.release(first, owner="task-a")
+        self.assertEqual(proxies.public()["rows"][0]["active_lease_count"], 1)
+        proxies.release(second, owner="task-b")
+        self.assertEqual(proxies.public()["rows"][0]["active_lease_count"], 0)
+
+    def test_exclusive_proxy_mode_excludes_active_proxy_and_rejects_second_lease(self):
+        proxies = StructuredFreeProxyPool(self.data_dir)
+        proxies.configure_policy(allocation_mode="exclusive")
+        proxies.import_text("http://proxy-a.test:8000\n")
+        binding = proxies.bind(1, probe=lambda _proxy, _url: "203.0.113.20")[0]
+        proxies.lease(binding, owner="task-a", batch_id="batch-a", task_id="task-a")
+        with self.assertRaisesRegex(FreeRegisterError, "没有符合条件"):
+            proxies.bind(1, probe=lambda _proxy, _url: "203.0.113.20")
+        with self.assertRaisesRegex(FreeRegisterError, "已被其他"):
+            proxies.lease(binding, owner="task-b", batch_id="batch-b", task_id="task-b")
+        self.assertEqual(proxies.public()["groups"][0]["available"], 0)
+
+    def test_exclusive_proxy_mode_rejects_an_active_exit_ip_on_another_proxy(self):
+        proxies = StructuredFreeProxyPool(self.data_dir)
+        proxies.configure_policy(allocation_mode="exclusive")
+        proxies.import_text("http://proxy-a.test:8000\nhttp://proxy-b.test:8000\n")
+        first = proxies.bind(
+            1,
+            content="http://proxy-a.test:8000\n",
+            probe=lambda _proxy, _url: "203.0.113.21",
+        )[0]
+        proxies.lease(first, owner="task-a", batch_id="batch-a", task_id="task-a")
+        with self.assertRaisesRegex(FreeRegisterError, "出口 IP 数量不足"):
             proxies.bind(
-                2,
-                probe=lambda _proxy, _url: "203.0.113.10",
+                1,
+                content="http://proxy-b.test:8000\n",
+                probe=lambda _proxy, _url: "203.0.113.21",
             )
 
-    def test_proxy_lease_is_owned_by_task_and_excludes_active_exit_ips(self):
-        proxies = StructuredFreeProxyPool(self.data_dir)
-        proxies.import_text("http://proxy-a.test:8000\nhttp://proxy-b.test:8000\n")
-        bindings = proxies.bind(
-            2,
-            probe=lambda proxy, _url: "203.0.113.10" if "proxy-a" in proxy else "203.0.113.11",
-        )
-        first, second = bindings
-        proxies.lease(first, owner="task-a", batch_id="batch-a", task_id="task-a")
-        with self.assertRaisesRegex(FreeRegisterError, "同批次其他"):
-            proxies.lease(first, owner="task-b", batch_id="batch-a", task_id="task-b")
-        replacement = proxies.bind(
-            1,
-            probe=lambda proxy, _url: "203.0.113.10" if "proxy-a" in proxy else "203.0.113.11",
-            exclude_exit_ips=[first.exit_ip],
-        )
-        self.assertEqual(replacement[0].proxy_id, second.proxy_id)
-
-    def test_pasted_proxy_content_cannot_bypass_active_lease(self):
+    def test_pasted_proxy_content_remains_available_during_active_lease(self):
         proxies = StructuredFreeProxyPool(self.data_dir)
         proxies.import_text("http://proxy-a.test:8000\n")
         binding = proxies.bind(1, probe=lambda _proxy, _url: "203.0.113.12")[0]
         proxies.lease(binding, owner="task-a", batch_id="batch-a", task_id="task-a")
-        with self.assertRaisesRegex(FreeRegisterError, "代理数量不足"):
-            proxies.bind(
-                1,
-                content="http://proxy-a.test:8000\n",
-                probe=lambda _proxy, _url: "203.0.113.12",
-            )
+        rebound = proxies.bind(
+            1,
+            content="http://proxy-a.test:8000\n",
+            probe=lambda _proxy, _url: "203.0.113.12",
+        )
+        self.assertEqual(rebound[0].proxy_id, binding.proxy_id)
+
+    def test_pasted_single_proxy_can_bind_multiple_tasks_with_replacement(self):
+        proxies = StructuredFreeProxyPool(self.data_dir)
+        bindings = proxies.bind(
+            3,
+            content="socks5://user:pass@proxy-a.test:8000\n",
+            probe=lambda proxy, _url: "203.0.113.13" if proxy.startswith("socks5h://") else "",
+        )
+        self.assertEqual(len(bindings), 3)
+        self.assertEqual({binding.proxy for binding in bindings}, {"socks5h://user:pass@proxy-a.test:8000"})
 
     def test_free_state_and_preflight_publish_runtime_and_otp_revisions(self):
         pool = FreeMailboxPool(self.data_dir)
@@ -213,8 +320,55 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=lambda *_args, **_kwargs: {},
             proxy_probe=lambda _proxy, _url: "203.0.113.20",
         )
-        self.assertEqual(manager.public_state()["runtime_version"], "1.6.44")
+        self.assertEqual(manager.public_state()["runtime_version"], "1.6.48")
         self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v4-roxy-otp-v2")
+
+    def test_manager_preflight_applies_proxy_allocation_mode_from_config(self):
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("a@example.test----https://mail.example.test/pickup\n")
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=lambda *_args, **_kwargs: {},
+            proxy_probe=lambda _proxy, _url: "203.0.113.20",
+        )
+
+        with patch.object(manager.proxies, "configure_policy", wraps=manager.proxies.configure_policy) as configure:
+            manager.preflight(
+                {
+                    "driver": "protocol",
+                    "target_count": 1,
+                    "proxy_allocation_mode": "exclusive",
+                },
+                proxy_content="http://proxy-a.test:8000\n",
+            )
+
+        self.assertEqual(manager.proxies.allocation_mode, "exclusive")
+        self.assertEqual(configure.call_args.kwargs["allocation_mode"], "exclusive")
+
+    def test_manager_clamps_free_target_count_to_one_through_two_hundred(self):
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("\n".join(
+            f"account-{index}@example.test----https://mail.example.test/pickup/{index}"
+            for index in range(250)
+        ))
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=lambda *_args, **_kwargs: {},
+            proxy_probe=lambda _proxy, _url: "203.0.113.20",
+        )
+
+        result = manager.preflight(
+            {"driver": "protocol", "target_count": 999},
+            proxy_content="http://proxy-a.test:8000\n",
+        )
+        self.assertEqual(result["target_count"], 200)
+
+        for requested, expected in ((0, 1), (999, 200)):
+            with self.subTest(requested=requested):
+                with patch.object(manager.proxies, "bind", side_effect=RuntimeError("stop-before-dispatch")) as bind:
+                    with self.assertRaisesRegex(RuntimeError, "stop-before-dispatch"):
+                        manager.start({"driver": "protocol", "target_count": requested})
+                self.assertEqual(bind.call_args.args[0], expected)
 
     def test_protocol_start_runs_node_preflight_before_importing_or_leasing(self):
         manager = FreeRegisterManager(self.data_dir)
@@ -318,6 +472,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(FreeRegisterError, r"第 2 条.*Timeout"):
             proxies.bind(
                 2,
+                content="proxy-a.test:8000:user-a:private-a\nproxy-b.test:8000:user-b:private-b\n",
                 probe=lambda proxy, _url: (_ for _ in ()).throw(TimeoutError()) if "proxy-b" in proxy else "203.0.113.10",
             )
 
@@ -349,6 +504,57 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(imported, 1)
         values = proxies.values()
         self.assertEqual(values, ["http://user-a:pass-a@proxy.example.test:3000"])
+
+    def test_proxy_pool_accepts_all_supported_auth_layouts(self):
+        proxies = FreeProxyPool(self.data_dir)
+        imported = proxies.import_text(
+            "socks5://u:p@proxy-a.test:3000\n"
+            "proxy-b.test:3001:u:p\n"
+            "u:p@proxy-c.test:3002\n"
+            "proxy-d.test:3003@u:p\n"
+        )
+        self.assertEqual(imported, 4)
+        self.assertEqual(
+            proxies.values(),
+            [
+                "socks5://u:p@proxy-a.test:3000",
+                "http://u:p@proxy-b.test:3001",
+                "http://u:p@proxy-c.test:3002",
+                "http://u:p@proxy-d.test:3003",
+            ],
+        )
+
+    def test_proxy_transport_maps_socks5_for_protocol_probe_and_roxy(self):
+        from mac_overrides.free_register_common import proxy_transport_value
+
+        value = "socks5://u:p@proxy.test:3000"
+        self.assertEqual(proxy_transport_value(value, driver="protocol"), "socks5h://u:p@proxy.test:3000")
+        self.assertEqual(proxy_transport_value(value, driver="probe"), "socks5h://u:p@proxy.test:3000")
+        self.assertEqual(proxy_transport_value(value, driver="roxybrowser"), value)
+
+    def test_proxy_pool_migrates_legacy_single_lease_to_multi_owner_state(self):
+        path = self.data_dir / "free_proxy_pool.json"
+        path.write_text(json.dumps({
+            "version": 2,
+            "proxies": [{
+                "proxy": "http://proxy.test:3000",
+                "proxy_id": "legacy-id",
+                "host": "proxy.test",
+                "port": 3000,
+                "scheme": "http",
+                "lease_owner": "old-task",
+                "lease_until": time.time() + 300,
+                "lease_batch_id": "old-batch",
+                "lease_task_id": "old-task",
+            }],
+        }), encoding="utf-8")
+        pool = StructuredFreeProxyPool(self.data_dir)
+        binding = pool.bind(1, probe=lambda _proxy, _url: "203.0.113.90")[0]
+        pool.lease(binding, owner="new-task", batch_id="new-batch", task_id="new-task")
+        persisted = json.loads(path.read_text(encoding="utf-8"))
+        row = persisted["proxies"][0]
+        self.assertEqual(persisted["version"], 3)
+        self.assertEqual({lease["owner"] for lease in row["leases"]}, {"old-task", "new-task"})
 
     def test_proxy_pool_protocolless_rows_follow_autoregister_http_rule(self):
         proxies = FreeProxyPool(self.data_dir)
@@ -575,13 +781,14 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             self.data_dir,
             proxy_probe=lambda proxy, _url: "203.0.113.50" if "proxy-region-US" in proxy else "203.0.113.51",
         )
-        with self.assertRaisesRegex(FreeRegisterError, "代理数量不足"):
-            manager.preflight_proxies(
-                proxy_content="socks4://proxy-region-US.example:3000\nsocks5://proxy-region-US.example:3001\n",
-                driver="roxybrowser",
-                country="US",
-                group="住宅 A",
-            )
+        shared = manager.preflight_proxies(
+            proxy_content="socks4://proxy-region-US.example:3000\nsocks5://proxy-region-US.example:3001\n",
+            driver="roxybrowser",
+            country="US",
+            group="住宅 A",
+        )
+        self.assertEqual(shared["proxies"], 2)
+        self.assertEqual(shared["exit_ips"], 1)
         result = manager.preflight_proxies(
             proxy_content="socks5://proxy-region-US.example:3001\n",
             driver="roxybrowser",
@@ -695,10 +902,8 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             time.sleep(0.01)
 
         self.assertFalse(manager.public_state()["running"])
-        self.assertEqual({row[1]: row[2] for row in seen}, {
-            "a@example.test": "http://proxy-a.test:8000",
-            "b@example.test": "http://proxy-b.test:8000",
-        })
+        self.assertEqual({row[1] for row in seen}, {"a@example.test", "b@example.test"})
+        self.assertTrue({row[2] for row in seen} <= {"http://proxy-a.test:8000", "http://proxy-b.test:8000"})
         self.assertEqual({row[0] for row in seen}, {1, 2})
         public = manager.public_tasks()
         self.assertTrue(all("token-" not in str(row) for row in public))
@@ -737,6 +942,36 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(mailbox["proxy_masked"], "")
         self.assertEqual(manager.public_state()["pool"]["available"], 1)
         self.assertTrue(any(row["stage"] == "free_mailbox_released" for row in manager.public_logs(task["task_id"])))
+
+    def test_non_network_roxy_failure_never_switches_registration_proxy(self):
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("a@example.test----https://mail.example.test/a\n")
+        FreeProxyPool(self.data_dir).import_text(
+            "http://proxy-a.test:8000\nhttp://proxy-b.test:8000\n"
+        )
+        attempts = []
+
+        def runner(task, _config, _stop, _stage, _log, *, twofa_retry=False):
+            attempts.append(task["proxy_id"])
+            raise FreeRegisterError(
+                "free_roxy_connect", "连接 RoxyBrowser", "缺少 Roxy ChromeDriver 路径",
+                error_code="free_roxy_driver_unavailable",
+            )
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda proxy, _url: "203.0.113." + ("20" if "proxy-a" in proxy else "21"),
+        )
+        manager.start({"driver": "roxybrowser", "target_count": 1, "proxy_retry_count": 3})
+        deadline = time.time() + 3
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.01)
+
+        self.assertEqual(len(attempts), 1)
+        task = manager.public_tasks()[0]
+        self.assertEqual(task["failure"]["error_code"], "free_roxy_driver_unavailable")
+        self.assertFalse(any(row.get("outcome") == "switched" for row in task["proxy_attempts"]))
 
     def test_failure_after_email_submission_does_not_restore_mailbox(self):
         pool = FreeMailboxPool(self.data_dir)
@@ -997,6 +1232,44 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertNotIn("token-private", str(result))
         self.assertEqual(manager.secret([result["task_id"]], "token"), "token-private")
 
+    def test_failed_existing_account_twofa_retry_does_not_invent_password(self):
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("existing@example.test----https://mail.example.test/a\n")
+        FreeProxyPool(self.data_dir).import_text("http://proxy-a.test:8000\n")
+
+        def runner(_task, _config, _stop, _stage, _log, *, twofa_retry=False):
+            if not twofa_retry:
+                return {
+                    "access_token": "token-private", "account_flow": "existing_login",
+                    "twofa_status": "pending",
+                }
+            raise FreeTwoFaPending(
+                "activate timeout", token="fresh-token", plan_type="free",
+                plus_trial_eligible=False,
+            )
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.22",
+        )
+        manager.start({"target_count": 1})
+        deadline = time.time() + 3
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.01)
+        manager.retry_twofa(manager.public_tasks()[0]["task_id"], {})
+        deadline = time.time() + 3
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.01)
+
+        task = manager.public_tasks()[0]
+        self.assertFalse(task["result"]["has_password"])
+        self.assertEqual(manager.secret([task["task_id"]], "password"), "")
+        saved = manager.task_store.load()[task["task_id"]]["result"]
+        self.assertNotIn("password", saved)
+        self.assertEqual(saved["access_token"], "fresh-token")
+        self.assertEqual(saved["twofa_failure"], saved["failure"])
+
     def test_proxy_secret_can_be_read_from_private_pool_state_before_result(self):
         pool = FreeMailboxPool(self.data_dir)
         pool.import_text("a@example.test----https://mail.example.test/a\n")
@@ -1028,6 +1301,16 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         serialized = str(logs)
         for secret in ("mail-private", "user:pass", "token-private", "123456"):
             self.assertNotIn(secret, serialized)
+
+    def test_legacy_log_callback_hides_mailbox_url_path(self):
+        logs = []
+        manager = FreeRegisterManager(self.data_dir, log_fn=lambda message, level: logs.append((message, level)))
+        manager._log("邮箱取件失败：https://mail.test/inbox/tenant/private-message?token=mail-private")
+
+        serialized = str(logs)
+        self.assertNotIn("/inbox/tenant/private-message", serialized)
+        self.assertNotIn("mail-private", serialized)
+        self.assertIn("https://mail.test/[路径已隐藏]", serialized)
 
 
 if __name__ == "__main__":

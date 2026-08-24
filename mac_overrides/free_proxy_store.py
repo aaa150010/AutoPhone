@@ -13,6 +13,7 @@ import ipaddress
 import json
 import os
 from pathlib import Path
+import random
 import re
 import threading
 import time
@@ -29,7 +30,9 @@ try:
         fingerprint,
         mask_proxy,
         normalize_proxy_value,
+        proxy_transport_value,
         proxy_error_detail,
+        safe_log_message,
     )
 except ImportError:
     from free_register_common import (  # type: ignore[no-redef]
@@ -41,12 +44,15 @@ except ImportError:
         fingerprint,
         mask_proxy,
         normalize_proxy_value,
+        proxy_transport_value,
         proxy_error_detail,
+        safe_log_message,
     )
 
 
 SUPPORTED_ROXY_SCHEMES = frozenset({"http", "https", "socks5", "socks5h"})
 PROXY_STATUSES = frozenset({"unknown", "available", "quarantined"})
+PROXY_ALLOCATION_MODES = frozenset({"healthy_random", "exclusive"})
 DEFAULT_PROXY_COUNTRY = "ZZ"
 DEFAULT_PROXY_GROUP = "默认组"
 DEFAULT_PROXY_PROBE_URL = "https://api.ipify.org"
@@ -99,6 +105,8 @@ def _proxy_url(record: Mapping[str, Any]) -> str:
     if scheme not in FREE_PROXY_SCHEMES:
         scheme = DEFAULT_FREE_PROXY_SCHEME
     host = str(record.get("host") or "").strip()
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
     port = int(record.get("port") or 0)
     username = quote(str(record.get("username") or ""), safe="")
     password = quote(str(record.get("password") or ""), safe="")
@@ -246,6 +254,7 @@ def _record_from_url(value: str, *, country: Any, group: Any) -> dict[str, Any] 
         "lease_until": None,
         "lease_batch_id": "",
         "lease_task_id": "",
+        "leases": [],
         "last_checked_at": None,
         "last_exit_ip": "",
         "latency_ms": None,
@@ -301,6 +310,7 @@ class FreeProxyPool:
         self.quarantine_seconds = max(1, int(quarantine_seconds))
         self.proxy_tls_verify = True
         self.proxy_tls_compat_fallback = True
+        self.allocation_mode = "healthy_random"
         self._lock = threading.RLock()
 
     def _load(self) -> list[dict[str, Any]]:
@@ -314,6 +324,12 @@ class FreeProxyPool:
         rows = [self._normalize_record(row) for row in raw_rows if isinstance(row, Mapping)]
         rows = [row for row in rows if row is not None]
         if rows or self.path.exists():
+            try:
+                version = int(payload.get("version") or 0) if isinstance(payload, Mapping) else 0
+            except (TypeError, ValueError):
+                version = 0
+            if rows and version < 3:
+                self._save(rows)
             return rows
         if self.legacy_path.exists():
             try:
@@ -339,6 +355,7 @@ class FreeProxyPool:
         normalized, url_parts = parsed
         username = unquote(str(url_parts.username or value.get("username") or ""))
         password = unquote(str(url_parts.password or value.get("password") or ""))
+        leases = self._normalize_leases(value)
         record = {
             "proxy_id": str(value.get("proxy_id") or fingerprint(_identity(url_parts))),
             "host": str(url_parts.hostname or value.get("host") or ""),
@@ -354,6 +371,7 @@ class FreeProxyPool:
             "lease_until": value.get("lease_until"),
             "lease_batch_id": str(value.get("lease_batch_id") or ""),
             "lease_task_id": str(value.get("lease_task_id") or ""),
+            "leases": leases,
             "last_checked_at": value.get("last_checked_at"),
             "last_exit_ip": str(value.get("last_exit_ip") or ""),
             "latency_ms": value.get("latency_ms"),
@@ -364,17 +382,88 @@ class FreeProxyPool:
             "_identity": _identity(url_parts),
             "_normalized": normalized,
         }
+        self._sync_lease_compat(record)
         return record if record["host"] and record["port"] > 0 else None
+
+    @staticmethod
+    def _normalize_leases(value: Mapping[str, Any]) -> list[dict[str, Any]]:
+        leases: list[dict[str, Any]] = []
+        raw_leases = value.get("leases")
+        if isinstance(raw_leases, list):
+            for raw in raw_leases:
+                if not isinstance(raw, Mapping):
+                    continue
+                owner = str(raw.get("owner") or "").strip()
+                task_id = str(raw.get("task_id") or "").strip()
+                try:
+                    until = float(raw.get("until") or 0)
+                except (TypeError, ValueError):
+                    until = 0
+                if not owner or until <= 0:
+                    continue
+                leases.append({
+                    "owner": owner,
+                    "batch_id": str(raw.get("batch_id") or ""),
+                    "task_id": task_id,
+                    "until": until,
+                })
+        legacy_owner = str(value.get("lease_owner") or "").strip()
+        try:
+            legacy_until = float(value.get("lease_until") or 0)
+        except (TypeError, ValueError):
+            legacy_until = 0
+        if legacy_owner and legacy_until > 0 and not any(lease["owner"] == legacy_owner for lease in leases):
+            leases.append({
+                "owner": legacy_owner,
+                "batch_id": str(value.get("lease_batch_id") or ""),
+                "task_id": str(value.get("lease_task_id") or ""),
+                "until": legacy_until,
+            })
+        return leases
+
+    @staticmethod
+    def _active_leases(row: Mapping[str, Any], now: float | None = None) -> list[dict[str, Any]]:
+        current_time = time.time() if now is None else now
+        values = row.get("leases")
+        if not isinstance(values, list):
+            return []
+        active = []
+        for lease in values:
+            if not isinstance(lease, Mapping):
+                continue
+            try:
+                valid = bool(lease.get("owner")) and float(lease.get("until") or 0) > current_time
+            except (TypeError, ValueError):
+                valid = False
+            if valid:
+                active.append(dict(lease))
+        return active
+
+    @classmethod
+    def _sync_lease_compat(cls, row: dict[str, Any], now: float | None = None) -> None:
+        active = cls._active_leases(row, now)
+        row["leases"] = active
+        if active:
+            latest = max(active, key=lambda lease: float(lease.get("until") or 0))
+            row.update({
+                "lease_owner": str(latest.get("owner") or ""),
+                "lease_until": float(latest.get("until") or 0),
+                "lease_batch_id": str(latest.get("batch_id") or ""),
+                "lease_task_id": str(latest.get("task_id") or ""),
+            })
+        else:
+            row.update({"lease_owner": "", "lease_until": None, "lease_batch_id": "", "lease_task_id": ""})
 
     def _save(self, rows: Iterable[Mapping[str, Any]]) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         payload = []
         for row in rows:
             value = dict(row)
+            self._sync_lease_compat(value)
             value.pop("_identity", None)
             value.pop("_normalized", None)
             payload.append(value)
-        atomic_write(self.path, {"version": 2, "proxies": payload})
+        atomic_write(self.path, {"version": 3, "proxies": payload})
 
     def _parse_lines(self, content: str, *, country: Any, group: Any, scheme: str) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
@@ -436,6 +525,7 @@ class FreeProxyPool:
         quarantine_seconds: int | None = None,
         tls_verify: bool | None = None,
         tls_compat_fallback: bool | None = None,
+        allocation_mode: str | None = None,
     ) -> None:
         self.failure_threshold = max(1, int(failure_threshold or self.failure_threshold))
         self.quarantine_seconds = max(1, int(quarantine_seconds or self.quarantine_seconds))
@@ -443,6 +533,9 @@ class FreeProxyPool:
             self.proxy_tls_verify = bool(tls_verify)
         if tls_compat_fallback is not None:
             self.proxy_tls_compat_fallback = bool(tls_compat_fallback)
+        if allocation_mode is not None:
+            selected_mode = str(allocation_mode or "").strip().lower()
+            self.allocation_mode = selected_mode if selected_mode in PROXY_ALLOCATION_MODES else "healthy_random"
 
     def _quarantine_expired(self, row: Mapping[str, Any], now: float | None = None) -> bool:
         until = row.get("quarantined_until")
@@ -465,13 +558,8 @@ class FreeProxyPool:
                 continue
             if row.get("status") == "quarantined" and not self._quarantine_expired(row, current_time):
                 continue
-            lease_until = row.get("lease_until")
-            if row.get("lease_owner") and lease_until is not None:
-                try:
-                    if float(lease_until) > current_time:
-                        continue
-                except (TypeError, ValueError):
-                    pass
+            if self.allocation_mode == "exclusive" and self._active_leases(row, current_time):
+                continue
             if driver == "roxybrowser" and str(row.get("scheme") or "").lower() not in SUPPORTED_ROXY_SCHEMES:
                 continue
             rows.append(row)
@@ -500,23 +588,29 @@ class FreeProxyPool:
             rows = self._load()
             return {
                 "count": len(rows),
+                "allocation_mode": self.allocation_mode,
                 "rows": [self._public_row(row, index) for index, row in enumerate(rows, 1)],
                 "groups": self.group_summaries(),
                 "countries": self.country_summaries(),
             }
 
     def _public_row(self, row: Mapping[str, Any], index: int | None = None) -> dict[str, Any]:
+        leases = self._active_leases(row)
+        configured_scheme = str(row.get("scheme") or self.default_scheme)
         value = {
             "proxy_id": row.get("proxy_id", ""),
             "index": index,
             "masked": mask_proxy(_proxy_url(row)),
             "fingerprint": str(row.get("proxy_id") or ""),
-            "scheme": row.get("scheme", ""),
+            "scheme": configured_scheme,
+            "protocol_scheme": "socks5h" if configured_scheme == "socks5" else configured_scheme,
+            "roxy_scheme": "SOCKS5" if configured_scheme in {"socks5", "socks5h"} else configured_scheme.upper() if configured_scheme in {"http", "https"} else "",
             "country": row.get("country", DEFAULT_PROXY_COUNTRY),
             "group": row.get("group", DEFAULT_PROXY_GROUP),
             "enabled": bool(row.get("enabled", True)),
             "status": row.get("status", "unknown"),
-            "lease_until": row.get("lease_until"),
+            "lease_until": max((float(lease.get("until") or 0) for lease in leases), default=None),
+            "active_lease_count": len(leases),
             "last_checked_at": row.get("last_checked_at"),
             "last_exit_ip": row.get("last_exit_ip", ""),
             "latency_ms": row.get("latency_ms"),
@@ -531,22 +625,17 @@ class FreeProxyPool:
         now = time.time()
         for row in rows:
             key = (str(row.get("country") or DEFAULT_PROXY_COUNTRY), normalize_group(row.get("group")))
-            current = grouped.setdefault(key, {"country": key[0], "group": key[1], "total": 0, "enabled": 0, "available": 0, "leased": 0, "quarantined": 0, "schemes": set()})
+            current = grouped.setdefault(key, {"country": key[0], "group": key[1], "total": 0, "enabled": 0, "available": 0, "leased": 0, "leased_proxies": 0, "quarantined": 0, "schemes": set()})
             current["total"] += 1
             current["enabled"] += int(bool(row.get("enabled")))
-            leased = False
-            if row.get("lease_owner") and row.get("lease_until") is not None:
-                try:
-                    leased = float(row["lease_until"]) > now
-                except (TypeError, ValueError):
-                    pass
-            if leased:
-                current["leased"] += 1
-            elif row.get("status") == "quarantined" and not self._quarantine_expired(row, now):
+            active_leases = self._active_leases(row, now)
+            current["leased"] += len(active_leases)
+            current["leased_proxies"] += int(bool(active_leases))
+            if row.get("status") == "quarantined" and not self._quarantine_expired(row, now):
                 current["quarantined"] += 1
-            elif row.get("enabled"):
-                # "available" is a dispatch count, so an active lease is not
-                # reported as available even though the row remains enabled.
+            elif row.get("enabled") and (self.allocation_mode != "exclusive" or not active_leases):
+                # Shared allocation keeps a healthy proxy dispatchable while
+                # another task owns a separate lease for the same resource.
                 current["available"] += 1
             current["schemes"].add(str(row.get("scheme") or self.default_scheme))
         return [
@@ -557,8 +646,8 @@ class FreeProxyPool:
     def country_summaries(self) -> list[dict[str, Any]]:
         grouped: dict[str, dict[str, int]] = {}
         for value in self.group_summaries():
-            current = grouped.setdefault(value["country"], {"total": 0, "enabled": 0, "available": 0, "quarantined": 0, "leased": 0})
-            for key in ("total", "enabled", "available", "quarantined", "leased"):
+            current = grouped.setdefault(value["country"], {"total": 0, "enabled": 0, "available": 0, "quarantined": 0, "leased": 0, "leased_proxies": 0})
+            for key in ("total", "enabled", "available", "quarantined", "leased", "leased_proxies"):
                 current[key] += int(value[key])
         return [{"country": country, **values} for country, values in sorted(grouped.items())]
 
@@ -567,8 +656,11 @@ class FreeProxyPool:
         from curl_cffi import requests as curl_requests
 
         target = normalize_probe_url(target)
+        transport_proxy = proxy_transport_value(proxy, driver="probe")
+        if not transport_proxy:
+            raise ValueError("代理格式无效")
         session = curl_requests.Session(impersonate="chrome", verify=bool(verify))
-        session.proxies = {"http": proxy, "https": proxy}
+        session.proxies = {"http": transport_proxy, "https": transport_proxy}
         if hasattr(session, "trust_env"):
             session.trust_env = False
         with _without_proxy_environment():
@@ -618,19 +710,14 @@ class FreeProxyPool:
         exclude_proxy_ids: Iterable[str] = (),
         exclude_exit_ips: Iterable[str] = (),
     ) -> list[ProxyBinding]:
+        requested = max(0, int(count))
+        if requested == 0:
+            return []
         with self._lock:
-            persisted_rows = self._load()
+            inline_content = bool(str(content or "").strip())
             now = time.time()
-            active_rows = []
-            for row in persisted_rows:
-                if not row.get("lease_owner"):
-                    continue
-                try:
-                    active = float(row.get("lease_until") or 0) > now
-                except (TypeError, ValueError):
-                    active = False
-                if active:
-                    active_rows.append(row)
+            persisted_rows = self._load()
+            active_rows = [row for row in persisted_rows if self._active_leases(row, now)]
             active_proxy_ids = {str(row.get("proxy_id") or "") for row in active_rows}
             active_identities = {str(row.get("_identity") or "") for row in active_rows}
             active_exit_ips = {
@@ -638,7 +725,7 @@ class FreeProxyPool:
                 for row in active_rows
                 if str(row.get("last_exit_ip") or "").strip()
             }
-            if str(content or "").strip():
+            if inline_content:
                 values = self._parse_lines(content, country=country or "", group=group or DEFAULT_PROXY_GROUP, scheme=self.default_scheme)
                 selected_country = normalize_country(country) if str(country or "").strip() else None
                 selected_group = normalize_group(group) if str(group or "").strip() else None
@@ -646,63 +733,122 @@ class FreeProxyPool:
                     row for row in values
                     if (not selected_country or row.get("country") == selected_country)
                     and (not selected_group or row.get("group") == selected_group)
-                    and (driver != "roxybrowser" or str(row.get("scheme") or "").lower() in SUPPORTED_ROXY_SCHEMES)
-                    and str(row.get("proxy_id") or "") not in active_proxy_ids
-                    and str(row.get("_identity") or "") not in active_identities
                 ]
             else:
-                values = self._eligible(country=country, group=group, driver=driver)
+                # Keep unsupported-but-otherwise-healthy candidates long
+                # enough to report an exact Roxy protocol error.
+                values = self._eligible(country=country, group=group, driver="protocol")
             excluded = {str(value) for value in exclude_proxy_ids if str(value)}
+            if self.allocation_mode == "exclusive":
+                excluded.update(active_proxy_ids)
+                values = [row for row in values if str(row.get("_identity") or "") not in active_identities]
             if excluded:
                 values = [row for row in values if str(row.get("proxy_id") or "") not in excluded]
-            if len(values) < count:
-                raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", f"Free 代理数量不足：需要 {count} 个，当前只有 {len(values)} 个", retryable=False)
-            identities = [str(value.get("_identity") or value.get("proxy_id")) for value in values]
-            if len(set(identities)) != len(identities):
-                raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", "代理池包含重复代理，无法建立一号一代理绑定", retryable=False)
+            if driver == "roxybrowser":
+                roxy_values = [
+                    row for row in values
+                    if str(row.get("scheme") or "").lower() in SUPPORTED_ROXY_SCHEMES
+                ]
+                if not roxy_values and values and all(
+                    str(row.get("scheme") or "").lower() == "socks4" for row in values
+                ):
+                    raise FreeRegisterError(
+                        "free_roxy_proxy", "配置 RoxyBrowser 代理",
+                        "RoxyBrowser 不支持 SOCKS4；请为 RoxyBrowser 分组提供 HTTP、HTTPS 或 SOCKS5 代理",
+                        retryable=False,
+                        error_code="free_roxy_socks4_unsupported",
+                        provider_code="unsupported_proxy_scheme",
+                        action_hint="将该分组切换为 HTTP、HTTPS、SOCKS5 或 SOCKS5H；SOCKS4 仍可用于纯协议注册",
+                    )
+                values = roxy_values
+            if not values:
+                raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", "当前没有符合条件的健康代理", retryable=False, error_code="free_proxy_pool_empty")
+            if inline_content:
+                if len(values) >= requested:
+                    selected_values = list(values) if self.allocation_mode == "exclusive" else values[:requested]
+                elif self.allocation_mode == "exclusive":
+                    raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", f"独占代理数量不足：需要 {requested} 个，当前只有 {len(values)} 个", retryable=False, error_code="free_proxy_pool_exhausted")
+                else:
+                    source = random.SystemRandom()
+                    selected_values = list(values)
+                    selected_values.extend(source.choice(values) for _ in range(requested - len(values)))
+            else:
+                source = random.SystemRandom()
+                if self.allocation_mode == "exclusive":
+                    if len(values) < requested:
+                        raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", f"独占代理数量不足：需要 {requested} 个，当前只有 {len(values)} 个", retryable=False, error_code="free_proxy_pool_exhausted")
+                    selected_values = list(values)
+                    source.shuffle(selected_values)
+                else:
+                    selected_values = [source.choice(values) for _ in range(requested)]
+        reserved_exit_ips = set()
+        if self.allocation_mode == "exclusive":
+            reserved_exit_ips = {
+                str(value).strip()
+                for value in (*exclude_exit_ips, *active_exit_ips)
+                if str(value).strip()
+            }
         check = probe
         bindings: list[ProxyBinding] = []
-        exit_ips = {
-            str(value).strip()
-            for value in (*exclude_exit_ips, *active_exit_ips)
-            if str(value).strip()
-        }
-        conflicting_exit_ips = 0
-        for index, record in enumerate(values, 1):
-            proxy = _proxy_url(record)
-            started = time.monotonic()
-            try:
-                if check is None:
-                    exit_ip, probe_mode = self._probe_with_policy(proxy, probe_url)
-                else:
-                    exit_ip, probe_mode = str(check(proxy, probe_url)).strip(), "custom"
-                exit_ip = str(exit_ip).strip()
-                if not exit_ip:
-                    raise ValueError("出口 IP 为空")
-            except FreeRegisterError:
-                raise
-            except Exception as exc:
-                if not str(content or "").strip():
-                    self.record_failure(str(record.get("proxy_id") or ""), node_code="free_proxy_preflight", message=proxy_error_detail(exc))
-                raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", f"代理池第 {index} 条出口 IP 检测失败：{proxy_error_detail(exc)}") from exc
-            if exit_ip in exit_ips:
-                conflicting_exit_ips += 1
-                continue
-            if not str(content or "").strip():
+        checked: dict[str, tuple[str, str, int]] = {}
+        for index, record in enumerate(selected_values, 1):
+            configured_proxy = _proxy_url(record)
+            transport_proxy = proxy_transport_value(configured_proxy, driver=driver)
+            if not transport_proxy:
+                raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", f"代理池第 {index} 条格式无效", retryable=False)
+            cache_key = str(record.get("proxy_id") or record.get("_identity") or transport_proxy)
+            cached = checked.get(cache_key)
+            if cached is None:
+                started = time.monotonic()
+                try:
+                    if check is None:
+                        exit_ip, probe_mode = self._probe_with_policy(transport_proxy, probe_url)
+                    else:
+                        exit_ip, probe_mode = str(check(transport_proxy, probe_url)).strip(), "custom"
+                    exit_ip = str(exit_ip).strip()
+                    if not exit_ip:
+                        raise ValueError("出口 IP 为空")
+                except FreeRegisterError:
+                    raise
+                except Exception as exc:
+                    if not inline_content:
+                        self.record_failure(str(record.get("proxy_id") or ""), node_code="free_proxy_preflight", message=proxy_error_detail(exc))
+                    raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", f"代理池第 {index} 条出口 IP 检测失败：{proxy_error_detail(exc)}") from exc
+                latency_ms = int((time.monotonic() - started) * 1000)
+                checked[cache_key] = (exit_ip, probe_mode, latency_ms)
+            else:
+                exit_ip, probe_mode, latency_ms = cached
+            if not inline_content and cached is None:
                 self.record_success(
                     str(record.get("proxy_id") or ""),
                     exit_ip=exit_ip,
-                    latency_ms=int((time.monotonic() - started) * 1000),
+                    latency_ms=latency_ms,
                     probe_mode=probe_mode,
                 )
-            bindings.append(ProxyBinding(proxy, str(record.get("proxy_id") or fingerprint(proxy)), mask_proxy(proxy), exit_ip, proxy_id=str(record.get("proxy_id") or ""), scheme=str(record.get("scheme") or self.default_scheme), country=str(record.get("country") or DEFAULT_PROXY_COUNTRY), group=str(record.get("group") or DEFAULT_PROXY_GROUP)))
-            exit_ips.add(exit_ip)
-            if len(bindings) >= count:
-                return bindings
-        if conflicting_exit_ips:
-            raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", "代理出口 IP 与运行中 Free 任务重复，无法建立一号一 IP 绑定", retryable=False, error_code="free_proxy_exit_ip_conflict")
-        if len(bindings) < count:
-            raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", "可用代理不足，无法建立一号一 IP 绑定", retryable=False, error_code="free_proxy_pool_exhausted")
+            if self.allocation_mode == "exclusive" and exit_ip in reserved_exit_ips:
+                continue
+            transport_scheme = urlsplit(transport_proxy).scheme.lower()
+            bindings.append(ProxyBinding(
+                transport_proxy,
+                str(record.get("proxy_id") or fingerprint(configured_proxy)),
+                mask_proxy(transport_proxy),
+                exit_ip,
+                proxy_id=str(record.get("proxy_id") or ""),
+                scheme=transport_scheme,
+                country=str(record.get("country") or DEFAULT_PROXY_COUNTRY),
+                group=str(record.get("group") or DEFAULT_PROXY_GROUP),
+            ))
+            reserved_exit_ips.add(exit_ip)
+            if len(bindings) >= requested:
+                break
+        if len(bindings) < requested:
+            raise FreeRegisterError(
+                "free_proxy_preflight",
+                "Free 代理预检",
+                f"独占代理或出口 IP 数量不足：需要 {requested} 个，当前只有 {len(bindings)} 个",
+                retryable=False,
+                error_code="free_proxy_exit_ip_conflict",
+            )
         return bindings
 
     def verify(self, binding: ProxyBinding, *, probe: Callable[[str, str], str] | None = None, probe_url: str = "https://api.ipify.org") -> str:
@@ -723,32 +869,40 @@ class FreeProxyPool:
     def lease(self, binding: ProxyBinding, *, owner: str, batch_id: str, task_id: str, lease_seconds: int = 180) -> None:
         with self._lock:
             rows = self._load()
-            target = next((row for row in rows if str(row.get("proxy_id")) == str(binding.proxy_id) or row.get("_normalized") == binding.proxy), None)
+            target = next((
+                row for row in rows
+                if str(row.get("proxy_id")) == str(binding.proxy_id)
+                or row.get("_normalized") == binding.proxy
+                or proxy_transport_value(str(row.get("_normalized") or ""), driver="protocol") == str(binding.proxy)
+            ), None)
             if target is None:
                 raise FreeRegisterError("free_proxy_lease", "租用 Free 代理", "固定代理已不存在", retryable=False)
             now = time.time()
-            active_lease = bool(target.get("lease_owner") and float(target.get("lease_until") or 0) > now)
-            if active_lease and target.get("lease_owner") != owner:
-                existing_batch = str(target.get("lease_batch_id") or "")
-                existing_task = str(target.get("lease_task_id") or "")
-                if existing_batch and existing_batch == str(batch_id) and existing_task and existing_task != str(task_id):
-                    raise FreeRegisterError(
-                        "free_proxy_lease",
-                        "租用 Free 代理",
-                        "代理已被同批次其他 Free 任务租用",
-                        retryable=False,
-                        error_code="free_proxy_batch_lease_conflict",
-                    )
-                raise FreeRegisterError("free_proxy_lease", "租用 Free 代理", "代理已被其他 Free 任务租用", retryable=False, error_code="free_proxy_lease_conflict")
-            if active_lease and target.get("lease_task_id") not in {"", str(task_id)}:
-                raise FreeRegisterError(
-                    "free_proxy_lease",
-                    "租用 Free 代理",
-                    "代理已被同批次其他 Free 任务租用",
-                    retryable=False,
-                    error_code="free_proxy_batch_lease_conflict",
+            active = [lease for lease in self._active_leases(target, now) if str(lease.get("owner") or "") != str(owner)]
+            if self.allocation_mode == "exclusive":
+                conflicting_proxy = bool(active)
+                conflicting_exit = any(
+                    row is not target
+                    and self._active_leases(row, now)
+                    and str(row.get("last_exit_ip") or "").strip()
+                    and str(row.get("last_exit_ip") or "").strip() == str(binding.exit_ip or "").strip()
+                    for row in rows
                 )
-            target.update({"lease_owner": owner, "lease_until": now + max(30, int(lease_seconds)), "lease_batch_id": batch_id, "lease_task_id": task_id})
+                if conflicting_proxy or conflicting_exit:
+                    raise FreeRegisterError(
+                        "free_proxy_lease", "租用 Free 代理", "独占代理或出口 IP 已被其他 Free 任务租用",
+                        retryable=False, error_code="free_proxy_lease_conflict",
+                    )
+            active.append({
+                "owner": str(owner),
+                "batch_id": str(batch_id),
+                "task_id": str(task_id),
+                "until": now + max(30, int(lease_seconds)),
+            })
+            if str(binding.exit_ip or "").strip():
+                target["last_exit_ip"] = str(binding.exit_ip).strip()
+            target["leases"] = active
+            self._sync_lease_compat(target, now)
             self._save(rows)
 
     def heartbeat(self, owner: str, *, lease_seconds: int = 180) -> None:
@@ -757,8 +911,15 @@ class FreeProxyPool:
             changed = False
             until = time.time() + max(30, int(lease_seconds))
             for row in rows:
-                if row.get("lease_owner") == owner:
-                    row["lease_until"] = until
+                active = self._active_leases(row)
+                matched = False
+                for lease in active:
+                    if str(lease.get("owner") or "") == str(owner):
+                        lease["until"] = until
+                        matched = True
+                if matched:
+                    row["leases"] = active
+                    self._sync_lease_compat(row)
                     changed = True
             if changed:
                 self._save(rows)
@@ -770,8 +931,15 @@ class FreeProxyPool:
             changed = False
             until = time.time() + max(30, int(lease_seconds))
             for row in rows:
-                if str(row.get("lease_batch_id") or "") == str(batch_id):
-                    row["lease_until"] = until
+                active = self._active_leases(row)
+                matched = False
+                for lease in active:
+                    if str(lease.get("batch_id") or "") == str(batch_id):
+                        lease["until"] = until
+                        matched = True
+                if matched:
+                    row["leases"] = active
+                    self._sync_lease_compat(row)
                     changed = True
             if changed:
                 self._save(rows)
@@ -783,10 +951,12 @@ class FreeProxyPool:
             for row in rows:
                 if str(row.get("proxy_id")) != str(binding.proxy_id):
                     continue
-                if owner and row.get("lease_owner") not in {"", owner}:
-                    continue
-                row.update({"lease_owner": "", "lease_until": None, "lease_batch_id": "", "lease_task_id": ""})
-                changed = True
+                active = self._active_leases(row)
+                remaining = [lease for lease in active if owner and str(lease.get("owner") or "") != str(owner)] if owner else []
+                if len(remaining) != len(active):
+                    row["leases"] = remaining
+                    self._sync_lease_compat(row)
+                    changed = True
             if changed:
                 self._save(rows)
 
@@ -811,7 +981,7 @@ class FreeProxyPool:
                     continue
                 failures = int(row.get("consecutive_failures") or 0) + 1
                 limit = max(1, int(threshold or self.failure_threshold))
-                row.update({"consecutive_failures": failures, "last_checked_at": time.time(), "last_failure": {"node_code": node_code, "message": str(message or "")[:300]}})
+                row.update({"consecutive_failures": failures, "last_checked_at": time.time(), "last_failure": {"node_code": node_code, "message": safe_log_message(message)[:300]}})
                 if failures >= limit:
                     row["status"] = "quarantined"
                     row["quarantined_until"] = time.time() + max(1, int(quarantine_seconds or self.quarantine_seconds))
@@ -846,7 +1016,7 @@ class FreeProxyPool:
             source_country = normalize_country(country)
             source_group = normalize_group(group)
             targets = [row for row in rows if row.get("country") == source_country and row.get("group") == source_group]
-            if any(row.get("lease_owner") and float(row.get("lease_until") or 0) > time.time() for row in targets):
+            if any(self._active_leases(row) for row in targets):
                 raise FreeRegisterError("free_proxy_group_delete", "删除 Free 代理分组", "分组内存在运行中的代理租约", retryable=False)
             if targets:
                 self._save([row for row in rows if row not in targets])

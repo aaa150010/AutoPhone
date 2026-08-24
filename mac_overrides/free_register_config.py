@@ -34,9 +34,11 @@ FREE_LEGACY_CONFIG_KEYS = frozenset({
 })
 
 DEFAULT_FREE_CONFIG: dict[str, Any] = {
-    "version": 4,
+    "version": 5,
     "driver": "protocol",
-    "target_count": 0,
+    "flow_profile": "reference_20260823",
+    "proxy_allocation_mode": "healthy_random",
+    "target_count": 1,
     "concurrency": 3,
     "email_code_timeout": 90,
     "mailbox_network_mode": "local_proxy",
@@ -60,6 +62,11 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
     "protocol": {
         "node_runner": "",
         "sentinel_timeout": 90,
+        "network_timeout": 20,
+        "network_preflight_retries": 3,
+        "anonymous_warmup": True,
+        "authenticated_warmup": True,
+        "geo_probe_url": "https://ipwho.is/",
     },
     "roxybrowser": {
         "api_base": "http://127.0.0.1:50000",
@@ -72,7 +79,8 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
         "open_path": "/browser/open",
         "close_path": "/browser/close",
         "delete_path": "/browser/delete",
-        "headless": False,
+        "headless": True,
+        "force_open": False,
         "keep_browser_open": False,
         "one_profile_per_account": True,
         "delete_profile_after_run": True,
@@ -146,6 +154,10 @@ class FreeConfigStore:
         self._lock = threading.RLock()
 
     def normalize(self, value: Mapping[str, Any] | None, *, previous: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        source_version = _int(
+            (value or {}).get("version", (previous or {}).get("version")),
+            0, 0, 10_000,
+        )
         incoming = {key: copy.deepcopy(item) for key, item in dict(value or {}).items() if key in DEFAULT_FREE_CONFIG}
         base = _merge(DEFAULT_FREE_CONFIG, previous or {})
         if incoming.get("roxybrowser", {}).get("api_key") == SECRET_MASK:
@@ -159,8 +171,12 @@ class FreeConfigStore:
         if driver not in {"protocol", "roxybrowser"}:
             raise FreeRegisterError("free_config", "保存 Free 配置", "Free 注册链路只能选择全协议或 RoxyBrowser", retryable=False)
         result["driver"] = driver
-        result["target_count"] = _int(result.get("target_count"), 0, 0, 10_000)
-        result["concurrency"] = _int(result.get("concurrency"), 3, 1, 5)
+        flow_profile = str(result.get("flow_profile") or "reference_20260823").strip().lower()
+        result["flow_profile"] = flow_profile if flow_profile in {"reference_20260823", "legacy"} else "reference_20260823"
+        allocation_mode = str(result.get("proxy_allocation_mode") or "healthy_random").strip().lower()
+        result["proxy_allocation_mode"] = allocation_mode if allocation_mode in {"healthy_random", "exclusive"} else "healthy_random"
+        result["target_count"] = _int(result.get("target_count"), 1, 1, 200)
+        result["concurrency"] = _int(result.get("concurrency"), 3, 1, 16)
         result["email_code_timeout"] = _int(result.get("email_code_timeout"), 90, 10, 600)
         try:
             mailbox_policy = normalize_network_policy(
@@ -213,6 +229,13 @@ class FreeConfigStore:
         protocol = {key: copy.deepcopy(value) for key, value in dict(result.get("protocol") or {}).items() if key in protocol_defaults}
         protocol["node_runner"] = clean(protocol.get("node_runner"), 1000)
         protocol["sentinel_timeout"] = _int(protocol.get("sentinel_timeout"), 90, 10, 300)
+        protocol["network_timeout"] = _int(protocol.get("network_timeout"), 20, 5, 60)
+        protocol["network_preflight_retries"] = _int(protocol.get("network_preflight_retries"), 3, 1, 5)
+        protocol["anonymous_warmup"] = _as_bool(protocol.get("anonymous_warmup"), True)
+        protocol["authenticated_warmup"] = _as_bool(protocol.get("authenticated_warmup"), True)
+        geo_probe_url = clean(protocol.get("geo_probe_url"), 500)
+        parsed_geo = urlsplit(geo_probe_url) if geo_probe_url else None
+        protocol["geo_probe_url"] = geo_probe_url if parsed_geo and parsed_geo.scheme == "https" and parsed_geo.netloc else ""
         result["protocol"] = protocol
 
         roxy_defaults = DEFAULT_FREE_CONFIG["roxybrowser"]
@@ -227,10 +250,17 @@ class FreeConfigStore:
         for key in ("workspace_list_path", "list_path", "create_path", "open_path", "close_path", "delete_path", "proxy_check_channel"):
             roxy[key] = clean(roxy.get(key), 500) or str(DEFAULT_FREE_CONFIG["roxybrowser"][key])
         for key in (
-            "headless", "keep_browser_open", "one_profile_per_account", "delete_profile_after_run",
+            "headless", "force_open", "keep_browser_open", "one_profile_per_account", "delete_profile_after_run",
             "random_os", "random_profile_name", "humanize_delay", "humanize_browser_actions", "existing_account_login",
         ):
             roxy[key] = _as_bool(roxy.get(key), bool(DEFAULT_FREE_CONFIG["roxybrowser"][key]))
+        # Older stores always persisted the old ``headless=false`` default, so
+        # presence alone cannot distinguish it from an explicit user choice.
+        # Migrate every pre-v5 store once; after v5 the user's advanced toggle
+        # is authoritative and an explicit false value is preserved.
+        if source_version < 5:
+            roxy["headless"] = True
+        roxy["force_open"] = False
         choices = roxy.get("os_choices")
         if isinstance(choices, str):
             choices = [item.strip() for item in choices.replace(";", ",").split(",") if item.strip()]
@@ -248,7 +278,7 @@ class FreeConfigStore:
         if not roxy["profile_name_prefix"]:
             roxy["profile_name_prefix"] = "rb"
         result["roxybrowser"] = roxy
-        result["version"] = 4
+        result["version"] = 5
         return result
 
     def load(self) -> dict[str, Any]:

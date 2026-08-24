@@ -32,7 +32,21 @@ try:
         random_display_name,
         safe_log_message,
     )
-    from .free_roxy_signup import is_email_verification_page, open_signup_page, safe_page_location
+    from .free_roxy_signup import (
+        is_email_verification_page,
+        open_signup_page,
+        safe_page_location,
+        submit_email_and_wait,
+        warmup_login_page,
+    )
+    from .free_roxy_driver import (
+        build_driver,
+        click_element,
+        driver_source,
+        find_element,
+        submit_form,
+        type_element,
+    )
     from .free_roxy_page_flow import (
         click_resend_email_otp,
         classify_page,
@@ -89,7 +103,21 @@ except ImportError:
         random_display_name,
         safe_log_message,
     )
-    from free_roxy_signup import is_email_verification_page, open_signup_page, safe_page_location  # type: ignore[no-redef]
+    from free_roxy_signup import (  # type: ignore[no-redef]
+        is_email_verification_page,
+        open_signup_page,
+        safe_page_location,
+        submit_email_and_wait,
+        warmup_login_page,
+    )
+    from free_roxy_driver import (  # type: ignore[no-redef]
+        build_driver,
+        click_element,
+        driver_source,
+        find_element,
+        submit_form,
+        type_element,
+    )
     from free_roxy_page_flow import (  # type: ignore[no-redef]
         click_resend_email_otp,
         classify_page,
@@ -125,6 +153,55 @@ except ImportError:
         RoxyCleanupStore,
         RoxyLifecycle,
     )
+
+
+def _http_status(value: Any) -> int:
+    try:
+        status = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return status if 100 <= status <= 599 else 0
+
+
+def _provider_code(response: Mapping[str, Any], fallback: str) -> str:
+    sources: list[Mapping[str, Any]] = [response]
+    payload = response.get("payload")
+    if isinstance(payload, Mapping):
+        sources.append(payload)
+        error = payload.get("error")
+        if isinstance(error, Mapping):
+            sources.append(error)
+    for source in sources:
+        for key in ("provider_code", "error_code", "code", "type"):
+            value = source.get(key)
+            if value not in (None, "", 0, "0") and not isinstance(value, (Mapping, list, tuple)):
+                return safe_log_message(value)[:120]
+    return fallback
+
+
+def _structured_failure(error: BaseException, *, action_hint: str) -> dict[str, Any]:
+    node_code = str(getattr(error, "node_code", "") or "free_plan_check")
+    node_label = str(getattr(error, "node_label", "") or "查询 Free 套餐资格")
+    technical = safe_log_message(error) or "服务端未返回错误详情"
+    failure: dict[str, Any] = {
+        "node_code": node_code,
+        "node_label": node_label,
+        "error_code": str(getattr(error, "error_code", "") or f"{node_code}_failed"),
+        "public_message": f"{node_label} [{node_label}/{node_code}]：{technical}",
+        "technical_summary": technical,
+        "retryable": bool(getattr(error, "retryable", True)),
+        "action_hint": safe_log_message(getattr(error, "action_hint", "") or action_hint)[:300],
+    }
+    status = _http_status(getattr(error, "provider_status", None))
+    if status:
+        failure["http_status"] = status
+    provider_code = safe_log_message(getattr(error, "provider_code", ""))[:120]
+    if provider_code:
+        failure["provider_code"] = provider_code
+    content_type = clean(getattr(error, "content_type", ""), 120)
+    if content_type:
+        failure["content_type"] = content_type
+    return failure
 
 
 
@@ -175,85 +252,27 @@ class RoxyRegistrationRunner:
 
     @staticmethod
     def _driver(opened: RoxyOpenResult):
-        from selenium import webdriver
-        from selenium.webdriver.chrome.options import Options
-        from selenium.webdriver.remote.webdriver import WebDriver as RemoteWebDriver
+        return build_driver(opened)
 
-        options = Options()
-        options.page_load_strategy = "eager"
-        if opened.debugger_address:
-            options.add_experimental_option("debuggerAddress", opened.debugger_address)
-            driver = webdriver.Chrome(options=options)
-        elif opened.webdriver_url:
-            driver = RemoteWebDriver(command_executor=opened.webdriver_url, options=options)
-        else:
-            raise FreeRegisterError("free_roxy_connect", "连接 RoxyBrowser", "缺少 Selenium 连接地址")
-        script = """
-        Object.defineProperty(Navigator.prototype, 'webdriver', {get: () => undefined});
-        if (!window.chrome) window.chrome = {}; if (!window.chrome.runtime) window.chrome.runtime = {};
-        """
-        try:
-            driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": script})
-        except Exception:
-            pass
-        return driver
+    @staticmethod
+    def _driver_source(opened: RoxyOpenResult) -> str:
+        return driver_source(opened)
 
     @staticmethod
     def _find(driver: Any, selectors: list[str], timeout: int):
-        from selenium.webdriver.common.by import By
-        from selenium.webdriver.support.ui import WebDriverWait
-
-        def locate(current: Any):
-            for selector in selectors:
-                try:
-                    element = current.find_element(By.CSS_SELECTOR, selector)
-                    if element.is_displayed() and element.is_enabled():
-                        return element
-                except Exception:
-                    continue
-            return False
-
-        return WebDriverWait(driver, timeout).until(locate)
+        return find_element(driver, selectors, timeout)
 
     @staticmethod
     def _click(driver: Any, element: Any, human: Humanizer) -> None:
-        try:
-            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", element)
-        except Exception:
-            pass
-        human.delay("click")
-        try:
-            element.click()
-        except Exception:
-            driver.execute_script("arguments[0].click();", element)
+        click_element(driver, element, human)
 
     @staticmethod
     def _type(element: Any, value: str, human: Humanizer) -> None:
-        from selenium.webdriver.common.keys import Keys
-
-        try:
-            element.send_keys(Keys.COMMAND, "a")
-            element.send_keys(Keys.BACKSPACE)
-        except Exception:
-            try:
-                element.clear()
-            except Exception:
-                pass
-        if not human.actions:
-            element.send_keys(value)
-            return
-        for character in value:
-            element.send_keys(character)
-            human.delay("keystroke")
+        type_element(element, value, human)
 
     @staticmethod
     def _submit(driver: Any, human: Humanizer) -> None:
-        button = RoxyRegistrationRunner._find(
-            driver,
-            ["button[type='submit']", "input[type='submit']", "button[data-testid*='continue']", "button[name='action']"],
-            15,
-        )
-        RoxyRegistrationRunner._click(driver, button, human)
+        submit_form(driver, human, RoxyRegistrationRunner._find, RoxyRegistrationRunner._click)
 
     @staticmethod
     def _fill_otp(driver: Any, code: str, human: Humanizer) -> Mapping[str, Any]:
@@ -274,6 +293,28 @@ class RoxyRegistrationRunner:
     _native_password_submit = staticmethod(native_password_submit)
     _wait_after_signup_password_submit = staticmethod(wait_after_signup_password_submit)
     _click_resend_email_otp = staticmethod(click_resend_email_otp)
+    _warmup_login_page = staticmethod(warmup_login_page)
+
+    def _submit_registration_email(
+        self,
+        driver: Any,
+        email: str,
+        human: Humanizer,
+        log: Callable[[str, str], None],
+        timeout: int,
+    ) -> str:
+        return submit_email_and_wait(
+            driver,
+            email,
+            human,
+            log,
+            timeout,
+            classify=self._classify_page,
+            wait_security=wait_for_security_clear,
+            type_element=self._type,
+            click_element=self._click,
+            attempts=3,
+        )
 
     def _submit_signup_password(
         self,
@@ -423,51 +464,70 @@ class RoxyRegistrationRunner:
           read('/backend-api/aip/first-party/eligibility')
         ]).then(v=>done({ok:true,accounts:v[0],eligibility:v[1]})).catch(e=>done({ok:false,error:String(e).slice(0,120)}));
         """
-        result = driver.execute_async_script(script, token) or {}
+        raw_result = driver.execute_async_script(script, token) or {}
+        result = raw_result if isinstance(raw_result, Mapping) else {}
         if not result.get("ok"):
             raise FreeRegisterError(
                 "free_plan_check", "查询 Free 套餐资格",
                 "RoxyBrowser 套餐查询网络请求失败",
                 error_code="free_plan_check_request_failed",
+                provider_code="browser_fetch_failed",
+                action_hint="保留已注册账号，稍后重新查询套餐状态",
             )
         accounts_response = result.get("accounts") if isinstance(result.get("accounts"), Mapping) else {}
         eligibility_response = result.get("eligibility") if isinstance(result.get("eligibility"), Mapping) else {}
-        accounts_status = int(accounts_response.get("status") or 0)
-        eligibility_status = int(eligibility_response.get("status") or 0)
+        accounts_status = _http_status(accounts_response.get("status"))
+        eligibility_status = _http_status(eligibility_response.get("status"))
         accounts_type = clean(accounts_response.get("content_type"), 80)
         eligibility_type = clean(eligibility_response.get("content_type"), 80)
-        if not 200 <= accounts_status < 300 or not accounts_response.get("json"):
-            raise FreeRegisterError(
-                "free_plan_check", "查询 Free 套餐资格",
-                f"账号套餐接口响应无效（HTTP {accounts_status or '-'}，类型 {accounts_type or '-'}）",
-                error_code="free_plan_accounts_response_invalid",
-                provider_status=accounts_status or None,
-            )
         accounts = accounts_response.get("payload") if isinstance(accounts_response.get("payload"), Mapping) else {}
         eligibility = eligibility_response.get("payload") if isinstance(eligibility_response.get("payload"), Mapping) else {}
-        plan = "free"
+        account_plan = ""
         values = accounts.get("accounts") if isinstance(accounts.get("accounts"), Mapping) else {}
         for item in values.values() if isinstance(values, Mapping) else []:
             if isinstance(item, Mapping):
                 account = item.get("account") if isinstance(item.get("account"), Mapping) else item
                 candidate = str(account.get("plan_type") or account.get("planType") or "").strip()
                 if candidate:
-                    plan = candidate
+                    account_plan = candidate
                     break
         eligibility_ok = 200 <= eligibility_status < 300 and bool(eligibility_response.get("json"))
         eligible = plus_trial_from_accounts(accounts) or (eligibility_ok and plus_trial_from_accounts(eligibility))
-        return plan, bool(eligible), {
-            "plan_accounts_http_status": accounts_status,
+        diagnostic = {
+            "plan_accounts_http_status": accounts_status or None,
             "plan_accounts_content_type": accounts_type,
             "plan_eligibility_http_status": eligibility_status or None,
             "plan_eligibility_content_type": eligibility_type,
+            "plan_eligibility_provider_code": _provider_code(
+                eligibility_response,
+                "" if eligibility_ok else "eligibility_response_invalid",
+            ),
             "plan_eligibility_status": "success" if eligibility_ok else "failed",
         }
+        if not 200 <= accounts_status < 300 or not accounts_response.get("json"):
+            failure = FreeRegisterError(
+                "free_plan_check", "查询 Free 套餐资格",
+                f"账号套餐接口响应无效（HTTP {accounts_status or '-'}，类型 {accounts_type or '-'}）",
+                error_code="free_plan_accounts_response_invalid",
+                provider_status=accounts_status or None,
+                provider_code=_provider_code(accounts_response, "accounts_response_invalid"),
+                action_hint="保留已注册账号，稍后重新查询套餐状态",
+                content_type=accounts_type,
+            )
+            failure.partial_plan_details = {
+                "plan_type": account_plan,
+                "subscription_plan": account_plan,
+                "has_active_subscription": bool(account_plan and account_plan != "free"),
+                "plus_trial_eligible": bool(eligible),
+                **diagnostic,
+            }
+            raise failure
+        return account_plan or "free", bool(eligible), diagnostic
 
     @staticmethod
     def _plan_details(driver: Any, token: str) -> dict[str, Any]:
         plan, eligible, diagnostic = RoxyRegistrationRunner._plan(driver, token)
-        return {
+        details = {
             "plan_check_status": "success",
             "plan_type": plan,
             "subscription_plan": plan,
@@ -476,8 +536,32 @@ class RoxyRegistrationRunner:
             "plan_checked_at": time.time(),
             **diagnostic,
         }
+        if diagnostic.get("plan_eligibility_status") == "failed":
+            failure = FreeRegisterError(
+                "free_plan_check", "查询 Free 套餐资格",
+                f"Plus 资格接口响应无效（HTTP {diagnostic.get('plan_eligibility_http_status') or '-'}，类型 {diagnostic.get('plan_eligibility_content_type') or '-'}）",
+                error_code="free_plan_eligibility_response_invalid",
+                provider_status=diagnostic.get("plan_eligibility_http_status"),
+                provider_code=str(diagnostic.get("plan_eligibility_provider_code") or "eligibility_response_invalid"),
+                action_hint="已保留账号套餐信息，稍后重新查询 Plus 资格",
+                content_type=str(diagnostic.get("plan_eligibility_content_type") or ""),
+            )
+            plan_failure = _structured_failure(
+                failure,
+                action_hint="已保留账号套餐信息，稍后重新查询 Plus 资格",
+            )
+            details.update({
+                # The account endpoint succeeded and its fields remain below,
+                # but the combined package query is still a failed check so
+                # the manager persists plan_failure as partial_success.
+                "plan_check_status": "failed",
+                "plan_error_code": plan_failure["error_code"],
+                "plan_http_status": plan_failure.get("http_status"),
+                "plan_failure": plan_failure,
+            })
+        return details
 
-    def _setup_2fa(self, driver: Any, task: Mapping[str, Any], token: str, otp: MailboxUrlOtpProvider, human: Humanizer, stage: Callable[[str, str], None]) -> str:
+    def _setup_2fa(self, driver: Any, task: Mapping[str, Any], token: str, otp: MailboxUrlOtpProvider, human: Humanizer, stage: Callable[[str, str], None], token_sink: Callable[[str], None] | None = None) -> str:
         return setup_twofa(
             driver, task, token, otp, human, stage,
             session_fn=lambda current, timeout: self._session(current, timeout),
@@ -485,6 +569,7 @@ class RoxyRegistrationRunner:
             wait_after_otp_fn=self._wait_after_otp_submit,
             wait_home_fn=self._wait_for_home,
             totp_fn=self._totp,
+            token_sink=token_sink,
         )
     def __call__(self, task: Mapping[str, Any], config: Mapping[str, Any], stop_event: Any, stage: Callable[[str, str], None], log: Callable[[str, str], None], *, twofa_retry: bool = False) -> Mapping[str, Any]:
         if twofa_retry:
@@ -598,7 +683,15 @@ class RoxyRegistrationRunner:
             set_stage("free_roxy_open")
             operation_started = time.monotonic()
             opened = client.open_profile(profile_id)
-            log(f"Profile 打开成功，Selenium/CDP 连接信息={'存在' if opened.debugger_address or opened.webdriver_url else '缺失'}，duration_ms={int((time.monotonic() - operation_started) * 1000)} outcome=success", "success")
+            log(
+                "Profile 打开成功"
+                f"（headless={bool(opened.headless if opened.headless is not None else roxy.get('headless', True))}，"
+                f"forceOpen=False，connection_reused={bool(opened.connection_reused)}，"
+                f"driver_source={self._driver_source(opened)}，"
+                f"Selenium/CDP={'存在' if opened.debugger_address or opened.webdriver_url else '缺失'}）"
+                f"，duration_ms={int((time.monotonic() - operation_started) * 1000)} outcome=success",
+                "success",
+            )
             set_stage("free_roxy_connect")
             operation_started = time.monotonic()
             driver = self._driver(opened)
@@ -626,12 +719,7 @@ class RoxyRegistrationRunner:
                     error_code="free_roxy_security_challenge",
                 )
             log(f"注册页初始化完成，页面={safe_page_location(driver)}，duration_ms={int((time.monotonic() - operation_started) * 1000)} outcome=success", "success")
-            human.delay("page_warmup")
-            try:
-                signup = self._find(driver, ["a[href*='signup']", "button[data-testid*='signup']"], 5)
-                self._click(driver, signup, human)
-            except Exception:
-                pass
+            self._warmup_login_page(driver, human)
             email_already_submitted = self._is_email_verification_page(driver)
             auth_state = "otp" if email_already_submitted else ""
             if email_already_submitted:
@@ -640,9 +728,19 @@ class RoxyRegistrationRunner:
             else:
                 set_stage("free_roxy_signup_email")
                 try:
-                    email_field = self._find(driver, ["input[type='email']", "input[name='email']", "input[autocomplete='email']", "input[name='username']"], 45)
-                    self._type(email_field, str(task.get("email") or ""), human)
-                    log(f"注册邮箱已填写，页面={safe_page_location(driver)} outcome=success", "success")
+                    set_stage("free_roxy_signup_email_submit")
+                    auth_state = self._submit_registration_email(
+                        driver,
+                        str(task.get("email") or ""),
+                        human,
+                        log,
+                        int(roxy.get("selenium_timeout") or 90),
+                    )
+                    log(f"注册邮箱提交后页面状态={auth_state}，页面={safe_page_location(driver)} outcome=success", "success")
+                    if auth_state == "otp":
+                        otp.mark_sent()
+                except FreeRegisterError:
+                    raise
                 except Exception as exc:
                     transitioned_state = self._classify_page(driver)
                     if transitioned_state in {"otp", "login_password", "signup_password", "home", "security", "profile", "oauth_callback"}:
@@ -661,21 +759,6 @@ class RoxyRegistrationRunner:
                         node_label = "等待注册页安全验证" if challenge else "填写 Free 注册邮箱"
                         message = "注册页出现安全验证，邮箱输入框未开放" if challenge else f"45 秒内未找到可用邮箱输入框（{self._safe_page_location(driver)}）"
                         raise FreeRegisterError(node_code, node_label, message, error_code=f"{node_code}_timeout") from exc
-                if not email_already_submitted:
-                    set_stage("free_roxy_signup_email_submit")
-                    try:
-                        self._submit(driver, human)
-                        log(f"注册邮箱提交成功，页面={safe_page_location(driver)} outcome=success", "success")
-                    except Exception as exc:
-                        raise FreeRegisterError(
-                            "free_roxy_signup_email_submit", "提交 Free 注册邮箱",
-                            f"注册邮箱提交失败（{type(exc).__name__}，{self._safe_page_location(driver)}）",
-                            error_code="free_roxy_signup_email_submit_timeout" if type(exc).__name__ == "TimeoutException" else "free_roxy_signup_email_submit_failed",
-                        ) from exc
-                    human.delay("navigate")
-                    auth_state = self._wait_after_email_submit(driver, 45, log)
-                    if auth_state == "otp":
-                        otp.mark_sent()
             if auth_state == "login_password":
                 if not bool(roxy.get("existing_account_login", True)):
                     raise FreeRegisterError(
@@ -784,6 +867,7 @@ class RoxyRegistrationRunner:
                         switch_login_to_email_code=self._switch_login_to_email_code,
                         wait_after_passwordless_switch=self._wait_after_passwordless_switch,
                         submit_signup_password=self._submit_signup_password,
+                        submit_email=self._submit_registration_email,
                     )
 
                 def reload_flow(_attempt: int) -> str:
@@ -838,49 +922,66 @@ class RoxyRegistrationRunner:
             operation_started = time.monotonic()
             try:
                 plan_details = self._plan_details(driver, token)
-                log(f"套餐查询完成：套餐={plan_details.get('plan_type') or '-'}，Plus 试用={'可用' if plan_details.get('plus_trial_eligible') else '不可用'}，duration_ms={int((time.monotonic() - operation_started) * 1000)} outcome=success", "success")
+                if plan_details.get("plan_failure"):
+                    log(f"套餐信息部分读取成功：套餐={plan_details.get('plan_type') or '-'}，Plus 资格读取失败，duration_ms={int((time.monotonic() - operation_started) * 1000)} outcome=warning", "warn")
+                else:
+                    log(f"套餐查询完成：套餐={plan_details.get('plan_type') or '-'}，Plus 试用={'可用' if plan_details.get('plus_trial_eligible') else '不可用'}，duration_ms={int((time.monotonic() - operation_started) * 1000)} outcome=success", "success")
             except FreeRegisterError as exc:
                 log(f"套餐查询失败但保留注册结果：{safe_log_message(exc)}，duration_ms={int((time.monotonic() - operation_started) * 1000)} outcome=warning", "warn")
+                plan_failure = _structured_failure(
+                    exc,
+                    action_hint="保留已注册账号，稍后重新查询套餐状态",
+                )
+                partial = getattr(exc, "partial_plan_details", None)
                 plan_details = {
                     "plan_check_status": "failed",
-                    "plan_error_code": str(getattr(exc, "error_code", "free_plan_check_failed")),
-                    "plan_http_status": getattr(exc, "provider_status", None),
+                    "plan_checked_at": time.time(),
+                    "plan_error_code": plan_failure["error_code"],
+                    "plan_http_status": plan_failure.get("http_status"),
                     "plan_type": "",
+                    "subscription_plan": "",
+                    "has_active_subscription": False,
                     "plus_trial_eligible": False,
+                    **(dict(partial) if isinstance(partial, Mapping) else {}),
+                    "plan_failure": plan_failure,
                 }
             twofa_status = "disabled"
             totp_secret = ""
             twofa_error = ""
             twofa_failure: dict[str, Any] | None = None
             if bool(config.get("auto_set_2fa", True)):
+                def capture_twofa_token(value: str) -> None:
+                    nonlocal token
+                    if value:
+                        token = value
+
                 try:
-                    totp_secret = self._setup_2fa(driver, task, token, otp, human, set_stage)
+                    totp_secret = self._setup_2fa(
+                        driver, task, token, otp, human, set_stage, capture_twofa_token,
+                    )
                     twofa_status = "enabled"
                     log("2FA enrollment/activation 完成，密钥仅保存到受保护结果中", "success")
                 except FreeRegisterError as exc:
                     twofa_status = "pending"
                     twofa_error = safe_log_message(exc)
-                    twofa_failure = {
-                        "node_code": str(exc.node_code or "free_twofa_activate"),
-                        "node_label": str(exc.node_label or "激活 Free 账号 2FA"),
-                        "error_code": str(exc.error_code or "free_twofa_failed"),
-                        "public_message": f"{exc.node_label} [{exc.node_label}/{exc.node_code}]：{safe_log_message(exc)}",
-                        "technical_summary": safe_log_message(exc),
-                        "retryable": bool(exc.retryable),
-                    }
-                    if exc.provider_status is not None:
-                        twofa_failure["http_status"] = exc.provider_status
+                    twofa_failure = _structured_failure(
+                        exc,
+                        action_hint="保留已注册账号和 Token，稍后重试 2FA",
+                    )
                 except Exception as exc:
                     twofa_status = "pending"
                     twofa_error = f"2FA 设置失败（{type(exc).__name__}）"
-                    twofa_failure = {
-                        "node_code": "free_twofa_activate",
-                        "node_label": "激活 Free 账号 2FA",
-                        "error_code": "free_twofa_activate_failed",
-                        "public_message": f"激活 Free 账号 2FA [激活 Free 账号 2FA/free_twofa_activate]：{safe_log_message(exc)}",
-                        "technical_summary": safe_log_message(exc),
-                        "retryable": True,
-                    }
+                    failure = FreeRegisterError(
+                        "free_twofa_activate", "激活 Free 账号 2FA",
+                        twofa_error,
+                        error_code="free_twofa_activate_failed",
+                        provider_code=type(exc).__name__,
+                        action_hint="保留已注册账号和 Token，检查日志后重试 2FA",
+                    )
+                    twofa_failure = _structured_failure(
+                        failure,
+                        action_hint="保留已注册账号和 Token，检查日志后重试 2FA",
+                    )
             dwell_min = int(roxy.get("post_registration_dwell_min") or 18)
             dwell_max = max(dwell_min, int(roxy.get("post_registration_dwell_max") or 45))
             if dwell_max > 0:
@@ -900,7 +1001,15 @@ class RoxyRegistrationRunner:
                 if account_flow == "signup":
                     result["credential_line"] = f"{task.get('email')}----{FIXED_PASSWORD}----{totp_secret}"
             return result
-        except FreeRegisterError:
+        except FreeRegisterError as exc:
+            if driver is not None:
+                if not getattr(exc, "safe_page", ""):
+                    exc.safe_page = safe_page_location(driver)
+                if not getattr(exc, "page_type", ""):
+                    try:
+                        exc.page_type = str(classify_page(driver) or "")[:120]
+                    except Exception:
+                        pass
             raise
         except Exception as exc:
             error_type = type(exc).__name__
@@ -917,7 +1026,17 @@ class RoxyRegistrationRunner:
                 node_code, node_label, error_code = active_stage, "RoxyBrowser 当前操作", f"{active_stage}_failed"
             detail = f"{node_label}失败（{error_type}，页面 {safe_page_location(driver) if driver is not None else '页面地址未知'}）"
             log(f"{detail}，请根据当前节点重试", "error")
-            raise FreeRegisterError(node_code, node_label, detail, error_code=error_code) from exc
+            page_type = ""
+            if driver is not None:
+                try:
+                    page_type = str(classify_page(driver) or "")[:120]
+                except Exception:
+                    pass
+            raise FreeRegisterError(
+                node_code, node_label, detail, error_code=error_code,
+                page_type=page_type,
+                safe_page=safe_page_location(driver) if driver is not None else "页面地址未知",
+            ) from exc
         finally:
             cleanup_started = time.monotonic()
             cleanup_ok = True

@@ -49,6 +49,27 @@ class RoxyOpenResult:
     workspace_id: str = ""
     window_name: str = ""
     window_remark: str = ""
+    driver_path: str | None = None
+    connection_reused: bool = False
+    headless: bool | None = None
+
+    def __post_init__(self) -> None:
+        """Normalize the driver path from either open or connection payload."""
+        if self.driver_path:
+            return
+        raw = self.raw if isinstance(self.raw, Mapping) else {}
+        candidates: list[Any] = [raw]
+        data = raw.get("data") if isinstance(raw, Mapping) else None
+        if isinstance(data, Mapping):
+            candidates.insert(0, data)
+        for row in candidates:
+            value = _first(row, [
+                ("driver",), ("driverPath",), ("driver_path",),
+                ("chromedriver",), ("chromeDriver",), ("chrome_driver",),
+            ])
+            if value:
+                self.driver_path = value
+                break
 
 
 def _dig(payload: Mapping[str, Any], *keys: str) -> Any:
@@ -73,13 +94,29 @@ def _roxy_id(value: Any) -> str | int:
     return int(text) if text.isdigit() else text
 
 
+def _bool_config(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().casefold() not in {"", "0", "false", "no", "off", "none", "null"}
+
+
 def proxy_to_roxy_info(proxy: str, check_channel: str = "IPRust.io") -> dict[str, Any]:
     parsed = urlsplit(str(proxy or "").strip())
     scheme = parsed.scheme.lower()
     if scheme not in {"http", "https", "socks5", "socks5h"}:
+        detail = (
+            "RoxyBrowser 不支持 SOCKS4；SOCKS4 仍可用于纯协议注册"
+            if scheme == "socks4" else f"RoxyBrowser 不支持当前代理协议：{scheme or '-'}"
+        )
         raise FreeRegisterError(
             "free_roxy_proxy", "配置 RoxyBrowser 代理",
-            f"RoxyBrowser 不支持当前代理协议：{scheme or '-'}", retryable=False,
+            detail,
+            retryable=False,
+            error_code="free_roxy_socks4_unsupported" if scheme == "socks4" else "free_roxy_proxy_scheme_unsupported",
+            provider_code="unsupported_proxy_scheme",
+            action_hint="改用 HTTP、HTTPS、SOCKS5 或 SOCKS5H 代理" if scheme == "socks4" else "检查代理协议与 RoxyBrowser 支持范围",
         )
     if not parsed.hostname or not parsed.port:
         raise FreeRegisterError("free_roxy_proxy", "配置 RoxyBrowser 代理", "RoxyBrowser 代理缺少主机或端口", retryable=False)
@@ -106,6 +143,8 @@ class RoxyBrowserClient:
         self.config = dict(config or {})
         self.api_base = str(self.config.get("api_base") or "http://127.0.0.1:50000").rstrip("/")
         self.http = session or requests.Session()
+        if hasattr(self.http, "trust_env"):
+            self.http.trust_env = False
         self.log_fn = log_fn
         token = str(self.config.get("api_key") or "").strip()
         self.http.headers.update({"Accept": "application/json", "Content-Type": "application/json"})
@@ -148,19 +187,31 @@ class RoxyBrowserClient:
         *,
         body: Mapping[str, Any] | None = None,
         params: Mapping[str, Any] | None = None,
+        timeout: float | None = None,
+        retries: int | None = None,
+        deadline: float | None = None,
     ) -> dict[str, Any]:
         target = urljoin(self.api_base + "/", str(path or "").lstrip("/"))
-        attempts = 1 if str(path).rstrip("/").endswith("/create") else int(self.config.get("api_retries") or 3)
+        default_attempts = 1 if str(path).rstrip("/").endswith("/create") else int(self.config.get("api_retries") or 3)
+        attempts = max(1, int(default_attempts if retries is None else retries))
+        request_timeout = (
+            max(5.0, float(self.config.get("selenium_timeout") or 90))
+            if timeout is None else max(0.05, float(timeout))
+        )
         delay = float(self.config.get("api_retry_delay") or 2.0)
         last: BaseException | None = None
         for attempt in range(1, max(1, attempts) + 1):
+            remaining = None if deadline is None else float(deadline) - time.monotonic()
+            if remaining is not None and remaining <= 0:
+                break
+            current_timeout = request_timeout if remaining is None else max(0.001, min(request_timeout, remaining))
             try:
                 response = self.http.request(
                     str(method or "POST").upper(),
                     target,
                     json=dict(body or {}) if body is not None else None,
                     params=dict(params or {}) if params else None,
-                    timeout=max(5, int(self.config.get("selenium_timeout") or 90)),
+                    timeout=current_timeout,
                 )
                 status = int(getattr(response, "status_code", 0) or 0)
                 if not 200 <= status < 300:
@@ -195,8 +246,18 @@ class RoxyBrowserClient:
                     raise FreeRegisterError(
                         "free_roxy_api", "调用 RoxyBrowser API", f"RoxyBrowser API 请求异常（{type(exc).__name__}）"
                     ) from exc
-                time.sleep(delay * attempt)
-        raise FreeRegisterError("free_roxy_api", "调用 RoxyBrowser API", f"RoxyBrowser API 请求失败（{type(last).__name__}）")
+                retry_delay = delay * attempt
+                if deadline is not None:
+                    retry_delay = min(retry_delay, max(0.0, float(deadline) - time.monotonic()))
+                if retry_delay <= 0:
+                    break
+                time.sleep(retry_delay)
+        if isinstance(last, FreeRegisterError):
+            raise last
+        raise FreeRegisterError(
+            "free_roxy_api", "调用 RoxyBrowser API",
+            f"RoxyBrowser API 请求失败（{type(last).__name__ if last is not None else 'Timeout'}）",
+        ) from last
 
     @staticmethod
     def _workspace_items(payload: Mapping[str, Any]) -> list[dict[str, str]]:
@@ -370,6 +431,10 @@ class RoxyBrowserClient:
                 debugger = f"127.0.0.1:{port}"
             webdriver_url = _first(row, [("webdriver",), ("webdriverUrl",), ("selenium",)]) or None
             ws_endpoint = _first(row, [("ws",), ("wsEndpoint",), ("ws_endpoint",), ("debuggerWsUrl",)]) or None
+            driver_path = _first(row, [
+                ("driver",), ("driverPath",), ("driver_path",),
+                ("chromedriver",), ("chromeDriver",), ("chrome_driver",),
+            ]) or None
             if not debugger and ws_endpoint:
                 parsed = urlsplit(ws_endpoint)
                 if parsed.hostname and parsed.port:
@@ -379,14 +444,24 @@ class RoxyBrowserClient:
             if debugger:
                 debugger = debugger.replace("http://", "").replace("https://", "").split("/", 1)[0].strip()
             return RoxyOpenResult(
-                str(profile_id), dict(payload), debugger or None, webdriver_url, ws_endpoint, True,
+                str(profile_id), dict(payload), debugger or None, webdriver_url, ws_endpoint,
+                driver_path=driver_path,
+                created_by_run=True,
                 workspace_id=str(self.config.get("workspace_id") or ""),
                 window_name=str(self.last_created_metadata.get("window_name") or ""),
                 window_remark=str(self.last_created_metadata.get("window_remark") or ""),
             )
         return None
 
-    def connection_info(self, profile_id: str, *, workspace_id: Any | None = None) -> RoxyOpenResult | None:
+    def connection_info(
+        self,
+        profile_id: str,
+        *,
+        workspace_id: Any | None = None,
+        timeout: float | None = None,
+        retries: int | None = None,
+        deadline: float | None = None,
+    ) -> RoxyOpenResult | None:
         params: dict[str, Any] = {"dirIds": str(_roxy_id(profile_id))}
         if workspace_id not in (None, ""):
             params["workspaceId"] = _roxy_id(workspace_id)
@@ -394,6 +469,9 @@ class RoxyBrowserClient:
             "GET",
             str(self.config.get("connection_info_path") or "/browser/connection_info"),
             params=params,
+            timeout=timeout,
+            retries=retries,
+            deadline=deadline,
         )
         return self._connection_result(profile_id, payload)
 
@@ -434,15 +512,34 @@ class RoxyBrowserClient:
         return result
 
     def open_profile(self, profile_id: str) -> RoxyOpenResult:
-        headless = bool(self.config.get("headless", False))
+        headless = _bool_config(self.config.get("headless"), True)
+        try:
+            wait_budget = float(self.config.get("open_connection_timeout") or 15.0)
+        except (TypeError, ValueError):
+            wait_budget = 15.0
+        # The Roxy API is local. Keep reconciliation bounded even when the
+        # general Selenium timeout is configured to several minutes.
+        wait_budget = max(0.1, min(15.0, wait_budget))
+        deadline = time.monotonic() + wait_budget
+
+        def remaining() -> float:
+            return max(0.0, deadline - time.monotonic())
+
         # Roxy may finish an asynchronous create/open before returning the
         # create response.  Adopt that connection first so a second
         # /browser/open call cannot briefly foreground another window.
         try:
-            already_open = self.connection_info(profile_id)
+            already_open = self.connection_info(
+                profile_id,
+                timeout=min(2.0, max(0.05, remaining())),
+                retries=1,
+                deadline=deadline,
+            )
         except Exception:
             already_open = None
         if already_open is not None:
+            already_open.connection_reused = True
+            already_open.headless = headless
             self._log(
                 f"[打开 RoxyBrowser 环境/free_roxy_open] Profile={profile_id} "
                 f"已由 connection_info 对账，跳过重复打开 headless={headless}"
@@ -451,7 +548,6 @@ class RoxyBrowserClient:
         body = {
             "workspaceId": _roxy_id(self.config.get("workspace_id")),
             "dirId": _roxy_id(profile_id),
-            "args": [],
             # Roxy opens asynchronously. The connection_info reconciliation
             # below handles the short race without forcing a second window.
             "forceOpen": False,
@@ -461,27 +557,51 @@ class RoxyBrowserClient:
             f"[打开 RoxyBrowser 环境/free_roxy_open] Profile={profile_id} "
             f"headless={headless} forceOpen=False"
         )
-        payload = self.request("POST", str(self.config.get("open_path") or "/browser/open"), body=body)
+        if remaining() <= 0:
+            raise FreeRegisterError(
+                "free_roxy_open", "打开 RoxyBrowser 环境",
+                "RoxyBrowser connection_info 对账在打开前已超过 15 秒预算",
+                retryable=True,
+                error_code="free_roxy_connection_timeout",
+            )
+        payload = self.request(
+            "POST",
+            str(self.config.get("open_path") or "/browser/open"),
+            body=body,
+            timeout=min(5.0, max(0.05, remaining())),
+            retries=1,
+            deadline=deadline,
+        )
         opened = self._connection_result(profile_id, payload)
         if opened is not None:
+            opened.headless = headless
             return opened
         # Some Roxy versions return success before the CDP endpoint exists;
         # reconcile the same dirId instead of creating another Profile/window.
         # Match the mature runner's async-open window: never call /browser/open
         # again while the same dirId is still coming up.
-        for _attempt in range(30):
+        while remaining() > 0:
             try:
-                opened = self.connection_info(profile_id)
+                opened = self.connection_info(
+                    profile_id,
+                    timeout=min(1.0, max(0.05, remaining())),
+                    retries=1,
+                    deadline=deadline,
+                )
             except Exception:
                 opened = None
             if opened is not None:
+                opened.headless = headless
                 return opened
-            time.sleep(0.5)
+            sleep_for = min(0.5, remaining())
+            if sleep_for > 0:
+                time.sleep(sleep_for)
         raise FreeRegisterError(
             "free_roxy_open",
             "打开 RoxyBrowser 环境",
             "RoxyBrowser 打开成功但未返回 Selenium/CDP 连接地址，connection_info 也未就绪",
             retryable=True,
+            error_code="free_roxy_connection_timeout",
         )
 
     def close_profile(self, profile_id: str, *, workspace_id: Any | None = None) -> None:

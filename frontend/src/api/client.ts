@@ -7,6 +7,8 @@ import type {
   MailboxUrlTestResult,
   ManualVerificationAccepted,
   ManualVerificationSubmission,
+  FreeLogEntry,
+  TaskFailure,
   SmsKeyStatus,
   OpenAIConnectivityDiagnostic,
 } from '../types/api'
@@ -61,6 +63,8 @@ export const getMailboxes = () => api<MailboxPayload>('/api/mailboxes')
 export interface FreeConfig {
   version?: number
   driver: 'protocol' | 'roxybrowser'
+  flow_profile?: 'reference_20260823' | 'legacy' | string
+  proxy_allocation_mode?: 'healthy_random' | 'exclusive' | string
   target_count: number
   concurrency: number
   email_code_timeout: number
@@ -82,7 +86,15 @@ export interface FreeConfig {
     protocol?: { country?: string; group?: string }
     roxybrowser?: { country?: string; group?: string }
   }
-  protocol: { node_runner: string; sentinel_timeout: number }
+  protocol: {
+    node_runner: string
+    sentinel_timeout: number
+    network_timeout?: number
+    network_preflight_retries?: number
+    anonymous_warmup?: boolean
+    authenticated_warmup?: boolean
+    geo_probe_url?: string
+  }
   roxybrowser: {
     api_base: string
     api_key?: string
@@ -94,6 +106,7 @@ export interface FreeConfig {
     close_path: string
     delete_path: string
     headless: boolean
+    force_open?: boolean
     keep_browser_open: boolean
     one_profile_per_account: boolean
     delete_profile_after_run: boolean
@@ -165,7 +178,7 @@ export const preflightFree = (config?: Partial<FreeConfig> & { proxy_content?: s
 export const startFree = (config?: Partial<FreeConfig> & { proxy_content?: string; row_ids?: string[] }) => api<{ ok: true; batch_id: string; batch?: any; state: FreeState }>('/api/free/start', config || {})
 export const rerunFreeTask = (taskId: string) => api<{ ok: true; batch_id: string; batch?: any; state: FreeState }>('/api/free/rerun', { task_id: taskId })
 export const stopFree = () => api<{ ok: true; state: FreeState }>('/api/free/stop', {})
-export const getFreeLogs = (taskId = '') => api<{ ok: true; task_id?: string; logs: Array<{ time?: string; level?: string; message?: string; task_id?: string; stage?: string; stage_label?: string }> }>(`/api/free/logs${taskId ? `?task_id=${encodeURIComponent(taskId)}` : ''}`)
+export const getFreeLogs = (taskId = '') => api<{ ok: true; task_id?: string; logs: FreeLogEntry[] }>(`/api/free/logs${taskId ? `?task_id=${encodeURIComponent(taskId)}` : ''}`)
 export const getFreeRoxyWorkspaces = () => api<{ ok: true; items: Array<{ workspace_id: string; workspace_name: string; project_id: string; project_name: string; label: string }> }>('/api/free/roxy/workspaces')
 export interface FreeMailboxRow {
   row_id: string
@@ -193,14 +206,7 @@ export interface FreeMailboxRow {
   live_check_ip?: string
   live_check_token_refreshed?: boolean
   live_check_http_status?: number | null
-  live_check_failure?: {
-    node_code?: string
-    node_label?: string
-    error_code?: string
-    public_message?: string
-    retryable?: boolean
-    http_status?: number | string | null
-  } | null
+  live_check_failure?: TaskFailure | null
   twofa_status?: string
   twofa_error?: string
   has_access_token?: boolean
@@ -210,6 +216,7 @@ export interface FreeMailboxRow {
   credential_line?: string
   task_id?: string
   error?: string
+  failure?: TaskFailure | null
 }
 export const getFreeMailboxes = () => api<{ ok: true; pool: 'free'; rows: FreeMailboxRow[] }>('/api/free/mailboxes')
 export const importFreeMailboxes = (poolContent: string) => api<{ ok: true; imported: number; skipped: number; rows: FreeMailboxRow[] }>(
