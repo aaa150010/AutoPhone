@@ -45,6 +45,8 @@ _SECURITY_HTML_MARKERS = (
     "cloudflare ray id",
     "cf-turnstile",
 )
+SECURITY_CHALLENGE_WAIT_SECONDS = 60.0
+SECURITY_CHALLENGE_POLL_SECONDS = 2.0
 
 # Keep the navigation shape in lockstep with AutoRegister's BrowserSession.
 # The recovered transport's PAGE_HEADERS describe an older Windows Chrome
@@ -400,6 +402,89 @@ def _security_challenge_html(response: Any) -> bool:
     return bool(lowered) and any(marker in lowered for marker in _SECURITY_HTML_MARKERS)
 
 
+def _wait_for_security_challenge(
+    session: Any,
+    transport: Any,
+    response: Any,
+    url: str,
+    referer: str,
+    *,
+    timeout: float,
+    wait_seconds: float,
+    log: LogFn,
+    label: str,
+    attempt: int,
+    stop_requested: Callable[[], bool] | None,
+) -> Any:
+    """Poll the same session/proxy while a challenge may clear naturally.
+
+    This is deliberately a bounded wait only.  It never changes cookies,
+    headers, proxy, fingerprint or page content and never submits a challenge
+    token.  The final response is classified by the caller so an unresolved
+    challenge keeps its stable security node.
+    """
+    budget = max(0.0, min(float(wait_seconds or 0.0), SECURITY_CHALLENGE_WAIT_SECONDS))
+    if budget <= 0:
+        return response
+    deadline = time.monotonic() + budget
+    poll_seconds = max(0.1, min(float(SECURITY_CHALLENGE_POLL_SECONDS), budget))
+    _emit(
+        log,
+        f"[协议预热/{label}] 检测到安全挑战，保持当前会话和代理等待最多 {int(budget)} 秒",
+        "warn",
+        node_code="free_oauth_security_challenge",
+        node_label="等待 Free OAuth 安全验证",
+        http_status=int(getattr(response, "status_code", 0) or 0),
+        page_type="security_challenge",
+        attempt=attempt,
+        outcome="waiting",
+        diagnostic="同一 Session/Profile/代理轮询；不执行自动绕过",
+    )
+    current = response
+    while True:
+        if stop_requested and stop_requested():
+            raise FreeRegisterError(
+                "free_run_stop", "停止 Free 注册", "任务在安全挑战等待期间停止", retryable=False,
+            )
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return current
+        time.sleep(min(poll_seconds, remaining))
+        try:
+            current = session.get(
+                url,
+                headers=_headers(transport, url, referer),
+                timeout=max(1.0, min(float(timeout), remaining)),
+                allow_redirects=True,
+            )
+        except Exception as exc:
+            _emit(
+                log,
+                f"[协议预热/{label}] 安全挑战等待请求异常：{type(exc).__name__}",
+                "warn",
+                node_code="free_oauth_security_challenge",
+                node_label="等待 Free OAuth 安全验证",
+                attempt=attempt,
+                outcome="waiting",
+                diagnostic="同一会话重试；未记录响应正文",
+            )
+            continue
+        if not _security_challenge_html(current):
+            _emit(
+                log,
+                f"[协议预热/{label}] 安全挑战等待后页面已恢复",
+                "info",
+                node_code="free_oauth_security_challenge",
+                node_label="等待 Free OAuth 安全验证",
+                http_status=int(getattr(current, "status_code", 0) or 0),
+                page_type="challenge_cleared",
+                attempt=attempt,
+                outcome="success",
+                diagnostic="继续使用同一会话和代理",
+            )
+            return current
+
+
 def _request(
     session: Any,
     transport: Any,
@@ -413,6 +498,8 @@ def _request(
     attempt: int = 1,
     node_code: str = "free_protocol_preflight",
     node_label: str = "协议网络预检",
+    challenge_wait_seconds: float = 0.0,
+    stop_requested: Callable[[], bool] | None = None,
 ) -> Any:
     started = time.monotonic()
     try:
@@ -420,7 +507,28 @@ def _request(
         status = int(getattr(response, "status_code", 0) or 0)
         content_type = _content_type(response)
         provider_code = _provider_code(response)
-        challenge = _http_success(status) and _security_challenge_html(response)
+        # A challenge page can be returned with 403 as well as 200.  Detect it
+        # before interpreting the status as a replaceable proxy denial so the
+        # Free flow never rotates around or attempts to bypass a security page.
+        challenge = _security_challenge_html(response)
+        if challenge and strict and challenge_wait_seconds > 0:
+            response = _wait_for_security_challenge(
+                session,
+                transport,
+                response,
+                url,
+                referer,
+                timeout=timeout,
+                wait_seconds=challenge_wait_seconds,
+                log=log,
+                label=label,
+                attempt=attempt,
+                stop_requested=stop_requested,
+            )
+            status = int(getattr(response, "status_code", 0) or 0)
+            content_type = _content_type(response)
+            provider_code = _provider_code(response)
+            challenge = _security_challenge_html(response)
         success = _http_success(status) and not challenge
         if challenge:
             page_type = "security_challenge"
@@ -478,10 +586,13 @@ def _request(
                 action_hint = "等待上游服务恢复后重试，并保留当前代理诊断"
             else:
                 action_hint = "检查当前任务代理的连接、DNS、TLS 和出口可用性后重试"
-            raise FreeRegisterError(
+            failure = FreeRegisterError(
                 node_code, node_label,
                 f"{label} 预检返回 HTTP {status}", provider_status=status,
-                retryable=status == 0 or status in {408, 425, 429} or status >= 500,
+                # A normal Auth access denial is a route decision.  Let the
+                # task-level healthy-pool policy choose another proxy, but do
+                # not hammer the same proxy repeatedly within this preflight.
+                retryable=(status == 0 or status in {408, 425, 429} or status >= 500),
                 error_code="free_protocol_preflight_http",
                 provider_code=provider_code,
                 diagnostic=f"{label}: HTTP {status}; content_type={content_type or '-'}; page_type={page_type or '-'}",
@@ -490,6 +601,13 @@ def _request(
                 safe_page=url,
                 content_type=content_type,
             )
+            # Access denied before authorize/continue is route-specific and
+            # safe to retry with another pool member.  Keep it distinct from
+            # proxy health evidence: a risk decision must not quarantine a
+            # proxy for later tasks, and OTP/page failures never reach here.
+            if status in {401, 403}:
+                setattr(failure, "proxy_retryable", True)
+            raise failure
         return response
     except FreeRegisterError:
         raise
@@ -514,6 +632,13 @@ def network_preflight(transport: Any, config: Mapping[str, Any], log: LogFn = No
     protocol = config.get("protocol") if isinstance(config.get("protocol"), Mapping) else {}
     timeout = max(5.0, min(60.0, float(protocol.get("network_timeout") or 20)))
     retries = max(1, min(5, int(protocol.get("network_preflight_retries") or 3)))
+    try:
+        challenge_wait_seconds = float(
+            protocol.get("security_challenge_wait_seconds", SECURITY_CHALLENGE_WAIT_SECONDS)
+        )
+    except (TypeError, ValueError):
+        challenge_wait_seconds = SECURITY_CHALLENGE_WAIT_SECONDS
+    challenge_wait_seconds = max(0.0, min(SECURITY_CHALLENGE_WAIT_SECONDS, challenge_wait_seconds))
     _emit(log, "[协议网络预检/free_protocol_preflight] 开始", "info", node_code="free_protocol_preflight", node_label="协议网络预检", outcome="started")
     checks = list(_PREFLIGHT)
     sentinel_version = str(protocol.get("sentinel_version") or REFERENCE_SENTINEL_VERSION).strip()
@@ -524,7 +649,19 @@ def network_preflight(transport: Any, config: Mapping[str, Any], log: LogFn = No
         last: BaseException | None = None
         for attempt in range(1, retries + 1):
             try:
-                response = _request(session, transport, url, referer, timeout=timeout, log=log, label=label, strict=True, attempt=attempt)
+                response = _request(
+                    session,
+                    transport,
+                    url,
+                    referer,
+                    timeout=timeout,
+                    log=log,
+                    label=label,
+                    strict=True,
+                    attempt=attempt,
+                    challenge_wait_seconds=challenge_wait_seconds,
+                    stop_requested=stop_requested,
+                )
                 if response is not None:
                     break
             except FreeRegisterError as exc:
@@ -705,6 +842,7 @@ def prepare_reference_bootstrap(
     )
 __all__ = [
     "REFERENCE_SENTINEL_VERSION",
+    "SECURITY_CHALLENGE_WAIT_SECONDS",
     "anonymous_warmup",
     "authenticated_warmup",
     "exit_geo_profile",

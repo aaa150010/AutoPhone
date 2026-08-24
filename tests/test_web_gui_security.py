@@ -1088,6 +1088,55 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertTrue(transport._gptphone_initial_email_otp_send_confirmed)
         self.assertTrue(any("首次邮箱验证码发送接口已确认" in message for message, _level in logs))
 
+    def test_email_otp_page_type_aliases_all_send_before_url_mailbox_wait(self):
+        module = self.module
+        original_submit = module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER
+        aliases = (
+            "email_otp",
+            "email_otp_send",
+            "email_otp_verification",
+            "email_verification",
+            "email_code_verification",
+            "passwordless_email_otp",
+        )
+        try:
+            for page_type in aliases:
+                sent = []
+                response = {
+                    "_status": 200,
+                    "page": {"type": page_type},
+                    "continue_url": "https://auth.openai.com/api/accounts/email-otp/send?state=redacted",
+                }
+                transport = SimpleNamespace(
+                    send_email_otp=lambda value, bucket=sent: bucket.append(value) or {"_status": 200},
+                    log_fn=None,
+                )
+                module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = lambda _self, _email, value=response: value
+                result = module._real_submit_email_identifier(transport, "user@example.test")
+                self.assertIs(result, response)
+                self.assertEqual(sent, [response["continue_url"]], page_type)
+        finally:
+            module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = original_submit
+
+    def test_email_otp_continue_path_is_used_when_page_type_is_missing(self):
+        module = self.module
+        original_submit = module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER
+        sent = []
+        response = {
+            "_status": 200,
+            "continue_url": "https://auth.openai.com/email-verification?state=redacted",
+        }
+        transport = SimpleNamespace(
+            send_email_otp=lambda value: sent.append(value) or {"_status": 200},
+            log_fn=None,
+        )
+        try:
+            module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = lambda _self, _email: response
+            self.assertIs(module._real_submit_email_identifier(transport, "user@example.test"), response)
+        finally:
+            module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = original_submit
+        self.assertEqual(sent, [response["continue_url"]])
+
     def test_non_email_otp_page_does_not_send_email_code(self):
         module = self.module
         original_submit = module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER

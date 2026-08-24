@@ -185,7 +185,7 @@ class FreeProtocolBootstrapTests(unittest.TestCase):
         with self.assertRaises(FreeRegisterError) as raised:
             network_preflight(
                 transport,
-                {"protocol": {"network_preflight_retries": 3}},
+                {"protocol": {"network_preflight_retries": 3, "security_challenge_wait_seconds": 0}},
                 log=lambda message, level="info", **fields: events.append((message, level, fields)),
             )
 
@@ -246,7 +246,7 @@ class FreeProtocolBootstrapTests(unittest.TestCase):
             _Response(403, {"error": {"code": "access_denied"}}, content_type="text/html", text="<html>blocked</html>"),
         ])
         with self.assertRaises(FreeRegisterError) as raised:
-            network_preflight(transport, {"protocol": {"network_preflight_retries": 1}})
+            network_preflight(transport, {"protocol": {"network_preflight_retries": 3}})
         error = raised.exception
         self.assertEqual(error.provider_status, 403)
         self.assertEqual(error.provider_code, "access_denied")
@@ -254,7 +254,46 @@ class FreeProtocolBootstrapTests(unittest.TestCase):
         self.assertEqual(error.content_type, "text/html")
         self.assertIn("HTTP 403", error.diagnostic)
         self.assertIn("更换代理", error.action_hint)
+        self.assertTrue(getattr(error, "proxy_retryable", False))
+        self.assertEqual(len(transport.session.calls), 2)
         self.assertNotIn("blocked", str(error))
+
+    def test_preflight_403_cloudflare_challenge_stops_without_route_rotation(self):
+        secret = "challenge-private-marker"
+        transport = _Transport([_Response(
+            403,
+            content_type="text/html",
+            text=f"<html><title>Just a moment</title><script>{secret} verify you are human</script></html>",
+        )])
+        with self.assertRaises(FreeRegisterError) as raised:
+            network_preflight(
+                transport,
+                {"protocol": {"network_preflight_retries": 3, "security_challenge_wait_seconds": 0}},
+            )
+        error = raised.exception
+        self.assertEqual(error.error_code, "free_oauth_security_challenge")
+        self.assertFalse(error.retryable)
+        self.assertFalse(getattr(error, "proxy_retryable", False))
+        self.assertNotIn(secret, str(error))
+
+    def test_preflight_waits_on_same_session_until_challenge_clears(self):
+        transport = _Transport([
+            _Response(403, content_type="text/html", text="<html>Just a moment</html>"),
+            _Response(200, content_type="text/html", text="<html><title>Log in</title></html>"),
+            _Response(200, content_type="text/html", text="<html><title>OpenAI Login</title></html>"),
+            _Response(200, content_type="text/html", text="<html>sentinel frame</html>"),
+        ])
+        events = []
+        with patch.object(bootstrap.time, "sleep", return_value=None):
+            result = network_preflight(
+                transport,
+                {"protocol": {"network_preflight_retries": 3, "security_challenge_wait_seconds": 4}},
+                log=lambda message, level="info", **fields: events.append((message, level, fields)),
+            )
+        self.assertEqual(result["checks"], ["chatgpt-login", "auth-login", "sentinel-frame"])
+        self.assertEqual(len(transport.session.calls), 4)
+        self.assertTrue(any(fields.get("outcome") == "waiting" for _message, _level, fields in events))
+        self.assertTrue(any(fields.get("page_type") == "challenge_cleared" for _message, _level, fields in events))
 
     def test_authenticated_warmup_does_not_report_status_zero_as_success(self):
         events = []

@@ -160,6 +160,44 @@ class FreeProxyHealthTests(unittest.TestCase):
             [0, 1],
         )
 
+    def test_protocol_preflight_access_denied_switches_route_without_quarantining_proxy(self):
+        attempts: list[str] = []
+
+        def runner(task, _config, _stop, _stage, _log, *, twofa_retry=False):
+            self.assertFalse(twofa_retry)
+            attempts.append(str(task.get("proxy_id") or ""))
+            if len(attempts) == 1:
+                failure = FreeRegisterError(
+                    "free_protocol_preflight", "协议网络预检", "chatgpt-login 预检返回 HTTP 403",
+                    provider_status=403, retryable=True,
+                )
+                failure.proxy_retryable = True
+                raise failure
+            return {"access_token": "token-private", "twofa_status": "disabled"}
+
+        manager = FreeRegisterManager(
+            Path(self.temporary.name),
+            runner=runner,
+            proxy_probe=lambda proxy, _url: "203.0.113.10" if "proxy-a" in proxy else "203.0.113.11",
+        )
+        manager.start(
+            {"driver": "protocol", "target_count": 1, "concurrency": 1, "proxy_retry_count": 1},
+            pool_content="user@example.test----https://mail.example.test/inbox\n",
+            proxy_content="http://proxy-a.test:8000\nhttp://proxy-b.test:8000\n",
+        )
+        deadline = time.time() + 3
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.01)
+
+        task = manager.public_tasks()[0]
+        self.assertEqual(task["status"], "success")
+        self.assertEqual(len(attempts), 2)
+        self.assertNotEqual(attempts[0], attempts[1])
+        self.assertEqual(
+            sorted(row["consecutive_failures"] for row in manager.proxies.public()["rows"]),
+            [0, 0],
+        )
+
     def test_protocol_failure_after_email_submission_keeps_fixed_proxy(self):
         attempts: list[str] = []
 

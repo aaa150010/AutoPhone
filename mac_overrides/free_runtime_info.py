@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-FREE_RUNTIME_VERSION = "1.6.55"
+FREE_RUNTIME_VERSION = "1.6.56"
 FREE_OTP_PARSER_REVISION = "pickup-dynamic-v4-roxy-otp-v2"
 
 

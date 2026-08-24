@@ -413,7 +413,11 @@ class FreeProtocolMixin:
         def build_oauth_context() -> dict[str, Any]:
             oauth_url, state, code_verifier = codex_chain_runner.build_oauth_url(
                 login_hint=email,
-                screen_hint="signup",
+                # Match AutoRegister's current OAuth context.  The server
+                # must be allowed to classify a mailbox as a new account or
+                # an existing login; forcing ``signup`` can send an existing
+                # mailbox into the wrong page state before URL OTP handling.
+                screen_hint="login_or_signup",
             )
             params = codex_oauth_chain.parse_oauth_url(oauth_url)
             return {
@@ -505,6 +509,13 @@ class FreeProtocolMixin:
                 chain_config, oauth_params=oauth_context["params"], proxy=proxy,
                 sentinel_provider=sentinel, device_id=device_id, log_fn=log,
             )
+            # Security-page polling may receive a raw response from the
+            # transport session. Bind the recovered parser to this exact
+            # transport instead of letting the helper import a process-global
+            # parser with an unrelated response contract.
+            json_response = getattr(codex_oauth_chain, "_json_response", None)
+            if callable(json_response):
+                setattr(created, "_gptphone_json_response", json_response)
             setattr(created, "_gptphone_free_protocol_state_machine", True)
             if reference_flow:
                 _prepare_reference_http_session(created)

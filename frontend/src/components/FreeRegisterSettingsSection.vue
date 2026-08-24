@@ -11,7 +11,7 @@ const defaultConfig: FreeConfig = {
   driver: 'protocol', flow_profile: 'reference_20260823', proxy_allocation_mode: 'healthy_random', target_count: 1, concurrency: 3, email_code_timeout: 90, auto_set_2fa: true,
   mailbox_network_mode: 'local_proxy', mailbox_proxy_url: 'http://127.0.0.1:7897',
   mailbox_request_retries: 3, mailbox_retry_backoff_seconds: 1,
-  proxy_probe_url: 'https://api.ipify.org', proxy_tls_verify: true, proxy_tls_compat_fallback: true, protocol: { node_runner: '', sentinel_version: '20260219f9f6', sentinel_timeout: 90, network_timeout: 20, network_preflight_retries: 3, anonymous_warmup: true, authenticated_warmup: true, geo_probe_url: 'https://ipwho.is/' },
+  proxy_probe_url: 'https://api.ipify.org', proxy_tls_verify: true, proxy_tls_compat_fallback: true, protocol: { node_runner: '', sentinel_version: '20260219f9f6', sentinel_timeout: 90, network_timeout: 20, network_preflight_retries: 3, security_challenge_wait_seconds: 60, anonymous_warmup: true, authenticated_warmup: true, geo_probe_url: 'https://ipwho.is/' },
   proxy_default_scheme: 'http', proxy_failure_threshold: 2, proxy_quarantine_seconds: 600, proxy_retry_count: 1,
   roxy_circuit_failure_threshold: 3, roxy_circuit_recovery_seconds: 30,
   proxy_selection: { protocol: { country: '', group: '' }, roxybrowser: { country: '', group: '' } },
@@ -348,9 +348,10 @@ defineExpose({ save })
         <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="Sentinel 超时（秒）" help="全协议链路等待 Sentinel 初始化和响应的最长时间，超时后任务在对应节点失败。" /></template><el-input-number v-model="config.protocol.sentinel_timeout" :min="10" :max="300" controls-position="right" :disabled="running" /></el-form-item></el-col>
       </el-row>
       <el-row :gutter="10">
-        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="网络预检重试" help="ChatGPT、Auth 和 Sentinel 预检的额外尝试次数；每次仍使用同一任务代理。" /></template><el-input-number v-model="config.protocol.network_preflight_retries" :min="1" :max="5" controls-position="right" :disabled="running" /></el-form-item></el-col>
-        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="网络超时（秒）" help="全协议预检和匿名预热的单次网络请求超时。" /></template><el-input-number v-model="config.protocol.network_timeout" :min="5" :max="60" controls-position="right" :disabled="running" /></el-form-item></el-col>
-        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="出口地区探测地址" help="用于建立协议链路的地区画像；只记录国家和脱敏结果，不会写入授权信息。" /></template><el-input v-model="config.protocol.geo_probe_url" :disabled="running" placeholder="https://ipwho.is/" /></el-form-item></el-col>
+        <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="网络预检重试" help="ChatGPT、Auth 和 Sentinel 预检的额外尝试次数；每次仍使用同一任务代理。" /></template><el-input-number v-model="config.protocol.network_preflight_retries" :min="1" :max="5" controls-position="right" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="网络超时（秒）" help="全协议预检和匿名预热的单次网络请求超时。" /></template><el-input-number v-model="config.protocol.network_timeout" :min="5" :max="60" controls-position="right" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="安全挑战等待（秒）" help="同一会话和代理等待 Cloudflare/安全挑战自然解除的最长时间；不会自动绕过或切换代理。" /></template><el-input-number v-model="config.protocol.security_challenge_wait_seconds" :min="0" :max="60" controls-position="right" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="出口地区探测地址" help="用于建立协议链路的地区画像；只记录国家和脱敏结果，不会写入授权信息。" /></template><el-input v-model="config.protocol.geo_probe_url" :disabled="running" placeholder="https://ipwho.is/" /></el-form-item></el-col>
       </el-row>
       <div class="check-row"><el-checkbox v-model="config.protocol.anonymous_warmup" :disabled="running">匿名态预热</el-checkbox><el-checkbox v-model="config.protocol.authenticated_warmup" :disabled="running">认证态预热</el-checkbox></div>
     </div>

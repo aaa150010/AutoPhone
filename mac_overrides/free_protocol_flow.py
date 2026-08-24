@@ -39,6 +39,13 @@ try:
         random_display_name,
         safe_log_message,
     )
+    from .free_protocol_security import (
+        MFA_PAGE_TYPES as _MFA_PAGE_TYPES,
+        SECURITY_CHALLENGE_MARKERS as _CHALLENGE_MARKERS,
+        is_security_page as _is_security_page,
+        is_security_challenge as _is_security_challenge_response,
+        wait_for_security_challenge as _wait_for_security_challenge,
+    )
 except ImportError:  # pragma: no cover - compatibility import for recovered runtime
     from free_protocol_diagnostics import (  # type: ignore[no-redef]
         callback_matches_redirect as _callback_matches_redirect,
@@ -62,18 +69,15 @@ except ImportError:  # pragma: no cover - compatibility import for recovered run
         random_display_name,
         safe_log_message,
     )
+    from free_protocol_security import (  # type: ignore[no-redef]
+        MFA_PAGE_TYPES as _MFA_PAGE_TYPES,
+        SECURITY_CHALLENGE_MARKERS as _CHALLENGE_MARKERS,
+        is_security_page as _is_security_page,
+        is_security_challenge as _is_security_challenge_response,
+        wait_for_security_challenge as _wait_for_security_challenge,
+    )
 
 
-_CHALLENGE_MARKERS = (
-    "captcha",
-    "cloudflare",
-    "turnstile",
-    "verify you are human",
-    "checking your browser",
-    "just a moment",
-    "人机验证",
-    "人間であることを確認",
-)
 _SESSION_INVALID_MARKERS = (
     "sign-in session is no longer valid",
     "oauth_session_invalid",
@@ -110,7 +114,10 @@ _PASSWORD_PAGE_TYPES = frozenset({
     "signup_password", "create_account_password",
 })
 _OTP_PAGE_TYPES = frozenset({
-    "email_otp", "email_otp_verification", "email_verification",
+    # Auth has returned these email-code aliases across authorize/continue
+    # versions. They all use the same URL mailbox wait/verify path.
+    "email_otp", "email_otp_send", "email_otp_verification", "email_verification",
+    "email_code_verification", "passwordless_email_otp",
     "mfa_challenge", "mfa_otp", "mfa_otp_verification",
 })
 _PROFILE_PAGE_TYPES = frozenset({
@@ -120,22 +127,6 @@ _CALLBACK_READY_PAGE_TYPES = frozenset({
     "sign_in_with_chatgpt_codex_consent", "consent", "consent_required",
     "workspace_select", "external_url", "oauth_callback",
 })
-_SECURITY_PAGE_MARKERS = (
-    "security_challenge",
-    "security-challenge",
-    "security-check",
-    "captcha",
-    "cloudflare",
-    "turnstile",
-    "/cdn-cgi/challenge-platform/",
-)
-_SECURITY_PAGE_TYPES = frozenset({
-    "security_challenge",
-    "security_verification",
-    "human_verification",
-    "captcha",
-})
-_MFA_PAGE_TYPES = frozenset({"mfa_challenge", "mfa_otp", "mfa_otp_verification"})
 _MAX_PAGE_TRANSITIONS = 8
 
 
@@ -292,30 +283,6 @@ def _is_retryable_otp_error(response: Any) -> bool:
     return _contains(error_text(response), _RETRYABLE_OTP_MARKERS)
 
 
-def _is_security_page(response: Any) -> bool:
-    """Recognize a successful HTTP response that is still a security stop."""
-    if not isinstance(response, Mapping):
-        return False
-    page = response.get("page")
-    page_type = str(page.get("type") or "") if isinstance(page, Mapping) else ""
-    locations = " ".join(_page_locations(response))
-    normalized_page_type = page_type.strip().casefold().replace("-", "_")
-    # ``mfa_challenge`` is an authentication step, not a security stop.  Do
-    # not use a broad ``challenge`` substring here: the recovered API uses
-    # that word for both MFA and Cloudflare/security pages.
-    if normalized_page_type in _MFA_PAGE_TYPES or normalized_page_type.replace("_", "-") in {value.replace("_", "-") for value in _MFA_PAGE_TYPES}:
-        return False
-    return (
-        normalized_page_type in _SECURITY_PAGE_TYPES
-        or any(
-            marker.casefold().replace("-", "_") in normalized_page_type
-            for marker in _SECURITY_PAGE_MARKERS
-            if marker.casefold() != "security-challenge"
-        )
-        or any(marker.casefold() in locations.casefold() for marker in _SECURITY_PAGE_MARKERS)
-    )
-
-
 def _callback_code_and_state(callback_url: str) -> tuple[str, str]:
     values = _callback_query(callback_url)
     return values.get("code", ""), values.get("state", "")
@@ -371,7 +338,11 @@ def _check_stopped(stop_requested: Callable[[], bool] | None) -> None:
 
 
 def _raise_security_page(response: Any) -> None:
-    if _is_security_page(response) or _contains(_response_search_text(response), _CHALLENGE_MARKERS):
+    if (
+        _is_security_page(response)
+        or _is_security_challenge_response(response)
+        or _contains(_response_search_text(response), _CHALLENGE_MARKERS)
+    ):
         raise FreeRegisterError(
             "free_oauth_security_challenge",
             "等待 Free OAuth 安全验证",
@@ -473,6 +444,7 @@ def _call_transport(
     *args: Any,
     flow: str = "authorize_continue",
     stop_requested: Callable[[], bool] | None = None,
+    log: Callable[..., Any] | None = None,
 ) -> Any:
     _check_stopped(stop_requested)
     _reset_sentinel(transport, flow)
@@ -492,6 +464,20 @@ def _call_transport(
         if flow == "password_verify" and method in {"send_email_otp", "verify_email_otp"}:
             action = "派发" if method.startswith("send_") else "验证"
             node, label = "free_existing_login_otp", f"{action}已有账号登录验证码"
+        # A challenge can be returned by initiate, authorize/continue, OTP,
+        # profile, consent, or callback requests.  Wait only through the
+        # existing transport session/hook; never replay ``function`` (which
+        # would duplicate an email/OTP POST).  The helper returns the original
+        # challenge when it remains unresolved, so the stable failure node is
+        # retained below.
+        result = _wait_for_security_challenge(
+            transport,
+            result,
+            method=method,
+            flow=flow,
+            stop_requested=stop_requested,
+            log=log or getattr(transport, "log_fn", None),
+        )
         _raise_security_page(result)
         _ok, _page, _continue, error_text, session_invalid = _chain_helpers()
         error = str(error_text(result) or "")
@@ -608,6 +594,7 @@ def _wait_and_validate_email_otp(
             continue_url(current) or "",
             flow=sentinel_flow,
             stop_requested=stop_requested,
+            log=log,
         )
         if not ok(sent):
             _raise_response(sent, node=stage_code, label="等待 Free 邮箱验证码", stage=f"{stage_code}_send")
@@ -659,6 +646,7 @@ def _wait_and_validate_email_otp(
                 code,
                 flow=sentinel_flow,
                 stop_requested=stop_requested,
+                log=log,
             )
         except Exception:
             # The mailbox code was not confirmed as submitted when the
@@ -735,6 +723,7 @@ def _run_once(
         oauth_url,
         flow="oauth_authorize",
         stop_requested=stop_requested,
+        log=log,
     )
     if not ok(start):
         _raise_response(start, node="free_oauth_session", label="Free OAuth 会话", stage="free_oauth_session")
@@ -779,6 +768,7 @@ def _run_once(
         "submit_email_identifier",
         email,
         stop_requested=stop_requested,
+        log=log,
     )
     if not ok(response):
         _raise_response(response, node="free_email_identifier", label="识别 Free 注册邮箱", stage="free_email_identifier")
@@ -866,6 +856,7 @@ def _run_once(
                     password,
                     flow="username_password_create",
                     stop_requested=stop_requested,
+                    log=log,
                 )
             else:
                 account_flow = "existing_login"
@@ -910,6 +901,7 @@ def _run_once(
                     "https://auth.openai.com/email-verification",
                     flow="oauth_create_account",
                     stop_requested=stop_requested,
+                    log=log,
                 )
                 if not ok(response):
                     _raise_response(
@@ -925,6 +917,7 @@ def _run_once(
                 random_birthdate(),
                 flow="oauth_create_account",
                 stop_requested=stop_requested,
+                log=log,
             )
             if not ok(response):
                 _raise_response(response, node="free_account_create", label="创建 Free 账号", stage="free_account_create")
@@ -940,6 +933,7 @@ def _run_once(
                     consent_url,
                     flow="oauth_consent",
                     stop_requested=stop_requested,
+                    log=log,
                 )
                 if not ok(response):
                     _raise_response(response, node="free_oauth_callback", label="Free OAuth 回调", stage="free_oauth_consent")
@@ -995,6 +989,7 @@ def _run_once(
         context["params"],
         flow="oauth_callback",
         stop_requested=stop_requested,
+        log=log,
     ) or "").strip()
     callback_error, callback_error_description = _callback_error(callback_url)
     if callback_error:
@@ -1043,6 +1038,7 @@ def _run_once(
         email,
         flow="oauth_token_exchange",
         stop_requested=stop_requested,
+        log=log,
     )
     # Some replay/compatibility transports return an HTTP envelope instead of
     # raising for a failed token endpoint. Preserve that provider status and

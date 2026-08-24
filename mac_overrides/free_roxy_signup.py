@@ -13,7 +13,13 @@ except ImportError:
 
 
 LOGIN_URL = "https://chatgpt.com/auth/login"
+# The login?email page is a short-lived SPA transition.  Keep the recovery
+# threshold separate from the final debounce so a transient blank field gets
+# one early, same-form resubmission without extending the attempt forever.
 EMAIL_CLEAR_DEBOUNCE_SECONDS = 18.0
+EMAIL_CLEAR_RECOVERY_SECONDS = 2.0
+EMAIL_NON_LOGIN_CLEAR_DEBOUNCE_SECONDS = 5.0
+EMAIL_TRANSITION_TIMEOUT_SECONDS = 20.0
 EMAIL_SUBMIT_ATTEMPTS = 3
 
 
@@ -91,6 +97,28 @@ def warmup_login_page(driver: Any, human: Any | None = None) -> None:
         human.delay("page_warmup")
     if human is not None and not bool(getattr(human, "actions", True)):
         return
+    # Only dismiss selectors that are unambiguously cookie-consent controls.
+    # Do not click generic "Continue"/"Accept" text: those can be auth or IdP
+    # actions on the same page.
+    try:
+        driver.execute_script(r"""
+          const selectors = [
+            '#onetrust-accept-btn-handler',
+            '[data-testid="cookie-accept"]',
+            '[data-testid="accept-cookies"]'
+          ];
+          const visible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
+            && getComputedStyle(el).visibility !== 'hidden'
+            && getComputedStyle(el).display !== 'none'
+            && !el.disabled
+            && String(el.getAttribute('aria-disabled') || '').toLowerCase() !== 'true';
+          for (const selector of selectors) {
+            const button = document.querySelector(selector);
+            if (visible(button)) { button.click(); break; }
+          }
+        """)
+    except Exception:
+        pass
     try:
         driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
             "type": "mouseMoved", "x": 180, "y": 140,
@@ -159,6 +187,135 @@ def _stabilize_email(driver: Any, email: str) -> dict[str, Any]:
         return {"ok": False, "reason": type(exc).__name__}
 
 
+def _submit_email_form_fallback(driver: Any, email: str, *, recovery: bool = False) -> dict[str, Any]:
+    """Submit only the active email form when the asynchronous probe fails.
+
+    The fallback deliberately resolves the form from the email input again. It
+    never searches or clicks a page-global button, which keeps provider/IdP
+    controls outside the registration action. A CDP Runtime evaluation is a
+    last transport fallback for drivers that reject a normal script call.
+    """
+    fallback_script = r"""
+      /* __gptphone_submit_email_form_fallback__ */
+      const email = String(arguments[0] || '').trim();
+      const visible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
+        && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).display !== 'none'
+        && !el.disabled && !el.readOnly
+        && String(el.getAttribute('aria-disabled') || '').toLowerCase() !== 'true';
+      const input = [...document.querySelectorAll(
+        'input[type="email"],input[name="email"],input[name="username"],input[autocomplete*="email"]'
+      )].find(visible);
+      if (!input) return {ok:false, reason:'missing_email_input'};
+      const form = input.closest('form');
+      if (!form) return {ok:false, reason:'missing_email_form'};
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      input.focus();
+      if (setter) setter.call(input, email); else input.value = email;
+      try { input.dispatchEvent(new InputEvent('beforeinput', {bubbles:true, cancelable:true,
+        inputType:'insertText', data:email})); } catch (_) {}
+      try { input.dispatchEvent(new InputEvent('input', {bubbles:true, inputType:'insertText', data:email})); }
+      catch (_) { input.dispatchEvent(new Event('input', {bubbles:true})); }
+      input.dispatchEvent(new Event('change', {bubbles:true}));
+      input.dispatchEvent(new FocusEvent('blur', {bubbles:true}));
+      input.blur(); input.focus();
+      const attrText = el => {
+        const own = [el.id, el.name, el.type, el.value, el.className, el.textContent,
+          el.getAttribute('href'),
+          el.getAttribute('formaction'), el.getAttribute('aria-label'), el.getAttribute('title'),
+          el.getAttribute('data-testid'), el.getAttribute('data-test-id'),
+          el.getAttribute('data-provider'), el.getAttribute('data-auth-provider'), el.getAttribute('data-idp')]
+          .filter(Boolean).join(' ');
+        const children = [...el.querySelectorAll('[aria-label],[title],[data-provider],[data-testid],[data-test-id],img,svg,use')]
+          .map(x => [x.getAttribute('aria-label'), x.getAttribute('title'), x.getAttribute('data-provider'),
+            x.getAttribute('data-testid'), x.getAttribute('data-test-id'), x.getAttribute('alt'),
+            x.getAttribute('src'), x.getAttribute('href')].filter(Boolean).join(' ')).join(' ');
+        return `${own} ${children}`.toLowerCase();
+      };
+      const bad = /google|apple|microsoft|github|facebook|saml|sso|oauth|social|oidc|idp|authorize|consent|grant|allow|sign[ -]?in with/;
+      const cancel = /(^|[^a-z])(cancel|back|skip)([^a-z]|$)/;
+      const candidates = [...form.querySelectorAll('button,input[type="submit"]')]
+        .filter((el, index, values) => values.indexOf(el) === index)
+        .filter(el => visible(el) && !bad.test(attrText(el)) && !cancel.test(attrText(el)));
+      const submit = candidates.map((el, index) => {
+        const text = attrText(el);
+        const type = String(el.getAttribute('type') || '').toLowerCase();
+        const rect = el.getBoundingClientRect();
+        let score = type === 'submit' ? 100 : 0;
+        if (/continue|next|create|sign[ -]?up|submit|start|email/.test(text)) score += 35;
+        if (/submit|continue|next/i.test(String(el.getAttribute('data-testid') || ''))) score += 25;
+        score -= Math.min(20, Math.abs(rect.top - input.getBoundingClientRect().bottom) / 100);
+        return {el, index, score};
+      }).sort((a, b) => b.score - a.score || a.index - b.index)[0]?.el || null;
+      const trigger = () => {
+        input.focus();
+        let triggered = false;
+        try {
+          if (submit && !submit.disabled) { submit.click(); triggered = true; }
+        } catch (_) {}
+        if (!triggered && typeof form.requestSubmit === 'function') {
+          try { form.requestSubmit(submit || undefined); triggered = true; }
+          catch (_) { try { form.requestSubmit(); triggered = true; } catch (_) {} }
+        }
+        const probe = window.__gptphone_email_submit_probe__;
+        if (probe && probe.record) probe.record.triggered = triggered;
+        return triggered;
+      };
+      const canRequestSubmit = typeof form.requestSubmit === 'function';
+      if (!submit && !canRequestSubmit) return {ok:false, reason:'no_safe_submit_control'};
+      const triggered = trigger();
+      return {ok:!!triggered, mode:'same_form_request_submit', fallback:true,
+        recovery:!!arguments[1], submit_observed:!!(window.__gptphone_email_submit_probe__ &&
+          window.__gptphone_email_submit_probe__.record && window.__gptphone_email_submit_probe__.record.submit_observed)};
+    """
+    try:
+        result = driver.execute_script(fallback_script, email, recovery) or {}
+        if isinstance(result, Mapping):
+            return dict(result)
+        return {"ok": False, "reason": "fallback_invalid_result"}
+    except Exception as exc:
+        cdp = getattr(driver, "execute_cdp_cmd", None)
+        if callable(cdp):
+            # The normal fallback above has already restored the native value;
+            # CDP only triggers the nearest form and does not carry credentials
+            # in a diagnostic string.
+            try:
+                result = cdp("Runtime.evaluate", {
+                    "expression": """
+                      (() => {
+                        const visible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
+                          && getComputedStyle(el).visibility !== 'hidden'
+                          && getComputedStyle(el).display !== 'none' && !el.disabled;
+                        const input = [...document.querySelectorAll(
+                          'input[type=\"email\"],input[name=\"email\"],input[name=\"username\"],input[autocomplete*=\"email\"]'
+                        )].find(el => visible(el) && !el.readOnly);
+                        const form = input && input.closest('form');
+                        if (!form) return {ok:false, reason:'missing_email_form'};
+                        const text = el => [el.id,el.name,el.type,el.value,el.className,
+                          el.getAttribute('aria-label'),el.getAttribute('title'),el.getAttribute('data-testid'),
+                          el.getAttribute('data-provider'),el.getAttribute('data-auth-provider'),el.textContent]
+                          .filter(Boolean).join(' ').toLowerCase();
+                        const bad = /google|apple|microsoft|github|facebook|saml|sso|oauth|social|oidc|idp|authorize|consent|grant|allow|sign[ -]?in with/;
+                        const cancel = /(^|[^a-z])(cancel|back|skip)([^a-z]|$)/;
+                        const submit = [...form.querySelectorAll('button,input[type="submit"]')]
+                          .filter((el, index, values) => values.indexOf(el) === index)
+                          .filter(el => visible(el) && !bad.test(text(el)) && !cancel.test(text(el)))[0];
+                        try {
+                          if (submit && !submit.disabled) { submit.click(); return {ok:true, mode:'cdp_same_form_click', fallback:true}; }
+                          if (typeof form.requestSubmit === 'function') { form.requestSubmit(); return {ok:true, mode:'cdp_request_submit', fallback:true}; }
+                        } catch (_) {}
+                        return {ok:false, reason:'request_submit_unavailable'};
+                      })()
+                    """,
+                    "returnByValue": True,
+                }) or {}
+                value = result.get("result", {}).get("value") if isinstance(result, Mapping) else None
+                if isinstance(value, Mapping):
+                    return dict(value)
+            except Exception as cdp_exc:
+                return {"ok": False, "reason": f"{type(exc).__name__}/{type(cdp_exc).__name__}"}
+        return {"ok": False, "reason": type(exc).__name__}
+
+
 def _submit_email_form(driver: Any, email: str, *, recovery: bool = False) -> dict[str, Any]:
     """Use the input's own form and asynchronously dispatch Enter plus click."""
     try:
@@ -177,52 +334,103 @@ def _submit_email_form(driver: Any, email: str, *, recovery: bool = False) -> di
           if (!form) return {ok:false, reason:'missing_email_form'};
           const attrText = el => {
             const own = [el.id, el.name, el.type, el.value, el.className, el.getAttribute('href'),
-              el.getAttribute('formaction'), el.getAttribute('aria-label'), el.getAttribute('data-testid'),
-              el.getAttribute('data-provider'), el.getAttribute('data-auth-provider'), el.getAttribute('data-idp')]
+              el.getAttribute('formaction'), el.getAttribute('aria-label'), el.getAttribute('title'),
+              el.getAttribute('data-testid'), el.getAttribute('data-test-id'),
+              el.getAttribute('data-provider'), el.getAttribute('data-auth-provider'), el.getAttribute('data-idp'),
+              el.textContent]
               .filter(Boolean).join(' ');
-            const children = [...el.querySelectorAll('[aria-label],[data-provider],[data-testid],img,svg,use')]
-              .map(x => [x.getAttribute('aria-label'), x.getAttribute('data-provider'), x.getAttribute('data-testid'),
-                x.getAttribute('alt'), x.getAttribute('src'), x.getAttribute('href')].filter(Boolean).join(' ')).join(' ');
+            const children = [...el.querySelectorAll('[aria-label],[title],[data-provider],[data-testid],[data-test-id],img,svg,use')]
+              .map(x => [x.getAttribute('aria-label'), x.getAttribute('title'), x.getAttribute('data-provider'),
+                x.getAttribute('data-testid'), x.getAttribute('data-test-id'), x.getAttribute('alt'),
+                x.getAttribute('src'), x.getAttribute('href')].filter(Boolean).join(' ')).join(' ');
             return `${own} ${children}`.toLowerCase();
           };
-          const bad = /google|apple|microsoft|github|facebook|saml|sso|oauth|social|oidc|idp|provider|authorize|consent|grant|allow/;
-          const inputRect = input.getBoundingClientRect();
+          const bad = /google|apple|microsoft|github|facebook|saml|sso|oauth|social|oidc|idp|authorize|consent|grant|allow|sign[ -]?in with/;
+          const cancel = /(^|[^a-z])(cancel|back|skip)([^a-z]|$)/;
           const formId = form.getAttribute('id') || '';
-          const buttons = [...form.querySelectorAll('button,input[type="submit"]'),
+          const candidates = [...form.querySelectorAll('button,input[type="submit"]'),
             ...(formId ? [...document.querySelectorAll(`button[form="${CSS.escape(formId)}"],input[type="submit"][form="${CSS.escape(formId)}"]`)] : [])]
-            .filter((el, index, values) => values.indexOf(el) === index && visible(el)
-              && !bad.test(attrText(el)) && !el.querySelector('img,svg,use'))
-            .map((el, index) => { const rect = el.getBoundingClientRect(); return {el, index,
-              type:String(el.getAttribute('type') || '').toLowerCase(), below:rect.top >= inputRect.bottom - 10,
-              distance:Math.max(0, rect.top - inputRect.bottom)}; })
-            .filter(item => item.below)
-            .sort((a,b) => (b.type === 'submit') - (a.type === 'submit') || a.distance - b.distance || a.index - b.index);
-          const submit = buttons.length ? buttons[0].el : null;
-          if (!submit) return {ok:false, reason:'missing_safe_submit'};
+            .filter((el, index, values) => values.indexOf(el) === index)
+            .filter(el => visible(el) && !bad.test(attrText(el)) && !cancel.test(attrText(el))
+              );
+          const scored = candidates.map((el, index) => {
+            const text = attrText(el);
+            const type = String(el.getAttribute('type') || '').toLowerCase();
+            const rect = el.getBoundingClientRect();
+            let score = type === 'submit' ? 100 : 0;
+            if (/continue|next|create|sign[ -]?up|submit|start|email/.test(text)) score += 35;
+            if (el.matches('[data-testid*="submit" i],[data-testid*="continue" i],[data-testid*="next" i]')) score += 25;
+            score -= Math.min(20, Math.abs(rect.top - input.getBoundingClientRect().bottom) / 100);
+            return {el, index, score};
+          }).sort((a, b) => b.score - a.score || a.index - b.index);
+          const submit = scored.length ? scored[0].el : null;
+          const oldProbe = window.__gptphone_email_submit_probe__;
+          if (oldProbe && oldProbe.form && oldProbe.listener) {
+            try { oldProbe.form.removeEventListener('submit', oldProbe.listener, true); } catch (_) {}
+          }
+          const record = {submit_observed:false, triggered:false, fallback:false,
+            mode:recovery ? 'controlled_resubmit' : 'async_enter_click'};
+          const listener = () => { record.submit_observed = true; record.observed_at = Date.now(); };
+          form.addEventListener('submit', listener, true);
+          window.__gptphone_email_submit_probe__ = {form, listener, record};
           const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
           input.focus();
           if (setter) setter.call(input, email); else input.value = email;
-          try { input.dispatchEvent(new InputEvent('input', {bubbles:true, inputType:'insertText', data:email})); } catch (_) {
-            input.dispatchEvent(new Event('input', {bubbles:true}));
-          }
+          try { input.dispatchEvent(new InputEvent('beforeinput', {bubbles:true, cancelable:true,
+            inputType:'insertText', data:email})); } catch (_) {}
+          try { input.dispatchEvent(new InputEvent('input', {bubbles:true, inputType:'insertText', data:email})); }
+          catch (_) { input.dispatchEvent(new Event('input', {bubbles:true})); }
           input.dispatchEvent(new Event('change', {bubbles:true}));
           input.dispatchEvent(new FocusEvent('blur', {bubbles:true}));
           input.blur(); input.focus();
-          submit.scrollIntoView({block:'center', inline:'nearest'});
-          setTimeout(() => {
+          if (submit) submit.scrollIntoView({block:'center', inline:'nearest'});
+          const trigger = () => {
             try {
+              input.focus();
               input.dispatchEvent(new KeyboardEvent('keydown', {bubbles:true, cancelable:true, key:'Enter', code:'Enter'}));
               input.dispatchEvent(new KeyboardEvent('keypress', {bubbles:true, cancelable:true, key:'Enter', code:'Enter'}));
               input.dispatchEvent(new KeyboardEvent('keyup', {bubbles:true, cancelable:true, key:'Enter', code:'Enter'}));
-              if (!submit.disabled) submit.click();
-              else if (typeof form.requestSubmit === 'function') form.requestSubmit();
-            } catch (_) {}
-          }, 80);
-          return {ok:true, mode:recovery ? 'controlled_resubmit' : 'async_enter_click'};
+              let triggered = false;
+              if (submit && !submit.disabled) { submit.click(); triggered = true; }
+              if (!triggered && typeof form.requestSubmit === 'function') {
+                try { form.requestSubmit(submit || undefined); triggered = true; }
+                catch (_) { try { form.requestSubmit(); triggered = true; } catch (_) {} }
+              }
+              record.triggered = triggered;
+            } catch (_) {
+              if (typeof form.requestSubmit === 'function') {
+                try { form.requestSubmit(); record.triggered = true; } catch (_) {}
+              }
+            }
+          };
+          setTimeout(trigger, 80);
+          const canSubmit = !!submit || typeof form.requestSubmit === 'function';
+          if (!canSubmit) return {ok:false, reason:'no_safe_submit_control'};
+          return {ok:true, mode:record.mode, submit_candidate:!!submit,
+            submit_probe_installed:true, request_submit_available:typeof form.requestSubmit === 'function'};
         """, email, recovery) or {}
-        return dict(result) if isinstance(result, Mapping) else {}
+        if isinstance(result, Mapping) and result.get("ok"):
+            # New scripts report whether a same-form control actually exists.
+            # Keep compatibility with minimal test/driver shims that only
+            # return ``ok`` while rejecting an explicit no-control result.
+            has_control_fields = "submit_candidate" in result or "request_submit_available" in result
+            if not has_control_fields or result.get("submit_candidate") or result.get("request_submit_available"):
+                return dict(result)
+            primary = {"reason": "no_safe_submit_control"}
+        else:
+            primary = dict(result) if isinstance(result, Mapping) else {"reason": "invalid_script_result"}
     except Exception as exc:
-        return {"ok": False, "reason": type(exc).__name__}
+        primary = {"reason": type(exc).__name__}
+
+    fallback = _submit_email_form_fallback(driver, email, recovery=recovery)
+    if fallback.get("ok"):
+        has_control_fields = "submit_candidate" in fallback or "request_submit_available" in fallback
+        if not has_control_fields or fallback.get("submit_candidate") or fallback.get("request_submit_available"):
+            return fallback
+        fallback = {**fallback, "ok": False, "reason": "no_safe_submit_control"}
+    reason = clean(primary.get("reason"), 80) or "safe_submit_failed"
+    fallback_reason = clean(fallback.get("reason"), 80)
+    return {"ok": False, "reason": reason, "fallback_reason": fallback_reason}
 
 
 def _email_form_state(driver: Any, email: str) -> dict[str, Any]:
@@ -237,9 +445,13 @@ def _email_form_state(driver: Any, email: str) -> dict[str, Any]:
             'input[type="email"],input[name="email"],input[name="username"],input[autocomplete*="email"]'
           )].filter(visible);
           const values = inputs.map(el => String(el.value || '').trim().toLowerCase());
+          const probe = window.__gptphone_email_submit_probe__ || {};
+          const record = probe.record || {};
           return {input_count:inputs.length, has_blank:values.some(value => !value),
             has_expected:values.some(value => value === expected), path:location.pathname,
-            has_email_query:new URLSearchParams(location.search).has('email')};
+            has_email_query:new URLSearchParams(location.search).has('email'),
+            submit_observed:!!record.submit_observed, submit_triggered:!!record.triggered,
+            submit_mode:String(record.mode || ''), submit_fallback:!!record.fallback};
         """, email) or {}
         return dict(result) if isinstance(result, Mapping) else {}
     except Exception as exc:
@@ -272,11 +484,13 @@ def submit_email_and_wait(
             retryable=False, error_code="free_roxy_signup_email_invalid",
         )
     valid_states = {"otp", "login_password", "signup_password", "home", "security", "profile", "oauth_callback"}
-    controlled_resubmit_used = False
     last_reason = "email_form_not_ready"
     max_attempts = max(1, min(3, int(attempts or EMAIL_SUBMIT_ATTEMPTS)))
 
     for attempt in range(1, max_attempts + 1):
+        # Recovery is scoped to this submit attempt.  A failed first attempt
+        # must not consume the one recovery allowed for the next refill.
+        recovery_done = False
         fill_deadline = time.monotonic() + min(20, max(5, int(timeout or 20)))
         clicked_entry = False
         while time.monotonic() < fill_deadline:
@@ -314,7 +528,10 @@ def submit_email_and_wait(
             continue
         _log(log, f"邮箱表单已安全提交，等待认证页选择下一步（第 {attempt}/{max_attempts} 次）")
 
-        wait_deadline = time.monotonic() + max(24, min(45, int(timeout or 45)))
+        # Selenium's page/script timeout (often 90s) must not turn this SPA
+        # transition into a 45s wait.  AutoRegister observes the same form for
+        # roughly twenty seconds before starting the next attempt.
+        wait_deadline = time.monotonic() + EMAIL_TRANSITION_TIMEOUT_SECONDS
         cleared_at: float | None = None
         while time.monotonic() < wait_deadline:
             state = classify(driver)
@@ -333,33 +550,47 @@ def submit_email_and_wait(
                 now = time.monotonic()
                 if cleared_at is None:
                     cleared_at = now
-                    _log(log, f"邮箱提交后输入框进入短暂清空态，最多去抖 {int(EMAIL_CLEAR_DEBOUNCE_SECONDS)} 秒")
+                    _log(
+                        log,
+                        f"邮箱提交后输入框进入清空态（attempt={attempt}，path={clean(form_state.get('path'), 80) or '-'}，"
+                        f"email_query={bool(form_state.get('has_email_query'))}，inputs={input_count}，"
+                        f"has_blank=True，has_expected=False）",
+                    )
                 elapsed = now - cleared_at
-                if login_email_transition and elapsed >= EMAIL_CLEAR_DEBOUNCE_SECONDS:
-                    if not controlled_resubmit_used:
-                        recovered = _submit_email_form(driver, expected, recovery=True)
-                        controlled_resubmit_used = True
-                        _log(
-                            log,
-                            "login?email 中间态完成去抖并执行一次受控原生补交"
-                            if recovered.get("ok") else f"login?email 受控补交未生效（{clean(recovered.get('reason'), 80) or 'unknown'}）",
-                            "info" if recovered.get("ok") else "warn",
-                        )
-                        # Give the same submission a full observation window;
-                        # the recovery must not immediately fall into a refill.
-                        cleared_at = now
-                        wait_deadline = max(
-                            wait_deadline,
-                            now + EMAIL_CLEAR_DEBOUNCE_SECONDS + 0.5,
-                        )
-                    else:
-                        last_reason = "login_email_cleared"
-                        break
-                elif elapsed >= EMAIL_CLEAR_DEBOUNCE_SECONDS:
-                    last_reason = "email_cleared"
+                debounce = (
+                    EMAIL_CLEAR_DEBOUNCE_SECONDS
+                    if login_email_transition
+                    else EMAIL_NON_LOGIN_CLEAR_DEBOUNCE_SECONDS
+                )
+                if login_email_transition and not recovery_done and elapsed >= EMAIL_CLEAR_RECOVERY_SECONDS:
+                    recovered = _submit_email_form(driver, expected, recovery=True)
+                    recovery_done = True
+                    _log(
+                        log,
+                        "login?email 清空态达到恢复阈值，执行同表单受控补交"
+                        if recovered.get("ok") else (
+                            "login?email 同表单受控补交失败："
+                            f"{clean(recovered.get('reason'), 80) or '未返回原因'}"
+                        ),
+                        "info" if recovered.get("ok") else "warn",
+                    )
+                # Do not reset cleared_at or extend wait_deadline after
+                # recovery.  The original blank transition still expires at
+                # the fixed 18s/5s debounce, matching AutoRegister.
+                if elapsed >= debounce:
+                    last_reason = "login_email_cleared" if login_email_transition else "email_cleared"
                     break
             else:
                 cleared_at = None
+            if form_state.get("submit_observed") or form_state.get("submit_triggered"):
+                _log(
+                    log,
+                    "邮箱提交探针状态："
+                    f"attempt={attempt}，recovery={recovery_done}，elapsed={time.monotonic() - (wait_deadline - EMAIL_TRANSITION_TIMEOUT_SECONDS):.1f}s，"
+                    f"submit_observed={bool(form_state.get('submit_observed'))}，"
+                    f"submit_triggered={bool(form_state.get('submit_triggered'))}，"
+                    f"fallback={bool(form_state.get('submit_fallback'))}",
+                )
             time.sleep(0.5)
         else:
             last_reason = "email_submit_transition_timeout"
@@ -374,7 +605,9 @@ def submit_email_and_wait(
 
 
 __all__ = [
-    "EMAIL_CLEAR_DEBOUNCE_SECONDS", "EMAIL_SUBMIT_ATTEMPTS", "LOGIN_URL",
+    "EMAIL_CLEAR_DEBOUNCE_SECONDS", "EMAIL_CLEAR_RECOVERY_SECONDS",
+    "EMAIL_NON_LOGIN_CLEAR_DEBOUNCE_SECONDS", "EMAIL_TRANSITION_TIMEOUT_SECONDS",
+    "EMAIL_SUBMIT_ATTEMPTS", "LOGIN_URL",
     "is_email_verification_page", "open_signup_page", "safe_page_location",
     "submit_email_and_wait", "warmup_login_page",
 ]

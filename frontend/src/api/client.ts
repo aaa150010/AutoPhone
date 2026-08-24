@@ -92,6 +92,7 @@ export interface FreeConfig {
     sentinel_timeout: number
     network_timeout?: number
     network_preflight_retries?: number
+    security_challenge_wait_seconds?: number
     anonymous_warmup?: boolean
     authenticated_warmup?: boolean
     geo_probe_url?: string

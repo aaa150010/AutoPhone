@@ -65,6 +65,7 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
         "sentinel_timeout": 90,
         "network_timeout": 20,
         "network_preflight_retries": 3,
+        "security_challenge_wait_seconds": 60,
         "anonymous_warmup": True,
         "authenticated_warmup": True,
         "geo_probe_url": "https://ipwho.is/",
@@ -234,6 +235,9 @@ class FreeConfigStore:
         protocol["sentinel_timeout"] = _int(protocol.get("sentinel_timeout"), 90, 10, 300)
         protocol["network_timeout"] = _int(protocol.get("network_timeout"), 20, 5, 60)
         protocol["network_preflight_retries"] = _int(protocol.get("network_preflight_retries"), 3, 1, 5)
+        protocol["security_challenge_wait_seconds"] = _int(
+            protocol.get("security_challenge_wait_seconds"), 60, 0, 60
+        )
         protocol["anonymous_warmup"] = _as_bool(protocol.get("anonymous_warmup"), True)
         protocol["authenticated_warmup"] = _as_bool(protocol.get("authenticated_warmup"), True)
         geo_probe_url = clean(protocol.get("geo_probe_url"), 500)

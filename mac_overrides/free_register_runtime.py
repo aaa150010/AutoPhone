@@ -996,11 +996,11 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     error_node = str(getattr(exc, "node_code", ""))
                     network_failure = is_proxy_health_failure(exc)
                     pre_profile = error_node in {"free_roxy_create", "free_roxy_open", "free_roxy_connect", "free_roxy_api"}
-                    protocol_pre_email = error_node in {"free_protocol_preflight", "free_oauth_session"} and network_failure
-                    roxy_pre_email = error_node == "free_roxy_ip_verify"
-                    if not network_failure or not (pre_profile or protocol_pre_email or roxy_pre_email) or attempt >= retry_limit or self._stop.is_set():
+                    protocol_pre_email = error_node in {"free_protocol_preflight", "free_oauth_session"}
+                    can_retry_pre_email = ((pre_profile or error_node == "free_roxy_ip_verify" or protocol_pre_email) and network_failure) or (protocol_pre_email and bool(getattr(exc, "proxy_retryable", False)))
+                    if not can_retry_pre_email or attempt >= retry_limit or self._stop.is_set():
                         raise
-                    self._record_proxy_failure(snapshot, exc)
+                    if network_failure: self._record_proxy_failure(snapshot, exc)
                     attempt += 1
                     switched = self._switch_pre_profile_proxy(snapshot, config)
                     self._assert_batch_proxy_uniqueness(snapshot)

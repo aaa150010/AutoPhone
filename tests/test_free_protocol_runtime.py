@@ -120,8 +120,8 @@ class _Manager(runtime.FreeProtocolMixin):
 def _fake_modules(build_calls):
     chain_runner = ModuleType("codex_chain_runner")
 
-    def build_oauth_url(**_kwargs):
-        build_calls.append(True)
+    def build_oauth_url(**kwargs):
+        build_calls.append(dict(kwargs))
         return (
             "https://auth.example.test/authorize?client_id=client-private&state=state-private",
             "state-private",
@@ -225,6 +225,8 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
 
         self.assertEqual(result["twofa_status"], "disabled")
         self.assertEqual(len(build_calls), 1)
+        self.assertEqual(build_calls[0]["screen_hint"], "login_or_signup")
+        self.assertEqual(build_calls[0]["login_hint"], _task()["email"])
         self.assertEqual(len(_Transport.instances), 2)
         self.assertEqual(preflight_sessions, [item.session for item in _Transport.instances])
         self.assertEqual(warmup_sessions, preflight_sessions)

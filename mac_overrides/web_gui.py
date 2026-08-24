@@ -14,7 +14,6 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from flask import send_from_directory as _send_from_directory
 
@@ -90,6 +89,7 @@ import transport_lifecycle as _transport_lifecycle_ext
 import web_routes as _web_routes_ext
 import payment_tools_routes as _payment_tools_routes_ext
 import network_tools_routes as _network_tools_routes_ext
+import free_protocol_diagnostics as _free_protocol_diagnostics_ext
 
 
 # Do not allow the host shell's proxy settings to silently affect OpenAI,
@@ -2735,9 +2735,10 @@ def _real_submit_email_identifier(self, email):
     else:
         response = _ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER(self, email)
     _observe_auth_step(self, response, "email_identifier")
-    if (
-        not _codex_oauth_chain._is_success_response(response)
-        or _codex_oauth_chain._page_type(response) != "email_otp_verification"
+    if not _codex_oauth_chain._is_success_response(response) or not _free_protocol_diagnostics_ext.is_email_otp_response(
+        _codex_oauth_chain._page_type(response),
+        _codex_oauth_chain._continue_url(response),
+        normalize_page_type=_auth_request_runtime_ext.normalize_page_type,
     ):
         if getattr(self, "_gptphone_free_protocol_state_machine", False):
             return response

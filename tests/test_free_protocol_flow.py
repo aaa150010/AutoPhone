@@ -196,6 +196,23 @@ class FreeProtocolFlowTests(unittest.TestCase):
             "oauth_token_exchange",
         ])
 
+    def test_email_page_type_aliases_use_the_same_url_mailbox_verification_path(self):
+        for page_type in (
+            "email_otp",
+            "email_otp_send",
+            "email_otp_verification",
+            "email_verification",
+            "email_code_verification",
+            "passwordless_email_otp",
+        ):
+            with self.subTest(page_type=page_type):
+                transport = _Transport(
+                    email={"_status": 200, "page": {"type": page_type}, "continue_url": "/verify"},
+                )
+                result, _ = _run(transport)
+                self.assertTrue(result["registration_completed"])
+                self.assertIn("verify_email_otp", transport.calls)
+
     def test_callback_without_code_stops_before_token_exchange(self):
         transport = _Transport(callback="http://localhost:1455/auth/callback?state=state-private")
         with self.assertRaises(FreeRegisterError) as raised:

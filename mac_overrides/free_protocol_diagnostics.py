@@ -3,13 +3,53 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 try:
     from .free_register_common import safe_log_message
 except ImportError:  # pragma: no cover - recovered runtime compatibility
     from free_register_common import safe_log_message  # type: ignore[no-redef]
+
+
+EMAIL_OTP_PAGE_TYPES = frozenset({
+    "email_otp",
+    "email_otp_send",
+    "email_otp_verification",
+    "email_verification",
+    "email_code_verification",
+    "passwordless_email_otp",
+})
+
+
+def is_email_otp_response(
+    page_type: Any,
+    continue_url: Any,
+    *,
+    normalize_page_type: Callable[[Any], Any] | None = None,
+) -> bool:
+    """Recognize an email-code state without treating MFA/phone as email OTP."""
+    try:
+        normalized = normalize_page_type(page_type) if callable(normalize_page_type) else page_type
+    except Exception:
+        normalized = page_type
+    normalized = str(normalized or "").strip().casefold().replace("-", "_")
+    if normalized in EMAIL_OTP_PAGE_TYPES:
+        return True
+    try:
+        path = urlsplit(str(continue_url or "")).path.casefold().rstrip("/")
+    except (TypeError, ValueError):
+        path = ""
+    return (
+        path in {
+            "/email-verification",
+            "/email-otp",
+            "/api/accounts/email-otp/send",
+            "/api/accounts/email-otp/resend",
+        }
+        or path.startswith("/email-verification/")
+        or path.startswith("/email-otp/")
+    )
 
 
 def response_status(response: Any) -> int | None:
@@ -172,7 +212,7 @@ def callback_matches_redirect(callback_url: str, redirect_uri: str) -> bool:
 
 
 __all__ = [
-    "callback_matches_redirect", "callback_query", "content_type", "next_url",
+    "EMAIL_OTP_PAGE_TYPES", "callback_matches_redirect", "callback_query", "content_type", "is_email_otp_response", "next_url",
     "page_is_html", "page_location", "page_locations", "page_type_value",
     "provider_code", "response_detail", "response_metadata", "response_search_text",
     "response_status", "safe_url",

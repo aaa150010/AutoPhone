@@ -66,16 +66,73 @@ class FreeRoxySignupTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         script = driver.scripts[0]
         self.assertIn("HTMLInputElement.prototype, 'value'", script)
+        self.assertIn("beforeinput", script)
         self.assertIn("KeyboardEvent('keydown'", script)
         self.assertIn("setTimeout", script)
         self.assertIn("submit.click()", script)
-        self.assertIn("!el.querySelector('img,svg,use')", script)
+        self.assertIn("requestSubmit", script)
+        self.assertIn("el.textContent", script)
+        self.assertNotIn("!el.querySelector('img,svg,use')", script)
+
+    def test_cookie_warmup_only_clicks_explicit_consent_selectors(self):
+        class Driver:
+            def __init__(self):
+                self.scripts = []
+
+            def execute_script(self, script, *_args):
+                self.scripts.append(script)
+                return None
+
+            def execute_cdp_cmd(self, *_args):
+                return None
+
+        driver = Driver()
+        free_roxy_signup.warmup_login_page(driver)
+        self.assertTrue(driver.scripts)
+        self.assertIn("onetrust-accept-btn-handler", driver.scripts[0])
+        self.assertIn("cookie-accept", driver.scripts[0])
+        self.assertNotIn("Continue", driver.scripts[0])
 
     def test_controlled_resubmit_is_explicitly_marked(self):
         driver = _ScriptDriver({"ok": True, "mode": "controlled_resubmit"})
         result = free_roxy_signup._submit_email_form(driver, "account@example.test", recovery=True)
         self.assertEqual(result["mode"], "controlled_resubmit")
         self.assertIn("recovery", driver.scripts[0])
+
+    def test_email_submit_rejects_explicit_missing_controls_and_filters_fallback(self):
+        driver = _ScriptDriver({
+            "ok": True,
+            "submit_candidate": False,
+            "request_submit_available": False,
+        })
+        result = free_roxy_signup._submit_email_form(driver, "account@example.test")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "no_safe_submit_control")
+        self.assertGreaterEqual(len(driver.scripts), 2)
+        self.assertIn("google|apple|microsoft", driver.scripts[1])
+        self.assertIn("cancel|back|skip", driver.scripts[1])
+
+    def test_email_submit_fallback_scores_button_text_for_idp_exclusion(self):
+        """The fallback must inspect rendered button text, not only attributes."""
+        driver = _ScriptDriver({
+            "ok": False,
+            "reason": "driver_script_rejected",
+        })
+        result = free_roxy_signup._submit_email_form(driver, "account@example.test")
+        self.assertFalse(result["ok"])
+        self.assertGreaterEqual(len(driver.scripts), 2)
+        fallback_script = driver.scripts[1]
+        self.assertIn("el.textContent", fallback_script)
+        self.assertIn("same_form_request_submit", fallback_script)
+
+    def test_email_submit_primary_script_fails_closed_without_button_or_request_submit(self):
+        driver = _ScriptDriver({
+            "ok": False,
+            "reason": "no_safe_submit_control",
+        })
+        result = free_roxy_signup._submit_email_form(driver, "account@example.test")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "no_safe_submit_control")
 
     def test_auth_log_in_without_email_input_remains_unclassified_until_dom_ready(self):
         self.assertEqual(classify_page(_LoginPageDriver()), "unknown")
@@ -193,19 +250,32 @@ class FreeRoxySignupTests(unittest.TestCase):
         with patch("mac_overrides.free_roxy_driver.os.path.isfile", return_value=True):
             self.assertEqual(RoxyRegistrationRunner._driver_source(opened), "roxy_chromedriver")
 
-    def test_login_email_recovery_runs_once_across_three_attempts(self):
-        counter = iter(range(100))
-        submissions: list[bool] = []
+    def test_login_email_recovery_runs_once_per_attempt(self):
+        class Clock:
+            now = 0.0
+
+            @classmethod
+            def monotonic(cls):
+                return cls.now
+
+            @classmethod
+            def sleep(cls, seconds):
+                cls.now += float(seconds)
+
+        submissions: list[tuple[bool, float]] = []
 
         def submit(_driver, _email, *, recovery=False):
-            submissions.append(bool(recovery))
+            submissions.append((bool(recovery), Clock.now))
             return {"ok": True}
 
         human = type("Human", (), {"delay": staticmethod(lambda _kind: None)})()
         with (
-            patch("mac_overrides.free_roxy_signup.time.monotonic", side_effect=lambda: next(counter)),
-            patch("mac_overrides.free_roxy_signup.time.sleep", return_value=None),
-            patch("mac_overrides.free_roxy_signup.EMAIL_CLEAR_DEBOUNCE_SECONDS", 3.0),
+            patch("mac_overrides.free_roxy_signup.time.monotonic", side_effect=Clock.monotonic),
+            patch("mac_overrides.free_roxy_signup.time.sleep", side_effect=Clock.sleep),
+            patch("mac_overrides.free_roxy_signup.EMAIL_CLEAR_DEBOUNCE_SECONDS", 6.0),
+            patch("mac_overrides.free_roxy_signup.EMAIL_CLEAR_RECOVERY_SECONDS", 2.0),
+            patch("mac_overrides.free_roxy_signup.EMAIL_NON_LOGIN_CLEAR_DEBOUNCE_SECONDS", 4.0),
+            patch("mac_overrides.free_roxy_signup.EMAIL_TRANSITION_TIMEOUT_SECONDS", 6.0),
             patch("mac_overrides.free_roxy_signup._email_target", return_value={"ok": True, "input": object()}),
             patch("mac_overrides.free_roxy_signup._stabilize_email", return_value={"ok": True, "has_form": True}),
             patch("mac_overrides.free_roxy_signup._submit_email_form", side_effect=submit),
@@ -222,8 +292,50 @@ class FreeRoxySignupTests(unittest.TestCase):
                     type_element=lambda *_args: None,
                     click_element=lambda *_args: None,
                 )
-        self.assertEqual(submissions.count(False), 3)
-        self.assertEqual(submissions.count(True), 1)
+        self.assertEqual([recovery for recovery, _at in submissions], [False, True, False, True, False, True])
+        self.assertTrue(all(attempt_at >= 2.0 for recovery, attempt_at in submissions if recovery))
+
+    def test_non_login_clear_uses_short_debounce_without_recovery(self):
+        class Clock:
+            now = 0.0
+
+            @classmethod
+            def monotonic(cls):
+                return cls.now
+
+            @classmethod
+            def sleep(cls, seconds):
+                cls.now += float(seconds)
+
+        submissions: list[bool] = []
+
+        def submit(_driver, _email, *, recovery=False):
+            submissions.append(bool(recovery))
+            return {"ok": True}
+
+        human = type("Human", (), {"delay": staticmethod(lambda _kind: None)})()
+        with (
+            patch("mac_overrides.free_roxy_signup.time.monotonic", side_effect=Clock.monotonic),
+            patch("mac_overrides.free_roxy_signup.time.sleep", side_effect=Clock.sleep),
+            patch("mac_overrides.free_roxy_signup.EMAIL_NON_LOGIN_CLEAR_DEBOUNCE_SECONDS", 2.0),
+            patch("mac_overrides.free_roxy_signup.EMAIL_TRANSITION_TIMEOUT_SECONDS", 3.0),
+            patch("mac_overrides.free_roxy_signup._email_target", return_value={"ok": True, "input": object()}),
+            patch("mac_overrides.free_roxy_signup._stabilize_email", return_value={"ok": True, "has_form": True}),
+            patch("mac_overrides.free_roxy_signup._submit_email_form", side_effect=submit),
+            patch("mac_overrides.free_roxy_signup._email_form_state", return_value={
+                "input_count": 1, "has_blank": True, "has_expected": False,
+                "path": "/log-in", "has_email_query": False,
+            }),
+        ):
+            with self.assertRaises(FreeRegisterError):
+                free_roxy_signup.submit_email_and_wait(
+                    object(), "account@example.test", human, None, 90,
+                    classify=lambda _driver: "unknown",
+                    wait_security=lambda _driver, _timeout, _log: "unknown",
+                    type_element=lambda *_args: None,
+                    click_element=lambda *_args: None,
+                )
+        self.assertEqual(submissions, [False, False, False])
 
     def test_login_email_recovery_waits_for_debounce_and_observes_same_submission(self):
         class Clock:
@@ -256,7 +368,8 @@ class FreeRoxySignupTests(unittest.TestCase):
         with (
             patch("mac_overrides.free_roxy_signup.time.monotonic", side_effect=Clock.monotonic),
             patch("mac_overrides.free_roxy_signup.time.sleep", side_effect=Clock.sleep),
-            patch("mac_overrides.free_roxy_signup.EMAIL_CLEAR_DEBOUNCE_SECONDS", 3.0),
+            patch("mac_overrides.free_roxy_signup.EMAIL_CLEAR_DEBOUNCE_SECONDS", 18.0),
+            patch("mac_overrides.free_roxy_signup.EMAIL_CLEAR_RECOVERY_SECONDS", 2.0),
             patch("mac_overrides.free_roxy_signup._email_target", return_value={"ok": True, "input": object()}),
             patch("mac_overrides.free_roxy_signup._stabilize_email", return_value={"ok": True, "has_form": True}),
             patch("mac_overrides.free_roxy_signup._submit_email_form", side_effect=submit),
@@ -275,7 +388,45 @@ class FreeRoxySignupTests(unittest.TestCase):
 
         self.assertEqual(result, "otp")
         self.assertEqual([recovery for recovery, _at in submissions], [False, True])
-        self.assertGreaterEqual(submissions[1][1], 3.0)
+        self.assertGreaterEqual(submissions[1][1], 2.0)
+
+    def test_timeout_argument_does_not_expand_email_transition_window(self):
+        class Clock:
+            now = 0.0
+
+            @classmethod
+            def monotonic(cls):
+                return cls.now
+
+            @classmethod
+            def sleep(cls, seconds):
+                cls.now += float(seconds)
+
+        human = type("Human", (), {"delay": staticmethod(lambda _kind: None)})()
+        with (
+            patch("mac_overrides.free_roxy_signup.time.monotonic", side_effect=Clock.monotonic),
+            patch("mac_overrides.free_roxy_signup.time.sleep", side_effect=Clock.sleep),
+            patch("mac_overrides.free_roxy_signup.EMAIL_CLEAR_DEBOUNCE_SECONDS", 18.0),
+            patch("mac_overrides.free_roxy_signup.EMAIL_CLEAR_RECOVERY_SECONDS", 2.0),
+            patch("mac_overrides.free_roxy_signup.EMAIL_TRANSITION_TIMEOUT_SECONDS", 20.0),
+            patch("mac_overrides.free_roxy_signup._email_target", return_value={"ok": True, "input": object()}),
+            patch("mac_overrides.free_roxy_signup._stabilize_email", return_value={"ok": True, "has_form": True}),
+            patch("mac_overrides.free_roxy_signup._submit_email_form", return_value={"ok": True}),
+            patch("mac_overrides.free_roxy_signup._email_form_state", return_value={
+                "input_count": 0, "has_blank": False, "has_expected": False,
+                "path": "/auth/login", "has_email_query": True,
+            }),
+        ):
+            with self.assertRaises(FreeRegisterError):
+                free_roxy_signup.submit_email_and_wait(
+                    object(), "account@example.test", human, None, 90,
+                    classify=lambda _driver: "unknown",
+                    wait_security=lambda _driver, _timeout, _log: "unknown",
+                    type_element=lambda *_args: None,
+                    click_element=lambda *_args: None,
+                )
+        self.assertGreaterEqual(Clock.now, 60.0)
+        self.assertLess(Clock.now, 75.0)
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ const defaultConfig: FreeConfig = {
   driver: 'protocol', flow_profile: 'reference_20260823', proxy_allocation_mode: 'healthy_random', target_count: 1, concurrency: 3, email_code_timeout: 90, auto_set_2fa: true,
   mailbox_network_mode: 'local_proxy', mailbox_proxy_url: 'http://127.0.0.1:7897',
   mailbox_request_retries: 3, mailbox_retry_backoff_seconds: 1,
-  proxy_probe_url: 'https://api.ipify.org', protocol: { node_runner: '', sentinel_version: '20260219f9f6', sentinel_timeout: 90, network_timeout: 20, network_preflight_retries: 3, anonymous_warmup: true, authenticated_warmup: true, geo_probe_url: 'https://ipwho.is/' },
+  proxy_probe_url: 'https://api.ipify.org', protocol: { node_runner: '', sentinel_version: '20260219f9f6', sentinel_timeout: 90, network_timeout: 20, network_preflight_retries: 3, security_challenge_wait_seconds: 60, anonymous_warmup: true, authenticated_warmup: true, geo_probe_url: 'https://ipwho.is/' },
   proxy_default_scheme: 'http', proxy_selection: { protocol: { country: '', group: '' }, roxybrowser: { country: '', group: '' } },
   roxybrowser: {
     api_base: 'http://127.0.0.1:50000', api_key: '', workspace_id: '', project_id: '',
@@ -353,8 +353,8 @@ onUnmounted(() => window.clearTimeout(timer))
           <div class="task-start-bar">
             <el-tag effect="plain">{{ config.driver === 'roxybrowser' ? 'RoxyBrowser' : '全协议' }}</el-tag>
             <el-tag v-if="pendingRoxyCleanup > 0" type="warning" effect="light">待清理 Profile {{ pendingRoxyCleanup }}</el-tag>
-            <label class="quick-run-field"><span>注册数量</span><el-input-number v-model="quickTargetCount" size="small" :min="1" :max="200" controls-position="right" :disabled="running || Boolean(busy)" @update:model-value="markQuickRunDirty" /></label>
-            <label class="quick-run-field"><span>并发</span><el-input-number v-model="quickConcurrency" size="small" :min="1" :max="16" controls-position="right" :disabled="running || Boolean(busy)" @update:model-value="markQuickRunDirty" /></label>
+            <label class="quick-run-field"><span>注册数量</span><el-input-number v-model="quickTargetCount" class="quick-run-number" :min="1" :max="200" controls-position="right" :disabled="running || Boolean(busy)" @update:model-value="markQuickRunDirty" /></label>
+            <label class="quick-run-field"><span>并发</span><el-input-number v-model="quickConcurrency" class="quick-run-number" :min="1" :max="16" controls-position="right" :disabled="running || Boolean(busy)" @update:model-value="markQuickRunDirty" /></label>
             <span class="muted">配置并发 {{ quickConcurrency }} · 实际 Slot {{ Number(state.scheduler?.active_slots || 0) }}/{{ Number(state.scheduler?.concurrency || quickConcurrency) }} · 可用邮箱 {{ Number(state.pool?.available || 0) }} · 代理 {{ Number(state.pool?.proxies || 0) }}</span>
             <el-button size="small" :icon="CircleCheck" :loading="busy === 'preflight'" :disabled="running" @click="preflight">预检</el-button>
             <el-button size="small" type="primary" :icon="VideoPlay" :loading="busy === 'start'" :disabled="running || !Number(state.pool?.available || 0)" @click="start">开始注册</el-button>
@@ -426,8 +426,33 @@ onUnmounted(() => window.clearTimeout(timer))
 .task-start-bar, .task-filter-bar, .task-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .task-start-bar { min-height: 32px; }
 .task-start-bar .muted { margin-right: auto; }
-.quick-run-field { display: inline-flex; align-items: center; gap: 5px; color: var(--el-text-color-regular); font-size: 12px; white-space: nowrap; }
-.quick-run-field :deep(.el-input-number) { width: 96px; }
+.quick-run-field { display: inline-flex; align-items: center; gap: 8px; color: var(--el-text-color-regular); font-size: 14px; white-space: nowrap; }
+/* Match the reference toolbar's stable 150x40 numeric control while keeping
+   Element Plus' native keyboard, validation, and spinner behavior. */
+.quick-run-field :deep(.quick-run-number) {
+  --el-input-height: 40px;
+  --el-input-inner-height: 38px;
+  width: 150px;
+  height: 40px;
+  line-height: 38px;
+}
+.quick-run-field :deep(.quick-run-number .el-input__wrapper) {
+  min-height: 40px;
+  height: 40px;
+  padding-left: 12px;
+  padding-right: 42px;
+}
+.quick-run-field :deep(.quick-run-number .el-input__inner) {
+  height: 38px;
+  line-height: 38px;
+  font-size: 14px;
+  text-align: center;
+}
+.quick-run-field :deep(.quick-run-number .el-input-number__increase),
+.quick-run-field :deep(.quick-run-number .el-input-number__decrease) {
+  --el-input-number-controls-height: 20px;
+  width: 32px;
+}
 .task-filter-bar { display: grid; grid-template-columns: minmax(260px, 1.2fr) minmax(420px, 2fr) repeat(3, 150px); min-height: 32px; }
 .task-filter-bar > .el-input, .task-filter-bar > .task-driver-filter { width: 100%; }
 .task-status-filter { flex: 1; min-width: 0; }

@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.55',
-  freeRuntimeVersion: '1.6.55',
-  title: 'OAuth MFA 分支与封禁提示修复',
+  version: '1.6.56',
+  freeRuntimeVersion: '1.6.56',
+  title: 'Free 协议与 Roxy 邮箱提交修复',
   releasedAt: '2026-08-24',
   sections: [
+    {
+      title: '目标邮箱提交与验证码链路修复',
+      usage: 'Roxy 登录页清空邮箱后约 2 秒执行同表单受控补交，每次尝试独立计数且不延长观察窗口；主提交和备用提交都会读取按钮正文并排除 Google、Apple、Microsoft 等第三方入口。协议兼容 email_otp、email_otp_verification、email_verification 等服务端页面别名，并继续使用现有 URL 取件、旧码排除和受控重发策略。普通 403 与安全挑战分开记录，安全挑战只在同一会话和代理中等待最多 60 秒，不自动绕过。',
+    },
     {
       title: 'URL-only MFA 缺 Secret 时停止',
       usage: '两段式邮箱----URL 没有 2FA Secret 时，遇到 mfa_challenge 会明确停在 2FA 节点，不再把 MFA 地址误当 OAuth 回调，也不会未经服务端明确要求就调用手机号接码。只有返回 add_phone 等手机号页面才进入接码流程。',
