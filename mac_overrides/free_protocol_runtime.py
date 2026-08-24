@@ -18,6 +18,8 @@ import secrets
 import threading
 import time
 from typing import Any, Callable, Mapping
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+import uuid
 
 try:
     from .free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider
@@ -168,6 +170,31 @@ def resolve_auth_impersonates(config: Mapping[str, Any]) -> list[str]:
             if candidates:
                 return candidates
     return list(DEFAULT_AUTH_IMPERSONATES)
+
+
+def _ensure_oauth_context_params(
+    oauth_url: str,
+    *,
+    device_id: str,
+    auth_session_logging_id: str,
+) -> str:
+    """Keep the authorize URL aligned with AutoRegister's browser context."""
+    try:
+        parsed = urlsplit(str(oauth_url or ""))
+        pairs = parse_qsl(parsed.query, keep_blank_values=True)
+        present = {key for key, _value in pairs}
+        additions = (
+            ("prompt", "login"),
+            ("ext-oai-did", str(device_id or "")),
+            ("auth_session_logging_id", str(auth_session_logging_id or "")),
+        )
+        for key, value in additions:
+            if value and key not in present:
+                pairs.append((key, value))
+                present.add(key)
+        return urlunsplit(parsed._replace(query=urlencode(pairs)))
+    except (TypeError, ValueError):
+        return str(oauth_url or "")
 
 
 class FreeProtocolMixin:
@@ -410,6 +437,9 @@ class FreeProtocolMixin:
                 "SentinelRunner 文件缺失或路径无效，请配置 protocol.node_runner",
                 retryable=False, error_code="node_runner_missing",
             )
+        device_id = str(task.get("device_id") or f"free-{secrets.token_hex(16)}")
+        auth_session_logging_id = str(uuid.uuid4())
+
         def build_oauth_context() -> dict[str, Any]:
             oauth_url, state, code_verifier = codex_chain_runner.build_oauth_url(
                 login_hint=email,
@@ -418,6 +448,12 @@ class FreeProtocolMixin:
                 # an existing login; forcing ``signup`` can send an existing
                 # mailbox into the wrong page state before URL OTP handling.
                 screen_hint="login_or_signup",
+                prompt="login",
+            )
+            oauth_url = _ensure_oauth_context_params(
+                oauth_url,
+                device_id=device_id,
+                auth_session_logging_id=auth_session_logging_id,
             )
             params = codex_oauth_chain.parse_oauth_url(oauth_url)
             return {
@@ -430,7 +466,6 @@ class FreeProtocolMixin:
             }
 
         oauth_context = build_oauth_context()
-        device_id = str(task.get("device_id") or f"free-{secrets.token_hex(16)}")
         chain_config = dict(config)
         chain_config["codex_node_runner"] = resolved_runner
         chain_config.update({

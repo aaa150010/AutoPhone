@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.62',
-  freeRuntimeVersion: '1.6.62',
+  version: '1.6.63',
+  freeRuntimeVersion: '1.6.63',
   title: 'Free OAuth 与 Roxy 双链路稳定性修复',
   releasedAt: '2026-08-25',
   sections: [
+    {
+      title: 'Free OAuth 会话上下文对齐',
+      usage: '协议注册授权地址现在与浏览器链路保持 prompt、设备标识和会话日志上下文一致，OAuth 会话重建时继续复用同一任务设备和代理上下文。',
+    },
     {
       title: 'Roxy OTP 账号状态诊断',
       usage: '邮箱验证码接口返回账号停用、封禁或暂停时，任务会保留原始 OTP 节点和服务端代码并停止重复提交，不再被旧验证码超时覆盖；恢复邮箱后可从失败任务重新运行。',
