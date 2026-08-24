@@ -1049,6 +1049,36 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             time.sleep(0.01)
         self.assertFalse(manager.public_state()["running"])
 
+    def test_pre_email_rate_limit_restores_mailbox_for_retry(self):
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("a@example.test----https://mail.example.test/a\n")
+        FreeProxyPool(self.data_dir).import_text("http://proxy-a.test:8000\n")
+
+        def runner(_task, _config, _stop, _stage, _log, *, twofa_retry=False):
+            raise FreeRegisterError(
+                "free_email_identifier", "识别 Free 注册邮箱",
+                "邮箱识别被服务端限流",
+                provider_status=429,
+                provider_code="rate_limit_exceeded",
+                error_code="free_email_identifier_failed",
+            )
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.22",
+        )
+        manager.start({"driver": "protocol", "target_count": 1})
+        deadline = time.time() + 3
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.01)
+
+        task = manager.public_tasks()[0]
+        mailbox = manager.pool.public_rows()[0]
+        self.assertEqual(task["failure"]["error_code"], "free_email_identifier_failed")
+        self.assertEqual(mailbox["status"], "available")
+        self.assertEqual(mailbox["failure"]["error_code"], "free_email_identifier_failed")
+
     def test_public_tasks_group_newest_batch_before_older_batch(self):
         manager = FreeRegisterManager(self.data_dir)
         manager._tasks = {

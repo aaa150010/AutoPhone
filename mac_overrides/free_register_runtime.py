@@ -902,8 +902,32 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             self.proxies.record_failure(proxy_id, node_code=node_code, message=_safe_log_message(exc))
 
     @classmethod
-    def _can_reuse_mailbox_after_failure(cls, node_code: str) -> bool:
-        return str(node_code or "") in cls._REUSABLE_PRE_REGISTRATION_FAILURES
+    def _can_reuse_mailbox_after_failure(
+        cls,
+        node_code: str,
+        error: BaseException | None = None,
+    ) -> bool:
+        normalized = str(node_code or "")
+        if normalized in cls._REUSABLE_PRE_REGISTRATION_FAILURES:
+            return True
+        # A 429 from the OAuth bootstrap or first email-identification POST
+        # happens before an OTP is dispatched. Return that mailbox to the
+        # available pool while retaining the failed task diagnostic. Generic
+        # email-identifier transport failures may have consumed the request,
+        # so they remain pending for explicit rerun.
+        if normalized in {"free_oauth_session", "free_email_identifier"}:
+            try:
+                status = int(getattr(error, "provider_status", 0) or 0)
+            except (TypeError, ValueError):
+                status = 0
+            provider_code = str(getattr(error, "provider_code", "") or "").strip().casefold()
+            if status == 429 and provider_code in {
+                "rate_limit_exceeded", "too_many_requests", "rate_limited",
+            }:
+                return True
+            if bool(getattr(error, "proxy_retryable", False)):
+                return True
+        return False
 
     def _restore_mailbox_after_pre_registration_failure(self, task: Mapping[str, Any], failure: Mapping[str, Any]) -> None:
         """Return an unconsumed mailbox to the pool without hiding task history."""
@@ -1119,7 +1143,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             failure, _ = self._persist_task_failure(
                 task_id, snapshot, status=terminal_status, failure=failure,
             )
-            if self._can_reuse_mailbox_after_failure(exc.node_code):
+            if self._can_reuse_mailbox_after_failure(exc.node_code, exc):
                 self._restore_mailbox_after_pre_registration_failure(snapshot, failure)
             else:
                 self.pool.update(
