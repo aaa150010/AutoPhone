@@ -180,6 +180,9 @@ class ProxyBinding:
     scheme: str = ""
     country: str = "ZZ"
     group: str = "默认组"
+    chatgpt_login_status: int = 0
+    chatgpt_login_checked: bool = False
+    chatgpt_login_probe_mode: str = ""
 
 
 @dataclass(frozen=True, slots=True)

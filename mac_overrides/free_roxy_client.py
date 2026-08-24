@@ -161,6 +161,78 @@ class RoxyBrowserClient:
         text = str(exc or "").lower()
         return any(value in text for value in ("timeout", "connection", "temporarily", "http 429", "http 500", "http 502", "http 503", "http 504"))
 
+    @classmethod
+    def _open_reconciliation_candidate(cls, exc: BaseException) -> bool:
+        """Return whether an ``/browser/open`` error may have launched a window.
+
+        Roxy starts a Profile before writing the HTTP response in some
+        versions.  A timeout therefore is ambiguous: retrying ``/browser/open``
+        can create a second window.  Walk the exception chain because
+        :meth:`request` deliberately wraps transport errors in a structured
+        ``FreeRegisterError`` while retaining the original cause.
+        """
+        pending: list[BaseException] = [exc]
+        seen: set[int] = set()
+        while pending:
+            current = pending.pop(0)
+            marker = id(current)
+            if marker in seen:
+                continue
+            seen.add(marker)
+            if cls._retryable(current):
+                return True
+            cause = getattr(current, "__cause__", None)
+            context = getattr(current, "__context__", None)
+            if isinstance(cause, BaseException):
+                pending.append(cause)
+            if isinstance(context, BaseException):
+                pending.append(context)
+        return False
+
+    @staticmethod
+    def _open_error_type(exc: BaseException) -> str:
+        """Return a credential-free transport type from a wrapped exception."""
+        current: BaseException | None = exc
+        seen: set[int] = set()
+        while isinstance(current, BaseException) and id(current) not in seen:
+            seen.add(id(current))
+            if not isinstance(current, FreeRegisterError):
+                return type(current).__name__
+            cause = getattr(current, "__cause__", None)
+            context = getattr(current, "__context__", None)
+            current = cause if isinstance(cause, BaseException) else context
+        return type(exc).__name__
+
+    @staticmethod
+    def _open_reconciliation_failure(
+        exc: BaseException,
+        wait_budget: float,
+    ) -> FreeRegisterError:
+        """Build a stable open-stage error after connection reconciliation.
+
+        Keep the public message useful without copying an upstream exception
+        (which can contain a URL or an authorization detail).  The exception
+        type and provider status are enough to diagnose the local API race;
+        the original exception remains available as ``__cause__``.
+        """
+        provider_status = getattr(exc, "provider_status", None)
+        error_type = RoxyBrowserClient._open_error_type(exc)
+        status_text = f" HTTP {provider_status}" if provider_status else ""
+        return FreeRegisterError(
+            "free_roxy_open",
+            "打开 RoxyBrowser 环境",
+            f"RoxyBrowser /browser/open 请求异常（{error_type}{status_text}），"
+            f"connection_info 在 {int(max(1, wait_budget))} 秒内未就绪",
+            retryable=True,
+            provider_status=provider_status,
+            error_code="free_roxy_connection_timeout",
+            diagnostic=(
+                f"open_request={error_type}; "
+                f"connection_info_reconciliation_timeout={int(max(1, wait_budget))}s"
+            ),
+            action_hint="检查 RoxyBrowser API 状态和 Profile 启动耗时，确认 connection_info 可访问后重试",
+        )
+
     @staticmethod
     def _quota_failure(message: Any, *, provider_status: int | None = None) -> FreeRegisterError | None:
         text = clean(message, 240)
@@ -564,18 +636,34 @@ class RoxyBrowserClient:
                 retryable=True,
                 error_code="free_roxy_connection_timeout",
             )
-        payload = self.request(
-            "POST",
-            str(self.config.get("open_path") or "/browser/open"),
-            body=body,
-            timeout=min(5.0, max(0.05, remaining())),
-            retries=1,
-            deadline=deadline,
-        )
-        opened = self._connection_result(profile_id, payload)
-        if opened is not None:
-            opened.headless = headless
-            return opened
+        open_error: BaseException | None = None
+        try:
+            payload = self.request(
+                "POST",
+                str(self.config.get("open_path") or "/browser/open"),
+                body=body,
+                timeout=min(5.0, max(0.05, remaining())),
+                retries=1,
+                deadline=deadline,
+            )
+        except Exception as exc:
+            # A Roxy API timeout is ambiguous: the Profile may already be
+            # running.  Reconcile the same dirId before surfacing an error;
+            # never issue a second /browser/open request.
+            if not self._open_reconciliation_candidate(exc):
+                raise
+            open_error = exc
+            error_type = self._open_error_type(exc)
+            self._log(
+                f"[打开 RoxyBrowser 环境/free_roxy_open] /browser/open 请求异常（{error_type}），"
+                f"转入 connection_info 对账，剩余约 {int(max(0, remaining()))} 秒",
+                "warn",
+            )
+        else:
+            opened = self._connection_result(profile_id, payload)
+            if opened is not None:
+                opened.headless = headless
+                return opened
         # Some Roxy versions return success before the CDP endpoint exists;
         # reconcile the same dirId instead of creating another Profile/window.
         # Match the mature runner's async-open window: never call /browser/open
@@ -592,16 +680,26 @@ class RoxyBrowserClient:
                 opened = None
             if opened is not None:
                 opened.headless = headless
+                # The connection was adopted from the reconciliation endpoint,
+                # including the case where /browser/open itself timed out.
+                opened.connection_reused = True
                 return opened
             sleep_for = min(0.5, remaining())
             if sleep_for > 0:
                 time.sleep(sleep_for)
+        if open_error is not None:
+            raise self._open_reconciliation_failure(open_error, wait_budget) from open_error
         raise FreeRegisterError(
             "free_roxy_open",
             "打开 RoxyBrowser 环境",
             "RoxyBrowser 打开成功但未返回 Selenium/CDP 连接地址，connection_info 也未就绪",
             retryable=True,
             error_code="free_roxy_connection_timeout",
+            diagnostic=(
+                f"open_request=success_without_connection; "
+                f"connection_info_reconciliation_timeout={int(max(1, wait_budget))}s"
+            ),
+            action_hint="检查 RoxyBrowser connection_info 接口和 Profile 启动状态后重试",
         )
 
     def close_profile(self, profile_id: str, *, workspace_id: Any | None = None) -> None:

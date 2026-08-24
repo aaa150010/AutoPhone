@@ -320,7 +320,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=lambda *_args, **_kwargs: {},
             proxy_probe=lambda _proxy, _url: "203.0.113.20",
         )
-        self.assertEqual(manager.public_state()["runtime_version"], "1.6.48")
+        self.assertEqual(manager.public_state()["runtime_version"], "1.6.50")
         self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v4-roxy-otp-v2")
 
     def test_manager_preflight_applies_proxy_allocation_mode_from_config(self):
@@ -703,6 +703,50 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             )
 
         self.assertIn("application/json", calls["get"][1]["headers"]["Accept"])
+        self.assertTrue(calls["closed"])
+
+    def test_protocol_proxy_preflight_rejects_chatgpt_login_http_403(self):
+        proxies = StructuredFreeProxyPool(self.data_dir)
+        with self.assertRaisesRegex(FreeRegisterError, r"ChatGPT 登录页预检返回 HTTP 403") as raised:
+            proxies.bind(
+                1,
+                content="socks5://user:secret@proxy.example.test:8000\n",
+                probe=lambda _proxy, _url: "203.0.113.44",
+                chatgpt_probe=lambda _proxy: 403,
+                check_chatgpt=True,
+            )
+        self.assertNotIn("secret", str(raised.exception))
+
+    def test_chatgpt_login_probe_uses_same_proxy_and_disables_environment_proxy(self):
+        calls = {}
+
+        class FakeSession:
+            def __init__(self, **kwargs):
+                calls["init"] = kwargs
+                self.proxies = {}
+                self.trust_env = True
+
+            def get(self, url, **kwargs):
+                calls["get"] = (url, kwargs, dict(self.proxies), self.trust_env)
+                return SimpleNamespace(status_code=200)
+
+            def close(self):
+                calls["closed"] = True
+
+        curl_module = ModuleType("curl_cffi")
+        curl_module.requests = SimpleNamespace(Session=FakeSession)
+        with patch.dict(sys.modules, {"curl_cffi": curl_module}):
+            self.assertEqual(
+                StructuredFreeProxyPool._chatgpt_login_probe("socks5h://proxy.test:8000"),
+                200,
+            )
+        self.assertEqual(calls["init"], {"impersonate": "chrome", "verify": True})
+        self.assertEqual(calls["get"][0], "https://chatgpt.com/login")
+        self.assertEqual(calls["get"][2], {
+            "http": "socks5h://proxy.test:8000",
+            "https": "socks5h://proxy.test:8000",
+        })
+        self.assertFalse(calls["get"][3])
         self.assertTrue(calls["closed"])
 
     def test_proxy_probe_migrates_legacy_ipinfo_text_target(self):

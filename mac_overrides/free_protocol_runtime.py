@@ -28,6 +28,8 @@ try:
         authenticated_warmup as _authenticated_warmup,
         exit_geo_profile as _exit_geo_profile,
         network_preflight as _network_preflight,
+        prepare_reference_bootstrap as _prepare_reference_bootstrap,
+        prepare_reference_session as _prepare_reference_session,
     )
     from .free_protocol_flow import run_free_protocol_flow
     from .free_register_common import (
@@ -47,6 +49,8 @@ except ImportError:
         authenticated_warmup as _authenticated_warmup,
         exit_geo_profile as _exit_geo_profile,
         network_preflight as _network_preflight,
+        prepare_reference_bootstrap as _prepare_reference_bootstrap,
+        prepare_reference_session as _prepare_reference_session,
     )
     from free_protocol_flow import run_free_protocol_flow  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
@@ -489,6 +493,11 @@ class FreeProtocolMixin:
         # The reference profile keeps one anonymous browser/Sentinel image for
         # the whole task. Legacy mode deliberately omits these added fields.
         fingerprint = _reference_fingerprint(config, task) if reference_flow else {}
+        if reference_flow:
+            # Keep the HTTP headers, cookies and Sentinel/browser image on one
+            # identity from the first request.  ``prepare_reference_transport``
+            # reapplies this after a bounded OAuth session rebuild.
+            chain_config["free_protocol_fingerprint"] = dict(fingerprint)
 
         # The recovered provider reads the runner from the top-level chain
         # configuration. Passing only the nested Free config made a valid
@@ -529,27 +538,28 @@ class FreeProtocolMixin:
             )
             setattr(created, "_gptphone_free_protocol_state_machine", True)
             if reference_flow:
+                _prepare_reference_session(created, fingerprint)
                 setattr(created, "_gptphone_timezone_offset_minutes", fingerprint.get("timezone_offset_minutes"))
             transport_ref["current"] = created
             self._instrument_transport(created, task_id, stage)
             return created
 
         def prepare_reference_transport(created: Any) -> Any:
-            stage(task_id, "free_protocol_preflight")
-            preflight = _network_preflight(
+            preflight, geo, warmup = _prepare_reference_bootstrap(
                 created,
+                fingerprint,
                 chain_config,
-                log=log,
+                task_id=task_id,
+                stage=stage,
                 stop_requested=stop_event.is_set,
+                log=log,
+                geo_profile=_exit_geo_profile,
+                preflight=_network_preflight,
+                warmup=_anonymous_warmup,
+                apply_geo=_apply_geo_fingerprint,
+                mark_prepared=_mark_reference_session_prepared,
             )
-            geo = _exit_geo_profile(created, chain_config, log=log)
-            _apply_geo_fingerprint(fingerprint, geo)
             setattr(created, "_gptphone_timezone_offset_minutes", fingerprint.get("timezone_offset_minutes"))
-            provider_fingerprint = getattr(getattr(created, "sentinel_provider", None), "fingerprint", None)
-            if isinstance(provider_fingerprint, dict) and provider_fingerprint is not fingerprint:
-                provider_fingerprint.update(fingerprint)
-            warmup = _anonymous_warmup(created, chain_config, log=log)
-            _mark_reference_session_prepared(created)
             chain_config["free_protocol_preflight"] = preflight
             chain_config["free_protocol_geo"] = geo
             chain_config["free_protocol_warmup"] = warmup

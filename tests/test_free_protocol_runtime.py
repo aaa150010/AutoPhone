@@ -153,13 +153,16 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
         authenticated_sessions = []
         contexts = []
         stages = []
+        bootstrap_order = []
         otp = _Otp()
 
         def preflight(transport, *_args, **_kwargs):
+            bootstrap_order.append("preflight")
             preflight_sessions.append(transport.session)
             return {"checks": ["chatgpt-login", "auth-login", "sentinel-frame"]}
 
         def anonymous(transport, *_args, **_kwargs):
+            bootstrap_order.append("warmup")
             warmup_sessions.append(transport.session)
             return {"enabled": True}
 
@@ -180,7 +183,11 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
             patch.object(runtime, "build_free_mailbox_otp_provider", return_value=otp),
             patch.object(runtime, "_network_preflight", side_effect=preflight),
             patch.object(runtime, "_anonymous_warmup", side_effect=anonymous),
-            patch.object(runtime, "_exit_geo_profile", return_value={"country": "JP", "timezone": "Asia/Tokyo"}),
+            patch.object(
+                runtime,
+                "_exit_geo_profile",
+                side_effect=lambda *_args, **_kwargs: (bootstrap_order.append("geo") or {"country": "JP", "timezone": "Asia/Tokyo"}),
+            ),
             patch.object(runtime, "_authenticated_warmup", side_effect=authenticated),
             patch.object(runtime, "run_free_protocol_flow", side_effect=run_flow),
         ):
@@ -197,6 +204,7 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
         self.assertEqual(len(_Transport.instances), 2)
         self.assertEqual(preflight_sessions, [item.initial_session for item in _Transport.instances])
         self.assertEqual(warmup_sessions, preflight_sessions)
+        self.assertEqual(bootstrap_order[:3], ["geo", "preflight", "warmup"])
         self.assertEqual(authenticated_sessions, [_Transport.instances[-1].initial_session])
         for transport in _Transport.instances:
             self.assertTrue(transport._gptphone_reference_session_prepared)

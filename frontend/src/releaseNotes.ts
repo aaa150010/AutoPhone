@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.49',
-  freeRuntimeVersion: '1.6.49',
-  title: 'URL 邮箱与 2FA Secret 流程补齐',
+  version: '1.6.50',
+  freeRuntimeVersion: '1.6.50',
+  title: '代理预检增加 ChatGPT 登录页检测',
   releasedAt: '2026-08-24',
   sections: [
+    {
+      title: '代理出口与 ChatGPT 登录页双重预检',
+      usage: 'Free 协议代理检测现在会在获取出口 IP 后，继续通过同一代理访问 ChatGPT 登录页；HTTP 403、429 或服务端错误会明确标记为不可用于协议注册，避免出口 IP 正常但注册预热被拒绝。检测结果会显示登录页 HTTP 状态，代理认证信息仍不会暴露。',
+    },
     {
       title: 'URL 邮箱支持 2FA Secret',
       usage: '邮箱管理导入“账号----接码 URL----Base32 2FA Secret”后，邮箱验证码仍从接码 URL 获取，邮箱验证完成后由本机按 30 秒 TOTP 窗口生成 6 位 2FA 码；取件 URL 和 2FA 均按需读取，公开列表与日志不会暴露原始凭据。',

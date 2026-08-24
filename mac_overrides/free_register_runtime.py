@@ -90,7 +90,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         "roxy_circuit_open",
     })
 
-    def __init__(self, data_dir: str | Path, *, progress: Any = None, log_fn: Callable[[str, str], None] | None = None, runner: Callable[..., Mapping[str, Any]] | None = None, proxy_probe: Callable[[str, str], str] | None = None) -> None:
+    def __init__(self, data_dir: str | Path, *, progress: Any = None, log_fn: Callable[[str, str], None] | None = None, runner: Callable[..., Mapping[str, Any]] | None = None, proxy_probe: Callable[[str, str], str] | None = None, proxy_chatgpt_probe: Callable[[str], int] | None = None) -> None:
         self.data_dir = Path(data_dir).expanduser().resolve()
         self.pool = FreeMailboxPool(self.data_dir)
         self.proxies = FreeProxyPool(self.data_dir)
@@ -101,6 +101,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         self.runner = runner or self._run_protocol
         self._custom_runner = runner is not None
         self.proxy_probe = proxy_probe
+        self.proxy_chatgpt_probe = proxy_chatgpt_probe
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._executor: ThreadPoolExecutor | None = None
@@ -451,6 +452,8 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             target,
             content=proxy_content,
             probe=self.proxy_probe,
+            check_chatgpt=driver == "protocol" and (self.proxy_chatgpt_probe is not None or self.proxy_probe is None),
+            chatgpt_probe=self.proxy_chatgpt_probe,
             probe_url=str(config.get("proxy_probe_url") or "https://api.ipify.org"),
             country=country,
             group=group,
@@ -488,6 +491,8 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             len(values),
             content=proxy_content,
             probe=self.proxy_probe,
+            check_chatgpt=(self.proxy_chatgpt_probe is not None or self.proxy_probe is None),
+            chatgpt_probe=self.proxy_chatgpt_probe,
             probe_url=probe_url,
             country=country,
             group=group,
@@ -503,6 +508,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     "masked": binding.masked,
                     "fingerprint": binding.fingerprint,
                     "exit_ip": binding.exit_ip,
+                    "chatgpt_login_status": binding.chatgpt_login_status,
+                    "chatgpt_login_checked": binding.chatgpt_login_checked,
+                    "chatgpt_login_probe_mode": binding.chatgpt_login_probe_mode,
                     "scheme": binding.scheme,
                     "country": binding.country,
                     "group": binding.group,
@@ -606,6 +614,8 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             bindings = self.proxies.bind(
                 target_count,
                 probe=self.proxy_probe,
+                check_chatgpt=driver == "protocol" and (self.proxy_chatgpt_probe is not None or self.proxy_probe is None),
+                chatgpt_probe=self.proxy_chatgpt_probe,
                 probe_url=str(config.get("proxy_probe_url") or "https://api.ipify.org"),
                 country=country,
                 group=group,

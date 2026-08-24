@@ -152,6 +152,9 @@ export interface FreeProxyRow {
   last_checked_at?: number | null
   last_exit_ip?: string
   last_probe_mode?: 'strict' | 'compat' | string
+  last_chatgpt_login_checked_at?: number | null
+  last_chatgpt_login_status?: number
+  last_chatgpt_login_probe_mode?: 'strict' | 'compat' | string
   latency_ms?: number | null
   consecutive_failures?: number
 }
@@ -270,7 +273,7 @@ export const importFreeProxies = (proxyContent: string, country?: string, group?
 )
 export const preflightFreeProxies = (proxyContent: string, proxyProbeUrl?: string, options: { driver?: string; country?: string; group?: string; scheme?: string; proxy_tls_verify?: boolean; proxy_tls_compat_fallback?: boolean } = {}) => api<{
   ok: true
-  result: { proxies: number; exit_ips: number; rows: Array<{ index: number; masked: string; fingerprint: string; exit_ip: string; scheme?: string; country?: string; group?: string }> }
+  result: { proxies: number; exit_ips: number; rows: Array<{ index: number; masked: string; fingerprint: string; exit_ip: string; chatgpt_login_status?: number; chatgpt_login_checked?: boolean; chatgpt_login_probe_mode?: string; scheme?: string; country?: string; group?: string }> }
 }>('/api/free/proxies/preflight', { proxy_content: proxyContent, proxy_probe_url: proxyProbeUrl, ...options })
 export const getFreeProxies = () => api<{ ok: true; proxies: { count: number; rows: FreeProxyRow[]; groups: FreeProxySummary[]; countries: FreeProxySummary[] } }>('/api/free/proxies')
 export const updateFreeProxyGroup = (payload: { country: string; group: string; new_country?: string; new_group?: string; enabled?: boolean }) => api<{ ok: true; result: any; proxies: any }>('/api/free/proxies/group', payload)

@@ -8,6 +8,7 @@ shape observed in AutoRegister before the mailbox is consumed.
 from __future__ import annotations
 
 import time
+from types import MethodType
 from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
 
@@ -44,6 +45,190 @@ _SECURITY_HTML_MARKERS = (
     "cf-turnstile",
 )
 
+# Keep the navigation shape in lockstep with AutoRegister's BrowserSession.
+# The recovered transport's PAGE_HEADERS describe an older Windows Chrome
+# profile and omit the document-navigation fields that Auth expects.  Free
+# owns its transport, so it is safe to derive these fields from the task's
+# stable reference fingerprint here without changing ordinary SMS/OAuth.
+_REFERENCE_NAV_ACCEPT = (
+    "text/html,application/xhtml+xml,application/xml;q=0.9,"
+    "image/avif,image/webp,image/apng,*/*;q=0.8,"
+    "application/signed-exchange;v=b3;q=0.7"
+)
+_REFERENCE_DOMAINS = ("chatgpt.com", "auth.openai.com", "sentinel.openai.com")
+
+
+def _reference_fingerprint(transport: Any) -> Mapping[str, Any]:
+    value = getattr(transport, "_gptphone_reference_fingerprint", None)
+    if isinstance(value, Mapping):
+        return value
+    provider = getattr(transport, "sentinel_provider", None)
+    value = getattr(provider, "fingerprint", None)
+    return value if isinstance(value, Mapping) else {}
+
+
+def _host(value: Any) -> str:
+    try:
+        return str(urlsplit(str(value or "")).hostname or "").casefold()
+    except Exception:
+        return ""
+
+
+def _reference_navigation_headers(
+    transport: Any,
+    url: str,
+    referer: str,
+    base: Mapping[str, Any] | None = None,
+) -> dict[str, str]:
+    """Build browser-like document headers while preserving caller values."""
+    headers = {str(key): str(value) for key, value in (base or {}).items() if value not in (None, "")}
+    profile = _reference_fingerprint(transport)
+    # A reference profile is deliberately explicit.  Do not silently replace
+    # a caller-provided header, but do replace the recovered stale UA/locale.
+    for key, profile_key in (
+        ("user-agent", "user_agent"),
+        ("accept-language", "accept_language"),
+        ("sec-ch-ua", "sec_ch_ua"),
+        ("sec-ch-ua-platform", "sec_ch_ua_platform"),
+        ("sec-ch-ua-full-version-list", "sec_ch_ua_full_version_list"),
+        ("sec-ch-ua-platform-version", "sec_ch_ua_platform_version"),
+        ("sec-ch-ua-arch", "sec_ch_ua_arch"),
+        ("sec-ch-ua-bitness", "sec_ch_ua_bitness"),
+        ("sec-ch-ua-model", "sec_ch_ua_model"),
+    ):
+        value = profile.get(profile_key)
+        if value not in (None, ""):
+            headers[key] = str(value)
+
+    target_host = _host(url)
+    ref_host = _host(referer)
+    if target_host and ref_host:
+        headers["sec-fetch-site"] = "same-origin" if target_host == ref_host else "cross-site"
+    elif target_host:
+        headers["sec-fetch-site"] = "cross-site"
+    headers.update({
+        "accept": _REFERENCE_NAV_ACCEPT,
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-dest": "document",
+        "priority": "u=0, i",
+        "upgrade-insecure-requests": "1",
+        "sec-fetch-user": "?1",
+    })
+    if referer:
+        headers["referer"] = str(referer)
+    return headers
+
+
+def _reference_json_headers(transport: Any, base: Mapping[str, Any] | None = None) -> dict[str, str]:
+    """Apply the same stable browser locale/client hints to JSON requests."""
+    headers = {str(key): str(value) for key, value in (base or {}).items() if value not in (None, "")}
+    profile = _reference_fingerprint(transport)
+    for key, profile_key in (
+        ("user-agent", "user_agent"),
+        ("accept-language", "accept_language"),
+        ("sec-ch-ua", "sec_ch_ua"),
+        ("sec-ch-ua-platform", "sec_ch_ua_platform"),
+        ("sec-ch-ua-full-version-list", "sec_ch_ua_full_version_list"),
+        ("sec-ch-ua-platform-version", "sec_ch_ua_platform_version"),
+        ("sec-ch-ua-arch", "sec_ch_ua_arch"),
+        ("sec-ch-ua-bitness", "sec_ch_ua_bitness"),
+        ("sec-ch-ua-model", "sec_ch_ua_model"),
+    ):
+        value = profile.get(profile_key)
+        if value not in (None, ""):
+            headers[key] = str(value)
+    return headers
+
+
+def _reference_get_headers(transport: Any, url: str, referer: str, base: Mapping[str, Any] | None = None) -> dict[str, str]:
+    """Choose navigation or API headers for a wrapped session GET."""
+    path = ""
+    try:
+        path = str(urlsplit(str(url or "")).path or "").casefold()
+    except Exception:
+        pass
+    if _host(url) == "chatgpt.com" and path.startswith(("/backend-api/", "/backend-anon/")):
+        headers = _reference_json_headers(transport, base)
+        if referer:
+            headers["referer"] = str(referer)
+        return headers
+    return _reference_navigation_headers(transport, url, referer, base)
+
+
+def prepare_reference_session(transport: Any, fingerprint: Mapping[str, Any] | None = None) -> Any:
+    """Apply AutoRegister's session identity and header policy to Free.
+
+    This is intentionally idempotent: a rebuilt OAuth session calls it again,
+    while a test double can omit cookies or private transport methods.
+    """
+    if fingerprint is not None and isinstance(fingerprint, Mapping):
+        setattr(transport, "_gptphone_reference_fingerprint", dict(fingerprint))
+    session = getattr(transport, "session", None)
+    if session is None:
+        return transport
+    try:
+        session.trust_env = False
+    except Exception:
+        pass
+    try:
+        session.verify = True
+    except Exception:
+        pass
+    device_id = str(getattr(transport, "device_id", "") or "").strip()
+    cookies = getattr(session, "cookies", None)
+    setter = getattr(cookies, "set", None)
+    if device_id and callable(setter):
+        for domain in _REFERENCE_DOMAINS:
+            try:
+                setter("oai-did", device_id, domain=domain, path="/")
+            except TypeError:
+                try:
+                    setter("oai-did", device_id)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+    # The recovered POST methods call ``self._headers`` directly.  Wrap that
+    # bound method once so Sentinel JSON requests use the same UA/locale as the
+    # page preflight and Node fingerprint.  Ordinary transports never receive
+    # this marker and remain untouched.
+    if not getattr(transport, "_gptphone_reference_headers_wrapped", False):
+        original_headers = getattr(transport, "_headers", None)
+        if callable(original_headers):
+            def wrapped_headers(_self: Any, flow: str, referer: str) -> dict[str, str]:
+                return _reference_json_headers(_self, original_headers(flow, referer))
+            try:
+                transport._headers = MethodType(wrapped_headers, transport)
+                setattr(transport, "_gptphone_reference_headers_wrapped", True)
+            except Exception:
+                pass
+    if not getattr(session, "_gptphone_reference_get_wrapped", False):
+        original_get = getattr(session, "get", None)
+        if callable(original_get):
+            def wrapped_get(url: str, *args: Any, **kwargs: Any) -> Any:
+                target_host = _host(url)
+                if target_host in _REFERENCE_DOMAINS:
+                    supplied = kwargs.get("headers")
+                    referer = str(supplied.get("referer") or "") if isinstance(supplied, Mapping) else ""
+                    if not referer and target_host == "auth.openai.com":
+                        # The recovered initiate_oauth GET omits Referer;
+                        # BrowserSession follows the OAuth link from ChatGPT.
+                        referer = "https://chatgpt.com/"
+                    kwargs["headers"] = _reference_get_headers(
+                        transport,
+                        url,
+                        referer,
+                        supplied if isinstance(supplied, Mapping) else None,
+                    )
+                return original_get(url, *args, **kwargs)
+            try:
+                session.get = wrapped_get
+                setattr(session, "_gptphone_reference_get_wrapped", True)
+            except Exception:
+                pass
+    return transport
+
 
 def _emit(log: LogFn, message: str, level: str = "info", **fields: Any) -> None:
     if not callable(log):
@@ -61,18 +246,22 @@ def _emit(log: LogFn, message: str, level: str = "info", **fields: Any) -> None:
 
 def _headers(transport: Any, url: str, referer: str = "") -> dict[str, str]:
     maker = getattr(transport, "_headers_for_url", None)
+    base: Mapping[str, Any] = {}
     if callable(maker):
         try:
             value = maker(url, referer)
             if isinstance(value, Mapping):
-                return {str(k): str(v) for k, v in value.items() if v not in (None, "")}
+                base = value
         except Exception:
             pass
-    return {
-        "accept": "*/*",
-        "user-agent": "Mozilla/5.0",
-        "referer": referer or url,
-    }
+    if base:
+        return _reference_navigation_headers(transport, url, referer, base)
+    return _reference_navigation_headers(
+        transport,
+        url,
+        referer or url,
+        {"user-agent": "Mozilla/5.0"},
+    )
 
 
 def _session(
@@ -221,6 +410,7 @@ def _request(
 
 def network_preflight(transport: Any, config: Mapping[str, Any], log: LogFn = None, stop_requested: Callable[[], bool] | None = None) -> dict[str, Any]:
     """Run ChatGPT/Auth/Sentinel checks before authorize/continue."""
+    prepare_reference_session(transport)
     session = _session(transport)
     protocol = config.get("protocol") if isinstance(config.get("protocol"), Mapping) else {}
     timeout = max(5.0, min(60.0, float(protocol.get("network_timeout") or 20)))
@@ -262,6 +452,7 @@ def network_preflight(transport: Any, config: Mapping[str, Any], log: LogFn = No
 
 def anonymous_warmup(transport: Any, config: Mapping[str, Any], log: LogFn = None) -> dict[str, Any]:
     """Best-effort anonymous ChatGPT bootstrap matching the reference flow."""
+    prepare_reference_session(transport)
     protocol = config.get("protocol") if isinstance(config.get("protocol"), Mapping) else {}
     if protocol.get("anonymous_warmup") is False:
         return {"enabled": False, "cloudflare_cookies": _cookie_summary(_session(transport, node_code="free_protocol_warmup", node_label="匿名态 ChatGPT 预热"))}
@@ -291,6 +482,7 @@ def anonymous_warmup(transport: Any, config: Mapping[str, Any], log: LogFn = Non
 
 def authenticated_warmup(transport: Any, config: Mapping[str, Any], token: str, log: LogFn = None) -> dict[str, Any]:
     """Best-effort authenticated bootstrap after token exchange."""
+    prepare_reference_session(transport)
     protocol = config.get("protocol") if isinstance(config.get("protocol"), Mapping) else {}
     if protocol.get("authenticated_warmup") is False:
         return {"enabled": False}
@@ -333,6 +525,7 @@ def authenticated_warmup(transport: Any, config: Mapping[str, Any], token: str, 
 
 def exit_geo_profile(transport: Any, config: Mapping[str, Any], log: LogFn = None) -> dict[str, Any]:
     """Read a redacted country/timezone profile through the task's proxy."""
+    prepare_reference_session(transport)
     protocol = config.get("protocol") if isinstance(config.get("protocol"), Mapping) else {}
     url = str(protocol.get("geo_probe_url") or "").strip()
     parsed = urlsplit(url)
@@ -368,4 +561,55 @@ def exit_geo_profile(transport: Any, config: Mapping[str, Any], log: LogFn = Non
         return {}
 
 
-__all__ = ["anonymous_warmup", "authenticated_warmup", "exit_geo_profile", "network_preflight"]
+def prepare_reference_bootstrap(
+    transport: Any,
+    fingerprint: dict[str, Any],
+    config: Mapping[str, Any],
+    *,
+    task_id: str,
+    stage: Callable[[str, str], None],
+    stop_requested: Callable[[], bool] | None,
+    log: LogFn,
+    geo_profile: Callable[..., Mapping[str, Any]],
+    preflight: Callable[..., Mapping[str, Any]],
+    warmup: Callable[..., Mapping[str, Any]],
+    apply_geo: Callable[[dict[str, Any], Mapping[str, Any]], Any],
+    mark_prepared: Callable[[Any], Any],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Run the reference bootstrap in the same order as AutoRegister.
+
+    Keeping this lifecycle here prevents the already-large protocol manager
+    from accumulating another orchestration branch.  Callbacks keep the
+    helper independent from the manager's task/log implementations.
+    """
+    prepare_reference_session(transport, fingerprint)
+    geo_value = geo_profile(transport, config, log=log)
+    geo = dict(geo_value) if isinstance(geo_value, Mapping) else {}
+    apply_geo(fingerprint, geo)
+    setattr(transport, "_gptphone_reference_fingerprint", dict(fingerprint))
+    prepare_reference_session(transport, fingerprint)
+    provider_fingerprint = getattr(getattr(transport, "sentinel_provider", None), "fingerprint", None)
+    if isinstance(provider_fingerprint, dict) and provider_fingerprint is not fingerprint:
+        provider_fingerprint.update(fingerprint)
+    stage(task_id, "free_protocol_preflight")
+    preflight_value = preflight(
+        transport,
+        config,
+        log=log,
+        stop_requested=stop_requested,
+    )
+    warmup_value = warmup(transport, config, log=log)
+    mark_prepared(transport)
+    return (
+        dict(preflight_value) if isinstance(preflight_value, Mapping) else {},
+        geo,
+        dict(warmup_value) if isinstance(warmup_value, Mapping) else {},
+    )
+__all__ = [
+    "anonymous_warmup",
+    "authenticated_warmup",
+    "exit_geo_profile",
+    "network_preflight",
+    "prepare_reference_session",
+    "prepare_reference_bootstrap",
+]

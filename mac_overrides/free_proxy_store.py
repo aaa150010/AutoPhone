@@ -49,6 +49,11 @@ except ImportError:
         safe_log_message,
     )
 
+try:
+    from .free_proxy_chatgpt import probe_chatgpt_login
+except ImportError:
+    from free_proxy_chatgpt import probe_chatgpt_login  # type: ignore[no-redef]
+
 
 SUPPORTED_ROXY_SCHEMES = frozenset({"http", "https", "socks5", "socks5h"})
 PROXY_STATUSES = frozenset({"unknown", "available", "quarantined"})
@@ -56,6 +61,7 @@ PROXY_ALLOCATION_MODES = frozenset({"healthy_random", "exclusive"})
 DEFAULT_PROXY_COUNTRY = "ZZ"
 DEFAULT_PROXY_GROUP = "默认组"
 DEFAULT_PROXY_PROBE_URL = "https://api.ipify.org"
+CHATGPT_LOGIN_PROBE_URL = "https://chatgpt.com/login"
 PROXY_COUNTRY_PATTERN = re.compile(
     r"(?:^|[-_.])(?:region|country|res|area|dc|res_sc)-([A-Za-z]{2})(?:[-_.:]|$)",
     re.IGNORECASE,
@@ -258,6 +264,9 @@ def _record_from_url(value: str, *, country: Any, group: Any) -> dict[str, Any] 
         "last_checked_at": None,
         "last_exit_ip": "",
         "latency_ms": None,
+        "last_chatgpt_login_checked_at": None,
+        "last_chatgpt_login_status": 0,
+        "last_chatgpt_login_probe_mode": "",
         "consecutive_failures": 0,
         "quarantined_until": None,
         "last_failure": None,
@@ -375,6 +384,9 @@ class FreeProxyPool:
             "last_checked_at": value.get("last_checked_at"),
             "last_exit_ip": str(value.get("last_exit_ip") or ""),
             "latency_ms": value.get("latency_ms"),
+            "last_chatgpt_login_checked_at": value.get("last_chatgpt_login_checked_at"),
+            "last_chatgpt_login_status": max(0, int(value.get("last_chatgpt_login_status") or 0)),
+            "last_chatgpt_login_probe_mode": str(value.get("last_chatgpt_login_probe_mode") or ""),
             "consecutive_failures": max(0, int(value.get("consecutive_failures") or 0)),
             "quarantined_until": value.get("quarantined_until"),
             "last_failure": copy.deepcopy(value.get("last_failure")) if isinstance(value.get("last_failure"), Mapping) else None,
@@ -614,6 +626,9 @@ class FreeProxyPool:
             "last_checked_at": row.get("last_checked_at"),
             "last_exit_ip": row.get("last_exit_ip", ""),
             "latency_ms": row.get("latency_ms"),
+            "last_chatgpt_login_checked_at": row.get("last_chatgpt_login_checked_at"),
+            "last_chatgpt_login_status": int(row.get("last_chatgpt_login_status") or 0),
+            "last_chatgpt_login_probe_mode": row.get("last_chatgpt_login_probe_mode", ""),
             "consecutive_failures": int(row.get("consecutive_failures") or 0),
             "last_probe_mode": row.get("last_probe_mode", ""),
         }
@@ -697,12 +712,32 @@ class FreeProxyPool:
                 # keeping the original exception type and redaction rules.
                 raise second_error from first_error
 
+    @staticmethod
+    def _chatgpt_login_probe(proxy: str, *, verify: bool = True) -> int:
+        return probe_chatgpt_login(proxy, verify=verify)
+
+    def _chatgpt_login_with_policy(self, proxy: str) -> tuple[int, str]:
+        """Apply the same strict/compat TLS policy to the ChatGPT eligibility check."""
+        if not self.proxy_tls_verify:
+            return self._chatgpt_login_probe(proxy, verify=False), "compat"
+        try:
+            return self._chatgpt_login_probe(proxy, verify=True), "strict"
+        except Exception as first_error:
+            if not self.proxy_tls_compat_fallback or not _is_tls_compatibility_error(first_error):
+                raise
+            try:
+                return self._chatgpt_login_probe(proxy, verify=False), "compat"
+            except Exception as second_error:
+                raise second_error from first_error
+
     def bind(
         self,
         count: int,
         *,
         content: str = "",
         probe: Callable[[str, str], str] | None = None,
+        chatgpt_probe: Callable[[str], int] | None = None,
+        check_chatgpt: bool = False,
         probe_url: str = "https://api.ipify.org",
         country: str | None = None,
         group: str | None = None,
@@ -790,7 +825,7 @@ class FreeProxyPool:
             }
         check = probe
         bindings: list[ProxyBinding] = []
-        checked: dict[str, tuple[str, str, int]] = {}
+        checked: dict[str, tuple[str, str, int, int, str]] = {}
         for index, record in enumerate(selected_values, 1):
             configured_proxy = _proxy_url(record)
             transport_proxy = proxy_transport_value(configured_proxy, driver=driver)
@@ -808,22 +843,46 @@ class FreeProxyPool:
                     exit_ip = str(exit_ip).strip()
                     if not exit_ip:
                         raise ValueError("出口 IP 为空")
-                except FreeRegisterError:
+                    chatgpt_status = 0
+                    chatgpt_probe_mode = ""
+                    if check_chatgpt:
+                        if chatgpt_probe is None:
+                            chatgpt_status, chatgpt_probe_mode = self._chatgpt_login_with_policy(transport_proxy)
+                        else:
+                            chatgpt_status, chatgpt_probe_mode = int(chatgpt_probe(transport_proxy) or 0), "custom"
+                        if not 200 <= chatgpt_status < 400:
+                            raise FreeRegisterError(
+                                "free_proxy_preflight", "Free 代理预检",
+                                f"代理池第 {index} 条 ChatGPT 登录页预检返回 HTTP {chatgpt_status}",
+                                provider_status=chatgpt_status,
+                                retryable=chatgpt_status in {0, 408, 425, 429} or chatgpt_status >= 500,
+                                error_code="free_proxy_chatgpt_login_http",
+                                action_hint="更换当前代理出口后重新检测；出口 IP 可联网但被 ChatGPT 拒绝时不能用于协议注册",
+                            )
+                except FreeRegisterError as exc:
+                    if not inline_content:
+                        self.record_failure(
+                            str(record.get("proxy_id") or ""),
+                            node_code="free_proxy_preflight",
+                            message=str(exc),
+                        )
                     raise
                 except Exception as exc:
                     if not inline_content:
                         self.record_failure(str(record.get("proxy_id") or ""), node_code="free_proxy_preflight", message=proxy_error_detail(exc))
                     raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", f"代理池第 {index} 条出口 IP 检测失败：{proxy_error_detail(exc)}") from exc
                 latency_ms = int((time.monotonic() - started) * 1000)
-                checked[cache_key] = (exit_ip, probe_mode, latency_ms)
+                checked[cache_key] = (exit_ip, probe_mode, latency_ms, chatgpt_status, chatgpt_probe_mode)
             else:
-                exit_ip, probe_mode, latency_ms = cached
+                exit_ip, probe_mode, latency_ms, chatgpt_status, chatgpt_probe_mode = cached
             if not inline_content and cached is None:
                 self.record_success(
                     str(record.get("proxy_id") or ""),
                     exit_ip=exit_ip,
                     latency_ms=latency_ms,
                     probe_mode=probe_mode,
+                    chatgpt_login_status=chatgpt_status,
+                    chatgpt_login_probe_mode=chatgpt_probe_mode,
                 )
             if self.allocation_mode == "exclusive" and exit_ip in reserved_exit_ips:
                 continue
@@ -837,6 +896,9 @@ class FreeProxyPool:
                 scheme=transport_scheme,
                 country=str(record.get("country") or DEFAULT_PROXY_COUNTRY),
                 group=str(record.get("group") or DEFAULT_PROXY_GROUP),
+                chatgpt_login_status=chatgpt_status,
+                chatgpt_login_checked=bool(check_chatgpt),
+                chatgpt_login_probe_mode=chatgpt_probe_mode,
             ))
             reserved_exit_ips.add(exit_ip)
             if len(bindings) >= requested:
@@ -960,13 +1022,33 @@ class FreeProxyPool:
             if changed:
                 self._save(rows)
 
-    def record_success(self, proxy_id: str, *, exit_ip: str = "", latency_ms: int | None = None, probe_mode: str = "") -> None:
+    def record_success(
+        self,
+        proxy_id: str,
+        *,
+        exit_ip: str = "",
+        latency_ms: int | None = None,
+        probe_mode: str = "",
+        chatgpt_login_status: int = 0,
+        chatgpt_login_probe_mode: str = "",
+    ) -> None:
         with self._lock:
             rows = self._load()
             for row in rows:
                 if str(row.get("proxy_id")) != str(proxy_id):
                     continue
-                row.update({"status": "available", "consecutive_failures": 0, "last_checked_at": time.time(), "last_exit_ip": exit_ip or row.get("last_exit_ip", ""), "latency_ms": latency_ms if latency_ms is not None else row.get("latency_ms"), "last_failure": None})
+                now = time.time()
+                row.update({
+                    "status": "available", "consecutive_failures": 0, "last_checked_at": now,
+                    "last_exit_ip": exit_ip or row.get("last_exit_ip", ""),
+                    "latency_ms": latency_ms if latency_ms is not None else row.get("latency_ms"),
+                    "last_failure": None,
+                })
+                if chatgpt_login_status:
+                    row["last_chatgpt_login_checked_at"] = now
+                    row["last_chatgpt_login_status"] = int(chatgpt_login_status)
+                if chatgpt_login_probe_mode:
+                    row["last_chatgpt_login_probe_mode"] = str(chatgpt_login_probe_mode)
                 if probe_mode:
                     row["last_probe_mode"] = str(probe_mode)
                 row["quarantined_until"] = None
@@ -1040,6 +1122,7 @@ def _without_proxy_environment():
 
 
 __all__ = [
+    "CHATGPT_LOGIN_PROBE_URL",
     "DEFAULT_PROXY_PROBE_URL",
     "DEFAULT_PROXY_COUNTRY",
     "DEFAULT_PROXY_GROUP",
