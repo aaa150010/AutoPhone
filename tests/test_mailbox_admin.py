@@ -1976,6 +1976,51 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertNotIn("refresh-token", item["technical_error"])
         self.assertNotIn("mail-pass", json.dumps(item["failure"], ensure_ascii=False))
 
+    def test_account_banned_row_does_not_fall_back_to_legacy_provider_detail(self):
+        row = "banned@example.com----mail-pass----client-id----refresh-token"
+        self._write_pool(row + "\n")
+        self._write_state({})
+        results = self.root / "results"
+        results.mkdir()
+        provider_detail = (
+            "password_verify_failed: You do not have an account because it has "
+            "been deleted or deactivated."
+        )
+        failure = {
+            "node_code": "account_banned",
+            "node_label": "检查 OpenAI 账号状态",
+            "error_code": "account_banned",
+            "provider_code": "password_verify_failed",
+            "public_message": "OpenAI 账号已被封禁，无法继续接码",
+            "technical_summary": "",
+            "retryable": True,
+        }
+        (results / "banned.json").write_text(
+            json.dumps(
+                {
+                    "email": "banned@example.com",
+                    "status": "account_banned",
+                    "technical_error": provider_detail,
+                    "result": {
+                        "error": provider_detail,
+                        "local_oauth_exchange_error": provider_detail,
+                        "failure": failure,
+                    },
+                    "failure": failure,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        item = self.service.list_mailboxes()["rows"][0]
+
+        self.assertEqual(item["error"], "OpenAI 账号已被封禁，无法继续接码")
+        self.assertEqual(item["technical_error"], "")
+        self.assertEqual(item["failure"]["technical_summary"], "")
+        self.assertFalse(item["failure"]["retryable"])
+        serialized = json.dumps(item, ensure_ascii=False)
+        self.assertNotIn("deleted or deactivated", serialized)
+
     def test_totp_error_redaction_covers_spaced_secret(self):
         row = "mfa@example.com|login-pass|JBSW Y3DP EHPK 3PXP"
         self._write_pool(row + "\n")

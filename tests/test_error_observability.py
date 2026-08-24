@@ -82,6 +82,8 @@ class ErrorObservabilityTests(unittest.TestCase):
             ("email_otp_send_failed: HTTP 429", "email_code_waiting"),
             ("email_otp_timeout", "email_code_waiting"),
             ("email_otp_failed: invalid authorization step", "mfa_otp_verifying"),
+            ("mfa_totp_secret_missing", "mfa_otp_verifying"),
+            ("mfa_factor_id_missing", "mfa_otp_verifying"),
             ("getNumber failed: no_numbers", "phone_acquiring"),
             ("phone_send_rejected: unsupported_country_region_territory", "phone_submitting"),
             ("sms_timeout while wait_code", "sms_waiting"),
@@ -105,6 +107,10 @@ class ErrorObservabilityTests(unittest.TestCase):
         self.assertEqual(expired["node_code"], "mfa_otp_verifying")
         self.assertEqual(expired["error_code"], "mfa_authorization_step_expired")
         self.assertIn("重新建立 OAuth 会话", expired["public_message"])
+
+        missing = classify_failure(error="mfa_totp_secret_missing")
+        self.assertEqual(missing["error_code"], "mfa_totp_secret_missing")
+        self.assertIn("未绑定有效 2FA 密钥", missing["public_message"])
 
     def test_last_success_event_points_at_the_operation_that_can_fail_next(self):
         after_chat_requirements = classify_failure(
@@ -300,13 +306,44 @@ class ErrorObservabilityTests(unittest.TestCase):
 
     def test_account_banned_message_remains_exact(self):
         failure = classify_failure(
-            {"error": {"code": "account_banned", "message": "account has been banned"}},
+            {
+                "error": {
+                    "code": "password_verify_failed",
+                    "message": "You do not have an account because it has been deleted or deactivated.",
+                }
+            },
+            error={"status_code": 403},
             status="account_banned",
         )
 
         self.assertEqual(failure["node_code"], "account_banned")
         self.assertEqual(failure["public_message"], ACCOUNT_BANNED_MESSAGE)
+        self.assertEqual(failure["error_code"], "account_banned")
+        self.assertEqual(failure["provider_code"], "password_verify_failed")
+        self.assertEqual(failure["http_status"], 403)
+        self.assertEqual(failure["technical_summary"], "")
         self.assertFalse(failure["retryable"])
+
+    def test_account_banned_public_failure_hides_persisted_provider_detail(self):
+        public = public_failure(
+            {
+                "node_code": "account_banned",
+                "node_label": "检查 OpenAI 账号状态",
+                "error_code": "password_verify_failed",
+                "provider_code": "password_verify_failed",
+                "public_message": "password_verify_failed: deleted or deactivated",
+                "technical_summary": "password_verify_failed: deleted or deactivated",
+                "http_status": 403,
+                "retryable": True,
+            }
+        )
+
+        self.assertEqual(public["public_message"], ACCOUNT_BANNED_MESSAGE)
+        self.assertEqual(public["error_code"], "account_banned")
+        self.assertEqual(public["provider_code"], "password_verify_failed")
+        self.assertEqual(public["http_status"], 403)
+        self.assertEqual(public["technical_summary"], "")
+        self.assertFalse(public["retryable"])
 
     def test_curl_56_is_a_retryable_remote_disconnect(self):
         failure = classify_failure(

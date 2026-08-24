@@ -616,15 +616,28 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
                 if isinstance(result.get("failure"), Mapping)
                 else result_payload.get("failure")
             )
-            detail_error = (
-                (failure or {}).get("technical_summary")
-                or result.get("technical_error")
-                or result_payload.get("local_oauth_exchange_error")
-                or result_payload.get("error")
-                or result.get("error")
-                or ("" if manually_restored else state_reason)
-                or ""
+            account_banned = bool(
+                result_status == "account_banned"
+                or (failure or {}).get("node_code") == "account_banned"
+                or str(result_payload.get("status") or "").strip().lower()
+                == "account_banned"
             )
+            if account_banned:
+                # Historical result files can still contain provider details
+                # under result.error/local_oauth_exchange_error. They are
+                # local diagnostics only and must never be re-exposed by the
+                # mailbox row API.
+                detail_error = ""
+            else:
+                detail_error = (
+                    (failure or {}).get("technical_summary")
+                    or result.get("technical_error")
+                    or result_payload.get("local_oauth_exchange_error")
+                    or result_payload.get("error")
+                    or result.get("error")
+                    or ("" if manually_restored else state_reason)
+                    or ""
+                )
             detail_error = self._format_error(detail_error, row_secrets)
             detail_error = public_mailbox_reason(detail_error)
             failure_message = self._format_error((failure or {}).get("public_message") or "", row_secrets)

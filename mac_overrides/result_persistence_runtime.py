@@ -91,6 +91,46 @@ def _log_update_failure(
         return
 
 
+def _scrub_account_banned_result(
+    nested: Any,
+    message: str,
+) -> None:
+    """Keep terminal account-ban results stable without exposing provider text."""
+    if not isinstance(nested, dict):
+        return
+
+    # The recovered chain mirrors its terminal exception in several result
+    # fields. Replace each public-facing copy with the stable classifier
+    # message; the redacted provider detail is written separately below.
+    for key in (
+        "error",
+        "technical_error",
+        "phase2_error",
+        "local_oauth_exchange_error",
+    ):
+        if key in nested:
+            nested[key] = message
+
+    failure = nested.get("failure")
+    if isinstance(failure, dict):
+        failure["error_code"] = "account_banned"
+        failure["public_message"] = message
+        failure["technical_summary"] = ""
+        failure["retryable"] = False
+
+    # Chain events are also returned by the public result endpoint. The raw
+    # FAILED detail commonly contains the provider's English account message.
+    events = nested.get("codex_chain_events")
+    if isinstance(events, list):
+        for event in events:
+            if not isinstance(event, dict):
+                continue
+            if str(event.get("state") or "").strip().upper() == "FAILED":
+                event["detail"] = message
+                if "message" in event:
+                    event["message"] = message
+
+
 def apply_result_json_metadata(
     settings: Mapping[str, Any] | None,
     data_dir: str | Path,
@@ -120,9 +160,10 @@ def apply_result_json_metadata(
     normalized_status = str(status or "").strip().lower()
     has_timing = isinstance(timing, Mapping)
     has_failure = isinstance(failure, Mapping)
-    has_banned_detail = normalized_status == "account_banned" and bool(
-        account_banned_detail
-    )
+    # Account-ban status itself is enough to require public-result scrubbing;
+    # a missing local detail must not leave the recovered provider error in
+    # the nested result.
+    has_banned_detail = normalized_status == "account_banned"
     if not (has_timing or normalized_batch_id or has_failure or has_banned_detail):
         return False
 
@@ -156,9 +197,16 @@ def apply_result_json_metadata(
                 nested["failure"] = copy.deepcopy(failure_value)
 
         if has_banned_detail:
-            message = str(account_banned_message or "")
+            message = str(account_banned_message or "").strip() or "OpenAI 账号已被封禁，无法继续接码"
             payload["error"] = message
             payload["technical_error"] = message
+            _scrub_account_banned_result(payload, message)
+            _scrub_account_banned_result(nested, message)
+            persisted_failure = payload.get("failure")
+            if isinstance(persisted_failure, dict):
+                persisted_failure["public_message"] = message
+                persisted_failure["technical_summary"] = ""
+                persisted_failure["retryable"] = False
             payload["account_banned_local_diagnostic"] = (
                 _sanitize(
                     sanitize_failure_detail,

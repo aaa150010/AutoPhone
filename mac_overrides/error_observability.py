@@ -130,6 +130,8 @@ _ACTION_HINTS = {
     "tls_connection_failed": "检查代理 TLS 转发、证书和系统时间后重试。",
     "remote_disconnected": "更换不稳定代理或降低并发后重试。",
     "oauth_session_invalid": "建立全新 OAuth 会话后重试当前步骤。",
+    "mfa_totp_secret_missing": "检查当前邮箱行是否包含有效的 Base32 2FA Secret，并确认任务使用了同一邮箱行。",
+    "mfa_factor_id_missing": "重新建立 OAuth 会话后重试；如果持续出现，请检查 MFA 页面是否完整返回验证因子。",
     "email_password_failed": "更新邮箱密码或授权信息后再运行。",
     "mailbox_login_failed": "检查邮箱授权、IMAP 可用性和邮箱代理配置。",
     "email_code_timeout": "确认邮箱可以收到新邮件，并检查取码方式和等待超时。",
@@ -530,8 +532,24 @@ def _extract_provider_code(values: Sequence[Any]) -> str:
 _RULES = (
     (("batch_member_missing_terminal",), "batch_member_missing_terminal", "batch_member_missing_terminal", "任务线程已结束但没有产生终态，已由批次清单补记失败", True),
     (("batch_result_missing",), "batch_result_missing", "batch_result_missing", "任务终态存在但结果文件缺失，已由批次清单补记失败", True),
-    (("account_banned", "account_deactivated", "account_suspended", ACCOUNT_BANNED_MESSAGE.lower()), "account_banned", "account_banned", "", False),
+    (
+        (
+            "account_banned",
+            "account_deactivated",
+            "account_deleted",
+            "account_suspended",
+            "deleted or deactivated",
+            "you do not have an account",
+            ACCOUNT_BANNED_MESSAGE.lower(),
+        ),
+        "account_banned",
+        "account_banned",
+        "",
+        False,
+    ),
     (("invalid authorization step", "mfa_authorization_step_expired"), "mfa_otp_verifying", "mfa_authorization_step_expired", "2FA 授权步骤在动态码提交前已失效，需要重新建立 OAuth 会话", True),
+    (("mfa_totp_secret_missing",), "mfa_otp_verifying", "mfa_totp_secret_missing", "2FA 动态码验证失败：当前任务未绑定有效 2FA 密钥", False),
+    (("mfa_factor_id_missing",), "mfa_otp_verifying", "mfa_factor_id_missing", "2FA 动态码验证失败：MFA 页面未返回有效验证因子", True),
     (("relogin_phone_required",), "phone_acquiring", "relogin_phone_required", "重登进入手机号验证页面，已停止且未调用接码平台", False),
     (("relogin_sub2_binding_missing",), "finalizing_upload", "relogin_sub2_binding_missing", "重登缺少经过服务端校验的 SUB2 原账号绑定", False),
     (("sub2_update_binding_missing",), "finalizing_upload", "sub2_update_binding_missing", "SUB2 原账号绑定信息缺失", False),
@@ -759,8 +777,11 @@ def classify_failure(
 
     technical_summary = _best_technical_summary(values, secrets=secrets)
     if node_code == "account_banned":
+        # Account-ban details are terminal provider diagnostics. Keep them in
+        # the local redacted diagnostic field, never in the public failure
+        # object consumed by the dashboard/API.
         public_message = ACCOUNT_BANNED_MESSAGE
-        technical_summary = technical_summary or ACCOUNT_BANNED_MESSAGE
+        technical_summary = ""
     else:
         if cause in {"Node/Sentinel 授权桥接初始化失败", "node/sentinel 授权桥接初始化失败"}:
             cause = technical_summary or "Node/Sentinel 未返回可识别的底层错误详情"
@@ -776,17 +797,27 @@ def classify_failure(
 
     action_hint = _ACTION_HINTS.get(error_code, "")
     diagnostic_action = "openai_connectivity" if error_code in _OPENAI_DIAGNOSTIC_CODES else ""
-    return {
-        "node_code": node_code,
-        "node_label": node_label,
-        "error_code": sanitize_failure_detail(error_code, limit=80) or f"{node_code}_failed",
-        "provider_code": sanitize_failure_detail(provider_code, limit=80),
-        "public_message": sanitize_failure_detail(public_message, secrets=secrets, limit=500),
-        "technical_summary": sanitize_failure_detail(
+    public_technical_summary = (
+        ""
+        if node_code == "account_banned"
+        else sanitize_failure_detail(
             technical_summary or cause or "服务端未返回错误详情",
             secrets=secrets,
             limit=500,
-        ),
+        )
+    )
+    return {
+        "node_code": node_code,
+        "node_label": node_label,
+        "error_code": "account_banned"
+        if node_code == "account_banned"
+        else sanitize_failure_detail(error_code, limit=80) or f"{node_code}_failed",
+        # Provider codes and HTTP status are structured, credential-free
+        # fields. Preserve them for diagnosis while hiding the provider's
+        # free-form account detail in ``technical_summary``.
+        "provider_code": sanitize_failure_detail(provider_code, limit=80),
+        "public_message": sanitize_failure_detail(public_message, secrets=secrets, limit=500),
+        "technical_summary": public_technical_summary,
         "retryable": bool(retryable),
         "http_status": http_status,
         "action_hint": action_hint,
@@ -802,14 +833,23 @@ def public_failure(value: Any) -> dict[str, Any] | None:
     node_code = str(value.get("node_code") or "").strip()
     if node_code not in NODE_LABELS:
         return None
+    is_account_banned = node_code == "account_banned"
     result = {
         "node_code": node_code,
         "node_label": NODE_LABELS[node_code],
-        "error_code": sanitize_failure_detail(value.get("error_code"), limit=80),
+        "error_code": "account_banned"
+        if is_account_banned
+        else sanitize_failure_detail(value.get("error_code"), limit=80),
+        # Provider codes are stable, credential-free classifiers; preserve
+        # them while hiding free-form provider details below.
         "provider_code": sanitize_failure_detail(value.get("provider_code"), limit=80),
-        "public_message": sanitize_failure_detail(value.get("public_message"), limit=500),
-        "technical_summary": sanitize_failure_detail(value.get("technical_summary"), limit=500),
-        "retryable": bool(value.get("retryable")),
+        "public_message": ACCOUNT_BANNED_MESSAGE
+        if is_account_banned
+        else sanitize_failure_detail(value.get("public_message"), limit=500),
+        "technical_summary": "" if is_account_banned else sanitize_failure_detail(value.get("technical_summary"), limit=500),
+        # A banned/deactivated account is terminal even when an older result
+        # persisted a stale retryable flag.
+        "retryable": False if is_account_banned else bool(value.get("retryable")),
         "http_status": None,
         "action_hint": sanitize_failure_detail(value.get("action_hint"), limit=500),
         "diagnostic_action": sanitize_failure_detail(value.get("diagnostic_action"), limit=80),

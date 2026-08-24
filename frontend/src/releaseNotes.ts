@@ -13,11 +13,23 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.53',
-  freeRuntimeVersion: '1.6.53',
-  title: 'Free 协议预检与 Roxy 错误定位修复',
+  version: '1.6.55',
+  freeRuntimeVersion: '1.6.55',
+  title: 'OAuth MFA 分支与封禁提示修复',
   releasedAt: '2026-08-24',
   sections: [
+    {
+      title: 'URL-only MFA 缺 Secret 时停止',
+      usage: '两段式邮箱----URL 没有 2FA Secret 时，遇到 mfa_challenge 会明确停在 2FA 节点，不再把 MFA 地址误当 OAuth 回调，也不会未经服务端明确要求就调用手机号接码。只有返回 add_phone 等手机号页面才进入接码流程。',
+    },
+    {
+      title: '账号停用统一提示',
+      usage: 'OpenAI 返回账号已删除或停用时，任务、邮箱列表和历史结果统一显示“OpenAI 账号已被封禁，无法继续接码”；英文服务端详情只保留在本地脱敏诊断中。',
+    },
+    {
+      title: 'URL 邮箱 MFA 跨线程修复',
+      usage: '自动取件线程完成邮箱验证码后，2FA 密钥会按任务绑定并交回 OAuth 主流程；即使验证码由后台线程获取，也会先验证动态码再继续手机号接码或 OAuth 回调。缺少密钥或验证因子时，日志会明确指出对应节点，不再只显示“OAuth 回调失败”。',
+    },
     {
       title: '普通 OAuth 注册 MFA 会话修复',
       usage: '邮箱验证码后遇到 2FA 时，会从当前任务的邮箱提供器上下文读取绑定密钥，即使没有密码页也会先验证动态码，再继续手机号接码或 OAuth 回调，避免重启后重复出现“OAuth 回调未返回有效 code”。',

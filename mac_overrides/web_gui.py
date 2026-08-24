@@ -305,6 +305,7 @@ _MAILBOX_NEXT_BATCH_PRIORITY_ACTIVE: ContextVar[bool] = ContextVar(
     default=False,
 )
 _MAILBOX_TOTP_SECRET_CONTEXT: ContextVar[str] = ContextVar("gptphone_mailbox_totp_secret", default="")
+_TASK_TOTP_SECRETS = _oauth_mfa_runtime_ext.TaskSecretRegistry()
 _ACCOUNT_BANNED_DETAIL_CONTEXT: ContextVar[str] = ContextVar(
     "gptphone_account_banned_detail",
     default="",
@@ -1727,6 +1728,7 @@ def _patched_importer_run_one(
     if not task_id:
         task_id = f"T{int(ordinal):03d}-{uuid.uuid4().hex[:6]}"
     _MAILBOX_TOTP_SECRET_CONTEXT.set("")
+    _TASK_TOTP_SECRETS.clear(task_id)
     _TOTP_PATCHES.reset_task_state()
     _MANUAL_VERIFICATION.cancel_task(task_id)
     token = _RUN_MODE_CONTEXT.set(run_mode)
@@ -1757,6 +1759,7 @@ def _patched_importer_run_one(
         _AUTH_SESSIONS.clear(task_id)
         _SMS_PROVIDER_REGISTRY.clear_task_attempt_counts(task_id)
         _MAILBOX_TOTP_SECRET_CONTEXT.set("")
+        _TASK_TOTP_SECRETS.clear(task_id)
         _TOTP_PATCHES.reset_task_state()
         _MANUAL_VERIFICATION.cancel_task(task_id)
         if transport is not None:
@@ -2910,6 +2913,18 @@ def _run_codex_after_registration(
     phone_otp_provider=None,
 ):
     runtime_config = config if isinstance(config, dict) else {}
+    task_id_hint = _oauth_mfa_runtime_ext.runtime_task_id(
+        runtime_config,
+        context_task_get=_TASK_CONTEXT.get,
+        transport=transport,
+        transport_task_id_get=_transport_task_id,
+    )
+    bound_totp_task_id = _oauth_mfa_runtime_ext.bind_provider_totp_secret(
+        email_otp_provider,
+        _TASK_TOTP_SECRETS,
+        task_id=task_id_hint,
+        current_task_get=_TASK_CONTEXT.get,
+    )
     if str(runtime_config.get("run_mode") or "").strip().lower() == "relogin":
         phone_otp_provider = _ReloginPhoneOtpProvider()
     runtime_config["_auth_account_email"] = str(account_email or "").strip().lower()
@@ -2928,7 +2943,7 @@ def _run_codex_after_registration(
             success_fn=_codex_oauth_chain._is_success_response,
         )
         existing_context = getattr(transport, "_gptphone_request_context", None)
-        expected_task_id = str(runtime_config.get("sms_task_id") or runtime_config.get("run_id") or "")
+        expected_task_id = task_id_hint
         request_context = _auth_request_runtime_ext.ensure_transport_context(
             transport,
             _AUTH_SESSIONS,
@@ -2941,7 +2956,7 @@ def _run_codex_after_registration(
         _register_sms_transport(expected_task_id, transport)
     transport_token = _ACTIVE_SMS_TRANSPORT.set(transport)
     protocol_activity_token = _PROTOCOL_REQUEST_ACTIVITY.set(0)
-    task_id = str(runtime_config.get("sms_task_id") or runtime_config.get("run_id") or "")
+    task_id = task_id_hint
 
     def record_protocol_wait(elapsed_seconds):
         _record_task_segment(
@@ -3050,6 +3065,11 @@ def _run_codex_after_registration(
         runtime_config.pop("phase1_active_session", None)
         _PROTOCOL_REQUEST_ACTIVITY.reset(protocol_activity_token)
         _ACTIVE_SMS_TRANSPORT.reset(transport_token)
+        _oauth_mfa_runtime_ext.clear_task_secrets(
+            _TASK_TOTP_SECRETS,
+            task_id,
+            bound_totp_task_id,
+        )
         if task_id and _TASK_CONTEXT.get() != task_id:
             _SMS_TRANSPORT_REGISTRY.close_task(task_id)
             _AUTH_SESSIONS.clear(task_id)
@@ -3418,20 +3438,8 @@ def _automatic_outlook_mailbox_wait_code(self, email):
     return code
 
 
-def _manual_task_generation(task_id):
-    snapshot = _AUTH_SESSIONS.public_snapshot(task_id) if task_id else {}
-    try:
-        return max(0, int(snapshot.get("generation") or 0))
-    except (AttributeError, TypeError, ValueError):
-        return 0
-
-
-def _manual_stop_event(provider):
-    stop_event = getattr(provider, "stop_event", None)
-    if stop_event is not None:
-        return stop_event
-    config = getattr(provider, "config", None)
-    return config.get("_stop_requested") if isinstance(config, dict) else None
+_manual_task_generation = lambda task_id: _oauth_mfa_runtime_ext.task_generation(task_id, _AUTH_SESSIONS.public_snapshot)
+_manual_stop_event = _oauth_mfa_runtime_ext.provider_stop_event
 
 
 def _submit_manual_code(self, task_id, code):
@@ -3473,6 +3481,7 @@ def _manual_email_wait(provider, email, automatic_wait):
 
 
 def _url_mailbox_wait_code(self, email):
+    _oauth_mfa_runtime_ext.remember_provider_totp_secret(self, _TASK_TOTP_SECRETS, current_task_get=_TASK_CONTEXT.get)
     return _manual_email_wait(
         self,
         email,
@@ -3481,6 +3490,7 @@ def _url_mailbox_wait_code(self, email):
 
 
 def _outlook_mailbox_wait_code(self, email):
+    _oauth_mfa_runtime_ext.remember_provider_totp_secret(self, _TASK_TOTP_SECRETS, current_task_get=_TASK_CONTEXT.get)
     return _manual_email_wait(
         self,
         email,
@@ -3503,27 +3513,15 @@ def _mfa_factor_id_from_response(response):
     )
 
 
-def _totp_secret_for_transport(transport=None):
-    """Resolve the task's TOTP seed across passwordless and password flows."""
-    secret = str(_MAILBOX_TOTP_SECRET_CONTEXT.get("") or "").strip()
-    if secret:
-        return secret
-    if transport is None:
-        return ""
-    secret = str(getattr(transport, "_gptphone_totp_secret", "") or "").strip()
-    if secret:
-        return secret
-    context = getattr(transport, "_gptphone_auth_challenge_context", None)
-    provider = getattr(context, "email_otp_provider", None)
-    entry = getattr(provider, "entry", None)
-    if str(getattr(entry, "oauth_client_id", "") or "").strip() != "chatgpt_totp":
-        return ""
-    return str(getattr(entry, "oauth_refresh_token", "") or "").strip()
-
-
 _EMAIL_OTP_MFA_RUNTIME = _oauth_mfa_runtime_ext.EmailOtpMfaRuntime(
-    secret_get=lambda transport=None: _totp_secret_for_transport(transport),
-    secret_clear=lambda: _MAILBOX_TOTP_SECRET_CONTEXT.set(""),
+    secret_get=lambda transport=None: _oauth_mfa_runtime_ext.resolve_totp_secret(
+        transport,
+        context_secret_get=lambda: _MAILBOX_TOTP_SECRET_CONTEXT.get(""),
+        task_secret_get=_TASK_TOTP_SECRETS.get,
+        task_id_get=lambda current: _transport_task_id(current) or _TASK_CONTEXT.get(),
+    ),
+    # Keep the task registry through a bounded MFA retry; task finalization clears it.
+    secret_clear=lambda *_args: _MAILBOX_TOTP_SECRET_CONTEXT.set(""),
     checkpoint_save=lambda transport, response: _checkpoint_save_after_auth(
         transport, response
     ),
@@ -3547,6 +3545,7 @@ _EMAIL_OTP_MFA_RUNTIME = _oauth_mfa_runtime_ext.EmailOtpMfaRuntime(
         response
     ),
     stop_event=lambda transport: _manual_stop_event(transport),
+    requires_secret=lambda transport: _oauth_mfa_runtime_ext.transport_expects_totp(transport, _TASK_TOTP_SECRETS, transport_task_id_get=_transport_task_id, current_task_get=_TASK_CONTEXT.get),
 )
 
 
