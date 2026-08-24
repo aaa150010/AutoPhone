@@ -526,6 +526,15 @@ class FreeProtocolFlowTests(unittest.TestCase):
         self.assertEqual(transport.phone_calls, 0)
 
     def test_existing_login_password_page_switches_directly_to_email_otp(self):
+        chain = sys.modules["codex_oauth_chain"]
+        original_success = chain._is_success_response
+        # The recovered helper currently rejects this valid state envelope;
+        # the Free state machine must still enter the passwordless login path.
+        chain._is_success_response = lambda value: (
+            original_success(value)
+            and str((value.get("page") or {}).get("type") or "") != "login_password"
+        )
+
         class PasswordThenOtp(_Transport):
             def __init__(self):
                 super().__init__(email={"_status": 200, "page": {"type": "login_password"}, "continue_url": "/log-in/password"})
@@ -538,7 +547,10 @@ class FreeProtocolFlowTests(unittest.TestCase):
                 return {"_status": 200, "page": {"type": "consent"}, "continue_url": "/callback"}
 
         transport = PasswordThenOtp()
-        result, _ = _run(transport)
+        try:
+            result, _ = _run(transport)
+        finally:
+            chain._is_success_response = original_success
         self.assertTrue(result["registration_completed"])
         self.assertEqual(result["account_flow"], "existing_login")
         self.assertNotIn("verify_password", transport.calls)

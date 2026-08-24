@@ -21,6 +21,7 @@ try:
         callback_matches_redirect as _callback_matches_redirect,
         callback_query as _callback_query,
         content_type as _content_type,
+        is_known_state_response as _is_known_state_response,
         next_url as _next_url,
         page_is_html as _page_is_html,
         page_location as _page_location,
@@ -51,6 +52,7 @@ except ImportError:  # pragma: no cover - compatibility import for recovered run
         callback_matches_redirect as _callback_matches_redirect,
         callback_query as _callback_query,
         content_type as _content_type,
+        is_known_state_response as _is_known_state_response,
         next_url as _next_url,
         page_is_html as _page_is_html,
         page_location as _page_location,
@@ -156,6 +158,11 @@ def _chain_helpers() -> tuple[Callable[..., Any], ...]:
 def _contains(value: Any, markers: tuple[str, ...]) -> bool:
     text = str(value or "").casefold()
     return any(marker.casefold() in text for marker in markers)
+
+
+def _is_state_response(response: Any, ok: Callable[[Any], bool] | None = None) -> bool:
+    page_types = _PASSWORD_PAGE_TYPES | _OTP_PAGE_TYPES | _PROFILE_PAGE_TYPES | _CALLBACK_READY_PAGE_TYPES
+    return _is_known_state_response(response, ok, page_types)
 
 
 def _pre_auth_html_response(response: Any, node: str) -> bool:
@@ -622,7 +629,7 @@ def _wait_and_validate_email_otp(
             stop_requested=stop_requested,
             log=log,
         )
-        if not ok(sent):
+        if not _is_state_response(sent, ok):
             _raise_response(sent, node=stage_code, label="等待 Free 邮箱验证码", stage=f"{stage_code}_send")
         if controlled_resend:
             budget["used"] = used_resends + 1
@@ -683,7 +690,7 @@ def _wait_and_validate_email_otp(
                 discard(stage_code, code)
             raise
         _raise_security_page(current)
-        if ok(current):
+        if _is_state_response(current, ok):
             _log(log, f"邮箱验证码验证请求已接受（attempt={retry_count}，HTTP {_status(current) or '-'}）", "success")
             return current
         detail = str(error_text(current) or "验证码验证未通过")
@@ -788,7 +795,7 @@ def _run_once(
         stop_requested=stop_requested,
         log=log,
     )
-    if not ok(response):
+    if not _is_state_response(response, ok):
         _raise_response(response, node="free_email_identifier", label="识别 Free 注册邮箱", stage="free_email_identifier")
     if _page_is_html(response):
         if _is_security_challenge_response(response):
@@ -898,7 +905,7 @@ def _run_once(
                     resend_budget=otp_resend_budget,
                     stop_requested=stop_requested,
                 )
-            if not ok(response):
+            if not _is_state_response(response, ok):
                 _raise_response(response, node="free_email_password", label="提交 Free 注册密码", stage="free_email_password")
             continue
         if _is_phone(response):
@@ -924,7 +931,7 @@ def _run_once(
                     stop_requested=stop_requested,
                     log=log,
                 )
-                if not ok(response):
+                if not _is_state_response(response, ok):
                     _raise_response(
                         response,
                         node="free_account_create",
@@ -940,7 +947,7 @@ def _run_once(
                 stop_requested=stop_requested,
                 log=log,
             )
-            if not ok(response):
+            if not _is_state_response(response, ok):
                 _raise_response(response, node="free_account_create", label="创建 Free 账号", stage="free_account_create")
             continue
         if current_page in {"sign_in_with_chatgpt_codex_consent", "consent", "consent_required"} and not consent_accepted:
@@ -956,7 +963,7 @@ def _run_once(
                     stop_requested=stop_requested,
                     log=log,
                 )
-                if not ok(response):
+                if not _is_state_response(response, ok):
                     _raise_response(response, node="free_oauth_callback", label="Free OAuth 回调", stage="free_oauth_consent")
                 continue
             _log(log, "Transport 未提供 consent 方法，沿用现有回调地址", "warn")

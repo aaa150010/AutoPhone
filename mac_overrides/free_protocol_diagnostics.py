@@ -63,6 +63,25 @@ def response_status(response: Any) -> int | None:
         return None
 
 
+def is_known_state_response(
+    response: Any,
+    success: Callable[[Any], bool] | None,
+    page_types: frozenset[str],
+) -> bool:
+    """Accept a successful response or a known HTTP 2xx state envelope."""
+    if callable(success):
+        try:
+            if success(response):
+                return True
+        except Exception:
+            pass
+    status = response_status(response)
+    if status is None or not 200 <= status < 300:
+        return False
+    page = page_type_value(response).strip().casefold().replace("-", "_")
+    return page in page_types
+
+
 def content_type(response: Any) -> str:
     if not isinstance(response, Mapping):
         return ""
@@ -222,7 +241,7 @@ def callback_matches_redirect(callback_url: str, redirect_uri: str) -> bool:
 
 
 __all__ = [
-    "EMAIL_OTP_PAGE_TYPES", "callback_matches_redirect", "callback_query", "content_type", "is_email_otp_response", "next_url",
+    "EMAIL_OTP_PAGE_TYPES", "callback_matches_redirect", "callback_query", "content_type", "is_email_otp_response", "is_known_state_response", "next_url",
     "page_is_html", "page_location", "page_locations", "page_type_value",
     "provider_code", "response_detail", "response_metadata", "response_search_text",
     "response_status", "safe_url",
