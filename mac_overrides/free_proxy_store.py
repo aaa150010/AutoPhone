@@ -54,6 +54,11 @@ try:
 except ImportError:
     from free_proxy_chatgpt import probe_chatgpt_login  # type: ignore[no-redef]
 
+try:
+    from .free_proxy_numeric import safe_float as _safe_float, safe_int as _safe_int
+except ImportError:
+    from free_proxy_numeric import safe_float as _safe_float, safe_int as _safe_int  # type: ignore[no-redef]
+
 
 SUPPORTED_ROXY_SCHEMES = frozenset({"http", "https", "socks5", "socks5h"})
 PROXY_STATUSES = frozenset({"unknown", "available", "quarantined"})
@@ -113,7 +118,7 @@ def _proxy_url(record: Mapping[str, Any]) -> str:
     host = str(record.get("host") or "").strip()
     if ":" in host and not host.startswith("["):
         host = f"[{host}]"
-    port = int(record.get("port") or 0)
+    port = _safe_int(record.get("port"), default=0, minimum=1, maximum=65535) or 0
     username = quote(str(record.get("username") or ""), safe="")
     password = quote(str(record.get("password") or ""), safe="")
     auth = f"{username}:{password}@" if username or password else ""
@@ -333,10 +338,7 @@ class FreeProxyPool:
         rows = [self._normalize_record(row) for row in raw_rows if isinstance(row, Mapping)]
         rows = [row for row in rows if row is not None]
         if rows or self.path.exists():
-            try:
-                version = int(payload.get("version") or 0) if isinstance(payload, Mapping) else 0
-            except (TypeError, ValueError):
-                version = 0
+            version = _safe_int(payload.get("version"), default=0, minimum=0) if isinstance(payload, Mapping) else 0
             if rows and version < 3:
                 self._save(rows)
             return rows
@@ -365,10 +367,11 @@ class FreeProxyPool:
         username = unquote(str(url_parts.username or value.get("username") or ""))
         password = unquote(str(url_parts.password or value.get("password") or ""))
         leases = self._normalize_leases(value)
+        port = _safe_int(url_parts.port or value.get("port"), default=0, minimum=1, maximum=65535) or 0
         record = {
             "proxy_id": str(value.get("proxy_id") or fingerprint(_identity(url_parts))),
             "host": str(url_parts.hostname or value.get("host") or ""),
-            "port": int(url_parts.port or value.get("port") or 0),
+            "port": port,
             "username": username,
             "password": password,
             "scheme": str(url_parts.scheme or value.get("scheme") or self.default_scheme).lower(),
@@ -381,14 +384,17 @@ class FreeProxyPool:
             "lease_batch_id": str(value.get("lease_batch_id") or ""),
             "lease_task_id": str(value.get("lease_task_id") or ""),
             "leases": leases,
-            "last_checked_at": value.get("last_checked_at"),
+            "last_checked_at": _safe_float(value.get("last_checked_at"), minimum=0),
             "last_exit_ip": str(value.get("last_exit_ip") or ""),
-            "latency_ms": value.get("latency_ms"),
-            "last_chatgpt_login_checked_at": value.get("last_chatgpt_login_checked_at"),
-            "last_chatgpt_login_status": max(0, int(value.get("last_chatgpt_login_status") or 0)),
+            "latency_ms": _safe_int(value.get("latency_ms"), default=None, minimum=0),
+            "last_chatgpt_login_checked_at": _safe_float(value.get("last_chatgpt_login_checked_at"), minimum=0),
+            "last_chatgpt_login_status": _safe_int(value.get("last_chatgpt_login_status"), default=0, minimum=0, maximum=999) or 0,
             "last_chatgpt_login_probe_mode": str(value.get("last_chatgpt_login_probe_mode") or ""),
-            "consecutive_failures": max(0, int(value.get("consecutive_failures") or 0)),
-            "quarantined_until": value.get("quarantined_until"),
+            "consecutive_failures": _safe_int(value.get("consecutive_failures"), default=0, minimum=0) or 0,
+            "quarantined_until": (
+                None if value.get("quarantined_until") is None
+                else _safe_float(value.get("quarantined_until"), default=0, minimum=0)
+            ),
             "last_failure": copy.deepcopy(value.get("last_failure")) if isinstance(value.get("last_failure"), Mapping) else None,
             "last_probe_mode": str(value.get("last_probe_mode") or ""),
             "_identity": _identity(url_parts),
@@ -407,10 +413,7 @@ class FreeProxyPool:
                     continue
                 owner = str(raw.get("owner") or "").strip()
                 task_id = str(raw.get("task_id") or "").strip()
-                try:
-                    until = float(raw.get("until") or 0)
-                except (TypeError, ValueError):
-                    until = 0
+                until = _safe_float(raw.get("until"), default=0, minimum=0) or 0
                 if not owner or until <= 0:
                     continue
                 leases.append({
@@ -420,10 +423,7 @@ class FreeProxyPool:
                     "until": until,
                 })
         legacy_owner = str(value.get("lease_owner") or "").strip()
-        try:
-            legacy_until = float(value.get("lease_until") or 0)
-        except (TypeError, ValueError):
-            legacy_until = 0
+        legacy_until = _safe_float(value.get("lease_until"), default=0, minimum=0) or 0
         if legacy_owner and legacy_until > 0 and not any(lease["owner"] == legacy_owner for lease in leases):
             leases.append({
                 "owner": legacy_owner,
@@ -443,12 +443,10 @@ class FreeProxyPool:
         for lease in values:
             if not isinstance(lease, Mapping):
                 continue
-            try:
-                valid = bool(lease.get("owner")) and float(lease.get("until") or 0) > current_time
-            except (TypeError, ValueError):
-                valid = False
+            until = _safe_float(lease.get("until"), default=0, minimum=0) or 0
+            valid = bool(lease.get("owner")) and until > current_time
             if valid:
-                active.append(dict(lease))
+                active.append({**lease, "until": until})
         return active
 
     @classmethod
@@ -551,10 +549,10 @@ class FreeProxyPool:
 
     def _quarantine_expired(self, row: Mapping[str, Any], now: float | None = None) -> bool:
         until = row.get("quarantined_until")
-        try:
-            return until is not None and float(until) <= (time.time() if now is None else now)
-        except (TypeError, ValueError):
-            return True
+        if until is None:
+            return False
+        normalized = _safe_float(until, default=0, minimum=0) or 0
+        return normalized <= (time.time() if now is None else now)
 
     def _eligible(self, *, country: str | None = None, group: str | None = None, driver: str = "protocol", now: float | None = None) -> list[dict[str, Any]]:
         current_time = time.time() if now is None else now

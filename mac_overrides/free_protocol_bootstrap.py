@@ -10,7 +10,7 @@ from __future__ import annotations
 import time
 from types import MethodType
 from typing import Any, Callable, Mapping
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 try:
     from .free_register_common import FreeRegisterError, safe_log_message
@@ -19,6 +19,7 @@ except ImportError:  # pragma: no cover
 
 
 LogFn = Callable[..., Any] | None
+REFERENCE_SENTINEL_VERSION = "20260219f9f6"
 _CF_COOKIE_NAMES = frozenset({"cf_clearance", "__cf_bm", "__cfseq", "cf_chl_rc_i", "cf_chl_rc_ni", "cf_chl_rc_m"})
 _PREFLIGHT = (
     ("chatgpt-login", "https://chatgpt.com/login", "https://chatgpt.com/"),
@@ -26,7 +27,7 @@ _PREFLIGHT = (
     ("sentinel-frame", "https://sentinel.openai.com/backend-api/sentinel/frame.html", "https://auth.openai.com/log-in"),
 )
 _WARMUP_GETS = (
-    ("anon-check", "https://chatgpt.com/backend-anon/accounts/check/v4-2023-04-27?timezone_offset_min=0"),
+    ("anon-check", "https://chatgpt.com/backend-anon/accounts/check/v4-2023-04-27"),
     ("anon-me", "https://chatgpt.com/backend-anon/me"),
     ("anon-models", "https://chatgpt.com/backend-anon/models?iim=false&is_gizmo=false&supports_model_picker_upgrade_presets=true"),
 )
@@ -74,6 +75,59 @@ def _host(value: Any) -> str:
         return ""
 
 
+def _normalized_headers(base: Mapping[str, Any] | None) -> dict[str, str]:
+    """Return one lowercase entry for each case-insensitive header name."""
+    headers: dict[str, str] = {}
+    for key, value in (base or {}).items():
+        name = str(key or "").strip().casefold()
+        if name and value not in (None, ""):
+            headers[name] = str(value)
+    return headers
+
+
+def _header_value(base: Mapping[str, Any] | None, name: str) -> str:
+    target = str(name or "").casefold()
+    for key, value in (base or {}).items():
+        if str(key or "").strip().casefold() == target:
+            return str(value or "")
+    return ""
+
+
+def _apply_reference_identity_headers(headers: dict[str, str], profile: Mapping[str, Any]) -> None:
+    for key, profile_key in (
+        ("user-agent", "user_agent"),
+        ("accept-language", "accept_language"),
+    ):
+        value = profile.get(profile_key)
+        if value not in (None, ""):
+            headers[key] = str(value)
+    if bool(profile.get("send_client_hints", True)):
+        for key, profile_key in (
+            ("sec-ch-ua", "sec_ch_ua"),
+            ("sec-ch-ua-mobile", "sec_ch_ua_mobile"),
+            ("sec-ch-ua-platform", "sec_ch_ua_platform"),
+            ("sec-ch-ua-full-version-list", "sec_ch_ua_full_version_list"),
+            ("sec-ch-ua-platform-version", "sec_ch_ua_platform_version"),
+            ("sec-ch-ua-arch", "sec_ch_ua_arch"),
+            ("sec-ch-ua-bitness", "sec_ch_ua_bitness"),
+            ("sec-ch-ua-model", "sec_ch_ua_model"),
+        ):
+            value = profile.get(profile_key)
+            if value not in (None, ""):
+                headers[key] = str(value)
+    for key, profile_key in (
+        ("x-datadog-origin", "datadog_origin"),
+        ("x-datadog-sampling-priority", "datadog_sampling_priority"),
+        ("x-datadog-trace-id", "datadog_trace_id"),
+        ("x-datadog-parent-id", "datadog_parent_id"),
+        ("traceparent", "traceparent"),
+        ("tracestate", "tracestate"),
+    ):
+        value = profile.get(profile_key)
+        if value not in (None, ""):
+            headers[key] = str(value)
+
+
 def _reference_navigation_headers(
     transport: Any,
     url: str,
@@ -81,24 +135,9 @@ def _reference_navigation_headers(
     base: Mapping[str, Any] | None = None,
 ) -> dict[str, str]:
     """Build browser-like document headers while preserving caller values."""
-    headers = {str(key): str(value) for key, value in (base or {}).items() if value not in (None, "")}
+    headers = _normalized_headers(base)
     profile = _reference_fingerprint(transport)
-    # A reference profile is deliberately explicit.  Do not silently replace
-    # a caller-provided header, but do replace the recovered stale UA/locale.
-    for key, profile_key in (
-        ("user-agent", "user_agent"),
-        ("accept-language", "accept_language"),
-        ("sec-ch-ua", "sec_ch_ua"),
-        ("sec-ch-ua-platform", "sec_ch_ua_platform"),
-        ("sec-ch-ua-full-version-list", "sec_ch_ua_full_version_list"),
-        ("sec-ch-ua-platform-version", "sec_ch_ua_platform_version"),
-        ("sec-ch-ua-arch", "sec_ch_ua_arch"),
-        ("sec-ch-ua-bitness", "sec_ch_ua_bitness"),
-        ("sec-ch-ua-model", "sec_ch_ua_model"),
-    ):
-        value = profile.get(profile_key)
-        if value not in (None, ""):
-            headers[key] = str(value)
+    _apply_reference_identity_headers(headers, profile)
 
     target_host = _host(url)
     ref_host = _host(referer)
@@ -121,22 +160,9 @@ def _reference_navigation_headers(
 
 def _reference_json_headers(transport: Any, base: Mapping[str, Any] | None = None) -> dict[str, str]:
     """Apply the same stable browser locale/client hints to JSON requests."""
-    headers = {str(key): str(value) for key, value in (base or {}).items() if value not in (None, "")}
+    headers = _normalized_headers(base)
     profile = _reference_fingerprint(transport)
-    for key, profile_key in (
-        ("user-agent", "user_agent"),
-        ("accept-language", "accept_language"),
-        ("sec-ch-ua", "sec_ch_ua"),
-        ("sec-ch-ua-platform", "sec_ch_ua_platform"),
-        ("sec-ch-ua-full-version-list", "sec_ch_ua_full_version_list"),
-        ("sec-ch-ua-platform-version", "sec_ch_ua_platform_version"),
-        ("sec-ch-ua-arch", "sec_ch_ua_arch"),
-        ("sec-ch-ua-bitness", "sec_ch_ua_bitness"),
-        ("sec-ch-ua-model", "sec_ch_ua_model"),
-    ):
-        value = profile.get(profile_key)
-        if value not in (None, ""):
-            headers[key] = str(value)
+    _apply_reference_identity_headers(headers, profile)
     return headers
 
 
@@ -210,7 +236,7 @@ def prepare_reference_session(transport: Any, fingerprint: Mapping[str, Any] | N
                 target_host = _host(url)
                 if target_host in _REFERENCE_DOMAINS:
                     supplied = kwargs.get("headers")
-                    referer = str(supplied.get("referer") or "") if isinstance(supplied, Mapping) else ""
+                    referer = _header_value(supplied, "referer") if isinstance(supplied, Mapping) else ""
                     if not referer and target_host == "auth.openai.com":
                         # The recovered initiate_oauth GET omits Referer;
                         # BrowserSession follows the OAuth link from ChatGPT.
@@ -308,12 +334,54 @@ def _http_success(status: int) -> bool:
     return 200 <= int(status) < 400
 
 
+def _sentinel_frame_url(version: str) -> str:
+    base = _PREFLIGHT[-1][1]
+    parsed = urlsplit(base)
+    query = [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True) if key.casefold() != "sv"]
+    query.append(("sv", str(version or REFERENCE_SENTINEL_VERSION).strip() or REFERENCE_SENTINEL_VERSION))
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
+
+
+def _anonymous_warmup_gets(transport: Any) -> tuple[tuple[str, str], ...]:
+    profile = _reference_fingerprint(transport)
+    raw_offset = profile.get("timezone_offset_minutes")
+    if raw_offset is None:
+        raw_offset = getattr(transport, "_gptphone_timezone_offset_minutes", 0)
+    try:
+        js_offset = -int(raw_offset or 0)
+    except (TypeError, ValueError):
+        js_offset = 0
+    urls = list(_WARMUP_GETS)
+    urls[0] = (urls[0][0], f"{urls[0][1]}?timezone_offset_min={js_offset}")
+    return tuple(urls)
+
+
 def _content_type(response: Any) -> str:
     headers = getattr(response, "headers", None)
     if isinstance(headers, Mapping):
         for key, value in headers.items():
             if str(key).strip().lower() == "content-type":
                 return str(value or "").split(";", 1)[0].strip().lower()[:120]
+    return ""
+
+
+def _provider_code(response: Any) -> str:
+    """Extract only a short provider error identifier, never response text."""
+    try:
+        payload = response.json()
+    except Exception:
+        return ""
+    if not isinstance(payload, Mapping):
+        return ""
+    candidates: list[Mapping[str, Any]] = [payload]
+    error = payload.get("error")
+    if isinstance(error, Mapping):
+        candidates.insert(0, error)
+    for candidate in candidates:
+        for key in ("error_code", "code", "type", "reason"):
+            value = safe_log_message(candidate.get(key))[:120]
+            if value:
+                return value
     return ""
 
 
@@ -351,9 +419,22 @@ def _request(
         response = session.get(url, headers=_headers(transport, url, referer), timeout=timeout, allow_redirects=True)
         status = int(getattr(response, "status_code", 0) or 0)
         content_type = _content_type(response)
+        provider_code = _provider_code(response)
         challenge = _http_success(status) and _security_challenge_html(response)
-        elapsed = int((time.monotonic() - started) * 1000)
         success = _http_success(status) and not challenge
+        if challenge:
+            page_type = "security_challenge"
+        elif status in {401, 403}:
+            page_type = "access_denied"
+        elif status == 429:
+            page_type = "rate_limited"
+        elif status >= 500:
+            page_type = "upstream_error"
+        elif not success:
+            page_type = "http_error"
+        else:
+            page_type = ""
+        elapsed = int((time.monotonic() - started) * 1000)
         result_label = "安全挑战" if challenge else "完成" if success else "HTTP 失败"
         _emit(
             log,
@@ -362,11 +443,16 @@ def _request(
             node_code="free_oauth_security_challenge" if challenge else node_code,
             node_label="等待 Free OAuth 安全验证" if challenge else node_label,
             http_status=status,
+            provider_code=provider_code,
             content_type=content_type,
-            page_type="security_challenge" if challenge else "",
+            page_type=page_type,
             duration_ms=elapsed,
             attempt=attempt,
             outcome="success" if success else "failed",
+            diagnostic=(
+                f"HTTP {status}; content_type={content_type or '-'}; page_type={page_type or '-'}"
+                if not success else ""
+            ),
         )
         if challenge:
             if strict:
@@ -384,12 +470,25 @@ def _request(
                 )
             return None
         if strict and not success:
+            if status in {401, 403}:
+                action_hint = "当前出口或 Auth 页面被拒绝，请更换代理后重试"
+            elif status == 429:
+                action_hint = "当前出口触发频率限制，请降低并发或更换代理后重试"
+            elif status >= 500:
+                action_hint = "等待上游服务恢复后重试，并保留当前代理诊断"
+            else:
+                action_hint = "检查当前任务代理的连接、DNS、TLS 和出口可用性后重试"
             raise FreeRegisterError(
                 node_code, node_label,
                 f"{label} 预检返回 HTTP {status}", provider_status=status,
                 retryable=status == 0 or status in {408, 425, 429} or status >= 500,
                 error_code="free_protocol_preflight_http",
-                action_hint="检查当前任务代理的连接、DNS、TLS 和出口可用性后重试",
+                provider_code=provider_code,
+                diagnostic=f"{label}: HTTP {status}; content_type={content_type or '-'}; page_type={page_type or '-'}",
+                action_hint=action_hint,
+                page_type=page_type,
+                safe_page=url,
+                content_type=content_type,
             )
         return response
     except FreeRegisterError:
@@ -417,9 +516,8 @@ def network_preflight(transport: Any, config: Mapping[str, Any], log: LogFn = No
     retries = max(1, min(5, int(protocol.get("network_preflight_retries") or 3)))
     _emit(log, "[协议网络预检/free_protocol_preflight] 开始", "info", node_code="free_protocol_preflight", node_label="协议网络预检", outcome="started")
     checks = list(_PREFLIGHT)
-    sentinel_version = str(protocol.get("sentinel_version") or "").strip()
-    if sentinel_version:
-        checks[-1] = (checks[-1][0], f"{checks[-1][1]}?sv={sentinel_version}", checks[-1][2])
+    sentinel_version = str(protocol.get("sentinel_version") or REFERENCE_SENTINEL_VERSION).strip()
+    checks[-1] = (checks[-1][0], _sentinel_frame_url(sentinel_version), checks[-1][2])
     for label, url, referer in checks:
         if stop_requested and stop_requested():
             raise FreeRegisterError("free_run_stop", "停止 Free 注册", "任务在协议网络预检期间停止", retryable=False)
@@ -459,7 +557,7 @@ def anonymous_warmup(transport: Any, config: Mapping[str, Any], log: LogFn = Non
     session = _session(transport, node_code="free_protocol_warmup", node_label="匿名态 ChatGPT 预热")
     _emit(log, "[匿名预热/free_protocol_warmup] 开始", "info", node_code="free_protocol_warmup", node_label="匿名态 ChatGPT 预热", outcome="started")
     checks: list[dict[str, Any]] = []
-    for label, url in _WARMUP_GETS:
+    for label, url in _anonymous_warmup_gets(transport):
         response = _request(
             session,
             transport,
@@ -606,6 +704,7 @@ def prepare_reference_bootstrap(
         dict(warmup_value) if isinstance(warmup_value, Mapping) else {},
     )
 __all__ = [
+    "REFERENCE_SENTINEL_VERSION",
     "anonymous_warmup",
     "authenticated_warmup",
     "exit_geo_profile",

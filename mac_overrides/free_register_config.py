@@ -61,6 +61,7 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
     },
     "protocol": {
         "node_runner": "",
+        "sentinel_version": "20260219f9f6",
         "sentinel_timeout": 90,
         "network_timeout": 20,
         "network_preflight_retries": 3,
@@ -228,6 +229,8 @@ class FreeConfigStore:
         protocol_defaults = DEFAULT_FREE_CONFIG["protocol"]
         protocol = {key: copy.deepcopy(value) for key, value in dict(result.get("protocol") or {}).items() if key in protocol_defaults}
         protocol["node_runner"] = clean(protocol.get("node_runner"), 1000)
+        sentinel_version = clean(protocol.get("sentinel_version"), 64)
+        protocol["sentinel_version"] = sentinel_version or "20260219f9f6"
         protocol["sentinel_timeout"] = _int(protocol.get("sentinel_timeout"), 90, 10, 300)
         protocol["network_timeout"] = _int(protocol.get("network_timeout"), 20, 5, 60)
         protocol["network_preflight_retries"] = _int(protocol.get("network_preflight_retries"), 3, 1, 5)

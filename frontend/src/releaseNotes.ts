@@ -13,11 +13,19 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.50',
-  freeRuntimeVersion: '1.6.50',
-  title: '代理预检增加 ChatGPT 登录页检测',
+  version: '1.6.51',
+  freeRuntimeVersion: '1.6.51',
+  title: 'Free 协议预检与 Roxy 错误定位修复',
   releasedAt: '2026-08-24',
   sections: [
+    {
+      title: '协议 403 诊断与邮箱边界修复',
+      usage: 'ChatGPT、Auth、Sentinel 预检失败会保留具体阶段、HTTP 状态、Content-Type、页面类型、服务端错误码和更换代理建议；尚未提交邮箱时，协议预检或 Node 初始化失败会自动释放邮箱并保留任务失败记录。',
+    },
+    {
+      title: 'Roxy 打开超时与限流区分',
+      usage: 'Roxy /browser/open 明确返回 403、429 等状态时不再误判为启动超时；只有连接超时或不确定的 5xx 才对同一 Profile 做 connection_info 对账，避免重复打开窗口并保留原始错误信息。',
+    },
     {
       title: '代理出口与 ChatGPT 登录页双重预检',
       usage: 'Free 协议代理检测现在会在获取出口 IP 后，继续通过同一代理访问 ChatGPT 登录页；HTTP 403、429 或服务端错误会明确标记为不可用于协议注册，避免出口 IP 正常但注册预热被拒绝。检测结果会显示登录页 HTTP 状态，代理认证信息仍不会暴露。',

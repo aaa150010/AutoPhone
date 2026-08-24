@@ -8,7 +8,6 @@ and stage callbacks through its existing methods.
 from __future__ import annotations
 
 import base64
-from datetime import datetime
 import hashlib
 import hmac
 import inspect
@@ -19,7 +18,6 @@ import secrets
 import threading
 import time
 from typing import Any, Callable, Mapping
-from zoneinfo import ZoneInfo
 
 try:
     from .free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider
@@ -32,6 +30,16 @@ try:
         prepare_reference_session as _prepare_reference_session,
     )
     from .free_protocol_flow import run_free_protocol_flow
+    from .free_protocol_reference import (
+        REFERENCE_FLOW_PROFILE,
+        REFERENCE_SENTINEL_VERSION as _REFERENCE_SENTINEL_VERSION,
+        REFERENCE_TLS_IMPERSONATE,
+        apply_geo_fingerprint as _apply_geo_fingerprint,
+        mark_reference_session_prepared as _mark_reference_session_prepared,
+        prepare_reference_http_session as _prepare_reference_http_session,
+        reference_fingerprint as _reference_fingerprint,
+        reference_flow_enabled as _reference_flow_enabled,
+    )
     from .free_register_common import (
         FIXED_PASSWORD,
         FreeRegisterError,
@@ -53,6 +61,16 @@ except ImportError:
         prepare_reference_session as _prepare_reference_session,
     )
     from free_protocol_flow import run_free_protocol_flow  # type: ignore[no-redef]
+    from free_protocol_reference import (  # type: ignore[no-redef]
+        REFERENCE_FLOW_PROFILE,
+        REFERENCE_SENTINEL_VERSION as _REFERENCE_SENTINEL_VERSION,
+        REFERENCE_TLS_IMPERSONATE,
+        apply_geo_fingerprint as _apply_geo_fingerprint,
+        mark_reference_session_prepared as _mark_reference_session_prepared,
+        prepare_reference_http_session as _prepare_reference_http_session,
+        reference_fingerprint as _reference_fingerprint,
+        reference_flow_enabled as _reference_flow_enabled,
+    )
     from free_register_common import (  # type: ignore[no-redef]
         FIXED_PASSWORD, FreeRegisterError, FreeTwoFaPending,
         plus_trial_from_accounts as _plus_trial_from_accounts,
@@ -69,7 +87,6 @@ DEFAULT_AUTH_IMPERSONATES = (
     "safari15_3",
     "safari17_0",
 )
-REFERENCE_FLOW_PROFILE = "reference_20260823"
 
 
 def _response_status(response: Any) -> int | None:
@@ -151,59 +168,6 @@ def resolve_auth_impersonates(config: Mapping[str, Any]) -> list[str]:
             if candidates:
                 return candidates
     return list(DEFAULT_AUTH_IMPERSONATES)
-
-
-def _reference_flow_enabled(config: Mapping[str, Any]) -> bool:
-    return str(config.get("flow_profile") or REFERENCE_FLOW_PROFILE).strip().lower() != "legacy"
-
-
-def _reference_fingerprint(config: Mapping[str, Any], task: Mapping[str, Any]) -> dict[str, Any]:
-    country = str(task.get("proxy_country") or "US").strip().upper()[:2]
-    language = "en-US" if country == "US" else "en-GB"
-    return {
-        "user_agent": str(config.get("user_agent") or "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/136 Safari/537.36"),
-        "navigator_language": language,
-        "navigator_languages": [language, "en"],
-        "timezone_name": "America/New_York" if country == "US" else "Europe/London",
-        "timezone_offset_minutes": -300 if country == "US" else 0,
-        "screen_width": 1440,
-        "screen_height": 900,
-        "hardware_concurrency": 8,
-        "device_memory": 8,
-        "js_heap_size_limit": 4294705152,
-        "country": country,
-    }
-
-
-def _apply_geo_fingerprint(fingerprint: dict[str, Any], geo: Mapping[str, Any]) -> None:
-    country = str(geo.get("country") or "").strip().upper()[:2]
-    timezone = str(geo.get("timezone") or "").strip()[:100]
-    if country:
-        language = "en-US" if country == "US" else "en-GB"
-        fingerprint.update({
-            "country": country,
-            "navigator_language": language,
-            "navigator_languages": [language, "en"],
-        })
-    if timezone:
-        try:
-            offset = datetime.now(ZoneInfo(timezone)).utcoffset()
-        except Exception:
-            offset = None
-        if offset is not None:
-            fingerprint.update({
-                "timezone_iana": timezone,
-                "timezone_name": timezone,
-                "timezone_offset_minutes": int(offset.total_seconds() // 60),
-            })
-
-
-def _mark_reference_session_prepared(transport: Any) -> None:
-    # Recovered ``initiate_oauth`` creates a new curl session while this flag
-    # is false. The reference bootstrap already prepared the task session, so
-    # preserving it is required for Cloudflare cookies and anonymous warmup.
-    setattr(transport, "chatgpt_signup_done", True)
-    setattr(transport, "_gptphone_reference_session_prepared", True)
 
 
 class FreeProtocolMixin:
@@ -494,6 +458,11 @@ class FreeProtocolMixin:
         # the whole task. Legacy mode deliberately omits these added fields.
         fingerprint = _reference_fingerprint(config, task) if reference_flow else {}
         if reference_flow:
+            protocol_config = dict(chain_config.get("protocol") or {}) if isinstance(chain_config.get("protocol"), Mapping) else {}
+            protocol_config.setdefault("sentinel_version", _REFERENCE_SENTINEL_VERSION)
+            chain_config["protocol"] = protocol_config
+            chain_config["sentinel_version"] = protocol_config["sentinel_version"]
+            chain_config["chatgpt_impersonate"] = REFERENCE_TLS_IMPERSONATE
             # Keep the HTTP headers, cookies and Sentinel/browser image on one
             # identity from the first request.  ``prepare_reference_transport``
             # reapplies this after a bounded OAuth session rebuild.
@@ -538,6 +507,7 @@ class FreeProtocolMixin:
             )
             setattr(created, "_gptphone_free_protocol_state_machine", True)
             if reference_flow:
+                _prepare_reference_http_session(created)
                 _prepare_reference_session(created, fingerprint)
                 setattr(created, "_gptphone_timezone_offset_minutes", fingerprint.get("timezone_offset_minutes"))
             transport_ref["current"] = created
@@ -563,6 +533,7 @@ class FreeProtocolMixin:
             chain_config["free_protocol_preflight"] = preflight
             chain_config["free_protocol_geo"] = geo
             chain_config["free_protocol_warmup"] = warmup
+            chain_config["free_protocol_fingerprint"] = dict(fingerprint)
             log(
                 f"[{task_id}/协议画像/free_protocol_fingerprint] 设备、出口画像与预热会话已固定",
                 "info",

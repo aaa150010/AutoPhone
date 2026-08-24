@@ -173,21 +173,37 @@ class RoxyBrowserClient:
         """
         pending: list[BaseException] = [exc]
         seen: set[int] = set()
+        chain: list[BaseException] = []
         while pending:
             current = pending.pop(0)
             marker = id(current)
             if marker in seen:
                 continue
             seen.add(marker)
-            if cls._retryable(current):
-                return True
+            chain.append(current)
             cause = getattr(current, "__cause__", None)
             context = getattr(current, "__context__", None)
             if isinstance(cause, BaseException):
                 pending.append(cause)
             if isinstance(context, BaseException):
                 pending.append(context)
-        return False
+
+        # A concrete 4xx response means Roxy definitely answered the open
+        # request.  In particular, 429 is a quota/rate-limit failure rather
+        # than an ambiguous local timeout, so connection reconciliation would
+        # only hide the provider's real node and diagnostics.
+        for current in chain:
+            status = getattr(current, "provider_status", None)
+            if status is None:
+                status = getattr(getattr(current, "response", None), "status_code", None)
+            try:
+                status_code = int(str(status).strip())
+            except (TypeError, ValueError):
+                continue
+            if 400 <= status_code < 500:
+                return False
+
+        return any(cls._retryable(current) for current in chain)
 
     @staticmethod
     def _open_error_type(exc: BaseException) -> str:
@@ -216,8 +232,20 @@ class RoxyBrowserClient:
         the original exception remains available as ``__cause__``.
         """
         provider_status = getattr(exc, "provider_status", None)
+        provider_code = getattr(exc, "provider_code", None)
+        original_error_code = getattr(exc, "error_code", None)
+        original_diagnostic = getattr(exc, "diagnostic", None)
+        original_action_hint = getattr(exc, "action_hint", None)
         error_type = RoxyBrowserClient._open_error_type(exc)
         status_text = f" HTTP {provider_status}" if provider_status else ""
+        reconciliation_diagnostic = (
+            f"open_request={error_type}; "
+            f"connection_info_reconciliation_timeout={int(max(1, wait_budget))}s"
+        )
+        diagnostic = "; ".join(
+            value for value in (str(original_diagnostic or "").strip(), reconciliation_diagnostic)
+            if value
+        )
         return FreeRegisterError(
             "free_roxy_open",
             "打开 RoxyBrowser 环境",
@@ -225,12 +253,17 @@ class RoxyBrowserClient:
             f"connection_info 在 {int(max(1, wait_budget))} 秒内未就绪",
             retryable=True,
             provider_status=provider_status,
-            error_code="free_roxy_connection_timeout",
-            diagnostic=(
-                f"open_request={error_type}; "
-                f"connection_info_reconciliation_timeout={int(max(1, wait_budget))}s"
+            error_code=(
+                original_error_code
+                if original_error_code and original_error_code != "free_roxy_api_failed"
+                else "free_roxy_connection_timeout"
             ),
-            action_hint="检查 RoxyBrowser API 状态和 Profile 启动耗时，确认 connection_info 可访问后重试",
+            provider_code=provider_code,
+            diagnostic=diagnostic,
+            action_hint=(
+                original_action_hint
+                or "检查 RoxyBrowser API 状态和 Profile 启动耗时，确认 connection_info 可访问后重试"
+            ),
         )
 
     @staticmethod

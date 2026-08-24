@@ -88,6 +88,7 @@ export interface FreeConfig {
   }
   protocol: {
     node_runner: string
+    sentinel_version?: string
     sentinel_timeout: number
     network_timeout?: number
     network_preflight_retries?: number

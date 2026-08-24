@@ -71,7 +71,6 @@ except ImportError:
     from free_log_runtime import FreeLogStore  # type: ignore[no-redef]
     from free_live_check import build_free_live_check_service  # type: ignore[no-redef]
     from free_protocol_runtime import FreeProtocolMixin  # type: ignore[no-redef]
-
 class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, FreeProtocolMixin):
     # These nodes run before the browser reaches the registration page. A
     # failure here did not consume the mailbox, so the row can be dispatched
@@ -86,7 +85,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         "free_roxy_connect",
         "free_roxy_ip_verify",
         "free_roxy_signup_bootstrap",
-        "free_roxy_signup_email",
+        "free_roxy_signup_email", "oauth_create_node", "free_proxy_geo", "free_protocol_preflight", "free_protocol_warmup",
         "roxy_circuit_open",
     })
 
@@ -491,7 +490,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             len(values),
             content=proxy_content,
             probe=self.proxy_probe,
-            check_chatgpt=(self.proxy_chatgpt_probe is not None or self.proxy_probe is None),
+            check_chatgpt=driver == "protocol" and (self.proxy_chatgpt_probe is not None or self.proxy_probe is None),
             chatgpt_probe=self.proxy_chatgpt_probe,
             probe_url=probe_url,
             country=country,

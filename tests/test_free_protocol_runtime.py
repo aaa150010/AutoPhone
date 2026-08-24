@@ -16,9 +16,26 @@ class _Session:
         type(self).next_id += 1
         self.identity = type(self).next_id
         self.closed = False
+        self.cookies = _Cookies()
+        self.proxies = {}
+        self.trust_env = True
+        self.verify = False
+        self.timeout = 30
 
     def close(self):
         self.closed = True
+
+
+class _Cookies:
+    def __init__(self):
+        self.values = []
+        self.jar = []
+
+    def set(self, name, value, **kwargs):
+        self.values.append((name, value, dict(kwargs)))
+
+    def update(self, other):
+        self.values.extend(list(getattr(other, "values", [])))
 
 
 class _Sentinel:
@@ -47,9 +64,16 @@ class _Transport:
         self.log_fn = log_fn
         self.session = _Session()
         self.initial_session = self.session
+        self.initial_session.cookies.set("constructor-cookie", "preserved", domain="auth.openai.com", path="/")
+        self.initial_session.proxies = {"http": proxy, "https": proxy}
         self.chatgpt_signup_done = False
         self.initiate_sessions = []
+        self.new_session_impersonates = []
         type(self).instances.append(self)
+
+    def _new_session(self, impersonate="chrome"):
+        self.new_session_impersonates.append(impersonate)
+        return _Session()
 
     def initiate_oauth(self, _url):
         before = self.session
@@ -202,27 +226,116 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
         self.assertEqual(result["twofa_status"], "disabled")
         self.assertEqual(len(build_calls), 1)
         self.assertEqual(len(_Transport.instances), 2)
-        self.assertEqual(preflight_sessions, [item.initial_session for item in _Transport.instances])
+        self.assertEqual(preflight_sessions, [item.session for item in _Transport.instances])
         self.assertEqual(warmup_sessions, preflight_sessions)
         self.assertEqual(bootstrap_order[:3], ["geo", "preflight", "warmup"])
-        self.assertEqual(authenticated_sessions, [_Transport.instances[-1].initial_session])
+        self.assertEqual(authenticated_sessions, [_Transport.instances[-1].session])
         for transport in _Transport.instances:
             self.assertTrue(transport._gptphone_reference_session_prepared)
             self.assertIs(transport.initiate_sessions[0][0], transport.initiate_sessions[0][1])
             self.assertEqual(transport.oauth_params["state"], "state-private")
             self.assertEqual(transport.device_id, "fixed-device-id")
             self.assertEqual(transport.proxy, _task()["proxy"])
+            self.assertEqual(transport.new_session_impersonates, ["chrome146"])
+            self.assertEqual(transport.chatgpt_impersonate, "chrome146")
+            self.assertTrue(transport.initial_session.closed)
+            self.assertFalse(transport.session.trust_env)
+            self.assertTrue(transport.session.verify)
+            self.assertEqual(transport.session.proxies["https"], _task()["proxy"])
+            self.assertTrue(any(item[0] == "constructor-cookie" for item in transport.session.cookies.values))
+            self.assertEqual(transport.config["sentinel_version"], "20260219f9f6")
+            self.assertEqual(transport.config["protocol"]["sentinel_version"], "20260219f9f6")
         self.assertEqual(contexts[0]["code_verifier"], "verifier-private")
         self.assertEqual(contexts[1]["params"]["state"], "state-private")
         self.assertEqual(len(_Sentinel.instances), 2)
         for sentinel in _Sentinel.instances:
             self.assertEqual(sentinel.fingerprint["country"], "JP")
+            self.assertEqual(sentinel.fingerprint["accept_language"], "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7")
             self.assertEqual(sentinel.fingerprint["timezone_iana"], "Asia/Tokyo")
             self.assertEqual(sentinel.fingerprint["timezone_name"], "Asia/Tokyo")
             self.assertEqual(sentinel.fingerprint["timezone_offset_minutes"], 540)
+            self.assertEqual(sentinel.fingerprint["chrome_major"], "149")
+            self.assertEqual(sentinel.fingerprint["navigator_platform"], "MacIntel")
+            self.assertEqual(sentinel.fingerprint["sec_ch_ua_mobile"], "?0")
+        self.assertEqual(
+            _Sentinel.instances[0].fingerprint["datadog_trace_id"],
+            _Sentinel.instances[1].fingerprint["datadog_trace_id"],
+        )
+        self.assertEqual(
+            _Sentinel.instances[0].fingerprint["traceparent"],
+            _Sentinel.instances[1].fingerprint["traceparent"],
+        )
         self.assertIn("free_authenticated_warmup", stages)
         self.assertEqual(_Transport.phone_calls, 0)
         self.assertTrue(otp.closed)
+
+    def test_reference_fingerprint_matches_chrome149_macos_locales(self):
+        expected = {
+            "US": ("en-US", "en-US,en;q=0.9", "America/Los_Angeles", {-480, -420}),
+            "JP": ("ja-JP", "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7", "Asia/Tokyo", {540}),
+            "GB": ("en-GB", "en-GB,en-US;q=0.9,en;q=0.8", "Europe/London", {0, 60}),
+        }
+        for country, (language, accept_language, timezone_name, offsets) in expected.items():
+            with self.subTest(country=country):
+                fingerprint = runtime._reference_fingerprint({}, {"proxy_country": country})
+                self.assertIn("Chrome/149.0.0.0", fingerprint["user_agent"])
+                self.assertEqual(fingerprint["navigator_language"], language)
+                self.assertEqual(fingerprint["accept_language"], accept_language)
+                self.assertEqual(fingerprint["timezone_iana"], timezone_name)
+                self.assertIn(fingerprint["timezone_offset_minutes"], offsets)
+                self.assertEqual(fingerprint["navigator_platform"], "MacIntel")
+                self.assertEqual(fingerprint["navigator_vendor"], "Google Inc.")
+                self.assertEqual(fingerprint["user_agent_data_platform"], "macOS")
+                self.assertTrue(fingerprint["send_client_hints"])
+                self.assertEqual(fingerprint["sec_ch_ua_mobile"], "?0")
+                self.assertEqual(fingerprint["sentinel_version"], "20260219f9f6")
+                trace_id = int(fingerprint["datadog_trace_id"])
+                parent_id = int(fingerprint["datadog_parent_id"])
+                self.assertEqual(
+                    fingerprint["traceparent"],
+                    f"00-{trace_id:032x}-{parent_id:016x}-01",
+                )
+        custom = runtime._reference_fingerprint(
+            {"protocol": {"sentinel_version": "custom-version"}},
+            {"proxy_country": "US"},
+        )
+        self.assertEqual(custom["sentinel_version"], "custom-version")
+        self.assertTrue(custom["script_src_samples"][-1].endswith("/custom-version/sdk.js"))
+
+    def test_reference_http_session_keeps_test_double_without_factory_compatible(self):
+        session = SimpleNamespace(trust_env=True, verify=False, proxies={})
+        transport = SimpleNamespace(
+            session=session,
+            proxy="socks5h://user:pass@proxy.example.test:1080",
+        )
+
+        runtime._prepare_reference_http_session(transport)
+
+        self.assertIs(transport.session, session)
+        self.assertFalse(session.trust_env)
+        self.assertTrue(session.verify)
+        self.assertEqual(session.proxies["https"], transport.proxy)
+        self.assertEqual(transport.chatgpt_impersonate, "chrome146")
+
+    def test_reference_http_session_factory_failure_has_stable_redacted_node(self):
+        class BrokenTransport:
+            session = SimpleNamespace()
+
+            @staticmethod
+            def _new_session(*_args, **_kwargs):
+                raise RuntimeError("proxy-password-private")
+
+        with self.assertRaises(runtime.FreeRegisterError) as raised:
+            runtime._prepare_reference_http_session(BrokenTransport())
+
+        self.assertEqual(raised.exception.node_code, "free_protocol_preflight")
+        self.assertEqual(raised.exception.error_code, "free_protocol_tls_session_failed")
+        self.assertNotIn("proxy-password-private", str(raised.exception))
+
+        empty = SimpleNamespace(session=SimpleNamespace(), _new_session=lambda *_args, **_kwargs: None)
+        with self.assertRaises(runtime.FreeRegisterError) as missing:
+            runtime._prepare_reference_http_session(empty)
+        self.assertEqual(missing.exception.error_code, "free_protocol_tls_session_missing")
 
     def test_invalid_geo_timezone_preserves_existing_timezone_profile(self):
         fingerprint = {
