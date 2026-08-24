@@ -8,6 +8,8 @@ shape observed in AutoRegister before the mailbox is consumed.
 from __future__ import annotations
 
 import time
+from html import unescape
+import re
 from types import MethodType
 from typing import Any, Callable, Mapping
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -36,13 +38,17 @@ _AUTH_WARMUP_GETS = (
     ("auth-settings", "https://chatgpt.com/backend-api/settings/user"),
 )
 _SECURITY_HTML_MARKERS = (
+    "captcha",
+    "cloudflare",
+    "turnstile",
     "just a moment",
-    "cf-chl-",
-    "/cdn-cgi/challenge-platform/",
-    "challenge-platform",
     "verify you are human",
     "checking your browser",
     "cloudflare ray id",
+)
+_SECURITY_HTML_PATH_MARKERS = (
+    "/cdn-cgi/challenge-platform/",
+    "cf-chl-",
     "cf-turnstile",
 )
 SECURITY_CHALLENGE_WAIT_SECONDS = 60.0
@@ -398,8 +404,20 @@ def _security_challenge_html(response: Any) -> bool:
             body = bytes(raw[:32768]).decode("utf-8", "ignore")
         else:
             body = str(raw or "")[:32768]
-    lowered = body[:32768].lower()
-    return bool(lowered) and any(marker in lowered for marker in _SECURITY_HTML_MARKERS)
+    bounded = body[:32768]
+    lowered = bounded.lower()
+    # Challenge URLs and Turnstile identifiers are explicit transport signals;
+    # inspect them in the raw document so a script src still counts.
+    if any(marker in lowered for marker in _SECURITY_HTML_PATH_MARKERS):
+        return True
+    # Normal OpenAI bundles may mention the generic challenge-platform script
+    # name. Only classify text a user can see, after removing script/style
+    # blocks and markup, to avoid a false Cloudflare stop on a normal login
+    # document.
+    visible = re.sub(r"(?is)<(script|style|noscript)\b[^>]*>.*?</\1>", " ", bounded)
+    visible = re.sub(r"(?is)<[^>]+>", " ", visible)
+    visible = re.sub(r"\s+", " ", unescape(visible)).casefold()
+    return bool(visible) and any(marker in visible for marker in _SECURITY_HTML_MARKERS)
 
 
 def _wait_for_security_challenge(

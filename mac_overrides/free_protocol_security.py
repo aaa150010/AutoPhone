@@ -18,8 +18,10 @@ an operation-replay hook.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from html import unescape
 import inspect
 import math
+import re
 import time
 from typing import Any, Callable
 from urllib.parse import urljoin, urlsplit, urlunsplit
@@ -42,7 +44,25 @@ _CHALLENGE_MARKERS = (
     "security-check",
     "/cdn-cgi/challenge-platform/",
     "cf-chl-",
-    "challenge-platform",
+)
+# These markers are evaluated against the page title/summary and visible body
+# text.  Keeping the generic ``challenge-platform`` token out of this list is
+# intentional: normal OpenAI bundles can mention that script name without
+# showing a security page.
+_VISIBLE_CHALLENGE_MARKERS = (
+    "captcha",
+    "cloudflare",
+    "turnstile",
+    "verify you are human",
+    "checking your browser",
+    "just a moment",
+    "人机验证",
+    "人間であることを確認",
+    "security_challenge",
+    "security-challenge",
+    "security-check",
+    "/cdn-cgi/challenge-platform/",
+    "cf-chl-",
 )
 _MFA_TYPES = frozenset({"mfa_challenge", "mfa_otp", "mfa_otp_verification"})
 SECURITY_CHALLENGE_MARKERS = _CHALLENGE_MARKERS
@@ -61,6 +81,21 @@ SECURITY_PAGE_TYPES = frozenset({
 })
 _TRUSTED_HOSTS = frozenset({"auth.openai.com", "auth0.openai.com", "chatgpt.com"})
 _DEFAULT_POLL_URL = "https://auth.openai.com/log-in"
+_TRUSTED_OAUTH_HOSTS = frozenset({"auth.openai.com", "auth0.openai.com"})
+_TRUSTED_OAUTH_HTML_PATHS = (
+    "/",
+    "/log-in",
+    "/login",
+    "/sign-up",
+    "/signup",
+    "/create-account",
+    "/authorize",
+    "/api/accounts/authorize",
+    "/email-verification",
+    "/email-otp",
+    "/about-you",
+    "/u/",
+)
 
 
 def _text(value: Any, limit: int = 32768) -> str:
@@ -98,6 +133,40 @@ def response_search_text(response: Any) -> str:
     return f"{_text(body, 32768)} {_text(url, 2048)}"[:32768]
 
 
+def _visible_fragment(value: Any, limit: int = 32768) -> str:
+    text = _text(value, limit)
+    text = re.sub(r"(?is)<(script|style|noscript)\b[^>]*>.*?</\1>", " ", text)
+    text = re.sub(r"(?is)<[^>]+>", " ", text)
+    return re.sub(r"\s+", " ", unescape(text))
+
+
+def _visible_challenge_text(response: Any) -> str:
+    """Return bounded title/summary/body text with scripts removed.
+
+    The OAuth bootstrap document contains ordinary JavaScript bundles that may
+    include a ``challenge-platform`` string.  Security classification must use
+    what a user would see (plus explicit metadata/URL fields), rather than
+    treating every script token as a Cloudflare page.
+    """
+    if isinstance(response, Mapping):
+        values: list[str] = []
+        for key in ("_html_title", "_body_summary", "error", "_url", "_location"):
+            value = response.get(key)
+            if value not in (None, ""):
+                values.append(_visible_fragment(value, 4096) if key == "_body_summary" else _text(value, 4096))
+        body = _visible_fragment(response.get("_body"), 32768)
+        if body:
+            values.append(body)
+        page = response.get("page")
+        if isinstance(page, Mapping):
+            for key in ("type", "continue_url", "external_url", "redirect_url", "url"):
+                value = page.get(key)
+                if value not in (None, ""):
+                    values.append(_text(value, 4096))
+        return re.sub(r"\s+", " ", unescape(" ".join(values)))[:32768]
+    return _text(response, 32768)
+
+
 def _page_type(response: Any) -> str:
     if not isinstance(response, Mapping):
         return ""
@@ -115,8 +184,14 @@ def is_security_challenge(response: Any) -> bool:
     if isinstance(response, Mapping) and page_type:
         if page_type in {"security_challenge", "security_verification", "human_verification", "captcha"}:
             return True
-    lowered = response_search_text(response).casefold()
-    return bool(lowered) and any(marker.casefold() in lowered for marker in _CHALLENGE_MARKERS)
+    if any(
+        marker.casefold() in location.casefold()
+        for location in _locations(response)
+        for marker in ("/cdn-cgi/challenge-platform/", "cf-chl-", "security_challenge", "security-challenge")
+    ):
+        return True
+    lowered = _visible_challenge_text(response).casefold()
+    return bool(lowered) and any(marker.casefold() in lowered for marker in _VISIBLE_CHALLENGE_MARKERS)
 
 
 def is_security_page(response: Any) -> bool:
@@ -169,6 +244,33 @@ def _locations(response: Any) -> tuple[str, ...]:
         if value:
             values.append(value)
     return tuple(values)
+
+
+def trusted_oauth_bootstrap_location(response: Any) -> bool:
+    """Accept normal OAuth HTML only on a known Auth origin and path."""
+    for value in _locations(response):
+        try:
+            parsed = urlsplit(str(value or ""))
+        except ValueError:
+            continue
+        host = str(parsed.hostname or "").casefold()
+        path = (str(parsed.path or "/").casefold().rstrip("/") or "/")
+        if not host and str(value or "").startswith("/"):
+            host = "auth.openai.com"
+        if host not in _TRUSTED_OAUTH_HOSTS:
+            continue
+        for prefix in _TRUSTED_OAUTH_HTML_PATHS:
+            normalized = prefix.rstrip("/") or "/"
+            if normalized == "/":
+                if path == "/":
+                    return True
+                continue
+            if prefix.endswith("/"):
+                if path.startswith(prefix):
+                    return True
+            elif path == normalized or path.startswith(normalized + "/"):
+                return True
+    return False
 
 
 def _poll_url(transport: Any, response: Any) -> str:

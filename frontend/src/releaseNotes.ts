@@ -13,11 +13,27 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.56',
-  freeRuntimeVersion: '1.6.56',
-  title: 'Free 协议与 Roxy 邮箱提交修复',
+  version: '1.6.58',
+  freeRuntimeVersion: '1.6.58',
+  title: 'Free OAuth 与 Roxy 邮箱链路修复',
   releasedAt: '2026-08-24',
   sections: [
+    {
+      title: 'Free OAuth 正常落点与安全挑战识别',
+      usage: '全协议 OAuth 预检现在接受受信任 auth.openai.com 的正常 HTML 起始页（包括 create-account/password），不会再把合法落点误报为会话失败；可见 Cloudflare、人机验证或安全挑战仍会停止，普通脚本中的 challenge 标记不会误触发。',
+    },
+    {
+      title: 'api798 邮箱验证码策略',
+      usage: '邮箱取件新增 api798.com/latest 专用解析策略，支持页面脚本内嵌邮件正文和受信任显式验证码字段；auth_code 只作为取件凭据，不会被当作邮箱验证码。现有基线、旧码排除和脱敏诊断继续生效。',
+    },
+    {
+      title: 'Roxy 邮箱提交与活动窗口',
+      usage: 'Roxy 邮箱提交等待期间会持续选择同一 Profile 的 OpenAI 活动窗口；chatgpt.com/auth/login?email 的输入框短暂卸载时仍会等待重新挂载并执行受控恢复，避免卡在邮箱提交节点。',
+    },
+    {
+      title: 'Free 代理导航预检修复',
+      usage: '全协议代理预检会使用与浏览器一致的 Chrome 导航头和 chrome146 TLS 画像；SOCKS5 在协议请求中使用远端 DNS，RoxyBrowser 仍映射为 SOCKS5。裸 host:port:user:pass 按当前默认协议解析，真实 HTTP 403 或安全挑战仍会明确停止，不会绕过或切换代理。网络工具重复导入同一身份时会更新主机、端口、认证和协议并保留健康元数据，成功测活会正常返回 ok=true。',
+    },
     {
       title: '目标邮箱提交与验证码链路修复',
       usage: 'Roxy 登录页清空邮箱后约 2 秒执行同表单受控补交，每次尝试独立计数且不延长观察窗口；主提交和备用提交都会读取按钮正文并排除 Google、Apple、Microsoft 等第三方入口。协议兼容 email_otp、email_otp_verification、email_verification 等服务端页面别名，并继续使用现有 URL 取件、旧码排除和受控重发策略。普通 403 与安全挑战分开记录，安全挑战只在同一会话和代理中等待最多 60 秒，不自动绕过。',

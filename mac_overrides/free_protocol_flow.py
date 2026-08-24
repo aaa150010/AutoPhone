@@ -28,7 +28,6 @@ try:
         page_type_value as _page_type_value,
         response_detail as _response_detail,
         response_metadata as _response_metadata,
-        response_search_text as _response_search_text,
         response_status as _status,
         safe_url as _safe_callback_label,
     )
@@ -44,6 +43,7 @@ try:
         SECURITY_CHALLENGE_MARKERS as _CHALLENGE_MARKERS,
         is_security_page as _is_security_page,
         is_security_challenge as _is_security_challenge_response,
+        trusted_oauth_bootstrap_location as _trusted_oauth_bootstrap_location,
         wait_for_security_challenge as _wait_for_security_challenge,
     )
 except ImportError:  # pragma: no cover - compatibility import for recovered runtime
@@ -58,7 +58,6 @@ except ImportError:  # pragma: no cover - compatibility import for recovered run
         page_type_value as _page_type_value,
         response_detail as _response_detail,
         response_metadata as _response_metadata,
-        response_search_text as _response_search_text,
         response_status as _status,
         safe_url as _safe_callback_label,
     )
@@ -74,6 +73,7 @@ except ImportError:  # pragma: no cover - compatibility import for recovered run
         SECURITY_CHALLENGE_MARKERS as _CHALLENGE_MARKERS,
         is_security_page as _is_security_page,
         is_security_challenge as _is_security_challenge_response,
+        trusted_oauth_bootstrap_location as _trusted_oauth_bootstrap_location,
         wait_for_security_challenge as _wait_for_security_challenge,
     )
 
@@ -170,7 +170,7 @@ def _raise_response(response: Any, *, node: str, label: str, stage: str) -> None
             error_code="oauth_session_invalid",
             **_response_metadata(response, action_hint="保持当前邮箱、代理和设备上下文，重建一次 OAuth 会话", diagnostic_error=error),
         )
-    if _contains(error, _CHALLENGE_MARKERS) or _contains(_response_search_text(response), _CHALLENGE_MARKERS):
+    if _contains(error, _CHALLENGE_MARKERS) or _is_security_challenge_response(response):
         raise FreeRegisterError(
             "free_oauth_security_challenge",
             "等待 Free OAuth 安全验证",
@@ -341,7 +341,6 @@ def _raise_security_page(response: Any) -> None:
     if (
         _is_security_page(response)
         or _is_security_challenge_response(response)
-        or _contains(_response_search_text(response), _CHALLENGE_MARKERS)
     ):
         raise FreeRegisterError(
             "free_oauth_security_challenge",
@@ -728,7 +727,7 @@ def _run_once(
     if not ok(start):
         _raise_response(start, node="free_oauth_session", label="Free OAuth 会话", stage="free_oauth_session")
     if _page_is_html(start):
-        if _contains(_response_search_text(start), _CHALLENGE_MARKERS):
+        if _is_security_challenge_response(start):
             raise FreeRegisterError(
                 "free_oauth_security_challenge",
                 "等待 Free OAuth 安全验证",
@@ -736,26 +735,14 @@ def _run_once(
                 retryable=False,
                 error_code="free_oauth_security_challenge",
             )
-        locations = _page_locations(start)
-        same_origin_login = False
-        for value in locations:
-            try:
-                parsed = urlsplit(value)
-            except ValueError:
-                continue
-            host = str(parsed.hostname or "").casefold()
-            path = str(parsed.path or "/").casefold()
-            if host in {"auth.openai.com", "auth0.openai.com"} and path.startswith(("/log-in", "/login")):
-                same_origin_login = True
-                break
-        if not same_origin_login:
+        if not _trusted_oauth_bootstrap_location(start):
             raise FreeRegisterError(
                 "free_oauth_session",
                 "Free OAuth 会话",
                 f"OAuth 授权返回无法识别的 HTML（{_response_detail(start)}）",
                 error_code="oauth_bootstrap_html",
             )
-        _log(log, "OAuth 授权返回同源登录壳，继续使用当前会话提交邮箱", "info")
+        _log(log, "OAuth 授权返回受信任 Auth HTML 起始页，继续使用当前会话提交邮箱", "info")
     _log(log, f"OAuth 会话建立成功（HTTP {_status(start) or '-'}，Content-Type {_content_type(start) or '-'}）", "success")
 
     _stage(stage, task_id, "free_email_identifier")
@@ -773,7 +760,7 @@ def _run_once(
     if not ok(response):
         _raise_response(response, node="free_email_identifier", label="识别 Free 注册邮箱", stage="free_email_identifier")
     if _page_is_html(response):
-        if _contains(_response_search_text(response), _CHALLENGE_MARKERS):
+        if _is_security_challenge_response(response):
             raise FreeRegisterError(
                 "free_oauth_security_challenge",
                 "等待 Free OAuth 安全验证",

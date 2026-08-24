@@ -425,8 +425,92 @@ class FreeRoxySignupTests(unittest.TestCase):
                     type_element=lambda *_args: None,
                     click_element=lambda *_args: None,
                 )
-        self.assertGreaterEqual(Clock.now, 60.0)
-        self.assertLess(Clock.now, 75.0)
+        # The login?email URL is now treated as a blank transition even when
+        # React has temporarily removed the input, so each attempt uses the
+        # fixed 18-second debounce instead of waiting for the full caller
+        # timeout.
+        self.assertGreaterEqual(Clock.now, 50.0)
+        self.assertLess(Clock.now, 60.0)
+
+    def test_login_query_without_mounted_input_still_attempts_recovery(self):
+        class Clock:
+            now = 0.0
+
+            @classmethod
+            def monotonic(cls):
+                return cls.now
+
+            @classmethod
+            def sleep(cls, seconds):
+                cls.now += float(seconds)
+
+        submissions: list[bool] = []
+
+        def submit(_driver, _email, *, recovery=False):
+            submissions.append(bool(recovery))
+            return {"ok": False, "reason": "missing_email_input"} if recovery else {"ok": True}
+
+        human = type("Human", (), {"delay": staticmethod(lambda _kind: None)})()
+        selected = []
+        with (
+            patch("mac_overrides.free_roxy_signup.time.monotonic", side_effect=Clock.monotonic),
+            patch("mac_overrides.free_roxy_signup.time.sleep", side_effect=Clock.sleep),
+            patch("mac_overrides.free_roxy_signup.EMAIL_CLEAR_DEBOUNCE_SECONDS", 4.0),
+            patch("mac_overrides.free_roxy_signup.EMAIL_CLEAR_RECOVERY_SECONDS", 1.0),
+            patch("mac_overrides.free_roxy_signup.EMAIL_TRANSITION_TIMEOUT_SECONDS", 4.0),
+            patch("mac_overrides.free_roxy_signup._email_target", return_value={"ok": True, "input": object()}),
+            patch("mac_overrides.free_roxy_signup._stabilize_email", return_value={"ok": True, "has_form": True}),
+            patch("mac_overrides.free_roxy_signup._submit_email_form", side_effect=submit),
+            patch("mac_overrides.free_roxy_signup._email_form_state", return_value={
+                "input_count": 0, "has_blank": False, "has_expected": False,
+                "path": "/auth/login/", "has_email_query": True,
+            }),
+        ):
+            with self.assertRaises(FreeRegisterError):
+                free_roxy_signup.submit_email_and_wait(
+                    object(), "account@example.test", human, None, 30,
+                    classify=lambda _driver: "unknown",
+                    wait_security=lambda _driver, _timeout, _log: "unknown",
+                    type_element=lambda *_args: None,
+                    click_element=lambda *_args: None,
+                    select_auth_window=lambda *_args: selected.append(True),
+                )
+        self.assertEqual(submissions[0], False)
+        self.assertGreaterEqual(sum(submissions[1:]), 1)
+        self.assertTrue(selected)
+
+    def test_email_transition_reselects_new_openai_window(self):
+        human = type("Human", (), {"delay": staticmethod(lambda _kind: None)})()
+        submitted = False
+        selected = 0
+
+        def submit(_driver, _email, *, recovery=False):
+            nonlocal submitted
+            submitted = not recovery
+            return {"ok": True}
+
+        def select(_driver, _log=None):
+            nonlocal selected
+            selected += 1
+
+        def classify(_driver):
+            return "otp" if submitted and selected >= 2 else "unknown"
+
+        with (
+            patch("mac_overrides.free_roxy_signup._email_target", return_value={"ok": True, "input": object()}),
+            patch("mac_overrides.free_roxy_signup._stabilize_email", return_value={"ok": True, "has_form": True}),
+            patch("mac_overrides.free_roxy_signup._submit_email_form", side_effect=submit),
+        ):
+            result = free_roxy_signup.submit_email_and_wait(
+                object(), "account@example.test", human, None, 30,
+                classify=classify,
+                wait_security=lambda _driver, _timeout, _log: "unknown",
+                type_element=lambda *_args: None,
+                click_element=lambda *_args: None,
+                select_auth_window=select,
+            )
+        self.assertEqual(result, "otp")
+        self.assertGreaterEqual(selected, 2)
 
 
 if __name__ == "__main__":

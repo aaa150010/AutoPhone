@@ -45,6 +45,34 @@ class NetworkToolsTests(unittest.TestCase):
             self.assertNotIn("secret", str(row))
             self.assertEqual(row["country"], "US")
 
+    def test_reimport_updates_endpoint_protocol_but_preserves_runtime_metadata(self):
+        with tempfile.TemporaryDirectory() as root:
+            service = NetworkToolsService(root, socket_factory=lambda *args, **kwargs: _Socket())
+            service.import_text("proxy.example:8080:user:secret", country="JP", group="住宅 A", scheme="http")
+            proxy_id = service.public()["rows"][0]["proxy_id"]
+
+            # Simulate state accumulated by a prior health check/lease.
+            with service._lock:
+                service._proxies[proxy_id].update({
+                    "status": "available",
+                    "lease_owner": "worker-1",
+                    "lease_until": 1234567890,
+                    "last_checked_at": 1234567800,
+                    "last_exit_ip": "198.51.100.9",
+                    "latency_ms": 42.5,
+                    "consecutive_failures": 0,
+                })
+
+            service.import_text("proxy.example:8080:user:secret", country="JP", group="住宅 A", scheme="socks5")
+            row = service.public()["rows"][0]
+            self.assertEqual(row["scheme"], "socks5")
+            self.assertEqual(row["status"], "available")
+            self.assertEqual(row["lease_owner"], "worker-1")
+            self.assertEqual(row["lease_until"], 1234567890)
+            self.assertEqual(row["last_checked_at"], 1234567800)
+            self.assertEqual(row["last_exit_ip"], "198.51.100.9")
+            self.assertEqual(row["latency_ms"], 42.5)
+
     def test_quick_and_deep_use_selected_proxy_without_environment_fallback(self):
         with tempfile.TemporaryDirectory() as root:
             sessions = []

@@ -167,6 +167,63 @@ class MailboxUrlRuntimeTests(unittest.TestCase):
         )
         self.assertFalse(any(message.code for message in untrusted_messages))
 
+    def test_api798_latest_extracts_code_from_escaped_embedded_mail_html(self):
+        source_url = (
+            "https://api798.com/latest?email=user%40example.test&auth_code=private-access"
+        )
+        html = r'''
+        <html><body>
+          <h1>最新邮件信息</h1>
+          <script>
+            var htmlContent = "<html><title>ChatGPT temporary verification code</title><p>Your verification code is: 731904</p></html>";
+          </script>
+        </body></html>
+        '''
+
+        messages, detail_urls = parse_mailbox_payload(html, source_url)
+
+        self.assertEqual(detail_urls, ())
+        self.assertTrue(any(message.code == "731904" for message in messages))
+        self.assertTrue(any(message.code_source == "openai_context" for message in messages))
+        self.assertNotIn("private-access", repr(messages))
+
+    def test_api798_latest_accepts_scoped_explicit_code_fields_only(self):
+        source_url = "https://api798.com/latest?auth_code=private-access"
+        for key in ("code", "otp", "verification_code"):
+            with self.subTest(key=key):
+                messages, _links = parse_mailbox_payload(
+                    json.dumps({key: "731904"}),
+                    source_url,
+                )
+                self.assertTrue(any(message.code == "731904" for message in messages))
+                self.assertTrue(any(message.explicit_code for message in messages))
+
+        invalid, _links = parse_mailbox_payload(
+            json.dumps({"code": "73190"}),
+            source_url,
+        )
+        self.assertFalse(any(message.code for message in invalid))
+
+    def test_api798_latest_does_not_treat_auth_query_value_as_code(self):
+        source_url = "https://api798.com/latest?auth_code=731904"
+        messages, _links = parse_mailbox_payload(
+            "<html><body><p>等待新邮件</p></body></html>",
+            source_url,
+        )
+        self.assertFalse(any(message.code for message in messages))
+
+        generic_messages, _links = parse_mailbox_payload(
+            "<script>var htmlContent = \"<p>731904</p>\";</script>",
+            "https://mail.example.test/latest?auth_code=private-access",
+        )
+        self.assertFalse(any(message.code for message in generic_messages))
+
+        bare_page, _links = parse_mailbox_payload(
+            "<html><body><p>731904</p></body></html>",
+            "https://api798.com/latest?auth_code=private-access",
+        )
+        self.assertFalse(any(message.code for message in bare_page))
+
     def test_unicode_full_width_digits_are_normalized_before_otp_matching(self):
         messages, _links = parse_mailbox_payload(
             json.dumps({
@@ -920,6 +977,33 @@ class MailboxUrlRuntimeTests(unittest.TestCase):
         changed = state.snapshot()
         self.assertEqual(changed.code, "654321")
         self.assertNotEqual(changed.identity, baseline.identity)
+
+    def test_client_shell_accepts_scoped_top_level_code_without_message_list(self):
+        shell_url = (
+            "https://mail.example.test/latest?"
+            "email=user%40example.test&auth_code=sample-access"
+        )
+        cache_url = (
+            "https://mail.example.test/mail-api/sample-access/user%40example.test?"
+            "folder=inbox&cache_first=1"
+        )
+
+        def fetch(url: str) -> MailboxResponse:
+            if url == shell_url:
+                return html_response(url, CLIENT_SHELL_HTML)
+            if url == cache_url:
+                return json_response(url, {
+                    "ok": True,
+                    "code": "731904",
+                    "smtp_inbound": True,
+                    "refreshing": False,
+                })
+            self.fail(f"unexpected fetch: {url}")
+
+        selection = MailboxUrlClient(shell_url, fetcher=fetch).latest_code()
+
+        self.assertEqual(selection.code, "731904")
+        self.assertEqual(selection.reason, "code_found")
 
     def test_client_refresh_keeps_unchanged_explicit_code_in_baseline(self):
         shell_url = (

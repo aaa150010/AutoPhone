@@ -4,14 +4,21 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import os
+from types import SimpleNamespace
+from typing import Any
 
 try:
-    from .free_register_common import proxy_transport_value
+    from .free_protocol_bootstrap import _reference_navigation_headers, _security_challenge_html
+    from .free_protocol_reference import REFERENCE_TLS_IMPERSONATE, reference_fingerprint
+    from .free_register_common import FreeRegisterError, proxy_transport_value
 except ImportError:
-    from free_register_common import proxy_transport_value  # type: ignore[no-redef]
+    from free_protocol_bootstrap import _reference_navigation_headers, _security_challenge_html  # type: ignore[no-redef]
+    from free_protocol_reference import REFERENCE_TLS_IMPERSONATE, reference_fingerprint  # type: ignore[no-redef]
+    from free_register_common import FreeRegisterError, proxy_transport_value  # type: ignore[no-redef]
 
 
 CHATGPT_LOGIN_PROBE_URL = "https://chatgpt.com/login"
+CHATGPT_LOGIN_PROBE_REFERER = "https://chatgpt.com/"
 
 
 @contextmanager
@@ -30,27 +37,45 @@ def _without_proxy_environment():
                 os.environ[name] = value
 
 
+def _reference_probe_headers() -> dict[str, str]:
+    """Build the same document-navigation envelope used by Free protocol.
+
+    The standalone pool probe has no task object from which to inherit a
+    Sentinel fingerprint.  A fresh default reference profile still keeps the
+    probe's TLS image, locale, Client Hints and navigation headers consistent
+    with the protocol bootstrap, without carrying any task or credential data.
+    """
+    fingerprint = reference_fingerprint({}, {"proxy_country": "US"})
+    identity = SimpleNamespace(_gptphone_reference_fingerprint=fingerprint)
+    return _reference_navigation_headers(
+        identity,
+        CHATGPT_LOGIN_PROBE_URL,
+        CHATGPT_LOGIN_PROBE_REFERER,
+        {"cache-control": "no-cache"},
+    )
+
+
 def probe_chatgpt_login(proxy: str, *, verify: bool = True) -> int:
-    """Return the ChatGPT login response status through one fixed proxy."""
+    """Return the login status, stopping on a Cloudflare challenge page."""
     from curl_cffi import requests as curl_requests
 
     transport_proxy = proxy_transport_value(proxy, driver="probe")
     if not transport_proxy:
         raise ValueError("代理格式无效")
-    session = curl_requests.Session(impersonate="chrome", verify=bool(verify))
-    session.proxies = {"http": transport_proxy, "https": transport_proxy}
-    if hasattr(session, "trust_env"):
-        session.trust_env = False
+    response: Any = None
+    session: Any = None
     with _without_proxy_environment():
         try:
+            session = curl_requests.Session(
+                impersonate=REFERENCE_TLS_IMPERSONATE,
+                verify=bool(verify),
+            )
+            session.proxies = {"http": transport_proxy, "https": transport_proxy}
+            if hasattr(session, "trust_env"):
+                session.trust_env = False
             response = session.get(
                 CHATGPT_LOGIN_PROBE_URL,
-                headers={
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "Accept-Language": "en-US,en;q=0.9",
-                    "Cache-Control": "no-cache",
-                    "Referer": "https://chatgpt.com/",
-                },
+                headers=_reference_probe_headers(),
                 timeout=12,
                 allow_redirects=True,
             )
@@ -61,7 +86,26 @@ def probe_chatgpt_login(proxy: str, *, verify: bool = True) -> int:
     status = int(getattr(response, "status_code", 0) or 0)
     if not 100 <= status <= 599:
         raise ValueError("ChatGPT 登录页预检未返回有效 HTTP 状态")
+    # Cloudflare can serve a challenge document with HTTP 200.  Treat that as
+    # a structured preflight stop so the pool never records a false success;
+    # keep the provider status for diagnostics and do not expose the body.
+    if _security_challenge_html(response):
+        raise FreeRegisterError(
+            "free_proxy_preflight",
+            "Free 代理预检",
+            "ChatGPT 登录页预检返回安全挑战页面",
+            provider_status=status,
+            retryable=False,
+            error_code="free_proxy_chatgpt_security_challenge",
+            action_hint="当前代理触发 Cloudflare 安全挑战，请更换代理或人工确认后重试；系统不会自动绕过",
+            page_type="security_challenge",
+            safe_page=CHATGPT_LOGIN_PROBE_URL,
+        )
     return status
 
 
-__all__ = ["CHATGPT_LOGIN_PROBE_URL", "probe_chatgpt_login"]
+__all__ = [
+    "CHATGPT_LOGIN_PROBE_REFERER",
+    "CHATGPT_LOGIN_PROBE_URL",
+    "probe_chatgpt_login",
+]

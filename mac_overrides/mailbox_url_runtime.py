@@ -36,7 +36,8 @@ try:
         _response_too_complex,
         _safe_http_status,
         _safe_identity,
-        _strict_explicit_code,
+        _explicit_code_from_mapping,
+        _trusted_otp_source,
         _values_for_keys,
     )
 except ImportError:  # Loaded as a top-level runtime override.
@@ -63,7 +64,8 @@ except ImportError:  # Loaded as a top-level runtime override.
         _response_too_complex,
         _safe_http_status,
         _safe_identity,
-        _strict_explicit_code,
+        _explicit_code_from_mapping,
+        _trusted_otp_source,
         _values_for_keys,
     )
 
@@ -95,6 +97,8 @@ def _parse_client_mailbox_payload(
     if parsed.get("ok") is False or parsed.get("success") is False:
         raise MailboxUrlError("mailbox_provider_error", "邮箱取码数据接口返回失败", status=status)
     if include_messages:
+        messages: list[MailboxMessage] = []
+        detail_urls: list[str] = []
         raw_messages: Any = _first(parsed, ("messages", "items", "mail", "message"))
         if raw_messages in (None, ""):
             for nested in _values_for_keys(parsed, ("data", "result", "payload")):
@@ -102,15 +106,27 @@ def _parse_client_mailbox_payload(
                 if candidate not in (None, ""):
                     raw_messages = candidate
                     break
+        # Some provider revisions return only a scoped six-digit field while
+        # the page is still warming its message list.  Accept that field only
+        # for an already trusted mailbox API/source; never inspect URL query
+        # parameters (notably ``auth_code``) as a code.
+        top_level_code = ""
+        if raw_messages in (None, "") and _trusted_otp_source(source_url):
+            top_level_code = _explicit_code_from_mapping(parsed)
+            if not top_level_code:
+                for nested in _values_for_keys(parsed, ("data", "result", "payload")):
+                    if isinstance(nested, Mapping):
+                        top_level_code = _explicit_code_from_mapping(nested)
+                        if top_level_code:
+                            break
         if raw_messages in (None, ""):
-            raise MailboxUrlError("mailbox_provider_response_invalid", "邮箱取码数据接口返回了无法识别的响应")
+            if not top_level_code:
+                raise MailboxUrlError("mailbox_provider_response_invalid", "邮箱取码数据接口返回了无法识别的响应")
         if isinstance(raw_messages, Mapping):
             raw_messages = [raw_messages]
-        elif not isinstance(raw_messages, list):
+        elif raw_messages not in (None, "") and not isinstance(raw_messages, list):
             raise MailboxUrlError("mailbox_provider_response_invalid", "邮箱取码数据接口返回了无法识别的响应")
-        messages: list[MailboxMessage] = []
-        detail_urls: list[str] = []
-        for raw_message in raw_messages[:_MAX_PARSED_MESSAGES]:
+        for raw_message in (raw_messages or [])[:_MAX_PARSED_MESSAGES]:
             if not isinstance(raw_message, Mapping):
                 continue
             message = _message_from_mapping(raw_message, source_url, len(messages), trust_explicit_code=True)
@@ -123,12 +139,20 @@ def _parse_client_mailbox_payload(
             if isinstance(nested, (Mapping, list)):
                 messages, nested_links = _messages_from_json(nested, source_url, message_limit=_MAX_PARSED_MESSAGES)
                 detail_urls.extend(nested_links)
+        if top_level_code and not any(message.code for message in messages):
+            messages.append(MailboxMessage(
+                identity=_safe_identity("client-mailbox-top-level-code", source_url, top_level_code),
+                code=top_level_code,
+                code_source="explicit_code",
+                order=min((message.order for message in messages), default=0) - 1,
+                explicit_code=True,
+            ))
         merged = _merge_messages(messages)
         detail_links = tuple(dict.fromkeys(detail_urls[:MAX_MESSAGES]))
     else:
         merged, detail_links = (), ()
     if include_messages and not any(message.code for message in merged):
-        top_level_code = _strict_explicit_code(parsed.get("code"))
+        top_level_code = _explicit_code_from_mapping(parsed) if _trusted_otp_source(source_url) else ""
         if top_level_code:
             merged = _merge_messages((*merged, MailboxMessage(
                 identity=_safe_identity("client-mailbox-top-level-code", source_url, top_level_code),

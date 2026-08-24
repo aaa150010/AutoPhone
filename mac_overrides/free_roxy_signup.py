@@ -474,6 +474,7 @@ def submit_email_and_wait(
     wait_security: Callable[[Any, int, Callable[[str, str], None] | None], str],
     type_element: Callable[[Any, str, Any], None],
     click_element: Callable[[Any, Any, Any], None],
+    select_auth_window: Callable[..., Any] | None = None,
     attempts: int = EMAIL_SUBMIT_ATTEMPTS,
 ) -> str:
     """Submit one email form safely and confirm the next concrete auth state."""
@@ -494,6 +495,16 @@ def submit_email_and_wait(
         fill_deadline = time.monotonic() + min(20, max(5, int(timeout or 20)))
         clicked_entry = False
         while time.monotonic() < fill_deadline:
+            if callable(select_auth_window):
+                try:
+                    select_auth_window(driver, log)
+                except TypeError:
+                    try:
+                        select_auth_window(driver)
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
             state = classify(driver)
             if state == "security":
                 state = wait_security(driver, min(60, int(timeout or 60)), log)
@@ -533,7 +544,19 @@ def submit_email_and_wait(
         # roughly twenty seconds before starting the next attempt.
         wait_deadline = time.monotonic() + EMAIL_TRANSITION_TIMEOUT_SECONDS
         cleared_at: float | None = None
+        recovery_attempts = 0
+        last_recovery_at: float | None = None
         while time.monotonic() < wait_deadline:
+            if callable(select_auth_window):
+                try:
+                    select_auth_window(driver, log)
+                except TypeError:
+                    try:
+                        select_auth_window(driver)
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
             state = classify(driver)
             if state == "security":
                 state = wait_security(driver, min(60, int(timeout or 60)), log)
@@ -541,10 +564,21 @@ def submit_email_and_wait(
                 return state
             form_state = _email_form_state(driver, expected)
             input_count = int(form_state.get("input_count") or 0)
-            blank_transition = input_count > 0 and bool(form_state.get("has_blank")) and not bool(form_state.get("has_expected"))
             login_email_transition = (
                 str(form_state.get("path") or "").rstrip("/").casefold() == "/auth/login"
                 and bool(form_state.get("has_email_query"))
+            )
+            # React can unmount the email input while the login?email SPA
+            # transition is in flight.  The URL/query is the stable signal;
+            # requiring input_count > 0 here used to skip the only recovery
+            # opportunity for exactly that state.
+            email_value_cleared = (
+                input_count > 0
+                and bool(form_state.get("has_blank"))
+                and not bool(form_state.get("has_expected"))
+            )
+            blank_transition = email_value_cleared or (
+                login_email_transition and input_count == 0
             )
             if blank_transition:
                 now = time.monotonic()
@@ -562,15 +596,40 @@ def submit_email_and_wait(
                     if login_email_transition
                     else EMAIL_NON_LOGIN_CLEAR_DEBOUNCE_SECONDS
                 )
-                if login_email_transition and not recovery_done and elapsed >= EMAIL_CLEAR_RECOVERY_SECONDS:
+                can_retry_recovery = (
+                    login_email_transition
+                    and not recovery_done
+                    and recovery_attempts < 3
+                    and elapsed >= EMAIL_CLEAR_RECOVERY_SECONDS
+                    and (
+                        last_recovery_at is None
+                        or now - last_recovery_at >= 0.8
+                    )
+                )
+                if can_retry_recovery:
                     recovered = _submit_email_form(driver, expected, recovery=True)
-                    recovery_done = True
+                    recovery_attempts += 1
+                    last_recovery_at = now
+                    reason = clean(recovered.get("reason"), 80)
+                    # If React has not mounted the form yet, leave the
+                    # recovery window open for two short re-location attempts.
+                    # A successful submission (or any non-mount failure)
+                    # consumes the one logical recovery.
+                    if recovered.get("ok") or reason not in {
+                        "missing_email_input",
+                        "missing_email_form",
+                    } or recovery_attempts >= 3:
+                        recovery_done = True
                     _log(
                         log,
-                        "login?email 清空态达到恢复阈值，执行同表单受控补交"
-                        if recovered.get("ok") else (
-                            "login?email 同表单受控补交失败："
-                            f"{clean(recovered.get('reason'), 80) or '未返回原因'}"
+                        (
+                            "login?email 清空态达到恢复阈值，执行同表单受控补交"
+                            if recovered.get("ok")
+                            else (
+                                "login?email 清空态等待邮箱表单重新挂载，"
+                                f"第 {recovery_attempts}/3 次定位未完成："
+                                f"{reason or '未返回原因'}"
+                            )
                         ),
                         "info" if recovered.get("ok") else "warn",
                     )

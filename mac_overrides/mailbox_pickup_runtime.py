@@ -22,16 +22,28 @@ import urllib.parse
 
 try:
     from .mailbox_code_parser import (
+        OPENAI_PATTERN as _OPENAI_PATTERN,
         decode_bytes as _decode_bytes,
         decode_mail_body as _decode_mail_body,
         extract_mailbox_code,
     )
+    from .mailbox_api798 import (
+        allows_bare_code as _allows_bare_code,
+        api798_embedded_html as _api798_embedded_html,
+        mailbox_provider_strategy as _mailbox_provider_strategy,
+    )
     from .mail_code_envelope import parse_mail_code_envelope
 except ImportError:
     from mailbox_code_parser import (  # type: ignore[no-redef]
+        OPENAI_PATTERN as _OPENAI_PATTERN,
         decode_bytes as _decode_bytes,
         decode_mail_body as _decode_mail_body,
         extract_mailbox_code,
+    )
+    from mailbox_api798 import (  # type: ignore[no-redef]
+        allows_bare_code as _allows_bare_code,
+        api798_embedded_html as _api798_embedded_html,
+        mailbox_provider_strategy as _mailbox_provider_strategy,
     )
     from mail_code_envelope import parse_mail_code_envelope
 
@@ -61,9 +73,6 @@ MAX_MESSAGES = 40
 MAX_PARSED_MESSAGES = MAX_MESSAGES * 4
 MAX_JSON_DEPTH = 64
 MAX_JSON_CONTAINER_NODES = 4096
-_TRUSTED_OTP_PATH_PATTERN = re.compile(
-    r"(?i)(?:^|/)(?:pickup|mail-api|mail-code|api/messages?)(?:/|$)"
-)
 _MESSAGE_PATH_PATTERN = re.compile(r"(?i)(?:message|mail|inbox)")
 _MESSAGE_ID_ATTRS = ("data-message-id", "data-messageid", "data-mail-id", "data-id", "message-id")
 _DETAIL_URL_ATTRS = ("href", "data-url", "data-href", "data-detail-url")
@@ -372,14 +381,7 @@ def _explicit_code_from_mapping(mapping: Mapping[str, Any]) -> str:
     return ""
 
 
-def _trusted_otp_source(source_url: str) -> bool:
-    try:
-        path = urllib.parse.urlsplit(source_url).path
-    except (TypeError, ValueError):
-        return False
-    return bool(_TRUSTED_OTP_PATH_PATTERN.search(path))
-
-
+def _trusted_otp_source(source_url: str) -> bool: return bool(_mailbox_provider_strategy(source_url))
 def _safe_http_status(value: Any) -> int | None:
     if isinstance(value, bool):
         return None
@@ -428,7 +430,7 @@ def extract_openai_code(*values: Any, source_url: str = "", allow_bare_code: boo
     return extract_mailbox_code(
         *values,
         decoder=decode_mail_body,
-        allow_bare_code=allow_bare_code or _trusted_otp_source(source_url),
+        allow_bare_code=allow_bare_code or _allows_bare_code(source_url),
     ).code
 
 
@@ -681,7 +683,7 @@ def _parse_html_messages(raw: str, source_url: str, start_order: int = 0) -> tup
         if not any((message_id, detail_url, text, received_at)):
             continue
         sender_match = _EMAIL_PATTERN.search(text)
-        code_match = extract_mailbox_code(text, decoder=decode_mail_body, allow_bare_code=_trusted_otp_source(source_url))
+        code_match = extract_mailbox_code(text, decoder=decode_mail_body, allow_bare_code=_allows_bare_code(source_url))
         messages.append(MailboxMessage(
             identity=_safe_identity(message_id or detail_url or text, received_at),
             sender=sender_match.group(0) if sender_match else "",
@@ -709,6 +711,26 @@ def _parse_html_messages(raw: str, source_url: str, start_order: int = 0) -> tup
         order += len(script_messages)
         if len(messages) >= MAX_PARSED_MESSAGES:
             break
+    # Decode api798's inert htmlContent body and run the normal matcher.
+    for embedded_html in _api798_embedded_html(raw, source_url):
+        embedded_visible = decode_mail_body(embedded_html)
+        if not embedded_visible:
+            continue
+        embedded_match = extract_openai_code(embedded_visible, source_url=source_url)
+        if not embedded_match:
+            continue
+        sender_match = _EMAIL_PATTERN.search(embedded_visible)
+        messages.append(MailboxMessage(
+            identity=_safe_identity(source_url, "api798_latest", embedded_visible),
+            sender=sender_match.group(0) if sender_match else "",
+            subject=embedded_visible[:500],
+            body=embedded_visible,
+            code=embedded_match,
+            code_source="openai_context" if _OPENAI_PATTERN.search(embedded_visible) else "otp_context",
+            order=order,
+            field_sources=("html", "sender") if sender_match else ("html",),
+        ))
+        order += 1
     detail_urls.extend(_inferred_detail_urls(source_url, raw, message_ids))
     visible = decode_mail_body(" ".join(parser.all_text))
     if visible:

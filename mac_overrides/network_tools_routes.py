@@ -33,7 +33,15 @@ def install_network_routes(app: Any, *, module: Any, data_root: str | Path) -> N
     def invoke(fn: Any, *args: Any, **kwargs: Any):
         try:
             value = fn(*args, **kwargs)
-            return module.jsonify(ok=True, **(value if isinstance(value, Mapping) else {"result": value}))
+            if isinstance(value, Mapping):
+                # Service methods may already return an explicit ``ok`` field
+                # (notably proxy tests).  Copy before adding the default so
+                # Flask's jsonify never receives duplicate keyword arguments.
+                payload = dict(value)
+                payload.setdefault("ok", True)
+            else:
+                payload = {"result": value, "ok": True}
+            return module.jsonify(**payload)
         except NetworkToolError as exc:
             return module.jsonify(_error_payload(exc)), 400
         except Exception as exc:

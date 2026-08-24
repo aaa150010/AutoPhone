@@ -252,8 +252,13 @@ class NetworkToolsService:
                 continue
             with self._lock:
                 existing = dict(self._proxies.get(parsed["proxy_id"]) or {})
-                parsed.update(existing)
-                parsed.update({"country": normalized_country, "group": normalized_group, "source": source, "enabled": True})
+                # Keep health/lease metadata for an existing identity, while
+                # allowing a re-import to replace the endpoint and protocol.
+                # This matters when the same host/credentials are first
+                # imported as HTTP and later corrected to SOCKS5/SOCKS5H.
+                merged = {**existing, **parsed}
+                merged.update({"country": normalized_country, "group": normalized_group, "source": source, "enabled": True})
+                parsed = merged
                 parsed.setdefault("status", "unknown")
                 parsed.setdefault("consecutive_failures", 0)
                 self._proxies[parsed["proxy_id"]] = parsed

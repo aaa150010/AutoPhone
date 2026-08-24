@@ -6,6 +6,7 @@ import unittest
 
 from mac_overrides.free_protocol_flow import (
     _is_security_page,
+    _raise_security_page,
     _status,
     _wait_and_validate_email_otp,
     run_free_protocol_flow,
@@ -307,6 +308,50 @@ class FreeProtocolFlowTests(unittest.TestCase):
         self.assertEqual(result["oauth_session_rebuilds"], 1)
 
         challenge = _Transport(start={"_status": 200, "_content_type": "text/html", "_body_summary": "Cloudflare challenge"})
+        with self.assertRaises(FreeRegisterError) as raised:
+            _run(challenge, transport_factory=lambda: self.fail("challenge must not rebuild"))
+        self.assertEqual(raised.exception.error_code, "free_oauth_security_challenge")
+
+    def test_trusted_create_account_password_html_is_a_valid_oauth_start(self):
+        html = _Transport(start={
+            "_status": 200,
+            "_content_type": "text/html",
+            "_location": "https://auth.openai.com/create-account/password",
+            "_html_title": "Create your password",
+            "_body": (
+                "<html><head><title>Create your password</title></head>"
+                "<body><form><input type='password'></form>"
+                "<script>const marker = 'challenge-platform cloudflare captcha';</script></body></html>"
+            ),
+        })
+        result, active = _run(
+            html,
+            transport_factory=lambda: self.fail("normal trusted HTML must not rebuild"),
+        )
+        self.assertIs(active, html)
+        self.assertEqual(result["oauth_session_rebuilds"], 0)
+        self.assertIn("submit_email_identifier", html.calls)
+
+    def test_security_page_ignores_challenge_words_inside_script(self):
+        _raise_security_page({
+            "_status": 200,
+            "_content_type": "text/html",
+            "_location": "https://auth.openai.com/create-account/password",
+            "_body": "<html><title>Log in</title><script>cloudflare captcha</script></html>",
+        })
+
+    def test_trusted_html_with_visible_security_challenge_still_stops(self):
+        challenge = _Transport(start={
+            "_status": 200,
+            "_content_type": "text/html",
+            "_location": "https://auth.openai.com/create-account/password",
+            "_html_title": "Just a moment",
+            "_body": (
+                "<html><head><title>Just a moment</title></head>"
+                "<body>Verify you are human</body>"
+                "<script>const marker = 'challenge-platform';</script></html>"
+            ),
+        })
         with self.assertRaises(FreeRegisterError) as raised:
             _run(challenge, transport_factory=lambda: self.fail("challenge must not rebuild"))
         self.assertEqual(raised.exception.error_code, "free_oauth_security_challenge")

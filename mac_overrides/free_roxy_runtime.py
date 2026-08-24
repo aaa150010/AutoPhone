@@ -21,6 +21,7 @@ try:
         proxy_to_roxy_info,
     )
     from .free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider
+    from .free_roxy_email_adapter import submit_registration_email
     from .free_proxy_store import _extract_probe_ip as extract_probe_ip, normalize_probe_url
     from .free_register_common import (
         FIXED_PASSWORD,
@@ -36,7 +37,6 @@ try:
         is_email_verification_page,
         open_signup_page,
         safe_page_location,
-        submit_email_and_wait,
         warmup_login_page,
     )
     from .free_roxy_driver import (
@@ -92,6 +92,7 @@ except ImportError:
         proxy_to_roxy_info,
     )
     from free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider  # type: ignore[no-redef]
+    from free_roxy_email_adapter import submit_registration_email  # type: ignore[no-redef]
     from free_proxy_store import _extract_probe_ip as extract_probe_ip, normalize_probe_url  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
         FIXED_PASSWORD,
@@ -107,7 +108,6 @@ except ImportError:
         is_email_verification_page,
         open_signup_page,
         safe_page_location,
-        submit_email_and_wait,
         warmup_login_page,
     )
     from free_roxy_driver import (  # type: ignore[no-redef]
@@ -303,17 +303,11 @@ class RoxyRegistrationRunner:
         log: Callable[[str, str], None],
         timeout: int,
     ) -> str:
-        return submit_email_and_wait(
-            driver,
-            email,
-            human,
-            log,
-            timeout,
-            classify=self._classify_page,
-            wait_security=wait_for_security_clear,
-            type_element=self._type,
-            click_element=self._click,
-            attempts=3,
+        return submit_registration_email(
+            driver, email, human, log, timeout,
+            classify=self._classify_page, wait_security=wait_for_security_clear,
+            type_element=self._type, click_element=self._click,
+            select_auth_window=self._select_active_auth_window, attempts=3,
         )
 
     def _submit_signup_password(
