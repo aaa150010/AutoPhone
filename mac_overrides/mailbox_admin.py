@@ -73,9 +73,9 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
     )
 
 try:
-    from .error_observability import public_failure
+    from .error_observability import ACCOUNT_BANNED_MESSAGE, public_failure
 except ImportError:  # Loaded as a top-level override module by the Mac launcher.
-    from error_observability import public_failure
+    from error_observability import ACCOUNT_BANNED_MESSAGE, public_failure
 
 try:
     from .mailbox_redaction import redact_mailbox_credentials, url_credential_secrets
@@ -622,6 +622,18 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
                 or str(result_payload.get("status") or "").strip().lower()
                 == "account_banned"
             )
+            if account_banned and failure is None:
+                # Older result files predate structured failure persistence.
+                # Reconstruct the stable public classifier instead of leaving
+                # the row blank after hiding their legacy provider detail.
+                failure = public_failure(
+                    {
+                        "node_code": "account_banned",
+                        "error_code": "account_banned",
+                        "public_message": ACCOUNT_BANNED_MESSAGE,
+                        "retryable": False,
+                    }
+                )
             if account_banned:
                 # Historical result files can still contain provider details
                 # under result.error/local_oauth_exchange_error. They are

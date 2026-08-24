@@ -2021,6 +2021,37 @@ class MailboxAdminTests(unittest.TestCase):
         serialized = json.dumps(item, ensure_ascii=False)
         self.assertNotIn("deleted or deactivated", serialized)
 
+    def test_legacy_account_banned_row_gets_structured_public_failure(self):
+        row = "legacy-banned@example.com----mail-pass----client-id----refresh-token"
+        self._write_pool(row + "\n")
+        self._write_state({})
+        results = self.root / "results"
+        results.mkdir()
+        provider_detail = (
+            "password_verify_failed: You do not have an account because it has "
+            "been deleted or deactivated."
+        )
+        (results / "legacy-banned.json").write_text(
+            json.dumps(
+                {
+                    "email": "legacy-banned@example.com",
+                    "status": "account_banned",
+                    "error": provider_detail,
+                    "technical_error": provider_detail,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        item = self.service.list_mailboxes()["rows"][0]
+
+        self.assertEqual(item["error"], "OpenAI 账号已被封禁，无法继续接码")
+        self.assertEqual(item["failure"]["node_code"], "account_banned")
+        self.assertEqual(item["failure"]["error_code"], "account_banned")
+        self.assertEqual(item["failure"]["technical_summary"], "")
+        self.assertFalse(item["failure"]["retryable"])
+        self.assertNotIn("deleted or deactivated", json.dumps(item, ensure_ascii=False))
+
     def test_totp_error_redaction_covers_spaced_secret(self):
         row = "mfa@example.com|login-pass|JBSW Y3DP EHPK 3PXP"
         self._write_pool(row + "\n")

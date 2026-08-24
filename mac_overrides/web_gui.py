@@ -2919,41 +2919,53 @@ def _run_codex_after_registration(
         transport=transport,
         transport_task_id_get=_transport_task_id,
     )
-    bound_totp_task_id = _oauth_mfa_runtime_ext.bind_provider_totp_secret(
-        email_otp_provider,
-        _TASK_TOTP_SECRETS,
-        task_id=task_id_hint,
-        current_task_get=_TASK_CONTEXT.get,
-    )
-    if str(runtime_config.get("run_mode") or "").strip().lower() == "relogin":
-        phone_otp_provider = _ReloginPhoneOtpProvider()
-    runtime_config["_auth_account_email"] = str(account_email or "").strip().lower()
-    if transport is not None:
-        transport.config = runtime_config
-        transport.account_email = runtime_config["_auth_account_email"]
-        _auth_challenge_runtime_ext.bind_transport_context(
-            transport,
-            account_email=account_email,
-            password=password,
-            email_otp_provider=email_otp_provider,
-            config=runtime_config,
-            log_fn=log_fn,
-            page_type_fn=_codex_oauth_chain._page_type,
-            continue_url_fn=_codex_oauth_chain._continue_url,
-            success_fn=_codex_oauth_chain._is_success_response,
+    bound_totp_task_id = ""
+    try:
+        bound_totp_task_id = _oauth_mfa_runtime_ext.bind_provider_totp_secret(
+            email_otp_provider,
+            _TASK_TOTP_SECRETS,
+            task_id=task_id_hint,
+            current_task_get=_TASK_CONTEXT.get,
         )
-        existing_context = getattr(transport, "_gptphone_request_context", None)
-        expected_task_id = task_id_hint
-        request_context = _auth_request_runtime_ext.ensure_transport_context(
-            transport,
-            _AUTH_SESSIONS,
-            force_new=bool(
-                existing_context is None
-                or getattr(existing_context, "task_id", "") != expected_task_id
-            ),
+        if str(runtime_config.get("run_mode") or "").strip().lower() == "relogin":
+            phone_otp_provider = _ReloginPhoneOtpProvider()
+        runtime_config["_auth_account_email"] = str(account_email or "").strip().lower()
+        if transport is not None:
+            transport.config = runtime_config
+            transport.account_email = runtime_config["_auth_account_email"]
+            _auth_challenge_runtime_ext.bind_transport_context(
+                transport,
+                account_email=account_email,
+                password=password,
+                email_otp_provider=email_otp_provider,
+                config=runtime_config,
+                log_fn=log_fn,
+                page_type_fn=_codex_oauth_chain._page_type,
+                continue_url_fn=_codex_oauth_chain._continue_url,
+                success_fn=_codex_oauth_chain._is_success_response,
+            )
+            existing_context = getattr(transport, "_gptphone_request_context", None)
+            expected_task_id = task_id_hint
+            request_context = _auth_request_runtime_ext.ensure_transport_context(
+                transport,
+                _AUTH_SESSIONS,
+                force_new=bool(
+                    existing_context is None
+                    or getattr(existing_context, "task_id", "") != expected_task_id
+                ),
+            )
+            del request_context
+            _register_sms_transport(expected_task_id, transport)
+    except BaseException:
+        # Setup happens before the protocol-session ``finally`` below. If a
+        # transport/context hook fails here, still drop the task-bound seed so
+        # a later task cannot resolve another account's 2FA secret.
+        _oauth_mfa_runtime_ext.clear_task_secrets(
+            _TASK_TOTP_SECRETS,
+            task_id_hint,
+            bound_totp_task_id,
         )
-        del request_context
-        _register_sms_transport(expected_task_id, transport)
+        raise
     transport_token = _ACTIVE_SMS_TRANSPORT.set(transport)
     protocol_activity_token = _PROTOCOL_REQUEST_ACTIVITY.set(0)
     task_id = task_id_hint

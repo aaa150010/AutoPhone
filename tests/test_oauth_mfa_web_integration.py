@@ -150,6 +150,37 @@ class OAuthMfaWebIntegrationTests(unittest.TestCase):
         self.assertEqual(observed, ["JBSWY3DPEHPK3PXP"])
         self.assertEqual(module._TASK_TOTP_SECRETS.get("T-provider-only"), "")
 
+    def test_run_codex_clears_totp_task_when_transport_setup_fails(self):
+        module = self.module
+        original_bind = module._auth_challenge_runtime_ext.bind_transport_context
+        provider = SimpleNamespace(
+            task_id="T-setup-failure",
+            config={},
+            entry=SimpleNamespace(
+                oauth_client_id="chatgpt_totp",
+                oauth_refresh_token="JBSWY3DPEHPK3PXP",
+            ),
+        )
+        try:
+            module._auth_challenge_runtime_ext.bind_transport_context = (
+                lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                    RuntimeError("setup failed")
+                )
+            )
+            with self.assertRaisesRegex(RuntimeError, "setup failed"):
+                module._run_codex_after_registration(
+                    oauth_url="https://auth.example.test/authorize",
+                    account_email="masked@example.test",
+                    email_otp_provider=provider,
+                    config={},
+                    transport=SimpleNamespace(config={}),
+                )
+        finally:
+            module._auth_challenge_runtime_ext.bind_transport_context = original_bind
+            module._TASK_TOTP_SECRETS.clear("T-setup-failure")
+
+        self.assertEqual(module._TASK_TOTP_SECRETS.get("T-setup-failure"), "")
+
     def test_run_codex_uses_context_task_id_for_transport_registration(self):
         module = self.module
         originals = {
