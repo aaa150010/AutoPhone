@@ -21,7 +21,10 @@ def _install_chain_helpers():
     module._page_type = lambda value: str((value.get("page") or {}).get("type") or "") if isinstance(value, dict) else ""
     module._continue_url = lambda value: str(value.get("continue_url") or "") if isinstance(value, dict) else ""
     module._error_text = lambda value: str(value.get("error") or "") if isinstance(value, dict) else str(value or "")
-    module._is_session_invalid_error = lambda value: "sign-in session is no longer valid" in str(value or "").lower()
+    module._is_session_invalid_error = lambda value: any(
+        marker in str(value or "").lower()
+        for marker in ("sign-in session is no longer valid", "login page")
+    )
     return module
 
 
@@ -311,6 +314,33 @@ class FreeProtocolFlowTests(unittest.TestCase):
         with self.assertRaises(FreeRegisterError) as raised:
             _run(challenge, transport_factory=lambda: self.fail("challenge must not rebuild"))
         self.assertEqual(raised.exception.error_code, "free_oauth_security_challenge")
+
+    def test_trusted_login_html_is_not_misclassified_as_session_invalid(self):
+        transport = _Transport(start={
+            "_status": 200,
+            "_content_type": "text/html",
+            "_location": "https://auth.openai.com/log-in/password",
+            "_body_summary": "OpenAI login page",
+        })
+        result, active = _run(
+            transport,
+            transport_factory=lambda: self.fail("trusted bootstrap must keep the same session"),
+        )
+        self.assertIs(active, transport)
+        self.assertEqual(result["oauth_session_rebuilds"], 0)
+        self.assertIn("submit_email_identifier", transport.calls)
+
+    def test_untrusted_html_login_envelope_is_proxy_retryable(self):
+        transport = _Transport(start={
+            "_status": 200,
+            "_content_type": "text/html",
+            "_location": "https://edge.invalid.example/log-in/password",
+            "_body_summary": "OpenAI login page",
+        })
+        with self.assertRaises(FreeRegisterError) as raised:
+            _run(transport)
+        self.assertEqual(raised.exception.error_code, "oauth_session_invalid")
+        self.assertTrue(getattr(raised.exception, "proxy_retryable", False))
 
     def test_trusted_create_account_password_html_is_a_valid_oauth_start(self):
         html = _Transport(start={

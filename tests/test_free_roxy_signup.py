@@ -35,6 +35,22 @@ class _ScriptDriver:
         return self.result
 
 
+class _AsyncScriptDriver:
+    current_url = "https://chatgpt.com/auth/login?email=hidden"
+
+    def __init__(self, result):
+        self.result = result
+        self.timeouts: list[int] = []
+        self.scripts: list[str] = []
+
+    def set_script_timeout(self, timeout: int) -> None:
+        self.timeouts.append(timeout)
+
+    def execute_async_script(self, script: str, *_args):
+        self.scripts.append(script)
+        return self.result
+
+
 class _LoginPageDriver:
     current_url = "https://auth.openai.com/log-in"
 
@@ -99,6 +115,29 @@ class FreeRoxySignupTests(unittest.TestCase):
         self.assertEqual(result["mode"], "controlled_resubmit")
         self.assertIn("recovery", driver.scripts[0])
 
+    def test_browser_nextauth_keeps_only_safe_redirect_metadata(self):
+        driver = _AsyncScriptDriver({
+            "ok": True,
+            "stage": "redirect",
+            "status": 200,
+            "target_host": "auth.openai.com",
+            "body": "secret response",
+            "url": "https://auth.openai.com/authorize?login_hint=account@example.test",
+            "token": "secret token",
+        })
+        result = free_roxy_signup._submit_email_via_browser_nextauth(
+            driver, "account@example.test", 90,
+        )
+        self.assertEqual(result, {
+            "ok": True,
+            "stage": "redirect",
+            "status": 200,
+            "target_host": "auth.openai.com",
+        })
+        self.assertIn("__gptphone_browser_nextauth__", driver.scripts[0])
+        self.assertIn("untrusted_target", driver.scripts[0])
+        self.assertEqual(driver.timeouts, [15, 90])
+
     def test_email_submit_rejects_explicit_missing_controls_and_filters_fallback(self):
         driver = _ScriptDriver({
             "ok": True,
@@ -154,6 +193,12 @@ class FreeRoxySignupTests(unittest.TestCase):
             classify_page(_NavigationDriver("https://edge.auth.openai.com/authorize")),
             "oauth_callback",
         )
+
+    def test_fast_auth_state_does_not_treat_api_continue_as_browser_callback(self):
+        driver = _NavigationDriver("https://auth.openai.com/api/accounts/authorize/continue")
+        self.assertEqual(free_roxy_signup._fast_auth_state(driver), "")
+        driver.current_url = "https://auth.openai.com/authorize/continue"
+        self.assertEqual(free_roxy_signup._fast_auth_state(driver), "oauth_callback")
 
     def test_open_result_extracts_roxy_chromedriver_path(self):
         opened = RoxyOpenResult(
@@ -389,6 +434,60 @@ class FreeRoxySignupTests(unittest.TestCase):
         self.assertEqual(result, "otp")
         self.assertEqual([recovery for recovery, _at in submissions], [False, True])
         self.assertGreaterEqual(submissions[1][1], 2.0)
+
+    def test_stuck_login_uses_browser_nextauth_once_then_observes_otp(self):
+        class Clock:
+            now = 0.0
+            browser_bootstrap = False
+            observed_after_bootstrap = False
+
+            @classmethod
+            def monotonic(cls):
+                return cls.now
+
+            @classmethod
+            def sleep(cls, seconds):
+                cls.now += float(seconds)
+                if cls.browser_bootstrap:
+                    cls.observed_after_bootstrap = True
+
+        browser_calls: list[float] = []
+
+        def browser_bootstrap(_driver, _email, _timeout):
+            browser_calls.append(Clock.now)
+            Clock.browser_bootstrap = True
+            return {"ok": True, "stage": "redirect", "status": 200}
+
+        def classify(_driver):
+            return "otp" if Clock.observed_after_bootstrap else "unknown"
+
+        human = type("Human", (), {"delay": staticmethod(lambda _kind: None)})()
+        with (
+            patch("mac_overrides.free_roxy_signup.time.monotonic", side_effect=Clock.monotonic),
+            patch("mac_overrides.free_roxy_signup.time.sleep", side_effect=Clock.sleep),
+            patch("mac_overrides.free_roxy_signup.EMAIL_CLEAR_DEBOUNCE_SECONDS", 18.0),
+            patch("mac_overrides.free_roxy_signup.EMAIL_CLEAR_RECOVERY_SECONDS", 2.0),
+            patch("mac_overrides.free_roxy_signup.EMAIL_BROWSER_BOOTSTRAP_SECONDS", 5.0),
+            patch("mac_overrides.free_roxy_signup._email_target", return_value={"ok": True, "input": object()}),
+            patch("mac_overrides.free_roxy_signup._stabilize_email", return_value={"ok": True, "has_form": True}),
+            patch("mac_overrides.free_roxy_signup._submit_email_form", return_value={"ok": True}),
+            patch("mac_overrides.free_roxy_signup._submit_email_via_browser_nextauth", side_effect=browser_bootstrap),
+            patch("mac_overrides.free_roxy_signup._email_form_state", return_value={
+                "input_count": 1, "has_blank": True, "has_expected": False,
+                "path": "/auth/login", "has_email_query": True,
+            }),
+        ):
+            result = free_roxy_signup.submit_email_and_wait(
+                object(), "account@example.test", human, None, 30,
+                classify=classify,
+                wait_security=lambda _driver, _timeout, _log: "unknown",
+                type_element=lambda *_args: None,
+                click_element=lambda *_args: None,
+            )
+
+        self.assertEqual(result, "otp")
+        self.assertEqual(len(browser_calls), 1)
+        self.assertGreaterEqual(browser_calls[0], 5.0)
 
     def test_timeout_argument_does_not_expand_email_transition_window(self):
         class Clock:

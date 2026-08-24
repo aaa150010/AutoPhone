@@ -655,14 +655,30 @@ def wait_after_otp_submit(driver: Any, timeout: int = 45, log: LogFn | None = No
                     )
                     last_probe_signature = probe_signature
                 if 400 <= status < 500 and status != 429:
+                    provider_code = _safe_error_code(latest.get("errorCode"))
+                    terminal_provider_codes = {
+                        "account_deactivated",
+                        "account_banned",
+                        "account_suspended",
+                    }
+                    terminal = provider_code in terminal_provider_codes
                     error = FreeRegisterError(
                         "free_email_otp_validate", "验证 Free 邮箱验证码",
-                        "邮箱验证码被认证接口拒绝",
+                        (
+                            "邮箱验证码被认证接口拒绝"
+                            + (f"，Provider code {provider_code}" if provider_code else "")
+                        ),
                         provider_status=status or None,
-                        # The runner can fetch a newer code and retry on the
-                        # same profile; never reuse the submitted value.
-                        retryable=True,
-                        error_code="free_email_otp_invalid",
+                        provider_code=provider_code,
+                        # Terminal account classifications must not be hidden
+                        # by a later stale-code timeout. The task can still be
+                        # explicitly rerun after the mailbox is restored.
+                        retryable=not terminal,
+                        error_code=(
+                            f"free_email_otp_{provider_code}"
+                            if terminal and provider_code
+                            else "free_email_otp_invalid"
+                        ),
                     )
                     error.otp_submitted = True
                     raise error

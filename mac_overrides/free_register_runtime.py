@@ -996,7 +996,14 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     error_node = str(getattr(exc, "node_code", ""))
                     network_failure = is_proxy_health_failure(exc)
                     pre_profile = error_node in {"free_roxy_create", "free_roxy_open", "free_roxy_connect", "free_roxy_api"}
-                    protocol_pre_email = error_node in {"free_protocol_preflight", "free_oauth_session"}
+                    # OAuth bootstrap and the first email-identification POST
+                    # are both route-level protocol nodes.  HTML login/error
+                    # envelopes from either node may be retried on another
+                    # healthy pool proxy when the flow marks them explicitly
+                    # ``proxy_retryable``; business OTP/page failures do not.
+                    protocol_pre_email = error_node in {
+                        "free_protocol_preflight", "free_oauth_session", "free_email_identifier",
+                    }
                     can_retry_pre_email = ((pre_profile or error_node == "free_roxy_ip_verify" or protocol_pre_email) and network_failure) or (protocol_pre_email and bool(getattr(exc, "proxy_retryable", False)))
                     if not can_retry_pre_email or attempt >= retry_limit or self._stop.is_set():
                         raise

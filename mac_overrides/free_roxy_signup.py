@@ -8,8 +8,14 @@ from urllib.parse import urlsplit
 
 try:
     from .free_register_common import FreeRegisterError, clean
+    from .free_roxy_auth_bootstrap import (
+        submit_email_via_browser_nextauth as _submit_email_via_browser_nextauth,
+    )
 except ImportError:
     from free_register_common import FreeRegisterError, clean  # type: ignore[no-redef]
+    from free_roxy_auth_bootstrap import (  # type: ignore[no-redef]
+        submit_email_via_browser_nextauth as _submit_email_via_browser_nextauth,
+    )
 
 
 LOGIN_URL = "https://chatgpt.com/auth/login"
@@ -18,6 +24,7 @@ LOGIN_URL = "https://chatgpt.com/auth/login"
 # one early, same-form resubmission without extending the attempt forever.
 EMAIL_CLEAR_DEBOUNCE_SECONDS = 18.0
 EMAIL_CLEAR_RECOVERY_SECONDS = 2.0
+EMAIL_BROWSER_BOOTSTRAP_SECONDS = 5.0
 EMAIL_NON_LOGIN_CLEAR_DEBOUNCE_SECONDS = 5.0
 EMAIL_TRANSITION_TIMEOUT_SECONDS = 20.0
 EMAIL_SUBMIT_ATTEMPTS = 3
@@ -458,6 +465,49 @@ def _email_form_state(driver: Any, email: str) -> dict[str, Any]:
         return {"input_count": 0, "reason": type(exc).__name__}
 
 
+def _fast_auth_state(driver: Any) -> str:
+    """Classify URL-only auth transitions without waiting on the DOM.
+
+    Roxy/Chrome can temporarily block a DOM query while React replaces the
+    login form.  The URL is still available during that interval and is
+    sufficient to recognize the concrete states that can end email submit.
+    """
+    try:
+        parsed = urlsplit(str(getattr(driver, "current_url", "") or ""))
+    except Exception:
+        return ""
+    host = (parsed.hostname or "").casefold().rstrip(".")
+    path = (parsed.path or "/").casefold().rstrip("/") or "/"
+    if host not in {"auth.openai.com", "chatgpt.com"} and not host.endswith(".auth.openai.com"):
+        return ""
+    if "/cdn-cgi/challenge-platform" in path or any(
+        marker in path for marker in ("/security-challenge", "/security_check", "/captcha")
+    ):
+        return "security"
+    if host == "auth.openai.com" or host.endswith(".auth.openai.com"):
+        # API responses are transport state, not a browser page transition.
+        # In particular, /api/accounts/authorize/continue must be handled by
+        # the page classifier after the response is observed.
+        if path.startswith("/api/"):
+            return ""
+        if path in {"/email-verification", "/email-otp"} or path.startswith(("/email-verification/", "/email-otp/")):
+            return "otp"
+        if path in {"/log-in/password", "/login/password"}:
+            return "login_password"
+        if "/password" in path or path.endswith("/new-password"):
+            return "signup_password"
+        if any(marker in path for marker in ("/about-you", "/about_you", "/birthdate", "/create-account/profile", "/signup/profile")):
+            return "profile"
+        if any(marker in path for marker in ("/authorize", "/callback", "/continue")):
+            return "oauth_callback"
+        return ""
+    # Do not call the ChatGPT home page a successful transition while the
+    # login form is still mounted under /auth/login.
+    if path == "/" or (not path.startswith("/auth/") and "/api/" not in path):
+        return "home"
+    return ""
+
+
 def _log(log: Callable[[str, str], None] | None, message: str, level: str = "info") -> None:
     if callable(log):
         log(message, level)
@@ -487,6 +537,7 @@ def submit_email_and_wait(
     valid_states = {"otp", "login_password", "signup_password", "home", "security", "profile", "oauth_callback"}
     last_reason = "email_form_not_ready"
     max_attempts = max(1, min(3, int(attempts or EMAIL_SUBMIT_ATTEMPTS)))
+    browser_bootstrap_attempted = False
 
     for attempt in range(1, max_attempts + 1):
         # Recovery is scoped to this submit attempt.  A failed first attempt
@@ -546,6 +597,8 @@ def submit_email_and_wait(
         cleared_at: float | None = None
         recovery_attempts = 0
         last_recovery_at: float | None = None
+        recovery_finished_at: float | None = None
+        last_classified_at = 0.0
         while time.monotonic() < wait_deadline:
             if callable(select_auth_window):
                 try:
@@ -557,7 +610,10 @@ def submit_email_and_wait(
                         pass
                 except Exception:
                     pass
-            state = classify(driver)
+            # Read the URL and the lightweight email form probe before the
+            # full page snapshot.  The latter can block during a React
+            # unmount, which used to consume the whole recovery window.
+            state = _fast_auth_state(driver)
             if state == "security":
                 state = wait_security(driver, min(60, int(timeout or 60)), log)
             if state in valid_states:
@@ -620,6 +676,8 @@ def submit_email_and_wait(
                         "missing_email_form",
                     } or recovery_attempts >= 3:
                         recovery_done = True
+                    if recovered.get("ok"):
+                        recovery_finished_at = now
                     _log(
                         log,
                         (
@@ -633,14 +691,59 @@ def submit_email_and_wait(
                         ),
                         "info" if recovered.get("ok") else "warn",
                     )
+                if (
+                    login_email_transition
+                    and recovery_done
+                    and not browser_bootstrap_attempted
+                    and elapsed >= EMAIL_BROWSER_BOOTSTRAP_SECONDS
+                ):
+                    browser_bootstrap_attempted = True
+                    browser_bootstrap = _submit_email_via_browser_nextauth(
+                        driver, expected, timeout,
+                    )
+                    stage = clean(browser_bootstrap.get("stage"), 24) or "transport"
+                    status = browser_bootstrap.get("status")
+                    _log(
+                        log,
+                        "login?email 同表单补交后仍未跳转，执行一次浏览器内认证启动"
+                        f"（stage={stage}，HTTP={status if status is not None else '-'}，"
+                        f"result={'accepted' if browser_bootstrap.get('ok') else 'rejected'}）",
+                        "info" if browser_bootstrap.get("ok") else "warn",
+                    )
                 # Do not reset cleared_at or extend wait_deadline after
                 # recovery.  The original blank transition still expires at
                 # the fixed 18s/5s debounce, matching AutoRegister.
                 if elapsed >= debounce:
                     last_reason = "login_email_cleared" if login_email_transition else "email_cleared"
                     break
+                # A successful recovery may have mounted the OTP page without
+                # changing the URL immediately.  Give the normal classifier a
+                # bounded opportunity after the async form action, but never
+                # let it run before the blank-state recovery is attempted.
+                if (
+                    recovery_done
+                    and recovery_finished_at is not None
+                    and now - recovery_finished_at >= 0.5
+                    and now - last_classified_at >= 1.0
+                ):
+                    last_classified_at = now
+                    state = classify(driver)
+                    if state == "security":
+                        state = wait_security(driver, min(60, int(timeout or 60)), log)
+                    if state in valid_states:
+                        return state
+                time.sleep(0.5)
+                continue
             else:
                 cleared_at = None
+            now = time.monotonic()
+            if now - last_classified_at >= 0.75:
+                last_classified_at = now
+                state = classify(driver)
+                if state == "security":
+                    state = wait_security(driver, min(60, int(timeout or 60)), log)
+                if state in valid_states:
+                    return state
             if form_state.get("submit_observed") or form_state.get("submit_triggered"):
                 _log(
                     log,
@@ -664,7 +767,7 @@ def submit_email_and_wait(
 
 
 __all__ = [
-    "EMAIL_CLEAR_DEBOUNCE_SECONDS", "EMAIL_CLEAR_RECOVERY_SECONDS",
+    "EMAIL_BROWSER_BOOTSTRAP_SECONDS", "EMAIL_CLEAR_DEBOUNCE_SECONDS", "EMAIL_CLEAR_RECOVERY_SECONDS",
     "EMAIL_NON_LOGIN_CLEAR_DEBOUNCE_SECONDS", "EMAIL_TRANSITION_TIMEOUT_SECONDS",
     "EMAIL_SUBMIT_ATTEMPTS", "LOGIN_URL",
     "is_email_verification_page", "open_signup_page", "safe_page_location",

@@ -133,8 +133,18 @@ def response_search_text(response: Any) -> str:
 
 
 def response_detail(response: Any, error: str = "") -> str:
+    """Return structured transport metadata without echoing response text.
+
+    ``error`` is intentionally not rendered here.  Recovered transports often
+    put an HTML document, a login envelope, or a provider response body in that
+    field; even after generic redaction it can contain user data or tokens.
+    The body remains available to the internal classifier through
+    :func:`response_search_text`, while public diagnostics carry only stable
+    status/type/page/provider identifiers.
+    """
     status = response_status(response)
     page = page_type_value(response)[:64]
+    code = provider_code(response)
     parts: list[str] = []
     if status is not None:
         parts.append(f"HTTP {status}")
@@ -142,8 +152,8 @@ def response_detail(response: Any, error: str = "") -> str:
         parts.append(f"Content-Type {content_type(response)}")
     if page:
         parts.append(f"页面 {page}")
-    if error:
-        parts.append(safe_log_message(error)[:180])
+    if code:
+        parts.append(f"Provider code {code}")
     return "，".join(parts) or "服务端未返回可用诊断详情"
 
 

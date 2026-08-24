@@ -73,34 +73,74 @@ def _set_birthday(driver: Any, birthday: str, age: int) -> str:
         const setValue = (el, value) => {
           if (!el) return false;
           const tag = String(el.tagName || '').toLowerCase();
-          const proto = tag === 'select' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+          const proto = tag === 'select' ? HTMLSelectElement.prototype
+            : tag === 'textarea' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
           const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
           if (setter) setter.call(el, String(value)); else el.value = String(value);
+          if (tag === 'select') {
+            [...el.options].forEach(option => {
+              option.selected = String(option.value) === String(value);
+            });
+          }
           el.dispatchEvent(new Event('input', {bubbles:true}));
           el.dispatchEvent(new Event('change', {bubbles:true}));
           el.blur?.();
           return true;
         };
-        const ageInput = [...document.querySelectorAll('input[name="age"],input#age,input[type="number"]')]
+        const ageInput = [...document.querySelectorAll(
+          'input[name="age"],input#age,input[id$="-age"],input[type="number"]'
+        )]
           .find(visible);
         if (ageInput && setValue(ageInput, age)) return 'age';
-        const dateInput = [...document.querySelectorAll('input[type="date"],input[name="birthday"],input[name="birthdate"]')]
+        const dateInput = [...document.querySelectorAll(
+          'input[type="date"],input[name="birthday"],input[name="birthdate"]'
+        )]
           .find(el => visible(el) || String(el.type || '').toLowerCase() === 'date');
         if (dateInput && setValue(dateInput, `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`)) return 'birthday';
-        const find = selectors => {
-          for (const selector of selectors) {
-            const item = [...document.querySelectorAll(selector)].find(visible);
-            if (item) return item;
-          }
-          return null;
-        };
-        const fields = [
-          [find(['select[name="year"]','input[name="year"]','[data-type="year"]','[aria-label*="year" i]']), year],
-          [find(['select[name="month"]','input[name="month"]','[data-type="month"]','[aria-label*="month" i]']), Number(month)],
-          [find(['select[name="day"]','input[name="day"]','[data-type="day"]','[aria-label*="day" i]']), Number(day)],
+        const hasOption = (select, value) => [...select.options].some(option => String(option.value) === String(value));
+        const numericOptions = select => [...select.options].map(option => Number(option.value)).filter(Number.isFinite);
+        const maxOption = select => Math.max(...numericOptions(select), -Infinity);
+        const minOption = select => Math.min(...numericOptions(select), Infinity);
+        const selects = [...document.querySelectorAll(
+          '[data-testid="hidden-select-container"] select,.react-aria-Select select,select'
+        )].filter(select => !select.disabled);
+        const yearSelect = selects.find(select => hasOption(select, year) && maxOption(select) > 1900);
+        const small = selects.filter(select => select !== yearSelect);
+        const monthSelect = small.find(select =>
+          (hasOption(select, Number(month)) || hasOption(select, String(month).padStart(2, '0')))
+          && minOption(select) <= 1 && maxOption(select) <= 12
+        );
+        const daySelect = small.find(select =>
+          select !== monthSelect
+          && (hasOption(select, Number(day)) || hasOption(select, String(day).padStart(2, '0')))
+          && maxOption(select) >= 28
+        );
+        if (yearSelect && monthSelect && daySelect) {
+          setValue(yearSelect, year);
+          setValue(monthSelect, hasOption(monthSelect, Number(month)) ? Number(month) : String(month).padStart(2, '0'));
+          setValue(daySelect, hasOption(daySelect, Number(day)) ? Number(day) : String(day).padStart(2, '0'));
+          const hidden = document.querySelector('input[name="birthday"]');
+          if (hidden) setValue(hidden, `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
+          return 'react_select';
+        }
+        const direct = [
+          ['select[name="year"]','input[name="year"]','select[id*="year" i]','input[id*="year" i]'],
+          ['select[name="month"]','input[name="month"]','select[id*="month" i]','input[id*="month" i]'],
+          ['select[name="day"]','input[name="day"]','select[id*="day" i]','input[id*="day" i]'],
         ];
-        const count = fields.reduce((total, [el, value]) => total + (setValue(el, value) ? 1 : 0), 0);
-        return count === 3 ? 'ymd' : '';
+        const values = [year, Number(month), Number(day)];
+        const fields = direct.map(selectors => selectors.map(selector =>
+          [...document.querySelectorAll(selector)].find(visible)
+        ).find(Boolean));
+        if (fields.every(Boolean)) {
+          fields.forEach((field, index) => setValue(field, values[index]));
+          return 'ymd';
+        }
+        const spin = ['year', 'month', 'day'].map(type =>
+          document.querySelector(`[role="spinbutton"][data-type="${type}"]`)
+        );
+        if (spin.every(Boolean)) return 'spinbutton_needed';
+        return '';
         """,
         year,
         month,
@@ -108,26 +148,25 @@ def _set_birthday(driver: Any, birthday: str, age: int) -> str:
         str(age),
     )
     mode = clean(result, 40)
-    if mode:
+    if mode in {"age", "birthday", "ymd", "react_select"}:
         return mode
+    if mode != "spinbutton_needed":
+        return ""
     try:
         result = driver.execute_script(
             r"""
             const [year, month, day] = arguments;
-            const visible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
-              && !el.disabled && !el.readOnly;
-            const values = {year, month:String(Number(month)), day:String(Number(day))};
+            const values = {year:String(year), month:String(Number(month)), day:String(Number(day))};
             let count = 0;
-            for (const el of document.querySelectorAll('[role="spinbutton"],[data-type]')) {
+            for (const el of document.querySelectorAll('[role="spinbutton"][data-type]')) {
               const type = String(el.getAttribute('data-type') || '').toLowerCase();
-              if (visible(el) && values[type]) {
-                el.focus();
-                el.textContent = values[type];
-                el.setAttribute('aria-valuenow', values[type]);
-                el.dispatchEvent(new InputEvent('input', {bubbles:true, data:values[type]}));
-                el.dispatchEvent(new Event('change', {bubbles:true}));
-                count += 1;
-              }
+              if (!values[type] || el.disabled || el.getAttribute('aria-disabled') === 'true') continue;
+              el.focus();
+              el.textContent = values[type];
+              el.setAttribute('aria-valuenow', values[type]);
+              el.dispatchEvent(new InputEvent('input', {bubbles:true, data:values[type]}));
+              el.dispatchEvent(new Event('change', {bubbles:true}));
+              count += 1;
             }
             return count === 3 ? 'spinbutton' : '';
             """,
@@ -216,6 +255,7 @@ def complete_profile_page(
     submitted = False
     refreshed = False
     last_submit = 0.0
+    last_missing = "free_roxy_profile_name_missing"
     while time.monotonic() < end:
         state = classify_page(driver)
         if state == "home":
@@ -235,33 +275,42 @@ def complete_profile_page(
                 "input[name='name']", "input[name='fullName']", "input[name='full_name']",
                 "input[autocomplete='name']", "input[placeholder*='name' i]", "input[aria-label*='name' i]",
             ])
-            if name_field is None:
-                raise FreeRegisterError(
-                    "free_roxy_profile", "填写 Free 账号资料",
-                    f"资料页未找到姓名输入框（{safe_page_location(driver)}）",
-                    error_code="free_roxy_profile_name_missing",
-                )
-            _type(name_field, name, human)
+            if name_field is not None:
+                _type(name_field, name, human)
+            else:
+                parts = str(name or "User").split(" ", 1)
+                first = _find_first(driver, [
+                    "input[name='firstName']", "input[name='first_name']",
+                    "input[placeholder*='first' i]", "input[aria-label*='first' i]",
+                ])
+                last = _find_first(driver, [
+                    "input[name='lastName']", "input[name='last_name']",
+                    "input[placeholder*='last' i]", "input[aria-label*='last' i]",
+                ])
+                if first is not None:
+                    _type(first, parts[0], human)
+                if last is not None:
+                    _type(last, parts[1] if len(parts) > 1 else "User", human)
+                if first is None and last is None:
+                    last_missing = "free_roxy_profile_name_missing"
+                    time.sleep(0.4)
+                    continue
             year, month, day = (int(value) for value in birthday.split("-"))
             today = date.today()
             age = today.year - year - ((today.month, today.day) < (month, day))
             birthday_mode = _set_birthday(driver, birthday, age)
             if not birthday_mode:
-                raise FreeRegisterError(
-                    "free_roxy_profile", "填写 Free 账号资料",
-                    f"资料页未找到可用的年龄或生日控件（{safe_page_location(driver)}）",
-                    error_code="free_roxy_profile_birthday_missing",
-                )
+                last_missing = "free_roxy_profile_birthday_missing"
+                time.sleep(0.4)
+                continue
             _accept_consents(driver)
             delay = getattr(human, "delay", None)
             if callable(delay):
                 delay("form")
             if not _submit(driver):
-                raise FreeRegisterError(
-                    "free_roxy_profile", "提交 Free 账号资料",
-                    f"资料页没有可用的提交按钮（{safe_page_location(driver)}）",
-                    error_code="free_roxy_profile_submit_missing",
-                )
+                last_missing = "free_roxy_profile_submit_missing"
+                time.sleep(0.4)
+                continue
             submitted = True
             last_submit = time.monotonic()
             _log(log, f"资料页已提交，等待 OAuth 跳转（{safe_page_location(driver)}）")
@@ -276,10 +325,15 @@ def complete_profile_page(
                 refreshed = True
         time.sleep(0.4)
     summary = _profile_summary(driver)
+    if last_missing == "free_roxy_profile_name_missing":
+        message = f"资料页未找到姓名输入框（{summary['url']}，输入框={summary['input_count']}）"
+    elif last_missing == "free_roxy_profile_birthday_missing":
+        message = f"资料页未找到可用的年龄或生日控件（{summary['url']}，输入框={summary['input_count']}）"
+    else:
+        message = f"资料页没有可用的提交按钮（{summary['url']}，输入框={summary['input_count']}）"
     raise FreeRegisterError(
-        "free_roxy_profile", "完成 Free 账号资料",
-        f"资料页提交后未确认 OAuth 跳转（{summary['url']}，输入框={summary['input_count']}，复选框={summary['checkbox_count']}）",
-        error_code="free_roxy_profile_transition_timeout",
+        "free_roxy_profile", "完成 Free 账号资料", message,
+        error_code=last_missing if not submitted else "free_roxy_profile_transition_timeout",
     )
 
 

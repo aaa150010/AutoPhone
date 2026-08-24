@@ -13,11 +13,27 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.58',
-  freeRuntimeVersion: '1.6.58',
-  title: 'Free OAuth 与 Roxy 邮箱链路修复',
-  releasedAt: '2026-08-24',
+  version: '1.6.61',
+  freeRuntimeVersion: '1.6.61',
+  title: 'Free OAuth 与 Roxy 双链路稳定性修复',
+  releasedAt: '2026-08-25',
   sections: [
+    {
+      title: 'Roxy OTP 账号状态诊断',
+      usage: '邮箱验证码接口返回账号停用、封禁或暂停时，任务会保留原始 OTP 节点和服务端代码并停止重复提交，不再被旧验证码超时覆盖；恢复邮箱后可从失败任务重新运行。',
+    },
+    {
+      title: 'Free 协议诊断脱敏',
+      usage: 'OAuth 和邮箱识别失败只保留 HTTP 状态、Content-Type、页面类型和服务端代码；HTML 正文、登录页片段和其他响应内容不再写入公开诊断。',
+    },
+    {
+      title: 'Roxy 资料页 React-Aria 兼容',
+      usage: '资料页会等待姓名控件挂载，兼容首末名分栏、隐藏年月日选择器、React-Aria 下拉框和 spinbutton；资料页提交按钮会在同一 Profile 内受控重试并确认真实跳转。',
+    },
+    {
+      title: 'Free 代理池重试边界',
+      usage: '全协议和 Roxy 继续使用健康随机代理池，不强制一号一 IP；OAuth 前置页面故障可在限定次数内更换健康代理，服务端 429 会保留限流节点并回到配置的并发基线。',
+    },
     {
       title: 'Free OAuth 正常落点与安全挑战识别',
       usage: '全协议 OAuth 预检现在接受受信任 auth.openai.com 的正常 HTML 起始页（包括 create-account/password），不会再把合法落点误报为会话失败；可见 Cloudflare、人机验证或安全挑战仍会停止，普通脚本中的 challenge 标记不会误触发。',
@@ -28,7 +44,7 @@ export const currentRelease: ReleaseNotes = {
     },
     {
       title: 'Roxy 邮箱提交与活动窗口',
-      usage: 'Roxy 邮箱提交等待期间会持续选择同一 Profile 的 OpenAI 活动窗口；chatgpt.com/auth/login?email 的输入框短暂卸载时仍会等待重新挂载并执行受控恢复，避免卡在邮箱提交节点。',
+      usage: 'Roxy 邮箱提交等待期间会持续选择同一 Profile 的 OpenAI 活动窗口；chatgpt.com/auth/login?email 的输入框短暂卸载时先执行同表单受控恢复，仍不跳转时只在当前 Profile 内启动一次认证流程，且只接受可信 auth.openai.com 目标。',
     },
     {
       title: 'Free 代理导航预检修复',

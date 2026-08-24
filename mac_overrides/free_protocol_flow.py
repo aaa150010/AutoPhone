@@ -158,18 +158,41 @@ def _contains(value: Any, markers: tuple[str, ...]) -> bool:
     return any(marker.casefold() in text for marker in markers)
 
 
+def _pre_auth_html_response(response: Any, node: str) -> bool:
+    """Return whether an HTML response can be retried on another pool proxy."""
+    if node not in {"free_oauth_session", "free_email_identifier"} or not _page_is_html(response):
+        return False
+    status = _status(response)
+    return status is None or 200 <= int(status) < 400
+
+
+def _trusted_html_bootstrap(response: Any, method: str) -> bool:
+    return bool(
+        method == "initiate_oauth"
+        and _page_is_html(response)
+        and _trusted_oauth_bootstrap_location(response)
+        and not _is_security_challenge_response(response)
+    )
+
+
 def _raise_response(response: Any, *, node: str, label: str, stage: str) -> None:
     """Map a transport response to a stable Free node error."""
     _ok, _page, _continue, error_text, session_invalid = _chain_helpers()
     error = str(error_text(response) or "").strip()
     if session_invalid(response) or _contains(error, _SESSION_INVALID_MARKERS):
-        raise FreeRegisterError(
+        failure = FreeRegisterError(
             node,
             label,
             f"{_response_detail(response, error)}；OAuth 会话已失效",
             error_code="oauth_session_invalid",
             **_response_metadata(response, action_hint="保持当前邮箱、代理和设备上下文，重建一次 OAuth 会话", diagnostic_error=error),
         )
+        if _pre_auth_html_response(response, node):
+            # A 200 HTML login/error envelope is a route-level response.  The
+            # worker may switch to another healthy pool member after the
+            # bounded same-session rebuild, without quarantining this proxy.
+            setattr(failure, "proxy_retryable", True)
+        raise failure
     if _contains(error, _CHALLENGE_MARKERS) or _is_security_challenge_response(response):
         raise FreeRegisterError(
             "free_oauth_security_challenge",
@@ -480,12 +503,16 @@ def _call_transport(
         _raise_security_page(result)
         _ok, _page, _continue, error_text, session_invalid = _chain_helpers()
         error = str(error_text(result) or "")
-        if session_invalid(result) or _contains(error, _SESSION_INVALID_MARKERS):
-            raise FreeRegisterError(
+        trusted_bootstrap = _trusted_html_bootstrap(result, method)
+        if (session_invalid(result) or _contains(error, _SESSION_INVALID_MARKERS)) and not trusted_bootstrap:
+            failure = FreeRegisterError(
                 node, label, f"{_response_detail(result, error)}；OAuth 会话已失效",
                 error_code="oauth_session_invalid",
                 **_response_metadata(result, action_hint="保持当前邮箱、代理和设备上下文，重建一次 OAuth 会话", diagnostic_error=error),
             )
+            if _pre_auth_html_response(result, node):
+                setattr(failure, "proxy_retryable", True)
+            raise failure
         return result
     except FreeRegisterError:
         raise
@@ -724,7 +751,8 @@ def _run_once(
         stop_requested=stop_requested,
         log=log,
     )
-    if not ok(start):
+    trusted_start = _trusted_html_bootstrap(start, "initiate_oauth")
+    if not ok(start) and not trusted_start:
         _raise_response(start, node="free_oauth_session", label="Free OAuth 会话", stage="free_oauth_session")
     if _page_is_html(start):
         if _is_security_challenge_response(start):
@@ -736,12 +764,15 @@ def _run_once(
                 error_code="free_oauth_security_challenge",
             )
         if not _trusted_oauth_bootstrap_location(start):
-            raise FreeRegisterError(
+            failure = FreeRegisterError(
                 "free_oauth_session",
                 "Free OAuth 会话",
                 f"OAuth 授权返回无法识别的 HTML（{_response_detail(start)}）",
                 error_code="oauth_bootstrap_html",
             )
+            if _pre_auth_html_response(start, "free_oauth_session"):
+                setattr(failure, "proxy_retryable", True)
+            raise failure
         _log(log, "OAuth 授权返回受信任 Auth HTML 起始页，继续使用当前会话提交邮箱", "info")
     _log(log, f"OAuth 会话建立成功（HTTP {_status(start) or '-'}，Content-Type {_content_type(start) or '-'}）", "success")
 
@@ -768,12 +799,15 @@ def _run_once(
                 retryable=False,
                 error_code="free_oauth_security_challenge",
             )
-        raise FreeRegisterError(
+        failure = FreeRegisterError(
             "free_email_identifier",
             "识别 Free 注册邮箱",
             f"邮箱识别返回 HTML（{_response_detail(response)}），授权会话未建立",
             error_code="oauth_bootstrap_html",
         )
+        if _pre_auth_html_response(response, "free_email_identifier"):
+            setattr(failure, "proxy_retryable", True)
+        raise failure
     current_page = str(page_type(response) or _page_type_value(response) or "").strip().casefold().replace("-", "_")
     _log(log, f"邮箱提交成功（页面={current_page or '-'}，continue={'yes' if _next_url(response) else 'no'}）", "info")
 

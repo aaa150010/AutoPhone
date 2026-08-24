@@ -292,6 +292,27 @@ class FreeRoxyOtpFlowTests(unittest.TestCase):
         self.assertEqual(getattr(raised.exception, "error_code", ""), "free_email_otp_invalid")
         self.assertEqual(getattr(raised.exception, "provider_status", None), 422)
 
+    def test_terminal_provider_code_is_preserved_without_retry(self) -> None:
+        class DeactivatedDriver(_FakeOtpDriver):
+            def execute_script(self, script: str, *args: object) -> object:
+                if "__gptphone_email_otp_validate__" in script and "filter" in script:
+                    return [{
+                        "status": 403,
+                        "contentType": "application/json",
+                        "errorCode": "account_deactivated",
+                    }]
+                return super().execute_script(script, *args)
+
+        driver = DeactivatedDriver([_FakeOtpElement(inputmode="numeric")])
+        with patch.object(self.flow.time, "sleep", return_value=None):
+            with self.assertRaises(FreeRegisterError) as raised:
+                self.flow.wait_after_otp_submit(driver, timeout=2)
+        error = raised.exception
+        self.assertEqual(error.error_code, "free_email_otp_account_deactivated")
+        self.assertEqual(error.provider_code, "account_deactivated")
+        self.assertFalse(error.retryable)
+        self.assertIn("account_deactivated", str(error))
+
     def test_validate_http_503_is_retryable_and_keeps_safe_status(self) -> None:
         class ValidateDriver(_FakeOtpDriver):
             def execute_script(self, script: str, *args: object) -> object:
