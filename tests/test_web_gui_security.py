@@ -3453,6 +3453,43 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertNotIn(sent_payloads[0]["code"], serialized_logs)
         self.assertNotIn("private-email-code", serialized_logs)
 
+    def test_signup_email_otp_uses_the_mfa_wrapper(self):
+        module = self.module
+        self.assertIs(
+            module._codex_oauth_chain.RealCodexTransport.verify_signup_email_otp,
+            module._real_verify_signup_email_otp,
+        )
+        originals = {
+            "runtime": module._EMAIL_OTP_MFA_RUNTIME,
+            "verify_signup": module._ORIGINAL_REAL_VERIFY_SIGNUP_EMAIL_OTP,
+        }
+        calls = []
+
+        def original_verify(transport, code):
+            calls.append((transport, code))
+            return {"_status": 200, "page": {"type": "mfa_challenge"}}
+
+        try:
+            module._ORIGINAL_REAL_VERIFY_SIGNUP_EMAIL_OTP = original_verify
+            module._EMAIL_OTP_MFA_RUNTIME = SimpleNamespace(
+                verify=lambda transport, code, original: {
+                    "original": original,
+                    "original_result": original(transport, code),
+                    "transport": transport,
+                    "code": code,
+                }
+            )
+            transport = SimpleNamespace()
+            result = module._real_verify_signup_email_otp(transport, "email-code")
+        finally:
+            module._EMAIL_OTP_MFA_RUNTIME = originals["runtime"]
+            module._ORIGINAL_REAL_VERIFY_SIGNUP_EMAIL_OTP = originals["verify_signup"]
+
+        self.assertIs(result["original"], original_verify)
+        self.assertEqual(result["transport"], transport)
+        self.assertEqual(result["code"], "email-code")
+        self.assertEqual(calls, [(transport, "email-code")])
+
     def test_task_boundary_clears_url_totp_secret_after_early_exit(self):
         module = self.module
         original_run_one = module._ORIGINAL_IMPORTER_RUN_ONE

@@ -39,6 +39,7 @@ import connectivity_notifications as _connectivity_notifications_ext
 import connectivity_routes as _connectivity_routes_ext
 import connectivity_diagnostics as _connectivity_diagnostics_ext
 import mfa_retry_runtime as _mfa_retry_runtime_ext
+import oauth_mfa_runtime as _oauth_mfa_runtime_ext
 import manual_verification_runtime as _manual_verification_runtime_ext
 import manual_verification_routes as _manual_verification_routes_ext
 import phase1_checkpoint_runtime as _phase1_checkpoint_runtime_ext
@@ -145,6 +146,9 @@ _ORIGINAL_REAL_IMPORT_PHASE1_SESSION = _codex_oauth_chain.RealCodexTransport.imp
 _ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = _codex_oauth_chain.RealCodexTransport.submit_email_identifier
 _ORIGINAL_REAL_VERIFY_PASSWORD = _codex_oauth_chain.RealCodexTransport.verify_password
 _ORIGINAL_REAL_VERIFY_EMAIL_OTP = _codex_oauth_chain.RealCodexTransport.verify_email_otp
+_ORIGINAL_REAL_VERIFY_SIGNUP_EMAIL_OTP = (
+    _codex_oauth_chain.RealCodexTransport.verify_signup_email_otp
+)
 _ORIGINAL_REAL_VERIFY_MFA_OTP = _codex_oauth_chain.RealCodexTransport.verify_mfa_otp
 _ORIGINAL_REAL_SEND_MFA_OTP = _codex_oauth_chain.RealCodexTransport.send_mfa_otp
 _ORIGINAL_REAL_INITIATE_OAUTH = _codex_oauth_chain.RealCodexTransport.initiate_oauth
@@ -3499,56 +3503,62 @@ def _mfa_factor_id_from_response(response):
     )
 
 
+def _totp_secret_for_transport(transport=None):
+    """Resolve the task's TOTP seed across passwordless and password flows."""
+    secret = str(_MAILBOX_TOTP_SECRET_CONTEXT.get("") or "").strip()
+    if secret:
+        return secret
+    if transport is None:
+        return ""
+    secret = str(getattr(transport, "_gptphone_totp_secret", "") or "").strip()
+    if secret:
+        return secret
+    context = getattr(transport, "_gptphone_auth_challenge_context", None)
+    provider = getattr(context, "email_otp_provider", None)
+    entry = getattr(provider, "entry", None)
+    if str(getattr(entry, "oauth_client_id", "") or "").strip() != "chatgpt_totp":
+        return ""
+    return str(getattr(entry, "oauth_refresh_token", "") or "").strip()
+
+
+_EMAIL_OTP_MFA_RUNTIME = _oauth_mfa_runtime_ext.EmailOtpMfaRuntime(
+    secret_get=lambda transport=None: _totp_secret_for_transport(transport),
+    secret_clear=lambda: _MAILBOX_TOTP_SECRET_CONTEXT.set(""),
+    checkpoint_save=lambda transport, response: _checkpoint_save_after_auth(
+        transport, response
+    ),
+    response_error_code=lambda response: _mfa_retry_runtime_ext.response_error_code(
+        response
+    ),
+    page_type=lambda response: _codex_oauth_chain._page_type(response),
+    observe_auth_step=lambda transport, response, stage: _observe_auth_step(
+        transport, response, stage
+    ),
+    continue_if_needed=lambda *args, **kwargs: _auth_challenge_runtime_ext.continue_if_needed(
+        *args, **kwargs
+    ),
+    factor_id=lambda response: _mfa_factor_id_from_response(response),
+    verify_totp=lambda *args, **kwargs: _mfa_retry_runtime_ext.verify_email_totp_with_one_window_retry(
+        *args, **kwargs
+    ),
+    verify_mfa=lambda *args, **kwargs: _TOTP_PATCHES.verify_mfa_otp(*args, **kwargs),
+    manual_fallback=lambda transport, response: _manual_totp_fallback(transport, response),
+    session_invalid=lambda response: _auth_session_runtime_ext.is_session_invalid(
+        response
+    ),
+    stop_event=lambda transport: _manual_stop_event(transport),
+)
+
+
 def _real_verify_email_otp(self, code):
-    response = _ORIGINAL_REAL_VERIFY_EMAIL_OTP(self, code)
-    _checkpoint_save_after_auth(self, response)
-    secret = _MAILBOX_TOTP_SECRET_CONTEXT.get("")
-    _MAILBOX_TOTP_SECRET_CONTEXT.set("")
-    if _mfa_retry_runtime_ext.response_error_code(response) == "incorrect_code":
-        _observe_auth_step(self, response, "email_code_verifying")
-        return response
-    try:
-        page_type = _codex_oauth_chain._page_type(response)
-    except Exception:
-        page_type = ""
-    if page_type not in {"mfa_otp", "mfa_challenge", "mfa_otp_verification"} or not secret:
-        _observe_auth_step(self, response, "email_code_verifying")
-        if getattr(self, "_gptphone_free_protocol_state_machine", False):
-            return response
-        return _auth_challenge_runtime_ext.continue_if_needed(
-            self, response, origin="email_otp"
-        )
-    factor_id = _mfa_factor_id_from_response(response)
-    if not factor_id:
-        _observe_auth_step(self, response, "email_code_verifying")
-        if getattr(self, "_gptphone_free_protocol_state_machine", False):
-            return response
-        return _auth_challenge_runtime_ext.continue_if_needed(
-            self, response, origin="email_otp"
-        )
-    _call_log(
-        getattr(self, "log_fn", None),
-        "  [Codex] 邮箱验证码后遇到 MFA，正在验证 2FA 动态码",
-        "info",
-    )
-    response = _mfa_retry_runtime_ext.verify_email_totp_with_one_window_retry(
+    return _EMAIL_OTP_MFA_RUNTIME.verify(self, code, _ORIGINAL_REAL_VERIFY_EMAIL_OTP)
+
+
+def _real_verify_signup_email_otp(self, code):
+    return _EMAIL_OTP_MFA_RUNTIME.verify(
         self,
-        factor_id=factor_id,
-        secret=secret,
-        verify_fn=_TOTP_PATCHES.verify_mfa_otp,
-        manual_fallback_fn=_manual_totp_fallback,
-        session_invalid_fn=_auth_session_runtime_ext.is_session_invalid,
-        stop_event=_manual_stop_event(self),
-        log_fn=getattr(self, "log_fn", None),
-    )
-    _checkpoint_save_after_auth(self, response)
-    _observe_auth_step(self, response, "mfa_otp_verifying")
-    if _mfa_retry_runtime_ext.response_error_code(response) == "incorrect_code":
-        return response
-    if getattr(self, "_gptphone_free_protocol_state_machine", False):
-        return response
-    return _auth_challenge_runtime_ext.continue_if_needed(
-        self, response, origin="email_otp"
+        code,
+        _ORIGINAL_REAL_VERIFY_SIGNUP_EMAIL_OTP,
     )
 
 
@@ -3613,6 +3623,7 @@ _codex_oauth_chain.RealCodexTransport.send_email_otp = _real_send_email_otp
 _codex_oauth_chain.RealCodexTransport.submit_email_identifier = _real_submit_email_identifier
 _codex_oauth_chain.RealCodexTransport.verify_password = _real_verify_password
 _codex_oauth_chain.RealCodexTransport.verify_email_otp = _real_verify_email_otp
+_codex_oauth_chain.RealCodexTransport.verify_signup_email_otp = _real_verify_signup_email_otp
 _codex_oauth_chain.RealCodexTransport.send_mfa_otp = _real_send_mfa_otp
 _codex_oauth_chain.RealCodexTransport.verify_mfa_otp = _real_verify_mfa_otp
 _codex_oauth_chain.RealCodexTransport.initiate_oauth = _real_initiate_oauth

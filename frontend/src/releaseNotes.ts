@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.51',
-  freeRuntimeVersion: '1.6.51',
+  version: '1.6.53',
+  freeRuntimeVersion: '1.6.53',
   title: 'Free 协议预检与 Roxy 错误定位修复',
   releasedAt: '2026-08-24',
   sections: [
+    {
+      title: '普通 OAuth 注册 MFA 会话修复',
+      usage: '邮箱验证码后遇到 2FA 时，会从当前任务的邮箱提供器上下文读取绑定密钥，即使没有密码页也会先验证动态码，再继续手机号接码或 OAuth 回调，避免重启后重复出现“OAuth 回调未返回有效 code”。',
+    },
     {
       title: '协议 403 诊断与邮箱边界修复',
       usage: 'ChatGPT、Auth、Sentinel 预检失败会保留具体阶段、HTTP 状态、Content-Type、页面类型、服务端错误码和更换代理建议；尚未提交邮箱时，协议预检或 Node 初始化失败会自动释放邮箱并保留任务失败记录。',
