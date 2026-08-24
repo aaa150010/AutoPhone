@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.48',
-  freeRuntimeVersion: '1.6.48',
-  title: 'Free 双链路审查修复与诊断一致性',
+  version: '1.6.49',
+  freeRuntimeVersion: '1.6.49',
+  title: 'URL 邮箱与 2FA Secret 流程补齐',
   releasedAt: '2026-08-24',
   sections: [
+    {
+      title: 'URL 邮箱支持 2FA Secret',
+      usage: '邮箱管理导入“账号----接码 URL----Base32 2FA Secret”后，邮箱验证码仍从接码 URL 获取，邮箱验证完成后由本机按 30 秒 TOTP 窗口生成 6 位 2FA 码；取件 URL 和 2FA 均按需读取，公开列表与日志不会暴露原始凭据。',
+    },
     {
       title: '注册结果与错误身份一致',
       usage: '账号已取得 Token 后，套餐查询、2FA 或注册代理复核失败会保留账号结果并标记为部分成功；任务、Free 邮箱、结果文件和公开接口使用同一节点码、中文节点、HTTP 状态与处理建议。2FA 重试成功后会清除旧失败，不再显示已经解决的错误。',

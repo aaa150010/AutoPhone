@@ -64,7 +64,7 @@ defineExpose({ open })
       type="textarea"
       :rows="12"
       resize="none"
-      placeholder="URL 邮箱：邮箱---https://接码地址&#10;密码+URL：邮箱----登录密码----https://接码地址&#10;URL+密码：邮箱----https://接码地址----密码：登录密码&#10;TOTP：GPT账号---登录密码---Base32 2FA密钥&#10;TOTP：GPT账号|登录密码|Base32 2FA密钥&#10;OAuth：邮箱----密码----client_id----refresh_token&#10;&#10;URL 邮箱支持 --- / ---- / | / ｜"
+      placeholder="URL 邮箱：邮箱---https://接码地址&#10;URL+2FA：邮箱----https://接码地址----Base32 2FA密钥（2FA 码由本机生成）&#10;密码+URL：邮箱----登录密码----https://接码地址&#10;URL+密码：邮箱----https://接码地址----密码：登录密码&#10;TOTP：GPT账号---登录密码---Base32 2FA密钥&#10;TOTP：GPT账号|登录密码|Base32 2FA密钥&#10;OAuth：邮箱----密码----client_id----refresh_token&#10;&#10;URL 邮箱支持 --- / ---- / | / ｜"
     />
     <template #footer>
       <el-button :disabled="loading" @click="visible = false">取消</el-button>

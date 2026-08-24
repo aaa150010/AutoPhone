@@ -2328,6 +2328,28 @@ class MailboxAdminTests(unittest.TestCase):
         self.assertTrue(reader.include_existing)
         self.assertEqual(self.pollers, [])
 
+    def test_code_endpoint_url_totp_import_keeps_url_and_secret_private(self):
+        row = (
+            "dejon_exltx-split-test@atheist.com----"
+            "http://43.131.226.181/code/test-token----"
+            "JBSWY3DPEHPK3PXP"
+        )
+        imported = self.service.append(row + "\n")
+        self.assertEqual(imported["imported"], 1)
+
+        public = self.service.list_mailboxes()["rows"][0]
+        serialized = json.dumps(public, ensure_ascii=False)
+        self.assertTrue(public["has_mailbox_url"])
+        self.assertTrue(public["has_totp"])
+        self.assertNotIn("43.131.226.181", serialized)
+        self.assertNotIn("test-token", serialized)
+        self.assertNotIn("JBSWY3DPEHPK3PXP", serialized)
+
+        result = self.service.reveal_totp(public["row_id"], public["line_no"])
+        self.assertEqual(result["kind"], "totp")
+        self.assertEqual(result["code"], generate_totp_code("JBSWY3DPEHPK3PXP", now=self.clock))
+        self.assertNotIn("JBSWY3DPEHPK3PXP", json.dumps(result))
+
     def test_url_latest_code_failure_redacts_url_and_email(self):
         row = "url@example.com|https://mail.example.test/messages/private-token"
         self._write_pool(row + "\n")

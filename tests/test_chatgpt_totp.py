@@ -162,6 +162,52 @@ class ChatGptTotpTests(unittest.TestCase):
             with self.subTest(invalid=invalid):
                 self.assertIsNone(parse_mailbox_url_totp_row(invalid))
 
+    def test_code_endpoint_url_totp_rows_build_url_entries_without_exposing_secret(self):
+        secret = "JBSWY3DPEHPK3PXP"
+        row = (
+            "dejon_exltx-split-test@atheist.com----"
+            "http://43.131.226.181/code/test-token----"
+            f"{secret}"
+        )
+        self.assertEqual(
+            parse_mailbox_url_totp_row(row),
+            (
+                "dejon_exltx-split-test@atheist.com",
+                "http://43.131.226.181/code/test-token",
+                secret,
+            ),
+        )
+        self.assertEqual(totp_code(secret, now=59), "996554")
+
+        class PoolEntry:
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            pool_path = Path(temp_dir) / "pool.txt"
+            pool_path.write_text(row + "\n", encoding="utf-8")
+            patches = build_chatgpt_totp_patches(
+                runtime_module=SimpleNamespace(PoolEntry=PoolEntry),
+                codex_oauth_chain=SimpleNamespace(),
+                original_entries_unlocked=lambda _pool: ([], ["line 1: bad"]),
+                original_outlook_otp_provider=lambda *args, **kwargs: None,
+                original_account_label=lambda entry: entry.email,
+                original_verify_password=lambda *args: {},
+                original_send_mfa_otp=lambda *args: {},
+                original_verify_mfa_otp=lambda *args: {},
+                parse_oauth_mailbox_row=parse_oauth_mailbox_row,
+            )
+            entries, errors = patches.entries_unlocked(SimpleNamespace(pool_path=pool_path))
+
+        self.assertEqual(errors, [])
+        self.assertEqual(len(entries), 1)
+        entry = entries[0]
+        self.assertEqual(entry.email, "dejon_exltx-split-test@atheist.com")
+        self.assertEqual(entry.mailbox_type, "url")
+        self.assertEqual(entry.mailbox_url, "http://43.131.226.181/code/test-token")
+        self.assertEqual(entry.oauth_client_id, "chatgpt_totp")
+        self.assertEqual(entry.oauth_refresh_token, secret)
+
     def test_mixed_pool_builds_the_correct_runtime_entry_type(self):
         class PoolEntry:
             def __init__(self, **kwargs):
