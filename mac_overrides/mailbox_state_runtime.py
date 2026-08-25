@@ -540,6 +540,12 @@ def _mutate_draft_rows(
                 line_no,
                 known_row_ids=known_row_ids,
             )
+            exact_item = items.get(row_id)
+            if isinstance(exact_item, Mapping):
+                # The current source row is authoritative. Older identity or
+                # line-based aliases can describe a previous lifecycle and
+                # must not make a valid draft look stale.
+                matching_keys = [row_id]
             if restore:
                 is_draft = bool(matching_keys) and all(
                     isinstance(items.get(state_key), Mapping)

@@ -448,6 +448,75 @@ class ChatGptTotpTests(unittest.TestCase):
             [{"event": "consumed", "at": 100}],
         )
 
+    def test_exact_source_row_state_overrides_stale_identity_state(self):
+        class PoolEntry:
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+
+        class MailboxPoolModule:
+            @staticmethod
+            def _entry_key(email, identity):
+                return hashlib.sha256(
+                    f"{email.lower()}\x1f{identity}".encode("utf-8", "ignore")
+                ).hexdigest()
+
+        row = "draft@example.com----DraftPass"
+        canonical = MailboxPoolModule._entry_key(
+            "draft@example.com", "outlook::DraftPass"
+        )
+        row_id = hashlib.sha256(row.encode()).hexdigest()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            pool_path = root / "pool.txt"
+            state_path = root / "state.json"
+            pool_path.write_text(row + "\n", encoding="utf-8")
+            state_path.write_text(
+                json.dumps({
+                    "items": {
+                        canonical: {
+                            "email": "draft@example.com",
+                            "line_no": 1,
+                            "status": "available",
+                            "reason": "stopped",
+                            "updated_at": 200,
+                        },
+                        row_id: {
+                            "email": "draft@example.com",
+                            "line_no": 1,
+                            "status": "damaged",
+                            "reason": "manual_draft",
+                            "updated_at": 100,
+                        },
+                    }
+                }),
+                encoding="utf-8",
+            )
+            patches = build_chatgpt_totp_patches(
+                runtime_module=SimpleNamespace(
+                    PoolEntry=PoolEntry,
+                    _mailbox_pool=MailboxPoolModule,
+                ),
+                codex_oauth_chain=SimpleNamespace(),
+                original_entries_unlocked=lambda _pool: ([], ["line 1: bad"]),
+                original_outlook_otp_provider=lambda *args, **kwargs: None,
+                original_account_label=lambda entry: entry.email,
+                original_verify_password=lambda *args: {},
+                original_send_mfa_otp=lambda *args: {},
+                original_verify_mfa_otp=lambda *args: {},
+                parse_oauth_mailbox_row=parse_oauth_mailbox_row,
+            )
+
+            entries, errors = patches.entries_unlocked(
+                SimpleNamespace(pool_path=pool_path, state_path=state_path)
+            )
+            migrated = json.loads(state_path.read_text(encoding="utf-8"))["items"]
+
+        self.assertEqual(errors, [])
+        self.assertEqual(entries[0].key, canonical)
+        self.assertEqual(set(migrated), {canonical})
+        self.assertEqual(migrated[canonical]["status"], "damaged")
+        self.assertEqual(migrated[canonical]["reason"], "manual_draft")
+
     def test_plain_password_format_change_cannot_bypass_valid_legacy_lease(self):
         class PoolEntry:
             def __init__(self, **kwargs):

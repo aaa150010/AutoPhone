@@ -232,6 +232,18 @@ class PublicStateRuntimeTests(unittest.TestCase):
             "draft": 3,
         })
 
+    def test_mailbox_pool_summary_getter_uses_live_service(self):
+        self.runtime.mailbox_pool_summary_getter = lambda: SimpleNamespace(
+            list_mailboxes=lambda: {"counts": {"total": 2, "available": 1}}
+        )
+
+        masked = self.runtime.masked_state({
+            "runtime": {"pool": {"available": 99}, "tasks": []},
+        })
+
+        self.assertEqual(masked["runtime"]["pool"]["available"], 1)
+        self.assertEqual(masked["runtime"]["pool"]["total"], 2)
+
     def test_public_task_exposes_only_mailbox_capabilities(self):
         cases = (
             (

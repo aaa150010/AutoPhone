@@ -3825,6 +3825,9 @@ _resolve_sms_provider_pools = _LOCAL_CONFIG_RUNTIME.resolve_sms_provider_pools
 _resolve_sms_keys = _LOCAL_CONFIG_RUNTIME.resolve_sms_keys
 
 
+_MAILBOX_ADMIN_REF = {"service": None}
+
+
 _PUBLIC_STATE = _public_state_runtime_ext.PublicStateRuntime(
     clean=_module._clean,
     secret_mask=_SECRET_MASK,
@@ -3857,6 +3860,7 @@ _PUBLIC_STATE = _public_state_runtime_ext.PublicStateRuntime(
     runtime_summary_view=lambda tasks: _sms_cost_history_ext.with_historical_sms_cost(_runtime_summary(tasks), _RUNTIME_DATA_DIR),
     notification_public_status_view=lambda: _notification_public_status(),
     public_logs_view=lambda logs, tasks: _public_logs(logs, tasks),
+    mailbox_pool_summary_getter=lambda: _MAILBOX_ADMIN_REF.get("service"),
 )
 
 
@@ -3909,7 +3913,7 @@ _test_email_notification = _LOCAL_CONFIG_RUNTIME.test_email_notification
 
 
 def _mailbox_admin_factory(store, importer, logs):
-    return _mailbox_admin_factory_ext.build_mailbox_admin(
+    service = _mailbox_admin_factory_ext.build_mailbox_admin(
         store, importer, logs,
         runtime=_runtime,
         next_batch_priority=_MAILBOX_NEXT_BATCH_PRIORITY,
@@ -3922,6 +3926,8 @@ def _mailbox_admin_factory(store, importer, logs):
         actionable_phone_risk_status=_actionable_phone_risk_status,
         run_batch_manifest=_RUN_BATCH_MANIFEST,
     )
+    _MAILBOX_ADMIN_REF["service"] = service
+    return service
 
 
 def _online_mailbox_client_factory(base_url, api_token):

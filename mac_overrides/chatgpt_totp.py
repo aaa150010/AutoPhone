@@ -985,6 +985,12 @@ def _migrate_entry_state(
 
     items = state["items"]
     candidate_keys = {canonical}
+    # Mailbox administration addresses the immutable source row directly,
+    # while older pool state may still use an identity or raw-row key.  When
+    # the exact source row exists, it is the authoritative state for this
+    # physical row and must win over those historical aliases.
+    source_row_id = hashlib.sha256(str(raw).strip().encode("utf-8")).hexdigest()
+    candidate_keys.add(source_row_id)
     for source in dict.fromkeys((raw, *equivalent_rows)):
         candidate_keys.update(_legacy_entry_keys(runtime_module, email, source))
     normalized_email = str(email or "").strip().lower()
@@ -997,10 +1003,15 @@ def _migrate_entry_state(
         return canonical, False
 
     now = time.time()
-    _selected_key, selected = max(
-        candidates,
-        key=lambda candidate: _state_precedence(candidate[1], now),
+    selected = next(
+        (item for key, item in candidates if key == source_row_id),
+        None,
     )
+    if selected is None:
+        _selected_key, selected = max(
+            candidates,
+            key=lambda candidate: _state_precedence(candidate[1], now),
+        )
     merged = dict(selected)
     history: list[Any] = []
     line_numbers = [line_no]

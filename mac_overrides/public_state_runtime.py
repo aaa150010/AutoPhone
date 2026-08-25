@@ -179,6 +179,7 @@ class PublicStateRuntime:
         notification_public_status_view: Callable[[], dict[str, Any]] | None = None,
         public_logs_view: Callable[[Any, Any], Any] | None = None,
         phone_binding_metrics_getter: Callable[[], Any] | None = None,
+        mailbox_pool_summary_getter: Callable[[], Any] | None = None,
     ) -> None:
         self.clean = clean
         self.secret_mask = secret_mask
@@ -213,6 +214,7 @@ class PublicStateRuntime:
         )
         self.public_logs_view = public_logs_view or self.public_logs
         self.phone_binding_metrics_getter = phone_binding_metrics_getter
+        self.mailbox_pool_summary_getter = mailbox_pool_summary_getter
 
     def _mask_secret(self, value: Any) -> str:
         return self.secret_mask if self.clean(value) else ""
@@ -450,7 +452,10 @@ class PublicStateRuntime:
 
     def mailbox_pool_summary(self) -> dict[str, Any]:
         try:
-            result = self.mailbox_admin.list_mailboxes()
+            mailbox_admin = self.mailbox_admin
+            if self.mailbox_pool_summary_getter is not None:
+                mailbox_admin = self.mailbox_pool_summary_getter()
+            result = mailbox_admin.list_mailboxes() if mailbox_admin is not None else {}
         except Exception:
             return {}
         counts = result.get("counts") if isinstance(result, dict) else {}

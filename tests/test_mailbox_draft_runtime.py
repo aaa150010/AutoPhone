@@ -255,6 +255,40 @@ class MailboxDraftRuntimeTests(unittest.TestCase):
             self.assertEqual((root / "state.json").read_text(encoding="utf-8"), original_state)
             self.assertEqual(admin.writes, 0)
 
+    def test_restore_ignores_stale_alias_when_exact_row_is_still_a_draft(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            lines = ["one@example.test----one"]
+            exact = row_id(lines[0])
+            original = {
+                "items": {
+                    exact: {
+                        "email": "one@example.test",
+                        "line_no": 1,
+                        "status": "damaged",
+                        "reason": MANUAL_DRAFT_REASON,
+                    },
+                    "stale-identity": {
+                        "email": "one@example.test",
+                        "line_no": 1,
+                        "status": "available",
+                        "reason": "stopped",
+                    },
+                }
+            }
+            (root / "state.json").write_text(json.dumps(original), encoding="utf-8")
+            admin = FakeMailboxAdmin(root, lines)
+
+            result = restore_draft_mailboxes(admin, {
+                "rows": [{"row_id": exact, "line_no": 1}],
+            })
+
+            state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+            self.assertEqual(result, {"ok": True, "restored": 1})
+            self.assertEqual(state["items"][exact]["status"], "available")
+            self.assertEqual(state["items"][exact]["reason"], "manual_restore")
+            self.assertEqual(state["items"]["stale-identity"]["status"], "available")
+
     def test_manual_sms_marker_can_be_toggled_without_changing_source_rows(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
