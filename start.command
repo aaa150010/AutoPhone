@@ -67,6 +67,48 @@ then
 fi
 
 export XDG_CACHE_HOME="$APP_DIR/data/cache"
+
+echo "Checking Camoufox browser runtime..."
+if ! "$VENV_DIR/bin/python" - <<'PY' >/dev/null 2>&1
+import camoufox  # noqa: F401
+PY
+then
+  echo "Installing Camoufox Python package..."
+  if ! "$VENV_DIR/bin/pip" install "camoufox[geoip]"; then
+    echo "Camoufox Python package installation failed."
+    read "?Press Enter to close..."
+    exit 1
+  fi
+fi
+
+if ! "$VENV_DIR/bin/python" - <<'PY' >/dev/null 2>&1
+from camoufox.pkgman import installed_verstr
+installed_verstr()
+PY
+then
+  echo "Downloading Camoufox browser runtime (first run may take a while)..."
+  if ! "$VENV_DIR/bin/python" - <<'PY'
+from camoufox.pkgman import CamoufoxFetcher
+
+CamoufoxFetcher().install()
+PY
+  then
+    echo "Camoufox browser runtime installation failed."
+    read "?Press Enter to close..."
+    exit 1
+  fi
+fi
+
+if ! "$VENV_DIR/bin/python" - <<'PY' >/dev/null 2>&1
+from camoufox.pkgman import installed_verstr
+installed_verstr()
+PY
+then
+  echo "Camoufox browser runtime is still unavailable after installation."
+  read "?Press Enter to close..."
+  exit 1
+fi
+
 if [ ! -f "$APP_DIR/node_chain.dat" ] && [ -f "$APP_DIR/external_assets/node_chain.dat" ]; then
   cp "$APP_DIR/external_assets/node_chain.dat" "$APP_DIR/node_chain.dat"
 fi
