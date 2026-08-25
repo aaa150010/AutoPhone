@@ -30,6 +30,8 @@ const emit = defineEmits<{
   mailboxUrl: [RuntimeTask]
   freeSecret: [{ kind: 'token' | 'password' | 'totp' | 'proxy' | 'credential'; tasks: RuntimeTask[] }]
   freeTwofaRetry: [RuntimeTask]
+  diagnostic: [RuntimeTask]
+  copyDiagnosticId: [string]
   'update:activeView': ['pending' | 'running' | 'all']
   counts: [{ pending: number; running: number; all: number }]
 }>()
@@ -172,11 +174,11 @@ function emitFreeSecret(kind: 'token' | 'password' | 'totp' | 'proxy' | 'credent
       <el-table-column label="待处理事项" min-width="280" show-overflow-tooltip>
         <template #default="{ row }"><div v-if="row.failure" class="failure-actions"><el-tooltip :content="failureTooltip(row)" placement="top"><span class="failure-detail"><span class="failure-node">{{ failureIdentity(row).label || failureIdentity(row).code }}<code v-if="failureIdentity(row).showCode">{{ failureIdentity(row).code }}</code></span>{{ failureCause(row) }}</span></el-tooltip><el-button v-if="row.run_mode === 'free_register' && row.status === 'twofa_pending' && row.driver !== 'roxybrowser'" link type="warning" @click="emit('freeTwofaRetry', row)">重试 2FA</el-button></div><el-button v-else-if="row.run_mode === 'free_register' && row.status === 'twofa_pending' && row.driver !== 'roxybrowser'" link type="warning" @click="emit('freeTwofaRetry', row)">重试 2FA</el-button><TaskVerificationInput v-else-if="shouldShowManualVerification(row) && !acceptedVerificationKeys.has(verificationKey(row))" :task-id="row.task_id" :request="row.manual_verification" :now-seconds="nowSeconds" @accepted="markVerificationAccepted(row)" /><span v-else class="muted">-</span></template>
       </el-table-column>
-      <el-table-column label="操作" width="70" fixed="right" align="center"><template #default="{ row }"><el-tooltip content="查看任务链路详情" placement="top"><el-button link :icon="Document" aria-label="查看任务链路详情" @click="openDetails(row)" /></el-tooltip></template></el-table-column>
+      <el-table-column label="操作" width="100" fixed="right" align="center"><template #default="{ row }"><el-tooltip content="查看任务链路详情" placement="top"><el-button link :icon="Document" aria-label="查看任务链路详情" @click="openDetails(row)" /></el-tooltip><el-tooltip v-if="row.incident_id" content="打开故障日志" placement="top"><el-button link :icon="View" aria-label="打开故障日志" @click="emit('diagnostic', row)" /></el-tooltip></template></el-table-column>
       <template #empty><ContentEmptyState /></template>
     </el-table>
   </div>
-  <TaskDetailsDrawer v-model="detailsOpen" :task="selectedTask" :now-seconds="nowSeconds" />
+  <TaskDetailsDrawer v-model="detailsOpen" :task="selectedTask" :now-seconds="nowSeconds" @diagnostic="emit('diagnostic', $event)" @copy-diagnostic-id="emit('copyDiagnosticId', $event)" />
 </template>
 
 <style scoped>

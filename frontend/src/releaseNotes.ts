@@ -19,6 +19,10 @@ export const currentRelease: ReleaseNotes = {
   releasedAt: '2026-08-25',
   sections: [
     {
+      title: '日志中心与可引用故障档案',
+      usage: '新增独立日志中心菜单，可按日志 ID、任务/批次 ID、账号或时间定位普通流程、Free 链路和换绑故障。每次错误会生成可复制的 LOG 日志 ID，支持查看脱敏时间线、复制 GPT 诊断、导出 JSON、删除选中日志或清空诊断日志；删除不会影响账号、邮箱池、代理池或任务结果。',
+    },
+    {
       title: 'Free 三链路与 Camoufox 注册',
       usage: 'Free 注册新增可选 Camoufox 异步浏览器池，和全协议、RoxyBrowser 共用同一个 URL 邮箱取件策略与健康随机代理池。默认优先邮箱验证码；只有实际提交注册密码页的新账号才保存固定密码，已有账号登录、Session、2FA、套餐查询和失败诊断保持统一结果契约。',
     },

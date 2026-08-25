@@ -199,6 +199,26 @@ async function copyTaskEmail(task: any) {
   }
 }
 
+async function copyIncidentId(value: string) {
+  const incidentId = String(value || '').trim()
+  if (!incidentId) return
+  if (!navigator.clipboard?.writeText) {
+    ElMessage.warning('当前环境不支持复制')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(incidentId)
+    ElMessage.success('日志 ID 已复制')
+  } catch {
+    ElMessage.error('日志 ID 复制失败')
+  }
+}
+
+function openIncidentCenter(value: string) {
+  const incidentId = String(value || '').trim()
+  if (incidentId) emit('navigate', `/logs?incident_id=${encodeURIComponent(incidentId)}`)
+}
+
 function taskPlanLabel(task: any) {
   const plan = String(task?.result?.subscription_plan || task?.result?.plan_type || '').trim()
   const normalized = plan.toLowerCase()
@@ -427,6 +447,10 @@ onUnmounted(() => window.clearTimeout(timer))
                   <div class="failure-cell">
                     <strong v-if="taskFailureNode(row).label || taskFailureNode(row).code">{{ taskFailureNode(row).label || taskFailureNode(row).code }}<code v-if="taskFailureNode(row).showCode">{{ taskFailureNode(row).code }}</code></strong>
                     <span>{{ taskFailureCause(row) }}</span>
+                    <small v-if="row.incident_id" class="task-incident">
+                      <el-button text size="small" :icon="CopyDocument" @click.stop="copyIncidentId(row.incident_id)">日志 ID {{ row.incident_id }}</el-button>
+                      <el-button text size="small" :icon="View" aria-label="打开故障详情" @click.stop="openIncidentCenter(row.incident_id)" />
+                    </small>
                   </div>
                 </el-tooltip>
               </template>
@@ -505,5 +529,8 @@ onUnmounted(() => window.clearTimeout(timer))
 .failure-cell strong { color: var(--el-color-danger); font-size: 12px; font-weight: 650; }
 .failure-cell code { margin-left: 5px; color: var(--el-text-color-secondary); font-size: 10px; font-weight: 500; }
 .failure-cell span { color: var(--el-text-color-regular); font-size: 11px; }
+.task-incident { display: flex; align-items: center; min-width: 0; gap: 2px; line-height: 16px; }
+.task-incident .el-button { min-width: 0; padding: 0 2px; color: var(--el-color-primary); font-size: 10px; }
+.task-incident .el-button:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .failure-tooltip { display: grid; max-width: 520px; gap: 4px; line-height: 18px; }
 </style>

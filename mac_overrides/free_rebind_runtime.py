@@ -221,6 +221,10 @@ class FreeRebindService:
     def _log(self, message: str, level: str = "info", **fields: Any) -> None:
         if not callable(self.log_fn):
             return
+        fields = dict(fields)
+        fields.setdefault("chain", "free_rebind")
+        fields.setdefault("workflow", "rebind")
+        fields.setdefault("driver", "protocol")
         try:
             self.log_fn(sanitize_log_message(str(message)), level, **fields)
         except TypeError:
@@ -230,6 +234,25 @@ class FreeRebindService:
                 pass
         except Exception:
             pass
+
+    def _diagnostic_subject_fields(self, email: Any) -> dict[str, str]:
+        """Return only safe subject metadata for the shared diagnostic sink."""
+        value = str(email or "").strip()
+        if not value:
+            return {}
+        diagnostic_store = getattr(getattr(self.free_manager, "log_store", None), "diagnostic_store", None)
+        if diagnostic_store is None:
+            return {}
+        try:
+            local, at, domain = value.partition("@")
+            masked = f"{local[:1]}***@{domain[:80]}" if at and local and domain else "已脱敏账号"
+            return {
+                "subject_kind": "email",
+                "subject_ref_fingerprint": diagnostic_store.fingerprint(value),
+                "subject_display": masked,
+            }
+        except Exception:
+            return {}
 
     def _set_task(self, task_id: str, **values: Any) -> dict[str, Any]:
         with self._lock:
@@ -756,10 +779,28 @@ class FreeRebindService:
         except FreeRegisterError as exc:
             failure = exception_to_failure(exc, node_code=str(getattr(exc, "node_code", "free_rebind_result")), node_label=str(getattr(exc, "node_label", "邮箱换绑")))
             status = "stopped" if str(getattr(exc, "node_code", "")) == "free_rebind_stop" else "failed"
+            self._log(
+                f"[{task_id}/{failure.get('node_label', '邮箱换绑')}/{failure.get('node_code', 'free_rebind_result')}] {failure.get('public_message', '换绑任务失败')}",
+                "warn" if status == "stopped" else "error",
+                task_id=task_id,
+                node_code=failure.get("node_code"),
+                node_label=failure.get("node_label"),
+                failure=failure,
+                **self._diagnostic_subject_fields(str(getattr(self.pool.entry(str(task.get("target_row_id") or "")), "email", "") or "")),
+            )
             self._set_task(task_id, status=status, error=failure.get("public_message", ""), failure=failure)
             self.pool.update(str(task.get("target_row_id") or ""), status="failed", task_id=task_id, error=failure.get("public_message", ""), failure=failure)
         except Exception as exc:
             failure = exception_to_failure(exc, node_code="free_rebind_result", node_label="邮箱换绑")
+            self._log(
+                f"[{task_id}/邮箱换绑/free_rebind_result] {failure.get('public_message', '换绑任务失败')}",
+                "error",
+                task_id=task_id,
+                node_code="free_rebind_result",
+                node_label="邮箱换绑",
+                failure=failure,
+                **self._diagnostic_subject_fields(str(getattr(self.pool.entry(str(task.get("target_row_id") or "")), "email", "") or "")),
+            )
             self._set_task(task_id, status="failed", error=failure.get("public_message", ""), failure=failure)
             self.pool.update(str(task.get("target_row_id") or ""), status="failed", task_id=task_id, error=failure.get("public_message", ""), failure=failure)
         finally:

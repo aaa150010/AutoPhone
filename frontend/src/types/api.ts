@@ -114,6 +114,7 @@ export interface FreeLogEntry {
   action_hint?: string
   retryable?: boolean
   result?: string
+  incident_id?: string
 }
 
 export type ManualVerificationInputKind = 'email_otp' | 'sms_otp' | 'totp'
@@ -164,6 +165,7 @@ export interface TaskCheckpoint {
 
 export interface RuntimeTask {
   task_id: string
+  incident_id?: string
   run_mode?: 'register' | 'free_register' | 'relogin' | string
   account?: string
   email?: string

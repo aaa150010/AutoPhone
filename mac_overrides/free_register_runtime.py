@@ -93,12 +93,12 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         "roxy_circuit_open",
     })
 
-    def __init__(self, data_dir: str | Path, *, progress: Any = None, log_fn: Callable[[str, str], None] | None = None, runner: Callable[..., Mapping[str, Any]] | None = None, proxy_probe: Callable[[str, str], str] | None = None, proxy_chatgpt_probe: Callable[[str], int] | None = None) -> None:
+    def __init__(self, data_dir: str | Path, *, progress: Any = None, log_fn: Callable[[str, str], None] | None = None, runner: Callable[..., Mapping[str, Any]] | None = None, proxy_probe: Callable[[str, str], str] | None = None, proxy_chatgpt_probe: Callable[[str], int] | None = None, diagnostic_store: Any = None) -> None:
         self.data_dir = Path(data_dir).expanduser().resolve()
         self.pool = FreeMailboxPool(self.data_dir)
         self.proxies = FreeProxyPool(self.data_dir)
         self.task_store = FreeTaskStore(self.data_dir)
-        self.log_store = FreeLogStore(self.data_dir)
+        self.log_store = FreeLogStore(self.data_dir, diagnostic_store=diagnostic_store)
         self.progress = progress
         self.log_fn = log_fn or self.log_store.add
         self.runner = runner or self._run_protocol
@@ -151,6 +151,19 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
 
     def _task_log(self, task_id: str, message: str, level: str = "info", **fields: Any) -> None:
         text = str(message or "")
+        with self._lock:
+            task_snapshot = dict(self._tasks.get(task_id) or {})
+        diagnostic_store = getattr(self.log_store, "diagnostic_store", None)
+        if diagnostic_store is not None and task_snapshot.get("email"):
+            try:
+                email_text = str(task_snapshot.get("email") or "")
+                local_part, at, domain = email_text.partition("@")
+                masked_email = f"{local_part[:1]}***@{domain[:80]}" if at and local_part and domain else "已脱敏账号"
+                fields.setdefault("subject_kind", "email")
+                fields.setdefault("subject_ref_fingerprint", diagnostic_store.fingerprint(email_text))
+                fields.setdefault("subject_display", masked_email)
+            except Exception:
+                pass
         structured = re.match(r"^\[([^\]/]+)/([^\]/]+)(?:/([^\]]+))?\]\s*(.*)$", text)
         if structured:
             first, second, third, detail = structured.groups()
@@ -290,7 +303,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
 
     def _public_task(self, task: Mapping[str, Any]) -> dict[str, Any]:
         result = task.get("result") if isinstance(task.get("result"), Mapping) else {}
-        public = {key: copy.deepcopy(task[key]) for key in ("task_id", "ordinal", "slot_id", "slot_index", "concurrency_limit", "status", "created_at", "updated_at", "batch_id", "run_mode", "driver", "email", "row_id", "stage", "proxy_masked", "proxy_fingerprint", "expected_exit_ip", "registration_ip", "exit_ip", "profile_summary", "proxy_id", "proxy_scheme", "proxy_country", "proxy_group", "proxy_attempts", "cleanup_status") if key in task}
+        public = {key: copy.deepcopy(task[key]) for key in ("task_id", "incident_id", "ordinal", "slot_id", "slot_index", "concurrency_limit", "status", "created_at", "updated_at", "batch_id", "run_mode", "driver", "email", "row_id", "stage", "proxy_masked", "proxy_fingerprint", "expected_exit_ip", "registration_ip", "exit_ip", "profile_summary", "proxy_id", "proxy_scheme", "proxy_country", "proxy_group", "proxy_attempts", "cleanup_status") if key in task}
         public["account"] = public.get("email", "")
         public["stage_label"] = FREE_STAGE_LABELS.get(str(public.get("stage") or ""), str(public.get("stage") or ""))
         public["result"] = {

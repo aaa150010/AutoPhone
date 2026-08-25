@@ -199,6 +199,63 @@ export const startFree = (config?: Partial<FreeConfig> & { proxy_content?: strin
 export const rerunFreeTask = (taskId: string) => api<{ ok: true; batch_id: string; batch?: any; state: FreeState }>('/api/free/rerun', { task_id: taskId })
 export const stopFree = () => api<{ ok: true; state: FreeState }>('/api/free/stop', {})
 export const getFreeLogs = (taskId = '') => api<{ ok: true; task_id?: string; logs: FreeLogEntry[] }>(`/api/free/logs${taskId ? `?task_id=${encodeURIComponent(taskId)}` : ''}`)
+export interface DiagnosticIncident {
+  incident_id: string
+  created_at?: string
+  updated_at?: string
+  chain?: string
+  workflow?: string
+  driver?: string
+  run_id?: string
+  batch_id?: string
+  task_id?: string
+  subject_kind?: string
+  subject_ref?: string
+  subject_display?: string
+  outcome?: string
+  status?: string
+  first_node_code?: string
+  first_node_label?: string
+  first_error_code?: string
+  retryable?: boolean | number
+  failure?: Record<string, any>
+  event_count?: number
+  integrity_status?: string
+  match_basis?: string[]
+  time_distance_seconds?: number | null
+  events?: DiagnosticEvent[]
+}
+export interface DiagnosticEvent {
+  event_id: string
+  incident_id?: string
+  occurred_at?: string
+  received_at?: string
+  chain?: string
+  workflow?: string
+  driver?: string
+  task_id?: string
+  batch_id?: string
+  stage_group?: string
+  node_code?: string
+  node_label?: string
+  sequence?: number
+  attempt?: number
+  attempt_group?: string
+  outcome?: string
+  parent_event_id?: string
+  root_cause_event_id?: string
+  elapsed_ms?: number | null
+  failure?: Record<string, any>
+  transport?: Record<string, any>
+  message?: string
+  redaction_applied?: boolean
+}
+export const searchDiagnostics = (query: Record<string, any>) => api<{ ok: true; results: DiagnosticIncident[] }>('/api/diagnostics/search', query)
+export const getDiagnosticIncident = (incidentId: string) => api<{ ok: true; incident: DiagnosticIncident }>(`/api/diagnostics/incidents/${encodeURIComponent(incidentId)}`)
+export const exportDiagnostics = (incidentIds: string[], format: 'json' | 'markdown' = 'markdown') => api<{ ok: true; format: string; content: string; redaction_applied: boolean }>('/api/diagnostics/export', { incident_ids: incidentIds, format })
+export const deleteDiagnostics = (incidentIds: string[]) => api<{ ok: true; deleted: number }>('/api/diagnostics/delete', { incident_ids: incidentIds })
+export const clearDiagnostics = () => api<{ ok: true; deleted: number }>('/api/diagnostics/clear-all', {})
+export const getDiagnosticsHealth = () => api<{ ok: true; health: Record<string, any> }>('/api/diagnostics/health')
 export const getFreeRoxyWorkspaces = () => api<{ ok: true; items: Array<{ workspace_id: string; workspace_name: string; project_id: string; project_name: string; label: string }> }>('/api/free/roxy/workspaces')
 export interface FreeMailboxRow {
   row_id: string

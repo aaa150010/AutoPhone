@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { CopyDocument, View } from '@element-plus/icons-vue'
 import type { RuntimeTask, TaskStageGroup, TaskStageTiming } from '../types/api'
 
 const props = defineProps<{
@@ -8,7 +9,11 @@ const props = defineProps<{
   nowSeconds: number
 }>()
 
-const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
+const emit = defineEmits<{
+  'update:modelValue': [boolean]
+  diagnostic: [RuntimeTask]
+  copyDiagnosticId: [string]
+}>()
 
 const standardNodes: Array<{ code: string; label: string; group: TaskStageGroup }> = [
   { code: 'queue_waiting', label: '排队等待', group: 'queue' },
@@ -145,9 +150,16 @@ function checkpointType() {
     destroy-on-close
   >
     <template v-if="task">
+      <div v-if="task.incident_id" class="diagnostic-actions">
+        <span>故障档案</span>
+        <code>{{ task.incident_id }}</code>
+        <el-button size="small" :icon="CopyDocument" @click="emit('copyDiagnosticId', task.incident_id)">复制日志 ID</el-button>
+        <el-button size="small" :icon="View" @click="emit('diagnostic', task)">打开日志中心</el-button>
+      </div>
       <el-descriptions :column="2" border size="small" class="summary-grid">
         <el-descriptions-item label="账号">{{ task.account || task.email || '-' }}</el-descriptions-item>
         <el-descriptions-item label="任务状态">{{ task.status || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="日志 ID">{{ task.incident_id || '未生成' }}</el-descriptions-item>
         <el-descriptions-item label="运行批次">{{ task.batch_id || '-' }}</el-descriptions-item>
         <el-descriptions-item label="批内序号">{{ task.ordinal || '-' }}</el-descriptions-item>
         <el-descriptions-item label="排队耗时">{{ formatSeconds(timing?.queue_elapsed_seconds) }}</el-descriptions-item>
@@ -222,6 +234,8 @@ function checkpointType() {
 </template>
 
 <style scoped>
+.diagnostic-actions { display: flex; align-items: center; gap: 8px; min-height: 34px; margin-bottom: 12px; color: var(--el-text-color-secondary); font-size: 12px; }
+.diagnostic-actions code { color: var(--el-color-primary); font-size: 11px; }
 .summary-grid { margin-bottom: 16px; }
 .detail-section { margin-top: 18px; }
 .detail-section h3 { margin: 0 0 8px; color: var(--el-text-color-primary); font-size: 14px; line-height: 20px; font-weight: 680; letter-spacing: 0; }

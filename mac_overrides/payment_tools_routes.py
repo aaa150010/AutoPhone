@@ -29,11 +29,11 @@ def _error_payload(exc: BaseException) -> dict[str, Any]:
     }
 
 
-def install_payment_routes(app: Any, *, module: Any, data_root: str | Path, free_manager: Any | None = None) -> PaymentToolsService:
+def install_payment_routes(app: Any, *, module: Any, data_root: str | Path, free_manager: Any | None = None, diagnostic_store: Any | None = None) -> PaymentToolsService:
     """Attach payment routes once and return the per-app service instance."""
     service = getattr(app, "_gptphone_payment_tools", None)
     if service is None:
-        service = PaymentToolsService(data_root, free_manager=free_manager)
+        service = PaymentToolsService(data_root, free_manager=free_manager, diagnostic_store=diagnostic_store)
         setattr(app, "_gptphone_payment_tools", service)
 
     def payload() -> Mapping[str, Any]:

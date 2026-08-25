@@ -13,14 +13,17 @@ except ImportError:
     from free_register_common import safe_log_message  # type: ignore[no-redef]
 
 
-def _error_payload(exc: BaseException) -> dict[str, Any]:
+def _error_payload(exc: BaseException, incident_id: str = "") -> dict[str, Any]:
     code = str(getattr(exc, "node_code", "network_tool") or "network_tool")
     label = str(getattr(exc, "node_label", "网络工具") or "网络工具")
     message = safe_log_message(exc)[:300] or f"{label}未返回错误详情"
-    return {"ok": False, "error": f"{label} [{code}]：{message}", "failure": {"node_code": code, "node_label": label, "error_code": str(getattr(exc, "error_code", "") or f"{code}_failed"), "retryable": bool(getattr(exc, "retryable", True))}}
+    failure = {"node_code": code, "node_label": label, "error_code": str(getattr(exc, "error_code", "") or f"{code}_failed"), "retryable": bool(getattr(exc, "retryable", True))}
+    if incident_id:
+        failure["incident_id"] = incident_id
+    return {"ok": False, "error": f"{label} [{code}]：{message}", "failure": failure}
 
 
-def install_network_routes(app: Any, *, module: Any, data_root: str | Path) -> NetworkToolsService:
+def install_network_routes(app: Any, *, module: Any, data_root: str | Path, diagnostic_store: Any | None = None) -> NetworkToolsService:
     service = getattr(app, "_gptphone_network_tools", None)
     if service is None:
         service = NetworkToolsService(data_root)
@@ -43,9 +46,35 @@ def install_network_routes(app: Any, *, module: Any, data_root: str | Path) -> N
                 payload = {"result": value, "ok": True}
             return module.jsonify(**payload)
         except NetworkToolError as exc:
-            return module.jsonify(_error_payload(exc)), 400
+            incident_id = ""
+            if diagnostic_store is not None:
+                try:
+                    incident_id = diagnostic_store.record({
+                        "level": "error", "outcome": "error", "chain": "network",
+                        "workflow": "network", "driver": "network",
+                        "node_code": getattr(exc, "node_code", "network_tool"),
+                        "node_label": getattr(exc, "node_label", "网络工具"),
+                        "message": safe_log_message(exc),
+                        "failure": {
+                            "error_code": getattr(exc, "error_code", ""),
+                            "retryable": bool(getattr(exc, "retryable", True)),
+                        },
+                    })
+                except Exception:
+                    incident_id = ""
+            return module.jsonify(_error_payload(exc, incident_id)), 400
         except Exception as exc:
-            return module.jsonify(_error_payload(exc)), 500
+            incident_id = ""
+            if diagnostic_store is not None:
+                try:
+                    incident_id = diagnostic_store.record({
+                        "level": "error", "outcome": "error", "chain": "network",
+                        "workflow": "network", "driver": "network", "node_code": "network_tool",
+                        "node_label": "网络工具", "message": safe_log_message(exc),
+                    })
+                except Exception:
+                    incident_id = ""
+            return module.jsonify(_error_payload(exc, incident_id)), 500
 
     def proxies():
         return module.jsonify(ok=True, **service.public(), config=service.public_config())

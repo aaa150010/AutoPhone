@@ -129,6 +129,7 @@ class WebRouteContext:
     free_register_manager: Any | None = None
     free_config_store: Any | None = None
     free_data_dir: Path | None = None
+    diagnostic_store: Any | None = None
 
 
 def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
@@ -150,6 +151,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
 
     free_manager = context.free_register_manager
     free_config_store = context.free_config_store
+    diagnostic_store = context.diagnostic_store
 
     def route_secrets(config: Any) -> Sequence[Any]:
         if context.failure_secrets is None or not isinstance(config, dict):
@@ -1143,6 +1145,13 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         service=free_rebind_service,
         error_response=free_error_response,
     )
+    diagnostic_routes = None
+    if diagnostic_store is not None:
+        try:
+            from .diagnostic_routes import DiagnosticRouteController
+        except ImportError:  # pragma: no cover
+            from diagnostic_routes import DiagnosticRouteController  # type: ignore[no-redef]
+        diagnostic_routes = DiagnosticRouteController(module=module, store=diagnostic_store)
 
     routes = (
         ("/mailboxes", "mailbox_manager", mailbox_manager, ["GET"]),
@@ -1159,6 +1168,12 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/free/start", "api_free_start", api_free_start, ["POST"]),
         ("/api/free/stop", "api_free_stop", api_free_stop, ["POST"]),
         ("/api/free/logs", "api_free_logs", api_free_logs, ["GET"]),
+        ("/api/diagnostics/search", "api_diagnostics_search", diagnostic_routes.search if diagnostic_routes else lambda: module.jsonify(ok=False, error="日志中心尚未初始化"), ["POST"]),
+        ("/api/diagnostics/incidents/<incident_id>", "api_diagnostics_incident", diagnostic_routes.incident if diagnostic_routes else lambda incident_id: module.jsonify(ok=False, error="日志中心尚未初始化"), ["GET"]),
+        ("/api/diagnostics/export", "api_diagnostics_export", diagnostic_routes.export if diagnostic_routes else lambda: module.jsonify(ok=False, error="日志中心尚未初始化"), ["POST"]),
+        ("/api/diagnostics/delete", "api_diagnostics_delete", diagnostic_routes.delete if diagnostic_routes else lambda: module.jsonify(ok=False, error="日志中心尚未初始化"), ["POST"]),
+        ("/api/diagnostics/clear-all", "api_diagnostics_clear_all", diagnostic_routes.clear_all if diagnostic_routes else lambda: module.jsonify(ok=False, error="日志中心尚未初始化"), ["POST"]),
+        ("/api/diagnostics/health", "api_diagnostics_health", diagnostic_routes.health if diagnostic_routes else lambda: module.jsonify(ok=False, error="日志中心尚未初始化"), ["GET"]),
         ("/api/free/tasks/delete", "api_free_tasks_delete", free_control_routes.delete_tasks, ["POST"]),
         ("/api/free/roxy/workspaces", "api_free_roxy_workspaces", free_account_routes.roxy_workspaces, ["GET"]),
         *free_pool_routes.routes(),

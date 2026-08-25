@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
-import { Bell, Connection, Expand, Fold, Link, Loading, MessageBox, Monitor, Scissor, Setting, Tickets, Tools, Wallet } from '@element-plus/icons-vue'
+import { Bell, Connection, Document, Expand, Fold, Link, Loading, MessageBox, Monitor, Scissor, Setting, Tickets, Tools, Wallet } from '@element-plus/icons-vue'
 import MailboxPage from '../pages/MailboxPage.vue'
 import FreeMailboxPoolPage from '../pages/FreeMailboxPoolPage.vue'
 import FreeRebindPage from '../pages/FreeRebindPage.vue'
@@ -13,6 +13,7 @@ import RunPage from '../pages/RunPage.vue'
 import SettingsPage from '../pages/SettingsPage.vue'
 import PaymentToolsPage from '../pages/PaymentToolsPage.vue'
 import NetworkToolsPage from '../pages/NetworkToolsPage.vue'
+import LogCenterPage from '../pages/LogCenterPage.vue'
 import { appControllerKey, createAppController } from '../composables/useAppController'
 import { buildOpenAIConnectivityView } from '../utils/openAIConnectivity'
 import ReleaseNotesDialog from './ReleaseNotesDialog.vue'
@@ -21,9 +22,10 @@ import OpenAIConnectivityDiagnosticDialog from './OpenAIConnectivityDiagnosticDi
 const controller = createAppController()
 provide(appControllerKey, controller)
 
-const routes = new Set(['/', '/mailboxes', '/free-register', '/free-mailboxes', '/free-rebind', '/splitter', '/url-test', '/settings', '/payment-tools', '/network-tools'])
+const routes = new Set(['/', '/mailboxes', '/free-register', '/free-mailboxes', '/free-rebind', '/splitter', '/url-test', '/settings', '/payment-tools', '/network-tools', '/logs'])
 const pathFromLocation = () => `${routes.has(window.location.pathname) ? window.location.pathname : '/'}${window.location.search}${window.location.hash}`
 const activePath = ref(routes.has(window.location.pathname) ? window.location.pathname : '/')
+const currentLocation = ref(pathFromLocation())
 const settingsAnchor = ref(new URLSearchParams(window.location.search).get('section') || window.location.hash.replace(/^#/, ''))
 const sidebarCollapsed = ref(window.localStorage.getItem('gptphone.sidebar.collapsed') === '1')
 const diagnosticDialog = ref<InstanceType<typeof OpenAIConnectivityDiagnosticDialog>>()
@@ -58,14 +60,16 @@ async function navigate(path: string, fromHistory = false) {
   const parsed = new URL(path, window.location.origin)
   const target = routes.has(parsed.pathname) ? parsed.pathname : '/'
   const anchor = parsed.searchParams.get('section') || parsed.hash.replace(/^#/, '')
-  if (target === activePath.value && anchor === settingsAnchor.value) return
+  const targetLocation = `${target}${parsed.search}${parsed.hash}`
+  if (targetLocation === currentLocation.value) return
   if (!await confirmNavigation()) {
-    if (fromHistory) history.pushState({}, '', activePath.value)
+    if (fromHistory) history.pushState({}, '', currentLocation.value)
     return
   }
   activePath.value = target
   settingsAnchor.value = anchor
-  if (!fromHistory) history.pushState({}, '', anchor && target === '/settings' ? `${target}#${encodeURIComponent(anchor)}` : target)
+  currentLocation.value = targetLocation
+  if (!fromHistory) history.pushState({}, '', targetLocation)
 }
 
 function selectPage(path: string) {
@@ -123,7 +127,7 @@ onUnmounted(() => {
           <el-tooltip :content="sidebarCollapsed ? '展开菜单' : '收缩菜单'" placement="right"><el-button class="sidebar-toggle" link :icon="sidebarCollapsed ? Expand : Fold" aria-label="收缩或展开左侧菜单" @click="toggleSidebar" /></el-tooltip>
         </div>
 
-        <el-menu :default-active="activePath" :default-openeds="sidebarCollapsed ? [] : ['sms-workspace', 'free-workspace', 'tool-workspace', 'system-settings']" :collapse="sidebarCollapsed" :collapse-transition="false" @select="selectPage">
+        <el-menu :default-active="activePath" :default-openeds="sidebarCollapsed ? [] : ['sms-workspace', 'free-workspace', 'tool-workspace', 'diagnostic-workspace', 'system-settings']" :collapse="sidebarCollapsed" :collapse-transition="false" @select="selectPage">
           <el-sub-menu index="sms-workspace">
             <template #title><el-icon><MessageBox /></el-icon><span>接码工作台</span></template>
             <el-menu-item index="/"><el-icon><Monitor /></el-icon><span>接码运行中心</span></el-menu-item>
@@ -141,6 +145,10 @@ onUnmounted(() => {
             <template #title><el-icon><Tools /></el-icon><span>支付与网络工具</span></template>
             <el-menu-item index="/payment-tools"><el-icon><Wallet /></el-icon><span>支付链接工作台</span></el-menu-item>
             <el-menu-item index="/network-tools"><el-icon><Connection /></el-icon><span>代理与网络工具</span></el-menu-item>
+          </el-sub-menu>
+          <el-sub-menu index="diagnostic-workspace">
+            <template #title><el-icon><Document /></el-icon><span>诊断与审计</span></template>
+            <el-menu-item index="/logs"><el-icon><Document /></el-icon><span>日志中心</span></el-menu-item>
           </el-sub-menu>
           <el-sub-menu index="system-settings">
             <template #title><el-icon><Setting /></el-icon><span>系统设置</span></template>
@@ -166,6 +174,7 @@ onUnmounted(() => {
         <UrlMailboxTestPage v-else-if="activePath === '/url-test'" />
         <PaymentToolsPage v-else-if="activePath === '/payment-tools'" />
         <NetworkToolsPage v-else-if="activePath === '/network-tools'" />
+        <LogCenterPage v-else-if="activePath === '/logs'" :location-key="currentLocation" />
         <SettingsPage v-else :initial-anchor="settingsAnchor" @navigate="navigate" />
       </el-main>
     </el-container>

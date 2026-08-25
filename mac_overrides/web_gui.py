@@ -37,6 +37,7 @@ import auth_connectivity_runtime as _auth_connectivity_runtime_ext
 import connectivity_notifications as _connectivity_notifications_ext
 import connectivity_routes as _connectivity_routes_ext
 import connectivity_diagnostics as _connectivity_diagnostics_ext
+import diagnostic_store as _diagnostic_store_ext
 import mfa_retry_runtime as _mfa_retry_runtime_ext
 import oauth_mfa_runtime as _oauth_mfa_runtime_ext
 import manual_verification_runtime as _manual_verification_runtime_ext
@@ -106,6 +107,7 @@ _RUNTIME_DATA_DIR = Path(
 ).expanduser().resolve()
 _FREE_DATA_DIR = _RUNTIME_DATA_DIR / "free_register"
 _FREE_CONFIG_STORE = _free_register_config_ext.FreeConfigStore(_FREE_DATA_DIR)
+_DIAGNOSTIC_STORE = _diagnostic_store_ext.DiagnosticStore(_RUNTIME_DATA_DIR / "diagnostics")
 if os.environ.get("GPTPHONE_DATA_DIR"):
     _runtime.DEFAULT_DATA_DIR = _RUNTIME_DATA_DIR
 
@@ -1210,6 +1212,30 @@ def _patched_task_state(self, task_id: str, **values):
         auth_sessions = globals().get("_AUTH_SESSIONS")
         if auth_sessions is not None:
             auth_sessions.clear(task_id)
+    if status in _task_progress_ext.TERMINAL_TASK_STATUSES and status != "success":
+        try:
+            failure = values.get("failure") if isinstance(values.get("failure"), dict) else {}
+            task_record = getattr(self, "_tasks", {}).get(task_id, {}) if isinstance(getattr(self, "_tasks", {}), dict) else {}
+            incident_id = _DIAGNOSTIC_STORE.record({
+                "level": "error" if status not in {"stopped", "stopped_before_start"} else "warn",
+                "outcome": "error" if status not in {"stopped", "stopped_before_start"} else "stopped",
+                "task_id": task_id,
+                "batch_id": values.get("batch_id") or task_record.get("batch_id") or "",
+                "chain": "ordinary",
+                "workflow": "run",
+                "driver": "sms_oauth",
+                "subject_kind": "email" if (task_record.get("email") or task_record.get("account")) else "",
+                "subject_ref": task_record.get("email") or task_record.get("account") or "",
+                "subject_display": task_record.get("email") or task_record.get("account") or "",
+                "node_code": failure.get("node_code") or values.get("stage") or "task_terminal",
+                "node_label": failure.get("node_label") or "任务终态",
+                "message": failure.get("public_message") or values.get("error") or values.get("reason") or "任务进入终态",
+                "failure": failure,
+            })
+            if incident_id:
+                values["incident_id"] = incident_id
+        except Exception:
+            pass
     result = _ORIGINAL_TASK_STATE(self, task_id, **values)
     batch_manifest = globals().get("_RUN_BATCH_MANIFEST")
     if batch_manifest is not None and status:
@@ -3317,6 +3343,38 @@ def _call_log(log_fn, message, level="info"):
 
 
 def _retained_gui_log_add(self, message, level="info"):
+    diagnostic_id = ""
+    try:
+        raw = str(message or "")
+        match = re.search(r"\[([^\]/]{1,160})/([^\]/]{1,160})(?:/([^\]]{1,160}))?\]", raw)
+        task_id = ""
+        node_label = ""
+        node_code = ""
+        if match:
+            first, second, third = match.groups()
+            if first.startswith("T"):
+                task_id = first
+                node_label, node_code = second, third or second
+            else:
+                node_label, node_code = second, third or second
+        task_match = _TASK_ID_LOG_RE.search(raw)
+        task_id = task_id or (task_match.group(1) if task_match else "")
+        diagnostic_id = _DIAGNOSTIC_STORE.record({
+            "level": level,
+            "outcome": "error" if str(level).lower() in {"error", "danger"} else str(level or "info"),
+            "message": raw,
+            "task_id": task_id,
+            "node_code": node_code,
+            "node_label": node_label,
+            "chain": "ordinary",
+            "workflow": "run",
+            "driver": "sms_oauth",
+            "stage_group": node_code,
+        })
+    except Exception:
+        diagnostic_id = ""
+    if diagnostic_id and str(level).lower() in {"error", "danger"} and "日志 ID" not in str(message):
+        message = f"{message}（日志 ID: {diagnostic_id}）"
     return _GUI_LOG_RETENTION.add(
         self,
         message,
@@ -3781,6 +3839,7 @@ _RUN_BATCH_MANIFEST = _run_batch_runtime_ext.RunBatchManifestStore(
 )
 _FREE_REGISTER = _free_register_runtime_ext.FreeRegisterManager(
     _FREE_DATA_DIR,
+    diagnostic_store=_DIAGNOSTIC_STORE,
 )
 _SUB2_RUNTIME = _sub2_runtime_ext.Sub2Runtime(
     _read_local_config,
@@ -3871,6 +3930,24 @@ _masked_local_config = _PUBLIC_STATE.masked_local_config
 def _public_task(task):
     public = _PUBLIC_STATE.public_task(task)
     task_id = str((task or {}).get("task_id") or "").strip() if isinstance(task, dict) else ""
+    if task_id and not public.get("incident_id"):
+        try:
+            lookup = {"task_id": task_id, "limit": 1}
+            batch_id = str((task or {}).get("batch_id") or "").strip() if isinstance(task, dict) else ""
+            if batch_id:
+                lookup["batch_id"] = batch_id
+            matches = _DIAGNOSTIC_STORE.search(lookup)
+            if not matches and batch_id:
+                # Legacy ordinary log events may predate batch_id metadata;
+                # retain the stable task join without crossing to another
+                # task.
+                matches = _DIAGNOSTIC_STORE.search({"task_id": task_id, "limit": 1})
+            if matches:
+                public["incident_id"] = str(matches[0].get("incident_id") or "")
+        except Exception:
+            # A diagnostic index outage must never make the main task state
+            # unavailable; the log center health endpoint reports the outage.
+            pass
     prompt = _MANUAL_VERIFICATION.public(task_id) if task_id else {}
     if isinstance(prompt, dict) and prompt and prompt.get("input_kind"):
         public["manual_verification"] = prompt
@@ -3968,6 +4045,7 @@ _WEB_ROUTE_CONTEXT = _web_routes_ext.WebRouteContext(
     failure_secrets=lambda config: _failure_secrets(settings=config),
     free_config_store=_FREE_CONFIG_STORE,
     free_data_dir=_FREE_DATA_DIR,
+    diagnostic_store=_DIAGNOSTIC_STORE,
 )
 
 
@@ -3979,10 +4057,10 @@ def _patch_flask_app(app):
     # the ordinary SMS or Free task stores beyond explicit Free Token lookup.
     tools_root = _FREE_DATA_DIR.parent
     _payment_tools_routes_ext.install_payment_routes(
-        patched, module=_module, data_root=tools_root, free_manager=_FREE_REGISTER,
+        patched, module=_module, data_root=tools_root, free_manager=_FREE_REGISTER, diagnostic_store=_DIAGNOSTIC_STORE,
     )
     _network_tools_routes_ext.install_network_routes(
-        patched, module=_module, data_root=tools_root,
+        patched, module=_module, data_root=tools_root, diagnostic_store=_DIAGNOSTIC_STORE,
     )
     patched = _connectivity_routes_ext.patch_openai_connectivity_guard_route(
         patched,

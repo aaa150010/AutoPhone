@@ -34,21 +34,22 @@ class FreeLogStore:
     REQUIRED_FIELDS = (
         "time", "level", "task_id", "node_code", "node_label", "attempt",
         "duration_ms", "page_type", "safe_page", "http_status", "provider_code",
-        "outcome", "diagnostic", "action_hint", "result",
+        "outcome", "diagnostic", "action_hint", "result", "incident_id",
     )
     _KNOWN_FIELDS = frozenset({
         "time", "level", "message", "task_id", "stage", "stage_label",
         "node_code", "node_label", "error_code", "provider_code", "page",
         "safe_page", "page_type", "content_type", "session_rebuilds",
         "http_status", "attempt", "duration_ms", "outcome", "diagnostic",
-        "technical_summary", "action_hint", "retryable", "result",
+        "technical_summary", "action_hint", "retryable", "result", "incident_id",
     })
 
-    def __init__(self, data_dir: str | Path, *, limit: int = 5000, task_limit: int = 5000) -> None:
+    def __init__(self, data_dir: str | Path, *, limit: int = 5000, task_limit: int = 5000, diagnostic_store: Any = None) -> None:
         self.path = Path(data_dir).expanduser().resolve() / "logs.json"
         self.task_dir = self.path.parent / "task_logs"
         self.limit = max(50, int(limit))
         self.task_limit = max(100, int(task_limit))
+        self.diagnostic_store = diagnostic_store
         self._lock = threading.RLock()
 
     @staticmethod
@@ -113,6 +114,7 @@ class FreeLogStore:
             "technical_summary": technical_summary,
             "action_hint": sanitize_failure_text(raw.get("action_hint"), 400),
             "result": sanitize_failure_text(raw.get("result"), 800),
+            "incident_id": sanitize_failure_text(raw.get("incident_id"), 80),
         }
         retryable = raw.get("retryable")
         if isinstance(retryable, bool):
@@ -226,6 +228,52 @@ class FreeLogStore:
                 "node_label": node_label,
                 **metadata,
             })
+            structured_failure: dict[str, Any] = {}
+            raw_failure = fields.get("failure")
+            if isinstance(raw_failure, Mapping):
+                for key in ("error_code", "provider_code", "public_message", "technical_summary", "diagnostic", "action_hint", "retryable", "http_status", "page_type", "safe_page"):
+                    value = raw_failure.get(key)
+                    if value in (None, ""):
+                        continue
+                    if isinstance(value, bool) or isinstance(value, (int, float)):
+                        structured_failure[key] = value
+                    elif key == "safe_page":
+                        structured_failure[key] = sanitize_safe_page(value)
+                    else:
+                        structured_failure[key] = sanitize_failure_text(value)
+            if self.diagnostic_store is not None:
+                try:
+                    failure_payload = dict(structured_failure)
+                    failure_payload.update({
+                        key: row.get(key)
+                        for key in ("error_code", "provider_code", "technical_summary", "diagnostic", "action_hint", "retryable", "http_status")
+                        if row.get(key) not in (None, "")
+                    })
+                    incident_id = self.diagnostic_store.record({
+                        "level": level,
+                        "outcome": row.get("outcome") or level,
+                        "message": row.get("message"),
+                        "task_id": task_id,
+                        "node_code": row.get("node_code"),
+                        "node_label": row.get("node_label"),
+                        "failure": failure_payload,
+                        "duration_ms": row.get("duration_ms"),
+                        "chain": fields.get("chain") or "free",
+                        "workflow": fields.get("workflow") or "register",
+                        "driver": fields.get("driver") or "free",
+                        "batch_id": fields.get("batch_id") or "",
+                        "subject_kind": fields.get("subject_kind") or ("email" if fields.get("email") else ""),
+                        "subject_ref": fields.get("email") or "",
+                        "subject_ref_fingerprint": fields.get("subject_ref_fingerprint") or "",
+                        "subject_display": fields.get("subject_display") or fields.get("email_masked") or "",
+                        "stage_group": row.get("stage") or "",
+                        "attempt": row.get("attempt"),
+                    })
+                    if incident_id:
+                        row["incident_id"] = incident_id
+                except Exception:
+                    # Diagnostics must never stop the registration worker.
+                    pass
             rows.append(row)
             atomic_write(self.path, rows[-self.limit:])
             if task_id:
@@ -260,6 +308,13 @@ class FreeLogStore:
                     deleted += 1
                 except FileNotFoundError:
                     continue
+            if self.diagnostic_store is not None:
+                try:
+                    self.diagnostic_store.delete_by_tasks(sorted(normalized))
+                except Exception:
+                    # Business task deletion remains successful even if the
+                    # independent diagnostic index is temporarily unavailable.
+                    pass
         return deleted
 
     def clear(self) -> None:

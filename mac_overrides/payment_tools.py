@@ -86,12 +86,14 @@ class PaymentToolsService:
         free_manager: Any | None = None,
         adapters: Mapping[str, Callable[..., Mapping[str, Any]]] | None = None,
         recover: bool = True,
+        diagnostic_store: Any | None = None,
     ) -> None:
         self.data_dir = Path(data_root).expanduser().resolve() / "payment_tools"
         self.config_path = self.data_dir / "config.json"
         self.tasks_path = self.data_dir / "tasks.json"
         self.secrets_path = self.data_dir / "secrets.json"
         self.free_manager = free_manager
+        self.diagnostic_store = diagnostic_store
         self._lock = threading.RLock()
         self._config = self._load_config()
         self._tasks = self._load_object(self.tasks_path, "tasks")
@@ -238,7 +240,7 @@ class PaymentToolsService:
 
     def _public_task(self, task: Mapping[str, Any]) -> dict[str, Any]:
         allowed = (
-            "task_id", "source", "row_id", "email", "mode", "channel", "plan",
+            "task_id", "incident_id", "source", "row_id", "email", "mode", "channel", "plan",
             "country", "currency", "status", "stage", "target_domain", "confirmed",
             "created_at", "updated_at", "started_at", "finished_at", "retry_count",
             "result_summary", "failure",
@@ -281,10 +283,32 @@ class PaymentToolsService:
             task = self._tasks.get(task_id)
             if task is None:
                 return
+            safe_message = safe_log_message(message)
+            incident_id = ""
+            if self.diagnostic_store is not None:
+                try:
+                    incident_id = self.diagnostic_store.record({
+                        "level": level,
+                        "outcome": "error" if str(level).lower() in {"error", "danger"} else str(level or "info"),
+                        "task_id": task_id,
+                        "chain": "payment",
+                        "workflow": "payment",
+                        "driver": str(task.get("mode") or "payment"),
+                        "node_code": stage,
+                        "node_label": stage,
+                        "message": safe_message,
+                        "subject_kind": "email" if task.get("email") else "",
+                        "subject_ref": task.get("email") or "",
+                        "subject_display": task.get("email") or "",
+                    })
+                except Exception:
+                    incident_id = ""
+            if incident_id:
+                task["incident_id"] = incident_id
             task["logs"] = list(task.get("logs") or [])[-499:]
             task["logs"].append({
                 "time": int(time.time()), "stage": stage, "level": level,
-                "message": safe_log_message(message),
+                "message": safe_message,
             })
             task["stage"] = stage
             task["updated_at"] = int(time.time())

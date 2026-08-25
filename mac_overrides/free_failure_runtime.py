@@ -476,6 +476,30 @@ class FreeFailureRuntimeMixin:
             context = dict(task or current)
             context.update({key: value for key, value in current.items() if key not in context})
             payload = failure_result_payload(context, status=status, failure=normalized, result=result)
+            incident_id = ""
+            diagnostic_store = getattr(getattr(self, "log_store", None), "diagnostic_store", None)
+            if diagnostic_store is not None:
+                try:
+                    incident_id = diagnostic_store.record({
+                        "level": "error",
+                        "outcome": "error" if status == "failed" else status,
+                        "task_id": task_id,
+                        "batch_id": context.get("batch_id") or "",
+                        "chain": "free",
+                        "workflow": "register",
+                        "driver": context.get("driver") or "free",
+                        "subject_kind": "email" if context.get("email") else "",
+                        "subject_ref": context.get("email") or "",
+                        "subject_display": context.get("email") or "",
+                        "node_code": normalized.get("node_code"),
+                        "node_label": normalized.get("node_label"),
+                        "message": normalized.get("public_message"),
+                        "failure": normalized,
+                    })
+                except Exception:
+                    incident_id = ""
+            if incident_id:
+                payload["incident_id"] = incident_id
             if current:
                 current.update({
                     "status": status,
@@ -483,6 +507,8 @@ class FreeFailureRuntimeMixin:
                     "result": copy.deepcopy(payload),
                     "updated_at": int(time.time()),
                 })
+                if incident_id:
+                    current["incident_id"] = incident_id
                 self.task_store.save(self._tasks)
         row_id = str(context.get("row_id") or "")
         if row_id:

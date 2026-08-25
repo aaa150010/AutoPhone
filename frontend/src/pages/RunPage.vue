@@ -235,6 +235,33 @@ async function copyTaskAccount(task: RuntimeTask) {
   }
 }
 
+async function copyDiagnosticId(value: string) {
+  const incidentId = String(value || '').trim()
+  if (!incidentId) {
+    ElMessage.info('该任务尚未生成日志 ID')
+    return
+  }
+  if (!navigator.clipboard?.writeText) {
+    ElMessage.error('当前浏览器不支持安全剪贴板写入')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(incidentId)
+    ElMessage.success('日志 ID 已复制')
+  } catch {
+    ElMessage.error('日志 ID 复制失败')
+  }
+}
+
+function openDiagnostic(task: RuntimeTask) {
+  const incidentId = String(task.incident_id || '').trim()
+  if (!incidentId) {
+    ElMessage.info('该任务尚未生成日志 ID')
+    return
+  }
+  emit('navigate', `/logs?incident_id=${encodeURIComponent(incidentId)}`)
+}
+
 async function copyFreeTaskSecret(payload: { kind: 'token' | 'password' | 'totp' | 'proxy' | 'credential'; tasks: RuntimeTask[] }) {
   if (!navigator.clipboard?.writeText) {
     ElMessage.error('当前浏览器不支持安全剪贴板写入')
@@ -426,6 +453,8 @@ async function disableConnectivityGuard() {
             @mailbox-url="openTaskMailboxUrl"
             @free-secret="copyFreeTaskSecret"
             @free-twofa-retry="retryFreeTaskTwofa"
+            @diagnostic="openDiagnostic"
+            @copy-diagnostic-id="copyDiagnosticId"
             @update:active-view="taskView = $event"
             @counts="taskCounts = $event"
           />

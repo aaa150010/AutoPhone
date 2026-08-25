@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Aim, ArrowLeft, ArrowRight, Bottom, Refresh } from '@element-plus/icons-vue'
+import { Aim, ArrowLeft, ArrowRight, Bottom, CopyDocument, Refresh } from '@element-plus/icons-vue'
 import { getFreeLogs } from '../api/client'
 import type { FreeLogEntry } from '../types/api'
 import {
@@ -169,6 +169,15 @@ async function locateFirstError() {
   if (row) setScrollTop(Math.max(0, row.offsetTop - 12))
 }
 
+async function copyIncidentId(value: string) {
+  if (!value || !navigator.clipboard?.writeText) {
+    ElMessage.warning('当前环境不支持复制')
+    return
+  }
+  await navigator.clipboard.writeText(value)
+  ElMessage.success('日志 ID 已复制')
+}
+
 watch(() => props.modelValue, (open) => {
   if (open && taskId.value) void openCurrentTask()
   if (!open) requestGeneration += 1
@@ -228,8 +237,8 @@ defineExpose({ refresh })
       >
         <small class="log-time">{{ entry.row.time || '' }}</small>
         <strong class="log-level">{{ freeLogLevelLabel(effectiveFreeLogLevel(entry.row)) }}</strong>
-        <small class="log-task-id" :title="String(entry.row.task_id || taskId || '-')">任务 {{ entry.row.task_id || taskId || '-' }}</small>
-        <span class="log-message">
+          <small class="log-task-id" :title="String(entry.row.task_id || taskId || '-')">任务 {{ entry.row.task_id || taskId || '-' }}</small>
+          <span class="log-message">
           <b v-if="freeLogNodeLabel(entry.row) || freeLogNodeCode(entry.row)">
             {{ freeLogNodeLabel(entry.row) || freeLogNodeCode(entry.row) }}<code v-if="shouldShowFreeLogNodeCode(entry.row)">{{ freeLogNodeCode(entry.row) }}</code>
           </b>
@@ -237,8 +246,9 @@ defineExpose({ refresh })
           <em v-if="freeLogContextText(entry.row)">{{ freeLogContextText(entry.row) }}</em>
           <small v-if="entry.row.error_code || entry.row.provider_code" class="log-code">{{ entry.row.error_code || '' }}{{ entry.row.provider_code ? ` · Provider ${entry.row.provider_code}` : '' }}</small>
           <small v-if="entry.row.diagnostic || entry.row.technical_summary" class="log-diagnostic">{{ entry.row.diagnostic || entry.row.technical_summary }}</small>
-          <small v-if="entry.row.action_hint" class="log-action">建议：{{ entry.row.action_hint }}</small>
-        </span>
+            <small v-if="entry.row.action_hint" class="log-action">建议：{{ entry.row.action_hint }}</small>
+            <small v-if="entry.row.incident_id" class="log-incident"><el-button text size="small" :icon="CopyDocument" @click="copyIncidentId(entry.row.incident_id)">日志 ID {{ entry.row.incident_id }}</el-button></small>
+          </span>
       </div>
       <ContentEmptyState v-if="!filteredLogs.length && !loading" :description="logs.length ? '没有符合筛选条件的日志' : '暂无账号日志'" />
     </div>
