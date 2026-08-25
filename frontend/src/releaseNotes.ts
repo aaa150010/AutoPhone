@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.70',
-  freeRuntimeVersion: '1.6.70',
+  version: '1.6.71',
+  freeRuntimeVersion: '1.6.71',
   title: 'Free 双链路照齐 AutoRegister',
   releasedAt: '2026-08-25',
   sections: [
+    {
+      title: 'Free 任务状态与邮箱失败归位',
+      usage: '任务排队或运行期间 2FA 显示处理中，不再预先显示待重试；Roxy 邮箱提交过渡超时发生在确认账号创建前时，邮箱会自动恢复为可用，下一次启动可直接重新运行。验证码、密码提交后或已确认账号创建的失败仍保留待重跑或 2FA 待重试状态，避免重复注册已创建账号。',
+    },
     {
       title: 'Free 单一共享代理池',
       usage: '全协议和 RoxyBrowser 现在共用健康随机代理池，不再按国家或分组筛选，也允许并发任务共享代理和出口 IP。预检只检测出口 IP；任务期间出口变化会更新记录并继续健康任务，不再触发 free_proxy_drift 停止。',

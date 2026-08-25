@@ -215,6 +215,7 @@ function taskPlanType(task: any) {
 function taskTwofaLabel(task: any) {
   const status = String(task?.result?.twofa_status || '').toLowerCase()
   if (task?.result?.has_totp || task?.result?.totp_secret) return '已启用'
+  if (['queued', 'running'].includes(String(task?.status || '').toLowerCase())) return '处理中'
   if (['pending', 'failed'].includes(status)) return '待重试'
   return '未启用'
 }
@@ -222,6 +223,7 @@ function taskTwofaLabel(task: any) {
 function taskTwofaType(task: any) {
   const status = String(task?.result?.twofa_status || '').toLowerCase()
   if (task?.result?.has_totp || task?.result?.totp_secret) return 'success'
+  if (['queued', 'running'].includes(String(task?.status || '').toLowerCase())) return 'warning'
   return ['pending', 'failed'].includes(status) ? 'warning' : 'info'
 }
 

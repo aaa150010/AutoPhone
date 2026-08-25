@@ -1023,7 +1023,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(task["failure"]["error_code"], "free_roxy_driver_unavailable")
         self.assertFalse(any(row.get("outcome") == "switched" for row in task["proxy_attempts"]))
 
-    def test_failure_after_email_submission_does_not_restore_mailbox(self):
+    def test_email_submit_transition_timeout_restores_mailbox(self):
         pool = FreeMailboxPool(self.data_dir)
         pool.import_text("a@example.test----https://mail.example.test/a\n")
         FreeProxyPool(self.data_dir).import_text("http://proxy-a.test:8000\n")
@@ -1044,10 +1044,33 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             time.sleep(0.01)
 
         self.assertEqual(manager.public_tasks()[0]["status"], "failed")
-        self.assertEqual(manager.pool.public_rows()[0]["status"], "pending_rerun")
-        self.assertEqual(manager.public_state()["pool"]["available"], 0)
-        retry = manager.rerun(manager.public_tasks()[0]["task_id"], {"target_count": 1})
-        self.assertTrue(retry["batch_id"])
+        mailbox = manager.pool.public_rows()[0]
+        self.assertEqual(mailbox["status"], "available")
+        self.assertTrue(manager.pool._row_state(mailbox["row_id"])["reusable_after_failure"])
+        self.assertEqual(manager.public_state()["pool"]["available"], 1)
+
+    def test_task_twofa_is_not_pending_before_registration_result(self):
+        worker_entered = threading.Event()
+        release_worker = threading.Event()
+
+        def runner(_task, _config, _stop, _stage, _log, *, twofa_retry=False):
+            worker_entered.set()
+            release_worker.wait(2)
+            return {"access_token": "token-private", "twofa_status": "enabled"}
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.23",
+        )
+        manager.start(
+            {"target_count": 1, "concurrency": 1},
+            pool_content="a@example.test----https://mail.example.test/a\n",
+            proxy_content="http://proxy-a.test:8000\n",
+        )
+        self.assertTrue(worker_entered.wait(1))
+        self.assertEqual(manager.public_tasks()[0]["result"]["twofa_status"], "")
+        release_worker.set()
         deadline = time.time() + 3
         while manager.public_state()["running"] and time.time() < deadline:
             time.sleep(0.01)

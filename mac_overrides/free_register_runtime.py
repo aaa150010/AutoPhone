@@ -72,8 +72,8 @@ except ImportError:
     from free_live_check import build_free_live_check_service  # type: ignore[no-redef]
     from free_protocol_runtime import FreeProtocolMixin  # type: ignore[no-redef]
 class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, FreeProtocolMixin):
-    # These nodes run before the browser reaches the registration page. A
-    # failure here did not consume the mailbox, so the row can be dispatched
+    # These nodes run before the flow confirms that a new account was created.
+    # A failure here did not consume the mailbox, so the row can be dispatched
     # again while the task history remains failed for diagnosis.
     _REUSABLE_PRE_REGISTRATION_FAILURES = frozenset({
         "free_run_stop",
@@ -85,7 +85,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         "free_roxy_connect",
         "free_roxy_ip_verify",
         "free_roxy_signup_bootstrap",
-        "free_roxy_signup_email", "oauth_create_node", "free_proxy_geo", "free_protocol_preflight", "free_protocol_warmup",
+        "free_roxy_signup_email", "free_roxy_signup_email_submit", "oauth_create_node", "free_proxy_geo", "free_protocol_preflight", "free_protocol_warmup",
         "roxy_circuit_open",
     })
 
@@ -606,7 +606,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 reserved = True
                 for ordinal, (row, binding) in enumerate(zip(rows, bindings), 1):
                     task_id = f"{batch_id}-{ordinal}"
-                    self._tasks[task_id] = {"task_id": task_id, "ordinal": ordinal, "slot_id": f"{batch_id}-slot-{((ordinal - 1) % workers) + 1}", "slot_index": ((ordinal - 1) % workers) + 1, "concurrency_limit": workers, "status": "queued", "created_at": now, "updated_at": now, "batch_id": batch_id, "run_mode": "free_register", "driver": driver, "proxy_allocation_mode": str(config.get("proxy_allocation_mode") or "healthy_random"), "email": row.email, "row_id": row.row_id, "mailbox_url": row.mailbox_url, "proxy": binding.proxy, "proxy_id": binding.proxy_id, "proxy_scheme": binding.scheme, "proxy_country": binding.country, "proxy_group": binding.group, "proxy_masked": binding.masked, "proxy_fingerprint": binding.fingerprint, "expected_exit_ip": binding.exit_ip, "registration_ip": "", "exit_ip": binding.exit_ip, "proxy_attempts": [], "cleanup_status": "pending", "progress": {"stage": "free_proxy_binding", "group": "free", "started_at": now, "updated_at": now, "finished_at": None}, "result": {"twofa_status": "pending", "driver": driver, "expected_exit_ip": binding.exit_ip, "proxy_country": binding.country, "proxy_group": binding.group}}
+                    self._tasks[task_id] = {"task_id": task_id, "ordinal": ordinal, "slot_id": f"{batch_id}-slot-{((ordinal - 1) % workers) + 1}", "slot_index": ((ordinal - 1) % workers) + 1, "concurrency_limit": workers, "status": "queued", "created_at": now, "updated_at": now, "batch_id": batch_id, "run_mode": "free_register", "driver": driver, "proxy_allocation_mode": str(config.get("proxy_allocation_mode") or "healthy_random"), "email": row.email, "row_id": row.row_id, "mailbox_url": row.mailbox_url, "proxy": binding.proxy, "proxy_id": binding.proxy_id, "proxy_scheme": binding.scheme, "proxy_country": binding.country, "proxy_group": binding.group, "proxy_masked": binding.masked, "proxy_fingerprint": binding.fingerprint, "expected_exit_ip": binding.exit_ip, "registration_ip": "", "exit_ip": binding.exit_ip, "proxy_attempts": [], "cleanup_status": "pending", "progress": {"stage": "free_proxy_binding", "group": "free", "started_at": now, "updated_at": now, "finished_at": None}, "result": {"twofa_status": "", "driver": driver, "expected_exit_ip": binding.exit_ip, "proxy_country": binding.country, "proxy_group": binding.group}}
                     self._tasks[task_id]["device_id"] = f"free-{secrets.token_hex(16)}"
                     created_task_ids.append(task_id)
                     self.proxies.lease(binding, owner=task_id, batch_id=batch_id, task_id=task_id)
@@ -940,7 +940,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         )
         self._log(
             f"[{task.get('task_id', '')}/释放 Free 邮箱/free_mailbox_released] "
-            "任务未进入注册页，邮箱已自动恢复为可用，失败日志保留",
+            "任务未确认账号创建，邮箱已自动恢复为可用，失败日志保留",
             "warn",
         )
 
