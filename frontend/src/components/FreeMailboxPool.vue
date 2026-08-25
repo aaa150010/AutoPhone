@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CopyDocument, Delete, Key, Lock, Plus, Refresh, RefreshRight, Tickets, Link, Download, CircleCheck, Warning, View, VideoPlay } from '@element-plus/icons-vue'
-import { deleteFreeMailboxes, exportFreeResults, getFreeLiveCheckState, getFreeMailboxUrl, getFreeMailboxes, getFreeSecret, importFreeMailboxes, retryFreeTwofa, setFreeMailboxStatus, startFree, startFreeLiveCheck } from '../api/client'
+import { deleteFreeMailboxes, exportFreeResults, getFreeLiveCheckState, getFreeMailboxUrl, getFreeMailboxes, getFreeSecret, importFreeMailboxes, retryFreeTwofa, setFreeMailboxStatus, startFree, startFreeLiveCheck, startFreePlanCheck } from '../api/client'
 import type { FreeLiveCheckState, FreeMailboxRow } from '../api/client'
 import ContentEmptyState from './ContentEmptyState.vue'
 import FreeTaskLogDialog from './FreeTaskLogDialog.vue'
@@ -22,6 +22,7 @@ const statusFilter = ref('')
 const driverFilter = ref('')
 const liveStatusFilter = ref('')
 const liveBusy = ref<'fast' | 'deep' | ''>('')
+const planBusy = ref('')
 const runBusy = ref(false)
 const liveState = ref<FreeLiveCheckState>({ running: false, workers: 3, queue_limit: 500, active: 0, jobs: [] })
 const logDialogOpen = ref(false)
@@ -282,6 +283,20 @@ async function retryTwofa(row: FreeMailboxRow) {
   }
 }
 
+async function retryPlan(row: FreeMailboxRow) {
+  if (!row.row_id || !row.has_access_token || String(row.plan_check_status || '').toLowerCase() !== 'failed' || planBusy.value) return
+  planBusy.value = row.row_id
+  try {
+    await startFreePlanCheck([row.row_id])
+    ElMessage.info('套餐查询已加入队列')
+    await refresh()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '重新查询套餐失败')
+  } finally {
+    planBusy.value = ''
+  }
+}
+
 async function setStatus(status: 'available' | 'unavailable' | 'draft') {
   const ids = selected.value.map(row => row.row_id).filter(Boolean)
   if (!ids.length) return
@@ -360,8 +375,8 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
           <el-table-column label="代理 / 注册 IP" min-width="210" show-overflow-tooltip>
             <template #default="{ row }"><span>{{ row.proxy_masked || '-' }}</span><small v-if="row.registration_ip || row.exit_ip"> / {{ row.registration_ip || row.exit_ip }}</small></template>
           </el-table-column>
-          <el-table-column label="套餐 / Plus 试用" width="150">
-            <template #default="{ row }"><el-tag size="small" :type="planTagType(row)" effect="light">{{ planLabel(row) }}</el-tag><el-tag v-if="row.plus_trial_eligible && String(row.subscription_plan || row.plan_type || '').toLowerCase() !== 'free'" size="small" type="success" effect="plain" class="trial-tag">Plus 试用</el-tag></template>
+          <el-table-column label="套餐 / Plus 试用" width="178">
+            <template #default="{ row }"><el-tag size="small" :type="planTagType(row)" effect="light">{{ planLabel(row) }}</el-tag><el-tag v-if="row.plus_trial_eligible && String(row.subscription_plan || row.plan_type || '').toLowerCase() !== 'free'" size="small" type="success" effect="plain" class="trial-tag">Plus 试用</el-tag><el-tooltip v-if="row.has_access_token && String(row.plan_check_status || '').toLowerCase() === 'failed'" content="重新查询套餐"><el-button link size="small" :icon="Refresh" :loading="planBusy === row.row_id" :disabled="Boolean(planBusy)" aria-label="重新查询套餐" @click.stop="retryPlan(row)" /></el-tooltip></template>
           </el-table-column>
           <el-table-column label="账号测活" min-width="165" show-overflow-tooltip>
             <template #default="{ row }"><el-tag size="small" :type="liveStatusType(row.live_check_status)">{{ liveStatusLabel(row.live_check_status) }}</el-tag><small v-if="row.live_check_mode || row.live_check_ip">{{ row.live_check_mode === 'deep' ? '深度' : '快速' }} · {{ row.live_check_ip || '-' }}</small></template>

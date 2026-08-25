@@ -202,14 +202,14 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
     </div>
 
     <div class="workspace-grid">
-      <WorkspacePanel title="换绑邮箱池" subtitle="独立于 Free 注册邮箱池">
+      <WorkspacePanel class="mailbox-panel" title="换绑邮箱池" subtitle="独立于 Free 注册邮箱池" fill body-padding="none">
         <template #actions>
           <el-button size="small" :icon="Plus" @click="openImport">导入</el-button>
           <el-button size="small" :disabled="!selectedMailboxes.length" @click="setSelectedStatus('available')">恢复</el-button>
           <el-button size="small" type="warning" plain :disabled="!selectedMailboxes.length" @click="setSelectedStatus('unavailable')">停用</el-button>
           <el-button size="small" type="danger" plain :icon="Delete" :disabled="!selectedMailboxes.length" @click="deleteSelected">删除</el-button>
         </template>
-        <el-table :data="state.mailboxes" height="300" size="small" @selection-change="handleMailboxSelection">
+        <el-table class="panel-table" :data="state.mailboxes" height="100%" size="small" @selection-change="handleMailboxSelection">
           <el-table-column type="selection" width="42" />
           <el-table-column prop="email" label="目标邮箱" min-width="220" show-overflow-tooltip />
           <el-table-column label="状态" width="92" align="center"><template #default="{ row }"><el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag></template></el-table-column>
@@ -217,7 +217,7 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
         </el-table>
       </WorkspacePanel>
 
-      <WorkspacePanel title="手动配对" subtitle="选择一个源账号和一个目标邮箱">
+      <WorkspacePanel class="pair-panel" title="手动配对" subtitle="选择一个源账号和一个目标邮箱" fill body-padding="compact">
         <div class="pair-form">
           <label>源 Free 账号</label>
           <el-select v-model="selectedSource" filterable clearable placeholder="选择已有密码 + TOTP 的账号">
@@ -235,8 +235,8 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
       </WorkspacePanel>
     </div>
 
-    <WorkspacePanel title="换绑任务" subtitle="保留原 Free 行 ID，新邮箱单独记录">
-      <el-table :data="state.tasks" height="260" size="small">
+    <WorkspacePanel class="tasks-panel" title="换绑任务" subtitle="保留原 Free 行 ID，新邮箱单独记录" fill body-padding="none">
+      <el-table class="panel-table" :data="state.tasks" height="100%" size="small">
         <el-table-column label="源账号" min-width="190" show-overflow-tooltip><template #default="{ row }"><div>{{ row.source_email }}</div><span class="muted">{{ row.source_row_id?.slice(0, 12) }}</span></template></el-table-column>
         <el-table-column label="目标邮箱" min-width="190" show-overflow-tooltip prop="target_email" />
         <el-table-column label="阶段" min-width="150" show-overflow-tooltip><template #default="{ row }">{{ row.stage_label || row.stage || '-' }}</template></el-table-column>
@@ -259,8 +259,13 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
 .metrics-strip { display: grid; grid-template-columns: repeat(5, minmax(100px, 1fr)); gap: 8px; }
 .metrics-strip > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 14px; border: 1px solid #dbe4ee; background: #f8fafc; border-radius: 6px; color: #64748b; font-size: 12px; }
 .metrics-strip strong { color: #0f172a; font-size: 19px; font-weight: 700; }
-.workspace-grid { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(360px, .88fr); grid-template-rows: minmax(0, 1fr) 260px; gap: 8px; min-height: 0; overflow: hidden; }
-.workspace-grid > :last-child { grid-column: 1 / -1; }
+.workspace-grid { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(360px, .92fr); grid-template-rows: minmax(280px, .82fr) minmax(240px, 1.18fr); gap: 8px; min-height: 0; overflow: hidden; }
+.workspace-grid > :deep(.workspace-panel) { min-width: 0; min-height: 0; overflow: hidden; }
+.mailbox-panel { grid-column: 1; grid-row: 1; }
+.pair-panel { grid-column: 2; grid-row: 1; }
+.tasks-panel { grid-column: 1 / -1; grid-row: 2; }
+.mailbox-panel :deep(.el-card__body), .tasks-panel :deep(.el-card__body) { display: flex; min-height: 0; flex-direction: column; overflow: hidden; }
+.panel-table { width: 100%; min-height: 0; flex: 1 1 auto; }
 .pair-form { display: grid; gap: 8px; }
 .pair-form label { color: #64748b; font-size: 12px; }
 .pair-meta { display: flex; align-items: center; gap: 8px; min-height: 24px; color: #334155; font-size: 12px; }
@@ -270,5 +275,12 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
 .muted { color: #94a3b8; }
 .success-text { color: #15803d; }
 .plus-tag { margin-left: 6px; }
-@media (max-width: 1380px) { .workspace-grid { grid-template-columns: minmax(0, 1fr) minmax(340px, .9fr); } }
+@media (max-width: 1000px) {
+  .metrics-strip { grid-template-columns: repeat(3, minmax(100px, 1fr)); }
+  .workspace-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(220px, .8fr) minmax(260px, .95fr) minmax(220px, 1.1fr); }
+  .mailbox-panel, .pair-panel, .tasks-panel { grid-column: 1; }
+  .mailbox-panel { grid-row: 1; }
+  .pair-panel { grid-row: 2; }
+  .tasks-panel { grid-row: 3; }
+}
 </style>

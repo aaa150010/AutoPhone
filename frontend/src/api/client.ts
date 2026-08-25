@@ -218,6 +218,9 @@ export interface FreeMailboxRow {
   plan_type?: string
   subscription_plan?: string
   plan_check_status?: string
+  plan_check_task_id?: string
+  plan_source?: string
+  plan_retry_after_until?: number | null
   plus_trial_eligible?: boolean
   live_check_status?: 'queued' | 'running' | 'live' | 'deactivated' | 'token_expired' | 'failed' | string
   live_check_mode?: 'fast' | 'deep' | string
@@ -288,6 +291,34 @@ export const startFreeLiveCheck = (mode: 'fast' | 'deep', rowIds: string[]) => a
   rows: FreeMailboxRow[]
 }>('/api/free/live-check', { mode, row_ids: rowIds })
 export const getFreeLiveCheckState = () => api<{ ok: true; state: FreeLiveCheckState; rows: FreeMailboxRow[] }>('/api/free/live-check/state')
+export interface FreePlanCheckState {
+  running: boolean
+  workers: number
+  queue_limit: number
+  active: number
+  jobs: Array<{
+    task_id: string
+    row_id: string
+    email: string
+    status: string
+    created_at?: number
+    updated_at?: number
+    checked_at?: number
+    retry_after_until?: number
+    http_status?: number
+    source?: string
+    failure?: TaskFailure | null
+  }>
+}
+export const startFreePlanCheck = (rowIds: string[]) => api<{
+  ok: true
+  accepted_count: number
+  skipped_count: number
+  skipped: Array<{ row_id: string; reason: string }>
+  state: FreePlanCheckState
+  rows: FreeMailboxRow[]
+}>('/api/free/plan-check', { row_ids: rowIds })
+export const getFreePlanCheckState = () => api<{ ok: true; state: FreePlanCheckState; rows: FreeMailboxRow[] }>('/api/free/plan-check/state')
 export const exportFreeResults = (rowIds: string[] = []) => api<{ ok: true; count: number; filename: string; content: string }>('/api/free/mailboxes/export', { row_ids: rowIds })
 export const importFreeProxies = (proxyContent: string, _country?: string, _group?: string, scheme?: string) => api<{ ok: true; imported: number; proxies?: any }>(
   '/api/free/proxies/import',

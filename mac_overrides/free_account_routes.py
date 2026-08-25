@@ -40,6 +40,15 @@ class FreeAccountRouteController:
             )
         return service
 
+    def _plan_service(self) -> Any:
+        service = getattr(self.manager, "plan_checks", None) if self.manager is not None else None
+        if service is None:
+            raise FreeRegisterError(
+                "free_plan_queue", "重新查询 Free 套餐", "Free 套餐查询服务尚未初始化",
+                retryable=True, error_code="free_plan_queue_unavailable",
+            )
+        return service
+
     def roxy_workspaces(self):
         if self.config_store is None:
             return self.module.jsonify(ok=False, error="Free 配置服务尚未初始化"), 503
@@ -165,6 +174,51 @@ class FreeAccountRouteController:
                 exc,
                 default_code="free_live_state",
                 default_label="读取 Free 账号测活状态",
+                status=503,
+            )
+
+    def plan_check(self):
+        if self.manager is None:
+            return self._unavailable()
+        data = self.module.request.get_json(silent=True) or {}
+        row_ids = data.get("row_ids") if isinstance(data, Mapping) else None
+        if not isinstance(row_ids, list):
+            return self.error_response(
+                ValueError("row_ids 必须是数组"),
+                default_code="free_plan_queue",
+                default_label="重新查询 Free 套餐",
+            )
+        try:
+            result = self._plan_service().enqueue(row_ids)
+            if not result.get("accepted_count"):
+                skipped = result.get("skipped") if isinstance(result.get("skipped"), list) else []
+                reason = str((skipped[0] if skipped else {}).get("reason") or "没有符合条件的 Free 账号")
+                raise FreeRegisterError(
+                    "free_plan_queue", "重新查询 Free 套餐", reason,
+                    retryable=False, error_code="free_plan_queue_rejected",
+                )
+            return self.module.jsonify(ok=True, **result)
+        except Exception as exc:
+            return self.error_response(
+                exc,
+                default_code="free_plan_queue",
+                default_label="重新查询 Free 套餐",
+            )
+
+    def plan_check_state(self):
+        if self.manager is None:
+            return self._unavailable()
+        try:
+            return self.module.jsonify(
+                ok=True,
+                state=self._plan_service().public_state(),
+                rows=self.manager.pool.public_rows(),
+            )
+        except Exception as exc:
+            return self.error_response(
+                exc,
+                default_code="free_plan_queue_state",
+                default_label="读取 Free 套餐查询状态",
                 status=503,
             )
 

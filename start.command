@@ -201,8 +201,22 @@ fi
 
 export PYTHONPATH="$APP_DIR/mac_overrides:$APP_DIR/business_pyc"
 export EMAIL_AUTH_IMPORTER_GUI_PORT="$PORT"
+export XDG_CACHE_HOME="$APP_DIR/data/cache"
 
 echo "Using fixed WebUI port: $PORT"
+LAUNCH_AGENT_LABEL="com.gptphone.autophone"
+LAUNCH_AGENT_DIR="$APP_DIR/data/launchagent"
+LAUNCH_AGENT_PLIST="$LAUNCH_AGENT_DIR/$LAUNCH_AGENT_LABEL.plist"
+LAUNCH_AGENT_OUT="$LAUNCH_AGENT_DIR/$LAUNCH_AGENT_LABEL.out.log"
+LAUNCH_AGENT_ERR="$LAUNCH_AGENT_DIR/$LAUNCH_AGENT_LABEL.err.log"
+mkdir -p "$LAUNCH_AGENT_DIR"
+
+# The launcher is intentionally a user service.  Unload the previous label
+# before replacing its generated plist so a second click cannot create two
+# Flask instances or a launch loop.
+USER_ID="$(id -u)"
+/bin/launchctl bootout "gui/$USER_ID/$LAUNCH_AGENT_LABEL" >/dev/null 2>&1 || true
+
 OLD_PIDS="$(/usr/bin/pgrep -f "plus_launcher.pyc --no-browser --port $PORT" 2>/dev/null || true)"
 PORT_PIDS="$(/usr/sbin/lsof -ti tcp:"$PORT" 2>/dev/null || true)"
 PIDS_TO_STOP="$(printf "%s\n%s\n" "$OLD_PIDS" "$PORT_PIDS" | awk 'NF && !seen[$0]++')"
@@ -227,26 +241,78 @@ if [ ${#PIDS_TO_STOP_ARRAY[@]} -gt 0 ]; then
   fi
 fi
 
-(
-  ready=""
-  for attempt in {1..120}; do
-    if /usr/bin/curl -fsS "http://127.0.0.1:$PORT/api/state" >/dev/null 2>&1; then
-      ready="1"
-      CACHE_BUSTER="$(date +%s)"
-      if ! /usr/bin/open "http://127.0.0.1:$PORT/?v=$CACHE_BUSTER" >/dev/null 2>&1; then
-        echo "WebUI is ready, but macOS could not open the browser automatically."
-        echo "Open http://127.0.0.1:$PORT/ manually."
-      fi
-      exit 0
-    fi
-    sleep 0.5
-  done
-  if [ -z "$ready" ]; then
-    echo "WebUI did not become ready within 60 seconds."
-    echo "Try opening http://127.0.0.1:$PORT/ manually and check the terminal output above."
-  fi
-) &
+cat > "$LAUNCH_AGENT_PLIST" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>$LAUNCH_AGENT_LABEL</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$VENV_DIR/bin/python</string>
+    <string>$APP_DIR/plus_launcher.pyc</string>
+    <string>--no-browser</string>
+    <string>--port</string>
+    <string>$PORT</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>$APP_DIR</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONPATH</key>
+    <string>$APP_DIR/mac_overrides:$APP_DIR/business_pyc</string>
+    <key>EMAIL_AUTH_IMPORTER_GUI_PORT</key>
+    <string>$PORT</string>
+    <key>XDG_CACHE_HOME</key>
+    <string>$APP_DIR/data/cache</string>
+    <key>CODEX_NODE_BINARY</key>
+    <string>${CODEX_NODE_BINARY:-}</string>
+  </dict>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>LSUIElement</key>
+  <true/>
+  <key>LimitLoadToSessionType</key>
+  <string>Aqua</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <false/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>$LAUNCH_AGENT_OUT</string>
+  <key>StandardErrorPath</key>
+  <string>$LAUNCH_AGENT_ERR</string>
+</dict>
+</plist>
+PLIST
+touch "$LAUNCH_AGENT_OUT" "$LAUNCH_AGENT_ERR"
+chmod 600 "$LAUNCH_AGENT_PLIST" "$LAUNCH_AGENT_OUT" "$LAUNCH_AGENT_ERR"
 
-echo "Starting WebUI: http://127.0.0.1:$PORT"
-echo "Close this Terminal window or press Ctrl-C to stop."
-exec "$VENV_DIR/bin/python" "$APP_DIR/plus_launcher.pyc" --no-browser --port "$PORT"
+if ! /bin/launchctl bootstrap "gui/$USER_ID" "$LAUNCH_AGENT_PLIST"; then
+  echo "无法加载后台服务，请检查：$LAUNCH_AGENT_ERR"
+  exit 1
+fi
+
+echo "Starting background WebUI: http://127.0.0.1:$PORT"
+echo "WebUI will keep running after this Terminal window closes."
+ready=""
+for attempt in {1..120}; do
+  if /usr/bin/curl -fsS "http://127.0.0.1:$PORT/api/state" >/dev/null 2>&1; then
+    ready="1"
+    CACHE_BUSTER="$(date +%s)"
+    if ! /usr/bin/open "http://127.0.0.1:$PORT/?v=$CACHE_BUSTER" >/dev/null 2>&1; then
+      echo "WebUI is ready, but macOS could not open the browser automatically."
+      echo "Open http://127.0.0.1:$PORT/ manually."
+    fi
+    break
+  fi
+  sleep 0.5
+done
+if [ -z "$ready" ]; then
+  echo "WebUI did not become ready within 60 seconds."
+  echo "Check $LAUNCH_AGENT_ERR for the background service log."
+  exit 1
+fi

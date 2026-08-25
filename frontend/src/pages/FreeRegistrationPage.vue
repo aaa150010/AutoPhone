@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheck, Connection, CopyDocument, Delete, Refresh, Setting, VideoPause, VideoPlay, View } from '@element-plus/icons-vue'
-import { deleteFreeTasks, getFreeConfig, getFreeSecret, getFreeState, preflightFree, rerunFreeTask, startFree, stopFree, type FreeConfig, type FreeState } from '../api/client'
+import { deleteFreeTasks, getFreeConfig, getFreeSecret, getFreeState, preflightFree, rerunFreeTask, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeState } from '../api/client'
 import PageToolbar from '../components/PageToolbar.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import ContentEmptyState from '../components/ContentEmptyState.vue'
@@ -47,6 +47,7 @@ const logDialogOpen = ref(false)
 const logDialog = ref<{ refresh: (options?: { forceLatest?: boolean; silent?: boolean }) => Promise<void> }>()
 const loading = ref(false)
 const busy = ref<'preflight' | 'start' | 'stop' | ''>('')
+const planBusy = ref('')
 const quickTargetCount = ref(defaultConfig.target_count)
 const quickConcurrency = ref(defaultConfig.concurrency)
 const quickRunDirty = ref(false)
@@ -320,6 +321,21 @@ async function rerunTask(task: any) {
   }
 }
 
+async function refreshPlan(task: any) {
+  const rowId = String(task?.row_id || '')
+  if (!rowId || !task?.result?.has_access_token || String(task?.result?.plan_check_status || '').toLowerCase() !== 'failed' || planBusy.value) return
+  planBusy.value = String(task.task_id || rowId)
+  try {
+    await startFreePlanCheck([rowId])
+    ElMessage.info('套餐查询已加入队列')
+    await refresh()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '重新查询套餐失败')
+  } finally {
+    planBusy.value = ''
+  }
+}
+
 function taskStatusLabel(status: string) {
   return ({ queued: '排队', running: '运行中', success: '成功', partial_success: '部分成功', failed: '失败', pending_rerun: '待重跑', stopped: '已停止', twofa_pending: '2FA 待重试' } as Record<string, string>)[status] || status || '-'
 }
@@ -400,7 +416,7 @@ onUnmounted(() => window.clearTimeout(timer))
             <el-table-column label="代理池" min-width="180" show-overflow-tooltip><template #default="{ row }"><span>共享健康随机池</span><small class="task-subline">{{ row.proxy_scheme || '' }} · {{ row.proxy_masked || '' }}</small></template></el-table-column>
             <el-table-column label="状态" width="92" align="center"><template #default="{ row }"><el-tag size="small" :type="taskStatusType(row.status)">{{ taskStatusLabel(row.status) }}</el-tag></template></el-table-column>
             <el-table-column label="注册 IP" min-width="135" show-overflow-tooltip><template #default="{ row }">{{ row.registration_ip || row.expected_exit_ip || '-' }}</template></el-table-column>
-            <el-table-column label="套餐" min-width="125" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" :type="taskPlanType(row)" effect="light">{{ taskPlanLabel(row) }}</el-tag></template></el-table-column>
+            <el-table-column label="套餐" min-width="155" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" :type="taskPlanType(row)" effect="light">{{ taskPlanLabel(row) }}</el-tag><el-tooltip v-if="row.result?.has_access_token && String(row.result?.plan_check_status || '').toLowerCase() === 'failed'" content="重新查询套餐"><el-button link size="small" :icon="Refresh" :loading="planBusy === String(row.task_id || row.row_id)" :disabled="Boolean(planBusy)" aria-label="重新查询套餐" @click.stop="refreshPlan(row)" /></el-tooltip></template></el-table-column>
             <el-table-column label="2FA" width="92" align="center"><template #default="{ row }"><el-tag size="small" :type="taskTwofaType(row)" effect="plain">{{ taskTwofaLabel(row) }}</el-tag></template></el-table-column>
             <el-table-column label="Profile" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ row.profile_summary || '-' }}</template></el-table-column>
             <el-table-column label="Token" width="72" align="center"><template #default="{ row }"><el-button v-if="row.result?.has_access_token" link :icon="CopyDocument" aria-label="复制该账号 Token" @click.stop="copyTaskTokens([row])" /><span v-else class="muted">-</span></template></el-table-column>

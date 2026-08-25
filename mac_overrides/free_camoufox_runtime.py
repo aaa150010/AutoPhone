@@ -28,6 +28,7 @@ try:
         CHATGPT_ACCOUNTS_URL,
         CHATGPT_ELIGIBILITY_URL,
         browser_json_fetch,
+        browser_plan_details,
         browser_session,
         browser_twofa,
         finalize_registration_result,
@@ -45,7 +46,7 @@ try:
 except ImportError:  # pragma: no cover - top-level recovery import
     from free_account_service import (  # type: ignore[no-redef]
         CHATGPT_ACCOUNTS_URL, CHATGPT_ELIGIBILITY_URL, browser_json_fetch,
-        browser_session, browser_twofa, finalize_registration_result,
+        browser_plan_details, browser_session, browser_twofa, finalize_registration_result,
         plan_details_from_payloads,
     )
     from free_register_common import (  # type: ignore[no-redef]
@@ -847,16 +848,32 @@ async def _browser_flow(
         remaining = max(1.0, deadline - time.monotonic())
         return await _wait_state(page, min(float(seconds), remaining), *states)
 
+    async def wait_for_otp_input(seconds: float = 45.0) -> tuple[str, str]:
+        """Wait for the reference flow's OTP layer without consuming a code.
+
+        ChatGPT can render an intermediate email-verification shell and then
+        navigate directly to profile/home while the mailbox provider is still
+        waiting.  Polling the DOM alone used to turn that valid transition
+        into ``camoufox_otp_input_missing`` and, worse, consumed the code too
+        early.  Return the observed page state so the caller can hand control
+        back to the main state machine.
+        """
+        end = min(deadline, time.monotonic() + max(1.0, float(seconds)))
+        while time.monotonic() < end:
+            current = await _page_state(page)
+            if current not in {"otp", "otp_wait"}:
+                return "", current
+            selector = await _find_visible_selector(page, OTP_SELECTORS)
+            if selector:
+                return selector, current
+            await asyncio.sleep(0.5)
+        return "", await _page_state(page)
+
     async def finish_home() -> dict[str, Any]:
         session = await browser_session(page)
         set_stage("free_access_token")
         token = str(session.get("accessToken") or "")
-        accounts_url = CHATGPT_ACCOUNTS_URL
-        if "?" not in accounts_url:
-            accounts_url += "?timezone_offset_min=-"
-        accounts = await browser_json_fetch(page, accounts_url, token=token)
-        eligibility = await browser_json_fetch(page, CHATGPT_ELIGIBILITY_URL, token=token)
-        plan = plan_details_from_payloads(accounts, eligibility)
+        plan = await browser_plan_details(page, token)
         set_stage("free_plan_check")
         result: dict[str, Any] = {
             "access_token": token,
@@ -1039,6 +1056,20 @@ async def _browser_flow(
             stage_code = "free_existing_login_otp" if account_flow == "existing_login" else "free_email_otp_wait"
             set_stage(stage_code)
             if not otp_submitted:
+                # Match aBaiFreeGPT's email_verification -> otp layering:
+                # wait for the actual OTP input before asking the shared
+                # mailbox provider for a code.  If the page advances while
+                # waiting, let the next state branch handle it.
+                selector, observed_state = await wait_for_otp_input()
+                if observed_state not in {"otp", "otp_wait"}:
+                    seen.clear()
+                    await asyncio.sleep(0.2)
+                    continue
+                if not selector:
+                    raise CamoufoxBrowserError(
+                        "free_email_otp_validate", "验证 Free 邮箱验证码", "验证码输入框长时间未出现",
+                        error_code="camoufox_otp_input_missing",
+                    )
                 if entry_submitted or account_flow == "existing_login":
                     await mark_otp_sent(stage_code)
                 try:
@@ -1050,8 +1081,15 @@ async def _browser_flow(
                         "free_email_otp_wait", "等待 Free 邮箱验证码", "未获取到邮箱验证码",
                         error_code="camoufox_otp_missing",
                     )
-                selector = await _wait_for_any_selector(page, OTP_SELECTORS, timeout=15)
-                if not selector or not await _fill_input_like_user(page, selector, code):
+                current_state = await _page_state(page)
+                if current_state not in {"otp", "otp_wait"}:
+                    seen.clear()
+                    continue
+                if not await _fill_input_like_user(page, selector, code):
+                    current_state = await _page_state(page)
+                    if current_state not in {"otp", "otp_wait"}:
+                        seen.clear()
+                        continue
                     raise CamoufoxBrowserError(
                         "free_email_otp_validate", "验证 Free 邮箱验证码", "验证码输入框不可用",
                         error_code="camoufox_otp_input_missing",

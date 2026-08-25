@@ -33,6 +33,8 @@ RoxyBrowser 驱动执行，但注册驱动不得改变后续换绑协议。
 ### Free 三链路参考与共享边界
 
 - Camoufox 参考项目为 `/Users/lwh/projects/aBaiFreeGPT`，当前对照提交为 `0b4b7197863d49b54875a7d0c7ef5bc0ee35aafa`，许可证为 AGPL-3.0；该副本只读，不承载 AutoPhone 运行数据。
+- protocol 和 RoxyBrowser 只能参考同级 `/Users/lwh/projects/AutoRegister`；Camoufox 只能参考同级 `/Users/lwh/projects/aBaiFreeGPT`。除这两个本地对照项目外，不再引入其他项目作为行为基准。
+- 对照项目只吸收代码和调用顺序；禁止复制其运行数据、账号、邮箱 provider、凭据、Cookie、Token、验证码、代理信息或第三方授权状态。
 - Free 注册驱动包括 `protocol`、`roxybrowser`、`camoufox`。三条链路共用 `${GPTPHONE_DATA_DIR}/free_register/` 下的同一个邮箱池。
 - 三条链路必须统一调用 `mac_overrides/mailbox_otp_service.py` 的邮箱 URL 解码和策略模式，包括来源解析、请求前基线、旧验证码排除、消息身份判断、时间过滤、轮询、重发和阶段隔离；浏览器驱动不得引入固定邮箱格式或另一套邮箱 provider。
 - 新注册默认优先走 passwordless 邮箱 OTP；只有实际进入并提交注册密码页时才使用固定密码 `Aa150010@150010` 并保存密码。已有账号登录、2FA 重试和换绑必须使用已保存的真实密码。

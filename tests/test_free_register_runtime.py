@@ -320,7 +320,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=lambda *_args, **_kwargs: {},
             proxy_probe=lambda _proxy, _url: "203.0.113.20",
         )
-        self.assertEqual(manager.public_state()["runtime_version"], "1.6.73")
+        self.assertEqual(manager.public_state()["runtime_version"], "1.6.74")
         self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v4-roxy-otp-v2")
 
     def test_manager_preflight_applies_proxy_allocation_mode_from_config(self):

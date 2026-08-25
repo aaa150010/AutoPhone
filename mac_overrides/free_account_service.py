@@ -27,6 +27,8 @@ except ImportError:  # pragma: no cover - top-level recovery import
 
 CHATGPT_ACCOUNTS_URL = "https://chatgpt.com/backend-api/accounts/check/v4-2023-04-27"
 CHATGPT_ELIGIBILITY_URL = "https://chatgpt.com/backend-api/aip/first-party/eligibility"
+CHATGPT_ME_URL = "https://chatgpt.com/backend-api/me"
+CHATGPT_WHAM_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
 MFA_ENROLL_URL = "https://chatgpt.com/backend-api/accounts/mfa/enroll"
 MFA_ACTIVATE_URL = "https://chatgpt.com/backend-api/accounts/mfa/user/activate_enrollment"
 
@@ -178,6 +180,84 @@ def plan_details_from_payloads(accounts_payload: Any, eligibility_payload: Any) 
         if retry_after is not None:
             details["plan_failure"]["retry_after_seconds"] = retry_after
     return details
+
+
+def _fallback_plan(payload: Any) -> str:
+    """Read the small plan shapes returned by ``/me`` and ``wham/usage``."""
+    value = _json_payload(payload)
+    if not isinstance(value, Mapping):
+        return ""
+    try:
+        from .chatgpt_plan_gate import normalize_plan_type
+    except ImportError:  # pragma: no cover - recovery import
+        from chatgpt_plan_gate import normalize_plan_type  # type: ignore[no-redef]
+    for key in ("plan_type", "planType", "subscription_plan", "subscriptionPlan"):
+        plan = normalize_plan_type(value.get(key))
+        if plan:
+            return plan
+    orgs = value.get("orgs")
+    if isinstance(orgs, Mapping):
+        items = orgs.get("data")
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, Mapping):
+                    settings = item.get("settings") if isinstance(item.get("settings"), Mapping) else {}
+                    plan = normalize_plan_type(settings.get("workspace_plan_type") or settings.get("workspacePlanType"))
+                    if plan and plan != "free":
+                        return plan
+    return ""
+
+
+def plan_details_with_fallbacks(
+    accounts_payload: Any,
+    eligibility_payload: Any,
+    fallback_payloads: list[tuple[str, Any]] | tuple[tuple[str, Any], ...] = (),
+) -> dict[str, Any]:
+    """Parse accounts/check and, when necessary, aBai-compatible fallbacks."""
+    details = plan_details_from_payloads(accounts_payload, eligibility_payload)
+    if details.get("plan_check_status") == "success":
+        return details
+    for source, payload in fallback_payloads:
+        plan = _fallback_plan(payload)
+        status = _status(payload)
+        if not plan or not 200 <= status < 300:
+            continue
+        details.update({
+            "plan_check_status": "success",
+            "plan_type": plan,
+            "subscription_plan": plan,
+            "has_active_subscription": plan != "free",
+            "plan_http_status": status,
+            "plan_checked_at": time.time(),
+            "plan_source": source,
+        })
+        for key in ("plan_failure", "plan_error_code", "plan_error_detail", "plan_provider_code"):
+            details.pop(key, None)
+        return details
+    if fallback_payloads:
+        details["plan_fallback_attempts"] = [
+            {"source": source, "http_status": _status(payload) or None}
+            for source, payload in fallback_payloads
+        ]
+    return details
+
+
+async def browser_plan_details(page: Any, token: str) -> dict[str, Any]:
+    """Query browser same-origin plan endpoints with aBai's fallback order."""
+    accounts_url = CHATGPT_ACCOUNTS_URL
+    if "?" not in accounts_url:
+        accounts_url += "?timezone_offset_min=-"
+    accounts = await browser_json_fetch(page, accounts_url, token=token)
+    eligibility = await browser_json_fetch(page, CHATGPT_ELIGIBILITY_URL, token=token)
+    fallbacks: list[tuple[str, Any]] = []
+    if plan_details_from_payloads(accounts, eligibility).get("plan_check_status") != "success":
+        me = await browser_json_fetch(page, CHATGPT_ME_URL, token=token)
+        fallbacks.append(("backend-api/me", me))
+        if _fallback_plan(me):
+            return plan_details_with_fallbacks(accounts, eligibility, fallbacks)
+        usage = await browser_json_fetch(page, CHATGPT_WHAM_USAGE_URL, token=token)
+        fallbacks.append(("backend-api/wham/usage", usage))
+    return plan_details_with_fallbacks(accounts, eligibility, fallbacks)
 
 
 def _plus_trial_from_payload(payload: Mapping[str, Any]) -> bool:
@@ -334,7 +414,8 @@ async def browser_twofa(page: Any, token: str) -> str:
 
 
 __all__ = [
-    "CHATGPT_ACCOUNTS_URL", "CHATGPT_ELIGIBILITY_URL", "MFA_ENROLL_URL", "MFA_ACTIVATE_URL",
-    "browser_json_fetch", "browser_session", "browser_twofa", "finalize_registration_result",
-    "normalize_session", "plan_details_from_payloads", "twofa_activation_payload",
+    "CHATGPT_ACCOUNTS_URL", "CHATGPT_ELIGIBILITY_URL", "CHATGPT_ME_URL", "CHATGPT_WHAM_USAGE_URL",
+    "MFA_ENROLL_URL", "MFA_ACTIVATE_URL", "browser_json_fetch", "browser_plan_details",
+    "browser_session", "browser_twofa", "finalize_registration_result", "normalize_session",
+    "plan_details_from_payloads", "plan_details_with_fallbacks", "twofa_activation_payload",
 ]

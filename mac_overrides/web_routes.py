@@ -1167,6 +1167,8 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/free/rerun", "api_free_rerun", free_account_routes.rerun, ["POST"]),
         ("/api/free/live-check", "api_free_live_check", free_account_routes.live_check, ["POST"]),
         ("/api/free/live-check/state", "api_free_live_check_state", free_account_routes.live_check_state, ["GET"]),
+        ("/api/free/plan-check", "api_free_plan_check", free_account_routes.plan_check, ["POST"]),
+        ("/api/free/plan-check/state", "api_free_plan_check_state", free_account_routes.plan_check_state, ["GET"]),
         ("/api/free/rebind/state", "api_free_rebind_state", free_rebind_routes.state, ["GET"]),
         ("/api/free/rebind/mailboxes", "api_free_rebind_mailboxes", free_rebind_routes.mailboxes, ["GET"]),
         ("/api/free/rebind/mailboxes/import", "api_free_rebind_mailboxes_import", free_rebind_routes.import_mailboxes, ["POST"]),

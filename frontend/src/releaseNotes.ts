@@ -13,14 +13,22 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.73',
-  freeRuntimeVersion: '1.6.73',
+  version: '1.6.74',
+  freeRuntimeVersion: '1.6.74',
   title: 'Free 邮箱换绑工作台',
   releasedAt: '2026-08-25',
   sections: [
     {
       title: 'Free 三链路与 Camoufox 注册',
       usage: 'Free 注册新增可选 Camoufox 异步浏览器池，和全协议、RoxyBrowser 共用同一个 URL 邮箱取件策略与健康随机代理池。默认优先邮箱验证码；只有实际提交注册密码页的新账号才保存固定密码，已有账号登录、Session、2FA、套餐查询和失败诊断保持统一结果契约。',
+    },
+    {
+      title: 'Free 套餐失败可独立重查',
+      usage: '注册、Session 或 2FA 已成功但套餐接口返回无效时，任务和邮箱池会提供重新查询入口。重查只使用已保存 Token 与注册代理，按 accounts/check、/me、wham/usage 顺序补查；429 会记录冷却时间，不会重复登录或自动重放。',
+    },
+    {
+      title: '后台服务与换绑布局',
+      usage: 'start.command 现在生成用户级 LaunchAgent 后台运行 Flask，终端可关闭且 Python 不再作为前台 Dock 应用。换绑工作台改为上方双栏、下方任务表的自适应布局，表格只在面板内部滚动，减少中间区域滚动。',
     },
     {
       title: '独立 Free 邮箱换绑池',

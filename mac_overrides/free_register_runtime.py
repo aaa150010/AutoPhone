@@ -44,6 +44,7 @@ try:
     from .free_roxy_lifecycle import RoxyCleanupStore, RoxyLifecycle
     from .free_log_runtime import FreeLogStore
     from .free_live_check import build_free_live_check_service
+    from .free_plan_check import build_free_plan_check_service
     from .free_protocol_runtime import FreeProtocolMixin
     from .free_camoufox_runtime import CamoufoxRegistrationRunner, shutdown_camoufox_pools
 except ImportError:
@@ -71,6 +72,7 @@ except ImportError:
     from free_roxy_lifecycle import RoxyCleanupStore, RoxyLifecycle  # type: ignore[no-redef]
     from free_log_runtime import FreeLogStore  # type: ignore[no-redef]
     from free_live_check import build_free_live_check_service  # type: ignore[no-redef]
+    from free_plan_check import build_free_plan_check_service  # type: ignore[no-redef]
     from free_protocol_runtime import FreeProtocolMixin  # type: ignore[no-redef]
     from free_camoufox_runtime import CamoufoxRegistrationRunner, shutdown_camoufox_pools  # type: ignore[no-redef]
 class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, FreeProtocolMixin):
@@ -123,6 +125,13 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             self.data_dir,
             pool=self.pool, proxies=self.proxies, log_store=self.log_store,
             proxy_probe=self.proxy_probe, task_store=self.task_store,
+        )
+        self.plan_checks = build_free_plan_check_service(
+            self.data_dir,
+            pool=self.pool,
+            task_store=self.task_store,
+            log_store=self.log_store,
+            task_updater=self._sync_plan_task_snapshot,
         )
 
     def _log(self, message: str, level: str = "info", **fields: Any) -> None:
@@ -228,6 +237,28 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             task["updated_at"] = int(time.time())
             self.task_store.save(self._tasks)
 
+    def _sync_plan_task_snapshot(self, row_id: str, result: Mapping[str, Any], promoted: bool) -> None:
+        """Keep the in-memory public task view aligned with plan queue writes."""
+        task_id = str(result.get("task_id") or "")
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if task is None:
+                task = next(
+                    (
+                        item for item in self._tasks.values()
+                        if str(item.get("row_id") or "") == str(row_id or "")
+                    ),
+                    None,
+                )
+            if not isinstance(task, dict):
+                return
+            task["result"] = copy.deepcopy(dict(result))
+            task["updated_at"] = int(time.time())
+            if promoted and str(task.get("status") or "") == "partial_success":
+                task.update({"status": "success", "stage": "free_plan_check", "error": ""})
+                task.pop("failure", None)
+            self.task_store.save(self._tasks)
+
     def _finish_progress(self, task_id: str, outcome: str = "success") -> None:
         final_stage = ""
         final_label = ""
@@ -259,12 +290,12 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
 
     def _public_task(self, task: Mapping[str, Any]) -> dict[str, Any]:
         result = task.get("result") if isinstance(task.get("result"), Mapping) else {}
-        public = {key: copy.deepcopy(task[key]) for key in ("task_id", "ordinal", "slot_id", "slot_index", "concurrency_limit", "status", "created_at", "updated_at", "batch_id", "run_mode", "driver", "email", "stage", "proxy_masked", "proxy_fingerprint", "expected_exit_ip", "registration_ip", "exit_ip", "profile_summary", "proxy_id", "proxy_scheme", "proxy_country", "proxy_group", "proxy_attempts", "cleanup_status") if key in task}
+        public = {key: copy.deepcopy(task[key]) for key in ("task_id", "ordinal", "slot_id", "slot_index", "concurrency_limit", "status", "created_at", "updated_at", "batch_id", "run_mode", "driver", "email", "row_id", "stage", "proxy_masked", "proxy_fingerprint", "expected_exit_ip", "registration_ip", "exit_ip", "profile_summary", "proxy_id", "proxy_scheme", "proxy_country", "proxy_group", "proxy_attempts", "cleanup_status") if key in task}
         public["account"] = public.get("email", "")
         public["stage_label"] = FREE_STAGE_LABELS.get(str(public.get("stage") or ""), str(public.get("stage") or ""))
         public["result"] = {
             key: copy.deepcopy(result[key])
-            for key in ("account_flow", "plan_type", "subscription_plan", "has_active_subscription", "plus_trial_eligible", "eligible_campaign_id", "plan_check_status", "plan_checked_at", "plan_error_code", "plan_http_status", "twofa_status", "twofa_error", "has_access_token")
+            for key in ("account_flow", "plan_type", "subscription_plan", "has_active_subscription", "plus_trial_eligible", "eligible_campaign_id", "plan_check_status", "plan_check_task_id", "plan_checked_at", "plan_error_code", "plan_http_status", "plan_retry_after_until", "twofa_status", "twofa_error", "has_access_token")
             if key in result
         }
         public["result"]["has_access_token"] = bool(result.get("access_token"))
