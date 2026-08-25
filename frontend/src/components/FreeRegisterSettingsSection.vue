@@ -303,8 +303,8 @@ defineExpose({ save })
     </el-row>
 
     <el-row :gutter="10">
-      <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="Free 注册数量（1-200）" help="本批最多启动的 Free 账号数。Free 注册中心启动条使用并保存同一个数值。" /></template><el-input-number v-model="config.target_count" :min="1" :max="200" controls-position="right" :disabled="running" /></el-form-item></el-col>
-      <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="Free 并发数（1-16）" help="配置允许同时运行的 Free 注册任务数；运行时可能因协议压力控制或 Roxy 熔断降低实际并发。" /></template><el-input-number v-model="config.concurrency" :min="1" :max="16" controls-position="right" :disabled="running" /></el-form-item></el-col>
+      <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="Free 注册数量（1-200）" help="本批最多启动的 Free 账号数。Free 注册中心启动条使用并保存同一个数值。" /></template><el-input-number v-model="config.target_count" class="free-scale-number" :min="1" :max="200" controls-position="right" :disabled="running" /></el-form-item></el-col>
+      <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="Free 并发数（1-16）" help="配置允许同时运行的 Free 注册任务数；运行时可能因协议压力控制或 Roxy 熔断降低实际并发。" /></template><el-input-number v-model="config.concurrency" class="free-scale-number" :min="1" :max="16" controls-position="right" :disabled="running" /></el-form-item></el-col>
       <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="邮箱 OTP 超时（秒）" help="注册流程等待邮箱验证码的最长时间。启用自动动态口令后，第二封 OTP 也使用这项超时。" /></template><el-input-number v-model="config.email_code_timeout" :min="10" :max="600" controls-position="right" :disabled="running" /></el-form-item></el-col>
     </el-row>
     <el-form-item><template #label><FieldHelpLabel label="出口 IP 探测地址" help="通过每条待用代理访问该地址，取得实际出口 IP。用于检查代理连通性、重复出口和任务期间 IP 漂移。旧版默认的 https://ipinfo.io/ip 会自动改为 https://api.ipify.org；明确填写的 JSON 地址仍会按 ip/query 字段解析。" /></template><el-input v-model="config.proxy_probe_url" :disabled="running" placeholder="https://api.ipify.org" /></el-form-item>
@@ -434,5 +434,6 @@ defineExpose({ save })
 .proxy-import-field { display: grid; gap: 5px; min-width: 0; }
 .proxy-table-heading { display: flex; align-items: center; margin: 12px 0 -2px; color: var(--el-text-color-regular); font-size: 12px; font-weight: 650; }
 .free-settings-section :deep(.el-input-number), .free-settings-section :deep(.el-select) { width: 100%; }
+.free-settings-section :deep(.free-scale-number) { width: 132px; max-width: 100%; }
 .free-settings-section :deep(.el-form-item) { margin-bottom: 10px; }
 </style>

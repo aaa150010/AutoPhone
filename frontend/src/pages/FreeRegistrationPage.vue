@@ -440,31 +440,34 @@ onUnmounted(() => window.clearTimeout(timer))
 .task-start-bar { min-height: 32px; }
 .task-start-bar .muted { margin-right: auto; }
 .quick-run-field { display: inline-flex; align-items: center; gap: 8px; color: var(--el-text-color-regular); font-size: 14px; white-space: nowrap; }
-/* Match the reference toolbar's stable 150x40 numeric control while keeping
-   Element Plus' native keyboard, validation, and spinner behavior. */
+/* Keep numeric controls compact while preserving Element Plus' native
+   keyboard, validation, and spinner behavior. */
 .quick-run-field :deep(.quick-run-number) {
-  --el-input-height: 40px;
-  --el-input-inner-height: 38px;
-  width: 150px;
-  height: 40px;
-  line-height: 38px;
+  --el-input-height: 30px;
+  --el-input-inner-height: 28px;
+  width: 112px;
+  height: 30px;
+  line-height: 28px;
 }
 .quick-run-field :deep(.quick-run-number .el-input__wrapper) {
-  min-height: 40px;
-  height: 40px;
-  padding-left: 12px;
-  padding-right: 42px;
+  min-height: 30px;
+  height: 30px;
+  padding-left: 8px;
+  padding-right: 34px;
 }
 .quick-run-field :deep(.quick-run-number .el-input__inner) {
-  height: 38px;
-  line-height: 38px;
+  height: 28px;
+  line-height: 28px;
   font-size: 14px;
   text-align: center;
 }
 .quick-run-field :deep(.quick-run-number .el-input-number__increase),
 .quick-run-field :deep(.quick-run-number .el-input-number__decrease) {
-  --el-input-number-controls-height: 20px;
-  width: 32px;
+  --el-input-number-controls-height: 15px;
+  width: 26px;
+}
+@media (max-width: 760px) {
+  .quick-run-field :deep(.quick-run-number) { width: 106px; max-width: 100%; }
 }
 .task-filter-bar { display: grid; grid-template-columns: minmax(260px, 1.2fr) minmax(420px, 2fr) repeat(3, 150px); min-height: 32px; }
 .task-filter-bar > .el-input, .task-filter-bar > .task-driver-filter { width: 100%; }

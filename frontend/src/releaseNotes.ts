@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.66',
-  freeRuntimeVersion: '1.6.66',
+  version: '1.6.67',
+  freeRuntimeVersion: '1.6.67',
   title: 'Free 双链路照齐 AutoRegister',
   releasedAt: '2026-08-25',
   sections: [
+    {
+      title: 'Free 数量与并发控件紧凑化',
+      usage: 'Free 注册中心启动条以及运行配置中的注册数量、并发输入框改为适合数值录入的紧凑尺寸，保留原有范围校验和加减控制。',
+    },
     {
       title: 'Free 双链路失败节点与账号状态对齐',
       usage: '全协议受信任 Auth HTML 起始页按 AutoRegister 状态机继续提交邮箱；Roxy Session 会等待回调、检查其他 ChatGPT 窗口，并在超时前主动打开 ChatGPT 再读取登录态。任务表和 Free 邮箱池按实际套餐显示，可用 Plus 试用作为附加状态，2FA 与 AutoRegister 一致显示已启用或未启用，待重试仍保留警告状态。',
