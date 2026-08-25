@@ -12,6 +12,7 @@ import asyncio
 import atexit
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
+from datetime import date
 import inspect
 import json
 import os
@@ -73,20 +74,28 @@ PASSWORD_SELECTORS = (
 )
 NAME_SELECTORS = (
     "input[name='name']", "input[name='full_name']", "input[autocomplete='name']",
-    "input[placeholder*='name' i]",
+    "input[id*='name' i]", "input[placeholder*='name' i]",
 )
 BIRTHDAY_SELECTORS = (
-    "input[type='date']", "input[name*='birth' i]", "input[name*='birthday' i]",
+    "input[name='birthday']", "input[type='date']", "input[name='birthdate']",
+    "input[name='birth_date']", "input[autocomplete='bday']",
+    "input[id*='birth' i]", "input[placeholder*='birth' i]",
 )
 AGE_SELECTORS = (
-    "input[name='age']", "input[name*='age' i]", "input[placeholder*='age' i]",
+    "input[name='age']", "input[type='number'][name*='age' i]",
+    "input[placeholder*='age' i]", "input[id*='age' i]",
 )
-SUBMIT_SELECTORS = (
+EMAIL_SUBMIT_SELECTORS = (
     "button[type='submit']", "input[type='submit']", "button[data-testid='continue-button']",
     "button:has-text('Continue')", "button:has-text('continue')", "button:has-text('Next')",
-    "button:has-text('Sign up')", "button:has-text('Create account')",
-    "button:has-text('继续')", "button:has-text('Verify')", "button:has-text('Create')",
-    "button:has-text('注册')", "button:has-text('创建账号')",
+    "button:has-text('Sign up')", "button:has-text('sign up')",
+    "button:has-text('创建账号')", "button:has-text('注册')",
+)
+PASSWORD_SUBMIT_SELECTORS = (
+    "button[type='submit']", "input[type='submit']", "button[data-testid='continue-button']",
+    "button:has-text('Continue')", "button:has-text('continue')",
+    "button:has-text('Create account')", "button:has-text('create account')",
+    "button:has-text('Sign up')", "button:has-text('创建账号')", "button:has-text('注册')",
 )
 PASSWORDLESS_SELECTORS = (
     "a[href*='passwordless']", "button:has-text('email code')",
@@ -133,6 +142,8 @@ _BROWSER_PROCESS_LOST_MARKERS = (
 _PROXY_BLOCK_PAGE_MARKERS = (
     "unable to load site",
     "if you are using a vpn",
+    "try turning it off",
+    "this website is using a security service",
     "access denied",
     "sorry, you have been blocked",
     "web proxy blocked",
@@ -141,10 +152,88 @@ _PROXY_BLOCK_PAGE_MARKERS = (
     "代理阻断",
 )
 
+_TRANSIENT_NAV_MARKERS = (
+    "err_connection_closed",
+    "err_connection_reset",
+    "err_connection_refused",
+    "err_connection_aborted",
+    "err_connection_failed",
+    "err_timed_out",
+    "err_network_changed",
+    "err_empty_response",
+    "err_socks_connection_failed",
+    "err_proxy_connection_failed",
+    # Firefox/Camoufox reports the same transport failures with NS_ERROR
+    # names instead of Chromium's ERR_* names.
+    "ns_error_connection_closed",
+    "ns_error_connection_reset",
+    "ns_error_connection_refused",
+    "ns_error_net_timeout",
+    "ns_error_unknown_host",
+    "ns_error_proxy_connection_refused",
+    "connection refused",
+    "connection reset",
+    "navigation timeout",
+    "page.goto: timeout",
+    "timed out",
+)
+
 
 def _browser_process_lost(exc: BaseException) -> bool:
     message = str(exc or "").casefold()
     return any(marker in message for marker in _BROWSER_PROCESS_LOST_MARKERS)
+
+
+def _is_transient_navigation_error(exc: BaseException) -> bool:
+    """Match the reference flow's transport-only navigation retry boundary."""
+    message = str(exc or "").casefold()
+    return any(marker in message for marker in _TRANSIENT_NAV_MARKERS)
+
+
+def _navigation_failure_category(exc: BaseException) -> str:
+    if _browser_process_lost(exc):
+        return "browser_process_lost"
+    if "timeout" in str(exc or "").casefold() or "timed out" in str(exc or "").casefold():
+        return "navigation_timeout"
+    if _is_transient_navigation_error(exc):
+        return "navigation_transient"
+    return "navigation_error"
+
+
+def _navigation_failure_reason(exc: BaseException) -> str:
+    message = str(exc or "").casefold()
+    if any(marker in message for marker in ("ns_error_connection_refused", "err_connection_refused", "connection refused")):
+        return "connection_refused"
+    if any(marker in message for marker in ("ns_error_connection_reset", "err_connection_reset", "connection reset")):
+        return "connection_reset"
+    if any(marker in message for marker in ("ns_error_net_timeout", "err_timed_out", "timed out", "navigation timeout")):
+        return "timeout"
+    if any(marker in message for marker in ("ns_error_unknown_host", "err_name_not_resolved")):
+        return "name_resolution"
+    if any(marker in message for marker in ("err_proxy_connection_failed", "ns_error_proxy_connection_refused")):
+        return "proxy_connection_failed"
+    return ""
+
+
+def _navigation_diagnostic(exc: BaseException, page: Any) -> str:
+    """Return a small, stable diagnostic without persisting exception text."""
+    category = _navigation_failure_category(exc)
+    exception_type = type(exc).__name__[:80] or "UnknownError"
+    safe_page = _safe_url(page)
+    reason = _navigation_failure_reason(exc)
+    reason_field = f"; reason={reason}" if reason else ""
+    return f"category={category}; exception_type={exception_type}{reason_field}; safe_page={safe_page}"
+
+
+def _mark_recycle_required(error: BaseException, reason: str = "") -> BaseException:
+    """Attach browser-pool recovery intent without widening the public schema."""
+    try:
+        setattr(error, "recycle_required", True)
+        if reason:
+            setattr(error, "recycle_reason", clean(reason, 240))
+    except Exception:
+        pass
+    return error
 
 
 def _load_camoufox_api() -> tuple[Any, Any]:
@@ -340,53 +429,6 @@ async def _submit_visible_form(page: Any, selector: str) -> bool:
         return False
 
 
-async def _submit_email_form_stable(page: Any, email: str) -> dict[str, Any]:
-    """Submit the React-controlled email form without blocking navigation."""
-    script = r"""
-    ({email}) => {
-      const value = String(email || '').trim();
-      const visible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
-        && getComputedStyle(el).visibility !== 'hidden'
-        && getComputedStyle(el).display !== 'none'
-        && !el.disabled && el.getAttribute('aria-disabled') !== 'true';
-      const input = [...document.querySelectorAll(
-        "input#login-email,input[type='email'],input[name='email'],input[name='username'],input[autocomplete*='email'],input[autocomplete*='username']"
-      )].find(el => visible(el) && !el.readOnly);
-      if (!input) return {ok: false, reason: 'missing_email_input'};
-      if (!value || !value.includes('@')) return {ok: false, reason: 'empty_email'};
-      const form = input.closest('form');
-      if (!form) return {ok: false, reason: 'missing_form'};
-      const bad = /google|apple|microsoft|github|facebook|saml|sso|oauth|social|oidc|idp|provider|authorize|consent|grant|allow/i;
-      const describe = el => [el.id, el.name, el.type, el.getAttribute('data-testid'),
-        el.getAttribute('data-provider'), el.getAttribute('aria-label'), el.getAttribute('href'),
-        el.textContent || ''].filter(Boolean).join(' ');
-      const buttons = [...form.querySelectorAll('button,input[type="submit"]')]
-        .filter(el => visible(el) && !bad.test(describe(el)));
-      const submit = buttons.find(el => (el.getAttribute('type') || '').toLowerCase() === 'submit')
-        || buttons[0] || null;
-      if (!submit) return {ok: false, reason: 'missing_safe_submit'};
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-      input.scrollIntoView({block: 'center', inline: 'nearest'});
-      input.focus();
-      if (setter) setter.call(input, value); else input.value = value;
-      try { input.dispatchEvent(new InputEvent('beforeinput', {bubbles: true, cancelable: true, inputType: 'insertText', data: value})); } catch (_) {}
-      try { input.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText', data: value})); }
-      catch (_) { input.dispatchEvent(new Event('input', {bubbles: true})); }
-      input.dispatchEvent(new Event('change', {bubbles: true}));
-      input.dispatchEvent(new FocusEvent('blur', {bubbles: true}));
-      input.blur();
-      input.focus();
-      return {ok: true, reason: 'stable_async_enter_click', value: input.value,
-        hasForm: true, hasSubmit: true, submitDisabled: !!submit.disabled};
-    }
-    """
-    try:
-        result = await page.evaluate(script, {"email": str(email or "").strip()})
-        return dict(result) if isinstance(result, Mapping) else {"ok": False, "reason": "invalid_result"}
-    except Exception as exc:
-        return {"ok": False, "reason": type(exc).__name__}
-
-
 async def _auth_error_text(page: Any) -> str:
     text = await _page_visible_text(page)
     for token in (
@@ -446,13 +488,25 @@ async def _goto_with_retry(
     *,
     timeout_ms: int,
     proxy_retryable: bool,
+    attempts: int = 1,
+    log: Callable[..., Any] | None = None,
 ) -> Any:
-    """Reference-style navigation: preserve usable pages and retry transient disconnects once."""
+    """Navigate like aBaiFreeGPT while retaining AutoPhone's safe errors.
+
+    A DOMContentLoaded timeout does not prove that the page is unusable.  The
+    reference flow checks the login form before rotating a proxy; this is
+    important when several Camoufox contexts are under CPU or network load.
+    """
     last_error: BaseException | None = None
-    for attempt in range(2):
+    total_attempts = max(1, int(attempts or 1))
+    for attempt in range(total_attempts):
         try:
             response = await _goto_with_diagnostics(
-                page, url, timeout_ms=timeout_ms, proxy_retryable=proxy_retryable,
+                page,
+                url,
+                timeout_ms=timeout_ms,
+                proxy_retryable=proxy_retryable,
+                wrap_errors=False,
             )
             await _wait_challenge_then_stop(page)
             return response
@@ -460,25 +514,72 @@ async def _goto_with_retry(
             last_error = exc
             if exc.error_code in {"camoufox_navigation_rate_limited", "camoufox_proxy_blocked"}:
                 raise
-            if attempt == 0 and proxy_retryable and _browser_process_lost(exc):
-                await asyncio.sleep(2)
-                continue
+            if getattr(exc, "recycle_required", False):
+                raise
             raise
         except Exception as exc:
             last_error = exc
-            if attempt == 0 and proxy_retryable and _browser_process_lost(exc):
-                await asyncio.sleep(2)
-                continue
-            raise CamoufoxBrowserError(
+            if _browser_process_lost(exc):
+                failure = CamoufoxBrowserError(
+                    "free_camoufox_launch", "启动 Camoufox 浏览器池",
+                    "Camoufox 浏览器进程已断开", retryable=True,
+                    error_code="camoufox_browser_disconnected",
+                    diagnostic="category=browser_process_lost; exception_type="
+                    f"{type(exc).__name__}", safe_page=_safe_url(page),
+                    page_type="unknown",
+                )
+                _mark_recycle_required(failure, "browser process lost during navigation")
+                raise failure from exc
+
+            retryable_navigation = (
+                _is_transient_navigation_error(exc)
+                or "timeout" in str(exc or "").casefold()
+                or type(exc).__name__.casefold() == "error"
+            )
+            if retryable_navigation:
+                hard_block = await _hard_proxy_block_reason(page)
+                if hard_block:
+                    failure = CamoufoxBrowserError(
+                        "free_camoufox_navigation", "打开 Camoufox 注册页面",
+                        "Camoufox 页面被代理或上游服务阻断",
+                        retryable=bool(proxy_retryable),
+                        error_code="camoufox_proxy_blocked",
+                        diagnostic=f"category=proxy_blocked; marker={hard_block}",
+                        safe_page=_safe_url(page), page_type="navigation",
+                    )
+                    failure.proxy_retryable = bool(proxy_retryable)
+                    raise failure from exc
+                email_selector = await _wait_for_any_selector(
+                    page, EMAIL_SELECTORS, timeout=2,
+                )
+                if email_selector:
+                    if callable(log):
+                        try:
+                            log(
+                                f"导航等待异常但登录表单已可用: {email_selector}",
+                                "warn",
+                            )
+                        except TypeError:
+                            log(f"导航等待异常但登录表单已可用: {email_selector}")
+                    return None
+                if attempt + 1 < total_attempts:
+                    await asyncio.sleep(2)
+                    continue
+
+            failure = CamoufoxBrowserError(
                 "free_camoufox_navigation", "打开 Camoufox 注册页面",
                 "Camoufox 页面导航失败", retryable=bool(proxy_retryable),
-                error_code="camoufox_navigation_failed", diagnostic=type(exc).__name__,
+                error_code="camoufox_navigation_failed",
+                diagnostic=_navigation_diagnostic(exc, page),
                 safe_page=_safe_url(page), page_type="navigation",
-            ) from exc
+            )
+            failure.proxy_retryable = bool(proxy_retryable)
+            raise failure from exc
     raise CamoufoxBrowserError(
         "free_camoufox_navigation", "打开 Camoufox 注册页面",
         "Camoufox 页面导航失败", retryable=bool(proxy_retryable),
-        error_code="camoufox_navigation_failed", diagnostic=type(last_error).__name__ if last_error else "unknown",
+        error_code="camoufox_navigation_failed",
+        diagnostic=_navigation_diagnostic(last_error, page) if last_error else "category=navigation_error",
         safe_page=_safe_url(page), page_type="navigation",
     ) from last_error
 
@@ -511,6 +612,7 @@ async def _goto_with_diagnostics(
     *,
     timeout_ms: int,
     proxy_retryable: bool = False,
+    wrap_errors: bool = True,
 ) -> Any:
     """Navigate while preserving safe HTTP/proxy diagnostics for the manager."""
     try:
@@ -518,18 +620,23 @@ async def _goto_with_diagnostics(
     except FreeRegisterError:
         raise
     except Exception as exc:
+        if not wrap_errors:
+            raise
         if _browser_process_lost(exc):
-            raise CamoufoxBrowserError(
+            failure = CamoufoxBrowserError(
                 "free_camoufox_launch", "启动 Camoufox 浏览器池",
                 "Camoufox 浏览器进程已断开",
                 retryable=True, error_code="camoufox_browser_disconnected",
                 diagnostic="browser process lost", safe_page=_safe_url(page), page_type="unknown",
-            ) from exc
+            )
+            _mark_recycle_required(failure, "browser process lost during navigation")
+            raise failure from exc
         failure = CamoufoxBrowserError(
             "free_camoufox_navigation", "打开 Camoufox 注册页面",
             "Camoufox 页面导航失败",
             retryable=bool(proxy_retryable), error_code="camoufox_navigation_failed",
-            diagnostic=type(exc).__name__, safe_page=_safe_url(page), page_type="navigation",
+            diagnostic=_navigation_diagnostic(exc, page),
+            safe_page=_safe_url(page), page_type="navigation",
         )
         failure.proxy_retryable = bool(proxy_retryable)
         raise failure from exc
@@ -733,7 +840,7 @@ async def _page_state(page: Any) -> str:
         if any(marker in path for marker in ("email-verification", "email-otp", "/verify")):
             if await _visible(page, PASSWORD_SELECTORS, 250):
                 return "signup_password"
-            return "otp" if await _visible(page, OTP_SELECTORS, 250) else "otp_wait"
+            return "otp" if await _visible(page, OTP_SELECTORS, 250) else "email_verification"
         if any(marker in path for marker in ("/authorize", "/callback", "/continue")):
             return "oauth_callback"
     if await _visible(page, PASSWORD_SELECTORS, 250):
@@ -772,6 +879,45 @@ async def _accept_consents(page: Any) -> None:
             continue
 
 
+async def _sync_hidden_birthday_input(page: Any, birthdate: str) -> bool:
+    """Mirror the reference fallback for date controls rendered off-screen."""
+    for selector in BIRTHDAY_SELECTORS:
+        try:
+            locator = page.locator(selector).first
+            if await locator.is_visible(timeout=500):
+                await locator.click()
+                await locator.fill(birthdate)
+                return True
+        except Exception:
+            continue
+    for selector in BIRTHDAY_SELECTORS:
+        try:
+            updated = await page.evaluate(
+                """(sel, value) => {
+                    const el = document.querySelector(sel);
+                    if (!el) return false;
+                    el.value = value;
+                    el.dispatchEvent(new Event('input', {bubbles: true}));
+                    el.dispatchEvent(new Event('change', {bubbles: true}));
+                    return true;
+                }""",
+                selector,
+                birthdate,
+            )
+            if updated:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _reference_age_and_birthdate() -> tuple[int, str]:
+    """Use the reference flow's adult age range with a matching birthday."""
+    age = random.SystemRandom().randint(18, 35)
+    today = date.today()
+    return age, f"{today.year - age:04d}-{today.month:02d}-{today.day:02d}"
+
+
 async def _complete_profile(page: Any, log: Callable[[str, str], None]) -> None:
     name = await _visible(page, NAME_SELECTORS)
     if name:
@@ -802,23 +948,26 @@ async def _browser_flow(
     otp_mark_sent: Callable[..., Any] | None = None,
     stage_fn: Callable[[str, str], None] | None = None,
     force_existing_login: bool = False,
+    startup_gate: asyncio.Semaphore | None = None,
 ) -> dict[str, Any]:
     timeout = max(60, int(config.get("registration_timeout_seconds") or 600))
     deadline = time.monotonic() + timeout
     account_flow = "existing_login" if force_existing_login else "signup"
     password_used = False
     entry_submitted = False
-    controlled_entry_resubmit = False
     otp_submitted = False
     otp_submitted_at = 0.0
     otp_resend_used = False
     otp_input_selector = ""
+    password_stage_started_at = 0.0
     password_submitted_at = 0.0
+    password_submit_retried = False
+    email_verification_started_at = 0.0
+    email_verification_retried = False
     profile_submitted = False
-    email_continue_clicked = False
     entry_transition_deadline = 0.0
-    browser_signin_fallback_used = False
     seen: dict[str, int] = {}
+    step_count = 0
 
     def set_stage(code: str) -> None:
         if callable(stage_fn):
@@ -905,40 +1054,38 @@ async def _browser_flow(
             result, driver="camoufox", email=email, password_used=password_used,
         )
 
-    # Match the reference flow: establish the mailbox baseline before the
-    # first request that may send an OTP, then wait for the actual DOM entry.
-    if force_existing_login:
-        await prepare_otp("free_existing_login_otp")
-    await _goto_with_retry(
-        page, CHATGPT_LOGIN_URL, timeout_ms=min(timeout * 1000, 90_000),
-        proxy_retryable=not force_existing_login,
-    )
-    await asyncio.sleep(1.5)
-    email_selector = await _wait_for_any_selector(page, EMAIL_SELECTORS, timeout=12)
-    if email_selector:
-        set_stage("free_existing_login_otp" if force_existing_login else "free_camoufox_signup_email")
-        if not force_existing_login:
-            await prepare_otp("free_email_otp_wait")
-        if not await _fill_input_like_user(page, email_selector, email):
-            raise CamoufoxBrowserError(
-                "free_camoufox_signup_email", "填写 Camoufox 注册邮箱", "邮箱输入框写入失败",
-                error_code="camoufox_email_fill_failed",
-            )
-        stable_submit = await _submit_email_form_stable(page, email)
-        log(
-            f"Camoufox 邮箱稳定提交：{clean(stable_submit.get('reason'), 80)}",
-            "info",
+    async def open_registration_entry() -> None:
+        """Keep the reference startup gate around only entry navigation."""
+        nonlocal entry_submitted, entry_transition_deadline
+        # Establish the mailbox baseline before the first request that may
+        # send an OTP. The provider itself remains AutoPhone's strategy mode.
+        if force_existing_login:
+            await prepare_otp("free_existing_login_otp")
+        await _goto_with_retry(
+            page, CHATGPT_LOGIN_URL, timeout_ms=min(timeout * 1000, 90_000),
+            proxy_retryable=not force_existing_login, log=log,
         )
-        if stable_submit.get("ok"):
-            if not await _submit_visible_form(page, email_selector):
-                submit_selector = await _click_first(page, SUBMIT_SELECTORS, timeout=5)
-        else:
-            submit_selector = await _click_first(page, SUBMIT_SELECTORS, timeout=5)
+        await asyncio.sleep(1.5)
+        email_selector = await _wait_for_any_selector(page, EMAIL_SELECTORS, timeout=12)
+        if email_selector:
+            set_stage("free_existing_login_otp" if force_existing_login else "free_camoufox_signup_email")
+            if not force_existing_login:
+                await prepare_otp("free_email_otp_wait")
+            if not await _fill_input_like_user(page, email_selector, email):
+                raise CamoufoxBrowserError(
+                    "free_camoufox_signup_email", "填写 Camoufox 注册邮箱", "邮箱输入框写入失败",
+                    error_code="camoufox_email_fill_failed",
+                )
+            submit_selector = await _click_first(page, EMAIL_SUBMIT_SELECTORS, timeout=5)
             if not submit_selector:
                 await _submit_visible_form(page, email_selector)
-        entry_submitted = True
-        entry_transition_deadline = time.monotonic() + 45.0
-    else:
+                log("Camoufox 登录页已使用 Enter 提交邮箱", "info")
+            else:
+                log(f"Camoufox 登录页已点击: {submit_selector}", "info")
+            entry_submitted = True
+            entry_transition_deadline = time.monotonic() + 45.0
+            return
+
         # Keep the same-origin NextAuth fallback from the reference flow for a
         # delayed shell, but never invent an external provider URL.
         if not force_existing_login:
@@ -947,44 +1094,49 @@ async def _browser_flow(
         if authorize_url:
             await _goto_with_retry(
                 page, authorize_url, timeout_ms=min(timeout * 1000, 90_000),
-                proxy_retryable=False,
+                proxy_retryable=False, log=log,
             )
             entry_submitted = True
-        else:
-            snapshot = await _snapshot(page)
-            raise CamoufoxBrowserError(
-                "free_camoufox_navigation", "打开 Camoufox 注册页面",
-                "登录页未找到邮箱输入框，当前代理返回了不可用页面",
-                retryable=True, error_code="camoufox_entry_form_missing",
-                diagnostic=json.dumps(snapshot, ensure_ascii=False)[:500],
-                safe_page=snapshot.get("url"), page_type="entry",
-            )
+            return
+        snapshot = await _snapshot(page)
+        raise CamoufoxBrowserError(
+            "free_camoufox_navigation", "打开 Camoufox 注册页面",
+            "登录页未找到邮箱输入框，当前代理返回了不可用页面",
+            retryable=True, error_code="camoufox_entry_form_missing",
+            diagnostic=json.dumps(snapshot, ensure_ascii=False)[:500],
+            safe_page=snapshot.get("url"), page_type="entry",
+        )
+
+    if startup_gate is None:
+        await open_registration_entry()
+    else:
+        async with startup_gate:
+            await open_registration_entry()
 
     while time.monotonic() < deadline:
+        step_count += 1
+        if step_count > 40:
+            raise CamoufoxBrowserError(
+                "free_camoufox_page_state", "等待 Camoufox 页面状态",
+                "注册状态机超出最大推进步数", error_code="camoufox_page_state_limit",
+                safe_page=_safe_url(page), page_type="state_machine",
+            )
         state = await _page_state(page)
         seen[state] = seen.get(state, 0) + 1
-        if seen[state] > 12 and state in {"unknown", "entry"}:
+        if (
+            state not in {"signup_password", "login_password", "otp", "otp_wait", "email_verification", "security"}
+            and seen[state] > 4
+        ):
             if state == "entry" and entry_submitted and time.monotonic() < entry_transition_deadline:
                 await asyncio.sleep(1.0)
                 continue
-            if state == "entry" and entry_submitted and not browser_signin_fallback_used:
-                browser_signin_fallback_used = True
-                authorize_url = await _browser_signin_url(page, email)
-                if authorize_url:
-                    await _goto_with_retry(
-                        page, authorize_url, timeout_ms=min(timeout * 1000, 90_000),
-                        proxy_retryable=False,
-                    )
-                    entry_transition_deadline = time.monotonic() + 45.0
-                    seen.clear()
-                    continue
             error_text = await _auth_error_text(page)
             snapshot = await _snapshot(page)
             raise CamoufoxBrowserError(
                 "free_camoufox_navigation", "打开 Camoufox 注册页面",
                 error_text or "注册页面状态长时间未推进",
                 retryable=not entry_submitted,
-                error_code="camoufox_entry_transition_timeout" if entry_submitted else "camoufox_entry_state_stuck",
+                error_code="camoufox_entry_transition_timeout" if state == "entry" and entry_submitted else "camoufox_page_state_stuck",
                 diagnostic=json.dumps(snapshot, ensure_ascii=False)[:500],
                 safe_page=snapshot.get("url"), page_type=state,
             )
@@ -1001,20 +1153,9 @@ async def _browser_flow(
                     await prepare_otp("free_email_otp_wait")
                     if not await _fill_input_like_user(page, selector, email):
                         raise CamoufoxBrowserError("free_camoufox_signup_email", "填写 Camoufox 注册邮箱", "邮箱输入框写入失败", error_code="camoufox_email_fill_failed")
-                    await _click_first(page, SUBMIT_SELECTORS, timeout=5)
+                    await _click_first(page, EMAIL_SUBMIT_SELECTORS, timeout=5)
                     await _submit_visible_form(page, selector)
                     entry_submitted = True
-            elif not controlled_entry_resubmit:
-                selector = await _find_visible_selector(page, EMAIL_SELECTORS)
-                stable_submit = await _submit_email_form_stable(page, email)
-                if stable_submit.get("ok"):
-                    if selector and not await _submit_visible_form(page, selector):
-                        await _click_first(page, SUBMIT_SELECTORS, timeout=5)
-                else:
-                    if selector:
-                        await _submit_visible_form(page, selector)
-                controlled_entry_resubmit = True
-                entry_transition_deadline = time.monotonic() + 45.0
             await asyncio.sleep(1.0)
             continue
 
@@ -1037,19 +1178,66 @@ async def _browser_flow(
             await asyncio.sleep(1.0)
             continue
 
+        if state == "email_verification":
+            now = time.monotonic()
+            if email_verification_started_at <= 0:
+                email_verification_started_at = now
+                if await _click_first(page, EMAIL_SUBMIT_SELECTORS, timeout=3):
+                    log("邮箱验证页已点击继续", "info")
+            elapsed = now - email_verification_started_at
+            if elapsed >= 60:
+                raise CamoufoxBrowserError(
+                    "free_email_otp_validate", "验证 Free 邮箱验证码",
+                    "邮箱验证页 60 秒未跳转", error_code="camoufox_email_verification_timeout",
+                    safe_page=_safe_url(page), page_type="email_verification",
+                )
+            if elapsed >= 12 and not email_verification_retried:
+                if await _click_first(page, EMAIL_SUBMIT_SELECTORS, timeout=3):
+                    log("邮箱验证页未跳转，已重试点击继续", "warn")
+                email_verification_retried = True
+            await asyncio.sleep(2.0)
+            continue
+
         if state == "signup_password":
             set_stage("free_camoufox_signup_password")
+            now = time.monotonic()
+            if password_stage_started_at <= 0:
+                password_stage_started_at = now
+            if now - password_stage_started_at >= 60:
+                raise CamoufoxBrowserError(
+                    "free_camoufox_signup_password", "提交 Camoufox 注册密码",
+                    "注册密码页 60 秒未完成", error_code="camoufox_password_stage_timeout",
+                    safe_page=_safe_url(page), page_type="signup_password",
+                )
+            if password_used:
+                elapsed = now - (password_submitted_at or now)
+                if elapsed >= 45:
+                    raise CamoufoxBrowserError(
+                        "free_camoufox_signup_password", "提交 Camoufox 注册密码",
+                        "注册密码提交后页面未继续", error_code="camoufox_password_transition_timeout",
+                        safe_page=_safe_url(page), page_type="signup_password",
+                    )
+                if elapsed >= 12 and not password_submit_retried:
+                    clicked = await _click_first(page, PASSWORD_SUBMIT_SELECTORS, timeout=3)
+                    if not clicked:
+                        selector = await _find_visible_selector(page, PASSWORD_SELECTORS)
+                        if selector:
+                            await _submit_visible_form(page, selector)
+                    password_submit_retried = True
+                    log("注册密码页未跳转，已使用同一密码重试提交", "warn")
+                await asyncio.sleep(2.0)
+                continue
             selector = await _wait_for_any_selector(page, PASSWORD_SELECTORS, timeout=15)
             if not selector or not await _fill_input_like_user(page, selector, password):
                 raise CamoufoxBrowserError(
                     "free_camoufox_signup_password", "提交 Camoufox 注册密码", "注册密码输入失败",
                     error_code="camoufox_password_fill_failed",
                 )
-            if not await _click_first(page, SUBMIT_SELECTORS, timeout=6):
+            if not await _click_first(page, PASSWORD_SUBMIT_SELECTORS, timeout=6):
                 await _submit_visible_form(page, selector)
             password_used = True
             password_submitted_at = time.monotonic()
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(2.0)
             continue
 
         if state in {"otp", "otp_wait"}:
@@ -1095,7 +1283,7 @@ async def _browser_flow(
                         error_code="camoufox_otp_input_missing",
                     )
                 otp_input_selector = selector
-                if not await _click_first(page, SUBMIT_SELECTORS, timeout=6):
+                if not await _click_first(page, PASSWORD_SUBMIT_SELECTORS, timeout=6):
                     await _submit_visible_form(page, selector)
                 otp_submitted = True
                 otp_submitted_at = time.monotonic()
@@ -1125,15 +1313,28 @@ async def _browser_flow(
         if state == "profile":
             set_stage("free_camoufox_profile")
             if not profile_submitted:
+                age_value, birthdate = _reference_age_and_birthdate()
                 name = await _find_visible_selector(page, NAME_SELECTORS)
                 if name:
                     await _fill_input_like_user(page, name, random_display_name())
                 age = await _find_visible_selector(page, AGE_SELECTORS)
                 if age:
-                    await _fill_input_like_user(page, age, "25")
-                birthday = await _find_visible_selector(page, BIRTHDAY_SELECTORS)
-                if birthday:
-                    await _fill_input_like_user(page, birthday, random_birthdate())
+                    await _fill_input_like_user(page, age, str(age_value))
+                birthday_filled = False
+                for birthday_selector in BIRTHDAY_SELECTORS:
+                    try:
+                        locator = page.locator(birthday_selector).first
+                        if await locator.is_visible(timeout=300):
+                            birthday_value = str(await locator.input_value(timeout=1000) or "")
+                            birthday_filled = bool(birthday_value.strip())
+                            if not birthday_filled:
+                                await _fill_input_like_user(page, birthday_selector, birthdate)
+                                birthday_filled = True
+                            break
+                    except Exception:
+                        continue
+                if not birthday_filled:
+                    await _sync_hidden_birthday_input(page, birthdate)
                 await _accept_about_you_consents(page, log)
                 submit_selector = await _wait_for_submit_enabled(page, PROFILE_SUBMIT_SELECTORS, timeout=25)
                 if not submit_selector:
@@ -1318,18 +1519,40 @@ class CamoufoxBrowserPool:
     async def _register_async(self, kwargs: Mapping[str, Any]) -> dict[str, Any]:
         if self._global_semaphore is None or not self._slots:
             raise CamoufoxBrowserError("free_camoufox_launch", "启动 Camoufox", "浏览器池没有可用进程", error_code="camoufox_pool_empty")
-        try:
-            async with self._global_semaphore:
-                return await asyncio.wait_for(
-                    self._register_with_slot(kwargs),
-                    timeout=float(self.config.get("registration_timeout_seconds") or 600),
-                )
-        except asyncio.TimeoutError as exc:
-            raise CamoufoxBrowserError(
-                "free_camoufox_browser", "Camoufox 注册页面",
-                "浏览器注册超时，已取消当前 context 并回收进程",
-                error_code="camoufox_registration_timeout",
-            ) from exc
+        restart_attempted = False
+        while True:
+            try:
+                async with self._global_semaphore:
+                    return await asyncio.wait_for(
+                        self._register_with_slot(kwargs),
+                        timeout=float(self.config.get("registration_timeout_seconds") or 600),
+                    )
+            except asyncio.TimeoutError as exc:
+                raise CamoufoxBrowserError(
+                    "free_camoufox_browser", "Camoufox 注册页面",
+                    "浏览器注册超时，已取消当前 context 并回收进程",
+                    error_code="camoufox_registration_timeout",
+                ) from exc
+            except CamoufoxBrowserError as exc:
+                # Context/page creation failures happen before the remote
+                # signup page exists and are safe to retry once after the pool
+                # has recycled the disconnected process.  Once navigation has
+                # started, preserve the original failure to avoid replaying a
+                # potentially submitted signup.
+                if (
+                    not restart_attempted
+                    and getattr(exc, "safe_restart", False)
+                    and exc.error_code in {
+                        "camoufox_browser_disconnected",
+                        "camoufox_context_create_failed",
+                        "camoufox_page_create_failed",
+                        "camoufox_browser_recycle_failed",
+                    }
+                ):
+                    restart_attempted = True
+                    await asyncio.sleep(0.2)
+                    continue
+                raise
 
     @staticmethod
     def _browser_connected(browser: Any) -> bool:
@@ -1349,28 +1572,65 @@ class CamoufoxBrowserPool:
             self._next_context_start = asyncio.get_running_loop().time() + self.context_start_interval
 
     async def _register_with_slot(self, kwargs: Mapping[str, Any]) -> dict[str, Any]:
-        available = [slot for slot in self._slots if not slot.draining and self._browser_connected(slot.browser)]
-        if not available:
+        recovery_attempted = False
+        while True:
+            available = [slot for slot in self._slots if not slot.draining and self._browser_connected(slot.browser)]
+            if available:
+                break
+            # A browser can disappear between the health check and context
+            # creation.  Rebuild one disconnected slot before reporting that
+            # the pool is empty; this mirrors the reference pool's admission
+            # recovery and prevents a transient process exit from consuming a
+            # whole task.
+            if not recovery_attempted:
+                recovery_attempted = True
+                recoverable = next(
+                    (
+                        slot for slot in self._slots
+                        if not slot.draining and not slot.recycle_lock.locked()
+                    ),
+                    None,
+                )
+                if recoverable is not None:
+                    generation = recoverable.generation
+                    await self._recycle_slot(recoverable, generation, "浏览器池没有可用进程")
+                    continue
             recycle_errors = [slot.recycle_error for slot in self._slots if slot.recycle_error]
             if recycle_errors:
-                raise CamoufoxBrowserError(
+                failure = CamoufoxBrowserError(
                     "free_camoufox_launch", "启动 Camoufox 浏览器池",
                     "Camoufox 浏览器进程回收后重新启动失败",
                     retryable=True, error_code="camoufox_browser_recycle_failed",
                     diagnostic=recycle_errors[0],
                 )
-            raise CamoufoxBrowserError("free_camoufox_launch", "启动 Camoufox", "浏览器池没有可用进程", error_code="camoufox_browser_disconnected")
+                setattr(failure, "safe_restart", True)
+                raise failure
+            failure = CamoufoxBrowserError(
+                "free_camoufox_launch", "启动 Camoufox",
+                "浏览器池没有可用进程", error_code="camoufox_browser_disconnected",
+                retryable=True,
+            )
+            setattr(failure, "safe_restart", True)
+            raise failure
         idle = [item for item in available if not item.semaphore.locked()]
         slot = min(idle or available, key=lambda item: (item.active_contexts, item.completed))
         async with slot.semaphore:
+            recycle_required = False
             if slot.draining or not self._browser_connected(slot.browser):
-                raise CamoufoxBrowserError("free_camoufox_launch", "启动 Camoufox", "浏览器进程已断开", error_code="camoufox_browser_disconnected")
+                generation = slot.generation
+                await self._recycle_slot(slot, generation, "浏览器在 context 启动前断开")
+                failure = CamoufoxBrowserError(
+                    "free_camoufox_launch", "启动 Camoufox",
+                    "浏览器进程已断开", error_code="camoufox_browser_disconnected",
+                    retryable=True,
+                )
+                setattr(failure, "safe_restart", True)
+                raise failure
             slot.active_contexts += 1
             if slot.idle_event is not None:
                 slot.idle_event.clear()
             generation = slot.generation
             context = None
-            recycle_required = False
             try:
                 await self._wait_context_start_slot()
                 try:
@@ -1383,12 +1643,14 @@ class CamoufoxBrowserPool:
                 except Exception as exc:
                     if _browser_process_lost(exc):
                         recycle_required = True
-                        raise CamoufoxBrowserError(
+                        failure = CamoufoxBrowserError(
                             "free_camoufox_launch", "创建 Camoufox 浏览器 context",
                             "Camoufox 浏览器进程无法创建 context",
                             error_code="camoufox_context_create_failed",
                             diagnostic="browser process lost",
-                        ) from exc
+                        )
+                        setattr(failure, "safe_restart", True)
+                        raise failure from exc
                     raise CamoufoxBrowserError(
                         "free_camoufox_launch", "创建 Camoufox 浏览器 context",
                         "Camoufox context 创建失败",
@@ -1400,19 +1662,23 @@ class CamoufoxBrowserPool:
                 except Exception as exc:
                     if _browser_process_lost(exc):
                         recycle_required = True
-                        raise CamoufoxBrowserError(
+                        failure = CamoufoxBrowserError(
                             "free_camoufox_launch", "创建 Camoufox 注册页面",
                             "Camoufox 浏览器进程无法创建页面",
                             error_code="camoufox_page_create_failed",
                             diagnostic="browser process lost",
-                        ) from exc
+                        )
+                        setattr(failure, "safe_restart", True)
+                        raise failure from exc
                     raise CamoufoxBrowserError(
                         "free_camoufox_launch", "创建 Camoufox 注册页面",
                         "Camoufox context 无法创建页面",
                         error_code="camoufox_page_create_failed",
                         diagnostic=type(exc).__name__,
                     ) from exc
-                result = await _browser_flow(page, **kwargs)
+                flow_kwargs = dict(kwargs)
+                flow_kwargs.setdefault("startup_gate", self._startup_semaphore)
+                result = await _browser_flow(page, **flow_kwargs)
                 slot.completed += 1
                 recycle_required = slot.completed >= max(1, int(self.config.get("max_registrations_per_browser") or 12))
                 return result
@@ -1422,19 +1688,29 @@ class CamoufoxBrowserPool:
                 # page may have left unfinished navigation callbacks behind.
                 recycle_required = True
                 raise
+            except CamoufoxBrowserError as exc:
+                if getattr(exc, "recycle_required", False) or exc.error_code in {
+                    "camoufox_browser_disconnected",
+                    "camoufox_context_create_failed",
+                    "camoufox_page_create_failed",
+                }:
+                    recycle_required = True
+                raise
             except FreeRegisterError:
                 raise
             except Exception as exc:
                 snapshot = await _snapshot(page) if "page" in locals() else {"url": "", "title": "", "body": ""}
                 if _browser_process_lost(exc):
                     recycle_required = True
-                    raise CamoufoxBrowserError(
+                    failure = CamoufoxBrowserError(
                         "free_camoufox_launch", "启动 Camoufox 浏览器池",
                         "Camoufox 浏览器进程已断开",
                         error_code="camoufox_browser_disconnected",
                         diagnostic="browser process lost",
                         safe_page=snapshot.get("url"), page_type="unknown",
-                    ) from exc
+                    )
+                    setattr(failure, "safe_restart", False)
+                    raise failure from exc
                 raise CamoufoxBrowserError(
                     "free_camoufox_browser", "Camoufox 注册页面", f"浏览器流程异常（{type(exc).__name__}）",
                     error_code="camoufox_browser_flow_failed",

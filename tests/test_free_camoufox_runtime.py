@@ -11,8 +11,17 @@ from mac_overrides import free_camoufox_runtime as runtime
 
 
 class _FakeLocator:
+    first = None
+
+    def __init__(self, *, visible=False):
+        self.first = self
+        self.visible = visible
+
     async def inner_text(self, **_kwargs):
         return ""
+
+    async def is_visible(self, **_kwargs):
+        return self.visible
 
 
 class _FakePage:
@@ -26,10 +35,12 @@ class _FakePage:
 
 
 class _NavigationPage(_FakePage):
-    def __init__(self, *, status=200, body="", retry_after=""):
+    def __init__(self, *, status=200, body="", retry_after="", goto_error=None, email_visible=False):
         self.status = status
         self.body = body
         self.retry_after = retry_after
+        self.goto_error = goto_error
+        self.email_visible = email_visible
         self.goto_calls = []
 
     def locator(self, selector):
@@ -41,10 +52,12 @@ class _NavigationPage(_FakePage):
                     return page.body
 
             return BodyLocator()
-        return _FakeLocator()
+        return _FakeLocator(visible=self.email_visible and "email" in selector)
 
     async def goto(self, url, **_kwargs):
         self.goto_calls.append(url)
+        if self.goto_error is not None:
+            raise self.goto_error
 
         class Response:
             def __init__(self, page):
@@ -185,6 +198,74 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
             asyncio.run(runtime._goto_with_diagnostics(page, "https://auth.openai.com/authorize", timeout_ms=1000))
         self.assertFalse(getattr(raised.exception, "proxy_retryable", False))
+
+    def test_navigation_timeout_keeps_a_usable_login_form(self):
+        class Error(Exception):
+            pass
+
+        page = _NavigationPage(goto_error=Error("page.goto: Timeout 45000ms exceeded"), email_visible=True)
+        result = asyncio.run(
+            runtime._goto_with_retry(
+                page,
+                "https://chatgpt.com/auth/login",
+                timeout_ms=1000,
+                proxy_retryable=True,
+            )
+        )
+        self.assertIsNone(result)
+        self.assertEqual(len(page.goto_calls), 1)
+
+    def test_navigation_timeout_without_form_keeps_safe_category(self):
+        page = _NavigationPage(goto_error=TimeoutError("page.goto: Timeout"))
+        with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+            asyncio.run(
+                runtime._goto_with_retry(
+                    page,
+                    "https://chatgpt.com/auth/login",
+                    timeout_ms=1000,
+                    proxy_retryable=True,
+                )
+            )
+        self.assertEqual(raised.exception.error_code, "camoufox_navigation_failed")
+        self.assertIn("category=navigation_timeout", raised.exception.diagnostic)
+        self.assertNotIn("page.goto: Timeout", raised.exception.diagnostic)
+        self.assertTrue(getattr(raised.exception, "proxy_retryable", False))
+
+    def test_firefox_connection_refused_uses_transient_navigation_category(self):
+        page = _NavigationPage(
+            goto_error=RuntimeError(
+                "Page.goto: NS_ERROR_CONNECTION_REFUSED; target URL hidden"
+            )
+        )
+        with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+            asyncio.run(
+                runtime._goto_with_retry(
+                    page,
+                    "https://chatgpt.com/auth/login",
+                    timeout_ms=1000,
+                    proxy_retryable=True,
+                )
+            )
+        self.assertIn("category=navigation_transient", raised.exception.diagnostic)
+        self.assertIn("reason=connection_refused", raised.exception.diagnostic)
+        self.assertNotIn("NS_ERROR_CONNECTION_REFUSED", raised.exception.diagnostic)
+
+    def test_browser_process_loss_requests_pool_recycle(self):
+        class Error(Exception):
+            pass
+
+        page = _NavigationPage(goto_error=Error("browser has been closed"))
+        with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+            asyncio.run(
+                runtime._goto_with_retry(
+                    page,
+                    "https://chatgpt.com/auth/login",
+                    timeout_ms=1000,
+                    proxy_retryable=True,
+                )
+            )
+        self.assertEqual(raised.exception.error_code, "camoufox_browser_disconnected")
+        self.assertTrue(getattr(raised.exception, "recycle_required", False))
 
     def test_context_creation_falls_back_when_fingerprint_helper_rejects_typeerror(self):
         captured = {}

@@ -183,6 +183,20 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             app.add_url_rule("/", "index", spa_index, methods=["GET"])
         if "spa_asset" not in app.view_functions:
             app.add_url_rule("/assets/<path:filename>", "spa_asset", spa_asset, methods=["GET"])
+        # Vue navigation is history-based.  Register the user-facing deep
+        # links explicitly so refreshing a page such as /free-mailboxes does
+        # not fall through to Flask's 404 before the SPA can restore state.
+        for path in (
+            "/free-register",
+            "/free-mailboxes",
+            "/free-rebind",
+            "/payment-tools",
+            "/network-tools",
+            "/logs",
+        ):
+            endpoint = f"spa_deep_link_{path.strip('/').replace('-', '_')}"
+            if endpoint not in app.view_functions:
+                app.add_url_rule(path, endpoint, spa_index, methods=["GET"])
 
     def public_state():
         return context.masked_state(state())
