@@ -659,7 +659,14 @@ class MailboxOtpService:
         if not self.state.active:
             self.prepare(stage_code)
         maximum = max(1, int(self.timeout_seconds / self.poll_interval_seconds))
-        self.state.configure_request(max_poll_attempts=maximum)
+        # A 2FA re-authentication must never submit a code that existed before
+        # its own request. Registration and existing-login phases retain the
+        # shared bounded baseline fallback; 2FA waits for a new message or
+        # reports a retryable timeout so the caller can resend safely.
+        self.state.configure_request(
+            max_poll_attempts=maximum,
+            allow_baseline_fallback=stage_key != "free_twofa_enroll",
+        )
         started = self.monotonic_fn()
         deadline = started + self.timeout_seconds
         resend_at = started + max(3.0, min(float(resend_after_seconds), self.timeout_seconds / 2))

@@ -7,10 +7,12 @@ from typing import Any, Callable, Mapping
 try:
     from .free_register_common import FreeRegisterError
     from .free_roxy_otp_flow import follow_oauth_continue, wait_for_continue_url
+    from .free_roxy_page_flow import click_resend_email_otp
     from .free_roxy_signup import safe_page_location
 except ImportError:
     from free_register_common import FreeRegisterError  # type: ignore[no-redef]
     from free_roxy_otp_flow import follow_oauth_continue, wait_for_continue_url  # type: ignore[no-redef]
+    from free_roxy_page_flow import click_resend_email_otp  # type: ignore[no-redef]
     from free_roxy_signup import safe_page_location  # type: ignore[no-redef]
 
 
@@ -97,7 +99,12 @@ def setup_twofa(
                 raise
             mark_sent()
     try:
-        code = otp.wait_code(email, stage_code="free_twofa_enroll")
+        code = otp.wait_code(
+            email,
+            stage_code="free_twofa_enroll",
+            resend_fn=lambda: click_resend_email_otp(driver, human),
+            resend_after_seconds=12,
+        )
     except TypeError as exc:
         if "unexpected keyword" not in str(exc):
             raise

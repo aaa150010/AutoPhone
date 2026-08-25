@@ -406,7 +406,15 @@ class RoxyRegistrationRunner:
         birthday = random_birthdate()
         if callable(log):
             log(f"识别到资料页，填写随机姓名和生日（{safe_page_location(driver)}）", "info")
-        return complete_profile_page(driver, human, name, birthday, timeout=60, log=log)
+        return complete_profile_page(
+            driver,
+            human,
+            name,
+            birthday,
+            timeout=60,
+            log=log,
+            select_auth_window=RoxyRegistrationRunner._select_active_auth_window,
+        )
 
     @staticmethod
     def _session(driver: Any, timeout: int, log: Callable[[str, str], None] | None = None) -> dict[str, Any]:

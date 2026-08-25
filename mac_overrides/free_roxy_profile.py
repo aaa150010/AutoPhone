@@ -32,6 +32,13 @@ def _visible(element: Any) -> bool:
 
 
 def _find_first(driver: Any, selectors: list[str]) -> Any | None:
+    """Find the first visible editable control, including same-origin shells.
+
+    Auth's profile form has been rendered inside an open shadow root and, in
+    some Roxy sessions, a same-origin iframe. Selenium's normal
+    ``find_elements`` call only covers the top-level document, so keep that
+    fast path and use a credential-free DOM traversal as a fallback.
+    """
     for selector in selectors:
         try:
             elements = driver.find_elements("css selector", selector) or []
@@ -44,6 +51,52 @@ def _find_first(driver: Any, selectors: list[str]) -> Any | None:
         for element in elements:
             if _visible(element):
                 return element
+    try:
+        result = driver.execute_script(
+            """
+            const selectors = arguments[0] || [];
+            const visible = el => !!el &&
+              !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length) &&
+              getComputedStyle(el).visibility !== 'hidden' &&
+              getComputedStyle(el).display !== 'none' &&
+              !el.disabled && !el.readOnly &&
+              String(el.getAttribute('aria-disabled') || '').toLowerCase() !== 'true';
+            const seen = new Set();
+            const visit = root => {
+              if (!root || !root.querySelectorAll) return null;
+              for (const selector of selectors) {
+                let nodes = [];
+                try { nodes = [...root.querySelectorAll(selector)]; } catch (_) { nodes = []; }
+                for (const node of nodes) {
+                  if (visible(node)) return node;
+                }
+              }
+              for (const host of root.querySelectorAll('*')) {
+                if (host.shadowRoot && !seen.has(host.shadowRoot)) {
+                  seen.add(host.shadowRoot);
+                  const found = visit(host.shadowRoot);
+                  if (found) return found;
+                }
+              }
+              for (const frame of root.querySelectorAll('iframe')) {
+                try {
+                  if (frame.contentDocument && !seen.has(frame.contentDocument)) {
+                    seen.add(frame.contentDocument);
+                    const found = visit(frame.contentDocument);
+                    if (found) return found;
+                  }
+                } catch (_) {}
+              }
+              return null;
+            };
+            return visit(document);
+            """,
+            selectors,
+        )
+        if result is not None and _visible(result):
+            return result
+    except Exception:
+        pass
     return None
 
 
@@ -249,6 +302,7 @@ def complete_profile_page(
     *,
     timeout: int = 60,
     log: LogFn | None = None,
+    select_auth_window: Callable[..., Any] | None = None,
 ) -> bool:
     """Fill and submit about-you, then wait for a real transition."""
     end = time.monotonic() + max(5, int(timeout or 60))
@@ -257,6 +311,24 @@ def complete_profile_page(
     last_submit = 0.0
     last_missing = "free_roxy_profile_name_missing"
     while time.monotonic() < end:
+        # Roxy can leave an old login tab or an empty popup selected after OTP.
+        # Keep the profile stage on the same active auth window used by the
+        # email/OTP stages before inspecting or mutating its DOM.
+        if callable(select_auth_window):
+            try:
+                select_auth_window(driver, log, preferred_state="profile")
+            except TypeError:
+                try:
+                    select_auth_window(driver, log)
+                except TypeError:
+                    try:
+                        select_auth_window(driver)
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+            except Exception:
+                pass
         state = classify_page(driver)
         if state == "home":
             return submitted
@@ -274,6 +346,8 @@ def complete_profile_page(
             name_field = _find_first(driver, [
                 "input[name='name']", "input[name='fullName']", "input[name='full_name']",
                 "input[autocomplete='name']", "input[placeholder*='name' i]", "input[aria-label*='name' i]",
+                "textarea[name='name']", "textarea[autocomplete='name']",
+                "[contenteditable='true'][aria-label*='name' i]", "[role='textbox'][aria-label*='name' i]",
             ])
             if name_field is not None:
                 _type(name_field, name, human)
@@ -282,10 +356,12 @@ def complete_profile_page(
                 first = _find_first(driver, [
                     "input[name='firstName']", "input[name='first_name']",
                     "input[placeholder*='first' i]", "input[aria-label*='first' i]",
+                    "textarea[name='firstName']", "[role='textbox'][aria-label*='first' i]",
                 ])
                 last = _find_first(driver, [
                     "input[name='lastName']", "input[name='last_name']",
                     "input[placeholder*='last' i]", "input[aria-label*='last' i]",
+                    "textarea[name='lastName']", "[role='textbox'][aria-label*='last' i]",
                 ])
                 if first is not None:
                     _type(first, parts[0], human)

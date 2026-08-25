@@ -136,7 +136,7 @@ class FreeRoxySignupTests(unittest.TestCase):
         })
         self.assertIn("__gptphone_browser_nextauth__", driver.scripts[0])
         self.assertIn("untrusted_target", driver.scripts[0])
-        self.assertEqual(driver.timeouts, [15, 90])
+        self.assertEqual(driver.timeouts, [25, 90])
 
     def test_email_submit_rejects_explicit_missing_controls_and_filters_fallback(self):
         driver = _ScriptDriver({

@@ -229,7 +229,7 @@ defineExpose({ save })
     </el-row>
     <el-form-item><template #label><FieldHelpLabel label="出口 IP 探测地址" help="通过每条待用代理访问该地址，取得实际出口 IP。只检查代理请求、HTTP 成功状态和 IP 格式；出口 IP 后续变化不会阻断健康任务。" /></template><el-input v-model="config.proxy_probe_url" :disabled="running" placeholder="https://api.ipify.org" /></el-form-item>
     <div class="check-row proxy-tls-options"><el-checkbox v-model="config.proxy_tls_verify" :disabled="running"><FieldHelpLabel label="严格校验探测站证书" help="默认先按标准 TLS 证书校验访问探测地址。关闭后只影响出口 IP 探测请求，不会改代理协议、不会切换节点，也不会影响 RoxyBrowser 的页面证书校验。" /></el-checkbox><el-checkbox v-model="config.proxy_tls_compat_fallback" :disabled="running || !config.proxy_tls_verify"><FieldHelpLabel label="TLS/CONNECT 兼容重试" help="严格校验遇到明确的证书、TLS 或 CONNECT 兼容错误时，用同一代理和同一协议再试一次；失败原因会标记为兼容模式，不会静默换代理或直连。" /></el-checkbox></div>
-    <el-form-item><template #label><FieldHelpLabel label="注册后安全设置" help="开启后，注册完成会再等待一封邮箱 OTP，执行 TOTP enrollment 和 activation 并保存动态口令密钥。失败时保留 Token，账号进入 2FA 待重试。" /></template><el-checkbox v-model="config.auto_set_2fa" :disabled="running">注册完成后自动设置动态口令（额外等待一封 OTP）</el-checkbox></el-form-item>
+    <el-form-item><template #label><FieldHelpLabel label="注册后安全设置" help="Free 注册固定启用 2FA。注册完成会再等待一封邮箱 OTP，执行 TOTP enrollment 和 activation 并保存动态口令密钥；失败时保留 Token，账号进入 2FA 待重试。" /></template><el-checkbox v-model="config.auto_set_2fa" disabled>注册完成后自动设置动态口令（必需）</el-checkbox></el-form-item>
 
     <div class="subsection mailbox-network-section">
       <div class="humanize-heading"><h3>邮箱 OTP 取件网络</h3><FieldHelpLabel label="网络隔离说明" help="这里只控制邮箱取件 URL 的网络。它不会使用账号注册时绑定的住宅代理，也不会改变 RoxyBrowser Profile 的固定代理和注册 IP。" /><el-tag size="small" type="info" effect="plain">与注册代理分离</el-tag></div>

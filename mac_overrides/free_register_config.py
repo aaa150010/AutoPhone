@@ -213,7 +213,11 @@ class FreeConfigStore:
         result["mailbox_proxy_url"] = mailbox_policy.proxy_url
         result["mailbox_request_retries"] = mailbox_policy.retries
         result["mailbox_retry_backoff_seconds"] = mailbox_policy.backoff_seconds
-        result["auto_set_2fa"] = _as_bool(result.get("auto_set_2fa"), True)
+        # Free registration is required to finish with an enrolled TOTP. Keep
+        # this server-owned invariant even when an older client submits false;
+        # a failed enrollment remains ``twofa_pending`` and is never reported
+        # as a successful account.
+        result["auto_set_2fa"] = True
         scheme = str(result.get("proxy_default_scheme") or "http").strip().lower()
         if scheme not in {"http", "https", "socks4", "socks5", "socks5h"}:
             scheme = "http"

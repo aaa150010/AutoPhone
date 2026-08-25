@@ -262,6 +262,8 @@ export interface FreeMailboxRow {
   line_no: number
   email: string
   status: string
+  cooldown_until?: number | null
+  cooldown_remaining?: number
   stage?: string
   driver?: 'protocol' | 'roxybrowser' | 'camoufox' | string
   proxy_masked?: string

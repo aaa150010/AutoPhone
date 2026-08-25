@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import threading
+import time
 from typing import Any, Callable, Mapping, Sequence
 
 try:
@@ -48,6 +49,14 @@ except ImportError:
 
 
 ACTIVE_POOL_STATUSES = frozenset({"reserved", "queued", "running"})
+FREE_EMAIL_429_COOLDOWN_SECONDS = 300
+
+
+def _cooldown_timestamp(value: Any) -> float:
+    try:
+        return max(0.0, float(value or 0))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 class FreeMailboxPool:
@@ -133,9 +142,11 @@ class FreeMailboxPool:
     def available(self, count: int) -> list[FreeMailbox]:
         with self._lock:
             state = self._state()["rows"]
+            now = time.time()
             return [
                 row for row in self.entries()
                 if str(state.get(row.row_id, {}).get("status") or "available") == "available"
+                and _cooldown_timestamp(state.get(row.row_id, {}).get("cooldown_until")) <= now
             ][:max(0, int(count))]
 
     def reserve(self, rows: Sequence[FreeMailbox], batch_id: str) -> None:
@@ -143,7 +154,7 @@ class FreeMailboxPool:
             state = self._state()
             for row in rows:
                 current = state["rows"].setdefault(row.row_id, {})
-                if current.get("status") not in (None, "available"):
+                if current.get("status") not in (None, "available") or _cooldown_timestamp(current.get("cooldown_until")) > time.time():
                     raise FreeRegisterError(
                         "free_pool_reserve", "预留 Free 邮箱", "Free 邮箱已被其他任务预留"
                     )
@@ -180,6 +191,7 @@ class FreeMailboxPool:
                 if not isinstance(row, Mapping) or row.get("status") != "reserved":
                     continue
                 row.update({"status": "available", "batch_id": "", "stage": ""})
+                row.pop("cooldown_until", None)
                 changed += 1
             if changed:
                 atomic_write(self.state_path, state)
@@ -272,7 +284,10 @@ class FreeMailboxPool:
                     "free_pool_status", "更新 Free 邮箱状态", "运行中的 Free 邮箱不能修改状态", retryable=False
                 )
             for row_id in targets:
-                state["rows"].setdefault(row_id, {})["status"] = status
+                row = state["rows"].setdefault(row_id, {})
+                row["status"] = status
+                if status == "available":
+                    row.pop("cooldown_until", None)
             atomic_write(self.state_path, state)
             return len(targets)
 
@@ -311,6 +326,8 @@ class FreeMailboxPool:
                     "line_no": row.line_no,
                     "email": row.email,
                     "status": current_status,
+                    "cooldown_until": _cooldown_timestamp(current.get("cooldown_until")) or None,
+                    "cooldown_remaining": max(0, int(_cooldown_timestamp(current.get("cooldown_until")) - time.time())),
                     "stage": current.get("stage", ""),
                     "batch_id": current.get("batch_id", ""),
                     "driver": result.get("driver") or current.get("driver", ""),

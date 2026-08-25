@@ -608,6 +608,67 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
         self.assertEqual(transport.session.posts[0][1]["headers"]["authorization"], "Bearer fresh-session-token")
         self.assertEqual(transport.session.posts[1][1]["headers"]["authorization"], "Bearer fresh-session-token")
 
+    def test_twofa_protocol_uses_nextauth_reauthentication_before_enroll(self):
+        class Otp:
+            def __init__(self):
+                self.calls = []
+
+            def prepare(self, *args, **kwargs):
+                self.calls.append(("prepare", args, kwargs))
+
+            def mark_sent(self, *args, **kwargs):
+                self.calls.append(("mark_sent", args, kwargs))
+
+            def wait_code(self, _email, **kwargs):
+                self.calls.append(("wait_code", kwargs))
+                return "123456"
+
+        class Session:
+            def __init__(self):
+                self.events = []
+
+            def get(self, url, **kwargs):
+                self.events.append(("get", url, kwargs))
+                if url.endswith("/api/auth/csrf"):
+                    return _Response(200, {"csrfToken": "csrf-private"})
+                return _Response(200, {})
+
+            def post(self, url, **kwargs):
+                self.events.append(("post", url, kwargs))
+                if "/api/auth/signin/openai?" in url:
+                    return _Response(200, {"url": "https://auth.openai.com/authorize/private"})
+                if url.endswith("/mfa/enroll"):
+                    return _Response(200, {"secret": "JBSWY3DPEHPK3PXP", "session_id": "session"})
+                return _Response(200, {"success": True})
+
+        class Transport:
+            def __init__(self):
+                self.session = Session()
+                self.device_id = "device"
+                self.post_auth_calls = []
+
+            def _post_auth_json(self, path, payload, **kwargs):
+                self.post_auth_calls.append((path, payload, kwargs))
+                return {"_status": 200, "continue_url": "https://auth.openai.com/callback/private"}
+
+            def chatgpt_access_token(self):
+                return "fresh-session-token"
+
+        otp = Otp()
+        transport = Transport()
+        result = _Manager()._enroll_twofa(
+            transport, "stale-session-token", _task(), runtime.FIXED_PASSWORD,
+            {}, otp, lambda *_args: None,
+        )
+        self.assertEqual(result["twofa_status"], "enabled")
+        self.assertEqual(transport.post_auth_calls[0][0], "/api/accounts/email-otp/validate")
+        self.assertEqual(transport.post_auth_calls[0][1], {"code": "123456"})
+        self.assertEqual(transport.session.events[0][0:2], ("get", "https://chatgpt.com/api/auth/csrf"))
+        self.assertIn("reauth=password", transport.session.events[1][1])
+        self.assertEqual(transport.session.events[2][1], "https://auth.openai.com/authorize/private")
+        self.assertEqual(transport.session.events[3][1], "https://auth.openai.com/callback/private")
+        self.assertEqual(transport.session.events[-2][2]["headers"]["authorization"], "Bearer fresh-session-token")
+
     def test_twofa_retry_clears_stale_failure_without_inventing_password(self):
         build_calls = []
         manager = _Manager()

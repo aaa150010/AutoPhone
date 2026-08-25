@@ -11,6 +11,15 @@ from mac_overrides.free_register_config import FreeConfigStore
 
 
 class FreeConfigRouteTests(unittest.TestCase):
+    def test_free_config_forces_twofa_enabled(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = FreeConfigStore(Path(directory))
+            normalized = store.normalize({"auto_set_2fa": False})
+            self.assertTrue(normalized["auto_set_2fa"])
+            saved = store.save({"auto_set_2fa": False})
+            self.assertTrue(saved["auto_set_2fa"])
+            self.assertTrue(store.public()["auto_set_2fa"])
+
     def test_legacy_proxy_policy_is_normalized_to_shared_pool(self):
         with tempfile.TemporaryDirectory() as directory:
             store = FreeConfigStore(Path(directory))

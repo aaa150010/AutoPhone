@@ -320,7 +320,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=lambda *_args, **_kwargs: {},
             proxy_probe=lambda _proxy, _url: "203.0.113.20",
         )
-        self.assertEqual(manager.public_state()["runtime_version"], "1.6.74")
+        self.assertEqual(manager.public_state()["runtime_version"], "1.6.76")
         self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v4-roxy-otp-v2")
 
     def test_manager_preflight_applies_proxy_allocation_mode_from_config(self):
@@ -899,6 +899,28 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             time.sleep(0.01)
         self.assertFalse(manager.public_state()["running"])
 
+    def test_manager_start_forces_twofa_for_worker_even_when_caller_disables_it(self):
+        observed: list[bool] = []
+
+        def runner(_task, config, _stop, _stage, _log, *, twofa_retry=False):
+            observed.append(bool(config.get("auto_set_2fa")))
+            return {"access_token": "token-private", "twofa_status": "enabled", "totp_secret": "JBSWY3DPEHPK3PXP"}
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.77",
+        )
+        manager.start(
+            {"auto_set_2fa": False, "target_count": 1, "concurrency": 1},
+            pool_content="a@example.test----https://mail.example.test/a\n",
+            proxy_content="http://proxy-a.test:8000\n",
+        )
+        deadline = time.time() + 3
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(observed, [True])
+
     def test_mailbox_otp_provider_separates_registration_and_mailbox_proxies(self):
         from mac_overrides.free_register_runtime import MailboxUrlOtpProvider
         from mac_overrides.mailbox_url_runtime import MailboxResponse
@@ -1105,6 +1127,8 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(task["failure"]["error_code"], "free_email_identifier_failed")
         self.assertEqual(mailbox["status"], "available")
         self.assertEqual(mailbox["failure"]["error_code"], "free_email_identifier_failed")
+        self.assertGreaterEqual(mailbox["cooldown_remaining"], 299)
+        self.assertEqual(manager.pool.available(10), [])
 
     def test_public_tasks_group_newest_batch_before_older_batch(self):
         manager = FreeRegisterManager(self.data_dir)
@@ -1262,7 +1286,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         row_id = manager.pool.entries()[0].row_id
         self.assertEqual(manager.secret([], "totp", row_ids=[row_id]), "JBSWY3DPEHPK3PXP")
 
-    def test_roxy_twofa_retry_is_rejected_without_changing_pending_task(self):
+    def test_roxy_twofa_retry_switches_to_protocol_without_reopening_profile(self):
         pool = FreeMailboxPool(self.data_dir)
         pool.import_text("a@example.test----https://mail.example.test/a\n")
         proxies = FreeProxyPool(self.data_dir)
@@ -1277,10 +1301,11 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         while manager.public_state()["running"] and time.time() < deadline:
             time.sleep(0.01)
         pending = manager.public_tasks()[0]
-        with self.assertRaisesRegex(FreeRegisterError, "RoxyBrowser") as raised:
-            manager.retry_twofa(pending["task_id"], {"driver": "roxybrowser"})
-        self.assertEqual(raised.exception.error_code, "free_roxy_twofa_retry_unsupported")
-        self.assertEqual(manager.public_tasks()[0]["status"], "twofa_pending")
+        manager.retry_twofa(pending["task_id"], {"driver": "roxybrowser"})
+        deadline = time.time() + 3
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(manager.public_tasks()[0]["driver"], "protocol")
 
     def test_twofa_result_failure_is_persisted_as_structured_task_failure(self):
         pool = FreeMailboxPool(self.data_dir)

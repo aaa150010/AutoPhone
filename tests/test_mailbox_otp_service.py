@@ -328,6 +328,33 @@ class MailboxOtpServiceTests(unittest.TestCase):
         self.assertEqual(service.wait_code(stage_code="registration_otp"), "241949")
         service.close()
 
+    def test_twofa_stage_never_returns_a_baseline_code(self):
+        clock = _Clock()
+        payload = json.dumps({
+            "messages": [{
+                "id": "registration-code",
+                "sender": "noreply@openai.com",
+                "subject": "OpenAI verification code",
+                "receivedAt": 999.0,
+                "body": "OpenAI verification code 123456",
+            }],
+        }).encode()
+        service = MailboxOtpService(
+            "https://mail.example.test/inbox",
+            timeout_seconds=5,
+            poll_interval_seconds=1,
+            fetcher=lambda url: MailboxResponse(url, payload, "application/json", 200),
+            sleep_fn=clock.sleep,
+            now_fn=clock.time,
+            monotonic_fn=clock.monotonic,
+        )
+        service.prepare("free_twofa_enroll", force_snapshot=True)
+        with self.assertRaises(MailboxOtpError) as raised:
+            service.wait_code(stage_code="free_twofa_enroll")
+        self.assertEqual(raised.exception.code, "mailbox_code_timeout")
+        self.assertEqual(service.diagnostic()["baseline_fallback_attempts"], 0)
+        service.close()
+
     def test_wait_uses_one_resend_without_replacing_original_baseline(self):
         clock = _Clock()
         resent = []

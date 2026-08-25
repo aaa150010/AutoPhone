@@ -34,7 +34,10 @@ def submit_email_via_browser_nextauth(
     ):
         return {"ok": False, "stage": "origin", "reason": "not_on_chatgpt"}
 
-    script_timeout = max(10, min(15, int(timeout or 15)))
+    # AutoRegister gives the in-profile CSRF/sign-in exchange a 25 second
+    # Selenium script budget.  A shorter budget turns a slow but valid proxy
+    # response into a false transport failure while the SPA is still loading.
+    script_timeout = 25
     try:
         driver.set_script_timeout(script_timeout)
     except Exception:
@@ -47,7 +50,7 @@ def submit_email_via_browser_nextauth(
           const authLogId = String(arguments[2] || '');
           const done = arguments[arguments.length - 1];
           const controller = new AbortController();
-          const abortTimer = setTimeout(() => controller.abort(), 12000);
+          const abortTimer = setTimeout(() => controller.abort(), 22000);
           const finish = value => { clearTimeout(abortTimer); done(value); };
           (async () => {
             try {

@@ -148,8 +148,18 @@ def _find_all(driver: Any, selector: str) -> list[Any]:
     return found
 
 
-def _select_active_auth_window(driver: Any, log: LogFn | None = None) -> None:
-    """Select the OpenAI auth target among concurrently opened Roxy tabs."""
+def _select_active_auth_window(
+    driver: Any,
+    log: LogFn | None = None,
+    *,
+    preferred_state: str = "",
+) -> None:
+    """Select the OpenAI auth target among concurrently opened Roxy tabs.
+
+    A Roxy profile can retain both the previous login/OTP tab and the current
+    about-you tab.  Callers that know the current stage can bias the choice
+    without changing the default OTP/session behavior.
+    """
     try:
         handles = list(getattr(driver, "window_handles", []) or [])
         switch = getattr(getattr(driver, "switch_to", None), "window", None)
@@ -167,8 +177,39 @@ def _select_active_auth_window(driver: Any, log: LogFn | None = None) -> None:
                 path = urlsplit(url).path.casefold()
                 if auth_page:
                     score += 50
+                if preferred_state == "profile" and auth_page and any(value in path for value in ("about-you", "/profile", "signup/profile", "create-account/profile")):
+                    score += 60
+                    # A stale about-you tab can retain the URL after its React
+                    # tree has been torn down. Prefer the live form, not the
+                    # empty shell, when multiple Roxy windows are present.
+                    try:
+                        probe = driver.execute_script(
+                            """
+                            const visible = el => !!el &&
+                              !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length) &&
+                              getComputedStyle(el).visibility !== 'hidden' &&
+                              getComputedStyle(el).display !== 'none';
+                            const controls = [...document.querySelectorAll(
+                              'input,select,textarea,[role="textbox"],[role="spinbutton"],[contenteditable="true"]'
+                            )].filter(visible).length;
+                            const buttons = [...document.querySelectorAll('button,[role="button"]')].filter(visible).length;
+                            return {controls, buttons};
+                            """
+                        )
+                        if not isinstance(probe, Mapping):
+                            probe = None
+                        if probe is not None and int(probe.get("controls") or 0) <= 0:
+                            score -= 55
+                        elif probe is not None and int(probe.get("buttons") or 0) > 0:
+                            score += 10
+                    except Exception:
+                        # Keep the URL score when a remote driver cannot run
+                        # a probe; the subsequent DOM wait remains bounded.
+                        pass
                 if auth_page and any(value in path for value in ("/email-verification", "/email-otp")):
                     score += 40
+                if preferred_state == "otp" and auth_page and any(value in path for value in ("/email-verification", "/email-otp")):
+                    score += 60
                 if auth_page and any(value in path for value in ("/log-in", "/sign-up", "/authorize")):
                     score += 15
                 if chatgpt_page:

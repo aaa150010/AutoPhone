@@ -629,24 +629,45 @@ class DiagnosticStore:
         if time_point and not exact and re.fullmatch(r"\d{1,2}:\d{2}(?::\d{2})?", time_point):
             try:
                 center = datetime.fromisoformat(_search_bound(time_point).replace("Z", "+00:00"))
-                clauses.append("i.updated_at>=?")
-                params.append((center - timedelta(minutes=30)).isoformat(timespec="milliseconds").replace("+00:00", "Z"))
-                clauses.append("i.updated_at<=?")
-                params.append((center + timedelta(minutes=30)).isoformat(timespec="milliseconds").replace("+00:00", "Z"))
+                start_bound = (center - timedelta(minutes=30)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+                end_bound = (center + timedelta(minutes=30)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+                clauses.append(
+                    "((i.updated_at>=? AND i.updated_at<=?) OR EXISTS ("
+                    "SELECT 1 FROM diagnostic_events et WHERE et.incident_id=i.incident_id "
+                    "AND et.occurred_at>=? AND et.occurred_at<=?))"
+                )
+                params.extend((start_bound, end_bound, start_bound, end_bound))
             except (TypeError, ValueError, OverflowError):
                 pass
         date_only = _safe_text(query.get("date"), 40)
         if date_only and not exact and not time_point and not query.get("from") and not query.get("to"):
-            clauses.append("i.updated_at>=?")
-            params.append(_search_bound(date_only))
-            clauses.append("i.updated_at<=?")
-            params.append(_search_bound(date_only, end_of_day=True))
-        if query.get("from") and not exact and not time_point:
-            clauses.append("i.updated_at>=?")
-            params.append(_search_bound(query.get("from")))
-        if query.get("to") and not exact and not time_point:
-            clauses.append("i.updated_at<=?")
-            params.append(_search_bound(query.get("to"), end_of_day=True))
+            start_bound = _search_bound(date_only)
+            end_bound = _search_bound(date_only, end_of_day=True)
+            clauses.append(
+                "((i.updated_at>=? AND i.updated_at<=?) OR EXISTS ("
+                "SELECT 1 FROM diagnostic_events ed WHERE ed.incident_id=i.incident_id "
+                "AND ed.occurred_at>=? AND ed.occurred_at<=?))"
+            )
+            params.extend((start_bound, end_bound, start_bound, end_bound))
+        from_value = query.get("from")
+        to_value = query.get("to")
+        if from_value and to_value and not exact and not time_point:
+            start_bound = _search_bound(from_value)
+            end_bound = _search_bound(to_value, end_of_day=True)
+            clauses.append(
+                "((i.updated_at>=? AND i.updated_at<=?) OR EXISTS ("
+                "SELECT 1 FROM diagnostic_events ef WHERE ef.incident_id=i.incident_id "
+                "AND ef.occurred_at>=? AND ef.occurred_at<=?))"
+            )
+            params.extend((start_bound, end_bound, start_bound, end_bound))
+        elif from_value and not exact and not time_point:
+            start_bound = _search_bound(from_value)
+            clauses.append("(i.updated_at>=? OR EXISTS (SELECT 1 FROM diagnostic_events ef WHERE ef.incident_id=i.incident_id AND ef.occurred_at>=?))")
+            params.extend((start_bound, start_bound))
+        elif to_value and not exact and not time_point:
+            end_bound = _search_bound(to_value, end_of_day=True)
+            clauses.append("(i.updated_at<=? OR EXISTS (SELECT 1 FROM diagnostic_events et WHERE et.incident_id=i.incident_id AND et.occurred_at<=?))")
+            params.extend((end_bound, end_bound))
         limit_value = query.get("limit") or 100
         try:
             limit = min(max(int(limit_value), 1), 500)

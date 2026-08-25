@@ -187,6 +187,12 @@ function planTagType(row: FreeMailboxRow) {
   return 'info'
 }
 
+function mailboxStageLabel(row: FreeMailboxRow) {
+  const remaining = Number(row.cooldown_remaining || 0)
+  if (remaining > 0) return `限流冷却 ${Math.ceil(remaining / 60)} 分钟`
+  return row.stage || row.status || '可用'
+}
+
 async function copyEmail(row: FreeMailboxRow) {
   if (!row.email) return
   try {
@@ -370,7 +376,7 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
           <el-table-column prop="line_no" label="原序号" width="68" align="right" />
           <el-table-column label="邮箱" min-width="190" show-overflow-tooltip><template #default="{ row }"><el-tooltip content="点击复制邮箱" placement="top"><el-button link class="email-copy" @click.stop="copyEmail(row)"><span>{{ row.email }}</span><el-icon><CopyDocument /></el-icon></el-button></el-tooltip></template></el-table-column>
           <el-table-column label="链路 / 阶段" min-width="180" show-overflow-tooltip>
-            <template #default="{ row }"><el-tag size="small" effect="plain">{{ row.driver === 'roxybrowser' ? 'RoxyBrowser' : row.driver === 'camoufox' ? 'Camoufox' : '全协议' }}</el-tag><el-tag size="small" :type="row.status === 'success' ? 'success' : row.status === 'failed' ? 'danger' : row.status === 'pending_rerun' ? 'warning' : 'info'">{{ row.stage || row.status || '可用' }}</el-tag></template>
+            <template #default="{ row }"><el-tag size="small" effect="plain">{{ row.driver === 'roxybrowser' ? 'RoxyBrowser' : row.driver === 'camoufox' ? 'Camoufox' : '全协议' }}</el-tag><el-tag size="small" :type="row.cooldown_remaining ? 'warning' : row.status === 'success' ? 'success' : row.status === 'failed' ? 'danger' : row.status === 'pending_rerun' ? 'warning' : 'info'">{{ mailboxStageLabel(row) }}</el-tag></template>
           </el-table-column>
           <el-table-column label="代理 / 注册 IP" min-width="210" show-overflow-tooltip>
             <template #default="{ row }"><span>{{ row.proxy_masked || '-' }}</span><small v-if="row.registration_ip || row.exit_ip"> / {{ row.registration_ip || row.exit_ip }}</small></template>

@@ -617,7 +617,10 @@ class FreeProtocolMixin:
 
         transport = make_transport()
         try:
-            if reference_flow and not twofa_retry:
+            if reference_flow:
+                # A retry starts from a clean protocol transport. Reapply the
+                # same AutoRegister preflight, anonymous cookies and TLS image
+                # before the re-authentication flow begins.
                 prepare_reference_transport(transport)
             if twofa_retry:
                 saved = self.pool.result(str(task["row_id"]))
@@ -916,9 +919,11 @@ class FreeProtocolMixin:
             )
 
         try:
-            send_mfa_otp = getattr(transport, "send_mfa_otp", None)
-            verify_mfa_otp = getattr(transport, "verify_mfa_otp", None)
-            if callable(send_mfa_otp) and callable(verify_mfa_otp):
+            post_auth_json = getattr(transport, "_post_auth_json", None)
+            if callable(post_auth_json):
+                # AutoRegister's setup_2fa starts a fresh NextAuth password
+                # re-authentication. The existing-login MFA endpoint is not
+                # equivalent and does not produce an MFA-eligible session.
                 stage(task_id, "free_twofa_enroll")
                 mailbox_service = getattr(otp_provider, "service", None)
                 mailbox_state = getattr(mailbox_service, "state", None)
@@ -935,15 +940,97 @@ class FreeProtocolMixin:
                         prepare_mailbox_request("free_twofa_enroll")
                     else:
                         prepare_mailbox_request("free_twofa_enroll", force_snapshot=True)
+
+                session = transport.session
+                chatgpt_origin = "https://chatgpt.com"
+                auth_origin = "https://auth.openai.com"
+
+                def _reauth_headers(referer: str, *, form: bool = False) -> dict[str, str]:
+                    headers: dict[str, str] = {}
+                    maker = getattr(transport, "_headers", None)
+                    if callable(maker):
+                        try:
+                            candidate = maker("twofa_reauth", referer)
+                            if isinstance(candidate, Mapping):
+                                headers.update({str(k): str(v) for k, v in candidate.items()})
+                        except Exception:
+                            pass
+                    headers.update({
+                        "accept": "application/json",
+                        "origin": chatgpt_origin,
+                        "referer": referer,
+                    })
+                    if form:
+                        headers["content-type"] = "application/x-www-form-urlencoded"
+                    return headers
+
+                csrf_response = None
+                csrf_data: Any = {}
+                try:
+                    csrf_response = session.get(
+                        f"{chatgpt_origin}/api/auth/csrf",
+                        headers=_reauth_headers(f"{chatgpt_origin}/"),
+                        timeout=30,
+                        allow_redirects=True,
+                    )
+                    csrf_data = csrf_response.json() if hasattr(csrf_response, "json") else {}
+                except Exception as exc:
+                    fail(f"2FA 重认证 CSRF 请求失败（{type(exc).__name__}）")
+                csrf_token = str(csrf_data.get("csrfToken") or "") if isinstance(csrf_data, Mapping) else ""
+                csrf_status = _response_status(csrf_response)
+                if not csrf_token:
+                    fail(
+                        f"2FA 重认证 CSRF 响应无效（HTTP {csrf_status if csrf_status is not None else '-'}）",
+                        csrf_response,
+                        csrf_data,
+                    )
+
+                signin_query = urlencode({
+                    "connection": "password",
+                    "login_hint": str(task.get("email") or ""),
+                    "reauth": "password",
+                    "max_age": "0",
+                })
+                signin_body = urlencode({
+                    "callbackUrl": f"{chatgpt_origin}/?action=enable&factor=totp",
+                    "csrfToken": csrf_token,
+                    "json": "true",
+                })
+                signin_response = None
+                signin_data: Any = {}
+                try:
+                    signin_response = session.post(
+                        f"{chatgpt_origin}/api/auth/signin/openai?{signin_query}",
+                        headers=_reauth_headers(f"{chatgpt_origin}/", form=True),
+                        data=signin_body,
+                        allow_redirects=False,
+                        timeout=30,
+                    )
+                    signin_data = signin_response.json() if hasattr(signin_response, "json") else {}
+                except Exception as exc:
+                    fail(f"2FA 重认证启动失败（{type(exc).__name__}）")
+                auth_url = str(signin_data.get("url") or "") if isinstance(signin_data, Mapping) else ""
+                signin_status = _response_status(signin_response)
+                if not auth_url:
+                    fail(
+                        f"2FA 重认证启动响应无效（HTTP {signin_status if signin_status is not None else '-'}）",
+                        signin_response,
+                        signin_data,
+                    )
+                try:
+                    session.get(
+                        auth_url,
+                        headers=_reauth_headers(f"{chatgpt_origin}/"),
+                        allow_redirects=True,
+                        timeout=45,
+                    )
+                except Exception as exc:
+                    fail(f"2FA 重认证页面请求失败（{type(exc).__name__}）")
+
                 phase = (
                     "free_twofa_otp_send", "发送 Free 账号 2FA 邮箱验证码",
                     "free_twofa_otp_send_failed", "保留账号和 Token，检查邮箱重认证状态后重试 2FA",
                 )
-                sent = send_mfa_otp("")
-                sent_status = _response_status(sent)
-                sent_ok = sent.get("ok") if isinstance(sent, Mapping) else None
-                if (sent_status is not None and not 200 <= sent_status < 300) or _explicit_false(sent_ok):
-                    fail(f"重新认证 OTP 发送失败（HTTP {sent_status if sent_status is not None else '-'}）", sent)
                 otp_provider.mark_sent("free_twofa_enroll")
                 phase = (
                     "free_twofa_otp_validate", "验证 Free 账号 2FA 邮箱验证码",
@@ -953,29 +1040,91 @@ class FreeProtocolMixin:
                     otp_provider, str(task.get("email") or ""), stage_code="free_twofa_enroll",
                 )
                 stage(task_id, "free_email_otp_validate")
-                verified = verify_mfa_otp(code)
+                verified = post_auth_json(
+                    "/api/accounts/email-otp/validate",
+                    {"code": code},
+                    flow="twofa_reauth_email_otp",
+                    referer=f"{auth_origin}/email-verification",
+                    timeout=30,
+                )
                 verified_status = _response_status(verified)
                 verified_ok = verified.get("ok") if isinstance(verified, Mapping) else None
                 if (verified_status is not None and not 200 <= verified_status < 300) or _explicit_false(verified_ok):
                     fail(f"重新认证 OTP 验证失败（HTTP {verified_status if verified_status is not None else '-'}）", verified)
                 continue_url = _response_continue_url(verified)
                 if continue_url:
-                    complete_callback = getattr(transport, "complete_chatgpt_callback", None)
-                    if not callable(complete_callback):
-                        fail("重新认证 OTP 响应包含 OAuth 回调，但传输会话不支持回调", verified)
-                    callback = complete_callback(continue_url)
-                    callback_status = _response_status(callback)
-                    callback_ok = callback.get("ok") if isinstance(callback, Mapping) else None
-                    if (callback_status is not None and not 200 <= callback_status < 300) or _explicit_false(callback_ok):
-                        fail(f"重新认证 OAuth 回调失败（HTTP {callback_status if callback_status is not None else '-'}）", callback)
+                    try:
+                        session.get(
+                            continue_url,
+                            headers=_reauth_headers(f"{auth_origin}/email-verification"),
+                            allow_redirects=True,
+                            timeout=45,
+                        )
+                    except Exception as exc:
+                        fail(f"重新认证 OAuth 回调失败（{type(exc).__name__}）")
+                else:
+                    fail("重新认证 OTP 响应缺少 OAuth 回调地址", verified)
                 capture_token = getattr(transport, "chatgpt_access_token", None)
                 if callable(capture_token):
                     refreshed = str(capture_token() or "").strip()
                     if refreshed:
                         active_token = refreshed
-                elif continue_url:
+                if continue_url and callable(capture_token) and active_token == str(token or "").strip():
                     fail("重新认证 OAuth 回调完成后未提供新的 ChatGPT Session Token")
                 headers["authorization"] = f"Bearer {active_token}"
+            else:
+                # Compatibility for older recovered callers and test doubles.
+                send_mfa_otp = getattr(transport, "send_mfa_otp", None)
+                verify_mfa_otp = getattr(transport, "verify_mfa_otp", None)
+                if callable(send_mfa_otp) and callable(verify_mfa_otp):
+                    stage(task_id, "free_twofa_enroll")
+                    mailbox_service = getattr(otp_provider, "service", None)
+                    mailbox_state = getattr(mailbox_service, "state", None)
+                    finish_mailbox_request = getattr(mailbox_state, "finish_request", None)
+                    if callable(finish_mailbox_request) and bool(getattr(mailbox_state, "active", False)):
+                        finish_mailbox_request()
+                    prepare_mailbox_request = getattr(otp_provider, "prepare", None)
+                    if callable(prepare_mailbox_request):
+                        prepare_mailbox_request("free_twofa_enroll")
+                    phase = (
+                        "free_twofa_otp_send", "发送 Free 账号 2FA 邮箱验证码",
+                        "free_twofa_otp_send_failed", "保留账号和 Token，检查邮箱重认证状态后重试 2FA",
+                    )
+                    sent = send_mfa_otp("")
+                    sent_status = _response_status(sent)
+                    sent_ok = sent.get("ok") if isinstance(sent, Mapping) else None
+                    if (sent_status is not None and not 200 <= sent_status < 300) or _explicit_false(sent_ok):
+                        fail(f"重新认证 OTP 发送失败（HTTP {sent_status if sent_status is not None else '-'}）", sent)
+                    otp_provider.mark_sent("free_twofa_enroll")
+                    phase = (
+                        "free_twofa_otp_validate", "验证 Free 账号 2FA 邮箱验证码",
+                        "free_twofa_otp_validate_failed", "保留账号和 Token，确认验证码属于本次 2FA 请求后重试",
+                    )
+                    code = _call_otp_wait(
+                        otp_provider, str(task.get("email") or ""), stage_code="free_twofa_enroll",
+                    )
+                    stage(task_id, "free_email_otp_validate")
+                    verified = verify_mfa_otp(code)
+                    verified_status = _response_status(verified)
+                    verified_ok = verified.get("ok") if isinstance(verified, Mapping) else None
+                    if (verified_status is not None and not 200 <= verified_status < 300) or _explicit_false(verified_ok):
+                        fail(f"重新认证 OTP 验证失败（HTTP {verified_status if verified_status is not None else '-'}）", verified)
+                    continue_url = _response_continue_url(verified)
+                    if continue_url:
+                        complete_callback = getattr(transport, "complete_chatgpt_callback", None)
+                        if not callable(complete_callback):
+                            fail("重新认证 OTP 响应包含 OAuth 回调，但传输会话不支持回调", verified)
+                        callback = complete_callback(continue_url)
+                        callback_status = _response_status(callback)
+                        callback_ok = callback.get("ok") if isinstance(callback, Mapping) else None
+                        if (callback_status is not None and not 200 <= callback_status < 300) or _explicit_false(callback_ok):
+                            fail(f"重新认证 OAuth 回调失败（HTTP {callback_status if callback_status is not None else '-'}）", callback)
+                    capture_token = getattr(transport, "chatgpt_access_token", None)
+                    if callable(capture_token):
+                        refreshed = str(capture_token() or "").strip()
+                        if refreshed:
+                            active_token = refreshed
+                    headers["authorization"] = f"Bearer {active_token}"
             phase = (
                 "free_twofa_enroll", "注册 Free 账号 2FA", "free_twofa_enroll_failed",
                 "保留账号和 Token，稍后重试 2FA 注册",

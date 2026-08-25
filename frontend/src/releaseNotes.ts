@@ -13,11 +13,27 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.74',
-  freeRuntimeVersion: '1.6.74',
-  title: 'Free 邮箱换绑工作台',
-  releasedAt: '2026-08-25',
+  version: '1.6.76',
+  freeRuntimeVersion: '1.6.76',
+  title: 'Free 限流冷却与浏览器资料页修复',
+  releasedAt: '2026-08-26',
   sections: [
+    {
+      title: 'Free 邮箱限流冷却',
+      usage: '邮箱识别接口返回 HTTP 429 时，邮箱会保留失败日志并进入 5 分钟冷却，不会立即再次进入任务；用户可在冷却结束后重试，或手动恢复状态。',
+    },
+    {
+      title: 'Roxy 资料页稳定性',
+      usage: 'RoxyBrowser 资料页会优先选择仍有可见控件的认证窗口，并兼容同源嵌套表单，减少 OTP 后遗留空白标签导致的资料页超时。',
+    },
+    {
+      title: '日志中心结果可见',
+      usage: '日志中心结果面板现在正确占满可用高度，已记录的脱敏 incident 和事件会直接显示；健康状态仍显示诊断库事件数、完整性校验和保留状态。',
+    },
+    {
+      title: 'Free 注册固定启用 2FA',
+      usage: 'Free 注册配置由服务端固定启用动态口令；注册完成后必须执行邮箱 OTP、TOTP enrollment 和 activation，失败只进入 2FA 待重试，不会被标记为成功。',
+    },
     {
       title: '日志中心与可引用故障档案',
       usage: '新增独立日志中心菜单，可按日志 ID、任务/批次 ID、账号或时间定位普通流程、Free 链路和换绑故障。每次错误会生成可复制的 LOG 日志 ID，支持查看脱敏时间线、复制 GPT 诊断、导出 JSON、删除选中日志或清空诊断日志；删除不会影响账号、邮箱池、代理池或任务结果。',

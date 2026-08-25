@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CopyDocument, Delete, Download, Document, Refresh, Search, Warning } from '@element-plus/icons-vue'
 import {
@@ -22,6 +22,8 @@ const selected = ref<DiagnosticIncident[]>([])
 const detail = ref<DiagnosticIncident | null>(null)
 const detailOpen = ref(false)
 const health = ref<Record<string, any>>({})
+const searchError = ref('')
+let refreshTimer = 0
 const query = ref({
   incident_id: '', task_id: '', batch_id: '', subject: '', from: '', to: '',
   chain: '', driver: '', outcome: '', first_node_code: '', limit: 100,
@@ -88,12 +90,14 @@ function searchWindow(hours: number) {
 }
 async function runSearch() {
   loading.value = true
+  searchError.value = ''
   try {
     const payload = Object.fromEntries(Object.entries(query.value).filter(([, value]) => value !== ''))
     const result = await searchDiagnostics(payload)
     incidents.value = Array.isArray(result.results) ? result.results : []
     selected.value = []
   } catch (error: any) {
+    searchError.value = error?.message || '日志检索失败'
     ElMessage.error(error?.message || '日志检索失败')
   } finally {
     loading.value = false
@@ -169,7 +173,6 @@ function selectRows(rows: DiagnosticIncident[]) { selected.value = rows }
 
 async function loadFromLocation(locationKey = '') {
   const current = new URL(locationKey || window.location.href, window.location.origin)
-  if (current.pathname !== '/logs') return
   const incidentId = String(current.searchParams.get('incident_id') || current.searchParams.get('log_id') || '').trim().toUpperCase()
   if (incidentId) query.value.incident_id = incidentId
   await runSearch()
@@ -179,7 +182,17 @@ async function loadFromLocation(locationKey = '') {
   }
 }
 
-onMounted(() => { void loadFromLocation(props.locationKey); void refreshHealth() })
+onMounted(() => {
+  // The page is mounted only for /logs, so a missing or stale location prop
+  // must not suppress the initial query and make an existing log store look empty.
+  void loadFromLocation(props.locationKey || '/logs')
+  void refreshHealth()
+  refreshTimer = window.setInterval(() => {
+    if (!loading.value) void runSearch()
+    if (!healthLoading.value) void refreshHealth()
+  }, 15000)
+})
+onUnmounted(() => { window.clearInterval(refreshTimer) })
 watch(() => props.locationKey, (value, previous) => {
   if (value && value !== previous) void loadFromLocation(value)
 })
@@ -211,7 +224,8 @@ watch(() => props.locationKey, (value, previous) => {
     <div class="health-strip"><span>诊断库：{{ health.incidents ?? '-' }} 条故障 / {{ health.events ?? '-' }} 条事件</span><span :class="health.integrity_failures ? 'health-danger' : 'health-ok'">完整性异常 {{ health.integrity_failures ?? 0 }}</span><span class="health-path">详细事件默认保留 30 天</span></div>
     <el-card shadow="never" class="result-panel">
       <div class="result-actions"><span>已选 {{ selected.length }} 条</span><el-button size="small" :icon="Delete" type="danger" plain :disabled="!selected.length" @click="deleteSelected">删除选中</el-button></div>
-      <el-table :data="incidents" v-loading="loading" height="100%" stripe @selection-change="selectRows">
+      <el-alert v-if="searchError" class="search-error" type="error" :closable="false" show-icon :title="searchError" />
+      <el-table v-else :data="incidents" v-loading="loading" height="100%" stripe @selection-change="selectRows">
         <el-table-column type="selection" width="46" fixed="left" />
         <el-table-column label="日志 ID" min-width="188" fixed="left"><template #default="{ row }"><div class="incident-id"><el-link type="primary" @click="openIncident(row)">{{ row.incident_id }}</el-link><el-button text size="small" :icon="CopyDocument" aria-label="复制日志 ID" @click="copyIncidentId(row)" /></div></template></el-table-column>
         <el-table-column label="状态" width="78"><template #default="{ row }"><el-tag size="small" :type="outcomeType(row.outcome, row.status)">{{ outcomeLabel(row.outcome, row.status) }}</el-tag></template></el-table-column>
@@ -222,7 +236,7 @@ watch(() => props.locationKey, (value, previous) => {
         <el-table-column prop="task_id" label="任务 ID" min-width="150" show-overflow-tooltip />
         <el-table-column label="发生时间" min-width="170"><template #default="{ row }">{{ formatTime(row.updated_at) }}</template></el-table-column>
         <el-table-column label="操作" width="170" fixed="right"><template #default="{ row }"><el-button text size="small" @click="copyGpt(row)">复制 GPT 诊断</el-button><el-button text size="small" :icon="Download" aria-label="下载 JSON" @click="downloadJson(row)" /></template></el-table-column>
-        <template #empty><el-empty description="暂无匹配的诊断日志" /></template>
+        <template #empty><el-empty :description="health.incidents ? '已连接诊断库，但当前筛选条件没有匹配记录' : '暂无诊断日志记录'" /></template>
       </el-table>
     </el-card>
     <el-drawer v-model="detailOpen" :title="detail ? `日志详情 · ${detail.incident_id}` : '日志详情'" size="720px" destroy-on-close>
@@ -251,7 +265,9 @@ watch(() => props.locationKey, (value, previous) => {
 .search-count { margin-left: auto; color: var(--el-text-color-secondary); font-size: 12px; }
 .health-strip { gap: 16px; min-height: 24px; padding: 0 4px; }
 .health-ok { color: var(--el-color-success); }.health-danger { color: var(--el-color-danger); }.health-path { margin-left: auto; }
-.result-panel { display: grid; grid-template-rows: 32px minmax(0, 1fr); min-height: 0; border: 1px solid var(--workspace-border); }
+.result-panel { height: 100%; min-height: 0; border: 1px solid var(--workspace-border); }
+.result-panel :deep(.el-card__body) { display: grid; grid-template-rows: 32px auto minmax(0, 1fr); height: 100%; min-height: 0; padding: 8px; }
+.result-panel :deep(.search-error) { align-self: start; margin: 8px; }
 .result-actions { justify-content: space-between; padding: 0 8px; color: var(--el-text-color-secondary); font-size: 12px; }
 .incident-id { gap: 4px; }.failure-node { color: var(--el-color-danger); }.failure-node + code { margin-left: 5px; color: var(--el-text-color-secondary); font-size: 10px; }
 .detail-actions { margin-bottom: 14px; }.detail-summary { margin-bottom: 18px; }.detail-section { margin-top: 18px; }.detail-section h3 { margin: 0 0 7px; font-size: 14px; }.event-row { gap: 8px; flex-wrap: wrap; }.event-row span { color: var(--el-text-color-secondary); font-size: 12px; }.detail-section code { color: var(--el-text-color-secondary); font-size: 11px; }.detail-section p { margin: 5px 0 0; color: var(--el-text-color-regular); font-size: 12px; line-height: 18px; }

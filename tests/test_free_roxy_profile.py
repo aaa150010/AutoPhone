@@ -58,6 +58,30 @@ class FreeRoxyProfileTests(unittest.TestCase):
         self.assertEqual(first.value, "Example")
         self.assertEqual(last.value, "User")
 
+    def test_profile_reselects_active_auth_window_before_each_poll(self):
+        selected = []
+        states = iter(("profile", "home"))
+
+        with (
+            patch.object(free_roxy_profile, "classify_page", side_effect=lambda _driver: next(states)),
+            patch.object(free_roxy_profile, "_find_first", return_value=_Field()),
+            patch.object(free_roxy_profile, "_set_birthday", return_value="age"),
+            patch.object(free_roxy_profile, "_accept_consents", return_value=0),
+            patch.object(free_roxy_profile, "_submit", return_value=True),
+            patch.object(free_roxy_profile.time, "sleep"),
+        ):
+            result = free_roxy_profile.complete_profile_page(
+                _Driver(),
+                _Human(),
+                "Example User",
+                "1990-01-02",
+                timeout=5,
+                select_auth_window=lambda driver, log=None: selected.append((driver, log)),
+            )
+
+        self.assertTrue(result)
+        self.assertEqual(len(selected), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -47,9 +47,17 @@ class MailboxRequestState:
         self.baseline_fallback_poll: int | None = None
         self.baseline_fallback_identities: set[str] = set()
         self.baseline_fallback_codes: set[str] = set()
+        self.allow_baseline_fallback = True
 
-    def configure_request(self, *, max_poll_attempts: int) -> None:
+    def configure_request(
+        self,
+        *,
+        max_poll_attempts: int,
+        allow_baseline_fallback: bool | None = None,
+    ) -> None:
         self.max_poll_attempts = max(1, int(max_poll_attempts))
+        if allow_baseline_fallback is not None:
+            self.allow_baseline_fallback = bool(allow_baseline_fallback)
 
     def begin_request(self) -> None:
         if self.active:
@@ -70,6 +78,8 @@ class MailboxRequestState:
         *,
         reason: str,
     ) -> MailboxSelection | None:
+        if not self.allow_baseline_fallback:
+            return None
         if self.baseline_fallback_attempts >= BASELINE_FALLBACK_MAX_ATTEMPTS:
             return None
         fallback_scan = MailboxScan(

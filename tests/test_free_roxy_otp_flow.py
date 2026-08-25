@@ -192,6 +192,33 @@ class FreeRoxyOtpFlowTests(unittest.TestCase):
         self.assertEqual(driver.current_window_handle, "tab-auth")
         self.assertEqual(driver.current_url, "https://auth.openai.com/email-verification")
 
+    def test_active_auth_window_can_prefer_profile_stage(self) -> None:
+        class Switch:
+            def __init__(self, driver):
+                self.driver = driver
+
+            def window(self, handle):
+                self.driver.current_window_handle = handle
+                self.driver.current_url = self.driver.urls[handle]
+
+        class WindowDriver(_FakeOtpDriver):
+            def __init__(self):
+                super().__init__([])
+                self.urls = {
+                    "tab-login": "https://auth.openai.com/log-in",
+                    "tab-profile": "https://auth.openai.com/about-you",
+                }
+                self.window_handles = list(self.urls)
+                self.current_window_handle = "tab-login"
+                self.current_url = self.urls[self.current_window_handle]
+                self.switch_to = Switch(self)
+
+        driver = WindowDriver()
+        self.flow.select_active_auth_window(driver, preferred_state="profile")
+
+        self.assertEqual(driver.current_window_handle, "tab-profile")
+        self.assertEqual(driver.current_url, "https://auth.openai.com/about-you")
+
     def test_wait_for_input_handles_delayed_rendering(self) -> None:
         field = _FakeOtpElement(inputmode="numeric", maxlength="6")
 

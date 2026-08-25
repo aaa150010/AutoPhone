@@ -179,7 +179,27 @@ def _is_rate_limited_response(response: Any, error: str = "") -> bool:
 
 def _is_state_response(response: Any, ok: Callable[[Any], bool] | None = None) -> bool:
     page_types = _PASSWORD_PAGE_TYPES | _OTP_PAGE_TYPES | _PROFILE_PAGE_TYPES | _CALLBACK_READY_PAGE_TYPES
-    return _is_known_state_response(response, ok, page_types)
+    # The recovered chain's success predicate has changed across runtime
+    # builds: some builds return a valid 2xx page envelope while reporting
+    # ``success=False``.  Keep the explicit AutoRegister state machine as the
+    # authority so a legitimate login_password/email_otp/profile transition
+    # cannot be misclassified as a failed email identifier request.
+    try:
+        if _is_known_state_response(response, ok, page_types):
+            return True
+    except Exception:
+        pass
+    status = _status(response)
+    page_value = response.get("page") if isinstance(response, Mapping) else ""
+    explicit_page = page_value.get("type") if isinstance(page_value, Mapping) else page_value
+    page = str(
+        _page_type_value(response)
+        or explicit_page
+        or (response.get("page_type") if isinstance(response, Mapping) else "")
+        or (response.get("type") if isinstance(response, Mapping) else "")
+        or ""
+    ).strip().casefold().replace("-", "_")
+    return bool(status is not None and 200 <= int(status) < 300 and page in page_types)
 
 
 def _pre_auth_html_response(response: Any, node: str) -> bool:
@@ -203,6 +223,25 @@ def _raise_response(response: Any, *, node: str, label: str, stage: str) -> None
     """Map a transport response to a stable Free node error."""
     _ok, _page, _continue, error_text, session_invalid = _chain_helpers()
     error = str(error_text(response) or "").strip()
+    # A valid authorize state can be a 2xx JSON envelope even when the
+    # recovered success helper reports it as false.  Let the finite state
+    # machine consume known password/OTP/profile/consent pages instead of
+    # converting them into a false transport failure at the current node.
+    response_status_value = _status(response)
+    response_page_value = response.get("page") if isinstance(response, Mapping) else ""
+    response_page = str(
+        _page_type_value(response)
+        or (response_page_value.get("type") if isinstance(response_page_value, Mapping) else response_page_value)
+        or (response.get("page_type") if isinstance(response, Mapping) else "")
+        or (response.get("type") if isinstance(response, Mapping) else "")
+        or ""
+    ).strip().casefold().replace("-", "_")
+    if (
+        response_status_value is not None
+        and 200 <= int(response_status_value) < 300
+        and response_page in (_PASSWORD_PAGE_TYPES | _OTP_PAGE_TYPES | _PROFILE_PAGE_TYPES | _CALLBACK_READY_PAGE_TYPES)
+    ):
+        return
     if _is_rate_limited_response(response, error):
         raise FreeRegisterError(
             node,
@@ -521,6 +560,20 @@ def _call_transport(
     try:
         result = function(*args)
         _check_stopped(stop_requested)
+        # ``authorize/continue`` returns the next page as a successful JSON
+        # envelope.  Some recovered wrappers run their generic success/error
+        # classifier before returning that envelope and mislabel
+        # ``login_password`` as a failed email identifier.  Preserve the raw
+        # 2xx JSON state for the explicit state machine; security HTML still
+        # follows the normal challenge path below.
+        if (
+            method == "submit_email_identifier"
+            and _status(result) is not None
+            and 200 <= int(_status(result)) < 300
+            and not _page_is_html(result)
+            and not _is_security_challenge_response(result)
+        ):
+            return result
         node, label = _transport_node(method)
         if flow == "password_verify" and method in {"send_email_otp", "verify_email_otp"}:
             action = "派发" if method.startswith("send_") else "验证"
@@ -849,7 +902,8 @@ def _run_once(
         stop_requested=stop_requested,
         log=log,
     )
-    if not _is_state_response(response, ok):
+    identifier_status = _status(response)
+    if identifier_status is None or not 200 <= int(identifier_status) < 300:
         _raise_response(response, node="free_email_identifier", label="识别 Free 注册邮箱", stage="free_email_identifier")
     current_page = str(page_type(response) or _page_type_value(response) or "").strip().casefold().replace("-", "_")
     known_html_page = current_page in (_PASSWORD_PAGE_TYPES | _OTP_PAGE_TYPES | _PROFILE_PAGE_TYPES | _CALLBACK_READY_PAGE_TYPES)

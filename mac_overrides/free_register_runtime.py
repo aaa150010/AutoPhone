@@ -552,11 +552,15 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
 
     def start(self, config: Mapping[str, Any], *, pool_content: str = "", proxy_content: str = "", row_ids: Sequence[str] = ()) -> dict[str, Any]:
         with self._lock:
-            self._last_config = copy.deepcopy(dict(config))
+            # Keep the production manager boundary aligned with the Free
+            # contract even for callers that bypass the HTTP config store.
+            normalized_config = dict(config)
+            normalized_config["auto_set_2fa"] = True
+            self._last_config = copy.deepcopy(normalized_config)
             if self.public_state().get("running"):
                 raise FreeRegisterError("free_run_start", "启动 Free 注册", "已有 Free 注册任务运行中", retryable=False)
             return self._start_locked(
-                config,
+                normalized_config,
                 pool_content=pool_content,
                 proxy_content=proxy_content,
                 row_ids=row_ids,
@@ -817,12 +821,12 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 saved = self.pool.result(str(task_id)) if row is not None else {}
                 if row is not None and saved.get("twofa_status") == "pending" and saved.get("proxy"):
                     recovered_driver = str(saved.get("driver") or config.get("driver") or "protocol").strip().lower()
+                    # Roxy is only the registration source.  Once its Profile
+                    # is closed, 2FA retry deliberately moves to the shared
+                    # protocol transport and never reopens or creates a
+                    # browser Profile.
                     if recovered_driver == "roxybrowser":
-                        raise FreeRegisterError(
-                            "free_twofa_retry", "重试 Free 账号 2FA",
-                            "RoxyBrowser 仅支持注册时浏览器态，不能在已关闭 Profile 后重试 2FA；请使用纯协议换绑/登录链路",
-                            retryable=False, error_code="free_roxy_twofa_retry_unsupported",
-                        )
+                        recovered_driver = "protocol"
                     now = int(time.time())
                     recovered_task_id = f"free-2fa-{now}-{secrets.token_hex(4)}"
                     task = {
@@ -849,11 +853,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             result = task.get("result") if isinstance(task.get("result"), Mapping) else {}
             driver = str(task.get("driver") or result.get("driver") or config.get("driver") or "protocol").strip().lower()
             if driver == "roxybrowser":
-                raise FreeRegisterError(
-                    "free_twofa_retry", "重试 Free 账号 2FA",
-                    "RoxyBrowser 仅支持注册时浏览器态，不能在已关闭 Profile 后重试 2FA；请使用纯协议换绑/登录链路",
-                    retryable=False, error_code="free_roxy_twofa_retry_unsupported",
-                )
+                driver = "protocol"
             if driver not in {"protocol", "camoufox"}:
                 raise FreeRegisterError(
                     "free_twofa_retry", "重试 Free 账号 2FA",
@@ -868,7 +868,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             if self._executor is None:
                 self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="free-2fa-retry")
             resolved_task_id = str(task["task_id"])
-            future = self._executor.submit(self._worker, resolved_task_id, dict(config), True)
+            retry_config = dict(config)
+            retry_config["auto_set_2fa"] = True
+            future = self._executor.submit(self._worker, resolved_task_id, retry_config, True)
             self._futures.add(future)
             future.add_done_callback(self._future_done)
             return self._public_task(task)
@@ -996,6 +998,20 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         row_id = str(task.get("row_id") or "")
         if not row_id:
             return
+        try:
+            provider_status = int(failure.get("http_status") or 0)
+        except (TypeError, ValueError):
+            provider_status = 0
+        try:
+            retry_after = max(0, int(float(failure.get("retry_after_seconds") or 0)))
+        except (TypeError, ValueError):
+            retry_after = 0
+        cooldown_until = None
+        if provider_status == 429:
+            # AutoRegister's BrowserSession uses a 300s circuit when the
+            # provider omits Retry-After. Keep the mailbox selectable only
+            # after that window, without replaying the failed request.
+            cooldown_until = time.time() + max(retry_after, 300)
         self.pool.update(
             row_id,
             status="available",
@@ -1014,6 +1030,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             error=str(failure.get("public_message") or "Free 注册前置节点失败"),
             failure=copy.deepcopy(dict(failure)),
             reusable_after_failure=True,
+            cooldown_until=cooldown_until or 0,
         )
         self._log(
             f"[{task.get('task_id', '')}/释放 Free 邮箱/free_mailbox_released] "

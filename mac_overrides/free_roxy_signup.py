@@ -703,11 +703,13 @@ def submit_email_and_wait(
                     )
                     stage = clean(browser_bootstrap.get("stage"), 24) or "transport"
                     status = browser_bootstrap.get("status")
+                    reason = clean(browser_bootstrap.get("reason"), 48)
                     _log(
                         log,
                         "login?email 同表单补交后仍未跳转，执行一次浏览器内认证启动"
                         f"（stage={stage}，HTTP={status if status is not None else '-'}，"
-                        f"result={'accepted' if browser_bootstrap.get('ok') else 'rejected'}）",
+                        f"result={'accepted' if browser_bootstrap.get('ok') else 'rejected'}"
+                        f"{f'，reason={reason}' if reason else ''}）",
                         "info" if browser_bootstrap.get("ok") else "warn",
                     )
                 # Do not reset cleared_at or extend wait_deadline after
