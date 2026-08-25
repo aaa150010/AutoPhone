@@ -3749,6 +3749,7 @@ def _write_local_config(data):
 # Copy the pre-existing Free files once, then keep the ordinary runtime config
 # free of Free mailbox, proxy, target and driver settings.
 _FREE_CONFIG_MIGRATION = _FREE_CONFIG_STORE.migrate_legacy(_read_local_config(), _RUNTIME_DATA_DIR)
+_FREE_PROXY_POLICY_MIGRATION = _FREE_CONFIG_STORE.migrate_single_pool_state()
 _legacy_local_config = _read_local_config()
 if any(key in _legacy_local_config for key in _free_register_config_ext.FREE_LEGACY_CONFIG_KEYS):
     _write_local_config(_legacy_local_config)

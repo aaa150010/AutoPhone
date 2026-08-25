@@ -64,7 +64,7 @@ export interface FreeConfig {
   version?: number
   driver: 'protocol' | 'roxybrowser'
   flow_profile?: 'reference_20260823' | 'legacy' | string
-  proxy_allocation_mode?: 'healthy_random' | 'exclusive' | string
+  proxy_allocation_mode?: 'healthy_random' | string
   target_count: number
   concurrency: number
   email_code_timeout: number
@@ -82,6 +82,7 @@ export interface FreeConfig {
   proxy_retry_count?: number
   roxy_circuit_failure_threshold?: number
   roxy_circuit_recovery_seconds?: number
+  /** @deprecated retained only for loading pre-v6 config responses. */
   proxy_selection?: {
     protocol?: { country?: string; group?: string }
     roxybrowser?: { country?: string; group?: string }
@@ -173,8 +174,6 @@ export interface FreeProxySummary {
 export const getFreeConfig = () => api<{ ok: true; config: FreeConfig; state: FreeState }>('/api/free/config')
 export type FreeConfigSavePayload = Partial<FreeConfig> & {
   proxy_content?: string
-  proxy_country?: string
-  proxy_group?: string
   proxy_scheme?: string
 }
 export const saveFreeConfig = (config: FreeConfigSavePayload) => api<{ ok: true; config: FreeConfig; state: FreeState; proxies?: any }>('/api/free/config', config)
@@ -269,13 +268,13 @@ export const startFreeLiveCheck = (mode: 'fast' | 'deep', rowIds: string[]) => a
 }>('/api/free/live-check', { mode, row_ids: rowIds })
 export const getFreeLiveCheckState = () => api<{ ok: true; state: FreeLiveCheckState; rows: FreeMailboxRow[] }>('/api/free/live-check/state')
 export const exportFreeResults = (rowIds: string[] = []) => api<{ ok: true; count: number; filename: string; content: string }>('/api/free/mailboxes/export', { row_ids: rowIds })
-export const importFreeProxies = (proxyContent: string, country?: string, group?: string, scheme?: string) => api<{ ok: true; imported: number; proxies?: any }>(
+export const importFreeProxies = (proxyContent: string, _country?: string, _group?: string, scheme?: string) => api<{ ok: true; imported: number; proxies?: any }>(
   '/api/free/proxies/import',
-  { proxy_content: proxyContent, country, group, scheme },
+  { proxy_content: proxyContent, scheme },
 )
-export const preflightFreeProxies = (proxyContent: string, proxyProbeUrl?: string, options: { driver?: string; country?: string; group?: string; scheme?: string; proxy_tls_verify?: boolean; proxy_tls_compat_fallback?: boolean } = {}) => api<{
+export const preflightFreeProxies = (proxyContent: string, proxyProbeUrl?: string, options: { driver?: string; scheme?: string; proxy_tls_verify?: boolean; proxy_tls_compat_fallback?: boolean } = {}) => api<{
   ok: true
-  result: { proxies: number; exit_ips: number; rows: Array<{ index: number; masked: string; fingerprint: string; exit_ip: string; chatgpt_login_status?: number; chatgpt_login_checked?: boolean; chatgpt_login_probe_mode?: string; scheme?: string; country?: string; group?: string }> }
+  result: { proxies: number; exit_ips: number; rows: Array<{ index: number; masked: string; fingerprint: string; exit_ip: string; scheme?: string }> }
 }>('/api/free/proxies/preflight', { proxy_content: proxyContent, proxy_probe_url: proxyProbeUrl, ...options })
 export const getFreeProxies = () => api<{ ok: true; proxies: { count: number; rows: FreeProxyRow[]; groups: FreeProxySummary[]; countries: FreeProxySummary[] } }>('/api/free/proxies')
 export const updateFreeProxyGroup = (payload: { country: string; group: string; new_country?: string; new_group?: string; enabled?: boolean }) => api<{ ok: true; result: any; proxies: any }>('/api/free/proxies/group', payload)

@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.69',
-  freeRuntimeVersion: '1.6.69',
+  version: '1.6.70',
+  freeRuntimeVersion: '1.6.70',
   title: 'Free 双链路照齐 AutoRegister',
   releasedAt: '2026-08-25',
   sections: [
+    {
+      title: 'Free 单一共享代理池',
+      usage: '全协议和 RoxyBrowser 现在共用健康随机代理池，不再按国家或分组筛选，也允许并发任务共享代理和出口 IP。预检只检测出口 IP；任务期间出口变化会更新记录并继续健康任务，不再触发 free_proxy_drift 停止。',
+    },
     {
       title: '协议 OAuth 会话混用修复',
       usage: '全协议注册现在始终从当前任务自己的 Codex authorize URL 和 PKCE 上下文开始，再提交邮箱；不再额外建立 ChatGPT NextAuth 前置会话，避免 OAuth state、Cookie 和 CSRF 状态混用导致 session invalid 或重复请求触发限流。',

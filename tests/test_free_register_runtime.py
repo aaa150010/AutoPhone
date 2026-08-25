@@ -260,19 +260,19 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         proxies.release(second, owner="task-b")
         self.assertEqual(proxies.public()["rows"][0]["active_lease_count"], 0)
 
-    def test_exclusive_proxy_mode_excludes_active_proxy_and_rejects_second_lease(self):
+    def test_legacy_exclusive_mode_is_shared_and_allows_second_lease(self):
         proxies = StructuredFreeProxyPool(self.data_dir)
         proxies.configure_policy(allocation_mode="exclusive")
         proxies.import_text("http://proxy-a.test:8000\n")
         binding = proxies.bind(1, probe=lambda _proxy, _url: "203.0.113.20")[0]
         proxies.lease(binding, owner="task-a", batch_id="batch-a", task_id="task-a")
-        with self.assertRaisesRegex(FreeRegisterError, "没有符合条件"):
-            proxies.bind(1, probe=lambda _proxy, _url: "203.0.113.20")
-        with self.assertRaisesRegex(FreeRegisterError, "已被其他"):
-            proxies.lease(binding, owner="task-b", batch_id="batch-b", task_id="task-b")
-        self.assertEqual(proxies.public()["groups"][0]["available"], 0)
+        rebound = proxies.bind(1, probe=lambda _proxy, _url: "203.0.113.20")
+        proxies.lease(binding, owner="task-b", batch_id="batch-b", task_id="task-b")
+        self.assertEqual(rebound[0].proxy_id, binding.proxy_id)
+        self.assertEqual(proxies.allocation_mode, "healthy_random")
+        self.assertEqual(proxies.public()["groups"][0]["available"], 1)
 
-    def test_exclusive_proxy_mode_rejects_an_active_exit_ip_on_another_proxy(self):
+    def test_shared_mode_allows_duplicate_exit_ip_on_another_proxy(self):
         proxies = StructuredFreeProxyPool(self.data_dir)
         proxies.configure_policy(allocation_mode="exclusive")
         proxies.import_text("http://proxy-a.test:8000\nhttp://proxy-b.test:8000\n")
@@ -282,12 +282,12 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             probe=lambda _proxy, _url: "203.0.113.21",
         )[0]
         proxies.lease(first, owner="task-a", batch_id="batch-a", task_id="task-a")
-        with self.assertRaisesRegex(FreeRegisterError, "出口 IP 数量不足"):
-            proxies.bind(
-                1,
-                content="http://proxy-b.test:8000\n",
-                probe=lambda _proxy, _url: "203.0.113.21",
-            )
+        rebound = proxies.bind(
+            1,
+            content="http://proxy-b.test:8000\n",
+            probe=lambda _proxy, _url: "203.0.113.21",
+        )
+        self.assertEqual(rebound[0].exit_ip, "203.0.113.21")
 
     def test_pasted_proxy_content_remains_available_during_active_lease(self):
         proxies = StructuredFreeProxyPool(self.data_dir)
@@ -320,7 +320,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=lambda *_args, **_kwargs: {},
             proxy_probe=lambda _proxy, _url: "203.0.113.20",
         )
-        self.assertEqual(manager.public_state()["runtime_version"], "1.6.58")
+        self.assertEqual(manager.public_state()["runtime_version"], "1.6.70")
         self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v4-roxy-otp-v2")
 
     def test_manager_preflight_applies_proxy_allocation_mode_from_config(self):
@@ -342,8 +342,8 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
                 proxy_content="http://proxy-a.test:8000\n",
             )
 
-        self.assertEqual(manager.proxies.allocation_mode, "exclusive")
-        self.assertEqual(configure.call_args.kwargs["allocation_mode"], "exclusive")
+        self.assertEqual(manager.proxies.allocation_mode, "healthy_random")
+        self.assertEqual(configure.call_args.kwargs["allocation_mode"], "healthy_random")
 
     def test_manager_clamps_free_target_count_to_one_through_two_hundred(self):
         pool = FreeMailboxPool(self.data_dir)
@@ -457,8 +457,9 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         )
 
         self.assertEqual(result["proxies"], 2)
-        self.assertEqual(result["exit_ips"], 2)
-        self.assertEqual([row["exit_ip"] for row in result["rows"]], ["203.0.113.10", "203.0.113.11"])
+        self.assertGreaterEqual(result["exit_ips"], 1)
+        self.assertLessEqual(result["exit_ips"], 2)
+        self.assertTrue({row["exit_ip"] for row in result["rows"]} <= {"203.0.113.10", "203.0.113.11"})
         self.assertEqual(manager.pool.entries(), [])
         self.assertNotIn("https://", str(result))
 
@@ -469,12 +470,20 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             "proxy-b.test:8000:user-b:private-b\n"
         )
 
-        with self.assertRaisesRegex(FreeRegisterError, r"第 2 条.*Timeout"):
-            proxies.bind(
-                2,
-                content="proxy-a.test:8000:user-a:private-a\nproxy-b.test:8000:user-b:private-b\n",
-                probe=lambda proxy, _url: (_ for _ in ()).throw(TimeoutError()) if "proxy-b" in proxy else "203.0.113.10",
-            )
+        selected = []
+
+        def choose_in_order(rows):
+            selected.append(rows[len(selected) % len(rows)])
+            return selected[-1]
+
+        with patch("mac_overrides.free_proxy_store.random.SystemRandom") as random_source:
+            random_source.return_value.choice.side_effect = choose_in_order
+            with self.assertRaisesRegex(FreeRegisterError, r"第 2 条.*Timeout"):
+                proxies.bind(
+                    2,
+                    content="proxy-a.test:8000:user-a:private-a\nproxy-b.test:8000:user-b:private-b\n",
+                    probe=lambda proxy, _url: (_ for _ in ()).throw(TimeoutError()) if "proxy-b" in proxy else "203.0.113.10",
+                )
 
     def test_proxy_binding_keeps_original_protocol_after_socks_tls_failure(self):
         proxies = FreeProxyPool(self.data_dir)
@@ -553,7 +562,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         pool.lease(binding, owner="new-task", batch_id="new-batch", task_id="new-task")
         persisted = json.loads(path.read_text(encoding="utf-8"))
         row = persisted["proxies"][0]
-        self.assertEqual(persisted["version"], 3)
+        self.assertEqual(persisted["version"], 4)
         self.assertEqual({lease["owner"] for lease in row["leases"]}, {"old-task", "new-task"})
 
     def test_proxy_pool_protocolless_rows_follow_autoregister_http_rule(self):
@@ -705,19 +714,17 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertIn("application/json", calls["get"][1]["headers"]["Accept"])
         self.assertTrue(calls["closed"])
 
-    def test_protocol_proxy_preflight_rejects_chatgpt_login_http_403(self):
+    def test_protocol_proxy_preflight_ignores_chatgpt_login_http(self):
         proxies = StructuredFreeProxyPool(self.data_dir)
-        with self.assertRaisesRegex(FreeRegisterError, r"ChatGPT 登录页预检返回 HTTP 403") as raised:
-            proxies.bind(
-                1,
-                content="socks5://user:secret@proxy.example.test:8000\n",
-                probe=lambda _proxy, _url: "203.0.113.44",
-                chatgpt_probe=lambda _proxy: 403,
-                check_chatgpt=True,
-            )
-        self.assertEqual(raised.exception.error_code, "free_proxy_chatgpt_login_http")
-        self.assertEqual(raised.exception.provider_status, 403)
-        self.assertNotIn("secret", str(raised.exception))
+        bindings = proxies.bind(
+            1,
+            content="socks5://user:secret@proxy.example.test:8000\n",
+            probe=lambda _proxy, _url: "203.0.113.44",
+            chatgpt_probe=lambda _proxy: 403,
+            check_chatgpt=True,
+        )
+        self.assertEqual(bindings[0].exit_ip, "203.0.113.44")
+        self.assertNotIn("secret", bindings[0].masked)
 
     def test_chatgpt_login_probe_uses_same_proxy_and_disables_environment_proxy(self):
         calls = {}
@@ -799,13 +806,13 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         legacy = self.data_dir / "free_proxy_pool.txt"
         legacy.write_text("proxy-region-US.example:3000:user:pass\n", encoding="utf-8")
         pool = StructuredFreeProxyPool(self.data_dir)
-        self.assertEqual(pool.records()[0]["country"], "US")
+        self.assertEqual(pool.records()[0]["country"], "")
         self.assertTrue((self.data_dir / "free_proxy_pool.json").exists())
         pool.import_text("socks5://user:pass@proxy-region-US.example:3000\n", country="US", group="住宅 A")
         public = pool.public()
         self.assertEqual(public["count"], 1)
         self.assertEqual(public["rows"][0]["scheme"], "socks5")
-        self.assertEqual(public["rows"][0]["group"], "住宅 A")
+        self.assertEqual(public["rows"][0]["group"], "")
         self.assertNotIn("pass", str(public))
 
     def test_structured_proxy_pool_filters_roxy_compatible_groups_and_quarantines_failures(self):
@@ -815,11 +822,11 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             "socks5://user:pass@proxy-region-US.example:3001\n",
             country="US", group="住宅 A",
         )
-        self.assertEqual(len(pool.records(country="US", group="住宅 A", driver="roxybrowser")), 1)
-        proxy_id = pool.records(country="US", group="住宅 A", driver="roxybrowser")[0]["proxy_id"]
+        self.assertEqual(len(pool.records(driver="roxybrowser")), 1)
+        proxy_id = pool.records(driver="roxybrowser")[0]["proxy_id"]
         pool.record_failure(proxy_id, node_code="free_roxy_open", message="连接失败")
         pool.record_failure(proxy_id, node_code="free_roxy_open", message="连接失败")
-        self.assertEqual(pool.records(country="US", group="住宅 A", driver="roxybrowser"), [])
+        self.assertEqual(pool.records(driver="roxybrowser"), [])
         self.assertEqual(pool.public()["groups"][0]["quarantined"], 1)
 
     def test_pasted_proxy_preflight_honors_country_group_and_roxy_protocol(self):
@@ -842,8 +849,8 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             group="住宅 A",
         )
         self.assertEqual(result["rows"][0]["scheme"], "socks5")
-        self.assertEqual(result["rows"][0]["country"], "US")
-        self.assertEqual(result["rows"][0]["group"], "住宅 A")
+        self.assertNotIn("country", result["rows"][0])
+        self.assertNotIn("group", result["rows"][0])
 
     def test_proxy_health_only_changes_for_proxy_and_exit_ip_failures(self):
         manager = FreeRegisterManager(self.data_dir)
@@ -858,12 +865,9 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(manager.proxies.public()["rows"][0]["consecutive_failures"], 0)
 
-        manager._record_proxy_failure(
-            task,
-            FreeRegisterError("free_proxy_drift", "校验 Free 代理出口", "固定代理出口发生变化"),
-        )
+        manager._record_proxy_failure(task, FreeRegisterError("free_proxy_drift", "校验 Free 代理出口", "固定代理出口发生变化"))
         proxy = manager.proxies.public()["rows"][0]
-        self.assertEqual(proxy["consecutive_failures"], 1)
+        self.assertEqual(proxy["consecutive_failures"], 0)
         self.assertEqual(proxy["status"], "unknown")
 
     def test_start_with_pasted_proxy_persists_exit_ip_before_worker_progress(self):

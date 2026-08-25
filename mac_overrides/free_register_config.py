@@ -34,7 +34,7 @@ FREE_LEGACY_CONFIG_KEYS = frozenset({
 })
 
 DEFAULT_FREE_CONFIG: dict[str, Any] = {
-    "version": 5,
+    "version": 6,
     "driver": "protocol",
     "flow_profile": "reference_20260823",
     "proxy_allocation_mode": "healthy_random",
@@ -151,6 +151,7 @@ class FreeConfigStore:
         self.data_dir = Path(data_dir).expanduser().resolve()
         self.path = self.data_dir / "config.json"
         self.migration_path = self.data_dir / "migration.json"
+        self.proxy_policy_migration_path = self.data_dir / "single_pool_migration.json"
         self.log_path = self.data_dir / "logs.json"
         self.lock_path = self.data_dir / "runtime.lock"
         self._lock = threading.RLock()
@@ -175,8 +176,8 @@ class FreeConfigStore:
         result["driver"] = driver
         flow_profile = str(result.get("flow_profile") or "reference_20260823").strip().lower()
         result["flow_profile"] = flow_profile if flow_profile in {"reference_20260823", "legacy"} else "reference_20260823"
-        allocation_mode = str(result.get("proxy_allocation_mode") or "healthy_random").strip().lower()
-        result["proxy_allocation_mode"] = allocation_mode if allocation_mode in {"healthy_random", "exclusive"} else "healthy_random"
+        # The Free pool is shared and random, regardless of a legacy value.
+        result["proxy_allocation_mode"] = "healthy_random"
         result["target_count"] = _int(result.get("target_count"), 1, 1, 200)
         result["concurrency"] = _int(result.get("concurrency"), 3, 1, 16)
         result["email_code_timeout"] = _int(result.get("email_code_timeout"), 90, 10, 600)
@@ -285,7 +286,13 @@ class FreeConfigStore:
         if not roxy["profile_name_prefix"]:
             roxy["profile_name_prefix"] = "rb"
         result["roxybrowser"] = roxy
-        result["version"] = 5
+        # Keep the old shape for API compatibility, but always return empty
+        # classification values so they cannot influence allocation.
+        result["proxy_selection"] = {
+            "protocol": {"country": "", "group": ""},
+            "roxybrowser": {"country": "", "group": ""},
+        }
+        result["version"] = 6
         return result
 
     def load(self) -> dict[str, Any]:
@@ -294,7 +301,29 @@ class FreeConfigStore:
                 value = json.loads(self.path.read_text(encoding="utf-8"))
             except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError):
                 value = {}
-            return self.normalize(value if isinstance(value, Mapping) else {})
+            source = value if isinstance(value, Mapping) else {}
+            normalized = self.normalize(source)
+            # Persist only the one-time schema/policy migration. Normal reads
+            # remain read-only after v6, while legacy exclusive/classified
+            # configs are atomically upgraded for the next process.
+            try:
+                source_version = int(source.get("version") or 0)
+            except (TypeError, ValueError):
+                source_version = 0
+            needs_policy_migration = (
+                self.path.exists()
+                and (
+                    source_version < 6
+                    or str(source.get("proxy_allocation_mode") or "").strip().lower() != "healthy_random"
+                    or any(
+                        isinstance(item, Mapping) and any(str(item.get(key) or "").strip() for key in ("country", "group"))
+                        for item in ((source.get("proxy_selection") or {}).values() if isinstance(source.get("proxy_selection"), Mapping) else ())
+                    )
+                )
+            )
+            if needs_policy_migration:
+                atomic_write(self.path, normalized)
+            return normalized
 
     def save(self, value: Mapping[str, Any]) -> dict[str, Any]:
         with self._lock:
@@ -366,6 +395,85 @@ class FreeConfigStore:
                 copied.append("free_proxy_pool_content")
             atomic_write(self.migration_path, {"version": 1, "completed": True, "copied": copied})
             return {"migrated": True, "copied": copied}
+
+    @staticmethod
+    def _clear_proxy_classification(value: Any) -> tuple[Any, bool]:
+        changed = False
+        if isinstance(value, list):
+            output = []
+            for item in value:
+                normalized, item_changed = FreeConfigStore._clear_proxy_classification(item)
+                output.append(normalized)
+                changed = changed or item_changed
+            return output, changed
+        if not isinstance(value, Mapping):
+            return value, False
+        output: dict[str, Any] = {}
+        for key, item in value.items():
+            if key in {"proxy_country", "proxy_group"}:
+                output[key] = ""
+                changed = changed or bool(item)
+                continue
+            normalized, item_changed = FreeConfigStore._clear_proxy_classification(item)
+            output[key] = normalized
+            changed = changed or item_changed
+        return output, changed
+
+    def migrate_single_pool_state(self) -> dict[str, Any]:
+        """Clear legacy proxy classifications from all Free persisted state."""
+        with self._lock:
+            try:
+                marker = json.loads(self.proxy_policy_migration_path.read_text(encoding="utf-8"))
+            except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError):
+                marker = {}
+            if isinstance(marker, Mapping) and int(marker.get("version") or 0) >= 1:
+                return {"migrated": False, "reason": "already_migrated"}
+
+            changed_files: list[str] = []
+
+            def migrate_file(path: Path) -> None:
+                try:
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError):
+                    return
+                normalized, changed = self._clear_proxy_classification(payload)
+                if path.name == "free_proxy_pool.json" and isinstance(normalized, Mapping):
+                    rows = normalized.get("proxies")
+                    if isinstance(rows, list):
+                        cleaned_rows = []
+                        pool_changed = False
+                        for row in rows:
+                            if not isinstance(row, Mapping):
+                                cleaned_rows.append(row)
+                                continue
+                            cleaned = dict(row)
+                            pool_changed = pool_changed or bool(cleaned.get("country") or cleaned.get("group"))
+                            cleaned["country"] = ""
+                            cleaned["group"] = ""
+                            cleaned_rows.append(cleaned)
+                        if pool_changed:
+                            normalized = {**normalized, "proxies": cleaned_rows}
+                            changed = True
+                if changed:
+                    atomic_write(path, normalized)
+                    changed_files.append(str(path.relative_to(self.data_dir)))
+
+            for name in (
+                "free_proxy_pool.json",
+                "free_mailbox_state.json",
+                "tasks.json",
+                "free_live_checks.json",
+            ):
+                migrate_file(self.data_dir / name)
+            results_dir = self.data_dir / "free_register_results"
+            if results_dir.is_dir():
+                for path in sorted(results_dir.glob("*.json")):
+                    migrate_file(path)
+            atomic_write(
+                self.proxy_policy_migration_path,
+                {"version": 1, "completed": True, "changed_files": changed_files},
+            )
+            return {"migrated": True, "changed_files": changed_files}
 
 
 def strip_legacy_free_config(value: Mapping[str, Any] | None) -> dict[str, Any]:

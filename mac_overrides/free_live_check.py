@@ -370,8 +370,8 @@ class FreeLiveCheckService:
             str(context.get("registration_ip") or ""),
             proxy_id=str(context.get("proxy_id") or ""),
             scheme=str(context.get("proxy_scheme") or ""),
-            country=str(context.get("proxy_country") or "ZZ"),
-            group=str(context.get("proxy_group") or "默认组"),
+            country=str(context.get("proxy_country") or ""),
+            group=str(context.get("proxy_group") or ""),
         )
 
     def _verify_fixed_proxy(self, binding: ProxyBinding, config: Mapping[str, Any]) -> str:
@@ -423,6 +423,9 @@ class FreeLiveCheckService:
             if binding.proxy_id:
                 self.proxies.lease(binding, owner=lease_owner, batch_id=lease_owner, task_id=task_id)
             live_ip = self._verify_fixed_proxy(binding, config)
+            # A healthy proxy may rotate its egress during a long-lived
+            # account check. Continue with the verified current IP.
+            context["registration_ip"] = live_ip
             mode = str(job.get("mode") or "fast")
             stage = "free_live_fast" if mode == "fast" else "free_live_deep"
             self._set_job(task_id, stage=stage, live_check_ip=live_ip)
@@ -442,6 +445,8 @@ class FreeLiveCheckService:
                 "live_check_task_id": task_id,
                 "live_checked_at": checked_at,
                 "live_check_ip": live_ip,
+                "expected_exit_ip": live_ip,
+                "exit_ip": live_ip,
                 "live_check_token_refreshed": token_refreshed,
                 "live_check_http_status": checked.get("http_status"),
                 "live_check_failure": copy.deepcopy(failure) if failure else None,

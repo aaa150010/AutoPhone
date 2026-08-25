@@ -54,19 +54,13 @@ class FreeRegisterSchedulerMixin:
 
     def _switch_pre_profile_proxy(self, task: dict[str, Any], config: Mapping[str, Any]) -> bool:
         """Replace a failed pre-profile proxy while the account is still uncommitted."""
-        selection = config.get("proxy_selection") if isinstance(config.get("proxy_selection"), Mapping) else {}
         driver = str(task.get("driver") or config.get("driver") or "protocol")
-        selected = selection.get(driver) if isinstance(selection.get(driver), Mapping) else {}
         excluded_proxy_ids = {str(task.get("proxy_id") or "")}
         try:
             bindings = self.proxies.bind(
                 1,
                 probe=self.proxy_probe,
-                check_chatgpt=driver == "protocol" and (self.proxy_chatgpt_probe is not None or self.proxy_probe is None),
-                chatgpt_probe=self.proxy_chatgpt_probe,
                 probe_url=str(config.get("proxy_probe_url") or "https://api.ipify.org"),
-                country=str(selected.get("country") or "").strip() or None,
-                group=str(selected.get("group") or "").strip() or None,
                 driver=driver,
                 exclude_proxy_ids=excluded_proxy_ids,
             )

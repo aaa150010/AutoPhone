@@ -216,7 +216,7 @@ class FreeLiveCheckTests(unittest.TestCase):
         self.assertTrue(saved["live_check_token_refreshed"])
         self.assertEqual(saved["live_check_mode"], "deep")
 
-    def test_proxy_drift_fails_without_calling_runner_or_changing_registration_result(self):
+    def test_proxy_drift_updates_live_ip_and_continues_runner(self):
         pool, proxies, logs = self._resources()
         called = []
         service = FreeLiveCheckService(
@@ -235,9 +235,11 @@ class FreeLiveCheckTests(unittest.TestCase):
         self._wait(service)
 
         saved = pool.result(row.row_id)
-        self.assertFalse(called)
-        self.assertEqual(saved["live_check_status"], "failed")
-        self.assertEqual(saved["live_check_failure"]["node_code"], "free_live_proxy_verify")
+        self.assertTrue(called)
+        self.assertEqual(saved["live_check_status"], "live")
+        self.assertEqual(saved["live_check_ip"], "10.0.0.99")
+        self.assertEqual(saved["expected_exit_ip"], "10.0.0.99")
+        self.assertEqual(saved["exit_ip"], "10.0.0.99")
         self.assertEqual(pool._row_state(row.row_id)["status"], "success")
         self.assertEqual(saved["access_token"], "old-token-1")
 

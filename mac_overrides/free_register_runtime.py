@@ -377,7 +377,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     "proxies": len(self.proxies.values()),
                 },
                 "proxy_groups": self.proxies.group_summaries() if callable(getattr(self.proxies, "group_summaries", None)) else [],
-                "proxy_selection": (copy.deepcopy((self._last_config.get("proxy_selection") or {}).get(str(next((task.get("driver") for task in reversed(list(self._tasks.values())) if task.get("batch_id") == self._batch_id), "protocol")), {})) if isinstance(self._last_config.get("proxy_selection"), Mapping) else {}),
+                "proxy_selection": {"country": "", "group": ""},
                 "driver": str(next((task.get("driver") for task in reversed(list(self._tasks.values())) if task.get("batch_id") == self._batch_id), "protocol") or "protocol"),
                 "scheduler": {
                     "concurrency": max(1, min(int(self._last_config.get("concurrency") or self._last_config.get("free_concurrency") or 3), 16)),
@@ -436,12 +436,8 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             quarantine_seconds=int(config.get("proxy_quarantine_seconds") or 600),
             tls_verify=bool(config.get("proxy_tls_verify", True)),
             tls_compat_fallback=bool(config.get("proxy_tls_compat_fallback", True)),
-            allocation_mode=str(config.get("proxy_allocation_mode") or "healthy_random"),
+            allocation_mode="healthy_random",
         )
-        selection = config.get("proxy_selection") if isinstance(config.get("proxy_selection"), Mapping) else {}
-        selected = selection.get(driver) if isinstance(selection.get(driver), Mapping) else {}
-        country = str(selected.get("country") or "").strip() or None
-        group = str(selected.get("group") or "").strip() or None
         available = self._available_count()
         requested = max(1, min(int(config.get("target_count") or 1), 200))
         target = min(requested, available)
@@ -451,11 +447,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             target,
             content=proxy_content,
             probe=self.proxy_probe,
-            check_chatgpt=driver == "protocol" and (self.proxy_chatgpt_probe is not None or self.proxy_probe is None),
-            chatgpt_probe=self.proxy_chatgpt_probe,
             probe_url=str(config.get("proxy_probe_url") or "https://api.ipify.org"),
-            country=country,
-            group=group,
             driver=driver,
         )
         if driver == "roxybrowser" and not self._custom_runner:
@@ -472,7 +464,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             "protocol": protocol_result,
             "roxy": roxy_result,
             "roxy_cleanup": cleanup_result,
-            "proxy_selection": {"country": country or "", "group": group or ""},
+            "proxy_selection": {"country": "", "group": ""},
         }
 
     def preflight_proxies(self, *, proxy_content: str = "", probe_url: str = "https://api.ipify.org", driver: str = "protocol", country: str | None = None, group: str | None = None, scheme: str | None = None, tls_verify: bool = True, tls_compat_fallback: bool = True) -> dict[str, Any]:
@@ -490,11 +482,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             len(values),
             content=proxy_content,
             probe=self.proxy_probe,
-            check_chatgpt=driver == "protocol" and (self.proxy_chatgpt_probe is not None or self.proxy_probe is None),
-            chatgpt_probe=self.proxy_chatgpt_probe,
             probe_url=probe_url,
-            country=country,
-            group=group,
             driver=driver,
         )
         return {
@@ -507,12 +495,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     "masked": binding.masked,
                     "fingerprint": binding.fingerprint,
                     "exit_ip": binding.exit_ip,
-                    "chatgpt_login_status": binding.chatgpt_login_status,
-                    "chatgpt_login_checked": binding.chatgpt_login_checked,
-                    "chatgpt_login_probe_mode": binding.chatgpt_login_probe_mode,
                     "scheme": binding.scheme,
-                    "country": binding.country,
-                    "group": binding.group,
                 }
                 for index, binding in enumerate(bindings, 1)
             ],
@@ -604,20 +587,12 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 quarantine_seconds=int(config.get("proxy_quarantine_seconds") or 600),
                 tls_verify=bool(config.get("proxy_tls_verify", True)),
                 tls_compat_fallback=bool(config.get("proxy_tls_compat_fallback", True)),
-                allocation_mode=str(config.get("proxy_allocation_mode") or "healthy_random"),
+                allocation_mode="healthy_random",
             )
-            selection = config.get("proxy_selection") if isinstance(config.get("proxy_selection"), Mapping) else {}
-            selected = selection.get(driver) if isinstance(selection.get(driver), Mapping) else {}
-            country = str(selected.get("country") or "").strip() or None
-            group = str(selected.get("group") or "").strip() or None
             bindings = self.proxies.bind(
                 target_count,
                 probe=self.proxy_probe,
-                check_chatgpt=driver == "protocol" and (self.proxy_chatgpt_probe is not None or self.proxy_probe is None),
-                chatgpt_probe=self.proxy_chatgpt_probe,
                 probe_url=str(config.get("proxy_probe_url") or "https://api.ipify.org"),
-                country=country,
-                group=group,
                 driver=driver,
             )
             batch_id = f"free-{int(time.time())}-{secrets.token_hex(4)}"
@@ -844,7 +819,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     values.append(str(value))
         return "\n".join(values)
 
-    def _verify_binding(self, task: Mapping[str, Any], config: Mapping[str, Any]) -> None:
+    def _verify_binding(self, task: Mapping[str, Any], config: Mapping[str, Any]) -> str:
         binding = ProxyBinding(
             str(task.get("proxy") or ""),
             str(task.get("proxy_fingerprint") or ""),
@@ -852,16 +827,26 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             str(task.get("exit_ip") or ""),
             proxy_id=str(task.get("proxy_id") or ""),
             scheme=str(task.get("proxy_scheme") or ""),
-            country=str(task.get("proxy_country") or "ZZ"),
-            group=str(task.get("proxy_group") or "默认组"),
+            country=str(task.get("proxy_country") or ""),
+            group=str(task.get("proxy_group") or ""),
         )
         if not binding.proxy or not binding.exit_ip:
             raise FreeRegisterError("free_proxy_binding", "绑定 Free 注册代理", "任务缺少固定代理绑定", retryable=False)
-        self.proxies.verify(
+        current = self.proxies.verify(
             binding,
             probe=self.proxy_probe,
             probe_url=str(config.get("proxy_probe_url") or "https://api.ipify.org"),
         )
+        if isinstance(task, dict):
+            task["expected_exit_ip"] = current
+            task["exit_ip"] = current
+            task_id = str(task.get("task_id") or "")
+            if task_id:
+                self._save_task(task_id, expected_exit_ip=current, exit_ip=current)
+            row_id = str(task.get("row_id") or "")
+            if row_id:
+                self.pool.update(row_id, expected_exit_ip=current, exit_ip=current)
+        return current
 
     def _assert_batch_proxy_uniqueness(self, task: Mapping[str, Any]) -> None:
         """Compatibility hook: shared proxy allocation permits batch collisions."""
@@ -1042,8 +1027,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                             self.task_store.save(self._tasks)
                     self._log(f"[{task_id}/Free 预注册重试/{exc.node_code}] {'切换备用代理' if switched else '继续使用原代理'}进行第 {attempt + 1} 次尝试", "warn")
             post_registration_failure = None
+            verified_exit_ip = ""
             try:
-                self._verify_binding(snapshot, config)
+                verified_exit_ip = self._verify_binding(snapshot, config)
             except FreeRegisterError as exc:
                 account_complete = bool(
                     result.get("access_token")
@@ -1070,9 +1056,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 "task_id": task_id,
                 "batch_id": snapshot.get("batch_id", ""),
                 "proxy": snapshot.get("proxy", ""),
-                "expected_exit_ip": snapshot.get("expected_exit_ip") or snapshot.get("exit_ip", ""),
+                "expected_exit_ip": verified_exit_ip or snapshot.get("expected_exit_ip") or snapshot.get("exit_ip", ""),
                 "registration_ip": result.get("registration_ip") or snapshot.get("expected_exit_ip") or snapshot.get("exit_ip", ""),
-                "exit_ip": result.get("registration_ip") or snapshot.get("exit_ip", ""),
+                "exit_ip": verified_exit_ip or snapshot.get("exit_ip") or result.get("exit_ip") or result.get("registration_ip", ""),
                 "driver": snapshot.get("driver") or config.get("driver") or "protocol",
                 "proxy_id": snapshot.get("proxy_id", ""),
                 "proxy_scheme": snapshot.get("proxy_scheme", ""),

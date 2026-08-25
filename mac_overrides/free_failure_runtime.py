@@ -43,7 +43,6 @@ _ACTION_HINTS = {
     "roxy_circuit_open": "检查 RoxyBrowser API 和遗留 Profile 清理状态后重试",
     "free_protocol": "查看最后成功节点及其上游响应后重试",
     "free_proxy_binding": "检查固定代理的连通性、认证、DNS 和出口探测结果",
-    "free_proxy_drift": "保留已注册账号，检查代理会话时长和出口稳定性",
     "free_plan_check": "保留已注册账号，稍后重新查询套餐状态",
     "free_twofa_enroll": "保留已注册账号和 Token，稍后重试 2FA",
     "free_twofa_activate": "保留已注册账号和 Token，稍后重试 2FA",

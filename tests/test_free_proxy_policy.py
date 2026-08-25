@@ -86,7 +86,19 @@ class FreeProxyHealthTests(unittest.TestCase):
 
         drift = FreeRegisterError("free_proxy_drift", "校验 Free 代理出口", "实际出口与预绑定出口不一致")
         self.manager._record_proxy_failure(self.task, drift)
-        self.assertEqual(self.failures(), 2)
+        self.assertEqual(self.failures(), 1)
+
+    def test_verify_accepts_exit_ip_rotation_and_updates_current_ip(self):
+        binding = self.manager.proxies.bind(
+            1,
+            probe=lambda _proxy, _url: "203.0.113.10",
+        )[0]
+        current = self.manager.proxies.verify(
+            binding,
+            probe=lambda _proxy, _url: "203.0.113.99",
+        )
+        self.assertEqual(current, "203.0.113.99")
+        self.assertEqual(self.manager.proxies.public()["rows"][0]["last_exit_ip"], "203.0.113.99")
 
     def test_auth_dns_tls_timeout_and_roxy_exit_evidence_are_classified(self):
         failures = (

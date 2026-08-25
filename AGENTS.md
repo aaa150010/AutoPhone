@@ -8,6 +8,8 @@ GPT 注册中心（gptPhone）是 macOS 本地 Flask + Vue 3/Element Plus 应用
 
 Free 全协议链路和 RoxyBrowser 链路必须以同级项目 `/Users/lwh/projects/AutoRegister` 为行为基准，整体照抄其真实实现和调用顺序：会话建立、网络预检、匿名预热、OAuth/登录页面状态机、Sentinel、代理池分配、邮箱提交后的分支、OTP 页面、资料页、consent、OAuth 回调、Session 刷新、2FA、结果持久化、失败清理、Profile 生命周期、`connection_info` 对账和结构化诊断都按 AutoRegister 的逻辑实现。代理来自池并按任务上下文传递，但不得强制“一号一 IP”或因出口 IP 轮换拒绝健康任务。
 
+Free 代理池是全协议和 RoxyBrowser 共用的单一 `healthy_random` 池：不按国家或代理组筛选、分配或展示，允许并发任务共享同一代理和出口 IP。代理预检只验证实际代理请求、HTTP 成功状态和出口 IP 格式；任务期间出口 IP 变化必须更新当前记录并继续健康任务，不得产生新的 `free_proxy_drift` 停止节点。历史国家/分组字段只能迁移为空，不能恢复为分配策略；RoxyBrowser 仅保留自身的 SOCKS4 协议能力限制。
+
 唯一允许保留 AutoPhone 自己实现的是邮箱解析和邮箱验证码获取：继续使用 `mac_overrides/mailbox_otp_service.py` 及其现有策略模式，包括来源解析、请求前基线、旧验证码排除、消息身份判断、时间过滤、轮询、重发和阶段隔离。除这些邮箱取件边界外，不得自行设计另一套注册链路，不得为了兼容旧实现而保留与 AutoRegister 不同的主流程。
 
 对照位置：

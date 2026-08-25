@@ -15,7 +15,7 @@ const defaultConfig: FreeConfig = {
   mailbox_network_mode: 'local_proxy', mailbox_proxy_url: 'http://127.0.0.1:7897',
   mailbox_request_retries: 3, mailbox_retry_backoff_seconds: 1,
   proxy_probe_url: 'https://api.ipify.org', protocol: { node_runner: '', sentinel_version: '20260219f9f6', sentinel_timeout: 90, network_timeout: 20, network_preflight_retries: 3, security_challenge_wait_seconds: 60, anonymous_warmup: true, authenticated_warmup: true, geo_probe_url: 'https://ipwho.is/' },
-  proxy_default_scheme: 'http', proxy_selection: { protocol: { country: '', group: '' }, roxybrowser: { country: '', group: '' } },
+  proxy_default_scheme: 'http',
   roxybrowser: {
     api_base: 'http://127.0.0.1:50000', api_key: '', workspace_id: '', project_id: '',
     workspace_list_path: '/browser/workspace', create_path: '/browser/create', open_path: '/browser/open',
@@ -34,8 +34,6 @@ const selectedTaskId = ref('')
 const taskSearch = ref('')
 const taskStatusFilter = ref('all')
 const taskDriverFilter = ref('')
-const taskCountryFilter = ref('')
-const taskGroupFilter = ref('')
 const selectedTasks = ref<any[]>([])
 const taskTable = ref<any>()
 const logDialogOpen = ref(false)
@@ -62,12 +60,8 @@ const filteredTasks = computed(() => {
     return (!query || haystack.includes(query))
       && (taskStatusFilter.value === 'all' || (taskStatusFilter.value === 'active' ? ['queued', 'running'].includes(task.status) : task.status === taskStatusFilter.value))
       && (!taskDriverFilter.value || task.driver === taskDriverFilter.value)
-      && (!taskCountryFilter.value || task.proxy_country === taskCountryFilter.value)
-      && (!taskGroupFilter.value || task.proxy_group === taskGroupFilter.value)
   })
 })
-const taskCountries = computed(() => [...new Set(visibleTasks.value.map(task => task.proxy_country).filter(Boolean))])
-const taskGroups = computed(() => [...new Set(visibleTasks.value.filter(task => !taskCountryFilter.value || task.proxy_country === taskCountryFilter.value).map(task => task.proxy_group).filter(Boolean))])
 const taskCounts = computed(() => {
   const count = (status: string) => visibleTasks.value.filter(task => task.status === status).length
   return { total: visibleTasks.value.length, running: count('running') + count('queued'), success: count('success') + count('partial_success'), partial: count('partial_success'), failed: count('failed'), pending: count('twofa_pending'), rerun: count('pending_rerun'), stopped: count('stopped') }
@@ -385,8 +379,6 @@ onUnmounted(() => window.clearTimeout(timer))
               <el-radio-button value="stopped">已停止 {{ taskCounts.stopped }}</el-radio-button>
             </el-radio-group>
             <el-select v-model="taskDriverFilter" size="small" clearable placeholder="链路" class="task-driver-filter"><el-option label="全协议" value="protocol" /><el-option label="RoxyBrowser" value="roxybrowser" /></el-select>
-            <el-select v-model="taskCountryFilter" size="small" clearable filterable placeholder="国家" class="task-driver-filter"><el-option v-for="country in taskCountries" :key="country" :label="country" :value="country" /></el-select>
-            <el-select v-model="taskGroupFilter" size="small" clearable filterable placeholder="代理分组" class="task-driver-filter"><el-option v-for="group in taskGroups" :key="group" :label="group" :value="group" /></el-select>
           </div>
           <div class="task-actions"><span class="muted">已选 {{ selectedTasks.length }} 个</span><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('token', selectedTasks, 'Token')">复制 Token</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('password', selectedTasks, '密码')">复制密码</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('totp', selectedTasks, 'TOTP')">复制 TOTP</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('credential', selectedTasks, '完整凭据')">复制完整凭据</el-button><el-button size="small" :icon="CopyDocument" :disabled="!filteredTasks.some(task => task.result?.has_access_token)" @click="copyTaskTokens(filteredTasks)">复制当前筛选 Token</el-button><el-button size="small" type="danger" plain :icon="Delete" :disabled="!selectedTasks.length || loading" @click="deleteSelectedTasks">删除选中</el-button><el-button size="small" :icon="Refresh" @click="refresh">刷新任务</el-button></div>
           <el-table ref="taskTable" :data="filteredTasks" row-key="task_id" height="100%" size="small" @selection-change="handleTaskSelection">
@@ -395,7 +387,7 @@ onUnmounted(() => window.clearTimeout(timer))
             <el-table-column label="账号" min-width="220" show-overflow-tooltip><template #default="{ row }"><el-tooltip v-if="row.email" content="点击复制邮箱" placement="top"><el-button link class="email-copy" @click.stop="copyTaskEmail(row)"><strong>{{ row.email }}</strong><el-icon><CopyDocument /></el-icon></el-button></el-tooltip><span v-else>-</span><small class="task-subline">{{ row.task_id }}</small></template></el-table-column>
             <el-table-column label="链路 / 阶段" min-width="190" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" effect="plain">{{ row.driver === 'roxybrowser' ? 'RoxyBrowser' : '全协议' }}</el-tag><small v-if="row.result?.account_flow" class="task-subline">{{ row.result.account_flow === 'existing_login' ? '已有账号登录' : '新账号注册' }}</small><small class="task-subline">{{ row.stage_label || row.stage || '-' }}</small></template></el-table-column>
             <el-table-column label="Slot" width="78" align="center"><template #default="{ row }">{{ row.slot_index || '-' }} / {{ row.concurrency_limit || config.concurrency }}</template></el-table-column>
-            <el-table-column label="代理池" min-width="150" show-overflow-tooltip><template #default="{ row }"><span>{{ row.proxy_country || '-' }} / {{ row.proxy_group || '-' }}</span><small class="task-subline">{{ row.proxy_scheme || '' }} · {{ row.proxy_masked || '' }}</small></template></el-table-column>
+            <el-table-column label="代理池" min-width="180" show-overflow-tooltip><template #default="{ row }"><span>共享健康随机池</span><small class="task-subline">{{ row.proxy_scheme || '' }} · {{ row.proxy_masked || '' }}</small></template></el-table-column>
             <el-table-column label="状态" width="92" align="center"><template #default="{ row }"><el-tag size="small" :type="taskStatusType(row.status)">{{ taskStatusLabel(row.status) }}</el-tag></template></el-table-column>
             <el-table-column label="注册 IP" min-width="135" show-overflow-tooltip><template #default="{ row }">{{ row.registration_ip || row.expected_exit_ip || '-' }}</template></el-table-column>
             <el-table-column label="套餐" min-width="125" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" :type="taskPlanType(row)" effect="light">{{ taskPlanLabel(row) }}</el-tag></template></el-table-column>

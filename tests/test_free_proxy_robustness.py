@@ -19,7 +19,7 @@ class FreeProxyRobustnessTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
-    def test_roxy_preflight_does_not_probe_chatgpt_login(self) -> None:
+    def test_preflight_does_not_probe_chatgpt_login(self) -> None:
         chatgpt_calls: list[str] = []
         manager = FreeRegisterManager(
             self.data_dir,
@@ -40,22 +40,20 @@ class FreeProxyRobustnessTests(unittest.TestCase):
             driver="protocol",
         )
         self.assertEqual(protocol["proxies"], 1)
-        self.assertEqual(len(chatgpt_calls), 1)
-        self.assertTrue(chatgpt_calls[0].startswith("socks5h://"))
+        self.assertEqual(chatgpt_calls, [])
         self.assertNotIn("private", str(protocol))
 
-    def test_chatgpt_page_rejection_does_not_quarantine_proxy(self) -> None:
+    def test_chatgpt_page_is_not_part_of_proxy_preflight(self) -> None:
         pool = FreeProxyPool(self.data_dir, failure_threshold=1)
         pool.import_text("http://proxy.example.test:8000\n")
-        with self.assertRaises(FreeRegisterError) as raised:
-            pool.bind(
-                1,
-                driver="protocol",
-                probe=lambda _proxy, _url: "203.0.113.80",
-                chatgpt_probe=lambda _proxy: 403,
-                check_chatgpt=True,
-            )
-        self.assertEqual(raised.exception.provider_status, 403)
+        bindings = pool.bind(
+            1,
+            driver="protocol",
+            probe=lambda _proxy, _url: "203.0.113.80",
+            chatgpt_probe=lambda _proxy: 403,
+            check_chatgpt=True,
+        )
+        self.assertEqual(len(bindings), 1)
         row = pool.public()["rows"][0]
         self.assertEqual(row["consecutive_failures"], 0)
         self.assertNotEqual(row["status"], "quarantined")

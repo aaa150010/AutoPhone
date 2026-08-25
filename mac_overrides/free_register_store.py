@@ -433,12 +433,10 @@ class FreeProxyPool:
 
     def bind(self, count: int, *, content: str = "", probe: Callable[[str, str], str] | None = None, probe_url: str = "https://api.ipify.org") -> list[ProxyBinding]:
         values = self.values(content)
-        if len(values) < count:
-            raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", f"Free 代理数量不足：需要 {count} 个，当前只有 {len(values)} 个", retryable=False)
-        selected = values[:count]
+        if not values:
+            raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", "Free 代理池没有有效代理", retryable=False)
+        selected = [values[index % len(values)] for index in range(max(0, int(count)))]
         fingerprints = [fingerprint(value) for value in selected]
-        if len(set(fingerprints)) != len(fingerprints):
-            raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", "代理池包含重复代理，无法建立一号一代理绑定", retryable=False)
         check = probe or self._probe
         exit_ips: list[str] = []
         for index, value in enumerate(selected, 1):
@@ -451,8 +449,6 @@ class FreeProxyPool:
                     "free_proxy_preflight", "Free 代理预检",
                     f"代理池第 {index} 条出口 IP 检测失败：{proxy_error_detail(exc)}",
                 ) from exc
-        if len(set(exit_ips)) != len(exit_ips):
-            raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", "代理出口 IP 重复，无法建立一号一 IP 绑定", retryable=False)
         return [ProxyBinding(value, fp, mask_proxy(value), ip) for value, fp, ip in zip(selected, fingerprints, exit_ips)]
 
     def verify(self, binding: ProxyBinding, *, probe: Callable[[str, str], str] | None = None, probe_url: str = "https://api.ipify.org") -> str:
@@ -460,8 +456,6 @@ class FreeProxyPool:
             current = str((probe or self._probe)(binding.proxy, probe_url)).strip()
         except Exception as exc:
             raise FreeRegisterError("free_proxy_binding", "绑定 Free 注册代理", f"固定代理出口复核失败：{proxy_error_detail(exc)}") from exc
-        if current != binding.exit_ip:
-            raise FreeRegisterError("free_proxy_drift", "校验 Free 代理出口", "固定代理的出口 IP 在任务期间发生变化，任务已停止且未切换代理", retryable=False)
         return current
 
 

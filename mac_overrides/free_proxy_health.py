@@ -5,12 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 
-_EXIT_VERIFICATION_NODES = frozenset({"free_proxy_drift", "free_roxy_ip_verify"})
+_EXIT_VERIFICATION_NODES = frozenset({"free_roxy_ip_verify"})
 _NETWORK_EVIDENCE_NODES = frozenset({
     "free_proxy_binding",
     "free_proxy_preflight",
     "free_protocol_preflight",
     "free_oauth_session",
+    "free_live_proxy_verify",
 })
 _NETWORK_ERROR_TYPES = frozenset({
     "certificateverifyerror",
