@@ -23,6 +23,12 @@ _API798_HTML_CONTENT_PATTERNS = (
     re.compile(r'(?is)\bhtmlContent\s*=\s*"((?:\\.|[^"\\])*)"'),
     re.compile(r"(?is)\bhtmlContent\s*=\s*'((?:\\.|[^'\\])*)'"),
 )
+_API798_RECEIVED_AT_PATTERN = re.compile(
+    r"(?is)(?:接收时间|时间|time|date|received|sent)\s*[:：]"
+    r"(?:\s|&nbsp;|<[^>]*>)*"
+    r"((?:\d{4}年\d{1,2}月\d{1,2}日\s+\d{1,2}:\d{2}(?::\d{2})?)|"
+    r"(?:\d{4}[-/]\d{2}[-/]\d{2}[ T]\d{2}:\d{2}(?::\d{2})?))"
+)
 
 
 def mailbox_provider_strategy(source_url: str) -> str:
@@ -96,9 +102,22 @@ def api798_embedded_html(raw: str, source_url: str) -> tuple[str, ...]:
     return tuple(embedded)
 
 
+def api798_received_at(raw: str, source_url: str) -> str:
+    """Extract the page's displayed latest-mail time without reading secrets."""
+    if mailbox_provider_strategy(source_url) != "api798_latest":
+        return ""
+    match = _API798_RECEIVED_AT_PATTERN.search(str(raw or ""))
+    return str(match.group(1) or "").strip() if match else ""
+
+
 def allows_bare_code(source_url: str) -> bool:
     """Allow a standalone six-digit value only on legacy OTP API paths."""
     return mailbox_provider_strategy(source_url) == "trusted_path"
 
 
-__all__ = ["allows_bare_code", "api798_embedded_html", "mailbox_provider_strategy"]
+__all__ = [
+    "allows_bare_code",
+    "api798_embedded_html",
+    "api798_received_at",
+    "mailbox_provider_strategy",
+]

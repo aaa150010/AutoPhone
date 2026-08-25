@@ -30,6 +30,7 @@ try:
     from .mailbox_api798 import (
         allows_bare_code as _allows_bare_code,
         api798_embedded_html as _api798_embedded_html,
+        api798_received_at as _api798_received_at,
         mailbox_provider_strategy as _mailbox_provider_strategy,
     )
     from .mail_code_envelope import parse_mail_code_envelope
@@ -43,6 +44,7 @@ except ImportError:
     from mailbox_api798 import (  # type: ignore[no-redef]
         allows_bare_code as _allows_bare_code,
         api798_embedded_html as _api798_embedded_html,
+        api798_received_at as _api798_received_at,
         mailbox_provider_strategy as _mailbox_provider_strategy,
     )
     from mail_code_envelope import parse_mail_code_envelope
@@ -105,6 +107,9 @@ _EXPLICIT_CODE_KEYS = (
 )
 _EMBEDDED_DATETIME_RE = re.compile(
     r"(?<!\d)(\d{4}[-/]\d{2}[-/]\d{2}[ T]\d{2}:\d{2}(?::\d{2})?)(?!\d)"
+)
+_CHINESE_DATETIME_RE = re.compile(
+    r"(?<!\d)(\d{4}年\d{1,2}月\d{1,2}日\s+\d{1,2}:\d{2}(?::\d{2})?)(?!\d)"
 )
 
 
@@ -452,7 +457,13 @@ def parse_received_timestamp(value: Any) -> float | None:
         try:
             parsed = parsedate_to_datetime(text)
         except (TypeError, ValueError, OverflowError):
-            for pattern in ("%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+            for pattern in (
+                "%Y-%m-%d %H:%M:%S",
+                "%Y/%m/%d %H:%M:%S",
+                "%Y-%m-%d %H:%M",
+                "%Y年%m月%d日 %H:%M:%S",
+                "%Y年%m月%d日 %H:%M",
+            ):
                 try:
                     parsed = datetime.strptime(text, pattern)
                     break
@@ -462,6 +473,10 @@ def parse_received_timestamp(value: Any) -> float | None:
         embedded = _EMBEDDED_DATETIME_RE.search(text)
         if embedded is not None and embedded.group(1) != text:
             return parse_received_timestamp(embedded.group(1))
+    if parsed is None:
+        chinese = _CHINESE_DATETIME_RE.search(text)
+        if chinese is not None and chinese.group(1) != text:
+            return parse_received_timestamp(chinese.group(1))
     if parsed is None:
         return None
     if parsed.tzinfo is None:
@@ -712,6 +727,7 @@ def _parse_html_messages(raw: str, source_url: str, start_order: int = 0) -> tup
         if len(messages) >= MAX_PARSED_MESSAGES:
             break
     # Decode api798's inert htmlContent body and run the normal matcher.
+    api798_received_at = _api798_received_at(raw, source_url)
     for embedded_html in _api798_embedded_html(raw, source_url):
         embedded_visible = decode_mail_body(embedded_html)
         if not embedded_visible:
@@ -721,14 +737,26 @@ def _parse_html_messages(raw: str, source_url: str, start_order: int = 0) -> tup
             continue
         sender_match = _EMAIL_PATTERN.search(embedded_visible)
         messages.append(MailboxMessage(
-            identity=_safe_identity(source_url, "api798_latest", embedded_visible),
+            identity=_safe_identity(
+                source_url, "api798_latest", api798_received_at, embedded_visible,
+            ),
             sender=sender_match.group(0) if sender_match else "",
             subject=embedded_visible[:500],
+            received_at=api798_received_at,
+            received_timestamp=parse_received_timestamp(api798_received_at),
             body=embedded_visible,
             code=embedded_match,
             code_source="openai_context" if _OPENAI_PATTERN.search(embedded_visible) else "otp_context",
             order=order,
-            field_sources=("html", "sender") if sender_match else ("html",),
+            field_sources=(
+                ("html", "sender", "received_at")
+                if sender_match and api798_received_at
+                else ("html", "received_at")
+                if api798_received_at
+                else ("html", "sender")
+                if sender_match
+                else ("html",)
+            ),
         ))
         order += 1
     detail_urls.extend(_inferred_detail_urls(source_url, raw, message_ids))

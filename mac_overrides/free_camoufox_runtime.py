@@ -405,6 +405,40 @@ async def _click_first(page: Any, selectors: tuple[str, ...], *, timeout: float 
     return None
 
 
+async def _click_exact_button_text(
+    page: Any, texts: tuple[str, ...], *, timeout: float = 8.0,
+) -> str | None:
+    """Click a visible button whose complete label matches one of ``texts``.
+
+    Playwright's ``:has-text`` is intentionally substring-based, so using it
+    for the Get started recovery can select ``Continue with Google`` instead
+    of the standalone email ``Continue`` action.  Exact matching in Python
+    keeps the recovery safe across Camoufox/Firefox selector implementations.
+    """
+    wanted = {" ".join(str(item or "").split()).casefold() for item in texts}
+    deadline = time.monotonic() + max(0.5, float(timeout))
+    while time.monotonic() < deadline:
+        try:
+            buttons = page.locator("button")
+            count = await buttons.count()
+        except Exception:
+            count = 0
+        for index in range(count):
+            try:
+                button = buttons.nth(index)
+                if not await button.is_visible(timeout=250):
+                    continue
+                label = " ".join(str(await button.inner_text() or "").split()).casefold()
+                if label not in wanted or not await button.is_enabled(timeout=250):
+                    continue
+                await button.click(timeout=3000)
+                return label
+            except Exception:
+                continue
+        await asyncio.sleep(0.25)
+    return None
+
+
 async def _wait_for_submit_enabled(page: Any, selectors: tuple[str, ...], *, timeout: float = 20.0) -> str | None:
     deadline = time.monotonic() + max(0.1, float(timeout))
     while time.monotonic() < deadline:
@@ -820,6 +854,11 @@ async def _page_state(page: Any) -> str:
     host = (parsed.hostname or "").casefold()
     path = (parsed.path or "/").casefold().rstrip("/") or "/"
     body = (await _body_text(page)).casefold()
+    # The registration flow must never enter a third-party OAuth provider.
+    # Keep this explicit so a broad text selector cannot silently turn an
+    # entry-shell recovery into a Google login and wait for it as "unknown".
+    if host.endswith("accounts.google.com") or host.endswith("appleid.apple.com"):
+        return "external_auth"
     if any(marker in body for marker in ("cloudflare", "verify you are human", "turnstile", "just a moment", "安全验证")):
         return "security"
     if host == "chatgpt.com" and path in {"", "/"}:
@@ -965,7 +1004,9 @@ async def _browser_flow(
     email_verification_started_at = 0.0
     email_verification_retried = False
     profile_submitted = False
+    profile_submitted_at = 0.0
     entry_transition_deadline = 0.0
+    entry_retry_used = False
     seen: dict[str, int] = {}
     step_count = 0
 
@@ -1115,7 +1156,10 @@ async def _browser_flow(
 
     while time.monotonic() < deadline:
         step_count += 1
-        if step_count > 40:
+        # The about-you endpoint can legitimately take close to a minute to
+        # finish. Keep a bounded guard, but do not turn that reference-flow
+        # wait into an early page-state failure.
+        if step_count > max(120, timeout + 30):
             raise CamoufoxBrowserError(
                 "free_camoufox_page_state", "等待 Camoufox 页面状态",
                 "注册状态机超出最大推进步数", error_code="camoufox_page_state_limit",
@@ -1124,10 +1168,26 @@ async def _browser_flow(
         state = await _page_state(page)
         seen[state] = seen.get(state, 0) + 1
         if (
-            state not in {"signup_password", "login_password", "otp", "otp_wait", "email_verification", "security"}
+            state not in {"signup_password", "login_password", "otp", "otp_wait", "email_verification", "profile", "security"}
             and seen[state] > 4
         ):
-            if state == "entry" and entry_submitted and time.monotonic() < entry_transition_deadline:
+            now = time.monotonic()
+            if state == "entry" and (entry_submitted or entry_retry_used) and now < entry_transition_deadline:
+                await asyncio.sleep(1.0)
+                continue
+            if state == "entry" and entry_submitted and not entry_retry_used:
+                # A transient auth-shell reset can return to the Get started
+                # page without an error. Re-open the form once, preserving
+                # the mailbox provider's baseline/phase isolation.
+                entry_retry_used = True
+                entry_submitted = False
+                entry_transition_deadline = now + 45.0
+                await prepare_otp("free_email_otp_wait")
+                reopened = await _click_exact_button_text(
+                    page, ("Continue", "继续"), timeout=3,
+                )
+                if reopened:
+                    log("Camoufox 登录壳回退，已重新打开邮箱表单", "warn")
                 await asyncio.sleep(1.0)
                 continue
             error_text = await _auth_error_text(page)
@@ -1153,9 +1213,16 @@ async def _browser_flow(
                     await prepare_otp("free_email_otp_wait")
                     if not await _fill_input_like_user(page, selector, email):
                         raise CamoufoxBrowserError("free_camoufox_signup_email", "填写 Camoufox 注册邮箱", "邮箱输入框写入失败", error_code="camoufox_email_fill_failed")
-                    await _click_first(page, EMAIL_SUBMIT_SELECTORS, timeout=5)
-                    await _submit_visible_form(page, selector)
+                    submitted = await _click_first(page, EMAIL_SUBMIT_SELECTORS, timeout=5)
+                    if not submitted:
+                        await _submit_visible_form(page, selector)
                     entry_submitted = True
+                else:
+                    reopened = await _click_exact_button_text(
+                        page, ("Continue", "继续"), timeout=3,
+                    )
+                    if reopened:
+                        log("Camoufox 登录壳已重新打开邮箱表单", "warn")
             await asyncio.sleep(1.0)
             continue
 
@@ -1344,13 +1411,39 @@ async def _browser_flow(
                     )
                 await _click_first(page, (submit_selector,), timeout=8)
                 profile_submitted = True
+                profile_submitted_at = time.monotonic()
                 await _confirm_birthday(page, log, timeout=5)
+            else:
+                # Match aBaiFreeGPT: submitting about-you is an asynchronous
+                # account-creation request. Keep the page alive for 60s,
+                # confirm any birthday modal, then allow one more form fill
+                # instead of classifying a still-loading page as navigation
+                # failure.
+                elapsed = time.monotonic() - (profile_submitted_at or time.monotonic())
+                if elapsed >= 60:
+                    profile_submitted = False
+                    profile_submitted_at = 0.0
+                    log("Camoufox 资料页提交后 60 秒未跳转，允许重新填写重试", "warn")
+                else:
+                    await _confirm_birthday(page, log, timeout=0.5)
+                    await asyncio.sleep(1.0)
+                    continue
             await asyncio.sleep(1.0)
             continue
 
         if state == "oauth_callback":
             await asyncio.sleep(1.0)
             continue
+
+        if state == "external_auth":
+            snapshot = await _snapshot(page)
+            raise CamoufoxBrowserError(
+                "free_camoufox_navigation", "打开 Camoufox 注册页面",
+                "注册入口误进入外部 OAuth 登录页；已停止自动操作",
+                retryable=False, error_code="camoufox_unexpected_external_auth",
+                diagnostic=json.dumps(snapshot, ensure_ascii=False)[:500],
+                safe_page=snapshot.get("url"), page_type="external_auth",
+            )
 
         if state == "security":
             raise CamoufoxBrowserError(

@@ -187,6 +187,51 @@ class MailboxUrlRuntimeTests(unittest.TestCase):
         self.assertTrue(any(message.code_source == "openai_context" for message in messages))
         self.assertNotIn("private-access", repr(messages))
 
+    def test_api798_latest_preserves_displayed_mail_time_for_freshness(self):
+        source_url = (
+            "https://api798.com/latest?email=user%40example.test&auth_code=private-access"
+        )
+        html = r'''
+        <html><body>
+          <div>时间：2026年08月25日 20:43:59 (北京时间)</div>
+          <script>
+            var htmlContent = "<html><title>ChatGPT temporary verification code</title><p>Your verification code is: 731904</p></html>";
+          </script>
+        </body></html>
+        '''
+
+        messages, _links = parse_mailbox_payload(html, source_url)
+
+        message = next(item for item in messages if item.code == "731904")
+        self.assertEqual(message.received_at, "2026年08月25日 20:43:59")
+        self.assertIsNotNone(message.received_timestamp)
+        self.assertIn("received_at", message.field_sources)
+
+    def test_api798_latest_same_code_with_new_displayed_time_is_new_message(self):
+        source_url = (
+            "https://api798.com/latest?email=user%40example.test&auth_code=private-access"
+        )
+        pages = iter((
+            '<div>时间：2026年08月25日 20:43:59 (北京时间)</div>'
+            '<script>var htmlContent = "<p>ChatGPT verification code: 731904</p>";</script>',
+            '<div>时间：2026年08月25日 20:44:21 (北京时间)</div>'
+            '<script>var htmlContent = "<p>ChatGPT verification code: 731904</p>";</script>',
+        ))
+        client = MailboxUrlClient(
+            source_url,
+            fetcher=lambda url: html_response(url, next(pages)),
+            now_fn=lambda: float(parse_received_timestamp("2026年08月25日 20:45:00") or 0),
+        )
+        now_fn = lambda: float(parse_received_timestamp("2026年08月25日 20:45:00") or 0)
+        state = MailboxRequestState(client, now_fn=now_fn)
+        baseline = state.snapshot()
+        state.begin_request()
+        fresh = state.snapshot()
+
+        self.assertEqual(baseline.code, "731904")
+        self.assertEqual(fresh.code, "731904")
+        self.assertNotEqual(fresh.identity, baseline.identity)
+
     def test_api798_latest_accepts_scoped_explicit_code_fields_only(self):
         source_url = "https://api798.com/latest?auth_code=private-access"
         for key in ("code", "otp", "verification_code"):
