@@ -134,6 +134,20 @@ class _PreludeOtpTransport(_Transport):
         raise AssertionError("OTP prelude must not start a second OAuth session")
 
 
+class _PreludeHtmlTransport(_Transport):
+    def start_chatgpt_signup_authorize(self, email):
+        self.calls.append(f"prelude:{email}")
+        return {
+            "_status": 200,
+            "_content_type": "text/html",
+            "_url": "https://auth.openai.com/",
+            "_body_summary": "OpenAI login shell",
+        }
+
+    def initiate_oauth(self, _url):
+        raise AssertionError("trusted AutoRegister HTML must not start a second OAuth session")
+
+
 def _oauth_context(*, state="state-private", code_verifier="verifier-private"):
     return {
         "url": "https://auth.example.test/authorize?client_id=client-private&state=" + state,
@@ -177,6 +191,23 @@ class FreeProtocolFlowTests(unittest.TestCase):
         self.assertTrue(result["registration_completed"])
         self.assertEqual(transport.calls[0], "prelude:user@example.test")
         self.assertNotIn("submit_email_identifier", transport.calls)
+
+    def test_autoregister_prelude_trusted_html_shell_continues_with_mailbox(self):
+        transport = _PreludeHtmlTransport()
+        result, _active = _run(transport)
+        self.assertTrue(result["registration_completed"])
+        self.assertEqual(transport.calls[:2], ["prelude:user@example.test", "submit_email_identifier"])
+
+    def test_known_email_page_type_is_valid_even_when_transport_returns_html(self):
+        transport = _Transport(email={
+            "_status": 200,
+            "_content_type": "text/html",
+            "page": {"type": "email_otp_verification"},
+            "continue_url": "/email-verification",
+        })
+        result, _active = _run(transport)
+        self.assertTrue(result["registration_completed"])
+        self.assertIn("verify_email_otp", transport.calls)
     def setUp(self):
         self.original = sys.modules.get("codex_oauth_chain")
         sys.modules["codex_oauth_chain"] = _install_chain_helpers()

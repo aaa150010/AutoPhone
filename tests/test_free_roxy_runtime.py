@@ -4,6 +4,7 @@ from pathlib import Path
 import os
 import json
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -168,6 +169,22 @@ class _BrowserSessionDriver:
     def get(self, url):
         self.visits.append(url)
         self.current_url = url
+
+
+class _CallbackWindowDriver(_BrowserSessionDriver):
+    def __init__(self, response):
+        super().__init__(response)
+        self.current_url = "https://auth.openai.com/authorize"
+        self.current_window_handle = "auth"
+        self.window_handles = ["auth", "chatgpt"]
+        self.switch_to = SimpleNamespace(window=self._switch_window)
+
+    def _switch_window(self, handle):
+        self.current_window_handle = handle
+        if handle == "chatgpt":
+            self.current_url = "https://chatgpt.com/"
+        else:
+            self.current_url = "https://auth.openai.com/authorize"
 
 
 class _PageDriver:
@@ -549,6 +566,18 @@ class FreeRoxyRuntimeTests(unittest.TestCase):
         self.assertEqual(driver.visits, ["https://chatgpt.com/"])
         self.assertTrue(any("HTTP 200" in message and "Token=存在" in message for _level, message in logs))
         self.assertFalse(any("NESTED_TOKEN" in message for _level, message in logs))
+
+    def test_session_extraction_reuses_chatgpt_callback_window(self):
+        driver = _CallbackWindowDriver({
+            "ok": True,
+            "status": 200,
+            "content_type": "application/json; charset=utf-8",
+            "payload": {"accessToken": "WINDOW_TOKEN"},
+            "body_length": 40,
+        })
+        result = extract_session(driver, 5)
+        self.assertEqual(session_token(result), "WINDOW_TOKEN")
+        self.assertEqual(driver.current_window_handle, "chatgpt")
 
     def test_same_origin_session_summaries_reject_http_and_non_json(self):
         http_driver = _BrowserSessionDriver({

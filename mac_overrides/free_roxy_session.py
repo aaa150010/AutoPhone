@@ -139,6 +139,39 @@ def _is_confirmed_home(driver: Any) -> bool:
         return False
 
 
+def _switch_to_chatgpt_window_if_any(driver: Any, current_handle: Any = None) -> bool:
+    """Reuse a ChatGPT window when the OAuth callback completed elsewhere."""
+    try:
+        handles = list(getattr(driver, "window_handles", []) or [])
+    except Exception:
+        handles = []
+    if not handles:
+        return False
+    original = current_handle
+    if original is None:
+        try:
+            original = getattr(driver, "current_window_handle", None)
+        except Exception:
+            original = None
+    switch_to = getattr(getattr(driver, "switch_to", None), "window", None)
+    if not callable(switch_to):
+        return False
+    for handle in handles:
+        try:
+            switch_to(handle)
+            parsed = urlsplit(str(getattr(driver, "current_url", "") or ""))
+            if (parsed.hostname or "").casefold() == "chatgpt.com":
+                return True
+        except Exception:
+            continue
+    if original is not None:
+        try:
+            switch_to(original)
+        except Exception:
+            pass
+    return False
+
+
 def extract_session(
     driver: Any,
     timeout: int,
@@ -150,7 +183,13 @@ def extract_session(
     ChatGPT.  Direct navigation remains a compatibility fallback for old
     Selenium/Roxy versions and for the offline test driver.
     """
-    deadline = time.time() + max(5, int(timeout or 120))
+    total_timeout = max(5, int(timeout or 120))
+    deadline = time.time() + total_timeout
+    # Match AutoRegister: allow the callback to land naturally, then open the
+    # ChatGPT home once so a delayed/new-window callback can write Session.
+    auto_jump_wait = min(15, max(3, total_timeout // 3))
+    auto_jump_end = time.time() + auto_jump_wait
+    forced_home = False
     last = ""
     attempt = 0
     _emit(log_fn, "准备读取 ChatGPT Session：保持浏览器 Cookie，不读取或记录响应正文")
@@ -162,8 +201,22 @@ def extract_session(
             current = urlsplit(str(getattr(driver, "current_url", "") or ""))
             if not _is_confirmed_home(driver):
                 last = _summary(driver, error="当前页面不是已确认的 ChatGPT 首页")
-                _emit(log_fn, f"Session 第 {attempt} 次跳过：{last}", "warn")
-                break
+                if _switch_to_chatgpt_window_if_any(driver):
+                    current = urlsplit(str(getattr(driver, "current_url", "") or ""))
+                if not _is_confirmed_home(driver):
+                    if time.time() >= auto_jump_end and not forced_home:
+                        try:
+                            _emit(log_fn, "未在回调等待窗口内观察到 ChatGPT 首页，主动打开 ChatGPT 内读取 Session", "info")
+                            driver.get(HOME_URL)
+                            forced_home = True
+                        except Exception as exc:
+                            last = _summary(driver, error=type(exc).__name__)
+                    else:
+                        _emit(log_fn, f"Session 第 {attempt} 次等待页面跳转：{last}", "warn")
+                    remaining = max(0, deadline - time.time())
+                    if remaining > 0:
+                        time.sleep(min(1, remaining))
+                    continue
 
             browser_fetch = getattr(driver, "execute_async_script", None)
             if callable(browser_fetch):
@@ -213,7 +266,7 @@ def extract_session(
         if remaining <= 0:
             break
         time.sleep(min(2, remaining))
-    _emit(log_fn, f"Session 在 {max(5, int(timeout or 120))} 秒内未拿到 Token：{last or '登录态未建立'}", "error")
+    _emit(log_fn, f"Session 在 {total_timeout} 秒内未拿到 Token：{last or '登录态未建立'}", "error")
     raise FreeRegisterError("free_access_token", "获取 Free access token", last or "等待 ChatGPT Session 登录态超时", error_code="free_session_token_missing")
 
 

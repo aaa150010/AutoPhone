@@ -198,25 +198,37 @@ async function copyTaskEmail(task: any) {
 
 function taskPlanLabel(task: any) {
   const plan = String(task?.result?.subscription_plan || task?.result?.plan_type || '').trim()
-  if (task?.result?.plus_trial_eligible) return plan && plan.toLowerCase() !== 'free' ? plan : 'Plus 可试用'
-  if (plan.toLowerCase() === 'free') return 'Free'
-  if (plan) return plan
-  return task?.result?.plan_check_status === 'failed' ? '查询失败' : '未查询'
+  const normalized = plan.toLowerCase()
+  const status = String(task?.result?.plan_check_status || '').toLowerCase()
+  if (status === 'failed') return '查询失败'
+  if (['queued', 'running'].includes(status)) return '查询中'
+  if (!plan) return '未查询'
+  if (normalized === 'free') {
+    return task?.result?.plus_trial_eligible ? 'free(可Plus试用)' : 'free'
+  }
+  return plan
 }
 
 function taskPlanType(task: any) {
   const plan = String(task?.result?.subscription_plan || task?.result?.plan_type || '').toLowerCase()
-  if (task?.result?.plus_trial_eligible || plan.includes('plus') || plan.includes('pro') || plan.includes('team')) return 'success'
-  if (task?.result?.plan_check_status === 'failed') return 'warning'
+  const status = String(task?.result?.plan_check_status || '').toLowerCase()
+  if (status === 'failed') return 'danger'
+  if (['queued', 'running'].includes(status)) return 'warning'
+  if (task?.result?.plus_trial_eligible || plan.includes('plus') || plan.includes('pro') || plan.includes('team') || plan.includes('go')) return 'success'
   return 'info'
 }
 
-function taskTwofaLabel(status: string) {
-  return ({ enabled: '已设置', active: '已设置', pending: '待重试', disabled: '未启用', failed: '失败' } as Record<string, string>)[status] || status
+function taskTwofaLabel(task: any) {
+  const status = String(task?.result?.twofa_status || '').toLowerCase()
+  if (task?.result?.has_totp || task?.result?.totp_secret) return '已启用'
+  if (['pending', 'failed'].includes(status)) return '待重试'
+  return '未启用'
 }
 
-function taskTwofaType(status: string) {
-  return ['enabled', 'active'].includes(status) ? 'success' : ['pending', 'failed'].includes(status) ? 'warning' : 'info'
+function taskTwofaType(task: any) {
+  const status = String(task?.result?.twofa_status || '').toLowerCase()
+  if (task?.result?.has_totp || task?.result?.totp_secret) return 'success'
+  return ['pending', 'failed'].includes(status) ? 'warning' : 'info'
 }
 
 async function copyTaskSecret(kind: 'token' | 'password' | 'totp' | 'credential', tasks: any[], label: string) {
@@ -386,7 +398,8 @@ onUnmounted(() => window.clearTimeout(timer))
             <el-table-column label="代理池" min-width="150" show-overflow-tooltip><template #default="{ row }"><span>{{ row.proxy_country || '-' }} / {{ row.proxy_group || '-' }}</span><small class="task-subline">{{ row.proxy_scheme || '' }} · {{ row.proxy_masked || '' }}</small></template></el-table-column>
             <el-table-column label="状态" width="92" align="center"><template #default="{ row }"><el-tag size="small" :type="taskStatusType(row.status)">{{ taskStatusLabel(row.status) }}</el-tag></template></el-table-column>
             <el-table-column label="注册 IP" min-width="135" show-overflow-tooltip><template #default="{ row }">{{ row.registration_ip || row.expected_exit_ip || '-' }}</template></el-table-column>
-            <el-table-column label="套餐 / 2FA" min-width="150" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" :type="taskPlanType(row)" effect="light">{{ taskPlanLabel(row) }}</el-tag><el-tag v-if="row.result?.twofa_status" size="small" :type="taskTwofaType(row.result.twofa_status)" effect="plain" class="twofa-tag">2FA {{ taskTwofaLabel(row.result.twofa_status) }}</el-tag></template></el-table-column>
+            <el-table-column label="套餐" min-width="125" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" :type="taskPlanType(row)" effect="light">{{ taskPlanLabel(row) }}</el-tag></template></el-table-column>
+            <el-table-column label="2FA" width="92" align="center"><template #default="{ row }"><el-tag size="small" :type="taskTwofaType(row)" effect="plain">{{ taskTwofaLabel(row) }}</el-tag></template></el-table-column>
             <el-table-column label="Profile" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ row.profile_summary || '-' }}</template></el-table-column>
             <el-table-column label="Token" width="72" align="center"><template #default="{ row }"><el-button v-if="row.result?.has_access_token" link :icon="CopyDocument" aria-label="复制该账号 Token" @click.stop="copyTaskTokens([row])" /><span v-else class="muted">-</span></template></el-table-column>
             <el-table-column label="错误" min-width="280">
@@ -466,7 +479,6 @@ onUnmounted(() => window.clearTimeout(timer))
 .email-copy { max-width: 100%; gap: 5px; color: var(--el-text-color-primary); }
 .email-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .email-copy .el-icon { flex: 0 0 auto; color: var(--el-color-primary); }
-.twofa-tag { margin-left: 5px; }
 .failure-cell { display: grid; min-width: 0; line-height: 16px; }
 .failure-cell strong, .failure-cell span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .failure-cell strong { color: var(--el-color-danger); font-size: 12px; font-weight: 650; }

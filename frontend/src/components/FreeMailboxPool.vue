@@ -169,16 +169,20 @@ function liveStatusType(status = '') {
 
 function planLabel(row: FreeMailboxRow) {
   const plan = String(row.subscription_plan || row.plan_type || '').trim()
-  if (row.plus_trial_eligible) return plan && plan.toLowerCase() !== 'free' ? plan : 'Plus 可试用'
-  if (plan.toLowerCase() === 'free') return 'Free'
-  if (plan) return plan
-  return row.plan_check_status === 'failed' ? '查询失败' : '未查询'
+  const normalized = plan.toLowerCase()
+  const status = String(row.plan_check_status || '').toLowerCase()
+  if (status === 'failed') return '查询失败'
+  if (['queued', 'running'].includes(status)) return '查询中'
+  if (!plan) return '未查询'
+  return row.plus_trial_eligible && normalized === 'free' ? 'free(可Plus试用)' : normalized === 'free' ? 'free' : plan
 }
 
 function planTagType(row: FreeMailboxRow) {
   const plan = String(row.subscription_plan || row.plan_type || '').toLowerCase()
+  const status = String(row.plan_check_status || '').toLowerCase()
+  if (status === 'failed') return 'danger'
+  if (['queued', 'running'].includes(status)) return 'warning'
   if (row.plus_trial_eligible || plan.includes('plus') || plan.includes('pro') || plan.includes('team')) return 'success'
-  if (row.plan_check_status === 'failed') return 'warning'
   return 'info'
 }
 
@@ -363,7 +367,7 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
             <template #default="{ row }"><el-tag size="small" :type="liveStatusType(row.live_check_status)">{{ liveStatusLabel(row.live_check_status) }}</el-tag><small v-if="row.live_check_mode || row.live_check_ip">{{ row.live_check_mode === 'deep' ? '深度' : '快速' }} · {{ row.live_check_ip || '-' }}</small></template>
           </el-table-column>
           <el-table-column label="2FA" width="112" align="center">
-            <template #default="{ row }"><template v-if="row.has_totp"><el-tag size="small" type="success" effect="plain">已设置</el-tag><el-tooltip content="复制 2FA 密钥"><el-button link :icon="Key" aria-label="复制 2FA 密钥" @click="copyRow('totp', row)" /></el-tooltip></template><el-button v-else-if="row.twofa_status === 'pending'" link type="warning" @click="retryTwofa(row)"><el-tag size="small" type="warning" effect="plain">待重试</el-tag></el-button><el-tag v-else size="small" type="info" effect="plain">未设置</el-tag></template>
+            <template #default="{ row }"><template v-if="row.has_totp"><el-tag size="small" type="success" effect="plain">已启用</el-tag><el-tooltip content="复制 2FA 密钥"><el-button link :icon="Key" aria-label="复制 2FA 密钥" @click="copyRow('totp', row)" /></el-tooltip></template><el-button v-else-if="row.twofa_status === 'pending'" link type="warning" @click="retryTwofa(row)"><el-tag size="small" type="warning" effect="plain">待重试</el-tag></el-button><el-tag v-else size="small" type="info" effect="plain">未启用</el-tag></template>
           </el-table-column>
           <el-table-column label="取件" width="62" align="center"><template #default="{ row }"><el-button link :icon="Link" aria-label="打开取件地址" @click="openUrl(row)" /></template></el-table-column>
           <el-table-column label="Token" width="80" align="center"><template #default="{ row }"><el-button v-if="row.has_access_token" link :icon="CopyDocument" aria-label="复制 Token" @click="copyRow('token', row)" /><span v-else>-</span></template></el-table-column>

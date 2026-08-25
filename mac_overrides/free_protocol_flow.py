@@ -190,6 +190,13 @@ def _autoregister_state_response(response: Any) -> dict[str, Any]:
         page = response.get("page")
         if isinstance(page, Mapping) and str(page.get("type") or "").strip():
             return dict(response)
+        # AutoRegister's browser-like prelude may legitimately finish on the
+        # Auth HTML shell (often ``/``) without a page.type envelope.  Keep
+        # that trusted response intact so the state machine can submit the
+        # mailbox identifier in the same session.  Only known Auth origins and
+        # paths are accepted; security pages are never normalized this way.
+        if _page_is_html(response) and _trusted_oauth_bootstrap_location(response) and not _is_security_challenge_response(response):
+            return dict(response)
     locations = " ".join(_page_locations(response)).casefold()
     page_type = ""
     if any(value in locations for value in ("/email-verification", "/email-otp", "email_otp")):
@@ -857,7 +864,9 @@ def _run_once(
         )
     if not _is_state_response(response, ok):
         _raise_response(response, node="free_email_identifier", label="识别 Free 注册邮箱", stage="free_email_identifier")
-    if _page_is_html(response):
+    current_page = str(page_type(response) or _page_type_value(response) or "").strip().casefold().replace("-", "_")
+    known_html_page = current_page in (_PASSWORD_PAGE_TYPES | _OTP_PAGE_TYPES | _PROFILE_PAGE_TYPES | _CALLBACK_READY_PAGE_TYPES)
+    if _page_is_html(response) and not known_html_page:
         if _is_security_challenge_response(response):
             raise FreeRegisterError(
                 "free_oauth_security_challenge",
@@ -875,7 +884,6 @@ def _run_once(
         if _pre_auth_html_response(response, "free_email_identifier"):
             setattr(failure, "proxy_retryable", True)
         raise failure
-    current_page = str(page_type(response) or _page_type_value(response) or "").strip().casefold().replace("-", "_")
     _log(log, f"邮箱提交成功（页面={current_page or '-'}，continue={'yes' if _next_url(response) else 'no'}）", "info")
 
     # Keep advancing through the finite authorization state machine. Providers
