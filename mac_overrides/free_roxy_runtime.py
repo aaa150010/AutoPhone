@@ -696,9 +696,24 @@ class RoxyRegistrationRunner:
             operation_started = time.monotonic()
             registration_ip = self._browser_ip(driver, str(config.get("proxy_probe_url") or "https://api.ipify.org"), int(roxy.get("selenium_timeout") or 90))
             expected = str(task.get("expected_exit_ip") or task.get("exit_ip") or "")
-            if registration_ip != expected:
-                raise FreeRegisterError("free_roxy_ip_verify", "校验 RoxyBrowser 出口 IP", "RoxyBrowser 实际出口 IP 与任务预绑定出口不一致", retryable=False)
-            log(f"出口 IP 校验通过：预期={expected or '-'}，实际={registration_ip or '-'}，duration_ms={int((time.monotonic() - operation_started) * 1000)} outcome=success", "success")
+            # AutoRegister uses a proxy pool and records the observed exit;
+            # it does not enforce a one-account/one-IP invariant.  Keep this
+            # as an auditable probe, but do not reject a healthy Roxy profile
+            # when the provider rotates or normalizes the exit IP.
+            if expected and registration_ip and registration_ip != expected:
+                log(
+                    f"出口 IP 与任务预绑定值不同，按代理池策略继续：预期={expected}，实际={registration_ip}",
+                    "warn",
+                )
+            else:
+                log(
+                    f"出口 IP 探测完成：预期={expected or '-'}，实际={registration_ip or '-'}",
+                    "success",
+                )
+            log(
+                f"出口 IP 记录完成，duration_ms={int((time.monotonic() - operation_started) * 1000)} outcome=success",
+                "info",
+            )
             set_stage("free_roxy_signup_bootstrap")
             otp.prepare()
             operation_started = time.monotonic()

@@ -116,6 +116,24 @@ class _Transport:
         }
 
 
+class _PreludeTransport(_Transport):
+    def start_chatgpt_signup_authorize(self, email):
+        self.calls.append(f"prelude:{email}")
+        return {"_status": 200, "url": "https://auth.openai.com/log-in"}
+
+    def initiate_oauth(self, _url):
+        raise AssertionError("AutoRegister prelude should replace direct initiate_oauth")
+
+
+class _PreludeOtpTransport(_Transport):
+    def start_chatgpt_signup_authorize(self, email):
+        self.calls.append(f"prelude:{email}")
+        return {"_status": 200, "url": "https://auth.openai.com/email-verification"}
+
+    def initiate_oauth(self, _url):
+        raise AssertionError("OTP prelude must not start a second OAuth session")
+
+
 def _oauth_context(*, state="state-private", code_verifier="verifier-private"):
     return {
         "url": "https://auth.example.test/authorize?client_id=client-private&state=" + state,
@@ -146,6 +164,19 @@ def _run(transport, *, otp=None, transport_factory=None, oauth_context_factory=N
 
 
 class FreeProtocolFlowTests(unittest.TestCase):
+    def test_autoregister_prelude_runs_before_email_identifier(self):
+        transport = _PreludeTransport()
+        result, _active = _run(transport)
+        self.assertTrue(result["registration_completed"])
+        self.assertEqual(transport.calls[0], "prelude:user@example.test")
+        self.assertEqual(transport.calls[1], "submit_email_identifier")
+
+    def test_autoregister_prelude_otp_skips_duplicate_email_submit(self):
+        transport = _PreludeOtpTransport()
+        result, _active = _run(transport)
+        self.assertTrue(result["registration_completed"])
+        self.assertEqual(transport.calls[0], "prelude:user@example.test")
+        self.assertNotIn("submit_email_identifier", transport.calls)
     def setUp(self):
         self.original = sys.modules.get("codex_oauth_chain")
         sys.modules["codex_oauth_chain"] = _install_chain_helpers()

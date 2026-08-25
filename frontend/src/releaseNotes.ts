@@ -13,11 +13,19 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.64',
-  freeRuntimeVersion: '1.6.64',
-  title: 'Free OAuth 与 Roxy 双链路稳定性修复',
+  version: '1.6.65',
+  freeRuntimeVersion: '1.6.65',
+  title: 'Free 双链路照齐 AutoRegister',
   releasedAt: '2026-08-25',
   sections: [
+    {
+      title: '协议前置与 AutoRegister 对齐',
+      usage: '全协议注册先按 AutoRegister 顺序完成 providers、CSRF、signin 和 OAuth 前置会话，再进入邮箱与页面状态机；前置已经触发邮箱验证码时不会重复提交邮箱。邮箱解析、请求基线、旧码排除和验证码轮询继续使用现有 URL 邮箱策略。',
+    },
+    {
+      title: 'Roxy 代理池出口不再强制一号一 IP',
+      usage: 'Roxy 仍按任务绑定代理并记录实际出口，但出口 IP 发生代理池轮换时只记录告警，不再因为预绑定 IP 不一致拒绝健康任务；Profile、OTP、OAuth 回调、Session 刷新、2FA 和清理流程保持 AutoRegister 行为。',
+    },
     {
       title: '已有账号密码页转邮箱验证码',
       usage: '全协议邮箱识别返回 login_password 时会按已有账号处理，直接派发并验证邮箱验证码后继续 OAuth 回调；不会再把正常的 HTTP 200 页面误报为 OAuth 会话失效，也不会提交统一注册密码。',

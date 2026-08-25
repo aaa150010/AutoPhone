@@ -640,7 +640,7 @@ class FreeRoxyRuntimeTests(unittest.TestCase):
             "email": "existing@example.test",
             "mailbox_url": "https://mail.example.test/inbox/private",
             "proxy": "http://user:pass@proxy.example.test:8000",
-            "expected_exit_ip": "203.0.113.10",
+            "expected_exit_ip": "203.0.113.11",
         }
         config = {
             "proxy_probe_url": "https://api.ipify.org",
@@ -680,6 +680,7 @@ class FreeRoxyRuntimeTests(unittest.TestCase):
         self.assertIn(("free-existing-1", "free_existing_login"), stages)
         self.assertIn(("free-existing-1", "free_existing_login_otp"), stages)
         self.assertTrue(any("已有账号邮箱验证码登录" in message for _level, message in logs))
+        self.assertTrue(any("按代理池策略继续" in message for _level, message in logs))
         self.assertTrue(driver.closed)
 
     def test_roxy_result_keeps_structured_plan_and_twofa_failures(self):

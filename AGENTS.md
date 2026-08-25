@@ -1,131 +1,63 @@
 # AGENTS.md
 
-## Repository Overview
+## 项目范围
 
-GPT 注册中心 (gptPhone) is a macOS-local Flask application with a Vue 3 and Element Plus dashboard. It has two isolated workspaces: the recovered SMS/OAuth registration workflow and a maintained Free registration workflow with protocol and RoxyBrowser drivers. The runnable recovered backend is Python 3.13 bytecode, so maintainable backend changes live in runtime overrides instead of reconstructed source.
+GPT 注册中心（gptPhone）是 macOS 本地 Flask + Vue 3/Element Plus 应用，包含普通短信/OAuth 流程和 Free 注册流程。恢复的后端模块是 Python 3.13 运行时产物；可维护的后端改动放在 `mac_overrides/`，不要把 `business_pyc/`、`plus_launcher.pyc` 或 `pycdc_attempt/` 当作源码重构。
 
-## Editable Boundaries
+## 最高优先级：照抄 AutoRegister
 
-- Put backend behavior changes in `mac_overrides/`. `mac_overrides/web_gui.py` loads the recovered modules and applies focused monkeypatches.
-- Put reusable backend logic that can be tested without the recovered runtime in separate modules such as `mac_overrides/sms_runtime.py` and `mac_overrides/task_progress.py`.
-- Keep Free configuration, mailbox/proxy pools, tasks, logs, locks and results under `${GPTPHONE_DATA_DIR}/free_register/`; ordinary SMS/OAuth routes must not aggregate, mutate or consume that state.
-- Route ordinary and Free URL-based email verification through `mac_overrides/mailbox_otp_service.py`. Keep source parsing, baselines, old-code exclusion and diagnostics shared while preserving each workflow's independent network configuration.
-- Keep payment-link extraction under `mac_overrides/payment_tools.py` and `mac_overrides/payment_protocol/`; its data root is `${GPTPHONE_DATA_DIR}/payment_tools/` and it must never reuse ordinary task state. Third-party modes require an explicit per-batch domain confirmation, and result links are reveal-on-demand only.
-- Keep proxy/network diagnostics under `mac_overrides/network_tools.py`, `mac_overrides/network_mihomo.py` and `mac_overrides/network_tools_routes.py`; its data root is `${GPTPHONE_DATA_DIR}/network_tools/`. A test must use the selected proxy's declared protocol, never inherit environment proxies, switch nodes, or silently fall back to Clash.
-- Put dashboard source changes in `frontend/src/`. Extract a component when a control group, card, table, operation bar, or behavior has its own responsibility.
-- Treat `business_pyc/` and `plus_launcher.pyc` as runtime artifacts, not editable source.
-- Treat `pycdc_attempt/` as hints only. It is incomplete and must not be used as runnable source. Use `disassembly/` to inspect recovered behavior and verify assumptions against live method signatures.
+Free 全协议链路和 RoxyBrowser 链路必须以同级项目 `/Users/lwh/projects/AutoRegister` 为行为基准，整体照抄其真实实现和调用顺序：会话建立、网络预检、匿名预热、OAuth/登录页面状态机、Sentinel、代理池分配、邮箱提交后的分支、OTP 页面、资料页、consent、OAuth 回调、Session 刷新、2FA、结果持久化、失败清理、Profile 生命周期、`connection_info` 对账和结构化诊断都按 AutoRegister 的逻辑实现。代理来自池并按任务上下文传递，但不得强制“一号一 IP”或因出口 IP 轮换拒绝健康任务。
 
-## Maintainability Limits
+唯一允许保留 AutoPhone 自己实现的是邮箱解析和邮箱验证码获取：继续使用 `mac_overrides/mailbox_otp_service.py` 及其现有策略模式，包括来源解析、请求前基线、旧验证码排除、消息身份判断、时间过滤、轮询、重发和阶段隔离。除这些邮箱取件边界外，不得自行设计另一套注册链路，不得为了兼容旧实现而保留与 AutoRegister 不同的主流程。
 
-- New Python modules should target at most 800 lines and must not exceed 1,200 lines. New Vue single-file components should target at most 500 lines and must not exceed 700 lines.
-- A file already above its hard limit must not grow. Every change that touches it must extract at least one complete responsibility and leave the file with a net line-count reduction.
-- Extract cohesive provider/key policy, selection/ranking, wait orchestration, cleanup/cost, configuration, lifecycle, and public-state responsibilities instead of accumulating unrelated helpers in an entry module.
-- Preserve compatibility exports and original callable signatures while moving code. Treat mechanical extraction and behavior changes as separate stages, and run the full relevant test set after each stage.
-- Performance optimizations require a defaulted rollback switch, credential-redacted metrics, and explicit rollback conditions. Throughput must not trade away success rate, diagnostics, credential safety, cancellation behavior, or cleanup semantics.
-- For the current SMS optimization baseline, evaluate a rolling 100-task window and disable the SMS optimization if success falls more than 2 percentage points below 83.9%, two confirmed late codes are lost after early release, cancellation or duplicate-order counts rise, or cost per successful account increases by more than 10%. Protocol pressure, HTTP 429, or session invalidation must immediately return adaptive task admission to its configured baseline.
-- For recovered behavior, query `disassembly/index.json` first and read only the matching slices. Do not load an entire generated disassembly when an indexed symbol slice is available. Confirm callable signatures with Python 3.13 `inspect.signature`.
+对照位置：
 
-## Runtime Override Rules
+- 协议注册：`/Users/lwh/projects/AutoRegister/core/chatgpt_auth.py`、`core/openai_auth.py`、`core/sentinel_runner.py`、`main.py`。
+- RoxyBrowser：`core/roxy_registration.py`、`core/roxybrowser_client.py`、`core/otp_utils.py`、`core/humanize.py`、`core/live_check_service.py`、`config/proxy.py`、`config/roxybrowser.py`。
+- 只吸收实现逻辑，不复制任何账号、邮箱密码、Cookie、Token、验证码、代理凭据、运行数据或第三方授权信息。
+- 开源参考副本仅作只读对照；新建的临时副本使用完必须删除。项目保留的长期只读副本除非用户明确要求，不得删除。
 
-- Capture original methods before patching and keep patches narrowly scoped.
-- Match the original callable signature, including keyword-only arguments. Verify uncertain signatures with `inspect.signature` in the Python 3.13 virtual environment.
-- Avoid changing unrelated recovered behavior while adding an override.
-- Never log or expose raw SMS, SUB2, Pixel, OAuth, mailbox, or proxy credentials. Public state uses masks or SHA-256 short fingerprints.
-- Preserve existing configuration fields and their established page order unless the user explicitly requests a removal or reorder.
-- `auth_session_retries` is a UI count of additional retries: `0` means no retry after the first attempt.
-- Keep task progress events free of credentials and user data. Repeated events in the same stage must not reset elapsed time, and terminal tasks must freeze their last valid stage.
+## 编辑边界和数据隔离
 
-## Local Network Environment
+- 后端行为改动放在 `mac_overrides/`，`mac_overrides/web_gui.py` 负责加载恢复模块和应用定向覆盖。
+- 普通短信/OAuth 与 Free 注册的数据必须隔离。Free 配置、邮箱/代理池、任务、日志、锁和结果放在 `${GPTPHONE_DATA_DIR}/free_register/`，普通流程不得读取、聚合、修改或消耗这些状态。
+- 支付链接工具只使用 `${GPTPHONE_DATA_DIR}/payment_tools/`，网络诊断只使用 `${GPTPHONE_DATA_DIR}/network_tools/`，不得复用注册任务状态。
+- 前端源代码放在 `frontend/src/`；`frontend/dist/` 已纳入版本控制，前端源代码有变化时必须重新构建并更新产物。
+- 不要提交 `data/`、`mac_runtime/`、`engine/`、`node_chain.dat`、`frontend/node_modules/`、缓存、导出文件或秘密。
 
-- On the user's current Mac, Clash Verge exposes the configured HTTP proxy at `http://127.0.0.1:7897`. Treat this as the authoritative host proxy for OpenAI Auth, Sentinel, Node/Sentinel, and other traffic that uses the main proxy setting.
-- Free mailbox retrieval defaults to its own explicit `http://127.0.0.1:7897` setting and must never reuse the account's residential registration proxy. Direct mode and local-proxy mode both disable inherited `HTTP_PROXY`, `HTTPS_PROXY` and `ALL_PROXY` values.
-- `http://127.0.0.1:12334` is not a configured or valid current proxy port. If it appears in a new task's effective proxy label, error detail, subprocess arguments, or environment, treat it as a defect caused by stale process state, an inherited proxy environment variable, or an unintended configuration override and trace it to the source.
-- Network diagnostics must record the effective proxy label or redacted fingerprint at the Node bridge boundary. Do not infer the effective host proxy from a sandbox-only localhost probe: the sandbox may deny or isolate loopback access. Use a host-level/approved real-network check when verifying Clash Verge connectivity.
-- High-concurrency tests must compare the configured `7897` proxy path at concurrency 1, 4, and 8, and must distinguish proxy connection failures from Sentinel or Node resource failures. Never silently fall back to `12334`.
+## 安全和诊断
 
-## Diagnostic Error Contract
+- 未经用户明确同意，不得使用 `computer-use`、应用内浏览器、Chrome、Playwright 或真实浏览器操作。
+- 不得在日志、公共 API、任务结果或持久化记录中暴露邮箱密码、代理凭据、Cookie、OAuth URL 查询参数、授权头、access/refresh/ID/admin token、短信/邮箱验证码、手机号或 TOTP 秘密；公共状态只能使用掩码或短指纹。
+- 每个失败必须保留稳定节点代码、中文节点名称、HTTP 状态/服务商代码（如有）和脱敏的可操作原因；不能用“操作失败”或“failed”覆盖首个真实节点。
+- Cloudflare、人机验证和安全挑战只记录并停止，禁止自动绕过。Session 失效、网络临时错误和业务限流必须按 AutoRegister 的重试边界处理；不得把业务 429 当成可重复提交信号。
+- 代理测试必须使用所选代理声明的协议，清除继承的 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`，不得静默切换节点或回退到 Clash。当前主机 Clash Verge HTTP 代理是 `http://127.0.0.1:7897`；`12334` 不是有效配置，出现时必须追溯来源并修复。
+- 测试和诊断不得覆盖用户运行数据；需要临时数据目录时使用临时目录，任务结束后删除由本次任务创建的临时副本。
 
-- Every pipeline failure shown in task results, mailbox rows, upload records, or logs must include a stable node code, a Chinese node label, and a credential-redacted actionable cause. The persisted result and public API should carry the same structured failure identity.
-- Cover OAuth session creation, Node/Sentinel initialization, OpenAI authorization, mailbox login and verification, phone acquisition and submission, SMS wait and verification, profile completion, OAuth callback, token exchange, SUB2 upload and test, Pixel enqueue/import/share/verification, persistence, and notification nodes explicitly.
-- Preserve safe HTTP status and provider error codes when available. Never publish raw response bodies, OAuth URLs with query parameters, cookies, phone numbers, SMS or email codes, passwords, TOTP secrets, SMS keys, access/refresh/ID/admin tokens, authorization headers, proxy credentials, or mailbox credentials.
-- Do not replace a known node failure with generic text such as `操作失败`, `failed`, or `授权或上传未完成`. If no provider detail exists, retain the exact node and state that no detail was returned, for example `OAuth Token 交换失败：服务端未返回错误详情`.
-- Terminal classifiers such as `account_banned` must retain their stable public message while storing only a redacted technical detail locally. Cleanup, cancellation, upload, or notification failures must not overwrite the original terminal cause.
-- Async Pixel failures must not change registration success. Persist the target, exact stage, attempt count, retryability, and sanitized cause in the outbox so retries and post-restart diagnosis keep their context.
-- Add fake-provider tests for every new failure branch and assert node attribution, diagnostic specificity, persistence across retry/restart where relevant, and credential redaction.
+## 兼容和实现要求
 
-## Frontend Conventions
+- 覆盖恢复模块前先保存原方法，保持原有可调用签名（包括 keyword-only 参数），只做窄范围覆盖。
+- 对不确定的恢复方法先查 `disassembly/index.json` 的对应切片，并在 Python 3.13 环境用 `inspect.signature` 确认签名。
+- 保留已有配置字段和页面顺序，除非用户明确要求删除或调整。
+- OTP 的请求基线、旧码排除和阶段状态必须按注册、已有账号登录、2FA enrollment 分开；取消、重试、清理不得覆盖原始终止原因。
+- 真实邮箱注册或真实代理动作不是普通静态验证的一部分；只有用户明确授权时才可执行，且不得把失败的真实尝试伪装成成功。
 
-- This application is desktop-only. Design and verify for desktop viewports; do not add mobile, narrow-screen, or responsive adaptations unless the user explicitly requests them.
-- Use Vue 3 single-file components and Element Plus controls. Prefer `size="small"` through the global provider.
-- Use Element Plus native `show-password`; do not build custom password-eye overlays.
-- Use icons from `@element-plus/icons-vue` for familiar actions and add tooltips to icon-only buttons.
-- Keep the sidebar compact, `el-main` padding at `5px`, and page height constrained to the viewport. Configuration, task results, logs, and tables should scroll inside their own allocated regions.
-- Keep `RunOperationBar` as two rows of three equal-width buttons in its established order. Keep other action groups on one line when requested.
-- Reuse `DashboardMetricCard` for dashboard summary cards. The icon belongs on the left, with title over value on the right.
-- Keep numeric card transitions centralized in `RollingMetricValue`. Animate only actual numeric changes and honor `prefers-reduced-motion`.
-- Reuse `ContentEmptyState` for empty tables and logs. Hide controls that have no useful action while their content area is empty.
-- Keep Element Plus locale Chinese and verify pagination labels remain Chinese.
-- Keep global scrollbars thin and blue, including native overflow containers and Element Plus scrollbars.
-- Mailbox table selection must use a stable row key. Clear selection before and after destructive mutations so line renumbering cannot select another row.
-- Mailbox status means current pool state, not historical task success. While a matching task has unfinished progress, show the pool row as running and refresh its concrete progress stage in real time.
-- Reuse `TaskProgressCell` for task and mailbox progress. Run one shared one-second clock per visible table only while that table contains active progress.
+## 发布和验证
 
-## Generated And Local Files
+- 用户可见的版本说明统一写在 `frontend/src/releaseNotes.ts`；涉及用户可见改动时同步更新版本号和说明，并重建 `frontend/dist/`。
+- 后端验证：
 
-- `frontend/dist/` is tracked. Rebuild it after every frontend source change and commit the updated hashed assets with `frontend/dist/index.html`.
-- Never commit `data/`, `mac_runtime/`, `engine/`, `node_chain.dat`, `frontend/node_modules/`, caches, local exports, or secrets.
-- Do not delete the retained reference copies under `/Users/lwh/projects/AutoRegister`, `/private/tmp/codex-auto-register-check.d2Qxkf/repo`, `/private/tmp/grok-gpt-check.XYMs6P/repo` or `/private/tmp/turb-gpt-free-register-check/repo` unless the user explicitly requests it.
-- Do not delete or overwrite user runtime data while testing. Use a temporary data directory for Flask integration checks.
+  ```sh
+  mac_runtime/.venv/bin/python -m unittest discover -s tests -v
+  mac_runtime/.venv/bin/python -m py_compile mac_overrides/error_observability.py mac_overrides/web_gui.py mac_overrides/sms_runtime.py mac_overrides/task_progress.py
+  ```
 
-## Free/Roxy Reference Implementations
+- 前端验证：
 
-Free 双链路和 RoxyBrowser 行为变更前，必须先对照以下两个成熟项目的对应实现：
+  ```sh
+  cd frontend
+  npx vue-tsc --noEmit
+  npm run build
+  ```
 
-- 同级项目 `/Users/lwh/projects/AutoRegister`：协议链路重点参考 `core/codex_oauth.py`、`core/openai_auth.py` 和 `core/sentinel_runner.py`；Roxy 链路重点参考 `core/roxy_registration.py`、`core/roxybrowser_client.py`、`core/otp_utils.py`、`core/humanize.py`、`core/live_check_service.py`、`config/proxy.py` 和 `config/roxybrowser.py`。
-- 开源项目 `https://github.com/maile456/codex-auto-register`：当前临时副本为 `/private/tmp/codex-auto-register-check.d2Qxkf/repo`，重点参考 `app/backend/run_manager.py`、`app/backend/probe_store.py`、`app/backend/roxy_client.py`、`app/backend/mailbox_client.py`、`app/backend/browser_worker.py` 和 `app/backend/run_log_store.py`。
-- 开源项目 `https://github.com/myfanhua/turb-gpt-free-register`：长期只读副本为 `/private/tmp/turb-gpt-free-register-check/repo`，重点参考 `core/roxy_registration.py`、`core/roxybrowser_client.py`、`core/account_export.py`、`core/roxy_codex_oauth.py`、`core/profile_utils.py` 和 `config/roxybrowser.py`。该项目的 OTP 页面结果必须按 `page.type` 与 `continue_url` 分支，2FA 必须跟随回调后刷新 Session；资料页覆盖 React-Aria/年龄生日/consent/受控提交重试。只吸收页面状态机、OAuth 回调、代理字段和生命周期思路，不复制账号、Cookie、Token、代理凭据或运行数据。
-
-只吸收页面状态机、邮箱 OTP 轮询、代理租约、并发槽位、Roxy `connection_info` 对账、失败清理和结构化日志思路；不得复制参考项目的密钥、账号、运行数据、Cookie、Token 或第三方授权信息。当前 Free 数据隔离和普通接码流程优先于参考项目，参考实现不能改变普通接码链路。参考副本均不纳入 Git，长期保留并只读检查；不读取其中的敏感运行数据，除非用户明确要求。
-
-### Free 协议注册状态机规则
-
-- Free 全协议必须使用全新 OAuth HTTP 会话，从 `initiate_oauth` 建立授权上下文，再用 `/api/accounts/authorize/continue` 提交邮箱；不得无条件调用旧的 NextAuth `start_chatgpt_signup_authorize -> user/register` 前置链路。
-- 每个 OAuth/邮箱/验证码请求使用对应的 Sentinel flow；会话失效时最多重建一次会话，保留邮箱、任务设备标识、固定代理和出口 IP，清除旧 Cookie、CSRF、continue URL 与阶段缓存后从授权节点重新开始。
-- 只有服务端明确完成邮箱验证、账号资料、OAuth 回调后才允许读取 access token；空结果、HTML 登录页或 Sentinel 异常不得包装成 Token 缺失。
-- 普通登录密码页与注册密码页必须按页面路径和表单状态区分；已有账号优先走邮箱验证码登录兜底。Cloudflare、人机验证或安全挑战只记录并停止，禁止自动绕过。
-- OTP 基线、消息身份、邮件时间和请求时间按注册、已有账号登录、2FA enrollment 等阶段隔离；验证码值相同但属于请求后的新邮件时允许验证，同一阶段同一消息身份不得重复提交。只有实际触发验证请求后才加入该阶段的已用集合。
-- Free 协议失败必须保留首个真实节点（OAuth 会话、邮箱提交、OTP、资料、回调或 Token），记录安全的 HTTP 状态、Content-Type、页面类型、重建次数和下一步建议；不记录 HTML 正文、Cookie、Token、验证码或授权头。
-
-## Release Notes
-
-- Keep all user-visible release copy in `frontend/src/releaseNotes.ts`; UI components may render that data but must not embed release-specific feature descriptions.
-- Any agent completing user-visible code changes must, without waiting for another user reminder, review the current code diff, add concise Chinese feature points and usage instructions to the current release record, and increment both `currentRelease.version` and `frontend/package.json` to the same version before delivery.
-- The first app launch after a version change must show the release-notes dialog for every local user, including developers. Acknowledgement may persist only the non-sensitive release version in `localStorage`; never persist mailbox, proxy, SMS, OAuth, SUB2, Pixel, or other credential data there.
-- Before final verification, compare the release-note sections against the complete user-visible diff so newly added, changed, or removed workflows are not omitted.
-
-## Verification
-
-Run backend tests and syntax checks from the repository root:
-
-```sh
-mac_runtime/.venv/bin/python -m unittest discover -s tests -v
-mac_runtime/.venv/bin/python -m py_compile \
-  mac_overrides/error_observability.py \
-  mac_overrides/web_gui.py \
-  mac_overrides/sms_runtime.py \
-  mac_overrides/task_progress.py \
-  tests/test_error_observability.py \
-  tests/test_sms_runtime.py \
-  tests/test_task_progress.py
-```
-
-Run frontend checks and rebuild production assets:
-
-```sh
-cd frontend
-npx vue-tsc --noEmit
-npm run build
-```
-
-Then run `git diff --check`. Do not start or restart the local Flask service for verification unless the user explicitly asks. Do not use the in-app browser, browser skills, Chrome, Playwright, or computer-use for frontend verification; the user performs manual visual verification. Automated frontend verification is limited to type checks, builds, and tests. Routine frontend verification targets desktop viewports only; do not perform mobile or narrow-screen adaptation unless the user explicitly requests it. Never click real preflight, registration, SMS, SUB2, Pixel, payment extraction or proxy-test actions during verification.
+- 最后运行 `git diff --check`。除非用户明确要求，不要启动或重启 Flask 服务，也不要点击真实注册、短信、SUB2、Pixel、支付提取或代理测试动作。
