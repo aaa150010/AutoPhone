@@ -47,7 +47,6 @@ try:
         trusted_oauth_bootstrap_location as _trusted_oauth_bootstrap_location,
         wait_for_security_challenge as _wait_for_security_challenge,
     )
-    from .free_autoregister_protocol import run_autoregister_prelude
 except ImportError:  # pragma: no cover - compatibility import for recovered runtime
     from free_protocol_diagnostics import (  # type: ignore[no-redef]
         callback_matches_redirect as _callback_matches_redirect,
@@ -79,7 +78,6 @@ except ImportError:  # pragma: no cover - compatibility import for recovered run
         trusted_oauth_bootstrap_location as _trusted_oauth_bootstrap_location,
         wait_for_security_challenge as _wait_for_security_challenge,
     )
-    from free_autoregister_protocol import run_autoregister_prelude  # type: ignore[no-redef]
 
 
 _SESSION_INVALID_MARKERS = (
@@ -197,45 +195,6 @@ def _trusted_html_bootstrap(response: Any, method: str) -> bool:
         and _trusted_oauth_bootstrap_location(response)
         and not _is_security_challenge_response(response)
     )
-
-
-def _autoregister_state_response(response: Any) -> dict[str, Any]:
-    """Translate AutoRegister's final HTML URL into the local state envelope."""
-    if isinstance(response, Mapping):
-        page = response.get("page")
-        if isinstance(page, Mapping) and str(page.get("type") or "").strip():
-            return dict(response)
-        # AutoRegister's browser-like prelude may legitimately finish on the
-        # Auth HTML shell (often ``/``) without a page.type envelope.  Keep
-        # that trusted response intact so the state machine can submit the
-        # mailbox identifier in the same session.  Only known Auth origins and
-        # paths are accepted; security pages are never normalized this way.
-        if _page_is_html(response) and _trusted_oauth_bootstrap_location(response) and not _is_security_challenge_response(response):
-            return dict(response)
-    locations = " ".join(_page_locations(response)).casefold()
-    page_type = ""
-    if any(value in locations for value in ("/email-verification", "/email-otp", "email_otp")):
-        page_type = "email_otp_verification"
-    elif any(value in locations for value in ("/log-in/password", "/login/password", "/log-in", "/login")):
-        page_type = "login_password"
-    elif any(value in locations for value in _PROFILE_MARKERS):
-        page_type = "about_you"
-    elif any(value in locations for value in _SIGNUP_PASSWORD_MARKERS):
-        page_type = "signup_password"
-    if not page_type:
-        raise FreeRegisterError(
-            "free_oauth_session",
-            "Free OAuth 会话",
-            f"AutoRegister OAuth 前置落点无法识别（{_response_detail(response)}）",
-            error_code="free_autoregister_prelude_state_unknown",
-            action_hint="检查 Auth 最终页面状态后再继续，不要重复提交邮箱",
-        )
-    return {
-        "_status": _status(response) or 200,
-        "_content_type": _content_type(response),
-        "_location": _page_location(response),
-        "page": {"type": page_type},
-    }
 
 
 def _raise_response(response: Any, *, node: str, label: str, stage: str) -> None:
@@ -835,33 +794,21 @@ def _run_once(
 
     _stage(stage, task_id, "free_oauth_session")
     _log(log, "创建全新 OAuth HTTP 会话并开始授权", "info")
-    # AutoRegister's signin/follow-authorize request can itself dispatch the
-    # first email OTP. Capture the mailbox baseline before that request.
+    # The authorize/continue request can itself dispatch the first email OTP.
+    # Capture the mailbox baseline before any request in this phase.
     _reset_otp_request(otp_provider)
     _prepare_otp(otp_provider, "free_email_otp_wait", force_snapshot=force_otp_snapshot)
-    # AutoRegister's signin/follow-authorize prelude establishes the same
-    # NextAuth cookies before the local OAuth state machine starts.  The
-    # recovered transport returns a final HTML URL for this browser-like
-    # step, so normalize it into the state envelope consumed below.
-    prelude = run_autoregister_prelude(
+    # Use the task's own Codex authorize URL and PKCE context as one session.
+    # A separate ChatGPT/NextAuth signup prelude creates a second cookie and
+    # CSRF state, which can make authorize/continue reject this task's state.
+    start = _call_transport(
         transport,
-        email,
-        task_id=task_id,
-        stage=stage,
-        log=log,
+        "initiate_oauth",
+        oauth_url,
+        flow="oauth_authorize",
         stop_requested=stop_requested,
+        log=log,
     )
-    if prelude is not None:
-        start = _autoregister_state_response(prelude)
-    else:
-        start = _call_transport(
-            transport,
-            "initiate_oauth",
-            oauth_url,
-            flow="oauth_authorize",
-            stop_requested=stop_requested,
-            log=log,
-        )
     trusted_start = _trusted_html_bootstrap(start, "initiate_oauth")
     if not ok(start) and not trusted_start:
         _raise_response(start, node="free_oauth_session", label="Free OAuth 会话", stage="free_oauth_session")
@@ -887,25 +834,14 @@ def _run_once(
         _log(log, "OAuth 授权返回受信任 Auth HTML 起始页，继续使用当前会话提交邮箱", "info")
     _log(log, f"OAuth 会话建立成功（HTTP {_status(start) or '-'}，Content-Type {_content_type(start) or '-'}）", "success")
 
-    start_page = str(page_type(start) or _page_type_value(start) or "").strip().casefold().replace("-", "_")
-    if start_page in _OTP_PAGE_TYPES:
-        # The browser-like AutoRegister prelude already submitted the login
-        # hint and delivered an OTP page. Do not replay authorize/continue or
-        # send a second email; reuse its page state and existing baseline.
-        response = start
-        marker = getattr(otp_provider, "mark_sent", None)
-        if callable(marker):
-            marker("free_email_otp_wait")
-        _log(log, "AutoRegister 前置已进入邮箱验证码页，跳过重复邮箱提交", "info")
-    else:
-        _stage(stage, task_id, "free_email_identifier")
-        response = _call_transport(
-            transport,
-            "submit_email_identifier",
-            email,
-            stop_requested=stop_requested,
-            log=log,
-        )
+    _stage(stage, task_id, "free_email_identifier")
+    response = _call_transport(
+        transport,
+        "submit_email_identifier",
+        email,
+        stop_requested=stop_requested,
+        log=log,
+    )
     if not _is_state_response(response, ok):
         _raise_response(response, node="free_email_identifier", label="识别 Free 注册邮箱", stage="free_email_identifier")
     current_page = str(page_type(response) or _page_type_value(response) or "").strip().casefold().replace("-", "_")

@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.68',
-  freeRuntimeVersion: '1.6.68',
+  version: '1.6.69',
+  freeRuntimeVersion: '1.6.69',
   title: 'Free 双链路照齐 AutoRegister',
   releasedAt: '2026-08-25',
   sections: [
+    {
+      title: '协议 OAuth 会话混用修复',
+      usage: '全协议注册现在始终从当前任务自己的 Codex authorize URL 和 PKCE 上下文开始，再提交邮箱；不再额外建立 ChatGPT NextAuth 前置会话，避免 OAuth state、Cookie 和 CSRF 状态混用导致 session invalid 或重复请求触发限流。',
+    },
     {
       title: '协议限流与 2FA Token 刷新',
       usage: '全协议遇到服务端 HTTP 429 限流时不再误判为 OAuth 会话失效并立即重放；2FA 邮箱重认证后会跟随 OAuth 回调读取新 Session Token，再用于 enrollment、激活和结果保存。',
@@ -32,7 +36,7 @@ export const currentRelease: ReleaseNotes = {
     },
     {
       title: '协议前置与 AutoRegister 对齐',
-      usage: '全协议注册先按 AutoRegister 顺序完成 providers、CSRF、signin 和 OAuth 前置会话，再进入邮箱与页面状态机；前置已经触发邮箱验证码时不会重复提交邮箱。邮箱解析、请求基线、旧码排除和验证码轮询继续使用现有 URL 邮箱策略。',
+      usage: '协议注册沿用 AutoRegister 的 Codex authorize/continue 顺序进入邮箱与页面状态机；邮箱解析、请求基线、旧码排除和验证码轮询继续使用现有 URL 邮箱策略。',
     },
     {
       title: 'Roxy 代理池出口不再强制一号一 IP',

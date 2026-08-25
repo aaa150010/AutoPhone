@@ -116,36 +116,10 @@ class _Transport:
         }
 
 
-class _PreludeTransport(_Transport):
+class _ChatgptPreludeTransport(_Transport):
     def start_chatgpt_signup_authorize(self, email):
         self.calls.append(f"prelude:{email}")
         return {"_status": 200, "url": "https://auth.openai.com/log-in"}
-
-    def initiate_oauth(self, _url):
-        raise AssertionError("AutoRegister prelude should replace direct initiate_oauth")
-
-
-class _PreludeOtpTransport(_Transport):
-    def start_chatgpt_signup_authorize(self, email):
-        self.calls.append(f"prelude:{email}")
-        return {"_status": 200, "url": "https://auth.openai.com/email-verification"}
-
-    def initiate_oauth(self, _url):
-        raise AssertionError("OTP prelude must not start a second OAuth session")
-
-
-class _PreludeHtmlTransport(_Transport):
-    def start_chatgpt_signup_authorize(self, email):
-        self.calls.append(f"prelude:{email}")
-        return {
-            "_status": 200,
-            "_content_type": "text/html",
-            "_url": "https://auth.openai.com/",
-            "_body_summary": "OpenAI login shell",
-        }
-
-    def initiate_oauth(self, _url):
-        raise AssertionError("trusted AutoRegister HTML must not start a second OAuth session")
 
 
 def _oauth_context(*, state="state-private", code_verifier="verifier-private"):
@@ -178,25 +152,12 @@ def _run(transport, *, otp=None, transport_factory=None, oauth_context_factory=N
 
 
 class FreeProtocolFlowTests(unittest.TestCase):
-    def test_autoregister_prelude_runs_before_email_identifier(self):
-        transport = _PreludeTransport()
+    def test_task_oauth_session_precedes_email_identifier(self):
+        transport = _ChatgptPreludeTransport()
         result, _active = _run(transport)
         self.assertTrue(result["registration_completed"])
-        self.assertEqual(transport.calls[0], "prelude:user@example.test")
-        self.assertEqual(transport.calls[1], "submit_email_identifier")
-
-    def test_autoregister_prelude_otp_skips_duplicate_email_submit(self):
-        transport = _PreludeOtpTransport()
-        result, _active = _run(transport)
-        self.assertTrue(result["registration_completed"])
-        self.assertEqual(transport.calls[0], "prelude:user@example.test")
-        self.assertNotIn("submit_email_identifier", transport.calls)
-
-    def test_autoregister_prelude_trusted_html_shell_continues_with_mailbox(self):
-        transport = _PreludeHtmlTransport()
-        result, _active = _run(transport)
-        self.assertTrue(result["registration_completed"])
-        self.assertEqual(transport.calls[:2], ["prelude:user@example.test", "submit_email_identifier"])
+        self.assertEqual(transport.calls[:2], ["initiate_oauth", "submit_email_identifier"])
+        self.assertNotIn("prelude:user@example.test", transport.calls)
 
     def test_known_email_page_type_is_valid_even_when_transport_returns_html(self):
         transport = _Transport(email={
