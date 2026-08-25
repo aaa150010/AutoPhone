@@ -17,6 +17,8 @@ SESSION_URL = "https://chatgpt.com/api/auth/session"
 HOME_URL = "https://chatgpt.com/"
 MAX_BODY_CHARS = 65536
 MAX_TOKEN_CHARS = 16384
+SESSION_FETCH_TIMEOUT_SECONDS = 9
+REFERENCE_SCRIPT_TIMEOUT_SECONDS = 12
 
 
 def session_token(payload: Any) -> str:
@@ -82,11 +84,22 @@ def _browser_session(driver: Any) -> tuple[dict[str, Any], str]:
     """
     fetch_script = """
     const done = arguments[arguments.length - 1];
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), __SESSION_TIMEOUT_MS__);
+    let settled = false;
+    const finish = value => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(abortTimer);
+      done(value);
+    };
     (async () => {
       try {
         const response = await fetch('/api/auth/session', {
           method: 'GET', credentials: 'include',
-          headers: {accept: 'application/json'}, cache: 'no-store',
+          signal: controller.signal,
+          headers: {accept: 'application/json', 'cache-control': 'no-cache', pragma: 'no-cache'},
+          cache: 'no-store',
         });
         const contentType = String(response.headers.get('content-type') || '');
         const text = await response.text();
@@ -94,13 +107,13 @@ def _browser_session(driver: Any) -> tuple[dict[str, Any], str]:
         try { payload = JSON.parse(text); } catch (_) { payload = null; }
         const keys = payload && typeof payload === 'object' && !Array.isArray(payload)
           ? Object.keys(payload).slice(0, 32) : [];
-        done({ok: true, status: response.status || 0, content_type: contentType,
+        finish({ok: true, status: response.status || 0, content_type: contentType,
           payload, keys, body_length: text.length});
       } catch (error) {
-        done({ok: false, error: String(error || 'fetch failed').slice(0, 120)});
+        finish({ok: false, error: error && error.name === 'AbortError' ? 'timeout' : String(error || 'fetch failed').slice(0, 120)});
       }
     })();
-    """
+    """.replace("__SESSION_TIMEOUT_MS__", str(SESSION_FETCH_TIMEOUT_SECONDS * 1000))
     result = driver.execute_async_script(fetch_script) or {}
     if not isinstance(result, Mapping):
         return {}, "浏览器 Session 请求返回格式无效"
@@ -190,6 +203,25 @@ def extract_session(
     auto_jump_wait = min(15, max(3, total_timeout // 3))
     auto_jump_end = time.time() + auto_jump_wait
     forced_home = False
+    set_script_timeout = getattr(driver, "set_script_timeout", None)
+    restore_script_timeout = None
+    if callable(set_script_timeout) and callable(getattr(driver, "execute_async_script", None)):
+        try:
+            set_script_timeout(REFERENCE_SCRIPT_TIMEOUT_SECONDS)
+            restore_script_timeout = lambda: set_script_timeout(max(20, min(90, total_timeout)))
+        except Exception:
+            restore_script_timeout = None
+
+    def _restore_script_timeout() -> None:
+        nonlocal restore_script_timeout
+        callback = restore_script_timeout
+        restore_script_timeout = None
+        if callback is not None:
+            try:
+                callback()
+            except Exception:
+                pass
+
     last = ""
     attempt = 0
     _emit(log_fn, "准备读取 ChatGPT Session：保持浏览器 Cookie，不读取或记录响应正文")
@@ -227,7 +259,7 @@ def extract_session(
                 if token:
                     result = dict(payload)
                     result.setdefault("accessToken", token)
-                    _restore_home(driver)
+                    _restore_script_timeout()
                     _emit(log_fn, "Session Token 提取成功，已恢复 ChatGPT 首页", "success")
                     return result
                 last = _summary(driver, keys=keys, error=response_summary, location=_safe_location(driver))
@@ -247,6 +279,7 @@ def extract_session(
                         if token:
                             result = dict(payload) if isinstance(payload, Mapping) else {}
                             result.setdefault("accessToken", token)
+                            _restore_script_timeout()
                             _restore_home(driver)
                             _emit(log_fn, "Session Token 提取成功，已恢复 ChatGPT 首页", "success")
                             return result
@@ -266,6 +299,7 @@ def extract_session(
         if remaining <= 0:
             break
         time.sleep(min(2, remaining))
+    _restore_script_timeout()
     _emit(log_fn, f"Session 在 {total_timeout} 秒内未拿到 Token：{last or '登录态未建立'}", "error")
     raise FreeRegisterError("free_access_token", "获取 Free access token", last or "等待 ChatGPT Session 登录态超时", error_code="free_session_token_missing")
 

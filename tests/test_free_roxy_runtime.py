@@ -171,6 +171,15 @@ class _BrowserSessionDriver:
         self.current_url = url
 
 
+class _TimedBrowserSessionDriver(_BrowserSessionDriver):
+    def __init__(self, response):
+        super().__init__(response)
+        self.script_timeouts = []
+
+    def set_script_timeout(self, timeout):
+        self.script_timeouts.append(timeout)
+
+
 class _CallbackWindowDriver(_BrowserSessionDriver):
     def __init__(self, response):
         super().__init__(response)
@@ -563,9 +572,21 @@ class FreeRoxyRuntimeTests(unittest.TestCase):
         logs = []
         result = extract_session(driver, 5, lambda message, level="info": logs.append((level, message)))
         self.assertEqual(session_token(result), "NESTED_TOKEN")
-        self.assertEqual(driver.visits, ["https://chatgpt.com/"])
+        self.assertEqual(driver.visits, [])
         self.assertTrue(any("HTTP 200" in message and "Token=存在" in message for _level, message in logs))
         self.assertFalse(any("NESTED_TOKEN" in message for _level, message in logs))
+
+    def test_same_origin_session_uses_reference_script_timeout_and_restores_it(self):
+        driver = _TimedBrowserSessionDriver({
+            "ok": True,
+            "status": 200,
+            "content_type": "application/json; charset=utf-8",
+            "payload": {"accessToken": "TIMED_TOKEN"},
+            "body_length": 40,
+        })
+        result = extract_session(driver, 120)
+        self.assertEqual(session_token(result), "TIMED_TOKEN")
+        self.assertEqual(driver.script_timeouts, [12, 90])
 
     def test_session_extraction_reuses_chatgpt_callback_window(self):
         driver = _CallbackWindowDriver({
