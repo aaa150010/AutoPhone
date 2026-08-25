@@ -62,7 +62,7 @@ export const stopRun = () => api('/api/stop', {})
 export const getMailboxes = () => api<MailboxPayload>('/api/mailboxes')
 export interface FreeConfig {
   version?: number
-  driver: 'protocol' | 'roxybrowser'
+  driver: 'protocol' | 'roxybrowser' | 'camoufox'
   flow_profile?: 'reference_20260823' | 'legacy' | string
   proxy_allocation_mode?: 'healthy_random' | string
   target_count: number
@@ -86,6 +86,7 @@ export interface FreeConfig {
   proxy_selection?: {
     protocol?: { country?: string; group?: string }
     roxybrowser?: { country?: string; group?: string }
+    camoufox?: { country?: string; group?: string }
   }
   protocol: {
     node_runner: string
@@ -128,13 +129,28 @@ export interface FreeConfig {
     post_registration_dwell_min: number
     post_registration_dwell_max: number
   }
+  camoufox: {
+    headless: boolean
+    pool_size: number
+    max_contexts_per_browser: number
+    context_start_interval_ms: number
+    startup_concurrency: number
+    block_images: boolean
+    registration_timeout_seconds: number
+    context_close_timeout_seconds: number
+    browser_recycle_timeout_seconds: number
+    browser_recycle_drain_timeout_seconds: number
+    max_registrations_per_browser: number
+    browser_launch_attempts: number
+    existing_account_login: boolean
+  }
 }
 export interface FreeState {
   runtime_version?: string
   otp_parser_revision?: string
   running: boolean
   batch_id?: string
-  driver?: 'protocol' | 'roxybrowser' | string
+  driver?: 'protocol' | 'roxybrowser' | 'camoufox' | string
   tasks?: any[]
   pool?: { total?: number; available?: number; proxies?: number }
   scheduler?: { concurrency?: number; active_slots?: number; queued_slots?: number; roxy_circuit_open?: boolean; roxy_failures?: number; roxy_circuit_opened_at?: number | null }
@@ -190,7 +206,7 @@ export interface FreeMailboxRow {
   email: string
   status: string
   stage?: string
-  driver?: 'protocol' | 'roxybrowser' | string
+  driver?: 'protocol' | 'roxybrowser' | 'camoufox' | string
   proxy_masked?: string
   proxy_fingerprint?: string
   proxy_scheme?: string

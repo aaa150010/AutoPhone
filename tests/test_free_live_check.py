@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 from mac_overrides.free_live_check import FreeLiveCheckService
 from mac_overrides.free_log_runtime import FreeLogStore
 from mac_overrides.free_register_common import FreeRegisterError
-from mac_overrides.free_register_store import FreeMailboxPool, FreeProxyPool
+from mac_overrides.free_register_store import FreeMailboxPool, FreeProxyPool, FreeTaskStore
 
 
 class FreeLiveCheckTests(unittest.TestCase):
@@ -132,6 +132,85 @@ class FreeLiveCheckTests(unittest.TestCase):
         self.assertEqual(saved["live_check_ip"], "10.0.0.1")
         self.assertTrue(saved["plus_trial_eligible"])
         self.assertTrue(logs.snapshot(started["accepted"][0]["task_id"]))
+
+    def test_live_check_clears_stale_plan_only_partial_status(self):
+        pool, proxies, logs = self._resources()
+        row = pool.entries()[0]
+        saved = pool.result(row.row_id)
+        saved.update({
+            "status": "partial_success",
+            "plan_check_status": "failed",
+            "plan_error_code": "free_plan_accounts_response_invalid",
+            "failure": {
+                "error_code": "free_plan_accounts_response_invalid",
+                "node_code": "free_plan_check",
+            },
+        })
+        pool.save_result(row.row_id, saved)
+        pool.update(row.row_id, status="partial_success")
+        task_store = FreeTaskStore(self.data_dir)
+        task_store.save({
+            saved["task_id"]: {
+                "task_id": saved["task_id"],
+                "status": "partial_success",
+                "failure": saved["failure"],
+                "result": dict(saved),
+            },
+        })
+
+        service = self._service(
+            pool,
+            proxies,
+            logs,
+            task_store=task_store,
+            fast_runner=lambda _context, _config: {
+                "status": "live",
+                "plan_check_status": "success",
+                "plan_type": "free",
+            },
+        )
+        service.enqueue([row.row_id], "fast")
+        self._wait(service)
+
+        result = pool.result(row.row_id)
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["plan_check_status"], "success")
+        self.assertNotIn("failure", result)
+        self.assertEqual(pool._row_state(row.row_id)["status"], "success")
+        task = task_store.load()[saved["task_id"]]
+        self.assertEqual(task["status"], "success")
+        self.assertNotIn("failure", task)
+
+    def test_failed_followup_live_check_does_not_restore_plan_only_partial_status(self):
+        pool, proxies, logs = self._resources()
+        row = pool.entries()[0]
+        saved = pool.result(row.row_id)
+        saved.update({
+            "status": "partial_success",
+            "plan_check_status": "success",
+            "plan_type": "free",
+            "plan_error_code": "free_plan_accounts_response_invalid",
+            "failure": {
+                "error_code": "free_plan_accounts_response_invalid",
+                "node_code": "free_plan_check",
+            },
+        })
+        pool.save_result(row.row_id, saved)
+        pool.update(row.row_id, status="partial_success")
+
+        service = self._service(pool, proxies, logs)
+        service._save_live_result(row.row_id, {
+            "live_check_status": "failed",
+            "live_check_failure": {
+                "error_code": "free_live_account_http_failed",
+                "node_code": "free_live_fast",
+            },
+        })
+
+        result = pool.result(row.row_id)
+        self.assertEqual(result["status"], "success")
+        self.assertNotIn("failure", result)
+        self.assertEqual(pool._row_state(row.row_id)["status"], "success")
 
     def test_fast_unauthorized_does_not_mark_account_deactivated(self):
         pool, proxies, logs = self._resources()

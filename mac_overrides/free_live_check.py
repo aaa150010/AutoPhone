@@ -134,6 +134,7 @@ class FreeLiveCheckService:
         log_store: Any,
         config_provider: Callable[[], Mapping[str, Any]] | None = None,
         proxy_probe: Callable[[str, str], str] | None = None,
+        task_store: Any = None,
         fast_runner: Callable[[Mapping[str, Any], Mapping[str, Any]], Mapping[str, Any]] | None = None,
         deep_runner: Callable[[Mapping[str, Any], Mapping[str, Any]], Mapping[str, Any]] | None = None,
         workers: int = 3,
@@ -146,6 +147,7 @@ class FreeLiveCheckService:
         self.pool = pool
         self.proxies = proxies
         self.log_store = log_store
+        self.task_store = task_store
         self.config_provider = config_provider
         self.proxy_probe = proxy_probe
         self.fast_runner = fast_runner or self._run_fast
@@ -405,7 +407,50 @@ class FreeLiveCheckService:
     def _save_live_result(self, row_id: str, values: Mapping[str, Any]) -> dict[str, Any]:
         current = self.pool.result(row_id)
         current.update(copy.deepcopy(dict(values)))
+        # A registration can be complete while only the first plan request
+        # failed.  Once any later result confirms the plan, clear that stale
+        # plan-only partial status.  The live request itself may fail after
+        # the plan was refreshed (for example, a fixed proxy can return 403),
+        # but that must not reclassify an otherwise complete registration.
+        failure = current.get("failure") if isinstance(current.get("failure"), Mapping) else {}
+        failure_code = str(failure.get("error_code") or current.get("plan_error_code") or "")
+        promoted = False
+        if (
+            str(current.get("status") or "") == "partial_success"
+            and str(current.get("plan_check_status") or "") == "success"
+            and failure_code.startswith("free_plan_")
+        ):
+            promoted = True
+            current["status"] = "success"
+            current.pop("failure", None)
+            current.pop("error", None)
+            for key in ("plan_failure", "plan_error_code", "plan_error_detail", "plan_provider_code"):
+                current.pop(key, None)
         self.pool.save_result(row_id, current)
+        if promoted:
+            # The mailbox pool has its own task status used by the UI. Keep it
+            # in sync with the normalized result instead of leaving a stale
+            # partial_success row after a successful plan refresh.
+            try:
+                self.pool.update(row_id, status="success", stage="free_live_result", error="", failure=None)
+            except Exception:
+                # Result persistence remains authoritative if a legacy/test
+                # pool does not expose the optional status update API.
+                pass
+            task_id = str(current.get("task_id") or "")
+            if task_id and self.task_store is not None:
+                try:
+                    tasks = self.task_store.load()
+                    task = tasks.get(task_id)
+                    if isinstance(task, dict) and str(task.get("status") or "") == "partial_success":
+                        task.update({"status": "success", "stage": "free_result_save", "error": ""})
+                        task.pop("failure", None)
+                        task["result"] = copy.deepcopy(current)
+                        self.task_store.save(tasks)
+                except Exception:
+                    # Keep the result file and mailbox row authoritative when
+                    # reading legacy task snapshots is not possible.
+                    pass
         return current
 
     def _worker(self, task_id: str) -> None:
@@ -753,6 +798,7 @@ def build_free_live_check_service(
     proxies: Any,
     log_store: Any,
     proxy_probe: Callable[[str, str], str] | None = None,
+    task_store: Any = None,
 ) -> FreeLiveCheckService:
     """Construct the Free-only service without expanding the main manager."""
     try:
@@ -765,6 +811,7 @@ def build_free_live_check_service(
         pool=pool,
         proxies=proxies,
         log_store=log_store,
+        task_store=task_store,
         config_provider=config_store.load,
         proxy_probe=proxy_probe,
     )

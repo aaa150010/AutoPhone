@@ -12,6 +12,7 @@ _NETWORK_EVIDENCE_NODES = frozenset({
     "free_protocol_preflight",
     "free_oauth_session",
     "free_live_proxy_verify",
+    "free_camoufox_navigation",
 })
 _NETWORK_ERROR_TYPES = frozenset({
     "certificateverifyerror",
@@ -109,6 +110,18 @@ def is_proxy_health_failure(error: BaseException) -> bool:
         return True
     if node_code not in _NETWORK_EVIDENCE_NODES:
         return False
+
+    try:
+        provider_status = int(getattr(error, "provider_status", 0) or 0)
+    except (TypeError, ValueError):
+        provider_status = 0
+    # A navigation 429 is an upstream business limit, not evidence that the
+    # proxy is unhealthy. HTTP proxy/auth failures and upstream 5xx responses
+    # remain safe to charge against the selected proxy.
+    if provider_status == 429:
+        return False
+    if node_code == "free_camoufox_navigation" and (provider_status in {403, 407} or provider_status >= 500):
+        return True
 
     details: list[str] = []
     for current in _exception_chain(error):

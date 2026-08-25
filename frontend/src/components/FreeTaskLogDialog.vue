@@ -51,7 +51,7 @@ let programmaticScroll = false
 let scrollResetFrame = 0
 
 const taskId = computed(() => String(props.task?.task_id || ''))
-const driverLabel = computed(() => ({ roxybrowser: 'RoxyBrowser', protocol: '全协议' } as Record<string, string>)[String(props.task?.driver || '')] || String(props.task?.driver || 'Free'))
+const driverLabel = computed(() => ({ roxybrowser: 'RoxyBrowser', protocol: '全协议', camoufox: 'Camoufox' } as Record<string, string>)[String(props.task?.driver || '')] || String(props.task?.driver || 'Free'))
 const dialogTitle = computed(() => `${props.task?.email || 'Free 账号'} · ${driverLabel.value} 日志`)
 const filteredLogs = computed(() => filterFreeLogs(logs.value, levelFilter.value, nodeFilter.value))
 const visibleLogs = computed(() => filteredLogs.value.slice(windowStart.value, windowStart.value + FREE_LOG_WINDOW_SIZE))

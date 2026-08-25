@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.72',
-  freeRuntimeVersion: '1.6.72',
+  version: '1.6.73',
+  freeRuntimeVersion: '1.6.73',
   title: 'Free 邮箱换绑工作台',
   releasedAt: '2026-08-25',
   sections: [
+    {
+      title: 'Free 三链路与 Camoufox 注册',
+      usage: 'Free 注册新增可选 Camoufox 异步浏览器池，和全协议、RoxyBrowser 共用同一个 URL 邮箱取件策略与健康随机代理池。默认优先邮箱验证码；只有实际提交注册密码页的新账号才保存固定密码，已有账号登录、Session、2FA、套餐查询和失败诊断保持统一结果契约。',
+    },
     {
       title: '独立 Free 邮箱换绑池',
       usage: '新增独立菜单维护换绑目标邮箱池，可手动选择已有密码和 TOTP 的 Free 账号与目标邮箱。换绑统一走纯协议链路，不连接 RoxyBrowser；完成后保留原 Free 行 ID，单独记录新邮箱并重新查询套餐与 Plus 试用资格。',

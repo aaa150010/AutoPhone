@@ -25,6 +25,13 @@ const defaultConfig: FreeConfig = {
     api_retries: 3, api_retry_delay: 2, humanize_delay: true, humanize_factor: 1,
     humanize_browser_actions: true, existing_account_login: true, post_registration_dwell_min: 18, post_registration_dwell_max: 45,
   },
+  camoufox: {
+    headless: true, pool_size: 2, max_contexts_per_browser: 3, context_start_interval_ms: 175,
+    startup_concurrency: 4, block_images: true, registration_timeout_seconds: 600,
+    context_close_timeout_seconds: 15, browser_recycle_timeout_seconds: 45,
+    browser_recycle_drain_timeout_seconds: 20, max_registrations_per_browser: 12,
+    browser_launch_attempts: 3, existing_account_login: true,
+  },
 }
 
 const emit = defineEmits<{ navigate: [string] }>()
@@ -77,6 +84,7 @@ function mergeConfig(value: any, forceQuickRun = false) {
   Object.assign(config, value)
   Object.assign(config.protocol, value.protocol || {})
   Object.assign(config.roxybrowser, value.roxybrowser || {})
+  Object.assign(config.camoufox, value.camoufox || {})
   config.target_count = Math.min(200, Math.max(1, Number(config.target_count) || 1))
   config.concurrency = Math.min(16, Math.max(1, Number(config.concurrency) || 1))
   if (forceQuickRun || !quickRunDirty.value) {
@@ -359,7 +367,7 @@ onUnmounted(() => window.clearTimeout(timer))
         <div class="task-panel">
           <div class="run-snapshot task-summary"><div><span>可用 Free 邮箱</span><strong class="is-good">{{ Number(state.pool?.available || 0) }}</strong></div><div><span>任务总数</span><strong>{{ taskCounts.total }}</strong></div><div><span>排队 / 运行</span><strong>{{ taskCounts.running }}</strong></div><div><span>成功</span><strong class="is-good">{{ taskCounts.success - taskCounts.partial }}</strong></div><div><span>部分成功</span><strong class="is-warn">{{ taskCounts.partial }}</strong></div><div><span>失败</span><strong class="is-bad">{{ taskCounts.failed }}</strong></div><div><span>待重跑</span><strong class="is-warn">{{ taskCounts.rerun }}</strong></div><div><span>2FA 待重试</span><strong class="is-warn">{{ taskCounts.pending }}</strong></div></div>
           <div class="task-start-bar">
-            <el-tag effect="plain">{{ config.driver === 'roxybrowser' ? 'RoxyBrowser' : '全协议' }}</el-tag>
+            <el-tag effect="plain">{{ config.driver === 'roxybrowser' ? 'RoxyBrowser' : config.driver === 'camoufox' ? 'Camoufox' : '全协议' }}</el-tag>
             <el-tag v-if="pendingRoxyCleanup > 0" type="warning" effect="light">待清理 Profile {{ pendingRoxyCleanup }}</el-tag>
             <label class="quick-run-field"><span>注册数量</span><el-input-number v-model="quickTargetCount" class="quick-run-number" :min="1" :max="200" controls-position="right" :disabled="running || Boolean(busy)" @update:model-value="markQuickRunDirty" /></label>
             <label class="quick-run-field"><span>并发</span><el-input-number v-model="quickConcurrency" class="quick-run-number" :min="1" :max="16" controls-position="right" :disabled="running || Boolean(busy)" @update:model-value="markQuickRunDirty" /></label>
@@ -378,16 +386,16 @@ onUnmounted(() => window.clearTimeout(timer))
               <el-radio-button value="failed">失败 {{ taskCounts.failed }}</el-radio-button>
               <el-radio-button value="twofa_pending">2FA {{ taskCounts.pending }}</el-radio-button>
               <el-radio-button value="pending_rerun">待重跑 {{ taskCounts.rerun }}</el-radio-button>
-              <el-radio-button value="stopped">已停止 {{ taskCounts.stopped }}</el-radio-button>
+            <el-radio-button value="stopped">已停止 {{ taskCounts.stopped }}</el-radio-button>
             </el-radio-group>
-            <el-select v-model="taskDriverFilter" size="small" clearable placeholder="链路" class="task-driver-filter"><el-option label="全协议" value="protocol" /><el-option label="RoxyBrowser" value="roxybrowser" /></el-select>
+            <el-select v-model="taskDriverFilter" size="small" clearable placeholder="链路" class="task-driver-filter"><el-option label="全协议" value="protocol" /><el-option label="RoxyBrowser" value="roxybrowser" /><el-option label="Camoufox" value="camoufox" /></el-select>
           </div>
           <div class="task-actions"><span class="muted">已选 {{ selectedTasks.length }} 个</span><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('token', selectedTasks, 'Token')">复制 Token</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('password', selectedTasks, '密码')">复制密码</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('totp', selectedTasks, 'TOTP')">复制 TOTP</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('credential', selectedTasks, '完整凭据')">复制完整凭据</el-button><el-button size="small" :icon="CopyDocument" :disabled="!filteredTasks.some(task => task.result?.has_access_token)" @click="copyTaskTokens(filteredTasks)">复制当前筛选 Token</el-button><el-button size="small" type="danger" plain :icon="Delete" :disabled="!selectedTasks.length || loading" @click="deleteSelectedTasks">删除选中</el-button><el-button size="small" :icon="Refresh" @click="refresh">刷新任务</el-button></div>
           <el-table ref="taskTable" :data="filteredTasks" row-key="task_id" height="100%" size="small" @selection-change="handleTaskSelection">
             <el-table-column type="selection" width="42" reserve-selection />
             <el-table-column type="index" label="序号" width="58" align="center" fixed="left" />
             <el-table-column label="账号" min-width="220" show-overflow-tooltip><template #default="{ row }"><el-tooltip v-if="row.email" content="点击复制邮箱" placement="top"><el-button link class="email-copy" @click.stop="copyTaskEmail(row)"><strong>{{ row.email }}</strong><el-icon><CopyDocument /></el-icon></el-button></el-tooltip><span v-else>-</span><small class="task-subline">{{ row.task_id }}</small></template></el-table-column>
-            <el-table-column label="链路 / 阶段" min-width="190" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" effect="plain">{{ row.driver === 'roxybrowser' ? 'RoxyBrowser' : '全协议' }}</el-tag><small v-if="row.result?.account_flow" class="task-subline">{{ row.result.account_flow === 'existing_login' ? '已有账号登录' : '新账号注册' }}</small><small class="task-subline">{{ row.stage_label || row.stage || '-' }}</small></template></el-table-column>
+            <el-table-column label="链路 / 阶段" min-width="190" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" effect="plain">{{ row.driver === 'roxybrowser' ? 'RoxyBrowser' : row.driver === 'camoufox' ? 'Camoufox' : '全协议' }}</el-tag><small v-if="row.result?.account_flow" class="task-subline">{{ row.result.account_flow === 'existing_login' ? '已有账号登录' : '新账号注册' }}</small><small class="task-subline">{{ row.stage_label || row.stage || '-' }}</small></template></el-table-column>
             <el-table-column label="Slot" width="78" align="center"><template #default="{ row }">{{ row.slot_index || '-' }} / {{ row.concurrency_limit || config.concurrency }}</template></el-table-column>
             <el-table-column label="代理池" min-width="180" show-overflow-tooltip><template #default="{ row }"><span>共享健康随机池</span><small class="task-subline">{{ row.proxy_scheme || '' }} · {{ row.proxy_masked || '' }}</small></template></el-table-column>
             <el-table-column label="状态" width="92" align="center"><template #default="{ row }"><el-tag size="small" :type="taskStatusType(row.status)">{{ taskStatusLabel(row.status) }}</el-tag></template></el-table-column>

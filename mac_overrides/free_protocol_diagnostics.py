@@ -189,6 +189,29 @@ def provider_code(response: Any) -> str:
     return ""
 
 
+def retry_after_seconds(response: Any) -> int | None:
+    """Read a bounded numeric Retry-After value without retaining headers."""
+    values: list[Any] = []
+    if isinstance(response, Mapping):
+        values.extend((response.get("retry_after_seconds"), response.get("retry_after")))
+        headers = response.get("headers") or response.get("_headers")
+        if isinstance(headers, Mapping):
+            values.extend((headers.get("retry-after"), headers.get("Retry-After")))
+    else:
+        headers = getattr(response, "headers", None)
+        if isinstance(headers, Mapping):
+            values.extend((headers.get("retry-after"), headers.get("Retry-After")))
+        values.extend((getattr(response, "retry_after_seconds", None), getattr(response, "retry_after", None)))
+    for value in values:
+        try:
+            parsed = int(float(str(value).strip()))
+        except (TypeError, ValueError):
+            continue
+        if 0 <= parsed <= 86400:
+            return parsed
+    return None
+
+
 def safe_url(value: str) -> str:
     try:
         parsed = urlsplit(str(value or ""))
@@ -207,7 +230,7 @@ def safe_url(value: str) -> str:
 
 def response_metadata(response: Any, *, action_hint: str = "", diagnostic_error: str = "") -> dict[str, Any]:
     location = page_location(response)
-    return {
+    metadata = {
         "provider_status": response_status(response),
         "provider_code": provider_code(response),
         "action_hint": action_hint,
@@ -216,6 +239,10 @@ def response_metadata(response: Any, *, action_hint: str = "", diagnostic_error:
         "safe_page": safe_url(location) if location else "",
         "content_type": content_type(response),
     }
+    retry_after = retry_after_seconds(response)
+    if retry_after is not None:
+        metadata["retry_after_seconds"] = retry_after
+    return metadata
 
 
 def callback_query(callback_url: str) -> dict[str, str]:
@@ -242,7 +269,7 @@ def callback_matches_redirect(callback_url: str, redirect_uri: str) -> bool:
 
 __all__ = [
     "EMAIL_OTP_PAGE_TYPES", "callback_matches_redirect", "callback_query", "content_type", "is_email_otp_response", "is_known_state_response", "next_url",
-    "page_is_html", "page_location", "page_locations", "page_type_value",
+    "page_is_html", "page_location", "page_locations", "page_type_value", "retry_after_seconds",
     "provider_code", "response_detail", "response_metadata", "response_search_text",
     "response_status", "safe_url",
 ]

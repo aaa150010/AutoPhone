@@ -19,7 +19,7 @@ from urllib.parse import quote, unquote, urlsplit, urlunsplit
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 OTP_RE = re.compile(r"\b(\d{6})\b")
 SECRET_MASK = "********"
-FIXED_PASSWORD = "nuHf5UFg2vtCW!/"
+FIXED_PASSWORD = "Aa150010@150010"
 FREE_PROXY_SCHEMES = frozenset({"http", "https", "socks4", "socks5", "socks5h"})
 ROXY_PROXY_SCHEMES = frozenset({"http", "https", "socks5", "socks5h"})
 DEFAULT_FREE_PROXY_SCHEME = "http"
@@ -66,6 +66,15 @@ FREE_STAGE_LABELS = {
     "free_existing_login": "已有 Free 账号登录",
     "free_existing_login_otp": "已有 Free 账号邮箱验证",
     "free_roxy_challenge": "等待注册页安全验证",
+    "free_camoufox_dependency": "检查 Camoufox 依赖",
+    "free_camoufox_launch": "启动 Camoufox 浏览器池",
+    "free_camoufox_signup": "Camoufox 页面注册",
+    "free_camoufox_signup_email": "填写 Camoufox 注册邮箱",
+    "free_camoufox_signup_password": "提交 Camoufox 注册密码",
+    "free_camoufox_browser": "Camoufox 注册页面",
+    "free_camoufox_navigation": "打开 Camoufox 注册页面",
+    "free_camoufox_profile": "填写 Camoufox 账号资料",
+    "free_camoufox_challenge": "等待 Camoufox 安全验证",
     "oauth_create_node": "初始化 Node/Sentinel",
     "free_oauth_session": "Free OAuth 会话",
     "free_oauth_security_challenge": "等待 Free OAuth 安全验证",
@@ -125,6 +134,7 @@ class FreeRegisterError(RuntimeError):
         safe_page: str | None = None,
         content_type: str | None = None,
         session_rebuilds: int | None = None,
+        retry_after_seconds: int | float | None = None,
     ) -> None:
         super().__init__(message)
         self.node_code = node_code
@@ -139,6 +149,11 @@ class FreeRegisterError(RuntimeError):
         self.safe_page = safe_log_message(safe_page)[:500]
         self.content_type = clean(content_type, 120)
         self.session_rebuilds = max(0, int(session_rebuilds or 0))
+        try:
+            parsed_retry_after = float(retry_after_seconds or 0)
+        except (TypeError, ValueError):
+            parsed_retry_after = 0.0
+        self.retry_after_seconds = max(0, min(86400, int(parsed_retry_after)))
 
 
 class FreeTwoFaPending(RuntimeError):

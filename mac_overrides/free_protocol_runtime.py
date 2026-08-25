@@ -42,6 +42,7 @@ try:
         reference_fingerprint as _reference_fingerprint,
         reference_flow_enabled as _reference_flow_enabled,
     )
+    from .free_account_service import finalize_registration_result
     from .free_register_common import (
         FIXED_PASSWORD,
         FreeRegisterError,
@@ -73,6 +74,7 @@ except ImportError:
         reference_fingerprint as _reference_fingerprint,
         reference_flow_enabled as _reference_flow_enabled,
     )
+    from free_account_service import finalize_registration_result  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
         FIXED_PASSWORD, FreeRegisterError, FreeTwoFaPending,
         plus_trial_from_accounts as _plus_trial_from_accounts,
@@ -718,18 +720,28 @@ class FreeProtocolMixin:
                         twofa["twofa_failure"]["action_hint"] = pending.action_hint
             else:
                 twofa = {"twofa_status": "disabled"}
-            twofa.update({"access_token": token, "has_access_token": True, "account_flow": account_flow, **plan_details})
-            if account_flow == "signup":
-                twofa["password"] = password
+            # Preserve the flow result's password boundary through plan/2FA
+            # enrichment.  New flows emit the explicit marker; legacy test
+            # doubles only returned ``signup + password``.
+            if "registration_password_used" in result:
+                registration_password_used = bool(result.get("registration_password_used"))
             else:
-                twofa.pop("password", None)
-            if twofa.get("totp_secret"):
-                twofa["twofa_status"] = "enabled"
-                if account_flow == "signup":
-                    twofa["credential_line"] = f"{email}----{password}----{twofa['totp_secret']}"
-                else:
-                    twofa.pop("credential_line", None)
-            return twofa
+                registration_password_used = account_flow == "signup" and bool(result.get("password"))
+            twofa.update({
+                "access_token": token,
+                "has_access_token": True,
+                "account_flow": account_flow,
+                "registration_password_used": registration_password_used,
+                **plan_details,
+            })
+            if registration_password_used:
+                twofa["password"] = str(result.get("password") or password or FIXED_PASSWORD)
+            return finalize_registration_result(
+                twofa,
+                driver="protocol",
+                email=email,
+                password_used=registration_password_used,
+            )
         finally:
             try:
                 otp_close = getattr(otp_provider, "close", None)

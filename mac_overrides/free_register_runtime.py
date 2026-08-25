@@ -45,6 +45,7 @@ try:
     from .free_log_runtime import FreeLogStore
     from .free_live_check import build_free_live_check_service
     from .free_protocol_runtime import FreeProtocolMixin
+    from .free_camoufox_runtime import CamoufoxRegistrationRunner, shutdown_camoufox_pools
 except ImportError:
     from free_failure_runtime import (  # type: ignore[no-redef]
         FreeFailureRuntimeMixin,
@@ -71,6 +72,7 @@ except ImportError:
     from free_log_runtime import FreeLogStore  # type: ignore[no-redef]
     from free_live_check import build_free_live_check_service  # type: ignore[no-redef]
     from free_protocol_runtime import FreeProtocolMixin  # type: ignore[no-redef]
+    from free_camoufox_runtime import CamoufoxRegistrationRunner, shutdown_camoufox_pools  # type: ignore[no-redef]
 class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, FreeProtocolMixin):
     # These nodes run before the flow confirms that a new account was created.
     # A failure here did not consume the mailbox, so the row can be dispatched
@@ -85,7 +87,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         "free_roxy_connect",
         "free_roxy_ip_verify",
         "free_roxy_signup_bootstrap",
-        "free_roxy_signup_email", "free_roxy_signup_email_submit", "oauth_create_node", "free_proxy_geo", "free_protocol_preflight", "free_protocol_warmup",
+        "free_roxy_signup_email", "free_roxy_signup_email_submit", "free_camoufox_dependency", "free_camoufox_launch", "free_camoufox_signup", "free_camoufox_browser", "oauth_create_node", "free_proxy_geo", "free_protocol_preflight", "free_protocol_warmup",
         "roxy_circuit_open",
     })
 
@@ -120,7 +122,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         self.live_checks = build_free_live_check_service(
             self.data_dir,
             pool=self.pool, proxies=self.proxies, log_store=self.log_store,
-            proxy_probe=self.proxy_probe,
+            proxy_probe=self.proxy_probe, task_store=self.task_store,
         )
 
     def _log(self, message: str, level: str = "info", **fields: Any) -> None:
@@ -413,7 +415,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     retryable=False,
                 )
         driver = str(config.get("driver") or "protocol").strip().lower()
-        if driver not in {"protocol", "roxybrowser"}:
+        if driver not in {"protocol", "roxybrowser", "camoufox"}:
             raise FreeRegisterError("free_config", "Free 注册预检", "Free 注册链路无效", retryable=False)
         cleanup_result = {"examined": 0, "recovered": 0, "failed": 0}
         if driver == "roxybrowser" and not self._custom_runner:
@@ -450,10 +452,12 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             probe_url=str(config.get("proxy_probe_url") or "https://api.ipify.org"),
             driver=driver,
         )
+        roxy_result = {"driver": driver}
+        camoufox_result = {"driver": driver}
         if driver == "roxybrowser" and not self._custom_runner:
             roxy_result = RoxyRegistrationRunner.preflight(config)
-        else:
-            roxy_result = {"driver": driver}
+        if driver == "camoufox" and not self._custom_runner:
+            camoufox_result = CamoufoxRegistrationRunner.preflight(config)
         return {
             **runtime_info(),
             "driver": driver,
@@ -463,6 +467,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             "exit_ips": len({binding.exit_ip for binding in bindings}),
             "protocol": protocol_result,
             "roxy": roxy_result,
+            "camoufox": camoufox_result,
             "roxy_cleanup": cleanup_result,
             "proxy_selection": {"country": "", "group": ""},
         }
@@ -578,10 +583,12 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             if len(rows) < target_count:
                 raise FreeRegisterError("free_pool_preflight", "Free 邮箱池预检", f"Free 邮箱数量不足：需要 {target_count} 条，当前只有 {len(rows)} 条", retryable=False)
             driver = str(config.get("driver") or "protocol").strip().lower()
-            if driver not in {"protocol", "roxybrowser"}:
+            if driver not in {"protocol", "roxybrowser", "camoufox"}:
                 raise FreeRegisterError("free_config", "启动 Free 注册", "Free 注册链路无效", retryable=False)
             if driver == "roxybrowser" and not self._custom_runner:
                 RoxyRegistrationRunner.preflight(config)
+            if driver == "camoufox" and not self._custom_runner:
+                CamoufoxRegistrationRunner.preflight(config)
             self.proxies.configure_policy(
                 failure_threshold=int(config.get("proxy_failure_threshold") or 2),
                 quarantine_seconds=int(config.get("proxy_quarantine_seconds") or 600),
@@ -658,6 +665,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
 
     def _future_done(self, future: Future[Any]) -> None:
         cleanup_config: dict[str, Any] | None = None
+        cleanup_camoufox = False
         executor: ThreadPoolExecutor | None = None
         with self._lock:
             if future not in self._futures:
@@ -666,12 +674,12 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             if is_last:
                 executor = self._executor
                 self._heartbeat_stop.set()
-                if (
-                    not self._custom_runner
-                    and str(self._last_config.get("driver") or "").strip().lower()
-                    == "roxybrowser"
-                ):
-                    cleanup_config = copy.deepcopy(self._last_config)
+                if not self._custom_runner:
+                    driver = str(self._last_config.get("driver") or "").strip().lower()
+                    if driver == "roxybrowser":
+                        cleanup_config = copy.deepcopy(self._last_config)
+                    elif driver == "camoufox":
+                        cleanup_camoufox = True
             self.task_store.save(self._tasks)
         if cleanup_config is not None:
             try:
@@ -686,6 +694,11 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     f"[RoxyBrowser/free_roxy_cleanup] 批次结束回收失败（{type(exc).__name__}）",
                     "warn",
                 )
+        if cleanup_camoufox:
+            try:
+                shutdown_camoufox_pools()
+            except Exception as exc:
+                self._log(f"[Camoufox/free_camoufox_launch] 批次结束回收浏览器池失败（{type(exc).__name__}）", "warn")
         with self._lock:
             self._futures.discard(future)
             if not self._futures and self._executor is executor and executor is not None:
@@ -759,6 +772,13 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 row = self.pool.entry(str(task_id))
                 saved = self.pool.result(str(task_id)) if row is not None else {}
                 if row is not None and saved.get("twofa_status") == "pending" and saved.get("proxy"):
+                    recovered_driver = str(saved.get("driver") or config.get("driver") or "protocol").strip().lower()
+                    if recovered_driver == "roxybrowser":
+                        raise FreeRegisterError(
+                            "free_twofa_retry", "重试 Free 账号 2FA",
+                            "RoxyBrowser 仅支持注册时浏览器态，不能在已关闭 Profile 后重试 2FA；请使用纯协议换绑/登录链路",
+                            retryable=False, error_code="free_roxy_twofa_retry_unsupported",
+                        )
                     now = int(time.time())
                     recovered_task_id = f"free-2fa-{now}-{secrets.token_hex(4)}"
                     task = {
@@ -776,11 +796,27 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                         "proxy_masked": _mask_proxy(saved.get("proxy")),
                         "proxy_fingerprint": _fingerprint(saved.get("proxy")),
                         "exit_ip": str(saved.get("exit_ip") or ""),
+                        "driver": recovered_driver,
                         "result": saved,
                     }
                     self._tasks[recovered_task_id] = task
             if task is None or task.get("status") != "twofa_pending":
                 raise FreeRegisterError("free_twofa_retry", "重试 Free 账号 2FA", "该任务当前没有待重试的 2FA", retryable=False)
+            result = task.get("result") if isinstance(task.get("result"), Mapping) else {}
+            driver = str(task.get("driver") or result.get("driver") or config.get("driver") or "protocol").strip().lower()
+            if driver == "roxybrowser":
+                raise FreeRegisterError(
+                    "free_twofa_retry", "重试 Free 账号 2FA",
+                    "RoxyBrowser 仅支持注册时浏览器态，不能在已关闭 Profile 后重试 2FA；请使用纯协议换绑/登录链路",
+                    retryable=False, error_code="free_roxy_twofa_retry_unsupported",
+                )
+            if driver not in {"protocol", "camoufox"}:
+                raise FreeRegisterError(
+                    "free_twofa_retry", "重试 Free 账号 2FA",
+                    "该任务的注册链路不支持 2FA 重试",
+                    retryable=False, error_code="free_twofa_retry_driver_unsupported",
+                )
+            task["driver"] = driver
             task["status"] = "queued"
             task["updated_at"] = int(time.time())
             self.task_store.save(self._tasks)
@@ -905,10 +941,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 status = int(getattr(error, "provider_status", 0) or 0)
             except (TypeError, ValueError):
                 status = 0
-            provider_code = str(getattr(error, "provider_code", "") or "").strip().casefold()
-            if status == 429 and provider_code in {
-                "rate_limit_exceeded", "too_many_requests", "rate_limited",
-            }:
+            if status == 429:
                 return True
             if bool(getattr(error, "proxy_retryable", False)):
                 return True
@@ -953,6 +986,10 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             return RoxyRegistrationRunner(
                 lifecycle_store_path=str(self.data_dir / "roxy_cleanup.json"),
             )
+        if str(config.get("driver") or "protocol").strip().lower() == "camoufox":
+            return CamoufoxRegistrationRunner(
+                lifecycle_store_path=str(self.data_dir / "camoufox_cleanup.json"),
+            )
         return self._run_protocol
 
     def _worker(self, task_id: str, config: dict[str, Any], twofa_retry: bool = False) -> None:
@@ -981,15 +1018,18 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 task.pop("failure", None)
             task["updated_at"] = int(time.time())
             snapshot = dict(task)
+            snapshot_driver = str(snapshot.get("driver") or config.get("driver") or "protocol").strip().lower()
+        task_config = dict(config)
+        task_config["driver"] = snapshot_driver
         self._log(f"[{task_id}/free_oauth_session] Free 任务开始", "info")
         task_log = lambda message, level="info", **fields: self._task_log(task_id, message, level, **fields)
         try:
             if self._stop.is_set():
                 raise FreeRegisterError("free_run_stop", "停止 Free 注册", "任务在执行前已停止", retryable=False)
-            retry_limit = max(0, min(5, int(config.get("proxy_retry_count") or 0)))
-            self._verify_pre_registration_proxy(snapshot, config, retry_limit)
+            retry_limit = max(0, min(5, int(task_config.get("proxy_retry_count") or 0)))
+            self._verify_pre_registration_proxy(snapshot, task_config, retry_limit)
             self._assert_batch_proxy_uniqueness(snapshot)
-            runner = self._runner_for(config)
+            runner = self._runner_for(task_config)
             with self._lock:
                 current = self._tasks.get(task_id)
                 if current is not None:
@@ -999,7 +1039,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             attempt = 0
             while True:
                 try:
-                    result = dict(runner(snapshot, config, self._stop, self._stage, task_log, twofa_retry=twofa_retry))
+                    result = dict(runner(snapshot, task_config, self._stop, self._stage, task_log, twofa_retry=twofa_retry))
                     break
                 except FreeRegisterError as exc:
                     error_node = str(getattr(exc, "node_code", ""))
@@ -1013,12 +1053,13 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     protocol_pre_email = error_node in {
                         "free_protocol_preflight", "free_oauth_session", "free_email_identifier",
                     }
-                    can_retry_pre_email = ((pre_profile or error_node == "free_roxy_ip_verify" or protocol_pre_email) and network_failure) or (protocol_pre_email and bool(getattr(exc, "proxy_retryable", False)))
+                    camoufox_pre_email = error_node == "free_camoufox_navigation" and bool(getattr(exc, "proxy_retryable", False))
+                    can_retry_pre_email = ((pre_profile or error_node == "free_roxy_ip_verify" or protocol_pre_email) and network_failure) or (protocol_pre_email and bool(getattr(exc, "proxy_retryable", False))) or camoufox_pre_email
                     if not can_retry_pre_email or attempt >= retry_limit or self._stop.is_set():
                         raise
                     if network_failure: self._record_proxy_failure(snapshot, exc)
                     attempt += 1
-                    switched = self._switch_pre_profile_proxy(snapshot, config)
+                    switched = self._switch_pre_profile_proxy(snapshot, task_config)
                     self._assert_batch_proxy_uniqueness(snapshot)
                     with self._lock:
                         current = self._tasks.get(task_id)
@@ -1029,7 +1070,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             post_registration_failure = None
             verified_exit_ip = ""
             try:
-                verified_exit_ip = self._verify_binding(snapshot, config)
+                verified_exit_ip = self._verify_binding(snapshot, task_config)
             except FreeRegisterError as exc:
                 account_complete = bool(
                     result.get("access_token")
@@ -1106,6 +1147,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     "free_roxy_open": "检查 RoxyBrowser Profile 是否可打开且保持无头",
                     "free_roxy_connect": "检查 Roxy 返回的 debugger/webdriver 地址和驱动文件",
                     "free_oauth_security_challenge": "当前代理或会话遇到安全验证，请更换代理后重试",
+                    "free_camoufox_navigation": "检查 Camoufox 代理、浏览器导航状态和上游 HTTP 状态",
                     "free_email_otp_wait": "确认邮箱取件 URL 可用，并在服务端发送验证码后重试",
                     "free_email_otp_validate": "确认验证码属于本次请求，必要时使用受控重发",
                     "free_oauth_callback": "检查 OAuth 回调地址、state 和当前会话是否一致",

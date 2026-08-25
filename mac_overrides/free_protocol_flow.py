@@ -29,6 +29,7 @@ try:
         page_type_value as _page_type_value,
         response_detail as _response_detail,
         response_metadata as _response_metadata,
+        retry_after_seconds as _retry_after_seconds,
         response_status as _status,
         safe_url as _safe_callback_label,
     )
@@ -60,6 +61,7 @@ except ImportError:  # pragma: no cover - compatibility import for recovered run
         page_type_value as _page_type_value,
         response_detail as _response_detail,
         response_metadata as _response_metadata,
+        retry_after_seconds as _retry_after_seconds,
         response_status as _status,
         safe_url as _safe_callback_label,
     )
@@ -257,6 +259,11 @@ def _password_context(response: Any) -> str:
     page_value = response.get("page")
     page = page_value if isinstance(page_value, Mapping) else {}
     page_type = str(page.get("type") or response.get("page_type") or response.get("type") or "").casefold()
+    # An explicit login_password state is authoritative.  Do this before the
+    # broader signup URL markers because older responses sometimes carry a
+    # stale create-account location alongside the current page type.
+    if page_type in {"login_password", "login-password", "log_in_password"}:
+        return "login"
     if any(marker.casefold() in locations or marker.casefold() in page_type for marker in _SIGNUP_PASSWORD_MARKERS):
         return "signup"
     login_markers = (
@@ -870,6 +877,7 @@ def _run_once(
     # can return another OTP/password envelope after a successful transition;
     # never jump straight to callback/token in that case.
     password_page_handled = False
+    registration_password_used = False
     profile_submitted = False
     consent_accepted = False
     account_flow = _account_flow(response)
@@ -934,6 +942,7 @@ def _run_once(
                     stop_requested=stop_requested,
                     log=log,
                 )
+                registration_password_used = True
             else:
                 account_flow = "existing_login"
                 _reset_otp_request(otp_provider)
@@ -1195,8 +1204,9 @@ def _run_once(
         # contain the short-lived OAuth code/state and must not be persisted.
         "callback_url": _safe_callback_label(callback_url),
         "account_flow": account_flow or ("signup" if profile_submitted else "existing_login"),
+        "registration_password_used": registration_password_used,
     }
-    if result["account_flow"] == "signup":
+    if result["account_flow"] == "signup" and registration_password_used:
         result["password"] = password or FIXED_PASSWORD
     for key in ("refresh_token", "id_token", "expires_at", "token_type", "email", "scope"):
         if key in tokens:

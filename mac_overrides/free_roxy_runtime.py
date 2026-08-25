@@ -74,6 +74,7 @@ try:
         wait_for_continue_url,
     )
     from .free_roxy_session import extract_session, session_token
+    from .free_account_service import finalize_registration_result
     from .free_roxy_profile import complete_profile_page
     from .free_roxy_twofa import setup_twofa
     from .free_roxy_lifecycle import (
@@ -145,6 +146,7 @@ except ImportError:
         wait_for_continue_url,
     )
     from free_roxy_session import extract_session, session_token  # type: ignore[no-redef]
+    from free_account_service import finalize_registration_result  # type: ignore[no-redef]
     from free_roxy_profile import complete_profile_page  # type: ignore[no-redef]
     from free_roxy_twofa import setup_twofa  # type: ignore[no-redef]
     from free_roxy_lifecycle import (  # type: ignore[no-redef]
@@ -589,6 +591,7 @@ class RoxyRegistrationRunner:
         task_id = str(task.get("task_id") or "")
         active_stage = "free_roxy_signup"
         account_flow = "signup"
+        registration_password_used = False
 
         def set_stage(code: str, legacy_code: str | None = None) -> None:
             nonlocal active_stage
@@ -800,6 +803,7 @@ class RoxyRegistrationRunner:
                 set_stage("free_roxy_signup_password")
                 try:
                     auth_state = self._submit_signup_password(driver, human, log)
+                    registration_password_used = True
                     if auth_state == "otp":
                         otp.mark_sent()
                 except FreeRegisterError:
@@ -911,6 +915,7 @@ class RoxyRegistrationRunner:
                     )
                 set_stage("free_roxy_signup_password")
                 post_otp_state = self._submit_signup_password(driver, human, log)
+                registration_password_used = True
             if post_otp_state == "profile":
                 set_stage("free_roxy_profile")
                 self._complete_profile(driver, human, log)
@@ -1000,16 +1005,18 @@ class RoxyRegistrationRunner:
                 **plan_details, "twofa_status": twofa_status,
                 "twofa_error": twofa_error, "registration_ip": registration_ip,
                 "expected_exit_ip": expected, "profile_summary": f"Roxy#{profile_id}",
+                "registration_password_used": registration_password_used,
             }
-            if account_flow == "signup":
-                result["password"] = FIXED_PASSWORD
             if twofa_failure:
                 result["twofa_failure"] = twofa_failure
             if totp_secret:
                 result["totp_secret"] = totp_secret
-                if account_flow == "signup":
-                    result["credential_line"] = f"{task.get('email')}----{FIXED_PASSWORD}----{totp_secret}"
-            return result
+            return finalize_registration_result(
+                result,
+                driver="roxybrowser",
+                email=str(task.get("email") or ""),
+                password_used=registration_password_used,
+            )
         except FreeRegisterError as exc:
             if driver is not None:
                 if not getattr(exc, "safe_page", ""):

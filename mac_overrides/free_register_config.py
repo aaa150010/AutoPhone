@@ -34,7 +34,7 @@ FREE_LEGACY_CONFIG_KEYS = frozenset({
 })
 
 DEFAULT_FREE_CONFIG: dict[str, Any] = {
-    "version": 6,
+    "version": 7,
     "driver": "protocol",
     "flow_profile": "reference_20260823",
     "proxy_allocation_mode": "healthy_random",
@@ -104,6 +104,21 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
         "cleanup_verify_interval": 0.25,
         "recover_cleanup_on_start": True,
     },
+    "camoufox": {
+        "headless": True,
+        "pool_size": 2,
+        "max_contexts_per_browser": 3,
+        "context_start_interval_ms": 175,
+        "startup_concurrency": 4,
+        "block_images": True,
+        "registration_timeout_seconds": 600,
+        "context_close_timeout_seconds": 15,
+        "browser_recycle_timeout_seconds": 45,
+        "browser_recycle_drain_timeout_seconds": 20,
+        "max_registrations_per_browser": 12,
+        "browser_launch_attempts": 3,
+        "existing_account_login": True,
+    },
 }
 
 
@@ -171,8 +186,8 @@ class FreeConfigStore:
             incoming["mailbox_proxy_url"] = str(base.get("mailbox_proxy_url") or DEFAULT_FREE_MAILBOX_PROXY)
         result = _merge(base, incoming)
         driver = str(result.get("driver") or "protocol").strip().lower()
-        if driver not in {"protocol", "roxybrowser"}:
-            raise FreeRegisterError("free_config", "保存 Free 配置", "Free 注册链路只能选择全协议或 RoxyBrowser", retryable=False)
+        if driver not in {"protocol", "roxybrowser", "camoufox"}:
+            raise FreeRegisterError("free_config", "保存 Free 配置", "Free 注册链路只能选择全协议、RoxyBrowser 或 Camoufox", retryable=False)
         result["driver"] = driver
         flow_profile = str(result.get("flow_profile") or "reference_20260823").strip().lower()
         result["flow_profile"] = flow_profile if flow_profile in {"reference_20260823", "legacy"} else "reference_20260823"
@@ -212,7 +227,7 @@ class FreeConfigStore:
         result["roxy_circuit_recovery_seconds"] = _int(result.get("roxy_circuit_recovery_seconds"), 30, 0, 3600)
         selection = result.get("proxy_selection") if isinstance(result.get("proxy_selection"), Mapping) else {}
         normalized_selection: dict[str, dict[str, str]] = {}
-        for driver in ("protocol", "roxybrowser"):
+        for driver in ("protocol", "roxybrowser", "camoufox"):
             item = selection.get(driver) if isinstance(selection.get(driver), Mapping) else {}
             country = clean(item.get("country"), 2).upper()
             if country and not re.fullmatch(r"[A-Z]{2}", country):
@@ -288,11 +303,35 @@ class FreeConfigStore:
         result["roxybrowser"] = roxy
         # Keep the old shape for API compatibility, but always return empty
         # classification values so they cannot influence allocation.
+        camoufox_defaults = DEFAULT_FREE_CONFIG["camoufox"]
+        camoufox = {
+            key: copy.deepcopy(value)
+            for key, value in dict(result.get("camoufox") or {}).items()
+            if key in camoufox_defaults
+        }
+        for key in ("headless", "block_images", "existing_account_login"):
+            camoufox[key] = _as_bool(camoufox.get(key), bool(camoufox_defaults[key]))
+        camoufox["pool_size"] = _int(camoufox.get("pool_size"), 2, 1, 16)
+        camoufox["max_contexts_per_browser"] = _int(camoufox.get("max_contexts_per_browser"), 3, 1, 32)
+        camoufox["context_start_interval_ms"] = _int(camoufox.get("context_start_interval_ms"), 175, 0, 10_000)
+        camoufox["startup_concurrency"] = _int(camoufox.get("startup_concurrency"), 4, 1, 64)
+        camoufox["registration_timeout_seconds"] = _int(camoufox.get("registration_timeout_seconds"), 600, 60, 3600)
+        camoufox["context_close_timeout_seconds"] = _int(camoufox.get("context_close_timeout_seconds"), 15, 1, 120)
+        camoufox["browser_recycle_timeout_seconds"] = _int(camoufox.get("browser_recycle_timeout_seconds"), 45, 5, 300)
+        camoufox["browser_recycle_drain_timeout_seconds"] = _int(camoufox.get("browser_recycle_drain_timeout_seconds"), 20, 1, 180)
+        camoufox["max_registrations_per_browser"] = _int(camoufox.get("max_registrations_per_browser"), 12, 1, 1000)
+        camoufox["browser_launch_attempts"] = _int(camoufox.get("browser_launch_attempts"), 3, 1, 10)
+        result["camoufox"] = camoufox
         result["proxy_selection"] = {
             "protocol": {"country": "", "group": ""},
             "roxybrowser": {"country": "", "group": ""},
+            "camoufox": {"country": "", "group": ""},
         }
-        result["version"] = 6
+        # v5 carried the old classified-proxy policy.  Keep its first
+        # migration marker at v6 so existing stores can be upgraded in two
+        # atomic, observable steps; v6 and newer stores use the v7 Camoufox
+        # schema on the next normalization.
+        result["version"] = 6 if source_version < 6 else 7
         return result
 
     def load(self) -> dict[str, Any]:
@@ -303,9 +342,8 @@ class FreeConfigStore:
                 value = {}
             source = value if isinstance(value, Mapping) else {}
             normalized = self.normalize(source)
-            # Persist only the one-time schema/policy migration. Normal reads
-            # remain read-only after v6, while legacy exclusive/classified
-            # configs are atomically upgraded for the next process.
+            # Persist one-time schema/policy migrations. v6 files must be
+            # written back as v7 so the normalized Camoufox schema is durable.
             try:
                 source_version = int(source.get("version") or 0)
             except (TypeError, ValueError):
@@ -313,7 +351,7 @@ class FreeConfigStore:
             needs_policy_migration = (
                 self.path.exists()
                 and (
-                    source_version < 6
+                    source_version < 7
                     or str(source.get("proxy_allocation_mode") or "").strip().lower() != "healthy_random"
                     or any(
                         isinstance(item, Mapping) and any(str(item.get(key) or "").strip() for key in ("country", "group"))

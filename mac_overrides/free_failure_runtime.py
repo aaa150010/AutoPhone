@@ -62,6 +62,7 @@ FAILURE_KEYS = (
     "safe_page",
     "content_type",
     "session_rebuilds",
+    "retry_after_seconds",
 )
 
 
@@ -186,6 +187,12 @@ def exception_failure_context(error: BaseException) -> dict[str, Any]:
     if rebuilds is not None:
         try:
             context["session_rebuilds"] = max(0, min(100, int(rebuilds)))
+        except (TypeError, ValueError):
+            pass
+    retry_after = getattr(error, "retry_after_seconds", None)
+    if retry_after is not None:
+        try:
+            context["retry_after_seconds"] = max(0, min(86400, int(float(retry_after))))
         except (TypeError, ValueError):
             pass
     return context
@@ -314,6 +321,11 @@ def canonical_failure(
     if value.get("session_rebuilds") is not None:
         try:
             output["session_rebuilds"] = max(0, min(100, int(value.get("session_rebuilds"))))
+        except (TypeError, ValueError):
+            pass
+    if value.get("retry_after_seconds") is not None:
+        try:
+            output["retry_after_seconds"] = max(0, min(86400, int(float(value.get("retry_after_seconds")))))
         except (TypeError, ValueError):
             pass
     return output

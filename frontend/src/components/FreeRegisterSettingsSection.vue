@@ -23,6 +23,13 @@ const defaultConfig: FreeConfig = {
     api_retries: 3, api_retry_delay: 2, humanize_delay: true, humanize_factor: 1,
     humanize_browser_actions: true, existing_account_login: true, post_registration_dwell_min: 18, post_registration_dwell_max: 45,
   },
+  camoufox: {
+    headless: true, pool_size: 2, max_contexts_per_browser: 3, context_start_interval_ms: 175,
+    startup_concurrency: 4, block_images: true, registration_timeout_seconds: 600,
+    context_close_timeout_seconds: 15, browser_recycle_timeout_seconds: 45,
+    browser_recycle_drain_timeout_seconds: 20, max_registrations_per_browser: 12,
+    browser_launch_attempts: 3, existing_account_login: true,
+  },
 }
 
 const config = reactive<FreeConfig>(structuredClone(defaultConfig))
@@ -44,6 +51,7 @@ function mergeConfig(value: any) {
   Object.assign(config, value)
   Object.assign(config.protocol, value.protocol || {})
   Object.assign(config.roxybrowser, value.roxybrowser || {})
+  Object.assign(config.camoufox, value.camoufox || {})
   config.proxy_allocation_mode = 'healthy_random'
   config.target_count = Math.min(200, Math.max(1, Number(config.target_count) || 1))
   config.concurrency = Math.min(16, Math.max(1, Number(config.concurrency) || 1))
@@ -195,10 +203,11 @@ defineExpose({ save })
     </div>
 
     <el-form-item>
-      <template #label><FieldHelpLabel label="注册链路" help="全协议直接调用认证接口；RoxyBrowser 会为每个账号创建独立浏览器 Profile，并使用该账号预绑定的固定代理。两条链路的配置分别保存。" /></template>
+      <template #label><FieldHelpLabel label="注册链路" help="全协议直接调用认证接口；RoxyBrowser 使用独立 Profile；Camoufox 使用共享浏览器进程中的独立 context。三条链路共用同一个 URL 邮箱池和取件策略。" /></template>
       <el-radio-group v-model="config.driver" :disabled="running || busy === 'load'" class="driver-options">
         <el-radio value="protocol" border><strong>全协议</strong><small>OAuth、邮箱 OTP 和套餐检查</small></el-radio>
         <el-radio value="roxybrowser" border><strong>RoxyBrowser</strong><small>独立 Profile、固定代理和 Selenium 页面注册</small></el-radio>
+        <el-radio value="camoufox" border><strong>Camoufox</strong><small>异步共享浏览器池、独立 context 和同源 Session</small></el-radio>
       </el-radio-group>
     </el-form-item>
 
@@ -266,8 +275,24 @@ defineExpose({ save })
       </el-row>
       <div class="check-row"><el-checkbox v-model="config.protocol.anonymous_warmup" :disabled="running">匿名态预热</el-checkbox><el-checkbox v-model="config.protocol.authenticated_warmup" :disabled="running">认证态预热</el-checkbox></div>
     </div>
+    <div v-if="config.driver === 'camoufox'" class="subsection">
+      <h3>Camoufox 浏览器池</h3>
+      <el-row :gutter="10">
+        <el-col :span="6"><el-form-item label="模式"><el-switch v-model="config.camoufox.headless" active-text="无头" inactive-text="有头" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="6"><el-form-item label="浏览器进程"><el-input-number v-model="config.camoufox.pool_size" :min="1" :max="16" controls-position="right" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="6"><el-form-item label="每进程 context"><el-input-number v-model="config.camoufox.max_contexts_per_browser" :min="1" :max="32" controls-position="right" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="6"><el-form-item label="注册超时"><el-input-number v-model="config.camoufox.registration_timeout_seconds" :min="60" :max="3600" controls-position="right" :disabled="running" /></el-form-item></el-col>
+      </el-row>
+      <el-row :gutter="10">
+        <el-col :span="8"><el-form-item label="context 关闭超时"><el-input-number v-model="config.camoufox.context_close_timeout_seconds" :min="1" :max="120" controls-position="right" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item label="进程回收超时"><el-input-number v-model="config.camoufox.browser_recycle_timeout_seconds" :min="5" :max="300" controls-position="right" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item label="单进程最大注册数"><el-input-number v-model="config.camoufox.max_registrations_per_browser" :min="1" :max="1000" controls-position="right" :disabled="running" /></el-form-item></el-col>
+      </el-row>
+      <div class="check-row"><el-checkbox v-model="config.camoufox.block_images" :disabled="running">无头模式阻止图片加载</el-checkbox><el-checkbox v-model="config.camoufox.existing_account_login" :disabled="running">允许已有账号邮箱验证码登录</el-checkbox></div>
+      <p class="section-hint">Camoufox 是可选依赖；未安装时预检会明确提示，不影响全协议和 RoxyBrowser。</p>
+    </div>
 
-    <div v-else class="subsection">
+    <div v-if="config.driver === 'roxybrowser'" class="subsection">
       <div class="section-heading-row"><h3>RoxyBrowser 专属配置</h3><el-button size="small" :icon="Connection" :loading="busy === 'workspace'" :disabled="running" @click="loadWorkspaces">读取工作区</el-button></div>
       <el-row :gutter="10">
         <el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="API 地址" help="本机 RoxyBrowser API 服务地址，默认端口 50000。这里只连接本机控制接口，不是代理地址。" /></template><el-input v-model="roxy.api_base" :disabled="running" /></el-form-item></el-col>

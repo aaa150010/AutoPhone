@@ -30,6 +30,13 @@ class FreeConfigRouteTests(unittest.TestCase):
             self.assertEqual(store.load()["version"], 6)
             self.assertEqual(json.loads(store.path.read_text(encoding="utf-8"))["proxy_allocation_mode"], "healthy_random")
 
+    def test_v6_config_is_persisted_as_v7_on_load(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = FreeConfigStore(Path(directory))
+            store.path.write_text(json.dumps({"version": 6, "proxy_allocation_mode": "healthy_random"}), encoding="utf-8")
+            self.assertEqual(store.load()["version"], 7)
+            self.assertEqual(json.loads(store.path.read_text(encoding="utf-8"))["version"], 7)
+
     def test_single_pool_migration_clears_classification_without_touching_secrets(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
