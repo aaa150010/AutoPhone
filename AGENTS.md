@@ -10,6 +10,17 @@ Free 全协议链路和 RoxyBrowser 链路必须以同级项目 `/Users/lwh/proj
 
 Free 代理池是全协议和 RoxyBrowser 共用的单一 `healthy_random` 池：不按国家或代理组筛选、分配或展示，允许并发任务共享同一代理和出口 IP。代理预检只验证实际代理请求、HTTP 成功状态和出口 IP 格式；任务期间出口 IP 变化必须更新当前记录并继续健康任务，不得产生新的 `free_proxy_drift` 停止节点。历史国家/分组字段只能迁移为空，不能恢复为分配策略；RoxyBrowser 仅保留自身的 SOCKS4 协议能力限制。
 
+Free 账号换绑统一使用纯协议链路：无论账号最初由全协议还是
+RoxyBrowser 注册，换绑都必须复用 AutoRegister 对齐的协议会话、
+Sentinel、password+TOTP 登录、`change_email` eligibility/begin/verify、
+新邮箱 OTP、换绑后新邮箱重登、Session 刷新以及套餐/Plus 资格查询。
+RoxyBrowser Profile 只作为原注册来源记录，换绑过程中不得打开、连接、
+复用或创建 RoxyBrowser Profile，不得为换绑另行设计浏览器状态机。
+换绑只允许使用已有密码和已启用 TOTP 的完整 Free 账号；邮箱验证码
+继续使用 `mac_overrides/mailbox_otp_service.py` 的现有基线、旧码排除、
+轮询、重发和阶段隔离策略。Free 注册本身仍按其配置的 protocol 或
+RoxyBrowser 驱动执行，但注册驱动不得改变后续换绑协议。
+
 唯一允许保留 AutoPhone 自己实现的是邮箱解析和邮箱验证码获取：继续使用 `mac_overrides/mailbox_otp_service.py` 及其现有策略模式，包括来源解析、请求前基线、旧验证码排除、消息身份判断、时间过滤、轮询、重发和阶段隔离。除这些邮箱取件边界外，不得自行设计另一套注册链路，不得为了兼容旧实现而保留与 AutoRegister 不同的主流程。
 
 对照位置：

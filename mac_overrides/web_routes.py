@@ -1113,6 +1113,37 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         error_response=free_error_response,
     )
 
+    # Rebind owns an independent mailbox pool and task state.  Construct it
+    # beside the Free registration manager, but keep its worker and routes
+    # isolated from the registration driver and RoxyBrowser lifecycle.
+    try:
+        from .free_rebind_runtime import FreeRebindService
+        from .free_rebind_routes import FreeRebindRouteController
+    except ImportError:
+        from free_rebind_runtime import FreeRebindService  # type: ignore[no-redef]
+        from free_rebind_routes import FreeRebindRouteController  # type: ignore[no-redef]
+    rebind_root = context.free_data_dir
+    if rebind_root is None and free_manager is not None:
+        rebind_root = getattr(free_manager, "data_dir", None)
+    rebind_config_provider = getattr(free_config_store, "load", None) if free_config_store is not None else None
+    free_rebind_service = (
+        FreeRebindService(
+            rebind_root,
+            free_manager=free_manager,
+            config_provider=rebind_config_provider,
+            log_fn=getattr(free_manager, "_log", None),
+        )
+        if free_manager is not None and rebind_root is not None
+        else None
+    )
+    if free_rebind_service is not None:
+        app.extensions["gptphone_free_rebind"] = free_rebind_service
+    free_rebind_routes = FreeRebindRouteController(
+        module=module,
+        service=free_rebind_service,
+        error_response=free_error_response,
+    )
+
     routes = (
         ("/mailboxes", "mailbox_manager", mailbox_manager, ["GET"]),
         ("/splitter", "mailbox_splitter", mailbox_manager, ["GET"]),
@@ -1136,6 +1167,15 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/free/rerun", "api_free_rerun", free_account_routes.rerun, ["POST"]),
         ("/api/free/live-check", "api_free_live_check", free_account_routes.live_check, ["POST"]),
         ("/api/free/live-check/state", "api_free_live_check_state", free_account_routes.live_check_state, ["GET"]),
+        ("/api/free/rebind/state", "api_free_rebind_state", free_rebind_routes.state, ["GET"]),
+        ("/api/free/rebind/mailboxes", "api_free_rebind_mailboxes", free_rebind_routes.mailboxes, ["GET"]),
+        ("/api/free/rebind/mailboxes/import", "api_free_rebind_mailboxes_import", free_rebind_routes.import_mailboxes, ["POST"]),
+        ("/api/free/rebind/mailboxes/delete", "api_free_rebind_mailboxes_delete", free_rebind_routes.delete_mailboxes, ["POST"]),
+        ("/api/free/rebind/mailboxes/available", "api_free_rebind_mailboxes_available", lambda: free_rebind_routes.mailbox_status("available"), ["POST"]),
+        ("/api/free/rebind/mailboxes/unavailable", "api_free_rebind_mailboxes_unavailable", lambda: free_rebind_routes.mailbox_status("unavailable"), ["POST"]),
+        ("/api/free/rebind/start", "api_free_rebind_start", free_rebind_routes.start, ["POST"]),
+        ("/api/free/rebind/retry", "api_free_rebind_retry", free_rebind_routes.retry, ["POST"]),
+        ("/api/free/rebind/stop", "api_free_rebind_stop", free_rebind_routes.stop, ["POST"]),
         *mailbox_mutation_routes.routes(),
         ("/api/mailboxes/website-import", "api_mailboxes_website_import", api_mailboxes_website_import, ["POST"]),
         ("/api/mailboxes/latest-code", "api_mailboxes_latest_code", api_mailboxes_latest_code, ["POST"]),

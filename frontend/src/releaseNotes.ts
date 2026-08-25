@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.71',
-  freeRuntimeVersion: '1.6.71',
-  title: 'Free 双链路照齐 AutoRegister',
+  version: '1.6.72',
+  freeRuntimeVersion: '1.6.72',
+  title: 'Free 邮箱换绑工作台',
   releasedAt: '2026-08-25',
   sections: [
+    {
+      title: '独立 Free 邮箱换绑池',
+      usage: '新增独立菜单维护换绑目标邮箱池，可手动选择已有密码和 TOTP 的 Free 账号与目标邮箱。换绑统一走纯协议链路，不连接 RoxyBrowser；完成后保留原 Free 行 ID，单独记录新邮箱并重新查询套餐与 Plus 试用资格。',
+    },
     {
       title: 'Free 任务状态与邮箱失败归位',
       usage: '任务排队或运行期间 2FA 显示处理中，不再预先显示待重试；Roxy 邮箱提交过渡超时发生在确认账号创建前时，邮箱会自动恢复为可用，下一次启动可直接重新运行。验证码、密码提交后或已确认账号创建的失败仍保留待重跑或 2FA 待重试状态，避免重复注册已创建账号。',

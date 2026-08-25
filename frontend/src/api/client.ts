@@ -218,6 +218,11 @@ export interface FreeMailboxRow {
   has_totp?: boolean
   has_credential?: boolean
   credential_line?: string
+  rebind_email?: string
+  rebind_task_id?: string
+  rebind_status?: string
+  rebind_plan_type?: string
+  rebind_plus_trial_eligible?: boolean
   task_id?: string
   error?: string
   failure?: TaskFailure | null
@@ -283,6 +288,83 @@ export const getFreeSecret = (kind: 'token' | 'password' | 'totp' | 'proxy' | 'c
   '/api/free/secrets',
   { kind, ...ids },
 )
+
+export interface FreeRebindMailboxRow {
+  row_id: string
+  line_no: number
+  email: string
+  status: string
+  task_id?: string
+  error?: string
+  failure?: TaskFailure | null
+}
+
+export interface FreeRebindSourceRow {
+  row_id: string
+  email: string
+  driver?: string
+  status?: string
+  plan_type?: string
+  plus_trial_eligible?: boolean
+  has_password: boolean
+  has_totp: boolean
+  proxy_masked?: string
+  rebind_email?: string
+  rebind_status?: string
+}
+
+export interface FreeRebindTask {
+  task_id: string
+  source_row_id: string
+  source_email: string
+  target_row_id: string
+  target_email: string
+  new_bound_email?: string
+  status: string
+  stage?: string
+  stage_label?: string
+  created_at?: number
+  updated_at?: number
+  proxy_masked?: string
+  plan_type?: string
+  subscription_plan?: string
+  plus_trial_eligible?: boolean
+  plan_check_status?: string
+  error?: string
+  failure?: TaskFailure | null
+}
+
+export interface FreeRebindState {
+  running: boolean
+  tasks: FreeRebindTask[]
+  sources: FreeRebindSourceRow[]
+  mailboxes: FreeRebindMailboxRow[]
+  summary?: { total?: number; active?: number; success?: number; failed?: number; stopped?: number }
+}
+
+export const getFreeRebindState = () => api<{ ok: true } & FreeRebindState>('/api/free/rebind/state')
+export const getFreeRebindMailboxes = () => api<{ ok: true; pool: 'free_rebind'; rows: FreeRebindMailboxRow[] }>('/api/free/rebind/mailboxes')
+export const importFreeRebindMailboxes = (poolContent: string) => api<{ ok: true; imported: number; skipped: number; rows: FreeRebindMailboxRow[] }>(
+  '/api/free/rebind/mailboxes/import',
+  { pool_content: poolContent },
+)
+export const deleteFreeRebindMailboxes = (rowIds: string[]) => api<{ ok: true; deleted: number; rows: FreeRebindMailboxRow[] }>(
+  '/api/free/rebind/mailboxes/delete',
+  { row_ids: rowIds },
+)
+export const setFreeRebindMailboxStatus = (status: 'available' | 'unavailable', rowIds: string[]) => api<{ ok: true; updated: number; rows: FreeRebindMailboxRow[] }>(
+  `/api/free/rebind/mailboxes/${status}`,
+  { row_ids: rowIds },
+)
+export const startFreeRebind = (sourceRowId: string, targetRowId: string) => api<{ ok: true; task: FreeRebindTask; state: FreeRebindState }>(
+  '/api/free/rebind/start',
+  { source_row_id: sourceRowId, target_row_id: targetRowId },
+)
+export const retryFreeRebind = (taskId: string) => api<{ ok: true; task: FreeRebindTask; state: FreeRebindState }>(
+  '/api/free/rebind/retry',
+  { task_id: taskId },
+)
+export const stopFreeRebind = () => api<{ ok: true; state: FreeRebindState }>('/api/free/rebind/stop', {})
 export const retryFreeTwofa = (id: string) => api<{ ok: true; task: any; state?: AppState }>(
   '/api/free/2fa/retry',
   { task_id: id, row_id: id },
