@@ -162,6 +162,21 @@ def _contains(value: Any, markers: tuple[str, ...]) -> bool:
     return any(marker.casefold() in text for marker in markers)
 
 
+def _is_rate_limited_response(response: Any, error: str = "") -> bool:
+    """Keep provider rate limits out of the OAuth-session rebuild branch."""
+    if _status(response) == 429:
+        return True
+    values: list[str] = [str(error or "")]
+    if isinstance(response, Mapping):
+        for key in ("error_code", "code", "type", "reason", "message"):
+            values.append(str(response.get(key) or ""))
+        nested = response.get("error")
+        if isinstance(nested, Mapping):
+            values.extend(str(nested.get(key) or "") for key in ("error_code", "code", "type", "reason", "message"))
+    text = " ".join(values).casefold()
+    return any(marker in text for marker in ("rate_limit", "rate limit", "ratelimit", "too many requests"))
+
+
 def _is_state_response(response: Any, ok: Callable[[Any], bool] | None = None) -> bool:
     page_types = _PASSWORD_PAGE_TYPES | _OTP_PAGE_TYPES | _PROFILE_PAGE_TYPES | _CALLBACK_READY_PAGE_TYPES
     return _is_known_state_response(response, ok, page_types)
@@ -227,6 +242,15 @@ def _raise_response(response: Any, *, node: str, label: str, stage: str) -> None
     """Map a transport response to a stable Free node error."""
     _ok, _page, _continue, error_text, session_invalid = _chain_helpers()
     error = str(error_text(response) or "").strip()
+    if _is_rate_limited_response(response, error):
+        raise FreeRegisterError(
+            node,
+            label,
+            f"{_response_detail(response, error)}；服务端限流，未重放当前请求",
+            retryable=True,
+            error_code=f"{stage}_rate_limited",
+            **_response_metadata(response, action_hint="等待服务端限流窗口后再重试，避免立即重复提交", diagnostic_error=error),
+        )
     if session_invalid(response) or _contains(error, _SESSION_INVALID_MARKERS):
         failure = FreeRegisterError(
             node,
@@ -504,6 +528,7 @@ def _transport_node(method: str) -> tuple[str, str]:
         "create_account_profile": ("free_account_create", "创建 Free 账号"),
         "accept_consent": ("free_oauth_callback", "确认 Free OAuth 授权"),
         "follow_continue_until_code": ("free_oauth_callback", "Free OAuth 回调"),
+        "complete_chatgpt_callback": ("free_oauth_callback", "完成 ChatGPT OAuth 回调"),
         "exchange_code": ("free_access_token", "获取 Free access token"),
     }.get(method, ("free_protocol_result", "Free 协议注册"))
 
@@ -551,6 +576,15 @@ def _call_transport(
         _raise_security_page(result)
         _ok, _page, _continue, error_text, session_invalid = _chain_helpers()
         error = str(error_text(result) or "")
+        if _is_rate_limited_response(result, error):
+            raise FreeRegisterError(
+                node,
+                label,
+                f"{_response_detail(result, error)}；服务端限流，未重放当前请求",
+                retryable=True,
+                error_code=f"{node}_rate_limited",
+                **_response_metadata(result, action_hint="等待服务端限流窗口后再重试，避免立即重复提交", diagnostic_error=error),
+            )
         trusted_bootstrap = _trusted_html_bootstrap(result, method)
         if (session_invalid(result) or _contains(error, _SESSION_INVALID_MARKERS)) and not trusted_bootstrap:
             failure = FreeRegisterError(
@@ -569,6 +603,16 @@ def _call_transport(
         if flow == "password_verify" and method in {"send_email_otp", "verify_email_otp"}:
             action = "派发" if method.startswith("send_") else "验证"
             node, label = "free_existing_login_otp", f"{action}已有账号登录验证码"
+        if _contains(exc, ("rate_limit", "rate limit", "ratelimit", "too many requests")):
+            raise FreeRegisterError(
+                node,
+                label,
+                "OAuth 请求被服务端限流，未重放当前请求",
+                retryable=True,
+                error_code=f"{node}_rate_limited",
+                action_hint="等待服务端限流窗口后再重试，避免立即重复提交",
+                diagnostic=f"transport={method}; exception={type(exc).__name__}",
+            ) from exc
         if _contains(exc, _SESSION_INVALID_MARKERS):
             raise FreeRegisterError(
                 node,
@@ -1124,18 +1168,52 @@ def _run_once(
     _log(log, "OAuth 回调 code/state 校验完成（内容不写入日志）", "success")
 
     _stage(stage, task_id, "free_access_token")
-    tokens = _call_transport(
-        transport,
-        "exchange_code",
-        code,
-        context["code_verifier"],
-        context["client_id"],
-        context["redirect_uri"],
-        email,
-        flow="oauth_token_exchange",
-        stop_requested=stop_requested,
-        log=log,
-    )
+    session_token = ""
+    complete_callback = getattr(transport, "complete_chatgpt_callback", None)
+    capture_session_token = getattr(transport, "chatgpt_access_token", None)
+    if callable(complete_callback) and callable(capture_session_token):
+        callback_result = _call_transport(
+            transport,
+            "complete_chatgpt_callback",
+            next_url,
+            flow="oauth_callback",
+            stop_requested=stop_requested,
+            log=log,
+        )
+        if isinstance(callback_result, Mapping):
+            callback_status = _status(callback_result)
+            callback_ok = callback_result.get("ok")
+            callback_failed = callback_ok is False or (
+                isinstance(callback_ok, str)
+                and callback_ok.strip().casefold() in {"false", "0", "no", "failed", "failure", "error"}
+            )
+            if (callback_status is not None and not 200 <= callback_status < 300) or callback_failed:
+                _raise_response(
+                    callback_result,
+                    node="free_oauth_callback",
+                    label="完成 ChatGPT OAuth 回调",
+                    stage="free_oauth_callback",
+                )
+        session_token = str(capture_session_token() or "").strip()
+
+    if session_token:
+        tokens: Mapping[str, Any] = {
+            "access_token": session_token,
+            "token_source": "chatgpt_session",
+        }
+    else:
+        tokens = _call_transport(
+            transport,
+            "exchange_code",
+            code,
+            context["code_verifier"],
+            context["client_id"],
+            context["redirect_uri"],
+            email,
+            flow="oauth_token_exchange",
+            stop_requested=stop_requested,
+            log=log,
+        )
     # Some replay/compatibility transports return an HTTP envelope instead of
     # raising for a failed token endpoint. Preserve that provider status and
     # error node rather than collapsing it into a missing-token result.

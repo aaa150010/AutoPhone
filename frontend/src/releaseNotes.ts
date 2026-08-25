@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.67',
-  freeRuntimeVersion: '1.6.67',
+  version: '1.6.68',
+  freeRuntimeVersion: '1.6.68',
   title: 'Free 双链路照齐 AutoRegister',
   releasedAt: '2026-08-25',
   sections: [
+    {
+      title: '协议限流与 2FA Token 刷新',
+      usage: '全协议遇到服务端 HTTP 429 限流时不再误判为 OAuth 会话失效并立即重放；2FA 邮箱重认证后会跟随 OAuth 回调读取新 Session Token，再用于 enrollment、激活和结果保存。',
+    },
     {
       title: 'Free 数量与并发控件紧凑化',
       usage: 'Free 注册中心启动条以及运行配置中的注册数量、并发输入框改为适合数值录入的紧凑尺寸，保留原有范围校验和加减控制。',

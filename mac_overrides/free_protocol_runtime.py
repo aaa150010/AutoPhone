@@ -115,6 +115,19 @@ def _response_provider_code(response: Any, data: Any = None) -> str:
     return ""
 
 
+def _response_continue_url(response: Any) -> str:
+    if not isinstance(response, Mapping):
+        return ""
+    page = response.get("page")
+    sources = (page, response) if isinstance(page, Mapping) else (response,)
+    for source in sources:
+        for key in ("continue_url", "external_url", "redirect_url", "next_url", "location", "url"):
+            value = str(source.get(key) or "").strip()
+            if value:
+                return value
+    return ""
+
+
 def _explicit_false(value: Any) -> bool:
     return value is False or (
         isinstance(value, str)
@@ -681,6 +694,11 @@ class FreeProtocolMixin:
             if bool(config.get("auto_set_2fa", True)):
                 try:
                     twofa = self._enroll_twofa(transport, token, task, password, config, otp_provider, stage)
+                    capture_token = getattr(transport, "chatgpt_access_token", None)
+                    if callable(capture_token):
+                        refreshed = str(capture_token() or "").strip()
+                        if refreshed:
+                            token = refreshed
                 except FreeTwoFaPending as pending:
                     pending.plan_type = str(plan_details.get("plan_type") or pending.plan_type or "free")
                     pending.plus_trial_eligible = bool(plan_details.get("plus_trial_eligible", pending.plus_trial_eligible))
@@ -867,9 +885,10 @@ class FreeProtocolMixin:
         session = transport.session
         task_id = str(task["task_id"])
         stage(task_id, "free_twofa_enroll")
+        active_token = str(token or "")
         headers = {
             "accept": "application/json", "content-type": "application/json",
-            "authorization": f"Bearer {token}",
+            "authorization": f"Bearer {active_token}",
             "oai-device-id": str(getattr(transport, "device_id", "") or ""), "oai-language": "en-GB",
         }
         phase = (
@@ -928,6 +947,24 @@ class FreeProtocolMixin:
                 verified_ok = verified.get("ok") if isinstance(verified, Mapping) else None
                 if (verified_status is not None and not 200 <= verified_status < 300) or _explicit_false(verified_ok):
                     fail(f"重新认证 OTP 验证失败（HTTP {verified_status if verified_status is not None else '-'}）", verified)
+                continue_url = _response_continue_url(verified)
+                if continue_url:
+                    complete_callback = getattr(transport, "complete_chatgpt_callback", None)
+                    if not callable(complete_callback):
+                        fail("重新认证 OTP 响应包含 OAuth 回调，但传输会话不支持回调", verified)
+                    callback = complete_callback(continue_url)
+                    callback_status = _response_status(callback)
+                    callback_ok = callback.get("ok") if isinstance(callback, Mapping) else None
+                    if (callback_status is not None and not 200 <= callback_status < 300) or _explicit_false(callback_ok):
+                        fail(f"重新认证 OAuth 回调失败（HTTP {callback_status if callback_status is not None else '-'}）", callback)
+                capture_token = getattr(transport, "chatgpt_access_token", None)
+                if callable(capture_token):
+                    refreshed = str(capture_token() or "").strip()
+                    if refreshed:
+                        active_token = refreshed
+                elif continue_url:
+                    fail("重新认证 OAuth 回调完成后未提供新的 ChatGPT Session Token")
+                headers["authorization"] = f"Bearer {active_token}"
             phase = (
                 "free_twofa_enroll", "注册 Free 账号 2FA", "free_twofa_enroll_failed",
                 "保留账号和 Token，稍后重试 2FA 注册",
@@ -970,7 +1007,7 @@ class FreeProtocolMixin:
                 }:
                     node_code, node_label, error_code = phase[:3]
                 raise FreeTwoFaPending(
-                    str(exc), token=token, plan_type="free", plus_trial_eligible=False,
+                    str(exc), token=active_token, plan_type="free", plus_trial_eligible=False,
                     node_code=node_code, node_label=node_label, error_code=error_code,
                     provider_status=exc.provider_status,
                     retryable=bool(exc.retryable),
@@ -978,7 +1015,7 @@ class FreeProtocolMixin:
                     action_hint=str(exc.action_hint or phase[3]),
                 ) from exc
             raise FreeTwoFaPending(
-                f"2FA 设置失败：{type(exc).__name__}", token=token, plan_type="free", plus_trial_eligible=False,
+                f"2FA 设置失败：{type(exc).__name__}", token=active_token, plan_type="free", plus_trial_eligible=False,
                 node_code=phase[0], node_label=phase[1], error_code=phase[2], retryable=True,
                 action_hint=phase[3],
             ) from exc

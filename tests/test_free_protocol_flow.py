@@ -262,6 +262,24 @@ class FreeProtocolFlowTests(unittest.TestCase):
             "oauth_token_exchange",
         ])
 
+    def test_protocol_prefers_chatgpt_session_token_after_callback(self):
+        class SessionTransport(_Transport):
+            def complete_chatgpt_callback(self, continue_url):
+                self.calls.append(f"complete:{continue_url}")
+                return {"_status": 200, "session_token_present": True}
+
+            def chatgpt_access_token(self):
+                self.calls.append("chatgpt_access_token")
+                return "chatgpt-session-token"
+
+            def exchange_code(self, *_args, **_kwargs):
+                raise AssertionError("ChatGPT Session Token should be preferred")
+
+        transport = SessionTransport()
+        result, _ = _run(transport)
+        self.assertEqual(result["access_token"], "chatgpt-session-token")
+        self.assertEqual(transport.calls[-2:], ["complete:/callback", "chatgpt_access_token"])
+
     def test_email_page_type_aliases_use_the_same_url_mailbox_verification_path(self):
         for page_type in (
             "email_otp",
@@ -365,6 +383,21 @@ class FreeProtocolFlowTests(unittest.TestCase):
         self.assertEqual(context_factory_calls, [])
         self.assertEqual(second.callback_args[1]["state"], "state-private")
         self.assertEqual(second.exchange_args[1], "verifier-private")
+
+    def test_rate_limit_is_not_replayed_as_an_oauth_session_rebuild(self):
+        transport = _Transport(email={
+            "_status": 429,
+            "error": {"code": "rate_limit_exceeded"},
+            "_content_type": "application/json",
+        })
+        factory_calls = []
+        with self.assertRaises(FreeRegisterError) as raised:
+            _run(transport, transport_factory=lambda: factory_calls.append(True))
+        self.assertEqual(raised.exception.error_code, "free_email_identifier_rate_limited")
+        self.assertEqual(raised.exception.provider_status, 429)
+        self.assertEqual(raised.exception.provider_code, "rate_limit_exceeded")
+        self.assertEqual(raised.exception.session_rebuilds, 0)
+        self.assertEqual(factory_calls, [])
 
     def test_html_bootstrap_is_rebuilt_once_but_challenge_stops(self):
         html = _Transport(start={"_status": 200, "_content_type": "text/html", "_body_summary": "login"})

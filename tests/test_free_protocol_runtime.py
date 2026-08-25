@@ -555,6 +555,59 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
         self.assertEqual(raised.exception.provider_status, 409)
         self.assertEqual(raised.exception.provider_code, "already_active")
 
+    def test_twofa_reauth_follows_callback_and_uses_fresh_session_token(self):
+        class Otp:
+            @staticmethod
+            def prepare(*_args, **_kwargs):
+                return None
+
+            @staticmethod
+            def mark_sent(*_args, **_kwargs):
+                return None
+
+            @staticmethod
+            def wait_code(_email, **_kwargs):
+                return "123456"
+
+        class Session:
+            def __init__(self):
+                self.posts = []
+
+            def post(self, url, **kwargs):
+                self.posts.append((url, kwargs))
+                if url.endswith("/mfa/enroll"):
+                    return _Response(200, {"secret": "JBSWY3DPEHPK3PXP", "session_id": "session"})
+                return _Response(200, {"success": True})
+
+        class Transport:
+            def __init__(self):
+                self.session = Session()
+                self.device_id = "device"
+                self.callbacks = []
+
+            def send_mfa_otp(self, _url):
+                return {"_status": 200}
+
+            def verify_mfa_otp(self, _code):
+                return {"_status": 200, "continue_url": "https://auth.example.test/continue"}
+
+            def complete_chatgpt_callback(self, url):
+                self.callbacks.append(url)
+                return {"_status": 200}
+
+            def chatgpt_access_token(self):
+                return "fresh-session-token"
+
+        transport = Transport()
+        result = _Manager()._enroll_twofa(
+            transport, "stale-session-token", _task(), runtime.FIXED_PASSWORD,
+            {}, Otp(), lambda *_args: None,
+        )
+        self.assertEqual(result["twofa_status"], "enabled")
+        self.assertEqual(transport.callbacks, ["https://auth.example.test/continue"])
+        self.assertEqual(transport.session.posts[0][1]["headers"]["authorization"], "Bearer fresh-session-token")
+        self.assertEqual(transport.session.posts[1][1]["headers"]["authorization"], "Bearer fresh-session-token")
+
     def test_twofa_retry_clears_stale_failure_without_inventing_password(self):
         build_calls = []
         manager = _Manager()
