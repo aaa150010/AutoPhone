@@ -305,6 +305,16 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         result = task.get("result") if isinstance(task.get("result"), Mapping) else {}
         public = {key: copy.deepcopy(task[key]) for key in ("task_id", "incident_id", "ordinal", "slot_id", "slot_index", "concurrency_limit", "status", "created_at", "updated_at", "batch_id", "run_mode", "driver", "email", "row_id", "stage", "proxy_masked", "proxy_fingerprint", "expected_exit_ip", "registration_ip", "exit_ip", "profile_summary", "proxy_id", "proxy_scheme", "proxy_country", "proxy_group", "proxy_attempts", "cleanup_status") if key in task}
         public["account"] = public.get("email", "")
+        mailbox_url = str(task.get("mailbox_url") or "").strip()
+        if not mailbox_url and task.get("row_id"):
+            try:
+                mailbox = self.pool.entry(str(task.get("row_id") or ""))
+                mailbox_url = str(getattr(mailbox, "mailbox_url", "") or "").strip() if mailbox is not None else ""
+            except Exception:
+                mailbox_url = ""
+        # Expose only availability; the credential-bearing URL is revealed by
+        # the dedicated endpoint after an explicit user action.
+        public["has_mailbox_url"] = bool(mailbox_url)
         public["stage_label"] = FREE_STAGE_LABELS.get(str(public.get("stage") or ""), str(public.get("stage") or ""))
         public["result"] = {
             key: copy.deepcopy(result[key])

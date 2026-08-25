@@ -225,7 +225,7 @@ watch(() => props.locationKey, (value, previous) => {
     <el-card shadow="never" class="result-panel">
       <div class="result-actions"><span>已选 {{ selected.length }} 条</span><el-button size="small" :icon="Delete" type="danger" plain :disabled="!selected.length" @click="deleteSelected">删除选中</el-button></div>
       <el-alert v-if="searchError" class="search-error" type="error" :closable="false" show-icon :title="searchError" />
-      <el-table v-else :data="incidents" v-loading="loading" height="100%" stripe @selection-change="selectRows">
+      <el-table v-else class="incident-table" :data="incidents" v-loading="loading" height="100%" stripe @selection-change="selectRows">
         <el-table-column type="selection" width="46" fixed="left" />
         <el-table-column label="日志 ID" min-width="188" fixed="left"><template #default="{ row }"><div class="incident-id"><el-link type="primary" @click="openIncident(row)">{{ row.incident_id }}</el-link><el-button text size="small" :icon="CopyDocument" aria-label="复制日志 ID" @click="copyIncidentId(row)" /></div></template></el-table-column>
         <el-table-column label="状态" width="78"><template #default="{ row }"><el-tag size="small" :type="outcomeType(row.outcome, row.status)">{{ outcomeLabel(row.outcome, row.status) }}</el-tag></template></el-table-column>
@@ -265,10 +265,12 @@ watch(() => props.locationKey, (value, previous) => {
 .search-count { margin-left: auto; color: var(--el-text-color-secondary); font-size: 12px; }
 .health-strip { gap: 16px; min-height: 24px; padding: 0 4px; }
 .health-ok { color: var(--el-color-success); }.health-danger { color: var(--el-color-danger); }.health-path { margin-left: auto; }
-.result-panel { height: 100%; min-height: 0; border: 1px solid var(--workspace-border); }
-.result-panel :deep(.el-card__body) { display: grid; grid-template-rows: 32px auto minmax(0, 1fr); height: 100%; min-height: 0; padding: 8px; }
-.result-panel :deep(.search-error) { align-self: start; margin: 8px; }
+.result-panel { display: flex; min-height: 0; height: 100%; flex-direction: column; border: 1px solid var(--workspace-border); }
+.result-panel :deep(.el-card__body) { display: flex; min-width: 0; min-height: 0; flex: 1 1 auto; flex-direction: column; overflow: hidden; padding: 8px; }
+.result-panel :deep(.search-error) { flex: 0 0 auto; margin: 8px; }
 .result-actions { justify-content: space-between; padding: 0 8px; color: var(--el-text-color-secondary); font-size: 12px; }
+.result-actions { flex: 0 0 32px; }
+.incident-table { width: 100%; min-height: 0; flex: 1 1 auto; }
 .incident-id { gap: 4px; }.failure-node { color: var(--el-color-danger); }.failure-node + code { margin-left: 5px; color: var(--el-text-color-secondary); font-size: 10px; }
 .detail-actions { margin-bottom: 14px; }.detail-summary { margin-bottom: 18px; }.detail-section { margin-top: 18px; }.detail-section h3 { margin: 0 0 7px; font-size: 14px; }.event-row { gap: 8px; flex-wrap: wrap; }.event-row span { color: var(--el-text-color-secondary); font-size: 12px; }.detail-section code { color: var(--el-text-color-secondary); font-size: 11px; }.detail-section p { margin: 5px 0 0; color: var(--el-text-color-regular); font-size: 12px; line-height: 18px; }
 @media (max-width: 1150px) { .search-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

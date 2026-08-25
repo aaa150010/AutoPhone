@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheck, Connection, CopyDocument, Delete, Refresh, Setting, VideoPause, VideoPlay, View } from '@element-plus/icons-vue'
-import { deleteFreeTasks, getFreeConfig, getFreeSecret, getFreeState, preflightFree, rerunFreeTask, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeState } from '../api/client'
+import { deleteFreeTasks, getFreeConfig, getFreeMailboxUrl, getFreeSecret, getFreeState, preflightFree, rerunFreeTask, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeState } from '../api/client'
 import PageToolbar from '../components/PageToolbar.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import ContentEmptyState from '../components/ContentEmptyState.vue'
@@ -48,6 +48,7 @@ const logDialog = ref<{ refresh: (options?: { forceLatest?: boolean; silent?: bo
 const loading = ref(false)
 const busy = ref<'preflight' | 'start' | 'stop' | ''>('')
 const planBusy = ref('')
+const openingMailboxUrlTaskIds = ref<string[]>([])
 const quickTargetCount = ref(defaultConfig.target_count)
 const quickConcurrency = ref(defaultConfig.concurrency)
 const quickRunDirty = ref(false)
@@ -196,6 +197,31 @@ async function copyTaskEmail(task: any) {
     ElMessage.success('已复制邮箱')
   } catch {
     ElMessage.error('邮箱复制失败')
+  }
+}
+
+async function openTaskMailboxUrl(task: any) {
+  const taskId = String(task?.task_id || '').trim()
+  const rowId = String(task?.row_id || '').trim()
+  if (!task?.has_mailbox_url || !taskId || !rowId || openingMailboxUrlTaskIds.value.includes(taskId)) return
+  const target = window.open('', '_blank')
+  if (!target) {
+    ElMessage.error('浏览器阻止了新窗口，请允许弹出窗口后重试')
+    return
+  }
+  target.opener = null
+  openingMailboxUrlTaskIds.value = [...openingMailboxUrlTaskIds.value, taskId]
+  try {
+    const result = await getFreeMailboxUrl(rowId)
+    const value = String(result.mailbox_url || '').trim()
+    const destination = new URL(value)
+    if (!['http:', 'https:'].includes(destination.protocol)) throw new Error('取件 URL 协议不安全')
+    target.location.replace(destination.href)
+  } catch (error: any) {
+    target.close()
+    ElMessage.error(error?.message || '打开取件 URL 失败')
+  } finally {
+    openingMailboxUrlTaskIds.value = openingMailboxUrlTaskIds.value.filter(id => id !== taskId)
   }
 }
 
@@ -431,6 +457,7 @@ onUnmounted(() => window.clearTimeout(timer))
             <el-table-column type="selection" width="42" reserve-selection />
             <el-table-column type="index" label="序号" width="58" align="center" fixed="left" />
             <el-table-column label="账号" min-width="220" show-overflow-tooltip><template #default="{ row }"><el-tooltip v-if="row.email" content="点击复制邮箱" placement="top"><el-button link class="email-copy" @click.stop="copyTaskEmail(row)"><strong>{{ row.email }}</strong><el-icon><CopyDocument /></el-icon></el-button></el-tooltip><span v-else>-</span><small class="task-subline">{{ row.task_id }}</small></template></el-table-column>
+            <el-table-column label="取件 URL" width="92" align="center"><template #default="{ row }"><el-tooltip v-if="row.has_mailbox_url" content="打开取件网页" placement="top"><el-button link :icon="View" :loading="openingMailboxUrlTaskIds.includes(String(row.task_id || ''))" aria-label="打开取件网页" @click.stop="openTaskMailboxUrl(row)">打开</el-button></el-tooltip><span v-else class="muted">-</span></template></el-table-column>
             <el-table-column label="链路 / 阶段" min-width="190" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" effect="plain">{{ row.driver === 'roxybrowser' ? 'RoxyBrowser' : row.driver === 'camoufox' ? 'Camoufox' : '全协议' }}</el-tag><small v-if="row.result?.account_flow" class="task-subline">{{ row.result.account_flow === 'existing_login' ? '已有账号登录' : '新账号注册' }}</small><small class="task-subline">{{ row.stage_label || row.stage || '-' }}</small></template></el-table-column>
             <el-table-column label="Slot" width="78" align="center"><template #default="{ row }">{{ row.slot_index || '-' }} / {{ row.concurrency_limit || config.concurrency }}</template></el-table-column>
             <el-table-column label="代理池" min-width="180" show-overflow-tooltip><template #default="{ row }"><span>共享健康随机池</span><small class="task-subline">{{ row.proxy_scheme || '' }} · {{ row.proxy_masked || '' }}</small></template></el-table-column>

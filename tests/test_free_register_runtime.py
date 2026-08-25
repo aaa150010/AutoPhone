@@ -320,7 +320,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=lambda *_args, **_kwargs: {},
             proxy_probe=lambda _proxy, _url: "203.0.113.20",
         )
-        self.assertEqual(manager.public_state()["runtime_version"], "1.6.76")
+        self.assertEqual(manager.public_state()["runtime_version"], "1.6.77")
         self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v4-roxy-otp-v2")
 
     def test_manager_preflight_applies_proxy_allocation_mode_from_config(self):
@@ -1142,6 +1142,24 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             [task["task_id"] for task in manager.public_tasks()],
             ["new-1", "new-2", "old-1", "old-2"],
         )
+
+    def test_public_tasks_expose_mailbox_url_availability_without_url_value(self):
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("a@example.test----https://mail.example.test/pickup\n")
+        row = pool.entries()[0]
+        manager = FreeRegisterManager(self.data_dir)
+        manager._tasks = {
+            "free-url-task": {
+                "task_id": "free-url-task",
+                "status": "failed",
+                "email": row.email,
+                "row_id": row.row_id,
+            },
+        }
+
+        public = manager.public_tasks()[0]
+        self.assertTrue(public["has_mailbox_url"])
+        self.assertNotIn("mailbox_url", public)
 
     def test_delete_terminal_task_history_preserves_mailbox_and_removes_task_log(self):
         pool = FreeMailboxPool(self.data_dir)

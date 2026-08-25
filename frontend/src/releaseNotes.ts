@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.76',
-  freeRuntimeVersion: '1.6.76',
-  title: 'Free 限流冷却与浏览器资料页修复',
+  version: '1.6.77',
+  freeRuntimeVersion: '1.6.77',
+  title: '日志列表与 Free 取件快捷打开修复',
   releasedAt: '2026-08-26',
   sections: [
+    {
+      title: '日志列表与 Free 取件快捷打开',
+      usage: '日志中心结果区会稳定显示已检索到的脱敏故障列表和空状态；Free 注册运行表新增取件 URL 列，可按任务快捷打开邮箱取件网页，页面只显示可用标记，地址仍通过受控接口按需读取。',
+    },
     {
       title: 'Free 邮箱限流冷却',
       usage: '邮箱识别接口返回 HTTP 429 时，邮箱会保留失败日志并进入 5 分钟冷却，不会立即再次进入任务；用户可在冷却结束后重试，或手动恢复状态。',
