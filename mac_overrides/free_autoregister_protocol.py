@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 try:
     from .free_protocol_diagnostics import response_detail, response_status
@@ -68,6 +69,154 @@ def _failed(response: Any) -> FreeRegisterError:
     return failure
 
 
+def _json_response(transport: Any, response: Any) -> dict[str, Any]:
+    """Use the recovered parser while keeping response bodies out of logs."""
+    parser = getattr(transport, "_gptphone_json_response", None)
+    if callable(parser):
+        try:
+            value = parser(response)
+            if isinstance(value, Mapping):
+                return dict(value)
+        except Exception:
+            pass
+    try:
+        payload = response.json()
+    except Exception:
+        payload = {}
+    if not isinstance(payload, Mapping):
+        payload = {}
+    result = dict(payload)
+    result["_status"] = int(getattr(response, "status_code", 0) or 0)
+    result["_content_type"] = str(getattr(response, "headers", {}).get("content-type", "") or "")
+    result["_location"] = str(getattr(response, "headers", {}).get("location", "") or "")
+    result["_url"] = str(getattr(response, "url", "") or "")
+    return result
+
+
+def _reference_authorize_url(
+    value: str,
+    *,
+    email: str,
+    device_id: str,
+    auth_session_logging_id: str,
+) -> str:
+    """Keep NextAuth's returned authorize URL in the AutoRegister shape."""
+    try:
+        parsed = urlsplit(str(value or ""))
+        if (parsed.hostname or "").casefold() != "auth.openai.com":
+            return str(value or "")
+        pairs = parse_qsl(parsed.query, keep_blank_values=True)
+        present = {key for key, _value in pairs}
+        additions = (
+            ("ext-oai-did", device_id),
+            ("auth_session_logging_id", auth_session_logging_id),
+            ("ext-passkey-client-capabilities", "11111"),
+            ("screen_hint", "login_or_signup"),
+            ("login_hint", email),
+            ("ccaps", "login_methods"),
+        )
+        for key, item in additions:
+            if item and key not in present:
+                pairs.append((key, item))
+                present.add(key)
+        return urlunsplit(parsed._replace(query=urlencode(pairs)))
+    except (TypeError, ValueError):
+        return str(value or "")
+
+
+def _run_reference_chatgpt_prelude(transport: Any, email: str) -> Mapping[str, Any]:
+    """Run AutoRegister's exact NextAuth prelude for the recovered transport."""
+    session = getattr(transport, "session", None)
+    json_get = getattr(transport, "_chatgpt_json_get", None)
+    if session is None or not callable(getattr(session, "get", None)) or not callable(getattr(session, "post", None)) or not callable(json_get):
+        raise RuntimeError("reference transport helpers unavailable")
+
+    try:
+        import codex_oauth_chain as chain
+    except ImportError:  # pragma: no cover - only real runtime transports expose this module
+        chain = None
+    chatgpt = str(getattr(chain, "CHATGPT", "https://chatgpt.com"))
+    page_headers = dict(getattr(chain, "PAGE_HEADERS", {}) or {})
+    page_headers.setdefault("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+    login_response = session.get(
+        f"{chatgpt}/auth/login",
+        headers=page_headers,
+        allow_redirects=True,
+        timeout=30,
+    )
+    login_data = _json_response(transport, login_response)
+    login_status = response_status(login_data)
+    if login_status is not None and not 200 <= login_status < 400:
+        raise _failed(login_data)
+    csrf_data = json_get("/api/auth/csrf", referer=f"{chatgpt}/auth/login", timeout=30)
+    csrf_status = response_status(csrf_data)
+    if csrf_status is not None and not 200 <= csrf_status < 400:
+        raise _failed(csrf_data)
+    csrf = str(csrf_data.get("csrfToken") or "") if isinstance(csrf_data, Mapping) else ""
+    if not csrf:
+        raise _failed(csrf_data)
+
+    device_id = str(getattr(transport, "device_id", "") or "")
+    auth_session_logging_id = str(
+        getattr(transport, "_gptphone_auth_session_logging_id", "") or ""
+    )
+    params = {
+        "prompt": "login",
+        "ext-oai-did": device_id,
+        "auth_session_logging_id": auth_session_logging_id,
+        "ext-passkey-client-capabilities": "11111",
+        "screen_hint": "login_or_signup",
+        "login_hint": str(email or ""),
+    }
+    signin_url = f"{chatgpt}/api/auth/signin/openai?{urlencode(params)}"
+    signin_headers = {
+        **page_headers,
+        "accept": "application/json",
+        "content-type": "application/x-www-form-urlencoded",
+        "origin": chatgpt,
+        "referer": f"{chatgpt}/",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-dest": "empty",
+    }
+    response = session.post(
+        signin_url,
+        headers=signin_headers,
+        data=urlencode({"callbackUrl": f"{chatgpt}/", "csrfToken": csrf, "json": "true"}),
+        timeout=30,
+    )
+    data = _json_response(transport, response)
+    authorize_url = str(data.get("url") or "")
+    if not authorize_url:
+        raise _failed(data)
+    authorize_url = _reference_authorize_url(
+        authorize_url,
+        email=str(email or ""),
+        device_id=device_id,
+        auth_session_logging_id=auth_session_logging_id,
+    )
+
+    navigate_headers = {
+        **page_headers,
+        "referer": f"{chatgpt}/",
+        "sec-fetch-site": "cross-site",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-dest": "document",
+    }
+    final_response = session.get(
+        authorize_url,
+        headers=navigate_headers,
+        allow_redirects=True,
+        timeout=45,
+    )
+    result = _json_response(transport, final_response)
+    result["url"] = str(getattr(final_response, "url", "") or authorize_url)
+    result.setdefault("_url", result["url"])
+    setattr(transport, "last_response", result)
+    setattr(transport, "last_oauth_url", result["url"])
+    return result
+
+
 def run_autoregister_prelude(
     transport: Any,
     email: str,
@@ -79,9 +228,9 @@ def run_autoregister_prelude(
 ) -> Mapping[str, Any] | None:
     """Run AutoRegister's login/csrf/providers/signin/authorize prelude.
 
-    ``RealCodexTransport.start_chatgpt_signup_authorize`` performs the exact
-    reference order internally.  Test doubles and older recovered transports
-    without that method are left untouched for compatibility.
+    Real transports use the maintained AutoRegister-compatible override below;
+    test doubles and older recovered transports without the private HTTP
+    helpers keep their original compatibility method.
     """
     function = getattr(transport, "start_chatgpt_signup_authorize", None)
     if not callable(function):
@@ -102,7 +251,10 @@ def run_autoregister_prelude(
             if provider_status is not None and not 200 <= provider_status < 400:
                 raise _failed(providers)
             _log(log, "AutoRegister providers 节点完成", "info")
-        response = function(str(email or ""))
+        if callable(getattr(transport, "_chatgpt_json_get", None)) and getattr(transport, "session", None) is not None:
+            response = _run_reference_chatgpt_prelude(transport, str(email or ""))
+        else:
+            response = function(str(email or ""))
     except FreeRegisterError:
         raise
     except Exception as exc:

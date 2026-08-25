@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from urllib.parse import parse_qs, urlsplit
 import unittest
 
 from mac_overrides.free_autoregister_protocol import run_autoregister_prelude
@@ -52,6 +53,59 @@ class AutoRegisterPreludeTests(unittest.TestCase):
         self.assertEqual(raised.exception.provider_status, 429)
         self.assertEqual(raised.exception.provider_code, "rate_limit_exceeded")
         self.assertEqual(raised.exception.error_code, "free_autoregister_prelude_failed")
+
+    def test_real_transport_uses_reference_signin_shape_and_reaches_otp_page(self):
+        class Response:
+            def __init__(self, *, payload=None, url="", status=200, content_type="application/json"):
+                self.payload = payload or {}
+                self.url = url
+                self.status_code = status
+                self.headers = {"content-type": content_type}
+
+            def json(self):
+                return self.payload
+
+        class Session:
+            def __init__(self):
+                self.calls = []
+
+            def get(self, url, **kwargs):
+                self.calls.append(("GET", url, kwargs))
+                return Response(
+                    url="https://auth.openai.com/email-verification",
+                    content_type="text/html",
+                )
+
+            def post(self, url, **kwargs):
+                self.calls.append(("POST", url, kwargs))
+                return Response(payload={"url": "https://auth.openai.com/authorize?state=state"})
+
+        class RealLike:
+            def __init__(self):
+                self.session = Session()
+                self.device_id = "device-private"
+                self._gptphone_auth_session_logging_id = "auth-log-private"
+                self.get_calls = []
+
+            def start_chatgpt_signup_authorize(self, _email):
+                raise AssertionError("the maintained reference prelude should be used")
+
+            def _chatgpt_json_get(self, path, **kwargs):
+                self.get_calls.append((path, kwargs))
+                return {"_status": 200, "csrfToken": "csrf-private"}
+
+        transport = RealLike()
+        result = run_autoregister_prelude(transport, "user@example.test")
+        self.assertEqual(result["url"], "https://auth.openai.com/email-verification")
+        self.assertEqual([path for path, _kwargs in transport.get_calls], [
+            "/api/auth/providers",
+            "/api/auth/csrf",
+        ])
+        signin = next(item for item in transport.session.calls if item[0] == "POST")
+        query = parse_qs(urlsplit(signin[1]).query)
+        self.assertEqual(query["ext-passkey-client-capabilities"], ["11111"])
+        self.assertEqual(query["screen_hint"], ["login_or_signup"])
+        self.assertIn("callbackUrl=https%3A%2F%2Fchatgpt.com%2F", signin[2]["data"])
 
 
 if __name__ == "__main__":

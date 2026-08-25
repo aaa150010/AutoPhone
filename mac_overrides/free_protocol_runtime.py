@@ -551,6 +551,11 @@ class FreeProtocolMixin:
             json_response = getattr(codex_oauth_chain, "_json_response", None)
             if callable(json_response):
                 setattr(created, "_gptphone_json_response", json_response)
+            # AutoRegister uses one auth_session_logging_id for NextAuth
+            # signin and the returned authorize URL.  The recovered
+            # transport generates its own value internally, so the maintained
+            # prelude override reads this task-scoped value from the instance.
+            setattr(created, "_gptphone_auth_session_logging_id", auth_session_logging_id)
             setattr(created, "_gptphone_free_protocol_state_machine", True)
             if reference_flow:
                 _prepare_reference_http_session(created)
