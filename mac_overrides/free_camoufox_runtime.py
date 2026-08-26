@@ -43,6 +43,7 @@ try:
         random_display_name,
         safe_log_message,
     )
+    from .free_failure_runtime import sanitize_failure_text
     from .free_mailbox_otp import build_free_mailbox_otp_provider
 except ImportError:  # pragma: no cover - top-level recovery import
     from free_account_service import (  # type: ignore[no-redef]
@@ -54,6 +55,7 @@ except ImportError:  # pragma: no cover - top-level recovery import
         FIXED_PASSWORD, FreeRegisterError, clean, random_birthdate, random_display_name,
         safe_log_message,
     )
+    from free_failure_runtime import sanitize_failure_text  # type: ignore[no-redef]
     from free_mailbox_otp import build_free_mailbox_otp_provider  # type: ignore[no-redef]
 
 
@@ -393,6 +395,143 @@ async def _fill_input_like_user(page: Any, selector: str, value: str) -> bool:
             return False
 
 
+async def _submit_email_form_stable(page: Any, email: str) -> dict[str, Any]:
+    """Submit only the visible email input's form with React-compatible events."""
+    script = r"""
+    ({email}) => {
+      const value = String(email || '').trim();
+      const visible = el => !!el
+        && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
+        && getComputedStyle(el).visibility !== 'hidden'
+        && getComputedStyle(el).display !== 'none'
+        && !el.disabled
+        && el.getAttribute('aria-disabled') !== 'true';
+      const inputSelectors = [
+        'input#login-email', 'input[type="email"]', 'input[name="email"]',
+        'input[name="username"]', 'input[autocomplete*="email"]',
+        'input[autocomplete*="username"]', 'input[inputmode="email"]',
+        'input[id*="email" i]'
+      ];
+      let input = null;
+      let inputSelector = '';
+      for (const selector of inputSelectors) {
+        const candidate = [...document.querySelectorAll(selector)]
+          .find(el => visible(el) && !el.readOnly);
+        if (candidate) {
+          input = candidate;
+          inputSelector = selector;
+          break;
+        }
+      }
+      if (!input) {
+        return {ok: false, reason: 'missing_email_input', form_present: false,
+          input_selector: '', submit_selector: ''};
+      }
+      if (!value || !value.includes('@')) {
+        return {ok: false, reason: 'invalid_email_value', form_present: false,
+          input_selector: inputSelector, submit_selector: ''};
+      }
+      const form = input.closest('form');
+      if (!form) {
+        return {ok: false, reason: 'missing_email_form', form_present: false,
+          input_selector: inputSelector, submit_selector: ''};
+      }
+
+      const external = /google|apple|microsoft|github|facebook|saml|sso|oauth|social|oidc|idp|provider|authorize|consent|grant|allow/i;
+      const cssPath = el => {
+        const parts = [];
+        let current = el;
+        while (current && current.nodeType === 1 && current !== document.body) {
+          if (current.id) {
+            parts.unshift('#' + (window.CSS?.escape
+              ? CSS.escape(current.id) : current.id.replace(/[^a-zA-Z0-9_-]/g, '\\$&')));
+            break;
+          }
+          let part = current.tagName.toLowerCase();
+          const parent = current.parentElement;
+          if (parent) {
+            const siblings = [...parent.children]
+              .filter(item => item.tagName === current.tagName);
+            if (siblings.length > 1) {
+              part += ':nth-of-type(' + (siblings.indexOf(current) + 1) + ')';
+            }
+          }
+          parts.unshift(part);
+          current = parent;
+        }
+        return parts.join(' > ');
+      };
+      const describe = el => [
+        el.id, el.name, el.type, el.getAttribute('data-testid'),
+        el.getAttribute('data-provider'), el.getAttribute('aria-label'),
+        el.getAttribute('href'), el.textContent || ''
+      ].filter(Boolean).join(' ');
+      const controls = [...form.querySelectorAll('button,input[type="submit"]')]
+        .filter(el => visible(el) && !external.test(describe(el)));
+      const submit = controls.find(
+        el => (el.getAttribute('type') || '').toLowerCase() === 'submit'
+      ) || controls[0] || null;
+      if (!submit) {
+        return {ok: false, reason: 'missing_safe_submit', form_present: true,
+          input_selector: inputSelector, submit_selector: ''};
+      }
+
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype, 'value'
+      )?.set;
+      input.scrollIntoView({block: 'center', inline: 'nearest'});
+      input.focus();
+      if (setter) setter.call(input, value); else input.value = value;
+      try {
+        input.dispatchEvent(new InputEvent('beforeinput', {
+          bubbles: true, cancelable: true, inputType: 'insertText', data: value
+        }));
+      } catch (_) {}
+      try {
+        input.dispatchEvent(new InputEvent('input', {
+          bubbles: true, inputType: 'insertText', data: value
+        }));
+      } catch (_) {
+        input.dispatchEvent(new Event('input', {bubbles: true}));
+      }
+      input.dispatchEvent(new Event('change', {bubbles: true}));
+      input.dispatchEvent(new FocusEvent('blur', {bubbles: true}));
+      input.blur();
+      input.focus();
+
+      const label = (submit.getAttribute('data-testid') || submit.getAttribute('type')
+        || submit.tagName || 'form-submit').toLowerCase();
+      return {ok: true, reason: 'form_prepared_for_enter', form_present: true,
+        input_selector: cssPath(input) || inputSelector, submit_selector: label};
+    }
+    """
+    try:
+        result = await page.evaluate(script, {"email": str(email or "").strip()})
+    except Exception as exc:
+        return {
+            "ok": False,
+            "reason": f"evaluate_{type(exc).__name__}",
+            "form_present": False,
+            "input_selector": "",
+            "submit_selector": "",
+        }
+    if not isinstance(result, Mapping):
+        return {
+            "ok": False,
+            "reason": "invalid_result",
+            "form_present": False,
+            "input_selector": "",
+            "submit_selector": "",
+        }
+    return {
+        "ok": bool(result.get("ok")),
+        "reason": clean(result.get("reason"), 80),
+        "form_present": bool(result.get("form_present")),
+        "input_selector": clean(result.get("input_selector"), 500),
+        "submit_selector": clean(result.get("submit_selector"), 120),
+    }
+
+
 async def _click_first(page: Any, selectors: tuple[str, ...], *, timeout: float = 8.0) -> str | None:
     for selector in selectors:
         try:
@@ -468,7 +607,7 @@ async def _auth_error_text(page: Any) -> str:
     for token in (
         "Incorrect", "invalid", "Invalid", "account_deactivated", "account_suspended",
         "account_banned", "Authentication Error", "already registered", "already signed up",
-        "已有账号",
+        "Email is required", "已有账号",
     ):
         if token in text:
             return token
@@ -845,7 +984,18 @@ async def _browser_signin_url(page: Any, email: str) -> str:
         result = await page.evaluate(script, {"email": str(email), "deviceId": str(uuid.uuid4())})
     except Exception:
         return ""
-    return str(result.get("url") or "").strip() if isinstance(result, Mapping) and result.get("ok") else ""
+    if not isinstance(result, Mapping) or not result.get("ok"):
+        return ""
+    candidate = str(result.get("url") or "").strip()
+    try:
+        parsed = urlsplit(candidate)
+    except (TypeError, ValueError):
+        return ""
+    # The same-origin endpoint must hand back the OpenAI authorization route;
+    # never let a malformed or external provider URL enter the browser flow.
+    if parsed.scheme.casefold() != "https" or (parsed.hostname or "").casefold() != "auth.openai.com":
+        return ""
+    return candidate
 
 
 async def _page_state(page: Any) -> str:
@@ -882,6 +1032,11 @@ async def _page_state(page: Any) -> str:
             return "otp" if await _visible(page, OTP_SELECTORS, 250) else "email_verification"
         if any(marker in path for marker in ("/authorize", "/callback", "/continue")):
             return "oauth_callback"
+        # The auth host can briefly render an email entry shell at /log-in
+        # after the same-origin signin fallback. Match the reference flow's
+        # selector fallback so it is not classified as an unknown state.
+        if await _visible(page, EMAIL_SELECTORS, 250):
+            return "entry"
     if await _visible(page, PASSWORD_SELECTORS, 250):
         return "signup_password"
     if await _visible(page, OTP_SELECTORS, 250):
@@ -1007,8 +1162,13 @@ async def _browser_flow(
     profile_submitted_at = 0.0
     entry_transition_deadline = 0.0
     entry_retry_used = False
+    entry_signin_fallback_used = False
+    entry_recovery = "none"
+    entry_form_present = False
+    entry_submit_selector = ""
     seen: dict[str, int] = {}
     step_count = 0
+    entry_otp_stage = "free_existing_login_otp" if force_existing_login else "free_email_otp_wait"
 
     def set_stage(code: str) -> None:
         if callable(stage_fn):
@@ -1033,6 +1193,85 @@ async def _browser_flow(
     async def mark_otp_sent(stage_code: str) -> None:
         if callable(otp_mark_sent):
             await asyncio.to_thread(otp_mark_sent, stage_code)
+
+    async def submit_entry_email(selector: str, *, recovery: bool = False) -> dict[str, Any]:
+        nonlocal entry_form_present, entry_submit_selector, entry_recovery
+        result = await _submit_email_form_stable(page, email)
+        entry_form_present = bool(result.get("form_present"))
+        prepared_input_selector = str(result.get("input_selector") or selector).strip()
+        entry_submit_selector = clean(
+            result.get("submit_selector") or result.get("input_selector"), 120,
+        )
+        if result.get("ok"):
+            if not await _submit_visible_form(page, prepared_input_selector):
+                raise CamoufoxBrowserError(
+                    "free_camoufox_signup_email", "填写 Camoufox 注册邮箱",
+                    "邮箱表单未能提交", error_code="camoufox_email_submit_failed",
+                    diagnostic=json.dumps({
+                        "phase": "entry",
+                        "reason": "prepared_but_enter_failed",
+                        "form_present": entry_form_present,
+                        "input_selector": clean(prepared_input_selector, 120),
+                    }, ensure_ascii=False),
+                    safe_page=_safe_url(page), page_type="entry",
+                )
+            entry_recovery = "form_resubmit" if recovery else entry_recovery
+            log(
+                "Camoufox 邮箱表单已提交"
+                f"（mode={clean(result.get('reason'), 80)}，"
+                f"selector={entry_submit_selector or '-'}）",
+                "warn" if recovery else "info",
+            )
+            return result
+
+        if not await _fill_input_like_user(page, selector, email):
+            raise CamoufoxBrowserError(
+                "free_camoufox_signup_email", "填写 Camoufox 注册邮箱",
+                "邮箱输入框写入失败", error_code="camoufox_email_fill_failed",
+            )
+        if not await _submit_visible_form(page, selector):
+            raise CamoufoxBrowserError(
+                "free_camoufox_signup_email", "填写 Camoufox 注册邮箱",
+                "邮箱表单未能提交", error_code="camoufox_email_submit_failed",
+                diagnostic=json.dumps({
+                    "phase": "entry",
+                    "reason": clean(result.get("reason"), 80),
+                    "form_present": entry_form_present,
+                    "input_selector": clean(selector, 120),
+                }, ensure_ascii=False),
+                safe_page=_safe_url(page), page_type="entry",
+            )
+        entry_submit_selector = clean(selector, 120)
+        entry_recovery = "form_resubmit" if recovery else entry_recovery
+        fallback = {
+            "ok": True,
+            "reason": "input_enter_submit",
+            "form_present": entry_form_present,
+            "input_selector": clean(selector, 120),
+            "submit_selector": entry_submit_selector,
+        }
+        log(
+            "Camoufox 邮箱表单已使用 Enter 提交"
+            f"（selector={entry_submit_selector or '-'}）",
+            "warn" if recovery else "info",
+        )
+        return fallback
+
+    async def entry_diagnostic(state: str) -> str:
+        snapshot = await _snapshot(page)
+        return json.dumps({
+            "phase": "entry",
+            "submitted": bool(entry_submitted),
+            "recovery": entry_recovery,
+            "safe_page": snapshot.get("url"),
+            "page_type": state,
+            "form_present": bool(entry_form_present),
+            "submit_selector": clean(entry_submit_selector, 120),
+            # Page text can contain the submitted address or provider payloads;
+            # redact before this diagnostic is attached to the exception.
+            "title": sanitize_failure_text(snapshot.get("title"), 160),
+            "body": sanitize_failure_text(snapshot.get("body"), 220),
+        }, ensure_ascii=False)[:500]
 
     async def wait_for_state(*states: str, seconds: float = 45.0) -> str:
         remaining = max(1.0, deadline - time.monotonic())
@@ -1098,6 +1337,7 @@ async def _browser_flow(
     async def open_registration_entry() -> None:
         """Keep the reference startup gate around only entry navigation."""
         nonlocal entry_submitted, entry_transition_deadline
+        nonlocal entry_retry_used, entry_signin_fallback_used, entry_recovery
         # Establish the mailbox baseline before the first request that may
         # send an OTP. The provider itself remains AutoPhone's strategy mode.
         if force_existing_login:
@@ -1111,18 +1351,8 @@ async def _browser_flow(
         if email_selector:
             set_stage("free_existing_login_otp" if force_existing_login else "free_camoufox_signup_email")
             if not force_existing_login:
-                await prepare_otp("free_email_otp_wait")
-            if not await _fill_input_like_user(page, email_selector, email):
-                raise CamoufoxBrowserError(
-                    "free_camoufox_signup_email", "填写 Camoufox 注册邮箱", "邮箱输入框写入失败",
-                    error_code="camoufox_email_fill_failed",
-                )
-            submit_selector = await _click_first(page, EMAIL_SUBMIT_SELECTORS, timeout=5)
-            if not submit_selector:
-                await _submit_visible_form(page, email_selector)
-                log("Camoufox 登录页已使用 Enter 提交邮箱", "info")
-            else:
-                log(f"Camoufox 登录页已点击: {submit_selector}", "info")
+                await prepare_otp(entry_otp_stage)
+            await submit_entry_email(email_selector)
             entry_submitted = True
             entry_transition_deadline = time.monotonic() + 45.0
             return
@@ -1130,14 +1360,18 @@ async def _browser_flow(
         # Keep the same-origin NextAuth fallback from the reference flow for a
         # delayed shell, but never invent an external provider URL.
         if not force_existing_login:
-            await prepare_otp("free_email_otp_wait")
+            await prepare_otp(entry_otp_stage)
         authorize_url = await _browser_signin_url(page, email)
         if authorize_url:
+            entry_recovery = "same_origin_signin"
+            entry_retry_used = True
+            entry_signin_fallback_used = True
             await _goto_with_retry(
                 page, authorize_url, timeout_ms=min(timeout * 1000, 90_000),
                 proxy_retryable=False, log=log,
             )
             entry_submitted = True
+            entry_transition_deadline = time.monotonic() + 45.0
             return
         snapshot = await _snapshot(page)
         raise CamoufoxBrowserError(
@@ -1172,33 +1406,61 @@ async def _browser_flow(
             and seen[state] > 4
         ):
             now = time.monotonic()
-            if state == "entry" and (entry_submitted or entry_retry_used) and now < entry_transition_deadline:
+            if state == "entry" and entry_submitted and now < entry_transition_deadline:
                 await asyncio.sleep(1.0)
                 continue
             if state == "entry" and entry_submitted and not entry_retry_used:
-                # A transient auth-shell reset can return to the Get started
-                # page without an error. Re-open the form once, preserving
-                # the mailbox provider's baseline/phase isolation.
                 entry_retry_used = True
-                entry_submitted = False
-                entry_transition_deadline = now + 45.0
-                await prepare_otp("free_email_otp_wait")
+                entry_recovery = "form_resubmit"
+                await prepare_otp(entry_otp_stage)
                 reopened = await _click_exact_button_text(
                     page, ("Continue", "继续"), timeout=3,
                 )
                 if reopened:
                     log("Camoufox 登录壳回退，已重新打开邮箱表单", "warn")
+                selector = await _wait_for_any_selector(page, EMAIL_SELECTORS, timeout=8)
+                if selector:
+                    await submit_entry_email(selector, recovery=True)
+                    entry_transition_deadline = time.monotonic() + 45.0
+                    seen.clear()
+                    await asyncio.sleep(1.0)
+                    continue
+                log("Camoufox 登录壳未重新显示邮箱表单，准备同源 signin 兜底", "warn")
+            if state == "entry" and entry_submitted and not entry_signin_fallback_used:
+                entry_signin_fallback_used = True
+                entry_recovery = "same_origin_signin"
+                await prepare_otp(entry_otp_stage)
+                authorize_url = await _browser_signin_url(page, email)
+                if not authorize_url:
+                    raise CamoufoxBrowserError(
+                        "free_camoufox_navigation", "打开 Camoufox 注册页面",
+                        "邮箱已提交，但同源 signin 兜底未返回授权地址",
+                        retryable=False,
+                        error_code="camoufox_entry_signin_fallback_failed",
+                        diagnostic=await entry_diagnostic(state),
+                        safe_page=_safe_url(page), page_type=state,
+                    )
+                log("Camoufox 登录壳未推进，开始一次同源 signin 兜底", "warn")
+                await _goto_with_retry(
+                    page, authorize_url, timeout_ms=min(timeout * 1000, 90_000),
+                    proxy_retryable=False, log=log,
+                )
+                entry_transition_deadline = time.monotonic() + 45.0
+                seen.clear()
                 await asyncio.sleep(1.0)
                 continue
             error_text = await _auth_error_text(page)
-            snapshot = await _snapshot(page)
             raise CamoufoxBrowserError(
                 "free_camoufox_navigation", "打开 Camoufox 注册页面",
-                error_text or "注册页面状态长时间未推进",
+                error_text or (
+                    "邮箱已提交，但 Camoufox 登录入口在限定时间内未跳转"
+                    if state == "entry" and entry_submitted
+                    else "注册页面状态长时间未推进"
+                ),
                 retryable=not entry_submitted,
                 error_code="camoufox_entry_transition_timeout" if state == "entry" and entry_submitted else "camoufox_page_state_stuck",
-                diagnostic=json.dumps(snapshot, ensure_ascii=False)[:500],
-                safe_page=snapshot.get("url"), page_type=state,
+                diagnostic=await entry_diagnostic(state),
+                safe_page=_safe_url(page), page_type=state,
             )
         if state == "security":
             await _wait_challenge_then_stop(page, timeout=30)
@@ -1210,13 +1472,10 @@ async def _browser_flow(
                 selector = await _wait_for_any_selector(page, EMAIL_SELECTORS, timeout=8)
                 if selector:
                     set_stage("free_camoufox_signup_email")
-                    await prepare_otp("free_email_otp_wait")
-                    if not await _fill_input_like_user(page, selector, email):
-                        raise CamoufoxBrowserError("free_camoufox_signup_email", "填写 Camoufox 注册邮箱", "邮箱输入框写入失败", error_code="camoufox_email_fill_failed")
-                    submitted = await _click_first(page, EMAIL_SUBMIT_SELECTORS, timeout=5)
-                    if not submitted:
-                        await _submit_visible_form(page, selector)
+                    await prepare_otp(entry_otp_stage)
+                    await submit_entry_email(selector)
                     entry_submitted = True
+                    entry_transition_deadline = time.monotonic() + 45.0
                 else:
                     reopened = await _click_exact_button_text(
                         page, ("Continue", "继续"), timeout=3,

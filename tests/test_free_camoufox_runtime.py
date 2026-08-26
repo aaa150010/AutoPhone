@@ -4,7 +4,7 @@ import asyncio
 import inspect
 import threading
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from mac_overrides import free_account_service
 from mac_overrides import free_camoufox_runtime as runtime
@@ -32,6 +32,19 @@ class _FakePage:
 
     async def title(self):
         return "ChatGPT"
+
+
+class _EntryPage(_FakePage):
+    def locator(self, selector):
+        if selector == "body":
+            page = self
+
+            class BodyLocator:
+                async def inner_text(self, **_kwargs):
+                    return "Get started | ChatGPT"
+
+            return BodyLocator()
+        return _FakeLocator()
 
 
 class _NavigationPage(_FakePage):
@@ -155,6 +168,188 @@ class CamoufoxRuntimeTests(unittest.TestCase):
 
     def test_browser_flow_accepts_transport_proxy_argument(self):
         self.assertIn("proxy", inspect.signature(runtime._browser_flow).parameters)
+
+    def test_email_form_submission_scopes_current_form_and_excludes_social_buttons(self):
+        class Page:
+            def __init__(self):
+                self.script = ""
+                self.arguments = None
+
+            async def evaluate(self, script, arguments):
+                self.script = script
+                self.arguments = arguments
+                return {
+                    "ok": True,
+                    "reason": "form_request_submit",
+                    "form_present": True,
+                    "input_selector": "input[type=\"email\"]",
+                    "submit_selector": "submit",
+                }
+
+        page = Page()
+        result = asyncio.run(runtime._submit_email_form_stable(page, "user@example.test"))
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["form_present"])
+        self.assertEqual(page.arguments, {"email": "user@example.test"})
+        self.assertIn("closest('form')", page.script)
+        self.assertIn("google|apple", page.script)
+        self.assertIn("cssPath", page.script)
+        self.assertIn("beforeinput", page.script)
+        self.assertNotIn("button:has-text('Continue')", page.script)
+
+    def test_same_origin_signin_accepts_only_auth_openai_authority(self):
+        class Page:
+            def __init__(self, url):
+                self.url = url
+
+            async def evaluate(self, _script, _arguments):
+                return {"ok": True, "url": self.url}
+
+        trusted = "https://auth.openai.com/authorize-start?state=opaque"
+        self.assertEqual(
+            asyncio.run(runtime._browser_signin_url(Page(trusted), "user@example.test")),
+            trusted,
+        )
+        self.assertEqual(
+            asyncio.run(
+                runtime._browser_signin_url(
+                    Page("https://accounts.google.com/o/oauth2/auth?state=opaque"),
+                    "user@example.test",
+                )
+            ),
+            "",
+        )
+
+    def test_auth_openai_email_shell_is_not_unknown(self):
+        class Page(_FakePage):
+            url = "https://auth.openai.com/log-in"
+
+            def locator(self, selector):
+                return _FakeLocator(visible="email" in selector)
+
+        self.assertEqual(asyncio.run(runtime._page_state(Page())), "entry")
+
+    def test_entry_recovery_uses_form_then_signin_once_and_preserves_timeout(self):
+        class Clock:
+            now = 0.0
+
+        async def fast_sleep(seconds):
+            Clock.now += max(50.0, float(seconds or 0.0))
+
+        stable_result = {
+            "ok": True,
+            "reason": "form_request_submit",
+            "form_present": True,
+            "input_selector": "#entry-email",
+            "submit_selector": "submit",
+        }
+        page = _EntryPage()
+        with (
+            patch.object(runtime.time, "monotonic", side_effect=lambda: Clock.now),
+            patch.object(runtime.asyncio, "sleep", side_effect=fast_sleep),
+            patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=True)) as submit,
+            patch.object(
+                runtime,
+                "_wait_for_any_selector",
+                new=AsyncMock(side_effect=["input[type='email']", "input[type='email']"]),
+            ),
+            patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value=stable_result)) as stable,
+            patch.object(runtime, "_click_exact_button_text", new=AsyncMock(return_value="continue")),
+            patch.object(runtime, "_browser_signin_url", new=AsyncMock(return_value="https://auth.openai.com/authorize/test")) as signin,
+            patch.object(runtime, "_page_state", new=AsyncMock(return_value="entry")),
+            patch.object(runtime, "_auth_error_text", new=AsyncMock(return_value="")),
+            patch.object(
+                runtime,
+                "_snapshot",
+                new=AsyncMock(return_value={
+                    "url": "https://chatgpt.com/auth/login",
+                    "title": "Get started user@example.test",
+                    "body": "email=user@example.test",
+                }),
+            ),
+        ):
+            with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+                asyncio.run(
+                    runtime._browser_flow(
+                        page,
+                        email="user@example.test",
+                        password="password",
+                        proxy="",
+                        otp_callback=lambda: "",
+                        config={"registration_timeout_seconds": 1200},
+                        log=lambda *_args: None,
+                        otp_prepare=Mock(),
+                        otp_mark_sent=Mock(),
+                    )
+                )
+
+        self.assertEqual(raised.exception.error_code, "camoufox_entry_transition_timeout")
+        self.assertFalse(raised.exception.retryable)
+        self.assertEqual(stable.await_count, 2)
+        self.assertEqual(submit.await_args_list[0].args[1], "#entry-email")
+        signin.assert_awaited_once_with(page, "user@example.test")
+        self.assertIn('"phase": "entry"', raised.exception.diagnostic)
+        self.assertIn('"submitted": true', raised.exception.diagnostic)
+        self.assertIn('"recovery": "same_origin_signin"', raised.exception.diagnostic)
+        self.assertIn('"form_present": true', raised.exception.diagnostic)
+        self.assertNotIn("user@example.test", raised.exception.diagnostic)
+        self.assertIn("<邮箱>", raised.exception.diagnostic)
+
+    def test_entry_signin_fallback_failure_does_not_consume_otp(self):
+        class Clock:
+            now = 0.0
+
+        async def fast_sleep(seconds):
+            Clock.now += max(50.0, float(seconds or 0.0))
+
+        page = _EntryPage()
+        stable_result = {
+            "ok": True,
+            "reason": "form_request_submit",
+            "form_present": True,
+            "input_selector": "input[type=\"email\"]",
+            "submit_selector": "submit",
+        }
+        otp_prepare = Mock()
+        otp_mark_sent = Mock()
+        with (
+            patch.object(runtime.time, "monotonic", side_effect=lambda: Clock.now),
+            patch.object(runtime.asyncio, "sleep", side_effect=fast_sleep),
+            patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=True)),
+            patch.object(
+                runtime,
+                "_wait_for_any_selector",
+                new=AsyncMock(side_effect=["input[type='email']", "input[type='email']"]),
+            ),
+            patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value=stable_result)),
+            patch.object(runtime, "_click_exact_button_text", new=AsyncMock(return_value="continue")),
+            patch.object(runtime, "_browser_signin_url", new=AsyncMock(return_value="")) as signin,
+            patch.object(runtime, "_page_state", new=AsyncMock(return_value="entry")),
+            patch.object(runtime, "_auth_error_text", new=AsyncMock(return_value="")),
+        ):
+            with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+                asyncio.run(
+                    runtime._browser_flow(
+                        page,
+                        email="user@example.test",
+                        password="password",
+                        proxy="",
+                        otp_callback=lambda: "should-not-run",
+                        config={"registration_timeout_seconds": 1200},
+                        log=lambda *_args: None,
+                        otp_prepare=otp_prepare,
+                        otp_mark_sent=otp_mark_sent,
+                    )
+                )
+
+        self.assertEqual(raised.exception.error_code, "camoufox_entry_signin_fallback_failed")
+        self.assertFalse(raised.exception.retryable)
+        signin.assert_awaited_once_with(page, "user@example.test")
+        otp_mark_sent.assert_not_called()
+        self.assertIn('"recovery": "same_origin_signin"', raised.exception.diagnostic)
 
     def test_missing_browser_runtime_is_explicit(self):
         with patch.object(runtime, "_check_camoufox_runtime", side_effect=runtime.CamoufoxDependencyError("CamoufoxNotInstalled")):
