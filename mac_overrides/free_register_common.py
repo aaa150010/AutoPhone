@@ -96,6 +96,13 @@ FREE_STAGE_LABELS = {
     "free_roxy_window_quota_exhausted": "RoxyBrowser 窗口额度",
     "free_mailbox_released": "释放 Free 邮箱",
     "free_result_save": "保存 Free 注册结果",
+    "free_live_proxy_blocked": "出口或服务端安全策略拒绝",
+    "free_live_session_rejected": "深度测活会话被拒绝",
+    "free_live_rate_limited": "Free 测活触发限流",
+    "free_live_upstream_error": "Free 测活上游服务异常",
+    "free_live_network_error": "Free 测活网络异常",
+    "free_live_password_required": "深度测活需要真实账号密码",
+    "free_live_password_context_unknown": "识别深度测活密码页面",
 }
 
 FIRST_NAMES = (

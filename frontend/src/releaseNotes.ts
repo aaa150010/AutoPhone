@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.77',
-  freeRuntimeVersion: '1.6.77',
-  title: '日志列表与 Free 取件快捷打开修复',
+  version: '1.6.78',
+  freeRuntimeVersion: '1.6.78',
+  title: 'Free 批量邮箱与双模式测活修正',
   releasedAt: '2026-08-26',
   sections: [
+    {
+      title: 'Free 批量转移、格式复制与双模式测活',
+      usage: 'Free 邮箱池支持批量选择后传输至普通接码邮箱管理，并按实际字段复制账号----密码----接码 URL----2FA 格式；passwordless 账号不会填入假密码。快速测活使用设备、Cookie、同源请求头和任务代理上下文，403 会显示为出口/安全策略拒绝；深度测活独立执行完整 OTP、TOTP、Session 刷新和带上下文的账号查询。2FA 列点击复制当前临时验证码，不复制 Secret。',
+    },
     {
       title: '日志列表与 Free 取件快捷打开',
       usage: '日志中心结果区会稳定显示已检索到的脱敏故障列表和空状态；Free 注册运行表新增取件 URL 列，可按任务快捷打开邮箱取件网页，页面只显示可用标记，地址仍通过受控接口按需读取。',

@@ -717,6 +717,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         error_response=free_error_response,
         failure_response=free_failure_response,
         request_lock=free_request_lock,
+        ordinary_mailbox_import=mailbox_admin.import_mailboxes,
     )
 
     def mailbox_manager():

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { CopyDocument, Delete, Key, Lock, Plus, Refresh, RefreshRight, Tickets, Link, Download, CircleCheck, Warning, View, VideoPlay } from '@element-plus/icons-vue'
-import { deleteFreeMailboxes, exportFreeResults, getFreeLiveCheckState, getFreeMailboxUrl, getFreeMailboxes, getFreeSecret, importFreeMailboxes, retryFreeTwofa, setFreeMailboxStatus, startFree, startFreeLiveCheck, startFreePlanCheck } from '../api/client'
+import { CopyDocument, Delete, Key, Lock, Plus, Refresh, RefreshRight, Tickets, Link, Download, CircleCheck, Warning, View, VideoPlay, Upload } from '@element-plus/icons-vue'
+import { deleteFreeMailboxes, exportFreeResults, formatFreeMailboxes, getFreeLiveCheckState, getFreeMailboxUrl, getFreeMailboxes, getFreeSecret, getFreeTotp, importFreeMailboxes, retryFreeTwofa, setFreeMailboxStatus, startFree, startFreeLiveCheck, startFreePlanCheck, transferFreeMailboxes } from '../api/client'
 import type { FreeLiveCheckState, FreeMailboxRow } from '../api/client'
 import ContentEmptyState from './ContentEmptyState.vue'
 import FreeTaskLogDialog from './FreeTaskLogDialog.vue'
@@ -23,6 +23,7 @@ const driverFilter = ref('')
 const liveStatusFilter = ref('')
 const liveBusy = ref<'fast' | 'deep' | ''>('')
 const planBusy = ref('')
+const loadingTotp = ref<string[]>([])
 const runBusy = ref(false)
 const liveState = ref<FreeLiveCheckState>({ running: false, workers: 3, queue_limit: 500, active: 0, jobs: [] })
 const logDialogOpen = ref(false)
@@ -161,11 +162,11 @@ function mailboxFailure(row: FreeMailboxRow) {
 }
 
 function liveStatusLabel(status = '') {
-  return ({ queued: '排队', running: '测活中', live: '正常', deactivated: '已停用', token_expired: 'Token 失效', failed: '失败' } as Record<string, string>)[status] || '未测活'
+  return ({ queued: '排队', running: '测活中', live: '正常', deactivated: '已停用', token_expired: 'Token 失效', free_live_proxy_blocked: '出口/反爬拒绝', free_live_session_rejected: 'Session 被拒绝', free_live_rate_limited: '触发限流', free_live_upstream_error: '上游异常', free_live_network_error: '网络异常', free_live_password_required: '需要真实密码', failed: '失败' } as Record<string, string>)[status] || '未测活'
 }
 
 function liveStatusType(status = '') {
-  return status === 'live' ? 'success' : status === 'deactivated' || status === 'failed' ? 'danger' : status === 'token_expired' ? 'warning' : 'info'
+  return status === 'live' ? 'success' : status === 'deactivated' || status === 'failed' ? 'danger' : status === 'token_expired' || status === 'free_live_proxy_blocked' || status === 'free_live_session_rejected' || status === 'free_live_rate_limited' || status === 'free_live_upstream_error' || status === 'free_live_network_error' || status === 'free_live_password_required' ? 'warning' : 'info'
 }
 
 function planLabel(row: FreeMailboxRow) {
@@ -274,7 +275,97 @@ async function copySecret(kind: 'token' | 'password' | 'totp' | 'proxy' | 'crede
   }
 }
 
+async function copyMailboxFormat(mode: 'mailbox' | 'full') {
+  const rowIds = selected.value.map(row => row.row_id).filter(Boolean)
+  if (!rowIds.length) {
+    ElMessage.warning('请先选择 Free 邮箱')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      mode === 'full'
+        ? '完整格式可能包含 OpenAI 账号密码、取件 URL 和用于自动生成验证码的 2FA Secret，仅应复制到可信位置。'
+        : '接码格式包含取件 URL 和用于自动生成验证码的 2FA Secret，仅应复制到可信位置。',
+      mode === 'full' ? '复制完整格式' : '复制接码格式',
+      { type: 'warning', confirmButtonText: '复制', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  try {
+    const result = await formatFreeMailboxes(mode, rowIds)
+    if (result.content) await navigator.clipboard.writeText(result.content)
+    const skipped = Number(result.skipped || 0)
+    const noPassword = mode === 'full'
+      ? selected.value.filter(row => !row.has_password && row.has_access_token).length
+      : 0
+    const details = [
+      `已复制 ${Number(result.prepared || 0)} 条`,
+      skipped ? `跳过 ${skipped} 条` : '',
+      noPassword ? `${noPassword} 条为 passwordless（未填假密码）` : '',
+    ].filter(Boolean).join('，')
+    const skippedDetails = (result.skipped_items || [])
+      .slice(0, 3)
+      .map(item => `${item.email || '选中行'}：${item.reason}`)
+      .join('；')
+    const suffix = skippedDetails ? `；${skippedDetails}${skipped > 3 ? '；其余跳过项未展开' : ''}` : ''
+    if (skipped) ElMessage.warning(`${details}${suffix}`)
+    else ElMessage.success(details)
+  } catch (error: any) {
+    ElMessage.error(error?.message || 'Free 格式复制失败')
+  }
+}
+
+async function transferSelected() {
+  const rowIds = selected.value.map(row => row.row_id).filter(Boolean)
+  if (!rowIds.length) {
+    ElMessage.warning('请先选择 Free 邮箱')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `将选中的 ${rowIds.length} 条 Free 邮箱复制到普通接码邮箱管理，Free 源记录会保留。继续吗？`,
+      '传输至接码邮箱',
+      { type: 'warning', confirmButtonText: '开始传输', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  loading.value = true
+  try {
+    const result = await transferFreeMailboxes(rowIds)
+    const skipped = Number(result.skipped || 0)
+    selected.value = []
+    tableRef.value?.clearSelection()
+    const summary = `已传输 ${Number(result.imported || 0)} 条${skipped ? `，跳过 ${skipped} 条` : ''}`
+    const skippedDetails = (result.skipped_items || [])
+      .slice(0, 3)
+      .map(item => `${item.email || '选中行'}：${item.reason}`)
+      .join('；')
+    if (skipped) ElMessage.warning(`${summary}${skippedDetails ? `；${skippedDetails}${skipped > 3 ? '；其余跳过项未展开' : ''}` : ''}`)
+    else ElMessage.success(summary)
+  } catch (error: any) {
+    ElMessage.error(error?.message || 'Free 邮箱传输失败')
+  } finally {
+    loading.value = false
+  }
+}
+
 async function copyRow(kind: 'token' | 'password' | 'totp' | 'proxy' | 'credential', row: FreeMailboxRow) {
+  if (kind === 'totp') {
+    if (!row.row_id || loadingTotp.value.includes(row.row_id)) return
+    loadingTotp.value = [...loadingTotp.value, row.row_id]
+    try {
+      const result = await getFreeTotp({ row_id: row.row_id })
+      await navigator.clipboard.writeText(String(result.code || ''))
+      ElMessage.success(`已复制临时 2FA 验证码，约 ${Number(result.remaining || 0)} 秒后刷新`)
+    } catch (error: any) {
+      ElMessage.error(error?.message || '复制临时 2FA 验证码失败')
+    } finally {
+      loadingTotp.value = loadingTotp.value.filter(id => id !== row.row_id)
+    }
+    return
+  }
   await copySecret(kind, [row])
 }
 
@@ -361,8 +452,8 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
 
       <div class="table-region">
         <div class="metrics"><span>总数 <b>{{ metrics.total }}</b></span><span class="is-good">注册成功 <b>{{ metrics.success }}</b></span><span>测活中 <b>{{ metrics.checking }}</b></span><span class="is-good">账号正常 <b>{{ metrics.live }}</b></span><span class="is-bad">已停用 <b>{{ metrics.deactivated }}</b></span><span class="is-warn">待重跑 <b>{{ metrics.rerun }}</b></span><span class="is-warn">2FA 待重试 <b>{{ metrics.pending }}</b></span></div>
-        <div class="filters"><el-input v-model="search" size="small" clearable placeholder="搜索邮箱、注册 IP 或错误节点" /><el-select v-model="statusFilter" size="small" clearable placeholder="注册状态"><el-option label="可用" value="available" /><el-option label="运行中" value="running" /><el-option label="成功" value="success" /><el-option label="失败" value="failed" /><el-option label="待重跑" value="pending_rerun" /><el-option label="2FA 待重试" value="twofa_pending" /></el-select><el-select v-model="driverFilter" size="small" clearable placeholder="注册链路"><el-option label="全协议" value="protocol" /><el-option label="RoxyBrowser" value="roxybrowser" /><el-option label="Camoufox" value="camoufox" /></el-select><el-select v-model="liveStatusFilter" size="small" clearable placeholder="测活状态"><el-option label="排队 / 测活中" value="active" /><el-option label="正常" value="live" /><el-option label="已停用" value="deactivated" /><el-option label="Token 失效" value="token_expired" /><el-option label="测活失败" value="failed" /></el-select></div>
-        <div class="bulk-actions"><span>已选 {{ selected.length }} 条</span><el-button size="small" type="success" plain :icon="CircleCheck" :loading="liveBusy === 'fast'" :disabled="!selected.some(canLiveCheck) || Boolean(liveBusy)" @click="startLiveCheck('fast')">快速测活</el-button><el-button size="small" type="warning" plain :icon="RefreshRight" :loading="liveBusy === 'deep'" :disabled="!selected.some(canLiveCheck) || Boolean(liveBusy)" @click="startLiveCheck('deep')">深度测活</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selected.length" @click="copySecret('token')">复制 Token</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selected.some(row => row.has_credential)" @click="copySecret('credential')">复制凭据</el-button><el-button size="small" :icon="CopyDocument" :disabled="!pageRows.some(row => row.has_access_token)" @click="copySecret('token', pageRows)">当前页 Token</el-button><el-button size="small" :icon="Download" :disabled="loading" @click="exportResults">导出</el-button><el-button size="small" :icon="CircleCheck" :disabled="!selected.length || loading" @click="setStatus('available')">恢复</el-button><el-button size="small" :icon="Warning" :disabled="!selected.length || loading" @click="setStatus('unavailable')">不可用</el-button><el-button size="small" type="danger" plain :icon="Delete" :disabled="!selected.length || loading" @click="deleteSelected">删除选中</el-button></div>
+        <div class="filters"><el-input v-model="search" size="small" clearable placeholder="搜索邮箱、注册 IP 或错误节点" /><el-select v-model="statusFilter" size="small" clearable placeholder="注册状态"><el-option label="可用" value="available" /><el-option label="运行中" value="running" /><el-option label="成功" value="success" /><el-option label="失败" value="failed" /><el-option label="待重跑" value="pending_rerun" /><el-option label="2FA 待重试" value="twofa_pending" /></el-select><el-select v-model="driverFilter" size="small" clearable placeholder="注册链路"><el-option label="全协议" value="protocol" /><el-option label="RoxyBrowser" value="roxybrowser" /><el-option label="Camoufox" value="camoufox" /></el-select><el-select v-model="liveStatusFilter" size="small" clearable placeholder="测活状态"><el-option label="排队 / 测活中" value="active" /><el-option label="正常" value="live" /><el-option label="已停用" value="deactivated" /><el-option label="Token 失效" value="token_expired" /><el-option label="出口/反爬拒绝" value="free_live_proxy_blocked" /><el-option label="Session 被拒绝" value="free_live_session_rejected" /><el-option label="触发限流" value="free_live_rate_limited" /><el-option label="上游异常" value="free_live_upstream_error" /><el-option label="网络异常" value="free_live_network_error" /><el-option label="需要真实密码" value="free_live_password_required" /><el-option label="测活失败" value="failed" /></el-select></div>
+        <div class="bulk-actions"><span>已选 {{ selected.length }} 条</span><el-button size="small" type="success" plain :icon="CircleCheck" :loading="liveBusy === 'fast'" :disabled="!selected.some(canLiveCheck) || Boolean(liveBusy)" @click="startLiveCheck('fast')">快速测活</el-button><el-button size="small" type="warning" plain :icon="RefreshRight" :loading="liveBusy === 'deep'" :disabled="!selected.some(canLiveCheck) || Boolean(liveBusy)" @click="startLiveCheck('deep')">深度测活</el-button><el-button size="small" :icon="Upload" :disabled="!selected.length || loading" @click="transferSelected">传输至接码邮箱</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selected.length || loading" @click="copyMailboxFormat('mailbox')">复制接码格式</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selected.length || loading" @click="copyMailboxFormat('full')">复制完整格式</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selected.length" @click="copySecret('token')">复制 Token</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selected.some(row => row.has_credential)" @click="copySecret('credential')">复制凭据</el-button><el-button size="small" :icon="CopyDocument" :disabled="!pageRows.some(row => row.has_access_token)" @click="copySecret('token', pageRows)">当前页 Token</el-button><el-button size="small" :icon="Download" :disabled="loading" @click="exportResults">导出</el-button><el-button size="small" :icon="CircleCheck" :disabled="!selected.length || loading" @click="setStatus('available')">恢复</el-button><el-button size="small" :icon="Warning" :disabled="!selected.length || loading" @click="setStatus('unavailable')">不可用</el-button><el-button size="small" type="danger" plain :icon="Delete" :disabled="!selected.length || loading" @click="deleteSelected">删除选中</el-button></div>
         <el-table
           ref="tableRef"
           :data="pageRows"
@@ -388,7 +479,7 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
             <template #default="{ row }"><el-tag size="small" :type="liveStatusType(row.live_check_status)">{{ liveStatusLabel(row.live_check_status) }}</el-tag><small v-if="row.live_check_mode || row.live_check_ip">{{ row.live_check_mode === 'deep' ? '深度' : '快速' }} · {{ row.live_check_ip || '-' }}</small></template>
           </el-table-column>
           <el-table-column label="2FA" width="112" align="center">
-            <template #default="{ row }"><template v-if="row.has_totp"><el-tag size="small" type="success" effect="plain">已启用</el-tag><el-tooltip content="复制 2FA 密钥"><el-button link :icon="Key" aria-label="复制 2FA 密钥" @click="copyRow('totp', row)" /></el-tooltip></template><el-button v-else-if="row.twofa_status === 'pending' && row.driver !== 'roxybrowser'" link type="warning" @click="retryTwofa(row)"><el-tag size="small" type="warning" effect="plain">待重试</el-tag></el-button><el-tag v-else size="small" type="info" effect="plain">未启用</el-tag></template>
+            <template #default="{ row }"><template v-if="row.has_totp"><el-tag size="small" type="success" effect="plain">已启用</el-tag><el-tooltip content="复制临时 2FA 验证码"><el-button link :icon="Key" :loading="loadingTotp.includes(row.row_id)" aria-label="复制临时 2FA 验证码" @click="copyRow('totp', row)" /></el-tooltip></template><el-button v-else-if="row.twofa_status === 'pending' && row.driver !== 'roxybrowser'" link type="warning" @click="retryTwofa(row)"><el-tag size="small" type="warning" effect="plain">待重试</el-tag></el-button><el-tag v-else size="small" type="info" effect="plain">未启用</el-tag></template>
           </el-table-column>
           <el-table-column label="取件" width="62" align="center"><template #default="{ row }"><el-button link :icon="Link" aria-label="打开取件地址" @click="openUrl(row)" /></template></el-table-column>
           <el-table-column label="Token" width="80" align="center"><template #default="{ row }"><el-button v-if="row.has_access_token" link :icon="CopyDocument" aria-label="复制 Token" @click="copyRow('token', row)" /><span v-else>-</span></template></el-table-column>

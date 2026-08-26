@@ -22,7 +22,10 @@ from mac_overrides.mailbox_admin import (
     row_id_from_source,
     totp_secret_from_row,
 )
-from mac_overrides.mailbox_password_url_rows import parse_mailbox_password_url_row
+from mac_overrides.mailbox_password_url_rows import (
+    parse_mailbox_password_url_row,
+    parse_mailbox_password_url_totp_row,
+)
 from mac_overrides.mailbox_row_formats import row_secrets
 
 
@@ -97,6 +100,40 @@ class MailboxPasswordUrlRowTests(unittest.TestCase):
         self.assertIsNotNone(parse_mailbox_url_totp_row(url_totp))
         self.assertIsNone(parse_mailbox_password_url_row(f"{EMAIL}----{PASSWORD}----ftp://invalid"))
         self.assertIsNone(parse_mailbox_password_url_row(f"{EMAIL}----{MAILBOX_URL}----密码："))
+
+    def test_four_field_free_row_requires_url_then_valid_totp_and_does_not_steal_oauth_row(self):
+        free_row = f"{EMAIL}----{PASSWORD}----{MAILBOX_URL}----JBSWY3DPEHPK3PXP"
+        parsed = parse_mailbox_password_url_totp_row(free_row)
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.password, PASSWORD)
+        self.assertEqual(parsed.mailbox_url, MAILBOX_URL)
+        self.assertEqual(parsed.totp_secret, "JBSWY3DPEHPK3PXP")
+        self.assertTrue(is_importable_mailbox_row(free_row))
+        self.assertEqual(password_from_row(free_row), PASSWORD)
+        self.assertEqual(mailbox_url_from_row(free_row), MAILBOX_URL)
+        self.assertEqual(totp_secret_from_row(free_row), "JBSWY3DPEHPK3PXP")
+        self.assertEqual(masked_source_row(free_row), f"{EMAIL}----********----********----********")
+
+        oauth_row = f"{EMAIL}----{PASSWORD}----client-id----refresh-token"
+        self.assertIsNone(parse_mailbox_password_url_totp_row(oauth_row))
+        self.assertIsNotNone(parse_oauth_mailbox_row(oauth_row))
+        self.assertTrue(is_importable_mailbox_row(oauth_row))
+        self.assertEqual(password_from_row(oauth_row), PASSWORD)
+        self.assertEqual(totp_secret_from_row(oauth_row), "")
+
+    def test_row_secrets_handles_four_field_free_rows(self):
+        free_row = f"{EMAIL}----{PASSWORD}----{MAILBOX_URL}----JBSWY3DPEHPK3PXP"
+        secrets = row_secrets(free_row)
+
+        self.assertIn(PASSWORD, secrets)
+        self.assertIn(MAILBOX_URL, secrets)
+        self.assertIn("JBSWY3DPEHPK3PXP", secrets)
+        redacted = redact_mailbox_credentials(
+            f"failed {EMAIL} {PASSWORD} {MAILBOX_URL} JBSWY3DPEHPK3PXP",
+            secrets,
+        )
+        for value in (EMAIL, PASSWORD, MAILBOX_URL, "JBSWY3DPEHPK3PXP"):
+            self.assertNotIn(value, redacted)
 
     def test_password_separator_is_not_misclassified_as_oauth(self):
         password = "part-one----part-two"

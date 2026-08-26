@@ -911,6 +911,44 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     values.append(str(value))
         return "\n".join(values)
 
+    def temporary_totp(self, task_ids: Sequence[str] = (), *, row_ids: Sequence[str] = ()) -> dict[str, Any]:
+        """Generate current 6-digit TOTP values without returning the seed."""
+        secrets: list[str] = []
+        seen_rows: set[str] = set()
+        with self._lock:
+            for task_id in task_ids:
+                task = self._tasks.get(str(task_id))
+                if not task:
+                    continue
+                row_id = str(task.get("row_id") or "")
+                seen_rows.add(row_id)
+                result = task.get("result") if isinstance(task.get("result"), Mapping) else {}
+                secret = str(result.get("totp_secret") or "").strip()
+                if secret:
+                    secrets.append(secret)
+            for row_id in row_ids:
+                normalized = str(row_id or "").strip()
+                if not normalized or normalized in seen_rows:
+                    continue
+                seen_rows.add(normalized)
+                result = self.pool.result(normalized)
+                secret = str(result.get("totp_secret") or "").strip()
+                if secret:
+                    secrets.append(secret)
+        if not secrets:
+            raise FreeRegisterError(
+                "free_totp",
+                "读取 Free 临时 2FA 验证码",
+                "选中的 Free 账号没有已启用的 2FA",
+                retryable=False,
+                error_code="free_totp_missing",
+            )
+        now = time.time()
+        return {
+            "code": "\n".join(self._totp_code(secret, now=now) for secret in secrets),
+            "remaining": max(1, 30 - (int(now) % 30)),
+        }
+
     def _verify_binding(self, task: Mapping[str, Any], config: Mapping[str, Any]) -> str:
         binding = ProxyBinding(
             str(task.get("proxy") or ""),

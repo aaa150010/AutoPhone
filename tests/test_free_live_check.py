@@ -271,6 +271,142 @@ class FreeLiveCheckTests(unittest.TestCase):
         self.assertTrue(live["plus_trial_eligible"])
         self.assertEqual(live["eligible_campaign_id"], "plus-trial-a")
 
+    def test_account_query_sends_task_device_context_and_target_routes(self):
+        pool, proxies, logs = self._resources()
+        service = self._service(pool, proxies, logs)
+
+        class Cookies:
+            def __init__(self):
+                self.values = []
+
+            def set(self, name, value, **kwargs):
+                self.values.append((name, value, kwargs))
+
+        class Response:
+            status_code = 200
+            headers = {"content-type": "application/json"}
+            text = ""
+
+            def __init__(self, payload):
+                self.payload = payload
+
+            def json(self):
+                return self.payload
+
+        class Session:
+            def __init__(self):
+                self.calls = []
+                self.cookies = Cookies()
+                self.headers = {}
+                self.trust_env = True
+
+            def get(self, url, **kwargs):
+                self.calls.append((url, kwargs))
+                if len(self.calls) == 1:
+                    return Response({"accounts": {"account-a": {"plan_type": "free"}}})
+                return Response({})
+
+        session = Session()
+        result = service._query_account(session, "private-token", device_id="device-task-a")
+
+        self.assertEqual(result["status"], "live")
+        self.assertFalse(session.trust_env)
+        self.assertTrue(any(item[0:2] == ("oai-did", "device-task-a") for item in session.cookies.values))
+        account_headers = session.calls[0][1]["headers"]
+        self.assertEqual(account_headers["oai-device-id"], "device-task-a")
+        self.assertEqual(account_headers["x-openai-target-path"], "/backend-api/accounts/check/v4-2023-04-27")
+        self.assertEqual(account_headers["x-openai-target-route"], "/backend-api/accounts/check/v4-2023-04-27")
+        self.assertEqual(account_headers["referer"], "https://chatgpt.com/")
+        self.assertEqual(account_headers["sec-fetch-site"], "same-origin")
+        self.assertEqual(account_headers["sec-fetch-mode"], "cors")
+        self.assertEqual(account_headers["sec-fetch-dest"], "empty")
+        self.assertEqual(account_headers["authorization"], "Bearer private-token")
+        eligibility_headers = session.calls[1][1]["headers"]
+        self.assertEqual(eligibility_headers["x-openai-target-route"], "/backend-api/aip/first-party/eligibility")
+
+    def test_account_query_classifies_security_rate_limit_upstream_and_network_failures(self):
+        pool, proxies, logs = self._resources()
+        service = self._service(pool, proxies, logs)
+
+        class Response:
+            def __init__(self, status, payload=None, *, headers=None, text=""):
+                self.status_code = status
+                self.payload = payload or {}
+                self.headers = headers or {}
+                self.text = text
+
+            def json(self):
+                return self.payload
+
+        class Session:
+            def __init__(self, response=None, error=None):
+                self.response = response
+                self.error = error
+
+            def get(self, *_args, **_kwargs):
+                if self.error is not None:
+                    raise self.error
+                return self.response
+
+        cases = (
+            (
+                Response(403, {"error": {"code": "access_denied"}}),
+                "free_live_proxy_blocked",
+                0,
+            ),
+            (
+                Response(403, headers={"content-type": "text/html"}, text="Checking your browser - Cloudflare"),
+                "free_live_proxy_blocked",
+                0,
+            ),
+            (
+                Response(429, {"error": {"code": "rate_limit"}}, headers={"retry-after": "17"}),
+                "free_live_rate_limited",
+                17,
+            ),
+            (
+                Response(503, {"error": {"code": "upstream_unavailable"}}),
+                "free_live_upstream_error",
+                0,
+            ),
+        )
+        for response, node_code, retry_after in cases:
+            with self.subTest(node_code=node_code, status=response.status_code):
+                with self.assertRaises(FreeRegisterError) as caught:
+                    service._query_account(Session(response), "private-token", device_id="device-task-b")
+                self.assertEqual(caught.exception.node_code, node_code)
+                self.assertTrue(caught.exception.retryable)
+                self.assertEqual(caught.exception.retry_after_seconds, retry_after)
+
+        with self.assertRaises(FreeRegisterError) as caught:
+            service._query_account(Session(error=TimeoutError("private network detail")), "private-token")
+        self.assertEqual(caught.exception.node_code, "free_live_network_error")
+        self.assertTrue(caught.exception.retryable)
+        self.assertNotIn("private network detail", str(caught.exception))
+
+    def test_retryable_failure_nodes_remain_visible_in_mailbox_live_status(self):
+        pool, proxies, logs = self._resources(4)
+        node_by_email = {
+            "account1@example.test": "free_live_rate_limited",
+            "account2@example.test": "free_live_upstream_error",
+            "account3@example.test": "free_live_network_error",
+            "account4@example.test": "free_live_password_required",
+        }
+
+        def runner(context, _config):
+            node = node_by_email[context["email"]]
+            raise FreeRegisterError(node, "Free 测活分类", "可重试分类", retryable=node != "free_live_password_required")
+
+        service = self._service(pool, proxies, logs, fast_runner=runner)
+        service.enqueue([row.row_id for row in pool.entries()], "fast")
+        self._wait(service)
+
+        for row in pool.entries():
+            with self.subTest(email=row.email):
+                saved = pool.result(row.row_id)
+                self.assertEqual(saved["live_check_status"], node_by_email[row.email])
+                self.assertEqual(saved["status"], "success")
+
     def test_deep_check_refreshes_token_on_the_same_proxy(self):
         pool, proxies, logs = self._resources()
         observed = []
@@ -321,6 +457,37 @@ class FreeLiveCheckTests(unittest.TestCase):
         self.assertEqual(saved["exit_ip"], "10.0.0.99")
         self.assertEqual(pool._row_state(row.row_id)["status"], "success")
         self.assertEqual(saved["access_token"], "old-token-1")
+
+    def test_proxy_drift_failure_persists_current_exit_ip(self):
+        pool, proxies, logs = self._resources()
+        service = FreeLiveCheckService(
+            self.data_dir,
+            pool=pool,
+            proxies=proxies,
+            log_store=logs,
+            config_provider=lambda: {},
+            proxy_probe=lambda _proxy, _target: "10.0.0.99",
+            fast_runner=lambda *_args: (_ for _ in ()).throw(
+                FreeRegisterError(
+                    "free_live_proxy_blocked",
+                    "出口拒绝",
+                    "安全策略拒绝",
+                    retryable=True,
+                )
+            ),
+            recover=False,
+        )
+        self.services.append(service)
+        row = pool.entries()[0]
+        service.enqueue([row.row_id], "fast")
+        self._wait(service)
+
+        saved = pool.result(row.row_id)
+        self.assertEqual(saved["registration_ip"], "10.0.0.1")
+        self.assertEqual(saved["live_check_ip"], "10.0.0.99")
+        self.assertEqual(saved["expected_exit_ip"], "10.0.0.99")
+        self.assertEqual(saved["exit_ip"], "10.0.0.99")
+        self.assertEqual(saved["live_check_status"], "free_live_proxy_blocked")
 
     def test_live_failure_identity_is_canonical_and_redacted_in_job_result_and_api(self):
         pool, proxies, logs = self._resources()

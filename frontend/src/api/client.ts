@@ -281,7 +281,7 @@ export interface FreeMailboxRow {
   plan_source?: string
   plan_retry_after_until?: number | null
   plus_trial_eligible?: boolean
-  live_check_status?: 'queued' | 'running' | 'live' | 'deactivated' | 'token_expired' | 'failed' | string
+  live_check_status?: 'queued' | 'running' | 'live' | 'deactivated' | 'token_expired' | 'free_live_proxy_blocked' | 'free_live_session_rejected' | 'free_live_rate_limited' | 'free_live_upstream_error' | 'free_live_network_error' | 'free_live_password_required' | 'failed' | string
   live_check_mode?: 'fast' | 'deep' | string
   live_check_task_id?: string
   live_checked_at?: number | string
@@ -379,6 +379,22 @@ export const startFreePlanCheck = (rowIds: string[]) => api<{
 }>('/api/free/plan-check', { row_ids: rowIds })
 export const getFreePlanCheckState = () => api<{ ok: true; state: FreePlanCheckState; rows: FreeMailboxRow[] }>('/api/free/plan-check/state')
 export const exportFreeResults = (rowIds: string[] = []) => api<{ ok: true; count: number; filename: string; content: string }>('/api/free/mailboxes/export', { row_ids: rowIds })
+export const formatFreeMailboxes = (mode: 'mailbox' | 'full', rowIds: string[]) => api<{
+  ok: true
+  mode: 'mailbox' | 'full'
+  content: string
+  prepared: number
+  skipped: number
+  skipped_items: Array<{ row_id: string; email?: string; reason: string }>
+}>('/api/free/mailboxes/format', { mode, row_ids: rowIds })
+export const transferFreeMailboxes = (rowIds: string[]) => api<{
+  ok: true
+  imported: number
+  skipped: number
+  prepared: number
+  skipped_items: Array<{ row_id: string; email?: string; reason: string }>
+  ordinary_mailboxes_refresh_required?: boolean
+}>('/api/free/mailboxes/transfer', { row_ids: rowIds })
 export const importFreeProxies = (proxyContent: string, _country?: string, _group?: string, scheme?: string) => api<{ ok: true; imported: number; proxies?: any }>(
   '/api/free/proxies/import',
   { proxy_content: proxyContent, scheme },
@@ -394,6 +410,12 @@ export const getFreeSecret = (kind: 'token' | 'password' | 'totp' | 'proxy' | 'c
   '/api/free/secrets',
   { kind, ...ids },
 )
+export const getFreeTotp = (ids: { task_id?: string; row_id?: string; task_ids?: string[]; row_ids?: string[] }) => api<{
+  ok: true
+  kind: 'totp'
+  code: string
+  remaining: number
+}>('/api/free/totp', ids)
 
 export interface FreeRebindMailboxRow {
   row_id: string

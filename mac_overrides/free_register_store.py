@@ -339,7 +339,7 @@ class FreeMailboxPool:
                     "proxy_group": current.get("proxy_group", ""),
                     "expected_exit_ip": result.get("expected_exit_ip") or current.get("expected_exit_ip", ""),
                     "registration_ip": result.get("registration_ip") or current.get("registration_ip", ""),
-                    "exit_ip": result.get("registration_ip") or current.get("registration_ip") or current.get("exit_ip", ""),
+                    "exit_ip": result.get("exit_ip") or result.get("expected_exit_ip") or current.get("exit_ip", ""),
                     "profile_summary": sanitize_failure_text(result.get("profile_summary", ""), 300),
                     "account_flow": sanitize_failure_text(result.get("account_flow", ""), 120),
                     "plan_type": sanitize_failure_text(result.get("plan_type", ""), 120),
@@ -396,6 +396,69 @@ class FreeMailboxPool:
             if credential or token:
                 values.append(credential or f"{row.email}----{token}")
         return "\n".join(values)
+
+    def build_transfer_content(
+        self,
+        row_ids: Sequence[str] = (),
+        *,
+        include_password: bool = True,
+    ) -> dict[str, Any]:
+        """Build ordinary mailbox-pool rows from explicitly selected Free rows."""
+        requested = list(dict.fromkeys(
+            str(value or "").strip().lower()
+            for value in row_ids
+            if str(value or "").strip()
+        ))
+        if not requested:
+            return {
+                "content": "",
+                "selected": 0,
+                "prepared": 0,
+                "skipped": 1,
+                "skipped_items": [{
+                    "row_id": "",
+                    "email": "",
+                    "reason": "没有提供有效的 Free 邮箱选择",
+                }],
+            }
+        selected = set(requested)
+        lines: list[str] = []
+        skipped: list[dict[str, str]] = []
+        state = self._state()["rows"]
+        for row in self.entries():
+            if selected and row.row_id not in selected:
+                continue
+            current = state.get(row.row_id, {}) if isinstance(state, Mapping) else {}
+            status = str(current.get("status") or "available").strip().lower()
+            if status in ACTIVE_POOL_STATUSES:
+                skipped.append({"row_id": row.row_id, "email": row.email, "reason": "该 Free 邮箱仍在注册或测活任务中"})
+                continue
+            result = self.result(row.row_id)
+            live_status = str(result.get("live_check_status") or "").strip().lower()
+            if live_status in {"queued", "running"}:
+                skipped.append({"row_id": row.row_id, "email": row.email, "reason": "该 Free 邮箱仍在测活中"})
+                continue
+            if not result:
+                skipped.append({"row_id": row.row_id, "email": row.email, "reason": "该 Free 邮箱没有注册结果，暂不可传输"})
+                continue
+            password = str(result.get("password") or "").strip()
+            totp_secret = str(result.get("totp_secret") or "").strip()
+            fields = [row.email]
+            if password and include_password:
+                fields.append(password)
+            fields.append(row.mailbox_url)
+            if totp_secret:
+                fields.append(totp_secret)
+            lines.append("----".join(fields))
+        requested_missing = selected - {row.row_id for row in self.entries()}
+        skipped.extend({"row_id": row_id, "email": "", "reason": "Free 邮箱行不存在或已变化"} for row_id in sorted(requested_missing))
+        return {
+            "content": "\n".join(lines),
+            "selected": len(requested) if requested else len(lines),
+            "prepared": len(lines),
+            "skipped": len(skipped),
+            "skipped_items": skipped,
+        }
 
 
 class FreeProxyPool:

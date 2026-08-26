@@ -21,9 +21,15 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
     from mailbox_url_runtime import parse_mailbox_url_row
 
 try:
-    from .mailbox_password_url_rows import parse_mailbox_password_url_row
+    from .mailbox_password_url_rows import (
+        parse_mailbox_password_url_row,
+        parse_mailbox_password_url_totp_row,
+    )
 except ImportError:  # Loaded as a top-level override module by the Mac launcher.
-    from mailbox_password_url_rows import parse_mailbox_password_url_row
+    from mailbox_password_url_rows import (  # type: ignore[no-redef]
+        parse_mailbox_password_url_row,
+        parse_mailbox_password_url_totp_row,
+    )
 
 try:
     from .plain_mailbox_rows import (
@@ -157,6 +163,12 @@ def mailbox_credential_identity(
     """Return the recovered pool identity without depending on row formatting."""
 
     raw = str(row or "").strip()
+    parsed_password_url_totp = parse_mailbox_password_url_totp_row(raw)
+    if parsed_password_url_totp is not None:
+        return (
+            parsed_password_url_totp.email,
+            f"free:{parsed_password_url_totp.password}:{parsed_password_url_totp.mailbox_url}:{parsed_password_url_totp.totp_secret}",
+        )
     parsed_password_url = parse_mailbox_password_url_row(raw)
     if parsed_password_url is not None:
         return (

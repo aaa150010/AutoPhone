@@ -42,7 +42,12 @@ except ImportError:
 LIVE_MODES = frozenset({"fast", "deep"})
 _ORIGINAL_MAILBOX_URL_OTP_PROVIDER = MailboxUrlOtpProvider
 ACTIVE_LIVE_STATUSES = frozenset({"queued", "running"})
-TERMINAL_LIVE_STATUSES = frozenset({"live", "deactivated", "token_expired", "failed"})
+TERMINAL_LIVE_STATUSES = frozenset({
+    "live", "deactivated", "token_expired", "failed",
+    "free_live_proxy_blocked", "free_live_session_rejected",
+    "free_live_rate_limited", "free_live_upstream_error",
+    "free_live_network_error", "free_live_password_required",
+})
 LIVE_STAGE_LABELS = {
     "free_live_queued": "Free 账号测活排队",
     "free_live_proxy_verify": "复核账号注册代理",
@@ -52,7 +57,36 @@ LIVE_STAGE_LABELS = {
     "free_live_mfa": "深度测活动态口令验证",
     "free_live_plan": "刷新套餐与 Plus 资格",
     "free_live_result": "保存 Free 测活结果",
+    "free_live_proxy_blocked": "出口或服务端安全策略拒绝",
+    "free_live_session_rejected": "深度测活会话被拒绝",
+    "free_live_rate_limited": "Free 测活触发限流",
+    "free_live_upstream_error": "Free 测活上游服务异常",
+    "free_live_network_error": "Free 测活网络异常",
+    "free_live_password_required": "深度测活需要真实账号密码",
 }
+
+
+_LIVE_ACCOUNT_PATH = "/backend-api/accounts/check/v4-2023-04-27"
+_LIVE_ELIGIBILITY_PATH = "/backend-api/aip/first-party/eligibility"
+_LIVE_ORIGIN = "https://chatgpt.com"
+_LIVE_SECURITY_MARKERS = (
+    "cloudflare",
+    "turnstile",
+    "captcha",
+    "verify you are human",
+    "checking your browser",
+    "access denied",
+    "cf-chl-",
+    "/cdn-cgi/challenge-platform/",
+)
+_LIVE_FAILURE_STATUSES = frozenset({
+    "free_live_proxy_blocked",
+    "free_live_session_rejected",
+    "free_live_rate_limited",
+    "free_live_upstream_error",
+    "free_live_network_error",
+    "free_live_password_required",
+})
 
 
 def _status(response: Any) -> int:
@@ -68,6 +102,111 @@ def _json(response: Any) -> dict[str, Any]:
     except Exception:
         value = {}
     return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _response_content_type(response: Any) -> str:
+    headers = getattr(response, "headers", None)
+    if not isinstance(headers, Mapping):
+        return ""
+    for key, value in headers.items():
+        if str(key or "").strip().lower() == "content-type":
+            return str(value or "").split(";", 1)[0].strip().lower()[:120]
+    return ""
+
+
+def _response_provider_code(response: Any, payload: Mapping[str, Any] | None = None) -> str:
+    candidates: list[Mapping[str, Any]] = []
+    if isinstance(payload, Mapping):
+        candidates.append(payload)
+        error = payload.get("error")
+        if isinstance(error, Mapping):
+            candidates.insert(0, error)
+    for candidate in candidates:
+        for key in ("error_code", "provider_code", "code", "type", "reason"):
+            value = str(candidate.get(key) or "").strip()
+            if value:
+                return value[:120]
+    return ""
+
+
+def _response_text(response: Any) -> str:
+    value = getattr(response, "text", "")
+    if isinstance(value, str):
+        return value[:32768]
+    raw = getattr(response, "content", b"")
+    if isinstance(raw, (bytes, bytearray, memoryview)):
+        return bytes(raw[:32768]).decode("utf-8", "ignore")
+    return str(raw or "")[:32768]
+
+
+def _live_request_headers(token: str, device_id: str, path: str) -> dict[str, str]:
+    """Build the same-origin account headers used by AutoRegister plan checks."""
+    normalized_path = str(path or _LIVE_ACCOUNT_PATH).strip() or _LIVE_ACCOUNT_PATH
+    return {
+        "accept": "*/*",
+        "authorization": f"Bearer {token}",
+        "referer": f"{_LIVE_ORIGIN}/",
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+        "x-openai-target-path": normalized_path,
+        "x-openai-target-route": normalized_path,
+        "oai-device-id": str(device_id or "").strip(),
+    }
+
+
+def _prepare_live_session(session: Any, device_id: str) -> Any:
+    """Apply task-scoped device cookies and environment isolation to a session."""
+    try:
+        session.trust_env = False
+    except Exception:
+        pass
+    try:
+        session.verify = True
+    except Exception:
+        pass
+    device = str(device_id or "").strip()
+    cookies = getattr(session, "cookies", None)
+    setter = getattr(cookies, "set", None)
+    if device and callable(setter):
+        for domain in ("chatgpt.com", "auth.openai.com"):
+            try:
+                setter("oai-did", device, domain=domain, path="/")
+            except TypeError:
+                try:
+                    setter("oai-did", device)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+    # Keep the task identity available to adapters that merge default headers.
+    try:
+        current = getattr(session, "headers", None)
+        if hasattr(current, "update") and device:
+            current.update({"oai-device-id": device, "referer": f"{_LIVE_ORIGIN}/"})
+    except Exception:
+        pass
+    return session
+
+
+def _retry_after(response: Any, payload: Mapping[str, Any] | None = None) -> int | None:
+    values: list[Any] = []
+    if isinstance(payload, Mapping):
+        values.extend((payload.get("retry_after_seconds"), payload.get("retry_after")))
+        nested_headers = payload.get("headers") or payload.get("_headers")
+        if isinstance(nested_headers, Mapping):
+            values.extend((nested_headers.get("retry-after"), nested_headers.get("Retry-After")))
+    headers = getattr(response, "headers", None)
+    if isinstance(headers, Mapping):
+        values.extend((headers.get("retry-after"), headers.get("Retry-After")))
+    for value in values:
+        try:
+            parsed = int(float(str(value).strip()))
+        except (TypeError, ValueError):
+            continue
+        if 0 <= parsed <= 86400:
+            return parsed
+    return None
 
 
 def _campaign_id(value: Any) -> str:
@@ -296,6 +435,7 @@ class FreeLiveCheckService:
                     "created_at": now,
                     "updated_at": now,
                     "registration_ip": registration_ip,
+                    "device_id": f"free-live-{secrets.token_hex(16)}",
                     "live_check_ip": "",
                     "token_refreshed": False,
                 }
@@ -357,6 +497,10 @@ class FreeLiveCheckService:
             "proxy_masked": mask_proxy(proxy),
             "proxy_fingerprint": fingerprint(proxy),
             "registration_ip": registration_ip,
+            "live_check_ip": str(result.get("live_check_ip") or "").strip(),
+            "expected_exit_ip": str(result.get("expected_exit_ip") or "").strip(),
+            "exit_ip": str(result.get("exit_ip") or "").strip(),
+            "device_id": str(job.get("device_id") or "").strip(),
             "access_token": str(result.get("access_token") or ""),
             "password": str(result.get("password") or ""),
             "totp_secret": str(result.get("totp_secret") or ""),
@@ -463,17 +607,34 @@ class FreeLiveCheckService:
         try:
             config = self._config()
             context = self._context(job)
+            # Persist the existing binding before probing so an exception at
+            # any later stage never loses the last known current exit IP.
+            self._set_job(
+                task_id,
+                registration_ip=context.get("registration_ip", ""),
+                expected_exit_ip=context.get("expected_exit_ip") or context.get("registration_ip", ""),
+                exit_ip=context.get("exit_ip") or context.get("registration_ip", ""),
+            )
             self._log(task_id, "free_live_proxy_verify", f"使用注册代理 {context['proxy_masked']} 复核出口 IP")
             binding = self._binding(context)
             if binding.proxy_id:
                 self.proxies.lease(binding, owner=lease_owner, batch_id=lease_owner, task_id=task_id)
             live_ip = self._verify_fixed_proxy(binding, config)
             # A healthy proxy may rotate its egress during a long-lived
-            # account check. Continue with the verified current IP.
-            context["registration_ip"] = live_ip
+            # account check. Continue with the verified current IP while
+            # preserving the original registration IP as history.
+            context["live_check_ip"] = live_ip
+            context["expected_exit_ip"] = live_ip
+            context["exit_ip"] = live_ip
             mode = str(job.get("mode") or "fast")
             stage = "free_live_fast" if mode == "fast" else "free_live_deep"
-            self._set_job(task_id, stage=stage, live_check_ip=live_ip)
+            self._set_job(
+                task_id,
+                stage=stage,
+                live_check_ip=live_ip,
+                expected_exit_ip=live_ip,
+                exit_ip=live_ip,
+            )
             self._log(task_id, stage, f"固定代理出口已确认：{live_ip}")
             runner = self.fast_runner if mode == "fast" else self.deep_runner
             checked = dict(runner(context, config))
@@ -516,7 +677,14 @@ class FreeLiveCheckService:
                 token_refreshed=token_refreshed,
                 failure=copy.deepcopy(failure) if failure else None,
             )
-            label = {"live": "账号正常", "deactivated": "账号已停用", "token_expired": "Token 已失效，建议深度测活", "failed": "测活失败"}[status]
+            label = {
+                "live": "账号正常",
+                "deactivated": "账号已停用",
+                "token_expired": "Token 已失效，建议深度测活",
+                "free_live_proxy_blocked": "当前出口或服务端安全策略拒绝了快速查询，不等于账号已停用",
+                "free_live_session_rejected": "深度测活会话被拒绝，未确认账号停用",
+                "failed": "测活失败",
+            }.get(status, "测活完成")
             self._log(task_id, "free_live_result", label, "success" if status == "live" else "warn" if status == "token_expired" else "error")
         except Exception as exc:
             self._finish_exception(task_id, exc, row_id=str(context.get("row_id") or job.get("row_id") or ""))
@@ -533,25 +701,54 @@ class FreeLiveCheckService:
         job = self._set_job(task_id, status="failed", stage=failure["node_code"], checked_at=checked_at, failure=failure)
         target_row = row_id or str(job.get("row_id") or "")
         if target_row:
-            self._save_live_result(target_row, {
-                "live_check_status": "failed",
+            live_status = str(failure.get("node_code") or "") if str(failure.get("node_code") or "") in _LIVE_FAILURE_STATUSES else "failed"
+            current_exit = str(
+                job.get("exit_ip")
+                or job.get("expected_exit_ip")
+                or job.get("live_check_ip")
+                or ""
+            ).strip()
+            result_values: dict[str, Any] = {
+                "live_check_status": live_status,
                 "live_check_mode": str(job.get("mode") or ""),
                 "live_check_task_id": task_id,
                 "live_checked_at": checked_at,
                 "live_check_ip": str(job.get("live_check_ip") or ""),
                 "live_check_token_refreshed": False,
                 "live_check_failure": failure,
-            })
+            }
+            if current_exit:
+                result_values.update({"expected_exit_ip": current_exit, "exit_ip": current_exit})
+            self._save_live_result(target_row, result_values)
         self._log(task_id, failure["node_code"], failure["public_message"], "error")
 
-    def _query_account(self, session: Any, token: str) -> dict[str, Any]:
-        headers = {"authorization": f"Bearer {token}", "accept": "application/json"}
-        accounts_response = session.get(
-            "https://chatgpt.com/backend-api/accounts/check/v4-2023-04-27"
-            f"?timezone_offset_min={timezone_offset_minutes()}",
-            headers=headers,
-            timeout=20,
-        )
+    def _query_account(
+        self,
+        session: Any,
+        token: str,
+        *,
+        device_id: str = "",
+        failure_node: str = "free_live_fast",
+    ) -> dict[str, Any]:
+        """Query account state through the shared, same-origin live adapter."""
+        _prepare_live_session(session, device_id)
+        accounts_url = f"{_LIVE_ORIGIN}{_LIVE_ACCOUNT_PATH}?timezone_offset_min={timezone_offset_minutes()}"
+        accounts_headers = _live_request_headers(token, device_id, _LIVE_ACCOUNT_PATH)
+        try:
+            accounts_response = session.get(
+                accounts_url,
+                headers=accounts_headers,
+                timeout=20,
+            )
+        except Exception as exc:
+            raise FreeRegisterError(
+                "free_live_network_error",
+                "Free 测活网络异常",
+                f"账号接口请求异常（{type(exc).__name__}）",
+                retryable=True,
+                error_code="free_live_network_error",
+                action_hint="保留原注册结果，检查当前绑定代理后重试",
+            ) from exc
         accounts_status = _status(accounts_response)
         accounts = _json(accounts_response)
         if accounts_status == 401:
@@ -567,13 +764,65 @@ class FreeLiveCheckService:
                 "http_status": accounts_status or None,
             }
             return {"status": "deactivated", "http_status": accounts_status or None, "failure": failure}
+        if accounts_status == 403:
+            content_type = _response_content_type(accounts_response)
+            body = _response_text(accounts_response).lower()
+            security_page = "html" in content_type or any(marker in body for marker in _LIVE_SECURITY_MARKERS)
+            detail = "当前出口或服务端安全策略拒绝了账号查询"
+            if security_page:
+                detail = "当前出口返回安全挑战或 HTML 拒绝页"
+            node_code = failure_node if failure_node in {"free_live_fast", "free_live_session_rejected"} else "free_live_proxy_blocked"
+            if node_code == "free_live_fast":
+                node_code = "free_live_proxy_blocked"
+            node_label = LIVE_STAGE_LABELS[node_code]
+            raise FreeRegisterError(
+                node_code,
+                node_label,
+                f"{detail}（HTTP 403）",
+                retryable=True,
+                provider_status=403,
+                provider_code=_response_provider_code(accounts_response, accounts),
+                error_code=node_code,
+                action_hint=(
+                    "可以手动执行深度测活确认；本次结果不等于账号已停用"
+                    if node_code == "free_live_proxy_blocked"
+                    else "保留原注册结果，检查当前会话和绑定代理后重试"
+                ),
+                page_type="security_challenge" if security_page else "access_denied",
+                content_type=content_type,
+            )
         if not 200 <= accounts_status < 300:
+            if accounts_status == 429:
+                raise FreeRegisterError(
+                    "free_live_rate_limited",
+                    "Free 测活触发限流",
+                    "账号接口触发服务端限流",
+                    retryable=True,
+                    provider_status=429,
+                    provider_code=_response_provider_code(accounts_response, accounts),
+                    error_code="free_live_rate_limited",
+                    action_hint="等待 Retry-After 冷却后重试",
+                    retry_after_seconds=_retry_after(accounts_response, accounts),
+                )
+            if accounts_status >= 500 or accounts_status == 0:
+                raise FreeRegisterError(
+                    "free_live_upstream_error" if accounts_status >= 500 else "free_live_network_error",
+                    "Free 测活上游服务异常" if accounts_status >= 500 else "Free 测活网络异常",
+                    f"账号接口返回 HTTP {accounts_status or '-'}",
+                    retryable=True,
+                    provider_status=accounts_status or None,
+                    provider_code=_response_provider_code(accounts_response, accounts),
+                    error_code="free_live_upstream_error" if accounts_status >= 500 else "free_live_network_error",
+                    action_hint="保留原注册结果，稍后重试",
+                    retry_after_seconds=_retry_after(accounts_response, accounts),
+                )
             raise FreeRegisterError(
                 "free_live_fast",
                 "快速测活",
                 f"账号接口返回 HTTP {accounts_status or '-'}",
                 provider_status=accounts_status or None,
                 error_code="free_live_account_http_failed",
+                retryable=False,
             )
         try:
             from .chatgpt_plan_gate import plan_from_accounts_check
@@ -597,8 +846,8 @@ class FreeLiveCheckService:
         }
         try:
             eligibility_response = session.get(
-                "https://chatgpt.com/backend-api/aip/first-party/eligibility",
-                headers=headers,
+                f"{_LIVE_ORIGIN}{_LIVE_ELIGIBILITY_PATH}",
+                headers=_live_request_headers(token, device_id, _LIVE_ELIGIBILITY_PATH),
                 timeout=20,
             )
             eligibility_status = _status(eligibility_response)
@@ -616,13 +865,19 @@ class FreeLiveCheckService:
         from curl_cffi import requests as curl_requests
 
         session = curl_requests.Session(impersonate="chrome", verify=True)
-        session.trust_env = False
+        device_id = str(context.get("device_id") or f"free-live-{secrets.token_hex(16)}")
+        _prepare_live_session(session, device_id)
         transport_proxy = proxy_transport_value(context["proxy"], driver="protocol")
         if not transport_proxy:
             raise FreeRegisterError("free_live_fast", "快速测活", "测活代理格式无效", retryable=False)
         session.proxies = {"http": transport_proxy, "https": transport_proxy}
         try:
-            return self._query_account(session, str(context["access_token"]))
+            return self._query_account(
+                session,
+                str(context["access_token"]),
+                device_id=device_id,
+                failure_node="free_live_fast",
+            )
         except FreeRegisterError:
             raise
         except Exception as exc:
@@ -653,17 +908,30 @@ class FreeLiveCheckService:
         email = str(context["email"])
         task_id = str(context["task_id"])
         proxy = str(context["proxy"])
+        device_id = str(context.get("device_id") or f"free-live-{secrets.token_hex(16)}")
+        auth_session_logging_id = f"free-live-auth-{secrets.token_hex(12)}"
         oauth_url, _code_verifier, _state = codex_chain_runner.build_oauth_url(
             login_hint=email,
+            screen_hint="login_or_signup",
             prompt="login",
         )
+        try:
+            from .free_protocol_runtime import _ensure_oauth_context_params
+        except ImportError:
+            from free_protocol_runtime import _ensure_oauth_context_params  # type: ignore[no-redef]
+        oauth_url = _ensure_oauth_context_params(
+            oauth_url,
+            device_id=device_id,
+            auth_session_logging_id=auth_session_logging_id,
+        )
         oauth_params = codex_oauth_chain.parse_oauth_url(oauth_url)
-        device_id = f"free-live-{secrets.token_hex(16)}"
         protocol = config.get("protocol") if isinstance(config.get("protocol"), Mapping) else {}
         chain_config = dict(config)
         chain_config.update({
             "run_mode": "free_live_check",
             "codex_chain_mode": "real",
+            "free_protocol_state_machine": True,
+            "free_register_no_phone": True,
             "codex_node_runner": str(protocol.get("node_runner") or ""),
             "_auth_account_email": email,
         })
@@ -683,6 +951,41 @@ class FreeLiveCheckService:
             device_id=device_id,
             log_fn=log_fn,
         )
+        # Deep checks use the same bounded protocol bootstrap as registration:
+        # fixed proxy, device cookie, anonymous warmup and Sentinel preflight.
+        # Test doubles without an HTTP ``get`` remain transport-only tests and
+        # do not attempt network calls.
+        transport_session = getattr(transport, "session", None)
+        if callable(getattr(transport_session, "get", None)):
+            try:
+                try:
+                    from .free_protocol_bootstrap import (
+                        anonymous_warmup,
+                        exit_geo_profile,
+                        network_preflight,
+                        prepare_reference_session,
+                    )
+                except ImportError:
+                    from free_protocol_bootstrap import (  # type: ignore[no-redef]
+                        anonymous_warmup,
+                        exit_geo_profile,
+                        network_preflight,
+                        prepare_reference_session,
+                    )
+                prepare_reference_session(transport)
+                exit_geo_profile(transport, chain_config, log=log_fn)
+                network_preflight(transport, chain_config, log=log_fn)
+                anonymous_warmup(transport, chain_config, log=log_fn)
+            except FreeRegisterError:
+                raise
+            except Exception as exc:
+                raise FreeRegisterError(
+                    "free_live_deep",
+                    "深度测活",
+                    f"深度测活协议预检异常（{type(exc).__name__}）",
+                    retryable=True,
+                    error_code="free_live_deep_preflight_failed",
+                ) from exc
         stage_fn = lambda _task_id, code: self._set_job(task_id, stage="free_live_email" if "email" in code else "free_live_deep")
         if MailboxUrlOtpProvider is _ORIGINAL_MAILBOX_URL_OTP_PROVIDER:
             otp = build_free_mailbox_otp_provider(
@@ -721,10 +1024,37 @@ class FreeLiveCheckService:
                     continue
                 if page_type in {"password", "password_verification", "email_password"}:
                     password = str(context.get("password") or "")
-                    if not password:
-                        raise FreeRegisterError("free_live_password", "深度测活密码验证", "账号没有保存注册密码", retryable=False)
-                    response = transport.verify_password(password)
-                    continue
+                    try:
+                        try:
+                            from .free_protocol_flow import _password_context
+                        except ImportError:
+                            from free_protocol_flow import _password_context  # type: ignore[no-redef]
+                        password_context = str(_password_context(response) or "unknown")
+                    except Exception:
+                        password_context = "unknown"
+                    if password_context == "login" and password:
+                        response = transport.verify_password(password)
+                        continue
+                    if password_context == "unknown" and password:
+                        raise FreeRegisterError(
+                            "free_live_password_context_unknown",
+                            "识别深度测活密码页面",
+                            "服务端返回通用密码页面，无法确认是否为已有账号登录，已停止避免误提交",
+                            retryable=False,
+                            error_code="free_live_password_context_unknown",
+                        )
+                    # A passwordless account must first use the email OTP
+                    # branch above. A real password is accepted only when the
+                    # server explicitly identifies the page as existing-login.
+                    if password_context in {"login", "signup", "unknown"}:
+                        raise FreeRegisterError(
+                            "free_live_password_required",
+                            "深度测活需要真实账号密码",
+                            "服务端进入密码页面，但本地没有可用的真实 OpenAI 账号密码",
+                            retryable=False,
+                            error_code="free_live_password_required",
+                            action_hint="该账号注册时走 passwordless 邮箱 OTP；不要填入固定注册密码",
+                        )
                 if page_type in {"mfa_otp", "mfa_challenge", "mfa_otp_verification"}:
                     secret = str(context.get("totp_secret") or "")
                     if not secret:
@@ -747,7 +1077,14 @@ class FreeLiveCheckService:
                     response = transport.complete_chatgpt_callback(continue_url)
                 token = str(transport.chatgpt_access_token() or "")
                 if token:
-                    checked = dict(self._query_account(transport.session, token))
+                    checked = dict(
+                        self._query_account(
+                            transport.session,
+                            token,
+                            device_id=device_id,
+                            failure_node="free_live_session_rejected",
+                        )
+                    )
                     if checked.get("status") == "live":
                         checked["access_token"] = token
                     return checked

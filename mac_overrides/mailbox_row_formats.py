@@ -27,12 +27,16 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
 try:
     from .mailbox_password_url_rows import (
         masked_mailbox_password_url_row,
+        masked_mailbox_password_url_totp_row,
         parse_mailbox_password_url_row,
+        parse_mailbox_password_url_totp_row,
     )
 except ImportError:  # Loaded as a top-level override module by the Mac launcher.
     from mailbox_password_url_rows import (
         masked_mailbox_password_url_row,
+        masked_mailbox_password_url_totp_row,
         parse_mailbox_password_url_row,
+        parse_mailbox_password_url_totp_row,
     )
 
 try:
@@ -82,7 +86,8 @@ def is_importable_mailbox_row(row: Any) -> bool:
     if not raw or raw.startswith("#") or not email_from_row(raw):
         return False
     return (
-        parse_mailbox_password_url_row(raw) is not None
+        parse_mailbox_password_url_totp_row(raw) is not None
+        or parse_mailbox_password_url_row(raw) is not None
         or parse_mailbox_url_totp_row(raw) is not None
         or parse_oauth_mailbox_row(raw) is not None
         or parse_chatgpt_totp_row(raw) is not None
@@ -95,6 +100,9 @@ def password_from_row(row: Any) -> str:
     raw = str(row or "").strip()
     if not raw:
         return ""
+    parsed_password_url_totp = parse_mailbox_password_url_totp_row(raw)
+    if parsed_password_url_totp is not None:
+        return parsed_password_url_totp.password
     parsed_password_url = parse_mailbox_password_url_row(raw)
     if parsed_password_url is not None:
         return parsed_password_url.password
@@ -126,6 +134,9 @@ def password_from_row(row: Any) -> str:
 
 def totp_secret_from_row(row: Any) -> str:
     """Return the private TOTP seed only for supported TOTP mailbox formats."""
+    parsed_password_url_totp = parse_mailbox_password_url_totp_row(row)
+    if parsed_password_url_totp is not None:
+        return parsed_password_url_totp.totp_secret
     if parse_mailbox_password_url_row(row) is not None:
         return ""
     parsed_url_totp = parse_mailbox_url_totp_row(row)
@@ -139,6 +150,9 @@ def totp_secret_from_row(row: Any) -> str:
 
 def mailbox_url_from_row(row: Any) -> str:
     """Return the transient mailbox page URL for a supported source row."""
+    parsed_password_url_totp = parse_mailbox_password_url_totp_row(row)
+    if parsed_password_url_totp is not None:
+        return parsed_password_url_totp.mailbox_url
     parsed_password_url = parse_mailbox_password_url_row(row)
     if parsed_password_url is not None:
         return parsed_password_url.mailbox_url
@@ -168,6 +182,8 @@ def masked_source_row(row: Any) -> str:
     email = email_from_row(raw)
     if not email:
         return ""
+    if parse_mailbox_password_url_totp_row(raw) is not None:
+        return masked_mailbox_password_url_totp_row(raw, _SECRET_MASK)
     if parse_mailbox_password_url_row(raw) is not None:
         return masked_mailbox_password_url_row(raw, _SECRET_MASK)
     if parse_mailbox_url_totp_row(raw) is not None:
@@ -194,6 +210,14 @@ def row_secrets(row: Any) -> tuple[str, ...]:
         if delimiter in raw:
             values.extend(part.strip() for part in raw.split(delimiter)[1:])
             break
+    parsed_free = parse_mailbox_password_url_totp_row(raw)
+    if parsed_free is not None:
+        values.extend((
+            parsed_free.email,
+            parsed_free.password,
+            parsed_free.mailbox_url,
+            parsed_free.totp_secret,
+        ))
     for parsed in (
         parse_oauth_mailbox_row(raw),
         parse_chatgpt_totp_row(raw),
@@ -219,6 +243,7 @@ __all__ = [
     "mailbox_url_from_row",
     "masked_source_row",
     "parse_mailbox_password_url_row",
+    "parse_mailbox_password_url_totp_row",
     "parse_chatgpt_totp_row",
     "parse_mailbox_url_row",
     "parse_mailbox_url_totp_row",

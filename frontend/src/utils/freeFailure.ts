@@ -39,7 +39,7 @@ export function selectCurrentFreeFailure(
 ): TaskFailure | null {
   const status = String(liveCheckStatus || '').trim().toLowerCase()
   const liveFailureIsCurrent = Boolean(liveCheckFailure)
-    && ['deactivated', 'token_expired', 'failed'].includes(status)
+    && ['deactivated', 'token_expired', 'failed', 'free_live_proxy_blocked', 'free_live_session_rejected', 'free_live_rate_limited', 'free_live_upstream_error', 'free_live_network_error', 'free_live_password_required'].includes(status)
   return liveFailureIsCurrent ? liveCheckFailure || null : registrationFailure || null
 }
 

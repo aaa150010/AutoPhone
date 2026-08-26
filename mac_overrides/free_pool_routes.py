@@ -42,6 +42,17 @@ def import_free_proxies(
     return importer(content, **options)
 
 
+def _request_row_ids(data: Any) -> list[str]:
+    """Normalize an explicit row selection without turning invalid input into all rows."""
+    if not isinstance(data, Mapping) or not isinstance(data.get("row_ids"), list):
+        return []
+    return list(dict.fromkeys(
+        str(value or "").strip().lower()
+        for value in data.get("row_ids") or []
+        if str(value or "").strip()
+    ))
+
+
 class FreePoolRouteController:
     """Routes that own the isolated Free mailbox and proxy pools."""
 
@@ -56,6 +67,7 @@ class FreePoolRouteController:
         error_response: Callable[..., Any],
         failure_response: Callable[..., Any],
         request_lock: Any,
+        ordinary_mailbox_import: Callable[[str], Mapping[str, Any]] | None = None,
     ) -> None:
         self.module = module
         self.manager = manager
@@ -65,6 +77,7 @@ class FreePoolRouteController:
         self.error_response = error_response
         self.failure_response = failure_response
         self.request_lock = request_lock
+        self.ordinary_mailbox_import = ordinary_mailbox_import
 
     def mailboxes(self):
         if self.manager is None:
@@ -370,6 +383,132 @@ class FreePoolRouteController:
                 status=503,
             )
 
+    def transfer(self):
+        """Explicitly copy selected Free rows into the ordinary mailbox pool."""
+        if self.manager is None:
+            return self.module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        if not callable(self.ordinary_mailbox_import):
+            return self.module.jsonify(ok=False, error="普通接码邮箱池尚未初始化"), 503
+        conflict = self.mutation_conflict("传输 Free 邮箱")
+        if conflict is not None:
+            return conflict
+        if not self.request_lock.acquire(blocking=False):
+            return self.module.jsonify(
+                ok=False,
+                error="Free 配置、导入或传输请求正在处理中",
+            ), 409
+        try:
+            data = self.module.request.get_json(silent=True) or {}
+            row_ids = _request_row_ids(data)
+            if not row_ids:
+                return self.error_response(
+                    ValueError("请选择要传输的 Free 邮箱"),
+                    default_code="free_mailbox_transfer",
+                    default_label="传输 Free 邮箱",
+                )
+            prepared = self.manager.pool.build_transfer_content(row_ids)
+            content = str(prepared.get("content") or "")
+            if not content:
+                return self.module.jsonify(
+                    ok=True,
+                    imported=0,
+                    skipped=int(prepared.get("skipped") or 0),
+                    skipped_items=list(prepared.get("skipped_items") or []),
+                    prepared=0,
+                    ordinary_mailboxes_refresh_required=False,
+                )
+            ordinary = self.ordinary_mailbox_import(content)
+            ordinary = dict(ordinary) if isinstance(ordinary, Mapping) else {}
+            imported = max(0, int(ordinary.get("imported") or 0))
+            ordinary_skipped = max(0, int(ordinary.get("skipped") or 0))
+            duplicate_only = not ordinary.get("ok") and "没有新增邮箱" in str(ordinary.get("error") or "")
+            if duplicate_only:
+                ordinary_skipped = max(
+                    ordinary_skipped,
+                    max(0, int(prepared.get("prepared") or 0) - imported),
+                )
+            if not ordinary.get("ok") and not duplicate_only:
+                raise ValueError(str(ordinary.get("error") or "普通邮箱池导入失败"))
+            skipped_items = list(prepared.get("skipped_items") or [])
+            if ordinary_skipped:
+                skipped_items.append({
+                    "row_id": "",
+                    "email": "",
+                    "reason": f"普通接码邮箱池跳过重复 {ordinary_skipped} 条",
+                })
+            return self.module.jsonify(
+                ok=True,
+                imported=imported,
+                skipped=ordinary_skipped + int(prepared.get("skipped") or 0),
+                skipped_items=skipped_items,
+                prepared=int(prepared.get("prepared") or 0),
+                ordinary_mailboxes_refresh_required=bool(imported),
+            )
+        except Exception as exc:
+            return self.error_response(
+                exc,
+                default_code="free_mailbox_transfer",
+                default_label="传输 Free 邮箱",
+            )
+        finally:
+            self.request_lock.release()
+
+    def format(self):
+        """Return explicitly requested sensitive Free rows for clipboard copy."""
+        if self.manager is None:
+            return self.module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        conflict = self.mutation_conflict("复制 Free 邮箱格式")
+        if conflict is not None:
+            return conflict
+        if not self.request_lock.acquire(blocking=False):
+            return self.module.jsonify(ok=False, error="Free 配置、导入或复制请求正在处理中"), 409
+        try:
+            data = self.module.request.get_json(silent=True) or {}
+            row_ids = _request_row_ids(data)
+            if not row_ids:
+                return self.error_response(
+                    ValueError("请选择要复制的 Free 邮箱"),
+                    default_code="free_mailbox_format",
+                    default_label="复制 Free 邮箱格式",
+                )
+            mode = str(data.get("mode") or "full").strip().lower()
+            if mode not in {"mailbox", "full"}:
+                return self.error_response(
+                    ValueError("复制格式无效"),
+                    default_code="free_mailbox_format",
+                    default_label="复制 Free 邮箱格式",
+                )
+            prepared = self.manager.pool.build_transfer_content(
+                row_ids,
+                include_password=mode == "full",
+            )
+            content = str(prepared.get("content") or "")
+            if not content:
+                return self.module.jsonify(
+                    ok=True,
+                    mode=mode,
+                    content="",
+                    prepared=0,
+                    skipped=int(prepared.get("skipped") or 0),
+                    skipped_items=list(prepared.get("skipped_items") or []),
+                )
+            return self.module.jsonify(
+                ok=True,
+                mode=mode,
+                content=content,
+                prepared=int(prepared.get("prepared") or 0),
+                skipped=int(prepared.get("skipped") or 0),
+                skipped_items=list(prepared.get("skipped_items") or []),
+            )
+        except Exception as exc:
+            return self.error_response(
+                exc,
+                default_code="free_mailbox_format",
+                default_label="复制 Free 邮箱格式",
+            )
+        finally:
+            self.request_lock.release()
+
     def secret(self):
         if self.manager is None:
             return self.module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
@@ -403,6 +542,33 @@ class FreePoolRouteController:
                 status=status,
             )
 
+    def totp(self):
+        """Return only the current temporary TOTP code for selected rows."""
+        if self.manager is None:
+            return self.module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        data = self.module.request.get_json(silent=True) or {}
+        if not isinstance(data, Mapping):
+            return self.error_response(
+                ValueError("请求必须是 JSON 对象"),
+                default_code="free_totp",
+                default_label="读取 Free 临时 2FA 验证码",
+            )
+        raw_task_ids = data.get("task_ids") if isinstance(data.get("task_ids"), list) else [data.get("task_id")]
+        task_ids = [str(value).strip() for value in raw_task_ids if str(value or "").strip()]
+        raw_row_ids = data.get("row_ids") if isinstance(data.get("row_ids"), list) else [data.get("row_id")]
+        row_ids = [str(value).strip() for value in raw_row_ids if str(value or "").strip()]
+        try:
+            result = self.manager.temporary_totp(task_ids, row_ids=row_ids)
+            return self.module.jsonify(ok=True, kind="totp", **result)
+        except Exception as exc:
+            status = 400 if isinstance(exc, ValueError) or getattr(exc, "retryable", None) is False else 503
+            return self.failure_response(
+                exc,
+                default_code="free_totp",
+                default_label="读取 Free 临时 2FA 验证码",
+                status=status,
+            )
+
     def routes(self):
         return (
             ("/api/free/mailboxes", "api_free_mailboxes", self.mailboxes, ["GET"]),
@@ -412,12 +578,15 @@ class FreePoolRouteController:
             ("/api/free/mailboxes/draft", "api_free_pool_draft", self.pool_draft, ["POST"]),
             ("/api/free/mailboxes/restore", "api_free_pool_restore", self.pool_restore, ["POST"]),
             ("/api/free/mailboxes/export", "api_free_export", self.export, ["POST"]),
+            ("/api/free/mailboxes/transfer", "api_free_mailbox_transfer", self.transfer, ["POST"]),
+            ("/api/free/mailboxes/format", "api_free_mailbox_format", self.format, ["POST"]),
             ("/api/free/proxies/import", "api_free_proxy_import", self.proxy_import, ["POST"]),
             ("/api/free/proxies/preflight", "api_free_proxy_preflight", self.proxy_preflight, ["POST"]),
             ("/api/free/proxies", "api_free_proxies", self.proxies, ["GET"]),
             ("/api/free/proxies/group", "api_free_proxy_group", self.proxy_group, ["POST"]),
             ("/api/free/proxies/group/delete", "api_free_proxy_group_delete", self.proxy_group_delete, ["POST"]),
             ("/api/free/secrets", "api_free_secret", self.secret, ["POST"]),
+            ("/api/free/totp", "api_free_totp", self.totp, ["POST"]),
         )
 
 
