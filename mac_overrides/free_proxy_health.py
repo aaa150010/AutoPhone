@@ -113,6 +113,12 @@ def _exception_chain(error: BaseException):
 def is_proxy_health_failure(error: BaseException) -> bool:
     """Return true only for explicit proxy transport or exit-check failures."""
     node_code = str(getattr(error, "node_code", "") or "").strip().lower()
+    # Camoufox context creation happens before an email is submitted. The
+    # driver marks only proxy-attributable context errors as retryable; those
+    # errors are safe evidence for quarantining the selected proxy and moving
+    # the untouched mailbox task to another pool entry.
+    if node_code == "free_camoufox_launch" and bool(getattr(error, "proxy_retryable", False)):
+        return True
     if node_code in _EXIT_VERIFICATION_NODES:
         return True
     if node_code not in _NETWORK_EVIDENCE_NODES:

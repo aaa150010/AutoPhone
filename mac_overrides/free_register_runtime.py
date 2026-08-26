@@ -1186,11 +1186,23 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     protocol_pre_email = error_node in {
                         "free_protocol_preflight", "free_oauth_session", "free_email_identifier",
                     }
-                    camoufox_pre_email = error_node == "free_camoufox_navigation" and bool(getattr(exc, "proxy_retryable", False))
-                    can_retry_pre_email = ((pre_profile or protocol_pre_email) and network_failure) or (protocol_pre_email and bool(getattr(exc, "proxy_retryable", False))) or camoufox_pre_email
+                    camoufox_proxy_retryable = bool(getattr(exc, "proxy_retryable", False))
+                    camoufox_pre_email = (
+                        error_node == "free_camoufox_navigation" and camoufox_proxy_retryable
+                    ) or (
+                        error_node == "free_camoufox_launch"
+                        and str(getattr(exc, "error_code", "") or "") == "camoufox_context_create_failed"
+                        and camoufox_proxy_retryable
+                    )
+                    can_retry_pre_email = (
+                        ((pre_profile or protocol_pre_email) and network_failure)
+                        or (protocol_pre_email and bool(getattr(exc, "proxy_retryable", False)))
+                        or camoufox_pre_email
+                    )
                     if not can_retry_pre_email or attempt >= retry_limit or self._stop.is_set():
                         raise
-                    if network_failure: self._record_proxy_failure(snapshot, exc)
+                    if network_failure or camoufox_pre_email:
+                        self._record_proxy_failure(snapshot, exc)
                     attempt += 1
                     switched = self._switch_pre_profile_proxy(snapshot, task_config)
                     self._assert_batch_proxy_uniqueness(snapshot)

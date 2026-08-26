@@ -292,6 +292,20 @@ def _camoufox_error_detail(exc: BaseException) -> str:
     return " <- ".join(parts)[:500]
 
 
+def _context_failure_diagnostic(exc: BaseException) -> str:
+    """Return a stable, credential-free reason for context startup failures."""
+    text = (str(exc or "") or str(getattr(exc, "message", "") or "")).casefold()
+    if _browser_process_lost(exc):
+        reason = "browser_process_lost"
+    elif any(marker in text for marker in ("proxy", "socks", "connect", "connection", "timed out", "timeout")):
+        reason = "proxy_or_transport"
+    elif any(marker in text for marker in ("permission", "denied", "executable", "binary")):
+        reason = "browser_runtime"
+    else:
+        reason = "context_api_error"
+    return f"exception_type={type(exc).__name__[:80] or 'UnknownError'}; reason={reason}"
+
+
 def _safe_url(page: Any) -> str:
     try:
         parsed = urlsplit(str(getattr(page, "url", "") or ""))
@@ -2005,12 +2019,23 @@ class CamoufoxBrowserPool:
                         )
                         setattr(failure, "safe_restart", True)
                         raise failure from exc
-                    raise CamoufoxBrowserError(
+                    failure = CamoufoxBrowserError(
                         "free_camoufox_launch", "创建 Camoufox 浏览器 context",
                         "Camoufox context 创建失败",
                         error_code="camoufox_context_create_failed",
-                        diagnostic=type(exc).__name__,
-                    ) from exc
+                        diagnostic=_context_failure_diagnostic(exc),
+                    )
+                    # Context creation is before any email submission. With
+                    # an explicit task proxy, a non-runtime context error can
+                    # safely switch to a healthy pool entry and replay the
+                    # untouched task. Browser-runtime errors must stay local
+                    # so they are not misreported as proxy health failures.
+                    setattr(
+                        failure,
+                        "proxy_retryable",
+                        bool(proxy) and "reason=proxy_or_transport" in failure.diagnostic,
+                    )
+                    raise failure from exc
                 try:
                     page = await context.new_page()
                 except Exception as exc:

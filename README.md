@@ -35,8 +35,9 @@ chmod +x start.command
 脚本会自动做这些事：
 
 - 检查并使用 Python 3.13；如果本机有 Homebrew 但没有 Python 3.13，会尝试自动安装 `python@3.13`
-- 创建本地虚拟环境 `mac_runtime/.venv`
+- 创建本地虚拟环境 `mac_runtime/.venv`；如果项目从另一台 Mac 复制过来导致解释器失效，会先验证并自动重建
 - 安装 Flask、curl_cffi、cryptography、requests 等依赖
+- 检查 Camoufox Python 包和浏览器运行时；GitHub API 限流时改用固定版本的直链下载，不会因 `403 rate limit` 直接退出
 - 准备 `data/`、`engine/` 等运行目录
 - 检查 Node.js；如果本机有 Homebrew 但没有 Node.js，会尝试自动安装 `node`
 - 启动 WebUI，并自动打开“GPT 注册中心”主页面
@@ -378,6 +379,17 @@ brew install python@3.13 node
 ```
 
 然后重新双击 `start.command`。
+
+### Camoufox 显示 GitHub API 403 rate limit
+
+启动脚本不会把 GitHub releases API 当作唯一入口。它会使用兼容当前 Python 包的固定版本直链下载；如果所在网络不能访问 GitHub，可先把浏览器压缩包放到可访问的镜像，再设置 `CAMOUFOX_BROWSER_URL` 后重新运行：
+
+```sh
+export CAMOUFOX_BROWSER_URL="https://你的镜像地址/camoufox-152.0.4-beta.29-mac.arm64.zip"
+./start.command
+```
+
+Intel Mac 将地址中的 `arm64` 改为 `x86_64`。如果之前复制过别人的 `mac_runtime/.venv`，启动脚本会检测到旧机器路径并自动重建，不需要手动修改 Python 路径。
 
 ### 页面空白或 assets 返回 404
 

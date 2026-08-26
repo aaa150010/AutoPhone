@@ -19,6 +19,10 @@ export const currentRelease: ReleaseNotes = {
   releasedAt: '2026-08-26',
   sections: [
     {
+      title: '跨 Mac 启动与 Camoufox 安装修复',
+      usage: 'start.command 会验证本机 Python 3.13 和本地虚拟环境是否真的可启动，复制项目产生的失效 venv 会自动重建；Camoufox 浏览器运行时遇到 GitHub releases API 限流时会改用兼容版本直链，并支持通过 CAMOUFOX_BROWSER_URL 指定镜像。',
+    },
+    {
       title: 'Free 注册移除出口 IP 门槛',
       usage: 'Free 注册租用代理时不再调用出口 IP 服务作为硬性条件；全协议仍会在邮箱提交前执行 ChatGPT、Auth 和 Sentinel 真实链路预检，手动代理检测只确认请求和 HTTP 连通性。',
     },

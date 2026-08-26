@@ -112,6 +112,25 @@ class FreeProxyHealthTests(unittest.TestCase):
         )
         self.assertTrue(all(is_proxy_health_failure(failure) for failure in failures))
 
+    def test_camoufox_context_proxy_retry_is_classified_as_proxy_evidence(self):
+        failure = FreeRegisterError(
+            "free_camoufox_launch",
+            "创建 Camoufox 浏览器 context",
+            "Camoufox context 创建失败",
+            error_code="camoufox_context_create_failed",
+        )
+        failure.proxy_retryable = True
+        self.assertTrue(is_proxy_health_failure(failure))
+
+        runtime_failure = FreeRegisterError(
+            "free_camoufox_launch",
+            "启动 Camoufox 浏览器池",
+            "浏览器运行时不可用",
+            error_code="camoufox_context_create_failed",
+        )
+        runtime_failure.proxy_retryable = False
+        self.assertFalse(is_proxy_health_failure(runtime_failure))
+
     def test_page_otp_account_challenge_and_lease_failures_never_reduce_health(self):
         page_failure = FreeRegisterError("free_roxy_signup_email_submit", "测试节点", "页面提交超时")
         page_failure.__cause__ = ConnectionError("proxy connection timeout")
@@ -208,6 +227,50 @@ class FreeProxyHealthTests(unittest.TestCase):
         self.assertEqual(
             sorted(row["consecutive_failures"] for row in manager.proxies.public()["rows"]),
             [0, 0],
+        )
+
+    def test_camoufox_context_failure_switches_proxy_before_email_submission(self):
+        attempts: list[str] = []
+
+        def runner(task, _config, _stop, _stage, _log, *, twofa_retry=False):
+            self.assertFalse(twofa_retry)
+            attempts.append(str(task.get("proxy_id") or ""))
+            if len(attempts) == 1:
+                failure = FreeRegisterError(
+                    "free_camoufox_launch",
+                    "创建 Camoufox 浏览器 context",
+                    "Camoufox context 创建失败",
+                    error_code="camoufox_context_create_failed",
+                )
+                failure.proxy_retryable = True
+                raise failure
+            return {
+                "access_token": "token-private",
+                "twofa_status": "enabled",
+                "totp_secret": "JBSWY3DPEHPK3PXP",
+            }
+
+        manager = FreeRegisterManager(
+            Path(self.temporary.name),
+            runner=runner,
+            proxy_probe=lambda proxy, _url: "203.0.113.10" if "proxy-a" in proxy else "203.0.113.11",
+        )
+        manager.start(
+            {"driver": "camoufox", "target_count": 1, "concurrency": 1, "proxy_retry_count": 1},
+            pool_content="user@example.test----https://mail.example.test/inbox\n",
+            proxy_content="http://proxy-a.test:8000\nhttp://proxy-b.test:8000\n",
+        )
+        deadline = time.time() + 3
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.01)
+
+        task = manager.public_tasks()[0]
+        self.assertEqual(task["status"], "success")
+        self.assertEqual(len(attempts), 2)
+        self.assertNotEqual(attempts[0], attempts[1])
+        self.assertEqual(
+            sorted(row["consecutive_failures"] for row in manager.proxies.public()["rows"]),
+            [0, 1],
         )
 
     def test_protocol_failure_after_email_submission_keeps_fixed_proxy(self):
