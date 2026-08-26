@@ -50,6 +50,7 @@ try:
         plus_trial_from_accounts as _plus_trial_from_accounts,
         random_birthdate,
         random_display_name,
+        proxy_transport_value,
         safe_log_message as _safe_log_message,
         timezone_offset_minutes as _timezone_offset_minutes,
     )
@@ -79,6 +80,7 @@ except ImportError:
         FIXED_PASSWORD, FreeRegisterError, FreeTwoFaPending,
         plus_trial_from_accounts as _plus_trial_from_accounts,
         random_birthdate, random_display_name,
+        proxy_transport_value,
         safe_log_message as _safe_log_message,
         timezone_offset_minutes as _timezone_offset_minutes,
     )
@@ -442,7 +444,19 @@ class FreeProtocolMixin:
 
         task_id = str(task["task_id"])
         email = str(task["email"])
-        proxy = str(task["proxy"])
+        proxy = proxy_transport_value(
+            str(task["proxy"]),
+            driver="protocol",
+            socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "auto"),
+        )
+        if not proxy:
+            raise FreeRegisterError(
+                "proxy_connect_failed",
+                "代理连接失败",
+                "协议注册代理格式无效",
+                retryable=False,
+                error_code="proxy_connect_failed",
+            )
         password = FIXED_PASSWORD
         stage(task_id, "free_twofa_enroll" if twofa_retry else "oauth_create_node")
         resolved_runner = self.resolve_node_runner(config)

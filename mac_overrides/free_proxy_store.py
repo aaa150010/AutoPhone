@@ -22,6 +22,7 @@ from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 try:
     from .free_register_common import (
+        DEFAULT_SOCKS5_DNS_MODE,
         DEFAULT_FREE_PROXY_SCHEME,
         FREE_PROXY_SCHEMES,
         FreeRegisterError,
@@ -31,11 +32,14 @@ try:
         mask_proxy,
         normalize_proxy_value,
         proxy_transport_value,
+        proxy_error_code,
+        proxy_error_label,
         proxy_error_detail,
         safe_log_message,
     )
 except ImportError:
     from free_register_common import (  # type: ignore[no-redef]
+        DEFAULT_SOCKS5_DNS_MODE,
         DEFAULT_FREE_PROXY_SCHEME,
         FREE_PROXY_SCHEMES,
         FreeRegisterError,
@@ -45,6 +49,8 @@ except ImportError:
         mask_proxy,
         normalize_proxy_value,
         proxy_transport_value,
+        proxy_error_code,
+        proxy_error_label,
         proxy_error_detail,
         safe_log_message,
     )
@@ -147,7 +153,7 @@ def _exception_text(error: BaseException) -> str:
 
 
 def _is_tls_compatibility_error(error: BaseException) -> bool:
-    """Only certificate/TLS/CONNECT errors qualify for the compatibility retry."""
+    """Only certificate validation errors qualify for compatibility retry."""
     name = type(error).__name__.lower()
     text = _exception_text(error).lower()
     # Authentication/authorization failures are also often wrapped as a
@@ -160,16 +166,14 @@ def _is_tls_compatibility_error(error: BaseException) -> bool:
     )
     if any(marker in text for marker in auth_markers):
         return False
+    if any(marker in text for marker in ("wrong_version_number", "wrong version number", "proxy protocol", "socks handshake", "proxy connect", "connect tunnel")):
+        return False
     markers = (
-        "ssl", "tls", "certificate", "cert verify", "handshake",
-        "secure transport", "curl: (35)", "curl: (51)", "curl: (60)", "curl: (77)", "curl: (97)",
-        "proxy connect", "connect tunnel",
+        "certificate verify failed", "certificate_verify_failed", "cert verify",
+        "self signed certificate", "unable to get local issuer", "curl: (60)", "curl: (77)",
     )
-    # curl-cffi frequently wraps a TLS/CONNECT failure as ProxyError and only
-    # exposes the useful libcurl code on a nested cause. Retry only when that
-    # evidence is present; a bare ProxyError is not enough.
     if name in {"sslerror", "certificateverifyerror"}:
-        return True
+        return any(marker in text for marker in markers)
     return any(marker in text for marker in markers)
 
 
@@ -246,7 +250,7 @@ def _extract_probe_ip(payload: Any) -> str:
             pending.extend(value for value in current.values() if isinstance(value, (Mapping, list, tuple)))
         elif isinstance(current, (list, tuple)):
             pending.extend(current)
-    raise ValueError("代理出口 IP 响应格式无效")
+    raise ValueError("代理探测响应格式无效")
 
 
 def _record_from_url(value: str, *, country: Any, group: Any) -> dict[str, Any] | None:
@@ -332,6 +336,10 @@ class FreeProxyPool:
         self.quarantine_seconds = max(1, int(quarantine_seconds))
         self.proxy_tls_verify = True
         self.proxy_tls_compat_fallback = True
+        # Keep the low-level compatibility default strict. Production Free
+        # config passes ``auto`` explicitly; direct legacy callers and test
+        # probes must receive the declared URL unchanged.
+        self.socks5_dns_mode = "declared"
         self.allocation_mode = "healthy_random"
         self._lock = threading.RLock()
 
@@ -544,6 +552,7 @@ class FreeProxyPool:
         quarantine_seconds: int | None = None,
         tls_verify: bool | None = None,
         tls_compat_fallback: bool | None = None,
+        socks5_dns_mode: str | None = None,
         allocation_mode: str | None = None,
     ) -> None:
         self.failure_threshold = max(1, int(failure_threshold or self.failure_threshold))
@@ -552,6 +561,9 @@ class FreeProxyPool:
             self.proxy_tls_verify = bool(tls_verify)
         if tls_compat_fallback is not None:
             self.proxy_tls_compat_fallback = bool(tls_compat_fallback)
+        if socks5_dns_mode is not None:
+            mode = str(socks5_dns_mode or DEFAULT_SOCKS5_DNS_MODE).strip().lower()
+            self.socks5_dns_mode = mode if mode in {"declared", "local", "remote", "auto"} else DEFAULT_SOCKS5_DNS_MODE
         # ``exclusive`` was the old policy. Accept it for compatibility but
         # always run the shared AutoRegister-style allocator.
         self.allocation_mode = "healthy_random"
@@ -614,7 +626,9 @@ class FreeProxyPool:
             "masked": mask_proxy(_proxy_url(row)),
             "fingerprint": str(row.get("proxy_id") or ""),
             "scheme": configured_scheme,
-            "protocol_scheme": "socks5h" if configured_scheme == "socks5" else configured_scheme,
+            # Public metadata reflects the declared scheme. Protocol
+            # requests must not silently switch SOCKS5 to SOCKS5H.
+            "protocol_scheme": configured_scheme,
             "roxy_scheme": "SOCKS5" if configured_scheme in {"socks5", "socks5h"} else configured_scheme.upper() if configured_scheme in {"http", "https"} else "",
             "country": SINGLE_POOL_COUNTRY,
             "group": SINGLE_POOL_GROUP,
@@ -690,7 +704,7 @@ class FreeProxyPool:
                     close()
         status = int(getattr(response, "status_code", 0) or 0)
         if not 200 <= status < 300:
-            raise ValueError(f"代理出口检测返回 HTTP {status}")
+            raise ValueError(f"代理探测请求返回 HTTP {status}")
         return _extract_probe_ip(getattr(response, "content", b"") or b"")
 
     def _probe_with_policy(self, proxy: str, target: str) -> tuple[str, str]:
@@ -784,7 +798,11 @@ class FreeProxyPool:
         checked: dict[str, tuple[str, str, int, int, str]] = {}
         for index, record in enumerate(selected_values, 1):
             configured_proxy = _proxy_url(record)
-            transport_proxy = proxy_transport_value(configured_proxy, driver=driver)
+            transport_proxy = proxy_transport_value(
+                configured_proxy,
+                driver=driver,
+                socks5_dns_mode=self.socks5_dns_mode,
+            )
             if not transport_proxy:
                 raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", f"代理池第 {index} 条格式无效", retryable=False)
             cache_key = str(record.get("proxy_id") or record.get("_identity") or transport_proxy)
@@ -797,7 +815,7 @@ class FreeProxyPool:
                     else:
                         exit_ip, probe_mode = str(check(transport_proxy, probe_url)).strip(), "custom"
                     if not _candidate_probe_ip(exit_ip):
-                        raise ValueError("出口 IP 响应格式无效")
+                        raise ValueError("代理探测响应格式无效")
                     exit_ip = str(exit_ip).strip()
                     if not exit_ip:
                         raise ValueError("出口 IP 为空")
@@ -812,10 +830,12 @@ class FreeProxyPool:
                         )
                     raise
                 except Exception as exc:
+                    failure_code = proxy_error_code(exc)
                     failure = FreeRegisterError(
-                        "free_proxy_preflight",
-                        "Free 代理预检",
-                        f"代理池第 {index} 条出口 IP 检测失败：{proxy_error_detail(exc)}",
+                        failure_code,
+                        proxy_error_label(failure_code),
+                        f"代理池第 {index} 条代理请求失败：{proxy_error_detail(exc)}",
+                        error_code=failure_code,
                     )
                     # Preserve the transport type for health classification
                     # before the exception is raised to the caller.
@@ -823,7 +843,7 @@ class FreeProxyPool:
                     if not inline_content and is_proxy_health_failure(failure):
                         self.record_failure(
                             str(record.get("proxy_id") or ""),
-                            node_code="free_proxy_preflight",
+                            node_code=failure_code,
                             message=str(failure),
                         )
                     raise failure from exc
@@ -840,14 +860,14 @@ class FreeProxyPool:
                     chatgpt_login_status=chatgpt_status,
                     chatgpt_login_probe_mode=chatgpt_probe_mode,
                 )
-            transport_scheme = urlsplit(transport_proxy).scheme.lower()
+            declared_scheme = urlsplit(configured_proxy).scheme.lower()
             bindings.append(ProxyBinding(
-                transport_proxy,
+                configured_proxy,
                 str(record.get("proxy_id") or fingerprint(configured_proxy)),
-                mask_proxy(transport_proxy),
+                mask_proxy(configured_proxy),
                 exit_ip,
                 proxy_id=str(record.get("proxy_id") or ""),
-                scheme=transport_scheme,
+                scheme=declared_scheme,
                 country=SINGLE_POOL_COUNTRY,
                 group=SINGLE_POOL_GROUP,
                 chatgpt_login_status=chatgpt_status,
@@ -867,16 +887,35 @@ class FreeProxyPool:
         return bindings
 
     def verify(self, binding: ProxyBinding, *, probe: Callable[[str, str], str] | None = None, probe_url: str = "https://api.ipify.org") -> str:
+        transport_proxy = proxy_transport_value(
+            binding.proxy,
+            driver="probe",
+            socks5_dns_mode=self.socks5_dns_mode,
+        )
+        if not transport_proxy:
+            raise FreeRegisterError(
+                "proxy_connect_failed",
+                "代理连接失败",
+                "代理地址格式无效",
+                retryable=False,
+                error_code="proxy_connect_failed",
+            )
         try:
             if probe is None:
-                current, probe_mode = self._probe_with_policy(binding.proxy, probe_url)
+                current, probe_mode = self._probe_with_policy(transport_proxy, probe_url)
             else:
-                current, probe_mode = str(probe(binding.proxy, probe_url)).strip(), "custom"
+                current, probe_mode = str(probe(transport_proxy, probe_url)).strip(), "custom"
             current = str(current).strip()
             if not _candidate_probe_ip(current):
-                raise ValueError("出口 IP 响应格式无效")
+                raise ValueError("代理探测响应格式无效")
         except Exception as exc:
-            raise FreeRegisterError("free_proxy_binding", "绑定 Free 注册代理", f"固定代理出口复核失败：{proxy_error_detail(exc)}") from exc
+            failure_code = proxy_error_code(exc)
+            raise FreeRegisterError(
+                failure_code,
+                proxy_error_label(failure_code),
+                f"代理请求失败：{proxy_error_detail(exc)}",
+                error_code=failure_code,
+            ) from exc
         if binding.proxy_id:
             self.record_success(binding.proxy_id, exit_ip=current, probe_mode=probe_mode)
         return current

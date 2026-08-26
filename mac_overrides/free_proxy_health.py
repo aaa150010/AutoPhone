@@ -13,6 +13,13 @@ _NETWORK_EVIDENCE_NODES = frozenset({
     "free_oauth_session",
     "free_live_proxy_verify",
     "free_camoufox_navigation",
+    "proxy_protocol_mismatch",
+    "proxy_auth_rejected",
+    "proxy_dns_failed",
+    "proxy_connect_timeout",
+    "proxy_connection_reset",
+    "proxy_tls_certificate_error",
+    "proxy_connect_failed",
 })
 _NETWORK_ERROR_TYPES = frozenset({
     "certificateverifyerror",

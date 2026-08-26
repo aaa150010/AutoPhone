@@ -19,6 +19,8 @@ try:
         fingerprint,
         mask_proxy,
         plus_trial_from_accounts,
+        proxy_error_code,
+        proxy_error_label,
         proxy_transport_value,
         safe_log_message,
         timezone_offset_minutes,
@@ -33,6 +35,8 @@ except ImportError:
         fingerprint,
         mask_proxy,
         plus_trial_from_accounts,
+        proxy_error_code,
+        proxy_error_label,
         proxy_transport_value,
         safe_log_message,
         timezone_offset_minutes,
@@ -50,7 +54,6 @@ TERMINAL_LIVE_STATUSES = frozenset({
 })
 LIVE_STAGE_LABELS = {
     "free_live_queued": "Free 账号测活排队",
-    "free_live_proxy_verify": "复核账号注册代理",
     "free_live_fast": "快速测活",
     "free_live_deep": "深度测活",
     "free_live_email": "深度测活邮箱验证",
@@ -419,9 +422,9 @@ class FreeLiveCheckService:
                     skipped.append({"row_id": row_id, "reason": "该账号没有可用 Token"})
                     continue
                 proxy = str(result.get("proxy") or registration_state.get("proxy") or "").strip()
-                registration_ip = str(result.get("registration_ip") or result.get("expected_exit_ip") or registration_state.get("registration_ip") or registration_state.get("expected_exit_ip") or "").strip()
-                if not proxy or not registration_ip:
-                    skipped.append({"row_id": row_id, "reason": "该账号缺少注册代理或注册 IP"})
+                registration_ip = str(result.get("registration_ip") or registration_state.get("registration_ip") or "").strip()
+                if not proxy:
+                    skipped.append({"row_id": row_id, "reason": "该账号缺少可用代理"})
                     continue
                 now = int(time.time())
                 task_id = f"free-live-{selected_mode}-{now}-{secrets.token_hex(4)}"
@@ -481,9 +484,9 @@ class FreeLiveCheckService:
         result = self.pool.result(row_id)
         private_state = self.pool._row_state(row_id)
         proxy = str(result.get("proxy") or private_state.get("proxy") or "").strip()
-        registration_ip = str(result.get("registration_ip") or result.get("expected_exit_ip") or private_state.get("registration_ip") or private_state.get("expected_exit_ip") or "").strip()
-        if not proxy or not registration_ip:
-            raise FreeRegisterError("free_live_proxy_verify", "复核账号注册代理", "账号缺少注册时固定代理或注册 IP", retryable=False)
+        registration_ip = str(result.get("registration_ip") or private_state.get("registration_ip") or "").strip()
+        if not proxy:
+            raise FreeRegisterError("free_live_network_error", "Free 测活网络异常", "账号没有可用的绑定代理", retryable=False)
         return {
             "task_id": str(job.get("task_id") or ""),
             "row_id": row_id,
@@ -513,14 +516,14 @@ class FreeLiveCheckService:
             str(context.get("proxy") or ""),
             str(context.get("proxy_fingerprint") or ""),
             str(context.get("proxy_masked") or ""),
-            str(context.get("registration_ip") or ""),
+            str(context.get("exit_ip") or context.get("registration_ip") or ""),
             proxy_id=str(context.get("proxy_id") or ""),
             scheme=str(context.get("proxy_scheme") or ""),
             country=str(context.get("proxy_country") or ""),
             group=str(context.get("proxy_group") or ""),
         )
 
-    def _verify_fixed_proxy(self, binding: ProxyBinding, config: Mapping[str, Any]) -> str:
+    def _observe_proxy(self, binding: ProxyBinding, config: Mapping[str, Any]) -> str:
         try:
             current = self.proxies.verify(
                 binding,
@@ -528,13 +531,14 @@ class FreeLiveCheckService:
                 probe_url=str(config.get("proxy_probe_url") or "https://api.ipify.org"),
             )
         except Exception as exc:
+            code = proxy_error_code(exc)
             raise FreeRegisterError(
-                "free_live_proxy_verify",
-                "复核账号注册代理",
-                safe_log_message(exc) or "固定代理出口复核失败",
+                code,
+                proxy_error_label(code),
+                safe_log_message(exc) or proxy_error_label(code),
                 retryable=bool(getattr(exc, "retryable", True)),
                 provider_status=getattr(exc, "provider_status", None),
-                error_code=str(getattr(exc, "error_code", "") or "free_live_proxy_verify_failed"),
+                error_code=str(getattr(exc, "error_code", "") or code),
             ) from exc
         return str(current)
 
@@ -598,7 +602,10 @@ class FreeLiveCheckService:
         return current
 
     def _worker(self, task_id: str) -> None:
-        job = self._set_job(task_id, status="running", stage="free_live_proxy_verify")
+        with self._lock:
+            initial_job = dict(self._jobs.get(task_id) or {})
+        mode = str(initial_job.get("mode") or "fast")
+        job = self._set_job(task_id, status="running", stage="free_live_fast" if mode == "fast" else "free_live_deep")
         if not job:
             return
         binding: ProxyBinding | None = None
@@ -615,27 +622,21 @@ class FreeLiveCheckService:
                 expected_exit_ip=context.get("expected_exit_ip") or context.get("registration_ip", ""),
                 exit_ip=context.get("exit_ip") or context.get("registration_ip", ""),
             )
-            self._log(task_id, "free_live_proxy_verify", f"使用注册代理 {context['proxy_masked']} 复核出口 IP")
             binding = self._binding(context)
             if binding.proxy_id:
                 self.proxies.lease(binding, owner=lease_owner, batch_id=lease_owner, task_id=task_id)
-            live_ip = self._verify_fixed_proxy(binding, config)
-            # A healthy proxy may rotate its egress during a long-lived
-            # account check. Continue with the verified current IP while
-            # preserving the original registration IP as history.
-            context["live_check_ip"] = live_ip
-            context["expected_exit_ip"] = live_ip
-            context["exit_ip"] = live_ip
             mode = str(job.get("mode") or "fast")
             stage = "free_live_fast" if mode == "fast" else "free_live_deep"
-            self._set_job(
-                task_id,
-                stage=stage,
-                live_check_ip=live_ip,
-                expected_exit_ip=live_ip,
-                exit_ip=live_ip,
-            )
-            self._log(task_id, stage, f"固定代理出口已确认：{live_ip}")
+            live_ip = ""
+            try:
+                live_ip = self._observe_proxy(binding, config)
+            except Exception:
+                # The probe is informational. The actual fast/deep request
+                # below owns the network failure classification.
+                live_ip = ""
+            context["live_check_ip"] = live_ip
+            context["exit_ip"] = live_ip or context.get("exit_ip", "")
+            self._set_job(task_id, stage=stage, live_check_ip=live_ip, exit_ip=context["exit_ip"])
             runner = self.fast_runner if mode == "fast" else self.deep_runner
             checked = dict(runner(context, config))
             status = str(checked.get("status") or "").strip().lower()
@@ -651,8 +652,8 @@ class FreeLiveCheckService:
                 "live_check_task_id": task_id,
                 "live_checked_at": checked_at,
                 "live_check_ip": live_ip,
-                "expected_exit_ip": live_ip,
-                "exit_ip": live_ip,
+                "expected_exit_ip": context.get("expected_exit_ip", ""),
+                "exit_ip": live_ip or context.get("exit_ip", ""),
                 "live_check_token_refreshed": token_refreshed,
                 "live_check_http_status": checked.get("http_status"),
                 "live_check_failure": copy.deepcopy(failure) if failure else None,
@@ -718,7 +719,7 @@ class FreeLiveCheckService:
                 "live_check_failure": failure,
             }
             if current_exit:
-                result_values.update({"expected_exit_ip": current_exit, "exit_ip": current_exit})
+                result_values.update({"exit_ip": current_exit})
             self._save_live_result(target_row, result_values)
         self._log(task_id, failure["node_code"], failure["public_message"], "error")
 
@@ -867,7 +868,11 @@ class FreeLiveCheckService:
         session = curl_requests.Session(impersonate="chrome", verify=True)
         device_id = str(context.get("device_id") or f"free-live-{secrets.token_hex(16)}")
         _prepare_live_session(session, device_id)
-        transport_proxy = proxy_transport_value(context["proxy"], driver="protocol")
+        transport_proxy = proxy_transport_value(
+            context["proxy"],
+            driver="protocol",
+            socks5_dns_mode=str(_config.get("proxy_socks5_dns_mode") or "auto"),
+        )
         if not transport_proxy:
             raise FreeRegisterError("free_live_fast", "快速测活", "测活代理格式无效", retryable=False)
         session.proxies = {"http": transport_proxy, "https": transport_proxy}
@@ -907,7 +912,13 @@ class FreeLiveCheckService:
 
         email = str(context["email"])
         task_id = str(context["task_id"])
-        proxy = str(context["proxy"])
+        proxy = proxy_transport_value(
+            str(context["proxy"]),
+            driver="protocol",
+            socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "auto"),
+        )
+        if not proxy:
+            raise FreeRegisterError("proxy_connect_failed", "代理连接失败", "深度测活代理格式无效", retryable=False, error_code="proxy_connect_failed")
         device_id = str(context.get("device_id") or f"free-live-{secrets.token_hex(16)}")
         auth_session_logging_id = f"free-live-auth-{secrets.token_hex(12)}"
         oauth_url, _code_verifier, _state = codex_chain_runner.build_oauth_url(

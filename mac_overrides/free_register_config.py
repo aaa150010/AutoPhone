@@ -48,6 +48,7 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
     "auto_set_2fa": True,
     "proxy_probe_url": DEFAULT_PROXY_PROBE_URL,
     "proxy_default_scheme": "http",
+    "proxy_socks5_dns_mode": "auto",
     "proxy_tls_verify": True,
     "proxy_tls_compat_fallback": True,
     "proxy_failure_threshold": 2,
@@ -222,6 +223,8 @@ class FreeConfigStore:
         if scheme not in {"http", "https", "socks4", "socks5", "socks5h"}:
             scheme = "http"
         result["proxy_default_scheme"] = scheme
+        dns_mode = str(result.get("proxy_socks5_dns_mode") or "auto").strip().lower()
+        result["proxy_socks5_dns_mode"] = dns_mode if dns_mode in {"declared", "local", "remote", "auto"} else "auto"
         result["proxy_tls_verify"] = _as_bool(result.get("proxy_tls_verify"), True)
         result["proxy_tls_compat_fallback"] = _as_bool(result.get("proxy_tls_compat_fallback"), True)
         result["proxy_failure_threshold"] = _int(result.get("proxy_failure_threshold"), 2, 1, 10)

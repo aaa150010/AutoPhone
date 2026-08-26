@@ -730,7 +730,6 @@ class FreeRoxyRuntimeTests(unittest.TestCase):
         self.assertIn(("free-existing-1", "free_existing_login"), stages)
         self.assertIn(("free-existing-1", "free_existing_login_otp"), stages)
         self.assertTrue(any("已有账号邮箱验证码登录" in message for _level, message in logs))
-        self.assertTrue(any("按代理池策略继续" in message for _level, message in logs))
         self.assertTrue(driver.closed)
 
     def test_roxy_result_keeps_structured_plan_and_twofa_failures(self):

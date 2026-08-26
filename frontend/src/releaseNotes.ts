@@ -19,6 +19,10 @@ export const currentRelease: ReleaseNotes = {
   releasedAt: '2026-08-26',
   sections: [
     {
+      title: 'Free 代理协议与出口校验日志清理',
+      usage: 'Free 任务使用代理声明协议建立连接，HTTP、HTTPS、SOCKS4、SOCKS5 和 SOCKS5H 不会被改写为另一种协议标签；SOCKS5 DNS 支持自动、本机和代理端策略，检测到 Clash Fake-IP 时只在协议传输层启用代理端 DNS。Camoufox 与 RoxyBrowser 只在各自传输适配层做必要映射。任务不再比较注册 IP、测活 IP 或出口漂移，也不再显示这些账号 IP 列。代理连通性探测成功和出口观测变化静默处理，只有协议、认证、DNS、超时、连接重置、证书或上游故障才记录结构化诊断。',
+    },
+    {
       title: 'Free 批量转移、格式复制与双模式测活',
       usage: 'Free 邮箱池支持批量选择后传输至普通接码邮箱管理，并按实际字段复制账号----密码----接码 URL----2FA 格式；passwordless 账号不会填入假密码。快速测活使用设备、Cookie、同源请求头和任务代理上下文，403 会显示为出口/安全策略拒绝；深度测活独立执行完整 OTP、TOTP、Session 刷新和带上下文的账号查询。2FA 列点击复制当前临时验证码，不复制 Secret。',
     },

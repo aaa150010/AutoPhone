@@ -65,7 +65,7 @@ const visibleTasks = computed(() => (state.value.tasks || []).slice().sort((a, b
 const filteredTasks = computed(() => {
   const query = taskSearch.value.trim().toLowerCase()
   return visibleTasks.value.filter(task => {
-    const haystack = [task.email, task.task_id, task.registration_ip, task.expected_exit_ip, task.failure?.node_label, task.failure?.node_code].join(' ').toLowerCase()
+    const haystack = [task.email, task.task_id, task.failure?.node_label, task.failure?.node_code].join(' ').toLowerCase()
     return (!query || haystack.includes(query))
       && (taskStatusFilter.value === 'all' || (taskStatusFilter.value === 'active' ? ['queued', 'running'].includes(task.status) : task.status === taskStatusFilter.value))
       && (!taskDriverFilter.value || task.driver === taskDriverFilter.value)
@@ -439,7 +439,7 @@ onUnmounted(() => window.clearTimeout(timer))
             <el-button size="small" type="danger" plain :icon="VideoPause" :loading="busy === 'stop'" :disabled="!running" @click="stop">停止</el-button>
           </div>
           <div class="task-filter-bar">
-            <el-input v-model="taskSearch" size="small" clearable placeholder="搜索邮箱、任务 ID、注册 IP 或失败节点" />
+            <el-input v-model="taskSearch" size="small" clearable placeholder="搜索邮箱、任务 ID 或失败节点" />
             <el-radio-group v-model="taskStatusFilter" size="small" class="task-status-filter">
               <el-radio-button value="all">全部 {{ taskCounts.total }}</el-radio-button>
               <el-radio-button value="active">排队/运行 {{ taskCounts.running }}</el-radio-button>
@@ -462,7 +462,6 @@ onUnmounted(() => window.clearTimeout(timer))
             <el-table-column label="Slot" width="78" align="center"><template #default="{ row }">{{ row.slot_index || '-' }} / {{ row.concurrency_limit || config.concurrency }}</template></el-table-column>
             <el-table-column label="代理池" min-width="180" show-overflow-tooltip><template #default="{ row }"><span>共享健康随机池</span><small class="task-subline">{{ row.proxy_scheme || '' }} · {{ row.proxy_masked || '' }}</small></template></el-table-column>
             <el-table-column label="状态" width="92" align="center"><template #default="{ row }"><el-tag size="small" :type="taskStatusType(row.status)">{{ taskStatusLabel(row.status) }}</el-tag></template></el-table-column>
-            <el-table-column label="注册 IP" min-width="135" show-overflow-tooltip><template #default="{ row }">{{ row.registration_ip || row.expected_exit_ip || '-' }}</template></el-table-column>
             <el-table-column label="套餐" min-width="155" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" :type="taskPlanType(row)" effect="light">{{ taskPlanLabel(row) }}</el-tag><el-tooltip v-if="row.result?.has_access_token && String(row.result?.plan_check_status || '').toLowerCase() === 'failed'" content="重新查询套餐"><el-button link size="small" :icon="Refresh" :loading="planBusy === String(row.task_id || row.row_id)" :disabled="Boolean(planBusy)" aria-label="重新查询套餐" @click.stop="refreshPlan(row)" /></el-tooltip></template></el-table-column>
             <el-table-column label="2FA" width="92" align="center"><template #default="{ row }"><el-tag size="small" :type="taskTwofaType(row)" effect="plain">{{ taskTwofaLabel(row) }}</el-tag></template></el-table-column>
             <el-table-column label="Profile" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ row.profile_summary || '-' }}</template></el-table-column>

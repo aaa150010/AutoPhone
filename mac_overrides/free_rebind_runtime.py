@@ -23,12 +23,12 @@ from urllib.parse import urljoin
 try:
     from .free_failure_runtime import canonical_failure, exception_to_failure, sanitize_log_message
     from .free_mailbox_otp import build_free_mailbox_otp_provider
-    from .free_register_common import FreeRegisterError, atomic_write, fingerprint, mask_proxy
+    from .free_register_common import FreeRegisterError, atomic_write, fingerprint, mask_proxy, proxy_transport_value
     from .free_rebind_store import RebindMailboxPool
 except ImportError:  # pragma: no cover - top-level runtime loading
     from free_failure_runtime import canonical_failure, exception_to_failure, sanitize_log_message  # type: ignore[no-redef]
     from free_mailbox_otp import build_free_mailbox_otp_provider  # type: ignore[no-redef]
-    from free_register_common import FreeRegisterError, atomic_write, fingerprint, mask_proxy  # type: ignore[no-redef]
+    from free_register_common import FreeRegisterError, atomic_write, fingerprint, mask_proxy, proxy_transport_value  # type: ignore[no-redef]
     from free_rebind_store import RebindMailboxPool  # type: ignore[no-redef]
 
 
@@ -761,7 +761,14 @@ class FreeRebindService:
             config = self._config()
             proxy, fallback_binding = self._choose_proxy(source, config, task_id)
             self._set_task(task_id, proxy_masked=mask_proxy(proxy))
-            result = self._run_protocol_rebind(task_id, source, target, proxy, config)
+            transport_proxy = proxy_transport_value(
+                proxy,
+                driver="protocol",
+                socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "auto"),
+            )
+            if not transport_proxy:
+                raise FreeRegisterError("proxy_connect_failed", "代理连接失败", "换绑协议代理格式无效", retryable=False, error_code="proxy_connect_failed")
+            result = self._run_protocol_rebind(task_id, source, target, transport_proxy, config)
             self._stage(task_id, "free_rebind_result")
             source_saved = dict(source.get("saved") or {})
             task_status = "partial_success" if result.get("plan_check_status") == "failed" else "success"

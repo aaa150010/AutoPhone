@@ -5,12 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, timedelta
 import hashlib
+import ipaddress
 import json
 import os
 from pathlib import Path
 import random
 import re
 import secrets
+import socket
 import time
 from typing import Any, Mapping
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
@@ -23,6 +25,7 @@ FIXED_PASSWORD = "Aa150010@150010"
 FREE_PROXY_SCHEMES = frozenset({"http", "https", "socks4", "socks5", "socks5h"})
 ROXY_PROXY_SCHEMES = frozenset({"http", "https", "socks5", "socks5h"})
 DEFAULT_FREE_PROXY_SCHEME = "http"
+DEFAULT_SOCKS5_DNS_MODE = "auto"
 TERMINAL_STATUSES = frozenset({"success", "partial_success", "failed", "stopped", "twofa_pending"})
 LOG_SECRET_RE = re.compile(
     r"(?i)(access[_ -]?token|refresh[_ -]?token|id[_ -]?token|token|authorization|"
@@ -51,6 +54,13 @@ FREE_STAGE_LABELS = {
     "free_protocol_fingerprint": "协议设备与出口画像",
     "free_proxy_geo": "出口地区画像",
     "free_proxy_binding": "绑定 Free 注册代理",
+    "proxy_protocol_mismatch": "代理协议不匹配",
+    "proxy_auth_rejected": "代理认证失败",
+    "proxy_dns_failed": "代理 DNS 解析失败",
+    "proxy_connect_timeout": "代理连接超时",
+    "proxy_connection_reset": "代理连接被重置",
+    "proxy_tls_certificate_error": "代理证书校验失败",
+    "proxy_connect_failed": "代理连接失败",
     "free_roxy_create": "创建 RoxyBrowser 环境",
     "free_roxy_open": "打开 RoxyBrowser 环境",
     "free_roxy_connect": "连接 RoxyBrowser",
@@ -274,9 +284,11 @@ def proxy_error_detail(error: BaseException) -> str:
         "ConnectTimeout": "连接超时，请检查代理地址、端口和可达性",
         "ProxyError": "代理连接失败，请确认地址、端口和认证信息",
         "ConnectionError": "代理连接失败，请确认地址、端口和认证信息",
-        "ValueError": "出口 IP 响应无效，请确认代理能访问预检地址",
+        "ValueError": "代理探测响应无效，请确认代理能访问探测地址",
     }.get(name, "请求未建立，请检查代理可达性")
-    if any(marker in lowered for marker in ("certificate", "cert verify", "ssl", "tls", "handshake")):
+    if "wrong_version_number" in lowered or "wrong version number" in lowered or "proxy protocol" in lowered:
+        hint = "代理协议或端口不匹配，请确认代理声明协议"
+    elif any(marker in lowered for marker in ("certificate", "cert verify", "ssl", "tls", "handshake")):
         hint = "TLS/证书握手失败，请确认代理协议、端口和证书校验设置"
     elif "407" in lowered or "auth" in lowered or "unauthorized" in lowered:
         hint = "代理认证被拒绝，请确认用户名、密码或白名单"
@@ -410,19 +422,142 @@ def normalize_proxy_value(raw: Any, *, default_scheme: str = DEFAULT_FREE_PROXY_
     return urlunsplit((scheme, f"{auth}{host}:{parsed.port}", "", "", ""))
 
 
-def proxy_transport_value(value: Any, *, driver: str = "protocol") -> str:
-    """Return the proxy URL expected by a concrete Free transport."""
+_FAKE_IP_NETWORKS = (
+    ipaddress.ip_network("198.18.0.0/15"),
+)
+_FAKE_DNS_CACHE: tuple[float, bool] = (0.0, False)
+
+
+def _local_dns_returns_fake_ip() -> bool:
+    """Detect Clash-style synthetic DNS without treating it as proxy health."""
+    global _FAKE_DNS_CACHE
+    now = time.monotonic()
+    cached_at, cached_value = _FAKE_DNS_CACHE
+    if now - cached_at < 30:
+        return cached_value
+    result = False
+    try:
+        answers = socket.getaddrinfo("chatgpt.com", 443, type=socket.SOCK_STREAM)
+        for answer in answers:
+            address = str(answer[4][0] or "").split("%", 1)[0]
+            try:
+                ip = ipaddress.ip_address(address)
+            except ValueError:
+                continue
+            if any(ip in network for network in _FAKE_IP_NETWORKS):
+                result = True
+                break
+    except OSError:
+        result = False
+    _FAKE_DNS_CACHE = (now, result)
+    return result
+
+
+def _effective_socks5_scheme(mode: Any) -> str:
+    selected = str(mode or "declared").strip().lower()
+    if selected not in {"declared", "local", "remote", "auto"}:
+        selected = "declared"
+    if selected == "remote" or (selected == "auto" and _local_dns_returns_fake_ip()):
+        return "socks5h"
+    return "socks5"
+
+
+def proxy_transport_value(
+    value: Any,
+    *,
+    driver: str = "protocol",
+    socks5_dns_mode: str = "declared",
+) -> str:
+    """Return the proxy URL expected by a concrete Free transport.
+
+    The declared scheme is authoritative for protocol requests and probes.
+    Browser integrations may normalize only schemes they cannot represent.
+    """
     normalized = normalize_proxy_value(value)
     if not normalized:
         return ""
     parsed = urlsplit(normalized)
     scheme = parsed.scheme.lower()
     selected_driver = str(driver or "protocol").strip().lower()
-    if selected_driver in {"protocol", "probe"} and scheme == "socks5":
-        scheme = "socks5h"
+    if selected_driver in {"camoufox", "playwright", "browser"} and scheme == "socks5h":
+        scheme = "socks5"
     elif selected_driver == "roxybrowser" and scheme == "socks5h":
         scheme = "socks5"
+    elif selected_driver in {"protocol", "probe", "live"} and scheme == "socks5":
+        # SOCKS5 and SOCKS5H use the same proxy wire protocol. The latter is
+        # only the curl naming for proxy-side DNS. Preserve the declared
+        # scheme in storage and public metadata; use remote DNS only when the
+        # configured policy explicitly requests it or the host exposes a
+        # Clash-style synthetic address that cannot be routed upstream.
+        scheme = _effective_socks5_scheme(socks5_dns_mode)
     return urlunsplit((scheme, parsed.netloc, "", "", ""))
+
+
+def proxy_transport_config(value: Any, *, driver: str = "protocol") -> dict[str, str]:
+    """Build a credential-separated proxy configuration for a transport."""
+    normalized = normalize_proxy_value(value)
+    if not normalized:
+        return {}
+    parsed = urlsplit(normalized)
+    declared_scheme = parsed.scheme.lower()
+    effective = proxy_transport_value(normalized, driver=driver)
+    effective_scheme = urlsplit(effective).scheme.lower()
+    host = str(parsed.hostname or "")
+    if not host or not parsed.port or not effective_scheme:
+        return {}
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    result = {
+        "server": urlunsplit((effective_scheme, f"{host}:{parsed.port}", "", "", "")),
+        "declared_scheme": declared_scheme,
+        "effective_scheme": effective_scheme,
+    }
+    username = unquote(str(parsed.username or ""))
+    password = unquote(str(parsed.password or ""))
+    if username:
+        result["username"] = username
+    if password:
+        result["password"] = password
+    return result
+
+
+def proxy_error_code(error: BaseException) -> str:
+    """Classify transport failures without exposing proxy credentials."""
+    parts: list[str] = []
+    current: BaseException | None = error
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen and len(parts) < 4:
+        seen.add(id(current))
+        value = clean(str(current or ""), 240)
+        if value:
+            parts.append(value)
+        current = current.__cause__ or current.__context__
+    text = " | ".join(parts).lower()
+    if any(marker in text for marker in ("407", "proxy authentication", "authentication required", "auth failed", "invalid username", "invalid password")):
+        return "proxy_auth_rejected"
+    if any(marker in text for marker in ("wrong_version_number", "wrong version number", "proxy protocol", "socks handshake", "unsupported proxy protocol")):
+        return "proxy_protocol_mismatch"
+    if any(marker in text for marker in ("could not resolve", "couldn't resolve", "name or service not known", "getaddrinfo", "nodename nor servname", "dns")):
+        return "proxy_dns_failed"
+    if any(marker in text for marker in ("connection reset", "connectionreset", "reset by peer")):
+        return "proxy_connection_reset"
+    if any(marker in text for marker in ("timed out", "timeout", "curl: (28)")):
+        return "proxy_connect_timeout"
+    if any(marker in text for marker in ("certificate verify", "cert verify", "self signed certificate", "curl: (60)", "curl: (77)")):
+        return "proxy_tls_certificate_error"
+    return "proxy_connect_failed"
+
+
+def proxy_error_label(code: str) -> str:
+    return {
+        "proxy_protocol_mismatch": "代理协议不匹配",
+        "proxy_auth_rejected": "代理认证失败",
+        "proxy_dns_failed": "代理 DNS 解析失败",
+        "proxy_connect_timeout": "代理连接超时",
+        "proxy_connection_reset": "代理连接被重置",
+        "proxy_tls_certificate_error": "代理证书校验失败",
+        "proxy_connect_failed": "代理连接失败",
+    }.get(str(code or ""), "代理连接失败")
 
 
 def timezone_offset_minutes() -> int:
@@ -459,10 +594,10 @@ def random_birthdate(rng: random.Random | None = None, today: date | None = None
 
 
 __all__ = [
-    "DEFAULT_FREE_PROXY_SCHEME", "FIXED_PASSWORD", "FREE_PROXY_SCHEMES", "FREE_STAGE_LABELS",
+    "DEFAULT_FREE_PROXY_SCHEME", "DEFAULT_SOCKS5_DNS_MODE", "FIXED_PASSWORD", "FREE_PROXY_SCHEMES", "FREE_STAGE_LABELS",
     "FreeMailbox", "FreeRegisterError", "FreeTwoFaPending", "OTP_RE", "ProxyBinding",
     "ROXY_PROXY_SCHEMES", "SECRET_MASK", "TERMINAL_STATUSES", "atomic_write", "clean",
     "fingerprint", "mask_proxy", "normalize_proxy_value", "parse_mailbox_line", "proxy_transport_value",
-    "plus_trial_from_accounts", "proxy_error_detail", "random_birthdate", "random_display_name",
+    "proxy_transport_config", "proxy_error_code", "proxy_error_label", "plus_trial_from_accounts", "proxy_error_detail", "random_birthdate", "random_display_name",
     "safe_log_message", "timezone_offset_minutes",
 ]

@@ -199,7 +199,12 @@ class NetworkToolsService:
 
     def public_config(self) -> dict[str, Any]:
         with self._lock:
-            return copy.deepcopy(self._config)
+            result = copy.deepcopy(self._config)
+            # ``default_exit_url`` is a legacy diagnostic target. Keep it in
+            # private storage so old callers can still submit it explicitly,
+            # but no longer expose or present it as a user configuration.
+            result.pop("default_exit_url", None)
+            return result
 
     def save_config(self, value: Mapping[str, Any]) -> dict[str, Any]:
         with self._lock:
@@ -379,12 +384,14 @@ class NetworkToolsService:
             proxies = {"http": f"http://127.0.0.1:{mixed_port}", "https": f"http://127.0.0.1:{mixed_port}"}
             started = time.monotonic()
             response = session.get(target_url or self._config.get("default_target_url"), proxies=proxies, timeout=float(self._config.get("request_timeout_seconds") or 30), allow_redirects=False)
-            exit_response = session.get(exit_url or self._config.get("default_exit_url"), proxies=proxies, timeout=float(self._config.get("request_timeout_seconds") or 30), allow_redirects=False)
-            try:
-                payload = exit_response.json()
-                exit_ip = _text(payload.get("ip") if isinstance(payload, Mapping) else payload, 80)
-            except Exception:
-                exit_ip = _text(getattr(exit_response, "text", ""), 80)
+            exit_ip = ""
+            if str(exit_url or "").strip():
+                exit_response = session.get(str(exit_url).strip(), proxies=proxies, timeout=float(self._config.get("request_timeout_seconds") or 30), allow_redirects=False)
+                try:
+                    payload = exit_response.json()
+                    exit_ip = _text(payload.get("ip") if isinstance(payload, Mapping) else payload, 80)
+                except Exception:
+                    exit_ip = _text(getattr(exit_response, "text", ""), 80)
             return {"tested": True, "available": True, "subscription_id": str(subscription_id), "http_status": int(getattr(response, "status_code", 0) or 0), "exit_ip": exit_ip, "proxy_to_target_ms": round((time.monotonic() - started) * 1000, 1)}
         except NetworkToolError:
             raise
@@ -429,12 +436,13 @@ class NetworkToolsService:
                     response = session.get(target_url or self._config.get("default_target_url"), proxies=proxies, timeout=float(self._config.get("request_timeout_seconds") or 30), allow_redirects=False)
                     result["proxy_to_target_ms"] = round((time.monotonic() - started) * 1000, 1)
                     result["http_status"] = int(getattr(response, "status_code", 0) or 0)
-                    exit_response = session.get(exit_url or self._config.get("default_exit_url"), proxies=proxies, timeout=float(self._config.get("request_timeout_seconds") or 30), allow_redirects=False)
-                    try:
-                        payload = exit_response.json()
-                        result["exit_ip"] = _text(payload.get("ip") if isinstance(payload, Mapping) else payload, 80)
-                    except Exception:
-                        result["exit_ip"] = _text(getattr(exit_response, "text", ""), 80)
+                    if str(exit_url or "").strip():
+                        exit_response = session.get(str(exit_url).strip(), proxies=proxies, timeout=float(self._config.get("request_timeout_seconds") or 30), allow_redirects=False)
+                        try:
+                            payload = exit_response.json()
+                            result["exit_ip"] = _text(payload.get("ip") if isinstance(payload, Mapping) else payload, 80)
+                        except Exception:
+                            result["exit_ip"] = _text(getattr(exit_response, "text", ""), 80)
                 finally:
                     try:
                         session.close()

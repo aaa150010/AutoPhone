@@ -439,7 +439,7 @@ class FreeFailureRuntimeTests(unittest.TestCase):
         self.assertIsNone(public["failure"])
         self.assertEqual(public["error"], "")
 
-    def test_post_registration_proxy_failure_keeps_token_as_partial_success(self) -> None:
+    def test_post_registration_proxy_observation_is_removed_from_success_path(self) -> None:
         pool = FreeMailboxPool(self.data_dir)
         pool.import_text("a@example.test----https://mail.example.test/pickup\n")
         FreeProxyPool(self.data_dir).import_text("http://proxy.test:8000\n")
@@ -467,15 +467,15 @@ class FreeFailureRuntimeTests(unittest.TestCase):
         row_id = manager.pool.entries()[0].row_id
         result = manager.pool.result(row_id)
         mailbox = manager.pool.public_rows()[0]
-        self.assertEqual(task["status"], "partial_success")
-        self.assertEqual(result["status"], "partial_success")
-        self.assertEqual(mailbox["status"], "partial_success")
-        self.assertEqual(task["failure"]["node_code"], "free_proxy_binding")
-        self.assertEqual(task["failure"], result["failure"])
-        self.assertEqual(task["failure"], mailbox["failure"])
+        self.assertEqual(task["status"], "success")
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(mailbox["status"], "success")
+        self.assertNotIn("failure", task)
+        self.assertNotIn("failure", result)
+        self.assertIsNone(mailbox["failure"])
         self.assertTrue(task["result"]["has_access_token"])
         self.assertEqual(manager.secret([task["task_id"]], "token"), "token-private")
-        self.assertEqual(manager.proxies.public()["rows"][0]["consecutive_failures"], 1)
+        self.assertEqual(manager.proxies.public()["rows"][0]["consecutive_failures"], 0)
 
     def test_twofa_pending_stays_primary_when_post_registration_probe_fails(self) -> None:
         pool = FreeMailboxPool(self.data_dir)
@@ -520,11 +520,7 @@ class FreeFailureRuntimeTests(unittest.TestCase):
         self.assertTrue(task["failure"]["retryable"])
         self.assertEqual(task["failure"], result["failure"])
         self.assertEqual(task["failure"], mailbox["failure"])
-        self.assertEqual(
-            result["post_registration_failure"]["node_code"],
-            "free_proxy_binding",
-        )
-        self.assertNotEqual(result["post_registration_failure"], result["failure"])
+        self.assertNotIn("post_registration_failure", result)
 
         restarted = FreeRegisterManager(
             self.data_dir,
@@ -533,10 +529,7 @@ class FreeFailureRuntimeTests(unittest.TestCase):
         )
         restarted_result = restarted.pool.result(row_id)
         self.assertEqual(restarted.public_tasks()[0]["status"], "twofa_pending")
-        self.assertEqual(
-            restarted_result["post_registration_failure"],
-            result["post_registration_failure"],
-        )
+        self.assertNotIn("post_registration_failure", restarted_result)
 
     def test_successful_twofa_retry_removes_previous_failure_everywhere(self) -> None:
         pool = FreeMailboxPool(self.data_dir)

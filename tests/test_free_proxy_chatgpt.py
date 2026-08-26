@@ -81,8 +81,8 @@ class FreeProxyChatgptTests(unittest.TestCase):
         session = _FakeSession.instances[-1]
         self.assertEqual(session.init_kwargs, {"impersonate": "chrome146", "verify": True})
         self.assertEqual(session.proxies, {
-            "http": "socks5h://probe-user:probe-password@proxy.example.test:8000",
-            "https": "socks5h://probe-user:probe-password@proxy.example.test:8000",
+            "http": "socks5://probe-user:probe-password@proxy.example.test:8000",
+            "https": "socks5://probe-user:probe-password@proxy.example.test:8000",
         })
         self.assertFalse(session.trust_env)
         self.assertEqual(session.constructor_environment, {

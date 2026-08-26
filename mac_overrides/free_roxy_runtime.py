@@ -428,7 +428,7 @@ class RoxyRegistrationRunner:
         try:
             return extract_probe_ip(text)
         except ValueError:
-            raise FreeRegisterError("free_roxy_ip_verify", "校验 RoxyBrowser 出口 IP", "RoxyBrowser 出口 IP 响应格式无效")
+            raise FreeRegisterError("proxy_connect_failed", "代理连接失败", "代理连通性探测响应格式无效")
 
     @staticmethod
     def _safe_page_location(driver: Any) -> str:
@@ -703,28 +703,18 @@ class RoxyRegistrationRunner:
             driver.set_script_timeout(max(20, int(roxy.get("selenium_timeout") or 90)))
             self._select_active_auth_window(driver, log)
             log(f"Selenium 已连接同一 Profile，duration_ms={int((time.monotonic() - operation_started) * 1000)} outcome=success", "success")
-            set_stage("free_roxy_ip_verify")
-            operation_started = time.monotonic()
-            registration_ip = self._browser_ip(driver, str(config.get("proxy_probe_url") or "https://api.ipify.org"), int(roxy.get("selenium_timeout") or 90))
-            expected = str(task.get("expected_exit_ip") or task.get("exit_ip") or "")
-            # AutoRegister uses a proxy pool and records the observed exit;
-            # it does not enforce a one-account/one-IP invariant.  Keep this
-            # as an auditable probe, but do not reject a healthy Roxy profile
-            # when the provider rotates or normalizes the exit IP.
-            if expected and registration_ip and registration_ip != expected:
-                log(
-                    f"出口 IP 与任务预绑定值不同，按代理池策略继续：预期={expected}，实际={registration_ip}",
-                    "warn",
+            # Exit IP is an optional observation.  It is never compared with
+            # a historical value and must not block the account flow or emit
+            # a validation log when the probe endpoint is unavailable.
+            registration_ip = ""
+            try:
+                registration_ip = self._browser_ip(
+                    driver,
+                    str(config.get("proxy_probe_url") or "https://api.ipify.org"),
+                    int(roxy.get("selenium_timeout") or 90),
                 )
-            else:
-                log(
-                    f"出口 IP 探测完成：预期={expected or '-'}，实际={registration_ip or '-'}",
-                    "success",
-                )
-            log(
-                f"出口 IP 记录完成，duration_ms={int((time.monotonic() - operation_started) * 1000)} outcome=success",
-                "info",
-            )
+            except Exception:
+                registration_ip = ""
             set_stage("free_roxy_signup_bootstrap")
             otp.prepare()
             operation_started = time.monotonic()
@@ -1012,7 +1002,7 @@ class RoxyRegistrationRunner:
                 "driver": "roxybrowser", "access_token": token, "account_flow": account_flow,
                 **plan_details, "twofa_status": twofa_status,
                 "twofa_error": twofa_error, "registration_ip": registration_ip,
-                "expected_exit_ip": expected, "profile_summary": f"Roxy#{profile_id}",
+                "expected_exit_ip": "", "profile_summary": f"Roxy#{profile_id}",
                 "registration_password_used": registration_password_used,
             }
             if twofa_failure:

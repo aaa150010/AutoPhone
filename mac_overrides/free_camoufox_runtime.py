@@ -41,6 +41,7 @@ try:
         clean,
         random_birthdate,
         random_display_name,
+        proxy_transport_config,
         safe_log_message,
     )
     from .free_failure_runtime import sanitize_failure_text
@@ -53,6 +54,7 @@ except ImportError:  # pragma: no cover - top-level recovery import
     )
     from free_register_common import (  # type: ignore[no-redef]
         FIXED_PASSWORD, FreeRegisterError, clean, random_birthdate, random_display_name,
+        proxy_transport_config,
         safe_log_message,
     )
     from free_failure_runtime import sanitize_failure_text  # type: ignore[no-redef]
@@ -2162,10 +2164,14 @@ class CamoufoxBrowserPool:
 
 
 def _proxy_config(proxy: str) -> dict[str, Any] | None:
-    value = str(proxy or "").strip()
-    if not value:
+    config = proxy_transport_config(proxy, driver="camoufox")
+    if not config:
         return None
-    return {"server": value}
+    return {
+        key: config[key]
+        for key in ("server", "username", "password")
+        if config.get(key)
+    }
 
 
 _POOL_LOCK = threading.RLock()

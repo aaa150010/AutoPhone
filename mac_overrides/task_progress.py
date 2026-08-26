@@ -49,7 +49,6 @@ STAGES = {
         _stage("email_code_waiting", "等待邮箱验证码", "email"),
         _stage("email_code_verifying", "验证邮箱验证码", "email"),
         _stage("mfa_otp_verifying", "验证 2FA 动态码", "email"),
-        _stage("free_proxy_binding", "绑定 Free 注册代理", "free"),
         _stage("free_oauth_session", "Free OAuth 会话", "free"),
         _stage("free_email_identifier", "识别 Free 注册邮箱", "free"),
         _stage("free_email_password", "验证 Free 注册密码", "free"),

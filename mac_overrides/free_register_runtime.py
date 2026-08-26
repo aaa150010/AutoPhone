@@ -81,13 +81,14 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
     # again while the task history remains failed for diagnosis.
     _REUSABLE_PRE_REGISTRATION_FAILURES = frozenset({
         "free_run_stop",
-        "free_proxy_binding",
+        "free_proxy_binding", "free_proxy_lease",
+        "proxy_protocol_mismatch", "proxy_auth_rejected", "proxy_dns_failed",
+        "proxy_connect_timeout", "proxy_connection_reset", "proxy_tls_certificate_error", "proxy_connect_failed",
         "free_roxy_api",
         "free_roxy_window_quota_exhausted",
         "free_roxy_create",
         "free_roxy_open",
         "free_roxy_connect",
-        "free_roxy_ip_verify",
         "free_roxy_signup_bootstrap",
         "free_roxy_signup_email", "free_roxy_signup_email_submit", "free_camoufox_dependency", "free_camoufox_launch", "free_camoufox_signup", "free_camoufox_browser", "oauth_create_node", "free_proxy_geo", "free_protocol_preflight", "free_protocol_warmup",
         "roxy_circuit_open",
@@ -492,6 +493,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             quarantine_seconds=int(config.get("proxy_quarantine_seconds") or 600),
             tls_verify=bool(config.get("proxy_tls_verify", True)),
             tls_compat_fallback=bool(config.get("proxy_tls_compat_fallback", True)),
+            socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "auto"),
             allocation_mode="healthy_random",
         )
         available = self._available_count()
@@ -526,11 +528,12 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             "proxy_selection": {"country": "", "group": ""},
         }
 
-    def preflight_proxies(self, *, proxy_content: str = "", probe_url: str = "https://api.ipify.org", driver: str = "protocol", country: str | None = None, group: str | None = None, scheme: str | None = None, tls_verify: bool = True, tls_compat_fallback: bool = True) -> dict[str, Any]:
+    def preflight_proxies(self, *, proxy_content: str = "", probe_url: str = "https://api.ipify.org", driver: str = "protocol", country: str | None = None, group: str | None = None, scheme: str | None = None, tls_verify: bool = True, tls_compat_fallback: bool = True, socks5_dns_mode: str = "declared") -> dict[str, Any]:
         """Probe the isolated Free proxy pool without consuming mailboxes or tasks."""
         self.proxies.configure_policy(
             tls_verify=tls_verify,
             tls_compat_fallback=tls_compat_fallback,
+            socks5_dns_mode=socks5_dns_mode,
         )
         if proxy_content.strip() and scheme:
             self.proxies.default_scheme = str(scheme).strip().lower()
@@ -652,6 +655,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 quarantine_seconds=int(config.get("proxy_quarantine_seconds") or 600),
                 tls_verify=bool(config.get("proxy_tls_verify", True)),
                 tls_compat_fallback=bool(config.get("proxy_tls_compat_fallback", True)),
+                socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "auto"),
                 allocation_mode="healthy_random",
             )
             bindings = self.proxies.bind(
@@ -671,13 +675,14 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 reserved = True
                 for ordinal, (row, binding) in enumerate(zip(rows, bindings), 1):
                     task_id = f"{batch_id}-{ordinal}"
-                    self._tasks[task_id] = {"task_id": task_id, "ordinal": ordinal, "slot_id": f"{batch_id}-slot-{((ordinal - 1) % workers) + 1}", "slot_index": ((ordinal - 1) % workers) + 1, "concurrency_limit": workers, "status": "queued", "created_at": now, "updated_at": now, "batch_id": batch_id, "run_mode": "free_register", "driver": driver, "proxy_allocation_mode": str(config.get("proxy_allocation_mode") or "healthy_random"), "email": row.email, "row_id": row.row_id, "mailbox_url": row.mailbox_url, "proxy": binding.proxy, "proxy_id": binding.proxy_id, "proxy_scheme": binding.scheme, "proxy_country": binding.country, "proxy_group": binding.group, "proxy_masked": binding.masked, "proxy_fingerprint": binding.fingerprint, "expected_exit_ip": binding.exit_ip, "registration_ip": "", "exit_ip": binding.exit_ip, "proxy_attempts": [], "cleanup_status": "pending", "progress": {"stage": "free_proxy_binding", "group": "free", "started_at": now, "updated_at": now, "finished_at": None}, "result": {"twofa_status": "", "driver": driver, "expected_exit_ip": binding.exit_ip, "proxy_country": binding.country, "proxy_group": binding.group}}
+                    self._tasks[task_id] = {"task_id": task_id, "ordinal": ordinal, "slot_id": f"{batch_id}-slot-{((ordinal - 1) % workers) + 1}", "slot_index": ((ordinal - 1) % workers) + 1, "concurrency_limit": workers, "status": "queued", "created_at": now, "updated_at": now, "batch_id": batch_id, "run_mode": "free_register", "driver": driver, "proxy_allocation_mode": str(config.get("proxy_allocation_mode") or "healthy_random"), "email": row.email, "row_id": row.row_id, "mailbox_url": row.mailbox_url, "proxy": binding.proxy, "proxy_id": binding.proxy_id, "proxy_scheme": binding.scheme, "proxy_country": binding.country, "proxy_group": binding.group, "proxy_masked": binding.masked, "proxy_fingerprint": binding.fingerprint, "expected_exit_ip": binding.exit_ip, "registration_ip": "", "exit_ip": binding.exit_ip, "proxy_attempts": [], "cleanup_status": "pending", "progress": {"stage": "free_oauth_session", "group": "free", "started_at": now, "updated_at": now, "finished_at": None}, "result": {"twofa_status": "", "driver": driver, "expected_exit_ip": binding.exit_ip, "proxy_country": binding.country, "proxy_group": binding.group}}
                     self._tasks[task_id]["device_id"] = f"free-{secrets.token_hex(16)}"
                     created_task_ids.append(task_id)
                     self.proxies.lease(binding, owner=task_id, batch_id=batch_id, task_id=task_id)
                     leased_bindings.append(binding)
                     self.pool.update(row.row_id, status="queued", batch_id=batch_id, driver=driver, proxy=binding.proxy, proxy_masked=binding.masked, proxy_fingerprint=binding.fingerprint, expected_exit_ip=binding.exit_ip, exit_ip=binding.exit_ip, proxy_id=binding.proxy_id, proxy_country=binding.country, proxy_group=binding.group)
-                    self._stage(task_id, "free_proxy_binding")
+                    # Proxy preflight is an internal transport check; do not
+                    # expose a successful validation stage in task logs.
                 self.task_store.save(self._tasks)
             except Exception:
                 for index, binding in reversed(list(enumerate(leased_bindings))):
@@ -713,7 +718,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 future = self._executor.submit(self._worker, task_id, dict(config))
                 self._futures.add(future)
                 future.add_done_callback(self._future_done)
-            self._log(f"[启动 Free 注册/free_run_start] 已绑定 {target_count} 个邮箱和代理，{workers} 并发", "success")
+            self._log(f"[启动 Free 注册/free_run_start] 已准备 {target_count} 个邮箱，{workers} 并发", "success")
             return {
                 "batch_id": batch_id,
                 "tasks": self.public_tasks(),
@@ -820,7 +825,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             pool_status = "available"
         if not row_id or pool_status != "available" or not any(row.row_id == row_id for row in self.pool.available(10_000)):
             raise FreeRegisterError("free_rerun", "重跑 Free 账号", "该账号当前不可重跑，请先在 Free 邮箱中心恢复为可用", retryable=False, error_code="free_rerun_mailbox_unavailable")
-        self._log(f"[{normalized}/重跑 Free 账号/free_rerun] 使用待重跑邮箱重新创建独立批次，并重新绑定代理和出口 IP", "info")
+        self._log(f"[{normalized}/重跑 Free 账号/free_rerun] 使用待重跑邮箱重新创建独立批次，并重新分配代理", "info")
         return self.start(config, row_ids=[row_id])
 
     def retry_twofa(self, task_id: str, config: Mapping[str, Any]) -> dict[str, Any]:
@@ -960,22 +965,21 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             country=str(task.get("proxy_country") or ""),
             group=str(task.get("proxy_group") or ""),
         )
-        if not binding.proxy or not binding.exit_ip:
-            raise FreeRegisterError("free_proxy_binding", "绑定 Free 注册代理", "任务缺少固定代理绑定", retryable=False)
+        if not binding.proxy:
+            raise FreeRegisterError("free_proxy_lease", "读取 Free 代理租约", "代理租约记录不存在或已损坏", retryable=False)
         current = self.proxies.verify(
             binding,
             probe=self.proxy_probe,
             probe_url=str(config.get("proxy_probe_url") or "https://api.ipify.org"),
         )
         if isinstance(task, dict):
-            task["expected_exit_ip"] = current
             task["exit_ip"] = current
             task_id = str(task.get("task_id") or "")
             if task_id:
-                self._save_task(task_id, expected_exit_ip=current, exit_ip=current)
+                self._save_task(task_id, exit_ip=current)
             row_id = str(task.get("row_id") or "")
             if row_id:
-                self.pool.update(row_id, expected_exit_ip=current, exit_ip=current)
+                self.pool.update(row_id, exit_ip=current)
         return current
 
     def _assert_batch_proxy_uniqueness(self, task: Mapping[str, Any]) -> None:
@@ -1142,7 +1146,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             with self._lock:
                 current = self._tasks.get(task_id)
                 if current is not None:
-                    current.setdefault("proxy_attempts", []).append({"proxy_id": snapshot.get("proxy_id", ""), "stage": "free_proxy_binding", "outcome": "bound", "at": int(time.time())})
+                    current.setdefault("proxy_attempts", []).append({"proxy_id": snapshot.get("proxy_id", ""), "stage": "proxy_preflight", "outcome": "ready", "at": int(time.time())})
                     current["proxy_attempts"] = current["proxy_attempts"][-10:]
                     self.task_store.save(self._tasks)
             attempt = 0
@@ -1163,7 +1167,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                         "free_protocol_preflight", "free_oauth_session", "free_email_identifier",
                     }
                     camoufox_pre_email = error_node == "free_camoufox_navigation" and bool(getattr(exc, "proxy_retryable", False))
-                    can_retry_pre_email = ((pre_profile or error_node == "free_roxy_ip_verify" or protocol_pre_email) and network_failure) or (protocol_pre_email and bool(getattr(exc, "proxy_retryable", False))) or camoufox_pre_email
+                    can_retry_pre_email = ((pre_profile or protocol_pre_email) and network_failure) or (protocol_pre_email and bool(getattr(exc, "proxy_retryable", False))) or camoufox_pre_email
                     if not can_retry_pre_email or attempt >= retry_limit or self._stop.is_set():
                         raise
                     if network_failure: self._record_proxy_failure(snapshot, exc)
@@ -1175,38 +1179,14 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                         if current is not None:
                             current.setdefault("proxy_attempts", []).append({"proxy_id": snapshot.get("proxy_id", ""), "stage": exc.node_code, "retryable": True, "message": _safe_log_message(exc), "attempt": attempt, "switched": switched, "at": int(time.time())})
                             self.task_store.save(self._tasks)
-                    self._log(f"[{task_id}/Free 预注册重试/{exc.node_code}] {'切换备用代理' if switched else '继续使用原代理'}进行第 {attempt + 1} 次尝试", "warn")
+                    self._log(f"[{task_id}/Free 预注册重试/{exc.node_code}] 代理连接异常，{'切换备用代理' if switched else '重试当前代理'}（第 {attempt + 1} 次）", "warn")
             post_registration_failure = None
             verified_exit_ip = ""
-            try:
-                verified_exit_ip = self._verify_binding(snapshot, task_config)
-            except FreeRegisterError as exc:
-                account_complete = bool(
-                    result.get("access_token")
-                    or result.get("credential_line")
-                    or result.get("has_access_token")
-                )
-                if not account_complete:
-                    raise
-                post_registration_failure = exception_to_failure(exc)
-                self._record_proxy_failure(snapshot, exc)
-                task_log(
-                    "账号结果已取得，但固定代理出口复核失败；保留账号并标记部分成功",
-                    "warn",
-                    node_code=post_registration_failure["node_code"],
-                    node_label=post_registration_failure["node_label"],
-                    error_code=post_registration_failure["error_code"],
-                    http_status=post_registration_failure.get("http_status"),
-                    provider_code=post_registration_failure.get("provider_code"),
-                    outcome="partial",
-                    diagnostic=post_registration_failure.get("technical_summary"),
-                    action_hint=post_registration_failure.get("action_hint"),
-                )
             result.update({
                 "task_id": task_id,
                 "batch_id": snapshot.get("batch_id", ""),
                 "proxy": snapshot.get("proxy", ""),
-                "expected_exit_ip": verified_exit_ip or snapshot.get("expected_exit_ip") or snapshot.get("exit_ip", ""),
+                "expected_exit_ip": snapshot.get("expected_exit_ip", ""),
                 "registration_ip": result.get("registration_ip") or snapshot.get("expected_exit_ip") or snapshot.get("exit_ip", ""),
                 "exit_ip": verified_exit_ip or snapshot.get("exit_ip") or result.get("exit_ip") or result.get("registration_ip", ""),
                 "driver": snapshot.get("driver") or config.get("driver") or "protocol",
@@ -1251,7 +1231,14 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             if not action_hint:
                 action_hint = {
                     "oauth_create_node": "检查 Node/SentinelRunner 路径、Node 运行时和当前代理连通性",
-                    "free_proxy_binding": "检查代理格式、认证、端口和出口探测结果",
+                    "free_proxy_lease": "检查代理租约记录和代理池状态",
+                    "proxy_protocol_mismatch": "确认代理声明协议与服务商端口匹配",
+                    "proxy_auth_rejected": "确认代理用户名、密码和白名单",
+                    "proxy_dns_failed": "确认代理主机名和 DNS 可达性",
+                    "proxy_connect_timeout": "确认代理地址、端口和网络可达性",
+                    "proxy_connection_reset": "更换代理或稍后重试连接",
+                    "proxy_tls_certificate_error": "确认代理证书链和 TLS 配置",
+                    "proxy_connect_failed": "确认代理地址、端口和认证信息",
                     "free_roxy_create": "检查 RoxyBrowser API、工作区和项目配置",
                     "free_roxy_open": "检查 RoxyBrowser Profile 是否可打开且保持无头",
                     "free_roxy_connect": "检查 Roxy 返回的 debugger/webdriver 地址和驱动文件",

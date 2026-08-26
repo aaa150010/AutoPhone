@@ -75,6 +75,7 @@ export interface FreeConfig {
   auto_set_2fa: boolean
   proxy_probe_url: string
   proxy_default_scheme?: 'http' | 'https' | 'socks4' | 'socks5' | 'socks5h' | string
+  proxy_socks5_dns_mode?: 'auto' | 'declared' | 'local' | 'remote' | string
   proxy_tls_verify?: boolean
   proxy_tls_compat_fallback?: boolean
   proxy_failure_threshold?: number
@@ -399,7 +400,7 @@ export const importFreeProxies = (proxyContent: string, _country?: string, _grou
   '/api/free/proxies/import',
   { proxy_content: proxyContent, scheme },
 )
-export const preflightFreeProxies = (proxyContent: string, proxyProbeUrl?: string, options: { driver?: string; scheme?: string; proxy_tls_verify?: boolean; proxy_tls_compat_fallback?: boolean } = {}) => api<{
+export const preflightFreeProxies = (proxyContent: string, proxyProbeUrl?: string, options: { driver?: string; scheme?: string; proxy_tls_verify?: boolean; proxy_tls_compat_fallback?: boolean; proxy_socks5_dns_mode?: string } = {}) => api<{
   ok: true
   result: { proxies: number; exit_ips: number; rows: Array<{ index: number; masked: string; fingerprint: string; exit_ip: string; scheme?: string }> }
 }>('/api/free/proxies/preflight', { proxy_content: proxyContent, proxy_probe_url: proxyProbeUrl, ...options })

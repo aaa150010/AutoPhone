@@ -27,9 +27,6 @@ interface FreeTaskLogContext {
   driver?: string
   stage?: string
   stage_label?: string
-  ip_label?: string
-  registration_ip?: string
-  expected_exit_ip?: string
 }
 
 const props = defineProps<{
@@ -208,7 +205,6 @@ defineExpose({ refresh })
     <div class="log-dialog-meta">
       <span>任务 {{ task?.task_id || '-' }}</span>
       <span>阶段 {{ task?.stage_label || task?.stage || '-' }}</span>
-      <span>{{ task?.ip_label || '注册 IP' }} {{ task?.registration_ip || task?.expected_exit_ip || '-' }}</span>
       <el-button size="small" :icon="Refresh" :loading="loading" @click="refresh({ forceLatest: autoFollow })">刷新</el-button>
     </div>
     <div v-if="logs.length" class="log-dialog-controls">

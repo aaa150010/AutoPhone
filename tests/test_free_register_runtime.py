@@ -306,10 +306,10 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         bindings = proxies.bind(
             3,
             content="socks5://user:pass@proxy-a.test:8000\n",
-            probe=lambda proxy, _url: "203.0.113.13" if proxy.startswith("socks5h://") else "",
+            probe=lambda proxy, _url: "203.0.113.13" if proxy.startswith("socks5://") else "",
         )
         self.assertEqual(len(bindings), 3)
-        self.assertEqual({binding.proxy for binding in bindings}, {"socks5h://user:pass@proxy-a.test:8000"})
+        self.assertEqual({binding.proxy for binding in bindings}, {"socks5://user:pass@proxy-a.test:8000"})
 
     def test_free_state_and_preflight_publish_runtime_and_otp_revisions(self):
         pool = FreeMailboxPool(self.data_dir)
@@ -320,7 +320,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=lambda *_args, **_kwargs: {},
             proxy_probe=lambda _proxy, _url: "203.0.113.20",
         )
-        self.assertEqual(manager.public_state()["runtime_version"], "1.6.77")
+        self.assertEqual(manager.public_state()["runtime_version"], "1.6.78")
         self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v4-roxy-otp-v2")
 
     def test_manager_preflight_applies_proxy_allocation_mode_from_config(self):
@@ -537,9 +537,28 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         from mac_overrides.free_register_common import proxy_transport_value
 
         value = "socks5://u:p@proxy.test:3000"
-        self.assertEqual(proxy_transport_value(value, driver="protocol"), "socks5h://u:p@proxy.test:3000")
-        self.assertEqual(proxy_transport_value(value, driver="probe"), "socks5h://u:p@proxy.test:3000")
+        self.assertEqual(proxy_transport_value(value, driver="protocol"), value)
+        self.assertEqual(proxy_transport_value(value, driver="probe"), value)
         self.assertEqual(proxy_transport_value(value, driver="roxybrowser"), value)
+
+    def test_proxy_transport_auto_uses_remote_dns_only_for_fake_ip_hosts(self):
+        from mac_overrides import free_register_common
+
+        value = "socks5://u:p@proxy.test:3000"
+        with patch.object(free_register_common, "_local_dns_returns_fake_ip", return_value=True):
+            self.assertEqual(
+                free_register_common.proxy_transport_value(value, driver="protocol", socks5_dns_mode="auto"),
+                "socks5h://u:p@proxy.test:3000",
+            )
+        with patch.object(free_register_common, "_local_dns_returns_fake_ip", return_value=False):
+            self.assertEqual(
+                free_register_common.proxy_transport_value(value, driver="protocol", socks5_dns_mode="auto"),
+                value,
+            )
+        self.assertEqual(
+            free_register_common.proxy_transport_value(value, driver="camoufox", socks5_dns_mode="auto"),
+            value,
+        )
 
     def test_proxy_pool_migrates_legacy_single_lease_to_multi_owner_state(self):
         path = self.data_dir / "free_proxy_pool.json"
@@ -636,7 +655,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             def get(self, url, **kwargs):
                 calls.append(("get", url, kwargs, dict(self.proxies)))
                 if self.verify is not False:
-                    raise ProxyError("proxy CONNECT failed")
+                    raise ProxyError("certificate verify failed")
                 return SimpleNamespace(status_code=200, content=b"203.0.113.41")
 
             def close(self):
@@ -683,7 +702,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             return calls
 
         retry_calls = run("curl: (97) proxy connect failed")
-        self.assertEqual([item[1]["verify"] for item in retry_calls if item[0] == "init"], [True, False])
+        self.assertEqual([item[1]["verify"] for item in retry_calls if item[0] == "init"], [True])
 
         auth_calls = run("Proxy authentication failed (407)")
         self.assertEqual([item[1]["verify"] for item in auth_calls if item[0] == "init"], [True])

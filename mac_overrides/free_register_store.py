@@ -513,10 +513,10 @@ class FreeProxyPool:
                 close()
         status = int(getattr(response, "status_code", 0) or 0)
         if not 200 <= status < 300:
-            raise ValueError(f"代理出口检测返回 HTTP {status}")
+            raise ValueError(f"代理探测请求返回 HTTP {status}")
         value = bytes(getattr(response, "content", b"") or b"")[:128].decode("utf-8", "ignore").strip()
         if not re.fullmatch(r"[0-9a-fA-F:.]{3,64}", value):
-            raise ValueError("代理出口 IP 响应格式无效")
+            raise ValueError("代理探测响应格式无效")
         return value
 
     def bind(self, count: int, *, content: str = "", probe: Callable[[str, str], str] | None = None, probe_url: str = "https://api.ipify.org") -> list[ProxyBinding]:
@@ -535,7 +535,7 @@ class FreeProxyPool:
             except Exception as exc:
                 raise FreeRegisterError(
                     "free_proxy_preflight", "Free 代理预检",
-                    f"代理池第 {index} 条出口 IP 检测失败：{proxy_error_detail(exc)}",
+                    f"代理池第 {index} 条代理探测失败：{proxy_error_detail(exc)}",
                 ) from exc
         return [ProxyBinding(value, fp, mask_proxy(value), ip) for value, fp, ip in zip(selected, fingerprints, exit_ips)]
 
@@ -543,7 +543,7 @@ class FreeProxyPool:
         try:
             current = str((probe or self._probe)(binding.proxy, probe_url)).strip()
         except Exception as exc:
-            raise FreeRegisterError("free_proxy_binding", "绑定 Free 注册代理", f"固定代理出口复核失败：{proxy_error_detail(exc)}") from exc
+            raise FreeRegisterError("proxy_connect_failed", "代理连接失败", f"代理连通性检查失败：{proxy_error_detail(exc)}") from exc
         return current
 
 

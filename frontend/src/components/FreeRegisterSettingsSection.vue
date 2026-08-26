@@ -11,7 +11,7 @@ const defaultConfig: FreeConfig = {
   driver: 'protocol', flow_profile: 'reference_20260823', proxy_allocation_mode: 'healthy_random', target_count: 1, concurrency: 3, email_code_timeout: 90, auto_set_2fa: true,
   mailbox_network_mode: 'local_proxy', mailbox_proxy_url: 'http://127.0.0.1:7897',
   mailbox_request_retries: 3, mailbox_retry_backoff_seconds: 1,
-  proxy_probe_url: 'https://api.ipify.org', proxy_tls_verify: true, proxy_tls_compat_fallback: true, protocol: { node_runner: '', sentinel_version: '20260219f9f6', sentinel_timeout: 90, network_timeout: 20, network_preflight_retries: 3, security_challenge_wait_seconds: 60, anonymous_warmup: true, authenticated_warmup: true, geo_probe_url: 'https://ipwho.is/' },
+  proxy_probe_url: 'https://api.ipify.org', proxy_socks5_dns_mode: 'auto', proxy_tls_verify: true, proxy_tls_compat_fallback: true, protocol: { node_runner: '', sentinel_version: '20260219f9f6', sentinel_timeout: 90, network_timeout: 20, network_preflight_retries: 3, security_challenge_wait_seconds: 60, anonymous_warmup: true, authenticated_warmup: true, geo_probe_url: 'https://ipwho.is/' },
   proxy_default_scheme: 'http', proxy_failure_threshold: 2, proxy_quarantine_seconds: 600, proxy_retry_count: 1,
   roxy_circuit_failure_threshold: 3, roxy_circuit_recovery_seconds: 30,
   roxybrowser: {
@@ -36,7 +36,7 @@ const config = reactive<FreeConfig>(structuredClone(defaultConfig))
 const state = ref<FreeState>({ running: false, tasks: [], summary: {}, pool: {} })
 const proxyText = ref('')
 const proxyScheme = ref('http')
-const proxyCheckRows = ref<Array<{ index: number; masked: string; fingerprint: string; exit_ip: string; scheme?: string }>>([])
+const proxyCheckRows = ref<Array<{ index: number; masked: string; fingerprint: string; scheme?: string }>>([])
 const proxyRows = ref<FreeProxyRow[]>([])
 const workspaces = ref<Array<{ workspace_id: string; workspace_name: string; project_id: string; project_name: string; label: string }>>([])
 const busy = ref<'load' | 'save' | 'preflight' | 'proxy-preflight' | 'workspace' | ''>('')
@@ -139,12 +139,12 @@ async function preflight() {
 async function preflightProxyPool() {
   busy.value = 'proxy-preflight'
   try {
-    const result = await preflightFreeProxies(proxyText.value, config.proxy_probe_url, { driver: config.driver, scheme: proxyScheme.value, proxy_tls_verify: config.proxy_tls_verify, proxy_tls_compat_fallback: config.proxy_tls_compat_fallback })
+    const result = await preflightFreeProxies(proxyText.value, config.proxy_probe_url, { driver: config.driver, scheme: proxyScheme.value, proxy_socks5_dns_mode: config.proxy_socks5_dns_mode, proxy_tls_verify: config.proxy_tls_verify, proxy_tls_compat_fallback: config.proxy_tls_compat_fallback })
     proxyCheckRows.value = result.result?.rows || []
-    ElMessage.success(`代理出口 IP 检测通过：${Number(result.result?.proxies || 0)} 个`)
+    ElMessage.success(`代理连通性检测通过：${Number(result.result?.proxies || 0)} 个`)
   } catch (error: any) {
     proxyCheckRows.value = []
-    ElMessage.error(error?.message || 'Free 代理出口 IP 检测失败')
+    ElMessage.error(error?.message || 'Free 代理连通性检测失败')
   } finally {
     busy.value = ''
   }
@@ -206,7 +206,7 @@ defineExpose({ save })
       <template #label><FieldHelpLabel label="注册链路" help="全协议直接调用认证接口；RoxyBrowser 使用独立 Profile；Camoufox 使用共享浏览器进程中的独立 context。三条链路共用同一个 URL 邮箱池和取件策略。" /></template>
       <el-radio-group v-model="config.driver" :disabled="running || busy === 'load'" class="driver-options">
         <el-radio value="protocol" border><strong>全协议</strong><small>OAuth、邮箱 OTP 和套餐检查</small></el-radio>
-        <el-radio value="roxybrowser" border><strong>RoxyBrowser</strong><small>独立 Profile、固定代理和 Selenium 页面注册</small></el-radio>
+        <el-radio value="roxybrowser" border><strong>RoxyBrowser</strong><small>独立 Profile、任务代理和 Selenium 页面注册</small></el-radio>
         <el-radio value="camoufox" border><strong>Camoufox</strong><small>异步共享浏览器池、独立 context 和同源 Session</small></el-radio>
       </el-radio-group>
     </el-form-item>
@@ -214,12 +214,12 @@ defineExpose({ save })
     <div class="selection-summary shared-proxy-summary">
       <span>共享健康随机代理池</span>
       <b>{{ Number(state.pool?.proxies || 0) }}</b>
-      <small>可用同一代理和出口 IP；任务期间出口变化不会阻断健康任务</small>
+      <small>任务共享健康随机代理；连接观测变化不会阻断健康任务</small>
     </div>
 
     <el-row :gutter="10">
       <el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="流程配置" help="默认使用参考项目 2026-08-23 的 RoxyBrowser 与全协议状态机；遇到兼容问题时可临时切回旧流程，便于回滚定位。" /></template><el-select v-model="config.flow_profile" :disabled="running"><el-option label="参考流程（推荐）" value="reference_20260823" /><el-option label="旧流程（回滚）" value="legacy" /></el-select></el-form-item></el-col>
-      <el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="代理分配方式" help="按 AutoRegister 使用健康代理随机分配，多个并发任务可以共享同一代理和出口 IP。" /></template><el-tag type="success" effect="plain">健康随机共享池</el-tag></el-form-item></el-col>
+      <el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="代理分配方式" help="按 AutoRegister 使用健康代理随机分配，多个并发任务可以共享同一代理；不比较或锁定出口地址。" /></template><el-tag type="success" effect="plain">健康随机共享池</el-tag></el-form-item></el-col>
     </el-row>
 
     <el-row :gutter="10">
@@ -227,12 +227,12 @@ defineExpose({ save })
       <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="Free 并发数（1-16）" help="配置允许同时运行的 Free 注册任务数；运行时可能因协议压力控制或 Roxy 熔断降低实际并发。" /></template><el-input-number v-model="config.concurrency" class="free-scale-number" :min="1" :max="16" controls-position="right" :disabled="running" /></el-form-item></el-col>
       <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="邮箱 OTP 超时（秒）" help="注册流程等待邮箱验证码的最长时间。启用自动动态口令后，第二封 OTP 也使用这项超时。" /></template><el-input-number v-model="config.email_code_timeout" :min="10" :max="600" controls-position="right" :disabled="running" /></el-form-item></el-col>
     </el-row>
-    <el-form-item><template #label><FieldHelpLabel label="出口 IP 探测地址" help="通过每条待用代理访问该地址，取得实际出口 IP。只检查代理请求、HTTP 成功状态和 IP 格式；出口 IP 后续变化不会阻断健康任务。" /></template><el-input v-model="config.proxy_probe_url" :disabled="running" placeholder="https://api.ipify.org" /></el-form-item>
-    <div class="check-row proxy-tls-options"><el-checkbox v-model="config.proxy_tls_verify" :disabled="running"><FieldHelpLabel label="严格校验探测站证书" help="默认先按标准 TLS 证书校验访问探测地址。关闭后只影响出口 IP 探测请求，不会改代理协议、不会切换节点，也不会影响 RoxyBrowser 的页面证书校验。" /></el-checkbox><el-checkbox v-model="config.proxy_tls_compat_fallback" :disabled="running || !config.proxy_tls_verify"><FieldHelpLabel label="TLS/CONNECT 兼容重试" help="严格校验遇到明确的证书、TLS 或 CONNECT 兼容错误时，用同一代理和同一协议再试一次；失败原因会标记为兼容模式，不会静默换代理或直连。" /></el-checkbox></div>
+    <el-form-item><template #label><FieldHelpLabel label="代理连通性探测地址" help="通过每条待用代理访问该地址，确认代理请求、HTTP 成功状态和响应格式；观测结果只用于内部健康判断，不绑定账号出口地址。" /></template><el-input v-model="config.proxy_probe_url" :disabled="running" placeholder="https://api.ipify.org" /></el-form-item>
+    <div class="check-row proxy-tls-options"><el-checkbox v-model="config.proxy_tls_verify" :disabled="running"><FieldHelpLabel label="严格校验探测站证书" help="默认按标准 TLS 证书校验访问探测地址。关闭后只影响连通性探测，不会改代理协议、不会切换节点，也不会影响浏览器页面证书校验。" /></el-checkbox><el-checkbox v-model="config.proxy_tls_compat_fallback" :disabled="running || !config.proxy_tls_verify"><FieldHelpLabel label="TLS/CONNECT 兼容重试" help="严格校验遇到明确证书错误时，用同一代理和同一协议再试一次；协议不匹配不会走证书兼容重试。" /></el-checkbox></div>
     <el-form-item><template #label><FieldHelpLabel label="注册后安全设置" help="Free 注册固定启用 2FA。注册完成会再等待一封邮箱 OTP，执行 TOTP enrollment 和 activation 并保存动态口令密钥；失败时保留 Token，账号进入 2FA 待重试。" /></template><el-checkbox v-model="config.auto_set_2fa" disabled>注册完成后自动设置动态口令（必需）</el-checkbox></el-form-item>
 
     <div class="subsection mailbox-network-section">
-      <div class="humanize-heading"><h3>邮箱 OTP 取件网络</h3><FieldHelpLabel label="网络隔离说明" help="这里只控制邮箱取件 URL 的网络。它不会使用账号注册时绑定的住宅代理，也不会改变 RoxyBrowser Profile 的固定代理和注册 IP。" /><el-tag size="small" type="info" effect="plain">与注册代理分离</el-tag></div>
+      <div class="humanize-heading"><h3>邮箱 OTP 取件网络</h3><FieldHelpLabel label="网络隔离说明" help="这里只控制邮箱取件 URL 的网络，不会使用账号注册代理，也不会改变浏览器 Profile。" /><el-tag size="small" type="info" effect="plain">与注册代理分离</el-tag></div>
       <el-form-item>
         <template #label><FieldHelpLabel label="取件方式" help="本机代理适合通过 Clash Verge 访问邮箱服务，默认使用 127.0.0.1:7897；直连则完全不使用代理。两种方式都不会继承系统环境代理。" /></template>
         <el-radio-group v-model="config.mailbox_network_mode" :disabled="running">
@@ -251,7 +251,7 @@ defineExpose({ save })
     <div class="subsection">
       <div class="humanize-heading"><h3>代理稳定性策略</h3><FieldHelpLabel label="规则说明" help="这些规则只作用于独立 Free 代理池：控制注册前可否更换备用代理、连续失败隔离，以及 RoxyBrowser 基础设施异常时停止新任务。" /></div>
       <el-row :gutter="10">
-        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="代理额外重试次数" help="Profile 创建和出口 IP 校验完成前，原代理连接失败后允许的额外重试次数。进入注册页面后不会更换代理。" /></template><el-input-number v-model="config.proxy_retry_count" :min="0" :max="5" controls-position="right" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="代理额外重试次数" help="进入注册页面前，原代理连接失败后允许的额外重试次数；进入注册页面后不因观测地址变化更换代理。" /></template><el-input-number v-model="config.proxy_retry_count" :min="0" :max="5" controls-position="right" :disabled="running" /></el-form-item></el-col>
         <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="连续失败隔离阈值" help="同一代理连续失败达到此次数后进入隔离，当前批次不再分配它。成功探测会清零连续失败次数。" /></template><el-input-number v-model="config.proxy_failure_threshold" :min="1" :max="10" controls-position="right" :disabled="running" /></el-form-item></el-col>
         <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="代理隔离时间（秒）" help="代理达到失败阈值后的暂停使用时间。到期后可重新参与检测和任务分配。" /></template><el-input-number v-model="config.proxy_quarantine_seconds" :min="30" :max="86400" controls-position="right" :disabled="running" /></el-form-item></el-col>
       </el-row>
@@ -271,7 +271,7 @@ defineExpose({ save })
         <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="网络预检重试" help="ChatGPT、Auth 和 Sentinel 预检的额外尝试次数；每次仍使用同一任务代理。" /></template><el-input-number v-model="config.protocol.network_preflight_retries" :min="1" :max="5" controls-position="right" :disabled="running" /></el-form-item></el-col>
         <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="网络超时（秒）" help="全协议预检和匿名预热的单次网络请求超时。" /></template><el-input-number v-model="config.protocol.network_timeout" :min="5" :max="60" controls-position="right" :disabled="running" /></el-form-item></el-col>
         <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="安全挑战等待（秒）" help="同一会话和代理等待 Cloudflare/安全挑战自然解除的最长时间；不会自动绕过或切换代理。" /></template><el-input-number v-model="config.protocol.security_challenge_wait_seconds" :min="0" :max="60" controls-position="right" :disabled="running" /></el-form-item></el-col>
-        <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="出口地区探测地址" help="用于建立协议链路的地区画像；只记录国家和脱敏结果，不会写入授权信息。" /></template><el-input v-model="config.protocol.geo_probe_url" :disabled="running" placeholder="https://ipwho.is/" /></el-form-item></el-col>
+      <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="地区画像探测地址" help="用于建立协议链路的地区画像；只记录国家和脱敏结果，不会写入授权信息。" /></template><el-input v-model="config.protocol.geo_probe_url" :disabled="running" placeholder="https://ipwho.is/" /></el-form-item></el-col>
       </el-row>
       <div class="check-row"><el-checkbox v-model="config.protocol.anonymous_warmup" :disabled="running">匿名态预热</el-checkbox><el-checkbox v-model="config.protocol.authenticated_warmup" :disabled="running">认证态预热</el-checkbox></div>
     </div>
@@ -316,7 +316,7 @@ defineExpose({ save })
       </el-row>
       <div class="check-row"><el-checkbox v-model="roxy.humanize_delay" :disabled="running">启用人工节奏</el-checkbox><el-checkbox v-model="roxy.humanize_browser_actions" :disabled="running">随机页面动作</el-checkbox><el-checkbox v-model="roxy.random_os" :disabled="running">随机系统</el-checkbox><el-checkbox v-model="roxy.random_profile_name" :disabled="running">随机 Profile 名称</el-checkbox></div>
       <el-form-item>
-        <template #label><FieldHelpLabel label="已有账号登录兜底" help="当注册邮箱被认证页识别为已有账号并进入登录密码页时，自动点击“使用一次性验证码”，继续用该任务绑定的邮箱、固定代理和出口 IP 登录。成功后只保存 Token、套餐、2FA 和注册 IP，不会把统一注册密码误存为已有账号密码。" /></template>
+        <template #label><FieldHelpLabel label="已有账号登录兜底" help="当注册邮箱被认证页识别为已有账号并进入登录密码页时，自动点击“使用一次性验证码”，继续用该任务绑定的邮箱和代理登录。成功后只保存 Token、套餐和 2FA，不会把统一注册密码误存为已有账号密码。" /></template>
         <el-checkbox v-model="roxy.existing_account_login" :disabled="running">已有账号自动切换邮箱验证码登录</el-checkbox>
       </el-form-item>
       <el-row v-if="roxy.random_os" :gutter="10"><el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="随机系统范围" help="创建每个临时 Profile 时从勾选项中随机选择浏览器指纹系统，不改变本机操作系统。" /></template><el-checkbox-group v-model="roxy.os_choices" :disabled="running"><el-checkbox label="Windows" /><el-checkbox label="macOS" /><el-checkbox label="Linux" /></el-checkbox-group></el-form-item></el-col><el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="Profile 名称前缀" help="临时 RoxyBrowser Profile 名称的固定前缀，后面会追加时间和随机标记，便于识别本程序创建的窗口。" /></template><el-input v-model="roxy.profile_name_prefix" :disabled="running" /></el-form-item></el-col></el-row>
@@ -326,14 +326,15 @@ defineExpose({ save })
     </div>
 
     <div class="subsection proxy-section">
-      <div class="section-heading-row"><div><h3>Free 独立代理池</h3><p class="section-hint">粘贴后可先检测每条代理的出口 IP、重复 IP 和代理协议，再保存到 Free 池。</p></div><span class="muted">已保存 {{ Number(state.pool?.proxies || 0) }} 个</span></div>
+      <div class="section-heading-row"><div><h3>Free 独立代理池</h3><p class="section-hint">粘贴后可先检测每条代理的连通性和声明协议，再保存到 Free 池。</p></div><span class="muted">已保存 {{ Number(state.pool?.proxies || 0) }} 个</span></div>
       <div class="proxy-import-meta">
-        <div class="proxy-import-field"><FieldHelpLabel label="无协议默认协议" help="支持 scheme://用户名:密码@主机:端口、主机:端口:用户名:密码、用户名:密码@主机:端口、主机:端口@用户名:密码；裸格式按当前下拉协议解析，显式协议始终优先。全协议对 SOCKS5 使用 SOCKS5H 让代理端解析域名，RoxyBrowser 仍映射为 SOCKS5。" /><el-select v-model="proxyScheme" placeholder="无协议时默认协议"><el-option label="HTTP" value="http" /><el-option label="HTTPS" value="https" /><el-option label="SOCKS4" value="socks4" /><el-option label="SOCKS5" value="socks5" /><el-option label="SOCKS5H" value="socks5h" /></el-select></div>
+        <div class="proxy-import-field"><FieldHelpLabel label="无协议默认协议" help="支持 scheme://用户名:密码@主机:端口、主机:端口:用户名:密码、用户名:密码@主机:端口、主机:端口@用户名:密码；裸格式按当前下拉协议解析，显式协议始终优先。" /><el-select v-model="proxyScheme" placeholder="无协议时默认协议"><el-option label="HTTP" value="http" /><el-option label="HTTPS" value="https" /><el-option label="SOCKS4" value="socks4" /><el-option label="SOCKS5" value="socks5" /><el-option label="SOCKS5H" value="socks5h" /></el-select></div>
+        <div class="proxy-import-field"><FieldHelpLabel label="SOCKS5 DNS" help="只影响 SOCKS5 代理的域名解析位置，不改变保存的协议标签。自动模式检测到 Clash Fake-IP 时使用代理端解析，普通网络保留本机解析。" /><el-select v-model="config.proxy_socks5_dns_mode" :disabled="running"><el-option label="自动适配" value="auto" /><el-option label="本机解析" value="local" /><el-option label="代理端解析" value="remote" /><el-option label="严格声明" value="declared" /></el-select></div>
       </div>
       <el-input v-model="proxyText" type="textarea" :rows="5" :disabled="running" placeholder="每行一个代理，支持 URL、host:port:user:pass 和两种 @ 格式" autocomplete="off" />
-      <div class="inline-actions"><el-button size="small" :icon="CircleCheck" :loading="busy === 'proxy-preflight'" :disabled="running || !proxyText.trim()" @click="preflightProxyPool">检测出口 IP</el-button><span class="muted">代理内容会随右下角“保存 Free 配置”一起保存，不会消耗邮箱，也不会启动注册；检测只确认代理出口可连通。</span></div>
-      <template v-if="proxyCheckRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="本次检测结果" help="仅展示输入框中代理本次得到的出口 IP，不会自动保存。" /></div><el-table :data="proxyCheckRows" size="small" height="150" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="masked" label="代理掩码" min-width="220" /><el-table-column prop="scheme" label="协议" width="90" /><el-table-column prop="exit_ip" label="出口 IP" min-width="150" /><el-table-column prop="fingerprint" label="指纹" min-width="120" /></el-table></template>
-      <template v-if="proxyRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="代理明细" help="已保存共享 Free 代理池的逐条记录。用于核对协议、最近实测出口 IP、健康状态、探测模式和连续失败次数；认证信息始终隐藏。" /></div><el-table :data="proxyRows" size="small" height="180" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="scheme" label="协议" width="85" /><el-table-column prop="masked" label="代理" min-width="210" /><el-table-column width="85"><template #header><FieldHelpLabel label="状态" help="未检测表示尚无成功探测；可用表示最近探测成功；已隔离表示连续失败达到阈值，隔离期内不会分配。" /></template><template #default="{ row }">{{ proxyStatusLabel(row.status) }}</template></el-table-column><el-table-column prop="last_probe_mode" label="探测模式" width="90"><template #default="{ row }">{{ row.last_probe_mode === 'compat' ? '兼容重试' : row.last_probe_mode === 'strict' ? '严格校验' : '-' }}</template></el-table-column><el-table-column prop="last_exit_ip" label="出口 IP" width="130"><template #default="{ row }">{{ row.last_exit_ip || '-' }}</template></el-table-column><el-table-column prop="consecutive_failures" label="失败次数" width="85" /></el-table></template>
+      <div class="inline-actions"><el-button size="small" :icon="CircleCheck" :loading="busy === 'proxy-preflight'" :disabled="running || !proxyText.trim()" @click="preflightProxyPool">检测代理连通性</el-button><span class="muted">代理内容会随右下角“保存 Free 配置”一起保存，不会消耗邮箱，也不会启动注册；检测只确认代理请求可用。</span></div>
+      <template v-if="proxyCheckRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="本次检测结果" help="仅展示输入框中代理的声明协议和脱敏地址，不自动保存观测地址。" /></div><el-table :data="proxyCheckRows" size="small" height="150" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="masked" label="代理掩码" min-width="220" /><el-table-column prop="scheme" label="协议" width="90" /><el-table-column prop="fingerprint" label="指纹" min-width="120" /></el-table></template>
+      <template v-if="proxyRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="代理明细" help="已保存共享 Free 代理池的逐条记录。用于查看声明协议、健康状态、探测模式和连续失败次数；认证信息始终隐藏。" /></div><el-table :data="proxyRows" size="small" height="180" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="scheme" label="协议" width="85" /><el-table-column prop="masked" label="代理" min-width="210" /><el-table-column width="85"><template #header><FieldHelpLabel label="状态" help="未检测表示尚无成功探测；可用表示最近探测成功；已隔离表示连续失败达到阈值，隔离期内不会分配。" /></template><template #default="{ row }">{{ proxyStatusLabel(row.status) }}</template></el-table-column><el-table-column prop="last_probe_mode" label="探测模式" width="90"><template #default="{ row }">{{ row.last_probe_mode === 'compat' ? '兼容重试' : row.last_probe_mode === 'strict' ? '严格校验' : '-' }}</template></el-table-column><el-table-column prop="consecutive_failures" label="失败次数" width="85" /></el-table></template>
     </div>
 
     <div class="settings-actions"><el-button size="small" :icon="CircleCheck" :loading="busy === 'preflight'" :disabled="running" @click="preflight">注册预检</el-button><el-button size="small" :icon="Refresh" :loading="busy === 'load'" :disabled="running" @click="load">刷新 Free 配置</el-button></div>

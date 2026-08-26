@@ -89,7 +89,7 @@ class FreeRegisterSchedulerMixin:
             "proxy": replacement.proxy, "proxy_id": replacement.proxy_id,
             "proxy_scheme": replacement.scheme, "proxy_country": replacement.country,
             "proxy_group": replacement.group, "proxy_masked": replacement.masked,
-            "proxy_fingerprint": replacement.fingerprint, "expected_exit_ip": replacement.exit_ip,
+            "proxy_fingerprint": replacement.fingerprint,
             "exit_ip": replacement.exit_ip, "registration_ip": "",
         }
         with self._lock:
@@ -105,7 +105,7 @@ class FreeRegisterSchedulerMixin:
             proxy_id=replacement.proxy_id, proxy_scheme=replacement.scheme,
             proxy_country=replacement.country, proxy_group=replacement.group,
             proxy_masked=replacement.masked, proxy_fingerprint=replacement.fingerprint,
-            expected_exit_ip=replacement.exit_ip, exit_ip=replacement.exit_ip,
+            exit_ip=replacement.exit_ip,
         )
         return True
 
@@ -127,9 +127,11 @@ class FreeRegisterSchedulerMixin:
                 self._record_proxy_failure(task, exc)
                 attempt += 1
                 switched = self._switch_pre_profile_proxy(task, config)
+                node_code = str(getattr(exc, "node_code", "proxy_connect_failed") or "proxy_connect_failed")
+                node_label = str(getattr(exc, "node_label", "代理连接失败") or "代理连接失败")
                 self._log(
-                    f"[{task.get('task_id')}/Free 预注册代理重选/free_proxy_binding] "
-                    f"固定代理验证失败，{'已切换备用代理' if switched else '没有可用备用代理，重试原代理'}"
+                    f"[{task.get('task_id')}/Free 预注册代理重试/{node_code}] "
+                    f"{node_label}，{'已切换备用代理' if switched else '重试当前代理'}"
                     f"（第 {attempt + 1} 次）",
                     "warn",
                 )

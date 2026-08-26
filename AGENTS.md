@@ -82,6 +82,7 @@ RoxyBrowser 驱动执行，但注册驱动不得改变后续换绑协议。
 ## 发布和验证
 
 - 用户可见的版本说明统一写在 `frontend/src/releaseNotes.ts`；涉及用户可见改动时同步更新版本号和说明，并重建 `frontend/dist/`。
+- Free 运行时版本必须与 `frontend/src/releaseNotes.ts` 的 `freeRuntimeVersion` 同步，并在 `mac_overrides/free_runtime_info.py` 与对应版本测试中一起更新；用户可见改动还必须重建并提交 `frontend/dist/`。
 - 后端验证：
 
   ```sh

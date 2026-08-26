@@ -38,12 +38,10 @@ const standardNodes: Array<{ code: string; label: string; group: TaskStageGroup 
   { code: 'finalizing_save', label: '保存任务结果', group: 'finalizing' },
 ]
 const freeNodes: Array<{ code: string; label: string; group: TaskStageGroup }> = [
-  { code: 'free_proxy_binding', label: '绑定 Free 注册代理', group: 'free' },
   { code: 'oauth_create_node', label: '初始化 Node/Sentinel', group: 'free' },
   { code: 'free_roxy_create', label: '创建 RoxyBrowser 环境', group: 'free' },
   { code: 'free_roxy_open', label: '打开 RoxyBrowser 环境', group: 'free' },
   { code: 'free_roxy_connect', label: '连接 RoxyBrowser', group: 'free' },
-  { code: 'free_roxy_ip_verify', label: '校验 RoxyBrowser 出口 IP', group: 'free' },
   { code: 'free_roxy_signup_bootstrap', label: '打开 RoxyBrowser 注册页', group: 'free' },
   { code: 'free_roxy_signup_email', label: '填写 Free 注册邮箱', group: 'free' },
   { code: 'free_roxy_signup_email_submit', label: '提交 Free 注册邮箱', group: 'free' },

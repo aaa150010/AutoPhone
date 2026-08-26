@@ -227,6 +227,10 @@ class FreePoolRouteController:
                         "proxy_tls_compat_fallback",
                         current.get("proxy_tls_compat_fallback", True),
                     ),
+                    "proxy_socks5_dns_mode": data.get(
+                        "proxy_socks5_dns_mode",
+                        current.get("proxy_socks5_dns_mode", "auto"),
+                    ),
                 },
                 previous=current,
             )
@@ -239,6 +243,7 @@ class FreePoolRouteController:
                 scheme=str(data.get("scheme") or "").strip().lower() or None,
                 tls_verify=bool(probe_config.get("proxy_tls_verify", True)),
                 tls_compat_fallback=bool(probe_config.get("proxy_tls_compat_fallback", True)),
+                socks5_dns_mode=str(probe_config.get("proxy_socks5_dns_mode") or "auto"),
             )
             return self.module.jsonify(ok=True, result=result)
         except Exception as exc:
